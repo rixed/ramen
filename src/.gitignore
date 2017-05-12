@@ -1,0 +1,14 @@
+oUnit-anon.cache
+*.log
+*.cmo
+*.cma
+*.cmx
+*.cmi
+*.cmxa
+*.cmxs
+*.a
+*.annot
+*.o
+.depend
+all_tests.*
+ep
