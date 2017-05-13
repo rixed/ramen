@@ -18,15 +18,8 @@ struct
   type t =
     { name : string ;
       id : int ;
-      mutable to_root : t list ;
-      mutable settings : setting list (* from command line *) } (*[@@ppp PPP_Ocaml]*)
-
-  let t_ppp = PPP_OCaml.(record (
-    field "id" int <->
-    field "name" string <->
-    field "settings" (list setting_ppp)) >>:
-    ((fun n -> Some (Some n.id, Some n.name), Some n.settings),
-     (fun _ -> failwith "You cannot scan a node into existence")))
+      mutable to_root : t list ; [@ppp_ignore []]
+      mutable settings : setting list (* from command line *) } [@@ppp PPP_OCaml]
 
   let make name id =
     { name ; to_root = [] ; id ; settings = [] }
