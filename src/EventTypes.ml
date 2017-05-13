@@ -29,22 +29,7 @@ struct
   type itf = CltOnly of int
            | SrvOnly of int
            | Same of int
-           | Split of int * int (*[@@ppp PPP_OCaml]*)
-
-  let itf_ppp = PPP_OCaml.(union (
-    variant "Clt" int |||
-    variant "Srv" int |||
-    variant "Same" int |||
-    variant "Split" (pair int int)) >>:
-    ((function CltOnly i -> Some (Some (Some i, None), None), None
-             | SrvOnly i -> Some (Some (None, Some i), None), None
-             | Same i -> Some (None, Some i), None
-             | Split (i, j) -> None, Some (i, j)),
-     (function Some (Some (Some i, None), None), None -> CltOnly i
-             | Some (Some (None, Some i), None), None -> SrvOnly i
-             | Some (None, Some i), None -> Same i
-             | None, Some (i, j) -> Split (i, j)
-             | _ -> assert false)))
+           | Split of int * int [@@ppp PPP_OCaml]
 
   type zone = int [@@ppp PPP_OCaml]
 
