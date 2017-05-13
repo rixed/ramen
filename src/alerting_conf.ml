@@ -231,7 +231,7 @@ struct
   (* The type to be sent to the root of the tree: *)
   type input = TCP_v29.t
   let input_of_string s =
-    Configuration.input_of_string_of_ppp TCP_v29.ppp_csv s
+    Configuration.input_of_string_of_ppp TCP_v29.(PPP.(>>:) csv_ppp (to_csv, of_csv)) s
   let configurations = [
     alert_if_below ~min_bytes:50_000_000 ~duration:600. 50 72 ;
     alert_if_below ~min_bytes:50_000_000 ~duration:600. 0 30
