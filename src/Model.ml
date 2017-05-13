@@ -4,7 +4,7 @@ open Batteries
 
 module Node =
 struct
-  type setting = Debug | SayHello (* for testing *)
+  type setting = Debug | SayHello (* for testing *) [@@ppp PPP_OCaml]
 
   (* More interesting behavioral changes would be:
    *
@@ -15,29 +15,21 @@ struct
    * read events from an external source (socket or disc MQ.
    *)
 
-  let setting_ppp = PPP_OCaml.(union (
-    variant "Debug" none ||| variant "SayHello" none) >>:
-    ((function Debug -> Some (), None
-             | SayHello -> None, Some ()),
-     (function Some _, _ -> Debug
-             | _, Some _ -> SayHello
-             | _ -> assert false)))
-
   type t =
     { name : string ;
       id : int ;
       mutable to_root : t list ;
-      mutable settings : setting list (* from command line *) }
+      mutable settings : setting list (* from command line *) } (*[@@ppp PPP_Ocaml]*)
 
-  let make name id =
-    { name ; to_root = [] ; id ; settings = [] }
-
-  let ppp = PPP_OCaml.(record (
+  let t_ppp = PPP_OCaml.(record (
     field "id" int <->
     field "name" string <->
     field "settings" (list setting_ppp)) >>:
     ((fun n -> Some (Some n.id, Some n.name), Some n.settings),
      (fun _ -> failwith "You cannot scan a node into existence")))
+
+  let make name id =
+    { name ; to_root = [] ; id ; settings = [] }
 
   let long_name t =
     "/"^ List.fold_left (fun s n -> n.name ^(if s = "" then "" else "/"^ s)) "" (t::t.to_root)
@@ -47,16 +39,10 @@ module Pipe =
 struct
   type t =
     { from_node : Node.t ;
-      to_node : Node.t }
+      to_node : Node.t } [@@ppp PPP_OCaml]
 
   let make from_node to_node =
     { from_node ; to_node }
-
-  let ppp = PPP_OCaml.(record (
-    field "from_node" int <->
-    field "to_node" int) >>:
-    ((fun t -> Some t.from_node.Node.id, Some (t.to_node.Node.id)),
-     (fun _ -> failwith "You cannot scan a pipe into existence")))
 end
 
 (* Must be acyclic *)
@@ -66,17 +52,10 @@ struct
     { name : string ;
       nodes: Node.t list ;
       pipes: Pipe.t list ;
-      roots: Node.t list }
+      roots: Node.t list } [@@ppp PPP_OCaml]
 
   let empty name =
     { name ; nodes = [] ; pipes = [] ; roots = [] }
-
-  let ppp = PPP_OCaml.(record (
-    field "name" string <->
-    field "nodes" (list Node.ppp) <->
-    field "pipes" (list Pipe.ppp)) >>:
-    ((fun t -> Some (Some t.name, Some t.nodes), Some t.pipes),
-     (fun _ -> raise (Failure "You cannot scan a graph into existence"))))
 
   let lookup_pipe t from_node to_node =
     List.find (fun p ->
@@ -99,7 +78,7 @@ end
 module Setting =
 struct
   type t = Node.setting
-  let ppp = Node.setting_ppp
+  let t_ppp = Node.setting_ppp
 
   (* Wrappers for node operation (op is the input of a node, a function from
    * event to unit) *)

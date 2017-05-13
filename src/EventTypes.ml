@@ -7,35 +7,19 @@
  * disappear from here at some point.
  *)
 
-type time = float
-let time_ppp = PPP_OCaml.float
+type time = float [@@ppp PPP_OCaml]
 
-type ip_port = int
-let ip_port_ppp = PPP_OCaml.int
+type ip_port = int [@@ppp PPP_OCaml]
 
 (* We put the server first *)
-type ip_endpoints = IPv4s of (Int32.t * Int32.t)
-                  | IPv6s of (Int128.t * Int128.t)
-let ip_endpoints_ppp = PPP_OCaml.(union (
-  variant "IPv4" (pair int32 int32) |||
-  variant "IPv6" (pair Int128.ppp Int128.ppp)) >>:
-  ((function IPv4s (i1, i2) -> Some (i1, i2), None
-           | IPv6s (i1, i2) -> None, Some (i1, i2)),
-   (function Some (i1, i2), _ -> IPv4s (i1, i2)
-           | _, Some (i1, i2) -> IPv6s (i1, i2)
-           | _ -> assert false)))
+type ip_endpoints = IPv4s of (int32 * int32)
+                  | IPv6s of (Int128.t * Int128.t) [@@ppp PPP_OCaml]
 
 type socket = {
   (* client * server *)
   endpoints : ip_endpoints ;
   ports : ip_port * ip_port
-}
-let socket_ppp = PPP_OCaml.(record (
-  field "endpoints" ip_endpoints_ppp <->
-  field "ports" (pair ip_port_ppp ip_port_ppp)) >>:
-  ((fun { endpoints ; ports } -> Some endpoints, Some ports),
-   (function Some endpoints, Some ports -> { endpoints ; ports }
-           | _ -> raise PPP.MissingRequiredField)))
+} [@@ppp PPP_OCaml]
 
 module TCP_v29 =
 struct
@@ -45,7 +29,7 @@ struct
   type itf = CltOnly of int
            | SrvOnly of int
            | Same of int
-           | Split of int * int
+           | Split of int * int (*[@@ppp PPP_OCaml]*)
 
   let itf_ppp = PPP_OCaml.(union (
     variant "Clt" int |||
@@ -62,8 +46,7 @@ struct
              | None, Some (i, j) -> Split (i, j)
              | _ -> assert false)))
 
-  type zone = int
-  let zone_ppp = PPP_OCaml.int
+  type zone = int [@@ppp PPP_OCaml]
 
   type t =
     { mutable start : time ;
@@ -76,32 +59,7 @@ struct
       mutable packets_srv : int ;
       mutable max_missed : int ; (* max number of uncounted packets *)
       mutable bytes_clt : int ;
-      mutable bytes_srv : int }
-
-  let ppp = PPP_OCaml.(record (
-    field "start" time_ppp <->
-    field "stop" time_ppp <->
-    field "itf" itf_ppp <->
-    field "zone_clt" (option zone_ppp) <->
-    field "zone_srv" (option zone_ppp) <->
-    field "socket" (option socket_ppp) <->
-    field "bytes_clt" int <->
-    field "bytes_srv" int <->
-    field "packets_clt" int <->
-    field "packets_srv" int <->
-    field "max_missed" int) >>:
-    ((fun { start ; stop ; itf ; zone_clt ; zone_srv ; socket ; bytes_clt ; bytes_srv ;
-            packets_clt ; packets_srv ; max_missed } ->
-       Some (Some (Some (Some (Some (Some (Some (Some (Some (Some start, Some stop), Some itf),
-       Some zone_clt), Some zone_srv), Some socket), Some bytes_clt), Some bytes_srv),
-       Some packets_clt), Some packets_srv), Some max_missed),
-     (function
-       | (Some (Some (Some (Some (Some (Some (Some (Some (Some (Some start, Some stop), Some itf),
-         Some zone_clt), Some zone_srv), Some socket), Some bytes_clt), Some bytes_srv),
-         Some packets_clt), Some packets_srv), Some max_missed) ->
-         { start ; stop ; itf ; zone_clt ; zone_srv ; socket ;
-           packets_clt ; packets_srv ; max_missed ; bytes_clt ; bytes_srv }
-       | _ -> raise PPP.MissingRequiredField)))
+      mutable bytes_srv : int } [@@ppp PPP_OCaml]
 
   (* TODO: Int128.ppp would not parse the input, better not have ipv6! *)
   (* TODO: PPP_CSV that print/scan everything from a one line tuple, so we
@@ -114,8 +72,8 @@ struct
     microsecs_ppp +- c ++ microsecs_ppp +- c ++
     optional int +- c ++ optional int +- c ++
     optional int +- c ++ optional int +- c ++
-    optional uint32 +- c ++ optional Int128.ppp +- c ++
-    optional uint32 +- c ++ optional Int128.ppp +- c ++
+    optional uint32 +- c ++ optional Int128.t_ppp +- c ++
+    optional uint32 +- c ++ optional Int128.t_ppp +- c ++
     int +- c ++ int +- c ++
     int +- c ++ int +- c ++ int +- c ++ int +- newline >>:
     ((fun e ->

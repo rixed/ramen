@@ -39,13 +39,7 @@ let cmdliner_conv_of_ppp ppp =
   (fun fmt x -> Format.fprintf fmt "%s" (PPP.to_string ppp x))
 
 type setting_change =
-  { node_id : int ; settings : Setting.t list }
-let setting_change_ppp = PPP_OCaml.(record (
-  field "node_id" int <->
-  field "settings" (list Setting.ppp)) >>:
-  ((fun s -> Some s.node_id, Some s.settings),
-   (function Some node_id, Some settings -> { node_id ; settings }
-           | _ -> raise PPP.MissingRequiredField)))
+  { node_id : int ; settings : Setting.t list } [@@ppp PPP_OCaml]
 
 let setting_change_opts =
   let i = Arg.(info ~docv:"SETTING"
@@ -98,7 +92,7 @@ let print options setting_changes as_dot () =
       if as_dot then print_dot graph
       else (
         Printf.printf "%s\n"
-          (PPP.to_string Graph.ppp graph)
+          (PPP.to_string Graph.t_ppp graph)
       )
     ) Configuration.registered_configs
 
