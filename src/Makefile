@@ -35,7 +35,7 @@ all: .depend $(LIB_NAME).cmxa ep alerting_conf.cmxs
 %.cmx %.annot: %.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
-%.cmxs: %.ml $(LIB_NAME).cmxa
+%.cmxs: %.cmx $(LIB_NAME).cmxa
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -o $@ -shared $<
 
 $(LIB_NAME).cmxa: $(LIB_SOURCES:.ml=.cmx)
