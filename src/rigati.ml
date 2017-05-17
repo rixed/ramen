@@ -141,7 +141,7 @@ let exec_cmd =
 let default_cmd =
   let doc = "Event Processor Swiss-army knife" in
   Term.((ret (app (const (fun _ -> `Help (`Pager, None))) common_opts)),
-        info "ep" ~doc)
+        info "rigati" ~doc)
 
 let () =
   match Term.eval_choice default_cmd [

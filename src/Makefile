@@ -18,7 +18,7 @@ TESTABLE_SOURCES = \
 
 SOURCES = \
 	$(TESTABLE_SOURCES) \
-	alerting_conf.ml ep.ml
+	alerting_conf.ml rigati.ml
 
 # Common rules
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot
@@ -27,7 +27,7 @@ SOURCES = \
 PACKAGES = lwt.ppx lwt.unix batteries unix ppp cmdliner dynlink inotify
 LIB_NAME = ramen
 
-all: .depend $(LIB_NAME).cmxa ep alerting_conf.cmxs
+all: .depend $(LIB_NAME).cmxa rigati alerting_conf.cmxs
 
 %.cmo: %.ml
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(PACKAGES)" -c $<
@@ -47,14 +47,14 @@ $(LIB_NAME).cma: $(LIB_SOURCES:.ml=.cmo)
 alerting_conf.cmxs: EventTypes.cmx alerting_conf.cmx $(LIB_NAME).cmxa
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -o $@ -shared EventTypes.cmx alerting_conf.cmx
 
-ep: $(LIB_NAME).cmxa ep.cmx
+rigati: $(LIB_NAME).cmxa rigati.cmx
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $^ -o $@
 
 clean:
 	$(RM) *.cm[iox] *.cmxs *.a *.s *.o .depend *.annot all_tests.* perf.data* gmon.out
 
 distclean: clean
-	$(RM) *.cma *.cmxa oUnit-anon.cache qtest.targets.log *.opt ep
+	$(RM) *.cma *.cmxa oUnit-anon.cache qtest.targets.log *.opt rigati
 
 # Tests
 
