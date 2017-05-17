@@ -5,28 +5,28 @@ sig
   (* All the interesting functions are returning an abstract type which depends
    * on the implementation at hand (can be an event processor, a pretty printer,
    * a choreographer...) For generality this type is parameterized over the
-   * input event type 'i (*and output event type 'o*) and whatever output the
+   * input event type 'e (*and output event type 'o*) and whatever output the
    * continuation: 'k. *)
-  type ('i, 'k) result
+  type ('e, 'k) result
   (* in general that type will be: some_input -> some_output.
    * For instance, for the actual implementation that will be: 'e -> unit *)
 
   (* Duplicate the event. Very useful for root. *)
   val replicate:
-    ?name:string -> ?id:int ->
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     ('e, 'k) result list ->
     ('e, 'k) result
 
   (* Drop all incoming events but the ones which pass the condition. *)
   val filter:
-    ?name:string -> ?id:int ->
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     by:('e -> bool) -> (* the condition to be in *)
     ('e, 'k) result list ->
     ('e, 'k) result
 
   (* Filter all values that are the same as previously received. *)
   val on_change:
-    ?name:string -> ?id:int ->
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     ('e, 'k) result list ->
     ('e, 'k) result
 
@@ -34,7 +34,7 @@ sig
    * by aggregating all events of this group. Issue the aggregates as they are
    * completed (or expired) *)
   val aggregate:
-    ?name:string -> ?id:int ->
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     key_of_event:('e -> 'key) -> (* group events by that key into aggregates *)
     make_aggregate:('e -> 'a) -> (* turn a single event into an aggregate *)
     (* add this event into the aggregate (in-place). *)
@@ -55,7 +55,7 @@ sig
    * oldest event. May fire again immediately if the condition still holds
    * true. *)
   val sliding_window:
-    ?name:string -> ?id:int ->
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     (* comparator used to order incoming events *)
     cmp:('e -> 'e -> int) ->
     is_complete:('e list -> bool) ->
@@ -65,7 +65,7 @@ sig
   (* Boolean operator that takes lists of events and fires true if all pass
    * the given condition, or false otherwise. *)
   val all:
-    ?name:string -> ?id:int ->
+    ?name:string -> ?id:int -> ?ppp:('e list PPP.t) ->
     (* the condition each constituent of the list should pass *)
     cond:('e -> bool) ->
     (bool, 'k) result list ->
@@ -74,7 +74,7 @@ sig
   (* This function is special as it does not fire any event but terminates a
    * stream with an alert. *)
   val alert:
-    ?name:string -> ?id:int ->
+    ?name:string -> ?id:int -> ?ppp:(bool PPP.t) ->
     team:string -> (* identify the team this alert is for *)
     title:string -> (* informative title. Must sound scary but not hopeless *)
     (* receive this alert identifier and output the body of the alert
@@ -85,7 +85,7 @@ sig
 
   (* Another end point: save data to disk. *)
   val save:
-    ?name:string -> ?id:int ->
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     retention:int -> unit ->
     ('e, unit) result
 
@@ -118,37 +118,37 @@ struct
       (* must not happen unless nodes have been enumerated already: *)
       | Some _id -> assert false
 
-  let replicate ?name ?id ks =
+  let replicate ?name ?id ?ppp ks =
     let id = get_id id in
-    M.replicate ?name ~id ks
+    M.replicate ?name ~id ?ppp ks
 
-  let filter ?name ?id ~by ks =
+  let filter ?name ?id ?ppp ~by ks =
     let id = get_id id in
-    M.filter ?name ~id ~by ks
+    M.filter ?name ~id ?ppp ~by ks
 
-  let on_change ?name ?id ks =
+  let on_change ?name ?id ?ppp ks =
     let id = get_id id in
-    M.on_change ?name ~id ks
+    M.on_change ?name ~id ?ppp ks
 
-  let aggregate ?name ?id ~key_of_event ~make_aggregate ~aggregate
+  let aggregate ?name ?id ?ppp ~key_of_event ~make_aggregate ~aggregate
                 ?is_complete ?timeout_sec ?timeout_events ks =
     let id = get_id id in
-    M.aggregate ?name ~id ~key_of_event ~make_aggregate ~aggregate ?is_complete
+    M.aggregate ?name ~id ?ppp ~key_of_event ~make_aggregate ~aggregate ?is_complete
                 ?timeout_sec ?timeout_events ks
 
-  let sliding_window ?name ?id ~cmp ~is_complete ks =
+  let sliding_window ?name ?id ?ppp ~cmp ~is_complete ks =
     let id = get_id id in
-    M.sliding_window ?name ~id ~cmp ~is_complete ks
+    M.sliding_window ?name ~id ?ppp ~cmp ~is_complete ks
 
-  let all ?name ?id ~cond ks =
+  let all ?name ?id ?ppp ~cond ks =
     let id = get_id id in
-    M.all ?name ~id ~cond ks
+    M.all ?name ~id ?ppp ~cond ks
 
-  let alert ?name ?id ~team ~title ~text () =
+  let alert ?name ?id ?ppp ~team ~title ~text () =
     let id = get_id id in
-    M.alert ?name ~id ~team ~title ~text ()
+    M.alert ?name ~id ?ppp ~team ~title ~text ()
 
-  let save ?name ?id ~retention () =
+  let save ?name ?id ?ppp ~retention () =
     let id = get_id id in
-    M.save ?name ~id ~retention ()
+    M.save ?name ~id ?ppp ~retention ()
 end

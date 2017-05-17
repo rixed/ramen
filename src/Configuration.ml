@@ -1,14 +1,10 @@
 (* The type of a configuration module. Actually a functor taking an
  * implementation and returning a module with a runnable configuration, for
  * some definition of "runnable" depending on the applied implementation. *)
-open Batteries
-
 module type MAKER = functor (I : Engine.S) ->
 sig
   type input
-  (* we probably want bytes instead of (or in addition to) strings *)
-  val input_of_string : string -> (input, string) Pervasives.result
-  val configurations : (input, unit) I.result list
+  val configuration : (input, unit) I.result
 end
 
 (* Helper to go from a PPP to a result type, useful for implementing

@@ -8,7 +8,7 @@ override OCAMLOPTFLAGS += $(INCS) -w $(WARNS) -g -annot -I $(top_srcdir) -O2
 override OCAMLFLAGS    += $(INCS) -w $(WARNS) -g -annot -I $(top_srcdir)
 
 LIB_SOURCES = \
-	Int128.ml Alarm.ml \
+	Alarm.ml IO.ml \
 	Configuration.ml Engine.ml Model.ml \
 	ReifyEngine.ml ExecuteEngine.ml
 
@@ -24,7 +24,7 @@ SOURCES = \
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot
 .PHONY: clean distclean all check dep install uninstall reinstall
 
-PACKAGES = batteries unix ppp cmdliner dynlink
+PACKAGES = lwt.ppx lwt.unix batteries unix ppp cmdliner dynlink inotify
 LIB_NAME = ramen
 
 all: .depend $(LIB_NAME).cmxa ep alerting_conf.cmxs
@@ -44,11 +44,14 @@ $(LIB_NAME).cmxa: $(LIB_SOURCES:.ml=.cmx)
 $(LIB_NAME).cma: $(LIB_SOURCES:.ml=.cmo)
 	$(OCAMLC) $(OCAMLFLAGS) -a -linkpkg -package "$(PACKAGES)" -custom $^ -o $@
 
-ep: $(LIB_NAME).cmxa EventTypes.cmx ep.cmx
+alerting_conf.cmxs: EventTypes.cmx alerting_conf.cmx $(LIB_NAME).cmxa
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -o $@ -shared EventTypes.cmx alerting_conf.cmx
+
+ep: $(LIB_NAME).cmxa ep.cmx
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $^ -o $@
 
 clean:
-	$(RM) *.cm[iox] *.cmxs *.a *.s *.o .depend *.annot all_tests.*
+	$(RM) *.cm[iox] *.cmxs *.a *.s *.o .depend *.annot all_tests.* perf.data* gmon.out
 
 distclean: clean
 	$(RM) *.cma *.cmxa oUnit-anon.cache qtest.targets.log *.opt ep

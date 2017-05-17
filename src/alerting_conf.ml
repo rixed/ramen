@@ -4,7 +4,7 @@
  *
  * Before reviewing this decision dreadful consequences, let's review the
  * reasons why we want the configuration to be actual code:
- * 
+ *
  * 1. The configuration is not exactly a tree: sometime we might want a
  * descendent node to send some output to one of its parent, or a common child
  * to collect the output of several parents. Therefore we need to be able to
@@ -145,7 +145,6 @@
  * language for a specific part of the configuration.  And we can port the rest
  * later or rethink the strategy.
  *)
-
 open Batteries
 open EventTypes
 
@@ -177,11 +176,11 @@ struct
      filter
        ~name:(Printf.sprintf "only zones %d to %d" z1 z2)
        ~by:
-         (fun e -> e.TCP_v29.zone_clt = Some z1 && e.TCP_v29.zone_srv = Some z2 ||
-                   e.TCP_v29.zone_srv = Some z2 && e.TCP_v29.zone_clt = Some z1)
+         (fun e -> e.TCP_v29.zone_clt = z1 && e.TCP_v29.zone_srv = z2 ||
+                   e.TCP_v29.zone_srv = z2 && e.TCP_v29.zone_clt = z1)
        [aggregate
           ~name:"minutely"
-          ~key_of_event:(fun e -> int_of_float e.TCP_v29.start / 60)
+          ~key_of_event:(fun e -> TCP_v29.(to_minutes e.start))
           ~make_aggregate:identity (* event = aggregate *)
           ~aggregate:
             (fun a (* the aggregate *) e (* the event *) ->
@@ -197,7 +196,7 @@ struct
              ~name:"nop"
              ~retention:(3600*24*30) () ;
            sliding_window
-             ~name:(Printf.sprintf "%g mins sliding window" (duration /. 60.))
+             ~name:(Printf.sprintf "%d mins sliding window" (to_minutes duration))
              ~cmp:(fun a1 a2 -> compare a1.TCP_v29.start a2.TCP_v29.start)
              ~is_complete:
                (fun lst ->
@@ -205,7 +204,7 @@ struct
                     (* Notice any missing segment will count as compliant *)
                     let oldest = (List.first lst).TCP_v29.start
                     and newest = (List.last lst).TCP_v29.stop in
-                    newest >= oldest +. duration
+                    newest >= oldest + duration
                   ) with Failure _ | Invalid_argument _ -> false)
              [all
                 ~name:(Printf.sprintf "all samples bellow %d" min_bytes)
@@ -223,18 +222,16 @@ struct
                           Printf.sprintf
                             "The traffic between zones %d and %d has sunk below \
                              the configured minimum of %d \
-                             for the last %f minutes.\n\n\
+                             for the last %d minutes.\n\n\
                              See https://event_proc.home.lan/show_alert?id=%d\n"
-                             z1 z2 min_bytes (duration /. 60.) id)
+                             z1 z2 min_bytes (to_minutes duration) id)
                      ()]]]]]
 
-  (* The type to be sent to the root of the tree: *)
   type input = TCP_v29.t
-  let input_of_string s =
-    Configuration.input_of_string_of_ppp TCP_v29.(PPP.(>>:) csv_ppp (to_csv, of_csv)) s
-  let configurations = [
-    alert_if_below ~min_bytes:50_000_000 ~duration:600. 50 72 ;
-    alert_if_below ~min_bytes:50_000_000 ~duration:600. 0 30
+
+  let configuration = replicate ~ppp:TCP_v29.of_csv_ppp [
+    alert_if_below ~min_bytes:50_000_000 ~duration:(of_minutes 10) 50 72 ;
+    alert_if_below ~min_bytes:50_000_000 ~duration:(of_minutes 10) 0 30
   ]
 end
 

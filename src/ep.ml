@@ -2,7 +2,6 @@
  * Can execute a configuration given on the command line.
  *)
 open Cmdliner
-open Batteries
 open Model
 
 type options =
@@ -14,8 +13,7 @@ let options debug prefer_long_names _configs =
 let plugin_conv =
   let parse str =
     try `Ok (Dynlink.loadfile str)
-    with exn ->
-      `Error (Printexc.to_string exn)
+    with exn -> `Error (Printexc.to_string exn)
   and print _fmt () = () in
   parse, print
 
@@ -62,9 +60,7 @@ let get_config_graph name setting_changes =
   let module ConfMaker = (val m : Configuration.MAKER) in
   let module ConfModule = ConfMaker (Engine.AddId (ReifyEngine.Impl)) in
   let g = Graph.empty name in
-  let g = List.fold_left (fun g c ->
-      c ?from_node:None g
-    ) g ConfModule.configurations in
+  let g = ConfModule.configuration ?from_node:None g in
   List.iter (apply_setting_change g) setting_changes ;
   g
 
@@ -77,7 +73,8 @@ let print options setting_changes as_dot () =
         Node.long_name node
       else node.Node.name in
     List.iter (fun node ->
-        p "  \"#%d\" [label=%S]\n" node.Node.id (node_name node)
+        p "  \"#%d\" [label=\"%s(#%d)\"]\n"
+          node.Node.id (node_name node) node.Node.id
       ) graph.Graph.nodes ;
     List.iter (fun pipe ->
         let open Pipe in
@@ -110,10 +107,10 @@ let print_cmd =
 
 (*
  * Executor
- * Reads events from stdin (useful for testing, not meant to stay around)
  *)
 
-let exec_simple options setting_changes () =
+let exec options setting_changes timestep () =
+  Alarm.timestep := timestep ;
   Hashtbl.iter (fun name m ->
       let graph = get_config_graph name setting_changes in
       let module ExecConfig = struct let graph = graph end in
@@ -121,22 +118,20 @@ let exec_simple options setting_changes () =
       let module ConfModule =
         ConfMaker (Engine.AddId (ExecuteEngine.Impl (ExecConfig))) in
       if options.debug then Printf.printf "Executing: %s\n" name ;
-      let read_next () =
-        let line = read_line () in
-        match ConfModule.input_of_string (line ^ "\n") with
-        | Ok e -> e
-        | Error str -> raise (Failure str) in
-      let to_conf e =
-        List.iter (fun c -> c e) ConfModule.configurations in
-      try Alarm.main_loop read_next to_conf
-      with Enum.No_more_elements -> ()
+      IO.start (Alarm.main_loop ())
     ) Configuration.registered_configs
 
-let exec_simple_cmd =
+let timestep_opt =
+  let i = Arg.info ~doc:"How frequently to update the internal clock."
+                   ["timestep"; "time-step"] in
+  Arg.(value (opt float 1. i))
+
+let exec_cmd =
   Term.(
-    (const exec_simple
+    (const exec
       $ common_opts
-      $ setting_change_opts),
+      $ setting_change_opts
+      $ timestep_opt),
     info "exec")
 
 (*
@@ -151,7 +146,7 @@ let default_cmd =
 let () =
   match Term.eval_choice default_cmd [
     print_cmd ;
-    exec_simple_cmd
+    exec_cmd
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42
        | `Ok f -> f ()
