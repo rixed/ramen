@@ -12,3 +12,5 @@ oUnit-anon.cache
 .depend
 all_tests.*
 rigati
+perf.data*
+gmon.out
