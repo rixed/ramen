@@ -65,7 +65,7 @@ all_tests.opt: $(TESTABLE_SOURCES:.ml=.cmx) all_tests.ml
 	$(OCAMLOPT) -o $@ $(SYNTAX) -package "$(PACKAGES)" -package qcheck -linkpkg $(OCAMLOPTFLAGS) $^
 
 check: all_tests.opt
-	@./all_tests.opt || echo "FAILURE"
+	@OCAMLRUNPARAM=b ./all_tests.opt -bt || echo "FAILURE"
 
 # Installation
 

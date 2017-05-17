@@ -72,6 +72,8 @@ let register_file_reader filename ppp k =
     let%lwt fd = Lwt_unix.(openfile filename [ O_RDONLY ] 0x644) in
     (* TODO: Optionally delete the filename here *)
     let chan = Lwt_io.(of_fd ~mode:input fd) in
+    (* FIXME: since we force a line per line format, this is really just
+     * for CSV *)
     let stream = Lwt_io.read_lines chan in
     let%lwt () = Lwt_stream.iter_s (fun line ->
       (* FIXME: wouldn't it be nice if PPP_CSV.tuple was not depending on this "\n"? *)
@@ -89,7 +91,8 @@ let register_file_reader filename ppp k =
     return_unit in
   all_threads := reading_thread :: !all_threads
 
-let start th =
-  Printf.printf "Start %d threads...\n%!" (List.length !all_threads) ;
+let start debug th =
+  if debug then
+    Printf.printf "Start %d threads...\n%!" (List.length !all_threads) ;
   Lwt_main.run (Lwt.join (th :: !all_threads)) ;
-  Printf.printf "... Done execution.\n%!"
+  if debug then Printf.printf "... Done execution.\n%!"
