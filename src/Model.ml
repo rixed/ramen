@@ -3,7 +3,8 @@ module Node =
 struct
   type setting = Debug
                | SayHello (* for testing *)
-               | ReadFile of string [@@ppp PPP_OCaml] (* TODO: ReadDir *)
+               | ReadFile of string
+               | ReadDir of string * string [@@ppp PPP_OCaml]
 
   type t =
     { name : string ;
@@ -76,7 +77,7 @@ struct
     let count = ref 0 in
     let last_count = ref 0 in
     let last_time = ref !Alarm.now in
-    Alarm.every 0.3 (fun () ->
+    Alarm.every 10. (fun () ->
       let now = !Alarm.now in
       let rate = float_of_int (!count - !last_count) /. (now -. !last_time) in
       Printf.printf "Node %S (#%d), %d events, +%g events/sec\n%!"
@@ -102,20 +103,24 @@ struct
    * two distinct behaviors for that.
    * Here only the reading part is implemented because that's the one we need
    * ATM. Leaving the write counterpart for later.
+   * This decision enable a nice thing though: the input function of the node
+   * that's supposed to read from a file can just process incoming events as
+   * if they were in the file. So that the file is just an _additional_ input.
+   * In particular we could read several files at the same time.
    *
    * Notice that we could start reading right now because our callees have been
    * initialized already (operation tree is build bottom-up). But we'd rather
    * have all IO starts at once so that we do not have plenty of useless Lwt.t
    * to carry around until the IO party gets started. *)
-  let read_file_op_wrapper file ppp node op =
-    IO.(register_file_reader file ppp op) ;
-    (* We still need a function that accept events, but it should not be
-     * called: *)
-    fun _e ->
-      Printf.eprintf "Op for node#%d called from above while it has been set \
-                      to read file %S. WTF?\n%!" node.Node.id file ;
-      Lwt.return_unit
 
+  let read_file_op_wrapper file ppp _node op =
+    IO.(register_file_reader file ppp op) ;
+    (* Additionally, forward any received events. *)
+    op
+
+  let read_dir_op_wrapper path glob ppp _node op =
+    IO.(register_dir_reader path glob ppp op) ;
+    op
 
   exception MissingSerializer of Node.t
   let () = Printexc.register_printer (function
@@ -137,5 +142,8 @@ struct
         | ReadFile file ->
           let ppp = required_ppp node ppp in
           read_file_op_wrapper file ppp node wrapper
+        | ReadDir (path, glob) ->
+          let ppp = required_ppp node ppp in
+          read_dir_op_wrapper path glob ppp node wrapper
       ) op node.settings
 end

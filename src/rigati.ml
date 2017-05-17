@@ -118,7 +118,7 @@ let exec options setting_changes timestep () =
       let module ConfModule =
         ConfMaker (Engine.AddId (ExecuteEngine.Impl (ExecConfig))) in
       if options.debug then Printf.printf "Executing: %s\n" name ;
-      IO.start options.debug (Alarm.main_loop ())
+      IO.start options.debug Alarm.main_loop
     ) Configuration.registered_configs
 
 let timestep_opt =

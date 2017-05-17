@@ -8,7 +8,7 @@ override OCAMLOPTFLAGS += $(INCS) -w $(WARNS) -g -annot -I $(top_srcdir) -O2
 override OCAMLFLAGS    += $(INCS) -w $(WARNS) -g -annot -I $(top_srcdir)
 
 LIB_SOURCES = \
-	Alarm.ml IO.ml \
+	Globs.ml Alarm.ml IO.ml \
 	Configuration.ml Engine.ml Model.ml \
 	ReifyEngine.ml ExecuteEngine.ml
 
@@ -24,7 +24,7 @@ SOURCES = \
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot
 .PHONY: clean distclean all check dep install uninstall reinstall
 
-PACKAGES = lwt.ppx lwt.unix batteries unix ppp cmdliner dynlink inotify
+PACKAGES = lwt.ppx lwt.unix batteries unix ppp cmdliner dynlink inotify.lwt
 LIB_NAME = ramen
 
 all: .depend $(LIB_NAME).cmxa rigati alerting_conf.cmxs
