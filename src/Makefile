@@ -51,10 +51,10 @@ rigati: $(LIB_NAME).cmxa rigati.cmx
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $^ -o $@
 
 clean:
-	$(RM) *.cm[iox] *.cmxs *.a *.s *.o .depend *.annot all_tests.* perf.data* gmon.out
+	$(RM) *.cm[iox] *.a *.s *.o .depend *.annot all_tests.* perf.data* gmon.out
 
 distclean: clean
-	$(RM) *.cma *.cmxa oUnit-anon.cache qtest.targets.log *.opt rigati
+	$(RM) *.cma *.cmxa *.cmxs oUnit-anon.cache qtest.targets.log *.opt rigati
 
 # Tests
 
