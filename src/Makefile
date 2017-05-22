@@ -47,14 +47,20 @@ $(LIB_NAME).cma: $(LIB_SOURCES:.ml=.cmo)
 alerting_conf.cmxs: EventTypes.cmx alerting_conf.cmx $(LIB_NAME).cmxa
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -o $@ -shared EventTypes.cmx alerting_conf.cmx
 
+alerting_conf.cma: EventTypes.cmo alerting_conf.cmo $(LIB_NAME).cma
+	$(OCAMLC) $(OCAMLFLAGS) -a -linkpkg -package "$(PACKAGES)" $(LIB_NAME).cma EventTypes.cmo alerting_conf.cmo -o $@
+
 rigati: $(LIB_NAME).cmxa rigati.cmx
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $^ -o $@
 
+rigati.byte: $(LIB_NAME).cma rigati.cmo
+	$(OCAMLC) $(OCAMLFLAGS) -linkpkg -package "$(PACKAGES)" $^ -o $@
+
 clean:
-	$(RM) *.cm[iox] *.cmxs *.a *.s *.o .depend *.annot all_tests.* perf.data* gmon.out
+	$(RM) *.cm[iox] *.a *.s *.o .depend *.annot all_tests.* perf.data* gmon.out
 
 distclean: clean
-	$(RM) *.cma *.cmxa oUnit-anon.cache qtest.targets.log *.opt rigati
+	$(RM) *.cma *.cmxa *.cmxs oUnit-anon.cache qtest.targets.log *.opt rigati
 
 # Tests
 

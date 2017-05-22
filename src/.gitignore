@@ -9,6 +9,7 @@ oUnit-anon.cache
 *.a
 *.annot
 *.o
+*.byte
 .depend
 all_tests.*
 rigati
