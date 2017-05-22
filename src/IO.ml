@@ -10,6 +10,9 @@ open Lwt
 
 let all_threads = ref []
 
+let add_thread th =
+  all_threads := th :: !all_threads
+
 let () = Printexc.register_printer (function
   (* The default printer for unregistered exceptions hangs
    * for Failure from within Lwt.catch for some weird reason. *)
@@ -56,7 +59,7 @@ let import_file ?(do_unlink=false) ~alive filename ppp k =
 
 let register_file_reader ~alive filename ppp k =
   let reading_thread () = import_file ~alive filename ppp k in
-  all_threads := reading_thread :: !all_threads
+  add_thread reading_thread
 
 let check_file_exist kind kind_name path =
   Printf.eprintf "Checking %S is a %s...\n%!" path kind_name ;
@@ -109,20 +112,18 @@ let register_dir_reader ~alive path glob ppp k =
       else dying (Printf.sprintf "monitoring %S" path)
     in
     notify_loop() in
-  all_threads := reading_thread :: !all_threads
+  add_thread reading_thread
 
-let start debug th =
-  if debug then
-    Printf.printf "Start %d threads...\n%!" (List.length !all_threads) ;
+let start debug =
   (* Run the Alarm loop asynchronously as it never terminates and
    * we want to quit when all other threads are over. *)
   async_exception_hook := (fun exn ->
     Printf.eprintf "ASync thread stopped with: %s\n%!"
       (Printexc.to_string exn)) ;
-  async th ;
-  (* If we just join all threads we will not see exceptions before all
-   * threads are done (aka never since Alarm.main_loop never dies).
-   * So we wrap each thread this: *)
+  async Alarm.main_loop ;
+  if debug then
+    Printf.printf "Start %d threads...\n%!" (List.length !all_threads) ;
+  (* Make thread failure more verbose: *)
   let nagger th =
     catch th (fun exn ->
       Printf.eprintf "Thread died: %s\n%!" (Printexc.to_string exn) ;

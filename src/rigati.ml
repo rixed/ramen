@@ -125,7 +125,7 @@ let exec options setting_changes timestep () =
        * the actual operational configuration (aka spawning new file readers
        * etc.) *)
       let _configuration = ConfModule.configuration () in
-      IO.start options.debug Alarm.main_loop
+      IO.start options.debug
     ) Configuration.registered_configs
 
 let timestep_opt =
