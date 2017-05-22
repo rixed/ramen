@@ -11,15 +11,22 @@ struct
       id : int ;
       ppp_descr : string option ;
       mutable to_root : t list ; [@ppp_ignore []]
-      mutable settings : setting list } [@@ppp PPP_OCaml]
+      mutable settings : setting list ;
+      (* To kill all threads depending on this node: *)
+      mutable alive : bool } [@@ppp PPP_OCaml]
 
   let make ?ppp name id =
     { name ; id ;
       ppp_descr = BatOption.map (fun p -> p.PPP.descr) ppp ;
-      to_root = [] ; settings = [] }
+      to_root = [] ; settings = [] ;
+      alive = true }
 
   let long_name t =
     "/"^ List.fold_left (fun s n -> n.name ^(if s = "" then "" else "/"^ s)) "" (t::t.to_root)
+
+  let is_alive node () =
+    (*Random.int 50000 <> 42 &&*)
+    node.alive
 end
 
 module Pipe =
@@ -111,15 +118,25 @@ struct
    * Notice that we could start reading right now because our callees have been
    * initialized already (operation tree is build bottom-up). But we'd rather
    * have all IO starts at once so that we do not have plenty of useless Lwt.t
-   * to carry around until the IO party gets started. *)
+   * to carry around until the IO party gets started.
+   *
+   * Configuration changes: we want the configuration to be dynamic; one can
+   * create a new one or delete a former one or even modify the graph while
+   * keeping as many nodes as possible unchanged. For this to be doable we must
+   * be able to destroy a node, including all threads attached to it. We do
+   * this simply with the live flag in the node, that must be checked by every
+   * thread before processing anything. Alternatively we could use weak
+   * references so that the threads would be killed as soon as the node get's
+   * collected but it's not much more convenient and definitively less
+   * flexible. *)
 
-  let read_file_op_wrapper file ppp _node op =
-    IO.(register_file_reader file ppp op) ;
+  let read_file_op_wrapper file ppp node op =
+    IO.(register_file_reader ~alive:(Node.is_alive node) file ppp op) ;
     (* Additionally, forward any received events. *)
     op
 
-  let read_dir_op_wrapper path glob ppp _node op =
-    IO.(register_dir_reader path glob ppp op) ;
+  let read_dir_op_wrapper path glob ppp node op =
+    IO.(register_dir_reader ~alive:(Node.is_alive node) path glob ppp op) ;
     op
 
   exception MissingSerializer of Node.t

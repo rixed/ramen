@@ -4,7 +4,8 @@
 module type MAKER = functor (I : Engine.S) ->
 sig
   type input
-  val configuration : (input, unit) I.result
+  val configuration : unit -> (input, unit) I.result
+  val must_reload : unit -> bool
 end
 
 (* Helper to go from a PPP to a result type, useful for implementing

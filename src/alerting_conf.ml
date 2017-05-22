@@ -229,10 +229,26 @@ struct
 
   type input = TCP_v29.t
 
-  let configuration = replicate ~ppp:TCP_v29.of_csv_ppp [
+  (* To make it easier to update the configuration at runtime, this is actually
+   * a function.  The event processor will call this function to get the new
+   * configuration and update (hopefully in a smart way) the configuration
+   * that's currently running, if any.
+   *
+   * This is reloaded every time must_reload returns true. This function ough
+   * to be fast since it's called very frequently.
+   *)
+  let configuration () = replicate ~ppp:TCP_v29.of_csv_ppp [
     alert_if_below ~min_bytes:50_000_000 ~duration:(of_minutes 10) 50 72 ;
     alert_if_below ~min_bytes:50_000_000 ~duration:(of_minutes 10) 0 30
   ]
+
+  let must_reload =
+    let loaded = ref false in
+    fun () ->
+      if !loaded then false else (
+        loaded := true ;
+        true
+      )
 end
 
 (* Programs cannot access dynamically loaded modules but they can access the

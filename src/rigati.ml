@@ -11,6 +11,7 @@ let options debug prefer_long_names _configs =
   { debug ; prefer_long_names }
 
 let plugin_conv =
+  Dynlink.allow_unsafe_modules true ; (* Or bytecode would fail (NOP on native code) *)
   let parse str =
     try `Ok (Dynlink.loadfile str)
     with exn -> `Error (Printexc.to_string exn)
@@ -60,7 +61,8 @@ let get_config_graph name setting_changes =
   let module ConfMaker = (val m : Configuration.MAKER) in
   let module ConfModule = ConfMaker (Engine.AddId (ReifyEngine.Impl)) in
   let g = Graph.empty name in
-  let g = ConfModule.configuration ?from_node:None g in
+  let configuration = ConfModule.configuration () in
+  let g = configuration ?from_node:None g in
   List.iter (apply_setting_change g) setting_changes ;
   g
 
@@ -118,6 +120,11 @@ let exec options setting_changes timestep () =
       let module ConfModule =
         ConfMaker (Engine.AddId (ExecuteEngine.Impl (ExecConfig))) in
       if options.debug then Printf.printf "Executing: %s\n" name ;
+      (* We have no event to send to the toplevel operation but we have
+       * to call ConfModule.configuration for its side effects: creating
+       * the actual operational configuration (aka spawning new file readers
+       * etc.) *)
+      let _configuration = ConfModule.configuration () in
       IO.start options.debug Alarm.main_loop
     ) Configuration.registered_configs
 
