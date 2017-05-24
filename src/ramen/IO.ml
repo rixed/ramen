@@ -8,11 +8,6 @@
 open Batteries
 open Lwt
 
-let all_threads = ref []
-
-let add_thread th =
-  all_threads := th :: !all_threads
-
 let () = Printexc.register_printer (function
   | Failure x -> Some x
   | End_of_file -> Some "End of file"
@@ -57,7 +52,7 @@ let import_file ?(do_unlink=false) ~alive filename ppp k =
 
 let register_file_reader ~alive filename ppp k =
   let reading_thread () = import_file ~alive filename ppp k in
-  add_thread reading_thread
+  async reading_thread
 
 let check_file_exist kind kind_name path =
   Printf.eprintf "Checking %S is a %s...\n%!" path kind_name ;
@@ -110,22 +105,14 @@ let register_dir_reader ~alive path glob ppp k =
       else dying (Printf.sprintf "monitoring %S" path)
     in
     notify_loop() in
-  add_thread reading_thread
+  async reading_thread
 
 let start debug =
-  (* Run the Alarm loop asynchronously as it never terminates and
-   * we want to quit when all other threads are over. *)
-  async_exception_hook := (fun exn ->
-    Printf.eprintf "ASync thread stopped with: %s\n%!"
-      (Printexc.to_string exn)) ;
-  async Alarm.main_loop ;
-  if debug then
-    Printf.printf "Start %d threads...\n%!" (List.length !all_threads) ;
   (* Make thread failure more verbose: *)
+  let print_exn exn =
+      Printf.eprintf "Thread died: %s\n%!" (Printexc.to_string exn) in
   let nagger th =
-    catch th (fun exn ->
-      Printf.eprintf "Thread died: %s\n%!" (Printexc.to_string exn) ;
-      return_unit) in
-  Lwt_main.run (
-    Lwt.join (List.map nagger !all_threads)) ;
+    catch th (fun exn -> print_exn exn ; return_unit) in
+  async_exception_hook := print_exn ;
+  Lwt_main.run (nagger Alarm.main_loop) ;
   if debug then Printf.printf "... Done execution.\n%!"

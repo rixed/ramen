@@ -104,12 +104,12 @@ let get_config_graph options name setting_changes =
   if options.debug then Printf.eprintf "Got config graph.\n%!" ;
   g
 
-let print options setting_changes as_dot () =
+let print_graph ~as_dot ~prefer_long_names graph =
   let print_dot graph =
     let p = Printf.printf in
     p "digraph %S {\n" graph.Graph.name ;
     let node_name node =
-      if options.prefer_long_names then
+      if prefer_long_names then
         Node.long_name node
       else node.Node.name in
     List.iter (fun node ->
@@ -124,15 +124,16 @@ let print options setting_changes as_dot () =
       ) graph.Graph.pipes ;
     p "}\n"
   in
+  if as_dot then print_dot graph
+  else Printf.printf "%s\n"
+         (PPP.to_string Graph.t_ppp graph)
+
+let print options setting_changes as_dot () =
   Hashtbl.iter (fun name _ ->
       if options.debug then
         Printf.eprintf "Printing configuration %S\n%!" name ;
       let graph = get_config_graph options name setting_changes in
-      if as_dot then
-        print_dot graph
-      else
-        Printf.printf "%s\n"
-          (PPP.to_string Graph.t_ppp graph)
+      print_graph ~as_dot ~prefer_long_names:options.prefer_long_names graph
     ) Configuration.registered_configs
 
 let as_dot =
@@ -153,18 +154,34 @@ let print_cmd =
 
 let exec options setting_changes timestep () =
   Alarm.timestep := timestep ;
+  let exec_conf graph m =
+    let module ExecConfig = struct let graph = graph end in
+    let module ConfMaker = (val m : Configuration.MAKER) in
+    let module ConfModule =
+      ConfMaker (Engine.AddId (ExecuteEngine.Impl (ExecConfig))) in
+    (* We have no event to send to the toplevel operation but we have
+     * to call ConfModule.configuration for its side effects: creating
+     * the actual operational configuration (aka spawning new file readers
+     * etc.) *)
+    ConfModule.configuration () |> ignore ;
+    (* Returns the function that tells when we must rebuild everything: *)
+    ConfModule.must_reload
+  in
   Hashtbl.iter (fun name m ->
-      let graph = get_config_graph options name setting_changes in
-      let module ExecConfig = struct let graph = graph end in
-      let module ConfMaker = (val m : Configuration.MAKER) in
-      let module ConfModule =
-        ConfMaker (Engine.AddId (ExecuteEngine.Impl (ExecConfig))) in
       if options.debug then Printf.printf "Executing: %s\n" name ;
-      (* We have no event to send to the toplevel operation but we have
-       * to call ConfModule.configuration for its side effects: creating
-       * the actual operational configuration (aka spawning new file readers
-       * etc.) *)
-      ConfModule.configuration () |> ignore
+      let current_graph =
+        ref (get_config_graph options name setting_changes) in
+      let must_reload =
+        ref (exec_conf !current_graph m) in
+      (* Check if this configuration must be updated from time to time: *)
+      Alarm.every 1. (fun () ->
+        if !must_reload () then (
+          if options.debug then Printf.eprintf "Reloading %s\n%!" name ;
+          let new_graph = get_config_graph options name setting_changes in
+          if options.debug then print_graph ~as_dot:true ~prefer_long_names:false new_graph ;
+          current_graph := Graph.update !current_graph new_graph ;
+          must_reload := exec_conf !current_graph m
+        ))
     ) Configuration.registered_configs ;
   IO.start options.debug
 

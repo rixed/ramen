@@ -69,6 +69,22 @@ struct
                pipes = Pipe.make n node :: g.pipes }
     | None -> { g with nodes = node :: g.nodes ;
                        roots = node :: g.roots }
+
+  (* We want a stream processor to be updatable bit by bit, aka
+   * we want to be able to change the graph while identical nodes
+   * keep their state.
+   * This is obviously very hard with direct function calls and
+   * static typing. That;s why we won't even try in that case.
+   * In stead, we will restart the whole graph anew whenever the
+   * configuration is updated, *but* when later on we start running
+   * the graph in several processes then the processes which are
+   * unaffected at all by an update can be kept. To the limit when
+   * all operation runs in its own process then we can restart the graph
+   * bit by bit. *)
+  let update old new_ =
+    (* kill old and return new_ *)
+    List.iter (fun node -> node.Node.alive <- false) old.nodes ;
+    new_
 end
 
 module Setting =
@@ -154,7 +170,6 @@ struct
     | None -> raise (MissingSerializer node)
 
   let wrap_op ?ppp node op =
-    ignore ppp (* for now *) ;
     let open Node in
     List.fold_left (fun wrapper -> function
         | Debug -> debug_op_wrapper node wrapper
