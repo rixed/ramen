@@ -55,6 +55,29 @@
  * difficulties and required some functorial shenanigans that will be
  * highlighted in due time.
  *
+ * = Alternative 1: allow any code for ops but provide an opaque pipe to
+ * connect them =
+ *
+ * We could allow any code rather than just code based a fixed set of
+ * operations. Instead, to still get a chance to learn about the graph we could
+ * provide a "pipe" abstraction that functions must use to call each others
+ * (not unlike Riemann), and therefore we could change the implementation of
+ * that pipe to change direct calls into remote functions if needed. Pros: no
+ * need to rely solely on a fixed set of primitive functions, no need for the
+ * multiple implementations of those primitive ops (one for the ExecuteEngine,
+ * one for the ReifyEngine, one for AddId...). Cons: It is not that easy to get
+ * the graph from the calls only (unless we force the user functions to take
+ * not only event but also meta messages that must be forwarded to all possible
+ * continuations regardless of the logic, but then it's not that simpler any
+ * more.
+ *
+ * = Alternative 2: allow any code, give up the graph =
+ *
+ * We could give up this idea of building that graph of operations and merely
+ * runs the stream processor blindly in a single program. Pros: much simpler,
+ * also more similar to Riemann. Cons: Harder to distribute, harder to
+ * transition from prototype to production bit by bit.
+ *
  * == Distributed execution ==
  *
  * We want to be able to run a single configuration in a distributed fashion,
