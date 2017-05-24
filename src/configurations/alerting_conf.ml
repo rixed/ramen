@@ -188,6 +188,10 @@ open EventTypes
  * EP is concerned, events are totally opaque data structures.
  *)
 
+let db =
+  let config_db = Sys.getenv "CONFIG_DB" in
+  Conf_of_sqlite.make config_db
+
 module Make : Configuration.MAKER = functor (Impl : Engine.S) ->
 struct
   open Impl
@@ -308,10 +312,6 @@ struct
         true
       )
 *)
-
-  let db =
-    let config_db = Sys.getenv "CONFIG_DB" in
-    Conf_of_sqlite.make config_db
 
   let configuration () =
     let open Conf_of_sqlite in
