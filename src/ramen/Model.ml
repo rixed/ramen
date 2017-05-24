@@ -84,7 +84,7 @@ struct
     let count = ref 0 in
     let last_count = ref 0 in
     let last_time = ref !Alarm.now in
-    Alarm.every 10. (fun () ->
+    Alarm.every 1. (fun () ->
       let now = !Alarm.now in
       let rate = float_of_int (!count - !last_count) /. (now -. !last_time) in
       Printf.printf "Node %S (#%d), %d events, +%g events/sec\n%!"

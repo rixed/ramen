@@ -6,15 +6,28 @@ sig
    * on the implementation at hand (can be an event processor, a pretty printer,
    * a choreographer...) For generality this type is parameterized over the
    * input event type 'e (*and output event type 'o*) and whatever output the
-   * continuation: 'k. *)
+   * continuations: 'k. *)
   type ('e, 'k) result
   (* in general that type will be: some_input -> some_output.
    * For instance, for the actual implementation that will be: 'e -> unit *)
 
-  (* Duplicate the event. Very useful for root. *)
+  (* Discard the event. *)
+  val discard:
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
+    unit ->
+    ('e, 'k) result
+  
+  (* Duplicate the event as is. Useful for root. *)
   val replicate:
     ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     ('e, 'k) result list ->
+    ('e, 'k) result
+
+  (* Convert the event into 0, 1 or more other events. Useful for map/filter *)
+  val convert:
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
+    f:('e -> 'f list) ->
+    ('f, 'k) result list -> (* continuations take 'f and output 'k *)
     ('e, 'k) result
 
   (* Drop all incoming events but the ones which pass the condition. *)
@@ -118,9 +131,17 @@ struct
       (* must not happen unless nodes have been enumerated already: *)
       | Some _id -> assert false
 
+  let discard ?name ?id ?ppp () =
+    let id = get_id id in
+    M.discard ?name ~id ?ppp ()
+
   let replicate ?name ?id ?ppp ks =
     let id = get_id id in
     M.replicate ?name ~id ?ppp ks
+
+  let convert ?name ?id ?ppp ~f ks =
+    let id = get_id id in
+    M.convert ?name ~id ?ppp ~f ks
 
   let filter ?name ?id ?ppp ~by ks =
     let id = get_id id in

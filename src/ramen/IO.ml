@@ -14,8 +14,6 @@ let add_thread th =
   all_threads := th :: !all_threads
 
 let () = Printexc.register_printer (function
-  (* The default printer for unregistered exceptions hangs
-   * for Failure from within Lwt.catch for some weird reason. *)
   | Failure x -> Some x
   | End_of_file -> Some "End of file"
   | _ -> None)

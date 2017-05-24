@@ -169,63 +169,96 @@ module Make : Configuration.MAKER = functor (Impl : Engine.S) ->
 struct
   open Impl
 
+  (* Alert if all events met the given condition: *)
+  let alert_when_all_bytes ~cond ~name ~title ~text =
+    all ~name ~cond
+      [on_change
+        ~name:("changed "^ name)
+        [alert
+           ~name:("alert on "^name)
+           ~team:"network firefighters"
+           ~title ~text ()]]
+
+  let string_of_zone = function
+    | Some z -> Printf.sprintf "%d" z
+    | None -> Printf.sprintf "Any"
+
+  (* FIXME: instead of checking for equality we should look for inclusion (which
+   * requires us to have the whole zone tree *)
+  let is_from_to_zone z1 z2 e =
+    let open TCP_v29.UniDir in
+    (* FIXME: should be zone _in_ z1 etc but will do for now *)
+    Option.map_default ((=) e.zone_src) true z1 &&
+    Option.map_default ((=) e.zone_dst) true z2
+
   (* Here we define a simple helper to define an alert on low traffic between
    * any two zones: *)
-
-  let alert_if_below ~min_bytes ~duration z1 z2 =
+  let alert_on_volume ?min_bytes ?max_bytes ~duration z1 z2 =
      filter
-       ~name:(Printf.sprintf "only zones %d to %d" z1 z2)
-       ~by:
-         (fun e -> e.TCP_v29.zone_clt = z1 && e.TCP_v29.zone_srv = z2 ||
-                   e.TCP_v29.zone_srv = z2 && e.TCP_v29.zone_clt = z1)
+       ~name:(Printf.sprintf "from zone %s to %s"
+                (string_of_zone z1) (string_of_zone z2))
+       ~by:(is_from_to_zone z1 z2)
        [aggregate
+          (* In the aggregate we reuse clt for source and srv for dest.
+           * TODO: define a more explicit and less error prone struct for
+           * this aggregate? *)
           ~name:"minutely"
-          ~key_of_event:(fun e -> TCP_v29.(to_minutes e.start))
+          ~key_of_event:(fun e -> TCP_v29.(to_minutes e.UniDir.start))
           ~make_aggregate:identity (* event = aggregate *)
           ~aggregate:
             (fun a (* the aggregate *) e (* the event *) ->
-               let open TCP_v29 in
+               let open TCP_v29.UniDir in
                a.start <- min a.start e.start ;
                a.stop <- max a.stop e.stop ;
-               a.packets_srv <- a.packets_srv + e.packets_srv ;
-               a.packets_clt <- a.packets_srv + e.packets_clt ;
-               a.bytes_srv <- a.bytes_srv + e.bytes_srv ;
-               a.bytes_clt <- a.bytes_clt + e.bytes_srv)
+               a.packets <- a.packets + e.packets ;
+               a.bytes <- a.bytes + e.bytes)
           ~timeout_sec:30. ~timeout_events:1000
           [save
-             ~name:"nop"
+             ~name:"TODO: save"
              ~retention:(3600*24*30) () ;
            sliding_window
              ~name:(Printf.sprintf "%d mins sliding window" (to_minutes duration))
-             ~cmp:(fun a1 a2 -> compare a1.TCP_v29.start a2.TCP_v29.start)
+             ~cmp:(fun a1 a2 -> compare a1.TCP_v29.UniDir.start a2.TCP_v29.UniDir.start)
              ~is_complete:
                (fun lst ->
                   try (
                     (* Notice any missing segment will count as compliant *)
-                    let oldest = (List.first lst).TCP_v29.start
-                    and newest = (List.last lst).TCP_v29.stop in
+                    let oldest = (List.first lst).TCP_v29.UniDir.start
+                    and newest = (List.last lst).TCP_v29.UniDir.stop in
                     newest >= oldest + duration
                   ) with Failure _ | Invalid_argument _ -> false)
-             [all
-                ~name:(Printf.sprintf "all samples bellow %d" min_bytes)
-                ~cond:(fun a -> a.TCP_v29.bytes_srv +
-                                a.TCP_v29.bytes_clt < min_bytes)
-                [on_change
-                  ~name:"on change"
-                  [alert
-                     ~name:"no-traffic alert"
-                     ~team:"network firefighters"
-                     ~title:(Printf.sprintf "Too little traffic between \
-                                             zones %d and %d" z1 z2)
-                     ~text:
-                       (fun id ->
-                          Printf.sprintf
-                            "The traffic between zones %d and %d has sunk below \
-                             the configured minimum of %d \
-                             for the last %d minutes.\n\n\
-                             See https://event_proc.home.lan/show_alert?id=%d\n"
-                             z1 z2 min_bytes (to_minutes duration) id)
-                     ()]]]]]
+             [(match min_bytes with
+              | None -> discard ()
+              | Some min_bytes ->
+                  let name = Printf.sprintf "all samples bellow %d" min_bytes
+                  and title = Printf.sprintf "Too little traffic from zone %s to %s"
+                                (string_of_zone z1) (string_of_zone z2)
+                  and text id = Printf.sprintf
+                                  "The traffic from zone %s to %s has sunk below \
+                                   the configured minimum of %d \
+                                   for the last %d minutes.\n\n\
+                                   See https://event_proc.home.lan/show_alert?id=%d\n"
+                                   (string_of_zone z1) (string_of_zone z2)
+                                   min_bytes (to_minutes duration) id
+                  and cond a = a.TCP_v29.UniDir.bytes < min_bytes
+                  in
+                  alert_when_all_bytes ~cond ~name ~title ~text) ;
+              (match max_bytes with
+              | None -> discard ()
+              | Some max_bytes ->
+                  let name = Printf.sprintf "all samples above %d" max_bytes
+                  and title = Printf.sprintf "Too much traffic from zone %s to %s"
+                                (string_of_zone z1) (string_of_zone z2)
+                  and text id = Printf.sprintf
+                                  "The traffic from zones %s to %s has raised above \
+                                   the configured maximum of %d \
+                                   for the last %d minutes.\n\n\
+                                   See https://event_proc.home.lan/show_alert?id=%d\n"
+                                   (string_of_zone z1) (string_of_zone z2)
+                                   max_bytes (to_minutes duration) id
+                  and cond a = a.TCP_v29.UniDir.bytes > max_bytes
+                  in
+                  alert_when_all_bytes ~cond ~name ~title ~text)]]]
 
   type input = TCP_v29.t
 
@@ -237,9 +270,11 @@ struct
    * This is reloaded every time must_reload returns true. This function ough
    * to be fast since it's called very frequently.
    *)
+
+(*
   let configuration () = replicate ~ppp:TCP_v29.of_csv_ppp [
-    alert_if_below ~min_bytes:50_000_000 ~duration:(of_minutes 10) 50 72 ;
-    alert_if_below ~min_bytes:50_000_000 ~duration:(of_minutes 10) 0 30
+    alert_on_volume ~min_bytes:50_000_000 ~duration:(of_minutes 10) 50 72 ;
+    alert_on_volume ~min_bytes:50_000_000 ~duration:(of_minutes 10) 0 30
   ]
 
   let must_reload =
@@ -249,6 +284,24 @@ struct
         loaded := true ;
         true
       )
+*)
+
+  let db =
+    let config_db = Sys.getenv "CONFIG_DB" in
+    Conf_of_sqlite.make config_db
+
+  let configuration () =
+    let open Conf_of_sqlite in
+    let alert_of_conf conf =
+      alert_on_volume ?min_bytes:conf.min ?max_bytes:conf.max
+                      ~duration:(of_seconds_f conf.obs_window) conf.source conf.dest
+    in
+    convert ~name:"to unidir volumes"
+            ~ppp:TCP_v29.of_csv_ppp
+            ~f:TCP_v29.UniDir.of_event
+            (build_config alert_of_conf db)
+
+  let must_reload () = Conf_of_sqlite.must_reload db
 end
 
 (* Programs cannot access dynamically loaded modules but they can access the

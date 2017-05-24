@@ -6,6 +6,8 @@
  * It works by having a clock event called from within the main event loop.
  *)
 
+let debug = false
+
 type t =
   { (* true if in all_alarms *)
     mutable queued : bool ;
@@ -76,7 +78,7 @@ let run_until =
 
 (* Main loop that just call run_until *)
 let rec main_loop () =
-  Printf.eprintf "sleeping for %fs...\n%!" !timestep ;
+  if debug then Printf.eprintf "sleeping for %fs...\n%!" !timestep ;
   let%lwt () = Lwt_unix.sleep !timestep in
   run_until (Unix.gettimeofday ()) ;
   main_loop ()

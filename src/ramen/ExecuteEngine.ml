@@ -30,9 +30,18 @@ struct
     let output e = Lwt_list.iter_p (fun k -> k e) ks in
     Setting.wrap_op ?ppp node (op output)
 
+  let discard ?name ?id ?ppp () =
+    ignore name ;
+    connect ?id ?ppp [] (fun _ _ -> return_unit)
+
   let replicate ?name ?id ?ppp ks =
     ignore name ;
     connect ?id ?ppp ks (fun output e -> output e)
+
+  let convert ?name ?id ?ppp ~f ks =
+    ignore name ;
+    connect ?id ?ppp ks (fun output e ->
+      Lwt_list.iter_s output (f e))
 
   let filter ?name ?id ?ppp ~by ks =
     ignore name ;

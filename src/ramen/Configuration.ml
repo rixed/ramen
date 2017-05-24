@@ -1,3 +1,5 @@
+let debug = false
+
 (* The type of a configuration module. Actually a functor taking an
  * implementation and returning a module with a runnable configuration, for
  * some definition of "runnable" depending on the applied implementation. *)
@@ -26,4 +28,5 @@ let input_of_string_of_ppp ppp str =
 let registered_configs : (string, (module MAKER)) Hashtbl.t = Hashtbl.create 3
 
 let register name m =
+  if debug then Printf.eprintf "Registering configuration %S\n%!" name ;
   Hashtbl.add registered_configs name m

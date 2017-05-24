@@ -7,6 +7,7 @@
  * disappear from here at some point.
  *)
 open Stdint
+open Batteries
 
 (* Time as in the CSV: microseconds since epoch. *)
 type time = int [@@ppp PPP_OCaml]
@@ -17,11 +18,13 @@ let to_minutes t = t / 60_000_000
 let of_useconds x = x
 let of_mseconds x = x * 1_000
 let of_seconds x = x * 1_000_000
+let of_seconds_f = of_seconds % int_of_float
 let of_minutes x = x * 60_000_000
 
 type ip_port = int [@@ppp PPP_OCaml]
 
-(* We put the server first *)
+(* We put the server first in clt/srv events or the source first in
+ * source/dest events *)
 type ip_endpoints = IPv4s of (uint32 * uint32)
                   | IPv6s of (int128 * int128) [@@ppp PPP_OCaml]
 
@@ -34,18 +37,13 @@ type socket = {
 module TCP_v29 =
 struct
   (*$< TCP_v29 *)
-  (* This is weird and should go away! *)
-  type itf = CltOnly of int
-           | SrvOnly of int
-           | Same of int
-           | Split of int * int [@@ppp PPP_OCaml]
-
   type zone = int [@@ppp PPP_OCaml]
 
   type t =
     { mutable start : time ;
       mutable stop : time ;
-      itf : itf ;
+      itf_clt : int option ;
+      itf_srv : int option ;
       zone_clt : zone ;
       zone_srv : zone ;
       socket : socket option ; (* unset for "others" *)
@@ -54,6 +52,65 @@ struct
       mutable max_missed : int ; (* max number of uncounted packets *)
       mutable bytes_clt : int ;
       mutable bytes_srv : int } [@@ppp PPP_OCaml]
+
+  (* To alert on total directed traffic in between two zones it's convenient
+   * to convert this TCP flow into a pair of directed flows. *)
+  module UniDir =
+  struct
+    type t =
+      { mutable start : time ;
+        mutable stop : time ;
+        itf_src : int option ;
+        itf_dst : int option ;
+        zone_src : zone ;
+        zone_dst : zone ;
+        socket : socket option ;
+        mutable packets : int ;
+        mutable bytes : int ;
+        mutable max_missed : int } [@@ppp PPP_OCaml]
+
+    let ip_endpoints_inv = function
+      | IPv4s (ip1, ip2) -> IPv4s (ip2, ip1)
+      | IPv6s (ip1, ip2) -> IPv6s (ip2, ip1)
+
+    let ports_inv (p1, p2) = p2, p1
+
+    let socket_inv s =
+      { endpoints = ip_endpoints_inv s.endpoints ;
+        ports = ports_inv s.ports }
+
+    let of_event e =
+      let ret = [] in
+      let ret =
+        (* first is client to server: *)
+        if e.packets_clt > 0 then
+          { start = e.start ;
+            stop = e.stop ;
+            itf_src = e.itf_clt ;
+            itf_dst = e.itf_srv ;
+            zone_src = e.zone_clt ;
+            zone_dst = e.zone_srv ;
+            socket = e.socket ;
+            packets = e.packets_clt ;
+            bytes = e.bytes_clt ;
+            max_missed = 0 } :: ret
+        else ret in
+      let ret =
+        (* then server to client: *)
+        if e.packets_srv > 0 then
+          { start = e.start ;
+            stop = e.stop ;
+            itf_src = e.itf_srv ;
+            itf_dst = e.itf_clt ;
+            zone_src = e.zone_srv ;
+            zone_dst = e.zone_clt ;
+            socket = Option.map socket_inv e.socket ;
+            packets = e.packets_srv ;
+            bytes = e.bytes_srv ;
+            max_missed = 0 } :: ret
+      else ret in
+      ret
+  end
 
   module JunkieCSV =
   struct
@@ -154,7 +211,7 @@ struct
 
   (* Convert a CSV value into our nicer structure: *)
   let of_csv (
-      _poller, start, stop, device_clt, device_srv, _vlan_clt, _vlan_srv,
+      _poller, start, stop, itf_clt, itf_srv, _vlan_clt, _vlan_srv,
       _mac_clt, _mac_srv, zone_clt, zone_srv, ip4_clt, ip6_clt,
       ip4_srv, ip6_srv, _ip4_external, _ip6_external, port_clt, port_srv,
       _diffserv_clt, _diffserv_srv, _os_clt, _os_srv, _mtu_clt, _mtu_srv,
@@ -176,18 +233,12 @@ struct
       _dtt_count_clt, _dtt_sum_clt, _dtt_square_sum_clt,
       _dtt_count_srv, _dtt_sum_srv, _dtt_square_sum_srv,
       _dcerpc_uuid) =
-    let itf =
-      match device_clt, device_srv with
-      | Some i, None -> CltOnly i
-      | None, Some i -> SrvOnly i
-      | Some i, Some j -> if i = j then Same i else Split (i, j)
-      | None, None -> invalid_arg "device" in
     let endpoints =
       match ip4_clt, ip6_clt, ip4_srv, ip6_srv with
       | Some c4, None, Some s4, None -> IPv4s (c4, s4)
       | None, Some c4, None, Some s4 -> IPv6s (c4, s4)
       | _ -> invalid_arg "IPs" in
-    { start ; stop ; itf ;
+    { start ; stop ; itf_clt ; itf_srv ;
       zone_clt ; zone_srv ;
       socket = Some { endpoints ; ports = port_clt, port_srv } ;
       packets_clt ; packets_srv ; max_missed = 0 ;

@@ -4,6 +4,35 @@
 open Cmdliner
 open Model
 
+let () =
+  let open Dynlink in
+  let string_of_linking_error = function
+    | Undefined_global f -> Printf.sprintf "Undefined global %S" f
+    | Unavailable_primitive f -> Printf.sprintf "Unavailable primitive %S" f
+    | Uninitialized_global f -> Printf.sprintf "Uninitialized global %S" f
+  in
+  Printexc.register_printer (function
+    | Error (Not_a_bytecode_file f) ->
+      Some (Printf.sprintf "Not a bytecode file: %S" f)
+    | Error (Inconsistent_import f) ->
+      Some (Printf.sprintf "Inconsistent import: %S" f)
+    | Error (Unavailable_unit f) ->
+      Some (Printf.sprintf "Unavailable unit: %S" f)
+    | Error Unsafe_file ->
+      Some "Unsafe file"
+    | Error (Linking_error (f, le)) ->
+      Some (Printf.sprintf "Linking error: %S, %s"
+              f (string_of_linking_error le))
+    | Error (Corrupted_interface f) ->
+      Some (Printf.sprintf "Corrupted interface: %S" f)
+    | Error (File_not_found f) ->
+      Some (Printf.sprintf "File not found: %S" f)
+    | Error (Cannot_open_dll f) ->
+      Some (Printf.sprintf "Cannot open dll: %S" f)
+    | Error (Inconsistent_implementation f) ->
+      Some (Printf.sprintf "Inconsistent implementation: %S" f)
+    | _ -> None)
+
 type options =
   { debug : bool ; prefer_long_names : bool }
 
@@ -14,7 +43,10 @@ let plugin_conv =
   Dynlink.allow_unsafe_modules true ; (* Or bytecode would fail (NOP on native code) *)
   let parse str =
     try `Ok (Dynlink.loadfile str)
-    with exn -> `Error (Printexc.to_string exn)
+    with exn ->
+      Printf.eprintf "Cannot load configuration: %s\n%!"
+        (Printexc.to_string exn) ;
+      `Error (Printexc.to_string exn)
   and print _fmt () = () in
   parse, print
 
@@ -52,18 +84,24 @@ let setting_change_opts =
  *)
 
 let apply_setting_change graph setting_change =
-  let node = Graph.lookup_node graph setting_change.node_id in
-  node.Node.settings <-
-    List.rev_append setting_change.settings node.Node.settings
+  match Graph.lookup_node graph setting_change.node_id with
+  | exception Not_found ->
+    failwith (Printf.sprintf "Cannot find node id %d\n%!"
+                setting_change.node_id)
+  | node ->
+    node.Node.settings <-
+      List.rev_append setting_change.settings node.Node.settings
 
-let get_config_graph name setting_changes =
+let get_config_graph options name setting_changes =
+  let g = Graph.empty name in
   let m = Hashtbl.find Configuration.registered_configs name in
   let module ConfMaker = (val m : Configuration.MAKER) in
+  if options.debug then Printf.eprintf "Building config graph.\n%!" ;
   let module ConfModule = ConfMaker (Engine.AddId (ReifyEngine.Impl)) in
-  let g = Graph.empty name in
   let configuration = ConfModule.configuration () in
   let g = configuration ?from_node:None g in
   List.iter (apply_setting_change g) setting_changes ;
+  if options.debug then Printf.eprintf "Got config graph.\n%!" ;
   g
 
 let print options setting_changes as_dot () =
@@ -87,12 +125,14 @@ let print options setting_changes as_dot () =
     p "}\n"
   in
   Hashtbl.iter (fun name _ ->
-      let graph = get_config_graph name setting_changes in
-      if as_dot then print_dot graph
-      else (
+      if options.debug then
+        Printf.eprintf "Printing configuration %S\n%!" name ;
+      let graph = get_config_graph options name setting_changes in
+      if as_dot then
+        print_dot graph
+      else
         Printf.printf "%s\n"
           (PPP.to_string Graph.t_ppp graph)
-      )
     ) Configuration.registered_configs
 
 let as_dot =
@@ -114,7 +154,7 @@ let print_cmd =
 let exec options setting_changes timestep () =
   Alarm.timestep := timestep ;
   Hashtbl.iter (fun name m ->
-      let graph = get_config_graph name setting_changes in
+      let graph = get_config_graph options name setting_changes in
       let module ExecConfig = struct let graph = graph end in
       let module ConfMaker = (val m : Configuration.MAKER) in
       let module ConfModule =
