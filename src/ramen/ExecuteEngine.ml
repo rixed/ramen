@@ -28,7 +28,9 @@ struct
 
     (* Our output function: *)
     let output e = Lwt_list.iter_p (fun k -> k e) ks in
-    Setting.wrap_op ?ppp node (op output)
+    Setting.wrap_op ?ppp node (fun e ->
+      if Node.is_alive node then op output e
+      else return_unit)
 
   let discard ?name ?id ?ppp () =
     ignore name ;

@@ -164,9 +164,9 @@ let exec options setting_changes timestep () =
        * to call ConfModule.configuration for its side effects: creating
        * the actual operational configuration (aka spawning new file readers
        * etc.) *)
-      let _configuration = ConfModule.configuration () in
-      IO.start options.debug
-    ) Configuration.registered_configs
+      ConfModule.configuration () |> ignore
+    ) Configuration.registered_configs ;
+  IO.start options.debug
 
 let timestep_opt =
   let i = Arg.info ~doc:"How frequently to update the internal clock."

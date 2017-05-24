@@ -42,7 +42,7 @@ let at alarm time callback =
   all_alarms := alarm :: !all_alarms
 
 (* Helper to get a callback called regularly. *)
-let every n =
+let every ?until n =
   if n < !timestep then
     Printf.eprintf "WARNING: timestep (%f) is less than some periodic alarms (%f)\n%!"
       !timestep n ;
@@ -50,8 +50,10 @@ let every n =
     let alarm = make () in
     let rec reschedule () =
       at alarm (!now +. n) (fun () ->
-        f () ;
-        reschedule ())
+        if BatOption.map_default (fun u -> not (u ())) true until then (
+          f () ;
+          reschedule ()
+        ))
     in
     reschedule ()
 

@@ -24,7 +24,7 @@ struct
   let long_name t =
     "/"^ List.fold_left (fun s n -> n.name ^(if s = "" then "" else "/"^ s)) "" (t::t.to_root)
 
-  let is_alive node () =
+  let is_alive node =
     (*Random.int 50000 <> 42 &&*)
     node.alive
 end
@@ -84,7 +84,8 @@ struct
     let count = ref 0 in
     let last_count = ref 0 in
     let last_time = ref !Alarm.now in
-    Alarm.every 1. (fun () ->
+    let until () = not (Node.is_alive node) in
+    Alarm.every 1. ~until (fun () ->
       let now = !Alarm.now in
       let rate = float_of_int (!count - !last_count) /. (now -. !last_time) in
       Printf.printf "Node %S (#%d), %d events, +%g events/sec\n%!"
@@ -131,12 +132,14 @@ struct
    * flexible. *)
 
   let read_file_op_wrapper file ppp node op =
-    IO.(register_file_reader ~alive:(Node.is_alive node) file ppp op) ;
+    let alive () = Node.is_alive node in
+    IO.(register_file_reader ~alive file ppp op) ;
     (* Additionally, forward any received events. *)
     op
 
   let read_dir_op_wrapper path glob ppp node op =
-    IO.(register_dir_reader ~alive:(Node.is_alive node) path glob ppp op) ;
+    let alive () = Node.is_alive node in
+    IO.(register_dir_reader ~alive path glob ppp op) ;
     op
 
   exception MissingSerializer of Node.t
