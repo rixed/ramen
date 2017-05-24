@@ -12,7 +12,7 @@ type db =
     get_mtime : Sqlite3.stmt ;
     get_config : Sqlite3.stmt ;
     mutable last_updated : float ;
-    mutable up_to_date : bool }
+    mutable new_mtime : float }
 
 type config_key =
   { id : int ;
@@ -108,6 +108,18 @@ let last_mtime_query =
   "SELECT strftime('%s', MAX(date_modify)) as mtime \
    FROM bcnthresholds"
 
+let get_db_mtime stmt =
+  let open Sqlite3 in
+  if reset stmt <> Rc.OK then
+    failwith "Cannot reset prepared statement for get_mtime" ;
+  match step stmt with
+  | Rc.ROW ->
+    let t = column stmt 0 |> to_float |> required in
+    if debug then Printf.eprintf "Max mtime in DB: %f\n%!" t ;
+    t
+  | _ ->
+    failwith "No idea what to do from this get_mtime result"
+
 let get_db filename =
   if debug then Printf.eprintf "Opening DB %S\n%!" filename ;
   let open Sqlite3 in
@@ -118,34 +130,28 @@ let get_db filename =
     let get_config = prepare db flow_alert_params_query in
     if debug then Printf.eprintf "SQL statements have been prepared\n%!" ;
     { db ; get_mtime ; get_config ;
-      last_updated = 0. ; up_to_date = false }
+      last_updated = 0. ; new_mtime = get_db_mtime get_mtime }
   ) with exc -> (
     Printf.eprintf "Exception: %s\n%!" (Printexc.to_string exc) ;
     exit 1
   )
 
 let check_config_changed db =
-  let open Sqlite3 in
   try (
-    if reset db.get_mtime <> Rc.OK then
-      failwith "Cannot reset prepared statement for get_mtime" ;
-    match step db.get_mtime with
-    | Rc.ROW ->
-      let t = column db.get_mtime 0 |> to_float |> required in
-      if debug then Printf.eprintf "Max mtime in DB: %f\n%!" t ;
-      if t > db.last_updated then (
-        db.up_to_date <- false
-      )
-    | _ ->
-      failwith "No idea what to do from this get_mtime result"
+    let t = get_db_mtime db.get_mtime in
+    if t > db.last_updated then (
+      if debug then Printf.eprintf "DB mtime changed to %f (was %f)\n%!" t db.last_updated ;
+      db.new_mtime <- t
+    )
   ) with e ->
     Printf.eprintf "Cannot check_config_changed: %s, assuming no change.\n"
       (Printexc.to_string e)
 
 let must_reload db =
-  if debug && not db.up_to_date then
+  let ret = db.new_mtime > db.last_updated in
+  if debug && ret then
     Printf.eprintf "Configuration is not up to date with DB.\n%!" ;
-  not db.up_to_date
+  ret
 
 let build_config alert_of_conf db =
   if debug then 
@@ -167,7 +173,7 @@ let build_config alert_of_conf db =
       failwith "No idea what to do from this get_config result"
   in
   let conf = loop [] in
-  db.up_to_date <- true ;
+  db.last_updated <- db.new_mtime ;
   conf
 
 let make filename =
