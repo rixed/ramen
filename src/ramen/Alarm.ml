@@ -53,6 +53,8 @@ let every ?until n =
         if BatOption.map_default (fun u -> not (u ())) true until then (
           f () ;
           reschedule ()
+        ) else (
+          if debug then Printf.eprintf "Stop resheduling an alarm\n%!" ;
         ))
     in
     reschedule ()
@@ -60,23 +62,27 @@ let every ?until n =
 (* This must be called repeatedly *)
 let run_until =
   every 60. (fun () ->
-    Printf.printf "%d alarms queued\n%!" (List.length !all_alarms)) ;
+    if debug then
+      Printf.eprintf "%d alarms queued\n%!" (List.length !all_alarms)) ;
   fun t ->
     now := t ;
     (* Beware that callbacks can add/modify alarms *)
     let all = !all_alarms in
     all_alarms := [] ;
     let rem = List.filter (fun alarm ->
-        assert(alarm.queued) ;
+        assert alarm.queued ;
         if alarm.time > t then true else (
           alarm.queued <- false ;
           alarm.callback () ;
-          alarm.queued
+          (* If the callback called [at] then the alarm is back in all_alarms
+           * already. *)
+          false
         )
       ) all in
     (* New alarms might have been added. Alarms that were already
      * on the list have not been added again. *)
-    all_alarms := List.rev_append !all_alarms rem
+    all_alarms := List.rev_append !all_alarms rem ;
+    assert (List.for_all (fun a -> a.queued) !all_alarms)
 
 (* Main loop that just call run_until *)
 let rec main_loop () =
