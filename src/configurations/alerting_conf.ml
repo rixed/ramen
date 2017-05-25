@@ -316,8 +316,9 @@ struct
   let configuration () =
     let open Conf_of_sqlite in
     let alert_of_conf conf =
-      alert_on_volume ?min_bytes:conf.min ?max_bytes:conf.max
-                      ~duration:(of_seconds_f conf.obs_window) conf.source conf.dest
+      alert_on_volume ?min_bytes:conf.min_bytes ?max_bytes:conf.max_bytes
+                      ~duration:(of_seconds_f conf.obs_window)
+                      conf.source conf.dest
     in
     convert ~name:"to unidir volumes"
             ~ppp:TCP_v29.of_csv_ppp
@@ -331,4 +332,5 @@ end
  * loading program, therefore plug-ins have to register somehow: *)
 
 let () =
-  Configuration.register "alerting (test)" (module Make : Configuration.MAKER)
+  Configuration.register "alerting (test)"
+                         (module Make : Configuration.MAKER)

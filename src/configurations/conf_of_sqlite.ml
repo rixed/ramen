@@ -1,9 +1,5 @@
-(* For Ramen, this is a mere configuration file that is dynlinked and that
- * will register a configuration.
- * But actually, this will generate the configuration from a sqlite db,
- * and use the Alarm facility of Ramen to register a thread that is going to
- * monitor the DB for changes and update the configuration (TODO: an update
- * function to replace a running configuration). *)
+(* Helper to extract alerting configuration re. network link from a SQLite DB.
+ *)
 
 let debug = false
 
@@ -15,16 +11,37 @@ type db =
     mutable new_mtime : float }
 
 type config_key =
-  { id : int ;
-    mtime : float ;
+  { (* Name used in the alert configuration: *)
     name : string ;
+    (* Source of traffic covered by this rule: *)
     source : int option ;
+    (* Destination of traffic covered by this rule: *)
     dest : int option ;
-    avg_window : float ;
+    (* Individual measurements are aggregated over that period of time
+     * (typically 5 minutes), and we henceforth consider only the averages over
+     * that duration. If incoming events are already aggregated (which they
+     * certainly are), then this avg_window has to be longer that event
+     * aggregation window. If unset we use incoming events as is. *)
+    avg_window : float option ;
+    (* Then we take as many of those averages as to cover this observation
+     * window (which thus has to be longer that avg_window: *)
     obs_window : float ;
+    (* We then consider this percentile of the individual averages within that
+     * observation window (or the closest one based on how many samples are
+     * present): *)
     percentile : float ;
-    min : int option ;
-    max : int option }
+    (* And we check that this percentile traffic volume is between those
+     * bounds: *)
+    min_bytes : int option ;
+    max_bytes : int option ;
+    (* Additionally, each time an average volume is above this
+     * min_for_relevance... *)
+    min_for_relevance : int ;
+    (* We also check that the same percentile over the same obs_window of the
+     * averaged round trip time and retransmission rate are below those limits:
+     *)
+    max_rtt : float option ;
+    max_rr : float option }
 
 let to_int x =
   let open Sqlite3.Data in
@@ -54,18 +71,23 @@ let required = function
   | None -> failwith "Missing required value"
   | Some x -> x
 
+let default x = function
+  | None -> x
+  | Some y -> y
+
 let config_key_of_step db =
   let open Sqlite3 in
-  { id = column db.get_config 0 |> to_int |> required ;
-    mtime = column db.get_config 1 |> to_float |> required ;
-    name = column db.get_config 2 |> to_string |> required ;
-    source = column db.get_config 3 |> to_int ;
-    dest = column db.get_config 4 |> to_int ;
-    avg_window = column db.get_config 5 |> to_float |> required ;
-    obs_window = column db.get_config 6 |> to_float |> required ;
-    percentile = column db.get_config 7 |> to_float |> required ;
-    min = column db.get_config 8 |> to_int ;
-    max = column db.get_config 9 |> to_int }
+  { name = column db.get_config 0 |> to_string |> required ;
+    source = column db.get_config 1 |> to_int ;
+    dest = column db.get_config 2 |> to_int ;
+    avg_window = column db.get_config 3 |> to_float ;
+    obs_window = column db.get_config 4 |> to_float |> required ;
+    percentile = column db.get_config 5 |> to_float |> required ;
+    min_bytes = column db.get_config 6 |> to_int ;
+    max_bytes = column db.get_config 7 |> to_int ;
+    min_for_relevance = column db.get_config 8 |> to_int |> default 0 ;
+    max_rtt = column db.get_config 9 |> to_float ;
+    max_rr = column db.get_config 10 |> to_float }
 
 (* Query to get flow alert parameters.
  * For each alert we need:
@@ -76,33 +98,52 @@ let config_key_of_step db =
  * - time window in the past to consider
  * - percentile to consider
  * - min/max values for that percentile of those averages over that window.
+ * - min traffic for alerting on RTT/RR
+ * - max RTT in us
+ * - max RR in 0-1
  *)
 let flow_alert_params_query =
-  "SELECT id, \
-          strftime('%s', date_modify) as mtime, \
-          zone_from || '-' || zone_to AS name, \
+  "SELECT zone_from || '-' || zone_to AS name, \
           zone_from AS source, \
           zone_to AS dest, \
           (5 * 60) AS avg_window, \
           (3600 * 12) AS obs_window, \
           0.95 AS percentile, \
           NULL AS \"min\", \
-          bandwrate_alert_asc AS \"max\" \
+          bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
+          bandw_min_asc AS \"relevancy\", \
+          rtt_alert_asc AS \"max_rtt\", \
+          rr_alert_asc AS \"max_rr\" \
    FROM bcnthresholds \
    WHERE \"max\" > 0 \
    UNION \
-   SELECT id, \
-          strftime('%s', date_modify) as mtime, \
-          zone_to || '-' || zone_from AS name, \
+   SELECT zone_to || '-' || zone_from AS name, \
           zone_to AS source, \
           zone_from AS dest, \
           (5 * 60) AS avg_window, \
           (3600 * 12) AS obs_window, \
           0.95 AS percentile, \
           NULL AS \"min\", \
-          bandwrate_alert_dsc AS \"max\" \
+          bandwrate_alert_dsc * bandw_available_dsc / 100 AS \"max\", \
+          bandw_min_dsc AS \"relevancy\", \
+          rtt_alert_dsc AS \"max_rtt\", \
+          rr_alert_dsc AS \"max_rr\" \
    FROM bcnthresholds \
-   WHERE \"max\" > 0"
+   WHERE \"max\" > 0 AND NOT is_symmetric \
+   UNION \
+   SELECT zone_to || '-' || zone_from AS name, \
+          zone_to AS source, \
+          zone_from AS dest, \
+          (5 * 60) AS avg_window, \
+          (3600 * 12) AS obs_window, \
+          0.95 AS percentile, \
+          NULL AS \"min\", \
+          bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
+          bandw_min_asc AS \"relevancy\", \
+          rtt_alert_asc AS \"max_rtt\", \
+          rr_alert_asc AS \"max_rr\" \
+    FROM bcnthresholds \
+    WHERE \"max\" > 0 AND is_symmetric"
 
 let last_mtime_query =
   "SELECT strftime('%s', MAX(date_modify)) as mtime \
