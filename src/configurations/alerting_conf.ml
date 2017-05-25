@@ -254,8 +254,8 @@ struct
                     and newest = (List.last lst).TCP_v29.UniDir.stop in
                     newest >= oldest + duration
                   ) with Failure _ | Invalid_argument _ -> false)
-             [(match min_bytes with
-              | None -> discard ()
+             ((match min_bytes with
+              | None -> []
               | Some min_bytes ->
                   let name = Printf.sprintf "all samples bellow %d" min_bytes
                   and title = Printf.sprintf "Too little traffic from zone %s to %s"
@@ -269,9 +269,9 @@ struct
                                    min_bytes (to_minutes duration) id
                   and cond a = a.TCP_v29.UniDir.bytes < min_bytes
                   in
-                  alert_when_all_bytes ~cond ~name ~title ~text) ;
+                  [alert_when_all_bytes ~cond ~name ~title ~text]) @
               (match max_bytes with
-              | None -> discard ()
+              | None -> []
               | Some max_bytes ->
                   let name = Printf.sprintf "all samples above %d" max_bytes
                   and title = Printf.sprintf "Too much traffic from zone %s to %s"
@@ -285,7 +285,7 @@ struct
                                    max_bytes (to_minutes duration) id
                   and cond a = a.TCP_v29.UniDir.bytes > max_bytes
                   in
-                  alert_when_all_bytes ~cond ~name ~title ~text)]]]
+                  [alert_when_all_bytes ~cond ~name ~title ~text]))]]
 
   type input = TCP_v29.t
 
