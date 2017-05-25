@@ -70,7 +70,7 @@ let cmdliner_conv_of_ppp ppp =
   (fun fmt x -> Format.fprintf fmt "%s" (PPP.to_string ppp x))
 
 type setting_change =
-  { node_id : int ; settings : Setting.t list } [@@ppp PPP_OCaml]
+  { node : Graph.node_spec ; settings : Setting.t list } [@@ppp PPP_OCaml]
 
 let setting_change_opts =
   let i = Arg.(info ~docv:"SETTING"
@@ -84,10 +84,10 @@ let setting_change_opts =
  *)
 
 let apply_setting_change graph setting_change =
-  match Graph.lookup_node graph setting_change.node_id with
+  match Graph.lookup_node graph setting_change.node with
   | exception Not_found ->
-    failwith (Printf.sprintf "Cannot find node id %d\n%!"
-                setting_change.node_id)
+    failwith (Printf.sprintf "Cannot find node id %s\n%!"
+                (PPP.to_string Graph.node_spec_ppp setting_change.node))
   | node ->
     node.Node.settings <-
       List.rev_append setting_change.settings node.Node.settings

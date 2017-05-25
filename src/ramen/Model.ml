@@ -58,8 +58,13 @@ struct
         p.Pipe.from_node = from_node && p.Pipe.to_node = to_node
       ) t.pipes
 
-  let lookup_node t id =
-    List.find (fun n -> n.Node.id = id) t.nodes
+  type node_spec = Id of int | Name of string [@@ppp PPP_OCaml]
+
+  let lookup_node t spec =
+    let filter = match spec with
+      | Id id -> (fun n -> n.Node.id = id)
+      | Name name -> (fun n -> n.Node.name = name) in
+    List.find filter t.nodes
 
   let add_node g ?from_node node =
     match from_node with

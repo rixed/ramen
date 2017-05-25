@@ -11,7 +11,7 @@ struct
 
   let connect ?id ?ppp ks op =
     let id = Option.get id in (* If this fail it's because you forgot AddId *)
-    let node = Graph.lookup_node Conf.graph id in
+    let node = Graph.lookup_node Conf.graph (Graph.Id id) in
 
     (* This is where we wrap output functions into whatever, or start another
      * reader for events that also call our ops. So for instance we will have
