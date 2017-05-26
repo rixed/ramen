@@ -5,7 +5,7 @@ top_srcdir = ..
 LIB_SOURCES = \
 	Helpers.ml Globs.ml Alarm.ml IO.ml \
 	Configuration.ml Engine.ml Model.ml \
-	ReifyEngine.ml ExecuteEngine.ml Alerter.ml
+	Alerter.ml ReifyEngine.ml ExecuteEngine.ml
 
 TESTABLE_SOURCES = \
 	$(LIB_SOURCES) \

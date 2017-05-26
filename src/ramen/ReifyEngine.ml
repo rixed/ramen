@@ -53,8 +53,8 @@ struct
     ignore cond ;
     add_sub ?from_node ?id ?ppp g ks name
 
-  let alert ?(name="alert") ?id ?ppp ~team ~title ~text () ?from_node g =
-    ignore team ; ignore title ; ignore text ;
+  let alert ?(name="alert") ?id ?ppp ?importance ~team ~title ~text () ?from_node g =
+    ignore importance ; ignore team ; ignore title ; ignore text ;
     add_sub ?from_node ?id ?ppp g [] name
 
   let save ?(name="save") ?id ?ppp ~retention () ?from_node g =

@@ -4,6 +4,9 @@ open Batteries
 open Model
 open Lwt
 
+let alerter =
+  Alerter.get_state "/tmp/alerter_state.raw" "/tmp/alerter_conf.db"
+
 module Impl (Conf : sig val graph : Graph.t end) :
   Engine.S with type ('e, 'k) result = 'e -> unit Lwt.t =
 struct
@@ -100,12 +103,11 @@ struct
     connect ?id ?ppp ks (fun output es ->
       output (List.for_all cond es))
 
-  let alert ?name ?id ?ppp ~team ~title ~text () =
-    ignore name ;
+  let alert ?(name="unnamed alert") ?id ?ppp ?(importance=0) ~team ~title ~text () =
     connect ?id ?ppp [] (fun _output firing ->
-      Printf.printf "To: %s\nSubject: %s\n\n%s\n%!"
-        team title (if firing then text 42 else "Back to Normal") ;
-      return_unit)
+      let text = if firing then text 42 else "Back to Normal" in
+      Lwt.wrap (fun () ->
+        Alerter.alert alerter ~name ~team ~importance ~title ~text))
 
   let save ?name ?id ?ppp ~retention () =
     ignore name ;

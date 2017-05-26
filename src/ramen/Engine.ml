@@ -88,6 +88,7 @@ sig
    * stream with an alert. *)
   val alert:
     ?name:string -> ?id:int -> ?ppp:(bool PPP.t) ->
+    ?importance:int -> (* 0 = most important *)
     team:string -> (* identify the team this alert is for *)
     title:string -> (* informative title. Must sound scary but not hopeless *)
     (* receive this alert identifier and output the body of the alert
@@ -165,9 +166,9 @@ struct
     let id = get_id id in
     M.all ?name ~id ?ppp ~cond ks
 
-  let alert ?name ?id ?ppp ~team ~title ~text () =
+  let alert ?name ?id ?ppp ?importance ~team ~title ~text () =
     let id = get_id id in
-    M.alert ?name ~id ?ppp ~team ~title ~text ()
+    M.alert ?name ~id ?ppp ?importance ~team ~title ~text ()
 
   let save ?name ?id ?ppp ~retention () =
     let id = get_id id in

@@ -305,8 +305,8 @@ let open_config_db file =
          timeout REAL NOT NULL, \
          victims INTEGER NOT NULL DEFAULT 1)"
       "INSERT INTO escalations VALUES \
-         (\"support\", 1, 1, 350, 1), \
-         (\"support\", 1, 2, 350, 3)" ;
+         (\"support\", 0, 1, 350, 1), \
+         (\"support\", 0, 2, 350, 3)" ;
     (* Reopen in read-only *)
     db_close db |> must_be string_of_bool true ;
     db_open ~mode:`READONLY file
