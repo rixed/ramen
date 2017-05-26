@@ -1,5 +1,6 @@
 (* Helper to extract alerting configuration re. network link from a SQLite DB.
  *)
+open Helpers
 
 let debug = false
 
@@ -42,38 +43,6 @@ type config_key =
      *)
     max_rtt : float option ;
     max_rr : float option }
-
-let to_int x =
-  let open Sqlite3.Data in
-  match x with
-  | NONE | NULL | TEXT "" -> None
-  | INT i -> Some (Int64.to_int i)
-  | FLOAT f -> Some (int_of_float f)
-  | TEXT s | BLOB s -> Some (int_of_string s)
-
-let to_float x =
-  let open Sqlite3.Data in
-  match x with
-  | NONE | NULL | TEXT "" -> None
-  | INT i -> Some (Int64.to_float i)
-  | FLOAT f -> Some f
-  | TEXT s | BLOB s -> Some (float_of_string s)
-
-let to_string x =
-  let open Sqlite3.Data in
-  match x with
-  | NONE | NULL | TEXT "" -> None
-  | INT i -> Some (Int64.to_string i)
-  | FLOAT f -> Some (string_of_float f)
-  | TEXT s | BLOB s -> Some s
-
-let required = function
-  | None -> failwith "Missing required value"
-  | Some x -> x
-
-let default x = function
-  | None -> x
-  | Some y -> y
 
 let config_key_of_step db =
   let open Sqlite3 in

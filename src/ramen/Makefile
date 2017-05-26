@@ -3,18 +3,18 @@ NAME = ramen
 top_srcdir = ..
 
 LIB_SOURCES = \
-	Globs.ml Alarm.ml IO.ml \
+	Helpers.ml Globs.ml Alarm.ml IO.ml \
 	Configuration.ml Engine.ml Model.ml \
-	ReifyEngine.ml ExecuteEngine.ml
+	ReifyEngine.ml ExecuteEngine.ml Alerter.ml
 
 TESTABLE_SOURCES = \
-	$(LIB_SOURCES)
+	$(LIB_SOURCES) \
 
 SOURCES = \
 	$(TESTABLE_SOURCES) \
 	rigati.ml
 
-PACKAGES = lwt.ppx batteries ppp cmdliner dynlink inotify.lwt
+PACKAGES = lwt.ppx batteries ppp cmdliner dynlink inotify.lwt sqlite3
 LIB_NAME = ramen
 
 INSTALLED = \
