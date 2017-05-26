@@ -249,20 +249,20 @@ struct
   let of_csv_ppp = PPP.(csv_ppp >>: (to_csv, of_csv))
   (*$< Stdint *)
   (*$= of_csv_ppp & ~printer:(function None -> "None" | Some (e, o) -> Printf.sprintf "Some %s, len %d" (PPP.to_string t_ppp e) o)
-    (Some ({ start = 1493409124690894 ; stop = 1493409128296658 ; itf = Split (3,4) ; \
+    (Some ({ start = 1493409124690894 ; stop = 1493409128296658 ; itf_clt = Some 3 ; itf_srv = Some 4 ; \
              zone_clt = 404 ; zone_srv = 0 ; \
              socket = Some { endpoints = IPv4s (Uint32.of_int 3241271562, Uint32.of_int 2007484923) ; ports= 41383, 1104 }; \
              packets_clt = 5 ; packets_srv = 5 ; bytes_clt = 904 ; bytes_srv = 655 ; \
              max_missed = 0 }, 395)) \
       (PPP.of_string of_csv_ppp "9GJ3152\t1493409124690894\t1493409128296658\t3\t4\t250\t250\t149825120988417\t198620281134081\t404\t0\t3241271562\t<NULL>\t2007484923\t<NULL>\t<NULL>\t<NULL>\t41383\t1104\t0\t0\t14\t0\t618\t369\t<NULL>\t211\tEthernet/IPv4/TCP/HTTP\t1b2c5dda-ae39-47b0-8ec6-962e784cd0f2\t904\t655\t5\t5\t566\t317\t3\t3\t0\t0\t0\t0\t1\t1\t1\t0\t0\t0\t1\t0\t0\t0\t0\t1\t91248\t8326197504\t1\t66129\t4373044641\t2\t82\t3380\t3\t219698\t16580405684\t0\t0\t0\t0\t0\t0\t1\t0\t0\t1\t0\t0\t<NULL>\n" 0)
-    (Some ({ start = 1493409169958547 ; stop = 1493409171229361 ; itf = CltOnly 7 ; \
+    (Some ({ start = 1493409169958547 ; stop = 1493409171229361 ; itf_clt = Some 7 ; itf_srv = None ; \
              zone_clt = 0 ; zone_srv = 0 ; \
              socket = Some { endpoints = IPv6s (Int128.of_string "-127591584635405263362148620169206776797", \
                                                 Int128.of_string "-127600695269105035184451414759617478119") ; \
                              ports = 63012, 62848 } ; \
              packets_clt = 6 ; packets_srv = 0 ; max_missed = 0 ; bytes_clt = 700 ; bytes_srv = 0 }, 441)) \
       (PPP.of_string of_csv_ppp "9GJ3152\t1493409169958547\t1493409171229361\t7\t<NULL>\t250\t<NULL>\t198620281134081\t149825120988417\t0\t0\t<NULL>\t-127591584635405263362148620169206776797\t<NULL>\t-127600695269105035184451414759617478119\t<NULL>\t<NULL>\t63012\t62848\t0\t0\t0\t0\t116\t0\t<NULL>\t0\tEthernet/IPv4/GRE/IPv4/IPv6/TCP\td85a0b79-01db-4bd8-bd6e-b6de1f34027a\t700\t0\t6\t0\t0\t0\t6\t0\t386\t0\t0\t0\t6\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t3\t162517895\t26001502904081625\t0\t0\t0\t0\t0\t0\t0\t0\t0\t<NULL>\n" 0)
-    (Some ({ start = 1493409175525589 ; stop = 1493409205920697 ; itf = Same 4 ; \
+    (Some ({ start = 1493409175525589 ; stop = 1493409205920697 ; itf_clt = Some 4 ; itf_srv = Some 4 ; \
              zone_clt = 8 ; zone_srv = 3 ; \
              socket = Some { endpoints = IPv4s (Uint32.of_int 3232238239, Uint32.of_int 3232256022) ; ports= 49767, 445 }; \
              packets_clt = 4 ; packets_srv = 2 ; bytes_clt = 334 ; bytes_srv = 214 ; \
