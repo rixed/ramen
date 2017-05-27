@@ -281,7 +281,9 @@ end
 let open_config_db file =
   let open Sqlite3 in
   let ensure_db_table db create insert =
+    if debug then Printf.eprintf "Exec: %s\n%!" create ;
     exec db create |> must_be_ok ;
+    if debug then Printf.eprintf "Exec: %s\n%!" insert ;
     exec db insert |> must_be_ok
   in
   try db_open ~mode:`READONLY file
@@ -308,7 +310,7 @@ let open_config_db file =
     ensure_db_table db
       "CREATE TABLE IF NOT EXISTS schedule ( \
          oncaller STRING REFERENCES oncallers (name) ON DELETE SET NULL, \
-         from INTEGER NOT NULL, \
+         \"from\" INTEGER NOT NULL, \
          rank INTEGER NOT NULL)"
       "INSERT INTO schedule VALUES \
          (\"John Doe\", 0, 1)" ;
@@ -357,9 +359,9 @@ let get_state save_file db_config_file =
         Sqlite3.prepare db
           "SELECT oncallers.name \
            FROM schedule NATURAL JOIN oncallers \
-           WHERE schedule.rank <= ? AND schedule.from <= ? \
+           WHERE schedule.rank <= ? AND \"schedule.from\" <= ? \
              AND oncallers.team = ? \
-           ORDER BY schedule.from DESC, schedule.rank DESC LIMIT 1" ;
+           ORDER BY \"schedule.from\" DESC, schedule.rank DESC LIMIT 1" ;
       stmt_get_contacts =
         Sqlite3.prepare db
           "SELECT contact FROM contacts \

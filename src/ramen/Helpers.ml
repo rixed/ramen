@@ -47,7 +47,7 @@ let default x = function
 let must_be to_string expected actual =
   if expected <> actual then
     failwith ("Bad return code: expected "^ to_string expected ^
-              "but got "^ to_string actual)
+              " but got "^ to_string actual)
 
 let must_be_ok actual =
   let open Sqlite3.Rc in must_be to_string OK actual
