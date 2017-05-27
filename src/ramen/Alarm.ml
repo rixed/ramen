@@ -85,8 +85,11 @@ let run_until =
     assert (List.for_all (fun a -> a.queued) !all_alarms)
 
 (* Main loop that just call run_until *)
+let quit = ref false
 let rec main_loop () =
-  if debug then Printf.eprintf "sleeping for %fs...\n%!" !timestep ;
-  let%lwt () = Lwt_unix.sleep !timestep in
-  run_until (Unix.gettimeofday ()) ;
-  main_loop ()
+  if !quit then Lwt.return_unit else (
+    if debug then Printf.eprintf "sleeping for %fs...\n%!" !timestep ;
+    let%lwt () = Lwt_unix.sleep !timestep in
+    run_until (Unix.gettimeofday ()) ;
+    main_loop ()
+  )

@@ -298,21 +298,6 @@ struct
    * to be fast since it's called very frequently.
    *)
 
-(*
-  let configuration () = replicate ~ppp:TCP_v29.of_csv_ppp [
-    alert_on_volume ~min_bytes:50_000_000 ~duration:(of_minutes 10) 50 72 ;
-    alert_on_volume ~min_bytes:50_000_000 ~duration:(of_minutes 10) 0 30
-  ]
-
-  let must_reload =
-    let loaded = ref false in
-    fun () ->
-      if !loaded then false else (
-        loaded := true ;
-        true
-      )
-*)
-
   let configuration () =
     let open Conf_of_sqlite in
     let alert_of_conf conf =

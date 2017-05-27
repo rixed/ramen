@@ -8,6 +8,8 @@
 open Batteries
 open Lwt
 
+let debug = ref false
+
 let () = Printexc.register_printer (function
   | Failure x -> Some x
   | End_of_file -> Some "End of file"
@@ -32,26 +34,40 @@ let import_file ?(do_unlink=false) ~alive filename ppp k =
      * for CSV *)
     let rec read_next_line () =
       if alive () then (
-        let%lwt line = Lwt_io.read_line chan in
-        (* FIXME: wouldn't it be nice if PPP_CSV.tuple was not depending on this "\n"? *)
-        (match PPP.of_string ppp (line ^"\n") 0 with
-        | exception e ->
-          Printf.eprintf "Exception %s!\n%!" (Printexc.to_string e) ;
-          read_next_line ()
-        | Some (e, l) when l = String.length line + 1 ->
-          k e >>=
-          read_next_line
-        | _ ->
-          Printf.eprintf "Cannot parse line %S\n%!" line ;
-          read_next_line ())
+        match%lwt Lwt_io.read_line chan with
+        | exception End_of_file -> return_unit
+        | line ->
+          (* FIXME: wouldn't it be nice if PPP_CSV.tuple was not depending on this "\n"? *)
+          (match PPP.of_string ppp (line ^"\n") 0 with
+          | exception e ->
+            Printf.eprintf "Exception %s!\n%!" (Printexc.to_string e) ;
+            read_next_line ()
+          | Some (e, l) when l = String.length line + 1 ->
+            k e >>=
+            read_next_line
+          | _ ->
+            Printf.eprintf "Cannot parse line %S\n%!" line ;
+            read_next_line ())
       ) else dying (Printf.sprintf "reading %S" filename)
     in
     let%lwt () = read_next_line () in
     Printf.printf "done reading %S\n%!" filename ;
     return_unit
 
+let nb_imported_files = ref 0
+
 let register_file_reader ~alive filename ppp k =
-  let reading_thread () = import_file ~alive filename ppp k in
+  let reading_thread () =
+    incr nb_imported_files ;
+    let%lwt () = import_file ~alive filename ppp k in
+    decr nb_imported_files ;
+    if !nb_imported_files <= 0 then (
+      if !debug then Printf.eprintf "No more file to read, exiting.\n%!" ;
+      Alarm.quit := true
+    ) ;
+    return_unit
+  in
+  (* When we use this option we want to exit once all files are imported *)
   async reading_thread
 
 let check_file_exist kind kind_name path =
@@ -107,12 +123,13 @@ let register_dir_reader ~alive path glob ppp k =
     notify_loop() in
   async reading_thread
 
-let start debug =
+let start debug_ =
+  debug := debug_ ;
   (* Make thread failure more verbose: *)
   let print_exn exn =
-      Printf.eprintf "Thread died: %s\n%!" (Printexc.to_string exn) in
+    Printf.eprintf "Thread died: %s\n%!" (Printexc.to_string exn) in
   let nagger th =
     catch th (fun exn -> print_exn exn ; return_unit) in
   async_exception_hook := print_exn ;
   Lwt_main.run (nagger Alarm.main_loop) ;
-  if debug then Printf.printf "... Done execution.\n%!"
+  if !debug then Printf.printf "... Done execution.\n%!"
