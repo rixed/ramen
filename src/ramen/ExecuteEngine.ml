@@ -4,8 +4,11 @@ open Batteries
 open Model
 open Lwt
 
-let alerter =
-  Alerter.get_state "/tmp/alerter_state.raw" "/tmp/alerter_conf.db"
+let alerter = ref None
+
+let init ?(alerter_conf_db="/tmp/alerter_conf.db")
+         ?(alerter_tmp_state="/tmp/alerter_state.raw") () =
+  alerter := Some (Alerter.get_state alerter_tmp_state alerter_conf_db)
 
 module Impl (Conf : sig val graph : Graph.t end) :
   Engine.S with type ('e, 'k) result = 'e -> unit Lwt.t =
@@ -107,7 +110,8 @@ struct
     connect ?id ?ppp [] (fun _output firing ->
       let text = if firing then text 42 else "Back to Normal" in
       Lwt.wrap (fun () ->
-        Alerter.alert alerter ~name ~team ~importance ~title ~text))
+        Alerter.alert (Option.get !alerter) ~name ~team ~importance
+                      ~title ~text))
 
   let save ?name ?id ?ppp ~retention () =
     ignore name ;

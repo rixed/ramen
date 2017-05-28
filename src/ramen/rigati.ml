@@ -72,7 +72,7 @@ let cmdliner_conv_of_ppp ppp =
 type setting_change =
   { node : Graph.node_spec ; settings : Setting.t list } [@@ppp PPP_OCaml]
 
-let setting_change_opts =
+let setting_change_opt =
   let i = Arg.(info ~docv:"SETTING"
                     ~doc:("Set the specific setting of a node. "^
                           setting_change_ppp.PPP.descr)
@@ -144,7 +144,7 @@ let print_cmd =
   Term.(
     (const print
       $ common_opts
-      $ setting_change_opts
+      $ setting_change_opt
       $ as_dot),
     info "print")
 
@@ -152,8 +152,9 @@ let print_cmd =
  * Executor
  *)
 
-let exec options setting_changes timestep () =
+let exec options setting_changes timestep alerter_conf_db () =
   Alarm.timestep := timestep ;
+  ExecuteEngine.init ?alerter_conf_db () ;
   let exec_conf graph m =
     let module ExecConfig = struct let graph = graph end in
     let module ConfMaker = (val m : Configuration.MAKER) in
@@ -190,12 +191,18 @@ let timestep_opt =
                    ["timestep"; "time-step"] in
   Arg.(value (opt float 1. i))
 
+let alerter_conf_db_opt =
+  let i = Arg.info ~doc:"Where to find the alert-manager configuration db."
+                   ["alert-mgmt-db"] in
+  Arg.(value (opt (some string) None i))
+
 let exec_cmd =
   Term.(
     (const exec
       $ common_opts
-      $ setting_change_opts
-      $ timestep_opt),
+      $ setting_change_opt
+      $ timestep_opt
+      $ alerter_conf_db_opt),
     info "exec")
 
 (*
