@@ -12,7 +12,7 @@
 open Batteries
 open Helpers
 
-let debug = true
+let debug = false
 
 (* We want to have a global state of the alert management situation that we
  * can save regularly and restore whenever we start in order to limit the
