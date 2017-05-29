@@ -36,6 +36,15 @@ let to_string x =
   | FLOAT f -> Some (string_of_float f)
   | TEXT s | BLOB s -> Some s
 
+let of_int i = Sqlite3.Data.INT (Int64.of_int i)
+let of_int_or_null = function
+  | Some i -> of_int i
+  | None -> Sqlite3.Data.NULL
+let of_float f = Sqlite3.Data.FLOAT f
+let of_float_or_null = function
+  | Some f -> of_float f
+  | None -> Sqlite3.Data.NULL
+
 let required = function
   | None -> failwith "Missing required value"
   | Some x -> x
@@ -51,6 +60,9 @@ let must_be to_string expected actual =
 
 let must_be_ok actual =
   let open Sqlite3.Rc in must_be to_string OK actual
+
+let must_be_done actual =
+  let open Sqlite3.Rc in must_be to_string DONE actual
 
 let rec step_all_fold stmt init f =
   let open Sqlite3 in

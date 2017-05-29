@@ -31,10 +31,10 @@ let run_ramen debug ramen_bin alerting_cmxs alerter_conf_db alerting_conf_db csv
       entry_point csv (if debug then ";Debug" else "") in
   run_cmd debug cmd |> must_run_ok
 
-let clean_all debug =
-  if debug then Printf.eprintf "Cleaning...\n" ;
-  (* TODO *)
-  ()
+let clean_all debug files =
+  List.iter (fun fname ->
+      if debug then Printf.eprintf "Deleting %s...\n" fname ;
+      Unix.unlink fname) files
 
 let () =
   let ramen_bin = ref "../ramen/rigati"
@@ -43,19 +43,45 @@ let () =
   and alerting_conf_db = ref None
   and csv = ref ""
   and debug = ref false
+  and list_tests = ref false
   and keep_temps = ref false in
   let arg_specs = Arg.[
     "--ramen-path", Set_string ramen_bin, "ramen binary location" ;
     "--alerting-cmxs", Set_string alerting_cmxs, "Alerting configuration module" ;
     "--alert-mgmt-conf", String (fun x -> alerter_conf_db := Some x), "Alert manager configuration to use" ;
     "--alerting-conf", String (fun x -> alerting_conf_db := Some x), "Alerting configuration to use" ;
+    "--list", Set list_tests, "List available test scenarios" ;
     "--keep-temps", Set keep_temps, "Do not delete temporary files" ;
     "--debug", Set debug, "More verbose output" ]
-  and usage_msg = "run_test [options] file.csv" in
+  and usage_msg = "run_test [options] (file.csv | scenario | --list)" in
   Arg.(parse arg_specs (fun x -> csv := x) usage_msg) ;
+  if !list_tests then (
+    Printf.printf "List of runnable tests:\n" ;
+    Hashtbl.iter (fun name _m ->
+      Printf.printf "- %s\n" name) TestGen.all_tests ;
+    Printf.printf "\nRun one of the above with:\n  %S [options] <name>\n"
+      Sys.argv.(0) ;
+    exit 0
+  ) ;
   if !csv = "" then Arg.usage arg_specs usage_msg
-  else ( 
-    run_ramen !debug !ramen_bin !alerting_cmxs !alerter_conf_db !alerting_conf_db !csv ;
-    if not !keep_temps then clean_all !debug
+  else (
+    (match Hashtbl.find TestGen.all_tests !csv with
+    | exception Not_found ->
+      run_ramen !debug !ramen_bin !alerting_cmxs !alerter_conf_db !alerting_conf_db !csv ;
+      if not !keep_temps then clean_all !debug []
+    | (module T : TestGen.TEST) ->
+      let csv = T.traffic () in
+      let mode = [`create; `text; `trunc] in
+      let mode = if !keep_temps then mode else `delete_on_exit :: mode in
+      let csv_file =
+        File.with_temporary_out ~prefix:"traffic_" ~suffix:".csv" ~mode
+          (fun oc fname ->
+            List.iter (fun line ->
+              PPP.to_string EventTypes.TCP_v29.csv_ppp line |>
+              IO.nwrite oc) csv ;
+            fname) in
+      let alert_db_file = Filename.temp_file "alerting_conf_" ".db" in
+      AlertDb.create ~debug:!debug alert_db_file (T.alerting_config ()) ;
+      run_ramen !debug !ramen_bin !alerting_cmxs !alerter_conf_db (Some alert_db_file) csv_file ;
+      if not !keep_temps then clean_all !debug [alert_db_file])
   )
-

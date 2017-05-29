@@ -1,13 +1,13 @@
 top_srcdir = ..
 
 SOURCES = \
-	run_test.ml
+	TestGen.ml test_simplest.ml AlertDb.ml run_test.ml
 
-PACKAGES = ramen batteries
+PACKAGES = ramen configurations batteries
 
 all: .depend run_test
 
-run_test: run_test.cmx
+run_test: TestGen.cmx test_simplest.cmx AlertDb.ml run_test.cmx
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $^ -o $@
 
 clean-spec:
