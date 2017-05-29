@@ -66,7 +66,8 @@ let config_key_of_step db =
  * - bandwidth averaging window
  * - time window in the past to consider
  * - percentile to consider
- * - min/max values for that percentile of those averages over that window.
+ * - min/max values for that percentile of those averages over that window,
+ *   in bytes/secs
  * - min traffic for alerting on RTT/RR
  * - max RTT in us
  * - max RR in 0-1
