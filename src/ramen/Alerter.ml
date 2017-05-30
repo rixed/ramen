@@ -379,7 +379,7 @@ let save_state state =
     if debug then
       Printf.eprintf "Saving state in file %S\n%!" state.save_file ;
     File.with_file_out ~mode:[`create; `trunc] state.save_file (fun oc ->
-      Marshal.output oc state) ;
+      Marshal.output oc state.persist) ;
     state.dirty <- false
   )
 
