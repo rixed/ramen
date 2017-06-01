@@ -188,8 +188,13 @@ open EventTypes
  * EP is concerned, events are totally opaque data structures.
  *)
 
+let my_getenv v =
+  try Sys.getenv v
+  with Not_found ->
+    failwith ("Cannot find environment variable "^v)
+
 let db =
-  let config_db = Sys.getenv "CONFIG_DB" in
+  let config_db = my_getenv "CONFIG_DB" in
   Conf_of_sqlite.make config_db
 
 module Make : Configuration.MAKER = functor (Impl : Engine.S) ->
@@ -198,9 +203,10 @@ struct
 
   (* Alert if all events met the given condition: *)
   let alert_when_all_bytes ~cond ~name ~title ~text =
-    all ~name ~cond
+    all ~name ~cond ~ppp:(PPP_OCaml.list TCP_v29.UniDir.t_ppp)
       [on_change
         ~name:("changed "^ name)
+        ~ppp:PPP_OCaml.bool
         [alert
            ~name:("alert on "^name)
            ~team:"network firefighters"
@@ -220,17 +226,20 @@ struct
 
   (* Here we define a simple helper to define an alert on low traffic between
    * any two zones: *)
-  let alert_on_volume ?min_bytes ?max_bytes ~duration z1 z2 =
+  let alert_on_volume ?min_bps ?max_bps ~obs_window ~avg_window z1 z2 =
      filter
        ~name:(Printf.sprintf "from zone %s to %s"
                 (string_of_zone z1) (string_of_zone z2))
+       ~ppp:TCP_v29.UniDir.t_ppp
        ~by:(is_from_to_zone z1 z2)
        [aggregate
           (* In the aggregate we reuse clt for source and srv for dest.
            * TODO: define a more explicit and less error prone struct for
            * this aggregate? *)
-          ~name:"minutely"
-          ~key_of_event:(fun e -> TCP_v29.(to_minutes e.UniDir.start))
+          ~name:"averaging"
+          ~ppp:TCP_v29.UniDir.t_ppp
+          ~key_of_event:
+            (fun e -> TCP_v29.(to_seconds e.UniDir.start / int_of_float avg_window))
           ~make_aggregate:identity (* event = aggregate *)
           ~aggregate:
             (fun a (* the aggregate *) e (* the event *) ->
@@ -239,12 +248,15 @@ struct
                a.stop <- max a.stop e.stop ;
                a.packets <- a.packets + e.packets ;
                a.bytes <- a.bytes + e.bytes)
-          ~timeout_sec:30. ~timeout_events:1000
+          ~timeout_sec:3.
+          ~is_complete:(fun k _ max_k -> max_k - k > 1)
           [save
              ~name:"TODO: save"
+             ~ppp:TCP_v29.UniDir.t_ppp
              ~retention:(3600*24*30) () ;
            sliding_window
-             ~name:(Printf.sprintf "%d mins sliding window" (to_minutes duration))
+             ~name:(Printf.sprintf "%g mins sliding window" (obs_window /. 60.))
+             ~ppp:TCP_v29.UniDir.t_ppp
              ~cmp:(fun a1 a2 -> compare a1.TCP_v29.UniDir.start a2.TCP_v29.UniDir.start)
              ~is_complete:
                (fun lst ->
@@ -252,38 +264,40 @@ struct
                     (* Notice any missing segment will count as compliant *)
                     let oldest = (List.first lst).TCP_v29.UniDir.start
                     and newest = (List.last lst).TCP_v29.UniDir.stop in
-                    newest >= oldest + duration
+                    newest >= oldest + of_seconds_f obs_window
                   ) with Failure _ | Invalid_argument _ -> false)
-             ((match min_bytes with
+             (let do_avg x =
+                int_of_float (Float.round (float_of_int x /. avg_window)) in
+              (match min_bps with
               | None -> []
-              | Some min_bytes ->
-                  let name = Printf.sprintf "all samples bellow %d" min_bytes
+              | Some min_bps ->
+                  let name = Printf.sprintf "all samples bellow %d" min_bps
                   and title = Printf.sprintf "Too little traffic from zone %s to %s"
                                 (string_of_zone z1) (string_of_zone z2)
                   and text id = Printf.sprintf
                                   "The traffic from zone %s to %s has sunk below \
                                    the configured minimum of %d \
-                                   for the last %d minutes.\n\n\
+                                   for the last %g minutes.\n\n\
                                    See https://event_proc.home.lan/show_alert?id=%d\n"
                                    (string_of_zone z1) (string_of_zone z2)
-                                   min_bytes (to_minutes duration) id
-                  and cond a = a.TCP_v29.UniDir.bytes < min_bytes
+                                   min_bps (obs_window /. 60.) id
+                  and cond a = do_avg a.TCP_v29.UniDir.bytes < min_bps
                   in
                   [alert_when_all_bytes ~cond ~name ~title ~text]) @
-              (match max_bytes with
+              (match max_bps with
               | None -> []
-              | Some max_bytes ->
-                  let name = Printf.sprintf "all samples above %d" max_bytes
+              | Some max_bps ->
+                  let name = Printf.sprintf "all samples above %d" max_bps
                   and title = Printf.sprintf "Too much traffic from zone %s to %s"
                                 (string_of_zone z1) (string_of_zone z2)
                   and text id = Printf.sprintf
                                   "The traffic from zones %s to %s has raised above \
                                    the configured maximum of %d \
-                                   for the last %d minutes.\n\n\
+                                   for the last %g minutes.\n\n\
                                    See https://event_proc.home.lan/show_alert?id=%d\n"
                                    (string_of_zone z1) (string_of_zone z2)
-                                   max_bytes (to_minutes duration) id
-                  and cond a = a.TCP_v29.UniDir.bytes > max_bytes
+                                   max_bps (obs_window /. 60.) id
+                  and cond a = do_avg a.TCP_v29.UniDir.bytes > max_bps
                   in
                   [alert_when_all_bytes ~cond ~name ~title ~text]))]]
 
@@ -301,8 +315,9 @@ struct
   let configuration () =
     let open Conf_of_sqlite in
     let alert_of_conf conf =
-      alert_on_volume ?min_bytes:conf.min_bytes ?max_bytes:conf.max_bytes
-                      ~duration:(of_seconds_f conf.obs_window)
+      alert_on_volume ?min_bps:conf.min_bps ?max_bps:conf.max_bps
+                      ~obs_window:conf.obs_window
+                      ~avg_window:conf.avg_window
                       conf.source conf.dest
     in
     convert ~name:"to unidir volumes"

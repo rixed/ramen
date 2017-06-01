@@ -244,7 +244,22 @@ struct
       packets_clt ; packets_srv ; max_missed = 0 ;
       bytes_clt ; bytes_srv }
 
-  let to_csv _ = failwith "No reason to do that"
+  let to_csv t =
+    let ivp4_clt, ip6_clt, ip4_srv, ip6_srv, port_clt, port_srv =
+      match t.socket with
+      | Some { endpoints = IPv4s (c, s) ; ports = pc, ps } ->
+          Some c, None, Some s, None, pc, ps
+      | Some { endpoints = IPv6s (c, s) ; ports = pc, ps } ->
+          None, Some c, None, Some s, pc, ps
+      | _ -> None, None, None, None, 0, 0 in
+    "unk", t.start, t.stop, t.itf_clt, t.itf_srv, None, None, None, None,
+    t.zone_clt, t.zone_srv, ivp4_clt, ip6_clt, ip4_srv, ip6_srv, None, None,
+    port_clt, port_srv, 0, 0, None, None, None, None, None, 0,
+    None, None, t.bytes_clt, t.bytes_srv, t.packets_clt, t.packets_srv,
+    0, 0, 0, 0, None, None, None, None, None, None, None, None, None,
+    0, None, None, None, None, None, None, 0, 0, None, 0, 0, None,
+    0, 0, None, 0, 0, None, 0, 0, None, 0, 0, None, 0, 0, None,
+    0, 0, None
 
   let of_csv_ppp = PPP.(csv_ppp >>: (to_csv, of_csv))
   (*$< Stdint *)

@@ -52,8 +52,9 @@ sig
     make_aggregate:('e -> 'a) -> (* turn a single event into an aggregate *)
     (* add this event into the aggregate (in-place). *)
     aggregate:('a -> 'e -> unit) ->
-    (* If true this aggregate is output *)
-    ?is_complete:('a -> bool) ->
+    (* If true this aggregate is outputted. The second key is the max key that
+     * has ever been received. Useful for time-outs. *)
+    ?is_complete:('key -> 'a -> 'key -> bool) ->
     (* if set, timeout an aggregate after it's untouched for that long *)
     ?timeout_sec:float ->
     (* if set, timeout an aggregate after it's untouched for that many event
@@ -102,7 +103,6 @@ sig
     ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     retention:int -> unit ->
     ('e, unit) result
-
 end
 
 (* The following functor automatically numbers every node.

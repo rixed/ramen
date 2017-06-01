@@ -18,14 +18,19 @@ let opt_print optname () = function
   | None -> ""
   | Some v -> Printf.sprintf "%s=%S" optname v
 
-let run_ramen debug ramen_bin alerting_cmxs alerter_conf_db alerting_conf_db csv =
+let run_ramen debug trace ramen_bin alerting_cmxs alerter_conf_db alerting_conf_db csv ramen_other_options =
   let entry_point = "to unidir volumes" in
+  (* Even when we specify that one in alerter_conf_db we mean the default empty one: *)
   run_cmd debug "rm -f /tmp/alerter_conf.db" |> must_run_ok ;
+  (* In any cases we do not want to keep alert-manager state from a previous run: *)
+  run_cmd debug "rm -f /tmp/alerter_state.raw" |> must_run_ok ;
   let cmd =
-    Printf.sprintf "%a %S exec%s %S %a --set '{node=Name %S; settings=[ReadFile %S%s]}'"
+    Printf.sprintf "%a %S exec%s%s %s %S %a --set '{node=Name %S; settings=[ReadFile %S%s]}'"
       (opt_print "CONFIG_DB") alerting_conf_db
       ramen_bin
       (if debug then " --debug" else "")
+      (if trace then " --trace" else "")
+      ((IO.to_string (List.print ~first:"" ~last:"" ~sep:" " String.print)) ramen_other_options)
       alerting_cmxs
       (opt_print "--alert-mgmt-db") alerter_conf_db
       entry_point csv (if debug then ";Debug" else "") in
@@ -38,21 +43,25 @@ let clean_all debug files =
 
 let () =
   let ramen_bin = ref "../ramen/rigati"
+  and other_opts = ref []
   and alerting_cmxs = ref "../configurations/alerting_conf.cmxs"
   and alerter_conf_db = ref None
   and alerting_conf_db = ref None
   and csv = ref ""
   and debug = ref false
+  and trace = ref false
   and list_tests = ref false
   and keep_temps = ref false in
   let arg_specs = Arg.[
     "--ramen-path", Set_string ramen_bin, "ramen binary location" ;
+    "--ramen-opt", String (fun x -> other_opts := x :: !other_opts), "Ramen options to add" ;
     "--alerting-cmxs", Set_string alerting_cmxs, "Alerting configuration module" ;
     "--alert-mgmt-conf", String (fun x -> alerter_conf_db := Some x), "Alert manager configuration to use" ;
     "--alerting-conf", String (fun x -> alerting_conf_db := Some x), "Alerting configuration to use" ;
     "--list", Set list_tests, "List available test scenarios" ;
     "--keep-temps", Set keep_temps, "Do not delete temporary files" ;
-    "--debug", Set debug, "More verbose output" ]
+    "--debug", Set debug, "More verbose output" ;
+    "--trace", Set trace, "Display every step of the execution" ]
   and usage_msg = "run_test [options] (file.csv | scenario | --list)" in
   Arg.(parse arg_specs (fun x -> csv := x) usage_msg) ;
   if !list_tests then (
@@ -67,7 +76,7 @@ let () =
   else (
     (match Hashtbl.find TestGen.all_tests !csv with
     | exception Not_found ->
-      run_ramen !debug !ramen_bin !alerting_cmxs !alerter_conf_db !alerting_conf_db !csv ;
+      run_ramen !debug !trace !ramen_bin !alerting_cmxs !alerter_conf_db !alerting_conf_db !csv !other_opts ;
       if not !keep_temps then clean_all !debug []
     | (module T : TestGen.TEST) ->
       let csv = T.traffic () in
@@ -82,6 +91,6 @@ let () =
             fname) in
       let alert_db_file = Filename.temp_file "alerting_conf_" ".db" in
       AlertDb.create ~debug:!debug alert_db_file (T.alerting_config ()) ;
-      run_ramen !debug !ramen_bin !alerting_cmxs !alerter_conf_db (Some alert_db_file) csv_file ;
+      run_ramen !debug !trace !ramen_bin !alerting_cmxs !alerter_conf_db (Some alert_db_file) csv_file !other_opts ;
       if not !keep_temps then clean_all !debug [alert_db_file])
   )

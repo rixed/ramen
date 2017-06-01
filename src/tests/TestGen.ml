@@ -29,6 +29,60 @@ let kbs k = 1024 * k
 
 let clock = ref 0 (* in usec, used to generate traffic. *)
 
+let check_csv (
+      poller, start, stop, itf_clt, itf_srv, vlan_clt, vlan_srv,
+      mac_clt, mac_srv, zone_clt, zone_srv, ip4_clt, ip6_clt,
+      ip4_srv, ip6_srv, ip4_external, ip6_external, port_clt, port_srv,
+      diffserv_clt, diffserv_srv, os_clt, os_srv, mtu_clt, mtu_srv,
+      captured_pcap, application, protostack, uuid,
+      bytes_clt, bytes_srv, packets_clt, packets_srv,
+      payload_bytes_clt, payload_bytes_srv,
+      payload_packets_clt, payload_packets_srv,
+      retrans_bytes_clt, retrans_bytes_srv,
+      retrans_payload_bytes_clt, retrans_payload_bytes_srv,
+      syn_count_clt, fin_count_clt, fin_count_srv, rst_count_clt,
+      rst_count_srv, timeout_count, close_count,
+      dupack_count_clt, dupack_count_srv,
+      zero_window_count_clt, zero_window_count_srv,
+      ct_count, ct_sum, ct_square_sum, rt_count_srv,
+      rt_sum_srv, rt_square_sum_srv,
+      rtt_count_clt, rtt_sum_clt, rtt_square_sum_clt,
+      rtt_count_srv, rtt_sum_srv, rtt_square_sum_srv,
+      rd_count_clt, rd_sum_clt, rd_square_sum_clt,
+      rd_count_srv, rd_sum_srv, rd_square_sum_srv,
+      dtt_count_clt, dtt_sum_clt, dtt_square_sum_clt,
+      dtt_count_srv, dtt_sum_srv, dtt_square_sum_srv,
+      dcerpc_uuid) =
+  (* Do not allow packets to be 0 if there are some bytes, esp since we use
+   * number of packets to convert into/from unidir: *)
+  let packets_clt =
+    if bytes_clt > 0 && packets_clt = 0 then 1 else packets_clt
+  and packets_srv =
+    if bytes_srv > 0 && packets_srv = 0 then 1 else packets_srv in
+  poller, start, stop, itf_clt, itf_srv, vlan_clt, vlan_srv,
+  mac_clt, mac_srv, zone_clt, zone_srv, ip4_clt, ip6_clt,
+  ip4_srv, ip6_srv, ip4_external, ip6_external, port_clt, port_srv,
+  diffserv_clt, diffserv_srv, os_clt, os_srv, mtu_clt, mtu_srv,
+  captured_pcap, application, protostack, uuid,
+  bytes_clt, bytes_srv, packets_clt, packets_srv,
+  payload_bytes_clt, payload_bytes_srv,
+  payload_packets_clt, payload_packets_srv,
+  retrans_bytes_clt, retrans_bytes_srv,
+  retrans_payload_bytes_clt, retrans_payload_bytes_srv,
+  syn_count_clt, fin_count_clt, fin_count_srv, rst_count_clt,
+  rst_count_srv, timeout_count, close_count,
+  dupack_count_clt, dupack_count_srv,
+  zero_window_count_clt, zero_window_count_srv,
+  ct_count, ct_sum, ct_square_sum, rt_count_srv,
+  rt_sum_srv, rt_square_sum_srv,
+  rtt_count_clt, rtt_sum_clt, rtt_square_sum_clt,
+  rtt_count_srv, rtt_sum_srv, rtt_square_sum_srv,
+  rd_count_clt, rd_sum_clt, rd_square_sum_clt,
+  rd_count_srv, rd_sum_srv, rd_square_sum_srv,
+  dtt_count_clt, dtt_sum_clt, dtt_square_sum_clt,
+  dtt_count_srv, dtt_sum_srv, dtt_square_sum_srv,
+  dcerpc_uuid
+
 (* Create a TCPv29 CSV from optional parameters: *)
 let traffic
       ?(poller="9GJ3152") ?(start=0) ?(stop=1) ?itf_clt ?itf_srv
@@ -59,32 +113,33 @@ let traffic
       ?dcerpc_uuid () =
   (* All IPvs cannot be NULL: *)
   let ip4_clt = if ip4_clt = None && ip6_clt = None
-                then Some (Uint32.of_int 3232244565) else ip4_clt in
-  let ip4_srv = if ip4_srv = None && ip6_srv = None
+                then Some (Uint32.of_int 3232244565) else ip4_clt
+  and ip4_srv = if ip4_srv = None && ip6_srv = None
                 then Some (Uint32.of_int 3232244656) else ip4_srv in
-  poller, start, stop, itf_clt, itf_srv, vlan_clt, vlan_srv,
-  mac_clt, mac_srv, zone_clt, zone_srv, ip4_clt, ip6_clt,
-  ip4_srv, ip6_srv, ip4_external, ip6_external, port_clt, port_srv,
-  diffserv_clt, diffserv_srv, os_clt, os_srv, mtu_clt, mtu_srv,
-  captured_pcap, application, protostack, uuid,
-  bytes_clt, bytes_srv, packets_clt, packets_srv,
-  payload_bytes_clt, payload_bytes_srv,
-  payload_packets_clt, payload_packets_srv,
-  retrans_bytes_clt, retrans_bytes_srv,
-  retrans_payload_bytes_clt, retrans_payload_bytes_srv,
-  syn_count_clt, fin_count_clt, fin_count_srv, rst_count_clt,
-  rst_count_srv, timeout_count, close_count,
-  dupack_count_clt, dupack_count_srv,
-  zero_window_count_clt, zero_window_count_srv,
-  ct_count, ct_sum, ct_square_sum, rt_count_srv,
-  rt_sum_srv, rt_square_sum_srv,
-  rtt_count_clt, rtt_sum_clt, rtt_square_sum_clt,
-  rtt_count_srv, rtt_sum_srv, rtt_square_sum_srv,
-  rd_count_clt, rd_sum_clt, rd_square_sum_clt,
-  rd_count_srv, rd_sum_srv, rd_square_sum_srv,
-  dtt_count_clt, dtt_sum_clt, dtt_square_sum_clt,
-  dtt_count_srv, dtt_sum_srv, dtt_square_sum_srv,
-  dcerpc_uuid
+  check_csv (
+    poller, start, stop, itf_clt, itf_srv, vlan_clt, vlan_srv,
+    mac_clt, mac_srv, zone_clt, zone_srv, ip4_clt, ip6_clt,
+    ip4_srv, ip6_srv, ip4_external, ip6_external, port_clt, port_srv,
+    diffserv_clt, diffserv_srv, os_clt, os_srv, mtu_clt, mtu_srv,
+    captured_pcap, application, protostack, uuid,
+    bytes_clt, bytes_srv, packets_clt, packets_srv,
+    payload_bytes_clt, payload_bytes_srv,
+    payload_packets_clt, payload_packets_srv,
+    retrans_bytes_clt, retrans_bytes_srv,
+    retrans_payload_bytes_clt, retrans_payload_bytes_srv,
+    syn_count_clt, fin_count_clt, fin_count_srv, rst_count_clt,
+    rst_count_srv, timeout_count, close_count,
+    dupack_count_clt, dupack_count_srv,
+    zero_window_count_clt, zero_window_count_srv,
+    ct_count, ct_sum, ct_square_sum, rt_count_srv,
+    rt_sum_srv, rt_square_sum_srv,
+    rtt_count_clt, rtt_sum_clt, rtt_square_sum_clt,
+    rtt_count_srv, rtt_sum_srv, rtt_square_sum_srv,
+    rd_count_clt, rd_sum_clt, rd_square_sum_clt,
+    rd_count_srv, rd_sum_srv, rd_square_sum_srv,
+    dtt_count_clt, dtt_sum_clt, dtt_square_sum_clt,
+    dtt_count_srv, dtt_sum_srv, dtt_square_sum_srv,
+    dcerpc_uuid)
 
 (* Take a single TCPv29 CSV and slice it into 1min slices,
  * possibly randomizing some of the fields. *)
@@ -121,7 +176,7 @@ let slice ?(duration=(mins 1)) ?(randomize=[]) (
     let slc x = int_of_float (Float.round (frac *. float_of_int x)) in
     let slc2 x = slc x (* FIXME *) in
     let slco = Option.map slc in
-    loop ((
+    loop (check_csv (
       poller, orig, next_orig, itf_clt, itf_srv, vlan_clt, vlan_srv,
       mac_clt, mac_srv, zone_clt, zone_srv, ip4_clt, ip6_clt,
       ip4_srv, ip6_srv, ip4_external, ip6_external, port_clt, port_srv,
@@ -149,14 +204,17 @@ let slice ?(duration=(mins 1)) ?(randomize=[]) (
   in
   loop [] start
 
-let traffic_between_zones z1 z2 ~bandw ~duration prev =
-  let hbandw = bandw / 2 in
+let traffic_between_zones z1 z2 ?(bandw_asc=0) ?(bandw_dsc=0)
+                          ~duration prev =
   let start = !clock in
   let stop = start + usec_of_float duration in
   clock := stop ;
+  let for_duration v =
+    int_of_float (float_of_int v *. duration) in
   prev @ slice ~randomize:[`ip_clt; `ip_srv]
     (traffic ~start ~stop ~zone_clt:z1 ~zone_srv:z2
-             ~bytes_clt:hbandw ~bytes_srv:hbandw ())
+             ~bytes_clt:(for_duration bandw_asc)
+             ~bytes_srv:(for_duration bandw_dsc) ())
 
 
 let all_tests : (string, (module TEST)) Hashtbl.t =

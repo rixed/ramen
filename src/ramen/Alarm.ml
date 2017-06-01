@@ -44,7 +44,7 @@ let at alarm time callback =
 (* Helper to get a callback called regularly. *)
 let every ?until n =
   if n < !timestep then
-    Printf.eprintf "WARNING: timestep (%f) is less than some periodic alarms (%f)\n%!"
+    Printf.eprintf "WARNING: timestep (%g) is less than some periodic alarms (%g)\n%!"
       !timestep n ;
   fun f ->
     let alarm = make () in
@@ -88,7 +88,7 @@ let run_until =
 let quit = ref false
 let rec main_loop () =
   if !quit then Lwt.return_unit else (
-    if debug then Printf.eprintf "sleeping for %fs...\n%!" !timestep ;
+    if debug then Printf.eprintf "sleeping for %gs...\n%!" !timestep ;
     let%lwt () = Lwt_unix.sleep !timestep in
     run_until (Unix.gettimeofday ()) ;
     main_loop ()

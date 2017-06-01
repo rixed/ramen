@@ -16,11 +16,11 @@ let () = Printexc.register_printer (function
   | _ -> None)
 
 let dying task =
-  Printf.eprintf "Committing suicide while %s\n%!" task ;
+  if !debug then Printf.eprintf "Committing suicide while %s\n%!" task ;
   Lwt.fail_with (Printf.sprintf "Committing suicide while %s\n%!" task)
 
 let import_file ?(do_unlink=false) ~alive filename ppp k =
-  Printf.eprintf "Importing file %S...\n%!" filename ;
+  if !debug then Printf.eprintf "Importing file %S...\n%!" filename ;
   match%lwt Lwt_unix.(openfile filename [ O_RDONLY ] 0x644) with
   | exception e ->
     Printf.eprintf "Cannot open file %S: %s, skipping.\n%!"
@@ -71,7 +71,7 @@ let register_file_reader ~alive filename ppp k =
   async reading_thread
 
 let check_file_exist kind kind_name path =
-  Printf.eprintf "Checking %S is a %s...\n%!" path kind_name ;
+  if !debug then Printf.eprintf "Checking %S is a %s...\n%!" path kind_name ;
   let open Lwt_unix in
   let%lwt stats = stat path in
   if stats.st_kind <> kind then
@@ -89,7 +89,7 @@ let register_dir_reader ~alive path glob ppp k =
        * but for now let's not do too many things simultaneously. *)
       import_file ~alive ~do_unlink:true (path ^"/"^ filename) ppp k
     else (
-      Printf.eprintf "File %S is not interesting.\n%!" filename ;
+      if !debug then Printf.eprintf "File %S is not interesting.\n%!" filename ;
       return_unit
     ) in
   let reading_thread () =
@@ -101,21 +101,21 @@ let register_dir_reader ~alive path glob ppp k =
     (* Before paying attention to the notifications, scan all files that
      * are already waiting there. There is a race condition but soon we
      * will to both simultaneously *)
-    Printf.eprintf "Import all files in dir %S...\n%!" path ;
+    if !debug then Printf.eprintf "Import all files in dir %S...\n%!" path ;
     let stream = Lwt_unix.files_of_directory path in
     let%lwt () = Lwt_stream.iter_s import_file_if_match stream in
-    Printf.eprintf "...done. Now import any new file in %S...\n%!" path ;
+    if !debug then Printf.eprintf "...done. Now import any new file in %S...\n%!" path ;
     let rec notify_loop () =
       if alive () then
         match%lwt Lwt_inotify.read handler with
         | _watch, kinds, _cookie, Some filename
           when List.mem Inotify.Create kinds
             && not (List.mem Inotify.Isdir kinds) ->
-          Printf.eprintf "New file %S in dir %S!\n%!" filename path ;
+          if !debug then Printf.eprintf "New file %S in dir %S!\n%!" filename path ;
           import_file_if_match filename >>=
           notify_loop
         | _watch, _kinds, _cookie, filename_opt ->
-          Printf.eprintf "Received a useless inotification for %a\n%!"
+          if !debug then Printf.eprintf "Received a useless inotification for %a\n%!"
             (Option.print String.print) filename_opt ;
           notify_loop ()
       else dying (Printf.sprintf "monitoring %S" path)

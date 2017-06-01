@@ -22,7 +22,8 @@ type alert =
   { name : string ;
     team : string ;
     importance : int ;
-    time : float ;
+    started : float ;
+    mutable stopped : float option ;
     title : string ;
     text : string }
 
@@ -43,13 +44,12 @@ type escalation =
 
 (* The part of the internal state that we persist on disk: *)
 type persisted_state = {
+  (* Ongoing incidents stays there until they are manually closed (with
+   * comment, reason, etc...) *)
   mutable ongoing_incidents : incident list ;
 
-  (* All ongoing escalations, keyed by escalation, value = step we are
-   * currently in and when we entered it. Note that strictly speaking
-   * we do not need this hash since we already have all escalation in
-   * alarms, but we'd like to save this from time to time on disk to help
-   * not loosing track of what's happening in case of crash: *)
+  (* The escalations that are live. Removed as soon as we managed to reach the
+   * oncall *)
   mutable ongoing_escalations : (int, escalation) Hashtbl.t ;
 
   (* All global (aka team-wide) inhibits, keyed by team name, value being
@@ -108,7 +108,7 @@ module Alert =
 struct
   let make name team importance title text =
     { name ; team ; importance ; title ; text ;
-      time = !Alarm.now }
+      started = !Alarm.now ; stopped = None }
 end
 
 module Incident =
@@ -124,16 +124,21 @@ struct
   let has_alert_with i cond =
     List.exists cond i.alerts
 
+  let find_alert state ~name ~team ~title =
+    List.find_map (fun i ->
+        if (List.hd i.alerts).team <> team then None else
+        match List.find (fun a ->
+                           a.name = name && a.title = title) i.alerts with
+        | exception Not_found -> None
+        | a -> Some (i, a)
+      ) state.persist.ongoing_incidents
+
   (* Let's be conservative and create a new incident for each new alerts.
    * User could still manually merge incidents later on. *)
   let get_or_create state alert =
-    match List.find (fun i ->
-              (List.hd i.alerts).team = alert.team &&
-              has_alert_with i (fun a -> a.name = alert.name)
-            ) state.persist.ongoing_incidents
-    with exception Not_found -> make state alert, false
-       | i -> i, has_alert_with i (fun a -> a.name = alert.name &&
-                                            a.title = alert.title)
+    match find_alert state alert.name alert.team alert.title with
+    | exception Not_found -> make state alert, false
+    | i, _ -> i, true
 end
 
 module Log =
@@ -143,6 +148,8 @@ struct
   type log_event = NewAlert of (alert * incident * alert_outcome)
                  (* TODO: we'd like to have the origin of this ack. *)
                  | AckUnknown of int | Ack of escalation
+                 | StopUnstartedAlert of (string * string * string)
+                 | StopAlert of (alert * incident)
   let add = ignore (* TODO *)
 end
 
@@ -183,9 +190,9 @@ end
 
 module Sender =
 struct
-  let printer id alert =
-    Printf.printf "Title: %s\nId: %d\n%s\n%!"
-      alert.title id alert.text
+  let printer id attempt alert victim =
+    Printf.printf "Title: %s\nId: %d\nAttempt: %d\nDest: %s\n%s\n%!"
+      alert.title id attempt victim alert.text
 
   let get = function
     | Contact.Console -> printer
@@ -196,11 +203,9 @@ end
 module Escalation =
 struct
   let default_escalation alert incident =
-    (* First send type 0, then immediately send type 1 then
-     * after 5 minutes send type 2 then after 10 minutes send type 3,
-     * and repeat type 3 every 10 minutes: *)
+    (* First send type 0, then after 5 minutes send type 1 then after 10
+     * minutes send type 2, and repeat type 2 every 10 minutes: *)
     { steps = [|
-        { timeout = 0. ; victims = [| 0 |] } ;
         { timeout = 350. ; victims = [| 0 |] } ;
         { timeout = 600. ; victims = [| 0 ; 1 |] } ;
         { timeout = 600. ; victims = [| 0 ; 1 |] }
@@ -262,7 +267,7 @@ struct
         let contact = get_cap victim.contacts esc.attempt in
         let sender = Sender.get contact in
         Log.(add (NewAlert (esc.alert, esc.incident, Notify contact))) ;
-        sender id esc.alert
+        sender id esc.attempt esc.alert victim.name
       ) victims
 
   (* Send a message and prepare the escalation *)
@@ -329,27 +334,41 @@ let open_config_db file =
     db_open ~mode:`READONLY file
 
 let check_escalations state () =
-  Hashtbl.iter (fun id esc ->
-      let step = get_cap esc.steps esc.attempt in
-      if !Alarm.now >= esc.last_sent +. step.timeout then (
-        (* We must escalate *)
-        esc.attempt <- esc.attempt + 1 ;
-        esc.last_sent <- !Alarm.now ;
-        Escalation.send state id esc)
+  Hashtbl.filteri (fun id esc ->
+      if esc.alert.stopped = None then (
+        let step = get_cap esc.steps esc.attempt in
+        if !Alarm.now >= esc.last_sent +. step.timeout then (
+          (* We must escalate *)
+          esc.attempt <- esc.attempt + 1 ;
+          esc.last_sent <- !Alarm.now ;
+          Escalation.send state id esc) ;
+        true
+      ) else ( (* alert has stopped *)
+        false
+      )
     ) state.persist.ongoing_escalations
 
 let get_state save_file db_config_file =
+  let get_new () =
+    { ongoing_incidents = [] ;
+      ongoing_escalations = Hashtbl.create 11 ;
+      team_inhibits = Hashtbl.create 11 ;
+      alert_inhibits = Hashtbl.create 11 ;
+      next_alert_id = 0 }
+  in
   let persist =
     try
       File.with_file_in save_file (fun ic -> Marshal.input ic)
     with Sys_error err ->
-      Printf.eprintf "Cannot read state from file %S: %s. Starting anew\n%!"
-        save_file err ;
-      { ongoing_incidents = [] ;
-        ongoing_escalations = Hashtbl.create 11 ;
-        team_inhibits = Hashtbl.create 11 ;
-        alert_inhibits = Hashtbl.create 11 ;
-        next_alert_id = 0 }
+          if debug then
+            Printf.eprintf "Cannot read state from file %S: %s. Starting anew\n%!"
+              save_file err ;
+          get_new ()
+       | BatInnerIO.No_more_input ->
+          if debug then
+            Printf.eprintf "Cannot read state from file %S: not enough input. Starting anew\n%!"
+              save_file ;
+          get_new ()
     in
   let alarm = Alarm.make ()
   and db = open_config_db db_config_file in
@@ -385,20 +404,35 @@ let save_state state =
 
 (* Everything start by: we receive an alert with a name, a team name,
  * and a description (text + title). *)
-let alert state ~name ~team ~importance ~title ~text =
-  (* First step: deduplication *)
-  let alert = Alert.make name team importance title text in
-  let incident, is_dup = Incident.get_or_create state alert in
-  if is_dup then (
-    Log.(add (NewAlert (alert, incident, Duplicate))) ;
-  ) else if is_inhibited state name team then (
-    Log.(add (NewAlert (alert, incident, Inhibited))) ;
-  ) else if incident.stfu then (
-    Log.(add (NewAlert (alert, incident, STFU))) ;
+let alert state ~name ~team ~importance ~title ~text ~firing =
+  if firing then (
+    (* First step: deduplication *)
+    let alert = Alert.make name team importance title text in
+    let incident, is_dup = Incident.get_or_create state alert in
+    if is_dup then (
+      Log.(add (NewAlert (alert, incident, Duplicate))) ;
+    ) else if is_inhibited state name team then (
+      Log.(add (NewAlert (alert, incident, Inhibited))) ;
+    ) else if incident.stfu then (
+      Log.(add (NewAlert (alert, incident, STFU))) ;
+    ) else (
+      let esc = Escalation.make state alert incident in
+      Escalation.start state esc ;
+      save_state state
+    )
   ) else (
-    let esc = Escalation.make state alert incident in
-    Escalation.start state esc ;
-    save_state state
+    (* Retrieve the alert and set it's closing time *)
+    match Incident.find_alert state ~name ~team ~title with
+    | exception Not_found ->
+      (* Maybe we just strted in non-firing position, or the incident
+       * have been manually archived already. Better not ask too many
+       * questions and just log *)
+      Log.(add (StopUnstartedAlert (name, team, title)))
+    | i, a ->
+      if debug then Printf.eprintf "Alert stopped.\n" ;
+      a.stopped <- Some !Alarm.now ;
+      Log.(add (StopAlert (a, i))) ;
+      (* Setting this will also terminate the escalation *)
   )
 
 let acknowledge state id =

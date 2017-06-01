@@ -1,6 +1,7 @@
 (* Helper to extract alerting configuration re. network link from a SQLite DB.
  *)
 open Helpers
+open Batteries
 
 let debug = false
 
@@ -22,8 +23,8 @@ type config_key =
      * (typically 5 minutes), and we henceforth consider only the averages over
      * that duration. If incoming events are already aggregated (which they
      * certainly are), then this avg_window has to be longer that event
-     * aggregation window. If unset we use incoming events as is. *)
-    avg_window : float option ;
+     * aggregation window. *)
+    avg_window : float ;
     (* Then we take as many of those averages as to cover this observation
      * window (which thus has to be longer that avg_window: *)
     obs_window : float ;
@@ -32,9 +33,9 @@ type config_key =
      * present): *)
     percentile : float ;
     (* And we check that this percentile traffic volume is between those
-     * bounds: *)
-    min_bytes : int option ;
-    max_bytes : int option ;
+     * bounds (in bytes per seconds): *)
+    min_bps : int option ;
+    max_bps : int option ;
     (* Additionally, each time an average volume is above this
      * min_for_relevance... *)
     min_for_relevance : int ;
@@ -49,11 +50,11 @@ let config_key_of_step db =
   { name = column db.get_config 0 |> to_string |> required ;
     source = column db.get_config 1 |> to_int ;
     dest = column db.get_config 2 |> to_int ;
-    avg_window = column db.get_config 3 |> to_float ;
+    avg_window = column db.get_config 3 |> to_float |> required ;
     obs_window = column db.get_config 4 |> to_float |> required ;
     percentile = column db.get_config 5 |> to_float |> required ;
-    min_bytes = column db.get_config 6 |> to_int ;
-    max_bytes = column db.get_config 7 |> to_int ;
+    min_bps = column db.get_config 6 |> to_int ;
+    max_bps = column db.get_config 7 |> to_int ;
     min_for_relevance = column db.get_config 8 |> to_int |> default 0 ;
     max_rtt = column db.get_config 9 |> to_float ;
     max_rr = column db.get_config 10 |> to_float }
@@ -77,7 +78,7 @@ let flow_alert_params_query =
           zone_from AS source, \
           zone_to AS dest, \
           (5 * 60) AS avg_window, \
-          (3600 * 12) AS obs_window, \
+          (3600 * 2) AS obs_window, \
           0.95 AS percentile, \
           NULL AS \"min\", \
           bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
@@ -91,7 +92,7 @@ let flow_alert_params_query =
           zone_to AS source, \
           zone_from AS dest, \
           (5 * 60) AS avg_window, \
-          (3600 * 12) AS obs_window, \
+          (3600 * 2) AS obs_window, \
           0.95 AS percentile, \
           NULL AS \"min\", \
           bandwrate_alert_dsc * bandw_available_dsc / 100 AS \"max\", \
@@ -105,7 +106,7 @@ let flow_alert_params_query =
           zone_to AS source, \
           zone_from AS dest, \
           (5 * 60) AS avg_window, \
-          (3600 * 12) AS obs_window, \
+          (3600 * 2) AS obs_window, \
           0.95 AS percentile, \
           NULL AS \"min\", \
           bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
@@ -126,7 +127,7 @@ let get_db_mtime stmt =
   match step stmt with
   | Rc.ROW ->
     let t = column stmt 0 |> to_float |> required in
-    if debug then Printf.eprintf "Max mtime in DB: %f\n%!" t ;
+    if debug then Printf.eprintf "Max mtime in DB: %g\n%!" t ;
     t
   | _ ->
     failwith "No idea what to do from this get_mtime result"
@@ -151,7 +152,7 @@ let check_config_changed db =
   try (
     let t = get_db_mtime db.get_mtime in
     if t > db.last_updated then (
-      if debug then Printf.eprintf "DB mtime changed to %f (was %f)\n%!" t db.last_updated ;
+      if debug then Printf.eprintf "DB mtime changed to %g (was %g)\n%!" t db.last_updated ;
       db.new_mtime <- t
     )
   ) with e ->
@@ -173,8 +174,9 @@ let build_config alert_of_conf db =
   let rec loop prev =
     match step db.get_config with
     | Rc.ROW ->
-      if debug then Printf.eprintf "Read one DB row...\n%!" ;
       let config_key = config_key_of_step db in
+      if debug then Printf.eprintf "Read one DB row from zone %a to %a...\n%!"
+        (Option.print Int.print) config_key.source (Option.print Int.print) config_key.dest ;
       loop (alert_of_conf config_key :: prev)
     | Rc.DONE ->
       if debug then Printf.eprintf "Build a conf with %d alerts\n%!"

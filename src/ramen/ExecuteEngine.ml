@@ -10,12 +10,120 @@ let init ?(alerter_conf_db="/tmp/alerter_conf.db")
          ?(alerter_tmp_state="/tmp/alerter_state.raw") () =
   alerter := Some (Alerter.get_state alerter_tmp_state alerter_conf_db)
 
-module Impl (Conf : sig val graph : Graph.t end) :
+module Impl : Engine.S with type ('e, 'k) result = 'e -> unit Lwt.t =
+struct
+  type ('e, 'k) result = 'e -> unit Lwt.t
+
+  let output ks e =
+    Lwt_list.iter_p (fun k -> k e) ks
+
+  let discard ?name ?id ?ppp () =
+    ignore name ; ignore id ; ignore ppp ;
+    fun _ -> return_unit
+
+  let replicate ?name ?id ?ppp ks =
+    ignore name ; ignore id ; ignore ppp ;
+    let output = output ks in
+    fun e -> output e
+
+  let convert ?name ?id ?ppp ~f ks =
+    ignore name ; ignore id ; ignore ppp ;
+    let output = output ks in
+    fun e ->
+      Lwt_list.iter_s output (f e)
+
+  let filter ?name ?id ?ppp ~by ks =
+    ignore name ; ignore id ; ignore ppp ;
+    let output = output ks in
+    fun e ->
+      if by e then output e else return_unit
+
+  let on_change ?name ?id ?ppp ks =
+    ignore name ; ignore id ; ignore ppp ;
+    let output = output ks in
+    let prev = ref None in
+    fun e ->
+      match !prev with
+      | Some e' when e' = e -> return_unit
+      | _ -> prev := Some e ; output e
+
+  type 'a aggr_value =
+    { mutable last_touched : float ; mutable last_ev_count : int ; aggr : 'a }
+  let aggregate ?name ?id ?ppp ~key_of_event ~make_aggregate
+                ~aggregate ?is_complete ?timeout_sec ?timeout_events ks =
+    ignore name ; ignore id ; ignore ppp ;
+    let output = output ks in
+    let h = Hashtbl.create 701 in
+    let event_count = ref 0 in
+    let max_key = ref None in
+    fun e ->
+      incr event_count ;
+      let k = key_of_event e in
+      let max_k =
+        match !max_key with None -> k | Some mk -> max mk k in
+      max_key := Some max_k ;
+      let to_output = ref [] in
+      (match Hashtbl.find h k with
+      | exception Not_found ->
+        Hashtbl.add h k {
+            last_touched = !Alarm.now ;
+            last_ev_count = !event_count ;
+            aggr = make_aggregate e }
+        | av ->
+          av.last_touched <- !Alarm.now ;
+          av.last_ev_count <- !event_count ;
+          aggregate av.aggr e) ;
+      (* haha lol: TODO a heap of timeouts *)
+      Hashtbl.filteri_inplace (fun k av ->
+          if Option.map_default (fun ts -> !Alarm.now -. av.last_touched >= ts) false timeout_sec ||
+             Option.map_default (fun tc -> !event_count - av.last_ev_count >= tc) false timeout_events ||
+             Option.map_default (fun ic -> ic k av.aggr max_k) false is_complete
+          then (
+            to_output := av.aggr :: !to_output ;
+            false
+          ) else true
+        ) h ;
+      Lwt_list.iter_p output !to_output
+
+  let sliding_window ?name ?id ?ppp ~cmp ~is_complete ks =
+    ignore name ; ignore id ; ignore ppp ;
+    let output = output ks in
+    let past_events = ref [] in
+    fun e ->
+      past_events := List.fast_sort cmp (e :: !past_events) ;
+      if is_complete !past_events then (
+        let%lwt () = output !past_events in
+        past_events := List.tl !past_events ;
+        return_unit
+      ) else return_unit
+
+  let all ?name ?id ?ppp ~cond ks =
+    ignore name ; ignore id ; ignore ppp ;
+    let output = output ks in
+    fun es ->
+      output (List.for_all cond es)
+
+  let alert ?(name="unnamed alert") ?id ?(ppp=PPP_OCaml.bool) ?(importance=0) ~team ~title ~text () =
+    ignore id ; ignore ppp ;
+    fun firing ->
+      let text = text 42 in
+      Lwt.wrap (fun () ->
+        Alerter.alert (Option.get !alerter) ~name ~team ~importance
+                      ~title ~text ~firing)
+
+  let save ?name ?id ?ppp ~retention () =
+    ignore name ; ignore id ; ignore ppp ;
+    fun e ->
+      ignore retention ; ignore e (* TODO *) ;
+      return_unit
+end
+
+module AddSettings (Conf : sig val graph : Graph.t end) (M : Engine.S with type ('e, 'k) result = 'e -> unit Lwt.t) :
   Engine.S with type ('e, 'k) result = 'e -> unit Lwt.t =
 struct
   type ('e, 'k) result = 'e -> unit Lwt.t
 
-  let connect ?id ?ppp ks op =
+  let connect ?id ?ppp op =
     let id = Option.get id in (* If this fail it's because you forgot AddId *)
     let node = Graph.lookup_node Conf.graph (Graph.Id id) in
 
@@ -32,90 +140,92 @@ struct
      * PPP would be able to handle all supported syntax (json, ocaml...) and
      * pick one according to the node settings.  *)
 
-    (* Our output function: *)
-    let output e = Lwt_list.iter_p (fun k -> k e) ks in
     Setting.wrap_op ?ppp node (fun e ->
-      if Node.is_alive node then op output e
+      if Node.is_alive node then op e
       else return_unit)
 
   let discard ?name ?id ?ppp () =
-    ignore name ;
-    connect ?id ?ppp [] (fun _ _ -> return_unit)
+    connect ?id ?ppp (M.discard ?name ?id ?ppp ())
 
   let replicate ?name ?id ?ppp ks =
-    ignore name ;
-    connect ?id ?ppp ks (fun output e -> output e)
+    connect ?id ?ppp (M.replicate ?name ?id ?ppp ks)
 
   let convert ?name ?id ?ppp ~f ks =
-    ignore name ;
-    connect ?id ?ppp ks (fun output e ->
-      Lwt_list.iter_s output (f e))
+    connect ?id ?ppp (M.convert ?name ?id ?ppp ~f ks)
 
   let filter ?name ?id ?ppp ~by ks =
-    ignore name ;
-    connect ?id ?ppp ks (fun output e ->
-      if by e then output e else return_unit)
+    connect ?id ?ppp (M.filter ?name ?id ?ppp ~by ks)
 
   let on_change ?name ?id ?ppp ks =
-    ignore name ;
-    let prev = ref None in
-    connect ?id ?ppp ks (fun output e ->
-      match !prev with
-      | Some e' when e' = e -> return_unit
-      | _ -> prev := Some e ; output e)
+    connect ?id ?ppp (M.on_change ?name ?id ?ppp ks)
 
   let aggregate ?name ?id ?ppp ~key_of_event ~make_aggregate
                 ~aggregate ?is_complete ?timeout_sec ?timeout_events ks =
-    ignore name ;
-    let h = Hashtbl.create 701 in
-    let event_count = ref 0 in
-    connect ?id ?ppp ks (fun output e ->
-      incr event_count ;
-      let k = key_of_event e in
-      let to_output = ref [] in
-      (match Hashtbl.find h k with
-      | exception Not_found ->
-        Hashtbl.add h k (!Alarm.now, !event_count, make_aggregate e)
-      | _, _, a ->
-        aggregate a e ;
-        Option.may (fun ic -> if ic a then to_output := a :: !to_output) is_complete) ;
-      (* haha lol: TODO a heap of timeouts *)
-      Hashtbl.filter_inplace (fun (t, c, a) ->
-          if Option.map_default (fun ts -> !Alarm.now -. t >= ts) false timeout_sec ||
-             Option.map_default (fun tc -> !event_count - c >= tc) false timeout_events
-          then (
-            to_output := a :: !to_output ;
-            false
-          ) else true
-        ) h ;
-      Lwt_list.iter_p output !to_output)
+    connect ?id ?ppp (M.aggregate ?name ?id ?ppp ~key_of_event ~make_aggregate ~aggregate ?is_complete ?timeout_sec ?timeout_events ks)
 
   let sliding_window ?name ?id ?ppp ~cmp ~is_complete ks =
-    ignore name ;
-    let past_events = ref [] in
-    connect ?id ?ppp ks (fun output e ->
-      past_events := List.fast_sort cmp (e :: !past_events) ;
-      if is_complete !past_events then (
-        let%lwt () = output !past_events in
-        past_events := List.tl !past_events ;
-        return_unit
-      ) else return_unit)
+    connect ?id ?ppp (M.sliding_window ?name ?id ?ppp ~cmp ~is_complete ks)
 
   let all ?name ?id ?ppp ~cond ks =
-    ignore name ;
-    connect ?id ?ppp ks (fun output es ->
-      output (List.for_all cond es))
+    connect ?id ?ppp (M.all ?name ?id ?ppp ~cond ks)
 
-  let alert ?(name="unnamed alert") ?id ?ppp ?(importance=0) ~team ~title ~text () =
-    connect ?id ?ppp [] (fun _output firing ->
-      let text = if firing then text 42 else "Back to Normal" in
-      Lwt.wrap (fun () ->
-        Alerter.alert (Option.get !alerter) ~name ~team ~importance
-                      ~title ~text))
+  let alert ?name ?id ?ppp ?importance ~team ~title ~text () =
+    connect ?id ?ppp (M.alert ?name ?id ?ppp ?importance ~team ~title ~text ())
 
   let save ?name ?id ?ppp ~retention () =
-    ignore name ;
-    connect ?id ?ppp [] (fun _output e ->
-      ignore retention ; ignore e (* TODO *) ;
-      return_unit)
+    connect ?id ?ppp (M.save ?name ?id ?ppp ~retention ())
+end
+
+module AddTracing (M : Engine.S with type ('e, 'k) result = 'e -> unit Lwt.t) :
+  Engine.S with type ('e, 'k) result = 'e -> unit Lwt.t =
+struct
+  type ('i, 'k) result = ('i, 'k) M.result
+
+  let trace opname ?name ?ppp op =
+    let name = match name with Some n -> opname ^"("^ n ^")" | None -> opname
+    in
+    match ppp with
+    | Some ppp ->
+      (fun e ->
+        Printf.eprintf "%s %s\n%!" name (PPP.to_string ppp e) ;
+        op e)
+    | None ->
+      (fun e ->
+        Printf.eprintf "%s ???\n%!" name ;
+        op e)
+
+  let discard ?name ?id ?ppp () =
+    trace "discard" ?name ?ppp (M.discard ?name ?id ?ppp ())
+
+  let replicate ?name ?id ?ppp ks =
+    trace "replicate" ?name ?ppp (M.replicate ?name ?id ?ppp ks)
+
+  let convert ?name ?id ?ppp ~f ks =
+    trace "convert" ?name ?ppp (M.convert ?name ?id ?ppp ~f ks)
+
+  let filter ?name ?id ?ppp ~by ks =
+    trace "filter" ?name ?ppp (M.filter ?name ?id ?ppp ~by ks)
+
+  let on_change ?name ?id ?ppp ks =
+    trace "on_change" ?name ?ppp (M.on_change ?name ?id ?ppp ks)
+
+  let aggregate ?name ?id ?ppp ~key_of_event ~make_aggregate ~aggregate
+                ?is_complete ?timeout_sec ?timeout_events ks =
+    trace "aggregate" ?name ?ppp (
+      M.aggregate ?name ?id ?ppp ~key_of_event ~make_aggregate ~aggregate ?is_complete
+                  ?timeout_sec ?timeout_events ks)
+
+  let sliding_window ?name ?id ?ppp ~cmp ~is_complete ks =
+    trace "sliding_window" ?name ?ppp (
+      M.sliding_window ?name ?id ?ppp ~cmp ~is_complete ks)
+
+  let all ?name ?id ?ppp ~cond ks =
+    trace "all" ?name ?ppp (M.all ?name ?id ?ppp ~cond ks)
+
+  let alert ?name ?id ?(ppp=PPP_OCaml.bool) ?importance ~team ~title ~text () =
+    trace "alert" ?name ~ppp (
+      M.alert ?name ?id ~ppp ?importance ~team ~title ~text ())
+
+  let save ?name ?id ?ppp ~retention () =
+    trace "save" ?name ?ppp (M.save ?name ?id ?ppp ~retention ())
 end

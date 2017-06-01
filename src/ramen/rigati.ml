@@ -34,10 +34,10 @@ let () =
     | _ -> None)
 
 type options =
-  { debug : bool ; prefer_long_names : bool }
+  { debug : bool ; trace : bool ; prefer_long_names : bool }
 
-let options debug prefer_long_names _configs =
-  { debug ; prefer_long_names }
+let options debug trace prefer_long_names _configs =
+  { debug ; trace ; prefer_long_names }
 
 let plugin_conv =
   Dynlink.allow_unsafe_modules true ; (* Or bytecode would fail (NOP on native code) *)
@@ -53,14 +53,16 @@ let plugin_conv =
 let common_opts =
   let debug =
     Arg.(value (flag (info ~doc:"increase verbosity" ["d"; "debug"])))
+  and trace =
+    Arg.(value (flag (info ~doc:"display log of each operation for every event" ["t"; "trace"])))
   and configs =
-    Arg.(value (pos_all plugin_conv [] (info ~doc:"configuration to load" [])))
+    Arg.(value (pos_all plugin_conv [] (info ~docv:"CMXS" ~doc:"configuration to load" [])))
   and prefer_long_names =
     Arg.(value (flag (info ~doc:"use full node path as names (deduplicate nodes \
                                  with same name but various call stack)"
                            ["long-names"])))
   in
-  Term.(const options $ debug $ prefer_long_names $ configs)
+  Term.(const options $ debug $ trace $ prefer_long_names $ configs)
 
 let cmdliner_conv_of_ppp ppp =
   (fun str -> match PPP.of_string ppp str 0 with
@@ -158,15 +160,25 @@ let exec options setting_changes timestep alerter_conf_db () =
   let exec_conf graph m =
     let module ExecConfig = struct let graph = graph end in
     let module ConfMaker = (val m : Configuration.MAKER) in
-    let module ConfModule =
-      ConfMaker (Engine.AddId (ExecuteEngine.Impl (ExecConfig))) in
-    (* We have no event to send to the toplevel operation but we have
-     * to call ConfModule.configuration for its side effects: creating
-     * the actual operational configuration (aka spawning new file readers
-     * etc.) *)
-    ConfModule.configuration () |> ignore ;
-    (* Returns the function that tells when we must rebuild everything: *)
-    ConfModule.must_reload
+    if not options.trace then (
+      let module ConfModule =
+        ConfMaker (Engine.AddId (ExecuteEngine.AddSettings (ExecConfig) (ExecuteEngine.Impl))) in
+      (* We have no event to send to the toplevel operation but we have
+       * to call ConfModule.configuration for its side effects: creating
+       * the actual operational configuration (aka spawning new file readers
+       * etc.) *)
+      ConfModule.configuration () |> ignore ;
+      (* Returns the function that tells when we must rebuild everything: *)
+      ConfModule.must_reload
+    ) else (
+      (* It is important to wrap into Tracing before wrapping into setting,
+       * as we start to inject events from the settings. *)
+      let module ConfModule =
+        ConfMaker (Engine.AddId (ExecuteEngine.AddSettings (ExecConfig) (ExecuteEngine.AddTracing (ExecuteEngine.Impl)))) in
+      ConfModule.configuration () |> ignore ;
+      (* Returns the function that tells when we must rebuild everything: *)
+      ConfModule.must_reload
+    )
   in
   Hashtbl.iter (fun name m ->
       if options.debug then Printf.printf "Executing: %s\n" name ;
