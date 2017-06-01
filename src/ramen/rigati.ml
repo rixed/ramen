@@ -34,10 +34,10 @@ let () =
     | _ -> None)
 
 type options =
-  { debug : bool ; trace : bool ; prefer_long_names : bool }
+  { debug : bool ; prefer_long_names : bool }
 
-let options debug trace prefer_long_names _configs =
-  { debug ; trace ; prefer_long_names }
+let options debug prefer_long_names _configs =
+  { debug ; prefer_long_names }
 
 let plugin_conv =
   Dynlink.allow_unsafe_modules true ; (* Or bytecode would fail (NOP on native code) *)
@@ -53,8 +53,6 @@ let plugin_conv =
 let common_opts =
   let debug =
     Arg.(value (flag (info ~doc:"increase verbosity" ["d"; "debug"])))
-  and trace =
-    Arg.(value (flag (info ~doc:"display log of each operation for every event" ["t"; "trace"])))
   and configs =
     Arg.(value (pos_all plugin_conv [] (info ~docv:"CMXS" ~doc:"configuration to load" [])))
   and prefer_long_names =
@@ -62,7 +60,7 @@ let common_opts =
                                  with same name but various call stack)"
                            ["long-names"])))
   in
-  Term.(const options $ debug $ trace $ prefer_long_names $ configs)
+  Term.(const options $ debug $ prefer_long_names $ configs)
 
 let cmdliner_conv_of_ppp ppp =
   (fun str -> match PPP.of_string ppp str 0 with
@@ -154,13 +152,13 @@ let print_cmd =
  * Executor
  *)
 
-let exec options setting_changes timestep alerter_conf_db () =
+let exec options setting_changes timestep alerter_conf_db trace () =
   Alarm.timestep := timestep ;
   ExecuteEngine.init ?alerter_conf_db () ;
   let exec_conf graph m =
     let module ExecConfig = struct let graph = graph end in
     let module ConfMaker = (val m : Configuration.MAKER) in
-    if not options.trace then (
+    if not trace then (
       let module ConfModule =
         ConfMaker (Engine.AddId (ExecuteEngine.AddSettings (ExecConfig) (ExecuteEngine.Impl))) in
       (* We have no event to send to the toplevel operation but we have
@@ -208,13 +206,19 @@ let alerter_conf_db_opt =
                    ["alert-mgmt-db"] in
   Arg.(value (opt (some string) None i))
 
+let trace =
+  let i = Arg.info ~doc:"Display log of each operation for every event."
+                   ["t"; "trace"] in
+  Arg.(value (flag i))
+
 let exec_cmd =
   Term.(
     (const exec
       $ common_opts
       $ setting_change_opt
       $ timestep_opt
-      $ alerter_conf_db_opt),
+      $ alerter_conf_db_opt
+      $ trace),
     info "exec")
 
 (*
