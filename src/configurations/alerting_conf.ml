@@ -233,9 +233,6 @@ struct
        ~ppp:TCP_v29.UniDir.t_ppp
        ~by:(is_from_to_zone z1 z2)
        [aggregate
-          (* In the aggregate we reuse clt for source and srv for dest.
-           * TODO: define a more explicit and less error prone struct for
-           * this aggregate? *)
           ~name:"averaging"
           ~ppp:TCP_v29.UniDir.t_ppp
           ~key_of_event:
