@@ -20,6 +20,10 @@ struct
     let g = Graph.add_node g ?from_node n in
     List.fold_left (fun g k -> k ?from_node:(Some n) g) g ks
 
+  let percentile ?(name="percentile") ?id ?ppp p ks ?from_node g =
+    ignore p ;
+    add_sub ?from_node ?id ?ppp g ks name
+
   let series ?(name="series") ?id ?ppp ~nb_values ks ?from_node g =
     ignore nb_values ;
     add_sub ?from_node ?id ?ppp g ks name
@@ -51,6 +55,10 @@ struct
   let sliding_window ?(name="sliding-window") ?id ?ppp ~cmp ~is_complete
                      ks ?from_node g =
     ignore cmp ; ignore is_complete ;
+    add_sub ?from_node ?id ?ppp g ks name
+
+  let condition ?(name="condition") ?id ?ppp ~cond ks ?from_node g =
+    ignore cond ;
     add_sub ?from_node ?id ?ppp g ks name
 
   let all ?(name="all") ?id ?ppp ~cond ks ?from_node g =

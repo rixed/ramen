@@ -11,6 +11,14 @@ sig
   (* in general that type will be: some_input -> some_output.
    * For instance, for the actual implementation that will be: 'e -> unit *)
 
+  (* Return the given percentile. (TODO: a version that returns several
+   * percentiles in one go?) *)
+  val percentile:
+    ?name:string -> ?id:int -> ?ppp:('e list PPP.t) ->
+    float ->
+    ('e, 'k) result list ->
+    ('e list, 'k) result
+
   (* Remember past values *)
   val series:
     ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
@@ -83,6 +91,13 @@ sig
     ('e list, 'k) result list ->
     ('e, 'k) result
 
+  (* Outputs true or false depending on some condition. *)
+  val condition:
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
+    cond:('e -> bool) ->
+    (bool, 'k) result list ->
+    ('e, 'k) result
+
   (* Boolean operator that takes lists of events and fires true if all pass
    * the given condition, or false otherwise. *)
   val all:
@@ -139,47 +154,42 @@ struct
       (* must not happen unless nodes have been enumerated already: *)
       | Some _id -> assert false
 
+  let percentile ?name ?id ?ppp =
+    M.percentile ?name ~id:(get_id id) ?ppp
+
   let series ?name ?id ?ppp =
-    let id = get_id id in
-    M.series ?name ~id ?ppp
+    M.series ?name ~id:(get_id id) ?ppp
 
   let discard ?name ?id ?ppp =
-    let id = get_id id in
-    M.discard ?name ~id ?ppp
+    M.discard ?name ~id:(get_id id) ?ppp
 
   let replicate ?name ?id ?ppp =
-    let id = get_id id in
-    M.replicate ?name ~id ?ppp
+    M.replicate ?name ~id:(get_id id) ?ppp
 
   let convert ?name ?id ?ppp =
-    let id = get_id id in
-    M.convert ?name ~id ?ppp
+    M.convert ?name ~id:(get_id id) ?ppp
 
   let filter ?name ?id ?ppp =
-    let id = get_id id in
-    M.filter ?name ~id ?ppp
+    M.filter ?name ~id:(get_id id) ?ppp
 
   let on_change ?name ?id ?ppp =
-    let id = get_id id in
-    M.on_change ?name ~id ?ppp
+    M.on_change ?name ~id:(get_id id) ?ppp
 
   let aggregate ?name ?id ?ppp =
-    let id = get_id id in
-    M.aggregate ?name ~id ?ppp
+    M.aggregate ?name ~id:(get_id id) ?ppp
 
   let sliding_window ?name ?id ?ppp =
-    let id = get_id id in
-    M.sliding_window ?name ~id ?ppp
+    M.sliding_window ?name ~id:(get_id id) ?ppp
+
+  let condition ?name ?id ?ppp =
+    M.condition ?name ~id:(get_id id) ?ppp
 
   let all ?name ?id ?ppp =
-    let id = get_id id in
-    M.all ?name ~id ?ppp
+    M.all ?name ~id:(get_id id) ?ppp
 
   let alert ?name ?id ?ppp =
-    let id = get_id id in
-    M.alert ?name ~id ?ppp
+    M.alert ?name ~id:(get_id id) ?ppp
 
   let save ?name ?id ?ppp =
-    let id = get_id id in
-    M.save ?name ~id ?ppp
+    M.save ?name ~id:(get_id id) ?ppp
 end

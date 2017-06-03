@@ -70,3 +70,6 @@ let rec step_all_fold stmt init f =
   | Rc.DONE -> init
   | Rc.ROW -> step_all_fold stmt (f init) f
   | rc -> failwith ("Unexpected Sqlite3 return code: "^ Rc.to_string rc)
+
+let round_to_int f =
+  int_of_float (Float.round f)

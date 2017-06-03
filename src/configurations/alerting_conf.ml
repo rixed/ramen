@@ -170,6 +170,7 @@
  *)
 open Batteries
 open EventTypes
+open Helpers
 
 (* Basically, a configuration must register a functor from some implementation
  * into a configuration.S, which is little more than a variable called
@@ -202,8 +203,8 @@ struct
   open Impl
 
   (* Alert if all events met the given condition: *)
-  let alert_when_all_bytes ~cond ~name ~title ~text =
-    all ~name ~cond ~ppp:(PPP_OCaml.list TCP_v29.UniDir.t_ppp)
+  let alert_when ~cond ~name ~title ~text =
+    condition ~name ~ppp:PPP_OCaml.int ~cond
       [on_change
         ~name:("changed "^ name)
         ~ppp:PPP_OCaml.bool
@@ -226,7 +227,8 @@ struct
 
   (* Here we define a simple helper to define an alert on low traffic between
    * any two zones: *)
-  let alert_on_volume ?min_bps ?max_bps ~obs_window ~avg_window z1 z2 =
+  let alert_on_volume ?min_bps ?max_bps ~obs_window ~avg_window
+                      ~perc z1 z2 =
      filter
        ~name:(Printf.sprintf "from zone %s to %s"
                 (string_of_zone z1) (string_of_zone z2))
@@ -263,40 +265,46 @@ struct
                     and newest = (List.last lst).TCP_v29.UniDir.stop in
                     newest >= oldest + of_seconds_f obs_window
                   ) with Failure _ | Invalid_argument _ -> false)
-             (let do_avg x =
-                int_of_float (Float.round (float_of_int x /. avg_window)) in
-              (match min_bps with
-              | None -> []
-              | Some min_bps ->
-                  let name = Printf.sprintf "all samples bellow %d" min_bps
-                  and title = Printf.sprintf "Too little traffic from zone %s to %s"
-                                (string_of_zone z1) (string_of_zone z2)
-                  and text id = Printf.sprintf
-                                  "The traffic from zone %s to %s has sunk below \
-                                   the configured minimum of %d \
-                                   for the last %g minutes.\n\n\
-                                   See https://event_proc.home.lan/show_alert?id=%d\n"
-                                   (string_of_zone z1) (string_of_zone z2)
-                                   min_bps (obs_window /. 60.) id
-                  and cond a = do_avg a.TCP_v29.UniDir.bytes < min_bps
-                  in
-                  [alert_when_all_bytes ~cond ~name ~title ~text]) @
-              (match max_bps with
-              | None -> []
-              | Some max_bps ->
-                  let name = Printf.sprintf "all samples above %d" max_bps
-                  and title = Printf.sprintf "Too much traffic from zone %s to %s"
-                                (string_of_zone z1) (string_of_zone z2)
-                  and text id = Printf.sprintf
-                                  "The traffic from zones %s to %s has raised above \
-                                   the configured maximum of %d \
-                                   for the last %g minutes.\n\n\
-                                   See https://event_proc.home.lan/show_alert?id=%d\n"
-                                   (string_of_zone z1) (string_of_zone z2)
-                                   max_bps (obs_window /. 60.) id
-                  and cond a = do_avg a.TCP_v29.UniDir.bytes > max_bps
-                  in
-                  [alert_when_all_bytes ~cond ~name ~title ~text]))]]
+             [convert
+               ~name:"To bytes/secs"
+               ~ppp:(PPP_OCaml.list TCP_v29.UniDir.t_ppp)
+               ~f:(fun es ->
+                     let to_avg x =
+                       round_to_int (float_of_int x /. avg_window) in
+                     [List.map (fun e -> to_avg e.TCP_v29.UniDir.bytes) es])
+               [percentile perc
+                 ((match min_bps with
+                  | None -> []
+                  | Some min_bps ->
+                      let name = Printf.sprintf "all samples bellow %d" min_bps
+                      and title = Printf.sprintf "Too little traffic from zone %s to %s"
+                                    (string_of_zone z1) (string_of_zone z2)
+                      and text id = Printf.sprintf
+                                      "The traffic from zone %s to %s has sunk below \
+                                       the configured minimum of %d \
+                                       for the last %g minutes.\n\n\
+                                       See https://event_proc.home.lan/show_alert?id=%d\n"
+                                       (string_of_zone z1) (string_of_zone z2)
+                                       min_bps (obs_window /. 60.) id
+                      and cond bytes = bytes < min_bps
+                      in
+                      [alert_when ~cond ~name ~title ~text]) @
+                  (match max_bps with
+                  | None -> []
+                  | Some max_bps ->
+                      let name = Printf.sprintf "all samples above %d" max_bps
+                      and title = Printf.sprintf "Too much traffic from zone %s to %s"
+                                    (string_of_zone z1) (string_of_zone z2)
+                      and text id = Printf.sprintf
+                                      "The traffic from zones %s to %s has raised above \
+                                       the configured maximum of %d \
+                                       for the last %g minutes.\n\n\
+                                       See https://event_proc.home.lan/show_alert?id=%d\n"
+                                       (string_of_zone z1) (string_of_zone z2)
+                                       max_bps (obs_window /. 60.) id
+                      and cond bytes = bytes > max_bps
+                      in
+                      [alert_when ~cond ~name ~title ~text]))]]]]
 
   type input = TCP_v29.t
 
@@ -315,6 +323,7 @@ struct
       alert_on_volume ?min_bps:conf.min_bps ?max_bps:conf.max_bps
                       ~obs_window:conf.obs_window
                       ~avg_window:conf.avg_window
+                      ~perc:conf.percentile
                       conf.source conf.dest
     in
     convert ~name:"to unidir volumes"

@@ -4,6 +4,7 @@ open Batteries
 open Model
 open Lwt
 open Option.Infix
+open Helpers
 
 let alerter = ref None
 
@@ -17,6 +18,16 @@ struct
 
   let output ks e =
     Lwt_list.iter_p (fun k -> k e) ks
+
+  let percentile ?name ?id ?ppp p ks =
+    ignore name ; ignore id ; ignore ppp ;
+    assert (p >= 0. && p <= 1.) ;
+    let output = output ks in
+    fun e ->
+      let arr = Array.of_list e in
+      Array.fast_sort Pervasives.compare arr ;
+      let idx = round_to_int (p *. float_of_int (Array.length arr - 1)) in
+      output arr.(idx)
 
   (* keep as many values with their timestamp and return a time series. Best
    * used after an aggregate on time. *)
@@ -114,6 +125,12 @@ struct
         return_unit
       ) else return_unit
 
+  let condition ?name ?id ?ppp ~cond ks =
+    ignore name ; ignore id ; ignore ppp ;
+    let output = output ks in
+    fun es ->
+      output (cond es)
+
   let all ?name ?id ?ppp ~cond ks =
     ignore name ; ignore id ; ignore ppp ;
     let output = output ks in
@@ -161,6 +178,9 @@ struct
       if Node.is_alive node then op e
       else return_unit)
 
+  let percentile ?name ?id ?ppp p ks =
+    connect ?id ?ppp (M.percentile ?name ?id ?ppp p ks)
+
   let series ?name ?id ?ppp ~nb_values ks =
     connect ?id ?ppp (M.series ?name ?id ?ppp ~nb_values ks)
 
@@ -185,6 +205,9 @@ struct
 
   let sliding_window ?name ?id ?ppp ~cmp ~is_complete ks =
     connect ?id ?ppp (M.sliding_window ?name ?id ?ppp ~cmp ~is_complete ks)
+
+  let condition ?name ?id ?ppp ~cond ks =
+    connect ?id ?ppp (M.condition ?name ?id ?ppp ~cond ks)
 
   let all ?name ?id ?ppp ~cond ks =
     connect ?id ?ppp (M.all ?name ?id ?ppp ~cond ks)
@@ -214,6 +237,9 @@ struct
         Printf.eprintf "%s ???\n%!" name ;
         op e)
 
+  let percentile ?name ?id ?ppp p ks =
+    trace "percentile" ?name ?ppp (M.percentile ?name ?id ?ppp p ks)
+
   let series ?name ?id ?ppp ~nb_values ks =
     trace "series" ?name ?ppp (M.series ?name ?id ?ppp ~nb_values ks)
 
@@ -241,6 +267,9 @@ struct
   let sliding_window ?name ?id ?ppp ~cmp ~is_complete ks =
     trace "sliding_window" ?name ?ppp (
       M.sliding_window ?name ?id ?ppp ~cmp ~is_complete ks)
+
+  let condition ?name ?id ?ppp ~cond ks =
+    trace "condition" ?name ?ppp (M.condition ?name ?id ?ppp ~cond ks)
 
   let all ?name ?id ?ppp ~cond ks =
     trace "all" ?name ?ppp (M.all ?name ?id ?ppp ~cond ks)
