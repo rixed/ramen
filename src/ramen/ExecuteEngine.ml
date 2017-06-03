@@ -3,6 +3,7 @@
 open Batteries
 open Model
 open Lwt
+open Option.Infix
 
 let alerter = ref None
 
@@ -16,6 +17,22 @@ struct
 
   let output ks e =
     Lwt_list.iter_p (fun k -> k e) ks
+
+  (* keep as many values with their timestamp and return a time series. Best
+   * used after an aggregate on time. *)
+  let series =
+    let export_ns = ["series"] in
+    fun ?name ?id ?ppp ~nb_values ks ->
+      ignore name ; ignore id ; ignore ppp ;
+      let values = Array.make nb_values None
+      and next_idx = ref 0 in
+      let output = output ks in
+      fun e ->
+        let i = !next_idx in
+        values.(i) <- Some e ;
+        let i = if i < Array.length values - 1 then i+1 else 0 in
+        next_idx := i ;
+        output (values, i)
 
   let discard ?name ?id ?ppp () =
     ignore name ; ignore id ; ignore ppp ;
@@ -144,6 +161,9 @@ struct
       if Node.is_alive node then op e
       else return_unit)
 
+  let series ?name ?id ?ppp ~nb_values ks =
+    connect ?id ?ppp (M.series ?name ?id ?ppp ~nb_values ks)
+
   let discard ?name ?id ?ppp () =
     connect ?id ?ppp (M.discard ?name ?id ?ppp ())
 
@@ -193,6 +213,9 @@ struct
       (fun e ->
         Printf.eprintf "%s ???\n%!" name ;
         op e)
+
+  let series ?name ?id ?ppp ~nb_values ks =
+    trace "series" ?name ?ppp (M.series ?name ?id ?ppp ~nb_values ks)
 
   let discard ?name ?id ?ppp () =
     trace "discard" ?name ?ppp (M.discard ?name ?id ?ppp ())

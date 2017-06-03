@@ -11,12 +11,19 @@ sig
   (* in general that type will be: some_input -> some_output.
    * For instance, for the actual implementation that will be: 'e -> unit *)
 
+  (* Remember past values *)
+  val series:
+    ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
+    nb_values:int ->
+    ('e option array * int, 'k) result list ->
+    ('e, 'k) result
+
   (* Discard the event. *)
   val discard:
     ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     unit ->
     ('e, 'k) result
-  
+
   (* Duplicate the event as is. Useful for root. *)
   val replicate:
     ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
@@ -132,45 +139,47 @@ struct
       (* must not happen unless nodes have been enumerated already: *)
       | Some _id -> assert false
 
-  let discard ?name ?id ?ppp () =
+  let series ?name ?id ?ppp =
     let id = get_id id in
-    M.discard ?name ~id ?ppp ()
+    M.series ?name ~id ?ppp
 
-  let replicate ?name ?id ?ppp ks =
+  let discard ?name ?id ?ppp =
     let id = get_id id in
-    M.replicate ?name ~id ?ppp ks
+    M.discard ?name ~id ?ppp
 
-  let convert ?name ?id ?ppp ~f ks =
+  let replicate ?name ?id ?ppp =
     let id = get_id id in
-    M.convert ?name ~id ?ppp ~f ks
+    M.replicate ?name ~id ?ppp
 
-  let filter ?name ?id ?ppp ~by ks =
+  let convert ?name ?id ?ppp =
     let id = get_id id in
-    M.filter ?name ~id ?ppp ~by ks
+    M.convert ?name ~id ?ppp
 
-  let on_change ?name ?id ?ppp ks =
+  let filter ?name ?id ?ppp =
     let id = get_id id in
-    M.on_change ?name ~id ?ppp ks
+    M.filter ?name ~id ?ppp
 
-  let aggregate ?name ?id ?ppp ~key_of_event ~make_aggregate ~aggregate
-                ?is_complete ?timeout_sec ?timeout_events ks =
+  let on_change ?name ?id ?ppp =
     let id = get_id id in
-    M.aggregate ?name ~id ?ppp ~key_of_event ~make_aggregate ~aggregate ?is_complete
-                ?timeout_sec ?timeout_events ks
+    M.on_change ?name ~id ?ppp
 
-  let sliding_window ?name ?id ?ppp ~cmp ~is_complete ks =
+  let aggregate ?name ?id ?ppp =
     let id = get_id id in
-    M.sliding_window ?name ~id ?ppp ~cmp ~is_complete ks
+    M.aggregate ?name ~id ?ppp
 
-  let all ?name ?id ?ppp ~cond ks =
+  let sliding_window ?name ?id ?ppp =
     let id = get_id id in
-    M.all ?name ~id ?ppp ~cond ks
+    M.sliding_window ?name ~id ?ppp
 
-  let alert ?name ?id ?ppp ?importance ~team ~title ~text () =
+  let all ?name ?id ?ppp =
     let id = get_id id in
-    M.alert ?name ~id ?ppp ?importance ~team ~title ~text ()
+    M.all ?name ~id ?ppp
 
-  let save ?name ?id ?ppp ~retention () =
+  let alert ?name ?id ?ppp =
     let id = get_id id in
-    M.save ?name ~id ?ppp ~retention ()
+    M.alert ?name ~id ?ppp
+
+  let save ?name ?id ?ppp =
+    let id = get_id id in
+    M.save ?name ~id ?ppp
 end

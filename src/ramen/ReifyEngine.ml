@@ -20,6 +20,10 @@ struct
     let g = Graph.add_node g ?from_node n in
     List.fold_left (fun g k -> k ?from_node:(Some n) g) g ks
 
+  let series ?(name="series") ?id ?ppp ~nb_values ks ?from_node g =
+    ignore nb_values ;
+    add_sub ?from_node ?id ?ppp g ks name
+
   let discard ?(name="discard") ?id ?ppp () ?from_node g =
     add_sub ?from_node ?id ?ppp g [] name
 
