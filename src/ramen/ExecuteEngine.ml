@@ -3,7 +3,6 @@
 open Batteries
 open Model
 open Lwt
-open Option.Infix
 open Helpers
 
 let alerter = ref None
@@ -32,18 +31,28 @@ struct
   (* keep as many values with their timestamp and return a time series. Best
    * used after an aggregate on time. *)
   let series =
-    let export_ns = ["series"] in
-    fun ?name ?id ?ppp ~nb_values ks ->
-      ignore name ; ignore id ; ignore ppp ;
-      let values = Array.make nb_values None
-      and next_idx = ref 0 in
-      let output = output ks in
+    fun ?name ?id ?ppp ~nb_values ~vectors ks ->
+      ignore ppp ;
+      (* If this fail it's because you forgot AddId: *)
+      let id = Option.get id
+      and name = Option.get name in
+      let table = Table.make name id nb_values vectors
+      and output = output ks in
       fun e ->
-        let i = !next_idx in
-        values.(i) <- Some e ;
-        let i = if i < Array.length values - 1 then i+1 else 0 in
-        next_idx := i ;
-        output (values, i)
+        let open Table in
+        let idx = table.oldest_idx in
+        Array.iteri (fun i (_name, f) ->
+            match f, snd table.vectors.(i) with
+            | FloatVal f, FloatVec vec -> vec.(idx) <- f e
+            | IntVal f, IntVec vec -> vec.(idx) <- f e
+            | BoolVal f, BoolVec vec -> vec.(idx) <- f e
+            | FactVal f, FactVec vec -> vec.(idx) <- f e
+            | _ -> assert false) vectors ;
+        let idx = if idx < nb_values - 1 then idx+1 else 0 in
+        table.oldest_idx <- idx ;
+        if table.length < table.capacity then
+          table.length <- table.length + 1 ;
+        output table
 
   let discard ?name ?id ?ppp () =
     ignore name ; ignore id ; ignore ppp ;
@@ -181,8 +190,8 @@ struct
   let percentile ?name ?id ?ppp p ks =
     connect ?id ?ppp (M.percentile ?name ?id ?ppp p ks)
 
-  let series ?name ?id ?ppp ~nb_values ks =
-    connect ?id ?ppp (M.series ?name ?id ?ppp ~nb_values ks)
+  let series ?name ?id ?ppp ~nb_values ~vectors ks =
+    connect ?id ?ppp (M.series ?name ?id ?ppp ~nb_values ~vectors ks)
 
   let discard ?name ?id ?ppp () =
     connect ?id ?ppp (M.discard ?name ?id ?ppp ())
@@ -240,8 +249,8 @@ struct
   let percentile ?name ?id ?ppp p ks =
     trace "percentile" ?name ?ppp (M.percentile ?name ?id ?ppp p ks)
 
-  let series ?name ?id ?ppp ~nb_values ks =
-    trace "series" ?name ?ppp (M.series ?name ?id ?ppp ~nb_values ks)
+  let series ?name ?id ?ppp ~nb_values ~vectors ks =
+    trace "series" ?name ?ppp (M.series ?name ?id ?ppp ~nb_values ~vectors ks)
 
   let discard ?name ?id ?ppp () =
     trace "discard" ?name ?ppp (M.discard ?name ?id ?ppp ())

@@ -23,7 +23,8 @@ sig
   val series:
     ?name:string -> ?id:int -> ?ppp:('e PPP.t) ->
     nb_values:int ->
-    ('e option array * int, 'k) result list ->
+    vectors:(string * 'e Table.field) array ->
+    (Table.t, 'k) result list ->
     ('e, 'k) result
 
   (* Discard the event. *)

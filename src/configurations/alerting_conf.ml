@@ -253,6 +253,16 @@ struct
              ~name:"TODO: save"
              ~ppp:TCP_v29.UniDir.t_ppp
              ~retention:(3600*24*30) () ;
+           series
+             ~name:(Printf.sprintf "Per %gsecs sum" avg_window)
+             ~ppp:TCP_v29.UniDir.t_ppp
+             ~nb_values:(round_to_int (3600. /. avg_window))
+             ~vectors:Table.[|
+               "start",   IntVal (fun e -> e.TCP_v29.UniDir.start) ;
+               "stop",    IntVal (fun e -> e.TCP_v29.UniDir.stop) ;
+               "packets", IntVal (fun e -> e.TCP_v29.UniDir.packets) ;
+               "bytes",   IntVal (fun e -> e.TCP_v29.UniDir.bytes) ;
+             |] [] ;
            sliding_window
              ~name:(Printf.sprintf "%g mins sliding window" (obs_window /. 60.))
              ~ppp:TCP_v29.UniDir.t_ppp

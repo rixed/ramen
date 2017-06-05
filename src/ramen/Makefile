@@ -3,8 +3,8 @@ NAME = ramen
 top_srcdir = ..
 
 LIB_SOURCES = \
-	Helpers.ml Globs.ml Alarm.ml IO.ml \
-	Configuration.ml Engine.ml Model.ml \
+	Helpers.ml Globs.ml HttpSrv.ml Alarm.ml IO.ml \
+	Table.ml Configuration.ml Engine.ml Model.ml \
 	Alerter.ml ReifyEngine.ml ExecuteEngine.ml
 
 TESTABLE_SOURCES = \

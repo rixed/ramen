@@ -24,8 +24,8 @@ struct
     ignore p ;
     add_sub ?from_node ?id ?ppp g ks name
 
-  let series ?(name="series") ?id ?ppp ~nb_values ks ?from_node g =
-    ignore nb_values ;
+  let series ?(name="series") ?id ?ppp ~nb_values ~vectors ks ?from_node g =
+    ignore nb_values ; ignore vectors ;
     add_sub ?from_node ?id ?ppp g ks name
 
   let discard ?(name="discard") ?id ?ppp () ?from_node g =
