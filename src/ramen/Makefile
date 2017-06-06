@@ -14,7 +14,7 @@ SOURCES = \
 	$(TESTABLE_SOURCES) \
 	rigati.ml
 
-PACKAGES = lwt.ppx batteries ppp cmdliner dynlink inotify.lwt sqlite3
+PACKAGES = lwt.ppx batteries ppp cmdliner dynlink inotify.lwt sqlite3 cohttp.lwt
 LIB_NAME = ramen
 
 INSTALLED = \

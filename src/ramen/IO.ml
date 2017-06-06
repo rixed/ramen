@@ -123,7 +123,7 @@ let register_dir_reader ~alive path glob ppp k =
     notify_loop() in
   async reading_thread
 
-let start debug_ =
+let start debug_ with_http =
   debug := debug_ ;
   (* Make thread failure more verbose: *)
   let print_exn exn =
@@ -131,5 +131,6 @@ let start debug_ =
   let nagger th =
     catch th (fun exn -> print_exn exn ; return_unit) in
   async_exception_hook := print_exn ;
+  if with_http > 0 then async (fun () -> HttpSrv.start with_http) ;
   Lwt_main.run (nagger Alarm.main_loop) ;
   if !debug then Printf.printf "... Done execution.\n%!"

@@ -1,4 +1,4 @@
 description = "Stream Processor for monitoring"
 version = "0.1"
 archive(native) = "ramen.cmxa"
-requires = "lwt.ppx lwt.unix batteries unix ppp cmdliner dynlink inotify.lwt sqlite3"
+requires = "lwt.ppx lwt.unix batteries unix ppp cmdliner dynlink inotify.lwt sqlite3 cohttp.lwt"

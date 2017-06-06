@@ -152,7 +152,7 @@ let print_cmd =
  * Executor
  *)
 
-let exec options setting_changes timestep alerter_conf_db trace () =
+let exec options setting_changes timestep alerter_conf_db trace with_http () =
   Alarm.timestep := timestep ;
   ExecuteEngine.init ?alerter_conf_db () ;
   let exec_conf graph m =
@@ -194,7 +194,7 @@ let exec options setting_changes timestep alerter_conf_db trace () =
           must_reload := exec_conf !current_graph m
         ))
     ) Configuration.registered_configs ;
-  IO.start options.debug
+  IO.start options.debug with_http
 
 let timestep_opt =
   let i = Arg.info ~doc:"How frequently to update the internal clock."
@@ -211,6 +211,12 @@ let trace =
                    ["t"; "trace"] in
   Arg.(value (flag i))
 
+let with_http =
+  let i = Arg.info ~doc:"Also start an HTTP server on the given port \
+                         to report/display internal state."
+                   ["with-http"; "http"] in
+  Arg.(value (opt int 0 i))
+
 let exec_cmd =
   Term.(
     (const exec
@@ -218,7 +224,8 @@ let exec_cmd =
       $ setting_change_opt
       $ timestep_opt
       $ alerter_conf_db_opt
-      $ trace),
+      $ trace
+      $ with_http),
     info "exec")
 
 (*
