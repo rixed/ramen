@@ -1,6 +1,6 @@
-NAME = ramen
+top_srcdir = ../..
 
-top_srcdir = ..
+NAME = ramen
 
 LIB_SOURCES = \
 	Helpers.ml Globs.ml HttpSrv.ml Alarm.ml IO.ml \

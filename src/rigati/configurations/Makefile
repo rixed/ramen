@@ -1,4 +1,5 @@
-top_srcdir = ..
+top_srcdir = ../..
+OCAMLPATH = ..
 
 TESTABLE_SOURCES = \
 	EventTypes.ml conf_of_sqlite.ml

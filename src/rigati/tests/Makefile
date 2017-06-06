@@ -1,4 +1,5 @@
-top_srcdir = ..
+top_srcdir = ../..
+OCAMLPATH = ..
 
 SOURCES = \
 	TestGen.ml test_simplest.ml AlertDb.ml run_test.ml

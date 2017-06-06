@@ -13,8 +13,8 @@ oUnit-anon.cache
 *.o
 *.byte
 .depend
+src/rigati/ramen/rigati
 all_tests.*
-rigati
 run_test
 perf.data*
 gmon.out

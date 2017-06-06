@@ -1,7 +1,7 @@
 # vim: ft=make
-OCAMLC     = OCAMLPATH=$(top_srcdir)/ ocamlfind ocamlc
-OCAMLOPT   = OCAMLPATH=$(top_srcdir)/ ocamlfind ocamlopt
-OCAMLDEP   = OCAMLPATH=$(top_srcdir)/ ocamlfind ocamldep
+OCAMLC     = OCAMLPATH=$(OCAMLPATH)/ ocamlfind ocamlc
+OCAMLOPT   = OCAMLPATH=$(OCAMLPATH)/ ocamlfind ocamlopt
+OCAMLDEP   = OCAMLPATH=$(OCAMLPATH)/ ocamlfind ocamldep
 QTEST      = qtest
 WARNS      = Ael-31-41-42-44-45-48
 override OCAMLOPTFLAGS += $(INCS) -w $(WARNS) -g -annot -O2
