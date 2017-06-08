@@ -6,6 +6,8 @@ QTEST      = qtest
 WARNS      = Ael-31-41-42-44-45-48
 override OCAMLOPTFLAGS += $(INCS) -w $(WARNS) -g -annot -O2
 override OCAMLFLAGS    += $(INCS) -w $(WARNS) -g -annot 
+override CFLAGS        += --std=c11 -g -O2 -Wall -W -Wno-parentheses
+override CPPFLAGS      += --std=c11 -D_GNU_SOURCE
 
 # Common rules
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot
@@ -52,3 +54,6 @@ dep:
 
 .depend: $(SOURCES)
 	$(OCAMLDEP) -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
+	@if test -n "$(filter %.c, $(SOURCES))" || test -n "$(filter %.h, $(SOURCES))"; then \
+		$(CC) -M $(filter %.c, $(SOURCES)) $(filter %.h, $(SOURCES)) >> $@; \
+	fi
