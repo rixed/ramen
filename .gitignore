@@ -15,6 +15,7 @@ oUnit-anon.cache
 *.top
 .depend
 src/rigati/ramen/rigati
+src/rigatoni/rigatoni
 all_tests.*
 run_test
 perf.data*

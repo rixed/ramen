@@ -96,7 +96,7 @@
  * Note: we convert into bytes/packets per seconds directly, which imply that
  * the aggregation operation knows about a final operation not involving
  * aggregation operators on each field. Also, here the division will return a
- * float, which is actually better then to stick with integers for a flow.
+ * float, which is actually better than to stick with integers for a flow.
  *
  * Then we have the sliding window. This one is annoying because it produces a
  * list of tuples. But actually what we really want is to aggregate all the

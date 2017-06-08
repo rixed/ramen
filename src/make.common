@@ -22,9 +22,11 @@ override CPPFLAGS      += --std=c11 -D_GNU_SOURCE
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 clean: clean-spec
+	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 	$(RM) *.cm[iox] *.a *.s *.o .depend *.annot all_tests.* perf.data* gmon.out
 
 distclean: clean distclean-spec
+	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 	$(RM) *.cma *.cmxa *.cmxs oUnit-anon.cache qtest.targets.log *.opt *.byte
 
 %.top: %.cma
@@ -39,14 +41,17 @@ all_tests.opt: $(TESTABLE_SOURCES:.ml=.cmx) all_tests.ml
 	$(OCAMLOPT) -o $@ $(SYNTAX) -package "$(PACKAGES)" -package qcheck -linkpkg $(OCAMLOPTFLAGS) $^
 
 check: all_tests.opt
+	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 	@OCAMLRUNPARAM=b ./all_tests.opt -bt || echo "FAILURE"
 
 # Installation
 
 install: $(INSTALLED)
+	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 	ocamlfind install $(NAME) $^
 
 uninstall:
+	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 	ocamlfind remove $(NAME)
 
 reinstall: uninstall install
@@ -54,6 +59,7 @@ reinstall: uninstall install
 # Dependencies
 
 dep:
+	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 	$(RM) .depend
 	$(MAKE) .depend
 
