@@ -12,6 +12,7 @@ oUnit-anon.cache
 *.annot
 *.o
 *.byte
+*.top
 .depend
 src/rigati/ramen/rigati
 all_tests.*
