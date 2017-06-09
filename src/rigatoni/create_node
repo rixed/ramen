@@ -3,4 +3,4 @@
 name=$1
 shift
 
-curl $@ -X PUT -d '{"operation": "where foo=1"}' -H 'Content-Type: application/json' http://localhost:29380/node/$name
+curl "$@" -X PUT -d '{"operation": "where foo=1"}' -H 'Content-Type: application/json' http://localhost:29380/node/$name

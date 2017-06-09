@@ -62,15 +62,17 @@ let remove_node conf graph id =
 let has_link _conf src dst =
   List.exists ((==) dst) src.children
 
-let make_link conf src dst =
+let make_link conf graph src dst =
   conf.logger.Log.debug "Create link between nodes %s and %s" src.name dst.name ;
   src.children <- dst :: src.children ;
-  dst.parents <- src :: dst.parents
+  dst.parents <- src :: dst.parents ;
+  save_graph conf graph
 
-let remove_link conf src dst =
+let remove_link conf graph src dst =
   conf.logger.Log.debug "Delete link between nodes %s and %s" src.name dst.name ;
   src.children <- List.filter ((!=) dst) src.children ;
-  dst.parents <- List.filter ((!=) src) dst.parents
+  dst.parents <- List.filter ((!=) src) dst.parents ;
+  save_graph conf graph
 
 let make_conf debug save_file =
   let logger = Log.make_logger debug in

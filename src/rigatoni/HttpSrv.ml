@@ -137,7 +137,7 @@ let put_link conf _headers src dst =
   if C.has_link conf src dst then
     bad_request ("Link already exists")
   else (
-    C.make_link conf src dst ;
+    C.make_link conf conf.C.running_graph src dst ;
     let status = `Code 200 in
     Server.respond_string ~status ~body:"" ())
 
@@ -147,7 +147,7 @@ let del_link conf _headers src dst =
   if not (C.has_link conf src dst) then
     bad_request ("That link does not exist")
   else (
-    C.make_link conf src dst ;
+    C.remove_link conf conf.C.running_graph src dst ;
     let status = `Code 200 in
     Server.respond_string ~status ~body:"" ())
 

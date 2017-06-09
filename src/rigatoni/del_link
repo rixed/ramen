@@ -5,4 +5,4 @@ shift
 dst=$1
 shift
 
-curl $@ -X DELETE http://localhost:29380/link/$src/$dst
+curl "$@" -X DELETE http://localhost:29380/link/$src/$dst

@@ -5,4 +5,4 @@ shift
 dst=$1
 shift
 
-curl $@ http://localhost:29380/link/$src/$dst
+curl "$@" http://localhost:29380/link/$src/$dst
