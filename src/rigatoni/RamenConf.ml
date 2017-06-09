@@ -2,7 +2,8 @@
 open Batteries
 
 type node =
-  { operation : Lang.Operation.t ;
+  { name : string ;
+    operation : Lang.Operation.t ;
     mutable parents : node list ;
     mutable children : node list }
 
@@ -14,8 +15,9 @@ type conf =
     running_graph : graph ;
     save_file : string }
 
-let make_node _conf operation =
-  { operation ; parents = [] ; children = [] }
+let make_node conf name operation =
+  conf.logger.Log.debug "Create node %s" name ;
+  { name ; operation ; parents = [] ; children = [] }
 
 let make_new_graph () =
   { nodes = Hashtbl.create 17 }
@@ -32,7 +34,7 @@ let make_graph logger save_file =
       make_new_graph ()
 
 let save_graph conf graph =
-  conf.logger.Log.debug "Saving graph in %S\n%!" conf.save_file ;
+  conf.logger.Log.debug "Saving graph in %S" conf.save_file ;
   File.with_file_out ~mode:[`create; `trunc] conf.save_file (fun oc ->
     Marshal.output oc graph)
 
@@ -56,6 +58,19 @@ let remove_node conf graph id =
     ) node.children ;
   Hashtbl.remove_all graph.nodes id ;
   save_graph conf graph
+
+let has_link _conf src dst =
+  List.exists ((==) dst) src.children
+
+let make_link conf src dst =
+  conf.logger.Log.debug "Create link between nodes %s and %s" src.name dst.name ;
+  src.children <- dst :: src.children ;
+  dst.parents <- src :: dst.parents
+
+let remove_link conf src dst =
+  conf.logger.Log.debug "Delete link between nodes %s and %s" src.name dst.name ;
+  src.children <- List.filter ((!=) dst) src.children ;
+  dst.parents <- List.filter ((!=) src) dst.parents
 
 let make_conf debug save_file =
   let logger = Log.make_logger debug in

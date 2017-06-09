@@ -1,3 +1,6 @@
 #!/bin/sh
 
-curl $@ -X DELETE http://localhost:29380/node/toto
+name=$1
+shift
+
+curl $@ -X DELETE http://localhost:29380/node/$name

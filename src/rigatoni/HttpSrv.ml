@@ -85,7 +85,7 @@ let put_node conf headers name body =
       (match Lang.Operation.Parser.check op with
       | Bad e -> bad_request ("Invalid operation: "^ e)
       | Ok op ->
-        let node = make_node conf op in
+        let node = make_node conf name op in
         add_node conf conf.running_graph name node ;
         let status = `Code 200 in
         Server.respond_string ~status ~body:"" ()))
@@ -122,6 +122,50 @@ let del_node conf _headers name =
 (*
 == Connect nodes ==
 
+We need to build connections between nodes. That's when type-checking happens.
+Each link has a resource at /link/$node_src/$node_dest. Creating this resource
+(PUT) will add this connection and deleting it will remove the connection.
+
+GET will return some info on that connection (although for now we have not much
+to say.
+*)
+
+let node_of_name conf graph n =
+  match find_node conf graph n with
+  | exception Not_found ->
+    bad_request ("Node "^ n ^" does not exist")
+  | node -> return node
+
+let put_link conf _headers src dst =
+  let%lwt src = node_of_name conf conf.running_graph src in
+  let%lwt dst = node_of_name conf conf.running_graph dst in
+  if has_link conf src dst then
+    bad_request ("Link already exists")
+  else (
+    make_link conf src dst ;
+    let status = `Code 200 in
+    Server.respond_string ~status ~body:"" ())
+
+let del_link conf _headers src dst =
+  let%lwt src = node_of_name conf conf.running_graph src in
+  let%lwt dst = node_of_name conf conf.running_graph dst in
+  if not (has_link conf src dst) then
+    bad_request ("That link does not exist")
+  else (
+    make_link conf src dst ;
+    let status = `Code 200 in
+    Server.respond_string ~status ~body:"" ())
+
+let get_link conf _headers src dst =
+  let%lwt src = node_of_name conf conf.running_graph src in
+  let%lwt dst = node_of_name conf conf.running_graph dst in
+  if not (has_link conf src dst) then
+    bad_request ("That link does not exist")
+  else (
+    let status = `Code 200 and body = "{}\n" in
+    Server.respond_string ~status ~body ())
+
+(*
 == Get info about a node ==
 
 == Display the graph (json or svg representation) ==
@@ -146,6 +190,9 @@ let callback conf _conn req body =
         | `PUT, ["node" ; name] -> put_node conf headers name body_str
         | `GET, ["node" ; name] -> get_node conf headers name
         | `DELETE, ["node" ; name] -> del_node conf headers name
+        | `PUT, ["link" ; src ; dst] -> put_link conf headers src dst
+        | `GET, ["link" ; src ; dst] -> get_link conf headers src dst
+        | `DELETE, ["link" ; src ; dst] -> del_link conf headers src dst
         | `PUT, _ | `GET, _ | `DELETE, _ ->
           fail (HttpError (404, "No such resource"))
         | _ ->
