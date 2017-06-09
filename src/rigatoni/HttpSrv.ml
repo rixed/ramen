@@ -64,38 +64,31 @@ type make_node =
     (PPP.of_string_exc make_node_ppp "{\"operation\":\"op\", \"input_ring_size\":42}")
 *)
 
-let put_node conf name msg =
-  if has_node conf conf.running_graph name then
-    bad_request ("Node "^name^" already exists") else
-  let open Lang.P in
-  let p = Lang.Operation.Parser.p +- Lang.opt_blanks +- eof in
-  (* TODO: enable error correction *)
-  match p [] None Parsers.no_error_correction (stream_of_string msg.operation) |>
-        to_result with
-  | Bad e ->
-    let err = IO.to_string (Lang.P.print_bad_result Lang.Operation.print) e in
-    bad_request ("Parse error: "^ err)
-  | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
-    let node = make_node conf op in
-    add_node conf conf.running_graph name node ;
-    let status = `Code 200 in
-    Server.respond_string ~status ~body:"" ()
-
-let put conf path headers body =
+let put_node conf headers name body =
   (* Get the message from the body *)
   if get_content_type headers <> json_content_type then
     bad_request "Bad content type"
   else match PPP.of_string_exc make_node_ppp body with
   | exception e -> fail e
   | msg ->
-    let paths =
-      String.nsplit path "/" |>
-      List.filter (fun s -> String.length s > 0) in
-    match paths with
-    | ["node" ; name] ->
-      put_node conf name msg
-    | _ ->
-      fail (HttpError (404, "No such resource"))
+    if has_node conf conf.running_graph name then
+      bad_request ("Node "^name^" already exists") else
+    let open Lang.P in
+    let p = Lang.Operation.Parser.p +- Lang.opt_blanks +- eof in
+    (* TODO: enable error correction *)
+    (match p [] None Parsers.no_error_correction (stream_of_string msg.operation) |>
+          to_result with
+    | Bad e ->
+      let err = IO.to_string (Lang.P.print_bad_result Lang.Operation.print) e in
+      bad_request ("Parse error: "^ err)
+    | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
+      (match Lang.Operation.Parser.check op with
+      | Bad e -> bad_request ("Invalid operation: "^ e)
+      | Ok op ->
+        let node = make_node conf op in
+        add_node conf conf.running_graph name node ;
+        let status = `Code 200 in
+        Server.respond_string ~status ~body:"" ()))
 
 (* GET *)
 
@@ -105,7 +98,7 @@ type node_info =
   (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
   { operation : string } [@@ppp PPP_JSON]
 
-let get_node conf name =
+let get_node conf _headers name =
   match find_node conf conf.running_graph name with
   | exception Not_found ->
     fail (HttpError (404, "No such node"))
@@ -116,35 +109,15 @@ let get_node conf name =
     let status = `Code 200 in
     Server.respond_string ~status ~body ()
 
-let get conf path _headers =
-  let paths =
-    String.nsplit path "/" |>
-    List.filter (fun s -> String.length s > 0) in
-  match paths with
-  | ["node" ; name] ->
-    get_node conf name
-  | _ ->
-    fail (HttpError (404, "No such resource"))
-
 (* DELETE *)
 
-let del_node conf name =
+let del_node conf _headers name =
   match remove_node conf conf.running_graph name with
   | exception Not_found ->
     fail (HttpError (404, "No such node"))
   | () ->
     let status = `Code 200 in
     Server.respond_string ~status ~body:"" ()
-
-let del conf path _headers =
-  let paths =
-    String.nsplit path "/" |>
-    List.filter (fun s -> String.length s > 0) in
-  match paths with
-  | ["node" ; name] ->
-    del_node conf name
-  | _ ->
-    fail (HttpError (404, "No such resource"))
 
 (*
 == Connect nodes ==
@@ -160,18 +133,23 @@ let del conf path _headers =
 let callback conf _conn req body =
   (* What is this about? *)
   let uri = Request.uri req in
-  let path = Uri.path uri
-  and headers = Request.headers req in
+  let paths =
+    String.nsplit (Uri.path uri) "/" |>
+    List.filter (fun s -> String.length s > 0) in
+  let headers = Request.headers req in
   let%lwt body_str = Cohttp_lwt_body.to_string body
   in
   catch
     (fun () ->
       try
-        match Request.meth req with
-        | `PUT -> put conf path headers body_str
-        | `GET -> get conf path headers
-        | `DELETE -> del conf path headers
-        | _ -> fail (HttpError (405, "Method not implemented"))
+        match Request.meth req, paths with
+        | `PUT, ["node" ; name] -> put_node conf headers name body_str
+        | `GET, ["node" ; name] -> get_node conf headers name
+        | `DELETE, ["node" ; name] -> del_node conf headers name
+        | `PUT, _ | `GET, _ | `DELETE, _ ->
+          fail (HttpError (404, "No such resource"))
+        | _ ->
+          fail (HttpError (405, "Method not implemented"))
       with exn -> fail exn)
     (function
       | HttpError (code, body) ->

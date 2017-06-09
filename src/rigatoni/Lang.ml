@@ -762,6 +762,10 @@ struct
                          text \"fatigue...\"")
     *)
 
+    (* Check that the expression is valid, or return an error message.
+     * Also perform some optimisation, numeric promotions, etc... *)
+    let check op = Ok op (* TODO *)
+
     (*$>*)
   end
   (*$>*)
