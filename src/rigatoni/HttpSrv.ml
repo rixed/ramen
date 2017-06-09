@@ -4,10 +4,19 @@ open BatOption.Infix
 open Cohttp
 open Cohttp_lwt_unix
 open Lwt
-open RamenConf
+module C = RamenConf
 
-(* API:
+exception HttpError of (int * string)
 
+let not_implemented msg = fail (HttpError (501, msg))
+let bad_request msg = fail (HttpError (400, msg))
+
+let json_content_type = "application/json"
+
+let get_content_type headers =
+  Header.get headers "Content-Type" |? json_content_type |> String.lowercase
+
+(*
 == Add/Delete a node ==
 
 Nodes are referred to via name that can be anything as long as they are unique.
@@ -27,20 +36,7 @@ default being to include them all. For now we will use only JSON.
 
 Here is the node description. Typically, optional fields are optional or even
 forbidden when creating the node and are set when getting node information.
-
 *)
-
-exception HttpError of (int * string)
-
-let not_implemented msg = fail (HttpError (501, msg))
-let bad_request msg = fail (HttpError (400, msg))
-
-let json_content_type = "application/json"
-
-let get_content_type headers =
-  Header.get headers "Content-Type" |? json_content_type |> String.lowercase
-
-(* PUT *)
 
 type make_node =
   { (* The input type of this node is any tuple source with at least all the
@@ -71,7 +67,7 @@ let put_node conf headers name body =
   else match PPP.of_string_exc make_node_ppp body with
   | exception e -> fail e
   | msg ->
-    if has_node conf conf.running_graph name then
+    if C.has_node conf conf.C.running_graph name then
       bad_request ("Node "^name^" already exists") else
     let open Lang.P in
     let p = Lang.Operation.Parser.p +- Lang.opt_blanks +- eof in
@@ -85,34 +81,33 @@ let put_node conf headers name body =
       (match Lang.Operation.Parser.check op with
       | Bad e -> bad_request ("Invalid operation: "^ e)
       | Ok op ->
-        let node = make_node conf name op in
-        add_node conf conf.running_graph name node ;
+        let node = C.make_node conf name op in
+        C.add_node conf conf.C.running_graph name node ;
         let status = `Code 200 in
         Server.respond_string ~status ~body:"" ()))
-
-(* GET *)
 
 type node_id = string [@@ppp PPP_JSON]
 
 type node_info =
   (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
-  { operation : string } [@@ppp PPP_JSON]
+  { name : string ; operation : string } [@@ppp PPP_JSON]
+
+let node_info_of_node node =
+  { name = node.C.name ;
+    operation = IO.to_string Lang.Operation.print node.C.operation }
 
 let get_node conf _headers name =
-  match find_node conf conf.running_graph name with
+  match C.find_node conf conf.C.running_graph name with
   | exception Not_found ->
     fail (HttpError (404, "No such node"))
   | node ->
-    let node_info =
-      { operation = IO.to_string Lang.Operation.print node.operation } in
+    let node_info = node_info_of_node node in
     let body = PPP.to_string node_info_ppp node_info ^"\n" in
     let status = `Code 200 in
     Server.respond_string ~status ~body ()
 
-(* DELETE *)
-
 let del_node conf _headers name =
-  match remove_node conf conf.running_graph name with
+  match C.remove_node conf conf.C.running_graph name with
   | exception Not_found ->
     fail (HttpError (404, "No such node"))
   | () ->
@@ -131,46 +126,63 @@ to say.
 *)
 
 let node_of_name conf graph n =
-  match find_node conf graph n with
+  match C.find_node conf graph n with
   | exception Not_found ->
     bad_request ("Node "^ n ^" does not exist")
   | node -> return node
 
 let put_link conf _headers src dst =
-  let%lwt src = node_of_name conf conf.running_graph src in
-  let%lwt dst = node_of_name conf conf.running_graph dst in
-  if has_link conf src dst then
+  let%lwt src = node_of_name conf conf.C.running_graph src in
+  let%lwt dst = node_of_name conf conf.C.running_graph dst in
+  if C.has_link conf src dst then
     bad_request ("Link already exists")
   else (
-    make_link conf src dst ;
+    C.make_link conf src dst ;
     let status = `Code 200 in
     Server.respond_string ~status ~body:"" ())
 
 let del_link conf _headers src dst =
-  let%lwt src = node_of_name conf conf.running_graph src in
-  let%lwt dst = node_of_name conf conf.running_graph dst in
-  if not (has_link conf src dst) then
+  let%lwt src = node_of_name conf conf.C.running_graph src in
+  let%lwt dst = node_of_name conf conf.C.running_graph dst in
+  if not (C.has_link conf src dst) then
     bad_request ("That link does not exist")
   else (
-    make_link conf src dst ;
+    C.make_link conf src dst ;
     let status = `Code 200 in
     Server.respond_string ~status ~body:"" ())
 
 let get_link conf _headers src dst =
-  let%lwt src = node_of_name conf conf.running_graph src in
-  let%lwt dst = node_of_name conf conf.running_graph dst in
-  if not (has_link conf src dst) then
+  let%lwt src = node_of_name conf conf.C.running_graph src in
+  let%lwt dst = node_of_name conf conf.C.running_graph dst in
+  if not (C.has_link conf src dst) then
     bad_request ("That link does not exist")
   else (
     let status = `Code 200 and body = "{}\n" in
     Server.respond_string ~status ~body ())
 
 (*
-== Get info about a node ==
+== Display the graph (JSON or SVG representation) ==
 
-== Display the graph (json or svg representation) ==
-
+Begin with the graph as a JSON object.
 *)
+
+type graph_info =
+  { nodes : node_info list ;
+    links : (string * string) list } [@@ppp PPP_JSON]
+
+let get_graph conf _headers =
+  let graph_info =
+    { nodes = Hashtbl.fold (fun _name node lst ->
+        node_info_of_node node :: lst
+      ) conf.C.running_graph.C.nodes [] ;
+      links = Hashtbl.fold (fun name node lst ->
+        let links = List.map (fun c -> name, c.C.name) node.C.children in
+        List.rev_append links lst
+      ) conf.C.running_graph.C.nodes [] } in
+  let body = PPP.to_string graph_info_ppp graph_info ^"\n" in
+  let status = `Code 200 in
+  Server.respond_string ~status ~body ()
+
 
 (* The function called for each HTTP request: *)
 
@@ -193,6 +205,7 @@ let callback conf _conn req body =
         | `PUT, ["link" ; src ; dst] -> put_link conf headers src dst
         | `GET, ["link" ; src ; dst] -> get_link conf headers src dst
         | `DELETE, ["link" ; src ; dst] -> del_link conf headers src dst
+        | `GET, ["graph"] -> get_graph conf headers
         | `PUT, _ | `GET, _ | `DELETE, _ ->
           fail (HttpError (404, "No such resource"))
         | _ ->
@@ -212,17 +225,17 @@ let start conf port cert_opt key_opt =
   let entry_point = Server.make ~callback:(callback conf) () in
   let tcp_mode = `TCP (`Port port) in
   let t1 =
-    let%lwt () = return (conf.logger.Log.info "Starting http server on port %d" port) in
+    let%lwt () = return (conf.C.logger.Log.info "Starting http server on port %d" port) in
     Server.create ~mode:tcp_mode entry_point in
   let t2 =
     match cert_opt, key_opt with
     | Some cert, Some key ->
       let port = port + 1 in
       let ssl_mode = `TLS (`Crt_file_path cert, `Key_file_path key, `No_password, `Port port) in
-      let%lwt () = return (conf.logger.Log.info "Starting https server on port %d" port) in
+      let%lwt () = return (conf.C.logger.Log.info "Starting https server on port %d" port) in
       Server.create ~mode:ssl_mode entry_point
     | None, None ->
-      return (conf.logger.Log.info "Not starting https server")
+      return (conf.C.logger.Log.info "Not starting https server")
     | _ ->
-      return (conf.logger.Log.info "Missing some of SSL configuration") in
+      return (conf.C.logger.Log.info "Missing some of SSL configuration") in
   join [ t1 ; t2 ]
