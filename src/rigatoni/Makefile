@@ -1,12 +1,17 @@
 top_srcdir = ..
 
+LINKED_WITH_TESTS = \
+	Log.ml
+
 TESTABLE_SOURCES = \
-	RamenLogger.ml Lang.ml HttpSrv.ml \
+	HttpSrv.ml
+
+SOURCES = \
+	Log.ml Lang.ml RamenConf.ml \
+	$(TESTABLE_SOURCES) \
 	rigatoni.ml
 
-SOURCES = $(TESTABLE_SOURCES)
-
-PACKAGES = lwt.ppx batteries cmdliner stdint parsercombinator cohttp.lwt
+PACKAGES = ppp lwt.ppx batteries cmdliner stdint parsercombinator cohttp.lwt
 
 INSTALLED = \
   rigatoni
@@ -18,7 +23,7 @@ all: rigatoni
 lib/rigatoni.cmxa:
 	$(MAKE) -C lib rigatoni.cmxa
 
-rigatoni: RamenLogger.cmx Lang.cmx HttpSrv.cmx rigatoni.cmx
+rigatoni: $(SOURCES:.ml=.cmx)
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $^ -o $@
 
 clean-spec:

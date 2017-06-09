@@ -154,6 +154,8 @@
 
 open Batteries
 open Stdint
+type uint8 = Uint8.t
+type uint16 = Uint16.t
 
 module P = Parsers.Make (Parsers.SimpleConfig (Char))
 module ParseUsual = ParsersUsual.Make (P)
@@ -181,7 +183,6 @@ let non_keyword =
   let open P in
   check (nay keyword) -+ ParseUsual.identifier
 
-
 (*$inject
   open Stdint
   open Batteries
@@ -198,7 +199,7 @@ let non_keyword =
       Printf.sprintf "%d solutions" (List.length lst)
 
   let test_p p s =
-    (p +- eof) [] None Parsers.no_error_correction (P.stream_of_string s) |>
+    (p +- eof) [] None Parsers.no_error_correction (stream_of_string s) |>
     to_result
  *)
 
@@ -212,23 +213,23 @@ struct
   (* stdint types are implemented as custom blocks, therefore are slower than ints.
    * But we do not care as we merely represents code here, we do not run the operators. *)
   type t = VFloat of float | VString of string | VBool of bool
-         | VU8 of Uint8.t | VU16 of Uint16.t | VU32 of Uint32.t | VU64 of Uint64.t | VU128 of Uint128.t
-         | VI8 of Int8.t  | VI16 of Int16.t  | VI32 of Int32.t  | VI64 of Int64.t  | VI128 of Int128.t
+         | VU8 of uint8 | VU16 of uint16 | VU32 of uint32 | VU64 of uint64 | VU128 of uint128
+         | VI8 of int8  | VI16 of int16  | VI32 of int32  | VI64 of int64  | VI128 of int128
 
   let print fmt = function
     | VFloat f  -> Printf.fprintf fmt "%g" f
     | VString s -> Printf.fprintf fmt "%S" s
     | VBool b   -> Printf.fprintf fmt "%b" b
-    | VU8 i     -> Printf.fprintf fmt "%su8" (Uint8.to_string i)
-    | VU16 i    -> Printf.fprintf fmt "%su16" (Uint16.to_string i)
-    | VU32 i    -> Printf.fprintf fmt "%su32" (Uint32.to_string i)
-    | VU64 i    -> Printf.fprintf fmt "%su64" (Uint64.to_string i)
-    | VU128 i   -> Printf.fprintf fmt "%su128" (Uint128.to_string i)
-    | VI8 i     -> Printf.fprintf fmt "%sd8" (Int8.to_string i)
-    | VI16 i    -> Printf.fprintf fmt "%sd16" (Int16.to_string i)
-    | VI32 i    -> Printf.fprintf fmt "%sd32" (Int32.to_string i)
-    | VI64 i    -> Printf.fprintf fmt "%sd64" (Int64.to_string i)
-    | VI128 i   -> Printf.fprintf fmt "%sd128" (Int128.to_string i)
+    | VU8 i     -> Printf.fprintf fmt "%s" (Uint8.to_string i)
+    | VU16 i    -> Printf.fprintf fmt "%s" (Uint16.to_string i)
+    | VU32 i    -> Printf.fprintf fmt "%s" (Uint32.to_string i)
+    | VU64 i    -> Printf.fprintf fmt "%s" (Uint64.to_string i)
+    | VU128 i   -> Printf.fprintf fmt "%s" (Uint128.to_string i)
+    | VI8 i     -> Printf.fprintf fmt "%s" (Int8.to_string i)
+    | VI16 i    -> Printf.fprintf fmt "%s" (Int16.to_string i)
+    | VI32 i    -> Printf.fprintf fmt "%s" (Int32.to_string i)
+    | VI64 i    -> Printf.fprintf fmt "%s" (Int64.to_string i)
+    | VI128 i   -> Printf.fprintf fmt "%s" (Int128.to_string i)
 
   module Parser =
   struct
@@ -764,12 +765,4 @@ struct
     (*$>*)
   end
   (*$>*)
-end
-
-module Graph =
-struct
-  type node = { operation : Operation.t ;
-                parents : node list ;
-                children : node list }
-  type t = { mutable nodes : node list }
 end

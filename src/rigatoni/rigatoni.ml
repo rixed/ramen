@@ -1,25 +1,22 @@
 (* Rigatoni controlling daemon *)
 open Cmdliner
 open Batteries
-open RamenLogger
-
-type conf = { logger : logger }
-
-let conf debug =
-  { logger = make_logger debug }
 
 let common_opts =
   let debug =
     Arg.(value (flag (info ~doc:"increase verbosity" ["d"; "debug"])))
+  and graph_save_file =
+    Arg.(value (opt string "/tmp/rigatoni_graph.raw"
+                    (info ~doc:"graph save file" ["graph-save-file"])))
   in
-  Term.(const conf $ debug)
+  Term.(const RamenConf.make_conf $ debug $ graph_save_file)
 
 (*
  * Start the event processor
  *)
 
 let start conf http_port ssl_cert ssl_key =
-  let srv_thread = HttpSrv.start conf.logger http_port ssl_cert ssl_key in
+  let srv_thread = HttpSrv.start conf http_port ssl_cert ssl_key in
   Lwt_main.run srv_thread
 
 let http_port_opt =
