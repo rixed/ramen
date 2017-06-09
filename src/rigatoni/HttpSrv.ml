@@ -12,9 +12,16 @@ let not_implemented msg = fail (HttpError (501, msg))
 let bad_request msg = fail (HttpError (400, msg))
 
 let json_content_type = "application/json"
+let dot_content_type = "text/dot"
 
 let get_content_type headers =
   Header.get headers "Content-Type" |? json_content_type |> String.lowercase
+
+let get_accept headers =
+  Header.get headers "Accept" |? json_content_type |> String.lowercase
+
+let accept_anything s =
+  String.starts_with s "*/*"
 
 (*
 == Add/Delete a node ==
@@ -104,7 +111,8 @@ let get_node conf _headers name =
     let node_info = node_info_of_node node in
     let body = PPP.to_string node_info_ppp node_info ^"\n" in
     let status = `Code 200 in
-    Server.respond_string ~status ~body ()
+    let headers = Header.init_with "Content-Type" json_content_type in
+    Server.respond_string ~headers ~status ~body ()
 
 let del_node conf _headers name =
   match C.remove_node conf conf.C.running_graph name with
@@ -158,7 +166,8 @@ let get_link conf _headers src dst =
     bad_request ("That link does not exist")
   else (
     let status = `Code 200 and body = "{}\n" in
-    Server.respond_string ~status ~body ())
+    let headers = Header.init_with "Content-Type" json_content_type in
+    Server.respond_string ~headers ~status ~body ())
 
 (*
 == Display the graph (JSON or SVG representation) ==
@@ -170,7 +179,7 @@ type graph_info =
   { nodes : node_info list ;
     links : (string * string) list } [@@ppp PPP_JSON]
 
-let get_graph conf _headers =
+let get_graph_json conf _headers =
   let graph_info =
     { nodes = Hashtbl.fold (fun _name node lst ->
         node_info_of_node node :: lst
@@ -181,7 +190,39 @@ let get_graph conf _headers =
       ) conf.C.running_graph.C.nodes [] } in
   let body = PPP.to_string graph_info_ppp graph_info ^"\n" in
   let status = `Code 200 in
-  Server.respond_string ~status ~body ()
+  let headers = Header.init_with "Content-Type" json_content_type in
+  Server.respond_string ~headers ~status ~body ()
+
+let dot_of_graph graph =
+  let dot = IO.output_string () in
+  Printf.fprintf dot "digraph rigatoni {\n" ;
+  Hashtbl.keys graph.C.nodes |>
+    Enum.iter (Printf.fprintf dot "\t%S\n") ;
+  Printf.fprintf dot "\n" ;
+  Hashtbl.iter (fun name node ->
+      List.iter (fun c ->
+          Printf.fprintf dot "\t%S -> %S\n" name c.C.name
+        ) node.C.children
+    ) graph.C.nodes ;
+  Printf.fprintf dot "}\n" ;
+  IO.close_out dot
+
+let get_graph_dot conf _headers =
+  let body = dot_of_graph conf.C.running_graph in
+  let status = `Code 200 in
+  let headers = Header.init_with "Content-Type" dot_content_type in
+  Server.respond_string ~headers ~status ~body ()
+
+let get_graph conf headers =
+  let accept = get_accept headers in
+  if accept_anything accept ||
+     String.starts_with accept json_content_type then
+    get_graph_json conf headers
+  else if String.starts_with accept dot_content_type then
+    get_graph_dot conf headers
+  else
+    let status = Code.status_of_code 406 in
+    Server.respond_error ~status ~body:("Can't produce "^ accept ^"\n") ()
 
 
 (* The function called for each HTTP request: *)
