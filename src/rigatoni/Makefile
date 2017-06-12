@@ -1,14 +1,13 @@
 top_srcdir = ..
 
 LINKED_WITH_TESTS = \
-	Log.ml
+	Log.ml RamenConf.ml
 
 TESTABLE_SOURCES = \
-	HttpSrv.ml
+	Lang.ml HttpSrv.ml
 
 SOURCES = \
-	Log.ml Lang.ml RamenConf.ml \
-	$(TESTABLE_SOURCES) \
+	Log.ml Lang.ml RamenConf.ml HttpSrv.ml \
 	rigatoni.ml
 
 PACKAGES = ppp lwt.ppx batteries cmdliner stdint parsercombinator cohttp.lwt

@@ -56,14 +56,12 @@ type make_node =
 (*$= make_node_ppp & ~printer:(PPP.to_string make_node_ppp)
   { operation = "test" ;\
     input_ring_size = None ;\
-    output_ring_size = None ;\
-    info = None }\
+    output_ring_size = None }\
     (PPP.of_string_exc make_node_ppp "{\"operation\":\"test\"}")
 
   { operation = "op" ;\
     input_ring_size = Some 42 ;\
-    output_ring_size = None ;\
-    info = None }\
+    output_ring_size = None }\
     (PPP.of_string_exc make_node_ppp "{\"operation\":\"op\", \"input_ring_size\":42}")
 *)
 
