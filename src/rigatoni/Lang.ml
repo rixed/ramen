@@ -168,20 +168,6 @@ let blanks =
   ParseUsual.whitespace >>: fun _ -> ()
 let opt_blanks =
   P.optional_greedy ~def:() blanks
-let keyword =
-  let open P in
-  let open ParseUsual in
-  (
-    strinG "true" ||| strinG "false" ||| strinG "and" ||| strinG "or" |||
-    strinG "min" ||| strinG "max" ||| strinG "sum" ||| strinG "percentile" |||
-    strinG "of" ||| strinG "is" ||| strinG "not" ||| strinG "null" |||
-    strinG "group" ||| strinG "by" ||| strinG "select" ||| strinG "where" |||
-    strinG "on" ||| strinG "change" ||| strinG "after" ||| strinG "when" |||
-    strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text"
-  ) -- check (nay (letter ||| underscore ||| decimal_digit))
-let non_keyword =
-  let open P in
-  check (nay keyword) -+ ParseUsual.identifier
 
 (*$inject
   open Stdint
@@ -210,6 +196,25 @@ struct
   type typ = TFloat | TString | TBool
            | TU8 | TU16 | TU32 | TU64 | TU128
            | TI8 | TI16 | TI32 | TI64 | TI128
+
+  let print_typ fmt typ =
+    let s = match typ with
+      | TFloat  -> "FLOAT"
+      | TString -> "STRING"
+      | TBool   -> "BOOL"
+      | TU8     -> "U8"
+      | TU16    -> "U16"
+      | TU32    -> "U32"
+      | TU64    -> "U63"
+      | TU128   -> "U128"
+      | TI8     -> "I8"
+      | TI16    -> "I16"
+      | TI32    -> "I32"
+      | TI64    -> "I64"
+      | TI128   -> "I128"
+    in
+    String.print fmt s
+
   (* stdint types are implemented as custom blocks, therefore are slower than ints.
    * But we do not care as we merely represents code here, we do not run the operators. *)
   type t = VFloat of float | VString of string | VBool of bool
@@ -278,14 +283,55 @@ struct
       (Ok (VString "glop", (6,[])))              (test_p p "\"glop\"")
     *)
 
+    let typ =
+      (strinG "float" >>: fun () -> TFloat) |||
+      (strinG "string" >>: fun () -> TString) |||
+      (strinG "bool" >>: fun () -> TBool) |||
+      (strinG "u8" >>: fun () -> TU8) |||
+      (strinG "u16" >>: fun () -> TU16) |||
+      (strinG "u32" >>: fun () -> TU32) |||
+      (strinG "u63" >>: fun () -> TU64) |||
+      (strinG "u128" >>: fun () -> TU128) |||
+      (strinG "i8" >>: fun () -> TI8) |||
+      (strinG "i16" >>: fun () -> TI16) |||
+      (strinG "i32" >>: fun () -> TI32) |||
+      (strinG "i64" >>: fun () -> TI64) |||
+      (strinG "i128" >>: fun () -> TI128)
+
     (*$>*)
   end
   (*$>*)
 end
 
+let keyword =
+  let open P in
+  let open ParseUsual in
+  (
+    strinG "true" ||| strinG "false" ||| strinG "and" ||| strinG "or" |||
+    strinG "min" ||| strinG "max" ||| strinG "sum" ||| strinG "percentile" |||
+    strinG "of" ||| strinG "is" ||| strinG "not" ||| strinG "null" |||
+    strinG "group" ||| strinG "by" ||| strinG "select" ||| strinG "where" |||
+    strinG "on" ||| strinG "change" ||| strinG "after" ||| strinG "when" |||
+    strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
+    strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
+    (Scalar.Parser.typ >>: fun _ -> ())
+  ) -- check (nay (letter ||| underscore ||| decimal_digit))
+let non_keyword =
+  (* TODO: allow keywords if quoted *)
+  let open P in
+  check (nay keyword) -+ ParseUsual.identifier
+
 module Tuple =
 struct
-  type typ = (string, bool (* nullable *) * Scalar.typ) Hashtbl.t
+  type field_typ = { name : string ; nullable : bool ; typ : Scalar.typ }
+  let print_field_typ fmt field =
+    (* TODO: check that name is a valid identifier *)
+    Printf.fprintf fmt "%s %a %sNULL"
+      field.name
+      Scalar.print_typ field.typ
+      (if field.nullable then "" else "NOT ")
+
+  type typ = (string, field_typ) Hashtbl.t
   type t = (string, Scalar.t) Hashtbl.t
 end
 
@@ -595,6 +641,7 @@ struct
         emit_when : Expr.t }
     | OnChange of Expr.t
     | Alert of { team : string ; subject : string ; text : string }
+    | ReadCSVFile of { fname : string ; fields : Tuple.field_typ list }
 
   let print fmt =
     let sep = ", " in
@@ -617,6 +664,10 @@ struct
       Printf.fprintf fmt "ON CHANGE %a" Expr.print e
     | Alert { team ; subject ; text } ->
       Printf.fprintf fmt "ALERT %S SUBJECT %S TEXT %S" team subject text
+    | ReadCSVFile { fname ; fields } ->
+      Printf.fprintf fmt "READ FROM CSV FILE %S %a"
+        fname
+        (List.print ~first:"(" ~last:")" ~sep:"," Tuple.print_field_typ) fields
 
   module Parser =
   struct
@@ -680,8 +731,23 @@ struct
       strinG "text" +- blanks ++ quoted_string >>:
       fun ((team, subject), text) -> Alert { team ; subject ; text }
 
+    let read_csv_file =
+      let field =
+        non_keyword +- blanks ++ Scalar.Parser.typ ++
+        optional ~def:true (
+          optional ~def:true (blanks -+ (strinG "not" >>: fun () -> false)) +-
+          blanks +- strinG "null") >>:
+        fun ((name, typ), nullable) -> Tuple.{ name ; typ ; nullable }
+      in
+      strinG "read" -- blanks -- strinG "from" -- blanks --
+      optional ~def:() (strinG "csv") -- blanks -- strinG "file" --
+      blanks -+ quoted_string +- opt_blanks +- char '(' +- opt_blanks ++
+      several ~sep:(opt_blanks -- char ',' -- opt_blanks) field +-
+      opt_blanks +- char ')' >>:
+      fun (fname, fields) -> ReadCSVFile { fname ; fields }
+
     let p =
-      select ||| aggregate ||| on_change ||| alert
+      select ||| aggregate ||| on_change ||| alert ||| read_csv_file
 
     (*$= p & ~printer:(test_printer print)
       (Ok (\
@@ -760,6 +826,14 @@ struct
         (test_p p "alert \"network firefighters\" \\
                          subject \"Too little traffic from zone $z1 to $z2\" \\
                          text \"fatigue...\"")
+
+      (Ok (\
+        ReadCSVFile { fname = "/tmp/toto.csv" ; \
+                      fields = Lang.Tuple.[ \
+                        { name = "f1" ; nullable = true ; typ = Scalar.TBool } ;\
+                        { name = "f2" ; nullable = false ; typ = Scalar.TI32 } ] },\
+        (61, [])))\
+        (test_p p "read from csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
     *)
 
     (* Check that the expression is valid, or return an error message.
