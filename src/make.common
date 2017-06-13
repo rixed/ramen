@@ -1,15 +1,14 @@
 # vim: ft=make
-OCAMLC     = OCAMLPATH=$(OCAMLPATH)/ ocamlfind ocamlc
-OCAMLOPT   = OCAMLPATH=$(OCAMLPATH)/ ocamlfind ocamlopt
-OCAMLDEP   = OCAMLPATH=$(OCAMLPATH)/ ocamlfind ocamldep
-OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH)/ ocamlfind ocamlmktop
+OCAMLC     = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlc
+OCAMLOPT   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlopt
+OCAMLDEP   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamldep
+OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlmktop
 QTEST      = qtest
 WARNS      = Ael-31-41-42-44-45-48
-CC         = gcc
 override OCAMLOPTFLAGS += $(INCS) -w $(WARNS) -g -annot -O2
 override OCAMLFLAGS    += $(INCS) -w $(WARNS) -g -annot 
 override CFLAGS        += --std=c11 -g -O2 -Wall -W -Wno-parentheses
-override CPPFLAGS      += --std=c11 -D_GNU_SOURCE
+override CPPFLAGS      += --std=c11 -D_GNU_SOURCE -I $(shell ocamlfind ocamlc -where)
 
 # Common rules
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top
@@ -27,10 +26,10 @@ clean: clean-spec
 
 distclean: clean distclean-spec
 	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
-	$(RM) *.cma *.cmxa *.cmxs oUnit-anon.cache qtest.targets.log *.opt *.byte
+	$(RM) *.cma *.cmxa *.cmxs oUnit-anon.cache qtest.targets.log *.opt *.byte *.top
 
 %.top: %.cma
-	$(OCAMLMKTOP) $(OCAMLFLAGS) -custom $< -o $@
+	$(OCAMLMKTOP) $(OCAMLFLAGS) -custom -package "$(PACKAGES)" $< -o $@
 
 # Tests
 
@@ -63,7 +62,7 @@ dep:
 	$(MAKE) .depend
 
 .depend: $(SOURCES)
-	$(OCAMLDEP) -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
-	@if test -n "$(filter %.c, $(SOURCES))" || test -n "$(filter %.h, $(SOURCES))"; then \
-		$(CC) -M $(filter %.c, $(SOURCES)) $(filter %.h, $(SOURCES)) >> $@; \
-	fi
+	@$(OCAMLDEP) -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
+	@for f in $(filter %.c, $(SOURCES)); do \
+		$(CC) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> $@; \
+	done

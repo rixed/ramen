@@ -20,3 +20,6 @@ all_tests.*
 run_test
 perf.data*
 gmon.out
+core
+*.opt
+ringbuf_ctl

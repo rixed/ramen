@@ -4,6 +4,7 @@ open BatOption.Infix
 open Cohttp
 open Cohttp_lwt_unix
 open Lwt
+open Log
 module C = RamenConf
 
 exception HttpError of (int * string)
@@ -70,7 +71,9 @@ let put_node conf headers name body =
   if get_content_type headers <> json_content_type then
     bad_request "Bad content type"
   else match PPP.of_string_exc make_node_ppp body with
-  | exception e -> fail e
+  | exception e ->
+    !logger.info "Cannot parse received body: %s" body ;
+    fail e
   | msg ->
     if C.has_node conf conf.C.running_graph name then
       bad_request ("Node "^name^" already exists") else
@@ -86,7 +89,7 @@ let put_node conf headers name body =
       (match Lang.Operation.Parser.check op with
       | Bad e -> bad_request ("Invalid operation: "^ e)
       | Ok op ->
-        let node = C.make_node conf name op in
+        let node = C.make_node name op in
         C.add_node conf conf.C.running_graph name node ;
         let status = `Code 200 in
         Server.respond_string ~status ~body:"" ()))
@@ -95,11 +98,12 @@ type node_id = string [@@ppp PPP_JSON]
 
 type node_info =
   (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
-  { name : string ; operation : string } [@@ppp PPP_JSON]
+  { name : string ; operation : string ; command : string } [@@ppp PPP_JSON]
 
 let node_info_of_node node =
   { name = node.C.name ;
-    operation = IO.to_string Lang.Operation.print node.C.operation }
+    operation = IO.to_string Lang.Operation.print node.C.operation ;
+    command = node.C.command }
 
 let get_node conf _headers name =
   match C.find_node conf conf.C.running_graph name with
@@ -264,17 +268,17 @@ let start conf port cert_opt key_opt =
   let entry_point = Server.make ~callback:(callback conf) () in
   let tcp_mode = `TCP (`Port port) in
   let t1 =
-    let%lwt () = return (conf.C.logger.Log.info "Starting http server on port %d" port) in
+    let%lwt () = return (!logger.info "Starting http server on port %d" port) in
     Server.create ~mode:tcp_mode entry_point in
   let t2 =
     match cert_opt, key_opt with
     | Some cert, Some key ->
       let port = port + 1 in
       let ssl_mode = `TLS (`Crt_file_path cert, `Key_file_path key, `No_password, `Port port) in
-      let%lwt () = return (conf.C.logger.Log.info "Starting https server on port %d" port) in
+      let%lwt () = return (!logger.info "Starting https server on port %d" port) in
       Server.create ~mode:ssl_mode entry_point
     | None, None ->
-      return (conf.C.logger.Log.info "Not starting https server")
+      return (!logger.info "Not starting https server")
     | _ ->
-      return (conf.C.logger.Log.info "Missing some of SSL configuration") in
+      return (!logger.info "Missing some of SSL configuration") in
   join [ t1 ; t2 ]

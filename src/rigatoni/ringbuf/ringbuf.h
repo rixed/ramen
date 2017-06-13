@@ -23,8 +23,8 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdbool.h>
-#include <errno.h>
 #include <stdatomic.h>
 #include <string.h>
 #include <sched.h>
@@ -50,16 +50,18 @@ struct tuple_field {
 };
 
 struct ringbuf {
-  // Fixed length of the ring buffer. mmapped file msut be >= this.
-  uint32_t nb_words_mask;
+  // Fixed length of the ring buffer. mmapped file must be >= this.
+  uint32_t nb_words;
   /* Pointers to entries. We use uint32 indexes so that we do not have
    * to worry too much about modulos. */
   /* Bytes that are being added by producers lie between prod_tail and
-   * prod_head. prod_tail points after the last written byte. */
+   * prod_head. prod_head points to the next word to be allocated. */
   volatile uint32_t _Atomic prod_head;
   volatile uint32_t prod_tail;
   /* Bytes that are being read by consumers are between cons_tail and
-   * cons_head. cons_tail points on the next bytes to read. */
+   * cons_head. cons_head points to the next word to be read.
+   * The ring buffer is empty when prod_tail == cons_head and full whenever
+   * prod_head == cons_tail - 1. */
   volatile uint32_t _Atomic cons_head;
   volatile uint32_t cons_tail;
   /* Now this file is made of tuples which format is declared here: first
@@ -70,87 +72,156 @@ struct ringbuf {
   uint32_t data[];
 };
 
-inline uint32_t ringbuf_nb_entries(struct ringbuf const *rb)
+inline uint32_t ringbuf_nb_entries(struct ringbuf const *rb, uint32_t prod_tail, uint32_t cons_head)
 {
-  return rb->prod_tail - rb->cons_head;
+  if (prod_tail >= cons_head) return prod_tail - cons_head;
+  return (prod_tail + rb->nb_words) - cons_head;
 }
 
-inline uint32_t ringbuf_free_entries(struct ringbuf const *rb)
+inline uint32_t ringbuf_nb_free(struct ringbuf const *rb, uint32_t cons_tail, uint32_t prod_head)
 {
-  return rb->nb_words_mask + rb->cons_tail - rb->prod_head;
+  if (cons_tail > prod_head) return cons_tail - prod_head - 1;
+  return (cons_tail + rb->nb_words) - prod_head - 1;
 }
 
-inline bool ringbuf_full(uint32_t head, uint32_t tail, uint32_t next)
-{
-    return tail < next && next < head ||
-           head < tail && tail < next;
-}
+struct ringbuf_tx {
+    uint32_t record_start;
+    uint32_t seen;
+    uint32_t next;
+};
 
-inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words)
+/* ringbuf will have:
+ *  word n: nb_words
+ *  word n+1..n+nb_words: allocated.
+ *  tx->record_start will point at word n+1 above. */
+inline int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t nb_words)
 {
-  uint32_t prod_head, cons_tail, prod_next;
+  uint32_t cons_tail;
   bool cas_ok;
 
-  do {
-    prod_head = rb->prod_head;
-    cons_tail = rb->cons_tail;
-    // We will write the size then the data:
-    prod_next = (prod_head + 1 + nb_words) & rb->nb_words_mask;
+  uint32_t need_eof = 0;  // 0 never needs an EOF
 
-    // Enough room?
-    if (ringbuf_full(prod_head, cons_tail, prod_next)) {
-      return -ENOBUFS;
+  do {
+    tx->seen = rb->prod_head;
+    cons_tail = rb->cons_tail;
+    tx->record_start = tx->seen;
+    // We will write the size then the data:
+    tx->next = tx->record_start + 1 + nb_words;
+    uint32_t alloced = 1 + nb_words;
+
+    // Avoid wrapping inside the record
+    if (tx->next > rb->nb_words) {
+      need_eof = tx->seen;
+      alloced += rb->nb_words - tx->seen;
+      tx->record_start = 0;
+      tx->next = 1 + nb_words;
+      assert(tx->next < rb->nb_words);
+    } else if (tx->next == rb->nb_words) {
+      tx->next = 0;
     }
 
-    cas_ok = atomic_compare_exchange_strong(&rb->prod_head, &prod_head, prod_next);
+    // Enough room?
+    if (ringbuf_nb_free(rb, cons_tail, tx->seen) <= alloced) {
+      printf("FULL, cannot alloc %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", nb_free=%"PRIu32"\n",
+             alloced, rb->nb_words, tx->seen, cons_tail, ringbuf_nb_free(rb, cons_tail, tx->seen));
+      return -1;
+    }
+
+    cas_ok = atomic_compare_exchange_strong(&rb->prod_head, &tx->seen, tx->next);
   } while (! cas_ok);
 
-  // We got the space, now copy the data:
-  rb->data[prod_head] = nb_words;
-  memcpy(rb->data + prod_head + 1, data, nb_words*sizeof(*data));
-
-  // Update the prod_tail to match the new prod_head.
-  while (rb->prod_tail != prod_head) sched_yield();
-  rb->prod_tail = prod_next;
+  if (need_eof) rb->data[need_eof] = UINT32_MAX;
+  rb->data[tx->record_start ++] = nb_words;
 
   return 0;
 }
 
-inline int ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, uint32_t max_nb_words) {
-  assert(max_nb_words < INT_MAX);
+inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
+{
+  // Update the prod_tail to match the new prod_head.
+  while (rb->prod_tail != tx->seen) sched_yield();
+  rb->prod_tail = tx->next;
+}
 
-  uint32_t cons_head, prod_tail, cons_next, nb_words;
+// Combine all of the above:
+inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words)
+{
+  struct ringbuf_tx tx;
+  int const err = ringbuf_enqueue_alloc(rb, &tx, nb_words);
+  if (err) return err;
+
+  memcpy(rb->data + tx.seen + 1, data, nb_words*sizeof(*data));
+
+  ringbuf_enqueue_commit(rb, &tx);
+
+  return 0;
+}
+
+inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
+{
+  uint32_t seen_prod_tail, nb_words;
   bool cas_ok;
 
+  /* Try to "reserve" the next record after cons_head by moving rb->cons_head
+   * after it */
   do {
-    cons_head = rb->cons_head;
-    prod_tail = rb->prod_tail;
-    nb_words = rb->data[cons_head];  // which may be wrong already
-    if (nb_words > max_nb_words) {
-      return -ENOMEM;
-    }
-    cons_next = (cons_head + 1 + nb_words) & rb->nb_words_mask;
+    tx->seen = rb->cons_head;
+    seen_prod_tail = rb->prod_tail;
+    tx->record_start = tx->seen;
 
-    // Enough room?
-    if (ringbuf_full(cons_head, prod_tail, cons_next)) {
-      // Actually it may happen that rb->data[cons_tail] was just bogus. Not a big deal.
-      // TODO: we should handle retries right here.
-      return -ENOBUFS; // FIXME: find a more appropriate one
+    if (ringbuf_nb_entries(rb, seen_prod_tail, tx->seen) < 1) {
+      printf("Not a single word to read.\n");
+      return -1;
     }
 
-    cas_ok = atomic_compare_exchange_strong(&rb->cons_head, &cons_head, cons_next);
-  } while(! cas_ok);
+    nb_words = rb->data[tx->record_start ++];  // which may be wrong already
+    uint32_t dequeued = 1 + nb_words;  // How many words we'd like to increment cons_head of
+
+    if (nb_words == UINT32_MAX) { // A wrap around marker
+      tx->record_start = 0;
+      nb_words = rb->data[tx->record_start ++];
+      dequeued = 1 + nb_words + rb->nb_words - tx->seen;
+    }
+
+    if (ringbuf_nb_entries(rb, seen_prod_tail, tx->seen) < dequeued) {
+      printf("Cannot read complete record which is really strange...\n");
+      return -1;
+    }
+
+    tx->next = (tx->record_start + nb_words) % rb->nb_words;
+
+    cas_ok = atomic_compare_exchange_strong(&rb->cons_head, &tx->seen, tx->next);
+  } while (! cas_ok);
 
   /* If the CAS succeeded it means nobody altered the indexes while we were
    * reading, therefore nobody wrote something silly in place of the number
    * of words present, so we are all good. */
-  memcpy(data, rb->data + 1 + cons_head, nb_words*sizeof(*data));
 
-  while (rb->cons_tail != cons_head) sched_yield();
+  return nb_words*sizeof(uint32_t);
+}
 
-  rb->cons_tail = cons_next;
+inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
+{
+  while (rb->cons_tail != tx->seen) sched_yield();
+  rb->cons_tail = tx->next;
+}
 
-  return (int)nb_words;
+inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size)
+{
+  struct ringbuf_tx tx;
+  ssize_t const sz = ringbuf_dequeue_alloc(rb, &tx);
+
+  if (sz < 0) return sz;
+  if ((size_t)sz > max_size) {
+    printf("Record too big (%zu) to fit in buffer (%zu)\n", sz, max_size);
+    return -1;
+  }
+
+  memcpy(data, rb->data + tx.record_start, sz);
+
+  ringbuf_dequeue_commit(rb, &tx);
+
+  return sz;
 }
 
 /* Create a new ring buffer mmaped to that file. Fails if that file exists

@@ -205,7 +205,7 @@ struct
       | TU8     -> "U8"
       | TU16    -> "U16"
       | TU32    -> "U32"
-      | TU64    -> "U63"
+      | TU64    -> "U64"
       | TU128   -> "U128"
       | TI8     -> "I8"
       | TI16    -> "I16"
@@ -290,7 +290,7 @@ struct
       (strinG "u8" >>: fun () -> TU8) |||
       (strinG "u16" >>: fun () -> TU16) |||
       (strinG "u32" >>: fun () -> TU32) |||
-      (strinG "u63" >>: fun () -> TU64) |||
+      (strinG "u64" >>: fun () -> TU64) |||
       (strinG "u128" >>: fun () -> TU128) |||
       (strinG "i8" >>: fun () -> TI8) |||
       (strinG "i16" >>: fun () -> TI16) |||
@@ -324,6 +324,7 @@ let non_keyword =
 module Tuple =
 struct
   type field_typ = { name : string ; nullable : bool ; typ : Scalar.typ }
+
   let print_field_typ fmt field =
     (* TODO: check that name is a valid identifier *)
     Printf.fprintf fmt "%s %a %sNULL"
@@ -331,7 +332,11 @@ struct
       Scalar.print_typ field.typ
       (if field.nullable then "" else "NOT ")
 
-  type typ = (string, field_typ) Hashtbl.t
+  type typ = field_typ list
+
+  let print_typ fmt lst =
+    (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) fmt lst
+
   type t = (string, Scalar.t) Hashtbl.t
 end
 
@@ -614,7 +619,7 @@ struct
   (* Direct field selection (not for group-bys) *)
   type selected_field = { expr : Expr.t ; alias : string list }
 
-  let selected_field_print fmt f =
+  let print_selected_field fmt f =
     Printf.fprintf fmt "%a%s%a"
       Expr.print f.expr
       (if f.alias <> [] then " AS " else "")
@@ -641,20 +646,20 @@ struct
         emit_when : Expr.t }
     | OnChange of Expr.t
     | Alert of { team : string ; subject : string ; text : string }
-    | ReadCSVFile of { fname : string ; fields : Tuple.field_typ list }
+    | ReadCSVFile of { fname : string ; fields : Tuple.typ } (* TODO: add separator *)
 
   let print fmt =
     let sep = ", " in
     function
     | Select { fields ; and_all_others ; where } ->
       Printf.fprintf fmt "SELECT %a%s%s WHERE %a"
-        (List.print ~first:"" ~last:"" ~sep selected_field_print) fields
+        (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         Expr.print where
     | Aggregate { fields ; and_all_others ; where ; key ; emit_when } ->
       Printf.fprintf fmt "SELECT %a%s%s WHERE %a GROUP BY %a EMIT WHEN %a"
-        (List.print ~first:"" ~last:"" ~sep selected_field_print) fields
+        (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         Expr.print where
@@ -666,8 +671,7 @@ struct
       Printf.fprintf fmt "ALERT %S SUBJECT %S TEXT %S" team subject text
     | ReadCSVFile { fname ; fields } ->
       Printf.fprintf fmt "READ FROM CSV FILE %S %a"
-        fname
-        (List.print ~first:"(" ~last:")" ~sep:"," Tuple.print_field_typ) fields
+        fname Tuple.print_typ fields
 
   module Parser =
   struct
