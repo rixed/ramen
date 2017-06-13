@@ -1,4 +1,4 @@
-= Rigati
+= Rigatoni
 
 Prototype of an event processor for operating on a stream of monitoring data.
 
