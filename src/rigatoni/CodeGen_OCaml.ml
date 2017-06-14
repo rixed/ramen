@@ -163,13 +163,24 @@ let emit_read_csv_file oc csv_fname csv_separator tuple_typ =
     emit_tuple_of_strings tuple_typ
     csv_fname csv_separator
 
+let emit_select oc in_tuple_typ selected_fields and_all_others where =
+  (* We need a function to quickly extract all selected fields
+   * from the input ringbuf. Notice that we must wait until we know the
+   * exact type of that ringbuf, so we cannot compile before the links
+   * are set. We need a rigatoni command to compile a graph. *)
+  ignore oc ; ignore in_tuple_typ ; ignore selected_fields ;
+  ignore and_all_others ; ignore where ;
+  failwith "TODO: emit_select"
+
 let keep_temp_files = ref true
 
-let with_code_file_for prefix =
+let with_code_file_for prefix f =
   let mode = [`create; `excl; `text] in
   let mode = if !keep_temp_files then mode else `delete_on_exit::mode in
   let prefix = "gen_"^ prefix ^"_" in
-  File.with_temporary_out ~mode ~prefix ~suffix:".ml"
+  File.with_temporary_out ~mode ~prefix ~suffix:".ml" (fun oc fname ->
+    !logger.debug "Source code for %s: %s" prefix fname ;
+    f oc fname)
 
 let compile_source fname =
   (* This is not guaranteed to be unique but should be... *)
@@ -187,17 +198,21 @@ let compile_source fname =
   )
 
 let gen_read_csv_file name csv_fname csv_separator tuple_typ =
-  let fname = with_code_file_for name (fun oc fname ->
-    !logger.debug "Source code for %s: %s" name fname ;
+  with_code_file_for name (fun oc fname ->
     emit_read_csv_file oc csv_fname csv_separator tuple_typ ;
-    fname) in
-  compile_source fname
+    compile_source fname)
 
-let gen_operation name op =
+let gen_select name in_tuple_typ fields and_all_others where =
+  with_code_file_for name (fun oc fname ->
+    emit_select oc in_tuple_typ fields and_all_others where ;
+    compile_source fname)
+
+let gen_operation name in_tuple_typ op =
   let open Lang.Operation in
   match op with
+  | Select { fields ; and_all_others ; where } ->
+    gen_select name in_tuple_typ fields and_all_others where
   | ReadCSVFile { fname ; fields } ->
-    let exec = gen_read_csv_file name fname "," fields in
-    Printf.sprintf "csv_file=%S %s" fname exec
+    gen_read_csv_file name fname "," fields
   | _ -> "echo TODO"
 

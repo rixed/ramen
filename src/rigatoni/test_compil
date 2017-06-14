@@ -1,0 +1,27 @@
+#!/bin/sh
+
+curl "$@" \
+  -X PUT \
+  -d '{
+    "operation":
+      "read from csv file \"/home/rixed/tmp/100k.csv\" (
+        poller string not null,
+        capture_begin u64 not null,
+        capture_end u64 not null
+      )"
+  }' \
+  -H 'Content-Type: application/json' http://localhost:29380/node/n1
+
+curl "$@" \
+  -X PUT \
+  -d '{
+    "operation":
+      "select poller, capture_end - capture_begin as capture_duration, (42 - 42) is null as stupid_thing"
+  }' \
+  -H 'Content-Type: application/json' http://localhost:29380/node/n2
+
+curl "$@" -X PUT http://localhost:29380/link/n1/n2
+
+curl "$@" http://localhost:29380/graph | json_pp
+
+curl "$@" http://localhost:29380/compile

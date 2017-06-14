@@ -14,6 +14,7 @@ let bad_request msg = fail (HttpError (400, msg))
 
 let json_content_type = "application/json"
 let dot_content_type = "text/dot"
+let text_content_type = "text/plain"
 
 let get_content_type headers =
   Header.get headers "Content-Type" |? json_content_type |> String.lowercase
@@ -75,7 +76,7 @@ let put_node conf headers name body =
     !logger.info "Cannot parse received body: %s" body ;
     fail e
   | msg ->
-    if C.has_node conf conf.C.running_graph name then
+    if C.has_node conf conf.C.building_graph name then
       bad_request ("Node "^name^" already exists") else
     let open Lang.P in
     let p = Lang.Operation.Parser.p +- Lang.opt_blanks +- eof in
@@ -90,7 +91,7 @@ let put_node conf headers name body =
       | Bad e -> bad_request ("Invalid operation: "^ e)
       | Ok op ->
         let node = C.make_node name op in
-        C.add_node conf conf.C.running_graph name node ;
+        C.add_node conf conf.C.building_graph name node ;
         let status = `Code 200 in
         Server.respond_string ~status ~body:"" ()))
 
@@ -98,15 +99,25 @@ type node_id = string [@@ppp PPP_JSON]
 
 type node_info =
   (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
-  { name : string ; operation : string ; command : string } [@@ppp PPP_JSON]
+  { name : string ;
+    operation : string ;
+    command : string ;
+    nb_parents : int ;
+    nb_children : int ;
+    input_type : C.temp_field_typ list ;
+    output_type : C.temp_field_typ list } [@@ppp PPP_JSON]
 
 let node_info_of_node node =
   { name = node.C.name ;
     operation = IO.to_string Lang.Operation.print node.C.operation ;
-    command = node.C.command }
+    command = node.C.command ;
+    nb_parents = List.length node.C.parents ;
+    nb_children = List.length node.C.children ;
+    input_type = C.list_of_temp_tup_type node.C.in_type ;
+    output_type = C.list_of_temp_tup_type node.C.out_type }
 
 let get_node conf _headers name =
-  match C.find_node conf conf.C.running_graph name with
+  match C.find_node conf conf.C.building_graph name with
   | exception Not_found ->
     fail (HttpError (404, "No such node"))
   | node ->
@@ -117,7 +128,7 @@ let get_node conf _headers name =
     Server.respond_string ~headers ~status ~body ()
 
 let del_node conf _headers name =
-  match C.remove_node conf conf.C.running_graph name with
+  match C.remove_node conf conf.C.building_graph name with
   | exception Not_found ->
     fail (HttpError (404, "No such node"))
   | () ->
@@ -142,28 +153,28 @@ let node_of_name conf graph n =
   | node -> return node
 
 let put_link conf _headers src dst =
-  let%lwt src = node_of_name conf conf.C.running_graph src in
-  let%lwt dst = node_of_name conf conf.C.running_graph dst in
+  let%lwt src = node_of_name conf conf.C.building_graph src in
+  let%lwt dst = node_of_name conf conf.C.building_graph dst in
   if C.has_link conf src dst then
     bad_request ("Link already exists")
   else (
-    C.make_link conf conf.C.running_graph src dst ;
+    C.make_link conf conf.C.building_graph src dst ;
     let status = `Code 200 in
     Server.respond_string ~status ~body:"" ())
 
 let del_link conf _headers src dst =
-  let%lwt src = node_of_name conf conf.C.running_graph src in
-  let%lwt dst = node_of_name conf conf.C.running_graph dst in
+  let%lwt src = node_of_name conf conf.C.building_graph src in
+  let%lwt dst = node_of_name conf conf.C.building_graph dst in
   if not (C.has_link conf src dst) then
     bad_request ("That link does not exist")
   else (
-    C.remove_link conf conf.C.running_graph src dst ;
+    C.remove_link conf conf.C.building_graph src dst ;
     let status = `Code 200 in
     Server.respond_string ~status ~body:"" ())
 
 let get_link conf _headers src dst =
-  let%lwt src = node_of_name conf conf.C.running_graph src in
-  let%lwt dst = node_of_name conf conf.C.running_graph dst in
+  let%lwt src = node_of_name conf conf.C.building_graph src in
+  let%lwt dst = node_of_name conf conf.C.building_graph dst in
   if not (C.has_link conf src dst) then
     bad_request ("That link does not exist")
   else (
@@ -185,11 +196,11 @@ let get_graph_json conf _headers =
   let graph_info =
     { nodes = Hashtbl.fold (fun _name node lst ->
         node_info_of_node node :: lst
-      ) conf.C.running_graph.C.nodes [] ;
+      ) conf.C.building_graph.C.nodes [] ;
       links = Hashtbl.fold (fun name node lst ->
         let links = List.map (fun c -> name, c.C.name) node.C.children in
         List.rev_append links lst
-      ) conf.C.running_graph.C.nodes [] } in
+      ) conf.C.building_graph.C.nodes [] } in
   let body = PPP.to_string graph_info_ppp graph_info ^"\n" in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" json_content_type in
@@ -210,7 +221,7 @@ let dot_of_graph graph =
   IO.close_out dot
 
 let get_graph_dot conf _headers =
-  let body = dot_of_graph conf.C.running_graph in
+  let body = dot_of_graph conf.C.building_graph in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" dot_content_type in
   Server.respond_string ~headers ~status ~body ()
@@ -226,6 +237,15 @@ let get_graph conf headers =
     let status = Code.status_of_code 406 in
     Server.respond_error ~status ~body:("Can't produce "^ accept ^"\n") ()
 
+let compile conf _headers =
+  (* TODO: check we accept json *)
+  match C.compile conf conf.C.building_graph with
+  | exception (C.CompilationError e) ->
+    bad_request e
+  | () ->
+    let headers = Header.init_with "Content-Type" json_content_type in
+    let status = `Code 200 in
+    Server.respond_string ~headers ~status ~body:"" ()
 
 (* The function called for each HTTP request: *)
 
@@ -249,11 +269,17 @@ let callback conf _conn req body =
         | `GET, ["link" ; src ; dst] -> get_link conf headers src dst
         | `DELETE, ["link" ; src ; dst] -> del_link conf headers src dst
         | `GET, ["graph"] -> get_graph conf headers
+        | `GET, ["compile"] -> compile conf headers
         | `PUT, _ | `GET, _ | `DELETE, _ ->
           fail (HttpError (404, "No such resource"))
         | _ ->
           fail (HttpError (405, "Method not implemented"))
-      with exn -> fail exn)
+      with HttpError _ as exn -> fail exn
+         | exn ->
+          !logger.error "Exception: %s at\n%s"
+            (Printexc.to_string exn)
+            (Printexc.get_backtrace ()) ;
+          fail exn)
     (function
       | HttpError (code, body) ->
         let body = body ^ "\n" in

@@ -195,7 +195,7 @@ struct
 
   type typ = TFloat | TString | TBool
            | TU8 | TU16 | TU32 | TU64 | TU128
-           | TI8 | TI16 | TI32 | TI64 | TI128
+           | TI8 | TI16 | TI32 | TI64 | TI128 [@@ppp PPP_JSON]
 
   let print_typ fmt typ =
     let s = match typ with
@@ -214,6 +214,28 @@ struct
       | TI128   -> "I128"
     in
     String.print fmt s
+
+  type type_class = KNum | KBool | KString
+  let compare_typ typ1 typ2 =
+    let rank_of_typ = function
+      | TFloat  -> KNum, 200
+      | TU128   -> KNum, 128
+      | TI128   -> KNum, 127
+      | TU64    -> KNum, 64
+      | TI64    -> KNum, 63
+      | TU32    -> KNum, 32
+      | TI32    -> KNum, 31
+      | TU16    -> KNum, 16
+      | TI16    -> KNum, 15
+      | TU8     -> KNum, 8
+      | TI8     -> KNum, 7
+      | TString -> KString, 1
+      | TBool   -> KBool, 1
+    in
+    let k1, r1 = rank_of_typ typ1
+    and k2, r2 = rank_of_typ typ2 in
+    if k1 <> k2 then invalid_arg "types not comparable" ;
+    compare r1 r2
 
   (* stdint types are implemented as custom blocks, therefore are slower than ints.
    * But we do not care as we merely represents code here, we do not run the operators. *)
@@ -235,6 +257,12 @@ struct
     | VI32 i    -> Printf.fprintf fmt "%s" (Int32.to_string i)
     | VI64 i    -> Printf.fprintf fmt "%s" (Int64.to_string i)
     | VI128 i   -> Printf.fprintf fmt "%s" (Int128.to_string i)
+
+  let type_of = function
+    | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
+    | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
+    | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
+    | VI64 _ -> TI64 | VI128 _ -> TI128
 
   module Parser =
   struct
@@ -266,6 +294,8 @@ struct
         VU128 (Uint128.of_int i) else
       assert false
 
+    (* TODO: Here and elsewhere, we want the location (start+length) of the
+     * thing in addition to the thing *)
     let p =
       (integer >>: narrowest_int_scalar)        |||
       (floating_point >>: fun f -> VFloat f)    |||
@@ -323,7 +353,7 @@ let non_keyword =
 
 module Tuple =
 struct
-  type field_typ = { name : string ; nullable : bool ; typ : Scalar.typ }
+  type field_typ = { name : string ; nullable : bool ; typ : Scalar.typ } [@@ppp PPP_JSON]
 
   let print_field_typ fmt field =
     (* TODO: check that name is a valid identifier *)
@@ -332,7 +362,7 @@ struct
       Scalar.print_typ field.typ
       (if field.nullable then "" else "NOT ")
 
-  type typ = field_typ list
+  type typ = field_typ list [@@ppp PPP_JSON]
 
   let print_typ fmt lst =
     (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) fmt lst
@@ -620,10 +650,18 @@ struct
   type selected_field = { expr : Expr.t ; alias : string list }
 
   let print_selected_field fmt f =
-    Printf.fprintf fmt "%a%s%a"
-      Expr.print f.expr
-      (if f.alias <> [] then " AS " else "")
-      (List.print ~first:"" ~last:"" ~sep:" OR " String.print) f.alias
+    let need_alias =
+      match f.expr, f.alias with
+      | _, [] -> false
+      | Expr.Field { tuple ; field }, [ a ]
+        when tuple = "in" && a = field -> false
+      | _ -> true in
+    if need_alias then
+      Printf.fprintf fmt "%a AS %a"
+        Expr.print f.expr
+        (List.print ~first:"" ~last:"" ~sep:" OR " String.print) f.alias
+    else
+      Expr.print fmt f.expr
 
   type t =
     (* Simple operation that merely filters / projects / constructs fields and
@@ -684,7 +722,14 @@ struct
         blanks -- strinG "as" -- blanks -+
         repeat ~min:1 ~sep:(blanks -- strinG "or" -- blanks)
                non_keyword) >>:
-      fun (expr, alias) -> { expr ; alias }
+      fun (expr, alias) ->
+        let alias =
+          if alias <> [] then alias else (
+            match expr with
+            | Expr.Field { tuple ; field } when tuple = "in" -> [ field ]
+            | _ -> ["TODO: parser bind should be able to set an error"]
+          ) in
+        { expr ; alias }
 
     let select_clause =
       strinG "select" -- blanks -+
@@ -696,8 +741,8 @@ struct
       strinG "where" -- blanks -+ Expr.Parser.p
 
     let select =
-      (select_clause +- blanks ++ where_clause |||
-       select_clause ++ return (Expr.Const (Scalar.VBool true)) |||
+      (select_clause ++
+       optional ~def:(Expr.Const (Scalar.VBool true)) (blanks -+ where_clause) |||
        return [None] ++ where_clause) >>:
       fun (fields_or_stars, where) ->
         let fields, and_all_others =
@@ -758,9 +803,9 @@ struct
         Select {\
           fields = [\
             { expr = Expr.(Field { tuple = "in" ; field = "start" }) ;\
-              alias = [] } ;\
+              alias = [ "start" ] } ;\
             { expr = Expr.(Field { tuple = "in" ; field = "stop" }) ;\
-              alias = [] } ;\
+              alias = [ "stop" ] } ;\
             { expr = Expr.(Field { tuple = "in" ; field = "itf_clt" }) ;\
               alias = [ "itf_src" ] } ;\
             { expr = Expr.(Field { tuple = "in" ; field = "itf_srv" }) ;\

@@ -1,7 +1,7 @@
 top_srcdir = ..
 
 LINKED_WITH_TESTS = \
-	Log.ml CodeGenLib_Misc.ml CodeGen_OCaml.ml RamenConf.ml
+	Log.ml CodeGenLib_Misc.ml CodeGen_OCaml.ml Lang.ml RamenConf.ml
 
 TESTABLE_SOURCES = \
 	Lang.ml HttpSrv.ml
