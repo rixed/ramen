@@ -6,7 +6,7 @@ let dying task =
 
 let always_true () = true
 
-let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename of_string k =
+let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename k =
   match%lwt Lwt_unix.(openfile filename [ O_RDONLY ] 0x644) with
   | exception e ->
     Printf.eprintf "Cannot open file %S: %s, skipping.\n%!"
@@ -20,26 +20,7 @@ let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename of_string k
       if alive () then (
         match%lwt Lwt_io.read_line chan with
         | exception End_of_file -> return_unit
-        | line ->
-          (match of_string line with
-          | exception e ->
-            Printf.eprintf "Cannot parse line %S: %s\n%!" line (Printexc.to_string e) ;
-            read_next_line ()
-          | x ->
-            let rec loop () =
-              (match k x with
-              (* FIXME: a dedicated RingBuf.NoMoreRoom exception *)
-              | exception (Failure _) ->
-                Printf.eprintf "No more space in the ring buffer, sleeping...\n%!" ;
-                (* TODO: an automatic retry-er that tries to find out the best
-                 * amount of time to sleep based on successive errors *)
-                Lwt_unix.sleep 1. >>= loop
-              | exception e ->
-                Printf.eprintf "Cannot serialize line %S: %s\n%!" line (Printexc.to_string e) ;
-                read_next_line ()
-              | () -> read_next_line ())
-            in
-            loop ())
+        | line -> k line >>= read_next_line
       ) else (
         dying (Printf.sprintf "reading %S" filename)
       )
@@ -48,3 +29,6 @@ let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename of_string k
     Printf.printf "done reading %S\n%!" filename ;
     return_unit
 
+let read_ringbuf rb f =
+  ignore rb ;
+  ignore f

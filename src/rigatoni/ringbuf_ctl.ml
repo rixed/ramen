@@ -58,5 +58,4 @@ let () =
     dequeue_cmd
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42
-       | `Ok f -> f () 
-  
+       | `Ok f -> f ()

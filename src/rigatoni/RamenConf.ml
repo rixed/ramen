@@ -4,6 +4,7 @@ open Log
 
 type temp_tup_typ =
   { mutable complete : bool ;
+    (* Not sure we need the rank for anything, actually *)
     fields : (string, int option ref * Lang.Expr.typ) Hashtbl.t }
 
 let print_temp_tup_typ fmt t =

@@ -467,8 +467,8 @@ struct
     | AggrMax (t, _) | AggrSum (t, _) | AggrAnd (t, _) | AggrOr  (t, _)
     | AggrPercentile (t, _, _) | Age (t, _) | Not (t, _) | Defined (t, _)
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
-    | Exp (t, _, _) | And (t, _, _) | Or (t, _, _) | Ge (t, _, _) |
-    Gt (t, _, _) | Eq (t, _, _) -> t
+    | Exp (t, _, _) | And (t, _, _) | Or (t, _, _) | Ge (t, _, _)
+    | Gt (t, _, _) | Eq (t, _, _) -> t
 
   module Parser =
   struct
@@ -509,7 +509,7 @@ struct
     *)
 
     let param =
-      char '$' -+ identifier >>: fun s -> 
+      char '$' -+ identifier >>: fun s ->
       Param (make_typ ("parameter "^s), s)
     (*$= param & ~printer:(test_printer print)
       (Ok (\
