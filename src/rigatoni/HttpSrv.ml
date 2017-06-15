@@ -104,8 +104,8 @@ type node_info =
     command : string ;
     nb_parents : int ;
     nb_children : int ;
-    input_type : C.temp_field_typ list ;
-    output_type : C.temp_field_typ list } [@@ppp PPP_JSON]
+    input_type : (int option * Lang.Expr.typ) list ;
+    output_type : (int option * Lang.Expr.typ) list } [@@ppp PPP_JSON]
 
 let node_info_of_node node =
   { name = node.C.name ;

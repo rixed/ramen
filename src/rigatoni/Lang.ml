@@ -169,6 +169,10 @@ let blanks =
 let opt_blanks =
   P.optional_greedy ~def:() blanks
 
+let same_tuple_as_in = function
+  | "in" | "others" | "any" -> true
+  | _ -> false
+
 (*$inject
   open Stdint
   open Batteries
@@ -240,8 +244,10 @@ struct
   (* stdint types are implemented as custom blocks, therefore are slower than ints.
    * But we do not care as we merely represents code here, we do not run the operators. *)
   type t = VFloat of float | VString of string | VBool of bool
-         | VU8 of uint8 | VU16 of uint16 | VU32 of uint32 | VU64 of uint64 | VU128 of uint128
-         | VI8 of int8  | VI16 of int16  | VI32 of int32  | VI64 of int64  | VI128 of int128
+         | VU8 of uint8 | VU16 of uint16 | VU32 of uint32
+         | VU64 of uint64 | VU128 of uint128
+         | VI8 of int8 | VI16 of int16 | VI32 of int32
+         | VI64 of int64 | VI128 of int128
 
   let print fmt = function
     | VFloat f  -> Printf.fprintf fmt "%g" f
@@ -374,65 +380,95 @@ module Expr =
 struct
   (*$< Expr *)
 
+  (* Each expression come with a type attached. Starting at None types are
+   * progressively set at compilation. *)
+  type typ =
+    { name : string ;
+      mutable nullable : bool option ;
+      mutable typ : Scalar.typ option } [@@ppp PPP_JSON]
+
+  let typ_is_complete typ =
+    typ.nullable <> None && typ.typ <> None
+
+  let print_typ fmt typ =
+    Printf.fprintf fmt "%s%s"
+      (match typ.nullable with
+      | None -> "maybe nullable "
+      | Some true -> "nullable "
+      | Some false -> "")
+      (match typ.typ with
+      | None -> "unknwon type"
+      | Some typ -> IO.to_string Scalar.print_typ typ)
+
+  let make_typ ?nullable ?typ name = { name ; nullable ; typ }
+  let make_bool_typ ?nullable name = make_typ ?nullable ~typ:Scalar.TBool name
+  let make_num_typ ?nullable name =
+    make_typ ?nullable ~typ:Scalar.TU8 name (* will be enlarged as required *)
+  let copy_typ typ = { typ with name = typ.name }
+
   (* Expressions on scalars (aka fields) *)
   type t =
-    | Const of Scalar.t
-    | Field of { tuple : string (* in, out, others... *) ; field : string }
-    | Param of string
+    | Const of typ * Scalar.t
+    | Field of typ * string (* tuple: in, out, others... *) * string (* field name *)
+    | Param of typ * string
     (* Valid only within an aggregation operation; but must be here to allow
      * operations on top of the result of an aggregation function, such as: "(1
      * + min field1) / (max field2)". Even within an aggregation, not valid
      * within another AggrFun. *)
-    | AggrFun of aggregate
+    | AggrMin of typ * t
+    | AggrMax of typ * t
+    | AggrSum of typ * t
+    | AggrAnd of typ * t
+    | AggrOr  of typ * t
+    | AggrPercentile of typ * t * t
     (* Other functions *)
-    | Age of t
+    | Age of typ * t
     (* Unary Ops on scalars *)
-    | Not of t
-    | Defined of t
+    | Not of typ * t
+    | Defined of typ * t
     (* Binary Ops scalars *)
-    | Add of t * t
-    | Sub of t * t
-    | Mul of t * t
-    | Div of t * t
-    | Exp of t * t
-    | And of t * t
-    | Or  of t * t
-    | Ge  of t * t
-    | Gt  of t * t
-    | Eq  of t * t
-  and aggregate =
-    | AggrMin of t
-    | AggrMax of t
-    | AggrSum of t
-    | AggrAnd of t
-    | AggrOr  of t
-    | AggrPercentile of t * t
+    | Add of typ * t * t
+    | Sub of typ * t * t
+    | Mul of typ * t * t
+    | Div of typ * t * t
+    | Exp of typ * t * t
+    | And of typ * t * t
+    | Or  of typ * t * t
+    | Ge  of typ * t * t
+    | Gt  of typ * t * t
+    | Eq  of typ * t * t
 
-  let rec print_aggregate fmt = function
-    | AggrMin e -> Printf.fprintf fmt "min (%a)" print e
-    | AggrMax e -> Printf.fprintf fmt "max (%a)" print e
-    | AggrSum e -> Printf.fprintf fmt "sum (%a)" print e
-    | AggrAnd e -> Printf.fprintf fmt "and (%a)" print e
-    | AggrOr  e -> Printf.fprintf fmt "or (%a)" print e
-    | AggrPercentile (p, e) -> Printf.fprintf fmt "%ath percentile (%a)" print p print e
-  and print fmt = function
-    | Const c -> Scalar.print fmt c
-    | Field { tuple ; field } -> Printf.fprintf fmt "%s.%s" tuple field
-    | Param p -> Printf.fprintf fmt "$%s" p
-    | AggrFun a -> print_aggregate fmt a
-    | Age e -> Printf.fprintf fmt "age(%a)" print e
-    | Not e -> Printf.fprintf fmt "NOT (%a)" print e
-    | Defined e -> Printf.fprintf fmt "(%a) IS NOT NULL" print e
-    | Add (e1, e2) -> Printf.fprintf fmt "(%a) + (%a)" print e1 print e2
-    | Sub (e1, e2) -> Printf.fprintf fmt "(%a) - (%a)" print e1 print e2
-    | Mul (e1, e2) -> Printf.fprintf fmt "(%a) * (%a)" print e1 print e2
-    | Div (e1, e2) -> Printf.fprintf fmt "(%a) / (%a)" print e1 print e2
-    | Exp (e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" print e1 print e2
-    | And (e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" print e1 print e2
-    | Or (e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" print e1 print e2
-    | Ge (e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" print e1 print e2
-    | Gt (e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" print e1 print e2
-    | Eq (e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" print e1 print e2
+  let rec print fmt = function
+    | Const (_, c) -> Scalar.print fmt c
+    | Field (_, tuple, field) -> Printf.fprintf fmt "%s.%s" tuple field
+    | Param (_, p) -> Printf.fprintf fmt "$%s" p
+    | AggrMin (_, e) -> Printf.fprintf fmt "min (%a)" print e
+    | AggrMax (_, e) -> Printf.fprintf fmt "max (%a)" print e
+    | AggrSum (_, e) -> Printf.fprintf fmt "sum (%a)" print e
+    | AggrAnd (_, e) -> Printf.fprintf fmt "and (%a)" print e
+    | AggrOr  (_, e) -> Printf.fprintf fmt "or (%a)" print e
+    | AggrPercentile (_, p, e) -> Printf.fprintf fmt "%ath percentile (%a)" print p print e
+    | Age (_, e) -> Printf.fprintf fmt "age(%a)" print e
+    | Not (_, e) -> Printf.fprintf fmt "NOT (%a)" print e
+    | Defined (_, e) -> Printf.fprintf fmt "(%a) IS NOT NULL" print e
+    | Add (_, e1, e2) -> Printf.fprintf fmt "(%a) + (%a)" print e1 print e2
+    | Sub (_, e1, e2) -> Printf.fprintf fmt "(%a) - (%a)" print e1 print e2
+    | Mul (_, e1, e2) -> Printf.fprintf fmt "(%a) * (%a)" print e1 print e2
+    | Div (_, e1, e2) -> Printf.fprintf fmt "(%a) / (%a)" print e1 print e2
+    | Exp (_, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" print e1 print e2
+    | And (_, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" print e1 print e2
+    | Or (_, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" print e1 print e2
+    | Ge (_, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" print e1 print e2
+    | Gt (_, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" print e1 print e2
+    | Eq (_, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" print e1 print e2
+
+  let typ_of = function
+    | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
+    | AggrMax (t, _) | AggrSum (t, _) | AggrAnd (t, _) | AggrOr  (t, _)
+    | AggrPercentile (t, _, _) | Age (t, _) | Not (t, _) | Defined (t, _)
+    | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
+    | Exp (t, _, _) | And (t, _, _) | Or (t, _, _) | Ge (t, _, _) |
+    Gt (t, _, _) | Eq (t, _, _) -> t
 
   module Parser =
   struct
@@ -441,7 +477,9 @@ struct
     open P
 
     (* Single things *)
-    let const = Scalar.Parser.p >>: fun c -> Const c
+    let const =
+      Scalar.Parser.p >>: fun c ->
+      Const (make_typ ~nullable:false ~typ:(Scalar.type_of c) "constant", c)
     (*$= const & ~printer:(test_printer print)
       (Ok (Const (Scalar.VBool true), (4, [])))  (test_p const "true")
     *)
@@ -450,7 +488,8 @@ struct
       let prefix s = strinG (s ^ ".") >>: fun () -> s in
       optional ~def:"in" (
         prefix "in" ||| prefix "out" ||| prefix "others" ||| prefix "any") ++
-      non_keyword >>: fun (tuple, field) -> Field { tuple ; field }
+      non_keyword >>: fun (tuple, field) ->
+      Field (make_typ (tuple ^"."^ field), tuple, field)
     (*$= field & ~printer:(test_printer print)
       (Ok (\
         Field { tuple="in"; field="bytes" },\
@@ -470,7 +509,8 @@ struct
     *)
 
     let param =
-      char '$' -+ identifier >>: fun s -> Param s
+      char '$' -+ identifier >>: fun s -> 
+      Param (make_typ ("parameter "^s), s)
     (*$= param & ~printer:(test_printer print)
       (Ok (\
         Param "glop",\
@@ -488,8 +528,8 @@ struct
     let rec lowest_prec_left_assoc m =
       let op = that_string "and" ||| that_string "or"
       and reduce t1 op t2 = match op with
-        | "and" -> And (t1, t2)
-        | "or" -> Or (t1, t2)
+        | "and" -> And (make_bool_typ "and operator", t1, t2)
+        | "or" -> Or (make_bool_typ "or operator", t1, t2)
         | _ -> assert false in
       (* FIXME: we do not need a blanks if we had parentheses ("(x)AND(y)" is OK) *)
       binary_ops_reducer ~op ~term:low_prec_left_assoc ~sep:blanks ~reduce m
@@ -498,39 +538,39 @@ struct
       let op = that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
                that_string "=" ||| that_string "<>" ||| that_string "!="
       and reduce t1 op t2 = match op with
-        | ">" -> Gt (t1, t2)
-        | "<" -> Gt (t2, t1)
-        | ">=" -> Ge (t1, t2)
-        | "<=" -> Ge (t2, t1)
-        | "=" -> Eq (t1, t2)
-        | "!=" | "<>" -> Not (Eq (t1, t2))
+        | ">" -> Gt (make_bool_typ "comparison operator", t1, t2)
+        | "<" -> Gt (make_bool_typ "comparison operator", t2, t1)
+        | ">=" -> Ge (make_bool_typ "comparison operator", t1, t2)
+        | "<=" -> Ge (make_bool_typ "comparison operator", t2, t1)
+        | "=" -> Eq (make_bool_typ "equality operator", t1, t2)
+        | "!=" | "<>" -> Not (make_bool_typ "not operator", Eq (make_bool_typ "equality operator", t1, t2))
         | _ -> assert false in
       binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
     and mid_prec_left_assoc m =
       let op = that_string "+" ||| that_string "-"
       and reduce t1 op t2 = match op with
-        | "+" -> Add (t1, t2)
-        | "-" -> Sub (t1, t2)
+        | "+" -> Add (make_num_typ "addition", t1, t2)
+        | "-" -> Sub (make_num_typ "subtraction", t1, t2)
         | _ -> assert false in
       binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks~reduce m
 
     and high_prec_left_assoc m =
       let op = that_string "*" ||| that_string "/"
       and reduce t1 op t2 = match op with
-        | "*" -> Mul (t1, t2)
-        | "/" -> Div (t1, t2)
+        | "*" -> Mul (make_num_typ "multiplication", t1, t2)
+        | "/" -> Div (make_num_typ "division", t1, t2)
         | _ -> assert false in
       binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks~reduce m
 
     and higher_prec_right_assoc m =
       let op = char '^'
-      and reduce t1 _ t2 = Exp (t1, t2) in
+      and reduce t1 _ t2 = Exp (make_num_typ "exponentiation", t1, t2) in
       binary_ops_reducer ~op ~right_associative:true
                          ~term:highest_prec_left_assoc ~sep:opt_blanks~reduce m
 
     and highest_prec_left_assoc m =
-      ((strinG "not" -+ highestest_prec >>: fun e -> Not e) |||
+      ((strinG "not" -+ highestest_prec >>: fun e -> Not (make_bool_typ "not operator", e)) |||
        (highestest_prec ++
         optional ~def:None (
           blanks -- strinG "is" -- blanks -+
@@ -538,8 +578,8 @@ struct
                    (strinG "not" -- blanks >>: fun () -> Some true) +-
           strinG "null") >>: function
             | e, None -> e
-            | e, Some false -> Not (Defined e)
-            | e, Some true -> Defined e)
+            | e, Some false -> Not (make_bool_typ ~nullable:false "not operator", Defined (make_bool_typ ~nullable:false "is_not_null operator", e))
+            | e, Some true -> Defined (make_bool_typ ~nullable:false "is_not_null operator", e))
       ) m
 
     and afun n =
@@ -548,23 +588,22 @@ struct
       sep -+ highestest_prec
 
     and aggregate m =
-      ((afun "min" >>: fun e -> AggrMin e) |||
-       (afun "max" >>: fun e -> AggrMax e) |||
-       (afun "sum" >>: fun e -> AggrSum e) |||
-       (afun "and" >>: fun e -> AggrAnd e) |||
-       (afun "or"  >>: fun e -> AggrOr  e) |||
+      ((afun "min" >>: fun e -> AggrMin (make_num_typ "min aggregation", e)) |||
+       (afun "max" >>: fun e -> AggrMax (make_num_typ "max aggregation", e)) |||
+       (afun "sum" >>: fun e -> AggrSum (make_num_typ "sum aggregation", e)) |||
+       (afun "and" >>: fun e -> AggrAnd (make_bool_typ "and aggregation", e)) |||
+       (afun "or"  >>: fun e -> AggrOr  (make_bool_typ "or aggregation", e)) |||
        ((const ||| param) +- (optional ~def:() (string "th")) +- blanks ++
-        afun "percentile" >>: fun (p, e) -> AggrPercentile (p, e))
+        afun "percentile" >>: fun (p, e) -> AggrPercentile (make_num_typ "percentile aggregation", p, e))
       ) m
 
     and func m =
-      ((afun "age" >>: fun e -> Age e)
+      ((afun "age" >>: fun e -> Age (make_num_typ "age function", e))
       ) m
 
     and highestest_prec m =
       let sep = optional_greedy ~def:() blanks in
-      (const ||| field ||| param ||| func |||
-       (aggregate >>: fun a -> AggrFun a) |||
+      (const ||| field ||| param ||| func ||| aggregate |||
        char '(' -- sep -+ lowest_prec_left_assoc +- sep +- char ')'
       ) m
 
@@ -653,7 +692,7 @@ struct
     let need_alias =
       match f.expr, f.alias with
       | _, [] -> false
-      | Expr.Field { tuple ; field }, [ a ]
+      | Expr.Field (_, tuple, field), [ a ]
         when tuple = "in" && a = field -> false
       | _ -> true in
     if need_alias then
@@ -726,7 +765,7 @@ struct
         let alias =
           if alias <> [] then alias else (
             match expr with
-            | Expr.Field { tuple ; field } when tuple = "in" -> [ field ]
+            | Expr.Field (_, tuple, field) when tuple = "in" -> [ field ]
             | _ -> ["TODO: parser bind should be able to set an error"]
           ) in
         { expr ; alias }
@@ -742,7 +781,8 @@ struct
 
     let select =
       (select_clause ++
-       optional ~def:(Expr.Const (Scalar.VBool true)) (blanks -+ where_clause) |||
+       (let def = Expr.Const (Expr.make_bool_typ ~nullable:false "true", Scalar.VBool true) in
+        optional ~def (blanks -+ where_clause)) |||
        return [None] ++ where_clause) >>:
       fun (fields_or_stars, where) ->
         let fields, and_all_others =
