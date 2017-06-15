@@ -247,7 +247,7 @@ let check_add_type ~autorank ~including_complete ~from_type ~to_type =
         | exception Not_found ->
           let from_field_copy =
             { from_field with
-              rank = if autorank then Some (max_rank to_type.fields)
+              rank = if autorank then Some (max_rank to_type.fields + 1)
                      else from_field.rank } in
           Hashtbl.add to_type.fields n from_field_copy ;
           true
