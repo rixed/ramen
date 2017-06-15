@@ -245,7 +245,7 @@ CAMLprim value write_boxed_str(value tx, value off_, value v_)
   assert(Tag_val(v_) >= String_tag);
   uint32_t size = caml_string_length(v_);
   char const *src = Bp_val(v_);
-  // We must start this variable size field with its size:
+  // We must start this variable size field with its length:
   write_boxed(wrtx, offs, (char const *)&size, sizeof(size));
   write_boxed(wrtx, offs + sizeof(size), src, size);
   CAMLreturn(Val_unit);

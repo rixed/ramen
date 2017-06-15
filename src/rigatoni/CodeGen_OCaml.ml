@@ -10,31 +10,62 @@
 
 (* Regarding generated code names: all generated OCaml identifier has a name
  * ending with underscore.  In addition, tuple field names are prefixed by
- * "f_". *)
+ * the tuple name. *)
 
 open Batteries
 open CodeGenLib_Misc
 open Log
 
 (* Tuple deconstruction as a function parameter: *)
-let id_of_field_name name = "f_"^ name ^"_"
+let id_of_field_name ?(tuple="in") field =
+  tuple ^"_"^ field ^"_"
+
+let id_of_field_typ ?tuple field_typ =
+  id_of_field_name ?tuple field_typ.Lang.Tuple.name
+
+let list_print_as_tuple = List.print ~first:"(" ~last:")" ~sep:", "
 
 let print_tuple_deconstruct =
   let print_field fmt field_typ =
-      String.print fmt (id_of_field_name field_typ.Lang.Tuple.name)
+      String.print fmt (id_of_field_typ field_typ)
   in
-  List.print ~first:"(" ~last:")" ~sep:", " print_field
+  list_print_as_tuple print_field
 
-let emit_sersize_of_field typ oc var =
+(* Emit the code that return the sersize of a fixed size type *)
+let emit_sersize_of_fixsz_typ oc =
   let open Lang.Scalar in
-  match typ with
+  function
   | TFloat  -> Int.print oc (round_up_to_rb_word 8)
-  | TString -> Printf.fprintf oc "(%d + CodeGenLib_Misc.round_up_to_rb_word(String.length %s))" rb_word_bytes var
   | TBool | TU8 | TI8 -> Int.print oc (round_up_to_rb_word 1)
   | TU16 | TI16 -> Int.print oc (round_up_to_rb_word 2)
   | TU32 | TI32 -> Int.print oc (round_up_to_rb_word 4)
   | TU64 | TI64 -> Int.print oc (round_up_to_rb_word 8)
   | TU128 | TI128 -> Int.print oc (round_up_to_rb_word 16)
+  | TString -> assert false
+
+(* Emit the code computing the sersize of some variable *)
+let emit_sersize_of_field_var typ oc var =
+  let open Lang.Scalar in
+  match typ with
+  | TString ->
+    Printf.fprintf oc "\
+      (%d + CodeGenLib_Misc.round_up_to_rb_word(String.length %s))"
+      rb_word_bytes var
+  | _ -> emit_sersize_of_fixsz_typ oc typ
+
+(* Emit the code to retrieve the sersize of some serialized value *)
+let rec emit_sersize_of_field_tx tx_var offs_var nulli oc field =
+  let open Lang.Tuple in
+  if field.nullable then (
+    Printf.fprintf oc "(if RingBuf.get_bit %s %d then %a else 0)"
+      tx_var nulli
+      (emit_sersize_of_field_tx tx_var offs_var nulli) { field with nullable = false }
+  ) else match field.typ with
+    | Lang.Scalar.TString ->
+      Printf.fprintf oc "\
+        (%d + CodeGenLib_Misc.round_up_to_rb_word(RingBuf.read_int %s %s)"
+        rb_word_bytes tx_var offs_var
+    | _ -> emit_sersize_of_fixsz_typ oc field.typ
 
 let id_of_typ typ =
   let open Lang.Scalar in
@@ -77,13 +108,13 @@ let emit_sersize_of_tuple oc tuple_typ =
     print_tuple_deconstruct tuple_typ
     size_for_nullmask
     (List.print ~first:"" ~last:"" ~sep:" + " (fun fmt field_typ ->
-      let id = id_of_field_name field_typ.name in
+      let id = id_of_field_typ field_typ in
       if field_typ.nullable then (
         Printf.fprintf fmt "(match %s with None -> 0 | Some x_ -> %a)"
           id
-          (emit_sersize_of_field field_typ.typ) "x_"
+          (emit_sersize_of_field_var field_typ.typ) "x_"
       ) else (
-        Printf.fprintf fmt "%a" (emit_sersize_of_field field_typ.typ) id
+        Printf.fprintf fmt "%a" (emit_sersize_of_field_var field_typ.typ) id
       ))) tuple_typ
 
 let emit_set_value tx_var offs_var field_var oc field_typ =
@@ -99,9 +130,10 @@ let emit_serialize_tuple oc tuple_typ =
   let open Lang.Tuple in
   Printf.fprintf oc "let serialize_tuple tx_ %a =\n"
     print_tuple_deconstruct tuple_typ ;
-  Printf.fprintf oc "\tlet offs_ = %d in\n" (nullmask_bytes_of_tuple_typ tuple_typ) ;
-  let _ = List.fold_left (fun (i, nulli) field ->
-      let id = id_of_field_name field.name in
+  Printf.fprintf oc "\tlet offs_ = %d in\n"
+    (nullmask_bytes_of_tuple_typ tuple_typ) ;
+  let _ = List.fold_left (fun nulli field ->
+      let id = id_of_field_typ field in
       if field.nullable then (
         (* Write either the null bit or the value *)
         Printf.fprintf oc "\tlet offs_ = match %s with\n" id ;
@@ -112,15 +144,15 @@ let emit_serialize_tuple oc tuple_typ =
         Printf.fprintf oc "\t\t%a ;\n"
           (emit_set_value "tx_" "offs_" "x_") field.typ ;
         Printf.fprintf oc "\t\toffs_ + %a in\n"
-          (emit_sersize_of_field field.typ) "x_"
+          (emit_sersize_of_field_var field.typ) "x_"
       ) else (
         Printf.fprintf oc "\t%a ;\n"
           (emit_set_value "tx_" "offs_" id) field.typ ;
         Printf.fprintf oc "\tlet offs_ = offs_ + %a in\n"
-          (emit_sersize_of_field field.typ) id
+          (emit_sersize_of_field_var field.typ) id
       ) ;
-      i + 1, nulli + (if field.nullable then 1 else 0)
-    ) (0, 0) tuple_typ in
+      nulli + (if field.nullable then 1 else 0)
+    ) 0 tuple_typ in
   Printf.fprintf oc "\toffs_\n"
 
 (* Emit a function that, given an array of strings (corresponding to a line of
@@ -163,14 +195,137 @@ let emit_read_csv_file oc csv_fname csv_separator tuple_typ =
     emit_tuple_of_strings tuple_typ
     csv_fname csv_separator
 
-let emit_select oc in_tuple_typ selected_fields and_all_others where =
-  (* We need a function to quickly extract all selected fields
-   * from the input ringbuf. Notice that we must wait until we know the
-   * exact type of that ringbuf, so we cannot compile before the links
-   * are set. We need a rigatoni command to compile a graph. *)
-  ignore oc ; ignore in_tuple_typ ; ignore selected_fields ;
-  ignore and_all_others ; ignore where ;
-  failwith "TODO: emit_select"
+let emit_in_tuple mentioned and_all_others oc in_tuple_typ =
+  print_tuple_deconstruct oc (List.filter_map (fun field_typ ->
+    if and_all_others || Set.mem field_typ.Lang.Tuple.name mentioned then
+      Some field_typ else None) in_tuple_typ)
+
+(* We do not want to read the value from the RB each time it's used,
+ * so extract a tuple from the ring buffer. As an optimisation, read
+ * (and return) only the mentioned fields. *)
+let emit_read_tuple mentioned and_all_others oc in_tuple_typ =
+  let open Lang.Tuple in
+  Printf.fprintf oc "\
+    let read_tuple tx_ =\n\
+    \tlet offs_ = %d in\n"
+    (nullmask_bytes_of_tuple_typ in_tuple_typ) ;
+  let _ = List.fold_left (fun nulli field ->
+      let id = id_of_field_typ field in
+      if and_all_others || Set.mem field.name mentioned then (
+        Printf.fprintf oc "\tlet %s, offs_ =\n" id ;
+        if field.nullable then
+          Printf.fprintf oc "\
+            \t\tif RingBuf.get_bit tx_ %d then\n\
+            \t\t\t(Some (RingBuf.read_%s tx_ offs_), offs_ + %a)\n\
+            \t\telse (None, offs_) in\n"
+            nulli
+            (id_of_typ field.typ)
+            (emit_sersize_of_field_tx "tx_" "offs_" nulli) field
+        else
+          Printf.fprintf oc "\
+            \t\tRingBuf.read_%s tx_ offs_,\n\
+            \t\toffs_ + %a in\n"
+            (id_of_typ field.typ)
+            (emit_sersize_of_field_tx "tx_" "offs_" nulli) field ;
+      ) else (
+        Printf.fprintf oc "\tlet offs_ = offs_ + " ;
+        if field.nullable then
+          Printf.fprintf oc "(if RingBuf.get_bit tx_ %d then\n\
+                             \t\t\t%a else 0) in\n"
+            nulli
+            (emit_sersize_of_field_tx "tx_" "offs_" nulli) field
+        else
+          Printf.fprintf oc "%a in\n"
+            (emit_sersize_of_field_tx "tx_" "offs_" nulli) field
+      ) ;
+      nulli + (if field.nullable then 1 else 0)
+    ) 0 in_tuple_typ in
+  Printf.fprintf oc "\t%a\n"
+    (emit_in_tuple mentioned and_all_others) in_tuple_typ
+
+(* Returns the set of all field names from the "in" tuple mentioned
+ * anywhere in the given expression: *)
+let rec add_mentionned prev =
+  let open Lang.Expr in
+  function
+  | Const _ | Param _
+    -> prev
+  | Field (_, tuple, field) ->
+    if Lang.same_tuple_as_in tuple then Set.add field prev else prev
+  | AggrMin (_, e) | AggrMax(_, e) | AggrSum(_, e)
+  | AggrAnd (_, e) | AggrOr(_, e)
+  | Age(_, e) | Not(_, e) | Defined(_, e)
+    -> add_mentionned prev e
+  | AggrPercentile (_, e1, e2)
+  | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
+  | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2) | Ge (_, e1, e2)
+  | Gt (_, e1, e2) | Eq (_, e1, e2)
+    -> add_mentionned (add_mentionned prev e1) e2
+
+let add_all_mentionned lst =
+  let rec loop prev = function
+    | [] -> prev
+    | e :: e' -> loop (add_mentionned prev e) e'
+  in
+  loop Set.empty lst
+
+let rec emit_expr oc =
+  let open Lang in
+  function
+  | Expr.Const (_, c) ->
+    Printf.fprintf oc "%a" Scalar.print c
+  | Expr.Field (_, tuple, field) ->
+    Printf.fprintf oc "%s" (id_of_field_name ~tuple field)
+  | Expr.Param _ ->
+    failwith "TODO: code gen for params"
+  | Expr.AggrMin (_, e) -> emit_function "aggr_min" oc e
+  | Expr.AggrMax (_, e) -> emit_function "aggr_max" oc e
+  | Expr.AggrSum (_, e) -> emit_function "aggr_sum" oc e
+  | Expr.AggrAnd (_, e) -> emit_function "aggr_and" oc e
+  | Expr.AggrOr (_, e) -> emit_function "aggr_or" oc e
+  | Expr.AggrPercentile (_, e1, e2) ->
+    emit_function2 "aggr_percentile" oc e1 e2
+  | Expr.Age (_, e) ->
+    emit_function "age" oc e
+  | Expr.Not (_, e) ->
+    emit_function "not" oc e
+  | Expr.Defined (_, e) ->
+    Printf.fprintf oc "(%a <> None)" emit_expr e
+  | Expr.Add (_, e1, e2)
+  | Expr.Sub (_, e1, e2)
+  | Expr.Mul (_, e1, e2)
+  | Expr.Div (_, e1, e2)
+  | Expr.Exp (_, e1, e2)
+  | Expr.And (_, e1, e2)
+  | Expr.Or (_, e1, e2)
+  | Expr.Ge (_, e1, e2)
+  | Expr.Gt (_, e1, e2)
+  | Expr.Eq (_, e1, e2) ->
+    ignore (e1, e2) ;
+    failwith "TODO: need type info to cast and pick the correct operator"
+
+and emit_function name oc e =
+  Printf.fprintf oc "%s (%a)" name emit_expr e
+
+and emit_function2 name oc e1 e2 =
+  Printf.fprintf oc "%s (%a) (%a)" name emit_expr e1 emit_expr e2
+
+let emit_select oc in_tuple_typ out_tuple_typ
+                selected_fields and_all_others where =
+  (* We need:
+   * - a function to quickly extract a given fields from the input ringbuf
+   * - a function to extract the selected fields (and all others, optionally)
+   * - a function corresponding to the where filter *)
+  let mentionned =
+    let all_exprs = where :: List.map (fun sf -> sf.Lang.Operation.expr) selected_fields in
+    add_all_mentionned all_exprs in
+  Printf.fprintf oc "%a\n%a\n%a\n\
+    let () =\n\
+      \tLwt_main.run (\n\
+      \t\tCodeGenLib.select read_tuple sersize_of_tuple serialize_tuple)\n"
+    (emit_read_tuple mentionned and_all_others) in_tuple_typ
+    emit_sersize_of_tuple out_tuple_typ
+    emit_serialize_tuple out_tuple_typ
 
 let keep_temp_files = ref true
 
@@ -202,16 +357,16 @@ let gen_read_csv_file name csv_fname csv_separator tuple_typ =
     emit_read_csv_file oc csv_fname csv_separator tuple_typ ;
     compile_source fname)
 
-let gen_select name in_tuple_typ fields and_all_others where =
+let gen_select name in_tuple_typ out_tuple_typ fields and_all_others where =
   with_code_file_for name (fun oc fname ->
-    emit_select oc in_tuple_typ fields and_all_others where ;
+    emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where ;
     compile_source fname)
 
-let gen_operation name in_tuple_typ op =
+let gen_operation name in_tuple_typ out_tuple_typ op =
   let open Lang.Operation in
   match op with
   | Select { fields ; and_all_others ; where } ->
-    gen_select name in_tuple_typ fields and_all_others where
+    gen_select name in_tuple_typ out_tuple_typ fields and_all_others where
   | ReadCSVFile { fname ; fields } ->
     gen_read_csv_file name fname "," fields
   | _ -> "echo TODO"
