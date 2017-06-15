@@ -16,7 +16,7 @@ curl "$@" \
   -X PUT \
   -d '{
     "operation":
-      "select poller, capture_end - capture_begin as capture_duration, (42 - 42) is null as stupid_thing"
+      "select poller, capture_end - capture_begin as capture_duration"
   }' \
   -H 'Content-Type: application/json' http://localhost:29380/node/n2
 

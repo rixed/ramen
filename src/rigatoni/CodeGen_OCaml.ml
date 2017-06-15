@@ -174,12 +174,12 @@ let emit_select oc in_tuple_typ selected_fields and_all_others where =
 
 let keep_temp_files = ref true
 
-let with_code_file_for prefix f =
+let with_code_file_for name f =
   let mode = [`create; `excl; `text] in
   let mode = if !keep_temp_files then mode else `delete_on_exit::mode in
-  let prefix = "gen_"^ prefix ^"_" in
+  let prefix = "gen_"^ name ^"_" in
   File.with_temporary_out ~mode ~prefix ~suffix:".ml" (fun oc fname ->
-    !logger.debug "Source code for %s: %s" prefix fname ;
+    !logger.debug "Source code for %s: %s" name fname ;
     f oc fname)
 
 let compile_source fname =

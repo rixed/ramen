@@ -24,6 +24,9 @@ let print_temp_field_typ fmt t =
 let make_temp_field_typ ?rank ?nullable ?typ name =
   { name ; rank ; nullable ; typ }
 
+let temp_field_typ_is_complete t =
+  t.rank <> None && t.nullable <> None && t.typ <> None
+
 type temp_tup_typ =
   { mutable complete : bool ;
     fields : (string, temp_field_typ) Hashtbl.t }
@@ -33,6 +36,13 @@ let print_temp_tup_typ fmt t =
     (Hashtbl.print ~first:"{" ~last:"}" ~sep:", " ~kvsep:":"
                    String.print print_temp_field_typ) t.fields
     (if t.complete then "complete" else "incomplete")
+
+let temp_tup_typ_complete t =
+  if not t.complete &&
+     Hashtbl.fold (fun _ f complete ->
+       complete && temp_field_typ_is_complete f) t.fields true
+  then
+    t.complete <- true
 
 let make_temp_tup_typ () =
   { complete = false ;
@@ -521,7 +531,7 @@ let check_node_types node =
 let set_all_types graph =
   let rec loop pass =
     if pass < 0 then (
-      let msg = "Cannot type" in (* TODO *)
+      let msg = "Cannot type" in (* TODO: what node? *)
       raise (CompilationError msg)) ;
     if Hashtbl.fold (fun _ node changed ->
           check_node_types node || changed
@@ -530,13 +540,24 @@ let set_all_types graph =
   let max_pass = 50 (* TODO: max number of field for a node times number of nodes? *) in
   loop max_pass
 
+(* If we have all info set the typing to complete. We must wait until the end
+ * of type propagation because types can still be enlarged otherwise. *)
+let node_complete_typing node =
+  temp_tup_typ_complete node.in_type ;
+  temp_tup_typ_complete node.out_type
+
 let compile conf graph =
   set_all_types graph ;
-  save_graph conf graph ;
-  (* For now we merely print the nodes *)
-  Hashtbl.iter (fun _ node ->
-    !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a\n\n"
-      node.name
-      print_temp_tup_typ node.in_type
-      print_temp_tup_typ node.out_type) graph.nodes ;
-  failwith "TODO: actually compile the graph"
+  let complete =
+    Hashtbl.fold (fun _ node complete ->
+        !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a\n\n"
+          node.name
+          print_temp_tup_typ node.in_type
+          print_temp_tup_typ node.out_type ;
+        node_complete_typing node ;
+        complete && node.in_type.complete && node.out_type.complete
+      ) graph.nodes true in
+  (* TODO: better reporting *)
+  if not complete then raise (CompilationError "Cannot complete typing") ;
+  Hashtbl.iter (fun _ node -> compile_node node) graph.nodes ;
+  save_graph conf graph
