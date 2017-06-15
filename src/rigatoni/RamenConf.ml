@@ -22,7 +22,7 @@ let print_temp_field_typ fmt t =
     | Some typ -> IO.to_string Lang.Scalar.print_typ typ)
 
 let make_temp_field_typ ?rank ?nullable ?typ name =
-  { name ; nullable ; rank ; typ }
+  { name ; rank ; nullable ; typ }
 
 type temp_tup_typ =
   { mutable complete : bool ;
@@ -267,7 +267,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
      * (enlarging it if necessary), and then determine the type of the global
      * operation as a function of the enlarged type of the operand, and check
      * that it is compatible with the expected type. *)
-    let sub_exp_type = make_temp_field_typ ~typ:sub_typ ("argument of "^ what) in
+    let sub_exp_type =
+      make_temp_field_typ ~typ:sub_typ ("argument of "^ what) in
     (* Note: we expect the sub_exp_type to be changed since we always try a
      * constant one. We care if the operator itself changed exp_type. *)
     let _ = check_expr ~in_type ~out_type ~exp_type:sub_exp_type sub_expr in
@@ -383,44 +384,69 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Expr.Eq (e1, e2) ->
     check_binary_op "equal operator" larger_type Scalar.TI8 Scalar.TI8 e1 e2
 
+let check_select ~in_type ~out_type fields and_all_others where =
+  let open Lang in
+  (* Improve out_type using all expressions. Check we satisfy in_type. *)
+  let changed =
+    let exp_type =
+      (* That where expressions cannot be null seems a nice improvement
+       * over SQL. *)
+      make_temp_field_typ ~nullable:false ~typ:Lang.Scalar.TBool
+                          "where clause" in
+    check_expr ~in_type ~out_type ~exp_type where in
+  (* If we have set out_type to some small type because of the where expression
+   * above, we may need to enlarge it now *)
+  let changed =
+    List.fold_lefti (fun changed i selfield ->
+        let name = List.hd selfield.Operation.alias in
+        let exp_type =
+          match Hashtbl.find out_type.fields name with
+          | exception Not_found ->
+            let x = { name ; rank = Some i (* This is certain *) ;
+                      nullable = None ; typ = None } in
+            Hashtbl.add out_type.fields name x ;
+            x
+          | x -> x in
+        check_expr ~in_type ~out_type ~exp_type selfield.Operation.expr || changed
+      ) changed fields in
+  (* Then if all other fields are selected, add them *)
+  let changed =
+    if and_all_others then (
+      check_add_type ~including_complete:false ~autorank:true
+                     ~from_type:in_type ~to_type:out_type || changed
+    ) else changed in
+  changed
+
+let check_aggregate ~in_type ~out_type fields and_all_others
+                    where key emit_when =
+  let open Lang in
+  (* Improve out_type using all expressions. Check we satisfy in_type. *)
+  let changed =
+    let exp_type = make_temp_field_typ "group-by clause" in
+    check_expr ~in_type ~out_type ~exp_type key in
+  let changed =
+    let exp_type =
+      make_temp_field_typ ~typ:Scalar.TBool ~nullable:false
+                          "emit-when clause" in
+    check_expr ~in_type ~out_type ~exp_type emit_when || changed in
+  check_select ~in_type ~out_type fields and_all_others where || changed
+
 (* Improve out_type but do not touch in_type which is a given *)
 let check_operation ~in_type ~out_type =
   let open Lang in
-  let make_bool_exp_type name =
-    { name ; rank = None ;
-      nullable = Some false ; typ = Some Scalar.TBool } in
   function
   | Operation.Select { fields ; and_all_others ; where } ->
-    (* First, improve out_type using all expressions. Check we satisfy in_type. *)
-    let changed =
-      let exp_type = make_bool_exp_type "where clause" in
-      check_expr ~in_type ~out_type ~exp_type where in
-    (* If we have set out_type to some small type because of the where expression
-     * above, we may need to enlarge it now *)
-    let changed =
-      List.fold_lefti (fun changed i selfield ->
-          let name = List.hd selfield.Operation.alias in
-          let exp_type =
-            match Hashtbl.find out_type.fields name with
-            | exception Not_found ->
-              let x = { name ; rank = Some i (* This is certain *) ;
-                        nullable = None ; typ = None } in
-              Hashtbl.add out_type.fields name x ;
-              x
-            | x -> x in
-          check_expr ~in_type ~out_type ~exp_type selfield.Operation.expr || changed
-        ) changed fields in
-    (* Then if all other fields are selected, add them *)
-    let changed =
-      if and_all_others then (
-        check_add_type ~including_complete:false ~autorank:true ~from_type:in_type ~to_type:out_type || changed
-      ) else changed in
-    changed
-  | Operation.Aggregate _ -> failwith "TODO: check_operation Aggregate"
+    check_select ~in_type ~out_type fields and_all_others where
+  | Operation.Aggregate { fields ; and_all_others ; where ;
+                          key ; emit_when } ->
+    check_aggregate ~in_type ~out_type fields and_all_others where
+                    key emit_when
   | Operation.OnChange expr ->
     let changed =
       check_add_type ~autorank:false ~including_complete:true ~from_type:in_type ~to_type:out_type in
-    let exp_type = make_bool_exp_type "on-change clause" in
+    let exp_type =
+      make_temp_field_typ ~nullable:false ~typ:Lang.Scalar.TBool
+                          "on-change clause" in
     check_expr ~in_type ~out_type ~exp_type expr || changed
   | Operation.Alert _ ->
     check_add_type ~autorank:false ~including_complete:true ~from_type:in_type ~to_type:out_type
