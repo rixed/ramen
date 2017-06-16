@@ -7,7 +7,7 @@ curl "$@" \
   -X PUT \
   -d '{
     "operation":
-      "read from csv file \"/home/rixed/tmp/100k.csv\" (
+      "read from csv file \"/home/rixed/tmp/100k.csv\" separator "\t" (
         poller string not null,
         capture_begin u64 not null,
         capture_end u64 not null

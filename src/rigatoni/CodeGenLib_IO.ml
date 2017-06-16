@@ -30,5 +30,10 @@ let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename k =
     return_unit
 
 let read_ringbuf rb f =
-  ignore rb ;
-  ignore f
+  let open RingBuf in
+  let rec read_next () =
+    match dequeue_alloc rb with
+    | exception Failure _ -> Lwt_unix.sleep 1. >>= read_next
+    | tx -> f tx >>= read_next
+  in
+  read_next ()

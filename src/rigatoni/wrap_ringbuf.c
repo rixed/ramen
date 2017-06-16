@@ -71,7 +71,7 @@ CAMLprim value wrap_ringbuf_create(value fname_, value tot_words_)
   CAMLparam2(fname_, tot_words_);
   CAMLlocal1(res);
   char *fname = String_val(fname_);
-  unsigned tot_words = Int_val(tot_words_);
+  unsigned tot_words = Long_val(tot_words_);
   struct ringbuf *rb = ringbuf_create(fname, tot_words);
   if (! rb) caml_failwith("Cannot create ring buffer");
   printf("MMapped %s @ %p\n", fname, rb);
@@ -107,7 +107,7 @@ CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_)
 {
   CAMLparam3(rb_, bytes_, size_);
   struct ringbuf *rb = Ringbuf_val(rb_);
-  int size = Int_val(size_);
+  int size = Long_val(size_);
   check_size(size);
   if (size < (int)caml_string_length(bytes_)) {
     caml_invalid_argument("enqueue: size must be less than the string length");
@@ -144,7 +144,7 @@ CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)
 {
   CAMLparam2(rb_, size_);
   struct ringbuf *rb = Ringbuf_val(rb_);
-  int size = Int_val(size_);
+  int size = Long_val(size_);
   check_size(size);
   uint32_t nb_words = size / sizeof(uint32_t);
   CAMLlocal1(tx);
@@ -194,21 +194,23 @@ CAMLprim value wrap_ringbuf_dequeue_commit(value tx)
   CAMLreturn(Val_unit);
 }
 
-static uint32_t *where_to_write(struct wrap_ringbuf_tx const *wrtx, size_t offs)
+// WRITES
+
+static uint32_t *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
 {
   return wrtx->rb->data /* Where the mmapped data starts */
        + wrtx->tx.record_start /* The offset of the record within that data */
        + offs/4;
 }
 
-static void write_boxed(struct wrap_ringbuf_tx const *wrtx, size_t offs, char const *src, size_t size)
+static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char const *src, size_t size)
 {
   assert(!(offs & 3));
   assert(size + offs <= wrtx->alloced);
   assert(size <= MAX_RINGBUF_MSG_SIZE);
-  uint32_t *addr = where_to_write(wrtx, offs);
+  uint32_t *addr = where_to(wrtx, offs);
 
-  printf("Copy %zu bytes at offset %zu:", size, offs);
+  printf("Write %zu bytes at offset %zu:", size, offs);
   for (unsigned s = 0 ; s < size ; s++) {
     printf(" %02" PRIx8, (uint8_t)src[s]);
   }
@@ -217,16 +219,32 @@ static void write_boxed(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
   memcpy(addr, src, size);
 }
 
+static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *dst, size_t size)
+{
+  assert(!(offs & 3));
+  assert(size + offs <= wrtx->alloced);
+  assert(size <= MAX_RINGBUF_MSG_SIZE);
+  uint32_t *addr = where_to(wrtx, offs);
+
+  printf("Read %zu bytes from offset %zu:", size, offs);
+  for (unsigned s = 0 ; s < size ; s++) {
+    printf(" %02" PRIx8, ((uint8_t *)addr)[s]);
+  }
+  printf("\n");
+
+  memcpy(dst, addr, size);
+}
+
 #define WRITE_BOXED(bits) \
 CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
 { \
   CAMLparam3(tx, off_, v_); \
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
-  size_t offs = Int_val(off_); \
+  size_t offs = Long_val(off_); \
   assert(Is_block(v_)); \
   assert(Tag_val(v_) == Custom_tag); \
   char const *src = Data_custom_val(v_); \
-  write_boxed(wrtx, offs, src, bits / 8); \
+  write_words(wrtx, offs, src, bits / 8); \
   CAMLreturn(Val_unit); \
 }
 
@@ -236,18 +254,53 @@ WRITE_BOXED(32);
 WRITE_BOXED(16);
 WRITE_BOXED(8);
 
+extern struct custom_operations uint128_ops;
+extern struct custom_operations uint64_ops;
+extern struct custom_operations uint32_ops;
+extern struct custom_operations uint16_ops;
+extern struct custom_operations uint8_ops;
+extern struct custom_operations int128_ops;
+extern struct custom_operations caml_int64_ops;
+extern struct custom_operations caml_int32_ops;
+extern struct custom_operations int16_ops;
+extern struct custom_operations int8_ops;
+
+#define READ_INT(int_type, bits, ops) \
+CAMLprim value read_##int_type##bits(value tx, value off_) \
+{ \
+  CAMLparam2(tx, off_); \
+  CAMLlocal1(v); \
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
+  size_t offs = Long_val(off_); \
+  v = caml_alloc_custom(&ops, bits / 8, 0, 1); \
+  char *dst = Data_custom_val(v); \
+  read_words(wrtx, offs, dst, bits / 8); \
+  CAMLreturn(v); \
+}
+
+READ_INT(uint, 128, uint128_ops);
+READ_INT(uint, 64, uint64_ops);
+READ_INT(uint, 32, uint32_ops);
+READ_INT(uint, 16, uint16_ops);
+READ_INT(uint, 8, uint8_ops);
+READ_INT(int, 128, int128_ops);
+READ_INT(int, 64, caml_int64_ops);
+READ_INT(int, 32, caml_int32_ops);
+READ_INT(int, 16, int16_ops);
+READ_INT(int, 8, int8_ops);
+
 CAMLprim value write_boxed_str(value tx, value off_, value v_)
 {
   CAMLparam3(tx, off_, v_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
-  size_t offs = Int_val(off_);
+  size_t offs = Long_val(off_);
   assert(Is_block(v_));
   assert(Tag_val(v_) >= String_tag);
   uint32_t size = caml_string_length(v_);
   char const *src = Bp_val(v_);
   // We must start this variable size field with its length:
-  write_boxed(wrtx, offs, (char const *)&size, sizeof(size));
-  write_boxed(wrtx, offs + sizeof(size), src, size);
+  write_words(wrtx, offs, (char const *)&size, sizeof(size));
+  write_words(wrtx, offs + sizeof(size), src, size);
   CAMLreturn(Val_unit);
 }
 
@@ -256,9 +309,9 @@ CAMLprim value write_int(value tx, value off_, value v_)
 {
   CAMLparam3(tx, off_, v_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
-  size_t offs = Int_val(off_);
+  size_t offs = Long_val(off_);
   assert(!(offs & 3));
-  uint32_t *addr = where_to_write(wrtx, offs);
+  uint32_t *addr = where_to(wrtx, offs);
 
   assert(Is_long(v_));
   long v = Long_val(v_);
@@ -269,4 +322,39 @@ CAMLprim value write_int(value tx, value off_, value v_)
   memcpy(addr, &src, sizeof(src));
 
   CAMLreturn(Val_unit);
+}
+
+CAMLprim value read_float(value tx, value off_)
+{
+  CAMLparam2(tx, off_);
+  CAMLlocal1(v);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t offs = Long_val(off_);
+  v = caml_alloc(1, Double_tag);
+  char *dst = Bp_val(v);
+  read_words(wrtx, offs, dst, 8);
+  CAMLreturn(v);
+}
+
+CAMLprim value read_int(value tx, value off_)
+{
+  CAMLparam2(tx, off_);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t offs = Long_val(off_);
+  intnat v;
+  read_words(wrtx, offs, (char *)&v, sizeof v);
+  CAMLreturn(Val_long(v));
+}
+
+CAMLprim value read_str(value tx, value off_)
+{
+  CAMLparam2(tx, off_);
+  CAMLlocal1(v);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t offs = Long_val(off_);
+  uint32_t size;
+  read_words(wrtx, offs, (char *)&size, sizeof(size));
+  v = caml_alloc_string(size);
+  read_words(wrtx, offs + sizeof(size), String_val(v), size);
+  CAMLreturn(v);
 }

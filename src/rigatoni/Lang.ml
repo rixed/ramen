@@ -401,6 +401,7 @@ let keyword =
     strinG "on" ||| strinG "change" ||| strinG "after" ||| strinG "when" |||
     strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
+    strinG "separator" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
@@ -776,7 +777,7 @@ struct
         emit_when : Expr.t }
     | OnChange of Expr.t
     | Alert of { team : string ; subject : string ; text : string }
-    | ReadCSVFile of { fname : string ; fields : Tuple.typ } (* TODO: add separator *)
+    | ReadCSVFile of { fname : string ; separator : string ; fields : Tuple.typ }
 
   let print fmt =
     let sep = ", " in
@@ -799,9 +800,9 @@ struct
       Printf.fprintf fmt "ON CHANGE %a" Expr.print e
     | Alert { team ; subject ; text } ->
       Printf.fprintf fmt "ALERT %S SUBJECT %S TEXT %S" team subject text
-    | ReadCSVFile { fname ; fields } ->
-      Printf.fprintf fmt "READ FROM CSV FILE %S %a"
-        fname Tuple.print_typ fields
+    | ReadCSVFile { fname ; separator ; fields } ->
+      Printf.fprintf fmt "READ FROM CSV FILE %S SEPARATOR %S %a"
+        fname separator Tuple.print_typ fields
 
   module Parser =
   struct
@@ -882,11 +883,14 @@ struct
         fun ((name, typ), nullable) -> Tuple.{ name ; typ ; nullable }
       in
       strinG "read" -- blanks -- strinG "from" -- blanks --
-      optional ~def:() (strinG "csv") -- blanks -- strinG "file" --
-      blanks -+ quoted_string +- opt_blanks +- char '(' +- opt_blanks ++
+      optional ~def:() (strinG "csv" +- blanks) -- strinG "file" -- blanks -+
+      quoted_string +- opt_blanks ++
+      optional ~def:"," (
+        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) +-
+      char '(' +- opt_blanks ++
       several ~sep:(opt_blanks -- char ',' -- opt_blanks) field +-
       opt_blanks +- char ')' >>:
-      fun (fname, fields) -> ReadCSVFile { fname ; fields }
+      fun ((fname, separator), fields) -> ReadCSVFile { fname ; separator ; fields }
 
     let p =
       select ||| aggregate ||| on_change ||| alert ||| read_csv_file
@@ -970,12 +974,20 @@ struct
                          text \"fatigue...\"")
 
       (Ok (\
-        ReadCSVFile { fname = "/tmp/toto.csv" ; \
+        ReadCSVFile { fname = "/tmp/toto.csv" ; separator = "," ; \
                       fields = Lang.Tuple.[ \
                         { name = "f1" ; nullable = true ; typ = Scalar.TBool } ;\
                         { name = "f2" ; nullable = false ; typ = Scalar.TI32 } ] },\
         (61, [])))\
         (test_p p "read from csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
+
+      (Ok (\
+        ReadCSVFile { fname = "/tmp/toto.csv" ; separator = "\t" ; \
+                      fields = Lang.Tuple.[ \
+                        { name = "f1" ; nullable = true ; typ = Scalar.TBool } ;\
+                        { name = "f2" ; nullable = false ; typ = Scalar.TI32 } ] },\
+        (76, [])))\
+        (test_p p "read from csv file \"/tmp/toto.csv\" separator \"\\t\" (f1 bool, f2 i32 not null)")
     *)
 
     (* Check that the expression is valid, or return an error message.

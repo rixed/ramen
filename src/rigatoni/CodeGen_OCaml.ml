@@ -62,7 +62,7 @@ let rec emit_sersize_of_field_tx tx_var offs_var nulli oc field =
   ) else match field.typ with
     | Lang.Scalar.TString ->
       Printf.fprintf oc "\
-        (%d + RingBufLib.round_up_to_rb_word(RingBuf.read_int %s %s)"
+        (%d + RingBufLib.round_up_to_rb_word(RingBuf.read_int %s %s))"
         RingBufLib.rb_word_bytes tx_var offs_var
     | _ -> emit_sersize_of_fixsz_typ oc field.typ
 
@@ -190,7 +190,7 @@ let emit_read_csv_file oc csv_fname csv_separator tuple_typ =
   Printf.fprintf oc "%a\n%a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
-      \t\tCodeGenLib.read_csv_file %S %S sersize_of_tuple serialize_tuple tuple_of_strings)\n"
+      \t\tCodeGenLib.read_csv_file %S %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_)\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_") tuple_typ
@@ -278,16 +278,16 @@ let implementation_of name out_typ =
   let open Scalar in
   match name, out_typ.Expr.typ with
   | ("add" | "sub" | "mul" | "div"), Some TFloat -> "Float."^ name, TFloat
-  | ("add" | "sub" | "mul" | "div"), Some TU8 -> "Uint8."^ name, TU8
-  | ("add" | "sub" | "mul" | "div"), Some TU16 -> "Uint16."^ name, TU16
-  | ("add" | "sub" | "mul" | "div"), Some TU32 -> "Uint32."^ name, TU32
-  | ("add" | "sub" | "mul" | "div"), Some TU64 -> "Uint64."^ name, TU64
-  | ("add" | "sub" | "mul" | "div"), Some TU128 -> "Uint128."^ name, TU128
-  | ("add" | "sub" | "mul" | "div"), Some TI8 -> "Uint8."^ name, TU8
-  | ("add" | "sub" | "mul" | "div"), Some TI16 -> "Uint16."^ name, TU16
-  | ("add" | "sub" | "mul" | "div"), Some TI32 -> "Uint32."^ name, TU32
-  | ("add" | "sub" | "mul" | "div"), Some TI64 -> "Uint64."^ name, TU64
-  | ("add" | "sub" | "mul" | "div"), Some TI128 -> "Uint128."^ name, TU128
+  | ("add" | "sub" | "mul" | "div"), Some TU8 -> "Stdint.Uint8."^ name, TU8
+  | ("add" | "sub" | "mul" | "div"), Some TU16 -> "Stdint.Uint16."^ name, TU16
+  | ("add" | "sub" | "mul" | "div"), Some TU32 -> "Stdint.Uint32."^ name, TU32
+  | ("add" | "sub" | "mul" | "div"), Some TU64 -> "Stdint.Uint64."^ name, TU64
+  | ("add" | "sub" | "mul" | "div"), Some TU128 -> "Stdint.Uint128."^ name, TU128
+  | ("add" | "sub" | "mul" | "div"), Some TI8 -> "Stdint.Int8."^ name, TI8
+  | ("add" | "sub" | "mul" | "div"), Some TI16 -> "Stdint.Int16."^ name, TI16
+  | ("add" | "sub" | "mul" | "div"), Some TI32 -> "Stdint.Int32."^ name, TI32
+  | ("add" | "sub" | "mul" | "div"), Some TI64 -> "Stdint.Int64."^ name, TI64
+  | ("add" | "sub" | "mul" | "div"), Some TI128 -> "Stdint.Int128."^ name, TI128
   | ("not" | "&&" | "||" | ">=" | ">" | "="), Some TBool -> name, TBool
   | "age", Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
     "CodeGenLib."^ name ^"_"^ IO.to_string Scalar.print_typ to_typ, TFloat
@@ -311,7 +311,7 @@ let rec conv_to to_typ fmt e =
   in
   let from_typ = Expr.((typ_of e).typ) |> Option.get in
   match from_typ, to_typ with
-  | a, b when a = b -> Expr.print fmt e
+  | a, b when a = b -> emit_expr fmt e
   | (TU8|TU16|TU32|TU64|TU128|TFloat), (TU8|TU16|TU32|TU64|TU128) ->
     Printf.fprintf fmt "%s.of_%s (%a)"
       (omod_of_type to_typ)
@@ -375,7 +375,7 @@ let emit_expr_of_input_tuple name in_tuple_typ mentioned and_all_others oc expr 
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
     emit_expr expr
 
-let emit_expr_select name in_tuple_typ out_tuple_typ mentioned and_all_others oc selected_fields =
+let emit_expr_select name in_tuple_typ mentioned and_all_others oc selected_fields =
   let open Lang in
   Printf.fprintf oc "\
     let %s %a =\n\
@@ -397,10 +397,11 @@ let emit_expr_select name in_tuple_typ out_tuple_typ mentioned and_all_others oc
   if and_all_others then (
     List.iteri (fun i field ->
         if not (Set.mem field.Tuple.name !outputted) then
-          Printf.fprintf oc "%s\n\t\t%s"
+          Printf.fprintf oc "%s\n\t\t%s%s"
             (if i > 0 || selected_fields <> [] then "," else "")
+            (if i = 0 then "(* All other fields *)\n\t\t" else "")
             (id_of_field_name field.Tuple.name)
-      ) out_tuple_typ
+      ) in_tuple_typ
   ) ;
   Printf.fprintf oc "\n\t)\n"
 
@@ -416,10 +417,10 @@ let emit_select oc in_tuple_typ out_tuple_typ
   Printf.fprintf oc "%a\n%a\n%a\n%a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
-      \t\tCodeGenLib.select read_tuple sersize_of_tuple serialize_tuple where_ select_)\n"
+      \t\tCodeGenLib.select read_tuple_ sersize_of_tuple_ serialize_tuple_ where_ select_)\n"
     (emit_read_tuple "read_tuple_" mentionned and_all_others) in_tuple_typ
     (emit_expr_of_input_tuple "where_" in_tuple_typ mentionned and_all_others) where
-    (emit_expr_select "select_" in_tuple_typ out_tuple_typ mentionned and_all_others) selected_fields
+    (emit_expr_select "select_" in_tuple_typ mentionned and_all_others) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
@@ -441,9 +442,12 @@ let compile_source fname =
                                        -linkpkg codegen.cmxa %s"
       exec_name fname in
   let exit_code = Sys.command comp_cmd in
-  if exit_code = 0 then exec_name else (
+  if exit_code = 0 then (
+    !logger.debug "Compiled %s with: %s" fname comp_cmd ;
+    exec_name
+  ) else (
     !logger.error "Compilation of %s failed with status %d.\n\
-                   Failed command was: %S\n"
+                   Failed command was: %S"
                   fname exit_code comp_cmd ;
     failwith "Cannot generate code"
   )
@@ -451,19 +455,21 @@ let compile_source fname =
 let gen_read_csv_file name csv_fname csv_separator tuple_typ =
   with_code_file_for name (fun oc fname ->
     emit_read_csv_file oc csv_fname csv_separator tuple_typ ;
-    compile_source fname)
+    fname) |>
+    compile_source
 
 let gen_select name in_tuple_typ out_tuple_typ fields and_all_others where =
   with_code_file_for name (fun oc fname ->
     emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where ;
-    compile_source fname)
+    fname) |>
+    compile_source
 
 let gen_operation name in_tuple_typ out_tuple_typ op =
   let open Lang.Operation in
   match op with
   | Select { fields ; and_all_others ; where } ->
     gen_select name in_tuple_typ out_tuple_typ fields and_all_others where
-  | ReadCSVFile { fname ; fields } ->
-    gen_read_csv_file name fname "," fields
+  | ReadCSVFile { fname ; separator ; fields } ->
+    gen_read_csv_file name fname separator fields
   | _ -> "echo TODO"
 

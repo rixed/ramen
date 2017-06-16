@@ -64,7 +64,8 @@ type node =
     mutable children : node list ;
     mutable in_type : temp_tup_typ ;
     mutable out_type : temp_tup_typ ;
-    mutable command : string }
+    mutable command : string option ;
+    mutable pid : int option }
 
 type graph =
   { nodes : (string, node) Hashtbl.t }
@@ -78,15 +79,15 @@ let make_node name operation =
   { name ; operation ; parents = [] ; children = [] ;
     (* Set once the all graph is known: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
-    command = "" }
+    command = None ; pid = None }
 
 let compile_node node =
   assert node.in_type.complete ;
   assert node.out_type.complete ;
   let in_typ = tup_typ_of_temp_tup_type node.in_type
   and out_typ = tup_typ_of_temp_tup_type node.out_type in
-  node.command <-
-    CodeGen_OCaml.gen_operation node.name in_typ out_typ node.operation
+  node.command <- Some (
+    CodeGen_OCaml.gen_operation node.name in_typ out_typ node.operation)
 
 let make_new_graph () =
   { nodes = Hashtbl.create 17 }
@@ -538,6 +539,10 @@ let set_all_types graph =
   in
   let max_pass = 50 (* TODO: max number of field for a node times number of nodes? *) in
   loop max_pass
+  (* TODO:
+   * - check that input type empty <=> no parents
+   * - check that output type empty <=> no children
+   *)
 
 (* If we have all info set the typing to complete. We must wait until the end
  * of type propagation because types can still be enlarged otherwise. *)
@@ -560,3 +565,44 @@ let compile conf graph =
   if not complete then raise (CompilationError "Cannot complete typing") ;
   Hashtbl.iter (fun _ node -> compile_node node) graph.nodes ;
   save_graph conf graph
+
+let graph_is_compiled graph =
+  Hashtbl.fold (fun _ node compiled ->
+      compiled && node.command <> None
+    ) graph.nodes true
+
+let run_background cmd args env =
+  let open Unix in
+  (* prog name should be first arg *)
+  let prog_name = Filename.basename cmd in
+  let args = Array.init (Array.length args + 1) (fun i ->
+      if i = 0 then prog_name else args.(i-1))
+  in
+  !logger.info "Running %s with args %a and env %a"
+    cmd
+    (Array.print String.print) args
+    (Array.print String.print) env ;
+  match fork () with
+  | 0 -> execve cmd args env
+  | pid -> pid
+
+let run conf graph =
+  if not (graph_is_compiled graph) then compile conf graph ;
+  (* For now each node creates its own output ringbuf itself but we still have
+   * to set the names so that we can pass it to its children. *)
+  Hashtbl.iter (fun _ node ->
+      let command = Option.get node.command in
+      let rb_out_name_of node = "/tmp/ringbuf_"^ node.name ^"_out"
+      in
+      let rb_in =
+        match node.parents with
+        | par::_ -> [ "input_ringbuf="^ rb_out_name_of par ]
+        | [] -> []
+      and rb_out =
+        match node.children with
+        | _::_ -> [ "output_ringbuf="^ rb_out_name_of node ]
+        | [] -> [] in
+      let env = rb_in @ rb_out |> Array.of_list in
+      node.pid <- Some (run_background command [||] env) ;
+      save_graph conf graph
+    ) graph.nodes

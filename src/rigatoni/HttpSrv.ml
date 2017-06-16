@@ -101,7 +101,8 @@ type node_info =
   (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
   { name : string ;
     operation : string ;
-    command : string ;
+    command : string option ;
+    pid : int option ;
     nb_parents : int ;
     nb_children : int ;
     input_type : (int option * Lang.Expr.typ) list ;
@@ -111,6 +112,7 @@ let node_info_of_node node =
   { name = node.C.name ;
     operation = IO.to_string Lang.Operation.print node.C.operation ;
     command = node.C.command ;
+    pid = node.C.pid ;
     nb_parents = List.length node.C.parents ;
     nb_children = List.length node.C.children ;
     input_type = C.list_of_temp_tup_type node.C.in_type ;
@@ -247,6 +249,16 @@ let compile conf _headers =
     let status = `Code 200 in
     Server.respond_string ~headers ~status ~body:"" ()
 
+let run conf _headers =
+  (* TODO: check we accept json *)
+  match C.run conf conf.C.building_graph with
+  | exception (C.CompilationError e) ->
+    bad_request e
+  | () ->
+    let headers = Header.init_with "Content-Type" json_content_type in
+    let status = `Code 200 in
+    Server.respond_string ~headers ~status ~body:"" ()
+
 (* The function called for each HTTP request: *)
 
 let callback conf _conn req body =
@@ -270,6 +282,7 @@ let callback conf _conn req body =
         | `DELETE, ["link" ; src ; dst] -> del_link conf headers src dst
         | `GET, ["graph"] -> get_graph conf headers
         | `GET, ["compile"] -> compile conf headers
+        | `GET, ["run"] -> run conf headers
         | `PUT, _ | `GET, _ | `DELETE, _ ->
           fail (HttpError (404, "No such resource"))
         | _ ->

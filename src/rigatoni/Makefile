@@ -33,17 +33,19 @@ all: $(INSTALLED) ringbuf_test.opt ringbuf_ctl
 ringbuf/libringbuf.a: ringbuf/ringbuf.o
 	$(AR) rs $@ $^
 
+# We have to foce -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o otherwise -package stdint would
+# put it before and gcc would not include the symbols we need as we are the only users.
 rigatoni: $(RIGATONI_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
 
 codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a       -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a       -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
 
 ringbuf_test.opt: RingBuf.cmx RingBufLib.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
 
 ringbuf_ctl: RingBuf.cmx ringbuf_ctl.cmx ringbuf/libringbuf.a wrap_ringbuf.o
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
 
 clean-spec:
 	$(RM) ringbuf/libringbuf.a
