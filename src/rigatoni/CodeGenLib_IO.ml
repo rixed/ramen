@@ -1,5 +1,6 @@
 (* Tools for LWT IOs *)
 open Lwt
+open Log
 
 let dying task =
   Lwt.fail_with (Printf.sprintf "Committing suicide while %s\n%!" task)
@@ -9,7 +10,7 @@ let always_true () = true
 let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename k =
   match%lwt Lwt_unix.(openfile filename [ O_RDONLY ] 0x644) with
   | exception e ->
-    Printf.eprintf "Cannot open file %S: %s, skipping.\n%!"
+    !logger.error "Cannot open file %S: %s, skipping."
       filename (Printexc.to_string e) ;
     return_unit
   | fd ->
@@ -26,7 +27,7 @@ let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename k =
       )
     in
     let%lwt () = read_next_line () in
-    Printf.printf "done reading %S\n%!" filename ;
+    !logger.info "done reading %S" filename ;
     return_unit
 
 let read_ringbuf rb f =
