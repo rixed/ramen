@@ -33,7 +33,7 @@ static value alloc_ringbuf(struct ringbuf *rb)
 {
   CAMLparam0();
   CAMLlocal1(res);
-  res = caml_alloc_custom(&ringbuf_ops, sizeof(rb), 0, 1);
+  res = caml_alloc_custom(&ringbuf_ops, sizeof rb, 0, 1);
   Ringbuf_val(res) = rb;
   CAMLreturn(res);
 }
@@ -222,6 +222,9 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
 static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *dst, size_t size)
 {
   assert(!(offs & 3));
+  if (offs + size > wrtx->alloced) {
+    printf("BAD OFFS: offs=%zu, size=%zu but tx->alloced only %zu\n", offs, size, wrtx->alloced);
+  }
   assert(size + offs <= wrtx->alloced);
   assert(size <= MAX_RINGBUF_MSG_SIZE);
   uint32_t *addr = where_to(wrtx, offs);
@@ -299,8 +302,8 @@ CAMLprim value write_boxed_str(value tx, value off_, value v_)
   uint32_t size = caml_string_length(v_);
   char const *src = Bp_val(v_);
   // We must start this variable size field with its length:
-  write_words(wrtx, offs, (char const *)&size, sizeof(size));
-  write_words(wrtx, offs + sizeof(size), src, size);
+  write_words(wrtx, offs, (char const *)&size, sizeof size);
+  write_words(wrtx, offs + sizeof size, src, size);
   CAMLreturn(Val_unit);
 }
 
@@ -319,7 +322,7 @@ CAMLprim value write_word(value tx, value off_, value v_)
   assert(v <= UINT32_MAX);
   uint32_t src = v;
 
-  memcpy(addr, &src, sizeof(src));
+  memcpy(addr, &src, sizeof src);
 
   CAMLreturn(Val_unit);
 }
@@ -353,8 +356,8 @@ CAMLprim value read_str(value tx, value off_)
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
   uint32_t size;
-  read_words(wrtx, offs, (char *)&size, sizeof(size));
+  read_words(wrtx, offs, (char *)&size, sizeof size);
   v = caml_alloc_string(size);
-  read_words(wrtx, offs + sizeof(size), String_val(v), size);
+  read_words(wrtx, offs + sizeof size, String_val(v), size);
   CAMLreturn(v);
 }
