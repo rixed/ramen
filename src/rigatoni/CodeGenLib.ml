@@ -37,24 +37,41 @@ let serialize rb sersize_of_tuple serialize_tuple tuple =
   enqueue_commit tx ;
   assert (offs = sersize)
 
-let retry ~on f =
+let retry ~on ?(first_delay=1.0) ?(min_delay=0.001) ?(max_delay=10.0) ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.5) f =
+  let next_delay = ref first_delay in
   let rec loop x =
     (match f x with
     | exception e ->
       if on e then (
-        !logger.error "Retryable error: %s" (Printexc.to_string e) ;
-        (* TODO: an automatic retry-er that tries to find out the best
-         * amount of time to sleep based on successive errors *)
-        let%lwt () = Lwt_unix.sleep 1. in
+        let delay = !next_delay in
+        let delay = min delay max_delay in
+        let delay = max delay min_delay in
+        next_delay := !next_delay *. delay_adjust_nok ;
+        !logger.error "Retryable error: %s, pausing %gs"
+          (Printexc.to_string e) delay ;
+        let%lwt () = Lwt_unix.sleep delay in
         loop x
       ) else (
         !logger.error "Something went wrong: %s"
           (Printexc.to_string e) ;
         fail e
       )
-    | r -> return r)
+    | r ->
+      next_delay := !next_delay *. delay_adjust_ok ;
+      return r)
   in
   loop
+
+let serializer_of rb_out sersize_of_tuple serialize_tuple =
+  let once = serialize rb_out sersize_of_tuple serialize_tuple in
+  let on = function
+    (* FIXME: a dedicated RingBuf.NoMoreRoom exception *)
+    | Failure _ ->
+      !logger.debug "No more space in the ring buffer, sleeping..." ;
+      true
+    | _ -> false
+  in
+  retry ~on once
 
 let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_strings =
   !logger.info "Starting READ CSV FILE process..." ;
@@ -73,8 +90,7 @@ let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_s
   in
   let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
   let serializer =
-    let once = serialize rb_out sersize_of_tuple serialize_tuple in
-    retry ~on:(function Failure _ -> !logger.debug "No more space in the ring buffer, sleeping..."; true | _ -> false) once in
+    serializer_of rb_out sersize_of_tuple serialize_tuple in
   CodeGenLib_IO.read_file_lines filename (fun line ->
     match of_string line with
     | exception e ->
@@ -93,12 +109,10 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
                 ringbuffer %S (size is %d words)"
                rb_in_fname
                rb_out_fname rb_out_sz ;
-  let%lwt rb_in = retry ~on:(fun _ -> true) RingBuf.load rb_in_fname in
+  let%lwt rb_in = retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
   let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
   let serializer =
-    let once = serialize rb_out sersize_of_tuple serialize_tuple in
-    (* FIXME: a dedicated RingBuf.NoMoreRoom exception *)
-    retry ~on:(function Failure _ -> !logger.debug "No more space in the ring buffer, sleeping..."; true | _ -> false) once in
+    serializer_of rb_out sersize_of_tuple serialize_tuple in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
