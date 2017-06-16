@@ -247,6 +247,7 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
       ) ;
       nulli + (if field.nullable then 1 else 0)
     ) 0 in_tuple_typ in
+  Printf.fprintf oc "\tignore offs_ ;\n" ; (* avoid a warning *)
   Printf.fprintf oc "\t%a\n"
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
 
