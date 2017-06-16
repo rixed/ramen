@@ -22,12 +22,12 @@ let i128_of_string = Int128.of_string
 
 let getenv ?def n =
   try Sys.getenv n
-  with e ->
-    (match def with
+  with Not_found ->
+    match def with
     | Some d -> d
     | None ->
-      Printf.sprintf "Cannot find envvar %s: %s" n (Printexc.to_string e) |>
-      failwith)
+      Printf.sprintf "Cannot find envvar %s" n |>
+      failwith
 
 let serialize rb sersize_of_tuple serialize_tuple tuple =
   let open RingBuf in
@@ -61,8 +61,8 @@ let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_s
   (* For tests, allow to overwrite what's specified in the operation: *)
   let filename = getenv ~def:filename "csv_filename"
   and separator = getenv ~def:separator "csv_separator"
-  and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "input_ringbuf"
-  and rb_out_sz = getenv ~def:"10000" "input_ringbuf_size" |> int_of_string
+  and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "output_ringbuf"
+  and rb_out_sz = getenv ~def:"1000" "input_ringbuf_size" |> int_of_string
   in
   !logger.info "Will read CSV file %S using separator %S, and write output to \
                 ringbuffer %S (size is %d words)"
@@ -87,7 +87,7 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
   !logger.info "Starting SELECT process..." ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "output_ringbuf"
-  and rb_out_sz = getenv ~def:"10000" "output_ringbuf_size" |> int_of_string
+  and rb_out_sz = getenv ~def:"1000" "output_ringbuf_size" |> int_of_string
   in
   !logger.info "Will read ringbuffer %S and write output to \
                 ringbuffer %S (size is %d words)"
