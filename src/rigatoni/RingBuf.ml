@@ -27,6 +27,9 @@ external write_i128 : tx -> int -> Int128.t -> unit = "write_boxed_128"
 (* Everything passed as an int and which occupancy is <= word *)
 external write_bool : tx -> int -> bool -> unit = "write_int"
 
+let set_bit _addr _bit = assert false (* TODO *)
+let get_bit _addr = assert false (* TODO *)
+
 (* Note: each primitive operation is generic but for a few things:
  *
  * - how to bind values from the incoming tuple to a local variables (a tuple)

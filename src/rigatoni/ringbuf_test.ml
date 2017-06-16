@@ -1,4 +1,5 @@
 open RingBuf
+open RingBufLib
 open Stdint
 open Batteries
 
@@ -21,9 +22,9 @@ let () =
   enqueue_commit tx ;
   let str = "glopi" in
   let tx = enqueue_alloc rb (
-            CodeGenLib_Misc.round_up_to_rb_word(String.length str)
+            round_up_to_rb_word(String.length str)
             (* variable sized field will be prepended with its length *)
-          + CodeGenLib_Misc.round_up_to_rb_word(1)) in
+          + round_up_to_rb_word(1)) in
   Printf.printf "Write %S...\n%!" str ;
   write_string tx 0 str ;
   enqueue_commit tx

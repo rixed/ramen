@@ -1,3 +1,4 @@
+
 (* Compromise between size and efficient reading of data, TBD: *)
 let rb_word_bytes = 4
 let rb_word_bits = rb_word_bytes * 8
@@ -9,4 +10,3 @@ let bytes_for_bits n =
 let round_up_to_rb_word bytes =
   let low = bytes land (rb_word_bytes-1) in
   if low = 0 then bytes else bytes - low + rb_word_bytes
-

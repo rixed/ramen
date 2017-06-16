@@ -1,20 +1,20 @@
 top_srcdir = ..
 
 LINKED_WITH_TESTS = \
-	Log.ml CodeGenLib_Misc.ml Lang.ml CodeGen_OCaml.ml RamenConf.ml
+	Log.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml RamenConf.ml
 
 TESTABLE_SOURCES = \
 	Lang.ml HttpSrv.ml
 
 RIGATONI_SOURCES = \
 	Log.ml Lang.ml \
-	CodeGenLib_Misc.ml CodeGen_OCaml.ml \
+	RingBufLib.ml \
+	CodeGen_OCaml.ml \
 	RamenConf.ml HttpSrv.ml \
-	RingBuf.ml \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \
-	Log.ml RingBuf.ml CodeGenLib_Misc.ml CodeGenLib_IO.ml CodeGenLib_RingBuf.ml CodeGenLib.ml
+	Log.ml RingBuf.ml RingBufLib.ml CodeGenLib_IO.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h
@@ -39,7 +39,7 @@ rigatoni: $(RIGATONI_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
 codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a       -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
 
-ringbuf_test.opt: RingBuf.cmx CodeGenLib_Misc.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
+ringbuf_test.opt: RingBuf.cmx RingBufLib.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
 
 ringbuf_ctl: RingBuf.cmx ringbuf_ctl.cmx ringbuf/libringbuf.a wrap_ringbuf.o

@@ -13,7 +13,6 @@
  * the tuple name. *)
 
 open Batteries
-open CodeGenLib_Misc
 open Log
 
 (* Tuple deconstruction as a function parameter: *)
@@ -35,12 +34,12 @@ let print_tuple_deconstruct =
 let emit_sersize_of_fixsz_typ oc =
   let open Lang.Scalar in
   function
-  | TFloat  -> Int.print oc (round_up_to_rb_word 8)
-  | TBool | TU8 | TI8 -> Int.print oc (round_up_to_rb_word 1)
-  | TU16 | TI16 -> Int.print oc (round_up_to_rb_word 2)
-  | TU32 | TI32 -> Int.print oc (round_up_to_rb_word 4)
-  | TU64 | TI64 -> Int.print oc (round_up_to_rb_word 8)
-  | TU128 | TI128 -> Int.print oc (round_up_to_rb_word 16)
+  | TFloat  -> Int.print oc (RingBufLib.round_up_to_rb_word 8)
+  | TBool | TU8 | TI8 -> Int.print oc (RingBufLib.round_up_to_rb_word 1)
+  | TU16 | TI16 -> Int.print oc (RingBufLib.round_up_to_rb_word 2)
+  | TU32 | TI32 -> Int.print oc (RingBufLib.round_up_to_rb_word 4)
+  | TU64 | TI64 -> Int.print oc (RingBufLib.round_up_to_rb_word 8)
+  | TU128 | TI128 -> Int.print oc (RingBufLib.round_up_to_rb_word 16)
   | TString -> assert false
 
 (* Emit the code computing the sersize of some variable *)
@@ -49,8 +48,8 @@ let emit_sersize_of_field_var typ oc var =
   match typ with
   | TString ->
     Printf.fprintf oc "\
-      (%d + CodeGenLib_Misc.round_up_to_rb_word(String.length %s))"
-      rb_word_bytes var
+      (%d + RingBufLib.round_up_to_rb_word(String.length %s))"
+      RingBufLib.rb_word_bytes var
   | _ -> emit_sersize_of_fixsz_typ oc typ
 
 (* Emit the code to retrieve the sersize of some serialized value *)
@@ -63,8 +62,8 @@ let rec emit_sersize_of_field_tx tx_var offs_var nulli oc field =
   ) else match field.typ with
     | Lang.Scalar.TString ->
       Printf.fprintf oc "\
-        (%d + CodeGenLib_Misc.round_up_to_rb_word(RingBuf.read_int %s %s)"
-        rb_word_bytes tx_var offs_var
+        (%d + RingBufLib.round_up_to_rb_word(RingBuf.read_int %s %s)"
+        RingBufLib.rb_word_bytes tx_var offs_var
     | _ -> emit_sersize_of_fixsz_typ oc field.typ
 
 let id_of_typ typ =
@@ -91,8 +90,8 @@ let nullmask_bytes_of_tuple_typ tuple_typ =
   let open Lang.Tuple in
   List.fold_left (fun s field_typ ->
     if field_typ.nullable then s+1 else s) 0 tuple_typ |>
-  bytes_for_bits |>
-  round_up_to_rb_word
+  RingBufLib.bytes_for_bits |>
+  RingBufLib.round_up_to_rb_word
 
 let emit_sersize_of_tuple name oc tuple_typ =
   let open Lang.Tuple in
@@ -140,7 +139,7 @@ let emit_serialize_tuple name oc tuple_typ =
         (* Write either the null bit or the value *)
         Printf.fprintf oc "\tlet offs_ = match %s with\n" id ;
         Printf.fprintf oc "\t| None ->\n" ;
-        Printf.fprintf oc "\t\tCodeGenLib_RingBuf.set_bit tx_ %d\n" nulli ;
+        Printf.fprintf oc "\t\tRingBuf.set_bit tx_ %d\n" nulli ;
         Printf.fprintf oc "\t\toffs_\n" ;
         Printf.fprintf oc "\t| Some x_ ->\n" ;
         Printf.fprintf oc "\t\t%a ;\n"
