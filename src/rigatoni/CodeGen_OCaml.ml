@@ -131,8 +131,12 @@ let emit_serialize_tuple name oc tuple_typ =
   Printf.fprintf oc "let %s tx_ %a =\n"
     name
     print_tuple_deconstruct tuple_typ ;
-  Printf.fprintf oc "\tlet offs_ = %d in\n"
-    (nullmask_bytes_of_tuple_typ tuple_typ) ;
+  let nullmask_bytes = nullmask_bytes_of_tuple_typ tuple_typ in
+  Printf.fprintf oc "\tlet offs_ = %d in\n" nullmask_bytes ;
+  (* Start by zeroing the nullmask *)
+  if nullmask_bytes > 0 then
+    Printf.fprintf oc "\tzero_bytes %d ; (* zero the nullmask *)\n"
+      nullmask_bytes ;
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ field in
       if field.nullable then (

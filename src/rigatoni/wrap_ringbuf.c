@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <string.h>
 
 #define CAML_NAME_SPACE
 #include <caml/mlvalues.h>
@@ -196,7 +197,7 @@ CAMLprim value wrap_ringbuf_dequeue_commit(value tx)
 
 // WRITES
 
-static uint32_t *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
+static void *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
 {
   return wrtx->rb->data /* Where the mmapped data starts */
        + wrtx->tx.record_start /* The offset of the record within that data */
@@ -325,6 +326,46 @@ CAMLprim value write_word(value tx, value off_, value v_)
   memcpy(addr, &src, sizeof src);
 
   CAMLreturn(Val_unit);
+}
+
+CAMLprim value zero_words(value tx, value off_, value size_)
+{
+  CAMLparam3(tx, off_, size_);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t offs = Long_val(off_);
+  assert(!(offs & 3));
+  uint32_t *addr = where_to(wrtx, offs);
+  int size = Long_val(size_);
+
+  memset(addr, 0, size);
+
+  CAMLreturn(Val_unit);
+}
+
+// Set the bit_ th bit in the tx to 1 (for the nullmask)
+CAMLprim value set_bit(value tx, value bit_)
+{
+  CAMLparam2(tx, bit_);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  unsigned bit = Long_val(bit_);
+  assert(bit/8 <= wrtx->alloced);
+  uint8_t *addr = where_to(wrtx, bit/8);
+  uint8_t mask = 1U << (bit % 8);
+  *addr |= mask;
+  CAMLreturn(Val_unit);
+}
+
+// Return the bit_ th bit in the tx (for the nullmask)
+CAMLprim value get_bit(value tx, value bit_)
+{
+  CAMLparam2(tx, bit_);
+  CAMLlocal1(b);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  unsigned bit = Long_val(bit_);
+  assert(bit/8 <= wrtx->alloced);
+  uint8_t *addr = where_to(wrtx, bit/8);
+  uint8_t mask = 1U << (bit % 8);
+  CAMLreturn(Val_bool(*addr & mask));
 }
 
 CAMLprim value read_float(value tx, value off_)

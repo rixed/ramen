@@ -26,6 +26,8 @@ external write_u128 : tx -> int -> Uint128.t -> unit = "write_boxed_128"
 external write_i128 : tx -> int -> Int128.t -> unit = "write_boxed_128"
 (* Everything passed as an int and which occupancy is <= word *)
 external write_bool : tx -> int -> bool -> unit = "write_word"
+(* Special to zero the nullmask *)
+external zero_bytes : tx -> int -> int -> unit = "zero_words"
 
 external read_float : tx -> int -> float = "read_float"
 external read_string : tx -> int -> string = "read_str"
@@ -42,8 +44,8 @@ external read_i128 : tx -> int -> Int128.t = "read_int128"
 external read_bool : tx -> int -> bool = "read_word"
 external read_word : tx -> int -> int = "read_word"
 
-let set_bit _addr _bit = assert false (* TODO *)
-let get_bit _addr = assert false (* TODO *)
+external set_bit : tx -> int -> unit = "set_bit"
+external get_bit : tx -> int -> bool = "get_bit"
 
 (* Note: each primitive operation is generic but for a few things:
  *
