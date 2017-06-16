@@ -271,19 +271,58 @@ let add_all_mentionned lst =
   in
   loop Set.empty lst
 
-let type_name typ =
-  let t = Option.get typ.Lang.Expr.typ in
-  String.lowercase (IO.to_string Lang.Scalar.print_typ t)
+(* Given a function name and an output type, return the actual function
+ * returning that type, and the type input parameters must be converted into *)
+let implementation_of name out_typ =
+  let open Lang in
+  let open Scalar in
+  match name, out_typ.Expr.typ with
+  | ("add" | "sub" | "mul" | "div"), Some TFloat -> "Float."^ name, TFloat
+  | ("add" | "sub" | "mul" | "div"), Some TU8 -> "Uint8."^ name, TU8
+  | ("add" | "sub" | "mul" | "div"), Some TU16 -> "Uint16."^ name, TU16
+  | ("add" | "sub" | "mul" | "div"), Some TU32 -> "Uint32."^ name, TU32
+  | ("add" | "sub" | "mul" | "div"), Some TU64 -> "Uint64."^ name, TU64
+  | ("add" | "sub" | "mul" | "div"), Some TU128 -> "Uint128."^ name, TU128
+  | ("add" | "sub" | "mul" | "div"), Some TI8 -> "Uint8."^ name, TU8
+  | ("add" | "sub" | "mul" | "div"), Some TI16 -> "Uint16."^ name, TU16
+  | ("add" | "sub" | "mul" | "div"), Some TI32 -> "Uint32."^ name, TU32
+  | ("add" | "sub" | "mul" | "div"), Some TI64 -> "Uint64."^ name, TU64
+  | ("add" | "sub" | "mul" | "div"), Some TI128 -> "Uint128."^ name, TU128
+  | ("not" | "&&" | "||" | ">=" | ">" | "="), Some TBool -> name, TBool
+  | "age", Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
+    "CodeGenLib."^ name ^"_"^ IO.to_string Scalar.print_typ to_typ, TFloat
+  | _, Some to_typ ->
+    failwith ("Cannot find implementation of "^ name ^" for type "^
+              IO.to_string Scalar.print_typ to_typ)
+  | _, None ->
+    assert false
 
-let fun_name name out_typ in_typ =
-  if Char.is_symbol name.[0] then name else
-  name ^"_"^ type_name out_typ ^"_"^ type_name in_typ
+(* Implementation_of gives us the type operands must be converted to.
+ * This printer wrap an expression into a converter according to its current
+ * type. *)
+let rec conv_to to_typ fmt e =
+  let open Lang in
+  let open Scalar in
+  let otype_of_type = function
+    | TFloat -> "float" | TString -> "string" | TBool -> "bool"
+    | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
+    | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128" in
+  let omod_of_type t = String.capitalize (otype_of_type t)
+  in
+  let from_typ = Expr.((typ_of e).typ) |> Option.get in
+  match from_typ, to_typ with
+  | a, b when a = b -> Expr.print fmt e
+  | (TU8|TU16|TU32|TU64|TU128|TFloat), (TU8|TU16|TU32|TU64|TU128) ->
+    Printf.fprintf fmt "%s.of_%s (%a)"
+      (omod_of_type to_typ)
+      (otype_of_type from_typ)
+      emit_expr e
+  | _ ->
+    failwith ("Cannot find converter from type "^
+              IO.to_string Scalar.print_typ from_typ ^" to type "^
+              IO.to_string Scalar.print_typ to_typ)
 
-let fun_name2 name out_typ in_typ1 in_typ2 =
-  if Char.is_symbol name.[0] then name else
-  name ^"_"^ type_name out_typ ^"_"^ type_name in_typ1 ^"_"^ type_name in_typ2
-
-let rec emit_expr oc =
+and emit_expr oc =
   let open Lang in
   function
   | Expr.Const (_, c) ->
@@ -312,21 +351,23 @@ let rec emit_expr oc =
   | Expr.Exp (t, e1, e2) -> emit_function2 "exp" t oc e1 e2
   | Expr.And (t, e1, e2) -> emit_function2 "&&" t oc e1 e2
   | Expr.Or (t, e1, e2) -> emit_function2 "||" t oc e1 e2
-  | Expr.Ge (t, e1, e2) -> emit_function2 "ge" t oc e1 e2
-  | Expr.Gt (t, e1, e2) -> emit_function2 "gt" t oc e1 e2
-  | Expr.Eq (t, e1, e2) -> emit_function2 "eq" t oc e1 e2
+  | Expr.Ge (t, e1, e2) -> emit_function2 ">=" t oc e1 e2
+  | Expr.Gt (t, e1, e2) -> emit_function2 ">" t oc e1 e2
+  | Expr.Eq (t, e1, e2) -> emit_function2 "=" t oc e1 e2
 
 (* The output must be of type [t] *)
 and emit_function name t oc e =
+  let impl, arg_typ = implementation_of name t in
   Printf.fprintf oc "%s (%a)"
-    (fun_name name t (Lang.Expr.typ_of e))
-    emit_expr e
+    impl
+    (conv_to arg_typ) e
 
 and emit_function2 name t oc e1 e2 =
+  let impl, arg_typ = implementation_of name t in
   Printf.fprintf oc "%s (%a) (%a)"
-    (fun_name2 name t (Lang.Expr.typ_of e1) (Lang.Expr.typ_of e2))
-    emit_expr e1
-    emit_expr e2
+    impl
+    (conv_to arg_typ) e1
+    (conv_to arg_typ) e2
 
 let emit_expr_of_input_tuple name in_tuple_typ mentioned and_all_others oc expr =
   Printf.fprintf oc "let %s %a =\n\t%a\n"
