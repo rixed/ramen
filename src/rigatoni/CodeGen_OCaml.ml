@@ -62,7 +62,7 @@ let rec emit_sersize_of_field_tx tx_var offs_var nulli oc field =
   ) else match field.typ with
     | Lang.Scalar.TString ->
       Printf.fprintf oc "\
-        (%d + RingBufLib.round_up_to_rb_word(RingBuf.read_int %s %s))"
+        (%d + RingBufLib.round_up_to_rb_word(RingBuf.read_word %s %s))"
         RingBufLib.rb_word_bytes tx_var offs_var
     | _ -> emit_sersize_of_fixsz_typ oc field.typ
 

@@ -305,7 +305,7 @@ CAMLprim value write_boxed_str(value tx, value off_, value v_)
 }
 
 
-CAMLprim value write_int(value tx, value off_, value v_)
+CAMLprim value write_word(value tx, value off_, value v_)
 {
   CAMLparam3(tx, off_, v_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
@@ -336,12 +336,12 @@ CAMLprim value read_float(value tx, value off_)
   CAMLreturn(v);
 }
 
-CAMLprim value read_int(value tx, value off_)
+CAMLprim value read_word(value tx, value off_)
 {
   CAMLparam2(tx, off_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
-  intnat v;
+  uint32_t v;
   read_words(wrtx, offs, (char *)&v, sizeof v);
   CAMLreturn(Val_long(v));
 }

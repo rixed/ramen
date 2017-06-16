@@ -25,7 +25,7 @@ external write_i64 : tx -> int -> Int64.t -> unit = "write_boxed_64"
 external write_u128 : tx -> int -> Uint128.t -> unit = "write_boxed_128"
 external write_i128 : tx -> int -> Int128.t -> unit = "write_boxed_128"
 (* Everything passed as an int and which occupancy is <= word *)
-external write_bool : tx -> int -> bool -> unit = "write_int"
+external write_bool : tx -> int -> bool -> unit = "write_word"
 
 external read_float : tx -> int -> float = "read_float"
 external read_string : tx -> int -> string = "read_str"
@@ -39,8 +39,8 @@ external read_u64 : tx -> int -> Uint64.t = "read_uint64"
 external read_i64 : tx -> int -> Int64.t = "read_int64"
 external read_u128 : tx -> int -> Uint128.t = "read_uint128"
 external read_i128 : tx -> int -> Int128.t = "read_int128"
-external read_bool : tx -> int -> bool = "read_int"
-external read_int : tx -> int -> int = "read_int"
+external read_bool : tx -> int -> bool = "read_word"
+external read_word : tx -> int -> int = "read_word"
 
 let set_bit _addr _bit = assert false (* TODO *)
 let get_bit _addr = assert false (* TODO *)
