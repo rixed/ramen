@@ -214,21 +214,26 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ field in
       if and_all_others || Set.mem field.name mentioned then (
-        Printf.fprintf oc "\tlet %s, offs_ =\n" id ;
+        Printf.fprintf oc "\tlet %s =\n" id ;
         if field.nullable then
           Printf.fprintf oc "\
             \t\tif RingBuf.get_bit tx_ %d then\n\
-            \t\t\t(Some (RingBuf.read_%s tx_ offs_), offs_ + %a)\n\
-            \t\telse (None, offs_) in\n"
+            \t\t\tSome (RingBuf.read_%s tx_ offs_) else None in\n"
             nulli
             (id_of_typ field.typ)
-            (emit_sersize_of_field_tx "tx_" "offs_" nulli) field
         else
           Printf.fprintf oc "\
-            \t\tRingBuf.read_%s tx_ offs_,\n\
+            \t\tRingBuf.read_%s tx_ offs_ in\n"
+            (id_of_typ field.typ) ;
+        Printf.fprintf oc "\tlet offs_ = " ;
+        if field.nullable then
+          Printf.fprintf oc "\
+            \t\tif %s = None then offs_ else offs_ + %a in\n" id
+            (emit_sersize_of_field_var field.typ) id
+        else
+          Printf.fprintf oc "\
             \t\toffs_ + %a in\n"
-            (id_of_typ field.typ)
-            (emit_sersize_of_field_tx "tx_" "offs_" nulli) field ;
+            (emit_sersize_of_field_var field.typ) id ;
       ) else (
         Printf.fprintf oc "\tlet offs_ = offs_ + " ;
         if field.nullable then
