@@ -820,7 +820,7 @@ struct
           if alias <> [] then alias else (
             match expr with
             | Expr.Field (_, tuple, field) when tuple = "in" -> [ field ]
-            | _ -> ["TODO: parser bind should be able to set an error"]
+            | _ -> raise (Reject "must set alias")
           ) in
         { expr ; alias }
 
@@ -932,7 +932,7 @@ struct
               alias = [ "start"; "out_start" ] } ;\
             { expr = Expr.(\
                 AggrMax (typ, Field (typ, "in", "stop"))) ;\
-              alias = [] } ;\
+              alias = [ "max_stop" ] } ;\
             { expr = Expr.(\
                 Div (typ,\
                   AggrSum (typ,Field (typ, "in", "packets")),\
@@ -952,8 +952,9 @@ struct
                 AggrMax (typ,Field (typ, "any", "start")),\
                 Const (typ, Scalar.VI16 (Int16.of_int 3600))),\
               Field (typ, "out", "start"))) },\
-          (183, [])))\
-          (test_p p "select min start as start or out_start, max stop, \\
+          (195, [])))\
+          (test_p p "select min start as start or out_start, \\
+                            max stop as max_stop, \\
                             (sum packets)/$avg_window as packets_per_sec \\
                      group by start / (1_000_000 * $avg_window) \\
                      emit after out.start < (max any.start) + 3600" |>\
