@@ -101,4 +101,5 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
     retry ~on:(function Failure _ -> !logger.debug "No more space in the ring buffer, sleeping..."; true | _ -> false) once in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let tuple = read_tuple tx in
+    RingBuf.dequeue_commit tx ;
     if where tuple then serializer (select tuple) else return_unit)
