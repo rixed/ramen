@@ -160,6 +160,9 @@ let emit_serialize_tuple name oc tuple_typ =
     ) 0 tuple_typ in
   Printf.fprintf oc "\toffs_\n"
 
+let emit_serialize_aggr _name _oc _out_tuple_typ =
+  failwith "TODO: emit_serialize_aggr"
+
 (* Emit a function that, given an array of strings (corresponding to a line of
  * CSV) will return the tuple defined by [tuple_typ] or raises
  * some exception *)
@@ -385,7 +388,8 @@ let emit_expr_of_input_tuple name in_tuple_typ mentioned and_all_others oc expr 
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
     emit_expr expr
 
-let emit_expr_select name in_tuple_typ mentioned and_all_others oc selected_fields =
+let emit_expr_select ?(for_key=false) name in_tuple_typ mentioned
+                     and_all_others oc selected_fields =
   let open Lang in
   Printf.fprintf oc "\
     let %s %a =\n\
@@ -404,7 +408,10 @@ let emit_expr_select name in_tuple_typ mentioned and_all_others oc selected_fiel
         outputted := Set.add field !outputted
       | _ -> ()
     ) selected_fields ;
-  if and_all_others then (
+  (* The only difference between selecting out_tuple out of in_tuple
+   * and returning the key of in_tuple is that we don't want to implement
+   * the star when building the key: *)
+  if and_all_others && not for_key then (
     List.iteri (fun i field ->
         if not (Set.mem field.Tuple.name !outputted) then
           Printf.fprintf oc "%s\n\t\t%s%s"
@@ -434,6 +441,55 @@ let emit_select oc in_tuple_typ out_tuple_typ
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
+let emit_aggr_from_input _name _in_tuple_typ _mentionned _and_all_others
+                         _out_tuple_typ _oc _selected_fields =
+  failwith "TODO: emit_aggr_from_input"
+
+let emit_update_aggr _name _in_tuple_typ _mentionned _and_all_others
+                     _out_tuple_typ _oc _selected_fields =
+  failwith "TODO: emit_update_aggr"
+
+let emit_commit_when _name _in_tuple_typ _mentionned _and_all_others
+                     _oc _commit_when =
+  failwith "TODO: emit_commit_when"
+
+let emit_aggregate oc in_tuple_typ out_tuple_typ
+                   selected_fields and_all_others where key commit_when =
+(* We need:
+ * - as above: a where filter, a serializer,
+ * - a function computing the key as a tuple computed from input, exactly as in
+ *   a select,
+ * - a function of in and out and others and any, that returns true when we
+ *   must emit the out tuple
+ * - contrary to select, the selected fields are not used to build a function
+ *   returning tuple out given tuple in. Here, the select fields are used to
+ *   build 2 things:
+ *   - a function that returns tuple out init (a mutable record!) from a tuple
+ *     in
+ *   - a function that update tuple out (record) given a tuple in
+ *   We cannot generate less code than that if we want to use a record for
+ *   tuple out.
+ * With all this CodeGenLib will easily implement a basic version of aggregate
+ * and could also implement more sophisticated versions. *)
+  let mentionned =
+    let all_exprs =
+      where :: commit_when :: key @
+      List.map (fun sf -> sf.Lang.Operation.expr) selected_fields in
+    add_all_mentionned all_exprs in
+  Printf.fprintf oc "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n\
+    let () =\n\
+      \tLwt_main.run (\n\
+      'tCodeGenLib.aggregate read_tuple_ sersize_of_tuple_ serialize_aggr_ \
+           where_ key_of_input_ commit_when_ aggr_of_input_ update_aggr_)\n"
+    (emit_read_tuple "read_tuple_" mentionned and_all_others) in_tuple_typ
+    (emit_expr_of_input_tuple "where_" in_tuple_typ mentionned and_all_others) where
+    (emit_expr_select ~for_key:true "key_of_input_" in_tuple_typ mentionned and_all_others) selected_fields
+    (emit_aggr_from_input "aggr_of_input_" in_tuple_typ mentionned and_all_others out_tuple_typ) selected_fields
+    (emit_update_aggr "update_aggr_" in_tuple_typ mentionned and_all_others out_tuple_typ) selected_fields
+    (emit_commit_when "commit_when_" in_tuple_typ mentionned and_all_others) commit_when
+    (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
+    (emit_serialize_aggr "serialize_aggr_") out_tuple_typ
+
 let keep_temp_files = ref true
 
 let with_code_file_for name f =
@@ -462,24 +518,18 @@ let compile_source fname =
     failwith "Cannot generate code"
   )
 
-let gen_read_csv_file name csv_fname csv_separator tuple_typ =
-  with_code_file_for name (fun oc fname ->
-    emit_read_csv_file oc csv_fname csv_separator tuple_typ ;
-    fname) |>
-    compile_source
-
-let gen_select name in_tuple_typ out_tuple_typ fields and_all_others where =
-  with_code_file_for name (fun oc fname ->
-    emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where ;
-    fname) |>
-    compile_source
-
 let gen_operation name in_tuple_typ out_tuple_typ op =
   let open Lang.Operation in
-  match op with
-  | Select { fields ; and_all_others ; where } ->
-    gen_select name in_tuple_typ out_tuple_typ fields and_all_others where
-  | ReadCSVFile { fname ; separator ; fields } ->
-    gen_read_csv_file name fname separator fields
-  | _ -> "echo TODO"
-
+  with_code_file_for name (fun oc fname ->
+    (match op with
+    | Select { fields ; and_all_others ; where } ->
+      emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where
+    | ReadCSVFile { fname ; separator ; fields } ->
+      emit_read_csv_file oc fname separator fields
+    | Aggregate { fields ; and_all_others ; where ; key ; commit_when } ->
+      emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
+                     key commit_when
+    | _ ->
+      Printf.fprintf oc "let () = print_string \"TODO\n\"") ;
+    fname) |>
+    compile_source

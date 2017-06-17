@@ -29,7 +29,7 @@ let getenv ?def n =
       Printf.sprintf "Cannot find envvar %s" n |>
       failwith
 
-let serialize rb sersize_of_tuple serialize_tuple tuple =
+let output rb sersize_of_tuple serialize_tuple tuple =
   let open RingBuf in
   let sersize = sersize_of_tuple tuple in
   let tx = enqueue_alloc rb sersize in
@@ -62,8 +62,8 @@ let retry ~on ?(first_delay=1.0) ?(min_delay=0.001) ?(max_delay=10.0) ?(delay_ad
   in
   loop
 
-let serializer_of rb_out sersize_of_tuple serialize_tuple =
-  let once = serialize rb_out sersize_of_tuple serialize_tuple in
+let outputer_of rb_out sersize_of_tuple serialize_tuple =
+  let once = output rb_out sersize_of_tuple serialize_tuple in
   let on = function
     (* FIXME: a dedicated RingBuf.NoMoreRoom exception *)
     | Failure _ ->
@@ -81,23 +81,23 @@ let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_s
   and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "output_ringbuf"
   and rb_out_sz = getenv ~def:"100" "input_ringbuf_size" |> int_of_string
   in
-  !logger.info "Will read CSV file %S using separator %S, and write output to \
-                ringbuffer %S (size is %d words)"
-               filename separator rb_out_fname rb_out_sz ;
+  !logger.debug "Will read CSV file %S using separator %S, and write \
+                 output to ringbuffer %S (size is %d words)"
+                filename separator rb_out_fname rb_out_sz ;
   let of_string line =
     let strings = String.nsplit line separator |> Array.of_list in
     tuple_of_strings strings
   in
   let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
-  let serializer =
-    serializer_of rb_out sersize_of_tuple serialize_tuple in
+  let outputer =
+    outputer_of rb_out sersize_of_tuple serialize_tuple in
   CodeGenLib_IO.read_file_lines filename (fun line ->
     match of_string line with
     | exception e ->
       !logger.error "Cannot parse line %S: %s"
         line (Printexc.to_string e) ;
       return_unit ;
-    | tuple -> serializer tuple)
+    | tuple -> outputer tuple)
 
 let select read_tuple sersize_of_tuple serialize_tuple where select =
   !logger.info "Starting SELECT process..." ;
@@ -105,15 +105,76 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
   and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "output_ringbuf"
   and rb_out_sz = getenv ~def:"100" "output_ringbuf_size" |> int_of_string
   in
-  !logger.info "Will read ringbuffer %S and write output to \
-                ringbuffer %S (size is %d words)"
-               rb_in_fname
-               rb_out_fname rb_out_sz ;
+  !logger.debug "Will read ringbuffer %S and write output to \
+                 ringbuffer %S (size is %d words)"
+                rb_in_fname
+                rb_out_fname rb_out_sz ;
   let%lwt rb_in = retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
   let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
-  let serializer =
-    serializer_of rb_out sersize_of_tuple serialize_tuple in
+  let outputer =
+    outputer_of rb_out sersize_of_tuple serialize_tuple in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
-    if where tuple then serializer (select tuple) else return_unit)
+    if where tuple then outputer (select tuple) else return_unit)
+
+type 'a aggr_value =
+  { first_touched : float ;
+    mutable last_touched : float ;
+    mutable nb_entries : int ;
+    mutable nb_successive : int ;
+    mutable last_ev_count : int ; (* used for others.successive *)
+    fields : 'a }
+
+let aggregate read_tuple sersize_of_tuple serialize_aggr where key_of_input
+              commit_when aggr_of_input update_aggr =
+  !logger.info "Starting GROUP BY process..." ;
+  let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
+  and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "output_ringbuf"
+  and rb_out_sz = getenv ~def:"100" "output_ringbuf_size" |> int_of_string
+  in
+  !logger.debug "Will read ringbuffer %S and write output to \
+                 ringbuffer %S (size is %d words)"
+                rb_in_fname
+                rb_out_fname rb_out_sz ;
+  let%lwt rb_in = retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
+  let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
+  let outputer =
+    outputer_of rb_out sersize_of_tuple serialize_aggr in
+  let h = Hashtbl.create 701
+  and event_count = ref 0 (* used to fake others.count etc *)
+  and last_key = ref None (* used for successive count *)
+  in
+  CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
+    let in_tuple = read_tuple tx in
+    RingBuf.dequeue_commit tx ;
+    if where in_tuple then (
+      (* TODO: update any aggr *)
+      let k = key_of_input in_tuple in
+      let now = Unix.gettimeofday () in (* haha lol! *)
+      (match Hashtbl.find h k with
+      | exception Not_found ->
+        Hashtbl.add h k {
+            first_touched = now ;
+            last_touched = now ;
+            nb_entries = 1 ; nb_successive = 1 ;
+            last_ev_count = !event_count ;
+            fields = aggr_of_input in_tuple }
+      | aggr ->
+        aggr.last_touched <- now ;
+        aggr.last_ev_count <- !event_count ;
+        update_aggr aggr.fields in_tuple  ;
+        if !last_key = Some k then
+          aggr.nb_successive <- aggr.nb_successive + 1) ;
+      last_key := Some k ;
+      (* haha lol: TODO a heap of timeouts *)
+      let to_output = ref [] in
+      Hashtbl.filteri_inplace (fun _k aggr ->
+          if commit_when in_tuple aggr then (
+            to_output := aggr.fields :: !to_output ;
+            false
+          ) else true
+        ) h ;
+      Lwt_list.iter_p outputer !to_output
+    ) else
+      return_unit)
