@@ -468,7 +468,9 @@ let check_aggregate ~in_type ~out_type fields and_all_others
   (* Improve out_type using all expressions. Check we satisfy in_type. *)
   let changed =
     let exp_type = Expr.make_typ "group-by clause" in
-    check_expr ~in_type ~out_type ~exp_type key in
+    List.fold_left (fun changed k ->
+        check_expr ~in_type ~out_type ~exp_type k || changed
+      ) false key in
   let changed =
     let exp_type = Expr.make_bool_typ ~nullable:false "emit-when clause" in
     check_expr ~in_type ~out_type ~exp_type emit_when || changed in

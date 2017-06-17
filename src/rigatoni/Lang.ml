@@ -238,7 +238,7 @@ let same_tuple_as_in = function
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ;
         where = replace_typ where ;
-        key = replace_typ key ;
+        key = List.map replace_typ key ;
         emit_when = replace_typ emit_when }, rest)
     | Ok (OnChange e, rest) -> Ok (OnChange (replace_typ e), rest)
     | x -> x
@@ -773,7 +773,7 @@ struct
         and_all_others : bool ;
         (* Simple way to filter out incoming tuples: *)
         where : Expr.t ;
-        key : Expr.t ;
+        key : Expr.t list ;
         emit_when : Expr.t }
     | OnChange of Expr.t
     | Alert of { team : string ; subject : string ; text : string }
@@ -794,7 +794,7 @@ struct
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         Expr.print where
-        Expr.print key
+        (List.print ~first:"" ~last:"" ~sep:", " Expr.print) key
         Expr.print emit_when
     | OnChange e ->
       Printf.fprintf fmt "ON CHANGE %a" Expr.print e
@@ -824,9 +824,11 @@ struct
           ) in
         { expr ; alias }
 
+    let list_sep = opt_blanks -- char ',' -- opt_blanks
+
     let select_clause =
       strinG "select" -- blanks -+
-      repeat ~min:1 ~sep:(opt_blanks -- char ',' -- opt_blanks)
+      several ~sep:list_sep
              ((char '*' >>: fun _ -> None) |||
               some selected_field)
 
@@ -859,7 +861,7 @@ struct
 
     let aggregate =
       select +- blanks +- strinG "group" +- blanks +- strinG "by" +- blanks ++
-      Expr.Parser.p +- blanks ++ emit_when >>: function
+      several ~sep:list_sep Expr.Parser.p +- blanks ++ emit_when >>: function
       | (Select { fields ; and_all_others ; where }, key), emit_when ->
         Aggregate { fields ; and_all_others ; where ; key ; emit_when }
       | _ -> assert false
@@ -888,8 +890,7 @@ struct
       optional ~def:"," (
         strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) +-
       char '(' +- opt_blanks ++
-      several ~sep:(opt_blanks -- char ',' -- opt_blanks) field +-
-      opt_blanks +- char ')' >>:
+      several ~sep:list_sep field +- opt_blanks +- char ')' >>:
       fun ((fname, separator), fields) -> ReadCSVFile { fname ; separator ; fields }
 
     let p =
@@ -940,12 +941,12 @@ struct
               alias = [ "packets_per_sec" ] } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, Scalar.VBool true) ;\
-          key = Expr.(\
+          key = [ Expr.(\
             Div (typ,\
               Field (typ, "in", "start"),\
               Mul (typ,\
                 Const (typ, Scalar.VI32 1_000_000l),\
-                Param (typ, "avg_window")))) ;\
+                Param (typ, "avg_window")))) ] ;\
           emit_when = Expr.(\
             Gt (typ,\
               Add (typ,\
