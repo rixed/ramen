@@ -59,7 +59,7 @@
  *            (sum packets)/$avg_window as packets_per_sec,
  *            (sum bytes)/$avg_window as bytes_per_sec
  *     group by start / (1_000_000 * $avg_window)
- *     emit after 3 seconds untouched or 100 other events
+ *     commit after 3 seconds untouched or 100 other events
  *
  * f2 -> a1
  *
@@ -70,12 +70,12 @@
  * any cases we still need tuple prefixes ("in.", "out.", "others."...) for
  * aggregates so not sure how useful...
  *
- * Note: Other possible syntax for emit: "emit after 3 seconds" (after
- * creation, regardless of what happened), "emit after 42 additions" count only
- * events added to an aggregate, while "emit after 42 events" count any events,
+ * Note: Other possible syntax for commit: "commit after 3 seconds" (after
+ * creation, regardless of what happened), "commit after 42 additions" count only
+ * events added to an aggregate, while "commit after 42 events" count any events,
  * matching or not. Also, could be any expression involving the resulting
  * aggregate (out) or incoming event (in) or other events (others) or any
- * events (any), including aggregation function of those: "emit after out.start
+ * events (any), including aggregation function of those: "commit after out.start
  * < (max any.start) + 3600".
  *
  * Note: Every tuple that takes part in an aggregation operation ("out", "any"
@@ -83,10 +83,10 @@
  * when the first entry was added in this tuple), "last" (the time when
  * the last one was), "size" (the number of entries so far) and "successive"
  * (the number of entries added successively without any tuple aggregated
- * elsewhere). With those it is possible to construct all interesting emitting
+ * elsewhere). With those it is possible to construct all interesting committing
  * condition I can think about. Note that the "other" tuple has to be simulated
  * since we cannot update every group others for each input. So in practice
- * the above condition is equivalent to "emit when age(last) > 3 or
+ * the above condition is equivalent to "commit when age(last) > 3 or
  * others.successive > 100".
  *
  * Note: The group-by operation could also embed an optional where clause, but
@@ -106,7 +106,7 @@
  * a2: select min start, max stop,
  *            $p percentile of bytes_per_sec as peak_traffic
  *     group by start / (1_000_000 * $obs_window)
- *     emit after max others.start > out.start + ($obs_window * 1.15) * 1_000_000
+ *     commit after max others.start > out.start + ($obs_window * 1.15) * 1_000_000
  *
  * a1 -> a2
  *
@@ -233,13 +233,13 @@ let same_tuple_as_in = function
       Ok (Select {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ; where = replace_typ where }, rest)
-    | Ok (Aggregate { fields ; and_all_others ; where ; key ; emit_when }, rest) ->
+    | Ok (Aggregate { fields ; and_all_others ; where ; key ; commit_when }, rest) ->
       Ok (Aggregate {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ;
         where = replace_typ where ;
         key = List.map replace_typ key ;
-        emit_when = replace_typ emit_when }, rest)
+        commit_when = replace_typ commit_when }, rest)
     | Ok (OnChange e, rest) -> Ok (OnChange (replace_typ e), rest)
     | x -> x
  *)
@@ -774,7 +774,7 @@ struct
         (* Simple way to filter out incoming tuples: *)
         where : Expr.t ;
         key : Expr.t list ;
-        emit_when : Expr.t }
+        commit_when : Expr.t }
     | OnChange of Expr.t
     | Alert of { team : string ; subject : string ; text : string }
     | ReadCSVFile of { fname : string ; separator : string ; fields : Tuple.typ }
@@ -788,14 +788,14 @@ struct
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         Expr.print where
-    | Aggregate { fields ; and_all_others ; where ; key ; emit_when } ->
+    | Aggregate { fields ; and_all_others ; where ; key ; commit_when } ->
       Printf.fprintf fmt "SELECT %a%s%s WHERE %a GROUP BY %a EMIT WHEN %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         Expr.print where
         (List.print ~first:"" ~last:"" ~sep:", " Expr.print) key
-        Expr.print emit_when
+        Expr.print commit_when
     | OnChange e ->
       Printf.fprintf fmt "ON CHANGE %a" Expr.print e
     | Alert { team ; subject ; text } ->
@@ -855,15 +855,15 @@ struct
         let fields = List.rev fields in
         Select { fields ; and_all_others ; where }
 
-    let emit_when =
-      strinG "emit" -- blanks -- (strinG "after" ||| strinG "when") --
+    let commit_when =
+      strinG "commit" -- blanks -- (strinG "after" ||| strinG "when") --
       blanks -+ Expr.Parser.p
 
     let aggregate =
       select +- blanks +- strinG "group" +- blanks +- strinG "by" +- blanks ++
-      several ~sep:list_sep Expr.Parser.p +- blanks ++ emit_when >>: function
-      | (Select { fields ; and_all_others ; where }, key), emit_when ->
-        Aggregate { fields ; and_all_others ; where ; key ; emit_when }
+      several ~sep:list_sep Expr.Parser.p +- blanks ++ commit_when >>: function
+      | (Select { fields ; and_all_others ; where }, key), commit_when ->
+        Aggregate { fields ; and_all_others ; where ; key ; commit_when }
       | _ -> assert false
 
     let on_change =
@@ -947,18 +947,18 @@ struct
               Mul (typ,\
                 Const (typ, Scalar.VI32 1_000_000l),\
                 Param (typ, "avg_window")))) ] ;\
-          emit_when = Expr.(\
+          commit_when = Expr.(\
             Gt (typ,\
               Add (typ,\
                 AggrMax (typ,Field (typ, "any", "start")),\
                 Const (typ, Scalar.VI16 (Int16.of_int 3600))),\
               Field (typ, "out", "start"))) },\
-          (195, [])))\
+          (197, [])))\
           (test_p p "select min start as start or out_start, \\
                             max stop as max_stop, \\
                             (sum packets)/$avg_window as packets_per_sec \\
                      group by start / (1_000_000 * $avg_window) \\
-                     emit after out.start < (max any.start) + 3600" |>\
+                     commit after out.start < (max any.start) + 3600" |>\
            replace_typ_in_op)
 
       (Ok (\

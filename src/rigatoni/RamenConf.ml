@@ -463,7 +463,7 @@ let check_select ~in_type ~out_type fields and_all_others where =
   changed
 
 let check_aggregate ~in_type ~out_type fields and_all_others
-                    where key emit_when =
+                    where key commit_when =
   let open Lang in
   (* Improve out_type using all expressions. Check we satisfy in_type. *)
   let changed =
@@ -472,8 +472,8 @@ let check_aggregate ~in_type ~out_type fields and_all_others
         check_expr ~in_type ~out_type ~exp_type k || changed
       ) false key in
   let changed =
-    let exp_type = Expr.make_bool_typ ~nullable:false "emit-when clause" in
-    check_expr ~in_type ~out_type ~exp_type emit_when || changed in
+    let exp_type = Expr.make_bool_typ ~nullable:false "commit-when clause" in
+    check_expr ~in_type ~out_type ~exp_type commit_when || changed in
   check_select ~in_type ~out_type fields and_all_others where || changed
 
 (*
@@ -486,9 +486,9 @@ let check_operation ~in_type ~out_type =
   | Operation.Select { fields ; and_all_others ; where } ->
     check_select ~in_type ~out_type fields and_all_others where
   | Operation.Aggregate { fields ; and_all_others ; where ;
-                          key ; emit_when } ->
+                          key ; commit_when } ->
     check_aggregate ~in_type ~out_type fields and_all_others where
-                    key emit_when
+                    key commit_when
   | Operation.OnChange expr ->
     (* Start by transmitting the field so that the expression can
      * sooner use out tuple: *)
