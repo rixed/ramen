@@ -92,6 +92,24 @@ CAMLprim value wrap_ringbuf_load(value fname_)
   CAMLreturn(res);
 }
 
+CAMLprim value wrap_capacity(value rb_)
+{
+  CAMLparam1(rb_);
+  struct ringbuf *rb = Ringbuf_val(rb_);
+  CAMLlocal1(ret);
+  ret = Val_long(rb->nb_words);
+  CAMLreturn(ret);
+}
+
+CAMLprim value wrap_nb_entries(value rb_)
+{
+  CAMLparam1(rb_);
+  struct ringbuf *rb = Ringbuf_val(rb_);
+  CAMLlocal1(ret);
+  ret = Val_long(ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head));
+  CAMLreturn(ret);
+}
+
 #define MAX_RINGBUF_MSG_SIZE 8096
 
 static void check_size(int size)

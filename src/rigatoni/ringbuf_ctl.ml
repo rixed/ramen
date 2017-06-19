@@ -44,6 +44,21 @@ let dequeue_cmd =
       $ nb_tuples_opt),
     info "dequeue")
 
+(* Summary command *)
+
+let summary _opts file () =
+  let open RingBuf in
+  let rb = load file in
+  Printf.printf "%s: %d/%d words used\n"
+    file (nb_entries rb) (capacity rb)
+
+let summary_cmd =
+  Term.(
+    (const summary
+      $ common_opts
+      $ rb_file_opt),
+    info "summary")
+
 (*
  * Main
  *)
@@ -55,7 +70,7 @@ let default_cmd =
 
 let () =
   match Term.eval_choice default_cmd [
-    dequeue_cmd
+    dequeue_cmd ; summary_cmd ;
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42
        | `Ok f -> f ()

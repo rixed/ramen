@@ -5,6 +5,8 @@ type tx (* abstract, represents an ongoing (de)queueing operation *)
 
 external create : string -> int -> t = "wrap_ringbuf_create"
 external load : string -> t = "wrap_ringbuf_load"
+external capacity : t -> int = "wrap_capacity"
+external nb_entries : t -> int = "wrap_nb_entries"
 external enqueue_alloc : t -> int -> tx = "wrap_ringbuf_enqueue_alloc"
 external enqueue_commit : tx -> unit = "wrap_ringbuf_enqueue_commit"
 external enqueue : t -> bytes -> int -> unit = "wrap_ringbuf_enqueue"
