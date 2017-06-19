@@ -261,7 +261,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     let changed = check_expr_type ~from ~to_:op_typ in
     check_expr_type ~from:op_typ ~to_:exp_type || changed
   in
-  let check_unary_op op_typ make_op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr =
+  let check_unary_op op_typ make_op_typ ?(propagate_null=true) ?exp_sub_typ ?exp_sub_nullable sub_expr =
     (* First we check the operand: does it comply with the expected type
      * (enlarging it if necessary)? *)
     let sub_typ = Expr.typ_of sub_expr in
@@ -270,14 +270,16 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     match sub_typ.Expr.typ with
     | Some sub_typ_typ ->
       let actual_typ = make_op_typ sub_typ_typ in
-      (* We propagate nullability automatically: *)
-      let nullable = sub_typ.Expr.nullable in
+      (* We propagate nullability automatically for most operator *)
+      let nullable =
+        if propagate_null then sub_typ.Expr.nullable else None in
       (* Now check that this is OK with this operator type, enlarging it if required: *)
       check_operator op_typ actual_typ nullable || changed
     | None -> changed (* try again later *)
   in
-  let check_binary_op op_typ make_op_typ ?exp_sub_typ1 ?exp_sub_nullable1 sub_expr1
-                                         ?exp_sub_typ2 ?exp_sub_nullable2 sub_expr2 =
+  let check_binary_op op_typ make_op_typ ?(propagate_null=true)
+                      ?exp_sub_typ1 ?exp_sub_nullable1 sub_expr1
+                      ?exp_sub_typ2 ?exp_sub_nullable2 sub_expr2 =
     let sub_typ1 = Expr.typ_of sub_expr1 in
     let changed =
         check_operand op_typ sub_typ1 ?exp_sub_typ:exp_sub_typ1 ?exp_sub_nullable:exp_sub_nullable1 sub_expr1 in
@@ -287,11 +289,12 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     match sub_typ1.Expr.typ, sub_typ2.Expr.typ with
     | Some sub_typ1_typ, Some sub_typ2_typ ->
       let actual_typ = make_op_typ (sub_typ1_typ, sub_typ2_typ) in
-      let nullable =
-        match sub_typ1.Expr.nullable, sub_typ2.Expr.nullable with
-        | Some true, _ | _, Some true -> Some true
-        | Some false, Some false -> Some false
-        | _ -> None in
+      let nullable = if propagate_null then
+          match sub_typ1.Expr.nullable, sub_typ2.Expr.nullable with
+          | Some true, _ | _, Some true -> Some true
+          | Some false, Some false -> Some false
+          | _ -> None
+        else None in
       check_operator op_typ actual_typ nullable || changed
     | _ -> changed
   in
@@ -359,7 +362,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Expr.Not (op_typ, e) ->
     check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
   | Expr.Defined (op_typ, e) ->
-    check_unary_op op_typ return_bool ~exp_sub_nullable:true e
+    check_unary_op op_typ return_bool ~exp_sub_nullable:true ~propagate_null:false e
   | Expr.Add (op_typ, e1, e2) ->
     check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
   | Expr.Sub (op_typ, e1, e2) ->
