@@ -124,7 +124,7 @@ type 'a aggr_value =
     mutable nb_entries : int ;
     mutable nb_successive : int ;
     mutable last_ev_count : int ; (* used for others.successive *)
-    fields : 'a }
+    fields : 'a (* the record of aggregation values *) }
 
 let aggregate read_tuple sersize_of_tuple serialize_aggr where key_of_input
               commit_when aggr_of_input update_aggr =

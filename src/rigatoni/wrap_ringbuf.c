@@ -44,7 +44,7 @@ static value alloc_ringbuf(struct ringbuf *rb)
 struct wrap_ringbuf_tx {
   struct ringbuf *rb;
   struct ringbuf_tx tx;
-  size_t alloced;  // just to check we do not overflow
+  size_t alloced;  // number of bytes alloced, just to check we do not overflow
 };
 
 static struct custom_operations tx_ops = {
