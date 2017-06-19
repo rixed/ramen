@@ -135,7 +135,7 @@ let emit_serialize_tuple name oc tuple_typ =
   Printf.fprintf oc "\tlet offs_ = %d in\n" nullmask_bytes ;
   (* Start by zeroing the nullmask *)
   if nullmask_bytes > 0 then
-    Printf.fprintf oc "\tzero_bytes %d ; (* zero the nullmask *)\n"
+    Printf.fprintf oc "\tRingBuf.zero_bytes tx_ 0 %d ; (* zero the nullmask *)\n"
       nullmask_bytes ;
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ field in
@@ -143,7 +143,7 @@ let emit_serialize_tuple name oc tuple_typ =
         (* Write either the null bit or the value *)
         Printf.fprintf oc "\tlet offs_ = match %s with\n" id ;
         Printf.fprintf oc "\t| None ->\n" ;
-        Printf.fprintf oc "\t\tRingBuf.set_bit tx_ %d\n" nulli ;
+        Printf.fprintf oc "\t\tRingBuf.set_bit tx_ %d ;\n" nulli ;
         Printf.fprintf oc "\t\toffs_\n" ;
         Printf.fprintf oc "\t| Some x_ ->\n" ;
         Printf.fprintf oc "\t\t%a ;\n"
@@ -171,8 +171,8 @@ let emit_tuple_of_strings name oc tuple_typ =
   List.iteri (fun i field_typ ->
     let sep = if i < nb_fields - 1 then "," else "" in
     if field_typ.nullable then (
-      Printf.fprintf oc "\t\tlet s_ = strs_.(%d) in\n" i ;
-      Printf.fprintf oc "\t\tif s_ = \"\" then None else Some (%a)%s\n"
+      Printf.fprintf oc "\t\t(let s_ = strs_.(%d) in\n" i ;
+      Printf.fprintf oc "\t\tif s_ = \"\" then None else Some (%a))%s\n"
         (emit_value_of_string field_typ.typ) "s_"
         sep
     ) else (
