@@ -4,21 +4,87 @@ curl "$@" \
   -X PUT \
   -d '{
     "operation":
-      "read from csv file \"/home/rixed/tmp/100k.csv\" separator \"\\t\" (
+      "read from csv file \"100k.csv\" separator \"\\t\" null \"<NULL>\" (
         poller string not null,
         capture_begin u64 not null,
-        capture_end u64 not null
+        capture_end u64 not null,
+        device_client u8 null,
+        device_server u8 null,
+        vlan_client u32 null,
+        vlan_server u32 null,
+        mac_client u64 null,
+        mac_server u64 null,
+        zone_client u32 not null,
+        zone_server u32 not null,
+        ip4_client u32 null,
+        ip6_client i128 null,
+        ip4_server u32 null,
+        ip6_server i128 null,
+        ip4_external u32 null,
+        ip6_external i128 null,
+        port_client u16 not null,
+        port_server u16 not null,
+        diffserv_client u8 not null,
+        diffserv_server u8 not null,
+        os_client u8 null,
+        os_server u8 null,
+        mtu_client u16 null,
+        mtu_server u16 null,
+        captured_pcap string null,
+        application u32 not null,
+        protostack string null,
+        uuid string null,
+        traffic_bytes_client u64 not null,
+        traffic_bytes_server u64 not null,
+        traffic_packets_client u64 not null,
+        traffic_packets_server u64 not null,
+        payload_bytes_client u64 not null,
+        payload_bytes_server u64 not null,
+        payload_packets_client u64 not null,
+        payload_packets_server u64 not null,
+        retrans_traffic_bytes_client u64 null,
+        retrans_traffic_bytes_server u64 null,
+        retrans_payload_bytes_client u64 null,
+        retrans_payload_bytes_server u64 null,
+        syn_count_client u64 null,
+        fin_count_client u64 null,
+        fin_count_server u64 null,
+        rst_count_client u64 null,
+        rst_count_server u64 null,
+        timeout_count u64 not null,
+        close_count u64 null,
+        dupack_count_client u64 null,
+        dupack_count_server u64 null,
+        zero_window_count_client u64 null,
+        zero_window_count_server u64 null,
+        ct_count u64 null,
+        ct_sum u64 not null,
+        ct_square_sum u64 not null,
+        rt_count_server u64 null,
+        rt_sum_server u64 not null,
+        rt_square_sum_server u64 not null,
+        rtt_count_client u64 null,
+        rtt_sum_client u64 not null,
+        rtt_square_sum_client u64 not null,
+        rtt_count_server u64 null,
+        rtt_sum_server u64 not null,
+        rtt_square_sum_server u64 not null,
+        rd_count_client u64 null,
+        rd_sum_client u64 not null,
+        rd_square_sum_client u64 not null,
+        rd_count_server u64 null,
+        rd_sum_server u64 not null,
+        rd_square_sum_server u64 not null,
+        dtt_count_client u64 null,
+        dtt_sum_client u64 not null,
+        dtt_square_sum_client u64 not null,
+        dtt_count_server u64 null,
+        dtt_sum_server u64 not null,
+        dtt_square_sum_server u64 not null,
+        dcerpc_uuid string null
       )"
   }' \
   -H 'Content-Type: application/json' http://localhost:29380/node/n1 &&
-
-curl "$@" \
-  -X PUT \
-  -d '{
-    "operation":
-      "select poller, capture_end - capture_begin as capture_duration, *"
-  }' \
-  -H 'Content-Type: application/json' http://localhost:29380/node/n2 &&
 
 # Example that shows that:
 # - in the commit-when clause, the default tuple is out not in (max
@@ -47,15 +113,16 @@ curl "$@" \
   -X PUT \
   -d '{
     "operation":
-      "select capture_begin/60_000_000 as minute,
-              sum(packets_client + packets_server) as packets
-       group by poller, capture_begin/60_000_000
-       commit when capture_begin > min(capture_begin) + 60_000_000"
+      "SELECT MIN capture_begin, MAX capture_end, ip4_client, ip4_server,
+              SUM(traffic_bytes_client + traffic_bytes_server) AS bytes,
+              SUM(traffic_packets_client + traffic_packets_server) AS packets
+       WHERE ip4_client IS NOT NULL AND ip4_server IS NOT NULL
+       GROUP BY ip4_client, ip4_server, capture_begin/60_000_000
+       COMMIT WHEN MAX(capture_begin) > MIN(capture_begin) + 60_000_000"
   }' \
-  -H 'Content-Type: application/json' http://localhost:29380/node/n3 &&
+  -H 'Content-Type: application/json' http://localhost:29380/node/n2 &&
 
 curl "$@" -X PUT http://localhost:29380/link/n1/n2 &&
-curl "$@" -X PUT http://localhost:29380/link/n2/n3 &&
 
 curl "$@" http://localhost:29380/compile &&
 
