@@ -210,13 +210,13 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
   assert(size + offs <= wrtx->alloced);
   assert(size <= MAX_RINGBUF_MSG_SIZE);
   uint32_t *addr = where_to(wrtx, offs);
-
+/*
   printf("Write %zu bytes at offset %zu:", size, offs);
   for (unsigned s = 0 ; s < size ; s++) {
     printf(" %02" PRIx8, (uint8_t)src[s]);
   }
   printf("\n");
-
+*/
   memcpy(addr, src, size);
 }
 
@@ -229,13 +229,13 @@ static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *ds
   assert(size + offs <= wrtx->alloced);
   assert(size <= MAX_RINGBUF_MSG_SIZE);
   uint32_t *addr = where_to(wrtx, offs);
-
+/*
   printf("Read %zu bytes from offset %zu:", size, offs);
   for (unsigned s = 0 ; s < size ; s++) {
     printf(" %02" PRIx8, ((uint8_t *)addr)[s]);
   }
   printf("\n");
-
+*/
   memcpy(dst, addr, size);
 }
 
