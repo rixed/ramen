@@ -328,7 +328,7 @@ CAMLprim value write_word(value tx, value off_, value v_)
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value zero_words(value tx, value off_, value size_)
+CAMLprim value zero_bytes(value tx, value off_, value size_)
 {
   CAMLparam3(tx, off_, size_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
