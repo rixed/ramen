@@ -163,7 +163,7 @@ let emit_serialize_tuple name oc tuple_typ =
 (* Emit a function that, given an array of strings (corresponding to a line of
  * CSV) will return the tuple defined by [tuple_typ] or raises
  * some exception *)
-let emit_tuple_of_strings name oc tuple_typ =
+let emit_tuple_of_strings name csv_null oc tuple_typ =
   let open Lang.Tuple in
   Printf.fprintf oc "let %s strs_ =\n" name ;
   Printf.fprintf oc "\t(\n" ;
@@ -172,7 +172,8 @@ let emit_tuple_of_strings name oc tuple_typ =
     let sep = if i < nb_fields - 1 then "," else "" in
     if field_typ.nullable then (
       Printf.fprintf oc "\t\t(let s_ = strs_.(%d) in\n" i ;
-      Printf.fprintf oc "\t\tif s_ = \"\" then None else Some (%a))%s\n"
+      Printf.fprintf oc "\t\tif s_ = %S then None else Some (%a))%s\n"
+        csv_null
         (emit_value_of_string field_typ.typ) "s_"
         sep
     ) else (
@@ -183,7 +184,7 @@ let emit_tuple_of_strings name oc tuple_typ =
   Printf.fprintf oc "\t)\n"
 
 (* Given a Tuple.typ, generate the ReadCSVFile operation. *)
-let emit_read_csv_file oc csv_fname csv_separator tuple_typ =
+let emit_read_csv_file oc csv_fname csv_separator csv_null tuple_typ =
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
    * Then we want to write this tuple in some ring buffer.
@@ -198,7 +199,7 @@ let emit_read_csv_file oc csv_fname csv_separator tuple_typ =
       \t\tCodeGenLib.read_csv_file %S %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_)\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
-    (emit_tuple_of_strings "tuple_of_strings_") tuple_typ
+    (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
     csv_fname csv_separator
 
 let emit_in_tuple mentioned and_all_others oc in_tuple_typ =
@@ -681,8 +682,8 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
     (match op with
     | Select { fields ; and_all_others ; where } ->
       emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where
-    | ReadCSVFile { fname ; separator ; fields } ->
-      emit_read_csv_file oc fname separator fields
+    | ReadCSVFile { fname ; separator ; null ; fields } ->
+      emit_read_csv_file oc fname separator null fields
     | Aggregate { fields ; and_all_others ; where ; key ; commit_when } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key commit_when
