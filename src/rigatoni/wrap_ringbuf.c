@@ -201,7 +201,7 @@ static void *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
 {
   return wrtx->rb->data /* Where the mmapped data starts */
        + wrtx->tx.record_start /* The offset of the record within that data */
-       + offs/4;
+       + offs/sizeof(uint32_t);
 }
 
 static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char const *src, size_t size)
@@ -348,8 +348,8 @@ CAMLprim value set_bit(value tx, value bit_)
   CAMLparam2(tx, bit_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   unsigned bit = Long_val(bit_);
-  assert(bit/8 <= wrtx->alloced);
-  uint8_t *addr = where_to(wrtx, bit/8);
+  assert(bit/8 < wrtx->alloced);
+  uint8_t *addr = (uint8_t *)where_to(wrtx, 0) + bit/8;
   uint8_t mask = 1U << (bit % 8);
   *addr |= mask;
   CAMLreturn(Val_unit);
@@ -362,8 +362,8 @@ CAMLprim value get_bit(value tx, value bit_)
   CAMLlocal1(b);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   unsigned bit = Long_val(bit_);
-  assert(bit/8 <= wrtx->alloced);
-  uint8_t *addr = where_to(wrtx, bit/8);
+  assert(bit/8 < wrtx->alloced);
+  uint8_t const *addr = (uint8_t *)where_to(wrtx, 0) + bit/8;
   uint8_t mask = 1U << (bit % 8);
   CAMLreturn(Val_bool(*addr & mask));
 }

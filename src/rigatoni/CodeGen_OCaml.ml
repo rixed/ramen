@@ -56,13 +56,13 @@ let emit_sersize_of_field_var typ oc var =
 let rec emit_sersize_of_field_tx tx_var offs_var nulli oc field =
   let open Lang.Tuple in
   if field.nullable then (
-    Printf.fprintf oc "(if RingBuf.get_bit %s %d then %a else 0)"
+    Printf.fprintf oc "if RingBuf.get_bit %s %d then %a else 0"
       tx_var nulli
       (emit_sersize_of_field_tx tx_var offs_var nulli) { field with nullable = false }
   ) else match field.typ with
     | Lang.Scalar.TString ->
       Printf.fprintf oc "\
-        (%d + RingBufLib.round_up_to_rb_word(RingBuf.read_word %s %s))"
+        %d + RingBufLib.round_up_to_rb_word(RingBuf.read_word %s %s)"
         RingBufLib.rb_word_bytes tx_var offs_var
     | _ -> emit_sersize_of_fixsz_typ oc field.typ
 
@@ -140,12 +140,12 @@ let emit_serialize_tuple name oc tuple_typ =
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ field in
       if field.nullable then (
-        (* Write either the null bit or the value *)
+        (* Write either nothing (since the nullmask is initialized with 0) or
+         * the nullmask bit and the value *)
         Printf.fprintf oc "\tlet offs_ = match %s with\n" id ;
-        Printf.fprintf oc "\t| None ->\n" ;
-        Printf.fprintf oc "\t\tRingBuf.set_bit tx_ %d ;\n" nulli ;
-        Printf.fprintf oc "\t\toffs_\n" ;
+        Printf.fprintf oc "\t| None -> offs_\n" ;
         Printf.fprintf oc "\t| Some x_ ->\n" ;
+        Printf.fprintf oc "\t\tRingBuf.set_bit tx_ %d ;\n" nulli ;
         Printf.fprintf oc "\t\t%a ;\n"
           (emit_set_value "tx_" "offs_" "x_") field.typ ;
         Printf.fprintf oc "\t\toffs_ + %a in\n"
@@ -234,22 +234,15 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
         Printf.fprintf oc "\tlet offs_ = " ;
         if field.nullable then
           Printf.fprintf oc "\
-            \t\tif %s = None then offs_ else offs_ + %a in\n" id
+            if %s = None then offs_ else offs_ + %a in\n" id
             (emit_sersize_of_field_var field.typ) id
         else
           Printf.fprintf oc "\
-            \t\toffs_ + %a in\n"
+            offs_ + %a in\n"
             (emit_sersize_of_field_var field.typ) id ;
       ) else (
-        Printf.fprintf oc "\tlet offs_ = offs_ + " ;
-        if field.nullable then
-          Printf.fprintf oc "(if RingBuf.get_bit tx_ %d then\n\
-                             \t\t\t%a else 0) in\n"
-            nulli
-            (emit_sersize_of_field_tx "tx_" "offs_" nulli) field
-        else
-          Printf.fprintf oc "%a in\n"
-            (emit_sersize_of_field_tx "tx_" "offs_" nulli) field
+        Printf.fprintf oc "\tlet offs_ = offs_ + (%a) in\n"
+          (emit_sersize_of_field_tx "tx_" "offs_" nulli) field
       ) ;
       nulli + (if field.nullable then 1 else 0)
     ) 0 in_tuple_typ in
