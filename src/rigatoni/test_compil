@@ -20,7 +20,42 @@ curl "$@" \
   }' \
   -H 'Content-Type: application/json' http://localhost:29380/node/n2 &&
 
+# Example that shows that:
+# - in the commit-when clause, the default tuple is out not in (max
+#   capture_begin refers to the vetted out tuple);
+# - the commit-when clause can have its own aggregate build on others,
+#   in, out...
+# - the group by expression would like to refer to out-tuple aliases but
+#   it's not possible ATM. To make it possible would require:
+#   - instead of storing the first in-tuple with the aggregate, store
+#     the first out-tuple-of-in-tuple (with aggregate fields set to their
+#     init value)
+#   - recompute this out-tuple for each incoming in-tuple
+#   - pass it to the key function
+#   - most of the time, drop it, since we'd find a pending aggregate
+#   - when committing the value, pass both the first in-tuple and the
+#     out-tuple (that we just computed) to the outputer so we can save
+#     the computation of the alias.
+#   The only time when this would save computation is when we create a new
+#   aggregate. In other words, for each aggregate we are going to compute
+#   the minute field twice (once to compute the key of the first aggregate
+#   and another time when emitting the final value).
+# TODO: also test:
+#       - "commit when out.packets > 100"
+#       - "commit when last.capture_begin > max(capture_begin) + 60000000"
+curl "$@" \
+  -X PUT \
+  -d '{
+    "operation":
+      "select capture_begin/60_000_000 as minute,
+              sum(packets_client + packets_server) as packets
+       group by poller, capture_begin/60_000_000
+       commit when capture_begin > min(capture_begin) + 60_000_000"
+  }' \
+  -H 'Content-Type: application/json' http://localhost:29380/node/n3 &&
+
 curl "$@" -X PUT http://localhost:29380/link/n1/n2 &&
+curl "$@" -X PUT http://localhost:29380/link/n2/n3 &&
 
 curl "$@" http://localhost:29380/compile &&
 

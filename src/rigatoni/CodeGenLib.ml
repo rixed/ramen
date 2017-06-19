@@ -118,16 +118,26 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
     RingBuf.dequeue_commit tx ;
     if where tuple then outputer (select tuple) else return_unit)
 
-type 'a aggr_value =
+type ('a, 'b) aggr_value =
   { first_touched : float ;
+    (* used to compute the actual selected field when outputing the
+     * aggregate: *)
+    first_tuple : 'b ;
     mutable last_touched : float ;
     mutable nb_entries : int ;
     mutable nb_successive : int ;
     mutable last_ev_count : int ; (* used for others.successive *)
     fields : 'a (* the record of aggregation values *) }
 
-let aggregate read_tuple sersize_of_tuple serialize_aggr where key_of_input
-              commit_when aggr_of_input update_aggr =
+let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
+              (sersize_of_tuple : 'out_tuple -> int)
+              (serialize_tuple : RingBuf.tx -> 'out_tuple -> int)
+              (tuple_of_aggr : 'aggr -> 'tuple_in -> 'tuple_out)
+              (where : 'tuple_in -> bool)
+              (key_of_input : 'tuple_in -> 'key)
+              (commit_when : 'aggr -> 'tuple_in -> bool)
+              (aggr_init : 'tuple_in -> 'aggr)
+              (update_aggr : 'aggr -> 'tuple_in -> unit) =
   !logger.info "Starting GROUP BY process..." ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "output_ringbuf"
@@ -140,7 +150,7 @@ let aggregate read_tuple sersize_of_tuple serialize_aggr where key_of_input
   let%lwt rb_in = retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
   let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
   let outputer =
-    outputer_of rb_out sersize_of_tuple serialize_aggr in
+    outputer_of rb_out sersize_of_tuple serialize_tuple in
   let h = Hashtbl.create 701
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)
@@ -156,10 +166,11 @@ let aggregate read_tuple sersize_of_tuple serialize_aggr where key_of_input
       | exception Not_found ->
         Hashtbl.add h k {
             first_touched = now ;
+            first_tuple = in_tuple ;
             last_touched = now ;
             nb_entries = 1 ; nb_successive = 1 ;
             last_ev_count = !event_count ;
-            fields = aggr_of_input in_tuple }
+            fields = aggr_init in_tuple }
       | aggr ->
         aggr.last_touched <- now ;
         aggr.last_ev_count <- !event_count ;
@@ -170,11 +181,13 @@ let aggregate read_tuple sersize_of_tuple serialize_aggr where key_of_input
       (* haha lol: TODO a heap of timeouts *)
       let to_output = ref [] in
       Hashtbl.filteri_inplace (fun _k aggr ->
-          if commit_when in_tuple aggr then (
-            to_output := aggr.fields :: !to_output ;
+          if commit_when aggr.fields in_tuple then (
+            to_output := aggr :: !to_output ;
             false
           ) else true
         ) h ;
-      Lwt_list.iter_p outputer !to_output
+      Lwt_list.iter_p (fun aggr ->
+        tuple_of_aggr aggr.fields aggr.first_tuple |>
+        outputer) !to_output
     ) else
       return_unit)

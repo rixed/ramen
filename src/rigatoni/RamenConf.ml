@@ -34,10 +34,9 @@ let temp_tup_typ_of_tup_typ complete tup_typ =
   let t = make_temp_tup_typ () in
   t.complete <- complete ;
   List.iteri (fun i f ->
-      let expr_typ = Lang.Expr.{
-        name = f.Lang.Tuple.name ;
-        nullable = Some f.Lang.Tuple.nullable ;
-        typ = Some f.Lang.Tuple.typ } in
+      let expr_typ =
+        Lang.Expr.make_typ ~nullable:f.Lang.Tuple.nullable
+                           ~typ:f.Lang.Tuple.typ f.Lang.Tuple.name in
       Hashtbl.add t.fields f.Lang.Tuple.name (ref (Some i), expr_typ)
     ) tup_typ ;
   t
@@ -299,6 +298,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   (* Useful helpers for make_op_typ above: *)
   let larger_type (t1, t2) =
     if Scalar.compare_typ t1 t2 >= 0 then t1 else t2
+  and return_bool _ = Scalar.TBool
   in
   function
   | Expr.Const (op_typ, _) ->
@@ -359,7 +359,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Expr.Not (op_typ, e) ->
     check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
   | Expr.Defined (op_typ, e) ->
-    check_unary_op op_typ (fun _ -> Scalar.TBool) ~exp_sub_nullable:true e
+    check_unary_op op_typ return_bool ~exp_sub_nullable:true e
   | Expr.Add (op_typ, e1, e2) ->
     check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
   | Expr.Sub (op_typ, e1, e2) ->
@@ -371,15 +371,15 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Expr.Exp (op_typ, e1, e2) ->
     check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
   | Expr.And (op_typ, e1, e2) ->
-    check_binary_op op_typ fst ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
+    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
   | Expr.Or (op_typ, e1, e2) ->
-    check_binary_op op_typ fst ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
+    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
   | Expr.Ge (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
+    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
   | Expr.Gt (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
+    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
   | Expr.Eq (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
+    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.
@@ -467,8 +467,9 @@ let check_aggregate ~in_type ~out_type fields and_all_others
   let open Lang in
   (* Improve out_type using all expressions. Check we satisfy in_type. *)
   let changed =
-    let exp_type = Expr.make_typ "group-by clause" in
     List.fold_left (fun changed k ->
+        (* The key can be anything *)
+        let exp_type = Expr.typ_of k in
         check_expr ~in_type ~out_type ~exp_type k || changed
       ) false key in
   let changed =
@@ -526,13 +527,27 @@ let check_node_types node =
       ) in
     changed
   ) with CompilationError e ->
+    !logger.debug "Compilation error: %s at %s"
+      e (Printexc.get_backtrace ()) ;
     let e' = Printf.sprintf "node %S: %s" node.name e in
     raise (CompilationError e')
+
+let node_is_complete node =
+  node.in_type.complete && node.out_type.complete
 
 let set_all_types graph =
   let rec loop pass =
     if pass < 0 then (
-      let msg = "Cannot type" in (* TODO: what node? *)
+      let bad_nodes =
+        Hashtbl.values graph.nodes //
+        (fun n -> not (node_is_complete n)) in
+      let print_bad_node fmt node =
+        Printf.fprintf fmt "%s: %a"
+          node.name
+          (List.print ~sep:" and " ~first:"" ~last:"" String.print)
+            ((if node.in_type.complete then [] else ["cannot type input"]) @
+            (if node.out_type.complete then [] else ["cannot type output"])) in
+      let msg = IO.to_string (Enum.print ~sep:", " print_bad_node) bad_nodes in
       raise (CompilationError msg)) ;
     if Hashtbl.fold (fun _ node changed ->
           check_node_types node || changed
@@ -561,7 +576,7 @@ let compile conf graph =
           node.name
           print_temp_tup_typ node.in_type
           print_temp_tup_typ node.out_type ;
-        complete && node.in_type.complete && node.out_type.complete
+        complete && node_is_complete node
       ) graph.nodes true in
   (* TODO: better reporting *)
   if not complete then raise (CompilationError "Cannot complete typing") ;
@@ -589,7 +604,8 @@ let run_background cmd args env =
   | pid -> pid
 
 let run conf graph =
-  if not (graph_is_compiled graph) then compile conf graph ;
+  if not (graph_is_compiled graph) then
+    raise (CompilationError "Cannot run if not compiled") ;
   (* For now each node creates its own output ringbuf itself but we still have
    * to set the names so that we can pass it to its children. *)
   Hashtbl.iter (fun _ node ->

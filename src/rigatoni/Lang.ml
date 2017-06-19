@@ -436,6 +436,7 @@ struct
    * progressively set at compilation. *)
   type typ =
     { name : string ;
+      uniq_num : int ; (* to build var names or record field names *)
       mutable nullable : bool option ;
       mutable typ : Scalar.typ option } [@@ppp PPP_JSON]
 
@@ -453,11 +454,16 @@ struct
       | None -> "unknown type"
       | Some typ -> "type "^ IO.to_string Scalar.print_typ typ)
 
-  let make_typ ?nullable ?typ name = { name ; nullable ; typ }
+  let uniq_num_seq = ref 0
+  let make_typ ?nullable ?typ name =
+    incr uniq_num_seq ;
+    { name ; nullable ; typ ; uniq_num = !uniq_num_seq }
   let make_bool_typ ?nullable name = make_typ ?nullable ~typ:Scalar.TBool name
   let make_num_typ ?nullable name =
     make_typ ?nullable ~typ:Scalar.TU8 name (* will be enlarged as required *)
-  let copy_typ typ = { typ with name = typ.name }
+  let copy_typ typ =
+    incr uniq_num_seq ;
+    { typ with name = typ.name ; uniq_num = !uniq_num_seq }
 
   (* Expressions on scalars (aka fields) *)
   type t =
@@ -473,6 +479,8 @@ struct
     | AggrSum of typ * t
     | AggrAnd of typ * t
     | AggrOr  of typ * t
+    (* TODO: last, first... *)
+    (* TODO: several percentiles *)
     | AggrPercentile of typ * t * t
     (* Other functions *)
     | Age of typ * t
@@ -642,13 +650,18 @@ struct
       sep -+ highestest_prec
 
     and aggregate m =
+      (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
       ((afun "min" >>: fun e -> AggrMin (make_num_typ "min aggregation", e)) |||
        (afun "max" >>: fun e -> AggrMax (make_num_typ "max aggregation", e)) |||
        (afun "sum" >>: fun e -> AggrSum (make_num_typ "sum aggregation", e)) |||
        (afun "and" >>: fun e -> AggrAnd (make_bool_typ "and aggregation", e)) |||
        (afun "or"  >>: fun e -> AggrOr  (make_bool_typ "or aggregation", e)) |||
        ((const ||| param) +- (optional ~def:() (string "th")) +- blanks ++
-        afun "percentile" >>: fun (p, e) -> AggrPercentile (make_num_typ "percentile aggregation", p, e))
+        afun "percentile" >>: fun (p, e) ->
+        (* Percentile aggr function is nullable because we want it null when
+         * we do not have enough measures to compute the requested percentiles.
+         * Alternatively, we could return the best bet. *)
+        AggrPercentile (make_num_typ ~nullable:true "percentile aggregation", p, e))
       ) m
 
     and func m =
