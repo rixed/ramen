@@ -157,7 +157,8 @@ open Stdint
 type uint8 = Uint8.t
 type uint16 = Uint16.t
 
-module P = Parsers.Make (Parsers.SimpleConfig (Char))
+module PConfig = ParsersPositions.LineCol (Parsers.SimpleConfig (Char))
+module P = Parsers.Make (PConfig)
 module ParseUsual = ParsersUsual.Make (P)
 let strinG = ParseUsual.string ~case_sensitive:false
 let that_string s =
@@ -190,9 +191,14 @@ let same_tuple_as_in = function
     | Bad (Ambiguous lst) ->
       Printf.sprintf "%d solutions" (List.length lst)
 
+  let strip_linecol = function
+    | Ok (res, (x, _line, _col)) -> Ok (res, x)
+    | Bad x -> Bad x
+
   let test_p p s =
-    (p +- eof) [] None Parsers.no_error_correction (stream_of_string s) |>
-    to_result
+    (p +- eof) [] None Parsers.no_error_correction (PConfig.stream_of_string s) |>
+    to_result |>
+    strip_linecol
 
   let typ = Lang.Expr.make_typ "replaced for tests"
 
@@ -538,20 +544,22 @@ struct
     open P
 
     (* Single things *)
-    let const =
-      Scalar.Parser.p >>: fun c ->
-      Const (make_typ ~nullable:false ~typ:(Scalar.type_of c) "constant", c)
+    let const m =
+      let m = "constant" :: m in
+      (Scalar.Parser.p >>: fun c ->
+       Const (make_typ ~nullable:false ~typ:(Scalar.type_of c) "constant", c)) m
     (*$= const & ~printer:(test_printer print)
       (Ok (Const (typ, Scalar.VBool true), (4, [])))\
         (test_p const "true" |> replace_typ_in_expr)
     *)
 
-    let field =
+    let field m =
+      let m = "field" :: m in
       let prefix s = strinG (s ^ ".") >>: fun () -> s in
-      optional ~def:"in" (
-        prefix "in" ||| prefix "out" ||| prefix "others" ||| prefix "any") ++
-      non_keyword >>: fun (tuple, field) ->
-      Field (make_typ (tuple ^"."^ field), tuple, field)
+      (optional ~def:"in" (
+         prefix "in" ||| prefix "out" ||| prefix "others" ||| prefix "any") ++
+       non_keyword >>: fun (tuple, field) ->
+       Field (make_typ (tuple ^"."^ field), tuple, field)) m
     (*$= field & ~printer:(test_printer print)
       (Ok (\
         Field (typ, "in", "bytes"),\
@@ -565,14 +573,15 @@ struct
 
       (Bad (\
         NoSolution (\
-          Some { where = ParsersMisc.Item (7, '.');\
+          Some { where = ParsersMisc.Item ((0,7), '.');\
                  what=["eof"]})))\
         (test_p field "pasglop.bytes" |> replace_typ_in_expr)
     *)
 
-    let param =
-      char '$' -+ identifier >>: fun s ->
-      Param (make_typ ("parameter "^s), s)
+    let param m =
+      let m = "param" :: m in
+      (char '$' -+ identifier >>: fun s ->
+       Param (make_typ ("parameter "^s), s)) m
     (*$= param & ~printer:(test_printer print)
       (Ok (\
         Param (typ, "glop"),\
@@ -581,13 +590,14 @@ struct
 
       (Bad (\
         NoSolution (\
-          Some { where = ParsersMisc.Item (0, 'g');\
+          Some { where = ParsersMisc.Item ((0,0), 'g');\
                  what = ["\"$\""] })))\
       (test_p param "glop" |> replace_typ_in_expr)
     *)
 
     (* operators with lowest precedence *)
     let rec lowest_prec_left_assoc m =
+      let m = "logical operator" :: m in
       let op = that_string "and" ||| that_string "or"
       and reduce t1 op t2 = match op with
         | "and" -> And (make_bool_typ "and operator", t1, t2)
@@ -597,6 +607,7 @@ struct
       binary_ops_reducer ~op ~term:low_prec_left_assoc ~sep:blanks ~reduce m
 
     and low_prec_left_assoc m =
+      let m = "comparison operator" :: m in
       let op = that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
                that_string "=" ||| that_string "<>" ||| that_string "!="
       and reduce t1 op t2 = match op with
@@ -610,6 +621,7 @@ struct
       binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
     and mid_prec_left_assoc m =
+      let m = "arithmetic operator" :: m in
       let op = that_string "+" ||| that_string "-"
       and reduce t1 op t2 = match op with
         | "+" -> Add (make_num_typ "addition", t1, t2)
@@ -618,6 +630,7 @@ struct
       binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks~reduce m
 
     and high_prec_left_assoc m =
+      let m = "arithmetic operator" :: m in
       let op = that_string "*" ||| that_string "/"
       and reduce t1 op t2 = match op with
         | "*" -> Mul (make_num_typ "multiplication", t1, t2)
@@ -626,6 +639,7 @@ struct
       binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks~reduce m
 
     and higher_prec_right_assoc m =
+      let m = "arithmetic operator" :: m in
       let op = char '^'
       and reduce t1 _ t2 = Exp (make_num_typ "exponentiation", t1, t2) in
       binary_ops_reducer ~op ~right_associative:true
@@ -650,6 +664,7 @@ struct
       sep -+ highestest_prec
 
     and aggregate m =
+      let m = "aggregate function" :: m in
       (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
       ((afun "min" >>: fun e -> AggrMin (make_num_typ "min aggregation", e)) |||
        (afun "max" >>: fun e -> AggrMax (make_num_typ "max aggregation", e)) |||
@@ -665,6 +680,7 @@ struct
       ) m
 
     and func m =
+      let m = "function" :: m in
       ((afun "age" >>: fun e -> Age (make_num_typ "age function", e))
       ) m
 
@@ -823,30 +839,35 @@ struct
     open ParseUsual
     open P
 
-    let selected_field =
-      Expr.Parser.p ++ optional ~def:[] (
-        blanks -- strinG "as" -- blanks -+
-        repeat ~min:1 ~sep:(blanks -- strinG "or" -- blanks)
-               non_keyword) >>:
-      fun (expr, alias) ->
-        let alias =
-          if alias <> [] then alias else (
-            match expr with
-            | Expr.Field (_, tuple, field) when tuple = "in" -> [ field ]
-            | _ -> raise (Reject "must set alias")
-          ) in
-        { expr ; alias }
+    let selected_field m =
+      let m = "selected field" :: m in
+      (Expr.Parser.p ++ optional ~def:[] (
+         blanks -- strinG "as" -- blanks -+
+         several ~sep:(blanks -- strinG "or" -- blanks)
+                non_keyword) >>:
+       fun (expr, alias) ->
+         let alias =
+           if alias <> [] then alias else (
+             match expr with
+             | Expr.Field (_, tuple, field) when tuple = "in" -> [ field ]
+             | _ -> raise (Reject "must set alias")
+           ) in
+         { expr ; alias }) m
 
-    let list_sep = opt_blanks -- char ',' -- opt_blanks
+    let list_sep m =
+      let m = "list separator" :: m in
+      (opt_blanks -- char ',' -- opt_blanks) m
 
-    let select_clause =
-      strinG "select" -- blanks -+
-      several ~sep:list_sep
-             ((char '*' >>: fun _ -> None) |||
-              some selected_field)
+    let select_clause m =
+      let m = "select clause" :: m in
+      (strinG "select" -- blanks -+
+       several ~sep:list_sep
+              ((char '*' >>: fun _ -> None) |||
+               some selected_field)) m
 
-    let where_clause =
-      strinG "where" -- blanks -+ Expr.Parser.p
+    let where_clause m =
+      let m = "where clause" :: m in
+      (strinG "where" -- blanks -+ Expr.Parser.p) m
 
     let select =
       (select_clause ++
@@ -868,28 +889,33 @@ struct
         let fields = List.rev fields in
         Select { fields ; and_all_others ; where }
 
-    let commit_when =
-      strinG "commit" -- blanks -- (strinG "after" ||| strinG "when") --
-      blanks -+ Expr.Parser.p
+    let commit_when m =
+      let m = "commit clause" :: m in
+      (strinG "commit" -- blanks -- (strinG "after" ||| strinG "when") --
+       blanks -+ Expr.Parser.p) m
 
-    let aggregate =
-      select +- blanks +- strinG "group" +- blanks +- strinG "by" +- blanks ++
-      several ~sep:list_sep Expr.Parser.p +- blanks ++ commit_when >>: function
-      | (Select { fields ; and_all_others ; where }, key), commit_when ->
-        Aggregate { fields ; and_all_others ; where ; key ; commit_when }
-      | _ -> assert false
+    let aggregate m =
+      let m = "aggregate" :: m in
+      (select +- blanks +- strinG "group" +- blanks +- strinG "by" +- blanks ++
+       several ~sep:list_sep Expr.Parser.p +- blanks ++ commit_when >>: function
+       | (Select { fields ; and_all_others ; where }, key), commit_when ->
+         Aggregate { fields ; and_all_others ; where ; key ; commit_when }
+       | _ -> assert false) m
 
-    let on_change =
-      strinG "on" -- blanks -- strinG "change" -- blanks -+ Expr.Parser.p >>:
-      fun e -> OnChange e
+    let on_change m =
+      let m = "on-change" :: m in
+      (strinG "on" -- blanks -- strinG "change" -- blanks -+ Expr.Parser.p >>:
+       fun e -> OnChange e) m
 
-    let alert =
-      strinG "alert" -- blanks -+ quoted_string +- blanks +-
-      strinG "subject" +- blanks ++ quoted_string +- blanks +-
-      strinG "text" +- blanks ++ quoted_string >>:
-      fun ((team, subject), text) -> Alert { team ; subject ; text }
+    let alert m =
+      let m = "alert" :: m in
+      (strinG "alert" -- blanks -+ quoted_string +- blanks +-
+       strinG "subject" +- blanks ++ quoted_string +- blanks +-
+       strinG "text" +- blanks ++ quoted_string >>:
+       fun ((team, subject), text) -> Alert { team ; subject ; text }) m
 
-    let read_csv_file =
+    let read_csv_file m =
+      let m = "read-csv" :: m in
       let field =
         non_keyword +- blanks ++ Scalar.Parser.typ ++
         optional ~def:true (
@@ -897,17 +923,18 @@ struct
           blanks +- strinG "null") >>:
         fun ((name, typ), nullable) -> Tuple.{ name ; typ ; nullable }
       in
-      strinG "read" -- blanks -- strinG "from" -- blanks --
-      optional ~def:() (strinG "csv" +- blanks) -- strinG "file" -- blanks -+
-      quoted_string +- opt_blanks ++
-      optional ~def:"," (
-        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) +-
-      char '(' +- opt_blanks ++
-      several ~sep:list_sep field +- opt_blanks +- char ')' >>:
-      fun ((fname, separator), fields) -> ReadCSVFile { fname ; separator ; fields }
+      (strinG "read" -- blanks -- strinG "from" -- blanks --
+       optional ~def:() (strinG "csv" +- blanks) -- strinG "file" -- blanks -+
+       quoted_string +- opt_blanks ++
+       optional ~def:"," (
+         strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) +-
+       char '(' +- opt_blanks ++
+       several ~sep:list_sep field +- opt_blanks +- char ')' >>:
+       fun ((fname, separator), fields) -> ReadCSVFile { fname ; separator ; fields }) m
 
-    let p =
-      select ||| aggregate ||| on_change ||| alert ||| read_csv_file
+    let p m =
+      let m = "operation" :: m in
+      (select ||| aggregate ||| on_change ||| alert ||| read_csv_file) m
 
     (*$= p & ~printer:(test_printer print)
       (Ok (\

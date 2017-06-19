@@ -580,7 +580,11 @@ let compile conf graph =
       ) graph.nodes true in
   (* TODO: better reporting *)
   if not complete then raise (CompilationError "Cannot complete typing") ;
-  Hashtbl.iter (fun _ node -> compile_node node) graph.nodes ;
+  Hashtbl.iter (fun _ node ->
+      try compile_node node
+      with Failure m ->
+        raise (Failure ("While compiling "^ node.name ^": "^ m))
+    ) graph.nodes ;
   save_graph conf graph
 
 let graph_is_compiled graph =

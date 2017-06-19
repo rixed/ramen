@@ -73,7 +73,8 @@ let put_node conf headers name body =
     bad_request "Bad content type"
   else match PPP.of_string_exc make_node_ppp body with
   | exception e ->
-    !logger.info "Cannot parse received body: %s" body ;
+    !logger.info "Creating node %s: Cannot parse received body: %s"
+      name body ;
     fail e
   | msg ->
     if C.has_node conf conf.C.building_graph name then
@@ -85,10 +86,11 @@ let put_node conf headers name body =
           to_result with
     | Bad e ->
       let err = IO.to_string (Lang.P.print_bad_result Lang.Operation.print) e in
-      bad_request ("Parse error: "^ err)
+      bad_request ("Creating node "^ name ^": Parse error: "^ err)
     | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
       (match Lang.Operation.Parser.check op with
-      | Bad e -> bad_request ("Invalid operation: "^ e)
+      | Bad e ->
+        bad_request ("Creating node "^ name ^": Invalid operation: "^ e)
       | Ok op ->
         let node = C.make_node name op in
         C.add_node conf conf.C.building_graph name node ;
@@ -158,7 +160,9 @@ let put_link conf _headers src dst =
   let%lwt src = node_of_name conf conf.C.building_graph src in
   let%lwt dst = node_of_name conf conf.C.building_graph dst in
   if C.has_link conf src dst then
-    bad_request ("Link already exists")
+    let msg =
+      "Creating link "^ src.C.name ^"-"^ dst.C.name ^": Link already exists" in
+    bad_request msg
   else (
     C.make_link conf conf.C.building_graph src dst ;
     let status = `Code 200 in
