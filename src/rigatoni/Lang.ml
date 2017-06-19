@@ -591,7 +591,7 @@ struct
       (Bad (\
         NoSolution (\
           Some { where = ParsersMisc.Item ((0,0), 'g');\
-                 what = ["\"$\""] })))\
+                 what = ["\"$\""; "param"] })))\
       (test_p param "glop" |> replace_typ_in_expr)
     *)
 
