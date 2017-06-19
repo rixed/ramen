@@ -407,7 +407,7 @@ let keyword =
     strinG "on" ||| strinG "change" ||| strinG "after" ||| strinG "when" |||
     strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
-    strinG "separator" |||
+    strinG "separator" ||| strinG "as" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
@@ -849,7 +849,13 @@ struct
          let alias =
            if alias <> [] then alias else (
              match expr with
-             | Expr.Field (_, tuple, field) when tuple = "in" -> [ field ]
+             | Expr.Field (_, "in", field) -> [ field ]
+             (* Provide some default name for current aggregate functions: *)
+             | Expr.AggrMin (_, Expr.Field (_, "in", field)) -> [ "min_"^ field ]
+             | Expr.AggrMax (_, Expr.Field (_, "in", field)) -> [ "max_"^ field ]
+             | Expr.AggrSum (_, Expr.Field (_, "in", field)) -> [ "sum_"^ field ]
+             | Expr.AggrAnd (_, Expr.Field (_, "in", field)) -> [ "and_"^ field ]
+             | Expr.AggrOr  (_, Expr.Field (_, "in", field)) -> [ "or_"^ field ]
              | _ -> raise (Reject "must set alias")
            ) in
          { expr ; alias }) m
