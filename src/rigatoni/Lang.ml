@@ -553,6 +553,10 @@ struct
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) -> t
 
+  let is_nullable e =
+    let t = typ_of e in
+    t.nullable = Some true
+
   module Parser =
   struct
     (*$< Parser *)

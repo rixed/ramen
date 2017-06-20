@@ -405,6 +405,11 @@ let conv_from_to from_typ to_typ p fmt e =
                 (IO.to_string Scalar.print_typ from_typ)
                 (IO.to_string Scalar.print_typ to_typ))
 
+let conv_from_to_opt from_typ to_typ_opt p fmt e =
+  match to_typ_opt with
+  | Some to_typ -> conv_from_to from_typ to_typ p fmt e
+  | None -> p fmt e (* No conversion required *)
+
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
@@ -442,21 +447,20 @@ and emit_expr oc =
     emit_function2 expr oc e1 e2
 
 (* The output must be of type [t] *)
-(* FIXME: if e is nullable then the function is too: check for none *)
 and emit_function expr oc e =
   let impl, arg_typ = implementation_of expr in
-  Printf.fprintf oc "(%s %a)"
+  Printf.fprintf oc "(%s%s %a)"
+    (if Lang.Expr.is_nullable e then "BatOption.map " else "")
     impl
     (conv_to arg_typ) e
 
-(* FIXME: if any of e1 or e2 is nullable then the function is too: check for none *)
 and emit_function2 expr oc e1 e2 =
   let impl, arg_typ = implementation_of expr in
   (* When we have no conversion to do, e1 and e2 still have to have the same type or
    * the compiler will complain: *)
+  let open Lang in
+  let open Expr in
   let arg_typ =
-    let open Lang in
-    let open Expr in
     if arg_typ <> None then arg_typ else
       match (typ_of e1).typ, (typ_of e2).typ with
       | None, None -> None
@@ -464,10 +468,39 @@ and emit_function2 expr oc e1 e2 =
       | None, Some t2 -> Some t2
       | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2))
   in
-  Printf.fprintf oc "(%s %a %a)"
-    impl
-    (conv_to arg_typ) e1
-    (conv_to arg_typ) e2
+  if is_nullable e1 then (
+    Printf.fprintf oc "\
+      (match %a with None -> None | Some v1_ -> "
+      emit_expr e1 ;
+    if is_nullable e2 then (
+      Printf.fprintf oc "\
+        (match %a with None -> None | Some v2_ -> %s %a %a)"
+        emit_expr e2
+        impl
+        (conv_from_to_opt Lang.Scalar.TString arg_typ String.print) "v1_"
+        (conv_from_to_opt Lang.Scalar.TString arg_typ String.print) "v2_"
+    ) else (
+      Printf.fprintf oc "%s %a %a"
+        impl
+        (conv_from_to_opt Lang.Scalar.TString arg_typ String.print) "v1_"
+        (conv_to arg_typ) e2
+    ) ;
+    Printf.fprintf oc ")"
+  ) else (
+    if is_nullable e2 then (
+      Printf.fprintf oc "\
+        (match %a with None -> None | Some v2_ -> %s %a %a)"
+        emit_expr e2
+        impl
+        (conv_to arg_typ) e1
+        (conv_from_to_opt Lang.Scalar.TString arg_typ String.print) "v2_"
+    ) else (
+      Printf.fprintf oc "(%s %a %a)"
+        impl
+        (conv_to arg_typ) e1
+        (conv_to arg_typ) e2
+    )
+  )
 
 let emit_expr_of_input_tuple name in_tuple_typ mentioned and_all_others oc expr =
   Printf.fprintf oc "let %s %a =\n\t%a\n"
