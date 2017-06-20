@@ -480,7 +480,7 @@ struct
   (* Expressions on scalars (aka fields) *)
   type t =
     | Const of typ * Scalar.t
-    | Field of typ * string (* tuple: in, out, others... *) * string (* field name *)
+    | Field of typ * string ref (* tuple: in, out, others... *) * string (* field name *)
     | Param of typ * string
     (* Valid only within an aggregation operation; but must be here to allow
      * operations on top of the result of an aggregation function, such as: "(1
@@ -518,7 +518,7 @@ struct
 
   let rec print fmt = function
     | Const (_, c) -> Scalar.print fmt c
-    | Field (_, tuple, field) -> Printf.fprintf fmt "%s.%s" tuple field
+    | Field (_, tuple, field) -> Printf.fprintf fmt "%s.%s" !tuple field
     | Param (_, p) -> Printf.fprintf fmt "$%s" p
     | AggrMin (_, e) -> Printf.fprintf fmt "min (%a)" print e
     | AggrMax (_, e) -> Printf.fprintf fmt "max (%a)" print e
@@ -580,20 +580,20 @@ struct
        non_keyword >>: fun (tuple, field) ->
        (* This is important here that the type name is the raw field name,
         * because we use the tuple field type name as their identifier *)
-       Field (make_typ field, tuple, field)) m
+       Field (make_typ field, ref tuple, field)) m
     (*$= field & ~printer:(test_printer print)
       (Ok (\
-        Field (typ, "in", "bytes"),\
+        Field (typ, ref "in", "bytes"),\
         (5, [])))\
         (test_p field "bytes" |> replace_typ_in_expr)
 
       (Ok (\
-        Field (typ, "in", "bytes"),\
+        Field (typ, ref "in", "bytes"),\
         (8, [])))\
         (test_p field "in.bytes" |> replace_typ_in_expr)
 
       (Ok (\
-        Field (typ, "out", "bytes"),\
+        Field (typ, ref "out", "bytes"),\
         (9, [])))\
         (test_p field "out.bytes" |> replace_typ_in_expr)
 
@@ -729,37 +729,37 @@ struct
         (test_p p "true" |> replace_typ_in_expr)
 
       (Ok (\
-        Not (typ, Defined (typ, Field (typ, "in", "zone_src"))),\
+        Not (typ, Defined (typ, Field (typ, ref "in", "zone_src"))),\
         (16, [])))\
         (test_p p "zone_src IS NULL" |> replace_typ_in_expr)
 
       (Ok (\
-        Eq (typ, Field (typ, "in", "zone_src"), Param (typ, "z1")),\
+        Eq (typ, Field (typ, ref "in", "zone_src"), Param (typ, "z1")),\
         (14, [])))\
         (test_p p "zone_src = $z1" |> replace_typ_in_expr)
 
       (Ok (\
         And (typ, \
           Or (typ, \
-            Not (typ, Defined (typ, Field (typ, "in", "zone_src"))),\
-            Eq (typ, Field (typ, "in", "zone_src"), Param (typ, "z1"))),\
+            Not (typ, Defined (typ, Field (typ, ref "in", "zone_src"))),\
+            Eq (typ, Field (typ, ref "in", "zone_src"), Param (typ, "z1"))),\
           Or (typ, \
-            Not (typ, Defined (typ, Field (typ, "in", "zone_dst"))),\
-            Eq (typ, Field (typ, "in", "zone_dst"), Param (typ, "z2")))),\
+            Not (typ, Defined (typ, Field (typ, ref "in", "zone_dst"))),\
+            Eq (typ, Field (typ, ref "in", "zone_dst"), Param (typ, "z2")))),\
         (77, [])))\
         (test_p p "(zone_src IS NULL or zone_src = $z1) and \\
                    (zone_dst IS NULL or zone_dst = $z2)" |> replace_typ_in_expr)
 
       (Ok (\
         Div (typ, \
-          AggrSum (typ, Field (typ, "in", "bytes")),\
+          AggrSum (typ, Field (typ, ref "in", "bytes")),\
           Param (typ, "avg_window")),\
         (23, [])))\
         (test_p p "(sum bytes)/$avg_window" |> replace_typ_in_expr)
 
       (Ok (\
         IDiv (typ, \
-          Field (typ, "in", "start"),\
+          Field (typ, ref "in", "start"),\
           Mul (typ, \
             Const (typ, Scalar.VI32 1_000_000l),\
             Param (typ, "avg_window"))),\
@@ -769,16 +769,16 @@ struct
       (Ok (\
         AggrPercentile (typ,\
           Param (typ, "p"),\
-          Field (typ, "in", "bytes_per_sec")),\
+          Field (typ, ref "in", "bytes_per_sec")),\
         (30, [])))\
         (test_p p "$p percentile of bytes_per_sec" |> replace_typ_in_expr)
 
       (Ok (\
         Gt (typ, \
           AggrMax (typ, \
-            Field (typ, "others", "start")),\
+            Field (typ, ref "others", "start")),\
           Add (typ, \
-            Field (typ, "out", "start"),\
+            Field (typ, ref "out", "start"),\
             Mul (typ, \
               Mul (typ, \
                 Param (typ, "obs_window"),\
@@ -806,7 +806,7 @@ struct
       match f.expr, f.alias with
       | _, [] -> false
       | Expr.Field (_, tuple, field), [ a ]
-        when tuple = "in" && a = field -> false
+        when !tuple = "in" && a = field -> false
       | _ -> true in
     if need_alias then
       Printf.fprintf fmt "%a AS %a"
@@ -882,15 +882,15 @@ struct
          let alias =
            if alias <> [] then alias else (
              match expr with
-             | Expr.Field (_, "in", field) -> [ field ]
+             | Expr.Field (_, { contents="in" }, field) -> [ field ]
              (* Provide some default name for current aggregate functions: *)
-             | Expr.AggrMin (_, Expr.Field (_, "in", field)) -> [ "min_"^ field ]
-             | Expr.AggrMax (_, Expr.Field (_, "in", field)) -> [ "max_"^ field ]
-             | Expr.AggrSum (_, Expr.Field (_, "in", field)) -> [ "sum_"^ field ]
-             | Expr.AggrAnd (_, Expr.Field (_, "in", field)) -> [ "and_"^ field ]
-             | Expr.AggrOr  (_, Expr.Field (_, "in", field)) -> [ "or_"^ field ]
-             | Expr.AggrFirst (_, Expr.Field (_, "in", field)) -> [ "first_"^ field ]
-             | Expr.AggrLast (_, Expr.Field (_, "in", field)) -> [ "last_"^ field ]
+             | Expr.AggrMin (_, Expr.Field (_, { contents="in" }, field)) -> [ "min_"^ field ]
+             | Expr.AggrMax (_, Expr.Field (_, { contents="in" }, field)) -> [ "max_"^ field ]
+             | Expr.AggrSum (_, Expr.Field (_, { contents="in" }, field)) -> [ "sum_"^ field ]
+             | Expr.AggrAnd (_, Expr.Field (_, { contents="in" }, field)) -> [ "and_"^ field ]
+             | Expr.AggrOr  (_, Expr.Field (_, { contents="in" }, field)) -> [ "or_"^ field ]
+             | Expr.AggrFirst (_, Expr.Field (_, { contents="in" }, field)) -> [ "first_"^ field ]
+             | Expr.AggrLast (_, Expr.Field (_, { contents="in" }, field)) -> [ "last_"^ field ]
              | _ -> raise (Reject "must set alias")
            ) in
          { expr ; alias }) m
@@ -984,13 +984,13 @@ struct
       (Ok (\
         Select {\
           fields = [\
-            { expr = Expr.(Field (typ, "in", "start")) ;\
+            { expr = Expr.(Field (typ, ref "in", "start")) ;\
               alias = [ "start" ] } ;\
-            { expr = Expr.(Field (typ, "in", "stop")) ;\
+            { expr = Expr.(Field (typ, ref "in", "stop")) ;\
               alias = [ "stop" ] } ;\
-            { expr = Expr.(Field (typ, "in", "itf_clt")) ;\
+            { expr = Expr.(Field (typ, ref "in", "itf_clt")) ;\
               alias = [ "itf_src" ] } ;\
-            { expr = Expr.(Field (typ, "in", "itf_srv")) ;\
+            { expr = Expr.(Field (typ, ref "in", "itf_srv")) ;\
               alias = [ "itf_dst" ] } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, Scalar.VBool true) },\
@@ -1004,7 +1004,7 @@ struct
           and_all_others = true ;\
           where = Expr.(\
             Gt (typ,\
-              Field (typ, "in", "packets"),\
+              Field (typ, ref "in", "packets"),\
               Const (typ, Scalar.VI8 (Int8.of_int 0)))) },\
         (17, [])))\
         (test_p p "where packets > 0" |> replace_typ_in_op)
@@ -1013,30 +1013,30 @@ struct
         Aggregate {\
           fields = [\
             { expr = Expr.(\
-                AggrMin (typ, Field (typ, "in", "start"))) ;\
+                AggrMin (typ, Field (typ, ref "in", "start"))) ;\
               alias = [ "start"; "out_start" ] } ;\
             { expr = Expr.(\
-                AggrMax (typ, Field (typ, "in", "stop"))) ;\
+                AggrMax (typ, Field (typ, ref "in", "stop"))) ;\
               alias = [ "max_stop" ] } ;\
             { expr = Expr.(\
                 Div (typ,\
-                  AggrSum (typ,Field (typ, "in", "packets")),\
+                  AggrSum (typ,Field (typ, ref "in", "packets")),\
                   Param (typ, "avg_window"))) ;\
               alias = [ "packets_per_sec" ] } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, Scalar.VBool true) ;\
           key = [ Expr.(\
             Div (typ,\
-              Field (typ, "in", "start"),\
+              Field (typ, ref "in", "start"),\
               Mul (typ,\
                 Const (typ, Scalar.VI32 1_000_000l),\
                 Param (typ, "avg_window")))) ] ;\
           commit_when = Expr.(\
             Gt (typ,\
               Add (typ,\
-                AggrMax (typ,Field (typ, "any", "start")),\
+                AggrMax (typ,Field (typ, ref "any", "start")),\
                 Const (typ, Scalar.VI16 (Int16.of_int 3600))),\
-              Field (typ, "out", "start"))) },\
+              Field (typ, ref "out", "start"))) },\
           (197, [])))\
           (test_p p "select min start as start or out_start, \\
                             max stop as max_stop, \\
@@ -1046,7 +1046,7 @@ struct
            replace_typ_in_op)
 
       (Ok (\
-        OnChange Expr.(Field (typ, "in", "too_low")),\
+        OnChange Expr.(Field (typ, ref "in", "too_low")),\
         (17, [])))\
         (test_p p "on change too_low" |> replace_typ_in_op)
 

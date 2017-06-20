@@ -261,7 +261,7 @@ let rec add_mentioned prev =
   | Const _ | Param _
     -> prev
   | Field (_, tuple, field) ->
-    if Lang.same_tuple_as_in tuple then Set.add field prev else prev
+    if Lang.same_tuple_as_in !tuple then Set.add field prev else prev
   | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
   | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
   | Not (_, e) | Defined (_, e)
@@ -432,7 +432,7 @@ and emit_expr oc =
   | Const (_, c) ->
     emit_scalar oc c
   | Field (_, tuple, field) ->
-    Printf.fprintf oc "%s" (id_of_field_name ~tuple field)
+    Printf.fprintf oc "%s" (id_of_field_name ~tuple:!tuple field)
   | Param _ ->
     failwith "TODO: code gen for params"
   | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _

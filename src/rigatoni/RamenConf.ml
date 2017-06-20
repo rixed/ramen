@@ -301,29 +301,35 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* op_typ is already optimal. But is it compatible with exp_type? *)
     check_expr_type ~from:op_typ ~to_:exp_type
   | Field (op_typ, tuple, field) ->
-    if same_tuple_as_in tuple then (
+    if same_tuple_as_in !tuple then (
       (* Check that this field is, or could be, in in_type *)
       match Hashtbl.find in_type.fields field with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in in-tuple" field ;
         if in_type.complete then (
-          let m = Printf.sprintf "field %s not in %S tuple" field tuple in
-          raise (CompilationError m)) ;
-        false
+          if Hashtbl.mem out_type.fields field then (
+            !logger.debug "Field %s appears to belongs to out!" field ;
+            tuple := "out" ;
+            true
+          ) else if out_type.complete then (
+            let m = Printf.sprintf "field %s not in %S tuple" field !tuple in
+            raise (CompilationError m)
+          ) else false
+        ) else false
       | _, from ->
         if in_type.complete then ( (* Save the type *)
           op_typ.nullable <- from.nullable ;
           op_typ.typ <- from.typ
         ) ;
         check_expr_type ~from ~to_:exp_type
-    ) else if tuple = "out" then (
+    ) else if !tuple = "out" then (
       (* If we already have this field in out then check it's compatible (or
        * enlarge out or exp). If we don't have it then add it. *)
       match Hashtbl.find out_type.fields field with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in out-tuple" field ;
         if out_type.complete then (
-          let m = Printf.sprintf "field %s not in %S tuple" field tuple in
+          let m = Printf.sprintf "field %s not in %S tuple" field !tuple in
           raise (CompilationError m)) ;
         Hashtbl.add out_type.fields field (ref None, exp_type) ;
         true
@@ -334,7 +340,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         ) ;
         check_expr_type ~from:out ~to_:exp_type
     ) else (
-      let m = Printf.sprintf "unknown tuple %S" tuple in
+      let m = Printf.sprintf "unknown tuple %S" !tuple in
       raise (CompilationError m)
     )
   | Param (_op_typ, _pname) ->
