@@ -345,46 +345,26 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Expr.Param (_op_typ, _pname) ->
     (* TODO: one day we will know the type or value of params *)
     false
-  | Expr.AggrMin (op_typ, e) ->
-    check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
-  | Expr.AggrMax (op_typ, e) ->
-    check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
-  | Expr.AggrSum (op_typ, e) ->
-    check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
-  | Expr.AggrAnd (op_typ, e) ->
-    check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
-  | Expr.AggrOr (op_typ, e) ->
-    check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
-  | Expr.AggrPercentile (op_typ, e1, e2) ->
-    check_binary_op op_typ snd ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.Age (op_typ, e) ->
-    check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
+  | Expr.AggrMin (op_typ, e) | Expr.AggrMax (op_typ, e)
+  | Expr.AggrSum (op_typ, e) | Expr.AggrAnd (op_typ, e)
+  | Expr.AggrOr (op_typ, e) | Expr.Age (op_typ, e)
   | Expr.Not (op_typ, e) ->
     check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
   | Expr.Defined (op_typ, e) ->
     check_unary_op op_typ return_bool ~exp_sub_nullable:true ~propagate_null:false e
-  | Expr.Add (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.Sub (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.Mul (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.Div (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.IDiv (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TU128 e1 ~exp_sub_typ2:Scalar.TU128 e2
+  | Expr.AggrPercentile (op_typ, e1, e2) ->
+    check_binary_op op_typ snd ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
+  | Expr.Add (op_typ, e1, e2) | Expr.Sub (op_typ, e1, e2)
+  | Expr.Mul (op_typ, e1, e2) | Expr.Div (op_typ, e1, e2)
   | Expr.Exp (op_typ, e1, e2) ->
     check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.And (op_typ, e1, e2) ->
-    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
-  | Expr.Or (op_typ, e1, e2) ->
-    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
-  | Expr.Ge (op_typ, e1, e2) ->
-    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.Gt (op_typ, e1, e2) ->
-    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
+  | Expr.Ge (op_typ, e1, e2) | Expr.Gt (op_typ, e1, e2)
   | Expr.Eq (op_typ, e1, e2) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
+  | Expr.IDiv (op_typ, e1, e2) ->
+    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TU128 e1 ~exp_sub_typ2:Scalar.TU128 e2
+  | Expr.And (op_typ, e1, e2) | Expr.Or (op_typ, e1, e2) ->
+    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.
