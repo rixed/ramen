@@ -181,7 +181,7 @@ let alert read_tuple field_of_tuple team subject text =
     CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
   let expand_fields =
     let open Str in
-    let re = regexp "%\\(in\\.\\)?\\([_a-zA-Z0-9]+\\)%" in
+    let re = regexp "\\${\\(in\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
     fun text tuple ->
       global_substitute re (fun s ->
           let field_name = matched_group 2 s in
