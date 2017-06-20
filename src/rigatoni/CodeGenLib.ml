@@ -37,35 +37,48 @@ let output rb sersize_of_tuple serialize_tuple tuple =
   enqueue_commit tx ;
   assert (offs = sersize)
 
-let outputer_of rb_out sersize_of_tuple serialize_tuple =
-  let once = output rb_out sersize_of_tuple serialize_tuple in
-  let on = function
-    (* FIXME: a dedicated RingBuf.NoMoreRoom exception *)
-    | Failure _ ->
-      !logger.debug "No more space in the ring buffer, sleeping..." ;
-      true
-    | _ -> false
+let outputer_of rb_outs sersize_of_tuple serialize_tuple =
+  let outputers_with_retry = List.map (fun rb_out ->
+        let once = output rb_out sersize_of_tuple serialize_tuple in
+        let on = function
+          (* FIXME: a dedicated RingBuf.NoMoreRoom exception *)
+          | Failure _ ->
+            !logger.debug "No more space in the ring buffer, sleeping..." ;
+            true
+          | _ -> false
+        in
+        CodeGenLib_IO.retry_for_ringbuf ~on once
+      ) rb_outs in
+  fun tuple ->
+    List.map (fun out -> out tuple) outputers_with_retry |>
+    Lwt.join
+
+(* Each node can write in several ringbuffers (one per children) which
+ * names are givenby the output_ringbuf envvar followed by the child number
+ * as an extension.
+ * This function prepares everything and return a list of ringbuf handlers *)
+let out_ringbufs () =
+  let rb_out_fnames = getenv ~def:"/tmp/ringbuf_out" "output_ringbufs" |> String.split_on_char ','
+  and rb_out_sz = getenv ~def:"1000000" "input_ringbuf_size" |> int_of_string
   in
-  CodeGenLib_IO.retry_for_ringbuf ~on once
+  !logger.info "Will output into %a" (List.print String.print) rb_out_fnames ;
+  List.map (fun fname -> RingBuf.create fname rb_out_sz) rb_out_fnames
 
 let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_strings =
   !logger.info "Starting READ CSV FILE process..." ;
   (* For tests, allow to overwrite what's specified in the operation: *)
   let filename = getenv ~def:filename "csv_filename"
   and separator = getenv ~def:separator "csv_separator"
-  and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "output_ringbuf"
-  and rb_out_sz = getenv ~def:"1000000" "input_ringbuf_size" |> int_of_string
   in
-  !logger.debug "Will read CSV file %S using separator %S, and write \
-                 output to ringbuffer %S (size is %d words)"
-                filename separator rb_out_fname rb_out_sz ;
+  !logger.debug "Will read CSV file %S using separator %S"
+                filename separator ;
   let of_string line =
     let strings = String.nsplit line separator |> Array.of_list in
     tuple_of_strings strings
   in
-  let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
+  let rb_outs = out_ringbufs () in
   let outputer =
-    outputer_of rb_out sersize_of_tuple serialize_tuple in
+    outputer_of rb_outs sersize_of_tuple serialize_tuple in
   CodeGenLib_IO.read_file_lines filename (fun line ->
     match of_string line with
     | exception e ->
@@ -77,18 +90,13 @@ let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_s
 let select read_tuple sersize_of_tuple serialize_tuple where select =
   !logger.info "Starting SELECT process..." ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
-  and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "output_ringbuf"
-  and rb_out_sz = getenv ~def:"1000000" "output_ringbuf_size" |> int_of_string
   in
-  !logger.debug "Will read ringbuffer %S and write output to \
-                 ringbuffer %S (size is %d words)"
-                rb_in_fname
-                rb_out_fname rb_out_sz ;
+  !logger.debug "Will read ringbuffer %S" rb_in_fname ;
+  let rb_outs = out_ringbufs () in
   let%lwt rb_in =
     CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
-  let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
   let outputer =
-    outputer_of rb_out sersize_of_tuple serialize_tuple in
+    outputer_of rb_outs sersize_of_tuple serialize_tuple in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
@@ -116,18 +124,13 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (update_aggr : 'aggr -> 'tuple_in -> unit) =
   !logger.info "Starting GROUP BY process..." ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
-  and rb_out_fname = getenv ~def:"/tmp/ringbuf_out" "output_ringbuf"
-  and rb_out_sz = getenv ~def:"1000000" "output_ringbuf_size" |> int_of_string
   in
-  !logger.debug "Will read ringbuffer %S and write output to \
-                 ringbuffer %S (size is %d words)"
-                rb_in_fname
-                rb_out_fname rb_out_sz ;
+  !logger.debug "Will read ringbuffer %S" rb_in_fname ;
+  let rb_outs = out_ringbufs () in
   let%lwt rb_in =
     CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
-  let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
   let commit =
-    outputer_of rb_out sersize_of_tuple serialize_tuple in
+    outputer_of rb_outs sersize_of_tuple serialize_tuple in
   let h = Hashtbl.create 701
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)

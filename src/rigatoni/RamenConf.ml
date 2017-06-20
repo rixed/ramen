@@ -612,18 +612,12 @@ let run conf graph =
   (* For now each node creates its own output ringbuf itself but we still have
    * to set the names so that we can pass it to its children. *)
   Hashtbl.iter (fun _ node ->
-      let command = Option.get node.command in
-      let rb_out_name_of node = "/tmp/ringbuf_"^ node.name ^"_out"
-      in
-      let rb_in =
-        match node.parents with
-        | par::_ -> [ "input_ringbuf="^ rb_out_name_of par ]
-        | [] -> []
-      and rb_out =
-        match node.children with
-        | _::_ -> [ "output_ringbuf="^ rb_out_name_of node ]
-        | [] -> [] in
-      let env = rb_in @ rb_out |> Array.of_list in
+      let command = Option.get node.command
+      and rb_name_of node = "/tmp/ringbuf_"^ node.name ^"_in" in
+      let env = [|
+        "input_ringbuf="^ rb_name_of node ;
+        "output_ringbufs="^ String.concat "," (List.map rb_name_of node.children)
+      |] in
       node.pid <- Some (run_background command [||] env) ;
       save_graph conf graph
     ) graph.nodes
