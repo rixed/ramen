@@ -299,6 +299,9 @@ struct
     if k1 <> k2 then invalid_arg "types not comparable" ;
     compare r1 r2
 
+  let larger_type (t1, t2) =
+    if compare_typ t1 t2 >= 0 then t1 else t2
+
   (* stdint types are implemented as custom blocks, therefore are slower than ints.
    * But we do not care as we merely represents code here, we do not run the operators. *)
   type t = VFloat of float | VString of string | VBool of bool

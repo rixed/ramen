@@ -292,9 +292,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     | _ -> changed
   in
   (* Useful helpers for make_op_typ above: *)
-  let larger_type (t1, t2) =
-    if Scalar.compare_typ t1 t2 >= 0 then t1 else t2
-  and return_bool _ = Scalar.TBool
+  let return_bool _ = Scalar.TBool
+  and return_float _ = Scalar.TFloat
   in
   function
   | Expr.Const (op_typ, _) ->
@@ -348,14 +347,14 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Expr.AggrPercentile (op_typ, e1, e2) ->
     check_binary_op op_typ snd ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
   | Expr.Add (op_typ, e1, e2) | Expr.Sub (op_typ, e1, e2)
-  | Expr.Mul (op_typ, e1, e2) | Expr.Div (op_typ, e1, e2)
+  | Expr.Mul (op_typ, e1, e2) | Expr.IDiv (op_typ, e1, e2)
   | Expr.Exp (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
+    check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
   | Expr.Ge (op_typ, e1, e2) | Expr.Gt (op_typ, e1, e2)
   | Expr.Eq (op_typ, e1, e2) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.IDiv (op_typ, e1, e2) ->
-    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TU128 e1 ~exp_sub_typ2:Scalar.TU128 e2
+  | Expr.Div (op_typ, e1, e2) ->
+    check_binary_op op_typ return_float ~exp_sub_typ1:Scalar.TU128 e1 ~exp_sub_typ2:Scalar.TU128 e2
   | Expr.And (op_typ, e1, e2) | Expr.Or (op_typ, e1, e2) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
 
