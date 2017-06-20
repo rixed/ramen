@@ -513,7 +513,7 @@ let emit_expr_of_input_tuple name in_tuple_typ mentioned and_all_others oc expr 
 
 let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
                      name in_tuple_typ mentioned
-                     and_all_others oc exprs =
+                     and_all_others out_tuple_typ oc exprs =
   let open Lang in
   Printf.fprintf oc "\
     let %s %s%a =\n\
@@ -522,14 +522,14 @@ let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
     (if with_aggr then "aggr_ " else "")
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   (* We will iter through the selected fields, marking those which have been
-   * outputted as-is. *)
+   * outputted so that we do not output them again in the STAR operator. *)
   let outputted = ref Set.empty in
   List.iteri (fun i expr ->
       Printf.fprintf oc "%s\n\t\t%a"
         (if i > 0 then "," else "")
         emit_expr expr ;
       match expr with
-      | Expr.Field (_, tuple, field) when same_tuple_as_in tuple ->
+      | Expr.Field (_, tuple, field) when same_tuple_as_in !tuple ->
         outputted := Set.add field !outputted
       | _ -> ()
     ) exprs ;
@@ -543,7 +543,7 @@ let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
             (if i > 0 || exprs <> [] then "," else "")
             (if i = 0 then "(* All other fields *)\n\t\t" else "")
             (id_of_field_name field.Tuple.name)
-      ) in_tuple_typ
+      ) out_tuple_typ (* we want those fields ordered according to out tuple not in tuple! *)
   ) ;
   Printf.fprintf oc "\n\t)\n"
 
@@ -566,7 +566,7 @@ let emit_select oc in_tuple_typ out_tuple_typ
       \t\tCodeGenLib.select read_tuple_ sersize_of_tuple_ serialize_tuple_ where_ select_)\n"
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (emit_expr_of_input_tuple "where_" in_tuple_typ mentioned and_all_others) where
-    (emit_expr_select "select_" in_tuple_typ mentioned and_all_others)
+    (emit_expr_select "select_" in_tuple_typ mentioned and_all_others out_tuple_typ)
       (exprs_of_selected_fields selected_fields)
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
@@ -700,10 +700,10 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     (emit_aggr_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (emit_expr_of_input_tuple "where_" in_tuple_typ mentioned and_all_others) where
-    (emit_expr_select ~honor_star:false "key_of_input_" in_tuple_typ mentioned and_all_others) key
+    (emit_expr_select ~honor_star:false "key_of_input_" in_tuple_typ mentioned and_all_others out_tuple_typ) key
     (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when) selected_fields
     (emit_commit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
-    (emit_expr_select ~honor_star:false ~with_aggr:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others)
+    (emit_expr_select ~honor_star:false ~with_aggr:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ)
       (exprs_of_selected_fields selected_fields)
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ
