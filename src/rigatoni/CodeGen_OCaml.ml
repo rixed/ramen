@@ -377,41 +377,50 @@ let typ_of_aggr =
   | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
     assert false
 
+let conv_from_to from_typ to_typ p fmt e =
+  let open Lang in
+  let open Scalar in
+  let omod_of_type = function
+    | TFloat -> "BatFloat"
+    | TString -> "BatString"
+    | TBool -> "BatBool"
+    | TU8 | TU16 | TU32 | TU64 | TU128
+    | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
+      String.capitalize (otype_of_type t)
+  in
+  match from_typ, to_typ with
+  | a, b when a = b -> p fmt e
+  | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
+      (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
+  | TString, (TFloat|TBool) ->
+    Printf.fprintf fmt "(%s.of_%s %a)"
+      (omod_of_type to_typ)
+      (otype_of_type from_typ)
+      p e
+  | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
+      (TFloat|TString)
+  | (TFloat|TBool), TString ->
+    Printf.fprintf fmt "(%s.to_%s %a)"
+      (omod_of_type from_typ)
+      (otype_of_type to_typ)
+      p e
+  | _ ->
+    failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
+                (IO.to_string Scalar.print_typ from_typ)
+                (IO.to_string Scalar.print_typ to_typ))
+
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
 let rec conv_to to_typ fmt e =
   let open Lang in
-  let open Scalar in
-  let omod_of_type = function
-    | TFloat -> "BatFloat"
-    | TString -> "String"
-    | TBool -> "Bool"
-    | TU8 | TU16 | TU32 | TU64 | TU128
-    | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
-      String.capitalize (otype_of_type t)
-  in
-  let from_typ = Expr.((typ_of e).typ) |> Option.get in
+  let from_typ = Expr.((typ_of e).typ) in
   match from_typ, to_typ with
-  | a, Some b when a = b -> emit_expr fmt e
+  | Some a, Some b -> conv_from_to a b emit_expr fmt e
   | _, None -> emit_expr fmt e (* No conversion required *)
-  | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
-    Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ)
-  | TFloat, Some (TI32|TI64 as to_typ) -> (* TODO: others... *)
-    Printf.fprintf fmt "%s.of_%s (%a)"
-      (omod_of_type to_typ)
-      (otype_of_type from_typ)
-      emit_expr e
-  | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
-    Some (TFloat as to_typ) ->
-    Printf.fprintf fmt "%s.to_%s (%a)"
-      (omod_of_type from_typ)
-      (otype_of_type to_typ)
-      emit_expr e
-  | _, Some to_typ ->
-    failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
-                (IO.to_string Scalar.print_typ from_typ)
-                (IO.to_string Scalar.print_typ to_typ))
+  | None, Some b ->
+    failwith (Printf.sprintf "Cannot convert from unknown type into %s"
+                (IO.to_string Scalar.print_typ b))
 
 and emit_expr oc =
   let open Lang.Expr in
@@ -440,7 +449,7 @@ and emit_expr oc =
 (* FIXME: if e is nullable then the function is too: check for none *)
 and emit_function expr oc e =
   let impl, arg_typ = implementation_of expr in
-  Printf.fprintf oc "%s (%a)"
+  Printf.fprintf oc "(%s %a)"
     impl
     (conv_to arg_typ) e
 
@@ -459,7 +468,7 @@ and emit_function2 expr oc e1 e2 =
       | None, Some t2 -> Some t2
       | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2))
   in
-  Printf.fprintf oc "%s (%a) (%a)"
+  Printf.fprintf oc "(%s %a %a)"
     impl
     (conv_to arg_typ) e1
     (conv_to arg_typ) e2
@@ -576,7 +585,7 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
         conv_to arg_typ oc e ;
       | AggrPercentile (_, p, e) ->
         let impl, arg_typ = implementation_of aggr in
-        Printf.fprintf oc "%s None (%a) (%a) ;\n"
+        Printf.fprintf oc "(%s None %a %a) ;\n"
           impl
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;
@@ -599,14 +608,14 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
       | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e)
       | AggrAnd (_, e) | AggrOr (_, e) ->
         let impl, arg_typ = implementation_of aggr in
-        Printf.fprintf oc "%s aggr_.%s (%a) ;\n"
+        Printf.fprintf oc "(%s aggr_.%s %a) ;\n"
           impl (name_of_aggr aggr) (conv_to arg_typ) e ;
       | AggrPercentile (_, p, e) ->
         (* This value is optional but the percentile function takes an
          * optional value and return one so we do not have to deal with
          * it here: *)
         let impl, arg_typ = implementation_of aggr in
-        Printf.fprintf oc "%s (Some aggr_.%s) (%a) (%a) ;\n"
+        Printf.fprintf oc "(%s (Some aggr_.%s) %a %a) ;\n"
           impl (name_of_aggr aggr)
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;
@@ -669,9 +678,17 @@ let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   List.iter (fun field ->
-      let fn = field.Lang.Tuple.name in
-      Printf.fprintf oc "\t| %S -> %s\n"
-        fn (id_of_field_name fn)
+      let open Lang in
+      Printf.fprintf oc "\t| %S -> " field.Tuple.name ;
+      let id = id_of_field_name field.Tuple.name in
+      if field.Tuple.nullable then (
+        Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> %a)\n"
+          id
+          (conv_from_to field.Tuple.typ Scalar.TString String.print) "v_"
+      ) else (
+        Printf.fprintf oc "%a\n"
+          (conv_from_to field.Tuple.typ Scalar.TString String.print) id
+      )
     ) in_tuple_typ ;
   Printf.fprintf oc "\t| _ -> raise Not_found\n"
 
