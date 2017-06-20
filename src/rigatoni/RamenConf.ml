@@ -305,7 +305,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       (* Check that this field is, or could be, in in_type *)
       match Hashtbl.find in_type.fields field with
       | exception Not_found ->
-        !logger.info "Field %s not in in-tuple but maybe it will be later" field ;
+        !logger.debug "Cannot find field %s in in-tuple" field ;
         if in_type.complete then (
           let m = Printf.sprintf "field %s not in %S tuple" field tuple in
           raise (CompilationError m)) ;
@@ -321,6 +321,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
        * enlarge out or exp). If we don't have it then add it. *)
       match Hashtbl.find out_type.fields field with
       | exception Not_found ->
+        !logger.debug "Cannot find field %s in out-tuple" field ;
         if out_type.complete then (
           let m = Printf.sprintf "field %s not in %S tuple" field tuple in
           raise (CompilationError m)) ;
@@ -428,16 +429,19 @@ let check_select ~in_type ~out_type fields and_all_others where =
     (* Also check other expression and make use of them to improve out_type.
      * Everything that's selected must be (added) in out_type. *)
     List.fold_lefti (fun changed i sf ->
-        let name = List.hd sf.Operation.alias in
-        let exp_type =
-          match Hashtbl.find out_type.fields name with
-          | exception Not_found ->
-            let expr_typ = Expr.make_typ name in
-            !logger.debug "Adding out field %s" name ;
-            Hashtbl.add out_type.fields name (ref (Some i), expr_typ) ;
-            expr_typ
-          | _rank, exp_typ -> exp_typ in
-        changed || check_expr ~in_type ~out_type ~exp_type sf.Operation.expr
+        changed || (
+          let name = List.hd sf.Operation.alias in
+          let exp_type =
+            match Hashtbl.find out_type.fields name with
+            | exception Not_found ->
+              let expr_typ = Expr.make_typ name in
+              !logger.debug "Adding out field %s" name ;
+              Hashtbl.add out_type.fields name (ref (Some i), expr_typ) ;
+              expr_typ
+            | rank, exp_typ ->
+              if !rank = None then rank := Some i ;
+              exp_typ in
+          check_expr ~in_type ~out_type ~exp_type sf.Operation.expr)
       ) false fields
   ) || (
     (* If all other fields are selected, add them *)

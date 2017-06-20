@@ -24,9 +24,9 @@ let id_of_field_typ ?tuple field_typ =
 
 let list_print_as_tuple = List.print ~first:"(" ~last:")" ~sep:", "
 
-let print_tuple_deconstruct =
+let print_tuple_deconstruct tuple =
   let print_field fmt field_typ =
-      String.print fmt (id_of_field_typ field_typ)
+      String.print fmt (id_of_field_typ ~tuple field_typ)
   in
   list_print_as_tuple print_field
 
@@ -105,10 +105,10 @@ let emit_sersize_of_tuple name oc tuple_typ =
   Printf.fprintf oc "let %s %a =\n\t\
       %d (* null bitmask *) + %a\n"
     name
-    print_tuple_deconstruct tuple_typ
+    (print_tuple_deconstruct "out") tuple_typ
     size_for_nullmask
     (List.print ~first:"" ~last:"" ~sep:" + " (fun fmt field_typ ->
-      let id = id_of_field_typ field_typ in
+      let id = id_of_field_typ ~tuple:"out" field_typ in
       if field_typ.nullable then (
         Printf.fprintf fmt "(match %s with None -> 0 | Some x_ -> %a)"
           id
@@ -130,7 +130,7 @@ let emit_serialize_tuple name oc tuple_typ =
   let open Lang.Tuple in
   Printf.fprintf oc "let %s tx_ %a =\n"
     name
-    print_tuple_deconstruct tuple_typ ;
+    (print_tuple_deconstruct "out") tuple_typ ;
   let nullmask_bytes = nullmask_bytes_of_tuple_typ tuple_typ in
   Printf.fprintf oc "\tlet offs_ = %d in\n" nullmask_bytes ;
   (* Start by zeroing the nullmask *)
@@ -138,7 +138,7 @@ let emit_serialize_tuple name oc tuple_typ =
     Printf.fprintf oc "\tRingBuf.zero_bytes tx_ 0 %d ; (* zero the nullmask *)\n"
       nullmask_bytes ;
   let _ = List.fold_left (fun nulli field ->
-      let id = id_of_field_typ field in
+      let id = id_of_field_typ ~tuple:"out" field in
       if field.nullable then (
         (* Write either nothing (since the nullmask is initialized with 0) or
          * the nullmask bit and the value *)
@@ -202,8 +202,11 @@ let emit_read_csv_file oc csv_fname csv_separator csv_null tuple_typ =
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
     csv_fname csv_separator
 
+let emit_tuple tuple oc tuple_typ =
+  print_tuple_deconstruct tuple oc tuple_typ
+
 let emit_in_tuple mentioned and_all_others oc in_tuple_typ =
-  print_tuple_deconstruct oc (List.filter_map (fun field_typ ->
+  print_tuple_deconstruct "in" oc (List.filter_map (fun field_typ ->
     if and_all_others || Set.mem field_typ.Lang.Tuple.name mentioned then
       Some field_typ else None) in_tuple_typ)
 
@@ -218,7 +221,7 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
     name
     (nullmask_bytes_of_tuple_typ in_tuple_typ) ;
   let _ = List.fold_left (fun nulli field ->
-      let id = id_of_field_typ field in
+      let id = id_of_field_typ ~tuple:"in" field in
       if and_all_others || Set.mem field.name mentioned then (
         Printf.fprintf oc "\tlet %s =\n" id ;
         if field.nullable then
@@ -654,12 +657,15 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
     ) ;
   Printf.fprintf oc "\t()\n"
 
-let emit_commit_when name in_tuple_typ mentioned and_all_others
+(* Note: we need aggr_ in addition to out_tupple because the commit-when clause
+ * might have its own aggregates going on *)
+let emit_commit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
                      oc commit_when =
   Printf.fprintf oc "\
-    let %s aggr_ %a =\n\t%a\n"
+    let %s aggr_ %a %a =\n\t%a\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
+    (emit_tuple "out") out_tuple_typ
     emit_expr commit_when
 
 let emit_aggregate oc in_tuple_typ out_tuple_typ
@@ -696,7 +702,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     (emit_expr_of_input_tuple "where_" in_tuple_typ mentioned and_all_others) where
     (emit_expr_select ~honor_star:false "key_of_input_" in_tuple_typ mentioned and_all_others) key
     (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when) selected_fields
-    (emit_commit_when "commit_when_" in_tuple_typ mentioned and_all_others) commit_when
+    (emit_commit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
     (emit_expr_select ~honor_star:false ~with_aggr:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others)
       (exprs_of_selected_fields selected_fields)
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ

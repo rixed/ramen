@@ -111,7 +111,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (tuple_of_aggr : 'aggr -> 'tuple_in -> 'tuple_out)
               (where : 'tuple_in -> bool)
               (key_of_input : 'tuple_in -> 'key)
-              (commit_when : 'aggr -> 'tuple_in -> bool)
+              (commit_when : 'aggr -> 'tuple_in -> 'tuple_out -> bool)
               (aggr_init : 'tuple_in -> 'aggr)
               (update_aggr : 'aggr -> 'tuple_in -> unit) =
   !logger.info "Starting GROUP BY process..." ;
@@ -126,8 +126,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   let%lwt rb_in =
     CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
   let rb_out = RingBuf.create rb_out_fname rb_out_sz in (* create? *)
-  let commit aggr =
-    tuple_of_aggr aggr.fields aggr.first_tuple |>
+  let commit =
     outputer_of rb_out sersize_of_tuple serialize_tuple in
   let h = Hashtbl.create 701
   and event_count = ref 0 (* used to fake others.count etc *)
@@ -151,8 +150,9 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
           nb_entries = 1 ; nb_successive = 1 ;
           last_ev_count = !event_count ;
           fields = aggr_init in_tuple } in
-        if commit_when aggr.fields in_tuple then
-          commit aggr
+        let out_tuple = tuple_of_aggr aggr.fields aggr.first_tuple in
+        if commit_when aggr.fields in_tuple out_tuple then
+          commit out_tuple
         else (
           Hashtbl.add h k aggr ;
           return_unit
@@ -163,9 +163,10 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
         update_aggr aggr.fields in_tuple  ;
         if prev_last_key = Some k then
           aggr.nb_successive <- aggr.nb_successive + 1 ;
-        if commit_when aggr.fields in_tuple then (
+        let out_tuple = tuple_of_aggr aggr.fields aggr.first_tuple in
+        if commit_when aggr.fields in_tuple out_tuple then (
           Hashtbl.remove h k ;
-          commit aggr
+          commit out_tuple
         ) else return_unit
       )
       (* FIXME: some commit conditions require much more thoughts than that *)

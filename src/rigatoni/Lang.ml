@@ -515,7 +515,6 @@ struct
     | Ge  of typ * t * t
     | Gt  of typ * t * t
     | Eq  of typ * t * t
-    (* TODO: // for IDiv, Max, Min... *)
 
   let rec print fmt = function
     | Const (_, c) -> Scalar.print fmt c
@@ -579,7 +578,9 @@ struct
       (optional ~def:"in" (
          prefix "in" ||| prefix "out" ||| prefix "others" ||| prefix "any") ++
        non_keyword >>: fun (tuple, field) ->
-       Field (make_typ (tuple ^"."^ field), tuple, field)) m
+       (* This is important here that the type name is the raw field name,
+        * because we use the tuple field type name as their identifier *)
+       Field (make_typ field, tuple, field)) m
     (*$= field & ~printer:(test_printer print)
       (Ok (\
         Field (typ, "in", "bytes"),\
@@ -590,6 +591,11 @@ struct
         Field (typ, "in", "bytes"),\
         (8, [])))\
         (test_p field "in.bytes" |> replace_typ_in_expr)
+
+      (Ok (\
+        Field (typ, "out", "bytes"),\
+        (9, [])))\
+        (test_p field "out.bytes" |> replace_typ_in_expr)
 
       (Bad (\
         NoSolution (\
