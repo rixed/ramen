@@ -338,6 +338,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* TODO: one day we will know the type or value of params *)
     false
   | Expr.AggrMin (op_typ, e) | Expr.AggrMax (op_typ, e)
+  | Expr.AggrFirst (op_typ, e) | Expr.AggrLast (op_typ, e) ->
+    check_unary_op op_typ identity e
   | Expr.AggrSum (op_typ, e) | Expr.AggrAnd (op_typ, e)
   | Expr.AggrOr (op_typ, e) | Expr.Age (op_typ, e)
   | Expr.Not (op_typ, e) ->

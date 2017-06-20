@@ -259,9 +259,9 @@ let rec add_mentioned prev =
     -> prev
   | Field (_, tuple, field) ->
     if Lang.same_tuple_as_in tuple then Set.add field prev else prev
-  | AggrMin (_, e) | AggrMax(_, e) | AggrSum(_, e)
-  | AggrAnd (_, e) | AggrOr(_, e)
-  | Age (_, e) | Not (_, e) | Defined (_, e)
+  | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
+  | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
+  | Not (_, e) | Defined (_, e)
     -> add_mentioned prev e
   | AggrPercentile (_, e1, e2)
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -306,6 +306,8 @@ let funcname_of_expr =
   | AggrSum _ | Add _ -> "add"
   | AggrAnd _ | And _ -> "(&&)"
   | AggrOr _ | Or _ -> "(||)"
+  | AggrFirst _ -> "fst"
+  | AggrLast _ -> "snd"
   | Age _ -> "age"
   | Not _ -> "not"
   | Defined _ -> "defined"
@@ -339,7 +341,7 @@ let implementation_of expr =
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _), Some TI128 -> "Int128."^ name, Some TI128
   | (Not _|And _|Or _), Some TBool -> name, Some TBool
   | (Ge _| Gt _| Eq _), Some TBool -> name, None (* No conversion necessary *)
-  | (AggrMax _| AggrMin _), _ -> name, None (* No conversion necessary *)
+  | (AggrMax _|AggrMin _|AggrFirst _|AggrLast _), _ -> name, None (* No conversion necessary *)
   | (Age _|AggrPercentile _), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
     "CodeGenLib."^ name ^"_"^ IO.to_string Scalar.print_typ to_typ, Some TFloat
   | _, Some to_typ ->
@@ -353,7 +355,8 @@ let name_of_aggr =
   let open Expr in
   function
   | AggrMin (t, _) | AggrMax (t, _) | AggrPercentile (t, _, _)
-  | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) ->
+  | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) | AggrFirst (t, _)
+  | AggrLast (t, _) ->
     "field_"^ string_of_int t.Lang.Expr.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
   | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
@@ -366,16 +369,9 @@ let name_of_aggr =
     | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
     | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
 
-let typ_of_aggr =
-  let open Lang in
-  let open Expr in
-  function
-  | AggrMin (t, _) | AggrMax (t, _) | AggrPercentile (t, _, _)
-  | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) ->
-    otype_of_type (Option.get t.typ)
-  | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-  | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
-    assert false
+let otype_of_aggr e =
+  Option.get Lang.Expr.((typ_of e).typ) |>
+  otype_of_type
 
 let conv_from_to from_typ to_typ p fmt e =
   let open Lang in
@@ -431,8 +427,8 @@ and emit_expr oc =
     Printf.fprintf oc "%s" (id_of_field_name ~tuple field)
   | Param _ ->
     failwith "TODO: code gen for params"
-  | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _
-    | AggrOr _ | AggrPercentile _ as expr) ->
+  | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
+    | AggrLast _ | AggrPercentile _ as expr) ->
      (* This assumes there is a parameter named aggr_ for the aggregates *)
      Printf.fprintf oc "aggr_.%s" (name_of_aggr expr)
   | Age (_, e) | Not (_, e) as expr ->
@@ -543,8 +539,8 @@ let rec aggr_iter f expr =
   let open Lang.Expr in
   match expr with
   | Const _ | Param _ | Field _ -> ()
-  | AggrMin _ | AggrMax _ | AggrSum _
-  | AggrAnd _ | AggrOr _ | AggrPercentile _ ->
+  | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
+  | AggrLast _ | AggrPercentile _ ->
     f expr (* we do not recurse on e since it's forbidden to have another aggr function in there *)
   | Age(_, e) | Not(_, e) | Defined(_, e) ->
     aggr_iter f e
@@ -568,7 +564,7 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
   for_each_aggr_fun selected_fields commit_when (fun aggr ->
       Printf.fprintf oc "\tmutable %s : %s ;\n"
         (name_of_aggr aggr)
-        (typ_of_aggr aggr)
+        (otype_of_aggr aggr)
     ) ;
   Printf.fprintf oc "}\n\n" ;
   Printf.fprintf oc "let %s %a =\n\t{\n"
@@ -579,8 +575,8 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
       (* For most aggr function we start with the first value *)
       (let open Lang.Expr in
       match aggr with
-      | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e)
-      | AggrAnd (_, e) | AggrOr (_, e) ->
+      | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
+      | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) ->
         let _impl, arg_typ = implementation_of aggr in
         conv_to arg_typ oc e ;
       | AggrPercentile (_, p, e) ->
@@ -605,17 +601,17 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
       Printf.fprintf oc "\taggr_.%s <- " (name_of_aggr aggr) ;
       let open Lang.Expr in
       match aggr with
-      | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e)
-      | AggrAnd (_, e) | AggrOr (_, e) ->
+      | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
+      | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)  ->
         let impl, arg_typ = implementation_of aggr in
-        Printf.fprintf oc "(%s aggr_.%s %a) ;\n"
+        Printf.fprintf oc "%s aggr_.%s %a ;\n"
           impl (name_of_aggr aggr) (conv_to arg_typ) e ;
       | AggrPercentile (_, p, e) ->
         (* This value is optional but the percentile function takes an
          * optional value and return one so we do not have to deal with
          * it here: *)
         let impl, arg_typ = implementation_of aggr in
-        Printf.fprintf oc "(%s (Some aggr_.%s) %a %a) ;\n"
+        Printf.fprintf oc "%s (Some aggr_.%s) %a %a ;\n"
           impl (name_of_aggr aggr)
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;

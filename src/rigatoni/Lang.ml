@@ -213,6 +213,8 @@ let same_tuple_as_in = function
     | AggrSum (_, a) -> AggrSum (typ, replace_typ a)
     | AggrAnd (_, a) -> AggrAnd (typ, replace_typ a)
     | AggrOr  (_, a) -> AggrOr  (typ, replace_typ a)
+    | AggrFirst (_, a) -> AggrFirst (typ, replace_typ a)
+    | AggrLast (_, a) -> AggrLast (typ, replace_typ a)
     | AggrPercentile (_, a, b) -> AggrPercentile (typ, replace_typ a, replace_typ b)
     | Age (_, a) -> Age (typ, replace_typ a)
     | Not (_, a) -> Not (typ, replace_typ a)
@@ -411,7 +413,7 @@ let keyword =
     strinG "on" ||| strinG "change" ||| strinG "after" ||| strinG "when" |||
     strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
-    strinG "separator" ||| strinG "as" |||
+    strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
@@ -489,8 +491,12 @@ struct
     | AggrSum of typ * t
     | AggrAnd of typ * t
     | AggrOr  of typ * t
-    (* TODO: AggrLast, AggrFirst... *)
-    (* TODO: several percentiles *)
+    | AggrFirst of typ * t
+    | AggrLast of typ * t
+    (* TODO: several percentiles.
+     * Not easy because then the function must return a list instead of a
+     * scalar. It's probably easier to try to optimise the code generated
+     * for when the same expression is used in several percentile functions. *)
     | AggrPercentile of typ * t * t
     (* Other functions *)
     | Age of typ * t
@@ -520,6 +526,8 @@ struct
     | AggrSum (_, e) -> Printf.fprintf fmt "sum (%a)" print e
     | AggrAnd (_, e) -> Printf.fprintf fmt "and (%a)" print e
     | AggrOr  (_, e) -> Printf.fprintf fmt "or (%a)" print e
+    | AggrFirst (_, e) -> Printf.fprintf fmt "first (%a)" print e
+    | AggrLast (_, e) -> Printf.fprintf fmt "last (%a)" print e
     | AggrPercentile (_, p, e) -> Printf.fprintf fmt "%ath percentile (%a)" print p print e
     | Age (_, e) -> Printf.fprintf fmt "age(%a)" print e
     | Not (_, e) -> Printf.fprintf fmt "NOT (%a)" print e
@@ -539,7 +547,8 @@ struct
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
     | AggrMax (t, _) | AggrSum (t, _) | AggrAnd (t, _) | AggrOr  (t, _)
-    | AggrPercentile (t, _, _) | Age (t, _) | Not (t, _) | Defined (t, _)
+    | AggrFirst (t, _) | AggrLast (t, _) | AggrPercentile (t, _, _)
+    | Age (t, _) | Not (t, _) | Defined (t, _)
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) -> t
@@ -679,7 +688,9 @@ struct
        (afun "max" >>: fun e -> AggrMax (make_num_typ "max aggregation", e)) |||
        (afun "sum" >>: fun e -> AggrSum (make_num_typ "sum aggregation", e)) |||
        (afun "and" >>: fun e -> AggrAnd (make_bool_typ "and aggregation", e)) |||
-       (afun "or"  >>: fun e -> AggrOr  (make_bool_typ "or aggregation", e)) |||
+       (afun "or" >>: fun e -> AggrOr (make_bool_typ "or aggregation", e)) |||
+       (afun "first" >>: fun e -> AggrFirst (make_bool_typ "first aggregation", e)) |||
+       (afun "last" >>: fun e -> AggrLast (make_bool_typ "last aggregation", e)) |||
        ((const ||| param) +- (optional ~def:() (string "th")) +- blanks ++
         afun "percentile" >>: fun (p, e) ->
         (* Percentile aggr function is nullable because we want it null when
@@ -868,6 +879,8 @@ struct
              | Expr.AggrSum (_, Expr.Field (_, "in", field)) -> [ "sum_"^ field ]
              | Expr.AggrAnd (_, Expr.Field (_, "in", field)) -> [ "and_"^ field ]
              | Expr.AggrOr  (_, Expr.Field (_, "in", field)) -> [ "or_"^ field ]
+             | Expr.AggrFirst (_, Expr.Field (_, "in", field)) -> [ "first_"^ field ]
+             | Expr.AggrLast (_, Expr.Field (_, "in", field)) -> [ "last_"^ field ]
              | _ -> raise (Reject "must set alias")
            ) in
          { expr ; alias }) m
