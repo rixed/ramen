@@ -19,13 +19,6 @@ let print_temp_tup_typ fmt t =
                       Lang.Expr.print_typ expr_typ)) t.fields
     (if t.complete then "complete" else "incomplete")
 
-let temp_tup_typ_complete t =
-  if not t.complete &&
-     Hashtbl.fold (fun _ (_rank, typ) complete ->
-       complete && Lang.Expr.typ_is_complete typ) t.fields true
-  then
-    t.complete <- true
-
 let make_temp_tup_typ () =
   { complete = false ;
     fields = Hashtbl.create 7 }
@@ -372,7 +365,6 @@ let rec check_expr ~in_type ~out_type ~exp_type =
  * This is meant to be used when transferring input to output due to "select *"
  *)
 let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~autorank =
-  assert (not to_tuple.complete) ;
   let max_rank fields =
     Hashtbl.fold (fun _ (rank, _) max_rank ->
       match !rank with
@@ -399,6 +391,9 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
     Hashtbl.fold (fun n (parent_rank, parent_field) changed ->
         match Hashtbl.find to_tuple.fields n with
         | exception Not_found ->
+          if to_tuple.complete then (
+            let m = Printf.sprintf "Field %s is not in output tuple" n in
+            raise (CompilationError m)) ;
           let copy = Lang.Expr.copy_typ parent_field in
           let rank =
             if autorank then ref (Some (max_rank to_tuple.fields + 1))
@@ -410,7 +405,8 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
       ) from_tuple.fields changed in
   (* If from_tuple is complete then so is to_tuple *)
   let changed =
-    if including_complete && from_tuple.complete then (
+    if including_complete && from_tuple.complete && not to_tuple.complete then (
+      !logger.debug "Completing to_tuple from check_inherit_tuple" ;
       to_tuple.complete <- true ;
       true
     ) else changed in
@@ -418,18 +414,18 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
 
 let check_select ~in_type ~out_type fields and_all_others where =
   let open Lang in
-  (* Check the expression, improving out_type and checking against in_type: *)
-  let changed =
+  (
+    (* Check the expression, improving out_type and checking against in_type: *)
     let exp_type =
       (* That where expressions cannot be null seems a nice improvement
        * over SQL. *)
       Expr.make_bool_typ ~nullable:false "where clause" in
-    check_expr ~in_type ~out_type ~exp_type where in
-  (* Also check other expression and make use of them to improve out_type.
-   * Everything that's selected must be (added) in out_type. *)
-  let changed =
-    List.fold_lefti (fun changed i selfield ->
-        let name = List.hd selfield.Operation.alias in
+    check_expr ~in_type ~out_type ~exp_type where
+  ) || (
+    (* Also check other expression and make use of them to improve out_type.
+     * Everything that's selected must be (added) in out_type. *)
+    List.fold_lefti (fun changed i sf ->
+        let name = List.hd sf.Operation.alias in
         let exp_type =
           match Hashtbl.find out_type.fields name with
           | exception Not_found ->
@@ -438,29 +434,39 @@ let check_select ~in_type ~out_type fields and_all_others where =
             Hashtbl.add out_type.fields name (ref (Some i), expr_typ) ;
             expr_typ
           | _rank, exp_typ -> exp_typ in
-        check_expr ~in_type ~out_type ~exp_type selfield.Operation.expr || changed
-      ) changed fields in
-  (* Then if all other fields are selected, add them *)
-  let changed =
+        changed || check_expr ~in_type ~out_type ~exp_type sf.Operation.expr
+      ) false fields
+  ) || (
+    (* If all other fields are selected, add them *)
     if and_all_others then (
-      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_tuple:in_type ~to_tuple:out_type ~autorank:true || changed
-    ) else changed in
-  changed
+      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_tuple:in_type ~to_tuple:out_type ~autorank:true
+    ) else false
+  ) || (
+    (* If nothing changed so far and our input is complete, then our output is. *)
+    if in_type.complete && not out_type.complete then (
+      !logger.debug "Completing out_type because it won't change any more. " ;
+      out_type.complete <- true ;
+      true
+    ) else false
+  )
 
 let check_aggregate ~in_type ~out_type fields and_all_others
                     where key commit_when =
   let open Lang in
-  (* Improve out_type using all expressions. Check we satisfy in_type. *)
-  let changed =
+  (
+    (* Improve out_type using all expressions. Check we satisfy in_type. *)
     List.fold_left (fun changed k ->
         (* The key can be anything *)
         let exp_type = Expr.typ_of k in
         check_expr ~in_type ~out_type ~exp_type k || changed
-      ) false key in
-  let changed =
+      ) false key
+  ) || (
     let exp_type = Expr.make_bool_typ ~nullable:false "commit-when clause" in
-    check_expr ~in_type ~out_type ~exp_type commit_when || changed in
-  check_select ~in_type ~out_type fields and_all_others where || changed
+    check_expr ~in_type ~out_type ~exp_type commit_when
+  ) || (
+    (* Check select must come last since it completes out_type *)
+    check_select ~in_type ~out_type fields and_all_others where
+  )
 
 (*
  * Improve out_type using in_type and this node operation.
@@ -476,14 +482,16 @@ let check_operation ~in_type ~out_type =
     check_aggregate ~in_type ~out_type fields and_all_others where
                     key commit_when
   | Operation.OnChange expr ->
-    (* Start by transmitting the field so that the expression can
-     * sooner use out tuple: *)
-    let changed =
-      check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:in_type ~to_tuple:out_type ~autorank:false in
-    (* Then check the expression: *)
-    let exp_type =
-      Expr.make_bool_typ ~nullable:false "on-change clause" in
-    check_expr ~in_type ~out_type ~exp_type expr || changed
+    (
+      (* Start by transmitting the field so that the expression can
+       * sooner use out tuple: *)
+      check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:in_type ~to_tuple:out_type ~autorank:false
+    ) || (
+      (* Then check the expression: *)
+      let exp_type =
+        Expr.make_bool_typ ~nullable:false "on-change clause" in
+      check_expr ~in_type ~out_type ~exp_type expr
+    )
   | Operation.Alert _ ->
     check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:in_type ~to_tuple:out_type ~autorank:false
   | Operation.ReadCSVFile { fields ; _ } ->
@@ -497,20 +505,20 @@ let check_operation ~in_type ~out_type =
 let check_node_types node =
   try ( (* Prepend the node name to any CompilationError *)
     (* Try to improve the in_type using the out_type of parents: *)
-    let changed =
+    (
       if node.in_type.complete then false
       else if node.parents = [] then (
+        !logger.debug "Completing node %s in-type since we have no parents" node.name ;
         node.in_type.complete <- true ; true
       ) else List.fold_left (fun changed par ->
+            (* This is supposed to propagate parent completeness into in-tuple. *)
             check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:par.out_type ~to_tuple:node.in_type ~autorank:false || changed
-          ) false node.parents in
-    (* Now try to improve out_type using the in_type and the operation: *)
-    let changed =
-      if node.out_type.complete then changed else (
-        check_operation ~in_type:node.in_type ~out_type:node.out_type node.operation ||
-        changed
-      ) in
-    changed
+          ) false node.parents
+    ) || (
+    (* Try to improve out_type and the AST types using the in_type and the
+     * operation: *)
+      check_operation ~in_type:node.in_type ~out_type:node.out_type node.operation
+    )
   ) with CompilationError e ->
     !logger.debug "Compilation error: %s at %s"
       e (Printexc.get_backtrace ()) ;
@@ -546,17 +554,10 @@ let set_all_types graph =
    * - check that output type empty <=> no children
    *)
 
-(* If we have all info set the typing to complete. We must wait until the end
- * of type propagation because types can still be enlarged otherwise. *)
-let node_complete_typing node =
-  temp_tup_typ_complete node.in_type ;
-  temp_tup_typ_complete node.out_type
-
 let compile conf graph =
   set_all_types graph ;
   let complete =
     Hashtbl.fold (fun _ node complete ->
-        node_complete_typing node ;
         !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a\n\n"
           node.name
           print_temp_tup_typ node.in_type
