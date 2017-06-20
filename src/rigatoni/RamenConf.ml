@@ -9,8 +9,8 @@ type temp_tup_typ =
 
 let print_temp_tup_typ fmt t =
   Printf.fprintf fmt "%a (%s)"
-    (Hashtbl.print ~first:"{" ~last:"}" ~sep:", " ~kvsep:":"
-                   String.print
+    (Hashtbl.print ~first:"{" ~last:"}" ~sep:", " ~kvsep:""
+                   (fun _fmt _ -> ())
                    (fun fmt (rank, expr_typ) ->
                      Printf.fprintf fmt "[%s] %a"
                       (match !rank with
@@ -519,7 +519,7 @@ let check_node_types node =
       check_operation ~in_type:node.in_type ~out_type:node.out_type node.operation
     )
   ) with CompilationError e ->
-    !logger.debug "Compilation error: %s at %s"
+    !logger.debug "Compilation error: %s, %s"
       e (Printexc.get_backtrace ()) ;
     let e' = Printf.sprintf "node %S: %s" node.name e in
     raise (CompilationError e')

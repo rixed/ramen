@@ -138,7 +138,7 @@ inline int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint
 
 inline void print_rb(struct ringbuf *rb)
 {
-  printf("rb@%p: cons=[%"PRIu32";%"PRIu32"] -- (%u entries) -- prod=[%"PRIu32";%"PRIu32"]\n",
+  printf("rb@%p: cons=[%"PRIu32";%"PRIu32"] -- (%u words of data) -- prod=[%"PRIu32";%"PRIu32"]\n",
          rb,
          rb->cons_tail, rb->cons_head,
          ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head),

@@ -454,15 +454,15 @@ struct
     typ.nullable <> None && typ.typ <> None
 
   let print_typ fmt typ =
-    Printf.fprintf fmt "%s%s of %s"
-      (match typ.nullable with
-      | None -> "maybe nullable "
-      | Some true -> "nullable "
-      | Some false -> "")
+    Printf.fprintf fmt "%s of %s%s"
       typ.name
       (match typ.typ with
       | None -> "unknown type"
       | Some typ -> "type "^ IO.to_string Scalar.print_typ typ)
+      (match typ.nullable with
+      | None -> ", maybe nullable"
+      | Some true -> ", nullable"
+      | Some false -> "")
 
   let uniq_num_seq = ref 0
   let make_typ ?nullable ?typ name =
@@ -813,6 +813,8 @@ struct
         where : Expr.t ;
         key : Expr.t list ;
         commit_when : Expr.t }
+    (* Not sure we need OnChange if we have access to last tuple in select
+     * where clause... *)
     | OnChange of Expr.t
     | Alert of { team : string ; subject : string ; text : string }
     | ReadCSVFile of { fname : string ; separator : string ;
