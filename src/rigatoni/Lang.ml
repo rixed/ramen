@@ -485,7 +485,7 @@ struct
     | AggrSum of typ * t
     | AggrAnd of typ * t
     | AggrOr  of typ * t
-    (* TODO: last, first... *)
+    (* TODO: AggrLast, AggrFirst... *)
     (* TODO: several percentiles *)
     | AggrPercentile of typ * t * t
     (* Other functions *)
@@ -504,6 +504,7 @@ struct
     | Ge  of typ * t * t
     | Gt  of typ * t * t
     | Eq  of typ * t * t
+    (* TODO: // for IDiv, Max, Min... *)
 
   let rec print fmt = function
     | Const (_, c) -> Scalar.print fmt c

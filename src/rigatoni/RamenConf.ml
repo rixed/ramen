@@ -387,7 +387,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.
  * If autorank is true, do not try to reuse from rank but add them instead.
- * This is meant to be used when transfering input to output due to "select *"
+ * This is meant to be used when transferring input to output due to "select *"
  *)
 let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~autorank =
   assert (not to_tuple.complete) ;

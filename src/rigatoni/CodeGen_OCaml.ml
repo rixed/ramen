@@ -261,7 +261,7 @@ let rec add_mentioned prev =
     if Lang.same_tuple_as_in tuple then Set.add field prev else prev
   | AggrMin (_, e) | AggrMax(_, e) | AggrSum(_, e)
   | AggrAnd (_, e) | AggrOr(_, e)
-  | Age(_, e) | Not(_, e) | Defined(_, e)
+  | Age (_, e) | Not (_, e) | Defined (_, e)
     -> add_mentioned prev e
   | AggrPercentile (_, e1, e2)
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -297,25 +297,49 @@ let emit_scalar oc =
 (* Given a function name and an output type, return the actual function
  * returning that type, and the type input parameters must be converted into,
  * if any *)
-let implementation_of name out_typ =
+let funcname_of_expr =
+  let open Lang.Expr in
+  function
+  | AggrMin _ -> "min"
+  | AggrMax _ -> "max"
+  | AggrPercentile _ -> "percentile"
+  | AggrSum _ | Add _ -> "add"
+  | AggrAnd _ | And _ -> "(&&)"
+  | AggrOr _ | Or _ -> "(||)"
+  | Age _ -> "age"
+  | Not _ -> "not"
+  | Defined _ -> "defined"
+  | Sub _ -> "sub"
+  | Mul _ -> "mul"
+  | Div _ -> "div"
+  | Exp _ -> "exp"
+  | Ge _ -> "(>=)"
+  | Gt _ -> "(>)"
+  | Eq _ -> "(=)"
+  | Const _ | Param _ | Field _ ->
+    assert false
+
+let implementation_of expr out_typ =
   let open Lang in
   let open Scalar in
-  match name, out_typ.Expr.typ with
-  | ("add" | "sub" | "mul" | "div"), Some TFloat -> "Float."^ name, Some TFloat
-  | ("add" | "sub" | "mul" | "div"), Some TU8 -> "Uint8."^ name, Some TU8
-  | ("add" | "sub" | "mul" | "div"), Some TU16 -> "Uint16."^ name, Some TU16
-  | ("add" | "sub" | "mul" | "div"), Some TU32 -> "Uint32."^ name, Some TU32
-  | ("add" | "sub" | "mul" | "div"), Some TU64 -> "Uint64."^ name, Some TU64
-  | ("add" | "sub" | "mul" | "div"), Some TU128 -> "Uint128."^ name, Some TU128
-  | ("add" | "sub" | "mul" | "div"), Some TI8 -> "Int8."^ name, Some TI8
-  | ("add" | "sub" | "mul" | "div"), Some TI16 -> "Int16."^ name, Some TI16
-  | ("add" | "sub" | "mul" | "div"), Some TI32 -> "Int32."^ name, Some TI32
-  | ("add" | "sub" | "mul" | "div"), Some TI64 -> "Int64."^ name, Some TI64
-  | ("add" | "sub" | "mul" | "div"), Some TI128 -> "Int128."^ name, Some TI128
-  | ("not" | "&&" | "||"), Some TBool -> "("^name^")", Some TBool
-  | (">=" | ">" | "="), Some TBool -> "("^name^")", None (* No conversion necessary *)
-  | ("max" | "min"), _ -> name, None (* No conversion necessary *)
-  | ("age" | "percentile"), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
+  let open Expr in
+  let name = funcname_of_expr expr in
+  match expr, out_typ.Expr.typ with
+  | (Add _|Sub _|Mul _|Div _), Some TFloat -> "Float."^ name, Some TFloat
+  | (Add _|Sub _|Mul _|Div _), Some TU8 -> "Uint8."^ name, Some TU8
+  | (Add _|Sub _|Mul _|Div _), Some TU16 -> "Uint16."^ name, Some TU16
+  | (Add _|Sub _|Mul _|Div _), Some TU32 -> "Uint32."^ name, Some TU32
+  | (Add _|Sub _|Mul _|Div _), Some TU64 -> "Uint64."^ name, Some TU64
+  | (Add _|Sub _|Mul _|Div _), Some TU128 -> "Uint128."^ name, Some TU128
+  | (Add _|Sub _|Mul _|Div _), Some TI8 -> "Int8."^ name, Some TI8
+  | (Add _|Sub _|Mul _|Div _), Some TI16 -> "Int16."^ name, Some TI16
+  | (Add _|Sub _|Mul _|Div _), Some TI32 -> "Int32."^ name, Some TI32
+  | (Add _|Sub _|Mul _|Div _), Some TI64 -> "Int64."^ name, Some TI64
+  | (Add _|Sub _|Mul _|Div _), Some TI128 -> "Int128."^ name, Some TI128
+  | (Not _|And _|Or _), Some TBool -> "("^name^")", Some TBool
+  | (Ge _| Gt _| Eq _), Some TBool -> "("^name^")", None (* No conversion necessary *)
+  | (AggrMax _| AggrMin _), _ -> name, None (* No conversion necessary *)
+  | (Age _|AggrPercentile _), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
     "CodeGenLib."^ name ^"_"^ IO.to_string Scalar.print_typ to_typ, Some TFloat
   | _, Some to_typ ->
     failwith ("Cannot find implementation of "^ name ^" for type "^
@@ -395,34 +419,27 @@ and emit_expr oc =
     | Expr.AggrOr _ | Expr.AggrPercentile _ as expr) ->
      (* This assumes there is a parameter named aggr_ for the aggregates *)
      Printf.fprintf oc "aggr_.%s" (name_of_aggr expr)
-  | Expr.Age (t, e) ->
-    emit_function "age" t oc e
-  | Expr.Not (t, e) ->
-    emit_function "not" t oc e
+  | Expr.Age (t, e) | Expr.Not (t, e) as expr ->
+    emit_function expr t oc e
   | Expr.Defined (_, e) ->
     Printf.fprintf oc "(%a <> None)" emit_expr e
-  | Expr.Add (t, e1, e2) -> emit_function2 "add" t oc e1 e2
-  | Expr.Sub (t, e1, e2) -> emit_function2 "sub" t oc e1 e2
-  | Expr.Mul (t, e1, e2) -> emit_function2 "mul" t oc e1 e2
-  | Expr.Div (t, e1, e2) -> emit_function2 "div" t oc e1 e2
-  | Expr.Exp (t, e1, e2) -> emit_function2 "exp" t oc e1 e2
-  | Expr.And (t, e1, e2) -> emit_function2 "&&" t oc e1 e2
-  | Expr.Or (t, e1, e2) -> emit_function2 "||" t oc e1 e2
-  | Expr.Ge (t, e1, e2) -> emit_function2 ">=" t oc e1 e2
-  | Expr.Gt (t, e1, e2) -> emit_function2 ">" t oc e1 e2
-  | Expr.Eq (t, e1, e2) -> emit_function2 "=" t oc e1 e2
+  | Expr.Add (t, e1, e2) | Expr.Sub (t, e1, e2) | Expr.Mul (t, e1, e2)
+  | Expr.Div (t, e1, e2) | Expr.Exp (t, e1, e2) | Expr.And (t, e1, e2)
+  | Expr.Or (t, e1, e2) | Expr.Ge (t, e1, e2) | Expr.Gt (t, e1, e2)
+  | Expr.Eq (t, e1, e2) as expr ->
+    emit_function2 expr t oc e1 e2
 
 (* The output must be of type [t] *)
 (* FIXME: if e is nullable then the function is too: check for none *)
-and emit_function name t oc e =
-  let impl, arg_typ = implementation_of name t in
+and emit_function expr t oc e =
+  let impl, arg_typ = implementation_of expr t in
   Printf.fprintf oc "%s (%a)"
     impl
     (conv_to arg_typ) e
 
 (* FIXME: if any of e1 or e2 is nullable then the function is too: check for none *)
-and emit_function2 name t oc e1 e2 =
-  let impl, arg_typ = implementation_of name t in
+and emit_function2 expr t oc e1 e2 =
+  let impl, arg_typ = implementation_of expr t in
   Printf.fprintf oc "%s (%a) (%a)"
     impl
     (conv_to arg_typ) e1
@@ -515,19 +532,6 @@ let for_each_aggr_fun selected_fields commit_when f =
     ) selected_fields ;
   aggr_iter f commit_when
 
-let funcname_of_aggr =
-  let open Lang.Expr in
-  function
-  | AggrMin _ -> "min"
-  | AggrMax _ -> "max"
-  | AggrPercentile _ -> "percentile"
-  | AggrSum _ -> "add"
-  | AggrAnd _ -> "(&&)"
-  | AggrOr _ -> "(||)"
-  | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-  | Mul _ | Div _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
-    assert false
-
 let emit_aggr_init name in_tuple_typ mentioned and_all_others
                    commit_when oc selected_fields =
   (* We must collect all aggregation functions present in the selected_fields
@@ -549,10 +553,10 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
       match aggr with
       | AggrMin (typ, e) | AggrMax (typ, e) | AggrSum (typ, e)
       | AggrAnd (typ, e) | AggrOr (typ, e) ->
-        let _impl, arg_typ = implementation_of (funcname_of_aggr aggr) typ in
+        let _impl, arg_typ = implementation_of aggr typ in
         conv_to arg_typ oc e ;
       | AggrPercentile (typ, p, e) ->
-        let impl, arg_typ = implementation_of "percentile" typ in
+        let impl, arg_typ = implementation_of aggr typ in
         Printf.fprintf oc "%s None (%a) (%a) ;\n"
           impl
           (conv_to arg_typ) p
@@ -575,14 +579,14 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
       match aggr with
       | AggrMin (typ, e) | AggrMax (typ, e) | AggrSum (typ, e)
       | AggrAnd (typ, e) | AggrOr (typ, e) ->
-        let impl, arg_typ = implementation_of (funcname_of_aggr aggr) typ in
+        let impl, arg_typ = implementation_of aggr typ in
         Printf.fprintf oc "%s aggr_.%s (%a) ;\n"
           impl (name_of_aggr aggr) (conv_to arg_typ) e ;
       | AggrPercentile (typ, p, e) ->
         (* This value is optional but the percentile function takes an
          * optional value and return one so we do not have to deal with
          * it here: *)
-        let impl, arg_typ = implementation_of "percentile" typ in
+        let impl, arg_typ = implementation_of aggr typ in
         Printf.fprintf oc "%s (Some aggr_.%s) (%a) (%a) ;\n"
           impl (name_of_aggr aggr)
           (conv_to arg_typ) p
