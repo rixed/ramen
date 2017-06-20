@@ -106,10 +106,10 @@ struct
             last_touched = !Alarm.now ;
             last_ev_count = !event_count ;
             aggr = make_aggregate e }
-        | av ->
-          av.last_touched <- !Alarm.now ;
-          av.last_ev_count <- !event_count ;
-          aggregate av.aggr e) ;
+      | av ->
+        av.last_touched <- !Alarm.now ;
+        av.last_ev_count <- !event_count ;
+        aggregate av.aggr e) ;
       (* haha lol: TODO a heap of timeouts *)
       Hashtbl.filteri_inplace (fun k av ->
           if Option.map_default (fun ts -> !Alarm.now -. av.last_touched >= ts) false timeout_sec ||
