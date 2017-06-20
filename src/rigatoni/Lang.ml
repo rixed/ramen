@@ -221,6 +221,7 @@ let same_tuple_as_in = function
     | Sub (_, a, b) -> Sub (typ, replace_typ a, replace_typ b)
     | Mul (_, a, b) -> Mul (typ, replace_typ a, replace_typ b)
     | Div (_, a, b) -> Div (typ, replace_typ a, replace_typ b)
+    | IDiv (_, a, b) -> IDiv (typ, replace_typ a, replace_typ b)
     | Exp (_, a, b) -> Exp (typ, replace_typ a, replace_typ b)
     | And (_, a, b) -> And (typ, replace_typ a, replace_typ b)
     | Or (_, a, b) -> Or (typ, replace_typ a, replace_typ b)
@@ -498,6 +499,7 @@ struct
     | Sub of typ * t * t
     | Mul of typ * t * t
     | Div of typ * t * t
+    | IDiv of typ * t * t
     | Exp of typ * t * t
     | And of typ * t * t
     | Or  of typ * t * t
@@ -523,6 +525,7 @@ struct
     | Sub (_, e1, e2) -> Printf.fprintf fmt "(%a) - (%a)" print e1 print e2
     | Mul (_, e1, e2) -> Printf.fprintf fmt "(%a) * (%a)" print e1 print e2
     | Div (_, e1, e2) -> Printf.fprintf fmt "(%a) / (%a)" print e1 print e2
+    | IDiv (_, e1, e2) -> Printf.fprintf fmt "(%a) // (%a)" print e1 print e2
     | Exp (_, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" print e1 print e2
     | And (_, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" print e1 print e2
     | Or (_, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" print e1 print e2
@@ -535,8 +538,8 @@ struct
     | AggrMax (t, _) | AggrSum (t, _) | AggrAnd (t, _) | AggrOr  (t, _)
     | AggrPercentile (t, _, _) | Age (t, _) | Not (t, _) | Defined (t, _)
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
-    | Exp (t, _, _) | And (t, _, _) | Or (t, _, _) | Ge (t, _, _)
-    | Gt (t, _, _) | Eq (t, _, _) -> t
+    | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
+    | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) -> t
 
   module Parser =
   struct
@@ -632,10 +635,12 @@ struct
 
     and high_prec_left_assoc m =
       let m = "arithmetic operator" :: m in
-      let op = that_string "*" ||| that_string "/"
+      let op = that_string "*" ||| that_string "//" ||| that_string "/"
       and reduce t1 op t2 = match op with
         | "*" -> Mul (make_num_typ "multiplication", t1, t2)
-        | "/" -> Div (make_num_typ "division", t1, t2)
+        (* Note: We want the default division to output floats by default *)
+        | "/" -> Div (make_typ ~typ:Scalar.TFloat "division", t1, t2)
+        | "//" -> IDiv (make_num_typ "integer-division", t1, t2)
         | _ -> assert false in
       binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks~reduce m
 
@@ -729,13 +734,13 @@ struct
         (test_p p "(sum bytes)/$avg_window" |> replace_typ_in_expr)
 
       (Ok (\
-        Div (typ, \
+        IDiv (typ, \
           Field (typ, "in", "start"),\
           Mul (typ, \
             Const (typ, Scalar.VI32 1_000_000l),\
             Param (typ, "avg_window"))),\
-        (33, [])))\
-        (test_p p "start / (1_000_000 * $avg_window)" |> replace_typ_in_expr)
+        (34, [])))\
+        (test_p p "start // (1_000_000 * $avg_window)" |> replace_typ_in_expr)
 
       (Ok (\
         AggrPercentile (typ,\

@@ -371,6 +371,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
   | Expr.Div (op_typ, e1, e2) ->
     check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
+  | Expr.IDiv (op_typ, e1, e2) ->
+    check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TU128 e1 ~exp_sub_typ2:Scalar.TU128 e2
   | Expr.Exp (op_typ, e1, e2) ->
     check_binary_op op_typ larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
   | Expr.And (op_typ, e1, e2) ->

@@ -265,8 +265,8 @@ let rec add_mentioned prev =
     -> add_mentioned prev e
   | AggrPercentile (_, e1, e2)
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
-  | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2) | Ge (_, e1, e2)
-  | Gt (_, e1, e2) | Eq (_, e1, e2)
+  | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
+  | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2)
     -> add_mentioned (add_mentioned prev e1) e2
 
 let add_all_mentioned lst =
@@ -311,7 +311,7 @@ let funcname_of_expr =
   | Defined _ -> "defined"
   | Sub _ -> "sub"
   | Mul _ -> "mul"
-  | Div _ -> "div"
+  | Div _ | IDiv _ -> "div"
   | Exp _ -> "exp"
   | Ge _ -> "(>=)"
   | Gt _ -> "(>)"
@@ -325,17 +325,17 @@ let implementation_of expr out_typ =
   let open Expr in
   let name = funcname_of_expr expr in
   match expr, out_typ.Expr.typ with
-  | (Add _|Sub _|Mul _|Div _), Some TFloat -> "Float."^ name, Some TFloat
-  | (Add _|Sub _|Mul _|Div _), Some TU8 -> "Uint8."^ name, Some TU8
-  | (Add _|Sub _|Mul _|Div _), Some TU16 -> "Uint16."^ name, Some TU16
-  | (Add _|Sub _|Mul _|Div _), Some TU32 -> "Uint32."^ name, Some TU32
-  | (Add _|Sub _|Mul _|Div _), Some TU64 -> "Uint64."^ name, Some TU64
-  | (Add _|Sub _|Mul _|Div _), Some TU128 -> "Uint128."^ name, Some TU128
-  | (Add _|Sub _|Mul _|Div _), Some TI8 -> "Int8."^ name, Some TI8
-  | (Add _|Sub _|Mul _|Div _), Some TI16 -> "Int16."^ name, Some TI16
-  | (Add _|Sub _|Mul _|Div _), Some TI32 -> "Int32."^ name, Some TI32
-  | (Add _|Sub _|Mul _|Div _), Some TI64 -> "Int64."^ name, Some TI64
-  | (Add _|Sub _|Mul _|Div _), Some TI128 -> "Int128."^ name, Some TI128
+  | (Add _|Sub _|Mul _|IDiv _|Div _), Some TFloat -> "Float."^ name, Some TFloat
+  | (Add _|Sub _|Mul _|IDiv _), Some TU8 -> "Uint8."^ name, Some TU8
+  | (Add _|Sub _|Mul _|IDiv _), Some TU16 -> "Uint16."^ name, Some TU16
+  | (Add _|Sub _|Mul _|IDiv _), Some TU32 -> "Uint32."^ name, Some TU32
+  | (Add _|Sub _|Mul _|IDiv _), Some TU64 -> "Uint64."^ name, Some TU64
+  | (Add _|Sub _|Mul _|IDiv _), Some TU128 -> "Uint128."^ name, Some TU128
+  | (Add _|Sub _|Mul _|IDiv _), Some TI8 -> "Int8."^ name, Some TI8
+  | (Add _|Sub _|Mul _|IDiv _), Some TI16 -> "Int16."^ name, Some TI16
+  | (Add _|Sub _|Mul _|IDiv _), Some TI32 -> "Int32."^ name, Some TI32
+  | (Add _|Sub _|Mul _|IDiv _), Some TI64 -> "Int64."^ name, Some TI64
+  | (Add _|Sub _|Mul _|IDiv _), Some TI128 -> "Int128."^ name, Some TI128
   | (Not _|And _|Or _), Some TBool -> "("^name^")", Some TBool
   | (Ge _| Gt _| Eq _), Some TBool -> "("^name^")", None (* No conversion necessary *)
   | (AggrMax _| AggrMin _), _ -> name, None (* No conversion necessary *)
@@ -355,7 +355,7 @@ let name_of_aggr =
   | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) ->
     "field_"^ string_of_int t.Lang.Expr.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-  | Mul _ | Div _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
+  | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
     assert false
 
   let otype_of_type =
@@ -373,7 +373,7 @@ let typ_of_aggr =
   | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) ->
     otype_of_type (Option.get t.typ)
   | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-  | Mul _ | Div _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
+  | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
     assert false
 
 (* Implementation_of gives us the type operands must be converted to.
@@ -407,26 +407,26 @@ let rec conv_to to_typ fmt e =
                 (IO.to_string Scalar.print_typ to_typ))
 
 and emit_expr oc =
-  let open Lang in
+  let open Lang.Expr in
   function
-  | Expr.Const (_, c) ->
+  | Const (_, c) ->
     emit_scalar oc c
-  | Expr.Field (_, tuple, field) ->
+  | Field (_, tuple, field) ->
     Printf.fprintf oc "%s" (id_of_field_name ~tuple field)
-  | Expr.Param _ ->
+  | Param _ ->
     failwith "TODO: code gen for params"
-  | (Expr.AggrMin _ | Expr.AggrMax _ | Expr.AggrSum _ | Expr.AggrAnd _
-    | Expr.AggrOr _ | Expr.AggrPercentile _ as expr) ->
+  | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _
+    | AggrOr _ | AggrPercentile _ as expr) ->
      (* This assumes there is a parameter named aggr_ for the aggregates *)
      Printf.fprintf oc "aggr_.%s" (name_of_aggr expr)
-  | Expr.Age (t, e) | Expr.Not (t, e) as expr ->
+  | Age (t, e) | Not (t, e) as expr ->
     emit_function expr t oc e
-  | Expr.Defined (_, e) ->
+  | Defined (_, e) ->
     Printf.fprintf oc "(%a <> None)" emit_expr e
-  | Expr.Add (t, e1, e2) | Expr.Sub (t, e1, e2) | Expr.Mul (t, e1, e2)
-  | Expr.Div (t, e1, e2) | Expr.Exp (t, e1, e2) | Expr.And (t, e1, e2)
-  | Expr.Or (t, e1, e2) | Expr.Ge (t, e1, e2) | Expr.Gt (t, e1, e2)
-  | Expr.Eq (t, e1, e2) as expr ->
+  | Add (t, e1, e2) | Sub (t, e1, e2) | Mul (t, e1, e2)
+  | Div (t, e1, e2) | IDiv (t, e1, e2) | Exp (t, e1, e2) | And (t, e1, e2)
+  | Or (t, e1, e2) | Ge (t, e1, e2) | Gt (t, e1, e2)
+  | Eq (t, e1, e2) as expr ->
     emit_function2 expr t oc e1 e2
 
 (* The output must be of type [t] *)
@@ -521,8 +521,8 @@ let rec aggr_iter f expr =
   | Age(_, e) | Not(_, e) | Defined(_, e) ->
     aggr_iter f e
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
-  | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2) | Ge (_, e1, e2)
-  | Gt (_, e1, e2) | Eq (_, e1, e2) ->
+  | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
+  | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) ->
     aggr_iter f e1 ;
     aggr_iter f e2
 
@@ -562,7 +562,7 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-      | Mul _ | Div _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
+      | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
         assert false) ;
       Printf.fprintf oc " ; \n" ;
     ) ;
@@ -592,7 +592,7 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-      | Mul _ | Div _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
+      | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
         assert false
     ) ;
   Printf.fprintf oc "\t()\n"
