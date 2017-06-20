@@ -226,23 +226,24 @@ let check_expr_type ~from ~to_ =
  * in the operator so we improve typing of the AST along the way. *)
 let rec check_expr ~in_type ~out_type ~exp_type =
   let open Lang in
+  let open Expr in
   let check_operand op_typ sub_typ ?exp_sub_typ ?exp_sub_nullable sub_expr=
     (* Start by recursing into the sub-expression to know its real type: *)
     let changed = check_expr ~in_type ~out_type ~exp_type:sub_typ sub_expr in
     (* Now we check this comply with the operator expectations about its operand : *)
-    (match sub_typ.Expr.typ, exp_sub_typ with
+    (match sub_typ.typ, exp_sub_typ with
     | Some actual_typ, Some exp_sub_typ ->
       if not (can_cast ~from_scalar_type:actual_typ ~to_scalar_type:exp_sub_typ) then
         let m = Printf.sprintf "Operand of %s is supposed to have type compatible with %s, not %s"
-          op_typ.Expr.name
+          op_typ.name
           (IO.to_string Scalar.print_typ exp_sub_typ)
           (IO.to_string Scalar.print_typ actual_typ) in
         raise (CompilationError m)
     | _ -> ()) ;
-    (match exp_sub_nullable, sub_typ.Expr.nullable with
+    (match exp_sub_nullable, sub_typ.nullable with
     | Some n1, Some n2 when n1 <> n2 ->
       let m = Printf.sprintf "Operand of %s is%s supposed to be NULLable"
-        op_typ.Expr.name (if n1 then "" else " not") in
+        op_typ.name (if n1 then "" else " not") in
       raise (CompilationError m)
     | _ -> ()) ;
     changed
@@ -250,22 +251,22 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   (* Check that actual_typ is a better version of op_typ and improve op_typ,
    * then check that the resulting op_type fulfill exp_type. *)
   let check_operator op_typ actual_typ nullable =
-    let from = Expr.make_typ ~typ:actual_typ ?nullable op_typ.Lang.Expr.name in
+    let from = make_typ ~typ:actual_typ ?nullable op_typ.name in
     let changed = check_expr_type ~from ~to_:op_typ in
     check_expr_type ~from:op_typ ~to_:exp_type || changed
   in
   let check_unary_op op_typ make_op_typ ?(propagate_null=true) ?exp_sub_typ ?exp_sub_nullable sub_expr =
     (* First we check the operand: does it comply with the expected type
      * (enlarging it if necessary)? *)
-    let sub_typ = Expr.typ_of sub_expr in
+    let sub_typ = typ_of sub_expr in
     let changed = check_operand op_typ sub_typ ?exp_sub_typ ?exp_sub_nullable sub_expr in
     (* So far so good. So, given the type of the operand, what is the type of the operator? *)
-    match sub_typ.Expr.typ with
+    match sub_typ.typ with
     | Some sub_typ_typ ->
       let actual_typ = make_op_typ sub_typ_typ in
       (* We propagate nullability automatically for most operator *)
       let nullable =
-        if propagate_null then sub_typ.Expr.nullable else None in
+        if propagate_null then sub_typ.nullable else None in
       (* Now check that this is OK with this operator type, enlarging it if required: *)
       check_operator op_typ actual_typ nullable || changed
     | None -> changed (* try again later *)
@@ -273,17 +274,17 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   let check_binary_op op_typ make_op_typ ?(propagate_null=true)
                       ?exp_sub_typ1 ?exp_sub_nullable1 sub_expr1
                       ?exp_sub_typ2 ?exp_sub_nullable2 sub_expr2 =
-    let sub_typ1 = Expr.typ_of sub_expr1 in
+    let sub_typ1 = typ_of sub_expr1 in
     let changed =
         check_operand op_typ sub_typ1 ?exp_sub_typ:exp_sub_typ1 ?exp_sub_nullable:exp_sub_nullable1 sub_expr1 in
-    let sub_typ2 = Expr.typ_of sub_expr2 in
+    let sub_typ2 = typ_of sub_expr2 in
     let changed =
         check_operand op_typ sub_typ2 ?exp_sub_typ:exp_sub_typ2 ?exp_sub_nullable:exp_sub_nullable2 sub_expr2 || changed in
-    match sub_typ1.Expr.typ, sub_typ2.Expr.typ with
+    match sub_typ1.typ, sub_typ2.typ with
     | Some sub_typ1_typ, Some sub_typ2_typ ->
       let actual_typ = make_op_typ (sub_typ1_typ, sub_typ2_typ) in
       let nullable = if propagate_null then
-          match sub_typ1.Expr.nullable, sub_typ2.Expr.nullable with
+          match sub_typ1.nullable, sub_typ2.nullable with
           | Some true, _ | _, Some true -> Some true
           | Some false, Some false -> Some false
           | _ -> None
@@ -296,22 +297,23 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   and return_float _ = Scalar.TFloat
   in
   function
-  | Expr.Const (op_typ, _) ->
+  | Const (op_typ, _) ->
     (* op_typ is already optimal. But is it compatible with exp_type? *)
     check_expr_type ~from:op_typ ~to_:exp_type
-  | Expr.Field (op_typ, tuple, field) ->
+  | Field (op_typ, tuple, field) ->
     if same_tuple_as_in tuple then (
       (* Check that this field is, or could be, in in_type *)
       match Hashtbl.find in_type.fields field with
       | exception Not_found ->
+        !logger.info "Field %s not in in-tuple but maybe it will be later" field ;
         if in_type.complete then (
           let m = Printf.sprintf "field %s not in %S tuple" field tuple in
           raise (CompilationError m)) ;
         false
       | _, from ->
         if in_type.complete then ( (* Save the type *)
-          op_typ.Expr.nullable <- from.Expr.nullable ;
-          op_typ.Expr.typ <- from.Expr.typ
+          op_typ.nullable <- from.nullable ;
+          op_typ.typ <- from.typ
         ) ;
         check_expr_type ~from ~to_:exp_type
     ) else if tuple = "out" then (
@@ -326,38 +328,38 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         true
       | _, out ->
         if out_type.complete then ( (* Save the type *)
-          op_typ.Expr.nullable <- out.Expr.nullable ;
-          op_typ.Expr.typ <- out.Expr.typ
+          op_typ.nullable <- out.nullable ;
+          op_typ.typ <- out.typ
         ) ;
         check_expr_type ~from:out ~to_:exp_type
     ) else (
       let m = Printf.sprintf "unknown tuple %S" tuple in
       raise (CompilationError m)
     )
-  | Expr.Param (_op_typ, _pname) ->
+  | Param (_op_typ, _pname) ->
     (* TODO: one day we will know the type or value of params *)
     false
-  | Expr.AggrMin (op_typ, e) | Expr.AggrMax (op_typ, e)
-  | Expr.AggrFirst (op_typ, e) | Expr.AggrLast (op_typ, e) ->
+  | AggrMin (op_typ, e) | AggrMax (op_typ, e)
+  | AggrFirst (op_typ, e) | AggrLast (op_typ, e) ->
     check_unary_op op_typ identity e
-  | Expr.AggrSum (op_typ, e) | Expr.AggrAnd (op_typ, e)
-  | Expr.AggrOr (op_typ, e) | Expr.Age (op_typ, e)
-  | Expr.Not (op_typ, e) ->
+  | AggrSum (op_typ, e) | AggrAnd (op_typ, e)
+  | AggrOr (op_typ, e) | Age (op_typ, e)
+  | Not (op_typ, e) ->
     check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
-  | Expr.Defined (op_typ, e) ->
+  | Defined (op_typ, e) ->
     check_unary_op op_typ return_bool ~exp_sub_nullable:true ~propagate_null:false e
-  | Expr.AggrPercentile (op_typ, e1, e2) ->
+  | AggrPercentile (op_typ, e1, e2) ->
     check_binary_op op_typ snd ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.Add (op_typ, e1, e2) | Expr.Sub (op_typ, e1, e2)
-  | Expr.Mul (op_typ, e1, e2) | Expr.IDiv (op_typ, e1, e2)
-  | Expr.Exp (op_typ, e1, e2) ->
+  | Add (op_typ, e1, e2) | Sub (op_typ, e1, e2)
+  | Mul (op_typ, e1, e2) | IDiv (op_typ, e1, e2)
+  | Exp (op_typ, e1, e2) ->
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.Ge (op_typ, e1, e2) | Expr.Gt (op_typ, e1, e2)
-  | Expr.Eq (op_typ, e1, e2) ->
+  | Ge (op_typ, e1, e2) | Gt (op_typ, e1, e2)
+  | Eq (op_typ, e1, e2) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
-  | Expr.Div (op_typ, e1, e2) ->
+  | Div (op_typ, e1, e2) ->
     check_binary_op op_typ return_float ~exp_sub_typ1:Scalar.TU128 e1 ~exp_sub_typ2:Scalar.TU128 e2
-  | Expr.And (op_typ, e1, e2) | Expr.Or (op_typ, e1, e2) ->
+  | And (op_typ, e1, e2) | Or (op_typ, e1, e2) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
 
 (* Given two tuple types, transfer all fields from the parent to the child,
