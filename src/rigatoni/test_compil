@@ -113,16 +113,40 @@ curl "$@" \
   -X PUT \
   -d '{
     "operation":
-      "SELECT MIN capture_begin, MAX capture_end, ip4_client, ip4_server,
+      "SELECT MIN capture_begin, MAX capture_end, ip4_server,
               SUM(traffic_bytes_client + traffic_bytes_server) AS bytes,
               SUM(traffic_packets_client + traffic_packets_server) AS packets
        WHERE ip4_client IS NOT NULL AND ip4_server IS NOT NULL
-       GROUP BY ip4_client, ip4_server, capture_begin/60_000_000
-       COMMIT WHEN MAX(capture_begin) > MIN(capture_begin) + 60_000_000"
+       GROUP BY ip4_server, capture_begin/60_000_000
+       COMMIT WHEN MAX(capture_begin) > MIN(capture_begin) + 10_000_000"
   }' \
   -H 'Content-Type: application/json' http://localhost:29380/node/n2 &&
 
 curl "$@" -X PUT http://localhost:29380/link/n1/n2 &&
+
+curl "$@" \
+  -X PUT \
+  -d '{
+    "operation":
+      "SELECT * WHERE bytes / (capture_begin_max - capture_begin_min) < 1_000_000_000"
+  }' \
+  -H 'Content-Type: application/json' http://localhost:29380/node/n3 &&
+
+curl "$@" -X PUT http://localhost:29380/link/n2/n3 &&
+
+curl "$@" \
+  -X PUT \
+  -d '{
+    "operation":
+      "ALERT \"fire brigade\"
+             SUBJECT \"Low traffic to ${ip4_server}\"
+             TEXT \"Since ${min_capture_begin} ${ip4_server} exchanged
+                    only ${bytes} bytes (in ${packets} packets) with the
+                    rest of the world.\""
+  }' \
+  -H 'Content-Type: application/json' http://localhost:29380/node/n4 &&
+
+curl "$@" -X PUT http://localhost:29380/link/n3/n4 &&
 
 curl "$@" http://localhost:29380/compile &&
 

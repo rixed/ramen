@@ -171,3 +171,34 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
       (* FIXME: some commit conditions require much more thoughts than that *)
     ) else
       return_unit)
+
+let alert read_tuple field_of_tuple team subject text =
+  !logger.info "Starting ALERT process..." ;
+  let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
+  in
+  !logger.debug "Will read ringbuffer %S" rb_in_fname ;
+  let%lwt rb_in =
+    CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
+  let expand_fields =
+    let open Str in
+    let re = regexp "%\\(in\\.\\)?\\([_a-zA-Z0-9]+\\)%" in
+    fun text tuple ->
+      global_substitute re (fun s ->
+          let field_name = matched_group 2 s in
+          try field_of_tuple tuple field_name
+          with Not_found ->
+            !logger.error "Field %S used in alert text substitution is not \
+                           present in the input!" field_name ;
+            "??"^ field_name ^"??"
+        ) text
+  in
+  CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
+    let tuple = read_tuple tx in
+    RingBuf.dequeue_commit tx ;
+    let team = expand_fields team tuple
+    and subject = expand_fields subject tuple
+    and text = expand_fields text tuple in
+    (* TODO: send this to the alert manager *)
+    Printf.printf "ALERT!\nTo: %s\nSubject: %s\n%s\n\n"
+      team subject text ;
+    return_unit)

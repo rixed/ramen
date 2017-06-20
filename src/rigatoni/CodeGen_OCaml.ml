@@ -645,6 +645,31 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ
 
+let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
+  Printf.fprintf oc "let %s %a = function\n"
+    name
+    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
+  List.iter (fun field ->
+      let fn = field.Lang.Tuple.name in
+      Printf.fprintf oc "\t| %S -> %s\n"
+        fn (id_of_field_name fn)
+    ) in_tuple_typ ;
+  Printf.fprintf oc "\t| _ -> raise Not_found\n"
+
+let emit_alert oc in_tuple_typ team subject text =
+  (* We just want to read the in-tuple and have a function that return
+   * field value (as a string!) given their name, so we can replace quoted
+   * names by their actual value in the alert message *)
+  let mentioned = Set.empty in
+  Printf.fprintf oc "open Stdint\n\n\
+    %a\n%a\n\
+    let () =\n\
+      \tLwt_main.run (\n\
+      \tCodeGenLib.alert read_tuple_ field_of_tuple_ %S %S %S)\n"
+    (emit_read_tuple "read_tuple_" mentioned true) in_tuple_typ
+    (emit_field_of_tuple "field_of_tuple_" mentioned true) in_tuple_typ
+    team subject text
+
 let keep_temp_files = ref true
 
 let with_code_file_for name f =
@@ -684,6 +709,8 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
     | Aggregate { fields ; and_all_others ; where ; key ; commit_when } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key commit_when
+    | Alert { team ; subject ; text } ->
+      emit_alert oc in_tuple_typ team subject text
     | _ ->
       Printf.fprintf oc "let () = print_string \"TODO\n\"") ;
     fname) |>
