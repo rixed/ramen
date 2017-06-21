@@ -173,8 +173,9 @@ let opt_blanks =
   P.optional_greedy ~def:() blanks
 
 let same_tuple_as_in = function
-  | "in" | "others" | "any" -> true
-  | _ -> false
+  | "in" | "first" | "last" | "any" -> true
+  | "out" | "previous" | "others" -> false
+  | _ -> assert false
 
 (*$inject
   open Stdint
@@ -558,6 +559,20 @@ struct
     let t = typ_of e in
     t.nullable = Some true
 
+  let rec fold f i expr =
+    match expr with
+    | Const _ | Param _ | Field _ ->
+      f i expr
+    | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
+    | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
+    | Not (_, e) | Defined (_, e) ->
+      fold f (f i expr) e ;
+    | AggrPercentile (_, e1, e2)
+    | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
+    | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
+    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) ->
+      fold f (fold f (f i expr) e1) e2
+
   (* Propagate values down the tree only. Final return value is thus
    * mostly meaningless (it's the value for the last path down to the
    * last leaf). *)
@@ -614,7 +629,8 @@ struct
       let m = "field" :: m in
       let prefix s = strinG (s ^ ".") >>: fun () -> s in
       (optional ~def:"in" (
-         prefix "in" ||| prefix "out" ||| prefix "others" ||| prefix "any") ++
+         prefix "in" ||| prefix "out" ||| prefix "first" |||
+         prefix "previous" ||| prefix "others" ||| prefix "any") ++
        non_keyword >>: fun (tuple, field) ->
        (* This is important here that the type name is the raw field name,
         * because we use the tuple field type name as their identifier *)
@@ -1153,14 +1169,15 @@ struct
         check_fields_from ["in"] "WHERE clause" where
       | Aggregate { fields ; where ; key ; commit_when ; _ } ->
         List.iter (fun sf ->
-            check_fields_from ["in"] "SELECT clause" sf.expr
+            check_fields_from ["in"; "first"; "last"] "SELECT clause" sf.expr
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
-        check_fields_from ["in"] "WHERE clause" where ;
+        check_fields_from ["in"; "first"; "last"] "WHERE clause" where ;
         List.iter (fun k ->
           check_no_aggr no_aggr_in_key k ;
           check_fields_from ["in"] "KEY clause" k) key ;
-        Expr.aggr_iter ignore commit_when (* standards checks *)
+        Expr.aggr_iter ignore commit_when ; (* standards checks *)
+        check_fields_from ["in";"out";"previous";"first";"last"] "COMMIT WHEN clause" commit_when ;
       | OnChange e ->
         check_no_aggr no_aggr_in_on_change e
       | Alert _ ->

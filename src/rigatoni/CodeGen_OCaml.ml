@@ -205,8 +205,8 @@ let emit_read_csv_file oc csv_fname csv_separator csv_null tuple_typ =
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
 
-let emit_in_tuple mentioned and_all_others oc in_tuple_typ =
-  print_tuple_deconstruct "in" oc (List.filter_map (fun field_typ ->
+let emit_in_tuple ?(tuple="in") mentioned and_all_others oc in_tuple_typ =
+  print_tuple_deconstruct tuple oc (List.filter_map (fun field_typ ->
     if and_all_others || Set.mem field_typ.Lang.Tuple.name mentioned then
       Some field_typ else None) in_tuple_typ)
 
@@ -505,22 +505,39 @@ and emit_function2 expr oc e1 e2 =
     )
   )
 
-let emit_expr_of_input_tuple name in_tuple_typ mentioned and_all_others oc expr =
-  Printf.fprintf oc "let %s %a =\n\t%a\n"
+let emit_expr_of_input_tuple
+      ?(with_aggr=false) ?(with_first_last=false) ?(always_true=false)
+      name in_tuple_typ mentioned and_all_others oc expr =
+  Printf.fprintf oc "let %s%s %a "
     name
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ
-    emit_expr expr
+    (if with_aggr then " aggr_" else "")
+    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
+  if with_first_last then
+    Printf.fprintf oc "%a %a "
+      (emit_in_tuple ~tuple:"first" mentioned and_all_others) in_tuple_typ
+      (emit_in_tuple ~tuple:"last" mentioned and_all_others) in_tuple_typ ;
+  if always_true then
+    Printf.fprintf oc "= true\n"
+  else
+    Printf.fprintf oc "=\n\t%a\n" emit_expr expr
 
+(* If with aggr we have the aggregate record as first parameter
+ * and also the first and last incoming tuple of this aggr as additional
+ * parameters *)
 let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
+                     ?(with_first_last=false)
                      name in_tuple_typ mentioned
                      and_all_others out_tuple_typ oc exprs =
   let open Lang in
-  Printf.fprintf oc "\
-    let %s %s%a =\n\
-    \t("
-    name
-    (if with_aggr then "aggr_ " else "")
+  Printf.fprintf oc "let %s " name ;
+  if with_aggr then Printf.fprintf oc "aggr_ " ;
+  Printf.fprintf oc "%a "
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
+  if with_first_last then
+    Printf.fprintf oc "%a %a "
+      (emit_in_tuple ~tuple:"first" mentioned and_all_others) in_tuple_typ
+      (emit_in_tuple ~tuple:"last" mentioned and_all_others) in_tuple_typ ;
+  Printf.fprintf oc "=\n\t(" ;
   (* We will iter through the selected fields, marking those which have been
    * outputted so that we do not output them again in the STAR operator. *)
   let outputted = ref Set.empty in
@@ -647,10 +664,13 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
 let emit_commit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
                      oc commit_when =
   Printf.fprintf oc "\
-    let %s aggr_ %a %a =\n\t%a\n"
+    let %s aggr_ %a %a %a %a %a =\n\t%a\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
+    (emit_in_tuple ~tuple:"first" mentioned and_all_others) in_tuple_typ
+    (emit_in_tuple ~tuple:"last" mentioned and_all_others) in_tuple_typ
     (emit_tuple "out") out_tuple_typ
+    (emit_tuple "previous") out_tuple_typ
     emit_expr commit_when
 
 let emit_aggregate oc in_tuple_typ out_tuple_typ
@@ -675,20 +695,42 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     let all_exprs =
       where :: commit_when :: key @
       List.map (fun sf -> sf.Lang.Operation.expr) selected_fields in
-    add_all_mentioned all_exprs in
+    add_all_mentioned all_exprs
+  and where_need_aggr =
+    let open Lang.Expr in
+    (* Tells whether the where expression needs either the out tuple
+     * or uses any aggregation on it's own. *)
+    fold (fun need expr ->
+      if need then need else match expr with
+        | Field (_, tuple, _) ->
+          not (Lang.same_tuple_as_in !tuple)
+        | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
+        | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _ ->
+          true
+        | Age _| Not _| Defined _| Add _| Sub _| Mul _| Div _
+        | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _ ->
+          false) false where
+  in
   Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n\
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
       \tCodeGenLib.aggregate read_tuple_ sersize_of_tuple_ serialize_aggr_ \
-           tuple_of_aggr_ where_ key_of_input_ commit_when_ aggr_init_ update_aggr_)\n"
+           tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ commit_when_ aggr_init_ update_aggr_)\n"
     (emit_aggr_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
-    (emit_expr_of_input_tuple "where_" in_tuple_typ mentioned and_all_others) where
+    (if where_need_aggr then
+      emit_expr_of_input_tuple "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
+    else
+      emit_expr_of_input_tuple "where_fast_" in_tuple_typ mentioned and_all_others) where
+    (if not where_need_aggr then
+      emit_expr_of_input_tuple "where_slow_" ~with_aggr:true ~with_first_last:true ~always_true:true in_tuple_typ mentioned and_all_others
+    else
+      emit_expr_of_input_tuple "where_slow_" ~with_aggr:true ~with_first_last:true in_tuple_typ mentioned and_all_others) where
     (emit_expr_select ~honor_star:false "key_of_input_" in_tuple_typ mentioned and_all_others out_tuple_typ) key
     (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when) selected_fields
     (emit_commit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
-    (emit_expr_select ~honor_star:false ~with_aggr:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ)
+    (emit_expr_select ~honor_star:false ~with_aggr:true ~with_first_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ)
       (exprs_of_selected_fields selected_fields)
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ

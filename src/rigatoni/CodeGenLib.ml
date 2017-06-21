@@ -102,11 +102,13 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
     RingBuf.dequeue_commit tx ;
     if where tuple then outputer (select tuple) else return_unit)
 
-type ('a, 'b) aggr_value =
+type ('a, 'b, 'c) aggr_value =
   { first_touched : float ;
     (* used to compute the actual selected field when outputing the
      * aggregate: *)
-    first_tuple : 'b ;
+    first_in : 'b ; (* first in-tuple of this aggregate *)
+    mutable last_in : 'b ; (* last in-tuple of this aggregate *)
+    mutable previous_out : 'c ; (* previously computed temp out tuple, if any *)
     mutable last_touched : float ;
     mutable nb_entries : int ;
     mutable nb_successive : int ;
@@ -114,12 +116,17 @@ type ('a, 'b) aggr_value =
     fields : 'a (* the record of aggregation values *) }
 
 let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
-              (sersize_of_tuple : 'out_tuple -> int)
-              (serialize_tuple : RingBuf.tx -> 'out_tuple -> int)
-              (tuple_of_aggr : 'aggr -> 'tuple_in -> 'tuple_out)
-              (where : 'tuple_in -> bool)
+              (sersize_of_tuple : 'tuple_out -> int)
+              (serialize_tuple : RingBuf.tx -> 'tuple_out -> int)
+              (tuple_of_aggr : 'aggr -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out)
+              (* Where_fast/slow: premature optimisation: if the where filter
+               * uses the aggregate then we need where_slow (checked after
+               * the aggregate look up) but if it uses only the incoming
+               * tuple then we can use only where_fast. *)
+              (where_fast : 'tuple_in -> bool)
+              (where_slow : 'aggr -> 'tuple_in -> 'tuple_in -> 'tuple_in -> bool)
               (key_of_input : 'tuple_in -> 'key)
-              (commit_when : 'aggr -> 'tuple_in -> 'tuple_out -> bool)
+              (commit_when : 'aggr -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out -> 'tuple_out -> bool)
               (aggr_init : 'tuple_in -> 'aggr)
               (update_aggr : 'aggr -> 'tuple_in -> unit) =
   !logger.info "Starting GROUP BY process..." ;
@@ -138,43 +145,55 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
-    if where in_tuple then (
+    if where_fast in_tuple then (
       (* TODO: update any aggr *)
       let k = key_of_input in_tuple in
       let now = Unix.gettimeofday () in (* haha lol! *)
       let prev_last_key = !last_key in
       last_key := Some k ;
-      (match Hashtbl.find h k with
+      match Hashtbl.find h k with
       | exception Not_found ->
-        let aggr = {
-          first_touched = now ;
-          first_tuple = in_tuple ;
-          last_touched = now ;
-          nb_entries = 1 ; nb_successive = 1 ;
-          last_ev_count = !event_count ;
-          fields = aggr_init in_tuple } in
-        let out_tuple = tuple_of_aggr aggr.fields aggr.first_tuple in
-        if commit_when aggr.fields in_tuple out_tuple then
-          commit out_tuple
-        else (
-          Hashtbl.add h k aggr ;
-          return_unit
-        )
-      | aggr ->
-        aggr.last_touched <- now ;
-        aggr.last_ev_count <- !event_count ;
-        update_aggr aggr.fields in_tuple  ;
-        if prev_last_key = Some k then
-          aggr.nb_successive <- aggr.nb_successive + 1 ;
-        let out_tuple = tuple_of_aggr aggr.fields aggr.first_tuple in
-        if commit_when aggr.fields in_tuple out_tuple then (
-          Hashtbl.remove h k ;
-          commit out_tuple
+        let fields = aggr_init in_tuple in
+        if where_slow fields in_tuple in_tuple in_tuple then (
+          let out_tuple =
+            tuple_of_aggr fields in_tuple in_tuple in_tuple in
+          if commit_when fields in_tuple in_tuple in_tuple out_tuple out_tuple then
+            commit out_tuple
+          else (
+            let aggr = {
+              first_touched = now ;
+              first_in = in_tuple ;
+              last_in = in_tuple ;
+              previous_out = out_tuple ;
+              last_touched = now ;
+              nb_entries = 1 ; nb_successive = 1 ;
+              last_ev_count = !event_count ;
+              fields = aggr_init in_tuple } in
+            Hashtbl.add h k aggr ;
+            return_unit
+          )
         ) else return_unit
-      )
-      (* FIXME: some commit conditions require much more thoughts than that *)
-    ) else
-      return_unit)
+      | aggr ->
+        if where_slow aggr.fields in_tuple aggr.first_in aggr.last_in then (
+          update_aggr aggr.fields in_tuple ;
+          aggr.last_touched <- now ;
+          aggr.last_ev_count <- !event_count ;
+          if prev_last_key = Some k then
+            aggr.nb_successive <- aggr.nb_successive + 1 ;
+          let out_tuple =
+            tuple_of_aggr aggr.fields in_tuple aggr.first_in aggr.last_in in
+          if commit_when aggr.fields in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out then (
+            Hashtbl.remove h k ;
+            commit out_tuple
+          ) else (
+            aggr.last_in <- in_tuple ;
+            aggr.previous_out <- out_tuple ;
+            return_unit
+          )
+        ) else return_unit
+    ) else return_unit
+    (* FIXME: some commit conditions require much more thoughts than that *)
+  )
 
 let alert read_tuple field_of_tuple team subject text =
   !logger.info "Starting ALERT process..." ;
