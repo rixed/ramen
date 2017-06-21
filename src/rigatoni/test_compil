@@ -118,7 +118,7 @@ curl "$@" \
               SUM(traffic_packets_client + traffic_packets_server) AS packets
        WHERE ip4_client IS NOT NULL AND ip4_server IS NOT NULL
        GROUP BY ip4_server, capture_begin//60_000_000
-       COMMIT WHEN MAX(capture_begin) > min_capture_begin + 10_000_000"
+       COMMIT AND FLUSH WHEN MAX(capture_begin) > min_capture_begin + 10_000_000"
   }' \
   -H 'Content-Type: application/json' http://localhost:29380/node/n2 &&
 

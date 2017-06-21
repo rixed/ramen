@@ -127,6 +127,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (where_slow : 'aggr -> 'tuple_in -> 'tuple_in -> 'tuple_in -> bool)
               (key_of_input : 'tuple_in -> 'key)
               (commit_when : 'aggr -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out -> 'tuple_out -> bool)
+              (flush_when : 'aggr -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out -> 'tuple_out -> bool)
               (aggr_init : 'tuple_in -> 'aggr)
               (update_aggr : 'aggr -> 'tuple_in -> unit) =
   !logger.info "Starting GROUP BY process..." ;
@@ -157,9 +158,17 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
         if where_slow fields in_tuple in_tuple in_tuple then (
           let out_tuple =
             tuple_of_aggr fields in_tuple in_tuple in_tuple in
-          if commit_when fields in_tuple in_tuple in_tuple out_tuple out_tuple then
-            commit out_tuple
-          else (
+          let do_commit, do_flush =
+            if commit_when fields in_tuple in_tuple in_tuple out_tuple out_tuple then (
+              true,
+              flush_when == commit_when ||
+              flush_when fields in_tuple in_tuple in_tuple out_tuple out_tuple
+            ) else (
+              false,
+              not (flush_when == commit_when) &&
+              flush_when fields in_tuple in_tuple in_tuple out_tuple out_tuple
+            ) in
+          if not do_flush then (
             let aggr = {
               first_touched = now ;
               first_in = in_tuple ;
@@ -169,9 +178,9 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               nb_entries = 1 ; nb_successive = 1 ;
               last_ev_count = !event_count ;
               fields = aggr_init in_tuple } in
-            Hashtbl.add h k aggr ;
-            return_unit
-          )
+            Hashtbl.add h k aggr
+          ) ;
+          if do_commit then commit out_tuple  else return_unit
         ) else return_unit
       | aggr ->
         if where_slow aggr.fields in_tuple aggr.first_in aggr.last_in then (
@@ -182,14 +191,23 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
             aggr.nb_successive <- aggr.nb_successive + 1 ;
           let out_tuple =
             tuple_of_aggr aggr.fields in_tuple aggr.first_in aggr.last_in in
-          if commit_when aggr.fields in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out then (
-            Hashtbl.remove h k ;
-            commit out_tuple
-          ) else (
+          let do_commit, do_flush =
+            if commit_when aggr.fields in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out then (
+              true,
+              flush_when == commit_when ||
+              flush_when aggr.fields in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out
+            ) else (
+              false,
+              not (flush_when == commit_when) &&
+              flush_when aggr.fields in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out
+            ) in
+          if do_flush then
+            Hashtbl.remove h k
+          else (
             aggr.last_in <- in_tuple ;
             aggr.previous_out <- out_tuple ;
-            return_unit
-          )
+          ) ;
+          if do_commit then commit out_tuple else return_unit
         ) else return_unit
     ) else return_unit
     (* FIXME: some commit conditions require much more thoughts than that *)

@@ -245,13 +245,14 @@ let same_tuple_as_in = function
       Ok (Select {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ; where = replace_typ where }, rest)
-    | Ok (Aggregate { fields ; and_all_others ; where ; key ; commit_when }, rest) ->
+    | Ok (Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when }, rest) ->
       Ok (Aggregate {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ;
         where = replace_typ where ;
         key = List.map replace_typ key ;
-        commit_when = replace_typ commit_when }, rest)
+        commit_when = replace_typ commit_when ;
+        flush_when = Option.map replace_typ flush_when }, rest)
     | Ok (OnChange e, rest) -> Ok (OnChange (replace_typ e), rest)
     | x -> x
  *)
@@ -413,7 +414,7 @@ let keyword =
     strinG "min" ||| strinG "max" ||| strinG "sum" ||| strinG "percentile" |||
     strinG "of" ||| strinG "is" ||| strinG "not" ||| strinG "null" |||
     strinG "group" ||| strinG "by" ||| strinG "select" ||| strinG "where" |||
-    strinG "on" ||| strinG "change" ||| strinG "after" ||| strinG "when" |||
+    strinG "on" ||| strinG "change" ||| strinG "flush" ||| strinG "when" |||
     strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
@@ -422,7 +423,7 @@ let keyword =
 let non_keyword =
   (* TODO: allow keywords if quoted *)
   let open P in
-  check (nay keyword) -+ ParseUsual.identifier
+  check ~what:"no keyword" (nay keyword) -+ ParseUsual.identifier
 
 module Tuple =
 struct
@@ -887,7 +888,9 @@ struct
         (* Simple way to filter out incoming tuples: *)
         where : Expr.t ;
         key : Expr.t list ;
-        commit_when : Expr.t }
+        commit_when : Expr.t ;
+        (* When do we stop aggregating (default: when we commit) *)
+        flush_when : Expr.t option }
     (* Not sure we need OnChange if we have access to last tuple in select
      * where clause... *)
     | OnChange of Expr.t
@@ -904,14 +907,19 @@ struct
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         Expr.print where
-    | Aggregate { fields ; and_all_others ; where ; key ; commit_when } ->
-      Printf.fprintf fmt "SELECT %a%s%s WHERE %a GROUP BY %a EMIT WHEN %a"
+    | Aggregate { fields ; and_all_others ; where ; key ;
+                  commit_when ; flush_when } ->
+      Printf.fprintf fmt "SELECT %a%s%s WHERE %a GROUP BY %a EMIT %sWHEN %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         Expr.print where
         (List.print ~first:"" ~last:"" ~sep:", " Expr.print) key
-        Expr.print commit_when
+        (if flush_when = None then "AND FLUSH " else "")
+        Expr.print commit_when ;
+      Option.may (fun flush_when ->
+        Printf.fprintf fmt " FLUSH WHEN %a"
+          Expr.print flush_when) flush_when
     | OnChange e ->
       Printf.fprintf fmt "ON CHANGE %a" Expr.print e
     | Alert { team ; subject ; text } ->
@@ -986,15 +994,31 @@ struct
 
     let commit_when m =
       let m = "commit clause" :: m in
-      (strinG "commit" -- blanks -- (strinG "after" ||| strinG "when") --
-       blanks -+ Expr.Parser.p) m
+      (strinG "commit" -- blanks -+
+       optional ~def:false
+         (strinG "and" -- blanks -- strinG "flush" -- blanks >>: fun () -> true) +-
+       strinG "when" +- blanks ++
+       Expr.Parser.p ++
+       optional ~def:None
+         (blanks -- strinG "flush" -- blanks -- strinG "when" -- blanks -+
+          some Expr.Parser.p) >>:
+       function
+       | (true, commit_when), None ->
+         commit_when, None
+       | (true, _), Some _ ->
+         raise (Reject "AND FLUSH incompatible with FLUSH WHEN")
+       | (false, commit_when), (Some _ as flush_when) ->
+         commit_when, flush_when
+       | (false, _), None ->
+         raise (Reject "Must specify when to flush")
+      ) m
 
     let aggregate m =
       let m = "aggregate" :: m in
       (select +- blanks +- strinG "group" +- blanks +- strinG "by" +- blanks ++
        several ~sep:list_sep Expr.Parser.p +- blanks ++ commit_when >>: function
-       | (Select { fields ; and_all_others ; where }, key), commit_when ->
-         Aggregate { fields ; and_all_others ; where ; key ; commit_when }
+       | (Select { fields ; and_all_others ; where }, key), (commit_when, flush_when) ->
+         Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when }
        | _ -> assert false) m
 
     let on_change m =
@@ -1090,13 +1114,14 @@ struct
               Add (typ,\
                 AggrMax (typ,Field (typ, ref "any", "start")),\
                 Const (typ, Scalar.VI16 (Int16.of_int 3600))),\
-              Field (typ, ref "out", "start"))) },\
-          (197, [])))\
+              Field (typ, ref "out", "start"))) ; \
+          flush_when = None },\
+          (206, [])))\
           (test_p p "select min start as start or out_start, \\
                             max stop as max_stop, \\
                             (sum packets)/$avg_window as packets_per_sec \\
                      group by start / (1_000_000 * $avg_window) \\
-                     commit after out.start < (max any.start) + 3600" |>\
+                     commit and flush when out.start < (max any.start) + 3600" |>\
            replace_typ_in_op)
 
       (Ok (\
@@ -1167,7 +1192,7 @@ struct
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
         check_fields_from ["in"] "WHERE clause" where
-      | Aggregate { fields ; where ; key ; commit_when ; _ } ->
+      | Aggregate { fields ; where ; key ; commit_when ; flush_when ; _ } ->
         List.iter (fun sf ->
             check_fields_from ["in"; "first"; "last"] "SELECT clause" sf.expr
           ) fields ;
@@ -1178,6 +1203,10 @@ struct
           check_fields_from ["in"] "KEY clause" k) key ;
         Expr.aggr_iter ignore commit_when ; (* standards checks *)
         check_fields_from ["in";"out";"previous";"first";"last"] "COMMIT WHEN clause" commit_when ;
+        Option.may (fun flush_when ->
+            Expr.aggr_iter ignore flush_when ;
+            check_fields_from ["in";"out";"previous";"first";"last"] "FLUSH WHEN clause" flush_when
+          ) flush_when
       | OnChange e ->
         check_no_aggr no_aggr_in_on_change e
       | Alert _ ->

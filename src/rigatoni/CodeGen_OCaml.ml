@@ -588,18 +588,19 @@ let emit_select oc in_tuple_typ out_tuple_typ
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
-let for_each_aggr_fun selected_fields commit_when f =
+let for_each_aggr_fun selected_fields commit_when flush_when f =
   List.iter (fun sf ->
       Lang.Expr.aggr_iter f sf.Lang.Operation.expr
     ) selected_fields ;
-  Lang.Expr.aggr_iter f commit_when
+  Lang.Expr.aggr_iter f commit_when ;
+  Option.may (fun flush_when -> Lang.Expr.aggr_iter f flush_when) flush_when
 
 let emit_aggr_init name in_tuple_typ mentioned and_all_others
-                   commit_when oc selected_fields =
+                   commit_when flush_when oc selected_fields =
   (* We must collect all aggregation functions present in the selected_fields
    * and return a record with the proper types and init value for the aggr. *)
   Printf.fprintf oc "type %s = {\n" name ;
-  for_each_aggr_fun selected_fields commit_when (fun aggr ->
+  for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
       Printf.fprintf oc "\tmutable %s : %s ;\n"
         (name_of_aggr aggr)
         (otype_of_aggr aggr)
@@ -608,7 +609,7 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
   Printf.fprintf oc "let %s %a =\n\t{\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-  for_each_aggr_fun selected_fields commit_when (fun aggr ->
+  for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
       Printf.fprintf oc "\t%s = " (name_of_aggr aggr) ;
       (* For most aggr function we start with the first value *)
       (let open Lang.Expr in
@@ -631,11 +632,11 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
   Printf.fprintf oc "\t}\n"
 
 let emit_update_aggr name in_tuple_typ mentioned and_all_others
-                     commit_when oc selected_fields =
+                     commit_when flush_when oc selected_fields =
   Printf.fprintf oc "let %s aggr_ %a (* TODO: values for others and any *) =\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-  for_each_aggr_fun selected_fields commit_when (fun aggr ->
+  for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
       Printf.fprintf oc "\taggr_.%s <- " (name_of_aggr aggr) ;
       let open Lang.Expr in
       match aggr with
@@ -661,8 +662,8 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
 
 (* Note: we need aggr_ in addition to out_tupple because the commit-when clause
  * might have its own aggregates going on *)
-let emit_commit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
-                     oc commit_when =
+let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
+              oc commit_when =
   Printf.fprintf oc "\
     let %s aggr_ %a %a %a %a %a =\n\t%a\n"
     name
@@ -674,7 +675,8 @@ let emit_commit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
     emit_expr commit_when
 
 let emit_aggregate oc in_tuple_typ out_tuple_typ
-                   selected_fields and_all_others where key commit_when =
+                   selected_fields and_all_others where key
+                   commit_when flush_when =
 (* We need:
  * - as above: a where filter, a serializer,
  * - a function computing the key as a tuple computed from input, exactly as in
@@ -695,6 +697,9 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     let all_exprs =
       where :: commit_when :: key @
       List.map (fun sf -> sf.Lang.Operation.expr) selected_fields in
+    let all_exprs = match flush_when with
+      | None -> all_exprs
+      | Some flush_when -> flush_when :: all_exprs in
     add_all_mentioned all_exprs
   and where_need_aggr =
     let open Lang.Expr in
@@ -712,12 +717,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
           false) false where
   in
   Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n\
-    let () =\n\
-      \tLwt_main.run (\n\
-      \tCodeGenLib.aggregate read_tuple_ sersize_of_tuple_ serialize_aggr_ \
-           tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ commit_when_ aggr_init_ update_aggr_)\n"
-    (emit_aggr_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when) selected_fields
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    (emit_aggr_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_aggr then
       emit_expr_of_input_tuple "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
@@ -728,12 +729,21 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     else
       emit_expr_of_input_tuple "where_slow_" ~with_aggr:true ~with_first_last:true in_tuple_typ mentioned and_all_others) where
     (emit_expr_select ~honor_star:false "key_of_input_" in_tuple_typ mentioned and_all_others out_tuple_typ) key
-    (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when) selected_fields
-    (emit_commit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
+    (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
+    (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
     (emit_expr_select ~honor_star:false ~with_aggr:true ~with_first_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ)
       (exprs_of_selected_fields selected_fields)
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
-    (emit_serialize_tuple "serialize_aggr_") out_tuple_typ
+    (emit_serialize_tuple "serialize_aggr_") out_tuple_typ ;
+  (match flush_when with
+  | Some flush_when ->
+    emit_when "flush_when_" in_tuple_typ mentioned and_all_others out_tuple_typ oc flush_when
+  | None ->
+    Printf.fprintf oc "let flush_when_ = commit_when_\n") ;
+  Printf.fprintf oc "let () =\n\
+      \tLwt_main.run (\n\
+      \tCodeGenLib.aggregate read_tuple_ sersize_of_tuple_ serialize_aggr_ \
+           tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ commit_when_ flush_when_ aggr_init_ update_aggr_)\n"
 
 let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
   Printf.fprintf oc "let %s %a = function\n"
@@ -804,9 +814,9 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
       emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where
     | ReadCSVFile { fname ; separator ; null ; fields } ->
       emit_read_csv_file oc fname separator null fields
-    | Aggregate { fields ; and_all_others ; where ; key ; commit_when } ->
+    | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
-                     key commit_when
+                     key commit_when flush_when
     | Alert { team ; subject ; text } ->
       emit_alert oc in_tuple_typ team subject text
     | _ ->
