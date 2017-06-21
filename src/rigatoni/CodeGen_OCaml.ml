@@ -571,26 +571,11 @@ let emit_select oc in_tuple_typ out_tuple_typ
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
-let rec aggr_iter f expr =
-  let open Lang.Expr in
-  match expr with
-  | Const _ | Param _ | Field _ -> ()
-  | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-  | AggrLast _ | AggrPercentile _ ->
-    f expr (* we do not recurse on e since it's forbidden to have another aggr function in there *)
-  | Age(_, e) | Not(_, e) | Defined(_, e) ->
-    aggr_iter f e
-  | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
-  | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
-  | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) ->
-    aggr_iter f e1 ;
-    aggr_iter f e2
-
 let for_each_aggr_fun selected_fields commit_when f =
   List.iter (fun sf ->
-      aggr_iter f sf.Lang.Operation.expr
+      Lang.Expr.aggr_iter f sf.Lang.Operation.expr
     ) selected_fields ;
-  aggr_iter f commit_when
+  Lang.Expr.aggr_iter f commit_when
 
 let emit_aggr_init name in_tuple_typ mentioned and_all_others
                    commit_when oc selected_fields =

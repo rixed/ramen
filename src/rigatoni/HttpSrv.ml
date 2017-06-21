@@ -89,9 +89,9 @@ let put_node conf headers name body =
       bad_request ("Creating node "^ name ^": Parse error: "^ err)
     | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
       (match Lang.Operation.Parser.check op with
-      | Bad e ->
-        bad_request ("Creating node "^ name ^": Invalid operation: "^ e)
-      | Ok op ->
+      | exception (Lang.SyntaxError e) ->
+        bad_request ("Creating node "^ name ^": "^ e)
+      | () ->
         let node = C.make_node name op in
         C.add_node conf conf.C.building_graph name node ;
         let status = `Code 200 in
@@ -246,7 +246,7 @@ let get_graph conf headers =
 let compile conf _headers =
   (* TODO: check we accept json *)
   match C.compile conf conf.C.building_graph with
-  | exception (C.CompilationError e) ->
+  | exception (Lang.SyntaxError e) ->
     bad_request e
   | () ->
     let headers = Header.init_with "Content-Type" json_content_type in
@@ -256,7 +256,7 @@ let compile conf _headers =
 let run conf _headers =
   (* TODO: check we accept json *)
   match C.run conf conf.C.building_graph with
-  | exception (C.CompilationError e) ->
+  | exception (Lang.SyntaxError e) ->
     bad_request e
   | () ->
     let headers = Header.init_with "Content-Type" json_content_type in

@@ -157,6 +157,8 @@ open Stdint
 type uint8 = Uint8.t
 type uint16 = Uint16.t
 
+exception SyntaxError of string
+
 module PConfig = ParsersPositions.LineCol (Parsers.SimpleConfig (Char))
 module P = Parsers.Make (PConfig)
 module ParseUsual = ParsersUsual.Make (P)
@@ -556,6 +558,42 @@ struct
     let t = typ_of e in
     t.nullable = Some true
 
+  (* Propagate values down the tree only. Final return value is thus
+   * mostly meaningless (it's the value for the last path down to the
+   * last leaf). *)
+  let rec fold_by_depth f i expr =
+    match expr with
+    | Const _ | Param _ | Field _ ->
+      f i expr
+    | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
+    | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
+    | Not (_, e) | Defined (_, e) ->
+      fold_by_depth f (f i expr) e ;
+    | AggrPercentile (_, e1, e2)
+    | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
+    | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
+    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) ->
+      let i' = f i expr in
+      fold_by_depth f i' e1 ;
+      fold_by_depth f i' e2
+
+  let iter f = fold_by_depth (fun () e -> f e) ()
+
+  let aggr_iter f expr =
+    fold_by_depth (fun in_aggr -> function
+      | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
+      | AggrLast _ | AggrPercentile _ as expr ->
+        if in_aggr then (
+          let m = "Aggregate functions are not allowed within \
+                   aggregate functions" in
+          raise (SyntaxError m)) ;
+        f expr ;
+        true
+      | Const _ | Param _ | Field _
+      | Age _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
+      | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
+        in_aggr) false expr |> ignore
+
   module Parser =
   struct
     (*$< Parser *)
@@ -701,7 +739,7 @@ struct
        (afun "or" >>: fun e -> AggrOr (make_bool_typ "or aggregation", e)) |||
        (afun "first" >>: fun e -> AggrFirst (make_bool_typ "first aggregation", e)) |||
        (afun "last" >>: fun e -> AggrLast (make_bool_typ "last aggregation", e)) |||
-       ((const ||| param) +- (optional ~def:() (string "th")) +- blanks ++
+       ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
         afun "percentile" >>: fun (p, e) ->
         (* Percentile aggr function is nullable because we want it null when
          * we do not have enough measures to compute the requested percentiles.
@@ -1080,7 +1118,57 @@ struct
 
     (* Check that the expression is valid, or return an error message.
      * Also perform some optimisation, numeric promotions, etc... *)
-    let check op = Ok op (* TODO *)
+    let check =
+      let no_aggr_in clause =
+        "Aggregation function not allowed in "^ clause
+      and fields_must_be_from lst clause =
+        Printf.sprintf "All fields must come from %s in %s"
+          (IO.to_string
+            (List.print ~first:"" ~last:"" ~sep:" or " String.print)
+            lst)
+          clause
+        in
+      let no_aggr_in_where = no_aggr_in "WHERE clause"
+      and no_aggr_in_key = no_aggr_in "GROUP-BY clause"
+      and no_aggr_in_on_change = no_aggr_in "ON-CHANGE clause"
+      and check_no_aggr m =
+        Expr.aggr_iter (fun _ -> raise (SyntaxError m))
+      and check_fields_from lst clause =
+        Expr.iter (function
+          | Expr.Field (_, tuple, _) ->
+            if not (List.mem !tuple lst) then (
+              let m = fields_must_be_from lst clause in
+              raise (SyntaxError m)
+            )
+          | _ -> ())
+      in function
+      | Select { fields ; where ; _ } ->
+        List.iter (fun sf ->
+            let m = "Aggregation functions not allowed without a \
+                     GROUP-BY clause" in
+            check_no_aggr m sf.expr ;
+            check_fields_from ["in"] "SELECT clause" sf.expr
+          ) fields ;
+        check_no_aggr no_aggr_in_where where ;
+        check_fields_from ["in"] "WHERE clause" where
+      | Aggregate { fields ; where ; key ; commit_when ; _ } ->
+        List.iter (fun sf ->
+            check_fields_from ["in"] "SELECT clause" sf.expr
+          ) fields ;
+        check_no_aggr no_aggr_in_where where ;
+        check_fields_from ["in"] "WHERE clause" where ;
+        List.iter (fun k ->
+          check_no_aggr no_aggr_in_key k ;
+          check_fields_from ["in"] "KEY clause" k) key ;
+        Expr.aggr_iter ignore commit_when (* standards checks *)
+      | OnChange e ->
+        check_no_aggr no_aggr_in_on_change e
+      | Alert _ ->
+        () (* TODO: check field names from text templates *)
+      | ReadCSVFile { separator ; null ; _ } ->
+        if separator = null || separator = "" then (
+          let m = "Invalid CSV separator/null" in
+          raise (SyntaxError m))
 
     (*$>*)
   end

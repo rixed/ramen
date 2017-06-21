@@ -156,8 +156,6 @@ let make_conf debug save_file =
  * node output, via the expected_type of each expression.
  *)
 
-exception CompilationError of string
-
 let can_cast ~from_scalar_type ~to_scalar_type =
   let open Lang.Scalar in
   let compatible_types =
@@ -204,7 +202,7 @@ let check_expr_type ~from ~to_ =
         let m = Printf.sprintf "%s must have type %s but got %s of type %s"
                     to_.Expr.name (IO.to_string Scalar.print_typ to_typ)
                     from.Expr.name (IO.to_string Scalar.print_typ from_typ) in
-        raise (CompilationError m)
+        raise (SyntaxError m)
       )
     | _ -> false in
   let changed =
@@ -216,7 +214,7 @@ let check_expr_type ~from ~to_ =
       let m = Printf.sprintf "%s must%s be nullable but %s is%s"
                 to_.Expr.name (if to_null then "" else " not")
                 from.Expr.name (if from_null then "" else " not") in
-      raise (CompilationError m)
+      raise (SyntaxError m)
     | _ -> changed in
   changed
 
@@ -238,13 +236,13 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           op_typ.name
           (IO.to_string Scalar.print_typ exp_sub_typ)
           (IO.to_string Scalar.print_typ actual_typ) in
-        raise (CompilationError m)
+        raise (SyntaxError m)
     | _ -> ()) ;
     (match exp_sub_nullable, sub_typ.nullable with
     | Some n1, Some n2 when n1 <> n2 ->
       let m = Printf.sprintf "Operand of %s is%s supposed to be NULLable"
         op_typ.name (if n1 then "" else " not") in
-      raise (CompilationError m)
+      raise (SyntaxError m)
     | _ -> ()) ;
     changed
   in
@@ -313,7 +311,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
             true
           ) else if out_type.complete then (
             let m = Printf.sprintf "field %s not in %S tuple" field !tuple in
-            raise (CompilationError m)
+            raise (SyntaxError m)
           ) else false
         ) else false
       | _, from ->
@@ -330,7 +328,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         !logger.debug "Cannot find field %s in out-tuple" field ;
         if out_type.complete then (
           let m = Printf.sprintf "field %s not in %S tuple" field !tuple in
-          raise (CompilationError m)) ;
+          raise (SyntaxError m)) ;
         Hashtbl.add out_type.fields field (ref None, exp_type) ;
         true
       | _, out ->
@@ -341,7 +339,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         check_expr_type ~from:out ~to_:exp_type
     ) else (
       let m = Printf.sprintf "unknown tuple %S" !tuple in
-      raise (CompilationError m)
+      raise (SyntaxError m)
     )
   | Param (_op_typ, _pname) ->
     (* TODO: one day we will know the type or value of params *)
@@ -389,7 +387,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
         | exception Not_found ->
           if is_subset && from_tuple.complete then (
             let m = Printf.sprintf "Unknown field %s" n in
-            raise (CompilationError m)) ;
+            raise (Lang.SyntaxError m)) ;
           changed (* no-op *)
         | parent_rank, parent_field ->
           let c1 = check_expr_type ~from:parent_field ~to_:child_field
@@ -403,7 +401,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
         | exception Not_found ->
           if to_tuple.complete then (
             let m = Printf.sprintf "Field %s is not in output tuple" n in
-            raise (CompilationError m)) ;
+            raise (Lang.SyntaxError m)) ;
           let copy = Lang.Expr.copy_typ parent_field in
           let rank =
             if autorank then ref (Some (max_rank to_tuple.fields + 1))
@@ -516,7 +514,7 @@ let check_operation ~in_type ~out_type =
  *)
 
 let check_node_types node =
-  try ( (* Prepend the node name to any CompilationError *)
+  try ( (* Prepend the node name to any SyntaxError *)
     (* Try to improve the in_type using the out_type of parents: *)
     (
       if node.in_type.complete then false
@@ -532,11 +530,11 @@ let check_node_types node =
      * operation: *)
       check_operation ~in_type:node.in_type ~out_type:node.out_type node.operation
     )
-  ) with CompilationError e ->
+  ) with Lang.SyntaxError e ->
     !logger.debug "Compilation error: %s, %s"
       e (Printexc.get_backtrace ()) ;
     let e' = Printf.sprintf "node %S: %s" node.name e in
-    raise (CompilationError e')
+    raise (Lang.SyntaxError e')
 
 let node_is_complete node =
   node.in_type.complete && node.out_type.complete
@@ -554,7 +552,7 @@ let set_all_types graph =
             ((if node.in_type.complete then [] else ["cannot type input"]) @
             (if node.out_type.complete then [] else ["cannot type output"])) in
       let msg = IO.to_string (Enum.print ~sep:", " print_bad_node) bad_nodes in
-      raise (CompilationError msg)) ;
+      raise (Lang.SyntaxError msg)) ;
     if Hashtbl.fold (fun _ node changed ->
           check_node_types node || changed
         ) graph.nodes false
@@ -578,7 +576,7 @@ let compile conf graph =
         complete && node_is_complete node
       ) graph.nodes true in
   (* TODO: better reporting *)
-  if not complete then raise (CompilationError "Cannot complete typing") ;
+  if not complete then raise (Lang.SyntaxError "Cannot complete typing") ;
   Hashtbl.iter (fun _ node ->
       try compile_node node
       with Failure m ->
@@ -608,7 +606,7 @@ let run_background cmd args env =
 
 let run conf graph =
   if not (graph_is_compiled graph) then
-    raise (CompilationError "Cannot run if not compiled") ;
+    raise (Lang.SyntaxError "Cannot run if not compiled") ;
   (* For now each node creates its own output ringbuf itself but we still have
    * to set the names so that we can pass it to its children. *)
   Hashtbl.iter (fun _ node ->
