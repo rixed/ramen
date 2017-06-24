@@ -51,7 +51,7 @@ let tup_typ_of_temp_tup_type ttt =
 
 type node =
   { name : string ;
-    operation : Lang.Operation.t ;
+    mutable operation : Lang.Operation.t ;
     mutable parents : node list ;
     mutable children : node list ;
     mutable in_type : temp_tup_typ ;
@@ -80,6 +80,10 @@ let compile_node node =
   and out_typ = tup_typ_of_temp_tup_type node.out_type in
   node.command <- Some (
     CodeGen_OCaml.gen_operation node.name in_typ out_typ node.operation)
+
+let update_node node operation =
+  node.operation <- operation ;
+  node.command <- None ; node.pid <- None
 
 let make_new_graph () =
   { nodes = Hashtbl.create 17 }

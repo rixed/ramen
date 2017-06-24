@@ -26,11 +26,12 @@ let accept_anything s =
   String.starts_with s "*/*"
 
 (*
-== Add/Delete a node ==
+== Add/Update/Delete a node ==
 
 Nodes are referred to via name that can be anything as long as they are unique.
 So the client decide on the name. The server ensure uniqueness by forbidding
-creation of a new node by the same name as one that exists already.
+creation of a new node by the same name as one that exists already. Actually,
+such a request would result in altering the existing node.
 
 So each node has a URL, such as: node/$name
 We can then PUT, GET or DELETE that URL.
@@ -67,6 +68,22 @@ type make_node =
     (PPP.of_string_exc make_node_ppp "{\"operation\":\"op\", \"input_ring_size\":42}")
 *)
 
+let compile_operation name operation =
+  let open Lang.P in
+  let p = Lang.(opt_blanks -+ Operation.Parser.p +- opt_blanks +- eof) in
+  (* TODO: enable error correction *)
+  match p [] None Parsers.no_error_correction (stream_of_string operation) |>
+        to_result with
+  | Bad e ->
+    let err =
+      IO.to_string (Lang.P.print_bad_result Lang.Operation.print) e in
+    bad_request ("Creating node "^ name ^": Parse error: "^ err)
+  | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
+    (match Lang.Operation.Parser.check op with
+    | exception (Lang.SyntaxError e) ->
+      bad_request ("Creating node "^ name ^": "^ e)
+    | () -> Lwt.return op)
+
 let put_node conf headers name body =
   (* Get the message from the body *)
   if get_content_type headers <> json_content_type then
@@ -77,25 +94,24 @@ let put_node conf headers name body =
       name body ;
     fail e
   | msg ->
-    if C.has_node conf conf.C.building_graph name then
-      bad_request ("Node "^name^" already exists") else
-    let open Lang.P in
-    let p = Lang.Operation.Parser.p +- Lang.opt_blanks +- eof in
-    (* TODO: enable error correction *)
-    (match p [] None Parsers.no_error_correction (stream_of_string msg.operation) |>
-          to_result with
-    | Bad e ->
-      let err = IO.to_string (Lang.P.print_bad_result Lang.Operation.print) e in
-      bad_request ("Creating node "^ name ^": Parse error: "^ err)
-    | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
-      (match Lang.Operation.Parser.check op with
-      | exception (Lang.SyntaxError e) ->
-        bad_request ("Creating node "^ name ^": "^ e)
-      | () ->
-        let node = C.make_node name op in
-        C.add_node conf conf.C.building_graph name node ;
-        let status = `Code 200 in
-        Server.respond_string ~status ~body:"" ()))
+    (match C.find_node conf conf.C.building_graph name with
+    | exception Not_found ->
+      let%lwt op = compile_operation name msg.operation in
+      let node = C.make_node name op in
+      Lwt.return (C.add_node conf conf.C.building_graph name node)
+    | node ->
+      (match node.C.pid with
+      | Some pid ->
+        (* TODO: monitor those process and clear the pid when they fail
+         * (and record that they've failed! *)
+        bad_request ("Node "^name^" is already running as pid "^
+                     string_of_int pid)
+      | None ->
+        let%lwt op = compile_operation name msg.operation in
+        Lwt.return (C.update_node node op)
+      )) >>= fun () ->
+    let status = `Code 200 in
+    Server.respond_string ~status ~body:"" ()
 
 type node_id = string [@@ppp PPP_JSON]
 
