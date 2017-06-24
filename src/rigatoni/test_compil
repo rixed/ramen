@@ -84,7 +84,7 @@ curl "$@" \
         dcerpc_uuid string null
       )"
   }' \
-  -H 'Content-Type: application/json' http://localhost:29380/node/n1 &&
+  -H 'Content-Type: application/json' http://localhost:29380/node/TCPv29 &&
 
 # Example that shows that:
 # - in the commit-when clause, the default tuple is out not in (max
@@ -120,9 +120,9 @@ curl "$@" \
        GROUP BY ip4_server, capture_begin//60_000_000
        COMMIT AND FLUSH WHEN MAX(capture_begin) > min_capture_begin + 10_000_000"
   }' \
-  -H 'Content-Type: application/json' http://localhost:29380/node/n2 &&
+  -H 'Content-Type: application/json' http://localhost:29380/node/PerServerTraffic &&
 
-curl "$@" -X PUT http://localhost:29380/link/n1/n2 &&
+curl "$@" -X PUT http://localhost:29380/link/TCPv29/PerServerTraffic &&
 
 curl "$@" \
   -X PUT \
@@ -130,9 +130,9 @@ curl "$@" \
     "operation":
       "SELECT * WHERE bytes / (min_capture_begin - max_capture_end) < 1_000_000_000"
   }' \
-  -H 'Content-Type: application/json' http://localhost:29380/node/n3 &&
+  -H 'Content-Type: application/json' http://localhost:29380/node/LowTrafficServers &&
 
-curl "$@" -X PUT http://localhost:29380/link/n2/n3 &&
+curl "$@" -X PUT http://localhost:29380/link/PerServerTraffic/LowTrafficServers &&
 
 curl "$@" \
   -X PUT \
@@ -144,10 +144,10 @@ curl "$@" \
                     only ${bytes} bytes (in ${packets} packets) with the
                     rest of the world.\""
   }' \
-  -H 'Content-Type: application/json' http://localhost:29380/node/n4 &&
+  -H 'Content-Type: application/json' http://localhost:29380/node/LowTrafficAlert &&
 
-curl "$@" -X PUT http://localhost:29380/link/n3/n4 &&
+curl "$@" -X PUT http://localhost:29380/link/LowTrafficServers/LowTrafficAlert &&
 
-curl "$@" http://localhost:29380/compile &&
+curl "$@" http://localhost:29380/compile
 
 curl "$@" http://localhost:29380/run
