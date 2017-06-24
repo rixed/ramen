@@ -15,6 +15,9 @@ let bad_request msg = fail (HttpError (400, msg))
 let json_content_type = "application/json"
 let dot_content_type = "text/dot"
 let text_content_type = "text/plain"
+let html_content_type = "text/html"
+let css_content_type = "text/css"
+let js_content_type = "application/javascript"
 
 let get_content_type headers =
   Header.get headers "Content-Type" |? json_content_type |> String.lowercase
@@ -279,6 +282,22 @@ let run conf _headers =
     let status = `Code 200 in
     Server.respond_string ~headers ~status ~body:"" ()
 
+let ext_of_file fname =
+  let _, ext = String.rsplit fname ~by:"." in ext
+
+let content_type_of_ext = function
+  | "html" -> html_content_type
+  | "js" -> js_content_type
+  | "css" -> css_content_type
+  | _ -> "I_dont_know/Good_luck"
+
+let get_file _conf _headers file =
+  let fname = "www/"^ file in
+  !logger.info "Serving file %S" fname ;
+  let headers =
+    Header.init_with "Content-Type" (content_type_of_ext (ext_of_file file)) in
+  Server.respond_file ~headers ~fname ()
+
 (* The function called for each HTTP request: *)
 
 let callback conf _conn req body =
@@ -294,6 +313,7 @@ let callback conf _conn req body =
     (fun () ->
       try
         match Request.meth req, paths with
+        (* API *)
         | `PUT, ["node" ; name] -> put_node conf headers name body_str
         | `GET, ["node" ; name] -> get_node conf headers name
         | `DELETE, ["node" ; name] -> del_node conf headers name
@@ -303,6 +323,13 @@ let callback conf _conn req body =
         | `GET, ["graph"] -> get_graph conf headers
         | `GET, ["compile"] -> compile conf headers
         | `GET, ["run"] -> run conf headers
+        (* WWW Client *)
+        | `GET, ["" | "index.html"] ->
+          get_file conf headers "index.html"
+        | `GET, ["static"; "style.css"|"misc.js"|"graph_layout.js"
+                           |"node_edit.js" as file] ->
+          get_file conf headers file
+        (* Errors *)
         | `PUT, _ | `GET, _ | `DELETE, _ ->
           fail (HttpError (404, "No such resource"))
         | _ ->
