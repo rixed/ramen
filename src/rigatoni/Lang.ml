@@ -909,7 +909,7 @@ struct
         Expr.print where
     | Aggregate { fields ; and_all_others ; where ; key ;
                   commit_when ; flush_when } ->
-      Printf.fprintf fmt "SELECT %a%s%s WHERE %a GROUP BY %a EMIT %sWHEN %a"
+      Printf.fprintf fmt "SELECT %a%s%s WHERE %a GROUP BY %a COMMIT %sWHEN %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
