@@ -63,7 +63,8 @@ type node =
     mutable pid : int option }
 
 type graph =
-  { nodes : (string, node) Hashtbl.t }
+  { nodes : (string, node) Hashtbl.t ;
+    mutable is_running : bool }
 
 type conf =
   { building_graph : graph ;
@@ -106,7 +107,8 @@ let update_node node op_text =
   node.command <- None ; node.pid <- None
 
 let make_new_graph () =
-  { nodes = Hashtbl.create 17 }
+  { nodes = Hashtbl.create 17 ;
+    is_running = false }
 
 let make_graph save_file =
   try
@@ -634,9 +636,13 @@ let run_background cmd args env =
   | 0 -> execve cmd args env
   | pid -> pid
 
+exception InvalidCommand of string
+
 let run conf graph =
   if not (graph_is_compiled graph) then
-    raise (Lang.SyntaxError "Cannot run if not compiled") ;
+    raise (InvalidCommand "Cannot run if not compiled") ;
+  if graph.is_running then
+    raise (InvalidCommand "Graph is already running") ;
   (* For now each node creates its own output ringbuf itself but we still have
    * to set the names so that we can pass it to its children. *)
   Hashtbl.iter (fun _ node ->
@@ -646,6 +652,7 @@ let run conf graph =
         "input_ringbuf="^ rb_name_of node ;
         "output_ringbufs="^ String.concat "," (List.map rb_name_of node.children)
       |] in
-      node.pid <- Some (run_background command [||] env) ;
-      save_graph conf graph
-    ) graph.nodes
+      node.pid <- Some (run_background command [||] env)
+    ) graph.nodes ;
+  graph.is_running <- true ;
+  save_graph conf graph

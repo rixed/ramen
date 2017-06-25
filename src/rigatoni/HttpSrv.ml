@@ -203,7 +203,8 @@ Begin with the graph as a JSON object.
 
 type graph_info =
   { nodes : node_info list ;
-    links : (string * string) list } [@@ppp PPP_JSON]
+    links : (string * string) list ;
+    is_running : bool } [@@ppp PPP_JSON]
 
 let get_graph_json conf _headers =
   let graph_info =
@@ -213,7 +214,8 @@ let get_graph_json conf _headers =
       links = Hashtbl.fold (fun name node lst ->
         let links = List.map (fun c -> name, c.C.name) node.C.children in
         List.rev_append links lst
-      ) conf.C.building_graph.C.nodes [] } in
+      ) conf.C.building_graph.C.nodes [] ;
+      is_running = conf.C.building_graph.C.is_running } in
   let body = PPP.to_string graph_info_ppp graph_info ^"\n" in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" json_content_type in
@@ -253,7 +255,7 @@ let get_graph conf headers =
 let compile conf _headers =
   (* TODO: check we accept json *)
   match C.compile conf conf.C.building_graph with
-  | exception (Lang.SyntaxError e) ->
+  | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
     bad_request e
   | () ->
     let headers = Header.init_with "Content-Type" json_content_type in
@@ -263,7 +265,7 @@ let compile conf _headers =
 let run conf _headers =
   (* TODO: check we accept json *)
   match C.run conf conf.C.building_graph with
-  | exception (Lang.SyntaxError e) ->
+  | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
     bad_request e
   | () ->
     let headers = Header.init_with "Content-Type" json_content_type in
