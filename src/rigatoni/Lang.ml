@@ -159,6 +159,11 @@ type uint16 = Uint16.t
 
 exception SyntaxError of string
 
+let () =
+  Printexc.register_printer (function
+    | SyntaxError e -> Some ("Syntax Error: "^ e)
+    | _ -> None)
+
 module PConfig = ParsersPositions.LineCol (Parsers.SimpleConfig (Char))
 module P = Parsers.Make (PConfig)
 module ParseUsual = ParsersUsual.Make (P)

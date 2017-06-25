@@ -52,6 +52,9 @@ let tup_typ_of_temp_tup_type ttt =
 type node =
   { name : string ;
     mutable operation : Lang.Operation.t ;
+    (* Also keep the string as defined by the client so we do not loose
+     * formatting *)
+    mutable op_text : string ;
     mutable parents : node list ;
     mutable children : node list ;
     mutable in_type : temp_tup_typ ;
@@ -66,9 +69,24 @@ type conf =
   { building_graph : graph ;
     save_file : string }
 
-let make_node name operation =
+let compile_operation operation =
+  let open Lang.P in
+  let p = Lang.(opt_blanks -+ Operation.Parser.p +- opt_blanks +- eof) in
+  (* TODO: enable error correction *)
+  match p [] None Parsers.no_error_correction (stream_of_string operation) |>
+        to_result with
+  | Bad e ->
+    let err =
+      IO.to_string (Lang.P.print_bad_result Lang.Operation.print) e in
+    raise (Lang.SyntaxError ("Parse error: "^ err))
+  | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
+    Lang.Operation.Parser.check op ;
+    op
+
+let make_node name op_text =
   !logger.debug "Creating node %s" name ;
-  { name ; operation ; parents = [] ; children = [] ;
+  let operation = compile_operation op_text in
+  { name ; operation ; op_text ; parents = [] ; children = [] ;
     (* Set once the all graph is known: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
     command = None ; pid = None }
@@ -81,8 +99,10 @@ let compile_node node =
   node.command <- Some (
     CodeGen_OCaml.gen_operation node.name in_typ out_typ node.operation)
 
-let update_node node operation =
+let update_node node op_text =
+  let operation = compile_operation op_text in
   node.operation <- operation ;
+  node.op_text <- op_text ;
   node.command <- None ; node.pid <- None
 
 let make_new_graph () =
