@@ -272,6 +272,15 @@ let run conf _headers =
     let status = `Code 200 in
     Server.respond_string ~headers ~status ~body:"" ()
 
+let stop conf _headers =
+  match C.stop conf conf.C.building_graph with
+  | exception C.InvalidCommand e ->
+    bad_request e
+  | () ->
+    let headers = Header.init_with "Content-Type" json_content_type in
+    let status = `Code 200 in
+    Server.respond_string ~headers ~status ~body:"" ()
+
 let ext_of_file fname =
   let _, ext = String.rsplit fname ~by:"." in ext
 
@@ -313,6 +322,7 @@ let callback conf _conn req body =
         | `GET, ["graph"] -> get_graph conf headers
         | `GET, ["compile"] -> compile conf headers
         | `GET, ["run"] -> run conf headers
+        | `GET, ["stop"] -> stop conf headers
         (* WWW Client *)
         | `GET, ["" | "index.html"] ->
           get_file conf headers "index.html"

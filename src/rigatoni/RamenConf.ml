@@ -635,6 +635,7 @@ let run_background cmd args env =
   match fork () with
   | 0 -> execve cmd args env
   | pid -> pid
+    (* TODO: A monitoring thread that report the error in the node structure *)
 
 exception InvalidCommand of string
 
@@ -656,3 +657,32 @@ let run conf graph =
     ) graph.nodes ;
   graph.is_running <- true ;
   save_graph conf graph
+
+  let string_of_process_status = function
+    | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
+    | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %d" sign
+    | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
+
+  let stop conf graph =
+    if not graph.is_running then
+      raise (InvalidCommand "Graph is not running") ;
+    Hashtbl.iter (fun _ node ->
+        !logger.debug "Stopping node %s" node.name ;
+        match node.pid with
+        | None ->
+          !logger.error "Node %s has no pid?!" node.name
+        | Some pid ->
+          let open Unix in
+          (try kill pid Sys.sigterm
+          with Unix_error _ -> ()) ;
+          (try
+            let _, status = restart_on_EINTR (waitpid []) pid in
+            !logger.info "Node %s %s"
+              node.name (string_of_process_status status) ;
+           with exn ->
+            !logger.error "Cannot wait for pid %d: %s"
+              pid (Printexc.to_string exn)) ;
+          node.pid <- None
+      ) graph.nodes ;
+    graph.is_running <- false ;
+    save_graph conf graph
