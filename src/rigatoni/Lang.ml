@@ -154,6 +154,7 @@
 
 open Batteries
 open Stdint
+open RamenSharedTypes
 type uint8 = Uint8.t
 type uint16 = Uint16.t
 
@@ -185,6 +186,7 @@ let same_tuple_as_in = function
 (*$inject
   open Stdint
   open Batteries
+  open RamenSharedTypes
   open Lang.P
 
   let test_printer res_printer = function
@@ -266,9 +268,7 @@ module Scalar =
 struct
   (*$< Scalar *)
 
-  type typ = TFloat | TString | TBool
-           | TU8 | TU16 | TU32 | TU64 | TU128
-           | TI8 | TI16 | TI32 | TI64 | TI128 [@@ppp PPP_JSON]
+  type typ = scalar
 
   let print_typ fmt typ =
     let s = match typ with
@@ -432,7 +432,7 @@ let non_keyword =
 
 module Tuple =
 struct
-  type field_typ = { name : string ; nullable : bool ; typ : Scalar.typ } [@@ppp PPP_JSON]
+  type field_typ = { name : string ; nullable : bool ; typ : scalar }
 
   let print_field_typ fmt field =
     (* TODO: check that name is a valid identifier *)
@@ -441,7 +441,7 @@ struct
       Scalar.print_typ field.typ
       (if field.nullable then "" else "NOT ")
 
-  type typ = field_typ list [@@ppp PPP_JSON]
+  type typ = field_typ list
 
   let print_typ fmt lst =
     (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) fmt lst
@@ -455,19 +455,15 @@ struct
 
   (* Each expression come with a type attached. Starting at None types are
    * progressively set at compilation. *)
-  type typ =
-    { name : string ;
-      uniq_num : int ; (* to build var names or record field names *)
-      mutable nullable : bool option ;
-      mutable typ : Scalar.typ option } [@@ppp PPP_JSON]
+  type typ = expression
 
   let typ_is_complete typ =
-    typ.nullable <> None && typ.typ <> None
+    typ.nullable <> None && typ.scalar_typ <> None
 
   let print_typ fmt typ =
     Printf.fprintf fmt "%s of %s%s"
-      typ.name
-      (match typ.typ with
+      typ.expr_name
+      (match typ.scalar_typ with
       | None -> "unknown type"
       | Some typ -> "type "^ IO.to_string Scalar.print_typ typ)
       (match typ.nullable with
@@ -476,15 +472,15 @@ struct
       | Some false -> "")
 
   let uniq_num_seq = ref 0
-  let make_typ ?nullable ?typ name =
+  let make_typ ?nullable ?typ expr_name =
     incr uniq_num_seq ;
-    { name ; nullable ; typ ; uniq_num = !uniq_num_seq }
-  let make_bool_typ ?nullable name = make_typ ?nullable ~typ:Scalar.TBool name
+    { expr_name ; nullable ; scalar_typ = typ ; uniq_num = !uniq_num_seq }
+  let make_bool_typ ?nullable name = make_typ ?nullable ~typ:TBool name
   let make_num_typ ?nullable name =
-    make_typ ?nullable ~typ:Scalar.TU8 name (* will be enlarged as required *)
+    make_typ ?nullable ~typ:TU8 name (* will be enlarged as required *)
   let copy_typ typ =
     incr uniq_num_seq ;
-    { typ with name = typ.name ; uniq_num = !uniq_num_seq }
+    { typ with expr_name = typ.expr_name ; uniq_num = !uniq_num_seq }
 
   (* Expressions on scalars (aka fields) *)
   type t =
@@ -721,7 +717,7 @@ struct
       and reduce t1 op t2 = match op with
         | "*" -> Mul (make_num_typ "multiplication", t1, t2)
         (* Note: We want the default division to output floats by default *)
-        | "/" -> Div (make_typ ~typ:Scalar.TFloat "division", t1, t2)
+        | "/" -> Div (make_typ ~typ:TFloat "division", t1, t2)
         | "//" -> IDiv (make_num_typ "integer-division", t1, t2)
         | _ -> assert false in
       binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks~reduce m
@@ -1146,16 +1142,16 @@ struct
       (Ok (\
         ReadCSVFile { fname = "/tmp/toto.csv" ; separator = "," ; null = "" ; \
                       fields = Lang.Tuple.[ \
-                        { name = "f1" ; nullable = true ; typ = Scalar.TBool } ;\
-                        { name = "f2" ; nullable = false ; typ = Scalar.TI32 } ] },\
+                        { name = "f1" ; nullable = true ; typ = TBool } ;\
+                        { name = "f2" ; nullable = false ; typ = TI32 } ] },\
         (61, [])))\
         (test_p p "read from csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
         ReadCSVFile { fname = "/tmp/toto.csv" ; separator = "\t" ; null = "<NULL>" ; \
                       fields = Lang.Tuple.[ \
-                        { name = "f1" ; nullable = true ; typ = Scalar.TBool } ;\
-                        { name = "f2" ; nullable = false ; typ = Scalar.TI32 } ] },\
+                        { name = "f1" ; nullable = true ; typ = TBool } ;\
+                        { name = "f2" ; nullable = false ; typ = TI32 } ] },\
         (90, [])))\
         (test_p p "read from csv file \"/tmp/toto.csv\" \\
                                  separator \"\\t\" null \"<NULL>\" \\

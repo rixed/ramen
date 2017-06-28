@@ -14,6 +14,7 @@
 
 open Batteries
 open Log
+open RamenSharedTypes
 
 (* Tuple deconstruction as a function parameter: *)
 let id_of_field_name ?(tuple="in") field =
@@ -31,9 +32,7 @@ let print_tuple_deconstruct tuple =
   list_print_as_tuple print_field
 
 (* Emit the code that return the sersize of a fixed size type *)
-let emit_sersize_of_fixsz_typ oc =
-  let open Lang.Scalar in
-  function
+let emit_sersize_of_fixsz_typ oc = function
   | TFloat  -> Int.print oc (RingBufLib.round_up_to_rb_word 8)
   | TBool | TU8 | TI8 -> Int.print oc (RingBufLib.round_up_to_rb_word 1)
   | TU16 | TI16 -> Int.print oc (RingBufLib.round_up_to_rb_word 2)
@@ -44,7 +43,6 @@ let emit_sersize_of_fixsz_typ oc =
 
 (* Emit the code computing the sersize of some variable *)
 let emit_sersize_of_field_var typ oc var =
-  let open Lang.Scalar in
   match typ with
   | TString ->
     Printf.fprintf oc "\
@@ -60,14 +58,13 @@ let rec emit_sersize_of_field_tx tx_var offs_var nulli oc field =
       tx_var nulli
       (emit_sersize_of_field_tx tx_var offs_var nulli) { field with nullable = false }
   ) else match field.typ with
-    | Lang.Scalar.TString ->
+    | TString ->
       Printf.fprintf oc "\
         %d + RingBufLib.round_up_to_rb_word(RingBuf.read_word %s %s)"
         RingBufLib.rb_word_bytes tx_var offs_var
     | _ -> emit_sersize_of_fixsz_typ oc field.typ
 
 let id_of_typ typ =
-  let open Lang.Scalar in
   match typ with
   | TFloat  -> "float"
   | TString -> "string"
@@ -326,11 +323,10 @@ let funcname_of_expr =
 
 let implementation_of expr =
   let open Lang in
-  let open Scalar in
   let open Expr in
   let name = funcname_of_expr expr in
   let out_typ = typ_of expr in
-  match expr, out_typ.Expr.typ with
+  match expr, out_typ.scalar_typ with
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Div _), Some TFloat -> "BatFloat."^ name, Some TFloat
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _), Some TU8 -> "Uint8."^ name, Some TU8
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _), Some TU16 -> "Uint16."^ name, Some TU16
@@ -360,25 +356,21 @@ let name_of_aggr =
   | AggrMin (t, _) | AggrMax (t, _) | AggrPercentile (t, _, _)
   | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) | AggrFirst (t, _)
   | AggrLast (t, _) ->
-    "field_"^ string_of_int t.Lang.Expr.uniq_num
+    "field_"^ string_of_int t.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
   | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
     assert false
 
-  let otype_of_type =
-    let open Lang.Scalar in
-    function
+  let otype_of_type = function
     | TFloat -> "float" | TString -> "string" | TBool -> "bool"
     | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
     | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
 
 let otype_of_aggr e =
-  Option.get Lang.Expr.((typ_of e).typ) |>
+  Option.get (Lang.Expr.typ_of e).scalar_typ |>
   otype_of_type
 
 let conv_from_to from_typ to_typ p fmt e =
-  let open Lang in
-  let open Scalar in
   let omod_of_type = function
     | TFloat -> "BatFloat"
     | TString -> "BatString"
@@ -405,8 +397,8 @@ let conv_from_to from_typ to_typ p fmt e =
       p e
   | _ ->
     failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
-                (IO.to_string Scalar.print_typ from_typ)
-                (IO.to_string Scalar.print_typ to_typ))
+                (IO.to_string Lang.Scalar.print_typ from_typ)
+                (IO.to_string Lang.Scalar.print_typ to_typ))
 
 let conv_from_to_opt from_typ to_typ_opt p fmt e =
   match to_typ_opt with
@@ -418,7 +410,7 @@ let conv_from_to_opt from_typ to_typ_opt p fmt e =
  * type. *)
 let rec conv_to to_typ fmt e =
   let open Lang in
-  let from_typ = Expr.((typ_of e).typ) in
+  let from_typ = (Expr.typ_of e).scalar_typ in
   match from_typ, to_typ with
   | Some a, Some b -> conv_from_to a b emit_expr fmt e
   | _, None -> emit_expr fmt e (* No conversion required *)
@@ -465,7 +457,7 @@ and emit_function2 expr oc e1 e2 =
   let open Expr in
   let arg_typ =
     if arg_typ <> None then arg_typ else
-      match (typ_of e1).typ, (typ_of e2).typ with
+      match (typ_of e1).scalar_typ, (typ_of e2).scalar_typ with
       | None, None -> None
       | Some t1, None -> Some t1
       | None, Some t2 -> Some t2
@@ -480,12 +472,12 @@ and emit_function2 expr oc e1 e2 =
         (match %a with None -> None | Some v2_ -> %s %a %a)"
         emit_expr e2
         impl
-        (conv_from_to_opt Lang.Scalar.TString arg_typ String.print) "v1_"
-        (conv_from_to_opt Lang.Scalar.TString arg_typ String.print) "v2_"
+        (conv_from_to_opt TString arg_typ String.print) "v1_"
+        (conv_from_to_opt TString arg_typ String.print) "v2_"
     ) else (
       Printf.fprintf oc "%s %a %a"
         impl
-        (conv_from_to_opt Lang.Scalar.TString arg_typ String.print) "v1_"
+        (conv_from_to_opt TString arg_typ String.print) "v1_"
         (conv_to arg_typ) e2
     ) ;
     Printf.fprintf oc ")"
@@ -496,7 +488,7 @@ and emit_function2 expr oc e1 e2 =
         emit_expr e2
         impl
         (conv_to arg_typ) e1
-        (conv_from_to_opt Lang.Scalar.TString arg_typ String.print) "v2_"
+        (conv_from_to_opt TString arg_typ String.print) "v2_"
     ) else (
       Printf.fprintf oc "(%s %a %a)"
         impl
@@ -756,10 +748,10 @@ let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
       if field.Tuple.nullable then (
         Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> %a)\n"
           id
-          (conv_from_to field.Tuple.typ Scalar.TString String.print) "v_"
+          (conv_from_to field.Tuple.typ TString String.print) "v_"
       ) else (
         Printf.fprintf oc "%a\n"
-          (conv_from_to field.Tuple.typ Scalar.TString String.print) id
+          (conv_from_to field.Tuple.typ TString String.print) id
       )
     ) in_tuple_typ ;
   Printf.fprintf oc "\t| _ -> raise Not_found\n"
@@ -792,7 +784,7 @@ let compile_source fname =
   (* This is not guaranteed to be unique but should be... *)
   let exec_name = String.sub fname 0 (String.length fname - 3) in
   let comp_cmd =
-    Printf.sprintf "ocamlfind ocamlopt -o %s -package batteries,stdint,lwt.ppx,cohttp.lwt \
+    Printf.sprintf "ocamlfind ocamlopt -o %s -package batteries,stdint,lwt.ppx,cohttp-lwt-unix \
                                        -linkpkg codegen.cmxa %s"
       exec_name fname in
   let exit_code = Sys.command comp_cmd in

@@ -5,6 +5,7 @@ open Cohttp
 open Cohttp_lwt_unix
 open Lwt
 open Log
+open RamenSharedTypes
 module C = RamenConf
 
 exception HttpError of (int * string)
@@ -51,25 +52,7 @@ Here is the node description. Typically, optional fields are optional or even
 forbidden when creating the node and are set when getting node information.
 *)
 
-type make_node =
-  { (* The input type of this node is any tuple source with at least all the
-     * field mentioned in the "in" tuple of its operation. *)
-    operation : string ; (* description of what this node does in the DSL defined in Lang.ml *)
-    (* Fine tunning info about the size of in/out ring buffers etc. *)
-    input_ring_size : int option [@ppp_default None] ;
-    output_ring_size : int option [@ppp_default None] } [@@ppp PPP_JSON]
-
-(*$= make_node_ppp & ~printer:(PPP.to_string make_node_ppp)
-  { operation = "test" ;\
-    input_ring_size = None ;\
-    output_ring_size = None }\
-    (PPP.of_string_exc make_node_ppp "{\"operation\":\"test\"}")
-
-  { operation = "op" ;\
-    input_ring_size = Some 42 ;\
-    output_ring_size = None }\
-    (PPP.of_string_exc make_node_ppp "{\"operation\":\"op\", \"input_ring_size\":42}")
-*)
+let ok_body = "{\"success\": true}\n"
 
 let put_node conf headers name body =
   (* Get the message from the body *)
@@ -77,53 +60,43 @@ let put_node conf headers name body =
     bad_request "Bad content type"
   else match PPP.of_string_exc make_node_ppp body with
   | exception e ->
-    !logger.info "Creating node %s: Cannot parse received body: %s"
+    !logger.info "Creating node %s: Cannot parse received body: %S"
       name body ;
     fail e
   | msg ->
     (match C.find_node conf conf.C.building_graph name with
     | exception Not_found ->
-      (match C.make_node name msg.operation with
+      (match C.make_node conf.C.building_graph name msg.operation with
       | exception e ->
         bad_request ("Node "^ name ^": "^ Printexc.to_string e)
       | node ->
         Lwt.return (C.add_node conf conf.C.building_graph name node))
     | node ->
-      (match node.C.pid with
-      | Some pid ->
-        (* TODO: monitor those process and clear the pid when they fail
-         * (and record that they've failed! *)
-        bad_request ("Node "^ name ^" is already running as pid "^
-                     string_of_int pid)
-      | None ->
-        (match C.update_node node msg.operation with
-        | exception e ->
-          bad_request ("Node "^ name ^": "^ Printexc.to_string e)
-        | () -> Lwt.return_unit)
-      )) >>= fun () ->
+      (match C.update_node conf.C.building_graph node msg.operation with
+      | exception e ->
+        bad_request ("Node "^ name ^": "^ Printexc.to_string e)
+      | () -> Lwt.return_unit)
+      ) >>= fun () ->
     let status = `Code 200 in
-    Server.respond_string ~status ~body:"" ()
+    Server.respond_string ~status ~body:ok_body ()
 
-type node_id = string [@@ppp PPP_JSON]
-
-type node_info =
-  (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
-  { name : string ;
-    operation : string ;
-    command : string option ;
-    pid : int option ;
-    nb_parents : int ;
-    nb_children : int ;
-    input_type : (int option * Lang.Expr.typ) list ;
-    output_type : (int option * Lang.Expr.typ) list } [@@ppp PPP_JSON]
+let type_of_operation_of =
+  let open Lang.Operation in
+  function
+  | Select _ -> "SELECT"
+  | Aggregate _ -> "GROUP BY"
+  | OnChange _ -> "GROUP BY"
+  | Alert _ -> "ALERT"
+  | ReadCSVFile _ -> "READ CSV"
 
 let node_info_of_node node =
   { name = node.C.name ;
     operation = node.C.op_text ;
+    type_of_operation = Some (type_of_operation_of node.C.operation) ;
     command = node.C.command ;
     pid = node.C.pid ;
-    nb_parents = List.length node.C.parents ;
-    nb_children = List.length node.C.children ;
+    parents = List.map (fun n -> n.C.name) node.C.parents ;
+    children = List.map (fun n -> n.C.name) node.C.children ;
     input_type = C.list_of_temp_tup_type node.C.in_type ;
     output_type = C.list_of_temp_tup_type node.C.out_type }
 
@@ -144,7 +117,7 @@ let del_node conf _headers name =
     fail (HttpError (404, "No such node"))
   | () ->
     let status = `Code 200 in
-    Server.respond_string ~status ~body:"" ()
+    Server.respond_string ~status ~body:ok_body ()
 
 (*
 == Connect nodes ==
@@ -173,7 +146,7 @@ let put_link conf _headers src dst =
   else (
     C.make_link conf conf.C.building_graph src dst ;
     let status = `Code 200 in
-    Server.respond_string ~status ~body:"" ())
+    Server.respond_string ~status ~body:ok_body ())
 
 let del_link conf _headers src dst =
   let%lwt src = node_of_name conf conf.C.building_graph src in
@@ -183,7 +156,7 @@ let del_link conf _headers src dst =
   else (
     C.remove_link conf conf.C.building_graph src dst ;
     let status = `Code 200 in
-    Server.respond_string ~status ~body:"" ())
+    Server.respond_string ~status ~body:ok_body ())
 
 let get_link conf _headers src dst =
   let%lwt src = node_of_name conf conf.C.building_graph src in
@@ -191,20 +164,64 @@ let get_link conf _headers src dst =
   if not (C.has_link conf src dst) then
     bad_request ("That link does not exist")
   else (
-    let status = `Code 200 and body = "{}\n" in
+    let status = `Code 200 and body = ok_body in
     let headers = Header.init_with "Content-Type" json_content_type in
     Server.respond_string ~headers ~status ~body ())
+
+(*
+== Set all connections of a single node ==
+
+Allows the node editor to set all connections at once.
+*)
+
+let diff_list bef aft =
+  (* Remove an element from a list or return the original list if the
+   * element was not present: *)
+  let filter_out x lst =
+    let rec loop prev = function
+    | [] -> lst
+    | e::rest ->
+      if e == x then List.rev_append rest prev
+      else loop (e::prev) rest in
+    loop [] lst
+  in
+  (* Loop over aft, building to_add and to_del: *)
+  let rec loop to_add to_del bef = function
+  | [] -> to_add, List.rev_append bef to_del
+  | a::rest ->
+    let filtered = filter_out a bef in
+    if filtered == bef then
+      loop (a::to_add) to_del filtered rest
+    else
+      loop to_add to_del filtered rest
+  in
+  loop [] [] bef aft
+
+let set_links conf _headers name body =
+  match PPP.of_string_exc node_links_ppp body with
+  | exception e ->
+    !logger.info "Set links for node %s: Cannot parse received body: %S"
+      name body ;
+    fail e
+  | node_links ->
+    let graph = conf.C.building_graph in
+    let%lwt node = node_of_name conf graph name in
+    let%lwt parents = Lwt_list.map_s (node_of_name conf graph) node_links.parents in
+    let%lwt children = Lwt_list.map_s (node_of_name conf graph) node_links.children in
+    let to_add, to_del = diff_list node.C.parents parents in
+    List.iter (fun p -> C.remove_link conf graph p node) to_del ;
+    List.iter (fun p -> C.make_link conf graph p node) to_add ;
+    let to_add, to_del = diff_list node.C.children children in
+    List.iter (fun c -> C.remove_link conf graph node c) to_del ;
+    List.iter (fun c -> C.make_link conf graph node c) to_add ;
+    let status = `Code 200 in
+    Server.respond_string ~status ~body:ok_body ()
 
 (*
 == Display the graph (JSON or SVG representation) ==
 
 Begin with the graph as a JSON object.
 *)
-
-type graph_info =
-  { nodes : node_info list ;
-    links : (string * string) list ;
-    is_running : bool } [@@ppp PPP_JSON]
 
 let get_graph_json conf _headers =
   let graph_info =
@@ -215,7 +232,7 @@ let get_graph_json conf _headers =
         let links = List.map (fun c -> name, c.C.name) node.C.children in
         List.rev_append links lst
       ) conf.C.building_graph.C.nodes [] ;
-      is_running = conf.C.building_graph.C.is_running } in
+      status = conf.C.building_graph.C.status } in
   let body = PPP.to_string graph_info_ppp graph_info ^"\n" in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" json_content_type in
@@ -250,7 +267,7 @@ let get_graph conf headers =
     get_graph_dot conf headers
   else
     let status = Code.status_of_code 406 in
-    Server.respond_error ~status ~body:("Can't produce "^ accept ^"\n") ()
+    Server.respond_error ~status ~body:("{\"error\": \"Can't produce "^ accept ^"\"}\n") ()
 
 let compile conf _headers =
   (* TODO: check we accept json *)
@@ -260,7 +277,7 @@ let compile conf _headers =
   | () ->
     let headers = Header.init_with "Content-Type" json_content_type in
     let status = `Code 200 in
-    Server.respond_string ~headers ~status ~body:"" ()
+    Server.respond_string ~headers ~status ~body:ok_body ()
 
 let run conf _headers =
   (* TODO: check we accept json *)
@@ -270,7 +287,7 @@ let run conf _headers =
   | () ->
     let headers = Header.init_with "Content-Type" json_content_type in
     let status = `Code 200 in
-    Server.respond_string ~headers ~status ~body:"" ()
+    Server.respond_string ~headers ~status ~body:ok_body ()
 
 let stop conf _headers =
   match C.stop conf conf.C.building_graph with
@@ -279,7 +296,7 @@ let stop conf _headers =
   | () ->
     let headers = Header.init_with "Content-Type" json_content_type in
     let status = `Code 200 in
-    Server.respond_string ~headers ~status ~body:"" ()
+    Server.respond_string ~headers ~status ~body:ok_body ()
 
 let ext_of_file fname =
   let _, ext = String.rsplit fname ~by:"." in ext
@@ -292,7 +309,7 @@ let content_type_of_ext = function
 
 let get_file _conf _headers file =
   let fname = "www/"^ file in
-  !logger.info "Serving file %S" fname ;
+  !logger.debug "Serving file %S" fname ;
   let headers =
     Header.init_with "Content-Type" (content_type_of_ext (ext_of_file file)) in
   Server.respond_file ~headers ~fname ()
@@ -319,6 +336,7 @@ let callback conf _conn req body =
         | `PUT, ["link" ; src ; dst] -> put_link conf headers src dst
         | `GET, ["link" ; src ; dst] -> get_link conf headers src dst
         | `DELETE, ["link" ; src ; dst] -> del_link conf headers src dst
+        | `PUT, ["links" ; name] -> set_links conf headers name body_str
         | `GET, ["graph"] -> get_graph conf headers
         | `GET, ["compile"] -> compile conf headers
         | `GET, ["run"] -> run conf headers

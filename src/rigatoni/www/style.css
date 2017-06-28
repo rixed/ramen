@@ -1,0 +1,145 @@
+/* Layout */
+
+html, body {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: 'Roboto Slab', serif;
+}
+
+div#page {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+}
+
+div#global_panel {
+  display: flex;
+  margin: 0px;
+  padding: 1em;
+  background: grey;
+}
+
+div#global_panel * {
+  float: left;
+}
+
+div#global_panel h1 {
+  font-size: 1.5em;
+}
+
+svg#graph {
+  display: flex;
+  flex: 0 0 auto;
+  width: 25%;
+  height: 100%;
+}
+
+svg#graph g.node.selected circle {
+	fill: #86C661;
+	fill-opacity: 1.;
+}
+
+svg#graph g.node circle {
+	fill: #07393E;
+	fill-opacity: 0.5;
+	stroke: #07393E;
+	stroke-width: 2px;
+	stroke-dasharray: 5 6;
+}
+
+svg#graph g.node text {
+	text-anchor: middle;
+	alignment-baseline: middle;
+	font-size: 0.9em;
+	font-weight: bold;
+}
+
+svg#graph g.link line {
+	stroke: black;
+	stroke-width: 2px;
+	marker-end: url(#triangle);
+}
+
+/* Colors
+
+#####  Color Palette by Paletton.com
+#####  Palette URL: http://paletton.com/#uid=52E0G0kgososMcMmCkqa1G86XTe
+
+*** Primary color:
+
+   shade 0 = #86C661 = rgb(134,198, 97) = rgba(134,198, 97,1) = rgb0(0.525,0.776,0.38)
+   shade 1 = #275909 = rgb( 39, 89,  9) = rgba( 39, 89,  9,1) = rgb0(0.153,0.349,0.035)
+   shade 2 = #4F8E2A = rgb( 79,142, 42) = rgba( 79,142, 42,1) = rgb0(0.31,0.557,0.165)
+   shade 3 = #BCEAA1 = rgb(188,234,161) = rgba(188,234,161,1) = rgb0(0.737,0.918,0.631)
+   shade 4 = #D6F7C2 = rgb(214,247,194) = rgba(214,247,194,1) = rgb0(0.839,0.969,0.761)
+
+*** Secondary color (1):
+
+   shade 0 = #44848A = rgb( 68,132,138) = rgba( 68,132,138,1) = rgb0(0.267,0.518,0.541)
+   shade 1 = #07393E = rgb(  7, 57, 62) = rgba(  7, 57, 62,1) = rgb0(0.027,0.224,0.243)
+   shade 2 = #1E5D63 = rgb( 30, 93, 99) = rgba( 30, 93, 99,1) = rgb0(0.118,0.365,0.388)
+   shade 3 = #83B9BE = rgb(131,185,190) = rgba(131,185,190,1) = rgb0(0.514,0.725,0.745)
+   shade 4 = #B5E3E7 = rgb(181,227,231) = rgba(181,227,231,1) = rgb0(0.71,0.89,0.906)
+
+*** Secondary color (2):
+
+   shade 0 = #D6DF6D = rgb(214,223,109) = rgba(214,223,109,1) = rgb0(0.839,0.875,0.427)
+   shade 1 = #5E640A = rgb( 94,100, 10) = rgba( 94,100, 10,1) = rgb0(0.369,0.392,0.039)
+   shade 2 = #98A02F = rgb(152,160, 47) = rgba(152,160, 47,1) = rgb0(0.596,0.627,0.184)
+   shade 3 = #F7FDAD = rgb(247,253,173) = rgba(247,253,173,1) = rgb0(0.969,0.992,0.678)
+   shade 4 = #FAFEC7 = rgb(250,254,199) = rgba(250,254,199,1) = rgb0(0.98,0.996,0.78)
+
+*/
+
+body {
+  background-color: #FAFDFB;
+}
+
+div#global_panel {
+	background-color: #83B9BE;
+	color: #07393E;
+}
+
+
+/* Node Editor */
+
+div#node_panel {
+  display: flex;
+  padding: 1em;
+  display: table-cell;
+}
+
+div#node_panel input[type="text"], div#node_panel select, div#node_panel textarea {
+  font-family: 'Anonymous Pro', monospace;
+  font-size: 13px;
+}
+
+div#node_panel input.node-name {
+	width: 20em;
+}
+
+div#node_panel textarea.node-op, div#node_panel select {
+	vertical-align: text-top;
+}
+
+div#node_panel textarea.node-op {
+	width: 40em;
+	height: 15em;
+}
+
+div#node_panel input[type="button"] {
+	margin: 0.5em;
+	padding: 0.5em 1em 0.5em 1em;
+}
+
+span.success {
+  background-color: green;
+}
+span.failure {
+  background-color: red;
+}

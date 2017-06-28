@@ -11,7 +11,7 @@ override CFLAGS        += --std=c11 -g -O2 -Wall -W -Wno-parentheses
 override CPPFLAGS      += --std=c11 -D_GNU_SOURCE -I $(shell ocamlfind ocamlc -where)
 
 # Common rules
-.SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top
+.SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top .js
 .PHONY: clean distclean all check dep install uninstall reinstall
 
 %.cmo: %.ml
@@ -30,6 +30,9 @@ distclean: clean distclean-spec
 
 %.top: %.cma
 	$(OCAMLMKTOP) $(OCAMLFLAGS) -custom -package "$(PACKAGES)" $< -o $@
+
+%.js: %.byte $(JS_EXTRA)
+	js_of_ocaml --opt=3 --pretty +gen_js_api/ojs_runtime.js -o $@ $(JS_EXTRA) $<
 
 # Tests
 

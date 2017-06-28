@@ -4,10 +4,10 @@ LINKED_WITH_TESTS = \
 	Log.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml RamenConf.ml
 
 TESTABLE_SOURCES = \
-	Lang.ml HttpSrv.ml
+	RamenSharedTypes.ml Lang.ml HttpSrv.ml
 
 RIGATONI_SOURCES = \
-	Log.ml Lang.ml \
+	Log.ml RamenSharedTypes.ml Lang.ml \
 	RingBufLib.ml \
 	CodeGen_OCaml.ml \
 	RamenConf.ml HttpSrv.ml \
@@ -23,35 +23,55 @@ SOURCES = \
 	$(RIGATONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 
-PACKAGES = ppp lwt.ppx batteries cmdliner stdint parsercombinator cohttp.lwt
+JS_PACKAGES = ocaml-vdom js_of_ocaml-lwt js_of_ocaml-ppx lwt.ppx
+PACKAGES = ppp lwt.ppx batteries cmdliner stdint parsercombinator cohttp-lwt-unix $(JS_PACKAGES)
 
 INSTALLED = \
   rigatoni codegen.cmxa ringbuf/libringbuf.a
 
-all: $(INSTALLED) ringbuf_test.opt ringbuf_ctl
+all: $(INSTALLED) ringbuf_test.opt ringbuf_ctl www/node_edit.js
 
 ringbuf/libringbuf.a: ringbuf/ringbuf.o
 	$(AR) rs $@ $^
 
-# We have to foce -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o otherwise -package stdint would
-# put it before and gcc would not include the symbols we need as we are the only users.
+
+
+# We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
+# otherwise -package stdint would put it before and gcc would not include the
+# symbols we need as we are the only users.
+MOREFLAGS = -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf
+
 rigatoni: $(RIGATONI_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a       -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a       $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+
+codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) ringbuf/libringbuf.a wrap_ringbuf.o
+	$(OCAMLC)   $(OCAMLFLAGS)    -a       $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
 ringbuf_test.opt: RingBuf.cmx RingBufLib.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ringbuf_ctl: RingBuf.cmx ringbuf_ctl.cmx ringbuf/libringbuf.a wrap_ringbuf.o
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+
+# Web thingies
+
+JS_EXTRA = www/graph_layout.js
+
+# Ignore PPP (but then have to use another name for the cmi won't be the same):
+RamenSharedTypes_no_PPP.cmo: RamenSharedTypes.ml
+	$(OCAMLC) $(OCAMLFLAGS) -o $@ -c $<
+
+www/node_edit.byte: RamenSharedTypes_no_PPP.cmo www/node_edit.cmo
+	$(OCAMLC) $(OCAMLFLAGS) -package "$(JS_PACKAGES)" -no-check-prims -linkpkg -o $@ $^
 
 clean-spec:
-	$(RM) ringbuf/libringbuf.a
+	$(RM) ringbuf/libringbuf.a www/node_edit.byte
 
 distclean-spec:
-	$(RM) rigatoni codegen.cmxa
+	$(RM) rigatoni codegen.cmxa www/node_edit.js
 
 include $(top_srcdir)/make.common
 

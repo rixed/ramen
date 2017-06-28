@@ -1,6 +1,7 @@
 (* Global configuration for rigatoni daemon *)
 open Batteries
 open Log
+open RamenSharedTypes
 
 type temp_tup_typ =
   { mutable complete : bool ;
@@ -45,9 +46,9 @@ let tup_typ_of_temp_tup_type ttt =
   assert ttt.complete ;
   list_of_temp_tup_type ttt |>
   List.map (fun (_, typ) ->
-    { Tuple.name = typ.Expr.name ;
-      Tuple.nullable = Option.get typ.Expr.nullable ;
-      Tuple.typ = Option.get typ.Expr.typ })
+    { Tuple.name = typ.expr_name ;
+      Tuple.nullable = Option.get typ.nullable ;
+      Tuple.typ = Option.get typ.scalar_typ })
 
 type node =
   { name : string ;
@@ -64,13 +65,24 @@ type node =
 
 type graph =
   { nodes : (string, node) Hashtbl.t ;
-    mutable is_running : bool }
+    mutable status : graph_status }
 
 type conf =
   { building_graph : graph ;
     save_file : string }
 
-let compile_operation operation =
+exception InvalidCommand of string
+
+(* Graph edition: only when stopped *)
+
+let set_graph_editable graph =
+  match graph.status with
+  | Edition -> ()
+  | Compiled -> graph.status <- Edition
+  | Running ->
+    raise (InvalidCommand "Graph is running")
+
+let parse_operation operation =
   let open Lang.P in
   let p = Lang.(opt_blanks -+ Operation.Parser.p +- opt_blanks +- eof) in
   (* TODO: enable error correction *)
@@ -84,31 +96,26 @@ let compile_operation operation =
     Lang.Operation.Parser.check op ;
     op
 
-let make_node name op_text =
+let make_node graph name op_text =
   !logger.debug "Creating node %s" name ;
-  let operation = compile_operation op_text in
+  set_graph_editable graph ;
+  let operation = parse_operation op_text in
   { name ; operation ; op_text ; parents = [] ; children = [] ;
     (* Set once the all graph is known: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
     command = None ; pid = None }
 
-let compile_node node =
-  assert node.in_type.complete ;
-  assert node.out_type.complete ;
-  let in_typ = tup_typ_of_temp_tup_type node.in_type
-  and out_typ = tup_typ_of_temp_tup_type node.out_type in
-  node.command <- Some (
-    CodeGen_OCaml.gen_operation node.name in_typ out_typ node.operation)
-
-let update_node node op_text =
-  let operation = compile_operation op_text in
+let update_node graph node op_text =
+  !logger.debug "Modifying node %s" node.name ;
+  set_graph_editable graph ;
+  let operation = parse_operation op_text in
   node.operation <- operation ;
   node.op_text <- op_text ;
   node.command <- None ; node.pid <- None
 
 let make_new_graph () =
   { nodes = Hashtbl.create 17 ;
-    is_running = false }
+    status = Edition }
 
 let make_graph save_file =
   try
@@ -136,15 +143,17 @@ let add_node conf graph id node =
   Hashtbl.add graph.nodes id node ;
   save_graph conf graph
 
-let remove_node conf graph id =
-  let node = Hashtbl.find graph.nodes id in
+let remove_node conf graph name =
+  !logger.debug "Removing node %s" name ;
+  set_graph_editable graph ;
+  let node = Hashtbl.find graph.nodes name in
   List.iter (fun p ->
       p.children <- List.filter ((!=) node) p.children
     ) node.parents ;
   List.iter (fun p ->
       p.parents <- List.filter ((!=) node) p.parents
     ) node.children ;
-  Hashtbl.remove_all graph.nodes id ;
+  Hashtbl.remove_all graph.nodes name ;
   save_graph conf graph
 
 let has_link _conf src dst =
@@ -152,12 +161,14 @@ let has_link _conf src dst =
 
 let make_link conf graph src dst =
   !logger.debug "Create link between nodes %s and %s" src.name dst.name ;
+  set_graph_editable graph ;
   src.children <- dst :: src.children ;
   dst.parents <- src :: dst.parents ;
   save_graph conf graph
 
 let remove_link conf graph src dst =
   !logger.debug "Delete link between nodes %s and %s" src.name dst.name ;
+  set_graph_editable graph ;
   src.children <- List.filter ((!=) dst) src.children ;
   dst.parents <- List.filter ((!=) src) dst.parents ;
   save_graph conf graph
@@ -183,7 +194,6 @@ let make_conf debug save_file =
  *)
 
 let can_cast ~from_scalar_type ~to_scalar_type =
-  let open Lang.Scalar in
   let compatible_types =
     match from_scalar_type with
     | TU8 -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
@@ -216,30 +226,30 @@ let check_rank ~from ~to_ =
 let check_expr_type ~from ~to_ =
   let open Lang in
   let changed =
-    match to_.Expr.typ, from.Expr.typ with
+    match to_.scalar_typ, from.scalar_typ with
     | None, Some _ ->
-      to_.Expr.typ <- from.Expr.typ ;
+      to_.scalar_typ <- from.scalar_typ ;
       true
     | Some to_typ, Some from_typ when to_typ <> from_typ ->
       if can_cast ~from_scalar_type:to_typ ~to_scalar_type:from_typ then (
-        to_.Expr.typ <- from.Expr.typ ;
+        to_.scalar_typ <- from.scalar_typ ;
         true
       ) else (
         let m = Printf.sprintf "%s must have type %s but got %s of type %s"
-                    to_.Expr.name (IO.to_string Scalar.print_typ to_typ)
-                    from.Expr.name (IO.to_string Scalar.print_typ from_typ) in
+                    to_.expr_name (IO.to_string Scalar.print_typ to_typ)
+                    from.expr_name (IO.to_string Scalar.print_typ from_typ) in
         raise (SyntaxError m)
       )
     | _ -> false in
   let changed =
-    match to_.Expr.nullable, from.Expr.nullable with
+    match to_.nullable, from.nullable with
     | None, Some _ ->
-      to_.Expr.nullable <- from.Expr.nullable ;
+      to_.nullable <- from.nullable ;
       true
     | Some to_null, Some from_null when to_null <> from_null ->
       let m = Printf.sprintf "%s must%s be nullable but %s is%s"
-                to_.Expr.name (if to_null then "" else " not")
-                from.Expr.name (if from_null then "" else " not") in
+                to_.expr_name (if to_null then "" else " not")
+                from.expr_name (if from_null then "" else " not") in
       raise (SyntaxError m)
     | _ -> changed in
   changed
@@ -255,11 +265,11 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* Start by recursing into the sub-expression to know its real type: *)
     let changed = check_expr ~in_type ~out_type ~exp_type:sub_typ sub_expr in
     (* Now we check this comply with the operator expectations about its operand : *)
-    (match sub_typ.typ, exp_sub_typ with
+    (match sub_typ.scalar_typ, exp_sub_typ with
     | Some actual_typ, Some exp_sub_typ ->
       if not (can_cast ~from_scalar_type:actual_typ ~to_scalar_type:exp_sub_typ) then
         let m = Printf.sprintf "Operand of %s is supposed to have type compatible with %s, not %s"
-          op_typ.name
+          op_typ.expr_name
           (IO.to_string Scalar.print_typ exp_sub_typ)
           (IO.to_string Scalar.print_typ actual_typ) in
         raise (SyntaxError m)
@@ -267,7 +277,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (match exp_sub_nullable, sub_typ.nullable with
     | Some n1, Some n2 when n1 <> n2 ->
       let m = Printf.sprintf "Operand of %s is%s supposed to be NULLable"
-        op_typ.name (if n1 then "" else " not") in
+        op_typ.expr_name (if n1 then "" else " not") in
       raise (SyntaxError m)
     | _ -> ()) ;
     changed
@@ -275,7 +285,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   (* Check that actual_typ is a better version of op_typ and improve op_typ,
    * then check that the resulting op_type fulfill exp_type. *)
   let check_operator op_typ actual_typ nullable =
-    let from = make_typ ~typ:actual_typ ?nullable op_typ.name in
+    let from = make_typ ~typ:actual_typ ?nullable op_typ.expr_name in
     let changed = check_expr_type ~from ~to_:op_typ in
     check_expr_type ~from:op_typ ~to_:exp_type || changed
   in
@@ -285,7 +295,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     let sub_typ = typ_of sub_expr in
     let changed = check_operand op_typ sub_typ ?exp_sub_typ ?exp_sub_nullable sub_expr in
     (* So far so good. So, given the type of the operand, what is the type of the operator? *)
-    match sub_typ.typ with
+    match sub_typ.scalar_typ with
     | Some sub_typ_typ ->
       let actual_typ = make_op_typ sub_typ_typ in
       (* We propagate nullability automatically for most operator *)
@@ -304,7 +314,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     let sub_typ2 = typ_of sub_expr2 in
     let changed =
         check_operand op_typ sub_typ2 ?exp_sub_typ:exp_sub_typ2 ?exp_sub_nullable:exp_sub_nullable2 sub_expr2 || changed in
-    match sub_typ1.typ, sub_typ2.typ with
+    match sub_typ1.scalar_typ, sub_typ2.scalar_typ with
     | Some sub_typ1_typ, Some sub_typ2_typ ->
       let actual_typ = make_op_typ (sub_typ1_typ, sub_typ2_typ) in
       let nullable = if propagate_null then
@@ -317,8 +327,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     | _ -> changed
   in
   (* Useful helpers for make_op_typ above: *)
-  let return_bool _ = Scalar.TBool
-  and return_float _ = Scalar.TFloat
+  let return_bool _ = TBool
+  and return_float _ = TFloat
   in
   function
   | Const (op_typ, _) ->
@@ -343,7 +353,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       | _, from ->
         if in_type.complete then ( (* Save the type *)
           op_typ.nullable <- from.nullable ;
-          op_typ.typ <- from.typ
+          op_typ.scalar_typ <- from.scalar_typ
         ) ;
         check_expr_type ~from ~to_:exp_type
     ) else if !tuple = "out" then (
@@ -360,7 +370,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       | _, out ->
         if out_type.complete then ( (* Save the type *)
           op_typ.nullable <- out.nullable ;
-          op_typ.typ <- out.typ
+          op_typ.scalar_typ <- out.scalar_typ
         ) ;
         check_expr_type ~from:out ~to_:exp_type
     ) else (
@@ -376,22 +386,22 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | AggrSum (op_typ, e) | AggrAnd (op_typ, e)
   | AggrOr (op_typ, e) | Age (op_typ, e)
   | Not (op_typ, e) ->
-    check_unary_op op_typ identity ~exp_sub_typ:Scalar.TFloat e
+    check_unary_op op_typ identity ~exp_sub_typ:TFloat e
   | Defined (op_typ, e) ->
     check_unary_op op_typ return_bool ~exp_sub_nullable:true ~propagate_null:false e
   | AggrPercentile (op_typ, e1, e2) ->
-    check_binary_op op_typ snd ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
+    check_binary_op op_typ snd ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
   | Add (op_typ, e1, e2) | Sub (op_typ, e1, e2)
   | Mul (op_typ, e1, e2) | IDiv (op_typ, e1, e2)
   | Exp (op_typ, e1, e2) ->
-    check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
+    check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
   | Ge (op_typ, e1, e2) | Gt (op_typ, e1, e2)
   | Eq (op_typ, e1, e2) ->
-    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TFloat e1 ~exp_sub_typ2:Scalar.TFloat e2
+    check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
   | Div (op_typ, e1, e2) ->
-    check_binary_op op_typ return_float ~exp_sub_typ1:Scalar.TU128 e1 ~exp_sub_typ2:Scalar.TU128 e2
+    check_binary_op op_typ return_float ~exp_sub_typ1:TU128 e1 ~exp_sub_typ2:TU128 e2
   | And (op_typ, e1, e2) | Or (op_typ, e1, e2) ->
-    check_binary_op op_typ return_bool ~exp_sub_typ1:Scalar.TBool e1 ~exp_sub_typ2:Scalar.TBool e2
+    check_binary_op op_typ return_bool ~exp_sub_typ1:TBool e1 ~exp_sub_typ2:TBool e2
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.
@@ -597,29 +607,39 @@ let set_all_types graph =
    * - check that output type empty <=> no children
    *)
 
-let compile conf graph =
-  set_all_types graph ;
-  let complete =
-    Hashtbl.fold (fun _ node complete ->
-        !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a\n\n"
-          node.name
-          print_temp_tup_typ node.in_type
-          print_temp_tup_typ node.out_type ;
-        complete && node_is_complete node
-      ) graph.nodes true in
-  (* TODO: better reporting *)
-  if not complete then raise (Lang.SyntaxError "Cannot complete typing") ;
-  Hashtbl.iter (fun _ node ->
-      try compile_node node
-      with Failure m ->
-        raise (Failure ("While compiling "^ node.name ^": "^ m))
-    ) graph.nodes ;
-  save_graph conf graph
+let compile_node node =
+  assert node.in_type.complete ;
+  assert node.out_type.complete ;
+  let in_typ = tup_typ_of_temp_tup_type node.in_type
+  and out_typ = tup_typ_of_temp_tup_type node.out_type in
+  node.command <- Some (
+    CodeGen_OCaml.gen_operation node.name in_typ out_typ node.operation)
 
-let graph_is_compiled graph =
-  Hashtbl.fold (fun _ node compiled ->
-      compiled && node.command <> None
-    ) graph.nodes true
+let compile conf graph =
+  match graph.status with
+  | Compiled ->
+    raise (InvalidCommand "Graph is already compiled")
+  | Running ->
+    raise (InvalidCommand "Graph is already compiled and is running")
+  | Edition ->
+    set_all_types graph ;
+    let complete =
+      Hashtbl.fold (fun _ node complete ->
+          !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a\n\n"
+            node.name
+            print_temp_tup_typ node.in_type
+            print_temp_tup_typ node.out_type ;
+          complete && node_is_complete node
+        ) graph.nodes true in
+    (* TODO: better reporting *)
+    if not complete then raise (Lang.SyntaxError "Cannot complete typing") ;
+    Hashtbl.iter (fun _ node ->
+        try compile_node node
+        with Failure m ->
+          raise (Failure ("While compiling "^ node.name ^": "^ m))
+      ) graph.nodes ;
+    graph.status <- Compiled ;
+    save_graph conf graph
 
 let run_background cmd args env =
   let open Unix in
@@ -637,35 +657,37 @@ let run_background cmd args env =
   | pid -> pid
     (* TODO: A monitoring thread that report the error in the node structure *)
 
-exception InvalidCommand of string
-
 let run conf graph =
-  if not (graph_is_compiled graph) then
-    raise (InvalidCommand "Cannot run if not compiled") ;
-  if graph.is_running then
-    raise (InvalidCommand "Graph is already running") ;
-  (* For now each node creates its own output ringbuf itself but we still have
-   * to set the names so that we can pass it to its children. *)
-  Hashtbl.iter (fun _ node ->
-      let command = Option.get node.command
-      and rb_name_of node = "/tmp/ringbuf_"^ node.name ^"_in" in
-      let env = [|
-        "input_ringbuf="^ rb_name_of node ;
-        "output_ringbufs="^ String.concat "," (List.map rb_name_of node.children)
-      |] in
-      node.pid <- Some (run_background command [||] env)
-    ) graph.nodes ;
-  graph.is_running <- true ;
-  save_graph conf graph
+  match graph.status with
+  | Edition ->
+    raise (InvalidCommand "Cannot run if not compiled")
+  | Running ->
+    raise (InvalidCommand "Graph is already running")
+  | Compiled ->
+    (* For now each node creates its own output ringbuf itself but we still have
+     * to set the names so that we can pass it to its children. *)
+    Hashtbl.iter (fun _ node ->
+        let command = Option.get node.command
+        and rb_name_of node = "/tmp/ringbuf_"^ node.name ^"_in" in
+        let env = [|
+          "input_ringbuf="^ rb_name_of node ;
+          "output_ringbufs="^ String.concat "," (List.map rb_name_of node.children)
+        |] in
+        node.pid <- Some (run_background command [||] env)
+      ) graph.nodes ;
+    graph.status <- Running ;
+    save_graph conf graph
 
-  let string_of_process_status = function
-    | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
-    | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %d" sign
-    | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
+let string_of_process_status = function
+  | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
+  | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %d" sign
+  | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
 
-  let stop conf graph =
-    if not graph.is_running then
-      raise (InvalidCommand "Graph is not running") ;
+let stop conf graph =
+  match graph.status with
+  | Edition | Compiled ->
+    raise (InvalidCommand "Graph is not running")
+  | Running ->
     Hashtbl.iter (fun _ node ->
         !logger.debug "Stopping node %s" node.name ;
         match node.pid with
@@ -684,5 +706,5 @@ let run conf graph =
               pid (Printexc.to_string exn)) ;
           node.pid <- None
       ) graph.nodes ;
-    graph.is_running <- false ;
+    graph.status <- Compiled ;
     save_graph conf graph
