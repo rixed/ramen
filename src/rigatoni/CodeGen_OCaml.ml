@@ -378,16 +378,16 @@ let otype_of_aggr e =
   Option.get (Lang.Expr.typ_of e).scalar_typ |>
   otype_of_type
 
+let omod_of_type = function
+  | TFloat -> "BatFloat"
+  | TString -> "BatString"
+  | TBool -> "BatBool"
+  | TU8 | TU16 | TU32 | TU64 | TU128
+  | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
+    String.capitalize (otype_of_type t)
+  | TNum -> assert false
+
 let conv_from_to from_typ to_typ p fmt e =
-  let omod_of_type = function
-    | TFloat -> "BatFloat"
-    | TString -> "BatString"
-    | TBool -> "BatBool"
-    | TU8 | TU16 | TU32 | TU64 | TU128
-    | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
-      String.capitalize (otype_of_type t)
-    | TNum -> assert false
-  in
   match from_typ, to_typ with
   | a, b when a = b -> p fmt e
   | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
@@ -629,10 +629,12 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
       (* For most aggr function we start with the first value *)
       (let open Lang.Expr in
       match aggr with
-      | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
+      | AggrMin (_, e) | AggrMax (_, e) | AggrAnd (_, e)
       | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) ->
         let _impl, arg_typ = implementation_of aggr in
-        conv_to arg_typ oc e ;
+        conv_to arg_typ oc e
+      | AggrSum (to_typ, _) ->
+        Printf.fprintf oc "%s.zero" (omod_of_type (Option.get to_typ.scalar_typ))
       | AggrPercentile (_, p, e) ->
         let impl, arg_typ = implementation_of aggr in
         Printf.fprintf oc "(%s None %a %a) ;\n"
