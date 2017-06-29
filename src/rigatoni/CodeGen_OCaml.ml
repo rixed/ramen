@@ -265,7 +265,7 @@ let rec add_mentioned prev =
   | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
   | Not (_, e) | Defined (_, e)
     -> add_mentioned prev e
-  | AggrPercentile (_, e1, e2)
+  | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
   | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
   | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2)
@@ -311,6 +311,7 @@ let funcname_of_expr =
   | AggrFirst _ -> "fst"
   | AggrLast _ -> "snd"
   | Age _ -> "age"
+  | Sequence _ -> "sequence"
   | Not _ -> "not"
   | Defined _ -> "defined"
   | Sub _ -> "sub"
@@ -345,6 +346,9 @@ let implementation_of expr =
   | (AggrMax _|AggrMin _|AggrFirst _|AggrLast _), _ -> name, None (* No conversion necessary *)
   | (Age _|AggrPercentile _), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
     "CodeGenLib."^ name ^"_"^ IO.to_string Scalar.print_typ to_typ, Some TFloat
+  (* Sequence build a sequence of as-large-as-convenient integers (signed or
+   * not) *)
+  | Sequence _, Some TI128 -> "CodeGenLib."^ name, Some TI128
   | _, Some to_typ ->
     failwith ("Cannot find implementation of "^ name ^" for type "^
               IO.to_string Scalar.print_typ to_typ)
@@ -359,8 +363,9 @@ let name_of_aggr =
   | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) | AggrFirst (t, _)
   | AggrLast (t, _) ->
     "field_"^ string_of_int t.uniq_num
-  | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-  | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
+  | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
+  | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _
+  | Gt _ | Eq _ ->
     assert false
 
   let otype_of_type = function
@@ -442,7 +447,7 @@ and emit_expr oc =
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2)
   | Div (_, e1, e2) | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2)
   | Or (_, e1, e2) | Ge (_, e1, e2) | Gt (_, e1, e2)
-  | Eq (_, e1, e2) as expr ->
+  | Eq (_, e1, e2) | Sequence (_, e1, e2) as expr ->
     emit_function2 expr oc e1 e2
 
 (* The output must be of type [t] *)
@@ -621,7 +626,8 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-      | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
+      | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
+      | Sequence _ ->
         assert false) ;
       Printf.fprintf oc " ; \n" ;
     ) ;
@@ -651,7 +657,8 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-      | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
+      | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
+      | Sequence _ ->
         assert false
     ) ;
   Printf.fprintf oc "\t()\n"
@@ -708,7 +715,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
         | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _ ->
           true
-        | Age _| Not _| Defined _| Add _| Sub _| Mul _| Div _
+        | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _ ->
           false) false where
   in

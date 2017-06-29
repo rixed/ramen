@@ -330,6 +330,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   (* Useful helpers for make_op_typ above: *)
   let return_bool _ = TBool
   and return_float _ = TFloat
+  and return_i128 _ = TI128
   in
   function
   | Const (op_typ, _) ->
@@ -396,6 +397,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Mul (op_typ, e1, e2) | IDiv (op_typ, e1, e2)
   | Exp (op_typ, e1, e2) ->
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+  | Sequence (op_typ, e1, e2) ->
+    check_binary_op op_typ return_i128 ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
   | Ge (op_typ, e1, e2) | Gt (op_typ, e1, e2)
   | Eq (op_typ, e1, e2) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
@@ -606,6 +609,30 @@ let set_all_types graph =
   (* TODO:
    * - check that input type empty <=> no parents
    * - check that output type empty <=> no children
+   * - Move all typing in a separate module
+   *)
+
+  (*$inject
+    let test_type_single_node op_text =
+      try
+        let conf = make_conf false "/dev/null" in
+        let graph = conf.building_graph in
+        let node = make_node graph "test" op_text in
+        add_node conf graph node ;
+        set_all_types graph ;
+        "ok"
+      with e ->
+        Printf.sprintf "Exception in set_all_types: %s at\n%s"
+          (Printexc.to_string e)
+          (Printexc.get_backtrace ())
+   *)
+
+  (*$= & ~printer:BatPervasives.identity
+     "ok" (test_type_single_node "SELECT 1-1 AS x")
+     "ok" (test_type_single_node "SELECT 1-200 AS x")
+     "ok" (test_type_single_node "SELECT 1-4000000000 AS x")
+     "ok" (test_type_single_node "SELECT SEQUENCE AS x")
+     "ok" (test_type_single_node "SELECT 0 AS zero, 1 AS one, SEQUENCE AS seq")
    *)
 
 let compile_node node =

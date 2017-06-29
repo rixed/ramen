@@ -1,11 +1,17 @@
 (* Tools for LWT IOs *)
 open Lwt
 open Log
+open Stdint
 
 let dying task =
   Lwt.fail_with (Printf.sprintf "Committing suicide while %s\n%!" task)
 
 let always_true () = true
+
+let tuple_count = ref Int128.zero
+
+let on_each_input () =
+  tuple_count := Int128.succ !tuple_count
 
 let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename k =
   match%lwt Lwt_unix.(openfile filename [ O_RDONLY ] 0x644) with
@@ -21,7 +27,10 @@ let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename k =
       if alive () then (
         match%lwt Lwt_io.read_line chan with
         | exception End_of_file -> return_unit
-        | line -> k line >>= read_next_line
+        | line ->
+          let%lwt () = k line in
+          on_each_input () ;
+          read_next_line ()
       ) else (
         dying (Printf.sprintf "reading %S" filename)
       )
@@ -68,6 +77,8 @@ let read_ringbuf rb f =
   in
   let rec read_next () =
     let%lwt tx = retry_for_ringbuf ~on dequeue_alloc rb in
-    f tx >>= read_next
+    let%lwt () = f tx in
+    on_each_input () ;
+    read_next ()
   in
   read_next ()

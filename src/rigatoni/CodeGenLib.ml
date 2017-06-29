@@ -20,6 +20,14 @@ let i32_of_string = Int32.of_string
 let i64_of_string = Int64.of_string
 let i128_of_string = Int128.of_string
 
+(* Functions *)
+
+(* We are not allowed to have any state specific to this function.
+ * Consequently we must compute the sequence number from the start
+ * and increment and the global tuple count. *)
+let sequence start inc =
+  Int128.(start + !CodeGenLib_IO.tuple_count * inc)
+
 let getenv ?def n =
   try Sys.getenv n
   with Not_found ->

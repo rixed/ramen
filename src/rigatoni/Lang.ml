@@ -227,6 +227,7 @@ let same_tuple_as_in = function
     | AggrLast (_, a) -> AggrLast (typ, replace_typ a)
     | AggrPercentile (_, a, b) -> AggrPercentile (typ, replace_typ a, replace_typ b)
     | Age (_, a) -> Age (typ, replace_typ a)
+    | Sequence (_, a, b) -> Sequence (typ, replace_typ a, replace_typ b)
     | Not (_, a) -> Not (typ, replace_typ a)
     | Defined (_, a) -> Defined (typ, replace_typ a)
     | Add (_, a, b) -> Add (typ, replace_typ a, replace_typ b)
@@ -432,6 +433,7 @@ let keyword =
     strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
+    strinG "sequence" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
@@ -512,8 +514,9 @@ struct
      * scalar. It's probably easier to try to optimise the code generated
      * for when the same expression is used in several percentile functions. *)
     | AggrPercentile of typ * t * t
-    (* Other functions *)
+    (* Other functions: abs, date_part, string_concat, string_length, now... *)
     | Age of typ * t
+    | Sequence of typ * t * t (* start, step *)
     (* Unary Ops on scalars *)
     | Not of typ * t
     | Defined of typ * t
@@ -543,6 +546,7 @@ struct
     | AggrLast (_, e) -> Printf.fprintf fmt "last (%a)" print e
     | AggrPercentile (_, p, e) -> Printf.fprintf fmt "%ath percentile (%a)" print p print e
     | Age (_, e) -> Printf.fprintf fmt "age(%a)" print e
+    | Sequence (_, e1, e2) -> Printf.fprintf fmt "sequence(%a, %a)" print e1 print e2
     | Not (_, e) -> Printf.fprintf fmt "NOT (%a)" print e
     | Defined (_, e) -> Printf.fprintf fmt "(%a) IS NOT NULL" print e
     | Add (_, e1, e2) -> Printf.fprintf fmt "(%a) + (%a)" print e1 print e2
@@ -561,7 +565,7 @@ struct
     | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
     | AggrMax (t, _) | AggrSum (t, _) | AggrAnd (t, _) | AggrOr  (t, _)
     | AggrFirst (t, _) | AggrLast (t, _) | AggrPercentile (t, _, _)
-    | Age (t, _) | Not (t, _) | Defined (t, _)
+    | Age (t, _) | Sequence (t, _, _) | Not (t, _) | Defined (t, _)
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) -> t
@@ -578,7 +582,7 @@ struct
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
     | Not (_, e) | Defined (_, e) ->
       fold f (f i expr) e ;
-    | AggrPercentile (_, e1, e2)
+    | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
     | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
     | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) ->
@@ -595,7 +599,7 @@ struct
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
     | Not (_, e) | Defined (_, e) ->
       fold_by_depth f (f i expr) e ;
-    | AggrPercentile (_, e1, e2)
+    | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
     | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
     | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) ->
@@ -616,7 +620,7 @@ struct
         f expr ;
         true
       | Const _ | Param _ | Field _
-      | Age _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
+      | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
       | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
         in_aggr) false expr |> ignore
 
@@ -751,33 +755,52 @@ struct
             | e, Some true -> Defined (make_bool_typ ~nullable:false "is_not_null operator", e))
       ) m
 
-    and afun n =
+    and afun1 n =
       let sep = check (char '(') ||| blanks in
-      strinG n -- optional ~def:() (blanks -- strinG "of") --
-      sep -+ highestest_prec
+      strinG n -- optional ~def:() (blanks -- strinG "of") -- sep -+
+      highestest_prec
+
+    and afun2 n =
+      let sep = check (char '(') ||| blanks in
+      strinG n -- optional ~def:() (blanks -- strinG "of") -- sep -+
+      highestest_prec +- opt_blanks +- char ',' +- opt_blanks ++
+      highestest_prec
 
     and aggregate m =
       let m = "aggregate function" :: m in
       (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
-      ((afun "min" >>: fun e -> AggrMin (make_num_typ "min aggregation", e)) |||
-       (afun "max" >>: fun e -> AggrMax (make_num_typ "max aggregation", e)) |||
-       (afun "sum" >>: fun e -> AggrSum (make_num_typ "sum aggregation", e)) |||
-       (afun "and" >>: fun e -> AggrAnd (make_bool_typ "and aggregation", e)) |||
-       (afun "or" >>: fun e -> AggrOr (make_bool_typ "or aggregation", e)) |||
-       (afun "first" >>: fun e -> AggrFirst (make_bool_typ "first aggregation", e)) |||
-       (afun "last" >>: fun e -> AggrLast (make_bool_typ "last aggregation", e)) |||
+      ((afun1 "min" >>: fun e -> AggrMin (make_num_typ "min aggregation", e)) |||
+       (afun1 "max" >>: fun e -> AggrMax (make_num_typ "max aggregation", e)) |||
+       (afun1 "sum" >>: fun e -> AggrSum (make_num_typ "sum aggregation", e)) |||
+       (afun1 "and" >>: fun e -> AggrAnd (make_bool_typ "and aggregation", e)) |||
+       (afun1 "or" >>: fun e -> AggrOr (make_bool_typ "or aggregation", e)) |||
+       (afun1 "first" >>: fun e -> AggrFirst (make_bool_typ "first aggregation", e)) |||
+       (afun1 "last" >>: fun e -> AggrLast (make_bool_typ "last aggregation", e)) |||
        ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
-        afun "percentile" >>: fun (p, e) ->
+        afun1 "percentile" >>: fun (p, e) ->
         (* Percentile aggr function is nullable because we want it null when
          * we do not have enough measures to compute the requested percentiles.
          * Alternatively, we could return the best bet. *)
         AggrPercentile (make_num_typ ~nullable:true "percentile aggregation", p, e))
       ) m
 
-    and func m =
-      let m = "function" :: m in
-      ((afun "age" >>: fun e -> Age (make_num_typ "age function", e))
-      ) m
+    and func =
+      let seq = "sequence"
+      and seq_typ = make_typ ~nullable:false ~typ:TI128 "sequence function"
+      and seq_default_step = Const (make_typ ~nullable:false ~typ:TU8 "sequence step",
+                                    Scalar.VU8 (Uint8.of_int 1))
+      and seq_default_start = Const (make_typ ~nullable:false ~typ:TU8 "sequence start",
+                                     Scalar.VU8 (Uint8.of_int 0)) in
+      fun m ->
+        let m = "function" :: m in
+        ((afun1 "age" >>: fun e -> Age (make_num_typ "age function", e)) |||
+         (afun2 seq >>: fun (e1, e2) ->
+            Sequence (seq_typ, e1, e2)) |||
+         (afun1 seq >>: fun e1 ->
+            Sequence (seq_typ, e1, seq_default_step)) |||
+         (strinG seq >>: fun () ->
+            Sequence (seq_typ, seq_default_start, seq_default_step))
+        ) m
 
     and highestest_prec m =
       let sep = optional_greedy ~def:() blanks in
