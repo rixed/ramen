@@ -275,6 +275,7 @@ struct
       | TFloat  -> "FLOAT"
       | TString -> "STRING"
       | TBool   -> "BOOL"
+      | TNum    -> "ANY_NUM"
       | TU8     -> "U8"
       | TU16    -> "U16"
       | TU32    -> "U32"
@@ -294,6 +295,7 @@ struct
       | TFloat  -> KNum, 200
       | TU128   -> KNum, 128
       | TI128   -> KNum, 127
+      | TNum    -> KNum, 0
       | TU64    -> KNum, 64
       | TI64    -> KNum, 63
       | TU32    -> KNum, 32
@@ -348,29 +350,36 @@ struct
     open ParseUsual
     open P
 
-    let narrowest_int_scalar i =
-      if Int8.(to_int min_int) <= i && i <= Int8.(to_int max_int) then
-        VI8 (Int8.of_int i) else
-      if Uint8.(to_int min_int) <= i && i <= Uint8.(to_int max_int) then
-        VU8 (Uint8.of_int i) else
-      if Int16.(to_int min_int) <= i && i <= Int16.(to_int max_int) then
-        VI16 (Int16.of_int i) else
-      if Uint16.(to_int min_int) <= i && i <= Uint16.(to_int max_int) then
-        VU16 (Uint16.of_int i) else
-      if Int32.(to_int min_int) <= i && i <= Int32.(to_int max_int) then
-        VI32 (Int32.of_int i) else
-      if Uint32.(to_int min_int) <= i && i <= Uint32.(to_int max_int) then
-        VU32 (Uint32.of_int i) else
-      (* FIXME: as integer returns merely an int we won't go that far: *)
-      if Int64.(to_int min_int) <= i && i <= Int64.(to_int max_int) then
-        VI64 (Int64.of_int i) else
-      if Uint64.(to_int min_int) <= i && i <= Uint64.(to_int max_int) then
-        VU64 (Uint64.of_int i) else
-      if Int128.(to_int min_int) <= i && i <= Int128.(to_int max_int) then
-        VI128 (Int128.of_int i) else
-      if Uint128.(to_int min_int) <= i && i <= Uint128.(to_int max_int) then
-        VU128 (Uint128.of_int i) else
-      assert false
+    let narrowest_int_scalar =
+      let min_i8 = Num.of_string "-128"
+      and max_i8 = Num.of_string "127"
+      and max_u8 = Num.of_string "255"
+      and min_i16 = Num.of_string "-32768"
+      and max_i16 = Num.of_string "32767"
+      and max_u16 = Num.of_string "65535"
+      and min_i32 = Num.of_string "-2147483648"
+      and max_i32 = Num.of_string "2147483647"
+      and max_u32 = Num.of_string "4294967295"
+      and min_i64 = Num.of_string "-9223372036854775808"
+      and max_i64 = Num.of_string "9223372036854775807"
+      and max_u64 = Num.of_string "18446744073709551615"
+      and min_i128 = Num.of_string "-170141183460469231731687303715884105728"
+      and max_i128 = Num.of_string "170141183460469231731687303715884105727"
+      and max_u128 = Num.of_string "340282366920938463463374607431768211455"
+      and zero = Num.zero
+      in fun i ->
+        let s = Num.to_string i in
+        if Num.le_num min_i8 i && Num.le_num i max_i8  then VI8 (Int8.of_string s) else
+        if Num.le_num zero i && Num.le_num i max_u8  then VU8 (Uint8.of_string s) else
+        if Num.le_num min_i16 i && Num.le_num i max_i16  then VI16 (Int16.of_string s) else
+        if Num.le_num zero i && Num.le_num i max_u16  then VU16 (Uint16.of_string s) else
+        if Num.le_num min_i32 i && Num.le_num i max_i32  then VI32 (Int32.of_string s) else
+        if Num.le_num zero i && Num.le_num i max_u32  then VU32 (Uint32.of_string s) else
+        if Num.le_num min_i64 i && Num.le_num i max_i64  then VI64 (Int64.of_string s) else
+        if Num.le_num zero i && Num.le_num i max_u64  then VU64 (Uint64.of_string s) else
+        if Num.le_num min_i128 i && Num.le_num i max_i128  then VI128 (Int128.of_string s) else
+        if Num.le_num zero i && Num.le_num i max_u128  then VU128 (Uint128.of_string s) else
+        assert false
 
     (* TODO: Here and elsewhere, we want the location (start+length) of the
      * thing in addition to the thing *)
@@ -477,7 +486,7 @@ struct
     { expr_name ; nullable ; scalar_typ = typ ; uniq_num = !uniq_num_seq }
   let make_bool_typ ?nullable name = make_typ ?nullable ~typ:TBool name
   let make_num_typ ?nullable name =
-    make_typ ?nullable ~typ:TU8 name (* will be enlarged as required *)
+    make_typ ?nullable ~typ:TNum name (* will be enlarged as required *)
   let copy_typ typ =
     incr uniq_num_seq ;
     { typ with expr_name = typ.expr_name ; uniq_num = !uniq_num_seq }

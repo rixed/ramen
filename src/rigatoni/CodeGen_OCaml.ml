@@ -40,6 +40,7 @@ let emit_sersize_of_fixsz_typ oc = function
   | TU64 | TI64 -> Int.print oc (RingBufLib.round_up_to_rb_word 8)
   | TU128 | TI128 -> Int.print oc (RingBufLib.round_up_to_rb_word 16)
   | TString -> assert false
+  | TNum -> assert false
 
 (* Emit the code computing the sersize of some variable *)
 let emit_sersize_of_field_var typ oc var =
@@ -79,6 +80,7 @@ let id_of_typ typ =
   | TI32    -> "i32"
   | TI64    -> "i64"
   | TI128   -> "i128"
+  | TNum    -> assert false
 
 let emit_value_of_string typ oc var =
   Printf.fprintf oc "CodeGenLib.%s_of_string %s" (id_of_typ typ) var
@@ -365,6 +367,7 @@ let name_of_aggr =
     | TFloat -> "float" | TString -> "string" | TBool -> "bool"
     | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
     | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
+    | TNum -> assert false
 
 let otype_of_aggr e =
   Option.get (Lang.Expr.typ_of e).scalar_typ |>
@@ -378,6 +381,7 @@ let conv_from_to from_typ to_typ p fmt e =
     | TU8 | TU16 | TU32 | TU64 | TU128
     | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
       String.capitalize (otype_of_type t)
+    | TNum -> assert false
   in
   match from_typ, to_typ with
   | a, b when a = b -> p fmt e

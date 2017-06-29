@@ -139,8 +139,8 @@ let has_node _conf graph id =
 let find_node _conf graph id =
   Hashtbl.find graph.nodes id
 
-let add_node conf graph id node =
-  Hashtbl.add graph.nodes id node ;
+let add_node conf graph node =
+  Hashtbl.add graph.nodes node.name node ;
   save_graph conf graph
 
 let remove_node conf graph name =
@@ -196,6 +196,7 @@ let make_conf debug save_file =
 let can_cast ~from_scalar_type ~to_scalar_type =
   let compatible_types =
     match from_scalar_type with
+    | TNum -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
     | TU8 -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
     | TU16 -> [ TU16 ; TU32 ; TU64 ; TU128 ; TI32 ; TI64 ; TI128 ; TFloat ]
     | TU32 -> [ TU32 ; TU64 ; TU128 ; TI64 ; TI128 ; TFloat ]

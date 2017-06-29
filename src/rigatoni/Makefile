@@ -4,7 +4,7 @@ LINKED_WITH_TESTS = \
 	Log.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml RamenConf.ml
 
 TESTABLE_SOURCES = \
-	RamenSharedTypes.ml Lang.ml HttpSrv.ml
+	RamenSharedTypes.ml Lang.ml HttpSrv.ml RamenConf.ml
 
 RIGATONI_SOURCES = \
 	Log.ml RamenSharedTypes.ml Lang.ml \
@@ -24,7 +24,7 @@ SOURCES = \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 
 JS_PACKAGES = ocaml-vdom js_of_ocaml-lwt js_of_ocaml-ppx lwt.ppx
-PACKAGES = ppp lwt.ppx batteries cmdliner stdint parsercombinator cohttp-lwt-unix $(JS_PACKAGES)
+PACKAGES = ppp lwt.ppx batteries cmdliner stdint parsercombinator cohttp-lwt-unix num $(JS_PACKAGES)
 
 INSTALLED = \
   rigatoni codegen.cmxa ringbuf/libringbuf.a

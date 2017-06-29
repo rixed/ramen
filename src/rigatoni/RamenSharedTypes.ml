@@ -1,4 +1,7 @@
-type scalar = TFloat | TString | TBool
+(* TNUM is not an actual type used by any value, but it's used as a default
+ * type for numeric operands that can be "promoted" to any other numerical
+ * type *)
+type scalar = TFloat | TString | TBool | TNum
             | TU8 | TU16 | TU32 | TU64 | TU128
             | TI8 | TI16 | TI32 | TI64 | TI128 [@@ppp PPP_JSON]
 

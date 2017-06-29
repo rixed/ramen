@@ -70,7 +70,7 @@ let put_node conf headers name body =
       | exception e ->
         bad_request ("Node "^ name ^": "^ Printexc.to_string e)
       | node ->
-        Lwt.return (C.add_node conf conf.C.building_graph name node))
+        Lwt.return (C.add_node conf conf.C.building_graph node))
     | node ->
       (match C.update_node conf.C.building_graph node msg.operation with
       | exception e ->
