@@ -18,16 +18,7 @@ let option_get = function
  * that happens once and for all is not slower than all the runtime checks
  * we'd have to add should we manipulate JS objects instead, while being
  * more robust. *)
-(*
-type node =
-  { mutable name : string ;
-    mutable operation : string ;
-    mutable parents : string list ;
-    mutable children : string list ;
-    command : string option ;
-    pid : int option ;
-    creation : bool } (* true if this is a new node that hasn't been saved yet *)
-*)
+
 let creation_node () =
   { name = "" ; operation = "" ;
     parents = [] ; children = [] ;
@@ -46,12 +37,6 @@ let node_of_ojs ojs =
     pid = get ojs "pid" |> option_of_js int_of_js ;
     input_type = [] ; output_type = [] }
 
-(*
-type graph =
-  { nodes : node_info list ;
-    links : (string * string) array ;
-    status : bool }
-*)
 let link_of_pair pair =
   let open Ojs in
   array_get pair 0 |> string_of_js,
@@ -68,10 +53,6 @@ let graph_of_ojs ojs =
     links = get ojs "links" |> list_of_js link_of_pair ;
     status = get ojs "status" |> status_of_js }
 
-(*type links =
-  { parents : string list ;
-    children : string list } *)
-
 (* TODO: deriving json *)
 module JZON =
 struct
@@ -84,8 +65,6 @@ struct
   let arr_of_list lst = "["^ String.concat "," lst ^"]"
   let value_lst l lst = label l ^ arr_of_list lst
 
-  (* The only used function, when sending a node to Ramen.
-   * Alternative: ? *)
   let of_node node =
     obj_of_list [ value_str "operation" node.operation ]
   let of_links links =
@@ -182,12 +161,20 @@ let prog_info node =
   | _ -> []
 
 let view st =
+  let spinner st =
+    match st.saving with
+    | Done (Ok _) ->
+      [ txt_span ~a:[class_ "success"] "Saved" ]
+    | Done (Error err) ->
+      [ txt_span ~a:[class_ "failure"] err ]
+    | _ -> [] in
+  let node_editor st =
     match st.graph with
     | None ->
-      div [ text "Select a graph" ]
+      [ text "Select a graph" ]
     | Some graph ->
       let is_editable = graph.status = Edition || graph.status = Compiled in
-      div [
+      [
         (let a = [type_ "button"; onclick `CreateNode; value "New Node"] in
          let a = if is_editable then a else attr "disabled" "" :: a in
          input [] ~a) ;
@@ -257,13 +244,12 @@ let view st =
                                value "Delete"]
               ] else no_html) ;
             br () ] @
-            (match st.saving with
-            | Done (Ok _) ->
-              [ txt_span ~a:[class_ "success"] "Saved" ; br () ]
-            | Done (Error err) ->
-              [ txt_span ~a:[class_ "failure"] err ; br () ]
-            | _ -> []) @
-            prog_info node)) ]
+            prog_info node))
+      ]
+    in
+    div [
+      div ~a:[class_ "spinner"] (spinner st) ;
+      div ~a:[class_ "node-editor"] (node_editor st) ]
 
 (* Update *)
 
