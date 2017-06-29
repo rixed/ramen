@@ -181,7 +181,9 @@ function display_graph(graph, set_node)
       if (l <= dist) { return [x0, y0]; }
       var alpha = Math.atan2 (dy, dx);
       var ll = l - dist;
-      return [x0 + (ll * Math.cos(alpha)), y0 + (ll * Math.sin(alpha))];
+      var x = x0 + (ll * Math.cos(alpha));
+      var y = y0 + (ll * Math.sin(alpha));
+      return [isNaN(x) ? x0:x, isNaN(y) ? y0:y ];
     }
     var arrow_length = 10;
     ee.select('line')
