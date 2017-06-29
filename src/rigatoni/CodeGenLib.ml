@@ -114,7 +114,9 @@ let yield sersize_of_tuple serialize_tuple select =
   let outputer =
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
   let rec loop () =
-    outputer (select ()) >>= loop in
+    let%lwt () = outputer (select ()) in
+    CodeGenLib_IO.on_each_input () ;
+    loop () in
   loop ()
 
 type ('a, 'b, 'c) aggr_value =
