@@ -327,16 +327,20 @@ let callback conf _conn req body =
   in
   catch
     (fun () ->
+      let dec = Uri.pct_decode in
       try
         match Request.meth req, paths with
         (* API *)
-        | `PUT, ["node" ; name] -> put_node conf headers name body_str
-        | `GET, ["node" ; name] -> get_node conf headers name
-        | `DELETE, ["node" ; name] -> del_node conf headers name
-        | `PUT, ["link" ; src ; dst] -> put_link conf headers src dst
-        | `GET, ["link" ; src ; dst] -> get_link conf headers src dst
-        | `DELETE, ["link" ; src ; dst] -> del_link conf headers src dst
-        | `PUT, ["links" ; name] -> set_links conf headers name body_str
+        | `PUT, ["node" ; name] -> put_node conf headers (dec name) body_str
+        | `GET, ["node" ; name] -> get_node conf headers (dec name)
+        | `DELETE, ["node" ; name] -> del_node conf headers (dec name)
+        | _, ["node"] -> bad_request "Missing node name"
+        | `PUT, ["link" ; src ; dst] -> put_link conf headers (dec src) (dec dst)
+        | `GET, ["link" ; src ; dst] -> get_link conf headers (dec src) (dec dst)
+        | `DELETE, ["link" ; src ; dst] -> del_link conf headers (dec src) (dec dst)
+        | _, (["link"] | ["link" ; _ ]) -> bad_request "Missing node name"
+        | `PUT, ["links" ; name] -> set_links conf headers (dec name) body_str
+        | `PUT, ["links"] -> bad_request "Missing node name"
         | `GET, ["graph"] -> get_graph conf headers
         | `GET, ["compile"] -> compile conf headers
         | `GET, ["run"] -> run conf headers
@@ -345,7 +349,7 @@ let callback conf _conn req body =
         | `GET, ["" | "index.html"] ->
           get_file conf headers "index.html"
         | `GET, ["static"; "style.css"|"misc.js"|"graph_layout.js"
-                           |"node_edit.js" as file] ->
+                |"node_edit.js" as file] ->
           get_file conf headers file
         (* Errors *)
         | `PUT, _ | `GET, _ | `DELETE, _ ->
