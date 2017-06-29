@@ -750,7 +750,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     (emit_expr_select ~honor_star:false "key_of_input_" in_tuple_typ mentioned and_all_others out_tuple_typ) key
     (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
-    (emit_expr_select ~honor_star:false ~with_aggr:true ~with_first_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ)
+    (emit_expr_select ~honor_star:true ~with_aggr:true ~with_first_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ)
       (exprs_of_selected_fields selected_fields)
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ ;
