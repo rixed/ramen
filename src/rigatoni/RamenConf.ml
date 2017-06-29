@@ -717,8 +717,15 @@ let run conf graph =
   | Running ->
     raise (InvalidCommand "Graph is already running")
   | Compiled ->
-    (* For now each node creates its own output ringbuf itself but we still have
-     * to set the names so that we can pass it to its children. *)
+    (* First prepar all the required ringbuffers *)
+    let rb_name_of node = "/tmp/ringbuf_"^ node.name ^"_in"
+    and rb_sz_words = 1000000 in
+    !logger.info "Creating ringbuffers..." ;
+    Hashtbl.iter (fun _ node ->
+        RingBuf.create (rb_name_of node) rb_sz_words
+      ) graph.nodes ;
+    (* Now run everything *)
+    !logger.info "Launching generated programs..." ;
     Hashtbl.iter (fun _ node ->
         let command = Option.get node.command
         and rb_name_of node = "/tmp/ringbuf_"^ node.name ^"_in" in

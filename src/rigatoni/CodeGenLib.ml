@@ -62,15 +62,13 @@ let outputer_of rb_outs sersize_of_tuple serialize_tuple =
     Lwt.join
 
 (* Each node can write in several ringbuffers (one per children) which
- * names are givenby the output_ringbuf envvar followed by the child number
- * as an extension.
- * This function prepares everything and return a list of ringbuf handlers *)
-let out_ringbufs () =
+ * names are given by the output_ringbuf envvar followed by the child number
+ * as an extension. *)
+let load_out_ringbufs () =
   let rb_out_fnames = getenv ~def:"/tmp/ringbuf_out" "output_ringbufs" |> String.split_on_char ','
-  and rb_out_sz = getenv ~def:"1000000" "input_ringbuf_size" |> int_of_string
   in
   !logger.info "Will output into %a" (List.print String.print) rb_out_fnames ;
-  List.map (fun fname -> RingBuf.create fname rb_out_sz) rb_out_fnames
+  List.map (fun fname -> RingBuf.load fname) rb_out_fnames
 
 let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_strings =
   !logger.info "Starting READ CSV FILE process..." ;
@@ -84,7 +82,7 @@ let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_s
     let strings = String.nsplit line separator |> Array.of_list in
     tuple_of_strings strings
   in
-  let rb_outs = out_ringbufs () in
+  let rb_outs = load_out_ringbufs () in
   let outputer =
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
   CodeGenLib_IO.read_file_lines filename (fun line ->
@@ -100,7 +98,7 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
-  let rb_outs = out_ringbufs () in
+  let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
     CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
   let outputer =
@@ -112,7 +110,7 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
 
 let yield sersize_of_tuple serialize_tuple select =
   !logger.info "Starting YIELD process..." ;
-  let rb_outs = out_ringbufs () in
+  let rb_outs = load_out_ringbufs () in
   let outputer =
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
   let rec loop () =
@@ -151,7 +149,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
-  let rb_outs = out_ringbufs () in
+  let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
     CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
   let commit =

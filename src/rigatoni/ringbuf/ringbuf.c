@@ -22,9 +22,10 @@ extern inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_t
 extern inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx);
 extern inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size);
 
-extern struct ringbuf *ringbuf_create(char const *fname, uint32_t tot_words)
+extern int ringbuf_create(char const *fname, uint32_t tot_words)
 {
-  struct ringbuf *rb = NULL;
+  int ret = -1;
+  struct ringbuf rb;
 
   if (unlink(fname) < 0 && errno != ENOENT) {
     fprintf(stderr, "Cannot unlink ring-buffer in file '%s': %s\n", fname, strerror(errno));
@@ -37,24 +38,28 @@ extern struct ringbuf *ringbuf_create(char const *fname, uint32_t tot_words)
     goto err0;
   }
 
-  size_t file_length = sizeof(*rb) + tot_words*sizeof(uint32_t);
+  size_t file_length = sizeof(rb) + tot_words*sizeof(uint32_t);
 
   if (ftruncate(fd, file_length) < 0) {
     fprintf(stderr, "Cannot ftruncate file '%s': %s\n", fname, strerror(errno));
     goto err1;
   }
 
-  rb = mmap(NULL, file_length, PROT_READ|PROT_WRITE, MAP_SHARED, fd, (off_t)0);
-  if (rb == MAP_FAILED) {
-    fprintf(stderr, "Cannot mmap file '%s': %s\n", fname, strerror(errno));
-    rb = NULL;
+  rb.nb_words = tot_words;
+  rb.prod_head = rb.prod_tail = 0;
+  rb.cons_head = rb.cons_tail = 0;
+  ssize_t w = write(fd, &rb, sizeof(rb));
+  if (w < 0) {
+    fprintf(stderr, "Cannot write ring buffer header in file '%s': %s\n",
+            fname, strerror(errno));
+    goto err1;
+  } else if ((size_t)w < sizeof(rb)) {
+    fprintf(stderr, "Cannot write the whole ring buffer header in file '%s'",
+            fname);
     goto err1;
   }
 
-  rb->nb_words = tot_words;
-  rb->prod_head = rb->prod_tail = 0;
-  rb->cons_head = rb->cons_tail = 0;
-
+  ret = 0;
 err1:
   if (close(fd) < 0) {
     fprintf(stderr, "Cannot close file '%s': %s\n", fname, strerror(errno));
@@ -62,7 +67,7 @@ err1:
   }
 
 err0:
-  return rb;
+  return ret;
 }
 
 static bool check_header_eq(char const *fname, char const *what, unsigned expected, unsigned actual)

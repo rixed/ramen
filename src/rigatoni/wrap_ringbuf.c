@@ -70,14 +70,11 @@ static value alloc_tx(void)
 CAMLprim value wrap_ringbuf_create(value fname_, value tot_words_)
 {
   CAMLparam2(fname_, tot_words_);
-  CAMLlocal1(res);
   char *fname = String_val(fname_);
   unsigned tot_words = Long_val(tot_words_);
-  struct ringbuf *rb = ringbuf_create(fname, tot_words);
-  if (! rb) caml_failwith("Cannot create ring buffer");
-  printf("MMapped %s @ %p\n", fname, rb);
-  res = alloc_ringbuf(rb);
-  CAMLreturn(res);
+  int res = ringbuf_create(fname, tot_words);
+  if (res < 0) caml_failwith("Cannot create ring buffer");
+  CAMLreturn(Val_unit);
 }
 
 CAMLprim value wrap_ringbuf_load(value fname_)

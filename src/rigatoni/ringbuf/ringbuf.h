@@ -238,9 +238,8 @@ inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_si
   return sz;
 }
 
-/* Create a new ring buffer mmaped to that file. Fails if that file exists
- * already. Returns NULL on error. */
-extern struct ringbuf *ringbuf_create(char const *fname, uint32_t tot_words);
+/* Create a new ring buffer of the specified size. */
+extern int ringbuf_create(char const *fname, uint32_t tot_words);
 
 /* Mmap the ring buffer present in that file. Fails if the file does not exist
  * already. Returns NULL on error. */

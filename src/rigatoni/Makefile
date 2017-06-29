@@ -8,7 +8,7 @@ TESTABLE_SOURCES = \
 
 RIGATONI_SOURCES = \
 	Log.ml RamenSharedTypes.ml Lang.ml \
-	RingBufLib.ml \
+	RingBufLib.ml RingBuf.ml \
 	CodeGen_OCaml.ml \
 	RamenConf.ml HttpSrv.ml \
 	rigatoni.ml

@@ -3,7 +3,7 @@ open Stdint
 type t (* abstract, represents a ring buffer mmapped file *)
 type tx (* abstract, represents an ongoing (de)queueing operation *)
 
-external create : string -> int -> t = "wrap_ringbuf_create"
+external create : string -> int -> unit = "wrap_ringbuf_create"
 external load : string -> t = "wrap_ringbuf_load"
 external capacity : t -> int = "wrap_capacity"
 external nb_entries : t -> int = "wrap_nb_entries"

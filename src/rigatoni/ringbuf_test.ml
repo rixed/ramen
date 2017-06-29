@@ -7,7 +7,8 @@ let () =
   Printf.printf "Mmapping ringbuf...\n%!" ;
   let rb_fname = "/tmp/ringbuf_test" in
   ignore_exceptions Unix.unlink rb_fname ;
-  let rb = create rb_fname 100 in
+  create rb_fname 100 ;
+  let rb = load rb_fname in
   Printf.printf "Allocating bytes...\n%!" ;
   let tx = enqueue_alloc rb (4+4+4+16) in
   Printf.printf "Write u32...\n%!" ;
