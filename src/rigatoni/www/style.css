@@ -40,29 +40,30 @@ svg#graph {
 }
 
 svg#graph g.node.selected circle {
-	fill: #86C661;
-	fill-opacity: 1.;
+  fill: #86C661;
+  fill-opacity: 1.;
 }
 
 svg#graph g.node circle {
-	fill: #07393E;
-	fill-opacity: 0.5;
-	stroke: #07393E;
-	stroke-width: 2px;
-	stroke-dasharray: 5 6;
+  fill: #07393E;
+  fill-opacity: 0.5;
+  stroke: #07393E;
+  stroke-width: 2px;
+  stroke-dasharray: 5 6;
 }
 
 svg#graph g.node text {
-	text-anchor: middle;
-	alignment-baseline: middle;
-	font-size: 0.9em;
-	font-weight: bold;
+  text-anchor: middle;
+  alignment-baseline: middle;
+  font-size: 0.9em;
+  font-weight: bold;
+  user-select: none;
 }
 
 svg#graph g.link line {
-	stroke: black;
-	stroke-width: 2px;
-	marker-end: url(#triangle);
+  stroke: black;
+  stroke-width: 2px;
+  marker-end: url(#triangle);
 }
 
 /* Colors
@@ -101,8 +102,8 @@ body {
 }
 
 div#global_panel {
-	background-color: #83B9BE;
-	color: #07393E;
+  background-color: #83B9BE;
+  color: #07393E;
 }
 
 
@@ -120,21 +121,21 @@ div#node_panel input[type="text"], div#node_panel select, div#node_panel textare
 }
 
 div#node_panel input.node-name {
-	width: 20em;
+  width: 20em;
 }
 
 div#node_panel textarea.node-op, div#node_panel select {
-	vertical-align: text-top;
+  vertical-align: text-top;
 }
 
 div#node_panel textarea.node-op {
-	width: 40em;
-	height: 15em;
+  width: 40em;
+  height: 15em;
 }
 
 div#node_panel input[type="button"] {
-	margin: 0.5em;
-	padding: 0.5em 1em 0.5em 1em;
+  margin: 0.5em;
+  padding: 0.5em 1em 0.5em 1em;
 }
 
 span.success {
