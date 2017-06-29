@@ -568,6 +568,20 @@ let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
 let exprs_of_selected_fields =
   List.map (fun sf -> sf.Lang.Operation.expr)
 
+let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
+  let mentioned =
+    let all_exprs = List.map (fun sf -> sf.Lang.Operation.expr) selected_fields in
+    add_all_mentioned all_exprs in
+  Printf.fprintf oc "open Stdint\n\n\
+    %a\n%a\n%a\n\
+    let () =\n\
+      \tLwt_main.run (\n\
+      \t\tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_)\n"
+    (emit_expr_select "select_" in_tuple_typ mentioned false out_tuple_typ)
+      (exprs_of_selected_fields selected_fields)
+    (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
+    (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
+
 let emit_select oc in_tuple_typ out_tuple_typ
                 selected_fields and_all_others where =
   (* We need:
@@ -813,6 +827,8 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
   let open Lang.Operation in
   with_code_file_for name (fun oc fname ->
     (match op with
+    | Yield fields ->
+      emit_yield oc in_tuple_typ out_tuple_typ fields
     | Select { fields ; and_all_others ; where } ->
       emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where
     | ReadCSVFile { fname ; separator ; null ; fields } ->

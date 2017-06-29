@@ -110,6 +110,15 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
     RingBuf.dequeue_commit tx ;
     if where tuple then outputer (select tuple) else return_unit)
 
+let yield sersize_of_tuple serialize_tuple select =
+  !logger.info "Starting YIELD process..." ;
+  let rb_outs = out_ringbufs () in
+  let outputer =
+    outputer_of rb_outs sersize_of_tuple serialize_tuple in
+  let rec loop () =
+    outputer (select ()) >>= loop in
+  loop ()
+
 type ('a, 'b, 'c) aggr_value =
   { first_touched : float ;
     (* used to compute the actual selected field when outputing the

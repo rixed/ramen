@@ -83,6 +83,7 @@ let put_node conf headers name body =
 let type_of_operation_of =
   let open Lang.Operation in
   function
+  | Yield _ -> "YIELD"
   | Select _ -> "SELECT"
   | Aggregate _ -> "GROUP BY"
   | OnChange _ -> "GROUP BY"

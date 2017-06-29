@@ -904,6 +904,9 @@ struct
       Expr.print fmt f.expr
 
   type t =
+    (* Generate values out of thin air. The difference with Select is that
+     * Yield does not wait for some input. *)
+    | Yield of selected_field list
     (* Simple operation that merely filters / projects / constructs fields and
      * produce 0 or 1 tuple for each input tuple. *)
     | Select of {
@@ -934,6 +937,9 @@ struct
   let print fmt =
     let sep = ", " in
     function
+    | Yield fields ->
+      Printf.fprintf fmt "YIELD %a"
+        (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
     | Select { fields ; and_all_others ; where } ->
       Printf.fprintf fmt "SELECT %a%s%s WHERE %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
@@ -993,6 +999,10 @@ struct
     let list_sep m =
       let m = "list separator" :: m in
       (opt_blanks -- char ',' -- opt_blanks) m
+
+    let yield =
+      strinG "yield" -- blanks -+
+      several ~sep:list_sep selected_field >>: fun fields -> Yield fields
 
     let select_clause m =
       let m = "select clause" :: m in
@@ -1089,7 +1099,7 @@ struct
 
     let p m =
       let m = "operation" :: m in
-      (select ||| aggregate ||| on_change ||| alert ||| read_csv_file) m
+      (yield ||| select ||| aggregate ||| on_change ||| alert ||| read_csv_file) m
 
     (*$= p & ~printer:(test_printer print)
       (Ok (\
@@ -1216,6 +1226,12 @@ struct
             )
           | _ -> ())
       in function
+      | Yield fields ->
+        List.iter (fun sf ->
+            let m = "Aggregation functions not allowed in YIELDs" in
+            check_no_aggr m sf.expr ;
+            check_fields_from [] "YIELD operation" sf.expr
+          ) fields
       | Select { fields ; where ; _ } ->
         List.iter (fun sf ->
             let m = "Aggregation functions not allowed without a \
