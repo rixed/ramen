@@ -91,6 +91,9 @@ let type_of_operation_of =
   | ReadCSVFile _ -> "READ CSV"
 
 let node_info_of_node node =
+  let to_expr_type_info lst =
+    List.map (fun (rank, typ) -> rank, Lang.Expr.to_expr_type_info typ) lst
+  in
   { name = node.C.name ;
     operation = node.C.op_text ;
     type_of_operation = Some (type_of_operation_of node.C.operation) ;
@@ -98,8 +101,8 @@ let node_info_of_node node =
     pid = node.C.pid ;
     parents = List.map (fun n -> n.C.name) node.C.parents ;
     children = List.map (fun n -> n.C.name) node.C.children ;
-    input_type = C.list_of_temp_tup_type node.C.in_type ;
-    output_type = C.list_of_temp_tup_type node.C.out_type }
+    input_type = C.list_of_temp_tup_type node.C.in_type |> to_expr_type_info ;
+    output_type = C.list_of_temp_tup_type node.C.out_type |> to_expr_type_info }
 
 let get_node conf _headers name =
   match C.find_node conf conf.C.building_graph name with

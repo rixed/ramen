@@ -466,7 +466,15 @@ struct
 
   (* Each expression come with a type attached. Starting at None types are
    * progressively set at compilation. *)
-  type typ = expression
+  type typ =
+    { expr_name : string ;
+      uniq_num : int ; (* to build var names or record field names *)
+      mutable nullable : bool option ;
+      mutable scalar_typ : scalar option }
+
+  let to_expr_type_info typ =
+    { RamenSharedTypes.nullable = Option.get typ.nullable ;
+      RamenSharedTypes.scalar_typ = Option.get typ.scalar_typ }
 
   let typ_is_complete typ =
     typ.nullable <> None && typ.scalar_typ <> None

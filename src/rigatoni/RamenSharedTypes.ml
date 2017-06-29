@@ -5,11 +5,8 @@ type scalar = TFloat | TString | TBool | TNum
             | TU8 | TU16 | TU32 | TU64 | TU128
             | TI8 | TI16 | TI32 | TI64 | TI128 [@@ppp PPP_JSON]
 
-type expression =
-  { expr_name : string ;
-    uniq_num : int ; (* to build var names or record field names *)
-    mutable nullable : bool option ;
-    mutable scalar_typ : scalar option } [@@ppp PPP_JSON]
+type expr_type_info =
+  { nullable : bool ; scalar_typ : scalar } [@@ppp PPP_JSON]
 
 type graph_status = Edition | Compiled | Running [@@ppp PPP_JSON]
 
@@ -42,8 +39,8 @@ type node_info =
     type_of_operation : string option ;
     command : string option ;
     pid : int option ;
-    input_type : (int option * expression) list ;
-    output_type : (int option * expression) list } [@@ppp PPP_JSON]
+    input_type : (int option * expr_type_info) list ;
+    output_type : (int option * expr_type_info) list } [@@ppp PPP_JSON]
 
 type node_links =
   (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
@@ -54,5 +51,3 @@ type graph_info =
   { nodes : node_info list ;
     links : (string * string) list ;
     status : graph_status } [@@ppp PPP_JSON]
-
-

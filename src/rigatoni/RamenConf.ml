@@ -46,9 +46,9 @@ let tup_typ_of_temp_tup_type ttt =
   assert ttt.complete ;
   list_of_temp_tup_type ttt |>
   List.map (fun (_, typ) ->
-    { Tuple.name = typ.expr_name ;
-      Tuple.nullable = Option.get typ.nullable ;
-      Tuple.typ = Option.get typ.scalar_typ })
+    { Tuple.name = typ.Expr.expr_name ;
+      Tuple.nullable = Option.get typ.Expr.nullable ;
+      Tuple.typ = Option.get typ.Expr.scalar_typ })
 
 type node =
   { name : string ;
@@ -227,30 +227,30 @@ let check_rank ~from ~to_ =
 let check_expr_type ~from ~to_ =
   let open Lang in
   let changed =
-    match to_.scalar_typ, from.scalar_typ with
+    match to_.Expr.scalar_typ, from.Expr.scalar_typ with
     | None, Some _ ->
-      to_.scalar_typ <- from.scalar_typ ;
+      to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
       true
     | Some to_typ, Some from_typ when to_typ <> from_typ ->
       if can_cast ~from_scalar_type:to_typ ~to_scalar_type:from_typ then (
-        to_.scalar_typ <- from.scalar_typ ;
+        to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
         true
       ) else (
         let m = Printf.sprintf "%s must have type %s but got %s of type %s"
-                    to_.expr_name (IO.to_string Scalar.print_typ to_typ)
-                    from.expr_name (IO.to_string Scalar.print_typ from_typ) in
+                    to_.Expr.expr_name (IO.to_string Scalar.print_typ to_typ)
+                    from.Expr.expr_name (IO.to_string Scalar.print_typ from_typ) in
         raise (SyntaxError m)
       )
     | _ -> false in
   let changed =
-    match to_.nullable, from.nullable with
+    match to_.Expr.nullable, from.Expr.nullable with
     | None, Some _ ->
-      to_.nullable <- from.nullable ;
+      to_.Expr.nullable <- from.Expr.nullable ;
       true
     | Some to_null, Some from_null when to_null <> from_null ->
       let m = Printf.sprintf "%s must%s be nullable but %s is%s"
-                to_.expr_name (if to_null then "" else " not")
-                from.expr_name (if from_null then "" else " not") in
+                to_.Expr.expr_name (if to_null then "" else " not")
+                from.Expr.expr_name (if from_null then "" else " not") in
       raise (SyntaxError m)
     | _ -> changed in
   changed

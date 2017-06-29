@@ -375,7 +375,7 @@ let name_of_aggr =
     | TNum -> assert false
 
 let otype_of_aggr e =
-  Option.get (Lang.Expr.typ_of e).scalar_typ |>
+  Option.get Lang.Expr.((typ_of e).scalar_typ) |>
   otype_of_type
 
 let omod_of_type = function
@@ -419,7 +419,7 @@ let conv_from_to_opt from_typ to_typ_opt p fmt e =
  * type. *)
 let rec conv_to to_typ fmt e =
   let open Lang in
-  let from_typ = (Expr.typ_of e).scalar_typ in
+  let from_typ = Expr.((typ_of e).scalar_typ) in
   match from_typ, to_typ with
   | Some a, Some b -> conv_from_to a b emit_expr fmt e
   | _, None -> emit_expr fmt e (* No conversion required *)
