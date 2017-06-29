@@ -1084,10 +1084,13 @@ struct
        fun e -> OnChange e) m
 
     let alert m =
+      let opt_field title m =
+        let m = title :: m in
+        (optional ~def:"" (blanks -- strinG title -- blanks -+ quoted_string)) m
+      in
       let m = "alert" :: m in
-      (strinG "alert" -- blanks -+ quoted_string +- blanks +-
-       strinG "subject" +- blanks ++ quoted_string +- blanks +-
-       strinG "text" +- blanks ++ quoted_string >>:
+      (strinG "alert" -- blanks -+ quoted_string ++
+       opt_field "subject" ++ opt_field "text" >>:
        fun ((team, subject), text) -> Alert { team ; subject ; text }) m
 
     let read_csv_file m =
@@ -1205,12 +1208,16 @@ struct
 
       (Ok (\
         Alert { team = "network firefighters" ;\
-                subject = "Too little traffic from zone $z1 to $z2" ;\
+                subject = "Too little traffic from zone ${z1} to ${z2}" ;\
                 text = "fatigue..." },\
-        (96, [])))\
+        (100, [])))\
         (test_p p "alert \"network firefighters\" \\
-                         subject \"Too little traffic from zone $z1 to $z2\" \\
+                         subject \"Too little traffic from zone ${z1} to ${z2}\" \\
                          text \"fatigue...\"")
+      (Ok (\
+        Alert { team = "glop" ; subject = "" ; text = "" },\
+        (12, [])))\
+        (test_p p "alert \"glop\"")
 
       (Ok (\
         ReadCSVFile { fname = "/tmp/toto.csv" ; separator = "," ; null = "" ; \
