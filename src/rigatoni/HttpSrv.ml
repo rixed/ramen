@@ -275,7 +275,7 @@ let get_graph conf headers =
 
 let compile conf _headers =
   (* TODO: check we accept json *)
-  match C.compile conf conf.C.building_graph with
+  match Compiler.compile conf conf.C.building_graph with
   | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
     bad_request e
   | () ->

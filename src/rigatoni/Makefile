@@ -1,16 +1,16 @@
 top_srcdir = ..
 
 LINKED_WITH_TESTS = \
-	Log.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml RamenConf.ml
+	Log.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml RingBuf.ml RamenConf.ml
 
 TESTABLE_SOURCES = \
-	RamenSharedTypes.ml Lang.ml HttpSrv.ml RamenConf.ml
+	RamenSharedTypes.ml Lang.ml Compiler.ml
 
 RIGATONI_SOURCES = \
 	Log.ml RamenSharedTypes.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
 	CodeGen_OCaml.ml \
-	RamenConf.ml HttpSrv.ml \
+	RamenConf.ml Compiler.ml HttpSrv.ml \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \
@@ -56,6 +56,9 @@ ringbuf_test.opt: RingBuf.cmx RingBufLib.cmx ringbuf_test.cmx ringbuf/libringbuf
 ringbuf_ctl: RingBuf.cmx ringbuf_ctl.cmx ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
+all_tests.opt: ringbuf/libringbuf.a wrap_ringbuf.o $(LINKED_WITH_TESTS:.ml=.cmx) $(TESTABLE_SOURCES:.ml=.cmx) all_tests.ml
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
+
 # Web thingies
 
 JS_EXTRA = www/graph_layout.js
@@ -72,6 +75,9 @@ clean-spec:
 
 distclean-spec:
 	$(RM) rigatoni codegen.cmxa www/node_edit.js
+
+check-spec: ringbuf_test.opt
+	@./ringbuf_test.opt || echo "FAILURE"
 
 include $(top_srcdir)/make.common
 

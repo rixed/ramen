@@ -235,6 +235,7 @@ let same_tuple_as_in = function
     | Mul (_, a, b) -> Mul (typ, replace_typ a, replace_typ b)
     | Div (_, a, b) -> Div (typ, replace_typ a, replace_typ b)
     | IDiv (_, a, b) -> IDiv (typ, replace_typ a, replace_typ b)
+    | Mod (_, a, b) -> Mod (typ, replace_typ a, replace_typ b)
     | Exp (_, a, b) -> Exp (typ, replace_typ a, replace_typ b)
     | And (_, a, b) -> And (typ, replace_typ a, replace_typ b)
     | Or (_, a, b) -> Or (typ, replace_typ a, replace_typ b)
@@ -523,7 +524,7 @@ struct
      * scalar. It's probably easier to try to optimise the code generated
      * for when the same expression is used in several percentile functions. *)
     | AggrPercentile of typ * t * t
-    (* Other functions: abs, date_part, string_concat, string_length, now... *)
+    (* Other functions: abs, random, date_part, string_concat, string_length, now... *)
     | Age of typ * t
     | Sequence of typ * t * t (* start, step *)
     (* Unary Ops on scalars *)
@@ -535,6 +536,7 @@ struct
     | Mul of typ * t * t
     | Div of typ * t * t
     | IDiv of typ * t * t
+    | Mod of typ * t * t
     | Exp of typ * t * t
     | And of typ * t * t
     | Or  of typ * t * t
@@ -563,6 +565,7 @@ struct
     | Mul (_, e1, e2) -> Printf.fprintf fmt "(%a) * (%a)" print e1 print e2
     | Div (_, e1, e2) -> Printf.fprintf fmt "(%a) / (%a)" print e1 print e2
     | IDiv (_, e1, e2) -> Printf.fprintf fmt "(%a) // (%a)" print e1 print e2
+    | Mod (_, e1, e2) -> Printf.fprintf fmt "(%a) %% (%a)" print e1 print e2
     | Exp (_, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" print e1 print e2
     | And (_, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" print e1 print e2
     | Or (_, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" print e1 print e2
@@ -577,7 +580,7 @@ struct
     | Age (t, _) | Sequence (t, _, _) | Not (t, _) | Defined (t, _)
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
-    | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) -> t
+    | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _) -> t
 
   let is_nullable e =
     let t = typ_of e in
@@ -594,7 +597,7 @@ struct
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
     | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
-    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) ->
+    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2) ->
       fold f (fold f (f i expr) e1) e2
 
   (* Propagate values down the tree only. Final return value is thus
@@ -611,7 +614,7 @@ struct
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
     | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
-    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) ->
+    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2) ->
       let i' = f i expr in
       fold_by_depth f i' e1 ;
       fold_by_depth f i' e2
@@ -630,7 +633,7 @@ struct
         true
       | Const _ | Param _ | Field _
       | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
-      | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ ->
+      | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ ->
         in_aggr) false expr |> ignore
 
   module Parser =
@@ -735,12 +738,13 @@ struct
 
     and high_prec_left_assoc m =
       let m = "arithmetic operator" :: m in
-      let op = that_string "*" ||| that_string "//" ||| that_string "/"
+      let op = that_string "*" ||| that_string "//" ||| that_string "/" ||| that_string "%"
       and reduce t1 op t2 = match op with
         | "*" -> Mul (make_num_typ "multiplication", t1, t2)
         (* Note: We want the default division to output floats by default *)
         | "/" -> Div (make_typ ~typ:TFloat "division", t1, t2)
         | "//" -> IDiv (make_num_typ "integer-division", t1, t2)
+        | "%" -> Mod (make_num_typ "modulo", t1, t2)
         | _ -> assert false in
       binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks~reduce m
 
@@ -884,6 +888,13 @@ struct
         (63, [])))\
         (test_p p "max others.start > \\
                    out.start + ($obs_window * 1.15) * 1_000_000" |> replace_typ_in_expr)
+
+      (Ok (\
+        Mod (typ,\
+          Param (typ, "x"),\
+          Param (typ, "y")),\
+        (7, [])))\
+        (test_p p "$x % $y" |> replace_typ_in_expr)
     *)
 
     (*$>*)
