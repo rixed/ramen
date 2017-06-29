@@ -80,6 +80,7 @@ function display_graph(graph, set_node)
     .force('center', d3.forceCenter(svgbox.width/2, svgbox.height/2))
     .force('positioning', d3.forceX(svgbox.width/2).strength(function(node) { return top_nodes[node.name] ? 1:0.2; }))
     .force('positioning', d3.forceY(100).strength(function(node) { return top_nodes[node.name] ? 1:0; }))
+    .force('collide', d3.forceCollide().radius(function(node) { return node.radius * 1.2; }))
     .alphaDecay(0.03)
     .on('tick', update_graph)
     .on('end', save_coords);
