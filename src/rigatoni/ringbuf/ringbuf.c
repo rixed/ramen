@@ -26,6 +26,11 @@ extern struct ringbuf *ringbuf_create(char const *fname, uint32_t tot_words)
 {
   struct ringbuf *rb = NULL;
 
+  if (unlink(fname) < 0 && errno != ENOENT) {
+    fprintf(stderr, "Cannot unlink ring-buffer in file '%s': %s\n", fname, strerror(errno));
+    // Good luck!
+  }
+
   int fd = open(fname, O_RDWR|O_CREAT|O_EXCL, S_IRUSR|S_IWUSR);
   if (fd < 0) {
     fprintf(stderr, "Cannot create ring-buffer in file '%s': %s\n", fname, strerror(errno));
