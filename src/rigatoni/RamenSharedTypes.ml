@@ -1,4 +1,4 @@
-(* TNUM is not an actual type used by any value, but it's used as a default
+(* TNum is not an actual type used by any value, but it's used as a default
  * type for numeric operands that can be "promoted" to any other numerical
  * type *)
 type scalar = TFloat | TString | TBool | TNum

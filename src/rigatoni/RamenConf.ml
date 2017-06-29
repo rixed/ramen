@@ -510,7 +510,7 @@ let check_select ~in_type ~out_type fields and_all_others where =
   ) || (
     (* If nothing changed so far and our input is complete, then our output is. *)
     if in_type.complete && not out_type.complete then (
-      !logger.debug "Completing out_type because it won't change any more. " ;
+      !logger.debug "Completing out_type because it won't change any more." ;
       out_type.complete <- true ;
       true
     ) else false

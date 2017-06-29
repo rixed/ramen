@@ -948,11 +948,12 @@ struct
         Expr.print where
     | Aggregate { fields ; and_all_others ; where ; key ;
                   commit_when ; flush_when } ->
-      Printf.fprintf fmt "SELECT %a%s%s WHERE %a GROUP BY %a COMMIT %sWHEN %a"
+      Printf.fprintf fmt "SELECT %a%s%s WHERE %a%s%a COMMIT %sWHEN %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         Expr.print where
+        (if key <> [] then " GROUP BY " else "")
         (List.print ~first:"" ~last:"" ~sep:", " Expr.print) key
         (if flush_when = None then "AND FLUSH " else "")
         Expr.print commit_when ;
@@ -1141,7 +1142,7 @@ struct
               alias = [ "max_stop" ] } ;\
             { expr = Expr.(\
                 Div (typ,\
-                  AggrSum (typ,Field (typ, ref "in", "packets")),\
+                  AggrSum (typ, Field (typ, ref "in", "packets")),\
                   Param (typ, "avg_window"))) ;\
               alias = [ "packets_per_sec" ] } ] ;\
           and_all_others = false ;\

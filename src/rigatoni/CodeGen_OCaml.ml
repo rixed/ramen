@@ -841,6 +841,6 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
     | Alert { team ; subject ; text } ->
       emit_alert oc in_tuple_typ team subject text
     | _ ->
-      Printf.fprintf oc "let () = print_string \"TODO\n\"") ;
+      Printf.fprintf oc "let () = print_string \"TODO\\n\"") ;
     fname) |>
     compile_source
