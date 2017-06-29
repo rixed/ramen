@@ -6,7 +6,7 @@ type scalar = TFloat | TString | TBool | TNum
             | TI8 | TI16 | TI32 | TI64 | TI128 [@@ppp PPP_JSON]
 
 type expr_type_info =
-  { nullable : bool ; scalar_typ : scalar } [@@ppp PPP_JSON]
+  { name : string ; nullable : bool ; typ : scalar } [@@ppp PPP_JSON]
 
 type graph_status = Edition | Compiled | Running [@@ppp PPP_JSON]
 

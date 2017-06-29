@@ -473,8 +473,9 @@ struct
       mutable scalar_typ : scalar option }
 
   let to_expr_type_info typ =
-    { RamenSharedTypes.nullable = Option.get typ.nullable ;
-      RamenSharedTypes.scalar_typ = Option.get typ.scalar_typ }
+    { RamenSharedTypes.name = typ.expr_name ;
+      RamenSharedTypes.nullable = Option.get typ.nullable ;
+      RamenSharedTypes.typ = Option.get typ.scalar_typ }
 
   let typ_is_complete typ =
     typ.nullable <> None && typ.scalar_typ <> None
