@@ -19,7 +19,7 @@ let option_get = function
  * we'd have to add should we manipulate JS objects instead, while being
  * more robust. *)
 
-let creation_node () =
+let make_empty_node () =
   { name = "" ; operation = "" ;
     parents = [] ; children = [] ;
     type_of_operation = None ;
@@ -74,10 +74,11 @@ end
 
 type api_response = Ok of Ojs.t | Error of string
 type spinner = Nope | Spinning of string | Done of api_response
-type edited_node = FromGraph of string | NewNode of node_info | NoNode
+type edited_node = FromGraph of string | NewNode | NoNode
 type state =
   { graph : graph_info option ;
-    edited_node : edited_node ;  (* The node currently undergoing edition *)
+    mutable new_node : node_info ; (* To save the current edition *)
+    mutable edited_node : edited_node ;  (* The node currently undergoing edition *)
     mutable saving : spinner }
 
 let get_node graph name =
@@ -90,7 +91,7 @@ let get_edited_node st =
     (match get_node graph node_name with
     | exception Not_found -> None
     | node -> Some (node, false))
-  | Some _, NewNode node -> Some (node, true)
+  | Some _, NewNode -> Some (st.new_node, true)
   | Some _, NoNode -> None
 
 let edit_node st f =
@@ -99,7 +100,7 @@ let edit_node st f =
   | None -> ()
 
 let initialState =
-  { graph = None ; edited_node = NoNode ; saving = Nope }
+  { graph = None ; new_node = make_empty_node () ; edited_node = NoNode ; saving = Nope }
 
 (* View *)
 
@@ -236,12 +237,15 @@ let view st =
               text txt
             | _ ->
               if is_editable then div [
-                input [] ~a:[class_ "node-update"; onclick `UpdateNode; type_ "button";
-                             value (if is_creation then "Create" else "Update")] ;
-                if is_creation then no_html
-                else
-                  input [] ~a:[class_ "node-delete"; onclick `DeleteNode; type_ "button";
-                               value "Delete"]
+                (let a = [class_ "node-update"; onclick `UpdateNode; type_ "button";
+                          value (if is_creation then "Create" else "Update")] in
+                 let a = if node.operation <> "" && node.name <> "" then a
+                         else attr "disabled" "" :: a in
+                 input [] ~a) ;
+                (if is_creation then no_html
+                 else
+                   input [] ~a:[class_ "node-delete"; onclick `DeleteNode; type_ "button";
+                                value "Delete"])
               ] else no_html) ;
             br () ] @
             prog_info node))
@@ -308,7 +312,8 @@ let update st msg =
     log "Graph has stopped" ;
     return ~c:[reload_graph] st
   | `CreateNode ->
-    return { st with edited_node = NewNode (creation_node ()) }
+    (* TODO: somehow disable selection in the d3 graph *)
+    return { st with edited_node = NewNode }
   | `NameChange new_text ->
     edit_node st (fun node -> node.name <- new_text) ;
     return st
@@ -323,15 +328,18 @@ let update st msg =
     return st
   | `UpdateNode ->
     let c = ref [] in
-    let edited_node = ref st.edited_node in
     edit_node st (fun node ->
-      edited_node := FromGraph node.name ; (* In case we add a NewNode *)
+      if st.edited_node = NewNode then ( (* TODO: maybe wait for the update to succeed? *)
+        assert (node == st.new_node) ;
+        st.edited_node <- FromGraph node.name ;
+        st.new_node <- make_empty_node ()
+      ) ;
       let url = "node/"^ node.name in
       let payload = JZON.of_node node in
       let txt = "Saving node "^node.name in
       st.saving <- Spinning txt ;
       c := [ Http_put { url ; payload ; callback = fun r -> `UpdatedNode (r, node) } ]) ;
-    return ~c:!c { st with edited_node = !edited_node }
+    return ~c:!c st
   | `UpdatedNode (Ok _ojs, node) ->
     (* Now that we updated the node let's update the links *)
     let url = "links/"^ node.name in
