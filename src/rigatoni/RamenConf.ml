@@ -78,7 +78,14 @@ exception InvalidCommand of string
 let set_graph_editable graph =
   match graph.status with
   | Edition -> ()
-  | Compiled -> graph.status <- Edition
+  | Compiled ->
+    graph.status <- Edition ;
+    (* Also reset the info we kept from the last cmopilation *)
+    Hashtbl.iter (fun _ node ->
+       node.in_type <- make_temp_tup_typ () ;
+       node.out_type <- make_temp_tup_typ () ;
+       node.command <- None ;
+       node.pid <- None) graph.nodes
   | Running ->
     raise (InvalidCommand "Graph is running")
 
@@ -101,7 +108,8 @@ let make_node graph name op_text =
   set_graph_editable graph ;
   let operation = parse_operation op_text in
   { name ; operation ; op_text ; parents = [] ; children = [] ;
-    (* Set once the all graph is known: *)
+    (* Set once the whole graph is known and reset each time the graph is
+     * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
     command = None ; pid = None }
 
