@@ -1045,6 +1045,11 @@ struct
         let fields = List.rev fields in
         Select { fields ; and_all_others ; where }
 
+    let group_by m =
+      let m = "group-by clause" :: m in
+      (strinG "group" -- blanks -- strinG "by" -- blanks -+
+       several ~sep:list_sep Expr.Parser.p) m
+
     let commit_when m =
       let m = "commit clause" :: m in
       (strinG "commit" -- blanks -+
@@ -1068,8 +1073,7 @@ struct
 
     let aggregate m =
       let m = "aggregate" :: m in
-      (select +- blanks +- strinG "group" +- blanks +- strinG "by" +- blanks ++
-       several ~sep:list_sep Expr.Parser.p +- blanks ++ commit_when >>: function
+      (select +- blanks ++ optional ~def:[] (group_by +- blanks) ++ commit_when >>: function
        | (Select { fields ; and_all_others ; where }, key), (commit_when, flush_when) ->
          Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when }
        | _ -> assert false) m
@@ -1175,6 +1179,23 @@ struct
                             (sum packets)/$avg_window as packets_per_sec \\
                      group by start / (1_000_000 * $avg_window) \\
                      commit and flush when out.start < (max any.start) + 3600" |>\
+           replace_typ_in_op)
+
+      (Ok (\
+        Aggregate {\
+          fields = [\
+            { expr = Expr.Const (typ, Scalar.VI8 (Int8.of_int 1)) ;\
+              alias = [ "one" ] } ] ;\
+          and_all_others = false ;\
+          where = Expr.Const (typ, Scalar.VBool true) ;\
+          key = [] ;\
+          commit_when = Expr.(\
+            Ge (typ,\
+              AggrSum (typ, Const (typ, Scalar.VI8 (Int8.of_int 1))),\
+              Const (typ, Scalar.VI8 (Int8.of_int 5)))) ;\
+          flush_when = None },\
+          (48, [])))\
+          (test_p p "select 1 as one commit and flush when sum 1 >= 5" |>\
            replace_typ_in_op)
 
       (Ok (\
