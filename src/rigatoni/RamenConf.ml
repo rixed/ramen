@@ -425,7 +425,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
     Hashtbl.fold (fun _ (rank, _) max_rank ->
       match !rank with
       | None -> max_rank
-      | Some r -> max max_rank r) fields 0
+      | Some r -> max max_rank r) fields ~-1 (* start at -1 so that max+1 starts at 0 *)
   in
   (* Check that to_tuple is included in from_tuple (is is_subset) and if so
    * that they are compatible. Improve child type using parent type. *)
