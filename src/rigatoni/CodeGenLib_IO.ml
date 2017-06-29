@@ -49,7 +49,7 @@ let retry ~on ?(first_delay=1.0) ?(min_delay=0.000001) ?(max_delay=10.0) ?(delay
         let delay = min delay max_delay in
         let delay = max delay min_delay in
         next_delay := !next_delay *. delay_adjust_nok ;
-        !logger.error "Retryable error: %s, pausing %gs"
+        !logger.debug "Retryable error: %s, pausing %gs"
           (Printexc.to_string e) delay ;
         let%lwt () = Lwt_unix.sleep delay in
         loop x
