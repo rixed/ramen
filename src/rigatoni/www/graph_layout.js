@@ -39,8 +39,6 @@ function tweak_graph(graph)
 // in the event handler of the updated points would cause mayhem.
 var simulation;
 
-var saved_xy = {};
-
 function display_graph(graph, set_node)
 {
   tweak_graph(graph);
@@ -58,16 +56,6 @@ function display_graph(graph, set_node)
 
   var svg = document.getElementById('graph');
   var svgbox = svg.getBoundingClientRect();
-  // TODO: save the x,y of the nodes and reuse them with a new graph to
-  // avoid abrupt jumps in the layout when we update (and reload) the graph.
-  foreach(graph.nodes, function (node) {
-    if (saved_xy[node.name] == null) {
-      saved_xy[node.name] = { 'x': svgbox.width * Math.random(),
-                              'y': svgbox.height * Math.random() }
-    }
-    node.x = saved_xy[node.name].x;
-    node.y = saved_xy[node.name].y;
-  });
 
   var links = map (graph.links, function (link) {
     return { 'source': link[0], 'target': link[1] };
@@ -82,16 +70,7 @@ function display_graph(graph, set_node)
     .force('positioning', d3.forceY(100).strength(function(node) { return top_nodes[node.name] ? 1:0; }))
     .force('collide', d3.forceCollide().radius(function(node) { return node.radius * 1.2; }))
     .alphaDecay(0.03)
-    .on('tick', update_graph)
-    .on('end', save_coords);
-
-  function save_coords()
-  {
-    foreach(graph.nodes, function (node) {
-      saved_xy[node.name].x = node.x;
-      saved_xy[node.name].y = node.y;
-    });
-  }
+    .on('tick', update_graph);
 
   function update_graph()
   {
