@@ -19,6 +19,7 @@ let i16_of_string = Int16.of_string
 let i32_of_string = Int32.of_string
 let i64_of_string = Int64.of_string
 let i128_of_string = Int128.of_string
+let null_of_string = ()
 
 (* Functions *)
 

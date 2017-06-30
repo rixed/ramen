@@ -275,6 +275,7 @@ struct
 
   let print_typ fmt typ =
     let s = match typ with
+      | TNull   -> "NULL"
       | TFloat  -> "FLOAT"
       | TString -> "STRING"
       | TBool   -> "BOOL"
@@ -292,7 +293,7 @@ struct
     in
     String.print fmt s
 
-  type type_class = KNum | KBool | KString
+  type type_class = KNum | KBool | KString | KNull
   let compare_typ typ1 typ2 =
     let rank_of_typ = function
       | TFloat  -> KNum, 200
@@ -309,6 +310,7 @@ struct
       | TI8     -> KNum, 7
       | TString -> KString, 1
       | TBool   -> KBool, 1
+      | TNull   -> KNull, 0
     in
     let k1, r1 = rank_of_typ typ1
     and k2, r2 = rank_of_typ typ2 in
@@ -324,7 +326,7 @@ struct
          | VU8 of uint8 | VU16 of uint16 | VU32 of uint32
          | VU64 of uint64 | VU128 of uint128
          | VI8 of int8 | VI16 of int16 | VI32 of int32
-         | VI64 of int64 | VI128 of int128
+         | VI64 of int64 | VI128 of int128 | VNull
 
   let print fmt = function
     | VFloat f  -> Printf.fprintf fmt "%g" f
@@ -340,12 +342,13 @@ struct
     | VI32 i    -> Printf.fprintf fmt "%s" (Int32.to_string i)
     | VI64 i    -> Printf.fprintf fmt "%s" (Int64.to_string i)
     | VI128 i   -> Printf.fprintf fmt "%s" (Int128.to_string i)
+    | VNull     -> Printf.fprintf fmt "NULL"
 
   let type_of = function
     | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
     | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
     | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
-    | VI64 _ -> TI64 | VI128 _ -> TI128
+    | VI64 _ -> TI64 | VI128 _ -> TI128 | VNull -> TNull
 
   module Parser =
   struct
@@ -426,7 +429,8 @@ struct
       (strinG "i16" >>: fun () -> TI16) |||
       (strinG "i32" >>: fun () -> TI32) |||
       (strinG "i64" >>: fun () -> TI64) |||
-      (strinG "i128" >>: fun () -> TI128)
+      (strinG "i128" >>: fun () -> TI128) |||
+      (strinG "null" >>: fun () -> TNull)
 
     (*$>*)
   end
@@ -673,6 +677,11 @@ struct
         (test_p const "true" |> replace_typ_in_expr)
     *)
 
+    let null m =
+      let m = "NULL" :: m in
+      (strinG "null" >>: fun () ->
+       Const (make_typ ~nullable:true ~typ:TNull "NULL", Scalar.VNull)) m
+
     let field m =
       let m = "field" :: m in
       let prefix s = strinG (s ^ ".") >>: fun () -> s in
@@ -856,7 +865,7 @@ struct
 
     and highestest_prec m =
       let sep = optional_greedy ~def:() blanks in
-      (const ||| field ||| param ||| func ||| aggregate |||
+      (const ||| field ||| param ||| func ||| aggregate ||| null |||
        char '(' -- sep -+ lowest_prec_left_assoc +- sep +- char ')'
       ) m
 

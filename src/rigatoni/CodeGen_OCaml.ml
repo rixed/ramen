@@ -39,6 +39,7 @@ let emit_sersize_of_fixsz_typ oc = function
   | TU32 | TI32 -> Int.print oc (RingBufLib.round_up_to_rb_word 4)
   | TU64 | TI64 -> Int.print oc (RingBufLib.round_up_to_rb_word 8)
   | TU128 | TI128 -> Int.print oc (RingBufLib.round_up_to_rb_word 16)
+  | TNull -> Int.print oc 0
   | TString -> assert false
   | TNum -> assert false
 
@@ -80,6 +81,7 @@ let id_of_typ typ =
   | TI32    -> "i32"
   | TI64    -> "i64"
   | TI128   -> "i128"
+  | TNull   -> "null"
   | TNum    -> assert false
 
 let emit_value_of_string typ oc var =
@@ -295,6 +297,7 @@ let emit_scalar oc =
   | VI32    n -> Printf.fprintf oc "%sl" (Int32.to_string n)
   | VI64    n -> Printf.fprintf oc "%sL" (Int64.to_string n)
   | VI128   n -> Printf.fprintf oc "(Int128.of_string %S)" (Int128.to_string n)
+  | VNull     -> Printf.fprintf oc "()"
 
 (* Given a function name and an output type, return the actual function
  * returning that type, and the type input parameters must be converted into,
@@ -376,6 +379,7 @@ let name_of_aggr =
     | TFloat -> "float" | TString -> "string" | TBool -> "bool"
     | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
     | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
+    | TNull -> "unit"
     | TNum -> assert false
 
 let otype_of_aggr e =
@@ -389,6 +393,7 @@ let omod_of_type = function
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
     String.capitalize (otype_of_type t)
+  | TNull -> assert false (* Never used on NULLs *)
   | TNum -> assert false
 
 let conv_from_to from_typ to_typ p fmt e =
@@ -408,6 +413,10 @@ let conv_from_to from_typ to_typ p fmt e =
       (omod_of_type from_typ)
       (otype_of_type to_typ)
       p e
+  | _, TNull ->
+    (* We could as well just print "()" but this is easier for debugging,
+     * and hopefully the compiler will make it the same: *)
+    Printf.fprintf fmt "(ignore %a)" p e
   | _ ->
     failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
                 (IO.to_string Lang.Scalar.print_typ from_typ)
