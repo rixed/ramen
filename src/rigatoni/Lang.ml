@@ -387,6 +387,16 @@ struct
      * thing in addition to the thing *)
     let p =
       (integer >>: narrowest_int_scalar)        |||
+      (integer +- strinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
+      (integer +- strinG "i16" >>: fun i -> VI16 (Int16.of_string (Num.to_string i))) |||
+      (integer +- strinG "i32" >>: fun i -> VI32 (Int32.of_string (Num.to_string i))) |||
+      (integer +- strinG "i64" >>: fun i -> VI64 (Int64.of_string (Num.to_string i))) |||
+      (integer +- strinG "i128" >>: fun i -> VI128 (Int128.of_string (Num.to_string i))) |||
+      (integer +- strinG "u8" >>: fun i -> VU8 (Uint8.of_string (Num.to_string i))) |||
+      (integer +- strinG "u16" >>: fun i -> VU16 (Uint16.of_string (Num.to_string i))) |||
+      (integer +- strinG "u32" >>: fun i -> VU32 (Uint32.of_string (Num.to_string i))) |||
+      (integer +- strinG "u64" >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
+      (integer +- strinG "u128" >>: fun i -> VU128 (Uint128.of_string (Num.to_string i))) |||
       (floating_point >>: fun f -> VFloat f)    |||
       (strinG "false" >>: fun _ -> VBool false) |||
       (strinG "true" >>: fun _ -> VBool true)   |||
@@ -544,34 +554,38 @@ struct
     | Gt  of typ * t * t
     | Eq  of typ * t * t
 
-  let rec print fmt = function
-    | Const (_, c) -> Scalar.print fmt c
-    | Field (_, tuple, field) -> Printf.fprintf fmt "%s.%s" !tuple field
-    | Param (_, p) -> Printf.fprintf fmt "$%s" p
-    | AggrMin (_, e) -> Printf.fprintf fmt "min (%a)" print e
-    | AggrMax (_, e) -> Printf.fprintf fmt "max (%a)" print e
-    | AggrSum (_, e) -> Printf.fprintf fmt "sum (%a)" print e
-    | AggrAnd (_, e) -> Printf.fprintf fmt "and (%a)" print e
-    | AggrOr  (_, e) -> Printf.fprintf fmt "or (%a)" print e
-    | AggrFirst (_, e) -> Printf.fprintf fmt "first (%a)" print e
-    | AggrLast (_, e) -> Printf.fprintf fmt "last (%a)" print e
-    | AggrPercentile (_, p, e) -> Printf.fprintf fmt "%ath percentile (%a)" print p print e
-    | Age (_, e) -> Printf.fprintf fmt "age(%a)" print e
-    | Sequence (_, e1, e2) -> Printf.fprintf fmt "sequence(%a, %a)" print e1 print e2
-    | Not (_, e) -> Printf.fprintf fmt "NOT (%a)" print e
-    | Defined (_, e) -> Printf.fprintf fmt "(%a) IS NOT NULL" print e
-    | Add (_, e1, e2) -> Printf.fprintf fmt "(%a) + (%a)" print e1 print e2
-    | Sub (_, e1, e2) -> Printf.fprintf fmt "(%a) - (%a)" print e1 print e2
-    | Mul (_, e1, e2) -> Printf.fprintf fmt "(%a) * (%a)" print e1 print e2
-    | Div (_, e1, e2) -> Printf.fprintf fmt "(%a) / (%a)" print e1 print e2
-    | IDiv (_, e1, e2) -> Printf.fprintf fmt "(%a) // (%a)" print e1 print e2
-    | Mod (_, e1, e2) -> Printf.fprintf fmt "(%a) %% (%a)" print e1 print e2
-    | Exp (_, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" print e1 print e2
-    | And (_, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" print e1 print e2
-    | Or (_, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" print e1 print e2
-    | Ge (_, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" print e1 print e2
-    | Gt (_, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" print e1 print e2
-    | Eq (_, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" print e1 print e2
+  let rec print with_types fmt =
+    let add_types t =
+      if with_types then Printf.fprintf fmt " [%a]" print_typ t
+    in
+    function
+    | Const (t, c) -> Scalar.print fmt c ; add_types t
+    | Field (t, tuple, field) -> Printf.fprintf fmt "%s.%s" !tuple field ; add_types t
+    | Param (t, p) -> Printf.fprintf fmt "$%s" p ; add_types t
+    | AggrMin (t, e) -> Printf.fprintf fmt "min (%a)" (print with_types) e ; add_types t
+    | AggrMax (t, e) -> Printf.fprintf fmt "max (%a)" (print with_types) e ; add_types t
+    | AggrSum (t, e) -> Printf.fprintf fmt "sum (%a)" (print with_types) e ; add_types t
+    | AggrAnd (t, e) -> Printf.fprintf fmt "and (%a)" (print with_types) e ; add_types t
+    | AggrOr  (t, e) -> Printf.fprintf fmt "or (%a)" (print with_types) e ; add_types t
+    | AggrFirst (t, e) -> Printf.fprintf fmt "first (%a)" (print with_types) e ; add_types t
+    | AggrLast (t, e) -> Printf.fprintf fmt "last (%a)" (print with_types) e ; add_types t
+    | AggrPercentile (t, p, e) -> Printf.fprintf fmt "%ath percentile (%a)" (print with_types) p (print with_types) e ; add_types t
+    | Age (t, e) -> Printf.fprintf fmt "age(%a)" (print with_types) e ; add_types t
+    | Sequence (t, e1, e2) -> Printf.fprintf fmt "sequence(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Not (t, e) -> Printf.fprintf fmt "NOT (%a)" (print with_types) e ; add_types t
+    | Defined (t, e) -> Printf.fprintf fmt "(%a) IS NOT NULL" (print with_types) e ; add_types t
+    | Add (t, e1, e2) -> Printf.fprintf fmt "(%a) + (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Sub (t, e1, e2) -> Printf.fprintf fmt "(%a) - (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Mul (t, e1, e2) -> Printf.fprintf fmt "(%a) * (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Div (t, e1, e2) -> Printf.fprintf fmt "(%a) / (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | IDiv (t, e1, e2) -> Printf.fprintf fmt "(%a) // (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Mod (t, e1, e2) -> Printf.fprintf fmt "(%a) %% (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Exp (t, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | And (t, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Or (t, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Ge (t, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Gt (t, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Eq (t, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
 
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
@@ -647,7 +661,7 @@ struct
       let m = "constant" :: m in
       (Scalar.Parser.p >>: fun c ->
        Const (make_typ ~nullable:false ~typ:(Scalar.type_of c) "constant", c)) m
-    (*$= const & ~printer:(test_printer print)
+    (*$= const & ~printer:(test_printer (print false))
       (Ok (Const (typ, Scalar.VBool true), (4, [])))\
         (test_p const "true" |> replace_typ_in_expr)
     *)
@@ -662,7 +676,7 @@ struct
        (* This is important here that the type name is the raw field name,
         * because we use the tuple field type name as their identifier *)
        Field (make_typ field, ref tuple, field)) m
-    (*$= field & ~printer:(test_printer print)
+    (*$= field & ~printer:(test_printer (print false))
       (Ok (\
         Field (typ, ref "in", "bytes"),\
         (5, [])))\
@@ -689,7 +703,7 @@ struct
       let m = "param" :: m in
       (char '$' -+ identifier >>: fun s ->
        Param (make_typ ("parameter "^s), s)) m
-    (*$= param & ~printer:(test_printer print)
+    (*$= param & ~printer:(test_printer (print false))
       (Ok (\
         Param (typ, "glop"),\
         (5, [])))\
@@ -823,7 +837,7 @@ struct
 
     let p = lowest_prec_left_assoc
 
-    (*$= p & ~printer:(test_printer print)
+    (*$= p & ~printer:(test_printer (print false))
       (Ok (\
         Const (typ, Scalar.VBool true),\
         (4, [])))\
@@ -918,10 +932,10 @@ struct
       | _ -> true in
     if need_alias then
       Printf.fprintf fmt "%a AS %a"
-        Expr.print f.expr
+        (Expr.print false) f.expr
         (List.print ~first:"" ~last:"" ~sep:" OR " String.print) f.alias
     else
-      Expr.print fmt f.expr
+      Expr.print false fmt f.expr
 
   type t =
     (* Generate values out of thin air. The difference with Select is that
@@ -965,23 +979,23 @@ struct
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
-        Expr.print where
+        (Expr.print false) where
     | Aggregate { fields ; and_all_others ; where ; key ;
                   commit_when ; flush_when } ->
       Printf.fprintf fmt "SELECT %a%s%s WHERE %a%s%a COMMIT %sWHEN %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
-        Expr.print where
+        (Expr.print false) where
         (if key <> [] then " GROUP BY " else "")
-        (List.print ~first:"" ~last:"" ~sep:", " Expr.print) key
+        (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) key
         (if flush_when = None then "AND FLUSH " else "")
-        Expr.print commit_when ;
+        (Expr.print false) commit_when ;
       Option.may (fun flush_when ->
         Printf.fprintf fmt " FLUSH WHEN %a"
-          Expr.print flush_when) flush_when
+          (Expr.print false) flush_when) flush_when
     | OnChange e ->
-      Printf.fprintf fmt "ON CHANGE %a" Expr.print e
+      Printf.fprintf fmt "ON CHANGE %a" (Expr.print false) e
     | Alert { team ; subject ; text } ->
       Printf.fprintf fmt "ALERT %S SUBJECT %S TEXT %S" team subject text
     | ReadCSVFile { fname ; separator ; null ; fields } ->
