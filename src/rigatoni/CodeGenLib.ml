@@ -199,7 +199,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               last_touched = now ;
               nb_entries = 1 ; nb_successive = 1 ;
               last_ev_count = !event_count ;
-              fields = aggr_init in_tuple } in
+              fields } in
             Hashtbl.add h k aggr
           ) ;
           if do_commit then commit out_tuple  else return_unit
