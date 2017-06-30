@@ -102,6 +102,136 @@ let edit_node st f =
 let initialState =
   { graph = None ; new_node = make_empty_node () ; edited_node = NoNode ; saving = Nope }
 
+(* Demo content *)
+
+let list_unfold f =
+  let rec aux lst i =
+    let lst' = f i lst in
+    if lst' == lst then lst else aux lst' (i+1)
+  in
+  aux [] 0
+
+type demo_cmd = { demo_url : string ; demo_payload : string }
+let demo_cmds =
+  let nb_zones = 7 in
+  { demo_url = "node/TCPv29" ;
+    demo_payload = "{\n\
+    \"operation\":\n\
+      \"read from csv file \\\"100k.csv\\\" separator \\\"\\\\t\\\" null \\\"<NULL>\\\" (\n\
+        poller string not null,\n\
+        capture_begin u64 not null,\n\
+        capture_end u64 not null,\n\
+        device_client u8 null,\n\
+        device_server u8 null,\n\
+        vlan_client u32 null,\n\
+        vlan_server u32 null,\n\
+        mac_client u64 null,\n\
+        mac_server u64 null,\n\
+        zone_client u32 not null,\n\
+        zone_server u32 not null,\n\
+        ip4_client u32 null,\n\
+        ip6_client i128 null,\n\
+        ip4_server u32 null,\n\
+        ip6_server i128 null,\n\
+        ip4_external u32 null,\n\
+        ip6_external i128 null,\n\
+        port_client u16 not null,\n\
+        port_server u16 not null,\n\
+        diffserv_client u8 not null,\n\
+        diffserv_server u8 not null,\n\
+        os_client u8 null,\n\
+        os_server u8 null,\n\
+        mtu_client u16 null,\n\
+        mtu_server u16 null,\n\
+        captured_pcap string null,\n\
+        application u32 not null,\n\
+        protostack string null,\n\
+        uuid string null,\n\
+        traffic_bytes_client u64 not null,\n\
+        traffic_bytes_server u64 not null,\n\
+        traffic_packets_client u64 not null,\n\
+        traffic_packets_server u64 not null,\n\
+        payload_bytes_client u64 not null,\n\
+        payload_bytes_server u64 not null,\n\
+        payload_packets_client u64 not null,\n\
+        payload_packets_server u64 not null,\n\
+        retrans_traffic_bytes_client u64 null,\n\
+        retrans_traffic_bytes_server u64 null,\n\
+        retrans_payload_bytes_client u64 null,\n\
+        retrans_payload_bytes_server u64 null,\n\
+        syn_count_client u64 null,\n\
+        fin_count_client u64 null,\n\
+        fin_count_server u64 null,\n\
+        rst_count_client u64 null,\n\
+        rst_count_server u64 null,\n\
+        timeout_count u64 not null,\n\
+        close_count u64 null,\n\
+        dupack_count_client u64 null,\n\
+        dupack_count_server u64 null,\n\
+        zero_window_count_client u64 null,\n\
+        zero_window_count_server u64 null,\n\
+        ct_count u64 null,\n\
+        ct_sum u64 not null,\n\
+        ct_square_sum u64 not null,\n\
+        rt_count_server u64 null,\n\
+        rt_sum_server u64 not null,\n\
+        rt_square_sum_server u64 not null,\n\
+        rtt_count_client u64 null,\n\
+        rtt_sum_client u64 not null,\n\
+        rtt_square_sum_client u64 not null,\n\
+        rtt_count_server u64 null,\n\
+        rtt_sum_server u64 not null,\n\
+        rtt_square_sum_server u64 not null,\n\
+        rd_count_client u64 null,\n\
+        rd_sum_client u64 not null,\n\
+        rd_square_sum_client u64 not null,\n\
+        rd_count_server u64 null,\n\
+        rd_sum_server u64 not null,\n\
+        rd_square_sum_server u64 not null,\n\
+        dtt_count_client u64 null,\n\
+        dtt_sum_client u64 not null,\n\
+        dtt_square_sum_client u64 not null,\n\
+        dtt_count_server u64 null,\n\
+        dtt_sum_server u64 not null,\n\
+        dtt_square_sum_server u64 not null,\n\
+        dcerpc_uuid string null\n\
+      )\"\n\
+    }" } ::
+  { demo_url = "node/LowTrafficAlert" ;
+    demo_payload = "{\n\
+    \"operation\":\n\
+      \"ALERT \\\"fire brigade\\\"\n\
+             SUBJECT \\\"Low traffic to ${ip4_server}\\\"\n\
+             TEXT \\\"Since ${min_capture_begin} ${ip4_server} exchanged\n\
+                    only ${bytes} bytes (in ${packets} packets) with the\n\
+                    rest of the world.\\\"\"\n\
+    }" } ::
+  (list_unfold (fun i lst ->
+    if i >= nb_zones then lst else (
+      let node_name1 = "PerServerTrafficZone"^ string_of_int i
+      and node_name2 = "LowTrafficServersZone"^ string_of_int i in
+      { demo_url = "node/"^ node_name1 ;
+        demo_payload = "{\n\
+        \"operation\":\n\
+          \"SELECT MIN capture_begin, MAX capture_end, ip4_server,\n\
+                   SUM(traffic_bytes_client + traffic_bytes_server) AS bytes,\n\
+                   SUM(traffic_packets_client + traffic_packets_server) AS packets\n\
+           WHERE ip4_client IS NOT NULL AND ip4_server IS NOT NULL AND\n\
+                 zone_server = "^ string_of_int i ^"\n\
+           GROUP BY ip4_server, capture_begin//60_000_000\n\
+           COMMIT AND FLUSH WHEN MAX(capture_begin) > min_capture_begin + 10_000_000\"\n\
+        }" } ::
+      { demo_url = "link/TCPv29/"^ node_name1 ; demo_payload = "" } ::
+      { demo_url = "node/"^ node_name2 ;
+        demo_payload = "{\n\
+        \"operation\":\n\
+          \"SELECT * WHERE bytes / (min_capture_begin - max_capture_end) < 1_000_000_000\"\n\
+        }" } ::
+      { demo_url = "link/"^ node_name1 ^"/"^ node_name2 ; demo_payload = "" } ::
+      ({ demo_url = "link/"^ node_name2 ^"/LowTrafficAlert" ; demo_payload = "" }) :: lst)
+    ))
+
+
 (* View *)
 
 let label ?key ?a l = elt "label" ?key ?a l
@@ -188,6 +318,12 @@ let view st =
         (let a = [type_ "button"; onclick `StopGraph; value "Stop"] in
          let a = if graph.status = Running then a else attr "disabled" "" :: a in
          input [] ~a) ;
+        (* Add a special magic button to build a whole configuration if the
+         * graph is empty *)
+        (if is_editable && graph.nodes = [] then
+           input [] ~a:[type_ "button"; onclick (`DemoCmd (Ok Ojs.null, demo_cmds)); value "DEMO!"]
+         else
+           div []) ;
         br () ;
         (match get_edited_node st with
         | None ->
@@ -311,6 +447,15 @@ let update st msg =
   | `StoppedGraph _r ->
     log "Graph has stopped" ;
     return ~c:[reload_graph] st
+  | `DemoCmd (Ok _ as r, dc::rest) ->
+    let c =
+      [ Http_put {
+        url = dc.demo_url ;
+        payload = dc.demo_payload ;
+        callback = fun r -> `DemoCmd (r, rest) } ] in
+    return ~c { st with saving = Done r }
+  | `DemoCmd (r, _) ->
+    return ~c:[reload_graph] { st with saving = Done r }
   | `CreateNode ->
     (* TODO: somehow disable selection in the d3 graph *)
     return { st with edited_node = NewNode }

@@ -35,7 +35,7 @@ div#global_panel h1 {
 svg#graph {
   display: flex;
   flex: 0 0 auto;
-  width: 25%;
+  width: 50%;
   height: 100%;
 }
 
