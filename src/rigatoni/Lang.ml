@@ -986,8 +986,44 @@ struct
         commit_when : Expr.t ;
         (* When do we stop aggregating (default: when we commit) *)
         flush_when : Expr.t option }
-    (* Not sure we need OnChange if we have access to last tuple in select
-     * where clause... *)
+    (* Not sure we need OnChange.
+     * The idea behind on-change is that it propagates only new values
+     * for a given key. For instance, if we receive tuples made of:
+     * (min_capture_begin, max_capture_end, ip_server, bytes, too_little)
+     * then too_little is our alert signal. We want to pass this tuple to
+     * alert only for new values of too_little, though.
+     * Aggregation should be able to do this, if it could refer to the
+     * previous value of the aggregate:
+     *
+     * SELECT LAST(bytes/(min_capture_begin-max_capture_end) < 1_000_000)
+     *          AS too_little,
+     *        ip_server,
+     *        LAST(min_capture_begin), LAST(max_capture_end), LAST(bytes),
+     *        LAST(packets)
+     * GROUP BY ip_server
+     * COMMIT WHEN too_little != previous.too_little
+     *
+     * Beware the difference between previous, last and any.
+     * This is rather confusing: in, last, any, other refers to
+     * incoming tuples, out refers to a temporary out tuple computed
+     * from the current aggregate, and previous refers to another
+     * temp tuple computed from previous aggregate (actually the previous
+     * out tuple)
+     *
+     * There is still an issue though:
+     * once we commit an aggregate we delete it, thus loosing the history.  We
+     * could fix this with a FLUSH WHEN clause (can be abbreviated as COMMIT
+     * AND FLUSH WHEN...) Also, the above could be simplified with allowing
+     * LAST( * ) (or FIRST( * ) or...); This does not change anything for the
+     * selected fields not within aggregation function: we still get them
+     * from the (current (or previous if we commit with a delay)) in-tuple.
+     *
+     * TODO:
+     * - allow star operator to come with an aggregate function (and
+     * therefore we can have several star operators). Implementation idea: add
+     * an optional aggr unary function in temp_tup_typ fields. Alternate: allow
+     * for only one star operator, and for group by operations only, accept an
+     * aggregation function name that we will use to add all other fields. *)
     | OnChange of Expr.t
     | Alert of { team : string ; subject : string ; text : string }
     | ReadCSVFile of { fname : string ; separator : string ;

@@ -171,8 +171,8 @@ CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)
   if (0 != ringbuf_enqueue_alloc(rb, &wrtx->tx, nb_words)) {
     caml_failwith("Cannot alloc for enqueue");
   }
-  printf("Allocated %d bytes for enqueuing at offset %"PRIu32" (in words)\n",
-         size, wrtx->tx.record_start);
+  /*printf("Allocated %d bytes for enqueuing at offset %"PRIu32" (in words)\n",
+         size, wrtx->tx.record_start);*/
   CAMLreturn(tx);
 }
 
@@ -196,8 +196,8 @@ CAMLprim value wrap_ringbuf_dequeue_alloc(value rb_)
   if (size < 0) {
     caml_failwith("Cannot alloc for dequeue");
   }
-  printf("Allocated %zd bytes for dequeuing at offset %"PRIu32" (in words)\n",
-         size, wrtx->tx.record_start);
+  /*printf("Allocated %zd bytes for dequeuing at offset %"PRIu32" (in words)\n",
+         size, wrtx->tx.record_start);*/
   wrtx->alloced = (size_t)size;
   CAMLreturn(tx);
 }
@@ -334,7 +334,7 @@ CAMLprim value write_word(value tx, value off_, value v_)
 
   assert(Is_long(v_));
   long v = Long_val(v_);
-  printf("Copy fixed value %ld at offset %zu\n", v, offs);
+  //printf("Copy fixed value %ld at offset %zu\n", v, offs);
   assert(v <= UINT32_MAX);
   uint32_t src = v;
 

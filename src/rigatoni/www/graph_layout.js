@@ -14,7 +14,6 @@ var node_of_name, svg, node, link, width, height, top_nodes, simulation, nodes, 
 
 function init()
 {
-  console.log('initializing...');
   svg = d3.select('svg#graph');
   node = svg.selectAll('g.node');
   link = svg.selectAll('g.link');
@@ -24,7 +23,6 @@ function init()
   var svgbox = document.getElementById('graph').getBoundingClientRect();
   width = svgbox.width;
   height = svgbox.height;
-  console.log('width='+width+', height='+height);
 
   simulation = d3.forceSimulation(nodes)
       .force('center', d3.forceCenter(width/2, height/2))
@@ -33,7 +31,7 @@ function init()
       .force('link', d3.forceLink(links).id(function(node) { return node.name; }).distance(100))
       .force('charge', d3.forceManyBody().strength(-100))
       .force('collide', d3.forceCollide().radius(function(node) { return node.radius * 1.2; }))
-      .alphaTarget(1)
+      .alphaDecay(0.03)
       .on('tick', update_positions);
 }
 
@@ -43,7 +41,6 @@ function link_name(link) { return link[0] +'_'+ link[1]; }
 
 function update_positions()
 {
-  console.log('updating positions...');
   node.select('text')
       .text(node_label)
       .attr('x', function (node) { return node.x; })
@@ -94,7 +91,6 @@ function update_positions()
 
 function display_graph(graph, set_node)
 {
-  console.log('displaying graph of '+ graph.nodes.length +' nodes...');
   if (svg == null) init();
 
   node_of_name = {};

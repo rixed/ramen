@@ -122,8 +122,8 @@ inline int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint
 
     // Enough room?
     if (ringbuf_nb_free(rb, cons_tail, tx->seen) <= alloced) {
-      printf("Ringbuf is full, cannot alloc for enqueue %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", nb_free=%"PRIu32"\n",
-             alloced, rb->nb_words, tx->seen, cons_tail, ringbuf_nb_free(rb, cons_tail, tx->seen));
+      /*printf("Ringbuf is full, cannot alloc for enqueue %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", nb_free=%"PRIu32"\n",
+             alloced, rb->nb_words, tx->seen, cons_tail, ringbuf_nb_free(rb, cons_tail, tx->seen));*/
       return -1;
     }
 
@@ -149,10 +149,10 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
 {
   // Update the prod_tail to match the new prod_head.
   while (rb->prod_tail != tx->seen) sched_yield();
-  printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rb->cons_head);
+  //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rb->cons_head);
   assert(ringbuf_nb_entries(rb, tx->next, rb->cons_head) > 0);
   rb->prod_tail = tx->next;
-  print_rb(rb);
+  //print_rb(rb);
 }
 
 // Combine all of the above:
@@ -182,7 +182,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
     tx->record_start = tx->seen;
 
     if (ringbuf_nb_entries(rb, seen_prod_tail, tx->seen) < 1) {
-      printf("Not a single word to read; prod_tail=%"PRIu32", cons_head=%"PRIu32".\n", seen_prod_tail, tx->seen);
+      //printf("Not a single word to read; prod_tail=%"PRIu32", cons_head=%"PRIu32".\n", seen_prod_tail, tx->seen);
       return -1;
     }
 
@@ -215,9 +215,9 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 {
   while (rb->cons_tail != tx->seen) sched_yield();
-  printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rb->prod_head);
+  //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rb->prod_head);
   rb->cons_tail = tx->next;
-  print_rb(rb);
+  //print_rb(rb);
 }
 
 inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size)

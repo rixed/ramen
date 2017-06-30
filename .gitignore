@@ -23,3 +23,4 @@ gmon.out
 core
 *.opt
 ringbuf_ctl
+src/rigatoni/www/node_edit.js
