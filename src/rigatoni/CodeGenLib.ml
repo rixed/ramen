@@ -37,6 +37,10 @@ let getenv ?def n =
       Printf.sprintf "Cannot find envvar %s" n |>
       failwith
 
+let identity x = x
+
+(* Helpers *)
+
 let output rb sersize_of_tuple serialize_tuple tuple =
   let open RingBuf in
   let sersize = sersize_of_tuple tuple in

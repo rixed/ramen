@@ -228,6 +228,7 @@ let same_tuple_as_in = function
     | AggrPercentile (_, a, b) -> AggrPercentile (typ, replace_typ a, replace_typ b)
     | Age (_, a) -> Age (typ, replace_typ a)
     | Sequence (_, a, b) -> Sequence (typ, replace_typ a, replace_typ b)
+    | Cast (_, a) -> Cast (typ, replace_typ a)
     | Not (_, a) -> Not (typ, replace_typ a)
     | Defined (_, a) -> Defined (typ, replace_typ a)
     | Add (_, a, b) -> Add (typ, replace_typ a, replace_typ b)
@@ -444,7 +445,10 @@ let keyword =
     strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
-    strinG "sequence" |||
+    strinG "sequence" ||| strinG "int8" ||| strinG "int16" |||
+    strinG "int32" ||| strinG "int64" ||| strinG "int128" |||
+    strinG "uint8" ||| strinG "uint16" ||| strinG "uint32" |||
+    strinG "uint64" ||| strinG "uint128" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
@@ -537,6 +541,7 @@ struct
     (* Other functions: abs, random, date_part, string_concat, string_length, now... *)
     | Age of typ * t
     | Sequence of typ * t * t (* start, step *)
+    | Cast of typ * t
     (* Unary Ops on scalars *)
     | Not of typ * t
     | Defined of typ * t
@@ -572,6 +577,7 @@ struct
     | AggrPercentile (t, p, e) -> Printf.fprintf fmt "%ath percentile (%a)" (print with_types) p (print with_types) e ; add_types t
     | Age (t, e) -> Printf.fprintf fmt "age(%a)" (print with_types) e ; add_types t
     | Sequence (t, e1, e2) -> Printf.fprintf fmt "sequence(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Cast (t, e) -> Printf.fprintf fmt "cast(%a, %a)" Scalar.print_typ (Option.get t.scalar_typ) (print with_types) e ; add_types t
     | Not (t, e) -> Printf.fprintf fmt "NOT (%a)" (print with_types) e ; add_types t
     | Defined (t, e) -> Printf.fprintf fmt "(%a) IS NOT NULL" (print with_types) e ; add_types t
     | Add (t, e1, e2) -> Printf.fprintf fmt "(%a) + (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
@@ -594,7 +600,8 @@ struct
     | Age (t, _) | Sequence (t, _, _) | Not (t, _) | Defined (t, _)
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
-    | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _) -> t
+    | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
+    | Cast (t, _) -> t
 
   let is_nullable e =
     let t = typ_of e in
@@ -606,7 +613,7 @@ struct
       f i expr
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
-    | Not (_, e) | Defined (_, e) ->
+    | Not (_, e) | Defined (_, e) | Cast (_, e) ->
       fold f (f i expr) e ;
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -623,7 +630,7 @@ struct
       f i expr
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
-    | Not (_, e) | Defined (_, e) ->
+    | Not (_, e) | Defined (_, e) | Cast (_, e) ->
       fold_by_depth f (f i expr) e ;
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -645,7 +652,7 @@ struct
           raise (SyntaxError m)) ;
         f expr ;
         true
-      | Const _ | Param _ | Field _
+      | Const _ | Param _ | Field _ | Cast _
       | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
       | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ ->
         in_aggr) false expr |> ignore
@@ -812,6 +819,12 @@ struct
       ) m
 
     and func =
+      fun m ->
+        let m = "function" :: m in
+        ((afun1 "age" >>: fun e -> Age (make_num_typ "age function", e)) |||
+         sequence ||| cast) m
+
+    and sequence =
       let seq = "sequence"
       and seq_typ = make_typ ~nullable:false ~typ:TI128 "sequence function"
       and seq_default_step = Const (make_typ ~nullable:false ~typ:TU8 "sequence step",
@@ -819,15 +832,27 @@ struct
       and seq_default_start = Const (make_typ ~nullable:false ~typ:TU8 "sequence start",
                                      Scalar.VU8 (Uint8.of_int 0)) in
       fun m ->
-        let m = "function" :: m in
-        ((afun1 "age" >>: fun e -> Age (make_num_typ "age function", e)) |||
-         (afun2 seq >>: fun (e1, e2) ->
+        let m = "sequence function" :: m in
+        ((afun2 seq >>: fun (e1, e2) ->
             Sequence (seq_typ, e1, e2)) |||
          (afun1 seq >>: fun e1 ->
             Sequence (seq_typ, e1, seq_default_step)) |||
          (strinG seq >>: fun () ->
             Sequence (seq_typ, seq_default_start, seq_default_step))
         ) m
+
+    and cast m =
+      let m = "cast" :: m in
+      ((afun1 "int8" >>: fun e -> Cast (make_typ ~typ:TI8 "cast to int8", e)) |||
+       (afun1 "int16" >>: fun e -> Cast (make_typ ~typ:TI16 "cast to int16", e)) |||
+       (afun1 "int32" >>: fun e -> Cast (make_typ ~typ:TI32 "cast to int32", e)) |||
+       (afun1 "int64" >>: fun e -> Cast (make_typ ~typ:TI64 "cast to int64", e)) |||
+       (afun1 "int128" >>: fun e -> Cast (make_typ ~typ:TI128 "cast to int128", e)) |||
+       (afun1 "uint8" >>: fun e -> Cast (make_typ ~typ:TU8 "cast to uint8", e)) |||
+       (afun1 "uint16" >>: fun e -> Cast (make_typ ~typ:TU16 "cast to uint16", e)) |||
+       (afun1 "uint32" >>: fun e -> Cast (make_typ ~typ:TU32 "cast to uint32", e)) |||
+       (afun1 "uint64" >>: fun e -> Cast (make_typ ~typ:TU64 "cast to uint64", e)) |||
+       (afun1 "uint128" >>: fun e -> Cast (make_typ ~typ:TU128 "cast to uint128", e))) m
 
     and highestest_prec m =
       let sep = optional_greedy ~def:() blanks in

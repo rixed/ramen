@@ -226,6 +226,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | AggrOr (op_typ, e) | Age (op_typ, e)
   | Not (op_typ, e) ->
     check_unary_op op_typ identity ~exp_sub_typ:TFloat e
+  | Cast (op_typ, e) ->
+    check_unary_op op_typ (fun _ -> Option.get op_typ.scalar_typ) ~exp_sub_typ:TI128 e
   | Defined (op_typ, e) ->
     check_unary_op op_typ return_bool ~exp_sub_nullable:true ~propagate_null:false e
   | AggrPercentile (op_typ, e1, e2) ->
@@ -513,9 +515,16 @@ let set_all_types graph =
   (*$= test_check_expr & ~printer:(fun x -> x)
      "(1 [constant of type I8]) + (1 [constant of type I8]) [addition of type I8]" \
        (test_check_expr "1+1")
+
      "(sum (1 [constant of type I16]) [sum aggregation of type I16]) > \\
       (500 [constant of type I16]) [comparison operator of type BOOL]" \
        (test_check_expr "sum 1i16 > 500")
+
+     "(sum (cast(I16, 1 [constant of type I8]) [cast to int16 of type I16]) \\
+          [sum aggregation of type I16]) > \\
+      (500 [constant of type I16]) \\
+          [comparison operator of type BOOL]" \
+       (test_check_expr "sum int16(1) > 500")
    *)
 
 let compile_node node =
