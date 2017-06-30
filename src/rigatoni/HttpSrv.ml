@@ -350,7 +350,7 @@ let callback conf _conn req body =
         | `GET, ["run"] -> run conf headers
         | `GET, ["stop"] -> stop conf headers
         (* WWW Client *)
-        | `GET, ["" | "index.html"] ->
+        | `GET, ([] | ["" | "index.html"]) ->
           get_file conf headers "index.html"
         | `GET, ["static"; "style.css"|"misc.js"|"graph_layout.js"
                 |"node_edit.js" as file] ->
