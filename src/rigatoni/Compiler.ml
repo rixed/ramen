@@ -520,11 +520,10 @@ let set_all_types graph =
       (500 [constant of type I16]) [comparison operator of type BOOL]" \
        (test_check_expr "sum 1i16 > 500")
 
-     "(sum (cast(I16, 1 [constant of type I8]) [cast to int16 of type I16]) \\
+     "(sum (cast(I16, 1 [constant of type I8]) [cast to I16 of type I16]) \\
           [sum aggregation of type I16]) > \\
-      (500 [constant of type I16]) \\
-          [comparison operator of type BOOL]" \
-       (test_check_expr "sum int16(1) > 500")
+      (500 [constant of type I16]) [comparison operator of type BOOL]" \
+       (test_check_expr "sum i16(1) > 500")
    *)
 
 let compile_node node =

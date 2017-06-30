@@ -449,10 +449,7 @@ let keyword =
     strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
-    strinG "sequence" ||| strinG "int8" ||| strinG "int16" |||
-    strinG "int32" ||| strinG "int64" ||| strinG "int128" |||
-    strinG "uint8" ||| strinG "uint16" ||| strinG "uint32" |||
-    strinG "uint64" ||| strinG "uint128" |||
+    strinG "sequence" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
@@ -852,16 +849,11 @@ struct
 
     and cast m =
       let m = "cast" :: m in
-      ((afun1 "int8" >>: fun e -> Cast (make_typ ~typ:TI8 "cast to int8", e)) |||
-       (afun1 "int16" >>: fun e -> Cast (make_typ ~typ:TI16 "cast to int16", e)) |||
-       (afun1 "int32" >>: fun e -> Cast (make_typ ~typ:TI32 "cast to int32", e)) |||
-       (afun1 "int64" >>: fun e -> Cast (make_typ ~typ:TI64 "cast to int64", e)) |||
-       (afun1 "int128" >>: fun e -> Cast (make_typ ~typ:TI128 "cast to int128", e)) |||
-       (afun1 "uint8" >>: fun e -> Cast (make_typ ~typ:TU8 "cast to uint8", e)) |||
-       (afun1 "uint16" >>: fun e -> Cast (make_typ ~typ:TU16 "cast to uint16", e)) |||
-       (afun1 "uint32" >>: fun e -> Cast (make_typ ~typ:TU32 "cast to uint32", e)) |||
-       (afun1 "uint64" >>: fun e -> Cast (make_typ ~typ:TU64 "cast to uint64", e)) |||
-       (afun1 "uint128" >>: fun e -> Cast (make_typ ~typ:TU128 "cast to uint128", e))) m
+      let sep = check (char '(') ||| blanks in
+      (Scalar.Parser.typ +- optional ~def:() (blanks -- strinG "of") +- sep ++
+       highestest_prec >>: fun (typ, e) ->
+         Cast (make_typ ~typ ("cast to "^ IO.to_string Scalar.print_typ typ), e)
+      ) m
 
     and highestest_prec m =
       let sep = optional_greedy ~def:() blanks in
