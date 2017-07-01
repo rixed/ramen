@@ -347,7 +347,7 @@ let callback conf _conn req body =
         | `PUT, ["links"] -> bad_request "Missing node name"
         | `GET, ["graph"] -> get_graph conf headers
         | `GET, ["compile"] -> compile conf headers
-        | `GET, ["run"] -> run conf headers
+        | `GET, ["run" | "start"] -> run conf headers
         | `GET, ["stop"] -> stop conf headers
         (* WWW Client *)
         | `GET, ([] | ["" | "index.html"]) ->

@@ -434,7 +434,7 @@ let update st msg =
     return ~c:[reload_graph] { st with saving = Done r }
   | `StartGraph ->
     let cmd = Http_get {
-      url = "run" ; callback = fun r -> `StartedGraph r } in
+      url = "start" ; callback = fun r -> `StartedGraph r } in
     return ~c:[cmd] { st with saving = Spinning "Starting Graph" }
   | `StartedGraph r ->
     log "Graph has started" ;
