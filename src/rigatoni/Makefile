@@ -31,6 +31,8 @@ INSTALLED = \
 
 all: $(INSTALLED) ringbuf_test.opt ringbuf_ctl www/node_edit.js
 
+doc: HELP.html
+
 ringbuf/libringbuf.a: ringbuf/ringbuf.o
 	$(AR) rs $@ $^
 

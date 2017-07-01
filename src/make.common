@@ -11,7 +11,7 @@ override CFLAGS        += --std=c11 -g -O2 -Wall -W -Wno-parentheses
 override CPPFLAGS      += --std=c11 -D_GNU_SOURCE -I $(shell ocamlfind ocamlc -where)
 
 # Common rules
-.SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top .js
+.SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top .js .html .adoc
 .PHONY: clean distclean all check dep install uninstall reinstall
 
 %.cmo: %.ml
@@ -19,6 +19,9 @@ override CPPFLAGS      += --std=c11 -D_GNU_SOURCE -I $(shell ocamlfind ocamlc -w
 
 %.cmx %.annot: %.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+
+%.html: %.adoc
+	asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o $@ $<
 
 clean: clean-spec
 	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
