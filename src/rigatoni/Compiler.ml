@@ -168,6 +168,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   let return_bool _ = TBool
   and return_float _ = TFloat
   and return_i128 _ = TI128
+  and return_u16 _ = TU16
   in
   function
   | Const (op_typ, _) ->
@@ -240,6 +241,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
   | Sequence (op_typ, e1, e2) ->
     check_binary_op op_typ return_i128 ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
+  | Length (op_typ, e) ->
+    check_unary_op op_typ return_u16 ~exp_sub_typ:TString e
   | Ge (op_typ, e1, e2) | Gt (op_typ, e1, e2)
   | Eq (op_typ, e1, e2) (* FIXME: Eq should work on strings as well *) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2

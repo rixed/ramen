@@ -230,6 +230,7 @@ let same_tuple_as_in = function
     | Sequence (_, a, b) -> Sequence (typ, replace_typ a, replace_typ b)
     | Abs (_, a) -> Abs (typ, replace_typ a)
     | Cast (_, a) -> Cast (typ, replace_typ a)
+    | Length (_, a) -> Length (typ, replace_typ a)
     | Not (_, a) -> Not (typ, replace_typ a)
     | Defined (_, a) -> Defined (typ, replace_typ a)
     | Add (_, a, b) -> Add (typ, replace_typ a, replace_typ b)
@@ -544,6 +545,7 @@ struct
     | Age of typ * t
     | Sequence of typ * t * t (* start, step *)
     | Cast of typ * t
+    | Length of typ * t
     (* Unary Ops on scalars *)
     | Not of typ * t
     | Abs of typ * t
@@ -581,6 +583,7 @@ struct
     | Age (t, e) -> Printf.fprintf fmt "age(%a)" (print with_types) e ; add_types t
     | Sequence (t, e1, e2) -> Printf.fprintf fmt "sequence(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Cast (t, e) -> Printf.fprintf fmt "cast(%a, %a)" Scalar.print_typ (Option.get t.scalar_typ) (print with_types) e ; add_types t
+    | Length (t, e) -> Printf.fprintf fmt "length (%a)" (print with_types) e ; add_types t
     | Not (t, e) -> Printf.fprintf fmt "NOT (%a)" (print with_types) e ; add_types t
     | Abs (t, e) -> Printf.fprintf fmt "ABS (%a)" (print with_types) e ; add_types t
     | Defined (t, e) -> Printf.fprintf fmt "(%a) IS NOT NULL" (print with_types) e ; add_types t
@@ -605,7 +608,7 @@ struct
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
-    | Cast (t, _) | Abs (t, _) -> t
+    | Cast (t, _) | Abs (t, _) | Length (t, _) -> t
 
   let is_nullable e =
     let t = typ_of e in
@@ -617,7 +620,7 @@ struct
       f i expr
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
-    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) ->
+    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e) ->
       fold f (f i expr) e ;
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -634,7 +637,7 @@ struct
       f i expr
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
-    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) ->
+    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e) ->
       fold_by_depth f (f i expr) e ;
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -658,7 +661,8 @@ struct
         true
       | Const _ | Param _ | Field _ | Cast _
       | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
-      | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _ ->
+      | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
+      | Length _ ->
         in_aggr) false expr |> ignore
 
   module Parser =
@@ -832,6 +836,7 @@ struct
         let m = "function" :: m in
         ((afun1 "age" >>: fun e -> Age (make_num_typ "age function", e)) |||
          (afun1 "abs" >>: fun e -> Abs (make_num_typ "absolute value", e)) |||
+         (afun1 "length" >>: fun e -> Length (make_typ ~typ:TU16 "length", e)) |||
          sequence ||| cast) m
 
     and sequence =
