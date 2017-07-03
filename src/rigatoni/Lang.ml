@@ -764,7 +764,7 @@ struct
         | "+" -> Add (make_num_typ "addition", t1, t2)
         | "-" -> Sub (make_num_typ "subtraction", t1, t2)
         | _ -> assert false in
-      binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks~reduce m
+      binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks ~reduce m
 
     and high_prec_left_assoc m =
       let m = "arithmetic operator" :: m in

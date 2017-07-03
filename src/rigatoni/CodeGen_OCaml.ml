@@ -376,12 +376,12 @@ let name_of_aggr =
   | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ ->
     assert false
 
-  let otype_of_type = function
-    | TFloat -> "float" | TString -> "string" | TBool -> "bool"
-    | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
-    | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
-    | TNull -> "unit"
-    | TNum -> assert false
+let otype_of_type = function
+  | TFloat -> "float" | TString -> "string" | TBool -> "bool"
+  | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
+  | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
+  | TNull -> "unit"
+  | TNum -> assert false
 
 let otype_of_aggr e =
   Option.get Lang.Expr.((typ_of e).scalar_typ) |>
