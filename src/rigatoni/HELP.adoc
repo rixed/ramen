@@ -284,6 +284,8 @@ Notice that `//` is the integer division
 
 `%`: infix, the integer remainder, +int ⨉ int -> int+.
 
+`abs`: prefix, absolute value, +num ⨉ num -> num+.
+
 ===== Comparison operators
 
 `>`, `>=`, `<=`, `<`: infix, +num ⨉ num -> num+.
