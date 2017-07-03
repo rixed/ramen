@@ -299,9 +299,6 @@ let emit_scalar oc =
   | VI128   n -> Printf.fprintf oc "(Int128.of_string %S)" (Int128.to_string n)
   | VNull     -> Printf.fprintf oc "()"
 
-(* Given a function name and an output type, return the actual function
- * returning that type, and the type input parameters must be converted into,
- * if any *)
 let funcname_of_expr =
   let open Lang.Expr in
   function
@@ -330,7 +327,9 @@ let funcname_of_expr =
   | Const _ | Param _ | Field _ ->
     assert false
 
-(* Returns the function name and the type to convert the args to *)
+(* Given a function name and an output type, return the actual function
+ * returning that type, and the type input parameters must be converted into,
+ * if any *)
 let implementation_of expr =
   let open Lang in
   let open Expr in
@@ -348,6 +347,7 @@ let implementation_of expr =
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI32 -> "Int32."^ name, Some TI32
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI64 -> "Int64."^ name, Some TI64
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI128 -> "Int128."^ name, Some TI128
+  | Add _, Some TString -> "(^)", Some TString
   | (Not _|And _|Or _), Some TBool -> name, Some TBool
   | (Ge _| Gt _| Eq _), Some TBool -> name, None (* No conversion necessary *)
   | (AggrMax _|AggrMin _|AggrFirst _|AggrLast _), _ -> name, None (* No conversion necessary *)

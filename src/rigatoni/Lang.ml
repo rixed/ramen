@@ -540,7 +540,7 @@ struct
      * scalar. It's probably easier to try to optimise the code generated
      * for when the same expression is used in several percentile functions. *)
     | AggrPercentile of typ * t * t
-    (* Other functions: random, date_part, string_concat, string_length, now... *)
+    (* Other functions: random, date_part, string_length, now... *)
     | Age of typ * t
     | Sequence of typ * t * t (* start, step *)
     | Cast of typ * t
