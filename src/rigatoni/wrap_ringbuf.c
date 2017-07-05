@@ -323,7 +323,6 @@ CAMLprim value write_boxed_str(value tx, value off_, value v_)
   CAMLreturn(Val_unit);
 }
 
-
 CAMLprim value write_word(value tx, value off_, value v_)
 {
   CAMLparam3(tx, off_, v_);
@@ -341,6 +340,32 @@ CAMLprim value write_word(value tx, value off_, value v_)
   memcpy(addr, &src, sizeof src);
 
   CAMLreturn(Val_unit);
+}
+
+// We need a special case for floats thanks to the many corner cases for floats
+CAMLprim value write_float(value tx, value off_, value v_)
+{
+  CAMLparam3(tx, off_, v_);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t offs = Long_val(off_);
+  assert(Tag_val(v_) == Double_tag);
+  double v = Double_val(v_);
+  write_words(wrtx, offs, (char const *)&v, sizeof(v));
+  CAMLreturn(Val_unit);
+}
+
+CAMLprim value read_float(value tx, value off_)
+{
+  CAMLparam2(tx, off_);
+  CAMLlocal1(v_);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t offs = Long_val(off_);
+  double v;
+  read_words(wrtx, offs, (char *)&v, sizeof(v));
+  v_ = caml_alloc(Double_wosize, Double_tag);
+  Store_double_val(v_, v);
+  //printf("v=%f, offs=%zu\n", v, offs);
+  CAMLreturn(v_);
 }
 
 CAMLprim value zero_bytes(value tx, value off_, value size_)
@@ -381,18 +406,6 @@ CAMLprim value get_bit(value tx, value bit_)
   uint8_t const *addr = (uint8_t *)where_to(wrtx, 0) + bit/8;
   uint8_t mask = 1U << (bit % 8);
   CAMLreturn(Val_bool(*addr & mask));
-}
-
-CAMLprim value read_float(value tx, value off_)
-{
-  CAMLparam2(tx, off_);
-  CAMLlocal1(v);
-  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
-  size_t offs = Long_val(off_);
-  v = caml_alloc(1, Double_tag);
-  char *dst = Bp_val(v);
-  read_words(wrtx, offs, dst, 8);
-  CAMLreturn(v);
 }
 
 CAMLprim value read_word(value tx, value off_)

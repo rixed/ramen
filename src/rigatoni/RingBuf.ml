@@ -14,7 +14,7 @@ external dequeue_alloc : t -> tx = "wrap_ringbuf_dequeue_alloc"
 external dequeue_commit : tx -> unit = "wrap_ringbuf_dequeue_commit"
 external dequeue : t -> bytes = "wrap_ringbuf_dequeue"
 
-external write_float : tx -> int -> float -> unit = "write_boxed_64"
+external write_float : tx -> int -> float -> unit = "write_float"
 external write_string : tx -> int -> string -> unit = "write_boxed_str"
 external write_u8 : tx -> int -> Uint8.t -> unit = "write_boxed_8"
 external write_i8 : tx -> int -> Int8.t -> unit = "write_boxed_8"
