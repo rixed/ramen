@@ -302,6 +302,10 @@ common type and the operation will return that same type.
 `age of ...` or `age(...)`. Expects its argument to be a timestamp in the UNIX
 epoch and will return the difference between that timestamp and now.
 
+===== Now
+
+`now` returns the current timestamp as a float.
+
 ===== Sequence
 
 `sequence` or `sequence(start)` or `sequence(start, step)`
@@ -323,6 +327,11 @@ For instance: `IS NULL NULL` is trivially true, while `IS NOT NULL some_field`
 can be either true or not depending on the tuple at hand.
 
 `IS NULL 42` is an error, though.
+
+===== String functions
+
+`length` returns an uint16
+Use `+` for concatenation.
 
 [[table-of-precedence]]
 ===== Operator precedence
@@ -513,7 +522,7 @@ Currently the only output command is:
     TEXT "body of the message"
 ----
 
-In each of the strings, `${field_nae}` would be replaced by the actual value
+In each of the strings, `${field_name}` would be replaced by the actual value
 from the input tuple.
 
 == The API

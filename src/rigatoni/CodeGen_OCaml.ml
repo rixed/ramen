@@ -259,7 +259,7 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
 let rec add_mentioned prev =
   let open Lang.Expr in
   function
-  | Const _ | Param _
+  | Const _ | Param _ | Now _
     -> prev
   | Field (_, tuple, field) ->
     if Lang.same_tuple_as_in !tuple then Set.add field prev else prev
@@ -311,6 +311,7 @@ let funcname_of_expr =
   | AggrFirst _ -> "fst"
   | AggrLast _ -> "snd"
   | Age _ -> "age"
+  | Now _ -> "now"
   | Abs _ -> "abs"
   | Sequence _ -> "sequence"
   | Length _ -> "length"
@@ -355,6 +356,8 @@ let implementation_of expr =
   | (AggrMax _|AggrMin _|AggrFirst _|AggrLast _), _ -> name, None (* No conversion necessary *)
   | (Age _|AggrPercentile _), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
     "CodeGenLib."^ name ^"_"^ IO.to_string Scalar.print_typ to_typ, Some TFloat
+  | Now _, Some TFloat -> "CodeGenLib.now", None
+  (* TODO: Now() for Uint62? *)
   | Cast _, t -> "CodeGenLib."^ name, t
   (* Sequence build a sequence of as-large-as-convenient integers (signed or
    * not) *)
@@ -375,7 +378,7 @@ let name_of_aggr =
     "field_"^ string_of_int t.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _
-  | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ ->
+  | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ ->
     assert false
 
 let otype_of_type = function
@@ -456,9 +459,10 @@ and emit_expr oc =
     | AggrLast _ | AggrPercentile _ as expr) ->
      (* This assumes there is a parameter named aggr_ for the aggregates *)
      Printf.fprintf oc "aggr_.%s" (name_of_aggr expr)
+  | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
   | Length (_, e) as expr ->
-    emit_function expr oc e
+    emit_function1 expr oc e
   | Defined (_, e) ->
     Printf.fprintf oc "(%a <> None)" emit_expr e
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2)
@@ -467,8 +471,11 @@ and emit_expr oc =
   | Sequence (_, e1, e2) | Mod (_, e1, e2) as expr ->
     emit_function2 expr oc e1 e2
 
-(* The output must be of type [t] *)
-and emit_function expr oc e =
+and emit_function0 expr oc =
+  let impl, _ = implementation_of expr in
+  Printf.fprintf oc "(%s ())" impl
+
+and emit_function1 expr oc e =
   let impl, arg_typ = implementation_of expr in
   Printf.fprintf oc "(%s%s %a)"
     (if Lang.Expr.is_nullable e then "BatOption.map " else "")
@@ -660,7 +667,7 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
           (conv_to arg_typ) e ;
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
       | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
-      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ ->
+      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ ->
         assert false) ;
       Printf.fprintf oc " ; \n" ;
     ) ;
@@ -691,7 +698,7 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
           (conv_to arg_typ) e ;
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
       | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
-      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ ->
+      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ ->
         assert false
     ) ;
   Printf.fprintf oc "\t()\n"
@@ -750,7 +757,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
           true
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
-        | Mod _| Cast _ | Abs _ | Length _ ->
+        | Mod _| Cast _ | Abs _ | Length _ | Now _ ->
           false) false where
   in
   Printf.fprintf oc "open Stdint\n\n\

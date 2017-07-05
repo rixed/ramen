@@ -227,6 +227,7 @@ let same_tuple_as_in = function
     | AggrLast (_, a) -> AggrLast (typ, replace_typ a)
     | AggrPercentile (_, a, b) -> AggrPercentile (typ, replace_typ a, replace_typ b)
     | Age (_, a) -> Age (typ, replace_typ a)
+    | Now _ -> Now typ
     | Sequence (_, a, b) -> Sequence (typ, replace_typ a, replace_typ b)
     | Abs (_, a) -> Abs (typ, replace_typ a)
     | Cast (_, a) -> Cast (typ, replace_typ a)
@@ -451,7 +452,8 @@ let keyword =
     strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
-    strinG "sequence" |||
+    strinG "sequence" ||| strinG "abs" ||| strinG "length" |||
+    strinG "concat" ||| strinG "now" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
@@ -514,6 +516,7 @@ struct
     incr uniq_num_seq ;
     { expr_name ; nullable ; scalar_typ = typ ; uniq_num = !uniq_num_seq }
   let make_bool_typ ?nullable name = make_typ ?nullable ~typ:TBool name
+  let make_float_typ ?nullable name = make_typ ?nullable ~typ:TFloat name
   let make_num_typ ?nullable name =
     make_typ ?nullable ~typ:TNum name (* will be enlarged as required *)
   let copy_typ typ =
@@ -522,6 +525,8 @@ struct
 
   (* Expressions on scalars (aka fields) *)
   type t =
+    (* TODO: classify by type and number of operands to simplify adding
+     * functions *)
     | Const of typ * Scalar.t
     | Field of typ * string ref (* tuple: in, out, others... *) * string (* field name *)
     | Param of typ * string
@@ -541,8 +546,9 @@ struct
      * scalar. It's probably easier to try to optimise the code generated
      * for when the same expression is used in several percentile functions. *)
     | AggrPercentile of typ * t * t
-    (* Other functions: random, date_part, string_length, now... *)
+    (* Other functions: random, date_part... *)
     | Age of typ * t
+    | Now of typ
     | Sequence of typ * t * t (* start, step *)
     | Cast of typ * t
     | Length of typ * t
@@ -580,7 +586,8 @@ struct
     | AggrFirst (t, e) -> Printf.fprintf fmt "first (%a)" (print with_types) e ; add_types t
     | AggrLast (t, e) -> Printf.fprintf fmt "last (%a)" (print with_types) e ; add_types t
     | AggrPercentile (t, p, e) -> Printf.fprintf fmt "%ath percentile (%a)" (print with_types) p (print with_types) e ; add_types t
-    | Age (t, e) -> Printf.fprintf fmt "age(%a)" (print with_types) e ; add_types t
+    | Age (t, e) -> Printf.fprintf fmt "age (%a)" (print with_types) e ; add_types t
+    | Now t -> Printf.fprintf fmt "now" ; add_types t
     | Sequence (t, e1, e2) -> Printf.fprintf fmt "sequence(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Cast (t, e) -> Printf.fprintf fmt "cast(%a, %a)" Scalar.print_typ (Option.get t.scalar_typ) (print with_types) e ; add_types t
     | Length (t, e) -> Printf.fprintf fmt "length (%a)" (print with_types) e ; add_types t
@@ -608,7 +615,7 @@ struct
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
-    | Cast (t, _) | Abs (t, _) | Length (t, _) -> t
+    | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t -> t
 
   let is_nullable e =
     let t = typ_of e in
@@ -616,7 +623,7 @@ struct
 
   let rec fold f i expr =
     match expr with
-    | Const _ | Param _ | Field _ ->
+    | Const _ | Param _ | Field _ | Now _ ->
       f i expr
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
@@ -633,7 +640,7 @@ struct
    * last leaf). *)
   let rec fold_by_depth f i expr =
     match expr with
-    | Const _ | Param _ | Field _ ->
+    | Const _ | Param _ | Field _ | Now _ ->
       f i expr
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
@@ -659,7 +666,7 @@ struct
           raise (SyntaxError m)) ;
         f expr ;
         true
-      | Const _ | Param _ | Field _ | Cast _
+      | Const _ | Param _ | Field _ | Cast _ | Now _
       | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
       | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
       | Length _ ->
@@ -837,6 +844,7 @@ struct
         ((afun1 "age" >>: fun e -> Age (make_num_typ "age function", e)) |||
          (afun1 "abs" >>: fun e -> Abs (make_num_typ "absolute value", e)) |||
          (afun1 "length" >>: fun e -> Length (make_typ ~typ:TU16 "length", e)) |||
+         (strinG "now" >>: fun () -> Now (make_float_typ ~nullable:false "now")) |||
          sequence ||| cast) m
 
     and sequence =

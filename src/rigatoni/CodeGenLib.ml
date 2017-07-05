@@ -29,6 +29,8 @@ let null_of_string = ()
 let sequence start inc =
   Int128.(start + !CodeGenLib_IO.tuple_count * inc)
 
+let now = Unix.gettimeofday
+
 let getenv ?def n =
   try Sys.getenv n
   with Not_found ->

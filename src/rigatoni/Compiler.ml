@@ -220,6 +220,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Param (_op_typ, _pname) ->
     (* TODO: one day we will know the type or value of params *)
     false
+  | Now op_typ ->
+    check_expr_type ~from:op_typ ~to_:exp_type
   | AggrMin (op_typ, e) | AggrMax (op_typ, e)
   | AggrFirst (op_typ, e) | AggrLast (op_typ, e) ->
     check_unary_op op_typ identity e
