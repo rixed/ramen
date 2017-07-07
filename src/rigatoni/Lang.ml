@@ -453,13 +453,17 @@ let keyword =
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
     strinG "sequence" ||| strinG "abs" ||| strinG "length" |||
-    strinG "concat" ||| strinG "now" |||
+    strinG "concat" ||| strinG "now" ||| strinG "yield" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
-  (* TODO: allow keywords if quoted *)
   let open P in
-  check ~what:"no keyword" (nay keyword) -+ ParseUsual.identifier
+  let open ParseUsual in
+  let id_quote = char '\'' in
+  (check ~what:"no quoted identifier" (nay id_quote) -+
+   check ~what:"no keyword" (nay keyword) -+
+   identifier) |||
+  (id_quote -+ identifier +- id_quote)
 
 module Tuple =
 struct
@@ -724,6 +728,18 @@ struct
           Some { where = ParsersMisc.Item ((0,7), '.');\
                  what=["eof"]})))\
         (test_p field "pasglop.bytes" |> replace_typ_in_expr)
+
+      (Bad (\
+        NoSolution (\
+          Some { where = ParsersMisc.EndOfStream ;\
+                 what=["digit";"not";"check";"not";"no keyword";"field"]})))\
+        (test_p field "yield" |> replace_typ_in_expr)
+
+      (Ok (\
+        Field (typ, ref "in", "yield"),\
+        (7, [])))\
+        (test_p field "'yield'" |> replace_typ_in_expr)
+
     *)
 
     let param m =

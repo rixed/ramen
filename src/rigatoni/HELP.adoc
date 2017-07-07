@@ -97,7 +97,10 @@ operations, inspired loosely by SQL.:
 We describe first values, then expressions, then operations.  All these
 concepts references each others so there is no reading order that would save
 you from jumping around. First reading may not be clear but everything should
-eventually make sense.
+eventually fall into place.
+
+Some reserved keywords cannot be used as identifiers, unless surrounded by
+simple quotes.
 
 === Values
 
