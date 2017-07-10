@@ -848,10 +848,7 @@ struct
        (afun1 "last" >>: fun e -> AggrLast (make_bool_typ "last aggregation", e)) |||
        ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
         afun1 "percentile" >>: fun (p, e) ->
-        (* Percentile aggr function is nullable because we want it null when
-         * we do not have enough measures to compute the requested percentiles.
-         * Alternatively, we could return the best bet. *)
-        AggrPercentile (make_num_typ ~nullable:true "percentile aggregation", p, e))
+        AggrPercentile (make_num_typ ~nullable:false "percentile aggregation", p, e))
       ) m
 
     and func =

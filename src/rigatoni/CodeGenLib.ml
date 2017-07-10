@@ -31,6 +31,17 @@ let sequence start inc =
 
 let now = Unix.gettimeofday
 
+let round_to_int f =
+  int_of_float (Float.round f)
+let percentile prev _pct x = x::prev
+let percentile_finalize pct lst =
+  let arr = Array.of_list lst in
+  Array.fast_sort Pervasives.compare arr ;
+  assert (pct >= 0.0 && pct <= 100.0) ;
+  let pct = pct *. 0.01 in
+  let idx = round_to_int (pct *. float_of_int (Array.length arr - 1)) in
+  arr.(idx)
+
 let getenv ?def n =
   try Sys.getenv n
   with Not_found ->

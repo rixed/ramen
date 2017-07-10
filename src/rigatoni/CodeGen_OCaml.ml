@@ -354,8 +354,12 @@ let implementation_of expr =
   | (Not _|And _|Or _), Some TBool -> name, Some TBool
   | (Ge _| Gt _| Eq _), Some TBool -> name, None (* No conversion necessary *)
   | (AggrMax _|AggrMin _|AggrFirst _|AggrLast _), _ -> name, None (* No conversion necessary *)
-  | (Age _|AggrPercentile _), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
-    "CodeGenLib."^ name ^"_"^ IO.to_string Scalar.print_typ to_typ, Some TFloat
+  | Age _, Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
+    let in_type_name =
+      String.lowercase (IO.to_string Scalar.print_typ to_typ) in
+    "CodeGenLib."^ name ^"_"^ in_type_name, None
+  | AggrPercentile _, Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+    "CodeGenLib."^ name, None
   | Now _, Some TFloat -> "CodeGenLib.now", None
   (* TODO: Now() for Uint62? *)
   | Cast _, t -> "CodeGenLib."^ name, t
@@ -388,9 +392,12 @@ let otype_of_type = function
   | TNull -> "unit"
   | TNum -> assert false
 
-let otype_of_aggr e =
-  Option.get Lang.Expr.((typ_of e).scalar_typ) |>
-  otype_of_type
+let otype_of_aggr aggr =
+  let t = Option.get Lang.Expr.((typ_of aggr).scalar_typ) |>
+          otype_of_type in
+  match aggr with
+  | Lang.Expr.AggrPercentile _ -> t ^" list"
+  | _ -> t
 
 let omod_of_type = function
   | TFloat -> "BatFloat"
@@ -456,9 +463,13 @@ and emit_expr oc =
   | Param _ ->
     failwith "TODO: code gen for params"
   | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-    | AggrLast _ | AggrPercentile _ as expr) ->
+    | AggrLast _ as expr) ->
      (* This assumes there is a parameter named aggr_ for the aggregates *)
      Printf.fprintf oc "aggr_.%s" (name_of_aggr expr)
+  | AggrPercentile (_, pct, _) as expr ->
+    Printf.fprintf oc "CodeGenLib.percentile_finalize (%a) aggr_.%s"
+      (conv_to (Some TFloat)) pct
+      (name_of_aggr expr)
   | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
   | Length (_, e) as expr ->
@@ -661,7 +672,7 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
         Printf.fprintf oc "%s.zero" (omod_of_type (Option.get to_typ.scalar_typ))
       | AggrPercentile (_, p, e) ->
         let impl, arg_typ = implementation_of aggr in
-        Printf.fprintf oc "(%s None %a %a) ;\n"
+        Printf.fprintf oc "%s [] %a %a"
           impl
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;
@@ -692,7 +703,7 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
          * optional value and return one so we do not have to deal with
          * it here: *)
         let impl, arg_typ = implementation_of aggr in
-        Printf.fprintf oc "%s (Some aggr_.%s) %a %a ;\n"
+        Printf.fprintf oc "%s aggr_.%s %a %a ;\n"
           impl (name_of_aggr aggr)
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;
@@ -735,7 +746,14 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
  *   We cannot generate less code than that if we want to use a record for
  *   tuple out.
  * With all this CodeGenLib will easily implement a basic version of aggregate
- * and could also implement more sophisticated versions. *)
+ * and could also implement more sophisticated versions.
+ *
+ * Note: some aggregation function value cannot be computed in the update.
+ * For instance, percentile accumulates all encountered values into a list
+ * and must then, at the end, sort that list and return only the requested
+ * percentile. That is why when we read the aggr_ record we do not get
+ * the value directly but uses a function specific to the aggregation
+ * function (which often reduces to identity). *)
   let mentioned =
     let all_exprs =
       where :: commit_when :: key @
