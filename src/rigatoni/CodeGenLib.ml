@@ -31,6 +31,18 @@ let sequence start inc =
 
 let now = Unix.gettimeofday
 
+let age_float x = x -. now ()
+let age_u8 = Uint8.of_float % age_float
+let age_u16 = Uint16.of_float % age_float
+let age_u32 = Uint32.of_float % age_float
+let age_u64 = Uint64.of_float % age_float
+let age_u128 = Uint128.of_float % age_float
+let age_i8 = Int8.of_float % age_float
+let age_i16 = Int16.of_float % age_float
+let age_i32 = Int32.of_float % age_float
+let age_i64 = Int64.of_float % age_float
+let age_i128 = Int128.of_float % age_float
+
 let round_to_int f =
   int_of_float (Float.round f)
 let percentile prev _pct x = x::prev
