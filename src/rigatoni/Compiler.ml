@@ -186,7 +186,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
             tuple := "out" ;
             true
           ) else if out_type.C.complete then (
-            let m = Printf.sprintf "field %s not in %S tuple" field !tuple in
+            let m =
+              Printf.sprintf "field %s not in %S tuple (which is %s)"
+                field !tuple
+                (IO.to_string C.print_temp_tup_typ in_type) in
             raise (SyntaxError m)
           ) else false
         ) else false
