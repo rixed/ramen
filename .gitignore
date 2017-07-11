@@ -25,3 +25,6 @@ core
 ringbuf_ctl
 src/rigatoni/www/node_edit.js
 src/rigatoni/HELP.html
+*.csv
+BUGS
+TODO
