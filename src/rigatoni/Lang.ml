@@ -1115,6 +1115,18 @@ struct
     open ParseUsual
     open P
 
+    let default_alias = function
+      | Expr.Field (_, { contents="in" }, field) -> [ field ]
+      (* Provide some default name for current aggregate functions: *)
+      | Expr.AggrMin (_, Expr.Field (_, { contents="in" }, field)) -> [ "min_"^ field ]
+      | Expr.AggrMax (_, Expr.Field (_, { contents="in" }, field)) -> [ "max_"^ field ]
+      | Expr.AggrSum (_, Expr.Field (_, { contents="in" }, field)) -> [ "sum_"^ field ]
+      | Expr.AggrAnd (_, Expr.Field (_, { contents="in" }, field)) -> [ "and_"^ field ]
+      | Expr.AggrOr  (_, Expr.Field (_, { contents="in" }, field)) -> [ "or_"^ field ]
+      | Expr.AggrFirst (_, Expr.Field (_, { contents="in" }, field)) -> [ "first_"^ field ]
+      | Expr.AggrLast (_, Expr.Field (_, { contents="in" }, field)) -> [ "last_"^ field ]
+      | _ -> raise (Reject "must set alias")
+
     let selected_field m =
       let m = "selected field" :: m in
       (Expr.Parser.p ++ optional ~def:[] (
@@ -1123,19 +1135,7 @@ struct
                 non_keyword) >>:
        fun (expr, alias) ->
          let alias =
-           if alias <> [] then alias else (
-             match expr with
-             | Expr.Field (_, { contents="in" }, field) -> [ field ]
-             (* Provide some default name for current aggregate functions: *)
-             | Expr.AggrMin (_, Expr.Field (_, { contents="in" }, field)) -> [ "min_"^ field ]
-             | Expr.AggrMax (_, Expr.Field (_, { contents="in" }, field)) -> [ "max_"^ field ]
-             | Expr.AggrSum (_, Expr.Field (_, { contents="in" }, field)) -> [ "sum_"^ field ]
-             | Expr.AggrAnd (_, Expr.Field (_, { contents="in" }, field)) -> [ "and_"^ field ]
-             | Expr.AggrOr  (_, Expr.Field (_, { contents="in" }, field)) -> [ "or_"^ field ]
-             | Expr.AggrFirst (_, Expr.Field (_, { contents="in" }, field)) -> [ "first_"^ field ]
-             | Expr.AggrLast (_, Expr.Field (_, { contents="in" }, field)) -> [ "last_"^ field ]
-             | _ -> raise (Reject "must set alias")
-           ) in
+           if alias <> [] then alias else default_alias expr in
          { expr ; alias }) m
 
     let list_sep m =

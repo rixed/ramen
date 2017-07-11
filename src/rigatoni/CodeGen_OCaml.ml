@@ -460,7 +460,7 @@ and emit_expr oc =
   | Const (_, c) ->
     emit_scalar oc c
   | Field (_, tuple, field) ->
-    Printf.fprintf oc "%s" (id_of_field_name ~tuple:!tuple field)
+    String.print oc (id_of_field_name ~tuple:!tuple field)
   | Param _ ->
     failwith "TODO: code gen for params"
   | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
