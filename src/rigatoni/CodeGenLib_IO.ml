@@ -8,10 +8,10 @@ let dying task =
 
 let always_true () = true
 
-let tuple_count = ref Int128.zero
+let tuple_count = ref Uint64.zero
 
 let on_each_input () =
-  tuple_count := Int128.succ !tuple_count
+  tuple_count := Uint64.succ !tuple_count
 
 let read_file_lines ?(do_unlink=false) ?(alive=always_true) filename k =
   match%lwt Lwt_unix.(openfile filename [ O_RDONLY ] 0x644) with

@@ -177,6 +177,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Field (op_typ, tuple, field) ->
     if same_tuple_as_in !tuple then (
       (* Check that this field is, or could be, in in_type *)
+      if field = "#count" then false else
       match Hashtbl.find in_type.C.fields field with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in in-tuple" field ;
@@ -202,6 +203,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     ) else if !tuple = "out" then (
       (* If we already have this field in out then check it's compatible (or
        * enlarge out or exp). If we don't have it then add it. *)
+      if field = "#count" then false else
       match Hashtbl.find out_type.C.fields field with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in out-tuple" field ;

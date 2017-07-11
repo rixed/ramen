@@ -574,6 +574,9 @@ struct
     | Gt  of typ * t * t
     | Eq  of typ * t * t
 
+  let is_virtual_field f =
+    String.length f > 0 && f.[0] = '#'
+
   let rec print with_types fmt =
     let add_types t =
       if with_types then Printf.fprintf fmt " [%a]" print_typ t
@@ -703,10 +706,17 @@ struct
       (optional ~def:"in" (
          prefix "in" ||| prefix "out" ||| prefix "first" |||
          prefix "previous" ||| prefix "others" ||| prefix "any") ++
-       non_keyword >>: fun (tuple, field) ->
+       (that_string "#count" ||| non_keyword) >>:
+       fun (tuple, field) ->
        (* This is important here that the type name is the raw field name,
-        * because we use the tuple field type name as their identifier *)
-       Field (make_typ field, ref tuple, field)) m
+        * because we use the tuple field type name as their identifier (unless
+        * it's a virtual field (starting with #) of course since those are
+        * computed on the fly and have no variable corresponding to them in
+        * the tuple) *)
+       let typ = match field with
+       | "#count" -> make_typ ~nullable:false ~typ:TU64 field
+       | _ -> make_typ field in
+       Field (typ, ref tuple, field)) m
     (*$= field & ~printer:(test_printer (print false))
       (Ok (\
         Field (typ, ref "in", "bytes"),\
@@ -739,6 +749,11 @@ struct
         Field (typ, ref "in", "yield"),\
         (7, [])))\
         (test_p field "'yield'" |> replace_typ_in_expr)
+
+      (Ok (\
+        Field (typ, ref "in", "#count"),\
+        (6, [])))\
+        (test_p field "#count" |> replace_typ_in_expr)
 
     *)
 
