@@ -251,6 +251,27 @@ To transform a succession of `key, signal` (where signal is a boolean) with
 possibly many times the same signal value into a stream of `key, signal`
 omitting the repetitions.
 
+===== Virtual fields
+
+In addition to the normal fields of the tuples, some tuples have 'virtual'
+fields, that is fields which value is computed rather than stored. to
+distinguish them from normal fields their name starts with a dash ('#'). Here
+is a list of all available virtual fields and which tuple they apply to:
+
+.Virtual Fields
+|===
+|Field name| Content
+
+| `in.#count`
+| How many tuples have been received (probably useless in itself but handy for comparison or with modulus).
+
+| `out.#count`
+| In a +GROUP BY+ operations, how many tuples were added so far to form the output tuple.
+
+| `out#successive`
+| In a +GROUP BY+ operations, how many successive incoming tuples were assigned to that group (same `group by` key).
+|===
+
 ==== Operators and Functions
 
 Predefined functions can be applied to expressions to form more complex
