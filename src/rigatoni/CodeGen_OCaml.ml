@@ -19,6 +19,7 @@ open RamenSharedTypes
 (* Tuple deconstruction as a function parameter: *)
 let id_of_field_name ?(tuple="in") = function
   | "#count" -> "virtual_"^ tuple ^"_count_"
+  | "#successive" -> "virtual_"^ tuple ^"_successive_"
   | field -> tuple ^"_"^ field ^"_"
 
 let id_of_field_typ ?tuple field_typ =
@@ -547,7 +548,7 @@ let emit_expr_of_input_tuple
       name in_tuple_typ mentioned and_all_others oc expr =
   Printf.fprintf oc "let %s%s virtual_in_count_ %a "
     name
-    (if with_aggr then " virtual_out_count_ aggr_" else "")
+    (if with_aggr then " virtual_out_count_ virtual_out_successive_ aggr_" else "")
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   if with_first_last then
     Printf.fprintf oc "%a %a "
@@ -720,7 +721,7 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
 let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
               oc commit_when =
   Printf.fprintf oc "\
-    let %s virtual_out_count_ aggr_ virtual_in_count_ %a %a %a %a %a =\n\t%a\n"
+    let %s virtual_out_count_ virtual_out_successive_ aggr_ virtual_in_count_ %a %a %a %a %a =\n\t%a\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:"first" mentioned and_all_others) in_tuple_typ

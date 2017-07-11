@@ -459,7 +459,7 @@ let keyword =
 let non_keyword =
   let open P in
   let open ParseUsual in
-  let id_quote = char '\'' in
+  let id_quote = char ~what:"quote" '\'' in
   (check ~what:"no quoted identifier" (nay id_quote) -+
    check ~what:"no keyword" (nay keyword) -+
    identifier) |||
@@ -703,20 +703,25 @@ struct
     let field m =
       let m = "field" :: m in
       let prefix s = strinG (s ^ ".") >>: fun () -> s in
-      (optional ~def:"in" (
-         prefix "in" ||| prefix "out" ||| prefix "first" |||
-         prefix "previous" ||| prefix "others" ||| prefix "any") ++
-       (that_string "#count" ||| non_keyword) >>:
-       fun (tuple, field) ->
-       (* This is important here that the type name is the raw field name,
-        * because we use the tuple field type name as their identifier (unless
-        * it's a virtual field (starting with #) of course since those are
-        * computed on the fly and have no variable corresponding to them in
-        * the tuple) *)
-       let typ = match field with
-       | "#count" -> make_typ ~nullable:false ~typ:TU64 field
-       | _ -> make_typ field in
-       Field (typ, ref tuple, field)) m
+      ((optional ~def:"in" (
+          prefix "in" ||| prefix "out" ||| prefix "first" |||
+          prefix "previous" ||| prefix "others" ||| prefix "any") ++
+        non_keyword >>:
+        (* This is important here that the type name is the raw field name,
+         * because we use the tuple field type name as their identifier (unless
+         * it's a virtual field (starting with #) of course since those are
+         * computed on the fly and have no variable corresponding to them in
+         * the tuple) *)
+        fun (tuple, field) ->
+          Field (make_typ field, ref tuple, field)) |||
+       (optional ~def:"in" (prefix "in" ||| prefix "out") ++ that_string "#count" >>:
+        fun (tuple, field) ->
+          Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field)) |||
+       (optional ~def:"out" (prefix "out") ++ that_string "#successive" >>:
+        fun (tuple, field) ->
+          Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field))
+      ) m
+
     (*$= field & ~printer:(test_printer (print false))
       (Ok (\
         Field (typ, ref "in", "bytes"),\
@@ -742,7 +747,7 @@ struct
       (Bad (\
         NoSolution (\
           Some { where = ParsersMisc.EndOfStream ;\
-                 what=["digit";"not";"check";"not";"no keyword";"field"]})))\
+                 what = ["digit";"not";"check";"not";"no keyword";"field"]})))\
         (test_p field "yield" |> replace_typ_in_expr)
 
       (Ok (\
@@ -754,6 +759,12 @@ struct
         Field (typ, ref "in", "#count"),\
         (6, [])))\
         (test_p field "#count" |> replace_typ_in_expr)
+
+      (Bad (\
+        NoSolution (\
+          Some { where = ParsersMisc.Item ((0,6), '#') ;\
+                 what = ["quote";"field"]})))\
+        (test_p field "first.#count" |> replace_typ_in_expr)
 
     *)
 
