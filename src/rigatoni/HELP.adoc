@@ -3,8 +3,8 @@
 == Overview
 
 Ramen is a stream processor. Unlike other stream processors that are designed
-to scale to thousands of servers, Ramen is designed to be efficient on a single
-(or very few) servers.
+to scale to many servers, Ramen is designed to be efficient on a single (or
+very few) servers.
 
 This document the second prototype of Ramen, named _Rigatoni_.
 
@@ -192,7 +192,7 @@ Here is a list of all possible tuples:
 [[input-tuple]]
 ===== Input tuple
 
-The tuple that has been received as input.  Its name is `in` but that's also
+The tuple that has been received as input.  Its name is `in` and that's also
 the default tuple when the tuple name is omitted.
 
 You can use the `in` tuple in all clauses but in a +YIELD+ operation or a
