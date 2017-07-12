@@ -14,7 +14,7 @@ RIGATONI_SOURCES = \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \
-	Log.ml RingBuf.ml RingBufLib.ml CodeGenLib_IO.ml CodeGenLib.ml
+	Log.ml RingBuf.ml RingBufLib.ml Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h
@@ -24,7 +24,9 @@ SOURCES = \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 
 JS_PACKAGES = ocaml-vdom js_of_ocaml-lwt js_of_ocaml-ppx lwt.ppx
-PACKAGES = ppp lwt.ppx batteries cmdliner stdint parsercombinator cohttp-lwt-unix num $(JS_PACKAGES)
+PACKAGES = \
+	ppp lwt.ppx batteries cmdliner stdint parsercombinator \
+	cohttp-lwt-unix num inotify.lwt $(JS_PACKAGES)
 
 INSTALLED = \
   rigatoni codegen.cmxa ringbuf/libringbuf.a

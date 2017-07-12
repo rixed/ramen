@@ -4,7 +4,7 @@ curl "$@" \
   -X PUT \
   -d '{
     "operation":
-      "read from csv file \"100k.csv\" separator \"\\t\" null \"<NULL>\" (
+      "read csv file \"100k.csv\" separator \"\\t\" null \"<NULL>\" (
         poller string not null,
         capture_begin u64 not null,
         capture_end u64 not null,

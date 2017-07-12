@@ -117,7 +117,7 @@ let demo_cmds =
   { demo_url = "node/TCPv29" ;
     demo_payload = "{\n\
     \"operation\":\n\
-      \"read from csv file \\\"100k.csv\\\" separator \\\"\\\\t\\\" null \\\"<NULL>\\\" (\n\
+      \"read csv file \\\"100k.csv\\\" separator \\\"\\\\t\\\" null \\\"<NULL>\\\" (\n\
         poller string not null,\n\
         capture_begin u64 not null,\n\
         capture_end u64 not null,\n\

@@ -428,19 +428,19 @@ Example: `95th percentile of (response_time + data_transfert_time)`
 
 ==== Read
 
-Currently the only supported syntax is:
+The simplest is to read a CSV file:
 
 [source,sql]
 ----
-  READ FROM CSV FILE "path/file.csv" SEPARATOR "\t" NULL "<NULL>" (
-    first_field_name field_type nullable,
-    second_field_name field_type nullable,
+  READ FROM CSV FILE quoted_string [SEPARATOR quoted_string] [NULL quoted_string] (
+    first_field_name field_type [[not] null],
+    second_field_name field_type [[not] null],
     ...
   )
 ----
 
-Which will inject the content of the given CSV file, in which field are
-separated by the given string (default to coma ",") and each occurrence of the
+Which will inject the content of the given CSV file, in which fields are
+separated by the given string, defaulting to coma (","), and each occurrence of the
 NULL string would be assuming to be NULL (default to empty string).
 
 Field names must be valid identifiers (aka string made of letters, underscores
@@ -453,12 +453,28 @@ Example:
 
 [source,sql]
 ----
-READ FROM CSV FILE "/tmp/test.csv" SEPARATOR "\t" NULL "<NULL>" (
+READ CSV FILE "/tmp/test.csv" SEPARATOR "\t" NULL "<NULL>" (
   first_name string NOT NULL,
-  last_name string NOT NULL,
+  last_name string,
   year_of_birth u16 NOT NULL,
   year_of_death u16)
 ----
+
+It is also possible to monitor a whole directory for files matching a pattern, and
+all those files will be injected sequentially. New files appearing in this
+directory will then also be injected if they match the pattern.
+
+Example:
+
+[source,sql]
+----
+READ CSV FILES "/tmp/test/*.csv" (
+  first_name string NOT NULL,
+  last_name string)
+----
+
+NOTE: patterns can use the star character ('*') in place of any substring in the
+file name but not in the directory part of the given path.
 
 ==== Yield
 

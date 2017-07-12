@@ -115,7 +115,7 @@ let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_s
   let rb_outs = load_out_ringbufs () in
   let outputer =
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
-  CodeGenLib_IO.read_file_lines filename (fun line ->
+  CodeGenLib_IO.read_glob_lines filename (fun line ->
     match of_string line with
     | exception e ->
       !logger.error "Cannot parse line %S: %s"

@@ -454,11 +454,11 @@ let keyword =
     strinG "group" ||| strinG "by" ||| strinG "select" ||| strinG "where" |||
     strinG "on" ||| strinG "change" ||| strinG "flush" ||| strinG "when" |||
     strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
-    strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
+    strinG "read" ||| strinG "csv" ||| strinG "file" |||
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
     strinG "sequence" ||| strinG "abs" ||| strinG "length" |||
     strinG "concat" ||| strinG "now" ||| strinG "yield" ||| strinG "slide" |||
-    strinG "remove" ||| strinG "keep" |||
+    strinG "remove" ||| strinG "keep" ||| strinG "directory" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
@@ -1139,7 +1139,7 @@ struct
     | Alert { team ; subject ; text } ->
       Printf.fprintf fmt "ALERT %S SUBJECT %S TEXT %S" team subject text
     | ReadCSVFile { fname ; separator ; null ; fields } ->
-      Printf.fprintf fmt "READ FROM CSV FILE %S SEPARATOR %S NULL %S %a"
+      Printf.fprintf fmt "READ CSV FILES %S SEPARATOR %S NULL %S %a"
         fname separator null Tuple.print_typ fields
 
   module Parser =
@@ -1271,7 +1271,7 @@ struct
        fun ((team, subject), text) -> Alert { team ; subject ; text }) m
 
     let read_csv_file m =
-      let m = "read-csv" :: m in
+      let m = "read csv file" :: m in
       let field =
         non_keyword +- blanks ++ Scalar.Parser.typ ++
         optional ~def:true (
@@ -1279,8 +1279,9 @@ struct
           blanks +- strinG "null") >>:
         fun ((name, typ), nullable) -> Tuple.{ name ; typ ; nullable }
       in
-      (strinG "read" -- blanks -- strinG "from" -- blanks --
-       optional ~def:() (strinG "csv" +- blanks) -- strinG "file" -- blanks -+
+      (strinG "read" -- blanks --
+       optional ~def:() (strinG "csv" +- blanks) --
+       strinG "file" -- optional ~def:'s' (char 's') -- blanks -+
        quoted_string +- opt_blanks ++
        optional ~def:"," (
          strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
@@ -1289,11 +1290,14 @@ struct
        char '(' +- opt_blanks ++
        several ~sep:list_sep field +- opt_blanks +- char ')' >>:
        fun (((fname, separator), null), fields) ->
-        ReadCSVFile { fname ; separator ; null ; fields }) m
+         if separator = null || separator = "" then
+           raise (Reject "Invalid CSV separator/null") ;
+         ReadCSVFile { fname ; separator ; null ; fields }) m
 
     let p m =
       let m = "operation" :: m in
-      (yield ||| select ||| aggregate ||| on_change ||| alert ||| read_csv_file) m
+      (yield ||| select ||| aggregate ||| on_change ||| alert ||| read_csv_file
+      ) m
 
     (*$= p & ~printer:(test_printer print)
       (Ok (\
@@ -1401,18 +1405,18 @@ struct
                       fields = Lang.Tuple.[ \
                         { name = "f1" ; nullable = true ; typ = TBool } ;\
                         { name = "f2" ; nullable = false ; typ = TI32 } ] },\
-        (61, [])))\
-        (test_p p "read from csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
+        (56, [])))\
+        (test_p p "read csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
         ReadCSVFile { fname = "/tmp/toto.csv" ; separator = "\t" ; null = "<NULL>" ; \
                       fields = Lang.Tuple.[ \
                         { name = "f1" ; nullable = true ; typ = TBool } ;\
                         { name = "f2" ; nullable = false ; typ = TI32 } ] },\
-        (90, [])))\
-        (test_p p "read from csv file \"/tmp/toto.csv\" \\
-                                 separator \"\\t\" null \"<NULL>\" \\
-                                 (f1 bool, f2 i32 not null)")
+        (85, [])))\
+        (test_p p "read csv file \"/tmp/toto.csv\" \\
+                            separator \"\\t\" null \"<NULL>\" \\
+                            (f1 bool, f2 i32 not null)")
     *)
 
     (* Check that the expression is valid, or return an error message.
@@ -1482,10 +1486,7 @@ struct
         check_no_aggr no_aggr_in_on_change e
       | Alert _ ->
         () (* TODO: check field names from text templates *)
-      | ReadCSVFile { separator ; null ; _ } ->
-        if separator = null || separator = "" then (
-          let m = "Invalid CSV separator/null" in
-          raise (SyntaxError m))
+      | ReadCSVFile _ -> ()
 
     (*$>*)
   end
