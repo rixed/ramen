@@ -458,7 +458,7 @@ let keyword =
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
     strinG "sequence" ||| strinG "abs" ||| strinG "length" |||
     strinG "concat" ||| strinG "now" ||| strinG "yield" ||| strinG "slide" |||
-    strinG "remove" |||
+    strinG "remove" ||| strinG "keep" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
