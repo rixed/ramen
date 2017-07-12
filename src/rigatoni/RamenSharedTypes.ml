@@ -51,5 +51,4 @@ type node_links =
 
 type graph_info =
   { nodes : node_info list ;
-    links : (string * string) list ;
     status : graph_status } [@@ppp PPP_JSON]

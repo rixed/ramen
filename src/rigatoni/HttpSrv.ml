@@ -232,10 +232,6 @@ let get_graph_json conf _headers =
     { nodes = Hashtbl.fold (fun _name node lst ->
         node_info_of_node node :: lst
       ) conf.C.building_graph.C.nodes [] ;
-      links = Hashtbl.fold (fun name node lst ->
-        let links = List.map (fun c -> name, c.C.name) node.C.children in
-        List.rev_append links lst
-      ) conf.C.building_graph.C.nodes [] ;
       status = conf.C.building_graph.C.status } in
   let body = PPP.to_string graph_info_ppp graph_info ^"\n" in
   let status = `Code 200 in

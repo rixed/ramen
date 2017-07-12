@@ -50,7 +50,6 @@ let graph_of_ojs ojs =
     if has_property js "Running" then Running else
     assert false in
   { nodes = get ojs "nodes" |> list_of_js node_of_ojs ;
-    links = get ojs "links" |> list_of_js link_of_pair ;
     status = get ojs "status" |> status_of_js }
 
 (* TODO: deriving json *)

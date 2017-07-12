@@ -10,7 +10,7 @@ function select_node(node, set_node)
 }
 
 // Who do not like globals?
-var node_of_name, svg, node, link, width, height, top_nodes, simulation, nodes, links;
+var svg, node, link, width, height, top_nodes, simulation, nodes, links;
 
 function init()
 {
@@ -37,7 +37,7 @@ function init()
 
 function node_label(d) { return d.name; }
 function node_class(d) { return 'node ' + d.type_of_operation.replace(/ /g, '_'); }
-function link_name(link) { return link[0] +'_'+ link[1]; }
+function link_name(link) { return link.source +'_'+ link.target; }
 
 function update_positions()
 {
@@ -64,26 +64,26 @@ function update_positions()
   var arrow_length = 10;
   link.select('line')
       .attr('x1', function (link) {
-        var n0 = node_of_name[link[0]];
-        var n1 = node_of_name[link[1]];
+        var n0 = link.source;
+        var n1 = link.target;
         var start = chop_line(n1.x, n1.y, n0.x, n0.y, n0.radius);
         return start[0];
       })
       .attr('y1', function (link) {
-        var n0 = node_of_name[link[0]];
-        var n1 = node_of_name[link[1]];
+        var n0 = link.source;
+        var n1 = link.target;
         var start = chop_line(n1.x, n1.y, n0.x, n0.y, n0.radius);
         return start[1];
       })
       .attr('x2', function (link) {
-        var n0 = node_of_name[link[0]];
-        var n1 = node_of_name[link[1]];
+        var n0 = link.source;
+        var n1 = link.target;
         var end = chop_line(n0.x, n0.y, n1.x, n1.y, n1.radius + arrow_length);
         return end[0];
       })
       .attr('y2', function (link) {
-        var n0 = node_of_name[link[0]];
-        var n1 = node_of_name[link[1]];
+        var n0 = link.source;
+        var n1 = link.target;
         var end = chop_line(n0.x, n0.y, n1.x, n1.y, n1.radius + arrow_length);
         return end[1];
       });
@@ -93,12 +93,7 @@ function display_graph(graph, set_node)
 {
   if (svg == null) init();
 
-  node_of_name = {};
-
   foreach(graph.nodes, function (node) {
-    // Add an index from node name to node:
-    node_of_name[node.name] = node;
-
     // Specify the node radius in the node itself
     node.radius = 30;
   });
@@ -146,11 +141,13 @@ function display_graph(graph, set_node)
   // Now links
 
   links.length = 0;
-  links = map (graph.links, function (link) {
-    return { 'source': link[0], 'target': link[1] };
+  foreach(graph.nodes, function (node) {
+    foreach(node.children, function (child) {
+      links.push({ 'source': node.name, 'target': child });
+    });
   });
 
-  link = link.data(graph.links, function (d) { return d ? link_name(d) : 'unknown_' + this.id; });
+  link = link.data(links, function (d) { return d ? link_name(d) : 'unknown_' + this.id; });
   link.exit().remove();
 
   var new_links = link.enter()
