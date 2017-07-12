@@ -268,7 +268,7 @@ is a list of all available virtual fields and which tuple they apply to:
 | `out.#count`
 | In a +GROUP BY+ operations, how many tuples were added so far to form the output tuple.
 
-| `out#successive`
+| `out.#successive`
 | In a +GROUP BY+ operations, how many successive incoming tuples were assigned to that group (same `group by` key).
 |===
 
