@@ -258,14 +258,18 @@ let same_tuple_as_in = function
       Ok (Select {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ; where = replace_typ where }, rest)
-    | Ok (Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when }, rest) ->
+    | Ok (Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how }, rest) ->
       Ok (Aggregate {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ;
         where = replace_typ where ;
         key = List.map replace_typ key ;
         commit_when = replace_typ commit_when ;
-        flush_when = Option.map replace_typ flush_when }, rest)
+        flush_when = Option.map replace_typ flush_when ;
+        flush_how = (match flush_how with
+          | Reset | Slide _ -> flush_how
+          | RemoveAll e -> RemoveAll (replace_typ e)
+          | KeepOnly e -> KeepOnly (replace_typ e)) }, rest)
     | Ok (OnChange e, rest) -> Ok (OnChange (replace_typ e), rest)
     | x -> x
  *)
@@ -453,7 +457,8 @@ let keyword =
     strinG "read" ||| strinG "from" ||| strinG "csv" ||| strinG "file" |||
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
     strinG "sequence" ||| strinG "abs" ||| strinG "length" |||
-    strinG "concat" ||| strinG "now" ||| strinG "yield" |||
+    strinG "concat" ||| strinG "now" ||| strinG "yield" ||| strinG "slide" |||
+    strinG "remove" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
@@ -1019,6 +1024,19 @@ struct
     else
       Expr.print false fmt f.expr
 
+  type flush_method = Reset | Slide of int
+                  | KeepOnly of Expr.t | RemoveAll of Expr.t
+
+  let print_flush_method ?(prefix="") ?(suffix="") () oc = function
+    | Reset ->
+      Printf.fprintf oc "%sFLUSH%s" prefix suffix
+    | Slide n ->
+      Printf.fprintf oc "%sSIDE %d%s" prefix n suffix
+    | KeepOnly e ->
+      Printf.fprintf oc "%sKEEP (%a)%s" prefix (Expr.print false) e suffix
+    | RemoveAll e ->
+      Printf.fprintf oc "%sREMOVE (%a)%s" prefix (Expr.print false) e suffix
+
   type t =
     (* Generate values out of thin air. The difference with Select is that
      * Yield does not wait for some input. *)
@@ -1042,7 +1060,10 @@ struct
         key : Expr.t list ;
         commit_when : Expr.t ;
         (* When do we stop aggregating (default: when we commit) *)
-        flush_when : Expr.t option }
+        flush_when : Expr.t option ;
+        (* How to flush: reset or slide values *)
+        flush_how : flush_method }
+
     (* Not sure we need OnChange.
      * The idea behind on-change is that it propagates only new values
      * for a given key. For instance, if we receive tuples made of:
@@ -1099,18 +1120,19 @@ struct
         (if and_all_others then "*" else "")
         (Expr.print false) where
     | Aggregate { fields ; and_all_others ; where ; key ;
-                  commit_when ; flush_when } ->
-      Printf.fprintf fmt "SELECT %a%s%s WHERE %a%s%a COMMIT %sWHEN %a"
+                  commit_when ; flush_when ; flush_how } ->
+      Printf.fprintf fmt "SELECT %a%s%s WHERE %a%s%a COMMIT %aWHEN %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         (Expr.print false) where
         (if key <> [] then " GROUP BY " else "")
         (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) key
-        (if flush_when = None then "AND FLUSH " else "")
+        (if flush_when = None then print_flush_method ~prefix:"AND " ~suffix:" " () else (fun _oc _fh -> ())) flush_how
         (Expr.print false) commit_when ;
       Option.may (fun flush_when ->
-        Printf.fprintf fmt " FLUSH WHEN %a"
+        Printf.fprintf fmt " %a WHEN %a"
+          (print_flush_method ()) flush_how
           (Expr.print false) flush_when) flush_when
     | OnChange e ->
       Printf.fprintf fmt "ON CHANGE %a" (Expr.print false) e
@@ -1193,32 +1215,44 @@ struct
       (strinG "group" -- blanks -- strinG "by" -- blanks -+
        several ~sep:list_sep Expr.Parser.p) m
 
+    let flush m =
+      let m = "flush clause" :: m in
+      ((strinG "flush" >>: fun () -> Reset) |||
+       (strinG "slide" -- blanks -+ integer >>: fun n ->
+         if Num.sign_num n < 0 then raise (Reject "Sliding amount must be >0") else
+         Slide (Num.int_of_num n)) |||
+       (strinG "keep" -- blanks -+ Expr.Parser.p >>: fun e ->
+         KeepOnly e) |||
+       (strinG "remove" -- blanks -+ Expr.Parser.p >>: fun e ->
+         RemoveAll e)
+      ) m
+
     let commit_when m =
       let m = "commit clause" :: m in
       (strinG "commit" -- blanks -+
-       optional ~def:false
-         (strinG "and" -- blanks -- strinG "flush" -- blanks >>: fun () -> true) +-
+       optional ~def:None
+         (strinG "and" -- blanks -+ some flush +- blanks) +-
        strinG "when" +- blanks ++
        Expr.Parser.p ++
        optional ~def:None
-         (blanks -- strinG "flush" -- blanks -- strinG "when" -- blanks -+
-          some Expr.Parser.p) >>:
+         (some (blanks -+ flush +- blanks +- strinG "when" +- blanks ++
+          Expr.Parser.p)) >>:
        function
-       | (true, commit_when), None ->
-         commit_when, None
-       | (true, _), Some _ ->
+       | (Some flush_how, commit_when), None ->
+         commit_when, None, flush_how
+       | (Some _, _), Some _ ->
          raise (Reject "AND FLUSH incompatible with FLUSH WHEN")
-       | (false, commit_when), (Some _ as flush_when) ->
-         commit_when, flush_when
-       | (false, _), None ->
+       | (None, commit_when), (Some (flush_how, flush_when)) ->
+         commit_when, Some flush_when, flush_how
+       | (None, _), None ->
          raise (Reject "Must specify when to flush")
       ) m
 
     let aggregate m =
       let m = "aggregate" :: m in
       (select +- blanks ++ optional ~def:[] (group_by +- blanks) ++ commit_when >>: function
-       | (Select { fields ; and_all_others ; where }, key), (commit_when, flush_when) ->
-         Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when }
+       | (Select { fields ; and_all_others ; where }, key), (commit_when, flush_when, flush_how) ->
+         Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how }
        | _ -> assert false) m
 
     let on_change m =
@@ -1318,7 +1352,7 @@ struct
                 AggrMax (typ,Field (typ, ref "any", "start")),\
                 Const (typ, Scalar.VI16 (Int16.of_int 3600))),\
               Field (typ, ref "out", "start"))) ; \
-          flush_when = None },\
+          flush_when = None ; flush_how = Reset },\
           (206, [])))\
           (test_p p "select min start as start or out_start, \\
                             max stop as max_stop, \\
@@ -1339,7 +1373,7 @@ struct
             Ge (typ,\
               AggrSum (typ, Const (typ, Scalar.VI8 (Int8.of_int 1))),\
               Const (typ, Scalar.VI8 (Int8.of_int 5)))) ;\
-          flush_when = None },\
+          flush_when = None ; flush_how = Reset },\
           (48, [])))\
           (test_p p "select 1 as one commit and flush when sum 1 >= 5" |>\
            replace_typ_in_op)
@@ -1422,7 +1456,8 @@ struct
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
         check_fields_from ["in"] "WHERE clause" where
-      | Aggregate { fields ; where ; key ; commit_when ; flush_when ; _ } ->
+      | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how } ->
+        ignore and_all_others ;
         List.iter (fun sf ->
             check_fields_from ["in"; "first"; "last"] "SELECT clause" sf.expr
           ) fields ;
@@ -1436,7 +1471,13 @@ struct
         Option.may (fun flush_when ->
             Expr.aggr_iter ignore flush_when ;
             check_fields_from ["in";"out";"previous";"first";"last"] "FLUSH WHEN clause" flush_when
-          ) flush_when
+          ) flush_when ;
+        (match flush_how with
+        | Reset | Slide _ -> ()
+        | RemoveAll e | KeepOnly e ->
+          let m = "Aggregation functions not allowed in KEEP/REMOVE clause" in
+          check_no_aggr m e ;
+          check_fields_from ["in";"out";"previous";"first";"last"] "REMOVE clause" e)
       | OnChange e ->
         check_no_aggr no_aggr_in_on_change e
       | Alert _ ->

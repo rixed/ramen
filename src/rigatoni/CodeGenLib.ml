@@ -150,17 +150,39 @@ let yield sersize_of_tuple serialize_tuple select =
   loop ()
 
 type ('a, 'b, 'c) aggr_value =
-  { first_touched : float ;
-    (* used to compute the actual selected field when outputing the
+  { (* used to compute the actual selected field when outputing the
      * aggregate: *)
-    first_in : 'b ; (* first in-tuple of this aggregate *)
+    mutable first_in : 'b ; (* first in-tuple of this aggregate *)
     mutable last_in : 'b ; (* last in-tuple of this aggregate *)
     mutable previous_out : 'c ; (* previously computed temp out tuple, if any *)
-    mutable last_touched : float ;
     mutable nb_entries : Uint64.t ;
     mutable nb_successive : Uint64.t ;
-    mutable last_ev_count : int ; (* used for others.successive *)
-    fields : 'a (* the record of aggregation values *) }
+    mutable last_ev_count : int ; (* used for others.successive (TODO) *)
+    mutable to_resubmit : 'b list ; (* in_tuples to resubmit at flush *)
+    mutable fields : 'a (* the record of aggregation values *) }
+
+let flush_aggr aggr_init update_aggr should_resubmit h k aggr =
+  if aggr.to_resubmit = [] then
+    Hashtbl.remove h k
+  else (
+    let to_resubmit = List.rev aggr.to_resubmit in
+    aggr.nb_entries <- Uint64.of_int 1 ;
+    aggr.to_resubmit <- [] ;
+    (* Warning: should_resubmit might need realistic nb_entries, last_in etc *)
+    let in_tuple = List.hd to_resubmit in
+    aggr.first_in <- in_tuple ;
+    aggr.last_in <- in_tuple ;
+    aggr.fields <- aggr_init in_tuple ;
+    if should_resubmit aggr in_tuple then
+      aggr.to_resubmit <- [ in_tuple ] ;
+    List.iter (fun in_tuple ->
+        update_aggr aggr.fields in_tuple ;
+        aggr.nb_entries <- Uint64.succ aggr.nb_entries ;
+        aggr.last_in <- in_tuple ;
+        if should_resubmit aggr in_tuple then
+          aggr.to_resubmit <- in_tuple :: aggr.to_resubmit
+      ) (List.tl to_resubmit)
+  )
 
 let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (sersize_of_tuple : 'tuple_out -> int)
@@ -175,6 +197,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (key_of_input : 'tuple_in -> 'key)
               (commit_when : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out -> 'tuple_out -> bool)
               (flush_when : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out -> 'tuple_out -> bool)
+              (should_resubmit : ('aggr, 'tuple_in, 'tuple_out) aggr_value -> 'tuple_in -> bool)
               (aggr_init : 'tuple_in -> 'aggr)
               (update_aggr : 'aggr -> 'tuple_in -> unit) =
   !logger.info "Starting GROUP BY process..." ;
@@ -183,7 +206,8 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
   let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
-    CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
+    CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0
+                        RingBuf.load rb_in_fname in
   let commit =
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
   let h = Hashtbl.create 701
@@ -196,7 +220,6 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
     if where_fast !CodeGenLib_IO.tuple_count in_tuple then (
       (* TODO: update any aggr *)
       let k = key_of_input in_tuple in
-      let now = Unix.gettimeofday () in (* haha lol! *)
       let prev_last_key = !last_key in
       last_key := Some k ;
       match Hashtbl.find h k with
@@ -216,27 +239,28 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               not (flush_when == commit_when) &&
               flush_when nb_entries nb_entries fields !CodeGenLib_IO.tuple_count in_tuple in_tuple in_tuple out_tuple out_tuple
             ) in
-          if not do_flush then (
-            let aggr = {
-              first_touched = now ;
-              first_in = in_tuple ;
-              last_in = in_tuple ;
-              previous_out = out_tuple ;
-              last_touched = now ;
-              nb_entries ;
-              nb_successive = Uint64.of_int 1 ;
-              last_ev_count = !event_count ;
-              fields } in
-            Hashtbl.add h k aggr
-          ) ;
-          if do_commit then commit out_tuple  else return_unit
+          let aggr = {
+            first_in = in_tuple ;
+            last_in = in_tuple ;
+            previous_out = out_tuple ;
+            nb_entries ;
+            nb_successive = Uint64.of_int 1 ;
+            last_ev_count = !event_count ;
+            to_resubmit = [] ;
+            fields } in
+          Hashtbl.add h k aggr ;
+          if should_resubmit aggr in_tuple then
+            aggr.to_resubmit <- [ in_tuple ] ;
+          if do_flush then flush_aggr aggr_init update_aggr should_resubmit h k aggr ;
+          if do_commit then commit out_tuple else return_unit
         ) else return_unit
       | aggr ->
         if where_slow aggr.nb_entries aggr.nb_successive aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in then (
           update_aggr aggr.fields in_tuple ;
-          aggr.last_touched <- now ;
           aggr.last_ev_count <- !event_count ;
           aggr.nb_entries <- Uint64.succ aggr.nb_entries ;
+          if should_resubmit aggr in_tuple then
+            aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
           if prev_last_key = Some k then
             aggr.nb_successive <- Uint64.succ aggr.nb_successive ;
           let out_tuple =
@@ -251,12 +275,9 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               not (flush_when == commit_when) &&
               flush_when aggr.nb_entries aggr.nb_successive aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out
             ) in
-          if do_flush then
-            Hashtbl.remove h k
-          else (
-            aggr.last_in <- in_tuple ;
-            aggr.previous_out <- out_tuple ;
-          ) ;
+          aggr.last_in <- in_tuple ;
+          aggr.previous_out <- out_tuple ;
+          if do_flush then flush_aggr aggr_init update_aggr should_resubmit h k aggr ;
           if do_commit then commit out_tuple else return_unit
         ) else return_unit
     ) else return_unit

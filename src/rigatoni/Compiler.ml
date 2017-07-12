@@ -368,7 +368,7 @@ let check_select ~in_type ~out_type fields and_all_others where =
   )
 
 let check_aggregate ~in_type ~out_type fields and_all_others
-                    where key commit_when flush_when =
+                    where key commit_when flush_when flush_how =
   let open Lang in
   (
     (* Improve out_type using all expressions. Check we satisfy in_type. *)
@@ -387,6 +387,14 @@ let check_aggregate ~in_type ~out_type fields and_all_others
       let exp_type = Expr.make_bool_typ ~nullable:false "flush-when clause" in
       check_expr ~in_type ~out_type ~exp_type flush_when
   ) || (
+    let open Lang.Operation in
+    match flush_how with
+    | Reset -> false
+    | Slide _ -> false
+    | RemoveAll e | KeepOnly e ->
+      let exp_type = Expr.make_bool_typ ~nullable:false "remove/keep clause" in
+      check_expr ~in_type ~out_type ~exp_type e
+  ) || (
     (* Check select must come last since it completes out_type *)
     check_select ~in_type ~out_type fields and_all_others where
   )
@@ -403,9 +411,9 @@ let check_operation ~in_type ~out_type =
   | Operation.Select { fields ; and_all_others ; where } ->
     check_select ~in_type ~out_type fields and_all_others where
   | Operation.Aggregate { fields ; and_all_others ; where ;
-                          key ; commit_when ; flush_when } ->
+                          key ; commit_when ; flush_when ; flush_how } ->
     check_aggregate ~in_type ~out_type fields and_all_others where
-                    key commit_when flush_when
+                    key commit_when flush_when flush_how
   | Operation.OnChange expr ->
     (
       (* Start by transmitting the field so that the expression can
