@@ -111,7 +111,7 @@ value can be NULL and spare the NULL checks unless necessary.
 
 Users can check if a NULL-able value is NULL using the +IS NULL+ or +IS NOT
 NULL+ operators, which turn a NULL-able value into a boolean. This is useful
-in where-clauses.
+in where clauses.
 
 +NULL+ is both a type and a value. The +NULL+ value is the only possible value
 of the +NULL+ type, or a possible value for any NULL-able type.
@@ -196,16 +196,16 @@ The tuple that has been received as input.  Its name is `in` and that's also
 the default tuple when the tuple name is omitted.
 
 You can use the `in` tuple in all clauses but in a +YIELD+ operation or a
-+READ+ operation.  When used in the commit-clause of a +GROUP BY+ operation,
++READ+ operation.  When used in the commit clause of a +GROUP BY+ operation,
 it refers to the last received tuple.
 
 [[output-tuple]]
 ===== Output tuple
 
 The tuple that is going to be output. Its name is `out`.  The only place where
-it can be used is in the commit-clause of a +GROUP BY+ operation. It thus
-refers to the tuple that would be output shall the commit condition yields
-`true`.
+it can be used is in the commit clause and flush-when clause of a +GROUP BY+
+operation. It thus refers to the tuple that would be output shall the commit
+condition yields `true`.
 
 It is important to understand that the input and output tuples have different
 types (at least in general).
@@ -228,7 +228,7 @@ Same type as the input tuple.
 
 Differs from `out` by its type (`out` is the current product of the operation
 while `last` is the last received input tuple) and in that it can also be used
-in the select-clause and the where-clause.
+in the select clause and the where clause.
 
 [[previous-tuple]]
 ===== Previous tuple
@@ -236,7 +236,8 @@ in the select-clause and the where-clause.
 Named `previous`, refers to the previous version of the output tuple (the one
 before `out`).
 
-Can only be used in the commit-clause of a +GROUP BY+ operation.
+Can only be used in the commit clause or flush-when clause of a +GROUP BY+
+operation.
 
 Same type as the `out` tuple, obviously.
 
@@ -254,7 +255,7 @@ omitting the repetitions.
 ===== Virtual fields
 
 In addition to the normal fields of the tuples, some tuples have 'virtual'
-fields, that is fields which value is computed rather than stored. to
+fields, that is fields which value is computed rather than stored. To
 distinguish them from normal fields their name starts with a dash ('#'). Here
 is a list of all available virtual fields and which tuple they apply to:
 
@@ -271,6 +272,9 @@ is a list of all available virtual fields and which tuple they apply to:
 | `out.#successive`
 | In a +GROUP BY+ operations, how many successive incoming tuples were assigned to that group (same `group by` key).
 |===
+
+NOTE: `out.#successive` is unchanged by an aggregate flush operation and
+therefore make little sense in a `remove`/`keep` clause.
 
 ==== Operators and Functions
 
@@ -394,7 +398,7 @@ Aggregate functions are special functions that combines current value with
 previous values instead of combining several current values.
 
 For instance, `max response_time` will compute the max of all the response_time
-fields of all incoming tuples (until the commit-clause instruct Rigatoni to
+fields of all incoming tuples (until the commit clause instruct Rigatoni to
 output this aggregated tuple).
 
 ===== Min, Max, Sum
@@ -480,60 +484,109 @@ Syntax:
 
 As a selected expression one can also use `*` (star) to mean: all _other_
 fields from the input tuple (by other we mean any fields that have not be
-mentioned at all in the other expression of the select-clause).
+mentioned at all in the other expression of the select clause).
 
-The where-clause is an expression, typically build from the input tuple, that
+The where clause is an expression, typically build from the input tuple, that
 must have a non-nullable boolean result.
 
-Semantic: for each input tuple, if the where-clause is true, output the tuple
-build from the select-clause. If the where-clause is false then ignore the
+Semantic: for each input tuple, if the where clause is true, output the tuple
+build from the select clause. If the where clause is false then ignore the
 input tuple.
 
-==== Group by
+==== Aggregate
 
 Syntax:
 
 [source,sql]
 ----
   SELECT expression1 AS name1, expression2 AS name2, ...
-    GROUP BY expression3, expression4, ...
+    [GROUP BY expression3, expression4, ...]
     COMMIT WHEN commit_clause
-    FLUSH WHEN flush_clause
+    (FLUSH | SLIDE n | REMOVE expression | KEEP expression) WHEN flush_clause
 ----
 
-The select-clause is the same as above but it can use aggregate functions and,
-in addition to the `in` tuple, also the `first` and `last` tuples.  Contrary to
-SQL it is not an error to take a value from the input tuple in the
-select-clause with no aggregation function specified. The output tuple will
-merely use the current input tuple to get the value (similarly to what the
+or, if `flush_clause` is the same as `commit_clause`:
+
+[source,sql]
+----
+  SELECT expression1 AS name1, expression2 AS name2, ...
+    [GROUP BY expression3, expression4, ...]
+    COMMIT AND (FLUSH | SLIDE n | REMOVE expression | KEEP expression)
+      WHEN commit_clause
+----
+
+The select clause is the same as above but it can use aggregate functions and,
+in addition to the `in` tuple, can refer to the `first` and `last` tuples.
+Contrary to SQL, it is not an error to take a value from the input tuple in the
+select clause with no aggregation function specified. The output tuple will
+then just use the current input tuple to get the value (similarly to what the
 `last` aggregation function would do).
 
 This is also what happens if you use the `*` (star) designation in the
-select-clause.
+select clause. So for instance:
 
-The group-by-clause is a mere list of expressions that can refer to the
+[source,sql]
+----
+  SELECT max counter, *
+    GROUP BY name
+    COMMIT AND FLUSH WHEN max timestamp - min timestamp > 120
+----
+
+would output tuples made of the maximum value of the field +counter+ (this
+field automatically named `max_counter` so explicit naming with +AS+ is not
+necessary here) and all the fields of input tuples, using the last encountered
+values.
+
+The group-by clause is a mere list of expressions that can refer to the
 <<input-tuple>>, <<first-tuple>> and <<last-tuple>>. The resulting tuple will
-be used as the key for the aggregation.
+be used as the key for the aggregation. When the group-by clause is omitted
+then all input tuples are aggregated together.
 
-The commit-clause tells when the aggregation must be stopped and the aggregated
-tuple outputted.
+The commit clause tells when the aggregation must be stopped and the aggregated
+tuple outputted. This is a major difference with SQL, which stops aggregating
+values when it has processed all the input. Since stream processors model an
+infinite stream of input one has to give this extra piece of information.
 
-The flush-clause tells when an aggregate must be removed from memory. It is
-normally when you commit the tuple, so there is a shorter syntax for it: `...
-commit and flush when ...` But the extra control allows to achieve more
+The flush-when clause tells when an aggregate must be removed from memory. It
+is normally when you commit the tuple, so there is a shorter syntax for it:
+`...  commit and flush when ...` But the extra control allows to achieve more
 interesting operations.
 
-Semantic: For each input tuple, compute the key and retrieve the current
-aggregate, if any. IF not, start a new one from the initial values of each
-aggregate function. Then evaluate the where-clause: if it is false, skip that
-input (and discard the new aggregate that might have been created).  If the
-where-clause yields true, accumulates that input into that aggregate and
-compute the current output-tuple. With all this, evaluates the commit clause:
-if it is true, output the output tuple. Also, and regardless of the commit
-clause, evaluates the flush-clause. If it is true, deletes this aggregates and
-forget about it.
+Additionally, instead of flushing (aka deleting the aggregated value for that
+key) it is also possible to remove some of the aggregated tuples from the
+aggregate, and keep going with new incoming tuples. This is useful to implement
+sliding windows or decay. Instead of +FLUSH+ it is possible to specify either:
 
-Note: the actual implementation cut some corners for efficiency.
+- +SLIDE+ followed by a positive integer, which would remove from the aggregate
+  that many input tuples (the firsts that have been received);
+
+- +REMOVE+ followed by a boolean expression, for removing all those tuples from
+  the aggregate;
+
+- +KEEP+ to specify which tuple not to remove (syntactic sugar for +REMOVE not
+  (expression)+);
+
+Notice that +SLIDE+ assumes that the tuples are received in some meaningful
+order, which is generally not true. It is thus often safer to use a proper
+filter and use a time value (or other ordered value) from the input tuple to
+perform the selection.
+
+Also, it is important to understand that "removing" tuples from the aggregate
+requires that all received tuples that are kept for next aggregate have to be
+actually kept in memory and replayed when the aggregate is "flushed"; therefore
+this feature has quite a sizeable impact on performance, memory wise as well as
+time wise, and should be used on small aggregation operations only.
+
+Semantic: For each input tuple, compute the key and retrieve the current
+aggregate, if any. If no current aggregate exists for this key yet then start a
+new one.  Then evaluate the where clause: if it is false, skip that input (and
+discard the new aggregate that might have been created).  If the where clause
+yields true, accumulates that input into that aggregate and compute the current
+output-tuple. With all this, evaluates the commit clause: if it is true, output
+the output tuple. Also, should this input tuple be replayed when flushing this
+aggregate, store it. Evaluates the flush-when clause. If it is true, flush this
+aggregate (either by deleting the aggregate altogether or by replacing it with
+an aggregate build from replaying the stored input tuple)
 
 ==== Output
 
