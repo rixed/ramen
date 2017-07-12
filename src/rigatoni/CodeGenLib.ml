@@ -155,8 +155,8 @@ type ('a, 'b, 'c) aggr_value =
     mutable first_in : 'b ; (* first in-tuple of this aggregate *)
     mutable last_in : 'b ; (* last in-tuple of this aggregate *)
     mutable previous_out : 'c ; (* previously computed temp out tuple, if any *)
-    mutable nb_entries : Uint64.t ;
-    mutable nb_successive : Uint64.t ;
+    mutable nb_entries : int ;
+    mutable nb_successive : int ;
     mutable last_ev_count : int ; (* used for others.successive (TODO) *)
     mutable to_resubmit : 'b list ; (* in_tuples to resubmit at flush *)
     mutable fields : 'a (* the record of aggregation values *) }
@@ -166,7 +166,7 @@ let flush_aggr aggr_init update_aggr should_resubmit h k aggr =
     Hashtbl.remove h k
   else (
     let to_resubmit = List.rev aggr.to_resubmit in
-    aggr.nb_entries <- Uint64.of_int 1 ;
+    aggr.nb_entries <- 1 ;
     aggr.to_resubmit <- [] ;
     (* Warning: should_resubmit might need realistic nb_entries, last_in etc *)
     let in_tuple = List.hd to_resubmit in
@@ -177,7 +177,7 @@ let flush_aggr aggr_init update_aggr should_resubmit h k aggr =
       aggr.to_resubmit <- [ in_tuple ] ;
     List.iter (fun in_tuple ->
         update_aggr aggr.fields in_tuple ;
-        aggr.nb_entries <- Uint64.succ aggr.nb_entries ;
+        aggr.nb_entries <- aggr.nb_entries + 1 ;
         aggr.last_in <- in_tuple ;
         if should_resubmit aggr in_tuple then
           aggr.to_resubmit <- in_tuple :: aggr.to_resubmit
@@ -243,8 +243,8 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
             first_in = in_tuple ;
             last_in = in_tuple ;
             previous_out = out_tuple ;
-            nb_entries ;
-            nb_successive = Uint64.of_int 1 ;
+            nb_entries = 1 ;
+            nb_successive = 1 ;
             last_ev_count = !event_count ;
             to_resubmit = [] ;
             fields } in
@@ -255,25 +255,25 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
           if do_commit then commit out_tuple else return_unit
         ) else return_unit
       | aggr ->
-        if where_slow aggr.nb_entries aggr.nb_successive aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in then (
+        if where_slow (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in then (
           update_aggr aggr.fields in_tuple ;
           aggr.last_ev_count <- !event_count ;
-          aggr.nb_entries <- Uint64.succ aggr.nb_entries ;
+          aggr.nb_entries <- aggr.nb_entries + 1 ;
           if should_resubmit aggr in_tuple then
             aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
           if prev_last_key = Some k then
-            aggr.nb_successive <- Uint64.succ aggr.nb_successive ;
+            aggr.nb_successive <- aggr.nb_successive + 1 ;
           let out_tuple =
             tuple_of_aggr aggr.fields in_tuple aggr.first_in aggr.last_in in
           let do_commit, do_flush =
-            if commit_when aggr.nb_entries aggr.nb_successive aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out then (
+            if commit_when (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out then (
               true,
               flush_when == commit_when ||
-              flush_when aggr.nb_entries aggr.nb_successive aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out
+              flush_when (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out
             ) else (
               false,
               not (flush_when == commit_when) &&
-              flush_when aggr.nb_entries aggr.nb_successive aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out
+              flush_when (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out
             ) in
           aggr.last_in <- in_tuple ;
           aggr.previous_out <- out_tuple ;
