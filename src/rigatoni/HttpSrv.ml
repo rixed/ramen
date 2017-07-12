@@ -223,8 +223,6 @@ let set_links conf _headers name body =
 
 (*
 == Display the graph (JSON or SVG representation) ==
-
-Begin with the graph as a JSON object.
 *)
 
 let get_graph_json conf _headers =
@@ -268,6 +266,37 @@ let get_graph conf headers =
   else
     let status = Code.status_of_code 406 in
     Server.respond_error ~status ~body:("{\"error\": \"Can't produce "^ accept ^"\"}\n") ()
+
+let put_graph conf headers body =
+  (* Get the message from the body *)
+  if get_content_type headers <> json_content_type then
+    bad_request "Bad content type"
+  else match PPP.of_string_exc graph_info_ppp body with
+  | exception e ->
+    !logger.info "Uploading graph: Cannot parse received body: %S" body ;
+    fail e
+  | msg ->
+    let graph = C.make_new_graph () in
+    (* First create all the nodes *)
+    List.iter (fun info ->
+        let n = C.make_node graph info.name info.operation in
+        C.add_node conf graph n
+      ) msg.nodes ;
+    (* Then all the links *)
+    let%lwt () = Lwt_list.iter_s (fun info ->
+        let%lwt src = node_of_name conf graph info.name in
+        Lwt_list.iter_s (fun child ->
+            let%lwt dst = node_of_name conf graph child in
+            C.make_link conf graph src dst ;
+            return_unit
+          ) info.children
+      ) msg.nodes in
+    let status = `Code 200 in
+    Server.respond_string ~status ~body:ok_body ()
+
+(*
+== Whole graph operations: compile/run/stop ==
+*)
 
 let compile conf _headers =
   (* TODO: check we accept json *)
@@ -342,6 +371,7 @@ let callback conf _conn req body =
         | `PUT, ["links" ; name] -> set_links conf headers (dec name) body_str
         | `PUT, ["links"] -> bad_request "Missing node name"
         | `GET, ["graph"] -> get_graph conf headers
+        | `PUT, ["graph"] -> put_graph conf headers body_str
         | `GET, ["compile"] -> compile conf headers
         | `GET, ["run" | "start"] -> run conf headers
         | `GET, ["stop"] -> stop conf headers
