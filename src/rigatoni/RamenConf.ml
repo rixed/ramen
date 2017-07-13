@@ -68,7 +68,7 @@ type graph =
     mutable status : graph_status }
 
 type conf =
-  { building_graph : graph ;
+  { mutable building_graph : graph ;
     save_file : string }
 
 exception InvalidCommand of string

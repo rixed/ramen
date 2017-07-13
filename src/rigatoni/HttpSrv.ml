@@ -293,6 +293,8 @@ let put_graph conf headers body =
           ) info.children
       ) msg.nodes in
     let status = `Code 200 in
+    (* Then make this graph the new one (TODO: support for multiple graphs) *)
+    conf.C.building_graph <- graph ;
     Server.respond_string ~status ~body:ok_body ()
 
 (*
