@@ -800,7 +800,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
   and where_need_aggr =
     let open Lang.Expr in
     (* Tells whether the where expression needs either the out tuple
-     * or uses any aggregation on it's own. *)
+     * or uses any aggregation on its own. *)
     fold (fun need expr ->
       if need then need else match expr with
         | Field (_, tuple, _) ->
