@@ -60,8 +60,8 @@ let put_node conf headers name body =
     bad_request "Bad content type"
   else match PPP.of_string_exc make_node_ppp body with
   | exception e ->
-    !logger.info "Creating node %s: Cannot parse received body: %S"
-      name body ;
+    !logger.info "Creating node %s: Cannot parse received body: %S, Exception %s"
+      name body (Printexc.to_string e) ;
     fail e
   | msg ->
     (match C.find_node conf conf.C.building_graph name with
@@ -204,8 +204,8 @@ let diff_list bef aft =
 let set_links conf _headers name body =
   match PPP.of_string_exc node_links_ppp body with
   | exception e ->
-    !logger.info "Set links for node %s: Cannot parse received body: %S"
-      name body ;
+    !logger.info "Set links for node %s: Cannot parse received body: %S, Exception %s"
+      name body (Printexc.to_string e) ;
     fail e
   | node_links ->
     let graph = conf.C.building_graph in
@@ -273,7 +273,8 @@ let put_graph conf headers body =
     bad_request "Bad content type"
   else match PPP.of_string_exc graph_info_ppp body with
   | exception e ->
-    !logger.info "Uploading graph: Cannot parse received body: %S" body ;
+    !logger.info "Uploading graph: Cannot parse received body: %S, Exception %s"
+      body (Printexc.to_string e) ;
     fail e
   | msg ->
     let graph = C.make_new_graph () in

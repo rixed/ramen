@@ -14,31 +14,33 @@ RIGATONI_SOURCES = \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \
-	Log.ml RingBuf.ml RingBufLib.ml Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
+	Helpers.ml Log.ml RingBuf.ml RingBufLib.ml Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h
 
+CONFIGURATOR_SOURCES = \
+	Helpers.ml Log.ml RamenSharedTypes.ml Conf_of_sqlite.ml Configurator.ml
+
 SOURCES = \
 	$(RIGATONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
+	$(CONFIGURATOR_SOURCES)
 
 JS_PACKAGES = ocaml-vdom js_of_ocaml-lwt js_of_ocaml-ppx lwt.ppx
 PACKAGES = \
 	ppp lwt.ppx batteries cmdliner stdint parsercombinator \
-	cohttp-lwt-unix num inotify.lwt $(JS_PACKAGES)
+	cohttp-lwt-unix num inotify.lwt sqlite3 $(JS_PACKAGES)
 
 INSTALLED = \
-  rigatoni codegen.cmxa ringbuf/libringbuf.a
+  rigatoni ringbuf_ctl ramen_configurator codegen.cmxa ringbuf/libringbuf.a
 
-all: $(INSTALLED) ringbuf_test.opt ringbuf_ctl www/node_edit.js
+all: $(INSTALLED) ringbuf_test.opt www/node_edit.js
 
 doc: HELP.html
 
 ringbuf/libringbuf.a: ringbuf/ringbuf.o
 	$(AR) rs $@ $^
-
-
 
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
@@ -58,6 +60,9 @@ ringbuf_test.opt: RingBuf.cmx RingBufLib.cmx ringbuf_test.cmx ringbuf/libringbuf
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ringbuf_ctl: RingBuf.cmx ringbuf_ctl.cmx ringbuf/libringbuf.a wrap_ringbuf.o
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+
+ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 all_tests.opt: ringbuf/libringbuf.a wrap_ringbuf.o $(LINKED_WITH_TESTS:.ml=.cmx) $(TESTABLE_SOURCES:.ml=.cmx) all_tests.ml
