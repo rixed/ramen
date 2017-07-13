@@ -445,23 +445,25 @@ let conv_from_to_opt from_typ to_typ_opt p fmt e =
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
-let rec conv_to to_typ fmt e =
+let rec conv_to ~all_alias_in to_typ fmt e =
   let open Lang in
   let from_typ = Expr.((typ_of e).scalar_typ) in
   match from_typ, to_typ with
-  | Some a, Some b -> conv_from_to a b emit_expr fmt e
-  | _, None -> emit_expr fmt e (* No conversion required *)
+  | Some a, Some b -> conv_from_to a b (emit_expr ~all_alias_in) fmt e
+  | _, None -> (emit_expr ~all_alias_in) fmt e (* No conversion required *)
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string Scalar.print_typ b))
 
-and emit_expr oc =
+and emit_expr ~all_alias_in oc =
   let open Lang.Expr in
   function
   | Const (_, c) ->
     emit_scalar oc c
   | Field (_, tuple, field) ->
-    String.print oc (id_of_field_name ~tuple:!tuple field)
+    let tuple =
+      if all_alias_in && !tuple = "all" then "in" else !tuple in
+    String.print oc (id_of_field_name ~tuple field)
   | Param _ ->
     failwith "TODO: code gen for params"
   | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
@@ -470,32 +472,32 @@ and emit_expr oc =
      Printf.fprintf oc "aggr_.%s" (name_of_aggr expr)
   | AggrPercentile (_, pct, _) as expr ->
     Printf.fprintf oc "CodeGenLib.percentile_finalize (%a) aggr_.%s"
-      (conv_to (Some TFloat)) pct
+      (conv_to ~all_alias_in (Some TFloat)) pct
       (name_of_aggr expr)
   | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
   | Length (_, e) as expr ->
-    emit_function1 expr oc e
+    emit_function1 ~all_alias_in expr oc e
   | Defined (_, e) ->
-    Printf.fprintf oc "(%a <> None)" emit_expr e
+    Printf.fprintf oc "(%a <> None)" (emit_expr ~all_alias_in) e
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2)
   | Div (_, e1, e2) | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2)
   | Or (_, e1, e2) | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2)
   | Sequence (_, e1, e2) | Mod (_, e1, e2) as expr ->
-    emit_function2 expr oc e1 e2
+    emit_function2 ~all_alias_in expr oc e1 e2
 
 and emit_function0 expr oc =
   let impl, _ = implementation_of expr in
   Printf.fprintf oc "(%s ())" impl
 
-and emit_function1 expr oc e =
+and emit_function1 ~all_alias_in expr oc e =
   let impl, arg_typ = implementation_of expr in
   Printf.fprintf oc "(%s%s %a)"
     (if Lang.Expr.is_nullable e then "BatOption.map " else "")
     impl
-    (conv_to arg_typ) e
+    (conv_to ~all_alias_in arg_typ) e
 
-and emit_function2 expr oc e1 e2 =
+and emit_function2 ~all_alias_in expr oc e1 e2 =
   let impl, arg_typ = implementation_of expr in
   (* When we have no conversion to do, e1 and e2 still have to have the same type or
    * the compiler will complain: *)
@@ -512,11 +514,11 @@ and emit_function2 expr oc e1 e2 =
   if is_nullable e1 then (
     Printf.fprintf oc "\
       (match %a with None -> None | Some v1_ -> "
-      emit_expr e1 ;
+      (emit_expr ~all_alias_in) e1 ;
     if is_nullable e2 then (
       Printf.fprintf oc "\
         (match %a with None -> None | Some v2_ -> %s %a %a)"
-        emit_expr e2
+        (emit_expr ~all_alias_in) e2
         impl
         (conv_from_to_opt TString arg_typ String.print) "v1_"
         (conv_from_to_opt TString arg_typ String.print) "v2_"
@@ -524,46 +526,50 @@ and emit_function2 expr oc e1 e2 =
       Printf.fprintf oc "%s %a %a"
         impl
         (conv_from_to_opt TString arg_typ String.print) "v1_"
-        (conv_to arg_typ) e2
+        (conv_to ~all_alias_in arg_typ) e2
     ) ;
     Printf.fprintf oc ")"
   ) else (
     if is_nullable e2 then (
       Printf.fprintf oc "\
         (match %a with None -> None | Some v2_ -> %s %a %a)"
-        emit_expr e2
+        (emit_expr ~all_alias_in) e2
         impl
-        (conv_to arg_typ) e1
+        (conv_to ~all_alias_in arg_typ) e1
         (conv_from_to_opt TString arg_typ String.print) "v2_"
     ) else (
       Printf.fprintf oc "(%s %a %a)"
         impl
-        (conv_to arg_typ) e1
-        (conv_to arg_typ) e2
+        (conv_to ~all_alias_in arg_typ) e1
+        (conv_to ~all_alias_in arg_typ) e2
     )
   )
 
-let emit_expr_of_input_tuple
-      ?(with_aggr=false) ?(with_first_last=false) ?(always_true=false)
+let emit_where
+      ?(with_aggr=false) ?(with_first_and_last=false) ?(always_true=false)
+      ?(all_alias_in=false)
       name in_tuple_typ mentioned and_all_others oc expr =
-  Printf.fprintf oc "let %s%s virtual_in_count_ %a "
+  Printf.fprintf oc "let %s%s virtual_all_count_ %a "
     name
-    (if with_aggr then " virtual_out_count_ virtual_out_successive_ aggr_" else "")
+    (if with_aggr then " virtual_in_count_ virtual_in_successive_ aggr_" else "")
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-  if with_first_last then
+  if with_first_and_last then
     Printf.fprintf oc "%a %a "
       (emit_in_tuple ~tuple:"first" mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:"last" mentioned and_all_others) in_tuple_typ ;
+  if not all_alias_in then Printf.fprintf oc "%a "
+    (emit_in_tuple ~tuple:"all" mentioned and_all_others) in_tuple_typ ;
   if always_true then
     Printf.fprintf oc "= true\n"
   else
-    Printf.fprintf oc "=\n\t%a\n" emit_expr expr
+    Printf.fprintf oc "=\n\t%a\n" (emit_expr ~all_alias_in) expr
 
 (* If with aggr we have the aggregate record as first parameter
  * and also the first and last incoming tuple of this aggr as additional
  * parameters *)
 let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
-                     ?(with_first_last=false)
+                     ?(with_all_and_selected=false)
+                     ?(with_first_and_last=false)
                      name in_tuple_typ mentioned
                      and_all_others out_tuple_typ oc exprs =
   let open Lang in
@@ -571,7 +577,11 @@ let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
   if with_aggr then Printf.fprintf oc "aggr_ " ;
   Printf.fprintf oc "%a "
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-  if with_first_last then
+  if with_all_and_selected then
+    Printf.fprintf oc "virtual_all_count_ %a virtual_selected_count_ %a "
+      (emit_in_tuple ~tuple:"all" mentioned and_all_others) in_tuple_typ
+      (emit_in_tuple ~tuple:"selected" mentioned and_all_others) in_tuple_typ ;
+  if with_first_and_last then
     Printf.fprintf oc "%a %a "
       (emit_in_tuple ~tuple:"first" mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:"last" mentioned and_all_others) in_tuple_typ ;
@@ -582,9 +592,9 @@ let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
   List.iteri (fun i expr ->
       Printf.fprintf oc "%s\n\t\t%a"
         (if i > 0 then "," else "")
-        emit_expr expr ;
+        (emit_expr ~all_alias_in:false) expr ;
       match expr with
-      | Expr.Field (_, tuple, field) when same_tuple_as_in !tuple ->
+      | Expr.Field (_, tuple, field) when !tuple = "in" ->
         outputted := Set.add field !outputted
       | _ -> ()
     ) exprs ;
@@ -634,8 +644,8 @@ let emit_select oc in_tuple_typ out_tuple_typ
       \tLwt_main.run (\n\
       \t\tCodeGenLib.select read_tuple_ sersize_of_tuple_ serialize_tuple_ where_ select_)\n"
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
-    (emit_expr_of_input_tuple "where_" in_tuple_typ mentioned and_all_others) where
-    (emit_expr_select "select_" in_tuple_typ mentioned and_all_others out_tuple_typ)
+    (emit_where ~all_alias_in:true "where_" in_tuple_typ mentioned and_all_others) where
+    (emit_expr_select ~with_all_and_selected:true "select_" in_tuple_typ mentioned and_all_others out_tuple_typ)
       (exprs_of_selected_fields selected_fields)
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
@@ -669,15 +679,15 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
       | AggrMin (_, e) | AggrMax (_, e) | AggrAnd (_, e)
       | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) ->
         let _impl, arg_typ = implementation_of aggr in
-        conv_to arg_typ oc e
+        conv_to ~all_alias_in:false arg_typ oc e
       | AggrSum (to_typ, _) ->
         Printf.fprintf oc "%s.zero" (omod_of_type (Option.get to_typ.scalar_typ))
       | AggrPercentile (_, p, e) ->
         let impl, arg_typ = implementation_of aggr in
         Printf.fprintf oc "%s [] %a %a"
           impl
-          (conv_to arg_typ) p
-          (conv_to arg_typ) e ;
+          (conv_to ~all_alias_in:false arg_typ) p
+          (conv_to ~all_alias_in:false arg_typ) e ;
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
       | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
       | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ ->
@@ -688,7 +698,7 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
 
 let emit_update_aggr name in_tuple_typ mentioned and_all_others
                      commit_when flush_when oc selected_fields =
-  Printf.fprintf oc "let %s aggr_ %a (* TODO: values for others and any *) =\n"
+  Printf.fprintf oc "let %s aggr_ %a =\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
@@ -699,7 +709,7 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
       | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)  ->
         let impl, arg_typ = implementation_of aggr in
         Printf.fprintf oc "%s aggr_.%s %a ;\n"
-          impl (name_of_aggr aggr) (conv_to arg_typ) e ;
+          impl (name_of_aggr aggr) (conv_to ~all_alias_in:false arg_typ) e ;
       | AggrPercentile (_, p, e) ->
         (* This value is optional but the percentile function takes an
          * optional value and return one so we do not have to deal with
@@ -707,8 +717,8 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
         let impl, arg_typ = implementation_of aggr in
         Printf.fprintf oc "%s aggr_.%s %a %a ;\n"
           impl (name_of_aggr aggr)
-          (conv_to arg_typ) p
-          (conv_to arg_typ) e ;
+          (conv_to ~all_alias_in:false arg_typ) p
+          (conv_to ~all_alias_in:false arg_typ) e ;
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
       | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
       | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ ->
@@ -721,7 +731,7 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
 let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
               oc commit_when =
   Printf.fprintf oc "\
-    let %s virtual_out_count_ virtual_out_successive_ aggr_ virtual_in_count_ %a %a %a %a %a %a =\n\t%a\n"
+    let %s virtual_in_count_ virtual_in_successive_ aggr_ virtual_all_count_ %a %a %a virtual_out_count_ %a %a %a virtual_selected_count_ %a =\n\t%a\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:"first" mentioned and_all_others) in_tuple_typ
@@ -729,7 +739,8 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
     (emit_tuple "out") out_tuple_typ
     (emit_tuple "previous") out_tuple_typ
     (emit_in_tuple ~tuple:"all" mentioned and_all_others) in_tuple_typ
-    emit_expr commit_when
+    (emit_in_tuple ~tuple:"selected" mentioned and_all_others) in_tuple_typ
+    (emit_expr ~all_alias_in:false) commit_when
 
 let emit_should_resubmit name in_tuple_typ mentioned and_all_others
                          oc flush_how =
@@ -743,9 +754,9 @@ let emit_should_resubmit name in_tuple_typ mentioned and_all_others
   | Slide n ->
     Printf.fprintf oc "\taggregate_.CodeGenLib.nb_entries > %d\n" n
   | KeepOnly e ->
-    Printf.fprintf oc "\t%a\n" emit_expr e
+    Printf.fprintf oc "\t%a\n" (emit_expr ~all_alias_in:false) e
   | RemoveAll e ->
-    Printf.fprintf oc "\tnot (%a)\n" emit_expr e
+    Printf.fprintf oc "\tnot (%a)\n" (emit_expr ~all_alias_in:false) e
 
 let emit_aggregate oc in_tuple_typ out_tuple_typ
                    selected_fields and_all_others where key
@@ -807,17 +818,17 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     (emit_aggr_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_aggr then
-      emit_expr_of_input_tuple "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
+      emit_where "where_fast_" ~all_alias_in:true ~always_true:true in_tuple_typ mentioned and_all_others
     else
-      emit_expr_of_input_tuple "where_fast_" in_tuple_typ mentioned and_all_others) where
+      emit_where "where_fast_" ~all_alias_in:true in_tuple_typ mentioned and_all_others) where
     (if not where_need_aggr then
-      emit_expr_of_input_tuple "where_slow_" ~with_aggr:true ~with_first_last:true ~always_true:true in_tuple_typ mentioned and_all_others
+      emit_where "where_slow_" ~with_aggr:true ~with_first_and_last:true ~always_true:true in_tuple_typ mentioned and_all_others
     else
-      emit_expr_of_input_tuple "where_slow_" ~with_aggr:true ~with_first_last:true in_tuple_typ mentioned and_all_others) where
+      emit_where "where_slow_" ~with_aggr:true ~with_first_and_last:true in_tuple_typ mentioned and_all_others) where
     (emit_expr_select ~honor_star:false "key_of_input_" in_tuple_typ mentioned and_all_others out_tuple_typ) key
     (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
-    (emit_expr_select ~honor_star:true ~with_aggr:true ~with_first_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ)
+    (emit_expr_select ~with_all_and_selected:true ~honor_star:true ~with_aggr:true ~with_first_and_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ)
       (exprs_of_selected_fields selected_fields)
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ

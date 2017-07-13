@@ -1458,25 +1458,27 @@ struct
             let m = "Aggregation functions not allowed without a \
                      GROUP-BY clause" in
             check_no_aggr m sf.expr ;
-            check_fields_from ["in"] "SELECT clause" sf.expr
+            check_fields_from ["in"; "all"; "selected"] "SELECT clause" sf.expr
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
-        check_fields_from ["in"] "WHERE clause" where
+        (* Not "selected" since it is still None the first times we call where
+         * (until a match): *)
+        check_fields_from ["in"; "all" (* Aliases *)] "WHERE clause" where
       | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how } ->
         ignore and_all_others ;
         List.iter (fun sf ->
-            check_fields_from ["in"; "first"; "last"] "SELECT clause" sf.expr
+            check_fields_from ["in"; "all"; "selected"; "first"; "last"] "SELECT clause" sf.expr
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
-        check_fields_from ["in"; "first"; "last"] "WHERE clause" where ;
+        check_fields_from ["in"; "all" (* Aliases *); "first"; "last"] "WHERE clause" where ;
         List.iter (fun k ->
           check_no_aggr no_aggr_in_key k ;
           check_fields_from ["in"] "KEY clause" k) key ;
         Expr.aggr_iter ignore commit_when ; (* standards checks *)
-        check_fields_from ["in";"out";"previous";"first";"last";"all"] "COMMIT WHEN clause" commit_when ;
+        check_fields_from ["in"; "out"; "previous"; "first"; "last"; "all"; "selected"] "COMMIT WHEN clause" commit_when ;
         Option.may (fun flush_when ->
             Expr.aggr_iter ignore flush_when ;
-            check_fields_from ["in";"out";"previous";"first";"last";"all"] "FLUSH WHEN clause" flush_when
+            check_fields_from ["in"; "out"; "previous"; "first"; "last"; "all"; "selected"] "FLUSH WHEN clause" flush_when
           ) flush_when ;
         (match flush_how with
         | Reset | Slide _ -> ()

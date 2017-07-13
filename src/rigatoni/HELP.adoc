@@ -185,7 +185,7 @@ Any literal value (as described in the previous section) is a valid expression.
 In addition to literal values, one can refer to a tuple field. Which tuples are
 available depends on the clause but the general syntax is:
 `tuple_name.field_name`. The prefix can be omitted and then the field is
-understood to refer to the input tuple (the incoming message).
+understood to refer to the "in" tuple (the input tuple).
 
 Here is a list of all possible tuples:
 
@@ -202,10 +202,10 @@ it refers to the last received tuple.
 [[output-tuple]]
 ===== Output tuple
 
-The tuple that is going to be output. Its name is `out`.  The only place where
-it can be used is in the commit clause and flush-when clause of a +GROUP BY+
-operation. It thus refers to the tuple that would be output shall the commit
-condition yields `true`.
+The tuple that is going to be output. Its name is `out`.  The only place
+where it can be used is in the commit clause and flush-when clause of a
++GROUP BY+ operation. It thus refers to the tuple that would be output shall
+the commit condition yields `true`.
 
 It is important to understand that the input and output tuples have different
 types (at least in general).
@@ -213,31 +213,35 @@ types (at least in general).
 [[first-tuple]]
 ===== First tuple
 
-Named `first`, refers to the first tuple of an aggregation.  Can therefore only
-be used in a +GROUP BY+ operation, anywhere.
+Named `first`, refers to the first tuple of an aggregation.  Can therefore
+only be used in a +GROUP BY+ operation, anywhere but in the group-by clause
+itself.
 
 Same type as the input tuple.
 
 [[last-tuple]]
 ===== Last tuple
 
-Named `last`.  Same as `first`, but refers to the last tuple aggregated in the
-current bucket.
+Named `last`.  Same as `first`, but refers to the last tuple aggregated in
+the current bucket.
 
 Same type as the input tuple.
 
 Differs from `out` by its type (`out` is the current product of the operation
-while `last` is the last received input tuple) and in that it can also be used
-in the select clause and the where clause.
+while `last` is the last aggregated _input_ tuple) and in that it can also be
+used in the select clause and the where clause.
 
 [[previous-tuple]]
 ===== Previous tuple
 
-Named `previous`, refers to the previous version of the output tuple (the one
-before `out`).
+Named `previous`, refers to the previous version of the output tuple. Notice
+that this is not the lastly output tuple but the previous value for `out`,
+which have been output only if the commit expression returned true.
 
 Can only be used in the commit clause or flush-when clause of a +GROUP BY+
 operation.
+
+When the aggregate is fresh new then that tuple is set to `out`.
 
 Same type as the `out` tuple, obviously.
 
@@ -245,12 +249,35 @@ Usage example:
 
 [source,sql]
 ----
-  SELECT key, AND(signal) AS signal GROUP BY key COMMIT WHEN previous.signal != out.signal
+  SELECT key, LAST(signal) AS signal GROUP BY key
+    COMMIT WHEN previous.signal != out.signal
+    FLUSH WHEN false
 ----
 
-To transform a succession of `key, signal` (where signal is a boolean) with
-possibly many times the same signal value into a stream of `key, signal`
-omitting the repetitions.
+To transform a succession of `key, signal` with possibly many times the same
+signal value into a stream of `key, signal` omitting the repetitions.
+
+[[all-tuple]]
+===== All tuple
+
+Named `all`, this tuple can be used in select, where, commit and flush-when
+clauses and would hold the last incoming tuple. It differs from `last` as
+`last` is a tuple that passed the where filter and has the same key as `in`,
+while `all` is really just the last received tuple. Also, `all` can be used
+in +SELECT+ operations.
+
+When `in` is the first received tuple, then `all` would be set to `in`.
+
+[[selected-tuple]]
+===== Selected tuple
+
+Named `selected`, this is the last tuple that passed the where filter.
+
+It is available in the select clauses of both +SELECT+ and +GROUP BY+
+operations as well as in commit and flush-when clauses.
+
+When `in` is the first tuple to pass that filter, then `selected` would be
+`in`.
 
 ===== Virtual fields
 
@@ -263,14 +290,17 @@ is a list of all available virtual fields and which tuple they apply to:
 |===
 |Field name| Content
 
-| `in.#count`
+| `all.#count`
 | How many tuples have been received (probably useless in itself but handy for comparison or with modulus).
 
-| `out.#count`
-| In a +GROUP BY+ operations, how many tuples were added so far to form the output tuple.
+| `in.#count`
+| In a +GROUP BY+ operation, how many tuples were added so far to form the output tuple.
 
-| `out.#successive`
+| `in.#successive`
 | In a +GROUP BY+ operations, how many successive incoming tuples were assigned to that group (same `group by` key).
+
+| `out.#count`
+| In a +SELECT+ or +GROUP BY+ operation, how many tuples have been output so far.
 |===
 
 NOTE: `out.#successive` is unchanged by an aggregate flush operation and
@@ -559,7 +589,7 @@ be used as the key for the aggregation. When the group-by clause is omitted
 then all input tuples are aggregated together.
 
 The commit clause tells when the aggregation must be stopped and the aggregated
-tuple outputted. This is a major difference with SQL, which stops aggregating
+tuple output. This is a major difference with SQL, which stops aggregating
 values when it has processed all the input. Since stream processors model an
 infinite stream of input one has to give this extra piece of information.
 
