@@ -123,13 +123,16 @@ let graph_info_of_bcns csv_dir bcns =
                 traffic_bytes_%s AS bytes\n\
          WHERE traffic_packets_%s > 0"
          src dst src dst src dst src dst src dst src dst src dst src dst src in
-    make_node ~parents:[top] "to unidir" op
+    let name = Printf.sprintf "to unidir %s to %s" src dst in
+    make_node ~parents:[top] name op
   in
   let to_unidir_c2s = to_unidir ~src:"client" ~dst:"server"
   and to_unidir_s2c = to_unidir ~src:"server" ~dst:"client" in
   let alert_conf_of_bcn bcn =
-    let open Conf_of_sqlite in
     (* bcn.min_bps, bcn.max_bps, bcn.obs_window, bcn.avg_window, bcn.percentile, bcn.source bcn.dest *)
+    let open Conf_of_sqlite in
+    let name_prefix = Printf.sprintf "%s to %s"
+      (string_of_zone bcn.source) (string_of_zone bcn.dest) in
     let avg_window = int_of_float (bcn.avg_window *. 1_000_000.0) in
     let obs_window = int_of_float (bcn.obs_window *. 1_000_000.0) in
     let avg_per_zones =
@@ -148,8 +151,8 @@ let graph_info_of_bcns csv_dir bcns =
           avg_window
           (* Note: Ideally we would want to compute the max of all.capture_begin *)
       and name =
-        Printf.sprintf "average traffic from zone %s to %s every %g seconds"
-          (string_of_zone bcn.source) (string_of_zone bcn.dest) bcn.avg_window
+        Printf.sprintf "%s: average traffic every %g seconds"
+          name_prefix bcn.avg_window
       in
       make_node ~parents:[to_unidir_c2s;to_unidir_s2c] name op in
     let perc_per_obs_window =
@@ -163,8 +166,8 @@ let graph_info_of_bcns csv_dir bcns =
            obs_window
            (Helpers.round_to_int (bcn.obs_window /. bcn.avg_window)) in
       let name =
-        Printf.sprintf "%gth percentile on last %g seconds"
-          bcn.percentile bcn.obs_window in
+        Printf.sprintf "%s: %gth percentile on last %g seconds"
+          name_prefix bcn.percentile bcn.obs_window in
       make_node ~parents:[avg_per_zones] name op in
     Option.may (fun min_bps ->
         let subject = Printf.sprintf "Too little traffic from zone %s to %s"
@@ -178,7 +181,8 @@ let graph_info_of_bcns csv_dir bcns =
         let ops = Printf.sprintf
           "ALERT \"low traffic\" WHEN bps < %d SUBJECT %S TEXT %S"
             min_bps subject text in
-        make_node ~parents:[perc_per_obs_window] "alert traffic too low" ops |>
+        let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
+        make_node ~parents:[perc_per_obs_window] name ops |>
         ignore
       ) bcn.min_bps ;
     Option.may (fun max_bps ->
@@ -193,7 +197,8 @@ let graph_info_of_bcns csv_dir bcns =
         let ops = Printf.sprintf
           "ALERT \"high traffic\" WHEN bps > %d SUBJECT %S TEXT %S"
             max_bps subject text in
-        make_node ~parents:[perc_per_obs_window] "alert traffic too low" ops |>
+        let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
+        make_node ~parents:[perc_per_obs_window] name ops |>
         ignore
       ) bcn.max_bps ;
   in

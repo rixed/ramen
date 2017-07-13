@@ -148,6 +148,8 @@ let find_node _conf graph id =
   Hashtbl.find graph.nodes id
 
 let add_node conf graph node =
+  if has_node conf graph node.name then
+    raise (InvalidCommand ("Node "^ node.name ^" already exists")) ;
   Hashtbl.add graph.nodes node.name node ;
   save_graph conf graph
 
