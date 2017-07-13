@@ -178,8 +178,9 @@ let blanks =
 let opt_blanks =
   P.optional_greedy ~def:() blanks
 
+(* TODO: use a variant *)
 let same_tuple_as_in = function
-  | "in" | "first" | "last" | "any" -> true
+  | "in" | "first" | "last" | "any" | "all" -> true
   | "out" | "previous" | "others" -> false
   | _ -> assert false
 
@@ -710,7 +711,8 @@ struct
       let prefix s = strinG (s ^ ".") >>: fun () -> s in
       ((optional ~def:"in" (
           prefix "in" ||| prefix "out" ||| prefix "first" |||
-          prefix "previous" ||| prefix "others" ||| prefix "any") ++
+          prefix "previous" ||| prefix "others" ||| prefix "any" |||
+          prefix "all") ++
         non_keyword >>:
         (* This is important here that the type name is the raw field name,
          * because we use the tuple field type name as their identifier (unless
@@ -1471,10 +1473,10 @@ struct
           check_no_aggr no_aggr_in_key k ;
           check_fields_from ["in"] "KEY clause" k) key ;
         Expr.aggr_iter ignore commit_when ; (* standards checks *)
-        check_fields_from ["in";"out";"previous";"first";"last"] "COMMIT WHEN clause" commit_when ;
+        check_fields_from ["in";"out";"previous";"first";"last";"all"] "COMMIT WHEN clause" commit_when ;
         Option.may (fun flush_when ->
             Expr.aggr_iter ignore flush_when ;
-            check_fields_from ["in";"out";"previous";"first";"last"] "FLUSH WHEN clause" flush_when
+            check_fields_from ["in";"out";"previous";"first";"last";"all"] "FLUSH WHEN clause" flush_when
           ) flush_when ;
         (match flush_how with
         | Reset | Slide _ -> ()

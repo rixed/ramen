@@ -195,8 +195,8 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (where_fast : Uint64.t -> 'tuple_in -> bool)
               (where_slow : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> bool)
               (key_of_input : 'tuple_in -> 'key)
-              (commit_when : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out -> 'tuple_out -> bool)
-              (flush_when : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out -> 'tuple_out -> bool)
+              (commit_when : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out -> 'tuple_out -> 'tuple_in -> bool)
+              (flush_when : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out -> 'tuple_out -> 'tuple_in -> bool)
               (should_resubmit : ('aggr, 'tuple_in, 'tuple_out) aggr_value -> 'tuple_in -> bool)
               (aggr_init : 'tuple_in -> 'aggr)
               (update_aggr : 'aggr -> 'tuple_in -> unit) =
@@ -213,12 +213,15 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   let h = Hashtbl.create 701
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)
+  and all_tuple = ref None (* last incominf tuple *)
   in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
+    (* We init all right here. The where function cannot be given the "all" or
+     * the "selected" tuple because they would be NULL at first. *)
+    all_tuple := Some in_tuple ;
     RingBuf.dequeue_commit tx ;
     if where_fast !CodeGenLib_IO.tuple_count in_tuple then (
-      (* TODO: update any aggr *)
       let k = key_of_input in_tuple in
       let prev_last_key = !last_key in
       last_key := Some k ;
@@ -230,14 +233,14 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
           let out_tuple =
             tuple_of_aggr fields in_tuple in_tuple in_tuple in
           let do_commit, do_flush =
-            if commit_when nb_entries nb_entries fields !CodeGenLib_IO.tuple_count in_tuple in_tuple in_tuple out_tuple out_tuple then (
+            if commit_when nb_entries nb_entries fields !CodeGenLib_IO.tuple_count in_tuple in_tuple in_tuple out_tuple out_tuple (Option.get !all_tuple) then (
               true,
               flush_when == commit_when ||
-              flush_when nb_entries nb_entries fields !CodeGenLib_IO.tuple_count in_tuple in_tuple in_tuple out_tuple out_tuple
+              flush_when nb_entries nb_entries fields !CodeGenLib_IO.tuple_count in_tuple in_tuple in_tuple out_tuple out_tuple (Option.get !all_tuple)
             ) else (
               false,
               not (flush_when == commit_when) &&
-              flush_when nb_entries nb_entries fields !CodeGenLib_IO.tuple_count in_tuple in_tuple in_tuple out_tuple out_tuple
+              flush_when nb_entries nb_entries fields !CodeGenLib_IO.tuple_count in_tuple in_tuple in_tuple out_tuple out_tuple (Option.get !all_tuple)
             ) in
           let aggr = {
             first_in = in_tuple ;
@@ -266,14 +269,14 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
           let out_tuple =
             tuple_of_aggr aggr.fields in_tuple aggr.first_in aggr.last_in in
           let do_commit, do_flush =
-            if commit_when (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out then (
+            if commit_when (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out (Option.get !all_tuple) then (
               true,
               flush_when == commit_when ||
-              flush_when (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out
+              flush_when (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out (Option.get !all_tuple)
             ) else (
               false,
               not (flush_when == commit_when) &&
-              flush_when (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out
+              flush_when (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in out_tuple aggr.previous_out (Option.get !all_tuple)
             ) in
           aggr.last_in <- in_tuple ;
           aggr.previous_out <- out_tuple ;

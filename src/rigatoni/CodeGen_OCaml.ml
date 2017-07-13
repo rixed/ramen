@@ -721,13 +721,14 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
 let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
               oc commit_when =
   Printf.fprintf oc "\
-    let %s virtual_out_count_ virtual_out_successive_ aggr_ virtual_in_count_ %a %a %a %a %a =\n\t%a\n"
+    let %s virtual_out_count_ virtual_out_successive_ aggr_ virtual_in_count_ %a %a %a %a %a %a =\n\t%a\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:"first" mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:"last" mentioned and_all_others) in_tuple_typ
     (emit_tuple "out") out_tuple_typ
     (emit_tuple "previous") out_tuple_typ
+    (emit_in_tuple ~tuple:"all" mentioned and_all_others) in_tuple_typ
     emit_expr commit_when
 
 let emit_should_resubmit name in_tuple_typ mentioned and_all_others
