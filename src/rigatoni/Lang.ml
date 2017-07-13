@@ -1483,7 +1483,7 @@ struct
         | RemoveAll e | KeepOnly e ->
           let m = "Aggregation functions not allowed in KEEP/REMOVE clause" in
           check_no_aggr m e ;
-          check_fields_from ["in";"out";"previous";"first";"last"] "REMOVE clause" e)
+          check_fields_from ["in"] "REMOVE clause" e)
       | OnChange e ->
         check_no_aggr no_aggr_in_on_change e
       | Alert _ ->
