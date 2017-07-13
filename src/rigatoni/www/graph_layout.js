@@ -1,8 +1,14 @@
+function id_of_name(name)
+{
+  // In theory : and . should be allowed but they seems to confuses d3.
+  return 'node_' + name.replace(/[^-a-zA-Z0-9_]/g , "_");
+}
+
 function select_node(node, set_node)
 {
   d3.selectAll('svg#graph g.node.selected').classed('selected', false);
   if (node != null) {
-    d3.select('svg#graph g#node_'+node.name).classed('selected', true);
+    d3.select('svg#graph g#'+id_of_name(node.name)).classed('selected', true);
     set_node(node.name);
   } else {
     set_node(null);
@@ -118,7 +124,7 @@ function display_graph(graph, set_node)
   var new_nodes = node.enter()
       .append('g')
         .attr('class', node_class)
-        .attr('id', function (d) { return 'node_' + d.name; });
+        .attr('id', function (d) { return id_of_name(d.name); });
   new_nodes.append('circle')
         .attr('r', function(d) { return d.radius; })
         .on('click', function(d) {
