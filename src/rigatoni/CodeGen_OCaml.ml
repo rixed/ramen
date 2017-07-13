@@ -863,19 +863,20 @@ let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
     ) in_tuple_typ ;
   Printf.fprintf oc "\t| _ -> raise Not_found\n"
 
-let emit_alert oc in_tuple_typ team subject text =
-  (* We just want to read the in-tuple and have a function that return
-   * field value (as a string!) given their name, so we can replace quoted
-   * names by their actual value in the alert message *)
+let emit_alert oc in_tuple_typ name cond subject text =
+  (* We just want to read the in-tuple, check it matchs the cond,  and have a
+   * function that return field value (as a string!) given their name, so we
+   * can replace quoted names by their actual value in the alert message *)
   let mentioned = Set.empty in
   Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n\
+    %a\n%a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
-      \tCodeGenLib.alert read_tuple_ field_of_tuple_ %S %S %S)\n"
+      \tCodeGenLib.alert read_tuple_ field_of_tuple_ %S alert_cond_ %S %S)\n"
     (emit_read_tuple "read_tuple_" mentioned true) in_tuple_typ
     (emit_field_of_tuple "field_of_tuple_" mentioned true) in_tuple_typ
-    team subject text
+    (emit_where ~all_alias_in:true "alert_cond_" in_tuple_typ mentioned true) cond
+    name subject text
 
 let keep_temp_files = ref true
 
@@ -918,8 +919,8 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
     | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key commit_when flush_when flush_how
-    | Alert { team ; subject ; text } ->
-      emit_alert oc in_tuple_typ team subject text
+    | Alert { name ; cond ; subject ; text } ->
+      emit_alert oc in_tuple_typ name cond subject text
     | _ ->
       Printf.fprintf oc "let () = print_string \"TODO other operations\\n\"") ;
     fname) |>

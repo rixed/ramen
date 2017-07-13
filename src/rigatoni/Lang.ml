@@ -580,6 +580,9 @@ struct
     | Gt  of typ * t * t
     | Eq  of typ * t * t
 
+  let expr_true =
+    Const (make_bool_typ ~nullable:false "true", Scalar.VBool true)
+
   let is_virtual_field f =
     String.length f > 0 && f.[0] = '#'
 
@@ -1105,7 +1108,7 @@ struct
      * for only one star operator, and for group by operations only, accept an
      * aggregation function name that we will use to add all other fields. *)
     | OnChange of Expr.t
-    | Alert of { team : string ; subject : string ; text : string }
+    | Alert of { name : string ; cond : Expr.t ; subject : string ; text : string }
     | ReadCSVFile of { fname : string ; separator : string ;
                        null : string ; fields : Tuple.typ }
 
@@ -1138,8 +1141,9 @@ struct
           (Expr.print false) flush_when) flush_when
     | OnChange e ->
       Printf.fprintf fmt "ON CHANGE %a" (Expr.print false) e
-    | Alert { team ; subject ; text } ->
-      Printf.fprintf fmt "ALERT %S SUBJECT %S TEXT %S" team subject text
+    | Alert { name ; cond ; subject ; text } ->
+      Printf.fprintf fmt "ALERT %S WHEN %a SUBJECT %S TEXT %S"
+        name (Expr.print false) cond subject text
     | ReadCSVFile { fname ; separator ; null ; fields } ->
       Printf.fprintf fmt "READ CSV FILES %S SEPARATOR %S NULL %S %a"
         fname separator null Tuple.print_typ fields
@@ -1194,8 +1198,7 @@ struct
 
     let select =
       (select_clause ++
-       (let def = Expr.Const (Expr.make_bool_typ ~nullable:false "true", Scalar.VBool true) in
-        optional ~def (blanks -+ where_clause)) |||
+       optional ~def:Expr.expr_true (blanks -+ where_clause) |||
        return [None] ++ where_clause) >>:
       fun (fields_or_stars, where) ->
         let fields, and_all_others =
@@ -1262,6 +1265,7 @@ struct
       (strinG "on" -- blanks -- strinG "change" -- blanks -+ Expr.Parser.p >>:
        fun e -> OnChange e) m
 
+    (* FIXME: It should be possible to enter when, subject and text in any order *)
     let alert m =
       let opt_field title m =
         let m = title :: m in
@@ -1269,8 +1273,9 @@ struct
       in
       let m = "alert" :: m in
       (strinG "alert" -- blanks -+ quoted_string ++
+       optional ~def:Expr.expr_true (blanks -- strinG "when" -- blanks -+ Expr.Parser.p) ++
        opt_field "subject" ++ opt_field "text" >>:
-       fun ((team, subject), text) -> Alert { team ; subject ; text }) m
+       fun (((name, cond), subject), text) -> Alert { name ; cond ; subject ; text }) m
 
     let read_csv_file m =
       let m = "read csv file" :: m in
@@ -1390,7 +1395,8 @@ struct
         (test_p p "on change too_low" |> replace_typ_in_op)
 
       (Ok (\
-        Alert { team = "network firefighters" ;\
+        Alert { name = "network firefighters" ;\
+                cond = Expr.expr_true ;\
                 subject = "Too little traffic from zone ${z1} to ${z2}" ;\
                 text = "fatigue..." },\
         (100, [])))\
@@ -1398,7 +1404,9 @@ struct
                          subject \"Too little traffic from zone ${z1} to ${z2}\" \\
                          text \"fatigue...\"")
       (Ok (\
-        Alert { team = "glop" ; subject = "" ; text = "" },\
+        Alert { name = "glop" ;\
+                cond = Expr.expr_true ;\
+                subject = "" ; text = "" },\
         (12, [])))\
         (test_p p "alert \"glop\"")
 
