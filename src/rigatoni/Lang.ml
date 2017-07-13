@@ -1288,7 +1288,7 @@ struct
       in
       (strinG "read" -- blanks --
        optional ~def:() (strinG "csv" +- blanks) --
-       strinG "file" -- optional ~def:'s' (char 's') -- blanks -+
+       (strinG "file" ||| strinG "files") -- blanks -+
        quoted_string +- opt_blanks ++
        optional ~def:"," (
          strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
