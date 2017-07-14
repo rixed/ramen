@@ -1492,8 +1492,9 @@ struct
           check_fields_from ["in"] "REMOVE clause" e)
       | OnChange e ->
         check_no_aggr no_aggr_in_on_change e
-      | Alert _ ->
-        () (* TODO: check field names from text templates *)
+      | Alert { cond ; _ } ->
+        check_fields_from ["in"; "all"] "ALERT condition" cond
+        (* TODO: check field names from text templates *)
       | ReadCSVFile _ -> ()
 
     (*$>*)

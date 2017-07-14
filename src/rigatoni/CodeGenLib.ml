@@ -330,7 +330,7 @@ let alert read_tuple field_of_tuple team alert_cond subject text =
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
-    if alert_cond in_tuple then (
+    if alert_cond !CodeGenLib_IO.tuple_count in_tuple then (
       let team = expand_fields team in_tuple
       and subject = expand_fields subject in_tuple
       and text = expand_fields text in_tuple in

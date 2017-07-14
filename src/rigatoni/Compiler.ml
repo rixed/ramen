@@ -432,7 +432,9 @@ let check_operation ~in_type ~out_type =
         Expr.make_bool_typ ~nullable:false "on-change clause" in
       check_expr ~in_type ~out_type ~exp_type expr
     )
-  | Operation.Alert _ ->
+  | Operation.Alert { cond ; _ } ->
+    let exp_type = Expr.make_bool_typ ~nullable:false "alert condition" in
+    check_expr ~in_type ~out_type ~exp_type cond ||
     check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:in_type ~to_tuple:out_type ~autorank:false
   | Operation.ReadCSVFile { fields ; _ } ->
     let from_tuple = C.temp_tup_typ_of_tup_typ true fields in
