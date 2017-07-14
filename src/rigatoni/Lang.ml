@@ -1474,7 +1474,7 @@ struct
             check_fields_from ["in"; "all"; "selected"; "first"; "last"; "out" (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
-        check_fields_from ["in"; "all" (* Aliases *); "first"; "last"] "WHERE clause" where ;
+        check_fields_from ["in"; "all" (* Aliases *); "first"; "last"; "out"] "WHERE clause" where ;
         List.iter (fun k ->
           check_no_aggr no_aggr_in_key k ;
           check_fields_from ["in"] "KEY clause" k) key ;
