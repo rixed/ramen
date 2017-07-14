@@ -694,8 +694,9 @@ And this node configuration will be set accordingly.
 
 === Export/Import the whole graph
 
-You can get the whole configuration by GETting this URL: `/graph`.  Import is
-not implemented yet.
+You can get the whole configuration by GETting this URL: `/graph`.  Conversely,
+a whole new graph can be uploaded and made to replace the current one with a
+PUT at the same location.
 
 === Compile/Start/Stop
 
