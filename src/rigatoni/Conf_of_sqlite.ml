@@ -60,14 +60,6 @@ let must_be_ok actual =
 let must_be_done actual =
   let open Sqlite3.Rc in must_be to_string DONE actual
 
-let rec step_all_fold stmt init f =
-  let open Sqlite3 in
-  match step stmt with
-  | Rc.DONE -> init
-  | Rc.ROW -> step_all_fold stmt (f init) f
-  | rc -> failwith ("Unexpected Sqlite3 return code: "^ Rc.to_string rc)
-
-
 type db =
   { db : Sqlite3.db ;
     get_mtime : Sqlite3.stmt ;
@@ -185,12 +177,12 @@ let last_mtime_query =
 
 let get_db_mtime stmt =
   let open Sqlite3 in
-  if reset stmt <> Rc.OK then
-    failwith "Cannot reset prepared statement for get_mtime" ;
+  reset stmt |> must_be_ok ;
   match step stmt with
   | Rc.ROW ->
     let t = column stmt 0 |> to_float |> required in
     !logger.debug "Max mtime in DB: %g" t ;
+    reset stmt |> must_be_ok ;
     t
   | _ ->
     failwith "No idea what to do from this get_mtime result"
@@ -230,8 +222,7 @@ let must_reload db =
 let get_config db =
   !logger.debug "Building configuration from DB..." ;
   let open Sqlite3 in
-  if reset db.get_config <> Rc.OK then
-    failwith "Cannot reset prepared statement for get_config" ;
+  reset db.get_config |> must_be_ok ;
   let rec loop prev =
     match step db.get_config with
     | Rc.ROW ->
@@ -242,6 +233,7 @@ let get_config db =
     | Rc.DONE ->
       !logger.debug "Build a conf with %d alerts"
                       (List.length prev) ;
+      reset db.get_config |> must_be_ok ;
       prev
     | _ ->
       failwith "No idea what to do from this get_config result"
