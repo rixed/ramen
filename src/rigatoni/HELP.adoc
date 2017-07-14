@@ -203,9 +203,23 @@ it refers to the last received tuple.
 ===== Output tuple
 
 The tuple that is going to be output. Its name is `out`.  The only place
-where it can be used is in the commit clause and flush-when clause of a
+where it can be used is in the where, commit and flush-when clauses of a
 +GROUP BY+ operation. It thus refers to the tuple that would be output shall
 the commit condition yields `true`.
+
+It is also possible to refer to fields from the out tuple in select clauses
+of both +SELECT+ and +GROUP BY+ operations, which creates the out tuple, but
+only if the referred fields has been defined earlier. So for instance this is
+valid:
+
+[source,sql]
+----
+  SELECT sum payload AS total, end - start AS duration, total / duration AS bps
+----
+
+where we both define and reuse the fields `total` and `duration`. Notice that
+here the name of the tuple has been eluded (despite "in" being the default tuple,
+on some conditions it is OK to leave out the "out" prefix as well).
 
 It is important to understand that the input and output tuples have different
 types (at least in general).
