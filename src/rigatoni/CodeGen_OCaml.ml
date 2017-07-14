@@ -883,7 +883,7 @@ let keep_temp_files = ref true
 let with_code_file_for name f =
   let mode = [`create; `excl; `text] in
   let mode = if !keep_temp_files then mode else `delete_on_exit::mode in
-  let prefix = "gen_"^ name ^"_" in
+  let prefix = "gen_"^ String.nreplace ~str:name ~sub:" " ~by:"_" ^"_" in
   File.with_temporary_out ~mode ~prefix ~suffix:".ml" (fun oc fname ->
     !logger.debug "Source code for %s: %s" name fname ;
     f oc fname)
@@ -891,9 +891,12 @@ let with_code_file_for name f =
 let compile_source fname =
   (* This is not guaranteed to be unique but should be... *)
   let exec_name = String.sub fname 0 (String.length fname - 3) in
+  (* TODO: shell-quote *)
   let comp_cmd =
-    Printf.sprintf "ocamlfind ocamlopt -o %s -package batteries,stdint,lwt.ppx,cohttp-lwt-unix \
-                                       -linkpkg codegen.cmxa %s"
+    Printf.sprintf
+      "ocamlfind ocamlopt -o '%s' \
+        -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt \
+        -linkpkg codegen.cmxa '%s'"
       exec_name fname in
   let exit_code = Sys.command comp_cmd in
   if exit_code = 0 then (
