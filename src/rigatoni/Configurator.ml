@@ -158,9 +158,9 @@ let graph_info_of_bcns csv_dir bcns =
     let perc_per_obs_window =
       let op =
         Printf.sprintf
-          "SELECT %gth percentile of sum_bytes AS bps,\n\
+          "SELECT %gth percentile of bytes_per_secs AS bps,\n\
                   zone_src, zone_dst\n\
-           GROUP BY capture_begin // %d\n\
+           GROUP BY min_capture_begin // %d\n\
            COMMIT AND SLIDE 1 WHEN in.#count > %d"
            bcn.percentile
            obs_window
