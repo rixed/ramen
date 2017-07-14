@@ -271,7 +271,6 @@ let same_tuple_as_in = function
           | Reset | Slide _ -> flush_how
           | RemoveAll e -> RemoveAll (replace_typ e)
           | KeepOnly e -> KeepOnly (replace_typ e)) }, rest)
-    | Ok (OnChange e, rest) -> Ok (OnChange (replace_typ e), rest)
     | x -> x
  *)
 
@@ -1067,46 +1066,6 @@ struct
         flush_when : Expr.t option ;
         (* How to flush: reset or slide values *)
         flush_how : flush_method }
-
-    (* Not sure we need OnChange.
-     * The idea behind on-change is that it propagates only new values
-     * for a given key. For instance, if we receive tuples made of:
-     * (min_capture_begin, max_capture_end, ip_server, bytes, too_little)
-     * then too_little is our alert signal. We want to pass this tuple to
-     * alert only for new values of too_little, though.
-     * Aggregation should be able to do this, if it could refer to the
-     * previous value of the aggregate:
-     *
-     * SELECT LAST(bytes/(min_capture_begin-max_capture_end) < 1_000_000)
-     *          AS too_little,
-     *        ip_server,
-     *        LAST(min_capture_begin), LAST(max_capture_end), LAST(bytes),
-     *        LAST(packets)
-     * GROUP BY ip_server
-     * COMMIT WHEN too_little != previous.too_little
-     *
-     * Beware the difference between previous, last and any.
-     * This is rather confusing: in, last, any, other refers to
-     * incoming tuples, out refers to a temporary out tuple computed
-     * from the current aggregate, and previous refers to another
-     * temp tuple computed from previous aggregate (actually the previous
-     * out tuple)
-     *
-     * There is still an issue though:
-     * once we commit an aggregate we delete it, thus loosing the history.  We
-     * could fix this with a FLUSH WHEN clause (can be abbreviated as COMMIT
-     * AND FLUSH WHEN...) Also, the above could be simplified with allowing
-     * LAST( * ) (or FIRST( * ) or...); This does not change anything for the
-     * selected fields not within aggregation function: we still get them
-     * from the (current (or previous if we commit with a delay)) in-tuple.
-     *
-     * TODO:
-     * - allow star operator to come with an aggregate function (and
-     * therefore we can have several star operators). Implementation idea: add
-     * an optional aggr unary function in temp_tup_typ fields. Alternate: allow
-     * for only one star operator, and for group by operations only, accept an
-     * aggregation function name that we will use to add all other fields. *)
-    | OnChange of Expr.t
     | Alert of { name : string ; cond : Expr.t ; subject : string ; text : string }
     | ReadCSVFile of { fname : string ; separator : string ;
                        null : string ; fields : Tuple.typ }
@@ -1138,8 +1097,6 @@ struct
         Printf.fprintf fmt " %a WHEN %a"
           (print_flush_method ()) flush_how
           (Expr.print false) flush_when) flush_when
-    | OnChange e ->
-      Printf.fprintf fmt "ON CHANGE %a" (Expr.print false) e
     | Alert { name ; cond ; subject ; text } ->
       Printf.fprintf fmt "ALERT %S WHEN %a SUBJECT %S TEXT %S"
         name (Expr.print false) cond subject text
@@ -1256,11 +1213,6 @@ struct
          Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how }
        | _ -> assert false) m
 
-    let on_change m =
-      let m = "on-change" :: m in
-      (strinG "on" -- blanks -- strinG "change" -- blanks -+ Expr.Parser.p >>:
-       fun e -> OnChange e) m
-
     (* FIXME: It should be possible to enter when, subject and text in any order *)
     let alert m =
       let opt_field title m =
@@ -1299,7 +1251,7 @@ struct
 
     let p m =
       let m = "operation" :: m in
-      (yield ||| select ||| aggregate ||| on_change ||| alert ||| read_csv_file
+      (yield ||| select ||| aggregate ||| alert ||| read_csv_file
       ) m
 
     (*$= p & ~printer:(test_printer print)
@@ -1386,11 +1338,6 @@ struct
            replace_typ_in_op)
 
       (Ok (\
-        OnChange Expr.(Field (typ, ref "in", "too_low")),\
-        (17, [])))\
-        (test_p p "on change too_low" |> replace_typ_in_op)
-
-      (Ok (\
         Alert { name = "network firefighters" ;\
                 cond = Expr.expr_true ;\
                 subject = "Too little traffic from zone ${z1} to ${z2}" ;\
@@ -1439,7 +1386,6 @@ struct
         in
       let no_aggr_in_where = no_aggr_in "WHERE clause"
       and no_aggr_in_key = no_aggr_in "GROUP-BY clause"
-      and no_aggr_in_on_change = no_aggr_in "ON-CHANGE clause"
       and check_no_aggr m =
         Expr.aggr_iter (fun _ -> raise (SyntaxError m))
       and check_fields_from lst clause =
@@ -1490,8 +1436,6 @@ struct
           let m = "Aggregation functions not allowed in KEEP/REMOVE clause" in
           check_no_aggr m e ;
           check_fields_from ["in"] "REMOVE clause" e)
-      | OnChange e ->
-        check_no_aggr no_aggr_in_on_change e
       | Alert { cond ; _ } ->
         check_fields_from ["in"; "all"] "ALERT condition" cond
         (* TODO: check field names from text templates *)

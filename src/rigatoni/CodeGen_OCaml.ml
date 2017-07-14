@@ -941,8 +941,6 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key commit_when flush_when flush_how
     | Alert { name ; cond ; subject ; text } ->
-      emit_alert oc in_tuple_typ name cond subject text
-    | _ ->
-      Printf.fprintf oc "let () = print_string \"TODO other operations\\n\"") ;
+      emit_alert oc in_tuple_typ name cond subject text) ;
     fname) |>
     compile_source

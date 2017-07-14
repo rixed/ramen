@@ -421,17 +421,6 @@ let check_operation ~in_type ~out_type =
                           key ; commit_when ; flush_when ; flush_how } ->
     check_aggregate ~in_type ~out_type fields and_all_others where
                     key commit_when flush_when flush_how
-  | Operation.OnChange expr ->
-    (
-      (* Start by transmitting the field so that the expression can
-       * sooner use out tuple: *)
-      check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:in_type ~to_tuple:out_type ~autorank:false
-    ) || (
-      (* Then check the expression: *)
-      let exp_type =
-        Expr.make_bool_typ ~nullable:false "on-change clause" in
-      check_expr ~in_type ~out_type ~exp_type expr
-    )
   | Operation.Alert { cond ; _ } ->
     let exp_type = Expr.make_bool_typ ~nullable:false "alert condition" in
     check_expr ~in_type ~out_type ~exp_type cond ||

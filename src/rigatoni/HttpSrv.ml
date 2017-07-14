@@ -86,7 +86,6 @@ let type_of_operation_of =
   | Yield _ -> "YIELD"
   | Select _ -> "SELECT"
   | Aggregate _ -> "GROUP BY"
-  | OnChange _ -> "GROUP BY"
   | Alert _ -> "ALERT"
   | ReadCSVFile _ -> "READ CSV"
 
