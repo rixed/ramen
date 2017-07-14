@@ -317,7 +317,7 @@ let check_selected_fields ~in_type ~out_type fields =
   let open Lang in
   List.fold_lefti (fun changed i sf ->
       changed || (
-        let name = List.hd sf.Operation.alias in
+        let name = sf.Operation.alias in
         let exp_type =
           match Hashtbl.find out_type.C.fields name with
           | exception Not_found ->

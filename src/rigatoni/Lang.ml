@@ -1013,19 +1013,18 @@ struct
   (*$< Operation *)
 
   (* Direct field selection (not for group-bys) *)
-  type selected_field = { expr : Expr.t ; alias : string list }
+  type selected_field = { expr : Expr.t ; alias : string }
 
   let print_selected_field fmt f =
     let need_alias =
-      match f.expr, f.alias with
-      | _, [] -> false
-      | Expr.Field (_, tuple, field), [ a ]
-        when !tuple = "in" && a = field -> false
+      match f.expr with
+      | Expr.Field (_, tuple, field)
+        when !tuple = "in" && f.alias = field -> false
       | _ -> true in
     if need_alias then
-      Printf.fprintf fmt "%a AS %a"
+      Printf.fprintf fmt "%a AS %s"
         (Expr.print false) f.expr
-        (List.print ~first:"" ~last:"" ~sep:" OR " String.print) f.alias
+        f.alias
     else
       Expr.print false fmt f.expr
 
@@ -1155,27 +1154,24 @@ struct
     open P
 
     let default_alias = function
-      | Expr.Field (_, { contents="in" }, field) -> [ field ]
+      | Expr.Field (_, { contents="in" }, field) -> field
       (* Provide some default name for current aggregate functions: *)
-      | Expr.AggrMin (_, Expr.Field (_, { contents="in" }, field)) -> [ "min_"^ field ]
-      | Expr.AggrMax (_, Expr.Field (_, { contents="in" }, field)) -> [ "max_"^ field ]
-      | Expr.AggrSum (_, Expr.Field (_, { contents="in" }, field)) -> [ "sum_"^ field ]
-      | Expr.AggrAnd (_, Expr.Field (_, { contents="in" }, field)) -> [ "and_"^ field ]
-      | Expr.AggrOr  (_, Expr.Field (_, { contents="in" }, field)) -> [ "or_"^ field ]
-      | Expr.AggrFirst (_, Expr.Field (_, { contents="in" }, field)) -> [ "first_"^ field ]
-      | Expr.AggrLast (_, Expr.Field (_, { contents="in" }, field)) -> [ "last_"^ field ]
+      | Expr.AggrMin (_, Expr.Field (_, { contents="in" }, field)) -> "min_"^ field
+      | Expr.AggrMax (_, Expr.Field (_, { contents="in" }, field)) -> "max_"^ field
+      | Expr.AggrSum (_, Expr.Field (_, { contents="in" }, field)) -> "sum_"^ field
+      | Expr.AggrAnd (_, Expr.Field (_, { contents="in" }, field)) -> "and_"^ field
+      | Expr.AggrOr  (_, Expr.Field (_, { contents="in" }, field)) -> "or_"^ field
+      | Expr.AggrFirst (_, Expr.Field (_, { contents="in" }, field)) -> "first_"^ field
+      | Expr.AggrLast (_, Expr.Field (_, { contents="in" }, field)) -> "last_"^ field
       | _ -> raise (Reject "must set alias")
 
     let selected_field m =
       let m = "selected field" :: m in
-      (Expr.Parser.p ++ optional ~def:[] (
-         blanks -- strinG "as" -- blanks -+
-         several ~sep:(blanks -- strinG "or" -- blanks)
-                non_keyword) >>:
+      (Expr.Parser.p ++ optional ~def:None (
+         blanks -- strinG "as" -- blanks -+ some non_keyword) >>:
        fun (expr, alias) ->
-         let alias =
-           if alias <> [] then alias else default_alias expr in
-         { expr ; alias }) m
+        let alias = Option.default_delayed (fun () -> default_alias expr) alias in
+        { expr ; alias }) m
 
     let list_sep m =
       let m = "list separator" :: m in
@@ -1311,13 +1307,13 @@ struct
         Select {\
           fields = [\
             { expr = Expr.(Field (typ, ref "in", "start")) ;\
-              alias = [ "start" ] } ;\
+              alias = "start" } ;\
             { expr = Expr.(Field (typ, ref "in", "stop")) ;\
-              alias = [ "stop" ] } ;\
+              alias = "stop" } ;\
             { expr = Expr.(Field (typ, ref "in", "itf_clt")) ;\
-              alias = [ "itf_src" ] } ;\
+              alias = "itf_src" } ;\
             { expr = Expr.(Field (typ, ref "in", "itf_srv")) ;\
-              alias = [ "itf_dst" ] } ] ;\
+              alias = "itf_dst" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, Scalar.VBool true) },\
         (58, [])))\
@@ -1340,15 +1336,15 @@ struct
           fields = [\
             { expr = Expr.(\
                 AggrMin (typ, Field (typ, ref "in", "start"))) ;\
-              alias = [ "start"; "out_start" ] } ;\
+              alias = "start" } ;\
             { expr = Expr.(\
                 AggrMax (typ, Field (typ, ref "in", "stop"))) ;\
-              alias = [ "max_stop" ] } ;\
+              alias = "max_stop" } ;\
             { expr = Expr.(\
                 Div (typ,\
                   AggrSum (typ, Field (typ, ref "in", "packets")),\
                   Param (typ, "avg_window"))) ;\
-              alias = [ "packets_per_sec" ] } ] ;\
+              alias = "packets_per_sec" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, Scalar.VBool true) ;\
           key = [ Expr.(\
@@ -1364,8 +1360,8 @@ struct
                 Const (typ, Scalar.VI16 (Int16.of_int 3600))),\
               Field (typ, ref "out", "start"))) ; \
           flush_when = None ; flush_how = Reset },\
-          (206, [])))\
-          (test_p p "select min start as start or out_start, \\
+          (193, [])))\
+          (test_p p "select min start as start, \\
                             max stop as max_stop, \\
                             (sum packets)/$avg_window as packets_per_sec \\
                      group by start / (1_000_000 * $avg_window) \\
@@ -1376,7 +1372,7 @@ struct
         Aggregate {\
           fields = [\
             { expr = Expr.Const (typ, Scalar.VI8 (Int8.of_int 1)) ;\
-              alias = [ "one" ] } ] ;\
+              alias = "one" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, Scalar.VBool true) ;\
           key = [] ;\
