@@ -1067,7 +1067,7 @@ struct
         (* How to flush: reset or slide values *)
         flush_how : flush_method }
     | Alert of { name : string ; cond : Expr.t ; subject : string ; text : string }
-    | ReadCSVFile of { fname : string ; separator : string ;
+    | ReadCSVFile of { fname : string ; unlink : bool ; separator : string ;
                        null : string ; fields : Tuple.typ }
 
   let print fmt =
@@ -1100,8 +1100,9 @@ struct
     | Alert { name ; cond ; subject ; text } ->
       Printf.fprintf fmt "ALERT %S WHEN %a SUBJECT %S TEXT %S"
         name (Expr.print false) cond subject text
-    | ReadCSVFile { fname ; separator ; null ; fields } ->
-      Printf.fprintf fmt "READ CSV FILES %S SEPARATOR %S NULL %S %a"
+    | ReadCSVFile { fname ; unlink ; separator ; null ; fields } ->
+      Printf.fprintf fmt "READ %sCSV FILES %S SEPARATOR %S NULL %S %a"
+        (if unlink then "AND DELETE " else "")
         fname separator null Tuple.print_typ fields
 
   module Parser =
@@ -1234,9 +1235,12 @@ struct
           blanks +- strinG "null") >>:
         fun ((name, typ), nullable) -> Tuple.{ name ; typ ; nullable }
       in
-      (strinG "read" -- blanks --
-       optional ~def:() (strinG "csv" +- blanks) --
-       (strinG "file" ||| strinG "files") -- blanks -+
+      (strinG "read" -- blanks -+
+       optional ~def:false (
+        strinG "and" -- blanks -- strinG "delete" -- blanks >>:
+        fun () -> true) +-
+       optional ~def:() (strinG "csv" +- blanks) +-
+       (strinG "file" ||| strinG "files") +- blanks ++
        quoted_string +- opt_blanks ++
        optional ~def:"," (
          strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
@@ -1244,10 +1248,10 @@ struct
          strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) +-
        char '(' +- opt_blanks ++
        several ~sep:list_sep field +- opt_blanks +- char ')' >>:
-       fun (((fname, separator), null), fields) ->
+       fun ((((unlink, fname), separator), null), fields) ->
          if separator = null || separator = "" then
            raise (Reject "Invalid CSV separator/null") ;
-         ReadCSVFile { fname ; separator ; null ; fields }) m
+         ReadCSVFile { fname ; unlink ; separator ; null ; fields }) m
 
     let p m =
       let m = "operation" :: m in
@@ -1354,7 +1358,7 @@ struct
         (test_p p "alert \"glop\"")
 
       (Ok (\
-        ReadCSVFile { fname = "/tmp/toto.csv" ; separator = "," ; null = "" ; \
+        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; separator = "," ; null = "" ; \
                       fields = Lang.Tuple.[ \
                         { name = "f1" ; nullable = true ; typ = TBool } ;\
                         { name = "f2" ; nullable = false ; typ = TI32 } ] },\
@@ -1362,7 +1366,15 @@ struct
         (test_p p "read csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
-        ReadCSVFile { fname = "/tmp/toto.csv" ; separator = "\t" ; null = "<NULL>" ; \
+        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = true ; separator = "," ; null = "" ; \
+                      fields = Lang.Tuple.[ \
+                        { name = "f1" ; nullable = true ; typ = TBool } ;\
+                        { name = "f2" ; nullable = false ; typ = TI32 } ] },\
+        (67, [])))\
+        (test_p p "read and delete csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
+
+      (Ok (\
+        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; separator = "\t" ; null = "<NULL>" ; \
                       fields = Lang.Tuple.[ \
                         { name = "f1" ; nullable = true ; typ = TBool } ;\
                         { name = "f2" ; nullable = false ; typ = TI32 } ] },\

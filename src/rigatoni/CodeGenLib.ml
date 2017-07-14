@@ -98,7 +98,7 @@ let load_out_ringbufs () =
   !logger.info "Will output into %a" (List.print String.print) rb_out_fnames ;
   List.map (fun fname -> RingBuf.load fname) rb_out_fnames
 
-let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_strings =
+let read_csv_file filename do_unlink separator sersize_of_tuple serialize_tuple tuple_of_strings =
   !logger.info "Starting READ CSV FILE process..." ;
   (* For tests, allow to overwrite what's specified in the operation: *)
   let filename = getenv ~def:filename "csv_filename"
@@ -113,7 +113,7 @@ let read_csv_file filename separator sersize_of_tuple serialize_tuple tuple_of_s
   let rb_outs = load_out_ringbufs () in
   let outputer =
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
-  CodeGenLib_IO.read_glob_lines filename (fun line ->
+  CodeGenLib_IO.read_glob_lines ~do_unlink filename (fun line ->
     match of_string line with
     | exception e ->
       !logger.error "Cannot parse line %S: %s"

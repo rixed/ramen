@@ -26,7 +26,7 @@ let graph_info_of_bcns csv_dir bcns =
   let top =
     let op =
       Printf.sprintf
-        "READ CSV FILES \"%s/tcp_*.csv\" SEPARATOR \"\\t\" NULL \"<NULL>\" (\n\
+        "READ AND DELETE CSV FILES \"%s/tcp_v29.*.csv\" SEPARATOR \"\\t\" NULL \"<NULL>\" (\n\
            poller string not null,\n\
            capture_begin u64 not null,\n\
            capture_end u64 not null,\n\

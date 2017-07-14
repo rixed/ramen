@@ -187,7 +187,7 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
   Printf.fprintf oc "\t)\n"
 
 (* Given a Tuple.typ, generate the ReadCSVFile operation. *)
-let emit_read_csv_file oc csv_fname csv_separator csv_null tuple_typ =
+let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ =
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
    * Then we want to write this tuple in some ring buffer.
@@ -199,11 +199,11 @@ let emit_read_csv_file oc csv_fname csv_separator csv_null tuple_typ =
     %a\n%a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
-      \t\tCodeGenLib.read_csv_file %S %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_)\n"
+      \t\tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_)\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
-    csv_fname csv_separator
+    csv_fname unlink csv_separator
 
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
@@ -935,8 +935,8 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
       emit_yield oc in_tuple_typ out_tuple_typ fields
     | Select { fields ; and_all_others ; where } ->
       emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where
-    | ReadCSVFile { fname ; separator ; null ; fields } ->
-      emit_read_csv_file oc fname separator null fields
+    | ReadCSVFile { fname ; unlink ; separator ; null ; fields } ->
+      emit_read_csv_file oc fname unlink separator null fields
     | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key commit_when flush_when flush_how
