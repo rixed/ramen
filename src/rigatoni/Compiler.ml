@@ -241,9 +241,13 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | AggrPercentile (op_typ, e1, e2) ->
     check_binary_op op_typ snd ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
   | Add (op_typ, e1, e2) | Sub (op_typ, e1, e2)
-  | Mul (op_typ, e1, e2) | IDiv (op_typ, e1, e2)
-  | Exp (op_typ, e1, e2) ->
+  | Mul (op_typ, e1, e2) | Exp (op_typ, e1, e2) ->
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+  | Div (op_typ, e1, e2) ->
+    (* Same as above but always return a float *)
+    check_binary_op op_typ return_float ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+  | IDiv (op_typ, e1, e2) ->
+    check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
   | Mod (op_typ, e1, e2) ->
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
   | Sequence (op_typ, e1, e2) ->
@@ -253,8 +257,6 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Ge (op_typ, e1, e2) | Gt (op_typ, e1, e2)
   | Eq (op_typ, e1, e2) (* FIXME: Eq should work on strings as well *) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
-  | Div (op_typ, e1, e2) ->
-    check_binary_op op_typ return_float ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
   | And (op_typ, e1, e2) | Or (op_typ, e1, e2) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:TBool e1 ~exp_sub_typ2:TBool e2
 
