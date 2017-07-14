@@ -16,12 +16,14 @@ let read_file_lines ?(do_unlink=false) filename k =
       filename (Printexc.to_string e) ;
     return_unit
   | fd ->
+    !logger.info "Start reading %S" filename ;
     let%lwt () =
       if do_unlink then Lwt_unix.unlink filename else return_unit in
     let chan = Lwt_io.(of_fd ~mode:input fd) in
     let rec read_next_line () =
       match%lwt Lwt_io.read_line chan with
-      | exception End_of_file -> return_unit
+      | exception End_of_file ->
+        Lwt_unix.close fd
       | line ->
         let%lwt () = k line in
         on_each_input () ;
