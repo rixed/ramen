@@ -880,10 +880,16 @@ let emit_alert oc in_tuple_typ name cond subject text =
 
 let keep_temp_files = ref true
 
+let sanitize_ocaml_fname s =
+  let open Str in
+  let replace_by_underscore _ = "_"
+  and re = regexp "[^A-Za-z0-9_]" in
+  global_substitute re replace_by_underscore s
+
 let with_code_file_for name f =
   let mode = [`create; `excl; `text] in
   let mode = if !keep_temp_files then mode else `delete_on_exit::mode in
-  let prefix = "gen_"^ String.nreplace ~str:name ~sub:" " ~by:"_" ^"_" in
+  let prefix = "gen_"^ sanitize_ocaml_fname name ^"_" in
   File.with_temporary_out ~mode ~prefix ~suffix:".ml" (fun oc fname ->
     !logger.debug "Source code for %s: %s" name fname ;
     f oc fname)
