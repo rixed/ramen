@@ -182,6 +182,11 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       | exception Not_found ->
         !logger.debug "Cannot find field %s in in-tuple" field ;
         if in_type.C.complete then (
+          (* FIXME: that's nice and all, but maybe out was actually not allowed
+           * here?  Fix idea: in addition to in_type and out_type, have more
+           * context telling us what tuple we can reference - ideally not only
+           * the tuple but the fields within those, because in a select we can
+           * only refer to out tuple fields that have been defined earlier. *)
           if Hashtbl.mem out_type.C.fields field then (
             !logger.debug "Field %s appears to belongs to out!" field ;
             tuple := "out" ;

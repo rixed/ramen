@@ -567,11 +567,12 @@ let emit_where
 (* If with aggr we have the aggregate record as first parameter
  * and also the first and last incoming tuple of this aggr as additional
  * parameters *)
-let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
-                     ?(with_all_and_selected=false)
-                     ?(with_first_and_last=false)
-                     name in_tuple_typ mentioned
-                     and_all_others out_tuple_typ oc exprs =
+let emit_field_selection
+      ?(with_aggr=false)
+      ?(with_all_and_selected=false)
+      ?(with_first_and_last=false)
+      name in_tuple_typ mentioned
+      and_all_others out_tuple_typ oc selected_fields =
   let open Lang in
   Printf.fprintf oc "let %s " name ;
   if with_aggr then Printf.fprintf oc "aggr_ " ;
@@ -585,35 +586,49 @@ let emit_expr_select ?(honor_star=true) ?(with_aggr=false)
     Printf.fprintf oc "%a %a "
       (emit_in_tuple ~tuple:"first" mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:"last" mentioned and_all_others) in_tuple_typ ;
-  Printf.fprintf oc "=\n\t(" ;
+  Printf.fprintf oc "=\n" ;
   (* We will iter through the selected fields, marking those which have been
    * outputted so that we do not output them again in the STAR operator. *)
   let outputted = ref Set.empty in
-  List.iteri (fun i expr ->
-      Printf.fprintf oc "%s\n\t\t%a"
-        (if i > 0 then "," else "")
-        (emit_expr ~all_alias_in:false) expr ;
-      match expr with
+  List.iter (fun sf ->
+      Printf.fprintf oc "\tlet %s = %a in\n"
+        (id_of_field_name ~tuple:"out" sf.Operation.alias)
+        (emit_expr ~all_alias_in:false) sf.Operation.expr ;
+      match sf.Operation.expr with
       | Expr.Field (_, tuple, field) when !tuple = "in" ->
         outputted := Set.add field !outputted
       | _ -> ()
-    ) exprs ;
-  (* The only difference between selecting out_tuple out of in_tuple
-   * and returning the key of in_tuple is that we don't want to implement
-   * the star when building the key: *)
-  if and_all_others && honor_star then (
+    ) selected_fields ;
+  Printf.fprintf oc "\t(\n\t\t" ;
+  List.iteri (fun i sf ->
+      Printf.fprintf oc "%s%s"
+        (if i > 0 then ",\n\t\t" else "")
+        (id_of_field_name ~tuple:"out" sf.Operation.alias) ;
+    ) selected_fields ;
+  if and_all_others then (
     List.iteri (fun i field ->
         if not (Set.mem field.Tuple.name !outputted) then
           Printf.fprintf oc "%s\n\t\t%s%s"
-            (if i > 0 || exprs <> [] then "," else "")
+            (if i > 0 || selected_fields <> [] then "," else "")
             (if i = 0 then "(* All other fields *)\n\t\t" else "")
             (id_of_field_name field.Tuple.name)
       ) out_tuple_typ (* we want those fields ordered according to out tuple not in tuple! *)
   ) ;
   Printf.fprintf oc "\n\t)\n"
 
-let exprs_of_selected_fields =
-  List.map (fun sf -> sf.Lang.Operation.expr)
+(* Similar to emit_field_selection but with less options, no concept of star and no
+ * naming of the fields as the fields from out, since that's not the tout tuple
+ * we are constructing: *)
+let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
+  Printf.fprintf oc "let %s %a =\n\t("
+    name
+    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
+  List.iteri (fun i expr ->
+      Printf.fprintf oc "%s\n\t\t%a"
+        (if i > 0 then "," else "")
+        (emit_expr ~all_alias_in:false) expr ;
+    ) exprs ;
+  Printf.fprintf oc "\n\t)\n"
 
 let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
   let mentioned =
@@ -624,8 +639,7 @@ let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
     let () =\n\
       \tLwt_main.run (\n\
       \t\tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_)\n"
-    (emit_expr_select "select_" in_tuple_typ mentioned false out_tuple_typ)
-      (exprs_of_selected_fields selected_fields)
+    (emit_field_selection "select_" in_tuple_typ mentioned false out_tuple_typ) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
@@ -645,8 +659,7 @@ let emit_select oc in_tuple_typ out_tuple_typ
       \t\tCodeGenLib.select read_tuple_ sersize_of_tuple_ serialize_tuple_ where_ select_)\n"
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (emit_where ~all_alias_in:true "where_" in_tuple_typ mentioned and_all_others) where
-    (emit_expr_select ~with_all_and_selected:true "select_" in_tuple_typ mentioned and_all_others out_tuple_typ)
-      (exprs_of_selected_fields selected_fields)
+    (emit_field_selection ~with_all_and_selected:true "select_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
@@ -825,11 +838,10 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       emit_where "where_slow_" ~with_aggr:true ~with_first_and_last:true ~always_true:true in_tuple_typ mentioned and_all_others
     else
       emit_where "where_slow_" ~with_aggr:true ~with_first_and_last:true in_tuple_typ mentioned and_all_others) where
-    (emit_expr_select ~honor_star:false "key_of_input_" in_tuple_typ mentioned and_all_others out_tuple_typ) key
+    (emit_key_of_input "key_of_input_" in_tuple_typ mentioned and_all_others) key
     (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
-    (emit_expr_select ~with_all_and_selected:true ~honor_star:true ~with_aggr:true ~with_first_and_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ)
-      (exprs_of_selected_fields selected_fields)
+    (emit_field_selection ~with_all_and_selected:true ~with_aggr:true ~with_first_and_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ
     (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how ;

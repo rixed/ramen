@@ -1455,14 +1455,14 @@ struct
         List.iter (fun sf ->
             let m = "Aggregation functions not allowed in YIELDs" in
             check_no_aggr m sf.expr ;
-            check_fields_from [] "YIELD operation" sf.expr
+            check_fields_from ["out" (* FIXME: only if defined earlier *)] "YIELD operation" sf.expr
           ) fields
       | Select { fields ; where ; _ } ->
         List.iter (fun sf ->
             let m = "Aggregation functions not allowed without a \
                      GROUP-BY clause" in
             check_no_aggr m sf.expr ;
-            check_fields_from ["in"; "all"; "selected"] "SELECT clause" sf.expr
+            check_fields_from ["in"; "all"; "selected"; "out" (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
         (* Not "selected" since it is still None the first times we call where
@@ -1471,7 +1471,7 @@ struct
       | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how } ->
         ignore and_all_others ;
         List.iter (fun sf ->
-            check_fields_from ["in"; "all"; "selected"; "first"; "last"] "SELECT clause" sf.expr
+            check_fields_from ["in"; "all"; "selected"; "first"; "last"; "out" (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
         check_fields_from ["in"; "all" (* Aliases *); "first"; "last"] "WHERE clause" where ;
