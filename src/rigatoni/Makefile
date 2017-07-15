@@ -33,7 +33,9 @@ PACKAGES = \
 	cohttp-lwt-unix num inotify.lwt sqlite3 $(JS_PACKAGES)
 
 INSTALLED = \
-  rigatoni ringbuf_ctl ramen_configurator codegen.cmxa ringbuf/libringbuf.a
+  rigatoni ringbuf_ctl ramen_configurator \
+	codegen.cmxa $(CODEGENLIB_SOURCES:.ml=.cmx) \
+	ringbuf/libringbuf.a
 
 all: $(INSTALLED) ringbuf_test.opt www/node_edit.js
 
