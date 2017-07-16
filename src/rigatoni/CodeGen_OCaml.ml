@@ -913,7 +913,7 @@ let compile_source fname =
   let comp_cmd =
     Printf.sprintf
       "ocamlfind ocamlopt -o '%s' \
-        -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt \
+        -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle \
         -linkpkg codegen.cmxa '%s'"
       exec_name fname in
   let exit_code = Sys.command comp_cmd in

@@ -13,18 +13,11 @@ exception HttpError of (int * string)
 let not_implemented msg = fail (HttpError (501, msg))
 let bad_request msg = fail (HttpError (400, msg))
 
-let json_content_type = "application/json"
-let dot_content_type = "text/dot"
-let text_content_type = "text/plain"
-let html_content_type = "text/html"
-let css_content_type = "text/css"
-let js_content_type = "application/javascript"
-
 let get_content_type headers =
-  Header.get headers "Content-Type" |? json_content_type |> String.lowercase
+  Header.get headers "Content-Type" |? Consts.json_content_type |> String.lowercase
 
 let get_accept headers =
-  Header.get headers "Accept" |? json_content_type |> String.lowercase
+  Header.get headers "Accept" |? Consts.json_content_type |> String.lowercase
 
 let accept_anything s =
   String.starts_with s "*/*"
@@ -53,10 +46,14 @@ forbidden when creating the node and are set when getting node information.
 *)
 
 let ok_body = "{\"success\": true}\n"
+let respond_ok ?(body=ok_body) () =
+  let status = `Code 200 in
+  let headers = Header.init_with "Content-Type" Consts.json_content_type in
+  Server.respond_string ~status ~headers ~body ()
 
 let put_node conf headers name body =
   (* Get the message from the body *)
-  if get_content_type headers <> json_content_type then
+  if get_content_type headers <> Consts.json_content_type then
     bad_request "Bad content type"
   else match PPP.of_string_exc make_node_ppp body with
   | exception e ->
@@ -77,8 +74,7 @@ let put_node conf headers name body =
         bad_request ("Node "^ name ^": "^ Printexc.to_string e)
       | () -> Lwt.return_unit)
       ) >>= fun () ->
-    let status = `Code 200 in
-    Server.respond_string ~status ~body:ok_body ()
+    respond_ok ()
 
 let type_of_operation_of =
   let open Lang.Operation in
@@ -88,6 +84,20 @@ let type_of_operation_of =
   | Aggregate _ -> "GROUP BY"
   | Alert _ -> "ALERT"
   | ReadCSVFile _ -> "READ CSV"
+
+let rec find_int_metric metrics name =
+  let open Binocle in
+  match metrics with
+  | [] -> 0
+  | { measure = MInt n ; _ } as m ::_ when m.name = name -> n
+  | _::rest -> find_int_metric rest name
+
+let rec find_float_metric metrics name =
+  let open Binocle in
+  match metrics with
+  | [] -> 0.
+  | { measure = MFloat n ; _ } as m ::_ when m.name = name -> n
+  | _::rest -> find_float_metric rest name
 
 let node_info_of_node node =
   let to_expr_type_info lst =
@@ -101,7 +111,11 @@ let node_info_of_node node =
     parents = List.map (fun n -> n.C.name) node.C.parents ;
     children = List.map (fun n -> n.C.name) node.C.children ;
     input_type = C.list_of_temp_tup_type node.C.in_type |> to_expr_type_info ;
-    output_type = C.list_of_temp_tup_type node.C.out_type |> to_expr_type_info }
+    output_type = C.list_of_temp_tup_type node.C.out_type |> to_expr_type_info ;
+    in_tuple_count = find_int_metric node.C.last_report Consts.in_tuple_count_metric ;
+    out_tuple_count = find_int_metric node.C.last_report Consts.out_tuple_count_metric ;
+    cpu_time = find_float_metric node.C.last_report Consts.cpu_time_metric ;
+    ram_usage = find_int_metric node.C.last_report Consts.ram_usage_metric }
 
 let get_node conf _headers name =
   match C.find_node conf conf.C.building_graph name with
@@ -110,17 +124,14 @@ let get_node conf _headers name =
   | node ->
     let node_info = node_info_of_node node in
     let body = PPP.to_string node_info_ppp node_info ^"\n" in
-    let status = `Code 200 in
-    let headers = Header.init_with "Content-Type" json_content_type in
-    Server.respond_string ~headers ~status ~body ()
+    respond_ok ~body ()
 
 let del_node conf _headers name =
   match C.remove_node conf conf.C.building_graph name with
   | exception Not_found ->
     fail (HttpError (404, "No such node"))
   | () ->
-    let status = `Code 200 in
-    Server.respond_string ~status ~body:ok_body ()
+    respond_ok ()
 
 (*
 == Connect nodes ==
@@ -148,8 +159,7 @@ let put_link conf _headers src dst =
     bad_request msg
   else (
     C.make_link conf conf.C.building_graph src dst ;
-    let status = `Code 200 in
-    Server.respond_string ~status ~body:ok_body ())
+    respond_ok ())
 
 let del_link conf _headers src dst =
   let%lwt src = node_of_name conf conf.C.building_graph src in
@@ -158,18 +168,15 @@ let del_link conf _headers src dst =
     bad_request ("That link does not exist")
   else (
     C.remove_link conf conf.C.building_graph src dst ;
-    let status = `Code 200 in
-    Server.respond_string ~status ~body:ok_body ())
+    respond_ok ())
 
 let get_link conf _headers src dst =
   let%lwt src = node_of_name conf conf.C.building_graph src in
   let%lwt dst = node_of_name conf conf.C.building_graph dst in
   if not (C.has_link conf src dst) then
     bad_request ("That link does not exist")
-  else (
-    let status = `Code 200 and body = ok_body in
-    let headers = Header.init_with "Content-Type" json_content_type in
-    Server.respond_string ~headers ~status ~body ())
+  else
+    respond_ok ()
 
 (*
 == Set all connections of a single node ==
@@ -217,8 +224,7 @@ let set_links conf _headers name body =
     let to_add, to_del = diff_list node.C.children children in
     List.iter (fun c -> C.remove_link conf graph node c) to_del ;
     List.iter (fun c -> C.make_link conf graph node c) to_add ;
-    let status = `Code 200 in
-    Server.respond_string ~status ~body:ok_body ()
+    respond_ok ()
 
 (*
 == Display the graph (JSON or SVG representation) ==
@@ -229,11 +235,11 @@ let get_graph_json conf _headers =
     { nodes = Hashtbl.fold (fun _name node lst ->
         node_info_of_node node :: lst
       ) conf.C.building_graph.C.nodes [] ;
-      status = conf.C.building_graph.C.status } in
+      status = conf.C.building_graph.C.status ;
+      last_started = conf.C.building_graph.C.last_started ;
+      last_stopped = conf.C.building_graph.C.last_stopped } in
   let body = PPP.to_string graph_info_ppp graph_info ^"\n" in
-  let status = `Code 200 in
-  let headers = Header.init_with "Content-Type" json_content_type in
-  Server.respond_string ~headers ~status ~body ()
+  respond_ok ~body ()
 
 let dot_of_graph graph =
   let dot = IO.output_string () in
@@ -252,15 +258,15 @@ let dot_of_graph graph =
 let get_graph_dot conf _headers =
   let body = dot_of_graph conf.C.building_graph in
   let status = `Code 200 in
-  let headers = Header.init_with "Content-Type" dot_content_type in
+  let headers = Header.init_with "Content-Type" Consts.dot_content_type in
   Server.respond_string ~headers ~status ~body ()
 
 let get_graph conf headers =
   let accept = get_accept headers in
   if accept_anything accept ||
-     String.starts_with accept json_content_type then
+     String.starts_with accept Consts.json_content_type then
     get_graph_json conf headers
-  else if String.starts_with accept dot_content_type then
+  else if String.starts_with accept Consts.dot_content_type then
     get_graph_dot conf headers
   else
     let status = Code.status_of_code 406 in
@@ -268,7 +274,7 @@ let get_graph conf headers =
 
 let put_graph conf headers body =
   (* Get the message from the body *)
-  if get_content_type headers <> json_content_type then
+  if get_content_type headers <> Consts.json_content_type then
     bad_request "Bad content type"
   else match PPP.of_string_exc graph_info_ppp body with
   | exception e ->
@@ -291,10 +297,9 @@ let put_graph conf headers body =
             return_unit
           ) info.children
       ) msg.nodes in
-    let status = `Code 200 in
     (* Then make this graph the new one (TODO: support for multiple graphs) *)
     conf.C.building_graph <- graph ;
-    Server.respond_string ~status ~body:ok_body ()
+    respond_ok ()
 
 (*
 == Whole graph operations: compile/run/stop ==
@@ -306,9 +311,7 @@ let compile conf _headers =
   | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
     bad_request e
   | () ->
-    let headers = Header.init_with "Content-Type" json_content_type in
-    let status = `Code 200 in
-    Server.respond_string ~headers ~status ~body:ok_body ()
+    respond_ok ()
 
 let run conf _headers =
   (* TODO: check we accept json *)
@@ -316,26 +319,22 @@ let run conf _headers =
   | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
     bad_request e
   | () ->
-    let headers = Header.init_with "Content-Type" json_content_type in
-    let status = `Code 200 in
-    Server.respond_string ~headers ~status ~body:ok_body ()
+    respond_ok ()
 
 let stop conf _headers =
   match C.stop conf conf.C.building_graph with
   | exception C.InvalidCommand e ->
     bad_request e
   | () ->
-    let headers = Header.init_with "Content-Type" json_content_type in
-    let status = `Code 200 in
-    Server.respond_string ~headers ~status ~body:ok_body ()
+    respond_ok ()
 
 let ext_of_file fname =
   let _, ext = String.rsplit fname ~by:"." in ext
 
 let content_type_of_ext = function
-  | "html" -> html_content_type
-  | "js" -> js_content_type
-  | "css" -> css_content_type
+  | "html" -> Consts.html_content_type
+  | "js" -> Consts.js_content_type
+  | "css" -> Consts.css_content_type
   | _ -> "I_dont_know/Good_luck"
 
 let get_file _conf _headers file =
@@ -344,6 +343,20 @@ let get_file _conf _headers file =
   let headers =
     Header.init_with "Content-Type" (content_type_of_ext (ext_of_file file)) in
   Server.respond_file ~headers ~fname ()
+
+(*
+== Children health and report ==
+*)
+
+let report conf _headers name body =
+  (* TODO: check application-type is marshaled.ocaml *)
+  let last_report = Marshal.from_string body 0 in
+  match C.find_node conf conf.C.building_graph name with
+  | exception Not_found ->
+    bad_request ("Node "^ name ^" does not exist")
+  | node ->
+    node.C.last_report <- last_report ;
+    respond_ok ()
 
 (* The function called for each HTTP request: *)
 
@@ -377,6 +390,8 @@ let callback conf _conn req body =
         | `GET, ["compile"] -> compile conf headers
         | `GET, ["run" | "start"] -> run conf headers
         | `GET, ["stop"] -> stop conf headers
+        (* API for children *)
+        | `PUT, ["report" ; name] -> report conf headers (dec name) body_str
         (* WWW Client *)
         | `GET, ([] | ["" | "index.html"]) ->
           get_file conf headers "index.html"

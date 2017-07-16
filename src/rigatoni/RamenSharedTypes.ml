@@ -39,10 +39,21 @@ type node_info =
     mutable parents : string list ;
     mutable children : string list ;
     type_of_operation : string option ;
+    input_type : (int option * expr_type_info) list ;
+    output_type : (int option * expr_type_info) list ;
+    (* Info about the running process (if any) *)
     command : string option ;
     pid : int option ;
-    input_type : (int option * expr_type_info) list ;
-    output_type : (int option * expr_type_info) list } [@@ppp PPP_JSON]
+    in_tuple_count : int ;
+    out_tuple_count : int ;
+    cpu_time : float ;
+    ram_usage : int } [@@ppp PPP_JSON]
+
+let empty_node_info =
+  { name = "" ; operation = "" ; parents = [] ; children = [] ;
+    type_of_operation = None ; input_type = [] ; output_type = [] ;
+    command = None ; pid = None ;
+    in_tuple_count = 0 ; out_tuple_count = 0 ; cpu_time = 0. ; ram_usage = 0 }
 
 type node_links =
   (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
@@ -51,4 +62,6 @@ type node_links =
 
 type graph_info =
   { nodes : node_info list ;
-    status : graph_status [@ppp_default Edition] } [@@ppp PPP_JSON]
+    status : graph_status [@ppp_default Edition] ;
+    last_started : float option ;
+    last_stopped : float option } [@@ppp PPP_JSON]

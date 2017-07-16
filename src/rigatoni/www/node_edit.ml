@@ -1,5 +1,5 @@
 open Vdom
-open RamenSharedTypes
+open RamenSharedTypes_no_PPP
 
 (* misc *)
 let log str =
@@ -19,12 +19,7 @@ let option_get = function
  * we'd have to add should we manipulate JS objects instead, while being
  * more robust. *)
 
-let make_empty_node () =
-  { name = "" ; operation = "" ;
-    parents = [] ; children = [] ;
-    type_of_operation = None ;
-    command = None ; pid = None ;
-    input_type = [] ; output_type = [] }
+let make_empty_node () = { empty_node_info with name = "" }
 
 let node_of_ojs ojs =
   let open Ojs in
@@ -33,9 +28,13 @@ let node_of_ojs ojs =
     parents = get ojs "parents" |> list_of_js string_of_js ;
     children = get ojs "children" |> list_of_js string_of_js ;
     type_of_operation = get ojs "type_of_operation" |> option_of_js string_of_js ;
+    input_type = [] ; output_type = [] (* TODO *) ;
     command = get ojs "command" |> option_of_js string_of_js ;
     pid = get ojs "pid" |> option_of_js int_of_js ;
-    input_type = [] ; output_type = [] }
+    in_tuple_count = get ojs "in_tuple_count" |> int_of_js ;
+    out_tuple_count = get ojs "out_tuple_count" |> int_of_js ;
+    cpu_time = get ojs "cpu_time" |> float_of_js ;
+    ram_usage = get ojs "ram_usage" |> int_of_js }
 
 let link_of_pair pair =
   let open Ojs in
@@ -50,7 +49,9 @@ let graph_of_ojs ojs =
     if has_property js "Running" then Running else
     assert false in
   { nodes = get ojs "nodes" |> list_of_js node_of_ojs ;
-    status = get ojs "status" |> status_of_js }
+    status = get ojs "status" |> status_of_js ;
+    last_started = get ojs "last_started" |> option_of_js float_of_js ;
+    last_stopped = get ojs "last_stopped" |> option_of_js float_of_js }
 
 (* TODO: deriving json *)
 module JZON =
@@ -284,10 +285,17 @@ let togle_list s lst =
 let prog_info node =
   match node.command, node.pid  with
   | Some cmd, Some pid when cmd <> "" && pid > 0 ->
-    [ text "Program running as pid " ;
-      tech_text (string_of_int pid) ;
-      text ", command " ;
-      tech_text cmd ]
+    [ text "Program running as pid " ; tech_text (string_of_int pid) ;
+      text ", command " ; tech_text cmd ;
+      br () ;
+      text "Tuples (in/out): " ;
+        tech_text (string_of_int node.in_tuple_count) ; text "/" ;
+        tech_text (string_of_int node.out_tuple_count) ;
+      br () ;
+      text "CPU time: " ; tech_text (string_of_float node.cpu_time) ; text "seconds" ;
+      br () ;
+      text "RAM: " ; tech_text (string_of_int node.ram_usage) ; text "bytes"
+      ]
   | _ -> []
 
 let view st =

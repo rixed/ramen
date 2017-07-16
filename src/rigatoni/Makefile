@@ -7,20 +7,20 @@ TESTABLE_SOURCES = \
 	RamenSharedTypes.ml Lang.ml Compiler.ml
 
 RIGATONI_SOURCES = \
-	Log.ml RamenSharedTypes.ml Lang.ml \
+	Consts.ml Log.ml RamenSharedTypes.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
 	CodeGen_OCaml.ml \
 	RamenConf.ml Compiler.ml HttpSrv.ml \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \
-	Helpers.ml Log.ml RingBuf.ml RingBufLib.ml Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
+	Consts.ml Helpers.ml Log.ml RingBuf.ml RingBufLib.ml Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h
 
 CONFIGURATOR_SOURCES = \
-	Helpers.ml Log.ml RamenSharedTypes.ml Conf_of_sqlite.ml Configurator.ml
+	Consts.ml Helpers.ml Log.ml RamenSharedTypes.ml Conf_of_sqlite.ml Configurator.ml
 
 SOURCES = \
 	$(RIGATONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
@@ -30,7 +30,8 @@ SOURCES = \
 JS_PACKAGES = ocaml-vdom js_of_ocaml-lwt js_of_ocaml-ppx lwt.ppx
 PACKAGES = \
 	ppp lwt.ppx batteries cmdliner stdint parsercombinator \
-	cohttp-lwt-unix num inotify.lwt sqlite3 $(JS_PACKAGES)
+	cohttp-lwt-unix num inotify.lwt sqlite3 $(JS_PACKAGES) \
+	binocle unix
 
 INSTALLED = \
   rigatoni ringbuf_ctl ramen_configurator \

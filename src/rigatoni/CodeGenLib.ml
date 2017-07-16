@@ -63,6 +63,81 @@ let getenv ?def n =
 
 let identity x = x
 
+(* Health and Stats
+ *
+ * Each node has to periodically report to ramen http server its health and some stats.
+ * Could have been the other way around, and that would have made the
+ * connection establishment easier possibly (since we already must be able to
+ * ssh to other machines in order to start a node) but we already have an http
+ * server on Ramen and probably want to avoid opening too many ports everywhere, and forcing
+ * generated nodes to implement too many things.
+ *
+ * Stats must include:
+ *
+ * - total number of tuples input and output
+ * - total CPU time consumed
+ * - current RAM used
+ * and others depending on the operation.
+ *)
+
+open Binocle
+
+let stats_in_tuple_count =
+  IntCounter.make Consts.in_tuple_count_metric
+    "Number of received tuples that have been processed since the \
+     node started."
+
+let stats_out_tuple_count =
+  IntCounter.make Consts.out_tuple_count_metric
+    "Number of emitted tuples to each child of this node since it started."
+
+let stats_cpu =
+  FloatCounter.make Consts.cpu_time_metric
+    "Total CPU time, in seconds, spent in this node (this process and any \
+     subprocesses."
+
+let stats_ram =
+  IntGauge.make Consts.ram_usage_metric
+    "Total RAM size used by the GC, in bytes (does not take into account \
+     other heap allocations nor fragmentation."
+
+let tot_cpu_time () =
+  let open Unix in
+  let pt = times () in
+  pt.tms_utime +. pt.tms_stime +. pt.tms_cutime +. pt.tms_cstime
+
+let tot_ram_usage =
+  let word_size = Sys.word_size / 8 in
+  fun () ->
+    let stat = Gc.quick_stat () in
+    stat.Gc.heap_words * word_size
+
+let send_stats url =
+  let open Cohttp in
+  let open Cohttp_lwt_unix in
+  let metrics = Hashtbl.fold (fun _name exporter lst ->
+    List.rev_append (exporter ()) lst) Binocle.all_measures [] in
+  let body = `String Marshal.(to_string metrics [No_sharing]) in
+  let headers = Header.init_with "Content-Type" Consts.ocaml_marshal_type in
+  !logger.info "Send stats to %S" url ;
+  let%lwt resp, body = Client.put ~headers ~body (Uri.of_string url) in
+  let code = resp |> Response.status |> Code.code_of_status in
+  if code <> 200 then (
+    let%lwt body = Cohttp_lwt_body.to_string body in
+    !logger.error "Received code %d, body %S, when reporting stats to %S"
+      code body url ;
+    return_unit
+  ) else
+    return_unit
+
+let update_stats_th report_url () =
+  while%lwt true do
+    FloatCounter.set stats_cpu (tot_cpu_time ()) ;
+    IntGauge.set stats_ram (tot_ram_usage ()) ;
+    let%lwt () = send_stats report_url in
+    Lwt_unix.sleep 10.
+  done
+
 (* Helpers *)
 
 let output rb sersize_of_tuple serialize_tuple tuple =
@@ -86,8 +161,9 @@ let outputer_of rb_outs sersize_of_tuple serialize_tuple =
         CodeGenLib_IO.retry_for_ringbuf ~on once
       ) rb_outs in
   fun tuple ->
+    IntCounter.add stats_out_tuple_count 1 ;
     List.map (fun out -> out tuple) outputers_with_retry |>
-    Lwt.join
+    join
 
 (* Each node can write in several ringbuffers (one per children) which
  * names are given by the output_ringbuf envvar followed by the child number
@@ -98,8 +174,15 @@ let load_out_ringbufs () =
   !logger.info "Will output into %a" (List.print String.print) rb_out_fnames ;
   List.map (fun fname -> RingBuf.load fname) rb_out_fnames
 
+let node_start node_name =
+  !logger.info "Starting %s process..." node_name ;
+  let report_url =
+    (* The real one will have an process identifier instead of "anonymous" *)
+    getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in
+  async (update_stats_th report_url) (* TODO: catch exceptions in async_exception_hook *)
+
 let read_csv_file filename do_unlink separator sersize_of_tuple serialize_tuple tuple_of_strings =
-  !logger.info "Starting READ CSV FILE process..." ;
+  node_start "READ CSV FILE" ;
   (* For tests, allow to overwrite what's specified in the operation: *)
   let filename = getenv ~def:filename "csv_filename"
   and separator = getenv ~def:separator "csv_separator"
@@ -121,8 +204,10 @@ let read_csv_file filename do_unlink separator sersize_of_tuple serialize_tuple 
       return_unit ;
     | tuple -> outputer tuple)
 
+(* Operations that nodes may run: *)
+
 let select read_tuple sersize_of_tuple serialize_tuple where select =
-  !logger.info "Starting SELECT process..." ;
+  node_start "SELECT" ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
@@ -139,6 +224,7 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
+    IntCounter.add stats_in_tuple_count 1 ;
     let prev_all = Option.default in_tuple !all_tuple in
     all_tuple := Some in_tuple ;
     let prev_selected = Option.default in_tuple !selected_tuple in
@@ -152,7 +238,7 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
     ) else return_unit)
 
 let yield sersize_of_tuple serialize_tuple select =
-  !logger.info "Starting YIELD process..." ;
+  node_start "YIELD" ;
   let rb_outs = load_out_ringbufs () in
   let outputer =
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
@@ -213,7 +299,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (should_resubmit : ('aggr, 'tuple_in, 'tuple_out) aggr_value -> 'tuple_in -> bool)
               (aggr_init : 'tuple_in -> 'aggr)
               (update_aggr : 'aggr -> 'tuple_in -> unit) =
-  !logger.info "Starting GROUP BY process..." ;
+  node_start "GROUP BY" ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
@@ -236,6 +322,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
+    IntCounter.add stats_in_tuple_count 1 ;
     let prev_all = Option.default in_tuple !all_tuple in
     all_tuple := Some in_tuple ;
     let prev_selected = Option.default in_tuple !selected_tuple in
@@ -308,7 +395,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   )
 
 let alert read_tuple field_of_tuple team alert_cond subject text =
-  !logger.info "Starting ALERT process..." ;
+  node_start "ALERT" ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
@@ -330,6 +417,7 @@ let alert read_tuple field_of_tuple team alert_cond subject text =
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
+    IntCounter.add stats_in_tuple_count 1 ;
     if alert_cond !CodeGenLib_IO.tuple_count in_tuple then (
       let team = expand_fields team in_tuple
       and subject = expand_fields subject in_tuple

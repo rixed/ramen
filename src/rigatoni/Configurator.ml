@@ -13,11 +13,9 @@ let graph_info_of_bcns csv_dir bcns =
   let all_nodes = ref [] in
   let make_node ?(parents=[]) name operation =
     let open RamenSharedTypes in
-    let node = { name ; operation ;
-                 parents = List.map (fun p -> p.name) parents ;
-                 children = [] ;
-                 type_of_operation = None ; command = None ; pid = None ;
-                 input_type = [] ; output_type = [] } in
+    let node = { empty_node_info with
+                 name ; operation ;
+                 parents = List.map (fun p -> p.name) parents } in
     List.iter (fun (p : RamenSharedTypes.node_info) ->
       p.children <- name :: p.children) parents ;
     all_nodes := node :: !all_nodes ;
@@ -203,7 +201,9 @@ let graph_info_of_bcns csv_dir bcns =
       ) bcn.max_bps ;
   in
   List.iter alert_conf_of_bcn bcns ;
-  RamenSharedTypes.{ nodes = !all_nodes ; status = Edition }
+  RamenSharedTypes.{
+    nodes = !all_nodes ; status = Edition ;
+    last_started = None ; last_stopped = None }
 
 let get_bcns_from_db db =
   let open Conf_of_sqlite in

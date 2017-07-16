@@ -61,15 +61,19 @@ type node =
     mutable in_type : temp_tup_typ ;
     mutable out_type : temp_tup_typ ;
     mutable command : string option ;
-    mutable pid : int option }
+    mutable pid : int option ;
+    mutable last_report : Binocle.metric list }
 
 type graph =
   { nodes : (string, node) Hashtbl.t ;
-    mutable status : graph_status }
+    mutable status : graph_status ;
+    mutable last_started : float option ;
+    mutable last_stopped : float option }
 
 type conf =
   { mutable building_graph : graph ;
-    save_file : string }
+    save_file : string ;
+    report_url_prefix : string }
 
 exception InvalidCommand of string
 
@@ -111,7 +115,7 @@ let make_node graph name op_text =
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
-    command = None ; pid = None }
+    command = None ; pid = None ; last_report = [] }
 
 let update_node graph node op_text =
   !logger.debug "Modifying node %s" node.name ;
@@ -123,7 +127,8 @@ let update_node graph node op_text =
 
 let make_new_graph () =
   { nodes = Hashtbl.create 17 ;
-    status = Edition }
+    status = Edition ;
+    last_started = None ; last_stopped = None }
 
 let make_graph save_file =
   try
@@ -185,7 +190,8 @@ let remove_link conf graph src dst =
 
 let make_conf debug save_file =
   logger := Log.make_logger debug ;
-  { building_graph = make_graph save_file ; save_file }
+  { building_graph = make_graph save_file ; save_file ;
+    report_url_prefix = "http://127.0.0.1:29380/report" }
 
 let run_background cmd args env =
   let open Unix in
@@ -210,7 +216,7 @@ let run conf graph =
   | Running ->
     raise (InvalidCommand "Graph is already running")
   | Compiled ->
-    (* First prepar all the required ringbuffers *)
+    (* First prepare all the required ringbuffers *)
     let rb_name_of node = "/tmp/ringbuf_"^ node.name ^"_in"
     and rb_sz_words = 1000000 in
     !logger.info "Creating ringbuffers..." ;
@@ -219,16 +225,18 @@ let run conf graph =
       ) graph.nodes ;
     (* Now run everything *)
     !logger.info "Launching generated programs..." ;
+    let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
         let command = Option.get node.command
         and rb_name_of node = "/tmp/ringbuf_"^ node.name ^"_in" in
         let env = [|
           "input_ringbuf="^ rb_name_of node ;
-          "output_ringbufs="^ String.concat "," (List.map rb_name_of node.children)
-        |] in
+          "output_ringbufs="^ String.concat "," (List.map rb_name_of node.children) ;
+          "report_url="^ conf.report_url_prefix ^"/"^ node.name |] in
         node.pid <- Some (run_background command [||] env)
       ) graph.nodes ;
     graph.status <- Running ;
+    graph.last_started <- Some now ;
     save_graph conf graph
 
 let string_of_process_status = function
@@ -241,6 +249,8 @@ let stop conf graph =
   | Edition | Compiled ->
     raise (InvalidCommand "Graph is not running")
   | Running ->
+    !logger.info "Stopping the graph..." ;
+    let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
         !logger.debug "Stopping node %s" node.name ;
         match node.pid with
@@ -260,4 +270,5 @@ let stop conf graph =
           node.pid <- None
       ) graph.nodes ;
     graph.status <- Compiled ;
+    graph.last_stopped <- Some now ;
     save_graph conf graph
