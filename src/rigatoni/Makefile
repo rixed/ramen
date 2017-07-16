@@ -34,7 +34,7 @@ PACKAGES = \
 
 INSTALLED = \
   rigatoni ringbuf_ctl ramen_configurator \
-	codegen.cmxa $(CODEGENLIB_SOURCES:.ml=.cmx) \
+	codegen.cmxa $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
 	ringbuf/libringbuf.a
 
 all: $(INSTALLED) ringbuf_test.opt www/node_edit.js
