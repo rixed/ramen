@@ -771,6 +771,31 @@ let emit_should_resubmit name in_tuple_typ mentioned and_all_others
   | RemoveAll e ->
     Printf.fprintf oc "\tnot (%a)\n" (emit_expr ~all_alias_in:false) e
 
+(* Depending on what uses a commit/flush condition, we might need to check
+ * all groups after every single input tuple (very slow), or after every
+ * selected input tuple (still quite slow), or only when this group is
+ * modified (fast). Users should limit all/selected tuple to aggregations
+ * with few groups only. *)
+let when_to_check_group_for_expr expr =
+  (* Tells whether the commit condition needs the all or the selected tuple *)
+  let open Lang.Expr in
+  let need_all, need_selected =
+    fold (fun (need_all, need_selected) -> function
+        | Field (_, tuple, _) ->
+          (need_all || !tuple = "all"),
+          (need_selected || !tuple = "selected")
+        | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
+        | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _
+        | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
+        | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
+        | Mod _| Cast _ | Abs _ | Length _ | Now _ ->
+          need_all, need_selected
+      ) (false, false) expr
+  in
+  if need_all then "CodeGenLib.ForAll" else
+  if need_selected then "CodeGenLib.ForAllSelected" else
+  "CodeGenLib.ForAllInGroup"
+
 let emit_aggregate oc in_tuple_typ out_tuple_typ
                    selected_fields and_all_others where key
                    commit_when flush_when flush_how =
@@ -811,11 +836,11 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       | RemoveAll e | KeepOnly e -> e :: all_exprs in
     add_all_mentioned all_exprs
   and where_need_aggr =
-    let open Lang.Expr in
     (* Tells whether the where expression needs either the out tuple
      * or uses any aggregation on its own. *)
+    let open Lang.Expr in
     fold (fun need expr ->
-      if need then need else match expr with
+      need || match expr with
         | Field (_, tuple, _) ->
           not (Lang.same_tuple_as_in !tuple)
         | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
@@ -825,6 +850,11 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
         | Mod _| Cast _ | Abs _ | Length _ | Now _ ->
           false) false where
+  and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
+  let when_to_check_for_flush =
+    match flush_when with
+    | None -> when_to_check_for_commit
+    | Some flush_when -> when_to_check_group_for_expr flush_when
   in
   Printf.fprintf oc "open Stdint\n\n\
     %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
@@ -853,8 +883,10 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
   Printf.fprintf oc "let () =\n\
       \tLwt_main.run (\n\
       \tCodeGenLib.aggregate read_tuple_ sersize_of_tuple_ serialize_aggr_ \
-           tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ commit_when_ \
-           flush_when_ should_resubmit_ aggr_init_ update_aggr_)\n"
+           tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ \
+           commit_when_ %s flush_when_ %s \
+           should_resubmit_ aggr_init_ update_aggr_)\n"
+    when_to_check_for_commit when_to_check_for_flush
 
 let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
   Printf.fprintf oc "let %s %a = function\n"
