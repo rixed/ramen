@@ -82,7 +82,8 @@ www/node_edit.byte: RamenSharedTypes_no_PPP.cmo www/node_edit.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(JS_PACKAGES)" -no-check-prims -linkpkg -o $@ $^
 
 clean-spec:
-	$(RM) ringbuf/libringbuf.a www/node_edit.byte
+	$(RM) ringbuf/*.o ringbuf/*.a ringbuf/libringbuf.a
+	$(RM) www/node_edit.byte www/*.cmi www/*.cmo
 
 distclean-spec:
 	$(RM) rigatoni codegen.cmxa www/node_edit.js
