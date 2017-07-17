@@ -32,7 +32,9 @@ let node_of_ojs ojs =
     command = get ojs "command" |> option_of_js string_of_js ;
     pid = get ojs "pid" |> option_of_js int_of_js ;
     in_tuple_count = get ojs "in_tuple_count" |> int_of_js ;
+    selected_tuple_count = get ojs "selected_tuple_count" |> int_of_js ;
     out_tuple_count = get ojs "out_tuple_count" |> int_of_js ;
+    group_count = get ojs "group_count" |> option_of_js int_of_js ;
     cpu_time = get ojs "cpu_time" |> float_of_js ;
     ram_usage = get ojs "ram_usage" |> int_of_js }
 
@@ -285,17 +287,21 @@ let togle_list s lst =
 let prog_info node =
   match node.command, node.pid  with
   | Some cmd, Some pid when cmd <> "" && pid > 0 ->
-    [ text "Program running as pid " ; tech_text (string_of_int pid) ;
-      text ", command " ; tech_text cmd ;
-      br () ;
-      text "Tuples (in/out): " ;
-        tech_text (string_of_int node.in_tuple_count) ; text "/" ;
-        tech_text (string_of_int node.out_tuple_count) ;
-      br () ;
-      text "CPU time: " ; tech_text (string_of_float node.cpu_time) ; text "seconds" ;
-      br () ;
-      text "RAM: " ; tech_text (string_of_int node.ram_usage) ; text "bytes"
-      ]
+    (text "Program running as pid " :: tech_text (string_of_int pid) ::
+     text ", command " :: tech_text cmd ::
+     br () ::
+     text "Tuples (in/selected/out): " ::
+       tech_text (string_of_int node.in_tuple_count) :: text "/" ::
+       tech_text (string_of_int node.selected_tuple_count) :: text "/" ::
+       tech_text (string_of_int node.out_tuple_count) ::
+     br () ::
+     text "CPU time: " :: tech_text (string_of_float node.cpu_time) :: text "seconds" ::
+     br () ::
+     text "RAM: " :: tech_text (string_of_int node.ram_usage) :: text "bytes" ::
+     br () ::
+     (match node.group_count with
+      | None -> []
+      | Some c -> [ text "Groups: " ; tech_text (string_of_int c) ; br () ]))
   | _ -> []
 
 let view st =

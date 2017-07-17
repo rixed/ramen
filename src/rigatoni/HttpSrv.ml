@@ -85,12 +85,14 @@ let type_of_operation_of =
   | Alert _ -> "ALERT"
   | ReadCSVFile _ -> "READ CSV"
 
-let rec find_int_metric metrics name =
+let rec find_int_opt_metric metrics name =
   let open Binocle in
   match metrics with
-  | [] -> 0
-  | { measure = MInt n ; _ } as m ::_ when m.name = name -> n
-  | _::rest -> find_int_metric rest name
+  | [] -> None
+  | { measure = MInt n ; _ } as m ::_ when m.name = name -> Some n
+  | _::rest -> find_int_opt_metric rest name
+
+let find_int_metric metrics name = find_int_opt_metric metrics name |? 0
 
 let rec find_float_metric metrics name =
   let open Binocle in
@@ -113,7 +115,9 @@ let node_info_of_node node =
     input_type = C.list_of_temp_tup_type node.C.in_type |> to_expr_type_info ;
     output_type = C.list_of_temp_tup_type node.C.out_type |> to_expr_type_info ;
     in_tuple_count = find_int_metric node.C.last_report Consts.in_tuple_count_metric ;
+    selected_tuple_count = find_int_metric node.C.last_report Consts.selected_tuple_count_metric ;
     out_tuple_count = find_int_metric node.C.last_report Consts.out_tuple_count_metric ;
+    group_count = find_int_opt_metric node.C.last_report Consts.group_count_metric ;
     cpu_time = find_float_metric node.C.last_report Consts.cpu_time_metric ;
     ram_usage = find_int_metric node.C.last_report Consts.ram_usage_metric }
 

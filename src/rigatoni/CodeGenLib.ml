@@ -87,6 +87,11 @@ let stats_in_tuple_count =
     "Number of received tuples that have been processed since the \
      node started."
 
+let make_stats_selected_tuple_count () =
+  IntCounter.make Consts.selected_tuple_count_metric
+    "Number of tuples that have passed the WHERE filter, since the \
+     node started."
+
 let stats_out_tuple_count =
   IntCounter.make Consts.out_tuple_count_metric
     "Number of emitted tuples to each child of this node since it started."
@@ -119,7 +124,7 @@ let send_stats url =
     List.rev_append (exporter ()) lst) Binocle.all_measures [] in
   let body = `String Marshal.(to_string metrics [No_sharing]) in
   let headers = Header.init_with "Content-Type" Consts.ocaml_marshal_type in
-  !logger.info "Send stats to %S" url ;
+  !logger.debug "Send stats to %S" url ;
   let%lwt resp, body = Client.put ~headers ~body (Uri.of_string url) in
   let code = resp |> Response.status |> Code.code_of_status in
   if code <> 200 then (
@@ -218,6 +223,7 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
   let outputer =
     output_count := Uint64.succ !output_count ;
     outputer_of rb_outs sersize_of_tuple serialize_tuple
+  and stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and all_tuple = ref None
   and selected_tuple = ref None
   and selected_count = ref Uint64.zero in
@@ -230,6 +236,7 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
     let prev_selected = Option.default in_tuple !selected_tuple in
     (* TODO: pass selected, output_count (despite we have no out tuple), last, previous... *)
     if where !CodeGenLib_IO.tuple_count in_tuple then (
+      IntCounter.add stats_selected_tuple_count 1 ;
       selected_tuple := Some in_tuple ;
       selected_count := Uint64.succ !selected_count ;
       let out_tuple =
@@ -313,12 +320,16 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
     output_count := Uint64.succ !output_count ;
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
   let h = Hashtbl.create 701
+  and stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)
   and all_tuple = ref None (* last incominf tuple *)
   and selected_tuple = ref None (* last incoming tuple that passed the where filter *)
   and selected_count = ref Uint64.zero
+  and stats_group_count =
+    IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
   in
+  IntGauge.set stats_group_count 0 ;
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
@@ -327,6 +338,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
     all_tuple := Some in_tuple ;
     let prev_selected = Option.default in_tuple !selected_tuple in
     if where_fast !CodeGenLib_IO.tuple_count in_tuple then (
+      IntGauge.set stats_group_count (Hashtbl.length h) ;
       let k = key_of_input in_tuple in
       let prev_last_key = !last_key in
       last_key := Some k ;

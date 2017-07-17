@@ -45,7 +45,9 @@ type node_info =
     command : string option ;
     pid : int option ;
     in_tuple_count : int ;
+    selected_tuple_count : int ;
     out_tuple_count : int ;
+    group_count : int option ;
     cpu_time : float ;
     ram_usage : int } [@@ppp PPP_JSON]
 
@@ -53,7 +55,8 @@ let empty_node_info =
   { name = "" ; operation = "" ; parents = [] ; children = [] ;
     type_of_operation = None ; input_type = [] ; output_type = [] ;
     command = None ; pid = None ;
-    in_tuple_count = 0 ; out_tuple_count = 0 ; cpu_time = 0. ; ram_usage = 0 }
+    in_tuple_count = 0 ; selected_tuple_count = 0 ; out_tuple_count = 0 ;
+    group_count = None ; cpu_time = 0. ; ram_usage = 0 }
 
 type node_links =
   (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
