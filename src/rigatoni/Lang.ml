@@ -255,14 +255,15 @@ let same_tuple_as_in = function
   let replace_typ_in_op =
     let open Lang.Operation in
     function
-    | Ok (Select { fields ; and_all_others ; where }, rest) ->
+    | Ok (Select { fields ; and_all_others ; where ; and_export }, rest) ->
       Ok (Select {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
-        and_all_others ; where = replace_typ where }, rest)
-    | Ok (Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how }, rest) ->
+        and_all_others ; where = replace_typ where ; and_export }, rest)
+    | Ok (Aggregate { fields ; and_all_others ; where ; key ; commit_when ; and_export ;
+          flush_when ; flush_how }, rest) ->
       Ok (Aggregate {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
-        and_all_others ;
+        and_all_others ; and_export ;
         where = replace_typ where ;
         key = List.map replace_typ key ;
         commit_when = replace_typ commit_when ;
@@ -1051,7 +1052,8 @@ struct
         (* As in the SQL "*", but selects only the fields which name won't collide
          * with the above. Useful for when the select part is implicit. *)
         and_all_others : bool ;
-        where : Expr.t }
+        where : Expr.t ;
+        and_export : bool }
     (* Aggregation of several tuples into one based on some key. Superficially looks like
      * a select but much more involved. *)
     | Aggregate of {
@@ -1060,6 +1062,7 @@ struct
         and_all_others : bool ;
         (* Simple way to filter out incoming tuples: *)
         where : Expr.t ;
+        and_export : bool ;
         key : Expr.t list ;
         commit_when : Expr.t ;
         (* When do we stop aggregating (default: when we commit) *)
@@ -1076,15 +1079,17 @@ struct
     | Yield fields ->
       Printf.fprintf fmt "YIELD %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
-    | Select { fields ; and_all_others ; where } ->
-      Printf.fprintf fmt "SELECT %a%s%s WHERE %a"
+    | Select { fields ; and_all_others ; where ; and_export } ->
+      Printf.fprintf fmt "SELECT%s %a%s%s WHERE %a"
+        (if and_export then " AND EXPORT" else "")
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
         (Expr.print false) where
-    | Aggregate { fields ; and_all_others ; where ; key ;
+    | Aggregate { fields ; and_all_others ; where ; and_export ; key ;
                   commit_when ; flush_when ; flush_how } ->
-      Printf.fprintf fmt "SELECT %a%s%s WHERE %a%s%a COMMIT %aWHEN %a"
+      Printf.fprintf fmt "SELECT%s %a%s%s WHERE %a%s%a COMMIT %aWHEN %a"
+        (if and_export then " AND EXPORT" else "")
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "")
@@ -1104,6 +1109,11 @@ struct
       Printf.fprintf fmt "READ %sCSV FILES %S SEPARATOR %S NULL %S %a"
         (if unlink then "AND DELETE " else "")
         fname separator null Tuple.print_typ fields
+
+    let is_exporting = function
+      | Select { and_export = true ; _ }
+      | Aggregate { and_export = true ; _ } -> true
+      | _ -> false
 
   module Parser =
   struct
@@ -1142,9 +1152,12 @@ struct
     let select_clause m =
       let m = "select clause" :: m in
       (strinG "select" -- blanks -+
+       optional ~def:false
+                (strinG "and" -- blanks -- strinG "export" -- blanks >>:
+                 fun () -> true) ++
        several ~sep:list_sep
-              ((char '*' >>: fun _ -> None) |||
-               some selected_field)) m
+               ((char '*' >>: fun _ -> None) |||
+                some selected_field)) m
 
     let where_clause m =
       let m = "where clause" :: m in
@@ -1153,21 +1166,17 @@ struct
     let select =
       (select_clause ++
        optional ~def:Expr.expr_true (blanks -+ where_clause) |||
-       return [None] ++ where_clause) >>:
-      fun (fields_or_stars, where) ->
+       return (false, [None]) ++ where_clause) >>:
+      fun ((and_export, fields_or_stars), where) ->
         let fields, and_all_others =
           List.fold_left (fun (fields, and_all_others) -> function
               | Some f -> f::fields, and_all_others
               | None when not and_all_others -> fields, true
-              | None ->
-                  (* P.map should catch exceptions and we should set a
-                     parse error from here. *)
-                  Printf.eprintf "Already included star...\n" ;
-                  fields, and_all_others
+              | None -> raise (Reject "All fields included several times")
             ) ([], false) fields_or_stars in
         (* The above fold_left inverted the field order. *)
         let fields = List.rev fields in
-        Select { fields ; and_all_others ; where }
+        Select { fields ; and_all_others ; where ; and_export }
 
     let group_by m =
       let m = "group-by clause" :: m in
@@ -1210,8 +1219,9 @@ struct
     let aggregate m =
       let m = "aggregate" :: m in
       (select +- blanks ++ optional ~def:[] (group_by +- blanks) ++ commit_when >>: function
-       | (Select { fields ; and_all_others ; where }, key), (commit_when, flush_when, flush_how) ->
-         Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how }
+       | (Select { fields ; and_all_others ; where ; and_export }, key),
+         (commit_when, flush_when, flush_how) ->
+         Aggregate { fields ; and_all_others ; where ; and_export ; key ; commit_when ; flush_when ; flush_how }
        | _ -> assert false) m
 
     (* FIXME: It should be possible to enter when, subject and text in any order *)
@@ -1271,7 +1281,8 @@ struct
             { expr = Expr.(Field (typ, ref "in", "itf_srv")) ;\
               alias = "itf_dst" } ] ;\
           and_all_others = false ;\
-          where = Expr.Const (typ, Scalar.VBool true) },\
+          where = Expr.Const (typ, Scalar.VBool true) ;\
+          and_export = false },\
         (58, [])))\
         (test_p p "select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
          replace_typ_in_op)
@@ -1283,7 +1294,8 @@ struct
           where = Expr.(\
             Gt (typ,\
               Field (typ, ref "in", "packets"),\
-              Const (typ, Scalar.VI8 (Int8.of_int 0)))) },\
+              Const (typ, Scalar.VI8 (Int8.of_int 0)))) ;\
+          and_export = false },\
         (17, [])))\
         (test_p p "where packets > 0" |> replace_typ_in_op)
 
@@ -1303,6 +1315,7 @@ struct
               alias = "packets_per_sec" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, Scalar.VBool true) ;\
+          and_export = false; \
           key = [ Expr.(\
             Div (typ,\
               Field (typ, ref "in", "start"),\
@@ -1331,6 +1344,7 @@ struct
               alias = "one" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, Scalar.VBool true) ;\
+          and_export = false; \
           key = [] ;\
           commit_when = Expr.(\
             Ge (typ,\
@@ -1426,8 +1440,7 @@ struct
         (* Not "selected" since it is still None the first times we call where
          * (until a match): *)
         check_fields_from ["in"; "all" (* Aliases *)] "WHERE clause" where
-      | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how } ->
-        ignore and_all_others ;
+      | Aggregate { fields ; where ; key ; commit_when ; flush_when ; flush_how ; _ } ->
         List.iter (fun sf ->
             check_fields_from ["in"; "all"; "selected"; "first"; "last"; "out" (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;

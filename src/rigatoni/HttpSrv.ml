@@ -319,14 +319,14 @@ let compile conf _headers =
 
 let run conf _headers =
   (* TODO: check we accept json *)
-  match C.run conf conf.C.building_graph with
+  match RamenProcesses.run conf conf.C.building_graph with
   | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
     bad_request e
   | () ->
     respond_ok ()
 
 let stop conf _headers =
-  match C.stop conf conf.C.building_graph with
+  match RamenProcesses.stop conf conf.C.building_graph with
   | exception C.InvalidCommand e ->
     bad_request e
   | () ->

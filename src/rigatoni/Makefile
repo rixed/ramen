@@ -10,7 +10,8 @@ RIGATONI_SOURCES = \
 	Consts.ml Log.ml RamenSharedTypes.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
 	CodeGen_OCaml.ml \
-	RamenConf.ml Compiler.ml HttpSrv.ml \
+	RamenConf.ml RamenExport.ml RamenProcesses.ml \
+	Compiler.ml HttpSrv.ml \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \

@@ -415,10 +415,10 @@ let check_operation ~in_type ~out_type =
   function
   | Operation.Yield fields ->
     check_yield ~in_type ~out_type fields
-  | Operation.Select { fields ; and_all_others ; where } ->
+  | Operation.Select { fields ; and_all_others ; where ; _ } ->
     check_select ~in_type ~out_type fields and_all_others where
   | Operation.Aggregate { fields ; and_all_others ; where ;
-                          key ; commit_when ; flush_when ; flush_how } ->
+                          key ; commit_when ; flush_when ; flush_how ; _ } ->
     check_aggregate ~in_type ~out_type fields and_all_others where
                     key commit_when flush_when flush_how
   | Operation.Alert { cond ; _ } ->

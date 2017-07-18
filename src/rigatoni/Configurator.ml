@@ -142,10 +142,11 @@ let graph_info_of_bcns csv_dir bcns =
             what_zone ^ " = " ^ string_of_int z) "" lst ^")" in
       let op =
         Printf.sprintf
-          "SELECT min of capture_begin, max of capture_end,\n\
-                  sum of packets / ((max_capture_end - min_capture_begin) / 1_000_000) as packets_per_secs,\n\
-                  sum of bytes / ((max_capture_end - min_capture_begin) / 1_000_000) as bytes_per_secs,\n\
-                  zone_src, zone_dst\n\
+          "SELECT AND EXPORT
+             min of capture_begin, max of capture_end,\n\
+             sum of packets / ((max_capture_end - min_capture_begin) / 1_000_000) as packets_per_secs,\n\
+             sum of bytes / ((max_capture_end - min_capture_begin) / 1_000_000) as bytes_per_secs,\n\
+             zone_src, zone_dst\n\
            WHERE %s AND %s\n\
            GROUP BY capture_begin // %d\n\
            COMMIT AND FLUSH WHEN all.capture_begin > min_capture_begin + 2 * %d"
@@ -162,8 +163,9 @@ let graph_info_of_bcns csv_dir bcns =
     let perc_per_obs_window =
       let op =
         Printf.sprintf
-          "SELECT %gth percentile of bytes_per_secs AS bps,\n\
-                  zone_src, zone_dst\n\
+          "SELECT AND EXPORT
+             %gth percentile of bytes_per_secs AS bps,\n\
+             zone_src, zone_dst\n\
            GROUP BY min_capture_begin // %d\n\
            COMMIT AND SLIDE 1 WHEN in.#count >= %d"
            bcn.percentile

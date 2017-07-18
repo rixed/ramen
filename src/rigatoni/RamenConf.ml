@@ -71,7 +71,7 @@ type graph =
   { mutable status : graph_status ;
     mutable last_started : float option ;
     mutable last_stopped : float option ;
-    importing_threads : unit Lwt.t list ;
+    mutable importing_threads : unit Lwt.t list ;
     persist : graph_persist }
 
 type conf =
@@ -203,83 +203,3 @@ let make_conf debug save_file =
   logger := Log.make_logger debug ;
   { building_graph = load_graph save_file ; save_file ;
     report_url_prefix = "http://127.0.0.1:29380/report" }
-
-let run_background cmd args env =
-  let open Unix in
-  (* prog name should be first arg *)
-  let prog_name = Filename.basename cmd in
-  let args = Array.init (Array.length args + 1) (fun i ->
-      if i = 0 then prog_name else args.(i-1))
-  in
-  !logger.info "Running %s with args %a and env %a"
-    cmd
-    (Array.print String.print) args
-    (Array.print String.print) env ;
-  match fork () with
-  | 0 -> execve cmd args env
-  | pid -> pid
-    (* TODO: A monitoring thread that report the error in the node structure *)
-
-let run conf graph =
-  match graph.status with
-  | Edition ->
-    raise (InvalidCommand "Cannot run if not compiled")
-  | Running ->
-    raise (InvalidCommand "Graph is already running")
-  | Compiled ->
-    (* First prepare all the required ringbuffers *)
-    let rb_name_of node = "/tmp/ringbuf_"^ node.name ^"_in"
-    and rb_sz_words = 1000000 in
-    !logger.info "Creating ringbuffers..." ;
-    Hashtbl.iter (fun _ node ->
-        RingBuf.create (rb_name_of node) rb_sz_words
-      ) graph.persist.nodes ;
-    (* Now run everything *)
-    !logger.info "Launching generated programs..." ;
-    let now = Unix.gettimeofday () in
-    Hashtbl.iter (fun _ node ->
-        let command = Option.get node.command
-        and rb_name_of node = "/tmp/ringbuf_"^ node.name ^"_in" in
-        let env = [|
-          "input_ringbuf="^ rb_name_of node ;
-          "output_ringbufs="^ String.concat "," (List.map rb_name_of node.children) ;
-          "report_url="^ conf.report_url_prefix ^"/"^ node.name |] in
-        node.pid <- Some (run_background command [||] env)
-      ) graph.persist.nodes ;
-    graph.status <- Running ;
-    graph.last_started <- Some now ;
-    save_graph conf graph
-
-let string_of_process_status = function
-  | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
-  | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %d" sign
-  | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
-
-let stop conf graph =
-  match graph.status with
-  | Edition | Compiled ->
-    raise (InvalidCommand "Graph is not running")
-  | Running ->
-    !logger.info "Stopping the graph..." ;
-    let now = Unix.gettimeofday () in
-    Hashtbl.iter (fun _ node ->
-        !logger.debug "Stopping node %s" node.name ;
-        match node.pid with
-        | None ->
-          !logger.error "Node %s has no pid?!" node.name
-        | Some pid ->
-          let open Unix in
-          (try kill pid Sys.sigterm
-          with Unix_error _ -> ()) ;
-          (try
-            let _, status = restart_on_EINTR (waitpid []) pid in
-            !logger.info "Node %s %s"
-              node.name (string_of_process_status status) ;
-           with exn ->
-            !logger.error "Cannot wait for pid %d: %s"
-              pid (Printexc.to_string exn)) ;
-          node.pid <- None
-      ) graph.persist.nodes ;
-    graph.status <- Compiled ;
-    graph.last_stopped <- Some now ;
-    save_graph conf graph

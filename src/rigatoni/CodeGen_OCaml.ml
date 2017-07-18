@@ -965,11 +965,11 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
     (match op with
     | Yield fields ->
       emit_yield oc in_tuple_typ out_tuple_typ fields
-    | Select { fields ; and_all_others ; where } ->
+    | Select { fields ; and_all_others ; where ; _ } ->
       emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where
     | ReadCSVFile { fname ; unlink ; separator ; null ; fields } ->
       emit_read_csv_file oc fname unlink separator null fields
-    | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how } ->
+    | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how ; _ } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key commit_when flush_when flush_how
     | Alert { name ; cond ; subject ; text } ->
