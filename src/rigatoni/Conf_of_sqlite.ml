@@ -205,7 +205,6 @@ let get_zones_query =
 
 let get_db_mtime stmt =
   let open Sqlite3 in
-  reset stmt |> must_be_ok ;
   match step stmt with
   | Rc.ROW ->
     let t = column stmt 0 |> to_float |> required in
@@ -213,6 +212,7 @@ let get_db_mtime stmt =
     reset stmt |> must_be_ok ;
     t
   | _ ->
+    reset stmt |> ignore ;
     failwith "No idea what to do from this get_mtime result"
 
 let get_db filename =
@@ -267,7 +267,6 @@ let get_config db =
       failwith "No idea what to do from this get_zones result" (* TODO: to_string *)
   in loop () ;
   (* Now the BCN *)
-  reset db.get_config |> must_be_ok ;
   let rec loop prev =
     match step db.get_config with
     | Rc.ROW ->
@@ -282,6 +281,7 @@ let get_config db =
       reset db.get_config |> must_be_ok ;
       prev
     | _ ->
+      reset db.get_config |> ignore ;
       failwith "No idea what to do from this get_config result"
   in
   let conf = loop [] in
