@@ -460,12 +460,14 @@ let alert read_tuple field_of_tuple team alert_cond subject text =
                            present in the input!" field_name ;
             "??"^ field_name ^"??"
         ) text
+  and stats_selected_tuple_count = make_stats_selected_tuple_count ()
   in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     IntCounter.add stats_in_tuple_count 1 ;
     if alert_cond !CodeGenLib_IO.tuple_count in_tuple then (
+      IntCounter.add stats_selected_tuple_count 1 ;
       let team = expand_fields team in_tuple
       and subject = expand_fields subject in_tuple
       and text = expand_fields text in_tuple in
