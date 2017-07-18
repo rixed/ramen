@@ -7,9 +7,9 @@ let options debug = { debug }
 
 (* Build the node infos corresponding to the BCN configuration *)
 let graph_info_of_bcns csv_dir bcns =
-  let string_of_zone = function
-    | Some z -> Printf.sprintf "%d" z
-    | None -> Printf.sprintf "Any" in
+  let name_of_zones = function
+    | [] -> "any"
+    | main::_ -> string_of_int main in
   let all_nodes = ref [] in
   let make_node ?(parents=[]) name operation =
     let open RamenSharedTypes in
@@ -130,10 +130,16 @@ let graph_info_of_bcns csv_dir bcns =
     (* bcn.min_bps, bcn.max_bps, bcn.obs_window, bcn.avg_window, bcn.percentile, bcn.source bcn.dest *)
     let open Conf_of_sqlite in
     let name_prefix = Printf.sprintf "%s to %s"
-      (string_of_zone bcn.source) (string_of_zone bcn.dest) in
+      (name_of_zones bcn.source) (name_of_zones bcn.dest) in
     let avg_window = int_of_float (bcn.avg_window *. 1_000_000.0) in
     let obs_window = int_of_float (bcn.obs_window *. 1_000_000.0) in
     let avg_per_zones =
+      let in_zone what_zone = function
+        | [] -> "true"
+        | lst ->
+          "("^ List.fold_left (fun s z ->
+            s ^ (if s <> "" then " OR " else "") ^
+            what_zone ^ " = " ^ string_of_int z) "" lst ^")" in
       let op =
         Printf.sprintf
           "SELECT min of capture_begin, max of capture_end,\n\
@@ -143,8 +149,8 @@ let graph_info_of_bcns csv_dir bcns =
            WHERE %s AND %s\n\
            GROUP BY capture_begin // %d\n\
            COMMIT AND FLUSH WHEN all.capture_begin > min_capture_begin + 2 * %d"
-          (match bcn.source with None -> "true" | Some z -> "zone_src = "^ string_of_int z)
-          (match bcn.dest with None -> "true" | Some z -> "zone_dst = "^ string_of_int z)
+          (in_zone "zone_src" bcn.source)
+          (in_zone "zone_dst" bcn.dest)
           avg_window
           avg_window
           (* Note: Ideally we would want to compute the max of all.capture_begin *)
@@ -169,12 +175,12 @@ let graph_info_of_bcns csv_dir bcns =
       make_node ~parents:[avg_per_zones] name op in
     Option.may (fun min_bps ->
         let subject = Printf.sprintf "Too little traffic from zone %s to %s"
-                        (string_of_zone bcn.source) (string_of_zone bcn.dest)
+                        (name_of_zones bcn.source) (name_of_zones bcn.dest)
         and text = Printf.sprintf
                      "The traffic from zone %s to %s has sunk below \
                       the configured minimum of %d \
                       for the last %g minutes.\n"
-                      (string_of_zone bcn.source) (string_of_zone bcn.dest)
+                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       min_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
           "ALERT \"low traffic\" WHEN bps < %d SUBJECT %S TEXT %S"
@@ -185,12 +191,12 @@ let graph_info_of_bcns csv_dir bcns =
       ) bcn.min_bps ;
     Option.may (fun max_bps ->
         let subject = Printf.sprintf "Too much traffic from zone %s to %s"
-                        (string_of_zone bcn.source) (string_of_zone bcn.dest)
+                        (name_of_zones bcn.source) (name_of_zones bcn.dest)
         and text = Printf.sprintf
                      "The traffic from zones %s to %s has raised above \
                       the configured maximum of %d \
                       for the last %g minutes.\n"
-                      (string_of_zone bcn.source) (string_of_zone bcn.dest)
+                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       max_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
           "ALERT \"high traffic\" WHEN bps > %d SUBJECT %S TEXT %S"

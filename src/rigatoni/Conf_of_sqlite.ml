@@ -64,16 +64,17 @@ type db =
   { db : Sqlite3.db ;
     get_mtime : Sqlite3.stmt ;
     get_config : Sqlite3.stmt ;
+    get_zones : Sqlite3.stmt ;
     mutable last_updated : float ;
     mutable new_mtime : float }
 
 type config_key =
   { (* Name used in the alert configuration: *)
     name : string ;
-    (* Source of traffic covered by this rule: *)
-    source : int option ;
-    (* Destination of traffic covered by this rule: *)
-    dest : int option ;
+    (* Sources of traffic covered by this rule (empty list for any): *)
+    source : int list ;
+    (* Destinations of traffic covered by this rule (empty list for any): *)
+    dest : int list ;
     (* Individual measurements are aggregated over that period of time
      * (typically 5 minutes), and we henceforth consider only the averages over
      * that duration. If incoming events are already aggregated (which they
@@ -100,11 +101,35 @@ type config_key =
     max_rtt : float option ;
     max_rr : float option }
 
+let zone_name_of_id = Hashtbl.create 37
+let fold_zones f = Hashtbl.fold f zone_name_of_id []
+
+(* Is z1 a subzone of z2? *)
+let is_subzone zn1 = function
+  | None -> false
+  | Some zn2 ->
+    (* z1 is a subzone of z2 iff z1 name starts with z2 name + "/" *)
+    String.starts_with zn1 (zn2 ^ "/")
+let (<<) = is_subzone
+
+let add_subzones_down_to z' z_opt =
+  let z'name = Option.map (Hashtbl.find zone_name_of_id) z' in
+  match z_opt with
+  | None -> []
+  | Some z ->
+    let z_name = Hashtbl.find zone_name_of_id z in
+    (* The main zone must stay at head of the list for later we use List.hd for
+     * naming the set *)
+    z :: fold_zones (fun id name lst ->
+      if name << Some z_name && not (name << z'name) then id::lst else lst)
+
 let config_key_of_step db =
   let open Sqlite3 in
+  let main_source = column db.get_config 1 |> to_int
+  and main_dest = column db.get_config 2 |> to_int in
   { name = column db.get_config 0 |> to_string |> required ;
-    source = column db.get_config 1 |> to_int ;
-    dest = column db.get_config 2 |> to_int ;
+    source = main_source |> add_subzones_down_to main_dest ;
+    dest = main_dest |> add_subzones_down_to main_source ;
     avg_window = column db.get_config 3 |> to_float |> required ;
     obs_window = column db.get_config 4 |> to_float |> required ;
     percentile = column db.get_config 5 |> to_float |> required ;
@@ -172,8 +197,11 @@ let flow_alert_params_query =
     WHERE \"max\" > 0 AND is_symmetric"
 
 let last_mtime_query =
-  "SELECT strftime('%s', MAX(date_modify)) as mtime \
-   FROM bcnthresholds"
+  "SELECT strftime('%s', MAX(date_modify)) as mtime FROM \
+   (SELECT date_modify FROM bcnthresholds UNION SELECT date_modify FROM zone)"
+
+let get_zones_query =
+  "SELECT id, name FROM zone WHERE NOT is_deleted"
 
 let get_db_mtime stmt =
   let open Sqlite3 in
@@ -194,9 +222,10 @@ let get_db filename =
     let db = db_open ~mode:`READONLY filename in
     !logger.debug "got db handler" ;
     let get_mtime = prepare db last_mtime_query in
-    let get_config = prepare db flow_alert_params_query in
     !logger.debug "SQL statements have been prepared" ;
-    { db ; get_mtime ; get_config ;
+    { db ; get_mtime ;
+      get_config = prepare db flow_alert_params_query ;
+      get_zones = prepare db get_zones_query ;
       last_updated = 0. ; new_mtime = get_db_mtime get_mtime }
   ) with exc -> (
     Printf.eprintf "Exception: %s" (Printexc.to_string exc) ;
@@ -222,13 +251,30 @@ let must_reload db =
 let get_config db =
   !logger.debug "Building configuration from DB..." ;
   let open Sqlite3 in
+  (* First get the zone tree *)
+  Hashtbl.clear zone_name_of_id ;
+  let rec loop () =
+    match step db.get_zones with
+    | Rc.ROW ->
+      let id = column db.get_zones 0 |> to_int |> required
+      and name = column db.get_zones 1 |> to_string |> required in
+      Hashtbl.add zone_name_of_id id name ;
+      loop ()
+    | Rc.DONE ->
+      reset db.get_zones |> must_be_ok
+    | _ ->
+      reset db.get_zones |> ignore ;
+      failwith "No idea what to do from this get_zones result" (* TODO: to_string *)
+  in loop () ;
+  (* Now the BCN *)
   reset db.get_config |> must_be_ok ;
   let rec loop prev =
     match step db.get_config with
     | Rc.ROW ->
       let config_key = config_key_of_step db in
       !logger.debug "Read one DB row from zone %a to %a..."
-        (Option.print Int.print) config_key.source (Option.print Int.print) config_key.dest ;
+        (List.print Int.print) config_key.source
+        (List.print Int.print) config_key.dest ;
       loop (config_key :: prev)
     | Rc.DONE ->
       !logger.debug "Build a conf with %d alerts"
