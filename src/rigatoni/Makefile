@@ -1,7 +1,8 @@
 top_srcdir = ..
 
 LINKED_WITH_TESTS = \
-	Log.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml RingBuf.ml RamenConf.ml
+	Log.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml \
+	RingBuf.ml RamenConf.ml
 
 TESTABLE_SOURCES = \
 	RamenSharedTypes.ml Lang.ml Compiler.ml
@@ -15,7 +16,9 @@ RIGATONI_SOURCES = \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \
-	Consts.ml Helpers.ml Log.ml RingBuf.ml RingBufLib.ml Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
+	Consts.ml Helpers.ml Log.ml \
+	RingBuf.ml RingBufLib.ml \
+	Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h

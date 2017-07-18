@@ -68,3 +68,4 @@ type graph_info =
     status : graph_status [@ppp_default Edition] ;
     last_started : float option ;
     last_stopped : float option } [@@ppp PPP_JSON]
+

@@ -24,83 +24,83 @@ let graph_info_of_bcns csv_dir bcns =
   let top =
     let op =
       Printf.sprintf
-        "READ AND DELETE CSV FILES \"%s/tcp_v29.*.csv\" SEPARATOR \"\\t\" NULL \"<NULL>\" (\n\
-           poller string not null,\n\
-           capture_begin u64 not null,\n\
-           capture_end u64 not null,\n\
-           device_client u8 null,\n\
-           device_server u8 null,\n\
-           vlan_client u32 null,\n\
-           vlan_server u32 null,\n\
-           mac_client u64 null,\n\
-           mac_server u64 null,\n\
-           zone_client u32 not null,\n\
-           zone_server u32 not null,\n\
-           ip4_client u32 null,\n\
-           ip6_client i128 null,\n\
-           ip4_server u32 null,\n\
-           ip6_server i128 null,\n\
-           ip4_external u32 null,\n\
-           ip6_external i128 null,\n\
-           port_client u16 not null,\n\
-           port_server u16 not null,\n\
-           diffserv_client u8 not null,\n\
-           diffserv_server u8 not null,\n\
-           os_client u8 null,\n\
-           os_server u8 null,\n\
-           mtu_client u16 null,\n\
-           mtu_server u16 null,\n\
-           captured_pcap string null,\n\
-           application u32 not null,\n\
-           protostack string null,\n\
-           uuid string null,\n\
-           traffic_bytes_client u64 not null,\n\
-           traffic_bytes_server u64 not null,\n\
-           traffic_packets_client u64 not null,\n\
-           traffic_packets_server u64 not null,\n\
-           payload_bytes_client u64 not null,\n\
-           payload_bytes_server u64 not null,\n\
-           payload_packets_client u64 not null,\n\
-           payload_packets_server u64 not null,\n\
-           retrans_traffic_bytes_client u64 null,\n\
-           retrans_traffic_bytes_server u64 null,\n\
-           retrans_payload_bytes_client u64 null,\n\
-           retrans_payload_bytes_server u64 null,\n\
-           syn_count_client u64 null,\n\
-           fin_count_client u64 null,\n\
-           fin_count_server u64 null,\n\
-           rst_count_client u64 null,\n\
-           rst_count_server u64 null,\n\
-           timeout_count u64 not null,\n\
-           close_count u64 null,\n\
-           dupack_count_client u64 null,\n\
-           dupack_count_server u64 null,\n\
-           zero_window_count_client u64 null,\n\
-           zero_window_count_server u64 null,\n\
-           ct_count u64 null,\n\
-           ct_sum u64 not null,\n\
-           ct_square_sum u64 not null,\n\
-           rt_count_server u64 null,\n\
-           rt_sum_server u64 not null,\n\
-           rt_square_sum_server u64 not null,\n\
-           rtt_count_client u64 null,\n\
-           rtt_sum_client u64 not null,\n\
-           rtt_square_sum_client u64 not null,\n\
-           rtt_count_server u64 null,\n\
-           rtt_sum_server u64 not null,\n\
-           rtt_square_sum_server u64 not null,\n\
-           rd_count_client u64 null,\n\
-           rd_sum_client u64 not null,\n\
-           rd_square_sum_client u64 not null,\n\
-           rd_count_server u64 null,\n\
-           rd_sum_server u64 not null,\n\
-           rd_square_sum_server u64 not null,\n\
-           dtt_count_client u64 null,\n\
-           dtt_sum_client u64 not null,\n\
-           dtt_square_sum_client u64 not null,\n\
-           dtt_count_server u64 null,\n\
-           dtt_sum_server u64 not null,\n\
-           dtt_square_sum_server u64 not null,\n\
+        "READ AND DELETE CSV FILES \"%s/tcp_v29.*.csv\" SEPARATOR \"\\t\" NULL \"<NULL>\" (\n  \
+           poller string not null,\n  \
+           capture_begin u64 not null,\n  \
+           capture_end u64 not null,\n  \
+           device_client u8 null,\n  \
+           device_server u8 null,\n  \
+           vlan_client u32 null,\n  \
+           vlan_server u32 null,\n  \
+           mac_client u64 null,\n  \
+           mac_server u64 null,\n  \
+           zone_client u32 not null,\n  \
+           zone_server u32 not null,\n  \
+           ip4_client u32 null,\n  \
+           ip6_client i128 null,\n  \
+           ip4_server u32 null,\n  \
+           ip6_server i128 null,\n  \
+           ip4_external u32 null,\n  \
+           ip6_external i128 null,\n  \
+           port_client u16 not null,\n  \
+           port_server u16 not null,\n  \
+           diffserv_client u8 not null,\n  \
+           diffserv_server u8 not null,\n  \
+           os_client u8 null,\n  \
+           os_server u8 null,\n  \
+           mtu_client u16 null,\n  \
+           mtu_server u16 null,\n  \
+           captured_pcap string null,\n  \
+           application u32 not null,\n  \
+           protostack string null,\n  \
+           uuid string null,\n  \
+           traffic_bytes_client u64 not null,\n  \
+           traffic_bytes_server u64 not null,\n  \
+           traffic_packets_client u64 not null,\n  \
+           traffic_packets_server u64 not null,\n  \
+           payload_bytes_client u64 not null,\n  \
+           payload_bytes_server u64 not null,\n  \
+           payload_packets_client u64 not null,\n  \
+           payload_packets_server u64 not null,\n  \
+           retrans_traffic_bytes_client u64 null,\n  \
+           retrans_traffic_bytes_server u64 null,\n  \
+           retrans_payload_bytes_client u64 null,\n  \
+           retrans_payload_bytes_server u64 null,\n  \
+           syn_count_client u64 null,\n  \
+           fin_count_client u64 null,\n  \
+           fin_count_server u64 null,\n  \
+           rst_count_client u64 null,\n  \
+           rst_count_server u64 null,\n  \
+           timeout_count u64 not null,\n  \
+           close_count u64 null,\n  \
+           dupack_count_client u64 null,\n  \
+           dupack_count_server u64 null,\n  \
+           zero_window_count_client u64 null,\n  \
+           zero_window_count_server u64 null,\n  \
+           ct_count u64 null,\n  \
+           ct_sum u64 not null,\n  \
+           ct_square_sum u64 not null,\n  \
+           rt_count_server u64 null,\n  \
+           rt_sum_server u64 not null,\n  \
+           rt_square_sum_server u64 not null,\n  \
+           rtt_count_client u64 null,\n  \
+           rtt_sum_client u64 not null,\n  \
+           rtt_square_sum_client u64 not null,\n  \
+           rtt_count_server u64 null,\n  \
+           rtt_sum_server u64 not null,\n  \
+           rtt_square_sum_server u64 not null,\n  \
+           rd_count_client u64 null,\n  \
+           rd_sum_client u64 not null,\n  \
+           rd_square_sum_client u64 not null,\n  \
+           rd_count_server u64 null,\n  \
+           rd_sum_server u64 not null,\n  \
+           rd_square_sum_server u64 not null,\n  \
+           dtt_count_client u64 null,\n  \
+           dtt_sum_client u64 not null,\n  \
+           dtt_square_sum_client u64 not null,\n  \
+           dtt_count_server u64 null,\n  \
+           dtt_sum_server u64 not null,\n  \
+           dtt_square_sum_server u64 not null,\n  \
            dcerpc_uuid string null\n\
          )" csv_dir in
     make_node "read csv" op in
@@ -109,16 +109,17 @@ let graph_info_of_bcns csv_dir bcns =
       (* Note: we keep the IPs etc although we do not use them later, for maybe this
        * could also provide a useful data stream to collect stats on individual hosts *)
       Printf.sprintf
-        "SELECT capture_begin, capture_end,\n\
-                device_%s AS device_src, device_%s AS device_dst,\n\
-                vlan_%s AS vlan_src, vlan_%s AS vlan_dst,\n\
-                mac_%s AS mac_src, mac_%s AS mac_dst,\n\
-                zone_%s AS zone_src, zone_%s AS zone_dst,\n\
-                ip4_%s AS ip4_src, ip4_%s AS ip4_dst,\n\
-                ip6_%s AS ip6_src, ip6_%s AS ip6_dst,\n\
-                port_%s AS port_src, port_%s AS port_dst,\n\
-                traffic_packets_%s AS packets,\n\
-                traffic_bytes_%s AS bytes\n\
+        "SELECT\n  \
+           capture_begin, capture_end,\n  \
+           device_%s AS device_src, device_%s AS device_dst,\n  \
+           vlan_%s AS vlan_src, vlan_%s AS vlan_dst,\n  \
+           mac_%s AS mac_src, mac_%s AS mac_dst,\n  \
+           zone_%s AS zone_src, zone_%s AS zone_dst,\n  \
+           ip4_%s AS ip4_src, ip4_%s AS ip4_dst,\n  \
+           ip6_%s AS ip6_src, ip6_%s AS ip6_dst,\n  \
+           port_%s AS port_src, port_%s AS port_dst,\n  \
+           traffic_packets_%s AS packets,\n  \
+           traffic_bytes_%s AS bytes\n\
          WHERE traffic_packets_%s > 0"
          src dst src dst src dst src dst src dst src dst src dst src dst src in
     let name = Printf.sprintf "to unidir %s to %s" src dst in
@@ -142,10 +143,10 @@ let graph_info_of_bcns csv_dir bcns =
             what_zone ^ " = " ^ string_of_int z) "" lst ^")" in
       let op =
         Printf.sprintf
-          "SELECT AND EXPORT
-             min of capture_begin, max of capture_end,\n\
-             sum of packets / ((max_capture_end - min_capture_begin) / 1_000_000) as packets_per_secs,\n\
-             sum of bytes / ((max_capture_end - min_capture_begin) / 1_000_000) as bytes_per_secs,\n\
+          "SELECT AND EXPORT\n  \
+             min of capture_begin, max of capture_end,\n  \
+             sum of packets / ((max_capture_end - min_capture_begin) / 1_000_000) as packets_per_secs,\n  \
+             sum of bytes / ((max_capture_end - min_capture_begin) / 1_000_000) as bytes_per_secs,\n  \
              zone_src, zone_dst\n\
            WHERE %s AND %s\n\
            GROUP BY capture_begin // %d\n\
@@ -163,8 +164,8 @@ let graph_info_of_bcns csv_dir bcns =
     let perc_per_obs_window =
       let op =
         Printf.sprintf
-          "SELECT AND EXPORT
-             %gth percentile of bytes_per_secs AS bps,\n\
+          "SELECT AND EXPORT\n  \
+             %gth percentile of bytes_per_secs AS bps,\n  \
              zone_src, zone_dst\n\
            GROUP BY min_capture_begin // %d\n\
            COMMIT AND SLIDE 1 WHEN in.#count >= %d"
@@ -185,7 +186,7 @@ let graph_info_of_bcns csv_dir bcns =
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       min_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
-          "ALERT \"low traffic\" WHEN bps < %d SUBJECT %S TEXT %S"
+          "ALERT \"low traffic\" WHEN bps < %d\nSUBJECT %S\nTEXT %S"
             min_bps subject text in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
         make_node ~parents:[perc_per_obs_window] name ops |>
@@ -201,7 +202,7 @@ let graph_info_of_bcns csv_dir bcns =
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       max_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
-          "ALERT \"high traffic\" WHEN bps > %d SUBJECT %S TEXT %S"
+          "ALERT \"high traffic\" WHEN bps > %d\nSUBJECT %S\nTEXT %S"
             max_bps subject text in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
         make_node ~parents:[perc_per_obs_window] name ops |>

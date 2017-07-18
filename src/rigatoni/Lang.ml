@@ -287,7 +287,7 @@ struct
       | TFloat  -> "FLOAT"
       | TString -> "STRING"
       | TBool   -> "BOOL"
-      | TNum    -> "ANY_NUM"
+      | TNum    -> "ANY_NUM" (* This one not for consumption *)
       | TU8     -> "U8"
       | TU16    -> "U16"
       | TU32    -> "U32"
