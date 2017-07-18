@@ -238,7 +238,7 @@ let get_graph_json conf _headers =
   let graph_info =
     { nodes = Hashtbl.fold (fun _name node lst ->
         node_info_of_node node :: lst
-      ) conf.C.building_graph.C.nodes [] ;
+      ) conf.C.building_graph.C.persist.C.nodes [] ;
       status = conf.C.building_graph.C.status ;
       last_started = conf.C.building_graph.C.last_started ;
       last_stopped = conf.C.building_graph.C.last_stopped } in
@@ -248,14 +248,14 @@ let get_graph_json conf _headers =
 let dot_of_graph graph =
   let dot = IO.output_string () in
   Printf.fprintf dot "digraph rigatoni {\n" ;
-  Hashtbl.keys graph.C.nodes |>
+  Hashtbl.keys graph.C.persist.C.nodes |>
     Enum.iter (Printf.fprintf dot "\t%S\n") ;
   Printf.fprintf dot "\n" ;
   Hashtbl.iter (fun name node ->
       List.iter (fun c ->
           Printf.fprintf dot "\t%S -> %S\n" name c.C.name
         ) node.C.children
-    ) graph.C.nodes ;
+    ) graph.C.persist.C.nodes ;
   Printf.fprintf dot "}\n" ;
   IO.close_out dot
 
@@ -286,7 +286,7 @@ let put_graph conf headers body =
       body (Printexc.to_string e) ;
     fail e
   | msg ->
-    let graph = C.make_new_graph () in
+    let graph = C.make_graph () in
     (* First create all the nodes *)
     List.iter (fun info ->
         let n = C.make_node graph info.name info.operation in

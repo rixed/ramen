@@ -64,11 +64,15 @@ type node =
     mutable pid : int option ;
     mutable last_report : Binocle.metric list }
 
+type graph_persist =
+  { nodes : (string, node) Hashtbl.t }
+
 type graph =
-  { nodes : (string, node) Hashtbl.t ;
-    mutable status : graph_status ;
+  { mutable status : graph_status ;
     mutable last_started : float option ;
-    mutable last_stopped : float option }
+    mutable last_stopped : float option ;
+    importing_threads : unit Lwt.t list ;
+    persist : graph_persist }
 
 type conf =
   { mutable building_graph : graph ;
@@ -89,7 +93,7 @@ let set_graph_editable graph =
        node.in_type <- make_temp_tup_typ () ;
        node.out_type <- make_temp_tup_typ () ;
        node.command <- None ;
-       node.pid <- None) graph.nodes
+       node.pid <- None) graph.persist.nodes
   | Running ->
     raise (InvalidCommand "Graph is running")
 
@@ -125,50 +129,57 @@ let update_node graph node op_text =
   node.op_text <- op_text ;
   node.command <- None ; node.pid <- None
 
-let make_new_graph () =
-  { nodes = Hashtbl.create 17 ;
-    status = Edition ;
-    last_started = None ; last_stopped = None }
+let make_graph ?persist () =
+  let persist =
+    Option.default_delayed (fun () -> { nodes = Hashtbl.create 17 }) persist in
+  { status = Edition ;
+    importing_threads = [] ;
+    last_started = None ; last_stopped = None ;
+    persist }
 
-let make_graph save_file =
-  try
-    File.with_file_in save_file (fun ic -> Marshal.input ic)
-  with
+let load_graph save_file =
+  let persist =
+    try
+      File.with_file_in save_file (fun ic ->
+        Some (Marshal.input ic))
+    with
     | Sys_error err ->
       !logger.debug "Cannot read state from file %S: %s. Starting anew" save_file err ;
-      make_new_graph ()
+      None
     | BatInnerIO.No_more_input ->
       !logger.debug "Cannot read state from file %S: not enough input. Starting anew" save_file ;
-      make_new_graph ()
+      None
+  in
+  make_graph ?persist ()
 
 let save_graph conf graph =
   !logger.debug "Saving graph in %S" conf.save_file ;
   File.with_file_out ~mode:[`create; `trunc] conf.save_file (fun oc ->
-    Marshal.output oc graph)
+    Marshal.output oc graph.persist)
 
 let has_node _conf graph id =
-  Hashtbl.mem graph.nodes id
+  Hashtbl.mem graph.persist.nodes id
 
 let find_node _conf graph id =
-  Hashtbl.find graph.nodes id
+  Hashtbl.find graph.persist.nodes id
 
 let add_node conf graph node =
   if has_node conf graph node.name then
     raise (InvalidCommand ("Node "^ node.name ^" already exists")) ;
-  Hashtbl.add graph.nodes node.name node ;
+  Hashtbl.add graph.persist.nodes node.name node ;
   save_graph conf graph
 
 let remove_node conf graph name =
   !logger.debug "Removing node %s" name ;
   set_graph_editable graph ;
-  let node = Hashtbl.find graph.nodes name in
+  let node = Hashtbl.find graph.persist.nodes name in
   List.iter (fun p ->
       p.children <- List.filter ((!=) node) p.children
     ) node.parents ;
   List.iter (fun p ->
       p.parents <- List.filter ((!=) node) p.parents
     ) node.children ;
-  Hashtbl.remove_all graph.nodes name ;
+  Hashtbl.remove_all graph.persist.nodes name ;
   save_graph conf graph
 
 let has_link _conf src dst =
@@ -190,7 +201,7 @@ let remove_link conf graph src dst =
 
 let make_conf debug save_file =
   logger := Log.make_logger debug ;
-  { building_graph = make_graph save_file ; save_file ;
+  { building_graph = load_graph save_file ; save_file ;
     report_url_prefix = "http://127.0.0.1:29380/report" }
 
 let run_background cmd args env =
@@ -222,7 +233,7 @@ let run conf graph =
     !logger.info "Creating ringbuffers..." ;
     Hashtbl.iter (fun _ node ->
         RingBuf.create (rb_name_of node) rb_sz_words
-      ) graph.nodes ;
+      ) graph.persist.nodes ;
     (* Now run everything *)
     !logger.info "Launching generated programs..." ;
     let now = Unix.gettimeofday () in
@@ -234,7 +245,7 @@ let run conf graph =
           "output_ringbufs="^ String.concat "," (List.map rb_name_of node.children) ;
           "report_url="^ conf.report_url_prefix ^"/"^ node.name |] in
         node.pid <- Some (run_background command [||] env)
-      ) graph.nodes ;
+      ) graph.persist.nodes ;
     graph.status <- Running ;
     graph.last_started <- Some now ;
     save_graph conf graph
@@ -268,7 +279,7 @@ let stop conf graph =
             !logger.error "Cannot wait for pid %d: %s"
               pid (Printexc.to_string exn)) ;
           node.pid <- None
-      ) graph.nodes ;
+      ) graph.persist.nodes ;
     graph.status <- Compiled ;
     graph.last_stopped <- Some now ;
     save_graph conf graph

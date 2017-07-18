@@ -463,7 +463,7 @@ let set_all_types graph =
   let rec loop pass =
     if pass < 0 then (
       let bad_nodes =
-        Hashtbl.values graph.C.nodes //
+        Hashtbl.values graph.C.persist.C.nodes //
         (fun n -> not (node_is_complete n)) in
       let print_bad_node fmt node =
         Printf.fprintf fmt "%s: %a"
@@ -475,7 +475,7 @@ let set_all_types graph =
       raise (Lang.SyntaxError msg)) ;
     if Hashtbl.fold (fun _ node changed ->
           check_node_types node || changed
-        ) graph.C.nodes false
+        ) graph.C.persist.C.nodes false
     then loop (pass - 1)
   in
   let max_pass = 50 (* TODO: max number of field for a node times number of nodes? *) in
@@ -565,13 +565,13 @@ let compile conf graph =
             C.print_temp_tup_typ node.C.in_type
             C.print_temp_tup_typ node.C.out_type ;
           complete && node_is_complete node
-        ) graph.C.nodes true in
+        ) graph.C.persist.C.nodes true in
     (* TODO: better reporting *)
     if not complete then raise (Lang.SyntaxError "Cannot complete typing") ;
     Hashtbl.iter (fun _ node ->
         try compile_node node
         with Failure m ->
           raise (Failure ("While compiling "^ node.C.name ^": "^ m))
-      ) graph.C.nodes ;
+      ) graph.C.persist.C.nodes ;
     graph.C.status <- Compiled ;
     C.save_graph conf graph
