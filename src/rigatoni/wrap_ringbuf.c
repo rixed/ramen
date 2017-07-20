@@ -267,24 +267,32 @@ CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
   CAMLreturn(Val_unit); \
 }
 
+#define WRITE_UNBOXED(bits) \
+CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
+{ \
+  CAMLparam3(tx, off_, v_); \
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
+  size_t offs = Long_val(off_); \
+  assert(Is_long(v_)); \
+  uint##bits##_t v = (uint##bits##_t)Long_val(v); \
+  write_words(wrtx, offs, (char const *)&v, bits / 8); \
+  CAMLreturn(Val_unit); \
+}
+
 WRITE_BOXED(128);
 WRITE_BOXED(64);
 WRITE_BOXED(32);
-WRITE_BOXED(16);
-WRITE_BOXED(8);
+WRITE_UNBOXED(16);
+WRITE_UNBOXED(8);
 
 extern struct custom_operations uint128_ops;
 extern struct custom_operations uint64_ops;
 extern struct custom_operations uint32_ops;
-extern struct custom_operations uint16_ops;
-extern struct custom_operations uint8_ops;
 extern struct custom_operations int128_ops;
 extern struct custom_operations caml_int64_ops;
 extern struct custom_operations caml_int32_ops;
-extern struct custom_operations int16_ops;
-extern struct custom_operations int8_ops;
 
-#define READ_INT(int_type, bits, ops) \
+#define READ_CUSTOM_INT(int_type, bits, ops) \
 CAMLprim value read_##int_type##bits(value tx, value off_) \
 { \
   CAMLparam2(tx, off_); \
@@ -297,16 +305,27 @@ CAMLprim value read_##int_type##bits(value tx, value off_) \
   CAMLreturn(v); \
 }
 
-READ_INT(uint, 128, uint128_ops);
-READ_INT(uint, 64, uint64_ops);
-READ_INT(uint, 32, uint32_ops);
-READ_INT(uint, 16, uint16_ops);
-READ_INT(uint, 8, uint8_ops);
-READ_INT(int, 128, int128_ops);
-READ_INT(int, 64, caml_int64_ops);
-READ_INT(int, 32, caml_int32_ops);
-READ_INT(int, 16, int16_ops);
-READ_INT(int, 8, int8_ops);
+#define READ_INT(int_type, bits) \
+CAMLprim value read_##int_type##bits(value tx, value off_) \
+{ \
+  CAMLparam2(tx, off_); \
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
+  size_t offs = Long_val(off_); \
+  int_type##bits##_t v = 0; \
+  read_words(wrtx, offs, (char *)&v, bits / 8); \
+  CAMLreturn(Val_long(v)); \
+}
+
+READ_CUSTOM_INT(uint, 128, uint128_ops);
+READ_CUSTOM_INT(uint, 64, uint64_ops);
+READ_CUSTOM_INT(uint, 32, uint32_ops);
+READ_INT(uint, 16);
+READ_INT(uint, 8);
+READ_CUSTOM_INT(int, 128, int128_ops);
+READ_CUSTOM_INT(int, 64, caml_int64_ops);
+READ_CUSTOM_INT(int, 32, caml_int32_ops);
+READ_INT(int, 16);
+READ_INT(int, 8);
 
 CAMLprim value write_boxed_str(value tx, value off_, value v_)
 {
