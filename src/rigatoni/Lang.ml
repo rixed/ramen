@@ -279,7 +279,7 @@ module Scalar =
 struct
   (*$< Scalar *)
 
-  type typ = scalar
+  type typ = scalar_typ
 
   let print_typ fmt typ =
     let s = match typ with
@@ -473,12 +473,10 @@ let non_keyword =
 
 module Tuple =
 struct
-  type field_typ = { name : string ; nullable : bool ; typ : scalar }
-
   let print_field_typ fmt field =
     (* TODO: check that name is a valid identifier *)
     Printf.fprintf fmt "%s %a %sNULL"
-      field.name
+      field.typ_name
       Scalar.print_typ field.typ
       (if field.nullable then "" else "NOT ")
 
@@ -488,6 +486,8 @@ struct
     (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) fmt lst
 
   type t = (string, Scalar.t) Hashtbl.t
+
+  let make_empty () = Hashtbl.create 7
 end
 
 module Expr =
@@ -500,12 +500,12 @@ struct
     { expr_name : string ;
       uniq_num : int ; (* to build var names or record field names *)
       mutable nullable : bool option ;
-      mutable scalar_typ : scalar option }
+      mutable scalar_typ : scalar_typ option }
 
   let to_expr_type_info typ =
-    { RamenSharedTypes.name = typ.expr_name ;
-      RamenSharedTypes.nullable = typ.nullable ;
-      RamenSharedTypes.typ = typ.scalar_typ }
+    { name_info = typ.expr_name ;
+      nullable_info = typ.nullable ;
+      typ_info = typ.scalar_typ }
 
   let typ_is_complete typ =
     typ.nullable <> None && typ.scalar_typ <> None
@@ -1243,7 +1243,7 @@ struct
         optional ~def:true (
           optional ~def:true (blanks -+ (strinG "not" >>: fun () -> false)) +-
           blanks +- strinG "null") >>:
-        fun ((name, typ), nullable) -> Tuple.{ name ; typ ; nullable }
+        fun ((typ_name, typ), nullable) -> { typ_name ; typ ; nullable }
       in
       (strinG "read" -- blanks -+
        optional ~def:false (
@@ -1373,25 +1373,25 @@ struct
 
       (Ok (\
         ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; separator = "," ; null = "" ; \
-                      fields = Lang.Tuple.[ \
-                        { name = "f1" ; nullable = true ; typ = TBool } ;\
-                        { name = "f2" ; nullable = false ; typ = TI32 } ] },\
+                      fields = [ \
+                        { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
+                        { typ_name = "f2" ; nullable = false ; typ = TI32 } ] },\
         (56, [])))\
         (test_p p "read csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
         ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = true ; separator = "," ; null = "" ; \
-                      fields = Lang.Tuple.[ \
-                        { name = "f1" ; nullable = true ; typ = TBool } ;\
-                        { name = "f2" ; nullable = false ; typ = TI32 } ] },\
+                      fields = [ \
+                        { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
+                        { typ_name = "f2" ; nullable = false ; typ = TI32 } ] },\
         (67, [])))\
         (test_p p "read and delete csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
         ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; separator = "\t" ; null = "<NULL>" ; \
-                      fields = Lang.Tuple.[ \
-                        { name = "f1" ; nullable = true ; typ = TBool } ;\
-                        { name = "f2" ; nullable = false ; typ = TI32 } ] },\
+                      fields = [ \
+                        { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
+                        { typ_name = "f2" ; nullable = false ; typ = TI32 } ] },\
         (85, [])))\
         (test_p p "read csv file \"/tmp/toto.csv\" \\
                             separator \"\\t\" null \"<NULL>\" \\

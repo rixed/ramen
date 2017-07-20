@@ -721,3 +721,11 @@ executable implementing each node, or return any encountered error.
 If all went well, you can then GET `/start` for Rigatoni to start all those
 executables, and then `/stop` to kill them all.
 
+=== Receive exported tuples
+
+Some operations export some tuples.
+Those tuples can then be obtained from Rigatoni at `/export/NODE_NAME`.
+To limit the output, a body can be sent with two optional integer fields:
+`since`, to ask for all tuples _after_ that one, and `max_results` to ask for
+no more than that many tuples.
+

@@ -19,8 +19,35 @@ let get_content_type headers =
 let get_accept headers =
   Header.get headers "Accept" |? Consts.json_content_type |> String.lowercase
 
-let accept_anything s =
+let is_accepting_anything s =
   String.starts_with s "*/*"
+
+let is_accepting content_type accept =
+  is_accepting_anything accept || String.starts_with accept content_type
+
+(* When the client cannot accept the response *)
+let cant_accept accept =
+  let status = Code.status_of_code 406 in
+  let body = "{\"error\": \"Can't produce "^ accept ^"\"}\n" in
+  Server.respond_error ~status ~body ()
+
+let check_accept headers content_type f =
+  let accept = get_accept headers in
+  if not (is_accepting content_type accept) then
+    cant_accept accept
+  else f ()
+
+(* Helper to deserialize an incoming json *)
+let of_json headers what ppp body =
+  if get_content_type headers <> Consts.json_content_type then
+    bad_request "Bad content type"
+  else (
+    try PPP.of_string_exc ppp body |> Lwt.return
+    with e ->
+      !logger.info "%s: Cannot parse received body: %S, Exception %s"
+        what body (Printexc.to_string e) ;
+      fail e
+  )
 
 (*
 == Add/Update/Delete a node ==
@@ -45,36 +72,30 @@ Here is the node description. Typically, optional fields are optional or even
 forbidden when creating the node and are set when getting node information.
 *)
 
-let ok_body = "{\"success\": true}\n"
+let ok_body = "{\"success\": true}"
 let respond_ok ?(body=ok_body) () =
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" Consts.json_content_type in
+  let body = body ^"\n" in
   Server.respond_string ~status ~headers ~body ()
 
 let put_node conf headers name body =
   (* Get the message from the body *)
-  if get_content_type headers <> Consts.json_content_type then
-    bad_request "Bad content type"
-  else match PPP.of_string_exc make_node_ppp body with
-  | exception e ->
-    !logger.info "Creating node %s: Cannot parse received body: %S, Exception %s"
-      name body (Printexc.to_string e) ;
-    fail e
-  | msg ->
-    (match C.find_node conf conf.C.building_graph name with
-    | exception Not_found ->
-      (match C.make_node conf.C.building_graph name msg.operation with
-      | exception e ->
-        bad_request ("Node "^ name ^": "^ Printexc.to_string e)
-      | node ->
-        Lwt.return (C.add_node conf conf.C.building_graph node))
+  let%lwt msg = of_json headers ("Creating node "^ name) make_node_ppp body in
+  (match C.find_node conf conf.C.building_graph name with
+  | exception Not_found ->
+    (match C.make_node conf.C.building_graph name msg.operation with
+    | exception e ->
+      bad_request ("Node "^ name ^": "^ Printexc.to_string e)
     | node ->
-      (match C.update_node conf.C.building_graph node msg.operation with
-      | exception e ->
-        bad_request ("Node "^ name ^": "^ Printexc.to_string e)
-      | () -> Lwt.return_unit)
-      ) >>= fun () ->
-    respond_ok ()
+      Lwt.return (C.add_node conf conf.C.building_graph node))
+  | node ->
+    (match C.update_node conf.C.building_graph node msg.operation with
+    | exception e ->
+      bad_request ("Node "^ name ^": "^ Printexc.to_string e)
+    | () -> Lwt.return_unit)
+    ) >>= fun () ->
+  respond_ok ()
 
 let type_of_operation_of =
   let open Lang.Operation in
@@ -105,7 +126,8 @@ let node_info_of_node node =
   let to_expr_type_info lst =
     List.map (fun (rank, typ) -> rank, Lang.Expr.to_expr_type_info typ) lst
   in
-  { name = node.C.name ;
+  Node.{
+    name = node.C.name ;
     operation = node.C.op_text ;
     type_of_operation = Some (type_of_operation_of node.C.operation) ;
     command = node.C.command ;
@@ -127,7 +149,7 @@ let get_node conf _headers name =
     fail (HttpError (404, "No such node"))
   | node ->
     let node_info = node_info_of_node node in
-    let body = PPP.to_string node_info_ppp node_info ^"\n" in
+    let body = PPP.to_string Node.info_ppp node_info in
     respond_ok ~body ()
 
 let del_node conf _headers name =
@@ -211,24 +233,20 @@ let diff_list bef aft =
   in
   loop [] [] bef aft
 
-let set_links conf _headers name body =
-  match PPP.of_string_exc node_links_ppp body with
-  | exception e ->
-    !logger.info "Set links for node %s: Cannot parse received body: %S, Exception %s"
-      name body (Printexc.to_string e) ;
-    fail e
-  | node_links ->
-    let graph = conf.C.building_graph in
-    let%lwt node = node_of_name conf graph name in
-    let%lwt parents = Lwt_list.map_s (node_of_name conf graph) node_links.parents in
-    let%lwt children = Lwt_list.map_s (node_of_name conf graph) node_links.children in
-    let to_add, to_del = diff_list node.C.parents parents in
-    List.iter (fun p -> C.remove_link conf graph p node) to_del ;
-    List.iter (fun p -> C.make_link conf graph p node) to_add ;
-    let to_add, to_del = diff_list node.C.children children in
-    List.iter (fun c -> C.remove_link conf graph node c) to_del ;
-    List.iter (fun c -> C.make_link conf graph node c) to_add ;
-    respond_ok ()
+let set_links conf headers name body =
+  let%lwt node_links =
+    of_json headers ("Set links for node "^ name) node_links_ppp body in
+  let graph = conf.C.building_graph in
+  let%lwt node = node_of_name conf graph name in
+  let%lwt parents = Lwt_list.map_s (node_of_name conf graph) node_links.parents in
+  let%lwt children = Lwt_list.map_s (node_of_name conf graph) node_links.children in
+  let to_add, to_del = diff_list node.C.parents parents in
+  List.iter (fun p -> C.remove_link conf graph p node) to_del ;
+  List.iter (fun p -> C.make_link conf graph p node) to_add ;
+  let to_add, to_del = diff_list node.C.children children in
+  List.iter (fun c -> C.remove_link conf graph node c) to_del ;
+  List.iter (fun c -> C.make_link conf graph node c) to_add ;
+  respond_ok ()
 
 (*
 == Display the graph (JSON or SVG representation) ==
@@ -242,7 +260,7 @@ let get_graph_json conf _headers =
       status = conf.C.building_graph.C.status ;
       last_started = conf.C.building_graph.C.last_started ;
       last_stopped = conf.C.building_graph.C.last_stopped } in
-  let body = PPP.to_string graph_info_ppp graph_info ^"\n" in
+  let body = PPP.to_string graph_info_ppp graph_info in
   respond_ok ~body ()
 
 let dot_of_graph graph =
@@ -267,70 +285,92 @@ let get_graph_dot conf _headers =
 
 let get_graph conf headers =
   let accept = get_accept headers in
-  if accept_anything accept ||
-     String.starts_with accept Consts.json_content_type then
+  if is_accepting Consts.json_content_type accept then
     get_graph_json conf headers
-  else if String.starts_with accept Consts.dot_content_type then
+  else if is_accepting Consts.dot_content_type accept then
     get_graph_dot conf headers
   else
-    let status = Code.status_of_code 406 in
-    Server.respond_error ~status ~body:("{\"error\": \"Can't produce "^ accept ^"\"}\n") ()
+    cant_accept accept
 
 let put_graph conf headers body =
-  (* Get the message from the body *)
-  if get_content_type headers <> Consts.json_content_type then
-    bad_request "Bad content type"
-  else match PPP.of_string_exc graph_info_ppp body with
-  | exception e ->
-    !logger.info "Uploading graph: Cannot parse received body: %S, Exception %s"
-      body (Printexc.to_string e) ;
-    fail e
-  | msg ->
-    let graph = C.make_graph () in
-    (* First create all the nodes *)
-    List.iter (fun info ->
-        let n = C.make_node graph info.name info.operation in
-        C.add_node conf graph n
-      ) msg.nodes ;
-    (* Then all the links *)
-    let%lwt () = Lwt_list.iter_s (fun info ->
-        let%lwt src = node_of_name conf graph info.name in
-        Lwt_list.iter_s (fun child ->
-            let%lwt dst = node_of_name conf graph child in
-            C.make_link conf graph src dst ;
-            return_unit
-          ) info.children
-      ) msg.nodes in
-    (* Then make this graph the new one (TODO: support for multiple graphs) *)
-    conf.C.building_graph <- graph ;
-    respond_ok ()
+  let%lwt msg = of_json headers "Uploading graph" graph_info_ppp body in
+  let graph = C.make_graph () in
+  (* First create all the nodes *)
+  List.iter (fun info ->
+      let n = C.make_node graph info.Node.name info.Node.operation in
+      C.add_node conf graph n
+    ) msg.nodes ;
+  (* Then all the links *)
+  let%lwt () = Lwt_list.iter_s (fun info ->
+      let%lwt src = node_of_name conf graph info.Node.name in
+      Lwt_list.iter_s (fun child ->
+          let%lwt dst = node_of_name conf graph child in
+          C.make_link conf graph src dst ;
+          return_unit
+        ) info.Node.children
+    ) msg.nodes in
+  (* Then make this graph the new one (TODO: support for multiple graphs) *)
+  conf.C.building_graph <- graph ;
+  respond_ok ()
 
 (*
 == Whole graph operations: compile/run/stop ==
 *)
 
-let compile conf _headers =
-  (* TODO: check we accept json *)
-  match Compiler.compile conf conf.C.building_graph with
-  | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
-    bad_request e
-  | () ->
-    respond_ok ()
+let compile conf headers =
+  check_accept headers Consts.json_content_type (fun () ->
+    match Compiler.compile conf conf.C.building_graph with
+    | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
+      bad_request e
+    | () ->
+      respond_ok ())
 
-let run conf _headers =
-  (* TODO: check we accept json *)
-  match RamenProcesses.run conf conf.C.building_graph with
-  | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
-    bad_request e
-  | () ->
-    respond_ok ()
+let run conf headers =
+  check_accept headers Consts.json_content_type (fun () ->
+    match RamenProcesses.run conf conf.C.building_graph with
+    | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
+      bad_request e
+    | () ->
+      respond_ok ())
 
-let stop conf _headers =
-  match RamenProcesses.stop conf conf.C.building_graph with
-  | exception C.InvalidCommand e ->
-    bad_request e
-  | () ->
-    respond_ok ()
+let stop conf headers =
+  check_accept headers Consts.json_content_type (fun () ->
+    match RamenProcesses.stop conf conf.C.building_graph with
+    | exception C.InvalidCommand e ->
+      bad_request e
+    | () ->
+      respond_ok ())
+
+(*
+== Exporting tuples ==
+
+Clients can request to be sent the tuples from an exporting node.
+*)
+
+let export _conf headers node_name body =
+  check_accept headers Consts.json_content_type (fun () ->
+    let%lwt req =
+      if body = "" then return empty_export_req else
+      of_json headers ("Exporting from "^ node_name) export_req_ppp body in
+    let fields = RamenExport.get_field_types node_name in
+    let values =
+      RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
+                              node_name [] (fun l t -> t::l) in
+    (* Handcrafted JSON for that one: *)
+    let body =
+      "{\"fields\":"^
+        PPP.to_string field_typ_arr_ppp fields ^","^
+      "\"values\":"^
+        IO.to_string
+          (List.print ~first:"[" ~last:"]" ~sep:","
+            (Array.print ~first:"[" ~last:"]" ~sep:"," Lang.Scalar.print))
+          values ^"}"
+    in
+    respond_ok ~body ())
+
+(*
+== Serving normal files ==
+*)
 
 let ext_of_file fname =
   let _, ext = String.rsplit fname ~by:"." in ext
@@ -394,6 +434,10 @@ let callback conf _conn req body =
         | `GET, ["compile"] -> compile conf headers
         | `GET, ["run" | "start"] -> run conf headers
         | `GET, ["stop"] -> stop conf headers
+        | (`GET|`POST), ["export" ; name] ->
+          (* We must allow both POST and GET for that one since we have an optional
+           * body (and some client won't send a body with a GET) *)
+          export conf headers (dec name) body_str
         (* API for children *)
         | `PUT, ["report" ; name] -> report conf headers (dec name) body_str
         (* WWW Client *)

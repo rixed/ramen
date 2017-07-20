@@ -1,5 +1,6 @@
 open Batteries
 open Log
+open RamenSharedTypes
 
 type options = { debug : bool }
 
@@ -12,12 +13,11 @@ let graph_info_of_bcns csv_dir bcns =
     | main::_ -> string_of_int main in
   let all_nodes = ref [] in
   let make_node ?(parents=[]) name operation =
-    let open RamenSharedTypes in
-    let node = { empty_node_info with
-                 name ; operation ;
-                 parents = List.map (fun p -> p.name) parents } in
-    List.iter (fun (p : RamenSharedTypes.node_info) ->
-      p.children <- name :: p.children) parents ;
+    let node = Node.{ empty with
+                      name ; operation ;
+                      parents = List.map (fun p -> p.name) parents } in
+    List.iter (fun (p : Node.info) ->
+      p.Node.children <- name :: p.Node.children) parents ;
     all_nodes := node :: !all_nodes ;
     node
   in

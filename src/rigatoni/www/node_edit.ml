@@ -19,11 +19,12 @@ let option_get = function
  * we'd have to add should we manipulate JS objects instead, while being
  * more robust. *)
 
-let make_empty_node () = { empty_node_info with name = "" }
+let make_empty_node () = Node.{ empty with name = "" }
 
 let node_of_ojs ojs =
   let open Ojs in
-  { name = get ojs "name" |> string_of_js ;
+  Node.{
+    name = get ojs "name" |> string_of_js ;
     operation = get ojs "operation" |> string_of_js ;
     parents = get ojs "parents" |> list_of_js string_of_js ;
     children = get ojs "children" |> list_of_js string_of_js ;
@@ -68,7 +69,7 @@ struct
   let value_lst l lst = label l ^ arr_of_list lst
 
   let of_node node =
-    obj_of_list [ value_str "operation" node.operation ]
+    obj_of_list [ value_str "operation" node.Node.operation ]
   let of_links links =
     obj_of_list [ value_lst "parents" (List.map quote links.parents) ;
                   value_lst "children" (List.map quote links.children) ]
@@ -79,12 +80,12 @@ type spinner = Nope | Spinning of string | Done of api_response
 type edited_node = FromGraph of string | NewNode | NoNode
 type state =
   { graph : graph_info option ;
-    mutable new_node : node_info ; (* To save the current edition *)
+    mutable new_node : Node.info ; (* To save the current edition *)
     mutable edited_node : edited_node ;  (* The node currently undergoing edition *)
     mutable saving : spinner }
 
 let get_node graph name =
-  List.find (fun node -> node.name = name) graph.nodes
+  List.find (fun node -> node.Node.name = name) graph.nodes
 
 let get_edited_node st =
   match st.graph, st.edited_node with
@@ -285,21 +286,21 @@ let togle_list s lst =
   loop [] lst
 
 let prog_info node =
-  match node.command, node.pid  with
+  match node.Node.command, node.Node.pid  with
   | Some cmd, Some pid when cmd <> "" && pid > 0 ->
     (text "Program running as pid " :: tech_text (string_of_int pid) ::
      text ", command " :: tech_text cmd ::
      br () ::
      text "Tuples (in/selected/out): " ::
-       tech_text (string_of_int node.in_tuple_count) :: text "/" ::
-       tech_text (string_of_int node.selected_tuple_count) :: text "/" ::
-       tech_text (string_of_int node.out_tuple_count) ::
+       tech_text (string_of_int node.Node.in_tuple_count) :: text "/" ::
+       tech_text (string_of_int node.Node.selected_tuple_count) :: text "/" ::
+       tech_text (string_of_int node.Node.out_tuple_count) ::
      br () ::
-     text "CPU time: " :: tech_text (string_of_float node.cpu_time) :: text "seconds" ::
+     text "CPU time: " :: tech_text (string_of_float node.Node.cpu_time) :: text "seconds" ::
      br () ::
-     text "RAM: " :: tech_text (string_of_int node.ram_usage) :: text "bytes" ::
+     text "RAM: " :: tech_text (string_of_int node.Node.ram_usage) :: text "bytes" ::
      br () ::
-     (match node.group_count with
+     (match node.Node.group_count with
       | None -> []
       | Some c -> [ text "Groups: " ; tech_text (string_of_int c) ; br () ]))
   | _ -> []
@@ -345,41 +346,41 @@ let view st =
           let no_html = div ~a:[class_ "invisible"] []
           and other_nodes =
             List.fold_left (fun lst n ->
-              if n != node then n.name::lst else lst) [] graph.nodes in
+              if n != node then n.Node.name::lst else lst) [] graph.nodes in
           div ([
             label [
               text "Node Name:" ;
               if is_creation then (
-                let a = [class_ "node-name"; type_ "text"; value node.name; oninput (fun s -> `NameChange s)] in
+                let a = [class_ "node-name"; type_ "text"; value node.Node.name; oninput (fun s -> `NameChange s)] in
                 input [] ~a
-              ) else text node.name ] ;
+              ) else text node.Node.name ] ;
             br () ;
             label [
               text "Parents:" ;
               if is_editable then
-                checkboxes ~action:(fun s -> `ParentsChange s) other_nodes node.parents
+                checkboxes ~action:(fun s -> `ParentsChange s) other_nodes node.Node.parents
               else
-                unorderd_list node.parents
+                unorderd_list node.Node.parents
             ] ;
             br () ;
             label [
               text "Children:" ;
               if is_editable then
-                checkboxes ~action:(fun s -> `ChildrenChange s) other_nodes node.children
+                checkboxes ~action:(fun s -> `ChildrenChange s) other_nodes node.Node.children
               else
-                unorderd_list node.children
+                unorderd_list node.Node.children
             ] ;
             br () ;
             label [
               text "Operation:" ;
               (if is_editable then
-                textarea ~a:[cols 40; rows 15; class_ "node-op"; oninput (fun s -> `OpChange s)] [ text node.operation ]
+                textarea ~a:[cols 40; rows 15; class_ "node-op"; oninput (fun s -> `OpChange s)] [ text node.Node.operation ]
               else
                 elt "pre" [
-                  elt "code" ~a:[class_ "node-op"] [ text node.operation ] ]) ] ;
+                  elt "code" ~a:[class_ "node-op"] [ text node.Node.operation ] ]) ] ;
               (*elt "pre" [
                 elt "code" ~a:[id_ "code-editor"; (*attr "contenteditable" "true";*) class_ "node-op"; onkeydown (fun s -> `OpChange s)] [
-                  text node.operation ] ] ] ;*)
+                  text node.Node.operation ] ] ] ;*)
             br () ;
             (match st.saving with
             | Spinning txt ->
@@ -388,7 +389,7 @@ let view st =
               if is_editable then div [
                 (let a = [class_ "node-update"; onclick `UpdateNode; type_ "button";
                           value (if is_creation then "Create" else "Update")] in
-                 let a = if node.operation <> "" && node.name <> "" then a
+                 let a = if node.Node.operation <> "" && node.Node.name <> "" then a
                          else attr "disabled" "" :: a in
                  input [] ~a) ;
                 (if is_creation then no_html
@@ -473,36 +474,36 @@ let update st msg =
     (* TODO: somehow disable selection in the d3 graph *)
     return { st with edited_node = NewNode }
   | `NameChange new_text ->
-    edit_node st (fun node -> node.name <- new_text) ;
+    edit_node st (fun node -> node.Node.name <- new_text) ;
     return st
   | `OpChange new_value ->
-    edit_node st (fun node -> node.operation <- new_value) ;
+    edit_node st (fun node -> node.Node.operation <- new_value) ;
     return st
   | `ParentsChange s ->
-    edit_node st (fun node -> node.parents <- togle_list s node.parents) ;
+    edit_node st (fun node -> node.Node.parents <- togle_list s node.Node.parents) ;
     return st
   | `ChildrenChange s ->
-    edit_node st (fun node -> node.children <- togle_list s node.children) ;
+    edit_node st (fun node -> node.Node.children <- togle_list s node.Node.children) ;
     return st
   | `UpdateNode ->
     let c = ref [] in
     edit_node st (fun node ->
       if st.edited_node = NewNode then ( (* TODO: maybe wait for the update to succeed? *)
         assert (node == st.new_node) ;
-        st.edited_node <- FromGraph node.name ;
+        st.edited_node <- FromGraph node.Node.name ;
         st.new_node <- make_empty_node ()
       ) ;
-      let url = "node/"^ node.name in
+      let url = "node/"^ node.Node.name in
       let payload = JZON.of_node node in
-      let txt = "Saving node "^node.name in
+      let txt = "Saving node "^ node.Node.name in
       st.saving <- Spinning txt ;
       c := [ Http_put { url ; payload ; callback = fun r -> `UpdatedNode (r, node) } ]) ;
     return ~c:!c st
   | `UpdatedNode (Ok _ojs, node) ->
     (* Now that we updated the node let's update the links *)
-    let url = "links/"^ node.name in
-    let payload = JZON.of_links { parents = node.parents ;
-                                  children = node.children } in
+    let url = "links/"^ node.Node.name in
+    let payload = JZON.of_links { parents = node.Node.parents ;
+                                  children = node.Node.children } in
     let c = [ Http_put { url ; payload ; callback = fun r -> `UpdatedLinks r } ] in
     return ~c { st with saving = Spinning "Saving links" }
   | `UpdatedNode (r, _node) ->
@@ -512,8 +513,8 @@ let update st msg =
   | `DeleteNode ->
     let c = ref [] in
     edit_node st (fun node ->
-      let url = "node/"^ node.name in
-      let txt = "Deleting node "^node.name in
+      let url = "node/"^ node.Node.name in
+      let txt = "Deleting node "^ node.Node.name in
       st.saving <- Spinning txt ;
       c := [ Http_del { url ; callback = fun r -> `DeletedNode r } ]) ;
     return ~c:!c st

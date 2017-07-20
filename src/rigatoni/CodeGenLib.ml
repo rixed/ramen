@@ -156,14 +156,7 @@ let output rb sersize_of_tuple serialize_tuple tuple =
 let outputer_of rb_outs sersize_of_tuple serialize_tuple =
   let outputers_with_retry = List.map (fun rb_out ->
         let once = output rb_out sersize_of_tuple serialize_tuple in
-        let on = function
-          (* FIXME: a dedicated RingBuf.NoMoreRoom exception *)
-          | Failure _ ->
-            !logger.debug "No more space in the ring buffer, sleeping..." ;
-            true
-          | _ -> false
-        in
-        CodeGenLib_IO.retry_for_ringbuf ~on once
+        RingBufLib.retry_for_ringbuf once
       ) rb_outs in
   fun tuple ->
     IntCounter.add stats_out_tuple_count 1 ;
@@ -218,7 +211,7 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
   let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
-    CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
+    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
   let output_count = ref Uint64.zero in
   let outputer =
     output_count := Uint64.succ !output_count ;
@@ -317,8 +310,8 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
   let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
-    CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0
-                        RingBuf.load rb_in_fname in
+    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
+                  RingBuf.load rb_in_fname in
   (* TODO: lastly output tuple ("sent"?) *)
   let output_count = ref Uint64.zero in
   let commit =
@@ -447,7 +440,7 @@ let alert read_tuple field_of_tuple team alert_cond subject text =
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
   let%lwt rb_in =
-    CodeGenLib_IO.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
+    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
   let expand_fields =
     let open Str in
     let re = regexp "\\${\\(in\\.\\)?\\([_a-zA-Z0-9]+\\)}" in

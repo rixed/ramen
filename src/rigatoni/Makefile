@@ -1,22 +1,22 @@
 top_srcdir = ..
 
 LINKED_WITH_TESTS = \
-	Log.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml \
+	Log.ml Helpers.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml \
 	RingBuf.ml RamenConf.ml
 
 TESTABLE_SOURCES = \
 	RamenSharedTypes.ml Lang.ml Compiler.ml
 
 RIGATONI_SOURCES = \
-	Consts.ml Log.ml RamenSharedTypes.ml Lang.ml \
-	RingBufLib.ml RingBuf.ml \
+	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml \
+	Lang.ml RingBufLib.ml RingBuf.ml \
 	CodeGen_OCaml.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
 	Compiler.ml HttpSrv.ml \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \
-	Consts.ml Helpers.ml Log.ml \
+	Consts.ml Log.ml Helpers.ml \
 	RingBuf.ml RingBufLib.ml \
 	Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
 
@@ -24,7 +24,7 @@ LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h
 
 CONFIGURATOR_SOURCES = \
-	Consts.ml Helpers.ml Log.ml RamenSharedTypes.ml Conf_of_sqlite.ml Configurator.ml
+	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml Conf_of_sqlite.ml Configurator.ml
 
 SOURCES = \
 	$(RIGATONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
@@ -63,7 +63,7 @@ codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
 codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLC)   $(OCAMLFLAGS)    -a       $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
-ringbuf_test.opt: RingBuf.cmx RingBufLib.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
+ringbuf_test.opt: Log.cmx Helpers.cmx RingBuf.cmx RingBufLib.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ringbuf_ctl: RingBuf.cmx ringbuf_ctl.cmx ringbuf/libringbuf.a wrap_ringbuf.o

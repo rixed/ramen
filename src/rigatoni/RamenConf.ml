@@ -29,9 +29,9 @@ let temp_tup_typ_of_tup_typ complete tup_typ =
   t.complete <- complete ;
   List.iteri (fun i f ->
       let expr_typ =
-        Lang.Expr.make_typ ~nullable:f.Lang.Tuple.nullable
-                           ~typ:f.Lang.Tuple.typ f.Lang.Tuple.name in
-      Hashtbl.add t.fields f.Lang.Tuple.name (ref (Some i), expr_typ)
+        Lang.Expr.make_typ ~nullable:f.nullable
+                           ~typ:f.typ f.typ_name in
+      Hashtbl.add t.fields f.typ_name (ref (Some i), expr_typ)
     ) tup_typ ;
   t
 
@@ -46,9 +46,9 @@ let tup_typ_of_temp_tup_type ttt =
   assert ttt.complete ;
   list_of_temp_tup_type ttt |>
   List.map (fun (_, typ) ->
-    { Tuple.name = typ.Expr.expr_name ;
-      Tuple.nullable = Option.get typ.Expr.nullable ;
-      Tuple.typ = Option.get typ.Expr.scalar_typ })
+    { typ_name = typ.Expr.expr_name ;
+      nullable = Option.get typ.Expr.nullable ;
+      typ = Option.get typ.Expr.scalar_typ })
 
 type node =
   { name : string ;

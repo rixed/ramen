@@ -23,7 +23,7 @@ let id_of_field_name ?(tuple="in") = function
   | field -> tuple ^"_"^ field ^"_"
 
 let id_of_field_typ ?tuple field_typ =
-  id_of_field_name ?tuple field_typ.Lang.Tuple.name
+  id_of_field_name ?tuple field_typ.typ_name
 
 let list_print_as_tuple = List.print ~first:"(" ~last:")" ~sep:", "
 
@@ -33,17 +33,21 @@ let print_tuple_deconstruct tuple =
   in
   list_print_as_tuple print_field
 
-(* Emit the code that return the sersize of a fixed size type *)
-let emit_sersize_of_fixsz_typ oc = function
-  | TFloat  -> Int.print oc (RingBufLib.round_up_to_rb_word 8)
-  | TBool | TU8 | TI8 -> Int.print oc (RingBufLib.round_up_to_rb_word 1)
-  | TU16 | TI16 -> Int.print oc (RingBufLib.round_up_to_rb_word 2)
-  | TU32 | TI32 -> Int.print oc (RingBufLib.round_up_to_rb_word 4)
-  | TU64 | TI64 -> Int.print oc (RingBufLib.round_up_to_rb_word 8)
-  | TU128 | TI128 -> Int.print oc (RingBufLib.round_up_to_rb_word 16)
-  | TNull -> Int.print oc 0
+let sersize_of_fixsz_typ = function
+  | TFloat  -> RingBufLib.round_up_to_rb_word 8
+  | TBool | TU8 | TI8 -> RingBufLib.round_up_to_rb_word 1
+  | TU16 | TI16 -> RingBufLib.round_up_to_rb_word 2
+  | TU32 | TI32 -> RingBufLib.round_up_to_rb_word 4
+  | TU64 | TI64 -> RingBufLib.round_up_to_rb_word 8
+  | TU128 | TI128 -> RingBufLib.round_up_to_rb_word 16
+  | TNull -> 0
   | TString -> assert false
   | TNum -> assert false
+
+(* Emit the code that return the sersize of a fixed size type *)
+let emit_sersize_of_fixsz_typ oc typ =
+  let sz = sersize_of_fixsz_typ typ in
+  Int.print oc sz
 
 (* Emit the code computing the sersize of some variable *)
 let emit_sersize_of_field_var typ oc var =
@@ -56,7 +60,6 @@ let emit_sersize_of_field_var typ oc var =
 
 (* Emit the code to retrieve the sersize of some serialized value *)
 let rec emit_sersize_of_field_tx tx_var offs_var nulli oc field =
-  let open Lang.Tuple in
   if field.nullable then (
     Printf.fprintf oc "if RingBuf.get_bit %s %d then %a else 0"
       tx_var nulli
@@ -89,20 +92,18 @@ let id_of_typ typ =
 let emit_value_of_string typ oc var =
   Printf.fprintf oc "CodeGenLib.%s_of_string %s" (id_of_typ typ) var
 
-let nullmask_bytes_of_tuple_typ tuple_typ =
-  let open Lang.Tuple in
+let nullmask_bytes_of_tuple_type tuple_typ =
   List.fold_left (fun s field_typ ->
     if field_typ.nullable then s+1 else s) 0 tuple_typ |>
   RingBufLib.bytes_for_bits |>
   RingBufLib.round_up_to_rb_word
 
 let emit_sersize_of_tuple name oc tuple_typ =
-  let open Lang.Tuple in
   (* For nullable fields each ringbuf record has a bitmask of as many bits as
    * there are nullable fields, rounded to the greater or equal multiple of rb_word_size.
    * This is a constant given by the tuple type:
    *)
-  let size_for_nullmask = nullmask_bytes_of_tuple_typ tuple_typ in
+  let size_for_nullmask = nullmask_bytes_of_tuple_type tuple_typ in
   (* Let's emit the function definition, deconstructing the tuple with identifiers
    * for varsized fields: *)
   Printf.fprintf oc "let %s %a =\n\t\
@@ -130,11 +131,10 @@ let emit_set_value tx_var offs_var field_var oc field_typ =
  * Also, the lib ensure that null bitmask is 0 at the beginning. Returns
  * the final offset for checking with serialized size of this tuple. *)
 let emit_serialize_tuple name oc tuple_typ =
-  let open Lang.Tuple in
   Printf.fprintf oc "let %s tx_ %a =\n"
     name
     (print_tuple_deconstruct "out") tuple_typ ;
-  let nullmask_bytes = nullmask_bytes_of_tuple_typ tuple_typ in
+  let nullmask_bytes = nullmask_bytes_of_tuple_type tuple_typ in
   Printf.fprintf oc "\tlet offs_ = %d in\n" nullmask_bytes ;
   (* Start by zeroing the nullmask *)
   if nullmask_bytes > 0 then
@@ -167,7 +167,6 @@ let emit_serialize_tuple name oc tuple_typ =
  * CSV) will return the tuple defined by [tuple_typ] or raises
  * some exception *)
 let emit_tuple_of_strings name csv_null oc tuple_typ =
-  let open Lang.Tuple in
   Printf.fprintf oc "let %s strs_ =\n" name ;
   Printf.fprintf oc "\t(\n" ;
   let nb_fields = List.length tuple_typ in
@@ -186,7 +185,7 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
     )) tuple_typ ;
   Printf.fprintf oc "\t)\n"
 
-(* Given a Tuple.typ, generate the ReadCSVFile operation. *)
+(* Given a type type, generate the ReadCSVFile operation. *)
 let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ =
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
@@ -210,22 +209,21 @@ let emit_tuple tuple oc tuple_typ =
 
 let emit_in_tuple ?(tuple="in") mentioned and_all_others oc in_tuple_typ =
   print_tuple_deconstruct tuple oc (List.filter_map (fun field_typ ->
-    if and_all_others || Set.mem field_typ.Lang.Tuple.name mentioned then
+    if and_all_others || Set.mem field_typ.typ_name mentioned then
       Some field_typ else None) in_tuple_typ)
 
 (* We do not want to read the value from the RB each time it's used,
  * so extract a tuple from the ring buffer. As an optimisation, read
  * (and return) only the mentioned fields. *)
 let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
-  let open Lang.Tuple in
   Printf.fprintf oc "\
     let %s tx_ =\n\
     \tlet offs_ = %d in\n"
     name
-    (nullmask_bytes_of_tuple_typ in_tuple_typ) ;
+    (nullmask_bytes_of_tuple_type in_tuple_typ) ;
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ ~tuple:"in" field in
-      if and_all_others || Set.mem field.name mentioned then (
+      if and_all_others || Set.mem field.typ_name mentioned then (
         Printf.fprintf oc "\tlet %s =\n" id ;
         if field.nullable then
           Printf.fprintf oc "\
@@ -607,11 +605,11 @@ let emit_field_selection
     ) selected_fields ;
   if and_all_others then (
     List.iteri (fun i field ->
-        if not (Set.mem field.Tuple.name !outputted) then
+        if not (Set.mem field.typ_name !outputted) then
           Printf.fprintf oc "%s\n\t\t%s%s"
             (if i > 0 || selected_fields <> [] then "," else "")
             (if i = 0 then "(* All other fields *)\n\t\t" else "")
-            (id_of_field_name field.Tuple.name)
+            (id_of_field_name field.typ_name)
       ) out_tuple_typ (* we want those fields ordered according to out tuple not in tuple! *)
   ) ;
   Printf.fprintf oc "\n\t)\n"
@@ -893,16 +891,15 @@ let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   List.iter (fun field ->
-      let open Lang in
-      Printf.fprintf oc "\t| %S -> " field.Tuple.name ;
-      let id = id_of_field_name field.Tuple.name in
-      if field.Tuple.nullable then (
+      Printf.fprintf oc "\t| %S -> " field.typ_name ;
+      let id = id_of_field_name field.typ_name in
+      if field.nullable then (
         Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> %a)\n"
           id
-          (conv_from_to field.Tuple.typ TString String.print) "v_"
+          (conv_from_to field.typ TString String.print) "v_"
       ) else (
         Printf.fprintf oc "%a\n"
-          (conv_from_to field.Tuple.typ TString String.print) id
+          (conv_from_to field.typ TString String.print) id
       )
     ) in_tuple_typ ;
   Printf.fprintf oc "\t| _ -> raise Not_found\n"

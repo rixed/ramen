@@ -58,7 +58,8 @@ let run conf graph =
     graph.C.importing_threads <- Hashtbl.fold (fun _ node lst ->
         if Lang.Operation.is_exporting node.C.operation then (
           let rb = rb_name_for_export_of node in
-          RamenExport.import_tuples rb node.C.name node.C.out_type :: lst
+          let tuple_type = C.tup_typ_of_temp_tup_type node.C.out_type in
+          RamenExport.import_tuples rb node.C.name tuple_type :: lst
         ) else lst
       ) graph.C.persist.C.nodes [] ;
     C.save_graph conf graph

@@ -79,44 +79,10 @@ let read_glob_lines ?do_unlink path k =
       return_unit
   done
 
-let retry ~on ?(first_delay=1.0) ?(min_delay=0.000001) ?(max_delay=10.0) ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.1) f =
-  let next_delay = ref first_delay in
-  let rec loop x =
-    (match f x with
-    | exception e ->
-      if on e then (
-        let delay = !next_delay in
-        let delay = min delay max_delay in
-        let delay = max delay min_delay in
-        next_delay := !next_delay *. delay_adjust_nok ;
-        !logger.debug "Retryable error: %s, pausing %gs"
-          (Printexc.to_string e) delay ;
-        let%lwt () = Lwt_unix.sleep delay in
-        loop x
-      ) else (
-        !logger.error "Non-retryable error: %s"
-          (Printexc.to_string e) ;
-        fail e
-      )
-    | r ->
-      next_delay := !next_delay *. delay_adjust_ok ;
-      return r)
-  in
-  loop
-
-let retry_for_ringbuf ~on f = retry ~on ~first_delay:0.001 ~max_delay:0.01 f
-
 let read_ringbuf rb f =
   let open RingBuf in
-  let on = function
-    | Failure _ ->
-      !logger.debug "Nothing left to read in the ring buffer, sleeping..." ;
-      true
-    | _ ->
-      false
-  in
   let rec read_next () =
-    let%lwt tx = retry_for_ringbuf ~on dequeue_alloc rb in
+    let%lwt tx = RingBufLib.retry_for_ringbuf dequeue_alloc rb in
     let%lwt () = f tx in
     on_each_input () ;
     read_next ()
