@@ -460,6 +460,7 @@ let keyword =
     strinG "sequence" ||| strinG "abs" ||| strinG "length" |||
     strinG "concat" ||| strinG "now" ||| strinG "yield" ||| strinG "slide" |||
     strinG "remove" ||| strinG "keep" ||| strinG "directory" |||
+    strinG "export" |||
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =

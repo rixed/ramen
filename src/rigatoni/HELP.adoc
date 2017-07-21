@@ -538,7 +538,7 @@ Syntax:
 
 [source,sql]
 ----
-  SELECT expression1 AS name1, expression2 AS name2, ...
+  SELECT [AND EXPORT] expression1 AS name1, expression2 AS name2, ...
     WHERE where_clause
 ----
 
@@ -553,13 +553,17 @@ Semantic: for each input tuple, if the where clause is true, output the tuple
 build from the select clause. If the where clause is false then ignore the
 input tuple.
 
+The +AND EXPORT+ modifier makes ramen store all selected tuples for later
+retrieval by clients (See <<export-API>>). It does not change the semantic of
+the operation.
+
 ==== Aggregate
 
 Syntax:
 
 [source,sql]
 ----
-  SELECT expression1 AS name1, expression2 AS name2, ...
+  SELECT [AND EXPORT] expression1 AS name1, expression2 AS name2, ...
     [GROUP BY expression3, expression4, ...]
     COMMIT WHEN commit_clause
     (FLUSH | SLIDE n | REMOVE expression | KEEP expression) WHEN flush_clause
@@ -569,7 +573,7 @@ or, if `flush_clause` is the same as `commit_clause`:
 
 [source,sql]
 ----
-  SELECT expression1 AS name1, expression2 AS name2, ...
+  SELECT [AND EXPORT] expression1 AS name1, expression2 AS name2, ...
     [GROUP BY expression3, expression4, ...]
     COMMIT AND (FLUSH | SLIDE n | REMOVE expression | KEEP expression)
       WHEN commit_clause
@@ -721,6 +725,7 @@ executable implementing each node, or return any encountered error.
 If all went well, you can then GET `/start` for Rigatoni to start all those
 executables, and then `/stop` to kill them all.
 
+[[export-API]]
 === Receive exported tuples
 
 Some operations export some tuples.
