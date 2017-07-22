@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# TODO:
+# - empty body should be equiv to "{}"
+
+curl "$@" \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"since":null,"max_results":null}' \
+  'http://localhost:29380/export/3%20to%201:%20average%20traffic%20every%2060%20seconds'

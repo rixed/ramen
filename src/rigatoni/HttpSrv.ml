@@ -411,7 +411,7 @@ let callback conf _conn req body =
     String.nsplit (Uri.path uri) "/" |>
     List.filter (fun s -> String.length s > 0) in
   let headers = Request.headers req in
-  let%lwt body_str = Cohttp_lwt_body.to_string body
+  let%lwt body = Cohttp_lwt_body.to_string body
   in
   catch
     (fun () ->
@@ -419,7 +419,7 @@ let callback conf _conn req body =
       try
         match Request.meth req, paths with
         (* API *)
-        | `PUT, ["node" ; name] -> put_node conf headers (dec name) body_str
+        | `PUT, ["node" ; name] -> put_node conf headers (dec name) body
         | `GET, ["node" ; name] -> get_node conf headers (dec name)
         | `DELETE, ["node" ; name] -> del_node conf headers (dec name)
         | _, ["node"] -> bad_request "Missing node name"
@@ -427,19 +427,19 @@ let callback conf _conn req body =
         | `GET, ["link" ; src ; dst] -> get_link conf headers (dec src) (dec dst)
         | `DELETE, ["link" ; src ; dst] -> del_link conf headers (dec src) (dec dst)
         | _, (["link"] | ["link" ; _ ]) -> bad_request "Missing node name"
-        | `PUT, ["links" ; name] -> set_links conf headers (dec name) body_str
+        | `PUT, ["links" ; name] -> set_links conf headers (dec name) body
         | `PUT, ["links"] -> bad_request "Missing node name"
         | `GET, ["graph"] -> get_graph conf headers
-        | `PUT, ["graph"] -> put_graph conf headers body_str
+        | `PUT, ["graph"] -> put_graph conf headers body
         | `GET, ["compile"] -> compile conf headers
         | `GET, ["run" | "start"] -> run conf headers
         | `GET, ["stop"] -> stop conf headers
         | (`GET|`POST), ["export" ; name] ->
           (* We must allow both POST and GET for that one since we have an optional
            * body (and some client won't send a body with a GET) *)
-          export conf headers (dec name) body_str
+          export conf headers (dec name) body
         (* API for children *)
-        | `PUT, ["report" ; name] -> report conf headers (dec name) body_str
+        | `PUT, ["report" ; name] -> report conf headers (dec name) body
         (* WWW Client *)
         | `GET, ([] | ["" | "index.html"]) ->
           get_file conf headers "index.html"
