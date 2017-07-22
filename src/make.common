@@ -28,7 +28,7 @@ override CPPFLAGS      += --std=c11 -D_GNU_SOURCE -I $(shell ocamlfind ocamlc -w
 
 clean: clean-spec
 	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
-	$(RM) *.cm[io] *.a *.s *.o .depend *.annot all_tests.* perf.data* gmon.out
+	$(RM) *.cm[o] *.a *.s .depend *.annot all_tests.* perf.data* gmon.out
 
 distclean: clean distclean-spec
 	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
