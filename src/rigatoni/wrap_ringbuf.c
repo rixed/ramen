@@ -274,7 +274,7 @@ CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
   size_t offs = Long_val(off_); \
   assert(Is_long(v_)); \
-  uint##bits##_t v = (uint##bits##_t)Long_val(v); \
+  uint##bits##_t v = (uint##bits##_t)Long_val(v_); \
   write_words(wrtx, offs, (char const *)&v, bits / 8); \
   CAMLreturn(Val_unit); \
 }
