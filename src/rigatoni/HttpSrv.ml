@@ -466,14 +466,13 @@ let callback conf _conn req body =
         let body = Printexc.to_string exn ^ "\n" in
         Server.respond_error ~body ())
 
-(* This will be called as a separate Lwt thread: *)
-let start conf port cert_opt key_opt =
+let start conf port cert_opt key_opt () =
   let entry_point = Server.make ~callback:(callback conf) () in
   let tcp_mode = `TCP (`Port port) in
   let t1 =
     let%lwt () = return (!logger.info "Starting http server on port %d" port) in
-    Server.create ~mode:tcp_mode entry_point in
-  let t2 =
+    Server.create ~mode:tcp_mode entry_point
+  and t2 =
     match cert_opt, key_opt with
     | Some cert, Some key ->
       let port = port + 1 in
@@ -483,5 +482,6 @@ let start conf port cert_opt key_opt =
     | None, None ->
       return (!logger.info "Not starting https server")
     | _ ->
-      return (!logger.info "Missing some of SSL configuration") in
-  join [ t1 ; t2 ]
+      return (!logger.info "Missing some of SSL configuration")
+  in
+  Lwt_main.run (join [ t1 ; t2 ])

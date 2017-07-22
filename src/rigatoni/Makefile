@@ -12,7 +12,7 @@ RIGATONI_SOURCES = \
 	Lang.ml RingBufLib.ml RingBuf.ml \
 	CodeGen_OCaml.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
-	Compiler.ml HttpSrv.ml \
+	Compiler.ml HttpSrv.ml RingBufCmd.ml \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \
@@ -38,7 +38,7 @@ PACKAGES = \
 	binocle unix
 
 INSTALLED = \
-  rigatoni ringbuf_ctl ramen_configurator \
+  rigatoni ramen_configurator \
 	codegen.cmxa $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
 	ringbuf/libringbuf.a
 
@@ -64,9 +64,6 @@ codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLC)   $(OCAMLFLAGS)    -a       $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
 ringbuf_test.opt: Log.cmx Helpers.cmx RingBuf.cmx RingBufLib.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
-
-ringbuf_ctl: RingBuf.cmx ringbuf_ctl.cmx ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
