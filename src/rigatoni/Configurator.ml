@@ -7,7 +7,7 @@ type options = { debug : bool }
 let options debug = { debug }
 
 (* Build the node infos corresponding to the BCN configuration *)
-let graph_info_of_bcns csv_dir bcns =
+let graph_info_of_bcns delete csv_dir bcns =
   let name_of_zones = function
     | [] -> "any"
     | main::_ -> string_of_int main in
@@ -24,7 +24,7 @@ let graph_info_of_bcns csv_dir bcns =
   let top =
     let op =
       Printf.sprintf
-        "READ AND DELETE CSV FILES \"%s/tcp_v29.*.csv\" SEPARATOR \"\\t\" NULL \"<NULL>\" (\n  \
+        "READ%s CSV FILES \"%s/tcp_v29.*.csv\" SEPARATOR \"\\t\" NULL \"<NULL>\" (\n  \
            poller string not null,\n  \
            capture_begin u64 not null,\n  \
            capture_end u64 not null,\n  \
@@ -102,7 +102,8 @@ let graph_info_of_bcns csv_dir bcns =
            dtt_sum_server u64 not null,\n  \
            dtt_square_sum_server u64 not null,\n  \
            dcerpc_uuid string null\n\
-         )" csv_dir in
+         )"
+      (if delete then " AND DELETE" else "") csv_dir in
     make_node "read csv" op in
   let to_unidir ~src ~dst =
     let op =
@@ -236,7 +237,7 @@ let put_graph ramen_url graph =
   !logger.debug "Body: %S\n" body ;
   return_unit
 
-let start conf ramen_url db_name csv_dir =
+let start conf ramen_url db_name delete csv_dir =
   logger := make_logger conf.debug ;
   let open Conf_of_sqlite in
   let db = get_db db_name in
@@ -245,7 +246,7 @@ let start conf ramen_url db_name csv_dir =
     if must_reload db then (
       !logger.info "Must reload configuration" ;
       let bcns = get_bcns_from_db db in
-      let graph = graph_info_of_bcns csv_dir bcns in
+      let graph = graph_info_of_bcns delete csv_dir bcns in
       put_graph ramen_url graph
     ) else (
       Lwt_unix.sleep 1.0
@@ -271,6 +272,11 @@ let db_name =
                    [ "db" ] in
   Arg.(required (opt (some string) None i))
 
+let delete_opt =
+  let i = Arg.info ~doc:"Delete CSV files after injected"
+                   [ "delete" ] in
+  Arg.(value (opt bool false i))
+
 let csv_dir =
   let i = Arg.info ~doc:"Path where the TCP_v29 CSV files are stored"
                    [ "csv-dir" ] in
@@ -282,6 +288,7 @@ let start_cmd =
       $ common_opts
       $ ramen_url
       $ db_name
+      $ delete_opt
       $ csv_dir),
     info "configurator")
 
