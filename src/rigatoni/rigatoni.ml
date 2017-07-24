@@ -4,10 +4,15 @@ open Batteries
 
 let common_opts =
   let debug =
-    Arg.(value (flag (info ~doc:"increase verbosity" ["d"; "debug"])))
+    let env = Term.env_info "RIGATONI_DEBUG" in
+    let i = Arg.info ~doc:"increase verbosity"
+                     ~env ["d"; "debug"] in
+    Arg.(value (flag i))
   and graph_save_file =
-    Arg.(value (opt string "/tmp/rigatoni_graph.raw"
-                    (info ~doc:"graph save file" ["graph-save-file"])))
+    let env = Term.env_info "RIGATONI_SAVE_FILE" in
+    let i = Arg.info ~doc:"graph save file"
+                     ~env ["graph-save-file"] in
+    Arg.(value (opt string "/tmp/rigatoni_graph.raw" i))
   in
   Term.(const RamenConf.make_conf $ debug $ graph_save_file)
 
@@ -16,19 +21,22 @@ let common_opts =
  *)
 
 let http_port_opt =
+  let env = Term.env_info "RIGATONI_HTTP_PORT" in
   let i = Arg.info ~doc:"Port where to run the HTTP server \
                          (HTTPS will be run on that port + 1)"
-                   [ "http-port" ] in
+                   ~env [ "http-port" ] in
   Arg.(value (opt int 29380 i))
 
 let ssl_cert_opt =
+  let env = Term.env_info "RIGATONI_SSL_CERT_FILE" in
   let i = Arg.info ~doc:"File containing the SSL certificate"
-                   [ "ssl-certificate" ] in
+                   ~env [ "ssl-certificate" ] in
   Arg.(value (opt (some string) None i))
 
 let ssl_key_opt =
+  let env = Term.env_info "RIGATONI_SSL_KEY_FILE" in
   let i = Arg.info ~doc:"File containing the SSL private key"
-                   [ "ssl-key" ] in
+                   ~env [ "ssl-key" ] in
   Arg.(value (opt (some string) None i))
 
 let server_start_cmd =
