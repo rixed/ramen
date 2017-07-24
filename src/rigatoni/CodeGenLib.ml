@@ -124,6 +124,8 @@ let send_stats url =
     List.rev_append (exporter ()) lst) Binocle.all_measures [] in
   let body = `String Marshal.(to_string metrics [No_sharing]) in
   let headers = Header.init_with "Content-Type" Consts.ocaml_marshal_type in
+  (* TODO: but also fix the server never timeouting! *)
+  let headers = Header.add headers "Connection" "close" in
   !logger.debug "Send stats to %S" url ;
   let%lwt resp, body = Client.put ~headers ~body (Uri.of_string url) in
   let code = resp |> Response.status |> Code.code_of_status in
