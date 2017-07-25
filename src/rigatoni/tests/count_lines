@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/.."
+. $top_srcdir/tests/funcs.sh
+
+init
+add_node n1 "READ CSV FILE \"$fixtures/123.csv\" (n u8 not null)"
+add_node n2 "SELECT AND EXPORT 10*n AS ten_n, all.#count AS count WHERE n=3" n1
+run
+
+check_equal "$(tail_ 1 n2)" '30,3'

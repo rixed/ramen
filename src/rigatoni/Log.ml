@@ -10,12 +10,12 @@ type logger =
 
 let make_logger dbg =
   let error fmt =
-    Printf.fprintf stdout (fmt ^^ "\n%!")
+    Printf.fprintf stderr (fmt ^^ "\n%!")
   and info fmt =
-    Printf.fprintf stdout (fmt ^^ "\n%!")
+    Printf.fprintf stderr (fmt ^^ "\n%!")
   and debug fmt =
-    if dbg then Printf.fprintf stdout (fmt ^^ "\n%!")
-    else Printf.ifprintf stdout fmt
+    if dbg then Printf.fprintf stderr (fmt ^^ "\n%!")
+    else Printf.ifprintf stderr fmt
   in
   { error ; info ; debug }
 
