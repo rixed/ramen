@@ -2,48 +2,53 @@
 open Cmdliner
 open Batteries
 
-let common_opts =
-  let debug =
-    let env = Term.env_info "RIGATONI_DEBUG" in
-    let i = Arg.info ~doc:"increase verbosity"
-                     ~env ["d"; "debug"] in
-    Arg.(value (flag i))
-  (* TODO: Move this out of conf, make it a parameter to HttpSrc.start *)
-  and graph_save_file =
-    let env = Term.env_info "RIGATONI_SAVE_FILE" in
-    let i = Arg.info ~doc:"graph save file"
-                     ~env ["graph-save-file"] in
-    Arg.(value (opt string "/tmp/rigatoni_graph.raw" i))
-  in
-  Term.(const RamenConf.make_conf $ debug $ graph_save_file)
-
 (*
  * Start the event processor
  *)
 
+let debug =
+  let env = Term.env_info "RAMEN_DEBUG" in
+  let i = Arg.info ~doc:"increase verbosity"
+                   ~env ["d"; "debug"] in
+  Arg.(value (flag i))
+
 let http_port =
-  let env = Term.env_info "RIGATONI_HTTP_PORT" in
+  let env = Term.env_info "RAMEN_HTTP_PORT" in
   let i = Arg.info ~doc:"Port where to run the HTTP server \
                          (HTTPS will be run on that port + 1)"
                    ~env [ "http-port" ] in
   Arg.(value (opt int 29380 i))
 
 let ssl_cert =
-  let env = Term.env_info "RIGATONI_SSL_CERT_FILE" in
+  let env = Term.env_info "RAMEN_SSL_CERT_FILE" in
   let i = Arg.info ~doc:"File containing the SSL certificate"
                    ~env [ "ssl-certificate" ] in
   Arg.(value (opt (some string) None i))
 
 let ssl_key =
-  let env = Term.env_info "RIGATONI_SSL_KEY_FILE" in
+  let env = Term.env_info "RAMEN_SSL_KEY_FILE" in
   let i = Arg.info ~doc:"File containing the SSL private key"
                    ~env [ "ssl-key" ] in
   Arg.(value (opt (some string) None i))
 
+let graph_save_file =
+  let env = Term.env_info "RAMEN_SAVE_FILE" in
+  let i = Arg.info ~doc:"graph save file"
+                   ~env ["graph-save-file"] in
+  Arg.(value (opt string "/tmp/rigatoni_graph.raw" i))
+
+let ramen_url =
+  let env = Term.env_info "RAMEN_URL" in
+  let i = Arg.info ~doc:"URL to reach ramen"
+                   ~env [ "ramen-url" ] in
+  Arg.(value (opt string "http://127.0.0.1:29380" i))
+
 let server_start =
   Term.(
     (const HttpSrv.start
-      $ common_opts
+      $ debug
+      $ graph_save_file
+      $ ramen_url
       $ http_port
       $ ssl_cert
       $ ssl_key),
@@ -63,7 +68,7 @@ let nb_tuples =
 let dequeue =
   Term.(
     (const RingBufCmd.dequeue
-      $ common_opts
+      $ debug
       $ rb_file
       $ nb_tuples),
     info "dequeue")
@@ -71,17 +76,13 @@ let dequeue =
 let summary =
   Term.(
     (const RingBufCmd.summary
-      $ common_opts
+      $ debug
       $ rb_file),
     info "ringbuf-summary")
 
 (*
  * API Commands
  *)
-
-let ramen_url =
-  let i = Arg.info ~doc:"URL to reach ramen" [ "ramen-url" ] in
-  Arg.(value (opt string "http://127.0.0.1:29380" i))
 
 let node_name p =
   let i = Arg.info ~doc:"Node unique name" ~docv:"node" [] in
@@ -95,7 +96,7 @@ let node_operation p =
 let add_node =
   Term.(
     (const ApiCmd.add_node
-      $ common_opts
+      $ debug
       $ ramen_url
       $ node_name 0
       $ node_operation 1),
@@ -104,7 +105,7 @@ let add_node =
 let add_link =
   Term.(
     (const ApiCmd.add_link
-      $ common_opts
+      $ debug
       $ ramen_url
       $ node_name 0
       $ node_name 1),
@@ -113,14 +114,14 @@ let add_link =
 let compile =
   Term.(
     (const ApiCmd.compile
-      $ common_opts
+      $ debug
       $ ramen_url),
     info "compile")
 
 let run =
   Term.(
     (const ApiCmd.run
-      $ common_opts
+      $ debug
       $ ramen_url),
     info "run")
 
@@ -142,7 +143,7 @@ let continuous =
 let tail =
   Term.(
     (const ApiCmd.tail
-      $ common_opts
+      $ debug
       $ ramen_url
       $ node_name 0
       $ as_csv
@@ -156,7 +157,7 @@ let tail =
 
 let default =
   let doc = "Rigatoni Stream Processor" in
-  Term.((ret (app (const (fun _ -> `Help (`Pager, None))) common_opts)),
+  Term.((ret (const (`Help (`Pager, None)))),
         info "rigatoni" ~doc)
 
 let () =

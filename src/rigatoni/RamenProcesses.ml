@@ -50,7 +50,7 @@ let run conf graph =
         let env = [|
           "input_ringbuf="^ rb_name_of node ;
           "output_ringbufs="^ String.concat "," output_ringbufs ;
-          "report_url="^ conf.C.report_url_prefix ^"/"^ node.C.name |] in
+          "report_url="^ conf.C.ramen_url ^"/report/"^ node.C.name |] in
         node.C.pid <- Some (run_background command [||] env)
       ) graph.C.persist.C.nodes ;
     graph.C.persist.C.status <- Running ;

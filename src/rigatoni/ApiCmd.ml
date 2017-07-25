@@ -47,22 +47,26 @@ let check_ok body =
   ignore body ;
   return_unit
 
-let add_node _conf ramen_url n operation () =
+let add_node debug ramen_url n operation () =
+  logger := make_logger debug ;
   let url = ramen_url ^"/node/"^ enc n in
   Lwt_main.run (
     http_put_json url make_node_ppp { empty_make_node with operation } >>=
     check_ok)
 
-let add_link _conf ramen_url n1 n2 () =
+let add_link debug ramen_url n1 n2 () =
+  logger := make_logger debug ;
   let url = ramen_url ^"/link/"^ enc n1 ^"/"^ enc n2 in
   Lwt_main.run (
     http_do url |> check_ok)
 
-let compile _conf ramen_url () =
+let compile debug ramen_url () =
+  logger := make_logger debug ;
   Lwt_main.run (
     http_get (ramen_url ^"/compile") >>= check_ok)
 
-let run _conf ramen_url () =
+let run debug ramen_url () =
+  logger := make_logger debug ;
   Lwt_main.run (
     http_get (ramen_url ^"/run") >>= check_ok)
 
@@ -114,7 +118,8 @@ let ppp_of_string_exc ppp s =
   try PPP.of_string_exc ppp s |> return
   with e -> fail e
 
-let tail _conf ramen_url node_name as_csv last continuous () =
+let tail debug ramen_url node_name as_csv last continuous () =
+  logger := make_logger debug ;
   let url = ramen_url ^"/export/"^ enc node_name in
   let rec get_next ?since ?max_results ?last () =
     let msg = { since ; max_results ; wait_up_to = Some 0.2 (* TODO: a param? *) } in

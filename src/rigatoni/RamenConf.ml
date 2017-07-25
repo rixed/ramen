@@ -77,7 +77,7 @@ type graph =
 type conf =
   { mutable building_graph : graph ;
     save_file : string ;
-    report_url_prefix : string }
+    ramen_url : string }
 
 exception InvalidCommand of string
 
@@ -203,7 +203,5 @@ let remove_link conf graph src dst =
   dst.parents <- List.filter ((!=) src) dst.parents ;
   save_graph conf graph
 
-let make_conf debug save_file =
-  logger := Log.make_logger debug ;
-  { building_graph = load_graph save_file ; save_file ;
-    report_url_prefix = "http://127.0.0.1:29380/report" }
+let make_conf save_file ramen_url =
+  { building_graph = load_graph save_file ; save_file ; ramen_url }

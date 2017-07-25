@@ -1,8 +1,10 @@
 open Batteries
+open Log
 
 (* Dequeue command *)
 
-let dequeue _conf file n () =
+let dequeue debug file n () =
+  logger := make_logger debug ;
   let open RingBuf in
   let rb = load file in
   let rec dequeue_loop n =
@@ -17,7 +19,8 @@ let dequeue _conf file n () =
 
 (* Summary command *)
 
-let summary _conf file () =
+let summary debug file () =
+  logger := make_logger debug ;
   let open RingBuf in
   let rb = load file in
   Printf.printf "%s: %d/%d words used\n"
