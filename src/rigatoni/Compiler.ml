@@ -505,7 +505,7 @@ let set_all_types graph =
   (*$inject
     let test_type_single_node op_text =
       try
-        let conf = RamenConf.make_conf false "/dev/null" in
+        let conf = RamenConf.make_conf None "http://127.0.0.1/" in
         let graph = conf.RamenConf.building_graph in
         let node = RamenConf.make_node graph "test" op_text in
         RamenConf.add_node conf graph node ;
