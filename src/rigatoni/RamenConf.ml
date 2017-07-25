@@ -4,7 +4,7 @@ open Log
 open RamenSharedTypes
 
 type temp_tup_typ =
-  { mutable complete : bool ;
+  { mutable finished_typing : bool ;
     (* Not sure we need the rank for anything, actually *)
     fields : (string, int option ref * Lang.Expr.typ) Hashtbl.t }
 
@@ -18,15 +18,15 @@ let print_temp_tup_typ fmt t =
                       | Some r -> string_of_int r
                       | None -> "??")
                       Lang.Expr.print_typ expr_typ)) t.fields
-    (if t.complete then "complete" else "incomplete")
+    (if t.finished_typing then "finished typing" else "to be typed")
 
 let make_temp_tup_typ () =
-  { complete = false ;
+  { finished_typing = false ;
     fields = Hashtbl.create 7 }
 
-let temp_tup_typ_of_tup_typ complete tup_typ =
+let temp_tup_typ_of_tup_typ finished_typing tup_typ =
   let t = make_temp_tup_typ () in
-  t.complete <- complete ;
+  t.finished_typing <- finished_typing ;
   List.iteri (fun i f ->
       let expr_typ =
         Lang.Expr.make_typ ~nullable:f.nullable
@@ -43,7 +43,7 @@ let list_of_temp_tup_type ttt =
 
 let tup_typ_of_temp_tup_type ttt =
   let open Lang in
-  assert ttt.complete ;
+  assert ttt.finished_typing ;
   list_of_temp_tup_type ttt |>
   List.map (fun (_, typ) ->
     { typ_name = typ.Expr.expr_name ;

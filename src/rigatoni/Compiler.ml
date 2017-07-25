@@ -18,6 +18,14 @@ open Log
 open RamenSharedTypes
 module C = RamenConf
 
+(* Check that we have typed all that need to be typed *)
+let check_finished_tuple_type tuple =
+  Hashtbl.iter (fun field_name (_rank, typ) ->
+      let open Lang in
+      if typ.Expr.nullable = None || typ.Expr.scalar_typ = None then
+        raise (SyntaxError ("Cannot find out the type of "^ field_name)))
+    tuple.C.fields
+
 let can_cast ~from_scalar_type ~to_scalar_type =
   let compatible_types =
     match from_scalar_type with
@@ -177,11 +185,11 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Field (op_typ, tuple, field) ->
     if same_tuple_as_in !tuple then (
       (* Check that this field is, or could be, in in_type *)
-      if field = "#count" then false else
+      if field = "#count" then false else (* TODO: Why? *)
       match Hashtbl.find in_type.C.fields field with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in in-tuple" field ;
-        if in_type.C.complete then (
+        if in_type.C.finished_typing then (
           (* FIXME: that's nice and all, but maybe out was actually not allowed
            * here?  Fix idea: in addition to in_type and out_type, have more
            * context telling us what tuple we can reference - ideally not only
@@ -191,7 +199,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
             !logger.debug "Field %s appears to belongs to out!" field ;
             tuple := "out" ;
             true
-          ) else if out_type.C.complete then (
+          ) else if out_type.C.finished_typing then (
             let m =
               Printf.sprintf "field %s not in %S tuple (which is %s)"
                 field !tuple
@@ -200,7 +208,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           ) else false
         ) else false
       | _, from ->
-        if in_type.C.complete then ( (* Save the type *)
+        if in_type.C.finished_typing then ( (* Save the type *)
           op_typ.nullable <- from.nullable ;
           op_typ.scalar_typ <- from.scalar_typ
         ) ;
@@ -212,13 +220,16 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       match Hashtbl.find out_type.C.fields field with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in out-tuple" field ;
-        if out_type.C.complete then (
-          let m = Printf.sprintf "field %s not in %S tuple" field !tuple in
+        if out_type.C.finished_typing then (
+          let m =
+            Printf.sprintf "field %s not in %S tuple ((which is %s)"
+              field !tuple
+              (IO.to_string C.print_temp_tup_typ in_type) in
           raise (SyntaxError m)) ;
         Hashtbl.add out_type.C.fields field (ref None, exp_type) ;
         true
       | _, out ->
-        if out_type.C.complete then ( (* Save the type *)
+        if out_type.C.finished_typing then ( (* Save the type *)
           op_typ.nullable <- out.nullable ;
           op_typ.scalar_typ <- out.scalar_typ
         ) ;
@@ -283,7 +294,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
     Hashtbl.fold (fun n (child_rank, child_field) changed ->
         match Hashtbl.find from_tuple.C.fields n with
         | exception Not_found ->
-          if is_subset && from_tuple.C.complete then (
+          if is_subset && from_tuple.C.finished_typing then (
             let m = Printf.sprintf "Unknown field %s" n in
             raise (Lang.SyntaxError m)) ;
           changed (* no-op *)
@@ -297,7 +308,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
     Hashtbl.fold (fun n (parent_rank, parent_field) changed ->
         match Hashtbl.find to_tuple.C.fields n with
         | exception Not_found ->
-          if to_tuple.C.complete then (
+          if to_tuple.C.finished_typing then (
             let m = Printf.sprintf "Field %s is not in to_tuple" n in
             raise (Lang.SyntaxError m)) ;
           let copy = Lang.Expr.copy_typ parent_field in
@@ -309,11 +320,12 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
         | _ ->
           changed (* We already checked those types above. All is good. *)
       ) from_tuple.C.fields changed in
-  (* If from_tuple is complete then so is to_tuple *)
+  (* If typing of from_tuple is finished then so is to_tuple *)
   let changed =
-    if including_complete && from_tuple.C.complete && not to_tuple.C.complete then (
+    if including_complete && from_tuple.C.finished_typing && not to_tuple.C.finished_typing then (
       !logger.debug "Completing to_tuple from check_inherit_tuple" ;
-      to_tuple.C.complete <- true ;
+      to_tuple.C.finished_typing <- true ;
+      check_finished_tuple_type to_tuple ;
       true
     ) else changed in
   changed
@@ -341,9 +353,10 @@ let check_yield ~in_type ~out_type fields =
     check_selected_fields ~in_type ~out_type fields
   ) || (
     (* If nothing changed so far then we are done *)
-    if not out_type.C.complete then (
+    if not out_type.C.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
-      out_type.C.complete <- true ;
+      out_type.C.finished_typing <- true ;
+      check_finished_tuple_type out_type ;
       true
     ) else false
   )
@@ -366,10 +379,11 @@ let check_select ~in_type ~out_type fields and_all_others where =
       check_inherit_tuple ~including_complete:false ~is_subset:false ~from_tuple:in_type ~to_tuple:out_type ~autorank:true
     ) else false
   ) || (
-    (* If nothing changed so far and our input is complete, then our output is. *)
-    if in_type.C.complete && not out_type.C.complete then (
+    (* If nothing changed so far and our input is finished_typing, then our output is. *)
+    if in_type.C.finished_typing && not out_type.C.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
-      out_type.C.complete <- true ;
+      out_type.C.finished_typing <- true ;
+      check_finished_tuple_type out_type ;
       true
     ) else false
   )
@@ -437,10 +451,12 @@ let check_node_types node =
   try ( (* Prepend the node name to any SyntaxError *)
     (* Try to improve the in_type using the out_type of parents: *)
     (
-      if node.C.in_type.C.complete then false
+      if node.C.in_type.C.finished_typing then false
       else if node.C.parents = [] then (
         !logger.debug "Completing node %s in-type since we have no parents" node.C.name ;
-        node.C.in_type.C.complete <- true ; true
+        node.C.in_type.C.finished_typing <- true ;
+        check_finished_tuple_type node.C.in_type ;
+        true
       ) else List.fold_left (fun changed par ->
             (* This is supposed to propagate parent completeness into in-tuple. *)
             check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:par.C.out_type ~to_tuple:node.C.in_type ~autorank:false || changed
@@ -456,21 +472,21 @@ let check_node_types node =
     let e' = Printf.sprintf "node %S: %s" node.C.name e in
     raise (Lang.SyntaxError e')
 
-let node_is_complete node =
-  node.C.in_type.C.complete && node.C.out_type.C.complete
+let node_typing_is_finished node =
+  node.C.in_type.C.finished_typing && node.C.out_type.C.finished_typing
 
 let set_all_types graph =
   let rec loop pass =
     if pass < 0 then (
       let bad_nodes =
         Hashtbl.values graph.C.persist.C.nodes //
-        (fun n -> not (node_is_complete n)) in
+        (fun n -> not (node_typing_is_finished n)) in
       let print_bad_node fmt node =
         Printf.fprintf fmt "%s: %a"
           node.C.name
           (List.print ~sep:" and " ~first:"" ~last:"" String.print)
-            ((if node.C.in_type.C.complete then [] else ["cannot type input"]) @
-            (if node.C.out_type.C.complete then [] else ["cannot type output"])) in
+            ((if node.C.in_type.C.finished_typing then [] else ["cannot type input"]) @
+            (if node.C.out_type.C.finished_typing then [] else ["cannot type output"])) in
       let msg = IO.to_string (Enum.print ~sep:", " print_bad_node) bad_nodes in
       raise (Lang.SyntaxError msg)) ;
     if Hashtbl.fold (fun _ node changed ->
@@ -504,7 +520,7 @@ let set_all_types graph =
       let exp_type = Lang.Expr.make_typ ?nullable ?typ "test" in
       let in_type = RamenConf.make_temp_tup_typ ()
       and out_type = RamenConf.make_temp_tup_typ () in
-      in_type.RamenConf.complete <- true ;
+      in_type.RamenConf.finished_typing <- true ;
       let open Lang.P in
       let p = Lang.Expr.Parser.(p +- eof) in
       let exp =
@@ -543,8 +559,8 @@ let set_all_types graph =
    *)
 
 let compile_node node =
-  assert node.C.in_type.C.complete ;
-  assert node.C.out_type.C.complete ;
+  assert node.C.in_type.C.finished_typing ;
+  assert node.C.out_type.C.finished_typing ;
   let in_typ = C.tup_typ_of_temp_tup_type node.C.in_type
   and out_typ = C.tup_typ_of_temp_tup_type node.C.out_type in
   node.C.command <- Some (
@@ -558,16 +574,16 @@ let compile conf graph =
     raise (C.InvalidCommand "Graph is already compiled and is running")
   | Edition ->
     set_all_types graph ;
-    let complete =
-      Hashtbl.fold (fun _ node complete ->
+    let finished_typing =
+      Hashtbl.fold (fun _ node finished_typing ->
           !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
             node.C.name
             C.print_temp_tup_typ node.C.in_type
             C.print_temp_tup_typ node.C.out_type ;
-          complete && node_is_complete node
+          finished_typing && node_typing_is_finished node
         ) graph.C.persist.C.nodes true in
     (* TODO: better reporting *)
-    if not complete then raise (Lang.SyntaxError "Cannot complete typing") ;
+    if not finished_typing then raise (Lang.SyntaxError "Cannot complete typing") ;
     Hashtbl.iter (fun _ node ->
         try compile_node node
         with Failure m ->
