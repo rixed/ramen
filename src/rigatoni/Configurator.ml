@@ -148,10 +148,12 @@ let graph_info_of_bcns delete csv_dir bcns =
              min of capture_begin, max of capture_end,\n  \
              sum of packets / ((max_capture_end - min_capture_begin) / 1_000_000) as packets_per_secs,\n  \
              sum of bytes / ((max_capture_end - min_capture_begin) / 1_000_000) as bytes_per_secs,\n  \
-             zone_src, zone_dst\n\
+             %S as zone_src, %S as zone_dst\n\
            WHERE %s AND %s\n\
            GROUP BY capture_begin // %d\n\
            COMMIT AND FLUSH WHEN all.capture_begin > min_capture_begin + 2 * %d"
+          (name_of_zones bcn.source)
+          (name_of_zones bcn.dest)
           (in_zone "zone_src" bcn.source)
           (in_zone "zone_dst" bcn.dest)
           avg_window
