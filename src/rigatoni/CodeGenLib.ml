@@ -337,9 +337,9 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
     let prev_all = Option.default in_tuple !all_tuple in
     all_tuple := Some in_tuple ;
     let prev_selected = Option.default in_tuple !selected_tuple in
-
+    let all_count = Uint64.succ !CodeGenLib_IO.tuple_count in
     let must f aggr =
-      f (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in !output_count aggr.out_tuple aggr.previous_out prev_all !selected_count prev_selected
+      f (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields all_count in_tuple aggr.first_in aggr.last_in !output_count aggr.out_tuple aggr.previous_out prev_all !selected_count prev_selected
     in
     let commit_and_flush_list to_commit to_flush =
       (* We must commit first and then flush *)
@@ -362,7 +362,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
           if must flush_when a then (k, a)::l else l) h [] in
       commit_and_flush_list to_commit to_flush
     in
-    if where_fast !CodeGenLib_IO.tuple_count in_tuple then (
+    if where_fast all_count in_tuple then (
       IntGauge.set stats_group_count (Hashtbl.length h) ;
       let k = key_of_input in_tuple in
       let prev_last_key = !last_key in
@@ -373,10 +373,10 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
         | exception Not_found ->
           let fields = aggr_init in_tuple
           and nb_entries = Uint64.of_int 1 in
-          if where_slow nb_entries nb_entries fields !CodeGenLib_IO.tuple_count in_tuple in_tuple in_tuple prev_all then (
+          if where_slow nb_entries nb_entries fields all_count in_tuple in_tuple in_tuple prev_all then (
             IntCounter.add stats_selected_tuple_count 1 ;
             let out_tuple =
-              tuple_of_aggr fields in_tuple !CodeGenLib_IO.tuple_count prev_all !selected_count prev_selected in_tuple in_tuple in
+              tuple_of_aggr fields in_tuple all_count prev_all !selected_count prev_selected in_tuple in_tuple in
             let aggr = {
               first_in = in_tuple ;
               last_in = in_tuple ;
@@ -393,7 +393,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
             Some aggr
           ) else None
         | aggr ->
-          if where_slow (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields !CodeGenLib_IO.tuple_count in_tuple aggr.first_in aggr.last_in prev_all then (
+          if where_slow (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields all_count in_tuple aggr.first_in aggr.last_in prev_all then (
             IntCounter.add stats_selected_tuple_count 1 ;
             update_aggr aggr.fields in_tuple ;
             aggr.last_ev_count <- !event_count ;
@@ -403,7 +403,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
             if prev_last_key = Some k then
               aggr.nb_successive <- aggr.nb_successive + 1 ;
             let out_tuple =
-              tuple_of_aggr aggr.fields in_tuple !CodeGenLib_IO.tuple_count prev_all !selected_count prev_selected aggr.first_in aggr.last_in in
+              tuple_of_aggr aggr.fields in_tuple all_count prev_all !selected_count prev_selected aggr.first_in aggr.last_in in
             aggr.out_tuple <- out_tuple ;
             aggr.last_in <- in_tuple ;
             Some aggr
@@ -461,7 +461,8 @@ let alert read_tuple field_of_tuple team alert_cond subject text =
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     IntCounter.add stats_in_tuple_count 1 ;
-    if alert_cond !CodeGenLib_IO.tuple_count in_tuple then (
+    let all_count = Uint64.succ !CodeGenLib_IO.tuple_count in
+    if alert_cond all_count in_tuple then (
       IntCounter.add stats_selected_tuple_count 1 ;
       let team = expand_fields team in_tuple
       and subject = expand_fields subject in_tuple
