@@ -76,7 +76,7 @@ type graph =
 
 type conf =
   { mutable building_graph : graph ;
-    save_file : string ;
+    save_file : string option ;
     ramen_url : string }
 
 exception InvalidCommand of string
@@ -139,27 +139,32 @@ let make_graph ?persist () =
 
 let load_graph save_file =
   let persist =
-    try
-      File.with_file_in save_file (fun ic ->
-        let persist = Marshal.input ic in
-        if persist.status = Running then persist.status <- Compiled ;
-        (* TODO: check the binaries are still there!
-         * If so, then we should restart the graph. *)
-        Some persist)
-    with
-    | Sys_error err ->
-      !logger.debug "Cannot read state from file %S: %s. Starting anew" save_file err ;
-      None
-    | BatInnerIO.No_more_input ->
-      !logger.debug "Cannot read state from file %S: not enough input. Starting anew" save_file ;
-      None
+    match save_file with
+    | None -> None
+    | Some fname ->
+      (try
+        File.with_file_in fname (fun ic ->
+          let persist = Marshal.input ic in
+          if persist.status = Running then persist.status <- Compiled ;
+          (* TODO: check the binaries are still there!
+           * If so, then we should restart the graph. *)
+          Some persist)
+      with
+      | Sys_error err ->
+        !logger.debug "Cannot read state from file %S: %s. Starting anew" fname err ;
+        None
+      | BatInnerIO.No_more_input ->
+        !logger.debug "Cannot read state from file %S: not enough input. Starting anew" fname ;
+        None)
   in
   make_graph ?persist ()
 
 let save_graph conf graph =
-  !logger.debug "Saving graph in %S" conf.save_file ;
-  File.with_file_out ~mode:[`create; `trunc] conf.save_file (fun oc ->
-    Marshal.output oc graph.persist)
+  Option.may (fun save_file ->
+      !logger.debug "Saving graph in %S" save_file ;
+      File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
+        Marshal.output oc graph.persist)
+    ) conf.save_file
 
 let has_node _conf graph id =
   Hashtbl.mem graph.persist.nodes id

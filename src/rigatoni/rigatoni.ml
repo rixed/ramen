@@ -35,7 +35,7 @@ let graph_save_file =
   let env = Term.env_info "RAMEN_SAVE_FILE" in
   let i = Arg.info ~doc:"graph save file"
                    ~env ["graph-save-file"] in
-  Arg.(value (opt string "/tmp/rigatoni_graph.raw" i))
+  Arg.(value (opt (some string) None i))
 
 let ramen_url =
   let env = Term.env_info "RAMEN_URL" in
