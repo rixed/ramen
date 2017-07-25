@@ -446,8 +446,7 @@ let callback conf _conn req body =
           fail (HttpError (404, "No such resource"))
         | _ ->
           fail (HttpError (405, "Method not implemented"))
-      with HttpError _ as exn -> fail exn
-         | exn ->
+      with exn ->
           !logger.error "Exception: %s at\n%s"
             (Printexc.to_string exn)
             (Printexc.get_backtrace ()) ;
@@ -461,7 +460,9 @@ let callback conf _conn req body =
         let body = Printexc.to_string exn ^ "\n" in
         Server.respond_error ~body ())
 
-let start conf port cert_opt key_opt () =
+let start debug save_file ramen_url port cert_opt key_opt () =
+  logger := make_logger debug ;
+  let conf = C.make_conf save_file ramen_url in
   let entry_point = Server.make ~callback:(callback conf) () in
   let tcp_mode = `TCP (`Port port) in
   let t1 =
