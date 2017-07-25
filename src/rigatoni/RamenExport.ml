@@ -74,7 +74,7 @@ let add_tuple node_name tuple_type tuple =
     let history = { tuples = Array.init history_length (fun i ->
                       if i = 0 then tuple else [||]) ;
                     tuple_type ;
-                    count = 0 } in
+                    count = 1 } in
     Hashtbl.add imported_tuples node_name history
   | history ->
     let idx = history.count mod Array.length history.tuples in

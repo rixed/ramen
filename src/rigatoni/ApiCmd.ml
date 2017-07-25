@@ -135,10 +135,12 @@ let tail debug ramen_url node_name as_csv last continuous () =
     display_tuple as_csv resp ;
     flush stdout ;
     if continuous then (
-      let last = Option.map (fun l -> l - len) last
-      and since = resp.first + len in
-      let%lwt () = Lwt_unix.sleep 1.0 in
-      get_next ~since ?max_results:last ?last ()
+      let last = Option.map (fun l -> l - len) last in
+      if last |? 1 > 0 then (
+        let since = resp.first + len in
+        let%lwt () = Lwt_unix.sleep 1.0 in
+        get_next ~since ?max_results:last ?last ()
+      ) else return_unit
     ) else return_unit
   in
   Lwt_main.run (get_next ?last ())
