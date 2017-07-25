@@ -26,7 +26,7 @@ let http_do ?(cmd=Client.put) ?content_type ?body url =
   let headers = match content_type with
     | Some ct -> Header.add headers "Content-Type" ct
     | None -> headers in
-  !logger.debug "HTTP PUT %S < %a" url (Option.print String.print) body ;
+  !logger.debug "%S < %a" url (Option.print String.print) body ;
   let body = Option.map (fun s -> `String s) body in
   cmd ~headers ?body (Uri.of_string url) >>= check_code
 
@@ -58,7 +58,7 @@ let add_link debug ramen_url n1 n2 () =
   logger := make_logger debug ;
   let url = ramen_url ^"/link/"^ enc n1 ^"/"^ enc n2 in
   Lwt_main.run (
-    http_do url |> check_ok)
+    http_do url >>= check_ok)
 
 let compile debug ramen_url () =
   logger := make_logger debug ;
