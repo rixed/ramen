@@ -1,5 +1,4 @@
 open Batteries
-open BatOption.Infix
 open Log
 open RamenSharedTypes
 module C = RamenConf
@@ -60,8 +59,9 @@ let history_length = 8096
 
 type history =
   { tuple_type : Lang.Tuple.typ ;
-    (* Store arrays of Scalar.values not hash of names to values ! *)
-    tuples : Lang.Scalar.t array array ;
+    (* Store arrays of Scalar.values not hash of names to values !
+     * TODO: ideally storing sclar_columns would be even better *)
+    tuples : scalar_value array array ;
     (* Gives us both the position of the last tuple in the array and an index
      * in the stream of tuples to help polling *)
     mutable count : int }
@@ -82,7 +82,6 @@ let add_tuple node_name tuple_type tuple =
     history.count <- history.count + 1
 
 let read_tuple tuple_type tx =
-  let open Lang.Scalar in
   (* First read the nullmask *)
   let nullmask_size =
     CodeGen_OCaml.nullmask_bytes_of_tuple_type tuple_type in
@@ -145,26 +144,62 @@ let import_tuples rb_name node_name tuple_type =
     Lwt_main.yield ()
   done
 
-let get_history node_name =
+let get_history conf node_name =
   try Hashtbl.find imported_tuples node_name
   with Not_found ->
-    raise (C.InvalidCommand ("Unknown node "^node_name))
+    (match C.find_node conf conf.C.building_graph node_name with
+    | exception Not_found ->
+      raise (C.InvalidCommand ("Unknown node "^ node_name))
+    | node ->
+      (* Build a fake empty history *)
+      { tuple_type = C.tup_typ_of_temp_tup_type node.C.out_type ;
+        tuples = [||] ; count = 0 })
 
-let get_field_types node_name =
-  let history = get_history node_name in
-  Array.of_list history.tuple_type
+let get_field_types history =
+  history.tuple_type
 
-let fold_tuples ?(since=0) ?max_res node_name init f =
-  let history = get_history node_name in
-  let max_res = max_res |? Array.length history.tuples - 1 in
-  let since = max since (history.count - max_res) in
-  let first_idx = since mod Array.length history.tuples in
-  let last_idx = history.count mod Array.length history.tuples in
-  let rec loop prev i =
-    let i = if i < Array.length history.tuples then i else 0 in
-    let tuple = history.tuples.(i) in
-    let prev =
-      if Array.length tuple > 0 then f prev tuple else prev in
-    if i = last_idx then prev else loop prev (i + 1) in
-  if
-  first_idx = last_idx then init else loop init first_idx
+let fold_tuples ?(since=0) ?max_res history init f =
+  if Array.length history.tuples = 0 then (
+    since, init
+  ) else (
+    let nb_tuples = min history.count (Array.length history.tuples) in
+    let nb_res = match max_res with
+      | Some r -> min r nb_tuples
+      | None -> nb_tuples in
+    let since = max since (history.count - Array.length history.tuples) in
+    let first_idx = since mod Array.length history.tuples in
+    let rec loop prev i r =
+      if r <= 0 then prev else (
+        let i = if i < Array.length history.tuples then i else 0 in
+        let tuple = history.tuples.(i) in
+        let prev =
+          if Array.length tuple > 0 then f tuple prev else prev in
+        loop prev (i + 1) (r - 1)
+      ) in
+    since, loop init first_idx nb_res
+  )
+
+let scalar_column_init typ len f =
+  match typ with
+  | TNull -> ANull len
+  | TFloat -> AFloat (Array.init len (fun i -> match f i with VFloat x -> x | _ -> assert false))
+  | TString -> AString (Array.init len (fun i -> match f i with VString x -> x | _ -> assert false))
+  | TBool -> ABool (Array.init len (fun i -> match f i with VBool x -> x | _ -> assert false))
+  | TU8 -> AU8 (Array.init len (fun i -> match f i with VU8 x -> x | _ -> assert false))
+  | TU16 -> AU16 (Array.init len (fun i -> match f i with VU16 x -> x | _ -> assert false))
+  | TU32 -> AU32 (Array.init len (fun i -> match f i with VU32 x -> x | _ -> assert false))
+  | TU64 -> AU64 (Array.init len (fun i -> match f i with VU64 x -> x | _ -> assert false))
+  | TU128 -> AU128 (Array.init len (fun i -> match f i with VU128 x -> x | _ -> assert false))
+  | TI8 -> AI8 (Array.init len (fun i -> match f i with VI8 x -> x | _ -> assert false))
+  | TI16 -> AI16 (Array.init len (fun i -> match f i with VI16 x -> x | _ -> assert false))
+  | TI32 -> AI32 (Array.init len (fun i -> match f i with VI32 x -> x | _ -> assert false))
+  | TI64 -> AI64 (Array.init len (fun i -> match f i with VI64 x -> x | _ -> assert false))
+  | TI128 -> AI128 (Array.init len (fun i -> match f i with VI128 x -> x | _ -> assert false))
+  | TNum -> assert false
+
+let columns_of_tuples fields values =
+  let values = Array.of_list values in
+  List.mapi (fun ci ft ->
+      ft.typ_name, ft.nullable,
+      scalar_column_init ft.typ (Array.length values) (fun i -> values.(i).(ci))
+    ) fields

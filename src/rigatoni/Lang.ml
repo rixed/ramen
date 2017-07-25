@@ -153,10 +153,8 @@
  *)
 
 open Batteries
-open Stdint
 open RamenSharedTypes
-type uint8 = Uint8.t
-type uint16 = Uint16.t
+open Stdint
 
 exception SyntaxError of string
 
@@ -328,14 +326,6 @@ struct
   let larger_type (t1, t2) =
     if compare_typ t1 t2 >= 0 then t1 else t2
 
-  (* stdint types are implemented as custom blocks, therefore are slower than ints.
-   * But we do not care as we merely represents code here, we do not run the operators. *)
-  type t = VFloat of float | VString of string | VBool of bool
-         | VU8 of uint8 | VU16 of uint16 | VU32 of uint32
-         | VU64 of uint64 | VU128 of uint128
-         | VI8 of int8 | VI16 of int16 | VI32 of int32
-         | VI64 of int64 | VI128 of int128 | VNull
-
   let print fmt = function
     | VFloat f  -> Printf.fprintf fmt "%g" f
     | VString s -> Printf.fprintf fmt "%S" s
@@ -351,12 +341,6 @@ struct
     | VI64 i    -> Printf.fprintf fmt "%s" (Int64.to_string i)
     | VI128 i   -> Printf.fprintf fmt "%s" (Int128.to_string i)
     | VNull     -> Printf.fprintf fmt "NULL"
-
-  let type_of = function
-    | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
-    | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
-    | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
-    | VI64 _ -> TI64 | VI128 _ -> TI128 | VNull -> TNull
 
   module Parser =
   struct
@@ -486,7 +470,7 @@ struct
   let print_typ fmt lst =
     (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) fmt lst
 
-  type t = (string, Scalar.t) Hashtbl.t
+  type t = (string, scalar_typ) Hashtbl.t
 
   let make_empty () = Hashtbl.create 7
 end
@@ -538,7 +522,7 @@ struct
   type t =
     (* TODO: classify by type and number of operands to simplify adding
      * functions *)
-    | Const of typ * Scalar.t
+    | Const of typ * scalar_value
     | Field of typ * string ref (* tuple: in, out, others... *) * string (* field name *)
     | Param of typ * string
     (* Valid only within an aggregation operation; but must be here to allow
@@ -582,7 +566,7 @@ struct
     | Eq  of typ * t * t
 
   let expr_true =
-    Const (make_bool_typ ~nullable:false "true", Scalar.VBool true)
+    Const (make_bool_typ ~nullable:false "true", VBool true)
 
   let is_virtual_field f =
     String.length f > 0 && f.[0] = '#'
@@ -699,16 +683,16 @@ struct
     let const m =
       let m = "constant" :: m in
       (Scalar.Parser.p >>: fun c ->
-       Const (make_typ ~nullable:false ~typ:(Scalar.type_of c) "constant", c)) m
+       Const (make_typ ~nullable:false ~typ:(scalar_type_of c) "constant", c)) m
     (*$= const & ~printer:(test_printer (print false))
-      (Ok (Const (typ, Scalar.VBool true), (4, [])))\
+      (Ok (Const (typ, VBool true), (4, [])))\
         (test_p const "true" |> replace_typ_in_expr)
     *)
 
     let null m =
       let m = "NULL" :: m in
       (strinG "null" >>: fun () ->
-       Const (make_typ ~nullable:true ~typ:TNull "NULL", Scalar.VNull)) m
+       Const (make_typ ~nullable:true ~typ:TNull "NULL", VNull)) m
 
     let field m =
       let m = "field" :: m in
@@ -901,9 +885,9 @@ struct
       let seq = "sequence"
       and seq_typ = make_typ ~nullable:false ~typ:TI128 "sequence function"
       and seq_default_step = Const (make_typ ~nullable:false ~typ:TU8 "sequence step",
-                                    Scalar.VU8 (Uint8.of_int 1))
+                                    VU8 (Uint8.of_int 1))
       and seq_default_start = Const (make_typ ~nullable:false ~typ:TU8 "sequence start",
-                                     Scalar.VU8 (Uint8.of_int 0)) in
+                                     VU8 (Uint8.of_int 0)) in
       fun m ->
         let m = "sequence function" :: m in
         ((afun2 seq >>: fun (e1, e2) ->
@@ -932,7 +916,7 @@ struct
 
     (*$= p & ~printer:(test_printer (print false))
       (Ok (\
-        Const (typ, Scalar.VBool true),\
+        Const (typ, VBool true),\
         (4, [])))\
         (test_p p "true" |> replace_typ_in_expr)
 
@@ -969,7 +953,7 @@ struct
         IDiv (typ, \
           Field (typ, ref "in", "start"),\
           Mul (typ, \
-            Const (typ, Scalar.VI32 1_000_000l),\
+            Const (typ, VI32 1_000_000l),\
             Param (typ, "avg_window"))),\
         (34, [])))\
         (test_p p "start // (1_000_000 * $avg_window)" |> replace_typ_in_expr)
@@ -990,8 +974,8 @@ struct
             Mul (typ, \
               Mul (typ, \
                 Param (typ, "obs_window"),\
-                Const (typ, Scalar.VFloat 1.15)),\
-              Const (typ, Scalar.VI32 1_000_000l)))),\
+                Const (typ, VFloat 1.15)),\
+              Const (typ, VI32 1_000_000l)))),\
         (63, [])))\
         (test_p p "max others.start > \\
                    out.start + ($obs_window * 1.15) * 1_000_000" |> replace_typ_in_expr)
@@ -1282,7 +1266,7 @@ struct
             { expr = Expr.(Field (typ, ref "in", "itf_srv")) ;\
               alias = "itf_dst" } ] ;\
           and_all_others = false ;\
-          where = Expr.Const (typ, Scalar.VBool true) ;\
+          where = Expr.Const (typ, VBool true) ;\
           and_export = false },\
         (58, [])))\
         (test_p p "select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
@@ -1295,7 +1279,7 @@ struct
           where = Expr.(\
             Gt (typ,\
               Field (typ, ref "in", "packets"),\
-              Const (typ, Scalar.VI8 (Int8.of_int 0)))) ;\
+              Const (typ, VI8 (Int8.of_int 0)))) ;\
           and_export = false },\
         (17, [])))\
         (test_p p "where packets > 0" |> replace_typ_in_op)
@@ -1315,19 +1299,19 @@ struct
                   Param (typ, "avg_window"))) ;\
               alias = "packets_per_sec" } ] ;\
           and_all_others = false ;\
-          where = Expr.Const (typ, Scalar.VBool true) ;\
+          where = Expr.Const (typ, VBool true) ;\
           and_export = false; \
           key = [ Expr.(\
             Div (typ,\
               Field (typ, ref "in", "start"),\
               Mul (typ,\
-                Const (typ, Scalar.VI32 1_000_000l),\
+                Const (typ, VI32 1_000_000l),\
                 Param (typ, "avg_window")))) ] ;\
           commit_when = Expr.(\
             Gt (typ,\
               Add (typ,\
                 AggrMax (typ,Field (typ, ref "any", "start")),\
-                Const (typ, Scalar.VI16 (Int16.of_int 3600))),\
+                Const (typ, VI16 (Int16.of_int 3600))),\
               Field (typ, ref "out", "start"))) ; \
           flush_when = None ; flush_how = Reset },\
           (193, [])))\
@@ -1341,16 +1325,16 @@ struct
       (Ok (\
         Aggregate {\
           fields = [\
-            { expr = Expr.Const (typ, Scalar.VI8 (Int8.of_int 1)) ;\
+            { expr = Expr.Const (typ, VI8 (Int8.of_int 1)) ;\
               alias = "one" } ] ;\
           and_all_others = false ;\
-          where = Expr.Const (typ, Scalar.VBool true) ;\
+          where = Expr.Const (typ, VBool true) ;\
           and_export = false; \
           key = [] ;\
           commit_when = Expr.(\
             Ge (typ,\
-              AggrSum (typ, Const (typ, Scalar.VI8 (Int8.of_int 1))),\
-              Const (typ, Scalar.VI8 (Int8.of_int 5)))) ;\
+              AggrSum (typ, Const (typ, VI8 (Int8.of_int 1))),\
+              Const (typ, VI8 (Int8.of_int 5)))) ;\
           flush_when = None ; flush_how = Reset },\
           (48, [])))\
           (test_p p "select 1 as one commit and flush when sum 1 >= 5" |>\

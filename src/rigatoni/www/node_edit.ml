@@ -1,5 +1,5 @@
 open Vdom
-open RamenSharedTypes_no_PPP
+open RamenSharedTypes_JS
 
 (* misc *)
 let log str =

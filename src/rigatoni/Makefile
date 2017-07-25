@@ -1,18 +1,20 @@
 top_srcdir = ..
 
-LINKED_WITH_TESTS = \
-	Log.ml Helpers.ml Lang.ml RingBufLib.ml CodeGen_OCaml.ml \
-	RingBuf.ml RamenConf.ml
-
 TESTABLE_SOURCES = \
 	RamenSharedTypes.ml Lang.ml Compiler.ml
+
+# For the actual command line building all_tests.opt:
+LINKED_FOR_TESTS = \
+	Log.ml Helpers.ml RingBufLib.ml \
+	RamenSharedTypes.ml Lang.ml CodeGen_OCaml.ml \
+	RingBuf.ml RamenConf.ml Compiler.ml
 
 RIGATONI_SOURCES = \
 	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml \
 	Lang.ml RingBufLib.ml RingBuf.ml \
 	CodeGen_OCaml.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
-	Compiler.ml HttpSrv.ml RingBufCmd.ml \
+	Compiler.ml HttpSrv.ml ApiCmd.ml RingBufCmd.ml \
 	rigatoni.ml
 
 CODEGENLIB_SOURCES = \
@@ -29,6 +31,7 @@ CONFIGURATOR_SOURCES = \
 SOURCES = \
 	$(RIGATONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
+	www/FakeStdint.ml www/node_edit.ml \
 	$(CONFIGURATOR_SOURCES)
 
 JS_PACKAGES = ocaml-vdom js_of_ocaml-lwt js_of_ocaml-ppx lwt.ppx
@@ -69,18 +72,19 @@ ringbuf_test.opt: Log.cmx Helpers.cmx RingBuf.cmx RingBufLib.cmx ringbuf_test.cm
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-all_tests.opt: ringbuf/libringbuf.a wrap_ringbuf.o $(LINKED_WITH_TESTS:.ml=.cmx) $(TESTABLE_SOURCES:.ml=.cmx) all_tests.ml
+all_tests.opt: ringbuf/libringbuf.a wrap_ringbuf.o $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
 
 # Web thingies
 
 JS_EXTRA = www/graph_layout.js
 
-# Ignore PPP (but then have to use another name for the cmi won't be the same):
-RamenSharedTypes_no_PPP.cmo: RamenSharedTypes.ml
-	$(OCAMLC) $(OCAMLFLAGS) -o $@ -c $<
+# Ignore PPP (but then have to use another name for the cmi won't be the same)
+# and fake Stdint:
+RamenSharedTypes_JS.cmo: RamenSharedTypes.ml www/FakeStdint.cmo
+	$(OCAMLC) -I www -open FakeStdint $(OCAMLFLAGS) -o $@ -c $<
 
-www/node_edit.byte: RamenSharedTypes_no_PPP.cmo www/node_edit.cmo
+www/node_edit.byte: RamenSharedTypes_JS.cmo www/node_edit.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(JS_PACKAGES)" -no-check-prims -linkpkg -o $@ $^
 
 clean-spec:

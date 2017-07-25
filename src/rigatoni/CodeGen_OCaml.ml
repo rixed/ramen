@@ -282,7 +282,6 @@ let add_all_mentioned lst =
 
 let emit_scalar oc =
   let open Stdint in
-  let open Lang.Scalar in
   function
   | VFloat  f -> Printf.fprintf oc "%f" f
   | VString s -> Printf.fprintf oc "%S" s

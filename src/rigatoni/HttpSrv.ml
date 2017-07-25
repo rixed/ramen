@@ -347,25 +347,20 @@ let stop conf headers =
 Clients can request to be sent the tuples from an exporting node.
 *)
 
-let export _conf headers node_name body =
+let export conf headers node_name body =
   check_accept headers Consts.json_content_type (fun () ->
     let%lwt req =
       if body = "" then return empty_export_req else
       of_json headers ("Exporting from "^ node_name) export_req_ppp body in
-    let fields = RamenExport.get_field_types node_name in
-    let values =
+    let history = RamenExport.get_history conf node_name in
+    let fields = RamenExport.get_field_types history in
+    let first, values =
       RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
-                              node_name [] (fun l t -> t::l) in
-    (* Handcrafted JSON for that one: *)
-    let body =
-      "{\"fields\":"^
-        PPP.to_string field_typ_arr_ppp fields ^","^
-      "\"values\":"^
-        IO.to_string
-          (List.print ~first:"[" ~last:"]" ~sep:","
-            (Array.print ~first:"[" ~last:"]" ~sep:"," Lang.Scalar.print))
-          values ^"}"
-    in
+                              history [] List.cons in
+    (* Store it in column to save variant types: *)
+    let resp =
+      { first ; columns = RamenExport.columns_of_tuples fields values } in
+    let body = PPP.to_string export_resp_ppp resp in
     respond_ok ~body ())
 
 (*
