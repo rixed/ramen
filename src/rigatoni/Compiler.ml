@@ -92,7 +92,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
    * Extends the type of sub_expr as required. *)
   let check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr =
     let sub_typ = typ_of sub_expr in
-    Printf.eprintf "Checking operand of (%a), of type (%a) (expected: %a)\n"
+    !logger.debug "Checking operand of (%a), of type (%a) (expected: %a)"
       Expr.print_typ op_typ
       Expr.print_typ sub_typ
       (Option.print Scalar.print_typ) exp_sub_typ ;
@@ -114,14 +114,14 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         op_typ.expr_name (if n1 then "" else " not") in
       raise (SyntaxError m)
     | _ -> ()) ;
-    Printf.eprintf "...operand subtype found to be: %a\n%!"
+    !logger.debug "...operand subtype found to be: %a"
       Expr.print_typ sub_typ ;
     changed
   in
   (* Check that actual_typ is a better version of op_typ and improve op_typ,
    * then check that the resulting op_type fulfill exp_type. *)
   let check_operator op_typ actual_typ nullable =
-    Printf.eprintf "Checking operator %a, of actual type %a\n%!"
+    !logger.debug "Checking operator %a, of actual type %a"
       Expr.print_typ op_typ
       Scalar.print_typ actual_typ ;
     let from = make_typ ~typ:actual_typ ?nullable op_typ.expr_name in
@@ -560,7 +560,7 @@ let compile conf graph =
     set_all_types graph ;
     let complete =
       Hashtbl.fold (fun _ node complete ->
-          !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a\n\n"
+          !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
             node.C.name
             C.print_temp_tup_typ node.C.in_type
             C.print_temp_tup_typ node.C.out_type ;
