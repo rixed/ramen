@@ -23,7 +23,8 @@ let check_finished_tuple_type tuple =
   Hashtbl.iter (fun field_name (_rank, typ) ->
       let open Lang in
       if typ.Expr.nullable = None || typ.Expr.scalar_typ = None then
-        raise (SyntaxError ("Cannot find out the type of "^ field_name)))
+        raise (SyntaxError ("Cannot find out the type of "^
+          field_name ^" ("^ IO.to_string Expr.print_typ typ ^")")))
     tuple.C.fields
 
 let can_cast ~from_scalar_type ~to_scalar_type =
@@ -195,6 +196,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
            * context telling us what tuple we can reference - ideally not only
            * the tuple but the fields within those, because in a select we can
            * only refer to out tuple fields that have been defined earlier. *)
+          (* FIXME: also, do not look elsewhere if "in" was explicit! *)
           if Hashtbl.mem out_type.C.fields field then (
             !logger.debug "Field %s appears to belongs to out!" field ;
             tuple := "out" ;
@@ -338,10 +340,13 @@ let check_selected_fields ~in_type ~out_type fields =
         let exp_type =
           match Hashtbl.find out_type.C.fields name with
           | exception Not_found ->
-            let expr_typ = Expr.make_typ name in
+            (* Start from the type we already know from the expression
+             * because it is already set in some cases (virtual fields -
+             * and for them that's our only change to get this type) *)
+            let exp_typ = Expr.copy_typ ~name (Expr.typ_of sf.Operation.expr) in
             !logger.debug "Adding out field %s" name ;
-            Hashtbl.add out_type.C.fields name (ref (Some i), expr_typ) ;
-            expr_typ
+            Hashtbl.add out_type.C.fields name (ref (Some i), exp_typ) ;
+            exp_typ
           | rank, exp_typ ->
             if !rank = None then rank := Some i ;
             exp_typ in

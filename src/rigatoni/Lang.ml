@@ -492,9 +492,6 @@ struct
       nullable_info = typ.nullable ;
       typ_info = typ.scalar_typ }
 
-  let typ_is_complete typ =
-    typ.nullable <> None && typ.scalar_typ <> None
-
   let print_typ fmt typ =
     Printf.fprintf fmt "%s of %s%s"
       typ.expr_name
@@ -514,9 +511,10 @@ struct
   let make_float_typ ?nullable name = make_typ ?nullable ~typ:TFloat name
   let make_num_typ ?nullable name =
     make_typ ?nullable ~typ:TNum name (* will be enlarged as required *)
-  let copy_typ typ =
+  let copy_typ ?name typ =
+    let expr_name = name |? typ.expr_name in
     incr uniq_num_seq ;
-    { typ with expr_name = typ.expr_name ; uniq_num = !uniq_num_seq }
+    { typ with expr_name ; uniq_num = !uniq_num_seq }
 
   (* Expressions on scalars (aka fields) *)
   type t =
@@ -709,10 +707,10 @@ struct
          * the tuple) *)
         fun (tuple, field) ->
           Field (make_typ field, ref tuple, field)) |||
-       (optional ~def:"in" (prefix "in" ||| prefix "out") ++ that_string "#count" >>:
+       (optional ~def:"in" (prefix "in" ||| prefix "selected" ||| prefix "out" ||| prefix "all") ++ that_string "#count" >>:
         fun (tuple, field) ->
           Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field)) |||
-       (optional ~def:"out" (prefix "out") ++ that_string "#successive" >>:
+       (optional ~def:"out" (prefix "in" ||| prefix "selected") ++ that_string "#successive" >>:
         fun (tuple, field) ->
           Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field))
       ) m
@@ -1107,7 +1105,8 @@ struct
     open P
 
     let default_alias = function
-      | Expr.Field (_, { contents="in" }, field) -> field
+      | Expr.Field (_, { contents="in" }, field)
+          when not (Expr.is_virtual_field field) -> field
       (* Provide some default name for current aggregate functions: *)
       | Expr.AggrMin (_, Expr.Field (_, { contents="in" }, field)) -> "min_"^ field
       | Expr.AggrMax (_, Expr.Field (_, { contents="in" }, field)) -> "max_"^ field

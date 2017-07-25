@@ -307,6 +307,12 @@ is a list of all available virtual fields and which tuple they apply to:
 | `all.#count`
 | How many tuples have been received (probably useless in itself but handy for comparison or with modulus).
 
+| `selected.#count`
+| How many tuples have passed the WHERE filter.
+
+| `selected.#successive`
+| How many tuples have passed the WHERE filter without any incoming tuple failing to pass (TBD).
+
 | `in.#count`
 | In a +GROUP BY+ operation, how many tuples were added so far to form the output tuple.
 
