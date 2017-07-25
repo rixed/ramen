@@ -257,7 +257,7 @@ let get_graph_json conf _headers =
     { nodes = Hashtbl.fold (fun _name node lst ->
         node_info_of_node node :: lst
       ) conf.C.building_graph.C.persist.C.nodes [] ;
-      status = conf.C.building_graph.C.status ;
+      status = conf.C.building_graph.C.persist.C.status ;
       last_started = conf.C.building_graph.C.last_started ;
       last_stopped = conf.C.building_graph.C.last_stopped } in
   let body = PPP.to_string graph_info_ppp graph_info in

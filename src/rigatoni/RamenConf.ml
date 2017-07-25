@@ -65,11 +65,11 @@ type node =
     mutable last_report : Binocle.metric list }
 
 type graph_persist =
-  { nodes : (string, node) Hashtbl.t }
+  { mutable status : graph_status ;
+    nodes : (string, node) Hashtbl.t }
 
 type graph =
-  { mutable status : graph_status ;
-    mutable last_started : float option ;
+  { mutable last_started : float option ;
     mutable last_stopped : float option ;
     mutable importing_threads : unit Lwt.t list ;
     persist : graph_persist }
@@ -84,10 +84,10 @@ exception InvalidCommand of string
 (* Graph edition: only when stopped *)
 
 let set_graph_editable graph =
-  match graph.status with
+  match graph.persist.status with
   | Edition -> ()
   | Compiled ->
-    graph.status <- Edition ;
+    graph.persist.status <- Edition ;
     (* Also reset the info we kept from the last cmopilation *)
     Hashtbl.iter (fun _ node ->
        node.in_type <- make_temp_tup_typ () ;
@@ -131,9 +131,9 @@ let update_node graph node op_text =
 
 let make_graph ?persist () =
   let persist =
-    Option.default_delayed (fun () -> { nodes = Hashtbl.create 17 }) persist in
-  { status = Edition ;
-    importing_threads = [] ;
+    Option.default_delayed (fun () ->
+      { status = Edition ; nodes = Hashtbl.create 17 }) persist in
+  { importing_threads = [] ;
     last_started = None ; last_stopped = None ;
     persist }
 
@@ -141,7 +141,11 @@ let load_graph save_file =
   let persist =
     try
       File.with_file_in save_file (fun ic ->
-        Some (Marshal.input ic))
+        let persist = Marshal.input ic in
+        if persist.status = Running then persist.status <- Compiled ;
+        (* TODO: check the binaries are still there!
+         * If so, then we should restart the graph. *)
+        Some persist)
     with
     | Sys_error err ->
       !logger.debug "Cannot read state from file %S: %s. Starting anew" save_file err ;

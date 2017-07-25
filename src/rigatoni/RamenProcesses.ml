@@ -21,7 +21,7 @@ let run_background cmd args env =
     (* TODO: A monitoring thread that report the error in the node structure *)
 
 let run conf graph =
-  match graph.C.status with
+  match graph.C.persist.C.status with
   | Edition ->
     raise (C.InvalidCommand "Cannot run if not compiled")
   | Running ->
@@ -53,7 +53,7 @@ let run conf graph =
           "report_url="^ conf.C.report_url_prefix ^"/"^ node.C.name |] in
         node.C.pid <- Some (run_background command [||] env)
       ) graph.C.persist.C.nodes ;
-    graph.C.status <- Running ;
+    graph.C.persist.C.status <- Running ;
     graph.C.last_started <- Some now ;
     graph.C.importing_threads <- Hashtbl.fold (fun _ node lst ->
         if Lang.Operation.is_exporting node.C.operation then (
@@ -70,7 +70,7 @@ let string_of_process_status = function
   | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
 
 let stop conf graph =
-  match graph.C.status with
+  match graph.C.persist.C.status with
   | Edition | Compiled ->
     raise (C.InvalidCommand "Graph is not running")
   | Running ->
@@ -94,7 +94,7 @@ let stop conf graph =
               pid (Printexc.to_string exn)) ;
           node.C.pid <- None
       ) graph.C.persist.C.nodes ;
-    graph.C.status <- Compiled ;
+    graph.C.persist.C.status <- Compiled ;
     graph.C.last_stopped <- Some now ;
     List.iter Lwt.cancel graph.C.importing_threads ;
     graph.C.importing_threads <- [] ;

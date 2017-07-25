@@ -551,7 +551,7 @@ let compile_node node =
     CodeGen_OCaml.gen_operation node.C.name in_typ out_typ node.C.operation)
 
 let compile conf graph =
-  match graph.C.status with
+  match graph.C.persist.C.status with
   | Compiled ->
     raise (C.InvalidCommand "Graph is already compiled")
   | Running ->
@@ -573,5 +573,5 @@ let compile conf graph =
         with Failure m ->
           raise (Failure ("While compiling "^ node.C.name ^": "^ m))
       ) graph.C.persist.C.nodes ;
-    graph.C.status <- Compiled ;
+    graph.C.persist.C.status <- Compiled ;
     C.save_graph conf graph
