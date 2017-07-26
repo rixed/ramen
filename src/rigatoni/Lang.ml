@@ -342,6 +342,11 @@ struct
     | VI128 i   -> Printf.fprintf fmt "%s" (Int128.to_string i)
     | VNull     -> Printf.fprintf fmt "NULL"
 
+  let is_round_integer = function
+    | VFloat f  -> fst(modf f) = 0.
+    | VString _ | VBool _ | VNull -> false
+    | _ -> true
+
   module Parser =
   struct
     (*$< Parser *)
@@ -1115,6 +1120,9 @@ struct
       | Expr.AggrOr  (_, Expr.Field (_, { contents="in" }, field)) -> "or_"^ field
       | Expr.AggrFirst (_, Expr.Field (_, { contents="in" }, field)) -> "first_"^ field
       | Expr.AggrLast (_, Expr.Field (_, { contents="in" }, field)) -> "last_"^ field
+      | Expr.AggrPercentile (_, Expr.Const (_, p), Expr.Field (_, { contents="in" }, field))
+        when Scalar.is_round_integer p ->
+        Printf.sprintf "%s_%sth" field (IO.to_string Scalar.print p)
       | _ -> raise (Reject "must set alias")
 
     let selected_field m =
