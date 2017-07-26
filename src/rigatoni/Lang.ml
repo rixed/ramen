@@ -1098,10 +1098,9 @@ struct
         (if unlink then "AND DELETE " else "")
         fname separator null Tuple.print_typ fields
 
-    let is_exporting = function
-      | Select { and_export = true ; _ }
-      | Aggregate { and_export = true ; _ } -> true
-      | _ -> false
+  let is_exporting = function
+    | Select { and_export ; _ } | Aggregate { and_export ; _ } -> and_export
+    | Yield _ | Alert _ | ReadCSVFile _ -> false
 
   module Parser =
   struct

@@ -352,16 +352,24 @@ let export conf headers node_name body =
     let%lwt req =
       if body = "" then return empty_export_req else
       of_json headers ("Exporting from "^ node_name) export_req_ppp body in
-    let history = RamenExport.get_history conf node_name in
-    let fields = RamenExport.get_field_types history in
-    let first, values =
-      RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
-                              history [] List.cons in
-    (* Store it in column to save variant types: *)
-    let resp =
-      { first ; columns = RamenExport.columns_of_tuples fields values } in
-    let body = PPP.to_string export_resp_ppp resp in
-    respond_ok ~body ())
+    (* Check that the node exists and exports *)
+    match C.find_node conf conf.C.building_graph node_name with
+    | exception Not_found ->
+      bad_request ("Unknown node "^ node_name)
+    | node ->
+      if not (Lang.Operation.is_exporting node.C.operation) then
+        bad_request ("node "^ node_name ^" does not export data")
+      else (
+        let history = RamenExport.get_history node in
+        let fields = RamenExport.get_field_types history in
+        let first, values =
+          RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
+                                  history [] List.cons in
+        (* Store it in column to save variant types: *)
+        let resp =
+          { first ; columns = RamenExport.columns_of_tuples fields values } in
+        let body = PPP.to_string export_resp_ppp resp in
+        respond_ok ~body ()))
 
 (*
 == Serving normal files ==

@@ -144,16 +144,12 @@ let import_tuples rb_name node_name tuple_type =
     Lwt_main.yield ()
   done
 
-let get_history conf node_name =
-  try Hashtbl.find imported_tuples node_name
+let get_history node =
+  try Hashtbl.find imported_tuples node.C.name
   with Not_found ->
-    (match C.find_node conf conf.C.building_graph node_name with
-    | exception Not_found ->
-      raise (C.InvalidCommand ("Unknown node "^ node_name))
-    | node ->
-      (* Build a fake empty history *)
-      { tuple_type = C.tup_typ_of_temp_tup_type node.C.out_type ;
-        tuples = [||] ; count = 0 })
+    (* Build a fake empty history *)
+    { tuple_type = C.tup_typ_of_temp_tup_type node.C.out_type ;
+      tuples = [||] ; count = 0 }
 
 let get_field_types history =
   history.tuple_type
