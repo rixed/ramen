@@ -262,7 +262,7 @@ let rec add_mentioned prev =
   | Const _ | Param _ | Now _
     -> prev
   | Field (_, tuple, field) ->
-    if Lang.same_tuple_as_in !tuple then Set.add field prev else prev
+    if Lang.tuple_comes_from_in !tuple then Set.add field prev else prev
   | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
   | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
   | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
@@ -839,7 +839,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     fold (fun need expr ->
       need || match expr with
         | Field (_, tuple, _) ->
-          not (Lang.same_tuple_as_in !tuple)
+          not (Lang.tuple_comes_from_in !tuple)
         | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
         | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _ ->
           true

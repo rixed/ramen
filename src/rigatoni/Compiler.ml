@@ -184,7 +184,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* op_typ is already optimal. But is it compatible with exp_type? *)
     check_expr_type ~from:op_typ ~to_:exp_type
   | Field (op_typ, tuple, field) ->
-    if same_tuple_as_in !tuple then (
+    if tuple_comes_from_in !tuple then (
       (* Check that this field is, or could be, in in_type *)
       if Lang.Expr.is_virtual_field field then false else
       match Hashtbl.find in_type.C.fields field with

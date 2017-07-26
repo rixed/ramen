@@ -177,8 +177,8 @@ let opt_blanks =
   P.optional_greedy ~def:() blanks
 
 (* TODO: use a variant *)
-let same_tuple_as_in = function
-  | "in" | "first" | "last" | "any" | "all" -> true
+let tuple_comes_from_in = function
+  | "in" | "first" | "last" | "any" | "all" | "selected" -> true
   | "out" | "previous" | "others" -> false
   | _ -> assert false
 
