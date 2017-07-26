@@ -360,16 +360,26 @@ let export conf headers node_name body =
       if not (Lang.Operation.is_exporting node.C.operation) then
         bad_request ("node "^ node_name ^" does not export data")
       else (
-        let history = RamenExport.get_history node in
-        let fields = RamenExport.get_field_types history in
-        let first, values =
-          RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
-                                  history [] List.cons in
-        (* Store it in column to save variant types: *)
-        let resp =
-          { first ; columns = RamenExport.columns_of_tuples fields values } in
-        let body = PPP.to_string export_resp_ppp resp in
-        respond_ok ~body ()))
+        let start = Unix.gettimeofday () in
+        let rec loop () =
+          let history = RamenExport.get_history node in
+          let fields = RamenExport.get_field_types history in
+          let first, values =
+            RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
+                                    history [] List.cons in
+          let dt = Unix.gettimeofday () -. start in
+          if values = [] && dt < (req.wait_up_to |? 0.) then (
+            (* TODO: sleep for dt, queue the wakener on this history,
+             * and wake all the sleeps when a tuple is received *)
+            Lwt_unix.sleep 0.1 >>= loop
+          ) else (
+            (* Store it in column to save variant types: *)
+            let resp =
+              { first ; columns = RamenExport.columns_of_tuples fields values } in
+            let body = PPP.to_string export_resp_ppp resp in
+            respond_ok ~body ()
+          ) in
+        loop ()))
 
 (*
 == Serving normal files ==
