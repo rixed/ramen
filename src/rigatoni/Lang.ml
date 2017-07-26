@@ -532,6 +532,7 @@ struct
      * operations on top of the result of an aggregation function, such as: "(1
      * + min field1) / (max field2)". Even within an aggregation, not valid
      * within another aggregation function. *)
+    (* TODO: Add avg, stddev... *)
     | AggrMin of typ * t
     | AggrMax of typ * t
     | AggrSum of typ * t
@@ -544,7 +545,7 @@ struct
      * scalar. It's probably easier to try to optimise the code generated
      * for when the same expression is used in several percentile functions. *)
     | AggrPercentile of typ * t * t
-    (* Other functions: random, date_part, coalesce... *)
+    (* TODO: Other functions: random, date_part, coalesce, string_split, case expressions... *)
     | Age of typ * t
     | Now of typ
     | Sequence of typ * t * t (* start, step *)
