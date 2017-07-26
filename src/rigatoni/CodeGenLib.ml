@@ -241,7 +241,8 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and all_tuple = ref None
   and selected_tuple = ref None
-  and selected_count = ref Uint64.zero in
+  and selected_count = ref Uint64.zero
+  and selected_successive = ref Uint64.zero in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
@@ -249,15 +250,20 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
     let prev_all = Option.default in_tuple !all_tuple in
     all_tuple := Some in_tuple ;
     let prev_selected = Option.default in_tuple !selected_tuple in
-    (* TODO: pass selected, output_count (despite we have no out tuple), last, previous... *)
-    if where !CodeGenLib_IO.tuple_count in_tuple then (
+    (* TODO: pass selected_*, output_count (despite we have no out tuple), last, previous... *)
+    let all_count = Uint64.succ !CodeGenLib_IO.tuple_count in
+    if where all_count in_tuple then (
       IntCounter.add stats_selected_tuple_count 1 ;
       selected_tuple := Some in_tuple ;
       selected_count := Uint64.succ !selected_count ;
+      selected_successive := Uint64.succ !selected_successive ;
       let out_tuple =
-        select in_tuple !CodeGenLib_IO.tuple_count prev_all !selected_count prev_selected in
+        select in_tuple all_count prev_all !selected_count prev_selected in
       outputer out_tuple
-    ) else return_unit)
+    ) else (
+      selected_successive := Uint64.zero ;
+      return_unit
+    ))
 
 let yield sersize_of_tuple serialize_tuple select =
   node_start "YIELD" ;
@@ -346,6 +352,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   and all_tuple = ref None (* last incominf tuple *)
   and selected_tuple = ref None (* last incoming tuple that passed the where filter *)
   and selected_count = ref Uint64.zero
+  and selected_successive = ref Uint64.zero
   and stats_group_count =
     IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
   in
@@ -358,6 +365,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
     all_tuple := Some in_tuple ;
     let prev_selected = Option.default in_tuple !selected_tuple in
     let all_count = Uint64.succ !CodeGenLib_IO.tuple_count in
+    (* TODO: pass selected_successive *)
     let must f aggr =
       f (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields all_count in_tuple aggr.first_in aggr.last_in !output_count aggr.out_tuple aggr.previous_out prev_all !selected_count prev_selected
     in
@@ -395,6 +403,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
           and nb_entries = Uint64.of_int 1 in
           if where_slow nb_entries nb_entries fields all_count in_tuple in_tuple in_tuple prev_all then (
             IntCounter.add stats_selected_tuple_count 1 ;
+            (* TODO: pass selected_successive *)
             let out_tuple =
               tuple_of_aggr fields in_tuple all_count prev_all !selected_count prev_selected in_tuple in_tuple in
             let aggr = {
@@ -422,6 +431,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
             if prev_last_key = Some k then
               aggr.nb_successive <- aggr.nb_successive + 1 ;
+            (* TODO: pass selected_successive *)
             let out_tuple =
               tuple_of_aggr aggr.fields in_tuple all_count prev_all !selected_count prev_selected aggr.first_in aggr.last_in in
             aggr.out_tuple <- out_tuple ;
@@ -429,12 +439,15 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
             Some aggr
           ) else None in
       (match aggr_opt with
-      | None -> return_unit
+      | None ->
+        selected_successive := Uint64.zero ;
+        return_unit
       | Some aggr ->
         (* Here we passed the where filter and the selected_tuple (and
          * selected_count) must be updated. *)
         selected_tuple := Some in_tuple ;
         selected_count := Uint64.succ !selected_count ;
+        selected_successive := Uint64.succ !selected_successive ;
         (* Committing / Flushing *)
         let to_commit =
           if when_to_check_for_commit = ForAllInGroup && must commit_when aggr
