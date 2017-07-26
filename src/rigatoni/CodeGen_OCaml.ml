@@ -350,7 +350,7 @@ let implementation_of expr =
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI128 -> "Int128."^ name, Some TI128
   | Add _, Some TString -> "(^)", Some TString
   | Length _, Some TU16 (* The only possible output type *) -> "String."^ name, Some TString
-  | (Not _|And _|Or _), Some TBool -> name, Some TBool
+  | (Not _|And _|Or _|AggrAnd _|AggrOr _), Some TBool -> name, Some TBool
   | (Ge _| Gt _| Eq _), Some TBool -> name, None (* No conversion necessary *)
   | (AggrMax _|AggrMin _|AggrFirst _|AggrLast _), _ -> name, None (* No conversion necessary *)
   | Age _, Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->

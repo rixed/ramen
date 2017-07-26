@@ -248,10 +248,12 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | AggrMin (op_typ, e) | AggrMax (op_typ, e)
   | AggrFirst (op_typ, e) | AggrLast (op_typ, e) ->
     check_unary_op op_typ identity e
-  | AggrSum (op_typ, e) | AggrAnd (op_typ, e)
-  | AggrOr (op_typ, e) | Age (op_typ, e)
-  | Not (op_typ, e) | Abs (op_typ, e) ->
+  | AggrSum (op_typ, e) | Age (op_typ, e)
+  | Abs (op_typ, e) ->
     check_unary_op op_typ identity ~exp_sub_typ:TFloat e
+  | AggrAnd (op_typ, e) | AggrOr (op_typ, e)
+  | Not (op_typ, e) ->
+    check_unary_op op_typ identity ~exp_sub_typ:TBool e
   | Cast (op_typ, e) ->
     check_unary_op op_typ (fun _ -> Option.get op_typ.scalar_typ) ~exp_sub_typ:TI128 e
   | Defined (op_typ, e) ->

@@ -836,19 +836,6 @@ struct
       binary_ops_reducer ~op ~right_associative:true
                          ~term:highest_prec_left_assoc ~sep:opt_blanks~reduce m
 
-    and highest_prec_left_assoc m =
-      ((strinG "not" -+ highestest_prec >>: fun e -> Not (make_bool_typ "not operator", e)) |||
-       (highestest_prec ++
-        optional ~def:None (
-          blanks -- strinG "is" -- blanks -+
-          optional ~def:(Some false)
-                   (strinG "not" -- blanks >>: fun () -> Some true) +-
-          strinG "null") >>: function
-            | e, None -> e
-            | e, Some false -> Not (make_bool_typ ~nullable:false "not operator", Defined (make_bool_typ ~nullable:false "is_not_null operator", e))
-            | e, Some true -> Defined (make_bool_typ ~nullable:false "is_not_null operator", e))
-      ) m
-
     and afun1 n =
       let sep = check (char '(') ||| blanks in
       strinG n -- optional ~def:() (blanks -- strinG "of") -- sep -+
@@ -859,6 +846,19 @@ struct
       strinG n -- optional ~def:() (blanks -- strinG "of") -- sep -+
       highestest_prec +- opt_blanks +- char ',' +- opt_blanks ++
       highestest_prec
+
+    and highest_prec_left_assoc m =
+      ((afun1 "not" >>: fun e -> Not (make_bool_typ "not operator", e)) |||
+       (highestest_prec ++
+        optional ~def:None (
+          blanks -- strinG "is" -- blanks -+
+          optional ~def:(Some false)
+                   (strinG "not" -- blanks >>: fun () -> Some true) +-
+          strinG "null") >>: function
+            | e, None -> e
+            | e, Some false -> Not (make_bool_typ ~nullable:false "not operator", Defined (make_bool_typ ~nullable:false "is_not_null operator", e))
+            | e, Some true -> Defined (make_bool_typ ~nullable:false "is_not_null operator", e))
+      ) m
 
     and aggregate m =
       let m = "aggregate function" :: m in
