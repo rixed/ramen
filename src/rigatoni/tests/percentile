@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/.."
+. $top_srcdir/tests/funcs.sh
+
+init
+add_cars
+add_node p1 \
+"SELECT AND EXPORT
+   10th percentile of horsepower,
+   95th percentile of horsepower
+ COMMIT AND FLUSH WHEN in.#count >= $nb_cars" cars
+run
+
+check_equal '140,553' "$(tail_ 1 p1)"

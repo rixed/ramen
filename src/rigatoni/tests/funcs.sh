@@ -52,6 +52,18 @@ add_node() {
   done
 }
 
+add_cars() {
+  add_node cars "READ CSV FILE \"$fixtures/cars.csv\" (
+    year u16 not null,
+    manufacturer string not null,
+    model string not null,
+    horsepower u16 not null,
+    CO float,
+    CO2 float)"
+}
+
+nb_cars=$(wc -l "$fixtures/cars.csv" | cut -d' ' -f 1)
+
 run() {
   $rigatoni compile &&
   $rigatoni run
@@ -63,7 +75,7 @@ tail_() {
 
 check_equal() {
   if test "$1" != "$2" ; then
-    echo "Not equals: '$1' and '$2'"
+    echo "Not equals: expected '$1' but got '$2'"
     exit 1
   fi
 }
