@@ -8,9 +8,14 @@ init
 add_cars
 add_node p1 \
 "SELECT AND EXPORT
+   min horsepower,
+   max horsepower,
+   sum u32(horsepower) as sum_horsepower,
+   first horsepower,
+   last horsepower,
    10th percentile of horsepower,
    95th percentile of horsepower
  COMMIT AND FLUSH WHEN in.#count >= $nb_cars" cars
 run
 
-check_equal '140,553' "$(tail_ 1 p1)"
+check_equal '1,946,1262046,552,313,140,553' "$(tail_ 1 p1)"

@@ -868,8 +868,8 @@ struct
        (afun1 "sum" >>: fun e -> AggrSum (make_num_typ "sum aggregation", e)) |||
        (afun1 "and" >>: fun e -> AggrAnd (make_bool_typ "and aggregation", e)) |||
        (afun1 "or" >>: fun e -> AggrOr (make_bool_typ "or aggregation", e)) |||
-       (afun1 "first" >>: fun e -> AggrFirst (make_bool_typ "first aggregation", e)) |||
-       (afun1 "last" >>: fun e -> AggrLast (make_bool_typ "last aggregation", e)) |||
+       (afun1 "first" >>: fun e -> AggrFirst (make_typ "first aggregation", e)) |||
+       (afun1 "last" >>: fun e -> AggrLast (make_typ "last aggregation", e)) |||
        ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
         afun1 "percentile" >>: fun (p, e) ->
         AggrPercentile (make_num_typ ~nullable:false "percentile aggregation", p, e))
