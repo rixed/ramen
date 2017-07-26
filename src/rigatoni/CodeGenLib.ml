@@ -181,6 +181,14 @@ let node_start node_name =
     getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in
   async (update_stats_th report_url) (* TODO: catch exceptions in async_exception_hook *)
 
+exception InvalidCSVQuoting
+
+let quote_at_start s =
+  String.length s > 0 && s.[0] = '"'
+
+let quote_at_end s =
+  String.length s > 0 && s.[String.length s - 1] = '"'
+
 let read_csv_file filename do_unlink separator sersize_of_tuple serialize_tuple tuple_of_strings =
   node_start "READ CSV FILE" ;
   (* For tests, allow to overwrite what's specified in the operation: *)
@@ -190,8 +198,20 @@ let read_csv_file filename do_unlink separator sersize_of_tuple serialize_tuple 
   !logger.debug "Will read CSV file %S using separator %S"
                 filename separator ;
   let of_string line =
-    let strings = String.nsplit line separator |> Array.of_list in
-    tuple_of_strings strings
+    let strings = String.nsplit line separator in
+    (* Handle quoting in CSV values. TODO: enable/disable based on operation flag *)
+    let strings', rem_s, has_quote =
+      List.fold_left (fun (lst, prev_s, has_quote) s ->
+        if prev_s = "" then (
+          if quote_at_start s then lst, s, true
+          else (s :: lst), "", has_quote
+        ) else (
+          if quote_at_end s then (String.(lchop prev_s ^ rchop s) :: lst, "", true)
+          else lst, prev_s ^ s, true
+        )) ([], "", false) strings in
+    if rem_s <> "" then raise InvalidCSVQuoting ;
+    let strings = if has_quote then List.rev strings' else strings in
+    tuple_of_strings (Array.of_list strings)
   in
   let rb_outs = load_out_ringbufs () in
   let outputer =
