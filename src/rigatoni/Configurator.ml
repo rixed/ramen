@@ -151,7 +151,7 @@ let graph_info_of_bcns delete csv_dir bcns =
              %S as zone_src, %S as zone_dst\n\
            WHERE %s AND %s\n\
            GROUP BY capture_begin // %d\n\
-           COMMIT AND FLUSH WHEN all.capture_begin > min_capture_begin + 2 * %d"
+           COMMIT AND FLUSH WHEN in.last.capture_begin > min_capture_begin + 2 * %d"
           (name_of_zones bcn.source)
           (name_of_zones bcn.dest)
           (in_zone "zone_src" bcn.source)
@@ -173,8 +173,8 @@ let graph_info_of_bcns delete csv_dir bcns =
              zone_src, zone_dst\n\
            GROUP BY min_capture_begin // %d\n\
            COMMIT AND SLIDE 1 WHEN\n  \
-             in.#count >= %d OR\n  \
-             all.min_capture_begin > in.min_capture_begin + 2*%d"
+             group.#count >= %d OR\n  \
+             in.min_capture_begin > group.last.min_capture_begin + 2*%d"
            obs_window obs_window bcn.percentile obs_window
            (Helpers.round_to_int (bcn.obs_window /. bcn.avg_window))
            obs_window in

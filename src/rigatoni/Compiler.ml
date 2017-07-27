@@ -184,7 +184,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* op_typ is already optimal. But is it compatible with exp_type? *)
     check_expr_type ~from:op_typ ~to_:exp_type
   | Field (op_typ, tuple, field) ->
-    if tuple_comes_from_in !tuple then (
+    if tuple_has_fields_from_in !tuple then (
       (* Check that this field is, or could be, in in_type *)
       if Lang.Expr.is_virtual_field field then false else
       match Hashtbl.find in_type.C.fields field with
@@ -199,12 +199,12 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           (* FIXME: also, do not look elsewhere if "in" was explicit! *)
           if Hashtbl.mem out_type.C.fields field then (
             !logger.debug "Field %s appears to belongs to out!" field ;
-            tuple := "out" ;
+            tuple := TupleOut ;
             true
           ) else if out_type.C.finished_typing then (
             let m =
               Printf.sprintf "field %s not in %S tuple (which is %s)"
-                field !tuple
+                field (Lang.string_of_prefix !tuple)
                 (IO.to_string C.print_temp_tup_typ in_type) in
             raise (SyntaxError m)
           ) else false
@@ -215,7 +215,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           op_typ.scalar_typ <- from.scalar_typ
         ) ;
         check_expr_type ~from ~to_:exp_type
-    ) else if !tuple = "out" then (
+    ) else if !tuple = TupleOut then (
       (* If we already have this field in out then check it's compatible (or
        * enlarge out or exp). If we don't have it then add it. *)
       if Lang.Expr.is_virtual_field field then false else
@@ -225,7 +225,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         if out_type.C.finished_typing then (
           let m =
             Printf.sprintf "field %s not in %S tuple ((which is %s)"
-              field !tuple
+              field (Lang.string_of_prefix !tuple)
               (IO.to_string C.print_temp_tup_typ in_type) in
           raise (SyntaxError m)) ;
         Hashtbl.add out_type.C.fields field (ref None, exp_type) ;
@@ -237,8 +237,9 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         ) ;
         check_expr_type ~from:out ~to_:exp_type
     ) else (
-      let m = Printf.sprintf "unknown tuple %S" !tuple in
-      raise (SyntaxError m)
+      (* All other tuples are already typed (virtual fields) *)
+      assert (Lang.Expr.is_virtual_field field) ;
+      false
     )
   | Param (_op_typ, _pname) ->
     (* TODO: one day we will know the type or value of params *)

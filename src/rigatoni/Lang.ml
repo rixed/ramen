@@ -163,11 +163,66 @@ let () =
     | SyntaxError e -> Some ("Syntax Error: "^ e)
     | _ -> None)
 
-(* TODO: use a variant *)
-let tuple_comes_from_in = function
-  | "in" | "first" | "last" | "any" | "all" | "selected" -> true
-  | "out" | "previous" | "others" -> false
-  | _ -> assert false
+type tuple_prefix =
+  | TupleIn | TupleLastIn
+  | TupleSelected | TupleLastSelected
+  | TupleUnselected | TupleLastUnselected
+  | TupleGroup | TupleGroupFirst | TupleGroupLast | TupleGroupPrevious
+  | TupleOut
+  (* TODO: TupleOthers? *)
+
+let string_of_prefix = function
+  | TupleIn -> "in"
+  | TupleLastIn -> "in.last"
+  | TupleSelected -> "selected"
+  | TupleLastSelected -> "selected.last"
+  | TupleUnselected -> "unselected"
+  | TupleLastUnselected -> "unselected.last"
+  | TupleGroup -> "group"
+  | TupleGroupFirst -> "group.first"
+  | TupleGroupLast -> "group.last"
+  | TupleGroupPrevious -> "group.previous"
+  | TupleOut -> "out"
+
+let tuple_prefix_print oc p =
+  Printf.fprintf oc "%s" (string_of_prefix p)
+
+let parse_prefix m =
+  let open RamenParsing in
+  let m = "tuple prefix" :: m in
+  let prefix s = strinG (s ^ ".") in
+  (optional ~def:TupleIn (
+    (prefix "in" >>: fun () -> TupleIn) |||
+    (prefix "in.last" >>: fun () -> TupleLastIn) |||
+    (prefix "selected" >>: fun () -> TupleSelected) |||
+    (prefix "selected.last" >>: fun () -> TupleLastSelected) |||
+    (prefix "unselected" >>: fun () -> TupleUnselected) |||
+    (prefix "unselected.last" >>: fun () -> TupleLastUnselected) |||
+    (prefix "group" >>: fun () -> TupleGroup) |||
+    (prefix "group.first" >>: fun () -> TupleGroupFirst) |||
+    (prefix "first" >>: fun () -> TupleGroupFirst) |||
+    (prefix "group.last" >>: fun () -> TupleGroupLast) |||
+    (prefix "last" >>: fun () -> TupleGroupLast) |||
+    (prefix "group.previous" >>: fun () -> TupleGroupPrevious) |||
+    (prefix "previous" >>: fun () -> TupleGroupPrevious) |||
+    (prefix "out" >>: fun () -> TupleOut))
+  ) m
+
+let tuple_has_count = function
+  | TupleIn | TupleSelected | TupleUnselected | TupleGroup | TupleOut -> true
+  | _ -> false
+
+let tuple_has_successive = function
+  | TupleSelected | TupleUnselected | TupleGroup -> true
+  | _ -> false
+
+let tuple_has_fields_from_in = function
+  | TupleIn | TupleLastSelected | TupleLastUnselected | TupleGroupFirst | TupleGroupLast -> true
+  | _ -> false
+
+let tuple_need_aggr = function
+  | TupleGroup | TupleGroupFirst | TupleGroupLast | TupleGroupPrevious -> true
+  | _ -> false
 
 (*$inject
   open Stdint
@@ -517,7 +572,7 @@ struct
     (* TODO: classify by type and number of operands to simplify adding
      * functions *)
     | Const of typ * scalar_value
-    | Field of typ * string ref (* tuple: in, out, others... *) * string (* field name *)
+    | Field of typ * tuple_prefix ref * string (* field name *)
     | Param of typ * string
     (* Valid only within an aggregation operation; but must be here to allow
      * operations on top of the result of an aggregation function, such as: "(1
@@ -572,7 +627,7 @@ struct
     in
     function
     | Const (t, c) -> Scalar.print fmt c ; add_types t
-    | Field (t, tuple, field) -> Printf.fprintf fmt "%s.%s" !tuple field ; add_types t
+    | Field (t, tuple, field) -> Printf.fprintf fmt "%s.%s" (string_of_prefix !tuple) field ; add_types t
     | Param (t, p) -> Printf.fprintf fmt "$%s" p ; add_types t
     | AggrMin (t, e) -> Printf.fprintf fmt "min (%a)" (print with_types) e ; add_types t
     | AggrMax (t, e) -> Printf.fprintf fmt "max (%a)" (print with_types) e ; add_types t
@@ -690,40 +745,37 @@ struct
 
     let field m =
       let m = "field" :: m in
-      let prefix s = strinG (s ^ ".") >>: fun () -> s in
-      ((optional ~def:"in" (
-          prefix "in" ||| prefix "out" ||| prefix "first" |||
-          prefix "previous" ||| prefix "others" ||| prefix "any" |||
-          prefix "all") ++
-        non_keyword >>:
-        (* This is important here that the type name is the raw field name,
-         * because we use the tuple field type name as their identifier (unless
-         * it's a virtual field (starting with #) of course since those are
-         * computed on the fly and have no variable corresponding to them in
-         * the tuple) *)
+      ((parse_prefix ++ non_keyword >>:
         fun (tuple, field) ->
+          (* This is important here that the type name is the raw field name,
+           * because we use the tuple field type name as their identifier (unless
+           * it's a virtual field (starting with #) of course since those are
+           * computed on the fly and have no variable corresponding to them in
+           * the tuple) *)
           Field (make_typ field, ref tuple, field)) |||
-       (optional ~def:"in" (prefix "in" ||| prefix "selected" ||| prefix "out" ||| prefix "all") ++ that_string "#count" >>:
+       (parse_prefix ++ that_string "#count" >>:
         fun (tuple, field) ->
+          if not (tuple_has_count tuple) then raise (Reject "This tuple has no #count") ;
           Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field)) |||
-       (optional ~def:"out" (prefix "in" ||| prefix "selected") ++ that_string "#successive" >>:
+       (parse_prefix ++ that_string "#successive" >>:
         fun (tuple, field) ->
+          if not (tuple_has_successive tuple) then raise (Reject "This tuple has no #successive") ;
           Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field))
       ) m
 
     (*$= field & ~printer:(test_printer (print false))
       (Ok (\
-        Field (typ, ref "in", "bytes"),\
+        Field (typ, ref TupleIn, "bytes"),\
         (5, [])))\
         (test_p field "bytes" |> replace_typ_in_expr)
 
       (Ok (\
-        Field (typ, ref "in", "bytes"),\
+        Field (typ, ref TupleIn, "bytes"),\
         (8, [])))\
         (test_p field "in.bytes" |> replace_typ_in_expr)
 
       (Ok (\
-        Field (typ, ref "out", "bytes"),\
+        Field (typ, ref TupleOut, "bytes"),\
         (9, [])))\
         (test_p field "out.bytes" |> replace_typ_in_expr)
 
@@ -740,19 +792,19 @@ struct
         (test_p field "yield" |> replace_typ_in_expr)
 
       (Ok (\
-        Field (typ, ref "in", "yield"),\
+        Field (typ, ref TupleIn, "yield"),\
         (7, [])))\
         (test_p field "'yield'" |> replace_typ_in_expr)
 
       (Ok (\
-        Field (typ, ref "in", "#count"),\
+        Field (typ, ref TupleIn, "#count"),\
         (6, [])))\
         (test_p field "#count" |> replace_typ_in_expr)
 
       (Bad (\
         NoSolution (\
-          Some { where = ParsersMisc.Item ((0,6), '#') ;\
-                 what = ["quote";"field"]})))\
+          Some { where = ParsersMisc.Item ((0,7), 'c') ;\
+                 what = ["\"#successive\"";"field"]})))\
         (test_p field "first.#count" |> replace_typ_in_expr)
 
     *)
@@ -915,37 +967,37 @@ struct
         (test_p p "true" |> replace_typ_in_expr)
 
       (Ok (\
-        Not (typ, Defined (typ, Field (typ, ref "in", "zone_src"))),\
+        Not (typ, Defined (typ, Field (typ, ref TupleIn, "zone_src"))),\
         (16, [])))\
         (test_p p "zone_src IS NULL" |> replace_typ_in_expr)
 
       (Ok (\
-        Eq (typ, Field (typ, ref "in", "zone_src"), Param (typ, "z1")),\
+        Eq (typ, Field (typ, ref TupleIn, "zone_src"), Param (typ, "z1")),\
         (14, [])))\
         (test_p p "zone_src = $z1" |> replace_typ_in_expr)
 
       (Ok (\
         And (typ, \
           Or (typ, \
-            Not (typ, Defined (typ, Field (typ, ref "in", "zone_src"))),\
-            Eq (typ, Field (typ, ref "in", "zone_src"), Param (typ, "z1"))),\
+            Not (typ, Defined (typ, Field (typ, ref TupleIn, "zone_src"))),\
+            Eq (typ, Field (typ, ref TupleIn, "zone_src"), Param (typ, "z1"))),\
           Or (typ, \
-            Not (typ, Defined (typ, Field (typ, ref "in", "zone_dst"))),\
-            Eq (typ, Field (typ, ref "in", "zone_dst"), Param (typ, "z2")))),\
+            Not (typ, Defined (typ, Field (typ, ref TupleIn, "zone_dst"))),\
+            Eq (typ, Field (typ, ref TupleIn, "zone_dst"), Param (typ, "z2")))),\
         (77, [])))\
         (test_p p "(zone_src IS NULL or zone_src = $z1) and \\
                    (zone_dst IS NULL or zone_dst = $z2)" |> replace_typ_in_expr)
 
       (Ok (\
         Div (typ, \
-          AggrSum (typ, Field (typ, ref "in", "bytes")),\
+          AggrSum (typ, Field (typ, ref TupleIn, "bytes")),\
           Param (typ, "avg_window")),\
         (23, [])))\
         (test_p p "(sum bytes)/$avg_window" |> replace_typ_in_expr)
 
       (Ok (\
         IDiv (typ, \
-          Field (typ, ref "in", "start"),\
+          Field (typ, ref TupleIn, "start"),\
           Mul (typ, \
             Const (typ, VI32 1_000_000l),\
             Param (typ, "avg_window"))),\
@@ -955,23 +1007,23 @@ struct
       (Ok (\
         AggrPercentile (typ,\
           Param (typ, "p"),\
-          Field (typ, ref "in", "bytes_per_sec")),\
+          Field (typ, ref TupleIn, "bytes_per_sec")),\
         (30, [])))\
         (test_p p "$p percentile of bytes_per_sec" |> replace_typ_in_expr)
 
       (Ok (\
         Gt (typ, \
           AggrMax (typ, \
-            Field (typ, ref "others", "start")),\
+            Field (typ, ref TupleLastSelected, "start")),\
           Add (typ, \
-            Field (typ, ref "out", "start"),\
+            Field (typ, ref TupleOut, "start"),\
             Mul (typ, \
               Mul (typ, \
                 Param (typ, "obs_window"),\
                 Const (typ, VFloat 1.15)),\
               Const (typ, VI32 1_000_000l)))),\
-        (63, [])))\
-        (test_p p "max others.start > \\
+        (70, [])))\
+        (test_p p "max selected.last.start > \\
                    out.start + ($obs_window * 1.15) * 1_000_000" |> replace_typ_in_expr)
 
       (Ok (\
@@ -998,7 +1050,7 @@ struct
     let need_alias =
       match f.expr with
       | Expr.Field (_, tuple, field)
-        when !tuple = "in" && f.alias = field -> false
+        when !tuple = TupleIn && f.alias = field -> false
       | _ -> true in
     if need_alias then
       Printf.fprintf fmt "%a AS %s"
@@ -1099,17 +1151,17 @@ struct
     open RamenParsing
 
     let default_alias = function
-      | Expr.Field (_, { contents="in" }, field)
+      | Expr.Field (_, { contents=TupleIn }, field)
           when not (Expr.is_virtual_field field) -> field
       (* Provide some default name for current aggregate functions: *)
-      | Expr.AggrMin (_, Expr.Field (_, { contents="in" }, field)) -> "min_"^ field
-      | Expr.AggrMax (_, Expr.Field (_, { contents="in" }, field)) -> "max_"^ field
-      | Expr.AggrSum (_, Expr.Field (_, { contents="in" }, field)) -> "sum_"^ field
-      | Expr.AggrAnd (_, Expr.Field (_, { contents="in" }, field)) -> "and_"^ field
-      | Expr.AggrOr  (_, Expr.Field (_, { contents="in" }, field)) -> "or_"^ field
-      | Expr.AggrFirst (_, Expr.Field (_, { contents="in" }, field)) -> "first_"^ field
-      | Expr.AggrLast (_, Expr.Field (_, { contents="in" }, field)) -> "last_"^ field
-      | Expr.AggrPercentile (_, Expr.Const (_, p), Expr.Field (_, { contents="in" }, field))
+      | Expr.AggrMin (_, Expr.Field (_, { contents=TupleIn }, field)) -> "min_"^ field
+      | Expr.AggrMax (_, Expr.Field (_, { contents=TupleIn }, field)) -> "max_"^ field
+      | Expr.AggrSum (_, Expr.Field (_, { contents=TupleIn }, field)) -> "sum_"^ field
+      | Expr.AggrAnd (_, Expr.Field (_, { contents=TupleIn }, field)) -> "and_"^ field
+      | Expr.AggrOr  (_, Expr.Field (_, { contents=TupleIn }, field)) -> "or_"^ field
+      | Expr.AggrFirst (_, Expr.Field (_, { contents=TupleIn }, field)) -> "first_"^ field
+      | Expr.AggrLast (_, Expr.Field (_, { contents=TupleIn }, field)) -> "last_"^ field
+      | Expr.AggrPercentile (_, Expr.Const (_, p), Expr.Field (_, { contents=TupleIn }, field))
         when Scalar.is_round_integer p ->
         Printf.sprintf "%s_%sth" field (IO.to_string Scalar.print p)
       | _ -> raise (Reject "must set alias")
@@ -1253,13 +1305,13 @@ struct
       (Ok (\
         Select {\
           fields = [\
-            { expr = Expr.(Field (typ, ref "in", "start")) ;\
+            { expr = Expr.(Field (typ, ref TupleIn, "start")) ;\
               alias = "start" } ;\
-            { expr = Expr.(Field (typ, ref "in", "stop")) ;\
+            { expr = Expr.(Field (typ, ref TupleIn, "stop")) ;\
               alias = "stop" } ;\
-            { expr = Expr.(Field (typ, ref "in", "itf_clt")) ;\
+            { expr = Expr.(Field (typ, ref TupleIn, "itf_clt")) ;\
               alias = "itf_src" } ;\
-            { expr = Expr.(Field (typ, ref "in", "itf_srv")) ;\
+            { expr = Expr.(Field (typ, ref TupleIn, "itf_srv")) ;\
               alias = "itf_dst" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
@@ -1274,7 +1326,7 @@ struct
           and_all_others = true ;\
           where = Expr.(\
             Gt (typ,\
-              Field (typ, ref "in", "packets"),\
+              Field (typ, ref TupleIn, "packets"),\
               Const (typ, VI8 (Int8.of_int 0)))) ;\
           and_export = false },\
         (17, [])))\
@@ -1284,14 +1336,14 @@ struct
         Aggregate {\
           fields = [\
             { expr = Expr.(\
-                AggrMin (typ, Field (typ, ref "in", "start"))) ;\
+                AggrMin (typ, Field (typ, ref TupleIn, "start"))) ;\
               alias = "start" } ;\
             { expr = Expr.(\
-                AggrMax (typ, Field (typ, ref "in", "stop"))) ;\
+                AggrMax (typ, Field (typ, ref TupleIn, "stop"))) ;\
               alias = "max_stop" } ;\
             { expr = Expr.(\
                 Div (typ,\
-                  AggrSum (typ, Field (typ, ref "in", "packets")),\
+                  AggrSum (typ, Field (typ, ref TupleIn, "packets")),\
                   Param (typ, "avg_window"))) ;\
               alias = "packets_per_sec" } ] ;\
           and_all_others = false ;\
@@ -1299,23 +1351,23 @@ struct
           and_export = false; \
           key = [ Expr.(\
             Div (typ,\
-              Field (typ, ref "in", "start"),\
+              Field (typ, ref TupleIn, "start"),\
               Mul (typ,\
                 Const (typ, VI32 1_000_000l),\
                 Param (typ, "avg_window")))) ] ;\
           commit_when = Expr.(\
             Gt (typ,\
               Add (typ,\
-                AggrMax (typ,Field (typ, ref "any", "start")),\
+                AggrMax (typ,Field (typ, ref TupleGroupFirst, "start")),\
                 Const (typ, VI16 (Int16.of_int 3600))),\
-              Field (typ, ref "out", "start"))) ; \
+              Field (typ, ref TupleOut, "start"))) ; \
           flush_when = None ; flush_how = Reset },\
-          (193, [])))\
+          (201, [])))\
           (test_p p "select min start as start, \\
                             max stop as max_stop, \\
                             (sum packets)/$avg_window as packets_per_sec \\
                      group by start / (1_000_000 * $avg_window) \\
-                     commit and flush when out.start < (max any.start) + 3600" |>\
+                     commit and flush when out.start < (max group.first.start) + 3600" |>\
            replace_typ_in_op)
 
       (Ok (\
@@ -1387,7 +1439,7 @@ struct
       and fields_must_be_from lst clause =
         Printf.sprintf "All fields must come from %s in %s"
           (IO.to_string
-            (List.print ~first:"" ~last:"" ~sep:" or " String.print)
+            (List.print ~first:"" ~last:"" ~sep:" or " tuple_prefix_print)
             lst)
           clause
         in
@@ -1408,42 +1460,42 @@ struct
         List.iter (fun sf ->
             let m = "Aggregation functions not allowed in YIELDs" in
             check_no_aggr m sf.expr ;
-            check_fields_from ["out" (* FIXME: only if defined earlier *)] "YIELD operation" sf.expr
+            check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD operation" sf.expr
           ) fields
       | Select { fields ; where ; _ } ->
         List.iter (fun sf ->
             let m = "Aggregation functions not allowed without a \
                      GROUP-BY clause" in
             check_no_aggr m sf.expr ;
-            check_fields_from ["in"; "all"; "selected"; "out" (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
+            check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
         (* Not "selected" since it is still None the first times we call where
          * (until a match): *)
-        check_fields_from ["in"; "all" (* Aliases *)] "WHERE clause" where
+        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected] "WHERE clause" where
       | Aggregate { fields ; where ; key ; commit_when ; flush_when ; flush_how ; _ } ->
         List.iter (fun sf ->
-            check_fields_from ["in"; "all"; "selected"; "first"; "last"; "out" (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
+            check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;
         check_no_aggr no_aggr_in_where where ;
-        check_fields_from ["in"; "all" (* Aliases *); "first"; "last"; "out"] "WHERE clause" where ;
+        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOut] "WHERE clause" where ;
         List.iter (fun k ->
           check_no_aggr no_aggr_in_key k ;
-          check_fields_from ["in"] "KEY clause" k) key ;
+          check_fields_from [TupleIn] "KEY clause" k) key ;
         Expr.aggr_iter ignore commit_when ; (* standards checks *)
-        check_fields_from ["in"; "out"; "previous"; "first"; "last"; "all"; "selected"] "COMMIT WHEN clause" commit_when ;
+        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
         Option.may (fun flush_when ->
             Expr.aggr_iter ignore flush_when ;
-            check_fields_from ["in"; "out"; "previous"; "first"; "last"; "all"; "selected"] "FLUSH WHEN clause" flush_when
+            check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN clause" flush_when
           ) flush_when ;
         (match flush_how with
         | Reset | Slide _ -> ()
         | RemoveAll e | KeepOnly e ->
           let m = "Aggregation functions not allowed in KEEP/REMOVE clause" in
           check_no_aggr m e ;
-          check_fields_from ["in"] "REMOVE clause" e)
+          check_fields_from [TupleGroup] "REMOVE clause" e)
       | Alert { cond ; _ } ->
-        check_fields_from ["in"; "all"] "ALERT condition" cond
+        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected] "ALERT condition" cond
         (* TODO: check field names from text templates *)
       | ReadCSVFile _ -> ()
 

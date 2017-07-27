@@ -235,34 +235,47 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
   let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
     Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
-  let output_count = ref Uint64.zero in
   let outputer =
-    output_count := Uint64.succ !output_count ;
     outputer_of rb_outs sersize_of_tuple serialize_tuple
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
-  and all_tuple = ref None
+  and in_ = ref None
   and selected_tuple = ref None
   and selected_count = ref Uint64.zero
-  and selected_successive = ref Uint64.zero in
+  and selected_successive = ref Uint64.zero
+  and unselected_tuple = ref None
+  and unselected_count = ref Uint64.zero
+  and unselected_successive = ref Uint64.zero in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     IntCounter.add stats_in_tuple_count 1 ;
-    let prev_all = Option.default in_tuple !all_tuple in
-    all_tuple := Some in_tuple ;
-    let prev_selected = Option.default in_tuple !selected_tuple in
-    (* TODO: pass selected_*, output_count (despite we have no out tuple), last, previous... *)
-    let all_count = Uint64.succ !CodeGenLib_IO.tuple_count in
-    if where all_count in_tuple then (
+    let last_in = Option.default in_tuple !in_
+    and last_selected = Option.default in_tuple !selected_tuple
+    and last_unselected = Option.default in_tuple !unselected_tuple in
+    in_ := Some in_tuple ;
+    let in_count = Uint64.succ !CodeGenLib_IO.tuple_count in
+    if where
+         in_count in_tuple last_in
+         !selected_count !selected_successive last_selected
+         !unselected_count !unselected_successive last_unselected
+    then (
       IntCounter.add stats_selected_tuple_count 1 ;
+      unselected_successive := Uint64.zero ;
       selected_tuple := Some in_tuple ;
       selected_count := Uint64.succ !selected_count ;
       selected_successive := Uint64.succ !selected_successive ;
       let out_tuple =
-        select in_tuple all_count prev_all !selected_count prev_selected in
+        select
+          in_count in_tuple last_in
+          !selected_count !selected_successive last_selected
+          !unselected_count !unselected_successive last_unselected
+      in
       outputer out_tuple
     ) else (
       selected_successive := Uint64.zero ;
+      unselected_tuple := Some in_tuple ;
+      unselected_count := Uint64.succ !unselected_count ;
+      unselected_successive := Uint64.succ !unselected_successive ;
       return_unit
     ))
 
@@ -272,23 +285,23 @@ let yield sersize_of_tuple serialize_tuple select =
   let outputer =
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
   let rec loop () =
-    let%lwt () = outputer (select ()) in
+    let%lwt () = outputer (select Uint64.zero () ()) in
     CodeGenLib_IO.on_each_input () ;
     loop () in
   loop ()
 
-type ('a, 'b, 'c) aggr_value =
+type ('aggr, 'tuple_in, 'tuple_out) aggr_value =
   { (* used to compute the actual selected field when outputing the
      * aggregate: *)
-    mutable first_in : 'b ; (* first in-tuple of this aggregate *)
-    mutable last_in : 'b ; (* last in-tuple of this aggregate *)
-    mutable out_tuple : 'c ; (* The current one *)
-    mutable previous_out : 'c ; (* previously computed temp out tuple, if any *)
+    mutable first_in : 'tuple_in ; (* first in-tuple of this aggregate *)
+    mutable last_in : 'tuple_in ; (* last in-tuple of this aggregate *)
+    mutable out_tuple : 'tuple_out ; (* The current one *)
+    mutable previous_out : 'tuple_out ; (* previously computed temp out tuple, if any *)
     mutable nb_entries : int ;
     mutable nb_successive : int ;
     mutable last_ev_count : int ; (* used for others.successive (TODO) *)
-    mutable to_resubmit : 'b list ; (* in_tuples to resubmit at flush *)
-    mutable fields : 'a (* the record of aggregation values *) }
+    mutable to_resubmit : 'tuple_in list ; (* in_tuples to resubmit at flush *)
+    mutable fields : 'aggr (* the record of aggregation values *) }
 
 let flush_aggr aggr_init update_aggr should_resubmit h k aggr =
   if aggr.to_resubmit = [] then
@@ -318,17 +331,48 @@ type when_to_check_group = ForAll | ForAllSelected | ForAllInGroup
 let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (sersize_of_tuple : 'tuple_out -> int)
               (serialize_tuple : RingBuf.tx -> 'tuple_out -> int)
-              (tuple_of_aggr : Uint64.t -> Uint64.t -> 'aggr -> 'tuple_in -> Uint64.t -> 'tuple_in -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out)
+              (tuple_of_aggr :
+                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+                Uint64.t -> (* out.#count *)
+                Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+                'tuple_in -> 'tuple_in -> (* first, last *)
+                'tuple_out)
               (* Where_fast/slow: premature optimisation: if the where filter
                * uses the aggregate then we need where_slow (checked after
                * the aggregate look up) but if it uses only the incoming
                * tuple then we can use only where_fast. *)
-              (where_fast : Uint64.t -> 'tuple_in -> bool)
-              (where_slow : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_in -> bool)
+              (where_fast :
+                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+                bool)
+              (where_slow :
+                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+                Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+                'tuple_in -> 'tuple_in -> (* first, last *)
+                bool)
               (key_of_input : 'tuple_in -> 'key)
-              (commit_when : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> Uint64.t -> 'tuple_out -> 'tuple_out -> 'tuple_in -> Uint64.t -> 'tuple_in -> bool)
+              (commit_when :
+                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+                Uint64.t -> 'tuple_out -> (* out.#count, previous *)
+                Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+                'tuple_in -> 'tuple_in -> 'tuple_out -> (* first, last, current out *)
+                bool)
               (when_to_check_for_commit : when_to_check_group)
-              (flush_when : Uint64.t -> Uint64.t -> 'aggr -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> Uint64.t -> 'tuple_out -> 'tuple_out -> 'tuple_in -> Uint64.t -> 'tuple_in -> bool)
+              (flush_when :
+                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+                Uint64.t -> 'tuple_out -> (* out.#count, previous *)
+                Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+                'tuple_in -> 'tuple_in -> 'tuple_out -> (* first, last, current out *)
+                bool)
               (when_to_check_for_flush : when_to_check_group)
               (should_resubmit : ('aggr, 'tuple_in, 'tuple_out) aggr_value -> 'tuple_in -> bool)
               (aggr_init : 'tuple_in -> 'aggr)
@@ -341,34 +385,44 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   let%lwt rb_in =
     Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
                   RingBuf.load rb_in_fname in
-  (* TODO: lastly output tuple ("sent"?) *)
-  let output_count = ref Uint64.zero in
-  let commit =
-    output_count := Uint64.succ !output_count ;
-    outputer_of rb_outs sersize_of_tuple serialize_tuple in
   let h = Hashtbl.create 701
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)
-  and all_tuple = ref None (* last incominf tuple *)
+  and in_ = ref None (* last incoming tuple *)
   and selected_tuple = ref None (* last incoming tuple that passed the where filter *)
   and selected_count = ref Uint64.zero
   and selected_successive = ref Uint64.zero
+  and unselected_tuple = ref None
+  and unselected_count = ref Uint64.zero
+  and unselected_successive = ref Uint64.zero
+  and out_count = ref Uint64.zero
   and stats_group_count =
     IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
   in
   IntGauge.set stats_group_count 0 ;
+  let commit =
+    out_count := Uint64.succ !out_count ;
+    outputer_of rb_outs sersize_of_tuple serialize_tuple
+  in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     IntCounter.add stats_in_tuple_count 1 ;
-    let prev_all = Option.default in_tuple !all_tuple in
-    all_tuple := Some in_tuple ;
-    let prev_selected = Option.default in_tuple !selected_tuple in
-    let all_count = Uint64.succ !CodeGenLib_IO.tuple_count in
+    let last_in = Option.default in_tuple !in_
+    and last_selected = Option.default in_tuple !selected_tuple
+    and last_unselected = Option.default in_tuple !unselected_tuple in
+    in_ := Some in_tuple ;
+    let in_count = Uint64.succ !CodeGenLib_IO.tuple_count in
     (* TODO: pass selected_successive *)
     let must f aggr =
-      f (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields all_count in_tuple aggr.first_in aggr.last_in !output_count aggr.out_tuple aggr.previous_out prev_all !selected_count prev_selected
+      f in_count in_tuple last_in
+        !selected_count !selected_successive last_selected
+        !unselected_count !unselected_successive last_unselected
+        !out_count aggr.previous_out
+        (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+        aggr.first_in aggr.last_in
+        aggr.out_tuple
     in
     let commit_and_flush_list to_commit to_flush =
       (* We must commit first and then flush *)
@@ -391,7 +445,11 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
           if must flush_when a then (k, a)::l else l) h [] in
       commit_and_flush_list to_commit to_flush
     in
-    if where_fast all_count in_tuple then (
+    if where_fast
+         in_count in_tuple last_in
+         !selected_count !selected_successive last_selected
+         !unselected_count !unselected_successive last_unselected
+    then (
       IntGauge.set stats_group_count (Hashtbl.length h) ;
       let k = key_of_input in_tuple in
       let prev_last_key = !last_key in
@@ -402,11 +460,23 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
         | exception Not_found ->
           let fields = aggr_init in_tuple
           and one = Uint64.of_int 1 in
-          if where_slow one one fields all_count in_tuple in_tuple in_tuple prev_all then (
+          if where_slow
+               in_count in_tuple last_in
+               !selected_count !selected_successive last_selected
+               !unselected_count !unselected_successive last_unselected
+               one one fields
+               in_tuple in_tuple
+          then (
             IntCounter.add stats_selected_tuple_count 1 ;
             (* TODO: pass selected_successive *)
             let out_tuple =
-              tuple_of_aggr one one fields in_tuple all_count prev_all !selected_count prev_selected in_tuple in_tuple in
+              tuple_of_aggr
+                in_count in_tuple last_in
+                !selected_count !selected_successive last_selected
+                !unselected_count !unselected_successive last_unselected
+                !out_count
+                one one fields
+                in_tuple in_tuple in
             let aggr = {
               first_in = in_tuple ;
               last_in = in_tuple ;
@@ -423,7 +493,13 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
             Some aggr
           ) else None
         | aggr ->
-          if where_slow (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields all_count in_tuple aggr.first_in aggr.last_in prev_all then (
+          if where_slow
+               in_count in_tuple last_in
+               !selected_count !selected_successive last_selected
+               !unselected_count !unselected_successive last_unselected
+               (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+               aggr.first_in aggr.last_in
+          then (
             IntCounter.add stats_selected_tuple_count 1 ;
             update_aggr aggr.fields in_tuple ;
             aggr.last_ev_count <- !event_count ;
@@ -434,7 +510,13 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               aggr.nb_successive <- aggr.nb_successive + 1 ;
             (* TODO: pass selected_successive *)
             let out_tuple =
-              tuple_of_aggr (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields in_tuple all_count prev_all !selected_count prev_selected aggr.first_in aggr.last_in in
+              tuple_of_aggr
+                in_count in_tuple last_in
+                !selected_count !selected_successive last_selected
+                !unselected_count !unselected_successive last_unselected
+                !out_count
+                (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+                aggr.first_in aggr.last_in in
             aggr.out_tuple <- out_tuple ;
             aggr.last_in <- in_tuple ;
             Some aggr
@@ -442,10 +524,14 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
       (match aggr_opt with
       | None ->
         selected_successive := Uint64.zero ;
+        unselected_tuple := Some in_tuple ;
+        unselected_count := Uint64.succ !unselected_count ;
+        unselected_successive := Uint64.succ !unselected_successive ;
         return_unit
       | Some aggr ->
         (* Here we passed the where filter and the selected_tuple (and
          * selected_count) must be updated. *)
+        unselected_successive := Uint64.zero ;
         selected_tuple := Some in_tuple ;
         selected_count := Uint64.succ !selected_count ;
         selected_successive := Uint64.succ !selected_successive ;
@@ -490,19 +576,43 @@ let alert read_tuple field_of_tuple team alert_cond subject text =
             "??"^ field_name ^"??"
         ) text
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
+  and in_ = ref None
+  and selected_tuple = ref None
+  and selected_count = ref Uint64.zero
+  and selected_successive = ref Uint64.zero
+  and unselected_tuple = ref None
+  and unselected_count = ref Uint64.zero
+  and unselected_successive = ref Uint64.zero
   in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     IntCounter.add stats_in_tuple_count 1 ;
-    let all_count = Uint64.succ !CodeGenLib_IO.tuple_count in
-    if alert_cond all_count in_tuple then (
+    let last_in = Option.default in_tuple !in_
+    and last_selected = Option.default in_tuple !selected_tuple
+    and last_unselected = Option.default in_tuple !unselected_tuple in
+    in_ := Some in_tuple ;
+    let in_count = Uint64.succ !CodeGenLib_IO.tuple_count in
+    if alert_cond
+         in_count in_tuple last_in
+         !selected_count !selected_successive last_selected
+         !unselected_count !unselected_successive last_unselected
+    then (
       IntCounter.add stats_selected_tuple_count 1 ;
+      unselected_successive := Uint64.zero ;
+      selected_tuple := Some in_tuple ;
+      selected_count := Uint64.succ !selected_count ;
+      selected_successive := Uint64.succ !selected_successive ;
       let team = expand_fields team in_tuple
       and subject = expand_fields subject in_tuple
       and text = expand_fields text in_tuple in
       (* TODO: send this to the alert manager *)
       Printf.printf "ALERT!\nTo: %s\nSubject: %s\n%s\n\n"
         team subject text
+    ) else (
+      selected_successive := Uint64.zero ;
+      unselected_tuple := Some in_tuple ;
+      unselected_count := Uint64.succ !unselected_count ;
+      unselected_successive := Uint64.succ !unselected_successive ;
     ) ;
     return_unit)
