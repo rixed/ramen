@@ -528,14 +528,14 @@ let set_all_types graph =
       let in_type = RamenConf.make_temp_tup_typ ()
       and out_type = RamenConf.make_temp_tup_typ () in
       in_type.RamenConf.finished_typing <- true ;
-      let open Lang.P in
+      let open RamenParsing in
       let p = Lang.Expr.Parser.(p +- eof) in
       let exp =
         match p [] None Parsers.no_error_correction (stream_of_string expr_text) |>
               to_result with
         | Batteries.Bad e ->
           let err =
-            BatIO.to_string (Lang.P.print_bad_result (Lang.Expr.print false)) e in
+            BatIO.to_string (print_bad_result (Lang.Expr.print false)) e in
           failwith err
         | Batteries.Ok (exp, _) -> exp in
       if not (check_expr ~in_type ~out_type ~exp_type exp) then

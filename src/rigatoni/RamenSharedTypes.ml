@@ -6,7 +6,8 @@ open Stdint
 type scalar_typ =
   | TNull | TFloat | TString | TBool | TNum
   | TU8 | TU16 | TU32 | TU64 | TU128
-  | TI8 | TI16 | TI32 | TI64 | TI128 [@@ppp PPP_JSON]
+  | TI8 | TI16 | TI32 | TI64 | TI128
+  | TEth (* 48bits unsigned integers with funny notation *) [@@ppp PPP_JSON]
 
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run
@@ -16,13 +17,15 @@ type scalar_value =
   | VU8 of uint8 | VU16 of uint16 | VU32 of uint32
   | VU64 of uint64 | VU128 of uint128
   | VI8 of int8 | VI16 of int16 | VI32 of int32
-  | VI64 of int64 | VI128 of int128 | VNull [@@ppp PPP_JSON]
+  | VI64 of int64 | VI128 of int128 | VNull
+  | VEth of uint48 [@@ppp PPP_JSON]
 
 let scalar_type_of = function
   | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
   | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
   | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
   | VI64 _ -> TI64 | VI128 _ -> TI128 | VNull -> TNull
+  | VEth _ -> TEth
 
 (* A "columnar" type, to help store/send large number of values *)
 type scalar_column =
@@ -33,6 +36,7 @@ type scalar_column =
   | AI8 of int8 array | AI16 of int16 array
   | AI32 of int32 array | AI64 of int64 array
   | AI128 of int128 array | ANull of int (* length of the array! *)
+  | AEth of uint48 array
   [@@ppp PPP_JSON]
 
 let scalar_type_of_column = function
@@ -40,6 +44,7 @@ let scalar_type_of_column = function
   | AU8 _ -> TU8 | AU16 _ -> TU16 | AU32 _ -> TU32 | AU64 _ -> TU64
   | AU128 _ -> TU128 | AI8 _ -> TI8 | AI16 _ -> TI16 | AI32 _ -> TI32
   | AI64 _ -> TI64 | AI128 _ -> TI128 | ANull _ -> TNull
+  | AEth _ -> TEth
 
 let scalar_value_at n = function
   | AFloat a -> VFloat (Array.get a n) | AString a -> VString (Array.get a n)
@@ -49,6 +54,7 @@ let scalar_value_at n = function
   | AI8 a -> VI8 (Array.get a n) | AI16 a -> VI16 (Array.get a n)
   | AI32 a -> VI32 (Array.get a n) | AI64 a -> VI64 (Array.get a n)
   | AI128 a -> VI128 (Array.get a n) | ANull _ -> VNull
+  | AEth a -> VEth (Array.get a n)
 
 type column_mapper =
   { f : 'a. 'a array -> 'a array ;
@@ -59,14 +65,15 @@ let scalar_column_map m = function
   | ABool a -> ABool (m.f a) | AU8 a -> AU8 (m.f a) | AU16 a -> AU16 (m.f a)
   | AU32 a -> AU32 (m.f a) | AU64 a -> AU64 (m.f a) | AU128 a -> AU128 (m.f a)
   | AI8 a -> AI8 (m.f a) | AI16 a -> AI16 (m.f a) | AI32 a -> AI32 (m.f a)
-  | AI64 a -> AI64 (m.f a) | AI128 a -> AI128 (m.f a) | ANull l -> ANull (m.null l)
+  | AI64 a -> AI64 (m.f a) | AI128 a -> AI128 (m.f a)
+  | ANull l -> ANull (m.null l) | AEth a -> AEth (m.f a)
 
 let scalar_column_length =
   let al = Array.length in function
   | AFloat a -> al a | AString a -> al a | ABool a -> al a | AU8 a -> al a
   | AU16 a -> al a | AU32 a -> al a | AU64 a -> al a | AU128 a -> al a
   | AI8 a -> al a | AI16 a -> al a | AI32 a -> al a | AI64 a -> al a
-  | AI128 a -> al a | ANull l -> l
+  | AI128 a -> al a | ANull l -> l | AEth a -> al a
 
 type field_typ =
   { typ_name : string ; nullable : bool ; typ : scalar_typ } [@@ppp PPP_JSON]

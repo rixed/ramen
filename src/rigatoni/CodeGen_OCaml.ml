@@ -41,6 +41,7 @@ let sersize_of_fixsz_typ = function
   | TU64 | TI64 -> RingBufLib.round_up_to_rb_word 8
   | TU128 | TI128 -> RingBufLib.round_up_to_rb_word 16
   | TNull -> 0
+  | TEth -> RingBufLib.round_up_to_rb_word 6
   | TString -> assert false
   | TNum -> assert false
 
@@ -87,6 +88,7 @@ let id_of_typ typ =
   | TI64    -> "i64"
   | TI128   -> "i128"
   | TNull   -> "null"
+  | TEth    -> "eth"
   | TNum    -> assert false
 
 let emit_value_of_string typ oc var =
@@ -296,6 +298,7 @@ let emit_scalar oc =
   | VI32    n -> Printf.fprintf oc "%sl" (Int32.to_string n)
   | VI64    n -> Printf.fprintf oc "%sL" (Int64.to_string n)
   | VI128   n -> Printf.fprintf oc "(Int128.of_string %S)" (Int128.to_string n)
+  | VEth    n -> Printf.fprintf oc "(Uint40.of_int64 %LdL)" (Uint48.to_int64 n)
   | VNull     -> Printf.fprintf oc "()"
 
 let funcname_of_expr =
@@ -389,6 +392,7 @@ let otype_of_type = function
   | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
   | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
   | TNull -> "unit"
+  | TEth -> "uint48"
   | TNum -> assert false
 
 let otype_of_aggr aggr =
@@ -403,7 +407,8 @@ let omod_of_type = function
   | TString -> "BatString"
   | TBool -> "BatBool"
   | TU8 | TU16 | TU32 | TU64 | TU128
-  | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
+  | TI8 | TI16 | TI32 | TI64 | TI128
+  | TEth as t ->
     String.capitalize (otype_of_type t)
   | TNull -> assert false (* Never used on NULLs *)
   | TNum -> assert false

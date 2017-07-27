@@ -163,19 +163,6 @@ let () =
     | SyntaxError e -> Some ("Syntax Error: "^ e)
     | _ -> None)
 
-module PConfig = ParsersPositions.LineCol (Parsers.SimpleConfig (Char))
-module P = Parsers.Make (PConfig)
-module ParseUsual = ParsersUsual.Make (P)
-let strinG = ParseUsual.string ~case_sensitive:false
-let that_string s =
-  let open P in
-  strinG s >>: fun () -> s (* because [string] returns () *)
-let blanks =
-  let open P in
-  ParseUsual.whitespace >>: fun _ -> ()
-let opt_blanks =
-  P.optional_greedy ~def:() blanks
-
 (* TODO: use a variant *)
 let tuple_comes_from_in = function
   | "in" | "first" | "last" | "any" | "all" | "selected" -> true
@@ -186,7 +173,7 @@ let tuple_comes_from_in = function
   open Stdint
   open Batteries
   open RamenSharedTypes
-  open Lang.P
+  open RamenParsing
 
   let test_printer res_printer = function
     | Ok (res, (len, rest)) ->
@@ -296,6 +283,7 @@ struct
       | TI32    -> "I32"
       | TI64    -> "I64"
       | TI128   -> "I128"
+      | TEth    -> "Eth"
     in
     String.print fmt s
 
@@ -308,6 +296,9 @@ struct
       | TNum    -> KNum, 0
       | TU64    -> KNum, 64
       | TI64    -> KNum, 63
+      (* We consider Eth a number here so we can cast it directly and use it
+       * whenever we could use a 48 bit unsigned integer. *)
+      | TEth    -> KNum, 48
       | TU32    -> KNum, 32
       | TI32    -> KNum, 31
       | TU16    -> KNum, 16
@@ -341,17 +332,17 @@ struct
     | VI64 i    -> Printf.fprintf fmt "%s" (Int64.to_string i)
     | VI128 i   -> Printf.fprintf fmt "%s" (Int128.to_string i)
     | VNull     -> Printf.fprintf fmt "NULL"
+    | VEth i    -> EthAddr.print fmt i
 
   let is_round_integer = function
     | VFloat f  -> fst(modf f) = 0.
-    | VString _ | VBool _ | VNull -> false
+    | VString _ | VBool _ | VNull | VEth _ -> false
     | _ -> true
 
   module Parser =
   struct
     (*$< Parser *)
-    open ParseUsual
-    open P
+    open RamenParsing
 
     let narrowest_int_scalar =
       let min_i8 = Num.of_string "-128"
@@ -401,7 +392,8 @@ struct
       (floating_point >>: fun f -> VFloat f)    |||
       (strinG "false" >>: fun _ -> VBool false) |||
       (strinG "true" >>: fun _ -> VBool true)   |||
-      (quoted_string >>: fun s -> VString s)
+      (quoted_string >>: fun s -> VString s)    |||
+      (EthAddr.Parser.p >>: fun v -> VEth v)
 
     (*$= p & ~printer:(test_printer print)
       (Ok (VI16 (Int16.of_int 31000), (5,[])))   (test_p p "31000")
@@ -427,7 +419,8 @@ struct
       (strinG "i32" >>: fun () -> TI32) |||
       (strinG "i64" >>: fun () -> TI64) |||
       (strinG "i128" >>: fun () -> TI128) |||
-      (strinG "null" >>: fun () -> TNull)
+      (strinG "null" >>: fun () -> TNull) |||
+      (strinG "eth" >>: fun () -> TEth)
 
     (*$>*)
   end
@@ -435,8 +428,7 @@ struct
 end
 
 let keyword =
-  let open P in
-  let open ParseUsual in
+  let open RamenParsing in
   (
     strinG "true" ||| strinG "false" ||| strinG "and" ||| strinG "or" |||
     strinG "min" ||| strinG "max" ||| strinG "sum" ||| strinG "percentile" |||
@@ -453,8 +445,7 @@ let keyword =
     (Scalar.Parser.typ >>: fun _ -> ())
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
-  let open P in
-  let open ParseUsual in
+  let open RamenParsing in
   let id_quote = char ~what:"quote" '\'' in
   (check ~what:"no quoted identifier" (nay id_quote) -+
    check ~what:"no keyword" (nay keyword) -+
@@ -680,8 +671,7 @@ struct
   module Parser =
   struct
     (*$< Parser *)
-    open ParseUsual
-    open P
+    open RamenParsing
 
     (* Single things *)
     let const m =
@@ -1106,8 +1096,7 @@ struct
   module Parser =
   struct
     (*$< Parser *)
-    open ParseUsual
-    open P
+    open RamenParsing
 
     let default_alias = function
       | Expr.Field (_, { contents="in" }, field)

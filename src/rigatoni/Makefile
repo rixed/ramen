@@ -1,17 +1,19 @@
 top_srcdir = ..
 
 TESTABLE_SOURCES = \
-	RamenSharedTypes.ml Lang.ml Compiler.ml
+	RamenSharedTypes.ml EthAddr.ml Lang.ml Compiler.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
 	Log.ml Helpers.ml RingBufLib.ml \
-	RamenSharedTypes.ml Lang.ml CodeGen_OCaml.ml \
+	RamenSharedTypes.ml RamenParsing.ml \
+	EthAddr.ml Lang.ml CodeGen_OCaml.ml \
 	RingBuf.ml RamenConf.ml Compiler.ml
 
 RIGATONI_SOURCES = \
 	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml \
-	Lang.ml RingBufLib.ml RingBuf.ml \
+	RamenParsing.ml EthAddr.ml Lang.ml \
+	RingBufLib.ml RingBuf.ml \
 	CodeGen_OCaml.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
 	Compiler.ml HttpSrv.ml ApiCmd.ml RingBufCmd.ml \

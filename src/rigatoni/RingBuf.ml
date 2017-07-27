@@ -26,6 +26,7 @@ external write_u64 : tx -> int -> Uint64.t -> unit = "write_boxed_64"
 external write_i64 : tx -> int -> Int64.t -> unit = "write_boxed_64"
 external write_u128 : tx -> int -> Uint128.t -> unit = "write_boxed_128"
 external write_i128 : tx -> int -> Int128.t -> unit = "write_boxed_128"
+external write_eth : tx -> int -> Uint48.t -> unit = "write_boxed_48"
 (* Everything passed as an int and which occupancy is <= word *)
 external write_bool : tx -> int -> bool -> unit = "write_word"
 (* Special to zero the nullmask *)
@@ -43,6 +44,7 @@ external read_u64 : tx -> int -> Uint64.t = "read_uint64"
 external read_i64 : tx -> int -> Int64.t = "read_int64"
 external read_u128 : tx -> int -> Uint128.t = "read_uint128"
 external read_i128 : tx -> int -> Int128.t = "read_int128"
+external read_eth : tx -> int -> Uint48.t = "read_uint48"
 external read_bool : tx -> int -> bool = "read_word"
 external read_word : tx -> int -> int = "read_word"
 

@@ -98,14 +98,14 @@ let set_graph_editable graph =
     raise (InvalidCommand "Graph is running")
 
 let parse_operation operation =
-  let open Lang.P in
+  let open RamenParsing in
   let p = Lang.(opt_blanks -+ Operation.Parser.p +- opt_blanks +- eof) in
   (* TODO: enable error correction *)
   match p [] None Parsers.no_error_correction (stream_of_string operation) |>
         to_result with
   | Bad e ->
     let err =
-      IO.to_string (Lang.P.print_bad_result Lang.Operation.print) e in
+      IO.to_string (print_bad_result Lang.Operation.print) e in
     raise (Lang.SyntaxError ("Parse error: "^ err))
   | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
     Lang.Operation.Parser.check op ;

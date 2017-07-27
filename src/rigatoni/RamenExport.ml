@@ -101,6 +101,7 @@ let read_tuple tuple_type tx =
     | TI32    -> VI32 (read_i32 tx offs)
     | TI64    -> VI64 (read_i64 tx offs)
     | TI128   -> VI128 (read_i128 tx offs)
+    | TEth    -> VEth (read_eth tx offs)
     | TNull   -> VNull
     | TNum    -> assert false
   and sersize_of =
@@ -191,6 +192,7 @@ let scalar_column_init typ len f =
   | TI32 -> AI32 (Array.init len (fun i -> match f i with VI32 x -> x | _ -> assert false))
   | TI64 -> AI64 (Array.init len (fun i -> match f i with VI64 x -> x | _ -> assert false))
   | TI128 -> AI128 (Array.init len (fun i -> match f i with VI128 x -> x | _ -> assert false))
+  | TEth -> AEth (Array.init len (fun i -> match f i with VEth x -> x | _ -> assert false))
   | TNum -> assert false
 
 let columns_of_tuples fields values =

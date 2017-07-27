@@ -267,7 +267,7 @@ CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
   CAMLreturn(Val_unit); \
 }
 
-#define WRITE_UNBOXED(bits) \
+#define WRITE_UNBOXED_INT(bits) \
 CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
 { \
   CAMLparam3(tx, off_, v_); \
@@ -281,9 +281,10 @@ CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
 
 WRITE_BOXED(128);
 WRITE_BOXED(64);
+WRITE_BOXED(48);
 WRITE_BOXED(32);
-WRITE_UNBOXED(16);
-WRITE_UNBOXED(8);
+WRITE_UNBOXED_INT(16);
+WRITE_UNBOXED_INT(8);
 
 extern struct custom_operations uint128_ops;
 extern struct custom_operations uint64_ops;
@@ -292,7 +293,7 @@ extern struct custom_operations int128_ops;
 extern struct custom_operations caml_int64_ops;
 extern struct custom_operations caml_int32_ops;
 
-#define READ_CUSTOM_INT(int_type, bits, ops) \
+#define READ_BOXED(int_type, bits, ops) \
 CAMLprim value read_##int_type##bits(value tx, value off_) \
 { \
   CAMLparam2(tx, off_); \
@@ -305,7 +306,7 @@ CAMLprim value read_##int_type##bits(value tx, value off_) \
   CAMLreturn(v); \
 }
 
-#define READ_INT(int_type, bits) \
+#define READ_UNBOXED_INT(int_type, bits) \
 CAMLprim value read_##int_type##bits(value tx, value off_) \
 { \
   CAMLparam2(tx, off_); \
@@ -316,16 +317,17 @@ CAMLprim value read_##int_type##bits(value tx, value off_) \
   CAMLreturn(Val_long(v)); \
 }
 
-READ_CUSTOM_INT(uint, 128, uint128_ops);
-READ_CUSTOM_INT(uint, 64, uint64_ops);
-READ_CUSTOM_INT(uint, 32, uint32_ops);
-READ_INT(uint, 16);
-READ_INT(uint, 8);
-READ_CUSTOM_INT(int, 128, int128_ops);
-READ_CUSTOM_INT(int, 64, caml_int64_ops);
-READ_CUSTOM_INT(int, 32, caml_int32_ops);
-READ_INT(int, 16);
-READ_INT(int, 8);
+READ_BOXED(uint, 128, uint128_ops);
+READ_BOXED(uint, 64, uint64_ops);
+READ_BOXED(uint, 48, uint32_ops);
+READ_BOXED(uint, 32, uint32_ops);
+READ_UNBOXED_INT(uint, 16);
+READ_UNBOXED_INT(uint, 8);
+READ_BOXED(int, 128, int128_ops);
+READ_BOXED(int, 64, caml_int64_ops);
+READ_BOXED(int, 32, caml_int32_ops);
+READ_UNBOXED_INT(int, 16);
+READ_UNBOXED_INT(int, 8);
 
 CAMLprim value write_boxed_str(value tx, value off_, value v_)
 {

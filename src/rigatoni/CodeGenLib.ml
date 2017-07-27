@@ -20,6 +20,7 @@ let i32_of_string = Int32.of_string
 let i64_of_string = Int64.of_string
 let i128_of_string = Int128.of_string
 let null_of_string = ()
+let eth_of_string s = Uint48.of_string ("0x"^ String.nreplace s ":" "")
 
 (* Functions *)
 
