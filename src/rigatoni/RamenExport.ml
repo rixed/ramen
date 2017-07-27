@@ -195,9 +195,12 @@ let scalar_column_init typ len f =
   | TEth -> AEth (Array.init len (fun i -> match f i with VEth x -> x | _ -> assert false))
   | TNum -> assert false
 
+(* Note: the list of values is ordered latest to oldest *)
 let columns_of_tuples fields values =
   let values = Array.of_list values in
   List.mapi (fun ci ft ->
       ft.typ_name, ft.nullable,
-      scalar_column_init ft.typ (Array.length values) (fun i -> values.(i).(ci))
+      scalar_column_init ft.typ (Array.length values) (fun i ->
+        let inv_i = Array.length values - 1 - i in
+        values.(inv_i).(ci))
     ) fields
