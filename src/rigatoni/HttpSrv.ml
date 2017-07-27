@@ -179,6 +179,7 @@ let node_of_name conf graph n =
 let put_link conf _headers src dst =
   let%lwt src = node_of_name conf conf.C.building_graph src in
   let%lwt dst = node_of_name conf conf.C.building_graph dst in
+  !logger.debug "Adding link from %s to %s" src.C.name dst.C.name ;
   if C.has_link conf src dst then
     let msg =
       "Creating link "^ src.C.name ^"-"^ dst.C.name ^": Link already exists" in
@@ -430,6 +431,7 @@ let callback conf _conn req body =
     (fun () ->
       let dec = Uri.pct_decode in
       try
+        !logger.debug "Requesting %a" (List.print String.print) paths ;
         match Request.meth req, paths with
         (* API *)
         | `PUT, ["node" ; name] -> put_node conf headers (dec name) body

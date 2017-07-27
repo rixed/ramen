@@ -541,7 +541,7 @@ struct
     | Now of typ
     | Sequence of typ * t * t (* start, step *)
     | Cast of typ * t
-    | Length of typ * t
+    | Length of typ * t (* string length *)
     (* Unary Ops on scalars *)
     | Not of typ * t
     | Abs of typ * t
