@@ -4,7 +4,7 @@ set -e
 top_srcdir=$(dirname $0)"/.."
 . $top_srcdir/tests/funcs.sh
 
-init
+start
 add_cars
 add_node p1 \
 "SELECT AND EXPORT
@@ -18,9 +18,9 @@ add_node p1 \
  COMMIT AND FLUSH WHEN in.#count >= $nb_cars" cars
 run
 check_equal '1,946,1262046,552,313,140,553' "$(tail_ 1 p1)"
-reset
 
-init
+reset
+start
 add_123
 add_node a1 "SELECT AND EXPORT AND of b COMMIT AND FLUSH WHEN selected.#count = 1" 123
 add_node a2 "SELECT AND EXPORT AND of b COMMIT AND FLUSH WHEN selected.#count = 2" 123

@@ -4,7 +4,7 @@ set -e
 top_srcdir=$(dirname $0)"/.."
 . $top_srcdir/tests/funcs.sh
 
-init
+start
 add_123
 add_node n "SELECT AND EXPORT 10*n AS ten_n, all.#count AS count WHERE n=3" 123
 run

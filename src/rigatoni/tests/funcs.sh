@@ -29,16 +29,20 @@ file_with() {
   cat > "$f"
 }
 
-# RANDOM returns a number between 0 and 32767
-RAMEN_HTTP_PORT=$(shuf -i 1024-65536 -n 1)
-export RAMEN_HTTP_PORT
-
-RAMEN_URL="http://127.0.0.1:$RAMEN_HTTP_PORT"
-export RAMEN_URL
-
 rigatoni="$top_srcdir/rigatoni"
 
-init() {
+export RAMEN_HTTP_PORT
+export RAMEN_URL
+
+start() {
+  # RANDOM returns a number between 0 and 32767
+  RAMEN_HTTP_PORT=$(shuf -i 1024-65536 -n 1)
+  RAMEN_URL="http://127.0.0.1:$RAMEN_HTTP_PORT"
+  rm -f /tmp/ringbuf_*
+  ps ax | grep rigatoni | true
+  ps ax | grep gen_ | true
+  ls /tmp/ringbuf* | true
+
   $rigatoni start &
   add_temp_pid $!
   sleep 0.5

@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/.."
+. $top_srcdir/tests/funcs.sh
+
+# Tumbling windows:
+
+start
+add_node n1 "YIELD sequence as seq"
+add_node n2 "
+  SELECT AND EXPORT first seq, last seq, in.#count as count, sum(1) as alt_count
+  WHERE seq < 30
+  COMMIT AND FLUSH WHEN in.#count=10
+" n1
+run
+
+check_equal '0,9,10,10
+10,19,10,10
+20,29,10,10' "$(tail_ 3 n2)"
+
+# Sliding windows:
+
+reset
+
+start
+add_node n1 "YIELD sequence as seq"
+add_node n2 "
+  SELECT AND EXPORT first seq, last seq, in.#count as count, sum(1) as alt_count
+  WHERE seq < 14
+  COMMIT AND SLIDE 1 WHEN in.#count=10
+" n1
+run
+
+check_equal '0,9,10,10
+1,10,10,10
+2,11,10,10
+3,12,10,10
+4,13,10,10' "$(tail_ 5 n2)"
+
