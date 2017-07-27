@@ -279,7 +279,7 @@ let db_name =
 let delete_opt =
   let i = Arg.info ~doc:"Delete CSV files after injected"
                    [ "delete" ] in
-  Arg.(value (opt bool false i))
+  Arg.(value (flag i))
 
 let csv_dir =
   let i = Arg.info ~doc:"Path where the TCP_v29 CSV files are stored"
