@@ -17,9 +17,7 @@ external dequeue : t -> bytes = "wrap_ringbuf_dequeue"
 external write_float : tx -> int -> float -> unit = "write_float"
 external write_string : tx -> int -> string -> unit = "write_boxed_str"
 external write_u8 : tx -> int -> Uint8.t -> unit = "write_boxed_8"
-external write_i8 : tx -> int -> Int8.t -> unit = "write_boxed_8"
 external write_u16 : tx -> int -> Uint16.t -> unit = "write_boxed_16"
-external write_i16 : tx -> int -> Int16.t -> unit = "write_boxed_16"
 external write_u32 : tx -> int -> Uint32.t -> unit = "write_boxed_32"
 external write_i32 : tx -> int -> Int32.t -> unit = "write_boxed_32"
 external write_u64 : tx -> int -> Uint64.t -> unit = "write_boxed_64"
@@ -32,12 +30,24 @@ external write_bool : tx -> int -> bool -> unit = "write_word"
 (* Special to zero the nullmask *)
 external zero_bytes : tx -> int -> int -> unit = "zero_bytes"
 
+(* Integers of 8, 16 and 24 bits are stored as normal ocaml integers.
+ * But signed int8, int16 and int24 are shifted to the left so that
+ * ocaml see them with the proper sign so that arithmetic works.
+ * When we encode them using write_u{8,16,24} we must therefore shift
+ * them back, as those functions assume only the low bits are relevant.
+ * For this, it is enough to call the to_int function, since that's what
+ * those functions do: *)
+external write_i8_ : tx -> int -> int -> unit = "write_boxed_8"
+external write_i16_ : tx -> int -> int -> unit = "write_boxed_16"
+let write_i8 tx ofs i = write_i8_ tx ofs (Int8.to_int i)
+let write_i16 tx ofs i = write_i16_ tx ofs (Int16.to_int i)
+
+external write_i8_ : tx -> int -> Int8.t -> unit = "write_boxed_8"
+
 external read_float : tx -> int -> float = "read_float"
 external read_string : tx -> int -> string = "read_str"
 external read_u8 : tx -> int -> Uint8.t = "read_uint8"
-external read_i8 : tx -> int -> Int8.t = "read_int8"
 external read_u16 : tx -> int -> Uint16.t = "read_uint16"
-external read_i16 : tx -> int -> Int16.t = "read_int16"
 external read_u32 : tx -> int -> Uint32.t = "read_uint32"
 external read_i32 : tx -> int -> Int32.t = "read_int32"
 external read_u64 : tx -> int -> Uint64.t = "read_uint64"
@@ -50,6 +60,12 @@ external read_word : tx -> int -> int = "read_word"
 
 external set_bit : tx -> int -> unit = "set_bit"
 external get_bit : tx -> int -> bool = "get_bit"
+
+(* See above as to why int8 and int16 are special: *)
+external read_i8_ : tx -> int -> int = "read_int8"
+external read_i16_ : tx -> int -> int = "read_int16"
+let read_i8 tx ofs = Int8.of_int (read_i8_ tx ofs)
+let read_i16 tx ofs = Int16.of_int (read_i16_ tx ofs)
 
 (* Note: each primitive operation is generic but for a few things:
  *
