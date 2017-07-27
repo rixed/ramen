@@ -548,12 +548,12 @@ and emit_function2 ~all_alias_in expr oc e1 e2 =
   )
 
 let emit_where
-      ?(with_aggr=false) ?(with_first_and_last=false) ?(always_true=false)
+      ?(with_in_and_aggr=false) ?(with_first_and_last=false) ?(always_true=false)
       ?(all_alias_in=false)
       name in_tuple_typ mentioned and_all_others oc expr =
   Printf.fprintf oc "let %s%s virtual_all_count_ %a "
     name
-    (if with_aggr then " virtual_in_count_ virtual_in_successive_ aggr_" else "")
+    (if with_in_and_aggr then " virtual_in_count_ virtual_in_successive_ aggr_" else "")
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   if with_first_and_last then
     Printf.fprintf oc "%a %a "
@@ -570,14 +570,14 @@ let emit_where
  * and also the first and last incoming tuple of this aggr as additional
  * parameters *)
 let emit_field_selection
-      ?(with_aggr=false)
+      ?(with_in_and_aggr=false)
       ?(with_all_and_selected=false)
       ?(with_first_and_last=false)
       name in_tuple_typ mentioned
       and_all_others out_tuple_typ oc selected_fields =
   let open Lang in
   Printf.fprintf oc "let %s " name ;
-  if with_aggr then Printf.fprintf oc "aggr_ " ;
+  if with_in_and_aggr then Printf.fprintf oc "virtual_in_count_ virtual_in_successive_ aggr_ " ;
   Printf.fprintf oc "%a "
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   if with_all_and_selected then
@@ -619,7 +619,7 @@ let emit_field_selection
   Printf.fprintf oc "\n\t)\n"
 
 (* Similar to emit_field_selection but with less options, no concept of star and no
- * naming of the fields as the fields from out, since that's not the tout tuple
+ * naming of the fields as the fields from out, since that's not the out tuple
  * we are constructing: *)
 let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
   Printf.fprintf oc "let %s %a =\n\t("
@@ -723,7 +723,7 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
       | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)  ->
         let impl, arg_typ = implementation_of aggr in
         Printf.fprintf oc "%s aggr_.%s %a ;\n"
-          impl (name_of_aggr aggr) (conv_to ~all_alias_in:false arg_typ) e ;
+          impl (name_of_aggr aggr) (conv_to ~all_alias_in:false arg_typ) e
       | AggrPercentile (_, p, e) ->
         (* This value is optional but the percentile function takes an
          * optional value and return one so we do not have to deal with
@@ -732,7 +732,7 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
         Printf.fprintf oc "%s aggr_.%s %a %a ;\n"
           impl (name_of_aggr aggr)
           (conv_to ~all_alias_in:false arg_typ) p
-          (conv_to ~all_alias_in:false arg_typ) e ;
+          (conv_to ~all_alias_in:false arg_typ) e
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
       | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
       | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ ->
@@ -837,8 +837,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       | RemoveAll e | KeepOnly e -> e :: all_exprs in
     add_all_mentioned all_exprs
   and where_need_aggr =
-    (* Tells whether the where expression needs either the out tuple
-     * or uses any aggregation on its own. *)
+    (* Tells whether the where expression needs either the out tuple,
+     * the group.#count (TODO) or uses any aggregation on its own. *)
     let open Lang.Expr in
     fold (fun need expr ->
       need || match expr with
@@ -866,13 +866,13 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     else
       emit_where "where_fast_" ~all_alias_in:true in_tuple_typ mentioned and_all_others) where
     (if not where_need_aggr then
-      emit_where "where_slow_" ~with_aggr:true ~with_first_and_last:true ~always_true:true in_tuple_typ mentioned and_all_others
+      emit_where "where_slow_" ~with_in_and_aggr:true ~with_first_and_last:true ~always_true:true in_tuple_typ mentioned and_all_others
     else
-      emit_where "where_slow_" ~with_aggr:true ~with_first_and_last:true in_tuple_typ mentioned and_all_others) where
+      emit_where "where_slow_" ~with_in_and_aggr:true ~with_first_and_last:true in_tuple_typ mentioned and_all_others) where
     (emit_key_of_input "key_of_input_" in_tuple_typ mentioned and_all_others) key
     (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
-    (emit_field_selection ~with_all_and_selected:true ~with_aggr:true ~with_first_and_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
+    (emit_field_selection ~with_all_and_selected:true ~with_in_and_aggr:true ~with_first_and_last:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ
     (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how ;

@@ -318,7 +318,7 @@ type when_to_check_group = ForAll | ForAllSelected | ForAllInGroup
 let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (sersize_of_tuple : 'tuple_out -> int)
               (serialize_tuple : RingBuf.tx -> 'tuple_out -> int)
-              (tuple_of_aggr : 'aggr -> 'tuple_in -> Uint64.t -> 'tuple_in -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out)
+              (tuple_of_aggr : Uint64.t -> Uint64.t -> 'aggr -> 'tuple_in -> Uint64.t -> 'tuple_in -> Uint64.t -> 'tuple_in -> 'tuple_in -> 'tuple_in -> 'tuple_out)
               (* Where_fast/slow: premature optimisation: if the where filter
                * uses the aggregate then we need where_slow (checked after
                * the aggregate look up) but if it uses only the incoming
@@ -401,12 +401,12 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
         match Hashtbl.find h k with
         | exception Not_found ->
           let fields = aggr_init in_tuple
-          and nb_entries = Uint64.of_int 1 in
-          if where_slow nb_entries nb_entries fields all_count in_tuple in_tuple in_tuple prev_all then (
+          and one = Uint64.of_int 1 in
+          if where_slow one one fields all_count in_tuple in_tuple in_tuple prev_all then (
             IntCounter.add stats_selected_tuple_count 1 ;
             (* TODO: pass selected_successive *)
             let out_tuple =
-              tuple_of_aggr fields in_tuple all_count prev_all !selected_count prev_selected in_tuple in_tuple in
+              tuple_of_aggr one one fields in_tuple all_count prev_all !selected_count prev_selected in_tuple in_tuple in
             let aggr = {
               first_in = in_tuple ;
               last_in = in_tuple ;
@@ -434,7 +434,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               aggr.nb_successive <- aggr.nb_successive + 1 ;
             (* TODO: pass selected_successive *)
             let out_tuple =
-              tuple_of_aggr aggr.fields in_tuple all_count prev_all !selected_count prev_selected aggr.first_in aggr.last_in in
+              tuple_of_aggr (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields in_tuple all_count prev_all !selected_count prev_selected aggr.first_in aggr.last_in in
             aggr.out_tuple <- out_tuple ;
             aggr.last_in <- in_tuple ;
             Some aggr
