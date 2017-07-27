@@ -174,6 +174,14 @@ issue, simply add a cast:
     COMMIT AND FLUSH WHEN per_status_err_count > 1000
 ----
 
+==== Network addresses
+
+Ethernet addresses are accepted with the usual notation, such as:
+`18:d6:c7:28:71:f5` (without quotes, those are not strings!) They are
+internally stored as 48bits unsigned integers and can be casted from/to other
+integer types.
+
+
 === Expressions
 
 ==== Literal values
