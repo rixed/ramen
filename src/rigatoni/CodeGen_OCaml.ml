@@ -692,11 +692,10 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
       (let open Lang.Expr in
       match aggr with
       | AggrMin (_, e) | AggrMax (_, e) | AggrAnd (_, e)
-      | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) ->
+      | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)
+      | AggrSum (_, e) ->
         let _impl, arg_typ = implementation_of aggr in
         conv_to ~all_alias_in:false arg_typ oc e
-      | AggrSum (to_typ, _) ->
-        Printf.fprintf oc "%s.zero" (omod_of_type (Option.get to_typ.scalar_typ))
       | AggrPercentile (_, p, e) ->
         let impl, arg_typ = implementation_of aggr in
         Printf.fprintf oc "%s [] %a %a"
