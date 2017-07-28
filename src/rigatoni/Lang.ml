@@ -348,10 +348,12 @@ struct
       | TEth    -> "Eth"
       | TIpv4   -> "IPv4"
       | TIpv6   -> "IPv6"
+      | TCidrv4 -> "CIDRv4"
+      | TCidrv6 -> "CIDRv6"
     in
     String.print fmt s
 
-  type type_class = KNum | KBool | KString | KNull
+  type type_class = KNum | KBool | KString | KNull | KCidrv4 | KCidrv6
   let compare_typ typ1 typ2 =
     let rank_of_typ = function
       | TFloat  -> KNum, 200
@@ -361,8 +363,7 @@ struct
       | TNum    -> KNum, 0
       | TU64    -> KNum, 64
       | TI64    -> KNum, 63
-      (* We consider Eth a number here so we can cast it directly and use it
-       * whenever we could use a 48 bit unsigned integer. *)
+      (* We consider Eth and IPs numbers so we can cast directly to/from ints. *)
       | TEth    -> KNum, 48
       | TU32    -> KNum, 32
       | TIpv4   -> KNum, 32
@@ -374,6 +375,8 @@ struct
       | TString -> KString, 1
       | TBool   -> KBool, 1
       | TNull   -> KNull, 0
+      | TCidrv4 -> KCidrv4, 0
+      | TCidrv6 -> KCidrv6, 0
     in
     let k1, r1 = rank_of_typ typ1
     and k2, r2 = rank_of_typ typ2 in
@@ -401,10 +404,13 @@ struct
     | VEth i    -> EthAddr.print fmt i
     | VIpv4 i   -> Ipv4.print fmt i
     | VIpv6 i   -> Ipv6.print fmt i
+    | VCidrv4 i -> Ipv4.Cidr.print fmt i
+    | VCidrv6 i -> Ipv6.Cidr.print fmt i
 
   let is_round_integer = function
     | VFloat f  -> fst(modf f) = 0.
-    | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _ -> false
+    | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _
+    | VCidrv4 _ | VCidrv6 _ -> false
     | _ -> true
 
   module Parser =
@@ -457,13 +463,15 @@ struct
       (integer +- strinG "u32" >>: fun i -> VU32 (Uint32.of_string (Num.to_string i))) |||
       (integer +- strinG "u64" >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
       (integer +- strinG "u128" >>: fun i -> VU128 (Uint128.of_string (Num.to_string i))) |||
-      (floating_point >>: fun f -> VFloat f)    |||
+      (floating_point >>: fun f -> VFloat f) |||
       (strinG "false" >>: fun _ -> VBool false) |||
-      (strinG "true" >>: fun _ -> VBool true)   |||
-      (quoted_string >>: fun s -> VString s)    |||
-      (EthAddr.Parser.p >>: fun v -> VEth v)    |||
-      (Ipv4.Parser.p >>: fun v -> VIpv4 v)      |||
-      (Ipv6.Parser.p >>: fun v -> VIpv6 v)
+      (strinG "true" >>: fun _ -> VBool true) |||
+      (quoted_string >>: fun s -> VString s) |||
+      (EthAddr.Parser.p >>: fun v -> VEth v) |||
+      (Ipv4.Parser.p >>: fun v -> VIpv4 v) |||
+      (Ipv6.Parser.p >>: fun v -> VIpv6 v) |||
+      (Ipv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |||
+      (Ipv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
 
     (*$= p & ~printer:(test_printer print)
       (Ok (VI16 (Int16.of_int 31000), (5,[])))   (test_p p "31000")
@@ -492,7 +500,9 @@ struct
       (strinG "null" >>: fun () -> TNull) |||
       (strinG "eth" >>: fun () -> TEth) |||
       (strinG "ip4" >>: fun () -> TIpv4) |||
-      (strinG "ip6" >>: fun () -> TIpv6)
+      (strinG "ip6" >>: fun () -> TIpv6) |||
+      (strinG "cidr4" >>: fun () -> TCidrv4) |||
+      (strinG "cidr6" >>: fun () -> TCidrv6)
 
     (*$>*)
   end

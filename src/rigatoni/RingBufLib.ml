@@ -20,3 +20,19 @@ let retry_for_ringbuf f =
     | _ -> false
   in
   Helpers.retry ~on ~first_delay:0.001 ~max_delay:0.01 f
+
+let rec sersize_of_fixsz_typ =
+  let open RamenSharedTypes in
+  function
+  | TFloat -> round_up_to_rb_word 8
+  | TBool | TU8 | TI8 -> round_up_to_rb_word 1
+  | TU16 | TI16 -> round_up_to_rb_word 2
+  | TU32 | TI32 | TIpv4 -> round_up_to_rb_word 4
+  | TU64 | TI64 -> round_up_to_rb_word 8
+  | TU128 | TI128 | TIpv6 -> round_up_to_rb_word 16
+  | TNull -> 0
+  | TEth -> round_up_to_rb_word 6
+  | TCidrv4 -> sersize_of_fixsz_typ TIpv4 + sersize_of_fixsz_typ TU8
+  | TCidrv6 -> sersize_of_fixsz_typ TIpv6 + sersize_of_fixsz_typ TU16
+  | TString -> assert false
+  | TNum -> assert false

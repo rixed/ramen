@@ -23,6 +23,8 @@ let null_of_string = ()
 let eth_of_string s = Uint48.of_string ("0x"^ String.nreplace s ":" "")
 let ip4_of_string = Ipv4.of_string
 let ip6_of_string = Ipv6.of_string
+let cidr4_of_string = Ipv4.Cidr.of_string
+let cidr6_of_string = Ipv6.Cidr.of_string
 
 (* Functions *)
 

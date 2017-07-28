@@ -37,21 +37,9 @@ let print_tuple_deconstruct tuple =
   in
   list_print_as_tuple print_field
 
-let sersize_of_fixsz_typ = function
-  | TFloat  -> RingBufLib.round_up_to_rb_word 8
-  | TBool | TU8 | TI8 -> RingBufLib.round_up_to_rb_word 1
-  | TU16 | TI16 -> RingBufLib.round_up_to_rb_word 2
-  | TU32 | TI32 | TIpv4 -> RingBufLib.round_up_to_rb_word 4
-  | TU64 | TI64 -> RingBufLib.round_up_to_rb_word 8
-  | TU128 | TI128 | TIpv6 -> RingBufLib.round_up_to_rb_word 16
-  | TNull -> 0
-  | TEth -> RingBufLib.round_up_to_rb_word 6
-  | TString -> assert false
-  | TNum -> assert false
-
 (* Emit the code that return the sersize of a fixed size type *)
 let emit_sersize_of_fixsz_typ oc typ =
-  let sz = sersize_of_fixsz_typ typ in
+  let sz = RingBufLib.sersize_of_fixsz_typ typ in
   Int.print oc sz
 
 (* Emit the code computing the sersize of some variable *)
@@ -95,6 +83,8 @@ let id_of_typ typ =
   | TEth    -> "eth"
   | TIpv4   -> "ip4"
   | TIpv6   -> "ip6"
+  | TCidrv4 -> "cidr4"
+  | TCidrv6 -> "cidr6"
   | TNum    -> assert false
 
 let emit_value_of_string typ oc var =
@@ -297,6 +287,8 @@ let emit_scalar oc =
   | VBool   b -> Printf.fprintf oc "%b" b
   | VU8     n -> Printf.fprintf oc "(Uint8.of_int %d)" (Uint8.to_int n)
   | VU16    n -> Printf.fprintf oc "(Uint16.of_int %d)" (Uint16.to_int n)
+                 (* Note that Uint32.of_int32 0xFFFFFFFFl works despite 0xFFFFFFFFl
+                  * not fitting in a signed int32: *)
   | VU32    n -> Printf.fprintf oc "(Uint32.of_int32 %sl)" (Uint32.to_string n)
   | VU64    n -> Printf.fprintf oc "(Uint64.of_int64 %sL)" (Uint64.to_string n)
   | VU128   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
@@ -308,6 +300,10 @@ let emit_scalar oc =
   | VEth    n -> Printf.fprintf oc "(Uint40.of_int64 %LdL)" (Uint48.to_int64 n)
   | VIpv4   n -> Printf.fprintf oc "(Uint32.of_int32 %sl)" (Uint32.to_string n)
   | VIpv6   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
+  | VCidrv4 (n,l) ->
+                 Printf.fprintf oc "(Uint32.of_int32 %sl, %d)" (Uint32.to_string n) l
+  | VCidrv6 (n,l) ->
+                 Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
   | VNull     -> Printf.fprintf oc "()"
 
 let funcname_of_expr =
@@ -402,6 +398,8 @@ let otype_of_type = function
   | TEth -> "uint48"
   | TIpv4 -> "uint32"
   | TIpv6 -> "uint128"
+  | TCidrv4 -> "(uint32 * int)"
+  | TCidrv6 -> "(uint128 * int)"
   | TNum -> assert false
 
 let otype_of_aggr aggr =
@@ -419,6 +417,7 @@ let omod_of_type = function
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth | TIpv4 | TIpv6 as t ->
     String.capitalize (otype_of_type t)
+  | TCidrv4 | TCidrv6 -> assert false (* Must not be used since no conversion from/to those *)
   | TNull -> assert false (* Never used on NULLs *)
   | TNum -> assert false
 

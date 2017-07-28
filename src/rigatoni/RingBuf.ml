@@ -25,6 +25,8 @@ external write_i64 : tx -> int -> Int64.t -> unit = "write_boxed_64"
 external write_u128 : tx -> int -> Uint128.t -> unit = "write_boxed_128"
 external write_i128 : tx -> int -> Int128.t -> unit = "write_boxed_128"
 external write_eth : tx -> int -> Uint48.t -> unit = "write_boxed_48"
+external write_ip4 : tx -> int -> Uint32.t -> unit = "write_boxed_32"
+external write_ip6 : tx -> int -> Uint128.t -> unit = "write_boxed_128"
 (* Everything passed as an int and which occupancy is <= word *)
 external write_bool : tx -> int -> bool -> unit = "write_word"
 (* Special to zero the nullmask *)
@@ -39,10 +41,16 @@ external zero_bytes : tx -> int -> int -> unit = "zero_bytes"
  * those functions do: *)
 external write_i8_ : tx -> int -> int -> unit = "write_boxed_8"
 external write_i16_ : tx -> int -> int -> unit = "write_boxed_16"
-let write_i8 tx ofs i = write_i8_ tx ofs (Int8.to_int i)
-let write_i16 tx ofs i = write_i16_ tx ofs (Int16.to_int i)
+let write_i8 tx offs i = write_i8_ tx offs (Int8.to_int i)
+let write_i16 tx offs i = write_i16_ tx offs (Int16.to_int i)
 
-external write_i8_ : tx -> int -> Int8.t -> unit = "write_boxed_8"
+let write_cidr4 tx offs (n, l) =
+  write_u32 tx offs n ;
+  write_u8 tx (offs + RingBufLib.round_up_to_rb_word 4) l
+
+let write_cidr6 tx offs (n, l) =
+  write_u128 tx offs n ;
+  write_u16 tx (offs + RingBufLib.round_up_to_rb_word 16) l
 
 external read_float : tx -> int -> float = "read_float"
 external read_string : tx -> int -> string = "read_str"
@@ -55,6 +63,8 @@ external read_i64 : tx -> int -> Int64.t = "read_int64"
 external read_u128 : tx -> int -> Uint128.t = "read_uint128"
 external read_i128 : tx -> int -> Int128.t = "read_int128"
 external read_eth : tx -> int -> Uint48.t = "read_uint48"
+external read_ip4 : tx -> int -> Uint32.t = "read_uint32"
+external read_ip6 : tx -> int -> Uint128.t = "read_uint128"
 external read_bool : tx -> int -> bool = "read_word"
 external read_word : tx -> int -> int = "read_word"
 
@@ -64,8 +74,18 @@ external get_bit : tx -> int -> bool = "get_bit"
 (* See above as to why int8 and int16 are special: *)
 external read_i8_ : tx -> int -> int = "read_int8"
 external read_i16_ : tx -> int -> int = "read_int16"
-let read_i8 tx ofs = Int8.of_int (read_i8_ tx ofs)
-let read_i16 tx ofs = Int16.of_int (read_i16_ tx ofs)
+let read_i8 tx offs = Int8.of_int (read_i8_ tx offs)
+let read_i16 tx offs = Int16.of_int (read_i16_ tx offs)
+
+let read_cidr4 tx offs =
+  let addr = read_u32 tx offs in
+  let len = read_u8 tx (offs + RingBufLib.round_up_to_rb_word 4) in
+  addr, Uint8.to_int len
+
+let read_cidr6 tx offs =
+  let addr = read_u128 tx offs in
+  let len = read_u16 tx (offs + RingBufLib.round_up_to_rb_word 16) in
+  addr, Uint16.to_int len
 
 (* Note: each primitive operation is generic but for a few things:
  *

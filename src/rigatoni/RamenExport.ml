@@ -104,6 +104,8 @@ let read_tuple tuple_type tx =
     | TEth    -> VEth (read_eth tx offs)
     | TIpv4   -> VIpv4 (read_u32 tx offs)
     | TIpv6   -> VIpv6 (read_u128 tx offs)
+    | TCidrv4 -> VCidrv4 (read_cidr4 tx offs)
+    | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
     | TNull   -> VNull
     | TNum    -> assert false
   and sersize_of =
@@ -111,7 +113,7 @@ let read_tuple tuple_type tx =
     | _, VString s ->
       RingBufLib.(rb_word_bytes + round_up_to_rb_word(String.length s))
     | typ, _ ->
-      CodeGen_OCaml.sersize_of_fixsz_typ typ
+      RingBufLib.sersize_of_fixsz_typ typ
   in
   (* Read all fields one by one *)
   let tuple_len = List.length tuple_type in
@@ -195,6 +197,8 @@ let scalar_column_init typ len f =
   | TEth -> AEth (Array.init len (fun i -> match f i with VEth x -> x | _ -> assert false))
   | TIpv4 -> AIpv4 (Array.init len (fun i -> match f i with VIpv4 x -> x | _ -> assert false))
   | TIpv6 -> AIpv6 (Array.init len (fun i -> match f i with VIpv6 x -> x | _ -> assert false))
+  | TCidrv4 -> ACidrv4 (Array.init len (fun i -> match f i with VCidrv4 x -> x | _ -> assert false))
+  | TCidrv6 -> ACidrv6 (Array.init len (fun i -> match f i with VCidrv6 x -> x | _ -> assert false))
   | TNum -> assert false
 
 (* Note: the list of values is ordered latest to oldest *)
