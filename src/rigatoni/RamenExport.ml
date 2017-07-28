@@ -140,8 +140,6 @@ let import_tuples rb_name node_name tuple_type =
     let tuple, sz = read_tuple tuple_type tx in
     RingBuf.dequeue_commit tx ;
     add_tuple node_name tuple_type tuple ;
-    !logger.debug "Importing a tuple of %d bytes from %S: %s"
-      sz node_name (json_of_tuple tuple_type tuple) ;
     Lwt_main.yield ()
   done
 

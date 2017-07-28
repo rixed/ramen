@@ -38,7 +38,7 @@ let temp_tup_typ_of_tup_typ tup_typ =
 let list_of_temp_tup_type ttt =
   Hashtbl.values ttt.fields |>
   List.of_enum |>
-  List.fast_sort (fun (r1, _) (r2, _) -> compare r1 r2) |>
+  List.fast_sort (fun (r1, _) (r2, _) -> compare !r1 !r2) |>
   List.map (fun (r, f) -> !r, f)
 
 let tup_typ_of_temp_tup_type ttt =

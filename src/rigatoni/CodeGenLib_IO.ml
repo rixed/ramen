@@ -50,9 +50,7 @@ let read_file_lines ?(do_unlink=false) filename preprocessor k =
         on_each_input () ;
         read_next_line ()
     in
-    let%lwt () = read_next_line () in
-    !logger.info "Done reading %S" filename ;
-    return_unit
+    read_next_line ()
 
 let check_file_exist kind kind_name path =
   !logger.debug "Checking %S is a %s..." path kind_name ;
