@@ -141,7 +141,7 @@ let import_tuples rb_name node_name tuple_type =
     RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in
   while%lwt true do
     let%lwt tx = dequeue rb in
-    let tuple, sz = read_tuple tuple_type tx in
+    let tuple, _sz = read_tuple tuple_type tx in
     RingBuf.dequeue_commit tx ;
     add_tuple node_name tuple_type tuple ;
     Lwt_main.yield ()
