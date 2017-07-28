@@ -34,7 +34,7 @@ let ssl_key =
 let graph_save_file =
   let env = Term.env_info "RAMEN_SAVE_FILE" in
   let i = Arg.info ~doc:"graph save file"
-                   ~env ["graph-save-file"] in
+                   ~env ["graph-save-file";"save-graph"] in
   Arg.(value (opt (some string) None i))
 
 let ramen_url =

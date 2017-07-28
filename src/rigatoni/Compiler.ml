@@ -186,7 +186,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Field (op_typ, tuple, field) ->
     if tuple_has_fields_from_in !tuple then (
       (* Check that this field is, or could be, in in_type *)
-      if Lang.Expr.is_virtual_field field then false else
+      if Expr.is_virtual_field field then false else
       match Hashtbl.find in_type.C.fields field with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in in-tuple" field ;
@@ -204,7 +204,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           ) else if out_type.C.finished_typing then (
             let m =
               Printf.sprintf "field %s not in %S tuple (which is %s)"
-                field (Lang.string_of_prefix !tuple)
+                field (string_of_prefix !tuple)
                 (IO.to_string C.print_temp_tup_typ in_type) in
             raise (SyntaxError m)
           ) else false
@@ -218,14 +218,14 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     ) else if !tuple = TupleOut then (
       (* If we already have this field in out then check it's compatible (or
        * enlarge out or exp). If we don't have it then add it. *)
-      if Lang.Expr.is_virtual_field field then false else
+      if Expr.is_virtual_field field then false else
       match Hashtbl.find out_type.C.fields field with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in out-tuple" field ;
         if out_type.C.finished_typing then (
           let m =
             Printf.sprintf "field %s not in %S tuple ((which is %s)"
-              field (Lang.string_of_prefix !tuple)
+              field (string_of_prefix !tuple)
               (IO.to_string C.print_temp_tup_typ in_type) in
           raise (SyntaxError m)) ;
         Hashtbl.add out_type.C.fields field (ref None, exp_type) ;
