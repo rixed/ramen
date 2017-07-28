@@ -138,7 +138,6 @@ let tail debug ramen_url node_name as_csv last continuous () =
       let last = Option.map (fun l -> l - len) last in
       if last |? 1 > 0 then (
         let since = resp.first + len in
-        let%lwt () = Lwt_unix.sleep 1.0 in
         get_next ~since ?max_results:last ?last ()
       ) else return_unit
     ) else return_unit
