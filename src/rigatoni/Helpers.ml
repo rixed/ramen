@@ -37,3 +37,6 @@ let retry ~on ?(first_delay=1.0) ?(min_delay=0.000001) ?(max_delay=10.0) ?(delay
       return r)
   in
   loop
+
+let shell_quote s =
+  "'"^ String.nreplace s "'" "'\\''" ^"'"

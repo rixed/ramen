@@ -192,7 +192,8 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
   Printf.fprintf oc "\t)\n"
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
-let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ =
+let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ
+                       preprocessor =
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
    * Then we want to write this tuple in some ring buffer.
@@ -204,11 +205,11 @@ let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ =
     %a\n%a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
-      \t\tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_)\n"
+      \t\tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_ %S)\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
-    csv_fname unlink csv_separator
+    csv_fname unlink csv_separator preprocessor
 
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
@@ -945,13 +946,13 @@ let with_code_file_for name f =
 let compile_source fname =
   (* This is not guaranteed to be unique but should be... *)
   let exec_name = String.sub fname 0 (String.length fname - 3) in
-  (* TODO: shell-quote *)
   let comp_cmd =
     Printf.sprintf
-      "ocamlfind ocamlopt -o '%s' \
+      "ocamlfind ocamlopt -o %s \
         -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle \
-        -linkpkg codegen.cmxa '%s'"
-      exec_name fname in
+        -linkpkg codegen.cmxa %s"
+      (Helpers.shell_quote exec_name)
+      (Helpers.shell_quote fname) in
   let exit_code = Sys.command comp_cmd in
   if exit_code = 0 then (
     !logger.debug "Compiled %s with: %s" fname comp_cmd ;
@@ -971,8 +972,8 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
       emit_yield oc in_tuple_typ out_tuple_typ fields
     | Select { fields ; and_all_others ; where ; _ } ->
       emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where
-    | ReadCSVFile { fname ; unlink ; separator ; null ; fields } ->
-      emit_read_csv_file oc fname unlink separator null fields
+    | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
+      emit_read_csv_file oc fname unlink separator null fields preprocessor
     | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how ; _ } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key commit_when flush_when flush_how

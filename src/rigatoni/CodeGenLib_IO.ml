@@ -9,21 +9,42 @@ let tuple_count = ref Uint64.zero
 let on_each_input () =
   tuple_count := Uint64.succ !tuple_count
 
-let read_file_lines ?(do_unlink=false) filename k =
-  match%lwt Lwt_unix.(openfile filename [ O_RDONLY ] 0x644) with
+let read_file_lines ?(do_unlink=false) filename preprocessor k =
+  let open_file =
+    if preprocessor = "" then (
+      fun () ->
+        let%lwt fd = Lwt_unix.(openfile filename [ O_RDONLY ] 0x644) in
+        return Lwt_io.(of_fd ~mode:Input fd)
+    ) else (
+      fun () ->
+        let f = Helpers.shell_quote filename in
+        let s =
+          if String.exists preprocessor "%s" then
+            String.nreplace preprocessor "%s" f
+          else
+            preprocessor ^" "^ f
+        in
+        let cmd = Lwt_process.shell s in
+        return (Lwt_process.open_process_in cmd)#stdout
+    ) in
+  match%lwt open_file () with
   | exception e ->
-    !logger.error "Cannot open file %S: %s, skipping."
-      filename (Printexc.to_string e) ;
+    !logger.error "Cannot open file %S%s: %s, skipping."
+      filename
+      (if preprocessor = "" then ""
+       else (Printf.sprintf " through %S" preprocessor))
+      (Printexc.to_string e) ;
     return_unit
-  | fd ->
+  | chan ->
     !logger.info "Start reading %S" filename ;
     let%lwt () =
+      (* If we used a preprocessor we might want to wait for EOF before
+       * unlinking the file. *)
       if do_unlink then Lwt_unix.unlink filename else return_unit in
-    let chan = Lwt_io.(of_fd ~mode:input fd) in
     let rec read_next_line () =
       match%lwt Lwt_io.read_line chan with
       | exception End_of_file ->
-        Lwt_unix.close fd
+        Lwt_io.close chan
       | line ->
         let%lwt () = k line in
         on_each_input () ;
@@ -43,13 +64,13 @@ let check_file_exist kind kind_name path =
 
 let check_dir_exist = check_file_exist Lwt_unix.S_DIR "directory"
 
-let read_glob_lines ?do_unlink path k =
+let read_glob_lines ?do_unlink path preprocessor k =
   let dirname = Filename.dirname path
   and glob = Filename.basename path in
   let glob = Globs.compile glob in
   let import_file_if_match filename =
     if Globs.matches glob filename then
-      read_file_lines ?do_unlink (dirname ^"/"^ filename) k
+      read_file_lines ?do_unlink (dirname ^"/"^ filename) preprocessor k
     else (
       !logger.debug "File %S is not interesting." filename ;
       return_unit

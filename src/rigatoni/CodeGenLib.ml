@@ -190,7 +190,8 @@ let quote_at_start s =
 let quote_at_end s =
   String.length s > 0 && s.[String.length s - 1] = '"'
 
-let read_csv_file filename do_unlink separator sersize_of_tuple serialize_tuple tuple_of_strings =
+let read_csv_file filename do_unlink separator sersize_of_tuple
+                  serialize_tuple tuple_of_strings preprocessor =
   node_start "READ CSV FILE" ;
   (* For tests, allow to overwrite what's specified in the operation: *)
   let filename = getenv ~def:filename "csv_filename"
@@ -217,7 +218,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple serialize_tuple 
   let rb_outs = load_out_ringbufs () in
   let outputer =
     outputer_of rb_outs sersize_of_tuple serialize_tuple in
-  CodeGenLib_IO.read_glob_lines ~do_unlink filename (fun line ->
+  CodeGenLib_IO.read_glob_lines ~do_unlink filename preprocessor (fun line ->
     match of_string line with
     | exception e ->
       !logger.error "Cannot parse line %S: %s"

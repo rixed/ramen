@@ -1103,7 +1103,7 @@ struct
         flush_how : flush_method }
     | Alert of { name : string ; cond : Expr.t ; subject : string ; text : string }
     | ReadCSVFile of { fname : string ; unlink : bool ; separator : string ;
-                       null : string ; fields : Tuple.typ }
+                       null : string ; fields : Tuple.typ ; preprocessor : string }
 
   let print fmt =
     let sep = ", " in
@@ -1137,9 +1137,11 @@ struct
     | Alert { name ; cond ; subject ; text } ->
       Printf.fprintf fmt "ALERT %S WHEN %a SUBJECT %S TEXT %S"
         name (Expr.print false) cond subject text
-    | ReadCSVFile { fname ; unlink ; separator ; null ; fields } ->
-      Printf.fprintf fmt "READ %sCSV FILES %S SEPARATOR %S NULL %S %a"
+    | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
+      Printf.fprintf fmt "READ %sCSV FILES %S SEPARATOR %S NULL %S %s%a"
         (if unlink then "AND DELETE " else "")
+        (if preprocessor = "" then ""
+         else Printf.sprintf "PREPROCESS WITH %S" preprocessor)
         fname separator null Tuple.print_typ fields
 
   let is_exporting = function
@@ -1270,6 +1272,7 @@ struct
        opt_field "subject" ++ opt_field "text" >>:
        fun (((name, cond), subject), text) -> Alert { name ; cond ; subject ; text }) m
 
+    (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
     let read_csv_file m =
       let m = "read csv file" :: m in
       let field =
@@ -1289,13 +1292,16 @@ struct
        optional ~def:"," (
          strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
        optional ~def:"" (
-         strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) +-
+         strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++
+       optional ~def:"" (
+         strinG "preprocess" -- opt_blanks -- strinG "with" -- opt_blanks -+
+         quoted_string +- opt_blanks) +-
        char '(' +- opt_blanks ++
        several ~sep:list_sep field +- opt_blanks +- char ')' >>:
-       fun ((((unlink, fname), separator), null), fields) ->
+       fun (((((unlink, fname), separator), null), preprocessor), fields) ->
          if separator = null || separator = "" then
            raise (Reject "Invalid CSV separator/null") ;
-         ReadCSVFile { fname ; unlink ; separator ; null ; fields }) m
+         ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor }) m
 
     let p m =
       let m = "operation" :: m in
@@ -1406,7 +1412,8 @@ struct
         (test_p p "alert \"glop\"")
 
       (Ok (\
-        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; separator = "," ; null = "" ; \
+        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; \
+                      separator = "," ; null = "" ; preprocessor = "" ; \
                       fields = [ \
                         { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
                         { typ_name = "f2" ; nullable = false ; typ = TI32 } ] },\
@@ -1414,7 +1421,8 @@ struct
         (test_p p "read csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
-        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = true ; separator = "," ; null = "" ; \
+        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = true ; \
+                      separator = "," ; null = "" ; preprocessor = "" ; \
                       fields = [ \
                         { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
                         { typ_name = "f2" ; nullable = false ; typ = TI32 } ] },\
@@ -1422,7 +1430,8 @@ struct
         (test_p p "read and delete csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
-        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; separator = "\t" ; null = "<NULL>" ; \
+        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; \
+                      separator = "\t" ; null = "<NULL>" ; preprocessor = "" ; \
                       fields = [ \
                         { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
                         { typ_name = "f2" ; nullable = false ; typ = TI32 } ] },\

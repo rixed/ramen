@@ -24,7 +24,9 @@ let graph_info_of_bcns delete csv_dir bcns =
   let top =
     let op =
       Printf.sprintf
-        "READ%s CSV FILES \"%s/tcp_v29.*.csv\" SEPARATOR \"\\t\" NULL \"<NULL>\" (\n  \
+        "READ%s CSV FILES \"%s/tcp_v29.*.csv.gz\"\n    \
+                SEPARATOR \"\\t\" NULL \"<NULL>\"\n    \
+                PREPROCESS WITH \"zcat\" (\n  \
            poller string not null,\n  \
            capture_begin u64 not null,\n  \
            capture_end u64 not null,\n  \
