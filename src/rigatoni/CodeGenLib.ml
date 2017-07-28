@@ -402,9 +402,9 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
     IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
   in
   IntGauge.set stats_group_count 0 ;
-  let commit =
+  let commit tuple =
     out_count := Uint64.succ !out_count ;
-    outputer_of rb_outs sersize_of_tuple serialize_tuple
+    outputer_of rb_outs sersize_of_tuple serialize_tuple tuple
   in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
@@ -446,7 +446,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
           if must flush_when a then (k, a)::l else l) h [] in
       commit_and_flush_list to_commit to_flush
     in
-    if where_fast
+    (if where_fast
          in_count in_tuple last_in
          !selected_count !selected_successive last_selected
          !unselected_count !unselected_successive last_unselected
@@ -551,7 +551,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
         let%lwt () = commit_and_flush_all_if ForAllSelected in
         aggr.previous_out <- aggr.out_tuple ;
         return_unit)
-    ) else return_unit >>= fun () ->
+    ) else return_unit) >>= fun () ->
     (* Now there is also the possibility that we need to commit / flush for
      * every single input tuple :-< *)
     commit_and_flush_all_if ForAll
