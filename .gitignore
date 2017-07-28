@@ -29,4 +29,5 @@ BUGS
 TODO
 ramen_configurator
 config.db
+config.*.db
 src/rigatoni/100k.csv

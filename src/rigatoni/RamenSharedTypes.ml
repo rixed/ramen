@@ -85,6 +85,7 @@ type expr_type_info =
     nullable_info : bool option ;
     typ_info : scalar_typ option } [@@ppp PPP_JSON]
 
+(* FIXME: Need _COMPILING_ as well *)
 type graph_status = Edition | Compiled | Running [@@ppp PPP_JSON]
 
 type make_node =
