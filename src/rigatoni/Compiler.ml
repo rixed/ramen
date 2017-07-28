@@ -238,7 +238,12 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         check_expr_type ~from:out ~to_:exp_type
     ) else (
       (* All other tuples are already typed (virtual fields) *)
-      assert (Lang.Expr.is_virtual_field field) ;
+      if not (Expr.is_virtual_field field) then (
+        Printf.eprintf "Field %a . %s is not virtual!?\n%!"
+          tuple_prefix_print !tuple
+          field ;
+        assert false
+      ) ;
       false
     )
   | Param (_op_typ, _pname) ->

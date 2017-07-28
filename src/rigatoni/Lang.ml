@@ -217,7 +217,8 @@ let tuple_has_successive = function
   | _ -> false
 
 let tuple_has_fields_from_in = function
-  | TupleIn | TupleLastSelected | TupleLastUnselected | TupleGroupFirst | TupleGroupLast -> true
+  | TupleIn | TupleLastIn | TupleLastSelected | TupleLastUnselected
+  | TupleGroupFirst | TupleGroupLast -> true
   | _ -> false
 
 let tuple_need_aggr = function
