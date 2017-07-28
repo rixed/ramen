@@ -857,8 +857,9 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       | RemoveAll e | KeepOnly e -> e :: all_exprs in
     add_all_mentioned all_exprs
   and where_need_aggr =
-    (* Tells whether the where expression needs either the out tuple,
-     * the group.#count (TODO) or uses any aggregation on its own. *)
+    (* Tells whether the where expression needs a tuple that's only
+     * available once we have retrieved the key and the group (because
+     * it uses the group tuple or build an aggregation on its own): *)
     let open Expr in
     fold (fun need expr ->
       need || match expr with

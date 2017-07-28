@@ -978,9 +978,9 @@ struct
       let seq = "sequence"
       and seq_typ = make_typ ~nullable:false ~typ:TI128 "sequence function"
       and seq_default_step = Const (make_typ ~nullable:false ~typ:TU8 "sequence step",
-                                    VU8 (Uint8.of_int 1))
+                                    VU8 (Uint8.one))
       and seq_default_start = Const (make_typ ~nullable:false ~typ:TU8 "sequence start",
-                                     VU8 (Uint8.of_int 0)) in
+                                     VU8 (Uint8.zero)) in
       fun m ->
         let m = "sequence function" :: m in
         ((afun2 seq >>: fun (e1, e2) ->
@@ -1426,7 +1426,7 @@ struct
       (Ok (\
         Aggregate {\
           fields = [\
-            { expr = Expr.Const (typ, VI8 (Int8.of_int 1)) ;\
+            { expr = Expr.Const (typ, VI8 (Int8.one)) ;\
               alias = "one" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
@@ -1434,7 +1434,7 @@ struct
           key = [] ;\
           commit_when = Expr.(\
             Ge (typ,\
-              AggrSum (typ, Const (typ, VI8 (Int8.of_int 1))),\
+              AggrSum (typ, Const (typ, VI8 (Int8.one))),\
               Const (typ, VI8 (Int8.of_int 5)))) ;\
           flush_when = None ; flush_how = Reset },\
           (48, [])))\

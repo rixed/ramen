@@ -470,7 +470,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
         match Hashtbl.find h k with
         | exception Not_found ->
           let fields = aggr_init in_tuple
-          and one = Uint64.of_int 1 in
+          and one = Uint64.one in
           if where_slow
                in_count in_tuple last_in
                !selected_count !selected_successive last_selected
