@@ -21,6 +21,8 @@ let i64_of_string = Int64.of_string
 let i128_of_string = Int128.of_string
 let null_of_string = ()
 let eth_of_string s = Uint48.of_string ("0x"^ String.nreplace s ":" "")
+let ip4_of_string = Ipv4.of_string
+let ip6_of_string = Ipv6.of_string
 
 (* Functions *)
 
@@ -43,6 +45,7 @@ let age_i16 = Int16.of_float % age_float
 let age_i32 = Int32.of_float % age_float
 let age_i64 = Int64.of_float % age_float
 let age_i128 = Int128.of_float % age_float
+(* FIXME: typecheck age_eth, age_ipv4 etc out of existence *)
 
 let percentile prev _pct x = x::prev
 let percentile_finalize pct lst =

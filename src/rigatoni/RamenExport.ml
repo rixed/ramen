@@ -102,6 +102,8 @@ let read_tuple tuple_type tx =
     | TI64    -> VI64 (read_i64 tx offs)
     | TI128   -> VI128 (read_i128 tx offs)
     | TEth    -> VEth (read_eth tx offs)
+    | TIpv4   -> VIpv4 (read_u32 tx offs)
+    | TIpv6   -> VIpv6 (read_u128 tx offs)
     | TNull   -> VNull
     | TNum    -> assert false
   and sersize_of =
@@ -191,6 +193,8 @@ let scalar_column_init typ len f =
   | TI64 -> AI64 (Array.init len (fun i -> match f i with VI64 x -> x | _ -> assert false))
   | TI128 -> AI128 (Array.init len (fun i -> match f i with VI128 x -> x | _ -> assert false))
   | TEth -> AEth (Array.init len (fun i -> match f i with VEth x -> x | _ -> assert false))
+  | TIpv4 -> AIpv4 (Array.init len (fun i -> match f i with VIpv4 x -> x | _ -> assert false))
+  | TIpv6 -> AIpv6 (Array.init len (fun i -> match f i with VIpv6 x -> x | _ -> assert false))
   | TNum -> assert false
 
 (* Note: the list of values is ordered latest to oldest *)

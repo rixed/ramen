@@ -41,9 +41,9 @@ let sersize_of_fixsz_typ = function
   | TFloat  -> RingBufLib.round_up_to_rb_word 8
   | TBool | TU8 | TI8 -> RingBufLib.round_up_to_rb_word 1
   | TU16 | TI16 -> RingBufLib.round_up_to_rb_word 2
-  | TU32 | TI32 -> RingBufLib.round_up_to_rb_word 4
+  | TU32 | TI32 | TIpv4 -> RingBufLib.round_up_to_rb_word 4
   | TU64 | TI64 -> RingBufLib.round_up_to_rb_word 8
-  | TU128 | TI128 -> RingBufLib.round_up_to_rb_word 16
+  | TU128 | TI128 | TIpv6 -> RingBufLib.round_up_to_rb_word 16
   | TNull -> 0
   | TEth -> RingBufLib.round_up_to_rb_word 6
   | TString -> assert false
@@ -93,6 +93,8 @@ let id_of_typ typ =
   | TI128   -> "i128"
   | TNull   -> "null"
   | TEth    -> "eth"
+  | TIpv4   -> "ip4"
+  | TIpv6   -> "ip6"
   | TNum    -> assert false
 
 let emit_value_of_string typ oc var =
@@ -304,6 +306,8 @@ let emit_scalar oc =
   | VI64    n -> Printf.fprintf oc "%sL" (Int64.to_string n)
   | VI128   n -> Printf.fprintf oc "(Int128.of_string %S)" (Int128.to_string n)
   | VEth    n -> Printf.fprintf oc "(Uint40.of_int64 %LdL)" (Uint48.to_int64 n)
+  | VIpv4   n -> Printf.fprintf oc "(Uint32.of_int32 %sl)" (Uint32.to_string n)
+  | VIpv6   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
   | VNull     -> Printf.fprintf oc "()"
 
 let funcname_of_expr =
@@ -396,6 +400,8 @@ let otype_of_type = function
   | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
   | TNull -> "unit"
   | TEth -> "uint48"
+  | TIpv4 -> "uint32"
+  | TIpv6 -> "uint128"
   | TNum -> assert false
 
 let otype_of_aggr aggr =
@@ -411,7 +417,7 @@ let omod_of_type = function
   | TBool -> "BatBool"
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
-  | TEth as t ->
+  | TEth | TIpv4 | TIpv6 as t ->
     String.capitalize (otype_of_type t)
   | TNull -> assert false (* Never used on NULLs *)
   | TNum -> assert false

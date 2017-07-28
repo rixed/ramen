@@ -20,8 +20,6 @@ let print fmt n =
 module Parser =
 struct
   open RamenParsing
-  open ParseUsual
-  open P
 
   let append_num base n m = Num.add (Num.mul base n) m
 

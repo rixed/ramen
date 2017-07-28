@@ -346,6 +346,8 @@ struct
       | TI64    -> "I64"
       | TI128   -> "I128"
       | TEth    -> "Eth"
+      | TIpv4   -> "IPv4"
+      | TIpv6   -> "IPv6"
     in
     String.print fmt s
 
@@ -354,6 +356,7 @@ struct
     let rank_of_typ = function
       | TFloat  -> KNum, 200
       | TU128   -> KNum, 128
+      | TIpv6   -> KNum, 128
       | TI128   -> KNum, 127
       | TNum    -> KNum, 0
       | TU64    -> KNum, 64
@@ -362,6 +365,7 @@ struct
        * whenever we could use a 48 bit unsigned integer. *)
       | TEth    -> KNum, 48
       | TU32    -> KNum, 32
+      | TIpv4   -> KNum, 32
       | TI32    -> KNum, 31
       | TU16    -> KNum, 16
       | TI16    -> KNum, 15
@@ -395,10 +399,12 @@ struct
     | VI128 i   -> Printf.fprintf fmt "%s" (Int128.to_string i)
     | VNull     -> Printf.fprintf fmt "NULL"
     | VEth i    -> EthAddr.print fmt i
+    | VIpv4 i   -> Ipv4.print fmt i
+    | VIpv6 i   -> Ipv6.print fmt i
 
   let is_round_integer = function
     | VFloat f  -> fst(modf f) = 0.
-    | VString _ | VBool _ | VNull | VEth _ -> false
+    | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _ -> false
     | _ -> true
 
   module Parser =
@@ -455,7 +461,9 @@ struct
       (strinG "false" >>: fun _ -> VBool false) |||
       (strinG "true" >>: fun _ -> VBool true)   |||
       (quoted_string >>: fun s -> VString s)    |||
-      (EthAddr.Parser.p >>: fun v -> VEth v)
+      (EthAddr.Parser.p >>: fun v -> VEth v)    |||
+      (Ipv4.Parser.p >>: fun v -> VIpv4 v)      |||
+      (Ipv6.Parser.p >>: fun v -> VIpv6 v)
 
     (*$= p & ~printer:(test_printer print)
       (Ok (VI16 (Int16.of_int 31000), (5,[])))   (test_p p "31000")
@@ -482,7 +490,9 @@ struct
       (strinG "i64" >>: fun () -> TI64) |||
       (strinG "i128" >>: fun () -> TI128) |||
       (strinG "null" >>: fun () -> TNull) |||
-      (strinG "eth" >>: fun () -> TEth)
+      (strinG "eth" >>: fun () -> TEth) |||
+      (strinG "ip4" >>: fun () -> TIpv4) |||
+      (strinG "ip6" >>: fun () -> TIpv6)
 
     (*$>*)
   end
