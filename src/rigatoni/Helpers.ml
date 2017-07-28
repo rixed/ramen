@@ -1,4 +1,6 @@
 open Batteries
+open Lwt
+open Log
 
 (* Small helper to return the ith entry of an array, capped to the last one.
  * Useful when we reach the last defined attempt while escalating an alert. *)
@@ -11,8 +13,6 @@ let round_to_int f =
   int_of_float (Float.round f)
 
 let retry ~on ?(first_delay=1.0) ?(min_delay=0.000001) ?(max_delay=10.0) ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.1) f =
-  let open Lwt in
-  let open Log in
   let next_delay = ref first_delay in
   let rec loop x =
     (match f x with
@@ -40,3 +40,8 @@ let retry ~on ?(first_delay=1.0) ?(min_delay=0.000001) ?(max_delay=10.0) ?(delay
 
 let shell_quote s =
   "'"^ String.nreplace s "'" "'\\''" ^"'"
+
+let print_exception e =
+  !logger.error "Exception: %s at\n%s"
+    (Printexc.to_string e)
+    (Printexc.get_backtrace ())

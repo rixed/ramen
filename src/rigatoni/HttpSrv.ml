@@ -467,10 +467,8 @@ let callback conf _conn req body =
         | _ ->
           fail (HttpError (405, "Method not implemented"))
       with exn ->
-          !logger.error "Exception: %s at\n%s"
-            (Printexc.to_string exn)
-            (Printexc.get_backtrace ()) ;
-          fail exn)
+        Helpers.print_exception exn ;
+        fail exn)
     (function
       | HttpError (code, body) ->
         let body = body ^ "\n" in
@@ -485,16 +483,17 @@ let start debug save_file ramen_url port cert_opt key_opt () =
   let conf = C.make_conf save_file ramen_url in
   let entry_point = Server.make ~callback:(callback conf) () in
   let tcp_mode = `TCP (`Port port) in
+  let on_exn = Helpers.print_exception in
   let t1 =
     let%lwt () = return (!logger.info "Starting http server on port %d" port) in
-    Server.create ~mode:tcp_mode entry_point
+    Server.create ~on_exn ~mode:tcp_mode entry_point
   and t2 =
     match cert_opt, key_opt with
     | Some cert, Some key ->
       let port = port + 1 in
       let ssl_mode = `TLS (`Crt_file_path cert, `Key_file_path key, `No_password, `Port port) in
       let%lwt () = return (!logger.info "Starting https server on port %d" port) in
-      Server.create ~mode:ssl_mode entry_point
+      Server.create ~on_exn ~mode:ssl_mode entry_point
     | None, None ->
       return (!logger.info "Not starting https server")
     | _ ->
