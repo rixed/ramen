@@ -147,13 +147,14 @@ let graph_info_of_bcns delete csv_dir bcns =
       let op =
         Printf.sprintf
           "SELECT AND EXPORT\n  \
+             capture_begin // 60000000 AS start,\n  \
              min of capture_begin, max of capture_end,\n  \
              sum of packets / ((max_capture_end - min_capture_begin) / 1_000_000) as packets_per_secs,\n  \
              sum of bytes / ((max_capture_end - min_capture_begin) / 1_000_000) as bytes_per_secs,\n  \
              %S as zone_src, %S as zone_dst\n\
            WHERE %s AND %s\n\
            GROUP BY capture_begin // %d\n\
-           COMMIT AND FLUSH WHEN in.last.capture_begin > min_capture_begin + 2 * %d"
+           COMMIT AND FLUSH WHEN in.capture_begin > out.min_capture_begin + 2 * %d"
           (name_of_zones bcn.source)
           (name_of_zones bcn.dest)
           (in_zone "zone_src" bcn.source)
@@ -170,16 +171,17 @@ let graph_info_of_bcns delete csv_dir bcns =
       let op =
         Printf.sprintf
           "SELECT AND EXPORT\n  \
-             (min_capture_begin // %d) * %d as start,\n  \
+             start,\n  \
+             min of min_capture_begin AS min_capture_begin,\n  \
+             max of max_capture_end AS max_capture_end,\n  \
              %gth percentile of bytes_per_secs AS bps,\n  \
              zone_src, zone_dst\n\
-           GROUP BY min_capture_begin // %d\n\
            COMMIT AND SLIDE 1 WHEN\n  \
-             group.#count >= %d OR\n  \
-             in.min_capture_begin > group.last.min_capture_begin + 2*%d"
-           obs_window obs_window bcn.percentile obs_window
+             group.#count >= %d\n  OR \
+             in.min_capture_begin > out.start + %d + %d"
+           bcn.percentile
            (Helpers.round_to_int (bcn.obs_window /. bcn.avg_window))
-           obs_window in
+           obs_window avg_window in
       let name =
         Printf.sprintf "%s: %gth percentile on last %g seconds"
           name_prefix bcn.percentile bcn.obs_window in
