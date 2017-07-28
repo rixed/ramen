@@ -24,9 +24,9 @@ let make_temp_tup_typ () =
   { finished_typing = false ;
     fields = Hashtbl.create 7 }
 
-let temp_tup_typ_of_tup_typ finished_typing tup_typ =
+let temp_tup_typ_of_tup_typ tup_typ =
   let t = make_temp_tup_typ () in
-  t.finished_typing <- finished_typing ;
+  t.finished_typing <- true ;
   List.iteri (fun i f ->
       let expr_typ =
         Lang.Expr.make_typ ~nullable:f.nullable

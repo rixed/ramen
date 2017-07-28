@@ -216,9 +216,15 @@ let tuple_has_successive = function
   | TupleSelected | TupleUnselected | TupleGroup -> true
   | _ -> false
 
-let tuple_has_fields_from_in = function
+(* Tuple that has the fields of this node input type *)
+let tuple_has_type_input = function
   | TupleIn | TupleLastIn | TupleLastSelected | TupleLastUnselected
   | TupleGroupFirst | TupleGroupLast -> true
+  | _ -> false
+
+(* Tuple that has the fields of this node output type *)
+let tuple_has_type_output = function
+  | TupleGroupPrevious | TupleOut -> true
   | _ -> false
 
 let tuple_need_aggr = function

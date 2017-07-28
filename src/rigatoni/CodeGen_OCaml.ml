@@ -269,7 +269,7 @@ let rec add_mentioned prev =
   | Const _ | Param _ | Now _
     -> prev
   | Field (_, tuple, field) ->
-    if tuple_has_fields_from_in !tuple then Set.add field prev else prev
+    if tuple_has_type_input !tuple then Set.add field prev else prev
   | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
   | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
   | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)

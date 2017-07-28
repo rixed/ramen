@@ -22,9 +22,13 @@ module C = RamenConf
 let check_finished_tuple_type tuple =
   Hashtbl.iter (fun field_name (_rank, typ) ->
       let open Lang in
-      if typ.Expr.nullable = None || typ.Expr.scalar_typ = None then
-        raise (SyntaxError ("Cannot find out the type of "^
-          field_name ^" ("^ IO.to_string Expr.print_typ typ ^")")))
+      if typ.Expr.nullable = None || typ.Expr.scalar_typ = None then (
+        let msg = Printf.sprintf "Cannot find out the type of field %s (%s), \
+                                  supposed to be a member of %s"
+                    field_name
+                    (IO.to_string Expr.print_typ typ)
+                    (IO.to_string C.print_temp_tup_typ tuple) in
+        raise (SyntaxError msg)))
     tuple.C.fields
 
 let can_cast ~from_scalar_type ~to_scalar_type =
@@ -184,7 +188,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* op_typ is already optimal. But is it compatible with exp_type? *)
     check_expr_type ~from:op_typ ~to_:exp_type
   | Field (op_typ, tuple, field) ->
-    if tuple_has_fields_from_in !tuple then (
+    if tuple_has_type_input !tuple then (
       (* Check that this field is, or could be, in in_type *)
       if Expr.is_virtual_field field then false else
       match Hashtbl.find in_type.C.fields field with
@@ -215,7 +219,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           op_typ.scalar_typ <- from.scalar_typ
         ) ;
         check_expr_type ~from ~to_:exp_type
-    ) else if !tuple = TupleOut then (
+    ) else if tuple_has_type_output !tuple then (
       (* If we already have this field in out then check it's compatible (or
        * enlarge out or exp). If we don't have it then add it. *)
       if Expr.is_virtual_field field then false else
@@ -334,8 +338,8 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
   let changed =
     if including_complete && from_tuple.C.finished_typing && not to_tuple.C.finished_typing then (
       !logger.debug "Completing to_tuple from check_inherit_tuple" ;
-      to_tuple.C.finished_typing <- true ;
       check_finished_tuple_type to_tuple ;
+      to_tuple.C.finished_typing <- true ;
       true
     ) else changed in
   changed
@@ -368,8 +372,8 @@ let check_yield ~in_type ~out_type fields =
     (* If nothing changed so far then we are done *)
     if not out_type.C.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
-      out_type.C.finished_typing <- true ;
       check_finished_tuple_type out_type ;
+      out_type.C.finished_typing <- true ;
       true
     ) else false
   )
@@ -395,8 +399,8 @@ let check_select ~in_type ~out_type fields and_all_others where =
     (* If nothing changed so far and our input is finished_typing, then our output is. *)
     if in_type.C.finished_typing && not out_type.C.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
-      out_type.C.finished_typing <- true ;
       check_finished_tuple_type out_type ;
+      out_type.C.finished_typing <- true ;
       true
     ) else false
   )
@@ -453,7 +457,7 @@ let check_operation ~in_type ~out_type =
     check_expr ~in_type ~out_type ~exp_type cond ||
     check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:in_type ~to_tuple:out_type ~autorank:false
   | Operation.ReadCSVFile { fields ; _ } ->
-    let from_tuple = C.temp_tup_typ_of_tup_typ true fields in
+    let from_tuple = C.temp_tup_typ_of_tup_typ fields in
     check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple ~to_tuple:out_type ~autorank:false
 
 (*
@@ -467,8 +471,8 @@ let check_node_types node =
       if node.C.in_type.C.finished_typing then false
       else if node.C.parents = [] then (
         !logger.debug "Completing node %s in-type since we have no parents" node.C.name ;
-        node.C.in_type.C.finished_typing <- true ;
         check_finished_tuple_type node.C.in_type ;
+        node.C.in_type.C.finished_typing <- true ;
         true
       ) else List.fold_left (fun changed par ->
             (* This is supposed to propagate parent completeness into in-tuple. *)
