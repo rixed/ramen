@@ -84,8 +84,10 @@ let read_glob_lines ?do_unlink path preprocessor k =
    * are already waiting there. There is a race condition but soon we
    * will do both simultaneously *)
   !logger.debug "Import all files in dir %S..." dirname ;
-  let stream = Lwt_unix.files_of_directory dirname in
-  let%lwt () = Lwt_stream.iter_s import_file_if_match stream in
+  let%lwt files = Lwt_unix.files_of_directory dirname |>
+                  Lwt_stream.to_list in
+  let%lwt () = List.fast_sort String.compare files |>
+               Lwt_list.iter_s import_file_if_match in
   !logger.debug "...done. Now import any new file in %S..." dirname ;
   while%lwt true do
     match%lwt Lwt_inotify.read handler with
