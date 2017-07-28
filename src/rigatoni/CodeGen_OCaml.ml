@@ -265,12 +265,13 @@ let rec add_mentioned prev =
   | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
   | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
   | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
-    -> add_mentioned prev e
+  | BeginOfRange (_, e) | EndOfRange (_, e) ->
+    add_mentioned prev e
   | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
   | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
-  | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
-    -> add_mentioned (add_mentioned prev e1) e2
+  | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2) ->
+    add_mentioned (add_mentioned prev e1) e2
 
 let add_all_mentioned lst =
   let rec loop prev = function
@@ -333,6 +334,8 @@ let funcname_of_expr =
   | Ge _ -> "(>=)"
   | Gt _ -> "(>)"
   | Eq _ -> "(=)"
+  | BeginOfRange _ -> "begin_of_range"
+  | EndOfRange _ -> "end_of_range"
   | Const _ | Param _ | Field _ ->
     assert false
 
@@ -360,7 +363,8 @@ let implementation_of expr =
   | (Not _|And _|Or _|AggrAnd _|AggrOr _), Some TBool -> name, Some TBool
   | (Ge _| Gt _| Eq _), Some TBool -> name, None (* No conversion necessary *)
   | (AggrMax _|AggrMin _|AggrFirst _|AggrLast _), _ -> name, None (* No conversion necessary *)
-  | Age _, Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ) ->
+  | Age _, Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ)
+  | BeginOfRange _, Some (TCidrv4 | TCidrv6 as to_typ) ->
     let in_type_name =
       String.lowercase (IO.to_string Scalar.print_typ to_typ) in
     "CodeGenLib."^ name ^"_"^ in_type_name, None
@@ -387,7 +391,8 @@ let name_of_aggr =
     "field_"^ string_of_int t.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _
-  | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ ->
+  | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
+  | BeginOfRange _ | EndOfRange _ ->
     assert false
 
 let otype_of_type = function
@@ -484,7 +489,7 @@ and emit_expr oc =
       (name_of_aggr expr)
   | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
-  | Length (_, e) as expr ->
+  | Length (_, e) | BeginOfRange (_, e) | EndOfRange (_, e) as expr ->
     emit_function1 expr oc e
   | Defined (_, e) ->
     Printf.fprintf oc "(%a <> None)" emit_expr e
@@ -710,7 +715,8 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
           (conv_to arg_typ) e ;
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
       | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
-      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ ->
+      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
+      | BeginOfRange _ | EndOfRange _ ->
         assert false) ;
       Printf.fprintf oc " ; \n" ;
     ) ;
@@ -741,7 +747,8 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
           (conv_to arg_typ) e
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
       | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
-      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ ->
+      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
+      | BeginOfRange _ | EndOfRange _ ->
         assert false
     ) ;
   Printf.fprintf oc "\t()\n"
@@ -801,7 +808,8 @@ let when_to_check_group_for_expr expr =
         | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
-        | Mod _| Cast _ | Abs _ | Length _ | Now _ ->
+        | Mod _| Cast _ | Abs _ | Length _ | Now _
+        | BeginOfRange _ | EndOfRange _ ->
           need_all, need_selected
       ) (false, false) expr
   in
@@ -859,7 +867,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _ -> true
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
-        | Mod _| Cast _ | Abs _ | Length _ | Now _ -> false
+        | Mod _| Cast _ | Abs _ | Length _ | Now _ | BeginOfRange _
+        | EndOfRange _ -> false
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   let when_to_check_for_flush =

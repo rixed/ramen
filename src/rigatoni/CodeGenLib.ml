@@ -69,6 +69,11 @@ let getenv ?def n =
 
 let identity x = x
 
+let begin_of_range_cidr4 (n, l) = Ipv4.Cidr.and_to_len l n
+let end_of_range_cidr4 (n, l) = Ipv4.Cidr.or_to_len l n
+let begin_of_range_cidr6 (n, l) = Ipv6.Cidr.and_to_len l n
+let end_of_range_cidr6 (n, l) = Ipv6.Cidr.or_to_len l n
+
 (* Health and Stats
  *
  * Each node has to periodically report to ramen http server its health and some stats.

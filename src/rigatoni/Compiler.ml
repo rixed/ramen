@@ -289,6 +289,12 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
   | And (op_typ, e1, e2) | Or (op_typ, e1, e2) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:TBool e1 ~exp_sub_typ2:TBool e2
+  | BeginOfRange (op_typ, e) | EndOfRange (op_typ, e) ->
+    (* Not really bullet-proof in theory since check_unary_op may update the
+     * types of the operand, but in this case there is no modification
+     * possible if it's either TCidrv4 or TCidrv6, so we should be good.  *)
+    try check_unary_op op_typ (fun _ -> TIpv4) ~exp_sub_typ:TCidrv4 e
+    with _ -> check_unary_op op_typ (fun _ -> TIpv6) ~exp_sub_typ:TCidrv6 e
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.

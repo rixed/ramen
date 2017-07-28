@@ -38,12 +38,16 @@ struct
   (*$< Cidr *)
   type t = Uint32.t * int
 
-  let netmask_of_len l =
-    let shf = 32 - l in
+  let netmask_of_len len =
+    let shf = 32 - len in
     Uint32.(shift_left max_int shf)
 
   let and_to_len len net =
     Uint32.(logand (netmask_of_len len) net)
+
+  let or_to_len len net =
+    let shf = 32 - len in
+    Uint32.(logor net ((shift_left one shf) - one))
 
   let print fmt (net, len) =
     let net = Uint32.(logand (netmask_of_len len) net) in

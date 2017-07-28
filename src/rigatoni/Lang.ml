@@ -294,6 +294,8 @@ let tuple_need_aggr = function
     | Ge (_, a, b) -> Ge (typ, replace_typ a, replace_typ b)
     | Gt (_, a, b) -> Gt (typ, replace_typ a, replace_typ b)
     | Eq (_, a, b) -> Eq (typ, replace_typ a, replace_typ b)
+    | BeginOfRange (_, a) -> BeginOfRange (typ, replace_typ a)
+    | EndOfRange (_, a) -> EndOfRange (typ, replace_typ a)
 
   let replace_typ_in_expr = function
     | Ok (expr, rest) -> Ok (replace_typ expr, rest)
@@ -363,7 +365,8 @@ struct
       | TNum    -> KNum, 0
       | TU64    -> KNum, 64
       | TI64    -> KNum, 63
-      (* We consider Eth and IPs numbers so we can cast directly to/from ints. *)
+      (* We consider Eth and IPs numbers so we can cast directly to/from ints
+       * and use comparison operators. *)
       | TEth    -> KNum, 48
       | TU32    -> KNum, 32
       | TIpv4   -> KNum, 32
@@ -637,10 +640,12 @@ struct
     | Mod of typ * t * t
     | Exp of typ * t * t
     | And of typ * t * t
-    | Or  of typ * t * t
-    | Ge  of typ * t * t
-    | Gt  of typ * t * t
-    | Eq  of typ * t * t
+    | Or of typ * t * t
+    | Ge of typ * t * t
+    | Gt of typ * t * t
+    | Eq of typ * t * t
+    | BeginOfRange of typ * t
+    | EndOfRange of typ * t
 
   let expr_true =
     Const (make_bool_typ ~nullable:false "true", VBool true)
@@ -679,6 +684,11 @@ struct
     | IDiv (t, e1, e2) -> Printf.fprintf fmt "(%a) // (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Mod (t, e1, e2) -> Printf.fprintf fmt "(%a) %% (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Exp (t, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | And (t, Ge (_, e1, BeginOfRange (_, e2)), Not (_, (Ge (_, e1', EndOfRange (_, e2'))))) ->
+      assert (e2 = e2') ;
+      assert (e1 = e1') ;
+      Printf.fprintf fmt "(%a) IN (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | BeginOfRange _ | EndOfRange _ -> assert false
     | And (t, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Or (t, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Ge (t, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
@@ -693,7 +703,8 @@ struct
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
-    | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t -> t
+    | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t
+    | BeginOfRange (t, _) | EndOfRange (t, _) -> t
 
   let is_nullable e =
     let t = typ_of e in
@@ -705,7 +716,8 @@ struct
       f i expr
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
-    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e) ->
+    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
+    | BeginOfRange (_, e) | EndOfRange (_, e) ->
       fold f (f i expr) e ;
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -722,7 +734,8 @@ struct
       f i expr
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
-    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e) ->
+    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
+    | BeginOfRange (_, e) | EndOfRange (_, e) ->
       fold_by_depth f (f i expr) e ;
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -747,7 +760,7 @@ struct
       | Const _ | Param _ | Field _ | Cast _ | Now _
       | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
       | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
-      | Length _ ->
+      | Length _ | BeginOfRange _ | EndOfRange _ ->
         in_aggr) false expr |> ignore
 
   module Parser =
@@ -875,6 +888,13 @@ struct
         | "<=" -> Ge (make_bool_typ "comparison operator", t2, t1)
         | "=" -> Eq (make_bool_typ "equality operator", t1, t2)
         | "!=" | "<>" -> Not (make_bool_typ "not operator", Eq (make_bool_typ "equality operator", t1, t2))
+        | "IN" | "in" ->
+          And (make_bool_typ "and for range",
+               Ge (make_bool_typ "comparison operator for range", t1,
+                   BeginOfRange (make_typ "begin of range", t2)),
+               Not (make_bool_typ "not operator for range",
+                    Ge (make_bool_typ "comparison operator for range", t1,
+                        EndOfRange (make_typ "end of range", t2))))
         | _ -> assert false in
       binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 

@@ -64,12 +64,16 @@ struct
   (*$< Cidr *)
   type t = Uint128.t * int
 
-  let netmask_of_len l =
-    let shf = 128 - l in
+  let netmask_of_len len =
+    let shf = 128 - len in
     Uint128.(shift_left max_int shf)
 
   let and_to_len len net =
     Uint128.(logand (netmask_of_len len) net)
+
+  let or_to_len len net =
+    let shf = 128 - len in
+    Uint128.(logor net ((shift_left one shf) - one))
 
   let print fmt (net, len) =
     let net = and_to_len len net in
