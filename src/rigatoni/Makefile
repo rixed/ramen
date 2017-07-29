@@ -21,7 +21,8 @@ RIGATONI_SOURCES = \
 
 CODEGENLIB_SOURCES = \
 	Consts.ml Log.ml Helpers.ml \
-	RingBuf.ml RamenSharedTypes.ml RingBufLib.ml \
+	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
+	RamenSharedTypes.ml RingBufLib.ml RingBuf.ml \
 	Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \

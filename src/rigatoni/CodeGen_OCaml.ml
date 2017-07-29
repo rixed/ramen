@@ -964,7 +964,7 @@ let compile_source fname =
   let comp_cmd =
     Printf.sprintf
       "ocamlfind ocamlopt -o %s \
-        -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle \
+        -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator \
         -linkpkg codegen.cmxa %s"
       (Helpers.shell_quote exec_name)
       (Helpers.shell_quote fname) in
