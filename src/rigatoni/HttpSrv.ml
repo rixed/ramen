@@ -76,6 +76,7 @@ let ok_body = "{\"success\": true}"
 let respond_ok ?(body=ok_body) () =
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" Consts.json_content_type in
+  let headers = Header.add headers "Access-Control-Allow-Origin" "*" in
   let body = body ^"\n" in
   Server.respond_string ~status ~headers ~body ()
 
@@ -416,6 +417,136 @@ let report conf _headers name body =
     node.C.last_report <- last_report ;
     respond_ok ()
 
+(*
+== Grafana Datasource: autocompletion of node/field names ==
+*)
+
+type complete_node_req = { node_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
+type complete_field_req = { node : string ; field_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
+type complete_resp = string list [@@ppp PPP_JSON]
+
+let complete_nodes conf headers body =
+  !logger.debug "Received body: %s" body ;
+  let%lwt msg = of_json headers "Complete tables" complete_node_req_ppp body in
+  let body =
+    C.complete_node_name conf msg.node_prefix |>
+    PPP.to_string complete_resp_ppp
+  in
+  respond_ok ~body ()
+
+let complete_fields conf headers body =
+  !logger.debug "Received body: %s" body ;
+  let%lwt msg = of_json headers "Complete fields" complete_field_req_ppp body in
+  let body =
+    C.complete_field_name conf msg.node msg.field_prefix |>
+    PPP.to_string complete_resp_ppp
+  in
+  respond_ok ~body ()
+
+(*
+== Grafana Datasource: data queries ==
+*)
+
+
+type timeserie_req =
+  { id : string ;
+    node : string ;
+    time_field : string ;
+    data_field : string ;
+    consolidation : string [@ppp_default "avg"] } [@@ppp PPP_JSON] [@@ppp_extensible]
+
+type timeseries_req =
+  { from : float ;
+    to_ : float [@ppp_rename "to"] ;
+    interval_ms : float ;
+    max_data_points : int ;
+    timeseries : timeserie_req list } [@@ppp PPP_JSON] [@@ppp_extensible]
+
+type timeserie_resp =
+  { id : string ;
+    times : float array ;
+    values : float option array } [@@ppp PPP_JSON]
+
+type timeseries_resp = timeserie_resp list [@@ppp PPP_JSON]
+
+type timeserie_bucket =
+  (* Hopefully count will be small enough that sum can be tracked accurately *)
+  { mutable count : int ; mutable sum : float ;
+    mutable min : float ; mutable max : float }
+
+let add_into_bucket b v =
+  b.count <- succ b.count ;
+  b.min <- min b.min v ;
+  b.max <- max b.max v ;
+  b.sum <- b.sum +. v
+
+let timeseries conf headers body =
+  !logger.debug "Received body: %s" body ;
+  let%lwt msg = of_json headers "timeseries query" timeseries_req_ppp body in
+  let ts_of_node (req : timeserie_req) =
+    match C.find_node conf conf.C.building_graph req.node with
+    | exception Not_found ->
+      raise (Failure ("Unknown node "^ req.node))
+    | node ->
+      if not (Lang.Operation.is_exporting node.C.operation) then
+        raise (Failure ("node "^ req.node ^" does not export data"))
+      else
+        let history = RamenExport.get_history node in
+        let ti, vi = List.fold_lefti (fun (ti, vi) i (ft : field_typ) ->
+            (if ft.typ_name = req.time_field then i else ti),
+            (if ft.typ_name = req.data_field then i else vi)
+          ) (-1, -1) history.RamenExport.tuple_type in
+        if ti < 0 then raise (Failure ("field "^ req.time_field ^" does not exist")) ;
+        if vi < 0 then raise (Failure ("field "^ req.data_field ^" does not exist")) ;
+        !logger.debug "Building timeserie from %dth field to %dth field" ti vi ;
+        if msg.max_data_points < 1 then raise (Failure "invalid max_data_points") ;
+        let dt = (msg.to_ -. msg.from) /. float_of_int msg.max_data_points in
+        let buckets = Array.init msg.max_data_points (fun _ ->
+          { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
+        let bucket_of_time t =
+          let bi = int_of_float (((t -. msg.from) /. (msg.to_ -. msg.from)) *.
+                                 float_of_int msg.max_data_points) in
+          if bi < 0 then 0 else
+          if bi >= msg.max_data_points then msg.max_data_points-1
+          else bi in
+        let _ =
+          RamenExport.fold_tuples history () (fun tup () ->
+            let t, v = RamenExport.float_of_scalar_value tup.(ti),
+                       RamenExport.float_of_scalar_value tup.(vi) in
+            let t = t /. 1000. in (* FIXME: units dealt with in the client *)
+            if t >= msg.from && t < msg.to_ then
+              let bi = bucket_of_time t in
+              add_into_bucket buckets.(bi) v) in
+        (* TODO: other consolidation functions *)
+        Array.mapi (fun i _ ->
+          msg.from +. dt *. (float_of_int i +. 0.5)) buckets,
+        Array.map (fun b ->
+          if b.count = 0 then None
+          else Some (b.sum /. float_of_int b.count)) buckets
+  in
+  match List.map (fun req ->
+          let times, values = ts_of_node req in
+          { id = req.id ; times ; values }) msg.timeseries with
+  | exception Failure err -> bad_request err
+  | resp ->
+    let body = PPP.to_string timeseries_resp_ppp resp in
+    respond_ok ~body ()
+
+(* let fake_series from to_ (req : timeserie_req) =
+    let nb_pts = 100 in
+    let time_of_i i =
+      from +. float_of_int i *. (to_ -. from) /. float_of_int nb_pts in
+    let times = Array.init nb_pts time_of_i in
+    let values = Array.init nb_pts (fun i ->
+                    let t = times.(i) in sin(t)) in
+    { id = req.id ; times ; values }
+  in
+  let body =
+    List.map (fake_series msg.from msg.to_) msg.timeseries |>
+    PPP.to_string timeseries_resp_ppp in
+  respond_ok ~body () *)
+
+
 (* The function called for each HTTP request: *)
 
 let callback conf _conn req body =
@@ -461,6 +592,19 @@ let callback conf _conn req body =
         | `GET, ["static"; "style.css"|"misc.js"|"graph_layout.js"
                 |"node_edit.js" as file] ->
           get_file conf headers file
+        (* Grafana datasource plugin *)
+        | `GET, ["grafana"] -> respond_ok ()
+        | `POST, ["complete"; "nodes"] ->
+          complete_nodes conf headers body
+        | `POST, ["complete"; "fields"] ->
+          complete_fields conf headers body
+        | `POST, ["timeseries"] ->
+          timeseries conf headers body
+        | `OPTIONS, _ ->
+          let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+          let headers = Header.add headers "Access-Control-Allow-Methods" "POST" in
+          let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
+          Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
         (* Errors *)
         | `PUT, _ | `GET, _ | `DELETE, _ ->
           fail (HttpError (404, "No such resource"))
@@ -473,10 +617,12 @@ let callback conf _conn req body =
       | HttpError (code, body) ->
         let body = body ^ "\n" in
         let status = Code.status_of_code code in
-        Server.respond_error ~status ~body ()
+        let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+        Server.respond_error ~headers ~status ~body ()
       | exn ->
         let body = Printexc.to_string exn ^ "\n" in
-        Server.respond_error ~body ())
+        let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+        Server.respond_error ~headers ~body ())
 
 let start debug save_file ramen_url port cert_opt key_opt () =
   logger := make_logger debug ;

@@ -210,3 +210,29 @@ let remove_link conf graph src dst =
 
 let make_conf save_file ramen_url =
   { building_graph = load_graph save_file ; save_file ; ramen_url }
+
+
+(* AutoCompletion of node/field names *)
+
+(* Autocompletion of *all* nodes; not only exporting ones since we might want
+ * to graph some meta data. Also maybe we should export on demand? *)
+
+let complete_node_name conf s =
+  let s = String.(lowercase (trim s)) in
+  Hashtbl.fold (fun node_name _ lst ->
+      (* TODO: a better search structure for case-insensitive prefix search *)
+      if String.starts_with (String.lowercase node_name) s then
+        node_name :: lst
+      else lst
+    ) conf.building_graph.persist.nodes []
+
+let complete_field_name conf node_name s =
+  match find_node conf conf.building_graph (String.trim node_name) with
+  | exception Not_found -> []
+  | node ->
+    let s = String.(lowercase (trim s)) in
+    Hashtbl.fold (fun field_name _ lst ->
+        if String.starts_with (String.lowercase field_name) s then
+          field_name :: lst
+        else lst
+      ) node.out_type.fields []
