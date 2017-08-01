@@ -474,11 +474,19 @@ type timeserie_bucket =
   { mutable count : int ; mutable sum : float ;
     mutable min : float ; mutable max : float }
 
-let add_into_bucket b v =
-  b.count <- succ b.count ;
-  b.min <- min b.min v ;
-  b.max <- max b.max v ;
-  b.sum <- b.sum +. v
+let add_into_bucket b i v =
+  if i > 0 && i < Array.length b then (
+    b.(i).count <- succ b.(i).count ;
+    b.(i).min <- min b.(i).min v ;
+    b.(i).max <- max b.(i).max v ;
+    b.(i).sum <- b.(i).sum +. v)
+
+let bucket_avg b =
+  if b.count = 0 then None else Some (b.sum /. float_of_int b.count)
+let bucket_min b =
+  if b.count = 0 then None else Some b.min
+let bucket_max b =
+  if b.count = 0 then None else Some b.max
 
 let timeseries conf headers body =
   !logger.debug "Received body: %s" body ;
@@ -491,6 +499,9 @@ let timeseries conf headers body =
       if not (Lang.Operation.is_exporting node.C.operation) then
         raise (Failure ("node "^ req.node ^" does not export data"))
       else
+        let consolidation =
+          match String.lowercase req.consolidation with
+          | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
         let history = RamenExport.get_history node in
         let ti, vi = List.fold_lefti (fun (ti, vi) i (ft : field_typ) ->
             (if ft.typ_name = req.time_field then i else ti),
@@ -503,26 +514,30 @@ let timeseries conf headers body =
         let dt = (msg.to_ -. msg.from) /. float_of_int msg.max_data_points in
         let buckets = Array.init msg.max_data_points (fun _ ->
           { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
-        let bucket_of_time t =
-          let bi = int_of_float (((t -. msg.from) /. (msg.to_ -. msg.from)) *.
-                                 float_of_int msg.max_data_points) in
-          if bi < 0 then 0 else
-          if bi >= msg.max_data_points then msg.max_data_points-1
-          else bi in
+        let bucket_of_time t = int_of_float ((t -. msg.from) /. dt)
+        and time_of_bucket b = float_of_int b *. dt +. msg.from in
         let _ =
           RamenExport.fold_tuples history () (fun tup () ->
             let t, v = RamenExport.float_of_scalar_value tup.(ti),
                        RamenExport.float_of_scalar_value tup.(vi) in
-            let t = t /. 1000. in (* FIXME: units dealt with in the client *)
-            if t >= msg.from && t < msg.to_ then
-              let bi = bucket_of_time t in
-              add_into_bucket buckets.(bi) v) in
-        (* TODO: other consolidation functions *)
+            let t1 = t /. 1000. in (* FIXME: units dealt with in the client *)
+            let t2 = t1 +. 60_000. in (* FIXME: client should send both fields? or t1+duration? *)
+            if t1 < msg.to_ && t2 >= msg.from then
+              let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
+              if bi1 = bi2 then add_into_bucket buckets bi1 v else
+              let bo1 = time_of_bucket (bi1+1) -. t1 and bo2 = t2 -. time_of_bucket bi2 in
+              let v0 = v /. (t2 -. t1) in
+              let v1 = bo1 *. v0 and v2 = bo2 *. v0 in
+              add_into_bucket buckets bi1 v1 ;
+              add_into_bucket buckets bi2 v2 ;
+              let v0 = (v -. v0 -. v1) /. float_of_int (bi2 - bi1 - 1) in
+              !logger.debug "%f, %f, %f" v1 v0 v2 ;
+              for bi = bi1+1 to bi2-1 do
+                add_into_bucket buckets bi v0
+              done) in
         Array.mapi (fun i _ ->
           msg.from +. dt *. (float_of_int i +. 0.5)) buckets,
-        Array.map (fun b ->
-          if b.count = 0 then None
-          else Some (b.sum /. float_of_int b.count)) buckets
+        Array.map consolidation buckets
   in
   match List.map (fun req ->
           let times, values = ts_of_node req in
