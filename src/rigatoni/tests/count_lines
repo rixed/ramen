@@ -6,7 +6,7 @@ top_srcdir=$(dirname $0)"/.."
 
 start
 add_123
-add_node n "SELECT AND EXPORT 10*n AS ten_n, in.#count AS count WHERE n=3" 123
+add_node n "SELECT 10*n AS ten_n, in.#count AS count WHERE n=3 EXPORT" 123
 run
 
 check_equal '30,3' "$(tail_ 1 n)"

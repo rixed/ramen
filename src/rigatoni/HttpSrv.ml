@@ -451,12 +451,11 @@ let complete_fields conf headers body =
 type timeserie_req =
   { id : string ;
     node : string ;
-    time_field : string ;
     data_field : string ;
     consolidation : string [@ppp_default "avg"] } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type timeseries_req =
-  { from : float ;
+  { from : float ; (* from and to_ are in milliseconds *)
     to_ : float [@ppp_rename "to"] ;
     interval_ms : float ;
     max_data_points : int ; (* FIXME: should be optional *)
@@ -489,6 +488,7 @@ let bucket_max b =
   if b.count = 0 then None else Some b.max
 
 let timeseries conf headers body =
+  let open Lang.Operation in
   !logger.debug "Received body: %s" body ;
   let%lwt msg = of_json headers "timeseries query" timeseries_req_ppp body in
   let ts_of_node (req : timeserie_req) =
@@ -496,19 +496,24 @@ let timeseries conf headers body =
     | exception Not_found ->
       raise (Failure ("Unknown node "^ req.node))
     | node ->
-      if not (Lang.Operation.is_exporting node.C.operation) then
+      if not (is_exporting node.C.operation) then
         raise (Failure ("node "^ req.node ^" does not export data"))
-      else
+      else match export_event_info node.C.operation with
+      | None ->
+        raise (Failure ("node "^ req.node ^" does not specify event time info"))
+      | Some ((start_field, start_scale), duration_info) ->
         let consolidation =
           match String.lowercase req.consolidation with
           | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
         let history = RamenExport.get_history node in
-        let ti, vi = List.fold_lefti (fun (ti, vi) i (ft : field_typ) ->
-            (if ft.typ_name = req.time_field then i else ti),
-            (if ft.typ_name = req.data_field then i else vi)
-          ) (-1, -1) history.RamenExport.tuple_type in
-        if ti < 0 then raise (Failure ("field "^ req.time_field ^" does not exist")) ;
-        if vi < 0 then raise (Failure ("field "^ req.data_field ^" does not exist")) ;
+        let find_field n =
+          try (
+            List.findi (fun _i (ft : field_typ) ->
+              ft.typ_name = n) history.RamenExport.tuple_type |> fst
+          ) with Not_found ->
+            raise (Failure ("field "^ n ^" does not exist")) in
+        let ti = find_field start_field
+        and vi = find_field req.data_field in
         !logger.debug "Building timeserie from %dth field to %dth field" ti vi ;
         if msg.max_data_points < 1 then raise (Failure "invalid max_data_points") ;
         let dt = (msg.to_ -. msg.from) /. float_of_int msg.max_data_points in
@@ -519,8 +524,22 @@ let timeseries conf headers body =
           RamenExport.fold_tuples history () (fun tup () ->
             let t, v = RamenExport.float_of_scalar_value tup.(ti),
                        RamenExport.float_of_scalar_value tup.(vi) in
-            let t1 = t /. 1000. in (* FIXME: units dealt with in the client *)
-            let t2 = t1 +. 60_000. in (* FIXME: client should send both fields? or t1+duration? *)
+            let t1 = t *. start_scale in
+            let t2 =
+              match duration_info with
+              | DurationConst f -> t1 +. f
+              | DurationField (f, s) ->
+                let fi = find_field f in
+                t1 +. RamenExport.float_of_scalar_value tup.(fi) *. s
+              | StopField (f, s) ->
+                let fi = find_field f in
+                RamenExport.float_of_scalar_value tup.(fi) *. s
+            in
+            (* We allow duration to be < 0 *)
+            let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
+            (* t1 and t2 are in secs. But the API is in milliseconds (thanks to
+             * grafana) *)
+            let t1, t2 = t1 *. 1000., t2 *. 1000. in
             if t1 < msg.to_ && t2 >= msg.from then
               let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
               for bi = bi1 to bi2 do

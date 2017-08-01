@@ -9,8 +9,9 @@ top_srcdir=$(dirname $0)"/.."
 start
 add_node n1 "YIELD sequence as seq"
 add_node n2 "
-  SELECT AND EXPORT first seq, last seq, group.#count as count, sum(1) as alt_count
+  SELECT first seq, last seq, group.#count as count, sum(1) as alt_count
   WHERE seq < 30
+  EXPORT
   COMMIT AND FLUSH WHEN group.#count=10
 " n1
 run
@@ -26,8 +27,9 @@ reset
 start
 add_node n1 "YIELD sequence as seq"
 add_node n2 "
-  SELECT AND EXPORT first seq, last seq, group.#count as count, sum(1) as alt_count
+  SELECT first seq, last seq, group.#count as count, sum(1) as alt_count
   WHERE seq < 14
+  EXPORT
   COMMIT AND SLIDE 1 WHEN group.#count=10
 " n1
 run

@@ -145,13 +145,15 @@ let graph_info_of_bcns delete csv_dir bcns =
             what_zone ^ " = " ^ string_of_int z) "" lst ^")" in
       let op =
         Printf.sprintf
-          "SELECT AND EXPORT\n  \
+          "SELECT\n  \
              (capture_begin // %d) AS start,\n  \
              min of capture_begin, max of capture_end,\n  \
              sum of packets / ((max_capture_end - min_capture_begin) / 1_000_000) as packets_per_secs,\n  \
              sum of bytes / ((max_capture_end - min_capture_begin) / 1_000_000) as bytes_per_secs,\n  \
              %S as zone_src, %S as zone_dst\n\
            WHERE %s AND %s\n\
+           EXPORT EVENT STARTING AT min_capture_begin * 0.000001\n         \
+                    AND STOPPING AT max_capture_end * 0.000001\n\
            GROUP BY capture_begin // %d\n\
            COMMIT AND FLUSH WHEN in.capture_begin > out.min_capture_begin + 2 * %d"
           avg_window
@@ -171,18 +173,22 @@ let graph_info_of_bcns delete csv_dir bcns =
       let op =
         let nb_items_per_groups =
           Helpers.round_to_int (bcn.obs_window /. bcn.avg_window) in
+        (* Note: The event start at the end of the observation window and lasts
+         * for one avg window! *)
         Printf.sprintf
-          "SELECT AND EXPORT\n  \
+          "SELECT\n  \
              group.#count AS group_count,\n  \
              min start, max start,\n  \
              min of min_capture_begin AS min_capture_begin,\n  \
              max of max_capture_end AS max_capture_end,\n  \
              %gth percentile of bytes_per_secs AS bps,\n  \
              zone_src, zone_dst\n\
+           EXPORT EVENT STARTING AT max_capture_end * 0.000001\n        \
+                   WITH DURATION %g\n\
            COMMIT AND SLIDE 1 WHEN\n  \
              group.#count >= %d\n  OR \
              in.start > out.max_start + 5"
-           bcn.percentile nb_items_per_groups in
+           bcn.percentile bcn.avg_window nb_items_per_groups in
       let name =
         Printf.sprintf "%s: %gth percentile on last %g seconds"
           name_prefix bcn.percentile bcn.obs_window in

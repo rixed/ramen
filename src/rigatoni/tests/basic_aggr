@@ -7,7 +7,7 @@ top_srcdir=$(dirname $0)"/.."
 start
 add_cars
 add_node p1 \
-"SELECT AND EXPORT
+"SELECT
    min horsepower,
    max horsepower,
    sum u32(horsepower) as sum_horsepower,
@@ -15,6 +15,7 @@ add_node p1 \
    last horsepower,
    10th percentile of horsepower,
    95th percentile of horsepower
+ EXPORT
  COMMIT AND FLUSH WHEN group.#count >= $nb_cars" cars
 run
 check_equal '1,946,1262598,552,313,140,553' "$(tail_ 1 p1)"
@@ -22,12 +23,12 @@ check_equal '1,946,1262598,552,313,140,553' "$(tail_ 1 p1)"
 reset
 start
 add_123
-add_node a1 "SELECT AND EXPORT AND of b COMMIT AND FLUSH WHEN selected.#count = 1" 123
-add_node a2 "SELECT AND EXPORT AND of b COMMIT AND FLUSH WHEN selected.#count = 2" 123
-add_node a3 "SELECT AND EXPORT AND of b COMMIT AND FLUSH WHEN selected.#count = 3" 123
-add_node o1 "SELECT AND EXPORT OR of (not b) AS not_b COMMIT AND FLUSH WHEN selected.#count = 1" 123
-add_node o2 "SELECT AND EXPORT OR of (not b) AS not_b COMMIT AND FLUSH WHEN selected.#count = 2" 123
-add_node o3 "SELECT AND EXPORT OR of (not b) AS not_b COMMIT AND FLUSH WHEN selected.#count = 3" 123
+add_node a1 "SELECT AND of b EXPORT COMMIT AND FLUSH WHEN selected.#count = 1" 123
+add_node a2 "SELECT AND of b EXPORT COMMIT AND FLUSH WHEN selected.#count = 2" 123
+add_node a3 "SELECT AND of b EXPORT COMMIT AND FLUSH WHEN selected.#count = 3" 123
+add_node o1 "SELECT OR of (not b) AS not_b EXPORT COMMIT AND FLUSH WHEN selected.#count = 1" 123
+add_node o2 "SELECT OR of (not b) AS not_b EXPORT COMMIT AND FLUSH WHEN selected.#count = 2" 123
+add_node o3 "SELECT OR of (not b) AS not_b EXPORT COMMIT AND FLUSH WHEN selected.#count = 3" 123
 run
 check_equal 'true' "$(tail_ 1 a1)"
 check_equal 'true' "$(tail_ 1 a2)"
