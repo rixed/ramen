@@ -158,7 +158,7 @@ let flow_alert_params_query =
           zone_from AS source, \
           zone_to AS dest, \
           60 AS avg_window, \
-          1200 AS obs_window, \
+          3600 AS obs_window, \
           90. AS percentile, \
           NULL AS \"min\", \
           bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
@@ -172,7 +172,7 @@ let flow_alert_params_query =
           zone_to AS source, \
           zone_from AS dest, \
           60 AS avg_window, \
-          1200 AS obs_window, \
+          3600 AS obs_window, \
           90. AS percentile, \
           NULL AS \"min\", \
           bandwrate_alert_dsc * bandw_available_dsc / 100 AS \"max\", \
@@ -186,7 +186,7 @@ let flow_alert_params_query =
           zone_to AS source, \
           zone_from AS dest, \
           60 AS avg_window, \
-          1200 AS obs_window, \
+          3600 AS obs_window, \
           90. AS percentile, \
           NULL AS \"min\", \
           bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
