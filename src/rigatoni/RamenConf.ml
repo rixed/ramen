@@ -88,7 +88,7 @@ let set_graph_editable graph =
   | Edition -> ()
   | Compiled ->
     graph.persist.status <- Edition ;
-    (* Also reset the info we kept from the last cmopilation *)
+    (* Also reset the info we kept from the last compilation *)
     Hashtbl.iter (fun _ node ->
        node.in_type <- make_temp_tup_typ () ;
        node.out_type <- make_temp_tup_typ () ;

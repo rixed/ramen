@@ -459,7 +459,7 @@ type timeseries_req =
   { from : float ;
     to_ : float [@ppp_rename "to"] ;
     interval_ms : float ;
-    max_data_points : int ;
+    max_data_points : int ; (* FIXME: should be optional *)
     timeseries : timeserie_req list } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type timeserie_resp =

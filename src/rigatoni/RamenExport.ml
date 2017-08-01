@@ -61,7 +61,7 @@ let history_length = 8096
 type history =
   { tuple_type : Lang.Tuple.typ ;
     (* Store arrays of Scalar.values not hash of names to values !
-     * TODO: ideally storing sclar_columns would be even better *)
+     * TODO: ideally storing scalar_columns would be even better *)
     tuples : scalar_value array array ;
     (* Gives us both the position of the last tuple in the array and an index
      * in the stream of tuples to help polling *)
