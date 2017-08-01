@@ -514,8 +514,7 @@ let timeseries conf headers body =
         let dt = (msg.to_ -. msg.from) /. float_of_int msg.max_data_points in
         let buckets = Array.init msg.max_data_points (fun _ ->
           { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
-        let bucket_of_time t = int_of_float ((t -. msg.from) /. dt)
-        and time_of_bucket b = float_of_int b *. dt +. msg.from in
+        let bucket_of_time t = int_of_float ((t -. msg.from) /. dt) in
         let _ =
           RamenExport.fold_tuples history () (fun tup () ->
             let t, v = RamenExport.float_of_scalar_value tup.(ti),
@@ -524,16 +523,8 @@ let timeseries conf headers body =
             let t2 = t1 +. 60_000. in (* FIXME: client should send both fields? or t1+duration? *)
             if t1 < msg.to_ && t2 >= msg.from then
               let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
-              if bi1 = bi2 then add_into_bucket buckets bi1 v else
-              let bo1 = time_of_bucket (bi1+1) -. t1 and bo2 = t2 -. time_of_bucket bi2 in
-              let v0 = v /. (t2 -. t1) in
-              let v1 = bo1 *. v0 and v2 = bo2 *. v0 in
-              add_into_bucket buckets bi1 v1 ;
-              add_into_bucket buckets bi2 v2 ;
-              let v0 = (v -. v0 -. v1) /. float_of_int (bi2 - bi1 - 1) in
-              !logger.debug "%f, %f, %f" v1 v0 v2 ;
-              for bi = bi1+1 to bi2-1 do
-                add_into_bucket buckets bi v0
+              for bi = bi1 to bi2 do
+                add_into_bucket buckets bi v
               done) in
         Array.mapi (fun i _ ->
           msg.from +. dt *. (float_of_int i +. 0.5)) buckets,
