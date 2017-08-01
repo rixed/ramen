@@ -1441,7 +1441,7 @@ struct
               alias = "value" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = Some (Some (("t", Some 10.), DurationConst 60.)) },\
+          export = Some (Some (("t", 10.), DurationConst 60.)) },\
         (62, [])))\
         (test_p p "select t, value export event starting at t*10 with duration 60" |>\
          replace_typ_in_op)
@@ -1457,7 +1457,7 @@ struct
               alias = "value" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = Some (Some (("t1", Some 10.), StopField ("t2", Some 10.))) },\
+          export = Some (Some (("t1", 10.), StopField ("t2", 10.))) },\
         (73, [])))\
         (test_p p "select t1, t2, value export event starting at t1*10 and stopping at t2*10" |>\
          replace_typ_in_op)
