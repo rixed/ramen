@@ -1588,6 +1588,20 @@ struct
               raise (SyntaxError m)
             )
           | _ -> ())
+      and check_export fields = function
+        | None -> ()
+        | Some None -> ()
+        | Some (Some ((start_field, _), duration)) ->
+          let check_field_exists f =
+            if not (List.exists (fun sf -> sf.alias = f) fields) then
+              let m = "Field "^ f ^" is not in the output tuple" in
+              raise (SyntaxError m)
+          in
+          check_field_exists start_field ;
+          match duration with
+          | DurationConst _ -> ()
+          | DurationField (f, _)
+          | StopField (f, _) -> check_field_exists f
       in function
       | Yield fields ->
         List.iter (fun sf ->
@@ -1595,21 +1609,23 @@ struct
             check_no_aggr m sf.expr ;
             check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD operation" sf.expr
           ) fields
-      | Select { fields ; where ; _ (* FIXME: check export field do exist *) } ->
+      | Select { fields ; where ; export ; _ } ->
         List.iter (fun sf ->
             let m = "Aggregation functions not allowed without a \
                      GROUP-BY clause" in
             check_no_aggr m sf.expr ;
             check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;
+        check_export fields export ;
         check_no_aggr no_aggr_in_where where ;
         (* Not "selected" since it is still None the first times we call where
          * (until a match): *)
         check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected] "WHERE clause" where
-      | Aggregate { fields ; where ; key ; commit_when ; flush_when ; flush_how ; _ (* FIXME: check export field do exist *) } ->
+      | Aggregate { fields ; where ; key ; commit_when ; flush_when ; flush_how ; export ; _ } ->
         List.iter (fun sf ->
             check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;
+        check_export fields export ;
         check_no_aggr no_aggr_in_where where ;
         check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOut] "WHERE clause" where ;
         List.iter (fun k ->
