@@ -70,6 +70,11 @@ let run debug ramen_url () =
   Lwt_main.run (
     http_get (ramen_url ^"/run") >>= check_ok)
 
+let pause debug ramen_url () =
+  logger := make_logger debug ;
+  Lwt_main.run (
+    http_get (ramen_url ^"/stop") >>= check_ok)
+
 let tuples_of_columns columns =
   let field_types =
     List.map (fun (typ_name, nullable, ts) ->

@@ -125,6 +125,13 @@ let run =
       $ ramen_url),
     info "run")
 
+let pause =
+  Term.(
+    (const ApiCmd.pause
+      $ debug
+      $ ramen_url),
+    info "pause")
+
 let as_csv =
   let i = Arg.info ~doc:"output CSV rather than JSON"
                    ["as-csv";"csv"] in
@@ -164,7 +171,8 @@ let () =
   match Term.eval_choice default [
     server_start ;
     dequeue ; summary ;
-    add_node ; add_link ; compile ; run ; tail
+    add_node ; add_link ; compile ; run ; pause ;
+    tail
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42
        | `Ok f -> f ()
