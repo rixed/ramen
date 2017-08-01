@@ -2,9 +2,9 @@ open Batteries
 open Log
 open RamenSharedTypes
 
-type options = { debug : bool }
+type options = { debug : bool ; monitor : bool }
 
-let options debug = { debug }
+let options debug monitor = { debug ; monitor }
 
 (* Build the node infos corresponding to the BCN configuration *)
 let graph_info_of_bcns delete csv_dir bcns =
@@ -252,17 +252,23 @@ let start conf ramen_url db_name delete csv_dir =
   logger := make_logger conf.debug ;
   let open Conf_of_sqlite in
   let db = get_db db_name in
-  while%lwt true do
-    check_config_changed db ;
-    if must_reload db then (
-      !logger.info "Must reload configuration" ;
-      let bcns = get_bcns_from_db db in
-      let graph = graph_info_of_bcns delete csv_dir bcns in
-      put_graph ramen_url graph
-    ) else (
-      Lwt_unix.sleep 1.0
-    )
-  done
+  let update () =
+    let bcns = get_bcns_from_db db in
+    let graph = graph_info_of_bcns delete csv_dir bcns in
+    put_graph ramen_url graph
+  in
+  let%lwt () = update () in
+  if conf.monitor then
+    while%lwt true do
+      check_config_changed db ;
+      if must_reload db then (
+        !logger.info "Must reload configuration" ;
+        update ()
+      ) else (
+        Lwt_unix.sleep 1.0
+      )
+    done
+  else return_unit
 
 (* Args *)
 
@@ -271,8 +277,11 @@ open Cmdliner
 let common_opts =
   let debug =
     Arg.(value (flag (info ~doc:"increase verbosity" ["d"; "debug"])))
+  and monitor =
+    Arg.(value (flag (info ~doc:"keep running and update conf when DB changes"
+                           ["m"; "monitor"])))
   in
-  Term.(const options $ debug)
+  Term.(const options $ debug $ monitor)
 
 let ramen_url =
   let i = Arg.info ~doc:"URL to reach ramen" [ "ramen-url" ] in
