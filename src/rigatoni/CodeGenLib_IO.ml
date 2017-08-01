@@ -38,13 +38,16 @@ let read_file_lines ?(do_unlink=false) filename preprocessor k =
   | chan ->
     !logger.info "Start reading %S" filename ;
     let%lwt () =
-      (* If we used a preprocessor we might want to wait for EOF before
+      (* If we used a preprocessor we must wait for EOF before
        * unlinking the file. *)
-      if do_unlink then Lwt_unix.unlink filename else return_unit in
+      if do_unlink && preprocessor = "" then
+        Lwt_unix.unlink filename else return_unit in
     let rec read_next_line () =
       match%lwt Lwt_io.read_line chan with
       | exception End_of_file ->
-        Lwt_io.close chan
+        let%lwt () = Lwt_io.close chan in
+        if do_unlink && preprocessor <> "" then
+          Lwt_unix.unlink filename else return_unit
       | line ->
         let%lwt () = k line in
         on_each_input () ;
