@@ -1,6 +1,0 @@
-#!/bin/sh
-
-name=$1
-shift
-
-curl "$@" -X DELETE http://localhost:29380/node/$name

@@ -273,12 +273,16 @@ let rec add_mentioned prev =
   | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2) ->
     add_mentioned (add_mentioned prev e1) e2
 
-let add_all_mentioned lst =
+let add_all_mentioned_in_expr lst =
   let rec loop prev = function
     | [] -> prev
     | e :: e' -> loop (add_mentioned prev e) e'
   in
   loop Set.empty lst
+
+let add_all_mentioned_in_string mentioned _str =
+  (* TODO! *)
+  mentioned
 
 let emit_scalar oc =
   let open Stdint in
@@ -557,6 +561,26 @@ and emit_function2 expr oc e1 e2 =
     )
   )
 
+let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
+  Printf.fprintf oc "let %s %a = function\n"
+    name
+    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
+  List.iter (fun field_typ ->
+      if and_all_others || Set.mem field_typ.typ_name mentioned then (
+        Printf.fprintf oc "\t| %S -> " field_typ.typ_name ;
+        let id = id_of_field_name field_typ.typ_name in
+        if field_typ.nullable then (
+          Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> %a)\n"
+            id
+            (conv_from_to field_typ.typ TString String.print) "v_"
+        ) else (
+          Printf.fprintf oc "%a\n"
+            (conv_from_to field_typ.typ TString String.print) id
+        )
+      )
+    ) in_tuple_typ ;
+  Printf.fprintf oc "\t| _ -> raise Not_found\n"
+
 let emit_where
       ?(with_group=false) ?(always_true=false)
       name in_tuple_typ mentioned and_all_others oc expr =
@@ -646,7 +670,7 @@ let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
 let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
   let mentioned =
     let all_exprs = List.map (fun sf -> sf.Operation.expr) selected_fields in
-    add_all_mentioned all_exprs in
+    add_all_mentioned_in_expr all_exprs in
   Printf.fprintf oc "open Stdint\n\n\
     %a\n%a\n%a\n\
     let () =\n\
@@ -657,24 +681,27 @@ let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
 let emit_select oc in_tuple_typ out_tuple_typ
-                selected_fields and_all_others where =
+                selected_fields and_all_others where notify_url =
   (* We need:
    * - a function to extract the fields used from input (and all others, optionally)
    * - a function corresponding to the where filter
    * - a function to write the output tuple and another one to compute the sersize *)
   let mentioned =
     let all_exprs = where :: List.map (fun sf -> sf.Operation.expr) selected_fields in
-    add_all_mentioned all_exprs in
+    add_all_mentioned_in_expr all_exprs in
+  let mentioned = add_all_mentioned_in_string mentioned notify_url in
   Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n\
+    %a\n%a\n%a\n%a\n%a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
-      \t\tCodeGenLib.select read_tuple_ sersize_of_tuple_ serialize_tuple_ where_ select_)\n"
+      \t\tCodeGenLib.select read_tuple_ field_of_tuple_ sersize_of_tuple_ serialize_tuple_ where_ select_ %S)\n"
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
+    (emit_field_of_tuple "field_of_tuple_" mentioned and_all_others) in_tuple_typ
     (emit_where "where_" in_tuple_typ mentioned and_all_others) where
     (emit_field_selection ~with_selected:true "select_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
+    notify_url
 
 let for_each_aggr_fun selected_fields commit_when flush_when f =
   List.iter (fun sf ->
@@ -855,7 +882,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       match flush_how with
       | Reset | Slide _ -> all_exprs
       | RemoveAll e | KeepOnly e -> e :: all_exprs in
-    add_all_mentioned all_exprs
+    add_all_mentioned_in_expr all_exprs
   and where_need_aggr =
     (* Tells whether the where expression needs a tuple that's only
      * available once we have retrieved the key and the group (because
@@ -909,39 +936,6 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
            should_resubmit_ aggr_init_ update_aggr_)\n"
     when_to_check_for_commit when_to_check_for_flush
 
-let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
-  Printf.fprintf oc "let %s %a = function\n"
-    name
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-  List.iter (fun field ->
-      Printf.fprintf oc "\t| %S -> " field.typ_name ;
-      let id = id_of_field_name field.typ_name in
-      if field.nullable then (
-        Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> %a)\n"
-          id
-          (conv_from_to field.typ TString String.print) "v_"
-      ) else (
-        Printf.fprintf oc "%a\n"
-          (conv_from_to field.typ TString String.print) id
-      )
-    ) in_tuple_typ ;
-  Printf.fprintf oc "\t| _ -> raise Not_found\n"
-
-let emit_alert oc in_tuple_typ name cond subject text =
-  (* We just want to read the in-tuple, check it matchs the cond,  and have a
-   * function that return field value (as a string!) given their name, so we
-   * can replace quoted names by their actual value in the alert message *)
-  let mentioned = Set.empty in
-  Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n%a\n\
-    let () =\n\
-      \tLwt_main.run (\n\
-      \tCodeGenLib.alert read_tuple_ field_of_tuple_ %S alert_cond_ %S %S)\n"
-    (emit_read_tuple "read_tuple_" mentioned true) in_tuple_typ
-    (emit_field_of_tuple "field_of_tuple_" mentioned true) in_tuple_typ
-    (emit_where "alert_cond_" in_tuple_typ mentioned true) cond
-    name subject text
-
 let keep_temp_files = ref true
 
 let sanitize_ocaml_fname s =
@@ -985,14 +979,12 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
     (match op with
     | Yield fields ->
       emit_yield oc in_tuple_typ out_tuple_typ fields
-    | Select { fields ; and_all_others ; where ; _ } ->
-      emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where
+    | Select { fields ; and_all_others ; where ; notify_url ; _ } ->
+      emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where notify_url
     | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
     | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how ; _ } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
-                     key commit_when flush_when flush_how
-    | Alert { name ; cond ; subject ; text } ->
-      emit_alert oc in_tuple_typ name cond subject text) ;
+                     key commit_when flush_when flush_how) ;
     fname) |>
     compile_source

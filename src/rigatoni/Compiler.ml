@@ -449,20 +449,17 @@ let check_aggregate ~in_type ~out_type fields and_all_others
  *)
 let check_operation ~in_type ~out_type =
   let open Lang in
+  let open Operation in
   function
-  | Operation.Yield fields ->
+  | Yield fields ->
     check_yield ~in_type ~out_type fields
-  | Operation.Select { fields ; and_all_others ; where ; _ } ->
+  | Select { fields ; and_all_others ; where ; _ } ->
     check_select ~in_type ~out_type fields and_all_others where
-  | Operation.Aggregate { fields ; and_all_others ; where ;
-                          key ; commit_when ; flush_when ; flush_how ; _ } ->
+  | Aggregate { fields ; and_all_others ; where ;
+                key ; commit_when ; flush_when ; flush_how ; _ } ->
     check_aggregate ~in_type ~out_type fields and_all_others where
                     key commit_when flush_when flush_how
-  | Operation.Alert { cond ; _ } ->
-    let exp_type = Expr.make_bool_typ ~nullable:false "alert condition" in
-    check_expr ~in_type ~out_type ~exp_type cond ||
-    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:in_type ~to_tuple:out_type ~autorank:false
-  | Operation.ReadCSVFile { fields ; _ } ->
+  | ReadCSVFile { fields ; _ } ->
     let from_tuple = C.temp_tup_typ_of_tup_typ fields in
     check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple ~to_tuple:out_type ~autorank:false
 

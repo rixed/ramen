@@ -238,7 +238,25 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
 
 (* Operations that nodes may run: *)
 
-let select read_tuple sersize_of_tuple serialize_tuple where select =
+let notify url field_of_tuple tuple =
+  let expand_fields =
+    let open Str in
+    let re = regexp "\\${\\(in\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
+    fun text tuple ->
+      global_substitute re (fun s ->
+          let field_name = matched_group 2 s in
+          try field_of_tuple tuple field_name
+          with Not_found ->
+            !logger.error "Field %S used in text substitution is not \
+                           present in the input!" field_name ;
+            "??"^ field_name ^"??"
+        ) text
+  in
+  let url = expand_fields url tuple in
+  !logger.info "Notifying url %S" url ;
+  async (fun () -> CodeGenLib_IO.http_notify url)
+
+let select read_tuple field_of_tuple sersize_of_tuple serialize_tuple where select notify_url =
   node_start "SELECT" ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   in
@@ -270,6 +288,7 @@ let select read_tuple sersize_of_tuple serialize_tuple where select =
          !selected_count !selected_successive last_selected
          !unselected_count !unselected_successive last_unselected
     then (
+      if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
       IntCounter.add stats_selected_tuple_count 1 ;
       unselected_successive := Uint64.zero ;
       selected_tuple := Some in_tuple ;
@@ -567,63 +586,8 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
     commit_and_flush_all_if ForAll
   )
 
-let alert read_tuple field_of_tuple team alert_cond subject text =
-  node_start "ALERT" ;
-  let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
-  in
-  !logger.debug "Will read ringbuffer %S" rb_in_fname ;
-  let%lwt rb_in =
-    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
-  let expand_fields =
-    let open Str in
-    let re = regexp "\\${\\(in\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
-    fun text tuple ->
-      global_substitute re (fun s ->
-          let field_name = matched_group 2 s in
-          try field_of_tuple tuple field_name
-          with Not_found ->
-            !logger.error "Field %S used in alert text substitution is not \
-                           present in the input!" field_name ;
-            "??"^ field_name ^"??"
-        ) text
-  and stats_selected_tuple_count = make_stats_selected_tuple_count ()
-  and in_ = ref None
-  and selected_tuple = ref None
-  and selected_count = ref Uint64.zero
-  and selected_successive = ref Uint64.zero
-  and unselected_tuple = ref None
-  and unselected_count = ref Uint64.zero
-  and unselected_successive = ref Uint64.zero
-  in
-  CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
-    let in_tuple = read_tuple tx in
-    RingBuf.dequeue_commit tx ;
-    IntCounter.add stats_in_tuple_count 1 ;
-    let last_in = Option.default in_tuple !in_
-    and last_selected = Option.default in_tuple !selected_tuple
-    and last_unselected = Option.default in_tuple !unselected_tuple in
-    in_ := Some in_tuple ;
-    let in_count = Uint64.succ !CodeGenLib_IO.tuple_count in
-    if alert_cond
-         in_count in_tuple last_in
-         !selected_count !selected_successive last_selected
-         !unselected_count !unselected_successive last_unselected
-    then (
-      IntCounter.add stats_selected_tuple_count 1 ;
-      unselected_successive := Uint64.zero ;
-      selected_tuple := Some in_tuple ;
-      selected_count := Uint64.succ !selected_count ;
-      selected_successive := Uint64.succ !selected_successive ;
-      let team = expand_fields team in_tuple
-      and subject = expand_fields subject in_tuple
-      and text = expand_fields text in_tuple in
-      (* TODO: send this to the alert manager *)
-      Printf.printf "ALERT!\nTo: %s\nSubject: %s\n%s\n\n"
-        team subject text
-    ) else (
-      selected_successive := Uint64.zero ;
-      unselected_tuple := Some in_tuple ;
-      unselected_count := Uint64.succ !unselected_count ;
-      unselected_successive := Uint64.succ !unselected_successive ;
-    ) ;
-    return_unit)
+let () =
+  Lwt.async_exception_hook := (fun exn ->
+    !logger.error "Received exception %s from:\n%s"
+      (Printexc.to_string exn)
+      (Printexc.get_backtrace()))

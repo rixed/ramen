@@ -113,3 +113,15 @@ let read_ringbuf rb f =
     read_next ()
   in
   read_next ()
+
+let http_notify url =
+  (* TODO: time this and add a stat *)
+  !logger.debug "Send HTTP notification to %S" url ;
+  let open Cohttp in
+  let open Cohttp_lwt_unix in
+  let headers = Header.init_with "Connection" "close" in
+  let%lwt resp, _body = Client.get ~headers (Uri.of_string url) in
+  let code = resp |> Response.status |> Code.code_of_status in
+  if code <> 200 then
+    !logger.error "Received code %d from %S" code url ;
+  return_unit

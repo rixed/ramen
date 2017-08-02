@@ -717,17 +717,10 @@ an aggregate build from replaying the stored input tuple)
 
 ==== Output
 
-Currently the only output command is:
-
-[source,sql]
-----
-  ALERT "destination"
-    SUBJECT "subject"
-    TEXT "body of the message"
-----
-
-In each of the strings, `${field_name}` would be replaced by the actual value
-from the input tuple.
++SELECT+ operations can be instructed to notify an external URL when the where
+clause is fulfilled. The given URL will then accessed, which can be customized
+with `${field_name}` that would be replaced by the actual value from the input
+tuple.
 
 == The API
 

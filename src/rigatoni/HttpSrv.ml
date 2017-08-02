@@ -104,7 +104,6 @@ let type_of_operation_of =
   | Yield _ -> "YIELD"
   | Select _ -> "SELECT"
   | Aggregate _ -> "GROUP BY"
-  | Alert _ -> "ALERT"
   | ReadCSVFile _ -> "READ CSV"
 
 let rec find_int_opt_metric metrics name =

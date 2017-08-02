@@ -304,10 +304,10 @@ let tuple_need_aggr = function
   let replace_typ_in_op =
     let open Lang.Operation in
     function
-    | Ok (Select { fields ; and_all_others ; where ; export }, rest) ->
+    | Ok (Select { fields ; and_all_others ; where ; export ; notify_url }, rest) ->
       Ok (Select {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
-        and_all_others ; where = replace_typ where ; export }, rest)
+        and_all_others ; where = replace_typ where ; export ; notify_url }, rest)
     | Ok (Aggregate { fields ; and_all_others ; where ; key ; commit_when ; export ;
           flush_when ; flush_how }, rest) ->
       Ok (Aggregate {
@@ -520,7 +520,7 @@ let keyword =
     strinG "of" ||| strinG "is" ||| strinG "not" ||| strinG "null" |||
     strinG "group" ||| strinG "by" ||| strinG "select" ||| strinG "where" |||
     strinG "on" ||| strinG "change" ||| strinG "flush" ||| strinG "when" |||
-    strinG "age" ||| strinG "alert" ||| strinG "subject" ||| strinG "text" |||
+    strinG "age" ||| strinG "notify" ||| strinG "subject" ||| strinG "text" |||
     strinG "read" ||| strinG "csv" ||| strinG "file" |||
     strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
     strinG "sequence" ||| strinG "abs" ||| strinG "length" |||
@@ -1137,7 +1137,9 @@ struct
          * with the above. Useful for when the select part is implicit. *)
         and_all_others : bool ;
         where : Expr.t ;
-        export : event_time_info option }
+        export : event_time_info option ;
+        (* If not empty, will notify this URL with a HTTP GET: *)
+        notify_url : string }
     (* Aggregation of several tuples into one based on some key. Superficially looks like
      * a select but much more involved. *)
     | Aggregate of {
@@ -1153,7 +1155,6 @@ struct
         flush_when : Expr.t option ;
         (* How to flush: reset or slide values *)
         flush_how : flush_method }
-    | Alert of { name : string ; cond : Expr.t ; subject : string ; text : string }
     | ReadCSVFile of { fname : string ; unlink : bool ; separator : string ;
                        null : string ; fields : Tuple.typ ; preprocessor : string }
 
@@ -1169,14 +1170,16 @@ struct
          | DurationField (n, s) -> "DURATION "^ n ^ string_of_scale s
          | StopField (n, s) -> "STOPPING AT "^ n ^ string_of_scale s)
 
-  let print_select fmt fields and_all_others where export =
+  let print_select fmt fields and_all_others where export notify_url =
     let sep = ", " in
     Printf.fprintf fmt "SELECT %a%s%s WHERE %a"
       (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
       (if fields <> [] && and_all_others then sep else "")
       (if and_all_others then "*" else "")
       (Expr.print false) where ;
-    Option.may (fun e -> Printf.fprintf fmt " AND %a" print_export e) export
+    Option.may (fun e -> print_export fmt e) export ;
+    if notify_url <> "" then
+      Printf.fprintf fmt "NOTIFY %S" notify_url
 
   let print fmt =
     let sep = ", " in
@@ -1184,11 +1187,11 @@ struct
     | Yield fields ->
       Printf.fprintf fmt "YIELD %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
-    | Select { fields ; and_all_others ; where ; export } ->
-      print_select fmt fields and_all_others where export ;
+    | Select { fields ; and_all_others ; where ; export ; notify_url } ->
+      print_select fmt fields and_all_others where export notify_url
     | Aggregate { fields ; and_all_others ; where ; export ; key ;
                   commit_when ; flush_when ; flush_how } ->
-      print_select fmt fields and_all_others where export ;
+      print_select fmt fields and_all_others where export "" ;
       Printf.fprintf fmt "%s%a COMMIT %aWHEN %a"
         (if key <> [] then " GROUP BY " else "")
         (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) key
@@ -1198,9 +1201,6 @@ struct
         Printf.fprintf fmt " %a WHEN %a"
           (print_flush_method ()) flush_how
           (Expr.print false) flush_when) flush_when
-    | Alert { name ; cond ; subject ; text } ->
-      Printf.fprintf fmt "ALERT %S WHEN %a SUBJECT %S TEXT %S"
-        name (Expr.print false) cond subject text
     | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
       Printf.fprintf fmt "READ %sCSV FILES %S SEPARATOR %S NULL %S %s%a"
         (if unlink then "AND DELETE " else "")
@@ -1279,6 +1279,10 @@ struct
       in
       (export_no_time_info ||| export_with_time_info) m
 
+    let notify_url m =
+      let m = "notify clause" :: m in
+      (strinG "NOTIFY" -- blanks -+ quoted_string) m
+
     let select_clause m =
       let m = "select clause" :: m in
       (strinG "select" -- blanks -+
@@ -1288,15 +1292,16 @@ struct
 
     let where_clause m =
       let m = "where clause" :: m in
-      (strinG "where" -- blanks -+ Expr.Parser.p) m
+      ((strinG "where" ||| strinG "when") -- blanks -+ Expr.Parser.p) m
 
     let select m =
       let m = "select operation" :: m in
       ((select_clause ++
         optional ~def:Expr.expr_true (blanks -+ where_clause) |||
         return [None] ++ where_clause) ++
-       optional ~def:None (blanks -+ some export_clause) >>:
-      fun ((fields_or_stars, where), export) ->
+       optional ~def:None (blanks -+ some export_clause) ++
+       optional ~def:"" (blanks -+ notify_url) >>:
+      fun (((fields_or_stars, where), export), notify_url) ->
         let fields, and_all_others =
           List.fold_left (fun (fields, and_all_others) -> function
               | Some f -> f::fields, and_all_others
@@ -1305,7 +1310,7 @@ struct
             ) ([], false) fields_or_stars in
         (* The above fold_left inverted the field order. *)
         let fields = List.rev fields in
-        Select { fields ; and_all_others ; where ; export }) m
+        Select { fields ; and_all_others ; where ; export ; notify_url }) m
 
     let group_by m =
       let m = "group-by clause" :: m in
@@ -1348,22 +1353,14 @@ struct
     let aggregate m =
       let m = "aggregate" :: m in
       (select +- blanks ++ optional ~def:[] (group_by +- blanks) ++ commit_when >>: function
-       | (Select { fields ; and_all_others ; where ; export }, key),
+       | (Select { fields ; and_all_others ; where ; export ; notify_url }, key),
          (commit_when, flush_when, flush_how) ->
+         (* Why can't we? because it's unclear when the notify would trigger:
+          * as soon as the WHERE match or when we emit a group? *)
+         if notify_url <> "" then
+          raise (Reject "Cannot use notify-clause in group-by operations") ;
          Aggregate { fields ; and_all_others ; where ; export ; key ; commit_when ; flush_when ; flush_how }
        | _ -> assert false) m
-
-    (* FIXME: It should be possible to enter when, subject and text in any order *)
-    let alert m =
-      let opt_field title m =
-        let m = title :: m in
-        (optional ~def:"" (blanks -- strinG title -- blanks -+ quoted_string)) m
-      in
-      let m = "alert" :: m in
-      (strinG "alert" -- blanks -+ quoted_string ++
-       optional ~def:Expr.expr_true (blanks -- strinG "when" -- blanks -+ Expr.Parser.p) ++
-       opt_field "subject" ++ opt_field "text" >>:
-       fun (((name, cond), subject), text) -> Alert { name ; cond ; subject ; text }) m
 
     (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
     let read_csv_file m =
@@ -1398,7 +1395,7 @@ struct
 
     let p m =
       let m = "operation" :: m in
-      (yield ||| select ||| aggregate ||| alert ||| read_csv_file
+      (yield ||| select ||| aggregate ||| read_csv_file
       ) m
 
     (*$= p & ~printer:(test_printer print)
@@ -1415,7 +1412,7 @@ struct
               alias = "itf_dst" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = None },\
+          export = None ; notify_url = "" },\
         (58, [])))\
         (test_p p "select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
          replace_typ_in_op)
@@ -1428,7 +1425,7 @@ struct
             Gt (typ,\
               Field (typ, ref TupleIn, "packets"),\
               Const (typ, VI8 (Int8.of_int 0)))) ;\
-          export = None },\
+          export = None ; notify_url = "" },\
         (17, [])))\
         (test_p p "where packets > 0" |> replace_typ_in_op)
 
@@ -1441,7 +1438,8 @@ struct
               alias = "value" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = Some (Some (("t", 10.), DurationConst 60.)) },\
+          export = Some (Some (("t", 10.), DurationConst 60.)) ;\
+          notify_url = "" },\
         (62, [])))\
         (test_p p "select t, value export event starting at t*10 with duration 60" |>\
          replace_typ_in_op)
@@ -1457,7 +1455,8 @@ struct
               alias = "value" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = Some (Some (("t1", 10.), StopField ("t2", 10.))) },\
+          export = Some (Some (("t1", 10.), StopField ("t2", 10.))) ;\
+          notify_url = "" },\
         (73, [])))\
         (test_p p "select t1, t2, value export event starting at t1*10 and stopping at t2*10" |>\
          replace_typ_in_op)
@@ -1517,22 +1516,6 @@ struct
           (48, [])))\
           (test_p p "select 1 as one commit and flush when sum 1 >= 5" |>\
            replace_typ_in_op)
-
-      (Ok (\
-        Alert { name = "network firefighters" ;\
-                cond = Expr.expr_true ;\
-                subject = "Too little traffic from zone ${z1} to ${z2}" ;\
-                text = "fatigue..." },\
-        (100, [])))\
-        (test_p p "alert \"network firefighters\" \\
-                         subject \"Too little traffic from zone ${z1} to ${z2}\" \\
-                         text \"fatigue...\"")
-      (Ok (\
-        Alert { name = "glop" ;\
-                cond = Expr.expr_true ;\
-                subject = "" ; text = "" },\
-        (12, [])))\
-        (test_p p "alert \"glop\"")
 
       (Ok (\
         ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; \
@@ -1621,6 +1604,7 @@ struct
         (* Not "selected" since it is still None the first times we call where
          * (until a match): *)
         check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected] "WHERE clause" where
+        (* TODO: check field names from text templates *)
       | Aggregate { fields ; where ; key ; commit_when ; flush_when ; flush_how ; export ; _ } ->
         List.iter (fun sf ->
             check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
@@ -1643,9 +1627,6 @@ struct
           let m = "Aggregation functions not allowed in KEEP/REMOVE clause" in
           check_no_aggr m e ;
           check_fields_from [TupleGroup] "REMOVE clause" e)
-      | Alert { cond ; _ } ->
-        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected] "ALERT condition" cond
-        (* TODO: check field names from text templates *)
       | ReadCSVFile _ -> ()
 
     (*$>*)
