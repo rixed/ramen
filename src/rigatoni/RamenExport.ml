@@ -67,6 +67,9 @@ type history =
      * in the stream of tuples to help polling *)
     mutable count : int }
 
+(* FIXME: Shouldn't history be part of struct node instead?
+ * If so then it would be saved on disk, which is good (unless you want to
+ * replay the same CSV again) *)
 let imported_tuples : (string, history) Hashtbl.t = Hashtbl.create 11
 
 let add_tuple node_name tuple_type tuple =

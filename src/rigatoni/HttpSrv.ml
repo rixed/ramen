@@ -398,7 +398,6 @@ let content_type_of_ext = function
 
 let get_file _conf _headers file =
   let fname = "www/"^ file in
-  !logger.debug "Serving file %S" fname ;
   let headers =
     Header.init_with "Content-Type" (content_type_of_ext (ext_of_file file)) in
   Server.respond_file ~headers ~fname ()
@@ -426,7 +425,6 @@ type complete_field_req = { node : string ; field_prefix : string } [@@ppp PPP_J
 type complete_resp = string list [@@ppp PPP_JSON]
 
 let complete_nodes conf headers body =
-  !logger.debug "Received body: %s" body ;
   let%lwt msg = of_json headers "Complete tables" complete_node_req_ppp body in
   let body =
     C.complete_node_name conf msg.node_prefix |>
@@ -435,7 +433,6 @@ let complete_nodes conf headers body =
   respond_ok ~body ()
 
 let complete_fields conf headers body =
-  !logger.debug "Received body: %s" body ;
   let%lwt msg = of_json headers "Complete fields" complete_field_req_ppp body in
   let body =
     C.complete_field_name conf msg.node msg.field_prefix |>
@@ -489,7 +486,6 @@ let bucket_max b =
 
 let timeseries conf headers body =
   let open Lang.Operation in
-  !logger.debug "Received body: %s" body ;
   let%lwt msg = of_json headers "timeseries query" timeseries_req_ppp body in
   let ts_of_node (req : timeserie_req) =
     match C.find_node conf conf.C.building_graph req.node with
@@ -514,7 +510,6 @@ let timeseries conf headers body =
             raise (Failure ("field "^ n ^" does not exist")) in
         let ti = find_field start_field
         and vi = find_field req.data_field in
-        !logger.debug "Building timeserie from %dth field to %dth field" ti vi ;
         if msg.max_data_points < 1 then raise (Failure "invalid max_data_points") ;
         let dt = (msg.to_ -. msg.from) /. float_of_int msg.max_data_points in
         let buckets = Array.init msg.max_data_points (fun _ ->
@@ -587,7 +582,6 @@ let callback conf _conn req body =
     (fun () ->
       let dec = Uri.pct_decode in
       try
-        !logger.debug "Requesting %a" (List.print String.print) paths ;
         match Request.meth req, paths with
         (* API *)
         | `PUT, ["node" ; name] -> put_node conf headers (dec name) body
