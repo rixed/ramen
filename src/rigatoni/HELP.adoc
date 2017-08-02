@@ -219,8 +219,6 @@ The difference is the virtual fields of those tuples (see next section about
 
 The `selected` tuple can be used anywhere but in a group-by clause.
 
-It is only useful for its virtual fields.
-
 [[unselected-tuple]]
 ===== Unselected tuple
 
@@ -229,16 +227,12 @@ Named `unselected`, this is the tuple that failed the where filter.
 It can be used in the same places as the `selected` tuple, that is pretty much
 everywhere.
 
-It is only useful for its virtual fields.
-
 [[group-tuple]]
 ===== Group tuple
 
 A tuple that represents the current aggregate of a +GROUP BY+ operation.
 It can be used only once the key is known, so only in the commit and flush-when
 clauses.
-
-It is only useful for its virtual fields.
 
 [[output-tuple]]
 ===== Output tuple
@@ -350,7 +344,7 @@ is a list of all available virtual fields and which tuple they apply to:
 | How many tuples have passed the WHERE filter without any incoming tuple failing to pass.
 
 | `selected.last`
-| Contains the fields of the last tuple that passed the `where` filter. When `in` is the first tuple to pass that filter, then `selected.last` is the same as `in`.
+| Contains the fields of the last tuple that passed the `where` filter. When `in` is the first tuple to pass that filter, then `selected.last` is the same as `in` but can be distinguished using its `#count` virtual field.
 
 | `unselected.#count`
 | How many tuples have failed the WHERE filter.
@@ -359,7 +353,7 @@ is a list of all available virtual fields and which tuple they apply to:
 | How many tuples have failed the WHERE filter without any incoming tuple passing it.
 
 | `unselected.last`
-| Contains the fields of the last tuple that failed the `where` filter. When `in` is the first tuple to pass that filter, then `unselected.last` is the same as `in`.
+| Contains the fields of the last tuple that failed the `where` filter. When `in` is the first tuple to pass that filter, then `unselected.last` is the same as `in` but can be distinguished using its `#count` virtual field.
 
 | `group.#count`
 | In a +GROUP BY+ operation, how many tuples were added so far to form the output tuple. Can be used both in the where clause and in the select clause.

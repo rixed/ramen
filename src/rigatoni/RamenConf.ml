@@ -106,7 +106,7 @@ let parse_operation operation =
   | Bad e ->
     let err =
       IO.to_string (print_bad_result Lang.Operation.print) e in
-    raise (Lang.SyntaxError ("Parse error: "^ err))
+    raise (Lang.SyntaxError ("Parse error: "^ err ^" while parsing:\n" ^ operation))
   | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
     Lang.Operation.Parser.check op ;
     op
