@@ -29,8 +29,13 @@ LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h
 
 CONFIGURATOR_SOURCES = \
-	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml Conf_of_sqlite.ml \
+	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml \
+	SqliteHelpers.ml Conf_of_sqlite.ml \
 	ramen_configurator.ml
+
+ALERTER_SOURCES = \
+	Consts.ml Log.ml Helpers.ml SqliteHelpers.ml \
+	ramen_alerter.ml
 
 SOURCES = \
 	$(RIGATONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
@@ -45,7 +50,7 @@ PACKAGES = \
 	binocle unix
 
 INSTALLED = \
-  rigatoni ramen_configurator \
+  rigatoni ramen_configurator ramen_alerter \
 	codegen.cmxa $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
 	ringbuf/libringbuf.a
 
@@ -74,6 +79,9 @@ ringbuf_test.opt: Log.cmx Helpers.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cm
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+
+ramen_alerter: $(ALERTER_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 all_tests.opt: ringbuf/libringbuf.a wrap_ringbuf.o $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml

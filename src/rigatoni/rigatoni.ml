@@ -34,10 +34,10 @@ let ssl_key =
 let graph_save_file =
   let env = Term.env_info "RAMEN_SAVE_FILE" in
   let i = Arg.info ~doc:"graph save file"
-                   ~env ["graph-save-file";"save-graph"] in
+                   ~env ["save-file"] in
   Arg.(value (opt (some string) None i))
 
-let ramen_url =
+let server_url =
   let env = Term.env_info "RAMEN_URL" in
   let i = Arg.info ~doc:"URL to reach ramen"
                    ~env [ "ramen-url" ] in
@@ -48,7 +48,7 @@ let server_start =
     (const HttpSrv.start
       $ debug
       $ graph_save_file
-      $ ramen_url
+      $ server_url
       $ http_port
       $ ssl_cert
       $ ssl_key),
@@ -97,7 +97,7 @@ let add_node =
   Term.(
     (const ApiCmd.add_node
       $ debug
-      $ ramen_url
+      $ server_url
       $ node_name 0
       $ node_operation 1),
     info "add-node")
@@ -106,7 +106,7 @@ let add_link =
   Term.(
     (const ApiCmd.add_link
       $ debug
-      $ ramen_url
+      $ server_url
       $ node_name 0
       $ node_name 1),
     info "add-link")
@@ -115,21 +115,21 @@ let compile =
   Term.(
     (const ApiCmd.compile
       $ debug
-      $ ramen_url),
+      $ server_url),
     info "compile")
 
 let run =
   Term.(
     (const ApiCmd.run
       $ debug
-      $ ramen_url),
+      $ server_url),
     info "run")
 
 let pause =
   Term.(
     (const ApiCmd.pause
       $ debug
-      $ ramen_url),
+      $ server_url),
     info "pause")
 
 let as_csv =
@@ -151,7 +151,7 @@ let tail =
   Term.(
     (const ApiCmd.tail
       $ debug
-      $ ramen_url
+      $ server_url
       $ node_name 0
       $ as_csv
       $ last

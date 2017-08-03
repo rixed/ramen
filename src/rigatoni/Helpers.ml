@@ -57,12 +57,21 @@ let http_service port cert_opt key_opt router =
       String.nsplit (Uri.path uri) "/" |>
       List.filter (fun s -> String.length s > 0) |>
       List.map Uri.pct_decode in
+    let params = Hashtbl.create 7 in
+    (match String.split ~by:"?" req.Request.resource with
+    | exception Not_found -> ()
+    | _, param_str ->
+      String.nsplit ~by:"&" param_str |>
+      List.iter (fun p ->
+        match String.split ~by:"=" p with
+        | exception Not_found -> ()
+        | pn, pv -> Hashtbl.add params pn pv)) ;
     let headers = Request.headers req in
     let%lwt body = Cohttp_lwt_body.to_string body
     in
     catch
       (fun () ->
-        try router (Request.meth req) path headers body
+        try router (Request.meth req) path params headers body
         with exn ->
           print_exception exn ;
           fail exn)
@@ -96,3 +105,8 @@ let http_service port cert_opt key_opt router =
       return (!logger.info "Missing some of SSL configuration")
   in
   join [ t1 ; t2 ]
+
+let looks_like_true s =
+  s = "1" || (
+    String.length s > 1 &&
+    let lc = Char.lowercase s.[0] in lc = 'y' || lc = 't')

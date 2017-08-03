@@ -4,15 +4,15 @@
  * - deliver the notifications;
  * - handle acknowledgments.
  *
- * This currently runs as part of the alerting configuration (aka provides
- * the implementation of the "alert" primitive operation). Later could be
- * made independent, although the simplest way to do that is probably via
- * Ramen choreographer.
+ * Even when one want to manage several independent organizations it's better
+ * to have one executable per organization, in order to simplify the data model
+ * and also to make progressive rollouts possible.
  *)
 open Batteries
 open Helpers
-
-let debug = false
+open SqliteHelpers
+open Log
+open Lwt
 
 (* We want to have a global state of the alert management situation that we
  * can save regularly and restore whenever we start in order to limit the
@@ -21,6 +21,7 @@ let debug = false
 type alert =
   { name : string ;
     team : string ;
+    (* The smaller the int, the most important the alert. 0 is the most important *)
     importance : int ;
     started : float ;
     mutable stopped : float option ;
@@ -64,7 +65,8 @@ type persisted_state = {
 
 type state = {
   (* Where this state is saved *)
-  save_file : string ;
+  save_file : string option ;
+  default_team : string ;
   mutable dirty : bool ;
 
   (* Sqlite configuration for oncallers and escalations (will be created if
@@ -76,21 +78,16 @@ type state = {
   stmt_get_contacts : Sqlite3.stmt ;
   stmt_get_escalation : Sqlite3.stmt ;
 
-  (* The alarm we use for all escalation ; It's simpler than having one
-   * alarm per escalation especially since it avois having to persist
-   * alarm closures. *)
-  alarm : Alarm.t ;
-
   (* What is saved onto/restored from disk to avoid losing context when
    * stopping or crashing: *)
   persist : persisted_state }
 
-let is_inhibited state name team =
+let is_inhibited state name team now =
   let in_inhibit_hash h k =
     match Hashtbl.find h k with
     | exception Not_found -> false
     | end_date ->
-      if !Alarm.now < end_date then true else (
+      if now < end_date then true else (
         Hashtbl.remove h k ;
         false
       ) in
@@ -106,9 +103,9 @@ end
 
 module Alert =
 struct
-  let make name team importance title text =
+  let make name team importance title text now =
     { name ; team ; importance ; title ; text ;
-      started = !Alarm.now ; stopped = None }
+      started = now ; stopped = None }
 end
 
 module Incident =
@@ -141,7 +138,7 @@ struct
     | i, _ -> i, true
 end
 
-module Log =
+module Diary =
 struct
   type alert_outcome =
     Duplicate | Inhibited | STFU | Notify of Contact.t
@@ -192,17 +189,18 @@ module Sender =
 struct
   let printer id attempt alert victim =
     Printf.printf "Title: %s\nId: %d\nAttempt: %d\nDest: %s\n%s\n%!"
-      alert.title id attempt victim alert.text
+      alert.title id attempt victim alert.text ;
+    return_unit
 
   let get = function
     | Contact.Console -> printer
     | Contact.Email _ | Contact.SMS _ ->
-      raise Not_implemented
+      fun _id _attempt _alert _victim -> fail Not_implemented
 end
 
 module Escalation =
 struct
-  let default_escalation alert incident =
+  let default_escalation alert incident now =
     (* First send type 0, then after 5 minutes send type 1 then after 10
      * minutes send type 2, and repeat type 2 every 10 minutes: *)
     { steps = [|
@@ -210,9 +208,9 @@ struct
         { timeout = 600. ; victims = [| 0 ; 1 |] } ;
         { timeout = 600. ; victims = [| 0 ; 1 |] }
       |] ;
-      alert ; incident ; attempt = 0 ; last_sent = !Alarm.now }
+      alert ; incident ; attempt = 0 ; last_sent = now }
 
-  let make state alert incident =
+  let make state alert incident now =
     let to_array mask =
       let rec loop prev bit =
         if bit >= 64 then Array.of_list prev else
@@ -226,7 +224,7 @@ struct
      * most important alerts: *)
     let rec loop importance =
       if importance < 0 then ( (* end the recursion *)
-        default_escalation alert incident
+        default_escalation alert incident now
       ) else (
         let open Sqlite3 in
         let stmt = state.stmt_get_escalation in
@@ -243,15 +241,15 @@ struct
           Array.of_list in
         if steps = [||] then loop (importance - 1) else
         { steps ; alert ; incident ;
-          attempt = 0 ; last_sent = !Alarm.now }
+          attempt = 0 ; last_sent = now }
       )
     in
     loop alert.importance
 
-  (* Send that alert using message king for this step *)
-  let send_alert state id esc victims =
-    (* We figure out who the oncaller are at each attempt of each alert of an
-     * incident. This means that if the incident happends during an oncall
+  (* Send that alert using message king for this step. *)
+  let send_alert state id esc victims now =
+    (* We figure out who the oncallers are at each attempt of each alert of an
+     * incident. This means that if the incident happens during an oncall
      * shift the new oncallers get involved in the middle of the action while
      * the previous oncallers, still firefighting, stop to receive updates.
      * This is on purpose: we want the incident to be handed over so at this
@@ -260,20 +258,23 @@ struct
      * bothering next squad then they can easily silence the incident anyway.
      *
      * How we actually contact an oncaller depends on its personal preferences
-     * so we now need to know who exactly are we going to bother: *)
-    Array.iter (fun rank ->
+     * so we now need to know who exactly are we going to bother. Note that
+     * here [victims] is nothing but the rank of the oncallers to be
+     * targeted. *)
+    Array.fold_left (fun ths rank ->
         let open OnCaller in
-        let victim = who_is_oncall state esc.alert.team rank !Alarm.now in
+        let victim = who_is_oncall state esc.alert.team rank now in
         let contact = get_cap victim.contacts esc.attempt in
         let sender = Sender.get contact in
-        Log.(add (NewAlert (esc.alert, esc.incident, Notify contact))) ;
-        sender id esc.attempt esc.alert victim.name
-      ) victims
+        Diary.(add (NewAlert (esc.alert, esc.incident, Notify contact))) ;
+        sender id esc.attempt esc.alert victim.name :: ths
+      ) [] victims |>
+    join
 
   (* Send a message and prepare the escalation *)
-  let send state id esc =
+  let send state id esc now =
     let step = get_cap esc.steps esc.attempt in
-    send_alert state id esc step.victims
+    send_alert state id esc step.victims now
 
   let start state esc =
     let id = state.persist.next_alert_id in
@@ -286,15 +287,14 @@ end
 let open_config_db file =
   let open Sqlite3 in
   let ensure_db_table db create insert =
-    if debug then Printf.eprintf "Exec: %s\n%!" create ;
+    !logger.debug "Exec: %s" create ;
     exec db create |> must_be_ok ;
-    if debug then Printf.eprintf "Exec: %s\n%!" insert ;
+    !logger.debug "Exec: %s" insert ;
     exec db insert |> must_be_ok
   in
   try db_open ~mode:`READONLY file
   with Error err ->
-    if debug then
-      Printf.eprintf "Cannot open DB %S: %s, will create a new one.\n%!"
+    !logger.debug "Cannot open DB %S: %s, will create a new one."
         file err ;
     let db = db_open file in
     ensure_db_table db
@@ -333,23 +333,21 @@ let open_config_db file =
     db_close db |> must_be string_of_bool true ;
     db_open ~mode:`READONLY file
 
-let check_escalations state () =
-  (* FIXME: the returned hash is unused so the filter never happens *)
-  Hashtbl.filteri (fun id esc ->
-      if esc.alert.stopped = None then (
-        let step = get_cap esc.steps esc.attempt in
-        if !Alarm.now >= esc.last_sent +. step.timeout then (
-          (* We must escalate *)
-          esc.attempt <- esc.attempt + 1 ;
-          esc.last_sent <- !Alarm.now ;
-          Escalation.send state id esc) ;
-        true
-      ) else ( (* alert has stopped *)
-        false
-      )
-    ) state.persist.ongoing_escalations
+let check_escalations state now =
+  let escals = state.persist.ongoing_escalations in
+  Hashtbl.filter_inplace (fun esc -> esc.alert.stopped = None) escals ;
+  Hashtbl.fold (fun id esc actions ->
+      let step = get_cap esc.steps esc.attempt in
+      if now >= esc.last_sent +. step.timeout then (
+        (* We must escalate *)
+        esc.attempt <- esc.attempt + 1 ;
+        esc.last_sent <- now ;
+        (id, esc) :: actions
+      ) else actions
+    ) escals [] |>
+  Lwt_list.iter_p (fun (id, esc) -> Escalation.send state id esc now)
 
-let get_state save_file db_config_file =
+let get_state save_file db_config_file default_team =
   let get_new () =
     { ongoing_incidents = [] ;
       ongoing_escalations = Hashtbl.create 11 ;
@@ -358,23 +356,23 @@ let get_state save_file db_config_file =
       next_alert_id = 0 }
   in
   let persist =
-    try
-      File.with_file_in save_file (fun ic -> Marshal.input ic)
-    with Sys_error err ->
-          if debug then
-            Printf.eprintf "Cannot read state from file %S: %s. Starting anew\n%!"
-              save_file err ;
-          get_new ()
-       | BatInnerIO.No_more_input ->
-          if debug then
-            Printf.eprintf "Cannot read state from file %S: not enough input. Starting anew\n%!"
-              save_file ;
-          get_new ()
-    in
-  let alarm = Alarm.make ()
-  and db = open_config_db db_config_file in
+    match save_file with
+    | Some fname ->
+      (try
+         File.with_file_in fname (fun ic -> Marshal.input ic)
+       with Sys_error err ->
+             !logger.debug "Cannot read state from file %S: %s. Starting anew."
+                 fname err ;
+             get_new ()
+          | BatInnerIO.No_more_input ->
+             !logger.debug "Cannot read state from file %S: not enough input. Starting anew."
+                 fname ;
+             get_new ())
+    | None -> get_new ()
+  in
+  let db = open_config_db db_config_file in
   let state =
-    { save_file ; dirty = false ; db ; alarm ;
+    { save_file ; dirty = false ; default_team ; db ;
       stmt_get_oncall =
         Sqlite3.prepare db
           "SELECT oncallers.name \
@@ -391,56 +389,176 @@ let get_state save_file db_config_file =
           "SELECT timeout, victims FROM escalations \
            WHERE team = ? AND importance = ? ORDER BY attempt ASC" ;
       persist } in
-  Alarm.every 1. (check_escalations state) ;
+  let rec check_escalations_loop () =
+    let now = Unix.gettimeofday () in
+    catch
+      (fun () -> check_escalations state now)
+      (fun e ->
+        print_exception e ;
+        return_unit) >>=
+    check_escalations_loop
+  in
+  async check_escalations_loop ;
   state
 
 let save_state state =
   if state.dirty then (
-    if debug then
-      Printf.eprintf "Saving state in file %S\n%!" state.save_file ;
-    File.with_file_out ~mode:[`create; `trunc] state.save_file (fun oc ->
-      Marshal.output oc state.persist) ;
+    Option.may (fun fname ->
+        !logger.debug "Saving state in file %S." fname ;
+        File.with_file_out ~mode:[`create; `trunc] fname (fun oc ->
+          Marshal.output oc state.persist)
+      ) state.save_file ;
     state.dirty <- false
   )
 
 (* Everything start by: we receive an alert with a name, a team name,
  * and a description (text + title). *)
-let alert state ~name ~team ~importance ~title ~text ~firing =
+let alert state ~name ~team ~importance ~title ~text ~firing ~now =
   if firing then (
     (* First step: deduplication *)
-    let alert = Alert.make name team importance title text in
+    let alert = Alert.make name team importance title text now in
     let incident, is_dup = Incident.get_or_create state alert in
     if is_dup then (
-      Log.(add (NewAlert (alert, incident, Duplicate))) ;
-    ) else if is_inhibited state name team then (
-      Log.(add (NewAlert (alert, incident, Inhibited))) ;
+      Diary.(add (NewAlert (alert, incident, Duplicate))) ;
+      return_unit
+    ) else if is_inhibited state name team now then (
+      Diary.(add (NewAlert (alert, incident, Inhibited))) ;
+      return_unit
     ) else if incident.stfu then (
-      Log.(add (NewAlert (alert, incident, STFU))) ;
+      Diary.(add (NewAlert (alert, incident, STFU))) ;
+      return_unit
     ) else (
-      let esc = Escalation.make state alert incident in
-      Escalation.start state esc ;
-      save_state state
+      let esc = Escalation.make state alert incident now in
+      let%lwt () = Escalation.start state esc now in
+      save_state state ;
+      return_unit
     )
   ) else (
     (* Retrieve the alert and set it's closing time *)
-    match Incident.find_alert state ~name ~team ~title with
+    (match Incident.find_alert state ~name ~team ~title with
     | exception Not_found ->
       (* Maybe we just strted in non-firing position, or the incident
        * have been manually archived already. Better not ask too many
        * questions and just log *)
-      Log.(add (StopUnstartedAlert (name, team, title)))
+      Diary.(add (StopUnstartedAlert (name, team, title)))
     | i, a ->
-      if debug then Printf.eprintf "Alert stopped.\n" ;
-      a.stopped <- Some !Alarm.now ;
-      Log.(add (StopAlert (a, i))) ;
-      (* Setting this will also terminate the escalation *)
+      !logger.debug "Alert stopped." ;
+      a.stopped <- Some now ;
+      Diary.(add (StopAlert (a, i))) ;
+      (* Setting this will also terminate the escalation *)) ;
+    return_unit
   )
 
 let acknowledge state id =
   match Hashtbl.find state.ongoing_escalations id with
   | exception Not_found ->
-    Printf.eprintf "Received an ack for unknown id %d\n" id ;
-    Log.(add (AckUnknown id))
+    !logger.error "Received an ack for unknown id %d!" id ;
+    Diary.(add (AckUnknown id))
   | esc ->
-    Log.(add (Ack esc)) ;
+    Diary.(add (Ack esc)) ;
     Hashtbl.remove state.ongoing_escalations id
+
+
+module HttpSrv =
+struct
+  let start port cert_opt key_opt state =
+    let router meth path params _headers _body =
+      match meth, path with
+      | `GET, ["notify"] ->
+        let hg = Hashtbl.find params in
+        (match hg "name", hg "firing" with
+        | exception Not_found ->
+          let m = "Missing parameter: must provide at least name and firing" in
+          fail (HttpError (400, m))
+        | name, firing ->
+          let hgo = Hashtbl.find_default params
+          and now = Unix.gettimeofday () in
+          match hgo "importance" "10" |> int_of_string,
+                hgo "now" (string_of_float now) |> float_of_string with
+          | exception _ ->
+            fail (HttpError (400, "importance and now must be numeric"))
+          | importance, now ->
+            let firing = looks_like_true firing in
+            alert state ~name ~importance ~now ~firing
+              ~team:(hgo "team" state.default_team)
+              ~title:(hgo "title" "")
+              ~text:(hgo "text" "") >>=
+            Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~body:"")
+      | _, ["notify"] ->
+        fail (HttpError (405, "Method not implemented"))
+      | _ ->
+        fail (HttpError (404, "No such resource"))
+  in
+  http_service port cert_opt key_opt router
+end
+
+(*
+ * Start the notification listener
+ *)
+
+open Cmdliner
+
+let debug =
+  let env = Term.env_info "ALERT_DEBUG" in
+  let i = Arg.info ~doc:"increase verbosity"
+                   ~env ["d"; "debug"] in
+  Arg.(value (flag i))
+
+let config_db =
+  let env = Term.env_info "ALERT_CONFIG_DB" in
+  let i = Arg.info ~doc:"Sqlite file with the alerting configuration"
+                   ~env [ "config"; "config-file" ] in
+  Arg.(required (opt (some string) None i))
+
+let http_port =
+  let env = Term.env_info "ALERT_HTTP_PORT" in
+  let i = Arg.info ~doc:"Port where to run the HTTP server \
+                         (HTTPS will be run on that port + 1)"
+                   ~env [ "http-port" ] in
+  Arg.(value (opt int 29380 i))
+
+let ssl_cert =
+  let env = Term.env_info "ALERT_SSL_CERT_FILE" in
+  let i = Arg.info ~doc:"File containing the SSL certificate"
+                   ~env [ "ssl-certificate" ] in
+  Arg.(value (opt (some string) None i))
+
+let ssl_key =
+  let env = Term.env_info "ALERT_SSL_KEY_FILE" in
+  let i = Arg.info ~doc:"File containing the SSL private key"
+                   ~env [ "ssl-key" ] in
+  Arg.(value (opt (some string) None i))
+
+let save_file =
+  let env = Term.env_info "ALERT_SAVE_FILE" in
+  let i = Arg.info ~doc:"file where to save the current state of alerting"
+                   ~env ["save-file"] in
+  Arg.(value (opt (some string) None i))
+
+let default_team =
+  let env = Term.env_info "ALERT_DEFAULT_TEAM" in
+  let i = Arg.info ~doc:"default team when unspecified in the notification"
+                   ~env ["default-team"] in
+  Arg.(value (opt string "firefighters" i))
+
+let start_all debug save_file config_db default_team http_port ssl_cert ssl_key =
+  logger := make_logger debug ;
+  let alerter_state = get_state save_file config_db default_team in
+  HttpSrv.start http_port ssl_cert ssl_key alerter_state
+
+let start_cmd =
+  Term.(
+    (const start_all
+      $ debug
+      $ save_file
+      $ config_db
+      $ default_team
+      $ http_port
+      $ ssl_cert
+      $ ssl_key),
+    info "alert manager")
+
+let () =
+  match Term.eval start_cmd with
+  | `Ok th -> Lwt_main.run th
+  | x -> Term.exit x

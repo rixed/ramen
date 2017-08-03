@@ -194,6 +194,7 @@ let graph_info_of_bcns delete csv_dir bcns =
           name_prefix bcn.percentile bcn.obs_window in
       make_node ~parents:[avg_per_zones] name op in
     let enc = Uri.pct_encode in
+    (* TODO: we need an hysteresis here! *)
     Option.may (fun min_bps ->
         let subject = Printf.sprintf "Too little traffic from zone %s to %s"
                         (name_of_zones bcn.source) (name_of_zones bcn.dest)
@@ -205,8 +206,9 @@ let graph_info_of_bcns delete csv_dir bcns =
                       min_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
           "WHEN bps < %d\n  \
-           NOTIFY \"http://localhost:876/LowTraffic?subject=%s&text=%s\""
-            min_bps (enc subject) (enc text) in
+           NOTIFY \"http://localhost:876/notify?name=Low%%20traffic&firing=1&subject=%s&text=%s\""
+            min_bps
+            (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
         make_node ~parents:[perc_per_obs_window] name ops |>
         ignore
@@ -222,8 +224,9 @@ let graph_info_of_bcns delete csv_dir bcns =
                       max_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
           "WHEN bps > %d\n  \
-           NOTIFY \"http://localhost:876/HighTraffic?subject=%s&text=%s\""
-            max_bps (enc subject) (enc text) in
+           NOTIFY \"http://localhost:876/notify?name=High%%20traffic&firing=1&subject=%s&text=%s\""
+            max_bps
+            (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
         make_node ~parents:[perc_per_obs_window] name ops |>
         ignore
