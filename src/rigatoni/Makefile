@@ -29,7 +29,8 @@ LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h
 
 CONFIGURATOR_SOURCES = \
-	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml Conf_of_sqlite.ml Configurator.ml
+	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml Conf_of_sqlite.ml \
+	ramen_configurator.ml
 
 SOURCES = \
 	$(RIGATONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
