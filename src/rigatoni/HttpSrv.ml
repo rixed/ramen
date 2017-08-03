@@ -284,12 +284,53 @@ let get_graph_dot conf _headers =
   let headers = Header.init_with "Content-Type" Consts.dot_content_type in
   Server.respond_string ~headers ~status ~body ()
 
+let mermaid_of_graph graph =
+  (* Build unique identifier that are valid for mermaid: *)
+  let is_alphanum c =
+    Char.(is_letter c || is_digit c) in
+  let mermaid_id n =
+    "id_" ^ (* To make it start with an alpha *)
+    String.replace_chars (fun c ->
+      if is_alphanum c then String.of_char c
+      else string_of_int (Char.code c)) n
+  (* And valid labels *)
+  and mermaid_label n =
+    "\""^ String.nreplace n "\"" "#quot;" ^"\""
+  in
+  let txt = IO.output_string () in
+  Printf.fprintf txt "graph LR\n" ;
+  Hashtbl.keys graph.C.persist.C.nodes |>
+    Enum.iter (fun n ->
+      Printf.fprintf txt "%s(%s)\n"
+        (mermaid_id n)
+        (mermaid_label n)) ;
+  Printf.fprintf txt "\n" ;
+  Hashtbl.iter (fun name node ->
+      List.iter (fun c ->
+          Printf.fprintf txt "\t%s-->%s\n"
+            (mermaid_id name)
+            (mermaid_id c.C.name)
+        ) node.C.children
+    ) graph.C.persist.C.nodes ;
+  IO.close_out txt
+
+let get_graph_mermaid conf _headers =
+  let body = mermaid_of_graph conf.C.building_graph in
+  let status = `Code 200 in
+  let headers = Header.init_with "Content-Type" Consts.mermaid_content_type in
+  let headers = Header.add headers "Access-Control-Allow-Origin" "*" in
+  let headers = Header.add headers "Access-Control-Allow-Methods" "POST" in
+  let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
+  Server.respond_string ~headers ~status ~body ()
+
 let get_graph conf headers =
   let accept = get_accept headers in
   if is_accepting Consts.json_content_type accept then
     get_graph_json conf headers
   else if is_accepting Consts.dot_content_type accept then
     get_graph_dot conf headers
+  else if is_accepting Consts.mermaid_content_type accept then
+    get_graph_mermaid conf headers
   else
     cant_accept accept
 

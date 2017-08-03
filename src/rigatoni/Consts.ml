@@ -1,5 +1,6 @@
 let json_content_type = "application/json"
 let dot_content_type = "text/dot"
+let mermaid_content_type = "text/mermaid"
 let text_content_type = "text/plain"
 let html_content_type = "text/html"
 let css_content_type = "text/css"
