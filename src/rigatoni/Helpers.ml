@@ -45,3 +45,54 @@ let print_exception e =
   !logger.error "Exception: %s at\n%s"
     (Printexc.to_string e)
     (Printexc.get_backtrace ())
+
+exception HttpError of (int * string)
+
+let http_service port cert_opt key_opt router =
+  let open Cohttp in
+  let open Cohttp_lwt_unix in
+  let callback _conn req body =
+    let uri = Request.uri req in
+    let path =
+      String.nsplit (Uri.path uri) "/" |>
+      List.filter (fun s -> String.length s > 0) |>
+      List.map Uri.pct_decode in
+    let headers = Request.headers req in
+    let%lwt body = Cohttp_lwt_body.to_string body
+    in
+    catch
+      (fun () ->
+        try router (Request.meth req) path headers body
+        with exn ->
+          print_exception exn ;
+          fail exn)
+      (function
+        | HttpError (code, body) ->
+          let body = body ^ "\n" in
+          let status = Code.status_of_code code in
+          let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+          Server.respond_error ~headers ~status ~body ()
+        | exn ->
+          let body = Printexc.to_string exn ^ "\n" in
+          let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+          Server.respond_error ~headers ~body ())
+  in
+  let entry_point = Server.make ~callback () in
+  let tcp_mode = `TCP (`Port port) in
+  let on_exn = print_exception in
+  let t1 =
+    !logger.info "Starting http server on port %d" port ;
+    Server.create ~on_exn ~mode:tcp_mode entry_point
+  and t2 =
+    match cert_opt, key_opt with
+    | Some cert, Some key ->
+      let port = port + 1 in
+      let ssl_mode = `TLS (`Crt_file_path cert, `Key_file_path key, `No_password, `Port port) in
+      !logger.info "Starting https server on port %d" port ;
+      Server.create ~on_exn ~mode:ssl_mode entry_point
+    | None, None ->
+      return (!logger.info "Not starting https server")
+    | _ ->
+      return (!logger.info "Missing some of SSL configuration")
+  in
+  join [ t1 ; t2 ]

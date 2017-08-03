@@ -6,9 +6,8 @@ open Cohttp_lwt_unix
 open Lwt
 open Log
 open RamenSharedTypes
+open Helpers
 module C = RamenConf
-
-exception HttpError of (int * string)
 
 let not_implemented msg = fail (HttpError (501, msg))
 let bad_request msg = fail (HttpError (400, msg))
@@ -592,116 +591,57 @@ let timeseries conf headers body =
     let body = PPP.to_string timeseries_resp_ppp resp in
     respond_ok ~body ()
 
-(* let fake_series from to_ (req : timeserie_req) =
-    let nb_pts = 100 in
-    let time_of_i i =
-      from +. float_of_int i *. (to_ -. from) /. float_of_int nb_pts in
-    let times = Array.init nb_pts time_of_i in
-    let values = Array.init nb_pts (fun i ->
-                    let t = times.(i) in sin(t)) in
-    { id = req.id ; times ; values }
-  in
-  let body =
-    List.map (fake_series msg.from msg.to_) msg.timeseries |>
-    PPP.to_string timeseries_resp_ppp in
-  respond_ok ~body () *)
-
-
-(* The function called for each HTTP request: *)
-
-let callback conf _conn req body =
-  (* What is this about? *)
-  let uri = Request.uri req in
-  let paths =
-    String.nsplit (Uri.path uri) "/" |>
-    List.filter (fun s -> String.length s > 0) in
-  let headers = Request.headers req in
-  let%lwt body = Cohttp_lwt_body.to_string body
-  in
-  catch
-    (fun () ->
-      let dec = Uri.pct_decode in
-      try
-        match Request.meth req, paths with
-        (* API *)
-        | `PUT, ["node" ; name] -> put_node conf headers (dec name) body
-        | `GET, ["node" ; name] -> get_node conf headers (dec name)
-        | `DELETE, ["node" ; name] -> del_node conf headers (dec name)
-        | _, ["node"] -> bad_request "Missing node name"
-        | `PUT, ["link" ; src ; dst] -> put_link conf headers (dec src) (dec dst)
-        | `GET, ["link" ; src ; dst] -> get_link conf headers (dec src) (dec dst)
-        | `DELETE, ["link" ; src ; dst] -> del_link conf headers (dec src) (dec dst)
-        | _, (["link"] | ["link" ; _ ]) -> bad_request "Missing node name"
-        | `PUT, ["links" ; name] -> set_links conf headers (dec name) body
-        | `PUT, ["links"] -> bad_request "Missing node name"
-        | `GET, ["graph"] -> get_graph conf headers
-        | `PUT, ["graph"] -> put_graph conf headers body
-        | `GET, ["compile"] -> compile conf headers
-        | `GET, ["run" | "start"] -> run conf headers
-        | `GET, ["stop"] -> stop conf headers
-        | (`GET|`POST), ["export" ; name] ->
-          (* We must allow both POST and GET for that one since we have an optional
-           * body (and some client won't send a body with a GET) *)
-          export conf headers (dec name) body
-        (* API for children *)
-        | `PUT, ["report" ; name] -> report conf headers (dec name) body
-        (* WWW Client *)
-        | `GET, ([] | ["" | "index.html"]) ->
-          get_file conf headers "index.html"
-        | `GET, ["static"; "style.css"|"misc.js"|"graph_layout.js"
-                |"node_edit.js" as file] ->
-          get_file conf headers file
-        (* Grafana datasource plugin *)
-        | `GET, ["grafana"] -> respond_ok ()
-        | `POST, ["complete"; "nodes"] ->
-          complete_nodes conf headers body
-        | `POST, ["complete"; "fields"] ->
-          complete_fields conf headers body
-        | `POST, ["timeseries"] ->
-          timeseries conf headers body
-        | `OPTIONS, _ ->
-          let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
-          let headers = Header.add headers "Access-Control-Allow-Methods" "POST" in
-          let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
-          Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
-        (* Errors *)
-        | `PUT, _ | `GET, _ | `DELETE, _ ->
-          fail (HttpError (404, "No such resource"))
-        | _ ->
-          fail (HttpError (405, "Method not implemented"))
-      with exn ->
-        Helpers.print_exception exn ;
-        fail exn)
-    (function
-      | HttpError (code, body) ->
-        let body = body ^ "\n" in
-        let status = Code.status_of_code code in
-        let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
-        Server.respond_error ~headers ~status ~body ()
-      | exn ->
-        let body = Printexc.to_string exn ^ "\n" in
-        let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
-        Server.respond_error ~headers ~body ())
-
 let start debug save_file ramen_url port cert_opt key_opt () =
   logger := make_logger debug ;
   let conf = C.make_conf save_file ramen_url in
-  let entry_point = Server.make ~callback:(callback conf) () in
-  let tcp_mode = `TCP (`Port port) in
-  let on_exn = Helpers.print_exception in
-  let t1 =
-    let%lwt () = return (!logger.info "Starting http server on port %d" port) in
-    Server.create ~on_exn ~mode:tcp_mode entry_point
-  and t2 =
-    match cert_opt, key_opt with
-    | Some cert, Some key ->
-      let port = port + 1 in
-      let ssl_mode = `TLS (`Crt_file_path cert, `Key_file_path key, `No_password, `Port port) in
-      let%lwt () = return (!logger.info "Starting https server on port %d" port) in
-      Server.create ~on_exn ~mode:ssl_mode entry_point
-    | None, None ->
-      return (!logger.info "Not starting https server")
-    | _ ->
-      return (!logger.info "Missing some of SSL configuration")
+  let router meth path headers body =
+    (* The function called for each HTTP request: *)
+      match meth, path with
+      (* API *)
+      | `PUT, ["node" ; name] -> put_node conf headers name body
+      | `GET, ["node" ; name] -> get_node conf headers name
+      | `DELETE, ["node" ; name] -> del_node conf headers name
+      | _, ["node"] -> bad_request "Missing node name"
+      | `PUT, ["link" ; src ; dst] -> put_link conf headers src dst
+      | `GET, ["link" ; src ; dst] -> get_link conf headers src dst
+      | `DELETE, ["link" ; src ; dst] -> del_link conf headers src dst
+      | _, (["link"] | ["link" ; _ ]) -> bad_request "Missing node name"
+      | `PUT, ["links" ; name] -> set_links conf headers name body
+      | `PUT, ["links"] -> bad_request "Missing node name"
+      | `GET, ["graph"] -> get_graph conf headers
+      | `PUT, ["graph"] -> put_graph conf headers body
+      | `GET, ["compile"] -> compile conf headers
+      | `GET, ["run" | "start"] -> run conf headers
+      | `GET, ["stop"] -> stop conf headers
+      | (`GET|`POST), ["export" ; name] ->
+        (* We must allow both POST and GET for that one since we have an optional
+         * body (and some client won't send a body with a GET) *)
+        export conf headers name body
+      (* API for children *)
+      | `PUT, ["report" ; name] -> report conf headers name body
+      (* WWW Client *)
+      | `GET, ([] | ["" | "index.html"]) ->
+        get_file conf headers "index.html"
+      | `GET, ["static"; "style.css"|"misc.js"|"graph_layout.js"
+              |"node_edit.js" as file] ->
+        get_file conf headers file
+      (* Grafana datasource plugin *)
+      | `GET, ["grafana"] -> respond_ok ()
+      | `POST, ["complete"; "nodes"] ->
+        complete_nodes conf headers body
+      | `POST, ["complete"; "fields"] ->
+        complete_fields conf headers body
+      | `POST, ["timeseries"] ->
+        timeseries conf headers body
+      | `OPTIONS, _ ->
+        let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+        let headers = Header.add headers "Access-Control-Allow-Methods" "POST" in
+        let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
+        Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
+      (* Errors *)
+      | `PUT, _ | `GET, _ | `DELETE, _ ->
+        fail (HttpError (404, "No such resource"))
+      | _ ->
+        fail (HttpError (405, "Method not implemented"))
   in
-  Lwt_main.run (join [ t1 ; t2 ])
+  Lwt_main.run (http_service port cert_opt key_opt router)
