@@ -1177,9 +1177,9 @@ struct
       (if fields <> [] && and_all_others then sep else "")
       (if and_all_others then "*" else "")
       (Expr.print false) where ;
-    Option.may (fun e -> print_export fmt e) export ;
+    Option.may (fun e -> Printf.fprintf fmt " %a" print_export e) export ;
     if notify_url <> "" then
-      Printf.fprintf fmt "NOTIFY %S" notify_url
+      Printf.fprintf fmt " NOTIFY %S" notify_url
 
   let print fmt =
     let sep = ", " in
