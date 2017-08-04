@@ -1279,9 +1279,9 @@ struct
       in
       (export_no_time_info ||| export_with_time_info) m
 
-    let notify_url m =
+    let notify_clause m =
       let m = "notify clause" :: m in
-      (strinG "NOTIFY" -- blanks -+ quoted_string) m
+      (strinG "notify" -- blanks -+ quoted_string) m
 
     let select_clause m =
       let m = "select clause" :: m in
@@ -1294,23 +1294,43 @@ struct
       let m = "where clause" :: m in
       ((strinG "where" ||| strinG "when") -- blanks -+ Expr.Parser.p) m
 
+    type select_clauses =
+      | SelectClause of selected_field option list
+      | WhereClause of Expr.t
+      | ExportClause of event_time_info
+      | NotifyClause of string
     let select m =
       let m = "select operation" :: m in
-      ((select_clause ++
-        optional ~def:Expr.expr_true (blanks -+ where_clause) |||
-        return [None] ++ where_clause) ++
-       optional ~def:None (blanks -+ some export_clause) ++
-       optional ~def:"" (blanks -+ notify_url) >>:
-      fun (((fields_or_stars, where), export), notify_url) ->
-        let fields, and_all_others =
-          List.fold_left (fun (fields, and_all_others) -> function
-              | Some f -> f::fields, and_all_others
-              | None when not and_all_others -> fields, true
-              | None -> raise (Reject "All fields (\"*\") included several times")
-            ) ([], false) fields_or_stars in
-        (* The above fold_left inverted the field order. *)
-        let fields = List.rev fields in
-        Select { fields ; and_all_others ; where ; export ; notify_url }) m
+      let part =
+        (select_clause >>: fun c -> SelectClause c) |||
+        (where_clause >>: fun c -> WhereClause c) |||
+        (export_clause >>: fun c -> ExportClause c) |||
+        (notify_clause >>: fun c -> NotifyClause c) in
+      (several ~sep:blanks part >>: fun clauses ->
+        if clauses = [] then raise (Reject "Empty select") ;
+        let default_select = [], true, Expr.expr_true, None, "" in
+        let fields, and_all_others, where, export, notify_url =
+          List.fold_left (
+            fun (fields, and_all_others, where, export, notify_url) -> function
+              | SelectClause fields_or_stars ->
+                let fields, and_all_others =
+                  List.fold_left (fun (fields, and_all_others) -> function
+                      | Some f -> f::fields, and_all_others
+                      | None when not and_all_others -> fields, true
+                      | None -> raise (Reject "All fields (\"*\") included several times")
+                    ) ([], false) fields_or_stars in
+                (* The above fold_left inverted the field order. *)
+                let fields = List.rev fields in
+                fields, and_all_others, where, export, notify_url
+              | WhereClause where ->
+                fields, and_all_others, where, export, notify_url
+              | ExportClause export ->
+                fields, and_all_others, where, Some export, notify_url
+              | NotifyClause notify_url ->
+                fields, and_all_others, where, export, notify_url
+            ) default_select clauses in
+        Select { fields ; and_all_others ; where ; export ; notify_url }
+      ) m
 
     let group_by m =
       let m = "group-by clause" :: m in
@@ -1459,6 +1479,17 @@ struct
           notify_url = "" },\
         (73, [])))\
         (test_p p "select t1, t2, value export event starting at t1*10 and stopping at t2*10" |>\
+         replace_typ_in_op)
+
+      (Ok (\
+        Select {\
+          fields = [] ;\
+          and_all_others = true ;\
+          where = Expr.Const (typ, VBool true) ;\
+          export = None ;\
+          notify_url = "http://firebrigade.com/alert.php" },\
+        (41, [])))\
+        (test_p p "NOTIFY \"http://firebrigade.com/alert.php\"" |>\
          replace_typ_in_op)
 
       (Ok (\
