@@ -35,16 +35,16 @@ let can_cast ~from_scalar_type ~to_scalar_type =
   let compatible_types =
     match from_scalar_type with
     | TNum -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
-    | TU8 -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
-    | TU16 -> [ TU16 ; TU32 ; TU64 ; TU128 ; TI32 ; TI64 ; TI128 ; TFloat ]
-    | TU32 -> [ TU32 ; TU64 ; TU128 ; TI64 ; TI128 ; TFloat ]
-    | TU64 -> [ TU64 ; TU128 ; TI128 ; TFloat ]
-    | TU128 -> [ TU128 ; TFloat ]
-    | TI8 -> [ TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TU16 ; TU32 ; TU64 ; TU128 ; TFloat ]
-    | TI16 -> [ TI16 ; TI32 ; TI64 ; TI128 ; TU32 ; TU64 ; TU128 ; TFloat ]
-    | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ]
-    | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ]
-    | TI128 -> [ TI128 ; TFloat ]
+    | TU8 -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
+    | TU16 -> [ TU16 ; TU32 ; TU64 ; TU128 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
+    | TU32 -> [ TU32 ; TU64 ; TU128 ; TI64 ; TI128 ; TFloat ; TNum ]
+    | TU64 -> [ TU64 ; TU128 ; TI128 ; TFloat ; TNum ]
+    | TU128 -> [ TU128 ; TFloat ; TNum ]
+    | TI8 -> [ TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TU16 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
+    | TI16 -> [ TI16 ; TI32 ; TI64 ; TI128 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
+    | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ; TNum ]
+    | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
+    | TI128 -> [ TI128 ; TFloat ; TNum ]
     | x -> [ x ] in
   List.mem to_scalar_type compatible_types
 

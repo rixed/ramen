@@ -203,7 +203,7 @@ let demo_cmds =
   { demo_url = "node/LowTrafficAlert" ;
     demo_payload = "{\n\
     \"operation\":\n\
-      \"NOTIFY \\\"http://firebrigade.com/alert.php?msg=Low%20traffic%20to%20${ip4_server}\\\"\n\
+      \"NOTIFY \\\"http://firebrigade.com/alert.php?msg=Low%20traffic%20to%20${ip4_server}\\\"\"\n\
     }" } ::
   (list_unfold (fun i lst ->
     if i >= nb_zones then lst else (
