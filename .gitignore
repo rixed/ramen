@@ -11,6 +11,7 @@ oUnit-anon.cache
 *.a
 *.annot
 *.o
+*.s
 *.byte
 *.top
 .depend

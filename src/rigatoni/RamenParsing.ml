@@ -17,4 +17,3 @@ let blanks =
 
 let opt_blanks =
   optional_greedy ~def:() blanks
-

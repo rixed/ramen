@@ -105,7 +105,7 @@ clean-spec:
 	$(RM) www/node_edit.byte www/*.cmi www/*.cmo
 
 distclean-spec:
-	$(RM) rigatoni codegen.cmxa www/node_edit.js
+	$(RM) rigatoni codegen.cmxa www/node_edit.js ringbuf/ringbuf.o
 
 check-spec: ringbuf_test.opt
 	@./ringbuf_test.opt || echo "FAILURE"

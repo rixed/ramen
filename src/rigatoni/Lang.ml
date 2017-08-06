@@ -924,7 +924,7 @@ struct
       let op = char '^'
       and reduce t1 _ t2 = Exp (make_num_typ "exponentiation", t1, t2) in
       binary_ops_reducer ~op ~right_associative:true
-                         ~term:highest_prec_left_assoc ~sep:opt_blanks~reduce m
+                         ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
     and afun1 n =
       let sep = check (char '(') ||| blanks in

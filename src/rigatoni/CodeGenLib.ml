@@ -588,7 +588,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   )
 
 let () =
-  Lwt.async_exception_hook := (fun exn ->
+  async_exception_hook := (fun exn ->
     !logger.error "Received exception %s from:\n%s"
       (Printexc.to_string exn)
       (Printexc.get_backtrace()))
