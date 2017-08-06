@@ -254,7 +254,9 @@ let put_graph ramen_url graph =
   let body = `String graph_json in
   (* TODO: but also fix the server never timeouting! *)
   let headers = Header.init_with "Connection" "close" in
-  let%lwt (resp, body) = Client.put ~headers ~body (Uri.of_string url) in
+  let%lwt (resp, body) =
+    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.
+      (Client.put ~headers ~body) (Uri.of_string url) in
   let code = resp |> Response.status |> Code.code_of_status in
   !logger.debug "Response code: %d" code ;
   let%lwt body = Cohttp_lwt_body.to_string body in

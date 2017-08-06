@@ -263,7 +263,8 @@ let select read_tuple field_of_tuple sersize_of_tuple serialize_tuple where sele
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
   let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
-    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load rb_in_fname in
+    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
+      (fun n -> return (RingBuf.load n)) rb_in_fname in
   let outputer =
     outputer_of rb_outs sersize_of_tuple serialize_tuple
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
@@ -414,7 +415,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
     Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
-                  RingBuf.load rb_in_fname in
+                  (fun n -> return (RingBuf.load n)) rb_in_fname in
   let h = Hashtbl.create 701
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and event_count = ref 0 (* used to fake others.count etc *)

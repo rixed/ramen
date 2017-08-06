@@ -15,7 +15,7 @@ let round_to_int f =
 let retry ~on ?(first_delay=1.0) ?(min_delay=0.000001) ?(max_delay=10.0) ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.1) f =
   let next_delay = ref first_delay in
   let rec loop x =
-    (match f x with
+    (match%lwt f x with
     | exception e ->
       if on e then (
         let delay = !next_delay in

@@ -19,7 +19,8 @@ let retry_for_ringbuf f =
     | Failure _ -> true
     | _ -> false
   in
-  Helpers.retry ~on ~first_delay:0.001 ~max_delay:0.01 f
+  Helpers.retry ~on ~first_delay:0.001 ~max_delay:0.01
+    (fun x -> Lwt.return (f x))
 
 let rec sersize_of_fixsz_typ =
   let open RamenSharedTypes in
