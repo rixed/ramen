@@ -41,7 +41,8 @@ SOURCES = \
 	$(RIGATONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 	www/FakeStdint.ml www/node_edit.ml \
-	$(CONFIGURATOR_SOURCES)
+	$(CONFIGURATOR_SOURCES) $(ALERTER_SOURCES) \
+	ringbuf_test.ml
 
 JS_PACKAGES = ocaml-vdom js_of_ocaml-lwt js_of_ocaml-ppx lwt.ppx
 PACKAGES = \
