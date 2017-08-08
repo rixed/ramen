@@ -33,3 +33,7 @@ config.db
 config.*.db
 src/rigatoni/100k.csv
 src/rigatoni/ramen_alerter
+src/cannelloni/cannelloni
+src/cannelloni/HELP.html
+src/cannelloni/100k.csv
+src/cannelloni/ramen_alerter

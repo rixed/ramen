@@ -1,0 +1,798 @@
+= Ramen / Rigatoni
+
+== Overview
+
+Ramen is a stream processor. Unlike other stream processors that are designed
+to scale to many servers, Ramen is designed to be efficient on a single (or
+very few) servers.
+
+This document the second prototype of Ramen, named _Rigatoni_.
+
+Rigatoni consists of a single process serving HTTP on port 29380 (by default).
+Using this server one can:
+
+- view the current configuration (ie. the stream processing graph);
+- edit this configuration;
+- start/stop the processing.
+
+When it comes to processing the stream, Rigatoni does not directly execute the
+graph. Rather, it compiles each operation into a separate process and those
+processes then exchange the message composing the stream via shared memory ring
+buffers. Rigatoni itself jut monitors those processes and manage the
+configuration. This is the key idea guiding the design of Rigatoni. This is so
+for performance reason: we wanted the messages to be arbitrary yet to spend
+minimum time (un)serializing them and accessing their field values.
+
+Some redundancy can be obtained from running the exact same configuration with
+same input messages on two different locations (and obviously de-duplication of
+the produced effects). It is outside the scope of this prototype
+
+Protection against failure is similarly simple: any message queued will be
+processed, but messages that fail will not be retried. This offer simple
+protection against message-of-death scenario. We value low latency over
+exhaustiveness, thus overloading the system will result in dropped messages.
+
+The configuration consists of the stream processing graph to be implemented.
+The vertices (or nodes) of this graph are the operations to be performed on the
+stream and the edges (or links) are the flow of messages from one operation to
+the next.  The graph is thus directed, and in general tends to be very close to
+a tree but nothing prevents arbitrary graphs, including with cycles.
+
+Messages (or events) are atomic data fragments consumed and produced by nodes.
+They are processed in FIFO order (remember the ring buffers) for each
+operation, but no synchronization mechanism exists between several nodes.
+
+Most nodes receives messages as input. In that case, all messages have the same
+type.  Then it process this message, and produce zero, one or more messages of
+possibly another type.  Each of this produced messages will be send to all
+outputs. Therefore, each node has an input and an output type: the types of
+message they accept and produce.
+
+Also since all produced messages are copied to all output, having several
+output is not a way to load-balance the workload. Load balancing is handled by
+Rigatoni and the configuration need not take this into account. Instead,
+sending several copies of the same produced messages to different downstream
+nodes is useful for conducting different computations on the same data.
+
+In order to find a compromise between ease of use and power of expression,
+messages are not totally arbitrary. They must be _tuples_, each of which fields
+must be of one of the supported primitive type: character string, boolean,
+floating number, and integers of various size from 8 to 128 bits. Restricting
+messages to tuples simplify a lot the configuration language while not limited
+the use cases too much. Actually, I'm yet to met a stream processor that can
+process really arbitrary messages.
+
+There are actually quite few types of operation one may want to perform. Or, to
+put it another way: it is possible to describe many different operations with
+very few construct, if they are generic enough. Rigatoni uses only 5 primitive
+operations, inspired loosely by SQL.:
+
+- +SELECT+, which filter the incoming messages and map each of the selected
+  ones into an output message (not unlike the +map_filter+ operation in
+  functional languages);
+
+- +GROUP BY+, or +AGGREGATE+, which looks superficially like a +SELECT+ but
+  groups incoming tuples according to some key and aggregates each group into a
+  single tuple that is emitted once a condition a met. This is similar to SQL
+  "SELECT ... GROUP BY" with the important difference that you have to instruct
+  Rigatoni when to output the aggregation (since streams are endless, at least
+  in theory, while SQL SELECTs are bounded)
+
+- +READ+, which read messages from an external source (such as a CSV file) or
+  the HTTP server.
+
+- +YIELD+, which outputs messages without consuming any input; and therefore
+  can only produce tuples of limited interest, mostly constants. This is mostly
+  used for testing. One could devise a +SELECT+ operation that do not _use_
+  anything from the input, but the select would still require some incoming
+  message to produce anything. That's the difference with +YIELD+: As yield do
+  not read any input it can produce messages at full speed.
+
+- +OUTPUT+, which produces some externally visible result. Externally available
+  tuples can be sent somewhere but can also merely be kept for an external
+  program to fetch them.
+
+== The Configuration Language Reference
+
+We describe first values, then expressions, then operations.  All these
+concepts references each others so there is no reading order that would save
+you from jumping around. First reading may not be clear but everything should
+eventually fall into place.
+
+Some reserved keywords cannot be used as identifiers, unless surrounded by
+simple quotes.
+
+=== Values
+
+==== NULLs
+
+Like in SQL, some field values may be NULL. Rigatoni typing system knows what
+value can be NULL and spare the NULL checks unless necessary.
+
+Users can check if a NULL-able value is NULL using the +IS NULL+ or +IS NOT
+NULL+ operators, which turn a NULL-able value into a boolean. This is useful
+in where clauses.
+
++NULL+ is both a type and a value. The +NULL+ value is the only possible value
+of the +NULL+ type, or a possible value for any NULL-able type.
+
+To write a literal +NULL+ value (of the +NULL+ type), enter `NULL`.
+
+==== Booleans
+
+The type for booleans is called `bool`.
+Booleans true and false are spelled `true` and `false`.
+
+==== Strings
+
+The type for character strings is called `string`.  A literal string is double
+quoted (with +"+). To include a double-quote, backslash it.  Other characters
+can be backslashed: single quote (`"\'"`), newlines (`"\n"` and `"\r"`),
+horizontal tab (`"\t"`) and backspace (`"\b"`), and backslash itself (`"\\"`).
+
+==== Floats
+
+The type for real numbers is called `float`. It is the standard IEEE.754 64
+bits floats.  Literal values will cause minimum surprise: dot notation
+(`"3.14"`) and scientific notation (`"314e-2"`) are supported.
+
+==== Integers
+
+Rigatoni allows integer types of 5 different sizes from 8 to 128 bits, signed
+or unsigned: `i8`, `i16`, `i32`, `i64`, `i128`, that are signed, and `u8`,
+`u16`, `u32`, `u64` and `u128`, that are unsigned.
+
+When writing a literal integer you can specify its type by suffixing it with
+the type name (for instance: `42u128` would be an unsigned integer 128 bits
+wide). If you do not then Rigatoni will choose the narrowest possible type that
+can accommodate that integer value.
+
+In addition to the suffix, you can also use a cast, using the type name as a
+function: `u128(42)`. This is equivalent but more general as it can be used on
+other values than literal integers.
+
+The difference between signed and unsigned is of little practical importance.
+By contrast, the difference between various sizes can be of tremendous
+importance. Indeed, in some occasions Rigatoni will pick a type that is
+narrower than what you intended. Let's see an example:
+
+[source,sql]
+----
+  SELECT status, SUM err_count AS per_status_err_count GROUP BY status
+    COMMIT AND FLUSH WHEN per_status_err_count > 1000
+----
+
+Here the intend is to accumulate the error count until there are at least
+1000 or them. But if err_ount is a u8, the SUM will accumulate the error
+counts in an u8 which will wrap around after 255. Therefore the ending
+condition (`per_status_err_count > 1000`) will never be met.  To solve this
+issue, simply add a cast:
+
+[source,sql]
+----
+  SELECT status, SUM u16(err_count) AS per_status_err_count GROUP BY status
+    COMMIT AND FLUSH WHEN per_status_err_count > 1000
+----
+
+==== Network addresses
+
+Ethernet addresses are accepted with the usual notation, such as:
+`18:d6:c7:28:71:f5` (without quotes, those are not strings!) They are
+internally stored as 48bits unsigned integers and can be casted from/to other
+integer types.
+
+
+=== Expressions
+
+==== Literal values
+
+Any literal value (as described in the previous section) is a valid expression.
+
+==== Tuple field names
+
+In addition to literal values, one can refer to a tuple field. Which tuples are
+available depends on the clause but the general syntax is:
+`tuple_name.field_name`. The prefix (before the dot) can be omitted and then
+the field is understood to refer to the "in" tuple (the input tuple).
+
+Here is a list of all possible tuples, in order of appearance in the data flow:
+
+[[input-tuple]]
+===== Input tuple
+
+The tuple that has been received as input.  Its name is `in` and that's also
+the default tuple when the tuple name is omitted.
+
+You can use the `in` tuple in all clauses but in a +YIELD+ operation or a
++READ+ operation.  When used in the commit clause of a +GROUP BY+ operation,
+it refers to the last received tuple.
+
+[[selected-tuple]]
+===== Selected tuple
+
+Named `selected`, this is the tuple that passed the where filter.  It is
+obvious that the input tuple has passed that filter as well, otherwise the
+expression wouldn't be evaluated, so what's the point?
+
+The difference is the virtual fields of those tuples (see next section about
+<<virtual-fields>> for a more thorough explanation).
+
+The `selected` tuple can be used anywhere but in a group-by clause.
+
+[[unselected-tuple]]
+===== Unselected tuple
+
+Named `unselected`, this is the tuple that failed the where filter.
+
+It can be used in the same places as the `selected` tuple, that is pretty much
+everywhere.
+
+[[group-tuple]]
+===== Group tuple
+
+A tuple that represents the current aggregate of a +GROUP BY+ operation.
+It can be used only once the key is known, so only in the commit and flush-when
+clauses.
+
+[[output-tuple]]
+===== Output tuple
+
+The tuple that is going to be output. Its name is `out`.  The only places
+where it can be used is in the where, commit and flush-when clauses of a
++GROUP BY+ operation. It thus refers to the tuple that would be output shall
+the commit condition yields `true`.
+
+It is also possible to refer to fields from the out tuple in select clauses
+of both +SELECT+ and +GROUP BY+ operations, which creates the out tuple, but
+only if the referred fields has been defined earlier. So for instance this is
+valid:
+
+[source,sql]
+----
+  SELECT
+    sum payload AS total,
+    end - start AS duration,
+    total / duration AS bps
+----
+
+where we both define and reuse the fields `total` and `duration`. Notice that
+here the name of the tuple has been eluded (despite "in" being the default tuple,
+on some conditions it is OK to leave out the "out" prefix as well). This would
+be an equivalent, more explicit statement:
+
+[source,sql]
+----
+  SELECT
+    sum in.payload AS total,
+    in.end - in.start AS duration,
+    out.total / out.duration AS bps
+----
+
+It is important to understand that the input and output tuples have different
+types (at least in general).
+
+[[first-tuple]]
+===== First tuple
+
+Named `group.first` or just `first`, refers to the first tuple of an
+aggregation.  Can therefore only be used in a +GROUP BY+ operation, anywhere
+but in the group-by clause itself.
+
+Same type as the input tuple.
+
+[[last-tuple]]
+===== Last tuple
+
+Named `group.last` or just `last`.  Same as `first`, but refers to the last
+tuple aggregated in the current bucket.
+
+Same type as the input tuple.
+
+Differs from `out` by its type (`out` is the current product of the operation
+while `last` is the last aggregated _input_ tuple) and in that it can also be
+used in the select clause and the where clause.
+
+[[previous-tuple]]
+===== Previous tuple
+
+Named `group.previous` or just `previous`, refers to the previous version of
+the output tuple. Notice that this is not the lastly output tuple but the
+previous value for `out`, which have been output only if the commit expression
+returned true.
+
+Can only be used in the commit clause or flush-when clause of a +GROUP BY+
+operation.
+
+When the aggregate is fresh new then that tuple is set to `out`.
+
+Same type as the `out` tuple, obviously.
+
+Usage example:
+
+[source,sql]
+----
+  SELECT key, LAST(signal) AS signal GROUP BY key
+    COMMIT WHEN previous.signal != out.signal
+    FLUSH WHEN false
+----
+
+To transform a succession of `key, signal` with possibly many times the same
+signal value into a stream of `key, signal` omitting the repetitions.
+
+[[virtual-fields]]
+===== Virtual fields
+
+In addition to the normal fields of the tuples, some special tuples have
+'virtual' fields, that is fields which value is computed rather than stored. To
+distinguish them from normal fields their name starts with a dash ('#'). Here
+is a list of all available virtual fields and which tuple they apply to:
+
+.Virtual Fields
+|===
+|Field name| Content
+
+| `in.#count`
+| How many tuples have been received (probably useless in itself but handy for comparison or with modulus).
+
+| `in.last`
+| Contains the fields of the previous input tuples. When `in` is the first tuple ever, then `in.last` is the same as `in`.
+
+| `selected.#count`
+| How many tuples have passed the WHERE filter.
+
+| `selected.#successive`
+| How many tuples have passed the WHERE filter without any incoming tuple failing to pass.
+
+| `selected.last`
+| Contains the fields of the last tuple that passed the `where` filter. When `in` is the first tuple to pass that filter, then `selected.last` is the same as `in` but can be distinguished using its `#count` virtual field.
+
+| `unselected.#count`
+| How many tuples have failed the WHERE filter.
+
+| `unselected.#successive`
+| How many tuples have failed the WHERE filter without any incoming tuple passing it.
+
+| `unselected.last`
+| Contains the fields of the last tuple that failed the `where` filter. When `in` is the first tuple to pass that filter, then `unselected.last` is the same as `in` but can be distinguished using its `#count` virtual field.
+
+| `group.#count`
+| In a +GROUP BY+ operation, how many tuples were added so far to form the output tuple. Can be used both in the where clause and in the select clause.
+
+| `group.#successive`
+| In a +GROUP BY+ operations, how many successive incoming tuples were assigned to that group (same `group by` key).
+
+| `group.first`
+| Contains the fields of the first incoming tuple added to that group. Can also be abbreviated into `first`.
+
+| `group.last`
+| Contains the fields of the last incoming tuple added to that group. Can also be abbreviated into `last`.
+
+| `group.previous`
+| Contains the fields of the last computed value of the tuple that _would_ be output shall the commit condition yield true.
+
+| `out.#count`
+| In the select clause of a +GROUP BY+ operation, how many tuples have been output so far. For +SELECT+ operations, use `selected.#count` instead.
+|===
+
+NOTE: `group.#successive` is unchanged by an aggregate flush operation and
+therefore make little sense in a `remove`/`keep` clause.
+
+==== Operators and Functions
+
+Predefined functions can be applied to expressions to form more complex
+expressions.
+
+Here we list the available functions. There is no way to define your own
+functions (short of adding them them in rigatoni source code). Therefore, there
+is no real difference between 'operators' and 'functions'.
+
+A <<table-of-precedence>> is given at the end of this section.  You can use
+parentheses to group expressions.
+
+===== Boolean operators
+
+`and`, `or`: infix, +bool ⨉ bool -> bool+
+
+`not`: prefix, +bool -> bool+
+
+===== Arithmetic operators
+
+`+`, `-`, `*`, `//`, `^`: infix, +num ⨉ num -> num+, where +num+ can be
+any numeric type (integer of float).
+
+The size of the result is the largest of the size of the operands.  Both
+operands will also be converted to the largest of their type before proceeding
+to the operation. For instance, in `1 + 999`, `1` will be converted to +i16+
+(the type of `999`) and then a 16 bits addition will yield a 16 bits result
+(regardless of wrap around). If you expect a wrap around then you need to
+explicitly cast to a larger type.
+
+Notice that `//` is the integer division
+
+`/`: infix, floating point division, +float ⨉ float -> float+.
+
+`%`: infix, the integer remainder, +int ⨉ int -> int+.
+
+`abs`: prefix, absolute value, +num ⨉ num -> num+.
+
+===== Comparison operators
+
+`>`, `>=`, `<=`, `<`: infix, +num ⨉ num -> num+.
+
+`=`, `!=`, `<>`: infix, +any ⨉ any -> any+, where +any+ refers to any type.
+
+Notice that `<>` and `!=` are synonymous.
+
+As for arithmetic operators, operand types will be enlarged to the largest
+common type and the operation will return that same type.
+
+===== Age
+
+`age of ...` or `age(...)`. Expects its argument to be a timestamp in the UNIX
+epoch and will return the difference between that timestamp and now.
+
+===== Now
+
+`now` returns the current timestamp as a float.
+
+===== Sequence
+
+`sequence` or `sequence(start)` or `sequence(start, step)`
+
+Will output a sequence increasing (of the given `step`, or `1` by default) at
+every read incoming tuple (or at every produced tuples, for +YIELD+
+operations).
+
+===== Casts
+
+Any type name used as a function would convert its argument into that type. For
+instance: `int16(42)` or `int16 of 42`.
+
+===== Is (not) null
+
+Turns a null-able value into a boolean. Invalid on non-null-able values.
+
+For instance: `IS NULL NULL` is trivially true, while `IS NOT NULL some_field`
+can be either true or not depending on the tuple at hand.
+
+`IS NULL 42` is an error, though.
+
+===== String functions
+
+`length` returns an uint16
+Use `+` for concatenation.
+
+[[table-of-precedence]]
+===== Operator precedence
+
+From higher precedence to lower precedence:
+
+.Table Operator precedence
+|===
+|Operator |Associativity
+
+| functions
+| left to right
+
+| `not`, `is null`, `is not null`
+| left to right
+
+| `^`
+| right tot left
+
+| `*`, `//`, `/`, `%`
+| left to right
+
+| `+`, `-`
+| left to right
+
+| `>`, `>=`, `<`, `<=`, `=`, `<>`, `!=`
+| left to right
+
+| `or`, `and`
+| left to right
+|===
+
+==== Aggregate functions
+
+Aggregate functions are special functions that combines current value with
+previous values instead of combining several current values.
+
+For instance, `max response_time` will compute the max of all the response_time
+fields of all incoming tuples (until the commit clause instruct Rigatoni to
+output this aggregated tuple).
+
+===== Min, Max, Sum
+
+Compute the `max`, `min` and `sum` of the (numeric) input values.  For `sum`,
+beware that you may want a larger integer type than the one from the operand!
+
+===== And, Or
+
+Compute the logical `and` and `or` of the (boolean) input values.
+
+===== First, Last
+
+Remember only the `first` or the `last` value encountered in this aggregation.
+
+===== Percentile
+
+Most aggregate functions needs only to keep the current aggregate value and can
+combine it with new incoming values to produce the next current aggregate.
+
+This function is more expensive, as it requires to actually keep all
+encountered values until the aggregate is flushed.
+
+Example: `95th percentile of (response_time + data_transfert_time)`
+
+=== Operations
+
+==== Read
+
+The simplest is to read a CSV file:
+
+[source,sql]
+----
+  READ FROM CSV FILE quoted_string [SEPARATOR quoted_string] [NULL quoted_string] (
+    first_field_name field_type [[not] null],
+    second_field_name field_type [[not] null],
+    ...
+  )
+----
+
+Which will inject the content of the given CSV file, in which fields are
+separated by the given string, defaulting to coma (","), and each occurrence of the
+NULL string would be assuming to be NULL (default to empty string).
+
+Field names must be valid identifiers (aka string made of letters, underscores
+and digits but as the first character), field types must be one of `bool`,
+`string`, `float`, `u8`, `i8`, `u16`, etc...  and nullable must be either
+`null` or `not null` to specify whether this field can be NULL or not (default
+to `null`).
+
+Example:
+
+[source,sql]
+----
+READ CSV FILE "/tmp/test.csv" SEPARATOR "\t" NULL "<NULL>" (
+  first_name string NOT NULL,
+  last_name string,
+  year_of_birth u16 NOT NULL,
+  year_of_death u16)
+----
+
+It is also possible to monitor a whole directory for files matching a pattern, and
+all those files will be injected sequentially. New files appearing in this
+directory will then also be injected if they match the pattern.
+
+Example:
+
+[source,sql]
+----
+READ CSV FILES "/tmp/test/*.csv" (
+  first_name string NOT NULL,
+  last_name string)
+----
+
+NOTE: patterns can use the star character ('*') in place of any substring in the
+file name but not in the directory part of the given path.
+
+==== Yield
+
+Syntax:
+
+[source,sql]
+----
+  YIELD expression1 AS name1, expression2 AS name2, expression3 AS name3...
+----
+
+Yield merely produces an infinite stream of tuples, as fast as the downstream
+nodes can consume them.
+
+==== Select
+
+Syntax:
+
+[source,sql]
+----
+  SELECT [AND EXPORT] expression1 AS name1, expression2 AS name2, ...
+    WHERE where_clause
+----
+
+As a selected expression one can also use `*` (star) to mean: all _other_
+fields from the input tuple (by other we mean any fields that have not be
+mentioned at all in the other expression of the select clause).
+
+The where clause is an expression, typically build from the input tuple, that
+must have a non-nullable boolean result.
+
+Semantic: for each input tuple, if the where clause is true, output the tuple
+build from the select clause. If the where clause is false then ignore the
+input tuple.
+
+The +AND EXPORT+ modifier makes ramen store all selected tuples for later
+retrieval by clients (See <<export-API>>). It does not change the semantic of
+the operation.
+
+==== Aggregate
+
+Syntax:
+
+[source,sql]
+----
+  SELECT [AND EXPORT] expression1 AS name1, expression2 AS name2, ...
+    [GROUP BY expression3, expression4, ...]
+    COMMIT WHEN commit_clause
+    (FLUSH | SLIDE n | REMOVE expression | KEEP expression) WHEN flush_clause
+----
+
+or, if `flush_clause` is the same as `commit_clause`:
+
+[source,sql]
+----
+  SELECT [AND EXPORT] expression1 AS name1, expression2 AS name2, ...
+    [GROUP BY expression3, expression4, ...]
+    COMMIT AND (FLUSH | SLIDE n | REMOVE expression | KEEP expression)
+      WHEN commit_clause
+----
+
+The select clause is the same as above but it can use aggregate functions and,
+in addition to the `in` tuple, can refer to the `first` and `last` tuples.
+Contrary to SQL, it is not an error to take a value from the input tuple in the
+select clause with no aggregation function specified. The output tuple will
+then just use the current input tuple to get the value (similarly to what the
+`last` aggregation function would do).
+
+This is also what happens if you use the `*` (star) designation in the
+select clause. So for instance:
+
+[source,sql]
+----
+  SELECT max counter, *
+    GROUP BY name
+    COMMIT AND FLUSH WHEN max timestamp - min timestamp > 120
+----
+
+would output tuples made of the maximum value of the field +counter+ (this
+field automatically named `max_counter` so explicit naming with +AS+ is not
+necessary here) and all the fields of input tuples, using the last encountered
+values.
+
+The group-by clause is a mere list of expressions that can refer to the
+<<input-tuple>>, <<first-tuple>> and <<last-tuple>>. The resulting tuple will
+be used as the key for the aggregation. When the group-by clause is omitted
+then all input tuples are aggregated together.
+
+The commit clause tells when the aggregation must be stopped and the aggregated
+tuple output. This is a major difference with SQL, which stops aggregating
+values when it has processed all the input. Since stream processors model an
+infinite stream of input one has to give this extra piece of information.
+
+The flush-when clause tells when an aggregate must be removed from memory. It
+is normally when you commit the tuple, so there is a shorter syntax for it:
+`...  commit and flush when ...` But the extra control allows to achieve more
+interesting operations.
+
+Additionally, instead of flushing (aka deleting the aggregated value for that
+key) it is also possible to remove some of the aggregated tuples from the
+aggregate, and keep going with new incoming tuples. This is useful to implement
+sliding windows or decay. Instead of +FLUSH+ it is possible to specify either:
+
+- +SLIDE+ followed by a positive integer, which would remove from the aggregate
+  that many input tuples (the firsts that have been received);
+
+- +REMOVE+ followed by a boolean expression, for removing all those tuples from
+  the aggregate;
+
+- +KEEP+ to specify which tuple not to remove (syntactic sugar for +REMOVE not
+  (expression)+);
+
+Notice that +SLIDE+ assumes that the tuples are received in some meaningful
+order, which is generally not true. It is thus often safer to use a proper
+filter and use a time value (or other ordered value) from the input tuple to
+perform the selection, for a very modest performance fee.
+
+Also, it is important to understand that "removing" tuples from the aggregate
+requires that all received tuples that are kept for next aggregate have to be
+actually kept in memory and replayed when the aggregate is "flushed"; therefore
+windowing has a sizeable impact on performance, memory wise as well as
+time wise, and should be used only when a small number of tuples are kept from
+one window to the next.
+
+Semantic: For each input tuple, compute the key and retrieve the current
+aggregate, if any. If no current aggregate exists for this key yet then start a
+new one.  Then evaluate the where clause: if it is false, skip that input (and
+discard the new aggregate that might have been created).  If the where clause
+yields true, accumulates that input into that aggregate and compute the current
+output-tuple. With all this, evaluates the commit clause: if it is true, output
+the output tuple. Also, should this input tuple be replayed when flushing this
+aggregate, store it. Evaluates the flush-when clause. If it is true, flush this
+aggregate (either by deleting the aggregate altogether or by replacing it with
+an aggregate build from replaying the stored input tuple)
+
+==== Output
+
++SELECT+ operations can be instructed to notify an external URL when the where
+clause is fulfilled. The given URL will then accessed, which can be customized
+with `${field_name}` that would be replaced by the actual value from the input
+tuple.
+
+=== Examples
+
+==== Tumbling windows
+
+==== Sliding windows
+
+==== Rate limited selection
+
+==== Hysteresis
+
+
+== The API
+
+=== Create/Modify/Delete nodes
+
+Nodes have unique name, and their URL is `/node/the_name`.  A Node can be
+created or updated by HTTP-PUTting t that URL a JSON message:
+
+[source,json]
+----
+  { "operation": "... operation expression ..." }
+----
+
+For instance:
+
+[source,json]
+----
+  curl -X PUT -H 'Content-Type: application/json' -d '
+    { "operation":
+         "SELECT first_name, last_name
+            WHERE year_of_borth < 1970 AND year_of_death IS NOT NULL"
+    }' http://localhost:29380/node/some_unique_name
+----
+
+The same information can be obtained back from GETting that URL, and can be
+deleted with a DELETE command on that URL.
+
+=== Create/Modify/Delete links
+
+The URL of a link between node A and B is: `/link/A/B`.  Nodes A and B must
+exist already.
+
+The link can be created, obtained or deleted with a +PUT+, a +GET+ or a
++DELETE+ command to that URL. Notice that those messages need no body.
+
+It is also possible to update all the links of a specific node with a +HTTP+
++PUT+ command to `/links/some_node_name` with that JSON:
+
+----
+  { "parents": [ "some_node_name", "some_other_node", ... ],
+    "children": [ "some_node_name", "some_other_node", ... ] }
+----
+
+And this node configuration will be set accordingly.
+
+=== Export/Import the whole graph
+
+You can get the whole configuration by GETting this URL: `/graph`.  Conversely,
+a whole new graph can be uploaded and made to replace the current one with a
+PUT at the same location.
+
+=== Compile/Start/Stop
+
+Once your configuration is ready you can compile it by GETting `/compile`.
+This will check all the operations and types in details, and generate the
+executable implementing each node, or return any encountered error.
+
+If all went well, you can then GET `/start` for Rigatoni to start all those
+executables, and then `/stop` to kill them all.
+
+[[export-API]]
+=== Receive exported tuples
+
+Some operations export some tuples.
+Those tuples can then be obtained from Rigatoni at `/export/NODE_NAME`.
+To limit the output, a body can be sent with two optional integer fields:
+`since`, to ask for all tuples _after_ that one, and `max_results` to ask for
+no more than that many tuples.
+
