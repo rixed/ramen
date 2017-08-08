@@ -81,7 +81,8 @@ let respond_ok ?(body=ok_body) () =
 
 let put_node conf headers name body =
   (* Get the message from the body *)
-  let%lwt msg = of_json headers ("Creating node "^ name) make_node_ppp body in
+  let%lwt msg = Helpers.time "Parsing JSON for put_node" (fun () ->
+    of_json headers ("Creating node "^ name) make_node_ppp body) in
   (match C.find_node conf conf.C.building_graph name with
   | exception Not_found ->
     (match C.make_node conf.C.building_graph name msg.operation with

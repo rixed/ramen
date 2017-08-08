@@ -587,27 +587,28 @@ let compile_node node =
     CodeGen_OCaml.gen_operation node.C.name in_typ out_typ node.C.operation)
 
 let compile conf graph =
-  match graph.C.persist.C.status with
-  | Compiled ->
-    raise (C.InvalidCommand "Graph is already compiled")
-  | Running ->
-    raise (C.InvalidCommand "Graph is already compiled and is running")
-  | Edition ->
-    set_all_types graph ;
-    let finished_typing =
-      Hashtbl.fold (fun _ node finished_typing ->
-          !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
-            node.C.name
-            C.print_temp_tup_typ node.C.in_type
-            C.print_temp_tup_typ node.C.out_type ;
-          finished_typing && node_typing_is_finished node
-        ) graph.C.persist.C.nodes true in
-    (* TODO: better reporting *)
-    if not finished_typing then raise (Lang.SyntaxError "Cannot complete typing") ;
-    Hashtbl.iter (fun _ node ->
-        try compile_node node
-        with Failure m ->
-          raise (Failure ("While compiling "^ node.C.name ^": "^ m))
-      ) graph.C.persist.C.nodes ;
-    graph.C.persist.C.status <- Compiled ;
-    C.save_graph conf graph
+  Helpers.time "Compiling the configuration" (fun () ->
+    match graph.C.persist.C.status with
+    | Compiled ->
+      raise (C.InvalidCommand "Graph is already compiled")
+    | Running ->
+      raise (C.InvalidCommand "Graph is already compiled and is running")
+    | Edition ->
+      set_all_types graph ;
+      let finished_typing =
+        Hashtbl.fold (fun _ node finished_typing ->
+            !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
+              node.C.name
+              C.print_temp_tup_typ node.C.in_type
+              C.print_temp_tup_typ node.C.out_type ;
+            finished_typing && node_typing_is_finished node
+          ) graph.C.persist.C.nodes true in
+      (* TODO: better reporting *)
+      if not finished_typing then raise (Lang.SyntaxError "Cannot complete typing") ;
+      Hashtbl.iter (fun _ node ->
+          try compile_node node
+          with Failure m ->
+            raise (Failure ("While compiling "^ node.C.name ^": "^ m))
+        ) graph.C.persist.C.nodes ;
+      graph.C.persist.C.status <- Compiled ;
+      C.save_graph conf graph)

@@ -110,3 +110,10 @@ let looks_like_true s =
   s = "1" || (
     String.length s > 1 &&
     let lc = Char.lowercase s.[0] in lc = 'y' || lc = 't')
+
+let time what f =
+  let start = Unix.gettimeofday () in
+  let res = f () in
+  let dt = Unix.gettimeofday () -. start in
+  !logger.info "%s in %gs." what dt ;
+  res
