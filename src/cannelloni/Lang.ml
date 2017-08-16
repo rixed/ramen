@@ -330,30 +330,30 @@ struct
 
   type typ = scalar_typ
 
+  let string_of_typ = function
+    | TNull   -> "NULL"
+    | TFloat  -> "FLOAT"
+    | TString -> "STRING"
+    | TBool   -> "BOOL"
+    | TNum    -> "ANY_NUM" (* This one not for consumption *)
+    | TU8     -> "U8"
+    | TU16    -> "U16"
+    | TU32    -> "U32"
+    | TU64    -> "U64"
+    | TU128   -> "U128"
+    | TI8     -> "I8"
+    | TI16    -> "I16"
+    | TI32    -> "I32"
+    | TI64    -> "I64"
+    | TI128   -> "I128"
+    | TEth    -> "Eth"
+    | TIpv4   -> "IPv4"
+    | TIpv6   -> "IPv6"
+    | TCidrv4 -> "CIDRv4"
+    | TCidrv6 -> "CIDRv6"
+
   let print_typ fmt typ =
-    let s = match typ with
-      | TNull   -> "NULL"
-      | TFloat  -> "FLOAT"
-      | TString -> "STRING"
-      | TBool   -> "BOOL"
-      | TNum    -> "ANY_NUM" (* This one not for consumption *)
-      | TU8     -> "U8"
-      | TU16    -> "U16"
-      | TU32    -> "U32"
-      | TU64    -> "U64"
-      | TU128   -> "U128"
-      | TI8     -> "I8"
-      | TI16    -> "I16"
-      | TI32    -> "I32"
-      | TI64    -> "I64"
-      | TI128   -> "I128"
-      | TEth    -> "Eth"
-      | TIpv4   -> "IPv4"
-      | TIpv6   -> "IPv6"
-      | TCidrv4 -> "CIDRv4"
-      | TCidrv6 -> "CIDRv6"
-    in
-    String.print fmt s
+    String.print fmt (string_of_typ typ)
 
   type type_class = KNum | KBool | KString | KNull | KCidrv4 | KCidrv6
   let compare_typ typ1 typ2 =
@@ -567,6 +567,11 @@ struct
       uniq_num : int ; (* to build var names or record field names *)
       mutable nullable : bool option ;
       mutable scalar_typ : scalar_typ option }
+
+  let signature_of_typ typ =
+    Option.map_default Scalar.string_of_typ "?" typ.scalar_typ ^
+    Option.map_default (function true -> "null" | false -> "notnull")
+                       "" typ.nullable
 
   let to_expr_type_info typ =
     { name_info = typ.expr_name ;

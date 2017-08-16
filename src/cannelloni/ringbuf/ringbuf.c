@@ -127,6 +127,8 @@ extern struct ringbuf *ringbuf_load(char const *fname)
     rb = NULL;
   }
 
+  rb->mmapped_size = file_length;
+
 err1:
   if (close(fd) < 0) {
     fprintf(stderr, "Cannot close file '%s': %s\n", fname, strerror(errno));
@@ -135,4 +137,13 @@ err1:
 
 err0:
   return rb;
+}
+
+int ringbuf_unload(struct ringbuf *rb)
+{
+  if (0 != munmap(rb, rb->mmapped_size)) {
+    fprintf(stderr, "Cannot munmap: %s\n", strerror(errno));
+    return -1;
+  }
+  return 0;
 }

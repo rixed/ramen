@@ -52,6 +52,7 @@ struct tuple_field {
 struct ringbuf {
   // Fixed length of the ring buffer. mmapped file must be >= this.
   uint32_t nb_words;
+  size_t mmapped_size;  // The size that was mmapped (for ringbuf_unload)
   /* Pointers to entries. We use uint32 indexes so that we do not have
    * to worry too much about modulos. */
   /* Bytes that are being added by producers lie between prod_tail and
@@ -244,5 +245,8 @@ extern int ringbuf_create(char const *fname, uint32_t tot_words);
 /* Mmap the ring buffer present in that file. Fails if the file does not exist
  * already. Returns NULL on error. */
 extern struct ringbuf *ringbuf_load(char const *fname);
+
+/* Unmap the ringbuffer. */
+extern int ringbuf_unload(struct ringbuf *);
 
 #endif

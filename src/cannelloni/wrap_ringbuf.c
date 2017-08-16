@@ -89,6 +89,14 @@ CAMLprim value wrap_ringbuf_load(value fname_)
   CAMLreturn(res);
 }
 
+CAMLprim value wrap_ringbuf_unload(value rb_)
+{
+  CAMLparam1(rb_);
+  struct ringbuf *rb = Ringbuf_val(rb_);
+  if (0 != ringbuf_unload(rb)) caml_failwith("Cannot unload ring buffer");
+  CAMLreturn(Val_unit);
+}
+
 CAMLprim value wrap_capacity(value rb_)
 {
   CAMLparam1(rb_);

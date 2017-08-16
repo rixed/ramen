@@ -1,5 +1,7 @@
 (* Have this outside of RingBuf so that we can easily link this with the
  * tests without bringing in the whole ringbuf libs *)
+open Batteries
+open Lwt
 
 (* Compromise between size and efficient reading of data, TBD: *)
 let rb_word_bytes = 4
@@ -20,7 +22,7 @@ let retry_for_ringbuf f =
     | _ -> false
   in
   Helpers.retry ~on ~first_delay:0.001 ~max_delay:0.01
-    (fun x -> Lwt.return (f x))
+    (fun x -> return (f x))
 
 let rec sersize_of_fixsz_typ =
   let open RamenSharedTypes in
@@ -37,3 +39,32 @@ let rec sersize_of_fixsz_typ =
   | TCidrv6 -> sersize_of_fixsz_typ TIpv6 + sersize_of_fixsz_typ TU16
   | TString -> assert false
   | TNum -> assert false
+
+(* Get ones input ringbuf and output ringbufs given the node "signature",
+ * which is a string identifying both the operation of a node and its
+ * input and output types: *)
+
+let tmp_dir = "/tmp"
+
+let in_ringbuf_name signature =
+  tmp_dir ^"/ringbuf_in_"^ signature
+
+let exp_ringbuf_name signature =
+  tmp_dir ^"/ringbuf_exp_"^ signature
+
+let out_ringbuf_names_ref signature =
+  tmp_dir ^"/ringbuf_out_ref_"^ signature
+
+let last_touched fname =
+  let open Lwt_unix in
+  let%lwt s = stat fname in return s.st_mtime
+
+let out_ringbuf_names outbuf_ref_fname =
+  let last_read = 0. in
+  let lines = ref Set.empty in
+  fun () ->
+    let%lwt t = last_touched outbuf_ref_fname in
+    if t > last_read then (
+      lines := File.lines_of outbuf_ref_fname |> Set.of_enum ;
+      return (Some !lines)
+    ) else return_none

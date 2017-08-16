@@ -166,24 +166,38 @@ let output rb sersize_of_tuple serialize_tuple tuple =
   enqueue_commit tx ;
   assert (offs = sersize)
 
-let outputer_of rb_outs sersize_of_tuple serialize_tuple =
-  let outputers_with_retry = List.map (fun rb_out ->
-        let once = output rb_out sersize_of_tuple serialize_tuple in
-        RingBufLib.retry_for_ringbuf once
-      ) rb_outs in
+(* Each node can write in several ringbuffers (one per children). This list
+ * will change dynamically as children are added/removed. *)
+let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
+  let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
+  and out_l = ref [] in  (* list of outputer *)
   fun tuple ->
     IntCounter.add stats_out_tuple_count 1 ;
-    List.map (fun out -> out tuple) outputers_with_retry |>
+    let%lwt fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname () in
+    Option.may (fun next ->
+      (* Change occurred, load/unload as required *)
+      let current = Hashtbl.keys out_h |> Set.of_enum in
+      let to_open = Set.diff next current
+      and to_close = Set.diff current next in
+      Set.iter (fun fname ->
+        Hashtbl.find out_h fname |> fst |> RingBuf.unload) to_close ;
+      Set.iter (fun fname ->
+          let rb = RingBuf.load fname in
+          let once = output rb sersize_of_tuple serialize_tuple in
+          (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
+           * case the ringbuf disappear altogether because the child is terminated
+           * then we won't deadloop (but see FIXME in retry_for_ringbuf).  Also,
+           * if one child is full then we will not write to next children until
+           * we can eventually write to this one. This is actually desired to
+           * have proper message ordering along the stream and avoid ending up
+           * with many threads retrying to write to the same child. *)
+          Hashtbl.add out_h fname (rb, RingBufLib.retry_for_ringbuf once)
+        ) to_open ;
+      out_l := Hashtbl.values out_h /@ snd |> List.of_enum ;
+      !logger.info "Will now output into %a"
+        (Enum.print String.print) (Hashtbl.keys out_h)) fnames ;
+    List.map (fun out -> out tuple) !out_l |>
     join
-
-(* Each node can write in several ringbuffers (one per children) which
- * names are given by the output_ringbuf envvar followed by the child number
- * as an extension. *)
-let load_out_ringbufs () =
-  let rb_out_fnames = getenv ~def:"/tmp/ringbuf_out" "output_ringbufs" |> String.split_on_char ','
-  in
-  !logger.info "Will output into %a" (List.print String.print) rb_out_fnames ;
-  List.map (fun fname -> RingBuf.load fname) rb_out_fnames
 
 let node_start node_name =
   !logger.info "Starting %s process..." node_name ;
@@ -203,8 +217,9 @@ let quote_at_end s =
 let read_csv_file filename do_unlink separator sersize_of_tuple
                   serialize_tuple tuple_of_strings preprocessor =
   node_start "READ CSV FILE" ;
+  let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   (* For tests, allow to overwrite what's specified in the operation: *)
-  let filename = getenv ~def:filename "csv_filename"
+  and filename = getenv ~def:filename "csv_filename"
   and separator = getenv ~def:separator "csv_separator"
   in
   !logger.debug "Will read CSV file %S using separator %S"
@@ -225,9 +240,8 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
     let strings = if has_quote then List.rev strings' else strings in
     tuple_of_strings (Array.of_list strings)
   in
-  let rb_outs = load_out_ringbufs () in
   let outputer =
-    outputer_of rb_outs sersize_of_tuple serialize_tuple in
+    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   CodeGenLib_IO.read_glob_lines ~do_unlink filename preprocessor (fun line ->
     match of_string line with
     | exception e ->
@@ -259,14 +273,14 @@ let notify url field_of_tuple tuple =
 let select read_tuple field_of_tuple sersize_of_tuple serialize_tuple where select notify_url =
   node_start "SELECT" ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
+  and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
-  let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
     Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
       (fun n -> return (RingBuf.load n)) rb_in_fname in
   let outputer =
-    outputer_of rb_outs sersize_of_tuple serialize_tuple
+    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and in_ = ref None
   and selected_tuple = ref None
@@ -312,9 +326,10 @@ let select read_tuple field_of_tuple sersize_of_tuple serialize_tuple where sele
 
 let yield sersize_of_tuple serialize_tuple select =
   node_start "YIELD" ;
-  let rb_outs = load_out_ringbufs () in
+  let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
+  in
   let outputer =
-    outputer_of rb_outs sersize_of_tuple serialize_tuple in
+    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   let rec loop () =
     let%lwt () = outputer (select Uint64.zero () ()) in
     CodeGenLib_IO.on_each_input () ;
@@ -410,9 +425,9 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (update_aggr : 'aggr -> 'tuple_in -> unit) =
   node_start "GROUP BY" ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
+  and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
-  let rb_outs = load_out_ringbufs () in
   let%lwt rb_in =
     Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
                   (fun n -> return (RingBuf.load n)) rb_in_fname in
@@ -434,7 +449,7 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   IntGauge.set stats_group_count 0 ;
   let commit tuple =
     out_count := Uint64.succ !out_count ;
-    outputer_of rb_outs sersize_of_tuple serialize_tuple tuple
+    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple tuple
   in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in

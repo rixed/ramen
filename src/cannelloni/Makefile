@@ -46,7 +46,7 @@ SOURCES = \
 PACKAGES = \
 	ppp lwt.ppx batteries cmdliner stdint parsercombinator \
 	cohttp-lwt-unix num inotify.lwt sqlite3 \
-	binocle unix
+	binocle unix cryptohash
 
 INSTALLED = \
   cannelloni ramen_configurator ramen_alerter \

@@ -20,6 +20,19 @@ let print_temp_tup_typ fmt t =
                       Lang.Expr.print_typ expr_typ)) t.fields
     (if t.finished_typing then "finished typing" else "to be typed")
 
+let type_signature t =
+  let tag_of_rank_opt = function
+    | None -> ""
+    | Some r -> "["^ string_of_int r ^"]"
+  in
+  let keys = Hashtbl.keys t.fields |> Array.of_enum in
+  Array.fast_sort String.compare keys ;
+  Array.fold_left (fun s k ->
+      let rank, typ = Hashtbl.find t.fields k in
+      (if s = "" then "" else s ^ "_") ^
+      k ^ ":" ^ Lang.Expr.signature_of_typ typ ^ tag_of_rank_opt !rank
+    ) "" keys
+
 let make_temp_tup_typ () =
   { finished_typing = false ;
     fields = Hashtbl.create 7 }
@@ -63,6 +76,13 @@ type node =
     mutable command : string option ;
     mutable pid : int option ;
     mutable last_report : Binocle.metric list }
+
+let signature node =
+  "OP="^ node.op_text ^
+  "IN="^ type_signature node.in_type ^
+  "OUT="^ type_signature node.out_type |>
+  Cryptohash_md4.string |>
+  Cryptohash_md4.to_hex
 
 type graph_persist =
   { mutable status : graph_status ;
