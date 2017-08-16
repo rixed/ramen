@@ -27,8 +27,9 @@ let run conf graph =
     raise (C.InvalidCommand "Graph is already running")
   | Compiled ->
     (* First prepare all the required ringbuffers *)
-    let rb_name_of node = RingBufLib.in_ringbuf_name (C.signature node)
-    and rb_name_for_export_of node = RingBufLib.exp_ringbuf_name (C.signature node)
+    let sig_of_node node = C.signature node.C.op_text node.C.in_type node.C.out_type in
+    let rb_name_of node = RingBufLib.in_ringbuf_name (sig_of_node node)
+    and rb_name_for_export_of node = RingBufLib.exp_ringbuf_name (sig_of_node node)
     and rb_sz_words = 1000000 in
     !logger.info "Creating ringbuffers..." ;
     Hashtbl.iter (fun _ node ->
@@ -46,7 +47,7 @@ let run conf graph =
           if Lang.Operation.is_exporting node.C.operation then
             rb_name_for_export_of node :: output_ringbufs
           else output_ringbufs in
-        let signature = C.signature node in
+        let signature = sig_of_node node in
         let out_ringbuf_ref = RingBufLib.out_ringbuf_names_ref signature in
         File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
         let env = [|

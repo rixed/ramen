@@ -161,11 +161,16 @@ type node_links =
   { parents : string list ;
     children : string list } [@@ppp PPP_JSON]
 
+type layer = string [@@ppp PPP_JSON]
+
 type graph_info =
   { nodes : Node.info list ;
     status : graph_status [@ppp_default Edition] ;
     last_started : float option ;
     last_stopped : float option } [@@ppp PPP_JSON]
+
+type graph_replace =
+  { layer : layer ; nodes : Node.info list } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)
 

@@ -79,25 +79,6 @@ let respond_ok ?(body=ok_body) () =
   let body = body ^"\n" in
   Server.respond_string ~status ~headers ~body ()
 
-let put_node conf headers name body =
-  (* Get the message from the body *)
-  let%lwt msg = Helpers.time "Parsing JSON for put_node" (fun () ->
-    of_json headers ("Creating node "^ name) make_node_ppp body) in
-  (match C.find_node conf conf.C.building_graph name with
-  | exception Not_found ->
-    (match C.make_node conf.C.building_graph name msg.operation with
-    | exception e ->
-      bad_request ("Node "^ name ^": "^ Printexc.to_string e)
-    | node ->
-      Lwt.return (C.add_node conf conf.C.building_graph node))
-  | node ->
-    (match C.update_node conf.C.building_graph node msg.operation with
-    | exception e ->
-      bad_request ("Node "^ name ^": "^ Printexc.to_string e)
-    | () -> Lwt.return_unit)
-    ) >>= fun () ->
-  respond_ok ()
-
 let type_of_operation_of =
   let open Lang.Operation in
   function
@@ -143,22 +124,6 @@ let node_info_of_node node =
     cpu_time = find_float_metric node.C.last_report Consts.cpu_time_metric ;
     ram_usage = find_int_metric node.C.last_report Consts.ram_usage_metric }
 
-let get_node conf _headers name =
-  match C.find_node conf conf.C.building_graph name with
-  | exception Not_found ->
-    fail (HttpError (404, "No such node"))
-  | node ->
-    let node_info = node_info_of_node node in
-    let body = PPP.to_string Node.info_ppp node_info in
-    respond_ok ~body ()
-
-let del_node conf _headers name =
-  match C.remove_node conf conf.C.building_graph name with
-  | exception Not_found ->
-    fail (HttpError (404, "No such node"))
-  | () ->
-    respond_ok ()
-
 (*
 == Connect nodes ==
 
@@ -171,39 +136,11 @@ to say.
 *)
 
 let node_of_name conf graph n =
-  match C.find_node conf graph n with
+  if n = "" then bad_request "Empty string is not a valid node name"
+  else match C.find_node conf graph n with
   | exception Not_found ->
     bad_request ("Node "^ n ^" does not exist")
   | node -> return node
-
-let put_link conf _headers src dst =
-  let%lwt src = node_of_name conf conf.C.building_graph src in
-  let%lwt dst = node_of_name conf conf.C.building_graph dst in
-  !logger.debug "Adding link from %s to %s" src.C.name dst.C.name ;
-  if C.has_link conf src dst then
-    let msg =
-      "Creating link "^ src.C.name ^"-"^ dst.C.name ^": Link already exists" in
-    bad_request msg
-  else (
-    C.make_link conf conf.C.building_graph src dst ;
-    respond_ok ())
-
-let del_link conf _headers src dst =
-  let%lwt src = node_of_name conf conf.C.building_graph src in
-  let%lwt dst = node_of_name conf conf.C.building_graph dst in
-  if not (C.has_link conf src dst) then
-    bad_request ("That link does not exist")
-  else (
-    C.remove_link conf conf.C.building_graph src dst ;
-    respond_ok ())
-
-let get_link conf _headers src dst =
-  let%lwt src = node_of_name conf conf.C.building_graph src in
-  let%lwt dst = node_of_name conf conf.C.building_graph dst in
-  if not (C.has_link conf src dst) then
-    bad_request ("That link does not exist")
-  else
-    respond_ok ()
 
 (*
 == Set all connections of a single node ==
@@ -234,23 +171,8 @@ let diff_list bef aft =
   in
   loop [] [] bef aft
 
-let set_links conf headers name body =
-  let%lwt node_links =
-    of_json headers ("Set links for node "^ name) node_links_ppp body in
-  let graph = conf.C.building_graph in
-  let%lwt node = node_of_name conf graph name in
-  let%lwt parents = Lwt_list.map_s (node_of_name conf graph) node_links.parents in
-  let%lwt children = Lwt_list.map_s (node_of_name conf graph) node_links.children in
-  let to_add, to_del = diff_list node.C.parents parents in
-  List.iter (fun p -> C.remove_link conf graph p node) to_del ;
-  List.iter (fun p -> C.make_link conf graph p node) to_add ;
-  let to_add, to_del = diff_list node.C.children children in
-  List.iter (fun c -> C.remove_link conf graph node c) to_del ;
-  List.iter (fun c -> C.make_link conf graph node c) to_add ;
-  respond_ok ()
-
 (*
-== Display the graph (JSON or SVG representation) ==
+== Display the graph (JSON, dot or mermaid representation) ==
 *)
 
 let get_graph_json conf _headers =
@@ -334,26 +256,33 @@ let get_graph conf headers =
   else
     cant_accept accept
 
-let put_graph conf headers body =
-  let%lwt msg = of_json headers "Uploading graph" graph_info_ppp body in
-  let graph = C.make_graph () in
-  (* First create all the nodes *)
-  List.iter (fun info ->
-      let n = C.make_node graph info.Node.name info.Node.operation in
-      C.add_node conf graph n
-    ) msg.nodes ;
-  (* Then all the links *)
-  let%lwt () = Lwt_list.iter_s (fun info ->
-      let%lwt src = node_of_name conf graph info.Node.name in
-      Lwt_list.iter_s (fun child ->
-          let%lwt dst = node_of_name conf graph child in
-          C.make_link conf graph src dst ;
-          return_unit
-        ) info.Node.children
-    ) msg.nodes in
-  (* Then make this graph the new one (TODO: support for multiple graphs) *)
-  conf.C.building_graph <- graph ;
-  respond_ok ()
+let put_layer conf headers body =
+  let%lwt msg = of_json headers "Uploading graph layer" graph_replace_ppp body in
+  let graph = conf.C.building_graph in
+  (* Check that this layer is new (FIXME: implement hot-replacement) *)
+  match Hashtbl.values graph.C.persist.C.nodes |>
+        Enum.find (fun node -> node.C.layer = msg.layer) with
+  | exception Not_found ->
+    (* Create all the nodes *)
+    List.iter (fun info ->
+        let name =
+          if info.Node.name <> "" then info.Node.name
+          else C.make_node_name () in
+        let n = C.make_node graph name msg.layer info.Node.operation in
+        C.add_node conf graph n
+      ) msg.nodes ;
+    (* Then all the links *)
+    let%lwt () = Lwt_list.iter_s (fun info ->
+        let%lwt src = node_of_name conf graph info.Node.name in
+        Lwt_list.iter_s (fun child ->
+            let%lwt dst = node_of_name conf graph child in
+            C.make_link conf graph src dst ;
+            return_unit
+          ) info.Node.children
+      ) msg.nodes in
+    respond_ok ()
+  | _ ->
+    bad_request ("Layer "^ msg.layer ^" already present")
 
 (*
 == Whole graph operations: compile/run/stop ==
@@ -599,18 +528,8 @@ let start debug save_file ramen_url port cert_opt key_opt () =
     (* The function called for each HTTP request: *)
       match meth, path with
       (* API *)
-      | `PUT, ["node" ; name] -> put_node conf headers name body
-      | `GET, ["node" ; name] -> get_node conf headers name
-      | `DELETE, ["node" ; name] -> del_node conf headers name
-      | _, ["node"] -> bad_request "Missing node name"
-      | `PUT, ["link" ; src ; dst] -> put_link conf headers src dst
-      | `GET, ["link" ; src ; dst] -> get_link conf headers src dst
-      | `DELETE, ["link" ; src ; dst] -> del_link conf headers src dst
-      | _, (["link"] | ["link" ; _ ]) -> bad_request "Missing node name"
-      | `PUT, ["links" ; name] -> set_links conf headers name body
-      | `PUT, ["links"] -> bad_request "Missing node name"
       | `GET, ["graph"] -> get_graph conf headers
-      | `PUT, ["graph"] -> put_graph conf headers body
+      | `PUT, ["graph"] -> put_layer conf headers body
       | `GET, ["compile"] -> compile conf headers
       | `GET, ["run" | "start"] -> run conf headers
       | `GET, ["stop"] -> stop conf headers

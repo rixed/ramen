@@ -21,16 +21,13 @@ let print_temp_tup_typ fmt t =
     (if t.finished_typing then "finished typing" else "to be typed")
 
 let type_signature t =
-  let tag_of_rank_opt = function
-    | None -> ""
-    | Some r -> "["^ string_of_int r ^"]"
-  in
+  let tag_of_rank r = "["^ string_of_int r ^"]" in
   let keys = Hashtbl.keys t.fields |> Array.of_enum in
   Array.fast_sort String.compare keys ;
   Array.fold_left (fun s k ->
       let rank, typ = Hashtbl.find t.fields k in
       (if s = "" then "" else s ^ "_") ^
-      k ^ ":" ^ Lang.Expr.signature_of_typ typ ^ tag_of_rank_opt !rank
+      k ^ ":" ^ Lang.Expr.signature_of_typ typ ^ tag_of_rank (Option.get !rank)
     ) "" keys
 
 let make_temp_tup_typ () =
@@ -63,8 +60,26 @@ let tup_typ_of_temp_tup_type ttt =
       nullable = Option.get typ.Expr.nullable ;
       typ = Option.get typ.Expr.scalar_typ })
 
+let make_node_name =
+  let seq = ref 0 in
+  fun () ->
+    incr seq ;
+    string_of_int !seq
+
 type node =
-  { name : string ;
+  { (* We identify nodes by a unique name that can be optionally provided
+       automatically if its not meant to be referenced. *)
+    name : string ;
+    (* Nodes are added/removed to/from the graph in group called layers.
+     * Layers can connect to nodes from any other layers and non existing
+     * nodes, but there is still the notion of layers "depending" (or lying on)
+     * others; we must prevent change of higher level layers to restart lower
+     * level layers, while update of a low level layers can trigger the
+     * recompilation of upper layers.  The idea is that there are some
+     * ephemeral layers that answer specific queries on top of more fundamental
+     * layers that compute generally useful data, a bit like functions calling
+     * each others. *)
+    layer : layer ;
     mutable operation : Lang.Operation.t ;
     (* Also keep the string as defined by the client so we do not loose
      * formatting *)
@@ -77,17 +92,22 @@ type node =
     mutable pid : int option ;
     mutable last_report : Binocle.metric list }
 
-let signature node =
-  "OP="^ node.op_text ^
-  "IN="^ type_signature node.in_type ^
-  "OUT="^ type_signature node.out_type |>
-  Cryptohash_md4.string |>
-  Cryptohash_md4.to_hex
+let signature =
+  let blanks = Str.regexp "[ \n\t\b\r]\\+" in
+  fun op_text in_type out_type ->
+    let op_text = Str.global_replace blanks " " op_text in
+    "OP="^ op_text ^
+    "IN="^ type_signature in_type ^
+    "OUT="^ type_signature out_type |>
+    Cryptohash_md4.string |>
+    Cryptohash_md4.to_hex
 
 type graph_persist =
   { mutable status : graph_status ;
     nodes : (string, node) Hashtbl.t }
 
+(* FIXME: have a subgraph per layer, and relax node name uniqueness to the
+ * layer they are in. *)
 type graph =
   { mutable last_started : float option ;
     mutable last_stopped : float option ;
@@ -132,23 +152,17 @@ let parse_operation operation =
     | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
       op)
 
-let make_node graph name op_text =
+let make_node graph name layer op_text =
   !logger.debug "Creating node %s" name ;
   set_graph_editable graph ;
   let operation = parse_operation op_text in
-  { name ; operation ; op_text ; parents = [] ; children = [] ;
+  { name ; layer ;
+    operation ; op_text ;
+    parents = [] ; children = [] ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
     command = None ; pid = None ; last_report = [] }
-
-let update_node graph node op_text =
-  !logger.debug "Modifying node %s" node.name ;
-  set_graph_editable graph ;
-  let operation = parse_operation op_text in
-  node.operation <- operation ;
-  node.op_text <- op_text ;
-  node.command <- None ; node.pid <- None
 
 let make_graph ?persist () =
   let persist =
@@ -194,39 +208,17 @@ let find_node _conf graph id =
   Hashtbl.find graph.persist.nodes id
 
 let add_node conf graph node =
+  assert (node.name <> "") ;
   if has_node conf graph node.name then
     raise (InvalidCommand ("Node "^ node.name ^" already exists")) ;
   Hashtbl.add graph.persist.nodes node.name node ;
   save_graph conf graph
-
-let remove_node conf graph name =
-  !logger.debug "Removing node %s" name ;
-  set_graph_editable graph ;
-  let node = Hashtbl.find graph.persist.nodes name in
-  List.iter (fun p ->
-      p.children <- List.filter ((!=) node) p.children
-    ) node.parents ;
-  List.iter (fun p ->
-      p.parents <- List.filter ((!=) node) p.parents
-    ) node.children ;
-  Hashtbl.remove_all graph.persist.nodes name ;
-  save_graph conf graph
-
-let has_link _conf src dst =
-  List.exists ((==) dst) src.children
 
 let make_link conf graph src dst =
   !logger.debug "Create link between nodes %s and %s" src.name dst.name ;
   set_graph_editable graph ;
   src.children <- dst :: src.children ;
   dst.parents <- src :: dst.parents ;
-  save_graph conf graph
-
-let remove_link conf graph src dst =
-  !logger.debug "Delete link between nodes %s and %s" src.name dst.name ;
-  set_graph_editable graph ;
-  src.children <- List.filter ((!=) dst) src.children ;
-  dst.parents <- List.filter ((!=) src) dst.parents ;
   save_graph conf graph
 
 let make_conf save_file ramen_url =

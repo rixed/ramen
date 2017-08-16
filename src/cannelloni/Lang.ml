@@ -569,9 +569,8 @@ struct
       mutable scalar_typ : scalar_typ option }
 
   let signature_of_typ typ =
-    Option.map_default Scalar.string_of_typ "?" typ.scalar_typ ^
-    Option.map_default (function true -> "null" | false -> "notnull")
-                       "" typ.nullable
+    Scalar.string_of_typ (Option.get typ.scalar_typ) ^
+    (if Option.get typ.nullable then " null" else " notnull")
 
   let to_expr_type_info typ =
     { name_info = typ.expr_name ;
