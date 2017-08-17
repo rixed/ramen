@@ -536,7 +536,7 @@ let set_all_types layer =
       try
         let conf = RamenConf.make_conf None "http://127.0.0.1/" in
         RamenConf.add_node conf "test" "test" op_text ;
-        set_all_types conf.RamenConf.graph ;
+        set_all_types (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"
       with e ->
         Printf.sprintf "Exception in set_all_types: %s at\n%s"
