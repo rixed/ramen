@@ -1,7 +1,7 @@
 open Batteries
 open Log
-open RamenSharedTypes
 module C = RamenConf
+module SL = RamenSharedTypes.Layer
 
 let run_background cmd args env =
   let open Unix in
@@ -19,71 +19,76 @@ let run_background cmd args env =
   | pid -> pid
     (* TODO: A monitoring thread that report the error in the node structure *)
 
-let run conf graph =
-  match graph.C.persist.C.status with
-  | Edition ->
+let run conf layer =
+  let open C.Layer in
+  match layer.persist.status with
+  | SL.Edition ->
     raise (C.InvalidCommand "Cannot run if not compiled")
-  | Running ->
+  | SL.Running ->
     raise (C.InvalidCommand "Graph is already running")
-  | Compiled ->
+  | SL.Compiling ->
+    raise (C.InvalidCommand "Graph is being compiled already")
+  | SL.Compiled ->
     (* First prepare all the required ringbuffers *)
-    let sig_of_node node = C.signature node.C.op_text node.C.in_type node.C.out_type in
-    let rb_name_of node = RingBufLib.in_ringbuf_name (sig_of_node node)
-    and rb_name_for_export_of node = RingBufLib.exp_ringbuf_name (sig_of_node node)
+    let rb_name_of node = RingBufLib.in_ringbuf_name node.C.Node.signature
+    and rb_name_for_export_of node = RingBufLib.exp_ringbuf_name node.C.Node.signature
     and rb_sz_words = 1000000 in
     !logger.info "Creating ringbuffers..." ;
     Hashtbl.iter (fun _ node ->
         RingBuf.create (rb_name_of node) rb_sz_words ;
-        if Lang.Operation.is_exporting node.C.operation then
+        if Lang.Operation.is_exporting node.C.Node.operation then
           RingBuf.create (rb_name_for_export_of node) rb_sz_words
-      ) graph.C.persist.C.nodes ;
+      ) layer.persist.nodes ;
     (* Now run everything *)
     !logger.info "Launching generated programs..." ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
-        let command = Option.get node.C.command
-        and output_ringbufs = List.map rb_name_of node.C.children in
+        let command = Option.get node.C.Node.command
+        and output_ringbufs = List.map rb_name_of node.C.Node.children in
         let output_ringbufs =
-          if Lang.Operation.is_exporting node.C.operation then
+          if Lang.Operation.is_exporting node.C.Node.operation then
             rb_name_for_export_of node :: output_ringbufs
           else output_ringbufs in
-        let signature = sig_of_node node in
-        let out_ringbuf_ref = RingBufLib.out_ringbuf_names_ref signature in
+        let out_ringbuf_ref = RingBufLib.out_ringbuf_names_ref node.C.Node.signature in
         File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
         let env = [|
           "input_ringbuf="^ rb_name_of node ;
           "output_ringbufs_ref="^ out_ringbuf_ref ;
-          "report_url="^ conf.C.ramen_url ^"/report/"^ node.C.name |] in
-        node.C.pid <- Some (run_background command [||] env)
-      ) graph.C.persist.C.nodes ;
-    graph.C.persist.C.status <- Running ;
-    graph.C.last_started <- Some now ;
-    graph.C.importing_threads <- Hashtbl.fold (fun _ node lst ->
-        if Lang.Operation.is_exporting node.C.operation then (
+          "report_url="^ conf.C.ramen_url ^"/report/"^ node.C.Node.name |] in
+        node.C.Node.pid <- Some (run_background command [||] env)
+      ) layer.persist.nodes ;
+    C.Layer.set_status layer SL.Running ;
+    layer.C.Layer.persist.C.Layer.last_started <- Some now ;
+    layer.C.Layer.importing_threads <- Hashtbl.fold (fun _ node lst ->
+        if Lang.Operation.is_exporting node.C.Node.operation then (
           let rb = rb_name_for_export_of node in
-          let tuple_type = C.tup_typ_of_temp_tup_type node.C.out_type in
-          RamenExport.import_tuples rb node.C.name tuple_type :: lst
+          let tuple_type = C.tup_typ_of_temp_tup_type node.C.Node.out_type in
+          RamenExport.import_tuples rb node.C.Node.name tuple_type :: lst
         ) else lst
-      ) graph.C.persist.C.nodes [] ;
-    C.save_graph conf graph
+      ) layer.C.Layer.persist.C.Layer.nodes [] ;
+    C.save_graph conf
 
 let string_of_process_status = function
   | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
   | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %d" sign
   | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
 
-let stop conf graph =
-  match graph.C.persist.C.status with
-  | Edition | Compiled ->
+let stop conf layer =
+  match layer.C.Layer.persist.C.Layer.status with
+  | SL.Edition | SL.Compiled ->
     raise (C.InvalidCommand "Graph is not running")
-  | Running ->
-    !logger.info "Stopping the graph..." ;
+  | SL.Compiling ->
+    (* FIXME: do as for Running and make sure run() check the status hasn't
+     * changed before launching workers. *)
+    raise (C.InvalidCommand "Graph is being compiled by another thread")
+  | SL.Running ->
+    !logger.info "Stopping layer..." ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
-        !logger.debug "Stopping node %s" node.C.name ;
-        match node.C.pid with
+        !logger.debug "Stopping node %s" node.C.Node.name ;
+        match node.C.Node.pid with
         | None ->
-          !logger.error "Node %s has no pid?!" node.C.name
+          !logger.error "Node %s has no pid?!" node.C.Node.name
         | Some pid ->
           let open Unix in
           (try kill pid Sys.sigterm
@@ -91,14 +96,14 @@ let stop conf graph =
           (try
             let _, status = restart_on_EINTR (waitpid []) pid in
             !logger.info "Node %s %s"
-              node.C.name (string_of_process_status status) ;
+              node.C.Node.name (string_of_process_status status) ;
            with exn ->
             !logger.error "Cannot wait for pid %d: %s"
               pid (Printexc.to_string exn)) ;
-          node.C.pid <- None
-      ) graph.C.persist.C.nodes ;
-    graph.C.persist.C.status <- Compiled ;
-    graph.C.last_stopped <- Some now ;
-    List.iter Lwt.cancel graph.C.importing_threads ;
-    graph.C.importing_threads <- [] ;
-    C.save_graph conf graph
+          node.C.Node.pid <- None
+      ) layer.C.Layer.persist.C.Layer.nodes ;
+    C.Layer.set_status layer SL.Compiled ;
+    layer.C.Layer.persist.C.Layer.last_stopped <- Some now ;
+    List.iter Lwt.cancel layer.C.Layer.importing_threads ;
+    layer.C.Layer.importing_threads <- [] ;
+    C.save_graph conf

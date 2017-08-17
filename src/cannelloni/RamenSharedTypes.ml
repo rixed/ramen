@@ -1,6 +1,8 @@
-(* FIXME: since we gave up the web GUI we could merge this back into RamenConf *)
-
+(* For types used by RPCs, so that clients that whish to use them don't have
+ * to link with HttpSrv. *)
 open Stdint
+
+(* Scalar types *)
 
 (* TNum is not an actual type used by any value, but it's used as a default
  * type for numeric operands that can be "promoted" to any other numerical
@@ -34,7 +36,8 @@ let scalar_type_of = function
   | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6
 
 (* A "columnar" type, to help store/send large number of values *)
-type scalar_column =
+
+type column =
   | AFloat of float array | AString of string array
   | ABool of bool array | AU8 of uint8 array
   | AU16 of uint16 array | AU32 of uint32 array
@@ -47,7 +50,7 @@ type scalar_column =
   | ACidrv4 of (uint32 * int) array | ACidrv6 of (uint128 * int) array
   [@@ppp PPP_JSON]
 
-let scalar_type_of_column = function
+let type_of_column = function
   | AFloat _ -> TFloat | AString _ -> TString | ABool _ -> TBool
   | AU8 _ -> TU8 | AU16 _ -> TU16 | AU32 _ -> TU32 | AU64 _ -> TU64
   | AU128 _ -> TU128 | AI8 _ -> TI8 | AI16 _ -> TI16 | AI32 _ -> TI32
@@ -55,7 +58,7 @@ let scalar_type_of_column = function
   | AEth _ -> TEth | AIpv4 _ -> TIpv4 | AIpv6 _ -> TIpv6
   | ACidrv4 _ -> TCidrv4 | ACidrv6 _ -> TCidrv6
 
-let scalar_value_at n =
+let column_value_at n =
   let g a = Array.get a n in
   function
   | AFloat a -> VFloat (g a) | AString a -> VString (g a)
@@ -73,7 +76,7 @@ type column_mapper =
   { f : 'a. 'a array -> 'a array ;
     null : int -> int }
 
-let scalar_column_map m = function
+let column_map m = function
   | AFloat a -> AFloat (m.f a) | AString a -> AString (m.f a)
   | ABool a -> ABool (m.f a) | AU8 a -> AU8 (m.f a) | AU16 a -> AU16 (m.f a)
   | AU32 a -> AU32 (m.f a) | AU64 a -> AU64 (m.f a) | AU128 a -> AU128 (m.f a)
@@ -83,13 +86,15 @@ let scalar_column_map m = function
   | AIpv4 a -> AIpv4 (m.f a) | AIpv6 a -> AIpv6 (m.f a)
   | ACidrv4 a -> ACidrv4 (m.f a) | ACidrv6 a -> ACidrv6 (m.f a)
 
-let scalar_column_length =
+let column_length =
   let al = Array.length in function
   | AFloat a -> al a | AString a -> al a | ABool a -> al a | AU8 a -> al a
   | AU16 a -> al a | AU32 a -> al a | AU64 a -> al a | AU128 a -> al a
   | AI8 a -> al a | AI16 a -> al a | AI32 a -> al a | AI64 a -> al a
   | AI128 a -> al a | ANull l -> l | AEth a -> al a | AIpv4 a -> al a
   | AIpv6 a -> al a | ACidrv4 a -> al a | ACidrv6 a -> al a
+
+(* Tuple types *)
 
 type field_typ =
   { typ_name : string ; nullable : bool ; typ : scalar_typ } [@@ppp PPP_JSON]
@@ -101,40 +106,20 @@ type expr_type_info =
     nullable_info : bool option ;
     typ_info : scalar_typ option } [@@ppp PPP_JSON]
 
-(* FIXME: Need _COMPILING_ as well *)
-type graph_status = Edition | Compiled | Running [@@ppp PPP_JSON]
-
-type make_node =
-  { (* The input type of this node is any tuple source with at least all the
-     * field mentioned in the "in" tuple of its operation. *)
-    operation : string ; (* description of what this node does in the DSL defined in Lang.ml *)
-    (* Fine tuning info about the size of in/out ring buffers etc. *)
-    input_ring_size : int option [@ppp_default None] ;
-    output_ring_size : int option [@ppp_default None] } [@@ppp PPP_JSON]
-
-let empty_make_node =
-  { operation = "" ; input_ring_size = None ; output_ring_size = None }
-
-(*$= make_node_ppp & ~printer:(PPP.to_string make_node_ppp)
-  { operation = "test" ;\
-    input_ring_size = None ;\
-    output_ring_size = None }\
-    (PPP.of_string_exc make_node_ppp "{\"operation\":\"test\"}")
-
-  { operation = "op" ;\
-    input_ring_size = Some 42 ;\
-    output_ring_size = None }\
-    (PPP.of_string_exc make_node_ppp "{\"operation\":\"op\", \"input_ring_size\":42}")
-*)
+(* Nodes  / Layers / Graphs *)
 
 module Node =
 struct
+  type child =
+    { layer : string option ;
+      name : string } [@@ppp PPP_JSON]
+
   type info =
     (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
     { mutable name : string ;
       mutable operation : string ;
       mutable parents : string list ;
-      mutable children : string list ;
+      mutable children : child list ;
       type_of_operation : string option ;
       input_type : (int option * expr_type_info) list ;
       output_type : (int option * expr_type_info) list ;
@@ -156,21 +141,22 @@ struct
       group_count = None ; cpu_time = 0. ; ram_usage = 0 }
 end
 
-type node_links =
-  (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
-  { parents : string list ;
-    children : string list } [@@ppp PPP_JSON]
+module Layer =
+struct
+  type status = Edition | Compiling | Compiled | Running [@@ppp PPP_JSON]
 
-type layer = string [@@ppp PPP_JSON]
+  type info =
+    { name : string ;
+      nodes : Node.info list ;
+      status : status [@ppp_default Edition] ;
+      last_started : float option ;
+      last_stopped : float option } [@@ppp PPP_JSON]
+end
 
-type graph_info =
-  { nodes : Node.info list ;
-    status : graph_status [@ppp_default Edition] ;
-    last_started : float option ;
-    last_stopped : float option } [@@ppp PPP_JSON]
+type get_graph_resp = Layer.info list [@@ppp PPP_JSON]
 
-type graph_replace =
-  { layer : layer ; nodes : Node.info list } [@@ppp PPP_JSON]
+type put_layer_req =
+  { nodes : Node.info list } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)
 
@@ -189,4 +175,4 @@ let empty_export_req =
 
 type export_resp =
   { first: int ;
-    columns : (string * bool * scalar_column) list } [@@ppp PPP_JSON]
+    columns : (string * bool * column) list } [@@ppp PPP_JSON]

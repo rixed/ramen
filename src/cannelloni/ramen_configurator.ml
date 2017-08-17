@@ -1,13 +1,14 @@
 open Batteries
 open Log
 open RamenSharedTypes
+module N = RamenSharedTypes.Node
 
 type options = { debug : bool ; monitor : bool }
 
 let options debug monitor = { debug ; monitor }
 
 (* Build the node infos corresponding to the BCN configuration *)
-let graph_info_of_bcns delete csv_dir bcns =
+let layer_of_bcns delete csv_dir bcns =
   let name_of_zones = function
     | [] -> "any"
     | main::_ -> string_of_int main in
@@ -17,7 +18,8 @@ let graph_info_of_bcns delete csv_dir bcns =
                       name ; operation ;
                       parents = List.map (fun p -> p.name) parents } in
     List.iter (fun (p : Node.info) ->
-      p.Node.children <- name :: p.Node.children) parents ;
+      let child = N.{ name ; layer = None } in
+      p.Node.children <- child :: p.Node.children) parents ;
     all_nodes := node :: !all_nodes ;
     node
   in
@@ -233,9 +235,7 @@ let graph_info_of_bcns delete csv_dir bcns =
       ) bcn.max_bps ;
   in
   List.iter alert_conf_of_bcn bcns ;
-  RamenSharedTypes.{
-    nodes = !all_nodes ; status = Edition ;
-    last_started = None ; last_stopped = None }
+  RamenSharedTypes.{ nodes = !all_nodes }
 
 let get_bcns_from_db db =
   let open Conf_of_sqlite in
@@ -247,11 +247,11 @@ open Lwt
 open Cohttp
 open Cohttp_lwt_unix
 
-let put_graph ramen_url graph =
-  let graph_json = PPP.to_string RamenSharedTypes.graph_info_ppp graph in
-  let url = ramen_url ^"/graph" in
-  !logger.debug "Will send %S to %S" graph_json url ;
-  let body = `String graph_json in
+let put_layer ramen_url layer =
+  let req = PPP.to_string RamenSharedTypes.put_layer_req_ppp layer in
+  let url = ramen_url ^"/graph/bcn" in
+  !logger.debug "Will send %S to %S" req url ;
+  let body = `String req in
   (* TODO: but also fix the server never timeouting! *)
   let headers = Header.init_with "Connection" "close" in
   let%lwt (resp, body) =
@@ -269,8 +269,8 @@ let start conf ramen_url db_name delete csv_dir =
   let db = get_db db_name in
   let update () =
     let bcns = get_bcns_from_db db in
-    let graph = graph_info_of_bcns delete csv_dir bcns in
-    put_graph ramen_url graph
+    let layer = layer_of_bcns delete csv_dir bcns in
+    put_layer ramen_url layer
   in
   let%lwt () = update () in
   if conf.monitor then

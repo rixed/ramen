@@ -47,19 +47,6 @@ let check_ok body =
   ignore body ;
   return_unit
 
-let add_node debug ramen_url n operation () =
-  logger := make_logger debug ;
-  let url = ramen_url ^"/node/"^ enc n in
-  Lwt_main.run (
-    http_put_json url make_node_ppp { empty_make_node with operation } >>=
-    check_ok)
-
-let add_link debug ramen_url n1 n2 () =
-  logger := make_logger debug ;
-  let url = ramen_url ^"/link/"^ enc n1 ^"/"^ enc n2 in
-  Lwt_main.run (
-    http_do url >>= check_ok)
-
 let compile debug ramen_url () =
   logger := make_logger debug ;
   Lwt_main.run (
@@ -78,13 +65,13 @@ let pause debug ramen_url () =
 let tuples_of_columns columns =
   let field_types =
     List.map (fun (typ_name, nullable, ts) ->
-      { typ_name ; nullable ; typ = scalar_type_of_column ts }) columns in
+      { typ_name ; nullable ; typ = type_of_column ts }) columns in
   (* Build the tuple of line l *)
   let tuple_of l =
-    List.map (fun (_, _, ts) -> scalar_value_at l ts) columns in
+    List.map (fun (_, _, ts) -> column_value_at l ts) columns in
   let len =
     let _, _, fst_col = List.hd columns in
-    scalar_column_length fst_col
+    column_length fst_col
   in
   field_types, List.init len tuple_of
 
@@ -116,7 +103,7 @@ let drop_firsts n resp =
         List.map (fun (name, null, columns) ->
             let mapper =
               { f = (fun a -> Array.tail a n) ; null = fun l -> l - n } in
-            name, null, scalar_column_map mapper columns
+            name, null, column_map mapper columns
           ) resp.columns }
 
 let ppp_of_string_exc ppp s =
@@ -133,7 +120,7 @@ let tail debug ramen_url node_name as_csv last continuous () =
     (* TODO: check first_seqnum is not bigger than expected *)
     let len =
       let _, _, columns = List.hd resp.columns in
-      scalar_column_length columns in
+      column_length columns in
     let to_drop = Option.map_default (fun last ->
         if len > last then len - last else 0) 0 last in
     let resp = drop_firsts to_drop resp in

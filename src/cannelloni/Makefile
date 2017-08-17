@@ -10,7 +10,7 @@ LINKED_FOR_TESTS = \
 	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml CodeGen_OCaml.ml \
 	RingBuf.ml RamenConf.ml Compiler.ml
 
-RIGATONI_SOURCES = \
+CANNELLONI_SOURCES = \
 	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
@@ -38,7 +38,7 @@ ALERTER_SOURCES = \
 	ramen_alerter.ml
 
 SOURCES = \
-	$(RIGATONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
+	$(CANNELLONI_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 	$(CONFIGURATOR_SOURCES) $(ALERTER_SOURCES) \
 	ringbuf_test.ml
@@ -65,7 +65,7 @@ ringbuf/libringbuf.a: ringbuf/ringbuf.o
 # symbols we need as we are the only users.
 MOREFLAGS = -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf
 
-cannelloni: $(RIGATONI_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
+cannelloni: $(CANNELLONI_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o

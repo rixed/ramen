@@ -8,6 +8,10 @@ open Log
 open RamenSharedTypes
 open Helpers
 module C = RamenConf
+module N = RamenConf.Node
+module L = RamenConf.Layer
+module SL = RamenSharedTypes.Layer
+module SN = RamenSharedTypes.Node
 
 let not_implemented msg = fail (HttpError (501, msg))
 let bad_request msg = fail (HttpError (400, msg))
@@ -48,29 +52,6 @@ let of_json headers what ppp body =
       fail e
   )
 
-(*
-== Add/Update/Delete a node ==
-
-Nodes are referred to via name that can be anything as long as they are unique.
-So the client decide on the name. The server ensure uniqueness by forbidding
-creation of a new node by the same name as one that exists already. Actually,
-such a request would result in altering the existing node.
-
-So each node has a URL, such as: node/$name
-We can then PUT, GET or DELETE that URL.
-
-For RPC like messages, the server accept all encodings supported by PPP. But we
-have to find a way to generate several ppp for a type, under different names.
-Or even better, we should have a single value (t_ppp) with all the encodings
-(so that we can pass around the ppp for all encodings). So the @@ppp notation
-would just create a record with one field per implemented format. Later, if
-some are expensive, we could have an option to list only those wanted ; the
-default being to include them all. For now we will use only JSON.
-
-Here is the node description. Typically, optional fields are optional or even
-forbidden when creating the node and are set when getting node information.
-*)
-
 let ok_body = "{\"success\": true}"
 let respond_ok ?(body=ok_body) () =
   let status = `Code 200 in
@@ -86,6 +67,10 @@ let type_of_operation_of =
   | Select _ -> "SELECT"
   | Aggregate _ -> "GROUP BY"
   | ReadCSVFile _ -> "READ CSV"
+
+(*
+    Returns the graph (as JSON, dot or mermaid representation)
+*)
 
 let rec find_int_opt_metric metrics name =
   let open Binocle in
@@ -108,115 +93,76 @@ let node_info_of_node node =
     List.map (fun (rank, typ) -> rank, Lang.Expr.to_expr_type_info typ) lst
   in
   Node.{
-    name = node.C.name ;
-    operation = node.C.op_text ;
-    type_of_operation = Some (type_of_operation_of node.C.operation) ;
-    command = node.C.command ;
-    pid = node.C.pid ;
-    parents = List.map (fun n -> n.C.name) node.C.parents ;
-    children = List.map (fun n -> n.C.name) node.C.children ;
-    input_type = C.list_of_temp_tup_type node.C.in_type |> to_expr_type_info ;
-    output_type = C.list_of_temp_tup_type node.C.out_type |> to_expr_type_info ;
-    in_tuple_count = find_int_metric node.C.last_report Consts.in_tuple_count_metric ;
-    selected_tuple_count = find_int_metric node.C.last_report Consts.selected_tuple_count_metric ;
-    out_tuple_count = find_int_metric node.C.last_report Consts.out_tuple_count_metric ;
-    group_count = find_int_opt_metric node.C.last_report Consts.group_count_metric ;
-    cpu_time = find_float_metric node.C.last_report Consts.cpu_time_metric ;
-    ram_usage = find_int_metric node.C.last_report Consts.ram_usage_metric }
+    name = node.N.name ;
+    operation = node.N.op_text ;
+    type_of_operation = Some (type_of_operation_of node.N.operation) ;
+    command = node.N.command ;
+    pid = node.N.pid ;
+    parents = List.map (fun n -> n.N.name) node.N.parents ;
+    children = List.map (fun n ->
+      { layer = (if n.N.layer = node.N.layer then None else Some n.N.layer) ;
+        name = n.N.name }) node.N.children ;
+    input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
+    output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
+    in_tuple_count = find_int_metric node.N.last_report Consts.in_tuple_count_metric ;
+    selected_tuple_count = find_int_metric node.N.last_report Consts.selected_tuple_count_metric ;
+    out_tuple_count = find_int_metric node.N.last_report Consts.out_tuple_count_metric ;
+    group_count = find_int_opt_metric node.N.last_report Consts.group_count_metric ;
+    cpu_time = find_float_metric node.N.last_report Consts.cpu_time_metric ;
+    ram_usage = find_int_metric node.N.last_report Consts.ram_usage_metric }
 
-(*
-== Connect nodes ==
+let layer_info_of_layer layer =
+  SL.{
+    name = layer.L.name ;
+    nodes = Hashtbl.values layer.L.persist.L.nodes /@
+            node_info_of_node |>
+            List.of_enum ;
+    status = layer.L.persist.L.status ;
+    last_started = layer.L.persist.L.last_started ;
+    last_stopped = layer.L.persist.L.last_stopped }
 
-We need to build connections between nodes. That's when type-checking happens.
-Each link has a resource at /link/$node_src/$node_dest. Creating this resource
-(PUT) will add this connection and deleting it will remove the connection.
+let graph_layers conf = function
+  | None ->
+    Hashtbl.values conf.C.graph.C.layers |>
+    List.of_enum |>
+    return
+  | Some l ->
+    try Hashtbl.find conf.C.graph.C.layers l |>
+        List.singleton |>
+        return
+    with Not_found -> bad_request ("Unknown layer "^l)
 
-GET will return some info on that connection (although for now we have not much
-to say.
-*)
-
-let node_of_name conf graph n =
-  if n = "" then bad_request "Empty string is not a valid node name"
-  else match C.find_node conf graph n with
-  | exception Not_found ->
-    bad_request ("Node "^ n ^" does not exist")
-  | node -> return node
-
-(*
-== Set all connections of a single node ==
-
-Allows the node editor to set all connections at once.
-*)
-
-let diff_list bef aft =
-  (* Remove an element from a list or return the original list if the
-   * element was not present: *)
-  let filter_out x lst =
-    let rec loop prev = function
-    | [] -> lst
-    | e::rest ->
-      if e == x then List.rev_append rest prev
-      else loop (e::prev) rest in
-    loop [] lst
-  in
-  (* Loop over aft, building to_add and to_del: *)
-  let rec loop to_add to_del bef = function
-  | [] -> to_add, List.rev_append bef to_del
-  | a::rest ->
-    let filtered = filter_out a bef in
-    if filtered == bef then
-      loop (a::to_add) to_del filtered rest
-    else
-      loop to_add to_del filtered rest
-  in
-  loop [] [] bef aft
-
-(*
-== Display the graph (JSON, dot or mermaid representation) ==
-*)
-
-let should_include_node node =
-  Option.map_default ((=) node.C.layer) true
-
-let get_graph_json conf _headers layer_opt =
-  let graph_info =
-    { nodes = Hashtbl.fold (fun _name node lst ->
-        if should_include_node node layer_opt then
-          node_info_of_node node :: lst
-        else lst
-      ) conf.C.building_graph.C.persist.C.nodes [] ;
-      status = conf.C.building_graph.C.persist.C.status ;
-      last_started = conf.C.building_graph.C.last_started ;
-      last_stopped = conf.C.building_graph.C.last_stopped } in
-  let body = PPP.to_string graph_info_ppp graph_info in
+let get_graph_json _headers layers =
+  let body = List.map layer_info_of_layer layers |>
+             PPP.to_string get_graph_resp_ppp in
   respond_ok ~body ()
 
-let dot_of_graph graph layer_opt =
+let dot_of_graph layers =
   let dot = IO.output_string () in
   Printf.fprintf dot "digraph g {\n" ;
-  Hashtbl.iter (fun name node ->
-      if should_include_node node layer_opt then
+  List.iter (fun layer ->
+    Hashtbl.iter (fun name _ ->
         Printf.fprintf dot "\t%S\n" name
-    ) graph.C.persist.C.nodes ;
+      ) layer.L.persist.L.nodes
+    ) layers ;
   Printf.fprintf dot "\n" ;
-  Hashtbl.iter (fun name node ->
-      (* We (somewhat arbitrarily) include children of nodes in the layer but
-       * not their parent: *)
-      if should_include_node node layer_opt then
-        List.iter (fun c ->
-            Printf.fprintf dot "\t%S -> %S\n" name c.C.name
-          ) node.C.children
-    ) graph.C.persist.C.nodes ;
+  List.iter (fun layer ->
+    Hashtbl.iter (fun name node ->
+        List.iter (fun p ->
+            Printf.fprintf dot "\t%S -> %S\n" p.N.name name
+          ) node.N.parents
+      ) layer.L.persist.L.nodes
+    ) layers ;
   Printf.fprintf dot "}\n" ;
   IO.close_out dot
 
-let get_graph_dot conf _headers layer_opt =
-  let body = dot_of_graph conf.C.building_graph layer_opt in
+let get_graph_dot _headers layers =
+  let body = dot_of_graph layers in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" Consts.dot_content_type in
   Server.respond_string ~headers ~status ~body ()
 
-let mermaid_of_graph graph layer_opt =
+let mermaid_of_graph layers =
   (* Build unique identifier that are valid for mermaid: *)
   let is_alphanum c =
     Char.(is_letter c || is_digit c) in
@@ -231,25 +177,27 @@ let mermaid_of_graph graph layer_opt =
   in
   let txt = IO.output_string () in
   Printf.fprintf txt "graph LR\n" ;
-  Hashtbl.iter (fun name node ->
-      if should_include_node node layer_opt then
+  List.iter (fun layer ->
+    Hashtbl.iter (fun name _ ->
         Printf.fprintf txt "%s(%s)\n"
           (mermaid_id name)
           (mermaid_label name)
-    ) graph.C.persist.C.nodes ;
+      ) layer.L.persist.L.nodes
+    ) layers ;
   Printf.fprintf txt "\n" ;
-  Hashtbl.iter (fun name node ->
-      if should_include_node node layer_opt then
-        List.iter (fun c ->
+  List.iter (fun layer ->
+    Hashtbl.iter (fun name node ->
+        List.iter (fun p ->
             Printf.fprintf txt "\t%s-->%s\n"
+              (mermaid_id p.N.name)
               (mermaid_id name)
-              (mermaid_id c.C.name)
-          ) node.C.children
-    ) graph.C.persist.C.nodes ;
+          ) node.N.parents
+      ) layer.L.persist.L.nodes
+    ) layers ;
   IO.close_out txt
 
-let get_graph_mermaid conf _headers layer_opt =
-  let body = mermaid_of_graph conf.C.building_graph layer_opt in
+let get_graph_mermaid _headers layers =
+  let body = mermaid_of_graph layers in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" Consts.mermaid_content_type in
   let headers = Header.add headers "Access-Control-Allow-Origin" "*" in
@@ -257,90 +205,109 @@ let get_graph_mermaid conf _headers layer_opt =
   let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
   Server.respond_string ~headers ~status ~body ()
 
-let get_graph conf headers layer =
+let get_graph conf headers layer_opt =
   let accept = get_accept headers in
+  let%lwt layers = graph_layers conf layer_opt in
   if is_accepting Consts.json_content_type accept then
-    get_graph_json conf headers layer
+    get_graph_json headers layers
   else if is_accepting Consts.dot_content_type accept then
-    get_graph_dot conf headers layer
+    get_graph_dot headers layers
   else if is_accepting Consts.mermaid_content_type accept then
-    get_graph_mermaid conf headers layer
+    get_graph_mermaid headers layers
   else
     cant_accept accept
 
-let put_layer conf headers body =
-  let%lwt msg = of_json headers "Uploading graph layer" graph_replace_ppp body in
-  let graph = conf.C.building_graph in
-  (* Check that this layer is new (FIXME: implement hot-replacement) *)
-  match Hashtbl.values graph.C.persist.C.nodes |>
-        Enum.find (fun node -> node.C.layer = msg.layer) with
+(*
+    Add/Remove layers
+
+    Layers and nodes within a layer are referred to via name that can be
+    anything as long as they are unique.  So the clients decide on the name.
+    The server ensure uniqueness by forbidding creation of a new layers by the
+    same name as one that exists already.
+
+*)
+
+let node_of_name conf layer_name n =
+  if n = "" then bad_request "Empty string is not a valid node name"
+  else match C.find_node conf layer_name n with
   | exception Not_found ->
+    bad_request ("Node "^ layer_name ^"/"^ n ^" does not exist")
+  | node -> return node
+
+let put_layer conf headers layer body =
+  let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
+  (* TODO: Check that this layer node names are unique within the layer *)
+
+  (* Check that this layer is new *)
+  if Hashtbl.mem conf.C.graph.C.layers layer then
+    bad_request ("Layer "^ layer ^" already present")
+  else (
     (* Create all the nodes *)
     List.iter (fun info ->
         let name =
           if info.Node.name <> "" then info.Node.name
-          else C.make_node_name () in
-        let n = C.make_node graph name msg.layer info.Node.operation in
-        C.add_node conf graph n
+          else N.make_name () in
+        C.add_node conf name layer info.Node.operation
       ) msg.nodes ;
     (* Then all the links *)
     let%lwt () = Lwt_list.iter_s (fun info ->
-        let%lwt src = node_of_name conf graph info.Node.name in
+        let%lwt src = node_of_name conf layer info.Node.name in
         Lwt_list.iter_s (fun child ->
-            let%lwt dst = node_of_name conf graph child in
-            C.make_link conf graph src dst ;
+            let child_layer = child.SN.layer |? layer in
+            let%lwt dst = node_of_name conf child_layer child.SN.name in
+            C.make_link conf src dst ;
             return_unit
           ) info.Node.children
       ) msg.nodes in
-    respond_ok ()
-  | _ ->
-    bad_request ("Layer "^ msg.layer ^" already present")
+    respond_ok ())
 
 (*
-== Whole graph operations: compile/run/stop ==
+    Whole graph operations: compile/run/stop
 *)
 
-let compile conf headers =
+let compile conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
-    match Compiler.compile conf conf.C.building_graph with
-    | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
-      bad_request e
-    | () ->
-      respond_ok ())
+    let%lwt layers = graph_layers conf layer_opt in
+    try
+      List.iter (Compiler.compile conf) layers ;
+      respond_ok ()
+    with (Lang.SyntaxError e | C.InvalidCommand e) ->
+      bad_request e)
 
-let run conf headers =
+let run conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
-    match RamenProcesses.run conf conf.C.building_graph with
-    | exception (Lang.SyntaxError e | C.InvalidCommand e) ->
-      bad_request e
-    | () ->
-      respond_ok ())
+    let%lwt layers = graph_layers conf layer_opt in
+    try
+      List.iter (RamenProcesses.run conf) layers ;
+      respond_ok ()
+    with (Lang.SyntaxError e | C.InvalidCommand e) ->
+      bad_request e)
 
-let stop conf headers =
+let stop conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
-    match RamenProcesses.stop conf conf.C.building_graph with
-    | exception C.InvalidCommand e ->
-      bad_request e
-    | () ->
-      respond_ok ())
+    let%lwt layers = graph_layers conf layer_opt in
+    try
+      List.iter (RamenProcesses.stop conf) layers ;
+      respond_ok ()
+    with C.InvalidCommand e -> bad_request e)
 
 (*
-== Exporting tuples ==
+    Exporting tuples
 
-Clients can request to be sent the tuples from an exporting node.
+    Clients can request to be sent the tuples from an exporting node.
 *)
 
-let export conf headers node_name body =
+let export conf headers layer_name node_name body =
   check_accept headers Consts.json_content_type (fun () ->
     let%lwt req =
       if body = "" then return empty_export_req else
       of_json headers ("Exporting from "^ node_name) export_req_ppp body in
     (* Check that the node exists and exports *)
-    match C.find_node conf conf.C.building_graph node_name with
+    match C.find_node conf layer_name node_name with
     | exception Not_found ->
       bad_request ("Unknown node "^ node_name)
     | node ->
-      if not (Lang.Operation.is_exporting node.C.operation) then
+      if not (Lang.Operation.is_exporting node.N.operation) then
         bad_request ("node "^ node_name ^" does not export data")
       else (
         let start = Unix.gettimeofday () in
@@ -365,21 +332,21 @@ let export conf headers node_name body =
         loop ()))
 
 (*
-== Children health and report ==
+    API for Workers: health and report
 *)
 
-let report conf _headers name body =
+let report conf _headers layer name body =
   (* TODO: check application-type is marshaled.ocaml *)
   let last_report = Marshal.from_string body 0 in
-  match C.find_node conf conf.C.building_graph name with
+  match C.find_node conf layer name with
   | exception Not_found ->
-    bad_request ("Node "^ name ^" does not exist")
+    bad_request ("Node "^ layer ^"/"^ name ^" does not exist")
   | node ->
-    node.C.last_report <- last_report ;
+    node.N.last_report <- last_report ;
     respond_ok ()
 
 (*
-== Grafana Datasource: autocompletion of node/field names ==
+    Grafana Datasource: autocompletion of node/field names
 *)
 
 type complete_node_req = { node_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
@@ -446,17 +413,30 @@ let bucket_min b =
 let bucket_max b =
   if b.count = 0 then None else Some b.max
 
+let layer_node_of_user_string conf s =
+  let s = String.trim s in
+  try String.split ~by:"/" s
+  with Not_found ->
+    (* Look for the first node with that name: *)
+    match C.fold_nodes conf None (fun res node ->
+            if res = None && node.N.name = s then
+              Some (node.N.layer, node.N.name)
+            else res) with
+    | Some res -> res
+    | None -> raise (Failure ("node "^ s ^" does not exist"))
+
 let timeseries conf headers body =
   let open Lang.Operation in
-  let%lwt msg = of_json headers "timeseries query" timeseries_req_ppp body in
+  let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
   let ts_of_node (req : timeserie_req) =
-    match C.find_node conf conf.C.building_graph req.node with
+    let layer, node = layer_node_of_user_string conf req.node in
+    match C.find_node conf layer node with
     | exception Not_found ->
       raise (Failure ("Unknown node "^ req.node))
     | node ->
-      if not (is_exporting node.C.operation) then
+      if not (is_exporting node.N.operation) then
         raise (Failure ("node "^ req.node ^" does not export data"))
-      else match export_event_info node.C.operation with
+      else match export_event_info node.N.operation with
       | None ->
         raise (Failure ("node "^ req.node ^" does not specify event time info"))
       | Some ((start_field, start_scale), duration_info) ->
@@ -522,17 +502,21 @@ let start debug save_file ramen_url port cert_opt key_opt () =
       match meth, path with
       (* API *)
       | `GET, ["graph"] -> get_graph conf headers None
-      | `GET, ["graph"; layer] -> get_graph conf headers (Some layer)
-      | `PUT, ["graph"] -> put_layer conf headers body
-      | `GET, ["compile"] -> compile conf headers
-      | `GET, ["run" | "start"] -> run conf headers
-      | `GET, ["stop"] -> stop conf headers
-      | (`GET|`POST), ["export" ; name] ->
+      | `GET, ["graph" ; layer] -> get_graph conf headers (Some layer)
+      | `PUT, ["graph" ; layer] -> put_layer conf headers layer body
+(*      | `DELETE, ["graph" ; layer] -> del_layer conf headers *)
+      | `GET, ["compile"] -> compile conf headers None
+      | `GET, ["compile" ; layer] -> compile conf headers (Some layer)
+      | `GET, ["run" | "start"] -> run conf headers None
+      | `GET, ["run" | "start" ; layer] -> run conf headers (Some layer)
+      | `GET, ["stop"] -> stop conf headers None
+      | `GET, ["stop" ; layer] -> stop conf headers (Some layer)
+      | (`GET|`POST), ["export" ; layer ; node] ->
         (* We must allow both POST and GET for that one since we have an optional
          * body (and some client won't send a body with a GET) *)
-        export conf headers name body
+        export conf headers layer node body
       (* API for children *)
-      | `PUT, ["report" ; name] -> report conf headers name body
+      | `PUT, ["report" ; layer ; node] -> report conf headers layer node body
       (* Grafana datasource plugin *)
       | `GET, ["grafana"] -> respond_ok ()
       | `POST, ["complete"; "nodes"] ->

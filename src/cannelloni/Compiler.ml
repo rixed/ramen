@@ -17,6 +17,9 @@ open Batteries
 open Log
 open RamenSharedTypes
 module C = RamenConf
+module N = RamenConf.Node
+module L = RamenConf.Layer
+module SL = RamenSharedTypes.Layer
 
 (* Check that we have typed all that need to be typed *)
 let check_finished_tuple_type tuple =
@@ -471,47 +474,53 @@ let check_node_types node =
   try ( (* Prepend the node name to any SyntaxError *)
     (* Try to improve the in_type using the out_type of parents: *)
     (
-      if node.C.in_type.C.finished_typing then false
-      else if node.C.parents = [] then (
-        !logger.debug "Completing node %s in-type since we have no parents" node.C.name ;
-        check_finished_tuple_type node.C.in_type ;
-        node.C.in_type.C.finished_typing <- true ;
+      if node.N.in_type.C.finished_typing then false
+      else if node.N.parents = [] then (
+        !logger.debug "Completing node %s in-type since we have no parents" node.N.name ;
+        check_finished_tuple_type node.N.in_type ;
+        node.N.in_type.C.finished_typing <- true ;
         true
       ) else List.fold_left (fun changed par ->
             (* This is supposed to propagate parent completeness into in-tuple. *)
-            check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:par.C.out_type ~to_tuple:node.C.in_type ~autorank:false || changed
-          ) false node.C.parents
+            check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:par.N.out_type ~to_tuple:node.N.in_type ~autorank:false || changed
+          ) false node.N.parents
     ) || (
     (* Try to improve out_type and the AST types using the in_type and the
      * operation: *)
-      check_operation ~in_type:node.C.in_type ~out_type:node.C.out_type node.C.operation
+      check_operation ~in_type:node.N.in_type ~out_type:node.N.out_type node.N.operation
     )
   ) with Lang.SyntaxError e ->
     !logger.debug "Compilation error: %s, %s"
       e (Printexc.get_backtrace ()) ;
-    let e' = Printf.sprintf "node %S: %s" node.C.name e in
+    let e' = Printf.sprintf "node %S: %s" node.N.name e in
     raise (Lang.SyntaxError e')
 
 let node_typing_is_finished node =
-  node.C.in_type.C.finished_typing && node.C.out_type.C.finished_typing
+  node.N.signature <> "" ||
+  (if node.N.in_type.C.finished_typing &&
+      node.N.out_type.C.finished_typing then
+     let s = N.signature node in
+     node.N.signature <- s ;
+     true
+   else false)
 
-let set_all_types graph =
+let set_all_types layer =
   let rec loop pass =
     if pass < 0 then (
       let bad_nodes =
-        Hashtbl.values graph.C.persist.C.nodes //
+        Hashtbl.values layer.L.persist.L.nodes //
         (fun n -> not (node_typing_is_finished n)) in
       let print_bad_node fmt node =
         Printf.fprintf fmt "%s: %a"
-          node.C.name
+          node.N.name
           (List.print ~sep:" and " ~first:"" ~last:"" String.print)
-            ((if node.C.in_type.C.finished_typing then [] else ["cannot type input"]) @
-            (if node.C.out_type.C.finished_typing then [] else ["cannot type output"])) in
+            ((if node.N.in_type.C.finished_typing then [] else ["cannot type input"]) @
+             (if node.N.out_type.C.finished_typing then [] else ["cannot type output"])) in
       let msg = IO.to_string (Enum.print ~sep:", " print_bad_node) bad_nodes in
       raise (Lang.SyntaxError msg)) ;
     if Hashtbl.fold (fun _ node changed ->
           check_node_types node || changed
-        ) graph.C.persist.C.nodes false
+        ) layer.L.persist.L.nodes false
     then loop (pass - 1)
   in
   let max_pass = 50 (* TODO: max number of field for a node times number of nodes? *) in
@@ -526,10 +535,8 @@ let set_all_types graph =
     let test_type_single_node op_text =
       try
         let conf = RamenConf.make_conf None "http://127.0.0.1/" in
-        let graph = conf.RamenConf.building_graph in
-        let node = RamenConf.make_node graph "test" op_text in
-        RamenConf.add_node conf graph node ;
-        set_all_types graph ;
+        RamenConf.add_node conf "test" "test" op_text ;
+        set_all_types conf.RamenConf.graph ;
         "ok"
       with e ->
         Printf.sprintf "Exception in set_all_types: %s at\n%s"
@@ -579,36 +586,52 @@ let set_all_types graph =
    *)
 
 let compile_node node =
-  assert node.C.in_type.C.finished_typing ;
-  assert node.C.out_type.C.finished_typing ;
-  let in_typ = C.tup_typ_of_temp_tup_type node.C.in_type
-  and out_typ = C.tup_typ_of_temp_tup_type node.C.out_type in
-  node.C.command <- Some (
-    CodeGen_OCaml.gen_operation node.C.name in_typ out_typ node.C.operation)
+  assert node.N.in_type.C.finished_typing ;
+  assert node.N.out_type.C.finished_typing ;
+  let in_typ = C.tup_typ_of_temp_tup_type node.N.in_type
+  and out_typ = C.tup_typ_of_temp_tup_type node.N.out_type in
+  node.N.command <- Some (
+    CodeGen_OCaml.gen_operation node.N.name in_typ out_typ node.N.operation)
 
-let compile conf graph =
-  Helpers.time "Compiling the configuration" (fun () ->
-    match graph.C.persist.C.status with
-    | Compiled ->
-      raise (C.InvalidCommand "Graph is already compiled")
-    | Running ->
-      raise (C.InvalidCommand "Graph is already compiled and is running")
-    | Edition ->
-      set_all_types graph ;
-      let finished_typing =
-        Hashtbl.fold (fun _ node finished_typing ->
-            !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
-              node.C.name
-              C.print_temp_tup_typ node.C.in_type
-              C.print_temp_tup_typ node.C.out_type ;
-            finished_typing && node_typing_is_finished node
-          ) graph.C.persist.C.nodes true in
-      (* TODO: better reporting *)
-      if not finished_typing then raise (Lang.SyntaxError "Cannot complete typing") ;
-      Hashtbl.iter (fun _ node ->
-          try compile_node node
-          with Failure m ->
-            raise (Failure ("While compiling "^ node.C.name ^": "^ m))
-        ) graph.C.persist.C.nodes ;
-      graph.C.persist.C.status <- Compiled ;
-      C.save_graph conf graph)
+let compile conf layer =
+  match layer.L.persist.L.status with
+  | SL.Compiled ->
+    raise (C.InvalidCommand "Graph is already compiled")
+  | SL.Running ->
+    raise (C.InvalidCommand "Graph is already compiled and is running")
+  | SL.Compiling ->
+    raise (C.InvalidCommand "Graph is already being compiled")
+  | SL.Edition ->
+    (* Check all layers we depend on (parent and children) either belong to
+     * this layer or are compiled already. In theory we should not have
+     * children in other layers yet, though. *)
+    let not_good node =
+      node.N.layer <> layer.L.name &&
+      not node.N.out_type.C.finished_typing in
+    if Hashtbl.values layer.L.persist.L.nodes |>
+       Enum.exists (fun node ->
+         List.exists not_good node.N.parents ||
+         List.exists not_good node.N.children) then
+      raise (C.InvalidCommand ("Cannot compile layer "^ layer.L.name ^
+                               " that depends on non compiled layers")) ;
+
+    C.Layer.set_status layer SL.Compiling ;
+    set_all_types layer ;
+    let finished_typing =
+      Hashtbl.fold (fun _ node finished_typing ->
+          !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
+            node.N.name
+            C.print_temp_tup_typ node.N.in_type
+            C.print_temp_tup_typ node.N.out_type ;
+          finished_typing && node_typing_is_finished node
+        ) layer.L.persist.L.nodes true in
+    (* TODO: better reporting *)
+    if not finished_typing then
+      raise (Lang.SyntaxError "Cannot complete typing") ;
+    Hashtbl.iter (fun _ node ->
+        try compile_node node
+        with Failure m ->
+          raise (Failure ("While compiling "^ node.N.name ^": "^ m))
+      ) layer.L.persist.L.nodes ;
+    C.Layer.set_status layer SL.Compiled ;
+    C.save_graph conf

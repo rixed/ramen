@@ -152,10 +152,10 @@ let import_tuples rb_name node_name tuple_type =
   done
 
 let get_history node =
-  try Hashtbl.find imported_tuples node.C.name
+  try Hashtbl.find imported_tuples node.C.Node.name
   with Not_found ->
     (* Build a fake empty history *)
-    { tuple_type = C.tup_typ_of_temp_tup_type node.C.out_type ;
+    { tuple_type = C.tup_typ_of_temp_tup_type node.C.Node.out_type ;
       tuples = [||] ; count = 0 }
 
 let get_field_types history =

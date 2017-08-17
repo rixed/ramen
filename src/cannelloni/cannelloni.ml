@@ -92,24 +92,6 @@ let node_operation p =
                    ~docv:"operation" [] in
   Arg.(required (pos p (some string) None i))
 
-let add_node =
-  Term.(
-    (const ApiCmd.add_node
-      $ debug
-      $ server_url
-      $ node_name 0
-      $ node_operation 1),
-    info "add-node")
-
-let add_link =
-  Term.(
-    (const ApiCmd.add_link
-      $ debug
-      $ server_url
-      $ node_name 0
-      $ node_name 1),
-    info "add-link")
-
 let compile =
   Term.(
     (const ApiCmd.compile
@@ -170,7 +152,7 @@ let () =
   match Term.eval_choice default [
     server_start ;
     dequeue ; summary ;
-    add_node ; add_link ; compile ; run ; pause ;
+    compile ; run ; pause ;
     tail
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42
