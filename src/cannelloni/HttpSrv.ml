@@ -175,10 +175,15 @@ let diff_list bef aft =
 == Display the graph (JSON, dot or mermaid representation) ==
 *)
 
-let get_graph_json conf _headers =
+let should_include_node node =
+  Option.map_default ((=) node.C.layer) true
+
+let get_graph_json conf _headers layer_opt =
   let graph_info =
     { nodes = Hashtbl.fold (fun _name node lst ->
-        node_info_of_node node :: lst
+        if should_include_node node layer_opt then
+          node_info_of_node node :: lst
+        else lst
       ) conf.C.building_graph.C.persist.C.nodes [] ;
       status = conf.C.building_graph.C.persist.C.status ;
       last_started = conf.C.building_graph.C.last_started ;
@@ -186,27 +191,32 @@ let get_graph_json conf _headers =
   let body = PPP.to_string graph_info_ppp graph_info in
   respond_ok ~body ()
 
-let dot_of_graph graph =
+let dot_of_graph graph layer_opt =
   let dot = IO.output_string () in
-  Printf.fprintf dot "digraph cannelloni {\n" ;
-  Hashtbl.keys graph.C.persist.C.nodes |>
-    Enum.iter (Printf.fprintf dot "\t%S\n") ;
+  Printf.fprintf dot "digraph g {\n" ;
+  Hashtbl.iter (fun name node ->
+      if should_include_node node layer_opt then
+        Printf.fprintf dot "\t%S\n" name
+    ) graph.C.persist.C.nodes ;
   Printf.fprintf dot "\n" ;
   Hashtbl.iter (fun name node ->
-      List.iter (fun c ->
-          Printf.fprintf dot "\t%S -> %S\n" name c.C.name
-        ) node.C.children
+      (* We (somewhat arbitrarily) include children of nodes in the layer but
+       * not their parent: *)
+      if should_include_node node layer_opt then
+        List.iter (fun c ->
+            Printf.fprintf dot "\t%S -> %S\n" name c.C.name
+          ) node.C.children
     ) graph.C.persist.C.nodes ;
   Printf.fprintf dot "}\n" ;
   IO.close_out dot
 
-let get_graph_dot conf _headers =
-  let body = dot_of_graph conf.C.building_graph in
+let get_graph_dot conf _headers layer_opt =
+  let body = dot_of_graph conf.C.building_graph layer_opt in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" Consts.dot_content_type in
   Server.respond_string ~headers ~status ~body ()
 
-let mermaid_of_graph graph =
+let mermaid_of_graph graph layer_opt =
   (* Build unique identifier that are valid for mermaid: *)
   let is_alphanum c =
     Char.(is_letter c || is_digit c) in
@@ -221,23 +231,25 @@ let mermaid_of_graph graph =
   in
   let txt = IO.output_string () in
   Printf.fprintf txt "graph LR\n" ;
-  Hashtbl.keys graph.C.persist.C.nodes |>
-    Enum.iter (fun n ->
-      Printf.fprintf txt "%s(%s)\n"
-        (mermaid_id n)
-        (mermaid_label n)) ;
+  Hashtbl.iter (fun name node ->
+      if should_include_node node layer_opt then
+        Printf.fprintf txt "%s(%s)\n"
+          (mermaid_id name)
+          (mermaid_label name)
+    ) graph.C.persist.C.nodes ;
   Printf.fprintf txt "\n" ;
   Hashtbl.iter (fun name node ->
-      List.iter (fun c ->
-          Printf.fprintf txt "\t%s-->%s\n"
-            (mermaid_id name)
-            (mermaid_id c.C.name)
-        ) node.C.children
+      if should_include_node node layer_opt then
+        List.iter (fun c ->
+            Printf.fprintf txt "\t%s-->%s\n"
+              (mermaid_id name)
+              (mermaid_id c.C.name)
+          ) node.C.children
     ) graph.C.persist.C.nodes ;
   IO.close_out txt
 
-let get_graph_mermaid conf _headers =
-  let body = mermaid_of_graph conf.C.building_graph in
+let get_graph_mermaid conf _headers layer_opt =
+  let body = mermaid_of_graph conf.C.building_graph layer_opt in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" Consts.mermaid_content_type in
   let headers = Header.add headers "Access-Control-Allow-Origin" "*" in
@@ -245,14 +257,14 @@ let get_graph_mermaid conf _headers =
   let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
   Server.respond_string ~headers ~status ~body ()
 
-let get_graph conf headers =
+let get_graph conf headers layer =
   let accept = get_accept headers in
   if is_accepting Consts.json_content_type accept then
-    get_graph_json conf headers
+    get_graph_json conf headers layer
   else if is_accepting Consts.dot_content_type accept then
-    get_graph_dot conf headers
+    get_graph_dot conf headers layer
   else if is_accepting Consts.mermaid_content_type accept then
-    get_graph_mermaid conf headers
+    get_graph_mermaid conf headers layer
   else
     cant_accept accept
 
@@ -528,7 +540,8 @@ let start debug save_file ramen_url port cert_opt key_opt () =
     (* The function called for each HTTP request: *)
       match meth, path with
       (* API *)
-      | `GET, ["graph"] -> get_graph conf headers
+      | `GET, ["graph"] -> get_graph conf headers None
+      | `GET, ["graph"; layer] -> get_graph conf headers (Some layer)
       | `PUT, ["graph"] -> put_layer conf headers body
       | `GET, ["compile"] -> compile conf headers
       | `GET, ["run" | "start"] -> run conf headers
