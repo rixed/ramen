@@ -365,25 +365,6 @@ let export conf headers node_name body =
         loop ()))
 
 (*
-== Serving normal files ==
-*)
-
-let ext_of_file fname =
-  let _, ext = String.rsplit fname ~by:"." in ext
-
-let content_type_of_ext = function
-  | "html" -> Consts.html_content_type
-  | "js" -> Consts.js_content_type
-  | "css" -> Consts.css_content_type
-  | _ -> "I_dont_know/Good_luck"
-
-let get_file _conf _headers file =
-  let fname = "www/"^ file in
-  let headers =
-    Header.init_with "Content-Type" (content_type_of_ext (ext_of_file file)) in
-  Server.respond_file ~headers ~fname ()
-
-(*
 == Children health and report ==
 *)
 
@@ -552,12 +533,6 @@ let start debug save_file ramen_url port cert_opt key_opt () =
         export conf headers name body
       (* API for children *)
       | `PUT, ["report" ; name] -> report conf headers name body
-      (* WWW Client *)
-      | `GET, ([] | ["" | "index.html"]) ->
-        get_file conf headers "index.html"
-      | `GET, ["static"; "style.css"|"misc.js"|"graph_layout.js"
-              |"node_edit.js" as file] ->
-        get_file conf headers file
       (* Grafana datasource plugin *)
       | `GET, ["grafana"] -> respond_ok ()
       | `POST, ["complete"; "nodes"] ->
