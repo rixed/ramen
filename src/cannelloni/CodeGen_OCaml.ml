@@ -949,7 +949,7 @@ let with_code_file_for name f =
   let mode = if !keep_temp_files then mode else `delete_on_exit::mode in
   let prefix = "gen_"^ sanitize_ocaml_fname name ^"_" in
   File.with_temporary_out ~mode ~prefix ~suffix:".ml" (fun oc fname ->
-    !logger.debug "Source code for %s: %s" name fname ;
+    !logger.debug "Source code for %S: %s" name fname ;
     f oc fname)
 
 let compile_source fname =
