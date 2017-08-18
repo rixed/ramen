@@ -20,18 +20,26 @@ let get_content_type headers =
   Header.get headers "Content-Type" |? Consts.json_content_type |> String.lowercase
 
 let get_accept headers =
-  Header.get headers "Accept" |? Consts.json_content_type |> String.lowercase
+  let h =
+    Header.get headers "Accept" |? Consts.json_content_type |>
+    String.lowercase in
+  let h =
+    try String.split ~by:";" h |> fst
+    with Not_found -> h in
+  String.split_on_char ',' h
 
-let is_accepting_anything s =
-  String.starts_with s "*/*"
+let is_accepting_anything = List.mem "*/*"
 
 let is_accepting content_type accept =
-  is_accepting_anything accept || String.starts_with accept content_type
+  is_accepting_anything accept || List.mem content_type accept
 
 (* When the client cannot accept the response *)
 let cant_accept accept =
   let status = Code.status_of_code 406 in
-  let body = "{\"error\": \"Can't produce "^ accept ^"\"}\n" in
+  let body =
+    Printf.sprintf "{\"error\": \"Can't produce any of %s\"}\n"
+      (IO.to_string (List.print ~first:"" ~last:"" ~sep:", " String.print)
+                    accept) in
   Server.respond_error ~status ~body ()
 
 let check_accept headers content_type f =
