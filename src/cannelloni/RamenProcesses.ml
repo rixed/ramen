@@ -52,6 +52,7 @@ let run conf layer =
         let out_ringbuf_ref = RingBufLib.out_ringbuf_names_ref node.C.Node.signature in
         File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
         let env = [|
+          "debug="^ string_of_bool conf.C.debug ;
           "input_ringbuf="^ rb_name_of node ;
           "output_ringbufs_ref="^ out_ringbuf_ref ;
           "report_url="^ conf.C.ramen_url ^"/report/"^ node.C.Node.name |] in

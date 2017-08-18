@@ -498,7 +498,7 @@ let timeseries conf headers body =
 
 let start debug save_file ramen_url port cert_opt key_opt () =
   logger := make_logger debug ;
-  let conf = C.make_conf save_file ramen_url in
+  let conf = C.make_conf save_file ramen_url debug in
   let router meth path _params headers body =
     (* The function called for each HTTP request: *)
       match meth, path with

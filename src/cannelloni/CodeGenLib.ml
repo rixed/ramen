@@ -201,9 +201,12 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
     join
 
 let node_start node_name =
+  let debug = getenv ~def:"false" "debug" |> bool_of_string
+  and prefix = node_name ^": " in
+  logger := make_logger ~prefix debug ;
   !logger.info "Starting %s process..." node_name ;
   let report_url =
-    (* The real one will have an process identifier instead of "anonymous" *)
+    (* The real one will have a process identifier instead of "anonymous" *)
     getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in
   async (update_stats_th report_url) (* TODO: catch exceptions in async_exception_hook *)
 

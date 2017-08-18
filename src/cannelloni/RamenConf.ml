@@ -175,6 +175,7 @@ type persisted = (string, Layer.persist) Hashtbl.t
 
 type conf =
   { mutable graph : graph ;
+    debug : bool ;
     save_file : string option ;
     ramen_url : string }
 
@@ -274,8 +275,8 @@ let make_link conf src dst =
   dst.parents <- src :: dst.parents ;
   save_graph conf
 
-let make_conf save_file ramen_url =
-  { graph = load_graph save_file ; save_file ; ramen_url }
+let make_conf save_file ramen_url debug =
+  { graph = load_graph save_file ; save_file ; ramen_url ; debug }
 
 
 (* AutoCompletion of node/field names *)
