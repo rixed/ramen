@@ -60,11 +60,12 @@ let last_touched fname =
   let%lwt s = stat fname in return s.st_mtime
 
 let out_ringbuf_names outbuf_ref_fname =
-  let last_read = 0. in
+  let last_read = ref 0. in
   let lines = ref Set.empty in
   fun () ->
     let%lwt t = last_touched outbuf_ref_fname in
-    if t > last_read then (
+    if t > !last_read then (
+      last_read := t ;
       lines := File.lines_of outbuf_ref_fname |> Set.of_enum ;
       return (Some !lines)
     ) else return_none

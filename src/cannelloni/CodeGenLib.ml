@@ -170,10 +170,11 @@ let output rb sersize_of_tuple serialize_tuple tuple =
  * will change dynamically as children are added/removed. *)
 let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
-  and out_l = ref [] in  (* list of outputer *)
+  and out_l = ref []  (* list of outputer *)
+  and get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
   fun tuple ->
     IntCounter.add stats_out_tuple_count 1 ;
-    let%lwt fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname () in
+    let%lwt fnames = get_out_fnames () in
     Option.may (fun next ->
       (* Change occurred, load/unload as required *)
       let current = Hashtbl.keys out_h |> Set.of_enum in
@@ -445,11 +446,13 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   and out_count = ref Uint64.zero
   and stats_group_count =
     IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
+  and outputer =
+    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple
   in
   IntGauge.set stats_group_count 0 ;
   let commit tuple =
     out_count := Uint64.succ !out_count ;
-    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple tuple
+    outputer tuple
   in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
