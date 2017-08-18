@@ -20,7 +20,6 @@ let rebase dataset_name name =
  *)
 let base_layer dataset_name delete csv_dir =
   let make_node ?(parents=[]) name operation =
-    let name = rebase dataset_name name in
     let parents = List.map (rebase dataset_name) parents in
     N.{ empty with name ; operation ; parents }
   in
@@ -131,19 +130,21 @@ let base_layer dataset_name delete csv_dir =
          src dst src dst src dst src dst src dst src dst src dst src dst src in
     make_node ~parents:["csv"] name op
   in
-  RamenSharedTypes.{ nodes = [
-    csv ;
-    to_unidir ~src:"client" ~dst:"server" "c2s" ;
-    to_unidir ~src:"server" ~dst:"client" "s2c" ] }
+  RamenSharedTypes.{
+    name = dataset_name ;
+    nodes = [
+      csv ;
+      to_unidir ~src:"client" ~dst:"server" "c2s" ;
+      to_unidir ~src:"server" ~dst:"client" "s2c" ] }
 
 (* Build the node infos corresponding to the BCN configuration *)
 let layer_of_bcns bcns dataset_name =
+  let layer_name = rebase dataset_name "BCN" in
   let name_of_zones = function
     | [] -> "any"
     | main::_ -> string_of_int main in
   let all_nodes = ref [] in
   let make_node ?(parents=[]) name operation =
-    let name = dataset_name ^"/BCN/" ^ name in
     let parents = List.map (rebase dataset_name) parents in
     let node = N.{ empty with
                    name ; operation ; parents } in
@@ -209,7 +210,7 @@ let layer_of_bcns bcns dataset_name =
            group.#count >= %d\n  OR \
            in.start > out.max_start + 5"
          bcn.percentile bcn.avg_window nb_items_per_groups in
-    make_node ~parents:[avg_per_zones_name] perc_per_obs_window_name op ;
+    make_node ~parents:["BCN/"^ avg_per_zones_name] perc_per_obs_window_name op ;
     let enc = Uri.pct_encode in
     (* TODO: we need an hysteresis here! *)
     Option.may (fun min_bps ->
@@ -227,7 +228,7 @@ let layer_of_bcns bcns dataset_name =
             min_bps
             (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
-        make_node ~parents:[perc_per_obs_window_name] name ops
+        make_node ~parents:["BCN"^ perc_per_obs_window_name] name ops
       ) bcn.min_bps ;
     Option.may (fun max_bps ->
         let subject = Printf.sprintf "Too much traffic from zone %s to %s"
@@ -244,11 +245,11 @@ let layer_of_bcns bcns dataset_name =
             max_bps
             (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
-        make_node ~parents:[perc_per_obs_window_name] name ops
+        make_node ~parents:["BCN/"^ perc_per_obs_window_name] name ops
       ) bcn.max_bps
   in
   List.iter alert_conf_of_bcn bcns ;
-  RamenSharedTypes.{ nodes = !all_nodes }
+  RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
 
 let get_bcns_from_db db =
   let open Conf_of_sqlite in
@@ -262,7 +263,7 @@ open Cohttp_lwt_unix
 
 let put_layer ramen_url layer =
   let req = PPP.to_string RamenSharedTypes.put_layer_req_ppp layer in
-  let url = ramen_url ^"/graph/bcn" in
+  let url = ramen_url ^"/graph/" in
   !logger.debug "Will send %S to %S" req url ;
   let body = `String req in
   (* TODO: but also fix the server never timeouting! *)

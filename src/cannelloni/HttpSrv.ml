@@ -247,27 +247,27 @@ let node_of_name conf layer_name n =
     bad_request ("Node "^ layer_name ^"/"^ n ^" does not exist")
   | node -> return node
 
-let put_layer conf headers layer body =
+let put_layer conf headers body =
   let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
   (* TODO: Check that this layer node names are unique within the layer *)
 
   (* Check that this layer is new *)
-  if Hashtbl.mem conf.C.graph.C.layers layer then
-    bad_request ("Layer "^ layer ^" already present")
+  if Hashtbl.mem conf.C.graph.C.layers msg.name then
+    bad_request ("Layer "^ msg.name ^" already present")
   else (
     (* Create all the nodes *)
     List.iter (fun info ->
         let name =
           if info.Node.name <> "" then info.Node.name
           else N.make_name () in
-        C.add_node conf name layer info.Node.operation
+        C.add_node conf name msg.name info.Node.operation
       ) msg.nodes ;
     (* Then all the links *)
     let%lwt () = Lwt_list.iter_s (fun info ->
-        let%lwt dst = node_of_name conf layer info.Node.name in
+        let%lwt dst = node_of_name conf msg.name info.Node.name in
         Lwt_list.iter_s (fun p ->
             let parent_layer, parent_name =
-              layer_node_of_user_string conf ~default_layer:layer p in
+              layer_node_of_user_string conf ~default_layer:msg.name p in
             let%lwt src = node_of_name conf parent_layer parent_name in
             C.make_link conf src dst ;
             return_unit
@@ -283,8 +283,19 @@ let compile conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
     let%lwt layers = graph_layers conf layer_opt in
     try
-      List.iter (Compiler.compile conf) layers ;
-      respond_ok ()
+      let rec loop left_try layers =
+        !logger.debug "%d layers left to compile..." (List.length layers) ;
+        if layers = [] then respond_ok () else
+        if left_try < 0 then bad_request "Unsolvable dependency loop" else
+        List.fold_left (fun failed layer ->
+          try Compiler.compile conf layer ;
+              failed
+          with Compiler.MissingDependency n ->
+            !logger.debug "We miss node %s / %s" n.N.layer n.N.name ;
+            layer::failed) [] layers |>
+        loop (left_try-1)
+      in
+      loop (List.length layers) layers
     with (Lang.SyntaxError e | C.InvalidCommand e) ->
       bad_request e)
 
@@ -505,7 +516,7 @@ let start debug save_file ramen_url port cert_opt key_opt () =
       (* API *)
       | `GET, ["graph"] -> get_graph conf headers None
       | `GET, ["graph" ; layer] -> get_graph conf headers (Some layer)
-      | `PUT, ["graph" ; layer] -> put_layer conf headers layer body
+      | `PUT, ["graph"] -> put_layer conf headers body
 (*      | `DELETE, ["graph" ; layer] -> del_layer conf headers *)
       | `GET, ["compile"] -> compile conf headers None
       | `GET, ["compile" ; layer] -> compile conf headers (Some layer)

@@ -593,6 +593,21 @@ let compile_node node =
   node.N.command <- Some (
     CodeGen_OCaml.gen_operation node.N.name in_typ out_typ node.N.operation)
 
+let untyped_dependency layer =
+  (* Check all layers we depend on (parents only) either belong to
+   * this layer or are compiled already. Return the first untyped
+   * dependency, or None. *)
+  let good node =
+    node.N.layer = layer.L.name ||
+    node.N.out_type.C.finished_typing in
+  try Some (
+    Hashtbl.values layer.L.persist.L.nodes |>
+    Enum.find (fun node ->
+      List.exists (not % good) node.N.parents))
+  with Not_found -> None
+
+exception MissingDependency of N.t (* The one we depend on *)
+
 let compile conf layer =
   match layer.L.persist.L.status with
   | SL.Compiled ->
@@ -602,18 +617,9 @@ let compile conf layer =
   | SL.Compiling ->
     raise (C.InvalidCommand "Graph is already being compiled")
   | SL.Edition ->
-    (* Check all layers we depend on (parent and children) either belong to
-     * this layer or are compiled already. In theory we should not have
-     * children in other layers yet, though. *)
-    let not_good node =
-      node.N.layer <> layer.L.name &&
-      not node.N.out_type.C.finished_typing in
-    if Hashtbl.values layer.L.persist.L.nodes |>
-       Enum.exists (fun node ->
-         List.exists not_good node.N.parents ||
-         List.exists not_good node.N.children) then
-      raise (C.InvalidCommand ("Cannot compile layer "^ layer.L.name ^
-                               " that depends on non compiled layers")) ;
+    !logger.debug "Trying to compile layer %s" layer.L.name ;
+    untyped_dependency layer |>
+    Option.may (fun n -> raise (MissingDependency n)) ;
 
     C.Layer.set_status layer SL.Compiling ;
     set_all_types layer ;

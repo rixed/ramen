@@ -151,7 +151,7 @@ end
 type get_graph_resp = Layer.info list [@@ppp PPP_JSON]
 
 type put_layer_req =
-  { nodes : Node.info list } [@@ppp PPP_JSON]
+  { name : string ; nodes : Node.info list } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)
 
