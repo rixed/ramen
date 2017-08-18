@@ -300,7 +300,8 @@ let complete_node_name conf s =
     )
 
 let complete_field_name conf name s =
-  match String.split ~by:"/" (String.trim name) with
+  (* rsplit because we might want to have '/'s in the layer name. *)
+  match String.rsplit ~by:"/" (String.trim name) with
   | exception Not_found -> []
   | layer_name, node_name ->
     match find_node conf layer_name node_name with

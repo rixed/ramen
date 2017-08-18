@@ -110,16 +110,11 @@ type expr_type_info =
 
 module Node =
 struct
-  type child =
-    { layer : string option ;
-      name : string } [@@ppp PPP_JSON]
-
   type info =
     (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
     { mutable name : string ;
       mutable operation : string ;
       mutable parents : string list ;
-      mutable children : child list ;
       type_of_operation : string option ;
       input_type : (int option * expr_type_info) list ;
       output_type : (int option * expr_type_info) list ;
@@ -134,7 +129,7 @@ struct
       ram_usage : int } [@@ppp PPP_JSON]
 
   let empty =
-    { name = "" ; operation = "" ; parents = [] ; children = [] ;
+    { name = "" ; operation = "" ; parents = [] ;
       type_of_operation = None ; input_type = [] ; output_type = [] ;
       command = None ; pid = None ;
       in_tuple_count = 0 ; selected_tuple_count = 0 ; out_tuple_count = 0 ;
