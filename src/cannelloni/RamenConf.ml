@@ -95,6 +95,8 @@ struct
       mutable pid : int option ;
       mutable last_report : Binocle.metric list }
 
+  let fq_name node = node.layer ^"/"^ node.name
+
   let make_name =
     let seq = ref 0 in
     fun () ->
@@ -209,7 +211,7 @@ let save_graph conf =
     ) conf.save_file
 
 let add_node conf node_name layer_name op_text =
-  !logger.debug "Creating node %s/%s" layer_name node_name ;
+  !logger.debug "Creating node %s / %s" layer_name node_name ;
   assert (node_name <> "") ;
   let layer =
     try Hashtbl.find conf.graph.layers layer_name
@@ -294,9 +296,10 @@ let complete_node_name conf s =
   (* TODO: a better search structure for case-insensitive prefix search *)
   fold_nodes conf [] (fun lst node ->
       let lc_name = String.lowercase node.Node.name in
-      let lc_fq_name = String.lowercase node.Node.layer ^"/"^ lc_name in
+      let fq_name = Node.fq_name node in
+      let lc_fq_name = String.lowercase fq_name in
       if String.(starts_with lc_fq_name s || starts_with lc_name s) then
-        node.Node.name :: lst
+        fq_name :: lst
       else lst
     )
 

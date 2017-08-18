@@ -171,3 +171,13 @@ let empty_export_req =
 type export_resp =
   { first: int ;
     columns : (string * bool * column) list } [@@ppp PPP_JSON]
+
+(* Autocompletion of names: *)
+
+type complete_node_req =
+  { node_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
+
+type complete_field_req =
+  { node : string ; field_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
+
+type complete_resp = string list [@@ppp PPP_JSON]

@@ -162,15 +162,15 @@ let dot_of_graph layers =
   let dot = IO.output_string () in
   Printf.fprintf dot "digraph g {\n" ;
   List.iter (fun layer ->
-    Hashtbl.iter (fun name _ ->
-        Printf.fprintf dot "\t%S\n" name
+    Hashtbl.iter (fun _ node ->
+        Printf.fprintf dot "\t%S\n" (N.fq_name node)
       ) layer.L.persist.L.nodes
     ) layers ;
   Printf.fprintf dot "\n" ;
   List.iter (fun layer ->
-    Hashtbl.iter (fun name node ->
+    Hashtbl.iter (fun _ node ->
         List.iter (fun p ->
-            Printf.fprintf dot "\t%S -> %S\n" p.N.name name
+            Printf.fprintf dot "\t%S -> %S\n" (N.fq_name p) (N.fq_name node)
           ) node.N.parents
       ) layer.L.persist.L.nodes
     ) layers ;
@@ -199,19 +199,19 @@ let mermaid_of_graph layers =
   let txt = IO.output_string () in
   Printf.fprintf txt "graph LR\n" ;
   List.iter (fun layer ->
-    Hashtbl.iter (fun name _ ->
+    Hashtbl.iter (fun _ node ->
         Printf.fprintf txt "%s(%s)\n"
-          (mermaid_id name)
-          (mermaid_label name)
+          (mermaid_id (N.fq_name node))
+          (mermaid_label node.N.name)
       ) layer.L.persist.L.nodes
     ) layers ;
   Printf.fprintf txt "\n" ;
   List.iter (fun layer ->
-    Hashtbl.iter (fun name node ->
+    Hashtbl.iter (fun _ node ->
         List.iter (fun p ->
             Printf.fprintf txt "\t%s-->%s\n"
-              (mermaid_id p.N.name)
-              (mermaid_id name)
+              (mermaid_id (N.fq_name p))
+              (mermaid_id (N.fq_name node))
           ) node.N.parents
       ) layer.L.persist.L.nodes
     ) layers ;
@@ -382,10 +382,6 @@ let report conf _headers layer name body =
     Grafana Datasource: autocompletion of node/field names
 *)
 
-type complete_node_req = { node_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
-type complete_field_req = { node : string ; field_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
-type complete_resp = string list [@@ppp PPP_JSON]
-
 let complete_nodes conf headers body =
   let%lwt msg = of_json headers "Complete tables" complete_node_req_ppp body in
   let body =
@@ -403,9 +399,8 @@ let complete_fields conf headers body =
   respond_ok ~body ()
 
 (*
-== Grafana Datasource: data queries ==
+    Grafana Datasource: data queries
 *)
-
 
 type timeserie_req =
   { id : string ;
