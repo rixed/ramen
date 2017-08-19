@@ -110,24 +110,23 @@ let base_layer dataset_name delete csv_dir =
       (if delete then " AND DELETE" else "") csv_dir in
     make_node "csv" op in
   let to_unidir ~src ~dst name =
+    let rep sub by str = String.nreplace ~str ~sub ~by in
     let op =
       (* TODO: keep all data that can be made source-dest! *)
-      (* TODO: using src dst in sprintf is error prone, use a custom marker
-       * and String.nreplace instead! *)
-      Printf.sprintf
-        "SELECT\n  \
-           capture_begin, capture_end,\n  \
-           device_%s AS device_src, device_%s AS device_dst,\n  \
-           vlan_%s AS vlan_src, vlan_%s AS vlan_dst,\n  \
-           mac_%s AS mac_src, mac_%s AS mac_dst,\n  \
-           zone_%s AS zone_src, zone_%s AS zone_dst,\n  \
-           ip4_%s AS ip4_src, ip4_%s AS ip4_dst,\n  \
-           ip6_%s AS ip6_src, ip6_%s AS ip6_dst,\n  \
-           port_%s AS port_src, port_%s AS port_dst,\n  \
-           traffic_packets_%s AS packets,\n  \
-           traffic_bytes_%s AS bytes\n\
-         WHERE traffic_packets_%s > 0"
-         src dst src dst src dst src dst src dst src dst src dst src dst src in
+      "SELECT\n  \
+         capture_begin, capture_end,\n  \
+         device_$SRC AS device_src, device_$DST AS device_dst,\n  \
+         vlan_$SRC AS vlan_src, vlan_$DST AS vlan_dst,\n  \
+         mac_$SRC AS mac_src, mac_$DST AS mac_dst,\n  \
+         zone_$SRC AS zone_src, zone_$DST AS zone_dst,\n  \
+         ip4_$SRC AS ip4_src, ip4_$DST AS ip4_dst,\n  \
+         ip6_$SRC AS ip6_src, ip6_$DST AS ip6_dst,\n  \
+         port_$SRC AS port_src, port_$DST AS port_dst,\n  \
+         traffic_packets_$SRC AS packets,\n  \
+         traffic_bytes_$SRC AS bytes\n\
+       WHERE traffic_packets_$SRC > 0" |>
+      rep "$SRC" src |>
+      rep "$DST" dst in
     make_node ~parents:["csv"] name op
   in
   RamenSharedTypes.{
@@ -170,19 +169,21 @@ let layer_of_bcns bcns dataset_name =
         "SELECT\n  \
            (capture_begin // %d) AS start,\n  \
            min of capture_begin, max of capture_end,\n  \
-           sum of packets / ((max_capture_end - min_capture_begin) / 1_000_000) as packets_per_secs,\n  \
-           sum of bytes / ((max_capture_end - min_capture_begin) / 1_000_000) as bytes_per_secs,\n  \
+           sum of packets / %g as packets_per_secs,\n  \
+           sum of bytes / %g as bytes_per_secs,\n  \
            %S as zone_src, %S as zone_dst\n\
          WHERE %s AND %s\n\
-         EXPORT EVENT STARTING AT min_capture_begin * 0.000001\n         \
-                  AND STOPPING AT max_capture_end * 0.000001\n\
+         EXPORT EVENT STARTING AT start * %g\n         \
+                 WITH DURATION %g\n\
          GROUP BY capture_begin // %d\n\
          COMMIT AND FLUSH WHEN in.capture_begin > out.min_capture_begin + 2 * %d"
         avg_window
+        bcn.avg_window bcn.avg_window
         (name_of_zones bcn.source)
         (name_of_zones bcn.dest)
         (in_zone "zone_src" bcn.source)
         (in_zone "zone_dst" bcn.dest)
+        bcn.avg_window bcn.avg_window
         avg_window
         avg_window
         (* Note: Ideally we would want to compute the max of all.capture_begin *)
@@ -202,7 +203,7 @@ let layer_of_bcns bcns dataset_name =
            min start, max start,\n  \
            min of min_capture_begin AS min_capture_begin,\n  \
            max of max_capture_end AS max_capture_end,\n  \
-           %gth percentile of bytes_per_secs AS bps,\n  \
+           %gth percentile of bytes_per_secs AS bytes_per_secs,\n  \
            zone_src, zone_dst\n\
          EXPORT EVENT STARTING AT max_capture_end * 0.000001\n        \
                  WITH DURATION %g\n\
@@ -223,7 +224,7 @@ let layer_of_bcns bcns dataset_name =
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       min_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
-          "WHEN bps < %d\n  \
+          "WHEN bytes_per_secs < %d\n  \
            NOTIFY \"http://localhost:876/notify?name=Low%%20traffic&firing=1&subject=%s&text=%s\""
             min_bps
             (enc subject) (enc text) in
@@ -240,7 +241,7 @@ let layer_of_bcns bcns dataset_name =
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       max_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
-          "WHEN bps > %d\n  \
+          "WHEN bytes_per_secs > %d\n  \
            NOTIFY \"http://localhost:876/notify?name=High%%20traffic&firing=1&subject=%s&text=%s\""
             max_bps
             (enc subject) (enc text) in
