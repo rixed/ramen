@@ -528,6 +528,7 @@ let start debug save_file ramen_url port cert_opt key_opt () =
       | `GET, ["stop"] -> stop conf headers None
       | `GET, ["stop" ; layer] -> stop conf headers (Some layer)
       | (`GET|`POST), ["export" ; layer ; node] ->
+        (* TODO: a variant where we do not have to specify layer *)
         (* We must allow both POST and GET for that one since we have an optional
          * body (and some client won't send a body with a GET) *)
         export conf headers layer node body

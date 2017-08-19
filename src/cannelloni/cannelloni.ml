@@ -84,7 +84,8 @@ let summary =
  *)
 
 let node_name p =
-  let i = Arg.info ~doc:"Node unique name" ~docv:"node" [] in
+  let i = Arg.info ~doc:"Node unique name. Might be specified as layer/node."
+                   ~docv:"node" [] in
   Arg.(required (pos p (some string) None i))
 
 let node_operation p =
