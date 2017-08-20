@@ -120,6 +120,7 @@ let node_info_of_node node =
     name = node.N.name ;
     operation = node.N.op_text ;
     type_of_operation = Some (type_of_operation_of node.N.operation) ;
+    signature = if node.N.signature = "" then None else Some node.N.signature ;
     command = node.N.command ;
     pid = node.N.pid ;
     parents = List.map (fun n -> n.N.name) node.N.parents ;
@@ -510,9 +511,9 @@ let timeseries conf headers body =
     let body = PPP.to_string timeseries_resp_ppp resp in
     respond_ok ~body ()
 
-let start debug save_file ramen_url port cert_opt key_opt () =
+let start debug save_file ramen_url version_tag port cert_opt key_opt () =
   logger := make_logger debug ;
-  let conf = C.make_conf save_file ramen_url debug in
+  let conf = C.make_conf save_file ramen_url debug version_tag in
   let router meth path _params headers body =
     (* The function called for each HTTP request: *)
       match meth, path with

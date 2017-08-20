@@ -119,6 +119,7 @@ struct
       input_type : (int option * expr_type_info) list ;
       output_type : (int option * expr_type_info) list ;
       (* Info about the running process (if any) *)
+      signature : string option ;
       command : string option ;
       pid : int option ;
       in_tuple_count : int ;
@@ -131,7 +132,7 @@ struct
   let empty =
     { name = "" ; operation = "" ; parents = [] ;
       type_of_operation = None ; input_type = [] ; output_type = [] ;
-      command = None ; pid = None ;
+      signature = None ; command = None ; pid = None ;
       in_tuple_count = 0 ; selected_tuple_count = 0 ; out_tuple_count = 0 ;
       group_count = None ; cpu_time = 0. ; ram_usage = 0 }
 end

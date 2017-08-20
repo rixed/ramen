@@ -495,21 +495,21 @@ let check_node_types node =
     let e' = Printf.sprintf "node %S: %s" node.N.name e in
     raise (Lang.SyntaxError e')
 
-let node_typing_is_finished node =
+let node_typing_is_finished conf node =
   node.N.signature <> "" ||
   (if node.N.in_type.C.finished_typing &&
       node.N.out_type.C.finished_typing then
-     let s = N.signature node in
+     let s = N.signature conf.C.version_tag node in
      node.N.signature <- s ;
      true
    else false)
 
-let set_all_types layer =
+let set_all_types conf layer =
   let rec loop pass =
     if pass < 0 then (
       let bad_nodes =
         Hashtbl.values layer.L.persist.L.nodes //
-        (fun n -> not (node_typing_is_finished n)) in
+        (fun n -> not (node_typing_is_finished conf n)) in
       let print_bad_node fmt node =
         Printf.fprintf fmt "%s: %a"
           node.N.name
@@ -534,9 +534,9 @@ let set_all_types layer =
   (*$inject
     let test_type_single_node op_text =
       try
-        let conf = RamenConf.make_conf None "http://127.0.0.1/" true in
+        let conf = RamenConf.make_conf None "http://127.0.0.1/" true "test" in
         RamenConf.add_node conf "test" "test" op_text ;
-        set_all_types (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
+        set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"
       with e ->
         Printf.sprintf "Exception in set_all_types: %s at\n%s"
@@ -622,14 +622,14 @@ let compile conf layer =
     Option.may (fun n -> raise (MissingDependency n)) ;
 
     C.Layer.set_status layer SL.Compiling ;
-    set_all_types layer ;
+    set_all_types conf layer ;
     let finished_typing =
       Hashtbl.fold (fun _ node finished_typing ->
           !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
             node.N.name
             C.print_temp_tup_typ node.N.in_type
             C.print_temp_tup_typ node.N.out_type ;
-          finished_typing && node_typing_is_finished node
+          finished_typing && node_typing_is_finished conf node
         ) layer.L.persist.L.nodes true in
     (* TODO: better reporting *)
     if not finished_typing then

@@ -42,12 +42,22 @@ let server_url =
                    ~env [ "ramen-url" ] in
   Arg.(value (opt string "http://127.0.0.1:29380" i))
 
+let version_tag =
+  let env = Term.env_info "RAMEN_VERSION_TAG" in
+  let i = Arg.info ~doc:"unique tag identifying the version of ramen \
+                         (such as git tag name or sha1)"
+                   ~env [ "version-tag"; "tag" ] in
+  (* If you leave this "dev" here then you'll have to manually delete all
+   * produced files (in /tmp/ramen) if you change the code. *)
+  Arg.(value (opt string "dev" i))
+
 let server_start =
   Term.(
     (const HttpSrv.start
       $ debug
       $ graph_save_file
       $ server_url
+      $ version_tag
       $ http_port
       $ ssl_cert
       $ ssl_key),

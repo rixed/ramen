@@ -40,20 +40,18 @@ let rec sersize_of_fixsz_typ =
   | TString -> assert false
   | TNum -> assert false
 
-(* Get ones input ringbuf and output ringbufs given the node "signature",
- * which is a string identifying both the operation of a node and its
- * input and output types: *)
+(* Compute input ringbuf and output ringbufs given the node fq name. *)
 
-let tmp_dir = "/tmp"
+let tmp_dir = "/tmp/ramen"
 
-let in_ringbuf_name signature =
-  tmp_dir ^"/ringbuf_in_"^ signature
+let in_ringbuf_name name =
+  tmp_dir ^"/ringbufs/in/"^ name
 
-let exp_ringbuf_name signature =
-  tmp_dir ^"/ringbuf_exp_"^ signature
+let exp_ringbuf_name name =
+  tmp_dir ^"/ringbufs/exp/"^ name
 
-let out_ringbuf_names_ref signature =
-  tmp_dir ^"/ringbuf_out_ref_"^ signature
+let out_ringbuf_names_ref name =
+  tmp_dir ^"/ringbufs/out_ref/"^ name
 
 let last_touched fname =
   let open Lwt_unix in

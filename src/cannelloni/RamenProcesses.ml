@@ -31,8 +31,8 @@ let run conf layer =
     raise (C.InvalidCommand "Graph is being compiled already")
   | SL.Compiled ->
     (* First prepare all the required ringbuffers *)
-    let rb_name_of node = RingBufLib.in_ringbuf_name node.N.signature
-    and rb_name_for_export_of node = RingBufLib.exp_ringbuf_name node.N.signature
+    let rb_name_of node = RingBufLib.in_ringbuf_name (N.fq_name node)
+    and rb_name_for_export_of node = RingBufLib.exp_ringbuf_name (N.fq_name node)
     and rb_sz_words = 1000000 in
     !logger.info "Creating ringbuffers..." ;
     Hashtbl.iter (fun _ node ->
@@ -50,7 +50,8 @@ let run conf layer =
           if Lang.Operation.is_exporting node.N.operation then
             rb_name_for_export_of node :: output_ringbufs
           else output_ringbufs in
-        let out_ringbuf_ref = RingBufLib.out_ringbuf_names_ref node.N.signature in
+        let out_ringbuf_ref = RingBufLib.out_ringbuf_names_ref (N.fq_name node) in
+        Helpers.mkdir_all ~is_file:true out_ringbuf_ref ;
         File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
         let env = [|
           "debug="^ string_of_bool conf.C.debug ;
