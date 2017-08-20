@@ -141,7 +141,6 @@ module Layer =
 struct
   type status = Edition | Compiling | Compiled | Running [@@ppp PPP_JSON]
 
-  (* TODO: rename into get_layer_resp *)
   type info =
     { name : string ;
       nodes : Node.info list ;

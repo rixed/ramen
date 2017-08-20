@@ -425,7 +425,7 @@ let bucket_max b =
 let timeseries conf headers body =
   let open Lang.Operation in
   let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
-  let ts_of_node (req : timeserie_req) =
+  let ts_of_node req =
     let layer, node = layer_node_of_user_string conf req.node in
     match C.find_node conf layer node with
     | exception Not_found ->
