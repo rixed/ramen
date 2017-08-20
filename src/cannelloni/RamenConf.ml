@@ -229,6 +229,11 @@ let save_graph conf =
 
 let add_node conf node_name layer_name op_text =
   !logger.debug "Creating node %s / %s" layer_name node_name ;
+  (* new lines have to be forbidden because of the out_ref ringbuf files *)
+  if node_name = "" ||
+     String.fold_left (fun bad c ->
+       bad || c = '\n' || c = '\r') false node_name then
+    invalid_arg "node name" ;
   assert (node_name <> "") ;
   let layer =
     try Hashtbl.find conf.graph.layers layer_name
