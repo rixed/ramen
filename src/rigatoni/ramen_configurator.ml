@@ -124,7 +124,7 @@ let graph_info_of_bcns delete csv_dir bcns =
            traffic_packets_%s AS packets,\n  \
            traffic_bytes_%s AS bytes\n\
          WHERE traffic_packets_%s > 0"
-         src dst src dst src dst src dst src dst src dst src dst src src src in
+         src dst src dst src dst src dst src dst src dst src dst src dst src in
     let name = Printf.sprintf "to unidir %s to %s" src dst in
     make_node ~parents:[top] name op
   in

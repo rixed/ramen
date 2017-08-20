@@ -495,21 +495,21 @@ let check_node_types node =
     let e' = Printf.sprintf "node %S: %s" node.N.name e in
     raise (Lang.SyntaxError e')
 
-let node_typing_is_finished conf node =
+let node_typing_is_finished node =
   node.N.signature <> "" ||
   (if node.N.in_type.C.finished_typing &&
       node.N.out_type.C.finished_typing then
-     let s = N.signature conf.C.version_tag node in
+     let s = N.signature node in
      node.N.signature <- s ;
      true
    else false)
 
-let set_all_types conf layer =
+let set_all_types layer =
   let rec loop pass =
     if pass < 0 then (
       let bad_nodes =
         Hashtbl.values layer.L.persist.L.nodes //
-        (fun n -> not (node_typing_is_finished conf n)) in
+        (fun n -> not (node_typing_is_finished n)) in
       let print_bad_node fmt node =
         Printf.fprintf fmt "%s: %a"
           node.N.name
@@ -534,9 +534,9 @@ let set_all_types conf layer =
   (*$inject
     let test_type_single_node op_text =
       try
-        let conf = RamenConf.make_conf None "http://127.0.0.1/" true "test" in
+        let conf = RamenConf.make_conf None "http://127.0.0.1/" in
         RamenConf.add_node conf "test" "test" op_text ;
-        set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
+        set_all_types (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"
       with e ->
         Printf.sprintf "Exception in set_all_types: %s at\n%s"
@@ -593,21 +593,6 @@ let compile_node node =
   node.N.command <- Some (
     CodeGen_OCaml.gen_operation node.N.name in_typ out_typ node.N.operation)
 
-let untyped_dependency layer =
-  (* Check all layers we depend on (parents only) either belong to
-   * this layer or are compiled already. Return the first untyped
-   * dependency, or None. *)
-  let good node =
-    node.N.layer = layer.L.name ||
-    node.N.out_type.C.finished_typing in
-  try Some (
-    Hashtbl.values layer.L.persist.L.nodes |>
-    Enum.find (fun node ->
-      List.exists (not % good) node.N.parents))
-  with Not_found -> None
-
-exception MissingDependency of N.t (* The one we depend on *)
-
 let compile conf layer =
   match layer.L.persist.L.status with
   | SL.Compiled ->
@@ -617,19 +602,28 @@ let compile conf layer =
   | SL.Compiling ->
     raise (C.InvalidCommand "Graph is already being compiled")
   | SL.Edition ->
-    !logger.debug "Trying to compile layer %s" layer.L.name ;
-    untyped_dependency layer |>
-    Option.may (fun n -> raise (MissingDependency n)) ;
+    (* Check all layers we depend on (parent and children) either belong to
+     * this layer or are compiled already. In theory we should not have
+     * children in other layers yet, though. *)
+    let not_good node =
+      node.N.layer <> layer.L.name &&
+      not node.N.out_type.C.finished_typing in
+    if Hashtbl.values layer.L.persist.L.nodes |>
+       Enum.exists (fun node ->
+         List.exists not_good node.N.parents ||
+         List.exists not_good node.N.children) then
+      raise (C.InvalidCommand ("Cannot compile layer "^ layer.L.name ^
+                               " that depends on non compiled layers")) ;
 
     C.Layer.set_status layer SL.Compiling ;
-    set_all_types conf layer ;
+    set_all_types layer ;
     let finished_typing =
       Hashtbl.fold (fun _ node finished_typing ->
           !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
             node.N.name
             C.print_temp_tup_typ node.N.in_type
             C.print_temp_tup_typ node.N.out_type ;
-          finished_typing && node_typing_is_finished conf node
+          finished_typing && node_typing_is_finished node
         ) layer.L.persist.L.nodes true in
     (* TODO: better reporting *)
     if not finished_typing then

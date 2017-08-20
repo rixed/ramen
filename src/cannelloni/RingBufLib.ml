@@ -40,30 +40,31 @@ let rec sersize_of_fixsz_typ =
   | TString -> assert false
   | TNum -> assert false
 
-(* Compute input ringbuf and output ringbufs given the node fq name. *)
+(* Get ones input ringbuf and output ringbufs given the node "signature",
+ * which is a string identifying both the operation of a node and its
+ * input and output types: *)
 
-let tmp_dir = "/tmp/ramen"
+let tmp_dir = "/tmp"
 
-let in_ringbuf_name name =
-  tmp_dir ^"/ringbufs/in/"^ name
+let in_ringbuf_name signature =
+  tmp_dir ^"/ringbuf_in_"^ signature
 
-let exp_ringbuf_name name =
-  tmp_dir ^"/ringbufs/exp/"^ name
+let exp_ringbuf_name signature =
+  tmp_dir ^"/ringbuf_exp_"^ signature
 
-let out_ringbuf_names_ref name =
-  tmp_dir ^"/ringbufs/out_ref/"^ name
+let out_ringbuf_names_ref signature =
+  tmp_dir ^"/ringbuf_out_ref_"^ signature
 
 let last_touched fname =
   let open Lwt_unix in
   let%lwt s = stat fname in return s.st_mtime
 
 let out_ringbuf_names outbuf_ref_fname =
-  let last_read = ref 0. in
+  let last_read = 0. in
   let lines = ref Set.empty in
   fun () ->
     let%lwt t = last_touched outbuf_ref_fname in
-    if t > !last_read then (
-      last_read := t ;
+    if t > last_read then (
       lines := File.lines_of outbuf_ref_fname |> Set.of_enum ;
       return (Some !lines)
     ) else return_none

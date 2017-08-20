@@ -112,10 +112,7 @@ let ppp_of_string_exc ppp s =
 
 let tail debug ramen_url node_name as_csv last continuous () =
   logger := make_logger debug ;
-  let url = ramen_url ^"/export/"^
-    (match String.rsplit ~by:"/" node_name with
-    | exception Not_found -> enc node_name
-    | layer, node -> enc layer ^"/"^ enc node) in
+  let url = ramen_url ^"/export/"^ enc node_name in
   let rec get_next ?since ?max_results ?last () =
     let msg = { since ; max_results ; wait_up_to = Some 2.0 (* TODO: a param? *) } in
     let%lwt resp = http_post_json url export_req_ppp msg >>=

@@ -944,21 +944,17 @@ let sanitize_ocaml_fname s =
   and re = regexp "[^A-Za-z0-9_]" in
   global_substitute re replace_by_underscore s
 
-(* FIXME: use the node signature for the source name, and assume any
- * already existing file that is not trivially wrong (size) is OK! *)
 let with_code_file_for name f =
   let mode = [`create; `excl; `text] in
   let mode = if !keep_temp_files then mode else `delete_on_exit::mode in
   let prefix = "gen_"^ sanitize_ocaml_fname name ^"_" in
   File.with_temporary_out ~mode ~prefix ~suffix:".ml" (fun oc fname ->
-    !logger.debug "Source code for %S: %s" name fname ;
+    !logger.debug "Source code for %s: %s" name fname ;
     f oc fname)
 
 let compile_source fname =
   (* This is not guaranteed to be unique but should be... *)
   let exec_name = String.sub fname 0 (String.length fname - 3) in
-  (* FIXME: assume any non-trivially bad (size, exec bit) exec_name file is
-   * already OK *)
   let comp_cmd =
     Printf.sprintf
       "ocamlfind ocamlopt -o %s \
