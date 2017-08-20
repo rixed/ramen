@@ -403,26 +403,6 @@ let complete_fields conf headers body =
     Grafana Datasource: data queries
 *)
 
-type timeserie_req =
-  { id : string ;
-    node : string ;
-    data_field : string ;
-    consolidation : string [@ppp_default "avg"] } [@@ppp PPP_JSON] [@@ppp_extensible]
-
-type timeseries_req =
-  { from : float ; (* from and to_ are in milliseconds *)
-    to_ : float [@ppp_rename "to"] ;
-    interval_ms : float ;
-    max_data_points : int ; (* FIXME: should be optional *)
-    timeseries : timeserie_req list } [@@ppp PPP_JSON] [@@ppp_extensible]
-
-type timeserie_resp =
-  { id : string ;
-    times : float array ;
-    values : float option array } [@@ppp PPP_JSON]
-
-type timeseries_resp = timeserie_resp list [@@ppp PPP_JSON]
-
 type timeserie_bucket =
   (* Hopefully count will be small enough that sum can be tracked accurately *)
   { mutable count : int ; mutable sum : float ;
