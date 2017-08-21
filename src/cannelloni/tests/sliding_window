@@ -4,6 +4,8 @@ set -e
 top_srcdir=$(dirname $0)"/.."
 . $top_srcdir/tests/funcs.sh
 
+expected_tests=2
+
 # Tumbling windows:
 
 start

@@ -2,6 +2,10 @@
 
 fixtures="$top_srcdir/tests/fixtures"
 
+nb_tests_tot=0
+nb_tests_ok=0
+ret=1
+
 do_at_exit=""
 at_exit() {
   do_at_exit="$1; $do_at_exit"
@@ -32,12 +36,17 @@ file_with() {
 ramen="$top_srcdir/cannelloni"
 
 export RAMEN_HTTP_PORT
+export RAMEN_PERSIST_DIR
 export RAMEN_URL
+export LAYER_CMD
 
 start() {
   # RANDOM returns a number between 0 and 32767
   RAMEN_HTTP_PORT=$(shuf -i 1024-65536 -n 1)
+  RAMEN_PERSIST_DIR="/tmp/ramen_tests/$RAMEN_HTTP_PORT"
+  at_exit "if test '$ret' -eq 0 ; then rm -rf '$RAMEN_PERSIST_DIR' ; fi"
   RAMEN_URL="http://127.0.0.1:$RAMEN_HTTP_PORT"
+  LAYER_CMD=""
   rm -f /tmp/ringbuf_*
 
   $ramen start &
@@ -46,9 +55,9 @@ start() {
 }
 
 add_node() {
-  $ramen add-node "$1" "$2"
+  LAYER_CMD="$LAYER_CMD --op '$1:$2'"
   while test -n "$3" ; do
-    $ramen add-link "$3" "$1"
+    LAYER_CMD="$LAYER_CMD --link '$3:$1'"
     shift
   done
 }
@@ -70,24 +79,23 @@ add_cars() {
 nb_cars=$(wc -l "$fixtures/cars.csv" | cut -d' ' -f 1)
 
 run() {
+  eval "$ramen add test $LAYER_CMD" &&
   $ramen compile &&
   $ramen run
 }
 
 tail_() {
-  $ramen tail --cont --last "$1" --as-csv "$2"
+  $ramen tail --cont --last "$1" --as-csv "test/$2"
 }
 
-nb_tests_tot=0
-nb_tests_ok=0
-ret=0
 check_equal() {
   nb_tests_tot=$((nb_tests_tot+1))
   if test "$1" = "$2" ; then
     nb_tests_ok=$((nb_tests_ok+1))
   else
+    echo
     echo "Not equals: expected '$1' but got '$2'"
-    ret=1
+    echo
   fi
 }
 
@@ -99,6 +107,12 @@ reset() {
 stop() {
   reset
   echo "$nb_tests_ok/$nb_tests_tot successful"
+  if test -n "$expected_tests" && ! test "$expected_tests" -eq "$nb_tests_tot" ; then
+    echo "$((expected_tests-nb_tests_tot)) not run!"
+  elif test "$nb_tests_ok" -eq "$nb_tests_tot" ; then
+    echo SUCCESS
+    ret=0
+  fi
   exit $ret
 }
 

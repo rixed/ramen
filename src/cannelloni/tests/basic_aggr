@@ -4,6 +4,8 @@ set -e
 top_srcdir=$(dirname $0)"/.."
 . $top_srcdir/tests/funcs.sh
 
+expected_tests=7
+
 start
 add_cars
 add_node p1 \
@@ -18,7 +20,7 @@ add_node p1 \
  EXPORT
  COMMIT AND FLUSH WHEN group.#count >= $nb_cars" cars
 run
-check_equal '1,946,1262598,552,313,140,553' "$(tail_ 1 p1)"
+check_equal '1,946,1262598,552,313,141,553' "$(tail_ 1 p1)"
 
 reset
 start
