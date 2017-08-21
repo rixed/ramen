@@ -334,6 +334,7 @@ let open_config_db file =
     db_open ~mode:`READONLY file
 
 let check_escalations state () =
+  (* FIXME: the returned hash is unused so the filter never happens *)
   Hashtbl.filteri (fun id esc ->
       if esc.alert.stopped = None then (
         let step = get_cap esc.steps esc.attempt in

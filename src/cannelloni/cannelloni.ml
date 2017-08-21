@@ -13,7 +13,7 @@ let do_persist =
 let debug =
   let env = Term.env_info "RAMEN_DEBUG" in
   let i = Arg.info ~doc:"increase verbosity"
-                   ~env ["d"; "debug"] in
+                   ~env [ "d"; "debug" ] in
   Arg.(value (flag i))
 
 let http_port =
@@ -77,7 +77,7 @@ let rb_file =
 
 let nb_tuples =
   let i = Arg.info ~doc:"How many entries to dequeue"
-                   ["n"; "nb-entries"] in
+                   [ "n"; "nb-entries" ] in
   Arg.(value (opt int 1 i))
 
 let dequeue =
@@ -157,17 +157,17 @@ let pause =
 
 let as_csv =
   let i = Arg.info ~doc:"output CSV rather than JSON"
-                   ["as-csv";"csv"] in
+                   [ "as-csv"; "csv" ] in
   Arg.(value (flag i))
 
 let last =
   let i = Arg.info ~doc:"output only the last N tuples"
-                   ["last"] in
+                   [ "last" ] in
   Arg.(value (opt (some int) None i))
 
 let continuous =
   let i = Arg.info ~doc:"When done, wait for more tuples instead of quitting"
-                   ["continuous"; "cont"] in
+                   [ "continuous"; "cont" ] in
   Arg.(value (flag i))
 
 let tail =
