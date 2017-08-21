@@ -34,9 +34,7 @@ let cidr6_of_string = Ipv6.Cidr.of_string
 let sequence start inc =
   Int128.(start + (of_uint64 !CodeGenLib_IO.tuple_count) * inc)
 
-let now = Unix.gettimeofday
-
-let age_float x = x -. now ()
+let age_float x = x -. !CodeGenLib_IO.now
 let age_u8 = Uint8.of_float % age_float
 let age_u16 = Uint16.of_float % age_float
 let age_u32 = Uint32.of_float % age_float
@@ -170,10 +168,11 @@ let output rb sersize_of_tuple serialize_tuple tuple =
  * will change dynamically as children are added/removed. *)
 let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
-  and out_l = ref [] in  (* list of outputer *)
+  and out_l = ref []  (* list of outputer *)
+  and get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
   fun tuple ->
     IntCounter.add stats_out_tuple_count 1 ;
-    let%lwt fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname () in
+    let%lwt fnames = get_out_fnames () in
     Option.may (fun next ->
       (* Change occurred, load/unload as required *)
       let current = Hashtbl.keys out_h |> Set.of_enum in
@@ -200,9 +199,12 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
     join
 
 let node_start node_name =
+  let debug = getenv ~def:"false" "debug" |> bool_of_string
+  and prefix = node_name ^": " in
+  logger := make_logger ~prefix debug ;
   !logger.info "Starting %s process..." node_name ;
   let report_url =
-    (* The real one will have an process identifier instead of "anonymous" *)
+    (* The real one will have a process identifier instead of "anonymous" *)
     getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in
   async (update_stats_th report_url) (* TODO: catch exceptions in async_exception_hook *)
 
@@ -331,8 +333,9 @@ let yield sersize_of_tuple serialize_tuple select =
   let outputer =
     outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   let rec loop () =
+    CodeGenLib_IO.on_each_input_pre () ;
     let%lwt () = outputer (select Uint64.zero () ()) in
-    CodeGenLib_IO.on_each_input () ;
+    CodeGenLib_IO.on_each_input_post () ;
     loop () in
   loop ()
 
@@ -445,11 +448,13 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   and out_count = ref Uint64.zero
   and stats_group_count =
     IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
+  and outputer =
+    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple
   in
   IntGauge.set stats_group_count 0 ;
   let commit tuple =
     out_count := Uint64.succ !out_count ;
-    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple tuple
+    outputer tuple
   in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in

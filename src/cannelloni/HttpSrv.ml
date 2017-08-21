@@ -20,18 +20,26 @@ let get_content_type headers =
   Header.get headers "Content-Type" |? Consts.json_content_type |> String.lowercase
 
 let get_accept headers =
-  Header.get headers "Accept" |? Consts.json_content_type |> String.lowercase
+  let h =
+    Header.get headers "Accept" |? Consts.json_content_type |>
+    String.lowercase in
+  let h =
+    try String.split ~by:";" h |> fst
+    with Not_found -> h in
+  String.split_on_char ',' h
 
-let is_accepting_anything s =
-  String.starts_with s "*/*"
+let is_accepting_anything = List.mem "*/*"
 
 let is_accepting content_type accept =
-  is_accepting_anything accept || String.starts_with accept content_type
+  is_accepting_anything accept || List.mem content_type accept
 
 (* When the client cannot accept the response *)
 let cant_accept accept =
   let status = Code.status_of_code 406 in
-  let body = "{\"error\": \"Can't produce "^ accept ^"\"}\n" in
+  let body =
+    Printf.sprintf "{\"error\": \"Can't produce any of %s\"}\n"
+      (IO.to_string (List.print ~first:"" ~last:"" ~sep:", " String.print)
+                    accept) in
   Server.respond_error ~status ~body ()
 
 let check_accept headers content_type f =
@@ -68,6 +76,22 @@ let type_of_operation_of =
   | Aggregate _ -> "GROUP BY"
   | ReadCSVFile _ -> "READ CSV"
 
+let layer_node_of_user_string conf ?default_layer s =
+  let s = String.trim s in
+  (* rsplit because we might want to have '/'s in the layer name. *)
+  try String.rsplit ~by:"/" s
+  with Not_found ->
+    match default_layer with
+    | Some l -> l, s
+    | None ->
+      (* Last resort: look for the first node with that name: *)
+      match C.fold_nodes conf None (fun res node ->
+              if res = None && node.N.name = s then
+                Some (node.N.layer, node.N.name)
+              else res) with
+      | Some res -> res
+      | None -> raise (Failure ("node "^ s ^" does not exist"))
+
 (*
     Returns the graph (as JSON, dot or mermaid representation)
 *)
@@ -96,12 +120,10 @@ let node_info_of_node node =
     name = node.N.name ;
     operation = node.N.op_text ;
     type_of_operation = Some (type_of_operation_of node.N.operation) ;
+    signature = if node.N.signature = "" then None else Some node.N.signature ;
     command = node.N.command ;
     pid = node.N.pid ;
     parents = List.map (fun n -> n.N.name) node.N.parents ;
-    children = List.map (fun n ->
-      { layer = (if n.N.layer = node.N.layer then None else Some n.N.layer) ;
-        name = n.N.name }) node.N.children ;
     input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
     output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
     in_tuple_count = find_int_metric node.N.last_report Consts.in_tuple_count_metric ;
@@ -141,15 +163,15 @@ let dot_of_graph layers =
   let dot = IO.output_string () in
   Printf.fprintf dot "digraph g {\n" ;
   List.iter (fun layer ->
-    Hashtbl.iter (fun name _ ->
-        Printf.fprintf dot "\t%S\n" name
+    Hashtbl.iter (fun _ node ->
+        Printf.fprintf dot "\t%S\n" (N.fq_name node)
       ) layer.L.persist.L.nodes
     ) layers ;
   Printf.fprintf dot "\n" ;
   List.iter (fun layer ->
-    Hashtbl.iter (fun name node ->
+    Hashtbl.iter (fun _ node ->
         List.iter (fun p ->
-            Printf.fprintf dot "\t%S -> %S\n" p.N.name name
+            Printf.fprintf dot "\t%S -> %S\n" (N.fq_name p) (N.fq_name node)
           ) node.N.parents
       ) layer.L.persist.L.nodes
     ) layers ;
@@ -178,19 +200,19 @@ let mermaid_of_graph layers =
   let txt = IO.output_string () in
   Printf.fprintf txt "graph LR\n" ;
   List.iter (fun layer ->
-    Hashtbl.iter (fun name _ ->
+    Hashtbl.iter (fun _ node ->
         Printf.fprintf txt "%s(%s)\n"
-          (mermaid_id name)
-          (mermaid_label name)
+          (mermaid_id (N.fq_name node))
+          (mermaid_label node.N.name)
       ) layer.L.persist.L.nodes
     ) layers ;
   Printf.fprintf txt "\n" ;
   List.iter (fun layer ->
-    Hashtbl.iter (fun name node ->
+    Hashtbl.iter (fun _ node ->
         List.iter (fun p ->
             Printf.fprintf txt "\t%s-->%s\n"
-              (mermaid_id p.N.name)
-              (mermaid_id name)
+              (mermaid_id (N.fq_name p))
+              (mermaid_id (N.fq_name node))
           ) node.N.parents
       ) layer.L.persist.L.nodes
     ) layers ;
@@ -234,30 +256,31 @@ let node_of_name conf layer_name n =
     bad_request ("Node "^ layer_name ^"/"^ n ^" does not exist")
   | node -> return node
 
-let put_layer conf headers layer body =
+let put_layer conf headers body =
   let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
   (* TODO: Check that this layer node names are unique within the layer *)
 
   (* Check that this layer is new *)
-  if Hashtbl.mem conf.C.graph.C.layers layer then
-    bad_request ("Layer "^ layer ^" already present")
+  if Hashtbl.mem conf.C.graph.C.layers msg.name then
+    bad_request ("Layer "^ msg.name ^" already present")
   else (
     (* Create all the nodes *)
     List.iter (fun info ->
         let name =
           if info.Node.name <> "" then info.Node.name
           else N.make_name () in
-        C.add_node conf name layer info.Node.operation
+        C.add_node conf name msg.name info.Node.operation
       ) msg.nodes ;
     (* Then all the links *)
     let%lwt () = Lwt_list.iter_s (fun info ->
-        let%lwt src = node_of_name conf layer info.Node.name in
-        Lwt_list.iter_s (fun child ->
-            let child_layer = child.SN.layer |? layer in
-            let%lwt dst = node_of_name conf child_layer child.SN.name in
+        let%lwt dst = node_of_name conf msg.name info.Node.name in
+        Lwt_list.iter_s (fun p ->
+            let parent_layer, parent_name =
+              layer_node_of_user_string conf ~default_layer:msg.name p in
+            let%lwt src = node_of_name conf parent_layer parent_name in
             C.make_link conf src dst ;
             return_unit
-          ) info.Node.children
+          ) info.SN.parents
       ) msg.nodes in
     respond_ok ())
 
@@ -269,8 +292,19 @@ let compile conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
     let%lwt layers = graph_layers conf layer_opt in
     try
-      List.iter (Compiler.compile conf) layers ;
-      respond_ok ()
+      let rec loop left_try layers =
+        !logger.debug "%d layers left to compile..." (List.length layers) ;
+        if layers = [] then respond_ok () else
+        if left_try < 0 then bad_request "Unsolvable dependency loop" else
+        List.fold_left (fun failed layer ->
+          try Compiler.compile conf layer ;
+              failed
+          with Compiler.MissingDependency n ->
+            !logger.debug "We miss node %s / %s" n.N.layer n.N.name ;
+            layer::failed) [] layers |>
+        loop (left_try-1)
+      in
+      loop (List.length layers) layers
     with (Lang.SyntaxError e | C.InvalidCommand e) ->
       bad_request e)
 
@@ -349,10 +383,6 @@ let report conf _headers layer name body =
     Grafana Datasource: autocompletion of node/field names
 *)
 
-type complete_node_req = { node_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
-type complete_field_req = { node : string ; field_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
-type complete_resp = string list [@@ppp PPP_JSON]
-
 let complete_nodes conf headers body =
   let%lwt msg = of_json headers "Complete tables" complete_node_req_ppp body in
   let body =
@@ -370,29 +400,8 @@ let complete_fields conf headers body =
   respond_ok ~body ()
 
 (*
-== Grafana Datasource: data queries ==
+    Grafana Datasource: data queries
 *)
-
-
-type timeserie_req =
-  { id : string ;
-    node : string ;
-    data_field : string ;
-    consolidation : string [@ppp_default "avg"] } [@@ppp PPP_JSON] [@@ppp_extensible]
-
-type timeseries_req =
-  { from : float ; (* from and to_ are in milliseconds *)
-    to_ : float [@ppp_rename "to"] ;
-    interval_ms : float ;
-    max_data_points : int ; (* FIXME: should be optional *)
-    timeseries : timeserie_req list } [@@ppp PPP_JSON] [@@ppp_extensible]
-
-type timeserie_resp =
-  { id : string ;
-    times : float array ;
-    values : float option array } [@@ppp PPP_JSON]
-
-type timeseries_resp = timeserie_resp list [@@ppp PPP_JSON]
 
 type timeserie_bucket =
   (* Hopefully count will be small enough that sum can be tracked accurately *)
@@ -413,22 +422,10 @@ let bucket_min b =
 let bucket_max b =
   if b.count = 0 then None else Some b.max
 
-let layer_node_of_user_string conf s =
-  let s = String.trim s in
-  try String.split ~by:"/" s
-  with Not_found ->
-    (* Look for the first node with that name: *)
-    match C.fold_nodes conf None (fun res node ->
-            if res = None && node.N.name = s then
-              Some (node.N.layer, node.N.name)
-            else res) with
-    | Some res -> res
-    | None -> raise (Failure ("node "^ s ^" does not exist"))
-
 let timeseries conf headers body =
   let open Lang.Operation in
   let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
-  let ts_of_node (req : timeserie_req) =
+  let ts_of_node req =
     let layer, node = layer_node_of_user_string conf req.node in
     match C.find_node conf layer node with
     | exception Not_found ->
@@ -494,16 +491,17 @@ let timeseries conf headers body =
     let body = PPP.to_string timeseries_resp_ppp resp in
     respond_ok ~body ()
 
-let start debug save_file ramen_url port cert_opt key_opt () =
+let start do_persist debug ramen_url version_tag node_dir port cert_opt
+          key_opt () =
   logger := make_logger debug ;
-  let conf = C.make_conf save_file ramen_url in
+  let conf = C.make_conf do_persist ramen_url debug version_tag node_dir in
   let router meth path _params headers body =
     (* The function called for each HTTP request: *)
       match meth, path with
       (* API *)
       | `GET, ["graph"] -> get_graph conf headers None
       | `GET, ["graph" ; layer] -> get_graph conf headers (Some layer)
-      | `PUT, ["graph" ; layer] -> put_layer conf headers layer body
+      | `PUT, ["graph"] -> put_layer conf headers body
 (*      | `DELETE, ["graph" ; layer] -> del_layer conf headers *)
       | `GET, ["compile"] -> compile conf headers None
       | `GET, ["compile" ; layer] -> compile conf headers (Some layer)
@@ -512,6 +510,7 @@ let start debug save_file ramen_url port cert_opt key_opt () =
       | `GET, ["stop"] -> stop conf headers None
       | `GET, ["stop" ; layer] -> stop conf headers (Some layer)
       | (`GET|`POST), ["export" ; layer ; node] ->
+        (* TODO: a variant where we do not have to specify layer *)
         (* We must allow both POST and GET for that one since we have an optional
          * body (and some client won't send a body with a GET) *)
         export conf headers layer node body

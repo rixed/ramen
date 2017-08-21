@@ -88,7 +88,7 @@ let add_tuple node_name tuple_type tuple =
 let read_tuple tuple_type tx =
   (* First read the nullmask *)
   let nullmask_size =
-    CodeGen_OCaml.nullmask_bytes_of_tuple_type tuple_type in
+    RingBufLib.nullmask_bytes_of_tuple_type tuple_type in
   let read_single_value offs =
     let open RingBuf in
     function

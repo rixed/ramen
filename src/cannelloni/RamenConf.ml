@@ -83,7 +83,15 @@ struct
       mutable operation : Lang.Operation.t ;
       mutable in_type : temp_tup_typ ;
       mutable out_type : temp_tup_typ ;
-      mutable signature : string ; (* Lazily computed signature *)
+      (* The signature identifies the operation and therefore the binary.
+       * It does not identifies a node! Only layer name + node name identifies
+       * a node. Indeed, it is frequent that different nodes in the graph have
+       * the same signature (they perform the same operation, but with a
+       * different internal state and different environment (ie. different
+       * ringbufs and different parameters).
+       * This field is computed as soon as the node is typed, and is otherwise
+       * empty. *)
+      mutable signature : string ;
       (* Also keep the string as defined by the client to preserve formatting: *)
       mutable op_text : string ;
       (* Parents are either in this layer or a layer _below_. *)
@@ -95,21 +103,30 @@ struct
       mutable pid : int option ;
       mutable last_report : Binocle.metric list }
 
+  let fq_name node = node.layer ^"/"^ node.name
+
   let make_name =
     let seq = ref 0 in
     fun () ->
       incr seq ;
       string_of_int !seq
 
-  let signature =
-    let blanks = Str.regexp "[ \n\t\b\r]\\+" in
-    fun node ->
-      let op_text = Str.global_replace blanks " " node.op_text in
-      "OP="^ op_text ^
-      "IN="^ type_signature node.in_type ^
-      "OUT="^ type_signature node.out_type |>
-      Cryptohash_md4.string |>
-      Cryptohash_md4.to_hex
+  (* We need the conf because we want to add in the signature the version of
+   * ramen that generated those binaries. *)
+  let signature version_tag node =
+    (* We'd like to be formatting independent so that operation text can be
+     * reformatted without ramen recompiling it. For this it is not OK to
+     * strip redundant white spaces as some of those might be part of literal
+     * string values. So we print it, trusting the printer to be exhaustive.
+     * This is not enough to print the expression with types, as those do not
+     * contain relevant info such as field rank. We therefore print without
+     * types and encode input/output types explicitly below: *)
+    "OP="^ IO.to_string Lang.Operation.print node.operation ^
+    "IN="^ type_signature node.in_type ^
+    "OUT="^ type_signature node.out_type ^
+    "V="^ version_tag |>
+    Cryptohash_md4.string |>
+    Cryptohash_md4.to_hex
 end
 
 exception InvalidCommand of string
@@ -175,8 +192,11 @@ type persisted = (string, Layer.persist) Hashtbl.t
 
 type conf =
   { mutable graph : graph ;
-    save_file : string option ;
-    ramen_url : string }
+    debug : bool ;
+    ramen_url : string ;
+    version_tag : string ;
+    persist_dir : string ;
+    do_persist : bool }
 
 let parse_operation operation =
   let open RamenParsing in
@@ -198,17 +218,26 @@ let add_layer conf name =
   Hashtbl.add conf.graph.layers name layer ;
   layer
 
+let save_file_of persist_dir =
+  persist_dir ^"/configuration/1" (* TODO: versioning *)
+
 let save_graph conf =
-  let persist =
-    Hashtbl.map (fun _ l -> l.Layer.persist) conf.graph.layers in
-  Option.may (fun save_file ->
-      !logger.debug "Saving graph in %S" save_file ;
-      File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
-        Marshal.output oc persist)
-    ) conf.save_file
+  if conf.do_persist then
+    let persist =
+      Hashtbl.map (fun _ l -> l.Layer.persist) conf.graph.layers in
+    let save_file = save_file_of conf.persist_dir in
+    !logger.debug "Saving graph in %S" save_file ;
+    Helpers.mkdir_all ~is_file:true save_file ;
+    File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
+      Marshal.output oc persist)
 
 let add_node conf node_name layer_name op_text =
-  !logger.debug "Creating node %s/%s" layer_name node_name ;
+  !logger.debug "Creating node %s / %s" layer_name node_name ;
+  (* new lines have to be forbidden because of the out_ref ringbuf files *)
+  if node_name = "" ||
+     String.fold_left (fun bad c ->
+       bad || c = '\n' || c = '\r') false node_name then
+    invalid_arg "node name" ;
   assert (node_name <> "") ;
   let layer =
     try Hashtbl.find conf.graph.layers layer_name
@@ -237,22 +266,20 @@ let make_graph ?persist () =
   { layers = Hashtbl.map (fun name persist ->
                Layer.make ~persist name) persist }
 
-let load_graph save_file =
+let load_graph do_persist persist_dir =
+  let save_file = save_file_of persist_dir in
   let persist : persisted option =
-    match save_file with
-    | None -> None
-    | Some fname ->
-      (try
-        File.with_file_in fname (fun ic ->
+    if do_persist then
+      try
+        File.with_file_in save_file (fun ic ->
           let persist = Marshal.input ic in
           Some persist)
       with
-      | Sys_error err ->
-        !logger.debug "Cannot read state from file %S: %s. Starting anew" fname err ;
+      | e ->
+        !logger.error "Cannot read state from file %S: %s. Starting anew"
+          save_file (Printexc.to_string e) ;
         None
-      | BatInnerIO.No_more_input ->
-        !logger.debug "Cannot read state from file %S: not enough input. Starting anew" fname ;
-        None)
+    else None
   in
   make_graph ?persist ()
 
@@ -274,8 +301,9 @@ let make_link conf src dst =
   dst.parents <- src :: dst.parents ;
   save_graph conf
 
-let make_conf save_file ramen_url =
-  { graph = load_graph save_file ; save_file ; ramen_url }
+let make_conf do_persist ramen_url debug version_tag persist_dir =
+  { graph = load_graph do_persist persist_dir ; do_persist ;
+    ramen_url ; debug ; version_tag ; persist_dir }
 
 
 (* AutoCompletion of node/field names *)
@@ -293,14 +321,16 @@ let complete_node_name conf s =
   (* TODO: a better search structure for case-insensitive prefix search *)
   fold_nodes conf [] (fun lst node ->
       let lc_name = String.lowercase node.Node.name in
-      let lc_fq_name = String.lowercase node.Node.layer ^"/"^ lc_name in
+      let fq_name = Node.fq_name node in
+      let lc_fq_name = String.lowercase fq_name in
       if String.(starts_with lc_fq_name s || starts_with lc_name s) then
-        node.Node.name :: lst
+        fq_name :: lst
       else lst
     )
 
 let complete_field_name conf name s =
-  match String.split ~by:"/" (String.trim name) with
+  (* rsplit because we might want to have '/'s in the layer name. *)
+  match String.rsplit ~by:"/" (String.trim name) with
   | exception Not_found -> []
   | layer_name, node_name ->
     match find_node conf layer_name node_name with

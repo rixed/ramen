@@ -110,20 +110,16 @@ type expr_type_info =
 
 module Node =
 struct
-  type child =
-    { layer : string option ;
-      name : string } [@@ppp PPP_JSON]
-
   type info =
     (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
     { mutable name : string ;
       mutable operation : string ;
       mutable parents : string list ;
-      mutable children : child list ;
       type_of_operation : string option ;
       input_type : (int option * expr_type_info) list ;
       output_type : (int option * expr_type_info) list ;
       (* Info about the running process (if any) *)
+      signature : string option ;
       command : string option ;
       pid : int option ;
       in_tuple_count : int ;
@@ -134,9 +130,9 @@ struct
       ram_usage : int } [@@ppp PPP_JSON]
 
   let empty =
-    { name = "" ; operation = "" ; parents = [] ; children = [] ;
+    { name = "" ; operation = "" ; parents = [] ;
       type_of_operation = None ; input_type = [] ; output_type = [] ;
-      command = None ; pid = None ;
+      signature = None ; command = None ; pid = None ;
       in_tuple_count = 0 ; selected_tuple_count = 0 ; out_tuple_count = 0 ;
       group_count = None ; cpu_time = 0. ; ram_usage = 0 }
 end
@@ -156,7 +152,7 @@ end
 type get_graph_resp = Layer.info list [@@ppp PPP_JSON]
 
 type put_layer_req =
-  { nodes : Node.info list } [@@ppp PPP_JSON]
+  { name : string ; nodes : Node.info list } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)
 
@@ -176,3 +172,35 @@ let empty_export_req =
 type export_resp =
   { first: int ;
     columns : (string * bool * column) list } [@@ppp PPP_JSON]
+
+(* Autocompletion of names: *)
+
+type complete_node_req =
+  { node_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
+
+type complete_field_req =
+  { node : string ; field_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
+
+type complete_resp = string list [@@ppp PPP_JSON]
+
+(* Time series retrieval: *)
+
+type timeserie_req =
+  { id : string ;
+    node : string ;
+    data_field : string ;
+    consolidation : string [@ppp_default "avg"] } [@@ppp PPP_JSON] [@@ppp_extensible]
+
+type timeseries_req =
+  { from : float ; (* from and to_ are in milliseconds *)
+    to_ : float [@ppp_rename "to"] ;
+    interval_ms : float ;
+    max_data_points : int ; (* FIXME: should be optional *)
+    timeseries : timeserie_req list } [@@ppp PPP_JSON] [@@ppp_extensible]
+
+type timeserie_resp =
+  { id : string ;
+    times : float array ;
+    values : float option array } [@@ppp PPP_JSON]
+
+type timeseries_resp = timeserie_resp list [@@ppp PPP_JSON]

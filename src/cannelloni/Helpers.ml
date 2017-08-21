@@ -117,3 +117,27 @@ let time what f =
   let dt = Unix.gettimeofday () -. start in
   !logger.info "%s in %gs." what dt ;
   res
+
+(* TODO: add this into batteries *)
+
+let mkdir_all ?(is_file=false) dir =
+  let dir_exist d =
+    try Sys.is_directory d with Sys_error _ -> false in
+  let dir = if is_file then Filename.dirname dir else dir in
+  let rec ensure_exist d =
+    if String.length d > 0 && not (dir_exist d) then (
+      ensure_exist (Filename.dirname d) ;
+      try Unix.mkdir d 0o755
+      with Unix.Unix_error (Unix.EEXIST, "mkdir", _) ->
+        (* Happens when we have "somepath//someother" (dirname should handle this IMHO) *)
+        ()
+    ) in
+  ensure_exist dir
+
+let file_exists ?(maybe_empty=true) ?(has_perms=0) fname =
+  let open Unix in
+  match stat fname with
+  | exception Unix_error (ENOENT, _, _) -> false
+  | s ->
+    (maybe_empty || s.st_size > 0) &&
+    s.st_perm land has_perms = has_perms

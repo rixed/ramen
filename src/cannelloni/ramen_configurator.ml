@@ -1,29 +1,29 @@
 open Batteries
 open Log
-open RamenSharedTypes
 module N = RamenSharedTypes.Node
 
 type options = { debug : bool ; monitor : bool }
 
 let options debug monitor = { debug ; monitor }
 
-(* Build the node infos corresponding to the BCN configuration *)
-let layer_of_bcns delete csv_dir bcns =
-  let name_of_zones = function
-    | [] -> "any"
-    | main::_ -> string_of_int main in
-  let all_nodes = ref [] in
+let rebase dataset_name name =
+  if dataset_name = "" then name else dataset_name ^"/"^ name
+
+(* Get the operations to import the dataset and do basic transformations.
+ * Named streams belonging to this base layer:
+ * - ${dataset_name}/csv: Raw imported tuples straight from the CSV;
+ * - ${dataset_name}/c2s: The first of a pair of streams of traffic info
+ *                        (source to dest rather than client to server);
+ * - ${dataset_name}/s2c: The second stream of traffic info;
+ *
+ * If you wish to process traffic info you must feed on both c2s and s2c.
+ *)
+let base_layer dataset_name delete csv_dir =
   let make_node ?(parents=[]) name operation =
-    let node = Node.{ empty with
-                      name ; operation ;
-                      parents = List.map (fun p -> p.name) parents } in
-    List.iter (fun (p : Node.info) ->
-      let child = N.{ name ; layer = None } in
-      p.Node.children <- child :: p.Node.children) parents ;
-    all_nodes := node :: !all_nodes ;
-    node
+    let parents = List.map (rebase dataset_name) parents in
+    N.{ empty with name ; operation ; parents }
   in
-  let top =
+  let csv =
     let op =
       Printf.sprintf
         "READ%s CSV FILES \"%s/tcp_v29.*.csv.gz\"\n    \
@@ -108,93 +108,110 @@ let layer_of_bcns delete csv_dir bcns =
            dcerpc_uuid string null\n\
          )"
       (if delete then " AND DELETE" else "") csv_dir in
-    make_node "read csv" op in
-  let to_unidir ~src ~dst =
+    make_node "csv" op in
+  let to_unidir ~src ~dst name =
+    let rep sub by str = String.nreplace ~str ~sub ~by in
     let op =
-      (* Note: we keep the IPs etc although we do not use them later, for maybe this
-       * could also provide a useful data stream to collect stats on individual hosts *)
-      Printf.sprintf
-        "SELECT\n  \
-           capture_begin, capture_end,\n  \
-           device_%s AS device_src, device_%s AS device_dst,\n  \
-           vlan_%s AS vlan_src, vlan_%s AS vlan_dst,\n  \
-           mac_%s AS mac_src, mac_%s AS mac_dst,\n  \
-           zone_%s AS zone_src, zone_%s AS zone_dst,\n  \
-           ip4_%s AS ip4_src, ip4_%s AS ip4_dst,\n  \
-           ip6_%s AS ip6_src, ip6_%s AS ip6_dst,\n  \
-           port_%s AS port_src, port_%s AS port_dst,\n  \
-           traffic_packets_%s AS packets,\n  \
-           traffic_bytes_%s AS bytes\n\
-         WHERE traffic_packets_%s > 0"
-         src dst src dst src dst src dst src dst src dst src dst src dst src in
-    let name = Printf.sprintf "to unidir %s to %s" src dst in
-    make_node ~parents:[top] name op
+      (* TODO: keep all data that can be made source-dest! *)
+      "SELECT\n  \
+         capture_begin, capture_end,\n  \
+         device_$SRC AS device_src, device_$DST AS device_dst,\n  \
+         vlan_$SRC AS vlan_src, vlan_$DST AS vlan_dst,\n  \
+         mac_$SRC AS mac_src, mac_$DST AS mac_dst,\n  \
+         zone_$SRC AS zone_src, zone_$DST AS zone_dst,\n  \
+         ip4_$SRC AS ip4_src, ip4_$DST AS ip4_dst,\n  \
+         ip6_$SRC AS ip6_src, ip6_$DST AS ip6_dst,\n  \
+         port_$SRC AS port_src, port_$DST AS port_dst,\n  \
+         traffic_packets_$SRC AS packets,\n  \
+         traffic_bytes_$SRC AS bytes\n\
+       WHERE traffic_packets_$SRC > 0" |>
+      rep "$SRC" src |>
+      rep "$DST" dst in
+    make_node ~parents:["csv"] name op
   in
-  let to_unidir_c2s = to_unidir ~src:"client" ~dst:"server"
-  and to_unidir_s2c = to_unidir ~src:"server" ~dst:"client" in
+  RamenSharedTypes.{
+    name = dataset_name ;
+    nodes = [
+      csv ;
+      to_unidir ~src:"client" ~dst:"server" "c2s" ;
+      to_unidir ~src:"server" ~dst:"client" "s2c" ] }
+
+(* Build the node infos corresponding to the BCN configuration *)
+let layer_of_bcns bcns dataset_name =
+  let layer_name = rebase dataset_name "BCN" in
+  let name_of_zones = function
+    | [] -> "any"
+    | main::_ -> string_of_int main in
+  let all_nodes = ref [] in
+  let make_node ?(parents=[]) name operation =
+    let parents = List.map (rebase dataset_name) parents in
+    let node = N.{ empty with
+                   name ; operation ; parents } in
+    all_nodes := node :: !all_nodes
+  in
   let alert_conf_of_bcn bcn =
     (* bcn.min_bps, bcn.max_bps, bcn.obs_window, bcn.avg_window, bcn.percentile, bcn.source bcn.dest *)
     let open Conf_of_sqlite in
     let name_prefix = Printf.sprintf "%s to %s"
       (name_of_zones bcn.source) (name_of_zones bcn.dest) in
     let avg_window = int_of_float (bcn.avg_window *. 1_000_000.0) in
-    let avg_per_zones =
-      let in_zone what_zone = function
-        | [] -> "true"
-        | lst ->
-          "("^ List.fold_left (fun s z ->
-            s ^ (if s <> "" then " OR " else "") ^
-            what_zone ^ " = " ^ string_of_int z) "" lst ^")" in
-      let op =
-        Printf.sprintf
-          "SELECT\n  \
-             (capture_begin // %d) AS start,\n  \
-             min of capture_begin, max of capture_end,\n  \
-             sum of packets / ((max_capture_end - min_capture_begin) / 1_000_000) as packets_per_secs,\n  \
-             sum of bytes / ((max_capture_end - min_capture_begin) / 1_000_000) as bytes_per_secs,\n  \
-             %S as zone_src, %S as zone_dst\n\
-           WHERE %s AND %s\n\
-           EXPORT EVENT STARTING AT min_capture_begin * 0.000001\n         \
-                    AND STOPPING AT max_capture_end * 0.000001\n\
-           GROUP BY capture_begin // %d\n\
-           COMMIT AND FLUSH WHEN in.capture_begin > out.min_capture_begin + 2 * %d"
-          avg_window
-          (name_of_zones bcn.source)
-          (name_of_zones bcn.dest)
-          (in_zone "zone_src" bcn.source)
-          (in_zone "zone_dst" bcn.dest)
-          avg_window
-          avg_window
-          (* Note: Ideally we would want to compute the max of all.capture_begin *)
-      and name =
-        Printf.sprintf "%s: average traffic every %g seconds"
-          name_prefix bcn.avg_window
-      in
-      make_node ~parents:[to_unidir_c2s;to_unidir_s2c] name op in
-    let perc_per_obs_window =
-      let op =
-        let nb_items_per_groups =
-          Helpers.round_to_int (bcn.obs_window /. bcn.avg_window) in
-        (* Note: The event start at the end of the observation window and lasts
-         * for one avg window! *)
-        Printf.sprintf
-          "SELECT\n  \
-             group.#count AS group_count,\n  \
-             min start, max start,\n  \
-             min of min_capture_begin AS min_capture_begin,\n  \
-             max of max_capture_end AS max_capture_end,\n  \
-             %gth percentile of bytes_per_secs AS bps,\n  \
-             zone_src, zone_dst\n\
-           EXPORT EVENT STARTING AT max_capture_end * 0.000001\n        \
-                   WITH DURATION %g\n\
-           COMMIT AND SLIDE 1 WHEN\n  \
-             group.#count >= %d\n  OR \
-             in.start > out.max_start + 5"
-           bcn.percentile bcn.avg_window nb_items_per_groups in
-      let name =
-        Printf.sprintf "%s: %gth percentile on last %g seconds"
-          name_prefix bcn.percentile bcn.obs_window in
-      make_node ~parents:[avg_per_zones] name op in
+    let avg_per_zones_name =
+      Printf.sprintf "%s: avg traffic every %gs"
+        name_prefix bcn.avg_window in
+    let in_zone what_zone = function
+      | [] -> "true"
+      | lst ->
+        "("^ List.fold_left (fun s z ->
+          s ^ (if s <> "" then " OR " else "") ^
+          what_zone ^ " = " ^ string_of_int z) "" lst ^")" in
+    let op =
+      Printf.sprintf
+        "SELECT\n  \
+           (capture_begin // %d) AS start,\n  \
+           min of capture_begin, max of capture_end,\n  \
+           sum of packets / %g as packets_per_secs,\n  \
+           sum of bytes / %g as bytes_per_secs,\n  \
+           %S as zone_src, %S as zone_dst\n\
+         WHERE %s AND %s\n\
+         EXPORT EVENT STARTING AT start * %g\n         \
+                 WITH DURATION %g\n\
+         GROUP BY capture_begin // %d\n\
+         COMMIT AND FLUSH WHEN in.capture_begin > out.min_capture_begin + 2 * %d"
+        avg_window
+        bcn.avg_window bcn.avg_window
+        (name_of_zones bcn.source)
+        (name_of_zones bcn.dest)
+        (in_zone "zone_src" bcn.source)
+        (in_zone "zone_dst" bcn.dest)
+        bcn.avg_window bcn.avg_window
+        avg_window
+        avg_window
+        (* Note: Ideally we would want to compute the max of all.capture_begin *)
+    in
+    make_node ~parents:["c2s"; "s2c"] avg_per_zones_name op ;
+    let perc_per_obs_window_name =
+      Printf.sprintf "%s: %gth perc on last %gs"
+        name_prefix bcn.percentile bcn.obs_window in
+    let op =
+      let nb_items_per_groups =
+        Helpers.round_to_int (bcn.obs_window /. bcn.avg_window) in
+      (* Note: The event start at the end of the observation window and lasts
+       * for one avg window! *)
+      Printf.sprintf
+        "SELECT\n  \
+           group.#count AS group_count,\n  \
+           min start, max start,\n  \
+           min of min_capture_begin AS min_capture_begin,\n  \
+           max of max_capture_end AS max_capture_end,\n  \
+           %gth percentile of bytes_per_secs AS bytes_per_secs,\n  \
+           zone_src, zone_dst\n\
+         EXPORT EVENT STARTING AT max_capture_end * 0.000001\n        \
+                 WITH DURATION %g\n\
+         COMMIT AND SLIDE 1 WHEN\n  \
+           group.#count >= %d\n  OR \
+           in.start > out.max_start + 5"
+         bcn.percentile bcn.avg_window nb_items_per_groups in
+    make_node ~parents:["BCN/"^ avg_per_zones_name] perc_per_obs_window_name op ;
     let enc = Uri.pct_encode in
     (* TODO: we need an hysteresis here! *)
     Option.may (fun min_bps ->
@@ -207,13 +224,12 @@ let layer_of_bcns delete csv_dir bcns =
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       min_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
-          "WHEN bps < %d\n  \
+          "WHEN bytes_per_secs < %d\n  \
            NOTIFY \"http://localhost:876/notify?name=Low%%20traffic&firing=1&subject=%s&text=%s\""
             min_bps
             (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
-        make_node ~parents:[perc_per_obs_window] name ops |>
-        ignore
+        make_node ~parents:["BCN"^ perc_per_obs_window_name] name ops
       ) bcn.min_bps ;
     Option.may (fun max_bps ->
         let subject = Printf.sprintf "Too much traffic from zone %s to %s"
@@ -225,17 +241,16 @@ let layer_of_bcns delete csv_dir bcns =
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       max_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
-          "WHEN bps > %d\n  \
+          "WHEN bytes_per_secs > %d\n  \
            NOTIFY \"http://localhost:876/notify?name=High%%20traffic&firing=1&subject=%s&text=%s\""
             max_bps
             (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
-        make_node ~parents:[perc_per_obs_window] name ops |>
-        ignore
-      ) bcn.max_bps ;
+        make_node ~parents:["BCN/"^ perc_per_obs_window_name] name ops
+      ) bcn.max_bps
   in
   List.iter alert_conf_of_bcn bcns ;
-  RamenSharedTypes.{ nodes = !all_nodes }
+  RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
 
 let get_bcns_from_db db =
   let open Conf_of_sqlite in
@@ -249,7 +264,7 @@ open Cohttp_lwt_unix
 
 let put_layer ramen_url layer =
   let req = PPP.to_string RamenSharedTypes.put_layer_req_ppp layer in
-  let url = ramen_url ^"/graph/bcn" in
+  let url = ramen_url ^"/graph/" in
   !logger.debug "Will send %S to %S" req url ;
   let body = `String req in
   (* TODO: but also fix the server never timeouting! *)
@@ -263,14 +278,20 @@ let put_layer ramen_url layer =
   !logger.debug "Body: %S\n" body ;
   return_unit
 
-let start conf ramen_url db_name delete csv_dir =
+let start conf ramen_url db_name dataset_name delete csv_dir =
   logger := make_logger conf.debug ;
   let open Conf_of_sqlite in
   let db = get_db db_name in
   let update () =
+    (* TODO: The base layer for this client *)
+    let base = base_layer dataset_name delete csv_dir in
+    let%lwt () = put_layer ramen_url base in
+    (* TODO: A layer per BCN? Pro: easier to update and set from cmdline
+     * without a DB. Cons: Easier to remove/add all at once; more manual labor
+     * if we do have a DB *)
     let bcns = get_bcns_from_db db in
-    let layer = layer_of_bcns delete csv_dir bcns in
-    put_layer ramen_url layer
+    let bcns = layer_of_bcns bcns dataset_name in
+    put_layer ramen_url bcns
   in
   let%lwt () = update () in
   if conf.monitor then
@@ -307,13 +328,18 @@ let db_name =
                    [ "db" ] in
   Arg.(required (opt (some string) None i))
 
+let dataset_name =
+  let i = Arg.info ~doc:"Name identifying this data set"
+                        [ "name" ] in
+  Arg.(value (opt string "" i))
+
 let delete_opt =
-  let i = Arg.info ~doc:"Delete CSV files after injected"
+  let i = Arg.info ~doc:"Delete CSV files once injected"
                    [ "delete" ] in
   Arg.(value (flag i))
 
 let csv_dir =
-  let i = Arg.info ~doc:"Path where the TCP_v29 CSV files are stored"
+  let i = Arg.info ~doc:"Path where the CSV files are stored"
                    [ "csv-dir" ] in
   Arg.(required (opt (some string) None i))
 
@@ -323,9 +349,10 @@ let start_cmd =
       $ common_opts
       $ ramen_url
       $ db_name
+      $ dataset_name
       $ delete_opt
       $ csv_dir),
-    info "configurator")
+    info "ramen_configurator")
 
 let () =
   match Term.eval start_cmd with

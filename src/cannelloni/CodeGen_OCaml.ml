@@ -16,6 +16,8 @@ open Batteries
 open Log
 open RamenSharedTypes
 open Lang
+open Helpers
+module C = RamenConf
 
 let id_of_prefix tuple =
   String.nreplace (string_of_prefix tuple) "." "_"
@@ -90,18 +92,12 @@ let id_of_typ typ =
 let emit_value_of_string typ oc var =
   Printf.fprintf oc "CodeGenLib.%s_of_string %s" (id_of_typ typ) var
 
-let nullmask_bytes_of_tuple_type tuple_typ =
-  List.fold_left (fun s field_typ ->
-    if field_typ.nullable then s+1 else s) 0 tuple_typ |>
-  RingBufLib.bytes_for_bits |>
-  RingBufLib.round_up_to_rb_word
-
 let emit_sersize_of_tuple name oc tuple_typ =
   (* For nullable fields each ringbuf record has a bitmask of as many bits as
    * there are nullable fields, rounded to the greater or equal multiple of rb_word_size.
    * This is a constant given by the tuple type:
    *)
-  let size_for_nullmask = nullmask_bytes_of_tuple_type tuple_typ in
+  let size_for_nullmask = RingBufLib.nullmask_bytes_of_tuple_type tuple_typ in
   (* Let's emit the function definition, deconstructing the tuple with identifiers
    * for varsized fields: *)
   Printf.fprintf oc "let %s %a =\n\t\
@@ -132,7 +128,7 @@ let emit_serialize_tuple name oc tuple_typ =
   Printf.fprintf oc "let %s tx_ %a =\n"
     name
     (print_tuple_deconstruct TupleOut) tuple_typ ;
-  let nullmask_bytes = nullmask_bytes_of_tuple_type tuple_typ in
+  let nullmask_bytes = RingBufLib.nullmask_bytes_of_tuple_type tuple_typ in
   Printf.fprintf oc "\tlet offs_ = %d in\n" nullmask_bytes ;
   (* Start by zeroing the nullmask *)
   if nullmask_bytes > 0 then
@@ -219,7 +215,7 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
     let %s tx_ =\n\
     \tlet offs_ = %d in\n"
     name
-    (nullmask_bytes_of_tuple_type in_tuple_typ) ;
+    (RingBufLib.nullmask_bytes_of_tuple_type in_tuple_typ) ;
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ ~tuple:TupleIn field in
       if and_all_others || Set.mem field.typ_name mentioned then (
@@ -936,46 +932,50 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
            should_resubmit_ aggr_init_ update_aggr_)\n"
     when_to_check_for_commit when_to_check_for_flush
 
-let keep_temp_files = ref true
-
 let sanitize_ocaml_fname s =
   let open Str in
   let replace_by_underscore _ = "_"
   and re = regexp "[^A-Za-z0-9_]" in
-  global_substitute re replace_by_underscore s
+  (* Must start with a letter: *)
+  "m"^ global_substitute re replace_by_underscore s
 
-let with_code_file_for name f =
-  let mode = [`create; `excl; `text] in
-  let mode = if !keep_temp_files then mode else `delete_on_exit::mode in
-  let prefix = "gen_"^ sanitize_ocaml_fname name ^"_" in
-  File.with_temporary_out ~mode ~prefix ~suffix:".ml" (fun oc fname ->
-    !logger.debug "Source code for %s: %s" name fname ;
-    f oc fname)
+let with_code_file_for conf signature f =
+  let fname =
+    conf.C.persist_dir ^"/src/ocaml/"^ sanitize_ocaml_fname signature ^".ml" in
+  mkdir_all ~is_file:true fname ;
+  if file_exists ~maybe_empty:false fname then
+    !logger.info "Reusing source file %S" fname
+  else
+    File.with_file_out ~mode:[`create; `text] fname f ;
+  fname
 
 let compile_source fname =
   (* This is not guaranteed to be unique but should be... *)
   let exec_name = String.sub fname 0 (String.length fname - 3) in
-  let comp_cmd =
-    Printf.sprintf
-      "ocamlfind ocamlopt -o %s \
-        -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator \
-        -linkpkg codegen.cmxa %s"
-      (Helpers.shell_quote exec_name)
-      (Helpers.shell_quote fname) in
-  let exit_code = Sys.command comp_cmd in
-  if exit_code = 0 then (
-    !logger.debug "Compiled %s with: %s" fname comp_cmd ;
-    exec_name
-  ) else (
-    !logger.error "Compilation of %s failed with status %d.\n\
-                   Failed command was: %S"
-                  fname exit_code comp_cmd ;
-    failwith "Cannot generate code"
-  )
+  mkdir_all ~is_file:true exec_name ;
+  if file_exists ~maybe_empty:false ~has_perms:0o100 exec_name then
+    !logger.info "Reusing binary %S" exec_name
+  else (
+    let comp_cmd =
+      Printf.sprintf
+        "ocamlfind ocamlopt -o %s \
+          -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator \
+          -linkpkg codegen.cmxa %s"
+        (shell_quote exec_name)
+        (shell_quote fname) in
+    let exit_code = Sys.command comp_cmd in
+    if exit_code = 0 then
+      !logger.debug "Compiled %s with: %s" fname comp_cmd
+    else (
+      !logger.error "Compilation of %s failed with status %d.\n\
+                     Failed command was: %S"
+                    fname exit_code comp_cmd ;
+      failwith "Cannot generate code")) ;
+  exec_name
 
-let gen_operation name in_tuple_typ out_tuple_typ op =
+let gen_operation conf signature in_tuple_typ out_tuple_typ op =
   let open Operation in
-  with_code_file_for name (fun oc fname ->
+  with_code_file_for conf signature (fun oc ->
     (match op with
     | Yield fields ->
       emit_yield oc in_tuple_typ out_tuple_typ fields
@@ -985,6 +985,5 @@ let gen_operation name in_tuple_typ out_tuple_typ op =
       emit_read_csv_file oc fname unlink separator null fields preprocessor
     | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how ; _ } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
-                     key commit_when flush_when flush_how) ;
-    fname) |>
+                     key commit_when flush_when flush_how)) |>
     compile_source

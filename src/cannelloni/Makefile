@@ -7,23 +7,22 @@ TESTABLE_SOURCES = \
 LINKED_FOR_TESTS = \
 	Log.ml Helpers.ml RamenSharedTypes.ml RingBufLib.ml \
 	RamenParsing.ml \
-	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml CodeGen_OCaml.ml \
-	RingBuf.ml RamenConf.ml Compiler.ml
+	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
+	RingBuf.ml RamenConf.ml CodeGen_OCaml.ml Compiler.ml
 
 CANNELLONI_SOURCES = \
 	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
-	CodeGen_OCaml.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
-	Compiler.ml HttpSrv.ml ApiCmd.ml RingBufCmd.ml \
+	CodeGen_OCaml.ml Compiler.ml HttpSrv.ml ApiCmd.ml RingBufCmd.ml \
 	cannelloni.ml
 
 CODEGENLIB_SOURCES = \
-	Consts.ml Log.ml Helpers.ml \
+	Consts.ml Log.ml Helpers.ml Globs.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenSharedTypes.ml RingBufLib.ml RingBuf.ml \
-	Globs.ml CodeGenLib_IO.ml CodeGenLib.ml
+	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h
@@ -74,7 +73,7 @@ codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
 codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLC)   $(OCAMLFLAGS)    -a       $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
-ringbuf_test.opt: Log.cmx Helpers.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
+ringbuf_test.opt: Log.cmx Helpers.cmx RamenSharedTypes.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)

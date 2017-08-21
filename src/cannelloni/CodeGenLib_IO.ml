@@ -5,8 +5,11 @@ open Stdint
 open Batteries
 
 let tuple_count = ref Uint64.zero
+let now = ref 0.
 
-let on_each_input () =
+let on_each_input_pre () =
+  now := Unix.gettimeofday ()
+let on_each_input_post () =
   tuple_count := Uint64.succ !tuple_count
 
 let read_file_lines ?(do_unlink=false) filename preprocessor k =
@@ -49,8 +52,9 @@ let read_file_lines ?(do_unlink=false) filename preprocessor k =
         if do_unlink && preprocessor <> "" then
           Lwt_unix.unlink filename else return_unit
       | line ->
+        on_each_input_pre () ;
         let%lwt () = k line in
-        on_each_input () ;
+        on_each_input_post () ;
         read_next_line ()
     in
     read_next_line ()
@@ -107,9 +111,10 @@ let read_glob_lines ?do_unlink path preprocessor k =
 let read_ringbuf rb f =
   let open RingBuf in
   let rec read_next () =
+    on_each_input_pre () ;
     let%lwt tx = RingBufLib.retry_for_ringbuf dequeue_alloc rb in
     let%lwt () = f tx in
-    on_each_input () ;
+    on_each_input_post () ;
     read_next ()
   in
   read_next ()

@@ -30,24 +30,35 @@ let ssl_key =
                    ~env [ "ssl-key" ] in
   Arg.(value (opt (some string) None i))
 
-let graph_save_file =
-  let env = Term.env_info "RAMEN_SAVE_FILE" in
-  let i = Arg.info ~doc:"graph save file"
-                   ~env ["save-file"] in
-  Arg.(value (opt (some string) None i))
-
 let server_url =
   let env = Term.env_info "RAMEN_URL" in
   let i = Arg.info ~doc:"URL to reach ramen"
                    ~env [ "ramen-url" ] in
   Arg.(value (opt string "http://127.0.0.1:29380" i))
 
+let version_tag =
+  let env = Term.env_info "RAMEN_VERSION_TAG" in
+  let i = Arg.info ~doc:"unique tag identifying the version of ramen \
+                         (such as git tag name or sha1)"
+                   ~env [ "version-tag"; "tag" ] in
+  (* If you leave this "dev" here then you'll have to manually delete all
+   * produced files (in /tmp/ramen) if you change the code. *)
+  Arg.(value (opt string "dev" i))
+
+let persist_dir =
+  let env = Term.env_info "RAMEN_PERSIST_DIR" in
+  let i = Arg.info ~doc:"Directory where are stored data persisted on disc"
+                   ~env [ "persist-dir" ] in
+  Arg.(value (opt string "/tmp/ramen" i))
+
 let server_start =
   Term.(
     (const HttpSrv.start
+      $ do_persist
       $ debug
-      $ graph_save_file
       $ server_url
+      $ version_tag
+      $ persist_dir
       $ http_port
       $ ssl_cert
       $ ssl_key),
@@ -84,7 +95,8 @@ let summary =
  *)
 
 let node_name p =
-  let i = Arg.info ~doc:"Node unique name" ~docv:"node" [] in
+  let i = Arg.info ~doc:"Node unique name. Might be specified as layer/node."
+                   ~docv:"node" [] in
   Arg.(required (pos p (some string) None i))
 
 let node_operation p =

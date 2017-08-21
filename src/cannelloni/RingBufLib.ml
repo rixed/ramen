@@ -2,6 +2,7 @@
  * tests without bringing in the whole ringbuf libs *)
 open Batteries
 open Lwt
+open RamenSharedTypes
 
 (* Compromise between size and efficient reading of data, TBD: *)
 let rb_word_bytes = 4
@@ -14,6 +15,12 @@ let bytes_for_bits n =
 let round_up_to_rb_word bytes =
   let low = bytes land (rb_word_bytes-1) in
   if low = 0 then bytes else bytes - low + rb_word_bytes
+
+let nullmask_bytes_of_tuple_type tuple_typ =
+  List.fold_left (fun s field_typ ->
+    if field_typ.nullable then s+1 else s) 0 tuple_typ |>
+  bytes_for_bits |>
+  round_up_to_rb_word
 
 let retry_for_ringbuf f =
   let on = function
@@ -40,31 +47,28 @@ let rec sersize_of_fixsz_typ =
   | TString -> assert false
   | TNum -> assert false
 
-(* Get ones input ringbuf and output ringbufs given the node "signature",
- * which is a string identifying both the operation of a node and its
- * input and output types: *)
+(* Compute input ringbuf and output ringbufs given the node fq name. *)
 
-let tmp_dir = "/tmp"
+let in_ringbuf_name prefix name =
+  prefix ^"/ringbufs/in/"^ name
 
-let in_ringbuf_name signature =
-  tmp_dir ^"/ringbuf_in_"^ signature
+let exp_ringbuf_name prefix name =
+  prefix ^"/ringbufs/exp/"^ name
 
-let exp_ringbuf_name signature =
-  tmp_dir ^"/ringbuf_exp_"^ signature
-
-let out_ringbuf_names_ref signature =
-  tmp_dir ^"/ringbuf_out_ref_"^ signature
+let out_ringbuf_names_ref prefix name =
+  prefix ^"/ringbufs/out_ref/"^ name
 
 let last_touched fname =
   let open Lwt_unix in
   let%lwt s = stat fname in return s.st_mtime
 
 let out_ringbuf_names outbuf_ref_fname =
-  let last_read = 0. in
+  let last_read = ref 0. in
   let lines = ref Set.empty in
   fun () ->
     let%lwt t = last_touched outbuf_ref_fname in
-    if t > last_read then (
+    if t > !last_read then (
+      last_read := t ;
       lines := File.lines_of outbuf_ref_fname |> Set.of_enum ;
       return (Some !lines)
     ) else return_none
