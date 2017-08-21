@@ -5,6 +5,11 @@ open Batteries
  * Start the event processor
  *)
 
+let do_persist =
+  let i = Arg.info ~doc:"save/restore graph file from the persist_dir"
+                   [ "save-graph" ] in
+  Arg.(value (flag i))
+
 let debug =
   let env = Term.env_info "RAMEN_DEBUG" in
   let i = Arg.info ~doc:"increase verbosity"
@@ -95,14 +100,39 @@ let summary =
  *)
 
 let node_name p =
-  let i = Arg.info ~doc:"Node unique name. Might be specified as layer/node."
+  let i = Arg.info ~doc:"Node unique name."
                    ~docv:"node" [] in
   Arg.(required (pos p (some string) None i))
 
-let node_operation p =
-  let i = Arg.info ~doc:"Node operation (such as 'SELECT etc...'"
-                   ~docv:"operation" [] in
-  Arg.(required (pos p (some string) None i))
+let layer_name =
+  let i = Arg.info ~doc:"Layer unique name."
+                   ~docv:"layer" [] in
+  Arg.(required (pos 0 (some string) None i))
+
+let node_operations =
+  let i = Arg.info ~doc:"New operation (such as 'SELECT etc...') \
+                         optionally prefixed with a name and colon \
+                         (for instance: 'FOO_FILTER:SELECT * WHERE FOO'). \
+                         Names can then be used with --link."
+                        [ "node"; "operation"; "op" ] in
+  Arg.(non_empty (opt_all string [] i))
+
+let node_links =
+  let i = Arg.info ~doc:"Add a link between the two nodes which names are \
+                         separated by a colon. Names must be specified as \
+                         layer/node if not in the current layer."
+                        [ "link" ] in
+  Arg.(value (opt_all string [] i))
+
+let add =
+  Term.(
+    (const ApiCmd.add
+      $ debug
+      $ server_url
+      $ layer_name
+      $ node_operations
+      $ node_links),
+    info "add")
 
 let compile =
   Term.(
@@ -164,7 +194,7 @@ let () =
   match Term.eval_choice default [
     server_start ;
     dequeue ; summary ;
-    compile ; run ; pause ;
+    add ; compile ; run ; pause ;
     tail
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42

@@ -117,13 +117,14 @@ let node_info_of_node node =
     List.map (fun (rank, typ) -> rank, Lang.Expr.to_expr_type_info typ) lst
   in
   Node.{
-    name = node.N.name ;
-    operation = node.N.op_text ;
+    definition = {
+      name = node.N.name ;
+      operation = node.N.op_text ;
+      parents = List.map (fun n -> n.N.name) node.N.parents } ;
     type_of_operation = Some (type_of_operation_of node.N.operation) ;
     signature = if node.N.signature = "" then None else Some node.N.signature ;
     command = node.N.command ;
     pid = node.N.pid ;
-    parents = List.map (fun n -> n.N.name) node.N.parents ;
     input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
     output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
     in_tuple_count = find_int_metric node.N.last_report Consts.in_tuple_count_metric ;
@@ -265,22 +266,22 @@ let put_layer conf headers body =
     bad_request ("Layer "^ msg.name ^" already present")
   else (
     (* Create all the nodes *)
-    List.iter (fun info ->
+    List.iter (fun def ->
         let name =
-          if info.Node.name <> "" then info.Node.name
+          if def.Node.name <> "" then def.Node.name
           else N.make_name () in
-        C.add_node conf name msg.name info.Node.operation
+        C.add_node conf name msg.name def.Node.operation
       ) msg.nodes ;
     (* Then all the links *)
-    let%lwt () = Lwt_list.iter_s (fun info ->
-        let%lwt dst = node_of_name conf msg.name info.Node.name in
+    let%lwt () = Lwt_list.iter_s (fun def ->
+        let%lwt dst = node_of_name conf msg.name def.Node.name in
         Lwt_list.iter_s (fun p ->
             let parent_layer, parent_name =
               layer_node_of_user_string conf ~default_layer:msg.name p in
             let%lwt src = node_of_name conf parent_layer parent_name in
             C.make_link conf src dst ;
             return_unit
-          ) info.SN.parents
+          ) def.SN.parents
       ) msg.nodes in
     respond_ok ())
 

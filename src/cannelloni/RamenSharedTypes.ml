@@ -110,11 +110,14 @@ type expr_type_info =
 
 module Node =
 struct
+  type definition =
+    { name : string ;
+      operation : string ;
+      mutable parents : string list } [@@ppp PPP_JSON]
+
   type info =
     (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
-    { mutable name : string ;
-      mutable operation : string ;
-      mutable parents : string list ;
+    { definition : definition ;
       type_of_operation : string option ;
       input_type : (int option * expr_type_info) list ;
       output_type : (int option * expr_type_info) list ;
@@ -128,13 +131,6 @@ struct
       group_count : int option ;
       cpu_time : float ;
       ram_usage : int } [@@ppp PPP_JSON]
-
-  let empty =
-    { name = "" ; operation = "" ; parents = [] ;
-      type_of_operation = None ; input_type = [] ; output_type = [] ;
-      signature = None ; command = None ; pid = None ;
-      in_tuple_count = 0 ; selected_tuple_count = 0 ; out_tuple_count = 0 ;
-      group_count = None ; cpu_time = 0. ; ram_usage = 0 }
 end
 
 module Layer =
@@ -152,7 +148,8 @@ end
 type get_graph_resp = Layer.info list [@@ppp PPP_JSON]
 
 type put_layer_req =
-  { name : string ; nodes : Node.info list } [@@ppp PPP_JSON]
+  { name : string ;
+    nodes : Node.definition list } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)
 

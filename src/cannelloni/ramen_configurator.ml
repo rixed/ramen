@@ -21,7 +21,7 @@ let rebase dataset_name name =
 let base_layer dataset_name delete csv_dir =
   let make_node ?(parents=[]) name operation =
     let parents = List.map (rebase dataset_name) parents in
-    N.{ empty with name ; operation ; parents }
+    N.{ name ; operation ; parents }
   in
   let csv =
     let op =
@@ -145,8 +145,7 @@ let layer_of_bcns bcns dataset_name =
   let all_nodes = ref [] in
   let make_node ?(parents=[]) name operation =
     let parents = List.map (rebase dataset_name) parents in
-    let node = N.{ empty with
-                   name ; operation ; parents } in
+    let node = N.{ name ; operation ; parents } in
     all_nodes := node :: !all_nodes
   in
   let alert_conf_of_bcn bcn =
