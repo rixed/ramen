@@ -57,6 +57,7 @@ let run conf layer =
         Helpers.mkdir_all ~is_file:true out_ringbuf_ref ;
         File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
         let env = [|
+          "OCAMLRUNPARAM=b" ;
           "debug="^ string_of_bool conf.C.debug ;
           "input_ringbuf="^ rb_name_of node ;
           "output_ringbufs_ref="^ out_ringbuf_ref ;
