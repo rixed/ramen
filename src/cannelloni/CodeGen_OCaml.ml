@@ -382,22 +382,18 @@ let implementation_of expr =
   | _, None ->
     assert false
 
-let uniq_num_of_aggr =
+let name_of_aggr =
   let open Expr in
   function
   | AggrMin (t, _) | AggrMax (t, _) | AggrPercentile (t, _, _)
   | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) | AggrFirst (t, _)
   | AggrLast (t, _) ->
-    t.uniq_num
+    "field_"^ string_of_int t.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _
   | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
   | BeginOfRange _ | EndOfRange _ ->
     assert false
-
-let name_of_aggr a = "field_"^ string_of_int (uniq_num_of_aggr a)
-
-let state_id op_name a = op_name ^"_"^ string_of_int (uniq_num_of_aggr a)
 
 let otype_of_type = function
   | TFloat -> "float" | TString -> "string" | TBool -> "bool"
@@ -415,7 +411,7 @@ let otype_of_aggr aggr =
   let t = Option.get Expr.((typ_of aggr).scalar_typ) |>
           otype_of_type in
   match aggr with
-  | Expr.AggrPercentile _ -> t ^" list CodeGenLib_State.Persistent.handle"
+  | Expr.AggrPercentile _ -> t ^" list"
   | _ -> t
 
 let omod_of_type = function
@@ -488,11 +484,9 @@ and emit_expr oc =
      (* This assumes there is a parameter named aggr_ for the aggregates *)
      Printf.fprintf oc "aggr_.%s" (name_of_aggr expr)
   | AggrPercentile (_, pct, _) as expr ->
-    Printf.fprintf oc
-      "let state_ = CodeGenLib_State.Persistent.restore aggr_.%s in \
-       CodeGenLib.percentile_finalize (%a) state_"
-      (name_of_aggr expr)
+    Printf.fprintf oc "CodeGenLib.percentile_finalize (%a) aggr_.%s"
       (conv_to (Some TFloat)) pct
+      (name_of_aggr expr)
   | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
   | Length (_, e) | BeginOfRange (_, e) | EndOfRange (_, e) as expr ->
@@ -712,7 +706,7 @@ let for_each_aggr_fun selected_fields commit_when flush_when f =
   Expr.aggr_iter f commit_when ;
   Option.may (fun flush_when -> Expr.aggr_iter f flush_when) flush_when
 
-let emit_aggr_init conf name in_tuple_typ mentioned and_all_others
+let emit_aggr_init name in_tuple_typ mentioned and_all_others
                    commit_when flush_when oc selected_fields =
   (* We must collect all aggregation functions present in the selected_fields
    * and return a record with the proper types and init value for the aggr. *)
@@ -738,10 +732,7 @@ let emit_aggr_init conf name in_tuple_typ mentioned and_all_others
         conv_to arg_typ oc e
       | AggrPercentile (_, p, e) ->
         let impl, arg_typ = implementation_of aggr in
-        (* We want to persist our state on disc every now and then: *)
-        Printf.fprintf oc
-          "CodeGenLib_State.Persistent.make %S %S (%s [] %a %a)"
-          conf.C.persist_dir (state_id "percentile" aggr)
+        Printf.fprintf oc "%s [] %a %a"
           impl
           (conv_to arg_typ) p
           (conv_to arg_typ) e ;
@@ -769,16 +760,14 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
         Printf.fprintf oc "%s aggr_.%s %a"
           impl (name_of_aggr aggr) (conv_to arg_typ) e
       | AggrPercentile (_, p, e) ->
+        (* This value is optional but the percentile function takes an
+         * optional value and return one so we do not have to deal with
+         * it here: *)
         let impl, arg_typ = implementation_of aggr in
-        Printf.fprintf oc
-          "let state_ = CodeGenLib_State.Persistent.restore aggr_.%s in \
-           %s state_ %a %a |> \
-           CodeGenLib_State.Persistent.save ~save_every:10 ~save_timeout:2. aggr_.%s"
-          (name_of_aggr aggr)
-          impl
+        Printf.fprintf oc "%s aggr_.%s %a %a"
+          impl (name_of_aggr aggr)
           (conv_to arg_typ) p
           (conv_to arg_typ) e
-          (name_of_aggr aggr)
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
       | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
       | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
@@ -852,7 +841,7 @@ let when_to_check_group_for_expr expr =
   if need_selected then "CodeGenLib.ForAllSelected" else
   "CodeGenLib.ForAllInGroup"
 
-let emit_aggregate oc conf in_tuple_typ out_tuple_typ
+let emit_aggregate oc in_tuple_typ out_tuple_typ
                    selected_fields and_all_others where key
                    commit_when flush_when flush_how =
 (* We need:
@@ -914,7 +903,7 @@ let emit_aggregate oc conf in_tuple_typ out_tuple_typ
   in
   Printf.fprintf oc "open Stdint\n\n\
     %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_aggr_init conf "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
+    (emit_aggr_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_aggr then
       emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
@@ -996,6 +985,6 @@ let gen_operation conf signature in_tuple_typ out_tuple_typ op =
     | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
     | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how ; _ } ->
-      emit_aggregate oc conf in_tuple_typ out_tuple_typ fields and_all_others where
+      emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key commit_when flush_when flush_how)) |>
     compile_source
