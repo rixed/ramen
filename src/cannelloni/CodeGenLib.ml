@@ -383,55 +383,56 @@ let flush_aggr aggr_init update_aggr should_resubmit h k aggr =
 
 type when_to_check_group = ForAll | ForAllSelected | ForAllInGroup
 
-let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
-              (sersize_of_tuple : 'tuple_out -> int)
-              (serialize_tuple : RingBuf.tx -> 'tuple_out -> int)
-              (tuple_of_aggr :
-                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-                Uint64.t -> (* out.#count *)
-                Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
-                'tuple_in -> 'tuple_in -> (* first, last *)
-                'tuple_out)
-              (* Where_fast/slow: premature optimisation: if the where filter
-               * uses the aggregate then we need where_slow (checked after
-               * the aggregate look up) but if it uses only the incoming
-               * tuple then we can use only where_fast. *)
-              (where_fast :
-                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-                bool)
-              (where_slow :
-                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-                Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
-                'tuple_in -> 'tuple_in -> (* first, last *)
-                bool)
-              (key_of_input : 'tuple_in -> 'key)
-              (commit_when :
-                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-                Uint64.t -> 'tuple_out -> (* out.#count, previous *)
-                Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
-                'tuple_in -> 'tuple_in -> 'tuple_out -> (* first, last, current out *)
-                bool)
-              (when_to_check_for_commit : when_to_check_group)
-              (flush_when :
-                Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
-                Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-                Uint64.t -> 'tuple_out -> (* out.#count, previous *)
-                Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
-                'tuple_in -> 'tuple_in -> 'tuple_out -> (* first, last, current out *)
-                bool)
-              (when_to_check_for_flush : when_to_check_group)
-              (should_resubmit : ('aggr, 'tuple_in, 'tuple_out) aggr_value -> 'tuple_in -> bool)
-              (aggr_init : 'tuple_in -> 'aggr)
-              (update_aggr : 'aggr -> 'tuple_in -> unit) =
+let aggregate
+      (read_tuple : RingBuf.tx -> 'tuple_in)
+      (sersize_of_tuple : 'tuple_out -> int)
+      (serialize_tuple : RingBuf.tx -> 'tuple_out -> int)
+      (tuple_of_aggr :
+        Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+        Uint64.t -> (* out.#count *)
+        Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+        'tuple_in -> 'tuple_in -> (* first, last *)
+        'tuple_out)
+      (* Where_fast/slow: premature optimisation: if the where filter
+       * uses the aggregate then we need where_slow (checked after
+       * the aggregate look up) but if it uses only the incoming
+       * tuple then we can use only where_fast. *)
+      (where_fast :
+        Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+        bool)
+      (where_slow :
+        Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+        Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+        'tuple_in -> 'tuple_in -> (* first, last *)
+        bool)
+      (key_of_input : 'tuple_in -> 'key)
+      (commit_when :
+        Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+        Uint64.t -> 'tuple_out -> (* out.#count, previous *)
+        Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+        'tuple_in -> 'tuple_in -> 'tuple_out -> (* first, last, current out *)
+        bool)
+      (when_to_check_for_commit : when_to_check_group)
+      (flush_when :
+        Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+        Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+        Uint64.t -> 'tuple_out -> (* out.#count, previous *)
+        Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+        'tuple_in -> 'tuple_in -> 'tuple_out -> (* first, last, current out *)
+        bool)
+      (when_to_check_for_flush : when_to_check_group)
+      (should_resubmit : ('aggr, 'tuple_in, 'tuple_out) aggr_value -> 'tuple_in -> bool)
+      (aggr_init : 'tuple_in -> 'aggr)
+      (update_aggr : 'aggr -> 'tuple_in -> unit) =
   let conf = node_start "GROUP BY"
   and rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
