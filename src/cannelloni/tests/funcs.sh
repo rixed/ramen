@@ -39,12 +39,15 @@ export RAMEN_HTTP_PORT
 export RAMEN_PERSIST_DIR
 export RAMEN_URL
 export LAYER_CMD
+# We just know if the whole test suites have been successful or not so we have
+# to either delete all temp dirs or none. Note that it is OK to `rm -rf ''`.
+export ALL_RAMEN_PERSIST_DIRS
 
 start() {
   # RANDOM returns a number between 0 and 32767
   RAMEN_HTTP_PORT=$(shuf -i 1024-65536 -n 1)
   RAMEN_PERSIST_DIR="/tmp/ramen_tests/$RAMEN_HTTP_PORT"
-  at_exit "if test '$ret' -eq 0 ; then rm -rf '$RAMEN_PERSIST_DIR' ; fi"
+  ALL_RAMEN_PERSIST_DIRS="$ALL_RAMEN_PERSIST_DIRS '$RAMEN_PERSIST_DIR'"
   RAMEN_URL="http://127.0.0.1:$RAMEN_HTTP_PORT"
   LAYER_CMD=""
   rm -f /tmp/ringbuf_*
@@ -113,6 +116,11 @@ stop() {
     echo SUCCESS
     ret=0
   fi
+
+  if test "$ret" -eq 0 ; then
+    eval "rm -rf $ALL_RAMEN_PERSIST_DIRS"
+  fi
+
   exit $ret
 }
 
