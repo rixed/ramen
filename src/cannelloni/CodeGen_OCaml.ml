@@ -856,7 +856,7 @@ let when_to_check_group_for_expr expr =
 
 let emit_aggregate oc in_tuple_typ out_tuple_typ
                    selected_fields and_all_others where key
-                   commit_when flush_when flush_how =
+                   commit_when flush_when flush_how notify_url =
 (* We need:
  * - as above: a where filter, a serializer,
  * - a function computing the key as a tuple computed from input, exactly as in
@@ -915,7 +915,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     | Some flush_when -> when_to_check_group_for_expr flush_when
   in
   Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_aggr_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_aggr then
@@ -932,7 +932,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ
-    (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how ;
+    (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how
+    (emit_field_of_tuple "field_of_tuple_" mentioned and_all_others) in_tuple_typ ;
   (match flush_when with
   | Some flush_when ->
     emit_when "flush_when_" in_tuple_typ mentioned and_all_others out_tuple_typ oc flush_when
@@ -943,8 +944,9 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       \tCodeGenLib.aggregate read_tuple_ sersize_of_tuple_ serialize_aggr_ \
            tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ \
            commit_when_ %s flush_when_ %s \
-           should_resubmit_ aggr_init_ update_aggr_)\n"
-    when_to_check_for_commit when_to_check_for_flush
+           should_resubmit_ aggr_init_ update_aggr_ \
+           field_of_tuple_ %S)\n"
+    when_to_check_for_commit when_to_check_for_flush notify_url
 
 let sanitize_ocaml_fname s =
   let open Str in
@@ -997,7 +999,8 @@ let gen_operation conf signature in_tuple_typ out_tuple_typ op =
       emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where notify_url
     | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
-    | Aggregate { fields ; and_all_others ; where ; key ; commit_when ; flush_when ; flush_how ; _ } ->
+    | Aggregate { fields ; and_all_others ; where ; key ; commit_when ;
+                  flush_when ; flush_how ; notify_url ; _ } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
-                     key commit_when flush_when flush_how)) |>
+                     key commit_when flush_when flush_how notify_url)) |>
     compile_source

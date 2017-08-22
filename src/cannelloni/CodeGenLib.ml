@@ -432,7 +432,9 @@ let aggregate
       (when_to_check_for_flush : when_to_check_group)
       (should_resubmit : ('aggr, 'tuple_in, 'tuple_out) aggr_value -> 'tuple_in -> bool)
       (aggr_init : 'tuple_in -> 'aggr)
-      (update_aggr : 'aggr -> 'tuple_in -> unit) =
+      (update_aggr : 'aggr -> 'tuple_in -> unit)
+      (field_of_tuple : 'tuple_in -> string -> string)
+      (notify_url : string) =
   let conf = node_start "GROUP BY"
   and rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
@@ -535,6 +537,7 @@ let aggregate
                  one one fields
                  in_tuple in_tuple
             then (
+              if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               (* TODO: pass selected_successive *)
               let out_tuple =
@@ -568,6 +571,7 @@ let aggregate
                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                  aggr.first_in aggr.last_in
             then (
+              if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               update_aggr aggr.fields in_tuple ;
               aggr.last_ev_count <- !event_count ;
