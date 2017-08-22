@@ -63,7 +63,9 @@ let run conf layer =
           "output_ringbufs_ref="^ out_ringbuf_ref ;
           "report_url="^ conf.C.ramen_url
                        ^ "/report/"^ Uri.pct_encode node.N.layer
-                       ^ "/"^ Uri.pct_encode node.N.name |] in
+                       ^ "/"^ Uri.pct_encode node.N.name ;
+          "persist_dir="^ conf.C.persist_dir ^"/worker/"
+                        ^ node.N.layer ^"/"^ node.N.name |] in
         node.N.pid <- Some (run_background command [||] env)
       ) layer.persist.nodes ;
     C.Layer.set_status layer SL.Running ;

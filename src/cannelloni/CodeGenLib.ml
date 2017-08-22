@@ -198,15 +198,21 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
     List.map (fun out -> out tuple) !out_l |>
     join
 
+type worker_conf =
+  { debug : bool ; persist_dir : string ; report_url : string }
+
 let node_start node_name =
   let debug = getenv ~def:"false" "debug" |> bool_of_string
   and prefix = node_name ^": " in
   logger := make_logger ~prefix debug ;
   !logger.info "Starting %s process..." node_name ;
+  let default_persist_dir = "/tmp/worker_"^ node_name ^"_"^ string_of_int (Unix.getpid ()) in
+  let persist_dir = getenv ~def:default_persist_dir "persit_dir" in
   let report_url =
     (* The real one will have a process identifier instead of "anonymous" *)
     getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in
-  async (update_stats_th report_url) (* TODO: catch exceptions in async_exception_hook *)
+  async (update_stats_th report_url) (* TODO: catch exceptions in async_exception_hook *) ;
+  { debug ; persist_dir ; report_url }
 
 exception InvalidCSVQuoting
 
@@ -218,7 +224,7 @@ let quote_at_end s =
 
 let read_csv_file filename do_unlink separator sersize_of_tuple
                   serialize_tuple tuple_of_strings preprocessor =
-  node_start "READ CSV FILE" ;
+  let _conf = node_start "READ CSV FILE" in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   (* For tests, allow to overwrite what's specified in the operation: *)
   and filename = getenv ~def:filename "csv_filename"
@@ -273,7 +279,7 @@ let notify url field_of_tuple tuple =
   async (fun () -> CodeGenLib_IO.http_notify url)
 
 let select read_tuple field_of_tuple sersize_of_tuple serialize_tuple where select notify_url =
-  node_start "SELECT" ;
+  let _conf = node_start "SELECT" in
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   in
@@ -327,7 +333,7 @@ let select read_tuple field_of_tuple sersize_of_tuple serialize_tuple where sele
     ))
 
 let yield sersize_of_tuple serialize_tuple select =
-  node_start "YIELD" ;
+  let _conf = node_start "YIELD" in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   in
   let outputer =
@@ -426,15 +432,9 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
               (should_resubmit : ('aggr, 'tuple_in, 'tuple_out) aggr_value -> 'tuple_in -> bool)
               (aggr_init : 'tuple_in -> 'aggr)
               (update_aggr : 'aggr -> 'tuple_in -> unit) =
-  node_start "GROUP BY" ;
-  let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
+  let conf = node_start "GROUP BY"
+  and rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-  in
-  !logger.debug "Will read ringbuffer %S" rb_in_fname ;
-  let%lwt rb_in =
-    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
-                  (fun n -> return (RingBuf.load n)) rb_in_fname in
-  let h = Hashtbl.create 701
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)
@@ -448,163 +448,180 @@ let aggregate (read_tuple : RingBuf.tx -> 'tuple_in)
   and out_count = ref Uint64.zero
   and stats_group_count =
     IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
-  and outputer =
-    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple
   in
   IntGauge.set stats_group_count 0 ;
+  let outputer =
+    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   let commit tuple =
     out_count := Uint64.succ !out_count ;
     outputer tuple
+  and with_state =
+    let open CodeGenLib_State.Persistent in
+    let init_state = Hashtbl.create 701 in
+    let state = ref (make conf.persist_dir "aggregate" init_state) in
+    fun f ->
+      let v = restore !state in
+      (* We do _not_ want to save the value when f raises an exception: *)
+      let%lwt v = f v in
+      state := save ~save_every:100 ~save_timeout:5. !state v ;
+      return_unit
+  in
+  !logger.debug "Will read ringbuffer %S" rb_in_fname ;
+  let%lwt rb_in =
+    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
+                  (fun n -> return (RingBuf.load n)) rb_in_fname
   in
   CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
-    IntCounter.add stats_in_tuple_count 1 ;
-    let last_in = Option.default in_tuple !in_
-    and last_selected = Option.default in_tuple !selected_tuple
-    and last_unselected = Option.default in_tuple !unselected_tuple in
-    in_ := Some in_tuple ;
-    let in_count = Uint64.succ !CodeGenLib_IO.tuple_count in
-    (* TODO: pass selected_successive *)
-    let must f aggr =
-      f in_count in_tuple last_in
-        !selected_count !selected_successive last_selected
-        !unselected_count !unselected_successive last_unselected
-        !out_count aggr.previous_out
-        (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
-        aggr.first_in aggr.last_in
-        aggr.out_tuple
-    in
-    let commit_and_flush_list to_commit to_flush =
-      (* We must commit first and then flush *)
-      let%lwt () =
-        Lwt_list.iter_s (fun (_k, a) -> commit a.out_tuple) to_commit in
-      List.iter (fun (k, a) ->
-          flush_aggr aggr_init update_aggr should_resubmit h k a
-        ) to_flush ;
-      return_unit
-    in
-    let commit_and_flush_all_if check_when =
-      let to_commit =
-        if when_to_check_for_commit <> check_when then [] else
-          Hashtbl.fold (fun k a l ->
-            if must commit_when a then (k, a)::l else l) h [] in
-      let to_flush =
-        if flush_when == commit_when then to_commit else
-        if when_to_check_for_commit <> check_when then [] else
-        Hashtbl.fold (fun k a l ->
-          if must flush_when a then (k, a)::l else l) h [] in
-      commit_and_flush_list to_commit to_flush
-    in
-    (if where_fast
-         in_count in_tuple last_in
-         !selected_count !selected_successive last_selected
-         !unselected_count !unselected_successive last_unselected
-    then (
-      IntGauge.set stats_group_count (Hashtbl.length h) ;
-      let k = key_of_input in_tuple in
-      let prev_last_key = !last_key in
-      last_key := Some k ;
-      (* Update/create the group *)
-      let aggr_opt =
-        match Hashtbl.find h k with
-        | exception Not_found ->
-          let fields = aggr_init in_tuple
-          and one = Uint64.one in
-          if where_slow
-               in_count in_tuple last_in
-               !selected_count !selected_successive last_selected
-               !unselected_count !unselected_successive last_unselected
-               one one fields
-               in_tuple in_tuple
-          then (
-            IntCounter.add stats_selected_tuple_count 1 ;
-            (* TODO: pass selected_successive *)
-            let out_tuple =
-              tuple_of_aggr
-                in_count in_tuple last_in
-                !selected_count !selected_successive last_selected
-                !unselected_count !unselected_successive last_unselected
-                !out_count
-                one one fields
-                in_tuple in_tuple in
-            let aggr = {
-              first_in = in_tuple ;
-              last_in = in_tuple ;
-              out_tuple = out_tuple ;
-              previous_out = out_tuple ; (* Not correct for the very first check *)
-              nb_entries = 1 ;
-              nb_successive = 1 ;
-              last_ev_count = !event_count ;
-              to_resubmit = [] ;
-              fields } in
-            Hashtbl.add h k aggr ;
-            if should_resubmit aggr in_tuple then
-              aggr.to_resubmit <- [ in_tuple ] ;
-            Some aggr
-          ) else None
-        | aggr ->
-          if where_slow
-               in_count in_tuple last_in
-               !selected_count !selected_successive last_selected
-               !unselected_count !unselected_successive last_unselected
-               (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
-               aggr.first_in aggr.last_in
-          then (
-            IntCounter.add stats_selected_tuple_count 1 ;
-            update_aggr aggr.fields in_tuple ;
-            aggr.last_ev_count <- !event_count ;
-            aggr.nb_entries <- aggr.nb_entries + 1 ;
-            if should_resubmit aggr in_tuple then
-              aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
-            if prev_last_key = Some k then
-              aggr.nb_successive <- aggr.nb_successive + 1 ;
-            (* TODO: pass selected_successive *)
-            let out_tuple =
-              tuple_of_aggr
-                in_count in_tuple last_in
-                !selected_count !selected_successive last_selected
-                !unselected_count !unselected_successive last_unselected
-                !out_count
-                (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
-                aggr.first_in aggr.last_in in
-            aggr.out_tuple <- out_tuple ;
-            aggr.last_in <- in_tuple ;
-            Some aggr
-          ) else None in
-      (match aggr_opt with
-      | None ->
-        selected_successive := Uint64.zero ;
-        unselected_tuple := Some in_tuple ;
-        unselected_count := Uint64.succ !unselected_count ;
-        unselected_successive := Uint64.succ !unselected_successive ;
+    with_state (fun h ->
+      IntCounter.add stats_in_tuple_count 1 ;
+      let last_in = Option.default in_tuple !in_
+      and last_selected = Option.default in_tuple !selected_tuple
+      and last_unselected = Option.default in_tuple !unselected_tuple in
+      in_ := Some in_tuple ;
+      let in_count = Uint64.succ !CodeGenLib_IO.tuple_count in
+      (* TODO: pass selected_successive *)
+      let must f aggr =
+        f in_count in_tuple last_in
+          !selected_count !selected_successive last_selected
+          !unselected_count !unselected_successive last_unselected
+          !out_count aggr.previous_out
+          (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+          aggr.first_in aggr.last_in
+          aggr.out_tuple
+      in
+      let commit_and_flush_list to_commit to_flush =
+        (* We must commit first and then flush *)
+        let%lwt () =
+          Lwt_list.iter_s (fun (_k, a) -> commit a.out_tuple) to_commit in
+        List.iter (fun (k, a) ->
+            flush_aggr aggr_init update_aggr should_resubmit h k a
+          ) to_flush ;
         return_unit
-      | Some aggr ->
-        (* Here we passed the where filter and the selected_tuple (and
-         * selected_count) must be updated. *)
-        unselected_successive := Uint64.zero ;
-        selected_tuple := Some in_tuple ;
-        selected_count := Uint64.succ !selected_count ;
-        selected_successive := Uint64.succ !selected_successive ;
-        (* Committing / Flushing *)
+      in
+      let commit_and_flush_all_if check_when =
         let to_commit =
-          if when_to_check_for_commit = ForAllInGroup && must commit_when aggr
-          then [ k, aggr ] else [] in
+          if when_to_check_for_commit <> check_when then [] else
+            Hashtbl.fold (fun k a l ->
+              if must commit_when a then (k, a)::l else l) h [] in
         let to_flush =
           if flush_when == commit_when then to_commit else
-          if when_to_check_for_flush = ForAllInGroup && must flush_when aggr
-          then [ k, aggr ] else [] in
-        let%lwt () = commit_and_flush_list to_commit to_flush in
-        (* Maybe any other groups. Notice that there is no risk to commit/flush
-         * this aggr twice since when_to_check_for_commit force either one or the
-         * other (or none at all) of these chunks of code to be run. *)
-        let%lwt () = commit_and_flush_all_if ForAllSelected in
-        aggr.previous_out <- aggr.out_tuple ;
-        return_unit)
-    ) else return_unit) >>= fun () ->
-    (* Now there is also the possibility that we need to commit / flush for
-     * every single input tuple :-< *)
-    commit_and_flush_all_if ForAll
+          if when_to_check_for_commit <> check_when then [] else
+          Hashtbl.fold (fun k a l ->
+            if must flush_when a then (k, a)::l else l) h [] in
+        commit_and_flush_list to_commit to_flush
+      in
+      (if where_fast
+           in_count in_tuple last_in
+           !selected_count !selected_successive last_selected
+           !unselected_count !unselected_successive last_unselected
+      then (
+        IntGauge.set stats_group_count (Hashtbl.length h) ;
+        let k = key_of_input in_tuple in
+        let prev_last_key = !last_key in
+        last_key := Some k ;
+        (* Update/create the group *)
+        let aggr_opt =
+          match Hashtbl.find h k with
+          | exception Not_found ->
+            let fields = aggr_init in_tuple
+            and one = Uint64.one in
+            if where_slow
+                 in_count in_tuple last_in
+                 !selected_count !selected_successive last_selected
+                 !unselected_count !unselected_successive last_unselected
+                 one one fields
+                 in_tuple in_tuple
+            then (
+              IntCounter.add stats_selected_tuple_count 1 ;
+              (* TODO: pass selected_successive *)
+              let out_tuple =
+                tuple_of_aggr
+                  in_count in_tuple last_in
+                  !selected_count !selected_successive last_selected
+                  !unselected_count !unselected_successive last_unselected
+                  !out_count
+                  one one fields
+                  in_tuple in_tuple in
+              let aggr = {
+                first_in = in_tuple ;
+                last_in = in_tuple ;
+                out_tuple = out_tuple ;
+                previous_out = out_tuple ; (* Not correct for the very first check *)
+                nb_entries = 1 ;
+                nb_successive = 1 ;
+                last_ev_count = !event_count ;
+                to_resubmit = [] ;
+                fields } in
+              Hashtbl.add h k aggr ;
+              if should_resubmit aggr in_tuple then
+                aggr.to_resubmit <- [ in_tuple ] ;
+              Some aggr
+            ) else None
+          | aggr ->
+            if where_slow
+                 in_count in_tuple last_in
+                 !selected_count !selected_successive last_selected
+                 !unselected_count !unselected_successive last_unselected
+                 (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+                 aggr.first_in aggr.last_in
+            then (
+              IntCounter.add stats_selected_tuple_count 1 ;
+              update_aggr aggr.fields in_tuple ;
+              aggr.last_ev_count <- !event_count ;
+              aggr.nb_entries <- aggr.nb_entries + 1 ;
+              if should_resubmit aggr in_tuple then
+                aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
+              if prev_last_key = Some k then
+                aggr.nb_successive <- aggr.nb_successive + 1 ;
+              (* TODO: pass selected_successive *)
+              let out_tuple =
+                tuple_of_aggr
+                  in_count in_tuple last_in
+                  !selected_count !selected_successive last_selected
+                  !unselected_count !unselected_successive last_unselected
+                  !out_count
+                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+                  aggr.first_in aggr.last_in in
+              aggr.out_tuple <- out_tuple ;
+              aggr.last_in <- in_tuple ;
+              Some aggr
+            ) else None in
+        (match aggr_opt with
+        | None ->
+          selected_successive := Uint64.zero ;
+          unselected_tuple := Some in_tuple ;
+          unselected_count := Uint64.succ !unselected_count ;
+          unselected_successive := Uint64.succ !unselected_successive ;
+          return_unit
+        | Some aggr ->
+          (* Here we passed the where filter and the selected_tuple (and
+           * selected_count) must be updated. *)
+          unselected_successive := Uint64.zero ;
+          selected_tuple := Some in_tuple ;
+          selected_count := Uint64.succ !selected_count ;
+          selected_successive := Uint64.succ !selected_successive ;
+          (* Committing / Flushing *)
+          let to_commit =
+            if when_to_check_for_commit = ForAllInGroup && must commit_when aggr
+            then [ k, aggr ] else [] in
+          let to_flush =
+            if flush_when == commit_when then to_commit else
+            if when_to_check_for_flush = ForAllInGroup && must flush_when aggr
+            then [ k, aggr ] else [] in
+          let%lwt () = commit_and_flush_list to_commit to_flush in
+          (* Maybe any other groups. Notice that there is no risk to commit/flush
+           * this aggr twice since when_to_check_for_commit force either one or the
+           * other (or none at all) of these chunks of code to be run. *)
+          let%lwt () = commit_and_flush_all_if ForAllSelected in
+          aggr.previous_out <- aggr.out_tuple ;
+          return_unit)
+      ) else return_unit) >>= fun () ->
+      (* Now there is also the possibility that we need to commit / flush for
+       * every single input tuple :-< *)
+      let%lwt () = commit_and_flush_all_if ForAll in
+      return h)
   )
 
 let () =
