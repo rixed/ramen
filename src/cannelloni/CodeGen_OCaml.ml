@@ -710,40 +710,53 @@ let emit_aggr_init name in_tuple_typ mentioned and_all_others
                    commit_when flush_when oc selected_fields =
   (* We must collect all aggregation functions present in the selected_fields
    * and return a record with the proper types and init value for the aggr. *)
-  Printf.fprintf oc "type %s = {\n" name ;
-  for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
-      Printf.fprintf oc "\tmutable %s : %s ;\n"
-        (name_of_aggr aggr)
-        (otype_of_aggr aggr)
-    ) ;
-  Printf.fprintf oc "}\n\n" ;
-  Printf.fprintf oc "let %s %a =\n\t{\n"
-    name
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-  for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
-      Printf.fprintf oc "\t%s = " (name_of_aggr aggr) ;
-      (* For most aggr function we start with the first value *)
-      (let open Expr in
-      match aggr with
-      | AggrMin (_, e) | AggrMax (_, e) | AggrAnd (_, e)
-      | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)
-      | AggrSum (_, e) ->
-        let _impl, arg_typ = implementation_of aggr in
-        conv_to arg_typ oc e
-      | AggrPercentile (_, p, e) ->
-        let impl, arg_typ = implementation_of aggr in
-        Printf.fprintf oc "%s [] %a %a"
-          impl
-          (conv_to arg_typ) p
-          (conv_to arg_typ) e ;
-      | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-      | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
-      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-      | BeginOfRange _ | EndOfRange _ ->
-        assert false) ;
-      Printf.fprintf oc " ; \n" ;
-    ) ;
-  Printf.fprintf oc "\t}\n"
+  let need_aggr =
+    try
+      for_each_aggr_fun selected_fields commit_when flush_when (fun _ ->
+        raise Exit) ;
+      false
+    with Exit -> true in
+  if not need_aggr then (
+    Printf.fprintf oc "type %s = unit\n" name ;
+    Printf.fprintf oc "let %s %a = ()\n\n"
+      name
+      (emit_in_tuple mentioned and_all_others) in_tuple_typ
+  ) else (
+    Printf.fprintf oc "type %s = {\n" name ;
+    for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
+        Printf.fprintf oc "\tmutable %s : %s ;\n"
+          (name_of_aggr aggr)
+          (otype_of_aggr aggr)
+      ) ;
+    Printf.fprintf oc "}\n\n" ;
+    Printf.fprintf oc "let %s %a =\n\t{\n"
+      name
+      (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
+    for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
+        Printf.fprintf oc "\t%s = " (name_of_aggr aggr) ;
+        (* For most aggr function we start with the first value *)
+        (let open Expr in
+        match aggr with
+        | AggrMin (_, e) | AggrMax (_, e) | AggrAnd (_, e)
+        | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)
+        | AggrSum (_, e) ->
+          let _impl, arg_typ = implementation_of aggr in
+          conv_to arg_typ oc e
+        | AggrPercentile (_, p, e) ->
+          let impl, arg_typ = implementation_of aggr in
+          Printf.fprintf oc "%s [] %a %a"
+            impl
+            (conv_to arg_typ) p
+            (conv_to arg_typ) e ;
+        | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
+        | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
+        | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
+        | BeginOfRange _ | EndOfRange _ ->
+          assert false) ;
+        Printf.fprintf oc " ; \n" ;
+      ) ;
+    Printf.fprintf oc "\t}\n"
+  )
 
 let emit_update_aggr name in_tuple_typ mentioned and_all_others
                      commit_when flush_when oc selected_fields =

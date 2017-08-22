@@ -155,12 +155,13 @@ let tuple_need_aggr = function
       Ok (Select {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ; where = replace_typ where ; export ; notify_url }, rest)
-    | Ok (Aggregate { fields ; and_all_others ; where ; key ; commit_when ; export ;
-          flush_when ; flush_how }, rest) ->
+    | Ok (Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
+                      key ; commit_when ; flush_when ; flush_how }, rest) ->
       Ok (Aggregate {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
-        and_all_others ; export ;
+        and_all_others ;
         where = replace_typ where ;
+        export ; notify_url ;
         key = List.map replace_typ key ;
         commit_when = replace_typ commit_when ;
         flush_when = Option.map replace_typ flush_when ;
@@ -500,6 +501,10 @@ struct
 
   let expr_true =
     Const (make_bool_typ ~nullable:false "true", VBool true)
+
+  let is_true = function
+    | Const (_ , VBool true) -> true
+    | _ -> false
 
   let is_virtual_field f =
     String.length f > 0 && f.[0] = '#'
@@ -1000,6 +1005,8 @@ struct
         (* Simple way to filter out incoming tuples: *)
         where : Expr.t ;
         export : event_time_info option ;
+        (* If not empty, will notify this URL with a HTTP GET: *)
+        notify_url : string ;
         key : Expr.t list ;
         commit_when : Expr.t ;
         (* When do we stop aggregating (default: when we commit) *)
@@ -1021,13 +1028,16 @@ struct
          | DurationField (n, s) -> "DURATION "^ n ^ string_of_scale s
          | StopField (n, s) -> "STOPPING AT "^ n ^ string_of_scale s)
 
+  (* FIXME: copy this into print below *)
   let print_select fmt fields and_all_others where export notify_url =
     let sep = ", " in
-    Printf.fprintf fmt "SELECT %a%s%s WHERE %a"
+    Printf.fprintf fmt "SELECT %a%s%s"
       (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
       (if fields <> [] && and_all_others then sep else "")
-      (if and_all_others then "*" else "")
-      (Expr.print false) where ;
+      (if and_all_others then "*" else "") ;
+    if not (Expr.is_true where) then
+      Printf.fprintf fmt " WHERE %a"
+        (Expr.print false) where ;
     Option.may (fun e -> Printf.fprintf fmt " %a" print_export e) export ;
     if notify_url <> "" then
       Printf.fprintf fmt " NOTIFY %S" notify_url
@@ -1040,13 +1050,17 @@ struct
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
     | Select { fields ; and_all_others ; where ; export ; notify_url } ->
       print_select fmt fields and_all_others where export notify_url
-    | Aggregate { fields ; and_all_others ; where ; export ; key ;
-                  commit_when ; flush_when ; flush_how } ->
-      print_select fmt fields and_all_others where export "" ;
-      Printf.fprintf fmt "%s%a COMMIT %aWHEN %a"
-        (if key <> [] then " GROUP BY " else "")
-        (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) key
-        (if flush_when = None then print_flush_method ~prefix:"AND " ~suffix:" " () else (fun _oc _fh -> ())) flush_how
+    | Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
+                  key ; commit_when ; flush_when ; flush_how } ->
+      print_select fmt fields and_all_others where export notify_url  ;
+      if key <> [] then
+        Printf.fprintf fmt " GROUP BY %a"
+          (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) key ;
+      if not (Expr.is_true commit_when) ||
+         flush_when = None && flush_how <> Reset then
+        Printf.fprintf fmt " COMMIT %aWHEN %a"
+        (if flush_when = None then print_flush_method ~prefix:"AND " ~suffix:" " ()
+         else (fun _oc _fh -> ())) flush_how
         (Expr.print false) commit_when ;
       Option.may (fun flush_when ->
         Printf.fprintf fmt " %a WHEN %a"
@@ -1150,38 +1164,8 @@ struct
       | WhereClause of Expr.t
       | ExportClause of event_time_info
       | NotifyClause of string
-    let select m =
-      let m = "select operation" :: m in
-      let part =
-        (select_clause >>: fun c -> SelectClause c) |||
-        (where_clause >>: fun c -> WhereClause c) |||
-        (export_clause >>: fun c -> ExportClause c) |||
-        (notify_clause >>: fun c -> NotifyClause c) in
-      (several ~sep:blanks part >>: fun clauses ->
-        if clauses = [] then raise (Reject "Empty select") ;
-        let default_select = [], true, Expr.expr_true, None, "" in
-        let fields, and_all_others, where, export, notify_url =
-          List.fold_left (
-            fun (fields, and_all_others, where, export, notify_url) -> function
-              | SelectClause fields_or_stars ->
-                let fields, and_all_others =
-                  List.fold_left (fun (fields, and_all_others) -> function
-                      | Some f -> f::fields, and_all_others
-                      | None when not and_all_others -> fields, true
-                      | None -> raise (Reject "All fields (\"*\") included several times")
-                    ) ([], false) fields_or_stars in
-                (* The above fold_left inverted the field order. *)
-                let fields = List.rev fields in
-                fields, and_all_others, where, export, notify_url
-              | WhereClause where ->
-                fields, and_all_others, where, export, notify_url
-              | ExportClause export ->
-                fields, and_all_others, where, Some export, notify_url
-              | NotifyClause notify_url ->
-                fields, and_all_others, where, export, notify_url
-            ) default_select clauses in
-        Select { fields ; and_all_others ; where ; export ; notify_url }
-      ) m
+      | GroupByClause of Expr.t list
+      | CommitClause of Expr.t * Expr.t option * flush_method
 
     let group_by m =
       let m = "group-by clause" :: m in
@@ -1222,16 +1206,53 @@ struct
       ) m
 
     let aggregate m =
-      let m = "aggregate" :: m in
-      (select +- blanks ++ optional ~def:[] (group_by +- blanks) ++ commit_when >>: function
-       | (Select { fields ; and_all_others ; where ; export ; notify_url }, key),
-         (commit_when, flush_when, flush_how) ->
-         (* Why can't we? because it's unclear when the notify would trigger:
-          * as soon as the WHERE match or when we emit a group? *)
-         if notify_url <> "" then
-          raise (Reject "Cannot use notify-clause in group-by operations") ;
-         Aggregate { fields ; and_all_others ; where ; export ; key ; commit_when ; flush_when ; flush_how }
-       | _ -> assert false) m
+      let m = "select operation" :: m in
+      let part =
+        (select_clause >>: fun c -> SelectClause c) |||
+        (where_clause >>: fun c -> WhereClause c) |||
+        (export_clause >>: fun c -> ExportClause c) |||
+        (notify_clause >>: fun c -> NotifyClause c) |||
+        (group_by >>: fun c -> GroupByClause c) |||
+        (commit_when >>: fun (c, f, m) -> CommitClause (c, f, m)) in
+      (several ~sep:blanks part >>: fun clauses ->
+        if clauses = [] then raise (Reject "Empty select") ;
+        let default_select = [], true, Expr.expr_true, None, "", [],
+                             Expr.expr_true, None, Reset in
+        let fields, and_all_others, where, export, notify_url, key,
+            commit_when, flush_when, flush_how =
+          List.fold_left (
+            fun (fields, and_all_others, where, export, notify_url, key,
+                 commit_when, flush_when, flush_how) -> function
+              | SelectClause fields_or_stars ->
+                let fields, and_all_others =
+                  List.fold_left (fun (fields, and_all_others) -> function
+                      | Some f -> f::fields, and_all_others
+                      | None when not and_all_others -> fields, true
+                      | None -> raise (Reject "All fields (\"*\") included several times")
+                    ) ([], false) fields_or_stars in
+                (* The above fold_left inverted the field order. *)
+                let fields = List.rev fields in
+                fields, and_all_others, where, export, notify_url, key,
+                commit_when, flush_when, flush_how
+              | WhereClause where ->
+                fields, and_all_others, where, export, notify_url, key,
+                commit_when, flush_when, flush_how
+              | ExportClause export ->
+                fields, and_all_others, where, Some export, notify_url, key,
+                commit_when, flush_when, flush_how
+              | NotifyClause notify_url ->
+                fields, and_all_others, where, export, notify_url, key,
+                commit_when, flush_when, flush_how
+              | GroupByClause key ->
+                fields, and_all_others, where, export, notify_url, key,
+                commit_when, flush_when, flush_how
+              | CommitClause (commit_when, flush_when, flush_how) ->
+                fields, and_all_others, where, export, notify_url, key,
+                commit_when, flush_when, flush_how
+            ) default_select clauses in
+        Aggregate { fields ; and_all_others ; where ; export ; notify_url ; key ;
+                    commit_when ; flush_when ; flush_how }
+      ) m
 
     (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
     let read_csv_file m =
@@ -1266,12 +1287,12 @@ struct
 
     let p m =
       let m = "operation" :: m in
-      (yield ||| select ||| aggregate ||| read_csv_file
+      (yield ||| aggregate ||| read_csv_file
       ) m
 
     (*$= p & ~printer:(test_printer print)
       (Ok (\
-        Select {\
+        Aggregate {\
           fields = [\
             { expr = Expr.(Field (typ, ref TupleIn, "start")) ;\
               alias = "start" } ;\
@@ -1283,25 +1304,33 @@ struct
               alias = "itf_dst" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = None ; notify_url = "" },\
+          notify_url = "" ;\
+          key = [] ;\
+          commit_when = replace_typ Expr.expr_true ;\
+          flush_when = None ;\
+          flush_how = Reset ;\
+          export = None },\
         (58, [])))\
         (test_p p "select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
          replace_typ_in_op)
 
       (Ok (\
-        Select {\
+        Aggregate {\
           fields = [] ;\
           and_all_others = true ;\
           where = Expr.(\
             Gt (typ,\
               Field (typ, ref TupleIn, "packets"),\
               Const (typ, VI8 (Int8.of_int 0)))) ;\
-          export = None ; notify_url = "" },\
+          export = None ; notify_url = "" ;\
+          key = [] ;\
+          commit_when = replace_typ Expr.expr_true ;\
+          flush_when = None ; flush_how = Reset },\
         (17, [])))\
         (test_p p "where packets > 0" |> replace_typ_in_op)
 
       (Ok (\
-        Select {\
+        Aggregate {\
           fields = [\
             { expr = Expr.(Field (typ, ref TupleIn, "t")) ;\
               alias = "t" } ;\
@@ -1310,13 +1339,16 @@ struct
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
           export = Some (Some (("t", 10.), DurationConst 60.)) ;\
-          notify_url = "" },\
+          notify_url = "" ;\
+          key = [] ;\
+          commit_when = replace_typ Expr.expr_true ;\
+          flush_when = None ; flush_how = Reset },\
         (62, [])))\
         (test_p p "select t, value export event starting at t*10 with duration 60" |>\
          replace_typ_in_op)
 
       (Ok (\
-        Select {\
+        Aggregate {\
           fields = [\
             { expr = Expr.(Field (typ, ref TupleIn, "t1")) ;\
               alias = "t1" } ;\
@@ -1327,18 +1359,23 @@ struct
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
           export = Some (Some (("t1", 10.), StopField ("t2", 10.))) ;\
-          notify_url = "" },\
+          notify_url = "" ; key = [] ;\
+          commit_when = replace_typ Expr.expr_true ;\
+          flush_when = None ; flush_how = Reset },\
         (73, [])))\
         (test_p p "select t1, t2, value export event starting at t1*10 and stopping at t2*10" |>\
          replace_typ_in_op)
 
       (Ok (\
-        Select {\
+        Aggregate {\
           fields = [] ;\
           and_all_others = true ;\
           where = Expr.Const (typ, VBool true) ;\
           export = None ;\
-          notify_url = "http://firebrigade.com/alert.php" },\
+          notify_url = "http://firebrigade.com/alert.php" ;\
+          key = [] ;\
+          commit_when = replace_typ Expr.expr_true ;\
+          flush_when = None ; flush_how = Reset },\
         (41, [])))\
         (test_p p "NOTIFY \"http://firebrigade.com/alert.php\"" |>\
          replace_typ_in_op)
@@ -1360,6 +1397,7 @@ struct
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
           export = None ; \
+          notify_url = "" ;\
           key = [ Expr.(\
             Div (typ,\
               Field (typ, ref TupleIn, "start"),\
@@ -1389,6 +1427,7 @@ struct
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
           export = None ; \
+          notify_url = "" ;\
           key = [] ;\
           commit_when = Expr.(\
             Ge (typ,\
