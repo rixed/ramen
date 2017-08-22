@@ -278,60 +278,6 @@ let notify url field_of_tuple tuple =
   !logger.info "Notifying url %S" url ;
   async (fun () -> CodeGenLib_IO.http_notify url)
 
-let select read_tuple field_of_tuple sersize_of_tuple serialize_tuple where select notify_url =
-  let _conf = node_start "SELECT" in
-  let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
-  and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-  in
-  !logger.debug "Will read ringbuffer %S" rb_in_fname ;
-  let%lwt rb_in =
-    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
-      (fun n -> return (RingBuf.load n)) rb_in_fname in
-  let outputer =
-    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple
-  and stats_selected_tuple_count = make_stats_selected_tuple_count ()
-  and in_ = ref None
-  and selected_tuple = ref None
-  and selected_count = ref Uint64.zero
-  and selected_successive = ref Uint64.zero
-  and unselected_tuple = ref None
-  and unselected_count = ref Uint64.zero
-  and unselected_successive = ref Uint64.zero in
-  CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
-    let in_tuple = read_tuple tx in
-    RingBuf.dequeue_commit tx ;
-    IntCounter.add stats_in_tuple_count 1 ;
-    let last_in = Option.default in_tuple !in_
-    and last_selected = Option.default in_tuple !selected_tuple
-    and last_unselected = Option.default in_tuple !unselected_tuple in
-    in_ := Some in_tuple ;
-    let in_count = Uint64.succ !CodeGenLib_IO.tuple_count in
-    if where
-         in_count in_tuple last_in
-         !selected_count !selected_successive last_selected
-         !unselected_count !unselected_successive last_unselected
-    then (
-      if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
-      IntCounter.add stats_selected_tuple_count 1 ;
-      unselected_successive := Uint64.zero ;
-      selected_tuple := Some in_tuple ;
-      selected_count := Uint64.succ !selected_count ;
-      selected_successive := Uint64.succ !selected_successive ;
-      let out_tuple =
-        select
-          in_count in_tuple last_in
-          !selected_count !selected_successive last_selected
-          !unselected_count !unselected_successive last_unselected
-      in
-      outputer out_tuple
-    ) else (
-      selected_successive := Uint64.zero ;
-      unselected_tuple := Some in_tuple ;
-      unselected_count := Uint64.succ !unselected_count ;
-      unselected_successive := Uint64.succ !unselected_successive ;
-      return_unit
-    ))
-
 let yield sersize_of_tuple serialize_tuple select =
   let _conf = node_start "YIELD" in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"

@@ -72,7 +72,6 @@ let type_of_operation_of =
   let open Lang.Operation in
   function
   | Yield _ -> "YIELD"
-  | Select _ -> "SELECT"
   | Aggregate _ -> "GROUP BY"
   | ReadCSVFile _ -> "READ CSV"
 

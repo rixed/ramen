@@ -387,33 +387,6 @@ let check_yield ~in_type ~out_type fields =
     ) else false
   )
 
-let check_select ~in_type ~out_type fields and_all_others where =
-  (
-    (* Check the expression, improving out_type and checking against in_type: *)
-    let exp_type =
-      (* That where expressions cannot be null seems a nice improvement
-       * over SQL. *)
-      Lang.Expr.make_bool_typ ~nullable:false "where clause" in
-    check_expr ~in_type ~out_type ~exp_type where
-  ) || (
-    (* Also check other expression and make use of them to improve out_type.
-     * Everything that's selected must be (added) in out_type. *)
-    check_selected_fields ~in_type ~out_type fields
-  ) || (
-    (* If all other fields are selected, add them *)
-    if and_all_others then (
-      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_tuple:in_type ~to_tuple:out_type ~autorank:true
-    ) else false
-  ) || (
-    (* If nothing changed so far and our input is finished_typing, then our output is. *)
-    if in_type.C.finished_typing && not out_type.C.finished_typing then (
-      !logger.debug "Completing out_type because it won't change any more." ;
-      check_finished_tuple_type out_type ;
-      out_type.C.finished_typing <- true ;
-      true
-    ) else false
-  )
-
 let check_aggregate ~in_type ~out_type fields and_all_others
                     where key commit_when flush_when flush_how =
   let open Lang in
@@ -442,8 +415,29 @@ let check_aggregate ~in_type ~out_type fields and_all_others
       let exp_type = Expr.make_bool_typ ~nullable:false "remove/keep clause" in
       check_expr ~in_type ~out_type ~exp_type e
   ) || (
-    (* Check select must come last since it completes out_type *)
-    check_select ~in_type ~out_type fields and_all_others where
+    (* Check the expression, improving out_type and checking against in_type: *)
+    let exp_type =
+      (* That where expressions cannot be null seems a nice improvement
+       * over SQL. *)
+      Lang.Expr.make_bool_typ ~nullable:false "where clause" in
+    check_expr ~in_type ~out_type ~exp_type where
+  ) || (
+    (* Also check other expression and make use of them to improve out_type.
+     * Everything that's selected must be (added) in out_type. *)
+    check_selected_fields ~in_type ~out_type fields
+  ) || (
+    (* If all other fields are selected, add them *)
+    if and_all_others then (
+      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_tuple:in_type ~to_tuple:out_type ~autorank:true
+    ) else false
+  ) || (
+    (* If nothing changed so far and our input is finished_typing, then our output is. *)
+    if in_type.C.finished_typing && not out_type.C.finished_typing then (
+      !logger.debug "Completing out_type because it won't change any more." ;
+      check_finished_tuple_type out_type ;
+      out_type.C.finished_typing <- true ;
+      true
+    ) else false
   )
 
 (*
@@ -456,8 +450,6 @@ let check_operation ~in_type ~out_type =
   function
   | Yield fields ->
     check_yield ~in_type ~out_type fields
-  | Select { fields ; and_all_others ; where ; _ } ->
-    check_select ~in_type ~out_type fields and_all_others where
   | Aggregate { fields ; and_all_others ; where ;
                 key ; commit_when ; flush_when ; flush_how ; _ } ->
     check_aggregate ~in_type ~out_type fields and_all_others where

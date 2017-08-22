@@ -151,10 +151,6 @@ let tuple_need_aggr = function
   let replace_typ_in_op =
     let open Lang.Operation in
     function
-    | Ok (Select { fields ; and_all_others ; where ; export ; notify_url }, rest) ->
-      Ok (Select {
-        fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
-        and_all_others ; where = replace_typ where ; export ; notify_url }, rest)
     | Ok (Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
                       key ; commit_when ; flush_when ; flush_how }, rest) ->
       Ok (Aggregate {
@@ -985,17 +981,6 @@ struct
     (* Generate values out of thin air. The difference with Select is that
      * Yield does not wait for some input. *)
     | Yield of selected_field list
-    (* Simple operation that merely filters / projects / constructs fields and
-     * produce 0 or 1 tuple for each input tuple. *)
-    | Select of {
-        fields : selected_field list ;
-        (* As in the SQL "*", but selects only the fields which name won't collide
-         * with the above. Useful for when the select part is implicit. *)
-        and_all_others : bool ;
-        where : Expr.t ;
-        export : event_time_info option ;
-        (* If not empty, will notify this URL with a HTTP GET: *)
-        notify_url : string }
     (* Aggregation of several tuples into one based on some key. Superficially looks like
      * a select but much more involved. *)
     | Aggregate of {
@@ -1028,31 +1013,24 @@ struct
          | DurationField (n, s) -> "DURATION "^ n ^ string_of_scale s
          | StopField (n, s) -> "STOPPING AT "^ n ^ string_of_scale s)
 
-  (* FIXME: copy this into print below *)
-  let print_select fmt fields and_all_others where export notify_url =
-    let sep = ", " in
-    Printf.fprintf fmt "SELECT %a%s%s"
-      (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
-      (if fields <> [] && and_all_others then sep else "")
-      (if and_all_others then "*" else "") ;
-    if not (Expr.is_true where) then
-      Printf.fprintf fmt " WHERE %a"
-        (Expr.print false) where ;
-    Option.may (fun e -> Printf.fprintf fmt " %a" print_export e) export ;
-    if notify_url <> "" then
-      Printf.fprintf fmt " NOTIFY %S" notify_url
-
   let print fmt =
     let sep = ", " in
     function
     | Yield fields ->
       Printf.fprintf fmt "YIELD %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
-    | Select { fields ; and_all_others ; where ; export ; notify_url } ->
-      print_select fmt fields and_all_others where export notify_url
     | Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
                   key ; commit_when ; flush_when ; flush_how } ->
-      print_select fmt fields and_all_others where export notify_url  ;
+      Printf.fprintf fmt "SELECT %a%s%s"
+        (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
+        (if fields <> [] && and_all_others then sep else "")
+        (if and_all_others then "*" else "") ;
+      if not (Expr.is_true where) then
+        Printf.fprintf fmt " WHERE %a"
+          (Expr.print false) where ;
+      Option.may (fun e -> Printf.fprintf fmt " %a" print_export e) export ;
+      if notify_url <> "" then
+        Printf.fprintf fmt " NOTIFY %S" notify_url ;
       if key <> [] then
         Printf.fprintf fmt " GROUP BY %a"
           (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) key ;
@@ -1074,10 +1052,10 @@ struct
         fname separator null Tuple.print_typ fields
 
   let is_exporting = function
-    | Select { export = Some _ ; _ } | Aggregate { export = Some _ ; _ } -> true
+    | Aggregate { export = Some _ ; _ } -> true
     | _ -> false
   let export_event_info = function
-    | Select { export = Some e ; _ } | Aggregate { export = Some e ; _ } -> e
+    | Aggregate { export = Some e ; _ } -> e
     | _ -> None
 
   module Parser =
@@ -1513,19 +1491,6 @@ struct
             check_no_aggr m sf.expr ;
             check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD operation" sf.expr
           ) fields
-      | Select { fields ; where ; export ; _ } ->
-        List.iter (fun sf ->
-            let m = "Aggregation functions not allowed without a \
-                     GROUP-BY clause" in
-            check_no_aggr m sf.expr ;
-            check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
-          ) fields ;
-        check_export fields export ;
-        check_no_aggr no_aggr_in_where where ;
-        (* Not "selected" since it is still None the first times we call where
-         * (until a match): *)
-        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected] "WHERE clause" where
-        (* TODO: check field names from text templates *)
       | Aggregate { fields ; where ; key ; commit_when ; flush_when ; flush_how ; export ; _ } ->
         List.iter (fun sf ->
             check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
@@ -1548,6 +1513,7 @@ struct
           let m = "Aggregation functions not allowed in KEEP/REMOVE clause" in
           check_no_aggr m e ;
           check_fields_from [TupleGroup] "REMOVE clause" e)
+        (* TODO: url_notify: check field names from text templates *)
       | ReadCSVFile _ -> ()
 
     (*$>*)

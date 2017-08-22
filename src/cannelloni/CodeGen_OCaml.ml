@@ -676,29 +676,6 @@ let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
-let emit_select oc in_tuple_typ out_tuple_typ
-                selected_fields and_all_others where notify_url =
-  (* We need:
-   * - a function to extract the fields used from input (and all others, optionally)
-   * - a function corresponding to the where filter
-   * - a function to write the output tuple and another one to compute the sersize *)
-  let mentioned =
-    let all_exprs = where :: List.map (fun sf -> sf.Operation.expr) selected_fields in
-    add_all_mentioned_in_expr all_exprs in
-  let mentioned = add_all_mentioned_in_string mentioned notify_url in
-  Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n\
-    let () =\n\
-      \tLwt_main.run (\n\
-      \t\tCodeGenLib.select read_tuple_ field_of_tuple_ sersize_of_tuple_ serialize_tuple_ where_ select_ %S)\n"
-    (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
-    (emit_field_of_tuple "field_of_tuple_" mentioned and_all_others) in_tuple_typ
-    (emit_where "where_" in_tuple_typ mentioned and_all_others) where
-    (emit_field_selection ~with_selected:true "select_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
-    (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
-    (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
-    notify_url
-
 let for_each_aggr_fun selected_fields commit_when flush_when f =
   List.iter (fun sf ->
       Expr.aggr_iter f sf.Operation.expr
@@ -995,8 +972,6 @@ let gen_operation conf signature in_tuple_typ out_tuple_typ op =
     (match op with
     | Yield fields ->
       emit_yield oc in_tuple_typ out_tuple_typ fields
-    | Select { fields ; and_all_others ; where ; notify_url ; _ } ->
-      emit_select oc in_tuple_typ out_tuple_typ fields and_all_others where notify_url
     | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
     | Aggregate { fields ; and_all_others ; where ; key ; commit_when ;
