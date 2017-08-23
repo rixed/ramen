@@ -14,15 +14,16 @@
 (* The "state" is a value of some type known only to the function. The module
  * used to save/restore has to be chosen depending on the knowledge the user
  * has about the state size and volatility. *)
-
 let int_of_fd fd : int = Obj.magic fd
 
 let do_save fd v =
   let open Unix in
   lseek fd 0 SEEK_SET |> ignore ;
-  (* Rule: do not ever use BatIO magic files that autoclose whenever they
-   * feel like it. *)
-  Marshal.(to_channel (out_channel_of_descr fd) v [No_sharing])
+  (* Leak memory for some reason / and do not write anything to the file
+   * is we Marshal.to_channel directly. :-/ *)
+  let bytes = Marshal.to_bytes v [] in
+  let len = Bytes.length bytes in
+  write fd bytes 0 len |> ignore
 
 let do_restore fd =
   let open Unix in
