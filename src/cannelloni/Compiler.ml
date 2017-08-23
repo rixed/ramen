@@ -601,15 +601,13 @@ let untyped_dependency layer =
   with Not_found -> None
 
 exception MissingDependency of N.t (* The one we depend on *)
+exception AlreadyCompiled
 
 let compile conf layer =
   match layer.L.persist.L.status with
-  | SL.Compiled ->
-    raise (C.InvalidCommand "Graph is already compiled")
-  | SL.Running ->
-    raise (C.InvalidCommand "Graph is already compiled and is running")
-  | SL.Compiling ->
-    raise (C.InvalidCommand "Graph is already being compiled")
+  | SL.Compiled -> raise AlreadyCompiled
+  | SL.Running -> raise AlreadyCompiled
+  | SL.Compiling -> raise AlreadyCompiled
   | SL.Edition ->
     !logger.debug "Trying to compile layer %s" layer.L.name ;
     untyped_dependency layer |>

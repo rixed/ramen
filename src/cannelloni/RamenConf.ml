@@ -231,21 +231,13 @@ let save_graph conf =
     File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
       Marshal.output oc persist)
 
-let add_node conf node_name layer_name op_text =
-  !logger.debug "Creating node %s / %s" layer_name node_name ;
-  (* new lines have to be forbidden because of the out_ref ringbuf files *)
-  if node_name = "" ||
-     String.fold_left (fun bad c ->
-       bad || c = '\n' || c = '\r') false node_name then
-    invalid_arg "node name" ;
-  assert (node_name <> "") ;
+let add_parsed_node conf node_name layer_name op_text operation =
   let layer =
     try Hashtbl.find conf.graph.layers layer_name
     with Not_found -> add_layer conf layer_name in
   if Hashtbl.mem layer.Layer.persist.Layer.nodes node_name then
     raise (InvalidCommand (
              "Node "^ node_name ^" already exists in layer "^ layer_name)) ;
-  let operation = parse_operation op_text in
   let node = Node.{
     layer = layer_name ; name = node_name ;
     operation ; signature = "" ; op_text ;
@@ -256,6 +248,19 @@ let add_node conf node_name layer_name op_text =
     command = None ; pid = None ; last_report = [] } in
   Layer.set_editable layer ;
   Hashtbl.add layer.Layer.persist.Layer.nodes node_name node ;
+  layer
+
+let add_node conf node_name layer_name op_text =
+  !logger.debug "Creating node %s / %s" layer_name node_name ;
+  (* New lines have to be forbidden because of the out_ref ringbuf files.
+   * slashes have to be forbidden because we rsplit to get layer names. *)
+  if node_name = "" ||
+     String.fold_left (fun bad c ->
+       bad || c = '\n' || c = '\r' || c = '/') false node_name then
+    invalid_arg "node name" ;
+  assert (node_name <> "") ;
+  let operation = parse_operation op_text in
+  let _layer = add_parsed_node conf node_name layer_name op_text operation in
   (* FIXME: Delay this with a dirty flag, and save_if_dirty after every
    * HTTP query *)
   save_graph conf
@@ -288,7 +293,7 @@ let find_node conf layer name =
   Hashtbl.find layer.Layer.persist.Layer.nodes name
 
 (* Both src and dst have to exist already. *)
-let make_link conf src dst =
+let add_link conf src dst =
   let open Node in
   !logger.debug "Create link between nodes %s/%s and %s/%s"
     src.layer src.name dst.layer dst.name ;

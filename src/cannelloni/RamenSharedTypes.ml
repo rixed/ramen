@@ -182,11 +182,19 @@ type complete_resp = string list [@@ppp PPP_JSON]
 
 (* Time series retrieval: *)
 
+type timeserie_spec = Predefined of { node : string ; data_field : string }
+                    (* If select_x is not given we will reuse the parent event
+                     * configuration *)
+                    | NewTempNode of { select_x : string [@ppp_default ""] ;
+                                       select_y : string ;
+                                       from : string [@ppp_default ""] ;
+                                       where : string [@ppp_default ""] }
+                    [@@ppp PPP_JSON]
+
 type timeserie_req =
   { id : string ;
-    node : string ;
-    data_field : string ;
-    consolidation : string [@ppp_default "avg"] } [@@ppp PPP_JSON] [@@ppp_extensible]
+    consolidation : string [@ppp_default "avg"] ;
+    spec : timeserie_spec } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type timeseries_req =
   { from : float ; (* from and to_ are in milliseconds *)

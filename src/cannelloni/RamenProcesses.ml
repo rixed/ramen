@@ -20,15 +20,16 @@ let run_background cmd args env =
   | pid -> pid
     (* TODO: A monitoring thread that report the error in the node structure *)
 
+exception NotYetCompiled
+exception AlreadyRunning
+exception StillCompiling
+
 let run conf layer =
   let open C.Layer in
   match layer.persist.status with
-  | SL.Edition ->
-    raise (C.InvalidCommand "Cannot run if not compiled")
-  | SL.Running ->
-    raise (C.InvalidCommand "Graph is already running")
-  | SL.Compiling ->
-    raise (C.InvalidCommand "Graph is being compiled already")
+  | SL.Edition -> raise NotYetCompiled
+  | SL.Running -> raise AlreadyRunning
+  | SL.Compiling -> raise StillCompiling
   | SL.Compiled ->
     (* First prepare all the required ringbuffers *)
     let rb_name_of node =
@@ -56,17 +57,27 @@ let run conf layer =
           RingBufLib.out_ringbuf_names_ref conf.C.persist_dir (N.fq_name node) in
         Helpers.mkdir_all ~is_file:true out_ringbuf_ref ;
         File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
+        let input_ringbuf = rb_name_of node in
         let env = [|
           "OCAMLRUNPARAM=b" ;
           "debug="^ string_of_bool conf.C.debug ;
-          "input_ringbuf="^ rb_name_of node ;
+          "input_ringbuf="^ input_ringbuf ;
           "output_ringbufs_ref="^ out_ringbuf_ref ;
           "report_url="^ conf.C.ramen_url
                        ^ "/report/"^ Uri.pct_encode node.N.layer
                        ^ "/"^ Uri.pct_encode node.N.name ;
           "persist_dir="^ conf.C.persist_dir ^"/worker/"
                         ^ node.N.layer ^"/"^ node.N.name |] in
-        node.N.pid <- Some (run_background command [||] env)
+        node.N.pid <- Some (run_background command [||] env) ;
+        (* Update the parents out_ringbuf_ref if it's in another layer *)
+        List.iter (fun parent ->
+            if parent.N.layer <> layer.name then
+              let out_ref =
+                RingBufLib.out_ringbuf_names_ref conf.C.persist_dir (N.fq_name parent) in
+              let lines = File.lines_of out_ref |> List.of_enum in
+              if not (List.mem input_ringbuf lines) then
+                File.write_lines out_ref (List.enum (input_ringbuf :: lines))
+          ) node.N.parents
       ) layer.persist.nodes ;
     C.Layer.set_status layer SL.Running ;
     layer.C.Layer.persist.C.Layer.last_started <- Some now ;
@@ -84,14 +95,15 @@ let string_of_process_status = function
   | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %d" sign
   | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
 
+exception NotRunning
+
 let stop conf layer =
   match layer.C.Layer.persist.C.Layer.status with
-  | SL.Edition | SL.Compiled ->
-    raise (C.InvalidCommand "Graph is not running")
+  | SL.Edition | SL.Compiled -> raise NotRunning
   | SL.Compiling ->
     (* FIXME: do as for Running and make sure run() check the status hasn't
      * changed before launching workers. *)
-    raise (C.InvalidCommand "Graph is being compiled by another thread")
+    raise NotRunning
   | SL.Running ->
     !logger.info "Stopping layer..." ;
     let now = Unix.gettimeofday () in

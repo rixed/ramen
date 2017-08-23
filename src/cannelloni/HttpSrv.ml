@@ -249,12 +249,12 @@ let get_graph conf headers layer_opt =
 
 *)
 
-let node_of_name conf layer_name n =
-  if n = "" then bad_request "Empty string is not a valid node name"
-  else match C.find_node conf layer_name n with
+let node_of_name conf layer_name node_name =
+  if node_name = "" then failwith "Empty string is not a valid node name"
+  else match C.find_node conf layer_name node_name with
   | exception Not_found ->
-    bad_request ("Node "^ layer_name ^"/"^ n ^" does not exist")
-  | node -> return node
+    failwith ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
+  | node -> node
 
 let put_layer conf headers body =
   let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
@@ -272,17 +272,17 @@ let put_layer conf headers body =
         C.add_node conf name msg.name def.Node.operation
       ) msg.nodes ;
     (* Then all the links *)
-    let%lwt () = Lwt_list.iter_s (fun def ->
-        let%lwt dst = node_of_name conf msg.name def.Node.name in
-        Lwt_list.iter_s (fun p ->
+    List.iter (fun def ->
+        let dst = node_of_name conf msg.name def.Node.name in
+        List.iter (fun p ->
             let parent_layer, parent_name =
               layer_node_of_user_string conf ~default_layer:msg.name p in
-            let%lwt src = node_of_name conf parent_layer parent_name in
-            C.make_link conf src dst ;
-            return_unit
+            let src = node_of_name conf parent_layer parent_name in
+            C.add_link conf src dst
           ) def.SN.parents
-      ) msg.nodes in
+      ) msg.nodes ;
     respond_ok ())
+  (* TODO: why wait before compiling this layer? *)
 
 (*
     Whole graph operations: compile/run/stop
@@ -297,11 +297,14 @@ let compile conf headers layer_opt =
         if layers = [] then respond_ok () else
         if left_try < 0 then bad_request "Unsolvable dependency loop" else
         List.fold_left (fun failed layer ->
-          try Compiler.compile conf layer ;
-              failed
-          with Compiler.MissingDependency n ->
-            !logger.debug "We miss node %s / %s" n.N.layer n.N.name ;
-            layer::failed) [] layers |>
+            let open Compiler in
+            try compile conf layer ;
+                failed
+            with AlreadyCompiled -> failed
+               | MissingDependency n ->
+                 !logger.debug "We miss node %s / %s" n.N.layer n.N.name ;
+                 layer::failed
+          ) [] layers |>
         loop (left_try-1)
       in
       loop (List.length layers) layers
@@ -312,7 +315,10 @@ let run conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
     let%lwt layers = graph_layers conf layer_opt in
     try
-      List.iter (RamenProcesses.run conf) layers ;
+      List.iter (fun layer ->
+          let open RamenProcesses in
+          try run conf layer with AlreadyRunning -> ()
+        ) layers ;
       respond_ok ()
     with (Lang.SyntaxError e | C.InvalidCommand e) ->
       bad_request e)
@@ -321,7 +327,10 @@ let stop conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
     let%lwt layers = graph_layers conf layer_opt in
     try
-      List.iter (RamenProcesses.stop conf) layers ;
+      List.iter (fun layer ->
+          let open RamenProcesses in
+          try stop conf layer with NotRunning -> ()
+        ) layers ;
       respond_ok ()
     with C.InvalidCommand e -> bad_request e)
 
@@ -425,17 +434,17 @@ let bucket_max b =
 let timeseries conf headers body =
   let open Lang.Operation in
   let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
-  let ts_of_node req =
-    let layer, node = layer_node_of_user_string conf req.node in
+  let ts_of_node_field req node data_field =
+    let layer, node = layer_node_of_user_string conf node in
     match C.find_node conf layer node with
     | exception Not_found ->
-      raise (Failure ("Unknown node "^ req.node))
+      raise (Failure ("Unknown node "^ node))
     | node ->
       if not (is_exporting node.N.operation) then
-        raise (Failure ("node "^ req.node ^" does not export data"))
+        raise (Failure ("node "^ node.N.name ^" does not export data"))
       else match export_event_info node.N.operation with
       | None ->
-        raise (Failure ("node "^ req.node ^" does not specify event time info"))
+        raise (Failure ("node "^ node.N.name ^" does not specify event time info"))
       | Some ((start_field, start_scale), duration_info) ->
         let consolidation =
           match String.lowercase req.consolidation with
@@ -448,7 +457,7 @@ let timeseries conf headers body =
           ) with Not_found ->
             raise (Failure ("field "^ n ^" does not exist")) in
         let ti = find_field start_field
-        and vi = find_field req.data_field in
+        and vi = find_field data_field in
         if msg.max_data_points < 1 then raise (Failure "invalid max_data_points") ;
         let dt = (msg.to_ -. msg.from) /. float_of_int msg.max_data_points in
         let buckets = Array.init msg.max_data_points (fun _ ->
@@ -482,9 +491,75 @@ let timeseries conf headers body =
         Array.mapi (fun i _ ->
           msg.from +. dt *. (float_of_int i +. 0.5)) buckets,
         Array.map consolidation buckets
+  and create_temporary_node select_x select_y from where =
+    (* First, we need to find out the name for this operation, and create it if
+     * it does not exist yet. Name must be given by the operation and parent, so
+     * that we do not create new nodes when not required (avoiding a costly
+     * compilation and losing export history). This is not equivalent to the
+     * signature: the signature identifies operation and types (aka the binary)
+     * but not the data (since the same worker can be placed at several places
+     * in the graph); while here we want to identify the data, that depends on
+     * everything the user sent (aka operation text and parent name) but for the
+     * formatting. We thus start by parsing and pretty-printing the operation: *)
+    let parent_layer, parent_name =
+      layer_node_of_user_string conf from in
+    let parent = node_of_name conf parent_layer parent_name in
+    let op_text =
+      if select_x = "" then (
+        let open Lang.Operation in
+        match parent.N.operation with
+        | Aggregate { export = Some (Some ((start, scale), DurationConst dur)) ; _ } ->
+          Printf.sprintf
+            "SELECT %s, %s AS data \
+             EXPORT EVENT STARTING AT %s * %g WITH DURATION %g"
+            start select_y
+            start scale dur
+        | Aggregate { export = Some (Some ((start, scale), DurationField (dur, scale2))) ; _ } ->
+          Printf.sprintf
+            "SELECT %s, %s AS data \
+             EXPORT EVENT STARTING AT %s * %g WITH DURATION %s * %g"
+            start select_y
+            start scale dur scale2
+        | Aggregate { export = Some (Some ((start, scale), StopField (stop, scale2))) ; _ } ->
+          Printf.sprintf
+            "SELECT %s, %s, %s AS data \
+             EXPORT EVENT STARTING AT %s * %g AND STOPPING AT %s * %g"
+            start stop select_y
+            start scale stop scale2
+        | _ ->
+          failwith "This parent does not provide time information"
+      ) else
+        "SELECT "^ select_x ^" AS time, "
+                 ^ select_y ^" AS data \
+         EXPORT EVENT STARTING AT time" in
+    let op_text =
+      if where = "" then op_text else op_text ^" WHERE "^ where in
+    let operation = C.parse_operation op_text in
+    let reformatted_op = IO.to_string Lang.Operation.print operation in
+    let layer_name =
+      "temp/from_"^ from ^"_"^ Cryptohash_md4.(string reformatted_op |> to_hex)
+    and node_name = "operation" in
+    (* So far so good. In all likelihood this layer exists already: *)
+    if Hashtbl.mem conf.C.graph.C.layers layer_name then
+      !logger.debug "Layer %S already there" layer_name
+    else (
+      (* Add this layer to the running configuration: *)
+      let layer =
+        C.add_parsed_node conf node_name layer_name op_text operation in
+      let node = Hashtbl.find layer.L.persist.L.nodes node_name in
+      C.add_link conf parent node ;
+      Compiler.compile conf layer ;
+      RamenProcesses.run conf layer ;
+    ) ;
+    layer_name ^"/"^ node_name, "data"
   in
   match List.map (fun req ->
-          let times, values = ts_of_node req in
+          let node, data_field =
+            match req.spec with
+            | Predefined { node ; data_field } -> node, data_field
+            | NewTempNode { select_x ; select_y ; from ; where } ->
+              create_temporary_node select_x select_y from where in
+          let times, values = ts_of_node_field req node data_field in
           { id = req.id ; times ; values }) msg.timeseries with
   | exception Failure err -> bad_request err
   | resp ->
