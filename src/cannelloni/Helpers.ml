@@ -52,10 +52,18 @@ let http_service port cert_opt key_opt router =
   let open Cohttp in
   let open Cohttp_lwt_unix in
   let callback _conn req body =
-    let uri = Request.uri req in
+    let path = Uri.path (Request.uri req) in
+    !logger.debug "Requested path: %S" path ;
+    (* Make "/path" equivalent to "path" *)
     let path =
-      String.nsplit (Uri.path uri) "/" |>
-      List.filter (fun s -> String.length s > 0) |>
+      if String.starts_with path "/" then String.lchop path else path in
+    (* Make "path/" equivalent to "path" for convenience. Beware that in
+     * general "foo//bar" is not equivalent to "foo/bar" so not seemingly
+     * spurious slashes can be omitted! *)
+    let path =
+      if String.ends_with path "/" then String.rchop path else path in
+    let path =
+      String.nsplit path "/" |>
       List.map Uri.pct_decode in
     let params = Hashtbl.create 7 in
     (match String.split ~by:"?" req.Request.resource with
