@@ -131,7 +131,7 @@ let send_stats url =
   let open Cohttp_lwt_unix in
   let metrics = Hashtbl.fold (fun _name exporter lst ->
     List.rev_append (exporter ()) lst) Binocle.all_measures [] in
-  let body = `String Marshal.(to_string metrics [No_sharing]) in
+  let body = `String Marshal.(to_string metrics []) in
   let headers = Header.init_with "Content-Type" Consts.ocaml_marshal_type in
   (* TODO: but also fix the server never timeouting! *)
   let headers = Header.add headers "Connection" "close" in
@@ -412,7 +412,7 @@ let aggregate
       let v = restore !state in
       (* We do _not_ want to save the value when f raises an exception: *)
       let%lwt v = f v in
-      state := save ~save_every:100 ~save_timeout:5. !state v ;
+      state := save ~save_every:1013 ~save_timeout:21. !state v ;
       return_unit
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
