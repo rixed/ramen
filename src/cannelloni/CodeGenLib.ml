@@ -207,7 +207,7 @@ let node_start node_name =
   logger := make_logger ~prefix debug ;
   !logger.info "Starting %s process..." node_name ;
   let default_persist_dir = "/tmp/worker_"^ node_name ^"_"^ string_of_int (Unix.getpid ()) in
-  let persist_dir = getenv ~def:default_persist_dir "persit_dir" in
+  let persist_dir = getenv ~def:default_persist_dir "persist_dir" in
   let report_url =
     (* The real one will have a process identifier instead of "anonymous" *)
     getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in
