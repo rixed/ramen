@@ -135,6 +135,10 @@ module Layer =
 struct
   type persist =
     { nodes : (string, Node.t) Hashtbl.t ;
+      (* How long can this layer can stays without dependent nodes before it's
+       * reclaimed. Set to 0 for no timeout. *)
+      timeout : float ;
+      mutable last_used : float ;
       mutable status : SL.status ;
       mutable last_status_change : float ;
       mutable last_started : float option ;
@@ -149,12 +153,14 @@ struct
     layer.persist.status <- status ;
     layer.persist.last_status_change <- Unix.gettimeofday ()
 
-  let make ?persist name =
+  let make ?persist ?(timeout=0.) name =
     let persist =
+      let now = Unix.gettimeofday () in
       Option.default_delayed (fun () ->
         { nodes = Hashtbl.create 17 ;
+          timeout ; last_used = now ;
           status = SL.Edition ;
-          last_status_change = Unix.gettimeofday () ;
+          last_status_change = now ;
           last_started = None ; last_stopped = None }) persist in
     let layer = { name ; persist ; importing_threads = [] } in
     (* downgrade the status to compiled since the workers can't be running
@@ -213,8 +219,8 @@ let parse_operation operation =
     | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
       op)
 
-let add_layer conf name =
-  let layer = Layer.make name in
+let add_layer ?timeout conf name =
+  let layer = Layer.make ?timeout name in
   Hashtbl.add conf.graph.layers name layer ;
   layer
 
@@ -231,10 +237,10 @@ let save_graph conf =
     File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
       Marshal.output oc persist)
 
-let add_parsed_node conf node_name layer_name op_text operation =
+let add_parsed_node ?timeout conf node_name layer_name op_text operation =
   let layer =
     try Hashtbl.find conf.graph.layers layer_name
-    with Not_found -> add_layer conf layer_name in
+    with Not_found -> add_layer ?timeout conf layer_name in
   if Hashtbl.mem layer.Layer.persist.Layer.nodes node_name then
     raise (InvalidCommand (
              "Node "^ node_name ^" already exists in layer "^ layer_name)) ;

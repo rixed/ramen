@@ -434,8 +434,7 @@ let bucket_max b =
 let timeseries conf headers body =
   let open Lang.Operation in
   let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
-  let ts_of_node_field req node data_field =
-    let layer, node = layer_node_of_user_string conf node in
+  let ts_of_node_field req layer node data_field =
     match C.find_node conf layer node with
     | exception Not_found ->
       raise (Failure ("Unknown node "^ node))
@@ -545,31 +544,43 @@ let timeseries conf headers body =
     else (
       (* Add this layer to the running configuration: *)
       let layer =
-        C.add_parsed_node conf node_name layer_name op_text operation in
+        C.add_parsed_node ~timeout:300.
+          conf node_name layer_name op_text operation in
       let node = Hashtbl.find layer.L.persist.L.nodes node_name in
       C.add_link conf parent node ;
       Compiler.compile conf layer ;
       RamenProcesses.run conf layer ;
     ) ;
-    layer_name ^"/"^ node_name, "data"
+    layer_name, node_name, "data"
   in
   match List.map (fun req ->
-          let node, data_field =
+          let layer_name, node_name, data_field =
             match req.spec with
-            | Predefined { node ; data_field } -> node, data_field
+            | Predefined { node ; data_field } ->
+              let layer, node = layer_node_of_user_string conf node in
+              layer, node, data_field
             | NewTempNode { select_x ; select_y ; from ; where } ->
               create_temporary_node select_x select_y from where in
-          let times, values = ts_of_node_field req node data_field in
+          let node = C.find_node conf layer_name node_name in
+          RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
+          let times, values = ts_of_node_field req layer_name node_name data_field in
           { id = req.id ; times ; values }) msg.timeseries with
   | exception Failure err -> bad_request err
   | resp ->
     let body = PPP.to_string timeseries_resp_ppp resp in
     respond_ok ~body ()
 
+(* A thread that hunt for unused layers *)
+let rec timeout_layers conf =
+  RamenProcesses.timeout_layers conf ;
+  let%lwt () = Lwt_unix.sleep 7.1 in
+  timeout_layers conf
+
 let start do_persist debug ramen_url version_tag node_dir port cert_opt
           key_opt () =
   logger := make_logger debug ;
   let conf = C.make_conf do_persist ramen_url debug version_tag node_dir in
+  async (fun () -> timeout_layers conf) ;
   let router meth path _params headers body =
     (* The function called for each HTTP request: *)
       match meth, path with

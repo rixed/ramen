@@ -2,6 +2,7 @@ open Batteries
 open Log
 module C = RamenConf
 module N = RamenConf.Node
+module L = RamenConf.Layer
 module SL = RamenSharedTypes.Layer
 
 let run_background cmd args env =
@@ -130,3 +131,40 @@ let stop conf layer =
     List.iter Lwt.cancel layer.C.Layer.importing_threads ;
     layer.C.Layer.importing_threads <- [] ;
     C.save_graph conf
+
+(* Timeout unused layers.
+ * By unused, we mean either: no layer depends on it, or no one cares for
+ * what it exports. *)
+
+let use_layer conf now layer_name =
+  let layer = Hashtbl.find conf.C.graph.C.layers layer_name in
+  layer.L.persist.L.last_used <- now
+
+let timeout_layers conf =
+  (* FIXME: We need a lock on the graph config *)
+  (* Build the set of all defined and all used layers *)
+  let defined, used = Hashtbl.fold (fun layer_name layer (defined, used) ->
+      Set.add layer_name defined,
+      Hashtbl.fold (fun _node_name node used ->
+          List.fold_left (fun used parent ->
+              if parent.N.layer = layer_name then used
+              else Set.add parent.N.layer used
+            ) used node.N.parents
+        ) layer.L.persist.L.nodes used
+    ) conf.C.graph.C.layers (Set.empty, Set.empty) in
+  let now = Unix.gettimeofday () in
+  Set.iter (use_layer conf now) used ;
+  let unused = Set.diff defined used in
+  Set.iter (fun layer_name ->
+      let layer = Hashtbl.find conf.C.graph.C.layers layer_name in
+      if layer.L.persist.L.timeout > 0. &&
+         now > layer.L.persist.L.last_used +. layer.L.persist.L.timeout then (
+        (try
+          stop conf layer ;
+          !logger.info "Deleting unused layer %s after a %gs timeout"
+            layer_name layer.L.persist.L.timeout ;
+        with NotRunning -> ()) ;
+        Hashtbl.remove conf.C.graph.C.layers layer_name ;
+      )
+    ) unused ;
+  C.save_graph conf
