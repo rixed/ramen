@@ -74,7 +74,7 @@ let run debug ramen_url () =
   Lwt_main.run (
     http_get (ramen_url ^"/run") >>= check_ok)
 
-let pause debug ramen_url () =
+let shutdown debug ramen_url () =
   logger := make_logger debug ;
   Lwt_main.run (
     http_get (ramen_url ^"/stop") >>= check_ok)

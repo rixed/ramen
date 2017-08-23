@@ -148,12 +148,12 @@ let run =
       $ server_url),
     info "run")
 
-let pause =
+let shutdown =
   Term.(
-    (const ApiCmd.pause
+    (const ApiCmd.shutdown
       $ debug
       $ server_url),
-    info "pause")
+    info "shutdown")
 
 let as_csv =
   let i = Arg.info ~doc:"output CSV rather than JSON"
@@ -194,7 +194,7 @@ let () =
   match Term.eval_choice default [
     server_start ;
     dequeue ; summary ;
-    add ; compile ; run ; pause ;
+    add ; compile ; run ; shutdown ;
     tail
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42
