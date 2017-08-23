@@ -172,6 +172,7 @@ type export_resp =
 
 (* Autocompletion of names: *)
 
+(* TODO: exporting : bool option ; temporary : bool option *)
 type complete_node_req =
   { node_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
 

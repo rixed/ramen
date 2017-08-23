@@ -299,7 +299,7 @@ struct
     (* TODO: Here and elsewhere, we want the location (start+length) of the
      * thing in addition to the thing *)
     let p =
-      (integer >>: narrowest_int_scalar)        |||
+      (integer >>: narrowest_int_scalar) |||
       (integer +- strinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
       (integer +- strinG "i16" >>: fun i -> VI16 (Int16.of_string (Num.to_string i))) |||
       (integer +- strinG "i32" >>: fun i -> VI32 (Int32.of_string (Num.to_string i))) |||
@@ -979,7 +979,8 @@ struct
 
   type t =
     (* Generate values out of thin air. The difference with Select is that
-     * Yield does not wait for some input. *)
+     * Yield does not wait for some input. FIXME: aggregate could behave like
+     * a yield when there is no input. *)
     | Yield of selected_field list
     (* Aggregation of several tuples into one based on some key. Superficially looks like
      * a select but much more involved. *)

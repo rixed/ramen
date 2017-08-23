@@ -163,10 +163,12 @@ struct
           last_status_change = now ;
           last_started = None ; last_stopped = None }) persist in
     let layer = { name ; persist ; importing_threads = [] } in
-    (* downgrade the status to compiled since the workers can't be running
+    (* Downgrade the status to compiled since the workers can't be running
      * anymore.  TODO: check the binaries are still there or downgrade to
      * edition. *)
     if persist.status = SL.Running then set_status layer SL.Compiled ;
+    (* FIXME: also, as a precaution, delete any temporary layer (maybe we
+     * crashed because of it? *)
     layer
 
   (* Layer edition: only when stopped *)
@@ -315,7 +317,6 @@ let add_link conf src dst =
 let make_conf do_persist ramen_url debug version_tag persist_dir =
   { graph = load_graph do_persist persist_dir ; do_persist ;
     ramen_url ; debug ; version_tag ; persist_dir }
-
 
 (* AutoCompletion of node/field names *)
 
