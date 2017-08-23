@@ -6,8 +6,7 @@ type options = { debug : bool ; monitor : bool }
 
 let options debug monitor = { debug ; monitor }
 
-let rebase dataset_name name =
-  if dataset_name = "" then name else dataset_name ^"/"^ name
+let rebase dataset_name name = dataset_name ^"/"^ name
 
 (* Get the operations to import the dataset and do basic transformations.
  * Named streams belonging to this base layer:
