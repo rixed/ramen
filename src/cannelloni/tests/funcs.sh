@@ -79,7 +79,7 @@ add_cars() {
     CO2 float)"
 }
 
-nb_cars=$(wc -l "$fixtures/cars.csv" | cut -d' ' -f 1)
+nb_cars=$(wc -l "$fixtures/cars.csv" | awk '{print $1}')
 
 run() {
   eval "$ramen add test $LAYER_CMD" &&
