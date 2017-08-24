@@ -542,6 +542,9 @@ struct
   let expr_false =
     Const (make_bool_typ ~nullable:false "false", VBool false)
 
+  let expr_one =
+    Const (make_typ ~typ:TU8 ~nullable:false "one", VU8 (Uint8.of_int 1))
+
   let is_true = function
     | Const (_ , VBool true) -> true
     | _ -> false
@@ -596,7 +599,7 @@ struct
     | Eq (t, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Lag (t, e1, e2) -> Printf.fprintf fmt "lag(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | SeasonAvg (t, e1, e2, e3) ->
-      Printf.fprintf fmt "season-avg(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
+      Printf.fprintf fmt "season_avg(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
 
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
@@ -857,7 +860,10 @@ struct
          (strinG "now" >>: fun () -> Now (make_float_typ ~nullable:false "now")) |||
          (afun2 "lag" >>: fun (e1, e2) -> Lag (make_typ "lag", e1, e2)) |||
          (* season-avg perform a division thus the float type *)
-         (afun3 "season-avg" >>: fun (e1, e2, e3) -> SeasonAvg (make_float_typ "season-avg", e1, e2, e3)) |||
+         (afun3 "season_avg" >>: fun (e1, e2, e3) ->
+          SeasonAvg (make_float_typ "season_avg", e1, e2, e3)) |||
+         (afun2 "recent_avg" >>: fun (e1, e2) ->
+          SeasonAvg (make_float_typ "season_avg", expr_one, e1, e2)) |||
          sequence ||| cast) m
 
     and sequence =

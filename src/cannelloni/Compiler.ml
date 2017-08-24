@@ -334,7 +334,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
      * null) *)
     Expr.check_const "season-avg period" e1 ;
     Expr.check_const "season-avg counts" e2 ;
-    check_ternary_op op_typ (fun (_,_,t) -> t)
+    check_ternary_op op_typ return_float
       ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1
       ~exp_sub_typ2:TU16 ~exp_sub_nullable2:false e2
       ~exp_sub_typ3:TFloat e3
