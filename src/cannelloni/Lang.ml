@@ -144,6 +144,7 @@ let tuple_need_state = function
     | BeginOfRange (_, a) -> BeginOfRange (typ, replace_typ a)
     | EndOfRange (_, a) -> EndOfRange (typ, replace_typ a)
     | Lag (_, a, b) -> Lag (typ, replace_typ a, replace_typ b)
+    | SeasonAvg (_, a, b, c) -> SeasonAvg (typ, replace_typ a, replace_typ b, replace_typ c)
 
   let replace_typ_in_expr = function
     | Ok (expr, rest) -> Ok (replace_typ expr, rest)
@@ -525,6 +526,13 @@ struct
     | BeginOfRange of typ * t
     | EndOfRange of typ * t
     | Lag of typ * t * t
+    (* If the current time is t, the season average of period p on k seasons is
+     * the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence of v(t).
+     * This is because we want to compare v(t) with this season average.
+     * Notice that lag is a special case of season average with p=k and k=1,
+     * but with a universal type for the data (while season-avg works only on
+     * numbers). *)
+    | SeasonAvg of typ * t * t * t (* period, how many season to keep, expression *)
 
   let expr_true =
     Const (make_bool_typ ~nullable:false "true", VBool true)
@@ -538,6 +546,10 @@ struct
 
   let is_virtual_field f =
     String.length f > 0 && f.[0] = '#'
+
+  let check_const what = function
+    | Const _ -> ()
+    | _ -> raise (SyntaxError (what ^" must be constant"))
 
   let rec print with_types fmt =
     let add_types t =
@@ -581,6 +593,8 @@ struct
     | Gt (t, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Eq (t, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Lag (t, e1, e2) -> Printf.fprintf fmt "lag(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | SeasonAvg (t, e1, e2, e3) ->
+      Printf.fprintf fmt "season-avg(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
 
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
@@ -591,7 +605,9 @@ struct
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
     | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t
-    | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _) -> t
+    | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
+    | SeasonAvg (t, _, _, _) ->
+      t
 
   let is_nullable e =
     let t = typ_of e in
@@ -631,13 +647,18 @@ struct
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       f i'' expr
+    | SeasonAvg (_, e1, e2, e3) ->
+      let i' = fold_by_depth f i e1 in
+      let i''= fold_by_depth f i' e2 in
+      let i'''= fold_by_depth f i'' e3 in
+      f i''' expr
 
   let iter f = fold_by_depth (fun () e -> f e) ()
 
   let unpure_iter f e =
     fold_by_depth (fun () -> function
       | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-      | AggrLast _ | AggrPercentile _ | Lag _ as e ->
+      | AggrLast _ | AggrPercentile _ | Lag _ | SeasonAvg _ as e ->
         f e
       | Const _ | Param _ | Field _ | Cast _ -> ()
       | Now _ | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
@@ -797,16 +818,21 @@ struct
       binary_ops_reducer ~op ~right_associative:true
                          ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
+    and afun a n =
+      let sep = opt_blanks -- char ',' -- opt_blanks in
+      strinG n -- opt_blanks -- char '(' -- opt_blanks -+
+      repeat ~min:a ~max:a ~sep highestest_prec +- opt_blanks +- char ')'
+
     and afun1 n =
-      let sep = check (char '(') ||| blanks in
-      strinG n -- optional ~def:() (blanks -- strinG "of") -- sep -+
-      highestest_prec
+      (strinG n -- blanks -- optional ~def:() (strinG "of" -- blanks) -+
+       highestest_prec) |||
+      (afun 1 n >>: function [a] -> a | _ -> assert false)
 
     and afun2 n =
-      let sep = opt_blanks -- char '(' -- opt_blanks in
-      strinG n -- sep -+
-      highestest_prec +- opt_blanks +- char ',' +- opt_blanks ++
-      highestest_prec +- opt_blanks +- char ')'
+      afun 2 n >>: function [a;b] -> (a, b) | _ -> assert false
+
+    and afun3 n =
+      afun 3 n >>: function [a;b;c] -> (a, b, c) | _ -> assert false
 
     and highest_prec_left_assoc m =
       ((afun1 "not" >>: fun e -> Not (make_bool_typ "not operator", e)) |||
@@ -844,6 +870,8 @@ struct
          (afun1 "length" >>: fun e -> Length (make_typ ~typ:TU16 "length", e)) |||
          (strinG "now" >>: fun () -> Now (make_float_typ ~nullable:false "now")) |||
          (afun2 "lag" >>: fun (e1, e2) -> Lag (make_typ "lag", e1, e2)) |||
+         (* season-avg perform a division thus the float type *)
+         (afun3 "season-avg" >>: fun (e1, e2, e3) -> SeasonAvg (make_float_typ "season-avg", e1, e2, e3)) |||
          sequence ||| cast) m
 
     and sequence =

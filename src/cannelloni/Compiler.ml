@@ -180,6 +180,29 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       check_operator op_typ actual_op_typ nullable || changed
     | _ -> changed
   in
+  let check_ternary_op op_typ make_op_typ ?(propagate_null=true)
+                       ?exp_sub_typ1 ?exp_sub_nullable1 sub_expr1
+                       ?exp_sub_typ2 ?exp_sub_nullable2 sub_expr2
+                       ?exp_sub_typ3 ?exp_sub_nullable3 sub_expr3 =
+    let sub_typ1 = typ_of sub_expr1 and sub_typ2 = typ_of sub_expr2 and sub_typ3 = typ_of sub_expr3 in
+    let changed =
+        check_operand op_typ ?exp_sub_typ:exp_sub_typ1 ?exp_sub_nullable:exp_sub_nullable1 sub_expr1 in
+    let changed =
+        check_operand op_typ ?exp_sub_typ:exp_sub_typ2 ?exp_sub_nullable:exp_sub_nullable2 sub_expr2 || changed in
+    let changed =
+        check_operand op_typ ?exp_sub_typ:exp_sub_typ3 ?exp_sub_nullable:exp_sub_nullable3 sub_expr3 || changed in
+    match sub_typ1.scalar_typ, sub_typ2.scalar_typ, sub_typ3.scalar_typ with
+    | Some sub_typ1_typ, Some sub_typ2_typ, Some sub_typ3_typ ->
+      let actual_op_typ = make_op_typ (sub_typ1_typ, sub_typ2_typ, sub_typ3_typ) in
+      let nullable = if propagate_null then
+          match sub_typ1.nullable, sub_typ2.nullable, sub_typ3.nullable with
+          | Some true, _, _ | _, Some true, _ | _, _, Some true -> Some true
+          | Some false, Some false, Some false -> Some false
+          | _ -> None
+        else None in
+      check_operator op_typ actual_op_typ nullable || changed
+    | _ -> changed
+  in
   (* Useful helpers for make_op_typ above: *)
   let return_bool _ = TBool
   and return_float _ = TFloat
@@ -302,11 +325,19 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* e1 must be an unsigned small constant integer. For now that mean user
      * must have entered a constant. Later we might pre-evaluate constant
      * expressions into constant values. *)
-    (match e1 with Expr.Const _ -> ()
-                 | _ -> raise (SyntaxError "Lag must be constant")) ;
+    Expr.check_const "lag" e1 ;
     (* ... and e2 can be anything and the type of lag will be the same,
      * nullable (since we might lag beyond the start of the window. *)
     check_binary_op op_typ snd ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1 e2
+  | SeasonAvg (op_typ, e1, e2, e3) ->
+    (* As above, but e3 must be numeric (therefore the result cannot be
+     * null) *)
+    Expr.check_const "season-avg period" e1 ;
+    Expr.check_const "season-avg counts" e2 ;
+    check_ternary_op op_typ (fun (_,_,t) -> t)
+      ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1
+      ~exp_sub_typ2:TU16 ~exp_sub_nullable2:false e2
+      ~exp_sub_typ3:TFloat e3
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.

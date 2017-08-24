@@ -67,6 +67,29 @@ let lag_finalize (prevs, count) =
   !logger.info "lag_finalize: return value from index %d" (count mod Array.length prevs) ;
   prevs.(count mod Array.length prevs)
 
+let season_avg = lag
+let season_avg_finalize p n (prevs, count) =
+  (* ex: n=3, p=4 (quarterly), array of size n*p+1 = 13, after 42 entries
+     (counted from 0 to 41, last was 41 and next one will be 42):
+
+     count:            last--v   v--count=42
+     array index:    0   1   2   3   4   5   6   7   8   9  10  11  12
+     value time:    39  40  41  29  30  31  32  33  34  35  36  37  38
+     values we avg:        NOT   Y               Y               Y
+
+     Start from the oldest entry (which is at index count) then skip p values,
+     etc, and stop when we reach count-1 (excluded). Since the order does not
+     matter for an average we could proceed differently and avoid the modulo
+     but this approach is simpler. *)
+  (* FIXME: more accurate way to compute an avg with floats than sum all and
+   * divide! *)
+  let rec loop sum count idx =
+    if count >= n then sum /. float_of_int count else
+    loop (sum +. prevs.(idx mod Array.length prevs)) (count+1) (idx+p)
+  in
+  loop 0. 0 count
+
+
 let getenv ?def n =
   try Sys.getenv n
   with Not_found ->
