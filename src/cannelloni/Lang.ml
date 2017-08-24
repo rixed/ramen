@@ -360,19 +360,11 @@ end
 let keyword =
   let open RamenParsing in
   (
-    strinG "true" ||| strinG "false" ||| strinG "and" ||| strinG "or" |||
-    strinG "min" ||| strinG "max" ||| strinG "sum" ||| strinG "percentile" |||
-    strinG "of" ||| strinG "is" ||| strinG "not" ||| strinG "null" |||
-    strinG "group" ||| strinG "by" ||| strinG "select" ||| strinG "where" |||
-    strinG "on" ||| strinG "change" ||| strinG "flush" ||| strinG "when" |||
-    strinG "age" ||| strinG "notify" ||| strinG "subject" ||| strinG "text" |||
-    strinG "read" ||| strinG "csv" ||| strinG "file" |||
-    strinG "separator" ||| strinG "as" ||| strinG "first" ||| strinG "last" |||
-    strinG "sequence" ||| strinG "abs" ||| strinG "length" |||
-    strinG "concat" ||| strinG "now" ||| strinG "yield" ||| strinG "slide" |||
-    strinG "remove" ||| strinG "keep" ||| strinG "directory" |||
-    strinG "export" |||
-    (Scalar.Parser.typ >>: fun _ -> ())
+    (* Some values that must not be parsed as field names: *)
+    strinG "true" ||| strinG "false" ||| strinG "null" |||
+    (* Some functions with possibly no arguments that must not be
+     * parsed as field names: *)
+    strinG "now" ||| strinG "sequence"
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
   let open RamenParsing in
@@ -714,17 +706,6 @@ struct
           Some { where = ParsersMisc.Item ((0,7), '.');\
                  what=["eof"]})))\
         (test_p field "pasglop.bytes" |> replace_typ_in_expr)
-
-      (Bad (\
-        NoSolution (\
-          Some { where = ParsersMisc.EndOfStream ;\
-                 what = ["digit";"not";"check";"not";"no keyword";"field"]})))\
-        (test_p field "yield" |> replace_typ_in_expr)
-
-      (Ok (\
-        Field (typ, ref TupleIn, "yield"),\
-        (7, [])))\
-        (test_p field "'yield'" |> replace_typ_in_expr)
 
       (Ok (\
         Field (typ, ref TupleIn, "#count"),\
