@@ -74,7 +74,7 @@ let tuple_has_type_output = function
   | TupleGroupPrevious | TupleOut -> true
   | _ -> false
 
-let tuple_need_aggr = function
+let tuple_need_state = function
   | TupleGroup | TupleGroupFirst | TupleGroupLast | TupleGroupPrevious -> true
   | _ -> false
 
@@ -446,16 +446,54 @@ struct
     { typ with expr_name ; uniq_num = !uniq_num_seq }
 
   (* Expressions on scalars (aka fields) *)
+  (* FIXME: when we end prototyping use objects to make it easier to add
+   * operations *)
   type t =
     (* TODO: classify by type and number of operands to simplify adding
      * functions *)
     | Const of typ * scalar_value
     | Field of typ * tuple_prefix ref * string (* field name *)
     | Param of typ * string
-    (* Valid only within an aggregation operation; but must be here to allow
-     * operations on top of the result of an aggregation function, such as: "(1
-     * + min field1) / (max field2)". Even within an aggregation, not valid
-     * within another aggregation function. *)
+    (* On functions, internal states, and aggregates:
+     *
+     * Functions come in three variety:
+     * - pure functions: their value depends solely on their parameters, and
+     *   is computed whenever it is required.
+     * - functions with an internal state, which need to be:
+     *   - initialized when the window starts
+     *   - updated with the new values of their parameter at each step
+     *   - finalize a result when they need to be evaluated - this can be
+     *     done several times, ie the same internal state can "fire" several
+     *     values
+     *   - clean their initial state when the window is moved (we currently
+     *     handle this automatically by resetting the state to its initial
+     *     value and replay the kept tuples, but this could be improved with
+     *     some support from the functions).
+     *
+     * Aggregate functions have an internal state, but not all functions with
+     * an internal state are aggregate functions. There is actually little
+     * need to distinguish.
+     *
+     * When a parameter to a function with state is another function with state
+     * then this second function must deliver a value at every step. This is OK
+     * as we have said that a stateful function can fire several times. So for
+     * example we could write "min(max(data))", which of course would be equal
+     * to "first(data)", or "lag(1, lag(1, data))" equivalently to
+     * "lag(2, data)", or more interestingly "lag(1, max(data))", which would
+     * return the previous max within the group. Due to the fact that we
+     * initilize an internal state only when the first value is met, we must
+     * also get the inner function's value when initializing the outer one,
+     * which requires initializing in depth first order as well.
+     *
+     * Pure function can be used anywhere while stateful functions can only be
+     * used in clauses that have access to the group (ie. not the where_fast
+     * clause).
+     *
+     * In this list we call AggrX an aggregate function X to help distinguish
+     * with the non-aggregate variant. For instance AggrMax(data) is the max
+     * of data over the group, while Max(data1, data2) is the max of data1 and
+     * data2.
+     * We do not further denote pure or stateful functions. *)
     (* TODO: Add avg, stddev... *)
     | AggrMin of typ * t
     | AggrMax of typ * t
@@ -464,14 +502,12 @@ struct
     | AggrOr  of typ * t
     | AggrFirst of typ * t
     | AggrLast of typ * t
-    (* TODO: several percentiles.
-     * Not easy because then the function must return a list instead of a
-     * scalar. It's probably easier to try to optimise the code generated
-     * for when the same expression is used in several percentile functions. *)
+    (* TODO: several percentiles. Requires multi values returns. *)
     | AggrPercentile of typ * t * t
     (* TODO: Other functions: random, date_part, coalesce, string_split, case expressions... *)
     | Age of typ * t
     | Now of typ
+    (* FIXME: see note in CodeGenLib.ml *)
     | Sequence of typ * t * t (* start, step *)
     | Cast of typ * t
     | Length of typ * t (* string length *)
@@ -492,6 +528,7 @@ struct
     | Ge of typ * t * t
     | Gt of typ * t * t
     | Eq of typ * t * t
+    (* For network address range checks: *)
     | BeginOfRange of typ * t
     | EndOfRange of typ * t
 
@@ -577,9 +614,7 @@ struct
     | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2) ->
       fold f (fold f (f i expr) e1) e2
 
-  (* Propagate values down the tree only. Final return value is thus
-   * mostly meaningless (it's the value for the last path down to the
-   * last leaf). *)
+  (* Propagate values up the tree only, depth first. *)
   let rec fold_by_depth f i expr =
     match expr with
     | Const _ | Param _ | Field _ | Now _ ->
@@ -588,32 +623,34 @@ struct
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
     | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
     | BeginOfRange (_, e) | EndOfRange (_, e) ->
-      fold_by_depth f (f i expr) e ;
+      f (fold_by_depth f i e) expr
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
     | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
     | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2) ->
-      let i' = f i expr in
-      fold_by_depth f i' e1 ;
-      fold_by_depth f i' e2
+      let i' = fold_by_depth f i e1 in
+      let i''= fold_by_depth f i' e2 in
+      f i'' expr
 
   let iter f = fold_by_depth (fun () e -> f e) ()
 
-  let aggr_iter f expr =
-    fold_by_depth (fun in_aggr -> function
+  type function_type = Pure of t | Stateful of t | Aggregate of t
+
+  let fun_iter f e =
+    fold_by_depth (fun () -> function
       | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-      | AggrLast _ | AggrPercentile _ as expr ->
-        if in_aggr then (
-          let m = "Aggregate functions are not allowed within \
-                   aggregate functions" in
-          raise (SyntaxError m)) ;
-        f expr ;
-        true
+      | AggrLast _ | AggrPercentile _ as e ->
+        f (Aggregate e)
       | Const _ | Param _ | Field _ | Cast _ | Now _
       | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
       | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
       | Length _ | BeginOfRange _ | EndOfRange _ ->
-        in_aggr) false expr |> ignore
+        ()) () e |> ignore
+
+  let unpure_iter f e =
+    fun_iter (function
+      | Pure _ -> ()
+      | Stateful e | Aggregate e -> f e) e
 
   module Parser =
   struct
@@ -1450,7 +1487,7 @@ struct
     (* Check that the expression is valid, or return an error message.
      * Also perform some optimisation, numeric promotions, etc... *)
     let check =
-      let no_aggr_in clause =
+      let pure_in clause =
         "Aggregation function not allowed in "^ clause
       and fields_must_be_from lst clause =
         Printf.sprintf "All fields must come from %s in %s"
@@ -1459,10 +1496,10 @@ struct
             lst)
           clause
         in
-      let no_aggr_in_where = no_aggr_in "WHERE clause"
-      and no_aggr_in_key = no_aggr_in "GROUP-BY clause"
-      and check_no_aggr m =
-        Expr.aggr_iter (fun _ -> raise (SyntaxError m))
+      let pure_in_where = pure_in "WHERE clause"
+      and pure_in_key = pure_in "GROUP-BY clause"
+      and check_pure m =
+        Expr.unpure_iter (fun _ -> raise (SyntaxError m))
       and check_fields_from lst clause =
         Expr.iter (function
           | Expr.Field (_, tuple, _) ->
@@ -1488,8 +1525,8 @@ struct
       in function
       | Yield fields ->
         List.iter (fun sf ->
-            let m = "Aggregation functions not allowed in YIELDs" in
-            check_no_aggr m sf.expr ;
+            let m = "Stateful functions not allowed in YIELDs" in
+            check_pure m sf.expr ;
             check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD operation" sf.expr
           ) fields
       | Aggregate { fields ; where ; key ; commit_when ; flush_when ; flush_how ; export ; _ } ->
@@ -1497,22 +1534,23 @@ struct
             check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;
         check_export fields export ;
-        check_no_aggr no_aggr_in_where where ;
+        (* TODO: we could allow this if we had not only a state per group but
+         * also a global state. But then in some place we would need a way to
+         * distinguish between group or global context. *)
+        check_pure pure_in_where where ;
         check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOut] "WHERE clause" where ;
         List.iter (fun k ->
-          check_no_aggr no_aggr_in_key k ;
+          check_pure pure_in_key k ;
           check_fields_from [TupleIn] "KEY clause" k) key ;
-        Expr.aggr_iter ignore commit_when ; (* standards checks *)
         check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
         Option.may (fun flush_when ->
-            Expr.aggr_iter ignore flush_when ;
             check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN clause" flush_when
           ) flush_when ;
         (match flush_how with
         | Reset | Slide _ -> ()
         | RemoveAll e | KeepOnly e ->
           let m = "Aggregation functions not allowed in KEEP/REMOVE clause" in
-          check_no_aggr m e ;
+          check_pure m e ;
           check_fields_from [TupleGroup] "REMOVE clause" e)
         (* TODO: url_notify: check field names from text templates *)
       | ReadCSVFile _ -> ()

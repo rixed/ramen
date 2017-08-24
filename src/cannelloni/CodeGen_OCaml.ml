@@ -382,7 +382,7 @@ let implementation_of expr =
   | _, None ->
     assert false
 
-let name_of_aggr =
+let name_of_state =
   let open Expr in
   function
   | AggrMin (t, _) | AggrMax (t, _) | AggrPercentile (t, _, _)
@@ -407,10 +407,10 @@ let otype_of_type = function
   | TCidrv6 -> "(uint128 * int)"
   | TNum -> assert false
 
-let otype_of_aggr aggr =
-  let t = Option.get Expr.((typ_of aggr).scalar_typ) |>
+let otype_of_state e =
+  let t = Option.get Expr.((typ_of e).scalar_typ) |>
           otype_of_type in
-  match aggr with
+  match e with
   | Expr.AggrPercentile _ -> t ^" list"
   | _ -> t
 
@@ -460,16 +460,20 @@ let conv_from_to_opt from_typ to_typ_opt p fmt e =
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
-let rec conv_to to_typ fmt e =
+let rec conv_to ?state to_typ fmt e =
   let from_typ = Expr.((typ_of e).scalar_typ) in
   match from_typ, to_typ with
-  | Some a, Some b -> conv_from_to a b emit_expr fmt e
-  | _, None -> emit_expr fmt e (* No conversion required *)
+  | Some a, Some b -> conv_from_to a b (emit_expr ?state) fmt e
+  | _, None -> (emit_expr ?state) fmt e (* No conversion required *)
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string Scalar.print_typ b))
 
-and emit_expr oc =
+(* state is just the name of the state record to use, or None if we must
+ * assume the field name is actually already present in the environment
+ * (as is the case in aggr_init) *)
+and emit_expr ?(state=true) oc =
+  let record_of_state = if state then "aggr_." else "" in
   let open Expr in
   function
   | Const (_, c) ->
@@ -481,36 +485,36 @@ and emit_expr oc =
     failwith "TODO: code gen for params"
   | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
     | AggrLast _ as expr) ->
-     (* This assumes there is a parameter named aggr_ for the aggregates *)
-     Printf.fprintf oc "aggr_.%s" (name_of_aggr expr)
+     Printf.fprintf oc "%s%s" record_of_state (name_of_state expr)
   | AggrPercentile (_, pct, _) as expr ->
-    Printf.fprintf oc "CodeGenLib.percentile_finalize (%a) aggr_.%s"
-      (conv_to (Some TFloat)) pct
-      (name_of_aggr expr)
+    Printf.fprintf oc "CodeGenLib.percentile_finalize (%a) %s%s"
+      (conv_to ~state (Some TFloat)) pct
+      record_of_state
+      (name_of_state expr)
   | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
   | Length (_, e) | BeginOfRange (_, e) | EndOfRange (_, e) as expr ->
-    emit_function1 expr oc e
+    emit_function1 ~state expr oc e
   | Defined (_, e) ->
-    Printf.fprintf oc "(%a <> None)" emit_expr e
+    Printf.fprintf oc "(%a <> None)" (emit_expr ~state) e
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2)
   | Div (_, e1, e2) | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2)
   | Or (_, e1, e2) | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2)
   | Sequence (_, e1, e2) | Mod (_, e1, e2) as expr ->
-    emit_function2 expr oc e1 e2
+    emit_function2 ~state expr oc e1 e2
 
 and emit_function0 expr oc =
   let impl, _ = implementation_of expr in
   Printf.fprintf oc "(%s ())" impl
 
-and emit_function1 expr oc e =
+and emit_function1 ?state expr oc e =
   let impl, arg_typ = implementation_of expr in
   Printf.fprintf oc "(%s%s %a)"
     (if Expr.is_nullable e then "BatOption.map " else "")
     impl
-    (conv_to arg_typ) e
+    (conv_to ?state arg_typ) e
 
-and emit_function2 expr oc e1 e2 =
+and emit_function2 ?state expr oc e1 e2 =
   let impl, arg_typ = implementation_of expr in
   (* When we have no conversion to do, e1 and e2 still have to have the same type or
    * the compiler will complain: *)
@@ -526,11 +530,11 @@ and emit_function2 expr oc e1 e2 =
   if is_nullable e1 then (
     Printf.fprintf oc "\
       (match %a with None -> None | Some v1_ -> "
-      emit_expr e1 ;
+      (emit_expr ?state) e1 ;
     if is_nullable e2 then (
       Printf.fprintf oc "\
         (match %a with None -> None | Some v2_ -> %s %a %a)"
-        emit_expr e2
+        (emit_expr ?state) e2
         impl
         (conv_from_to_opt TString arg_typ String.print) "v1_"
         (conv_from_to_opt TString arg_typ String.print) "v2_"
@@ -538,22 +542,22 @@ and emit_function2 expr oc e1 e2 =
       Printf.fprintf oc "%s %a %a"
         impl
         (conv_from_to_opt TString arg_typ String.print) "v1_"
-        (conv_to arg_typ) e2
+        (conv_to ?state arg_typ) e2
     ) ;
     Printf.fprintf oc ")"
   ) else (
     if is_nullable e2 then (
       Printf.fprintf oc "\
         (match %a with None -> None | Some v2_ -> %s %a %a)"
-        emit_expr e2
+        (emit_expr ?state) e2
         impl
-        (conv_to arg_typ) e1
+        (conv_to ?state arg_typ) e1
         (conv_from_to_opt TString arg_typ String.print) "v2_"
     ) else (
       Printf.fprintf oc "(%s %a %a)"
         impl
-        (conv_to arg_typ) e1
-        (conv_to arg_typ) e2
+        (conv_to ?state arg_typ) e1
+        (conv_to ?state arg_typ) e2
     )
   )
 
@@ -595,7 +599,7 @@ let emit_where
   if always_true then
     Printf.fprintf oc "= true\n"
   else
-    Printf.fprintf oc "=\n\t%a\n" emit_expr expr
+    Printf.fprintf oc "=\n\t%a\n" (emit_expr ~state:true) expr
 
 (* If with aggr we have the aggregate record as first parameter
  * and also the first and last incoming tuple of this aggr as additional
@@ -626,7 +630,7 @@ let emit_field_selection
   List.iter (fun sf ->
       Printf.fprintf oc "\tlet %s = %a in\n"
         (id_of_field_name ~tuple:TupleOut sf.Operation.alias)
-        emit_expr sf.Operation.expr ;
+        (emit_expr ~state:true) sf.Operation.expr ;
       match sf.Operation.expr with
       | Expr.Field (_, tuple, field) when !tuple = TupleIn ->
         outputted := Set.add field !outputted
@@ -659,7 +663,7 @@ let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
   List.iteri (fun i expr ->
       Printf.fprintf oc "%s\n\t\t%a"
         (if i > 0 then "," else "")
-        emit_expr expr ;
+        (emit_expr ~state:true) expr ;
     ) exprs ;
   Printf.fprintf oc "\n\t)\n"
 
@@ -676,86 +680,106 @@ let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
-let for_each_aggr_fun selected_fields commit_when flush_when f =
+let for_each_unpure_fun selected_fields commit_when flush_when f =
   List.iter (fun sf ->
-      Expr.aggr_iter f sf.Operation.expr
+      Expr.unpure_iter f sf.Operation.expr
     ) selected_fields ;
-  Expr.aggr_iter f commit_when ;
-  Option.may (fun flush_when -> Expr.aggr_iter f flush_when) flush_when
+  Expr.unpure_iter f commit_when ;
+  Option.may (fun flush_when -> Expr.unpure_iter f flush_when) flush_when
 
-let emit_aggr_init name in_tuple_typ mentioned and_all_others
-                   commit_when flush_when oc selected_fields =
-  (* We must collect all aggregation functions present in the selected_fields
-   * and return a record with the proper types and init value for the aggr. *)
-  let need_aggr =
+let emit_group_state_init
+      name in_tuple_typ mentioned and_all_others
+      commit_when flush_when oc selected_fields =
+  (* We must collect all unpure functions present in the selected_fields
+   * and return a record with the proper types and init values for the required
+   * states. And we must do this in a depth first fashion, since a function
+   * state might require the value of another function, which must thus
+   * already be initialized and ready to fire its first value. *)
+  (* In the special case where we do not have any state at all, though, we
+   * end up with an empty record, which is illegal in OCaml so we need to
+   * specialize for this: *)
+  let need_group_state =
     try
-      for_each_aggr_fun selected_fields commit_when flush_when (fun _ ->
+      for_each_unpure_fun selected_fields commit_when flush_when (fun _ ->
         raise Exit) ;
       false
     with Exit -> true in
-  if not need_aggr then (
+  if not need_group_state then (
     Printf.fprintf oc "type %s = unit\n" name ;
     Printf.fprintf oc "let %s %a = ()\n\n"
       name
       (emit_in_tuple mentioned and_all_others) in_tuple_typ
   ) else (
+    (* First emit the record type definition: *)
     Printf.fprintf oc "type %s = {\n" name ;
-    for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
+    for_each_unpure_fun selected_fields commit_when flush_when (fun f ->
         Printf.fprintf oc "\tmutable %s : %s ;\n"
-          (name_of_aggr aggr)
-          (otype_of_aggr aggr)
+          (name_of_state f)
+          (otype_of_state f)
       ) ;
     Printf.fprintf oc "}\n\n" ;
-    Printf.fprintf oc "let %s %a =\n\t{\n"
+    (* Then the initialization function proper: *)
+    Printf.fprintf oc "let %s %a =\n"
       name
       (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-    for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
-        Printf.fprintf oc "\t%s = " (name_of_aggr aggr) ;
-        (* For most aggr function we start with the first value *)
+    for_each_unpure_fun selected_fields commit_when flush_when (fun f ->
+        Printf.fprintf oc "\tlet %s = " (name_of_state f) ;
+        (* For most stateful function we start with the first value.
+         * Beware, though, that should we need to evaluate an expression
+         * requiring the state record then we should emit the field name
+         * only (that has been defined above since we define them in depth
+         * first order). *)
         (let open Expr in
-        match aggr with
+        match f with
         | AggrMin (_, e) | AggrMax (_, e) | AggrAnd (_, e)
         | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)
         | AggrSum (_, e) ->
-          let _impl, arg_typ = implementation_of aggr in
-          conv_to arg_typ oc e
+          let _impl, arg_typ = implementation_of f in
+          conv_to ~state:false arg_typ oc e
         | AggrPercentile (_, p, e) ->
-          let impl, arg_typ = implementation_of aggr in
+          let impl, arg_typ = implementation_of f in
           Printf.fprintf oc "%s [] %a %a"
             impl
-            (conv_to arg_typ) p
-            (conv_to arg_typ) e ;
+            (conv_to ~state:false arg_typ) p
+            (conv_to ~state:false arg_typ) e ;
         | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
         | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
         | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
         | BeginOfRange _ | EndOfRange _ ->
           assert false) ;
-        Printf.fprintf oc " ; \n" ;
+        Printf.fprintf oc " in\n"
       ) ;
-    Printf.fprintf oc "\t}\n"
+    (* And now build the state record from all those fields: *)
+    Printf.fprintf oc "\t{" ;
+    for_each_unpure_fun selected_fields commit_when flush_when (fun f ->
+        Printf.fprintf oc " %s ;" (name_of_state f)) ;
+    Printf.fprintf oc " }\n"
   )
 
-let emit_update_aggr name in_tuple_typ mentioned and_all_others
-                     commit_when flush_when oc selected_fields =
+let emit_update_state
+      name in_tuple_typ mentioned and_all_others
+      commit_when flush_when oc selected_fields =
   Printf.fprintf oc "let %s aggr_ %a =\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-  for_each_aggr_fun selected_fields commit_when flush_when (fun aggr ->
-      Printf.fprintf oc "\taggr_.%s <- (" (name_of_aggr aggr) ;
+  (* Note that for_each_unpure_fun proceed depth first so inner functions
+   * state will be updated first, which is what we want. *)
+  for_each_unpure_fun selected_fields commit_when flush_when (fun f ->
+      Printf.fprintf oc "\taggr_.%s <- (" (name_of_state f) ;
       (let open Expr in
-      match aggr with
+      match f with
       | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
       | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)  ->
-        let impl, arg_typ = implementation_of aggr in
+        let impl, arg_typ = implementation_of f in
         Printf.fprintf oc "%s aggr_.%s %a"
-          impl (name_of_aggr aggr) (conv_to arg_typ) e
+          impl (name_of_state f) (conv_to arg_typ) e
       | AggrPercentile (_, p, e) ->
         (* This value is optional but the percentile function takes an
          * optional value and return one so we do not have to deal with
          * it here: *)
-        let impl, arg_typ = implementation_of aggr in
+        let impl, arg_typ = implementation_of f in
         Printf.fprintf oc "%s aggr_.%s %a %a"
-          impl (name_of_aggr aggr)
+          impl (name_of_state f)
           (conv_to arg_typ) p
           (conv_to arg_typ) e
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
@@ -768,7 +792,7 @@ let emit_update_aggr name in_tuple_typ mentioned and_all_others
   Printf.fprintf oc "\t()\n"
 
 (* Note: we need aggr_ in addition to out_tupple because the commit-when clause
- * might have its own aggregates going on *)
+ * might have its own stateful functions going on *)
 let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
               oc commit_when =
   Printf.fprintf oc "let %s virtual_in_count_ %a %a \
@@ -786,23 +810,23 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ
     (emit_tuple TupleOut) out_tuple_typ
-    emit_expr commit_when
+    (emit_expr ~state:true) commit_when
 
 let emit_should_resubmit name in_tuple_typ mentioned and_all_others
                          oc flush_how =
   let open Operation in
-  Printf.fprintf oc "let %s aggregate_ %a =\n"
+  Printf.fprintf oc "let %s group_state_ %a =\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   match flush_how with
   | Reset ->
     Printf.fprintf oc "\tfalse\n"
   | Slide n ->
-    Printf.fprintf oc "\taggregate_.CodeGenLib.nb_entries > %d\n" n
+    Printf.fprintf oc "\tgroup_state_.CodeGenLib.nb_entries > %d\n" n
   | KeepOnly e ->
-    Printf.fprintf oc "\t%a\n" emit_expr e
+    Printf.fprintf oc "\t%a\n" (emit_expr ~state:true) e
   | RemoveAll e ->
-    Printf.fprintf oc "\tnot (%a)\n" emit_expr e
+    Printf.fprintf oc "\tnot (%a)\n" (emit_expr ~state:true) e
 
 (* Depending on what uses a commit/flush condition, we might need to check
  * all groups after every single input tuple (very slow), or after every
@@ -870,14 +894,14 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       | Reset | Slide _ -> all_exprs
       | RemoveAll e | KeepOnly e -> e :: all_exprs in
     add_all_mentioned_in_expr all_exprs
-  and where_need_aggr =
+  and where_need_state =
     (* Tells whether the where expression needs a tuple that's only
      * available once we have retrieved the key and the group (because
      * it uses the group tuple or build an aggregation on its own): *)
     let open Expr in
     fold (fun need expr ->
       need || match expr with
-        | Field (_, tuple, _) -> tuple_need_aggr !tuple
+        | Field (_, tuple, _) -> tuple_need_state !tuple
         | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
         | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _ -> true
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
@@ -893,18 +917,18 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
   in
   Printf.fprintf oc "open Stdint\n\n\
     %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_aggr_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
+    (emit_group_state_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
-    (if where_need_aggr then
+    (if where_need_state then
       emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
     else
       emit_where "where_fast_" in_tuple_typ mentioned and_all_others) where
-    (if not where_need_aggr then
+    (if not where_need_state then
       emit_where "where_slow_" ~with_group:true ~always_true:true in_tuple_typ mentioned and_all_others
     else
       emit_where "where_slow_" ~with_group:true in_tuple_typ mentioned and_all_others) where
     (emit_key_of_input "key_of_input_" in_tuple_typ mentioned and_all_others) key
-    (emit_update_aggr "update_aggr_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
+    (emit_update_state "update_aggr_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
     (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ

@@ -31,6 +31,9 @@ let cidr6_of_string = Ipv6.Cidr.of_string
 (* We are not allowed to have any state specific to this function.
  * Consequently we must compute the sequence number from the start
  * and increment and the global tuple count. *)
+(* FIXME: that's fine but now we do have internal state for functions.
+ * And we want sequence(start,step) to be reset at start at every
+ * group (and maybe another, stateless, global sequence). *)
 let sequence start inc =
   Int128.(start + (of_uint64 !CodeGenLib_IO.tuple_count) * inc)
 
