@@ -60,11 +60,9 @@ let percentile_finalize pct lst =
   arr.(idx)
 
 let lag (prevs, count) x =
-  !logger.info "lag: set value into index %d" (count mod Array.length prevs) ;
   prevs.(count mod Array.length prevs) <- x ;
   prevs, count + 1
 let lag_finalize (prevs, count) =
-  !logger.info "lag_finalize: return value from index %d" (count mod Array.length prevs) ;
   prevs.(count mod Array.length prevs)
 
 let season_avg = lag

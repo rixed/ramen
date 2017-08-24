@@ -348,7 +348,9 @@ let funcname_of_expr =
 
 (* Given a function name and an output type, return the actual function
  * returning that type, and the type input parameters must be converted into,
- * if any *)
+ * if any. For function with several parameters this input type target is
+ * either for all of them or some of them, depending on the function. This
+ * is up to the caller. *)
 let implementation_of expr =
   let open Expr in
   let name = funcname_of_expr expr in
@@ -395,6 +397,7 @@ let implementation_of expr =
 let name_of_state =
   let open Expr in
   function
+  (* TODO: use the op name in the field name to help debugging *)
   | AggrMin (t, _) | AggrMax (t, _) | AggrPercentile (t, _, _)
   | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) | AggrFirst (t, _)
   | AggrLast (t, _) | Lag (t, _, _) | SeasonAvg (t, _, _, _) ->
@@ -540,18 +543,20 @@ and emit_function1 ?state expr oc e =
     impl
     (conv_to ?state arg_typ) e
 
+and promote_to_same_types = function
+  | None, None -> None
+  | Some t1, None -> Some t1
+  | None, Some t2 -> Some t2
+  | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2))
+
 and emit_function2 ?state expr oc e1 e2 =
   let impl, arg_typ = implementation_of expr in
   (* When we have no conversion to do, e1 and e2 still have to have the same type or
-   * the compiler will complain: *)
+   * the compiler will complain so we promote: *)
   let open Expr in
   let arg_typ =
-    if arg_typ <> None then arg_typ else
-      match (typ_of e1).scalar_typ, (typ_of e2).scalar_typ with
-      | None, None -> None
-      | Some t1, None -> Some t1
-      | None, Some t2 -> Some t2
-      | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2))
+    if arg_typ <> None then arg_typ
+    else promote_to_same_types ((typ_of e1).scalar_typ, (typ_of e2).scalar_typ)
   in
   if is_nullable e1 then (
     Printf.fprintf oc "\

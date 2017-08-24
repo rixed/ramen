@@ -525,6 +525,8 @@ struct
     (* For network address range checks: *)
     | BeginOfRange of typ * t
     | EndOfRange of typ * t
+    (* value retarded by k steps. If we have had less than k past values
+     * then return the first we've had. *)
     | Lag of typ * t * t
     (* If the current time is t, the season average of period p on k seasons is
      * the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence of v(t).
@@ -1218,7 +1220,7 @@ struct
       ) m
 
     let aggregate m =
-      let m = "select operation" :: m in
+      let m = "operation" :: m in
       let part =
         (select_clause >>: fun c -> SelectClause c) |||
         (where_clause >>: fun c -> WhereClause c) |||
