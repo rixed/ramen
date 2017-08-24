@@ -251,6 +251,8 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
 
 (* Returns the set of all field names from the "in" tuple mentioned
  * anywhere in the given expression: *)
+(* FIXME: now that the return value of fold_by_depth is the total of the
+ * fold then use it instead of basically reimplementing it. *)
 let rec add_mentioned prev =
   let open Expr in
   function

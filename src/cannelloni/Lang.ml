@@ -1183,6 +1183,7 @@ struct
       | ExportClause of event_time_info
       | NotifyClause of string
       | GroupByClause of Expr.t list
+      (* FIXME: have a separate FlushClause *)
       | CommitClause of Expr.t * Expr.t option * flush_method
 
     let group_by m =
