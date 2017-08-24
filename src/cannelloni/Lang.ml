@@ -1470,7 +1470,8 @@ struct
           notify_url = "" ;\
           key = [] ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = None ; flush_how = Reset },\
+          flush_when = Some (replace_typ Expr.expr_false) ;\
+          flush_how = Reset },\
           (24, [])))\
           (test_p p "SELECT n, lag(2, n) AS l" |>\
            replace_typ_in_op)
