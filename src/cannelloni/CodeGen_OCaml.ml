@@ -881,7 +881,7 @@ let when_to_check_group_for_expr expr =
   (* Tells whether the commit condition needs the all or the selected tuple *)
   let open Expr in
   let need_all, need_selected =
-    fold (fun (need_all, need_selected) -> function
+    fold_by_depth (fun (need_all, need_selected) -> function
         | Field (_, tuple, _) ->
           (need_all || !tuple = TupleIn || !tuple = TupleLastIn),
           (need_selected || !tuple = TupleLastSelected || !tuple = TupleSelected
@@ -943,7 +943,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
      * available once we have retrieved the key and the group (because
      * it uses the group tuple or build an aggregation on its own): *)
     let open Expr in
-    fold (fun need expr ->
+    fold_by_depth (fun need expr ->
       need || match expr with
         | Field (_, tuple, _) -> tuple_need_state !tuple
         | AggrMin _| AggrMax _| AggrSum _| AggrAnd _

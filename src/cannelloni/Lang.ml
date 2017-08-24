@@ -613,22 +613,6 @@ struct
     let t = typ_of e in
     t.nullable = Some true
 
-  let rec fold f i expr =
-    match expr with
-    | Const _ | Param _ | Field _ | Now _ ->
-      f i expr
-    | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
-    | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
-    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
-    | BeginOfRange (_, e) | EndOfRange (_, e) ->
-      fold f (f i expr) e ;
-    | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
-    | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
-    | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
-    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
-    | Lag (_, e1, e2) ->
-      fold f (fold f (f i expr) e1) e2
-
   (* Propagate values up the tree only, depth first. *)
   let rec fold_by_depth f i expr =
     match expr with
