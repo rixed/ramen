@@ -535,6 +535,9 @@ struct
   let expr_true =
     Const (make_bool_typ ~nullable:false "true", VBool true)
 
+  let expr_false =
+    Const (make_bool_typ ~nullable:false "false", VBool false)
+
   let is_true = function
     | Const (_ , VBool true) -> true
     | _ -> false
@@ -1233,7 +1236,7 @@ struct
       (several ~sep:blanks part >>: fun clauses ->
         if clauses = [] then raise (Reject "Empty select") ;
         let default_select = [], true, Expr.expr_true, None, "", [],
-                             Expr.expr_true, None, Reset in
+                             Expr.expr_true, Some Expr.expr_false, Reset in
         let fields, and_all_others, where, export, notify_url, key,
             commit_when, flush_when, flush_how =
           List.fold_left (
@@ -1323,7 +1326,7 @@ struct
           notify_url = "" ;\
           key = [] ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = None ;\
+          flush_when = Some (replace_typ Expr.expr_false) ;\
           flush_how = Reset ;\
           export = None },\
         (58, [])))\
@@ -1341,7 +1344,7 @@ struct
           export = None ; notify_url = "" ;\
           key = [] ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = None ; flush_how = Reset },\
+          flush_when = Some (replace_typ Expr.expr_false) ; flush_how = Reset },\
         (17, [])))\
         (test_p p "where packets > 0" |> replace_typ_in_op)
 
@@ -1358,7 +1361,7 @@ struct
           notify_url = "" ;\
           key = [] ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = None ; flush_how = Reset },\
+          flush_when = Some (replace_typ Expr.expr_false) ; flush_how = Reset },\
         (62, [])))\
         (test_p p "select t, value export event starting at t*10 with duration 60" |>\
          replace_typ_in_op)
@@ -1377,7 +1380,7 @@ struct
           export = Some (Some (("t1", 10.), StopField ("t2", 10.))) ;\
           notify_url = "" ; key = [] ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = None ; flush_how = Reset },\
+          flush_when = Some (replace_typ Expr.expr_false) ; flush_how = Reset },\
         (73, [])))\
         (test_p p "select t1, t2, value export event starting at t1*10 and stopping at t2*10" |>\
          replace_typ_in_op)
@@ -1391,7 +1394,7 @@ struct
           notify_url = "http://firebrigade.com/alert.php" ;\
           key = [] ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = None ; flush_how = Reset },\
+          flush_when = Some (replace_typ Expr.expr_false) ; flush_how = Reset },\
         (41, [])))\
         (test_p p "NOTIFY \"http://firebrigade.com/alert.php\"" |>\
          replace_typ_in_op)
