@@ -1,0 +1,19 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/.."
+. $top_srcdir/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_cars
+add_node p1 \
+"SELECT
+   first horsepower as first_1,
+   max(min horsepower) as first_2,
+   min(max horsepower) as first_3
+ EXPORT
+ COMMIT AND FLUSH WHEN group.#count >= $nb_cars" cars
+run
+check_equal '552,552,552' "$(tail_ 1 p1)"
