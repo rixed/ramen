@@ -143,6 +143,7 @@ let tuple_need_state = function
     | Eq (_, a, b) -> Eq (typ, replace_typ a, replace_typ b)
     | BeginOfRange (_, a) -> BeginOfRange (typ, replace_typ a)
     | EndOfRange (_, a) -> EndOfRange (typ, replace_typ a)
+    | Lag (_, a, b) -> Lag (typ, replace_typ a, replace_typ b)
 
   let replace_typ_in_expr = function
     | Ok (expr, rest) -> Ok (replace_typ expr, rest)
@@ -531,6 +532,7 @@ struct
     (* For network address range checks: *)
     | BeginOfRange of typ * t
     | EndOfRange of typ * t
+    | Lag of typ * t * t
 
   let expr_true =
     Const (make_bool_typ ~nullable:false "true", VBool true)
@@ -586,6 +588,7 @@ struct
     | Ge (t, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Gt (t, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Eq (t, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Lag (t, e1, e2) -> Printf.fprintf fmt "lag(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
 
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
@@ -596,7 +599,7 @@ struct
     | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
     | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t
-    | BeginOfRange (t, _) | EndOfRange (t, _) -> t
+    | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _) -> t
 
   let is_nullable e =
     let t = typ_of e in
@@ -614,7 +617,8 @@ struct
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
     | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
-    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2) ->
+    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
+    | Lag (_, e1, e2) ->
       fold f (fold f (f i expr) e1) e2
 
   (* Propagate values up the tree only, depth first. *)
@@ -630,30 +634,24 @@ struct
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
     | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
-    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2) ->
+    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
+    | Lag (_, e1, e2) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       f i'' expr
 
   let iter f = fold_by_depth (fun () e -> f e) ()
 
-  type function_type = Pure of t | Stateful of t | Aggregate of t
-
-  let fun_iter f e =
+  let unpure_iter f e =
     fold_by_depth (fun () -> function
       | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-      | AggrLast _ | AggrPercentile _ as e ->
-        f (Aggregate e)
-      | Const _ | Param _ | Field _ | Cast _ | Now _
-      | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
+      | AggrLast _ | AggrPercentile _ | Lag _ as e ->
+        f e
+      | Const _ | Param _ | Field _ | Cast _ -> ()
+      | Now _ | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
       | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
       | Length _ | BeginOfRange _ | EndOfRange _ ->
         ()) () e |> ignore
-
-  let unpure_iter f e =
-    fun_iter (function
-      | Pure _ -> ()
-      | Stateful e | Aggregate e -> f e) e
 
   module Parser =
   struct
@@ -824,10 +822,10 @@ struct
       highestest_prec
 
     and afun2 n =
-      let sep = check (char '(') ||| blanks in
-      strinG n -- optional ~def:() (blanks -- strinG "of") -- sep -+
+      let sep = opt_blanks -- char '(' -- opt_blanks in
+      strinG n -- sep -+
       highestest_prec +- opt_blanks +- char ',' +- opt_blanks ++
-      highestest_prec
+      highestest_prec +- opt_blanks +- char ')'
 
     and highest_prec_left_assoc m =
       ((afun1 "not" >>: fun e -> Not (make_bool_typ "not operator", e)) |||
@@ -864,6 +862,7 @@ struct
          (afun1 "abs" >>: fun e -> Abs (make_num_typ "absolute value", e)) |||
          (afun1 "length" >>: fun e -> Length (make_typ ~typ:TU16 "length", e)) |||
          (strinG "now" >>: fun () -> Now (make_float_typ ~nullable:false "now")) |||
+         (afun2 "lag" >>: fun (e1, e2) -> Lag (make_typ "lag", e1, e2)) |||
          sequence ||| cast) m
 
     and sequence =
@@ -1455,6 +1454,24 @@ struct
           flush_when = None ; flush_how = Reset },\
           (48, [])))\
           (test_p p "select 1 as one commit and flush when sum 1 >= 5" |>\
+           replace_typ_in_op)
+
+      (Ok (\
+        Aggregate {\
+          fields = [\
+            { expr = Expr.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
+            { expr = Expr.Lag (typ, \
+                       Expr.Const (typ, VI8 (Int8.of_int 2)), \
+                       Expr.Field (typ, ref TupleIn, "n")) ; alias = "l" } ] ;\
+          and_all_others = false ;\
+          where = Expr.Const (typ, VBool true) ;\
+          export = None ; \
+          notify_url = "" ;\
+          key = [] ;\
+          commit_when = replace_typ Expr.expr_true ;\
+          flush_when = None ; flush_how = Reset },\
+          (24, [])))\
+          (test_p p "SELECT n, lag(2, n) AS l" |>\
            replace_typ_in_op)
 
       (Ok (\

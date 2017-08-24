@@ -94,7 +94,14 @@ distclean-spec:
 	$(RM) cannelloni codegen.cmxa ringbuf/ringbuf.o
 
 check-spec: ringbuf_test.opt
+
+long-check: cannelloni check-spec
 	@./ringbuf_test.opt || echo "FAILURE"
+	./tests/basic_aggr
+	./tests/count_lines
+	./tests/sliding_window
+	./tests/fun_with_funcs
+	./tests/lag
 
 include $(top_srcdir)/make.common
 

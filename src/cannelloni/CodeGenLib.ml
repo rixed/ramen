@@ -59,6 +59,14 @@ let percentile_finalize pct lst =
   let idx = Helpers.round_to_int (pct *. float_of_int (Array.length arr - 1)) in
   arr.(idx)
 
+let lag (prevs, count) x =
+  !logger.info "lag: set value into index %d" (count mod Array.length prevs) ;
+  prevs.(count mod Array.length prevs) <- x ;
+  prevs, count + 1
+let lag_finalize (prevs, count) =
+  !logger.info "lag_finalize: return value from index %d" (count mod Array.length prevs) ;
+  prevs.(count mod Array.length prevs)
+
 let getenv ?def n =
   try Sys.getenv n
   with Not_found ->

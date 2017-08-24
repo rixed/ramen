@@ -296,8 +296,17 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* Not really bullet-proof in theory since check_unary_op may update the
      * types of the operand, but in this case there is no modification
      * possible if it's either TCidrv4 or TCidrv6, so we should be good.  *)
-    try check_unary_op op_typ (fun _ -> TIpv4) ~exp_sub_typ:TCidrv4 e
-    with _ -> check_unary_op op_typ (fun _ -> TIpv6) ~exp_sub_typ:TCidrv6 e
+    (try check_unary_op op_typ (fun _ -> TIpv4) ~exp_sub_typ:TCidrv4 e
+    with _ -> check_unary_op op_typ (fun _ -> TIpv6) ~exp_sub_typ:TCidrv6 e)
+  | Lag (op_typ, e1, e2) ->
+    (* e1 must be an unsigned small constant integer. For now that mean user
+     * must have entered a constant. Later we might pre-evaluate constant
+     * expressions into constant values. *)
+    (match e1 with Expr.Const _ -> ()
+                 | _ -> raise (SyntaxError "Lag must be constant")) ;
+    (* ... and e2 can be anything and the type of lag will be the same,
+     * nullable (since we might lag beyond the start of the window. *)
+    check_binary_op op_typ snd ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1 e2
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.
