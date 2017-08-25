@@ -824,10 +824,11 @@ struct
       binary_ops_reducer ~op ~right_associative:true
                          ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
-    and afun a n =
+    and afun a n m =
       let sep = opt_blanks -- char ',' -- opt_blanks in
-      strinG n -- opt_blanks -- char '(' -- opt_blanks -+
-      repeat ~min:a ~max:a ~sep highestest_prec +- opt_blanks +- char ')'
+      let m = n :: m in
+      (strinG n -- opt_blanks -- char '(' -- opt_blanks -+
+       repeat ~min:a ~max:a ~sep lowest_prec_left_assoc +- opt_blanks +- char ')') m
 
     and afun1 n =
       (strinG n -- blanks -- optional ~def:() (strinG "of" -- blanks) -+
@@ -921,9 +922,10 @@ struct
       ) m
 
     and highestest_prec m =
-      let sep = optional_greedy ~def:() blanks in
       (const ||| field ||| param ||| func ||| aggregate ||| null |||
-       char '(' -- sep -+ lowest_prec_left_assoc +- sep +- char ')'
+       char '(' -- opt_blanks -+
+         lowest_prec_left_assoc +-
+       opt_blanks +- char ')'
       ) m
 
     let p = lowest_prec_left_assoc
@@ -1000,6 +1002,16 @@ struct
           Param (typ, "y")),\
         (7, [])))\
         (test_p p "$x % $y" |> replace_typ_in_expr)
+
+      (Ok ( \
+        Abs (typ, \
+          Sub (typ, \
+            Field (typ, ref TupleIn, "bps"), \
+            Lag (typ, \
+              Const (typ, VI8 (Int8.of_int 1)), \
+              Field (typ, ref TupleIn, "bps")))), \
+        (21, []))) \
+        (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
     *)
 
     (*$>*)
