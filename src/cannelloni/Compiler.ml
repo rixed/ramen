@@ -348,6 +348,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_binary_op op_typ return_float
       ~exp_sub_typ1:TFloat ~exp_sub_nullable1:false e1
       ~exp_sub_typ2:TFloat e2
+  | Exp (op_typ, e) | Log (op_typ, e) ->
+    check_unary_op op_typ return_float ~exp_sub_typ:TFloat e
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.

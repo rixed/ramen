@@ -263,7 +263,7 @@ let rec add_mentioned prev =
   | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
   | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
   | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
-  | BeginOfRange (_, e) | EndOfRange (_, e) ->
+  | BeginOfRange (_, e) | EndOfRange (_, e) | Exp (_, e) | Log (_, e) ->
     add_mentioned prev e
   | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -345,6 +345,8 @@ let funcname_of_expr =
   | SeasonAvg _ -> "Seasonal.add"
   | LinReg _ -> "Seasonal.add"
   | ExpSmooth _ -> "smooth"
+  | Exp _ -> "exp"
+  | Log _ -> "log"
   | Const _ | Param _ | Field _ ->
     assert false
 
@@ -358,7 +360,8 @@ let implementation_of expr =
   let name = funcname_of_expr expr in
   let out_typ = typ_of expr in
   match expr, out_typ.scalar_typ with
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Div _|Abs _), Some TFloat -> "BatFloat."^ name, Some TFloat
+  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Div _|Abs _|Pow _|Exp _|Log _), Some TFloat ->
+    "BatFloat."^ name, Some TFloat
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU8 -> "Uint8."^ name, Some TU8
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU16 -> "Uint16."^ name, Some TU16
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU32 -> "Uint32."^ name, Some TU32
@@ -370,7 +373,6 @@ let implementation_of expr =
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI64 -> "Int64."^ name, Some TI64
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI128 -> "Int128."^ name, Some TI128
   | Add _, Some TString -> "(^)", Some TString
-  | Pow _, Some TFloat -> name, Some TFloat
   | Length _, Some TU16 (* The only possible output type *) -> "String."^ name, Some TString
   | (Not _|And _|Or _|AggrAnd _|AggrOr _), Some TBool -> name, Some TBool
   | (Ge _| Gt _| Eq _), Some TBool -> name, None (* No conversion necessary *)
@@ -409,7 +411,7 @@ let name_of_state =
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
   | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-  | BeginOfRange _ | EndOfRange _ ->
+  | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ ->
     assert false
 
 let otype_of_type = function
@@ -531,7 +533,8 @@ and emit_expr ?(state=true) oc =
       record_of_state (name_of_state expr)
   | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
-  | Length (_, e) | BeginOfRange (_, e) | EndOfRange (_, e) as expr ->
+  | Length (_, e) | BeginOfRange (_, e) | EndOfRange (_, e)
+  | Exp (_, e) | Log (_, e) as expr ->
     emit_function1 ~state expr oc e
   | Defined (_, e) ->
     Printf.fprintf oc "(%a <> None)" (emit_expr ~state) e
@@ -799,7 +802,7 @@ let emit_group_state_init
         | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
         | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _
         | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-        | BeginOfRange _ | EndOfRange _ ->
+        | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ ->
           assert false) ;
         Printf.fprintf oc " in\n"
       ) ;
@@ -841,7 +844,7 @@ let emit_update_state
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
       | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _
       | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-      | BeginOfRange _ | EndOfRange _ ->
+      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ ->
         assert false) ;
       Printf.fprintf oc ") ;\n"
     ) ;
@@ -898,13 +901,7 @@ let when_to_check_group_for_expr expr =
           (need_all || !tuple = TupleIn || !tuple = TupleLastIn),
           (need_selected || !tuple = TupleLastSelected || !tuple = TupleSelected
                          || !tuple = TupleLastUnselected || !tuple = TupleUnselected)
-        | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
-        | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _
-        | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
-        | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
-        | Mod _| Cast _ | Abs _ | Length _ | Now _
-        | BeginOfRange _ | EndOfRange _ | Lag _ | SeasonAvg _ | LinReg _
-        | ExpSmooth _ ->
+        | _ ->
           need_all, need_selected
       ) (false, false) expr
   in
@@ -966,7 +963,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
         | Mod _| Cast _ | Abs _ | Length _ | Now _ | BeginOfRange _
-        | EndOfRange _ ->
+        | EndOfRange _ | Exp _ | Log _ ->
           false
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in

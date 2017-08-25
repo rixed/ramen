@@ -136,6 +136,8 @@ let tuple_need_state = function
     | IDiv (_, a, b) -> IDiv (typ, replace_typ a, replace_typ b)
     | Mod (_, a, b) -> Mod (typ, replace_typ a, replace_typ b)
     | Pow (_, a, b) -> Pow (typ, replace_typ a, replace_typ b)
+    | Exp (_, a) -> Exp (typ, replace_typ a)
+    | Log (_, a) -> Log (typ, replace_typ a)
     | And (_, a, b) -> And (typ, replace_typ a, replace_typ b)
     | Or (_, a, b) -> Or (typ, replace_typ a, replace_typ b)
     | Ge (_, a, b) -> Ge (typ, replace_typ a, replace_typ b)
@@ -519,6 +521,8 @@ struct
     | IDiv of typ * t * t
     | Mod of typ * t * t
     | Pow of typ * t * t
+    | Exp of typ * t
+    | Log of typ * t
     | And of typ * t * t
     | Or of typ * t * t
     | Ge of typ * t * t
@@ -593,6 +597,8 @@ struct
     | IDiv (t, e1, e2) -> Printf.fprintf fmt "(%a) // (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Mod (t, e1, e2) -> Printf.fprintf fmt "(%a) %% (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Pow (t, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Exp (t, e) -> Printf.fprintf fmt "exp (%a)" (print with_types) e ; add_types t
+    | Log (t, e) -> Printf.fprintf fmt "log (%a)" (print with_types) e ; add_types t
     | And (t, Ge (_, e1, BeginOfRange (_, e2)), Not (_, (Ge (_, e1', EndOfRange (_, e2'))))) ->
       assert (e2 = e2') ;
       assert (e1 = e1') ;
@@ -620,7 +626,8 @@ struct
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
     | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t
     | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
-    | SeasonAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _) ->
+    | SeasonAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
+    | Exp (t, _) | Log (t, _) ->
       t
 
   let is_nullable e =
@@ -635,7 +642,7 @@ struct
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
     | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
-    | BeginOfRange (_, e) | EndOfRange (_, e) ->
+    | BeginOfRange (_, e) | EndOfRange (_, e) | Exp (_, e) | Log (_, e) ->
       f (fold_by_depth f i e) expr
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -662,7 +669,7 @@ struct
       | Const _ | Param _ | Field _ | Cast _
       | Now _ | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
       | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
-      | Length _ | BeginOfRange _ | EndOfRange _ ->
+      | Length _ | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ ->
         ()) () e |> ignore
 
   module Parser =
@@ -884,6 +891,8 @@ struct
           let alpha =
             Const (make_typ ~typ:TFloat ~nullable:false "alpha", VFloat 0.5) in
           ExpSmooth (make_float_typ "smooth", alpha, e)) |||
+         (afun1 "exp" >>: fun e -> Exp (make_num_typ "exponential", e)) |||
+         (afun1 "log" >>: fun e -> Log (make_num_typ "logarithm", e)) |||
          sequence ||| cast) m
 
     and sequence =
