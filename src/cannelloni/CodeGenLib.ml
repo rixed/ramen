@@ -59,6 +59,8 @@ let percentile_finalize pct lst =
   let idx = Helpers.round_to_int (pct *. float_of_int (Array.length arr - 1)) in
   arr.(idx)
 
+let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
+
 (* We often want functions that work on the last k elements, or the last k
  * periods of length p for seasonal data. So we often need a small sliding
  * window as a function internal state. If we could join between two different

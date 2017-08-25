@@ -340,6 +340,12 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1
       ~exp_sub_typ2:TU16 ~exp_sub_nullable2:false e2
       ~exp_sub_typ3:TFloat e3
+  | ExpSmooth (op_typ, e1, e2) ->
+    (* FIXME: Check that alpha is between 0 and 1 *)
+    Expr.check_const "smooth coefficient" e1 ;
+    check_binary_op op_typ return_float
+      ~exp_sub_typ1:TFloat ~exp_sub_nullable1:false e1
+      ~exp_sub_typ2:TFloat e2
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.

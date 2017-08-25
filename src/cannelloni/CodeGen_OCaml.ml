@@ -269,7 +269,7 @@ let rec add_mentioned prev =
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
   | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
   | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
-  | Lag (_, e1, e2) ->
+  | Lag (_, e1, e2) | ExpSmooth (_, e1, e2) ->
     add_mentioned (add_mentioned prev e1) e2
   | SeasonAvg (_, e1, e2, e3) | LinReg (_, e1, e2, e3) ->
     add_mentioned (add_mentioned (add_mentioned prev e1) e2) e3
@@ -344,6 +344,7 @@ let funcname_of_expr =
   | Lag _ -> "Seasonal.add"
   | SeasonAvg _ -> "Seasonal.add"
   | LinReg _ -> "Seasonal.add"
+  | ExpSmooth _ -> "smooth"
   | Const _ | Param _ | Field _ ->
     assert false
 
@@ -380,11 +381,11 @@ let implementation_of expr =
     "CodeGenLib."^ name ^"_"^ in_type_name, None
   | AggrPercentile _, Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     "CodeGenLib."^ name, None
+  (* TODO: Now() for Uint62? *)
   | Now _, Some TFloat -> "CodeGenLib."^ name, None
   | Lag _, _ -> "CodeGenLib."^ name, None
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | (SeasonAvg _|LinReg _), Some TFloat -> "CodeGenLib."^ name, Some TFloat
-  (* TODO: Now() for Uint62? *)
+  | (SeasonAvg _|LinReg _|ExpSmooth _), Some TFloat -> "CodeGenLib."^ name, Some TFloat
   | Cast _, t -> "CodeGenLib."^ name, t
   (* Sequence build a sequence of as-large-as-convenient integers (signed or
    * not) *)
@@ -402,7 +403,7 @@ let name_of_state =
   | AggrMin (t, _) | AggrMax (t, _) | AggrPercentile (t, _, _)
   | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) | AggrFirst (t, _)
   | AggrLast (t, _) | Lag (t, _, _) | SeasonAvg (t, _, _, _)
-  | LinReg (t, _, _, _) ->
+  | LinReg (t, _, _, _) | ExpSmooth (t, _, _) ->
     "field_"^ string_of_int t.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _
@@ -505,7 +506,7 @@ and emit_expr ?(state=true) oc =
   | Param _ ->
     failwith "TODO: code gen for params"
   | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-    | AggrLast _ as expr) ->
+    | AggrLast _ | ExpSmooth _ as expr) ->
      Printf.fprintf oc "%s%s" record_of_state (name_of_state expr)
   | AggrPercentile (_, pct, _) as expr ->
     Printf.fprintf oc "CodeGenLib.percentile_finalize (%a) %s%s"
@@ -771,7 +772,7 @@ let emit_group_state_init
         match f with
         | AggrMin (_, e) | AggrMax (_, e) | AggrAnd (_, e)
         | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)
-        | AggrSum (_, e) ->
+        | AggrSum (_, e) | ExpSmooth (_, _, e) ->
           let _impl, arg_typ = implementation_of f in
           conv_to ~state:false arg_typ oc e
         | AggrPercentile (_, p, e) ->
@@ -825,12 +826,12 @@ let emit_update_state
         let impl, arg_typ = implementation_of f in
         Printf.fprintf oc "%s aggr_.%s %a"
           impl (name_of_state f) (conv_to arg_typ) e
-      | AggrPercentile (_, p, e) ->
+      | AggrPercentile (_, e1, e2) | ExpSmooth (_, e1, e2) ->
         let impl, arg_typ = implementation_of f in
         Printf.fprintf oc "%s aggr_.%s %a %a"
           impl (name_of_state f)
-          (conv_to arg_typ) p
-          (conv_to arg_typ) e
+          (conv_to arg_typ) e1
+          (conv_to arg_typ) e2
       | Lag (_, _, e) | SeasonAvg (_, _, _, e) | LinReg (_, _, _, e) ->
         let impl, arg_typ = implementation_of f in
         Printf.fprintf oc "%s aggr_.%s %a"
@@ -901,7 +902,8 @@ let when_to_check_group_for_expr expr =
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
         | Mod _| Cast _ | Abs _ | Length _ | Now _
-        | BeginOfRange _ | EndOfRange _ | Lag _ | SeasonAvg _ | LinReg _ ->
+        | BeginOfRange _ | EndOfRange _ | Lag _ | SeasonAvg _ | LinReg _
+        | ExpSmooth _ ->
           need_all, need_selected
       ) (false, false) expr
   in
@@ -958,7 +960,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | Field (_, tuple, _) -> tuple_need_state !tuple
         | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
         | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _ | Lag _
-        | SeasonAvg _ | LinReg _ ->
+        | SeasonAvg _ | LinReg _ | ExpSmooth _ ->
           true
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
