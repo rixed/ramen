@@ -267,7 +267,7 @@ let rec add_mentioned prev =
     add_mentioned prev e
   | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
-  | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
+  | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
   | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
   | Lag (_, e1, e2) | ExpSmooth (_, e1, e2) ->
     add_mentioned (add_mentioned prev e1) e2
@@ -335,7 +335,7 @@ let funcname_of_expr =
   | Mul _ -> "mul"
   | Div _ | IDiv _ -> "div"
   | Mod _ -> "rem"
-  | Exp _ -> "exp"
+  | Pow _ -> "(**)"
   | Ge _ -> "(>=)"
   | Gt _ -> "(>)"
   | Eq _ -> "(=)"
@@ -370,6 +370,7 @@ let implementation_of expr =
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI64 -> "Int64."^ name, Some TI64
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI128 -> "Int128."^ name, Some TI128
   | Add _, Some TString -> "(^)", Some TString
+  | Pow _, Some TFloat -> name, Some TFloat
   | Length _, Some TU16 (* The only possible output type *) -> "String."^ name, Some TString
   | (Not _|And _|Or _|AggrAnd _|AggrOr _), Some TBool -> name, Some TBool
   | (Ge _| Gt _| Eq _), Some TBool -> name, None (* No conversion necessary *)
@@ -406,7 +407,7 @@ let name_of_state =
   | LinReg (t, _, _, _) | ExpSmooth (t, _, _) ->
     "field_"^ string_of_int t.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
-  | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _
+  | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
   | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
   | BeginOfRange _ | EndOfRange _ ->
     assert false
@@ -535,7 +536,7 @@ and emit_expr ?(state=true) oc =
   | Defined (_, e) ->
     Printf.fprintf oc "(%a <> None)" (emit_expr ~state) e
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2)
-  | Div (_, e1, e2) | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2)
+  | Div (_, e1, e2) | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2)
   | Or (_, e1, e2) | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2)
   | Sequence (_, e1, e2) | Mod (_, e1, e2) as expr ->
     emit_function2 ~state expr oc e1 e2
@@ -796,7 +797,7 @@ let emit_group_state_init
             (conv_to ~state:false (Some TU16)) n
             (conv_to ~state:false arg_typ) e
         | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-        | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
+        | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _
         | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
         | BeginOfRange _ | EndOfRange _ ->
           assert false) ;
@@ -838,7 +839,7 @@ let emit_update_state
           impl (name_of_state f)
           (conv_to arg_typ) e
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-      | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
+      | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _
       | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
       | BeginOfRange _ | EndOfRange _ ->
         assert false) ;
@@ -900,7 +901,7 @@ let when_to_check_group_for_expr expr =
         | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
         | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
-        | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
+        | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
         | Mod _| Cast _ | Abs _ | Length _ | Now _
         | BeginOfRange _ | EndOfRange _ | Lag _ | SeasonAvg _ | LinReg _
         | ExpSmooth _ ->
@@ -963,7 +964,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | SeasonAvg _ | LinReg _ | ExpSmooth _ ->
           true
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
-        | IDiv _| Exp _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
+        | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
         | Mod _| Cast _ | Abs _ | Length _ | Now _ | BeginOfRange _
         | EndOfRange _ ->
           false

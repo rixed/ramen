@@ -135,7 +135,7 @@ let tuple_need_state = function
     | Div (_, a, b) -> Div (typ, replace_typ a, replace_typ b)
     | IDiv (_, a, b) -> IDiv (typ, replace_typ a, replace_typ b)
     | Mod (_, a, b) -> Mod (typ, replace_typ a, replace_typ b)
-    | Exp (_, a, b) -> Exp (typ, replace_typ a, replace_typ b)
+    | Pow (_, a, b) -> Pow (typ, replace_typ a, replace_typ b)
     | And (_, a, b) -> And (typ, replace_typ a, replace_typ b)
     | Or (_, a, b) -> Or (typ, replace_typ a, replace_typ b)
     | Ge (_, a, b) -> Ge (typ, replace_typ a, replace_typ b)
@@ -518,7 +518,7 @@ struct
     | Div of typ * t * t
     | IDiv of typ * t * t
     | Mod of typ * t * t
-    | Exp of typ * t * t
+    | Pow of typ * t * t
     | And of typ * t * t
     | Or of typ * t * t
     | Ge of typ * t * t
@@ -592,7 +592,7 @@ struct
     | Div (t, e1, e2) -> Printf.fprintf fmt "(%a) / (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | IDiv (t, e1, e2) -> Printf.fprintf fmt "(%a) // (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Mod (t, e1, e2) -> Printf.fprintf fmt "(%a) %% (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Exp (t, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Pow (t, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | And (t, Ge (_, e1, BeginOfRange (_, e2)), Not (_, (Ge (_, e1', EndOfRange (_, e2'))))) ->
       assert (e2 = e2') ;
       assert (e1 = e1') ;
@@ -616,7 +616,7 @@ struct
     | AggrFirst (t, _) | AggrLast (t, _) | AggrPercentile (t, _, _)
     | Age (t, _) | Sequence (t, _, _) | Not (t, _) | Defined (t, _)
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
-    | IDiv (t, _, _) | Exp (t, _, _) | And (t, _, _) | Or (t, _, _)
+    | IDiv (t, _, _) | Pow (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
     | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t
     | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
@@ -639,7 +639,7 @@ struct
       f (fold_by_depth f i e) expr
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
-    | IDiv (_, e1, e2) | Exp (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
+    | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
     | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
     | Lag (_, e1, e2) | ExpSmooth (_, e1, e2) ->
       let i' = fold_by_depth f i e1 in
@@ -661,7 +661,7 @@ struct
         f e
       | Const _ | Param _ | Field _ | Cast _
       | Now _ | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
-      | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
+      | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
       | Length _ | BeginOfRange _ | EndOfRange _ ->
         ()) () e |> ignore
 
@@ -813,7 +813,7 @@ struct
     and higher_prec_right_assoc m =
       let m = "arithmetic operator" :: m in
       let op = char '^'
-      and reduce t1 _ t2 = Exp (make_num_typ "exponentiation", t1, t2) in
+      and reduce t1 _ t2 = Pow (make_num_typ "exponentiation", t1, t2) in
       binary_ops_reducer ~op ~right_associative:true
                          ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
