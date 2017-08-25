@@ -264,7 +264,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
           Hashtbl.add out_h fname (rb, RingBufLib.retry_for_ringbuf once)
         ) to_open ;
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum ;
-      !logger.info "Will now output into %a"
+      !logger.debug "Will now output into %a"
         (Enum.print String.print) (Hashtbl.keys out_h)) fnames ;
     List.map (fun out -> out tuple) !out_l |>
     join

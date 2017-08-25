@@ -249,12 +249,15 @@ let get_graph conf headers layer_opt =
 
 *)
 
-let node_of_name conf layer_name node_name =
-  if node_name = "" then failwith "Empty string is not a valid node name"
-  else match C.find_node conf layer_name node_name with
+let find_node_or_fail conf layer_name node_name =
+  match C.find_node conf layer_name node_name with
   | exception Not_found ->
     failwith ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
   | node -> node
+
+let node_of_name conf layer_name node_name =
+  if node_name = "" then failwith "Empty string is not a valid node name"
+  else find_node_or_fail conf layer_name node_name
 
 let put_layer conf headers body =
   let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
@@ -347,33 +350,30 @@ let export conf headers layer_name node_name body =
       if body = "" then return empty_export_req else
       of_json headers ("Exporting from "^ node_name) export_req_ppp body in
     (* Check that the node exists and exports *)
-    match C.find_node conf layer_name node_name with
-    | exception Not_found ->
-      bad_request ("Unknown node "^ node_name)
-    | node ->
-      if not (Lang.Operation.is_exporting node.N.operation) then
-        bad_request ("node "^ node_name ^" does not export data")
-      else (
-        let start = Unix.gettimeofday () in
-        let rec loop () =
-          let history = RamenExport.get_history node in
-          let fields = RamenExport.get_field_types history in
-          let first, values =
-            RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
-                                    history [] List.cons in
-          let dt = Unix.gettimeofday () -. start in
-          if values = [] && dt < (req.wait_up_to |? 0.) then (
-            (* TODO: sleep for dt, queue the wakener on this history,
-             * and wake all the sleeps when a tuple is received *)
-            Lwt_unix.sleep 0.1 >>= loop
-          ) else (
-            (* Store it in column to save variant types: *)
-            let resp =
-              { first ; columns = RamenExport.columns_of_tuples fields values } in
-            let body = PPP.to_string export_resp_ppp resp in
-            respond_ok ~body ()
-          ) in
-        loop ()))
+    let node = find_node_or_fail conf layer_name node_name in
+    if not (Lang.Operation.is_exporting node.N.operation) then
+      bad_request ("node "^ node_name ^" does not export data")
+    else (
+      let start = Unix.gettimeofday () in
+      let rec loop () =
+        let history = RamenExport.get_history node in
+        let fields = RamenExport.get_field_types history in
+        let first, values =
+          RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
+                                  history [] List.cons in
+        let dt = Unix.gettimeofday () -. start in
+        if values = [] && dt < (req.wait_up_to |? 0.) then (
+          (* TODO: sleep for dt, queue the wakener on this history,
+           * and wake all the sleeps when a tuple is received *)
+          Lwt_unix.sleep 0.1 >>= loop
+        ) else (
+          (* Store it in column to save variant types: *)
+          let resp =
+            { first ; columns = RamenExport.columns_of_tuples fields values } in
+          let body = PPP.to_string export_resp_ppp resp in
+          respond_ok ~body ()
+        ) in
+      loop ()))
 
 (*
     API for Workers: health and report
@@ -382,12 +382,9 @@ let export conf headers layer_name node_name body =
 let report conf _headers layer name body =
   (* TODO: check application-type is marshaled.ocaml *)
   let last_report = Marshal.from_string body 0 in
-  match C.find_node conf layer name with
-  | exception Not_found ->
-    bad_request ("Node "^ layer ^"/"^ name ^" does not exist")
-  | node ->
-    node.N.last_report <- last_report ;
-    respond_ok ()
+  let node = find_node_or_fail conf layer name in
+  node.N.last_report <- last_report ;
+  respond_ok ()
 
 (*
     Grafana Datasource: autocompletion of node/field names
@@ -436,61 +433,58 @@ let timeseries conf headers body =
   let open Lang.Operation in
   let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
   let ts_of_node_field req layer node data_field =
-    match C.find_node conf layer node with
-    | exception Not_found ->
-      raise (Failure ("Unknown node "^ node))
-    | node ->
-      if not (is_exporting node.N.operation) then
-        raise (Failure ("node "^ node.N.name ^" does not export data"))
-      else match export_event_info node.N.operation with
-      | None ->
-        raise (Failure ("node "^ node.N.name ^" does not specify event time info"))
-      | Some ((start_field, start_scale), duration_info) ->
-        let consolidation =
-          match String.lowercase req.consolidation with
-          | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
-        let history = RamenExport.get_history node in
-        let find_field n =
-          try (
-            List.findi (fun _i (ft : field_typ) ->
-              ft.typ_name = n) history.C.tuple_type |> fst
-          ) with Not_found ->
-            raise (Failure ("field "^ n ^" does not exist")) in
-        let ti = find_field start_field
-        and vi = find_field data_field in
-        if msg.max_data_points < 1 then raise (Failure "invalid max_data_points") ;
-        let dt = (msg.to_ -. msg.from) /. float_of_int msg.max_data_points in
-        let buckets = Array.init msg.max_data_points (fun _ ->
-          { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
-        let bucket_of_time t = int_of_float ((t -. msg.from) /. dt) in
-        let _ =
-          RamenExport.fold_tuples history () (fun tup () ->
-            let t, v = RamenExport.float_of_scalar_value tup.(ti),
-                       RamenExport.float_of_scalar_value tup.(vi) in
-            let t1 = t *. start_scale in
-            let t2 =
-              match duration_info with
-              | DurationConst f -> t1 +. f
-              | DurationField (f, s) ->
-                let fi = find_field f in
-                t1 +. RamenExport.float_of_scalar_value tup.(fi) *. s
-              | StopField (f, s) ->
-                let fi = find_field f in
-                RamenExport.float_of_scalar_value tup.(fi) *. s
-            in
-            (* We allow duration to be < 0 *)
-            let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
-            (* t1 and t2 are in secs. But the API is in milliseconds (thanks to
-             * grafana) *)
-            let t1, t2 = t1 *. 1000., t2 *. 1000. in
-            if t1 < msg.to_ && t2 >= msg.from then
-              let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
-              for bi = bi1 to bi2 do
-                add_into_bucket buckets bi v
-              done) in
-        Array.mapi (fun i _ ->
-          msg.from +. dt *. (float_of_int i +. 0.5)) buckets,
-        Array.map consolidation buckets
+    let node = find_node_or_fail conf layer node in
+    if not (is_exporting node.N.operation) then
+      raise (Failure ("node "^ node.N.name ^" does not export data"))
+    else match export_event_info node.N.operation with
+    | None ->
+      raise (Failure ("node "^ node.N.name ^" does not specify event time info"))
+    | Some ((start_field, start_scale), duration_info) ->
+      let consolidation =
+        match String.lowercase req.consolidation with
+        | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
+      let history = RamenExport.get_history node in
+      let find_field n =
+        try (
+          List.findi (fun _i (ft : field_typ) ->
+            ft.typ_name = n) history.C.tuple_type |> fst
+        ) with Not_found ->
+          raise (Failure ("field "^ n ^" does not exist")) in
+      let ti = find_field start_field
+      and vi = find_field data_field in
+      if msg.max_data_points < 1 then raise (Failure "invalid max_data_points") ;
+      let dt = (msg.to_ -. msg.from) /. float_of_int msg.max_data_points in
+      let buckets = Array.init msg.max_data_points (fun _ ->
+        { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
+      let bucket_of_time t = int_of_float ((t -. msg.from) /. dt) in
+      let _ =
+        RamenExport.fold_tuples history () (fun tup () ->
+          let t, v = RamenExport.float_of_scalar_value tup.(ti),
+                     RamenExport.float_of_scalar_value tup.(vi) in
+          let t1 = t *. start_scale in
+          let t2 =
+            match duration_info with
+            | DurationConst f -> t1 +. f
+            | DurationField (f, s) ->
+              let fi = find_field f in
+              t1 +. RamenExport.float_of_scalar_value tup.(fi) *. s
+            | StopField (f, s) ->
+              let fi = find_field f in
+              RamenExport.float_of_scalar_value tup.(fi) *. s
+          in
+          (* We allow duration to be < 0 *)
+          let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
+          (* t1 and t2 are in secs. But the API is in milliseconds (thanks to
+           * grafana) *)
+          let t1, t2 = t1 *. 1000., t2 *. 1000. in
+          if t1 < msg.to_ && t2 >= msg.from then
+            let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
+            for bi = bi1 to bi2 do
+              add_into_bucket buckets bi v
+            done) in
+      Array.mapi (fun i _ ->
+        msg.from +. dt *. (float_of_int i +. 0.5)) buckets,
+      Array.map consolidation buckets
   and create_temporary_node select_x select_y from where =
     (* First, we need to find out the name for this operation, and create it if
      * it does not exist yet. Name must be given by the operation and parent, so
@@ -562,7 +556,7 @@ let timeseries conf headers body =
               layer, node, data_field
             | NewTempNode { select_x ; select_y ; from ; where } ->
               create_temporary_node select_x select_y from where in
-          let node = C.find_node conf layer_name node_name in
+          let node = find_node_or_fail conf layer_name node_name in
           RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
           let times, values = ts_of_node_field req layer_name node_name data_field in
           { id = req.id ; times ; values }) msg.timeseries with

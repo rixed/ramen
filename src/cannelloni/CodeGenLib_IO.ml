@@ -39,7 +39,7 @@ let read_file_lines ?(do_unlink=false) filename preprocessor k =
       (Printexc.to_string e) ;
     return_unit
   | chan ->
-    !logger.info "Start reading %S" filename ;
+    !logger.debug "Start reading %S" filename ;
     let%lwt () =
       (* If we used a preprocessor we must wait for EOF before
        * unlinking the file. *)

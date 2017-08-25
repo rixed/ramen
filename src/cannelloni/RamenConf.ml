@@ -336,7 +336,7 @@ let load_graph do_persist persist_dir =
           Some persist)
       with
       | e ->
-        !logger.error "Cannot read state from file %S: %s. Starting anew"
+        !logger.error "Cannot read state from file %S: %s. Starting anew."
           save_file (Printexc.to_string e) ;
         None
     else None

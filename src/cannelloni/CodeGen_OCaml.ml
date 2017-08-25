@@ -1018,7 +1018,7 @@ let with_code_file_for conf signature f =
     conf.C.persist_dir ^"/src/ocaml/"^ sanitize_ocaml_fname signature ^".ml" in
   mkdir_all ~is_file:true fname ;
   if file_exists ~maybe_empty:false fname then
-    !logger.info "Reusing source file %S" fname
+    !logger.debug "Reusing source file %S" fname
   else
     File.with_file_out ~mode:[`create; `text] fname f ;
   fname
@@ -1028,7 +1028,7 @@ let compile_source fname =
   let exec_name = String.sub fname 0 (String.length fname - 3) in
   mkdir_all ~is_file:true exec_name ;
   if file_exists ~maybe_empty:false ~has_perms:0o100 exec_name then
-    !logger.info "Reusing binary %S" exec_name
+    !logger.debug "Reusing binary %S" exec_name
   else (
     let comp_cmd =
       Printf.sprintf
