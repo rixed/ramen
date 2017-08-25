@@ -81,10 +81,20 @@ add_cars() {
 
 nb_cars=$(wc -l "$fixtures/cars.csv" | awk '{print $1}')
 
+add_earthquakes() {
+  add_node earthquakes "READ CSV FILE \"$fixtures/earthquakes.csv\" SEPARATOR \"\\t\" (
+    year u16 not null,
+    n u8 not null)"
+}
+
+nb_earthquakes=$(wc -l "$fixtures/earthquakes.csv" | awk '{print $1}')
+
 run() {
   eval "$ramen add test $LAYER_CMD" &&
   $ramen compile &&
   $ramen run
+  # We must give it time to process the CSV :(
+  sleep 1
 }
 
 tail_() {

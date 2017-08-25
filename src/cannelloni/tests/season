@@ -1,0 +1,21 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/.."
+. $top_srcdir/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_earthquakes
+add_node p1 \
+"SELECT
+  season_avg(3, 1, n) as a1,
+  season_avg(3, 2, n) as a2,
+  season_avg(3, 5, n) as a5,
+  recent_fit(1, n) as f1,
+  recent_fit(2, n) as f2,
+  recent_fit(3, n) as f3
+ EXPORT" earthquakes
+run
+check_equal '16,16.5,14.8,12,5,10' "$(tail_ 1 p1)"
