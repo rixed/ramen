@@ -59,34 +59,54 @@ let percentile_finalize pct lst =
   let idx = Helpers.round_to_int (pct *. float_of_int (Array.length arr - 1)) in
   arr.(idx)
 
-let lag (prevs, count) x =
-  prevs.(count mod Array.length prevs) <- x ;
-  prevs, count + 1
-let lag_finalize (prevs, count) =
-  prevs.(count mod Array.length prevs)
+(* We often want functions that work on the last k elements, or the last k
+ * periods of length p for seasonal data. So we often need a small sliding
+ * window as a function internal state. If we could join between two different
+ * streams we would have an aggregate running with a sliding window in one hand
+ * and then join it with the non-aggregated values, but that would be complex
+ * to setup and prone to error. The only advantage would be that we would have
+ * just one sliding window for computing all seasonal stats, instead of having
+ * individual internal states for each computation. This could be later
+ * optimized, though, by sharing the sliding windows of same n and p. *)
+module Seasonal =
+struct
+  (* All that is needed, provided the finalizers supply n and p, is an array
+   * of past values and a tuple counter: *)
+  type 'a t = 'a array * int
 
-let season_avg = lag
-let season_avg_finalize p n (prevs, count) =
-  (* ex: n=3, p=4 (quarterly), array of size n*p+1 = 13, after 42 entries
-     (counted from 0 to 41, last was 41 and next one will be 42):
+  (* We initialize this internal state when we have the first value: *)
+  let init p n x = Array.make (n * p + 1) x, 1
 
-     count:            last--v   v--count=42
-     array index:    0   1   2   3   4   5   6   7   8   9  10  11  12
-     value time:    39  40  41  29  30  31  32  33  34  35  36  37  38
-     values we avg:        NOT   Y               Y               Y
+  (* Then adding a value: *)
+  let add (prevs, count) x =
+    prevs.(count mod Array.length prevs) <- x ;
+    prevs, count + 1
 
-     Start from the oldest entry (which is at index count) then skip p values,
-     etc, and stop when we reach count-1 (excluded). Since the order does not
-     matter for an average we could proceed differently and avoid the modulo
-     but this approach is simpler. *)
-  (* FIXME: more accurate way to compute an avg with floats than sum all and
-   * divide! *)
-  let rec loop sum count idx =
-    if count >= n then sum /. float_of_int count else
-    loop (sum +. prevs.(idx mod Array.length prevs)) (count+1) (idx+p)
-  in
-  loop 0. 0 count
+  (* Now various operations differ only by their finalizers,
+   * most of them will want to iterate over the last season: *)
+  let fold p n (prevs, count) v0 f =
+    (* ex: n=3, p=4 (quarterly), array of size n*p+1 = 13, after 42 entries
+       (counted from 0 to 41, last was 41 and next one will be 42):
 
+       count:            last--v   v--count=42
+       array index:    0   1   2   3   4   5   6   7   8   9  10  11  12
+       value time:    39  40  41  29  30  31  32  33  34  35  36  37  38
+       wanted values:              0               1               2
+
+       Start from the oldest entry (which is at index count) then skip p values,
+       etc, and stop when we reach count-1 (excluded). Since the order does not
+       matter for an average we could proceed differently and avoid the modulo
+       but this approach is simpler. *)
+    let rec loop v c idx =
+      if c >= n then v else
+      loop (f v prevs.(idx mod Array.length prevs)) (c+1) (idx+p)
+    in
+    loop v0 0 count
+
+  let lag (prevs, count) = prevs.(count mod Array.length prevs)
+
+  let avg p n t = (fold p n t 0. (+.)) /. float_of_int n
+end
 
 let getenv ?def n =
   try Sys.getenv n

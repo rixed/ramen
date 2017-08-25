@@ -341,8 +341,8 @@ let funcname_of_expr =
   | Eq _ -> "(=)"
   | BeginOfRange _ -> "begin_of_range"
   | EndOfRange _ -> "end_of_range"
-  | Lag _ -> "lag"
-  | SeasonAvg _ -> "season_avg"
+  | Lag _ -> "Seasonal.add"
+  | SeasonAvg _ -> "Seasonal.add"
   | Const _ | Param _ | Field _ ->
     assert false
 
@@ -379,10 +379,10 @@ let implementation_of expr =
     "CodeGenLib."^ name ^"_"^ in_type_name, None
   | AggrPercentile _, Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     "CodeGenLib."^ name, None
-  | Now _, Some TFloat -> "CodeGenLib.now", None
-  | Lag _, _ -> "CodeGenLib.lag", None
+  | Now _, Some TFloat -> "CodeGenLib."^ name, None
+  | Lag _, _ -> "CodeGenLib."^ name, None
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | SeasonAvg _, Some TFloat -> "CodeGenLib.lag", None
+  | SeasonAvg _, Some TFloat -> "CodeGenLib."^ name, Some TFloat
   (* TODO: Now() for Uint62? *)
   | Cast _, t -> "CodeGenLib."^ name, t
   (* Sequence build a sequence of as-large-as-convenient integers (signed or
@@ -430,7 +430,7 @@ let otype_of_state e =
    * provided some context to those functions, such as the event count in
    * current window, for instance (ie. pass the full aggr record not just
    * the fields) *)
-  | Lag _ | SeasonAvg _ -> t ^" array * int"
+  | Lag _ | SeasonAvg _ -> t ^" CodeGenLib.Seasonal.t"
   | _ -> t
 
 let omod_of_type = function
@@ -511,12 +511,11 @@ and emit_expr ?(state=true) oc =
       record_of_state
       (name_of_state expr)
   | Lag _ as expr ->
-    Printf.fprintf oc "CodeGenLib.lag_finalize %s%s"
+    Printf.fprintf oc "CodeGenLib.Seasonal.lag %s%s"
       record_of_state (name_of_state expr)
   | SeasonAvg (_, p, n, _)  as expr ->
     Printf.fprintf oc
-      "CodeGenLib.season_avg_finalize (Uint16.to_int %a) (Uint16.to_int %a) \
-                                      %s%s"
+      "CodeGenLib.Seasonal.avg (Uint16.to_int %a) (Uint16.to_int %a) %s%s"
       (conv_to ~state (Some TU16)) p
       (conv_to ~state (Some TU16)) n
       record_of_state (name_of_state expr)
@@ -774,21 +773,19 @@ let emit_group_state_init
             (conv_to ~state:false arg_typ) p
             (conv_to ~state:false arg_typ) e
         | Lag (_, k, e) ->
-          let impl, arg_typ = implementation_of f in
+          let _impl, arg_typ = implementation_of f in
           Printf.fprintf oc
-            "(let x_ = %a in %s (Array.make (Uint16.to_int %a + 1) x_, 1) x_)"
-            (conv_to ~state:false arg_typ) e
-            impl
+            "CodeGenLib.Seasonal.init (Uint16.to_int %a) 1 %a"
             (conv_to ~state:false (Some TU16)) k
-        | SeasonAvg (_, p, n, e) ->
-          let impl, arg_typ = implementation_of f in
-          Printf.fprintf oc
-            "(let x_ = %a in \
-             %s (Array.make (Uint16.to_int %a * Uint16.to_int %a + 1) x_, 1) x_)"
             (conv_to ~state:false arg_typ) e
-            impl
+        | SeasonAvg (_, p, n, e) ->
+          let _impl, arg_typ = implementation_of f in
+          Printf.fprintf oc
+            "CodeGenLib.Seasonal.init (Uint16.to_int %a) \
+                                      (Uint16.to_int %a) %a"
             (conv_to ~state:false (Some TU16)) p
             (conv_to ~state:false (Some TU16)) n
+            (conv_to ~state:false arg_typ) e
         | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
         | Mul _ | Div _ | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _
         | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
