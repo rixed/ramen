@@ -61,6 +61,18 @@ let tup_typ_of_temp_tup_type ttt =
       nullable = Option.get typ.Expr.nullable ;
       typ = Option.get typ.Expr.scalar_typ })
 
+(* Store history of past tuple output by a given node: *)
+let history_length = 8096
+
+type history =
+  { tuple_type : Lang.Tuple.typ ;
+    (* Store arrays of Scalar.values not hash of names to values !
+     * TODO: ideally storing scalar_columns would be even better *)
+    tuples : scalar_value array array ;
+    (* Gives us both the position of the last tuple in the array and an index
+     * in the stream of tuples to help polling *)
+    mutable count : int }
+
 module Node =
 struct
   type t =
@@ -98,6 +110,9 @@ struct
       mutable parents : t list ;
       (* Children are either in this layer or in a layer _above_ *)
       mutable children : t list ;
+      (* List of tuples exported from that node: *)
+      (* FIXME: a pretty bad name *)
+      mutable history : history option ;
       (* Worker info, only relevant if it is running: *)
       mutable command : string option ;
       mutable pid : int option ;
@@ -281,6 +296,7 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
     layer = layer_name ; name = node_name ;
     operation ; signature = "" ; op_text ;
     parents = [] ; children = [] ;
+    history = None ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;

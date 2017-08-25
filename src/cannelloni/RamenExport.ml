@@ -2,6 +2,7 @@ open Batteries
 open Log
 open RamenSharedTypes
 module C = RamenConf
+module N = RamenConf.Node
 open Stdint
 
 (* Possible solutions:
@@ -55,35 +56,18 @@ let json_of_tuple tuple_type tuple =
       IO.to_string Lang.Scalar.print tuple.(i)
     ) "{" tuple_type) ^ "}"
 
-(* Store history of past tuple output by a given node: *)
-let history_length = 8096
-
-type history =
-  { tuple_type : Lang.Tuple.typ ;
-    (* Store arrays of Scalar.values not hash of names to values !
-     * TODO: ideally storing scalar_columns would be even better *)
-    tuples : scalar_value array array ;
-    (* Gives us both the position of the last tuple in the array and an index
-     * in the stream of tuples to help polling *)
-    mutable count : int }
-
-(* FIXME: Shouldn't history be part of struct node instead?
- * If so then it would be saved on disk, which is good (unless you want to
- * replay the same CSV again) *)
-let imported_tuples : (string, history) Hashtbl.t = Hashtbl.create 11
-
-let add_tuple node_name tuple_type tuple =
-  match Hashtbl.find imported_tuples node_name with
-  | exception Not_found ->
-    let history = { tuples = Array.init history_length (fun i ->
-                      if i = 0 then tuple else [||]) ;
-                    tuple_type ;
-                    count = 1 } in
-    Hashtbl.add imported_tuples node_name history
-  | history ->
-    let idx = history.count mod Array.length history.tuples in
-    history.tuples.(idx) <- tuple ;
-    history.count <- history.count + 1
+let add_tuple node tuple_type tuple =
+  match node.N.history with
+  | None ->
+    node.N.history <- Some
+      C.{ tuples = Array.init history_length (fun i ->
+              if i = 0 then tuple else [||]) ;
+              tuple_type ;
+          count = 1 }
+  | Some history ->
+    let idx = history.C.count mod Array.length history.C.tuples in
+    history.C.tuples.(idx) <- tuple ;
+    history.C.count <- history.C.count + 1
 
 let read_tuple tuple_type tx =
   (* First read the nullmask *)
@@ -137,9 +121,9 @@ let read_tuple tuple_type tx =
       ) (nullmask_size, 0) tuple_type in
   tuple, sz
 
-let import_tuples rb_name node_name tuple_type =
+let import_tuples rb_name node tuple_type =
   !logger.info "Starting to import output from node %S (in ringbuf %S)"
-    node_name rb_name ;
+    node.N.name rb_name ;
   let rb = RingBuf.load rb_name in
   let dequeue =
     RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in
@@ -147,34 +131,34 @@ let import_tuples rb_name node_name tuple_type =
     let%lwt tx = dequeue rb in
     let tuple, _sz = read_tuple tuple_type tx in
     RingBuf.dequeue_commit tx ;
-    add_tuple node_name tuple_type tuple ;
+    add_tuple node tuple_type tuple ;
     Lwt_main.yield ()
   done
 
 let get_history node =
-  try Hashtbl.find imported_tuples node.C.Node.name
-  with Not_found ->
-    (* Build a fake empty history *)
-    { tuple_type = C.tup_typ_of_temp_tup_type node.C.Node.out_type ;
-      tuples = [||] ; count = 0 }
+  Option.default_delayed (fun () ->
+      (* Build a fake empty history *)
+      C.{ tuple_type = C.tup_typ_of_temp_tup_type node.C.Node.out_type ;
+          tuples = [||] ; count = 0 }
+    ) node.N.history
 
 let get_field_types history =
-  history.tuple_type
+  history.C.tuple_type
 
 let fold_tuples ?(since=0) ?max_res history init f =
-  if Array.length history.tuples = 0 then (
+  if Array.length history.C.tuples = 0 then (
     since, init
   ) else (
-    let nb_tuples = min history.count (Array.length history.tuples) in
+    let nb_tuples = min history.C.count (Array.length history.C.tuples) in
     let nb_res = match max_res with
       | Some r -> min r nb_tuples
       | None -> nb_tuples in
-    let since = max since (history.count - Array.length history.tuples) in
-    let first_idx = since mod Array.length history.tuples in
+    let since = max since (history.C.count - Array.length history.C.tuples) in
+    let first_idx = since mod Array.length history.C.tuples in
     let rec loop prev i r =
       if r <= 0 then prev else (
-        let i = if i < Array.length history.tuples then i else 0 in
-        let tuple = history.tuples.(i) in
+        let i = if i < Array.length history.C.tuples then i else 0 in
+        let tuple = history.C.tuples.(i) in
         let prev =
           if Array.length tuple > 0 then f tuple prev else prev in
         loop prev (i + 1) (r - 1)

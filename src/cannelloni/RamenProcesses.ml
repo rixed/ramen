@@ -89,7 +89,7 @@ let run conf layer =
         if Lang.Operation.is_exporting node.N.operation then (
           let rb = rb_name_for_export_of node in
           let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
-          RamenExport.import_tuples rb node.N.name tuple_type :: lst
+          RamenExport.import_tuples rb node tuple_type :: lst
         ) else lst
       ) layer.C.Layer.persist.C.Layer.nodes [] ;
     C.save_graph conf

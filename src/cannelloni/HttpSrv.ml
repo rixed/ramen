@@ -453,7 +453,7 @@ let timeseries conf headers body =
         let find_field n =
           try (
             List.findi (fun _i (ft : field_typ) ->
-              ft.typ_name = n) history.RamenExport.tuple_type |> fst
+              ft.typ_name = n) history.C.tuple_type |> fst
           ) with Not_found ->
             raise (Failure ("field "^ n ^" does not exist")) in
         let ti = find_field start_field
