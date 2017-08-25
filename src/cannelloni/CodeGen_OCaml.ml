@@ -512,22 +512,22 @@ and emit_expr ?(state=true) oc =
     | AggrLast _ | ExpSmooth _ as expr) ->
      Printf.fprintf oc "%s%s" record_of_state (name_of_state expr)
   | AggrPercentile (_, pct, _) as expr ->
-    Printf.fprintf oc "CodeGenLib.percentile_finalize (%a) %s%s"
+    Printf.fprintf oc "(CodeGenLib.percentile_finalize (%a) %s%s)"
       (conv_to ~state (Some TFloat)) pct
       record_of_state
       (name_of_state expr)
   | Lag _ as expr ->
-    Printf.fprintf oc "CodeGenLib.Seasonal.lag %s%s"
+    Printf.fprintf oc "(CodeGenLib.Seasonal.lag %s%s)"
       record_of_state (name_of_state expr)
   | SeasonAvg (_, p, n, _) as expr ->
     Printf.fprintf oc
-      "CodeGenLib.Seasonal.avg (Uint16.to_int %a) (Uint16.to_int %a) %s%s"
+      "(CodeGenLib.Seasonal.avg (Uint16.to_int %a) (Uint16.to_int %a) %s%s)"
       (conv_to ~state (Some TU16)) p
       (conv_to ~state (Some TU16)) n
       record_of_state (name_of_state expr)
   | LinReg (_, p, n, _) as expr ->
     Printf.fprintf oc
-      "CodeGenLib.Seasonal.linreg (Uint16.to_int %a) (Uint16.to_int %a) %s%s"
+      "(CodeGenLib.Seasonal.linreg (Uint16.to_int %a) (Uint16.to_int %a) %s%s)"
       (conv_to ~state (Some TU16)) p
       (conv_to ~state (Some TU16)) n
       record_of_state (name_of_state expr)
