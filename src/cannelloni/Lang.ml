@@ -145,6 +145,7 @@ let tuple_need_state = function
     | EndOfRange (_, a) -> EndOfRange (typ, replace_typ a)
     | Lag (_, a, b) -> Lag (typ, replace_typ a, replace_typ b)
     | SeasonAvg (_, a, b, c) -> SeasonAvg (typ, replace_typ a, replace_typ b, replace_typ c)
+    | LinReg (_, a, b, c) -> LinReg (typ, replace_typ a, replace_typ b, replace_typ c)
 
   let replace_typ_in_expr = function
     | Ok (expr, rest) -> Ok (replace_typ expr, rest)
@@ -535,6 +536,8 @@ struct
      * but with a universal type for the data (while season-avg works only on
      * numbers). *)
     | SeasonAvg of typ * t * t * t (* period, how many season to keep, expression *)
+    (* Simple linear regression *)
+    | LinReg of typ * t * t * t (* as above: period, how many season to keep, expression *)
 
   let expr_true =
     Const (make_bool_typ ~nullable:false "true", VBool true)
@@ -600,6 +603,8 @@ struct
     | Lag (t, e1, e2) -> Printf.fprintf fmt "lag(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | SeasonAvg (t, e1, e2, e3) ->
       Printf.fprintf fmt "season_avg(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
+    | LinReg (t, e1, e2, e3) ->
+      Printf.fprintf fmt "season_fit(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
 
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
@@ -611,7 +616,7 @@ struct
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
     | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t
     | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
-    | SeasonAvg (t, _, _, _) ->
+    | SeasonAvg (t, _, _, _) | LinReg (t, _, _, _) ->
       t
 
   let is_nullable e =
@@ -636,7 +641,7 @@ struct
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       f i'' expr
-    | SeasonAvg (_, e1, e2, e3) ->
+    | SeasonAvg (_, e1, e2, e3) | LinReg (_, e1, e2, e3) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
@@ -647,9 +652,9 @@ struct
   let unpure_iter f e =
     fold_by_depth (fun () -> function
       | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-      | AggrLast _ | AggrPercentile _ | Lag _ | SeasonAvg _ as e ->
+      | AggrLast _ | AggrPercentile _ | Lag _ | SeasonAvg _ | LinReg _ as e ->
         f e
-      | Const _ | Param _ | Field _ | Cast _ -> ()
+      | Const _ | Param _ | Field _ | Cast _
       | Now _ | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
       | IDiv _ | Exp _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
       | Length _ | BeginOfRange _ | EndOfRange _ ->
@@ -864,6 +869,10 @@ struct
           SeasonAvg (make_float_typ "season_avg", e1, e2, e3)) |||
          (afun2 "recent_avg" >>: fun (e1, e2) ->
           SeasonAvg (make_float_typ "season_avg", expr_one, e1, e2)) |||
+         (afun3 "season_fit" >>: fun (e1, e2, e3) ->
+          LinReg (make_float_typ "season_fit", e1, e2, e3)) |||
+         (afun2 "recent_fit" >>: fun (e1, e2) ->
+          LinReg (make_float_typ "season_fit", expr_one, e1, e2)) |||
          sequence ||| cast) m
 
     and sequence =

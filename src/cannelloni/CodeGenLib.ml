@@ -103,9 +103,26 @@ struct
     in
     loop v0 0 count
 
+  let foldi p n t v0 f =
+    fold p n t (0, v0) (fun (i, v) x -> i+1, f v i x) |> snd
+
   let lag (prevs, count) = prevs.(count mod Array.length prevs)
 
   let avg p n t = (fold p n t 0. (+.)) /. float_of_int n
+
+  let linreg p n t =
+    let b1n, b1d, last =
+      let x_avg = float_of_int (n - 1) /. 2. in
+      let sq x = x *. x in
+      foldi p n t (0., 0., 0.) (fun (b1n, b1d, _) i y ->
+        let x = float_of_int i in
+        let xd = x -. x_avg in
+        b1n +. y *. xd,
+        b1d +. sq xd,
+        y) in
+    let b1 =
+      if n > 1 then b1n /. b1d else 0. in
+    last +. b1
 end
 
 let getenv ?def n =
