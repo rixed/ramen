@@ -1561,6 +1561,7 @@ struct
             check_pure m sf.expr ;
             check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD operation" sf.expr
           ) fields
+        (* TODO: check unicity of aliases *)
       | Aggregate { fields ; where ; key ; commit_when ; flush_when ; flush_how ; export ; _ } ->
         List.iter (fun sf ->
             check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
@@ -1585,6 +1586,7 @@ struct
           check_pure m e ;
           check_fields_from [TupleGroup] "REMOVE clause" e)
         (* TODO: url_notify: check field names from text templates *)
+        (* TODO: check unicity of aliases *)
       | ReadCSVFile _ -> ()
 
     (*$>*)

@@ -325,6 +325,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* e1 must be an unsigned small constant integer. For now that mean user
      * must have entered a constant. Later we might pre-evaluate constant
      * expressions into constant values. *)
+    (* FIXME: Check that the const is > 0 *)
     Expr.check_const "lag" e1 ;
     (* ... and e2 can be anything and the type of lag will be the same,
      * nullable (since we might lag beyond the start of the window. *)
@@ -332,6 +333,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | SeasonAvg (op_typ, e1, e2, e3) | LinReg (op_typ, e1, e2, e3) ->
     (* As above, but e3 must be numeric (therefore the result cannot be
      * null) *)
+    (* FIXME: Check that the consts are > 0 *)
     Expr.check_const "season-avg period" e1 ;
     Expr.check_const "season-avg counts" e2 ;
     check_ternary_op op_typ return_float
