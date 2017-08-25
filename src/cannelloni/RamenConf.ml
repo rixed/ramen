@@ -191,6 +191,39 @@ struct
         node.pid <- None) layer.persist.nodes
     | SL.Running ->
       raise (InvalidCommand "Graph is running")
+
+  let iter_dependencies layer f =
+    (* One day we will have a lock on the configuration and we will be able to
+     * mark visited nodes *)
+    Hashtbl.fold (fun _node_name node called ->
+        List.fold_left (fun called parent ->
+            let dependency = parent.Node.layer in
+            if Set.mem dependency called then called else (
+              f dependency ;
+              Set.add dependency called)
+          ) called node.Node.parents
+      ) layer.persist.nodes (Set.singleton layer.name) |>
+    ignore
+
+  (* Order layers according to dependency, depended upon first. *)
+  let order layers =
+    let rec loop ordered = function
+      | [] -> List.rev ordered
+      | layers ->
+        let progress, ordered, later =
+          List.fold_left (fun (progress, ordered, later) l ->
+              try
+                iter_dependencies l (fun dep ->
+                  if not (List.exists (fun o -> o.name = dep) ordered) then
+                    raise Exit) ;
+                true, l::ordered, later
+              with Exit ->
+                progress, ordered, l::later
+            ) (false, ordered, []) layers in
+        if not progress then raise (InvalidCommand "Dependency loop") ;
+        loop ordered later
+    in
+    loop [] layers
 end
 
 type graph =

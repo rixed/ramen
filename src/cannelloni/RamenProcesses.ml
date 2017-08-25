@@ -57,6 +57,8 @@ let run conf layer =
         let out_ringbuf_ref =
           RingBufLib.out_ringbuf_names_ref conf.C.persist_dir (N.fq_name node) in
         Helpers.mkdir_all ~is_file:true out_ringbuf_ref ;
+        (* We do not care what was there before. This is OK as long as layers
+         * are started in dependency order. *)
         File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
         let input_ringbuf = rb_name_of node in
         let env = [|
@@ -75,6 +77,7 @@ let run conf layer =
             if parent.N.layer <> layer.name then
               let out_ref =
                 RingBufLib.out_ringbuf_names_ref conf.C.persist_dir (N.fq_name parent) in
+              (* The parent ringbuf must exist at that point *)
               let lines = File.lines_of out_ref |> List.of_enum in
               if not (List.mem input_ringbuf lines) then
                 File.write_lines out_ref (List.enum (input_ringbuf :: lines))

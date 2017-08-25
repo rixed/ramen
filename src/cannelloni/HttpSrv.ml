@@ -314,6 +314,7 @@ let compile conf headers layer_opt =
 let run conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
     let%lwt layers = graph_layers conf layer_opt in
+    let layers = L.order layers in
     try
       List.iter (fun layer ->
           let open RamenProcesses in
