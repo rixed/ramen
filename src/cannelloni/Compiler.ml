@@ -567,7 +567,14 @@ let set_all_types conf layer =
         ) layer.L.persist.L.nodes false
     then loop (pass - 1)
   in
-  let max_pass = 50 (* TODO: max number of field for a node times number of nodes? *) in
+  let max_pass =
+    (* max number of field for a node times number of nodes *)
+    let nb_nodes, max_fields =
+      Hashtbl.fold (fun _ node (nb_nodes, max_fields) ->
+          nb_nodes + 1,
+          max max_fields (Lang.Operation.nb_fields node.N.operation)
+        ) layer.L.persist.L.nodes (0,0) in
+    nb_nodes * max_fields in
   loop max_pass
   (* TODO:
    * - check that input type empty <=> no parents
