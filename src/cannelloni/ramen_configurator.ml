@@ -109,23 +109,35 @@ let base_layer dataset_name delete csv_dir =
       (if delete then " AND DELETE" else "") csv_dir in
     make_node "csv" op in
   let to_unidir ~src ~dst name =
-    let rep sub by str = String.nreplace ~str ~sub ~by in
+    let cs_fields = [
+         "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
+         "ip6", "" ; "port", "" ; "diffserv", "" ; "os", "" ; "mtu", "" ;
+         "traffic_packets", "packets" ; "traffic_bytes", "bytes" ;
+         "payload_bytes", "payload" ;
+         "payload_packets", "packets_with_payload" ;
+         "retrans_traffic_bytes", "retrans_bytes" ;
+         "retrans_payload_bytes", "retrans_payload" ;
+         "fin_count", "fins" ; "rst_count", "rsts" ;
+         "dupack_count", "dupacks" ; "zero_window_count", "zero_windows" ;
+         "rtt_count", "" ; "rtt_sum", "" ; "rtt_square_sum", "rtt_sum2" ;
+         "rd_count", "" ; "rd_sum", "" ; "rd_square_sum", "rd_sum2" ;
+         "dtt_count", "" ; "dtt_sum", "" ; "dtt_square_sum", "dtt_sum2" ] |>
+      List.fold_left (fun s (field, alias) ->
+        let alias = if alias <> "" then alias else field in
+        s ^"  "^ field ^"_"^ src ^" AS "^ alias ^"_src, "
+               ^ field ^"_"^ dst ^" AS "^ alias ^"_dst,\n") ""
+    in
     let op =
-      (* TODO: keep all data that can be made source-dest! *)
       "SELECT\n  \
-         capture_begin, capture_end,\n  \
-         device_$SRC AS device_src, device_$DST AS device_dst,\n  \
-         vlan_$SRC AS vlan_src, vlan_$DST AS vlan_dst,\n  \
-         mac_$SRC AS mac_src, mac_$DST AS mac_dst,\n  \
-         zone_$SRC AS zone_src, zone_$DST AS zone_dst,\n  \
-         ip4_$SRC AS ip4_src, ip4_$DST AS ip4_dst,\n  \
-         ip6_$SRC AS ip6_src, ip6_$DST AS ip6_dst,\n  \
-         port_$SRC AS port_src, port_$DST AS port_dst,\n  \
-         traffic_packets_$SRC AS packets,\n  \
-         traffic_bytes_$SRC AS bytes\n\
-       WHERE traffic_packets_$SRC > 0" |>
-      rep "$SRC" src |>
-      rep "$DST" dst in
+         poller, capture_begin, capture_end,\n  \
+         ip4_external, ip6_external,\n  \
+         captured_pcap, application, protostack, uuid,\n  \
+         timeout_count AS timeouts, close_count AS closes,\n  \
+         ct_count AS connections, ct_sum AS connections_time,\n  \
+         ct_square_sum AS connections_time2, syn_count_client AS syns,\n"^
+         cs_fields ^
+      "  dcerpc_uuid\n\
+       WHERE traffic_packets_"^ src ^" > 0" in
     make_node ~parents:["csv"] name op
   in
   RamenSharedTypes.{
@@ -167,9 +179,9 @@ let layer_of_bcns bcns dataset_name =
         "SELECT\n  \
            (capture_begin // %d) AS start,\n  \
            min of capture_begin, max of capture_end,\n  \
-           sum of packets / %g as packets_per_secs,\n  \
-           sum of bytes / %g as bytes_per_secs,\n  \
-           %S as zone_src, %S as zone_dst\n\
+           sum of packets_src / %g AS packets_per_secs,\n  \
+           sum of bytes_src / %g AS bytes_per_secs,\n  \
+           %S AS zone_src, %S AS zone_dst\n\
          WHERE %s AND %s\n\
          EXPORT EVENT STARTING AT start * %g\n         \
                  WITH DURATION %g\n\
