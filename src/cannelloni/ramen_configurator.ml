@@ -138,14 +138,35 @@ let base_layer dataset_name delete csv_dir =
          cs_fields ^
       "  dcerpc_uuid\n\
        WHERE traffic_packets_"^ src ^" > 0" in
-    make_node ~parents:["csv"] name op
+    make_node ~parents:["csv"] name op in
+  let traffic name dt =
+    let dt_us = dt * 1_000_000 in
+    let op =
+      Printf.sprintf
+        "SELECT\n  \
+           (capture_begin // %d) AS start,\n  \
+           min of capture_begin, max of capture_end,\n  \
+           sum of packets_src / %d AS packets_per_secs,\n  \
+           sum of bytes_src / %d AS bytes_per_secs\n\
+         EXPORT EVENT STARTING AT start * %d\n         \
+                 WITH DURATION %d\n\
+         GROUP BY capture_begin // %d\n\
+         COMMIT AND FLUSH WHEN\n  \
+           in.capture_begin > out.min_capture_begin + 2 * %d"
+        dt_us dt dt dt dt dt_us dt_us
+        (* Note: Ideally we would want to compute the max of all.capture_begin *)
+    in
+    make_node ~parents:["c2s"; "s2c"] name op
   in
   RamenSharedTypes.{
     name = dataset_name ;
     nodes = [
       csv ;
       to_unidir ~src:"client" ~dst:"server" "c2s" ;
-      to_unidir ~src:"server" ~dst:"client" "s2c" ] }
+      to_unidir ~src:"server" ~dst:"client" "s2c" ;
+      traffic "minutely traffic" 60 ;
+      traffic "hourly traffic" 3600 ;
+      traffic "daily traffic" (3600 * 24) ] }
 
 (* Build the node infos corresponding to the BCN configuration *)
 let layer_of_bcns bcns dataset_name =
