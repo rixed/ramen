@@ -232,8 +232,9 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
             (id_of_typ field.typ) ;
         Printf.fprintf oc "\tlet offs_ = " ;
         if field.nullable then
-          Printf.fprintf oc "\
-            if %s = None then offs_ else offs_ + %a in\n" id
+          Printf.fprintf oc
+            "(match %s with None -> offs_ | Some %s -> offs_ + %a) in\n"
+            id id
             (emit_sersize_of_field_var field.typ) id
         else
           Printf.fprintf oc "\
