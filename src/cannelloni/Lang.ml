@@ -1140,12 +1140,6 @@ struct
     | Aggregate { export = Some e ; _ } -> e
     | _ -> None
 
-  let nb_fields = function
-    | Aggregate { fields ; _ } | Yield fields ->
-      List.length fields
-    | ReadCSVFile { fields ; _ } ->
-      List.length fields
-
   module Parser =
   struct
     (*$< Parser *)

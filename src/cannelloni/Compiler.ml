@@ -548,34 +548,14 @@ let node_typing_is_finished conf node =
      true
    else false)
 
-let set_all_types conf layer =
-  let rec loop pass =
-    if pass < 0 then (
-      let bad_nodes =
-        Hashtbl.values layer.L.persist.L.nodes //
-        (fun n -> not (node_typing_is_finished conf n)) in
-      let print_bad_node fmt node =
-        Printf.fprintf fmt "%s: %a"
-          node.N.name
-          (List.print ~sep:" and " ~first:"" ~last:"" String.print)
-            ((if node.N.in_type.C.finished_typing then [] else ["cannot type input"]) @
-             (if node.N.out_type.C.finished_typing then [] else ["cannot type output"])) in
-      let msg = IO.to_string (Enum.print ~sep:", " print_bad_node) bad_nodes in
-      raise (Lang.SyntaxError msg)) ;
+let set_all_types _conf layer =
+  let rec loop () =
     if Hashtbl.fold (fun _ node changed ->
           check_node_types node || changed
         ) layer.L.persist.L.nodes false
-    then loop (pass - 1)
+    then loop ()
   in
-  let max_pass =
-    (* max number of field for a node times number of nodes *)
-    let nb_nodes, max_fields =
-      Hashtbl.fold (fun _ node (nb_nodes, max_fields) ->
-          nb_nodes + 1,
-          max max_fields (Lang.Operation.nb_fields node.N.operation)
-        ) layer.L.persist.L.nodes (0,0) in
-    nb_nodes * max_fields in
-  loop max_pass
+  loop ()
   (* TODO:
    * - check that input type empty <=> no parents
    * - check that output type empty <=> no children
