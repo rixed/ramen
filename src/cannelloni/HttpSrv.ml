@@ -250,10 +250,9 @@ let get_graph conf headers layer_opt =
 *)
 
 let find_node_or_fail conf layer_name node_name =
-  match C.find_node conf layer_name node_name with
-  | exception Not_found ->
+  try C.find_node conf layer_name node_name
+  with Not_found ->
     failwith ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
-  | node -> node
 
 let node_of_name conf layer_name node_name =
   if node_name = "" then failwith "Empty string is not a valid node name"
@@ -276,11 +275,11 @@ let put_layer conf headers body =
       ) msg.nodes ;
     (* Then all the links *)
     List.iter (fun def ->
-        let dst = node_of_name conf msg.name def.Node.name in
+        let _layer, dst = node_of_name conf msg.name def.Node.name in
         List.iter (fun p ->
             let parent_layer, parent_name =
               layer_node_of_user_string conf ~default_layer:msg.name p in
-            let src = node_of_name conf parent_layer parent_name in
+            let _layer, src = node_of_name conf parent_layer parent_name in
             C.add_link conf src dst
           ) def.SN.parents
       ) msg.nodes ;
@@ -350,8 +349,10 @@ let export conf headers layer_name node_name body =
       if body = "" then return empty_export_req else
       of_json headers ("Exporting from "^ node_name) export_req_ppp body in
     (* Check that the node exists and exports *)
-    let node = find_node_or_fail conf layer_name node_name in
-    if not (Lang.Operation.is_exporting node.N.operation) then
+    let layer, node = find_node_or_fail conf layer_name node_name in
+    if not (L.is_typed layer) then
+      bad_request ("node "^ node_name ^" is not typed (yet)")
+    else if not (Lang.Operation.is_exporting node.N.operation) then
       bad_request ("node "^ node_name ^" does not export data")
     else (
       let start = Unix.gettimeofday () in
@@ -382,7 +383,7 @@ let export conf headers layer_name node_name body =
 let report conf _headers layer name body =
   (* TODO: check application-type is marshaled.ocaml *)
   let last_report = Marshal.from_string body 0 in
-  let node = find_node_or_fail conf layer name in
+  let _layer, node = find_node_or_fail conf layer name in
   node.N.last_report <- last_report ;
   respond_ok ()
 
@@ -433,7 +434,7 @@ let timeseries conf headers body =
   let open Lang.Operation in
   let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
   let ts_of_node_field req layer node data_field =
-    let node = find_node_or_fail conf layer node in
+    let _layer, node = find_node_or_fail conf layer node in
     if not (is_exporting node.N.operation) then
       raise (Failure ("node "^ node.N.name ^" does not export data"))
     else match export_event_info node.N.operation with
@@ -497,7 +498,7 @@ let timeseries conf headers body =
      * formatting. We thus start by parsing and pretty-printing the operation: *)
     let parent_layer, parent_name =
       layer_node_of_user_string conf from in
-    let parent = node_of_name conf parent_layer parent_name in
+    let _layer, parent = node_of_name conf parent_layer parent_name in
     let op_text =
       if select_x = "" then (
         let open Lang.Operation in
@@ -556,7 +557,7 @@ let timeseries conf headers body =
               layer, node, data_field
             | NewTempNode { select_x ; select_y ; from ; where } ->
               create_temporary_node select_x select_y from where in
-          let node = find_node_or_fail conf layer_name node_name in
+          let _layer, node = find_node_or_fail conf layer_name node_name in
           RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
           let times, values = ts_of_node_field req layer_name node_name data_field in
           { id = req.id ; times ; values }) msg.timeseries with

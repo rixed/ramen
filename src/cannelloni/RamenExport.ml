@@ -137,7 +137,7 @@ let import_tuples rb_name node tuple_type =
 
 let get_history node =
   Option.default_delayed (fun () ->
-      (* Build a fake empty history *)
+      (* Build a fake empty history - this requires the node to be typed. *)
       C.{ tuple_type = C.tup_typ_of_temp_tup_type node.C.Node.out_type ;
           tuples = [||] ; count = 0 }
     ) node.N.history

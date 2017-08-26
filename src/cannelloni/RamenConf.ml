@@ -186,6 +186,11 @@ struct
      * crashed because of it? *)
     layer
 
+  let is_typed layer =
+    match layer.persist.status with
+    | SL.Edition | SL.Compiling -> false
+    | SL.Compiled | SL.Running -> true
+
   (* Layer edition: only when stopped *)
   let set_editable layer =
     match layer.persist.status with
@@ -345,7 +350,7 @@ let load_graph do_persist persist_dir =
 
 let find_node conf layer name =
   let layer = Hashtbl.find conf.graph.layers layer in
-  Hashtbl.find layer.Layer.persist.Layer.nodes name
+  layer, Hashtbl.find layer.Layer.persist.Layer.nodes name
 
 (* Both src and dst have to exist already. *)
 let add_link conf src dst =
@@ -394,7 +399,7 @@ let complete_field_name conf name s =
   | layer_name, node_name ->
     match find_node conf layer_name node_name with
     | exception Not_found -> []
-    | node ->
+    | _layer, node ->
       let s = String.(lowercase (trim s)) in
       Hashtbl.fold (fun field_name _ lst ->
           if String.starts_with (String.lowercase field_name) s then
