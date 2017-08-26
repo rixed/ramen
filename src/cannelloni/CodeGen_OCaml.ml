@@ -294,10 +294,8 @@ let emit_scalar oc =
   | VBool   b -> Printf.fprintf oc "%b" b
   | VU8     n -> Printf.fprintf oc "(Uint8.of_int %d)" (Uint8.to_int n)
   | VU16    n -> Printf.fprintf oc "(Uint16.of_int %d)" (Uint16.to_int n)
-                 (* Note that Uint32.of_int32 0xFFFFFFFFl works despite 0xFFFFFFFFl
-                  * not fitting in a signed int32: *)
-  | VU32    n -> Printf.fprintf oc "(Uint32.of_int32 %sl)" (Uint32.to_string n)
-  | VU64    n -> Printf.fprintf oc "(Uint64.of_int64 %sL)" (Uint64.to_string n)
+  | VU32    n -> Printf.fprintf oc "(Uint32.of_int64 %sL)" (Uint32.to_string n)
+  | VU64    n -> Printf.fprintf oc "(Uint64.of_string %S)" (Uint64.to_string n)
   | VU128   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
   | VI8     n -> Printf.fprintf oc "(Int8.of_int %d)" (Int8.to_int n)
   | VI16    n -> Printf.fprintf oc "(Int16.of_int %d)" (Int16.to_int n)
@@ -305,10 +303,10 @@ let emit_scalar oc =
   | VI64    n -> Printf.fprintf oc "%sL" (Int64.to_string n)
   | VI128   n -> Printf.fprintf oc "(Int128.of_string %S)" (Int128.to_string n)
   | VEth    n -> Printf.fprintf oc "(Uint40.of_int64 %LdL)" (Uint48.to_int64 n)
-  | VIpv4   n -> Printf.fprintf oc "(Uint32.of_int32 %sl)" (Uint32.to_string n)
+  | VIpv4   n -> Printf.fprintf oc "(Uint32.of_string %S)" (Uint32.to_string n)
   | VIpv6   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
   | VCidrv4 (n,l) ->
-                 Printf.fprintf oc "(Uint32.of_int32 %sl, %d)" (Uint32.to_string n) l
+                 Printf.fprintf oc "(Uint32.of_string %S, %d)" (Uint32.to_string n) l
   | VCidrv6 (n,l) ->
                  Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
   | VNull     -> Printf.fprintf oc "()"
