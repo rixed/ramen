@@ -152,7 +152,7 @@ let base_layer dataset_name delete csv_dir =
                  WITH DURATION %d\n\
          GROUP BY capture_begin // %d\n\
          COMMIT AND FLUSH WHEN\n  \
-           in.capture_begin > out.min_capture_begin + 2 * %d"
+           in.capture_begin > out.min_capture_begin + 2 * u64(%d)"
         dt_us dt dt dt dt dt_us dt_us
         (* Note: Ideally we would want to compute the max of all.capture_begin *)
     in
@@ -207,7 +207,7 @@ let layer_of_bcns bcns dataset_name =
          EXPORT EVENT STARTING AT start * %g\n         \
                  WITH DURATION %g\n\
          GROUP BY capture_begin // %d\n\
-         COMMIT AND FLUSH WHEN in.capture_begin > out.min_capture_begin + 2 * %d"
+         COMMIT AND FLUSH WHEN in.capture_begin > out.min_capture_begin + 2 * u64(%d)"
         avg_window
         bcn.avg_window bcn.avg_window
         (name_of_zones bcn.source)
