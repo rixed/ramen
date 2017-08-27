@@ -64,6 +64,7 @@ let run conf layer =
         let env = [|
           "OCAMLRUNPARAM=b" ;
           "debug="^ string_of_bool conf.C.debug ;
+          "name="^ node.N.name ;
           "input_ringbuf="^ input_ringbuf ;
           "output_ringbufs_ref="^ out_ringbuf_ref ;
           "report_url="^ conf.C.ramen_url

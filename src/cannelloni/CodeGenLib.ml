@@ -272,9 +272,10 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
 type worker_conf =
   { debug : bool ; persist_dir : string ; report_url : string }
 
-let node_start node_name =
+let node_start () =
   let debug = getenv ~def:"false" "debug" |> bool_of_string
-  and prefix = node_name ^": " in
+  and node_name = getenv ~def:"?" "name" in
+  let prefix = node_name ^": " in
   logger := make_logger ~prefix debug ;
   !logger.info "Starting %s process..." node_name ;
   let default_persist_dir = "/tmp/worker_"^ node_name ^"_"^ string_of_int (Unix.getpid ()) in
@@ -295,7 +296,7 @@ let quote_at_end s =
 
 let read_csv_file filename do_unlink separator sersize_of_tuple
                   serialize_tuple tuple_of_strings preprocessor =
-  let _conf = node_start "READ CSV FILE" in
+  let _conf = node_start () in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   (* For tests, allow to overwrite what's specified in the operation: *)
   and filename = getenv ~def:filename "csv_filename"
@@ -350,7 +351,7 @@ let notify url field_of_tuple tuple =
   async (fun () -> CodeGenLib_IO.http_notify url)
 
 let yield sersize_of_tuple serialize_tuple select =
-  let _conf = node_start "YIELD" in
+  let _conf = node_start () in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   in
   let outputer =
@@ -452,7 +453,7 @@ let aggregate
       (update_aggr : 'aggr -> 'tuple_in -> unit)
       (field_of_tuple : 'tuple_in -> string -> string)
       (notify_url : string) =
-  let conf = node_start "GROUP BY"
+  let conf = node_start ()
   and rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
