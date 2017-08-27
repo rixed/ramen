@@ -110,17 +110,17 @@ let stop conf layer =
      * changed before launching workers. *)
     raise NotRunning
   | SL.Running ->
-    !logger.info "Stopping layer..." ;
+    !logger.info "Stopping layer %s" layer.L.name ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
-        !logger.debug "Stopping node %s" node.N.name ;
         match node.N.pid with
         | None ->
           !logger.error "Node %s has no pid?!" node.N.name
         | Some pid ->
           let open Unix in
           (try kill pid Sys.sigterm
-          with Unix_error _ -> ()) ;
+           with Unix_error _ as e ->
+            !logger.error "Cannot kill pid %d: %s" pid (Printexc.to_string e)) ;
           (try
             let _, status = restart_on_EINTR (waitpid []) pid in
             !logger.info "Node %s %s"

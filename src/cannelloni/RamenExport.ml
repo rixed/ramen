@@ -122,8 +122,8 @@ let read_tuple tuple_type tx =
   tuple, sz
 
 let import_tuples rb_name node tuple_type =
-  !logger.info "Starting to import output from node %S (in ringbuf %S)"
-    node.N.name rb_name ;
+  !logger.info "Starting to import output from node %s (in ringbuf %S)"
+    (N.fq_name node) rb_name ;
   let rb = RingBuf.load rb_name in
   let dequeue =
     RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in

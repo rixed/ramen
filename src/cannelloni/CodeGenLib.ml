@@ -347,7 +347,7 @@ let notify url field_of_tuple tuple =
         ) text
   in
   let url = expand_fields url tuple in
-  !logger.info "Notifying url %S" url ;
+  !logger.debug "Notifying url %S" url ;
   async (fun () -> CodeGenLib_IO.http_notify url)
 
 let yield sersize_of_tuple serialize_tuple select =

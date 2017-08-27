@@ -94,6 +94,7 @@ CAMLprim value wrap_ringbuf_unload(value rb_)
   CAMLparam1(rb_);
   struct ringbuf *rb = Ringbuf_val(rb_);
   if (0 != ringbuf_unload(rb)) caml_failwith("Cannot unload ring buffer");
+  printf("Unmmapped @ %p\n", rb);
   CAMLreturn(Val_unit);
 }
 

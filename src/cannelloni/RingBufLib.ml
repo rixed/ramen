@@ -3,6 +3,7 @@
 open Batteries
 open Lwt
 open RamenSharedTypes
+open Log
 
 (* Compromise between size and efficient reading of data, TBD: *)
 let rb_word_bytes = 4
@@ -68,6 +69,8 @@ let out_ringbuf_names outbuf_ref_fname =
   fun () ->
     let%lwt t = last_touched outbuf_ref_fname in
     if t > !last_read then (
+      if !last_read <> 0. then
+        !logger.info "Have to re-read %s" outbuf_ref_fname ;
       last_read := t ;
       lines := File.lines_of outbuf_ref_fname |> Set.of_enum ;
       return (Some !lines)
