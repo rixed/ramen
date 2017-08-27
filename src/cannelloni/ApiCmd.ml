@@ -74,10 +74,14 @@ let run debug ramen_url () =
   Lwt_main.run (
     http_get (ramen_url ^"/run") >>= check_ok)
 
-let shutdown debug ramen_url () =
+let shutdown debug layer_name ramen_url () =
   logger := make_logger debug ;
   Lwt_main.run (
-    http_get (ramen_url ^"/stop") >>= check_ok)
+    let url = if layer_name = "" then
+      ramen_url ^"/stop"
+    else
+      ramen_url ^"/stop/"^ enc layer_name in
+    http_get url >>= check_ok)
 
 let tuples_of_columns columns =
   let field_types =

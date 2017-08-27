@@ -152,6 +152,7 @@ let shutdown =
   Term.(
     (const ApiCmd.shutdown
       $ debug
+      $ layer_name
       $ server_url),
     info "shutdown")
 
