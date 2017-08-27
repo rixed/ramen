@@ -1031,7 +1031,7 @@ let compile_source fname =
   else (
     let comp_cmd =
       Printf.sprintf
-        "ocamlfind ocamlopt -g -o %s \
+        "nice ocamlfind ocamlopt -g -o %s \
           -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator \
           -linkpkg codegen.cmxa %s"
         (shell_quote exec_name)
