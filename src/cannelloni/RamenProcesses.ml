@@ -1,4 +1,5 @@
 open Batteries
+open Lwt
 open Log
 module C = RamenConf
 module N = RamenConf.Node
@@ -24,6 +25,11 @@ let run_background cmd args env =
 exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
+
+let string_of_process_status = function
+  | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
+  | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %d" sign
+  | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
 
 let run conf layer =
   let open C.Layer in
@@ -72,7 +78,21 @@ let run conf layer =
                        ^ "/"^ Uri.pct_encode node.N.name ;
           "persist_dir="^ conf.C.persist_dir ^"/worker/"
                         ^ node.N.layer ^"/"^ node.N.name |] in
-        node.N.pid <- Some (run_background command [||] env) ;
+        let pid = run_background command [||] env in
+        node.N.pid <- Some pid ;
+        async (fun () ->
+          let rec restart () =
+            match%lwt Lwt_unix.waitpid [] pid with
+            | exception Unix.Unix_error (Unix.EINTR, _, _) -> restart ()
+            | exception exn ->
+              !logger.error "Cannot wait for pid %d: %s"
+                pid (Printexc.to_string exn) ;
+              return_unit
+            | _, status ->
+              !logger.info "Node %s %s"
+                node.N.name (string_of_process_status status) ;
+              return_unit in
+          restart ()) ;
         (* Update the parents out_ringbuf_ref if it's in another layer *)
         List.iter (fun parent ->
             if parent.N.layer <> layer.name then
@@ -95,11 +115,6 @@ let run conf layer =
       ) layer.C.Layer.persist.C.Layer.nodes [] ;
     C.save_graph conf
 
-let string_of_process_status = function
-  | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
-  | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %d" sign
-  | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
-
 exception NotRunning
 
 let stop conf layer =
@@ -121,18 +136,11 @@ let stop conf layer =
           (try kill pid Sys.sigterm
            with Unix_error _ as e ->
             !logger.error "Cannot kill pid %d: %s" pid (Printexc.to_string e)) ;
-          (try
-            let _, status = restart_on_EINTR (waitpid []) pid in
-            !logger.info "Node %s %s"
-              node.N.name (string_of_process_status status) ;
-           with exn ->
-            !logger.error "Cannot wait for pid %d: %s"
-              pid (Printexc.to_string exn)) ;
           node.N.pid <- None
       ) layer.C.Layer.persist.C.Layer.nodes ;
     C.Layer.set_status layer SL.Compiled ;
     layer.C.Layer.persist.C.Layer.last_stopped <- Some now ;
-    List.iter Lwt.cancel layer.C.Layer.importing_threads ;
+    List.iter cancel layer.C.Layer.importing_threads ;
     layer.C.Layer.importing_threads <- [] ;
     C.save_graph conf
 
