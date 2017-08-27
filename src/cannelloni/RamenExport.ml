@@ -122,18 +122,26 @@ let read_tuple tuple_type tx =
   tuple, sz
 
 let import_tuples rb_name node tuple_type =
+  let open Lwt in
   !logger.info "Starting to import output from node %s (in ringbuf %S)"
     (N.fq_name node) rb_name ;
   let rb = RingBuf.load rb_name in
-  let dequeue =
-    RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in
-  while%lwt true do
-    let%lwt tx = dequeue rb in
-    let tuple, _sz = read_tuple tuple_type tx in
-    RingBuf.dequeue_commit tx ;
-    add_tuple node tuple_type tuple ;
-    Lwt_main.yield ()
-  done
+  catch
+    (fun () ->
+      let dequeue =
+        RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in
+      while%lwt true do
+        let%lwt tx = dequeue rb in
+        let tuple, _sz = read_tuple tuple_type tx in
+        RingBuf.dequeue_commit tx ;
+        add_tuple node tuple_type tuple ;
+        Lwt_main.yield ()
+      done)
+    (function Canceled ->
+      !logger.info "Import from %s was cancelled" rb_name ;
+      RingBuf.unload rb ;
+      return_unit
+            | e -> fail e)
 
 let get_history node =
   Option.default_delayed (fun () ->
