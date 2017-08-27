@@ -26,10 +26,42 @@ exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
 
+let name_of_signal s =
+  let open Sys in
+  if s = sigabrt then "ABORT"
+  else if s = sigalrm then "ALRM"
+  else if s = sigfpe then "FPE"
+  else if s = sighup then "HUP"
+  else if s = sigill then "ILL"
+  else if s = sigint then "INT"
+  else if s = sigkill then "KILL"
+  else if s = sigpipe then "PIPE"
+  else if s = sigquit then "QUIT"
+  else if s = sigsegv then "SEGV"
+  else if s = sigterm then "TERM"
+  else if s = sigusr1 then "USR1"
+  else if s = sigusr2 then "USR2"
+  else if s = sigchld then "CHLD"
+  else if s = sigcont then "CONT"
+  else if s = sigstop then "STOP"
+  else if s = sigtstp then "TSTP"
+  else if s = sigttin then "TTIN"
+  else if s = sigttou then "TTOU"
+  else if s = sigvtalrm then "VTALRM"
+  else if s = sigprof then "PROF"
+  else if s = sigbus then "BUS"
+  else if s = sigpoll then "POLL"
+  else if s = sigsys then "SYS"
+  else if s = sigtrap then "TRAP"
+  else if s = sigurg then "URG"
+  else if s = sigxcpu then "XCPU"
+  else if s = sigxfsz then "XFSZ"
+  else "Unknown OCaml signal number "^ string_of_int s
+
 let string_of_process_status = function
   | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
-  | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %d" sign
-  | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %d" sign
+  | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %s" (name_of_signal sign)
+  | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %s" (name_of_signal sign)
 
 let run conf layer =
   let open C.Layer in
@@ -44,14 +76,14 @@ let run conf layer =
     and rb_name_for_export_of node =
       RingBufLib.exp_ringbuf_name conf.C.persist_dir (N.fq_name node)
     and rb_sz_words = 1000000 in
-    !logger.info "Creating ringbuffers..." ;
+    !logger.debug "Creating ringbuffers..." ;
     Hashtbl.iter (fun _ node ->
         RingBuf.create (rb_name_of node) rb_sz_words ;
         if Lang.Operation.is_exporting node.N.operation then
           RingBuf.create (rb_name_for_export_of node) rb_sz_words
       ) layer.persist.nodes ;
     (* Now run everything *)
-    !logger.info "Launching generated programs..." ;
+    !logger.debug "Launching generated programs..." ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
         let command = Option.get node.N.command
@@ -125,7 +157,7 @@ let stop conf layer =
      * changed before launching workers. *)
     raise NotRunning
   | SL.Running ->
-    !logger.info "Stopping layer %s" layer.L.name ;
+    !logger.debug "Stopping layer %s" layer.L.name ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
         match node.N.pid with
@@ -183,12 +215,11 @@ let timeout_layers conf =
       let layer = Hashtbl.find conf.C.graph.C.layers layer_name in
       if layer.L.persist.L.timeout > 0. &&
          now > layer.L.persist.L.last_used +. layer.L.persist.L.timeout then (
-        (try
-          stop conf layer ;
-          !logger.info "Deleting unused layer %s after a %gs timeout"
-            layer_name layer.L.persist.L.timeout ;
-        with NotRunning -> ()) ;
-        Hashtbl.remove conf.C.graph.C.layers layer_name ;
+        !logger.info "Deleting unused layer %s after a %gs timeout"
+          layer_name layer.L.persist.L.timeout ;
+        (* Kill first, and only then forget about it. *)
+        (try stop conf layer with NotRunning -> ()) ;
+        Hashtbl.remove conf.C.graph.C.layers layer_name
       )
     ) unused ;
   C.save_graph conf

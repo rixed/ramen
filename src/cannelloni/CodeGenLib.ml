@@ -245,6 +245,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
     IntCounter.add stats_out_tuple_count 1 ;
     let%lwt fnames = get_out_fnames () in
     Option.may (fun next ->
+      !logger.debug "Must now output to: %a"
+        (Set.print String.print) next ;
       (* Change occurred, load/unload as required *)
       let current = Hashtbl.keys out_h |> Set.of_enum in
       let to_open = Set.diff next current
@@ -279,7 +281,7 @@ let node_start () =
   and node_name = getenv ~def:"?" "name" in
   let prefix = node_name ^": " in
   logger := make_logger ~prefix debug ;
-  !logger.info "Starting %s process..." node_name ;
+  !logger.debug "Starting %s process..." node_name ;
   let default_persist_dir = "/tmp/worker_"^ node_name ^"_"^ string_of_int (Unix.getpid ()) in
   let persist_dir = getenv ~def:default_persist_dir "persist_dir" in
   let report_url =
