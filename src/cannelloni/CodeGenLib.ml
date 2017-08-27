@@ -250,7 +250,9 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
       let to_open = Set.diff next current
       and to_close = Set.diff current next in
       Set.iter (fun fname ->
-        Hashtbl.find out_h fname |> fst |> RingBuf.unload) to_close ;
+        let rb, _ = Hashtbl.find out_h fname in
+        RingBuf.unload rb ;
+        Hashtbl.remove out_h fname) to_close ;
       Set.iter (fun fname ->
           let rb = RingBuf.load fname in
           let once = output rb sersize_of_tuple serialize_tuple in

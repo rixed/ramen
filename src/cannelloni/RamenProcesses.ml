@@ -132,6 +132,18 @@ let stop conf layer =
         | None ->
           !logger.error "Node %s has no pid?!" node.N.name
         | Some pid ->
+          !logger.debug "Stopping node %s, pid %d" node.N.name pid ;
+          (* Start by removing this worker ringbuf from all its parent output
+           * reference *)
+          let this_in =
+            RingBufLib.in_ringbuf_name conf.C.persist_dir (N.fq_name node) in
+          List.iter (fun parent ->
+              let out_ref =
+                RingBufLib.out_ringbuf_names_ref conf.C.persist_dir (N.fq_name parent) in
+              File.(lines_of out_ref // (<>) this_in |> write_lines out_ref)
+              (* File.(lines_of out_ref // (<>) this_in |> write_lines out_ref) *)
+            ) node.N.parents ;
+          (* Get rid of the worker *)
           let open Unix in
           (try kill pid Sys.sigterm
            with Unix_error _ as e ->

@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <string.h>
+#include <sys/types.h>  // getpid
+#include <unistd.h>  // getpid
 
 #define CAML_NAME_SPACE
 #include <caml/mlvalues.h>
@@ -18,17 +20,25 @@
 
 /* type t for struct ringbuf */
 
+#define Ringbuf_val(v) (*((struct ringbuf **)Data_custom_val(v)))
+
+static void finalize_ringbuf(value rb_)
+{
+  struct ringbuf *rb = Ringbuf_val(rb_);
+  if (! rb) return;  // might have been unloaded already
+  (void)ringbuf_unload(rb); // There is not we can do at this point.
+  printf("%d: Unmmapped @ %p from finalizer\n", (int)getpid(), rb);
+}
+
 static struct custom_operations ringbuf_ops = {
   "org.happyleptic.ramen.ringbuf",
-  custom_finalize_default,
+  finalize_ringbuf,
   custom_compare_default,
   custom_hash_default,
   custom_serialize_default,
   custom_deserialize_default,
   custom_compare_ext_default
 };
-
-#define Ringbuf_val(v) (*((struct ringbuf **)Data_custom_val(v)))
 
 static value alloc_ringbuf(struct ringbuf *rb)
 {
@@ -84,7 +94,7 @@ CAMLprim value wrap_ringbuf_load(value fname_)
   char *fname = String_val(fname_);
   struct ringbuf *rb = ringbuf_load(fname);
   if (! rb) caml_failwith("Cannot load ring buffer");
-  printf("MMapped %s @ %p\n", fname, rb);
+  printf("%d: MMapped %s @ %p\n", (int)getpid(), fname, rb);
   res = alloc_ringbuf(rb);
   CAMLreturn(res);
 }
@@ -94,7 +104,8 @@ CAMLprim value wrap_ringbuf_unload(value rb_)
   CAMLparam1(rb_);
   struct ringbuf *rb = Ringbuf_val(rb_);
   if (0 != ringbuf_unload(rb)) caml_failwith("Cannot unload ring buffer");
-  printf("Unmmapped @ %p\n", rb);
+  Ringbuf_val(rb_) = NULL;
+  printf("%d: Unmmapped @ %p\n", (int)getpid(), rb);
   CAMLreturn(Val_unit);
 }
 
