@@ -6,6 +6,11 @@ module N = RamenConf.Node
 module L = RamenConf.Layer
 module SL = RamenSharedTypes.Layer
 
+let fd_of_int : int -> Unix.file_descr = Obj.magic
+
+let close_fd i =
+  Unix.close (fd_of_int i)
+
 let run_background cmd args env =
   let open Unix in
   (* prog name should be first arg *)
@@ -17,8 +22,14 @@ let run_background cmd args env =
     cmd
     (Array.print String.print) args
     (Array.print String.print) env ;
+  flush_all () ;
   match fork () with
-  | 0 -> execve cmd args env
+  | 0 ->
+    close_fd 0 ;
+    for i = 3 to 255 do
+      try close_fd i with Unix.Unix_error(Unix.EBADF, _, _) -> ()
+    done ;
+    execve cmd args env
   | pid -> pid
     (* TODO: A monitoring thread that report the error in the node structure *)
 
