@@ -332,7 +332,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* ... and e2 can be anything and the type of lag will be the same,
      * nullable (since we might lag beyond the start of the window. *)
     check_binary_op op_typ snd ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1 e2
-  | SeasonAvg (op_typ, e1, e2, e3) | LinReg (op_typ, e1, e2, e3) ->
+  | MovingAvg (op_typ, e1, e2, e3) | LinReg (op_typ, e1, e2, e3) ->
     (* As above, but e3 must be numeric (therefore the result cannot be
      * null) *)
     (* FIXME: Check that the consts are > 0 *)

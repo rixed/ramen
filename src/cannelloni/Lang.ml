@@ -146,7 +146,7 @@ let tuple_need_state = function
     | BeginOfRange (_, a) -> BeginOfRange (typ, replace_typ a)
     | EndOfRange (_, a) -> EndOfRange (typ, replace_typ a)
     | Lag (_, a, b) -> Lag (typ, replace_typ a, replace_typ b)
-    | SeasonAvg (_, a, b, c) -> SeasonAvg (typ, replace_typ a, replace_typ b, replace_typ c)
+    | MovingAvg (_, a, b, c) -> MovingAvg (typ, replace_typ a, replace_typ b, replace_typ c)
     | LinReg (_, a, b, c) -> LinReg (typ, replace_typ a, replace_typ b, replace_typ c)
     | ExpSmooth (_, a, b) -> ExpSmooth (typ, replace_typ a, replace_typ b)
 
@@ -534,13 +534,14 @@ struct
     (* value retarded by k steps. If we have had less than k past values
      * then return the first we've had. *)
     | Lag of typ * t * t
-    (* If the current time is t, the season average of period p on k seasons is
-     * the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence of v(t).
-     * This is because we want to compare v(t) with this season average.
-     * Notice that lag is a special case of season average with p=k and k=1,
-     * but with a universal type for the data (while season-avg works only on
-     * numbers). *)
-    | SeasonAvg of typ * t * t * t (* period, how many season to keep, expression *)
+    (* If the current time is t, the seasonal, moving average of period p on k
+     * seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence
+     * of v(t).  This is because we want to compare v(t) with this season
+     * average.  Notice that lag is a special case of season average with p=k
+     * and k=1, but with a universal type for the data (while season-avg works
+     * only on numbers).  For instance, a moving average of order 5 would be
+     * period=1, count=5 *)
+    | MovingAvg of typ * t * t * t (* period, how many season to keep, expression *)
     (* Simple linear regression *)
     | LinReg of typ * t * t * t (* as above: period, how many season to keep, expression *)
     (* Simple exponential smoothing *)
@@ -610,8 +611,8 @@ struct
     | Gt (t, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Eq (t, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Lag (t, e1, e2) -> Printf.fprintf fmt "lag(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | SeasonAvg (t, e1, e2, e3) ->
-      Printf.fprintf fmt "season_avg(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
+    | MovingAvg (t, e1, e2, e3) ->
+      Printf.fprintf fmt "season_moveavg(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
     | LinReg (t, e1, e2, e3) ->
       Printf.fprintf fmt "season_fit(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
     | ExpSmooth (t, e1, e2) -> Printf.fprintf fmt "smooth(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
@@ -626,7 +627,7 @@ struct
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
     | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t
     | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
-    | SeasonAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
+    | MovingAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
     | Exp (t, _) | Log (t, _) ->
       t
 
@@ -652,7 +653,7 @@ struct
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       f i'' expr
-    | SeasonAvg (_, e1, e2, e3) | LinReg (_, e1, e2, e3) ->
+    | MovingAvg (_, e1, e2, e3) | LinReg (_, e1, e2, e3) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
@@ -663,7 +664,7 @@ struct
   let unpure_iter f e =
     fold_by_depth (fun () -> function
       | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-      | AggrLast _ | AggrPercentile _ | Lag _ | SeasonAvg _ | LinReg _
+      | AggrLast _ | AggrPercentile _ | Lag _ | MovingAvg _ | LinReg _
       | ExpSmooth _ as e ->
         f e
       | Const _ | Param _ | Field _ | Cast _
@@ -877,14 +878,14 @@ struct
          (afun1 "length" >>: fun e -> Length (make_typ ~typ:TU16 "length", e)) |||
          (strinG "now" >>: fun () -> Now (make_float_typ ~nullable:false "now")) |||
          (afun2 "lag" >>: fun (e1, e2) -> Lag (make_typ "lag", e1, e2)) |||
-         (* season-avg perform a division thus the float type *)
-         (afun3 "season_avg" >>: fun (e1, e2, e3) ->
-          SeasonAvg (make_float_typ "season_avg", e1, e2, e3)) |||
-         (afun2 "recent_avg" >>: fun (e1, e2) ->
-          SeasonAvg (make_float_typ "season_avg", expr_one, e1, e2)) |||
+         (* avg perform a division thus the float type *)
+         (afun3 "season_moveavg" >>: fun (e1, e2, e3) ->
+          MovingAvg (make_float_typ "season_moveavg", e1, e2, e3)) |||
+         (afun2 "moveavg" >>: fun (e1, e2) ->
+          MovingAvg (make_float_typ "season_moveavg", expr_one, e1, e2)) |||
          (afun3 "season_fit" >>: fun (e1, e2, e3) ->
           LinReg (make_float_typ "season_fit", e1, e2, e3)) |||
-         (afun2 "recent_fit" >>: fun (e1, e2) ->
+         (afun2 "fit" >>: fun (e1, e2) ->
           LinReg (make_float_typ "season_fit", expr_one, e1, e2)) |||
          (afun2 "smooth" >>: fun (e1, e2) ->
           ExpSmooth (make_float_typ "smooth", e1, e2)) |||
@@ -894,7 +895,7 @@ struct
           ExpSmooth (make_float_typ "smooth", alpha, e)) |||
          (afun1 "exp" >>: fun e -> Exp (make_num_typ "exponential", e)) |||
          (afun1 "log" >>: fun e -> Log (make_num_typ "logarithm", e)) |||
-         sequence ||| cast) m
+         k_moveavg ||| sequence ||| cast) m
 
     and sequence =
       let seq = "sequence"
@@ -920,6 +921,16 @@ struct
        highestest_prec >>: fun (typ, e) ->
          Cast (make_typ ~typ ("cast to "^ IO.to_string Scalar.print_typ typ), e)
       ) m
+
+    and k_moveavg m =
+      let m = "k-moving average" :: m in
+      let sep = check (char '(') ||| blanks in
+      ((unsigned_decimal_number >>: Scalar.Parser.narrowest_int_scalar) +-
+       (strinG "-moveavg" ||| strinG "-ma") +-
+       (blanks -- strinG "of") +- sep ++ highestest_prec >>: fun (k, e) ->
+         let k = Const (make_typ ~nullable:false ~typ:(scalar_type_of k)
+                                 "moving average order", k) in
+         MovingAvg (make_float_typ "moveavg", expr_one, k, e)) m
 
     and highestest_prec m =
       (const ||| field ||| param ||| func ||| aggregate ||| null |||
