@@ -114,7 +114,6 @@ struct
       (* FIXME: a pretty bad name *)
       mutable history : history option ;
       (* Worker info, only relevant if it is running: *)
-      mutable command : string option ;
       mutable pid : int option ;
       mutable last_report : Binocle.metric list }
 
@@ -207,7 +206,6 @@ struct
         let open Node in
         node.in_type <- make_temp_tup_typ () ;
         node.out_type <- make_temp_tup_typ () ;
-        node.command <- None ;
         node.pid <- None) layer.persist.nodes
     | SL.Running ->
       raise (InvalidCommand "Graph is running")
@@ -305,7 +303,7 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
-    command = None ; pid = None ; last_report = [] } in
+    pid = None ; last_report = [] } in
   Layer.set_editable layer ;
   Hashtbl.add layer.Layer.persist.Layer.nodes node_name node ;
   layer
@@ -324,6 +322,9 @@ let add_node conf node_name layer_name op_text =
   (* FIXME: Delay this with a dirty flag, and save_if_dirty after every
    * HTTP query *)
   save_graph conf
+
+let exec_of_node conf node =
+  conf.persist_dir ^"/workers/bin/"^ node.Node.signature
 
 let make_graph ?persist () =
   let persist =

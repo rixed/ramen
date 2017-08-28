@@ -619,16 +619,15 @@ let set_all_types _conf layer =
    *)
 
 let compile_node conf node =
+  let exec_name = C.exec_of_node conf node in
+  mkdir_all ~is_file:true exec_name ;
   assert node.N.in_type.C.finished_typing ;
   assert node.N.out_type.C.finished_typing ;
   let in_typ = C.tup_typ_of_temp_tup_type node.N.in_type
   and out_typ = C.tup_typ_of_temp_tup_type node.N.out_type in
-  let exec_name, comp_cmd =
-    (* gen_operation could compute a signature of it's own, but better provide
-     * it so that in the future all code generators use the same. *)
-    CodeGen_OCaml.gen_operation conf node.N.signature
+  let comp_cmd =
+    CodeGen_OCaml.gen_operation conf exec_name
                                 in_typ out_typ node.N.operation in
-  node.N.command <- Some exec_name ;
   (* Let's compile (or maybe not) *)
   mkdir_all ~is_file:true exec_name ;
   if file_exists ~maybe_empty:false ~has_perms:0o100 exec_name then (
@@ -684,10 +683,14 @@ let compile conf layer =
     (* TODO: better reporting *)
     if not finished_typing then
       raise (Lang.SyntaxError "Cannot complete typing") ;
-    let%lwt () =
-      Hashtbl.fold (fun _ node thds -> compile_node conf node :: thds)
-                   layer.L.persist.L.nodes [] |>
-      join in
+    let _, thds =
+      Hashtbl.fold (fun _ node (doing,thds) ->
+          (* Avoid compiling twice the same thing (TODO: a lockfile) *)
+          if Set.mem node.N.signature doing then doing, thds else (
+            Set.add node.N.signature doing,
+            compile_node conf node :: thds)
+        ) layer.L.persist.L.nodes (Set.empty, []) in
+    let%lwt () = join thds in
     C.Layer.set_status layer SL.Compiled ;
     C.save_graph conf ;
     return_unit

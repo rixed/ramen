@@ -123,7 +123,6 @@ struct
       output_type : (int option * expr_type_info) list ;
       (* Info about the running process (if any) *)
       signature : string option ;
-      command : string option ;
       pid : int option ;
       in_tuple_count : int ;
       selected_tuple_count : int ;

@@ -60,7 +60,7 @@ let run conf layer =
     !logger.debug "Launching generated programs..." ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
-        let command = Option.get node.N.command
+        let command = C.exec_of_node conf node
         and output_ringbufs = List.map rb_name_of node.N.children in
         let output_ringbufs =
           if Lang.Operation.is_exporting node.N.operation then
@@ -82,7 +82,7 @@ let run conf layer =
           "report_url="^ conf.C.ramen_url
                        ^ "/report/"^ Uri.pct_encode node.N.layer
                        ^ "/"^ Uri.pct_encode node.N.name ;
-          "persist_dir="^ conf.C.persist_dir ^"/worker/"
+          "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
                         ^ node.N.layer ^"/"^ node.N.name |] in
         let pid = run_background command [||] env in
         node.N.pid <- Some pid ;

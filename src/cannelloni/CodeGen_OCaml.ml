@@ -1011,9 +1011,9 @@ let sanitize_ocaml_fname s =
   (* Must start with a letter: *)
   "m"^ global_substitute re replace_by_underscore s
 
-let with_code_file_for conf signature f =
+let with_code_file_for exec_name conf f =
   let fname =
-    conf.C.persist_dir ^"/src/ocaml/"^ sanitize_ocaml_fname signature ^".ml" in
+    conf.C.persist_dir ^"/src/ocaml/m"^ (Filename.basename exec_name) ^".ml" in
   mkdir_all ~is_file:true fname ;
   if file_exists ~maybe_empty:false fname then
     !logger.debug "Reusing source file %S" fname
@@ -1021,21 +1021,17 @@ let with_code_file_for conf signature f =
     File.with_file_out ~mode:[`create; `text] fname f ;
   fname
 
-let compile_source fname =
-  (* This is not guaranteed to be unique but should be... *)
-  let exec_name = String.sub fname 0 (String.length fname - 3) in
-  let comp_cmd =
-    Printf.sprintf
-      "nice ocamlfind ocamlopt -g -o %s \
-        -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator \
-        -linkpkg codegen.cmxa %s"
-      (shell_quote exec_name)
-      (shell_quote fname) in
-  exec_name, comp_cmd
+let compile_source exec_name fname =
+  Printf.sprintf
+    "nice ocamlfind ocamlopt -g -o %s \
+      -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator \
+      -linkpkg codegen.cmxa %s"
+    (shell_quote exec_name)
+    (shell_quote fname)
 
-let gen_operation conf signature in_tuple_typ out_tuple_typ op =
+let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
   let open Operation in
-  with_code_file_for conf signature (fun oc ->
+  with_code_file_for exec_name conf (fun oc ->
     (match op with
     | Yield fields ->
       emit_yield oc in_tuple_typ out_tuple_typ fields
@@ -1045,4 +1041,4 @@ let gen_operation conf signature in_tuple_typ out_tuple_typ op =
                   flush_when ; flush_how ; notify_url ; _ } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key commit_when flush_when flush_how notify_url)) |>
-    compile_source
+    compile_source exec_name

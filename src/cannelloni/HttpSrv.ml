@@ -122,7 +122,6 @@ let node_info_of_node node =
       parents = List.map (fun n -> n.N.name) node.N.parents } ;
     type_of_operation = Some (type_of_operation_of node.N.operation) ;
     signature = if node.N.signature = "" then None else Some node.N.signature ;
-    command = node.N.command ;
     pid = node.N.pid ;
     input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
     output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
