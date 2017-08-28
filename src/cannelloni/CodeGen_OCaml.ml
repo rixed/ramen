@@ -252,28 +252,13 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
 
 (* Returns the set of all field names from the "in" tuple mentioned
  * anywhere in the given expression: *)
-(* FIXME: now that the return value of fold_by_depth is the total of the
- * fold then use it instead of basically reimplementing it. *)
-let rec add_mentioned prev =
+let add_mentioned prev =
   let open Expr in
-  function
-  | Const _ | Param _ | Now _
-    -> prev
-  | Field (_, tuple, field) ->
-    if tuple_has_type_input !tuple then Set.add field prev else prev
-  | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
-  | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
-  | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
-  | BeginOfRange (_, e) | EndOfRange (_, e) | Exp (_, e) | Log (_, e) ->
-    add_mentioned prev e
-  | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
-  | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
-  | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
-  | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
-  | Lag (_, e1, e2) | ExpSmooth (_, e1, e2) ->
-    add_mentioned (add_mentioned prev e1) e2
-  | MovingAvg (_, e1, e2, e3) | LinReg (_, e1, e2, e3) ->
-    add_mentioned (add_mentioned (add_mentioned prev e1) e2) e3
+  fold_by_depth (fun prev e ->
+    match e with
+    | Field (_, tuple, field) when tuple_has_type_input !tuple ->
+      Set.add field prev
+    | _ -> prev) prev
 
 let add_all_mentioned_in_expr lst =
   let rec loop prev = function
