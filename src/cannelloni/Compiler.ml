@@ -14,7 +14,6 @@
  * node output, via the expected_type of each expression.
  *)
 open Batteries
-open Lwt
 open Log
 open Helpers
 open RamenSharedTypes
@@ -619,6 +618,7 @@ let set_all_types _conf layer =
    *)
 
 let compile_node conf node =
+  let open Lwt in
   let exec_name = C.exec_of_node conf node in
   mkdir_all ~is_file:true exec_name ;
   assert node.N.in_type.C.finished_typing ;
@@ -661,17 +661,19 @@ exception MissingDependency of N.t (* The one we depend on *)
 exception AlreadyCompiled
 
 let compile conf layer =
+  let open Lwt in
   match layer.L.persist.L.status with
   | SL.Compiled -> fail AlreadyCompiled
   | SL.Running -> fail AlreadyCompiled
   | SL.Compiling -> fail AlreadyCompiled
   | SL.Edition ->
     !logger.debug "Trying to compile layer %s" layer.L.name ;
-    untyped_dependency layer |>
-    Option.may (fun n -> raise (MissingDependency n)) ;
-
+    let%lwt () =
+      match untyped_dependency layer with
+      | None -> return_unit
+      | Some n -> fail (MissingDependency n) in
     C.Layer.set_status layer SL.Compiling ;
-    set_all_types conf layer ;
+    let%lwt () = wrap (fun () -> set_all_types conf layer) in
     let finished_typing =
       Hashtbl.fold (fun _ node finished_typing ->
           !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
@@ -682,7 +684,7 @@ let compile conf layer =
         ) layer.L.persist.L.nodes true in
     (* TODO: better reporting *)
     if not finished_typing then
-      raise (Lang.SyntaxError "Cannot complete typing") ;
+      fail (Lang.SyntaxError "Cannot complete typing") else
     let _, thds =
       Hashtbl.fold (fun _ node (doing,thds) ->
           (* Avoid compiling twice the same thing (TODO: a lockfile) *)

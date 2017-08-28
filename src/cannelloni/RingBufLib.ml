@@ -1,7 +1,6 @@
 (* Have this outside of RingBuf so that we can easily link this with the
  * tests without bringing in the whole ringbuf libs *)
 open Batteries
-open Lwt
 open RamenSharedTypes
 open Log
 
@@ -30,7 +29,7 @@ let retry_for_ringbuf f =
     | _ -> false
   in
   Helpers.retry ~on ~first_delay:0.001 ~max_delay:0.01
-    (fun x -> return (f x))
+    (fun x -> Lwt.return (f x))
 
 let rec sersize_of_fixsz_typ =
   let open RamenSharedTypes in
@@ -59,11 +58,12 @@ let exp_ringbuf_name prefix name =
 let out_ringbuf_names_ref prefix name =
   prefix ^"/ringbufs/out_ref/"^ name
 
-let last_touched fname =
-  let open Lwt_unix in
-  let%lwt s = stat fname in return s.st_mtime
 
 let out_ringbuf_names outbuf_ref_fname =
+  let open Lwt in
+  let last_touched fname =
+    let open Lwt_unix in
+    let%lwt s = stat fname in return s.st_mtime in
   let last_read = ref 0. in
   let lines = ref Set.empty in
   fun () ->

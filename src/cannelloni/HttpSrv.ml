@@ -53,7 +53,7 @@ let of_json headers what ppp body =
   if get_content_type headers <> Consts.json_content_type then
     bad_request "Bad content type"
   else (
-    try PPP.of_string_exc ppp body |> Lwt.return
+    try PPP.of_string_exc ppp body |> return
     with e ->
       !logger.info "%s: Cannot parse received body: %S, Exception %s"
         what body (Printexc.to_string e) ;
@@ -266,23 +266,24 @@ let put_layer conf headers body =
     bad_request ("Layer "^ msg.name ^" already present")
   else (
     (* Create all the nodes *)
-    List.iter (fun def ->
-        let name =
-          if def.Node.name <> "" then def.Node.name
-          else N.make_name () in
-        C.add_node conf name msg.name def.Node.operation
-      ) msg.nodes ;
-    (* Then all the links *)
-    List.iter (fun def ->
-        let _layer, dst = node_of_name conf msg.name def.Node.name in
-        List.iter (fun p ->
-            let parent_layer, parent_name =
-              layer_node_of_user_string conf ~default_layer:msg.name p in
-            let _layer, src = node_of_name conf parent_layer parent_name in
-            C.add_link conf src dst
-          ) def.SN.parents
-      ) msg.nodes ;
-    respond_ok ())
+    wrap (fun () ->
+      List.iter (fun def ->
+          let name =
+            if def.Node.name <> "" then def.Node.name
+            else N.make_name () in
+          C.add_node conf name msg.name def.Node.operation
+        ) msg.nodes ;
+      (* Then all the links *)
+      List.iter (fun def ->
+          let _layer, dst = node_of_name conf msg.name def.Node.name in
+          List.iter (fun p ->
+              let parent_layer, parent_name =
+                layer_node_of_user_string conf ~default_layer:msg.name p in
+              let _layer, src = node_of_name conf parent_layer parent_name in
+              C.add_link conf src dst
+            ) def.SN.parents
+        ) msg.nodes) >>=
+    respond_ok)
   (* TODO: why wait before compiling this layer? *)
 
 (*
@@ -531,7 +532,7 @@ let timeseries conf headers body =
          EXPORT EVENT STARTING AT time" in
     let op_text =
       if where = "" then op_text else op_text ^" WHERE "^ where in
-    let operation = C.parse_operation op_text in
+    let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
     let reformatted_op = IO.to_string Lang.Operation.print operation in
     let layer_name =
       "temp/from_"^ from ^"_"^ Cryptohash_md4.(string reformatted_op |> to_hex)
@@ -546,10 +547,9 @@ let timeseries conf headers body =
         C.add_parsed_node ~timeout:300.
           conf node_name layer_name op_text operation in
       let node = Hashtbl.find layer.L.persist.L.nodes node_name in
-      C.add_link conf parent node ;
+      let%lwt () = wrap (fun () -> C.add_link conf parent node) in
       let%lwt () = Compiler.compile conf layer in
-      RamenProcesses.run conf layer ;
-      return_unit
+      wrap (fun () -> RamenProcesses.run conf layer)
     )) >>= fun () ->
     return (layer_name, node_name, "data")
   in
@@ -575,7 +575,7 @@ let timeseries conf headers body =
 
 (* A thread that hunt for unused layers *)
 let rec timeout_layers conf =
-  RamenProcesses.timeout_layers conf ;
+  let%lwt () = wrap (fun () -> RamenProcesses.timeout_layers conf) in
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_layers conf
 
