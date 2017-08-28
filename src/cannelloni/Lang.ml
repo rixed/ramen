@@ -149,6 +149,7 @@ let tuple_need_state = function
     | MovingAvg (_, a, b, c) -> MovingAvg (typ, replace_typ a, replace_typ b, replace_typ c)
     | LinReg (_, a, b, c) -> LinReg (typ, replace_typ a, replace_typ b, replace_typ c)
     | ExpSmooth (_, a, b) -> ExpSmooth (typ, replace_typ a, replace_typ b)
+    | Split (_, a, b) -> Split (typ, replace_typ a, replace_typ b)
 
   let replace_typ_in_expr = function
     | Ok (expr, rest) -> Ok (replace_typ expr, rest)
@@ -546,6 +547,10 @@ struct
     | LinReg of typ * t * t * t (* as above: period, how many season to keep, expression *)
     (* Simple exponential smoothing *)
     | ExpSmooth of typ * t * t (* coef between 0 and 1 and expression *)
+    (* First function returning more than once (Generator). Here the typ is
+     * type of a single value but the function is a generator and can return
+     * from 0 to N such values. *)
+    | Split of typ * t * t
 
   let expr_true =
     Const (make_bool_typ ~nullable:false "true", VBool true)
@@ -616,6 +621,7 @@ struct
     | LinReg (t, e1, e2, e3) ->
       Printf.fprintf fmt "season_fit(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
     | ExpSmooth (t, e1, e2) -> Printf.fprintf fmt "smooth(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Split (t, e1, e2) -> Printf.fprintf fmt "split(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
 
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
@@ -628,7 +634,7 @@ struct
     | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t
     | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
     | MovingAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
-    | Exp (t, _) | Log (t, _) ->
+    | Exp (t, _) | Log (t, _) | Split (t, _, _) ->
       t
 
   let is_nullable e =
@@ -649,7 +655,7 @@ struct
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
     | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
     | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
-    | Lag (_, e1, e2) | ExpSmooth (_, e1, e2) ->
+    | Lag (_, e1, e2) | ExpSmooth (_, e1, e2) | Split (_, e1, e2) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       f i'' expr
@@ -670,8 +676,13 @@ struct
       | Const _ | Param _ | Field _ | Cast _
       | Now _ | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
       | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
-      | Length _ | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ ->
+      | Length _ | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
         ()) () e |> ignore
+
+  (* Any expression that uses a generator is a generator: *)
+  let is_generator =
+    fold_by_depth (fun is e ->
+      is || match e with Split _ -> true | _ -> false) false
 
   module Parser =
   struct
@@ -895,6 +906,8 @@ struct
           ExpSmooth (make_float_typ "smooth", alpha, e)) |||
          (afun1 "exp" >>: fun e -> Exp (make_num_typ "exponential", e)) |||
          (afun1 "log" >>: fun e -> Log (make_num_typ "logarithm", e)) |||
+         (afun2 "split" >>: fun (e1, e2) ->
+          Split (make_typ ~typ:TString "split", e1, e2)) |||
          k_moveavg ||| sequence ||| cast) m
 
     and sequence =

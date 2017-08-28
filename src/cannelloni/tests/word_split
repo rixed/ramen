@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/.."
+. $top_srcdir/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_node bla "YIELD \"pas glop\" AS s"
+add_node n "SELECT split(\" \", s) AS s1, \"glop\" as s2 EXPORT" bla
+run
+
+check_equal '"pas","glop"
+"glop","glop"' "$(tail_ 2 n)"

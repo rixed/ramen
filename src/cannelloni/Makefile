@@ -102,6 +102,7 @@ long-check: cannelloni check-spec
 	./tests/sliding_window
 	./tests/fun_with_funcs
 	./tests/lag
+	./tests/word_split
 
 include $(top_srcdir)/make.common
 

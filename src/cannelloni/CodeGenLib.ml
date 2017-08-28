@@ -61,6 +61,9 @@ let percentile_finalize pct lst =
 
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 
+let split by what k =
+  String.nsplit ~by what |> Lwt_list.iter_s k
+
 (* We often want functions that work on the last k elements, or the last k
  * periods of length p for seasonal data. So we often need a small sliding
  * window as a function internal state. If we could join between two different
@@ -367,13 +370,13 @@ let yield sersize_of_tuple serialize_tuple select =
     loop () in
   loop ()
 
-type ('aggr, 'tuple_in, 'tuple_out) aggr_value =
+type ('aggr, 'tuple_in, 'generator_out) aggr_value =
   { (* used to compute the actual selected field when outputing the
      * aggregate: *)
     mutable first_in : 'tuple_in ; (* first in-tuple of this aggregate *)
     mutable last_in : 'tuple_in ; (* last in-tuple of this aggregate *)
-    mutable out_tuple : 'tuple_out ; (* The current one *)
-    mutable previous_out : 'tuple_out ; (* previously computed temp out tuple, if any *)
+    mutable current_out : 'generator_out ; (* The current one *)
+    mutable previous_out : 'generator_out ; (* previously computed temp out tuple, if any *)
     mutable nb_entries : int ;
     mutable nb_successive : int ;
     mutable last_ev_count : int ; (* used for others.successive (TODO) *)
@@ -409,6 +412,7 @@ let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
       (sersize_of_tuple : 'tuple_out -> int)
       (serialize_tuple : RingBuf.tx -> 'tuple_out -> int)
+      (generate_tuples : ('tuple_out -> unit Lwt.t) -> 'tuple_in -> 'generator_out -> unit Lwt.t)
       (tuple_of_aggr :
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
@@ -416,7 +420,7 @@ let aggregate
         Uint64.t -> (* out.#count *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
         'tuple_in -> 'tuple_in -> (* first, last *)
-        'tuple_out)
+        'generator_out)
       (* Where_fast/slow: premature optimisation: if the where filter
        * uses the aggregate then we need where_slow (checked after
        * the aggregate look up) but if it uses only the incoming
@@ -438,21 +442,21 @@ let aggregate
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-        Uint64.t -> 'tuple_out -> (* out.#count, previous *)
+        Uint64.t -> 'generator_out -> (* out.#count, previous *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
-        'tuple_in -> 'tuple_in -> 'tuple_out -> (* first, last, current out *)
+        'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
         bool)
       (when_to_check_for_commit : when_to_check_group)
       (flush_when :
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-        Uint64.t -> 'tuple_out -> (* out.#count, previous *)
+        Uint64.t -> 'generator_out -> (* out.#count, previous *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
-        'tuple_in -> 'tuple_in -> 'tuple_out -> (* first, last, current out *)
+        'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
         bool)
       (when_to_check_for_flush : when_to_check_group)
-      (should_resubmit : ('aggr, 'tuple_in, 'tuple_out) aggr_value -> 'tuple_in -> bool)
+      (should_resubmit : ('aggr, 'tuple_in, 'generator_out) aggr_value -> 'tuple_in -> bool)
       (aggr_init : 'tuple_in -> 'aggr)
       (update_aggr : 'aggr -> 'tuple_in -> unit)
       (field_of_tuple : 'tuple_in -> string -> string)
@@ -476,10 +480,12 @@ let aggregate
   in
   IntGauge.set stats_group_count 0 ;
   let outputer =
-    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
-  let commit tuple =
+    let do_out =
+      outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
+    generate_tuples do_out in
+  let commit in_tuple out_tuple =
     out_count := Uint64.succ !out_count ;
-    outputer tuple
+    outputer in_tuple out_tuple
   and with_state =
     let open CodeGenLib_State.Persistent in
     let init_state = Hashtbl.create 701 in
@@ -514,12 +520,12 @@ let aggregate
           !out_count aggr.previous_out
           (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
           aggr.first_in aggr.last_in
-          aggr.out_tuple
+          aggr.current_out
       in
       let commit_and_flush_list to_commit to_flush =
         (* We must commit first and then flush *)
         let%lwt () =
-          Lwt_list.iter_s (fun (_k, a) -> commit a.out_tuple) to_commit in
+          Lwt_list.iter_s (fun (_k, a) -> commit in_tuple a.current_out) to_commit in
         List.iter (fun (k, a) ->
             flush_aggr aggr_init update_aggr should_resubmit h k a
           ) to_flush ;
@@ -562,7 +568,7 @@ let aggregate
               if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               (* TODO: pass selected_successive *)
-              let out_tuple =
+              let out_generator =
                 tuple_of_aggr
                   in_count in_tuple last_in
                   !selected_count !selected_successive last_selected
@@ -573,8 +579,8 @@ let aggregate
               let aggr = {
                 first_in = in_tuple ;
                 last_in = in_tuple ;
-                out_tuple = out_tuple ;
-                previous_out = out_tuple ; (* Not correct for the very first check *)
+                current_out =  out_generator ;
+                previous_out = out_generator ; (* Not correct for the very first check *)
                 nb_entries = 1 ;
                 nb_successive = 1 ;
                 last_ev_count = !event_count ;
@@ -603,7 +609,7 @@ let aggregate
               if prev_last_key = Some k then
                 aggr.nb_successive <- aggr.nb_successive + 1 ;
               (* TODO: pass selected_successive *)
-              let out_tuple =
+              let out_generator =
                 tuple_of_aggr
                   in_count in_tuple last_in
                   !selected_count !selected_successive last_selected
@@ -611,7 +617,7 @@ let aggregate
                   !out_count
                   (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                   aggr.first_in aggr.last_in in
-              aggr.out_tuple <- out_tuple ;
+              aggr.current_out <- out_generator ;
               aggr.last_in <- in_tuple ;
               Some aggr
             ) else None in
@@ -642,7 +648,7 @@ let aggregate
            * this aggr twice since when_to_check_for_commit force either one or the
            * other (or none at all) of these chunks of code to be run. *)
           let%lwt () = commit_and_flush_all_if ForAllSelected in
-          aggr.previous_out <- aggr.out_tuple ;
+          aggr.previous_out <- aggr.current_out ;
           return_unit)
       ) else return_unit) >>= fun () ->
       (* Now there is also the possibility that we need to commit / flush for

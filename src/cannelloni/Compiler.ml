@@ -209,6 +209,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   and return_float _ = TFloat
   and return_i128 _ = TI128
   and return_u16 _ = TU16
+  and return_string _ = TString
   in
   function
   | Const (op_typ, _) ->
@@ -351,6 +352,9 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       ~exp_sub_typ2:TFloat e2
   | Exp (op_typ, e) | Log (op_typ, e) ->
     check_unary_op op_typ return_float ~exp_sub_typ:TFloat e
+  | Split (op_typ, e1, e2) ->
+    check_binary_op op_typ return_string ~exp_sub_typ1:TString e1
+                                         ~exp_sub_typ2:TString e2
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.

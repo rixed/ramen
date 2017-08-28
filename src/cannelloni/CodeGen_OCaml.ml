@@ -157,6 +157,28 @@ let emit_serialize_tuple name oc tuple_typ =
     ) 0 tuple_typ in
   Printf.fprintf oc "\toffs_\n"
 
+(* Return the list of all other fields, in order *)
+let get_star_fields out_tuple_typ selected_fields and_all_others =
+  if not and_all_others then [] else
+  (* We will iter through the selected fields, marking those which have been
+   * outputted so that we do not output them again in the STAR operator. *)
+  let outputted = List.fold_left (fun set sf ->
+      match sf.Operation.expr with
+      | Expr.Field (_, tuple, field) when !tuple = TupleIn ->
+        Set.add field set
+      | _ -> set
+    ) Set.empty selected_fields in
+  List.fold_left (fun lst field ->
+      if Set.mem field.typ_name outputted then lst else field :: lst
+    ) [] out_tuple_typ |>
+  List.rev
+
+let rec emit_indent oc n =
+  if n > 0 then (
+    Printf.fprintf oc "\t" ;
+    emit_indent oc (n-1)
+  )
+
 (* Emit a function that, given an array of strings (corresponding to a line of
  * CSV) will return the tuple defined by [tuple_typ] or raises
  * some exception *)
@@ -330,6 +352,7 @@ let funcname_of_expr =
   | ExpSmooth _ -> "smooth"
   | Exp _ -> "exp"
   | Log _ -> "log"
+  | Split _ -> "split"
   | Const _ | Param _ | Field _ ->
     assert false
 
@@ -376,6 +399,7 @@ let implementation_of expr =
   (* Sequence build a sequence of as-large-as-convenient integers (signed or
    * not) *)
   | Sequence _, Some TI128 -> "CodeGenLib."^ name, Some TI128
+  | Split _, Some TString -> "CodeGenLib."^ name, Some TString
   | _, Some to_typ ->
     failwith ("Cannot find implementation of "^ name ^" for type "^
               IO.to_string Scalar.print_typ to_typ)
@@ -394,7 +418,7 @@ let name_of_state =
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
   | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-  | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ ->
+  | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
     assert false
 
 let otype_of_type = function
@@ -465,6 +489,8 @@ let conv_from_to_opt from_typ to_typ_opt p fmt e =
   | Some to_typ -> conv_from_to from_typ to_typ p fmt e
   | None -> p fmt e (* No conversion required *)
 
+let freevar_name t = "fv_"^ string_of_int t.Expr.uniq_num ^"_"
+
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
@@ -526,6 +552,9 @@ and emit_expr ?(state=true) oc =
   | Or (_, e1, e2) | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2)
   | Sequence (_, e1, e2) | Mod (_, e1, e2) as expr ->
     emit_function2 ~state expr oc e1 e2
+  (* Generators: emit them as a free variable *)
+  | Split (t, _, _) ->
+    String.print oc (freevar_name t)
 
 and emit_function0 expr oc =
   let impl, _ = implementation_of expr in
@@ -585,6 +614,142 @@ and emit_function2 ?state expr oc e1 e2 =
         (conv_to ?state arg_typ) e1
         (conv_to ?state arg_typ) e2
     )
+  )
+
+(* We know that somewhere in expr we have one or several generators.
+ * First we transform the AST to move the generators to the root,
+ * and insert "free variables" (named after the generator uniq_num)
+ * where the generator used to stand. Once this is done, the AST
+ * start with a chain of generator, and then an expression that is
+ * free of generators. We want to emit:
+ * (fun k -> gen1 (fun fv1 -> gen2 (fun fv2 -> ... -> genN (fun fvN ->
+ *    k (expr ...)))))
+ *)
+let emit_generator user_fun oc expr =
+  let open Expr in
+
+  let rec replace_unary prev e1 make =
+    let prev, e1 = replace prev e1 in
+    prev, make e1
+  and replace_binary prev e1 e2 make =
+    let prev, e1 =
+      if is_generator e1 then replace prev e1
+      else prev, e1 in
+    let prev, e2 =
+      if is_generator e2 then replace prev e2
+      else prev, e2 in
+    prev, make e1 e2
+
+  (* Returns a list of generators. FIXME: an the same expression,
+   * that not modified any more. simplify! *)
+  and replace prev = function
+    (* No subexpressions: *)
+    | Const _ | Field _ | Param _ | Now _ -> assert false
+    (* Forbidden within stateful functions: *)
+    | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _
+    | AggrFirst _ | AggrLast _ | AggrPercentile _ | Lag  _
+    | MovingAvg _ | LinReg _ | ExpSmooth _ ->
+      assert false
+    (* No generator, look deeper *)
+    | Age (t, e1) -> replace_unary prev e1 (fun e1 -> Age (t, e1))
+    | Cast (t, e1) -> replace_unary prev e1 (fun e1 -> Cast (t, e1))
+    | Length (t, e1) -> replace_unary prev e1 (fun e1 -> Length (t, e1))
+    | Not (t, e1) -> replace_unary prev e1 (fun e1 -> Not (t, e1))
+    | Abs (t, e1) -> replace_unary prev e1 (fun e1 -> Abs (t, e1))
+    | Defined (t, e1) -> replace_unary prev e1 (fun e1 -> Defined (t, e1))
+    | Exp (t, e1) -> replace_unary prev e1 (fun e1 -> Exp (t, e1))
+    | Log (t, e1) -> replace_unary prev e1 (fun e1 -> Log (t, e1))
+    | BeginOfRange (t, e1) -> replace_unary prev e1 (fun e1 -> BeginOfRange (t, e1))
+    | EndOfRange (t, e1) -> replace_unary prev e1 (fun e1 -> EndOfRange (t, e1))
+    (* No generator, look deeper in both directions *)
+    | Sequence (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Sequence (t, e1, e2))
+    | Add (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Add (t, e1, e2))
+    | Sub (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Sub (t, e1, e2))
+    | Mul (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Mul (t, e1, e2))
+    | Div (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Div (t, e1, e2))
+    | IDiv (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> IDiv (t, e1, e2))
+    | Mod (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Mod (t, e1, e2))
+    | Pow (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Pow (t, e1, e2))
+    | And (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> And (t, e1, e2))
+    | Or (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Or (t, e1, e2))
+    | Ge (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Ge (t, e1, e2))
+    | Gt (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Gt (t, e1, e2))
+    | Eq (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Eq (t, e1, e2))
+    (* Bingo! *)
+    | Split (t, e1, e2) as expr ->
+      let prev = expr :: prev in (* Inner generator first: *)
+      replace_binary prev e1 e2 (fun e1 e2 -> Split (t, e1, e2))
+  in
+  (* Now we start with all the generator. Inner generators are first,
+   * so we can confidently call emit_expr on the arguments and if this uses a
+   * free variable it should be defined already: *)
+  let emit_gen_root oc = function
+    | Split (t, by, e) as expr ->
+      let impl, arg_typ = implementation_of expr in
+      Printf.fprintf oc "%s %a %a (fun %s -> "
+        impl
+        (conv_to ~state:true arg_typ) by
+        (conv_to ~state:true arg_typ) e
+        (freevar_name t)
+    (* We have no other generators *)
+    | _ -> assert false
+  in
+  let generators, e = replace [] expr in
+  List.iter (emit_gen_root oc) generators ;
+  (* Finally, call user_func on the actual expression, where all generators will
+   * be replaced by their free variable: *)
+  Printf.fprintf oc "%s (%a)"
+    user_fun
+    (emit_expr ~state:true) e ;
+  List.iter (fun _ -> Printf.fprintf oc ")") generators
+
+let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_typ oc selected_fields =
+  let has_generator =
+    List.exists (fun sf ->
+      Expr.is_generator sf.Operation.expr)
+      selected_fields in
+  if not has_generator then
+    Printf.fprintf oc "let %s f_ _it_ ot_ = f_ ot_ \n" name
+  else (
+    Printf.fprintf oc "let %s f_ %a %a =\n"
+      name
+      (emit_in_tuple mentioned and_all_others) in_tuple_typ
+      (print_tuple_deconstruct TupleOut) out_tuple_typ ;
+    (* Each generator is a functional receiving the continuation and calling it
+     * as many times as there are values. *)
+    let nb_gens =
+      List.fold_left (fun nb_gens sf ->
+          if not (Expr.is_generator sf.Operation.expr) then nb_gens
+          else (
+            let ff_ = "ff_"^ string_of_int nb_gens ^"_" in
+            Printf.fprintf oc "%a(fun %s -> %a) (fun generated_%d_ ->\n"
+              emit_indent (1 + nb_gens)
+              ff_
+              (emit_generator ff_) sf.Operation.expr
+              nb_gens ;
+            nb_gens + 1)
+        ) 0 selected_fields in
+    (* Now we have all the generated values, actually call f_ on the tuple *)
+    Printf.fprintf oc "%af_ (\n%a"
+      emit_indent (1 + nb_gens)
+      emit_indent (2 + nb_gens) ;
+    let _ = List.fold_lefti (fun gi i sf ->
+        if i > 0 then Printf.fprintf oc ",\n%a" emit_indent (2 + nb_gens) ;
+        if Expr.is_generator sf.Operation.expr then (
+          Printf.fprintf oc "generated_%d_" gi ;
+          gi + 1
+        ) else (
+          Printf.fprintf oc "%s"
+            (id_of_field_name ~tuple:TupleOut sf.Operation.alias) ;
+          gi
+        )) 0 selected_fields in
+    get_star_fields out_tuple_typ selected_fields and_all_others |>
+    List.iter (fun field ->
+      Printf.fprintf oc ",\n%a%s"
+      emit_indent (2 + nb_gens)
+      (id_of_field_name field.typ_name)) ;
+    for _ = 1 to nb_gens do Printf.fprintf oc ")" done ;
+    Printf.fprintf oc ")\n"
   )
 
 let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
@@ -650,17 +815,15 @@ let emit_field_selection
       (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
   Printf.fprintf oc "=\n" ;
-  (* We will iter through the selected fields, marking those which have been
-   * outputted so that we do not output them again in the STAR operator. *)
-  let outputted = ref Set.empty in
   List.iter (fun sf ->
-      Printf.fprintf oc "\tlet %s = %a in\n"
-        (id_of_field_name ~tuple:TupleOut sf.Operation.alias)
-        (emit_expr ~state:true) sf.Operation.expr ;
-      match sf.Operation.expr with
-      | Expr.Field (_, tuple, field) when !tuple = TupleIn ->
-        outputted := Set.add field !outputted
-      | _ -> ()
+      if Expr.is_generator sf.Operation.expr then
+        (* So that we have a single out_tuple_typ both before and after tuples generation *)
+        Printf.fprintf oc "\tlet %s = () in\n"
+          (id_of_field_name ~tuple:TupleOut sf.Operation.alias)
+      else
+        Printf.fprintf oc "\tlet %s = %a in\n"
+          (id_of_field_name ~tuple:TupleOut sf.Operation.alias)
+          (emit_expr ~state:true) sf.Operation.expr
     ) selected_fields ;
   Printf.fprintf oc "\t(\n\t\t" ;
   List.iteri (fun i sf ->
@@ -668,15 +831,12 @@ let emit_field_selection
         (if i > 0 then ",\n\t\t" else "")
         (id_of_field_name ~tuple:TupleOut sf.Operation.alias) ;
     ) selected_fields ;
-  if and_all_others then (
-    List.iteri (fun i field ->
-        if not (Set.mem field.typ_name !outputted) then
-          Printf.fprintf oc "%s\n\t\t%s%s"
-            (if i > 0 || selected_fields <> [] then "," else "")
-            (if i = 0 then "(* All other fields *)\n\t\t" else "")
-            (id_of_field_name field.typ_name)
-      ) out_tuple_typ (* we want those fields ordered according to out tuple not in tuple! *)
-  ) ;
+  get_star_fields out_tuple_typ selected_fields and_all_others |>
+  List.iteri (fun i field ->
+    Printf.fprintf oc "%s\n\t\t%s%s"
+      (if i > 0 || selected_fields <> [] then "," else "")
+      (if i = 0 then "(* All other fields *)\n\t\t" else "")
+      (id_of_field_name field.typ_name)) ;
   Printf.fprintf oc "\n\t)\n"
 
 (* Similar to emit_field_selection but with less options, no concept of star and no
@@ -782,10 +942,10 @@ let emit_group_state_init
             (conv_to ~state:false (Some TU16)) p
             (conv_to ~state:false (Some TU16)) n
             (conv_to ~state:false arg_typ) e
-        | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-        | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _
-        | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-        | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ ->
+        | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _
+        | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
+        | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
+        | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
           assert false) ;
         Printf.fprintf oc " in\n"
       ) ;
@@ -824,10 +984,10 @@ let emit_update_state
         Printf.fprintf oc "%s aggr_.%s %a"
           impl (name_of_state f)
           (conv_to arg_typ) e
-      | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Add _ | Sub _
-      | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _
-      | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ ->
+      | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _
+      | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
+      | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
+      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
         assert false) ;
       Printf.fprintf oc ") ;\n"
     ) ;
@@ -946,7 +1106,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
         | Mod _| Cast _ | Abs _ | Length _ | Now _ | BeginOfRange _
-        | EndOfRange _ | Exp _ | Log _ ->
+        | EndOfRange _ | Exp _ | Log _ | Split _ ->
           false
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
@@ -956,7 +1116,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     | Some flush_when -> when_to_check_group_for_expr flush_when
   in
   Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_group_state_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_state then
@@ -973,6 +1133,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ
+    (emit_generate_tuples "generate_tuples_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how
     (emit_field_of_tuple "field_of_tuple_" mentioned and_all_others) in_tuple_typ ;
   (match flush_when with
@@ -982,7 +1143,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     Printf.fprintf oc "let flush_when_ = commit_when_\n") ;
   Printf.fprintf oc "let () =\n\
       \tLwt_main.run (\n\
-      \tCodeGenLib.aggregate read_tuple_ sersize_of_tuple_ serialize_aggr_ \
+      \tCodeGenLib.aggregate \
+           read_tuple_ sersize_of_tuple_ serialize_aggr_ generate_tuples_ \
            tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ \
            commit_when_ %s flush_when_ %s \
            should_resubmit_ aggr_init_ update_aggr_ \
