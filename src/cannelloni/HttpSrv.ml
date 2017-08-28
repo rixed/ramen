@@ -78,18 +78,18 @@ let type_of_operation_of =
 let layer_node_of_user_string conf ?default_layer s =
   let s = String.trim s in
   (* rsplit because we might want to have '/'s in the layer name. *)
-  try String.rsplit ~by:"/" s
+  try String.rsplit ~by:"/" s |> return
   with Not_found ->
     match default_layer with
-    | Some l -> l, s
+    | Some l -> return (l, s)
     | None ->
       (* Last resort: look for the first node with that name: *)
       match C.fold_nodes conf None (fun res node ->
               if res = None && node.N.name = s then
                 Some (node.N.layer, node.N.name)
               else res) with
-      | Some res -> res
-      | None -> raise (Failure ("node "^ s ^" does not exist"))
+      | Some res -> return res
+      | None -> fail_with ("node "^ s ^" does not exist")
 
 (*
     Returns the graph (as JSON, dot or mermaid representation)
@@ -249,12 +249,12 @@ let get_graph conf headers layer_opt =
 *)
 
 let find_node_or_fail conf layer_name node_name =
-  try C.find_node conf layer_name node_name
+  try C.find_node conf layer_name node_name |> return
   with Not_found ->
-    failwith ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
+    fail_with ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
 
 let node_of_name conf layer_name node_name =
-  if node_name = "" then failwith "Empty string is not a valid node name"
+  if node_name = "" then fail_with "Empty string is not a valid node name"
   else find_node_or_fail conf layer_name node_name
 
 let put_layer conf headers body =
@@ -266,24 +266,23 @@ let put_layer conf headers body =
     bad_request ("Layer "^ msg.name ^" already present")
   else (
     (* Create all the nodes *)
-    wrap (fun () ->
-      List.iter (fun def ->
-          let name =
-            if def.Node.name <> "" then def.Node.name
-            else N.make_name () in
-          C.add_node conf name msg.name def.Node.operation
-        ) msg.nodes ;
-      (* Then all the links *)
-      List.iter (fun def ->
-          let _layer, dst = node_of_name conf msg.name def.Node.name in
-          List.iter (fun p ->
-              let parent_layer, parent_name =
-                layer_node_of_user_string conf ~default_layer:msg.name p in
-              let _layer, src = node_of_name conf parent_layer parent_name in
-              C.add_link conf src dst
-            ) def.SN.parents
-        ) msg.nodes) >>=
-    respond_ok)
+    let%lwt () = Lwt_list.iter_s (fun def ->
+        let name =
+          if def.Node.name <> "" then def.Node.name
+          else N.make_name () in
+        wrap (fun () -> C.add_node conf name msg.name def.Node.operation)
+      ) msg.nodes in
+    (* Then all the links *)
+    let%lwt () = Lwt_list.iter_s (fun def ->
+        let%lwt _layer, dst = node_of_name conf msg.name def.Node.name in
+        Lwt_list.iter_s (fun p ->
+            let%lwt parent_layer, parent_name =
+              layer_node_of_user_string conf ~default_layer:msg.name p in
+            let%lwt _layer, src = node_of_name conf parent_layer parent_name in
+            wrap (fun () -> C.add_link conf src dst)
+          ) def.SN.parents
+      ) msg.nodes in
+    respond_ok ())
   (* TODO: why wait before compiling this layer? *)
 
 (*
@@ -352,7 +351,7 @@ let export conf headers layer_name node_name body =
       if body = "" then return empty_export_req else
       of_json headers ("Exporting from "^ node_name) export_req_ppp body in
     (* Check that the node exists and exports *)
-    let layer, node = find_node_or_fail conf layer_name node_name in
+    let%lwt layer, node = find_node_or_fail conf layer_name node_name in
     if not (L.is_typed layer) then
       bad_request ("node "^ node_name ^" is not typed (yet)")
     else if not (Lang.Operation.is_exporting node.N.operation) then
@@ -386,7 +385,7 @@ let export conf headers layer_name node_name body =
 let report conf _headers layer name body =
   (* TODO: check application-type is marshaled.ocaml *)
   let last_report = Marshal.from_string body 0 in
-  let _layer, node = find_node_or_fail conf layer name in
+  let%lwt _layer, node = find_node_or_fail conf layer name in
   node.N.last_report <- last_report ;
   respond_ok ()
 
@@ -414,81 +413,25 @@ let complete_fields conf headers body =
     Grafana Datasource: data queries
 *)
 
-type timeserie_bucket =
-  (* Hopefully count will be small enough that sum can be tracked accurately *)
-  { mutable count : int ; mutable sum : float ;
-    mutable min : float ; mutable max : float }
-
-let add_into_bucket b i v =
-  if i > 0 && i < Array.length b then (
-    b.(i).count <- succ b.(i).count ;
-    b.(i).min <- min b.(i).min v ;
-    b.(i).max <- max b.(i).max v ;
-    b.(i).sum <- b.(i).sum +. v)
-
-let bucket_avg b =
-  if b.count = 0 then None else Some (b.sum /. float_of_int b.count)
-let bucket_min b =
-  if b.count = 0 then None else Some b.min
-let bucket_max b =
-  if b.count = 0 then None else Some b.max
-
 let timeseries conf headers body =
   let open Lang.Operation in
   let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
   let ts_of_node_field req layer node data_field =
-    let _layer, node = find_node_or_fail conf layer node in
+    let%lwt _layer, node = find_node_or_fail conf layer node in
     if not (is_exporting node.N.operation) then
-      raise (Failure ("node "^ node.N.name ^" does not export data"))
+      fail_with ("node "^ node.N.name ^" does not export data")
     else match export_event_info node.N.operation with
     | None ->
-      raise (Failure ("node "^ node.N.name ^" does not specify event time info"))
+      fail_with ("node "^ node.N.name ^" does not specify event time info")
     | Some ((start_field, start_scale), duration_info) ->
+      let open RamenExport in
       let consolidation =
         match String.lowercase req.consolidation with
         | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
-      let history = RamenExport.get_history node in
-      let find_field n =
-        try (
-          List.findi (fun _i (ft : field_typ) ->
-            ft.typ_name = n) history.C.tuple_type |> fst
-        ) with Not_found ->
-          raise (Failure ("field "^ n ^" does not exist")) in
-      let ti = find_field start_field
-      and vi = find_field data_field in
-      if msg.max_data_points < 1 then raise (Failure "invalid max_data_points") ;
-      let dt = (msg.to_ -. msg.from) /. float_of_int msg.max_data_points in
-      let buckets = Array.init msg.max_data_points (fun _ ->
-        { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
-      let bucket_of_time t = int_of_float ((t -. msg.from) /. dt) in
-      let _ =
-        RamenExport.fold_tuples history () (fun tup () ->
-          let t, v = RamenExport.float_of_scalar_value tup.(ti),
-                     RamenExport.float_of_scalar_value tup.(vi) in
-          let t1 = t *. start_scale in
-          let t2 =
-            match duration_info with
-            | DurationConst f -> t1 +. f
-            | DurationField (f, s) ->
-              let fi = find_field f in
-              t1 +. RamenExport.float_of_scalar_value tup.(fi) *. s
-            | StopField (f, s) ->
-              let fi = find_field f in
-              RamenExport.float_of_scalar_value tup.(fi) *. s
-          in
-          (* We allow duration to be < 0 *)
-          let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
-          (* t1 and t2 are in secs. But the API is in milliseconds (thanks to
-           * grafana) *)
-          let t1, t2 = t1 *. 1000., t2 *. 1000. in
-          if t1 < msg.to_ && t2 >= msg.from then
-            let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
-            for bi = bi1 to bi2 do
-              add_into_bucket buckets bi v
-            done) in
-      Array.mapi (fun i _ ->
-        msg.from +. dt *. (float_of_int i +. 0.5)) buckets,
-      Array.map consolidation buckets
+      wrap (fun () ->
+        build_timeseries
+          node start_field start_scale data_field duration_info
+          msg.max_data_points msg.from msg.to_ consolidation)
   and create_temporary_node select_x select_y from where =
     (* First, we need to find out the name for this operation, and create it if
      * it does not exist yet. Name must be given by the operation and parent, so
@@ -499,10 +442,10 @@ let timeseries conf headers body =
      * in the graph); while here we want to identify the data, that depends on
      * everything the user sent (aka operation text and parent name) but for the
      * formatting. We thus start by parsing and pretty-printing the operation: *)
-    let parent_layer, parent_name =
+    let%lwt parent_layer, parent_name =
       layer_node_of_user_string conf from in
-    let _layer, parent = node_of_name conf parent_layer parent_name in
-    let op_text =
+    let%lwt _layer, parent = node_of_name conf parent_layer parent_name in
+    let%lwt op_text =
       if select_x = "" then (
         let open Lang.Operation in
         match parent.N.operation with
@@ -511,25 +454,25 @@ let timeseries conf headers body =
             "SELECT %s, %s AS data \
              EXPORT EVENT STARTING AT %s * %g WITH DURATION %g"
             start select_y
-            start scale dur
+            start scale dur |> return
         | Aggregate { export = Some (Some ((start, scale), DurationField (dur, scale2))) ; _ } ->
           Printf.sprintf
             "SELECT %s, %s AS data \
              EXPORT EVENT STARTING AT %s * %g WITH DURATION %s * %g"
             start select_y
-            start scale dur scale2
+            start scale dur scale2 |> return
         | Aggregate { export = Some (Some ((start, scale), StopField (stop, scale2))) ; _ } ->
           Printf.sprintf
             "SELECT %s, %s, %s AS data \
              EXPORT EVENT STARTING AT %s * %g AND STOPPING AT %s * %g"
             start stop select_y
-            start scale stop scale2
+            start scale stop scale2 |> return
         | _ ->
-          failwith "This parent does not provide time information"
-      ) else
+          fail_with "This parent does not provide time information"
+      ) else return (
         "SELECT "^ select_x ^" AS time, "
                  ^ select_y ^" AS data \
-         EXPORT EVENT STARTING AT time" in
+         EXPORT EVENT STARTING AT time") in
     let op_text =
       if where = "" then op_text else op_text ^" WHERE "^ where in
     let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
@@ -559,13 +502,13 @@ let timeseries conf headers body =
           let%lwt layer_name, node_name, data_field =
             match req.spec with
             | Predefined { node ; data_field } ->
-              let layer, node = layer_node_of_user_string conf node in
+              let%lwt layer, node = layer_node_of_user_string conf node in
               return (layer, node, data_field)
             | NewTempNode { select_x ; select_y ; from ; where } ->
               create_temporary_node select_x select_y from where in
-          let _layer, node = find_node_or_fail conf layer_name node_name in
+          let%lwt _layer, node = find_node_or_fail conf layer_name node_name in
           RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
-          let times, values =
+          let%lwt times, values =
             ts_of_node_field req layer_name node_name data_field in
           return { id = req.id ; times ; values }
         ) msg.timeseries in

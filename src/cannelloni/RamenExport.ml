@@ -225,3 +225,70 @@ let float_of_scalar_value = function
   | VIpv4 x -> Uint32.to_float x
   | VIpv6 x -> Uint128.to_float x
   | VNull | VString _ | VCidrv4 _ | VCidrv6 _ -> 0.
+
+(* Building timeseries with points at regular times *)
+
+type timeserie_bucket =
+  (* Hopefully count will be small enough that sum can be tracked accurately *)
+  { mutable count : int ; mutable sum : float ;
+    mutable min : float ; mutable max : float }
+
+let add_into_bucket b i v =
+  if i > 0 && i < Array.length b then (
+    b.(i).count <- succ b.(i).count ;
+    b.(i).min <- min b.(i).min v ;
+    b.(i).max <- max b.(i).max v ;
+    b.(i).sum <- b.(i).sum +. v)
+
+let bucket_avg b =
+  if b.count = 0 then None else Some (b.sum /. float_of_int b.count)
+let bucket_min b =
+  if b.count = 0 then None else Some b.min
+let bucket_max b =
+  if b.count = 0 then None else Some b.max
+
+let build_timeseries node start_field start_scale data_field duration_info
+                     max_data_points from to_ consolidation =
+  let history = get_history node in
+  let find_field n =
+    try (
+      List.findi (fun _i (ft : field_typ) ->
+        ft.typ_name = n) history.C.tuple_type |> fst
+    ) with Not_found ->
+      failwith ("field "^ n ^" does not exist") in
+  let ti = find_field start_field
+  and vi = find_field data_field in
+  if max_data_points < 1 then failwith "invalid max_data_points" ;
+  let dt = (to_ -. from) /. float_of_int max_data_points in
+  let buckets = Array.init max_data_points (fun _ ->
+    { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
+  let bucket_of_time t = int_of_float ((t -. from) /. dt) in
+  let _ =
+    fold_tuples history () (fun tup () ->
+      let t, v = float_of_scalar_value tup.(ti),
+                 float_of_scalar_value tup.(vi) in
+      let t1 = t *. start_scale in
+      let t2 =
+        let open Lang.Operation in
+        match duration_info with
+        | DurationConst f -> t1 +. f
+        | DurationField (f, s) ->
+          let fi = find_field f in
+          t1 +. float_of_scalar_value tup.(fi) *. s
+        | StopField (f, s) ->
+          let fi = find_field f in
+          float_of_scalar_value tup.(fi) *. s
+      in
+      (* We allow duration to be < 0 *)
+      let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
+      (* t1 and t2 are in secs. But the API is in milliseconds (thanks to
+       * grafana) *)
+      let t1, t2 = t1 *. 1000., t2 *. 1000. in
+      if t1 < to_ && t2 >= from then
+        let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
+        for bi = bi1 to bi2 do
+          add_into_bucket buckets bi v
+        done) in
+  Array.mapi (fun i _ ->
+    from +. dt *. (float_of_int i +. 0.5)) buckets,
+  Array.map consolidation buckets
