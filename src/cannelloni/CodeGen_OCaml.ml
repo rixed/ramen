@@ -1024,26 +1024,14 @@ let with_code_file_for conf signature f =
 let compile_source fname =
   (* This is not guaranteed to be unique but should be... *)
   let exec_name = String.sub fname 0 (String.length fname - 3) in
-  mkdir_all ~is_file:true exec_name ;
-  if file_exists ~maybe_empty:false ~has_perms:0o100 exec_name then
-    !logger.debug "Reusing binary %S" exec_name
-  else (
-    let comp_cmd =
-      Printf.sprintf
-        "nice ocamlfind ocamlopt -g -o %s \
-          -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator \
-          -linkpkg codegen.cmxa %s"
-        (shell_quote exec_name)
-        (shell_quote fname) in
-    let exit_code = Sys.command comp_cmd in
-    if exit_code = 0 then
-      !logger.debug "Compiled %s with: %s" fname comp_cmd
-    else (
-      !logger.error "Compilation of %s failed with status %d.\n\
-                     Failed command was: %S"
-                    fname exit_code comp_cmd ;
-      failwith "Cannot generate code")) ;
-  exec_name
+  let comp_cmd =
+    Printf.sprintf
+      "nice ocamlfind ocamlopt -g -o %s \
+        -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator \
+        -linkpkg codegen.cmxa %s"
+      (shell_quote exec_name)
+      (shell_quote fname) in
+  exec_name, comp_cmd
 
 let gen_operation conf signature in_tuple_typ out_tuple_typ op =
   let open Operation in

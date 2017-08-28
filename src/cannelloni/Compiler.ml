@@ -14,7 +14,9 @@
  * node output, via the expected_type of each expression.
  *)
 open Batteries
+open Lwt
 open Log
+open Helpers
 open RamenSharedTypes
 module C = RamenConf
 module N = RamenConf.Node
@@ -621,10 +623,27 @@ let compile_node conf node =
   assert node.N.out_type.C.finished_typing ;
   let in_typ = C.tup_typ_of_temp_tup_type node.N.in_type
   and out_typ = C.tup_typ_of_temp_tup_type node.N.out_type in
-  node.N.command <- Some (
+  let exec_name, comp_cmd =
     (* gen_operation could compute a signature of it's own, but better provide
      * it so that in the future all code generators use the same. *)
-    CodeGen_OCaml.gen_operation conf node.N.signature in_typ out_typ node.N.operation)
+    CodeGen_OCaml.gen_operation conf node.N.signature
+                                in_typ out_typ node.N.operation in
+  node.N.command <- Some exec_name ;
+  (* Let's compile (or maybe not) *)
+  mkdir_all ~is_file:true exec_name ;
+  if file_exists ~maybe_empty:false ~has_perms:0o100 exec_name then (
+    !logger.debug "Reusing binary %S" exec_name ;
+    return_unit
+  ) else
+    let%lwt status = Lwt_unix.system comp_cmd in
+    if status = Unix.WEXITED 0 then (
+      !logger.debug "Compiled %s with: %s" node.N.name comp_cmd ;
+      return_unit
+    ) else (
+      !logger.error "Compilation of %s %s"
+        node.N.name (string_of_process_status status) ;
+      fail_with "Cannot generate code"
+    )
 
 let untyped_dependency layer =
   (* Check all layers we depend on (parents only) either belong to
@@ -644,9 +663,9 @@ exception AlreadyCompiled
 
 let compile conf layer =
   match layer.L.persist.L.status with
-  | SL.Compiled -> raise AlreadyCompiled
-  | SL.Running -> raise AlreadyCompiled
-  | SL.Compiling -> raise AlreadyCompiled
+  | SL.Compiled -> fail AlreadyCompiled
+  | SL.Running -> fail AlreadyCompiled
+  | SL.Compiling -> fail AlreadyCompiled
   | SL.Edition ->
     !logger.debug "Trying to compile layer %s" layer.L.name ;
     untyped_dependency layer |>
@@ -665,10 +684,10 @@ let compile conf layer =
     (* TODO: better reporting *)
     if not finished_typing then
       raise (Lang.SyntaxError "Cannot complete typing") ;
-    Hashtbl.iter (fun _ node ->
-        try compile_node conf node
-        with Failure m ->
-          raise (Failure ("While compiling "^ node.N.name ^": "^ m))
-      ) layer.L.persist.L.nodes ;
+    let%lwt () =
+      Hashtbl.fold (fun _ node thds -> compile_node conf node :: thds)
+                   layer.L.persist.L.nodes [] |>
+      join in
     C.Layer.set_status layer SL.Compiled ;
-    C.save_graph conf
+    C.save_graph conf ;
+    return_unit

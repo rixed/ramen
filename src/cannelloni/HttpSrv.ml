@@ -293,25 +293,28 @@ let put_layer conf headers body =
 let compile conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
     let%lwt layers = graph_layers conf layer_opt in
-    try
-      let rec loop left_try layers =
-        !logger.debug "%d layers left to compile..." (List.length layers) ;
-        if layers = [] then respond_ok () else
-        if left_try < 0 then bad_request "Unsolvable dependency loop" else
-        List.fold_left (fun failed layer ->
-            let open Compiler in
-            try compile conf layer ;
-                failed
-            with AlreadyCompiled -> failed
-               | MissingDependency n ->
-                 !logger.debug "We miss node %s / %s" n.N.layer n.N.name ;
-                 layer::failed
-          ) [] layers |>
-        loop (left_try-1)
-      in
-      loop (List.length layers) layers
-    with (Lang.SyntaxError e | C.InvalidCommand e) ->
-      bad_request e)
+    catch
+      (fun () ->
+        let rec loop left_try layers =
+          !logger.debug "%d layers left to compile..." (List.length layers) ;
+          if layers = [] then respond_ok () else
+          if left_try < 0 then bad_request "Unsolvable dependency loop" else
+          Lwt_list.fold_left_s (fun failed layer ->
+              let open Compiler in
+              catch
+                (fun () -> let%lwt () = compile conf layer in
+                           return failed)
+                (function AlreadyCompiled -> return failed
+                        | MissingDependency n ->
+                          !logger.debug "We miss node %s" (N.fq_name n) ;
+                          return (layer::failed)
+                        | e -> fail e)
+            ) [] layers >>=
+          loop (left_try-1)
+        in
+        loop (List.length layers) layers)
+      (function Lang.SyntaxError e | C.InvalidCommand e -> bad_request e
+              | e -> fail e))
 
 let run conf headers layer_opt =
   check_accept headers Consts.json_content_type (fun () ->
@@ -535,36 +538,41 @@ let timeseries conf headers body =
       "temp/from_"^ from ^"_"^ Cryptohash_md4.(string reformatted_op |> to_hex)
     and node_name = "operation" in
     (* So far so good. In all likelihood this layer exists already: *)
-    if Hashtbl.mem conf.C.graph.C.layers layer_name then
-      !logger.debug "Layer %S already there" layer_name
-    else (
+    (if Hashtbl.mem conf.C.graph.C.layers layer_name then (
+      !logger.debug "Layer %S already there" layer_name ;
+      return_unit
+    ) else (
       (* Add this layer to the running configuration: *)
       let layer =
         C.add_parsed_node ~timeout:300.
           conf node_name layer_name op_text operation in
       let node = Hashtbl.find layer.L.persist.L.nodes node_name in
       C.add_link conf parent node ;
-      Compiler.compile conf layer ;
+      let%lwt () = Compiler.compile conf layer in
       RamenProcesses.run conf layer ;
-    ) ;
-    layer_name, node_name, "data"
+      return_unit
+    )) >>= fun () ->
+    return (layer_name, node_name, "data")
   in
-  match List.map (fun req ->
-          let layer_name, node_name, data_field =
+  catch
+    (fun () ->
+      let%lwt resp = Lwt_list.map_s (fun req ->
+          let%lwt layer_name, node_name, data_field =
             match req.spec with
             | Predefined { node ; data_field } ->
               let layer, node = layer_node_of_user_string conf node in
-              layer, node, data_field
+              return (layer, node, data_field)
             | NewTempNode { select_x ; select_y ; from ; where } ->
               create_temporary_node select_x select_y from where in
           let _layer, node = find_node_or_fail conf layer_name node_name in
           RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
-          let times, values = ts_of_node_field req layer_name node_name data_field in
-          { id = req.id ; times ; values }) msg.timeseries with
-  | exception Failure err -> bad_request err
-  | resp ->
-    let body = PPP.to_string timeseries_resp_ppp resp in
-    respond_ok ~body ()
+          let times, values =
+            ts_of_node_field req layer_name node_name data_field in
+          return { id = req.id ; times ; values }
+        ) msg.timeseries in
+      let body = PPP.to_string timeseries_resp_ppp resp in
+      respond_ok ~body ())
+    (function Failure err -> bad_request err | e -> fail e)
 
 (* A thread that hunt for unused layers *)
 let rec timeout_layers conf =

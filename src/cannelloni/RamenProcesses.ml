@@ -37,43 +37,6 @@ exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
 
-let name_of_signal s =
-  let open Sys in
-  if s = sigabrt then "ABORT"
-  else if s = sigalrm then "ALRM"
-  else if s = sigfpe then "FPE"
-  else if s = sighup then "HUP"
-  else if s = sigill then "ILL"
-  else if s = sigint then "INT"
-  else if s = sigkill then "KILL"
-  else if s = sigpipe then "PIPE"
-  else if s = sigquit then "QUIT"
-  else if s = sigsegv then "SEGV"
-  else if s = sigterm then "TERM"
-  else if s = sigusr1 then "USR1"
-  else if s = sigusr2 then "USR2"
-  else if s = sigchld then "CHLD"
-  else if s = sigcont then "CONT"
-  else if s = sigstop then "STOP"
-  else if s = sigtstp then "TSTP"
-  else if s = sigttin then "TTIN"
-  else if s = sigttou then "TTOU"
-  else if s = sigvtalrm then "VTALRM"
-  else if s = sigprof then "PROF"
-  else if s = sigbus then "BUS"
-  else if s = sigpoll then "POLL"
-  else if s = sigsys then "SYS"
-  else if s = sigtrap then "TRAP"
-  else if s = sigurg then "URG"
-  else if s = sigxcpu then "XCPU"
-  else if s = sigxfsz then "XFSZ"
-  else "Unknown OCaml signal number "^ string_of_int s
-
-let string_of_process_status = function
-  | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
-  | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %s" (name_of_signal sign)
-  | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %s" (name_of_signal sign)
-
 let run conf layer =
   let open C.Layer in
   match layer.persist.status with
@@ -133,7 +96,7 @@ let run conf layer =
               return_unit
             | _, status ->
               !logger.info "Node %s %s"
-                node.N.name (string_of_process_status status) ;
+                node.N.name (Helpers.string_of_process_status status) ;
               return_unit in
           restart ()) ;
         (* Update the parents out_ringbuf_ref if it's in another layer *)
