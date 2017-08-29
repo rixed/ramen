@@ -864,9 +864,9 @@ let emit_top name in_tuple_typ mentioned and_all_others oc top =
       "Some (\n\
        \t(Uint32.to_int (%a)),\n\
        \t(fun %a -> %a))\n"
-      (emit_expr ~state:true) n
+      (conv_to ~state:true (Some TU32)) n
       (emit_in_tuple mentioned and_all_others) in_tuple_typ
-      (emit_expr ~state:true) by
+      (conv_to ~state:true (Some TFloat)) by
 
 let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
   let mentioned =

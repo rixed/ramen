@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/.."
+. $top_srcdir/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_accounts
+add_node n "
+  SELECT name, sum of amount
+  TOP 3 BY amount
+  GROUP BY name
+  COMMIT AND FLUSH WHEN in.#count >= $nb_accounts
+  EXPORT" accounts
+run
+
+check_equal '"Joe",985
+"John",587
+"Willy",950' \
+  "$(tail_ 3 n | sort)"

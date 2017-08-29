@@ -89,12 +89,19 @@ add_earthquakes() {
 
 nb_earthquakes=$(wc -l "$fixtures/earthquakes.csv" | awk '{print $1}')
 
+add_accounts() {
+  add_node accounts "READ CSV FILE \"$fixtures/accounts.csv\" (
+    name string not null, amount float not null)"
+}
+
+nb_accounts=$(wc -l "$fixtures/accounts.csv" | awk '{print $1}')
+
 run() {
   eval "$ramen add test $LAYER_CMD" &&
   $ramen compile &&
   $ramen run
   # We must give it time to process the CSV :(
-  sleep 1
+  sleep 2
 }
 
 tail_() {

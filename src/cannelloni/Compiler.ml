@@ -463,31 +463,39 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
     | Some (n, by) ->
       (* See the Lag operator for remarks about precomputing constants *)
       Expr.check_const "top size" n ;
-      let exp_type = Expr.make_typ ~typ:TU32 "top-by clause" in
-      check_expr ~in_type ~out_type ~exp_type by
+      (* check_expr will try to improve exp_type. We don't care we just want
+       * to check it does not raise an exception. Here exp_type is build at
+       * every call so we wouldn't make progress anyway. *)
+      check_expr ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top size") n |> ignore ;
+      check_expr ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top-by clause") by |> ignore ;
+      false
   ) || (
     let exp_type = Expr.make_bool_typ ~nullable:false "commit-when clause" in
-    check_expr ~in_type ~out_type ~exp_type commit_when
+    check_expr ~in_type ~out_type ~exp_type commit_when |> ignore ;
+    false
   ) || (
     match flush_when with
     | None -> false
     | Some flush_when ->
       let exp_type = Expr.make_bool_typ ~nullable:false "flush-when clause" in
-      check_expr ~in_type ~out_type ~exp_type flush_when
+      check_expr ~in_type ~out_type ~exp_type flush_when |> ignore ;
+      false
   ) || (
     match flush_how with
     | Reset -> false
     | Slide _ -> false
     | RemoveAll e | KeepOnly e ->
       let exp_type = Expr.make_bool_typ ~nullable:false "remove/keep clause" in
-      check_expr ~in_type ~out_type ~exp_type e
+      check_expr ~in_type ~out_type ~exp_type e |> ignore ;
+      false
   ) || (
     (* Check the expression, improving out_type and checking against in_type: *)
     let exp_type =
       (* That where expressions cannot be null seems a nice improvement
        * over SQL. *)
       Lang.Expr.make_bool_typ ~nullable:false "where clause" in
-    check_expr ~in_type ~out_type ~exp_type where
+    check_expr ~in_type ~out_type ~exp_type where |> ignore ;
+    false
   ) || (
     (* Also check other expression and make use of them to improve out_type.
      * Everything that's selected must be (added) in out_type. *)

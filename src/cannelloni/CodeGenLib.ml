@@ -361,8 +361,13 @@ type ('aggr, 'tuple_in, 'generator_out) aggr_value =
     mutable nb_successive : int ;
     mutable last_ev_count : int ; (* used for others.successive (TODO) *)
     mutable to_resubmit : 'tuple_in list ; (* in_tuples to resubmit at flush *)
-    mutable fields : 'aggr (* the record of aggregation values *) }
+    mutable fields : 'aggr (* the record of aggregation values *) ;
+    mutable sure_weight : float ;
+    mutable unsure_weight : float }
 
+let tot_weight aggr = aggr.sure_weight +. aggr.unsure_weight
+
+(* FIXME: won't work with tops *)
 let flush_aggr aggr_init update_aggr should_resubmit h k aggr =
   if aggr.to_resubmit = [] then
     Hashtbl.remove h k
@@ -387,6 +392,15 @@ let flush_aggr aggr_init update_aggr should_resubmit h k aggr =
   )
 
 type when_to_check_group = ForAll | ForAllSelected | ForAllInGroup
+
+(* A Map from weight to keys with that weight so we can quickly find the
+ * lighter of our heavy hitters: *)
+module WeightMap = Map.Make (Float)
+
+let print_weightmap fmt map =
+  let print_key fmt lst =
+    Printf.fprintf fmt "%d HH(s)" (List.length lst) in
+  (WeightMap.print Float.print print_key) fmt map
 
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
@@ -446,6 +460,7 @@ let aggregate
   and rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
+  (* FIXME: most of this should be in the saved state! *)
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)
   and in_ = ref None (* last incoming tuple *)
@@ -456,15 +471,43 @@ let aggregate
   and unselected_count = ref Uint64.zero
   and unselected_successive = ref Uint64.zero
   and out_count = ref Uint64.zero
+  (* Top book-keeping:
+   * In addition to the hash of aggr (which for each entry has a weight) we
+   * need to quickly find the key of the smallest weight, thus the WeightMap
+   * defined above: *)
+  and top_set : 'key list WeightMap.t ref = ref WeightMap.empty
+  (* Each time we have no idea who the weight belongs to we pour it in here,
+   * at the bucket corresponding to the hash of the key.
+   * Each time we start tracking an item we must (pessimistically) report this
+   * as its unknown weight.  Unfortunately there is no way this value could
+   * decrease. *)
+  (* TODO: dynamically size according to how quickly we will it to XX%, which
+   * is very cheap to measure. What is less easy is how to spread the keys when
+   * we extend it. So, maybe just the other way around: start from very large
+   * and reduce it? *)
+  and unknown_weight = Array.make 1024 0.
+  (* The aggregate entry for "others": *)
+  and others = ref None
+  (* FIXME: take a larger N and run a sort before outputing *)
+  and top_n, top_by = Option.default (0, fun _ -> 0.) top
+
   and stats_group_count =
     IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
   in
   IntGauge.set stats_group_count 0 ;
+
+  (let when_str = match when_to_check_for_commit with
+    | ForAll -> "every group at every tuple"
+    | ForAllSelected -> "every group at every selected tuple"
+    | ForAllInGroup -> "the group that's updated by a tuple" in
+   !logger.info "We will commit/flush for... %s" when_str) ;
+
   let outputer =
     let do_out =
       outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
     generate_tuples do_out in
   let commit in_tuple out_tuple =
+    (* in_tuple here is useful for generators *)
     out_count := Uint64.succ !out_count ;
     outputer in_tuple out_tuple
   and with_state =
@@ -505,8 +548,36 @@ let aggregate
       in
       let commit_and_flush_list to_commit to_flush =
         (* We must commit first and then flush *)
+        (* Send tuple for "others": *)
+        (* FIXME: the problem with this is that the current_out of this
+         * aggregate was build from a given in_tuple and nothing tells us
+         * what this additional "others" tuple represents, and that
+         * possibly other keys than the one seemingly present have
+         * contributed to its aggregated values. It is not easy to fix.
+         * Idea 1: make all fields used in the key clause NULL to anonymise
+         * this entry ; but still nothing guarantee that it's distinguishable
+         * from normal top output.
+         * Idea 2: add an additional column to top operations to flag the
+         * "other" tuple.
+         * Idea 3: Or rather, have a virtual boolean field that says if this
+         * is "others", that the user could request in the selected fields
+         * and that we would pass to generate_tuples; with it the user could
+         * for instance blank values that have no sense.
+         * Idea 4: short term: do not output this additional tuple. *)
+        (*
+        let to_commit =
+          if to_commit <> [] && !others <> None then
+            ("others", Option.get !others) :: to_commit
+          else to_commit in *)
         let%lwt () =
           Lwt_list.iter_s (fun (_k, a) -> commit in_tuple a.current_out) to_commit in
+        if to_flush <> [] then (
+          (* This is really a temporary hack! Cannot work like this. *)
+          !logger.debug "Cleaning TOP" ;
+          others := None ;
+          Array.fill unknown_weight 0 (Array.length unknown_weight) 0. ;
+          top_set := WeightMap.empty ;
+        ) ;
         List.iter (fun (k, a) ->
             flush_aggr aggr_init update_aggr should_resubmit h k a
           ) to_flush ;
@@ -533,6 +604,19 @@ let aggregate
         let k = key_of_input in_tuple in
         let prev_last_key = !last_key in
         last_key := Some k ;
+        (* The weight for this tuple only: *)
+        let weight = top_by in_tuple in
+        !logger.debug "Next weight is %f" weight ;
+        let accumulate_into aggr this_key =
+          update_aggr aggr.fields in_tuple ;
+          aggr.last_ev_count <- !event_count ;
+          aggr.nb_entries <- aggr.nb_entries + 1 ;
+          if should_resubmit aggr in_tuple then
+            aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
+          if prev_last_key = this_key then
+            aggr.nb_successive <- aggr.nb_successive + 1 ;
+          aggr.sure_weight <- aggr.sure_weight +. weight
+        in
         (* Update/create the group *)
         let aggr_opt =
           match Hashtbl.find h k with
@@ -557,6 +641,8 @@ let aggregate
                   !out_count
                   one one fields
                   in_tuple in_tuple in
+              (* What part of unknown weight might belong to this guy? *)
+              let kh = BatHashtbl.hash k mod Array.length unknown_weight in
               let aggr = {
                 first_in = in_tuple ;
                 last_in = in_tuple ;
@@ -566,13 +652,61 @@ let aggregate
                 nb_successive = 1 ;
                 last_ev_count = !event_count ;
                 to_resubmit = [] ;
-                fields } in
-              Hashtbl.add h k aggr ;
-              if should_resubmit aggr in_tuple then
-                aggr.to_resubmit <- [ in_tuple ] ;
-              Some aggr
+                fields ;
+                sure_weight = weight ;
+                unsure_weight = unknown_weight.(kh) } in
+              let add_entry () =
+                Hashtbl.add h k aggr ;
+                let wk = tot_weight aggr in
+                !logger.debug "Adding WeightMap for weight %f" wk ;
+                top_set := WeightMap.modify_def [] wk (List.cons k) !top_set ;
+                !logger.debug "WeightMap is now %a" print_weightmap !top_set ;
+                if should_resubmit aggr in_tuple then
+                  aggr.to_resubmit <- [ in_tuple ]
+              in
+              if top_n = 0 || BatHashtbl.length h < top_n then (
+                add_entry () ;
+                Some aggr
+              ) else (
+                (* H is crowded already, maybe dispose of the less heavy hitter? *)
+                !logger.debug "Crowded! Let's examine the smallest weight of %a"
+                  print_weightmap !top_set ;
+                match WeightMap.min_binding !top_set with
+                | wk, [] ->
+                  !logger.debug "Weird, the min binding is for key %f with no data" wk ;
+                  assert false
+                | wk, (min_k::min_ks) ->
+                  if wk < tot_weight aggr then (
+                    (* Remove previous entry *)
+                    let removed = Hashtbl.find h min_k in
+                    Hashtbl.remove h min_k ;
+                    let kh' = BatHashtbl.hash min_k mod Array.length unknown_weight in
+                    (* Note: the unsure_weight we took it from unknown_weight.(kh')
+                     * already and it's still there *)
+                    unknown_weight.(kh') <- unknown_weight.(kh') +. removed.sure_weight ;
+                    !logger.debug "Removing WeightMap for weight %f" wk ;
+                    top_set := snd (WeightMap.pop_min_binding !top_set) ;
+                    if min_ks <> [] then
+                      top_set := WeightMap.add wk min_ks !top_set ;
+                    (* Add new one *)
+                    add_entry () ;
+                    Some aggr
+                  ) else (
+                    (* Do not track; aggregate with "others" *)
+                    (match !others with
+                    | None -> others := Some aggr
+                    | Some others_aggr ->
+                      accumulate_into others_aggr None ;
+                      (* Those two are not updated by accumulate_into to allow clauses
+                       * code to see their previous values *)
+                      others_aggr.current_out <- out_generator ;
+                      aggr.last_in <- in_tuple) ;
+                    last_key := None ;
+                    unknown_weight.(kh) <- unknown_weight.(kh) +. weight ;
+                    None)
+              )
             ) else None
-          | aggr ->
+          | aggr -> (* Key already in the hash *)
             if where_slow
                  in_count in_tuple last_in
                  !selected_count !selected_successive last_selected
@@ -582,13 +716,10 @@ let aggregate
             then (
               if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
-              update_aggr aggr.fields in_tuple ;
-              aggr.last_ev_count <- !event_count ;
-              aggr.nb_entries <- aggr.nb_entries + 1 ;
-              if should_resubmit aggr in_tuple then
-                aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
-              if prev_last_key = Some k then
-                aggr.nb_successive <- aggr.nb_successive + 1 ;
+              let prev_wk = tot_weight aggr in
+              accumulate_into aggr (Some k) ;
+              (* current_out and last_in are better updated only after we called the
+               * various clauses receiving aggr *)
               (* TODO: pass selected_successive *)
               let out_generator =
                 tuple_of_aggr
@@ -600,6 +731,33 @@ let aggregate
                   aggr.first_in aggr.last_in in
               aggr.current_out <- out_generator ;
               aggr.last_in <- in_tuple ;
+              if weight <> 0. then (
+                (* We have to move in the WeightMap. First remove: *)
+                !logger.debug "Trying to move away from weight %f in set %a"
+                  prev_wk print_weightmap !top_set ;
+                top_set := WeightMap.modify_opt prev_wk (function
+                  | None -> assert false
+                    (* If this is not the usual case then we are in trouble. In
+                     * other words you should not have many of your top_n heavy
+                     * hitters with the same weight. *)
+                  | Some [k'] ->
+                    !logger.debug "Moving away from weight %f in WeightMap (singleton)" prev_wk ;
+                    assert (k = k') ; None
+                  | Some lst ->
+                    !logger.debug "Moving away from weight %f in WeightMap (list)" prev_wk ;
+                    let lst' = List.filter ((<>) k) lst in
+                    assert (lst' <> []) ;
+                    Some lst') !top_set ;
+                (* reinsert with new weight: *)
+                let new_wk = tot_weight aggr in
+                top_set := WeightMap.modify_opt new_wk (function
+                  | None ->
+                    !logger.debug "Moving to weight %f in WeightMap (singleton)" new_wk ;
+                    Some [k]
+                  | Some lst as prev ->
+                    !logger.debug "Moving to weight %f in WeightMap (list)" new_wk ;
+                    if List.mem k lst then prev else Some (k::lst)) !top_set
+              ) ;
               Some aggr
             ) else None in
         (match aggr_opt with

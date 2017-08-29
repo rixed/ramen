@@ -96,8 +96,10 @@ distclean-spec:
 
 check-spec: ringbuf_test.opt
 
-long-check: cannelloni check-spec
+long-check: cannelloni
+	@$(MAKE) check
 	@./ringbuf_test.opt || echo "FAILURE"
+	./tests/tops
 	./tests/basic_aggr
 	./tests/count_lines
 	./tests/sliding_window
