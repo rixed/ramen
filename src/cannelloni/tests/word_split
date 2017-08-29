@@ -4,12 +4,56 @@ set -e
 top_srcdir=$(dirname $0)"/.."
 . $top_srcdir/tests/funcs.sh
 
-expected_tests=1
+expected_tests=4
 
 start
 add_node bla "YIELD \"pas glop\" AS s"
-add_node n "SELECT split(\" \", s) AS s1, \"glop\" as s2 EXPORT" bla
+add_node n "SELECT split(\" \", s) AS s1, \"glop\" AS s2 EXPORT" bla
 run
 
-check_equal '"pas","glop"
-"glop","glop"' "$(tail_ 2 n)"
+check_equal '"glop","glop"
+"pas","glop"' \
+  "$(tail_ 2 n | sort)"
+
+reset
+
+start
+add_node bla "YIELD \"foo bar\" AS s1, \"pas glop\" AS s2"
+add_node n "SELECT split(\" \", s1) AS s1, split(\" \", s2) AS s2 EXPORT" bla
+run
+
+check_equal '"bar","glop"
+"bar","pas"
+"foo","glop"
+"foo","pas"' \
+  "$(tail_ 4 n | sort)"
+
+reset
+
+# Now with some surrounding functions:
+
+start
+add_node bla "YIELD \"pas glop\" AS s"
+add_node n "
+  SELECT split(\" \", s) || \" glop\" AS s1,
+         \"pas \" || split(\" \", s) AS s2 EXPORT" bla
+run
+
+check_equal '"glop glop","pas glop"
+"glop glop","pas pas"
+"pas glop","pas glop"
+"pas glop","pas pas"' \
+  "$(tail_ 4 n | sort)"
+
+reset
+
+# Now with embedded functions:
+
+start
+add_node bla "YIELD \"glop\" AS s"
+add_node n "SELECT \"pas \" || split(\" \", s || \" glop\") AS s1 EXPORT" bla
+run
+
+check_equal '"pas glop"
+"pas glop"' \
+  "$(tail_ 2 n | sort)"
