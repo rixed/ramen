@@ -1,7 +1,8 @@
 top_srcdir = ..
 
 TESTABLE_SOURCES = \
-	RamenSharedTypes.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml Compiler.ml
+	RamenSharedTypes.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml Compiler.ml \
+	Helpers.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \

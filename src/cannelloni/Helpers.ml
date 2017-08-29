@@ -1,6 +1,8 @@
 open Batteries
 open Log
 
+(*$inject open Batteries *)
+
 (* Small helper to return the ith entry of an array, capped to the last one.
  * Useful when we reach the last defined attempt while escalating an alert. *)
 let get_cap a i =
@@ -188,3 +190,36 @@ let string_of_process_status = function
   | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
   | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %s" (name_of_signal sign)
   | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %s" (name_of_signal sign)
+
+let quote_at_start s =
+  String.length s > 0 && s.[0] = '"'
+
+let quote_at_end s =
+  String.length s > 0 && s.[String.length s - 1] = '"'
+
+exception InvalidCSVQuoting
+
+let strings_of_csv separator line =
+  let strings = String.nsplit line separator in
+  (* Handle quoting in CSV values. TODO: enable/disable based on operation flag *)
+  let strings', rem_s, has_quote =
+    List.fold_left (fun (lst, prev_s, has_quote) s ->
+      if prev_s = "" then (
+        if quote_at_start s then (
+          if quote_at_end s then (
+            let len = String.length s in
+            if len > 1 then String.sub s 1 (len - 2) :: lst, "", true
+            else s :: lst, "", has_quote
+          ) else lst, s, true
+        ) else s :: lst, "", has_quote
+      ) else (
+        if quote_at_end s then (String.(lchop prev_s ^ rchop s) :: lst, "", true)
+        else lst, prev_s ^ s, true
+      )) ([], "", false) strings in
+  if rem_s <> "" then raise InvalidCSVQuoting ;
+  if has_quote then List.rev strings' else strings
+
+(*$= strings_of_csv & ~printer:(IO.to_string (List.print String.print))
+  [ "glop" ; "glop" ] (strings_of_csv " " "glop glop")
+  [ "John" ; "+500" ] (strings_of_csv "," "\"John\",+500")
+ *)
