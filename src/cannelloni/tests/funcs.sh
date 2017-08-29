@@ -120,7 +120,9 @@ reset() {
 stop() {
   reset
   echo "$nb_tests_ok/$nb_tests_tot successful"
-  if test -n "$expected_tests" && ! test "$expected_tests" -eq "$nb_tests_tot" ; then
+  if test -n "$expected_tests" && test "$expected_tests" -lt "$nb_tests_tot" ; then
+    echo "More tests run that expected, isn't that weird?"
+  elif test -n "$expected_tests" && ! test "$expected_tests" -eq "$nb_tests_tot" ; then
     echo "$((expected_tests-nb_tests_tot)) not run!"
   elif test "$nb_tests_ok" -eq "$nb_tests_tot" ; then
     echo SUCCESS
