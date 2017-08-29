@@ -143,6 +143,7 @@ let tuple_need_state = function
     | Ge (_, a, b) -> Ge (typ, replace_typ a, replace_typ b)
     | Gt (_, a, b) -> Gt (typ, replace_typ a, replace_typ b)
     | Eq (_, a, b) -> Eq (typ, replace_typ a, replace_typ b)
+    | Concat (_, a, b) -> Concat (typ, replace_typ a, replace_typ b)
     | BeginOfRange (_, a) -> BeginOfRange (typ, replace_typ a)
     | EndOfRange (_, a) -> EndOfRange (typ, replace_typ a)
     | Lag (_, a, b) -> Lag (typ, replace_typ a, replace_typ b)
@@ -437,6 +438,7 @@ struct
     { expr_name ; nullable ; scalar_typ = typ ; uniq_num = !uniq_num_seq }
   let make_bool_typ ?nullable name = make_typ ?nullable ~typ:TBool name
   let make_float_typ ?nullable name = make_typ ?nullable ~typ:TFloat name
+  let make_string_typ ?nullable name = make_typ ?nullable ~typ:TString name
   let make_num_typ ?nullable name =
     make_typ ?nullable ~typ:TNum name (* will be enlarged as required *)
   let copy_typ ?name typ =
@@ -529,6 +531,7 @@ struct
     | Ge of typ * t * t
     | Gt of typ * t * t
     | Eq of typ * t * t
+    | Concat of typ * t * t
     (* For network address range checks: *)
     | BeginOfRange of typ * t
     | EndOfRange of typ * t
@@ -615,6 +618,7 @@ struct
     | Ge (t, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Gt (t, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Eq (t, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | Concat (t, e1, e2) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Lag (t, e1, e2) -> Printf.fprintf fmt "lag(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | MovingAvg (t, e1, e2, e3) ->
       Printf.fprintf fmt "season_moveavg(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
@@ -631,7 +635,7 @@ struct
     | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
     | IDiv (t, _, _) | Pow (t, _, _) | And (t, _, _) | Or (t, _, _)
     | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
-    | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t
+    | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t | Concat (t, _, _)
     | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
     | MovingAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
     | Exp (t, _) | Log (t, _) | Split (t, _, _) ->
@@ -655,7 +659,8 @@ struct
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
     | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
     | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
-    | Lag (_, e1, e2) | ExpSmooth (_, e1, e2) | Split (_, e1, e2) ->
+    | Lag (_, e1, e2) | ExpSmooth (_, e1, e2) | Split (_, e1, e2)
+    | Concat (_, e1, e2) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       f i'' expr
@@ -673,10 +678,10 @@ struct
       | AggrLast _ | AggrPercentile _ | Lag _ | MovingAvg _ | LinReg _
       | ExpSmooth _ as e ->
         f e
-      | Const _ | Param _ | Field _ | Cast _
-      | Now _ | Age _ | Sequence _ | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _
-      | IDiv _ | Pow _ | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _
-      | Length _ | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
+      | Const _ | Param _ | Field _ | Cast _ | Now _ | Age _ | Sequence _
+      | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _
+      | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _ | Length _
+      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ | Concat _ ->
         ()) () e |> ignore
 
   (* Any expression that uses a generator is a generator: *)
@@ -810,10 +815,11 @@ struct
 
     and mid_prec_left_assoc m =
       let m = "arithmetic operator" :: m in
-      let op = that_string "+" ||| that_string "-"
+      let op = that_string "+" ||| that_string "-" ||| that_string "||"
       and reduce t1 op t2 = match op with
         | "+" -> Add (make_num_typ "addition", t1, t2)
         | "-" -> Sub (make_num_typ "subtraction", t1, t2)
+        | "||" -> Concat (make_string_typ "concatenation", t1, t2)
         | _ -> assert false in
       binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks ~reduce m
 

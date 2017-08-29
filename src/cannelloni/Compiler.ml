@@ -301,6 +301,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Add (op_typ, e1, e2) | Sub (op_typ, e1, e2)
   | Mul (op_typ, e1, e2) ->
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+  | Concat (op_typ, e1, e2) ->
+    check_binary_op op_typ return_string  ~exp_sub_typ1:TString e1 ~exp_sub_typ2:TString e2
   | Pow (op_typ, e1, e2) ->
     check_binary_op op_typ return_float ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
   | Div (op_typ, e1, e2) ->

@@ -353,6 +353,7 @@ let funcname_of_expr =
   | Exp _ -> "exp"
   | Log _ -> "log"
   | Split _ -> "split"
+  | Concat _ -> "(^)"
   | Const _ | Param _ | Field _ ->
     assert false
 
@@ -378,7 +379,7 @@ let implementation_of expr =
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI32 -> "Int32."^ name, Some TI32
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI64 -> "Int64."^ name, Some TI64
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI128 -> "Int128."^ name, Some TI128
-  | Add _, Some TString -> "(^)", Some TString
+  | Concat _, Some TString -> name, Some TString
   | Length _, Some TU16 (* The only possible output type *) -> "String."^ name, Some TString
   | (Not _|And _|Or _|AggrAnd _|AggrOr _), Some TBool -> name, Some TBool
   | (Ge _| Gt _| Eq _), Some TBool -> name, None (* No conversion necessary *)
@@ -417,7 +418,7 @@ let name_of_state =
     "field_"^ string_of_int t.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
-  | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
+  | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ | Concat _
   | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
     assert false
 
@@ -547,7 +548,7 @@ and emit_expr ?(state=true) oc =
     emit_function1 ~state expr oc e
   | Defined (_, e) ->
     Printf.fprintf oc "(%a <> None)" (emit_expr ~state) e
-  | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2)
+  | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Concat (_, e1, e2)
   | Div (_, e1, e2) | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2)
   | Or (_, e1, e2) | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2)
   | Sequence (_, e1, e2) | Mod (_, e1, e2) as expr ->
@@ -675,6 +676,7 @@ let emit_generator user_fun oc expr =
     | Ge (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Ge (t, e1, e2))
     | Gt (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Gt (t, e1, e2))
     | Eq (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Eq (t, e1, e2))
+    | Concat (t, e1, e2) -> replace_binary prev e1 e2 (fun e1 e2 -> Concat (t, e1, e2))
     (* Bingo! *)
     | Split (t, e1, e2) as expr ->
       let prev = expr :: prev in (* Inner generator first: *)
@@ -942,7 +944,7 @@ let emit_group_state_init
             (conv_to ~state:false (Some TU16)) p
             (conv_to ~state:false (Some TU16)) n
             (conv_to ~state:false arg_typ) e
-        | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _
+        | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Concat _
         | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
         | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
         | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
@@ -987,7 +989,7 @@ let emit_update_state
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _
       | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
       | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
+      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ | Concat _ ->
         assert false) ;
       Printf.fprintf oc ") ;\n"
     ) ;
@@ -1106,7 +1108,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
         | Mod _| Cast _ | Abs _ | Length _ | Now _ | BeginOfRange _
-        | EndOfRange _ | Exp _ | Log _ | Split _ ->
+        | EndOfRange _ | Exp _ | Log _ | Split _ | Concat _ ->
           false
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
