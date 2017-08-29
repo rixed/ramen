@@ -446,9 +446,10 @@ let check_yield ~in_type ~out_type fields =
     ) else false
   )
 
-let check_aggregate ~in_type ~out_type fields and_all_others
-                    where key commit_when flush_when flush_how =
+let check_aggregate ~in_type ~out_type fields and_all_others where key top
+                    commit_when flush_when flush_how =
   let open Lang in
+  let open Operation in
   (
     (* Improve out_type using all expressions. Check we satisfy in_type. *)
     List.fold_left (fun changed k ->
@@ -456,6 +457,14 @@ let check_aggregate ~in_type ~out_type fields and_all_others
         let exp_type = Expr.typ_of k in
         check_expr ~in_type ~out_type ~exp_type k || changed
       ) false key
+  ) || (
+    match top with
+    | None -> false
+    | Some (n, by) ->
+      (* See the Lag operator for remarks about precomputing constants *)
+      Expr.check_const "top size" n ;
+      let exp_type = Expr.make_typ ~typ:TU32 "top-by clause" in
+      check_expr ~in_type ~out_type ~exp_type by
   ) || (
     let exp_type = Expr.make_bool_typ ~nullable:false "commit-when clause" in
     check_expr ~in_type ~out_type ~exp_type commit_when
@@ -466,7 +475,6 @@ let check_aggregate ~in_type ~out_type fields and_all_others
       let exp_type = Expr.make_bool_typ ~nullable:false "flush-when clause" in
       check_expr ~in_type ~out_type ~exp_type flush_when
   ) || (
-    let open Lang.Operation in
     match flush_how with
     | Reset -> false
     | Slide _ -> false
@@ -509,10 +517,10 @@ let check_operation ~in_type ~out_type =
   function
   | Yield fields ->
     check_yield ~in_type ~out_type fields
-  | Aggregate { fields ; and_all_others ; where ;
-                key ; commit_when ; flush_when ; flush_how ; _ } ->
-    check_aggregate ~in_type ~out_type fields and_all_others where
-                    key commit_when flush_when flush_how
+  | Aggregate { fields ; and_all_others ; where ; key ; top ;
+                commit_when ; flush_when ; flush_how ; _ } ->
+    check_aggregate ~in_type ~out_type fields and_all_others where key top
+                    commit_when flush_when flush_how
   | ReadCSVFile { fields ; _ } ->
     let from_tuple = C.temp_tup_typ_of_tup_typ fields in
     check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple ~to_tuple:out_type ~autorank:false

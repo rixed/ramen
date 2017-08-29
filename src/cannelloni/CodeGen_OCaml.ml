@@ -855,6 +855,19 @@ let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
     ) exprs ;
   Printf.fprintf oc "\n\t)\n"
 
+let emit_top name in_tuple_typ mentioned and_all_others oc top =
+  Printf.fprintf oc "let %s = " name ;
+  match top with
+  | None -> Printf.fprintf oc "None\n"
+  | Some (n, by) ->
+    Printf.fprintf oc
+      "Some (\n\
+       \t(Uint32.to_int (%a)),\n\
+       \t(fun %a -> %a))\n"
+      (emit_expr ~state:true) n
+      (emit_in_tuple mentioned and_all_others) in_tuple_typ
+      (emit_expr ~state:true) by
+
 let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
   let mentioned =
     let all_exprs = List.map (fun sf -> sf.Operation.expr) selected_fields in
@@ -1055,7 +1068,7 @@ let when_to_check_group_for_expr expr =
   "CodeGenLib.ForAllInGroup"
 
 let emit_aggregate oc in_tuple_typ out_tuple_typ
-                   selected_fields and_all_others where key
+                   selected_fields and_all_others where key top
                    commit_when flush_when flush_how notify_url =
 (* We need:
  * - as above: a where filter, a serializer,
@@ -1118,7 +1131,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     | Some flush_when -> when_to_check_group_for_expr flush_when
   in
   Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_group_state_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_state then
@@ -1137,7 +1150,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     (emit_serialize_tuple "serialize_aggr_") out_tuple_typ
     (emit_generate_tuples "generate_tuples_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how
-    (emit_field_of_tuple "field_of_tuple_" mentioned and_all_others) in_tuple_typ ;
+    (emit_field_of_tuple "field_of_tuple_" mentioned and_all_others) in_tuple_typ
+    (emit_top "top_" in_tuple_typ mentioned and_all_others) top ;
   (match flush_when with
   | Some flush_when ->
     emit_when "flush_when_" in_tuple_typ mentioned and_all_others out_tuple_typ oc flush_when
@@ -1145,9 +1159,9 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     Printf.fprintf oc "let flush_when_ = commit_when_\n") ;
   Printf.fprintf oc "let () =\n\
       \tLwt_main.run (\n\
-      \tCodeGenLib.aggregate \
+      \t\tCodeGenLib.aggregate \
            read_tuple_ sersize_of_tuple_ serialize_aggr_ generate_tuples_ \
-           tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ \
+           tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ top_ \
            commit_when_ %s flush_when_ %s \
            should_resubmit_ aggr_init_ update_aggr_ \
            field_of_tuple_ %S)\n"
@@ -1186,8 +1200,8 @@ let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
       emit_yield oc in_tuple_typ out_tuple_typ fields
     | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
-    | Aggregate { fields ; and_all_others ; where ; key ; commit_when ;
+    | Aggregate { fields ; and_all_others ; where ; key ; top ; commit_when ;
                   flush_when ; flush_how ; notify_url ; _ } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
-                     key commit_when flush_when flush_how notify_url)) |>
+                     key top commit_when flush_when flush_how notify_url)) |>
     compile_source exec_name

@@ -160,13 +160,15 @@ let tuple_need_state = function
     let open Lang.Operation in
     function
     | Ok (Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
-                      key ; commit_when ; flush_when ; flush_how }, rest) ->
+                      key ; top ; commit_when ; flush_when ;
+                      flush_how }, rest) ->
       Ok (Aggregate {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ;
         where = replace_typ where ;
         export ; notify_url ;
         key = List.map replace_typ key ;
+        top = Option.map (fun (n, e) -> replace_typ n, replace_typ e) top ;
         commit_when = replace_typ commit_when ;
         flush_when = Option.map replace_typ flush_when ;
         flush_how = (match flush_how with
@@ -1105,6 +1107,7 @@ struct
         (* If not empty, will notify this URL with a HTTP GET: *)
         notify_url : string ;
         key : Expr.t list ;
+        top : (Expr.t (* N *) * Expr.t (* by *)) option ;
         commit_when : Expr.t ;
         (* When do we stop aggregating (default: when we commit) *)
         flush_when : Expr.t option ;
@@ -1132,7 +1135,7 @@ struct
       Printf.fprintf fmt "YIELD %a"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
     | Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
-                  key ; commit_when ; flush_when ; flush_how } ->
+                  key ; top ; commit_when ; flush_when ; flush_how } ->
       Printf.fprintf fmt "SELECT %a%s%s"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
@@ -1146,6 +1149,10 @@ struct
       if key <> [] then
         Printf.fprintf fmt " GROUP BY %a"
           (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) key ;
+      Option.may (fun (n, by) ->
+        Printf.fprintf fmt " TOP %a BY %a"
+          (Expr.print false) n
+          (Expr.print false) by) top ;
       if not (Expr.is_true commit_when) ||
          flush_when = None && flush_how <> Reset then
         Printf.fprintf fmt " COMMIT %aWHEN %a"
@@ -1255,6 +1262,7 @@ struct
       | ExportClause of event_time_info
       | NotifyClause of string
       | GroupByClause of Expr.t list
+      | TopByClause of (Expr.t (* N *) * Expr.t (* by *))
       (* FIXME: have a separate FlushClause *)
       | CommitClause of Expr.t * Expr.t option * flush_method
 
@@ -1262,6 +1270,11 @@ struct
       let m = "group-by clause" :: m in
       (strinG "group" -- blanks -- strinG "by" -- blanks -+
        several ~sep:list_sep Expr.Parser.p) m
+
+    let top_clause m =
+      let m ="top-by clause" :: m in
+      (strinG "top" -- blanks -+ Expr.Parser.p +- blanks +-
+       strinG "by" +- blanks ++ Expr.Parser.p) m
 
     let flush m =
       let m = "flush clause" :: m in
@@ -1304,16 +1317,18 @@ struct
         (export_clause >>: fun c -> ExportClause c) |||
         (notify_clause >>: fun c -> NotifyClause c) |||
         (group_by >>: fun c -> GroupByClause c) |||
+        (top_clause >>: fun c -> TopByClause c) |||
         (commit_when >>: fun (c, f, m) -> CommitClause (c, f, m)) in
       (several ~sep:blanks part >>: fun clauses ->
         if clauses = [] then raise (Reject "Empty select") ;
-        let default_select = [], true, Expr.expr_true, None, "", [],
-                             Expr.expr_true, Some Expr.expr_false, Reset in
+        let default_select =
+          [], true, Expr.expr_true, None, "", [],
+          None, Expr.expr_true, Some Expr.expr_false, Reset in
         let fields, and_all_others, where, export, notify_url, key,
-            commit_when, flush_when, flush_how =
+            top, commit_when, flush_when, flush_how =
           List.fold_left (
             fun (fields, and_all_others, where, export, notify_url, key,
-                 commit_when, flush_when, flush_how) -> function
+                 top, commit_when, flush_when, flush_how) -> function
               | SelectClause fields_or_stars ->
                 let fields, and_all_others =
                   List.fold_left (fun (fields, and_all_others) -> function
@@ -1324,25 +1339,28 @@ struct
                 (* The above fold_left inverted the field order. *)
                 let fields = List.rev fields in
                 fields, and_all_others, where, export, notify_url, key,
-                commit_when, flush_when, flush_how
+                top, commit_when, flush_when, flush_how
               | WhereClause where ->
                 fields, and_all_others, where, export, notify_url, key,
-                commit_when, flush_when, flush_how
+                top, commit_when, flush_when, flush_how
               | ExportClause export ->
                 fields, and_all_others, where, Some export, notify_url, key,
-                commit_when, flush_when, flush_how
+                top, commit_when, flush_when, flush_how
               | NotifyClause notify_url ->
                 fields, and_all_others, where, export, notify_url, key,
-                commit_when, flush_when, flush_how
+                top, commit_when, flush_when, flush_how
               | GroupByClause key ->
                 fields, and_all_others, where, export, notify_url, key,
-                commit_when, flush_when, flush_how
+                top, commit_when, flush_when, flush_how
               | CommitClause (commit_when, flush_when, flush_how) ->
                 fields, and_all_others, where, export, notify_url, key,
-                commit_when, flush_when, flush_how
+                top, commit_when, flush_when, flush_how
+              | TopByClause top ->
+                fields, and_all_others, where, export, notify_url, key,
+                Some top, commit_when, flush_when, flush_how
             ) default_select clauses in
         Aggregate { fields ; and_all_others ; where ; export ; notify_url ; key ;
-                    commit_when ; flush_when ; flush_how }
+                    top ; commit_when ; flush_when ; flush_how }
       ) m
 
     (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
@@ -1396,7 +1414,7 @@ struct
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
           notify_url = "" ;\
-          key = [] ;\
+          key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
           flush_when = Some (replace_typ Expr.expr_false) ;\
           flush_how = Reset ;\
@@ -1414,7 +1432,7 @@ struct
               Field (typ, ref TupleIn, "packets"),\
               Const (typ, VI8 (Int8.of_int 0)))) ;\
           export = None ; notify_url = "" ;\
-          key = [] ;\
+          key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
           flush_when = Some (replace_typ Expr.expr_false) ; flush_how = Reset },\
         (17, [])))\
@@ -1431,7 +1449,7 @@ struct
           where = Expr.Const (typ, VBool true) ;\
           export = Some (Some (("t", 10.), DurationConst 60.)) ;\
           notify_url = "" ;\
-          key = [] ;\
+          key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
           flush_when = Some (replace_typ Expr.expr_false) ; flush_how = Reset },\
         (62, [])))\
@@ -1450,7 +1468,7 @@ struct
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
           export = Some (Some (("t1", 10.), StopField ("t2", 10.))) ;\
-          notify_url = "" ; key = [] ;\
+          notify_url = "" ; key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
           flush_when = Some (replace_typ Expr.expr_false) ; flush_how = Reset },\
         (73, [])))\
@@ -1464,7 +1482,7 @@ struct
           where = Expr.Const (typ, VBool true) ;\
           export = None ;\
           notify_url = "http://firebrigade.com/alert.php" ;\
-          key = [] ;\
+          key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
           flush_when = Some (replace_typ Expr.expr_false) ; flush_how = Reset },\
         (41, [])))\
@@ -1495,6 +1513,7 @@ struct
               Mul (typ,\
                 Const (typ, VI32 1_000_000l),\
                 Param (typ, "avg_window")))) ] ;\
+          top = None ;\
           commit_when = Expr.(\
             Gt (typ,\
               Add (typ,\
@@ -1519,7 +1538,7 @@ struct
           where = Expr.Const (typ, VBool true) ;\
           export = None ; \
           notify_url = "" ;\
-          key = [] ;\
+          key = [] ; top = None ;\
           commit_when = Expr.(\
             Ge (typ,\
               AggrSum (typ, Const (typ, VI8 (Int8.one))),\
@@ -1540,7 +1559,7 @@ struct
           where = Expr.Const (typ, VBool true) ;\
           export = None ; \
           notify_url = "" ;\
-          key = [] ;\
+          key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
           flush_when = Some (replace_typ Expr.expr_false) ;\
           flush_how = Reset },\
@@ -1592,6 +1611,7 @@ struct
         in
       let pure_in_where = pure_in "WHERE clause"
       and pure_in_key = pure_in "GROUP-BY clause"
+      and pure_in_top = pure_in "TOP clause"
       and check_pure m =
         Expr.unpure_iter (fun _ -> raise (SyntaxError m))
       and check_fields_from lst clause =
@@ -1624,7 +1644,8 @@ struct
             check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD operation" sf.expr
           ) fields
         (* TODO: check unicity of aliases *)
-      | Aggregate { fields ; where ; key ; commit_when ; flush_when ; flush_how ; export ; _ } ->
+      | Aggregate { fields ; where ; key ; top ; commit_when ;
+                    flush_when ; flush_how ; export ; _ } ->
         List.iter (fun sf ->
             check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
           ) fields ;
@@ -1637,6 +1658,11 @@ struct
         List.iter (fun k ->
           check_pure pure_in_key k ;
           check_fields_from [TupleIn] "KEY clause" k) key ;
+        Option.may (fun (n, by) ->
+          (* TODO: Check also that it's an unsigned integer: *)
+          Expr.check_const "TOP size" n ;
+          check_pure pure_in_top by ;
+          check_fields_from [TupleIn] "TOP clause" by) top ;
         check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
         Option.may (fun flush_when ->
             check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN clause" flush_when

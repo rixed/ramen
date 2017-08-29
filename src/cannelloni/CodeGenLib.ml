@@ -438,6 +438,7 @@ let aggregate
         'tuple_in -> 'tuple_in -> (* first, last *)
         bool)
       (key_of_input : 'tuple_in -> 'key)
+      (top : (int * ('tuple_in -> 'top_by)) option)
       (commit_when :
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
