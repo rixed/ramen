@@ -17,11 +17,54 @@ let rebase dataset_name name = dataset_name ^"/"^ name
  *
  * If you wish to process traffic info you must feed on both c2s and s2c.
  *)
-let base_layer dataset_name delete csv_dir =
-  let make_node ?(parents=[]) name operation =
-    let parents = List.map (rebase dataset_name) parents in
-    N.{ name ; operation ; parents }
+
+let make_node ?(parents=[]) dataset_name name operation =
+  let parents = List.map (rebase dataset_name) parents in
+  N.{ name ; operation ; parents }
+
+let traffic_op ?where dataset_name name dt =
+  let dt_us = dt * 1_000_000 in
+  let rep sub by str = String.nreplace ~str ~sub ~by in
+  let op =
+    "SELECT\n  \
+       (capture_begin // $DT_US$) AS start,\n  \
+       min of capture_begin, max of capture_end,\n  \
+       sum of packets_src / $DT$ AS packets_per_secs,\n  \
+       sum of bytes_src / $DT$ AS bytes_per_secs,\n  \
+       sum of payload_src / $DT$ AS payload_per_secs,\n  \
+       sum of packets_with_payload_src / $DT$ AS packets_with_payload_per_secs,\n  \
+       sum of retrans_bytes_src / $DT$ AS retrans_bytes_per_secs,\n  \
+       sum of retrans_payload_src / $DT$ AS retrans_payload_per_secs,\n  \
+       sum of fins_src / $DT$ AS fins_per_secs,\n  \
+       sum of rsts_src / $DT$ AS rsts_per_secs,\n  \
+       sum of dupacks_src / $DT$ AS dupacks_per_secs,\n  \
+       sum of zero_windows_src / $DT$ AS zero_windows_per_secs,\n  \
+       sum rtt_sum2_src AS dbg_rtt_sum2,\
+       sum rtt_sum_src AS dbg_rtt_sum,\
+       sum rtt_count_src AS dbg_rtt_count,\
+       (sum rtt_sum_src / sum rtt_count_src) / 1e6 AS rtt_avg,\n  \
+       ((sum rtt_sum2_src - float(sum rtt_sum_src)^2 / sum rtt_count_src) / \
+           sum rtt_count_src) / 1e12 AS rtt_var,\n  \
+       (sum rd_sum_src / sum rd_count_src) / 1e6 AS rd_avg,\n  \
+       ((sum rd_sum2_src - float(sum rd_sum_src)^2 / sum rd_count_src) / \
+           sum rd_count_src) / 1e12 AS rd_var,\n  \
+       (sum dtt_sum_src / sum dtt_count_src) / 1e6 AS dtt_avg,\n  \
+       ((sum dtt_sum2_src - float(sum dtt_sum_src)^2 / sum dtt_count_src) / \
+           sum dtt_count_src) / 1e12 AS dtt_var\n\
+     EXPORT EVENT STARTING AT start * $DT$\n         \
+             WITH DURATION $DT$\n\
+     GROUP BY capture_begin // $DT_US$\n\
+     COMMIT AND FLUSH WHEN\n  \
+       in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)" |>
+    rep "$DT$" (string_of_int dt) |>
+    rep "$DT_US$" (string_of_int dt_us)
   in
+  let op =
+    match where with None -> op
+                   | Some w -> op ^"\nWHERE "^ w in
+  make_node ~parents:["c2s"; "s2c"] dataset_name name op
+
+let base_layer dataset_name delete csv_dir =
   let csv =
     let op =
       Printf.sprintf
@@ -107,7 +150,7 @@ let base_layer dataset_name delete csv_dir =
            dcerpc_uuid string null\n\
          )"
       (if delete then " AND DELETE" else "") csv_dir in
-    make_node "csv" op in
+    make_node dataset_name "csv" op in
   let to_unidir ~src ~dst name =
     let cs_fields = [
          "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
@@ -138,56 +181,16 @@ let base_layer dataset_name delete csv_dir =
          cs_fields ^
       "  dcerpc_uuid\n\
        WHERE traffic_packets_"^ src ^" > 0" in
-    make_node ~parents:["csv"] name op in
-  let traffic name dt =
-    let dt_us = dt * 1_000_000 in
-    let rep sub by str = String.nreplace ~str ~sub ~by in
-    let op =
-      "SELECT\n  \
-         (capture_begin // $DT_US$) AS start,\n  \
-         min of capture_begin, max of capture_end,\n  \
-         sum of packets_src / $DT$ AS packets_per_secs,\n  \
-         sum of bytes_src / $DT$ AS bytes_per_secs,\n  \
-         sum of payload_src / $DT$ AS payload_per_secs,\n  \
-         sum of packets_with_payload_src / $DT$ AS packets_with_payload_per_secs,\n  \
-         sum of retrans_bytes_src / $DT$ AS retrans_bytes_per_secs,\n  \
-         sum of retrans_payload_src / $DT$ AS retrans_payload_per_secs,\n  \
-         sum of fins_src / $DT$ AS fins_per_secs,\n  \
-         sum of rsts_src / $DT$ AS rsts_per_secs,\n  \
-         sum of dupacks_src / $DT$ AS dupacks_per_secs,\n  \
-         sum of zero_windows_src / $DT$ AS zero_windows_per_secs,\n  \
-         sum rtt_sum2_src AS dbg_rtt_sum2,\
-         sum rtt_sum_src AS dbg_rtt_sum,\
-         sum rtt_count_src AS dbg_rtt_count,\
-         (sum rtt_sum_src / sum rtt_count_src) / 1e6 AS rtt_avg,\n  \
-         ((sum rtt_sum2_src - float(sum rtt_sum_src)^2 / sum rtt_count_src) / \
-             sum rtt_count_src) / 1e12 AS rtt_var,\n  \
-         (sum rd_sum_src / sum rd_count_src) / 1e6 AS rd_avg,\n  \
-         ((sum rd_sum2_src - float(sum rd_sum_src)^2 / sum rd_count_src) / \
-             sum rd_count_src) / 1e12 AS rd_var,\n  \
-         (sum dtt_sum_src / sum dtt_count_src) / 1e6 AS dtt_avg,\n  \
-         ((sum dtt_sum2_src - float(sum dtt_sum_src)^2 / sum dtt_count_src) / \
-             sum dtt_count_src) / 1e12 AS dtt_var\n\
-       EXPORT EVENT STARTING AT start * $DT$\n         \
-               WITH DURATION $DT$\n\
-       GROUP BY capture_begin // $DT_US$\n\
-       COMMIT AND FLUSH WHEN\n  \
-         in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)" |>
-      rep "$DT$" (string_of_int dt) |>
-      rep "$DT_US$" (string_of_int dt_us)
-      (* Note: Ideally we would want to compute the max of all.capture_begin *)
-    in
-    make_node ~parents:["c2s"; "s2c"] name op
-  in
+    make_node ~parents:["csv"] dataset_name name op in
   RamenSharedTypes.{
     name = dataset_name ;
     nodes = [
       csv ;
       to_unidir ~src:"client" ~dst:"server" "c2s" ;
       to_unidir ~src:"server" ~dst:"client" "s2c" ;
-      traffic "minutely traffic" 60 ;
-      traffic "hourly traffic" 3600 ;
-      traffic "daily traffic" (3600 * 24) ] }
+      traffic_op dataset_name "minutely traffic" 60 ;
+      traffic_op dataset_name "hourly traffic" 3600 ;
+      traffic_op dataset_name "daily traffic" (3600 * 24) ] }
 
 (* Build the node infos corresponding to the BCN configuration *)
 let layer_of_bcns bcns dataset_name =
@@ -196,12 +199,11 @@ let layer_of_bcns bcns dataset_name =
     | [] -> "any"
     | main::_ -> string_of_int main in
   let all_nodes = ref [] in
-  let make_node ?(parents=[]) name operation =
-    let parents = List.map (rebase dataset_name) parents in
-    let node = N.{ name ; operation ; parents } in
+  let make_node ?parents name operation =
+    let node = make_node ?parents dataset_name name operation in
     all_nodes := node :: !all_nodes
   in
-  let alert_conf_of_bcn bcn =
+  let conf_of_bcn bcn =
     (* bcn.min_bps, bcn.max_bps, bcn.obs_window, bcn.avg_window, bcn.percentile, bcn.source bcn.dest *)
     let open Conf_of_sqlite in
     let name_prefix = Printf.sprintf "%s to %s"
@@ -216,6 +218,9 @@ let layer_of_bcns bcns dataset_name =
         "("^ List.fold_left (fun s z ->
           s ^ (if s <> "" then " OR " else "") ^
           what_zone ^ " = " ^ string_of_int z) "" lst ^")" in
+    let where =
+      (in_zone "zone_src" bcn.source) ^" AND "^
+      (in_zone "zone_dst" bcn.dest) in
     let op =
       Printf.sprintf
         "SELECT\n  \
@@ -224,7 +229,7 @@ let layer_of_bcns bcns dataset_name =
            sum of packets_src / %g AS packets_per_secs,\n  \
            sum of bytes_src / %g AS bytes_per_secs,\n  \
            %S AS zone_src, %S AS zone_dst\n\
-         WHERE %s AND %s\n\
+         WHERE %s\n\
          EXPORT EVENT STARTING AT start * %g\n         \
                  WITH DURATION %g\n\
          GROUP BY capture_begin // %d\n\
@@ -233,8 +238,7 @@ let layer_of_bcns bcns dataset_name =
         bcn.avg_window bcn.avg_window
         (name_of_zones bcn.source)
         (name_of_zones bcn.dest)
-        (in_zone "zone_src" bcn.source)
-        (in_zone "zone_dst" bcn.dest)
+        where
         bcn.avg_window bcn.avg_window
         avg_window
         avg_window
@@ -299,9 +303,13 @@ let layer_of_bcns bcns dataset_name =
             (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
         make_node ~parents:["BCN/"^ perc_per_obs_window_name] name ops
-      ) bcn.max_bps
+      ) bcn.max_bps ;
+    all_nodes :=
+      traffic_op ~where dataset_name (name_prefix ^": minutely traffic") 60 ::
+      traffic_op ~where dataset_name (name_prefix ^": hourly traffic") 3600 ::
+      traffic_op ~where dataset_name (name_prefix ^": daily traffic") (3600 * 24) :: !all_nodes
   in
-  List.iter alert_conf_of_bcn bcns ;
+  List.iter conf_of_bcn bcns ;
   RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
 
 let get_bcns_from_db db =
