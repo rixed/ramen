@@ -437,16 +437,19 @@ let otype_of_type = function
 
 let otype_of_state e =
   let open Expr in
-  let t = Option.get (typ_of e).scalar_typ |>
+  let typ = typ_of e in
+  let t = Option.get typ.scalar_typ |>
           otype_of_type in
-  match e with
-  | AggrPercentile _ -> t ^" list"
-  (* previous tuples and count ; Note: we could get rid of this count if we
-   * provided some context to those functions, such as the event count in
-   * current window, for instance (ie. pass the full aggr record not just
-   * the fields) *)
-  | Lag _ | MovingAvg _ | LinReg _ -> t ^" CodeGenLib.Seasonal.t"
-  | _ -> t
+  let t =
+    match e with
+    | AggrPercentile _ -> t ^" list"
+    (* previous tuples and count ; Note: we could get rid of this count if we
+     * provided some context to those functions, such as the event count in
+     * current window, for instance (ie. pass the full aggr record not just
+     * the fields) *)
+    | Lag _ | MovingAvg _ | LinReg _ -> t ^" CodeGenLib.Seasonal.t"
+    | _ -> t in
+  if Option.get typ.nullable then t ^" option" else t
 
 let omod_of_type = function
   | TFloat -> "BatFloat"
@@ -460,20 +463,24 @@ let omod_of_type = function
   | TNull -> assert false (* Never used on NULLs *)
   | TNum -> assert false
 
-let conv_from_to from_typ to_typ p fmt e =
+(* TODO: Why don't we have explicit casts in the AST so that wqe could stop caring
+ * about those pesky conversions once and for all? *)
+let conv_from_to from_typ ~nullable to_typ p fmt e =
   match from_typ, to_typ with
   | a, b when a = b -> p fmt e
   | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
       (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
   | TString, (TFloat|TBool) ->
-    Printf.fprintf fmt "(%s.of_%s %a)"
+    Printf.fprintf fmt "(%s%s.of_%s %a)"
+      (if nullable then "BatOption.map " else "")
       (omod_of_type to_typ)
       (otype_of_type from_typ)
       p e
   | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
       (TFloat|TString)
   | (TFloat|TBool), TString ->
-    Printf.fprintf fmt "(%s.to_%s %a)"
+    Printf.fprintf fmt "(%s%s.to_%s %a)"
+      (if nullable then "BatOption.map " else "")
       (omod_of_type from_typ)
       (otype_of_type to_typ)
       p e
@@ -486,21 +493,18 @@ let conv_from_to from_typ to_typ p fmt e =
                 (IO.to_string Scalar.print_typ from_typ)
                 (IO.to_string Scalar.print_typ to_typ))
 
-let conv_from_to_opt from_typ to_typ_opt p fmt e =
-  match to_typ_opt with
-  | Some to_typ -> conv_from_to from_typ to_typ p fmt e
-  | None -> p fmt e (* No conversion required *)
-
 let freevar_name t = "fv_"^ string_of_int t.Expr.uniq_num ^"_"
 
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
-let rec conv_to ?state to_typ fmt e =
-  let from_typ = Expr.((typ_of e).scalar_typ) in
-  match from_typ, to_typ with
-  | Some a, Some b -> conv_from_to a b (emit_expr ?state) fmt e
-  | _, None -> (emit_expr ?state) fmt e (* No conversion required *)
+let rec conv_to ?finalize ?state to_typ fmt e =
+  let open Expr in
+  let t = typ_of e in
+  let nullable = Option.get t.nullable in
+  match t.scalar_typ, to_typ with
+  | Some a, Some b -> conv_from_to a ~nullable b (emit_expr ?finalize ?state) fmt e
+  | _, None -> (emit_expr ?finalize ?state) fmt e (* No conversion required *)
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string Scalar.print_typ b))
@@ -508,7 +512,7 @@ let rec conv_to ?state to_typ fmt e =
 (* state is just the name of the state record to use, or None if we must
  * assume the field name is actually already present in the environment
  * (as is the case in aggr_init) *)
-and emit_expr ?(state=true) oc =
+and emit_expr ?(finalize=true) ?(state=true) oc =
   let record_of_state = if state then "aggr_." else "" in
   let open Expr in
   function
@@ -519,41 +523,42 @@ and emit_expr ?(state=true) oc =
     String.print oc (id_of_field_name ~tuple field)
   | Param _ ->
     failwith "TODO: code gen for params"
-  | (AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-    | AggrLast _ | ExpSmooth _ as expr) ->
-     Printf.fprintf oc "%s%s" record_of_state (name_of_state expr)
-  | AggrPercentile (_, pct, _) as expr ->
+  | AggrPercentile (_, pct, _) as expr when finalize ->
     Printf.fprintf oc "(CodeGenLib.percentile_finalize (%a) %s%s)"
-      (conv_to ~state (Some TFloat)) pct
+      (conv_to ~finalize ~state (Some TFloat)) pct
       record_of_state
       (name_of_state expr)
-  | Lag _ as expr ->
+  | Lag _ as expr when finalize ->
     Printf.fprintf oc "(CodeGenLib.Seasonal.lag %s%s)"
       record_of_state (name_of_state expr)
-  | MovingAvg (_, p, n, _) as expr ->
+  | MovingAvg (_, p, n, _) as expr when finalize ->
     Printf.fprintf oc
       "(CodeGenLib.Seasonal.avg (Uint16.to_int %a) (Uint16.to_int %a) %s%s)"
-      (conv_to ~state (Some TU16)) p
-      (conv_to ~state (Some TU16)) n
+      (conv_to ~finalize ~state (Some TU16)) p
+      (conv_to ~finalize ~state (Some TU16)) n
       record_of_state (name_of_state expr)
-  | LinReg (_, p, n, _) as expr ->
+  | LinReg (_, p, n, _) as expr when finalize ->
     Printf.fprintf oc
       "(CodeGenLib.Seasonal.linreg (Uint16.to_int %a) (Uint16.to_int %a) %s%s)"
-      (conv_to ~state (Some TU16)) p
-      (conv_to ~state (Some TU16)) n
+      (conv_to ~finalize ~state (Some TU16)) p
+      (conv_to ~finalize ~state (Some TU16)) n
       record_of_state (name_of_state expr)
+  | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
+  | AggrLast _ | ExpSmooth _ | AggrPercentile _ | Lag _ | MovingAvg _
+  | LinReg _ as expr ->
+     Printf.fprintf oc "%s%s" record_of_state (name_of_state expr)
   | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
   | Length (_, e) | BeginOfRange (_, e) | EndOfRange (_, e)
   | Exp (_, e) | Log (_, e) | Sqrt (_, e) as expr ->
-    emit_function1 ~state expr oc e
+    emit_function1 ~finalize ~state expr oc e
   | Defined (_, e) ->
-    Printf.fprintf oc "(%a <> None)" (emit_expr ~state) e
+    Printf.fprintf oc "(%a <> None)" (emit_expr ~finalize ~state) e
   | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Concat (_, e1, e2)
   | Div (_, e1, e2) | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2)
   | Or (_, e1, e2) | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2)
   | Sequence (_, e1, e2) | Mod (_, e1, e2) as expr ->
-    emit_function2 ~state expr oc e1 e2
+    emit_function2 ~finalize ~state expr oc e1 e2
   (* Generators: emit them as a free variable *)
   | Split (t, _, _) ->
     String.print oc (freevar_name t)
@@ -562,12 +567,12 @@ and emit_function0 expr oc =
   let impl, _ = implementation_of expr in
   Printf.fprintf oc "(%s ())" impl
 
-and emit_function1 ?state expr oc e =
+and emit_function1 ?finalize ?state expr oc e =
   let impl, arg_typ = implementation_of expr in
   Printf.fprintf oc "(%s%s %a)"
     (if Expr.is_nullable e then "BatOption.map " else "")
     impl
-    (conv_to ?state arg_typ) e
+    (conv_to ?finalize ?state arg_typ) e
 
 and promote_to_same_types = function
   | None, None -> None
@@ -575,7 +580,33 @@ and promote_to_same_types = function
   | None, Some t2 -> Some t2
   | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2))
 
-and emit_function2 ?state expr oc e1 e2 =
+(* When we combine nullable arguments we want to shortcut as much as
+ * possible and avoid evaluating any of them if one is null. Here we will just
+ * evaluate them in order until one is found to be nullable and null, or until
+ * we evaluated them all, and then only we call the function.
+ * TODO: ideally * we'd like to evaluate the nullable arguments first. *)
+and emit_functionN ?finalize ?state impl arg_typ oc es =
+  let open Expr in
+  let len, has_nullable =
+    List.fold_left (fun (i, had_nullable) e ->
+        if is_nullable e then (
+          Printf.fprintf oc "(match %a with None -> None | Some x%d_ -> "
+            (conv_to ?finalize ?state arg_typ) e
+            i ;
+          i + 1, true
+        ) else (
+          Printf.fprintf oc "(let x%d_ = %a in "
+            i
+            (conv_to ?finalize ?state arg_typ) e ;
+          i + 1, had_nullable
+        )
+      ) (0, false) es
+  in
+  Printf.fprintf oc "%s(%s" (if has_nullable then "Some" else "") impl ;
+  for i = 0 to len-1 do Printf.fprintf oc " x%d_" i done ;
+  for _i = 0 to len do Printf.fprintf oc ")" done
+
+and emit_function2 ?finalize ?state expr oc e1 e2 =
   let impl, arg_typ = implementation_of expr in
   (* When we have no conversion to do, e1 and e2 still have to have the same type or
    * the compiler will complain so we promote: *)
@@ -584,39 +615,20 @@ and emit_function2 ?state expr oc e1 e2 =
     if arg_typ <> None then arg_typ
     else promote_to_same_types ((typ_of e1).scalar_typ, (typ_of e2).scalar_typ)
   in
-  if is_nullable e1 then (
-    Printf.fprintf oc "\
-      (match %a with None -> None | Some v1_ -> "
-      (emit_expr ?state) e1 ;
-    if is_nullable e2 then (
-      Printf.fprintf oc "\
-        (match %a with None -> None | Some v2_ -> %s %a %a)"
-        (emit_expr ?state) e2
-        impl
-        (conv_from_to_opt TString arg_typ String.print) "v1_"
-        (conv_from_to_opt TString arg_typ String.print) "v2_"
-    ) else (
-      Printf.fprintf oc "%s %a %a"
-        impl
-        (conv_from_to_opt TString arg_typ String.print) "v1_"
-        (conv_to ?state arg_typ) e2
-    ) ;
-    Printf.fprintf oc ")"
-  ) else (
-    if is_nullable e2 then (
-      Printf.fprintf oc "\
-        (match %a with None -> None | Some v2_ -> %s %a %a)"
-        (emit_expr ?state) e2
-        impl
-        (conv_to ?state arg_typ) e1
-        (conv_from_to_opt TString arg_typ String.print) "v2_"
-    ) else (
-      Printf.fprintf oc "(%s %a %a)"
-        impl
-        (conv_to ?state arg_typ) e1
-        (conv_to ?state arg_typ) e2
-    )
-  )
+  emit_functionN ?finalize ?state impl arg_typ oc [e1; e2]
+
+and emit_function3 ?finalize ?state expr oc e1 e2 e3 =
+  let impl, arg_typ = implementation_of expr in
+  (* When we have no conversion to do, e1, e2 and e3 still have to have the
+   * same type or the compiler will complain so we promote: *)
+  let open Expr in
+  let arg_typ =
+    if arg_typ <> None then arg_typ
+    else promote_to_same_types (
+           promote_to_same_types ((typ_of e1).scalar_typ, (typ_of e2).scalar_typ),
+           (typ_of e3).scalar_typ)
+  in
+  emit_functionN ?finalize ?state impl arg_typ oc [e1; e2; e3]
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -692,8 +704,8 @@ let emit_generator user_fun oc expr =
       let impl, arg_typ = implementation_of expr in
       Printf.fprintf oc "%s %a %a (fun %s -> "
         impl
-        (conv_to ~state:true arg_typ) by
-        (conv_to ~state:true arg_typ) e
+        (conv_to ~finalize:true ~state:true arg_typ) by
+        (conv_to ~finalize:true ~state:true arg_typ) e
         (freevar_name t)
     (* We have no other generators *)
     | _ -> assert false
@@ -704,7 +716,7 @@ let emit_generator user_fun oc expr =
    * be replaced by their free variable: *)
   Printf.fprintf oc "%s (%a)"
     user_fun
-    (emit_expr ~state:true) e ;
+    (emit_expr ~finalize:true ~state:true) e ;
   List.iter (fun _ -> Printf.fprintf oc ")") generators
 
 let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_typ oc selected_fields =
@@ -767,10 +779,10 @@ let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
         if field_typ.nullable then (
           Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> %a)\n"
             id
-            (conv_from_to field_typ.typ TString String.print) "v_"
+            (conv_from_to field_typ.typ ~nullable:false TString String.print) "v_"
         ) else (
           Printf.fprintf oc "%a\n"
-            (conv_from_to field_typ.typ TString String.print) id
+            (conv_from_to field_typ.typ ~nullable:false TString String.print) id
         )
       )
     ) in_tuple_typ ;
@@ -794,7 +806,7 @@ let emit_where
   if always_true then
     Printf.fprintf oc "= true\n"
   else
-    Printf.fprintf oc "=\n\t%a\n" (emit_expr ~state:true) expr
+    Printf.fprintf oc "=\n\t%a\n" (emit_expr ~finalize:true ~state:true) expr
 
 (* If with aggr we have the aggregate record as first parameter
  * and also the first and last incoming tuple of this aggr as additional
@@ -827,7 +839,7 @@ let emit_field_selection
       else
         Printf.fprintf oc "\tlet %s = %a in\n"
           (id_of_field_name ~tuple:TupleOut sf.Operation.alias)
-          (emit_expr ~state:true) sf.Operation.expr
+          (emit_expr ~finalize:true ~state:true) sf.Operation.expr
     ) selected_fields ;
   Printf.fprintf oc "\t(\n\t\t" ;
   List.iteri (fun i sf ->
@@ -853,7 +865,7 @@ let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
   List.iteri (fun i expr ->
       Printf.fprintf oc "%s\n\t\t%a"
         (if i > 0 then "," else "")
-        (emit_expr ~state:true) expr ;
+        (emit_expr ~finalize:true ~state:true) expr ;
     ) exprs ;
   Printf.fprintf oc "\n\t)\n"
 
@@ -866,9 +878,9 @@ let emit_top name in_tuple_typ mentioned and_all_others oc top =
       "Some (\n\
        \t(Uint32.to_int (%a)),\n\
        \t(fun %a -> %a))\n"
-      (conv_to ~state:true (Some TU32)) n
+      (conv_to ~finalize:true ~state:true (Some TU32)) n
       (emit_in_tuple mentioned and_all_others) in_tuple_typ
-      (conv_to ~state:true (Some TFloat)) by
+      (conv_to ~finalize:true ~state:true (Some TFloat)) by
 
 let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
   let mentioned =
@@ -937,28 +949,41 @@ let emit_group_state_init
         | AggrMin (_, e) | AggrMax (_, e) | AggrAnd (_, e)
         | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)
         | AggrSum (_, e) | ExpSmooth (_, _, e) ->
+          (* Start with the initial value, so NULL are propagated naturally *)
           let _impl, arg_typ = implementation_of f in
-          conv_to ~state:false arg_typ oc e
+          conv_to ~finalize:true ~state:false arg_typ oc e
         | AggrPercentile (_, p, e) ->
+          (* Have to cater for NULLs *)
           let impl, arg_typ = implementation_of f in
-          Printf.fprintf oc "%s [] %a %a"
+          Printf.fprintf oc
+            (if is_nullable e then
+              "Option.map (fun e_ -> %s [] %a e_) %a"
+            else
+              "%s [] %a %a")
             impl
-            (conv_to ~state:false arg_typ) p
-            (conv_to ~state:false arg_typ) e
+            (conv_to ~finalize:true ~state:false arg_typ) p
+            (conv_to ~finalize:true ~state:false arg_typ) e
         | Lag (_, k, e) ->
           let _impl, arg_typ = implementation_of f in
           Printf.fprintf oc
-            "CodeGenLib.Seasonal.init (Uint16.to_int %a) 1 %a"
-            (conv_to ~state:false (Some TU16)) k
-            (conv_to ~state:false arg_typ) e
+            (if is_nullable e then
+              "Option.map (fun e_ -> CodeGenLib.Seasonal.init (Uint16.to_int %a) 1 e_) %a"
+            else
+              "CodeGenLib.Seasonal.init (Uint16.to_int %a) 1 %a")
+            (conv_to ~finalize:true ~state:false (Some TU16)) k
+            (conv_to ~finalize:true ~state:false arg_typ) e
         | MovingAvg (_, p, n, e) | LinReg (_, p, n, e) ->
           let _impl, arg_typ = implementation_of f in
           Printf.fprintf oc
-            "CodeGenLib.Seasonal.init (Uint16.to_int %a) \
-                                      (Uint16.to_int %a) %a"
-            (conv_to ~state:false (Some TU16)) p
-            (conv_to ~state:false (Some TU16)) n
-            (conv_to ~state:false arg_typ) e
+            (if is_nullable e then
+              "Option.map (fun e_ -> CodeGenLib.Seasonal.init (Uint16.to_int %a) \
+                                                              (Uint16.to_int %a) e_) %a"
+             else
+              "CodeGenLib.Seasonal.init (Uint16.to_int %a) \
+                                        (Uint16.to_int %a) %a")
+            (conv_to ~finalize:true ~state:false (Some TU16)) p
+            (conv_to ~finalize:true ~state:false (Some TU16)) n
+            (conv_to ~finalize:true ~state:false arg_typ) e
         | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Concat _
         | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
         | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
@@ -987,20 +1012,13 @@ let emit_update_state
       match f with
       | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
       | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)  ->
-        let impl, arg_typ = implementation_of f in
-        Printf.fprintf oc "%s aggr_.%s %a"
-          impl (name_of_state f) (conv_to arg_typ) e
+        (* Note: emit_function2 with use emit_expr to emit "f" here, which
+         * will then print it as "aggr_". It will also take care of nulls. *)
+        emit_function2 ~finalize:false ~state:true f oc f e
       | AggrPercentile (_, e1, e2) | ExpSmooth (_, e1, e2) ->
-        let impl, arg_typ = implementation_of f in
-        Printf.fprintf oc "%s aggr_.%s %a %a"
-          impl (name_of_state f)
-          (conv_to arg_typ) e1
-          (conv_to arg_typ) e2
+        emit_function3 ~finalize:false ~state:true f oc f e1 e2
       | Lag (_, _, e) | MovingAvg (_, _, _, e) | LinReg (_, _, _, e) ->
-        let impl, arg_typ = implementation_of f in
-        Printf.fprintf oc "%s aggr_.%s %a"
-          impl (name_of_state f)
-          (conv_to arg_typ) e
+        emit_function2 ~finalize:false ~state:true f oc f e
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _
       | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
       | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
@@ -1030,7 +1048,7 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ
     (emit_tuple TupleOut) out_tuple_typ
-    (emit_expr ~state:true) commit_when
+    (emit_expr ~finalize:true ~state:true) commit_when
 
 let emit_should_resubmit name in_tuple_typ mentioned and_all_others
                          oc flush_how =
@@ -1044,9 +1062,9 @@ let emit_should_resubmit name in_tuple_typ mentioned and_all_others
   | Slide n ->
     Printf.fprintf oc "\tgroup_state_.CodeGenLib.nb_entries > %d\n" n
   | KeepOnly e ->
-    Printf.fprintf oc "\t%a\n" (emit_expr ~state:true) e
+    Printf.fprintf oc "\t%a\n" (emit_expr ~finalize:true ~state:true) e
   | RemoveAll e ->
-    Printf.fprintf oc "\tnot (%a)\n" (emit_expr ~state:true) e
+    Printf.fprintf oc "\tnot (%a)\n" (emit_expr ~finalize:true ~state:true) e
 
 (* Depending on what uses a commit/flush condition, we might need to check
  * all groups after every single input tuple (very slow), or after every
