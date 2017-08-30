@@ -141,20 +141,41 @@ let base_layer dataset_name delete csv_dir =
     make_node ~parents:["csv"] name op in
   let traffic name dt =
     let dt_us = dt * 1_000_000 in
+    let rep sub by str = String.nreplace ~str ~sub ~by in
     let op =
-      Printf.sprintf
-        "SELECT\n  \
-           (capture_begin // %d) AS start,\n  \
-           min of capture_begin, max of capture_end,\n  \
-           sum of packets_src / %d AS packets_per_secs,\n  \
-           sum of bytes_src / %d AS bytes_per_secs\n\
-         EXPORT EVENT STARTING AT start * %d\n         \
-                 WITH DURATION %d\n\
-         GROUP BY capture_begin // %d\n\
-         COMMIT AND FLUSH WHEN\n  \
-           in.capture_begin > out.min_capture_begin + 2 * u64(%d)"
-        dt_us dt dt dt dt dt_us dt_us
-        (* Note: Ideally we would want to compute the max of all.capture_begin *)
+      "SELECT\n  \
+         (capture_begin // $DT_US$) AS start,\n  \
+         min of capture_begin, max of capture_end,\n  \
+         sum of packets_src / $DT$ AS packets_per_secs,\n  \
+         sum of bytes_src / $DT$ AS bytes_per_secs,\n  \
+         sum of payload_src / $DT$ AS payload_per_secs,\n  \
+         sum of packets_with_payload_src / $DT$ AS packets_with_payload_per_secs,\n  \
+         sum of retrans_bytes_src / $DT$ AS retrans_bytes_per_secs,\n  \
+         sum of retrans_payload_src / $DT$ AS retrans_payload_per_secs,\n  \
+         sum of fins_src / $DT$ AS fins_per_secs,\n  \
+         sum of rsts_src / $DT$ AS rsts_per_secs,\n  \
+         sum of dupacks_src / $DT$ AS dupacks_per_secs,\n  \
+         sum of zero_windows_src / $DT$ AS zero_windows_per_secs,\n  \
+         sum rtt_sum2_src AS dbg_rtt_sum2,\
+         sum rtt_sum_src AS dbg_rtt_sum,\
+         sum rtt_count_src AS dbg_rtt_count,\
+         (sum rtt_sum_src / sum rtt_count_src) / 1e6 AS rtt_avg,\n  \
+         ((sum rtt_sum2_src - float(sum rtt_sum_src)^2 / sum rtt_count_src) / \
+             sum rtt_count_src) / 1e12 AS rtt_var,\n  \
+         (sum rd_sum_src / sum rd_count_src) / 1e6 AS rd_avg,\n  \
+         ((sum rd_sum2_src - float(sum rd_sum_src)^2 / sum rd_count_src) / \
+             sum rd_count_src) / 1e12 AS rd_var,\n  \
+         (sum dtt_sum_src / sum dtt_count_src) / 1e6 AS dtt_avg,\n  \
+         ((sum dtt_sum2_src - float(sum dtt_sum_src)^2 / sum dtt_count_src) / \
+             sum dtt_count_src) / 1e12 AS dtt_var\n\
+       EXPORT EVENT STARTING AT start * $DT$\n         \
+               WITH DURATION $DT$\n\
+       GROUP BY capture_begin // $DT_US$\n\
+       COMMIT AND FLUSH WHEN\n  \
+         in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)" |>
+      rep "$DT$" (string_of_int dt) |>
+      rep "$DT_US$" (string_of_int dt_us)
+      (* Note: Ideally we would want to compute the max of all.capture_begin *)
     in
     make_node ~parents:["c2s"; "s2c"] name op
   in
