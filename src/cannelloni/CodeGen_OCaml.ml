@@ -341,7 +341,7 @@ let funcname_of_expr =
   | Mul _ -> "mul"
   | Div _ | IDiv _ -> "div"
   | Mod _ -> "rem"
-  | Pow _ -> "(**)"
+  | Pow _ -> "( ** )"
   | Ge _ -> "(>=)"
   | Gt _ -> "(>)"
   | Eq _ -> "(=)"
