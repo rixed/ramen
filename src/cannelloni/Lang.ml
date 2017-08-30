@@ -484,7 +484,7 @@ struct
      * to "first(data)", or "lag(1, lag(1, data))" equivalently to
      * "lag(2, data)", or more interestingly "lag(1, max(data))", which would
      * return the previous max within the group. Due to the fact that we
-     * initilize an internal state only when the first value is met, we must
+     * initialize an internal state only when the first value is met, we must
      * also get the inner function's value when initializing the outer one,
      * which requires initializing in depth first order as well.
      *

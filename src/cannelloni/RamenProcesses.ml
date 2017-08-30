@@ -95,8 +95,8 @@ let run conf layer =
                 pid (Printexc.to_string exn) ;
               return_unit
             | _, status ->
-              !logger.info "Node %s %s"
-                node.N.name (Helpers.string_of_process_status status) ;
+              !logger.info "Node %s (pid %d) %s"
+                node.N.name pid (Helpers.string_of_process_status status) ;
               return_unit in
           restart ()) ;
         (* Update the parents out_ringbuf_ref if it's in another layer *)

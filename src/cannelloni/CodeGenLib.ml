@@ -573,7 +573,6 @@ let aggregate
           Lwt_list.iter_s (fun (_k, a) -> commit in_tuple a.current_out) to_commit in
         if to_flush <> [] then (
           (* This is really a temporary hack! Cannot work like this. *)
-          !logger.debug "Cleaning TOP" ;
           others := None ;
           Array.fill unknown_weight 0 (Array.length unknown_weight) 0. ;
           top_set := WeightMap.empty ;
@@ -606,7 +605,6 @@ let aggregate
         last_key := Some k ;
         (* The weight for this tuple only: *)
         let weight = top_by in_tuple in
-        !logger.debug "Next weight is %f" weight ;
         let accumulate_into aggr this_key =
           update_aggr aggr.fields in_tuple ;
           aggr.last_ev_count <- !event_count ;
@@ -658,9 +656,7 @@ let aggregate
               let add_entry () =
                 Hashtbl.add h k aggr ;
                 let wk = tot_weight aggr in
-                !logger.debug "Adding WeightMap for weight %f" wk ;
                 top_set := WeightMap.modify_def [] wk (List.cons k) !top_set ;
-                !logger.debug "WeightMap is now %a" print_weightmap !top_set ;
                 if should_resubmit aggr in_tuple then
                   aggr.to_resubmit <- [ in_tuple ]
               in
@@ -669,12 +665,8 @@ let aggregate
                 Some aggr
               ) else (
                 (* H is crowded already, maybe dispose of the less heavy hitter? *)
-                !logger.debug "Crowded! Let's examine the smallest weight of %a"
-                  print_weightmap !top_set ;
                 match WeightMap.min_binding !top_set with
-                | wk, [] ->
-                  !logger.debug "Weird, the min binding is for key %f with no data" wk ;
-                  assert false
+                | _wk, [] -> assert false
                 | wk, (min_k::min_ks) ->
                   if wk < tot_weight aggr then (
                     (* Remove previous entry *)
@@ -684,7 +676,6 @@ let aggregate
                     (* Note: the unsure_weight we took it from unknown_weight.(kh')
                      * already and it's still there *)
                     unknown_weight.(kh') <- unknown_weight.(kh') +. removed.sure_weight ;
-                    !logger.debug "Removing WeightMap for weight %f" wk ;
                     top_set := snd (WeightMap.pop_min_binding !top_set) ;
                     if min_ks <> [] then
                       top_set := WeightMap.add wk min_ks !top_set ;
@@ -733,29 +724,22 @@ let aggregate
               aggr.last_in <- in_tuple ;
               if weight <> 0. then (
                 (* We have to move in the WeightMap. First remove: *)
-                !logger.debug "Trying to move away from weight %f in set %a"
-                  prev_wk print_weightmap !top_set ;
                 top_set := WeightMap.modify_opt prev_wk (function
                   | None -> assert false
                     (* If this is not the usual case then we are in trouble. In
                      * other words you should not have many of your top_n heavy
                      * hitters with the same weight. *)
                   | Some [k'] ->
-                    !logger.debug "Moving away from weight %f in WeightMap (singleton)" prev_wk ;
                     assert (k = k') ; None
                   | Some lst ->
-                    !logger.debug "Moving away from weight %f in WeightMap (list)" prev_wk ;
                     let lst' = List.filter ((<>) k) lst in
                     assert (lst' <> []) ;
                     Some lst') !top_set ;
                 (* reinsert with new weight: *)
                 let new_wk = tot_weight aggr in
                 top_set := WeightMap.modify_opt new_wk (function
-                  | None ->
-                    !logger.debug "Moving to weight %f in WeightMap (singleton)" new_wk ;
-                    Some [k]
+                  | None -> Some [k]
                   | Some lst as prev ->
-                    !logger.debug "Moving to weight %f in WeightMap (list)" new_wk ;
                     if List.mem k lst then prev else Some (k::lst)) !top_set
               ) ;
               Some aggr
