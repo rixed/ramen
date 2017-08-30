@@ -138,6 +138,7 @@ let tuple_need_state = function
     | Pow (_, a, b) -> Pow (typ, replace_typ a, replace_typ b)
     | Exp (_, a) -> Exp (typ, replace_typ a)
     | Log (_, a) -> Log (typ, replace_typ a)
+    | Sqrt (_, a) -> Sqrt (typ, replace_typ a)
     | And (_, a, b) -> And (typ, replace_typ a, replace_typ b)
     | Or (_, a, b) -> Or (typ, replace_typ a, replace_typ b)
     | Ge (_, a, b) -> Ge (typ, replace_typ a, replace_typ b)
@@ -528,6 +529,7 @@ struct
     | Pow of typ * t * t
     | Exp of typ * t
     | Log of typ * t
+    | Sqrt of typ * t
     | And of typ * t * t
     | Or of typ * t * t
     | Ge of typ * t * t
@@ -610,6 +612,7 @@ struct
     | Pow (t, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Exp (t, e) -> Printf.fprintf fmt "exp (%a)" (print with_types) e ; add_types t
     | Log (t, e) -> Printf.fprintf fmt "log (%a)" (print with_types) e ; add_types t
+    | Sqrt (t, e) -> Printf.fprintf fmt "sqrt (%a)" (print with_types) e ; add_types t
     | And (t, Ge (_, e1, BeginOfRange (_, e2)), Not (_, (Ge (_, e1', EndOfRange (_, e2'))))) ->
       assert (e2 = e2') ;
       assert (e1 = e1') ;
@@ -640,7 +643,7 @@ struct
     | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t | Concat (t, _, _)
     | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
     | MovingAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
-    | Exp (t, _) | Log (t, _) | Split (t, _, _) ->
+    | Exp (t, _) | Log (t, _) | Sqrt (t, _) | Split (t, _, _) ->
       t
 
   let is_nullable e =
@@ -655,7 +658,8 @@ struct
     | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
     | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
     | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
-    | BeginOfRange (_, e) | EndOfRange (_, e) | Exp (_, e) | Log (_, e) ->
+    | BeginOfRange (_, e) | EndOfRange (_, e) | Exp (_, e) | Log (_, e)
+    | Sqrt (_, e) ->
       f (fold_by_depth f i e) expr
     | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
     | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
@@ -683,7 +687,8 @@ struct
       | Const _ | Param _ | Field _ | Cast _ | Now _ | Age _ | Sequence _
       | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _
       | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _ | Length _
-      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ | Concat _ ->
+      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _
+      | Concat _ ->
         ()) () e |> ignore
 
   (* Any expression that uses a generator is a generator: *)
@@ -914,6 +919,7 @@ struct
           ExpSmooth (make_float_typ "smooth", alpha, e)) |||
          (afun1 "exp" >>: fun e -> Exp (make_num_typ "exponential", e)) |||
          (afun1 "log" >>: fun e -> Log (make_num_typ "logarithm", e)) |||
+         (afun1 "sqrt" >>: fun e -> Sqrt (make_num_typ "square root", e)) |||
          (afun2 "split" >>: fun (e1, e2) ->
           Split (make_typ ~typ:TString "split", e1, e2)) |||
          k_moveavg ||| sequence ||| cast) m

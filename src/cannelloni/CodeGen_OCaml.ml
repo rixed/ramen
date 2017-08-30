@@ -352,6 +352,7 @@ let funcname_of_expr =
   | ExpSmooth _ -> "smooth"
   | Exp _ -> "exp"
   | Log _ -> "log"
+  | Sqrt _ -> "sqrt"
   | Split _ -> "split"
   | Concat _ -> "(^)"
   | Const _ | Param _ | Field _ ->
@@ -367,7 +368,7 @@ let implementation_of expr =
   let name = funcname_of_expr expr in
   let out_typ = typ_of expr in
   match expr, out_typ.scalar_typ with
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Div _|Abs _|Pow _|Exp _|Log _), Some TFloat ->
+  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Div _|Abs _|Pow _|Exp _|Log _|Sqrt _), Some TFloat ->
     "BatFloat."^ name, Some TFloat
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU8 -> "Uint8."^ name, Some TU8
   | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU16 -> "Uint16."^ name, Some TU16
@@ -419,7 +420,7 @@ let name_of_state =
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
   | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ | Concat _
-  | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
+  | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _ ->
     assert false
 
 let otype_of_type = function
@@ -544,7 +545,7 @@ and emit_expr ?(state=true) oc =
   | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
   | Length (_, e) | BeginOfRange (_, e) | EndOfRange (_, e)
-  | Exp (_, e) | Log (_, e) as expr ->
+  | Exp (_, e) | Log (_, e) | Sqrt (_, e) as expr ->
     emit_function1 ~state expr oc e
   | Defined (_, e) ->
     Printf.fprintf oc "(%a <> None)" (emit_expr ~state) e
@@ -660,6 +661,7 @@ let emit_generator user_fun oc expr =
     | Defined (t, e1) -> replace_unary prev e1 (fun e1 -> Defined (t, e1))
     | Exp (t, e1) -> replace_unary prev e1 (fun e1 -> Exp (t, e1))
     | Log (t, e1) -> replace_unary prev e1 (fun e1 -> Log (t, e1))
+    | Sqrt (t, e1) -> replace_unary prev e1 (fun e1 -> Sqrt (t, e1))
     | BeginOfRange (t, e1) -> replace_unary prev e1 (fun e1 -> BeginOfRange (t, e1))
     | EndOfRange (t, e1) -> replace_unary prev e1 (fun e1 -> EndOfRange (t, e1))
     (* No generator, look deeper in both directions *)
@@ -960,7 +962,7 @@ let emit_group_state_init
         | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Concat _
         | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
         | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-        | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ ->
+        | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _ ->
           assert false) ;
         Printf.fprintf oc " in\n"
       ) ;
@@ -1002,7 +1004,8 @@ let emit_update_state
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _
       | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
       | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ | Concat _ ->
+      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ | Concat _
+      | Sqrt _ ->
         assert false) ;
       Printf.fprintf oc ") ;\n"
     ) ;
@@ -1121,7 +1124,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
         | Mod _| Cast _ | Abs _ | Length _ | Now _ | BeginOfRange _
-        | EndOfRange _ | Exp _ | Log _ | Split _ | Concat _ ->
+        | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _ | Concat _ ->
           false
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
