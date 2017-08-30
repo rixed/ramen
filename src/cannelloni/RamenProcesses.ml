@@ -61,7 +61,15 @@ let run conf layer =
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
         let command = C.exec_of_node conf node
-        and output_ringbufs = List.map rb_name_of node.N.children in
+        and output_ringbufs =
+          (* Start to output only to nodes on this layer. They have all been
+           * created above, and we want to allow loops in a layer. But above
+           * layers have no ringbuffer already and we do not want to start
+           * outputing in their direction until they are effectively started
+           * (or we would hang) *)
+          node.N.children |>
+          List.filter (fun node -> node.N.layer = layer.L.name) |>
+          List.map rb_name_of in
         let output_ringbufs =
           if Lang.Operation.is_exporting node.N.operation then
             rb_name_for_export_of node :: output_ringbufs
