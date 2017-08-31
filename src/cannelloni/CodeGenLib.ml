@@ -111,6 +111,15 @@ struct
   let foldi p n t v0 f =
     fold p n t (0, v0) (fun (i, v) x -> i+1, f v i x) |> snd
 
+  let iter p n t f =
+    fold p n t () (fun () x -> f x)
+
+  let iteri p n t f =
+    foldi p n t () (fun () i x -> f i x)
+
+  let current (prevs, count) =
+    prevs.((count - 1) mod Array.length prevs)
+
   let lag (prevs, count) = prevs.(count mod Array.length prevs)
 
   let avg p n t = (fold p n t 0. (+.)) /. float_of_int n
@@ -128,6 +137,31 @@ struct
     let b1 =
       if n > 1 then b1n /. b1d else 0. in
     last +. b1
+
+    (* For multi variable linear regression we store in the array a pair with
+     * the predicted value and an array of all predictors value. *)
+    let multi_linreg p n t =
+      let open Owl in
+      (* We first want to know how many observations and predictors we have: *)
+      let nb_preds, nb_obs =
+        fold p n t (-1, 0) (fun (nbp, nbo) (_y, xs) ->
+          let nbp' = Array.length xs in
+          assert (nbp = -1 || nbp = nbp') ;
+          nbp', nbo+1) in
+      (* Build the x and y matrices *)
+      let xm = Mat.zeros nb_obs nb_preds
+      and ym = Mat.zeros nb_obs 1 in
+      iteri p n t (fun i (y, xs) ->
+        ym.{ i, 0 } <- y ;
+        for j = 0 to nb_preds-1 do
+          xm.{ i, j } <- xs.(j)
+        done) ;
+      (* Now ask for the "best" parameters: *)
+      let p = Regression.linear xm ym in
+      (* And use that to predict the new y given the new xs *)
+      let _cury, cur_preds = current t in
+      Array.fold_lefti (fun y i x ->
+        y +. p.{i, 0} *. x) 0. cur_preds
 end
 
 let getenv ?def n =

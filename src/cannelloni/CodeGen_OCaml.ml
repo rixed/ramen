@@ -348,7 +348,7 @@ let funcname_of_expr =
   | BeginOfRange _ -> "begin_of_range"
   | EndOfRange _ -> "end_of_range"
   | Lag _ -> "Seasonal.add"
-  | MovingAvg _ | LinReg _ -> "Seasonal.add"
+  | MovingAvg _ | LinReg _ | MultiLinReg _ -> "Seasonal.add"
   | ExpSmooth _ -> "smooth"
   | Exp _ -> "exp"
   | Log _ -> "log"
@@ -396,7 +396,7 @@ let implementation_of expr =
   | Now _, Some TFloat -> "CodeGenLib."^ name, None
   | Lag _, _ -> "CodeGenLib."^ name, None
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | (MovingAvg _|LinReg _|ExpSmooth _), Some TFloat -> "CodeGenLib."^ name, Some TFloat
+  | (MovingAvg _|LinReg _|MultiLinReg _|ExpSmooth _), Some TFloat -> "CodeGenLib."^ name, Some TFloat
   | Cast _, t -> "CodeGenLib."^ name, t
   (* Sequence build a sequence of as-large-as-convenient integers (signed or
    * not) *)
@@ -415,7 +415,8 @@ let name_of_state =
   | AggrMin (t, _) | AggrMax (t, _) | AggrPercentile (t, _, _)
   | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) | AggrFirst (t, _)
   | AggrLast (t, _) | Lag (t, _, _) | MovingAvg (t, _, _, _)
-  | LinReg (t, _, _, _) | ExpSmooth (t, _, _) ->
+  | LinReg (t, _, _, _) | MultiLinReg (t, _, _, _, _)
+  | ExpSmooth (t, _, _) ->
     "field_"^ string_of_int t.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
@@ -447,7 +448,8 @@ let otype_of_state e =
      * provided some context to those functions, such as the event count in
      * current window, for instance (ie. pass the full aggr record not just
      * the fields) *)
-    | Lag _ | MovingAvg _ | LinReg _ -> t ^" CodeGenLib.Seasonal.t"
+    | Lag _ | MovingAvg _ | LinReg _ | MultiLinReg _ ->
+      t ^" CodeGenLib.Seasonal.t"
     | _ -> t in
   if Option.get typ.nullable then t ^" option" else t
 
@@ -543,9 +545,15 @@ and emit_expr ?(finalize=true) ?(state=true) oc =
       (conv_to ~finalize ~state (Some TU16)) p
       (conv_to ~finalize ~state (Some TU16)) n
       record_of_state (name_of_state expr)
+  | MultiLinReg (_, p, n, _, _) as expr when finalize ->
+    Printf.fprintf oc
+      "(CodeGenLib.Seasonal.multi_linreg (Uint16.to_int %a) (Uint16.to_int %a) %s%s)"
+      (conv_to ~finalize ~state (Some TU16)) p
+      (conv_to ~finalize ~state (Some TU16)) n
+      record_of_state (name_of_state expr)
   | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
   | AggrLast _ | ExpSmooth _ | AggrPercentile _ | Lag _ | MovingAvg _
-  | LinReg _ as expr ->
+  | LinReg _ | MultiLinReg _ as expr ->
      Printf.fprintf oc "%s%s" record_of_state (name_of_state expr)
   | Now _ as expr -> emit_function0 expr oc
   | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
@@ -574,11 +582,20 @@ and emit_function1 ?finalize ?state expr oc e =
     impl
     (conv_to ?finalize ?state arg_typ) e
 
-and promote_to_same_types = function
-  | None, None -> None
-  | Some t1, None -> Some t1
-  | None, Some t2 -> Some t2
-  | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2))
+and promote_to_same_types es =
+  let open Expr in
+  let rec loop prev = function
+  | [] -> prev
+  | e::es ->
+    let t = (typ_of e).scalar_typ in
+    let prev =
+      match prev, t with
+      | None, t -> t
+      | Some _, None -> prev
+      | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2)) in
+    loop prev es
+  in
+  loop None es
 
 (* When we combine nullable arguments we want to shortcut as much as
  * possible and avoid evaluating any of them if one is null. Here we will just
@@ -587,6 +604,12 @@ and promote_to_same_types = function
  * TODO: ideally * we'd like to evaluate the nullable arguments first. *)
 and emit_functionN ?finalize ?state impl arg_typ oc es =
   let open Expr in
+  (* When we have no conversion to do, e1 and e2 still have to have the same type or
+   * the compiler will complain so we promote: *)
+  let arg_typ =
+    if arg_typ <> None then arg_typ
+    else promote_to_same_types es
+  in
   let len, has_nullable =
     List.fold_left (fun (i, had_nullable) e ->
         if is_nullable e then (
@@ -608,27 +631,15 @@ and emit_functionN ?finalize ?state impl arg_typ oc es =
 
 and emit_function2 ?finalize ?state expr oc e1 e2 =
   let impl, arg_typ = implementation_of expr in
-  (* When we have no conversion to do, e1 and e2 still have to have the same type or
-   * the compiler will complain so we promote: *)
-  let open Expr in
-  let arg_typ =
-    if arg_typ <> None then arg_typ
-    else promote_to_same_types ((typ_of e1).scalar_typ, (typ_of e2).scalar_typ)
-  in
   emit_functionN ?finalize ?state impl arg_typ oc [e1; e2]
 
 and emit_function3 ?finalize ?state expr oc e1 e2 e3 =
   let impl, arg_typ = implementation_of expr in
-  (* When we have no conversion to do, e1, e2 and e3 still have to have the
-   * same type or the compiler will complain so we promote: *)
-  let open Expr in
-  let arg_typ =
-    if arg_typ <> None then arg_typ
-    else promote_to_same_types (
-           promote_to_same_types ((typ_of e1).scalar_typ, (typ_of e2).scalar_typ),
-           (typ_of e3).scalar_typ)
-  in
   emit_functionN ?finalize ?state impl arg_typ oc [e1; e2; e3]
+
+and emit_function2v ?finalize ?state expr oc e1 e2 es =
+  let impl, arg_typ = implementation_of expr in
+  emit_functionN ?finalize ?state impl arg_typ oc (e1 :: e2 :: es)
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -654,7 +665,7 @@ let emit_generator user_fun oc expr =
       else prev, e2 in
     prev, make e1 e2
 
-  (* Returns a list of generators. FIXME: an the same expression,
+  (* Returns a list of generators. FIXME: and the same expression,
    * that not modified any more. simplify! *)
   and replace prev = function
     (* No subexpressions: *)
@@ -662,7 +673,7 @@ let emit_generator user_fun oc expr =
     (* Forbidden within stateful functions: *)
     | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _
     | AggrFirst _ | AggrLast _ | AggrPercentile _ | Lag  _
-    | MovingAvg _ | LinReg _ | ExpSmooth _ ->
+    | MovingAvg _ | LinReg _ | MultiLinReg _ | ExpSmooth _ ->
       assert false
     (* No generator, look deeper *)
     | Age (t, e1) -> replace_unary prev e1 (fun e1 -> Age (t, e1))
@@ -984,6 +995,18 @@ let emit_group_state_init
             (conv_to ~finalize:true ~state:false (Some TU16)) p
             (conv_to ~finalize:true ~state:false (Some TU16)) n
             (conv_to ~finalize:true ~state:false arg_typ) e
+        | MultiLinReg (_, p, n, e, es) ->
+          let _impl, arg_typ = implementation_of f in
+          (* TODO: predictors es and expression e must be allowed to be
+           * nullable *)
+          Printf.fprintf oc
+            "CodeGenLib.Seasonal.init (Uint16.to_int %a) \
+                                      (Uint16.to_int %a) (%a, %a)"
+            (conv_to ~finalize:true ~state:false (Some TU16)) p
+            (conv_to ~finalize:true ~state:false (Some TU16)) n
+            (conv_to ~finalize:true ~state:false arg_typ) e
+            (List.print ~first:"[|" ~last:"|]" ~sep:";"
+               (conv_to ~finalize:true ~state:true arg_typ)) es
         | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Concat _
         | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
         | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
@@ -1019,6 +1042,8 @@ let emit_update_state
         emit_function3 ~finalize:false ~state:true f oc f e1 e2
       | Lag (_, _, e) | MovingAvg (_, _, _, e) | LinReg (_, _, _, e) ->
         emit_function2 ~finalize:false ~state:true f oc f e
+      | MultiLinReg (_, _, _, e, es) ->
+        emit_function2v ~finalize:false ~state:true f oc f e es
       | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _
       | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
       | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
@@ -1137,7 +1162,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | Field (_, tuple, _) -> tuple_need_state !tuple
         | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
         | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _ | Lag _
-        | MovingAvg _ | LinReg _ | ExpSmooth _ ->
+        | MovingAvg _ | LinReg _ | MultiLinReg _ | ExpSmooth _ ->
           true
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _

@@ -204,6 +204,18 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       check_operator op_typ actual_op_typ nullable || changed
     | _ -> changed
   in
+  let rec check_variadic op_typ ?(propagate_null=true) ?exp_sub_typ ?exp_sub_nullable = function
+    | [] -> false
+    | sub_expr :: rest ->
+      let changed =
+        check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr in
+        (* TODO: a function to type with a list of arguments and
+         * exp types etc, iteratively. Ie. make_op_typ called at
+         * each step to refine it. For no, no typing of the op from
+         * the args. Especially, XXX no update of the nullability of
+         * op! XXX *)
+      check_variadic op_typ ~propagate_null ?exp_sub_typ ?exp_sub_nullable rest || changed
+  in
   (* Useful helpers for make_op_typ above: *)
   let return_bool _ = TBool
   and return_float _ = TFloat
@@ -346,6 +358,17 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1
       ~exp_sub_typ2:TU16 ~exp_sub_nullable2:false e2
       ~exp_sub_typ3:TFloat e3
+  | MultiLinReg (op_typ, e1, e2, e3, e4s) ->
+    (* As above, with the addition of a non empty list of predictors *)
+    (* FIXME: Check that the consts are > 0 *)
+    Expr.check_const "period" e1 ;
+    Expr.check_const "counts" e2 ;
+    check_ternary_op op_typ return_float
+      ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1
+      ~exp_sub_typ2:TU16 ~exp_sub_nullable2:false e2
+      ~exp_sub_typ3:TFloat e3 ||
+    check_variadic op_typ
+      ~exp_sub_typ:TFloat ~exp_sub_nullable:false (*because see comment in check_variadic *) e4s
   | ExpSmooth (op_typ, e1, e2) ->
     (* FIXME: Check that alpha is between 0 and 1 *)
     Expr.check_const "smooth coefficient" e1 ;

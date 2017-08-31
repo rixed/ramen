@@ -150,6 +150,8 @@ let tuple_need_state = function
     | Lag (_, a, b) -> Lag (typ, replace_typ a, replace_typ b)
     | MovingAvg (_, a, b, c) -> MovingAvg (typ, replace_typ a, replace_typ b, replace_typ c)
     | LinReg (_, a, b, c) -> LinReg (typ, replace_typ a, replace_typ b, replace_typ c)
+    | MultiLinReg (_, a, b, c, d) ->
+      MultiLinReg (typ, replace_typ a, replace_typ b, replace_typ c, List.map replace_typ d)
     | ExpSmooth (_, a, b) -> ExpSmooth (typ, replace_typ a, replace_typ b)
     | Split (_, a, b) -> Split (typ, replace_typ a, replace_typ b)
 
@@ -552,6 +554,9 @@ struct
     | MovingAvg of typ * t * t * t (* period, how many season to keep, expression *)
     (* Simple linear regression *)
     | LinReg of typ * t * t * t (* as above: period, how many season to keep, expression *)
+    (* Multiple linear regression - and our first variadic function (the
+     * last parameter being a list of expressions to use for the predictors) *)
+    | MultiLinReg of typ * t * t * t * t list
     (* Simple exponential smoothing *)
     | ExpSmooth of typ * t * t (* coef between 0 and 1 and expression *)
     (* First function returning more than once (Generator). Here the typ is
@@ -629,6 +634,13 @@ struct
       Printf.fprintf fmt "season_moveavg(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
     | LinReg (t, e1, e2, e3) ->
       Printf.fprintf fmt "season_fit(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
+    | MultiLinReg (t, e1, e2, e3, e4s) ->
+      Printf.fprintf fmt "season_fit_multi(%a, %a, %a, %a)"
+        (print with_types) e1
+        (print with_types) e2
+        (print with_types) e3
+        (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) e4s ;
+      add_types t
     | ExpSmooth (t, e1, e2) -> Printf.fprintf fmt "smooth(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Split (t, e1, e2) -> Printf.fprintf fmt "split(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
 
@@ -643,7 +655,8 @@ struct
     | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t | Concat (t, _, _)
     | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
     | MovingAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
-    | Exp (t, _) | Log (t, _) | Sqrt (t, _) | Split (t, _, _) ->
+    | Exp (t, _) | Log (t, _) | Sqrt (t, _) | Split (t, _, _)
+    | MultiLinReg (t, _, _, _, _) ->
       t
 
   let is_nullable e =
@@ -675,6 +688,13 @@ struct
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
       f i''' expr
+    | MultiLinReg (_, e1, e2, e3, e4s) ->
+      let i' = fold_by_depth f i e1 in
+      let i''= fold_by_depth f i' e2 in
+      let i'''= fold_by_depth f i'' e3 in
+      let i''''= List.fold_left (fun i e ->
+        fold_by_depth f i e) i''' e4s in
+      f i'''' expr
 
   let iter f = fold_by_depth (fun () e -> f e) ()
 
@@ -682,7 +702,7 @@ struct
     fold_by_depth (fun () -> function
       | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
       | AggrLast _ | AggrPercentile _ | Lag _ | MovingAvg _ | LinReg _
-      | ExpSmooth _ as e ->
+      | ExpSmooth _ | MultiLinReg _ as e ->
         f e
       | Const _ | Param _ | Field _ | Cast _ | Now _ | Age _ | Sequence _
       | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _
@@ -849,11 +869,17 @@ struct
       binary_ops_reducer ~op ~right_associative:true
                          ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
-    and afun a n m =
+    and afunv a n m =
       let sep = opt_blanks -- char ',' -- opt_blanks in
       let m = n :: m in
       (strinG n -- opt_blanks -- char '(' -- opt_blanks -+
-       repeat ~min:a ~max:a ~sep lowest_prec_left_assoc +- opt_blanks +- char ')') m
+       repeat ~min:a ~max:a ~sep lowest_prec_left_assoc ++
+       repeat ~sep lowest_prec_left_assoc +- opt_blanks +- char ')') m
+
+    and afun a n =
+      afunv a n >>: fun (a, r) ->
+        if r = [] then a else
+        raise (Reject "too many arguments")
 
     and afun1 n =
       (strinG n -- blanks -- optional ~def:() (strinG "of" -- blanks) -+
@@ -865,6 +891,12 @@ struct
 
     and afun3 n =
       afun 3 n >>: function [a;b;c] -> (a, b, c) | _ -> assert false
+
+    and afun2v n =
+      afunv 2 n >>: function ([a;b], r) -> (a, b, r) | _ -> assert false
+
+    and afun3v n =
+      afunv 3 n >>: function ([a;b;c], r) -> (a, b, c, r) | _ -> assert false
 
     and highest_prec_left_assoc m =
       ((afun1 "not" >>: fun e -> Not (make_bool_typ "not operator", e)) |||
@@ -911,6 +943,10 @@ struct
           LinReg (make_float_typ "season_fit", e1, e2, e3)) |||
          (afun2 "fit" >>: fun (e1, e2) ->
           LinReg (make_float_typ "season_fit", expr_one, e1, e2)) |||
+         (afun3v "season_fit_multi" >>: fun (e1, e2, e3, e4s) ->
+          MultiLinReg (make_float_typ "season_fit_multi", e1, e2, e3, e4s)) |||
+         (afun2v "fit_multi" >>: fun (e1, e2, e3s) ->
+          MultiLinReg (make_float_typ "season_fit_multi", expr_one, e1, e2, e3s)) |||
          (afun2 "smooth" >>: fun (e1, e2) ->
           ExpSmooth (make_float_typ "smooth", e1, e2)) |||
          (afun1 "smooth" >>: fun e ->
