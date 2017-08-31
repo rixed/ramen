@@ -37,11 +37,12 @@ let traffic_op ?where dataset_name name dt =
        sum of retrans_payload_src / $DT$ AS retrans_payload_per_secs,\n  \
        sum of fins_src / $DT$ AS fins_per_secs,\n  \
        sum of rsts_src / $DT$ AS rsts_per_secs,\n  \
+       sum of timeouts / $DT$ AS timeouts_per_secs,\n  \
+       sum of syns / $DT$ AS syns_per_secs,\n  \
+       sum of closes / $DT$ AS closes_per_secs,\n  \
+       sum of connections / $DT$ AS connections_per_secs,\n  \
        sum of dupacks_src / $DT$ AS dupacks_per_secs,\n  \
        sum of zero_windows_src / $DT$ AS zero_windows_per_secs,\n  \
-       sum rtt_sum2_src AS dbg_rtt_sum2,\
-       sum rtt_sum_src AS dbg_rtt_sum,\
-       sum rtt_count_src AS dbg_rtt_count,\
        (sum rtt_sum_src / sum rtt_count_src) / 1e6 AS rtt_avg,\n  \
        ((sum rtt_sum2_src - float(sum rtt_sum_src)^2 / sum rtt_count_src) / \
            sum rtt_count_src) / 1e12 AS rtt_var,\n  \
@@ -50,7 +51,10 @@ let traffic_op ?where dataset_name name dt =
            sum rd_count_src) / 1e12 AS rd_var,\n  \
        (sum dtt_sum_src / sum dtt_count_src) / 1e6 AS dtt_avg,\n  \
        ((sum dtt_sum2_src - float(sum dtt_sum_src)^2 / sum dtt_count_src) / \
-           sum dtt_count_src) / 1e12 AS dtt_var\n\
+           sum dtt_count_src) / 1e12 AS dtt_var,\n  \
+       (sum connections_time / sum connections) / 1e6 AS connection_time_avg,\n  \
+       ((sum connections_time2 - float(sum connections_time)^2 / sum connections) / \
+           sum connections) / 1e12 AS connection_time_var\n\
      EXPORT EVENT STARTING AT start * $DT$\n         \
              WITH DURATION $DT$\n\
      GROUP BY capture_begin // $DT_US$\n\
