@@ -2,7 +2,7 @@
  * tests without bringing in the whole ringbuf libs *)
 open Batteries
 open RamenSharedTypes
-open Log
+open RamenLog
 
 (* Compromise between size and efficient reading of data, TBD: *)
 let rb_word_bytes = 4

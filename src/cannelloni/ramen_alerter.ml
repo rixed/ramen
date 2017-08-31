@@ -11,7 +11,7 @@
 open Batteries
 open Helpers
 open SqliteHelpers
-open Log
+open RamenLog
 open Lwt
 
 (* We want to have a global state of the alert management situation that we

@@ -1,5 +1,5 @@
 open Batteries
-open Log
+open RamenLog
 
 (*$inject open Batteries *)
 

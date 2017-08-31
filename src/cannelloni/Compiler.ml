@@ -14,7 +14,7 @@
  * node output, via the expected_type of each expression.
  *)
 open Batteries
-open Log
+open RamenLog
 open Helpers
 open RamenSharedTypes
 module C = RamenConf

@@ -1,5 +1,5 @@
 open Batteries
-open Log
+open RamenLog
 open RamenSharedTypes
 module C = RamenConf
 module N = RamenConf.Node

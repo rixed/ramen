@@ -13,7 +13,7 @@
  * the tuple name. *)
 
 open Batteries
-open Log
+open RamenLog
 open RamenSharedTypes
 open Lang
 open Helpers

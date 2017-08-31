@@ -4,7 +4,7 @@ open BatOption.Infix
 open Cohttp
 open Cohttp_lwt_unix
 open Lwt
-open Log
+open RamenLog
 open RamenSharedTypes
 open Helpers
 module C = RamenConf

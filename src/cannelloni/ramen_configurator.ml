@@ -1,5 +1,5 @@
 open Batteries
-open Log
+open RamenLog
 module N = RamenSharedTypes.Node
 
 type options = { debug : bool ; monitor : bool }

@@ -1,7 +1,7 @@
 (* Tools used by the generated OCaml code *)
 open Batteries
 open Stdint
-open Log
+open RamenLog
 open Lwt
 
 (* Converters from string to values *)

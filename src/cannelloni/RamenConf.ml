@@ -1,6 +1,6 @@
 (* Global configuration *)
 open Batteries
-open Log
+open RamenLog
 open RamenSharedTypes
 module SL = RamenSharedTypes.Layer
 

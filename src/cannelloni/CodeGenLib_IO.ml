@@ -1,6 +1,6 @@
 (* Tools for LWT IOs *)
 open Lwt
-open Log
+open RamenLog
 open Stdint
 open Batteries
 

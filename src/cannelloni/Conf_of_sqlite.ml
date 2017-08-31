@@ -1,7 +1,7 @@
 (* Helper to extract alerting configuration re. network link from a SQLite DB.
  *)
 open Batteries
-open Log
+open RamenLog
 open SqliteHelpers
 
 type db =

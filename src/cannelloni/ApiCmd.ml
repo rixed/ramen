@@ -2,7 +2,7 @@ open Batteries
 open Lwt
 open Cohttp
 open Cohttp_lwt_unix
-open Log
+open RamenLog
 open RamenSharedTypes
 
 let enc = Uri.pct_encode

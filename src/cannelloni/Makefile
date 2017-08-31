@@ -6,13 +6,13 @@ TESTABLE_SOURCES = \
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
-	Log.ml Helpers.ml RamenSharedTypes.ml RingBufLib.ml \
+	RamenLog.ml Helpers.ml RamenSharedTypes.ml RingBufLib.ml \
 	RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBuf.ml RamenConf.ml CodeGen_OCaml.ml Compiler.ml
 
 CANNELLONI_SOURCES = \
-	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml \
+	Consts.ml RamenLog.ml Helpers.ml RamenSharedTypes.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
@@ -20,7 +20,7 @@ CANNELLONI_SOURCES = \
 	cannelloni.ml
 
 CODEGENLIB_SOURCES = \
-	Consts.ml Log.ml Helpers.ml Globs.ml \
+	Consts.ml RamenLog.ml Helpers.ml Globs.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenSharedTypes.ml RingBufLib.ml RingBuf.ml \
 	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
@@ -29,12 +29,12 @@ LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.c ringbuf/ringbuf.h
 
 CONFIGURATOR_SOURCES = \
-	Consts.ml Log.ml Helpers.ml RamenSharedTypes.ml \
+	Consts.ml RamenLog.ml Helpers.ml RamenSharedTypes.ml \
 	SqliteHelpers.ml Conf_of_sqlite.ml \
 	ramen_configurator.ml
 
 ALERTER_SOURCES = \
-	Consts.ml Log.ml Helpers.ml SqliteHelpers.ml \
+	Consts.ml RamenLog.ml Helpers.ml SqliteHelpers.ml \
 	ramen_alerter.ml
 
 SOURCES = \
@@ -74,7 +74,7 @@ codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
 codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLC)   $(OCAMLFLAGS)    -a       $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
-ringbuf_test.opt: Log.cmx Helpers.cmx RamenSharedTypes.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
+ringbuf_test.opt: RamenLog.cmx Helpers.cmx RamenSharedTypes.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)

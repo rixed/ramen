@@ -1,6 +1,6 @@
 open Batteries
 open Lwt
-open Log
+open RamenLog
 module C = RamenConf
 module N = RamenConf.Node
 module L = RamenConf.Layer
