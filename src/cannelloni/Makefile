@@ -2,14 +2,15 @@ top_srcdir = ..
 
 TESTABLE_SOURCES = \
 	RamenSharedTypes.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml Compiler.ml \
-	Helpers.ml
+	Helpers.ml RamenBloomFilter.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
 	RamenLog.ml Helpers.ml RamenSharedTypes.ml RingBufLib.ml \
 	RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
-	RingBuf.ml RamenConf.ml CodeGen_OCaml.ml Compiler.ml
+	RingBuf.ml RamenConf.ml CodeGen_OCaml.ml Compiler.ml \
+	RamenBloomFilter.ml
 
 CANNELLONI_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml RamenSharedTypes.ml \
@@ -23,6 +24,7 @@ CODEGENLIB_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml Globs.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenSharedTypes.ml RingBufLib.ml RingBuf.ml \
+	RamenBloomFilter.ml \
 	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
