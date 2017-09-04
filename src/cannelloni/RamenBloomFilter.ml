@@ -23,10 +23,10 @@ let set_bit t b =
   Bytes.set t.bytes idx (Char.chr (n lor (1 lsl b_off)))
 
 (*$= get_bit & ~printer:(BatIO.to_string BatBool.print)
-  false (let t = make 1 1 in get_bit t 0)
-  true (let t = make 1 1 in set_bit t 0 ; get_bit t 0)
-  true (let t = make 10 1 in set_bit t 9 ; get_bit t 9)
-  false (let t = make 10 1 in set_bit t 9 ; get_bit t 5)
+  false (let t = make 1 in get_bit t 0)
+  true (let t = make 1 in set_bit t 0 ; get_bit t 0)
+  true (let t = make 10 in set_bit t 9 ; get_bit t 9)
+  false (let t = make 10 in set_bit t 9 ; get_bit t 5)
  *)
 
 type key = int list
@@ -57,9 +57,9 @@ let set t salt x =
 
 (*$inject
   let t =
-    let t = make 10 3 in
-    set t "foo" ;
-    set t "bar" ;
+    let t = make 100 in
+    set t [1;2] "foo" ;
+    set t [1;2] "bar" ;
     t
  *)
 (*$= get & ~printer:(BatIO.to_string BatBool.print)
