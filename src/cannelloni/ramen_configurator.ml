@@ -345,7 +345,7 @@ let put_layer ramen_url layer =
   !logger.debug "Body: %S\n" body ;
   return_unit
 
-let start conf ramen_url db_name dataset_name delete csv_dir =
+let start conf ramen_url db_name dataset_name delete csv_dir with_bcns =
   logger := make_logger conf.debug ;
   let open Conf_of_sqlite in
   let db = get_db db_name in
@@ -353,12 +353,14 @@ let start conf ramen_url db_name dataset_name delete csv_dir =
     (* TODO: The base layer for this client *)
     let base = base_layer dataset_name delete csv_dir in
     let%lwt () = put_layer ramen_url base in
-    (* TODO: A layer per BCN? Pro: easier to update and set from cmdline
-     * without a DB. Cons: Easier to remove/add all at once; more manual labor
-     * if we do have a DB *)
-    let bcns = get_bcns_from_db db in
-    let bcns = layer_of_bcns bcns dataset_name in
-    put_layer ramen_url bcns
+    if with_bcns then (
+      (* TODO: A layer per BCN? Pro: easier to update and set from cmdline
+       * without a DB. Cons: Easier to remove/add all at once; more manual labor
+       * if we do have a DB *)
+      let bcns = get_bcns_from_db db in
+      let bcns = layer_of_bcns bcns dataset_name in
+      put_layer ramen_url bcns
+    ) else return_unit
   in
   let%lwt () = update () in
   if conf.monitor then
@@ -410,6 +412,11 @@ let csv_dir =
                    [ "csv-dir" ] in
   Arg.(required (opt (some string) None i))
 
+let with_bcns =
+  let i = Arg.info ~doc:"Also output the layer with BCN configuration"
+                   [ "with-bcns" ; "with-bcn" ; "bcns" ; "bcn" ] in
+  Arg.(value (flag i))
+
 let start_cmd =
   Term.(
     (const start
@@ -418,7 +425,8 @@ let start_cmd =
       $ db_name
       $ dataset_name
       $ delete_opt
-      $ csv_dir),
+      $ csv_dir
+      $ with_bcns),
     info "ramen_configurator")
 
 let () =
