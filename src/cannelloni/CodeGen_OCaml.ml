@@ -1233,7 +1233,7 @@ let with_code_file_for exec_name conf f =
 let compile_source exec_name fname =
   Printf.sprintf
     "nice ocamlfind ocamlopt -g -annot -o %s \
-      -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator \
+      -package batteries,stdint,lwt.ppx,cohttp-lwt-unix,inotify.lwt,binocle,parsercombinator,owl \
       -linkpkg codegen.cmxa %s"
     (shell_quote exec_name)
     (shell_quote fname)
