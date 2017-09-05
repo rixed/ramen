@@ -107,7 +107,7 @@ let tuple_need_state = function
 
   let typ = Lang.Expr.make_typ "replaced for tests"
 
-  let rec replace_typ e =
+  let replace_typ e =
     Lang.Expr.map_type (fun _ -> typ) e
 
   let replace_typ_in_expr = function
@@ -697,44 +697,100 @@ struct
     | Field (t, a, b) -> Field (f t, a, b)
     | StateField _ as e -> e
     | Param (t, a) -> Param (f t, a)
-    | AggrMin (t, a) -> AggrMin (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrMax (t, a) -> AggrMax (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrSum (t, a) -> AggrSum (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrAnd (t, a) -> AggrAnd (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrOr  (t, a) -> AggrOr  (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrFirst (t, a) -> AggrFirst (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrLast (t, a) -> AggrLast (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrPercentile (t, a, b) -> AggrPercentile (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | AggrMin (t, a) ->
+      AggrMin (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrMax (t, a) ->
+      AggrMax (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrSum (t, a) ->
+      AggrSum (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrAnd (t, a) ->
+      AggrAnd (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrOr  (t, a) ->
+      AggrOr  (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrFirst (t, a) ->
+      AggrFirst (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrLast (t, a) ->
+      AggrLast (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrPercentile (t, a, b) ->
+      AggrPercentile (f t,
+                      (if recurs then map_type ~recurs f a else a),
+                      (if recurs then map_type ~recurs f b else b))
     | Age (t, a) -> Age (f t, (if recurs then map_type ~recurs f a else a))
     | Now t -> Now (f t)
-    | Sequence (t, a, b) -> Sequence (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Abs (t, a) -> Abs (f t, (if recurs then map_type ~recurs f a else a))
-    | Cast (t, a) -> Cast (f t, (if recurs then map_type ~recurs f a else a))
-    | Length (t, a) -> Length (f t, (if recurs then map_type ~recurs f a else a))
-    | Not (t, a) -> Not (f t, (if recurs then map_type ~recurs f a else a))
-    | Defined (t, a) -> Defined (f t, (if recurs then map_type ~recurs f a else a))
-    | Add (t, a, b) -> Add (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Sub (t, a, b) -> Sub (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Mul (t, a, b) -> Mul (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Div (t, a, b) -> Div (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | IDiv (t, a, b) -> IDiv (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Mod (t, a, b) -> Mod (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Pow (t, a, b) -> Pow (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Sequence (t, a, b) ->
+      Sequence (f t,
+                (if recurs then map_type ~recurs f a else a),
+                (if recurs then map_type ~recurs f b else b))
+    | Abs (t, a) ->
+      Abs (f t, (if recurs then map_type ~recurs f a else a))
+    | Cast (t, a) ->
+      Cast (f t, (if recurs then map_type ~recurs f a else a))
+    | Length (t, a) ->
+      Length (f t, (if recurs then map_type ~recurs f a else a))
+    | Not (t, a) ->
+      Not (f t, (if recurs then map_type ~recurs f a else a))
+    | Defined (t, a) ->
+      Defined (f t, (if recurs then map_type ~recurs f a else a))
+    | Add (t, a, b) ->
+      Add (f t,
+           (if recurs then map_type ~recurs f a else a),
+           (if recurs then map_type ~recurs f b else b))
+    | Sub (t, a, b) ->
+      Sub (f t,
+               (if recurs then map_type ~recurs f a else a),
+               (if recurs then map_type ~recurs f b else b))
+    | Mul (t, a, b) ->
+      Mul (f t,
+           (if recurs then map_type ~recurs f a else a),
+           (if recurs then map_type ~recurs f b else b))
+    | Div (t, a, b) ->
+      Div (f t,
+           (if recurs then map_type ~recurs f a else a),
+           (if recurs then map_type ~recurs f b else b))
+    | IDiv (t, a, b) ->
+      IDiv (f t,
+            (if recurs then map_type ~recurs f a else a),
+            (if recurs then map_type ~recurs f b else b))
+    | Mod (t, a, b) ->
+      Mod (f t,
+           (if recurs then map_type ~recurs f a else a),
+           (if recurs then map_type ~recurs f b else b))
+    | Pow (t, a, b) ->
+      Pow (f t,
+           (if recurs then map_type ~recurs f a else a),
+           (if recurs then map_type ~recurs f b else b))
     | Exp (t, a) -> Exp (f t, (if recurs then map_type ~recurs f a else a))
     | Log (t, a) -> Log (f t, (if recurs then map_type ~recurs f a else a))
     | Sqrt (t, a) -> Sqrt (f t, (if recurs then map_type ~recurs f a else a))
     | Hash (t, a) -> Hash (f t, (if recurs then map_type ~recurs f a else a))
-    | And (t, a, b) -> And (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Or (t, a, b) -> Or (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Ge (t, a, b) -> Ge (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Gt (t, a, b) -> Gt (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
-    | Eq (t, a, b) -> Eq (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | And (t, a, b) ->
+      And (f t,
+           (if recurs then map_type ~recurs f a else a),
+           (if recurs then map_type ~recurs f b else b))
+    | Or (t, a, b) ->
+      Or (f t,
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b))
+    | Ge (t, a, b) ->
+      Ge (f t,
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b))
+    | Gt (t, a, b) ->
+      Gt (f t,
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b))
+    | Eq (t, a, b) ->
+      Eq (f t,
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b))
     | Concat (t, a, b) ->
       Concat (f t,
               (if recurs then map_type ~recurs f a else a),
               (if recurs then map_type ~recurs f b else b))
-    | BeginOfRange (t, a) -> BeginOfRange (f t, (if recurs then map_type ~recurs f a else a))
-    | EndOfRange (t, a) -> EndOfRange (f t, (if recurs then map_type ~recurs f a else a))
+    | BeginOfRange (t, a) ->
+      BeginOfRange (f t, (if recurs then map_type ~recurs f a else a))
+    | EndOfRange (t, a) ->
+      EndOfRange (f t, (if recurs then map_type ~recurs f a else a))
     | Lag (t, a, b) ->
       Lag (f t,
            (if recurs then map_type ~recurs f a else a),
