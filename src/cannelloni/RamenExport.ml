@@ -95,7 +95,7 @@ let read_tuple tuple_type tx =
     | TCidrv4 -> VCidrv4 (read_cidr4 tx offs)
     | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
     | TNull   -> VNull
-    | TNum    -> assert false
+    | TNum | TAny -> assert false
   and sersize_of =
     function
     | _, VString s ->
@@ -195,7 +195,7 @@ let scalar_column_init typ len f =
   | TIpv6 -> AIpv6 (Array.init len (fun i -> match f i with VIpv6 x -> x | _ -> assert false))
   | TCidrv4 -> ACidrv4 (Array.init len (fun i -> match f i with VCidrv4 x -> x | _ -> assert false))
   | TCidrv6 -> ACidrv6 (Array.init len (fun i -> match f i with VCidrv6 x -> x | _ -> assert false))
-  | TNum -> assert false
+  | TNum | TAny -> assert false
 
 (* Note: the list of values is ordered latest to oldest *)
 let columns_of_tuples fields values =

@@ -50,7 +50,10 @@ let age_i64 = Int64.of_float % age_float
 let age_i128 = Int128.of_float % age_float
 (* FIXME: typecheck age_eth, age_ipv4 etc out of existence *)
 
-let percentile prev _pct x = x::prev
+let now () = !CodeGenLib_IO.now
+
+let percentile_init x = [x]
+let percentile_add prev x = x::prev
 let percentile_finalize pct lst =
   let arr = Array.of_list lst in
   Array.fast_sort Pervasives.compare arr ;
@@ -80,7 +83,9 @@ struct
   type 'a t = 'a array * int
 
   (* We initialize this internal state when we have the first value: *)
-  let init p n x = Array.make (n * p + 1) x, 1
+  let init p n x =
+    let p = Uint16.to_int p and n = Uint16.to_int n in
+    Array.make (n * p + 1) x, 1
 
   (* Then adding a value: *)
   let add (prevs, count) x =
@@ -122,9 +127,12 @@ struct
 
   let lag (prevs, count) = prevs.(count mod Array.length prevs)
 
-  let avg p n t = (fold p n t 0. (+.)) /. float_of_int n
+  let avg p n t =
+    let p = Uint16.to_int p and n = Uint16.to_int n in
+    (fold p n t 0. (+.)) /. float_of_int n
 
   let linreg p n t =
+    let p = Uint16.to_int p and n = Uint16.to_int n in
     let b1n, b1d, last =
       let x_avg = float_of_int (n - 1) /. 2. in
       let sq x = x *. x in
@@ -138,30 +146,33 @@ struct
       if n > 1 then b1n /. b1d else 0. in
     last +. b1
 
-    (* For multi variable linear regression we store in the array a pair with
-     * the predicted value and an array of all predictors value. *)
-    let multi_linreg p n t =
-      let open Owl in
-      (* We first want to know how many observations and predictors we have: *)
-      let nb_preds, nb_obs =
-        fold p n t (-1, 0) (fun (nbp, nbo) (_y, xs) ->
-          let nbp' = Array.length xs in
-          assert (nbp = -1 || nbp = nbp') ;
-          nbp', nbo+1) in
-      (* Build the x and y matrices *)
-      let xm = Mat.zeros nb_obs nb_preds
-      and ym = Mat.zeros nb_obs 1 in
-      iteri p n t (fun i (y, xs) ->
-        ym.{ i, 0 } <- y ;
-        for j = 0 to nb_preds-1 do
-          xm.{ i, j } <- xs.(j)
-        done) ;
-      (* Now ask for the "best" parameters: *)
-      let p = Regression.linear xm ym in
-      (* And use that to predict the new y given the new xs *)
-      let _cury, cur_preds = current t in
-      Array.fold_lefti (fun y i x ->
-        y +. p.{i, 0} *. x) 0. cur_preds
+  (* For multi variable linear regression we store in the array a pair with
+   * the predicted value and an array of all predictors value. *)
+  let init_multi_linreg p n x preds = init p n (x, preds)
+  let add_multi_linreg t x preds = add t (x, preds)
+  let multi_linreg p n t =
+    let p = Uint16.to_int p and n = Uint16.to_int n in
+    let open Owl in
+    (* We first want to know how many observations and predictors we have: *)
+    let nb_preds, nb_obs =
+      fold p n t (-1, 0) (fun (nbp, nbo) (_y, xs) ->
+        let nbp' = Array.length xs in
+        assert (nbp = -1 || nbp = nbp') ;
+        nbp', nbo+1) in
+    (* Build the x and y matrices *)
+    let xm = Mat.zeros nb_obs nb_preds
+    and ym = Mat.zeros nb_obs 1 in
+    iteri p n t (fun i (y, xs) ->
+      ym.{ i, 0 } <- y ;
+      for j = 0 to nb_preds-1 do
+        xm.{ i, j } <- xs.(j)
+      done) ;
+    (* Now ask for the "best" parameters: *)
+    let p = Regression.linear xm ym in
+    (* And use that to predict the new y given the new xs *)
+    let _cury, cur_preds = current t in
+    Array.fold_lefti (fun y i x ->
+      y +. p.{i, 0} *. x) 0. cur_preds
 end
 
 let getenv ?def n =
@@ -172,8 +183,6 @@ let getenv ?def n =
     | None ->
       Printf.sprintf "Cannot find envvar %s" n |>
       failwith
-
-let identity x = x
 
 let begin_of_range_cidr4 (n, l) = Ipv4.Cidr.and_to_len l n
 let end_of_range_cidr4 (n, l) = Ipv4.Cidr.or_to_len l n

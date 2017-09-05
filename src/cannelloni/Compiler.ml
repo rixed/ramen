@@ -290,6 +290,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       ) ;
       false
     )
+  | StateField _ -> assert false
   | Param (_op_typ, _pname) ->
     (* TODO: one day we will know the type or value of params *)
     false

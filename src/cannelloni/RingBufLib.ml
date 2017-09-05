@@ -45,7 +45,7 @@ let rec sersize_of_fixsz_typ =
   | TCidrv4 -> sersize_of_fixsz_typ TIpv4 + sersize_of_fixsz_typ TU8
   | TCidrv6 -> sersize_of_fixsz_typ TIpv6 + sersize_of_fixsz_typ TU16
   | TString -> assert false
-  | TNum -> assert false
+  | TNum | TAny -> assert false
 
 (* Compute input ringbuf and output ringbufs given the node fq name. *)
 

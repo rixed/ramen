@@ -107,53 +107,8 @@ let tuple_need_state = function
 
   let typ = Lang.Expr.make_typ "replaced for tests"
 
-  let rec replace_typ =
-    let open Lang.Expr in
-    function
-    | Const (_, a) -> Const (typ, a)
-    | Field (_, a, b) -> Field (typ, a, b)
-    | Param (_, a) -> Param (typ, a)
-    | AggrMin (_, a) -> AggrMin (typ, replace_typ a)
-    | AggrMax (_, a) -> AggrMax (typ, replace_typ a)
-    | AggrSum (_, a) -> AggrSum (typ, replace_typ a)
-    | AggrAnd (_, a) -> AggrAnd (typ, replace_typ a)
-    | AggrOr  (_, a) -> AggrOr  (typ, replace_typ a)
-    | AggrFirst (_, a) -> AggrFirst (typ, replace_typ a)
-    | AggrLast (_, a) -> AggrLast (typ, replace_typ a)
-    | AggrPercentile (_, a, b) -> AggrPercentile (typ, replace_typ a, replace_typ b)
-    | Age (_, a) -> Age (typ, replace_typ a)
-    | Now _ -> Now typ
-    | Sequence (_, a, b) -> Sequence (typ, replace_typ a, replace_typ b)
-    | Abs (_, a) -> Abs (typ, replace_typ a)
-    | Cast (_, a) -> Cast (typ, replace_typ a)
-    | Length (_, a) -> Length (typ, replace_typ a)
-    | Not (_, a) -> Not (typ, replace_typ a)
-    | Defined (_, a) -> Defined (typ, replace_typ a)
-    | Add (_, a, b) -> Add (typ, replace_typ a, replace_typ b)
-    | Sub (_, a, b) -> Sub (typ, replace_typ a, replace_typ b)
-    | Mul (_, a, b) -> Mul (typ, replace_typ a, replace_typ b)
-    | Div (_, a, b) -> Div (typ, replace_typ a, replace_typ b)
-    | IDiv (_, a, b) -> IDiv (typ, replace_typ a, replace_typ b)
-    | Mod (_, a, b) -> Mod (typ, replace_typ a, replace_typ b)
-    | Pow (_, a, b) -> Pow (typ, replace_typ a, replace_typ b)
-    | Exp (_, a) -> Exp (typ, replace_typ a)
-    | Log (_, a) -> Log (typ, replace_typ a)
-    | Sqrt (_, a) -> Sqrt (typ, replace_typ a)
-    | And (_, a, b) -> And (typ, replace_typ a, replace_typ b)
-    | Or (_, a, b) -> Or (typ, replace_typ a, replace_typ b)
-    | Ge (_, a, b) -> Ge (typ, replace_typ a, replace_typ b)
-    | Gt (_, a, b) -> Gt (typ, replace_typ a, replace_typ b)
-    | Eq (_, a, b) -> Eq (typ, replace_typ a, replace_typ b)
-    | Concat (_, a, b) -> Concat (typ, replace_typ a, replace_typ b)
-    | BeginOfRange (_, a) -> BeginOfRange (typ, replace_typ a)
-    | EndOfRange (_, a) -> EndOfRange (typ, replace_typ a)
-    | Lag (_, a, b) -> Lag (typ, replace_typ a, replace_typ b)
-    | MovingAvg (_, a, b, c) -> MovingAvg (typ, replace_typ a, replace_typ b, replace_typ c)
-    | LinReg (_, a, b, c) -> LinReg (typ, replace_typ a, replace_typ b, replace_typ c)
-    | MultiLinReg (_, a, b, c, d) ->
-      MultiLinReg (typ, replace_typ a, replace_typ b, replace_typ c, List.map replace_typ d)
-    | ExpSmooth (_, a, b) -> ExpSmooth (typ, replace_typ a, replace_typ b)
-    | Split (_, a, b) -> Split (typ, replace_typ a, replace_typ b)
+  let rec replace_typ e =
+    Lang.Expr.map_type (fun _ -> typ) e
 
   let replace_typ_in_expr = function
     | Ok (expr, rest) -> Ok (replace_typ expr, rest)
@@ -193,6 +148,7 @@ struct
     | TString -> "STRING"
     | TBool   -> "BOOL"
     | TNum    -> "ANY_NUM" (* This one not for consumption *)
+    | TAny    -> "ANY" (* same *)
     | TU8     -> "U8"
     | TU16    -> "U16"
     | TU32    -> "U32"
@@ -237,6 +193,7 @@ struct
       | TNull   -> KNull, 0
       | TCidrv4 -> KCidrv4, 0
       | TCidrv6 -> KCidrv6, 0
+      | TAny    -> assert false
     in
     let k1, r1 = rank_of_typ typ1
     and k2, r2 = rank_of_typ typ2 in
@@ -459,6 +416,7 @@ struct
      * functions *)
     | Const of typ * scalar_value
     | Field of typ * tuple_prefix ref * string (* field name *)
+    | StateField of typ * string (* Name of the state field - met only late in the game *)
     | Param of typ * string
     (* On functions, internal states, and aggregates:
      *
@@ -591,6 +549,7 @@ struct
     function
     | Const (t, c) -> Scalar.print fmt c ; add_types t
     | Field (t, tuple, field) -> Printf.fprintf fmt "%s.%s" (string_of_prefix !tuple) field ; add_types t
+    | StateField (t, s) -> String.print fmt s ; add_types t
     | Param (t, p) -> Printf.fprintf fmt "$%s" p ; add_types t
     | AggrMin (t, e) -> Printf.fprintf fmt "min (%a)" (print with_types) e ; add_types t
     | AggrMax (t, e) -> Printf.fprintf fmt "max (%a)" (print with_types) e ; add_types t
@@ -657,6 +616,7 @@ struct
     | MovingAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
     | Exp (t, _) | Log (t, _) | Sqrt (t, _) | Split (t, _, _)
     | MultiLinReg (t, _, _, _, _) ->
+    | StateField (t, _) ->
       t
 
   let is_nullable e =
@@ -695,6 +655,7 @@ struct
       let i''''= List.fold_left (fun i e ->
         fold_by_depth f i e) i''' e4s in
       f i'''' expr
+    | StateField _ -> i
 
   let iter f = fold_by_depth (fun () e -> f e) ()
 
@@ -708,13 +669,89 @@ struct
       | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _
       | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _ | Length _
       | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _
-      | Concat _ ->
+      | Concat _ | StateField _ ->
         ()) () e |> ignore
 
   (* Any expression that uses a generator is a generator: *)
   let is_generator =
     fold_by_depth (fun is e ->
       is || match e with Split _ -> true | _ -> false) false
+
+  let rec map_type ?(recurs=true) f = function
+    | Const (t, a) -> Const (f t, a)
+    | Field (t, a, b) -> Field (f t, a, b)
+    | StateField _ as e -> e
+    | Param (t, a) -> Param (f t, a)
+    | AggrMin (t, a) -> AggrMin (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrMax (t, a) -> AggrMax (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrSum (t, a) -> AggrSum (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrAnd (t, a) -> AggrAnd (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrOr  (t, a) -> AggrOr  (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrFirst (t, a) -> AggrFirst (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrLast (t, a) -> AggrLast (f t, (if recurs then map_type ~recurs f a else a))
+    | AggrPercentile (t, a, b) -> AggrPercentile (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Age (t, a) -> Age (f t, (if recurs then map_type ~recurs f a else a))
+    | Now t -> Now (f t)
+    | Sequence (t, a, b) -> Sequence (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Abs (t, a) -> Abs (f t, (if recurs then map_type ~recurs f a else a))
+    | Cast (t, a) -> Cast (f t, (if recurs then map_type ~recurs f a else a))
+    | Length (t, a) -> Length (f t, (if recurs then map_type ~recurs f a else a))
+    | Not (t, a) -> Not (f t, (if recurs then map_type ~recurs f a else a))
+    | Defined (t, a) -> Defined (f t, (if recurs then map_type ~recurs f a else a))
+    | Add (t, a, b) -> Add (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Sub (t, a, b) -> Sub (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Mul (t, a, b) -> Mul (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Div (t, a, b) -> Div (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | IDiv (t, a, b) -> IDiv (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Mod (t, a, b) -> Mod (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Pow (t, a, b) -> Pow (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Exp (t, a) -> Exp (f t, (if recurs then map_type ~recurs f a else a))
+    | Log (t, a) -> Log (f t, (if recurs then map_type ~recurs f a else a))
+    | Sqrt (t, a) -> Sqrt (f t, (if recurs then map_type ~recurs f a else a))
+    | And (t, a, b) -> And (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Or (t, a, b) -> Or (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Ge (t, a, b) -> Ge (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Gt (t, a, b) -> Gt (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Eq (t, a, b) -> Eq (f t, (if recurs then map_type ~recurs f a else a), (if recurs then map_type ~recurs f b else b))
+    | Concat (t, a, b) ->
+      Concat (f t,
+              (if recurs then map_type ~recurs f a else a),
+              (if recurs then map_type ~recurs f b else b))
+    | BeginOfRange (t, a) -> BeginOfRange (f t, (if recurs then map_type ~recurs f a else a))
+    | EndOfRange (t, a) -> EndOfRange (f t, (if recurs then map_type ~recurs f a else a))
+    | Lag (t, a, b) ->
+      Lag (f t,
+           (if recurs then map_type ~recurs f a else a),
+           (if recurs then map_type ~recurs f b else b))
+    | MovingAvg (t, a, b, c) ->
+      MovingAvg (f t,
+                 (if recurs then map_type ~recurs f a else a),
+                 (if recurs then map_type ~recurs f b else b),
+                 (if recurs then map_type ~recurs f c else c))
+    | LinReg (t, a, b, c) ->
+      LinReg (f t,
+              (if recurs then map_type ~recurs f a else a),
+              (if recurs then map_type ~recurs f b else b),
+              (if recurs then map_type ~recurs f c else c))
+    | MultiLinReg (t, a, b, c, d) ->
+      MultiLinReg (f t,
+                   (if recurs then map_type ~recurs f a else a),
+                   (if recurs then map_type ~recurs f b else b),
+                   (if recurs then map_type ~recurs f c else c),
+                   (if recurs then List.map (map_type ~recurs f) d else d))
+    | Remember (t, tim, dur, e) ->
+      Remember (f t,
+                (if recurs then map_type ~recurs f tim else tim),
+                (if recurs then map_type ~recurs f dur else dur),
+                (if recurs then map_type ~recurs f e else e))
+    | ExpSmooth (t, a, b) ->
+      ExpSmooth (f t,
+                 (if recurs then map_type ~recurs f a else a),
+                 (if recurs then map_type ~recurs f b else b))
+    | Split (t, a, b) ->
+      Split (f t,
+             (if recurs then map_type ~recurs f a else a),
+             (if recurs then map_type ~recurs f b else b))
 
   module Parser =
   struct

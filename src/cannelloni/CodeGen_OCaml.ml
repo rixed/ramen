@@ -87,7 +87,7 @@ let id_of_typ typ =
   | TIpv6   -> "ip6"
   | TCidrv4 -> "cidr4"
   | TCidrv6 -> "cidr6"
-  | TNum    -> assert false
+  | TNum | TAny -> assert false
 
 let emit_value_of_string typ oc var =
   Printf.fprintf oc "CodeGenLib.%s_of_string %s" (id_of_typ typ) var
@@ -318,95 +318,22 @@ let emit_scalar oc =
                  Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
   | VNull     -> Printf.fprintf oc "()"
 
-let funcname_of_expr =
-  let open Expr in
-  function
-  | AggrMin _ -> "min"
-  | AggrMax _ -> "max"
-  | AggrPercentile _ -> "percentile"
-  | AggrSum _ | Add _ -> "add"
-  | AggrAnd _ | And _ -> "(&&)"
-  | AggrOr _ | Or _ -> "(||)"
-  | AggrFirst _ -> "(fun x _ -> x)"
-  | AggrLast _ -> "(fun _ x -> x)"
-  | Age _ -> "age"
-  | Now _ -> "now"
-  | Abs _ -> "abs"
-  | Sequence _ -> "sequence"
-  | Length _ -> "length"
-  | Cast _ -> "identity"
-  | Not _ -> "not"
-  | Defined _ -> "defined"
-  | Sub _ -> "sub"
-  | Mul _ -> "mul"
-  | Div _ | IDiv _ -> "div"
-  | Mod _ -> "rem"
-  | Pow _ -> "( ** )"
-  | Ge _ -> "(>=)"
-  | Gt _ -> "(>)"
-  | Eq _ -> "(=)"
-  | BeginOfRange _ -> "begin_of_range"
-  | EndOfRange _ -> "end_of_range"
-  | Lag _ -> "Seasonal.add"
-  | MovingAvg _ | LinReg _ | MultiLinReg _ -> "Seasonal.add"
-  | ExpSmooth _ -> "smooth"
-  | Exp _ -> "exp"
-  | Log _ -> "log"
-  | Sqrt _ -> "sqrt"
-  | Split _ -> "split"
-  | Concat _ -> "(^)"
-  | Const _ | Param _ | Field _ ->
-    assert false
-
 (* Given a function name and an output type, return the actual function
- * returning that type, and the type input parameters must be converted into,
- * if any. For function with several parameters this input type target is
- * either for all of them or some of them, depending on the function. This
- * is up to the caller. *)
-let implementation_of expr =
-  let open Expr in
-  let name = funcname_of_expr expr in
-  let out_typ = typ_of expr in
-  match expr, out_typ.scalar_typ with
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Div _|Abs _|Pow _|Exp _|Log _|Sqrt _), Some TFloat ->
-    "BatFloat."^ name, Some TFloat
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU8 -> "Uint8."^ name, Some TU8
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU16 -> "Uint16."^ name, Some TU16
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU32 -> "Uint32."^ name, Some TU32
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU64 -> "Uint64."^ name, Some TU64
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TU128 -> "Uint128."^ name, Some TU128
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI8 -> "Int8."^ name, Some TI8
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI16 -> "Int16."^ name, Some TI16
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI32 -> "Int32."^ name, Some TI32
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI64 -> "Int64."^ name, Some TI64
-  | (AggrSum _|Add _|Sub _|Mul _|IDiv _|Mod _|Abs _), Some TI128 -> "Int128."^ name, Some TI128
-  | Concat _, Some TString -> name, Some TString
-  | Length _, Some TU16 (* The only possible output type *) -> "String."^ name, Some TString
-  | (Not _|And _|Or _|AggrAnd _|AggrOr _), Some TBool -> name, Some TBool
-  | (Ge _| Gt _| Eq _), Some TBool -> name, None (* No conversion necessary *)
-  | (AggrMax _|AggrMin _|AggrFirst _|AggrLast _), _ -> name, None (* No conversion necessary *)
-  | Age _, Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ)
-  | BeginOfRange _, Some (TCidrv4 | TCidrv6 as to_typ) ->
-    let in_type_name =
-      String.lowercase (IO.to_string Scalar.print_typ to_typ) in
-    "CodeGenLib."^ name ^"_"^ in_type_name, None
-  | AggrPercentile _, Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
-    "CodeGenLib."^ name, None
-  (* TODO: Now() for Uint62? *)
-  | Now _, Some TFloat -> "CodeGenLib."^ name, None
-  | Lag _, _ -> "CodeGenLib."^ name, None
-  (* We force the inputs to be float since we are going to return a float anyway. *)
-  | (MovingAvg _|LinReg _|MultiLinReg _|ExpSmooth _), Some TFloat -> "CodeGenLib."^ name, Some TFloat
-  | Cast _, t -> "CodeGenLib."^ name, t
-  (* Sequence build a sequence of as-large-as-convenient integers (signed or
-   * not) *)
-  | Sequence _, Some TI128 -> "CodeGenLib."^ name, Some TI128
-  | Split _, Some TString -> "CodeGenLib."^ name, Some TString
-  | _, Some to_typ ->
-    failwith ("Cannot find implementation of "^ name ^" for type "^
-              IO.to_string Scalar.print_typ to_typ)
-  | _, None ->
-    assert false
+ * returning that type, and the types each input parameters must be converted
+ * into, if any. None means we need no conversion whatsoever (useful for
+ * function internal state or 'a values) while Some TAny means there must be a
+ * type but it has to be found out according to the context.
+ *
+ * Returns a list of typ option, as long as the type of input arguments *)
+(* FIXME: this could be extracted from Compiler.check_expr *)
+
+type context = InitState | UpdateState | Finalize | Generator
+
+let string_of_context = function
+  | InitState -> "InitState"
+  | UpdateState -> "UpdateState"
+  | Finalize -> "Finalize"
+  | Generator -> "Generator"
 
 let name_of_state =
   let open Expr in
@@ -421,7 +348,8 @@ let name_of_state =
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
   | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ | Concat _
-  | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _ ->
+  | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _
+  | StateField _ ->
     assert false
 
 let otype_of_type = function
@@ -434,24 +362,7 @@ let otype_of_type = function
   | TIpv6 -> "uint128"
   | TCidrv4 -> "(uint32 * int)"
   | TCidrv6 -> "(uint128 * int)"
-  | TNum -> assert false
-
-let otype_of_state e =
-  let open Expr in
-  let typ = typ_of e in
-  let t = Option.get typ.scalar_typ |>
-          otype_of_type in
-  let t =
-    match e with
-    | AggrPercentile _ -> t ^" list"
-    (* previous tuples and count ; Note: we could get rid of this count if we
-     * provided some context to those functions, such as the event count in
-     * current window, for instance (ie. pass the full aggr record not just
-     * the fields) *)
-    | Lag _ | MovingAvg _ | LinReg _ | MultiLinReg _ ->
-      t ^" CodeGenLib.Seasonal.t"
-    | _ -> t in
-  if Option.get typ.nullable then t ^" option" else t
+  | TNum | TAny -> assert false
 
 let omod_of_type = function
   | TFloat -> "BatFloat"
@@ -463,9 +374,9 @@ let omod_of_type = function
     String.capitalize (otype_of_type t)
   | TCidrv4 | TCidrv6 -> assert false (* Must not be used since no conversion from/to those *)
   | TNull -> assert false (* Never used on NULLs *)
-  | TNum -> assert false
+  | TNum | TAny -> assert false
 
-(* TODO: Why don't we have explicit casts in the AST so that wqe could stop caring
+(* TODO: Why don't we have explicit casts in the AST so that we could stop caring
  * about those pesky conversions once and for all? *)
 let conv_from_to from_typ ~nullable to_typ p fmt e =
   match from_typ, to_typ with
@@ -500,13 +411,13 @@ let freevar_name t = "fv_"^ string_of_int t.Expr.uniq_num ^"_"
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
-let rec conv_to ?finalize ?state to_typ fmt e =
+let rec conv_to ~state ~context to_typ fmt e =
   let open Expr in
   let t = typ_of e in
   let nullable = Option.get t.nullable in
   match t.scalar_typ, to_typ with
-  | Some a, Some b -> conv_from_to a ~nullable b (emit_expr ?finalize ?state) fmt e
-  | _, None -> (emit_expr ?finalize ?state) fmt e (* No conversion required *)
+  | Some a, Some b -> conv_from_to a ~nullable b (emit_expr ~context ~state) fmt e
+  | _, None -> (emit_expr ~context ~state) fmt e (* No conversion required *)
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string Scalar.print_typ b))
@@ -514,132 +425,288 @@ let rec conv_to ?finalize ?state to_typ fmt e =
 (* state is just the name of the state record to use, or None if we must
  * assume the field name is actually already present in the environment
  * (as is the case in aggr_init) *)
-and emit_expr ?(finalize=true) ?(state=true) oc =
-  let record_of_state = if state then "aggr_." else "" in
+(* FIXME: return a list of type * arg instead of two lists *)
+and emit_expr ~state ~context oc expr =
   let open Expr in
-  function
-  | Const (_, c) ->
+  let out_typ = typ_of expr in
+  let my_state () =
+    StateField (out_typ,
+               (if state then "aggr_." else "") ^ name_of_state expr)
+  in
+  match context, expr, out_typ.scalar_typ with
+  (* Non-functions *)
+  | Finalize, StateField (_, s), _ ->
+    Printf.fprintf oc "%s" s
+  | Finalize, Const (_, c), _ ->
     emit_scalar oc c
-  | Field (_, tuple, field) ->
-    let tuple = !tuple in
-    String.print oc (id_of_field_name ~tuple field)
-  | Param _ ->
+  | Finalize, Field (_, tuple, field), _ ->
+    String.print oc (id_of_field_name ~tuple:!tuple field)
+  | Finalize, Param _, _ ->
     failwith "TODO: code gen for params"
-  | AggrPercentile (_, pct, _) as expr when finalize ->
-    Printf.fprintf oc "(CodeGenLib.percentile_finalize (%a) %s%s)"
-      (conv_to ~finalize ~state (Some TFloat)) pct
-      record_of_state
-      (name_of_state expr)
-  | Lag _ as expr when finalize ->
-    Printf.fprintf oc "(CodeGenLib.Seasonal.lag %s%s)"
-      record_of_state (name_of_state expr)
-  | MovingAvg (_, p, n, _) as expr when finalize ->
-    Printf.fprintf oc
-      "(CodeGenLib.Seasonal.avg (Uint16.to_int %a) (Uint16.to_int %a) %s%s)"
-      (conv_to ~finalize ~state (Some TU16)) p
-      (conv_to ~finalize ~state (Some TU16)) n
-      record_of_state (name_of_state expr)
-  | LinReg (_, p, n, _) as expr when finalize ->
-    Printf.fprintf oc
-      "(CodeGenLib.Seasonal.linreg (Uint16.to_int %a) (Uint16.to_int %a) %s%s)"
-      (conv_to ~finalize ~state (Some TU16)) p
-      (conv_to ~finalize ~state (Some TU16)) n
-      record_of_state (name_of_state expr)
-  | MultiLinReg (_, p, n, _, _) as expr when finalize ->
-    Printf.fprintf oc
-      "(CodeGenLib.Seasonal.multi_linreg (Uint16.to_int %a) (Uint16.to_int %a) %s%s)"
-      (conv_to ~finalize ~state (Some TU16)) p
-      (conv_to ~finalize ~state (Some TU16)) n
-      record_of_state (name_of_state expr)
-  | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-  | AggrLast _ | ExpSmooth _ | AggrPercentile _ | Lag _ | MovingAvg _
-  | LinReg _ | MultiLinReg _ as expr ->
-     Printf.fprintf oc "%s%s" record_of_state (name_of_state expr)
-  | Now _ as expr -> emit_function0 expr oc
-  | Age (_, e) | Not (_, e) | Cast (_, e) | Abs (_, e)
-  | Length (_, e) | BeginOfRange (_, e) | EndOfRange (_, e)
-  | Exp (_, e) | Log (_, e) | Sqrt (_, e) as expr ->
-    emit_function1 ~finalize ~state expr oc e
-  | Defined (_, e) ->
-    Printf.fprintf oc "(%a <> None)" (emit_expr ~finalize ~state) e
-  | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Concat (_, e1, e2)
-  | Div (_, e1, e2) | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2)
-  | Or (_, e1, e2) | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2)
-  | Sequence (_, e1, e2) | Mod (_, e1, e2) as expr ->
-    emit_function2 ~finalize ~state expr oc e1 e2
-  (* Generators: emit them as a free variable *)
-  | Split (t, _, _) ->
+
+  (* Stateless arithmetic functions which actual funcname depends on operand types: *)
+  | Finalize, Add(_,e1,e2),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ~state (omod_of_type t ^".add") [Some t; Some t] [e1; e2]
+  | Finalize, Sub (_,e1,e2),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ~state (omod_of_type t ^".sub") [Some t; Some t] [e1; e2]
+  | Finalize, Mul(_,e1,e2),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ~state (omod_of_type t ^".mul") [Some t; Some t] [e1; e2]
+  | Finalize, IDiv(_,e1,e2),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ~state (omod_of_type t ^".div") [Some t; Some t] [e1; e2]
+  | Finalize, Div(_,e1,e2),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ~state (omod_of_type t ^".div") [Some t; Some t] [e1; e2]
+  | Finalize, Pow(_,e1,e2),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ~state (omod_of_type t ^".( ** )") [Some t; Some t] [e1; e2]
+
+  | Finalize, Abs(_,e),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ~state (omod_of_type t ^".abs") [Some t] [e]
+  | Finalize, Exp(_,e), Some TFloat ->
+    emit_functionN oc ~state "exp" [Some TFloat] [e]
+  | Finalize, Log(_,e), Some TFloat ->
+    emit_functionN oc ~state "log" [Some TFloat] [e]
+  | Finalize, Sqrt(_,e), Some TFloat ->
+    emit_functionN oc ~state "sqrt" [Some TFloat] [e]
+
+  (* Other stateless functions *)
+  | Finalize, Ge(_,e1,e2), Some TBool ->
+    emit_functionN oc ~state "(>=)" [Some TAny; Some TAny] [e1; e2]
+  | Finalize, Gt(_,e1,e2), Some TBool ->
+    emit_functionN oc ~state "(>)" [Some TAny; Some TAny] [e1; e2]
+  | Finalize, Eq(_,e1,e2), Some TBool ->
+    emit_functionN oc ~state "(=)" [Some TAny; Some TAny] [e1; e2]
+  | Finalize, Concat(_,e1,e2), Some TString ->
+    emit_functionN oc ~state "(^)" [Some TString; Some TString] [e1; e2]
+  | Finalize, Length(_,e), Some TU16 (* The only possible output type *) ->
+    emit_functionN oc ~state "String.length" [Some TString] [e]
+  | Finalize, And(_,e1,e2), Some TBool ->
+    emit_functionN oc ~state "(&&)" [Some TBool; Some TBool] [e1; e2]
+  | Finalize, Or(_,e1,e2), Some TBool ->
+    emit_functionN oc ~state "(||)" [Some TBool; Some TBool] [e1; e2]
+  | Finalize, Not(_,e), Some TBool ->
+    emit_functionN oc ~state "not" [Some TBool] [e]
+  | Finalize,
+    Age(_,e), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ)
+  | Finalize,
+    BeginOfRange(_,e), Some (TCidrv4 | TCidrv6 as to_typ) ->
+    let in_type_name =
+      String.lowercase (IO.to_string Scalar.print_typ to_typ) in
+    let name = "CodeGenLib.age_"^ in_type_name in
+    emit_functionN oc ~state name [Some to_typ] [e]
+  (* TODO: Now() for Uint62? *)
+  | Finalize, Now _, Some TFloat ->
+    emit_functionN oc ~state "CodeGenLib.now" [] []
+  | Finalize, Cast(_,e), t ->
+    emit_functionN oc ~state "BatPervasives.identity" [t] [e]
+  (* Sequence build a sequence of as-large-as-convenient integers (signed or
+   * not) *)
+  | Finalize, Sequence(_,e1,e2), Some TI128 ->
+    emit_functionN oc ~state "CodeGenLib.sequence" [Some TI128; Some TI128] [e1; e2]
+
+  (* Stateful functions *)
+  | InitState, (AggrAnd(_,e)|AggrOr(_,e)), Some TBool ->
+    emit_functionN oc ~state "BatPervasives.identity" [Some TBool] [e]
+  | Finalize, (AggrAnd _|AggrOr _), Some TBool ->
+    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state ()]
+  | UpdateState, AggrAnd(_,e), _ ->
+    emit_functionN oc ~state "(&&)" [None; Some TBool] [my_state (); e]
+  | UpdateState, AggrOr(_,e), _ ->
+    emit_functionN oc ~state "(||)" [None; Some TBool] [my_state (); e]
+
+  | InitState, AggrSum(_,e),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ~state "BatPervasives.identity" [Some t] [e]
+  | UpdateState, AggrSum(_,e),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ~state (omod_of_type t ^".add") [None; Some t] [my_state (); e]
+  | Finalize, AggrSum(_,_e), _ ->
+    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state ()]
+
+  | InitState, (AggrMax(_,e)|AggrMin(_,e)|AggrFirst(_,e)|AggrLast(_,e)), _ ->
+    emit_functionN oc ~state "BatPervasives.identity" [None] [e] (* No conversion necessary *)
+  | Finalize, (AggrMax _|AggrMin _|AggrFirst _|AggrLast _), _ ->
+    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state ()]
+  | UpdateState, AggrMax(_,e), _ ->
+    emit_functionN oc ~state "max" [None; None] [my_state (); e]
+  | UpdateState, AggrMin(_,e), _ ->
+    emit_functionN oc ~state "min" [None; None] [my_state (); e]
+  | UpdateState, AggrFirst(_,e), _ ->
+    emit_functionN oc ~state "(fun x _ -> x)" [None; None] [my_state (); e]
+  | UpdateState, AggrLast(_,e), _ ->
+    emit_functionN oc ~state "(fun _ x -> x)" [None; None] [my_state (); e]
+
+  (* Note: for InitState it is probably useless to check out_type.
+   * For Finalize it is useful only to extract the types to be checked by Compiler. *)
+  | InitState, AggrPercentile(_,_p,e), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+    emit_functionN oc ~state "CodeGenLib.percentile_init" [None] [e]
+  | UpdateState, AggrPercentile(_,_p,e), _ ->
+    emit_functionN oc ~state "CodeGenLib.percentile_add" [None; None] [my_state (); e]
+  | Finalize, AggrPercentile(_,p,_e), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+    emit_functionN oc ~state "CodeGenLib.percentile_finalize" [Some TFloat; None] [p; my_state ()]
+
+  | InitState, Lag(_,k,e), _ ->
+    let n = expr_one in
+    emit_functionN oc ~state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; None] [k; n; e]
+  | UpdateState, Lag(_,_k,e), _ ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.add" [None; None] [my_state (); e]
+  | Finalize, Lag _, _ ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.lag" [None] [my_state ()]
+
+  (* We force the inputs to be float since we are going to return a float anyway. *)
+  | InitState, (MovingAvg(_,p,n,e)|LinReg(_,p,n,e)), Some TFloat ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; Some TFloat] [p; n; e]
+  | UpdateState, (MovingAvg(_,_p,_n,e)|LinReg(_,_p,_n,e)), _ ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.add" [None; Some TFloat] [my_state (); e]
+  | Finalize, MovingAvg(_,p,n,_), Some TFloat ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.avg" [Some TU16; Some TU16; None] [p; n; my_state ()]
+  | Finalize, LinReg(_,p,n,_), Some TFloat ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.linreg" [Some TU16; Some TU16; None] [p; n; my_state ()]
+  | Finalize, MultiLinReg(_,p,n,_,_), Some TFloat ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.multi_linreg" [Some TU16; Some TU16; None] [p; n; my_state ()]
+
+  | InitState, MultiLinReg(_,p,n,e,es), Some TFloat ->
+    emit_functionNv oc ~state "CodeGenLib.Seasonal.init_multi_linreg" [Some TU16; Some TU16; Some TFloat] [p; n; e] (Some TFloat) es
+  | UpdateState, MultiLinReg(_,_p,_n,e,es), _ ->
+    emit_functionNv oc ~state "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state (); e] (Some TFloat) es
+
+  | InitState, ExpSmooth(_,_a,e), Some TFloat ->
+    emit_functionN oc ~state "BatPervasives.identity" [Some TFloat] [e]
+  | UpdateState, ExpSmooth(_,a,e), _ ->
+    emit_functionN oc ~state "CodeGenLib.smooth" [Some TFloat; Some TFloat] [a; e]
+  | Finalize, ExpSmooth _, Some TFloat ->
+    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state ()]
+
+  (* Generator: the function appears only during tuple generation, where
+   * it sends the output to its continuation as (freevar_name t).
+   * In normal expressions we merely refer to that free variable. *)
+  | Generator, Split(_,e1,e2), Some TString ->
+    emit_functionN oc ~state "CodeGenLib.split" [Some TString; Some TString] [e1; e2]
+  | Finalize, Split(t,_e1,_e2), Some TString -> (* Output it as a free variable *)
     String.print oc (freevar_name t)
 
-and emit_function0 expr oc =
-  let impl, _ = implementation_of expr in
-  Printf.fprintf oc "(%s ())" impl
+  | _, _, Some _ ->
+    let m =
+      Printf.sprintf "Cannot find implementation of %s for context %s"
+        (IO.to_string (print true) expr)
+        (string_of_context context) in
+    failwith m
+  | _, _, None -> (* untyped?! *)
+    assert false
 
-and emit_function1 ?finalize ?state expr oc e =
-  let impl, arg_typ = implementation_of expr in
-  Printf.fprintf oc "(%s%s %a)"
-    (if Expr.is_nullable e then "BatOption.map " else "")
-    impl
-    (conv_to ?finalize ?state arg_typ) e
-
-and promote_to_same_types es =
+and add_missing_types arg_typs es =
   let open Expr in
-  let rec loop prev = function
-  | [] -> prev
-  | e::es ->
-    let t = (typ_of e).scalar_typ in
-    let prev =
-      match prev, t with
-      | None, t -> t
-      | Some _, None -> prev
-      | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2)) in
-    loop prev es
+  (* The list of args is composed of:
+   * - at first, individual types tailored for each argument
+   * - then a unique type large enough for all remaining arguments,
+   *   repeated for all the rest of the arguments.
+   * This is useful for variadic functions, where the first args may have
+   * different arguments and the rest are combined together and must be made
+   * compatible. Here [ht] is the first part of this list and [rt] is the
+   * combined type for the rest of arguments, and [n] how many of these we must
+   * have to form the complete list of types. *)
+  let merge_types t1 t2 =
+    match t1, t2 with
+    | None, t | t, None -> t
+    | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2)) in
+  let rec loop ht rt any_type n = function
+  | [], _ -> (* No more arguments *)
+    (* Replace all None types by a common type large enough to accommodate
+     * them all: any_type. *)
+    let ht = List.map (fun t ->
+      if t <> Some TAny then t else any_type) ht in
+    List.rev_append ht (List.init n (fun _ -> rt))
+  | e::es, t::ts ->
+    let any_type =
+      if t <> Some TAny then any_type else
+      merge_types any_type (typ_of e).scalar_typ in
+    loop (t::ht) t any_type n (es, ts)
+  | e::es, [] -> (* Missing some types: update rt *)
+    let te = (typ_of e).scalar_typ in
+    if rt = Some TAny then
+      loop ht rt (merge_types any_type te) (n+1) (es, [])
+    else
+      loop ht (merge_types rt te) any_type (n+1) (es, [])
   in
-  loop None es
+  loop [] None None 0 (es, arg_typs)
+
+(*$inject
+  open Batteries
+  open Stdint
+  open RamenSharedTypes
+  let const typ v = Lang.(Expr.(Const (make_typ ~typ "test", v)))
+ *)
+(*$= add_missing_types & ~printer:(IO.to_string (List.print (Option.print (Lang.Scalar.print_typ))))
+  [Some TFloat] \
+    (add_missing_types [Some TFloat] [const TFloat (VFloat 1.)])
+  [Some TFloat] \
+    (add_missing_types [] [const TFloat (VFloat 1.)])
+
+  [Some TFloat; Some TU8] \
+    (add_missing_types [Some TFloat; Some TU8] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42))])
+
+  [Some TFloat; Some TU16; Some TU16] \
+    (add_missing_types [Some TFloat; Some TU16] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42)); const TU8 (VU8 (Uint8.of_int 42))])
+
+  [Some TFloat; Some TU16; Some TU16] \
+    (add_missing_types [Some TFloat; Some TU16] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42)); const TU16 (VU16 (Uint16.of_int  42))])
+
+  [Some TFloat; Some TU16; Some TU16] \
+    (add_missing_types [Some TFloat; Some TU16] [const TFloat (VFloat 1.); const TU16 (VU16 (Uint16.of_int 42)); const TU8 (VU8 (Uint8.of_int 42))])
+
+  [Some TFloat; Some TU16; Some TU16] \
+    (add_missing_types [Some TFloat; Some TAny; Some TAny] [const TFloat (VFloat 1.); const TU16 (VU16 (Uint16.of_int 42)); const TU8 (VU8 (Uint8.of_int 42))])
+
+  [Some TFloat; Some TU16; Some TU16] \
+    (add_missing_types [Some TFloat; Some TAny; Some TAny] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42)); const TU16 (VU16 (Uint16.of_int 42))])
+
+  [None; Some TFloat] \
+    (add_missing_types [None; Some TFloat] [const TFloat (VFloat 1.); const TFloat (VFloat 1.)])
+ *)
 
 (* When we combine nullable arguments we want to shortcut as much as
  * possible and avoid evaluating any of them if one is null. Here we will just
  * evaluate them in order until one is found to be nullable and null, or until
  * we evaluated them all, and then only we call the function.
  * TODO: ideally * we'd like to evaluate the nullable arguments first. *)
-and emit_functionN ?finalize ?state impl arg_typ oc es =
+and emit_function oc ~state impl arg_typs es vt_specs_opt =
   let open Expr in
-  (* When we have no conversion to do, e1 and e2 still have to have the same type or
-   * the compiler will complain so we promote: *)
-  let arg_typ =
-    if arg_typ <> None then arg_typ
-    else promote_to_same_types es
-  in
+  let arg_typs = add_missing_types arg_typs es in
   let len, has_nullable =
-    List.fold_left (fun (i, had_nullable) e ->
+    List.fold_left2 (fun (i, had_nullable) e arg_typ ->
         if is_nullable e then (
           Printf.fprintf oc "(match %a with None -> None | Some x%d_ -> "
-            (conv_to ?finalize ?state arg_typ) e
+            (conv_to ~state ~context:Finalize arg_typ) e
             i ;
           i + 1, true
         ) else (
           Printf.fprintf oc "(let x%d_ = %a in "
             i
-            (conv_to ?finalize ?state arg_typ) e ;
+            (conv_to ~state ~context:Finalize arg_typ) e ;
           i + 1, had_nullable
         )
-      ) (0, false) es
+      ) (0, false) es arg_typs
   in
-  Printf.fprintf oc "%s(%s" (if has_nullable then "Some" else "") impl ;
+  Printf.fprintf oc "%s(%s" (if has_nullable then "Some " else "") impl ;
   for i = 0 to len-1 do Printf.fprintf oc " x%d_" i done ;
+  (* variadic arguments [ves] are passed as a last argument to impl, as an array *)
+  Option.may (fun (vt, ves) ->
+      (* TODO: handle NULLability *)
+      List.print ~first:"[| " ~last:" |]" ~sep:"; "
+                 (conv_to ~state ~context:Finalize vt) oc ves)
+    vt_specs_opt ;
   for _i = 0 to len do Printf.fprintf oc ")" done
 
-and emit_function2 ?finalize ?state expr oc e1 e2 =
-  let impl, arg_typ = implementation_of expr in
-  emit_functionN ?finalize ?state impl arg_typ oc [e1; e2]
+and emit_functionN oc ~state impl arg_typs es =
+  emit_function oc ~state impl arg_typs es None
 
-and emit_function3 ?finalize ?state expr oc e1 e2 e3 =
-  let impl, arg_typ = implementation_of expr in
-  emit_functionN ?finalize ?state impl arg_typ oc [e1; e2; e3]
-
-and emit_function2v ?finalize ?state expr oc e1 e2 es =
-  let impl, arg_typ = implementation_of expr in
-  emit_functionN ?finalize ?state impl arg_typ oc (e1 :: e2 :: es)
+and emit_functionNv oc ~state impl arg_typs es vt ves =
+  emit_function oc ~state impl arg_typs es (Some (vt, ves))
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -666,10 +733,10 @@ let emit_generator user_fun oc expr =
     prev, make e1 e2
 
   (* Returns a list of generators. FIXME: and the same expression,
-   * that not modified any more. simplify! *)
+   * that's not modified any more. simplify! *)
   and replace prev = function
     (* No subexpressions: *)
-    | Const _ | Field _ | Param _ | Now _ -> assert false
+    | Const _ | Field _ | StateField _ | Param _ | Now _ -> assert false
     (* Forbidden within stateful functions: *)
     | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _
     | AggrFirst _ | AggrLast _ | AggrPercentile _ | Lag  _
@@ -711,12 +778,9 @@ let emit_generator user_fun oc expr =
    * so we can confidently call emit_expr on the arguments and if this uses a
    * free variable it should be defined already: *)
   let emit_gen_root oc = function
-    | Split (t, by, e) as expr ->
-      let impl, arg_typ = implementation_of expr in
-      Printf.fprintf oc "%s %a %a (fun %s -> "
-        impl
-        (conv_to ~finalize:true ~state:true arg_typ) by
-        (conv_to ~finalize:true ~state:true arg_typ) e
+    | Split (t, _by, _e) as expr ->
+      Printf.fprintf oc "%a (fun %s -> "
+        (emit_expr ~context:Generator ~state:true) expr
         (freevar_name t)
     (* We have no other generators *)
     | _ -> assert false
@@ -727,7 +791,7 @@ let emit_generator user_fun oc expr =
    * be replaced by their free variable: *)
   Printf.fprintf oc "%s (%a)"
     user_fun
-    (emit_expr ~finalize:true ~state:true) e ;
+    (emit_expr ~context:Finalize ~state:true) e ;
   List.iter (fun _ -> Printf.fprintf oc ")") generators
 
 let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_typ oc selected_fields =
@@ -817,7 +881,7 @@ let emit_where
   if always_true then
     Printf.fprintf oc "= true\n"
   else
-    Printf.fprintf oc "=\n\t%a\n" (emit_expr ~finalize:true ~state:true) expr
+    Printf.fprintf oc "=\n\t%a\n" (emit_expr ~context:Finalize ~state:true) expr
 
 (* If with aggr we have the aggregate record as first parameter
  * and also the first and last incoming tuple of this aggr as additional
@@ -850,7 +914,7 @@ let emit_field_selection
       else
         Printf.fprintf oc "\tlet %s = %a in\n"
           (id_of_field_name ~tuple:TupleOut sf.Operation.alias)
-          (emit_expr ~finalize:true ~state:true) sf.Operation.expr
+          (emit_expr ~context:Finalize ~state:true) sf.Operation.expr
     ) selected_fields ;
   Printf.fprintf oc "\t(\n\t\t" ;
   List.iteri (fun i sf ->
@@ -876,7 +940,7 @@ let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
   List.iteri (fun i expr ->
       Printf.fprintf oc "%s\n\t\t%a"
         (if i > 0 then "," else "")
-        (emit_expr ~finalize:true ~state:true) expr ;
+        (emit_expr ~context:Finalize ~state:true) expr ;
     ) exprs ;
   Printf.fprintf oc "\n\t)\n"
 
@@ -889,9 +953,9 @@ let emit_top name in_tuple_typ mentioned and_all_others oc top =
       "Some (\n\
        \t(Uint32.to_int (%a)),\n\
        \t(fun %a -> %a))\n"
-      (conv_to ~finalize:true ~state:true (Some TU32)) n
+      (conv_to ~context:Finalize ~state:true (Some TU32)) n
       (emit_in_tuple mentioned and_all_others) in_tuple_typ
-      (conv_to ~finalize:true ~state:true (Some TFloat)) by
+      (conv_to ~context:Finalize ~state:true (Some TFloat)) by
 
 let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
   let mentioned =
@@ -912,6 +976,24 @@ let for_each_unpure_fun selected_fields commit_when flush_when f =
     ) selected_fields ;
   Expr.unpure_iter f commit_when ;
   Option.may (fun flush_when -> Expr.unpure_iter f flush_when) flush_when
+
+let otype_of_state e =
+  let open Expr in
+  let typ = typ_of e in
+  let t = Option.get typ.scalar_typ |>
+          otype_of_type in
+  let t =
+    match e with
+    | AggrPercentile _ -> t ^" list"
+    (* previous tuples and count ; Note: we could get rid of this count if we
+     * provided some context to those functions, such as the event count in
+     * current window, for instance (ie. pass the full aggr record not just
+     * the fields) *)
+    | Lag _ | MovingAvg _ | LinReg _ | MultiLinReg _ ->
+      t ^" CodeGenLib.Seasonal.t"
+    | Remember _ -> "CodeGenLib.remember_state"
+    | _ -> t in
+  if Option.get typ.nullable then t ^" option" else t
 
 let emit_group_state_init
       name in_tuple_typ mentioned and_all_others
@@ -939,9 +1021,10 @@ let emit_group_state_init
     (* First emit the record type definition: *)
     Printf.fprintf oc "type %s = {\n" name ;
     for_each_unpure_fun selected_fields commit_when flush_when (fun f ->
-        Printf.fprintf oc "\tmutable %s : %s ;\n"
+        Printf.fprintf oc "\tmutable %s : %s (* %a *) ;\n"
           (name_of_state f)
           (otype_of_state f)
+          Expr.print_typ (Expr.typ_of f)
       ) ;
     Printf.fprintf oc "}\n\n" ;
     (* Then the initialization function proper: *)
@@ -949,70 +1032,9 @@ let emit_group_state_init
       name
       (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
     for_each_unpure_fun selected_fields commit_when flush_when (fun f ->
-        Printf.fprintf oc "\tlet %s = " (name_of_state f) ;
-        (* For most stateful function we start with the first value.
-         * Beware, though, that should we need to evaluate an expression
-         * requiring the state record then we should emit the field name
-         * only (that has been defined above since we define them in depth
-         * first order). *)
-        (let open Expr in
-        match f with
-        | AggrMin (_, e) | AggrMax (_, e) | AggrAnd (_, e)
-        | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)
-        | AggrSum (_, e) | ExpSmooth (_, _, e) ->
-          (* Start with the initial value, so NULL are propagated naturally *)
-          let _impl, arg_typ = implementation_of f in
-          conv_to ~finalize:true ~state:false arg_typ oc e
-        | AggrPercentile (_, p, e) ->
-          (* Have to cater for NULLs *)
-          let impl, arg_typ = implementation_of f in
-          Printf.fprintf oc
-            (if is_nullable e then
-              "Option.map (fun e_ -> %s [] %a e_) %a"
-            else
-              "%s [] %a %a")
-            impl
-            (conv_to ~finalize:true ~state:false arg_typ) p
-            (conv_to ~finalize:true ~state:false arg_typ) e
-        | Lag (_, k, e) ->
-          let _impl, arg_typ = implementation_of f in
-          Printf.fprintf oc
-            (if is_nullable e then
-              "Option.map (fun e_ -> CodeGenLib.Seasonal.init (Uint16.to_int %a) 1 e_) %a"
-            else
-              "CodeGenLib.Seasonal.init (Uint16.to_int %a) 1 %a")
-            (conv_to ~finalize:true ~state:false (Some TU16)) k
-            (conv_to ~finalize:true ~state:false arg_typ) e
-        | MovingAvg (_, p, n, e) | LinReg (_, p, n, e) ->
-          let _impl, arg_typ = implementation_of f in
-          Printf.fprintf oc
-            (if is_nullable e then
-              "Option.map (fun e_ -> CodeGenLib.Seasonal.init (Uint16.to_int %a) \
-                                                              (Uint16.to_int %a) e_) %a"
-             else
-              "CodeGenLib.Seasonal.init (Uint16.to_int %a) \
-                                        (Uint16.to_int %a) %a")
-            (conv_to ~finalize:true ~state:false (Some TU16)) p
-            (conv_to ~finalize:true ~state:false (Some TU16)) n
-            (conv_to ~finalize:true ~state:false arg_typ) e
-        | MultiLinReg (_, p, n, e, es) ->
-          let _impl, arg_typ = implementation_of f in
-          (* TODO: predictors es and expression e must be allowed to be
-           * nullable *)
-          Printf.fprintf oc
-            "CodeGenLib.Seasonal.init (Uint16.to_int %a) \
-                                      (Uint16.to_int %a) (%a, %a)"
-            (conv_to ~finalize:true ~state:false (Some TU16)) p
-            (conv_to ~finalize:true ~state:false (Some TU16)) n
-            (conv_to ~finalize:true ~state:false arg_typ) e
-            (List.print ~first:"[|" ~last:"|]" ~sep:";"
-               (conv_to ~finalize:true ~state:true arg_typ)) es
-        | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _ | Concat _
-        | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
-        | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-        | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _ ->
-          assert false) ;
-        Printf.fprintf oc " in\n"
+        Printf.fprintf oc "\tlet %s = %a in\n"
+          (name_of_state f)
+          (emit_expr ~context:InitState ~state:false) f
       ) ;
     (* And now build the state record from all those fields: *)
     Printf.fprintf oc "\t{" ;
@@ -1030,27 +1052,9 @@ let emit_update_state
   (* Note that for_each_unpure_fun proceed depth first so inner functions
    * state will be updated first, which is what we want. *)
   for_each_unpure_fun selected_fields commit_when flush_when (fun f ->
-      Printf.fprintf oc "\taggr_.%s <- (" (name_of_state f) ;
-      (let open Expr in
-      match f with
-      | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
-      | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e)  ->
-        (* Note: emit_function2 with use emit_expr to emit "f" here, which
-         * will then print it as "aggr_". It will also take care of nulls. *)
-        emit_function2 ~finalize:false ~state:true f oc f e
-      | AggrPercentile (_, e1, e2) | ExpSmooth (_, e1, e2) ->
-        emit_function3 ~finalize:false ~state:true f oc f e1 e2
-      | Lag (_, _, e) | MovingAvg (_, _, _, e) | LinReg (_, _, _, e) ->
-        emit_function2 ~finalize:false ~state:true f oc f e
-      | MultiLinReg (_, _, _, e, es) ->
-        emit_function2v ~finalize:false ~state:true f oc f e es
-      | Const _ | Param _ | Field _ | Age _ | Not _ | Defined _
-      | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
-      | Gt _ | Eq _ | Sequence _ | Mod _ | Cast _ | Abs _ | Length _ | Now _
-      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Split _ | Concat _
-      | Sqrt _ ->
-        assert false) ;
-      Printf.fprintf oc ") ;\n"
+      Printf.fprintf oc "\taggr_.%s <- (%a) ;\n"
+        (name_of_state f)
+        (emit_expr ~context:UpdateState ~state:true) f
     ) ;
   Printf.fprintf oc "\t()\n"
 
@@ -1073,7 +1077,7 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ
     (emit_tuple TupleOut) out_tuple_typ
-    (emit_expr ~finalize:true ~state:true) commit_when
+    (emit_expr ~context:Finalize ~state:true) commit_when
 
 let emit_should_resubmit name in_tuple_typ mentioned and_all_others
                          oc flush_how =
@@ -1087,9 +1091,9 @@ let emit_should_resubmit name in_tuple_typ mentioned and_all_others
   | Slide n ->
     Printf.fprintf oc "\tgroup_state_.CodeGenLib.nb_entries > %d\n" n
   | KeepOnly e ->
-    Printf.fprintf oc "\t%a\n" (emit_expr ~finalize:true ~state:true) e
+    Printf.fprintf oc "\t%a\n" (emit_expr ~context:Finalize ~state:true) e
   | RemoveAll e ->
-    Printf.fprintf oc "\tnot (%a)\n" (emit_expr ~finalize:true ~state:true) e
+    Printf.fprintf oc "\tnot (%a)\n" (emit_expr ~context:Finalize ~state:true) e
 
 (* Depending on what uses a commit/flush condition, we might need to check
  * all groups after every single input tuple (very slow), or after every
