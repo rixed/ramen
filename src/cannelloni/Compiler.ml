@@ -105,7 +105,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   let open Lang in
   let open Expr in
   (* Check that the operand [sub_expr] is compatible with expectation (re. type
-   * and null) set by the operator. [op_typ] is used for printing only.
+   * and null) set by the caller (the operator). [op_typ] is used for printing only.
    * Extends the type of sub_expr as required. *)
   let check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr =
     let sub_typ = typ_of sub_expr in

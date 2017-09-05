@@ -225,6 +225,11 @@ let layer_of_bcns bcns dataset_name =
     let where =
       (in_zone "zone_src" bcn.source) ^" AND "^
       (in_zone "zone_dst" bcn.dest) in
+    (* FIXME: this operation is exactly like minutely, except that:
+     * - it add zone_src and zone_dst names, which can be useful indeed
+     * - it works for whatever avg_window not necessarily minutely.
+     * All in all a waste of resources. We could add custom fields to
+     * traffic_op and force a minutely averaging window for the alerts. *)
     let op =
       Printf.sprintf
         "SELECT\n  \

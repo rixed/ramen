@@ -509,9 +509,9 @@ struct
      * and k=1, but with a universal type for the data (while season-avg works
      * only on numbers).  For instance, a moving average of order 5 would be
      * period=1, count=5 *)
-    | MovingAvg of typ * t * t * t (* period, how many season to keep, expression *)
+    | MovingAvg of typ * t * t * t (* period, how many seasons to keep, expression *)
     (* Simple linear regression *)
-    | LinReg of typ * t * t * t (* as above: period, how many season to keep, expression *)
+    | LinReg of typ * t * t * t (* as above: period, how many seasons to keep, expression *)
     (* Multiple linear regression - and our first variadic function (the
      * last parameter being a list of expressions to use for the predictors) *)
     | MultiLinReg of typ * t * t * t * t list

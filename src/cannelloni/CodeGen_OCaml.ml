@@ -790,7 +790,7 @@ let emit_generator user_fun oc expr =
       Printf.fprintf oc "%a (fun %s -> "
         (emit_expr ~context:Generator ~state:true) expr
         (freevar_name t)
-    (* We have no other generators *)
+    (* We have no other generators (yet) *)
     | _ -> assert false
   in
   let generators, e = replace [] expr in
