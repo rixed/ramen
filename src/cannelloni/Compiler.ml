@@ -64,6 +64,18 @@ let check_rank ~from ~to_ =
    * would complain. *)
   | _ -> false
 
+let set_nullable typ nullable =
+  let open Lang.Expr in
+  match typ.nullable with
+  | None -> typ.nullable <- Some nullable ; true
+  | Some n ->
+    if n <> nullable then (
+      let m = Printf.sprintf "%s must%s be nullable but is%s"
+                typ.expr_name (if nullable then "" else " not")
+                (if n then "" else " not") in
+      raise (Lang.SyntaxError m)
+    ) else false
+
 (* Improve to_ while checking compatibility with from.
  * Numerical types of to_ can be enlarged to match those of from. *)
 let check_expr_type ~from ~to_ =
@@ -84,18 +96,9 @@ let check_expr_type ~from ~to_ =
         raise (SyntaxError m)
       )
     | _ -> false in
-  let changed =
-    match to_.Expr.nullable, from.Expr.nullable with
-    | None, Some _ ->
-      to_.Expr.nullable <- from.Expr.nullable ;
-      true
-    | Some to_null, Some from_null when to_null <> from_null ->
-      let m = Printf.sprintf "%s must%s be nullable but %s is%s"
-                to_.Expr.expr_name (if to_null then "" else " not")
-                from.Expr.expr_name (if from_null then "" else " not") in
-      raise (SyntaxError m)
-    | _ -> changed in
-  changed
+  match from.Expr.nullable with
+  | None -> changed
+  | Some from_null -> set_nullable to_ from_null
 
 (* Check that this expression fulfill the type expected by the caller (exp_type).
  * Also, improve exp_type (set typ and nullable, enlarge numerical types ...).
@@ -211,7 +214,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr in
         (* TODO: a function to type with a list of arguments and
          * exp types etc, iteratively. Ie. make_op_typ called at
-         * each step to refine it. For no, no typing of the op from
+         * each step to refine it. For now, no typing of the op from
          * the args. Especially, XXX no update of the nullability of
          * op! XXX *)
       check_variadic op_typ ~propagate_null ?exp_sub_typ ?exp_sub_nullable rest || changed
@@ -295,6 +298,38 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Param (_op_typ, _pname) ->
     (* TODO: one day we will know the type or value of params *)
     false
+  | Case (op_typ, alts, else_) ->
+    (* Rules:
+     * - If a condition or a consequent is nullable then the case is;
+     * - conversely, if no condition nor any consequent is nullable, then the
+     *   case is not;
+     * - all conditions must have type bool;
+     * - all consequents must have the same type (that of the case);
+     * - if there are no else branch then the case is nullable. *)
+    (
+      match else_ with
+      | Some else_ ->
+        check_expr ~in_type ~out_type ~exp_type:op_typ else_
+      | None ->
+        set_nullable op_typ true
+    ) ||
+    (* All conditions must have type bool *)
+    let exp_cond_type = make_bool_typ "case condition" in
+    List.exists (fun alt ->
+        check_expr_type ~from:exp_cond_type ~to_:(typ_of alt.case_cond)
+      ) alts ||
+    (* Enlarge consequents if necessary (largest required type so far is
+     * op_typ: *)
+    List.exists (fun alt ->
+        (* Enlarge op_typ with the consequent: *)
+        check_expr ~in_type ~out_type ~exp_type:op_typ alt.case_cons
+        (* check_expr will set the case to not null if the consequent is not
+         * null. This is not correct as we want to give a chance to another
+         * consequent to set it nullable. Unfortunately there is nothing we
+         * can do about it for now so for now all nullability must be the
+         * same in all alternatives (if we resetted op_typ.nullable then
+         * check_expr will return true again and again). FIXME. *)
+      ) alts
   | StatelessFun (op_typ, Now) ->
     check_expr_type ~from:op_typ ~to_:exp_type
   | StatefullFun (op_typ, _, AggrMin e) | StatefullFun (op_typ, _, AggrMax e)

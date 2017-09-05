@@ -435,7 +435,19 @@ and emit_expr ~state ~context oc expr =
     String.print oc (id_of_field_name ~tuple:!tuple field)
   | Finalize, Param _, _ ->
     failwith "TODO: code gen for params"
-
+  | Finalize, Case (_, alts, else_), _ ->
+    List.print ~first:"(" ~last:"" ~sep:" else "
+      (fun oc alt ->
+         Printf.fprintf oc "if %a then (%a)"
+          (emit_expr ~state ~context) alt.case_cond
+          (emit_expr ~state ~context) alt.case_cons)
+      oc alts ;
+    (match else_ with
+    | None ->
+      Printf.fprintf oc " else None)"
+    | Some else_ ->
+      Printf.fprintf oc " else %a)"
+        (emit_expr ~state ~context) else_)
   (* Stateless arithmetic functions which actual funcname depends on operand types: *)
   | Finalize, StatelessFun (_, Add(e1,e2)),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->

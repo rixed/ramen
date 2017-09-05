@@ -418,6 +418,7 @@ struct
     | Field of typ * tuple_prefix ref * string (* field name *)
     | StateField of typ * string (* Name of the state field - met only late in the game *)
     | Param of typ * string
+    | Case of typ * case_alternative list * t option
     (* On functions, internal states, and aggregates:
      *
      * Functions come in three variety:
@@ -461,6 +462,10 @@ struct
     | StatelessFun of typ * stateless_fun
     | StatefullFun of typ * state_lifespan * statefull_fun
     | GeneratorFun of typ * generator_fun
+
+  and case_alternative =
+    { case_cond : t (* Must be bool *) ;
+      case_cons : t (* All alternatives must share a type *) }
 
   and state_lifespan = LocalState | GlobalState
 
@@ -579,6 +584,19 @@ struct
       String.print fmt s ; add_types t
     | Param (t, p) ->
       Printf.fprintf fmt "$%s" p ; add_types t
+    | Case (t, alts, else_) ->
+      let print_alt fmt alt =
+        Printf.fprintf fmt "WHEN %a THEN %a"
+          (print with_types) alt.case_cond
+          (print with_types) alt.case_cons
+      in
+      Printf.fprintf fmt "CASE %a "
+       (List.print ~first:"" ~last:"" ~sep:" " print_alt) alts ;
+      Option.may (fun else_ ->
+        Printf.fprintf fmt "ELSE %a "
+          (print with_types) else_) else_ ;
+      Printf.fprintf fmt "END" ;
+      add_types t
     | StatelessFun (t, Age e) ->
       Printf.fprintf fmt "age (%a)" (print with_types) e ; add_types t
     | StatelessFun (t, Now) ->
@@ -698,7 +716,8 @@ struct
 
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | StateField (t, _)
-    | StatelessFun (t, _) | StatefullFun (t, _, _) | GeneratorFun (t, _) ->
+    | StatelessFun (t, _) | StatefullFun (t, _, _) | GeneratorFun (t, _)
+    | Case (t, _, _) ->
       t
 
   let is_nullable e =
@@ -753,6 +772,16 @@ struct
         fold_by_depth f i e) i''' e4s in
       f i'''' expr
 
+    | Case (_, alts, else_) ->
+      let i' =
+        List.fold_left (fun i alt ->
+          let i' = fold_by_depth f i alt.case_cond in
+          let i''= fold_by_depth f i' alt.case_cons in
+          f i'' expr) i alts in
+      let i''=
+        Option.map_default (fun else_ -> fold_by_depth f i' else_) i' else_ in
+      f i'' expr
+
   let iter f = fold_by_depth (fun () e -> f e) ()
 
   let unpure_iter f e =
@@ -770,6 +799,14 @@ struct
     | Field (t, a, b) -> Field (f t, a, b)
     | StateField _ as e -> e
     | Param (t, a) -> Param (f t, a)
+
+    | Case (t, alts, else_) ->
+      Case (f t,
+          (if recurs then List.map (fun alt ->
+             { case_cond = map_type ~recurs f alt.case_cond ;
+               case_cons = map_type ~recurs f alt.case_cons }) alts
+           else alts),
+          if recurs then Option.map (map_type ~recurs f) else_ else else_)
 
     | StatefullFun (t, g, AggrMin a) ->
       StatefullFun (f t, g, AggrMin (if recurs then map_type ~recurs f a else a))
@@ -1238,8 +1275,23 @@ struct
                                  "moving average order", k) in
          StatefullFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
 
+    and case m =
+      let m = "case" :: m in
+      let alt m =
+        let m = "case alternative" :: m in
+        (strinG "when" -- blanks -+ lowest_prec_left_assoc +-
+         blanks +- strinG "then" +- blanks ++ lowest_prec_left_assoc >>:
+         fun (cd, cs) -> { case_cond = cd ; case_cons = cs }) m
+      in
+      (strinG "case" -- blanks -+
+       several ~sep:blanks alt +- blanks ++
+       optional ~def:None (
+         strinG "else" -- blanks -+ some lowest_prec_left_assoc) +-
+       strinG "end" >>: fun (alts, else_) ->
+         Case (make_typ "case", alts, else_)) m
+
     and highestest_prec m =
-      (const ||| field ||| param ||| func ||| null |||
+      (const ||| field ||| param ||| func ||| null ||| case |||
        char '(' -- opt_blanks -+
          lowest_prec_left_assoc +-
        opt_blanks +- char ')'
