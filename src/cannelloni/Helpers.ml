@@ -83,10 +83,10 @@ let http_service port cert_opt key_opt router =
     catch
       (fun () ->
         try router (Request.meth req) path params headers body
-        with exn ->
-          print_exception exn ;
-          fail exn)
-      (function
+        with exn -> fail exn)
+      (fun exn ->
+        print_exception exn ;
+        match exn with
         | HttpError (code, body) ->
           let body = body ^ "\n" in
           let status = Code.status_of_code code in
