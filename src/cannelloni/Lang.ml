@@ -458,51 +458,60 @@ struct
      * of data over the group, while Max(data1, data2) is the max of data1 and
      * data2.
      * We do not further denote pure or stateful functions. *)
-    (* TODO: Add avg, stddev... *)
-    | AggrMin of typ * t
-    | AggrMax of typ * t
-    | AggrSum of typ * t
-    | AggrAnd of typ * t
-    | AggrOr  of typ * t
-    | AggrFirst of typ * t
-    | AggrLast of typ * t
-    (* TODO: several percentiles. Requires multi values returns. *)
-    | AggrPercentile of typ * t * t
+    | StatelessFun of typ * stateless_fun
+    | StatefullFun of typ * state_lifespan * statefull_fun
+    | GeneratorFun of typ * generator_fun
+
+  and state_lifespan = LocalState | GlobalState
+
+  and stateless_fun =
     (* TODO: Other functions: random, date_part, coalesce, string_split, case expressions... *)
-    | Age of typ * t
-    | Now of typ
+    | Age of t
+    | Now
     (* FIXME: see note in CodeGenLib.ml *)
-    | Sequence of typ * t * t (* start, step *)
-    | Cast of typ * t
-    | Length of typ * t (* string length *)
+    | Sequence of t * t (* start, step *)
+    | Cast of t
+    | Length of t (* string length *)
     (* Unary Ops on scalars *)
-    | Not of typ * t
-    | Abs of typ * t
-    | Defined of typ * t
+    | Not of t
+    | Abs of t
+    | Defined of t
     (* Binary Ops scalars *)
-    | Add of typ * t * t
-    | Sub of typ * t * t
-    | Mul of typ * t * t
-    | Div of typ * t * t
-    | IDiv of typ * t * t
-    | Mod of typ * t * t
-    | Pow of typ * t * t
-    | Exp of typ * t
-    | Log of typ * t
-    | Sqrt of typ * t
-    | Hash of typ * t
-    | And of typ * t * t
-    | Or of typ * t * t
-    | Ge of typ * t * t
-    | Gt of typ * t * t
-    | Eq of typ * t * t
-    | Concat of typ * t * t
+    | Add of t * t
+    | Sub of t * t
+    | Mul of t * t
+    | Div of t * t
+    | IDiv of t * t
+    | Mod of t * t
+    | Pow of t * t
+    | Exp of t
+    | Log of t
+    | Sqrt of t
+    | Hash of t
+    | And of t * t
+    | Or of t * t
+    | Ge of t * t
+    | Gt of t * t
+    | Eq of t * t
+    | Concat of t * t
     (* For network address range checks: *)
-    | BeginOfRange of typ * t
-    | EndOfRange of typ * t
+    | BeginOfRange of t
+    | EndOfRange of t
+
+  and statefull_fun =
+    (* TODO: Add avg, stddev... *)
+    | AggrMin of t
+    | AggrMax of t
+    | AggrSum of t
+    | AggrAnd of t
+    | AggrOr  of t
+    | AggrFirst of t
+    | AggrLast of t
+    (* TODO: several percentiles. Requires multi values returns. *)
+    | AggrPercentile of t * t
     (* value retarded by k steps. If we have had less than k past values
      * then return the first we've had. *)
-    | Lag of typ * t * t
+    | Lag of t * t
     (* If the current time is t, the seasonal, moving average of period p on k
      * seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence
      * of v(t).  This is because we want to compare v(t) with this season
@@ -510,12 +519,12 @@ struct
      * and k=1, but with a universal type for the data (while season-avg works
      * only on numbers).  For instance, a moving average of order 5 would be
      * period=1, count=5 *)
-    | MovingAvg of typ * t * t * t (* period, how many seasons to keep, expression *)
+    | MovingAvg of t * t * t (* period, how many seasons to keep, expression *)
     (* Simple linear regression *)
-    | LinReg of typ * t * t * t (* as above: period, how many seasons to keep, expression *)
+    | LinReg of t * t * t (* as above: period, how many seasons to keep, expression *)
     (* Multiple linear regression - and our first variadic function (the
      * last parameter being a list of expressions to use for the predictors) *)
-    | MultiLinReg of typ * t * t * t * t list
+    | MultiLinReg of t * t * t * t list
     (* Rotating bloom filters. First expression is the "time", second a
      * "duration", and third an  expression whose value to remember. The
      * function will return true if it *thinks* that value has been seen the
@@ -523,13 +532,15 @@ struct
      * bloom-filters so there can be false positives but not false negatives.
      * Note: to remember several expressions just use the hash function (TBD),
      * since it's based on a hash anyway. *)
-    | Remember of typ * t * t * t
+    | Remember of t * t * t
     (* Simple exponential smoothing *)
-    | ExpSmooth of typ * t * t (* coef between 0 and 1 and expression *)
+    | ExpSmooth of t * t (* coef between 0 and 1 and expression *)
+
+  and generator_fun =
     (* First function returning more than once (Generator). Here the typ is
      * type of a single value but the function is a generator and can return
      * from 0 to N such values. *)
-    | Split of typ * t * t
+    | Split of t * t
 
   let expr_true =
     Const (make_bool_typ ~nullable:false "true", VBool true)
@@ -554,83 +565,140 @@ struct
   let rec print with_types fmt =
     let add_types t =
       if with_types then Printf.fprintf fmt " [%a]" print_typ t
+    and sl =
+      (* TODO: do not display the default *)
+      function LocalState -> " locally " | GlobalState -> " globally "
     in
     function
-    | Const (t, c) -> Scalar.print fmt c ; add_types t
-    | Field (t, tuple, field) -> Printf.fprintf fmt "%s.%s" (string_of_prefix !tuple) field ; add_types t
-    | StateField (t, s) -> String.print fmt s ; add_types t
-    | Param (t, p) -> Printf.fprintf fmt "$%s" p ; add_types t
-    | AggrMin (t, e) -> Printf.fprintf fmt "min (%a)" (print with_types) e ; add_types t
-    | AggrMax (t, e) -> Printf.fprintf fmt "max (%a)" (print with_types) e ; add_types t
-    | AggrSum (t, e) -> Printf.fprintf fmt "sum (%a)" (print with_types) e ; add_types t
-    | AggrAnd (t, e) -> Printf.fprintf fmt "and (%a)" (print with_types) e ; add_types t
-    | AggrOr  (t, e) -> Printf.fprintf fmt "or (%a)" (print with_types) e ; add_types t
-    | AggrFirst (t, e) -> Printf.fprintf fmt "first (%a)" (print with_types) e ; add_types t
-    | AggrLast (t, e) -> Printf.fprintf fmt "last (%a)" (print with_types) e ; add_types t
-    | AggrPercentile (t, p, e) -> Printf.fprintf fmt "%ath percentile (%a)" (print with_types) p (print with_types) e ; add_types t
-    | Age (t, e) -> Printf.fprintf fmt "age (%a)" (print with_types) e ; add_types t
-    | Now t -> Printf.fprintf fmt "now" ; add_types t
-    | Sequence (t, e1, e2) -> Printf.fprintf fmt "sequence(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Cast (t, e) -> Printf.fprintf fmt "cast(%a, %a)" Scalar.print_typ (Option.get t.scalar_typ) (print with_types) e ; add_types t
-    | Length (t, e) -> Printf.fprintf fmt "length (%a)" (print with_types) e ; add_types t
-    | Not (t, e) -> Printf.fprintf fmt "NOT (%a)" (print with_types) e ; add_types t
-    | Abs (t, e) -> Printf.fprintf fmt "ABS (%a)" (print with_types) e ; add_types t
-    | Defined (t, e) -> Printf.fprintf fmt "(%a) IS NOT NULL" (print with_types) e ; add_types t
-    | Add (t, e1, e2) -> Printf.fprintf fmt "(%a) + (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Sub (t, e1, e2) -> Printf.fprintf fmt "(%a) - (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Mul (t, e1, e2) -> Printf.fprintf fmt "(%a) * (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Div (t, e1, e2) -> Printf.fprintf fmt "(%a) / (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | IDiv (t, e1, e2) -> Printf.fprintf fmt "(%a) // (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Mod (t, e1, e2) -> Printf.fprintf fmt "(%a) %% (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Pow (t, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Exp (t, e) -> Printf.fprintf fmt "exp (%a)" (print with_types) e ; add_types t
-    | Log (t, e) -> Printf.fprintf fmt "log (%a)" (print with_types) e ; add_types t
-    | Sqrt (t, e) -> Printf.fprintf fmt "sqrt (%a)" (print with_types) e ; add_types t
-    | Hash (t, e) -> Printf.fprintf fmt "hash (%a)" (print with_types) e ; add_types t
-    | And (t, Ge (_, e1, BeginOfRange (_, e2)), Not (_, (Ge (_, e1', EndOfRange (_, e2'))))) ->
+    | Const (t, c) ->
+      Scalar.print fmt c ; add_types t
+    | Field (t, tuple, field) ->
+      Printf.fprintf fmt "%s.%s" (string_of_prefix !tuple) field ;
+      add_types t
+    | StateField (t, s) ->
+      String.print fmt s ; add_types t
+    | Param (t, p) ->
+      Printf.fprintf fmt "$%s" p ; add_types t
+    | StatelessFun (t, Age e) ->
+      Printf.fprintf fmt "age (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, Now) ->
+      Printf.fprintf fmt "now" ; add_types t
+    | StatelessFun (t, Sequence (e1, e2)) ->
+      Printf.fprintf fmt "sequence(%a, %a)"
+        (print with_types) e1 (print with_types) e2 ;
+      add_types t
+    | StatelessFun (t, Cast e) ->
+      Printf.fprintf fmt "cast(%a, %a)"
+        Scalar.print_typ (Option.get t.scalar_typ) (print with_types) e ;
+      add_types t
+    | StatelessFun (t, Length e) ->
+      Printf.fprintf fmt "length (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, Not e) ->
+      Printf.fprintf fmt "NOT (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, Abs e) ->
+      Printf.fprintf fmt "ABS (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, Defined e) ->
+      Printf.fprintf fmt "(%a) IS NOT NULL" (print with_types) e ; add_types t
+    | StatelessFun (t, Add (e1, e2)) ->
+      Printf.fprintf fmt "(%a) + (%a)" (print with_types) e1 (print with_types) e2 ;
+      add_types t
+    | StatelessFun (t, Sub (e1, e2)) ->
+      Printf.fprintf fmt "(%a) - (%a)" (print with_types) e1 (print with_types) e2 ;
+      add_types t
+    | StatelessFun (t, Mul (e1, e2)) ->
+      Printf.fprintf fmt "(%a) * (%a)" (print with_types) e1 (print with_types) e2 ;
+      add_types t
+    | StatelessFun (t, Div (e1, e2)) ->
+      Printf.fprintf fmt "(%a) / (%a)" (print with_types) e1 (print with_types) e2 ;
+      add_types t
+    | StatelessFun (t, IDiv (e1, e2)) ->
+      Printf.fprintf fmt "(%a) // (%a)" (print with_types) e1 (print with_types) e2 ;
+      add_types t
+    | StatelessFun (t, Mod (e1, e2)) ->
+      Printf.fprintf fmt "(%a) %% (%a)" (print with_types) e1 (print with_types) e2 ;
+      add_types t
+    | StatelessFun (t, Pow (e1, e2)) ->
+      Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ;
+      add_types t
+    | StatelessFun (t, Exp e) ->
+      Printf.fprintf fmt "exp (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, Log e) ->
+      Printf.fprintf fmt "log (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, Sqrt e) ->
+      Printf.fprintf fmt "sqrt (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, Hash e) ->
+      Printf.fprintf fmt "hash (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, And (
+        StatelessFun (_, Ge (e1, StatelessFun (_, BeginOfRange e2))),
+        StatelessFun (_, Not (
+          StatelessFun (_, Ge (e1', StatelessFun (_, EndOfRange e2'))))))) ->
       assert (e2 = e2') ;
       assert (e1 = e1') ;
       Printf.fprintf fmt "(%a) IN (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | BeginOfRange _ | EndOfRange _ -> assert false
-    | And (t, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Or (t, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Ge (t, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Gt (t, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Eq (t, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Concat (t, e1, e2) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Lag (t, e1, e2) -> Printf.fprintf fmt "lag(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | MovingAvg (t, e1, e2, e3) ->
-      Printf.fprintf fmt "season_moveavg(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
-    | LinReg (t, e1, e2, e3) ->
-      Printf.fprintf fmt "season_fit(%a, %a, %a)" (print with_types) e1 (print with_types) e2 (print with_types) e3 ; add_types t
-    | MultiLinReg (t, e1, e2, e3, e4s) ->
-      Printf.fprintf fmt "season_fit_multi(%a, %a, %a, %a)"
+    | StatelessFun (_, (BeginOfRange _|EndOfRange _)) -> assert false
+    | StatelessFun (t, And (e1, e2)) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | StatelessFun (t, Or (e1, e2)) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | StatelessFun (t, Ge (e1, e2)) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | StatelessFun (t, Gt (e1, e2)) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | StatelessFun (t, Eq (e1, e2)) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | StatelessFun (t, Concat (e1, e2)) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+
+    | StatefullFun (t, g, AggrMin e) ->
+      Printf.fprintf fmt "min%s(%a)" (sl g) (print with_types) e ; add_types t
+    | StatefullFun (t, g, AggrMax e) ->
+      Printf.fprintf fmt "max%s(%a)" (sl g) (print with_types) e ; add_types t
+    | StatefullFun (t, g, AggrSum e) ->
+      Printf.fprintf fmt "sum%s(%a)" (sl g) (print with_types) e ; add_types t
+    | StatefullFun (t, g, AggrAnd e) ->
+      Printf.fprintf fmt "and%s(%a)" (sl g) (print with_types) e ; add_types t
+    | StatefullFun (t, g, AggrOr e) ->
+      Printf.fprintf fmt "or%s(%a)" (sl g) (print with_types) e ; add_types t
+    | StatefullFun (t, g, AggrFirst e) ->
+      Printf.fprintf fmt "first%s(%a)" (sl g) (print with_types) e ; add_types t
+    | StatefullFun (t, g, AggrLast e) ->
+      Printf.fprintf fmt "last%s(%a)" (sl g) (print with_types) e ; add_types t
+    | StatefullFun (t, g, AggrPercentile (p, e)) ->
+      Printf.fprintf fmt "%ath percentile%s(%a)"
+        (print with_types) p (sl g) (print with_types) e ;
+      add_types t
+    | StatefullFun (t, g, Lag (e1, e2)) ->
+      Printf.fprintf fmt "lag%s(%a, %a)"
+        (sl g) (print with_types) e1 (print with_types) e2 ;
+      add_types t
+    | StatefullFun (t, g, MovingAvg (e1, e2, e3)) ->
+      Printf.fprintf fmt "season_moveavg%s(%a, %a, %a)"
+        (sl g) (print with_types) e1 (print with_types) e2 (print with_types) e3 ;
+      add_types t
+    | StatefullFun (t, g, LinReg (e1, e2, e3)) ->
+      Printf.fprintf fmt "season_fit%s(%a, %a, %a)"
+        (sl g) (print with_types) e1 (print with_types) e2 (print with_types) e3 ;
+      add_types t
+    | StatefullFun (t, g, MultiLinReg (e1, e2, e3, e4s)) ->
+      Printf.fprintf fmt "season_fit_multi%s(%a, %a, %a, %a)"
+        (sl g)
         (print with_types) e1
         (print with_types) e2
         (print with_types) e3
         (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) e4s ;
       add_types t
-    | Remember (t, tim, dur, e) ->
-      Printf.fprintf fmt "remember(%a, %a, %a)"
+    | StatefullFun (t, g, Remember (tim, dur, e)) ->
+      Printf.fprintf fmt "remember%s(%a, %a, %a)"
+        (sl g)
         (print with_types) tim (print with_types) dur (print with_types) e ;
       add_types t
-    | ExpSmooth (t, e1, e2) -> Printf.fprintf fmt "smooth(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
-    | Split (t, e1, e2) -> Printf.fprintf fmt "split(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | StatefullFun (t, g, ExpSmooth (e1, e2)) ->
+      Printf.fprintf fmt "smooth%s(%a, %a)"
+        (sl g)  (print with_types) e1 (print with_types) e2 ;
+      add_types t
+
+    | GeneratorFun (t, Split (e1, e2)) ->
+      Printf.fprintf fmt "split(%a, %a)"
+        (print with_types) e1 (print with_types) e2 ;
+      add_types t
 
   let typ_of = function
-    | Const (t, _) | Field (t, _, _) | Param (t, _) | AggrMin (t, _)
-    | AggrMax (t, _) | AggrSum (t, _) | AggrAnd (t, _) | AggrOr  (t, _)
-    | AggrFirst (t, _) | AggrLast (t, _) | AggrPercentile (t, _, _)
-    | Age (t, _) | Sequence (t, _, _) | Not (t, _) | Defined (t, _)
-    | Add (t, _, _) | Sub (t, _, _) | Mul (t, _, _) | Div (t, _, _)
-    | IDiv (t, _, _) | Pow (t, _, _) | And (t, _, _) | Or (t, _, _)
-    | Ge (t, _, _) | Gt (t, _, _) | Eq (t, _, _) | Mod (t, _, _)
-    | Cast (t, _) | Abs (t, _) | Length (t, _) | Now t | Concat (t, _, _)
-    | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
-    | MovingAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
-    | Exp (t, _) | Log (t, _) | Sqrt (t, _) | Split (t, _, _) | Hash (t, _)
-    | MultiLinReg (t, _, _, _, _) | Remember (t, _, _, _)
-    | StateField (t, _) ->
+    | Const (t, _) | Field (t, _, _) | Param (t, _) | StateField (t, _)
+    | StatelessFun (t, _) | StatefullFun (t, _, _) | GeneratorFun (t, _) ->
       t
 
   let is_nullable e =
@@ -640,190 +708,203 @@ struct
   (* Propagate values up the tree only, depth first. *)
   let rec fold_by_depth f i expr =
     match expr with
-    | Const _ | Param _ | Field _ | Now _ ->
+    | Const _ | Param _ | Field _ | StateField _ | StatelessFun (_, Now) ->
       f i expr
-    | AggrMin (_, e) | AggrMax (_, e) | AggrSum (_, e) | AggrAnd (_, e)
-    | AggrOr (_, e) | AggrFirst (_, e) | AggrLast (_, e) | Age (_, e)
-    | Not (_, e) | Defined (_, e) | Cast (_, e) | Abs (_, e) | Length (_, e)
-    | BeginOfRange (_, e) | EndOfRange (_, e) | Exp (_, e) | Log (_, e)
-    | Sqrt (_, e) | Hash (_, e) ->
+
+    | StatefullFun (_, _, AggrMin e) | StatefullFun (_, _, AggrMax e)
+    | StatefullFun (_, _, AggrSum e) | StatefullFun (_, _, AggrAnd e)
+    | StatefullFun (_, _, AggrOr e) | StatefullFun (_, _, AggrFirst e)
+    | StatefullFun (_, _, AggrLast e) | StatelessFun (_, Age e)
+    | StatelessFun (_, Not e) | StatelessFun (_, Defined e)
+    | StatelessFun (_, Cast e) | StatelessFun (_, Abs e)
+    | StatelessFun (_, Length e) | StatelessFun (_, BeginOfRange e)
+    | StatelessFun (_, EndOfRange e) | StatelessFun (_, Exp e)
+    | StatelessFun (_, Log e) | StatelessFun (_, Sqrt e)
+    | StatelessFun (_, Hash e) ->
       f (fold_by_depth f i e) expr
-    | AggrPercentile (_, e1, e2) | Sequence (_, e1, e2)
-    | Add (_, e1, e2) | Sub (_, e1, e2) | Mul (_, e1, e2) | Div (_, e1, e2)
-    | IDiv (_, e1, e2) | Pow (_, e1, e2) | And (_, e1, e2) | Or (_, e1, e2)
-    | Ge (_, e1, e2) | Gt (_, e1, e2) | Eq (_, e1, e2) | Mod (_, e1, e2)
-    | Lag (_, e1, e2) | ExpSmooth (_, e1, e2) | Split (_, e1, e2)
-    | Concat (_, e1, e2) ->
+
+    | StatefullFun (_, _, AggrPercentile (e1, e2))
+    | StatelessFun (_, Sequence (e1, e2)) | StatelessFun (_, Add (e1, e2))
+    | StatelessFun (_, Sub (e1, e2)) | StatelessFun (_, Mul (e1, e2))
+    | StatelessFun (_, Div (e1, e2)) | StatelessFun (_, IDiv (e1, e2))
+    | StatelessFun (_, Pow (e1, e2)) | StatelessFun (_, And (e1, e2))
+    | StatelessFun (_, Or (e1, e2)) | StatelessFun (_, Ge (e1, e2))
+    | StatelessFun (_, Gt (e1, e2)) | StatelessFun (_, Eq (e1, e2))
+    | StatelessFun (_, Mod (e1, e2)) | StatefullFun (_, _, Lag (e1, e2))
+    | StatefullFun (_, _, ExpSmooth (e1, e2))
+    | StatelessFun (_, Concat (e1, e2)) | GeneratorFun (_, Split (e1, e2)) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       f i'' expr
-    | MovingAvg (_, e1, e2, e3) | LinReg (_, e1, e2, e3)
-    | Remember (_, e1, e2, e3) ->
+
+    | StatefullFun (_, _, MovingAvg (e1, e2, e3))
+    | StatefullFun (_, _, LinReg (e1, e2, e3))
+    | StatefullFun (_, _, Remember (e1, e2, e3)) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
       f i''' expr
-    | MultiLinReg (_, e1, e2, e3, e4s) ->
+
+    | StatefullFun (_, _, MultiLinReg (e1, e2, e3, e4s)) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
       let i''''= List.fold_left (fun i e ->
         fold_by_depth f i e) i''' e4s in
       f i'''' expr
-    | StateField _ -> i
 
   let iter f = fold_by_depth (fun () e -> f e) ()
 
   let unpure_iter f e =
     fold_by_depth (fun () -> function
-      | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
-      | AggrLast _ | AggrPercentile _ | Lag _ | MovingAvg _ | LinReg _
-      | ExpSmooth _ | MultiLinReg _ | Remember _ as e ->
-        f e
-      | Const _ | Param _ | Field _ | Cast _ | Now _ | Age _ | Sequence _
-      | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _
-      | And _ | Or _ | Ge _ | Gt _ | Eq _ | Mod _ | Abs _ | Length _
-      | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _
-      | Concat _ | StateField _ | Hash _ ->
-        ()) () e |> ignore
+      | StatefullFun _ as e -> f e
+      | _ -> ()) () e |> ignore
 
   (* Any expression that uses a generator is a generator: *)
   let is_generator =
     fold_by_depth (fun is e ->
-      is || match e with Split _ -> true | _ -> false) false
+      is || match e with GeneratorFun _ -> true | _ -> false) false
 
   let rec map_type ?(recurs=true) f = function
     | Const (t, a) -> Const (f t, a)
     | Field (t, a, b) -> Field (f t, a, b)
     | StateField _ as e -> e
     | Param (t, a) -> Param (f t, a)
-    | AggrMin (t, a) ->
-      AggrMin (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrMax (t, a) ->
-      AggrMax (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrSum (t, a) ->
-      AggrSum (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrAnd (t, a) ->
-      AggrAnd (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrOr  (t, a) ->
-      AggrOr  (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrFirst (t, a) ->
-      AggrFirst (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrLast (t, a) ->
-      AggrLast (f t, (if recurs then map_type ~recurs f a else a))
-    | AggrPercentile (t, a, b) ->
-      AggrPercentile (f t,
-                      (if recurs then map_type ~recurs f a else a),
-                      (if recurs then map_type ~recurs f b else b))
-    | Age (t, a) -> Age (f t, (if recurs then map_type ~recurs f a else a))
-    | Now t -> Now (f t)
-    | Sequence (t, a, b) ->
-      Sequence (f t,
-                (if recurs then map_type ~recurs f a else a),
-                (if recurs then map_type ~recurs f b else b))
-    | Abs (t, a) ->
-      Abs (f t, (if recurs then map_type ~recurs f a else a))
-    | Cast (t, a) ->
-      Cast (f t, (if recurs then map_type ~recurs f a else a))
-    | Length (t, a) ->
-      Length (f t, (if recurs then map_type ~recurs f a else a))
-    | Not (t, a) ->
-      Not (f t, (if recurs then map_type ~recurs f a else a))
-    | Defined (t, a) ->
-      Defined (f t, (if recurs then map_type ~recurs f a else a))
-    | Add (t, a, b) ->
-      Add (f t,
-           (if recurs then map_type ~recurs f a else a),
-           (if recurs then map_type ~recurs f b else b))
-    | Sub (t, a, b) ->
-      Sub (f t,
-               (if recurs then map_type ~recurs f a else a),
-               (if recurs then map_type ~recurs f b else b))
-    | Mul (t, a, b) ->
-      Mul (f t,
-           (if recurs then map_type ~recurs f a else a),
-           (if recurs then map_type ~recurs f b else b))
-    | Div (t, a, b) ->
-      Div (f t,
-           (if recurs then map_type ~recurs f a else a),
-           (if recurs then map_type ~recurs f b else b))
-    | IDiv (t, a, b) ->
-      IDiv (f t,
-            (if recurs then map_type ~recurs f a else a),
-            (if recurs then map_type ~recurs f b else b))
-    | Mod (t, a, b) ->
-      Mod (f t,
-           (if recurs then map_type ~recurs f a else a),
-           (if recurs then map_type ~recurs f b else b))
-    | Pow (t, a, b) ->
-      Pow (f t,
-           (if recurs then map_type ~recurs f a else a),
-           (if recurs then map_type ~recurs f b else b))
-    | Exp (t, a) -> Exp (f t, (if recurs then map_type ~recurs f a else a))
-    | Log (t, a) -> Log (f t, (if recurs then map_type ~recurs f a else a))
-    | Sqrt (t, a) -> Sqrt (f t, (if recurs then map_type ~recurs f a else a))
-    | Hash (t, a) -> Hash (f t, (if recurs then map_type ~recurs f a else a))
-    | And (t, a, b) ->
-      And (f t,
-           (if recurs then map_type ~recurs f a else a),
-           (if recurs then map_type ~recurs f b else b))
-    | Or (t, a, b) ->
-      Or (f t,
+
+    | StatefullFun (t, g, AggrMin a) ->
+      StatefullFun (f t, g, AggrMin (if recurs then map_type ~recurs f a else a))
+    | StatefullFun (t, g, AggrMax a) ->
+      StatefullFun (f t, g, AggrMax (if recurs then map_type ~recurs f a else a))
+    | StatefullFun (t, g, AggrSum a) ->
+      StatefullFun (f t, g, AggrSum (if recurs then map_type ~recurs f a else a))
+    | StatefullFun (t, g, AggrAnd a) ->
+      StatefullFun (f t, g, AggrAnd (if recurs then map_type ~recurs f a else a))
+    | StatefullFun (t, g, AggrOr a) ->
+      StatefullFun (f t, g, AggrOr (if recurs then map_type ~recurs f a else a))
+    | StatefullFun (t, g, AggrFirst a) ->
+      StatefullFun (f t, g, AggrFirst (if recurs then map_type ~recurs f a else a))
+    | StatefullFun (t, g, AggrLast a) ->
+      StatefullFun (f t, g, AggrLast (if recurs then map_type ~recurs f a else a))
+    | StatefullFun (t, g, AggrPercentile (a, b)) ->
+      StatefullFun (f t, g, AggrPercentile (
           (if recurs then map_type ~recurs f a else a),
-          (if recurs then map_type ~recurs f b else b))
-    | Ge (t, a, b) ->
-      Ge (f t,
+          (if recurs then map_type ~recurs f b else b)))
+    | StatefullFun (t, g, Lag (a, b)) ->
+      StatefullFun (f t, g, Lag (
           (if recurs then map_type ~recurs f a else a),
-          (if recurs then map_type ~recurs f b else b))
-    | Gt (t, a, b) ->
-      Gt (f t,
+          (if recurs then map_type ~recurs f b else b)))
+    | StatefullFun (t, g, MovingAvg (a, b, c)) ->
+      StatefullFun (f t, g, MovingAvg (
           (if recurs then map_type ~recurs f a else a),
-          (if recurs then map_type ~recurs f b else b))
-    | Eq (t, a, b) ->
-      Eq (f t,
+          (if recurs then map_type ~recurs f b else b),
+          (if recurs then map_type ~recurs f c else c)))
+    | StatefullFun (t, g, LinReg (a, b, c)) ->
+      StatefullFun (f t, g, LinReg (
           (if recurs then map_type ~recurs f a else a),
-          (if recurs then map_type ~recurs f b else b))
-    | Concat (t, a, b) ->
-      Concat (f t,
-              (if recurs then map_type ~recurs f a else a),
-              (if recurs then map_type ~recurs f b else b))
-    | BeginOfRange (t, a) ->
-      BeginOfRange (f t, (if recurs then map_type ~recurs f a else a))
-    | EndOfRange (t, a) ->
-      EndOfRange (f t, (if recurs then map_type ~recurs f a else a))
-    | Lag (t, a, b) ->
-      Lag (f t,
+          (if recurs then map_type ~recurs f b else b),
+          (if recurs then map_type ~recurs f c else c)))
+    | StatefullFun (t, g, MultiLinReg (a, b, c, d)) ->
+      StatefullFun (f t, g, MultiLinReg (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b),
+          (if recurs then map_type ~recurs f c else c),
+          (if recurs then List.map (map_type ~recurs f) d else d)))
+    | StatefullFun (t, g, Remember (tim, dur, e)) ->
+      StatefullFun (f t, g, Remember (
+          (if recurs then map_type ~recurs f tim else tim),
+          (if recurs then map_type ~recurs f dur else dur),
+          (if recurs then map_type ~recurs f e else e)))
+    | StatefullFun (t, g, ExpSmooth (a, b)) ->
+      StatefullFun (f t, g, ExpSmooth (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+
+    | StatelessFun (t, Age a) ->
+      StatelessFun (f t, Age (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Now) -> StatelessFun (f t, Now)
+    | StatelessFun (t, Sequence (a, b)) ->
+      StatelessFun (f t, Sequence (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Abs a) ->
+      StatelessFun (f t, Abs (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Cast a) ->
+      StatelessFun (f t, Cast (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Length a) ->
+      StatelessFun (f t, Length (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Not a) ->
+      StatelessFun (f t, Not (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Defined a) ->
+      StatelessFun (f t, Defined (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Add (a, b)) ->
+      StatelessFun (f t, Add (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Sub (a, b)) ->
+      StatelessFun (f t, Sub (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Mul (a, b)) ->
+      StatelessFun (f t, Mul (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Div (a, b)) ->
+      StatelessFun (f t, Div (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, IDiv (a, b)) ->
+      StatelessFun (f t, IDiv (
            (if recurs then map_type ~recurs f a else a),
-           (if recurs then map_type ~recurs f b else b))
-    | MovingAvg (t, a, b, c) ->
-      MovingAvg (f t,
-                 (if recurs then map_type ~recurs f a else a),
-                 (if recurs then map_type ~recurs f b else b),
-                 (if recurs then map_type ~recurs f c else c))
-    | LinReg (t, a, b, c) ->
-      LinReg (f t,
-              (if recurs then map_type ~recurs f a else a),
-              (if recurs then map_type ~recurs f b else b),
-              (if recurs then map_type ~recurs f c else c))
-    | MultiLinReg (t, a, b, c, d) ->
-      MultiLinReg (f t,
-                   (if recurs then map_type ~recurs f a else a),
-                   (if recurs then map_type ~recurs f b else b),
-                   (if recurs then map_type ~recurs f c else c),
-                   (if recurs then List.map (map_type ~recurs f) d else d))
-    | Remember (t, tim, dur, e) ->
-      Remember (f t,
-                (if recurs then map_type ~recurs f tim else tim),
-                (if recurs then map_type ~recurs f dur else dur),
-                (if recurs then map_type ~recurs f e else e))
-    | ExpSmooth (t, a, b) ->
-      ExpSmooth (f t,
-                 (if recurs then map_type ~recurs f a else a),
-                 (if recurs then map_type ~recurs f b else b))
-    | Split (t, a, b) ->
-      Split (f t,
-             (if recurs then map_type ~recurs f a else a),
-             (if recurs then map_type ~recurs f b else b))
+           (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Mod (a, b)) ->
+      StatelessFun (f t, Mod (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Pow (a, b)) ->
+      StatelessFun (f t, Pow (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Exp a) ->
+      StatelessFun (f t, Exp (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Log a) ->
+      StatelessFun (f t, Log (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Sqrt a) ->
+      StatelessFun (f t, Sqrt (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Hash a) ->
+      StatelessFun (f t, Hash (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, And (a, b)) ->
+      StatelessFun (f t, And (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Or (a, b)) ->
+      StatelessFun (f t, Or (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Ge (a, b)) ->
+      StatelessFun (f t, Ge (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Gt (a, b)) ->
+      StatelessFun (f t, Gt (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Eq (a, b)) ->
+      StatelessFun (f t, Eq (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Concat (a, b)) ->
+      StatelessFun (f t, Concat (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, BeginOfRange a) ->
+      StatelessFun (f t, BeginOfRange (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, EndOfRange a) ->
+      StatelessFun (f t, EndOfRange (if recurs then map_type ~recurs f a else a))
+
+    | GeneratorFun (t, Split (a, b)) ->
+      GeneratorFun (f t, Split (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b)))
 
   module Parser =
   struct
@@ -917,13 +998,19 @@ struct
       (test_p param "glop" |> replace_typ_in_expr)
     *)
 
+    let opt_state_lifespan m =
+      let m = "state lifespan" :: m in
+      optional ~def:LocalState (blanks -+
+        (strinG "globally" >>: fun () -> GlobalState) |||
+        (strinG "locally" >>: fun () -> LocalState)) m
+
     (* operators with lowest precedence *)
     let rec lowest_prec_left_assoc m =
       let m = "logical operator" :: m in
       let op = that_string "and" ||| that_string "or"
       and reduce t1 op t2 = match op with
-        | "and" -> And (make_bool_typ "and operator", t1, t2)
-        | "or" -> Or (make_bool_typ "or operator", t1, t2)
+        | "and" -> StatelessFun (make_bool_typ "and operator", And (t1, t2))
+        | "or" -> StatelessFun (make_bool_typ "or operator", Or (t1, t2))
         | _ -> assert false in
       (* FIXME: we do not need a blanks if we had parentheses ("(x)AND(y)" is OK) *)
       binary_ops_reducer ~op ~term:low_prec_left_assoc ~sep:blanks ~reduce m
@@ -933,19 +1020,23 @@ struct
       let op = that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
                that_string "=" ||| that_string "<>" ||| that_string "!="
       and reduce t1 op t2 = match op with
-        | ">" -> Gt (make_bool_typ "comparison operator", t1, t2)
-        | "<" -> Gt (make_bool_typ "comparison operator", t2, t1)
-        | ">=" -> Ge (make_bool_typ "comparison operator", t1, t2)
-        | "<=" -> Ge (make_bool_typ "comparison operator", t2, t1)
-        | "=" -> Eq (make_bool_typ "equality operator", t1, t2)
-        | "!=" | "<>" -> Not (make_bool_typ "not operator", Eq (make_bool_typ "equality operator", t1, t2))
+        | ">" -> StatelessFun (make_bool_typ "comparison operator", Gt (t1, t2))
+        | "<" -> StatelessFun (make_bool_typ "comparison operator", Gt (t2, t1))
+        | ">=" -> StatelessFun (make_bool_typ "comparison operator", Ge (t1, t2))
+        | "<=" -> StatelessFun (make_bool_typ "comparison operator", Ge (t2, t1))
+        | "=" -> StatelessFun (make_bool_typ "equality operator", Eq (t1, t2))
+        | "!=" | "<>" ->
+          StatelessFun (make_bool_typ "not operator", Not (
+            StatelessFun (make_bool_typ "equality operator", Eq (t1, t2))))
         | "IN" | "in" ->
-          And (make_bool_typ "and for range",
-               Ge (make_bool_typ "comparison operator for range", t1,
-                   BeginOfRange (make_typ "begin of range", t2)),
-               Not (make_bool_typ "not operator for range",
-                    Ge (make_bool_typ "comparison operator for range", t1,
-                        EndOfRange (make_typ "end of range", t2))))
+          StatelessFun (make_bool_typ "and for range", And (
+            StatelessFun (make_bool_typ "comparison operator for range", Ge (
+              t1,
+              StatelessFun (make_typ "begin of range", BeginOfRange t2))),
+            StatelessFun (make_bool_typ "not operator for range", Not (
+              StatelessFun (make_bool_typ "comparison operator for range", Ge (
+                t1,
+                StatelessFun (make_typ "end of range", EndOfRange t2)))))))
         | _ -> assert false in
       binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -953,9 +1044,9 @@ struct
       let m = "arithmetic operator" :: m in
       let op = that_string "+" ||| that_string "-" ||| that_string "||"
       and reduce t1 op t2 = match op with
-        | "+" -> Add (make_num_typ "addition", t1, t2)
-        | "-" -> Sub (make_num_typ "subtraction", t1, t2)
-        | "||" -> Concat (make_string_typ "concatenation", t1, t2)
+        | "+" -> StatelessFun (make_num_typ "addition", Add (t1, t2))
+        | "-" -> StatelessFun (make_num_typ "subtraction", Sub (t1, t2))
+        | "||" -> StatelessFun (make_string_typ "concatenation", Concat (t1, t2))
         | _ -> assert false in
       binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -963,20 +1054,50 @@ struct
       let m = "arithmetic operator" :: m in
       let op = that_string "*" ||| that_string "//" ||| that_string "/" ||| that_string "%"
       and reduce t1 op t2 = match op with
-        | "*" -> Mul (make_num_typ "multiplication", t1, t2)
+        | "*" -> StatelessFun (make_num_typ "multiplication", Mul (t1, t2))
         (* Note: We want the default division to output floats by default *)
-        | "/" -> Div (make_typ ~typ:TFloat "division", t1, t2)
-        | "//" -> IDiv (make_num_typ "integer-division", t1, t2)
-        | "%" -> Mod (make_num_typ "modulo", t1, t2)
+        | "/" -> StatelessFun (make_typ ~typ:TFloat "division", Div (t1, t2))
+        | "//" -> StatelessFun (make_num_typ "integer-division", IDiv (t1, t2))
+        | "%" -> StatelessFun (make_num_typ "modulo", Mod (t1, t2))
         | _ -> assert false in
       binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks~reduce m
 
     and higher_prec_right_assoc m =
       let m = "arithmetic operator" :: m in
       let op = char '^'
-      and reduce t1 _ t2 = Pow (make_num_typ "exponentiation", t1, t2) in
+      and reduce t1 _ t2 = StatelessFun (make_num_typ "exponentiation", Pow (t1, t2)) in
       binary_ops_reducer ~op ~right_associative:true
                          ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
+
+    and afunv_sf a n m =
+      let sep = opt_blanks -- char ',' -- opt_blanks in
+      let m = n :: m in
+      (strinG n -+ opt_state_lifespan +-
+       opt_blanks +- char '(' +- opt_blanks ++
+       repeat ~min:a ~max:a ~sep lowest_prec_left_assoc ++
+       repeat ~sep lowest_prec_left_assoc +- opt_blanks +- char ')') m
+
+    and afun_sf a n =
+      afunv_sf a n >>: fun (a, r) ->
+        if r = [] then a else
+        raise (Reject "too many arguments")
+
+    and afun1_sf n =
+      (strinG n -- blanks -- optional ~def:() (strinG "of" -- blanks) -+
+       opt_state_lifespan ++ highestest_prec) |||
+      (afun_sf 1 n >>: function (g, [a]) -> g, a | _ -> assert false)
+
+    and afun2_sf n =
+      afun_sf 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
+
+    and afun2v_sf n =
+      afunv_sf 2 n >>: function ((g, [a;b]), r) -> g, a, b, r | _ -> assert false
+
+    and afun3_sf n =
+      afun_sf 3 n >>: function (g, [a;b;c]) -> g, a, b, c | _ -> assert false
+
+    and afun3v_sf n =
+      afunv_sf 3 n >>: function ((g, [a;b;c]), r) -> g, a, b, c, r | _ -> assert false
 
     and afunv a n m =
       let sep = opt_blanks -- char ',' -- opt_blanks in
@@ -996,19 +1117,19 @@ struct
       (afun 1 n >>: function [a] -> a | _ -> assert false)
 
     and afun2 n =
-      afun 2 n >>: function [a;b] -> (a, b) | _ -> assert false
+      afun 2 n >>: function [a;b] -> a, b | _ -> assert false
 
     and afun3 n =
-      afun 3 n >>: function [a;b;c] -> (a, b, c) | _ -> assert false
+      afun 3 n >>: function [a;b;c] -> a, b, c | _ -> assert false
 
     and afun2v n =
-      afunv 2 n >>: function ([a;b], r) -> (a, b, r) | _ -> assert false
+      afunv 2 n >>: function ([a;b], r) -> a, b, r | _ -> assert false
 
     and afun3v n =
-      afunv 3 n >>: function ([a;b;c], r) -> (a, b, c, r) | _ -> assert false
+      afunv 3 n >>: function ([a;b;c], r) -> a, b, c, r | _ -> assert false
 
     and highest_prec_left_assoc m =
-      ((afun1 "not" >>: fun e -> Not (make_bool_typ "not operator", e)) |||
+      ((afun1 "not" >>: fun e -> StatelessFun (make_bool_typ "not operator", Not e)) |||
        (highestest_prec ++
         optional ~def:None (
           blanks -- strinG "is" -- blanks -+
@@ -1016,61 +1137,70 @@ struct
                    (strinG "not" -- blanks >>: fun () -> Some true) +-
           strinG "null") >>: function
             | e, None -> e
-            | e, Some false -> Not (make_bool_typ ~nullable:false "not operator", Defined (make_bool_typ ~nullable:false "is_not_null operator", e))
-            | e, Some true -> Defined (make_bool_typ ~nullable:false "is_not_null operator", e))
+            | e, Some false ->
+              StatelessFun (make_bool_typ ~nullable:false "not operator",
+                Not (StatelessFun (make_bool_typ ~nullable:false "is_not_null operator", Defined e)))
+            | e, Some true ->
+              StatelessFun (make_bool_typ ~nullable:false "is_not_null operator", Defined e))
       ) m
 
-    and aggregate m =
-      let m = "aggregate function" :: m in
+    and func m =
+      let m = "function" :: m in
       (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
-      ((afun1 "min" >>: fun e -> AggrMin (make_num_typ "min aggregation", e)) |||
-       (afun1 "max" >>: fun e -> AggrMax (make_num_typ "max aggregation", e)) |||
-       (afun1 "sum" >>: fun e -> AggrSum (make_num_typ "sum aggregation", e)) |||
-       (afun1 "and" >>: fun e -> AggrAnd (make_bool_typ "and aggregation", e)) |||
-       (afun1 "or" >>: fun e -> AggrOr (make_bool_typ "or aggregation", e)) |||
-       (afun1 "first" >>: fun e -> AggrFirst (make_typ "first aggregation", e)) |||
-       (afun1 "last" >>: fun e -> AggrLast (make_typ "last aggregation", e)) |||
+      ((afun1 "age" >>: fun e -> StatelessFun (make_num_typ "age function", Age e)) |||
+       (afun1 "abs" >>: fun e -> StatelessFun (make_num_typ "absolute value", Abs e)) |||
+       (afun1 "length" >>: fun e -> StatelessFun (make_typ ~typ:TU16 "length", Length e)) |||
+       (strinG "now" >>: fun () -> StatelessFun (make_float_typ ~nullable:false "now", Now)) |||
+       (afun1 "exp" >>: fun e -> StatelessFun (make_num_typ "exponential", Exp e)) |||
+       (afun1 "log" >>: fun e -> StatelessFun (make_num_typ "logarithm", Log e)) |||
+       (afun1 "sqrt" >>: fun e -> StatelessFun (make_num_typ "square root", Sqrt e)) |||
+       (afun1 "hash" >>: fun e -> StatelessFun (make_typ ~typ:TI64 "hash", Hash e)) |||
+       (afun1_sf "min" >>: fun (g, e) ->
+          StatefullFun (make_num_typ "min aggregation", g, AggrMin e)) |||
+       (afun1_sf "max" >>: fun (g, e) ->
+          StatefullFun (make_num_typ "max aggregation", g, AggrMax e)) |||
+       (afun1_sf "sum" >>: fun (g, e) ->
+          StatefullFun (make_num_typ "sum aggregation", g, AggrSum e)) |||
+       (afun1_sf "and" >>: fun (g, e) ->
+          StatefullFun (make_bool_typ "and aggregation", g, AggrAnd e)) |||
+       (afun1_sf "or" >>: fun (g, e) ->
+          StatefullFun (make_bool_typ "or aggregation", g, AggrOr e)) |||
+       (afun1_sf "first" >>: fun (g, e) ->
+          StatefullFun (make_typ "first aggregation", g, AggrFirst e)) |||
+       (afun1_sf "last" >>: fun (g, e) ->
+          StatefullFun (make_typ "last aggregation", g, AggrLast e)) |||
        ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
-        afun1 "percentile" >>: fun (p, e) ->
-        AggrPercentile (make_num_typ ~nullable:false "percentile aggregation", p, e))
-      ) m
+        afun1_sf "percentile" >>: fun (p, (g, e)) ->
+          StatefullFun (make_num_typ ~nullable:false "percentile aggregation",
+                        g, AggrPercentile (p, e))) |||
+       (afun2_sf "lag" >>: fun (g, e1, e2) ->
+          StatefullFun (make_typ "lag", g, Lag (e1, e2))) |||
 
-    and func =
-      fun m ->
-        let m = "function" :: m in
-        ((afun1 "age" >>: fun e -> Age (make_num_typ "age function", e)) |||
-         (afun1 "abs" >>: fun e -> Abs (make_num_typ "absolute value", e)) |||
-         (afun1 "length" >>: fun e -> Length (make_typ ~typ:TU16 "length", e)) |||
-         (strinG "now" >>: fun () -> Now (make_float_typ ~nullable:false "now")) |||
-         (afun2 "lag" >>: fun (e1, e2) -> Lag (make_typ "lag", e1, e2)) |||
-         (* avg perform a division thus the float type *)
-         (afun3 "season_moveavg" >>: fun (e1, e2, e3) ->
-          MovingAvg (make_float_typ "season_moveavg", e1, e2, e3)) |||
-         (afun2 "moveavg" >>: fun (e1, e2) ->
-          MovingAvg (make_float_typ "season_moveavg", expr_one, e1, e2)) |||
-         (afun3 "season_fit" >>: fun (e1, e2, e3) ->
-          LinReg (make_float_typ "season_fit", e1, e2, e3)) |||
-         (afun2 "fit" >>: fun (e1, e2) ->
-          LinReg (make_float_typ "season_fit", expr_one, e1, e2)) |||
-         (afun3v "season_fit_multi" >>: fun (e1, e2, e3, e4s) ->
-          MultiLinReg (make_float_typ "season_fit_multi", e1, e2, e3, e4s)) |||
-         (afun2v "fit_multi" >>: fun (e1, e2, e3s) ->
-          MultiLinReg (make_float_typ "season_fit_multi", expr_one, e1, e2, e3s)) |||
-         (afun2 "smooth" >>: fun (e1, e2) ->
-          ExpSmooth (make_float_typ "smooth", e1, e2)) |||
-         (afun1 "smooth" >>: fun e ->
+       (* avg perform a division thus the float type *)
+       (afun3_sf "season_moveavg" >>: fun (g, e1, e2, e3) ->
+          StatefullFun (make_float_typ "season_moveavg", g, MovingAvg (e1, e2, e3))) |||
+       (afun2_sf "moveavg" >>: fun (g, e1, e2) ->
+          StatefullFun (make_float_typ "season_moveavg", g, MovingAvg (expr_one, e1, e2))) |||
+       (afun3_sf "season_fit" >>: fun (g, e1, e2, e3) ->
+          StatefullFun (make_float_typ "season_fit", g, LinReg (e1, e2, e3))) |||
+       (afun2_sf "fit" >>: fun (g,e1, e2) ->
+          StatefullFun (make_float_typ "season_fit", g, LinReg (expr_one, e1, e2))) |||
+       (afun3v_sf "season_fit_multi" >>: fun (g, e1, e2, e3, e4s) ->
+          StatefullFun (make_float_typ "season_fit_multi", g, MultiLinReg (e1, e2, e3, e4s))) |||
+       (afun2v_sf "fit_multi" >>: fun (g, e1, e2, e3s) ->
+          StatefullFun (make_float_typ "season_fit_multi", g, MultiLinReg (expr_one, e1, e2, e3s))) |||
+       (afun2_sf "smooth" >>: fun (g, e1, e2) ->
+          StatefullFun (make_float_typ "smooth", g, ExpSmooth (e1, e2))) |||
+       (afun1_sf "smooth" >>: fun (g, e) ->
           let alpha =
             Const (make_typ ~typ:TFloat ~nullable:false "alpha", VFloat 0.5) in
-          ExpSmooth (make_float_typ "smooth", alpha, e)) |||
-         (afun1 "exp" >>: fun e -> Exp (make_num_typ "exponential", e)) |||
-         (afun1 "log" >>: fun e -> Log (make_num_typ "logarithm", e)) |||
-         (afun1 "sqrt" >>: fun e -> Sqrt (make_num_typ "square root", e)) |||
-         (afun1 "hash" >>: fun e -> Hash (make_typ ~typ:TI64 "hash", e)) |||
-         (afun2 "split" >>: fun (e1, e2) ->
-          Split (make_typ ~typ:TString "split", e1, e2)) |||
-         (afun3 "remember" >>: fun (tim, dir, e) ->
-          Remember (make_bool_typ "remember", tim, dir, e)) |||
-         k_moveavg ||| sequence ||| cast) m
+          StatefullFun (make_float_typ "smooth", g, ExpSmooth (alpha, e))) |||
+       (afun3_sf "remember" >>: fun (g, tim, dir, e) ->
+          StatefullFun (make_bool_typ "remember", g, Remember (tim, dir, e))) |||
+
+       (afun2 "split" >>: fun (e1, e2) ->
+          GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
+       k_moveavg ||| sequence ||| cast) m
 
     and sequence =
       let seq = "sequence"
@@ -1082,11 +1212,11 @@ struct
       fun m ->
         let m = "sequence function" :: m in
         ((afun2 seq >>: fun (e1, e2) ->
-            Sequence (seq_typ, e1, e2)) |||
+            StatelessFun (seq_typ, Sequence (e1, e2))) |||
          (afun1 seq >>: fun e1 ->
-            Sequence (seq_typ, e1, seq_default_step)) |||
+            StatelessFun (seq_typ, Sequence (e1, seq_default_step))) |||
          (strinG seq >>: fun () ->
-            Sequence (seq_typ, seq_default_start, seq_default_step))
+            StatelessFun (seq_typ, Sequence (seq_default_start, seq_default_step)))
         ) m
 
     and cast m =
@@ -1094,21 +1224,22 @@ struct
       let sep = check (char '(') ||| blanks in
       (Scalar.Parser.typ +- optional ~def:() (blanks -- strinG "of") +- sep ++
        highestest_prec >>: fun (typ, e) ->
-         Cast (make_typ ~typ ("cast to "^ IO.to_string Scalar.print_typ typ), e)
+         StatelessFun (make_typ ~typ ("cast to "^ IO.to_string Scalar.print_typ typ), Cast e)
       ) m
 
     and k_moveavg m =
       let m = "k-moving average" :: m in
       let sep = check (char '(') ||| blanks in
       ((unsigned_decimal_number >>: Scalar.Parser.narrowest_int_scalar) +-
-       (strinG "-moveavg" ||| strinG "-ma") +-
-       (blanks -- strinG "of") +- sep ++ highestest_prec >>: fun (k, e) ->
+       (strinG "-moveavg" ||| strinG "-ma") ++
+       opt_state_lifespan +-
+       (blanks -- strinG "of") +- sep ++ highestest_prec >>: fun ((k, g), e) ->
          let k = Const (make_typ ~nullable:false ~typ:(scalar_type_of k)
                                  "moving average order", k) in
-         MovingAvg (make_float_typ "moveavg", expr_one, k, e)) m
+         StatefullFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
 
     and highestest_prec m =
-      (const ||| field ||| param ||| func ||| aggregate ||| null |||
+      (const ||| field ||| param ||| func ||| null |||
        char '(' -- opt_blanks -+
          lowest_prec_left_assoc +-
        opt_blanks +- char ')'
@@ -1123,79 +1254,83 @@ struct
         (test_p p "true" |> replace_typ_in_expr)
 
       (Ok (\
-        Not (typ, Defined (typ, Field (typ, ref TupleIn, "zone_src"))),\
+        StatelessFun (typ, Not (StatelessFun (typ, Defined (Field (typ, ref TupleIn, "zone_src"))))),\
         (16, [])))\
         (test_p p "zone_src IS NULL" |> replace_typ_in_expr)
 
       (Ok (\
-        Eq (typ, Field (typ, ref TupleIn, "zone_src"), Param (typ, "z1")),\
+        StatelessFun (typ, Eq (Field (typ, ref TupleIn, "zone_src"), Param (typ, "z1"))),\
         (14, [])))\
         (test_p p "zone_src = $z1" |> replace_typ_in_expr)
 
       (Ok (\
-        And (typ, \
-          Or (typ, \
-            Not (typ, Defined (typ, Field (typ, ref TupleIn, "zone_src"))),\
-            Eq (typ, Field (typ, ref TupleIn, "zone_src"), Param (typ, "z1"))),\
-          Or (typ, \
-            Not (typ, Defined (typ, Field (typ, ref TupleIn, "zone_dst"))),\
-            Eq (typ, Field (typ, ref TupleIn, "zone_dst"), Param (typ, "z2")))),\
+        StatelessFun (typ, And (\
+          StatelessFun (typ, Or (\
+            StatelessFun (typ, Not (\
+              StatelessFun (typ, Defined (Field (typ, ref TupleIn, "zone_src"))))),\
+            StatelessFun (typ, Eq (Field (typ, ref TupleIn, "zone_src"), Param (typ, "z1"))))),\
+          StatelessFun (typ, Or (\
+            StatelessFun (typ, Not (\
+              StatelessFun (typ, Defined (Field (typ, ref TupleIn, "zone_dst"))))),\
+            StatelessFun (typ, Eq (\
+              Field (typ, ref TupleIn, "zone_dst"), Param (typ, "z2"))))))),\
         (77, [])))\
         (test_p p "(zone_src IS NULL or zone_src = $z1) and \\
                    (zone_dst IS NULL or zone_dst = $z2)" |> replace_typ_in_expr)
 
       (Ok (\
-        Div (typ, \
-          AggrSum (typ, Field (typ, ref TupleIn, "bytes")),\
-          Param (typ, "avg_window")),\
+        StatelessFun (typ, Div (\
+          StatefullFun (typ, LocalState, AggrSum (\
+            Field (typ, ref TupleIn, "bytes"))),\
+          Param (typ, "avg_window"))),\
         (23, [])))\
         (test_p p "(sum bytes)/$avg_window" |> replace_typ_in_expr)
 
       (Ok (\
-        IDiv (typ, \
+        StatelessFun (typ, IDiv (\
           Field (typ, ref TupleIn, "start"),\
-          Mul (typ, \
+          StatelessFun (typ, Mul (\
             Const (typ, VI32 1_000_000l),\
-            Param (typ, "avg_window"))),\
+            Param (typ, "avg_window"))))),\
         (34, [])))\
         (test_p p "start // (1_000_000 * $avg_window)" |> replace_typ_in_expr)
 
       (Ok (\
-        AggrPercentile (typ,\
+        StatefullFun (typ, LocalState, AggrPercentile (\
           Param (typ, "p"),\
-          Field (typ, ref TupleIn, "bytes_per_sec")),\
+          Field (typ, ref TupleIn, "bytes_per_sec"))),\
         (30, [])))\
         (test_p p "$p percentile of bytes_per_sec" |> replace_typ_in_expr)
 
       (Ok (\
-        Gt (typ, \
-          AggrMax (typ, \
-            Field (typ, ref TupleLastSelected, "start")),\
-          Add (typ, \
+        StatelessFun (typ, Gt (\
+          StatefullFun (typ, LocalState, AggrMax (\
+            Field (typ, ref TupleLastSelected, "start"))),\
+          StatelessFun (typ, Add (\
             Field (typ, ref TupleOut, "start"),\
-            Mul (typ, \
-              Mul (typ, \
+            StatelessFun (typ, Mul (\
+              StatelessFun (typ, Mul (\
                 Param (typ, "obs_window"),\
-                Const (typ, VFloat 1.15)),\
-              Const (typ, VI32 1_000_000l)))),\
+                Const (typ, VFloat 1.15))),\
+              Const (typ, VI32 1_000_000l))))))),\
         (70, [])))\
         (test_p p "max selected.last.start > \\
                    out.start + ($obs_window * 1.15) * 1_000_000" |> replace_typ_in_expr)
 
       (Ok (\
-        Mod (typ,\
+        StatelessFun (typ, Mod (\
           Param (typ, "x"),\
-          Param (typ, "y")),\
+          Param (typ, "y"))),\
         (7, [])))\
         (test_p p "$x % $y" |> replace_typ_in_expr)
 
       (Ok ( \
-        Abs (typ, \
-          Sub (typ, \
+        StatelessFun (typ, Abs (\
+          StatelessFun (typ, Sub (\
             Field (typ, ref TupleIn, "bps"), \
-            Lag (typ, \
+            StatefullFun (typ, LocalState, Lag (\
               Const (typ, VI8 (Int8.of_int 1)), \
-              Field (typ, ref TupleIn, "bps")))), \
+              Field (typ, ref TupleIn, "bps"))))))), \
         (21, []))) \
         (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
     *)
@@ -1336,18 +1471,20 @@ struct
     (*$< Parser *)
     open RamenParsing
 
-    let default_alias = function
-      | Expr.Field (_, { contents=TupleIn }, field)
-          when not (Expr.is_virtual_field field) -> field
-      (* Provide some default name for current aggregate functions: *)
-      | Expr.AggrMin (_, Expr.Field (_, { contents=TupleIn }, field)) -> "min_"^ field
-      | Expr.AggrMax (_, Expr.Field (_, { contents=TupleIn }, field)) -> "max_"^ field
-      | Expr.AggrSum (_, Expr.Field (_, { contents=TupleIn }, field)) -> "sum_"^ field
-      | Expr.AggrAnd (_, Expr.Field (_, { contents=TupleIn }, field)) -> "and_"^ field
-      | Expr.AggrOr  (_, Expr.Field (_, { contents=TupleIn }, field)) -> "or_"^ field
-      | Expr.AggrFirst (_, Expr.Field (_, { contents=TupleIn }, field)) -> "first_"^ field
-      | Expr.AggrLast (_, Expr.Field (_, { contents=TupleIn }, field)) -> "last_"^ field
-      | Expr.AggrPercentile (_, Expr.Const (_, p), Expr.Field (_, { contents=TupleIn }, field))
+    let default_alias =
+      let open Expr in
+      function
+      | Field (_, { contents=TupleIn }, field)
+          when not (is_virtual_field field) -> field
+      (* Provide some default name for common aggregate functions: *)
+      | StatefullFun (_, _, AggrMin (Field (_, { contents=TupleIn }, field))) -> "min_"^ field
+      | StatefullFun (_, _, AggrMax (Field (_, { contents=TupleIn }, field))) -> "max_"^ field
+      | StatefullFun (_, _, AggrSum (Field (_, { contents=TupleIn }, field))) -> "sum_"^ field
+      | StatefullFun (_, _, AggrAnd (Field (_, { contents=TupleIn }, field))) -> "and_"^ field
+      | StatefullFun (_, _, AggrOr (Field (_, { contents=TupleIn }, field))) -> "or_"^ field
+      | StatefullFun (_, _, AggrFirst (Field (_, { contents=TupleIn }, field))) -> "first_"^ field
+      | StatefullFun (_, _, AggrLast (Field (_, { contents=TupleIn }, field))) -> "last_"^ field
+      | StatefullFun (_, _, AggrPercentile (Const (_, p), Field (_, { contents=TupleIn }, field)))
         when Scalar.is_round_integer p ->
         Printf.sprintf "%s_%sth" field (IO.to_string Scalar.print p)
       | _ -> raise (Reject "must set alias")
@@ -1582,9 +1719,9 @@ struct
           fields = [] ;\
           and_all_others = true ;\
           where = Expr.(\
-            Gt (typ,\
+            StatelessFun (typ, Gt (\
               Field (typ, ref TupleIn, "packets"),\
-              Const (typ, VI8 (Int8.of_int 0)))) ;\
+              Const (typ, VI8 (Int8.of_int 0))))) ;\
           export = None ; notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
@@ -1647,33 +1784,37 @@ struct
         Aggregate {\
           fields = [\
             { expr = Expr.(\
-                AggrMin (typ, Field (typ, ref TupleIn, "start"))) ;\
+                StatefullFun (typ, LocalState, AggrMin (\
+                  Field (typ, ref TupleIn, "start")))) ;\
               alias = "start" } ;\
             { expr = Expr.(\
-                AggrMax (typ, Field (typ, ref TupleIn, "stop"))) ;\
+                StatefullFun (typ, LocalState, AggrMax (\
+                  Field (typ, ref TupleIn, "stop")))) ;\
               alias = "max_stop" } ;\
             { expr = Expr.(\
-                Div (typ,\
-                  AggrSum (typ, Field (typ, ref TupleIn, "packets")),\
-                  Param (typ, "avg_window"))) ;\
+                StatelessFun (typ, Div (\
+                  StatefullFun (typ, LocalState, AggrSum (\
+                    Field (typ, ref TupleIn, "packets"))),\
+                  Param (typ, "avg_window")))) ;\
               alias = "packets_per_sec" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
           export = None ; \
           notify_url = "" ;\
           key = [ Expr.(\
-            Div (typ,\
+            StatelessFun (typ, Div (\
               Field (typ, ref TupleIn, "start"),\
-              Mul (typ,\
+              StatelessFun (typ, Mul (\
                 Const (typ, VI32 1_000_000l),\
-                Param (typ, "avg_window")))) ] ;\
+                Param (typ, "avg_window")))))) ] ;\
           top = None ;\
           commit_when = Expr.(\
-            Gt (typ,\
-              Add (typ,\
-                AggrMax (typ,Field (typ, ref TupleGroupFirst, "start")),\
-                Const (typ, VI16 (Int16.of_int 3600))),\
-              Field (typ, ref TupleOut, "start"))) ; \
+            StatelessFun (typ, Gt (\
+              StatelessFun (typ, Add (\
+                StatefullFun (typ, LocalState, AggrMax (\
+                  Field (typ, ref TupleGroupFirst, "start"))),\
+                Const (typ, VI16 (Int16.of_int 3600)))),\
+              Field (typ, ref TupleOut, "start")))) ; \
           flush_when = None ; flush_how = Reset },\
           (201, [])))\
           (test_p p "select min start as start, \\
@@ -1694,9 +1835,10 @@ struct
           notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = Expr.(\
-            Ge (typ,\
-              AggrSum (typ, Const (typ, VI8 (Int8.one))),\
-              Const (typ, VI8 (Int8.of_int 5)))) ;\
+            StatelessFun (typ, Ge (\
+              StatefullFun (typ, LocalState, AggrSum (\
+                Const (typ, VI8 (Int8.one)))),\
+              Const (typ, VI8 (Int8.of_int 5))))) ;\
           flush_when = None ; flush_how = Reset },\
           (48, [])))\
           (test_p p "select 1 as one commit and flush when sum 1 >= 5" |>\
@@ -1706,9 +1848,11 @@ struct
         Aggregate {\
           fields = [\
             { expr = Expr.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
-            { expr = Expr.Lag (typ, \
-                       Expr.Const (typ, VI8 (Int8.of_int 2)), \
-                       Expr.Field (typ, ref TupleIn, "n")) ; alias = "l" } ] ;\
+            { expr = Expr.(\
+                StatefullFun (typ, LocalState, Expr.Lag (\
+                Expr.Const (typ, VI8 (Int8.of_int 2)), \
+                Expr.Field (typ, ref TupleIn, "n")))) ;\
+              alias = "l" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
           export = None ; \

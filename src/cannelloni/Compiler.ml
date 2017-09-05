@@ -295,53 +295,53 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Param (_op_typ, _pname) ->
     (* TODO: one day we will know the type or value of params *)
     false
-  | Now op_typ ->
+  | StatelessFun (op_typ, Now) ->
     check_expr_type ~from:op_typ ~to_:exp_type
-  | AggrMin (op_typ, e) | AggrMax (op_typ, e)
-  | AggrFirst (op_typ, e) | AggrLast (op_typ, e) ->
+  | StatefullFun (op_typ, _, AggrMin e) | StatefullFun (op_typ, _, AggrMax e)
+  | StatefullFun (op_typ, _, AggrFirst e) | StatefullFun (op_typ, _, AggrLast e) ->
     check_unary_op op_typ identity e
-  | AggrSum (op_typ, e) | Age (op_typ, e)
-  | Abs (op_typ, e) ->
+  | StatefullFun (op_typ, _, AggrSum e) | StatelessFun (op_typ, Age e)
+  | StatelessFun (op_typ, Abs e) ->
     check_unary_op op_typ identity ~exp_sub_typ:TFloat e
-  | AggrAnd (op_typ, e) | AggrOr (op_typ, e)
-  | Not (op_typ, e) ->
+  | StatefullFun (op_typ, _, AggrAnd e) | StatefullFun (op_typ, _, AggrOr e)
+  | StatelessFun (op_typ, Not e) ->
     check_unary_op op_typ identity ~exp_sub_typ:TBool e
-  | Cast (op_typ, e) ->
+  | StatelessFun (op_typ, Cast e) ->
     check_unary_op op_typ (fun _ -> Option.get op_typ.scalar_typ) ~exp_sub_typ:TI128 e
-  | Defined (op_typ, e) ->
+  | StatelessFun (op_typ, Defined e) ->
     check_unary_op op_typ return_bool ~exp_sub_nullable:true ~propagate_null:false e
-  | AggrPercentile (op_typ, e1, e2) ->
+  | StatefullFun (op_typ, _, AggrPercentile (e1, e2)) ->
     check_binary_op op_typ snd ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
-  | Add (op_typ, e1, e2) | Sub (op_typ, e1, e2)
-  | Mul (op_typ, e1, e2) ->
+  | StatelessFun (op_typ, Add (e1, e2)) | StatelessFun (op_typ, Sub (e1, e2))
+  | StatelessFun (op_typ, Mul (e1, e2)) ->
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
-  | Concat (op_typ, e1, e2) ->
+  | StatelessFun (op_typ, Concat (e1, e2)) ->
     check_binary_op op_typ return_string  ~exp_sub_typ1:TString e1 ~exp_sub_typ2:TString e2
-  | Pow (op_typ, e1, e2) ->
+  | StatelessFun (op_typ, Pow (e1, e2)) ->
     check_binary_op op_typ return_float ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
-  | Div (op_typ, e1, e2) ->
+  | StatelessFun (op_typ, Div (e1, e2)) ->
     (* Same as above but always return a float *)
     check_binary_op op_typ return_float ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
-  | IDiv (op_typ, e1, e2) ->
+  | StatelessFun (op_typ, IDiv (e1, e2)) ->
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
-  | Mod (op_typ, e1, e2) ->
+  | StatelessFun (op_typ, Mod (e1, e2)) ->
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
-  | Sequence (op_typ, e1, e2) ->
+  | StatelessFun (op_typ, Sequence (e1, e2)) ->
     check_binary_op op_typ return_i128 ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
-  | Length (op_typ, e) ->
+  | StatelessFun (op_typ, Length e) ->
     check_unary_op op_typ return_u16 ~exp_sub_typ:TString e
-  | Ge (op_typ, e1, e2) | Gt (op_typ, e1, e2)
-  | Eq (op_typ, e1, e2) (* FIXME: Eq should work on strings as well *) ->
+  | StatelessFun (op_typ, Ge (e1, e2)) | StatelessFun (op_typ, Gt (e1, e2))
+  | StatelessFun (op_typ, Eq (e1, e2)) (* FIXME: Eq should work on strings as well *) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
-  | And (op_typ, e1, e2) | Or (op_typ, e1, e2) ->
+  | StatelessFun (op_typ, And (e1, e2)) | StatelessFun (op_typ, Or (e1, e2)) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:TBool e1 ~exp_sub_typ2:TBool e2
-  | BeginOfRange (op_typ, e) | EndOfRange (op_typ, e) ->
+  | StatelessFun (op_typ, BeginOfRange e) | StatelessFun (op_typ, EndOfRange e) ->
     (* Not really bullet-proof in theory since check_unary_op may update the
      * types of the operand, but in this case there is no modification
      * possible if it's either TCidrv4 or TCidrv6, so we should be good.  *)
     (try check_unary_op op_typ (fun _ -> TIpv4) ~exp_sub_typ:TCidrv4 e
     with _ -> check_unary_op op_typ (fun _ -> TIpv6) ~exp_sub_typ:TCidrv6 e)
-  | Lag (op_typ, e1, e2) ->
+  | StatefullFun (op_typ, _, Lag (e1, e2)) ->
     (* e1 must be an unsigned small constant integer. For now that mean user
      * must have entered a constant. Later we might pre-evaluate constant
      * expressions into constant values. *)
@@ -350,7 +350,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* ... and e2 can be anything and the type of lag will be the same,
      * nullable (since we might lag beyond the start of the window. *)
     check_binary_op op_typ snd ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1 e2
-  | MovingAvg (op_typ, e1, e2, e3) | LinReg (op_typ, e1, e2, e3) ->
+  | StatefullFun (op_typ, _, MovingAvg (e1, e2, e3)) | StatefullFun (op_typ, _, LinReg (e1, e2, e3)) ->
     (* As above, but e3 must be numeric (therefore the result cannot be
      * null) *)
     (* FIXME: Check that the consts are > 0 *)
@@ -360,7 +360,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1
       ~exp_sub_typ2:TU16 ~exp_sub_nullable2:false e2
       ~exp_sub_typ3:TFloat e3
-  | MultiLinReg (op_typ, e1, e2, e3, e4s) ->
+  | StatefullFun (op_typ, _, MultiLinReg (e1, e2, e3, e4s)) ->
     (* As above, with the addition of a non empty list of predictors *)
     (* FIXME: Check that the consts are > 0 *)
     Expr.check_const "period" e1 ;
@@ -371,20 +371,20 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       ~exp_sub_typ3:TFloat e3 ||
     check_variadic op_typ
       ~exp_sub_typ:TFloat ~exp_sub_nullable:false (*because see comment in check_variadic *) e4s
-  | ExpSmooth (op_typ, e1, e2) ->
+  | StatefullFun (op_typ, _, ExpSmooth (e1, e2)) ->
     (* FIXME: Check that alpha is between 0 and 1 *)
     Expr.check_const "smooth coefficient" e1 ;
     check_binary_op op_typ return_float
       ~exp_sub_typ1:TFloat ~exp_sub_nullable1:false e1
       ~exp_sub_typ2:TFloat e2
-  | Exp (op_typ, e) | Log (op_typ, e) | Sqrt (op_typ, e) ->
+  | StatelessFun (op_typ, Exp e) | StatelessFun (op_typ, Log e) | StatelessFun (op_typ, Sqrt e) ->
     check_unary_op op_typ return_float ~exp_sub_typ:TFloat e
-  | Hash (op_typ, e) ->
+  | StatelessFun (op_typ, Hash e) ->
     check_unary_op op_typ return_i64 e
-  | Split (op_typ, e1, e2) ->
+  | GeneratorFun (op_typ, Split (e1, e2)) ->
     check_binary_op op_typ return_string ~exp_sub_typ1:TString e1
                                          ~exp_sub_typ2:TString e2
-  | Remember (op_typ, tim, dur, e) ->
+  | StatefullFun (op_typ, _, Remember (tim, dur, e)) ->
     (* e can be anything *)
     check_ternary_op op_typ return_bool ~exp_sub_typ1:TFloat tim
                                         ~exp_sub_typ2:TFloat dur e
@@ -660,11 +660,11 @@ let set_all_types _conf layer =
      "(1 [constant of type I8]) + (1 [constant of type I8]) [addition of type I8]" \
        (test_check_expr "1+1")
 
-     "(sum (1 [constant of type I16]) [sum aggregation of type I16]) > \\
+     "(sum locally (1 [constant of type I16]) [sum aggregation of type I16]) > \\
       (500 [constant of type I16]) [comparison operator of type BOOL]" \
        (test_check_expr "sum 1i16 > 500")
 
-     "(sum (cast(I16, 1 [constant of type I8]) [cast to I16 of type I16]) \\
+     "(sum locally (cast(I16, 1 [constant of type I8]) [cast to I16 of type I16]) \\
           [sum aggregation of type I16]) > \\
       (500 [constant of type I16]) [comparison operator of type BOOL]" \
        (test_check_expr "sum i16(1) > 500")
