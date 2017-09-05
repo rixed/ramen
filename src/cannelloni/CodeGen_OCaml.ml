@@ -414,14 +414,16 @@ let rec conv_to ~state ~context to_typ fmt e =
 
 (* state is just the name of the state record to use, or None if we must
  * assume the field name is actually already present in the environment
- * (as is the case in aggr_init) *)
+ * (as is the case in group_init) *)
 (* FIXME: return a list of type * arg instead of two lists *)
 and emit_expr ~state ~context oc expr =
   let open Expr in
   let out_typ = typ_of expr in
-  let my_state () =
+  let my_state lifespan =
+    let state_name =
+      if lifespan = LocalState then "group_" else "global_" in
     StateField (out_typ,
-               (if state then "aggr_." else "") ^ name_of_state expr)
+               (if state then state_name ^"." else "") ^ name_of_state expr)
   in
   match context, expr, out_typ.scalar_typ with
   (* Non-functions *)
@@ -504,82 +506,82 @@ and emit_expr ~state ~context oc expr =
   (* Stateful functions *)
   | InitState, StatefullFun (_, _, (AggrAnd e | AggrOr e)), Some TBool ->
     emit_functionN oc ~state "BatPervasives.identity" [Some TBool] [e]
-  | Finalize, StatefullFun (_, _, (AggrAnd _|AggrOr _)), Some TBool ->
-    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state ()]
-  | UpdateState, StatefullFun (_, _, AggrAnd (e)), _ ->
-    emit_functionN oc ~state "(&&)" [None; Some TBool] [my_state (); e]
-  | UpdateState, StatefullFun (_, _, AggrOr (e)), _ ->
-    emit_functionN oc ~state "(||)" [None; Some TBool] [my_state (); e]
+  | Finalize, StatefullFun (_, g, (AggrAnd _|AggrOr _)), Some TBool ->
+    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state g]
+  | UpdateState, StatefullFun (_, g, AggrAnd (e)), _ ->
+    emit_functionN oc ~state "(&&)" [None; Some TBool] [my_state g; e]
+  | UpdateState, StatefullFun (_, g, AggrOr (e)), _ ->
+    emit_functionN oc ~state "(||)" [None; Some TBool] [my_state g; e]
 
   | InitState, StatefullFun (_, _, AggrSum (e)),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ~state "BatPervasives.identity" [Some t] [e]
-  | UpdateState, StatefullFun (_, _, AggrSum (e)),
+  | UpdateState, StatefullFun (_, g, AggrSum (e)),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN oc ~state (omod_of_type t ^".add") [None; Some t] [my_state (); e]
-  | Finalize, StatefullFun (_, _, AggrSum (_e)), _ ->
-    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state ()]
+    emit_functionN oc ~state (omod_of_type t ^".add") [None; Some t] [my_state g; e]
+  | Finalize, StatefullFun (_, g, AggrSum (_e)), _ ->
+    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state g]
 
   | InitState, StatefullFun (_, _, (AggrMax e|AggrMin e|AggrFirst e|AggrLast e)), _ ->
     emit_functionN oc ~state "BatPervasives.identity" [None] [e] (* No conversion necessary *)
-  | Finalize, StatefullFun (_, _, (AggrMax _|AggrMin _|AggrFirst _|AggrLast _)), _ ->
-    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state ()]
-  | UpdateState, StatefullFun (_, _, AggrMax (e)), _ ->
-    emit_functionN oc ~state "max" [None; None] [my_state (); e]
-  | UpdateState, StatefullFun (_, _, AggrMin (e)), _ ->
-    emit_functionN oc ~state "min" [None; None] [my_state (); e]
-  | UpdateState, StatefullFun (_, _, AggrFirst (e)), _ ->
-    emit_functionN oc ~state "(fun x _ -> x)" [None; None] [my_state (); e]
-  | UpdateState, StatefullFun (_, _, AggrLast (e)), _ ->
-    emit_functionN oc ~state "(fun _ x -> x)" [None; None] [my_state (); e]
+  | Finalize, StatefullFun (_, g, (AggrMax _|AggrMin _|AggrFirst _|AggrLast _)), _ ->
+    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state g]
+  | UpdateState, StatefullFun (_, g, AggrMax (e)), _ ->
+    emit_functionN oc ~state "max" [None; None] [my_state g; e]
+  | UpdateState, StatefullFun (_, g, AggrMin (e)), _ ->
+    emit_functionN oc ~state "min" [None; None] [my_state g; e]
+  | UpdateState, StatefullFun (_, g, AggrFirst (e)), _ ->
+    emit_functionN oc ~state "(fun x _ -> x)" [None; None] [my_state g; e]
+  | UpdateState, StatefullFun (_, g, AggrLast (e)), _ ->
+    emit_functionN oc ~state "(fun _ x -> x)" [None; None] [my_state g; e]
 
   (* Note: for InitState it is probably useless to check out_type.
    * For Finalize it is useful only to extract the types to be checked by Compiler. *)
   | InitState, StatefullFun (_, _, AggrPercentile (_p,e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     emit_functionN oc ~state "CodeGenLib.percentile_init" [None] [e]
-  | UpdateState, StatefullFun (_, _, AggrPercentile (_p,e)), _ ->
-    emit_functionN oc ~state "CodeGenLib.percentile_add" [None; None] [my_state (); e]
-  | Finalize, StatefullFun (_, _, AggrPercentile (p,_e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
-    emit_functionN oc ~state "CodeGenLib.percentile_finalize" [Some TFloat; None] [p; my_state ()]
+  | UpdateState, StatefullFun (_, g, AggrPercentile (_p,e)), _ ->
+    emit_functionN oc ~state "CodeGenLib.percentile_add" [None; None] [my_state g; e]
+  | Finalize, StatefullFun (_, g, AggrPercentile (p,_e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+    emit_functionN oc ~state "CodeGenLib.percentile_finalize" [Some TFloat; None] [p; my_state g]
 
   | InitState, StatefullFun (_, _, Lag (k,e)), _ ->
     let n = expr_one in
     emit_functionN oc ~state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; None] [k; n; e]
-  | UpdateState, StatefullFun (_, _, Lag (_k,e)), _ ->
-    emit_functionN oc ~state "CodeGenLib.Seasonal.add" [None; None] [my_state (); e]
-  | Finalize, StatefullFun (_, _, Lag _), _ ->
-    emit_functionN oc ~state "CodeGenLib.Seasonal.lag" [None] [my_state ()]
+  | UpdateState, StatefullFun (_, g, Lag (_k,e)), _ ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.add" [None; None] [my_state g; e]
+  | Finalize, StatefullFun (_, g, Lag _), _ ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.lag" [None] [my_state g]
 
   (* We force the inputs to be float since we are going to return a float anyway. *)
   | InitState, StatefullFun (_, _, (MovingAvg(p,n,e)|LinReg(p,n,e))), Some TFloat ->
     emit_functionN oc ~state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; Some TFloat] [p; n; e]
-  | UpdateState, StatefullFun (_, _, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
-    emit_functionN oc ~state "CodeGenLib.Seasonal.add" [None; Some TFloat] [my_state (); e]
-  | Finalize, StatefullFun (_, _, MovingAvg (p,n,_)), Some TFloat ->
-    emit_functionN oc ~state "CodeGenLib.Seasonal.avg" [Some TU16; Some TU16; None] [p; n; my_state ()]
-  | Finalize, StatefullFun (_, _, LinReg (p,n,_)), Some TFloat ->
-    emit_functionN oc ~state "CodeGenLib.Seasonal.linreg" [Some TU16; Some TU16; None] [p; n; my_state ()]
-  | Finalize, StatefullFun (_, _, MultiLinReg (p,n,_,_)), Some TFloat ->
-    emit_functionN oc ~state "CodeGenLib.Seasonal.multi_linreg" [Some TU16; Some TU16; None] [p; n; my_state ()]
+  | UpdateState, StatefullFun (_, g, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.add" [None; Some TFloat] [my_state g; e]
+  | Finalize, StatefullFun (_, g, MovingAvg (p,n,_)), Some TFloat ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.avg" [Some TU16; Some TU16; None] [p; n; my_state g]
+  | Finalize, StatefullFun (_, g, LinReg (p,n,_)), Some TFloat ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.linreg" [Some TU16; Some TU16; None] [p; n; my_state g]
+  | Finalize, StatefullFun (_, g, MultiLinReg (p,n,_,_)), Some TFloat ->
+    emit_functionN oc ~state "CodeGenLib.Seasonal.multi_linreg" [Some TU16; Some TU16; None] [p; n; my_state g]
 
   | InitState, StatefullFun (_, _, MultiLinReg (p,n,e,es)), Some TFloat ->
     emit_functionNv oc ~state "CodeGenLib.Seasonal.init_multi_linreg" [Some TU16; Some TU16; Some TFloat] [p; n; e] (Some TFloat) es
-  | UpdateState, StatefullFun (_, _, MultiLinReg (_p,_n,e,es)), _ ->
-    emit_functionNv oc ~state "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state (); e] (Some TFloat) es
+  | UpdateState, StatefullFun (_, g, MultiLinReg (_p,_n,e,es)), _ ->
+    emit_functionNv oc ~state "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state g; e] (Some TFloat) es
 
   | InitState, StatefullFun (_, _, ExpSmooth (_a,e)), Some TFloat ->
     emit_functionN oc ~state "BatPervasives.identity" [Some TFloat] [e]
   | UpdateState, StatefullFun (_, _, ExpSmooth (a,e)), _ ->
     emit_functionN oc ~state "CodeGenLib.smooth" [Some TFloat; Some TFloat] [a; e]
-  | Finalize, StatefullFun (_, _, ExpSmooth _), Some TFloat ->
-    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state ()]
+  | Finalize, StatefullFun (_, g, ExpSmooth _), Some TFloat ->
+    emit_functionN oc ~state "BatPervasives.identity" [None] [my_state g]
 
   | InitState, StatefullFun (_, _, Remember (tim,dur,e)), Some TBool ->
     emit_functionN oc ~state "CodeGenLib.remember_init" [Some TFloat; Some TFloat; None] [tim; dur; e]
-  | UpdateState, StatefullFun (_, _, Remember (tim,_dur,e)), _ ->
-    emit_functionN oc ~state "CodeGenLib.remember_add" [None; Some TFloat; None] [my_state (); tim; e]
-  | Finalize, StatefullFun (_, _, Remember _), Some TBool ->
-    emit_functionN oc ~state "CodeGenLib.remember_finalize" [None] [my_state ()]
+  | UpdateState, StatefullFun (_, g, Remember (tim,_dur,e)), _ ->
+    emit_functionN oc ~state "CodeGenLib.remember_add" [None; Some TFloat; None] [my_state g; tim; e]
+  | Finalize, StatefullFun (_, g, Remember _), Some TBool ->
+    emit_functionN oc ~state "CodeGenLib.remember_finalize" [None] [my_state g]
 
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name t).
@@ -827,7 +829,7 @@ let emit_where
     (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_tuple_typ ;
   if with_group then
-    Printf.fprintf oc "virtual_group_count_ virtual_group_successive_ aggr_ %a %a "
+    Printf.fprintf oc "virtual_group_count_ virtual_group_successive_ group_ global_ %a %a "
       (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
   if always_true then
@@ -854,7 +856,7 @@ let emit_field_selection
       (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_tuple_typ ;
   if with_group then
     Printf.fprintf oc "virtual_out_count \
-                       virtual_group_count_ virtual_group_successive_ aggr_ %a %a "
+                       virtual_group_count_ virtual_group_successive_ group_ global_ %a %a "
       (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
   Printf.fprintf oc "=\n" ;
@@ -948,8 +950,8 @@ let otype_of_state e =
     | _ -> t in
   if Option.get typ.nullable then t ^" option" else t
 
-let emit_group_state_init
-      name in_tuple_typ mentioned and_all_others
+let emit_state_init name state_lifespan
+      in_tuple_typ mentioned and_all_others
       commit_when flush_when oc selected_fields =
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
@@ -959,13 +961,15 @@ let emit_group_state_init
   (* In the special case where we do not have any state at all, though, we
    * end up with an empty record, which is illegal in OCaml so we need to
    * specialize for this: *)
-  let need_group_state =
+  let need_state =
     try
-      for_each_unpure_fun selected_fields commit_when flush_when (fun _ ->
-        raise Exit) ;
+      for_each_unpure_fun selected_fields commit_when flush_when (function
+        | Lang.Expr.StatefullFun (_, lifespan, _) when lifespan = state_lifespan ->
+          raise Exit
+        | _ -> ()) ;
       false
     with Exit -> true in
-  if not need_group_state then (
+  if not need_state then (
     Printf.fprintf oc "type %s = unit\n" name ;
     Printf.fprintf oc "let %s %a = ()\n\n"
       name
@@ -996,22 +1000,23 @@ let emit_group_state_init
     Printf.fprintf oc " }\n"
   )
 
-let emit_update_state
-      name in_tuple_typ mentioned and_all_others
+let emit_update_state name state_lifespan
+      in_tuple_typ mentioned and_all_others
       commit_when flush_when oc selected_fields =
-  Printf.fprintf oc "let %s aggr_ %a =\n"
+  Printf.fprintf oc "let %s group_ %a =\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   (* Note that for_each_unpure_fun proceed depth first so inner functions
    * state will be updated first, which is what we want. *)
-  for_each_unpure_fun selected_fields commit_when flush_when (fun f ->
-      Printf.fprintf oc "\taggr_.%s <- (%a) ;\n"
-        (name_of_state f)
-        (emit_expr ~context:UpdateState ~state:true) f
-    ) ;
+  for_each_unpure_fun selected_fields commit_when flush_when (function
+    | Lang.Expr.StatefullFun (_, lifespan, _) as e when lifespan = state_lifespan ->
+      Printf.fprintf oc "\tgroup_.%s <- (%a) ;\n"
+        (name_of_state e)
+        (emit_expr ~context:UpdateState ~state:true) e
+    | _ -> ()) ;
   Printf.fprintf oc "\t()\n"
 
-(* Note: we need aggr_ in addition to out_tupple because the commit-when clause
+(* Note: we need group_ in addition to out_tupple because the commit-when clause
  * might have its own stateful functions going on *)
 let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
               oc commit_when =
@@ -1019,7 +1024,8 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
                        virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a \
                        virtual_out_count \
-                       %a virtual_group_count_ virtual_group_successive_ aggr_ %a %a \
+                       %a virtual_group_count_ virtual_group_successive_ group_ global_ \
+                       %a %a \
                        %a =\n\t%a\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
@@ -1093,7 +1099,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
  * Note: some aggregation function value cannot be computed in the update.
  * For instance, percentile accumulates all encountered values into a list
  * and must then, at the end, sort that list and return only the requested
- * percentile. That is why when we read the aggr_ record we do not get
+ * percentile. That is why when we read the group_ record we do not get
  * the value directly but uses a function specific to the aggregation
  * function (which often reduces to identity). *)
   let mentioned =
@@ -1127,8 +1133,11 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     | Some flush_when -> when_to_check_group_for_expr flush_when
   in
   Printf.fprintf oc "open Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_group_state_init "aggr_init_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    (emit_state_init "global_init_" Lang.Expr.GlobalState in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
+    (emit_update_state "global_update_" Lang.Expr.GlobalState in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
+    (emit_state_init "group_init_" Lang.Expr.LocalState in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
+    (emit_update_state "group_update_" Lang.Expr.LocalState in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_state then
       emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
@@ -1139,11 +1148,10 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     else
       emit_where "where_slow_" ~with_group:true in_tuple_typ mentioned and_all_others) where
     (emit_key_of_input "key_of_input_" in_tuple_typ mentioned and_all_others) key
-    (emit_update_state "update_aggr_" in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
-    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_aggr_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
+    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
-    (emit_serialize_tuple "serialize_aggr_") out_tuple_typ
+    (emit_serialize_tuple "serialize_group_") out_tuple_typ
     (emit_generate_tuples "generate_tuples_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how
     (emit_field_of_tuple "field_of_tuple_" mentioned and_all_others) in_tuple_typ
@@ -1156,10 +1164,10 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
   Printf.fprintf oc "let () =\n\
       \tLwt_main.run (\n\
       \t\tCodeGenLib.aggregate \
-           read_tuple_ sersize_of_tuple_ serialize_aggr_ generate_tuples_ \
-           tuple_of_aggr_ where_fast_ where_slow_ key_of_input_ top_ \
-           commit_when_ %s flush_when_ %s \
-           should_resubmit_ aggr_init_ update_aggr_ \
+           read_tuple_ sersize_of_tuple_ serialize_group_ generate_tuples_ \
+           tuple_of_group_ where_fast_ where_slow_ key_of_input_ top_ \
+           commit_when_ %s flush_when_ %s should_resubmit_ \
+           global_init_ global_update_ group_init_ group_update_ \
            field_of_tuple_ %S)\n"
     when_to_check_for_commit when_to_check_for_flush notify_url
 

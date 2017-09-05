@@ -431,7 +431,7 @@ type ('aggr, 'tuple_in, 'generator_out) aggr_value =
 let tot_weight aggr = aggr.sure_weight +. aggr.unsure_weight
 
 (* FIXME: won't work with tops *)
-let flush_aggr aggr_init update_aggr should_resubmit h k aggr =
+let flush_aggr group_init group_update should_resubmit h k aggr =
   if aggr.to_resubmit = [] then
     Hashtbl.remove h k
   else (
@@ -442,11 +442,11 @@ let flush_aggr aggr_init update_aggr should_resubmit h k aggr =
     let in_tuple = List.hd to_resubmit in
     aggr.first_in <- in_tuple ;
     aggr.last_in <- in_tuple ;
-    aggr.fields <- aggr_init in_tuple ;
+    aggr.fields <- group_init in_tuple ;
     if should_resubmit aggr in_tuple then
       aggr.to_resubmit <- [ in_tuple ] ;
     List.iter (fun in_tuple ->
-        update_aggr aggr.fields in_tuple ;
+        group_update aggr.fields in_tuple ;
         aggr.nb_entries <- aggr.nb_entries + 1 ;
         aggr.last_in <- in_tuple ;
         if should_resubmit aggr in_tuple then
@@ -476,6 +476,7 @@ let aggregate
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
         Uint64.t -> (* out.#count *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+        'global_state ->
         'tuple_in -> 'tuple_in -> (* first, last *)
         'generator_out)
       (* Where_fast/slow: premature optimisation: if the where filter
@@ -492,6 +493,7 @@ let aggregate
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+        'global_state ->
         'tuple_in -> 'tuple_in -> (* first, last *)
         bool)
       (key_of_input : 'tuple_in -> 'key)
@@ -502,6 +504,7 @@ let aggregate
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
         Uint64.t -> 'generator_out -> (* out.#count, previous *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+        'global_state ->
         'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
         bool)
       (when_to_check_for_commit : when_to_check_group)
@@ -511,12 +514,15 @@ let aggregate
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
         Uint64.t -> 'generator_out -> (* out.#count, previous *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+        'global_state ->
         'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
         bool)
       (when_to_check_for_flush : when_to_check_group)
       (should_resubmit : ('aggr, 'tuple_in, 'generator_out) aggr_value -> 'tuple_in -> bool)
-      (aggr_init : 'tuple_in -> 'aggr)
-      (update_aggr : 'aggr -> 'tuple_in -> unit)
+      (global_init : 'tuple_in -> 'global_state)
+      (global_update : 'global_state -> 'tuple_in -> unit)
+      (group_init : 'tuple_in -> 'aggr)
+      (group_update : 'aggr -> 'tuple_in -> unit)
       (field_of_tuple : 'tuple_in -> string -> string)
       (notify_url : string) =
   let conf = node_start ()
@@ -527,6 +533,7 @@ let aggregate
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)
   and in_ = ref None (* last incoming tuple *)
+  and global_state = ref None (* We need the first tuple to initialize it *)
   and selected_tuple = ref None (* last incoming tuple that passed the where filter *)
   and selected_count = ref Uint64.zero
   and selected_successive = ref Uint64.zero
@@ -593,6 +600,8 @@ let aggregate
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     with_state (fun h ->
+      if !global_state = None then
+        global_state := Some (global_init in_tuple) ;
       IntCounter.add stats_in_tuple_count 1 ;
       let last_in = Option.default in_tuple !in_
       and last_selected = Option.default in_tuple !selected_tuple
@@ -606,6 +615,7 @@ let aggregate
           !unselected_count !unselected_successive last_unselected
           !out_count aggr.previous_out
           (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+          (Option.get !global_state)
           aggr.first_in aggr.last_in
           aggr.current_out
       in
@@ -641,7 +651,7 @@ let aggregate
           top_set := WeightMap.empty ;
         ) ;
         List.iter (fun (k, a) ->
-            flush_aggr aggr_init update_aggr should_resubmit h k a
+            flush_aggr group_init group_update should_resubmit h k a
           ) to_flush ;
         return_unit
       in
@@ -669,7 +679,7 @@ let aggregate
         (* The weight for this tuple only: *)
         let weight = top_by in_tuple in
         let accumulate_into aggr this_key =
-          update_aggr aggr.fields in_tuple ;
+          group_update aggr.fields in_tuple ;
           aggr.last_ev_count <- !event_count ;
           aggr.nb_entries <- aggr.nb_entries + 1 ;
           if should_resubmit aggr in_tuple then
@@ -682,15 +692,17 @@ let aggregate
         let aggr_opt =
           match Hashtbl.find h k with
           | exception Not_found ->
-            let fields = aggr_init in_tuple
+            let fields = group_init in_tuple
             and one = Uint64.one in
             if where_slow
                  in_count in_tuple last_in
                  !selected_count !selected_successive last_selected
                  !unselected_count !unselected_successive last_unselected
                  one one fields
+                 (Option.get !global_state)
                  in_tuple in_tuple
             then (
+              global_update (Option.get !global_state) in_tuple ;
               if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               (* TODO: pass selected_successive *)
@@ -701,6 +713,7 @@ let aggregate
                   !unselected_count !unselected_successive last_unselected
                   !out_count
                   one one fields
+                  (Option.get !global_state)
                   in_tuple in_tuple in
               (* What part of unknown weight might belong to this guy? *)
               let kh = BatHashtbl.hash k mod Array.length unknown_weight in
@@ -766,8 +779,10 @@ let aggregate
                  !selected_count !selected_successive last_selected
                  !unselected_count !unselected_successive last_unselected
                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+                 (Option.get !global_state)
                  aggr.first_in aggr.last_in
             then (
+              global_update (Option.get !global_state) in_tuple ;
               if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               let prev_wk = tot_weight aggr in
@@ -782,6 +797,7 @@ let aggregate
                   !unselected_count !unselected_successive last_unselected
                   !out_count
                   (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+                  (Option.get !global_state)
                   aggr.first_in aggr.last_in in
               aggr.current_out <- out_generator ;
               aggr.last_in <- in_tuple ;
