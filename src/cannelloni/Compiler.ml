@@ -220,6 +220,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   let return_bool _ = TBool
   and return_float _ = TFloat
   and return_i128 _ = TI128
+  and return_i64 _ = TI64
   and return_u16 _ = TU16
   and return_string _ = TString
   in
@@ -378,6 +379,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       ~exp_sub_typ2:TFloat e2
   | Exp (op_typ, e) | Log (op_typ, e) | Sqrt (op_typ, e) ->
     check_unary_op op_typ return_float ~exp_sub_typ:TFloat e
+  | Hash (op_typ, e) ->
+    check_unary_op op_typ return_i64 e
   | Split (op_typ, e1, e2) ->
     check_binary_op op_typ return_string ~exp_sub_typ1:TString e1
                                          ~exp_sub_typ2:TString e2

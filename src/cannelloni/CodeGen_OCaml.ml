@@ -349,7 +349,7 @@ let name_of_state =
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
   | Gt _ | Eq _ | Mod _ | Cast _ | Abs _ | Length _ | Now _ | Concat _
   | BeginOfRange _ | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _
-  | StateField _ ->
+  | StateField _ | Hash _ ->
     assert false
 
 let otype_of_type = function
@@ -473,6 +473,8 @@ and emit_expr ~state ~context oc expr =
     emit_functionN oc ~state "log" [Some TFloat] [e]
   | Finalize, Sqrt(_,e), Some TFloat ->
     emit_functionN oc ~state "sqrt" [Some TFloat] [e]
+  | Finalize, Hash(_,e), Some TI64 ->
+    emit_functionN oc ~state "CodeGenLib.hash" [None] [e]
 
   (* Other stateless functions *)
   | Finalize, Ge(_,e1,e2), Some TBool ->
@@ -760,6 +762,7 @@ let emit_generator user_fun oc expr =
     | Exp (t, e1) -> replace_unary prev e1 (fun e1 -> Exp (t, e1))
     | Log (t, e1) -> replace_unary prev e1 (fun e1 -> Log (t, e1))
     | Sqrt (t, e1) -> replace_unary prev e1 (fun e1 -> Sqrt (t, e1))
+    | Hash (t, e1) -> replace_unary prev e1 (fun e1 -> Hash (t, e1))
     | BeginOfRange (t, e1) -> replace_unary prev e1 (fun e1 -> BeginOfRange (t, e1))
     | EndOfRange (t, e1) -> replace_unary prev e1 (fun e1 -> EndOfRange (t, e1))
     (* No generator, look deeper in both directions *)
@@ -1179,8 +1182,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
           true
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _
-        | Mod _| Cast _ | Abs _ | Length _ | Now _ | BeginOfRange _
-        | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _ | Concat _ ->
+        | Mod _| Cast _ | Abs _ | Length _ | Now _ | BeginOfRange _ | Hash _
+        | EndOfRange _ | Exp _ | Log _ | Sqrt _ | Split _ | Concat _  ->
           false
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in

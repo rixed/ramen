@@ -85,6 +85,7 @@ let remember_add st tim e =
 
 let remember_finalize st = st.last_remembered
 
+let hash x = Hashtbl.hash x |> Int64.of_int
 
 (* We often want functions that work on the last k elements, or the last k
  * periods of length p for seasonal data. So we often need a small sliding
