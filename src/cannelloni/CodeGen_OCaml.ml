@@ -343,7 +343,7 @@ let name_of_state =
   | AggrSum (t, _) | AggrAnd (t, _) | AggrOr (t, _) | AggrFirst (t, _)
   | AggrLast (t, _) | Lag (t, _, _) | MovingAvg (t, _, _, _)
   | LinReg (t, _, _, _) | MultiLinReg (t, _, _, _, _)
-  | ExpSmooth (t, _, _) ->
+  | ExpSmooth (t, _, _) | Remember (t, _, _, _) ->
     "field_"^ string_of_int t.uniq_num
   | Const _ | Param _ | Field _ | Age _ | Sequence _ | Not _ | Defined _
   | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _ | And _ | Or _ | Ge _
@@ -582,6 +582,13 @@ and emit_expr ~state ~context oc expr =
   | Finalize, ExpSmooth _, Some TFloat ->
     emit_functionN oc ~state "BatPervasives.identity" [None] [my_state ()]
 
+  | InitState, Remember(_,tim,dur,e), Some TBool ->
+    emit_functionN oc ~state "CodeGenLib.remember_init" [Some TFloat; Some TFloat; None] [tim; dur; e]
+  | UpdateState, Remember(_,tim,_dur,e), _ ->
+    emit_functionN oc ~state "CodeGenLib.remember_add" [None; Some TFloat; None] [my_state (); tim; e]
+  | Finalize, Remember _, Some TBool ->
+    emit_functionN oc ~state "CodeGenLib.remember_finalize" [None] [my_state ()]
+
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name t).
    * In normal expressions we merely refer to that free variable. *)
@@ -740,7 +747,8 @@ let emit_generator user_fun oc expr =
     (* Forbidden within stateful functions: *)
     | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _
     | AggrFirst _ | AggrLast _ | AggrPercentile _ | Lag  _
-    | MovingAvg _ | LinReg _ | MultiLinReg _ | ExpSmooth _ ->
+    | MovingAvg _ | LinReg _ | MultiLinReg _ | ExpSmooth _
+    | Remember _ ->
       assert false
     (* No generator, look deeper *)
     | Age (t, e1) -> replace_unary prev e1 (fun e1 -> Age (t, e1))
@@ -1166,7 +1174,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
         | Field (_, tuple, _) -> tuple_need_state !tuple
         | AggrMin _| AggrMax _| AggrSum _| AggrAnd _
         | AggrOr _| AggrFirst _| AggrLast _| AggrPercentile _ | Lag _
-        | MovingAvg _ | LinReg _ | MultiLinReg _ | ExpSmooth _ ->
+        | MovingAvg _ | LinReg _ | MultiLinReg _ | ExpSmooth _
+        | Remember _ | StateField _ ->
           true
         | Age _| Sequence _| Not _| Defined _| Add _| Sub _| Mul _| Div _
         | IDiv _| Pow _| And _| Or _| Ge _| Gt _| Eq _| Const _| Param _

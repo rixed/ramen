@@ -515,6 +515,14 @@ struct
     (* Multiple linear regression - and our first variadic function (the
      * last parameter being a list of expressions to use for the predictors) *)
     | MultiLinReg of typ * t * t * t * t list
+    (* Rotating bloom filters. First expression is the "time", second a
+     * "duration", and third an  expression whose value to remember. The
+     * function will return true if it *thinks* that value has been seen the
+     * same value at a time not older than the given duration. This is based on
+     * bloom-filters so there can be false positives but not false negatives.
+     * Note: to remember several expressions just use the hash function (TBD),
+     * since it's based on a hash anyway. *)
+    | Remember of typ * t * t * t
     (* Simple exponential smoothing *)
     | ExpSmooth of typ * t * t (* coef between 0 and 1 and expression *)
     (* First function returning more than once (Generator). Here the typ is
@@ -600,6 +608,10 @@ struct
         (print with_types) e3
         (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) e4s ;
       add_types t
+    | Remember (t, tim, dur, e) ->
+      Printf.fprintf fmt "remember(%a, %a, %a)"
+        (print with_types) tim (print with_types) dur (print with_types) e ;
+      add_types t
     | ExpSmooth (t, e1, e2) -> Printf.fprintf fmt "smooth(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | Split (t, e1, e2) -> Printf.fprintf fmt "split(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
 
@@ -615,7 +627,7 @@ struct
     | BeginOfRange (t, _) | EndOfRange (t, _) | Lag (t, _, _)
     | MovingAvg (t, _, _, _) | LinReg (t, _, _, _) | ExpSmooth (t, _, _)
     | Exp (t, _) | Log (t, _) | Sqrt (t, _) | Split (t, _, _)
-    | MultiLinReg (t, _, _, _, _) ->
+    | MultiLinReg (t, _, _, _, _) | Remember (t, _, _, _)
     | StateField (t, _) ->
       t
 
@@ -643,7 +655,8 @@ struct
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       f i'' expr
-    | MovingAvg (_, e1, e2, e3) | LinReg (_, e1, e2, e3) ->
+    | MovingAvg (_, e1, e2, e3) | LinReg (_, e1, e2, e3)
+    | Remember (_, e1, e2, e3) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
@@ -663,7 +676,7 @@ struct
     fold_by_depth (fun () -> function
       | AggrMin _ | AggrMax _ | AggrSum _ | AggrAnd _ | AggrOr _ | AggrFirst _
       | AggrLast _ | AggrPercentile _ | Lag _ | MovingAvg _ | LinReg _
-      | ExpSmooth _ | MultiLinReg _ as e ->
+      | ExpSmooth _ | MultiLinReg _ | Remember _ as e ->
         f e
       | Const _ | Param _ | Field _ | Cast _ | Now _ | Age _ | Sequence _
       | Not _ | Defined _ | Add _ | Sub _ | Mul _ | Div _ | IDiv _ | Pow _
@@ -995,6 +1008,8 @@ struct
          (afun1 "sqrt" >>: fun e -> Sqrt (make_num_typ "square root", e)) |||
          (afun2 "split" >>: fun (e1, e2) ->
           Split (make_typ ~typ:TString "split", e1, e2)) |||
+         (afun3 "remember" >>: fun (tim, dir, e) ->
+          Remember (make_bool_typ "remember", tim, dir, e)) |||
          k_moveavg ||| sequence ||| cast) m
 
     and sequence =

@@ -67,6 +67,25 @@ let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 let split by what k =
   String.nsplit ~by what |> Lwt_list.iter_s k
 
+(* Remember values *)
+type remember_state =
+  { filter : RamenBloomFilter.sliced_filter ;
+    mutable last_remembered : bool }
+
+let remember_init tim dur e =
+  let nb_slices = 10 and nb_bits = 1024 and nb_keys = 5 in
+  let start_time = tim -. dur and slice_width = dur /. float_of_int nb_slices in
+  let filter = RamenBloomFilter.make_sliced start_time nb_slices slice_width nb_bits nb_keys in
+  let last_remembered = RamenBloomFilter.remember filter tim e in
+  assert (not last_remembered) ;
+  { filter ; last_remembered }
+
+let remember_add st tim e =
+  st.last_remembered <- RamenBloomFilter.remember st.filter tim e
+
+let remember_finalize st = st.last_remembered
+
+
 (* We often want functions that work on the last k elements, or the last k
  * periods of length p for seasonal data. So we often need a small sliding
  * window as a function internal state. If we could join between two different

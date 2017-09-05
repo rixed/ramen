@@ -381,6 +381,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Split (op_typ, e1, e2) ->
     check_binary_op op_typ return_string ~exp_sub_typ1:TString e1
                                          ~exp_sub_typ2:TString e2
+  | Remember (op_typ, tim, dur, e) ->
+    (* e can be anything *)
+    check_ternary_op op_typ return_bool ~exp_sub_typ1:TFloat tim
+                                        ~exp_sub_typ2:TFloat dur e
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.
