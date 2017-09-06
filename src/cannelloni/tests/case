@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/.."
+. $top_srcdir/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_123
+add_node p1 \
+'SELECT
+   CASE WHEN n > 2 THEN "hi"
+        WHEN n < 2 THEN "lo"
+        ELSE "meh"
+   END AS bigness,
+   CASE WHEN n = 1 THEN "one"
+        ELSE "more"
+   END AS literal,
+   CASE WHEN n = 3 THEN 9999999999999999999
+        WHEN n = 1 THEN 1
+        ELSE 2
+   END AS some_u64
+ EXPORT' 123
+run
+check_equal '"lo","one",1
+"meh","more",2
+"hi","more",9999999999999999999' "$(tail_ 3 p1)"

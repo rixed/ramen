@@ -369,7 +369,7 @@ struct
   (* Each expression come with a type attached. Starting at None types are
    * progressively set at compilation. *)
   type typ =
-    { expr_name : string ;
+    { mutable expr_name : string ;
       uniq_num : int ; (* to build var names or record field names *)
       mutable nullable : bool option ;
       mutable scalar_typ : scalar_typ option }
@@ -1286,7 +1286,7 @@ struct
       (strinG "case" -- blanks -+
        several ~sep:blanks alt +- blanks ++
        optional ~def:None (
-         strinG "else" -- blanks -+ some lowest_prec_left_assoc) +-
+         strinG "else" -- blanks -+ some lowest_prec_left_assoc +- blanks) +-
        strinG "end" >>: fun (alts, else_) ->
          Case (make_typ "case", alts, else_)) m
 

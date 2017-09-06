@@ -78,7 +78,7 @@ let set_nullable typ nullable =
 
 (* Improve to_ while checking compatibility with from.
  * Numerical types of to_ can be enlarged to match those of from. *)
-let check_expr_type ~from ~to_ =
+let check_expr_type ~ok_if_larger ~from ~to_ =
   let open Lang in
   let changed =
     match to_.Expr.scalar_typ, from.Expr.scalar_typ with
@@ -89,12 +89,12 @@ let check_expr_type ~from ~to_ =
       if can_cast ~from_scalar_type:to_typ ~to_scalar_type:from_typ then (
         to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
         true
-      ) else (
+      ) else if ok_if_larger then false
+      else
         let m = Printf.sprintf "%s must have type %s but got %s of type %s"
                     to_.Expr.expr_name (IO.to_string Scalar.print_typ to_typ)
                     from.Expr.expr_name (IO.to_string Scalar.print_typ from_typ) in
         raise (SyntaxError m)
-      )
     | _ -> false in
   match from.Expr.nullable with
   | None -> changed
@@ -145,8 +145,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       Expr.print_typ op_typ
       Scalar.print_typ actual_typ ;
     let from = make_typ ~typ:actual_typ ?nullable op_typ.expr_name in
-    let changed = check_expr_type ~from ~to_:op_typ in
-    check_expr_type ~from:op_typ ~to_:exp_type || changed
+    let changed = check_expr_type ~ok_if_larger:false ~from ~to_:op_typ in
+    check_expr_type ~ok_if_larger:false ~from:op_typ ~to_:exp_type || changed
   in
   let check_unary_op op_typ make_op_typ ?(propagate_null=true) ?exp_sub_typ ?exp_sub_nullable sub_expr =
     (* First we check the operand: does it comply with the expected type
@@ -230,7 +230,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   function
   | Const (op_typ, _) ->
     (* op_typ is already optimal. But is it compatible with exp_type? *)
-    check_expr_type ~from:op_typ ~to_:exp_type
+    check_expr_type ~ok_if_larger:false ~from:op_typ ~to_:exp_type
   | Field (op_typ, tuple, field) ->
     if tuple_has_type_input !tuple then (
       (* Check that this field is, or could be, in in_type *)
@@ -262,7 +262,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           op_typ.nullable <- from.nullable ;
           op_typ.scalar_typ <- from.scalar_typ
         ) ;
-        check_expr_type ~from ~to_:exp_type
+        check_expr_type ~ok_if_larger:false ~from ~to_:exp_type
     ) else if tuple_has_type_output !tuple then (
       (* If we already have this field in out then check it's compatible (or
        * enlarge out or exp). If we don't have it then add it. *)
@@ -283,7 +283,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           op_typ.nullable <- out.nullable ;
           op_typ.scalar_typ <- out.scalar_typ
         ) ;
-        check_expr_type ~from:out ~to_:exp_type
+        check_expr_type ~ok_if_larger:false ~from:out ~to_:exp_type
     ) else (
       (* All other tuples are already typed (virtual fields) *)
       if not (Expr.is_virtual_field field) then (
@@ -298,7 +298,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Param (_op_typ, _pname) ->
     (* TODO: one day we will know the type or value of params *)
     false
-  | Case (op_typ, alts, else_) ->
+  | Case (_op_typ, alts, else_) ->
     (* Rules:
      * - If a condition or a consequent is nullable then the case is;
      * - conversely, if no condition nor any consequent is nullable, then the
@@ -307,31 +307,52 @@ let rec check_expr ~in_type ~out_type ~exp_type =
      * - all consequents must have the same type (that of the case);
      * - if there are no else branch then the case is nullable. *)
     (
+      (* All conditions must have type bool *)
+      !logger.debug "Typing CASE: checking boolness of conditions" ;
+      let exp_cond_type = make_bool_typ "case condition" in
+      List.exists (fun alt ->
+          (* First typecheck the condition, then check it's a bool: *)
+          let cond_typ = typ_of alt.case_cond in
+          let chg = check_expr ~in_type ~out_type ~exp_type:cond_typ alt.case_cond ||
+                    check_expr_type ~ok_if_larger:false ~from:exp_cond_type ~to_:cond_typ in
+          !logger.debug "Typing CASE: condition type is now %a (changed: %b)"
+            Expr.print_typ (typ_of alt.case_cond) chg ;
+          chg
+        ) alts
+    ) || (
+      !logger.debug "Typing CASE: enlarging CASE from ELSE" ;
       match else_ with
       | Some else_ ->
-        check_expr ~in_type ~out_type ~exp_type:op_typ else_
+        (* First type the else_ then use the actual type to enlarge exp_type: *)
+        let chg = check_expr ~in_type ~out_type ~exp_type:(typ_of else_) else_ ||
+                  check_expr_type ~ok_if_larger:true ~from:(typ_of else_) ~to_:exp_type in
+        !logger.debug "Typing CASE: CASE type is now %a (changed: %b)"
+          Expr.print_typ exp_type chg ;
+        chg
       | None ->
-        set_nullable op_typ true
-    ) ||
-    (* All conditions must have type bool *)
-    let exp_cond_type = make_bool_typ "case condition" in
-    List.exists (fun alt ->
-        check_expr_type ~from:exp_cond_type ~to_:(typ_of alt.case_cond)
-      ) alts ||
-    (* Enlarge consequents if necessary (largest required type so far is
-     * op_typ: *)
-    List.exists (fun alt ->
-        (* Enlarge op_typ with the consequent: *)
-        check_expr ~in_type ~out_type ~exp_type:op_typ alt.case_cons
-        (* check_expr will set the case to not null if the consequent is not
-         * null. This is not correct as we want to give a chance to another
-         * consequent to set it nullable. Unfortunately there is nothing we
-         * can do about it for now so for now all nullability must be the
-         * same in all alternatives (if we resetted op_typ.nullable then
-         * check_expr will return true again and again). FIXME. *)
-      ) alts
+        !logger.debug "Typing CASE: No ELSE clause so CASE can be NULL" ;
+        set_nullable exp_type true
+    ) || (
+      (* Enlarge exp_type with the consequent: *)
+      !logger.debug "Typing CASE: enlarging CASE from consequents" ;
+      List.exists (fun alt ->
+          (* First typecheck the consequent, then use it to enlarge exp_type: *)
+          let chg = check_expr ~in_type ~out_type ~exp_type:(typ_of alt.case_cons) alt.case_cons ||
+                    check_expr_type ~ok_if_larger:true ~from:(typ_of alt.case_cons) ~to_:exp_type in
+          !logger.debug "Typing CASE: consequent type is %a, and CASE type is now %a (changed: %b)"
+            Expr.print_typ (typ_of alt.case_cons)
+            Expr.print_typ exp_type chg ;
+          chg
+          (* check_expr will set the case to not null if the consequent is not
+           * null. This is not correct as we want to give a chance to another
+           * consequent to set it nullable. Unfortunately there is nothing we
+           * can do about it for now so for now all nullability must be the
+           * same in all alternatives (if we resetted op_typ.nullable then
+           * check_expr will return true again and again). FIXME. *)
+        ) alts
+    )
   | StatelessFun (op_typ, Now) ->
-    check_expr_type ~from:op_typ ~to_:exp_type
+    check_expr_type ~ok_if_larger:false ~from:op_typ ~to_:exp_type
   | StatefullFun (op_typ, _, AggrMin e) | StatefullFun (op_typ, _, AggrMax e)
   | StatefullFun (op_typ, _, AggrFirst e) | StatefullFun (op_typ, _, AggrLast e) ->
     check_unary_op op_typ identity e
@@ -447,7 +468,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
             raise (Lang.SyntaxError m)) ;
           changed (* no-op *)
         | parent_rank, parent_field ->
-          let c1 = check_expr_type ~from:parent_field ~to_:child_field
+          let c1 = check_expr_type ~ok_if_larger:false ~from:parent_field ~to_:child_field
           and c2 = check_rank ~from:parent_rank ~to_:child_rank in
           c1 || c2 || changed
       ) to_tuple.C.fields false in
@@ -489,13 +510,24 @@ let check_selected_fields ~in_type ~out_type fields =
             (* Start from the type we already know from the expression
              * because it is already set in some cases (virtual fields -
              * and for them that's our only change to get this type) *)
-            let exp_typ = Expr.copy_typ ~name (Expr.typ_of sf.Operation.expr) in
-            !logger.debug "Adding out field %s" name ;
-            Hashtbl.add out_type.C.fields name (ref (Some i), exp_typ) ;
-            exp_typ
-          | rank, exp_typ ->
+            let typ =
+              let open Expr in
+              match sf.Operation.expr with
+              (* Note: we must create a new type for out distinct from the type
+               * of the expression in case the expression is another field (from
+               * in, say) because we do not want to alias them. *)
+              | Field (t, _, _) -> copy_typ ~name t
+              | _ ->
+                let typ = typ_of sf.Operation.expr in
+                typ.expr_name <- name ;
+                typ
+            in
+            !logger.debug "Adding out field %s (operation: %s)" name typ.Expr.expr_name ;
+            Hashtbl.add out_type.C.fields name (ref (Some i), typ) ;
+            typ
+          | rank, typ ->
             if !rank = None then rank := Some i ;
-            exp_typ in
+            typ in
         check_expr ~in_type ~out_type ~exp_type sf.Operation.expr)
     ) false fields
 
