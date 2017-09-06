@@ -404,6 +404,11 @@ let freevar_name t = "fv_"^ string_of_int t.Expr.uniq_num ^"_"
 let rec conv_to ~state ~context to_typ fmt e =
   let open Expr in
   let t = typ_of e in
+  if t.nullable = None then (
+    !logger.error "Problem: Have to convert expression %a into %a"
+      (print true) e
+      Scalar.print_typ (Option.get to_typ)
+  ) ;
   let nullable = Option.get t.nullable in
   match t.scalar_typ, to_typ with
   | Some a, Some b -> conv_from_to a ~nullable b (emit_expr ~context ~state) fmt e
@@ -436,7 +441,6 @@ and emit_expr ~state ~context oc expr =
   | Finalize, Param _, _ ->
     failwith "TODO: code gen for params"
   | Finalize, Case (_, alts, else_), t ->
-    !logger.info "Case type is: %a" Expr.print_typ out_typ ;
     List.print ~first:"(" ~last:"" ~sep:" else "
       (fun oc alt ->
          Printf.fprintf oc "if %a then (%a)"
@@ -687,7 +691,7 @@ and add_missing_types arg_typs es =
  * possible and avoid evaluating any of them if one is null. Here we will just
  * evaluate them in order until one is found to be nullable and null, or until
  * we evaluated them all, and then only we call the function.
- * TODO: ideally * we'd like to evaluate the nullable arguments first. *)
+ * TODO: ideally we'd like to evaluate the nullable arguments first. *)
 and emit_function oc ~state impl arg_typs es vt_specs_opt =
   let open Expr in
   let arg_typs = add_missing_types arg_typs es in

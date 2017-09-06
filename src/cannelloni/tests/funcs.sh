@@ -101,6 +101,7 @@ run() {
   $ramen compile &&
   $ramen run
   # We must give it time to process the CSV :(
+  # FIXME: add the wait parameter to the tail cli command and use that instead.
   sleep 2
 }
 

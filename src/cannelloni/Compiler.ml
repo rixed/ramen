@@ -504,6 +504,7 @@ let check_selected_fields ~in_type ~out_type fields =
   List.fold_lefti (fun changed i sf ->
       changed || (
         let name = sf.Operation.alias in
+        !logger.debug "Type-check field %s" name ;
         let exp_type =
           match Hashtbl.find out_type.C.fields name with
           | exception Not_found ->
@@ -527,6 +528,7 @@ let check_selected_fields ~in_type ~out_type fields =
             typ
           | rank, typ ->
             if !rank = None then rank := Some i ;
+            !logger.debug "... already in out, current type is %a" Expr.print_typ typ ;
             typ in
         check_expr ~in_type ~out_type ~exp_type sf.Operation.expr)
     ) false fields

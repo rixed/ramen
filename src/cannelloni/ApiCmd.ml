@@ -131,6 +131,7 @@ let ppp_of_string_exc ppp s =
   try PPP.of_string_exc ppp s |> return
   with e -> fail e
 
+(* TODO: separator and null placeholder for csv *)
 let tail debug ramen_url node_name as_csv last continuous () =
   logger := make_logger debug ;
   let url = ramen_url ^"/export/"^
