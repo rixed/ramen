@@ -453,6 +453,17 @@ and emit_expr ~state ~context oc expr =
     | Some else_ ->
       Printf.fprintf oc " else %a)"
         (conv_to ~state ~context t) else_)
+  | Finalize, Coalesce (_, es), t ->
+    let rec loop = function
+      | [] -> ()
+      | [last] ->
+        Printf.fprintf oc "(%a)" (conv_to ~state ~context t) last
+      | e :: rest ->
+        Printf.fprintf oc "BatOption.default_delayed (fun () -> " ;
+        loop rest ;
+        Printf.fprintf oc ") (%a)" (conv_to ~state ~context t) e
+    in
+    loop es
   (* Stateless arithmetic functions which actual funcname depends on operand types: *)
   | Finalize, StatelessFun (_, Add(e1,e2)),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->

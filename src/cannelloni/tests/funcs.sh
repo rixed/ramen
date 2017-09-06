@@ -66,7 +66,10 @@ add_node() {
 }
 
 add_123() {
-  add_node 123 "READ CSV FILE \"$fixtures/123.csv\" (n u8 not null, b bool not null)"
+  add_node 123 "READ CSV FILE \"$fixtures/123.csv\" (
+    n u8 not null,
+    b bool not null,
+    name string null)"
 }
 
 add_cars() {

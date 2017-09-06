@@ -419,6 +419,7 @@ struct
     | StateField of typ * string (* Name of the state field - met only late in the game *)
     | Param of typ * string
     | Case of typ * case_alternative list * t option
+    | Coalesce of typ * t list
     (* On functions, internal states, and aggregates:
      *
      * Functions come in three variety:
@@ -556,6 +557,9 @@ struct
   let expr_one =
     Const (make_typ ~typ:TU8 ~nullable:false "one", VU8 (Uint8.of_int 1))
 
+  let expr_null =
+    Const (make_typ ~nullable:true ~typ:TNull "NULL", VNull)
+
   let is_true = function
     | Const (_ , VBool true) -> true
     | _ -> false
@@ -596,6 +600,11 @@ struct
         Printf.fprintf fmt "ELSE %a "
           (print with_types) else_) else_ ;
       Printf.fprintf fmt "END" ;
+      add_types t
+    | Coalesce (t, es) ->
+      Printf.fprintf fmt "COALESCE %a"
+        (List.print ~first:"(" ~last:")" ~sep:", "
+          (print with_types)) es ;
       add_types t
     | StatelessFun (t, Age e) ->
       Printf.fprintf fmt "age (%a)" (print with_types) e ; add_types t
@@ -717,7 +726,7 @@ struct
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | StateField (t, _)
     | StatelessFun (t, _) | StatefullFun (t, _, _) | GeneratorFun (t, _)
-    | Case (t, _, _) ->
+    | Case (t, _, _) | Coalesce (t, _) ->
       t
 
   let is_nullable e =
@@ -781,6 +790,7 @@ struct
       let i''=
         Option.map_default (fun else_ -> fold_by_depth f i' else_) i' else_ in
       f i'' expr
+    | Coalesce (_, es) -> List.fold_left f i es
 
   let iter f = fold_by_depth (fun () e -> f e) ()
 
@@ -802,11 +812,14 @@ struct
 
     | Case (t, alts, else_) ->
       Case (f t,
-          (if recurs then List.map (fun alt ->
-             { case_cond = map_type ~recurs f alt.case_cond ;
-               case_cons = map_type ~recurs f alt.case_cons }) alts
-           else alts),
-          if recurs then Option.map (map_type ~recurs f) else_ else else_)
+            (if recurs then List.map (fun alt ->
+               { case_cond = map_type ~recurs f alt.case_cond ;
+                 case_cons = map_type ~recurs f alt.case_cons }) alts
+             else alts),
+            if recurs then Option.map (map_type ~recurs f) else_ else else_)
+    | Coalesce (t, es) ->
+      Coalesce (f t,
+                if recurs then List.map (map_type ~recurs f) es else es)
 
     | StatefullFun (t, g, AggrMin a) ->
       StatefullFun (f t, g, AggrMin (if recurs then map_type ~recurs f a else a))
@@ -960,8 +973,7 @@ struct
 
     let null m =
       let m = "NULL" :: m in
-      (strinG "null" >>: fun () ->
-       Const (make_typ ~nullable:true ~typ:TNull "NULL", VNull)) m
+      (strinG "null" >>: fun () -> expr_null) m
 
     let field m =
       let m = "field" :: m in
@@ -1290,8 +1302,31 @@ struct
        strinG "end" >>: fun (alts, else_) ->
          Case (make_typ "case", alts, else_)) m
 
+    and if_ m =
+      let m = "if" :: m in
+      ((afun2 "if" >>: fun (case_cond, case_cons) ->
+          Case (make_typ "case", [ { case_cond ; case_cons } ], None)) |||
+       (afun3 "if" >>: fun (case_cond, case_cons, else_) ->
+          Case (make_typ "case", [ { case_cond ; case_cons } ], Some else_))) m
+
+    and coalesce m =
+      let m = "coalesce" :: m in
+      (afunv 0 "coalesce" >>: function
+         | [], r ->
+           let rec loop es = function
+             | [] -> expr_null
+             | [e] ->
+               if es = [] then e else
+               Coalesce (make_typ ~nullable:false "coalesce", List.rev (e::es))
+             | e::rest ->
+               loop (e :: es) rest
+           in
+           loop [] r
+         | _ -> assert false) m
+
     and highestest_prec m =
-      (const ||| field ||| param ||| func ||| null ||| case |||
+      (const ||| field ||| param ||| func ||| null |||
+       case ||| if_ ||| coalesce |||
        char '(' -- opt_blanks -+
          lowest_prec_left_assoc +-
        opt_blanks +- char ')'

@@ -78,7 +78,7 @@ let set_nullable typ nullable =
 
 (* Improve to_ while checking compatibility with from.
  * Numerical types of to_ can be enlarged to match those of from. *)
-let check_expr_type ~ok_if_larger ~from ~to_ =
+let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
   let open Lang in
   let changed =
     match to_.Expr.scalar_typ, from.Expr.scalar_typ with
@@ -96,9 +96,11 @@ let check_expr_type ~ok_if_larger ~from ~to_ =
                     from.Expr.expr_name (IO.to_string Scalar.print_typ from_typ) in
         raise (SyntaxError m)
     | _ -> false in
-  match from.Expr.nullable with
-  | None -> changed
-  | Some from_null -> set_nullable to_ from_null
+  if set_null then
+    match from.Expr.nullable with
+    | None -> changed
+    | Some from_null -> set_nullable to_ from_null
+  else changed
 
 (* Check that this expression fulfill the type expected by the caller (exp_type).
  * Also, improve exp_type (set typ and nullable, enlarge numerical types ...).
@@ -145,8 +147,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       Expr.print_typ op_typ
       Scalar.print_typ actual_typ ;
     let from = make_typ ~typ:actual_typ ?nullable op_typ.expr_name in
-    let changed = check_expr_type ~ok_if_larger:false ~from ~to_:op_typ in
-    check_expr_type ~ok_if_larger:false ~from:op_typ ~to_:exp_type || changed
+    let changed = check_expr_type ~ok_if_larger:false ~set_null:true ~from ~to_:op_typ in
+    check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type || changed
   in
   let check_unary_op op_typ make_op_typ ?(propagate_null=true) ?exp_sub_typ ?exp_sub_nullable sub_expr =
     (* First we check the operand: does it comply with the expected type
@@ -230,7 +232,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   function
   | Const (op_typ, _) ->
     (* op_typ is already optimal. But is it compatible with exp_type? *)
-    check_expr_type ~ok_if_larger:false ~from:op_typ ~to_:exp_type
+    check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
   | Field (op_typ, tuple, field) ->
     if tuple_has_type_input !tuple then (
       (* Check that this field is, or could be, in in_type *)
@@ -262,7 +264,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           op_typ.nullable <- from.nullable ;
           op_typ.scalar_typ <- from.scalar_typ
         ) ;
-        check_expr_type ~ok_if_larger:false ~from ~to_:exp_type
+        check_expr_type ~ok_if_larger:false ~set_null:true ~from ~to_:exp_type
     ) else if tuple_has_type_output !tuple then (
       (* If we already have this field in out then check it's compatible (or
        * enlarge out or exp). If we don't have it then add it. *)
@@ -283,7 +285,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           op_typ.nullable <- out.nullable ;
           op_typ.scalar_typ <- out.scalar_typ
         ) ;
-        check_expr_type ~ok_if_larger:false ~from:out ~to_:exp_type
+        check_expr_type ~ok_if_larger:false ~set_null:true ~from:out ~to_:exp_type
     ) else (
       (* All other tuples are already typed (virtual fields) *)
       if not (Expr.is_virtual_field field) then (
@@ -314,7 +316,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           (* First typecheck the condition, then check it's a bool: *)
           let cond_typ = typ_of alt.case_cond in
           let chg = check_expr ~in_type ~out_type ~exp_type:cond_typ alt.case_cond ||
-                    check_expr_type ~ok_if_larger:false ~from:exp_cond_type ~to_:cond_typ in
+                    check_expr_type ~ok_if_larger:false ~set_null:true ~from:exp_cond_type ~to_:cond_typ in
           !logger.debug "Typing CASE: condition type is now %a (changed: %b)"
             Expr.print_typ (typ_of alt.case_cond) chg ;
           chg
@@ -324,8 +326,9 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       match else_ with
       | Some else_ ->
         (* First type the else_ then use the actual type to enlarge exp_type: *)
-        let chg = check_expr ~in_type ~out_type ~exp_type:(typ_of else_) else_ ||
-                  check_expr_type ~ok_if_larger:true ~from:(typ_of else_) ~to_:exp_type in
+        let typ = typ_of else_ in
+        let chg = check_expr ~in_type ~out_type ~exp_type:typ else_ ||
+                  check_expr_type ~ok_if_larger:true ~set_null:true ~from:typ ~to_:exp_type in
         !logger.debug "Typing CASE: CASE type is now %a (changed: %b)"
           Expr.print_typ exp_type chg ;
         chg
@@ -337,10 +340,11 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       !logger.debug "Typing CASE: enlarging CASE from consequents" ;
       List.exists (fun alt ->
           (* First typecheck the consequent, then use it to enlarge exp_type: *)
-          let chg = check_expr ~in_type ~out_type ~exp_type:(typ_of alt.case_cons) alt.case_cons ||
-                    check_expr_type ~ok_if_larger:true ~from:(typ_of alt.case_cons) ~to_:exp_type in
+          let typ = typ_of alt.case_cons in
+          let chg = check_expr ~in_type ~out_type ~exp_type:typ alt.case_cons ||
+                    check_expr_type ~ok_if_larger:true ~set_null:true ~from:typ ~to_:exp_type in
           !logger.debug "Typing CASE: consequent type is %a, and CASE type is now %a (changed: %b)"
-            Expr.print_typ (typ_of alt.case_cons)
+            Expr.print_typ typ
             Expr.print_typ exp_type chg ;
           chg
           (* check_expr will set the case to not null if the consequent is not
@@ -351,8 +355,47 @@ let rec check_expr ~in_type ~out_type ~exp_type =
            * check_expr will return true again and again). FIXME. *)
         ) alts
     )
+  | Coalesce (_op_typ, es) ->
+    (* Rules:
+     * - All elements of the list must have the same scalar type ;
+     * - all elements of the list but the last must be nullable ;
+     * - the last element of the list must not be nullable. *)
+    (* Enlarge exp_type with the consequent: *)
+    assert (es <> []) ;
+    !logger.debug "Typing COALESCE: enlarging COALESCE from elements" ;
+    let changed, last_typ = List.fold_left (fun (changed, last_typ) e ->
+        let typ = typ_of e in
+        (* So last_nullable is not allowed to be not nullable: *)
+        Option.may (fun last_typ ->
+          if last_typ.nullable <> Some true then (
+            let m =
+              Printf.sprintf "All elements of a COALESCE must be nullable \
+                              but the last one. %s cannot be null."
+                (IO.to_string Expr.print_typ last_typ) in
+            raise (Lang.SyntaxError m)
+          )) last_typ ;
+
+        (* First typecheck e, then use it to enlarge exp_type: *)
+        let chg = check_expr ~in_type ~out_type ~exp_type:typ e ||
+                  check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
+        !logger.debug "Typing COALESCE: expr type is %a, and COALESCE type is now %a (changed: %b)"
+          Expr.print_typ typ
+          Expr.print_typ exp_type chg ;
+        if typ.nullable = None then (
+          let m =
+            Printf.sprintf "Cannot find out if %s can be NULL"
+              (IO.to_string Expr.print_typ typ) in
+          raise (Lang.SyntaxError m)) ;
+        changed || chg, Some typ
+      ) (false, None) es in
+    (match (Option.get last_typ).nullable with
+    | Some false -> changed
+    | Some true ->
+      let m = "Last element of a COALESCE must not be NULLable" in
+      raise (Lang.SyntaxError m)
+    | None -> assert false)
   | StatelessFun (op_typ, Now) ->
-    check_expr_type ~ok_if_larger:false ~from:op_typ ~to_:exp_type
+    check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
   | StatefullFun (op_typ, _, AggrMin e) | StatefullFun (op_typ, _, AggrMax e)
   | StatefullFun (op_typ, _, AggrFirst e) | StatefullFun (op_typ, _, AggrLast e) ->
     check_unary_op op_typ identity e
@@ -468,7 +511,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
             raise (Lang.SyntaxError m)) ;
           changed (* no-op *)
         | parent_rank, parent_field ->
-          let c1 = check_expr_type ~ok_if_larger:false ~from:parent_field ~to_:child_field
+          let c1 = check_expr_type ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field
           and c2 = check_rank ~from:parent_rank ~to_:child_rank in
           c1 || c2 || changed
       ) to_tuple.C.fields false in

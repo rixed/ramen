@@ -20,9 +20,11 @@ add_node p1 \
    CASE WHEN n = 3 THEN 9999999999999999999
         WHEN n = 1 THEN 1
         ELSE 2
-   END AS some_u64
+   END AS some_u64,
+   IF (n = 1, -1, -2) AS minus_smth,
+   COALESCE(name,"three") AS real_name
  EXPORT' 123
 run
-check_equal '"lo","one",1
-"meh","more",2
-"hi","more",9999999999999999999' "$(tail_ 3 p1)"
+check_equal '"lo","one",1,-1,"one"
+"meh","more",2,-2,"two"
+"hi","more",9999999999999999999,-2,"three"' "$(tail_ 3 p1)"
