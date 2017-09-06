@@ -430,8 +430,9 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | StatelessFun (op_typ, Length e) ->
     check_unary_op op_typ return_u16 ~exp_sub_typ:TString e
   | StatelessFun (op_typ, Ge (e1, e2)) | StatelessFun (op_typ, Gt (e1, e2))
-  | StatelessFun (op_typ, Eq (e1, e2)) (* FIXME: Eq should work on strings as well *) ->
-    check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+  | StatelessFun (op_typ, Eq (e1, e2)) ->
+    (try check_binary_op op_typ return_bool ~exp_sub_typ1:TString e1 ~exp_sub_typ2:TString e2
+    with _ -> check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2)
   | StatelessFun (op_typ, And (e1, e2)) | StatelessFun (op_typ, Or (e1, e2)) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:TBool e1 ~exp_sub_typ2:TBool e2
   | StatelessFun (op_typ, BeginOfRange e) | StatelessFun (op_typ, EndOfRange e) ->
