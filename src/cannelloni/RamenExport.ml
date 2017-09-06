@@ -200,11 +200,19 @@ let scalar_column_init typ len f =
 (* Note: the list of values is ordered latest to oldest *)
 let columns_of_tuples fields values =
   let values = Array.of_list values in
+  let get_val ci i =
+    let inv_i = Array.length values - 1 - i in
+    values.(inv_i).(ci)
+  in
   List.mapi (fun ci ft ->
       ft.typ_name, ft.nullable,
-      scalar_column_init ft.typ (Array.length values) (fun i ->
-        let inv_i = Array.length values - 1 - i in
-        values.(inv_i).(ci))
+      (* If ft.nullable then f could return VNull in which case scalar_column_init
+       * should set None in the array, and Some value otherwise. But we have
+       * no columnar types for optional values :-/ *)
+      if ft.nullable then
+        assert false
+      else
+        scalar_column_init ft.typ (Array.length values) (get_val ci)
     ) fields
 
 (* Garbage in / garbage out *)

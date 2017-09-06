@@ -316,7 +316,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           (* First typecheck the condition, then check it's a bool: *)
           let cond_typ = typ_of alt.case_cond in
           let chg = check_expr ~in_type ~out_type ~exp_type:cond_typ alt.case_cond ||
-                    check_expr_type ~ok_if_larger:false ~set_null:true ~from:exp_cond_type ~to_:cond_typ in
+                    check_expr_type ~ok_if_larger:false ~set_null:false ~from:exp_cond_type ~to_:cond_typ in
           !logger.debug "Typing CASE: condition type is now %a (changed: %b)"
             Expr.print_typ (typ_of alt.case_cond) chg ;
           chg
@@ -328,7 +328,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         (* First type the else_ then use the actual type to enlarge exp_type: *)
         let typ = typ_of else_ in
         let chg = check_expr ~in_type ~out_type ~exp_type:typ else_ ||
-                  check_expr_type ~ok_if_larger:true ~set_null:true ~from:typ ~to_:exp_type in
+                  check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
         !logger.debug "Typing CASE: CASE type is now %a (changed: %b)"
           Expr.print_typ exp_type chg ;
         chg
@@ -342,18 +342,38 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           (* First typecheck the consequent, then use it to enlarge exp_type: *)
           let typ = typ_of alt.case_cons in
           let chg = check_expr ~in_type ~out_type ~exp_type:typ alt.case_cons ||
-                    check_expr_type ~ok_if_larger:true ~set_null:true ~from:typ ~to_:exp_type in
+                    check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
           !logger.debug "Typing CASE: consequent type is %a, and CASE type is now %a (changed: %b)"
             Expr.print_typ typ
             Expr.print_typ exp_type chg ;
           chg
-          (* check_expr will set the case to not null if the consequent is not
-           * null. This is not correct as we want to give a chance to another
-           * consequent to set it nullable. Unfortunately there is nothing we
-           * can do about it for now so for now all nullability must be the
-           * same in all alternatives (if we resetted op_typ.nullable then
-           * check_expr will return true again and again). FIXME. *)
         ) alts
+    ) || (
+      (* Now set the CASE nullability. *)
+      !logger.debug "Typing CASE: figuring out if CASE is NULLable" ;
+      let nullable =
+        match else_ with
+        | None -> Some true (* No else clause: nullable! *)
+        | Some else_ -> (typ_of else_).nullable in
+      let nullable = match nullable with
+        | None -> None (* We have to wait to know the ELSE better *)
+        | Some n ->
+          List.fold_left (fun n alt ->
+              let t1 = typ_of alt.case_cond
+              and t2 = typ_of alt.case_cons in
+              match n, t1.nullable, t2.nullable with
+              | None, _, _ | _, None, _ | _, _, None -> None
+              | Some n0, Some n1, Some n2 -> Some (n0 || n1 || n2)
+            ) (Some n) alts
+      in
+      Option.map_default (fun nullable ->
+          if exp_type.nullable <> Some nullable then (
+            !logger.debug "Typing CASE: Setting the CASE to %sNULLable"
+              (if nullable then "" else "not ") ;
+            exp_type.nullable <- Some nullable ;
+            true
+          ) else false
+        ) false nullable
     )
   | Coalesce (_op_typ, es) ->
     (* Rules:
@@ -367,7 +387,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         let typ = typ_of e in
         (* So last_nullable is not allowed to be not nullable: *)
         Option.may (fun last_typ ->
-          if last_typ.nullable <> Some true then (
+          if last_typ.nullable = Some false then (
             let m =
               Printf.sprintf "All elements of a COALESCE must be nullable \
                               but the last one. %s cannot be null."
@@ -381,19 +401,17 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         !logger.debug "Typing COALESCE: expr type is %a, and COALESCE type is now %a (changed: %b)"
           Expr.print_typ typ
           Expr.print_typ exp_type chg ;
-        if typ.nullable = None then (
-          let m =
-            Printf.sprintf "Cannot find out if %s can be NULL"
-              (IO.to_string Expr.print_typ typ) in
-          raise (Lang.SyntaxError m)) ;
         changed || chg, Some typ
       ) (false, None) es in
-    (match (Option.get last_typ).nullable with
-    | Some false -> changed
-    | Some true ->
-      let m = "Last element of a COALESCE must not be NULLable" in
-      raise (Lang.SyntaxError m)
-    | None -> assert false)
+    (match last_typ with
+    | None -> changed
+    | Some typ ->
+      match typ.nullable with
+      | Some false -> changed
+      | Some true ->
+        let m = "Last element of a COALESCE must not be NULLable" in
+        raise (Lang.SyntaxError m)
+      | None -> changed)
   | StatelessFun (op_typ, Now) ->
     check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
   | StatefullFun (op_typ, _, AggrMin e) | StatefullFun (op_typ, _, AggrMax e)

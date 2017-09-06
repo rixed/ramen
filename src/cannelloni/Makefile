@@ -108,6 +108,7 @@ long-check: cannelloni
 	./tests/fun_with_funcs
 	./tests/lag
 	./tests/word_split
+	./tests/case
 
 include $(top_srcdir)/make.common
 

@@ -443,15 +443,24 @@ and emit_expr ~state ~context oc expr =
   | Finalize, Case (_, alts, else_), t ->
     List.print ~first:"(" ~last:"" ~sep:" else "
       (fun oc alt ->
-         Printf.fprintf oc "if %a then (%a)"
-          (emit_expr ~state ~context) alt.case_cond
-          (conv_to ~state ~context t) alt.case_cons)
+         (* If the condition is nullable then we must return NULL immediately.
+          * If the cons is not nullable but the case is (for another reason),
+          * then adds a Some. *)
+         Printf.fprintf oc
+           (if is_nullable alt.case_cond then
+              "match %a with None -> None | Some cond_ -> if cond_ then %s(%a)"
+            else
+              "if %a then %s(%a)")
+           (emit_expr ~state ~context) alt.case_cond
+           (if is_nullable expr && not (is_nullable alt.case_cons) then "Some " else "")
+           (conv_to ~state ~context t) alt.case_cons)
       oc alts ;
     (match else_ with
     | None ->
       Printf.fprintf oc " else None)"
     | Some else_ ->
-      Printf.fprintf oc " else %a)"
+      Printf.fprintf oc " else %s(%a))"
+        (if is_nullable expr && not (is_nullable else_) then "Some " else "")
         (conv_to ~state ~context t) else_)
   | Finalize, Coalesce (_, es), t ->
     let rec loop = function
