@@ -330,19 +330,25 @@ let ddos_layer dataset_name =
   let op_new_peers avg_win rem_win =
     let avg_win_us = avg_win * 1_000_000 in
     {|SELECT
-       (capture_begin // $AVG_WIN$) AS start,
+       (capture_begin // $AVG_WIN_US$) AS start,
        min of capture_begin, max of capture_end,
-       sum (remember globally (capture_begin // 1_000_000, $REM_WIN$,
+       sum (
+         u32(remember globally (
+              capture_begin // 1_000_000, $REM_WIN$,
               (hash (coalesce (ip4_client, ip6_client, 0)) +
-               hash (coalesce (ip4_server, ip6_server, 0)))))
+               hash (coalesce (ip4_server, ip6_server, 0)))))) /
+         $AVG_WIN$
          AS nb_new_peers_per_secs
-     GROUP BY capture_begin // $AVG_WIN$
+     GROUP BY capture_begin // $AVG_WIN_US$
      COMMIT AND FLUSH WHEN
-       in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN$)|} |>
-    rep "$AVG_WIN$" (string_of_int avg_win_us) |>
+       in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN_US$)
+     EXPORT EVENT STARTING AT start * $AVG_WIN$
+                  WITH DURATION $AVG_WIN$|} |>
+    rep "$AVG_WIN_US$" (string_of_int avg_win_us) |>
+    rep "$AVG_WIN$" (string_of_int avg_win) |>
     rep "$REM_WIN$" (string_of_int rem_win) in
   let global_new_peers =
-    make_node ~parents:["c2s"; "s2c"] dataset_name "new peers" (op_new_peers 60 3600)
+    make_node ~parents:["csv"] dataset_name "new peers" (op_new_peers 60 3600)
   in
   RamenSharedTypes.{
     name = layer_name ;
