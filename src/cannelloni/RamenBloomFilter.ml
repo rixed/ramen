@@ -108,7 +108,7 @@ let remember sf time x =
     let end_time =
       sf.slices.(sf.current).start_time +. sf.slice_width in
     if time >= end_time then (
-      sf.current <- sf.current + 1 ;
+      sf.current <- (sf.current + 1) mod Array.length sf.slices ;
       sf.slices.(sf.current) <- make_slice sf.nb_bits end_time ;
       loop ()
     ) in
