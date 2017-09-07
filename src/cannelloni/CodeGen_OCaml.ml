@@ -327,6 +327,8 @@ let emit_scalar oc =
  * Returns a list of typ option, as long as the type of input arguments *)
 (* FIXME: this could be extracted from Compiler.check_expr *)
 
+(* Context: helps picking the implementation of an operation. Subexpressions
+ * will always have context "Finalize", though. *)
 type context = InitState | UpdateState | Finalize | Generator
 
 let string_of_context = function
@@ -1265,4 +1267,5 @@ let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
                   flush_when ; flush_how ; notify_url ; _ } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
                      key top commit_when flush_when flush_how notify_url)) |>
-    compile_source exec_name
+  (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
+  compile_source exec_name

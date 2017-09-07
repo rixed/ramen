@@ -1117,7 +1117,7 @@ struct
       binary_ops_reducer ~op ~right_associative:true
                          ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
-    and afunv_sf a n m =
+    and afunv_sf a n m = (* "sf" stands for "stateful" *)
       let sep = opt_blanks -- char ',' -- opt_blanks in
       let m = n :: m in
       (strinG n -+
