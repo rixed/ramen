@@ -211,7 +211,7 @@ let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ
    * - reading a CSV string into a tuple type (when nullable fields are option type)
    * - given such a tuple, return its serialized size
    * - given a pointer toward the ring buffer, serialize the tuple *)
-  Printf.fprintf oc "open Stdint\n\n\
+  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
@@ -355,9 +355,9 @@ let otype_of_type = function
   | TNum | TAny -> assert false
 
 let omod_of_type = function
-  | TFloat -> "BatFloat"
-  | TString -> "BatString"
-  | TBool -> "BatBool"
+  | TFloat -> "Float"
+  | TString -> "String"
+  | TBool -> "Bool"
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth | TIpv4 | TIpv6 as t ->
@@ -375,17 +375,22 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
       (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
   | TString, (TFloat|TBool) ->
     Printf.fprintf fmt "(%s%s.of_%s %a)"
-      (if nullable then "BatOption.map " else "")
+      (if nullable then "Option.map " else "")
       (omod_of_type to_typ)
       (otype_of_type from_typ)
       p e
   | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
       (TFloat|TString)
-  | (TFloat|TBool), TString ->
+  | (TFloat|TBool), (TString|TFloat) ->
     Printf.fprintf fmt "(%s%s.to_%s %a)"
-      (if nullable then "BatOption.map " else "")
+      (if nullable then "Option.map " else "")
       (omod_of_type from_typ)
       (otype_of_type to_typ)
+      p e
+  | TBool, (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+    Printf.fprintf fmt "(%s(%s.of_int %% Bool.to_int) %a)"
+      (if nullable then "Option.map " else "")
+      (omod_of_type to_typ)
       p e
   | _, TNull ->
     (* We could as well just print "()" but this is easier for debugging,
@@ -952,7 +957,7 @@ let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
   let mentioned =
     let all_exprs = List.map (fun sf -> sf.Operation.expr) selected_fields in
     add_all_mentioned_in_expr all_exprs in
-  Printf.fprintf oc "open Stdint\n\n\
+  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
@@ -1169,7 +1174,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     | None -> when_to_check_for_commit
     | Some flush_when -> when_to_check_group_for_expr flush_when
   in
-  Printf.fprintf oc "open Stdint\n\n\
+  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" Lang.Expr.GlobalState in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields
     (emit_update_state "global_update_" Lang.Expr.GlobalState in_tuple_typ mentioned and_all_others commit_when flush_when) selected_fields

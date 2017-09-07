@@ -36,6 +36,17 @@ let check_finished_tuple_type tuple =
     tuple.C.fields
 
 let can_cast ~from_scalar_type ~to_scalar_type =
+  (* On TBool and Integer conversions:
+   * We want to convert easily from bool to int to ease the usage of
+   * booleans in arithmetic operations (for instance, summing how many times
+   * something is true). But we still want to disallow int to bool automatic
+   * conversions to keep conditionals clean of integers (use an IF to convert
+   * in this direction).
+   * If we merely allowed a TNum to be "enlarged" into a TBool then an
+   * expression using a boolean as an integer would have a boolean result,
+   * which is certainly not what we want. So we want to disallow such an
+   * automatic conversion. Instead, user must manually cast to some integer
+   * type. *)
   let compatible_types =
     match from_scalar_type with
     | TNum -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
@@ -49,6 +60,7 @@ let can_cast ~from_scalar_type ~to_scalar_type =
     | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ; TNum ]
     | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
     | TI128 -> [ TI128 ; TFloat ; TNum ]
+    | TBool -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
     | x -> [ x ] in
   List.mem to_scalar_type compatible_types
 
