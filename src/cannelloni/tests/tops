@@ -9,7 +9,7 @@ expected_tests=1
 start
 add_accounts
 add_node n "
-  SELECT name, sum of amount
+  SELECT name, sum amount
   TOP 3 BY amount
   GROUP BY name
   COMMIT AND FLUSH WHEN in.#count >= $nb_accounts

@@ -1132,10 +1132,9 @@ struct
         raise (Reject "too many arguments")
 
     and afun1_sf n =
-      (strinG n -- blanks -+
-       optional ~def:LocalState (state_lifespan +- blanks) +-
-       optional ~def:() (strinG "of" -- blanks) ++
-       highestest_prec)
+      let sep = check (char '(') ||| blanks in
+      (strinG n -+ optional ~def:LocalState (blanks -+ state_lifespan) +-
+       sep ++ highestest_prec)
 
     and afun2_sf n =
       afun_sf 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
@@ -1154,10 +1153,12 @@ struct
       let m = n :: m in
       (strinG n -- opt_blanks -- char '(' -- opt_blanks -+
        (if a > 0 then
-         repeat ~min:a ~max:a ~sep lowest_prec_left_assoc +- sep
+         repeat ~min:a ~max:a ~sep lowest_prec_left_assoc ++
+         optional ~def:[] (sep -+ repeat ~sep lowest_prec_left_assoc)
         else
-         return []) ++
-       repeat ~sep lowest_prec_left_assoc +- opt_blanks +- char ')') m
+         return [] ++
+         repeat ~sep lowest_prec_left_assoc) +-
+       opt_blanks +- char ')') m
 
     and afun a n =
       afunv a n >>: fun (a, r) ->
@@ -1165,8 +1166,8 @@ struct
         raise (Reject "too many arguments")
 
     and afun1 n =
-      (strinG n -- blanks -- optional ~def:() (strinG "of" -- blanks) -+
-       highestest_prec)
+      let sep = check (char '(') ||| blanks in
+      strinG n -- sep -+ highestest_prec
 
     and afun2 n =
       afun 2 n >>: function [a;b] -> a, b | _ -> assert false
@@ -1274,7 +1275,7 @@ struct
     and cast m =
       let m = "cast" :: m in
       let sep = check (char '(') ||| blanks in
-      (Scalar.Parser.typ +- optional ~def:() (blanks -- strinG "of") +- sep ++
+      (Scalar.Parser.typ +- sep ++
        highestest_prec >>: fun (typ, e) ->
          StatelessFun (make_typ ~typ ("cast to "^ IO.to_string Scalar.print_typ typ), Cast e)
       ) m
@@ -1285,7 +1286,7 @@ struct
       ((unsigned_decimal_number >>: Scalar.Parser.narrowest_int_scalar) +-
        (strinG "-moveavg" ||| strinG "-ma") ++
        optional ~def:LocalState (blanks -+ state_lifespan) +-
-       (blanks -- strinG "of") +- sep ++ highestest_prec >>: fun ((k, g), e) ->
+       sep ++ highestest_prec >>: fun ((k, g), e) ->
          let k = Const (make_typ ~nullable:false ~typ:(scalar_type_of k)
                                  "moving average order", k) in
          StatefullFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
@@ -1389,8 +1390,8 @@ struct
         StatefullFun (typ, LocalState, AggrPercentile (\
           Param (typ, "p"),\
           Field (typ, ref TupleIn, "bytes_per_sec"))),\
-        (30, [])))\
-        (test_p p "$p percentile of bytes_per_sec" |> replace_typ_in_expr)
+        (27, [])))\
+        (test_p p "$p percentile bytes_per_sec" |> replace_typ_in_expr)
 
       (Ok (\
         StatelessFun (typ, Gt (\

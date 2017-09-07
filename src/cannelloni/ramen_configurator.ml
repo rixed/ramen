@@ -29,21 +29,21 @@ let traffic_op ?where dataset_name name dt =
   let op =
     {|SELECT
        (capture_begin // $DT_US$) AS start,
-       min of capture_begin, max of capture_end,
-       sum of packets_src / $DT$ AS packets_per_secs,
-       sum of bytes_src / $DT$ AS bytes_per_secs,
-       sum of payload_src / $DT$ AS payload_per_secs,
-       sum of packets_with_payload_src / $DT$ AS packets_with_payload_per_secs,
-       sum of retrans_bytes_src / $DT$ AS retrans_bytes_per_secs,
-       sum of retrans_payload_src / $DT$ AS retrans_payload_per_secs,
-       sum of fins_src / $DT$ AS fins_per_secs,
-       sum of rsts_src / $DT$ AS rsts_per_secs,
-       sum of timeouts / $DT$ AS timeouts_per_secs,
-       sum of syns / $DT$ AS syns_per_secs,
-       sum of closes / $DT$ AS closes_per_secs,
-       sum of connections / $DT$ AS connections_per_secs,
-       sum of dupacks_src / $DT$ AS dupacks_per_secs,
-       sum of zero_windows_src / $DT$ AS zero_windows_per_secs,
+       min capture_begin, max capture_end,
+       sum packets_src / $DT$ AS packets_per_secs,
+       sum bytes_src / $DT$ AS bytes_per_secs,
+       sum payload_src / $DT$ AS payload_per_secs,
+       sum packets_with_payload_src / $DT$ AS packets_with_payload_per_secs,
+       sum retrans_bytes_src / $DT$ AS retrans_bytes_per_secs,
+       sum retrans_payload_src / $DT$ AS retrans_payload_per_secs,
+       sum fins_src / $DT$ AS fins_per_secs,
+       sum rsts_src / $DT$ AS rsts_per_secs,
+       sum timeouts / $DT$ AS timeouts_per_secs,
+       sum syns / $DT$ AS syns_per_secs,
+       sum closes / $DT$ AS closes_per_secs,
+       sum connections / $DT$ AS connections_per_secs,
+       sum dupacks_src / $DT$ AS dupacks_per_secs,
+       sum zero_windows_src / $DT$ AS zero_windows_per_secs,
        (sum rtt_sum_src / sum rtt_count_src) / 1e6 AS rtt_avg,
        ((sum rtt_sum2_src - float(sum rtt_sum_src)^2 / sum rtt_count_src) /
            sum rtt_count_src) / 1e12 AS rtt_var,
@@ -235,9 +235,9 @@ let layer_of_bcns bcns dataset_name =
       Printf.sprintf
         {|SELECT
             (capture_begin // %d) AS start,
-            min of capture_begin, max of capture_end,
-            sum of packets_src / %g AS packets_per_secs,
-            sum of bytes_src / %g AS bytes_per_secs,
+            min capture_begin, max capture_end,
+            sum packets_src / %g AS packets_per_secs,
+            sum bytes_src / %g AS bytes_per_secs,
             %S AS zone_src, %S AS zone_dst
           WHERE %s
           EXPORT EVENT STARTING AT start * %g
@@ -268,9 +268,9 @@ let layer_of_bcns bcns dataset_name =
         {|SELECT
            group.#count AS group_count,
            min start, max start,
-           min of min_capture_begin AS min_capture_begin,
-           max of max_capture_end AS max_capture_end,
-           %gth percentile of bytes_per_secs AS bytes_per_secs,
+           min min_capture_begin AS min_capture_begin,
+           max max_capture_end AS max_capture_end,
+           %gth percentile bytes_per_secs AS bytes_per_secs,
            zone_src, zone_dst
          EXPORT EVENT STARTING AT max_capture_end * 0.000001
                  WITH DURATION %g
@@ -331,7 +331,7 @@ let ddos_layer dataset_name =
     let avg_win_us = avg_win * 1_000_000 in
     {|SELECT
        (capture_begin // $AVG_WIN_US$) AS start,
-       min of capture_begin, max of capture_end,
+       min capture_begin, max capture_end,
        sum (
          u32(remember globally (
               capture_begin // 1_000_000, $REM_WIN$,
