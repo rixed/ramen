@@ -22,9 +22,10 @@ let make_node ?(parents=[]) dataset_name name operation =
   let parents = List.map (rebase dataset_name) parents in
   N.{ name ; operation ; parents }
 
+let rep sub by str = String.nreplace ~str ~sub ~by
+
 let traffic_op ?where dataset_name name dt =
   let dt_us = dt * 1_000_000 in
-  let rep sub by str = String.nreplace ~str ~sub ~by in
   let op =
     "SELECT\n  \
        (capture_begin // $DT_US$) AS start,\n  \
@@ -325,6 +326,29 @@ let get_bcns_from_db db =
   let open Conf_of_sqlite in
   get_config db
 
+let ddos_layer dataset_name =
+  let layer_name = rebase dataset_name "DDoS" in
+  let op_new_peers avg_win rem_win =
+    let avg_win_us = avg_win * 1_000_000 in
+    {|SELECT
+       (capture_begin // $AVG_WIN$) AS start,
+       min of capture_begin, max of capture_end,
+       sum (remember globally (capture_begin // 1_000_000, $REM_WIN$,
+              (hash (coalesce (ip4_client, ip6_client, 0)) +
+               hash (coalesce (ip4_server, ip6_server, 0)))))
+         AS nb_new_peers_per_secs
+     GROUP BY capture_begin // $AVG_WIN$
+     COMMIT AND FLUSH WHEN
+       in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN$)|} |>
+    rep "$AVG_WIN$" (string_of_int avg_win_us) |>
+    rep "$REM_WIN$" (string_of_int rem_win) in
+  let global_new_peers =
+    make_node ~parents:["c2s"; "s2c"] dataset_name "new peers" (op_new_peers 60 3600)
+  in
+  RamenSharedTypes.{
+    name = layer_name ;
+    nodes = [ global_new_peers ] }
+
 (* Daemon *)
 
 open Lwt
@@ -350,21 +374,29 @@ let put_layer ramen_url layer =
   !logger.debug "Body: %S\n" body ;
   return_unit
 
-let start conf ramen_url db_name dataset_name delete csv_dir with_bcns =
+let start conf ramen_url db_name dataset_name delete csv_dir
+          with_base with_bcns with_ddos =
   logger := make_logger conf.debug ;
   let open Conf_of_sqlite in
   let db = get_db db_name in
   let update () =
     (* TODO: The base layer for this client *)
-    let base = base_layer dataset_name delete csv_dir in
-    let%lwt () = put_layer ramen_url base in
-    if with_bcns then (
-      (* TODO: A layer per BCN? Pro: easier to update and set from cmdline
-       * without a DB. Cons: Easier to remove/add all at once; more manual labor
-       * if we do have a DB *)
-      let bcns = get_bcns_from_db db in
-      let bcns = layer_of_bcns bcns dataset_name in
-      put_layer ramen_url bcns
+    let%lwt () = if with_base then (
+        let base = base_layer dataset_name delete csv_dir in
+        put_layer ramen_url base
+      ) else return_unit in
+    let%lwt () = if with_bcns then (
+        (* TODO: A layer per BCN? Pro: easier to update and set from cmdline
+         * without a DB. Cons: Easier to remove/add all at once; more manual
+         * labor if we do have a DB *)
+        let bcns = get_bcns_from_db db in
+        let bcns = layer_of_bcns bcns dataset_name in
+        put_layer ramen_url bcns
+      ) else return_unit in
+    if with_ddos then (
+      (* Several DDoS detection approaches, regrouped in a "DDoS" layer. *)
+      let ddos = ddos_layer dataset_name in
+      put_layer ramen_url ddos
     ) else return_unit
   in
   let%lwt () = update () in
@@ -419,9 +451,20 @@ let csv_dir =
                    [ "csv-dir" ] in
   Arg.(required (opt (some string) None i))
 
+let with_base =
+  let i = Arg.info ~doc:"Output the base layer with CSV input and first \
+                         operations"
+                   [ "with-base" ; "base" ] in
+  Arg.(value (flag i))
+
 let with_bcns =
   let i = Arg.info ~doc:"Also output the layer with BCN configuration"
                    [ "with-bcns" ; "with-bcn" ; "bcns" ; "bcn" ] in
+  Arg.(value (flag i))
+
+let with_ddos =
+  let i = Arg.info ~doc:"Also output the layer with DDoS detection"
+                   [ "with-ddos" ; "with-dos" ; "ddos" ; "dos" ] in
   Arg.(value (flag i))
 
 let start_cmd =
@@ -433,7 +476,9 @@ let start_cmd =
       $ dataset_name
       $ delete_opt
       $ csv_dir
-      $ with_bcns),
+      $ with_base
+      $ with_bcns
+      $ with_ddos),
     info "ramen_configurator")
 
 let () =
