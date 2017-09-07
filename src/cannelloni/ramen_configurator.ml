@@ -27,40 +27,40 @@ let rep sub by str = String.nreplace ~str ~sub ~by
 let traffic_op ?where dataset_name name dt =
   let dt_us = dt * 1_000_000 in
   let op =
-    "SELECT\n  \
-       (capture_begin // $DT_US$) AS start,\n  \
-       min of capture_begin, max of capture_end,\n  \
-       sum of packets_src / $DT$ AS packets_per_secs,\n  \
-       sum of bytes_src / $DT$ AS bytes_per_secs,\n  \
-       sum of payload_src / $DT$ AS payload_per_secs,\n  \
-       sum of packets_with_payload_src / $DT$ AS packets_with_payload_per_secs,\n  \
-       sum of retrans_bytes_src / $DT$ AS retrans_bytes_per_secs,\n  \
-       sum of retrans_payload_src / $DT$ AS retrans_payload_per_secs,\n  \
-       sum of fins_src / $DT$ AS fins_per_secs,\n  \
-       sum of rsts_src / $DT$ AS rsts_per_secs,\n  \
-       sum of timeouts / $DT$ AS timeouts_per_secs,\n  \
-       sum of syns / $DT$ AS syns_per_secs,\n  \
-       sum of closes / $DT$ AS closes_per_secs,\n  \
-       sum of connections / $DT$ AS connections_per_secs,\n  \
-       sum of dupacks_src / $DT$ AS dupacks_per_secs,\n  \
-       sum of zero_windows_src / $DT$ AS zero_windows_per_secs,\n  \
-       (sum rtt_sum_src / sum rtt_count_src) / 1e6 AS rtt_avg,\n  \
-       ((sum rtt_sum2_src - float(sum rtt_sum_src)^2 / sum rtt_count_src) / \
-           sum rtt_count_src) / 1e12 AS rtt_var,\n  \
-       (sum rd_sum_src / sum rd_count_src) / 1e6 AS rd_avg,\n  \
-       ((sum rd_sum2_src - float(sum rd_sum_src)^2 / sum rd_count_src) / \
-           sum rd_count_src) / 1e12 AS rd_var,\n  \
-       (sum dtt_sum_src / sum dtt_count_src) / 1e6 AS dtt_avg,\n  \
-       ((sum dtt_sum2_src - float(sum dtt_sum_src)^2 / sum dtt_count_src) / \
-           sum dtt_count_src) / 1e12 AS dtt_var,\n  \
-       (sum connections_time / sum connections) / 1e6 AS connection_time_avg,\n  \
-       ((sum connections_time2 - float(sum connections_time)^2 / sum connections) / \
-           sum connections) / 1e12 AS connection_time_var\n\
-     EXPORT EVENT STARTING AT start * $DT$\n         \
-             WITH DURATION $DT$\n\
-     GROUP BY capture_begin // $DT_US$\n\
-     COMMIT AND FLUSH WHEN\n  \
-       in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)" |>
+    {|SELECT
+       (capture_begin // $DT_US$) AS start,
+       min of capture_begin, max of capture_end,
+       sum of packets_src / $DT$ AS packets_per_secs,
+       sum of bytes_src / $DT$ AS bytes_per_secs,
+       sum of payload_src / $DT$ AS payload_per_secs,
+       sum of packets_with_payload_src / $DT$ AS packets_with_payload_per_secs,
+       sum of retrans_bytes_src / $DT$ AS retrans_bytes_per_secs,
+       sum of retrans_payload_src / $DT$ AS retrans_payload_per_secs,
+       sum of fins_src / $DT$ AS fins_per_secs,
+       sum of rsts_src / $DT$ AS rsts_per_secs,
+       sum of timeouts / $DT$ AS timeouts_per_secs,
+       sum of syns / $DT$ AS syns_per_secs,
+       sum of closes / $DT$ AS closes_per_secs,
+       sum of connections / $DT$ AS connections_per_secs,
+       sum of dupacks_src / $DT$ AS dupacks_per_secs,
+       sum of zero_windows_src / $DT$ AS zero_windows_per_secs,
+       (sum rtt_sum_src / sum rtt_count_src) / 1e6 AS rtt_avg,
+       ((sum rtt_sum2_src - float(sum rtt_sum_src)^2 / sum rtt_count_src) /
+           sum rtt_count_src) / 1e12 AS rtt_var,
+       (sum rd_sum_src / sum rd_count_src) / 1e6 AS rd_avg,
+       ((sum rd_sum2_src - float(sum rd_sum_src)^2 / sum rd_count_src) /
+           sum rd_count_src) / 1e12 AS rd_var,
+       (sum dtt_sum_src / sum dtt_count_src) / 1e6 AS dtt_avg,
+       ((sum dtt_sum2_src - float(sum dtt_sum_src)^2 / sum dtt_count_src) /
+           sum dtt_count_src) / 1e12 AS dtt_var,
+       (sum connections_time / sum connections) / 1e6 AS connection_time_avg,
+       ((sum connections_time2 - float(sum connections_time)^2 / sum connections) /
+           sum connections) / 1e12 AS connection_time_var
+     EXPORT EVENT STARTING AT start * $DT$
+             WITH DURATION $DT$
+     GROUP BY capture_begin // $DT_US$
+     COMMIT AND FLUSH WHEN
+       in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)|} |>
     rep "$DT$" (string_of_int dt) |>
     rep "$DT_US$" (string_of_int dt_us)
   in
@@ -72,88 +72,88 @@ let traffic_op ?where dataset_name name dt =
 let base_layer dataset_name delete csv_dir =
   let csv =
     let op =
-      Printf.sprintf
-        "READ%s CSV FILES \"%s/tcp_v29.*.csv.gz\"\n    \
-                SEPARATOR \"\\t\" NULL \"<NULL>\"\n    \
-                PREPROCESS WITH \"zcat\" (\n  \
-           poller string not null,\n  \
-           capture_begin u64 not null,\n  \
-           capture_end u64 not null,\n  \
-           device_client u8 null,\n  \
-           device_server u8 null,\n  \
-           vlan_client u32 null,\n  \
-           vlan_server u32 null,\n  \
-           mac_client u64 null,\n  \
-           mac_server u64 null,\n  \
-           zone_client u32 not null,\n  \
-           zone_server u32 not null,\n  \
-           ip4_client u32 null,\n  \
-           ip6_client i128 null,\n  \
-           ip4_server u32 null,\n  \
-           ip6_server i128 null,\n  \
-           ip4_external u32 null,\n  \
-           ip6_external i128 null,\n  \
-           port_client u16 not null,\n  \
-           port_server u16 not null,\n  \
-           diffserv_client u8 not null,\n  \
-           diffserv_server u8 not null,\n  \
-           os_client u8 null,\n  \
-           os_server u8 null,\n  \
-           mtu_client u16 null,\n  \
-           mtu_server u16 null,\n  \
-           captured_pcap string null,\n  \
-           application u32 not null,\n  \
-           protostack string null,\n  \
-           uuid string null,\n  \
-           traffic_bytes_client u64 not null,\n  \
-           traffic_bytes_server u64 not null,\n  \
-           traffic_packets_client u64 not null,\n  \
-           traffic_packets_server u64 not null,\n  \
-           payload_bytes_client u64 not null,\n  \
-           payload_bytes_server u64 not null,\n  \
-           payload_packets_client u64 not null,\n  \
-           payload_packets_server u64 not null,\n  \
-           retrans_traffic_bytes_client u64 null,\n  \
-           retrans_traffic_bytes_server u64 null,\n  \
-           retrans_payload_bytes_client u64 null,\n  \
-           retrans_payload_bytes_server u64 null,\n  \
-           syn_count_client u64 null,\n  \
-           fin_count_client u64 null,\n  \
-           fin_count_server u64 null,\n  \
-           rst_count_client u64 null,\n  \
-           rst_count_server u64 null,\n  \
-           timeout_count u64 not null,\n  \
-           close_count u64 null,\n  \
-           dupack_count_client u64 null,\n  \
-           dupack_count_server u64 null,\n  \
-           zero_window_count_client u64 null,\n  \
-           zero_window_count_server u64 null,\n  \
-           ct_count u64 null,\n  \
-           ct_sum u64 not null,\n  \
-           ct_square_sum u64 not null,\n  \
-           rt_count_server u64 null,\n  \
-           rt_sum_server u64 not null,\n  \
-           rt_square_sum_server u64 not null,\n  \
-           rtt_count_client u64 null,\n  \
-           rtt_sum_client u64 not null,\n  \
-           rtt_square_sum_client u64 not null,\n  \
-           rtt_count_server u64 null,\n  \
-           rtt_sum_server u64 not null,\n  \
-           rtt_square_sum_server u64 not null,\n  \
-           rd_count_client u64 null,\n  \
-           rd_sum_client u64 not null,\n  \
-           rd_square_sum_client u64 not null,\n  \
-           rd_count_server u64 null,\n  \
-           rd_sum_server u64 not null,\n  \
-           rd_square_sum_server u64 not null,\n  \
-           dtt_count_client u64 null,\n  \
-           dtt_sum_client u64 not null,\n  \
-           dtt_square_sum_client u64 not null,\n  \
-           dtt_count_server u64 null,\n  \
-           dtt_sum_server u64 not null,\n  \
-           dtt_square_sum_server u64 not null,\n  \
-           dcerpc_uuid string null\n\
-         )"
+      Printf.sprintf {|
+        READ%s CSV FILES "%s/tcp_v29.*.csv.gz"
+                 SEPARATOR "\t" NULL "<NULL>"
+                 PREPROCESS WITH "zcat" (
+           poller string not null,
+           capture_begin u64 not null,
+           capture_end u64 not null,
+           device_client u8 null,
+           device_server u8 null,
+           vlan_client u32 null,
+           vlan_server u32 null,
+           mac_client u64 null,
+           mac_server u64 null,
+           zone_client u32 not null,
+           zone_server u32 not null,
+           ip4_client u32 null,
+           ip6_client i128 null,
+           ip4_server u32 null,
+           ip6_server i128 null,
+           ip4_external u32 null,
+           ip6_external i128 null,
+           port_client u16 not null,
+           port_server u16 not null,
+           diffserv_client u8 not null,
+           diffserv_server u8 not null,
+           os_client u8 null,
+           os_server u8 null,
+           mtu_client u16 null,
+           mtu_server u16 null,
+           captured_pcap string null,
+           application u32 not null,
+           protostack string null,
+           uuid string null,
+           traffic_bytes_client u64 not null,
+           traffic_bytes_server u64 not null,
+           traffic_packets_client u64 not null,
+           traffic_packets_server u64 not null,
+           payload_bytes_client u64 not null,
+           payload_bytes_server u64 not null,
+           payload_packets_client u64 not null,
+           payload_packets_server u64 not null,
+           retrans_traffic_bytes_client u64 null,
+           retrans_traffic_bytes_server u64 null,
+           retrans_payload_bytes_client u64 null,
+           retrans_payload_bytes_server u64 null,
+           syn_count_client u64 null,
+           fin_count_client u64 null,
+           fin_count_server u64 null,
+           rst_count_client u64 null,
+           rst_count_server u64 null,
+           timeout_count u64 not null,
+           close_count u64 null,
+           dupack_count_client u64 null,
+           dupack_count_server u64 null,
+           zero_window_count_client u64 null,
+           zero_window_count_server u64 null,
+           ct_count u64 null,
+           ct_sum u64 not null,
+           ct_square_sum u64 not null,
+           rt_count_server u64 null,
+           rt_sum_server u64 not null,
+           rt_square_sum_server u64 not null,
+           rtt_count_client u64 null,
+           rtt_sum_client u64 not null,
+           rtt_square_sum_client u64 not null,
+           rtt_count_server u64 null,
+           rtt_sum_server u64 not null,
+           rtt_square_sum_server u64 not null,
+           rd_count_client u64 null,
+           rd_sum_client u64 not null,
+           rd_square_sum_client u64 not null,
+           rd_count_server u64 null,
+           rd_sum_server u64 not null,
+           rd_square_sum_server u64 not null,
+           dtt_count_client u64 null,
+           dtt_sum_client u64 not null,
+           dtt_square_sum_client u64 not null,
+           dtt_count_server u64 null,
+           dtt_sum_server u64 not null,
+           dtt_square_sum_server u64 not null,
+           dcerpc_uuid string null
+         )|}
       (if delete then " AND DELETE" else "") csv_dir in
     make_node dataset_name "csv" op in
   let to_unidir ~src ~dst name =
@@ -176,16 +176,16 @@ let base_layer dataset_name delete csv_dir =
                ^ field ^"_"^ dst ^" AS "^ alias ^"_dst,\n") ""
     in
     let op =
-      "SELECT\n  \
-         poller, capture_begin, capture_end,\n  \
-         ip4_external, ip6_external,\n  \
-         captured_pcap, application, protostack, uuid,\n  \
-         timeout_count AS timeouts, close_count AS closes,\n  \
-         ct_count AS connections, ct_sum AS connections_time,\n  \
-         ct_square_sum AS connections_time2, syn_count_client AS syns,\n"^
-         cs_fields ^
-      "  dcerpc_uuid\n\
-       WHERE traffic_packets_"^ src ^" > 0" in
+      {|SELECT
+         poller, capture_begin, capture_end,
+         ip4_external, ip6_external,
+         captured_pcap, application, protostack, uuid,
+         timeout_count AS timeouts, close_count AS closes,
+         ct_count AS connections, ct_sum AS connections_time,
+         ct_square_sum AS connections_time2, syn_count_client AS syns,|}^
+         cs_fields ^{|
+         dcerpc_uuid
+       WHERE traffic_packets_|}^ src ^" > 0" in
     make_node ~parents:["csv"] dataset_name name op in
   RamenSharedTypes.{
     name = dataset_name ;
@@ -233,17 +233,18 @@ let layer_of_bcns bcns dataset_name =
      * traffic_op and force a minutely averaging window for the alerts. *)
     let op =
       Printf.sprintf
-        "SELECT\n  \
-           (capture_begin // %d) AS start,\n  \
-           min of capture_begin, max of capture_end,\n  \
-           sum of packets_src / %g AS packets_per_secs,\n  \
-           sum of bytes_src / %g AS bytes_per_secs,\n  \
-           %S AS zone_src, %S AS zone_dst\n\
-         WHERE %s\n\
-         EXPORT EVENT STARTING AT start * %g\n         \
-                 WITH DURATION %g\n\
-         GROUP BY capture_begin // %d\n\
-         COMMIT AND FLUSH WHEN in.capture_begin > out.min_capture_begin + 2 * u64(%d)"
+        {|SELECT
+            (capture_begin // %d) AS start,
+            min of capture_begin, max of capture_end,
+            sum of packets_src / %g AS packets_per_secs,
+            sum of bytes_src / %g AS bytes_per_secs,
+            %S AS zone_src, %S AS zone_dst
+          WHERE %s
+          EXPORT EVENT STARTING AT start * %g
+                 WITH DURATION %g
+          GROUP BY capture_begin // %d
+          COMMIT AND FLUSH WHEN
+            in.capture_begin > out.min_capture_begin + 2 * u64(%d)|}
         avg_window
         bcn.avg_window bcn.avg_window
         (name_of_zones bcn.source)
@@ -264,18 +265,18 @@ let layer_of_bcns bcns dataset_name =
       (* Note: The event start at the end of the observation window and lasts
        * for one avg window! *)
       Printf.sprintf
-        "SELECT\n  \
-           group.#count AS group_count,\n  \
-           min start, max start,\n  \
-           min of min_capture_begin AS min_capture_begin,\n  \
-           max of max_capture_end AS max_capture_end,\n  \
-           %gth percentile of bytes_per_secs AS bytes_per_secs,\n  \
-           zone_src, zone_dst\n\
-         EXPORT EVENT STARTING AT max_capture_end * 0.000001\n        \
-                 WITH DURATION %g\n\
-         COMMIT AND SLIDE 1 WHEN\n  \
-           group.#count >= %d\n  OR \
-           in.start > out.max_start + 5"
+        {|SELECT
+           group.#count AS group_count,
+           min start, max start,
+           min of min_capture_begin AS min_capture_begin,
+           max of max_capture_end AS max_capture_end,
+           %gth percentile of bytes_per_secs AS bytes_per_secs,
+           zone_src, zone_dst
+         EXPORT EVENT STARTING AT max_capture_end * 0.000001
+                 WITH DURATION %g
+         COMMIT AND SLIDE 1 WHEN
+           group.#count >= %d OR
+           in.start > out.max_start + 5|}
          bcn.percentile bcn.avg_window nb_items_per_groups in
     make_node ~parents:["BCN/"^ avg_per_zones_name] perc_per_obs_window_name op ;
     let enc = Uri.pct_encode in
@@ -284,14 +285,13 @@ let layer_of_bcns bcns dataset_name =
         let subject = Printf.sprintf "Too little traffic from zone %s to %s"
                         (name_of_zones bcn.source) (name_of_zones bcn.dest)
         and text = Printf.sprintf
-                     "The traffic from zone %s to %s has sunk below \
-                      the configured minimum of %d \
-                      for the last %g minutes.\n"
+                     {|The traffic from zone %s to %s has sunk below
+                       the configured minimum of %d for the last %g minutes.|}
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       min_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
-          "WHEN bytes_per_secs < %d\n  \
-           NOTIFY \"http://localhost:876/notify?name=Low%%20traffic&firing=1&subject=%s&text=%s\""
+          {|WHEN bytes_per_secs < %d
+            NOTIFY "http://localhost:876/notify?name=Low%%20traffic&firing=1&subject=%s&text=%s"|}
             min_bps
             (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
@@ -301,14 +301,13 @@ let layer_of_bcns bcns dataset_name =
         let subject = Printf.sprintf "Too much traffic from zone %s to %s"
                         (name_of_zones bcn.source) (name_of_zones bcn.dest)
         and text = Printf.sprintf
-                     "The traffic from zones %s to %s has raised above \
-                      the configured maximum of %d \
-                      for the last %g minutes.\n"
+                     {|The traffic from zones %s to %s has raised above
+                       the configured maximum of %d for the last %g minutes.|}
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       max_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
-          "WHEN bytes_per_secs > %d\n  \
-           NOTIFY \"http://localhost:876/notify?name=High%%20traffic&firing=1&subject=%s&text=%s\""
+          {|WHEN bytes_per_secs > %d
+           NOTIFY "http://localhost:876/notify?name=High%%20traffic&firing=1&subject=%s&text=%s"|}
             max_bps
             (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
