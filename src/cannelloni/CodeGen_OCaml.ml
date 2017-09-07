@@ -620,8 +620,8 @@ and emit_expr ?state ~context oc expr =
 
   | InitState, StatefullFun (_, _, ExpSmooth (_a,e)), Some TFloat ->
     emit_functionN oc ?state "identity" [Some TFloat] [e]
-  | UpdateState, StatefullFun (_, _, ExpSmooth (a,e)), _ ->
-    emit_functionN oc ?state "CodeGenLib.smooth" [Some TFloat; Some TFloat] [a; e]
+  | UpdateState, StatefullFun (_, g, ExpSmooth (a,e)), _ ->
+    emit_functionN oc ?state "CodeGenLib.smooth" [None; Some TFloat; Some TFloat] [my_state g; a; e]
   | Finalize, StatefullFun (_, g, ExpSmooth _), Some TFloat ->
     emit_functionN oc ?state "identity" [None] [my_state g]
 
