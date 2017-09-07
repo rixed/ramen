@@ -49,6 +49,11 @@ let print_exception e =
     (Printexc.get_backtrace ())
 
 exception HttpError of (int * string)
+let () =
+  Printexc.register_printer (function
+    | HttpError (code, text) -> Some (
+      Printf.sprintf "HttpError (%d, %S)" code text)
+    | _ -> None)
 
 let http_service port cert_opt key_opt router =
   let open Lwt in
