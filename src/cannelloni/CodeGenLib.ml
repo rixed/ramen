@@ -73,9 +73,9 @@ type remember_state =
     mutable last_remembered : bool }
 
 let remember_init tim dur e =
-  let nb_slices = 10 and nb_bits = 1024 and nb_keys = 5 in
+  let nb_slices = 10 and nb_bits = 65536 in
   let start_time = tim -. dur and slice_width = dur /. float_of_int nb_slices in
-  let filter = RamenBloomFilter.make_sliced start_time nb_slices slice_width nb_bits nb_keys in
+  let filter = RamenBloomFilter.make_sliced start_time nb_slices slice_width nb_bits in
   let last_remembered = RamenBloomFilter.remember filter tim e in
   assert (not last_remembered) ;
   { filter ; last_remembered }
