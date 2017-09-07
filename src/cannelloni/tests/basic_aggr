@@ -11,10 +11,10 @@ add_cars
 add_node p1 \
 "SELECT
    min horsepower,
-   max horsepower,
+   max (horsepower),
    sum u32(horsepower) as sum_horsepower,
-   first horsepower,
-   last horsepower,
+   first ((horsepower)),
+   last of horsepower,
    10th percentile of horsepower,
    95th percentile of horsepower
  EXPORT

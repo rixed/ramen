@@ -1047,11 +1047,10 @@ struct
       (test_p param "glop" |> replace_typ_in_expr)
     *)
 
-    let opt_state_lifespan m =
+    let state_lifespan m =
       let m = "state lifespan" :: m in
-      optional ~def:LocalState (blanks -+
-        (strinG "globally" >>: fun () -> GlobalState) |||
-        (strinG "locally" >>: fun () -> LocalState)) m
+      ((strinG "globally" >>: fun () -> GlobalState) |||
+       (strinG "locally" >>: fun () -> LocalState)) m
 
     (* operators with lowest precedence *)
     let rec lowest_prec_left_assoc m =
@@ -1121,7 +1120,8 @@ struct
     and afunv_sf a n m =
       let sep = opt_blanks -- char ',' -- opt_blanks in
       let m = n :: m in
-      (strinG n -+ opt_state_lifespan +-
+      (strinG n -+
+       optional ~def:LocalState (blanks -+ state_lifespan) +-
        opt_blanks +- char '(' +- opt_blanks ++
        repeat ~min:a ~max:a ~sep lowest_prec_left_assoc ++
        repeat ~sep lowest_prec_left_assoc +- opt_blanks +- char ')') m
@@ -1132,9 +1132,10 @@ struct
         raise (Reject "too many arguments")
 
     and afun1_sf n =
-      (strinG n -- blanks -- optional ~def:() (strinG "of" -- blanks) -+
-       opt_state_lifespan ++ highestest_prec) |||
-      (afun_sf 1 n >>: function (g, [a]) -> g, a | _ -> assert false)
+      (strinG n -- blanks -+
+       optional ~def:LocalState (state_lifespan +- blanks) +-
+       optional ~def:() (strinG "of" -- blanks) ++
+       highestest_prec)
 
     and afun2_sf n =
       afun_sf 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
@@ -1152,7 +1153,10 @@ struct
       let sep = opt_blanks -- char ',' -- opt_blanks in
       let m = n :: m in
       (strinG n -- opt_blanks -- char '(' -- opt_blanks -+
-       repeat ~min:a ~max:a ~sep lowest_prec_left_assoc ++
+       (if a > 0 then
+         repeat ~min:a ~max:a ~sep lowest_prec_left_assoc +- sep
+        else
+         return []) ++
        repeat ~sep lowest_prec_left_assoc +- opt_blanks +- char ')') m
 
     and afun a n =
@@ -1162,8 +1166,7 @@ struct
 
     and afun1 n =
       (strinG n -- blanks -- optional ~def:() (strinG "of" -- blanks) -+
-       highestest_prec) |||
-      (afun 1 n >>: function [a] -> a | _ -> assert false)
+       highestest_prec)
 
     and afun2 n =
       afun 2 n >>: function [a;b] -> a, b | _ -> assert false
@@ -1281,7 +1284,7 @@ struct
       let sep = check (char '(') ||| blanks in
       ((unsigned_decimal_number >>: Scalar.Parser.narrowest_int_scalar) +-
        (strinG "-moveavg" ||| strinG "-ma") ++
-       opt_state_lifespan +-
+       optional ~def:LocalState (blanks -+ state_lifespan) +-
        (blanks -- strinG "of") +- sep ++ highestest_prec >>: fun ((k, g), e) ->
          let k = Const (make_typ ~nullable:false ~typ:(scalar_type_of k)
                                  "moving average order", k) in
