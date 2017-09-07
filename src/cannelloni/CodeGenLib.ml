@@ -81,7 +81,8 @@ let remember_init tim dur e =
   { filter ; last_remembered }
 
 let remember_add st tim e =
-  st.last_remembered <- RamenBloomFilter.remember st.filter tim e
+  st.last_remembered <- RamenBloomFilter.remember st.filter tim e ;
+  st
 
 let remember_finalize st = st.last_remembered
 
@@ -430,8 +431,8 @@ type ('aggr, 'tuple_in, 'generator_out) aggr_value =
 
 let tot_weight aggr = aggr.sure_weight +. aggr.unsure_weight
 
-(* FIXME: won't work with tops *)
-let flush_aggr group_init group_update should_resubmit h k aggr =
+(* FIXME: won't work with tops or global state *)
+let flush_aggr group_init group_update should_resubmit global_state h k aggr =
   if aggr.to_resubmit = [] then
     Hashtbl.remove h k
   else (
@@ -442,11 +443,11 @@ let flush_aggr group_init group_update should_resubmit h k aggr =
     let in_tuple = List.hd to_resubmit in
     aggr.first_in <- in_tuple ;
     aggr.last_in <- in_tuple ;
-    aggr.fields <- group_init in_tuple ;
+    aggr.fields <- group_init global_state in_tuple ;
     if should_resubmit aggr in_tuple then
       aggr.to_resubmit <- [ in_tuple ] ;
     List.iter (fun in_tuple ->
-        group_update aggr.fields in_tuple ;
+        group_update aggr.fields global_state in_tuple ;
         aggr.nb_entries <- aggr.nb_entries + 1 ;
         aggr.last_in <- in_tuple ;
         if should_resubmit aggr in_tuple then
@@ -521,8 +522,8 @@ let aggregate
       (should_resubmit : ('aggr, 'tuple_in, 'generator_out) aggr_value -> 'tuple_in -> bool)
       (global_init : 'tuple_in -> 'global_state)
       (global_update : 'global_state -> 'tuple_in -> unit)
-      (group_init : 'tuple_in -> 'aggr)
-      (group_update : 'aggr -> 'tuple_in -> unit)
+      (group_init : 'global_state -> 'tuple_in -> 'aggr)
+      (group_update : 'aggr -> 'global_state -> 'tuple_in -> unit)
       (field_of_tuple : 'tuple_in -> string -> string)
       (notify_url : string) =
   let conf = node_start ()
@@ -651,7 +652,7 @@ let aggregate
           top_set := WeightMap.empty ;
         ) ;
         List.iter (fun (k, a) ->
-            flush_aggr group_init group_update should_resubmit h k a
+            flush_aggr group_init group_update should_resubmit (Option.get !global_state) h k a
           ) to_flush ;
         return_unit
       in
@@ -679,7 +680,7 @@ let aggregate
         (* The weight for this tuple only: *)
         let weight = top_by in_tuple in
         let accumulate_into aggr this_key =
-          group_update aggr.fields in_tuple ;
+          group_update aggr.fields (Option.get !global_state) in_tuple ;
           aggr.last_ev_count <- !event_count ;
           aggr.nb_entries <- aggr.nb_entries + 1 ;
           if should_resubmit aggr in_tuple then
@@ -692,7 +693,7 @@ let aggregate
         let aggr_opt =
           match Hashtbl.find h k with
           | exception Not_found ->
-            let fields = group_init in_tuple
+            let fields = group_init (Option.get !global_state) in_tuple
             and one = Uint64.one in
             if where_slow
                  in_count in_tuple last_in
