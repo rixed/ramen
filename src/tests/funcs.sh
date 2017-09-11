@@ -33,7 +33,7 @@ file_with() {
   cat > "$f"
 }
 
-ramen="$top_srcdir/cannelloni"
+ramen="$top_srcdir/ramen"
 
 export RAMEN_HTTP_PORT
 export RAMEN_PERSIST_DIR

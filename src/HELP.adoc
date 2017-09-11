@@ -1,4 +1,4 @@
-= Ramen / Rigatoni
+= Ramen
 
 == Overview
 
@@ -690,13 +690,14 @@ sliding windows or decay. Instead of +FLUSH+ it is possible to specify either:
 Notice that +SLIDE+ assumes that the tuples are received in some meaningful
 order, which is generally not true. It is thus often safer to use a proper
 filter and use a time value (or other ordered value) from the input tuple to
-perform the selection.
+perform the selection, for a very modest performance fee.
 
 Also, it is important to understand that "removing" tuples from the aggregate
 requires that all received tuples that are kept for next aggregate have to be
 actually kept in memory and replayed when the aggregate is "flushed"; therefore
-this feature has quite a sizeable impact on performance, memory wise as well as
-time wise, and should be used on small aggregation operations only.
+windowing has a sizeable impact on performance, memory wise as well as
+time wise, and should be used only when a small number of tuples are kept from
+one window to the next.
 
 Semantic: For each input tuple, compute the key and retrieve the current
 aggregate, if any. If no current aggregate exists for this key yet then start a
@@ -715,6 +716,17 @@ an aggregate build from replaying the stored input tuple)
 clause is fulfilled. The given URL will then accessed, which can be customized
 with `${field_name}` that would be replaced by the actual value from the input
 tuple.
+
+=== Examples
+
+==== Tumbling windows
+
+==== Sliding windows
+
+==== Rate limited selection
+
+==== Hysteresis
+
 
 == The API
 

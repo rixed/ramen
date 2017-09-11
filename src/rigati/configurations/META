@@ -1,4 +1,0 @@
-description = "Internal libs for tests"
-version = "0.1"
-archive(native) = "EventTypes.cmx"
-requires = "ramen"

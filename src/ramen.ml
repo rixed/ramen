@@ -187,9 +187,9 @@ let tail =
  *)
 
 let default =
-  let doc = "Cannelloni Stream Processor" in
+  let doc = "Ramen Stream Processor" in
   Term.((ret (const (`Help (`Pager, None)))),
-        info "Cannelloni" ~doc)
+        info "Ramen" ~doc)
 
 let () =
   match Term.eval_choice default [

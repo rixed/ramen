@@ -33,7 +33,7 @@ clean: clean-spec
 
 distclean: clean distclean-spec
 	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
-	$(RM) *.cma *.cmx *.cmxa *.cmxs *.cmi oUnit-anon.cache qtest.targets.log *.opt *.byte *.top
+	$(RM) *.cma *.cmx *.cmxa *.cmxs *.cmi oUnit-anon.cache qtest.targets.log *.opt *.byte *.top *.o
 
 %.top: %.cma
 	$(OCAMLMKTOP) $(OCAMLFLAGS) -custom -package "$(PACKAGES)" $< -o $@
