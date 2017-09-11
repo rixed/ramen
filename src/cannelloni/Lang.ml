@@ -1108,7 +1108,7 @@ struct
         | "//" -> StatelessFun (make_num_typ "integer-division", IDiv (t1, t2))
         | "%" -> StatelessFun (make_num_typ "modulo", Mod (t1, t2))
         | _ -> assert false in
-      binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks~reduce m
+      binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks ~reduce m
 
     and higher_prec_right_assoc m =
       let m = "arithmetic operator" :: m in

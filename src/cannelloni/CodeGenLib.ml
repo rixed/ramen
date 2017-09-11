@@ -862,6 +862,6 @@ let aggregate
 
 let () =
   async_exception_hook := (fun exn ->
-    !logger.error "Received exception %s from:\n%s"
+    !logger.error "Received exception %s\n%s"
       (Printexc.to_string exn)
       (Printexc.get_backtrace()))

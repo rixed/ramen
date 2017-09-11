@@ -44,7 +44,7 @@ let shell_quote s =
   "'"^ String.nreplace s "'" "'\\''" ^"'"
 
 let print_exception e =
-  !logger.error "Exception: %s at\n%s"
+  !logger.error "Exception: %s\n%s"
     (Printexc.to_string e)
     (Printexc.get_backtrace ())
 

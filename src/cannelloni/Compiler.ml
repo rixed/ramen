@@ -731,7 +731,7 @@ let check_node_types node =
       check_operation ~in_type:node.N.in_type ~out_type:node.N.out_type node.N.operation
     )
   ) with Lang.SyntaxError e ->
-    !logger.debug "Compilation error: %s, %s"
+    !logger.debug "Compilation error: %s\n%s"
       e (Printexc.get_backtrace ()) ;
     let e' = Printf.sprintf "node %S: %s" node.N.name e in
     raise (Lang.SyntaxError e')
@@ -767,7 +767,7 @@ let set_all_types _conf layer =
         set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"
       with e ->
-        Printf.sprintf "Exception in set_all_types: %s at\n%s"
+        Printf.sprintf "Exception in set_all_types: %s\n%s"
           (Printexc.to_string e)
           (Printexc.get_backtrace ())
 
