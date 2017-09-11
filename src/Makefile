@@ -28,7 +28,11 @@ CODEGENLIB_SOURCES = \
 	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
-	ringbuf/ringbuf.c ringbuf/ringbuf.h
+	ringbuf/ringbuf.h ringbuf/ringbuf.c
+
+LIBCOLCOMP_SOURCES = \
+	colcomp/growblock.h colcomp/growblock.c \
+	colcomp/colcomp.h colcomp/colcomp.c
 
 CONFIGURATOR_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml RamenSharedTypes.ml \
@@ -42,6 +46,7 @@ ALERTER_SOURCES = \
 SOURCES = \
 	$(RAMEN_SOURCES) wrap_ringbuf.c $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
+	$(LIBCOLCOMP_SOURCES) \
 	$(CONFIGURATOR_SOURCES) $(ALERTER_SOURCES) \
 	ringbuf_test.ml
 
@@ -53,7 +58,7 @@ PACKAGES = \
 INSTALLED = \
   ramen ramen_configurator ramen_alerter \
 	codegen.cmxa $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
-	ringbuf/libringbuf.a
+	ringbuf/libringbuf.a colcomp/libcolcomp.a
 
 all: $(INSTALLED) ringbuf_test.opt
 
@@ -62,18 +67,21 @@ doc: HELP.html
 ringbuf/libringbuf.a: ringbuf/ringbuf.o
 	$(AR) rs $@ $^
 
+colcomp/libcolcomp.a: colcomp/growblock.o colcomp/colcomp.o
+	$(AR) rs $@ $^
+
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
 # symbols we need as we are the only users.
-MOREFLAGS = -package "$(PACKAGES)" -I ringbuf -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf
+MOREFLAGS = -package "$(PACKAGES)" -I ringbuf -I colcomp -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf -cclib -lcolcomp
 
-ramen: $(RAMEN_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
+ramen: $(RAMEN_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o colcomp/libcolcomp.a
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
+codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o colcomp/libcolcomp.a
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a       $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) ringbuf/libringbuf.a wrap_ringbuf.o
+codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) ringbuf/libringbuf.a wrap_ringbuf.o colcomp/libcolcomp.a
 	$(OCAMLC)   $(OCAMLFLAGS)    -a       $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
 ringbuf_test.opt: RamenLog.cmx Helpers.cmx RamenSharedTypes.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
@@ -85,16 +93,16 @@ ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
 ramen_alerter: $(ALERTER_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-all_tests.opt: ringbuf/libringbuf.a wrap_ringbuf.o $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml
+all_tests.opt: ringbuf/libringbuf.a wrap_ringbuf.o colcomp/libcolcomp.a $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
 
 # Web thingies
 
 clean-spec:
-	$(RM) ringbuf/*.a ringbuf/libringbuf.a
+	$(RM) ringbuf/*.o colcomp/*.o
 
 distclean-spec:
-	$(RM) ramen codegen.cmxa ringbuf/ringbuf.o
+	$(RM) ramen codegen.cmxa ringbuf/*.a colcomp/*.a
 
 check-spec: ringbuf_test.opt
 
