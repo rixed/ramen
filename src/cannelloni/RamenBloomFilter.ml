@@ -136,6 +136,10 @@ let remember sf time x =
       let nb_bits = nb_bits_per_bit_set *. nb_inserted |>
                     int_of_float |>
                     max 1024 in
+      (* Avoid decreasing too fast *)
+      let nb_bits =
+        if nb_bits >= sf.slices.(sf.current).filter.nb_bits then nb_bits
+        else (nb_bits + sf.slices.(sf.current).filter.nb_bits) / 2 in
       (if fr > 0.6 then !logger.info else !logger.debug)
         "Rotating bloom-filter, expunging filter %d filled up to %.02f%% \
          (%d/%d bits set, max of %d inserted items in all slices (estimated), \
