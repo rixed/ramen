@@ -83,23 +83,48 @@ let shutdown debug layer_name ramen_url () =
       ramen_url ^"/stop/"^ enc layer_name in
     http_get url >>= check_ok)
 
+let resp_column_length = function
+  | _typ, None, column -> column_length column
+  | _typ, Some nullmask, _column -> Array.length nullmask
+
 let tuples_of_columns columns =
+  let nb_tuples = resp_column_length (List.hd columns) in
+  let nb_fields = List.length columns in
   let field_types =
-    List.map (fun (typ_name, nullable, ts) ->
+    List.map (fun (typ_name, nullmask_opt, ts) ->
+      let nullable = nullmask_opt <> None in
       { typ_name ; nullable ; typ = type_of_column ts }) columns in
   (* Build the tuple of line l *)
-  let tuple_of l =
-    List.map (fun (_, _, ts) -> column_value_at l ts) columns in
-  let len =
-    let _, _, fst_col = List.hd columns in
-    column_length fst_col
+  let value_idx_of_tuple_idx col_idx =
+    let _typ, nullmask, column = List.at columns col_idx in
+    match nullmask with
+    | None ->
+      fun i -> column_value_at i column
+    | Some nullmask ->
+      let value_idx_of_tuple_idx = Array.make nb_tuples ~-1 in
+      let _nb_set =
+        Array.fold_lefti (fun nb_set i not_null ->
+            if not_null then (
+              value_idx_of_tuple_idx.(i) <- nb_set ;
+              nb_set + 1
+            ) else nb_set
+          ) 0 nullmask in
+      fun tuple_idx ->
+        match value_idx_of_tuple_idx.(tuple_idx) with
+        | -1 -> VNull
+        | i -> column_value_at i column
   in
-  field_types, List.init len tuple_of
+  let value_at = List.init nb_fields value_idx_of_tuple_idx in
+  let tuple_of l =
+    List.map (fun value_get -> value_get l) value_at
+  in
+  field_types, List.init nb_tuples tuple_of
 
-let display_tuple_as_csv ?(with_header=false) ?(separator=",") ?(null="") resp =
+let display_tuple_as_csv ?(with_header=false) ?(separator=",") ?(null="") to_drop resp =
   (* We have to "turn" the arrays 90º *)
   let _field_types, tuples =
     tuples_of_columns resp.columns in
+  let tuples = List.drop to_drop tuples in
   (* TODO: print header line? *)
   ignore with_header ;
   ignore null ;
@@ -109,23 +134,14 @@ let display_tuple_as_csv ?(with_header=false) ?(separator=",") ?(null="") resp =
   List.print ~first:"" ~last:"" ~sep:""
              print_value stdout tuples
 
+(* TODO: make as_csv the only possible option *)
 let display_tuple_as_is t =
   let s = PPP.to_string export_resp_ppp t in
   Printf.printf "%s\n" s
 
-let display_tuple as_csv t =
-  if as_csv then display_tuple_as_csv t
+let display_tuple as_csv to_drop t =
+  if as_csv then display_tuple_as_csv to_drop t
   else display_tuple_as_is t
-
-let drop_firsts n resp =
-  if n = 0 then resp else
-  { resp with
-      columns =
-        List.map (fun (name, null, columns) ->
-            let mapper =
-              { f = (fun a -> Array.tail a n) ; null = fun l -> l - n } in
-            name, null, column_map mapper columns
-          ) resp.columns }
 
 let ppp_of_string_exc ppp s =
   try PPP.of_string_exc ppp s |> return
@@ -143,13 +159,10 @@ let tail debug ramen_url node_name as_csv last continuous () =
     let%lwt resp = http_post_json url export_req_ppp msg >>=
                    ppp_of_string_exc export_resp_ppp in
     (* TODO: check first_seqnum is not bigger than expected *)
-    let len =
-      let _, _, columns = List.hd resp.columns in
-      column_length columns in
+    let len = resp_column_length (List.hd resp.columns) in
     let to_drop = Option.map_default (fun last ->
         if len > last then len - last else 0) 0 last in
-    let resp = drop_firsts to_drop resp in
-    display_tuple as_csv resp ;
+    display_tuple as_csv to_drop resp ;
     flush stdout ;
     if continuous then (
       let last = Option.map (fun l -> l - len) last in

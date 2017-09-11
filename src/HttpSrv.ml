@@ -372,7 +372,10 @@ let export conf headers layer_name node_name body =
         ) else (
           (* Store it in column to save variant types: *)
           let resp =
-            { first ; columns = RamenExport.columns_of_tuples fields values } in
+            { first ;
+              columns = RamenExport.columns_of_tuples fields values |>
+                        List.map (fun (typ, nullmask, column) ->
+                          typ, Option.map RamenBitmask.to_bools nullmask, column) } in
           let body = PPP.to_string export_resp_ppp resp in
           respond_ok ~body ()
         ) in

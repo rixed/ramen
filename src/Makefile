@@ -13,7 +13,7 @@ LINKED_FOR_TESTS = \
 	RamenBloomFilter.ml
 
 RAMEN_SOURCES = \
-	Consts.ml RamenLog.ml Helpers.ml RamenSharedTypes.ml \
+	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml RamenSharedTypes.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \

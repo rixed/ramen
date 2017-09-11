@@ -200,19 +200,35 @@ let scalar_column_init typ len f =
 (* Note: the list of values is ordered latest to oldest *)
 let columns_of_tuples fields values =
   let values = Array.of_list values in
+  let nb_values = Array.length values in
   let get_val ci i =
     let inv_i = Array.length values - 1 - i in
     values.(inv_i).(ci)
   in
   List.mapi (fun ci ft ->
-      ft.typ_name, ft.nullable,
-      (* If ft.nullable then f could return VNull in which case scalar_column_init
-       * should set None in the array, and Some value otherwise. But we have
-       * no columnar types for optional values :-/ *)
-      if ft.nullable then
-        assert false
-      else
-        scalar_column_init ft.typ (Array.length values) (get_val ci)
+      (* If the values are nullable then we add a column of bits (1=value is
+       * present). We first check the presence of values and set this bitmask
+       * so that we know how long our vector of values needs to be. *)
+      if ft.nullable then (
+        let nullmask = RamenBitmask.make nb_values in
+        let val_idx_to_tuple_idx = Array.create nb_values ~-1 in
+        let nb_set =
+          Array.fold_lefti (fun nb_set i _value ->
+              match get_val ci i with
+              | VNull -> nb_set
+              | _ ->
+                RamenBitmask.set nullmask i ;
+                val_idx_to_tuple_idx.(nb_set) <- i ;
+                nb_set + 1
+            ) 0 values in
+        let column =
+          scalar_column_init ft.typ nb_set (fun i ->
+            get_val ci val_idx_to_tuple_idx.(i)) in
+        ft.typ_name, Some nullmask, column
+      ) else (
+        ft.typ_name, None,
+        scalar_column_init ft.typ nb_values (get_val ci)
+      )
     ) fields
 
 (* Garbage in / garbage out *)

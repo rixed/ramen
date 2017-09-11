@@ -2,6 +2,7 @@
 open Batteries
 open RamenLog
 
+(* TODO: use RamenBitmask *)
 type t =
   { bytes : Bytes.t ;
     nb_bits : int ; nb_keys : int ;

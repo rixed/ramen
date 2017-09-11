@@ -24,15 +24,13 @@ add_node p1 \
         WHEN n = 1 THEN 1
         ELSE 2
    END AS some_u64,
-   COALESCE(
-     CASE WHEN name = "one" THEN 6
-          ELSE 666
-     END,
-     -6) AS some_nullable_thing,
+   CASE WHEN name = "one" THEN 6
+        ELSE 666
+   END AS some_nullable_thing,
    IF (n = 1, -1, -2) AS minus_smth,
    COALESCE(name,"three") AS real_name
  EXPORT' 123
 run
 check_equal '"lo","one",1,6,-1,"one"
 "meh","more",2,666,-2,"two"
-"hi","more",9999999999999999999,-6,-2,"three"' "$(tail_ 3 p1)"
+"hi","more",9999999999999999999,NULL,-2,"three"' "$(tail_ 3 p1)"
