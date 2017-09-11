@@ -109,6 +109,7 @@ long-check: ramen
 	./tests/lag
 	./tests/word_split
 	./tests/case
+	./tests/season
 
 include $(top_srcdir)/make.common
 
