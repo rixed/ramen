@@ -73,7 +73,7 @@ colcomp/libcolcomp.a: colcomp/growblock.o colcomp/colcomp.o
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
 # symbols we need as we are the only users.
-MOREFLAGS = -package "$(PACKAGES)" -I ringbuf -I colcomp -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf -cclib -lcolcomp
+MOREFLAGS = -package "$(PACKAGES)" -I ringbuf -I colcomp -cclib wrap_ringbuf.o -cclib -lstdint_stubs -cclib -Lringbuf -cclib -lringbuf -cclib -Lcolcomp -cclib -lcolcomp
 
 ramen: $(RAMEN_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o colcomp/libcolcomp.a
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
