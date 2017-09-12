@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <inttypes.h>
 #include <string.h>
 #include <sys/types.h>  // getpid
@@ -12,11 +13,24 @@
 #include <caml/memory.h>
 #include <caml/custom.h>
 #include <caml/fail.h>
+#include <caml/callback.h>
 
 #include "ringbuf/ringbuf.h"
 
 #define STR_(s) STR(s)
 #define STR(s) #s
+
+static value exn_NoMoreRoom, exn_Empty;
+static bool exception_inited = false;
+
+static void retrieve_exceptions(void)
+{
+  if (exception_inited) return;
+
+  exn_NoMoreRoom = *caml_named_value("ringbuf full exception");
+  exn_Empty = *caml_named_value("ringbuf empty exception");
+  exception_inited = true;
+}
 
 /* type t for struct ringbuf */
 
@@ -44,6 +58,8 @@ static value alloc_ringbuf(struct ringbuf *rb)
 {
   CAMLparam0();
   CAMLlocal1(res);
+  retrieve_exceptions();
+
   res = caml_alloc_custom(&ringbuf_ops, sizeof rb, 0, 1);
   Ringbuf_val(res) = rb;
   CAMLreturn(res);
@@ -151,7 +167,8 @@ CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_)
   uint32_t nb_words = size / sizeof(uint32_t);
   uint32_t *bytes = (uint32_t *)String_val(bytes_);
   if (0 != ringbuf_enqueue(rb, bytes, nb_words)) {
-    caml_failwith("Cannot enqueue bytes");
+    assert(exception_inited);
+    caml_raise_constant(exn_NoMoreRoom);
   }
   CAMLreturn(Val_unit);
 }
@@ -163,7 +180,10 @@ CAMLprim value wrap_ringbuf_dequeue(value rb_)
   struct ringbuf *rb = Ringbuf_val(rb_);
   struct ringbuf_tx tx;
   ssize_t size = ringbuf_dequeue_alloc(rb, &tx);
-  if (size < 0) caml_failwith("Cannot dequeue alloc");
+  if (size < 0) {
+    assert(exception_inited);
+    caml_raise_constant(exn_Empty);
+  }
 
   bytes_ = caml_alloc_string(size);
   if (! bytes_) caml_failwith("Cannot malloc dequeued bytes");
@@ -189,7 +209,8 @@ CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)
   wrtx->rb = rb;
   wrtx->alloced = size;
   if (0 != ringbuf_enqueue_alloc(rb, &wrtx->tx, nb_words)) {
-    caml_failwith("Cannot alloc for enqueue");
+    assert(exception_inited);
+    caml_raise_constant(exn_NoMoreRoom);
   }
   /*printf("Allocated %d bytes for enqueuing at offset %"PRIu32" (in words)\n",
          size, wrtx->tx.record_start);*/
@@ -214,7 +235,8 @@ CAMLprim value wrap_ringbuf_dequeue_alloc(value rb_)
   wrtx->rb = rb;
   ssize_t size = ringbuf_dequeue_alloc(rb, &wrtx->tx);
   if (size < 0) {
-    caml_failwith("Cannot alloc for dequeue");
+    assert(exception_inited);
+    caml_raise_constant(exn_Empty);
   }
   /*printf("Allocated %zd bytes for dequeuing at offset %"PRIu32" (in words)\n",
          size, wrtx->tx.record_start);*/

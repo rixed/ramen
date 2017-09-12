@@ -4,6 +4,12 @@ open Batteries
 open RamenSharedTypes
 open RamenLog
 
+exception NoMoreRoom
+exception Empty
+let () =
+  Callback.register_exception "ringbuf full exception" NoMoreRoom ;
+  Callback.register_exception "ringbuf empty exception" Empty
+
 (* Compromise between size and efficient reading of data, TBD: *)
 let rb_word_bytes = 4
 let rb_word_bits = rb_word_bytes * 8
@@ -24,8 +30,7 @@ let nullmask_bytes_of_tuple_type tuple_typ =
 
 let retry_for_ringbuf f =
   let on = function
-    (* FIXME: a dedicated RingBuf.NoMoreRoom exception *)
-    | Failure _ -> true
+    | NoMoreRoom | Empty -> true
     | _ -> false
   in
   Helpers.retry ~on ~first_delay:0.001 ~max_delay:0.01
