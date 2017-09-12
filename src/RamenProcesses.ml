@@ -37,6 +37,17 @@ exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
 
+(* Compute input ringbuf and output ringbufs given the node fq name. *)
+
+let in_ringbuf_name conf node =
+  conf.C.persist_dir ^"/workers/"^ N.fq_name node ^"/ringbufs/in"
+
+let exp_ringbuf_name conf node =
+  conf.C.persist_dir ^"/workers/"^ N.fq_name node ^"/ringbufs/exp"
+
+let out_ringbuf_names_ref conf node =
+  conf.C.persist_dir ^"/workers/"^ N.fq_name node ^"/ringbufs/out_ref"
+
 let run conf layer =
   let open C.Layer in
   match layer.persist.status with
@@ -46,9 +57,9 @@ let run conf layer =
   | SL.Compiled ->
     (* First prepare all the required ringbuffers *)
     let rb_name_of node =
-      RingBufLib.in_ringbuf_name conf.C.persist_dir (N.fq_name node)
+      in_ringbuf_name conf node
     and rb_name_for_export_of node =
-      RingBufLib.exp_ringbuf_name conf.C.persist_dir (N.fq_name node)
+      exp_ringbuf_name conf node
     and rb_sz_words = 1000000 in
     !logger.debug "Creating ringbuffers..." ;
     Hashtbl.iter (fun _ node ->
@@ -75,7 +86,7 @@ let run conf layer =
             rb_name_for_export_of node :: output_ringbufs
           else output_ringbufs in
         let out_ringbuf_ref =
-          RingBufLib.out_ringbuf_names_ref conf.C.persist_dir (N.fq_name node) in
+          out_ringbuf_names_ref conf node in
         Helpers.mkdir_all ~is_file:true out_ringbuf_ref ;
         (* We do not care what was there before. This is OK as long as layers
          * are started in dependency order. *)
@@ -90,8 +101,8 @@ let run conf layer =
           "report_url="^ conf.C.ramen_url
                        ^ "/report/"^ Uri.pct_encode node.N.layer
                        ^ "/"^ Uri.pct_encode node.N.name ;
-          "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
-                        ^ node.N.layer ^"/"^ node.N.name |] in
+          "persist_dir="^ conf.C.persist_dir ^"/workers/"
+                        ^ (N.fq_name node) ^"/tmp" |] in
         let pid = run_background command [||] env in
         node.N.pid <- Some pid ;
         async (fun () ->
@@ -111,7 +122,7 @@ let run conf layer =
         List.iter (fun parent ->
             if parent.N.layer <> layer.name then
               let out_ref =
-                RingBufLib.out_ringbuf_names_ref conf.C.persist_dir (N.fq_name parent) in
+                out_ringbuf_names_ref conf parent in
               (* The parent ringbuf must exist at that point *)
               let lines = File.lines_of out_ref |> List.of_enum in
               if not (List.mem input_ringbuf lines) then
@@ -150,10 +161,10 @@ let stop conf layer =
           (* Start by removing this worker ringbuf from all its parent output
            * reference *)
           let this_in =
-            RingBufLib.in_ringbuf_name conf.C.persist_dir (N.fq_name node) in
+            in_ringbuf_name conf node in
           List.iter (fun parent ->
               let out_ref =
-                RingBufLib.out_ringbuf_names_ref conf.C.persist_dir (N.fq_name parent) in
+                out_ringbuf_names_ref conf parent in
               File.(lines_of out_ref // (<>) this_in |> write_lines out_ref)
               (* File.(lines_of out_ref // (<>) this_in |> write_lines out_ref) *)
             ) node.N.parents ;

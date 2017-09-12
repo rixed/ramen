@@ -52,18 +52,6 @@ let rec sersize_of_fixsz_typ =
   | TString -> assert false
   | TNum | TAny -> assert false
 
-(* Compute input ringbuf and output ringbufs given the node fq name. *)
-
-let in_ringbuf_name prefix name =
-  prefix ^"/ringbufs/in/"^ name
-
-let exp_ringbuf_name prefix name =
-  prefix ^"/ringbufs/exp/"^ name
-
-let out_ringbuf_names_ref prefix name =
-  prefix ^"/ringbufs/out_ref/"^ name
-
-
 let out_ringbuf_names outbuf_ref_fname =
   let open Lwt in
   let last_touched fname =
