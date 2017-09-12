@@ -1,6 +1,11 @@
 #ifndef COLCOMP_H_170911
 #define COLCOMP_H_170911
 
+#ifdef HAVE_INT128
+typedef __uint128_t uint128_t __attribute__ ((mode (TI)));
+typedef __int128_t int128_t __attribute__ ((mode (TI)));
+#endif
+
 /* Quick (De)Compression of a block of integers, floats, booleans or strings.
  */
 
@@ -27,7 +32,8 @@
  * allocated.
  *
  * The bool compressor takes as input a bitfield and the size is expected to be
- * the number of bits in the input.
+ * the number of bits in the input. If the number of bits is not a multiple of
+ * 8, then the last bits are the low bits of the last byte.
  *
  * The string compressor takes an array of nul terminated strings as input and
  * the size is expected to be the number of such strings.
@@ -51,14 +57,14 @@ enum colcomp_result colcomp_compress_uint8(uint8_t const *, unsigned, void **, s
 enum colcomp_result colcomp_compress_uint16(uint16_t const *, unsigned, void **, size_t *, char **);
 enum colcomp_result colcomp_compress_uint32(uint32_t const *, unsigned, void **, size_t *, char **);
 enum colcomp_result colcomp_compress_uint64(uint64_t const *, unsigned, void **, size_t *, char **);
-#ifdef HAVE_UINT128
+#ifdef HAVE_INT128
 enum colcomp_result colcomp_compress_uint128(uint128_t const *, unsigned, void **, size_t *, char **);
 #endif
 
 enum colcomp_result colcomp_compress_bool(char const *, unsigned, void **, size_t *, char **);
 enum colcomp_result colcomp_compress_float(float const *, unsigned, void **, size_t *, char **);
 enum colcomp_result colcomp_compress_double(double const *, unsigned, void **, size_t *, char **);
-enum colcomp_result colcomp_compress_string(char const **, unsigned, void **, size_t *, char **);
+enum colcomp_result colcomp_compress_string(char const * const*, unsigned, void **, size_t *, char **);
 
 /* Decompression.
  *
@@ -90,7 +96,7 @@ enum colcomp_result colcomp_decompress_uint8(void const *, size_t, char const *,
 enum colcomp_result colcomp_decompress_uint16(void const *, size_t, char const *, uint16_t **, unsigned *);
 enum colcomp_result colcomp_decompress_uint32(void const *, size_t, char const *, uint32_t **, unsigned *);
 enum colcomp_result colcomp_decompress_uint64(void const *, size_t, char const *, uint64_t **, unsigned *);
-#ifdef HAVE_UINT128
+#ifdef HAVE_INT128
 enum colcomp_result colcomp_decompress_uint128(void const *, size_t, char const *, uint128_t **, unsigned *);
 #endif
 

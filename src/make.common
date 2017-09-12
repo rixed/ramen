@@ -12,7 +12,7 @@ override CFLAGS        += --std=c11 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += --std=c11 -D_GNU_SOURCE -I $(shell ocamlfind ocamlc -where)
 
 # TODO: configure
-CPPFLAGS += -DHAVE_INT128 -DHAVE_UINT128
+override CPPFLAGS += -DHAVE_INT128
 
 # Common rules
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top .js .html .adoc

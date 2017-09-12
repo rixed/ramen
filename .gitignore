@@ -36,3 +36,4 @@ stream_in
 *.html
 src/corr.*
 src/*.csv
+src/colcomp/colcomp_test

@@ -48,7 +48,7 @@ SOURCES = \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 	$(LIBCOLCOMP_SOURCES) \
 	$(CONFIGURATOR_SOURCES) $(ALERTER_SOURCES) \
-	ringbuf_test.ml
+	ringbuf_test.ml colcomp/colcomp_test.c
 
 PACKAGES = \
 	ppp lwt.ppx batteries cmdliner stdint parsercombinator \
@@ -99,12 +99,17 @@ all_tests.opt: ringbuf/libringbuf.a wrap_ringbuf.o colcomp/libcolcomp.a $(LINKED
 # Web thingies
 
 clean-spec:
-	$(RM) ringbuf/*.o colcomp/*.o
+	$(RM) ringbuf/*.o colcomp/*.o colcomp/colcomp_test
 
 distclean-spec:
 	$(RM) ramen codegen.cmxa ringbuf/*.a colcomp/*.a
 
-check-spec: ringbuf_test.opt
+colcomp/colcomp_test: colcomp/colcomp_test.o colcomp/libcolcomp.a
+	$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) $^ -o $@
+
+check-spec: ringbuf_test.opt colcomp/colcomp_test
+	@./ringbuf_test.opt || echo "FAILURE (ringbuf_test)"
+	@colcomp/colcomp_test || echo "FAILURE (colcomp_test)"
 
 long-check: ramen
 	@$(MAKE) check
