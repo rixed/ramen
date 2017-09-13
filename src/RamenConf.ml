@@ -61,17 +61,18 @@ let tup_typ_of_temp_tup_type ttt =
       nullable = Option.get typ.Expr.nullable ;
       typ = Option.get typ.Expr.scalar_typ })
 
-(* Store history of past tuple output by a given node: *)
-let history_length = 8096
-
 type history =
-  { tuple_type : Lang.Tuple.typ ;
-    (* Store arrays of Scalar.values not hash of names to values !
+  { (* Store arrays of Scalar.values not hash of names to values !
      * TODO: ideally storing scalar_columns would be even better *)
     tuples : scalar_value array array ;
     (* Gives us both the position of the last tuple in the array and an index
-     * in the stream of tuples to help polling *)
-    mutable count : int }
+     * in the stream of tuples to help polling (once added to this block seqnum) *)
+    mutable count : int ;
+    dir : string ;
+    (* A cache to save first/last timestamps of each archive file we've visited. *)
+    ts_cache : (int, float * float) Hashtbl.t ;
+    mutable min_filenum : int ; (* Not necessarily up to date but gives a lower bound *)
+    mutable max_filenum : int }
 
 module Node =
 struct
@@ -288,6 +289,29 @@ let save_graph conf =
     File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
       Marshal.output oc persist)
 
+(* Store history of past tuple output by a given node: *)
+let history_block_length = 10000 (* TODO: make it a parameter? *)
+(* We use filenum * max_history_block_length + index as a cursor *)
+let max_history_block_length = 1000000
+let max_history_archives = 200
+
+let make_history dir =
+  Helpers.mkdir_all ~is_file:false dir ;
+  (* Note: this is OK to share this [||] since we use it only as a placeholder *)
+  let tuples = Array.make history_block_length [||] in
+  let min_filenum, max_filenum =
+    Sys.readdir dir |>
+    Array.fold_left (fun (mi, ma as prev) fname ->
+      match int_of_string fname with
+      | exception _ -> prev
+      | n -> min mi n, max ma n) (max_int, min_int) in
+  let min_filenum, max_filenum =
+    if min_filenum > max_filenum then -1, -1
+    else min_filenum, max_filenum in
+  !logger.debug "History files from %d to %d" min_filenum max_filenum ;
+  { tuples ; count = 0 ; dir ; min_filenum ; max_filenum ;
+    ts_cache = Hashtbl.create (max_history_archives / 8) }
+
 let add_parsed_node ?timeout conf node_name layer_name op_text operation =
   let layer =
     try Hashtbl.find conf.graph.layers layer_name
@@ -295,11 +319,16 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
   if Hashtbl.mem layer.Layer.persist.Layer.nodes node_name then
     raise (InvalidCommand (
              "Node "^ node_name ^" already exists in layer "^ layer_name)) ;
+  let history =
+    if Lang.Operation.is_exporting operation then (
+      let dir = conf.persist_dir ^"/workers/"^ layer_name ^"/"^
+                node_name ^"/history" in
+      Some (make_history dir)
+    ) else None in
   let node = Node.{
     layer = layer_name ; name = node_name ;
     operation ; signature = "" ; op_text ;
-    parents = [] ; children = [] ;
-    history = None ;
+    parents = [] ; children = [] ; history ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;

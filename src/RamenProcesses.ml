@@ -134,8 +134,7 @@ let run conf layer =
     layer.C.Layer.importing_threads <- Hashtbl.fold (fun _ node lst ->
         if Lang.Operation.is_exporting node.N.operation then (
           let rb = rb_name_for_export_of node in
-          let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
-          RamenExport.import_tuples rb node tuple_type :: lst
+          RamenExport.import_tuples rb node :: lst
         ) else lst
       ) layer.C.Layer.persist.C.Layer.nodes [] ;
     C.save_graph conf
@@ -153,6 +152,7 @@ let stop conf layer =
     !logger.debug "Stopping layer %s" layer.L.name ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
+        Option.may RamenExport.archive_history node.N.history ;
         match node.N.pid with
         | None ->
           !logger.error "Node %s has no pid?!" node.N.name
@@ -207,7 +207,8 @@ let timeout_layers conf =
   Set.iter (fun layer_name ->
       let layer = Hashtbl.find conf.C.graph.C.layers layer_name in
       if layer.L.persist.L.timeout > 0. &&
-         now > layer.L.persist.L.last_used +. layer.L.persist.L.timeout then (
+         now > layer.L.persist.L.last_used +. layer.L.persist.L.timeout
+      then (
         !logger.info "Deleting unused layer %s after a %gs timeout"
           layer_name layer.L.persist.L.timeout ;
         (* Kill first, and only then forget about it. *)

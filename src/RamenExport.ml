@@ -48,26 +48,58 @@ open Stdint
  * Let's go with 1.
  *)
 
-(* Convert a tuple, given its type, into a JSON string *)
-let json_of_tuple tuple_type tuple =
-  (List.fold_lefti (fun s i typ ->
-      s ^ (if i > 0 then "," else "") ^
-      typ.typ_name ^":"^
-      IO.to_string Lang.Scalar.print tuple.(i)
-    ) "{" tuple_type) ^ "}"
+(* History of past tuples:
+ *
+ * We store tuples output by exporting nodes both in RAM (for the last ones)
+ * on disk (in a "history" subdir). Each file is numbered and a cursor in the
+ * history of some node might be given by file number, tuple offset (the
+ * count below). Since only the ramen process ever write or read those files
+ * there is not much to worry about. For now those are merely Marshalled
+ * array or array of scalar value (tuples in the record below). *)
 
-let add_tuple node tuple_type tuple =
-  match node.N.history with
-  | None ->
-    node.N.history <- Some
-      C.{ tuples = Array.init history_length (fun i ->
-              if i = 0 then tuple else [||]) ;
-              tuple_type ;
-          count = 1 }
-  | Some history ->
-    let idx = history.C.count mod Array.length history.C.tuples in
-    history.C.tuples.(idx) <- tuple ;
-    history.C.count <- history.C.count + 1
+let clean_archives history =
+  while history.C.max_filenum - history.C.min_filenum > C.max_history_archives do
+    let fname = history.C.dir ^"/"^ string_of_int history.C.min_filenum in
+    !logger.debug "Deleting history archive %S" fname ;
+    Unix.unlink fname ;
+    Hashtbl.remove history.C.ts_cache history.C.min_filenum ;
+    history.C.min_filenum <- history.C.min_filenum + 1
+  done
+
+let archive_history history =
+  let fname = history.C.dir ^"/"^ string_of_int (history.C.max_filenum + 1) in
+  !logger.debug "Saving history in %S" fname ;
+  File.with_file_out ~mode:[`create; `trunc] fname (fun oc ->
+    (* Since we do not "clean" the array but only the count field, it is
+     * important not to save anything beyond count: *)
+    (if history.C.count == Array.length history.C.tuples then
+       history.C.tuples
+     else (
+      !logger.info "Saving an incomplete history of only %d tuples in %S"
+        history.C.count fname ;
+      Array.sub history.C.tuples 0 history.C.count)
+    ) |>
+    Marshal.output oc) ;
+  history.C.max_filenum <- history.C.max_filenum + 1 ;
+  if history.C.min_filenum = -1 then
+    history.C.min_filenum <- history.C.max_filenum ;
+  clean_archives history
+
+let read_archive dir filenum : scalar_value array array option =
+  let fname = dir ^"/"^ string_of_int filenum in
+  !logger.debug "Reading history from %S" fname ;
+  try Some (File.with_file_in fname Marshal.input)
+  with Sys_error _ -> None
+
+let add_tuple node tuple =
+  let history = Option.get node.N.history in
+  if history.C.count >= Array.length history.C.tuples then (
+    archive_history history ; (* Will update filenums *)
+    history.C.count <- 0
+  ) ;
+  let idx = history.C.count in
+  history.C.tuples.(idx) <- tuple ;
+  history.C.count <- history.C.count + 1
 
 let read_tuple tuple_type tx =
   (* First read the nullmask *)
@@ -121,8 +153,9 @@ let read_tuple tuple_type tx =
       ) (nullmask_size, 0) tuple_type in
   tuple, sz
 
-let import_tuples rb_name node tuple_type =
+let import_tuples rb_name node =
   let open Lwt in
+  let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
   !logger.info "Starting to import output from node %s (in ringbuf %S)"
     (N.fq_name node) rb_name ;
   let rb = RingBuf.load rb_name in
@@ -134,7 +167,7 @@ let import_tuples rb_name node tuple_type =
         let%lwt tx = dequeue rb in
         let tuple, _sz = read_tuple tuple_type tx in
         RingBuf.dequeue_commit tx ;
-        add_tuple node tuple_type tuple ;
+        add_tuple node tuple ;
         Lwt_main.yield ()
       done)
     (function Canceled ->
@@ -143,36 +176,49 @@ let import_tuples rb_name node tuple_type =
       return_unit
             | e -> fail e)
 
-let get_history node =
-  Option.default_delayed (fun () ->
-      (* Build a fake empty history - this requires the node to be typed. *)
-      C.{ tuple_type = C.tup_typ_of_temp_tup_type node.C.Node.out_type ;
-          tuples = [||] ; count = 0 }
-    ) node.N.history
+let fold_tuples ?min_filenum ?max_filenum ?(since=0) ?(max_res=1000) node init f =
+  let history = Option.get node.N.history in
+  let min_filenum = Option.default history.C.min_filenum min_filenum
+  and max_filenum = Option.default (history.C.max_filenum+1) max_filenum in
+  let min_filenum = max history.C.min_filenum min_filenum
+  and max_filenum = min (history.C.max_filenum+1) max_filenum in
 
-let get_field_types history =
-  history.C.tuple_type
+  let rec loop_tup tuples filenum last_idx idx nb_res x =
+    if idx >= last_idx || nb_res >= max_res then
+      idx, nb_res, x else
+    let tuple = tuples.(idx) in
+    loop_tup tuples filenum last_idx (idx+1) (nb_res+1) (f filenum tuple x)
+  in
 
-let fold_tuples ?(since=0) ?max_res history init f =
-  if Array.length history.C.tuples = 0 then (
-    since, init
-  ) else (
-    let nb_tuples = min history.C.count (Array.length history.C.tuples) in
-    let nb_res = match max_res with
-      | Some r -> min r nb_tuples
-      | None -> nb_tuples in
-    let since = max since (history.C.count - Array.length history.C.tuples) in
-    let first_idx = since mod Array.length history.C.tuples in
-    let rec loop prev i r =
-      if r <= 0 then prev else (
-        let i = if i < Array.length history.C.tuples then i else 0 in
-        let tuple = history.C.tuples.(i) in
-        let prev =
-          if Array.length tuple > 0 then f tuple prev else prev in
-        loop prev (i + 1) (r - 1)
-      ) in
-    since, loop init first_idx nb_res
-  )
+  let rec loop_file has_gap filenum first_idx nb_res x =
+    !logger.debug "loop_file has_gap=%b filenum=%d first_idx=%d nb_res=%d"
+      has_gap filenum first_idx nb_res ;
+    if nb_res >= max_res || filenum > max_filenum then
+      filenum, first_idx, x else
+    let has_gap, tuples, last_idx =
+      if filenum = history.C.max_filenum + 1 then
+        has_gap, history.C.tuples, history.C.count
+      else
+        match read_archive history.C.dir filenum with
+        | None -> true, [||], 0
+        | Some tuples -> has_gap, tuples, Array.length tuples in
+    let idx, nb_res, x = loop_tup tuples filenum last_idx first_idx nb_res x in
+    (* If we are done we want to return with current idx and filenum in
+     * case it is not completed yet: *)
+    if nb_res >= max_res then filenum, idx, x else
+    loop_file has_gap (filenum+1) 0 nb_res x
+  in
+
+  let filenum = since / C.max_history_block_length
+  and first_idx = since mod C.max_history_block_length in
+  let has_gap, filenum, first_idx =
+    if filenum < min_filenum then
+      true, min_filenum, 0
+    else false, filenum, first_idx in
+  let filenum, idx, x =
+    loop_file has_gap filenum first_idx 0 init in
+  assert (idx < C.max_history_block_length) ;
+  filenum * C.max_history_block_length + idx, x
 
 let scalar_column_init typ len f =
   match typ with
@@ -198,7 +244,7 @@ let scalar_column_init typ len f =
   | TNum | TAny -> assert false
 
 (* Note: the list of values is ordered latest to oldest *)
-let columns_of_tuples fields values =
+let columns_of_tuples tuple_type values =
   let values = Array.of_list values in
   let nb_values = Array.length values in
   let get_val ci i =
@@ -229,7 +275,7 @@ let columns_of_tuples fields values =
         ft.typ_name, None,
         scalar_column_init ft.typ nb_values (get_val ci)
       )
-    ) fields
+    ) tuple_type
 
 (* Garbage in / garbage out *)
 let float_of_scalar_value = function
@@ -273,13 +319,11 @@ let bucket_max b =
 
 let build_timeseries node start_field start_scale data_field duration_info
                      max_data_points from to_ consolidation =
-  let history = get_history node in
   let find_field n =
-    try (
-      List.findi (fun _i (ft : field_typ) ->
-        ft.typ_name = n) history.C.tuple_type |> fst
-    ) with Not_found ->
-      failwith ("field "^ n ^" does not exist") in
+    match Hashtbl.find node.N.out_type.C.fields n with
+    | exception Not_found ->
+      failwith ("field "^ n ^" does not exist")
+    | rank, _field_typ -> Option.get !rank in
   let ti = find_field start_field
   and vi = find_field data_field in
   if max_data_points < 1 then failwith "invalid max_data_points" ;
@@ -287,32 +331,64 @@ let build_timeseries node start_field start_scale data_field duration_info
   let buckets = Array.init max_data_points (fun _ ->
     { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
   let bucket_of_time t = int_of_float ((t -. from) /. dt) in
+  let history = Option.get node.N.history in
+  let f_opt f x y = match x, y with
+    | None, y -> Some y
+    | Some x, y -> Some (f x y) in
+  let min_filenum, max_filenum =
+    Hashtbl.enum history.C.ts_cache |>
+    Enum.fold (fun (mi, ma) (filenum, (ts_min, ts_max)) ->
+      (if from >= ts_min then f_opt max mi filenum else mi),
+      (if to_ <= ts_max then f_opt min ma filenum else ma))
+      (None, None) in
   let _ =
-    fold_tuples history () (fun tup () ->
-      let t, v = float_of_scalar_value tup.(ti),
-                 float_of_scalar_value tup.(vi) in
-      let t1 = t *. start_scale in
-      let t2 =
-        let open Lang.Operation in
-        match duration_info with
-        | DurationConst f -> t1 +. f
-        | DurationField (f, s) ->
-          let fi = find_field f in
-          t1 +. float_of_scalar_value tup.(fi) *. s
-        | StopField (f, s) ->
-          let fi = find_field f in
-          float_of_scalar_value tup.(fi) *. s
-      in
-      (* We allow duration to be < 0 *)
-      let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
-      (* t1 and t2 are in secs. But the API is in milliseconds (thanks to
-       * grafana) *)
-      let t1, t2 = t1 *. 1000., t2 *. 1000. in
-      if t1 < to_ && t2 >= from then
-        let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
-        for bi = bi1 to bi2 do
-          add_into_bucket buckets bi v
-        done) in
+    fold_tuples ?min_filenum ?max_filenum
+      node (-1, max_float, min_float)
+      (fun filenum tup (prev_filenum, tmin, tmax) ->
+        let t, v = float_of_scalar_value tup.(ti),
+                   float_of_scalar_value tup.(vi) in
+        let t1 = t *. start_scale in
+        let t2 =
+          let open Lang.Operation in
+          match duration_info with
+          | DurationConst f -> t1 +. f
+          | DurationField (f, s) ->
+            let fi = find_field f in
+            t1 +. float_of_scalar_value tup.(fi) *. s
+          | StopField (f, s) ->
+            let fi = find_field f in
+            float_of_scalar_value tup.(fi) *. s
+        in
+        (* We allow duration to be < 0 *)
+        let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
+        (* Maybe update ts_cache *)
+        let tmin, tmax =
+          if filenum = prev_filenum then (
+            min tmin t1, max tmax t2
+          ) else (
+            (* Do save only if the filenum is an archive: *)
+            if filenum >= history.C.min_filenum &&
+               filenum <= history.C.max_filenum
+            then (
+              Hashtbl.modify_opt filenum (function
+                | None ->
+                  !logger.debug "Caching times for filenum %d to %g..%g"
+                    filenum tmin tmax ;
+                  Some (tmin, tmax)
+                | x -> x) history.C.ts_cache
+            ) ;
+            t1, t2
+          ) in
+        (* t1 and t2 are in secs. But the API is in milliseconds (thanks to
+         * grafana) *)
+        let t1, t2 = t1 *. 1000., t2 *. 1000. in
+        if t1 < to_ && t2 >= from then (
+          let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
+          for bi = bi1 to bi2 do
+            add_into_bucket buckets bi v
+          done
+        ) ;
+        filenum, tmin, tmax) in
   Array.mapi (fun i _ ->
     from +. dt *. (float_of_int i +. 0.5)) buckets,
   Array.map consolidation buckets

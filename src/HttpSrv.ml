@@ -358,12 +358,11 @@ let export conf headers layer_name node_name body =
       bad_request ("node "^ node_name ^" does not export data")
     else (
       let start = Unix.gettimeofday () in
+      let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
       let rec loop () =
-        let history = RamenExport.get_history node in
-        let fields = RamenExport.get_field_types history in
         let first, values =
           RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
-                                  history [] List.cons in
+                                  node [] (fun _ tup prev -> List.cons tup prev) in
         let dt = Unix.gettimeofday () -. start in
         if values = [] && dt < (req.wait_up_to |? 0.) then (
           (* TODO: sleep for dt, queue the wakener on this history,
@@ -373,7 +372,7 @@ let export conf headers layer_name node_name body =
           (* Store it in column to save variant types: *)
           let resp =
             { first ;
-              columns = RamenExport.columns_of_tuples fields values |>
+              columns = RamenExport.columns_of_tuples tuple_type values |>
                         List.map (fun (typ, nullmask, column) ->
                           typ, Option.map RamenBitmask.to_bools nullmask, column) } in
           let body = PPP.to_string export_resp_ppp resp in
