@@ -67,9 +67,9 @@ add_node() {
 
 add_123() {
   add_node 123 "READ CSV FILE \"$fixtures/123.csv\" (
-    n u8 not null,
-    b bool not null,
-    name string null)"
+    n u8 not null,  -- will be 1, 2, 3
+    b bool not null,  -- true, true, false
+    name string null) -- \"one\", \"two\" and NULL!"
 }
 
 add_cars() {
@@ -86,6 +86,7 @@ nb_cars=$(wc -l "$fixtures/cars.csv" | awk '{print $1}')
 
 add_earthquakes() {
   add_node earthquakes "READ CSV FILE \"$fixtures/earthquakes.csv\" SEPARATOR \"\\t\" (
+    -- number of earthquakes per year
     year u16 not null,
     n u8 not null)"
 }
