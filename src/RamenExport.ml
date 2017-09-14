@@ -176,11 +176,19 @@ let import_tuples rb_name node =
       return_unit
             | e -> fail e)
 
-let fold_tuples ?min_filenum ?max_filenum ?(since=0) ?(max_res=1000) node init f =
+let fold_tuples ?min_filenum ?max_filenum ?since
+                ?(max_res=100*C.history_block_length) node init f =
   let history = Option.get node.N.history in
   let min_filenum = Option.default history.C.min_filenum min_filenum
   and max_filenum = Option.default (history.C.max_filenum+1) max_filenum in
-  let min_filenum = max history.C.min_filenum min_filenum
+  let min_filenum, first_idx = Option.map_default (fun since ->
+      since / C.max_history_block_length,
+      since mod C.max_history_block_length
+    ) (min_filenum, 0) since in
+  let has_gap, min_filenum, first_idx =
+    if min_filenum < history.C.min_filenum then
+      true, history.C.min_filenum, 0
+    else false, min_filenum, first_idx
   and max_filenum = min (history.C.max_filenum+1) max_filenum in
 
   let rec loop_tup tuples filenum last_idx idx nb_res x =
@@ -195,8 +203,9 @@ let fold_tuples ?min_filenum ?max_filenum ?(since=0) ?(max_res=1000) node init f
       has_gap filenum first_idx nb_res ;
     if nb_res >= max_res || filenum > max_filenum then
       filenum, first_idx, x else
+    let is_last_block = filenum = history.C.max_filenum + 1 in
     let has_gap, tuples, last_idx =
-      if filenum = history.C.max_filenum + 1 then
+      if is_last_block then
         has_gap, history.C.tuples, history.C.count
       else
         match read_archive history.C.dir filenum with
@@ -205,18 +214,12 @@ let fold_tuples ?min_filenum ?max_filenum ?(since=0) ?(max_res=1000) node init f
     let idx, nb_res, x = loop_tup tuples filenum last_idx first_idx nb_res x in
     (* If we are done we want to return with current idx and filenum in
      * case it is not completed yet: *)
-    if nb_res >= max_res then filenum, idx, x else
-    loop_file has_gap (filenum+1) 0 nb_res x
+    if nb_res >= max_res || is_last_block then filenum, idx, x else
+    loop_file has_gap (filenum + 1) 0 nb_res x
   in
 
-  let filenum = since / C.max_history_block_length
-  and first_idx = since mod C.max_history_block_length in
-  let has_gap, filenum, first_idx =
-    if filenum < min_filenum then
-      true, min_filenum, 0
-    else false, filenum, first_idx in
   let filenum, idx, x =
-    loop_file has_gap filenum first_idx 0 init in
+    loop_file has_gap min_filenum first_idx 0 init in
   assert (idx < C.max_history_block_length) ;
   filenum * C.max_history_block_length + idx, x
 
