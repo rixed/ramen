@@ -16,6 +16,13 @@ let debug =
                    ~env [ "d"; "debug" ] in
   Arg.(value (flag i))
 
+let to_stderr =
+  let env = Term.env_info "RAMEN_LOG_TO_STDERR" in
+  let i = Arg.info ~doc:"log onto stderr"
+                   ~env [ "log-onto-stderr"; "log-to-stderr"; "to-stderr";
+                          "stderr" ] in
+  Arg.(value (flag i))
+
 let http_port =
   let env = Term.env_info "RAMEN_HTTP_PORT" in
   let i = Arg.info ~doc:"Port where to run the HTTP server \
@@ -61,6 +68,7 @@ let server_start =
     (const HttpSrv.start
       $ do_persist
       $ debug
+      $ to_stderr
       $ server_url
       $ version_tag
       $ persist_dir

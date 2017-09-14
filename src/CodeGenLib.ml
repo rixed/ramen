@@ -349,11 +349,15 @@ type worker_conf =
 let node_start () =
   let debug = getenv ~def:"false" "debug" |> bool_of_string
   and node_name = getenv ~def:"?" "name" in
-  let prefix = node_name ^": " in
-  logger := make_logger ~prefix debug ;
-  !logger.debug "Starting %s process..." node_name ;
   let default_persist_dir = "/tmp/worker_"^ node_name ^"_"^ string_of_int (Unix.getpid ()) in
   let persist_dir = getenv ~def:default_persist_dir "persist_dir" in
+  let logdir, prefix =
+    match getenv "log_dir" with
+    | exception _ -> None, node_name ^": "
+    | ld -> Some ld, "" in
+  Option.may Helpers.mkdir_all logdir ;
+  logger := make_logger ?logdir ~prefix debug ;
+  !logger.debug "Starting %s process..." node_name ;
   let report_url =
     (* The real one will have a process identifier instead of "anonymous" *)
     getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in

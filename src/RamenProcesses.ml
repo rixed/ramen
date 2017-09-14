@@ -102,7 +102,12 @@ let run conf layer =
                        ^ "/report/"^ Uri.pct_encode node.N.layer
                        ^ "/"^ Uri.pct_encode node.N.name ;
           "persist_dir="^ conf.C.persist_dir ^"/workers/"
-                        ^ (N.fq_name node) ^"/tmp" |] in
+                        ^ (N.fq_name node) ^"/tmp" ;
+          (match !logger.logdir with
+            | Some _ ->
+              "log_dir="^ conf.C.persist_dir ^"/workers/"
+                        ^ (N.fq_name node) ^"/log"
+            | None -> "no_log_dir=") |] in
         let pid = run_background command [||] env in
         node.N.pid <- Some pid ;
         async (fun () ->

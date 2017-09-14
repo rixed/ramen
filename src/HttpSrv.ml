@@ -524,10 +524,12 @@ let rec timeout_layers conf =
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_layers conf
 
-let start do_persist debug ramen_url version_tag node_dir port cert_opt
-          key_opt () =
-  logger := make_logger debug ;
-  let conf = C.make_conf do_persist ramen_url debug version_tag node_dir in
+let start do_persist debug to_stderr ramen_url version_tag persist_dir port
+          cert_opt key_opt () =
+  let logdir = if to_stderr then None else Some (persist_dir ^"/log") in
+  Option.may Helpers.mkdir_all logdir ;
+  logger := make_logger ?logdir debug ;
+  let conf = C.make_conf do_persist ramen_url debug version_tag persist_dir in
   async (fun () -> timeout_layers conf) ;
   let router meth path _params headers body =
     (* The function called for each HTTP request: *)
