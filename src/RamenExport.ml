@@ -86,6 +86,7 @@ let archive_history history =
   clean_archives history
 
 let read_archive dir filenum : scalar_value array array option =
+  if filenum < 0 then None else
   let fname = dir ^"/"^ string_of_int filenum in
   !logger.debug "Reading history from %S" fname ;
   try Some (File.with_file_in fname Marshal.input)

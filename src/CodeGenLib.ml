@@ -312,26 +312,29 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
     IntCounter.add stats_out_tuple_count 1 ;
     let%lwt fnames = get_out_fnames () in
     Option.may (fun next ->
-      !logger.debug "Must now output to: %a"
+      (if Set.is_empty next then !logger.info else !logger.debug)
+        "Must now output to: %a"
         (Set.print String.print) next ;
       (* Change occurred, load/unload as required *)
       let current = Hashtbl.keys out_h |> Set.of_enum in
       let to_open = Set.diff next current
       and to_close = Set.diff current next in
       Set.iter (fun fname ->
+        !logger.info "Unmapping %S" fname ;
         let rb, _ = Hashtbl.find out_h fname in
         RingBuf.unload rb ;
         Hashtbl.remove out_h fname) to_close ;
       Set.iter (fun fname ->
+          !logger.info "Mapping %S" fname ;
           let rb = RingBuf.load fname in
           let once = output rb sersize_of_tuple serialize_tuple in
           (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
-           * case the ringbuf disappear altogether because the child is terminated
-           * then we won't deadloop (but see FIXME in retry_for_ringbuf).  Also,
-           * if one child is full then we will not write to next children until
-           * we can eventually write to this one. This is actually desired to
-           * have proper message ordering along the stream and avoid ending up
-           * with many threads retrying to write to the same child. *)
+           * case the ringbuf disappear altogether because the child is
+           * terminated then we won't deadloop.  Also, * if one child is full
+           * then we will not write to next children until we can eventually
+           * write to this one. This is actually desired to have proper message
+           * ordering along the stream and avoid ending up with many threads
+           * retrying to write to the same child. *)
           Hashtbl.add out_h fname (rb, RingBufLib.retry_for_ringbuf once)
         ) to_open ;
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum ;

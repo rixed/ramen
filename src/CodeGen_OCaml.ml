@@ -1075,7 +1075,7 @@ let emit_update_state name state_var other_state_vars state_lifespan
     | _ -> ()) ;
   Printf.fprintf oc "\t()\n"
 
-(* Note: we need group_ in addition to out_tupple because the commit-when clause
+(* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
 let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
               oc commit_when =

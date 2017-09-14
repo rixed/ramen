@@ -141,7 +141,8 @@ let display_tuple_as_is t =
 
 let display_tuple as_csv to_drop t =
   if as_csv then display_tuple_as_csv to_drop t
-  else display_tuple_as_is t
+  else display_tuple_as_is t ;
+  Printf.printf "%!"
 
 let ppp_of_string_exc ppp s =
   try PPP.of_string_exc ppp s |> return
