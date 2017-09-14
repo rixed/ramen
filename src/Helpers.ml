@@ -116,7 +116,7 @@ let http_service port cert_opt key_opt router =
       !logger.info "Starting https server on port %d" port ;
       Server.create ~on_exn ~mode:ssl_mode entry_point
     | None, None ->
-      return (!logger.info "Not starting https server")
+      return (!logger.debug "Not starting https server")
     | _ ->
       return (!logger.info "Missing some of SSL configuration")
   in

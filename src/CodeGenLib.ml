@@ -320,12 +320,12 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
       let to_open = Set.diff next current
       and to_close = Set.diff current next in
       Set.iter (fun fname ->
-        !logger.info "Unmapping %S" fname ;
+        !logger.debug "Unmapping %S" fname ;
         let rb, _ = Hashtbl.find out_h fname in
         RingBuf.unload rb ;
         Hashtbl.remove out_h fname) to_close ;
       Set.iter (fun fname ->
-          !logger.info "Mapping %S" fname ;
+          !logger.debug "Mapping %S" fname ;
           let rb = RingBuf.load fname in
           let once = output rb sersize_of_tuple serialize_tuple in
           (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
@@ -578,7 +578,7 @@ let aggregate
     | ForAll -> "every group at every tuple"
     | ForAllSelected -> "every group at every selected tuple"
     | ForAllInGroup -> "the group that's updated by a tuple" in
-   !logger.info "We will commit/flush for... %s" when_str) ;
+   !logger.debug "We will commit/flush for... %s" when_str) ;
 
   let outputer =
     let do_out =

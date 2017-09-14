@@ -157,7 +157,7 @@ let read_tuple tuple_type tx =
 let import_tuples rb_name node =
   let open Lwt in
   let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
-  !logger.info "Starting to import output from node %s (in ringbuf %S)"
+  !logger.debug "Starting to import output from node %s (in ringbuf %S)"
     (N.fq_name node) rb_name ;
   let rb = RingBuf.load rb_name in
   catch
