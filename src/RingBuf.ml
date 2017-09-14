@@ -8,10 +8,16 @@ let create fname =
   Helpers.mkdir_all ~is_file:true fname ;
   create_ fname
 
+type stats = {
+  capacity : int ; (* in words *)
+  nb_entries : int ; (* in words *)
+  mem_size : int ; (* the number of bytes that were mapped *)
+  prod_head : int ;
+  cons_head : int }
+
 external load : string -> t = "wrap_ringbuf_load"
 external unload : t -> unit = "wrap_ringbuf_unload"
-external capacity : t -> int = "wrap_capacity"
-external nb_entries : t -> int = "wrap_nb_entries"
+external stats : t -> stats = "wrap_ringbuf_stats"
 external enqueue_alloc : t -> int -> tx = "wrap_ringbuf_enqueue_alloc"
 external enqueue_commit : tx -> unit = "wrap_ringbuf_enqueue_commit"
 external enqueue : t -> bytes -> int -> unit = "wrap_ringbuf_enqueue"

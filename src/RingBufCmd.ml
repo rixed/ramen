@@ -23,5 +23,9 @@ let summary debug file () =
   logger := make_logger debug ;
   let open RingBuf in
   let rb = load file in
-  Printf.printf "%s: %d/%d words used\n"
-    file (nb_entries rb) (capacity rb)
+  let s = stats rb in
+  Printf.printf "%s:\n\
+                 %d/%d words used\n\
+                 mmapped bytes: %d\n\
+                 prod/cons heads: %d/%d\n"
+    file s.nb_entries s.capacity s.mem_size s.prod_head s.cons_head

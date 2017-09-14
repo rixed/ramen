@@ -125,21 +125,18 @@ CAMLprim value wrap_ringbuf_unload(value rb_)
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value wrap_capacity(value rb_)
+CAMLprim value wrap_ringbuf_stats(value rb_)
 {
   CAMLparam1(rb_);
   struct ringbuf *rb = Ringbuf_val(rb_);
   CAMLlocal1(ret);
-  ret = Val_long(rb->nb_words);
-  CAMLreturn(ret);
-}
-
-CAMLprim value wrap_nb_entries(value rb_)
-{
-  CAMLparam1(rb_);
-  struct ringbuf *rb = Ringbuf_val(rb_);
-  CAMLlocal1(ret);
-  ret = Val_long(ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head));
+  // See type stats in RingBuf.ml
+  ret = caml_alloc_tuple(5);
+  Field(ret, 0) = Val_long(rb->nb_words);
+  Field(ret, 1) = Val_long(ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head));
+  Field(ret, 2) = Val_long(rb->mmapped_size);
+  Field(ret, 3) = Val_long(rb->prod_head);
+  Field(ret, 4) = Val_long(rb->cons_head);
   CAMLreturn(ret);
 }
 
