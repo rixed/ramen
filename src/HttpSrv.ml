@@ -121,16 +121,16 @@ let node_info_of_node node =
       operation = node.N.op_text ;
       parents = List.map (fun n -> n.N.name) node.N.parents } ;
       type_of_operation = Some (type_of_operation node.N.operation) ;
-    signature = if node.N.signature = "" then None else Some node.N.signature ;
-    pid = node.N.pid ;
-    input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
-    output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
-    in_tuple_count = find_int_metric node.N.last_report Consts.in_tuple_count_metric ;
-    selected_tuple_count = find_int_metric node.N.last_report Consts.selected_tuple_count_metric ;
-    out_tuple_count = find_int_metric node.N.last_report Consts.out_tuple_count_metric ;
-    group_count = find_int_opt_metric node.N.last_report Consts.group_count_metric ;
-    cpu_time = find_float_metric node.N.last_report Consts.cpu_time_metric ;
-    ram_usage = find_int_metric node.N.last_report Consts.ram_usage_metric }
+      signature = if node.N.signature = "" then None else Some node.N.signature ;
+      pid = node.N.pid ;
+      input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
+      output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
+      in_tuple_count = find_int_metric node.N.last_report Consts.in_tuple_count_metric ;
+      selected_tuple_count = find_int_metric node.N.last_report Consts.selected_tuple_count_metric ;
+      out_tuple_count = find_int_metric node.N.last_report Consts.out_tuple_count_metric ;
+      group_count = find_int_opt_metric node.N.last_report Consts.group_count_metric ;
+      cpu_time = find_float_metric node.N.last_report Consts.cpu_time_metric ;
+      ram_usage = find_int_metric node.N.last_report Consts.ram_usage_metric }
 
 let layer_info_of_layer layer =
   SL.{
@@ -810,7 +810,7 @@ let rec timeout_layers conf =
 let start do_persist debug to_stderr ramen_url version_tag persist_dir port
           cert_opt key_opt () =
   let logdir = if to_stderr then None else Some (persist_dir ^"/log") in
-  Option.may Helpers.mkdir_all logdir ;
+  Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
   let conf = C.make_conf do_persist ramen_url debug version_tag persist_dir in
   async (fun () -> timeout_layers conf) ;

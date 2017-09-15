@@ -31,7 +31,7 @@ let make_logger ?logdir ?(prefix="") dbg =
       | Some logdir ->
         let fname' =
           Printf.sprintf "%04d-%02d-%02d"
-            (tm.tm_year+1900) (tm.tm_mon+1) (tm.tm_mday) in
+            (tm.tm_year+1900) (tm.tm_mon+1) tm.tm_mday in
         if fname' <> !fname then (
           fname := fname' ;
           Option.may IO.close_out !fd ;
