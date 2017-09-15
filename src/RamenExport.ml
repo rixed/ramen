@@ -177,6 +177,8 @@ let import_tuples rb_name node =
       return_unit
             | e -> fail e)
 
+let since_of filenum idx =
+  filenum * C.max_history_block_length + idx
 let fold_tuples ?min_filenum ?max_filenum ?since
                 ?(max_res=100*C.history_block_length) node init f =
   let history = Option.get node.N.history in
@@ -222,7 +224,28 @@ let fold_tuples ?min_filenum ?max_filenum ?since
   let filenum, idx, x =
     loop_file has_gap min_filenum first_idx 0 init in
   assert (idx < C.max_history_block_length) ;
-  filenum * C.max_history_block_length + idx, x
+  since_of filenum idx, x
+
+let since_of_last_tuples n node =
+  assert (n > 0) ;
+  let history = Option.get node.N.history in
+  let filenum, idx =
+    if history.C.count >= n then
+      (history.C.max_filenum + 1), (history.C.count - n)
+    else
+      let rec loop prev filenum n =
+        assert (n > 0) ;
+        match read_archive history.C.dir filenum with
+        | Some arc ->
+          if Array.length arc >= n then
+            filenum, Array.length arc - n
+          else
+            loop (filenum, 0) (filenum - 1) (n - Array.length arc)
+        | None -> (* Cannot go back earlier *)
+          prev in
+      loop (history.C.max_filenum + 1, 0) history.C.max_filenum (n - history.C.count)
+  in
+  since_of filenum idx
 
 let scalar_column_init typ len f =
   match typ with

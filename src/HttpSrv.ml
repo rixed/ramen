@@ -61,14 +61,14 @@ let of_json headers what ppp body =
   )
 
 let ok_body = "{\"success\": true}"
-let respond_ok ?(body=ok_body) () =
+let respond_ok ?(body=ok_body) ?(ct=Consts.json_content_type) () =
   let status = `Code 200 in
-  let headers = Header.init_with "Content-Type" Consts.json_content_type in
+  let headers = Header.init_with "Content-Type" ct in
   let headers = Header.add headers "Access-Control-Allow-Origin" "*" in
   let body = body ^"\n" in
   Server.respond_string ~status ~headers ~body ()
 
-let type_of_operation_of =
+let type_of_operation =
   let open Lang.Operation in
   function
   | Yield _ -> "YIELD"
@@ -120,7 +120,7 @@ let node_info_of_node node =
       name = node.N.name ;
       operation = node.N.op_text ;
       parents = List.map (fun n -> n.N.name) node.N.parents } ;
-    type_of_operation = Some (type_of_operation_of node.N.operation) ;
+      type_of_operation = Some (type_of_operation node.N.operation) ;
     signature = if node.N.signature = "" then None else Some node.N.signature ;
     pid = node.N.pid ;
     input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
@@ -518,6 +518,289 @@ let timeseries conf headers body =
       respond_ok ~body ())
     (function Failure err -> bad_request err | e -> fail e)
 
+(* Top query: display a page with details of operation *)
+
+let hostname =
+  try Sys.getenv "HOST"
+  with Not_found -> "unknown host"
+
+let get_top conf headers params =
+  let enc = Uri.pct_encode in
+  let style = {|
+  <style media="screen" type="text/css">
+    body { margin:0; height: 100%; }
+    #global, #top, #operation, #tail, #footer, .subitem {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      overflow: auto; }
+    body, #layers, #nodes, .subtree {
+      display: flex;
+      flex-direction: column;
+      flex-wrap: nowrap;
+      overflow: auto; }
+
+    .subtree { }
+    .subitem {
+      padding-left: 20px;
+      background-image:
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='32'><line x1='6' y1='10' x2='18' y2='10' stroke-width='2' stroke='black'/><circle cx='6' cy='10' r='5' fill='white' stroke='black' stroke-width='2'/></svg>"),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='32'><line x1='6' y1='0' x2='6' y2='32' stroke-width='2' stroke='black'/></svg>");
+      background-repeat: no-repeat, repeat-y; }
+    .subitem:last-child {
+        background:
+          url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='32'><line x1='6' y1='0' x2='6' y2='10' stroke-width='2' stroke='black'/><line x1='6' y1='10' x2='18' y2='10' stroke-width='2' stroke='black'/><circle cx='6' cy='10' r='5' fill='white' stroke='black' stroke-width='2'/></svg>")
+        no-repeat; }
+
+    table { border-collapse: collapse; border-spacing: 10; }
+    td, th { padding: 0 1em 0 1em; }
+    span.null { font-style: italic; color: #888; font-size: 80% }
+    #global { height: 3em; width: 100%; }
+    #top { width: 100%; flex-grow: 1; }
+      #layers { padding-right: 1em; max-height: 80% }
+        #layers div { display: flex; flex-direction: column; }
+        #layers div p.name { display: flex; flex-direction: row; justify-content: space-between; }
+        #layers .name, #layers .info, #layers .info p { margin: 0px; }
+        #layers .info .label { margin-right: 0.2em;
+                              font-size: 80%; color: #222; font-weight: 700; }
+        #layers .info .value { margin-right: 1em; font-size: 85%; color: }
+      #nodes { max-height: 80% ; flex-grow: 1; }
+        #nodes tbody td:first-child a { display: flex; flex-direction: row; justify-content: space-between; }
+      #top .selected { background-color: #ddd; }
+      #top a { display: block; width: 100%; text-decoration: none; }
+    #tail { flex-grow: 0.2; width: 100%; }
+      #tail th p { margin: 0px; }
+      #tail th p.type { font-size: 60%; font-style: italic; }
+    #operation { flex-grow: 0.2; width: 100%; max-height: 80%; }
+    #footer { height: 1em; width: 100%; }
+
+    td.number, td.FLOAT, td.U8, td.U16, td.U32, td.U64, td.U128, td.I8,
+    td.I16, td.I32, td.I64, td.I128 { text-align: right; font-family: mono; }
+
+    span.icon { }
+  </style>
+|} in
+  let snode =
+    try Some (Hashtbl.find params "snode")
+    with Not_found -> None in
+  let scol = Hashtbl.find_default params "scol" "1" in
+  let href ?(snode=snode) ?(scol=scol) () =
+    "?"^ (match snode with None -> "" | Some s -> "&snode="^ enc s)
+       ^ "&scol="^ enc scol in
+  let%lwt sel_node =
+    match snode with
+    | None -> return None
+    | Some node_name ->
+      let%lwt sel_layer_name, sel_node_name =
+        layer_node_of_user_string conf node_name in
+      let%lwt _sel_layer, sel_node =
+        node_of_name conf sel_layer_name sel_node_name in
+      return (Some sel_node) in
+  let tagged tag ?(attr=[]) x =
+    let attr =
+      IO.to_string (
+        List.print ~first:"" ~last:"" ~sep:" "
+          (fun oc (t,v) -> Printf.fprintf oc "%s=%S" t v)) attr in
+    let attr = if attr = "" then "" else " "^attr in
+    "<"^ tag ^ attr ^">"^ x ^"</"^ tag ^">" in
+  let td = tagged "td" and th = tagged "th" in
+  let str_of_float f =
+    let s = Printf.sprintf "%.3f" f in
+    let i = ref (String.length s - 1) in
+    while !i > 0 && s.[!i] = '0' do s.[!i] <- '_' ; decr i done ;
+    if !i > 0 && s.[!i] = '.' then s.[!i] <- '_' ;
+    String.nreplace ~str:s ~sub:"_" ~by:"&nbsp;" in
+  let thi = th % string_of_int and thf = th % str_of_float in
+  let dispname_of_layer layer_name layer =
+    let icon_of_layer_status = function
+    | Layer.Edition -> "&#x270E;"
+    | Layer.Compiling -> "&#x2610;"
+    | Layer.Compiled -> "&#x2611;"
+    | Layer.Running -> "&#9881;" in
+    (if layer_name = "" then tagged "i" "(anonymous)" else layer_name) ^
+    tagged "span" ~attr:["class","icon"] (icon_of_layer_status layer.L.persist.L.status) in
+  let dispname_of_type nullable scalar_typ =
+    Lang.Scalar.string_of_typ scalar_typ ^
+    (if nullable then " (or null)" else "") in
+  let header_panel =
+    tagged "p" ("Ramen v0.1 running on "^ tagged "em" hostname ^".") in
+  let labbeled_value l v =
+    tagged "p" (
+      tagged "span" ~attr:["class","label"] (l^":") ^
+      tagged "span" ~attr:["class","value"] v) in
+  let short_month = function
+    | 0 -> "Jan" | 1 -> "Fev" | 2 -> "Mar" | 3 -> "Apr" | 4 -> "May"
+    | 5 -> "Jun" | 6 -> "Jul" | 7 -> "Aug" | 8 -> "Sep" | 9 -> "Oct"
+    | 10 -> "Nov" | 11 -> "Dec" | _ -> "?!?" in
+  let date_of_ts = function
+    | Some ts ->
+      let open Unix in
+      let tm = localtime ts in
+      Printf.sprintf "%d&nbsp;%s at %02dh%02d"
+        tm.tm_mday (short_month tm.tm_mon) tm.tm_hour tm.tm_min
+    | None -> "never" in
+  let print_scalar_value oc = function
+    | VFloat f ->
+      String.print oc (str_of_float f)
+    | VNull ->
+      String.print oc (tagged "span" ~attr:["class","null"] "NULL")
+    | x -> Lang.Scalar.print oc x in
+  let layers_panel =
+    IO.to_string
+      (Enum.print ~first:"" ~last:"" ~sep:""
+        (fun oc (layer_name, layer) ->
+          let attr =
+            match sel_node with
+            | Some n when n.N.layer = layer_name -> ["class","selected"]
+            | _ -> [] in
+          String.print oc (
+            tagged "div" ~attr (
+              tagged "p" ~attr:["class","name"] (dispname_of_layer layer_name layer) ^
+              tagged "div" ~attr:["class","info"] (
+                labbeled_value "#nodes" (string_of_int (Hashtbl.length layer.L.persist.L.nodes)) ^
+                labbeled_value "started" (date_of_ts layer.L.persist.L.last_started) ^
+                labbeled_value "stopped" (date_of_ts layer.L.persist.L.last_stopped))))))
+      (Hashtbl.enum conf.C.graph.C.layers) in
+  let top_sorter col n1 n2 =
+    (* Numbers are sorted greater to smaller while strings are sorted
+     * in ascending order: *)
+    match col with
+    | "2" -> String.compare (type_of_operation n1.N.operation)
+                            (type_of_operation n2.N.operation)
+    | "3" -> Int.compare (find_int_metric n2.N.last_report Consts.in_tuple_count_metric)
+                         (find_int_metric n1.N.last_report Consts.in_tuple_count_metric)
+    | "4" -> Int.compare (find_int_metric n2.N.last_report Consts.selected_tuple_count_metric)
+                         (find_int_metric n1.N.last_report Consts.selected_tuple_count_metric)
+    | "5" -> Int.compare (find_int_metric n2.N.last_report Consts.out_tuple_count_metric)
+                         (find_int_metric n1.N.last_report Consts.out_tuple_count_metric)
+    | "9" -> Float.compare (find_float_metric n2.N.last_report Consts.cpu_time_metric)
+                           (find_float_metric n1.N.last_report Consts.cpu_time_metric)
+    | "10" -> Int.compare (find_int_metric n2.N.last_report Consts.ram_usage_metric)
+                          (find_int_metric n1.N.last_report Consts.ram_usage_metric)
+    | _ ->
+      match String.icompare n1.N.layer n2.N.layer with
+      | 0 -> String.icompare n1.N.name n2.N.name
+      | x -> x in
+  let nodes =
+    C.fold_nodes conf [] (fun prev node -> node :: prev) |>
+    List.sort (top_sorter scol) in
+  let node_columns = [ "layer", true; "name", true; "op", true; "in", true;
+                       "selected", true; "out", true; "groups", false;
+                       "parents", false; "children", false; "CPU", true;
+                       "RAM", true; "PID", false; "signature", false;
+                       "export", false ] in
+  let nodes_head =
+    tagged "thead" (tagged "tr" (String.concat "" (
+      List.mapi (fun i (col, sortable) ->
+        if sortable then
+          let attr = ["href", href ~scol:(string_of_int i) ()] in
+          tagged "th" (tagged "a" ~attr col)
+        else
+          tagged "th" col) node_columns))) in
+  let layers = ref Set.empty and tot_nodes = ref 0 and tot_ins = ref 0
+  and tot_sels = ref 0 and tot_outs = ref 0 and tot_groups = ref 0
+  and tot_cpu = ref 0. and tot_ram = ref 0 in
+  let nodes_body =
+    let tr_of_node node =
+      let layer = Hashtbl.find conf.C.graph.C.layers node.N.layer in
+      let ta x =
+        (* Makes the box clickable even if empty (chrome): *)
+        let x = if x <> "" then x else "&nbsp;" in
+        tagged "a" ~attr:["href", href ~snode:(Some (N.fq_name node)) ()] x in
+      let td = td % ta
+      and tdi = td ~attr:["class", "number"] % ta % string_of_int
+      and tdf = td ~attr:["class", "number"] % ta % str_of_float in
+      let groups =
+        match find_int_opt_metric node.N.last_report Consts.group_count_metric with
+        | None -> td "n.a"
+        | Some x -> tot_groups := !tot_groups + x ; tdi x in
+      let pid =
+        match node.N.pid with None -> td "n.a" | Some p -> tdi p in
+      let ins = find_int_metric node.N.last_report Consts.in_tuple_count_metric
+      and sels = find_int_metric node.N.last_report Consts.selected_tuple_count_metric
+      and outs = find_int_metric node.N.last_report Consts.out_tuple_count_metric
+      and cpu = find_float_metric node.N.last_report Consts.cpu_time_metric
+      and ram = find_int_metric node.N.last_report Consts.ram_usage_metric in
+      layers := Set.add node.N.layer !layers ;
+      incr tot_nodes ;
+      tot_ins := !tot_ins + ins ;
+      tot_sels := !tot_sels + sels ;
+      tot_outs := !tot_outs + outs ;
+      tot_cpu := !tot_cpu +. cpu ;
+      let short_node_list ?(max_len=20) lst =
+        abbrev max_len (List.fold_left (fun s n ->
+            if String.length s > max_len then s else
+            s ^ (if s <> "" then ", " else "")
+              ^ (if n.N.layer = node.N.layer then n.N.name else N.fq_name n)
+          ) "" lst) in
+      let attr =
+        match sel_node with Some n when n == node -> ["class","selected"]
+                          | _ -> [] in
+      tagged "tr" ~attr (
+        td (dispname_of_layer node.N.layer layer) ^ td node.N.name ^
+        td (type_of_operation node.N.operation) ^
+        tdi ins ^ tdi sels ^ tdi outs ^ groups ^
+        td (short_node_list node.N.parents) ^
+        td (short_node_list node.N.children) ^
+        tdf cpu ^ tdi ram ^ pid ^ td node.N.signature ^
+        td (if Lang.Operation.is_exporting node.N.operation then "&#x2713;" else "&nbsp;")) in
+    tagged "tbody" (String.concat "" (List.map tr_of_node nodes)) in
+  let nodes_foot =
+    tagged "tfoot" (tagged "tr" (
+      thi (Set.cardinal !layers) ^ thi !tot_nodes ^ th "" ^ thi !tot_ins ^
+      thi !tot_sels ^ thi !tot_outs ^ thi !tot_groups ^ th "" ^ th "" ^
+      thf !tot_cpu ^ thi !tot_ram ^ th "" ^ th "" ^ th "")) in
+  let nodes_panel = tagged "table" (nodes_head ^ nodes_body ^ nodes_foot) in
+  let op_panel, tail_panel =
+    match sel_node with
+    | None ->
+      tagged "p" "Select a node to see the operation it performs",
+      tagged "p" "Select a node to see its output"
+    | Some node ->
+      tagged "pre" node.N.op_text,
+      if Lang.Operation.is_exporting node.N.operation then
+        let _, values =
+          let max_res = 8 in
+          let since = RamenExport.since_of_last_tuples max_res node in
+          RamenExport.fold_tuples ~max_res ~since node [] (fun _ tup prev ->
+            List.cons tup prev) in
+        let out_tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
+        let class_name_of_value v = scalar_type_of v |> Lang.Scalar.string_of_typ in
+        tagged "table" (
+          tagged "thead" (
+            IO.to_string
+              (List.print ~first:"<tr>" ~last:"</tr>" ~sep:""
+                (fun oc ft ->
+                  let col_label =
+                    tagged "p" ft.typ_name ^
+                    tagged "p" ~attr:["class","type"]
+                      (dispname_of_type ft.nullable ft.typ) in
+                  String.print oc (tagged "th" col_label)))
+              out_tuple_type) ^
+          tagged "tbody" (
+          IO.to_string (
+            List.print ~first:"" ~last:"" ~sep:"\n"
+              (Array.print ~first:"<tr>" ~last:"</tr>" ~sep:""
+                 (fun oc v ->
+                    Printf.fprintf oc "<td class=%S>%a</td>"
+                      (class_name_of_value v)
+                      print_scalar_value v))) values))
+      else
+        tagged "p" ("node "^ N.fq_name node ^" does not export data") in
+  let page =
+    tagged "html" (
+      tagged "head" style ^ tagged "body" ({|
+        <div id="global">|} ^ header_panel ^ {|</div>
+        <div id="top">
+            <div id="layers">|} ^ layers_panel ^ {|</div>
+            <div id="nodes">|} ^ nodes_panel ^ {|</div>
+        </div>
+        <div id="operation">|} ^ op_panel ^ {|</div>
+        <div id="tail">|} ^ tail_panel ^ {|</div>
+        <div id="footer">...to be continued...</div>|})) in
+  check_accept headers Consts.html_content_type (fun () ->
+    respond_ok ~body:page ~ct:Consts.html_content_type ())
+
 (* A thread that hunt for unused layers *)
 let rec timeout_layers conf =
   let%lwt () = wrap (fun () -> RamenProcesses.timeout_layers conf) in
@@ -531,7 +814,7 @@ let start do_persist debug to_stderr ramen_url version_tag persist_dir port
   logger := make_logger ?logdir debug ;
   let conf = C.make_conf do_persist ramen_url debug version_tag persist_dir in
   async (fun () -> timeout_layers conf) ;
-  let router meth path _params headers body =
+  let router meth path params headers body =
     (* The function called for each HTTP request: *)
       match meth, path with
       (* API *)
@@ -565,6 +848,8 @@ let start do_persist debug to_stderr ramen_url version_tag persist_dir port
         let headers = Header.add headers "Access-Control-Allow-Methods" "POST" in
         let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
         Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
+      (* Top *)
+      | `GET, ["top"|"index.html"] -> get_top conf headers params
       (* Errors *)
       | `PUT, _ | `GET, _ | `DELETE, _ ->
         fail (HttpError (404, "No such resource"))

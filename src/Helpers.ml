@@ -59,6 +59,7 @@ let http_service port cert_opt key_opt router =
   let open Lwt in
   let open Cohttp in
   let open Cohttp_lwt_unix in
+  let dec = Uri.pct_decode in
   let callback _conn req body =
     let path = Uri.path (Request.uri req) in
     !logger.debug "Requested path: %S" path ;
@@ -72,7 +73,7 @@ let http_service port cert_opt key_opt router =
       if String.ends_with path "/" then String.rchop path else path in
     let path =
       String.nsplit path "/" |>
-      List.map Uri.pct_decode in
+      List.map dec in
     let params = Hashtbl.create 7 in
     (match String.split ~by:"?" req.Request.resource with
     | exception Not_found -> ()
@@ -81,7 +82,7 @@ let http_service port cert_opt key_opt router =
       List.iter (fun p ->
         match String.split ~by:"=" p with
         | exception Not_found -> ()
-        | pn, pv -> Hashtbl.add params pn pv)) ;
+        | pn, pv -> Hashtbl.add params (dec pn) (dec pv))) ;
     let headers = Request.headers req in
     let%lwt body = Cohttp_lwt_body.to_string body
     in
@@ -228,3 +229,8 @@ let strings_of_csv separator line =
   [ "glop" ; "glop" ] (strings_of_csv " " "glop glop")
   [ "John" ; "+500" ] (strings_of_csv "," "\"John\",+500")
  *)
+
+let abbrev len s =
+  assert (len >= 3) ;
+  if String.length s <= len then s else
+  String.sub s 0 (len-3) ^"..."
