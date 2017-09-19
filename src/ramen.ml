@@ -191,6 +191,21 @@ let tail =
     info "tail")
 
 (*
+ * Collectd decoding test
+ *)
+
+let port =
+  let i = Arg.info ~doc:"Port where to listen to collectd events"
+                   [ "port" ] in
+  Arg.(value (opt int 25826 i))
+
+let test_collectd =
+  Term.(
+    (const RamenCollectd.test
+      $ port),
+    info "collectd")
+
+(*
  * Command line evaluation
  *)
 
@@ -204,7 +219,7 @@ let () =
     server_start ;
     dequeue ; summary ;
     add ; compile ; run ; shutdown ;
-    tail
+    tail ; test_collectd ;
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42
        | `Ok f -> f ()
