@@ -35,18 +35,23 @@ let is_accepting content_type accept =
 
 (* When the client cannot accept the response *)
 let cant_accept accept =
-  let status = Code.status_of_code 406 in
-  let body =
+  let msg =
     Printf.sprintf "{\"error\": \"Can't produce any of %s\"}\n"
       (IO.to_string (List.print ~first:"" ~last:"" ~sep:", " String.print)
                     accept) in
-  Server.respond_error ~status ~body ()
+  fail (HttpError (406, msg))
 
-let check_accept headers content_type f =
+let check_accept headers content_type =
   let accept = get_accept headers in
   if not (is_accepting content_type accept) then
     cant_accept accept
-  else f ()
+  else return_unit
+
+let switch_accepted headers al =
+  let accept = get_accept headers in
+  match List.find (fun (ct, _) -> is_accepting ct accept) al with
+  | exception Not_found -> cant_accept accept
+  | _, k -> k ()
 
 (* Helper to deserialize an incoming json *)
 let of_json headers what ppp body =
@@ -289,239 +294,8 @@ let put_layer conf headers body =
   (* TODO: why wait before compiling this layer? *)
 
 (*
-    Whole graph operations: compile/run/stop
+    Top query: display a page with details of operation
 *)
-
-let compile conf headers layer_opt =
-  check_accept headers Consts.json_content_type (fun () ->
-    let%lwt layers = graph_layers conf layer_opt in
-    catch
-      (fun () ->
-        let rec loop left_try layers =
-          !logger.debug "%d layers left to compile..." (List.length layers) ;
-          if layers = [] then respond_ok () else
-          if left_try < 0 then bad_request "Unsolvable dependency loop" else
-          Lwt_list.fold_left_s (fun failed layer ->
-              let open Compiler in
-              catch
-                (fun () -> let%lwt () = compile conf layer in
-                           return failed)
-                (function AlreadyCompiled -> return failed
-                        | MissingDependency n ->
-                          !logger.debug "We miss node %s" (N.fq_name n) ;
-                          return (layer::failed)
-                        | e -> fail e)
-            ) [] layers >>=
-          loop (left_try-1)
-        in
-        loop (List.length layers) layers)
-      (function Lang.SyntaxError e | C.InvalidCommand e -> bad_request e
-              | e -> fail e))
-
-let run conf headers layer_opt =
-  check_accept headers Consts.json_content_type (fun () ->
-    let%lwt layers = graph_layers conf layer_opt in
-    let layers = L.order layers in
-    try
-      List.iter (fun layer ->
-          let open RamenProcesses in
-          try run conf layer with AlreadyRunning -> ()
-        ) layers ;
-      respond_ok ()
-    with (Lang.SyntaxError e | C.InvalidCommand e) ->
-      bad_request e)
-
-let stop conf headers layer_opt =
-  check_accept headers Consts.json_content_type (fun () ->
-    let%lwt layers = graph_layers conf layer_opt in
-    try
-      List.iter (fun layer ->
-          let open RamenProcesses in
-          try stop conf layer with NotRunning -> ()
-        ) layers ;
-      respond_ok ()
-    with C.InvalidCommand e -> bad_request e)
-
-(*
-    Exporting tuples
-
-    Clients can request to be sent the tuples from an exporting node.
-*)
-
-let export conf headers layer_name node_name body =
-  check_accept headers Consts.json_content_type (fun () ->
-    let%lwt req =
-      if body = "" then return empty_export_req else
-      of_json headers ("Exporting from "^ node_name) export_req_ppp body in
-    (* Check that the node exists and exports *)
-    let%lwt layer, node = find_node_or_fail conf layer_name node_name in
-    if not (L.is_typed layer) then
-      bad_request ("node "^ node_name ^" is not typed (yet)")
-    else if not (Lang.Operation.is_exporting node.N.operation) then
-      bad_request ("node "^ node_name ^" does not export data")
-    else (
-      let start = Unix.gettimeofday () in
-      let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
-      let rec loop () =
-        let first, values =
-          RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
-                                  node [] (fun _ tup prev -> List.cons tup prev) in
-        let dt = Unix.gettimeofday () -. start in
-        if values = [] && dt < (req.wait_up_to |? 0.) then (
-          (* TODO: sleep for dt, queue the wakener on this history,
-           * and wake all the sleeps when a tuple is received *)
-          Lwt_unix.sleep 0.1 >>= loop
-        ) else (
-          (* Store it in column to save variant types: *)
-          let resp =
-            { first ;
-              columns = RamenExport.columns_of_tuples tuple_type values |>
-                        List.map (fun (typ, nullmask, column) ->
-                          typ, Option.map RamenBitmask.to_bools nullmask, column) } in
-          let body = PPP.to_string export_resp_ppp resp in
-          respond_ok ~body ()
-        ) in
-      loop ()))
-
-(*
-    API for Workers: health and report
-*)
-
-let report conf _headers layer name body =
-  (* TODO: check application-type is marshaled.ocaml *)
-  let last_report = Marshal.from_string body 0 in
-  let%lwt _layer, node = find_node_or_fail conf layer name in
-  node.N.last_report <- last_report ;
-  respond_ok ()
-
-(*
-    Grafana Datasource: autocompletion of node/field names
-*)
-
-let complete_nodes conf headers body =
-  let%lwt msg = of_json headers "Complete tables" complete_node_req_ppp body in
-  let body =
-    C.complete_node_name conf msg.node_prefix |>
-    PPP.to_string complete_resp_ppp
-  in
-  respond_ok ~body ()
-
-let complete_fields conf headers body =
-  let%lwt msg = of_json headers "Complete fields" complete_field_req_ppp body in
-  let body =
-    C.complete_field_name conf msg.node msg.field_prefix |>
-    PPP.to_string complete_resp_ppp
-  in
-  respond_ok ~body ()
-
-(*
-    Grafana Datasource: data queries
-*)
-
-let timeseries conf headers body =
-  let open Lang.Operation in
-  let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
-  let ts_of_node_field req layer node data_field =
-    let%lwt _layer, node = find_node_or_fail conf layer node in
-    if not (is_exporting node.N.operation) then
-      fail_with ("node "^ node.N.name ^" does not export data")
-    else match export_event_info node.N.operation with
-    | None ->
-      fail_with ("node "^ node.N.name ^" does not specify event time info")
-    | Some ((start_field, start_scale), duration_info) ->
-      let open RamenExport in
-      let consolidation =
-        match String.lowercase req.consolidation with
-        | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
-      wrap (fun () ->
-        build_timeseries
-          node start_field start_scale data_field duration_info
-          msg.max_data_points msg.from msg.to_ consolidation)
-  and create_temporary_node select_x select_y from where =
-    (* First, we need to find out the name for this operation, and create it if
-     * it does not exist yet. Name must be given by the operation and parent, so
-     * that we do not create new nodes when not required (avoiding a costly
-     * compilation and losing export history). This is not equivalent to the
-     * signature: the signature identifies operation and types (aka the binary)
-     * but not the data (since the same worker can be placed at several places
-     * in the graph); while here we want to identify the data, that depends on
-     * everything the user sent (aka operation text and parent name) but for the
-     * formatting. We thus start by parsing and pretty-printing the operation: *)
-    let%lwt parent_layer, parent_name =
-      layer_node_of_user_string conf from in
-    let%lwt _layer, parent = node_of_name conf parent_layer parent_name in
-    let%lwt op_text =
-      if select_x = "" then (
-        let open Lang.Operation in
-        match parent.N.operation with
-        | Aggregate { export = Some (Some ((start, scale), DurationConst dur)) ; _ } ->
-          Printf.sprintf
-            "SELECT %s, %s AS data \
-             EXPORT EVENT STARTING AT %s * %g WITH DURATION %g"
-            start select_y
-            start scale dur |> return
-        | Aggregate { export = Some (Some ((start, scale), DurationField (dur, scale2))) ; _ } ->
-          Printf.sprintf
-            "SELECT %s, %s AS data \
-             EXPORT EVENT STARTING AT %s * %g WITH DURATION %s * %g"
-            start select_y
-            start scale dur scale2 |> return
-        | Aggregate { export = Some (Some ((start, scale), StopField (stop, scale2))) ; _ } ->
-          Printf.sprintf
-            "SELECT %s, %s, %s AS data \
-             EXPORT EVENT STARTING AT %s * %g AND STOPPING AT %s * %g"
-            start stop select_y
-            start scale stop scale2 |> return
-        | _ ->
-          fail_with "This parent does not provide time information"
-      ) else return (
-        "SELECT "^ select_x ^" AS time, "
-                 ^ select_y ^" AS data \
-         EXPORT EVENT STARTING AT time") in
-    let op_text =
-      if where = "" then op_text else op_text ^" WHERE "^ where in
-    let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
-    let reformatted_op = IO.to_string Lang.Operation.print operation in
-    let layer_name =
-      "temp/from_"^ from ^"_"^ Cryptohash_md4.(string reformatted_op |> to_hex)
-    and node_name = "operation" in
-    (* So far so good. In all likelihood this layer exists already: *)
-    (if Hashtbl.mem conf.C.graph.C.layers layer_name then (
-      !logger.debug "Layer %S already there" layer_name ;
-      return_unit
-    ) else (
-      (* Add this layer to the running configuration: *)
-      let layer =
-        C.add_parsed_node ~timeout:300.
-          conf node_name layer_name op_text operation in
-      let node = Hashtbl.find layer.L.persist.L.nodes node_name in
-      let%lwt () = wrap (fun () -> C.add_link conf parent node) in
-      let%lwt () = Compiler.compile conf layer in
-      wrap (fun () -> RamenProcesses.run conf layer)
-    )) >>= fun () ->
-    return (layer_name, node_name, "data")
-  in
-  catch
-    (fun () ->
-      let%lwt resp = Lwt_list.map_s (fun req ->
-          let%lwt layer_name, node_name, data_field =
-            match req.spec with
-            | Predefined { node ; data_field } ->
-              let%lwt layer, node = layer_node_of_user_string conf node in
-              return (layer, node, data_field)
-            | NewTempNode { select_x ; select_y ; from ; where } ->
-              create_temporary_node select_x select_y from where in
-          let%lwt _layer, node = find_node_or_fail conf layer_name node_name in
-          RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
-          let%lwt times, values =
-            ts_of_node_field req layer_name node_name data_field in
-          return { id = req.id ; times ; values }
-        ) msg.timeseries in
-      let body = PPP.to_string timeseries_resp_ppp resp in
-      respond_ok ~body ())
-    (function Failure err -> bad_request err | e -> fail e)
-
-(* Top query: display a page with details of operation *)
 
 let hostname =
   let cached = ref "" in
@@ -868,6 +642,242 @@ let top conf headers params =
         <div id="tail"><h1>Output</h1>|} ^ tail_panel ^ {|</div>|})) in
   respond_ok ~body:page ~ct:Consts.html_content_type ()
 
+(*
+    Whole graph operations: compile/run/stop
+*)
+
+let compile conf headers layer_opt params =
+  let%lwt layers = graph_layers conf layer_opt in
+  catch
+    (fun () ->
+      let rec loop left_try layers =
+        !logger.debug "%d layers left to compile..." (List.length layers) ;
+        if layers = [] then return_unit else
+        if left_try < 0 then bad_request "Unsolvable dependency loop" else
+        Lwt_list.fold_left_s (fun failed layer ->
+            let open Compiler in
+            catch
+              (fun () -> let%lwt () = compile conf layer in
+                         return failed)
+              (function AlreadyCompiled -> return failed
+                      | MissingDependency n ->
+                        !logger.debug "We miss node %s" (N.fq_name n) ;
+                        return (layer::failed)
+                      | e -> fail e)
+          ) [] layers >>=
+        loop (left_try-1)
+      in
+      let%lwt () = loop (List.length layers) layers in
+      switch_accepted headers [
+        Consts.json_content_type, (fun () -> respond_ok ()) ;
+        Consts.html_content_type, (fun () -> top conf headers params) ])
+    (function Lang.SyntaxError e | C.InvalidCommand e -> bad_request e
+            | e -> fail e)
+
+let run conf headers layer_opt params =
+  let%lwt layers = graph_layers conf layer_opt in
+  let layers = L.order layers in
+  try
+    List.iter (fun layer ->
+        let open RamenProcesses in
+        try run conf layer with AlreadyRunning -> ()
+      ) layers ;
+    switch_accepted headers [
+      Consts.json_content_type, (fun () -> respond_ok ()) ;
+      Consts.html_content_type, (fun () -> top conf headers params) ]
+  with (Lang.SyntaxError e | C.InvalidCommand e) ->
+    bad_request e
+
+let stop conf headers layer_opt params =
+  let%lwt layers = graph_layers conf layer_opt in
+  try
+    List.iter (fun layer ->
+        let open RamenProcesses in
+        try stop conf layer with NotRunning -> ()
+      ) layers ;
+    switch_accepted headers [
+      Consts.json_content_type, (fun () -> respond_ok ()) ;
+      Consts.html_content_type, (fun () -> top conf headers params) ]
+  with C.InvalidCommand e -> bad_request e
+
+(*
+    Exporting tuples
+
+    Clients can request to be sent the tuples from an exporting node.
+*)
+
+let export conf headers layer_name node_name body =
+  let%lwt () = check_accept headers Consts.json_content_type in
+  let%lwt req =
+    if body = "" then return empty_export_req else
+    of_json headers ("Exporting from "^ node_name) export_req_ppp body in
+  (* Check that the node exists and exports *)
+  let%lwt layer, node = find_node_or_fail conf layer_name node_name in
+  if not (L.is_typed layer) then
+    bad_request ("node "^ node_name ^" is not typed (yet)")
+  else if not (Lang.Operation.is_exporting node.N.operation) then
+    bad_request ("node "^ node_name ^" does not export data")
+  else (
+    let start = Unix.gettimeofday () in
+    let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
+    let rec loop () =
+      let first, values =
+        RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
+                                node [] (fun _ tup prev -> List.cons tup prev) in
+      let dt = Unix.gettimeofday () -. start in
+      if values = [] && dt < (req.wait_up_to |? 0.) then (
+        (* TODO: sleep for dt, queue the wakener on this history,
+         * and wake all the sleeps when a tuple is received *)
+        Lwt_unix.sleep 0.1 >>= loop
+      ) else (
+        (* Store it in column to save variant types: *)
+        let resp =
+          { first ;
+            columns = RamenExport.columns_of_tuples tuple_type values |>
+                      List.map (fun (typ, nullmask, column) ->
+                        typ, Option.map RamenBitmask.to_bools nullmask, column) } in
+        let body = PPP.to_string export_resp_ppp resp in
+        respond_ok ~body ()
+      ) in
+    loop ())
+
+(*
+    API for Workers: health and report
+*)
+
+let report conf _headers layer name body =
+  (* TODO: check application-type is marshaled.ocaml *)
+  let last_report = Marshal.from_string body 0 in
+  let%lwt _layer, node = find_node_or_fail conf layer name in
+  node.N.last_report <- last_report ;
+  respond_ok ()
+
+(*
+    Grafana Datasource: autocompletion of node/field names
+*)
+
+let complete_nodes conf headers body =
+  let%lwt msg = of_json headers "Complete tables" complete_node_req_ppp body in
+  let body =
+    C.complete_node_name conf msg.node_prefix |>
+    PPP.to_string complete_resp_ppp
+  in
+  respond_ok ~body ()
+
+let complete_fields conf headers body =
+  let%lwt msg = of_json headers "Complete fields" complete_field_req_ppp body in
+  let body =
+    C.complete_field_name conf msg.node msg.field_prefix |>
+    PPP.to_string complete_resp_ppp
+  in
+  respond_ok ~body ()
+
+(*
+    Grafana Datasource: data queries
+*)
+
+let timeseries conf headers body =
+  let open Lang.Operation in
+  let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
+  let ts_of_node_field req layer node data_field =
+    let%lwt _layer, node = find_node_or_fail conf layer node in
+    if not (is_exporting node.N.operation) then
+      fail_with ("node "^ node.N.name ^" does not export data")
+    else match export_event_info node.N.operation with
+    | None ->
+      fail_with ("node "^ node.N.name ^" does not specify event time info")
+    | Some ((start_field, start_scale), duration_info) ->
+      let open RamenExport in
+      let consolidation =
+        match String.lowercase req.consolidation with
+        | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
+      wrap (fun () ->
+        build_timeseries
+          node start_field start_scale data_field duration_info
+          msg.max_data_points msg.from msg.to_ consolidation)
+  and create_temporary_node select_x select_y from where =
+    (* First, we need to find out the name for this operation, and create it if
+     * it does not exist yet. Name must be given by the operation and parent, so
+     * that we do not create new nodes when not required (avoiding a costly
+     * compilation and losing export history). This is not equivalent to the
+     * signature: the signature identifies operation and types (aka the binary)
+     * but not the data (since the same worker can be placed at several places
+     * in the graph); while here we want to identify the data, that depends on
+     * everything the user sent (aka operation text and parent name) but for the
+     * formatting. We thus start by parsing and pretty-printing the operation: *)
+    let%lwt parent_layer, parent_name =
+      layer_node_of_user_string conf from in
+    let%lwt _layer, parent = node_of_name conf parent_layer parent_name in
+    let%lwt op_text =
+      if select_x = "" then (
+        let open Lang.Operation in
+        match parent.N.operation with
+        | Aggregate { export = Some (Some ((start, scale), DurationConst dur)) ; _ } ->
+          Printf.sprintf
+            "SELECT %s, %s AS data \
+             EXPORT EVENT STARTING AT %s * %g WITH DURATION %g"
+            start select_y
+            start scale dur |> return
+        | Aggregate { export = Some (Some ((start, scale), DurationField (dur, scale2))) ; _ } ->
+          Printf.sprintf
+            "SELECT %s, %s AS data \
+             EXPORT EVENT STARTING AT %s * %g WITH DURATION %s * %g"
+            start select_y
+            start scale dur scale2 |> return
+        | Aggregate { export = Some (Some ((start, scale), StopField (stop, scale2))) ; _ } ->
+          Printf.sprintf
+            "SELECT %s, %s, %s AS data \
+             EXPORT EVENT STARTING AT %s * %g AND STOPPING AT %s * %g"
+            start stop select_y
+            start scale stop scale2 |> return
+        | _ ->
+          fail_with "This parent does not provide time information"
+      ) else return (
+        "SELECT "^ select_x ^" AS time, "
+                 ^ select_y ^" AS data \
+         EXPORT EVENT STARTING AT time") in
+    let op_text =
+      if where = "" then op_text else op_text ^" WHERE "^ where in
+    let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
+    let reformatted_op = IO.to_string Lang.Operation.print operation in
+    let layer_name =
+      "temp/from_"^ from ^"_"^ Cryptohash_md4.(string reformatted_op |> to_hex)
+    and node_name = "operation" in
+    (* So far so good. In all likelihood this layer exists already: *)
+    (if Hashtbl.mem conf.C.graph.C.layers layer_name then (
+      !logger.debug "Layer %S already there" layer_name ;
+      return_unit
+    ) else (
+      (* Add this layer to the running configuration: *)
+      let layer =
+        C.add_parsed_node ~timeout:300.
+          conf node_name layer_name op_text operation in
+      let node = Hashtbl.find layer.L.persist.L.nodes node_name in
+      let%lwt () = wrap (fun () -> C.add_link conf parent node) in
+      let%lwt () = Compiler.compile conf layer in
+      wrap (fun () -> RamenProcesses.run conf layer)
+    )) >>= fun () ->
+    return (layer_name, node_name, "data")
+  in
+  catch
+    (fun () ->
+      let%lwt resp = Lwt_list.map_s (fun req ->
+          let%lwt layer_name, node_name, data_field =
+            match req.spec with
+            | Predefined { node ; data_field } ->
+              let%lwt layer, node = layer_node_of_user_string conf node in
+              return (layer, node, data_field)
+            | NewTempNode { select_x ; select_y ; from ; where } ->
+              create_temporary_node select_x select_y from where in
+          let%lwt _layer, node = find_node_or_fail conf layer_name node_name in
+          RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
+          let%lwt times, values =
+            ts_of_node_field req layer_name node_name data_field in
+          return { id = req.id ; times ; values }
+        ) msg.timeseries in
+      let body = PPP.to_string timeseries_resp_ppp resp in
+      respond_ok ~body ())
+    (function Failure err -> bad_request err | e -> fail e)
 
 (* A thread that hunt for unused layers *)
 let rec timeout_layers conf =
@@ -890,12 +900,12 @@ let start do_persist debug to_stderr ramen_url version_tag persist_dir port
       | `GET, ["graph" ; layer] -> get_graph conf headers (Some layer)
       | `PUT, ["graph"] -> put_layer conf headers body
 (*      | `DELETE, ["graph" ; layer] -> del_layer conf headers *)
-      | `GET, ["compile"] -> compile conf headers None
-      | `GET, ["compile" ; layer] -> compile conf headers (Some layer)
-      | `GET, ["run" | "start"] -> run conf headers None
-      | `GET, ["run" | "start" ; layer] -> run conf headers (Some layer)
-      | `GET, ["stop"] -> stop conf headers None
-      | `GET, ["stop" ; layer] -> stop conf headers (Some layer)
+      | `GET, ["compile"] -> compile conf headers None params
+      | `GET, ["compile" ; layer] -> compile conf headers (Some layer) params
+      | `GET, ["run" | "start"] -> run conf headers None params
+      | `GET, ["run" | "start" ; layer] -> run conf headers (Some layer) params
+      | `GET, ["stop"] -> stop conf headers None params
+      | `GET, ["stop" ; layer] -> stop conf headers (Some layer) params
       | (`GET|`POST), ["export" ; layer ; node] ->
         (* TODO: a variant where we do not have to specify layer *)
         (* We must allow both POST and GET for that one since we have an optional
