@@ -442,9 +442,8 @@ let db_name =
   Arg.(required (opt (some string) None i))
 
 let dataset_name =
-  let i = Arg.info ~doc:"Name identifying this data set"
-                        [ "name" ] in
-  Arg.(value (opt string "" i))
+  let i = Arg.info ~doc:"Name identifying this data set" [] in
+  Arg.(required (pos 0 (some string) None i))
 
 let delete_opt =
   let i = Arg.info ~doc:"Delete CSV files once injected"

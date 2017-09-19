@@ -259,12 +259,15 @@ let node_of_name conf layer_name node_name =
 
 let put_layer conf headers body =
   let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
-  (* TODO: Check that this layer node names are unique within the layer *)
 
+  (* Disallow anonymous layers for simplicity: *)
+  if msg.name = "" then
+    bad_request "Layers must have non-empty names"
   (* Check that this layer is new *)
-  if Hashtbl.mem conf.C.graph.C.layers msg.name then
+  else if Hashtbl.mem conf.C.graph.C.layers msg.name then
     bad_request ("Layer "^ msg.name ^" already present")
   else (
+    (* TODO: Check that this layer node names are unique within the layer *)
     (* Create all the nodes *)
     let%lwt () = Lwt_list.iter_s (fun def ->
         let name =

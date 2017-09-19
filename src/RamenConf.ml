@@ -169,6 +169,7 @@ struct
     layer.persist.last_status_change <- Unix.gettimeofday ()
 
   let make ?persist ?(timeout=0.) name =
+    assert (String.length name > 0) ;
     let persist =
       let now = Unix.gettimeofday () in
       Option.default_delayed (fun () ->
@@ -233,7 +234,8 @@ struct
           List.fold_left (fun (progress, ordered, later) l ->
               try
                 iter_dependencies l (fun dep ->
-                  if not (List.exists (fun o -> o.name = dep) ordered) then
+                  !logger.debug "Layer %S depends on %S" l.name dep ;
+                  if (List.exists (fun o -> o.name = dep) later) then
                     raise Exit) ;
                 true, l::ordered, later
               with Exit ->
