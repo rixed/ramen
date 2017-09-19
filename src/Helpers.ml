@@ -197,6 +197,58 @@ let string_of_process_status = function
   | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %s" (name_of_signal sign)
   | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %s" (name_of_signal sign)
 
+exception RunFailure of Unix.process_status
+let () = Printexc.register_printer (function
+  | RunFailure st -> Some ("RunFailure "^ string_of_process_status st)
+  | _ -> None)
+
+(* Low level stuff: run jobs and return lines: *)
+let run ?timeout cmd =
+  let open Lwt in
+  let string_of_array a =
+    Array.fold_left (fun s v ->
+        s ^ (if String.length s > 0 then " " else "") ^ v
+      ) "" a in
+  if Array.length cmd < 1 then invalid_arg "cmd" ;
+  Log.debug "Running command %s" (string_of_array cmd) ;
+  let%lwt lines =
+    Lwt_process.with_process_full ?timeout (cmd.(0), cmd) (fun process ->
+      (* We need to read both stdout and stderr simultaneously or risk
+       * interlocking: *)
+      let%lwt () = Lwt_io.close process#stdin in
+      let lines = ref [] in
+      let read_lines c =
+        match%lwt Lwt_io.read_lines c |> Lwt_stream.to_list with
+        | exception exc ->
+          (* when this happens for some reason we are left with (null) *)
+          let msg = Printexc.to_string exc in
+          Log.warn "%s exception: %s"
+            (string_of_array cmd) msg ;
+          return_unit
+        | l -> lines := l ; return_unit in
+      let monitor_stderr c =
+        catch (fun () ->
+          Lwt_io.read_lines c |>
+          Lwt_stream.iter (fun l ->
+              Log.warn "%s stderr: %s" (string_of_array cmd) l
+            ))
+          (fun exc ->
+            Log.warn "Error while running %s: %s"
+              (string_of_array cmd) (Printexc.to_string exc) ;
+            return_unit) in
+      join [ read_lines process#stdout ;
+             monitor_stderr process#stderr ] >>
+      match%lwt process#status with
+      | Unix.WEXITED 0 ->
+        return !lines
+      | x ->
+        Log.error "Command '%s' %s"
+          (string_of_array cmd)
+          (string_of_process_status x) ;
+        fail (RunFailure x)
+    ) in
+  return (String.concat "\n" lines)
+
 let quote_at_start s =
   String.length s > 0 && s.[0] = '"'
 

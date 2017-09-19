@@ -521,8 +521,15 @@ let timeseries conf headers body =
 (* Top query: display a page with details of operation *)
 
 let hostname =
-  try Sys.getenv "HOST"
-  with Not_found -> "unknown host"
+  let cached = ref "" in
+  fun () ->
+    if !cached <> "" then return !cached else
+    let%lwt c =
+      catch
+        (fun () -> run ~timeout:2. [| "hostname" |])
+        (function _ -> return "unknown host") in
+    cached := c ;
+    return c
 
 let get_top conf headers params =
   let enc = Uri.pct_encode in
