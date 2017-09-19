@@ -531,17 +531,18 @@ let hostname =
     cached := c ;
     return c
 
-let get_top conf headers params =
+let top conf headers params =
+  let%lwt () = check_accept headers Consts.html_content_type in
   let enc = Uri.pct_encode in
   let style = {|
   <style media="screen" type="text/css">
-    body { margin:0; height: 100%; }
-    #global, #top, #operation, #tail, #footer, .subitem {
+    body { margin:0; height: 100%; background-color: #eee; }
+    #global, #top, #details, .subitem {
       display: flex;
       flex-direction: row;
       flex-wrap: nowrap;
       overflow: auto; }
-    body, #layers, #nodes, .subtree {
+    body, #layers, #nodes, #input, #operation, #tail, .subtree {
       display: flex;
       flex-direction: column;
       flex-wrap: nowrap;
@@ -561,39 +562,47 @@ let get_top conf headers params =
 
     table { border-collapse: collapse; border-spacing: 10; }
     td, th { padding: 0 1em 0 1em; }
-    span.null { font-style: italic; color: #888; font-size: 80% }
+    tfoot td, th { font-weight: bold; text-align: center; }
+    span.null { font-style: italic; color: #888; font-size: 80%; }
+    a, a:visited { color: #22c; text-decoration: none; }
     #global { height: 3em; width: 100%; }
-    #top { width: 100%; flex-grow: 1; }
-      #layers { padding-right: 1em; max-height: 80% }
+    #top { max-height: 80%; width: 100%; flex-grow: 1; }
+    #top .selected { background-color: #ddd; }
+      #layers { padding-right: 1em; max-width:50%; }
         #layers div { display: flex; flex-direction: column; }
         #layers div p.name { display: flex; flex-direction: row; justify-content: space-between; }
         #layers .name, #layers .info, #layers .info p { margin: 0px; }
-        #layers .info .label { margin-right: 0.2em;
-                              font-size: 80%; color: #222; font-weight: 700; }
-        #layers .info .value { margin-right: 1em; font-size: 85%; color: }
-      #nodes { max-height: 80% ; flex-grow: 1; }
+      #nodes { flex-grow: 1; }
         #nodes tbody td:first-child a { display: flex; flex-direction: row; justify-content: space-between; }
-      #top .selected { background-color: #ddd; }
-      #top a { display: block; width: 100%; text-decoration: none; }
+      #nodes a { display: block; width: 100%; color: black; }
+      #nodes tbody tr:hover { background-color: #fff; }
+    #top tbody td hr { margin-left: 0; margin-top: 0; margin-bottom: 0; border: 1px solid #aaa; }
+    #details { max-height: 80%; width: 100%; flex-grow: 0.2; }
+      #input { max-width: 50%; }
+        #input p { margin: 0; padding: 0 }
+      #operation { flex-grow: 1; }
     #tail { flex-grow: 0.2; width: 100%; }
-      #tail th p { margin: 0px; }
-      #tail th p.type { font-size: 60%; font-style: italic; }
-    #operation { flex-grow: 0.2; width: 100%; max-height: 80%; }
-    #footer { height: 1em; width: 100%; }
 
+    span.label { margin-right: 0.2em; font-size: 80%; color: #222; font-weight: 700; }
+    span.value { margin-right: 1em; font-size: 85%; color: #003; }
+    h1 { position: relative; top:0; left:0; background-color: #fff; color: #000010;
+         text-align: left; margin: 0; padding: 0.5em 1em 0.5em 1em;
+         font-weight: 700; font-size: 100%; }
+    th p { margin: 0px; }
+    th p.type { font-size: 60%; font-style: italic; }
     td.number, td.FLOAT, td.U8, td.U16, td.U32, td.U64, td.U128, td.I8,
     td.I16, td.I32, td.I64, td.I128 { text-align: right; font-family: mono; }
 
-    span.icon { }
+    .icon { }
   </style>
 |} in
   let snode =
     try Some (Hashtbl.find params "snode")
     with Not_found -> None in
   let scol = Hashtbl.find_default params "scol" "1" in
-  let href ?(snode=snode) ?(scol=scol) () =
-    "?"^ (match snode with None -> "" | Some s -> "&snode="^ enc s)
-       ^ "&scol="^ enc scol in
+  let href ?(path="/top") ?(snode=snode) ?(scol=scol) () =
+    path ^"?"^ (match snode with None -> "" | Some s -> "&snode="^ enc s)
+         ^"&scol="^ enc scol in
   let%lwt sel_node =
     match snode with
     | None -> return None
@@ -617,18 +626,28 @@ let get_top conf headers params =
     while !i > 0 && s.[!i] = '0' do s.[!i] <- '_' ; decr i done ;
     if !i > 0 && s.[!i] = '.' then s.[!i] <- '_' ;
     String.nreplace ~str:s ~sub:"_" ~by:"&nbsp;" in
-  let thi = th % string_of_int and thf = th % str_of_float in
-  let dispname_of_layer layer_name layer =
-    let icon_of_layer_status = function
-    | Layer.Edition -> "&#x270E;"
-    | Layer.Compiling -> "&#x2610;"
-    | Layer.Compiled -> "&#x2611;"
-    | Layer.Running -> "&#9881;" in
-    (if layer_name = "" then tagged "i" "(anonymous)" else layer_name) ^
-    tagged "span" ~attr:["class","icon"] (icon_of_layer_status layer.L.persist.L.status) in
+  let icon_of_layer layer =
+    let icon, path, alt =
+      match layer.L.persist.L.status with
+      | Layer.Edition -> "&#x270E;", "/compile/"^ enc layer.L.name, "compile"
+      | Layer.Compiling -> "&#x2610;", "", "reload"
+      | Layer.Compiled -> "&#x2611;", "/start/"^ enc layer.L.name, "start"
+      | Layer.Running -> "&#9881;", "/stop/"^ enc layer.L.name, "stop"  in
+    tagged "a" ~attr:["class","icon"; "href",href ~path (); "title",alt] icon in
   let dispname_of_type nullable scalar_typ =
     Lang.Scalar.string_of_typ scalar_typ ^
     (if nullable then " (or null)" else "") in
+  let pretty_th title subtitle =
+    th (
+      tagged "p" title ^
+      (if subtitle = "" then "" else tagged "p" ~attr:["class","type"] subtitle)) in
+  let reload =
+    (* To refresh the top we reload (toward top not whatever last command was
+     * called!) every 10s, which is also the interval at which ramen receive
+     * reports from the workers: *)
+    Printf.sprintf {|<meta http-equiv="refresh" content="10;url=%s" />|}
+      (href ()) in
+  let%lwt hostname = hostname () in
   let header_panel =
     tagged "p" ("Ramen v0.1 running on "^ tagged "em" hostname ^".") in
   let labbeled_value l v =
@@ -662,7 +681,8 @@ let get_top conf headers params =
             | _ -> [] in
           String.print oc (
             tagged "div" ~attr (
-              tagged "p" ~attr:["class","name"] (dispname_of_layer layer_name layer) ^
+              tagged "p" ~attr:["class","name"] (
+                layer_name ^ icon_of_layer layer) ^
               tagged "div" ~attr:["class","info"] (
                 labbeled_value "#nodes" (string_of_int (Hashtbl.length layer.L.persist.L.nodes)) ^
                 labbeled_value "started" (date_of_ts layer.L.persist.L.last_started) ^
@@ -691,38 +711,14 @@ let get_top conf headers params =
   let nodes =
     C.fold_nodes conf [] (fun prev node -> node :: prev) |>
     List.sort (top_sorter scol) in
-  let node_columns = [ "layer", true; "name", true; "op", true; "in", true;
-                       "selected", true; "out", true; "groups", false;
-                       "parents", false; "children", false; "CPU", true;
-                       "RAM", true; "PID", false; "signature", false;
-                       "export", false ] in
-  let nodes_head =
-    tagged "thead" (tagged "tr" (String.concat "" (
-      List.mapi (fun i (col, sortable) ->
-        if sortable then
-          let attr = ["href", href ~scol:(string_of_int i) ()] in
-          tagged "th" (tagged "a" ~attr col)
-        else
-          tagged "th" col) node_columns))) in
+  (* Start by computing the total per columns so we can display an histogram
+   * in the tbody: *)
   let layers = ref Set.empty and tot_nodes = ref 0 and tot_ins = ref 0
   and tot_sels = ref 0 and tot_outs = ref 0 and tot_groups = ref 0
-  and tot_cpu = ref 0. and tot_ram = ref 0 in
-  let nodes_body =
-    let tr_of_node node =
-      let layer = Hashtbl.find conf.C.graph.C.layers node.N.layer in
-      let ta x =
-        (* Makes the box clickable even if empty (chrome): *)
-        let x = if x <> "" then x else "&nbsp;" in
-        tagged "a" ~attr:["href", href ~snode:(Some (N.fq_name node)) ()] x in
-      let td = td % ta
-      and tdi = td ~attr:["class", "number"] % ta % string_of_int
-      and tdf = td ~attr:["class", "number"] % ta % str_of_float in
-      let groups =
-        match find_int_opt_metric node.N.last_report Consts.group_count_metric with
-        | None -> td "n.a"
-        | Some x -> tot_groups := !tot_groups + x ; tdi x in
-      let pid =
-        match node.N.pid with None -> td "n.a" | Some p -> tdi p in
+  and tot_cpu = ref 0. and tot_ram = ref 0 and max_ins = ref 0
+  and max_sels = ref 0 and max_outs = ref 0 and max_groups = ref 0
+  and max_cpu = ref 0. and max_ram = ref 0 in
+  List.iter (fun node ->
       let ins = find_int_metric node.N.last_report Consts.in_tuple_count_metric
       and sels = find_int_metric node.N.last_report Consts.selected_tuple_count_metric
       and outs = find_int_metric node.N.last_report Consts.out_tuple_count_metric
@@ -734,6 +730,61 @@ let get_top conf headers params =
       tot_sels := !tot_sels + sels ;
       tot_outs := !tot_outs + outs ;
       tot_cpu := !tot_cpu +. cpu ;
+      tot_ram := !tot_ram + ram ;
+      max_ins := max !max_ins ins ;
+      max_sels := max !max_sels sels ;
+      max_outs := max !max_outs outs ;
+      max_cpu := max !max_cpu cpu ;
+      max_ram := max !max_ram ram ;
+      Option.may (fun g ->
+          tot_groups := !tot_groups + g ;
+          max_groups := max !max_groups g)
+        (find_int_opt_metric node.N.last_report Consts.group_count_metric)
+    ) nodes ;
+  let node_columns =
+    [ "layer", true, "" ; "name", true, "" ; "op", true, "" ;
+      "#in", true, "tuples" ; "#selected", true, "tuples" ;
+      "#out", true, "tuples" ; "#groups", false, "" ; "parents", false, "" ;
+      "children", false, "" ; "CPU", true, "seconds" ; "RAM", true, "bytes" ;
+      "PID", false, "" ; "signature", false, "" ; "export", false, "" ] in
+  let nodes_head =
+    tagged "thead" (tagged "tr" (String.concat "" (
+      List.mapi (fun i (col, sortable, subtitle) ->
+        if sortable then
+          let attr = ["href", href ~scol:(string_of_int i) ()] in
+          pretty_th (tagged "a" ~attr col) (tagged "a" ~attr subtitle)
+        else
+          pretty_th col subtitle) node_columns))) in
+  let nodes_body =
+    let tr_of_node node =
+      let ta x =
+        (* Makes the box clickable even if empty (chrome): *)
+        let x = if x <> "" then x else "&nbsp;" in
+        tagged "a" ~attr:["href", href ~snode:(Some (N.fq_name node)) ()] x in
+      let tdi = td ~attr:["class", "number"] % ta % string_of_int
+      and tdf = td ~attr:["class", "number"] % ta % str_of_float in
+      let tdih tot x =
+        if tot = 0 then tdi x else
+        let w = float_of_int (100 * x) /. float_of_int tot in
+        td ~attr:["class", "number"] (
+          ta (string_of_int x) ^ Printf.sprintf "<hr width=\"%f%%\"/>" w)
+      and tdfh tot x =
+        if tot = 0. then tdf x else
+        let w = 100. *. x /. tot in
+        td ~attr:["class", "number"] (
+          ta (str_of_float x) ^ Printf.sprintf "<hr width=\"%f%%\"/>" w) in
+      let td = td % ta in
+      let groups =
+        match find_int_opt_metric node.N.last_report Consts.group_count_metric with
+        | None -> td "n.a" | Some x -> tdih !max_groups x in
+      let pid =
+        match node.N.pid with None -> td "n.a" | Some p -> tdi p in
+      (* FIXME: really, save this into node! *)
+      let ins = find_int_metric node.N.last_report Consts.in_tuple_count_metric
+      and sels = find_int_metric node.N.last_report Consts.selected_tuple_count_metric
+      and outs = find_int_metric node.N.last_report Consts.out_tuple_count_metric
+      and cpu = find_float_metric node.N.last_report Consts.cpu_time_metric
+      and ram = find_int_metric node.N.last_report Consts.ram_usage_metric in
       let short_node_list ?(max_len=20) lst =
         abbrev max_len (List.fold_left (fun s n ->
             if String.length s > max_len then s else
@@ -744,26 +795,33 @@ let get_top conf headers params =
         match sel_node with Some n when n == node -> ["class","selected"]
                           | _ -> [] in
       tagged "tr" ~attr (
-        td (dispname_of_layer node.N.layer layer) ^ td node.N.name ^
+        td node.N.layer ^ td node.N.name ^
         td (type_of_operation node.N.operation) ^
-        tdi ins ^ tdi sels ^ tdi outs ^ groups ^
+        tdih !max_ins ins ^ tdih !max_sels sels ^ tdih !max_outs outs ^ groups ^
         td (short_node_list node.N.parents) ^
         td (short_node_list node.N.children) ^
-        tdf cpu ^ tdi ram ^ pid ^ td node.N.signature ^
+        tdfh !max_cpu cpu ^ tdih !max_ram ram ^ pid ^ td node.N.signature ^
         td (if Lang.Operation.is_exporting node.N.operation then "&#x2713;" else "&nbsp;")) in
     tagged "tbody" (String.concat "" (List.map tr_of_node nodes)) in
   let nodes_foot =
+    let tdi = td ~attr:["class", "number"] % string_of_int
+    and tdf = td ~attr:["class", "number"] % str_of_float in
     tagged "tfoot" (tagged "tr" (
-      thi (Set.cardinal !layers) ^ thi !tot_nodes ^ th "" ^ thi !tot_ins ^
-      thi !tot_sels ^ thi !tot_outs ^ thi !tot_groups ^ th "" ^ th "" ^
-      thf !tot_cpu ^ thi !tot_ram ^ th "" ^ th "" ^ th "")) in
+      tdi (Set.cardinal !layers) ^ tdi !tot_nodes ^ td "" ^ tdi !tot_ins ^
+      tdi !tot_sels ^ tdi !tot_outs ^ tdi !tot_groups ^ td "" ^ td "" ^
+      tdf !tot_cpu ^ tdi !tot_ram ^ td "" ^ td "" ^ td "")) in
   let nodes_panel = tagged "table" (nodes_head ^ nodes_body ^ nodes_foot) in
-  let op_panel, tail_panel =
+  let input_panel, op_panel, tail_panel =
     match sel_node with
     | None ->
+      tagged "p" "",
       tagged "p" "Select a node to see the operation it performs",
       tagged "p" "Select a node to see its output"
     | Some node ->
+      C.tup_typ_of_temp_tup_type node.N.in_type |>
+      List.fold_left (fun s ft ->
+          s ^ labbeled_value ft.typ_name (dispname_of_type ft.nullable ft.typ)
+        ) "",
       tagged "pre" node.N.op_text,
       if Lang.Operation.is_exporting node.N.operation then
         let _, values =
@@ -778,11 +836,8 @@ let get_top conf headers params =
             IO.to_string
               (List.print ~first:"<tr>" ~last:"</tr>" ~sep:""
                 (fun oc ft ->
-                  let col_label =
-                    tagged "p" ft.typ_name ^
-                    tagged "p" ~attr:["class","type"]
-                      (dispname_of_type ft.nullable ft.typ) in
-                  String.print oc (tagged "th" col_label)))
+                  String.print oc
+                    (pretty_th ft.typ_name (dispname_of_type ft.nullable ft.typ))))
               out_tuple_type) ^
           tagged "tbody" (
           IO.to_string (
@@ -796,17 +851,20 @@ let get_top conf headers params =
         tagged "p" ("node "^ N.fq_name node ^" does not export data") in
   let page =
     tagged "html" (
-      tagged "head" style ^ tagged "body" ({|
+      tagged "head" (reload ^ style) ^
+      tagged "body" ({|
         <div id="global">|} ^ header_panel ^ {|</div>
         <div id="top">
-            <div id="layers">|} ^ layers_panel ^ {|</div>
-            <div id="nodes">|} ^ nodes_panel ^ {|</div>
+          <div id="layers"><h1>Layers</h1>|} ^ layers_panel ^ {|</div>
+          <div id="nodes"><h1>Nodes</h1>|} ^ nodes_panel ^ {|</div>
         </div>
-        <div id="operation">|} ^ op_panel ^ {|</div>
-        <div id="tail">|} ^ tail_panel ^ {|</div>
-        <div id="footer">...to be continued...</div>|})) in
-  check_accept headers Consts.html_content_type (fun () ->
-    respond_ok ~body:page ~ct:Consts.html_content_type ())
+        <div id="details">
+          <div id="input"><h1>Input</h1>|} ^ input_panel ^ {|</div>
+          <div id="operation"><h1>Operation</h1>|} ^ op_panel ^ {|</div>
+        </div>
+        <div id="tail"><h1>Output</h1>|} ^ tail_panel ^ {|</div>|})) in
+  respond_ok ~body:page ~ct:Consts.html_content_type ()
+
 
 (* A thread that hunt for unused layers *)
 let rec timeout_layers conf =
@@ -856,7 +914,7 @@ let start do_persist debug to_stderr ramen_url version_tag persist_dir port
         let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
         Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
       (* Top *)
-      | `GET, ["top"|"index.html"] -> get_top conf headers params
+      | `GET, ([]|["top"|"index.html"]) -> top conf headers params
       (* Errors *)
       | `PUT, _ | `GET, _ | `DELETE, _ ->
         fail (HttpError (404, "No such resource"))
