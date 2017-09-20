@@ -1495,8 +1495,8 @@ struct
         flush_how : flush_method }
     | ReadCSVFile of { fname : string ; unlink : bool ; separator : string ;
                        null : string ; fields : Tuple.typ ; preprocessor : string }
-    | ListenOn of { net_addr : Unix.inet_addr ; port : int ;
-                    proto : RamenProtocols.net_protocol }
+    | ListenFor of { net_addr : Unix.inet_addr ; port : int ;
+                     proto : RamenProtocols.net_protocol }
 
   let print_export fmt = function
     | None -> Printf.fprintf fmt "EXPORT"
@@ -1551,7 +1551,7 @@ struct
         (if preprocessor = "" then ""
          else Printf.sprintf "PREPROCESS WITH %S" preprocessor)
         fname separator null Tuple.print_typ fields
-    | ListenOn { net_addr ; port ; proto } ->
+    | ListenFor { net_addr ; port ; proto } ->
       Printf.fprintf fmt "LISTEN FOR %s ON %s:%d"
         (RamenProtocols.string_of_net_protocol proto)
         (Unix.string_of_inet_addr net_addr)
@@ -1559,13 +1559,13 @@ struct
 
   let is_exporting = function
     | Aggregate { export = Some _ ; _ } -> true
-    (* It's low rate enough. TODO: add an "EXPORT" option to ListenOn and set
+    (* It's low rate enough. TODO: add an "EXPORT" option to ListenFor and set
      * it to true on the demo operation and false otherwise. *)
-    | ListenOn { proto = RamenProtocols.Collectd ; _ } -> true
+    | ListenFor { proto = RamenProtocols.Collectd ; _ } -> true
     | _ -> false
   let export_event_info = function
     | Aggregate { export = Some e ; _ } -> e
-    | ListenOn { proto = RamenProtocols.Collectd ; _ } ->
+    | ListenFor { proto = RamenProtocols.Collectd ; _ } ->
       Some (("time", 1.), DurationConst 0.)
     | _ -> None
 
@@ -1828,7 +1828,7 @@ struct
             | None -> Unix.inet_addr_any, default_port_of_protocol proto
             | Some (addr, None) -> addr, default_port_of_protocol proto
             | Some (addr, Some port) -> addr, Num.int_of_num port in
-          ListenOn { net_addr ; port ; proto }) m
+          ListenFor { net_addr ; port ; proto }) m
 
     let p m =
       let m = "operation" :: m in
@@ -2118,7 +2118,7 @@ struct
           check_fields_from [TupleGroup] "REMOVE clause" e)
         (* TODO: url_notify: check field names from text templates *)
         (* TODO: check unicity of aliases *)
-      | ReadCSVFile _ | ListenOn _ -> ()
+      | ReadCSVFile _ | ListenFor _ -> ()
 
     (*$>*)
   end

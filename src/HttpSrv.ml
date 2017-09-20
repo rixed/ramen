@@ -79,7 +79,7 @@ let type_of_operation =
   | Yield _ -> "YIELD"
   | Aggregate _ -> "GROUP BY"
   | ReadCSVFile _ -> "READ CSV"
-  | ListenOn _ -> "LISTEN"
+  | ListenFor _ -> "LISTEN"
 
 let layer_node_of_user_string conf ?default_layer s =
   let s = String.trim s in

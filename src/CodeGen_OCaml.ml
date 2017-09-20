@@ -1275,7 +1275,7 @@ let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
       emit_yield oc in_tuple_typ out_tuple_typ fields
     | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
-    | ListenOn { net_addr ; port ; proto } ->
+    | ListenFor { net_addr ; port ; proto } ->
       emit_listen_on oc net_addr port proto
     | Aggregate { fields ; and_all_others ; where ; key ; top ; commit_when ;
                   flush_when ; flush_how ; notify_url ; _ } ->
