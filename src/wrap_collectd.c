@@ -29,6 +29,7 @@ static void set_nullable_string(value block, unsigned idx, char const *str)
     caml_modify(&Field(tmp, 0), caml_copy_string(str));
     caml_modify(&Field(block, idx), tmp);
   }
+  CAMLreturn0;
 }
 
 CAMLprim value wrap_collectd_decode(value buffer_, value nb_bytes_)
