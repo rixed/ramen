@@ -147,12 +147,12 @@ let read_tuple tuple_type tx =
           ) else (
             let value = read_single_value offs typ.typ in
             let offs' = offs + sersize_of (typ.typ, value) in
-            Some value, offs', b
           ) in
         Option.may (Array.set tuple i) value ;
         offs', b'
       ) (nullmask_size, 0) tuple_type in
   tuple, sz
+              Some value, offs', if typ.nullable then b+1 else b
 
 let import_tuples rb_name node =
   let open Lwt in
