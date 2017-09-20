@@ -14,7 +14,16 @@ open Batteries
 open RamenLog
 open Lwt
 
-external decode : Bytes.t -> int -> unit = "wrap_collectd_decode" (* TODO *)
+(* <blink>DO NOT ALTER</blink> this record without also updating
+ * wrap_collectd_decode in wrap_collectd.c *)
+type collectd_metric =
+  string (* host *) * float (* time *) *
+  string option (* plugin name *) * string option (* plugin instance *) *
+  string option (* type name (whatever that means) *) *
+  string option (* type instance *) *
+  (* And the values (up to 5: *)
+  float * float option * float option * float option * float option
+    [@@ppp PPP_OCaml]
 
 let udp_server ?(ipv6=false) port k =
   let open Lwt_unix in
@@ -38,19 +47,23 @@ let udp_server ?(ipv6=false) port k =
   in
   forever ()
 
-let collectd_collector ?(also_v6=false) ?(port=25826) _tuple_typ =
+let collectd_collector ?(also_v6=false) ?(port=25826) k =
   (* Listen to incoming UDP datagrams on given port: *)
-  let k sender buffer recv_len =
+  let serve sender buffer recv_len =
     !logger.debug "Received %d bytes from collectd @ %s" recv_len sender ;
-    decode buffer recv_len ;
-    return_unit
+    let metrics = decode buffer recv_len in
+    !logger.debug "Metrics: %a\n"
+      (Array.print (fun fmt m -> String.print fmt (PPP.to_string collectd_metric_ppp m))) metrics ;
+    k "TODO"
   in
-  let th = [ udp_server ~ipv6:false port k ] in
+  let th = [ udp_server ~ipv6:false port serve ] in
   let th =
-    if also_v6 then udp_server ~ipv6:true  port k :: th
+    if also_v6 then udp_server ~ipv6:true  port serve :: th
     else th in
   join th
 
 let test port () =
   logger := make_logger true ;
-  Lwt_main.run (collectd_collector ~port ())
+  let display_tuple _t =
+    return_unit in
+  Lwt_main.run (collectd_collector ~port display_tuple)

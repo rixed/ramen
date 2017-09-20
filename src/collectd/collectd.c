@@ -171,6 +171,7 @@ enum collectd_decode_status collectd_decode(
           metric->plugin_instance = plugin_instance;
           metric->type_name = type_name;
           metric->type_instance = type_instance;
+          metric->nb_values = nb_vals;
           // Fill in the values:
           unsigned v;
           for (v = 0; v < nb_vals && v < COLLECTD_NB_VALUES; v++) {
@@ -193,7 +194,6 @@ enum collectd_decode_status collectd_decode(
                 return COLLECTD_PARSE_ERROR;
             }
           }
-          for ( ; v < COLLECTD_NB_VALUES; v++) metric->values[v] = 0.;
 
           (*nb_metrics) ++;
         }

@@ -34,6 +34,7 @@ struct collectd_metric {
   char const *type_name;  // For instance: "if_dropped".
   char const *type_instance;  // for instance: "1".
   // Up to 5 values (the worse case in a default install, for mysql_qcache).
+  unsigned nb_values;
   double values[COLLECTD_NB_VALUES];
 };
 
