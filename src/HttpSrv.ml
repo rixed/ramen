@@ -596,17 +596,14 @@ let top conf headers params =
       tagged "p" "Select a node to see the operation it performs",
       tagged "p" "Select a node to see its output"
     | Some node ->
-      C.tup_typ_of_temp_tup_type node.N.in_type |>
-      List.fold_left (fun s ft ->
-          s ^ labbeled_value ft.typ_name (dispname_of_type ft.nullable ft.typ)
-        ) "",
+      (if node.N.in_type.C.finished_typing then
+        C.tup_typ_of_temp_tup_type node.N.in_type |>
+        List.fold_left (fun s ft ->
+            s ^ labbeled_value ft.typ_name (dispname_of_type ft.nullable ft.typ)
+          ) ""
+      else tagged "p" (tagged "em" "not compiled")),
       tagged "pre" node.N.op_text,
-      if Lang.Operation.is_exporting node.N.operation then
-        let _, values =
-          let max_res = 8 in
-          let since = RamenExport.since_of_last_tuples max_res node in
-          RamenExport.fold_tuples ~max_res ~since node [] (fun _ tup prev ->
-            List.cons tup prev) in
+      (if node.N.out_type.C.finished_typing then (
         let out_tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
         let class_name_of_value v = scalar_type_of v |> Lang.Scalar.string_of_typ in
         tagged "table" (
@@ -618,15 +615,23 @@ let top conf headers params =
                     (pretty_th ft.typ_name (dispname_of_type ft.nullable ft.typ))))
               out_tuple_type) ^
           tagged "tbody" (
-          IO.to_string (
-            List.print ~first:"" ~last:"" ~sep:"\n"
-              (Array.print ~first:"<tr>" ~last:"</tr>" ~sep:""
-                 (fun oc v ->
-                    Printf.fprintf oc "<td class=%S>%a</td>"
-                      (class_name_of_value v)
-                      print_scalar_value v))) values))
-      else
-        tagged "p" ("node "^ N.fq_name node ^" does not export data") in
+            if Lang.Operation.is_exporting node.N.operation then (
+              let _, values =
+                let max_res = 8 in
+                let since = RamenExport.since_of_last_tuples max_res node in
+                RamenExport.fold_tuples ~max_res ~since node [] (fun _ tup prev ->
+                  List.cons tup prev) in
+              IO.to_string (
+                List.print ~first:"" ~last:"" ~sep:"\n"
+                  (Array.print ~first:"<tr>" ~last:"</tr>" ~sep:""
+                     (fun oc v ->
+                        Printf.fprintf oc "<td class=%S>%a</td>"
+                          (class_name_of_value v)
+                          print_scalar_value v))) values)
+            else tagged "tr" (
+              tagged ~attr:["colspan", string_of_int (List.length out_tuple_type)] "td" (
+                tagged "p" ("node "^ N.fq_name node ^" does not export data")))))
+      ) else tagged "p" (tagged "em" "not compiled")) in
   let page =
     tagged "html" (
       tagged "head" (reload ^ style) ^
