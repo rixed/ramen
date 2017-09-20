@@ -1495,6 +1495,8 @@ struct
         flush_how : flush_method }
     | ReadCSVFile of { fname : string ; unlink : bool ; separator : string ;
                        null : string ; fields : Tuple.typ ; preprocessor : string }
+    | ListenOn of { net_addr : Unix.inet_addr ; port : int ;
+                    proto : RamenProtocols.net_protocol }
 
   let print_export fmt = function
     | None -> Printf.fprintf fmt "EXPORT"
@@ -1549,6 +1551,11 @@ struct
         (if preprocessor = "" then ""
          else Printf.sprintf "PREPROCESS WITH %S" preprocessor)
         fname separator null Tuple.print_typ fields
+    | ListenOn { net_addr ; port ; proto } ->
+      Printf.fprintf fmt "LISTEN FOR %s ON %s:%d"
+        (RamenProtocols.string_of_net_protocol proto)
+        (Unix.string_of_inet_addr net_addr)
+        port
 
   let is_exporting = function
     | Aggregate { export = Some _ ; _ } -> true
@@ -1776,9 +1783,51 @@ struct
            raise (Reject "Invalid CSV separator/null") ;
          ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor }) m
 
+    let default_port_of_protocol = function
+      | RamenProtocols.Collectd -> 25826
+
+    let net_protocol m =
+      let m = "network protocol" :: m in
+      (strinG "collectd" >>: fun () -> RamenProtocols.Collectd) m
+
+    let network_address =
+      several ~sep:none (cond "inet address" (fun c ->
+        (c >= '0' && c <= '9') ||
+        (c >= 'a' && c <= 'f') ||
+        (c >= 'A' && c <= 'A') ||
+        c == '.' || c == ':') '0') >>:
+      fun s ->
+        let s = String.of_list s in
+        try Unix.inet_addr_of_string s
+        with Failure x -> raise (Reject x)
+
+    let inet_addr m =
+      let m = "network address" :: m in
+      ((string "*" >>: fun () -> Unix.inet_addr_any) |||
+       (string "[*]" >>: fun () -> Unix.inet6_addr_any) |||
+       (network_address)) m
+
+    let listen_on m =
+      let m = "listen on operation" :: m in
+      (strinG "listen" -- blanks --
+       optional ~def:() (strinG "for" -- blanks) -+
+       net_protocol ++
+       optional ~def:None (
+         blanks --
+         optional ~def:() (strinG "on" -- blanks) -+
+         some (inet_addr ++
+               optional ~def:None (char ':' -+ some unsigned_decimal_number))) >>:
+       fun (proto, addr_opt) ->
+          let net_addr, port =
+            match addr_opt with
+            | None -> Unix.inet_addr_any, default_port_of_protocol proto
+            | Some (addr, None) -> addr, default_port_of_protocol proto
+            | Some (addr, Some port) -> addr, Num.int_of_num port in
+          ListenOn { net_addr ; port ; proto }) m
+
     let p m =
       let m = "operation" :: m in
-      (yield ||| aggregate ||| read_csv_file
+      (yield ||| aggregate ||| read_csv_file ||| listen_on
       ) m
 
     (*$= p & ~printer:(test_printer print)
@@ -2064,7 +2113,7 @@ struct
           check_fields_from [TupleGroup] "REMOVE clause" e)
         (* TODO: url_notify: check field names from text templates *)
         (* TODO: check unicity of aliases *)
-      | ReadCSVFile _ -> ()
+      | ReadCSVFile _ | ListenOn _ -> ()
 
     (*$>*)
   end

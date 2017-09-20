@@ -706,6 +706,9 @@ let check_operation ~in_type ~out_type =
   | ReadCSVFile { fields ; _ } ->
     let from_tuple = C.temp_tup_typ_of_tup_typ fields in
     check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple ~to_tuple:out_type ~autorank:false
+  | ListenOn { proto ; _ } ->
+    let from_tuple = C.temp_tup_typ_of_tup_typ (RamenProtocols.tuple_typ_of_proto proto) in
+    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple ~to_tuple:out_type ~autorank:false
 
 (*
  * Type inference for the graph

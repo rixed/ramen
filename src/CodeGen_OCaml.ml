@@ -221,6 +221,18 @@ let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
     csv_fname unlink csv_separator preprocessor
 
+let emit_listen_on oc net_addr port proto =
+  let tuple_typ = RamenProtocols.tuple_typ_of_proto proto in
+  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
+    %a\n%a\n\
+    let () =\n\
+      \tLwt_main.run (\n\
+      \t\tCodeGenLib.listen_on %S %d RamenProtocols.%s sersize_of_tuple_ serialize_tuple_)\n"
+    (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
+    (emit_serialize_tuple "serialize_tuple_") tuple_typ
+    (Unix.string_of_inet_addr net_addr) port
+    (RamenProtocols.string_of_net_protocol proto)
+
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
 
@@ -1263,6 +1275,8 @@ let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
       emit_yield oc in_tuple_typ out_tuple_typ fields
     | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
+    | ListenOn { net_addr ; port ; proto } ->
+      emit_listen_on oc net_addr port proto
     | Aggregate { fields ; and_all_others ; where ; key ; top ; commit_when ;
                   flush_when ; flush_how ; notify_url ; _ } ->
       emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where

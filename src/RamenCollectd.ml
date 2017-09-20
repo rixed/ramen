@@ -23,16 +23,33 @@ type collectd_metric =
   string option (* type instance *) *
   (* And the values (up to 5: *)
   float * float option * float option * float option * float option
-    [@@ppp PPP_OCaml]
 
-let udp_server ?(ipv6=false) port k =
+let tuple_typ =
+  let open RamenSharedTypes in
+  [ { typ_name = "host" ; nullable = false ; typ = TString } ;
+    { typ_name = "time" ; nullable = false ; typ = TFloat } ;
+    { typ_name = "plugin" ; nullable = true ; typ = TString } ;
+    { typ_name = "instance" ; nullable = true ; typ = TString } ;
+    { typ_name = "type_name" ; nullable = true ; typ = TString } ;
+    { typ_name = "type_instance" ; nullable = true ; typ = TString } ;
+    { typ_name = "value" ; nullable = false ; typ = TFloat } ;
+    { typ_name = "value2" ; nullable = true ; typ = TFloat } ;
+    { typ_name = "value3" ; nullable = true ; typ = TFloat } ;
+    { typ_name = "value4" ; nullable = true ; typ = TFloat } ;
+    { typ_name = "value5" ; nullable = true ; typ = TFloat } ]
+
+external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
+
+let udp_server ~inet_addr ~port k =
   let open Lwt_unix in
-  let domain = if ipv6 then PF_INET6 else PF_INET in
-  let sock = socket domain SOCK_DGRAM 0 in
-  let addr = if ipv6 then Unix.inet6_addr_any else Unix.inet_addr_any in
-  let%lwt () = bind sock (ADDR_INET (addr, port)) in
-  !logger.info "Listening for collectd datagrams on port %d, ipv%d"
-    port (if ipv6 then 6 else 4) ;
+  let sock_of_domain domain =
+    let sock = socket domain SOCK_DGRAM 0 in
+    let%lwt () = bind sock (ADDR_INET (inet_addr, port)) in
+    return sock in
+  let%lwt sock =
+    catch (fun () -> sock_of_domain PF_INET6)
+          (fun _ -> sock_of_domain PF_INET) in
+  !logger.debug "Listening for collectd datagrams on port %d" port ;
   (* collectd current network.c says 1452: *)
   let buffer = Bytes.create 1500 in
   let rec forever () =
@@ -47,23 +64,17 @@ let udp_server ?(ipv6=false) port k =
   in
   forever ()
 
-let collectd_collector ?(also_v6=false) ?(port=25826) k =
+let collectd_collector ~inet_addr ?(port=25826) k =
   (* Listen to incoming UDP datagrams on given port: *)
   let serve sender buffer recv_len =
     !logger.debug "Received %d bytes from collectd @ %s" recv_len sender ;
-    let metrics = decode buffer recv_len in
-    !logger.debug "Metrics: %a\n"
-      (Array.print (fun fmt m -> String.print fmt (PPP.to_string collectd_metric_ppp m))) metrics ;
-    k "TODO"
+    decode buffer recv_len |>
+    Array.fold_left (fun th tuple -> th >>= fun () -> k tuple) (return ())
   in
-  let th = [ udp_server ~ipv6:false port serve ] in
-  let th =
-    if also_v6 then udp_server ~ipv6:true  port serve :: th
-    else th in
-  join th
+  udp_server ~inet_addr ~port serve
 
 let test port () =
   logger := make_logger true ;
   let display_tuple _t =
     return_unit in
-  Lwt_main.run (collectd_collector ~port display_tuple)
+  Lwt_main.run (collectd_collector ~inet_addr:Unix.inet_addr_any ~port display_tuple)

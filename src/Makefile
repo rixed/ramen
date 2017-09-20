@@ -13,8 +13,9 @@ LINKED_FOR_TESTS = \
 	RamenBloomFilter.ml
 
 RAMEN_SOURCES = \
-	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml RamenSharedTypes.ml \
-	RamenParsing.ml RamenCollectd.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
+	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml \
+	RamenSharedTypes.ml RamenCollectd.ml RamenProtocols.ml \
+	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
 	CodeGen_OCaml.ml Compiler.ml HttpSrv.ml ApiCmd.ml RingBufCmd.ml \
@@ -23,7 +24,8 @@ RAMEN_SOURCES = \
 CODEGENLIB_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml Globs.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
-	RamenSharedTypes.ml RingBufLib.ml RingBuf.ml \
+	RamenSharedTypes.ml RamenCollectd.ml RamenProtocols.ml \
+	RingBufLib.ml RingBuf.ml \
 	RamenBloomFilter.ml \
 	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
 
