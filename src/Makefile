@@ -8,7 +8,8 @@ TESTABLE_SOURCES = \
 LINKED_FOR_TESTS = \
 	RamenLog.ml Helpers.ml RamenSharedTypes.ml RingBufLib.ml \
 	RamenParsing.ml \
-	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
+	EthAddr.ml Ipv4.ml Ipv6.ml \
+	RamenCollectd.ml RamenProtocols.ml Lang.ml \
 	RingBuf.ml RamenConf.ml CodeGen_OCaml.ml Compiler.ml \
 	RamenBloomFilter.ml
 
