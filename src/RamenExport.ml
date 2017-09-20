@@ -102,57 +102,59 @@ let add_tuple node tuple =
   history.C.tuples.(idx) <- tuple ;
   history.C.count <- history.C.count + 1
 
-let read_tuple tuple_type tx =
+let read_tuple tuple_type =
   (* First read the nullmask *)
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type tuple_type in
-  let read_single_value offs =
-    let open RingBuf in
-    function
-    | TFloat  -> VFloat (read_float tx offs)
-    | TString -> VString (read_string tx offs)
-    | TBool   -> VBool (read_bool tx offs)
-    | TU8     -> VU8 (read_u8 tx offs)
-    | TU16    -> VU16 (read_u16 tx offs)
-    | TU32    -> VU32 (read_u32 tx offs)
-    | TU64    -> VU64 (read_u64 tx offs)
-    | TU128   -> VU128 (read_u128 tx offs)
-    | TI8     -> VI8 (read_i8 tx offs)
-    | TI16    -> VI16 (read_i16 tx offs)
-    | TI32    -> VI32 (read_i32 tx offs)
-    | TI64    -> VI64 (read_i64 tx offs)
-    | TI128   -> VI128 (read_i128 tx offs)
-    | TEth    -> VEth (read_eth tx offs)
-    | TIpv4   -> VIpv4 (read_u32 tx offs)
-    | TIpv6   -> VIpv6 (read_u128 tx offs)
-    | TCidrv4 -> VCidrv4 (read_cidr4 tx offs)
-    | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
-    | TNull   -> VNull
-    | TNum | TAny -> assert false
-  and sersize_of =
-    function
-    | _, VString s ->
-      RingBufLib.(rb_word_bytes + round_up_to_rb_word(String.length s))
-    | typ, _ ->
-      RingBufLib.sersize_of_fixsz_typ typ
-  in
-  (* Read all fields one by one *)
-  let tuple_len = List.length tuple_type in
-  let tuple = Array.make tuple_len VNull in
-  let sz, _ =
-    List.fold_lefti (fun (offs, b) i typ ->
-        let value, offs', b' =
-          if typ.nullable && not (RingBuf.get_bit tx b) then (
-            None, offs, b+1
-          ) else (
-            let value = read_single_value offs typ.typ in
-            let offs' = offs + sersize_of (typ.typ, value) in
-          ) in
-        Option.may (Array.set tuple i) value ;
-        offs', b'
-      ) (nullmask_size, 0) tuple_type in
-  tuple, sz
+  !logger.debug "nullmask size=%d" nullmask_size ;
+  fun tx ->
+    let read_single_value offs =
+      let open RingBuf in
+      function
+      | TFloat  -> VFloat (read_float tx offs)
+      | TString -> VString (read_string tx offs)
+      | TBool   -> VBool (read_bool tx offs)
+      | TU8     -> VU8 (read_u8 tx offs)
+      | TU16    -> VU16 (read_u16 tx offs)
+      | TU32    -> VU32 (read_u32 tx offs)
+      | TU64    -> VU64 (read_u64 tx offs)
+      | TU128   -> VU128 (read_u128 tx offs)
+      | TI8     -> VI8 (read_i8 tx offs)
+      | TI16    -> VI16 (read_i16 tx offs)
+      | TI32    -> VI32 (read_i32 tx offs)
+      | TI64    -> VI64 (read_i64 tx offs)
+      | TI128   -> VI128 (read_i128 tx offs)
+      | TEth    -> VEth (read_eth tx offs)
+      | TIpv4   -> VIpv4 (read_u32 tx offs)
+      | TIpv6   -> VIpv6 (read_u128 tx offs)
+      | TCidrv4 -> VCidrv4 (read_cidr4 tx offs)
+      | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
+      | TNull   -> VNull
+      | TNum | TAny -> assert false
+    and sersize_of =
+      function
+      | _, VString s ->
+        RingBufLib.(rb_word_bytes + round_up_to_rb_word(String.length s))
+      | typ, _ ->
+        RingBufLib.sersize_of_fixsz_typ typ
+    in
+    (* Read all fields one by one *)
+    let tuple_len = List.length tuple_type in
+    let tuple = Array.make tuple_len VNull in
+    let sz, _ =
+      List.fold_lefti (fun (offs, b) i typ ->
+          let value, offs', b' =
+            if typ.nullable && not (RingBuf.get_bit tx b) then (
+              None, offs, b+1
+            ) else (
+              let value = read_single_value offs typ.typ in
+              let offs' = offs + sersize_of (typ.typ, value) in
               Some value, offs', if typ.nullable then b+1 else b
+            ) in
+          Option.may (Array.set tuple i) value ;
+          offs', b'
+        ) (nullmask_size, 0) tuple_type in
+    tuple, sz
 
 let import_tuples rb_name node =
   let open Lwt in
