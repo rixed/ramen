@@ -897,6 +897,11 @@ let start do_persist debug to_stderr ramen_url version_tag persist_dir port
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
   let conf = C.make_conf do_persist ramen_url debug version_tag persist_dir in
+  (* When there is nothing to do, listen to collectd!
+   * (TODO: make this an option) *)
+  if Hashtbl.is_empty conf.C.graph.C.layers then (
+    !logger.info "Adding default nodes since we have nothing to do..." ;
+    C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD") ;
   async (fun () -> timeout_layers conf) ;
   let router meth path params headers body =
     (* The function called for each HTTP request: *)

@@ -1559,9 +1559,14 @@ struct
 
   let is_exporting = function
     | Aggregate { export = Some _ ; _ } -> true
+    (* It's low rate enough. TODO: add an "EXPORT" option to ListenOn and set
+     * it to true on the demo operation and false otherwise. *)
+    | ListenOn { proto = RamenProtocols.Collectd ; _ } -> true
     | _ -> false
   let export_event_info = function
     | Aggregate { export = Some e ; _ } -> e
+    | ListenOn { proto = RamenProtocols.Collectd ; _ } ->
+      Some (("time", 1.), DurationConst 0.)
     | _ -> None
 
   module Parser =
