@@ -9,11 +9,12 @@ expected_tests=1
 start
 add_accounts
 add_node n "
+  FROM test/accounts
   SELECT name, sum amount
   TOP 3 BY amount
   GROUP BY name
   COMMIT AND FLUSH WHEN in.#count >= $nb_accounts
-  EXPORT" accounts
+  EXPORT"
 run
 
 check_equal '"Joe",985

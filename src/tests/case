@@ -12,7 +12,7 @@ expected_tests=1
 start
 add_123
 add_node p1 \
-'SELECT
+'FROM test/123 SELECT
    CASE WHEN n > 2 THEN "hi"
         WHEN n < 2 THEN "lo"
         ELSE "meh"
@@ -29,7 +29,7 @@ add_node p1 \
    END AS some_nullable_thing,
    IF (n = 1, -1, -2) AS minus_smth,
    COALESCE(name,"three") AS real_name
- EXPORT' 123
+ EXPORT'
 run
 check_equal '"lo","one",1,6,-1,"one"
 "meh","more",2,666,-2,"two"

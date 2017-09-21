@@ -51,15 +51,11 @@ let node_info_of_op op =
   let name, operation =
     try String.split ~by:":" op
     with Not_found -> "", op in
-  Node.{ name ; operation ; parents = [] }
+  Node.{ name ; operation }
 
-let add debug ramen_url name ops links () =
+let add debug ramen_url name ops () =
   logger := make_logger debug ;
   let nodes = List.map node_info_of_op ops in
-  List.iter (fun link ->
-    let n1, n2 = String.split ~by:":" link in
-    let node = List.find (fun n -> n2 = n.Node.name || name ^"/"^ n2 = n.Node.name) nodes in
-    node.Node.parents <- n1 :: node.Node.parents) links ;
   let msg = { name ; nodes } in
   Lwt_main.run (
     http_put_json (ramen_url ^"/graph") put_layer_req_ppp msg >>= check_ok)

@@ -350,7 +350,7 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
     pid = None ; last_report = [] } in
   Layer.set_editable layer ;
   Hashtbl.add layer.Layer.persist.Layer.nodes node_name node ;
-  layer
+  layer, node
 
 let add_node conf node_name layer_name op_text =
   !logger.debug "Creating node %s / %s" layer_name node_name ;
@@ -362,10 +362,11 @@ let add_node conf node_name layer_name op_text =
     invalid_arg "node name" ;
   assert (node_name <> "") ;
   let operation = parse_operation op_text in
-  let _layer = add_parsed_node conf node_name layer_name op_text operation in
+  let res = add_parsed_node conf node_name layer_name op_text operation in
   (* FIXME: Delay this with a dirty flag, and save_if_dirty after every
    * HTTP query *)
-  save_graph conf
+  save_graph conf ;
+  res
 
 let make_graph persist_dir ?persist () =
   let persist =

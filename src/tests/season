@@ -9,13 +9,13 @@ expected_tests=1
 start
 add_earthquakes
 add_node p1 \
-"SELECT
+"FROM test/earthquakes SELECT
   season_moveavg(3, 1, n) as a1,
   season_moveavg(3, 2, n) as a2,
   season_moveavg(3, 5, n) as a5,
   fit(1, n) as f1,
   fit(2, n) as f2,
   fit(3, n) as f3
- EXPORT" earthquakes
+ EXPORT"
 run
 check_equal '16,16.5,14.8,12,5,10' "$(tail_ 1 p1)"

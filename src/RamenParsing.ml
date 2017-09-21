@@ -28,3 +28,19 @@ let blanks =
 
 let opt_blanks =
   optional_greedy ~def:() blanks
+
+let slash = char ~what:"slash" '/'
+
+let id_quote = char ~what:"quote" '\''
+
+let node_identifier =
+  let first_char = letter ||| underscore ||| slash in
+  let any_char = first_char ||| decimal_digit in
+  (first_char ++
+     repeat_greedy ~sep:none ~what:"node identifier" any_char >>:
+   fun (c, s) -> String.of_list (c :: s)) |||
+  (id_quote -+
+   repeat_greedy ~sep:none ~what:"node identifier" (
+     cond "quoted node identifier" (fun c -> c <> '\'') 'x') +-
+   id_quote >>:
+  fun s -> String.of_list s)

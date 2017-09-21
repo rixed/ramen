@@ -113,9 +113,7 @@ type expr_type_info =
 module Node =
 struct
   type definition =
-    { name : string ;
-      operation : string ;
-      mutable parents : string list } [@@ppp PPP_JSON]
+    { name : string ; operation : string } [@@ppp PPP_JSON]
 
   type info =
     (* I'd like to offer the AST but PPP still fails on recursive types :-( *)

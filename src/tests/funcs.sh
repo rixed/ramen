@@ -60,7 +60,7 @@ start() {
 add_node() {
   LAYER_CMD="$LAYER_CMD --op '$1:$2'"
   while test -n "$3" ; do
-    LAYER_CMD="$LAYER_CMD --link '$3:$1'"
+    LAYER_CMD="$LAYER_CMD"
     shift
   done
 }

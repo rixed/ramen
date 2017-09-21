@@ -125,21 +125,13 @@ let node_operations =
                         [ "node"; "operation"; "op" ] in
   Arg.(non_empty (opt_all string [] i))
 
-let node_links =
-  let i = Arg.info ~doc:"Add a link between the two nodes which names are \
-                         separated by a colon. Names must be specified as \
-                         layer/node if not in the current layer."
-                        [ "link" ] in
-  Arg.(value (opt_all string [] i))
-
 let add =
   Term.(
     (const ApiCmd.add
       $ debug
       $ server_url
       $ layer_name
-      $ node_operations
-      $ node_links),
+      $ node_operations),
     info "add")
 
 let compile =

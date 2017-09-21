@@ -125,18 +125,18 @@ let node_info_of_node node =
     definition = {
       name = node.N.name ;
       operation = node.N.op_text ;
-      parents = List.map (fun n -> n.N.name) node.N.parents } ;
-      type_of_operation = Some (type_of_operation node.N.operation) ;
-      signature = if node.N.signature = "" then None else Some node.N.signature ;
-      pid = node.N.pid ;
-      input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
-      output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
-      in_tuple_count = find_int_metric node.N.last_report Consts.in_tuple_count_metric ;
-      selected_tuple_count = find_int_metric node.N.last_report Consts.selected_tuple_count_metric ;
-      out_tuple_count = find_int_metric node.N.last_report Consts.out_tuple_count_metric ;
-      group_count = find_int_opt_metric node.N.last_report Consts.group_count_metric ;
-      cpu_time = find_float_metric node.N.last_report Consts.cpu_time_metric ;
-      ram_usage = find_int_metric node.N.last_report Consts.ram_usage_metric }
+    } ;
+    type_of_operation = Some (type_of_operation node.N.operation) ;
+    signature = if node.N.signature = "" then None else Some node.N.signature ;
+    pid = node.N.pid ;
+    input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
+    output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
+    in_tuple_count = find_int_metric node.N.last_report Consts.in_tuple_count_metric ;
+    selected_tuple_count = find_int_metric node.N.last_report Consts.selected_tuple_count_metric ;
+    out_tuple_count = find_int_metric node.N.last_report Consts.out_tuple_count_metric ;
+    group_count = find_int_opt_metric node.N.last_report Consts.group_count_metric ;
+    cpu_time = find_float_metric node.N.last_report Consts.cpu_time_metric ;
+    ram_usage = find_int_metric node.N.last_report Consts.ram_usage_metric }
 
 let layer_info_of_layer layer =
   SL.{
@@ -275,22 +275,24 @@ let put_layer conf headers body =
   else (
     (* TODO: Check that this layer node names are unique within the layer *)
     (* Create all the nodes *)
-    let%lwt () = Lwt_list.iter_s (fun def ->
+    let%lwt nodes = Lwt_list.map_s (fun def ->
         let name =
           if def.Node.name <> "" then def.Node.name
           else N.make_name () in
-        wrap (fun () -> C.add_node conf name msg.name def.Node.operation)
+        wrap (fun () ->
+          let _layer, node = C.add_node conf name msg.name def.Node.operation
+          in node)
       ) msg.nodes in
     (* Then all the links *)
-    let%lwt () = Lwt_list.iter_s (fun def ->
-        let%lwt _layer, dst = node_of_name conf msg.name def.Node.name in
+    let%lwt () = Lwt_list.iter_s (fun node ->
+        Lang.Operation.parents_of_operation node.N.operation |>
         Lwt_list.iter_s (fun p ->
             let%lwt parent_layer, parent_name =
               layer_node_of_user_string conf ~default_layer:msg.name p in
             let%lwt _layer, src = node_of_name conf parent_layer parent_name in
-            wrap (fun () -> C.add_link conf src dst)
-          ) def.SN.parents
-      ) msg.nodes in
+            wrap (fun () -> C.add_link conf src node)
+          )
+      ) nodes in
     respond_ok ())
   (* TODO: why wait before compiling this layer? *)
 
@@ -864,10 +866,9 @@ let timeseries conf headers body =
       return_unit
     ) else (
       (* Add this layer to the running configuration: *)
-      let layer =
+      let layer, node =
         C.add_parsed_node ~timeout:300.
           conf node_name layer_name op_text operation in
-      let node = Hashtbl.find layer.L.persist.L.nodes node_name in
       let%lwt () = wrap (fun () -> C.add_link conf parent node) in
       let%lwt () = Compiler.compile conf layer in
       wrap (fun () -> RamenProcesses.run conf layer)
@@ -910,7 +911,7 @@ let start do_persist debug to_stderr ramen_url version_tag persist_dir port
    * (TODO: make this an option) *)
   if Hashtbl.is_empty conf.C.graph.C.layers then (
     !logger.info "Adding default nodes since we have nothing to do..." ;
-    C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD") ;
+    C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore) ;
   async (fun () -> timeout_layers conf) ;
   let router meth path params headers body =
     (* The function called for each HTTP request: *)

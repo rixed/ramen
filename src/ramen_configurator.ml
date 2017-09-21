@@ -18,16 +18,20 @@ let rebase dataset_name name = dataset_name ^"/"^ name
  * If you wish to process traffic info you must feed on both c2s and s2c.
  *)
 
-let make_node ?(parents=[]) dataset_name name operation =
-  let parents = List.map (rebase dataset_name) parents in
-  N.{ name ; operation ; parents }
+let make_node name operation = N.{ name ; operation }
 
 let rep sub by str = String.nreplace ~str ~sub ~by
 
+let print_squoted oc = Printf.fprintf oc "'%s'"
+
 let traffic_op ?where dataset_name name dt =
   let dt_us = dt * 1_000_000 in
+  let parents =
+    List.map (rebase dataset_name) ["c2s"; "s2c"] |>
+    IO.to_string (List.print ~first:"" ~last:"" ~sep:","
+                    print_squoted) in
   let op =
-    {|SELECT
+    {|FROM $PARENTS$ SELECT
        (capture_begin // $DT_US$) AS start,
        min capture_begin, max capture_end,
        sum packets_src / $DT$ AS packets_per_secs,
@@ -62,12 +66,13 @@ let traffic_op ?where dataset_name name dt =
      COMMIT AND FLUSH WHEN
        in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)|} |>
     rep "$DT$" (string_of_int dt) |>
-    rep "$DT_US$" (string_of_int dt_us)
+    rep "$DT_US$" (string_of_int dt_us) |>
+    rep "$PARENTS$" parents
   in
   let op =
     match where with None -> op
                    | Some w -> op ^"\nWHERE "^ w in
-  make_node ~parents:["c2s"; "s2c"] dataset_name name op
+  make_node name op
 
 let base_layer dataset_name delete csv_dir =
   let csv =
@@ -155,7 +160,7 @@ let base_layer dataset_name delete csv_dir =
            dcerpc_uuid string null
          )|}
       (if delete then " AND DELETE" else "") csv_dir in
-    make_node dataset_name "csv" op in
+    make_node "csv" op in
   let to_unidir ~src ~dst name =
     let cs_fields = [
          "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
@@ -176,7 +181,7 @@ let base_layer dataset_name delete csv_dir =
                ^ field ^"_"^ dst ^" AS "^ alias ^"_dst,\n") ""
     in
     let op =
-      {|SELECT
+      {|FROM '|}^ rebase dataset_name "csv" ^{|' SELECT
          poller, capture_begin, capture_end,
          ip4_external, ip6_external,
          captured_pcap, application, protostack, uuid,
@@ -186,7 +191,7 @@ let base_layer dataset_name delete csv_dir =
          cs_fields ^{|
          dcerpc_uuid
        WHERE traffic_packets_|}^ src ^" > 0" in
-    make_node ~parents:["csv"] dataset_name name op in
+    make_node name op in
   RamenSharedTypes.{
     name = dataset_name ;
     nodes = [
@@ -204,8 +209,8 @@ let layer_of_bcns bcns dataset_name =
     | [] -> "any"
     | main::_ -> string_of_int main in
   let all_nodes = ref [] in
-  let make_node ?parents name operation =
-    let node = make_node ?parents dataset_name name operation in
+  let make_node name operation =
+    let node = make_node name operation in
     all_nodes := node :: !all_nodes
   in
   let conf_of_bcn bcn =
@@ -233,7 +238,7 @@ let layer_of_bcns bcns dataset_name =
      * traffic_op and force a minutely averaging window for the alerts. *)
     let op =
       Printf.sprintf
-        {|SELECT
+        {|FROM '%s', '%s' SELECT
             (capture_begin // %d) AS start,
             min capture_begin, max capture_end,
             sum packets_src / %g AS packets_per_secs,
@@ -245,6 +250,7 @@ let layer_of_bcns bcns dataset_name =
           GROUP BY capture_begin // %d
           COMMIT AND FLUSH WHEN
             in.capture_begin > out.min_capture_begin + 2 * u64(%d)|}
+        (rebase dataset_name "c2s") (rebase dataset_name "s2c")
         avg_window
         bcn.avg_window bcn.avg_window
         (name_of_zones bcn.source)
@@ -255,7 +261,7 @@ let layer_of_bcns bcns dataset_name =
         avg_window
         (* Note: Ideally we would want to compute the max of all.capture_begin *)
     in
-    make_node ~parents:["c2s"; "s2c"] avg_per_zones_name op ;
+    make_node avg_per_zones_name op ;
     let perc_per_obs_window_name =
       Printf.sprintf "%s: %gth perc on last %gs"
         name_prefix bcn.percentile bcn.obs_window in
@@ -265,7 +271,7 @@ let layer_of_bcns bcns dataset_name =
       (* Note: The event start at the end of the observation window and lasts
        * for one avg window! *)
       Printf.sprintf
-        {|SELECT
+        {|FROM '%s' SELECT
            group.#count AS group_count,
            min start, max start,
            min min_capture_begin AS min_capture_begin,
@@ -277,8 +283,9 @@ let layer_of_bcns bcns dataset_name =
          COMMIT AND SLIDE 1 WHEN
            group.#count >= %d OR
            in.start > out.max_start + 5|}
+         avg_per_zones_name
          bcn.percentile bcn.avg_window nb_items_per_groups in
-    make_node ~parents:["BCN/"^ avg_per_zones_name] perc_per_obs_window_name op ;
+    make_node perc_per_obs_window_name op ;
     let enc = Uri.pct_encode in
     (* TODO: we need an hysteresis here! *)
     Option.may (fun min_bps ->
@@ -291,11 +298,13 @@ let layer_of_bcns bcns dataset_name =
                       min_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
           {|WHEN bytes_per_secs < %d
+            FROM '%s'
             NOTIFY "http://localhost:876/notify?name=Low%%20traffic&firing=1&subject=%s&text=%s"|}
             min_bps
+            perc_per_obs_window_name
             (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
-        make_node ~parents:["BCN"^ perc_per_obs_window_name] name ops
+        make_node name ops
       ) bcn.min_bps ;
     Option.may (fun max_bps ->
         let subject = Printf.sprintf "Too much traffic from zone %s to %s"
@@ -307,11 +316,13 @@ let layer_of_bcns bcns dataset_name =
                       max_bps (bcn.obs_window /. 60.) in
         let ops = Printf.sprintf
           {|WHEN bytes_per_secs > %d
-           NOTIFY "http://localhost:876/notify?name=High%%20traffic&firing=1&subject=%s&text=%s"|}
+            FROM '%s'
+            NOTIFY "http://localhost:876/notify?name=High%%20traffic&firing=1&subject=%s&text=%s"|}
             max_bps
+            perc_per_obs_window_name
             (enc subject) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
-        make_node ~parents:["BCN/"^ perc_per_obs_window_name] name ops
+        make_node name ops
       ) bcn.max_bps ;
     all_nodes :=
       traffic_op ~where dataset_name (name_prefix ^": minutely traffic") 60 ::
@@ -329,7 +340,7 @@ let ddos_layer dataset_name =
   let layer_name = rebase dataset_name "DDoS" in
   let op_new_peers avg_win rem_win =
     let avg_win_us = avg_win * 1_000_000 in
-    {|SELECT
+    {|FROM '$CSV$' SELECT
        (capture_begin // $AVG_WIN_US$) AS start,
        min capture_begin, max capture_end,
        sum (
@@ -346,9 +357,10 @@ let ddos_layer dataset_name =
                   WITH DURATION $AVG_WIN$|} |>
     rep "$AVG_WIN_US$" (string_of_int avg_win_us) |>
     rep "$AVG_WIN$" (string_of_int avg_win) |>
-    rep "$REM_WIN$" (string_of_int rem_win) in
+    rep "$REM_WIN$" (string_of_int rem_win) |>
+    rep "$CSV$" (rebase dataset_name "csv") in
   let global_new_peers =
-    make_node ~parents:["csv"] dataset_name "new peers" (op_new_peers 60 3600)
+    make_node "new peers" (op_new_peers 60 3600)
   in
   RamenSharedTypes.{
     name = layer_name ;
@@ -363,7 +375,7 @@ open Cohttp_lwt_unix
 let put_layer ramen_url layer =
   let req = PPP.to_string RamenSharedTypes.put_layer_req_ppp layer in
   let url = ramen_url ^"/graph/" in
-  !logger.debug "Will send %S to %S" req url ;
+  !logger.debug "Will send %s to %S" req url ;
   let body = `String req in
   (* TODO: but also fix the server never timeouting! *)
   let headers = Header.init_with "Connection" "close" in
@@ -376,7 +388,7 @@ let put_layer ramen_url layer =
     !logger.error "Error code %d: %S" code body ;
     exit 1) ;
   !logger.debug "Response code: %d" code ;
-  !logger.debug "Body: %S\n" body ;
+  !logger.debug "Body: %s\n" body ;
   return_unit
 
 let start conf ramen_url db_name dataset_name delete csv_dir
