@@ -100,7 +100,7 @@ struct
       (* The signature identifies the operation and therefore the binary.
        * It does not identifies a node! Only layer name + node name identifies
        * a node. Indeed, it is frequent that different nodes in the graph have
-       * the same signature (they perform the same operation, but with a
+       * the same signature; they perform the same operation, but with a
        * different internal state and different environment (ie. different
        * ringbufs and different parameters).
        * This field is computed as soon as the node is typed, and is otherwise

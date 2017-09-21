@@ -106,7 +106,6 @@ let read_tuple tuple_type =
   (* First read the nullmask *)
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type tuple_type in
-  !logger.debug "nullmask size=%d" nullmask_size ;
   fun tx ->
     let read_single_value offs =
       let open RingBuf in
@@ -159,8 +158,8 @@ let read_tuple tuple_type =
 let import_tuples rb_name node =
   let open Lwt in
   let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
-  !logger.debug "Starting to import output from node %s (in ringbuf %S)"
-    (N.fq_name node) rb_name ;
+  !logger.debug "Starting to import output from node %s (in ringbuf %S), which outputs %a"
+    (N.fq_name node) rb_name C.print_temp_tup_typ node.N.out_type ;
   let rb = RingBuf.load rb_name in
   catch
     (fun () ->
@@ -181,6 +180,7 @@ let import_tuples rb_name node =
 
 let since_of filenum idx =
   filenum * C.max_history_block_length + idx
+
 let fold_tuples ?min_filenum ?max_filenum ?since
                 ?(max_res=100*C.history_block_length) node init f =
   let history = Option.get node.N.history in

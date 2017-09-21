@@ -7,7 +7,7 @@ open Batteries
 
 let do_persist =
   let i = Arg.info ~doc:"save/restore graph file from the persist_dir"
-                   [ "save-graph" ] in
+                   [ "save-graph"; "save-conf" ] in
   Arg.(value (flag i))
 
 let debug =

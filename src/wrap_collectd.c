@@ -49,7 +49,7 @@ CAMLprim value wrap_collectd_decode(value buffer_, value nb_bytes_)
   // Return an array of collectd_metric:
   res = caml_alloc(nb_metrics, 0);
 
-  printf("collectd_decode: collected %u metrics\n", nb_metrics);
+  //printf("collectd_decode: collected %u metrics\n", nb_metrics);
   for (unsigned i = 0; i < nb_metrics; i++) {
     struct collectd_metric *m = metrics + i;
     assert(m->nb_values > 0);

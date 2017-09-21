@@ -1452,7 +1452,7 @@ struct
       Expr.print false fmt f.expr
 
   type flush_method = Reset | Slide of int
-                  | KeepOnly of Expr.t | RemoveAll of Expr.t
+                    | KeepOnly of Expr.t | RemoveAll of Expr.t
 
   let print_flush_method ?(prefix="") ?(suffix="") () oc = function
     | Reset ->
@@ -1756,7 +1756,7 @@ struct
 
     (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
     let read_csv_file m =
-      let m = "read csv file" :: m in
+      let m = "read csv operation" :: m in
       let field =
         non_keyword +- blanks ++ Scalar.Parser.typ ++
         optional ~def:true (

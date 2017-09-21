@@ -520,6 +520,7 @@ let top conf headers params =
           max_groups := max !max_groups g)
         (find_int_opt_metric node.N.last_report Consts.group_count_metric)
     ) nodes ;
+  (* TODO: add a health indicator (based on how old is the last report) *)
   let node_columns =
     [ "layer", true, "" ; "name", true, "" ; "op", true, "" ;
       "#in", true, "tuples" ; "#selected", true, "tuples" ;
