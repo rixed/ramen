@@ -424,7 +424,7 @@ let top conf headers params =
     (* To refresh the top we reload (toward top not whatever last command was
      * called!) every 10s, which is also the interval at which ramen receive
      * reports from the workers: *)
-    Printf.sprintf {|<meta http-equiv="refresh" content="10;url=%s" />|}
+    Printf.sprintf {|<meta http-equiv="refresh" content="30;url=%s" />|}
       (href ()) in
   let%lwt hostname = hostname () in
   let header_panel =
