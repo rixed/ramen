@@ -832,26 +832,33 @@ let timeseries conf headers body =
         | Aggregate { export = Some (Some ((start, scale), DurationConst dur)) ; _ } ->
           Printf.sprintf
             "SELECT %s, %s AS data \
+             FROM '%s' \
              EXPORT EVENT STARTING AT %s * %g WITH DURATION %g"
             start select_y
+            parent.N.name
             start scale dur |> return
         | Aggregate { export = Some (Some ((start, scale), DurationField (dur, scale2))) ; _ } ->
           Printf.sprintf
             "SELECT %s, %s AS data \
+             FROM '%s' \
              EXPORT EVENT STARTING AT %s * %g WITH DURATION %s * %g"
             start select_y
+            parent.N.name
             start scale dur scale2 |> return
         | Aggregate { export = Some (Some ((start, scale), StopField (stop, scale2))) ; _ } ->
           Printf.sprintf
             "SELECT %s, %s, %s AS data \
+             FROM '%s' \
              EXPORT EVENT STARTING AT %s * %g AND STOPPING AT %s * %g"
             start stop select_y
+            parent.N.name
             start scale stop scale2 |> return
         | _ ->
           fail_with "This parent does not provide time information"
       ) else return (
         "SELECT "^ select_x ^" AS time, "
                  ^ select_y ^" AS data \
+         FROM '"^ parent.N.name ^"' \
          EXPORT EVENT STARTING AT time") in
     let op_text =
       if where = "" then op_text else op_text ^" WHERE "^ where in
