@@ -352,6 +352,8 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
   Hashtbl.add layer.Layer.persist.Layer.nodes node_name node ;
   layer, node
 
+(* Create the node but not the links to parents (this is so we can have
+ * loops) *)
 let add_node conf node_name layer_name op_text =
   !logger.debug "Creating node %s / %s" layer_name node_name ;
   (* New lines have to be forbidden because of the out_ref ringbuf files.

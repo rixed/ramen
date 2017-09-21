@@ -362,7 +362,7 @@ let top conf headers params =
       #input { max-width: 50%; }
         #input p { margin: 0; padding: 0 }
       #operation { flex-grow: 1; }
-    #tail { flex-grow: 0.2; width: 100%; }
+    #tail { flex-grow: 0.2; width: 100%; min-height: 8em; }
 
     span.label { margin-right: 0.2em; font-size: 80%; color: #222; font-weight: 700; }
     span.value { margin-right: 1em; font-size: 85%; color: #003; }

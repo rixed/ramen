@@ -94,7 +94,11 @@ let tuple_need_state = function
     | Bad (NoSolution e) ->
       Printf.sprintf "No solution (%s)" (IO.to_string print_error e)
     | Bad (Ambiguous lst) ->
-      Printf.sprintf "%d solutions" (List.length lst)
+      Printf.sprintf "%d solutions: %s"
+        (List.length lst)
+        (IO.to_string
+          (List.print (fun fmt (res,_c,_s) ->
+            res_printer fmt res)) lst)
 
   let strip_linecol = function
     | Ok (res, (x, _line, _col)) -> Ok (res, x)
