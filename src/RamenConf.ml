@@ -1,6 +1,7 @@
 (* Global configuration *)
 open Batteries
 open RamenLog
+open Helpers
 open RamenSharedTypes
 module SL = RamenSharedTypes.Layer
 
@@ -144,6 +145,9 @@ struct
     Cryptohash_md4.to_hex
 end
 
+let exec_of_node persist_dir node =
+  persist_dir ^"/workers/bin/"^ node.Node.signature
+
 exception InvalidCommand of string
 
 module Layer =
@@ -168,7 +172,7 @@ struct
     layer.persist.status <- status ;
     layer.persist.last_status_change <- Unix.gettimeofday ()
 
-  let make ?persist ?(timeout=0.) name =
+  let make persist_dir ?persist ?(timeout=0.) name =
     assert (String.length name > 0) ;
     let persist =
       let now = Unix.gettimeofday () in
@@ -180,9 +184,15 @@ struct
           last_started = None ; last_stopped = None }) persist in
     let layer = { name ; persist ; importing_threads = [] } in
     (* Downgrade the status to compiled since the workers can't be running
-     * anymore.  TODO: check the binaries are still there or downgrade to
-     * edition. *)
+     * anymore. *)
     if persist.status = SL.Running then set_status layer SL.Compiled ;
+    (* Further downgrade to edition if the binaries are not there anymore *)
+    if persist.status = SL.Compiled &&
+       Hashtbl.values persist.nodes |> Enum.exists (fun n ->
+         not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
+    then set_status layer SL.Edition ;
+    (* Also, we cannot be compiling anymore: *)
+    if persist.status = SL.Compiling then set_status layer SL.Edition ;
     (* FIXME: also, as a precaution, delete any temporary layer (maybe we
      * crashed because of it? *)
     layer
@@ -274,7 +284,7 @@ let parse_operation operation =
     op
 
 let add_layer ?timeout conf name =
-  let layer = Layer.make ?timeout name in
+  let layer = Layer.make conf.persist_dir ?timeout name in
   Hashtbl.add conf.graph.layers name layer ;
   layer
 
@@ -287,7 +297,7 @@ let save_graph conf =
       Hashtbl.map (fun _ l -> l.Layer.persist) conf.graph.layers in
     let save_file = save_file_of conf.persist_dir in
     !logger.debug "Saving graph in %S" save_file ;
-    Helpers.mkdir_all ~is_file:true save_file ;
+    mkdir_all ~is_file:true save_file ;
     File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
       Marshal.output oc persist)
 
@@ -298,7 +308,7 @@ let max_history_block_length = 1000000
 let max_history_archives = 200
 
 let make_history dir =
-  Helpers.mkdir_all ~is_file:false dir ;
+  mkdir_all ~is_file:false dir ;
   (* Note: this is OK to share this [||] since we use it only as a placeholder *)
   let tuples = Array.make history_block_length [||] in
   let min_filenum, max_filenum =
@@ -354,14 +364,11 @@ let add_node conf node_name layer_name op_text =
    * HTTP query *)
   save_graph conf
 
-let exec_of_node conf node =
-  conf.persist_dir ^"/workers/bin/"^ node.Node.signature
-
-let make_graph ?persist () =
+let make_graph persist_dir ?persist () =
   let persist =
     Option.default_delayed (fun () -> Hashtbl.create 11) persist in
   { layers = Hashtbl.map (fun name persist ->
-               Layer.make ~persist name) persist }
+               Layer.make persist_dir ~persist name) persist }
 
 let load_graph do_persist persist_dir =
   let save_file = save_file_of persist_dir in
@@ -378,7 +385,7 @@ let load_graph do_persist persist_dir =
         None
     else None
   in
-  make_graph ?persist ()
+  make_graph persist_dir ?persist ()
 
 let find_node conf layer name =
   let layer = Hashtbl.find conf.graph.layers layer in

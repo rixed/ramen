@@ -818,7 +818,7 @@ let set_all_types _conf layer =
 
 let compile_node conf node =
   let open Lwt in
-  let exec_name = C.exec_of_node conf node in
+  let exec_name = C.exec_of_node conf.C.persist_dir node in
   mkdir_all ~is_file:true exec_name ;
   assert node.N.in_type.C.finished_typing ;
   assert node.N.out_type.C.finished_typing ;

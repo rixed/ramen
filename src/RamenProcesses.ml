@@ -71,7 +71,7 @@ let run conf layer =
     !logger.debug "Launching generated programs..." ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
-        let command = C.exec_of_node conf node
+        let command = C.exec_of_node conf.C.persist_dir node
         and output_ringbufs =
           (* Start to output only to nodes on this layer. They have all been
            * created above, and we want to allow loops in a layer. But above
