@@ -352,8 +352,9 @@ let top conf headers params =
         #layers .name, #layers .info, #layers .info p { margin: 0px; }
       #nodes { flex-grow: 1; }
         #nodes tbody td:first-child a { display: flex; flex-direction: row; justify-content: space-between; }
-      #nodes a { display: block; width: 100%; color: black; }
-      #nodes tbody tr:hover { background-color: #fff; }
+        #nodes th.ordered { background-color: #fff; }
+        #nodes a { display: block; width: 100%; color: black; }
+        #nodes tbody tr:hover { background-color: #fff; }
     #top tbody td hr { margin-left: 0; margin-top: 0; margin-bottom: 0; border: 1px solid #aaa; }
     #details { max-height: 80%; width: 100%; flex-grow: 0.2; }
       #input { max-width: 50%; }
@@ -415,8 +416,8 @@ let top conf headers params =
   let dispname_of_type nullable scalar_typ =
     Lang.Scalar.string_of_typ scalar_typ ^
     (if nullable then " (or null)" else "") in
-  let pretty_th title subtitle =
-    th (
+  let pretty_th ?attr title subtitle =
+    th ?attr (
       tagged "p" title ^
       (if subtitle = "" then "" else tagged "p" ~attr:["class","type"] subtitle)) in
   let reload =
@@ -529,8 +530,12 @@ let top conf headers params =
     tagged "thead" (tagged "tr" (String.concat "" (
       List.mapi (fun i (col, sortable, subtitle) ->
         if sortable then
-          let attr = ["href", href ~scol:(string_of_int i) ()] in
-          pretty_th (tagged "a" ~attr col) (tagged "a" ~attr subtitle)
+          let i_str = string_of_int i in
+          if i_str = scol then
+            pretty_th ~attr:["class","ordered"] col subtitle
+          else
+            let attr = ["href", href ~scol:i_str ()] in
+            pretty_th (tagged "a" ~attr col) (tagged "a" ~attr subtitle)
         else
           pretty_th col subtitle) node_columns))) in
   let nodes_body =
