@@ -1657,8 +1657,8 @@ struct
       | NotifyClause of string
       | GroupByClause of Expr.t list
       | TopByClause of (Expr.t (* N *) * Expr.t (* by *))
-      (* FIXME: have a separate FlushClause *)
-      | CommitClause of Expr.t * Expr.t option * flush_method
+      | CommitClause of flush_method option * Expr.t
+      | FlushClause of flush_method * Expr.t
 
     let group_by m =
       let m = "group-by clause" :: m in
@@ -1687,21 +1687,11 @@ struct
       (strinG "commit" -- blanks -+
        optional ~def:None
          (strinG "and" -- blanks -+ some flush +- blanks) +-
-       strinG "when" +- blanks ++
-       Expr.Parser.p ++
-       optional ~def:None
-         (some (blanks -+ flush +- blanks +- strinG "when" +- blanks ++
-          Expr.Parser.p)) >>:
-       function
-       | (Some flush_how, commit_when), None ->
-         commit_when, None, flush_how
-       | (Some _, _), Some _ ->
-         raise (Reject "AND FLUSH incompatible with FLUSH WHEN")
-       | (None, commit_when), (Some (flush_how, flush_when)) ->
-         commit_when, Some flush_when, flush_how
-       | (None, _), None ->
-         raise (Reject "Must specify when to flush")
-      ) m
+       strinG "when" +- blanks ++ Expr.Parser.p) m
+
+    let flush_when m =
+      let m = "flush clause" :: m in
+      ((flush +- blanks +- strinG "when" +- blanks ++ Expr.Parser.p)) m
 
     let aggregate m =
       let m = "operation" :: m in
@@ -1712,7 +1702,8 @@ struct
         (notify_clause >>: fun c -> NotifyClause c) |||
         (group_by >>: fun c -> GroupByClause c) |||
         (top_clause >>: fun c -> TopByClause c) |||
-        (commit_when >>: fun (c, f, m) -> CommitClause (c, f, m)) in
+        (commit_when >>: fun (m, c) -> CommitClause (m, c)) |||
+        (flush_when >>: fun (m, f) -> FlushClause (m, f)) in
       (several ~sep:blanks part >>: fun clauses ->
         if clauses = [] then raise (Reject "Empty select") ;
         let default_select =
@@ -1746,9 +1737,15 @@ struct
               | GroupByClause key ->
                 fields, and_all_others, where, export, notify_url, key,
                 top, commit_when, flush_when, flush_how
-              | CommitClause (commit_when, flush_when, flush_how) ->
+              | CommitClause (Some flush_how, commit_when) ->
+                fields, and_all_others, where, export, notify_url, key,
+                top, commit_when, None, flush_how
+              | CommitClause (None, commit_when) ->
                 fields, and_all_others, where, export, notify_url, key,
                 top, commit_when, flush_when, flush_how
+              | FlushClause (flush_how, flush_when) ->
+                fields, and_all_others, where, export, notify_url, key,
+                top, commit_when, Some flush_when, flush_how
               | TopByClause top ->
                 fields, and_all_others, where, export, notify_url, key,
                 Some top, commit_when, flush_when, flush_how
