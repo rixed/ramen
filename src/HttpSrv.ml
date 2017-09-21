@@ -776,7 +776,7 @@ let report conf _headers layer name body =
 let complete_nodes conf headers body =
   let%lwt msg = of_json headers "Complete tables" complete_node_req_ppp body in
   let body =
-    C.complete_node_name conf msg.node_prefix |>
+    C.complete_node_name conf msg.node_prefix msg.only_exporting |>
     PPP.to_string complete_resp_ppp
   in
   respond_ok ~body ()

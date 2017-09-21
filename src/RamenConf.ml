@@ -425,15 +425,16 @@ let fold_nodes conf init f =
       Hashtbl.fold (fun _ node prev -> f prev node) layer.Layer.persist.Layer.nodes prev
     ) conf.graph.layers init
 
-let complete_node_name conf s =
+let complete_node_name conf s only_exporting =
   let s = String.(lowercase (trim s)) in
   (* TODO: a better search structure for case-insensitive prefix search *)
   fold_nodes conf [] (fun lst node ->
       let lc_name = String.lowercase node.Node.name in
       let fq_name = Node.fq_name node in
       let lc_fq_name = String.lowercase fq_name in
-      if String.(starts_with lc_fq_name s || starts_with lc_name s) then
-        fq_name :: lst
+      if String.(starts_with lc_fq_name s || starts_with lc_name s) &&
+         (not only_exporting || Lang.Operation.is_exporting node.Node.operation)
+      then fq_name :: lst
       else lst
     )
 

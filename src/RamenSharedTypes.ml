@@ -173,7 +173,7 @@ type export_resp =
 
 (* TODO: exporting : bool option ; temporary : bool option *)
 type complete_node_req =
-  { node_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
+  { node_prefix : string ; only_exporting : bool } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type complete_field_req =
   { node : string ; field_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
