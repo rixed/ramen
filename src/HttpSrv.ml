@@ -865,7 +865,7 @@ let timeseries conf headers body =
     let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
     let reformatted_op = IO.to_string Lang.Operation.print operation in
     let layer_name =
-      "temp/from_"^ from ^"_"^ Cryptohash_md4.(string reformatted_op |> to_hex)
+      "temp/"^ Cryptohash_md4.(string reformatted_op |> to_hex)
     and node_name = "operation" in
     (* So far so good. In all likelihood this layer exists already: *)
     (if Hashtbl.mem conf.C.graph.C.layers layer_name then (
