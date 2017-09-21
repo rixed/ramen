@@ -170,7 +170,10 @@ struct
 
   let set_status layer status =
     layer.persist.status <- status ;
-    layer.persist.last_status_change <- Unix.gettimeofday ()
+    layer.persist.last_status_change <- Unix.gettimeofday () ;
+    (* If we are not running, clean pid info *)
+    if status <> SL.Running then
+      Hashtbl.iter (fun _ n -> n.Node.pid <- None) layer.persist.nodes
 
   let make persist_dir ?persist ?(timeout=0.) name =
     assert (String.length name > 0) ;
