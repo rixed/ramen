@@ -479,9 +479,9 @@ let top conf headers params =
                          (find_int_metric n1.N.last_report Consts.selected_tuple_count_metric)
     | "5" -> Int.compare (find_int_metric n2.N.last_report Consts.out_tuple_count_metric)
                          (find_int_metric n1.N.last_report Consts.out_tuple_count_metric)
-    | "9" -> Float.compare (find_float_metric n2.N.last_report Consts.cpu_time_metric)
+    | "7" -> Float.compare (find_float_metric n2.N.last_report Consts.cpu_time_metric)
                            (find_float_metric n1.N.last_report Consts.cpu_time_metric)
-    | "10" -> Int.compare (find_int_metric n2.N.last_report Consts.ram_usage_metric)
+    | "8" -> Int.compare (find_int_metric n2.N.last_report Consts.ram_usage_metric)
                           (find_int_metric n1.N.last_report Consts.ram_usage_metric)
     | _ ->
       match String.icompare n1.N.layer n2.N.layer with
