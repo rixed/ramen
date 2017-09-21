@@ -523,9 +523,11 @@ let top conf headers params =
   let node_columns =
     [ "layer", true, "" ; "name", true, "" ; "op", true, "" ;
       "#in", true, "tuples" ; "#selected", true, "tuples" ;
-      "#out", true, "tuples" ; "#groups", false, "" ; "parents", false, "" ;
-      "children", false, "" ; "CPU", true, "seconds" ; "RAM", true, "bytes" ;
-      "PID", false, "" ; "signature", false, "" ; "export", false, "" ] in
+      "#out", true, "tuples" ; "#groups", false, "" ;
+      "CPU", true, "seconds" ; "RAM", true, "bytes" ;
+      "parents", false, "" ; "children", false, "" ;
+      "PID", false, "" ; "signature", false, "" ;
+      "export", false, "" ] in
   let nodes_head =
     tagged "thead" (tagged "tr" (String.concat "" (
       List.mapi (fun i (col, sortable, subtitle) ->
@@ -581,9 +583,10 @@ let top conf headers params =
         td node.N.layer ^ td node.N.name ^
         td (type_of_operation node.N.operation) ^
         tdih !max_ins ins ^ tdih !max_sels sels ^ tdih !max_outs outs ^ groups ^
+        tdfh !max_cpu cpu ^ tdih !max_ram ram ^
         td (short_node_list node.N.parents) ^
         td (short_node_list node.N.children) ^
-        tdfh !max_cpu cpu ^ tdih !max_ram ram ^ pid ^ td node.N.signature ^
+        pid ^ td node.N.signature ^
         td (if Lang.Operation.is_exporting node.N.operation then "&#x2713;" else "&nbsp;")) in
     tagged "tbody" (String.concat "" (List.map tr_of_node nodes)) in
   let nodes_foot =
@@ -591,8 +594,8 @@ let top conf headers params =
     and tdf = td ~attr:["class", "number"] % str_of_float in
     tagged "tfoot" (tagged "tr" (
       tdi (Set.cardinal !layers) ^ tdi !tot_nodes ^ td "" ^ tdi !tot_ins ^
-      tdi !tot_sels ^ tdi !tot_outs ^ tdi !tot_groups ^ td "" ^ td "" ^
-      tdf !tot_cpu ^ tdi !tot_ram ^ td "" ^ td "" ^ td "")) in
+      tdi !tot_sels ^ tdi !tot_outs ^ tdi !tot_groups ^
+      tdf !tot_cpu ^ tdi !tot_ram ^ td "" ^ td "" ^ td "" ^ td "" ^ td "")) in
   let nodes_panel = tagged "table" (nodes_head ^ nodes_body ^ nodes_foot) in
   let input_panel, op_panel, tail_panel =
     match sel_node with
