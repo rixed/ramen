@@ -95,22 +95,25 @@ type slice =
 type sliced_filter =
   { slices : slice array ;
     slice_width : float ;
+    nb_keys : int ;
+    nb_bits_per_item : float ;
     mutable current : int }
 
 let make_slice nb_bits nb_keys start_time =
   { filter = make nb_bits nb_keys ; start_time }
 
-(* We aim for a probability of false positive below 1.5%.  So we want 8.7 bits
- * per bit set, and 6 keys.  Thus [nb_bits] is nothing but an initial * guesses
- * that will be enlarged if needed *)
-let nb_keys = 6
-let nb_bits_per_bit_set = 8.7
-
-let make_sliced start_time nb_slices slice_width nb_bits =
+let make_sliced start_time nb_slices slice_width false_positive_ratio =
+  (* We aim for the given probability of false positive. *)
+  let nb_keys = ~- (Helpers.round_to_int (
+    log false_positive_ratio /. log 2.)) in
+  (* nb_bits_per_item: the ratio between the size of the bloom filter and
+   * the number of inserted items: *)
+  let nb_bits_per_item = ~-.1.44 *. log false_positive_ratio /. log 2. in
+  let nb_bits = 65536 in (* initial guess *)
   { slices = Array.init nb_slices (fun i ->
       let start_time = start_time +. float_of_int i *. slice_width in
       make_slice nb_bits nb_keys start_time) ;
-    slice_width ; current = 0 }
+    slice_width ; nb_keys ; nb_bits_per_item ; current = 0 }
 
 (* Tells if x has been seen earlier (and remember it). If x time is
  * before the range of remembered data returns false (not seen). *)
@@ -129,12 +132,14 @@ let remember sf time x =
         if x < mi then mi else if x > ma then ma else x in
       let nb_inserted s =
         let estimated =
-          ~-. (float_of_int s.filter.nb_bits /. float_of_int nb_keys) *.
+          ~-. (float_of_int s.filter.nb_bits /. float_of_int sf.nb_keys) *.
               log (1. -. (minmax epsilon (fill_ratio s.filter) (1. -. epsilon))) in
         max estimated (float_of_int s.filter.nb_bits_set) in
+      (* We don't know how many items will be inserted in the next slice so
+       * we prepare for the worse: *)
       let nb_inserted = Array.fold_left (fun n s ->
           max (nb_inserted s) n) 0. sf.slices in
-      let nb_bits = nb_bits_per_bit_set *. nb_inserted |>
+      let nb_bits = sf.nb_bits_per_item *. nb_inserted |>
                     int_of_float |>
                     max 1024 in
       (* Avoid decreasing too fast *)
@@ -151,7 +156,7 @@ let remember sf time x =
         (int_of_float nb_inserted)
         (100. *. fpl) nb_bits ;
       (* TODO: a slice_reset that does not allocate (if we keep a close size *)
-      sf.slices.(sf.current) <- make_slice nb_bits nb_keys end_time ;
+      sf.slices.(sf.current) <- make_slice nb_bits sf.nb_keys end_time ;
       loop ()
     ) in
   loop () ;
