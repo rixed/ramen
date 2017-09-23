@@ -210,7 +210,7 @@ let run ?timeout cmd =
         s ^ (if String.length s > 0 then " " else "") ^ v
       ) "" a in
   if Array.length cmd < 1 then invalid_arg "cmd" ;
-  Log.debug "Running command %s" (string_of_array cmd) ;
+  !logger.debug "Running command %s" (string_of_array cmd) ;
   let%lwt lines =
     Lwt_process.with_process_full ?timeout (cmd.(0), cmd) (fun process ->
       (* We need to read both stdout and stderr simultaneously or risk
@@ -222,7 +222,7 @@ let run ?timeout cmd =
         | exception exc ->
           (* when this happens for some reason we are left with (null) *)
           let msg = Printexc.to_string exc in
-          Log.warn "%s exception: %s"
+          !logger.error "%s exception: %s"
             (string_of_array cmd) msg ;
           return_unit
         | l -> lines := l ; return_unit in
@@ -230,10 +230,10 @@ let run ?timeout cmd =
         catch (fun () ->
           Lwt_io.read_lines c |>
           Lwt_stream.iter (fun l ->
-              Log.warn "%s stderr: %s" (string_of_array cmd) l
+              !logger.error "%s stderr: %s" (string_of_array cmd) l
             ))
           (fun exc ->
-            Log.warn "Error while running %s: %s"
+            !logger.error "Error while running %s: %s"
               (string_of_array cmd) (Printexc.to_string exc) ;
             return_unit) in
       join [ read_lines process#stdout ;
@@ -242,7 +242,7 @@ let run ?timeout cmd =
       | Unix.WEXITED 0 ->
         return !lines
       | x ->
-        Log.error "Command '%s' %s"
+        !logger.error "Command '%s' %s"
           (string_of_array cmd)
           (string_of_process_status x) ;
         fail (RunFailure x)
