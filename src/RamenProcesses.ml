@@ -40,13 +40,13 @@ exception StillCompiling
 (* Compute input ringbuf and output ringbufs given the node fq name. *)
 
 let in_ringbuf_name conf node =
-  conf.C.persist_dir ^"/workers/"^ N.fq_name node ^"/ringbufs/in"
+  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/in"
 
 let exp_ringbuf_name conf node =
-  conf.C.persist_dir ^"/workers/"^ N.fq_name node ^"/ringbufs/exp"
+  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/exp"
 
 let out_ringbuf_names_ref conf node =
-  conf.C.persist_dir ^"/workers/"^ N.fq_name node ^"/ringbufs/out_ref"
+  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/out_ref"
 
 let run conf layer =
   let open C.Layer in
@@ -101,12 +101,12 @@ let run conf layer =
           "report_url="^ conf.C.ramen_url
                        ^ "/report/"^ Uri.pct_encode node.N.layer
                        ^ "/"^ Uri.pct_encode node.N.name ;
-          "persist_dir="^ conf.C.persist_dir ^"/workers/"
-                        ^ (N.fq_name node) ^"/tmp" ;
+          "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
+                        ^ (N.fq_name node) ;
           (match !logger.logdir with
             | Some _ ->
-              "log_dir="^ conf.C.persist_dir ^"/workers/"
-                        ^ (N.fq_name node) ^"/log"
+              "log_dir="^ conf.C.persist_dir ^"/workers/log/"
+                        ^ (N.fq_name node)
             | None -> "no_log_dir=") |] in
         let pid = run_background command [||] env in
         node.N.pid <- Some pid ;

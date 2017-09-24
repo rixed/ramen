@@ -336,8 +336,8 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
              "Node "^ node_name ^" already exists in layer "^ layer_name)) ;
   let history =
     if Lang.Operation.is_exporting operation then (
-      let dir = conf.persist_dir ^"/workers/"^ layer_name ^"/"^
-                node_name ^"/history" in
+      let dir = conf.persist_dir ^"/workers/history/"^ layer_name ^"/"^
+                node_name in
       Some (make_history dir)
     ) else None in
   let node = Node.{
