@@ -42,6 +42,8 @@ external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decod
 
 let udp_server ~inet_addr ~port k =
   let open Lwt_unix in
+  (* FIXME: it seems that binding that socket makes cohttp leack descriptors
+   * when sending reports to ramen. Oh boy! *)
   let sock_of_domain domain =
     let sock = socket domain SOCK_DGRAM 0 in
     let%lwt () = bind sock (ADDR_INET (inet_addr, port)) in

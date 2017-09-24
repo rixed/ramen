@@ -110,6 +110,10 @@ let make_sliced start_time nb_slices slice_width false_positive_ratio =
    * the number of inserted items: *)
   let nb_bits_per_item = ~-.1.44 *. log false_positive_ratio /. log 2. in
   let nb_bits = 65536 in (* initial guess *)
+  !logger.info "Rotating bloom-filter: starting at time %f \
+                with %d keys, %f bits per items, %d bits \
+                (%d slices of duration %f)\n"
+    start_time nb_keys nb_bits_per_item nb_bits nb_slices slice_width ;
   { slices = Array.init nb_slices (fun i ->
       let start_time = start_time +. float_of_int i *. slice_width in
       make_slice nb_bits nb_keys start_time) ;
@@ -131,10 +135,10 @@ let remember sf time x =
       let minmax mi (x : float) ma =
         if x < mi then mi else if x > ma then ma else x in
       let nb_inserted s =
-        let estimated =
-          ~-. (float_of_int s.filter.nb_bits /. float_of_int sf.nb_keys) *.
-              log (1. -. (minmax epsilon (fill_ratio s.filter) (1. -. epsilon))) in
-        max estimated (float_of_int s.filter.nb_bits_set) in
+        if s.filter.nb_bits_set = 0 then 0. else
+        ~-. (float_of_int s.filter.nb_bits /. float_of_int sf.nb_keys) *.
+            log (1. -. (minmax epsilon (fill_ratio s.filter) (1. -. epsilon))) |>
+        max (float_of_int s.filter.nb_bits_set) in
       (* We don't know how many items will be inserted in the next slice so
        * we prepare for the worse: *)
       let nb_inserted = Array.fold_left (fun n s ->
@@ -155,7 +159,7 @@ let remember sf time x =
         sf.slices.(sf.current).filter.nb_bits
         (int_of_float nb_inserted)
         (100. *. fpl) nb_bits ;
-      (* TODO: a slice_reset that does not allocate (if we keep a close size *)
+      (* TODO: a slice_reset that does not allocate (if we keep a close size) *)
       sf.slices.(sf.current) <- make_slice nb_bits sf.nb_keys end_time ;
       loop ()
     ) in
@@ -164,8 +168,8 @@ let remember sf time x =
   let rem =
     Array.fold_left (fun rem slice ->
       let rem = rem || get slice.filter x in
-      if time >= slice.start_time && time < slice.start_time +. sf.slice_width then
-        set slice.filter x
-      ;
+      if time >= slice.start_time &&
+         time < slice.start_time +. sf.slice_width
+      then set slice.filter x ;
       rem) false sf.slices in
   rem
