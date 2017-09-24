@@ -908,15 +908,16 @@ let rec timeout_layers conf =
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_layers conf
 
-let start do_persist debug to_stderr ramen_url version_tag persist_dir port
-          cert_opt key_opt () =
+let start do_persist debug no_demo to_stderr ramen_url version_tag
+          persist_dir port cert_opt key_opt () =
+  let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   let logdir = if to_stderr then None else Some (persist_dir ^"/log") in
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
-  let conf = C.make_conf do_persist ramen_url debug version_tag persist_dir in
-  (* When there is nothing to do, listen to collectd!
-   * (TODO: make this an option) *)
-  if Hashtbl.is_empty conf.C.graph.C.layers then (
+  let conf =
+    C.make_conf do_persist ramen_url debug version_tag persist_dir in
+  (* When there is nothing to do, listen to collectd! *)
+  if demo && Hashtbl.is_empty conf.C.graph.C.layers then (
     !logger.info "Adding default nodes since we have nothing to do..." ;
     C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore) ;
   async (fun () -> timeout_layers conf) ;

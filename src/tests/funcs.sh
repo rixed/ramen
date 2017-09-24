@@ -52,7 +52,7 @@ start() {
   LAYER_CMD=""
   rm -f /tmp/ringbuf_*
 
-  $ramen start &
+  $ramen start --no-demo -d &
   add_temp_pid $!
   sleep 0.5
 }
