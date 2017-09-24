@@ -1,6 +1,10 @@
 top_srcdir = .
 
+ifeq ($(shell uname),Darwin)
 FILE_NOTIFIER = RamenFileNotify_Poller.ml
+else
+FILE_NOTIFIER = RamenFileNotify_Inotify.ml
+endif
 
 TESTABLE_SOURCES = \
 	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml Compiler.ml \
@@ -122,7 +126,7 @@ clean-spec:
 	$(RM) ringbuf/*.o colcomp/*.o colcomp/colcomp_test
 
 distclean-spec:
-	$(RM) ramen codegen.cmxa ringbuf/*.a colcomp/*.a
+	$(RM) ramen codegen.cmxa ringbuf/*.a colcomp/*.a RamenFileNotify.ml
 
 colcomp/colcomp_test: colcomp/colcomp_test.o colcomp/libcolcomp.a
 	$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) $^ -o $@
