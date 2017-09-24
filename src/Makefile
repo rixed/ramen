@@ -1,5 +1,7 @@
 top_srcdir = .
 
+FILE_NOTIFIER = RamenFileNotify_Poller.ml
+
 TESTABLE_SOURCES = \
 	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml Compiler.ml \
 	Helpers.ml RamenBloomFilter.ml CodeGen_OCaml.ml
@@ -28,7 +30,7 @@ CODEGENLIB_SOURCES = \
 	RamenSharedTypes.ml RamenCollectd.ml RamenProtocols.ml \
 	RingBufLib.ml RingBuf.ml \
 	RamenBloomFilter.ml \
-	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
+	RamenFileNotify.ml CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.h ringbuf/ringbuf.c
@@ -70,6 +72,9 @@ INSTALLED = \
 all: $(INSTALLED) ringbuf_test.opt
 
 doc: HELP.html
+
+RamenFileNotify.ml: $(FILE_NOTIFIER)
+	ln -sf $< $@
 
 ringbuf/libringbuf.a: ringbuf/ringbuf.o
 	$(AR) rs $@ $^

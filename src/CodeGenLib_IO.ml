@@ -80,32 +80,13 @@ let read_glob_lines ?do_unlink path preprocessor k =
       !logger.debug "File %S is not interesting." filename ;
       return_unit
     ) in
-  (* inotify will silently do nothing if that path does not exist: *)
   let%lwt () = check_dir_exist dirname in
-  let%lwt handler = Lwt_inotify.create () in
-  let mask = Inotify.[ S_Create ; S_Moved_to ; S_Onlydir ] in
-  let%lwt _ = Lwt_inotify.add_watch handler dirname mask in
-  (* Before paying attention to the notifications, scan all files that
-   * are already waiting there. There is a race condition but soon we
-   * will do both simultaneously *)
+  let%lwt handler = RamenFileNotify.make dirname in
   !logger.debug "Import all files in dir %S..." dirname ;
-  let%lwt files = Lwt_unix.files_of_directory dirname |>
-                  Lwt_stream.to_list in
-  let%lwt () = List.fast_sort String.compare files |>
-               Lwt_list.iter_s import_file_if_match in
-  !logger.debug "...done. Now import any new file in %S..." dirname ;
   while%lwt true do
-    match%lwt Lwt_inotify.read handler with
-    | _watch, kinds, _cookie, Some filename
-      when (List.mem Inotify.Create kinds ||
-            List.mem Inotify.Moved_to kinds) &&
-           not (List.mem Inotify.Isdir kinds) ->
-      !logger.debug "New file %S in dir %S!" filename dirname ;
-      import_file_if_match filename
-    | ev ->
-      !logger.debug "Received a useless inotification: %s"
-        (Inotify.string_of_event ev) ;
-      return_unit
+    let%lwt filename = RamenFileNotify.next handler in
+    !logger.debug "New file %S in dir %S!" filename dirname ;
+    import_file_if_match filename
   done
 
 let read_ringbuf rb f =
