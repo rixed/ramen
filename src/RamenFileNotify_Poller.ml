@@ -8,7 +8,7 @@ type notifier =
 
 let make dirname = return { reported = [] ; dirname }
 
-let next n =
+let rec for_each f n =
   let%lwt files = Lwt_unix.files_of_directory n.dirname |>
                   Lwt_stream.to_list in
   let files = Array.of_list files in (* FIXME *)
@@ -18,7 +18,8 @@ let next n =
     if i >= Array.length files then (
       !logger.debug "No new files in %s" n.dirname ;
       n.reported <- List.rev_append prev next_reported ;
-      None
+      let%lwt () = Lwt_unix.sleep 1. in
+      for_each f n
     ) else (
       let s = Unix.stat (n.dirname ^"/"^ files.(i)) in
       if s.Unix.st_kind = Unix.S_DIR then
@@ -31,8 +32,8 @@ let next n =
           | 0 ->
             if f_mtime > r_mtime then  (
               !logger.debug "File %S have changed" files.(i) ;
-              n.reported <- List.rev_append prev ((r, f_mtime)::rest) ;
-              Some i
+              let%lwt () = f files.(i) in
+              merge ((r, f_mtime) :: prev) (i + 1) rest
             ) else (
               (* Still the same, keep going *)
               merge (rpair :: prev) (i + 1) rest
@@ -40,25 +41,17 @@ let next n =
           | 1 ->
             (* files.(i) is new: insert and notify *)
             !logger.debug "File %S is new" files.(i) ;
-            n.reported <- List.rev_append ((files.(i), f_mtime) :: prev) next_reported ;
-            Some i
+            let%lwt () = f files.(i) in
+            merge ((files.(i), f_mtime) :: prev) (i + 1) next_reported
           | _ ->
             !logger.debug "File %S is new" files.(i) ;
-            n.reported <- List.rev_append (rpair :: prev) ((files.(i), f_mtime) :: rest) ;
-            Some i
+            let%lwt () = f files.(i) in
+            merge ((files.(i), f_mtime) :: rpair :: prev) (i + 1) rest
           )
         | [] ->
-          (* If we came that far, all previously reported haven't been modified.
-           * Report a new one: *)
           !logger.debug "File %S is new" files.(i) ;
-          n.reported <- List.rev ((files.(i), f_mtime) :: prev) ;
-          Some i
+          let%lwt () = f files.(i) in
+          merge ((files.(i), f_mtime) :: prev) (i + 1) []
       )
     ) in
-  let rec loop () =
-    match merge [] 0 n.reported with
-    | None ->
-      Lwt_unix.sleep 1. >>= loop
-    | Some i ->
-      Lwt.return files.(i) in
-  loop ()
+  merge [] 0 n.reported

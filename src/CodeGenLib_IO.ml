@@ -83,11 +83,9 @@ let read_glob_lines ?do_unlink path preprocessor k =
   let%lwt () = check_dir_exist dirname in
   let%lwt handler = RamenFileNotify.make dirname in
   !logger.debug "Import all files in dir %S..." dirname ;
-  while%lwt true do
-    let%lwt filename = RamenFileNotify.next handler in
+  RamenFileNotify.for_each (fun filename ->
     !logger.debug "New file %S in dir %S!" filename dirname ;
-    import_file_if_match filename
-  done
+    import_file_if_match filename) handler
 
 let read_ringbuf rb f =
   let open RingBuf in
