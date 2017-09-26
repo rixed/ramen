@@ -306,7 +306,9 @@ let save_graph conf =
 
 (* Store history of past tuple output by a given node: *)
 let history_block_length = 10000 (* TODO: make it a parameter? *)
-(* We use filenum * max_history_block_length + index as a cursor *)
+(* history_block_length, being a parameter, can vary. We need an absolute
+ * maximum for it so that we can use filenum * max_history_block_length + index
+ * as a cursor into the history. *)
 let max_history_block_length = 1000000
 let max_history_archives = 200
 

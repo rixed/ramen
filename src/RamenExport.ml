@@ -182,7 +182,7 @@ let since_of filenum idx =
   filenum * C.max_history_block_length + idx
 
 let fold_tuples ?min_filenum ?max_filenum ?since
-                ?(max_res=100*C.history_block_length) node init f =
+                ?(max_res=100*C.max_history_block_length) node init f =
   let history = Option.get node.N.history in
   let min_filenum = Option.default history.C.min_filenum min_filenum
   and max_filenum = Option.default (history.C.max_filenum+1) max_filenum in
@@ -364,9 +364,15 @@ let build_timeseries node start_field start_scale data_field duration_info
   let f_opt f x y = match x, y with
     | None, y -> Some y
     | Some x, y -> Some (f x y) in
+  !logger.debug "timeseries from=%f and to=%f" from to_ ;
+  (* Since the cache is just a cache and is no comprehensive, we must use
+   * it as a deterrent only, to prevent us to explore to far, as opposed to
+   * restrict the search to a given subset of the files. As time goes it
+   * shoudl become the same though. *)
   let min_filenum, max_filenum =
     Hashtbl.enum history.C.ts_cache |>
     Enum.fold (fun (mi, ma) (filenum, (ts_min, ts_max)) ->
+      !logger.debug "filenum %d goes from TS=%f to %f" filenum ts_min ts_max ;
       (if from >= ts_min then f_opt max mi filenum else mi),
       (if to_ <= ts_max then f_opt min ma filenum else ma))
       (None, None) in
@@ -395,22 +401,19 @@ let build_timeseries node start_field start_scale data_field duration_info
           if filenum = prev_filenum then (
             min tmin t1, max tmax t2
           ) else (
-            (* Do save only if the filenum is an archive: *)
-            if filenum >= history.C.min_filenum &&
-               filenum <= history.C.max_filenum
-            then (
-              Hashtbl.modify_opt filenum (function
+            (* New filenum. Save the min/max we computed for the previous one
+             * in the ts_cache: *)
+            if prev_filenum >= 0 then (
+              Hashtbl.modify_opt prev_filenum (function
                 | None ->
                   !logger.debug "Caching times for filenum %d to %g..%g"
                     filenum tmin tmax ;
                   Some (tmin, tmax)
                 | x -> x) history.C.ts_cache
             ) ;
+            (* And start computing new extremes starting from the first points: *)
             t1, t2
           ) in
-        (* t1 and t2 are in secs. But the API is in milliseconds (thanks to
-         * grafana) *)
-        let t1, t2 = t1 *. 1000., t2 *. 1000. in
         if t1 < to_ && t2 >= from then (
           let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
           for bi = bi1 to bi2 do
