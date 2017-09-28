@@ -121,7 +121,7 @@ let node_info_of_node node =
   let to_expr_type_info lst =
     List.map (fun (rank, typ) -> rank, Lang.Expr.to_expr_type_info typ) lst
   in
-  Node.{
+  SN.{
     definition = {
       name = node.N.name ;
       operation = node.N.op_text ;
@@ -277,10 +277,10 @@ let put_layer conf headers body =
     (* Create all the nodes *)
     let%lwt nodes = Lwt_list.map_s (fun def ->
         let name =
-          if def.Node.name <> "" then def.Node.name
+          if def.SN.name <> "" then def.SN.name
           else N.make_name () in
         wrap (fun () ->
-          let _layer, node = C.add_node conf name msg.name def.Node.operation
+          let _layer, node = C.add_node conf name msg.name def.SN.operation
           in node)
       ) msg.nodes in
     (* Then all the links *)
@@ -431,7 +431,7 @@ let top conf headers params =
   let%lwt hostname = hostname () in
   let header_panel =
     tagged "p" ("Ramen v0.1 running on "^ tagged "em" hostname ^".") in
-  let labbeled_value l v =
+  let labeled_value l v =
     tagged "p" (
       tagged "span" ~attr:["class","label"] (l^":") ^
       tagged "span" ~attr:["class","value"] v) in
@@ -465,9 +465,9 @@ let top conf headers params =
               tagged "p" ~attr:["class","name"] (
                 layer_name ^ icon_of_layer layer) ^
               tagged "div" ~attr:["class","info"] (
-                labbeled_value "#nodes" (string_of_int (Hashtbl.length layer.L.persist.L.nodes)) ^
-                labbeled_value "started" (date_of_ts layer.L.persist.L.last_started) ^
-                labbeled_value "stopped" (date_of_ts layer.L.persist.L.last_stopped))))))
+                labeled_value "#nodes" (string_of_int (Hashtbl.length layer.L.persist.L.nodes)) ^
+                labeled_value "started" (date_of_ts layer.L.persist.L.last_started) ^
+                labeled_value "stopped" (date_of_ts layer.L.persist.L.last_stopped))))))
       (Hashtbl.enum conf.C.graph.C.layers) in
   let top_sorter col n1 n2 =
     (* Numbers are sorted greater to smaller while strings are sorted
@@ -610,7 +610,7 @@ let top conf headers params =
       (if node.N.in_type.C.finished_typing then
         C.tup_typ_of_temp_tup_type node.N.in_type |>
         List.fold_left (fun s ft ->
-            s ^ labbeled_value ft.typ_name (dispname_of_type ft.nullable ft.typ)
+            s ^ labeled_value ft.typ_name (dispname_of_type ft.nullable ft.typ)
           ) ""
       else tagged "p" (tagged "em" "not compiled")),
       tagged "pre" node.N.op_text,

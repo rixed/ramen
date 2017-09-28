@@ -1,4 +1,4 @@
-(* For types used by RPCs, so that clients that whish to use them don't have
+(* For types used by RPCs, so that clients that wish to use them don't have
  * to link with HttpSrv. *)
 open Stdint
 

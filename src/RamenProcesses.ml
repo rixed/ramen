@@ -49,7 +49,7 @@ let out_ringbuf_names_ref conf node =
   conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/out_ref"
 
 let run conf layer =
-  let open C.Layer in
+  let open L in
   match layer.persist.status with
   | SL.Edition -> raise NotYetCompiled
   | SL.Running -> raise AlreadyRunning
@@ -134,20 +134,20 @@ let run conf layer =
                 File.write_lines out_ref (List.enum (input_ringbuf :: lines))
           ) node.N.parents
       ) layer.persist.nodes ;
-    C.Layer.set_status layer SL.Running ;
-    layer.C.Layer.persist.C.Layer.last_started <- Some now ;
-    layer.C.Layer.importing_threads <- Hashtbl.fold (fun _ node lst ->
+    L.set_status layer SL.Running ;
+    layer.L.persist.L.last_started <- Some now ;
+    layer.L.importing_threads <- Hashtbl.fold (fun _ node lst ->
         if Lang.Operation.is_exporting node.N.operation then (
           let rb = rb_name_for_export_of node in
           RamenExport.import_tuples rb node :: lst
         ) else lst
-      ) layer.C.Layer.persist.C.Layer.nodes [] ;
+      ) layer.L.persist.L.nodes [] ;
     C.save_graph conf
 
 exception NotRunning
 
 let stop conf layer =
-  match layer.C.Layer.persist.C.Layer.status with
+  match layer.L.persist.L.status with
   | SL.Edition | SL.Compiled -> raise NotRunning
   | SL.Compiling ->
     (* FIXME: do as for Running and make sure run() check the status hasn't
@@ -179,11 +179,11 @@ let stop conf layer =
            with Unix_error _ as e ->
             !logger.error "Cannot kill pid %d: %s" pid (Printexc.to_string e)) ;
           node.N.pid <- None
-      ) layer.C.Layer.persist.C.Layer.nodes ;
-    C.Layer.set_status layer SL.Compiled ;
-    layer.C.Layer.persist.C.Layer.last_stopped <- Some now ;
-    List.iter cancel layer.C.Layer.importing_threads ;
-    layer.C.Layer.importing_threads <- [] ;
+      ) layer.L.persist.L.nodes ;
+    L.set_status layer SL.Compiled ;
+    layer.L.persist.L.last_stopped <- Some now ;
+    List.iter cancel layer.L.importing_threads ;
+    layer.L.importing_threads <- [] ;
     C.save_graph conf
 
 (* Timeout unused layers.

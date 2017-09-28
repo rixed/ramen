@@ -37,7 +37,6 @@ let retry_for_ringbuf f =
     (fun x -> Lwt.return (f x))
 
 let rec sersize_of_fixsz_typ =
-  let open RamenSharedTypes in
   function
   | TFloat -> round_up_to_rb_word 8
   | TBool | TU8 | TI8 -> round_up_to_rb_word 1
