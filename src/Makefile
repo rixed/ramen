@@ -80,6 +80,7 @@ doc: HELP.html
 
 RamenFileNotify.ml: $(FILE_NOTIFIER)
 	ln -sf $< $@
+	touch $@
 
 ringbuf/libringbuf.a: ringbuf/ringbuf.o
 	$(AR) rs $@ $^
