@@ -183,7 +183,14 @@ let since_of filenum idx =
 
 let fold_tuples ?min_filenum ?max_filenum ?since
                 ?(max_res=100*C.max_history_block_length) node init f =
+  !logger.debug "fold_tuples min_filenum=%a max_filenum=%a since=%a max_res=%d on node %s"
+    (Option.print Int.print) min_filenum
+    (Option.print Int.print) max_filenum
+    (Option.print Int.print) since
+    max_res (N.fq_name node) ;
   let history = Option.get node.N.history in
+  !logger.debug "history has filenum=%d..%d, count=%d"
+    history.C.min_filenum history.C.max_filenum history.C.count ;
   let min_filenum = Option.default history.C.min_filenum min_filenum
   and max_filenum = Option.default (history.C.max_filenum+1) max_filenum in
   let min_filenum, first_idx = Option.map_default (fun since ->
@@ -195,6 +202,8 @@ let fold_tuples ?min_filenum ?max_filenum ?since
       true, history.C.min_filenum, 0
     else false, min_filenum, first_idx
   and max_filenum = min (history.C.max_filenum+1) max_filenum in
+  !logger.debug "will use min_filenum=%d, first_idx=%d, max_filenum=%d"
+    min_filenum first_idx max_filenum ;
 
   let rec loop_tup tuples filenum last_idx idx nb_res x =
     if idx >= last_idx || nb_res >= max_res then

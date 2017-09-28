@@ -138,6 +138,7 @@ let time what f =
 (* TODO: add this into batteries *)
 
 let mkdir_all ?(is_file=false) dir =
+  !logger.debug "mkdir %S" dir ;
   let dir_exist d =
     try Sys.is_directory d with Sys_error _ -> false in
   let dir = if is_file then Filename.dirname dir else dir in
