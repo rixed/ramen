@@ -54,6 +54,14 @@ let server_url =
                    ~env [ "ramen-url" ] in
   Arg.(value (opt string "http://127.0.0.1:29380" i))
 
+let www_dir =
+  let env = Term.env_info "RAMEN_WWW_DIR" in
+  let i = Arg.info ~doc:"Directory where to read the files served \
+                         via HTTP for the GUI (serve from memory \
+                         if unset)"
+                   ~env [ "www-dir" ] in
+  Arg.(value (opt string "" i))
+
 let version_tag =
   let env = Term.env_info "RAMEN_VERSION_TAG" in
   let i = Arg.info ~doc:"unique tag identifying the version of ramen \
@@ -77,6 +85,7 @@ let server_start =
       $ no_demo
       $ to_stderr
       $ server_url
+      $ www_dir
       $ version_tag
       $ persist_dir
       $ http_port

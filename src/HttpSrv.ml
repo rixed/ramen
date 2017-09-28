@@ -73,6 +73,24 @@ let respond_ok ?(body=ok_body) ?(ct=Consts.json_content_type) () =
   let body = body ^"\n" in
   Server.respond_string ~status ~headers ~body ()
 
+let hostname =
+  let cached = ref "" in
+  fun () ->
+    if !cached <> "" then return !cached else
+    let%lwt c =
+      catch
+        (fun () -> run ~timeout:2. [| "hostname" |])
+        (function _ -> return "unknown host") in
+    cached := c ;
+    return c
+
+let serve_string conf _headers body =
+  let%lwt hostname = hostname () in
+  let rep sub by str = String.nreplace ~str ~sub ~by in
+  let body = rep "$RAMEN_URL$" conf.C.ramen_url body in
+  let body = rep "$HOSTNAME$" hostname body in
+  respond_ok ~body ~ct:Consts.html_content_type ()
+
 let type_of_operation =
   let open Lang.Operation in
   function
@@ -119,7 +137,11 @@ let rec find_float_metric metrics name =
 
 let node_info_of_node node =
   let to_expr_type_info lst =
-    List.map (fun (rank, typ) -> rank, Lang.Expr.to_expr_type_info typ) lst
+    List.sort (fun (r1,_) (r2,_) -> match r1, r2 with
+      | Some r1, Some r2 -> Int.compare r1 r2
+      | Some _, None -> -1
+      | None, _ -> 1) lst |>
+    List.map (fun (_, typ) -> Lang.Expr.to_expr_type_info typ)
   in
   SN.{
     definition = {
@@ -127,10 +149,13 @@ let node_info_of_node node =
       operation = node.N.op_text ;
     } ;
     type_of_operation = Some (type_of_operation node.N.operation) ;
+    exporting = Lang.Operation.is_exporting node.N.operation ;
     signature = if node.N.signature = "" then None else Some node.N.signature ;
     pid = node.N.pid ;
     input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
     output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
+    parents = List.map N.fq_name node.N.parents ;
+    children = List.map N.fq_name node.N.children ;
     in_tuple_count = find_int_metric node.N.last_report Consts.in_tuple_count_metric ;
     selected_tuple_count = find_int_metric node.N.last_report Consts.selected_tuple_count_metric ;
     out_tuple_count = find_int_metric node.N.last_report Consts.out_tuple_count_metric ;
@@ -297,373 +322,30 @@ let put_layer conf headers body =
   (* TODO: why wait before compiling this layer? *)
 
 (*
-    Top query: display a page with details of operation
+    Serving normal files
 *)
 
-let hostname =
-  let cached = ref "" in
-  fun () ->
-    if !cached <> "" then return !cached else
-    let%lwt c =
-      catch
-        (fun () -> run ~timeout:2. [| "hostname" |])
-        (function _ -> return "unknown host") in
-    cached := c ;
-    return c
+let ext_of_file fname =
+  let _, ext = String.rsplit fname ~by:"." in ext
 
-let top conf headers params =
-  let%lwt () = check_accept headers Consts.html_content_type in
-  let enc = Uri.pct_encode in
-  let style = {|
-  <style media="screen" type="text/css">
-    body { margin:0; height: 100%; background-color: #eee; }
-    #global, #top, #details, .subitem {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      overflow: auto; }
-    body, #layers, #nodes, #input, #operation, #tail, .subtree {
-      display: flex;
-      flex-direction: column;
-      flex-wrap: nowrap;
-      overflow: auto; }
+let content_type_of_ext = function
+  | "html" -> Consts.html_content_type
+  | "js" -> Consts.js_content_type
+  | "css" -> Consts.css_content_type
+  | _ -> "I_dont_know/Good_luck"
 
-    .subtree { }
-    .subitem {
-      padding-left: 20px;
-      background-image:
-        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='32'><line x1='6' y1='10' x2='18' y2='10' stroke-width='2' stroke='black'/><circle cx='6' cy='10' r='5' fill='white' stroke='black' stroke-width='2'/></svg>"),
-        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='32'><line x1='6' y1='0' x2='6' y2='32' stroke-width='2' stroke='black'/></svg>");
-      background-repeat: no-repeat, repeat-y; }
-    .subitem:last-child {
-        background:
-          url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='32'><line x1='6' y1='0' x2='6' y2='10' stroke-width='2' stroke='black'/><line x1='6' y1='10' x2='18' y2='10' stroke-width='2' stroke='black'/><circle cx='6' cy='10' r='5' fill='white' stroke='black' stroke-width='2'/></svg>")
-        no-repeat; }
-
-    table { border-collapse: collapse; border-spacing: 10; }
-    td, th { padding: 0 1em 0 1em; }
-    tfoot td, th { font-weight: bold; text-align: center; }
-    span.null { font-style: italic; color: #888; font-size: 80%; }
-    a, a:visited { color: #22c; text-decoration: none; }
-    #global { height: 3em; width: 100%; }
-    #top { max-height: 80%; width: 100%; flex-grow: 1; }
-    #top .selected { background-color: #ddd; }
-      #layers { padding-right: 1em; max-width:50%; }
-        #layers div { display: flex; flex-direction: column; }
-        #layers div p.name { display: flex; flex-direction: row; justify-content: space-between; }
-        #layers .name, #layers .info, #layers .info p { margin: 0px; }
-      #nodes { flex-grow: 1; }
-        #nodes tbody td:first-child a { display: flex; flex-direction: row; justify-content: space-between; }
-        #nodes th.ordered { background-color: #fff; }
-        #nodes a { display: block; width: 100%; color: black; }
-        #nodes tbody tr:hover { background-color: #fff; }
-    #top tbody td hr { margin-left: 0; margin-top: 0; margin-bottom: 0; border: 1px solid #aaa; }
-    #details { max-height: 80%; width: 100%; flex-grow: 0.2; }
-      #input { max-width: 50%; }
-        #input p { margin: 0; padding: 0 }
-      #operation { flex-grow: 1; }
-    #tail { flex-grow: 0.2; width: 100%; min-height: 8em; }
-
-    span.label { margin-right: 0.2em; font-size: 80%; color: #222; font-weight: 700; }
-    span.value { margin-right: 1em; font-size: 85%; color: #003; }
-    h1 { position: relative; top:0; left:0; background-color: #fff; color: #000010;
-         text-align: left; margin: 0; padding: 0.5em 1em 0.5em 1em;
-         font-weight: 700; font-size: 100%; }
-    th p { margin: 0px; }
-    th p.type { font-size: 60%; font-style: italic; }
-    td.number, td.FLOAT, td.U8, td.U16, td.U32, td.U64, td.U128, td.I8,
-    td.I16, td.I32, td.I64, td.I128 { text-align: right; font-family: mono; }
-
-    .icon { }
-  </style>
-|} in
-  let snode =
-    try Some (Hashtbl.find params "snode")
-    with Not_found -> None in
-  let scol = Hashtbl.find_default params "scol" "1" in
-  let href ?(path="/top") ?(snode=snode) ?(scol=scol) () =
-    path ^"?"^ (match snode with None -> "" | Some s -> "&snode="^ enc s)
-         ^"&scol="^ enc scol in
-  let%lwt sel_node =
-    match snode with
-    | None -> return None
-    | Some node_name ->
-      let%lwt sel_layer_name, sel_node_name =
-        layer_node_of_user_string conf node_name in
-      let%lwt _sel_layer, sel_node =
-        node_of_name conf sel_layer_name sel_node_name in
-      return (Some sel_node) in
-  let tagged tag ?(attr=[]) x =
-    let attr =
-      IO.to_string (
-        List.print ~first:"" ~last:"" ~sep:" "
-          (fun oc (t,v) -> Printf.fprintf oc "%s=%S" t v)) attr in
-    let attr = if attr = "" then "" else " "^attr in
-    "<"^ tag ^ attr ^">"^ x ^"</"^ tag ^">" in
-  let td = tagged "td" and th = tagged "th" in
-  let str_of_float f =
-    let s = Printf.sprintf "%.3f" f in
-    let i = ref (String.length s - 1) in
-    while !i > 0 && s.[!i] = '0' do s.[!i] <- '_' ; decr i done ;
-    if !i > 0 && s.[!i] = '.' then s.[!i] <- '_' ;
-    String.nreplace ~str:s ~sub:"_" ~by:"&nbsp;" in
-  let icon_of_layer layer =
-    let icon, path, alt =
-      match layer.L.persist.L.status with
-      | Layer.Edition -> "&#x270E;", "/compile/"^ enc layer.L.name, "compile"
-      | Layer.Compiling -> "&#x2610;", "", "reload"
-      | Layer.Compiled -> "&#x2611;", "/start/"^ enc layer.L.name, "start"
-      | Layer.Running -> "&#9881;", "/stop/"^ enc layer.L.name, "stop"  in
-    tagged "a" ~attr:["class","icon"; "href",href ~path (); "title",alt] icon in
-  let dispname_of_type nullable scalar_typ =
-    Lang.Scalar.string_of_typ scalar_typ ^
-    (if nullable then " (or null)" else "") in
-  let pretty_th ?attr title subtitle =
-    th ?attr (
-      tagged "p" title ^
-      (if subtitle = "" then "" else tagged "p" ~attr:["class","type"] subtitle)) in
-  let reload =
-    (* To refresh the top we reload (toward top not whatever last command was
-     * called!) every 10s, which is also the interval at which ramen receive
-     * reports from the workers: *)
-    Printf.sprintf {|<meta http-equiv="refresh" content="30;url=%s" />|}
-      (href ()) in
-  let%lwt hostname = hostname () in
-  let header_panel =
-    tagged "p" ("Ramen v0.1 running on "^ tagged "em" hostname ^".") in
-  let labeled_value l v =
-    tagged "p" (
-      tagged "span" ~attr:["class","label"] (l^":") ^
-      tagged "span" ~attr:["class","value"] v) in
-  let short_month = function
-    | 0 -> "Jan" | 1 -> "Fev" | 2 -> "Mar" | 3 -> "Apr" | 4 -> "May"
-    | 5 -> "Jun" | 6 -> "Jul" | 7 -> "Aug" | 8 -> "Sep" | 9 -> "Oct"
-    | 10 -> "Nov" | 11 -> "Dec" | _ -> "?!?" in
-  let date_of_ts = function
-    | Some ts ->
-      let open Unix in
-      let tm = localtime ts in
-      Printf.sprintf "%d&nbsp;%s at %02dh%02d"
-        tm.tm_mday (short_month tm.tm_mon) tm.tm_hour tm.tm_min
-    | None -> "never" in
-  let print_scalar_value oc = function
-    | VFloat f ->
-      String.print oc (str_of_float f)
-    | VNull ->
-      String.print oc (tagged "span" ~attr:["class","null"] "NULL")
-    | x -> Lang.Scalar.print oc x in
-  let layers_panel =
-    IO.to_string
-      (Enum.print ~first:"" ~last:"" ~sep:""
-        (fun oc (layer_name, layer) ->
-          let attr =
-            match sel_node with
-            | Some n when n.N.layer = layer_name -> ["class","selected"]
-            | _ -> [] in
-          String.print oc (
-            tagged "div" ~attr (
-              tagged "p" ~attr:["class","name"] (
-                layer_name ^ icon_of_layer layer) ^
-              tagged "div" ~attr:["class","info"] (
-                labeled_value "#nodes" (string_of_int (Hashtbl.length layer.L.persist.L.nodes)) ^
-                labeled_value "started" (date_of_ts layer.L.persist.L.last_started) ^
-                labeled_value "stopped" (date_of_ts layer.L.persist.L.last_stopped))))))
-      (Hashtbl.enum conf.C.graph.C.layers) in
-  let top_sorter col n1 n2 =
-    (* Numbers are sorted greater to smaller while strings are sorted
-     * in ascending order: *)
-    match col with
-    | "2" -> String.compare (type_of_operation n1.N.operation)
-                            (type_of_operation n2.N.operation)
-    | "3" -> Int.compare (find_int_metric n2.N.last_report Consts.in_tuple_count_metric)
-                         (find_int_metric n1.N.last_report Consts.in_tuple_count_metric)
-    | "4" -> Int.compare (find_int_metric n2.N.last_report Consts.selected_tuple_count_metric)
-                         (find_int_metric n1.N.last_report Consts.selected_tuple_count_metric)
-    | "5" -> Int.compare (find_int_metric n2.N.last_report Consts.out_tuple_count_metric)
-                         (find_int_metric n1.N.last_report Consts.out_tuple_count_metric)
-    | "7" -> Float.compare (find_float_metric n2.N.last_report Consts.cpu_time_metric)
-                           (find_float_metric n1.N.last_report Consts.cpu_time_metric)
-    | "8" -> Int.compare (find_int_metric n2.N.last_report Consts.ram_usage_metric)
-                          (find_int_metric n1.N.last_report Consts.ram_usage_metric)
-    | _ ->
-      match String.icompare n1.N.layer n2.N.layer with
-      | 0 -> String.icompare n1.N.name n2.N.name
-      | x -> x in
-  let nodes =
-    C.fold_nodes conf [] (fun prev node -> node :: prev) |>
-    List.sort (top_sorter scol) in
-  (* Start by computing the total per columns so we can display an histogram
-   * in the tbody: *)
-  let layers = ref Set.empty and tot_nodes = ref 0 and tot_ins = ref 0
-  and tot_sels = ref 0 and tot_outs = ref 0 and tot_groups = ref 0
-  and tot_cpu = ref 0. and tot_ram = ref 0 and max_ins = ref 0
-  and max_sels = ref 0 and max_outs = ref 0 and max_groups = ref 0
-  and max_cpu = ref 0. and max_ram = ref 0 in
-  List.iter (fun node ->
-      let ins = find_int_metric node.N.last_report Consts.in_tuple_count_metric
-      and sels = find_int_metric node.N.last_report Consts.selected_tuple_count_metric
-      and outs = find_int_metric node.N.last_report Consts.out_tuple_count_metric
-      and cpu = find_float_metric node.N.last_report Consts.cpu_time_metric
-      and ram = find_int_metric node.N.last_report Consts.ram_usage_metric in
-      layers := Set.add node.N.layer !layers ;
-      incr tot_nodes ;
-      tot_ins := !tot_ins + ins ;
-      tot_sels := !tot_sels + sels ;
-      tot_outs := !tot_outs + outs ;
-      tot_cpu := !tot_cpu +. cpu ;
-      tot_ram := !tot_ram + ram ;
-      max_ins := max !max_ins ins ;
-      max_sels := max !max_sels sels ;
-      max_outs := max !max_outs outs ;
-      max_cpu := max !max_cpu cpu ;
-      max_ram := max !max_ram ram ;
-      Option.may (fun g ->
-          tot_groups := !tot_groups + g ;
-          max_groups := max !max_groups g)
-        (find_int_opt_metric node.N.last_report Consts.group_count_metric)
-    ) nodes ;
-  (* TODO: add a health indicator (based on how old is the last report) *)
-  let node_columns =
-    [ "layer", true, "" ; "name", true, "" ; "op", true, "" ;
-      "#in", true, "tuples" ; "#selected", true, "tuples" ;
-      "#out", true, "tuples" ; "#groups", false, "" ;
-      "CPU", true, "seconds" ; "RAM", true, "bytes" ;
-      "parents", false, "" ; "children", false, "" ;
-      "PID", false, "" ; "signature", false, "" ;
-      "export", false, "" ] in
-  let nodes_head =
-    tagged "thead" (tagged "tr" (String.concat "" (
-      List.mapi (fun i (col, sortable, subtitle) ->
-        if sortable then
-          let i_str = string_of_int i in
-          if i_str = scol then
-            pretty_th ~attr:["class","ordered"] col subtitle
-          else
-            let attr = ["href", href ~scol:i_str ()] in
-            pretty_th (tagged "a" ~attr col) (tagged "a" ~attr subtitle)
-        else
-          pretty_th col subtitle) node_columns))) in
-  let nodes_body =
-    let tr_of_node node =
-      let ta x =
-        (* Makes the box clickable even if empty (chrome): *)
-        let x = if x <> "" then x else "&nbsp;" in
-        tagged "a" ~attr:["href", href ~snode:(Some (N.fq_name node)) ()] x in
-      let tdi = td ~attr:["class", "number"] % ta % string_of_int
-      and tdf = td ~attr:["class", "number"] % ta % str_of_float in
-      let tdih tot x =
-        if tot = 0 then tdi x else
-        let w = float_of_int (100 * x) /. float_of_int tot in
-        td ~attr:["class", "number"] (
-          ta (string_of_int x) ^ Printf.sprintf "<hr width=\"%f%%\"/>" w)
-      and tdfh tot x =
-        if tot = 0. then tdf x else
-        let w = 100. *. x /. tot in
-        td ~attr:["class", "number"] (
-          ta (str_of_float x) ^ Printf.sprintf "<hr width=\"%f%%\"/>" w) in
-      let td = td % ta in
-      let groups =
-        match find_int_opt_metric node.N.last_report Consts.group_count_metric with
-        | None -> td "n.a" | Some x -> tdih !max_groups x in
-      let pid =
-        match node.N.pid with None -> td "n.a" | Some p -> tdi p in
-      (* FIXME: really, save this into node! *)
-      let ins = find_int_metric node.N.last_report Consts.in_tuple_count_metric
-      and sels = find_int_metric node.N.last_report Consts.selected_tuple_count_metric
-      and outs = find_int_metric node.N.last_report Consts.out_tuple_count_metric
-      and cpu = find_float_metric node.N.last_report Consts.cpu_time_metric
-      and ram = find_int_metric node.N.last_report Consts.ram_usage_metric in
-      let short_node_list ?(max_len=20) lst =
-        abbrev max_len (List.fold_left (fun s n ->
-            if String.length s > max_len then s else
-            s ^ (if s <> "" then ", " else "")
-              ^ (if n.N.layer = node.N.layer then n.N.name else N.fq_name n)
-          ) "" lst) in
-      let attr =
-        match sel_node with Some n when n == node -> ["class","selected"]
-                          | _ -> [] in
-      tagged "tr" ~attr (
-        td node.N.layer ^ td node.N.name ^
-        td (type_of_operation node.N.operation) ^
-        tdih !max_ins ins ^ tdih !max_sels sels ^ tdih !max_outs outs ^ groups ^
-        tdfh !max_cpu cpu ^ tdih !max_ram ram ^
-        td (short_node_list node.N.parents) ^
-        td (short_node_list node.N.children) ^
-        pid ^ td node.N.signature ^
-        td (if Lang.Operation.is_exporting node.N.operation then "&#x2713;" else "&nbsp;")) in
-    tagged "tbody" (String.concat "" (List.map tr_of_node nodes)) in
-  let nodes_foot =
-    let tdi = td ~attr:["class", "number"] % string_of_int
-    and tdf = td ~attr:["class", "number"] % str_of_float in
-    tagged "tfoot" (tagged "tr" (
-      tdi (Set.cardinal !layers) ^ tdi !tot_nodes ^ td "" ^ tdi !tot_ins ^
-      tdi !tot_sels ^ tdi !tot_outs ^ tdi !tot_groups ^
-      tdf !tot_cpu ^ tdi !tot_ram ^ td "" ^ td "" ^ td "" ^ td "" ^ td "")) in
-  let nodes_panel = tagged "table" (nodes_head ^ nodes_body ^ nodes_foot) in
-  let input_panel, op_panel, tail_panel =
-    match sel_node with
-    | None ->
-      tagged "p" "",
-      tagged "p" "Select a node to see the operation it performs",
-      tagged "p" "Select a node to see its output"
-    | Some node ->
-      (if node.N.in_type.C.finished_typing then
-        C.tup_typ_of_temp_tup_type node.N.in_type |>
-        List.fold_left (fun s ft ->
-            s ^ labeled_value ft.typ_name (dispname_of_type ft.nullable ft.typ)
-          ) ""
-      else tagged "p" (tagged "em" "not compiled")),
-      tagged "pre" node.N.op_text,
-      (if node.N.out_type.C.finished_typing then (
-        let out_tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
-        let class_name_of_value v = scalar_type_of v |> Lang.Scalar.string_of_typ in
-        tagged "table" (
-          tagged "thead" (
-            IO.to_string
-              (List.print ~first:"<tr>" ~last:"</tr>" ~sep:""
-                (fun oc ft ->
-                  String.print oc
-                    (pretty_th ft.typ_name (dispname_of_type ft.nullable ft.typ))))
-              out_tuple_type) ^
-          tagged "tbody" (
-            if Lang.Operation.is_exporting node.N.operation then (
-              let _, values =
-                let max_res = 8 in
-                let since = RamenExport.since_of_last_tuples max_res node in
-                RamenExport.fold_tuples ~max_res ~since node [] (fun _ tup prev ->
-                  List.cons tup prev) in
-              IO.to_string (
-                List.print ~first:"" ~last:"" ~sep:"\n"
-                  (Array.print ~first:"<tr>" ~last:"</tr>" ~sep:""
-                     (fun oc v ->
-                        Printf.fprintf oc "<td class=%S>%a</td>"
-                          (class_name_of_value v)
-                          print_scalar_value v))) values)
-            else tagged "tr" (
-              tagged ~attr:["colspan", string_of_int (List.length out_tuple_type)] "td" (
-                tagged "p" ("node "^ N.fq_name node ^" does not export data")))))
-      ) else tagged "p" (tagged "em" "not compiled")) in
-  let page =
-    tagged "html" (
-      tagged "head" (reload ^ style) ^
-      tagged "body" ({|
-        <div id="global">|} ^ header_panel ^ {|</div>
-        <div id="top">
-          <div id="layers"><h1>Layers</h1>|} ^ layers_panel ^ {|</div>
-          <div id="nodes"><h1>Nodes</h1>|} ^ nodes_panel ^ {|</div>
-        </div>
-        <div id="details">
-          <div id="input"><h1>Input</h1>|} ^ input_panel ^ {|</div>
-          <div id="operation"><h1>Operation</h1>|} ^ op_panel ^ {|</div>
-        </div>
-        <div id="tail"><h1>Output</h1>|} ^ tail_panel ^ {|</div>|})) in
-  respond_ok ~body:page ~ct:Consts.html_content_type ()
+let serve_file _conf _headers path file =
+  let fname = path ^"/"^ file in (* TODO: look for those files in the www_root directory (a param from the cmd line) so that FE devs could work with prod version of ramen to improve the GUI *)
+  let headers =
+    Header.init_with "Content-Type" (content_type_of_ext (ext_of_file file))
+  in
+  Server.respond_file ~headers ~fname ()
 
 (*
     Whole graph operations: compile/run/stop
 *)
 
-let compile conf headers layer_opt params =
+let compile conf headers layer_opt =
   let%lwt layers = graph_layers conf layer_opt in
   catch
     (fun () ->
@@ -686,12 +368,11 @@ let compile conf headers layer_opt params =
       in
       let%lwt () = loop (List.length layers) layers in
       switch_accepted headers [
-        Consts.json_content_type, (fun () -> respond_ok ()) ;
-        Consts.html_content_type, (fun () -> top conf headers params) ])
+        Consts.json_content_type, (fun () -> respond_ok ()) ])
     (function Lang.SyntaxError e | C.InvalidCommand e -> bad_request e
             | e -> fail e)
 
-let run conf headers layer_opt params =
+let run conf headers layer_opt =
   let%lwt layers = graph_layers conf layer_opt in
   let layers = L.order layers in
   try
@@ -700,12 +381,11 @@ let run conf headers layer_opt params =
         try run conf layer with AlreadyRunning -> ()
       ) layers ;
     switch_accepted headers [
-      Consts.json_content_type, (fun () -> respond_ok ()) ;
-      Consts.html_content_type, (fun () -> top conf headers params) ]
+      Consts.json_content_type, (fun () -> respond_ok ()) ]
   with (Lang.SyntaxError e | C.InvalidCommand e) ->
     bad_request e
 
-let stop conf headers layer_opt params =
+let stop conf headers layer_opt =
   let%lwt layers = graph_layers conf layer_opt in
   try
     List.iter (fun layer ->
@@ -713,8 +393,7 @@ let stop conf headers layer_opt params =
         try stop conf layer with NotRunning -> ()
       ) layers ;
     switch_accepted headers [
-      Consts.json_content_type, (fun () -> respond_ok ()) ;
-      Consts.html_content_type, (fun () -> top conf headers params) ]
+      Consts.json_content_type, (fun () -> respond_ok ()) ]
   with C.InvalidCommand e -> bad_request e
 
 (*
@@ -742,7 +421,7 @@ let export conf headers layer_name node_name body =
         RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
                                 node [] (fun _ tup prev -> List.cons tup prev) in
       let dt = Unix.gettimeofday () -. start in
-      if values = [] && dt < (req.wait_up_to |? 0.) then (
+      if values = [] && dt < req.wait_up_to then (
         (* TODO: sleep for dt, queue the wakener on this history,
          * and wake all the sleeps when a tuple is received *)
         Lwt_unix.sleep 0.1 >>= loop
@@ -908,8 +587,8 @@ let rec timeout_layers conf =
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_layers conf
 
-let start do_persist debug no_demo to_stderr ramen_url version_tag
-          persist_dir port cert_opt key_opt () =
+let start do_persist debug no_demo to_stderr ramen_url www_dir
+          version_tag persist_dir port cert_opt key_opt () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   let logdir = if to_stderr then None else Some (persist_dir ^"/log") in
   Option.may mkdir_all logdir ;
@@ -921,7 +600,7 @@ let start do_persist debug no_demo to_stderr ramen_url version_tag
     !logger.info "Adding default nodes since we have nothing to do..." ;
     C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore) ;
   async (fun () -> timeout_layers conf) ;
-  let router meth path params headers body =
+  let router meth path _params headers body =
     (* The function called for each HTTP request: *)
       match meth, path with
       (* API *)
@@ -929,19 +608,20 @@ let start do_persist debug no_demo to_stderr ramen_url version_tag
       | `GET, ["graph" ; layer] -> get_graph conf headers (Some layer)
       | `PUT, ["graph"] -> put_layer conf headers body
 (*      | `DELETE, ["graph" ; layer] -> del_layer conf headers *)
-      | `GET, ["compile"] -> compile conf headers None params
-      | `GET, ["compile" ; layer] -> compile conf headers (Some layer) params
-      | `GET, ["run" | "start"] -> run conf headers None params
-      | `GET, ["run" | "start" ; layer] -> run conf headers (Some layer) params
-      | `GET, ["stop"] -> stop conf headers None params
-      | `GET, ["stop" ; layer] -> stop conf headers (Some layer) params
+      | `GET, ["compile"] -> compile conf headers None
+      | `GET, ["compile" ; layer] -> compile conf headers (Some layer)
+      | `GET, ["run" | "start"] -> run conf headers None
+      | `GET, ["run" | "start" ; layer] -> run conf headers (Some layer)
+      | `GET, ["stop"] -> stop conf headers None
+      | `GET, ["stop" ; layer] -> stop conf headers (Some layer)
       | (`GET|`POST), ["export" ; layer ; node] ->
         (* TODO: a variant where we do not have to specify layer *)
         (* We must allow both POST and GET for that one since we have an optional
          * body (and some client won't send a body with a GET) *)
         export conf headers layer node body
       (* API for children *)
-      | `PUT, ["report" ; layer ; node] -> report conf headers layer node body
+      | `PUT, ["report" ; layer ; node] ->
+        report conf headers layer node body
       (* Grafana datasource plugin *)
       | `GET, ["grafana"] -> respond_ok ()
       | `POST, ["complete"; "nodes"] ->
@@ -956,7 +636,13 @@ let start do_persist debug no_demo to_stderr ramen_url version_tag
         let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
         Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
       (* Top *)
-      | `GET, ([]|["top"|"index.html"]) -> top conf headers params
+      | `GET, ([]|["top"|"index.html"]) ->
+        if www_dir = "" then
+          serve_string conf headers RamenGui.without_link
+        else
+          serve_string conf headers RamenGui.with_links
+      | `GET, ["style.css" | "script.js" as file] ->
+        serve_file conf headers www_dir file
       (* Errors *)
       | `PUT, _ | `GET, _ | `DELETE, _ ->
         fail (HttpError (404, "No such resource"))

@@ -1,0 +1,3 @@
+These files are used to build a single HTML page that is then embedded
+directly in Ramen binary, so that everything is transfered in one go and we do
+not have to deal with additional files to be installed alongside Ramen.

@@ -119,8 +119,12 @@ struct
     (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
     { definition : definition ;
       type_of_operation : string option ;
-      input_type : (int option * expr_type_info) list ;
-      output_type : (int option * expr_type_info) list ;
+      exporting : bool ;
+      input_type : expr_type_info list ;
+      output_type : expr_type_info list ;
+      (* fq names of parents/children *)
+      parents : string list ;
+      children : string list ;
       (* Info about the running process (if any) *)
       signature : string option ;
       pid : int option ;
@@ -153,14 +157,14 @@ type put_layer_req =
 (* Commands/Answers related to export *)
 
 type export_req =
-  { since : int option ;
+  { since : int option [@ppp_default None] ;
     max_results : int option ;
     (* If there are no results at all currently available, wait up to
      * that many seconds: *)
-    wait_up_to : float option } [@@ppp PPP_JSON]
+    wait_up_to : float [@ppp_default 0.] } [@@ppp PPP_JSON]
 
 let empty_export_req =
-  { since = None ; max_results = None ; wait_up_to = None }
+  { since = None ; max_results = None ; wait_up_to = 0. }
 
 (* We send values column by column to limit sending a type variant
  * for each and every value *)

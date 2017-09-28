@@ -5,7 +5,7 @@ OCAMLDEP   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamldep
 OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlmktop
 QTEST      = qtest
 JSOO       = js_of_ocaml.exe
-WARNS      = Ael-31-41-42-44-45-48
+WARNS      = Ael-3-31-40-41-42-44-45-48
 override OCAMLOPTFLAGS += $(INCS) -w $(WARNS) -g -annot -O2
 override OCAMLFLAGS    += $(INCS) -w $(WARNS) -g -annot 
 override CFLAGS        += --std=c11 -g -O2 -Wall -W -Wno-parentheses -fPIC
@@ -40,9 +40,6 @@ distclean: clean distclean-spec
 
 %.top: %.cma
 	$(OCAMLMKTOP) $(OCAMLFLAGS) -custom -package "$(PACKAGES)" $< -o $@
-
-%.js: %.byte $(JS_EXTRA)
-	$(JSOO) --opt=3 --pretty +gen_js_api/ojs_runtime.js -o $@ $(JS_EXTRA) $<
 
 # Tests
 

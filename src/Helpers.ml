@@ -282,8 +282,3 @@ let strings_of_csv separator line =
   [ "glop" ; "glop" ] (strings_of_csv " " "glop glop")
   [ "John" ; "+500" ] (strings_of_csv "," "\"John\",+500")
  *)
-
-let abbrev len s =
-  assert (len >= 3) ;
-  if String.length s <= len then s else
-  String.sub s 0 (len-3) ^"..."

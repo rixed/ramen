@@ -152,7 +152,7 @@ let tail debug ramen_url node_name as_csv last continuous () =
     | exception Not_found -> enc node_name
     | layer, node -> enc layer ^"/"^ enc node) in
   let rec get_next ?since ?max_results ?last () =
-    let msg = { since ; max_results ; wait_up_to = Some 2.0 (* TODO: a param? *) } in
+    let msg = { since ; max_results ; wait_up_to = 2.0 (* TODO: a param? *) } in
     let%lwt resp = http_post_json url export_req_ppp msg >>=
                    ppp_of_string_exc export_resp_ppp in
     (* TODO: check first_seqnum is not bigger than expected *)
