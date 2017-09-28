@@ -54,7 +54,7 @@ start() {
 
   $ramen start --no-demo -d &
   add_temp_pid $!
-  sleep 0.5
+  sleep 1.5
 }
 
 add_node() {
