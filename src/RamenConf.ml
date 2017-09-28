@@ -248,10 +248,12 @@ struct
               try
                 iter_dependencies l (fun dep ->
                   !logger.debug "Layer %S depends on %S" l.name dep ;
-                  if (List.exists (fun o -> o.name = dep) later) then
+                  let in_list = List.exists (fun o -> o.name = dep) in
+                  if in_list layers && not (in_list ordered) then
                     raise Exit) ;
                 true, l::ordered, later
               with Exit ->
+                !logger.debug "Will do %S later" l.name ;
                 progress, ordered, l::later
             ) (false, ordered, []) layers in
         if not progress then raise (InvalidCommand "Dependency loop") ;
