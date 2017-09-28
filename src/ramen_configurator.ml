@@ -80,7 +80,7 @@ let base_layer dataset_name delete csv_dir =
       Printf.sprintf {|
         READ%s CSV FILES "%s/tcp_v29.*.csv.gz"
                  SEPARATOR "\t" NULL "<NULL>"
-                 PREPROCESS WITH "zcat" (
+                 PREPROCESS WITH "gunzip -c" (
            poller string not null,
            capture_begin u64 not null,
            capture_end u64 not null,
