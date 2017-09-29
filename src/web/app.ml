@@ -227,10 +227,10 @@ let node_columns =
   [| "layer", true, "" ; "name", true, "" ; "op", true, "" ;
      "#in", true, "tuples" ; "#selected", true, "tuples" ;
      "#out", true, "tuples" ; "#groups", true, "" ;
+     "export", false, "" ;
      "CPU", true, "seconds" ; "RAM", true, "bytes" ;
      "parents", false, "" ; "children", false, "" ;
-     "PID", false, "" ; "signature", false, "" ;
-     "export", false, "" |]
+     "PID", false, "" ; "signature", false, "" |]
 
 let sel_column = { name = "selected column" ; value = "layer" (* title in node_columns *) }
 
@@ -472,13 +472,13 @@ let node_tbody_row (_tot_nodes, tot_ins, tot_sels, tot_outs,
       tdih tot_sels node.sel_tuple_count ;
       tdih tot_outs node.out_tuple_count ;
       tdoih tot_grps node.group_count ;
+      tds (if node.exporting then "✓" else " ") ;
       tdfh tot_cpu node.cpu_time ;
       tdih tot_ram node.ram_usage ;
       tds (short_node_list node.layer node.parents) ;
       tds (short_node_list node.layer node.children) ;
       tdoi node.pid ;
-      tdo node.signature ;
-      tds (if node.exporting then "✓" else " ") ] in
+      tdo node.signature ] in
   (* FIXME: So all the lines vary every time sel_node changes. Ie we are going to
    * redraw the whole table, while in theory only two lines must be redrawn.
    * Instead, we could have one individual boolean state variable per line and this would
@@ -542,10 +542,11 @@ let nodes_panel () =
             tdi tot_sels ;
             tdi tot_outs ;
             tdi tot_grps ;
+            tds "" ;
             tdf tot_cpu ;
             tdi tot_ram ;
             tds "" ; tds "" ; tds "" ;
-            tds "" ; tds "" ]) ]) in
+            tds "" ]) ]) in
   table [
     thead [
       Array.fold_left (fun lst col ->
