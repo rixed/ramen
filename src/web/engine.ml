@@ -74,7 +74,14 @@ let rec flatten_tree t =
   | { spec = (Attribute _ | Text _) ; _ } -> [ t ]
   | { spec = Element (tag, action, subs) ; _ } ->
     [ { t with spec = Element (tag, action, flatten_trees subs) } ]
-  | { spec = Group lst ; _ } -> flatten_trees lst
+  (* worthy has been propagated to the root already but dirty is never
+   * propagated to the leaves. It is indeed useless since the whole subtree is
+   * going to be redrawn anyway. But if the node is a group that is going to
+   * be simplified out, then we do want to propagate this now! Note that it's
+   * enough to propagate it one level after we've flattened out sub: *)
+  | { spec = Group lst ; _ } ->
+    flatten_trees lst |>
+    List.map (fun e -> { e with dirty = SSet.union e.dirty t.dirty })
 and flatten_trees ts =
   List.fold_left (fun ts' t ->
       List.rev_append (flatten_tree t) ts'
@@ -117,6 +124,7 @@ let tr = elmt "tr"
 let td = elmt "td"
 let th = elmt "th"
 let p = elmt "p"
+let button = elmt "button"
 
 (* Parameters *)
 

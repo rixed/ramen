@@ -234,6 +234,10 @@ let node_columns =
 
 let sel_column = { name = "selected column" ; value = "layer" (* title in node_columns *) }
 
+(* Tells if the GUI is in the layer edition mode where only the layer
+ * panel is displayed alongside the large editor panel. *)
+let editor_mode = { name = "layer edition mode" ; value = None }
+
 let get_variant js =
   let open Js in
   let a = object_keys js in
@@ -363,12 +367,12 @@ let icon_of_layer layer =
     | Compiled -> "☑", "/start/"^ enc layer.Layer.name, "start"
     | Running -> "⚙", "/stop/"^ enc layer.Layer.name, "stop"
   in
-  elmt ~action:(fun _ ->
+  button ~action:(fun _ ->
       http_get path (fun status ->
         if Js.(Unsafe.get status "success" |> to_bool) then
         http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
           update_graph false g ;
-          resync ()))) "button" [
+          resync ()))) [
     clss "icon" ;
     attr "title" alt ;
     text icon ]
@@ -386,6 +390,10 @@ let layer_panel layer =
     p [
       clss "name" ;
       text layer.Layer.name ;
+      (if layer.status <> Running then
+        button ~action:(fun _ -> set editor_mode (Some layer))
+          [ text "edit" ]
+      else group []) ;
       icon_of_layer layer ] ;
     div [
       clss "info" ;
@@ -616,20 +624,32 @@ let tail_panel () =
                       Array.fold_left (fun l r -> row node.output_type r :: l) [] rows |>
                       List.rev |> tbody))))]))
 
+let editor_panel () =
+  div
+    [ p [ text "TODO" ] ;
+      button ~action:(fun _ -> set editor_mode None)
+        [ text "Cancel" ] ]
+
 let h1 t = elmt "h1" [ text t ]
 
 let next_dom () =
   [ div (id "global" :: header_panel ()) ;
-    div
-      [ id "top" ;
-        div [ id "layers" ; h1 "Layers" ; layers_panel () ] ;
-        div [ id "nodes" ; h1 "Nodes" ; nodes_panel () ] ] ;
-    group [
-      div
-        [ id "details" ;
-          div [ id "input" ; h1 "Input" ; input_panel () ] ;
-          div [ id "operation" ; h1 "Operation" ; op_panel () ] ] ;
-      div [ id "tail" ; h1 "Output" ; tail_panel () ] ] ]
+    with_value editor_mode (function
+      Some layer ->
+        div [ id "editor" ;
+              h1 ("Edition of "^ layer.Layer.name) ;
+              editor_panel () ]
+    | None ->
+      group
+        [ div
+          [ id "top" ;
+            div [ id "layers" ; h1 "Layers" ; layers_panel () ] ;
+            div [ id "nodes" ; h1 "Nodes" ; nodes_panel () ] ] ;
+          div
+            [ id "details" ;
+              div [ id "input" ; h1 "Input" ; input_panel () ] ;
+              div [ id "operation" ; h1 "Operation" ; op_panel () ] ] ;
+          div [ id "tail" ; h1 "Output" ; tail_panel () ] ]) ]
 
 let () =
   let every_10s () =
