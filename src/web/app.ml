@@ -51,6 +51,7 @@ struct
       nb_nodes : int ;
       last_started : float option ;
       last_stopped : float option }
+
   let to_string l =
     string_of_record [
       "name", string_of_string l.name ;
@@ -63,6 +64,7 @@ end
 module Field =
 struct
   type t = { name : string ; nullable : bool ; typ : string }
+
   let to_string t =
     string_of_record [
       "name", string_of_string t.name ;
@@ -94,6 +96,7 @@ struct
       ram_usage : int ;
       pid : int option ;
       signature : string option }
+
   let to_string n =
     string_of_record [
       "layer", string_of_string n.layer ;
@@ -139,8 +142,9 @@ let update_layer layer =
 
 (* Value is a hash from node id to node *)
 let nodes = { name = "nodes" ; value = Hashtbl.create 5 }
-(* Fake value used to track when to redraw the totals: *)
-let nodes_sum = { name = "nodes sum" ; value = () }
+
+let nodes_sum = { name = "nodes sum" ; value = (0, 0, 0, 0, 0, 0., 0) }
+
 let update_node node =
   let p =
     try Hashtbl.find nodes.value node.Node.id
@@ -149,8 +153,7 @@ let update_node node =
       change nodes ;
       { name = "node "^ node.name ; value = node } in
   set p node ;
-  Hashtbl.replace nodes.value node.id p ;
-  change nodes_sum
+  Hashtbl.replace nodes.value node.id p
 
 (* We have only one variable for all the lines because they always change
  * all together when we refresh. Value is a list of fields and an array
@@ -265,6 +268,7 @@ let update_graph total g =
   Firebug.console##log g##.length ;
   (* Keep track of the layers we had to clean the extra ones at the end: *)
   let had_layers = ref [] in
+  let tots = ref (0, 0, 0, 0, 0, 0., 0) in
   for i = 0 to g##.length - 1 do
     let l = Js.array_get g i in
     let name = Js.(Unsafe.get l "name" |> to_string) in
@@ -308,9 +312,18 @@ let update_graph total g =
                   option_map to_int) ; 
         signature = Js.(Unsafe.get n "signature" |> Opt.to_option |>
                         option_map to_string) } in
-      update_node node
+      update_node node ;
+      let tot_nodes, tot_ins, tot_sels, tot_outs,
+          tot_grps, tot_cpu, tot_ram = !tots in
+      tots :=
+        tot_nodes + 1, tot_ins + node.Node.in_tuple_count,
+        tot_sels + node.sel_tuple_count,
+        tot_outs + node.out_tuple_count,
+        tot_grps + (option_def 0 node.group_count),
+        tot_cpu +. node.cpu_time, tot_ram + node.ram_usage ;
     done
   done ;
+  set nodes_sum !tots ;
   if total then
     Hashtbl.filter_map_inplace (fun name layer ->
       if List.mem name !had_layers then (
@@ -328,7 +341,7 @@ let reload_graph () =
 
 (* DOM *)
 
-let header_panel () =
+let header_panel =
   [ p
     [ text "Ramen v0.1 running on " ;
       elmt "em" [ text "$HOSTNAME$." ] ] ]
@@ -404,7 +417,7 @@ let layer_panel layer =
         else e in
       div e))
 
-let layers_panel () =
+let layers_panel =
   with_value layers (fun h ->
     Hashtbl.fold (fun _ p lst ->
       with_value p layer_panel :: lst) h [] |>
@@ -443,8 +456,7 @@ let short_node_list ?(max_len=20) layer lst =
           else n)
     ) "" lst)
 
-let node_tbody_row (_tot_nodes, tot_ins, tot_sels, tot_outs,
-                    tot_grps, tot_cpu, tot_ram) node =
+let node_tbody_row node =
   let tdh w xs =
     td [ clss "number" ; text xs ;
          elmt "hr" [ attr "width" (string_of_float w) ] ] in
@@ -459,30 +471,32 @@ let node_tbody_row (_tot_nodes, tot_ins, tot_sels, tot_outs,
   let tdoi = function None -> tds "n.a." | Some v -> tdi v
   and tdoih tot = function None -> tds "n.a." | Some v -> tdih tot v
   in
-  let cols =
-    [ tds node.Node.layer ;
-      tds node.name ;
-      tds node.type_of_operation ;
-      tdih tot_ins node.in_tuple_count ;
-      tdih tot_sels node.sel_tuple_count ;
-      tdih tot_outs node.out_tuple_count ;
-      tdoih tot_grps node.group_count ;
-      tds (if node.exporting then "✓" else " ") ;
-      tdfh tot_cpu node.cpu_time ;
-      tdih tot_ram node.ram_usage ;
-      tds (short_node_list node.layer node.parents) ;
-      tds (short_node_list node.layer node.children) ;
-      tdoi node.pid ;
-      tdo node.signature ] in
-  (* FIXME: So all the lines vary every time sel_node changes. Ie we are going to
-   * redraw the whole table, while in theory only two lines must be redrawn.
-   * Instead, we could have one individual boolean state variable per line and this would
-   * depend only on this. *)
-  with_value sel_node (fun sel ->
-    if sel = node.Node.id then
-      elmt ~action:(fun _ -> set_sel_node "") "tr" (clss "selected" :: cols)
-    else
-      elmt ~action:(fun _ -> set_sel_node node.id) "tr" cols)
+  with_value nodes_sum (fun (_tot_nodes, tot_ins, tot_sels, tot_outs,
+                             tot_grps, tot_cpu, tot_ram) ->
+    let cols =
+      [ tds node.Node.layer ;
+        tds node.name ;
+        tds node.type_of_operation ;
+        tdih tot_ins node.in_tuple_count ;
+        tdih tot_sels node.sel_tuple_count ;
+        tdih tot_outs node.out_tuple_count ;
+        tdoih tot_grps node.group_count ;
+        tds (if node.exporting then "✓" else " ") ;
+        tdfh tot_cpu node.cpu_time ;
+        tdih tot_ram node.ram_usage ;
+        tds (short_node_list node.layer node.parents) ;
+        tds (short_node_list node.layer node.children) ;
+        tdoi node.pid ;
+        tdo node.signature ] in
+    (* FIXME: So all the lines vary every time sel_node changes. Ie we are going to
+     * redraw the whole table, while in theory only two lines must be redrawn.
+     * Instead, we could have one individual boolean state variable per line and this would
+     * depend only on this. *)
+    with_value sel_node (fun sel ->
+      if sel = node.Node.id then
+        elmt ~action:(fun _ -> set_sel_node "") "tr" (clss "selected" :: cols)
+      else
+        elmt ~action:(fun _ -> set_sel_node node.id) "tr" cols))
 
 let node_sorter col n1 n2 =
   (* Numbers are sorted greater to smaller while strings are sorted
@@ -507,41 +521,7 @@ let node_sorter col n1 n2 =
     | 0 -> compare n1.name n2.name
     | x -> x
 
-let nodes_panel () =
-  (* If a single line changes, then the whole table change (due to totals
-   * and histograms. So let's grab all values at once: *)
-  (* Start by computing the tots so we can display histograms in the table. *)
-  let tots = ref (0, 0, 0, 0, 0, 0., 0) in
-  let foot =
-    with_value nodes_sum (fun () ->
-      tfoot [
-        with_value nodes (fun h ->
-          Hashtbl.iter (fun _ p ->
-              let n = p.value in
-              let tot_nodes, tot_ins, tot_sels, tot_outs,
-                  tot_grps, tot_cpu, tot_ram = !tots in
-              tots :=
-                tot_nodes + 1, tot_ins + n.Node.in_tuple_count,
-                tot_sels + n.sel_tuple_count,
-                tot_outs + n.out_tuple_count,
-                tot_grps + (option_def 0 n.group_count),
-                tot_cpu +. n.cpu_time, tot_ram + n.ram_usage
-            ) h ;
-          let tot_nodes, tot_ins, tot_sels, tot_outs,
-              tot_grps, tot_cpu, tot_ram = !tots in
-          elmt "tr" [
-            tds "" ;
-            tdi tot_nodes ;
-            tds "" ;
-            tdi tot_ins ;
-            tdi tot_sels ;
-            tdi tot_outs ;
-            tdi tot_grps ;
-            tds "" ;
-            tdf tot_cpu ;
-            tdi tot_ram ;
-            tds "" ; tds "" ; tds "" ;
-            tds "" ]) ]) in
+let nodes_panel =
   table [
     thead [
       Array.fold_left (fun lst col ->
@@ -555,9 +535,16 @@ let nodes_panel () =
           Hashtbl.fold (fun _ p lst -> p :: lst) h [] |>
           List.fast_sort (node_sorter sel_col) in
         List.map (fun p ->
-          with_value p (node_tbody_row !tots)) rows |>
+          with_value p node_tbody_row) rows |>
         tbody)) ;
-    foot ]
+    with_value nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
+                               tot_grps, tot_cpu, tot_ram) ->
+      tfoot [
+        elmt "tr" [
+          tds "" ; tdi tot_nodes ; tds "" ; tdi tot_ins ;
+          tdi tot_sels ; tdi tot_outs ; tdi tot_grps ;
+          tds "" ; tdf tot_cpu ; tdi tot_ram ;
+          tds "" ; tds "" ; tds "" ; tds "" ] ]) ]
 
 let dispname_of_type nullable typ =
   String.lowercase typ ^ (if nullable then " (or null)" else "")
@@ -565,13 +552,13 @@ let dispname_of_type nullable typ =
 let field_panel f =
   labeled_value f.Field.name (dispname_of_type f.nullable f.typ)
 
-let input_panel () =
+let input_panel =
   with_value sel_node (fun sel ->
     if sel = "" then elmt "span" []
     else with_node sel (fun node ->
       div (List.map field_panel node.input_type)))
 
-let op_panel () =
+let op_panel =
   with_value sel_node (fun sel ->
     if sel = "" then
       p [ text "Select a node to see the operation it performs" ]
@@ -581,7 +568,7 @@ let op_panel () =
 let th_field f =
   pretty_th "" f.Field.name (dispname_of_type f.nullable f.typ)
 
-let tail_panel () =
+let tail_panel =
   let row fs r =
     let rec loop tds ci = function
       [] -> tr (List.rev tds)
@@ -620,32 +607,144 @@ let tail_panel () =
                       Array.fold_left (fun l r -> row node.output_type r :: l) [] rows |>
                       List.rev |> tbody))))]))
 
-let editor_panel () =
+let form_input label value =
+  elmt "label"
+    [ text label ;
+      elmt "input"
+        [ attr "type" "text" ;
+          attr "value" value ] ]
+
+let node_editor_panel (name, operation) =
   div
-    [ p [ text "TODO" ] ;
+    [ form_input "Node Name" name ;
+      form_input "Node Operation" operation ]
+
+let additional_nodes =
+  { name = "additional nodes" ; value = [
+    { name = "new node" ; value = ("new node", "") } ] }
+
+let new_node () =
+  let rec loop n =
+    let name = "new node "^ string_of_int n in
+    if List.exists (fun n -> n.name = name) additional_nodes.value then
+      loop (n + 1)
+    else name
+  in
+  let name = loop 1 in
+  let n = { name ; value = name, "" } in
+  change n ;
+  n
+
+let layer_editor_panel layer_opt =
+  let layer_name =
+    option_map (fun l -> l.Layer.name) layer_opt |? "unnamed" in
+  let prev_nodes =
+    option_map (fun l ->
+      Hashtbl.fold (fun _ n lst ->
+        if n.value.Node.layer = l.Layer.name then
+          (n.value.Node.name, n.value.Node.operation) :: lst
+        else lst) nodes.value []) layer_opt |? [] in
+  div
+    [ form_input "layer name" layer_name ;
+      group (List.map node_editor_panel prev_nodes) ;
+      with_value additional_nodes (fun add_nodes ->
+        add_nodes |>
+        List.map (fun add_node_p ->
+          with_value add_node_p node_editor_panel) |>
+        group) ;
+      button ~action:(fun _ ->
+          set additional_nodes (additional_nodes.value @ [ new_node () ]))
+        [ text "+" ] ;
       button ~action:(fun _ -> set editor_mode None)
-        [ text "Cancel" ] ]
+        [ text "Cancel" ] ;
+      button ~action:(fun _ -> Firebug.console##log (Js.string "SUBMIT"))
+        [ text "Save" ] ]
 
 let h1 t = elmt "h1" [ text t ]
 
-let next_dom () =
-  [ div (id "global" :: header_panel ()) ;
-    with_value editor_mode (function
-      Some layer ->
-        div [ id "editor" ;
-              h1 ("Edition of "^ layer.Layer.name) ;
-              editor_panel () ]
-    | None ->
-      group
-        [ div
-          [ id "top" ;
-            div [ id "layers" ; h1 "Layers" ; layers_panel () ] ;
-            div [ id "nodes" ; h1 "Nodes" ; nodes_panel () ] ] ;
-          div
-            [ id "details" ;
-              div [ id "input" ; h1 "Input" ; input_panel () ] ;
-              div [ id "operation" ; h1 "Operation" ; op_panel () ] ] ;
-          div [ id "tail" ; h1 "Output" ; tail_panel () ] ]) ]
+let dom =
+  group
+    [ div (id "global" :: header_panel) ;
+      with_value editor_mode (function
+        Some layer ->
+          div [ id "editor" ;
+                layer_editor_panel (Some layer) ]
+      | None ->
+        group
+          [ div
+            [ id "top" ;
+              div [ id "layers" ; h1 "Layers" ; layers_panel ] ;
+              div [ id "nodes" ; h1 "Nodes" ; nodes_panel ] ] ;
+            div
+              [ id "details" ;
+                div [ id "input" ; h1 "Input" ; input_panel ] ;
+                div [ id "operation" ; h1 "Operation" ; op_panel ] ] ;
+            div [ id "tail" ; h1 "Output" ; tail_panel ] ]) ]
+
+let togle p _ = set p (not p.value)
+
+(*
+(* The values in the board squares *)
+let square_values = Array.init 9 (fun i ->
+  { name = "value of square "^ string_of_int i ; value = "" })
+
+let check_square i v _ =
+  set square_values.(i) v
+
+let is_x_next = { name = "X is next" ; value = true }
+
+let player_symbol = function true -> "X" | false -> "O"
+
+let calculate_winner () =
+  let win_positions =
+	  [ (0, 1, 2) ; (3, 4, 5) ; (6, 7, 8) ;
+      (0, 3, 6) ; (1, 4, 7) ; (2, 5, 8) ;
+      (0, 4, 8) ; (2, 4, 6)  ] in
+  let v = square_values in
+  match List.find (fun (a, b, c) ->
+    v.(a).value <> "" &&
+    v.(a).value = v.(b).value &&
+    v.(b).value = v.(c).value) win_positions with
+  | exception Not_found -> ""
+  | p, _, _ -> v.(p).value
+
+let square i =
+  (* Note: the rendering does not depend on is_x_next, despite we use it in
+   * the action! *)
+  with_value square_values.(i) (fun value ->
+    elmt ~action:(fun x ->
+        if value = "" && calculate_winner () = "" then (
+          check_square i (player_symbol is_x_next.value) x ;
+          togle is_x_next x))
+      "button" [
+      attr "type" "button" ;
+      clss "square" ;
+      id ("sq"^ string_of_int i) ;
+      text value ])
+
+let board =
+  let row i =
+    let sq = square in
+    div
+      [ clss "board-row" ;
+        sq i ; sq (i+1) ; sq (i+2) ] in
+  [ row 0 ; row 3 ; row 6 ]
+
+let tictactoe = (* Do you like divs in your divs? *)
+  div [
+    clss "game" ;
+    div [
+      clss "game-board" ;
+      div (
+        div [
+          clss "status" ;
+          with_value is_x_next (fun is_x_next ->
+            let winner = calculate_winner () in
+            if winner = "" then
+              text ("Next player: "^ player_symbol is_x_next)
+            else
+              text ("Winner: "^ winner)) ] ::
+        board) ] ] *)
 
 let () =
   let every_10s () =
@@ -653,6 +752,5 @@ let () =
     reload_graph () ;
     reload_tail () in
   ignore (Dom_html.window##setInterval (Js.wrap_callback every_10s) 10_000.) ;
-  start next_dom ;
-  reload_graph () ;
-  reload_tail ()
+  start dom ;
+  reload_graph ()

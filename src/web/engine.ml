@@ -2,12 +2,39 @@ open Js_of_ocaml
 module Html = Dom_html
 let doc = Html.window##.document
 
-module SSet = Set.Make (struct type t = string let compare = compare end)
+module SSet = struct
+  module S = Set.Make (struct type t = string let compare = compare end)
+  type t = All | Set of S.t
+  let empty = Set S.empty
+  let all = All
+  let is_empty = function
+    | All -> false
+    | Set s -> S.is_empty s
+  let inter s1 s2 = match s1, s2 with
+    | All, s2 -> s2
+    | s1, All -> s1
+    | Set s1, Set s2 -> Set (S.inter s1 s2)
+  let union s1 s2 = match s1, s2 with
+    | All, _ | _, All -> All
+    | Set s1, Set s2 -> Set (S.union s1 s2)
+  let add p = function
+    | All -> All
+    | Set s -> Set (S.add p s)
+  let mem p = function
+    | All -> true
+    | Set s -> S.mem p s
+  let to_string = function
+    | All -> "all"
+    | Set s ->
+      S.fold (fun x prev ->
+        prev ^ (if prev = "" then "" else ",") ^ x) s ""
+  let intersect s1 s2 = match s1, s2 with
+    | All, _ | _, All -> true
+    | Set s1, Set s2 ->
+      S.inter s1 s2 |> S.is_empty |> not
+end
 
 (* Stdlib complement: *)
-
-let intersect s1 s2 =
-  SSet.inter s1 s2 |> SSet.is_empty |> not
 
 let option_may f = function
   | None -> ()
@@ -18,6 +45,7 @@ let option_map f = function
   | Some x -> Some (f x)
 
 let option_def x = function None -> x | Some v -> v
+let (|?) a b = option_def b a
 
 let optdef_get x = Js.Optdef.get x (fun () -> assert false)
 
@@ -28,7 +56,7 @@ let list_init n f =
   loop [] 0
 
 let opt_get x = Js.Opt.get x (fun () -> assert false)
-let to_int x = Js.float_of_number x |> int_of_float 
+let to_int x = Js.float_of_number x |> int_of_float
 
 let string_starts_with p s =
   let open String in
@@ -55,60 +83,46 @@ let string_of_option p = function None -> "null" | Some v -> p v
 let string_of_field (n, v) = quote n ^": "^ v
 let string_of_record = string_of_list ~first:"{ " ~last:" }" string_of_field
 
-
 (* Those are the only we care about: *)
 (* TODO: put worthy into Element? *)
-type dyn_node_spec =
+type vnode =
   | Attribute of string * string
   | Text of string
-  | Element of string * (string -> unit) option * dyn_node_tree list
+  | Element of { tag : string ; action : (string -> unit) option ; subs : vnode list }
+  (* Name of the parameter and function that, given this param, generate the vnode *)
+  | Fun of { param : string ; f : unit -> vnode ; last : vnode ref }
   (* No HTML produced, just for grouping: *)
-  | Group of dyn_node_tree list
-and dyn_node_tree =
-  { spec : dyn_node_spec ;
-    mutable dirty : SSet.t ; worthy : SSet.t }
+  | Group of { subs : vnode list }
 
-(* Remove groups before diffing for simplicity: *)
-let rec flatten_tree t =
-  match t with
-  | { spec = (Attribute _ | Text _) ; _ } -> [ t ]
-  | { spec = Element (tag, action, subs) ; _ } ->
-    [ { t with spec = Element (tag, action, flatten_trees subs) } ]
-  (* worthy has been propagated to the root already but dirty is never
-   * propagated to the leaves. It is indeed useless since the whole subtree is
-   * going to be redrawn anyway. But if the node is a group that is going to
-   * be simplified out, then we do want to propagate this now! Note that it's
-   * enough to propagate it one level after we've flattened out sub: *)
-  | { spec = Group lst ; _ } ->
-    flatten_trees lst |>
-    List.map (fun e -> { e with dirty = SSet.union e.dirty t.dirty })
-and flatten_trees ts =
-  List.fold_left (fun ts' t ->
-      List.rev_append (flatten_tree t) ts'
-    ) [] ts |>
-  List.rev
-
-let rec string_of_spec = function
+let rec string_of_vnode = function
   | Attribute (n, v) -> "attr("^ n ^", "^ v ^")"
   | Text s -> "text(\""^ s ^"\")"
-  | Element (tag, _, subs) ->
-    tag ^"("^ string_of_tree subs ^")"
-  | Group subs -> "group("^ string_of_tree subs ^")"
+  | Element { tag ; subs ; _ } -> tag ^"("^ string_of_tree subs ^")"
+  | Group { subs ; _ } -> "group("^ string_of_tree subs ^")"
+  | Fun { param ; _ } -> "fun("^ param ^")"
 and string_of_tree subs =
   List.fold_left (fun s tree ->
-    s ^ (if s = "" then "" else ";") ^ string_of_spec tree.spec) "" subs
+    s ^ (if s = "" then "" else ";") ^ string_of_vnode tree) "" subs
+
+let rec leads_to = function
+  | Element { subs ; _ } | Group { subs ; _ } ->
+     List.fold_left (fun set sub ->
+       SSet.union set (leads_to sub)) SSet.empty subs
+  | Fun { last ; param ; _ } -> SSet.add param (leads_to !last)
+  | _ -> SSet.empty
+
+(* A named ref cell *)
+type 'a param = { name : string ; mutable value : 'a }
 
 let elmt tag ?action subs =
-  let worthy = List.fold_left (fun set sub ->
-    SSet.union set sub.dirty |>
-    SSet.union sub.worthy) SSet.empty subs in
-  { dirty = SSet.empty ; worthy ; spec = Element (tag, action, subs) }
-let text s =
-  { dirty = SSet.empty ; worthy = SSet.empty ; spec = Text s }
-let attr n v =
-  { dirty = SSet.empty ; worthy = SSet.empty ; spec = Attribute (n, v) }
-let group lst =
-  { dirty = SSet.empty ; worthy = SSet.empty ; spec = Group lst }
+  Element { tag ; action ; subs }
+let with_value p f =
+  let last = f p.value in
+  Fun { param = p.name ; f = (fun () -> f p.value) ; last = ref last }
+let group subs =
+  Group { subs }
+let text s = Text s
+let attr n v = Attribute (n, v)
 
 (* We like em so much: *)
 let div = elmt "div"
@@ -128,32 +142,10 @@ let button = elmt "button"
 
 (* Parameters *)
 
-(* A named ref cell *)
-type 'a param = { name : string ; mutable value : 'a }
-
-(* FIXME:
- * We should cache the construction of the virtual DOM.
- * So that in with_value we would reuse the cache if the value is not
- * in changed.
- * Also, we could have a "const" for when we do not depend on any value,
- * that would be cached always.
- * Then once we have this, we could add a seqnum to each virtual dom element
- * (thanks to [elmt]) and use this to identify where nodes have moved
- * in the next_dom compared to curr_dom (instead of supposing that next 3rd
- * child is the same as curr 3rd child) *)
-(* NOTE: dependency of a node to a parameter might change according to
- * circumstances and must not be considered constant! *)
-let with_value p f =
-  let sub = f p.value in
-  (* if this value change, redraw this: *)
-  sub.dirty <- SSet.add p.name sub.dirty ;
-  sub
-
-let changes = ref SSet.empty (* Set of names of changed variables *)
+let changes = ref SSet.all (* Set of names of changed variables *)
 
 let string_of_changes () =
-  SSet.fold (fun s prev ->
-    prev ^ (if prev = "" then "" else ",") ^ s) !changes ""
+  SSet.to_string !changes
 
 let change p =
   changes := SSet.add p.name !changes
@@ -162,13 +154,9 @@ let set p v =
   p.value <- v ;
   change p
 
-(* Current DOM *)
+(* Current DOM, starts empty *)
 
-let curr_dom = ref []
-
-(* Compute next DOM *)
-
-let next_dom = ref (fun () -> [])
+let vdom = ref (Group { subs = [] })
 
 (* Rendering *)
 
@@ -177,23 +165,14 @@ let coercion_motherfucker_can_you_do_it o =
     Firebug.console##log (Js.string "Assertion failed") ;
     assert false)
 
-let get (parent : Html.element Js.t) n =
-  parent##.childNodes##item n |> coercion_motherfucker_can_you_do_it |>
-  Html.CoerceTo.element |> coercion_motherfucker_can_you_do_it
-
-let remove_element (parent : Html.element Js.t) n =
-  Firebug.console##log (Js.string "Removing element") ;
-  Js.Opt.iter (parent##.childNodes##item n) (fun child ->
-    Dom.removeChild parent child)
-
-let remove_attribute (parent : Html.element Js.t) n =
-  Firebug.console##log (Js.string "Removing attribute") ;
-  parent##removeAttribute (Js.string n)
-
-let remove parent ni = function
-  | Element _ | Text _ -> remove_element parent ni
-  | Attribute (n, _) -> remove_attribute parent n
-  | Group _ -> assert false
+let rec remove (parent : Html.element Js.t) child_idx n =
+  if n > 0 then (
+    Js.Opt.iter (parent##.childNodes##item child_idx) (fun child ->
+      Firebug.console##log_4 (Js.string ("Removing child_idx="^ string_of_int child_idx^" of")) parent
+        (Js.string ("and "^ string_of_int (n-1) ^" more:")) child ;
+      Dom.removeChild parent child) ;
+    remove parent child_idx (n - 1)
+  )
 
 let rec add_listeners tag (elmt : Html.element Js.t) action =
   match tag with
@@ -218,84 +197,105 @@ let rec add_listeners tag (elmt : Html.element Js.t) action =
       resync () ;
       Js._false)
 
-and replace (parent : Html.element Js.t) n spec changed =
-  (* If n is < 0 this is an append *)
-  let what = if n < 0 then "Appending" else "Replacing" in
-  match spec with
+and insert changed (parent : Html.element Js.t) child_idx vnode =
+  Firebug.console##log_2
+    (Js.string ("Appending "^ string_of_vnode vnode ^
+                " as child "^ string_of_int child_idx ^" of"))
+    parent ;
+  match vnode with
   | Attribute (n, v) ->
-    Firebug.console##log (Js.string (what ^" attribute...")) ;
-    parent##setAttribute (Js.string n) (Js.string v)
+    parent##setAttribute (Js.string n) (Js.string v) ;
+    0
   | Text t ->
-    Firebug.console##log (Js.string (what ^" text")) ;
     let data = doc##createTextNode (Js.string t) in
-    if n < 0 then
-      Dom.appendChild parent data
-    else
-      let prev = parent##.childNodes##item n |>
-                 coercion_motherfucker_can_you_do_it in
-      Dom.replaceChild parent data prev
-  | Element (tag, action, subs) ->
-    Firebug.console##log (Js.string (what ^" element "^ tag)) ;
+    let next = parent##.childNodes##item child_idx in
+    Dom.insertBefore parent data next ;
+    1
+  | Element { tag ; action ; subs ; _ } ->
     let elmt = doc##createElement (Js.string tag) in
     option_may (fun action ->
       add_listeners tag elmt action) action ;
-    Firebug.console##log (Js.string "recurse sync...") ;
-    sync elmt [] subs changed ;
-    if n < 0 then
-      Dom.appendChild parent elmt
-    else
-      let prev = parent##.childNodes##item n |>
-                 coercion_motherfucker_can_you_do_it in
-      Dom.replaceChild parent elmt prev
-  | Group _ -> assert false
+    List.iteri (fun i sub ->
+        (* as long as i >= elmt.length we are going to append *)
+        insert changed elmt i sub |> ignore
+      ) subs ;
+    let next = parent##.childNodes##item child_idx in
+    Dom.insertBefore parent elmt next ;
+    1
+  | Fun { param ; f ; last } ->
+    if SSet.mem param changed then last := f () ;
+    insert changed parent child_idx !last
+  | Group { subs ; _ } ->
+    List.fold_left (fun i sub ->
+        i + insert changed parent (child_idx + i) sub
+      ) 0 subs
 
-and sync parent prev next changed =
-  Firebug.console##log (Js.string "sync parent...") ;
-  Firebug.console##log parent ;
-  (* [ni] count the elements/texts, in the current
-   * parent. Used to index the DOM children. *)
-  let rec loop ni ps ns =
-    let ni' =
-      match ns with
-      | { spec = (Element _ | Text _) ; _ } :: _ -> ni + 1
-      | { spec = Group _ ; _ } :: _ -> assert false
-      | _ -> ni in
-    match ps, ns with
-    | [], [] -> ()
-    | [], n::ns' ->
-      replace parent ~-1 n.spec changed ;
-      loop ni' ps ns'
-    | p::ps', [] ->
-      remove parent ni p.spec ;
-      loop ni' ps' ns
-    | p::ps', n::ns' ->
-      if intersect changed p.dirty then (
-        replace parent ni n.spec changed ;
-        loop ni' ps' ns'
-      ) else if intersect changed p.worthy then (
-        Firebug.console##log(Js.string ("Child #"^ string_of_int ni ^"/"^ string_of_int parent##.childNodes##.length ^" is worthy of a visit")) ;
-        let parent' = get parent ni in
-        (match p.spec, n.spec with
-        | Element (_, _, prevs'), Element (_, _, next') ->
-          sync parent' prevs' next' changed
-        | _ -> assert false) ;
-        loop ni' ps' ns'
-      ) else (
-        loop ni' ps' ns'
-      )
-  in
-  loop 0 prev next
+(* Only the Fun can produce a different result. Leads_to tells us where to go
+ * to have Funs. *)
+and sync changed (parent : Html.element Js.t) child_idx vdom =
+  let rec flat_length = function
+    | Group { subs ; _ } ->
+      List.fold_left (fun s e -> s + flat_length e) 0 subs
+    | Element _ | Text _ -> 1
+    | Attribute _ -> 0
+    | Fun { last ; _ } -> flat_length !last in
+  let ( += ) a b = a := !a + b in
+  let leads_to = leads_to vdom in
+  Firebug.console##log
+    (Js.string ("sync vnode="^ string_of_vnode vdom ^" leading to "^
+                SSet.to_string leads_to)) ;
+  (* We might not already have an element there if the DOM
+   * is initially empty, in which case we create it. *)
+  while parent##.childNodes##.length <= child_idx do
+    Firebug.console##log (Js.string "Appending missing element in DOM") ;
+    insert changed parent child_idx vdom |> ignore
+  done ;
+  match vdom with
+  | Element { subs ; _ } ->
+    if SSet.intersect changed leads_to then (
+      (* Follow this path. Child_idx count the children so far. *)
+      let parent' = parent##.childNodes##item child_idx |>
+                    coercion_motherfucker_can_you_do_it |>
+                    Html.CoerceTo.element |>
+                    coercion_motherfucker_can_you_do_it in
+      let child_idx = ref 0 in
+      List.iter (fun sub ->
+          child_idx += sync changed parent' !child_idx sub
+        ) subs) ;
+    1
+  | Text _ -> 1
+  | Attribute _ -> 0
+  | Group { subs ; _ } ->
+    if SSet.intersect changed leads_to then (
+      let child_idx = ref child_idx in
+      List.iter (fun sub ->
+          child_idx += sync changed parent !child_idx sub
+        ) subs) ;
+    flat_length vdom
+  | Fun { param ; last ; f ; _ } ->
+    if SSet.mem param changed then (
+      (* Bingo! For now we merely discard the whole sub-element *)
+      remove parent child_idx (flat_length !last) ;
+      last := f () ;
+      insert changed parent child_idx !last
+    ) else if SSet.intersect changed leads_to then (
+      sync changed parent child_idx !last
+    ) else (
+      flat_length !last
+    )
 
 and resync () =
-  Firebug.console##log (Js.string "Syncing with changes:") ;
-  Firebug.console##log (Js.string (string_of_changes ())) ;
+  Firebug.console##log_2 (Js.string "Syncing with changes:")
+                         (Js.string (string_of_changes ())) ;
   let div =
     Html.getElementById_exn "application" in
-  let n = !next_dom () in
-  let n = flatten_trees n in
-  sync div !curr_dom n !changes ;
-  curr_dom := n ;
+  sync !changes div 0 !vdom |> ignore ;
   changes := SSet.empty
+
+let start nd =
+  Firebug.console##log (Js.string "starting...") ;
+  vdom := nd ;
+	Html.window##.onload := Html.handler (fun _ -> resync () ; Js._false)
 
 (* Ajax *)
 
@@ -330,8 +330,3 @@ let ajax action path content cb =
 
 let http_get path cb = ajax "GET" path "" cb
 let http_post path content cb = ajax "POST" path content cb
-
-let start nd =
-  Firebug.console##log (Js.string "starting...") ;
-  next_dom := nd ;
-	Html.window##.onload := Html.handler (fun _ -> resync () ; Js._false)
