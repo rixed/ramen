@@ -286,7 +286,7 @@ let ajax action path content cb =
       )
     )) ;
   req##_open (Js.string action)
-             (Js.string ("$RAMEN_URL$"^ path))
+             (Js.string path)
              (Js.bool true) ;
   let ct = Js.string Consts.json_content_type in
   req##setRequestHeader (Js.string "Accept") ct ;

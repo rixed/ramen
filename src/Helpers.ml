@@ -282,3 +282,12 @@ let strings_of_csv separator line =
   [ "glop" ; "glop" ] (strings_of_csv " " "glop glop")
   [ "John" ; "+500" ] (strings_of_csv "," "\"John\",+500")
  *)
+
+let read_whole_file fname =
+  let open Lwt_io in
+  let%lwt len = file_length fname in
+  let len = Int64.to_int len in
+  with_file ~mode:Input fname (fun ic ->
+    let buf = Bytes.create len in
+    let%lwt () = read_into_exactly ic buf 0 len in
+    Lwt.return (Bytes.to_string buf))

@@ -84,11 +84,15 @@ let hostname =
     cached := c ;
     return c
 
-let serve_string conf _headers body =
+let replace_placeholders conf s =
   let%lwt hostname = hostname () in
   let rep sub by str = String.nreplace ~str ~sub ~by in
-  let body = rep "$RAMEN_URL$" conf.C.ramen_url body in
-  let body = rep "$HOSTNAME$" hostname body in
+  return (
+    rep "$RAMEN_URL$" conf.C.ramen_url s |>
+    rep "$HOSTNAME$" hostname)
+
+let serve_string conf _headers body =
+  let%lwt body = replace_placeholders conf body in
   respond_ok ~body ~ct:Consts.html_content_type ()
 
 let type_of_operation =
@@ -334,12 +338,20 @@ let content_type_of_ext = function
   | "css" -> Consts.css_content_type
   | _ -> "I_dont_know/Good_luck"
 
+let serve_file_with_replacements conf _headers path file =
+  let fname = path ^"/"^ file in (* TODO: look for those files in the www_root directory (a param from the cmd line) so that FE devs could work with prod version of ramen to improve the GUI *)
+  let%lwt body = read_whole_file fname in
+  let%lwt body = replace_placeholders conf body in
+  let ct = content_type_of_ext (ext_of_file file) in
+  respond_ok ~body ~ct ()
+
 let serve_file _conf _headers path file =
   let fname = path ^"/"^ file in (* TODO: look for those files in the www_root directory (a param from the cmd line) so that FE devs could work with prod version of ramen to improve the GUI *)
   let headers =
     Header.init_with "Content-Type" (content_type_of_ext (ext_of_file file))
   in
   Server.respond_file ~headers ~fname ()
+
 
 (*
     Whole graph operations: compile/run/stop
@@ -642,7 +654,7 @@ let start do_persist debug no_demo to_stderr ramen_url www_dir
         else
           serve_string conf headers RamenGui.with_links
       | `GET, ["style.css" | "script.js" as file] ->
-        serve_file conf headers www_dir file
+        serve_file_with_replacements conf headers www_dir file
       (* Errors *)
       | `PUT, _ | `GET, _ | `DELETE, _ ->
         fail (HttpError (404, "No such resource"))
