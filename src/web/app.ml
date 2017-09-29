@@ -624,11 +624,12 @@ let next_dom () =
       [ id "top" ;
         div [ id "layers" ; h1 "Layers" ; layers_panel () ] ;
         div [ id "nodes" ; h1 "Nodes" ; nodes_panel () ] ] ;
-    div
-      [ id "details" ;
-        div [ id "input" ; h1 "Input" ; input_panel () ] ;
-        div [ id "operation" ; h1 "Operation" ; op_panel () ] ] ;
-    div [ id "tail" ; h1 "Output" ; tail_panel () ] ]
+    group [
+      div
+        [ id "details" ;
+          div [ id "input" ; h1 "Input" ; input_panel () ] ;
+          div [ id "operation" ; h1 "Operation" ; op_panel () ] ] ;
+      div [ id "tail" ; h1 "Output" ; tail_panel () ] ] ]
 
 let () =
   let every_10s () =

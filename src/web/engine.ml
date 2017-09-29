@@ -62,15 +62,31 @@ type dyn_node_spec =
   | Attribute of string * string
   | Text of string
   | Element of string * (string -> unit) option * dyn_node_tree list
+  (* No HTML produced, just for grouping: *)
+  | Group of dyn_node_tree list
 and dyn_node_tree =
   { spec : dyn_node_spec ;
     mutable dirty : SSet.t ; worthy : SSet.t }
+
+(* Remove groups before diffing for simplicity: *)
+let rec flatten_tree t =
+  match t with
+  | { spec = (Attribute _ | Text _) ; _ } -> [ t ]
+  | { spec = Element (tag, action, subs) ; _ } ->
+    [ { t with spec = Element (tag, action, flatten_trees subs) } ]
+  | { spec = Group lst ; _ } -> flatten_trees lst
+and flatten_trees ts =
+  List.fold_left (fun ts' t ->
+      List.rev_append (flatten_tree t) ts'
+    ) [] ts |>
+  List.rev
 
 let rec string_of_spec = function
   | Attribute (n, v) -> "attr("^ n ^", "^ v ^")"
   | Text s -> "text(\""^ s ^"\")"
   | Element (tag, _, subs) ->
     tag ^"("^ string_of_tree subs ^")"
+  | Group subs -> "group("^ string_of_tree subs ^")"
 and string_of_tree subs =
   List.fold_left (fun s tree ->
     s ^ (if s = "" then "" else ";") ^ string_of_spec tree.spec) "" subs
@@ -84,6 +100,8 @@ let text s =
   { dirty = SSet.empty ; worthy = SSet.empty ; spec = Text s }
 let attr n v =
   { dirty = SSet.empty ; worthy = SSet.empty ; spec = Attribute (n, v) }
+let group lst =
+  { dirty = SSet.empty ; worthy = SSet.empty ; spec = Group lst }
 
 (* We like em so much: *)
 let div = elmt "div"
@@ -167,6 +185,7 @@ let remove_attribute (parent : Html.element Js.t) n =
 let remove parent ni = function
   | Element _ | Text _ -> remove_element parent ni
   | Attribute (n, _) -> remove_attribute parent n
+  | Group _ -> assert false
 
 let rec add_listeners tag (elmt : Html.element Js.t) action =
   match tag with
@@ -220,6 +239,7 @@ and replace (parent : Html.element Js.t) n spec changed =
       let prev = parent##.childNodes##item n |>
                  coercion_motherfucker_can_you_do_it in
       Dom.replaceChild parent elmt prev
+  | Group _ -> assert false
 
 and sync parent prev next changed =
   Firebug.console##log (Js.string "sync parent...") ;
@@ -230,6 +250,7 @@ and sync parent prev next changed =
     let ni' =
       match ns with
       | { spec = (Element _ | Text _) ; _ } :: _ -> ni + 1
+      | { spec = Group _ ; _ } :: _ -> assert false
       | _ -> ni in
     match ps, ns with
     | [], [] -> ()
@@ -263,6 +284,7 @@ and resync () =
   let div =
     Html.getElementById_exn "application" in
   let n = !next_dom () in
+  let n = flatten_trees n in
   sync div !curr_dom n !changes ;
   curr_dom := n ;
   changes := SSet.empty
