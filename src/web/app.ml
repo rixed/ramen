@@ -16,15 +16,18 @@ let str_of_float_str' s =
   String.sub s 0 (!i + 1) ^ string_times nb_spcs " "
 
 let str_of_float_str s =
-  match String.index s '.' with
-  | exception Not_found -> s
-  | i ->
-    (* FIXME: round instead of truncate *)
-    str_of_float_str' (String.sub (s ^ "00000") 0 (i + dec_num + 1))
+  match String.index s 'e' with
+  | exception Not_found ->
+    (match String.index s '.' with
+    | exception Not_found -> s
+    | i ->
+      (* FIXME: round instead of truncate *)
+      str_of_float_str' (String.sub (s ^ "00000") 0 (i + dec_num + 1)))
+  | _ -> s
 
 let str_of_float f =
-  let s = Printf.sprintf "%.*f" dec_num f in
-  str_of_float_str' s
+  let s = string_of_float f in
+  str_of_float_str s
 
 (* The types we will use to deserialize JSON. Cannot be the same as
  * RamenSharedTypes because this JSON unparser is not compatible
