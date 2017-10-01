@@ -399,14 +399,6 @@ let icon_of_layer layer =
     text icon ]
 
 let layer_panel layer =
-  (* TODO: We will frequently change the order of those blocks but the 
-   * rendering algo assumes that nodes in same position as before are the
-   * same. Since we have both curr_dom and next_dom we could use some
-   * identifier in the dyn_node_tree (a mere seqnum would do) to help
-   * identify if the desired new child could be found elsewhere (not
-   * necessarily in this node, but we could keep a cache of seqnum to
-   * dom_tree (to which we want to add a reference to the actual DOM
-   * object so we could revive it faster). *)
   let e = [
     p [
       clss "name" ;
