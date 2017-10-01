@@ -136,23 +136,25 @@ end
  * precede [with_value some_layer]. *)
 (* Alternatively, for simplicity we could have a single value for the whole
  * table but then very long list of nodes would be slow. *)
-let layers = { name = "layers" ; value = Hashtbl.create 5 }
+let layers = { desc = { name = "layers" ; last_changed = clock () } ;
+               value = Hashtbl.create 5 }
 let update_layer layer =
   let p =
     try Hashtbl.find layers.value layer.Layer.name
     with Not_found ->
       print (Js.string ("Creating layer "^ Layer.to_string layer)) ;
       change layers ;
-      { name = "layer "^ layer.name ; value = layer } in
+      { desc = { name = "layer "^ layer.name ; last_changed = clock () } ;
+        value = layer } in
   set p layer ;
   Hashtbl.replace layers.value layer.name p
 
-let the_new_layer = { name = "the new layer" ; value = Layer.make () }
-
 (* Value is a hash from node id to node *)
-let nodes = { name = "nodes" ; value = Hashtbl.create 5 }
+let nodes = { desc = { name = "nodes" ; last_changed = clock () } ;
+              value = Hashtbl.create 5 }
 
-let nodes_sum = { name = "nodes sum" ; value = (0, 0, 0, 0, 0, 0., 0) }
+let nodes_sum = { desc = { name = "nodes sum" ; last_changed = clock () } ;
+                  value = (0, 0, 0, 0, 0, 0., 0) }
 
 let update_node node =
   let p =
@@ -160,17 +162,20 @@ let update_node node =
     with Not_found ->
       print (Js.string ("Creating node "^ Node.to_string node)) ;
       change nodes ;
-      { name = "node "^ node.name ; value = node } in
+      { desc = { name = "node "^ node.name ; last_changed = clock () } ;
+        value = node } in
   set p node ;
   Hashtbl.replace nodes.value node.id p
 
 (* We have only one variable for all the lines because they always change
  * all together when we refresh. Value is a list of fields and an array
  * of rows, made of optional strings *)
-let tail_rows = { name = "tail rows" ; value = [||] }
+let tail_rows = { desc = { name = "tail rows" ; last_changed = clock () } ;
+                  value = [||] }
 
 (* Use node.id as a value *)
-let sel_node = { name = "selected node" ; value = "" }
+let sel_node = { desc = { name = "selected node" ;last_changed = clock () } ;
+                 value = "" }
 
 let rec set_sel_node v =
   set sel_node v ;
@@ -244,11 +249,15 @@ let node_columns =
      "parents", false, "" ; "children", false, "" ;
      "PID", false, "" ; "signature", false, "" |]
 
-let sel_column = { name = "selected column" ; value = "layer" (* title in node_columns *) }
+let sel_column = { desc = { name = "selected column" ; last_changed = clock () } ;
+                   value = "layer" (* title in node_columns *) }
 
 (* Tells if the GUI is in the layer edition mode where only the layer
  * panel is displayed alongside the large editor panel. *)
 let editor_mode = { name = "layer edition mode" ; value = None }
+let the_new_layer = { desc = { name = "the new layer" ; last_changed = clock () } ;
+                      value = Layer.make () }
+
 
 let get_variant js =
   let open Js in
