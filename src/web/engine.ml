@@ -33,6 +33,8 @@ let list_init n f =
     loop (f i :: prev) (i + 1) in
   loop [] 0
 
+let replace_assoc n v l = (n, v) :: List.remove_assoc n l
+
 let opt_get x = Js.Opt.get x fail
 let to_int x = Js.float_of_number x |> int_of_float
 

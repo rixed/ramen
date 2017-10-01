@@ -137,35 +137,35 @@ end
 (* Alternatively, for simplicity we could have a single value for the whole
  * table but then very long list of nodes would be slow. *)
 let layers = { desc = { name = "layers" ; last_changed = clock () } ;
-               value = Hashtbl.create 5 }
+               value = [] }
 let update_layer layer =
   let p =
-    try Hashtbl.find layers.value layer.Layer.name
+    try List.assoc layer.Layer.name layers.value
     with Not_found ->
       print (Js.string ("Creating layer "^ Layer.to_string layer)) ;
       change layers ;
       { desc = { name = "layer "^ layer.name ; last_changed = clock () } ;
         value = layer } in
   set p layer ;
-  Hashtbl.replace layers.value layer.name p
+  layers.value <- replace_assoc layer.name p layers.value
 
 (* Value is a hash from node id to node *)
 let nodes = { desc = { name = "nodes" ; last_changed = clock () } ;
-              value = Hashtbl.create 5 }
+              value = [] }
 
 let nodes_sum = { desc = { name = "nodes sum" ; last_changed = clock () } ;
                   value = (0, 0, 0, 0, 0, 0., 0) }
 
 let update_node node =
   let p =
-    try Hashtbl.find nodes.value node.Node.id
+    try List.assoc node.Node.id nodes.value
     with Not_found ->
       print (Js.string ("Creating node "^ Node.to_string node)) ;
       change nodes ;
       { desc = { name = "node "^ node.name ; last_changed = clock () } ;
         value = node } in
   set p node ;
-  Hashtbl.replace nodes.value node.id p
+  nodes.value <- replace_assoc node.id p nodes.value
 
 (* We have only one variable for all the lines because they always change
  * all together when we refresh. Value is a list of fields and an array
@@ -224,7 +224,7 @@ let update_tail resp =
   set tail_rows !rows
 
 let reload_tail () =
-  match Hashtbl.find nodes.value sel_node.value with
+  match List.assoc sel_node.value nodes.value with
   | exception Not_found -> ()
   | node ->
     let node = node.value in
@@ -277,11 +277,11 @@ let new_edited_node edited_nodes =
 
 let edited_nodes_of_layer l =
   let edited_nodes =
-    Hashtbl.fold (fun _ n ns ->
+    List.fold_left (fun ns (_, n) ->
         let n = n.value in
         if n.Node.layer <> l.Layer.name then ns
         else (ref n.Node.name, ref n.operation) :: ns
-      ) nodes.value [] in
+      ) [] nodes.value in
   edited_nodes @ [ new_edited_node edited_nodes ]
 
 let edited_layer_of_layer l =
@@ -332,15 +332,15 @@ let node_list_of_js r =
 (* Recompute the sums from the nodes *)
 let update_nodes_sum () =
   let sum =
-    Hashtbl.fold (fun _ n (tot_nodes, tot_ins, tot_sels, tot_outs,
-                           tot_grps, tot_cpu, tot_ram) ->
+    List.fold_left (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
+                         tot_grps, tot_cpu, tot_ram) (_, n) ->
         let n = n.value in
         tot_nodes + 1, tot_ins + n.Node.in_tuple_count,
         tot_sels + n.sel_tuple_count,
         tot_outs + n.out_tuple_count,
         tot_grps + (option_def 0 n.group_count),
-        tot_cpu +. n.cpu_time, tot_ram + n.ram_usage)
-      nodes.value (0, 0, 0, 0, 0, 0., 0) in
+        tot_cpu +. n.cpu_time, tot_ram + n.ram_usage
+      ) (0, 0, 0, 0, 0, 0., 0) nodes.value in
   set nodes_sum sum
 
 let update_graph total g =
@@ -395,13 +395,13 @@ let update_graph total g =
   done ;
   update_nodes_sum () ;
   if total then (
-    Hashtbl.filter_map_inplace (fun name layer ->
+    layers.value <- List.filter (fun (name, _) ->
       if List.mem name !had_layers then (
         change layers ;
-        Some layer
+        true
       ) else (
         print (Js.string ("Deleting layer "^ name)) ;
-        None
+        false
       )) layers.value)
 
 let reload_graph () =
@@ -432,8 +432,8 @@ let date_of_ts = function
   | None -> "never"
 
 let with_node node_id f =
-  with_value nodes (fun h ->
-    match Hashtbl.find h node_id with
+  with_value nodes (fun nodes ->
+    match List.assoc node_id nodes with
     | exception Not_found -> text ("Can't find node "^ node_id)
     | node -> f node.value)
 
@@ -481,9 +481,9 @@ let layer_panel layer =
 
 let layers_panel =
   div [
-    with_value layers (fun h ->
-      Hashtbl.fold (fun _ p lst ->
-        with_value p layer_panel :: lst) h [] |>
+    with_value layers (fun layers ->
+      List.fold_left (fun lst (_, p) ->
+        with_value p layer_panel :: lst) [] layers |>
       List.rev |>
       group) ;
     button ~action:(fun _ -> set_editor_mode (Some the_new_layer.value))
@@ -563,7 +563,7 @@ let node_tbody_row node =
       else
         elmt ~action:(fun _ -> set_sel_node node.id) "tr" cols))
 
-let node_sorter col n1 n2 =
+let node_sorter col (_, n1) (_, n2) =
   (* Numbers are sorted greater to smaller while strings are sorted
    * in ascending order: *)
   let n1 = n1.value and n2 = n2.value in
@@ -594,13 +594,13 @@ let nodes_panel =
         node_thead_col col :: lst) [] node_columns |>
       List.rev |> elmt "tr" ] ;
     (* Table body *)
-    with_value nodes (fun h ->
+    with_value nodes (fun nodes ->
       with_value sel_column (fun sel_col ->
         (* Build a list of params sorted according to sel_column: *)
         let rows =
-          Hashtbl.fold (fun _ p lst -> p :: lst) h [] |>
+          List.fold_left (fun lst p -> p :: lst) [] nodes |>
           List.fast_sort (node_sorter sel_col) in
-        List.map (fun p ->
+        List.map (fun (_, p) ->
           with_value p node_tbody_row) rows |>
         tbody)) ;
     with_value nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
