@@ -263,12 +263,25 @@ let node_list_of_js r =
   list_init r##.length (fun i ->
     Js.array_get r i |> optdef_get |> Js.to_string)
 
+(* Recompute the sums from the nodes *)
+let update_nodes_sum () =
+  let sum =
+    Hashtbl.fold (fun _ n (tot_nodes, tot_ins, tot_sels, tot_outs,
+                           tot_grps, tot_cpu, tot_ram) ->
+        let n = n.value in
+        tot_nodes + 1, tot_ins + n.Node.in_tuple_count,
+        tot_sels + n.sel_tuple_count,
+        tot_outs + n.out_tuple_count,
+        tot_grps + (option_def 0 n.group_count),
+        tot_cpu +. n.cpu_time, tot_ram + n.ram_usage)
+      nodes.value (0, 0, 0, 0, 0, 0., 0) in
+  set nodes_sum sum
+
 let update_graph total g =
   (* g is a JS array of layers *)
   Firebug.console##log g##.length ;
   (* Keep track of the layers we had to clean the extra ones at the end: *)
   let had_layers = ref [] in
-  let tots = ref (0, 0, 0, 0, 0, 0., 0) in
   for i = 0 to g##.length - 1 do
     let l = Js.array_get g i in
     let name = Js.(Unsafe.get l "name" |> to_string) in
@@ -312,19 +325,11 @@ let update_graph total g =
                   option_map to_int) ; 
         signature = Js.(Unsafe.get n "signature" |> Opt.to_option |>
                         option_map to_string) } in
-      update_node node ;
-      let tot_nodes, tot_ins, tot_sels, tot_outs,
-          tot_grps, tot_cpu, tot_ram = !tots in
-      tots :=
-        tot_nodes + 1, tot_ins + node.Node.in_tuple_count,
-        tot_sels + node.sel_tuple_count,
-        tot_outs + node.out_tuple_count,
-        tot_grps + (option_def 0 node.group_count),
-        tot_cpu +. node.cpu_time, tot_ram + node.ram_usage ;
+      update_node node
     done
   done ;
+  update_nodes_sum () ;
   if total then (
-    set nodes_sum !tots ;
     Hashtbl.filter_map_inplace (fun name layer ->
       if List.mem name !had_layers then (
         change layers ;
