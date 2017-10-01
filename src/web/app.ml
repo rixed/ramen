@@ -44,7 +44,7 @@ struct
   | "Compiling" -> Compiling
   | "Compiled" -> Compiled
   | "Running" -> Running
-  | _ -> assert false
+  | _ -> fail ()
 
   type t =
     { name : string ;

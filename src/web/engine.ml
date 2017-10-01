@@ -8,6 +8,9 @@ let print a = if with_debug then Firebug.console##log a
 let print_2 a b = if with_debug then Firebug.console##log_2 a b
 let print_3 a b c = if with_debug then Firebug.console##log_3 a b c
 let print_4 a b c d = if with_debug then Firebug.console##log_4 a b c d
+let fail () =
+  Firebug.console##assert_ Js._false ;
+  assert false
 
 (* Stdlib complement: *)
 
@@ -22,7 +25,7 @@ let option_map f = function
 let option_def x = function None -> x | Some v -> v
 let (|?) a b = option_def b a
 
-let optdef_get x = Js.Optdef.get x (fun () -> assert false)
+let optdef_get x = Js.Optdef.get x fail
 
 let list_init n f =
   let rec loop prev i =
@@ -30,7 +33,7 @@ let list_init n f =
     loop (f i :: prev) (i + 1) in
   loop [] 0
 
-let opt_get x = Js.Opt.get x (fun () -> assert false)
+let opt_get x = Js.Opt.get x fail
 let to_int x = Js.float_of_number x |> int_of_float
 
 let string_starts_with p s =
@@ -42,7 +45,7 @@ let rec string_times n s =
   if n = 0 then "" else s ^ string_times (n - 1) s
 
 let abbrev len s =
-  assert (len >= 3) ;
+  Firebug.console##assert_ (Js.bool (len >= 3)) ;
   if String.length s <= len then s else
   String.sub s 0 (len-3) ^"..."
 
@@ -137,10 +140,7 @@ let vdom = ref (Group { subs = [] })
 
 (* Rendering *)
 
-let coercion_motherfucker_can_you_do_it o =
-  Js.Opt.get o (fun () ->
-    print (Js.string "Assertion failed") ;
-    assert false)
+let coercion_motherfucker_can_you_do_it o = Js.Opt.get o fail
 
 let rec remove (parent : Html.element Js.t) child_idx n =
   if n > 0 then (
