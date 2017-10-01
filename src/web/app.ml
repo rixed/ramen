@@ -177,8 +177,8 @@ let tail_rows = { desc = { name = "tail rows" ; last_changed = clock () } ;
 let sel_node = { desc = { name = "selected node" ;last_changed = clock () } ;
                  value = "" }
 
-let rec set_sel_node v =
-  set sel_node v ;
+let rec set_sel_node id =
+  set sel_node id ;
   reload_tail ()
 
 and reload_tail () =
@@ -254,10 +254,58 @@ let sel_column = { desc = { name = "selected column" ; last_changed = clock () }
 
 (* Tells if the GUI is in the layer edition mode where only the layer
  * panel is displayed alongside the large editor panel. *)
-let editor_mode = { name = "layer edition mode" ; value = None }
+type edited_layer =
+  { layer_name : string ;
+    new_layer_name : string ref ;
+    mutable edited_nodes : (string * string) list }
+
 let the_new_layer = { desc = { name = "the new layer" ; last_changed = clock () } ;
                       value = Layer.make () }
 
+let editor_mode =
+  { desc = { name = "layer edition mode" ; last_changed = clock () } ;
+             value = false }
+
+let new_edited_node edited_nodes =
+  let rec loop i =
+    let name = "new node "^ string_of_int i in
+    if List.exists (fun (n, _) -> n = name) edited_nodes then
+      loop (i + 1)
+    else name
+  in
+  loop 1, ""
+
+let edited_nodes_of_layer l =
+  let edited_nodes =
+    Hashtbl.fold (fun _ n ns ->
+        let n = n.value in
+        if n.Node.layer <> l.Layer.name then ns
+        else (n.Node.name, n.operation) :: ns
+      ) nodes.value [] in
+  edited_nodes @ [ new_edited_node edited_nodes ]
+
+let edited_layer_of_layer l =
+  { layer_name = l.Layer.name ;
+    new_layer_name = ref l.Layer.name ;
+    edited_nodes = edited_nodes_of_layer l }
+
+let edited_layer =
+  { desc = { name = "edited nodes" ; last_changed = clock () } ;
+    value = edited_layer_of_layer the_new_layer.value }
+
+let set_editor_mode = function
+  | None ->
+    set editor_mode false
+  | Some l ->
+    set editor_mode true ;
+    if l.Layer.name <> edited_layer.value.layer_name then
+      set edited_layer (edited_layer_of_layer l)
+
+let add_edited_node () =
+  let edl = edited_layer.value in
+  edl.edited_nodes <-
+    edl.edited_nodes @ [ new_edited_node edl.edited_nodes ] ;
+  change edited_layer
 
 let get_variant js =
   let open Js in
@@ -413,7 +461,7 @@ let layer_panel layer =
       clss "name" ;
       text layer.Layer.name ;
       (if layer.status <> Running then
-        button ~action:(fun _ -> set editor_mode (Some layer))
+        button ~action:(fun _ -> set_editor_mode (Some layer))
           [ text "edit" ]
       else group []) ;
       icon_of_layer layer ] ;
@@ -438,7 +486,7 @@ let layers_panel =
         with_value p layer_panel :: lst) h [] |>
       List.rev |>
       group) ;
-    button ~action:(fun _ -> set editor_mode (Some the_new_layer.value))
+    button ~action:(fun _ -> set_editor_mode (Some the_new_layer.value))
       [ text "new" ] ]
 
 let pretty_th ?action c title subtitle =
@@ -619,56 +667,26 @@ let tail_panel =
 let form_input label value =
   elmt "label"
     [ text label ;
-      elmt "input"
+      elmt ~action:(fun v -> value := v ; change edited_layer) "input"
         [ attr "type" "text" ;
-          attr "value" value ] ]
+          attr "value" !value ] ]
 
 let node_editor_panel (name, operation) =
   div
-    [ form_input "Node Name" name ;
-      form_input "Node Operation" operation ]
+    [ form_input "Node Name" (ref name) ;
+      form_input "Node Operation" (ref operation) ]
 
-let additional_nodes =
-  { name = "additional nodes" ; value = [
-    { name = "new node" ; value = ("new node", "") } ] }
-
-let new_node () =
-  let rec loop n =
-    let name = "new node "^ string_of_int n in
-    if List.exists (fun n -> n.name = name) additional_nodes.value then
-      loop (n + 1)
-    else name
-  in
-  let name = loop 1 in
-  let n = { name ; value = name, "" } in
-  change n ;
-  n
-
-let layer_editor_panel layer_opt =
-  let layer_name =
-    option_map (fun l -> l.Layer.name) layer_opt |? "unnamed" in
-  div
-    [ form_input "layer name" layer_name ;
-      with_value nodes (fun h ->
-        let prev_nodes =
-          option_map (fun l ->
-            Hashtbl.fold (fun _ n lst ->
-              if n.value.Node.layer = l.Layer.name then
-                (n.value.Node.name, n.value.Node.operation) :: lst
-              else lst) h []) layer_opt |? [] in
-        group (List.map node_editor_panel prev_nodes)) ;
-      with_value additional_nodes (fun add_nodes ->
-        add_nodes |>
-        List.map (fun add_node_p ->
-          with_value add_node_p node_editor_panel) |>
-        group) ;
-      button ~action:(fun _ ->
-          set additional_nodes (additional_nodes.value @ [ new_node () ]))
-        [ text "+" ] ;
-      button ~action:(fun _ -> set editor_mode None)
-        [ text "Cancel" ] ;
-      button ~action:(fun _ -> print (Js.string "SUBMIT"))
-        [ text "Save" ] ]
+let layer_editor_panel =
+  with_value edited_layer (fun edl ->
+    div
+      [ form_input "layer name" edl.new_layer_name ;
+        group (List.map node_editor_panel edl.edited_nodes) ;
+        button ~action:(fun _ -> add_edited_node ())
+          [ text "+" ] ;
+        button ~action:(fun _ -> set_editor_mode None)
+          [ text "Cancel" ] ;
+        button ~action:(fun _ -> print (Js.string "SUBMIT"))
+          [ text "Save" ] ])
 
 let h1 t = elmt "h1" [ text t ]
 
@@ -676,10 +694,9 @@ let dom =
   group
     [ div (id "global" :: header_panel) ;
       with_value editor_mode (function
-        Some layer ->
-          div [ id "editor" ;
-                layer_editor_panel (Some layer) ]
-      | None ->
+        true ->
+          div [ id "editor" ; layer_editor_panel ]
+      | false ->
         group
           [ div
             [ id "top" ;
