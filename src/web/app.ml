@@ -638,15 +638,16 @@ let new_node () =
 let layer_editor_panel layer_opt =
   let layer_name =
     option_map (fun l -> l.Layer.name) layer_opt |? "unnamed" in
-  let prev_nodes =
-    option_map (fun l ->
-      Hashtbl.fold (fun _ n lst ->
-        if n.value.Node.layer = l.Layer.name then
-          (n.value.Node.name, n.value.Node.operation) :: lst
-        else lst) nodes.value []) layer_opt |? [] in
   div
     [ form_input "layer name" layer_name ;
-      group (List.map node_editor_panel prev_nodes) ;
+      with_value nodes (fun h ->
+        let prev_nodes =
+          option_map (fun l ->
+            Hashtbl.fold (fun _ n lst ->
+              if n.value.Node.layer = l.Layer.name then
+                (n.value.Node.name, n.value.Node.operation) :: lst
+              else lst) h []) layer_opt |? [] in
+        group (List.map node_editor_panel prev_nodes)) ;
       with_value additional_nodes (fun add_nodes ->
         add_nodes |>
         List.map (fun add_node_p ->
