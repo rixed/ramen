@@ -177,22 +177,7 @@ let tail_rows = { desc = { name = "tail rows" ; last_changed = clock () } ;
 let sel_node = { desc = { name = "selected node" ;last_changed = clock () } ;
                  value = "" }
 
-let rec set_sel_node id =
-  set sel_node id ;
-  reload_tail ()
-
-and reload_tail () =
-  match Hashtbl.find nodes.value sel_node.value with
-  | exception Not_found -> ()
-  | node ->
-    let node = node.value in
-    let content = "{\"max_results\":8}"
-    and path = "/export/"^ enc node.layer ^"/"^ enc node.name in
-    http_post path content (fun r ->
-      update_tail r ;
-      resync ())
-
-and update_tail resp =
+let update_tail resp =
   let columns = Js.Unsafe.get resp "columns" in
   let rows = ref [||] in
   (* Returns the nulls and the values of a column *)
@@ -238,6 +223,20 @@ and update_tail resp =
   done ;
   set tail_rows !rows
 
+let reload_tail () =
+  match Hashtbl.find nodes.value sel_node.value with
+  | exception Not_found -> ()
+  | node ->
+    let node = node.value in
+    let content = "{\"max_results\":8}"
+    and path = "/export/"^ enc node.layer ^"/"^ enc node.name in
+    http_post path content (fun r ->
+      update_tail r ;
+      resync ())
+
+let set_sel_node id =
+  set sel_node id ;
+  reload_tail ()
 
 (* TODO: add a health indicator (based on how old is the last report) *)
 let node_columns =
