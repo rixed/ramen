@@ -600,18 +600,9 @@ let tail_panel =
           (if not node.exporting then
             lame_excuse ("node "^ node.id ^" does not export data")
           else
-            with_value layers (fun h ->
-              match Hashtbl.find h node.layer with
-              | exception Not_found ->
-                text ("Cannot find layer "^ node.layer)
-              | layer_p ->
-                with_value layer_p (fun layer ->
-                  if layer.status <> Running then
-                    lame_excuse ("Layer "^ layer.Layer.name ^" is not running")
-                  else
-                    with_value tail_rows (fun rows ->
-                      Array.fold_left (fun l r -> row node.output_type r :: l) [] rows |>
-                      List.rev |> tbody))))]))
+            with_value tail_rows (fun rows ->
+              Array.fold_left (fun l r -> row node.output_type r :: l) [] rows |>
+              List.rev |> tbody))]))
 
 let form_input label value =
   elmt "label"
