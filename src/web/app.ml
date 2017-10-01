@@ -679,15 +679,10 @@ let dom =
                 div [ id "operation" ; h1 "Operation" ; op_panel ] ] ;
             div [ id "tail" ; h1 "Output" ; tail_panel ] ]) ]
 
-let togle p _ = set p (not p.value)
-
 (*
 (* The values in the board squares *)
 let square_values = Array.init 9 (fun i ->
   { name = "value of square "^ string_of_int i ; value = "" })
-
-let check_square i v _ =
-  set square_values.(i) v
 
 let is_x_next = { name = "X is next" ; value = true }
 
@@ -710,15 +705,13 @@ let square i =
   (* Note: the rendering does not depend on is_x_next, despite we use it in
    * the action! *)
   with_value square_values.(i) (fun value ->
-    elmt ~action:(fun x ->
+    button ~action:(fun x ->
         if value = "" && calculate_winner () = "" then (
-          check_square i (player_symbol is_x_next.value) x ;
-          togle is_x_next x))
-      "button" [
-      attr "type" "button" ;
-      clss "square" ;
-      id ("sq"^ string_of_int i) ;
-      text value ])
+          set square_values.(i) (player_symbol is_x_next.value) ;
+          set is_x_next x))
+      [ attr "type" "button" ;
+        clss "square" ;
+        text value ])
 
 let board =
   let row i =
