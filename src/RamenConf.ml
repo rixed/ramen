@@ -293,6 +293,31 @@ let add_layer ?timeout conf name =
   Hashtbl.add conf.graph.layers name layer ;
   layer
 
+let del_layer conf layer =
+  let open Layer in
+  !logger.info "Deleting layer %S" layer.name ;
+  if layer.persist.status = Running then
+    raise (InvalidCommand "Layer is running") ;
+  if layer.importing_threads <> [] then
+    raise (InvalidCommand "Layer has running threads") ;
+  (* OK so now we should be able to restart on error *)
+  (* Remove the nodes and links *)
+  Hashtbl.iter (fun _ node ->
+      let open Node in
+      List.iter (fun parent ->
+          parent.children <-
+            List.filter (fun c -> c != node) parent.children
+        ) node.parents ;
+      List.iter (fun child ->
+          if child.layer <> layer.name then
+            !logger.info "Node %S will miss layer %S"
+              (Node.fq_name child) layer.name ;
+          child.parents <-
+            List.filter (fun p -> p != node) child.parents
+        ) node.children
+    ) layer.persist.nodes ;
+  Hashtbl.remove conf.graph.layers layer.name
+
 let save_file_of persist_dir =
   persist_dir ^"/configuration/1" (* TODO: versioning *)
 

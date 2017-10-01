@@ -292,16 +292,40 @@ let node_of_name conf layer_name node_name =
   if node_name = "" then fail_with "Empty string is not a valid node name"
   else find_node_or_fail conf layer_name node_name
 
+let del_layer_ conf layer =
+  if layer.L.persist.L.status = Running then
+    bad_request "Cannot update a running layer"
+  else
+    try
+      C.del_layer conf layer ;
+      return_unit
+    with C.InvalidCommand e -> bad_request e
+
+let del_layer conf _headers layer_name =
+  match Hashtbl.find conf.C.graph.C.layers layer_name with
+  | exception Not_found ->
+    let e = "Layer "^ layer_name ^" does not exist" in
+    bad_request e
+  | layer ->
+    del_layer_ conf layer >>= respond_ok
+
 let put_layer conf headers body =
   let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
-
+  let layer_name = msg.name in
   (* Disallow anonymous layers for simplicity: *)
-  if msg.name = "" then
+  if layer_name = "" then
     bad_request "Layers must have non-empty names"
-  (* Check that this layer is new *)
-  else if Hashtbl.mem conf.C.graph.C.layers msg.name then
-    bad_request ("Layer "^ msg.name ^" already present")
+  (* Check that this layer is new or stopped *)
   else (
+    (* Delete the layer if it already exists.
+     * TODO: Start a transaction with the conf and save it only if there
+     * are no errors. This is OK because we check that the layer is not
+     * running therefore the only modification we will do is in the conf
+     * (no process killed, no thread cancelled) . *)
+    let%lwt () =
+      match Hashtbl.find conf.C.graph.C.layers layer_name with
+      | exception Not_found -> return_unit
+      | layer -> del_layer_ conf layer in
     (* TODO: Check that this layer node names are unique within the layer *)
     (* Create all the nodes *)
     let%lwt nodes = Lwt_list.map_s (fun def ->
@@ -309,15 +333,18 @@ let put_layer conf headers body =
           if def.SN.name <> "" then def.SN.name
           else N.make_name () in
         wrap (fun () ->
-          let _layer, node = C.add_node conf name msg.name def.SN.operation
+          let _layer, node = C.add_node conf name layer_name def.SN.operation
           in node)
       ) msg.nodes in
     (* Then all the links *)
+    (* FIXME: actually, we might have nodes of other layers on top of this
+     * one, feeding from these new nodes (check the operation FROM) that
+     * we should reconnect as well. *)
     let%lwt () = Lwt_list.iter_s (fun node ->
         Lang.Operation.parents_of_operation node.N.operation |>
         Lwt_list.iter_s (fun p ->
             let%lwt parent_layer, parent_name =
-              layer_node_of_user_string conf ~default_layer:msg.name p in
+              layer_node_of_user_string conf ~default_layer:layer_name p in
             let%lwt _layer, src = node_of_name conf parent_layer parent_name in
             wrap (fun () -> C.add_link conf src node)
           )
@@ -619,7 +646,7 @@ let start do_persist debug no_demo to_stderr ramen_url www_dir
       | `GET, ["graph"] -> get_graph conf headers None
       | `GET, ["graph" ; layer] -> get_graph conf headers (Some layer)
       | `PUT, ["graph"] -> put_layer conf headers body
-(*      | `DELETE, ["graph" ; layer] -> del_layer conf headers *)
+      | `DELETE, ["graph" ; layer] -> del_layer conf headers layer
       | `GET, ["compile"] -> compile conf headers None
       | `GET, ["compile" ; layer] -> compile conf headers (Some layer)
       | `GET, ["run" | "start"] -> run conf headers None

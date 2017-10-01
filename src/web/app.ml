@@ -139,6 +139,7 @@ end
  * precede [with_value some_layer]. *)
 (* Alternatively, for simplicity we could have a single value for the whole
  * table but then very long list of nodes would be slow. *)
+(* Value is an association list from layer name to layer *)
 let layers = { desc = { name = "layers" ; last_changed = clock () } ;
                value = [] }
 let update_layer layer =
@@ -152,7 +153,9 @@ let update_layer layer =
   set p layer ;
   layers.value <- replace_assoc layer.name p layers.value
 
-(* Value is a hash from node id to node *)
+(* Value is an association list from node id to node.
+ * Note: in theory node names are optional, and would be supplied by the
+ * server if missing, but we do not make use of this behavior here. *)
 let nodes = { desc = { name = "nodes" ; last_changed = clock () } ;
               value = [] }
 
@@ -350,6 +353,7 @@ let update_graph total g =
   (* g is a JS array of layers *)
   (* Keep track of the layers we had to clean the extra ones at the end: *)
   let had_layers = ref [] in
+  let had_nodes = ref [] in
   for i = 0 to g##.length - 1 do
     let l = Js.array_get g i in
     let name = Js.(Unsafe.get l "name" |> to_string) in
@@ -369,10 +373,11 @@ let update_graph total g =
       let n = Js.array_get nodes j in
       let definition = Js.Unsafe.get n "definition" in
       let name = Js.(Unsafe.get definition "name" |> to_string) in
+      let id = layer.Layer.name ^"/"^ name in
+      had_nodes := id :: !had_nodes ;
       let node = Node.{
         layer = layer.Layer.name ;
-        name ;
-        id = layer.Layer.name ^"/"^ name ;
+        name ; id ;
         type_of_operation = Js.(Unsafe.get n "type_of_operation" |>
                                 to_string) ;
         exporting = Js.(Unsafe.get n "exporting" |> to_bool) ;
@@ -400,12 +405,26 @@ let update_graph total g =
   if total then (
     layers.value <- List.filter (fun (name, _) ->
       if List.mem name !had_layers then (
-        change layers ;
-        true
+        change layers ; true
       ) else (
         print (Js.string ("Deleting layer "^ name)) ;
         false
-      )) layers.value)
+      )) layers.value ;
+    nodes.value <- List.filter (fun (id, _) ->
+      if List.mem id !had_nodes then (
+        change nodes ; true
+      ) else (
+        Firebug.console##log (Js.string ("Deleting node "^ id)) ;
+        false
+      )) nodes.value
+  ) else (
+    (* Still, this is total for the nodes of these layers. But so far
+     * when we ask for a partial graph we do not modify the composition
+     * of those layers (but their status). The background periodic reload
+     * of the graph will be good enough to fetch the modifications of
+     * the graph that are performed independently of this app. So no
+     * worries. *)
+  )
 
 let reload_graph () =
   http_get "/graph" (fun g ->
@@ -685,6 +704,15 @@ let node_editor_panel (name, operation) =
     [ form_input "Node Name" name ;
       form_input "Node Operation" operation ]
 
+let done_edit_cb what status =
+  if Js.(Unsafe.get status "success" |> to_bool) then (
+    Firebug.console##log (Js.string ("DONE "^ what)) ;
+    set_editor_mode None ;
+    reload_graph ()
+  ) else (
+    Firebug.console##error_2 (Js.string ("Cannot "^ what ^" layer")) status
+  )
+
 let save_layer _ =
   let string_of_node (name, operation) =
     string_of_record [ "name", string_of_string !name ;
@@ -698,13 +726,11 @@ let save_layer _ =
       [ "name", string_of_string !(edl.new_layer_name) ;
         "nodes", string_of_list string_of_node nodes ]
   and path = "/graph" in
-  http_put path content (fun status ->
-    if Js.(Unsafe.get status "success" |> to_bool) then (
-      Firebug.console##log (Js.string "SAVED") ;
-      set_editor_mode None
-    ) else (
-      Firebug.console##error_2 (Js.string "Cannot save layer") status
-    ))
+  http_put path content (done_edit_cb "save")
+
+let del_layer layer_name =
+  let path = "/graph/"^ enc layer_name in
+  http_del path (done_edit_cb "delete")
 
 let layer_editor_panel =
   with_value edited_layer (fun edl ->
@@ -715,6 +741,8 @@ let layer_editor_panel =
           [ text "+" ] ;
         button ~action:(fun _ -> set_editor_mode None)
           [ text "Cancel" ] ;
+        button ~action:(fun _ -> del_layer edl.layer_name)
+          [ text "Delete" ] ;
         button ~action:save_layer [ text "Save" ] ])
 
 let h1 t = elmt "h1" [ text t ]
