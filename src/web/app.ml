@@ -54,6 +54,11 @@ struct
       last_started : float option ;
       last_stopped : float option }
 
+  let make () =
+    { name = "unnamed layer" ; nb_nodes = 0 ;
+      status = Edition ; status_str = "Edition" ;
+      last_started = None ; last_stopped = None }
+
   let to_string l =
     string_of_record [
       "name", string_of_string l.name ;
@@ -141,6 +146,8 @@ let update_layer layer =
       { name = "layer "^ layer.name ; value = layer } in
   set p layer ;
   Hashtbl.replace layers.value layer.name p
+
+let the_new_layer = { name = "the new layer" ; value = Layer.make () }
 
 (* Value is a hash from node id to node *)
 let nodes = { name = "nodes" ; value = Hashtbl.create 5 }
@@ -424,11 +431,14 @@ let layer_panel layer =
       div e))
 
 let layers_panel =
-  with_value layers (fun h ->
-    Hashtbl.fold (fun _ p lst ->
-      with_value p layer_panel :: lst) h [] |>
-    List.rev |>
-    div)
+  div [
+    with_value layers (fun h ->
+      Hashtbl.fold (fun _ p lst ->
+        with_value p layer_panel :: lst) h [] |>
+      List.rev |>
+      group) ;
+    button ~action:(fun _ -> set editor_mode (Some the_new_layer.value))
+      [ text "new" ] ]
 
 let pretty_th ?action c title subtitle =
   elmt ?action "th" (
