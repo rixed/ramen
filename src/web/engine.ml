@@ -215,10 +215,9 @@ and insert changed (parent : Html.element Js.t) child_idx vnode =
     let elmt = doc##createElement (Js.string tag) in
     option_may (fun action ->
       add_listeners tag elmt action) action ;
-    List.iteri (fun i sub ->
-        (* as long as i >= elmt.length we are going to append *)
-        insert changed elmt i sub |> ignore
-      ) subs ;
+    List.fold_left (fun i sub ->
+        i + insert changed elmt i sub
+      ) 0 subs |> ignore ;
     let next = parent##.childNodes##item child_idx in
     Dom.insertBefore parent elmt next ;
     1
