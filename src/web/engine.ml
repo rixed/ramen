@@ -102,13 +102,12 @@ and string_of_tree subs =
   List.fold_left (fun s tree ->
     s ^ (if s = "" then "" else ";") ^ string_of_vnode tree) "" subs
 
-let rec leads_to = function
+let rec leads_to what = function
   | Element { subs ; _ } | Group { subs ; _ } ->
-    List.fold_left (fun set sub ->
-      SSet.union set (leads_to sub)) SSet.empty subs
+    List.exists (leads_to what) subs
   | Fun { last ; param ; _ } ->
-    SSet.add param (leads_to !last)
-  | _ -> SSet.empty
+    SSet.mem param what || leads_to what !last
+  | _ -> false
 
 (* A named ref cell *)
 type 'a param = { name : string ; mutable value : 'a }
@@ -239,10 +238,10 @@ and sync changed (parent : Html.element Js.t) child_idx vdom =
     | Fun { last ; _ } ->
       flat_length !last in
   let ( += ) a b = a := !a + b in
-  let leads_to = leads_to vdom in
+  let worthy = leads_to changed vdom in
   Firebug.console##log
-    (Js.string ("sync vnode="^ string_of_vnode vdom ^" leading to "^
-                SSet.to_string leads_to)) ;
+    (Js.string ("sync vnode="^ string_of_vnode vdom ^
+                if worthy then " (worthy)" else "")) ;
   (* We might not already have an element there if the DOM
    * is initially empty, in which case we create it. *)
   while parent##.childNodes##.length <= child_idx do
@@ -251,7 +250,7 @@ and sync changed (parent : Html.element Js.t) child_idx vdom =
   done ;
   match vdom with
   | Element { subs ; _ } ->
-    if SSet.intersect changed leads_to then (
+    if worthy then (
       (* Follow this path. Child_idx count the children so far. *)
       let parent' = parent##.childNodes##item child_idx |>
                     coercion_motherfucker_can_you_do_it |>
@@ -265,7 +264,7 @@ and sync changed (parent : Html.element Js.t) child_idx vdom =
   | Text _ -> 1
   | Attribute _ -> 0
   | Group { subs ; _ } ->
-    if SSet.intersect changed leads_to then (
+    if worthy then (
       let i = ref 0 in
       List.iter (fun sub ->
           i += sync changed parent (child_idx + !i) sub
@@ -277,7 +276,7 @@ and sync changed (parent : Html.element Js.t) child_idx vdom =
       remove parent child_idx (flat_length !last) ;
       last := f () ;
       insert changed parent child_idx !last
-    ) else if SSet.intersect changed leads_to then (
+    ) else if worthy then (
       sync changed parent child_idx !last
     ) else (
       flat_length !last
