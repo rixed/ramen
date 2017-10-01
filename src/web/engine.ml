@@ -9,38 +9,6 @@ let print_2 a b = if with_debug then Firebug.console##log_2 a b
 let print_3 a b c = if with_debug then Firebug.console##log_3 a b c
 let print_4 a b c d = if with_debug then Firebug.console##log_4 a b c d
 
-module SSet = struct
-  module S = Set.Make (struct type t = string let compare = compare end)
-  type t = All | Set of S.t
-  let empty = Set S.empty
-  let all = All
-  let is_empty = function
-    | All -> false
-    | Set s -> S.is_empty s
-  let inter s1 s2 = match s1, s2 with
-    | All, s2 -> s2
-    | s1, All -> s1
-    | Set s1, Set s2 -> Set (S.inter s1 s2)
-  let union s1 s2 = match s1, s2 with
-    | All, _ | _, All -> All
-    | Set s1, Set s2 -> Set (S.union s1 s2)
-  let add p = function
-    | All -> All
-    | Set s -> Set (S.add p s)
-  let mem p = function
-    | All -> true
-    | Set s -> S.mem p s
-  let to_string = function
-    | All -> "all"
-    | Set s ->
-      S.fold (fun x prev ->
-        prev ^ (if prev = "" then "" else ",") ^ x) s ""
-  let intersect s1 s2 = match s1, s2 with
-    | All, _ | _, All -> true
-    | Set s1, Set s2 ->
-      S.inter s1 s2 |> S.is_empty |> not
-end
-
 (* Stdlib complement: *)
 
 let option_may f = function
