@@ -566,29 +566,35 @@ let node_tbody_row node =
       else
         elmt ~action:(fun _ -> set_sel_node node.id) "tr" cols))
 
-let node_sorter col (_, n1) (_, n2) =
+let node_sorter col =
   (* Numbers are sorted greater to smaller while strings are sorted
    * in ascending order: *)
-  let n1 = n1.value and n2 = n2.value in
+  let make f (_, a) (_, b) =
+    let a = a.value and b = b.value in
+    f a b in
   let open Node in
   match col with
-  | "op" -> compare n1.type_of_operation n2.type_of_operation
-  | "#in" -> compare n2.in_tuple_count n1.in_tuple_count
-  | "#selected" -> compare n2.sel_tuple_count n1.sel_tuple_count
-  | "#out" -> compare n2.out_tuple_count n1.out_tuple_count
+  | "op" ->
+    make (fun a b -> compare a.type_of_operation b.type_of_operation)
+  | "#in" ->
+    make (fun a b -> compare b.in_tuple_count a.in_tuple_count)
+  | "#selected" ->
+    make (fun a b -> compare b.sel_tuple_count a.sel_tuple_count)
+  | "#out" ->
+    make (fun a b -> compare b.out_tuple_count a.out_tuple_count)
   | "#groups" ->
-    (match n2.group_count, n1.group_count with
-    | None, None -> 0
-    | Some _, None -> 1
-    | None, Some _ -> -1
-    | Some i2, Some i1 -> compare i2 i1)
-  | "export" -> compare n2.exporting n1.exporting
-  | "CPU" -> compare n2.cpu_time n1.cpu_time
-  | "RAM" -> compare n2.ram_usage n1.ram_usage
+    make (fun a b -> match b.group_count, a.group_count with
+         | None, None -> 0
+         | Some _, None -> 1
+         | None, Some _ -> -1
+         | Some i2, Some i1 -> compare i2 i1)
+  | "export" -> make (fun a b -> compare b.exporting a.exporting)
+  | "CPU" -> make (fun a b -> compare b.cpu_time a.cpu_time)
+  | "RAM" -> make (fun a b -> compare b.ram_usage a.ram_usage)
   | _ ->
-    match compare n1.layer n2.layer with
-    | 0 -> compare n1.name n2.name
-    | x -> x
+    make (fun a b -> match compare a.layer b.layer with
+         | 0 -> compare a.name b.name
+         | x -> x)
 
 let nodes_panel =
   table [
