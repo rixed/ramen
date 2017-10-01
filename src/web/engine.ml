@@ -83,8 +83,6 @@ let string_of_option p = function None -> "null" | Some v -> p v
 let string_of_field (n, v) = quote n ^": "^ v
 let string_of_record = string_of_list ~first:"{ " ~last:" }" string_of_field
 
-(* Those are the only we care about: *)
-(* TODO: put worthy into Element? *)
 type vnode =
   | Attribute of string * string
   | Text of string
@@ -95,8 +93,8 @@ type vnode =
   | Group of { subs : vnode list }
 
 let rec string_of_vnode = function
-  | Attribute (n, v) -> "attr("^ n ^", "^ v ^")"
-  | Text s -> "text(\""^ s ^"\")"
+  | Attribute (n, v) -> "attr("^ n ^", "^ abbrev 10 v ^")"
+  | Text s -> "text(\""^ abbrev 15 s ^"\")"
   | Element { tag ; subs ; _ } -> tag ^"("^ string_of_tree subs ^")"
   | Group { subs ; _ } -> "group("^ string_of_tree subs ^")"
   | Fun { param ; _ } -> "fun("^ param ^")"
@@ -106,9 +104,10 @@ and string_of_tree subs =
 
 let rec leads_to = function
   | Element { subs ; _ } | Group { subs ; _ } ->
-     List.fold_left (fun set sub ->
-       SSet.union set (leads_to sub)) SSet.empty subs
-  | Fun { last ; param ; _ } -> SSet.add param (leads_to !last)
+    List.fold_left (fun set sub ->
+      SSet.union set (leads_to sub)) SSet.empty subs
+  | Fun { last ; param ; _ } ->
+    SSet.add param (leads_to !last)
   | _ -> SSet.empty
 
 (* A named ref cell *)
@@ -237,7 +236,8 @@ and sync changed (parent : Html.element Js.t) child_idx vdom =
       List.fold_left (fun s e -> s + flat_length e) 0 subs
     | Element _ | Text _ -> 1
     | Attribute _ -> 0
-    | Fun { last ; _ } -> flat_length !last in
+    | Fun { last ; _ } ->
+      flat_length !last in
   let ( += ) a b = a := !a + b in
   let leads_to = leads_to vdom in
   Firebug.console##log
@@ -266,9 +266,9 @@ and sync changed (parent : Html.element Js.t) child_idx vdom =
   | Attribute _ -> 0
   | Group { subs ; _ } ->
     if SSet.intersect changed leads_to then (
-      let child_idx = ref child_idx in
+      let i = ref 0 in
       List.iter (fun sub ->
-          child_idx += sync changed parent !child_idx sub
+          i += sync changed parent (child_idx + !i) sub
         ) subs) ;
     flat_length vdom
   | Fun { param ; last ; f ; _ } ->
