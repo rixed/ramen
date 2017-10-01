@@ -3,7 +3,7 @@ open Batteries
 open RamenLog
 open Helpers
 open RamenSharedTypes
-module SL = RamenSharedTypes.Layer
+open RamenSharedTypesJS
 
 type temp_tup_typ =
   { mutable finished_typing : bool ;
@@ -158,7 +158,7 @@ struct
        * reclaimed. Set to 0 for no timeout. *)
       timeout : float ;
       mutable last_used : float ;
-      mutable status : SL.status ;
+      mutable status : layer_status ;
       mutable last_status_change : float ;
       mutable last_started : float option ;
       mutable last_stopped : float option }
@@ -172,7 +172,7 @@ struct
     layer.persist.status <- status ;
     layer.persist.last_status_change <- Unix.gettimeofday () ;
     (* If we are not running, clean pid info *)
-    if status <> SL.Running then
+    if status <> Running then
       Hashtbl.iter (fun _ n -> n.Node.pid <- None) layer.persist.nodes
 
   let make persist_dir ?persist ?(timeout=0.) name =
@@ -182,47 +182,47 @@ struct
       Option.default_delayed (fun () ->
         { nodes = Hashtbl.create 17 ;
           timeout ; last_used = now ;
-          status = SL.Edition ;
+          status = Edition ;
           last_status_change = now ;
           last_started = None ; last_stopped = None }) persist in
     let layer = { name ; persist ; importing_threads = [] } in
     (* Downgrade the status to compiled since the workers can't be running
      * anymore. *)
-    if persist.status = SL.Running then set_status layer SL.Compiled ;
+    if persist.status = Running then set_status layer Compiled ;
     (* Further downgrade to edition if the binaries are not there anymore *)
-    if persist.status = SL.Compiled &&
+    if persist.status = Compiled &&
        Hashtbl.values persist.nodes |> Enum.exists (fun n ->
          not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
-    then set_status layer SL.Edition ;
+    then set_status layer Edition ;
     (* Also, we cannot be compiling anymore: *)
-    if persist.status = SL.Compiling then set_status layer SL.Edition ;
+    if persist.status = Compiling then set_status layer Edition ;
     (* FIXME: also, as a precaution, delete any temporary layer (maybe we
      * crashed because of it? *)
     layer
 
   let is_typed layer =
     match layer.persist.status with
-    | SL.Edition | SL.Compiling -> false
-    | SL.Compiled | SL.Running -> true
+    | Edition | Compiling -> false
+    | Compiled | Running -> true
 
   (* Layer edition: only when stopped *)
   let set_editable layer =
     match layer.persist.status with
-    | SL.Edition -> ()
-    | SL.Compiling ->
+    | Edition -> ()
+    | Compiling ->
       (* FIXME: rather discard the compilation, and change the compiler to
        * check the status in between compilations and before changing any value
        * (needs a mutex.) *)
       raise (InvalidCommand "Graph is compiling")
-    | SL.Compiled ->
-      set_status layer SL.Edition ;
+    | Compiled ->
+      set_status layer Edition ;
       (* Also reset the info we kept from the last compilation *)
       Hashtbl.iter (fun _ node ->
         let open Node in
         node.in_type <- make_temp_tup_typ () ;
         node.out_type <- make_temp_tup_typ () ;
         node.pid <- None) layer.persist.nodes
-    | SL.Running ->
+    | Running ->
       raise (InvalidCommand "Graph is running")
 
   let iter_dependencies layer f =

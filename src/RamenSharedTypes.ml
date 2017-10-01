@@ -138,12 +138,12 @@ end
 
 module Layer =
 struct
-  type status = Edition | Compiling | Compiled | Running [@@ppp PPP_JSON]
+  type status = RamenSharedTypesJS.layer_status [@@ppp PPP_JSON]
 
   type info =
     { name : string ;
       nodes : Node.info list ;
-      status : status [@ppp_default Edition] ;
+      status : status [@ppp_default RamenSharedTypesJS.Edition] ;
       last_started : float option ;
       last_stopped : float option } [@@ppp PPP_JSON]
 end

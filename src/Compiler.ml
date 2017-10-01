@@ -20,7 +20,7 @@ open RamenSharedTypes
 module C = RamenConf
 module N = RamenConf.Node
 module L = RamenConf.Layer
-module SL = RamenSharedTypes.Layer
+open RamenSharedTypesJS
 
 (* Check that we have typed all that need to be typed *)
 let check_finished_tuple_type tuple =
@@ -862,16 +862,16 @@ exception AlreadyCompiled
 let compile conf layer =
   let open Lwt in
   match layer.L.persist.L.status with
-  | SL.Compiled -> fail AlreadyCompiled
-  | SL.Running -> fail AlreadyCompiled
-  | SL.Compiling -> fail AlreadyCompiled
-  | SL.Edition ->
+  | Compiled -> fail AlreadyCompiled
+  | Running -> fail AlreadyCompiled
+  | Compiling -> fail AlreadyCompiled
+  | Edition ->
     !logger.debug "Trying to compile layer %s" layer.L.name ;
     let%lwt () =
       match untyped_dependency layer with
       | None -> return_unit
       | Some n -> fail (MissingDependency n) in
-    C.Layer.set_status layer SL.Compiling ;
+    C.Layer.set_status layer Compiling ;
     let%lwt () = wrap (fun () -> set_all_types conf layer) in
     let finished_typing =
       Hashtbl.fold (fun _ node finished_typing ->
@@ -892,6 +892,6 @@ let compile conf layer =
             compile_node conf node :: thds)
         ) layer.L.persist.L.nodes (Set.empty, []) in
     let%lwt () = join thds in
-    C.Layer.set_status layer SL.Compiled ;
+    C.Layer.set_status layer Compiled ;
     C.save_graph conf ;
     return_unit

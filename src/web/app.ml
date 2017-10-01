@@ -26,8 +26,8 @@ let str_of_float f =
   let s = Printf.sprintf "%.*f" dec_num f in
   str_of_float_str' s
 
-(* The types we will use to deserialize JSon. Cannot be the same as
- * RamenSharedTypes because this json unparser is not compatible
+(* The types we will use to deserialize JSON. Cannot be the same as
+ * RamenSharedTypes because this JSON unparser is not compatible
  * with PPP (not because of some deficiencies in those implementations
  * but because it is ambiguous how to map rich ML types into poor JSON
  * types - if only for the various integer types but also for the
@@ -35,7 +35,7 @@ let str_of_float f =
 
 (* State variables *)
 
-type layer_status = Edition | Compiling | Compiled | Running
+open RamenSharedTypesJS_noPPP
 
 module Layer =
 struct

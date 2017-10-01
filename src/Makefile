@@ -12,8 +12,9 @@ TESTABLE_SOURCES = \
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
-	RamenLog.ml Helpers.ml RamenSharedTypes.ml RingBufLib.ml \
-	RamenParsing.ml \
+	RamenLog.ml Helpers.ml \
+	RamenSharedTypesJS.ml RamenSharedTypes.ml \
+	RingBufLib.ml RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenCollectd.ml RamenProtocols.ml Lang.ml \
 	RingBuf.ml RamenConf.ml CodeGen_OCaml.ml Compiler.ml \
@@ -21,7 +22,8 @@ LINKED_FOR_TESTS = \
 
 RAMEN_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml \
-	RamenSharedTypes.ml RamenCollectd.ml RamenProtocols.ml \
+	RamenSharedTypesJS.ml RamenSharedTypes.ml \
+	RamenCollectd.ml RamenProtocols.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
@@ -32,10 +34,11 @@ RAMEN_SOURCES = \
 CODEGENLIB_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml Globs.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
-	RamenSharedTypes.ml RamenCollectd.ml RamenProtocols.ml \
+	RamenSharedTypesJS.ml RamenSharedTypes.ml \
+	RamenCollectd.ml RamenProtocols.ml \
 	RingBufLib.ml RingBuf.ml \
-	RamenBloomFilter.ml \
-	RamenFileNotify.ml CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
+	RamenBloomFilter.ml RamenFileNotify.ml \
+	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
 	ringbuf/ringbuf.h ringbuf/ringbuf.c
@@ -48,7 +51,8 @@ LIBCOLLECTD_SOURCES = \
 	collectd/collectd.h collectd/collectd.c
 
 CONFIGURATOR_SOURCES = \
-	Consts.ml RamenLog.ml Helpers.ml RamenSharedTypes.ml \
+	Consts.ml RamenLog.ml Helpers.ml \
+	RamenSharedTypesJS.ml RamenSharedTypes.ml \
 	SqliteHelpers.ml Conf_of_sqlite.ml \
 	ramen_configurator.ml
 
@@ -56,12 +60,14 @@ ALERTER_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml SqliteHelpers.ml \
 	ramen_alerter.ml
 
-SOURCES = \
+SOURCES_ = \
 	$(RAMEN_SOURCES) wrap_ringbuf.c wrap_collectd.c $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 	$(LIBCOLCOMP_SOURCES) \
 	$(CONFIGURATOR_SOURCES) $(ALERTER_SOURCES) \
 	ringbuf_test.ml colcomp/colcomp_test.c
+# Do not take into account generated code that depends on compilation:
+SOURCES = $(filter-out RamenGui.ml,$(SOURCES_))
 
 PACKAGES = \
 	ppp lwt.ppx batteries cmdliner stdint parsercombinator \
@@ -110,7 +116,7 @@ codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o
 codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) ringbuf/libringbuf.a wrap_ringbuf.o collectd/libcollectd.a wrap_collectd
 	$(OCAMLC) $(OCAMLFLAGS) -a $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
-ringbuf_test.opt: RamenLog.cmx Helpers.cmx RamenSharedTypes.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
+ringbuf_test.opt: RamenLog.cmx Helpers.cmx RamenSharedTypesJS.cmx RamenSharedTypes.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
@@ -129,10 +135,13 @@ WEB_PACKAGES = js_of_ocaml js_of_ocaml.ppx
 web/engine.cmo: web/engine.ml Consts.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/app.cmo: web/app.ml web/engine.cmo
+RamenSharedTypesJS_noPPP.cmo: RamenSharedTypesJS.ml
+	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
+
+web/app.cmo: web/app.ml RamenSharedTypesJS_noPPP.cmo web/engine.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/script.byte: Consts.cmo web/engine.cmo web/app.cmo
+web/script.byte: Consts.cmo RamenSharedTypesJS_noPPP.cmo web/engine.cmo web/app.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -linkpkg $^ -o $@
 
 web/script.js: web/script.byte

@@ -4,7 +4,7 @@ open RamenLog
 module C = RamenConf
 module N = RamenConf.Node
 module L = RamenConf.Layer
-module SL = RamenSharedTypes.Layer
+open RamenSharedTypesJS
 
 let fd_of_int : int -> Unix.file_descr = Obj.magic
 
@@ -50,10 +50,10 @@ let out_ringbuf_names_ref conf node =
 let run conf layer =
   let open L in
   match layer.persist.status with
-  | SL.Edition -> raise NotYetCompiled
-  | SL.Running -> raise AlreadyRunning
-  | SL.Compiling -> raise StillCompiling
-  | SL.Compiled ->
+  | Edition -> raise NotYetCompiled
+  | Running -> raise AlreadyRunning
+  | Compiling -> raise StillCompiling
+  | Compiled ->
     (* First prepare all the required ringbuffers *)
     let rb_name_of node =
       in_ringbuf_name conf node
@@ -135,7 +135,7 @@ let run conf layer =
                 File.write_lines out_ref (List.enum (input_ringbuf :: lines))
           ) node.N.parents
       ) layer.persist.nodes ;
-    L.set_status layer SL.Running ;
+    L.set_status layer Running ;
     layer.L.persist.L.last_started <- Some now ;
     layer.L.importing_threads <- Hashtbl.fold (fun _ node lst ->
         if Lang.Operation.is_exporting node.N.operation then (
@@ -149,12 +149,12 @@ exception NotRunning
 
 let stop conf layer =
   match layer.L.persist.L.status with
-  | SL.Edition | SL.Compiled -> raise NotRunning
-  | SL.Compiling ->
+  | Edition | Compiled -> raise NotRunning
+  | Compiling ->
     (* FIXME: do as for Running and make sure run() check the status hasn't
      * changed before launching workers. *)
     raise NotRunning
-  | SL.Running ->
+  | Running ->
     !logger.debug "Stopping layer %s" layer.L.name ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
@@ -181,7 +181,7 @@ let stop conf layer =
             !logger.error "Cannot kill pid %d: %s" pid (Printexc.to_string e)) ;
           node.N.pid <- None
       ) layer.L.persist.L.nodes ;
-    L.set_status layer SL.Compiled ;
+    L.set_status layer Compiled ;
     layer.L.persist.L.last_stopped <- Some now ;
     List.iter cancel layer.L.importing_threads ;
     layer.L.importing_threads <- [] ;
