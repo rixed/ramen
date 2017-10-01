@@ -323,8 +323,8 @@ let update_graph total g =
         tot_cpu +. node.cpu_time, tot_ram + node.ram_usage ;
     done
   done ;
-  set nodes_sum !tots ;
-  if total then
+  if total then (
+    set nodes_sum !tots ;
     Hashtbl.filter_map_inplace (fun name layer ->
       if List.mem name !had_layers then (
         change layers ;
@@ -332,7 +332,7 @@ let update_graph total g =
       ) else (
         Firebug.console##log(Js.string ("Deleting layer "^ name)) ;
         None
-      )) layers.value
+      )) layers.value)
 
 let reload_graph () =
   http_get "/graph" (fun g ->
