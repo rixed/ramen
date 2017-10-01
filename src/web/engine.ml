@@ -311,3 +311,4 @@ let ajax action path content cb =
 
 let http_get path cb = ajax "GET" path "" cb
 let http_post path content cb = ajax "POST" path content cb
+let http_put path content cb = ajax "PUT" path content cb

@@ -256,7 +256,7 @@ let sel_column = { desc = { name = "selected column" ; last_changed = clock () }
 type edited_layer =
   { layer_name : string ;
     new_layer_name : string ref ;
-    mutable edited_nodes : (string * string) list }
+    mutable edited_nodes : (string ref * string ref) list }
 
 let the_new_layer = { desc = { name = "the new layer" ; last_changed = clock () } ;
                       value = Layer.make () }
@@ -268,18 +268,19 @@ let editor_mode =
 let new_edited_node edited_nodes =
   let rec loop i =
     let name = "new node "^ string_of_int i in
-    if List.exists (fun (n, _) -> n = name) edited_nodes then
+    if List.exists (fun (n, _) -> !n = name) edited_nodes then
       loop (i + 1)
     else name
   in
-  loop 1, ""
+  let name = loop 1 in
+  ref name, ref ""
 
 let edited_nodes_of_layer l =
   let edited_nodes =
     Hashtbl.fold (fun _ n ns ->
         let n = n.value in
         if n.Node.layer <> l.Layer.name then ns
-        else (n.Node.name, n.operation) :: ns
+        else (ref n.Node.name, ref n.operation) :: ns
       ) nodes.value [] in
   edited_nodes @ [ new_edited_node edited_nodes ]
 
@@ -672,8 +673,29 @@ let form_input label value =
 
 let node_editor_panel (name, operation) =
   div
-    [ form_input "Node Name" (ref name) ;
-      form_input "Node Operation" (ref operation) ]
+    [ form_input "Node Name" name ;
+      form_input "Node Operation" operation ]
+
+let save_layer _ =
+  let string_of_node (name, operation) =
+    string_of_record [ "name", string_of_string !name ;
+                       "operation", string_of_string !operation ]
+  and edl = edited_layer.value in
+  let nodes =
+    List.filter (fun (name, operation) ->
+      !name <> "" && !operation <> "") edl.edited_nodes in
+  let content =
+    string_of_record
+      [ "name", string_of_string !(edl.new_layer_name) ;
+        "nodes", string_of_list string_of_node nodes ]
+  and path = "/graph" in
+  http_put path content (fun status ->
+    if Js.(Unsafe.get status "success" |> to_bool) then (
+      Firebug.console##log (Js.string "SAVED") ;
+      set_editor_mode None
+    ) else (
+      Firebug.console##error_2 (Js.string "Cannot save layer") status
+    ))
 
 let layer_editor_panel =
   with_value edited_layer (fun edl ->
@@ -684,8 +706,7 @@ let layer_editor_panel =
           [ text "+" ] ;
         button ~action:(fun _ -> set_editor_mode None)
           [ text "Cancel" ] ;
-        button ~action:(fun _ -> print (Js.string "SUBMIT"))
-          [ text "Save" ] ])
+        button ~action:save_layer [ text "Save" ] ])
 
 let h1 t = elmt "h1" [ text t ]
 
