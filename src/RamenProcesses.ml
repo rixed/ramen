@@ -31,7 +31,6 @@ let run_background cmd args env =
     done ;
     execve cmd args env
   | pid -> pid
-    (* TODO: A monitoring thread that report the error in the node structure *)
 
 exception NotYetCompiled
 exception AlreadyRunning
@@ -111,18 +110,20 @@ let run conf layer =
         let pid = run_background command [||] env in
         node.N.pid <- Some pid ;
         async (fun () ->
-          let rec restart () =
+          let rec wait_child () =
             match%lwt Lwt_unix.waitpid [] pid with
-            | exception Unix.Unix_error (Unix.EINTR, _, _) -> restart ()
+            | exception Unix.Unix_error (Unix.EINTR, _, _) -> wait_child ()
             | exception exn ->
+              (* TODO: save this error on the node record *)
               !logger.error "Cannot wait for pid %d: %s"
                 pid (Printexc.to_string exn) ;
               return_unit
             | _, status ->
+              (* TODO: save this error on the node record *)
               !logger.info "Node %s (pid %d) %s"
                 node.N.name pid (Helpers.string_of_process_status status) ;
               return_unit in
-          restart ()) ;
+          wait_child ()) ;
         (* Update the parents out_ringbuf_ref if it's in another layer *)
         List.iter (fun parent ->
             if parent.N.layer <> layer.name then
