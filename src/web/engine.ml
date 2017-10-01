@@ -62,6 +62,10 @@ let string_of_string s = quote s
 let string_of_option p = function None -> "null" | Some v -> p v
 let string_of_field (n, v) = quote n ^": "^ v
 let string_of_record = string_of_list ~first:"{ " ~last:" }" string_of_field
+(* For a smaller JS: *)
+let string_of_float x =
+  (Js.number_of_float x)##toString |> Js.to_string
+let string_of_int x = string_of_float (float_of_int x)
 
 let clock =
   let seq = ref 0 in
@@ -272,7 +276,7 @@ and sync (parent : Html.element Js.t) child_idx vdom =
 and resync () =
   print (Js.string "Syncing") ;
   let div =
-    Html.getElementById_exn "application" in
+    Html.getElementById "application" in
   sync div 0 !vdom |> ignore
 
 let start nd =
