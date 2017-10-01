@@ -1,6 +1,8 @@
 open Js_of_ocaml
 open Engine
 
+let with_periodic_reload = true
+
 (* Printers *)
 
 let dec_num = 3
@@ -134,7 +136,7 @@ let update_layer layer =
   let p =
     try Hashtbl.find layers.value layer.Layer.name
     with Not_found ->
-      Firebug.console##log (Js.string ("Creating layer "^ Layer.to_string layer)) ;
+      print (Js.string ("Creating layer "^ Layer.to_string layer)) ;
       change layers ;
       { name = "layer "^ layer.name ; value = layer } in
   set p layer ;
@@ -149,7 +151,7 @@ let update_node node =
   let p =
     try Hashtbl.find nodes.value node.Node.id
     with Not_found ->
-      Firebug.console##log (Js.string ("Creating node "^ Node.to_string node)) ;
+      print (Js.string ("Creating node "^ Node.to_string node)) ;
       change nodes ;
       { name = "node "^ node.name ; value = node } in
   set p node ;
@@ -279,7 +281,6 @@ let update_nodes_sum () =
 
 let update_graph total g =
   (* g is a JS array of layers *)
-  Firebug.console##log g##.length ;
   (* Keep track of the layers we had to clean the extra ones at the end: *)
   let had_layers = ref [] in
   for i = 0 to g##.length - 1 do
@@ -335,7 +336,7 @@ let update_graph total g =
         change layers ;
         Some layer
       ) else (
-        Firebug.console##log(Js.string ("Deleting layer "^ name)) ;
+        print (Js.string ("Deleting layer "^ name)) ;
         None
       )) layers.value)
 
@@ -655,7 +656,7 @@ let layer_editor_panel layer_opt =
         [ text "+" ] ;
       button ~action:(fun _ -> set editor_mode None)
         [ text "Cancel" ] ;
-      button ~action:(fun _ -> Firebug.console##log (Js.string "SUBMIT"))
+      button ~action:(fun _ -> print (Js.string "SUBMIT"))
         [ text "Save" ] ]
 
 let h1 t = elmt "h1" [ text t ]
@@ -739,9 +740,11 @@ let tictactoe = (* Do you like divs in your divs? *)
 
 let () =
   let every_10s () =
-    Firebug.console##log (Js.string "Reloading...") ;
+    print (Js.string "Reloading...") ;
     reload_graph () ;
     reload_tail () in
-  ignore (Dom_html.window##setInterval (Js.wrap_callback every_10s) 10_000.) ;
+  if with_periodic_reload then
+    (Dom_html.window##setInterval (Js.wrap_callback every_10s) 10_000.) |>
+    ignore ;
   start dom ;
   reload_graph ()

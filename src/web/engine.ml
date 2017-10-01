@@ -2,6 +2,13 @@ open Js_of_ocaml
 module Html = Dom_html
 let doc = Html.window##.document
 
+let with_debug = false
+
+let print a = if with_debug then Firebug.console##log a
+let print_2 a b = if with_debug then Firebug.console##log_2 a b
+let print_3 a b c = if with_debug then Firebug.console##log_3 a b c
+let print_4 a b c d = if with_debug then Firebug.console##log_4 a b c d
+
 module SSet = struct
   module S = Set.Make (struct type t = string let compare = compare end)
   type t = All | Set of S.t
@@ -160,14 +167,15 @@ let vdom = ref (Group { subs = [] })
 
 let coercion_motherfucker_can_you_do_it o =
   Js.Opt.get o (fun () ->
-    Firebug.console##log (Js.string "Assertion failed") ;
+    print (Js.string "Assertion failed") ;
     assert false)
 
 let rec remove (parent : Html.element Js.t) child_idx n =
   if n > 0 then (
     Js.Opt.iter (parent##.childNodes##item child_idx) (fun child ->
-      Firebug.console##log_4 (Js.string ("Removing child_idx="^ string_of_int child_idx^" of")) parent
-        (Js.string ("and "^ string_of_int (n-1) ^" more:")) child ;
+      print_4 (Js.string ("Removing child_idx="^ string_of_int child_idx ^
+                          " of")) parent
+              (Js.string ("and "^ string_of_int (n-1) ^" more:")) child ;
       Dom.removeChild parent child) ;
     remove parent child_idx (n - 1)
   )
@@ -189,16 +197,16 @@ let rec add_listeners tag (elmt : Html.element Js.t) action =
       resync () ;
       Js._false)
   | _ ->
-    Firebug.console##log (Js.string ("No idea how to add an event listener to a "^ tag ^" but I can try")) ;
+    print (Js.string ("No idea how to add an event listener to a "^ tag ^
+                      " but I can try")) ;
     elmt##.onclick := Html.handler (fun _ ->
       action "click :)" ;
       resync () ;
       Js._false)
 
 and insert changed (parent : Html.element Js.t) child_idx vnode =
-  Firebug.console##log_2
-    (Js.string ("Appending "^ string_of_vnode vnode ^
-                " as child "^ string_of_int child_idx ^" of"))
+  print_2 (Js.string ("Appending "^ string_of_vnode vnode ^
+                      " as child "^ string_of_int child_idx ^" of"))
     parent ;
   match vnode with
   | Attribute (n, v) ->
@@ -239,13 +247,12 @@ and sync changed (parent : Html.element Js.t) child_idx vdom =
       flat_length !last in
   let ( += ) a b = a := !a + b in
   let worthy = leads_to changed vdom in
-  Firebug.console##log
-    (Js.string ("sync vnode="^ string_of_vnode vdom ^
-                if worthy then " (worthy)" else "")) ;
+  print (Js.string ("sync vnode="^ string_of_vnode vdom ^
+                    if worthy then " (worthy)" else "")) ;
   (* We might not already have an element there if the DOM
    * is initially empty, in which case we create it. *)
   while parent##.childNodes##.length <= child_idx do
-    Firebug.console##log (Js.string "Appending missing element in DOM") ;
+    print (Js.string "Appending missing element in DOM") ;
     insert changed parent child_idx vdom |> ignore
   done ;
   match vdom with
@@ -272,7 +279,8 @@ and sync changed (parent : Html.element Js.t) child_idx vdom =
     flat_length vdom
   | Fun { param ; last ; f ; _ } ->
     if SSet.mem param changed then (
-      (* Bingo! For now we merely discard the whole sub-element *)
+      (* Bingo! For now we merely discard the whole sub-element.
+       * Later: perform an actual diff. *)
       remove parent child_idx (flat_length !last) ;
       last := f () ;
       insert changed parent child_idx !last
@@ -283,15 +291,15 @@ and sync changed (parent : Html.element Js.t) child_idx vdom =
     )
 
 and resync () =
-  Firebug.console##log_2 (Js.string "Syncing with changes:")
-                         (Js.string (string_of_changes ())) ;
+  print_2 (Js.string "Syncing with changes:")
+          (Js.string (string_of_changes ())) ;
   let div =
     Html.getElementById_exn "application" in
   sync !changes div 0 !vdom |> ignore ;
   changes := SSet.empty
 
 let start nd =
-  Firebug.console##log (Js.string "starting...") ;
+  print (Js.string "starting...") ;
   vdom := nd ;
 	Html.window##.onload := Html.handler (fun _ -> resync () ; Js._false)
 
@@ -303,12 +311,12 @@ let ajax action path content cb =
   let req = XmlHttpRequest.create () in
   req##.onreadystatechange := Js.wrap_callback (fun () ->
     if req##.readyState = XmlHttpRequest.DONE then (
-      Firebug.console##log (Js.string "AJAX query DONE!") ;
+      print (Js.string "AJAX query DONE!") ;
       if req##.status <> 200 then
-        Firebug.console##log (Js.string "AJAX query failed")
+        print (Js.string "AJAX query failed")
       else (
         let js = Js._JSON##parse req##.responseText in
-        Firebug.console##log js ;
+        print js ;
         cb js ;
         resync ()
       )
