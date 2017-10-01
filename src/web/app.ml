@@ -230,7 +230,7 @@ let node_columns =
   [| "layer", true, "" ; "name", true, "" ; "op", true, "" ;
      "#in", true, "tuples" ; "#selected", true, "tuples" ;
      "#out", true, "tuples" ; "#groups", true, "" ;
-     "export", false, "" ;
+     "export", true, "" ;
      "CPU", true, "seconds" ; "RAM", true, "bytes" ;
      "parents", false, "" ; "children", false, "" ;
      "PID", false, "" ; "signature", false, "" |]
@@ -514,6 +514,7 @@ let node_sorter col n1 n2 =
     | Some _, None -> 1
     | None, Some _ -> -1
     | Some i2, Some i1 -> compare i2 i1)
+  | "export" -> compare n2.exporting n1.exporting
   | "CPU" -> compare n2.cpu_time n1.cpu_time
   | "RAM" -> compare n2.ram_usage n1.ram_usage
   | _ ->
