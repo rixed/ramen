@@ -158,6 +158,7 @@ type put_layer_req =
 
 type export_req =
   { since : int option [@ppp_default None] ;
+    (* Negative values for the last N *)
     max_results : int option ;
     (* If there are no results at all currently available, wait up to
      * that many seconds: *)

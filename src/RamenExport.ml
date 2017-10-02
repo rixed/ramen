@@ -58,16 +58,21 @@ open Stdint
  * array or array of scalar value (tuples in the record below). *)
 
 let clean_archives history =
-  while history.C.max_filenum - history.C.min_filenum > C.max_history_archives do
-    let fname = history.C.dir ^"/"^ string_of_int history.C.min_filenum in
+  while history.C.nb_files > C.max_history_archives do
+    assert (history.C.filenums <> []) ;
+    let filenum = List.hd history.C.filenums in
+    let fname = C.archive_file history.C.dir filenum in
     !logger.debug "Deleting history archive %S" fname ;
     Unix.unlink fname ;
-    Hashtbl.remove history.C.ts_cache history.C.min_filenum ;
-    history.C.min_filenum <- history.C.min_filenum + 1
+    Hashtbl.remove history.C.ts_cache filenum ;
+    history.C.filenums <- List.tl history.C.filenums ;
+    history.C.nb_files <- history.C.nb_files - 1
   done
 
 let archive_history history =
-  let fname = history.C.dir ^"/"^ string_of_int (history.C.max_filenum + 1) in
+  let filenum =
+    history.C.block_start, history.C.block_start + history.C.count in
+  let fname = C.archive_file history.C.dir filenum in
   !logger.debug "Saving history in %S" fname ;
   File.with_file_out ~mode:[`create; `trunc] fname (fun oc ->
     (* Since we do not "clean" the array but only the count field, it is
@@ -80,14 +85,15 @@ let archive_history history =
       Array.sub history.C.tuples 0 history.C.count)
     ) |>
     Marshal.output oc) ;
-  history.C.max_filenum <- history.C.max_filenum + 1 ;
-  if history.C.min_filenum = -1 then
-    history.C.min_filenum <- history.C.max_filenum ;
+  (* FIXME: a ring data structure: *)
+  history.C.filenums <- history.C.filenums @ [ filenum ] ;
+  history.C.nb_files <- history.C.nb_files + 1 ;
+  history.C.block_start <- history.C.block_start + history.C.count ;
+  history.C.count <- 0 ;
   clean_archives history
 
-let read_archive dir filenum : scalar_value array array option =
-  if filenum < 0 then None else
-  let fname = dir ^"/"^ string_of_int filenum in
+let read_archive dir filenum =
+  let fname = C.archive_file dir filenum in
   !logger.debug "Reading history from %S" fname ;
   try Some (File.with_file_in fname Marshal.input)
   with Sys_error _ -> None
@@ -100,10 +106,8 @@ let add_tuple conf node tuple =
       let h = C.make_history conf node in
       node.N.history <- Some h ;
       h in
-  if history.C.count >= Array.length history.C.tuples then (
-    archive_history history ; (* Will update filenums *)
-    history.C.count <- 0
-  ) ;
+  if history.C.count >= Array.length history.C.tuples then
+    archive_history history ;
   let idx = history.C.count in
   history.C.tuples.(idx) <- tuple ;
   history.C.count <- history.C.count + 1
@@ -188,83 +192,97 @@ let import_tuples conf rb_name node =
         (Printexc.get_backtrace ()) ;
       fail e)
 
-let since_of filenum idx =
-  filenum * C.max_history_block_length + idx
+let filenum_print oc (sta, sto) = Printf.fprintf oc "%d-%d" sta sto
 
-let fold_tuples ?min_filenum ?max_filenum ?since
-                ?(max_res=100*C.max_history_block_length) history init f =
-  !logger.debug "fold_tuples min_filenum=%a max_filenum=%a since=%a max_res=%d"
-    (Option.print Int.print) min_filenum
-    (Option.print Int.print) max_filenum
-    (Option.print Int.print) since
-    max_res ;
-  !logger.debug "history has filenum=%d..%d, count=%d"
-    history.C.min_filenum history.C.max_filenum history.C.count ;
-  let min_filenum = Option.default history.C.min_filenum min_filenum
-  and max_filenum = Option.default (history.C.max_filenum+1) max_filenum in
-  let min_filenum, first_idx = Option.map_default (fun since ->
-      since / C.max_history_block_length,
-      since mod C.max_history_block_length
-    ) (min_filenum, 0) since in
-  let has_gap, min_filenum, first_idx =
-    if min_filenum < history.C.min_filenum then
-      true, history.C.min_filenum, 0
-    else false, min_filenum, first_idx
-  and max_filenum = min (history.C.max_filenum+1) max_filenum in
-  !logger.debug "will use min_filenum=%d, first_idx=%d, max_filenum=%d"
-    min_filenum first_idx max_filenum ;
+let hist_min_max history =
+  let hist_max =
+    history.C.block_start, history.C.block_start + history.C.count in
+  let hist_min =
+    if history.C.filenums = [] then hist_max
+    else List.hd history.C.filenums in
+  hist_min, hist_max
 
-  let rec loop_tup tuples filenum last_idx idx nb_res x =
+(* filenums are archive files (might not exist anymore though.
+ * do_fold_tuples will also look into live tuples if required to reach max_res. *)
+let do_fold_tuples filenums first_idx max_res history init f =
+  !logger.debug "will fold over filenums=%a, first_idx=%d, up to %d results"
+    (List.print filenum_print) filenums first_idx max_res ;
+  let rec loop_tup tuples filenum block_start last_idx idx nb_res x =
     if idx >= last_idx || nb_res >= max_res then
-      idx, nb_res, x else
+      nb_res, x else
     let tuple = tuples.(idx) in
-    loop_tup tuples filenum last_idx (idx+1) (nb_res+1) (f filenum tuple x)
+    let x = f filenum (block_start + idx) tuple x in
+    loop_tup tuples filenum block_start last_idx (idx+1) (nb_res+1) x
   in
+  let rec loop_file filenums first_idx nb_res x =
+    !logger.debug "loop_file first_idx=%d nb_res=%d" first_idx nb_res ;
+    match filenums with
+    | [] ->
+      (* Look into live tuples *)
+      let _nb_res, x =
+        loop_tup history.C.tuples None history.C.block_start history.C.count first_idx nb_res x in
+      x
+    | filenum :: filenums' ->
+      match read_archive history.C.dir filenum with
+      | None -> loop_file (filenums') 0 nb_res x
+      | Some tuples ->
+        let nb_res, x =
+          loop_tup tuples (Some filenum) (fst filenum) (Array.length tuples) first_idx nb_res x in
+        if nb_res >= max_res then x
+        else loop_file filenums' 0 nb_res x
+  in
+  loop_file filenums first_idx 0 init
 
-  let rec loop_file has_gap filenum first_idx nb_res x =
-    !logger.debug "loop_file has_gap=%b filenum=%d first_idx=%d nb_res=%d"
-      has_gap filenum first_idx nb_res ;
-    if nb_res >= max_res || filenum > max_filenum then
-      filenum, first_idx, x else
-    let is_last_block = filenum = history.C.max_filenum + 1 in
-    let has_gap, tuples, last_idx =
-      if is_last_block then
-        has_gap, history.C.tuples, history.C.count
+let drop_until history seqnum max_res =
+  let rec loop = function
+    | [] ->
+      if seqnum >= history.C.block_start then
+        [], seqnum - history.C.block_start, max_res
       else
-        match read_archive history.C.dir filenum with
-        | None -> true, [||], 0
-        | Some tuples -> has_gap, tuples, Array.length tuples in
-    let idx, nb_res, x = loop_tup tuples filenum last_idx first_idx nb_res x in
-    (* If we are done we want to return with current idx and filenum in
-     * case it is not completed yet: *)
-    if nb_res >= max_res || is_last_block then filenum, idx, x else
-    loop_file has_gap (filenum + 1) 0 nb_res x
+        (* gap *)
+        [], 0, max_res
+    | ((sta, sto) :: filenums') as filenums ->
+      if seqnum <= sta then
+        (* gap *)
+        filenums, 0, max_res
+      else if seqnum < sto then
+        filenums, seqnum - sta, max_res
+      else
+        loop filenums'
   in
+  loop history.C.filenums
 
-  let filenum, idx, x =
-    loop_file has_gap min_filenum first_idx 0 init in
-  assert (idx < C.max_history_block_length) ;
-  since_of filenum idx, x
+let fold_tuples_since ?since ?(max_res=1000)
+                      history init f =
+  !logger.debug "fold_tuples_since since=%a max_res=%d"
+    (Option.print Int.print) since max_res ;
+  !logger.debug "history has block_start=%d, count=%d"
+    history.C.block_start history.C.count ;
+  let filenums, first_idx, max_res =
+    match since with
+    | None ->
+      if max_res >= 0 then history.C.filenums, 0, max_res
+      else drop_until history (history.C.block_start + history.C.count + max_res) ~-max_res
+    | Some since ->
+      if max_res >= 0 then drop_until history since max_res
+      else drop_until history (since + max_res) ~-max_res in
+  do_fold_tuples filenums first_idx max_res history init f
 
-let since_of_last_tuples n history =
-  assert (n > 0) ;
-  let filenum, idx =
-    if history.C.count >= n then
-      (history.C.max_filenum + 1), (history.C.count - n)
-    else
-      let rec loop prev filenum n =
-        assert (n > 0) ;
-        match read_archive history.C.dir filenum with
-        | Some arc ->
-          if Array.length arc >= n then
-            filenum, Array.length arc - n
-          else
-            loop (filenum, 0) (filenum - 1) (n - Array.length arc)
-        | None -> (* Cannot go back earlier *)
-          prev in
-      loop (history.C.max_filenum + 1, 0) history.C.max_filenum (n - history.C.count)
-  in
-  since_of filenum idx
+let fold_tuples_from_files ?min_filenum ?max_filenum ?(max_res=1000)
+                           history init f =
+  !logger.debug "fold_tuples_from_files min_filenum=%a max_filenum=%a max_res=%d"
+    (Option.print filenum_print) min_filenum
+    (Option.print filenum_print) max_filenum
+    max_res ;
+  !logger.debug "history has block_start=%d, count=%d"
+    history.C.block_start history.C.count ;
+  let hist_min, hist_max = hist_min_max history in
+  let min_filenum = Option.default hist_min min_filenum
+  and max_filenum = Option.default hist_max max_filenum in
+  assert (max_res > 0) ;
+  let max_res = min max_res (snd max_filenum - fst min_filenum) in
+  let filenums, first_idx, max_res = drop_until history (fst min_filenum) max_res in
+  do_fold_tuples filenums first_idx max_res history init f
 
 let scalar_column_init typ len f =
   match typ with
@@ -389,14 +407,14 @@ let build_timeseries node start_field start_scale data_field duration_info
   let min_filenum, max_filenum =
     Hashtbl.enum history.C.ts_cache |>
     Enum.fold (fun (mi, ma) (filenum, (ts_min, ts_max)) ->
-      !logger.debug "filenum %d goes from TS=%f to %f" filenum ts_min ts_max ;
+      !logger.debug "filenum %a goes from TS=%f to %f" filenum_print filenum ts_min ts_max ;
       (if from >= ts_min then f_opt max mi filenum else mi),
       (if to_ <= ts_max then f_opt min ma filenum else ma))
       (None, None) in
   let _ =
-    fold_tuples ?min_filenum ?max_filenum
-      history (-1, max_float, min_float)
-      (fun filenum tup (prev_filenum, tmin, tmax) ->
+    fold_tuples_from_files ?min_filenum ?max_filenum
+      history (None, max_float, min_float)
+      (fun filenum _ tup (prev_filenum, tmin, tmax) ->
         let t, v = float_of_scalar_value tup.(ti),
                    float_of_scalar_value tup.(vi) in
         let t1 = t *. start_scale in
@@ -420,11 +438,13 @@ let build_timeseries node start_field start_scale data_field duration_info
           ) else (
             (* New filenum. Save the min/max we computed for the previous one
              * in the ts_cache: *)
-            if prev_filenum >= 0 then (
-              Hashtbl.modify_opt prev_filenum (function
+            (match prev_filenum with
+            | None -> ()
+            | Some fn ->
+              Hashtbl.modify_opt fn (function
                 | None ->
-                  !logger.debug "Caching times for filenum %d to %g..%g"
-                    filenum tmin tmax ;
+                  !logger.debug "Caching times for filenum %a to %g..%g"
+                    filenum_print fn tmin tmax ;
                   Some (tmin, tmax)
                 | x -> x) history.C.ts_cache
             ) ;

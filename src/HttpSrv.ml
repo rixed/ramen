@@ -461,10 +461,13 @@ let export conf headers layer_name node_name body =
         let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
         let rec loop () =
           let first, values =
-            RamenExport.fold_tuples ?since:req.since
-                                    ?max_res:req.max_results
-                                    history [] (fun _ tup prev ->
-              List.cons tup prev) in
+            RamenExport.fold_tuples_since
+              ?since:req.since ?max_res:req.max_results history (None, [])
+                (fun _ seqnum tup (first, prev) ->
+                  let first =
+                    if first = None then Some seqnum else first in
+                  first, List.cons tup prev) in
+          let first = first |? (req.since |? 0) in
           let dt = Unix.gettimeofday () -. start in
           if values = [] && dt < req.wait_up_to then (
             (* TODO: sleep for dt, queue the wakener on this history,

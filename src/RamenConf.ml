@@ -68,9 +68,12 @@ type history =
   { (* Store arrays of Scalar.values not hash of names to values !
      * TODO: ideally storing scalar_columns would be even better *)
     tuples : scalar_value array array ;
-    (* Gives us both the position of the last tuple in the array and an index
-     * in the stream of tuples to help polling (once added to this block seqnum) *)
+    (* Start seqnum of the next block: *)
+    mutable block_start : int ;
+    (* How many tuples we already have in memory: *)
     mutable count : int ;
+    (* Files are saved with a name composed of block_start-block_end (aka
+     * next block_start). *)
     (* dir is named after the node output type so that we won't run the risk
      * to read data that have been archived in a different format. Other than
      * that, we make no attempt to clean these archives even when the node is
@@ -83,9 +86,13 @@ type history =
      * visited.  This assume the timestamps are always increasing. If it's
      * not the case the cache performances will be poor but returned data
      * should still be correct. *)
-    ts_cache : (int, float * float) Hashtbl.t ;
-    mutable min_filenum : int ; (* Not necessarily up to date but gives a lower bound *)
-    mutable max_filenum : int }
+    ts_cache : (int * int, float * float) Hashtbl.t ;
+    (* Not necessarily up to date but gives a lower bound: *)
+    mutable nb_files : int ; (* Count items in the list below *)
+    mutable filenums : (int * int) list }
+
+let archive_file dir (block_start, block_stop) =
+  dir ^"/"^ string_of_int block_start ^"-"^ string_of_int block_stop
 
 module Node =
 struct
@@ -343,11 +350,7 @@ let save_graph conf =
       Marshal.output oc persist)
 
 (* Store history of past tuple output by a given node: *)
-let history_block_length = 10000 (* TODO: make it a parameter? *)
-(* history_block_length, being a parameter, can vary. We need an absolute
- * maximum for it so that we can use filenum * max_history_block_length + index
- * as a cursor into the history. *)
-let max_history_block_length = 1000000
+let history_block_length = 10_000 (* TODO: make it a parameter? *)
 let max_history_archives = 200
 
 let make_history conf node =
@@ -358,17 +361,23 @@ let make_history conf node =
   mkdir_all dir ;
   (* Note: this is OK to share this [||] since we use it only as a placeholder *)
   let tuples = Array.make history_block_length [||] in
-  let min_filenum, max_filenum =
+  let nb_files, filenums, max_seqnum =
     Sys.readdir dir |>
-    Array.fold_left (fun (mi, ma as prev) fname ->
-      match int_of_string fname with
-      | exception _ -> prev
-      | n -> min mi n, max ma n) (max_int, min_int) in
-  let min_filenum, max_filenum =
-    if min_filenum > max_filenum then -1, -1
-    else min_filenum, max_filenum in
-  !logger.debug "History files from %d to %d" min_filenum max_filenum ;
-  { tuples ; count = 0 ; dir ; min_filenum ; max_filenum ;
+    Array.fold_left (fun (nb_files, arcs, ma as prev) fname ->
+        match Scanf.sscanf fname "%d-%d" (fun a b -> a, b) with
+        | exception _ -> prev
+        | _, stop as m ->
+          nb_files + 1, m :: arcs, max stop ma
+      ) (0, [], min_int) in
+  let filenums =
+    List.fast_sort (fun (m1, _) (m2, _) -> Int.compare m1 m2) filenums in
+  let block_start =
+    if nb_files = 0 then 0
+    else (
+      !logger.debug "%d archive files from %d up to %d"
+        nb_files (fst (List.hd filenums)) max_seqnum ;
+      max_seqnum) in
+  { tuples ; block_start ; count = 0 ; dir ; nb_files ; filenums ;
     ts_cache = Hashtbl.create (max_history_archives / 8) }
 
 let add_parsed_node ?timeout conf node_name layer_name op_text operation =

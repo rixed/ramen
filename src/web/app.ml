@@ -234,7 +234,7 @@ let reload_tail () =
   | exception Not_found -> ()
   | node ->
     let node = node.value in
-    let content = "{\"max_results\":8}"
+    let content = "{\"max_results\":-8}"
     and path = "/export/"^ enc node.layer ^"/"^ enc node.name in
     http_post path content (fun r ->
       update_tail r ;
@@ -837,6 +837,7 @@ let () =
     if not editor_mode.value then (
       print (Js.string "Reloading...") ;
       reload_graph () ;
+      (* Tail could benefit from a higher refresh frequency *)
       reload_tail ()) in
   if with_periodic_reload then
     (Dom_html.window##setInterval (Js.wrap_callback periodically) 11_000.) |>
