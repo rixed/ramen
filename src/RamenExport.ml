@@ -175,14 +175,18 @@ let import_tuples conf rb_name node =
         let%lwt tx = dequeue rb in
         let tuple, _sz = read_tuple tuple_type tx in
         RingBuf.dequeue_commit tx ;
-        add_tuple node tuple ;
-        Lwt_main.yield ()
+        wrap (fun () -> add_tuple conf node tuple) >>=
+        Lwt_main.yield
       done)
     (function Canceled ->
       !logger.info "Import from %s was cancelled" rb_name ;
       RingBuf.unload rb ;
       return_unit
-            | e -> fail e)
+            | e ->
+      !logger.error "Importing tuples failed with %s,\n%s"
+        (Printexc.to_string e)
+        (Printexc.get_backtrace ()) ;
+      fail e)
 
 let since_of filenum idx =
   filenum * C.max_history_block_length + idx
