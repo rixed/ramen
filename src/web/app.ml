@@ -463,7 +463,7 @@ let icon_of_layer layer =
   let icon, path, alt =
     match layer.Layer.status with
     | Edition -> "✎", "/compile/"^ enc layer.Layer.name, "compile"
-    | Compiling -> "☐", "", "reload"
+    | Compiling -> "☐", "/graph/"^ enc layer.Layer.name, "reload"
     | Compiled -> "☑", "/start/"^ enc layer.Layer.name, "start"
     | Running -> "⚙", "/stop/"^ enc layer.Layer.name, "stop"
   in
