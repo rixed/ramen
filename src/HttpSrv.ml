@@ -453,28 +453,34 @@ let export conf headers layer_name node_name body =
   else if not (Lang.Operation.is_exporting node.N.operation) then
     bad_request ("node "^ node_name ^" does not export data")
   else (
-    let start = Unix.gettimeofday () in
-    let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
-    let rec loop () =
-      let first, values =
-        RamenExport.fold_tuples ?since:req.since ?max_res:req.max_results
-                                node [] (fun _ tup prev -> List.cons tup prev) in
-      let dt = Unix.gettimeofday () -. start in
-      if values = [] && dt < req.wait_up_to then (
-        (* TODO: sleep for dt, queue the wakener on this history,
-         * and wake all the sleeps when a tuple is received *)
-        Lwt_unix.sleep 0.1 >>= loop
-      ) else (
-        (* Store it in column to save variant types: *)
-        let resp =
-          { first ;
-            columns = RamenExport.columns_of_tuples tuple_type values |>
-                      List.map (fun (typ, nullmask, column) ->
-                        typ, Option.map RamenBitmask.to_bools nullmask, column) } in
-        let body = PPP.to_string export_resp_ppp resp in
-        respond_ok ~body ()
-      ) in
-    loop ())
+    let%lwt first, columns = match node.N.history with
+      | None -> (* Nothing yet, just answer with empty result *)
+        return (0, [])
+      | Some history ->
+        let start = Unix.gettimeofday () in
+        let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
+        let rec loop () =
+          let first, values =
+            RamenExport.fold_tuples ?since:req.since
+                                    ?max_res:req.max_results
+                                    history [] (fun _ tup prev ->
+              List.cons tup prev) in
+          let dt = Unix.gettimeofday () -. start in
+          if values = [] && dt < req.wait_up_to then (
+            (* TODO: sleep for dt, queue the wakener on this history,
+             * and wake all the sleeps when a tuple is received *)
+            Lwt_unix.sleep 0.1 >>= loop
+          ) else (
+            return (
+              first,
+              RamenExport.columns_of_tuples tuple_type values |>
+              List.map (fun (typ, nullmask, column) ->
+                typ, Option.map RamenBitmask.to_bools nullmask, column))
+          ) in
+        loop () in
+    let resp = { first ; columns } in
+    let body = PPP.to_string export_resp_ppp resp in
+    respond_ok ~body ())
 
 (*
     API for Workers: health and report

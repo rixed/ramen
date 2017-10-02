@@ -92,8 +92,14 @@ let read_archive dir filenum : scalar_value array array option =
   try Some (File.with_file_in fname Marshal.input)
   with Sys_error _ -> None
 
-let add_tuple node tuple =
-  let history = Option.get node.N.history in
+let add_tuple conf node tuple =
+  let history =
+    match node.N.history with
+    | Some h -> h
+    | None ->
+      let h = C.make_history conf node in
+      node.N.history <- Some h ;
+      h in
   if history.C.count >= Array.length history.C.tuples then (
     archive_history history ; (* Will update filenums *)
     history.C.count <- 0
@@ -155,7 +161,7 @@ let read_tuple tuple_type =
         ) (nullmask_size, 0) tuple_type in
     tuple, sz
 
-let import_tuples rb_name node =
+let import_tuples conf rb_name node =
   let open Lwt in
   let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
   !logger.debug "Starting to import output from node %s (in ringbuf %S), which outputs %a"
@@ -182,13 +188,12 @@ let since_of filenum idx =
   filenum * C.max_history_block_length + idx
 
 let fold_tuples ?min_filenum ?max_filenum ?since
-                ?(max_res=100*C.max_history_block_length) node init f =
-  !logger.debug "fold_tuples min_filenum=%a max_filenum=%a since=%a max_res=%d on node %s"
+                ?(max_res=100*C.max_history_block_length) history init f =
+  !logger.debug "fold_tuples min_filenum=%a max_filenum=%a since=%a max_res=%d"
     (Option.print Int.print) min_filenum
     (Option.print Int.print) max_filenum
     (Option.print Int.print) since
-    max_res (N.fq_name node) ;
-  let history = Option.get node.N.history in
+    max_res ;
   !logger.debug "history has filenum=%d..%d, count=%d"
     history.C.min_filenum history.C.max_filenum history.C.count ;
   let min_filenum = Option.default history.C.min_filenum min_filenum
@@ -237,9 +242,8 @@ let fold_tuples ?min_filenum ?max_filenum ?since
   assert (idx < C.max_history_block_length) ;
   since_of filenum idx, x
 
-let since_of_last_tuples n node =
+let since_of_last_tuples n history =
   assert (n > 0) ;
-  let history = Option.get node.N.history in
   let filenum, idx =
     if history.C.count >= n then
       (history.C.max_filenum + 1), (history.C.count - n)
@@ -387,7 +391,7 @@ let build_timeseries node start_field start_scale data_field duration_info
       (None, None) in
   let _ =
     fold_tuples ?min_filenum ?max_filenum
-      node (-1, max_float, min_float)
+      history (-1, max_float, min_float)
       (fun filenum tup (prev_filenum, tmin, tmax) ->
         let t, v = float_of_scalar_value tup.(ti),
                    float_of_scalar_value tup.(vi) in

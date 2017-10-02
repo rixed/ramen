@@ -140,7 +140,7 @@ let run conf layer =
     layer.L.importing_threads <- Hashtbl.fold (fun _ node lst ->
         if Lang.Operation.is_exporting node.N.operation then (
           let rb = rb_name_for_export_of node in
-          RamenExport.import_tuples rb node :: lst
+          RamenExport.import_tuples conf rb node :: lst
         ) else lst
       ) layer.L.persist.L.nodes [] ;
     C.save_graph conf

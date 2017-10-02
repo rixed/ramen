@@ -1,4 +1,3 @@
-(* Global configuration *)
 open Batteries
 open RamenLog
 open Helpers
@@ -62,6 +61,9 @@ let tup_typ_of_temp_tup_type ttt =
       nullable = Option.get typ.Expr.nullable ;
       typ = Option.get typ.Expr.scalar_typ })
 
+let md4 s =
+  Cryptohash_md4.string s |> Cryptohash_md4.to_hex
+
 type history =
   { (* Store arrays of Scalar.values not hash of names to values !
      * TODO: ideally storing scalar_columns would be even better *)
@@ -69,8 +71,18 @@ type history =
     (* Gives us both the position of the last tuple in the array and an index
      * in the stream of tuples to help polling (once added to this block seqnum) *)
     mutable count : int ;
+    (* dir is named after the node output type so that we won't run the risk
+     * to read data that have been archived in a different format. Other than
+     * that, we make no attempt to clean these archives even when the node is
+     * edited. It's best if deletion is explicit (TODO: add an option in the
+     * put layer command). Another way to get rid of the history is to rename
+     * the node. Since we need output type to locate the history, a node
+     * cannot have a history before it's typed. *)
     dir : string ;
-    (* A cache to save first/last timestamps of each archive file we've visited. *)
+    (* A cache to save first/last timestamps of each archive file we've
+     * visited.  This assume the timestamps are always increasing. If it's
+     * not the case the cache performances will be poor but returned data
+     * should still be correct. *)
     ts_cache : (int, float * float) Hashtbl.t ;
     mutable min_filenum : int ; (* Not necessarily up to date but gives a lower bound *)
     mutable max_filenum : int }
@@ -141,8 +153,7 @@ struct
     "IN="^ type_signature node.in_type ^
     "OUT="^ type_signature node.out_type ^
     "V="^ version_tag |>
-    Cryptohash_md4.string |>
-    Cryptohash_md4.to_hex
+    md4
 end
 
 let exec_of_node persist_dir node =
@@ -339,8 +350,12 @@ let history_block_length = 10000 (* TODO: make it a parameter? *)
 let max_history_block_length = 1000000
 let max_history_archives = 200
 
-let make_history dir =
-  mkdir_all ~is_file:false dir ;
+let make_history conf node =
+  let type_sign = type_signature node.Node.out_type |> md4 in
+  let dir = conf.persist_dir ^"/workers/history/"^ Node.fq_name node
+                             ^"/"^ type_sign in
+  !logger.info "Creating history for node %S" (Node.fq_name node) ;
+  mkdir_all dir ;
   (* Note: this is OK to share this [||] since we use it only as a placeholder *)
   let tuples = Array.make history_block_length [||] in
   let min_filenum, max_filenum =
@@ -363,16 +378,10 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
   if Hashtbl.mem layer.Layer.persist.Layer.nodes node_name then
     raise (InvalidCommand (
              "Node "^ node_name ^" already exists in layer "^ layer_name)) ;
-  let history =
-    if Lang.Operation.is_exporting operation then (
-      let dir = conf.persist_dir ^"/workers/history/"^ layer_name ^"/"^
-                node_name in
-      Some (make_history dir)
-    ) else None in
   let node = Node.{
     layer = layer_name ; name = node_name ;
     operation ; signature = "" ; op_text ;
-    parents = [] ; children = [] ; history ;
+    parents = [] ; children = [] ; history = None ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
