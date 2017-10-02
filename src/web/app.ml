@@ -827,12 +827,13 @@ let tictactoe = (* Do you like divs in your divs? *)
         board) ] ] *)
 
 let () =
-  let every_10s () =
-    print (Js.string "Reloading...") ;
-    reload_graph () ;
-    reload_tail () in
+  let periodically () =
+    if not editor_mode.value then (
+      print (Js.string "Reloading...") ;
+      reload_graph () ;
+      reload_tail ()) in
   if with_periodic_reload then
-    (Dom_html.window##setInterval (Js.wrap_callback every_10s) 10_000.) |>
+    (Dom_html.window##setInterval (Js.wrap_callback periodically) 11_000.) |>
     ignore ;
   start dom ;
   reload_graph ()
