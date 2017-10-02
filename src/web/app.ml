@@ -697,14 +697,20 @@ let tail_panel =
 let form_input label value =
   elmt "label"
     [ text label ;
-      elmt ~action:(fun v -> value := v ; change edited_layer) "input"
+      input ~action:(fun v -> value := v ; change edited_layer)
         [ attr "type" "text" ;
           attr "value" !value ] ]
+
+let form_input_large label value =
+  elmt "label"
+    [ text label ;
+      textarea ~action:(fun v -> value := v ; change edited_layer)
+        [ text !value ] ]
 
 let node_editor_panel (name, operation) =
   div
     [ form_input "Node Name" name ;
-      form_input "Node Operation" operation ]
+      form_input_large "Node Operation" operation ]
 
 let done_edit_cb what status =
   if Js.(Unsafe.get status "success" |> to_bool) then (

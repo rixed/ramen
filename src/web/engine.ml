@@ -130,6 +130,8 @@ let td = elmt "td"
 let th = elmt "th"
 let p = elmt "p"
 let button = elmt "button"
+let input = elmt "input"
+let textarea = elmt "textarea"
 
 (* Parameters *)
 
@@ -168,6 +170,12 @@ let rec add_listeners tag (elmt : Html.element Js.t) action =
   match tag with
   | "input" ->
     let elmt = Html.CoerceTo.input elmt |>
+               coercion_motherfucker_can_you_do_it in
+    elmt##.onchange := Html.handler (fun _e ->
+      action (Js.to_string elmt##.value) ;
+      Js._false)
+  | "textarea" ->
+    let elmt = Html.CoerceTo.textarea elmt |>
                coercion_motherfucker_can_you_do_it in
     elmt##.onchange := Html.handler (fun _e ->
       action (Js.to_string elmt##.value) ;
