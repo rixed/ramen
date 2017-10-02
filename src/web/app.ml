@@ -473,7 +473,7 @@ let icon_of_layer layer =
         http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
           update_graph false g ;
           resync ()))) [
-    clss "icon" ;
+    clss "icon actionable" ;
     attr "title" alt ;
     text icon ]
 
@@ -484,7 +484,7 @@ let layer_panel layer =
       text layer.Layer.name ;
       (if layer.status <> Running then
         button ~action:(fun _ -> set_editor_mode (Some layer))
-          [ text "edit" ]
+          [ clss "actionable" ; text "edit" ]
       else group []) ;
       icon_of_layer layer ] ;
     div [
@@ -509,22 +509,22 @@ let layers_panel =
       List.rev |>
       group) ;
     button ~action:(fun _ -> set_editor_mode (Some the_new_layer.value))
-      [ text "new" ] ]
+      [ clss "actionable" ; text "new" ] ]
 
 let pretty_th ?action c title subtitle =
-  elmt ?action "th" (
-    clss c ::
+  th ?action (
+    group (List.map clss c) ::
     p [ text title ] ::
     if subtitle = "" then [] else
       [ p [ clss "type" ; text subtitle ] ])
 
 let node_thead_col (title, sortable, subtitle) =
   with_value sel_column (fun col ->
-    let c = if col = title then "ordered" else "" in
-    let action =
+    let c = if col = title then ["selected"] else [] in
+    let action, c =
       if sortable && col <> title then Some (fun _ ->
-        set sel_column title)
-      else None in
+        set sel_column title), "actionable"::c
+      else None, c in
     pretty_th ?action c title subtitle)
 
 let tds v = td [ text v ]
@@ -581,9 +581,11 @@ let node_tbody_row node =
      * depend only on this. *)
     with_value sel_node (fun sel ->
       if sel = node.Node.id then
-        elmt ~action:(fun _ -> set_sel_node "") "tr" (clss "selected" :: cols)
+        tr ~action:(fun _ -> set_sel_node "")
+          (clss "selected actionable" :: cols)
       else
-        elmt ~action:(fun _ -> set_sel_node node.id) "tr" cols))
+        tr ~action:(fun _ -> set_sel_node node.id)
+          (clss "actionable" :: cols)))
 
 let node_sorter col =
   (* Numbers are sorted greater to smaller while strings are sorted
@@ -620,7 +622,7 @@ let nodes_panel =
     thead [
       Array.fold_left (fun lst col ->
         node_thead_col col :: lst) [] node_columns |>
-      List.rev |> elmt "tr" ] ;
+      List.rev |> tr ] ;
     (* Table body *)
     with_value nodes (fun nodes ->
       with_value sel_column (fun sel_col ->
@@ -634,7 +636,7 @@ let nodes_panel =
     with_value nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
                                tot_grps, tot_cpu, tot_ram) ->
       tfoot [
-        elmt "tr" [
+        tr [
           tds "" ; tdi tot_nodes ; tds "" ; tdi tot_ins ;
           tdi tot_sels ; tdi tot_outs ; tdi tot_grps ;
           tds "" ; tdf tot_cpu ; tdi tot_ram ;
@@ -660,7 +662,7 @@ let op_panel =
       elmt "pre" [ text node.operation ]))
 
 let th_field f =
-  pretty_th "" f.Field.name (dispname_of_type f.nullable f.typ)
+  pretty_th [] f.Field.name (dispname_of_type f.nullable f.typ)
 
 let tail_panel =
   let row fs r =
@@ -738,12 +740,13 @@ let layer_editor_panel =
       [ form_input "layer name" edl.new_layer_name ;
         group (List.map node_editor_panel edl.edited_nodes) ;
         button ~action:(fun _ -> add_edited_node ())
-          [ text "+" ] ;
+          [ clss "actionable" ; text "+" ] ;
         button ~action:(fun _ -> set_editor_mode None)
-          [ text "Cancel" ] ;
+          [ clss "actionable" ; text "Cancel" ] ;
         button ~action:(fun _ -> del_layer edl.layer_name)
-          [ text "Delete" ] ;
-        button ~action:save_layer [ text "Save" ] ])
+          [ clss "actionable" ; text "Delete" ] ;
+        button ~action:save_layer
+          [ clss "actionable" ; text "Save" ] ])
 
 let h1 t = elmt "h1" [ text t ]
 

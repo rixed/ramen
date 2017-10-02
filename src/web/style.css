@@ -37,10 +37,10 @@ a, a:visited { color: #22c; text-decoration: none; }
     #layers .name, #layers .info, #layers .info p { margin: 0px; }
   #nodes { flex-grow: 1; }
     #nodes tbody td:first-child a { display: flex; flex-direction: row; justify-content: space-between; }
-    #nodes th.ordered { background-color: #fff; }
     #nodes a { display: block; width: 100%; color: black; }
     #nodes tbody tr:hover { background-color: #fff; }
-#top tbody td hr { margin-left: 0; margin-top: 0; margin-bottom: 0; border: 1px solid #aaa; }
+    #nodes tbody td hr { margin-left: 0; margin-top: 0; margin-bottom: 0; border: 1px solid #aaa; }
+    #nodes tbody td { white-space: nowrap; }
 #details { max-height: 80%; width: 100%; flex-grow: 0.2; }
   #input { max-width: 50%; }
     #input p { margin: 0; padding: 0 }
@@ -58,3 +58,4 @@ td.number, td.float, td.u8, td.u16, td.u32, td.u64, td.u128, td.i8,
 td.i16, td.i32, td.i64, td.i128 { text-align: right; font-family: monospace; }
 
 .icon { }
+.actionable { cursor: pointer; }
