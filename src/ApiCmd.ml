@@ -84,6 +84,7 @@ let resp_column_length = function
   | _typ, Some nullmask, _column -> Array.length nullmask
 
 let tuples_of_columns columns =
+  assert (columns <> []) ;
   let nb_tuples = resp_column_length (List.hd columns) in
   let nb_fields = List.length columns in
   let field_types =
@@ -156,11 +157,13 @@ let tail debug ramen_url node_name as_csv last continuous () =
     let%lwt resp = http_post_json url export_req_ppp msg >>=
                    ppp_of_string_exc export_resp_ppp in
     (* TODO: check first_seqnum is not bigger than expected *)
-    let len = resp_column_length (List.hd resp.columns) in
+    let len = if resp.columns = [] then 0
+              else resp_column_length (List.hd resp.columns) in
     let to_drop = Option.map_default (fun last ->
         if len > last then len - last else 0) 0 last in
-    display_tuple as_csv to_drop resp ;
-    flush stdout ;
+    if resp.columns <> [] then (
+      display_tuple as_csv to_drop resp ;
+      flush stdout) ;
     if continuous then (
       let last = Option.map (fun l -> l - len) last in
       if last |? 1 > 0 then (
