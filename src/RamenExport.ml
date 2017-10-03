@@ -416,7 +416,8 @@ let build_timeseries node start_field start_scale data_field duration_info
         (if to_ <= ts_max then f_opt min ma filenum else ma))
         (None, None) in
     let _ =
-      fold_tuples_from_files ?min_filenum ?max_filenum
+      (* As we already have max_data_points, no need for max_res *)
+      fold_tuples_from_files ?min_filenum ?max_filenum ~max_res:max_int
         history (None, max_float, min_float)
         (fun filenum _ tup (prev_filenum, tmin, tmax) ->
           let t, v = float_of_scalar_value tup.(ti),
