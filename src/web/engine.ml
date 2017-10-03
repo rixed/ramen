@@ -132,6 +132,10 @@ let p = elmt "p"
 let button = elmt "button"
 let input = elmt "input"
 let textarea = elmt "textarea"
+let br = elmt "br" []
+let h1 t = elmt "h1" [ text t ]
+let h2 t = elmt "h2" [ text t ]
+let h3 t = elmt "h3" [ text t ]
 
 (* Parameters *)
 
@@ -160,24 +164,18 @@ let rec remove (parent : Html.element Js.t) child_idx n =
     remove parent child_idx (n - 1)
   )
 
-(* Note: When we resync from an event handler, we run the risk of
- * overwriting a DOM element that is next in line with a triggered
- * event; which would cancel that event before we handle it. That's
- * why we do not resync for onchange events. A better solution might
- * be to just set a resync_needed flag, and a short setTimeout to
- * resync once after any handler. *)
 let rec add_listeners tag (elmt : Html.element Js.t) action =
   match tag with
   | "input" ->
     let elmt = Html.CoerceTo.input elmt |>
                coercion_motherfucker_can_you_do_it in
-    elmt##.onchange := Html.handler (fun _e ->
+    elmt##.oninput := Html.handler (fun _e ->
       action (Js.to_string elmt##.value) ;
       Js._false)
   | "textarea" ->
     let elmt = Html.CoerceTo.textarea elmt |>
                coercion_motherfucker_can_you_do_it in
-    elmt##.onchange := Html.handler (fun _e ->
+    elmt##.oninput := Html.handler (fun _e ->
       action (Js.to_string elmt##.value) ;
       Js._false)
   | "button" ->

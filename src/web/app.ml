@@ -701,16 +701,34 @@ let form_input label value =
         [ attr "type" "text" ;
           attr "value" !value ] ]
 
+let get_text_size s =
+  let rec loop_line nb_l longest from =
+    match String.index_from s from '\n' with
+    | exception Not_found ->
+      max longest (String.length s - from), nb_l + 1
+    | eol ->
+      loop_line (nb_l + 1) (max longest (eol - from)) (eol + 1)
+  in
+  loop_line 0 0 0
+
 let form_input_large label value =
+  let cols, rows = get_text_size !value in
+  let cols = max 20 (cols + 5)
+  and rows = max 5 (rows + 4) in
   elmt "label"
     [ text label ;
+      br ;
       textarea ~action:(fun v -> value := v ; change edited_layer)
-        [ text !value ] ]
+        [ attr "rows" (string_of_int rows) ;
+          attr "cols" (string_of_int cols) ;
+          attr "spellcheck" "false" ;
+          text !value ] ]
 
 let node_editor_panel (name, operation) =
   div
-    [ form_input "Node Name" name ;
-      form_input_large "Node Operation" operation ]
+    [ clss "node-edition" ;
+      div [ form_input "Name" name ] ;
+      div [ form_input_large "Operation" operation ] ]
 
 let done_edit_cb what status =
   if Js.(Unsafe.get status "success" |> to_bool) then (
@@ -743,8 +761,11 @@ let del_layer layer_name =
 let layer_editor_panel =
   with_value edited_layer (fun edl ->
     div
-      [ form_input "layer name" edl.new_layer_name ;
+      [ h2 "Layer" ;
+        form_input "Name" edl.new_layer_name ;
+        h2 "Nodes" ;
         group (List.map node_editor_panel edl.edited_nodes) ;
+        br ;
         button ~action:(fun _ -> add_edited_node ())
           [ clss "actionable" ; text "+" ] ;
         button ~action:(fun _ -> set_editor_mode None)
@@ -753,8 +774,6 @@ let layer_editor_panel =
           [ clss "actionable" ; text "Delete" ] ;
         button ~action:save_layer
           [ clss "actionable" ; text "Save" ] ])
-
-let h1 t = elmt "h1" [ text t ]
 
 let dom =
   group
