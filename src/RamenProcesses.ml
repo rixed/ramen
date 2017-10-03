@@ -72,13 +72,18 @@ let run conf layer =
     Hashtbl.iter (fun _ node ->
         let command = C.exec_of_node conf.C.persist_dir node
         and output_ringbufs =
-          (* Start to output only to nodes on this layer. They have all been
-           * created above, and we want to allow loops in a layer. But above
-           * layers have no ringbuffer already and we do not want to start
-           * outputing in their direction until they are effectively started
-           * (or we would hang) *)
+          (* Start to output to nodes of this layer. They have all been
+           * created above, and we want to allow loops in a layer. Avoids
+           * outputing to other layers, unless they are already running (in
+           * which case their ringbuffer exists already), otherwise we would
+           * hang. *)
           node.N.children |>
-          List.filter (fun node -> node.N.layer = layer.L.name) |>
+          List.filter (fun node ->
+            node.N.layer = layer.L.name ||
+            match Hashtbl.find conf.C.graph.C.layers node.N.layer with
+            | exception Not_found -> false (* uh? Better not ask.*)
+            | layer when layer.L.persist.L.status = Running -> true
+            | _ -> false) |>
           List.map rb_name_of in
         let output_ringbufs =
           if Lang.Operation.is_exporting node.N.operation then
@@ -87,8 +92,6 @@ let run conf layer =
         let out_ringbuf_ref =
           out_ringbuf_names_ref conf node in
         Helpers.mkdir_all ~is_file:true out_ringbuf_ref ;
-        (* We do not care what was there before. This is OK as long as layers
-         * are started in dependency order. *)
         File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
         let input_ringbuf = rb_name_of node in
         let env = [|
@@ -129,10 +132,14 @@ let run conf layer =
             if parent.N.layer <> layer.name then
               let out_ref =
                 out_ringbuf_names_ref conf parent in
-              (* The parent ringbuf must exist at that point *)
+              (* The parent ringbuf must exist at that point. If the parent is
+               * not running then it will overwrite it when it starts, with
+               * whatever running children it will have at that time (including
+               * us, if we are still running). *)
               let lines = File.lines_of out_ref |> List.of_enum in
-              if not (List.mem input_ringbuf lines) then
-                File.write_lines out_ref (List.enum (input_ringbuf :: lines))
+              if not (List.mem input_ringbuf lines) then (
+                !logger.info "Adding %s into %s" input_ringbuf out_ref ;
+                File.write_lines out_ref (List.enum (input_ringbuf :: lines)))
           ) node.N.parents
       ) layer.persist.nodes ;
     L.set_status layer Running ;
