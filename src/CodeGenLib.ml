@@ -282,7 +282,7 @@ let send_stats url =
       code body url ;
     return_unit
   ) else
-    return_unit
+    Cohttp_lwt_body.drain_body body (* to actually close the connection *)
 
 let update_stats_th report_url () =
   while%lwt true do

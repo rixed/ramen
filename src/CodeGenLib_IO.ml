@@ -104,8 +104,11 @@ let http_notify url =
   let open Cohttp in
   let open Cohttp_lwt_unix in
   let headers = Header.init_with "Connection" "close" in
-  let%lwt resp, _body = Client.get ~headers (Uri.of_string url) in
+  let%lwt resp, body = Client.get ~headers (Uri.of_string url) in
   let code = resp |> Response.status |> Code.code_of_status in
-  if code <> 200 then
-    !logger.error "Received code %d from %S" code url ;
-  return_unit
+  if code <> 200 then (
+    let%lwt body = Cohttp_lwt_body.to_string body in
+    !logger.error "Received code %d from %S (%S)" code url body ;
+    return_unit
+  ) else
+    Cohttp_lwt_body.drain_body body
