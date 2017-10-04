@@ -284,12 +284,12 @@ let send_stats url =
   ) else
     Cohttp_lwt_body.drain_body body (* to actually close the connection *)
 
-let update_stats_th report_url () =
+let update_stats_th report_url period () =
   while%lwt true do
     FloatCounter.set stats_cpu (tot_cpu_time ()) ;
     IntGauge.set stats_ram (tot_ram_usage ()) ;
     let%lwt () = send_stats report_url in
-    Lwt_unix.sleep 10.
+    Lwt_unix.sleep period
   done
 
 (* Helpers *)
@@ -361,7 +361,9 @@ let node_start () =
   let report_url =
     (* The real one will have a process identifier instead of "anonymous" *)
     getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in
-  async (update_stats_th report_url) (* TODO: catch exceptions in async_exception_hook *) ;
+  let report_period =
+    getenv ~def:"5" "report_period" |> float_of_string in
+  async (update_stats_th report_url report_period) (* TODO: catch exceptions in async_exception_hook *) ;
   { debug ; persist_dir ; report_url }
 
 

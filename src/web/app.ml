@@ -988,7 +988,7 @@ let () =
       if sel_node.value <> "" then
         if raw_output_mode.value then reload_tail ()
         else reload_chart ()) in
-  Dom_html.window##setInterval (Js.wrap_callback periodically) 11_000. |>
+  Dom_html.window##setInterval (Js.wrap_callback periodically) 3_500. |>
   ignore ;
   start dom ;
   reload_graph ()
