@@ -759,7 +759,33 @@ let timechart_panel =
     | None ->
       p [ text "Select a column in the raw output panel to plot it." ]
     | Some _col ->
-      p [ text "TODO" ])
+      with_value chart_points (fun pts ->
+        let nb_pts = Array.length pts in
+        if nb_pts = 0 then
+          p [ text "No data" ]
+        else
+          let vx_start = fst pts.(0) and vx_stop = fst pts.(nb_pts-1) in
+          let vx_step =
+            if nb_pts < 2 then 0.
+            else (vx_stop -. vx_start) /. (float_of_int (nb_pts - 1)) in
+          let pen =
+            Chart.{ label = "value" ; draw_line = true ; draw_points = true ;
+                    color = "#55e" ; stroke_width = 1.5 ; opacity = 1. ;
+                    dasharray = None ; filled = true ; fill_opacity = 0.5 } in
+          let fold = { Chart.fold = fun f init ->
+            (* As for now we have only one dataset the fold over datasets
+             * is trivial: *)
+            f init pen true (fun i -> snd pts.(i) |? 0.) } in
+          let svg_width = 800. and svg_height = 400. in
+          let attrs =
+            [ clss "chart" ;
+              attr "style" ("width:"^ string_of_float svg_width ^
+                            "; height:"^ string_of_float svg_height ^
+                            "; min-height:"^ string_of_float svg_height ^";") ] in
+          Chart.xy_plot ~attrs ~svg_width ~svg_height
+              ~string_of_x:short_string_of_float
+              "time" "value"
+              vx_start vx_step nb_pts fold))
 
 let form_input label value =
   elmt "label"
