@@ -708,10 +708,10 @@ let node_sorter col =
          | Some i2, Some i1 -> compare i2 i1)
   | "export" -> make (fun a b -> compare b.exporting a.exporting)
   | "CPU" -> make (fun a b -> compare b.cpu_time a.cpu_time)
-  | "wait in" -> make (fun a b -> compare a.in_sleep b.in_sleep)
-  | "wait out" -> make (fun a b -> compare a.out_sleep b.out_sleep)
-  | "bytes in" -> make (fun a b -> compare a.in_bytes b.in_bytes)
-  | "bytes out" -> make (fun a b -> compare a.out_bytes b.out_bytes)
+  | "wait in" -> make (fun a b -> compare b.in_sleep a.in_sleep)
+  | "wait out" -> make (fun a b -> compare b.out_sleep a.out_sleep)
+  | "bytes in" -> make (fun a b -> compare b.in_bytes a.in_bytes)
+  | "bytes out" -> make (fun a b -> compare b.out_bytes a.out_bytes)
   | "RAM" -> make (fun a b -> compare b.ram_usage a.ram_usage)
   | _ ->
     make (fun a b -> match compare a.layer b.layer with
