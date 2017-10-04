@@ -172,7 +172,7 @@ let get_db filename =
       get_zones = prepare db get_zones_query ;
       last_updated = 0. ; new_mtime = get_db_mtime get_mtime }
   ) with exc -> (
-    Printf.eprintf "Exception: %s" (Printexc.to_string exc) ;
+    !logger.error "Exception: %s" (Printexc.to_string exc) ;
     exit 1
   )
 
@@ -184,7 +184,7 @@ let check_config_changed db =
       db.new_mtime <- t
     )
   ) with e ->
-    Printf.eprintf "Cannot check_config_changed: %s, assuming no change.\n"
+    !logger.error "Cannot check_config_changed: %s, assuming no change.\n"
       (Printexc.to_string e)
 
 let must_reload db =

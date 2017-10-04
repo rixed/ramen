@@ -272,7 +272,7 @@ let reload_chart () =
     let node = node.value in
     let field_name = (List.nth node.output_type col).Field.name in
     (* Last 2 hours for now *)
-    let now = 1500799797. (*(new%js Js.date_now)##valueOf*) in
+    let now = (new%js Js.date_now)##valueOf in
     let content = string_of_record
       [ "from", string_of_float (now -. 3600. *. 2.) ;
         "to", string_of_float now ;
@@ -922,63 +922,6 @@ let dom =
                 div [ id "operation" ; h1 "Operation" ; op_panel ] ] ;
             div
               [ id "output" ; output_panel ] ]) ]
-(*
-(* The values in the board squares *)
-let square_values = Array.init 9 (fun i ->
-  { name = "value of square "^ string_of_int i ; value = "" })
-
-let is_x_next = { name = "X is next" ; value = true }
-
-let player_symbol = function true -> "X" | false -> "O"
-
-let calculate_winner () =
-  let win_positions =
-	  [ (0, 1, 2) ; (3, 4, 5) ; (6, 7, 8) ;
-      (0, 3, 6) ; (1, 4, 7) ; (2, 5, 8) ;
-      (0, 4, 8) ; (2, 4, 6)  ] in
-  let v = square_values in
-  match List.find (fun (a, b, c) ->
-    v.(a).value <> "" &&
-    v.(a).value = v.(b).value &&
-    v.(b).value = v.(c).value) win_positions with
-  | exception Not_found -> ""
-  | p, _, _ -> v.(p).value
-
-let square i =
-  (* Note: the rendering does not depend on is_x_next, despite we use it in
-   * the action! *)
-  with_value square_values.(i) (fun value ->
-    button ~action:(fun x ->
-        if value = "" && calculate_winner () = "" then (
-          set square_values.(i) (player_symbol is_x_next.value) ;
-          set is_x_next x))
-      [ attr "type" "button" ;
-        clss "square" ;
-        text value ])
-
-let board =
-  let row i =
-    let sq = square in
-    div
-      [ clss "board-row" ;
-        sq i ; sq (i+1) ; sq (i+2) ] in
-  [ row 0 ; row 3 ; row 6 ]
-
-let tictactoe = (* Do you like divs in your divs? *)
-  div [
-    clss "game" ;
-    div [
-      clss "game-board" ;
-      div (
-        div [
-          clss "status" ;
-          with_value is_x_next (fun is_x_next ->
-            let winner = calculate_winner () in
-            if winner = "" then
-              text ("Next player: "^ player_symbol is_x_next)
-            else
-              text ("Winner: "^ winner)) ] ::
-        board) ] ] *)
 
 let () =
   let periodically () =
