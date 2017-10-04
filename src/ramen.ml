@@ -59,7 +59,7 @@ let www_dir =
   let i = Arg.info ~doc:"Directory where to read the files served \
                          via HTTP for the GUI (serve from memory \
                          if unset)"
-                   ~env [ "www-dir" ; "www-root" ] in
+                   ~env [ "www-dir" ; "www-root" ; "web-dir" ; "web-root" ] in
   Arg.(value (opt string "" i))
 
 let version_tag =
