@@ -133,7 +133,11 @@ struct
       out_tuple_count : int ;
       group_count : int option ;
       cpu_time : float ;
-      ram_usage : int } [@@ppp PPP_JSON]
+      ram_usage : int ;
+      in_sleep : float ;
+      out_sleep : float ;
+      in_bytes : int ;
+      out_bytes : int } [@@ppp PPP_JSON]
 end
 
 module Layer =

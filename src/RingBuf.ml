@@ -1,7 +1,6 @@
 open Stdint
 
 type t (* abstract, represents a ring buffer mmapped file *)
-type tx (* abstract, represents an ongoing (de)queueing operation *)
 
 external create_ : string -> int -> unit = "wrap_ringbuf_create"
 let create fname =
@@ -18,6 +17,10 @@ type stats = {
 external load : string -> t = "wrap_ringbuf_load"
 external unload : t -> unit = "wrap_ringbuf_unload"
 external stats : t -> stats = "wrap_ringbuf_stats"
+
+type tx (* abstract, represents an ongoing (de)queueing operation *)
+
+external tx_size : tx -> int = "wrap_ringbuf_tx_size"
 external enqueue_alloc : t -> int -> tx = "wrap_ringbuf_enqueue_alloc"
 external enqueue_commit : tx -> unit = "wrap_ringbuf_enqueue_commit"
 external enqueue : t -> bytes -> int -> unit = "wrap_ringbuf_enqueue"

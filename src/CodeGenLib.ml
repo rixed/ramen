@@ -246,12 +246,31 @@ let stats_out_tuple_count =
 let stats_cpu =
   FloatCounter.make Consts.cpu_time_metric
     "Total CPU time, in seconds, spent in this node (this process and any \
-     subprocesses."
+     subprocesses)."
 
 let stats_ram =
   IntGauge.make Consts.ram_usage_metric
     "Total RAM size used by the GC, in bytes (does not take into account \
-     other heap allocations nor fragmentation."
+     other heap allocations nor fragmentation)."
+
+let stats_rb_read_bytes =
+  IntCounter.make Consts.rb_read_bytes_metric
+    "Number of bytes read from the input ring buffer."
+
+let stats_rb_write_bytes =
+  IntCounter.make Consts.rb_write_bytes_metric
+    "Number of bytes written in each output ring buffer."
+
+let stats_rb_read_sleep_time =
+  FloatCounter.make Consts.rb_wait_read_metric
+    "Total number of seconds spent waiting for input."
+
+let stats_rb_write_sleep_time =
+  FloatCounter.make Consts.rb_wait_write_metric
+    "Total number of seconds spent waiting for output."
+
+let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
+let sleep_out d = FloatCounter.add stats_rb_write_sleep_time d
 
 let tot_cpu_time () =
   let open Unix in
@@ -294,9 +313,8 @@ let update_stats_th report_url period () =
 
 (* Helpers *)
 
-let output rb sersize_of_tuple serialize_tuple tuple =
+let output rb serialize_tuple (sersize, tuple) =
   let open RingBuf in
-  let sersize = sersize_of_tuple tuple in
   let tx = enqueue_alloc rb sersize in
   let offs = serialize_tuple tx tuple in
   enqueue_commit tx ;
@@ -327,20 +345,23 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
       Set.iter (fun fname ->
           !logger.debug "Mapping %S" fname ;
           let rb = RingBuf.load fname in
-          let once = output rb sersize_of_tuple serialize_tuple in
+          let once = output rb serialize_tuple in
           (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
            * case the ringbuf disappear altogether because the child is
-           * terminated then we won't deadloop.  Also, * if one child is full
+           * terminated then we won't deadloop.  Also, if one child is full
            * then we will not write to next children until we can eventually
            * write to this one. This is actually desired to have proper message
            * ordering along the stream and avoid ending up with many threads
            * retrying to write to the same child. *)
-          Hashtbl.add out_h fname (rb, RingBufLib.retry_for_ringbuf once)
+          Hashtbl.add out_h fname (rb,
+            RingBufLib.retry_for_ringbuf ~delay_rec:sleep_out once)
         ) to_open ;
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum ;
       !logger.debug "Will now output into %a"
         (Enum.print String.print) (Hashtbl.keys out_h)) fnames ;
-    List.map (fun out -> out tuple) !out_l |>
+    let sersize = sersize_of_tuple tuple in
+    IntCounter.add stats_rb_write_bytes sersize ;
+    List.map (fun out -> out (sersize, tuple)) !out_l |>
     join
 
 type worker_conf =
@@ -618,13 +639,14 @@ let aggregate
     Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
                   (fun n -> return (RingBuf.load n)) rb_in_fname
   in
-  CodeGenLib_IO.read_ringbuf rb_in (fun tx ->
+  CodeGenLib_IO.read_ringbuf ~delay_rec:sleep_in rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     with_state (fun h ->
       if !global_state = None then
         global_state := Some (global_init in_tuple) ;
       IntCounter.add stats_in_tuple_count 1 ;
+      IntCounter.add stats_rb_read_bytes (RingBuf.tx_size tx) ;
       let last_in = Option.default in_tuple !in_
       and last_selected = Option.default in_tuple !selected_tuple
       and last_unselected = Option.default in_tuple !unselected_tuple in

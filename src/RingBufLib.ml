@@ -28,12 +28,12 @@ let nullmask_bytes_of_tuple_type tuple_typ =
   bytes_for_bits |>
   round_up_to_rb_word
 
-let retry_for_ringbuf f =
+let retry_for_ringbuf ?delay_rec f =
   let on = function
     | NoMoreRoom | Empty -> true
     | _ -> false
   in
-  Helpers.retry ~on ~first_delay:0.001 ~max_delay:0.01
+  Helpers.retry ~on ~first_delay:0.001 ~max_delay:0.01 ?delay_rec
     (fun x -> Lwt.return (f x))
 
 let rec sersize_of_fixsz_typ =

@@ -102,6 +102,10 @@ struct
 
       cpu_time : float ;
       ram_usage : int ;
+      in_sleep : float ;
+      out_sleep : float ;
+      in_bytes : int ;
+      out_bytes : int ;
       pid : int option ;
       signature : string option }
 
@@ -122,6 +126,10 @@ struct
       "group_count", string_of_option string_of_int n.group_count ;
       "cpu_time", string_of_float n.cpu_time ;
       "ram_usage", string_of_int n.ram_usage ;
+      "in_sleep", string_of_float n.in_sleep ;
+      "out_sleep", string_of_float n.out_sleep ;
+      "in_bytes", string_of_int n.in_bytes ;
+      "out_bytes", string_of_int n.out_bytes ;
       "pid", string_of_option string_of_int n.pid ;
       "signature", string_of_option string_of_string n.signature ]
 end
@@ -158,7 +166,7 @@ let nodes = { desc = { name = "nodes" ; last_changed = clock () } ;
               value = [] }
 
 (* We use floats for every counter since JS integers are only 32bits *)
-let zero_sums = 0., 0., 0., 0., 0., 0., 0.
+let zero_sums = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
 let nodes_sum = { desc = { name = "nodes sum" ; last_changed = clock () } ;
                   value = zero_sums }
 
@@ -300,7 +308,12 @@ let node_columns =
      "#in", true, "tuples" ; "#selected", true, "tuples" ;
      "#out", true, "tuples" ; "#groups", true, "" ;
      "export", true, "" ;
-     "CPU", true, "seconds" ; "RAM", true, "bytes" ;
+     "CPU", true, "seconds" ;
+     "wait in", true, "seconds" ;
+     "wait out", true, "seconds" ;
+     "RAM", true, "bytes" ;
+     "volume in", true, "bytes" ;
+     "volume out", true, "bytes" ;
      "parents", false, "" ; "children", false, "" ;
      "PID", false, "" ; "signature", false, "" |]
 
@@ -394,13 +407,20 @@ let node_list_of_js r =
 let update_nodes_sum () =
   let sum =
     List.fold_left (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
-                         tot_grps, tot_cpu, tot_ram) (_, n) ->
+                         tot_grps, tot_cpu, tot_ram, tot_in_sleep,
+                         tot_out_sleep, tot_in_bytes, tot_out_bytes)
+                        (_, n) ->
         let n = n.value in
         tot_nodes +. 1., tot_ins +. float_of_int n.Node.in_tuple_count,
-        tot_sels +. float_of_int  n.sel_tuple_count,
+        tot_sels +. float_of_int n.sel_tuple_count,
         tot_outs +. float_of_int n.out_tuple_count,
         tot_grps +. float_of_int (option_def 0 n.group_count),
-        tot_cpu +. n.cpu_time, tot_ram +. float_of_int n.ram_usage
+        tot_cpu +. n.cpu_time,
+        tot_ram +. float_of_int n.ram_usage,
+        tot_in_sleep +. n.in_sleep,
+        tot_out_sleep +. n.out_sleep,
+        tot_in_bytes +. float_of_int n.in_bytes,
+        tot_out_bytes +. float_of_int n.out_bytes
       ) zero_sums nodes.value in
   set nodes_sum sum
 
@@ -449,6 +469,10 @@ let update_graph total g =
                           option_map to_int) ; 
         cpu_time = Js.(Unsafe.get n "cpu_time" |> float_of_number) ; 
         ram_usage = Js.(Unsafe.get n "ram_usage" |> to_int) ; 
+        in_sleep = Js.(Unsafe.get n "in_sleep" |> float_of_number) ;
+        out_sleep = Js.(Unsafe.get n "out_sleep" |> float_of_number) ;
+        in_bytes = Js.(Unsafe.get n "in_bytes" |> to_int) ;
+        out_bytes = Js.(Unsafe.get n "out_bytes" |> to_int) ;
         pid = Js.(Unsafe.get n "pid" |> Opt.to_option |>
                   option_map to_int) ; 
         signature = Js.(Unsafe.get n "signature" |> Opt.to_option |>
@@ -626,7 +650,8 @@ let node_tbody_row node =
   and tdoih tot = function None -> tds "n.a." | Some v -> tdih tot v
   in
   with_value nodes_sum (fun (_tot_nodes, tot_ins, tot_sels, tot_outs,
-                             tot_grps, tot_cpu, tot_ram) ->
+                             tot_grps, tot_cpu, tot_ram, tot_in_sleep,
+                             tot_out_sleep, tot_in_bytes, tot_out_bytes) ->
     let cols =
       [ tds node.Node.layer ;
         tds node.name ;
@@ -637,7 +662,11 @@ let node_tbody_row node =
         tdoih tot_grps node.group_count ;
         tds (if node.exporting then "✓" else " ") ;
         tdfh tot_cpu node.cpu_time ;
+        tdfh tot_in_sleep node.in_sleep ;
+        tdfh tot_out_sleep node.out_sleep ;
         tdih tot_ram node.ram_usage ;
+        tdih tot_in_bytes node.in_bytes ;
+        tdih tot_out_bytes node.out_bytes ;
         tds (short_node_list node.layer node.parents) ;
         tds (short_node_list node.layer node.children) ;
         tdoi node.pid ;
@@ -678,6 +707,10 @@ let node_sorter col =
          | Some i2, Some i1 -> compare i2 i1)
   | "export" -> make (fun a b -> compare b.exporting a.exporting)
   | "CPU" -> make (fun a b -> compare b.cpu_time a.cpu_time)
+  | "wait in" -> make (fun a b -> compare a.in_sleep b.in_sleep)
+  | "wait out" -> make (fun a b -> compare a.out_sleep b.out_sleep)
+  | "bytes in" -> make (fun a b -> compare a.in_bytes b.in_bytes)
+  | "bytes out" -> make (fun a b -> compare a.out_bytes b.out_bytes)
   | "RAM" -> make (fun a b -> compare b.ram_usage a.ram_usage)
   | _ ->
     make (fun a b -> match compare a.layer b.layer with
@@ -701,12 +734,14 @@ let nodes_panel =
           with_value p node_tbody_row) rows |>
         tbody)) ;
     with_value nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
-                               tot_grps, tot_cpu, tot_ram) ->
+                               tot_grps, tot_cpu, tot_ram, tot_in_sleep,
+                               tot_out_sleep, tot_in_bytes, tot_out_bytes) ->
       tfoot [
         tr [
           tds "" ; tdf tot_nodes ; tds "" ; tdf tot_ins ;
           tdf tot_sels ; tdf tot_outs ; tdf tot_grps ;
-          tds "" ; tdf tot_cpu ; tdf tot_ram ;
+          tds "" ; tdf tot_cpu ; tdf tot_in_sleep ; tdf tot_out_sleep ;
+          tdf tot_ram ; tdf tot_in_bytes ; tdf tot_out_bytes ;
           tds "" ; tds "" ; tds "" ; tds "" ] ]) ]
 
 let dispname_of_type nullable typ =

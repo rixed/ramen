@@ -214,6 +214,13 @@ CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)
   CAMLreturn(tx);
 }
 
+CAMLprim value wrap_ringbuf_tx_size(value tx)
+{
+  CAMLparam1(tx);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  CAMLreturn(Val_long((long)wrtx->alloced));
+}
+
 CAMLprim value wrap_ringbuf_enqueue_commit(value tx)
 {
   CAMLparam1(tx);

@@ -147,6 +147,7 @@ let node_info_of_node node =
       | None, _ -> 1) lst |>
     List.map (fun (_, typ) -> Lang.Expr.to_expr_type_info typ)
   in
+  let r = node.N.last_report in
   SN.{
     definition = {
       name = node.N.name ;
@@ -160,12 +161,16 @@ let node_info_of_node node =
     output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
     parents = List.map N.fq_name node.N.parents ;
     children = List.map N.fq_name node.N.children ;
-    in_tuple_count = find_int_metric node.N.last_report Consts.in_tuple_count_metric ;
-    selected_tuple_count = find_int_metric node.N.last_report Consts.selected_tuple_count_metric ;
-    out_tuple_count = find_int_metric node.N.last_report Consts.out_tuple_count_metric ;
-    group_count = find_int_opt_metric node.N.last_report Consts.group_count_metric ;
-    cpu_time = find_float_metric node.N.last_report Consts.cpu_time_metric ;
-    ram_usage = find_int_metric node.N.last_report Consts.ram_usage_metric }
+    in_tuple_count = find_int_metric r Consts.in_tuple_count_metric ;
+    selected_tuple_count = find_int_metric r Consts.selected_tuple_count_metric ;
+    out_tuple_count = find_int_metric r Consts.out_tuple_count_metric ;
+    group_count = find_int_opt_metric r Consts.group_count_metric ;
+    cpu_time = find_float_metric r Consts.cpu_time_metric ;
+    ram_usage = find_int_metric r Consts.ram_usage_metric ;
+    in_sleep = find_float_metric r Consts.rb_wait_read_metric ;
+    out_sleep = find_float_metric r Consts.rb_wait_write_metric ;
+    in_bytes = find_int_metric r Consts.rb_read_bytes_metric ;
+    out_bytes = find_int_metric r Consts.rb_write_bytes_metric }
 
 let layer_info_of_layer layer =
   SL.{
