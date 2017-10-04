@@ -159,8 +159,10 @@ let update_layer layer =
 let nodes = { desc = { name = "nodes" ; last_changed = clock () } ;
               value = [] }
 
+(* We use floats for every counter since JS integers are only 32bits *)
+let zero_sums = 0., 0., 0., 0., 0., 0., 0.
 let nodes_sum = { desc = { name = "nodes sum" ; last_changed = clock () } ;
-                  value = (0, 0, 0, 0, 0, 0., 0) }
+                  value = zero_sums }
 
 let update_node node =
   let p =
@@ -396,12 +398,12 @@ let update_nodes_sum () =
     List.fold_left (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
                          tot_grps, tot_cpu, tot_ram) (_, n) ->
         let n = n.value in
-        tot_nodes + 1, tot_ins + n.Node.in_tuple_count,
-        tot_sels + n.sel_tuple_count,
-        tot_outs + n.out_tuple_count,
-        tot_grps + (option_def 0 n.group_count),
-        tot_cpu +. n.cpu_time, tot_ram + n.ram_usage
-      ) (0, 0, 0, 0, 0, 0., 0) nodes.value in
+        tot_nodes +. 1., tot_ins +. float_of_int n.Node.in_tuple_count,
+        tot_sels +. float_of_int  n.sel_tuple_count,
+        tot_outs +. float_of_int n.out_tuple_count,
+        tot_grps +. float_of_int (option_def 0 n.group_count),
+        tot_cpu +. n.cpu_time, tot_ram +. float_of_int n.ram_usage
+      ) zero_sums nodes.value in
   set nodes_sum sum
 
 let update_graph total g =
@@ -602,8 +604,8 @@ let node_tbody_row node =
     td [ clss "number" ; text xs ;
          elmt "hr" [ attr "width" (string_of_float w) ] ] in
   let tdih tot x =
-    if tot = 0 then tdi x else
-    let w = float_of_int (100 * x) /. float_of_int tot in
+    if tot = 0. then tdi x else
+    let w = 100. *. float_of_int x /. tot in
     tdh w (string_of_int x)
   and tdfh tot x =
     if tot = 0. then tdf x else
@@ -691,9 +693,9 @@ let nodes_panel =
                                tot_grps, tot_cpu, tot_ram) ->
       tfoot [
         tr [
-          tds "" ; tdi tot_nodes ; tds "" ; tdi tot_ins ;
-          tdi tot_sels ; tdi tot_outs ; tdi tot_grps ;
-          tds "" ; tdf tot_cpu ; tdi tot_ram ;
+          tds "" ; tdf tot_nodes ; tds "" ; tdf tot_ins ;
+          tdf tot_sels ; tdf tot_outs ; tdf tot_grps ;
+          tds "" ; tdf tot_cpu ; tdf tot_ram ;
           tds "" ; tds "" ; tds "" ; tds "" ] ]) ]
 
 let dispname_of_type nullable typ =
