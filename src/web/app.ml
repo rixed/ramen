@@ -1,8 +1,6 @@
 open Js_of_ocaml
 open Engine
 
-let with_periodic_reload = true
-
 (* Printers *)
 
 let dec_num = 3
@@ -490,10 +488,23 @@ let reload_graph () =
 
 (* DOM *)
 
+let spacer = p [ clss "spacer" ]
+
+let autoreload =
+  { desc = { name = "autoreload" ; last_changed = clock () } ;
+    value = true }
+
 let header_panel =
   [ p
     [ text "Ramen v0.1 running on " ;
-      elmt "em" [ text "$HOSTNAME$." ] ] ]
+      elmt "em" [ text "$HOSTNAME$." ] ] ;
+    spacer ;
+    with_value autoreload (fun ar ->
+      button ~action:(fun _ ->
+          set autoreload (not autoreload.value))
+        [ clss ("icon actionable" ^ if ar then " selected" else "") ;
+          attr "title" ((if ar then "dis" else "en")^ "able auto-reload") ;
+          text "⟳" ]) ]
 
 let labeled_value l v =
   p [
@@ -971,15 +982,13 @@ let tictactoe = (* Do you like divs in your divs? *)
 
 let () =
   let periodically () =
-    if not editor_mode.value then (
-      print (Js.string "Reloading...") ;
+    if autoreload.value && not editor_mode.value then (
       reload_graph () ;
       (* Tail could benefit from a higher refresh frequency *)
       if sel_node.value <> "" then
         if raw_output_mode.value then reload_tail ()
         else reload_chart ()) in
-  if with_periodic_reload then
-    (Dom_html.window##setInterval (Js.wrap_callback periodically) 11_000.) |>
-    ignore ;
+  Dom_html.window##setInterval (Js.wrap_callback periodically) 11_000. |>
+  ignore ;
   start dom ;
   reload_graph ()

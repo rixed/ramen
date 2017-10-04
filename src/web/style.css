@@ -29,7 +29,10 @@ tfoot td, th { font-weight: bold; text-align: center; }
 span.null { font-style: italic; color: #888; font-size: 80%; }
 a, a:visited { color: #22c; text-decoration: none; }
 .selected { background-color: #ddd; }
-#global { height: 3em; width: 100%; }
+#global { height: 3em; width: 100%; justify-content: space-between; }
+  #global .spacer { flex-grow: 10; }
+  #global button { max-width: 3em; width: 3em; text-align: center; }
+
 #top { max-height: 80%; width: 100%; flex-grow: 1; }
   #layers { padding-right: 1em; max-width:50%; }
     #layers div { display: flex; flex-direction: column; }
