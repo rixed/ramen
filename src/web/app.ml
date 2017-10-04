@@ -17,7 +17,8 @@ let str_of_float_str s =
   match String.index s 'e' with
   | exception Not_found ->
     (match String.index s '.' with
-    | exception Not_found -> s
+    | exception Not_found ->
+      s ^ string_times (dec_num + 1) " "
     | i ->
       (* FIXME: round instead of truncate *)
       str_of_float_str' (String.sub (s ^ "00000") 0 (i + dec_num + 1)))
