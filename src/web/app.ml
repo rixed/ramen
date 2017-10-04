@@ -259,6 +259,10 @@ let sel_output_col =
   { desc = { name = "selected output column" ; last_changed = clock () } ;
     value = None (* number of column *) }
 
+let raw_output_mode =
+  { desc = { name = "output mode" ; last_changed = clock () } ;
+    value = true }
+
 let update_chart resp =
   (* As we asked for only one timeseries, consider only the first result: *)
   let resp = Js.(array_get resp 0 |> optdef_get) in
@@ -301,6 +305,8 @@ let reload_chart () =
 
 let set_sel_node id =
   set sel_node id ;
+  set sel_output_col None ;
+  set raw_output_mode true ;
   reload_tail ()
 
 (* TODO: add a health indicator (based on how old is the last report) *)
@@ -377,10 +383,6 @@ let add_edited_node () =
   edl.edited_nodes <-
     edl.edited_nodes @ [ new_edited_node edl.edited_nodes ] ;
   change edited_layer
-
-let raw_output_mode =
-  { desc = { name = "output mode" ; last_changed = clock () } ;
-    value = true }
 
 let get_variant js =
   let open Js in
@@ -927,7 +929,7 @@ let output_panel =
           div ~action:(fun _ ->
               set raw_output_mode false ;
               reload_chart ())
-            [ clss "unselected" ; text "Time Chart" ] ] ;
+            [ clss "unselected actionable" ; text "Time Chart" ] ] ;
         tail_panel ]
   | false ->
     group
@@ -936,7 +938,7 @@ let output_panel =
           div ~action:(fun _ ->
               set raw_output_mode true ;
               reload_tail ())
-            [ clss "unselected" ; text "Raw Output" ] ;
+            [ clss "unselected actionable" ; text "Raw Output" ] ;
           div [ clss "selected" ; text "Time Chart" ] ] ;
         timechart_panel ])
 
