@@ -5,7 +5,7 @@ body { margin:0; padding:0; }
   flex-direction: row;
   flex-wrap: nowrap;
   overflow: auto; }
-#application, #layers, #nodes, #input, #operation, #tail, .subtree {
+#application, #layers, #nodes, #input, #operation, #output, .subtree {
   display: flex;
   flex-direction: column;
   flex-wrap: nowrap;
@@ -28,9 +28,9 @@ td, th { padding: 0 1em 0 1em; }
 tfoot td, th { font-weight: bold; text-align: center; }
 span.null { font-style: italic; color: #888; font-size: 80%; }
 a, a:visited { color: #22c; text-decoration: none; }
+.selected { background-color: #ddd; }
 #global { height: 3em; width: 100%; }
 #top { max-height: 80%; width: 100%; flex-grow: 1; }
-#top .selected { background-color: #ddd; }
   #layers { padding-right: 1em; max-width:50%; }
     #layers div { display: flex; flex-direction: column; }
     #layers div p.name { display: flex; flex-direction: row; justify-content: space-between; }
@@ -45,18 +45,22 @@ a, a:visited { color: #22c; text-decoration: none; }
   #input { max-width: 50%; }
     #input p { margin: 0; padding: 0 }
   #operation { flex-grow: 1; }
-#tail { flex-grow: 0.2; width: 100%; min-height: 8em; }
+#output { flex-grow: 0.2; width: 100%; min-height: 8em; }
 #editor textarea { resize: none; }
 
 span.label { margin-right: 0.2em; font-size: 80%; color: #222; font-weight: 700; }
 span.value { margin-right: 1em; font-size: 85%; color: #003; }
-h1 { position: relative; top:0; left:0; background-color: #fff; color: #000010;
+h1, div.tab { position: relative; top:0; left:0; background-color: #fff; color: #000010;
      text-align: left; margin: 0; padding: 0.5em 1em 0.5em 1em;
      font-weight: 700; font-size: 100%; }
 th p { margin: 0px; }
 th p.type { font-size: 60%; font-style: italic; }
 td.number, td.float, td.u8, td.u16, td.u32, td.u64, td.u128, td.i8,
 td.i16, td.i32, td.i64, td.i128 { text-align: right; font-family: monospace; }
+
+div.tab div { float: left; min-height: 1em; height: 1em; display: flex; padding: 0 1em 0 1em; color: #000; }
+div.tab div.selected { background-color: #eee; }
+div.tab div.unselected { background-color: #fff; color: #aaa; }
 
 .icon { }
 .actionable { cursor: pointer; }

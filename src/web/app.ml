@@ -173,15 +173,17 @@ let update_node node =
   set p node ;
   nodes.value <- replace_assoc node.id p nodes.value
 
+(* Uses node.id as a value *)
+let sel_node =
+  { desc = { name = "selected node" ;last_changed = clock () } ;
+    value = "" }
+
 (* We have only one variable for all the lines because they always change
  * all together when we refresh. Value is a list of fields and an array
  * of rows, made of optional strings *)
-let tail_rows = { desc = { name = "tail rows" ; last_changed = clock () } ;
-                  value = [||] }
-
-(* Use node.id as a value *)
-let sel_node = { desc = { name = "selected node" ;last_changed = clock () } ;
-                 value = "" }
+let tail_rows =
+  { desc = { name = "tail rows" ; last_changed = clock () } ;
+    value = [||] }
 
 let update_tail resp =
   let columns = Js.Unsafe.get resp "columns" in
@@ -240,6 +242,54 @@ let reload_tail () =
       update_tail r ;
       resync ())
 
+let chart_points =
+  { desc = { name = "chart points" ; last_changed = clock () } ;
+    value = [||] (* An array of time * value *) }
+
+let sel_output_col =
+  { desc = { name = "selected output column" ; last_changed = clock () } ;
+    value = None (* number of column *) }
+
+let update_chart resp =
+  (* As we asked for only one timeseries, consider only the first result: *)
+  let resp = Js.(array_get resp 0 |> optdef_get) in
+  let times = Js.Unsafe.get resp "times"
+  and values = Js.Unsafe.get resp "values" in
+  let nb_points = times##.length in
+  let points = Array.init nb_points (fun i ->
+    let t = Js.(array_get times i |> optdef_get |> float_of_number)
+    and v = Js.(array_get values i |> Optdef.to_option |>
+            option_map float_of_number) in
+    t, v) in
+  set chart_points points
+
+let reload_chart () =
+  match List.assoc sel_node.value nodes.value,
+        sel_output_col.value with
+  | exception Not_found -> ()
+  | _, None -> ()
+  | node, Some col ->
+    let node = node.value in
+    let field_name = (List.nth node.output_type col).Field.name in
+    (* Last 2 hours for now *)
+    let now = 1500799797. (*(new%js Js.date_now)##valueOf*) in
+    let content = string_of_record
+      [ "from", string_of_float (now -. 3600. *. 2.) ;
+        "to", string_of_float now ;
+        "max_data_points", "800" ;
+        "timeseries", string_of_list string_of_record
+          [ [ "id",  string_of_string "test" ;
+              "consolidation", string_of_string "avg" ;
+              "spec", string_of_record
+                [ "Predefined", string_of_record
+                  [ "node", string_of_string node.id ;
+                    "data_field", string_of_string
+                      field_name ] ] ] ] ]
+    and path = "/timeseries" in
+    http_post path content (fun r ->
+      update_chart r ;
+      resync ())
+
 let set_sel_node id =
   set sel_node id ;
   reload_tail ()
@@ -254,8 +304,9 @@ let node_columns =
      "parents", false, "" ; "children", false, "" ;
      "PID", false, "" ; "signature", false, "" |]
 
-let sel_column = { desc = { name = "selected column" ; last_changed = clock () } ;
-                   value = "layer" (* title in node_columns *) }
+let sel_column =
+  { desc = { name = "selected column" ; last_changed = clock () } ;
+    value = "layer" (* title in node_columns *) }
 
 (* Tells if the GUI is in the layer edition mode where only the layer
  * panel is displayed alongside the large editor panel. *)
@@ -312,6 +363,10 @@ let add_edited_node () =
   edl.edited_nodes <-
     edl.edited_nodes @ [ new_edited_node edl.edited_nodes ] ;
   change edited_layer
+
+let raw_output_mode =
+  { desc = { name = "output mode" ; last_changed = clock () } ;
+    value = true }
 
 let get_variant js =
   let open Js in
@@ -513,18 +568,17 @@ let layers_panel =
 
 let pretty_th ?action c title subtitle =
   th ?action (
-    group (List.map clss c) ::
-    p [ text title ] ::
-    if subtitle = "" then [] else
-      [ p [ clss "type" ; text subtitle ] ])
+    (if c <> "" then (List.cons (clss c)) else identity)
+      (p [ text title ] ::
+       if subtitle = "" then [] else
+         [ p [ clss "type" ; text subtitle ] ]))
 
 let node_thead_col (title, sortable, subtitle) =
   with_value sel_column (fun col ->
-    let c = if col = title then ["selected"] else [] in
     let action, c =
-      if sortable && col <> title then Some (fun _ ->
-        set sel_column title), "actionable"::c
-      else None, c in
+      if sortable && col <> title then
+        Some (fun _ -> set sel_column title), "actionable"
+      else None, if col = title then "selected" else "" in
     pretty_th ?action c title subtitle)
 
 let tds v = td [ text v ]
@@ -661,9 +715,6 @@ let op_panel =
     else with_node sel (fun node ->
       elmt "pre" [ text node.operation ]))
 
-let th_field f =
-  pretty_th [] f.Field.name (dispname_of_type f.nullable f.typ)
-
 let tail_panel =
   let row fs r =
     let rec loop tds ci = function
@@ -676,6 +727,15 @@ let tail_panel =
              | Some v -> text v ] :: tds in
       loop tds (ci + 1) fs in
     loop [] 0 fs
+  and th_field ci f =
+    with_value sel_output_col (fun col ->
+      let action, c =
+        (* TODO: only if the type is a number *)
+        if col <> Some ci then
+          Some (fun _ -> set sel_output_col (Some ci)), "actionable"
+        else None, "selected" in
+      pretty_th ?action c f.Field.name
+        (dispname_of_type f.nullable f.typ))
   in
   with_value sel_node (fun sel ->
     if sel = "" then
@@ -686,13 +746,20 @@ let tail_panel =
           [ attri "colspan" (List.length node.output_type) ;
             p [ text t ] ] ] ] in
       table
-        [ thead [ tr (List.map th_field node.output_type) ] ;
+        [ thead [ tr (List.mapi th_field node.output_type) ] ;
           (if not node.exporting then
             lame_excuse ("node "^ node.id ^" does not export data")
           else
             with_value tail_rows (fun rows ->
               Array.fold_left (fun l r -> row node.output_type r :: l) [] rows |>
               List.rev |> tbody))]))
+
+let timechart_panel =
+  with_value sel_output_col (function
+    | None ->
+      p [ text "Select a column in the raw output panel to plot it." ]
+    | Some _col ->
+      p [ text "TODO" ])
 
 let form_input label value =
   elmt "label"
@@ -775,6 +842,29 @@ let layer_editor_panel =
         button ~action:save_layer
           [ clss "actionable" ; text "Save" ] ])
 
+let output_panel =
+  with_value raw_output_mode (function
+    true ->
+    group
+      [ div
+        [ clss "tab" ;
+          div [ clss "selected" ; text "Raw Output" ] ;
+          div ~action:(fun _ ->
+              set raw_output_mode false ;
+              reload_chart ())
+            [ clss "unselected" ; text "Time Chart" ] ] ;
+        tail_panel ]
+  | false ->
+    group
+      [ div
+        [ clss "tab" ;
+          div ~action:(fun _ ->
+              set raw_output_mode true ;
+              reload_tail ())
+            [ clss "unselected" ; text "Raw Output" ] ;
+          div [ clss "selected" ; text "Time Chart" ] ] ;
+        timechart_panel ])
+
 let dom =
   group
     [ div (id "global" :: header_panel) ;
@@ -791,8 +881,8 @@ let dom =
               [ id "details" ;
                 div [ id "input" ; h1 "Input" ; input_panel ] ;
                 div [ id "operation" ; h1 "Operation" ; op_panel ] ] ;
-            div [ id "tail" ; h1 "Output" ; tail_panel ] ]) ]
-
+            div
+              [ id "output" ; output_panel ] ]) ]
 (*
 (* The values in the board squares *)
 let square_values = Array.init 9 (fun i ->
@@ -857,7 +947,9 @@ let () =
       print (Js.string "Reloading...") ;
       reload_graph () ;
       (* Tail could benefit from a higher refresh frequency *)
-      reload_tail ()) in
+      if sel_node.value <> "" then
+        if raw_output_mode.value then reload_tail ()
+        else reload_chart ()) in
   if with_periodic_reload then
     (Dom_html.window##setInterval (Js.wrap_callback periodically) 11_000.) |>
     ignore ;

@@ -14,6 +14,8 @@ let fail () =
 
 (* Stdlib complement: *)
 
+let identity x = x
+
 let option_may f = function
   | None -> ()
   | Some x -> f x
