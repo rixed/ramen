@@ -249,6 +249,7 @@ let sel_output_col = make_param "selected output column" None
 
 let raw_output_mode = make_param "output mode" true
 
+let chart_duration = make_param "chart duration" 7200.
 
 let update_chart resp =
   (* As we asked for only one timeseries, consider only the first result: *)
@@ -271,10 +272,9 @@ let reload_chart () =
   | node, Some col ->
     let node = node.value in
     let field_name = (List.nth node.output_type col).Field.name in
-    (* Last 2 hours for now *)
     let now = (new%js Js.date_now)##valueOf in
     let content = string_of_record
-      [ "from", string_of_float (now -. 3600. *. 2.) ;
+      [ "from", string_of_float (now -. chart_duration.value) ;
         "to", string_of_float now ;
         "max_data_points", "800" ;
         "timeseries", string_of_list string_of_record
@@ -784,6 +784,26 @@ let tail_panel =
               Array.fold_left (fun l r -> row node.output_type r :: l) [] rows |>
               List.rev |> tbody))]))
 
+let time_selector =
+  with_value chart_duration (fun cur_dur ->
+    let sel label dur =
+      if dur = cur_dur then
+        button
+          [ clss "selected" ; text label ]
+      else
+        button ~action:(fun _ ->
+            set chart_duration dur ;
+            reload_chart ())
+          [ clss "actionable" ; text label ]
+    in
+    div
+      [ id "time-selector" ;
+        sel "last 10m" 600. ;
+        sel "last hour" 3600. ;
+        sel "last 2h" (2. *. 3600.) ;
+        sel "last 8h" (8. *. 3600.) ;
+        sel "last day" (24. *. 3600.) ])
+
 let timechart_panel =
   with_value sel_output_col (function
     | None ->
@@ -812,10 +832,12 @@ let timechart_panel =
               attr "style" ("width:"^ string_of_float svg_width ^
                             "; height:"^ string_of_float svg_height ^
                             "; min-height:"^ string_of_float svg_height ^";") ] in
-          Chart.xy_plot ~attrs ~svg_width ~svg_height
-              ~string_of_x:short_string_of_float
-              "time" "value"
-              vx_start vx_step nb_pts fold))
+          div
+            [ time_selector ;
+              Chart.xy_plot ~attrs ~svg_width ~svg_height
+                ~string_of_x:short_string_of_float
+                "time" "value"
+                vx_start vx_step nb_pts fold ]))
 
 let form_input label value =
   elmt "label"
