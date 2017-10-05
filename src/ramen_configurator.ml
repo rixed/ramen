@@ -78,9 +78,9 @@ let base_layer dataset_name delete csv_dir =
   let csv =
     let op =
       Printf.sprintf {|
-        READ%s CSV FILES "%s/tcp_v29.*.csv.gz"
+        READ%s CSV FILES "%s/tcp_v29.*.csv.lz4"
                  SEPARATOR "\t" NULL "<NULL>"
-                 PREPROCESS WITH "gunzip -c" (
+                 PREPROCESS WITH "lz4 -d -c" (
            poller string not null,
            capture_begin u64 not null,
            capture_end u64 not null,
