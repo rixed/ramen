@@ -823,8 +823,10 @@ let timechart_panel =
       with_value chart_points (fun pts ->
         let nb_pts = Array.length pts in
         if nb_pts = 0 then
-          p [ text "No data" ]
+          p [ text "No data received yet" ]
         else
+          (* Notice that we have time values but we may still not have data at
+           * those times. *)
           let vx_start = fst pts.(0) and vx_stop = fst pts.(nb_pts-1) in
           let vx_step =
             if nb_pts < 2 then 0.

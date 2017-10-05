@@ -257,7 +257,10 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
     vy_min.(pi) <- if force_show_0 then min mi 0. else mi ;
     if stacked.(pi) = StackedCentered then (
       vy_max.(pi) <- vy_max.(pi) *. 0.5 ;
-      vy_min.(pi) <- -. vy_max.(pi))
+      vy_min.(pi) <- -. vy_max.(pi)) ;
+    if vy_max.(pi) -. vy_min.(pi) < 1e-10 then (
+      vy_max.(pi) <- vy_max.(pi) +. 1. ;
+      vy_min.(pi) <- vy_min.(pi) -. 1.)
   done ;
   let get_x    = get_ratio x_axis_xmin x_axis_xmax vx_min vx_max
   and get_y pi = get_ratio y_axis_ymin y_axis_ymax vy_min.(pi) vy_max.(pi) in
