@@ -171,8 +171,8 @@ type export_req =
 let empty_export_req =
   { since = None ; max_results = None ; wait_up_to = 0. }
 
-(* We send values column by column to limit sending a type variant
- * for each and every value *)
+(* Send values column by column in order to avoid sending a type variant for
+ * each and every value. *)
 
 type export_resp =
   { first: int ;

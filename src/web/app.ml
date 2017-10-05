@@ -191,12 +191,15 @@ let update_tail resp =
   let rows = ref [||] in
   (* Returns the nulls and the values of a column *)
   let col_of_js o =
+    (* [o] is an array which first item is the field name, the second
+     * item is the null bitmask, and the third and last one is the
+     * values. *)
     (* keep the JS bool array: *)
     let nulls = Js.array_get o 1 |> optdef_get
     and values =
-      (* This final opt_def is needed, despite we know we cannot have
-       * null instead of the array of value, because for OCaml a and
-       * null, coming both from [Js.array_get o], have to have the same
+      (* This final opt_get is needed, despite we know we cannot have
+       * null instead of the array of value, because for OCaml [a] and
+       * [nulls], coming both from [Js.array_get o], have to have the same
        * type. *)
       let a = Js.array_get o 2 |> optdef_get |> opt_get in
       (* takes the only variant *)
@@ -223,9 +226,16 @@ let update_tail resp =
             !rows.(ri).(ci) <- None ;
             loop vi (ri+1)
         | _ ->
-            !rows.(ri).(ci) <-
-              Some (Js.(array_get vals vi |> optdef_get)##toString |>
-                        Js.to_string |> str_of_float_str) ;
+            !rows.(ri).(ci) <- (
+              (* Remember from PPP_JSON that nan/inf are both turned into
+               * null since there is no representation for them in JSON.
+               * Yay for expressive types! *)
+              let v = Js.array_get vals vi |> optdef_get in
+              let s = Js.Opt.case v
+                        (fun () -> "nan/inf")
+                        (fun v -> v##toString |> Js.to_string |>
+                                  str_of_float_str) in
+              Some s) ;
             loop (vi+1) (ri+1))
     in
     loop 0 0
