@@ -413,7 +413,10 @@ let compile conf headers layer_opt =
       let%lwt () = loop (List.length layers) layers in
       switch_accepted headers [
         Consts.json_content_type, (fun () -> respond_ok ()) ])
-    (function Lang.SyntaxError e | C.InvalidCommand e -> bad_request e
+    (function Lang.SyntaxError _
+            | Compiler.SyntaxErrorInNode _
+            | C.InvalidCommand _ as e ->
+              bad_request (Printexc.to_string e)
             | e -> fail e)
 
 let run conf headers layer_opt =
@@ -426,8 +429,10 @@ let run conf headers layer_opt =
       ) layers ;
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
-  with (Lang.SyntaxError e | C.InvalidCommand e) ->
-    bad_request e
+  with Lang.SyntaxError _
+     | Compiler.SyntaxErrorInNode _
+     | C.InvalidCommand _ as e ->
+       bad_request (Printexc.to_string e)
 
 let stop conf headers layer_opt =
   let%lwt layers = graph_layers conf layer_opt in

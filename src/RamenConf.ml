@@ -300,9 +300,10 @@ let parse_operation operation =
   match p ["operation"] None Parsers.no_error_correction (stream_of_string operation) |>
         to_result with
   | Bad e ->
-    let err =
+    let error =
       IO.to_string (print_bad_result Lang.Operation.print) e in
-    raise (Lang.SyntaxError ("Parse error: "^ err ^" while parsing:\n" ^ operation))
+    let open Lang in
+    raise (SyntaxError (ParseError { error ; text = operation }))
   | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
     op
 

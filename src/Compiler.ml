@@ -21,19 +21,18 @@ module C = RamenConf
 module N = RamenConf.Node
 module L = RamenConf.Layer
 open RamenSharedTypesJS
+open Lang
 
 (* Check that we have typed all that need to be typed *)
-let check_finished_tuple_type tuple =
+let check_finished_tuple_type tuple_prefix tuple_type =
   Hashtbl.iter (fun field_name (_rank, typ) ->
-      let open Lang in
       if typ.Expr.nullable = None || typ.Expr.scalar_typ = None then (
-        let msg = Printf.sprintf "Cannot find out the type of field %s (%s), \
-                                  supposed to be a member of %s"
-                    field_name
-                    (IO.to_string Expr.print_typ typ)
-                    (IO.to_string C.print_temp_tup_typ tuple) in
-        raise (SyntaxError msg)))
-    tuple.C.fields
+        let e = CannotTypeField {
+          field = field_name ;
+          typ = IO.to_string Expr.print_typ typ ;
+          tuple = tuple_prefix } in
+        raise (SyntaxError e)))
+    tuple_type.C.fields
 
 let can_cast ~from_scalar_type ~to_scalar_type =
   (* On TBool and Integer conversions:
@@ -77,21 +76,20 @@ let check_rank ~from ~to_ =
   | _ -> false
 
 let set_nullable typ nullable =
-  let open Lang.Expr in
+  let open Expr in
   match typ.nullable with
   | None -> typ.nullable <- Some nullable ; true
   | Some n ->
     if n <> nullable then (
-      let m = Printf.sprintf "%s must%s be nullable but is%s"
-                typ.expr_name (if nullable then "" else " not")
-                (if n then "" else " not") in
-      raise (Lang.SyntaxError m)
+      let e = InvalidNullability {
+        what = typ.expr_name ;
+        must_be_nullable = nullable } in
+      raise (SyntaxError e)
     ) else false
 
 (* Improve to_ while checking compatibility with from.
  * Numerical types of to_ can be enlarged to match those of from. *)
 let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
-  let open Lang in
   let changed =
     match to_.Expr.scalar_typ, from.Expr.scalar_typ with
     | None, Some _ ->
@@ -103,10 +101,12 @@ let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
         true
       ) else if ok_if_larger then false
       else
-        let m = Printf.sprintf "%s must have type %s but got %s of type %s"
-                    to_.Expr.expr_name (IO.to_string Scalar.print_typ to_typ)
-                    from.Expr.expr_name (IO.to_string Scalar.print_typ from_typ) in
-        raise (SyntaxError m)
+        let e = CannotTypeExpression {
+          what = to_.Expr.expr_name ;
+          expected_type = IO.to_string Scalar.print_typ to_typ ;
+          got = from.Expr.expr_name ;
+          got_type = IO.to_string Scalar.print_typ from_typ } in
+        raise (SyntaxError e)
     | _ -> false in
   if set_null then
     match from.Expr.nullable with
@@ -119,7 +119,6 @@ let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
  * When we recurse from an operator to its operand we set the exp_type to the one
  * in the operator so we improve typing of the AST along the way. *)
 let rec check_expr ~in_type ~out_type ~exp_type =
-  let open Lang in
   let open Expr in
   (* Check that the operand [sub_expr] is compatible with expectation (re. type
    * and null) set by the caller (the operator). [op_typ] is used for printing only.
@@ -136,17 +135,19 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (match sub_typ.scalar_typ, exp_sub_typ with
     | Some actual_typ, Some exp_sub_typ ->
       if not (can_cast ~from_scalar_type:actual_typ ~to_scalar_type:exp_sub_typ) then
-        let m = Printf.sprintf "Operand of %s is supposed to have type compatible with %s, not %s"
-          op_typ.expr_name
-          (IO.to_string Scalar.print_typ exp_sub_typ)
-          (IO.to_string Scalar.print_typ actual_typ) in
-        raise (SyntaxError m)
+        let e = CannotTypeExpression {
+          what = "Operand of "^ op_typ.expr_name ;
+          expected_type = IO.to_string Scalar.print_typ exp_sub_typ ;
+          got = "an expression" ;
+          got_type = IO.to_string Scalar.print_typ actual_typ } in
+        raise (SyntaxError e)
     | _ -> ()) ;
     (match exp_sub_nullable, sub_typ.nullable with
     | Some n1, Some n2 when n1 <> n2 ->
-      let m = Printf.sprintf "Operand of %s is%s supposed to be NULLable"
-        op_typ.expr_name (if n1 then "" else " not") in
-      raise (SyntaxError m)
+      let e = InvalidNullability {
+        what = "Operand of "^ op_typ.expr_name ;
+        must_be_nullable = n1 } in
+      raise (SyntaxError e)
     | _ -> ()) ;
     !logger.debug "...operand subtype found to be: %a"
       Expr.print_typ sub_typ ;
@@ -264,11 +265,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
             tuple := TupleOut ;
             true
           ) else if out_type.C.finished_typing then (
-            let m =
-              Printf.sprintf "field %s not in %S tuple (which is %s)"
-                field (string_of_prefix !tuple)
-                (IO.to_string C.print_temp_tup_typ in_type) in
-            raise (SyntaxError m)
+            let e = FieldNotInTuple {
+              field ; tuple = !tuple ;
+              tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
+            raise (SyntaxError e)
           ) else false
         ) else false
       | _, from ->
@@ -285,11 +285,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       | exception Not_found ->
         !logger.debug "Cannot find field %s in out-tuple" field ;
         if out_type.C.finished_typing then (
-          let m =
-            Printf.sprintf "field %s not in %S tuple ((which is %s)"
-              field (string_of_prefix !tuple)
-              (IO.to_string C.print_temp_tup_typ in_type) in
-          raise (SyntaxError m)) ;
+          let e = FieldNotInTuple {
+            field ; tuple = !tuple ;
+            tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
+          raise (SyntaxError e)) ;
         Hashtbl.add out_type.C.fields field (ref None, exp_type) ;
         true
       | _, out ->
@@ -301,7 +300,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     ) else (
       (* All other tuples are already typed (virtual fields) *)
       if not (Expr.is_virtual_field field) then (
-        Printf.eprintf "Field %a . %s is not virtual!?\n%!"
+        Printf.eprintf "Field %a.%s is not virtual!?\n%!"
           tuple_prefix_print !tuple
           field ;
         assert false
@@ -400,11 +399,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         (* So last_nullable is not allowed to be not nullable: *)
         Option.may (fun last_typ ->
           if last_typ.nullable = Some false then (
-            let m =
-              Printf.sprintf "All elements of a COALESCE must be nullable \
-                              but the last one. %s cannot be null."
-                (IO.to_string Expr.print_typ last_typ) in
-            raise (Lang.SyntaxError m)
+            let e = InvalidCoalesce {
+              what = IO.to_string Expr.print_typ last_typ ;
+              must_be_nullable = true } in
+            raise (SyntaxError e)
           )) last_typ ;
 
         (* First typecheck e, then use it to enlarge exp_type: *)
@@ -421,8 +419,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       match typ.nullable with
       | Some false -> changed
       | Some true ->
-        let m = "Last element of a COALESCE must not be NULLable" in
-        raise (Lang.SyntaxError m)
+        let e  = InvalidCoalesce {
+          what = IO.to_string Expr.print_typ typ ;
+          must_be_nullable = false } in
+        raise (SyntaxError e)
       | None -> changed)
   | StatelessFun (op_typ, Now) ->
     check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
@@ -462,7 +462,11 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | StatelessFun (op_typ, Ge (e1, e2)) | StatelessFun (op_typ, Gt (e1, e2))
   | StatelessFun (op_typ, Eq (e1, e2)) ->
     (try check_binary_op op_typ return_bool ~exp_sub_typ1:TString e1 ~exp_sub_typ2:TString e2
-    with _ -> check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2)
+    with SyntaxError (CannotTypeExpression _) as e ->
+      (* We do not retry for other errors to keep a better error message. *)
+      !logger.debug "Equality operator between strings failed with %S, \
+                     retrying with numbers" (Printexc.to_string e) ;
+      check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2)
   | StatelessFun (op_typ, And (e1, e2)) | StatelessFun (op_typ, Or (e1, e2)) ->
     check_binary_op op_typ return_bool ~exp_sub_typ1:TBool e1 ~exp_sub_typ2:TBool e2
   | StatelessFun (op_typ, BeginOfRange e) | StatelessFun (op_typ, EndOfRange e) ->
@@ -524,7 +528,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
  * If autorank is true, do not try to reuse from rank but add them instead.
  * This is meant to be used when transferring input to output due to "select *"
  *)
-let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~autorank =
+let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple ~to_prefix ~to_tuple ~autorank =
   let max_rank fields =
     Hashtbl.fold (fun _ (rank, _) max_rank ->
       match !rank with
@@ -538,8 +542,11 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
         match Hashtbl.find from_tuple.C.fields n with
         | exception Not_found ->
           if is_subset && from_tuple.C.finished_typing then (
-            let m = Printf.sprintf "Unknown field %s" n in
-            raise (Lang.SyntaxError m)) ;
+            let e = FieldNotInTuple {
+              field = n ;
+              tuple = from_prefix ;
+              tuple_type = "" (* TODO *) } in
+            raise (SyntaxError e)) ;
           changed (* no-op *)
         | parent_rank, parent_field ->
           let c1 = check_expr_type ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field
@@ -552,9 +559,12 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
         match Hashtbl.find to_tuple.C.fields n with
         | exception Not_found ->
           if to_tuple.C.finished_typing then (
-            let m = Printf.sprintf "Field %s is not in to_tuple" n in
-            raise (Lang.SyntaxError m)) ;
-          let copy = Lang.Expr.copy_typ parent_field in
+            let e = FieldNotInTuple {
+              field = n ;
+              tuple = to_prefix ;
+              tuple_type = "" (* TODO *) } in
+            raise (SyntaxError e)) ;
+          let copy = Expr.copy_typ parent_field in
           let rank =
             if autorank then ref (Some (max_rank to_tuple.C.fields + 1))
             else ref !parent_rank in
@@ -567,14 +577,13 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_tuple ~to_tuple ~au
   let changed =
     if including_complete && from_tuple.C.finished_typing && not to_tuple.C.finished_typing then (
       !logger.debug "Completing to_tuple from check_inherit_tuple" ;
-      check_finished_tuple_type to_tuple ;
+      check_finished_tuple_type to_prefix to_tuple ;
       to_tuple.C.finished_typing <- true ;
       true
     ) else changed in
   changed
 
 let check_selected_fields ~in_type ~out_type fields =
-  let open Lang in
   List.fold_lefti (fun changed i sf ->
       changed || (
         let name = sf.Operation.alias in
@@ -614,7 +623,7 @@ let check_yield ~in_type ~out_type fields =
     (* If nothing changed so far then we are done *)
     if not out_type.C.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
-      check_finished_tuple_type out_type ;
+      check_finished_tuple_type TupleOut out_type ;
       out_type.C.finished_typing <- true ;
       true
     ) else false
@@ -622,7 +631,6 @@ let check_yield ~in_type ~out_type fields =
 
 let check_aggregate ~in_type ~out_type fields and_all_others where key top
                     commit_when flush_when flush_how =
-  let open Lang in
   let open Operation in
   (
     (* Improve out_type using all expressions. Check we satisfy in_type. *)
@@ -667,7 +675,7 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
     let exp_type =
       (* That where expressions cannot be null seems a nice improvement
        * over SQL. *)
-      Lang.Expr.make_bool_typ ~nullable:false "where clause" in
+      Expr.make_bool_typ ~nullable:false "where clause" in
     check_expr ~in_type ~out_type ~exp_type where |> ignore ;
     false
   ) || (
@@ -677,13 +685,13 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
   ) || (
     (* If all other fields are selected, add them *)
     if and_all_others then (
-      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_tuple:in_type ~to_tuple:out_type ~autorank:true
+      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_prefix:TupleIn ~from_tuple:in_type ~to_prefix:TupleOut ~to_tuple:out_type ~autorank:true
     ) else false
   ) || (
     (* If nothing changed so far and our input is finished_typing, then our output is. *)
     if in_type.C.finished_typing && not out_type.C.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
-      check_finished_tuple_type out_type ;
+      check_finished_tuple_type TupleOut out_type ;
       out_type.C.finished_typing <- true ;
       true
     ) else false
@@ -694,7 +702,6 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
  * in_type is a given, don't modify it!
  *)
 let check_operation ~in_type ~out_type =
-  let open Lang in
   let open Operation in
   function
   | Yield fields ->
@@ -705,14 +712,22 @@ let check_operation ~in_type ~out_type =
                     commit_when flush_when flush_how
   | ReadCSVFile { fields ; _ } ->
     let from_tuple = C.temp_tup_typ_of_tup_typ fields in
-    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple ~to_tuple:out_type ~autorank:false
+    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleIn ~from_tuple ~to_prefix:TupleOut ~to_tuple:out_type ~autorank:false
   | ListenFor { proto ; _ } ->
     let from_tuple = C.temp_tup_typ_of_tup_typ (RamenProtocols.tuple_typ_of_proto proto) in
-    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple ~to_tuple:out_type ~autorank:false
+    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleIn ~from_tuple ~to_prefix:TupleOut ~to_tuple:out_type ~autorank:false
 
 (*
  * Type inference for the graph
  *)
+
+exception SyntaxErrorInNode of string * syntax_error
+
+let () =
+  Printexc.register_printer (function
+    | SyntaxErrorInNode (n, e) ->
+      Some ("In node "^ n ^": "^ string_of_syntax_error e)
+    | _ -> None)
 
 let check_node_types node =
   try ( (* Prepend the node name to any SyntaxError *)
@@ -721,23 +736,22 @@ let check_node_types node =
       if node.N.in_type.C.finished_typing then false
       else if node.N.parents = [] then (
         !logger.debug "Completing node %s in-type since we have no parents" node.N.name ;
-        check_finished_tuple_type node.N.in_type ;
+        check_finished_tuple_type TupleIn node.N.in_type ;
         node.N.in_type.C.finished_typing <- true ;
         true
       ) else List.fold_left (fun changed par ->
             (* This is supposed to propagate parent completeness into in-tuple. *)
-            check_inherit_tuple ~including_complete:true ~is_subset:true ~from_tuple:par.N.out_type ~to_tuple:node.N.in_type ~autorank:false || changed
+            check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleOut ~from_tuple:par.N.out_type ~to_prefix:TupleIn ~to_tuple:node.N.in_type ~autorank:false || changed
           ) false node.N.parents
     ) || (
     (* Try to improve out_type and the AST types using the in_type and the
      * operation: *)
       check_operation ~in_type:node.N.in_type ~out_type:node.N.out_type node.N.operation
     )
-  ) with Lang.SyntaxError e ->
+  ) with SyntaxError e ->
     !logger.debug "Compilation error: %s\n%s"
-      e (Printexc.get_backtrace ()) ;
-    let e' = Printf.sprintf "node %S: %s" node.N.name e in
-    raise (Lang.SyntaxError e')
+      (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
+    raise (SyntaxErrorInNode (node.N.name, e))
 
 let node_typing_is_finished conf node =
   node.N.signature <> "" ||
@@ -883,7 +897,7 @@ let compile conf layer =
         ) layer.L.persist.L.nodes true in
     (* TODO: better reporting *)
     if not finished_typing then
-      fail (Lang.SyntaxError "Cannot complete typing") else
+      fail (SyntaxError CannotCompleteTyping) else
     let _, thds =
       Hashtbl.fold (fun _ node (doing,thds) ->
           (* Avoid compiling twice the same thing (TODO: a lockfile) *)

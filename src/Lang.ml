@@ -3,13 +3,6 @@ open Batteries
 open RamenSharedTypes
 open Stdint
 
-exception SyntaxError of string
-
-let () =
-  Printexc.register_printer (function
-    | SyntaxError e -> Some ("Syntax Error: "^ e)
-    | _ -> None)
-
 type tuple_prefix =
   | TupleIn | TupleLastIn
   | TupleSelected | TupleLastSelected
@@ -31,8 +24,64 @@ let string_of_prefix = function
   | TupleGroupPrevious -> "group.previous"
   | TupleOut -> "out"
 
+type syntax_error =
+  | ParseError of { error : string ; text : string }
+  | NotConstant of string
+  | TupleNotAllowed of { tuple : tuple_prefix ; clause : string ;
+                         allowed : tuple_prefix list }
+  | StatefulNotAllowed of { clause : string }
+  | FieldNotInTuple of { field : string ; tuple : tuple_prefix ;
+                         tuple_type : string }
+  | MissingClause of { clause : string }
+  | CannotTypeField of { field : string ; typ : string ; tuple : tuple_prefix }
+  | CannotTypeExpression of { what : string ; expected_type : string ;
+                              got : string ; got_type : string }
+  | InvalidNullability of { what : string ; must_be_nullable : bool }
+  | InvalidCoalesce of { what : string ; must_be_nullable : bool }
+  | CannotCompleteTyping
+
+exception SyntaxError of syntax_error
+
 let tuple_prefix_print oc p =
   Printf.fprintf oc "%s" (string_of_prefix p)
+
+let string_of_syntax_error =
+  let h = "Syntax Error: " in
+  function
+    ParseError { error ; text } ->
+    "Parse error: "^ error ^" while parsing: "^ text
+  | NotConstant s -> h ^ s ^" is not constant"
+  | TupleNotAllowed { tuple ; clause ; allowed } ->
+    "Invalid tuple '"^ string_of_prefix tuple ^"'; in a "^ clause ^
+    " clause, all fields must come from " ^
+      (IO.to_string
+        (List.print ~first:"" ~last:"" ~sep:" or " tuple_prefix_print)
+        allowed)
+  | StatefulNotAllowed { clause } ->
+    "Stateful function not allowed in "^ clause ^" clause"
+  | FieldNotInTuple { field ; tuple ; tuple_type } ->
+    "Field "^ field ^" is not in the "^ string_of_prefix tuple ^" tuple"^
+    (if tuple_type <> "" then " (which is "^ tuple_type ^")" else "")
+  | MissingClause { clause } ->
+    "Missing "^ clause ^" clause"
+  | CannotTypeField { field ; typ ; tuple } ->
+    "Cannot find out the type of field "^ field ^" ("^ typ ^") \
+     supposed to be a member of "^ string_of_prefix tuple
+  | CannotTypeExpression { what ; expected_type ; got ; got_type } ->
+    what ^" must have type (compatible with) "^ expected_type ^
+    " but got "^ got ^" of type "^ got_type
+  | InvalidNullability { what ; must_be_nullable } ->
+    what ^" must"^ (if must_be_nullable then "" else " not") ^
+    " be nullable but is"^ if must_be_nullable then " not" else ""
+  | InvalidCoalesce { what ; must_be_nullable } ->
+    "All elements of a COALESCE must be nullable but the last one. "^
+    what ^" can"^ (if must_be_nullable then " not" else "") ^" be null."
+  | CannotCompleteTyping -> "Cannot complete typing"
+
+let () =
+  Printexc.register_printer (function
+    | SyntaxError e -> Some (string_of_syntax_error e)
+    | _ -> None)
 
 let parse_prefix m =
   let open RamenParsing in
@@ -572,7 +621,7 @@ struct
 
   let check_const what = function
     | Const _ -> ()
-    | _ -> raise (SyntaxError (what ^" must be constant"))
+    | _ -> raise (SyntaxError (NotConstant what))
 
   let rec print with_types fmt =
     let add_types t =
@@ -2067,25 +2116,19 @@ struct
     (* Check that the expression is valid, or return an error message.
      * Also perform some optimisation, numeric promotions, etc... *)
     let check =
-      let pure_in clause =
-        "Aggregation function not allowed in "^ clause
-      and fields_must_be_from lst clause =
-        Printf.sprintf "All fields must come from %s in %s"
-          (IO.to_string
-            (List.print ~first:"" ~last:"" ~sep:" or " tuple_prefix_print)
-            lst)
-          clause
-        in
-      let pure_in_where = pure_in "WHERE clause"
-      and pure_in_key = pure_in "GROUP-BY clause"
-      and pure_in_top = pure_in "TOP clause"
-      and check_pure m =
-        Expr.unpure_iter (fun _ -> raise (SyntaxError m))
+      let pure_in clause = StatefulNotAllowed { clause }
+      and fields_must_be_from tuple clause allowed =
+        TupleNotAllowed { tuple ; clause ; allowed } in
+      let pure_in_where = pure_in "WHERE"
+      and pure_in_key = pure_in "GROUP-BY"
+      and pure_in_top = pure_in "TOP"
+      and check_pure e =
+        Expr.unpure_iter (fun _ -> raise (SyntaxError e))
       and check_fields_from lst clause =
         Expr.iter (function
           | Expr.Field (_, tuple, _) ->
             if not (List.mem !tuple lst) then (
-              let m = fields_must_be_from lst clause in
+              let m = fields_must_be_from !tuple clause lst in
               raise (SyntaxError m)
             )
           | _ -> ())
@@ -2095,7 +2138,8 @@ struct
         | Some (Some ((start_field, _), duration)) ->
           let check_field_exists f =
             if not (List.exists (fun sf -> sf.alias = f) fields) then
-              let m = "Field "^ f ^" is not in the output tuple" in
+              let m = FieldNotInTuple { field = f ; tuple = TupleOut ;
+                                        tuple_type = "" (* TODO *) } in
               raise (SyntaxError m)
           in
           check_field_exists start_field ;
@@ -2106,42 +2150,42 @@ struct
       in function
       | Yield fields ->
         List.iter (fun sf ->
-            let m = "Stateful functions not allowed in YIELDs" in
-            check_pure m sf.expr ;
-            check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD operation" sf.expr
+            let e = StatefulNotAllowed { clause = "YIELD" } in
+            check_pure e sf.expr ;
+            check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD" sf.expr
           ) fields
         (* TODO: check unicity of aliases *)
       | Aggregate { fields ; where ; key ; top ; commit_when ;
                     flush_when ; flush_how ; export ; from ; _ } ->
         List.iter (fun sf ->
-            check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr
+            check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT" sf.expr
           ) fields ;
         check_export fields export ;
         (* TODO: we could allow this if we had not only a state per group but
          * also a global state. But then in some place we would need a way to
          * distinguish between group or global context. *)
         check_pure pure_in_where where ;
-        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOut] "WHERE clause" where ;
+        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOut] "WHERE" where ;
         List.iter (fun k ->
           check_pure pure_in_key k ;
-          check_fields_from [TupleIn] "KEY clause" k) key ;
+          check_fields_from [TupleIn] "KEY" k) key ;
         Option.may (fun (n, by) ->
           (* TODO: Check also that it's an unsigned integer: *)
           Expr.check_const "TOP size" n ;
           check_pure pure_in_top by ;
-          check_fields_from [TupleIn] "TOP clause" by) top ;
-        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
+          check_fields_from [TupleIn] "TOP" by) top ;
+        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN" commit_when ;
         Option.may (fun flush_when ->
-            check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN clause" flush_when
+            check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN" flush_when
           ) flush_when ;
         (match flush_how with
         | Reset | Slide _ -> ()
         | RemoveAll e | KeepOnly e ->
-          let m = "Aggregation functions not allowed in KEEP/REMOVE clause" in
+          let m = StatefulNotAllowed { clause = "KEEP/REMOVE" } in
           check_pure m e ;
-          check_fields_from [TupleGroup] "REMOVE clause" e) ;
+          check_fields_from [TupleGroup] "REMOVE" e) ;
         if from = [] then
-          raise (SyntaxError "Missing FROM clause") ;
+          raise (SyntaxError (MissingClause { clause = "FROM" }))
         (* TODO: check from is not empty *)
         (* TODO: url_notify: check field names from text templates *)
         (* TODO: check unicity of aliases *)
