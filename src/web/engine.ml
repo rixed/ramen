@@ -107,6 +107,9 @@ let rec is_worthy = function
 (* A named ref cell *)
 type 'a param = { desc : param_desc ; mutable value : 'a }
 
+let make_param name value =
+  { desc = { name ; last_changed = clock () } ; value }
+
 let elmt tag ?(svg=false) ?action subs =
   Element { tag ; svg ; action ; subs }
 let with_value p f =

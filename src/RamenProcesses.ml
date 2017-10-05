@@ -179,7 +179,6 @@ let stop conf layer =
               let out_ref =
                 out_ringbuf_names_ref conf parent in
               File.(lines_of out_ref // (<>) this_in |> write_lines out_ref)
-              (* File.(lines_of out_ref // (<>) this_in |> write_lines out_ref) *)
             ) node.N.parents ;
           (* Get rid of the worker *)
           let open Unix in

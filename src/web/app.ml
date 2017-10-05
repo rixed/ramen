@@ -147,29 +147,26 @@ end
 (* Alternatively, for simplicity we could have a single value for the whole
  * table but then very long list of nodes would be slow. *)
 (* Value is an association list from layer name to layer *)
-let layers = { desc = { name = "layers" ; last_changed = clock () } ;
-               value = [] }
+let layers = make_param "layers" []
+
 let update_layer layer =
   let p =
     try List.assoc layer.Layer.name layers.value
     with Not_found ->
       print (Js.string ("Creating layer "^ Layer.to_string layer)) ;
       change layers ;
-      { desc = { name = "layer "^ layer.name ; last_changed = clock () } ;
-        value = layer } in
+      make_param ("layer "^ layer.name) layer in
   set p layer ;
   layers.value <- replace_assoc layer.name p layers.value
 
 (* Value is an association list from node id to node.
  * Note: in theory node names are optional, and would be supplied by the
  * server if missing, but we do not make use of this behavior here. *)
-let nodes = { desc = { name = "nodes" ; last_changed = clock () } ;
-              value = [] }
+let nodes = make_param "nodes" []
 
 (* We use floats for every counter since JS integers are only 32bits *)
 let zero_sums = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
-let nodes_sum = { desc = { name = "nodes sum" ; last_changed = clock () } ;
-                  value = zero_sums }
+let nodes_sum = make_param "nodes sum" zero_sums
 
 let update_node node =
   let p =
@@ -177,22 +174,17 @@ let update_node node =
     with Not_found ->
       print (Js.string ("Creating node "^ Node.to_string node)) ;
       change nodes ;
-      { desc = { name = "node "^ node.name ; last_changed = clock () } ;
-        value = node } in
+      make_param ("node "^ node.name) node in
   set p node ;
   nodes.value <- replace_assoc node.id p nodes.value
 
 (* Uses node.id as a value *)
-let sel_node =
-  { desc = { name = "selected node" ;last_changed = clock () } ;
-    value = "" }
+let sel_node = make_param "selected node" ""
 
 (* We have only one variable for all the lines because they always change
  * all together when we refresh. Value is a list of fields and an array
  * of rows, made of optional strings *)
-let tail_rows =
-  { desc = { name = "tail rows" ; last_changed = clock () } ;
-    value = [||] }
+let tail_rows = make_param "tail rows" [||]
 
 let update_tail resp =
   let columns = Js.Unsafe.get resp "columns" in
@@ -251,17 +243,12 @@ let reload_tail () =
       update_tail r ;
       resync ())
 
-let chart_points =
-  { desc = { name = "chart points" ; last_changed = clock () } ;
-    value = [||] (* An array of time * value *) }
+let chart_points = make_param "chart points" [||]
 
-let sel_output_col =
-  { desc = { name = "selected output column" ; last_changed = clock () } ;
-    value = None (* number of column *) }
+let sel_output_col = make_param "selected output column" None
 
-let raw_output_mode =
-  { desc = { name = "output mode" ; last_changed = clock () } ;
-    value = true }
+let raw_output_mode = make_param "output mode" true
+
 
 let update_chart resp =
   (* As we asked for only one timeseries, consider only the first result: *)
@@ -324,9 +311,7 @@ let node_columns =
      "parents", false, "" ; "children", false, "" ;
      "PID", false, "" ; "signature", false, "" |]
 
-let sel_column =
-  { desc = { name = "selected column" ; last_changed = clock () } ;
-    value = "layer" (* title in node_columns *) }
+let sel_column = make_param "selected column" "layer"
 
 (* Tells if the GUI is in the layer edition mode where only the layer
  * panel is displayed alongside the large editor panel. *)
@@ -335,12 +320,9 @@ type edited_layer =
     new_layer_name : string ref ;
     mutable edited_nodes : (string ref * string ref) list }
 
-let the_new_layer = { desc = { name = "the new layer" ; last_changed = clock () } ;
-                      value = Layer.make () }
+let the_new_layer = make_param "the new layer" (Layer.make ())
 
-let editor_mode =
-  { desc = { name = "layer edition mode" ; last_changed = clock () } ;
-             value = false }
+let editor_mode = make_param "layer edition mode" false
 
 let new_edited_node edited_nodes =
   let rec loop i =
@@ -367,8 +349,7 @@ let edited_layer_of_layer l =
     edited_nodes = edited_nodes_of_layer l }
 
 let edited_layer =
-  { desc = { name = "edited nodes" ; last_changed = clock () } ;
-    value = edited_layer_of_layer the_new_layer.value }
+  make_param "edited nodes" (edited_layer_of_layer the_new_layer.value)
 
 let set_editor_mode = function
   | None ->
@@ -517,9 +498,7 @@ let reload_graph () =
 
 let spacer = p [ clss "spacer" ]
 
-let autoreload =
-  { desc = { name = "autoreload" ; last_changed = clock () } ;
-    value = true }
+let autoreload = make_param "autoreload" true
 
 let header_panel =
   [ p
@@ -824,8 +803,8 @@ let timechart_panel =
                     color = "#55e" ; stroke_width = 1.5 ; opacity = 1. ;
                     dasharray = None ; filled = true ; fill_opacity = 0.5 } in
           let fold = { Chart.fold = fun f init ->
-            (* As for now we have only one dataset the fold over datasets
-             * is trivial: *)
+            (* Since for now we have only one dataset the fold over datasets
+             * is trivial. TODO: select several columns: *)
             f init pen true (fun i -> snd pts.(i) |? 0.) } in
           let svg_width = 800. and svg_height = 400. in
           let attrs =
@@ -929,7 +908,7 @@ let output_panel =
           div ~action:(fun _ ->
               set raw_output_mode false ;
               reload_chart ())
-            [ clss "unselected actionable" ; text "Time Chart" ] ] ;
+            [ clss "actionable" ; text "Time Chart" ] ] ;
         tail_panel ]
   | false ->
     group
@@ -938,7 +917,7 @@ let output_panel =
           div ~action:(fun _ ->
               set raw_output_mode true ;
               reload_tail ())
-            [ clss "unselected actionable" ; text "Raw Output" ] ;
+            [ clss "actionable" ; text "Raw Output" ] ;
           div [ clss "selected" ; text "Time Chart" ] ] ;
         timechart_panel ])
 
