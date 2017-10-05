@@ -96,11 +96,15 @@ let http_service port cert_opt key_opt router =
       (fun exn ->
         print_exception exn ;
         match exn with
-        | HttpError (code, body) ->
-          let body = body ^ "\n" in
+        | HttpError (code, msg) ->
           let status = Code.status_of_code code in
-          let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
-          Server.respond_error ~headers ~status ~body ()
+          let headers =
+            Header.init_with "Access-Control-Allow-Origin" "*" in
+          let headers =
+            Header.add headers "Content-Type" Consts.json_content_type in
+          let body =
+            Printf.sprintf "{\"success\": false, \"error\": %S}\n" msg in
+          Server.respond_string ~headers ~status ~body ()
         | exn ->
           let body = Printexc.to_string exn ^ "\n" in
           let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
