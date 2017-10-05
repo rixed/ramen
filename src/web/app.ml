@@ -60,25 +60,11 @@ struct
     { name = "unnamed layer" ; nb_nodes = 0 ;
       status = Edition ; status_str = "Edition" ;
       last_started = None ; last_stopped = None }
-
-  let to_string l =
-    string_of_record [
-      "name", string_of_string l.name ;
-      "status", string_of_string l.status_str ;
-      "nb_nodes", string_of_int l.nb_nodes ;
-      "last_started", string_of_option string_of_float l.last_started ;
-      "last_stopped", string_of_option string_of_float l.last_stopped ]
 end
 
 module Field =
 struct
   type t = { name : string ; nullable : bool ; typ : string }
-
-  let to_string t =
-    string_of_record [
-      "name", string_of_string t.name ;
-      "nullable", string_of_bool t.nullable ;
-      "type", string_of_string t.typ ]
 end
 
 module Node =
@@ -109,30 +95,6 @@ struct
       out_bytes : int ;
       pid : int option ;
       signature : string option }
-
-  let to_string n =
-    string_of_record [
-      "layer", string_of_string n.layer ;
-      "name", string_of_string n.name ;
-      "type_of_operation", string_of_string n.type_of_operation ;
-      "exporting", string_of_bool n.exporting ;
-      "operation", string_of_string n.operation ;
-      "input_type", string_of_list Field.to_string n.input_type ;
-      "output_type", string_of_list Field.to_string n.output_type ;
-      "parents", string_of_list string_of_string n.parents ;
-      "children", string_of_list string_of_string n.children ;
-      "in_tuple_count", string_of_int n.in_tuple_count ;
-      "out_tuple_count", string_of_int n.out_tuple_count ;
-      "sel_tuple_count", string_of_int n.sel_tuple_count ;
-      "group_count", string_of_option string_of_int n.group_count ;
-      "cpu_time", string_of_float n.cpu_time ;
-      "ram_usage", string_of_int n.ram_usage ;
-      "in_sleep", string_of_float n.in_sleep ;
-      "out_sleep", string_of_float n.out_sleep ;
-      "in_bytes", string_of_int n.in_bytes ;
-      "out_bytes", string_of_int n.out_bytes ;
-      "pid", string_of_option string_of_int n.pid ;
-      "signature", string_of_option string_of_string n.signature ]
 end
 
 (* Each layer and node is its own state variable.
@@ -153,7 +115,7 @@ let update_layer layer =
   let p =
     try List.assoc layer.Layer.name layers.value
     with Not_found ->
-      print (Js.string ("Creating layer "^ Layer.to_string layer)) ;
+      print (Js.string ("Creating layer "^ layer.Layer.name)) ;
       change layers ;
       make_param ("layer "^ layer.name) layer in
   set p layer ;
@@ -172,7 +134,7 @@ let update_node node =
   let p =
     try List.assoc node.Node.id nodes.value
     with Not_found ->
-      print (Js.string ("Creating node "^ Node.to_string node)) ;
+      print (Js.string ("Creating node "^ node.Node.name)) ;
       change nodes ;
       make_param ("node "^ node.name) node in
   set p node ;
@@ -247,7 +209,7 @@ let reload_tail () =
   | exception Not_found -> ()
   | node ->
     let node = node.value in
-    let content = "{\"max_results\":-8}"
+    let content = object%js val max_results_ = -8 end
     and path = "/export/"^ enc node.layer ^"/"^ enc node.name in
     http_post path content (fun r ->
       update_tail r ;
@@ -283,18 +245,25 @@ let reload_chart () =
     let node = node.value in
     let field_name = (List.nth node.output_type col).Field.name in
     let now = (new%js Js.date_now)##valueOf in
-    let content = string_of_record
-      [ "from", string_of_float (now -. chart_duration.value) ;
-        "to", string_of_float now ;
-        "max_data_points", "800" ;
-        "timeseries", string_of_list string_of_record
-          [ [ "id",  string_of_string "test" ;
-              "consolidation", string_of_string "avg" ;
-              "spec", string_of_record
-                [ "Predefined", string_of_record
-                  [ "node", string_of_string node.id ;
-                    "data_field", string_of_string
-                      field_name ] ] ] ] ]
+    let content =
+      object%js
+        val from = js_of_float (now -. chart_duration.value)
+        val _to = js_of_float now
+        val max_data_points_ = 800
+        val timeseries = js_of_list identity [
+          object%js
+            val id = Js.string "test"
+            val consolidation = Js.string "avg"
+            val spec =
+              object%js
+                val _Predefined =
+                  object%js
+                    val node = Js.string node.id
+                    val data_field_ = Js.string field_name
+                  end
+              end
+          end ]
+      end
     and path = "/timeseries" in
     http_post path content (fun r ->
       update_chart r ;
@@ -898,17 +867,20 @@ let done_edit_cb what status =
   )
 
 let save_layer _ =
-  let string_of_node (name, operation) =
-    string_of_record [ "name", string_of_string !name ;
-                       "operation", string_of_string !operation ]
+  let js_of_node (name, operation) =
+    object%js
+      val name = Js.string !name
+      val operation = Js.string !operation
+    end
   and edl = edited_layer.value in
   let nodes =
     List.filter (fun (name, operation) ->
       !name <> "" && !operation <> "") edl.edited_nodes in
   let content =
-    string_of_record
-      [ "name", string_of_string !(edl.new_layer_name) ;
-        "nodes", string_of_list string_of_node nodes ]
+    object%js
+      val name = Js.string !(edl.new_layer_name)
+      val nodes = js_of_list js_of_node nodes
+    end
   and path = "/graph" in
   http_put path content (done_edit_cb "save")
 

@@ -53,17 +53,15 @@ let abbrev len s =
   if String.length s <= len then s else
   String.sub s 0 (len-3) ^"..."
 
-(* Printing *)
+(* Conversion to JS values *)
 
-let string_of_list ?(first="[") ?(last="]") ?(sep=", ") p l =
-  first ^ List.fold_left (fun s i ->
-            s ^ (if s = "" then "" else sep) ^ p i) "" l ^ last
+let js_of_list j lst =
+  let a = new%js Js.array_empty in
+  List.iter (fun i -> a##push (j i) |> ignore) lst ;
+  a
+let js_of_option j = function None -> Js.null | Some v -> Js.some (j v)
+let js_of_float = Js.number_of_float
 
-let quote s = "\""^ s ^"\""
-let string_of_string s = quote s
-let string_of_option p = function None -> "null" | Some v -> p v
-let string_of_field (n, v) = quote n ^": "^ v
-let string_of_record = string_of_list ~first:"{ " ~last:" }" string_of_field
 (* For a smaller JS: *)
 let string_of_float x =
   (Js.number_of_float x)##toString |> Js.to_string
@@ -440,7 +438,7 @@ let start nd =
 
 let enc s = Js.(to_string (encodeURIComponent (string s)))
 
-let ajax action path content cb =
+let ajax action path ?content cb =
   let req = XmlHttpRequest.create () in
   req##.onreadystatechange := Js.wrap_callback (fun () ->
     if req##.readyState = XmlHttpRequest.DONE then (
@@ -459,15 +457,14 @@ let ajax action path content cb =
              (Js.bool true) ;
   let ct = Js.string Consts.json_content_type in
   req##setRequestHeader (Js.string "Accept") ct ;
-  let content =
-    if content = "" then Js.null
-    else (
+  let content = match content with
+    | None -> Js.null
+    | Some js ->
       req##setRequestHeader (Js.string "Content-type") ct ;
-      Js.some (Js.string content)
-    ) in
+      Js.some (Js._JSON##stringify js) in
   req##send content
 
-let http_get path cb = ajax "GET" path "" cb
-let http_post path content cb = ajax "POST" path content cb
-let http_put path content cb = ajax "PUT" path content cb
-let http_del path cb = ajax "DELETE" path "" cb
+let http_get path cb = ajax "GET" path cb
+let http_post path content cb = ajax "POST" path ~content cb
+let http_put path content cb = ajax "PUT" path ~content cb
+let http_del path cb = ajax "DELETE" path cb
