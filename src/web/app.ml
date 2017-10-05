@@ -304,6 +304,7 @@ let set_sel_node id =
   set sel_node id ;
   set sel_output_col None ;
   set raw_output_mode true ;
+  set tail_rows [||] ;
   reload_tail ()
 
 (* TODO: add a health indicator (based on how old is the last report) *)
