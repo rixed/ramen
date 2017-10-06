@@ -83,7 +83,7 @@ let set_nullable typ nullable =
     if n <> nullable then (
       let e = InvalidNullability {
         what = typ.expr_name ;
-        must_be_nullable = nullable } in
+        must_be_nullable = n } in
       raise (SyntaxError e)
     ) else false
 
