@@ -829,8 +829,7 @@ struct
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
-      let i''''= List.fold_left (fun i e ->
-        fold_by_depth f i e) i''' e4s in
+      let i''''= List.fold_left (fold_by_depth f) i''' e4s in
       f i'''' expr
 
     | Case (_, alts, else_) ->
@@ -840,9 +839,10 @@ struct
           let i''= fold_by_depth f i' alt.case_cons in
           f i'' expr) i alts in
       let i''=
-        Option.map_default (fun else_ -> fold_by_depth f i' else_) i' else_ in
+        Option.map_default (fold_by_depth f i') i' else_ in
       f i'' expr
-    | Coalesce (_, es) -> List.fold_left f i es
+    | Coalesce (_, es) ->
+      List.fold_left (fold_by_depth f) i es
 
   let iter f = fold_by_depth (fun () e -> f e) ()
 
