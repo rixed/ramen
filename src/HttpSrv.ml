@@ -7,6 +7,7 @@ open Lwt
 open RamenLog
 open RamenSharedTypes
 open Helpers
+open Lang
 module C = RamenConf
 module N = RamenConf.Node
 module L = RamenConf.Layer
@@ -62,8 +63,7 @@ let of_json headers what ppp body =
     with e ->
       !logger.info "%s: Cannot parse received body: %S, Exception %s"
         what body (Printexc.to_string e) ;
-      fail e
-  )
+      bad_request "Can not parse body")
 
 let ok_body = "{\"success\": true}"
 let respond_ok ?(body=ok_body) ?(ct=Consts.json_content_type) () =
@@ -96,7 +96,7 @@ let serve_string conf _headers body =
   respond_ok ~body ~ct:Consts.html_content_type ()
 
 let type_of_operation =
-  let open Lang.Operation in
+  let open Operation in
   function
   | Yield _ -> "YIELD"
   | Aggregate _ -> "GROUP BY"
@@ -145,7 +145,7 @@ let node_info_of_node node =
       | Some r1, Some r2 -> Int.compare r1 r2
       | Some _, None -> -1
       | None, _ -> 1) lst |>
-    List.map (fun (_, typ) -> Lang.Expr.to_expr_type_info typ)
+    List.map (fun (_, typ) -> Expr.to_expr_type_info typ)
   in
   let r = node.N.last_report in
   SN.{
@@ -154,7 +154,7 @@ let node_info_of_node node =
       operation = node.N.op_text ;
     } ;
     type_of_operation = Some (type_of_operation node.N.operation) ;
-    exporting = Lang.Operation.is_exporting node.N.operation ;
+    exporting = Operation.is_exporting node.N.operation ;
     signature = if node.N.signature = "" then None else Some node.N.signature ;
     pid = node.N.pid ;
     input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
@@ -337,16 +337,20 @@ let put_layer conf headers body =
         let name =
           if def.SN.name <> "" then def.SN.name
           else N.make_name () in
-        wrap (fun () ->
-          let _layer, node = C.add_node conf name layer_name def.SN.operation
-          in node)
+        try
+          let _layer, node =
+            C.add_node conf name layer_name def.SN.operation in
+          return node
+        with Invalid_argument x -> bad_request ("Invalid "^ x)
+           | SyntaxError e -> bad_request (string_of_syntax_error e)
+           | e -> fail e
       ) msg.nodes in
     (* Then all the links *)
     (* FIXME: actually, we might have nodes of other layers on top of this
      * one, feeding from these new nodes (check the operation FROM) that
      * we should reconnect as well. *)
     let%lwt () = Lwt_list.iter_s (fun node ->
-        Lang.Operation.parents_of_operation node.N.operation |>
+        Operation.parents_of_operation node.N.operation |>
         Lwt_list.iter_s (fun p ->
             let%lwt parent_layer, parent_name =
               layer_node_of_user_string conf ~default_layer:layer_name p in
@@ -413,7 +417,7 @@ let compile conf headers layer_opt =
       let%lwt () = loop (List.length layers) layers in
       switch_accepted headers [
         Consts.json_content_type, (fun () -> respond_ok ()) ])
-    (function Lang.SyntaxError _
+    (function SyntaxError _
             | Compiler.SyntaxErrorInNode _
             | C.InvalidCommand _ as e ->
               bad_request (Printexc.to_string e)
@@ -429,7 +433,7 @@ let run conf headers layer_opt =
       ) layers ;
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
-  with Lang.SyntaxError _
+  with SyntaxError _
      | Compiler.SyntaxErrorInNode _
      | C.InvalidCommand _ as e ->
        bad_request (Printexc.to_string e)
@@ -460,7 +464,7 @@ let export conf headers layer_name node_name body =
   let%lwt layer, node = find_node_or_fail conf layer_name node_name in
   if not (L.is_typed layer) then
     bad_request ("node "^ node_name ^" is not typed (yet)")
-  else if not (Lang.Operation.is_exporting node.N.operation) then
+  else if not (Operation.is_exporting node.N.operation) then
     bad_request ("node "^ node_name ^" does not export data")
   else (
     let%lwt first, columns = match node.N.history with
@@ -531,7 +535,7 @@ let complete_fields conf headers body =
 *)
 
 let timeseries conf headers body =
-  let open Lang.Operation in
+  let open Operation in
   let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
   let ts_of_node_field req layer node data_field =
     let%lwt _layer, node = find_node_or_fail conf layer node in
@@ -564,7 +568,7 @@ let timeseries conf headers body =
     let%lwt _layer, parent = node_of_name conf parent_layer parent_name in
     let%lwt op_text =
       if select_x = "" then (
-        let open Lang.Operation in
+        let open Operation in
         match parent.N.operation with
         | Aggregate { export = Some (Some ((start, scale), DurationConst dur)) ; _ } ->
           Printf.sprintf
@@ -600,7 +604,7 @@ let timeseries conf headers body =
     let op_text =
       if where = "" then op_text else op_text ^" WHERE "^ where in
     let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
-    let reformatted_op = IO.to_string Lang.Operation.print operation in
+    let reformatted_op = IO.to_string Operation.print operation in
     let layer_name =
       "temp/"^ Cryptohash_md4.(string reformatted_op |> to_hex)
     and node_name = "operation" in

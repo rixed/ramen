@@ -1,6 +1,6 @@
 body { margin:0; padding:0; }
 #application { margin:0; height: 100%; background-color: #eee; }
-#global, #top, #details, .subitem {
+#title, #top, #details, .subitem {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
@@ -29,9 +29,10 @@ tfoot td, th { font-weight: bold; text-align: center; }
 span.null { font-style: italic; color: #888; font-size: 80%; }
 a, a:visited { color: #22c; text-decoration: none; }
 .selected { background-color: #ddd; }
-#global { height: 3em; width: 100%; justify-content: space-between; }
-  #global .spacer { flex-grow: 10; }
-  #global button { max-width: 3em; width: 3em; text-align: center; }
+#title { height: 3em; width: 100%; justify-content: space-between; }
+  #title .spacer { flex-grow: 10; }
+  #title button { max-width: 3em; width: 3em; text-align: center; }
+#error { background-color: #f88; }
 
 #top { max-height: 80%; width: 100%; flex-grow: 1; }
   #layers { padding-right: 1em; max-width:50%; }

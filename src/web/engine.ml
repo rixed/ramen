@@ -457,20 +457,22 @@ let start nd =
 
 let enc s = Js.(to_string (encodeURIComponent (string s)))
 
+let last_error = make_param "last error" ""
+
 let ajax action path ?content cb =
   let req = XmlHttpRequest.create () in
   req##.onreadystatechange := Js.wrap_callback (fun () ->
     if req##.readyState = XmlHttpRequest.DONE then (
       print (Js.string "AJAX query DONE!") ;
-      if req##.status <> 200 then
-        print (Js.string "AJAX query failed")
-      else (
-        let js = Js._JSON##parse req##.responseText in
+      let js = Js._JSON##parse req##.responseText in
+      if req##.status <> 200 then (
+        print_2 (Js.string "AJAX query failed") js ;
+        set last_error Js.(Unsafe.get js "error" |> to_string)
+      ) else (
         print js ;
-        cb js ;
-        resync ()
-      )
-    )) ;
+        set last_error "" ;
+        cb js) ;
+      resync ())) ;
   req##_open (Js.string action)
              (Js.string path)
              (Js.bool true) ;

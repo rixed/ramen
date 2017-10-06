@@ -481,16 +481,22 @@ let spacer = p [ clss "spacer" ]
 let autoreload = make_param "autoreload" true
 
 let header_panel =
-  [ p
-    [ text "Ramen v0.1 running on " ;
-      elmt "em" [ text "$HOSTNAME$." ] ] ;
-    spacer ;
-    with_value autoreload (fun ar ->
-      button ~action:(fun _ ->
-          set autoreload (not autoreload.value))
-        [ clss ("icon actionable" ^ if ar then " selected" else "") ;
-          attr "title" ((if ar then "dis" else "en")^ "able auto-reload") ;
-          text "⟳" ]) ]
+  group
+    [ div
+        [ id "title" ;
+          p
+            [ text "Ramen v0.1 running on " ;
+              elmt "em" [ text "$HOSTNAME$." ] ] ;
+          spacer ;
+          with_value autoreload (fun ar ->
+            let title = (if ar then "dis" else "en")^ "able auto-reload" in
+            button ~action:(fun _ ->
+                set autoreload (not autoreload.value))
+              [ clss ("icon actionable" ^ if ar then " selected" else "") ;
+                attr "title" title ; text "⟳" ]) ] ;
+      with_value last_error (function
+        | "" -> group []
+        | e -> div [ id "error" ; p [ text e ] ]) ]
 
 let labeled_value l v =
   p [
@@ -523,10 +529,12 @@ let icon_of_layer layer =
   in
   button ~action:(fun _ ->
       http_get path (fun status ->
+        (* FIXME: graph won't return a status so the following will
+         * fail. make all these return proper JSON RPC *)
         if Js.(Unsafe.get status "success" |> to_bool) then
-        http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
-          update_graph false g ;
-          resync ()))) [
+          http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
+            update_graph false g ;
+            resync ()))) [
     clss "icon actionable" ;
     attr "title" alt ;
     text icon ]
@@ -930,7 +938,7 @@ let output_panel =
 
 let dom =
   group
-    [ div (id "global" :: header_panel) ;
+    [ div [ id "global" ; header_panel ] ;
       with_value editor_mode (function
         true ->
           div [ id "editor" ; layer_editor_panel ]
