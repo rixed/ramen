@@ -1700,7 +1700,8 @@ struct
         strinG "export" -- blanks -- strinG "event" -- blanks -- strinG "starting" -- blanks --
         strinG "at" -- blanks -+ non_keyword ++ scale ++
         optional ~def:(DurationConst 0.) (
-          (blanks -- (strinG "and" ||| strinG "with") -- blanks -- strinG "duration" -- blanks -+ (
+          (blanks -- optional ~def:() ((strinG "and" ||| strinG "with") -- blanks) --
+           strinG "duration" -- blanks -+ (
              (non_keyword ++ scale >>: fun n -> DurationField n) |||
              (number >>: fun n -> DurationConst n)) |||
            blanks -- strinG "and" -- blanks -- strinG "stopping" -- blanks --
