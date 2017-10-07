@@ -1,8 +1,8 @@
 #!/bin/sh
 
 set -e
-top_srcdir=$(dirname $0)"/.."
-. $top_srcdir/tests/funcs.sh
+top_srcdir=$(dirname $0)"/../.."
+. $top_srcdir/src/tests/funcs.sh
 
 expected_tests=1
 

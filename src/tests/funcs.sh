@@ -1,6 +1,6 @@
 # vim:ft=sh
 
-fixtures="$top_srcdir/tests/fixtures"
+fixtures="$top_srcdir/src/tests/fixtures"
 
 nb_tests_tot=0
 nb_tests_ok=0
@@ -33,7 +33,7 @@ file_with() {
   cat > "$f"
 }
 
-ramen="$top_srcdir/ramen"
+ramen="$top_srcdir/src/ramen"
 
 export RAMEN_HTTP_PORT
 export RAMEN_PERSIST_DIR

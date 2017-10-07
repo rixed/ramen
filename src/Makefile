@@ -1,4 +1,4 @@
-top_srcdir = .
+top_srcdir = ../
 
 ifeq ($(shell uname),Darwin)
 FILE_NOTIFIER = RamenFileNotify_Poller.ml
