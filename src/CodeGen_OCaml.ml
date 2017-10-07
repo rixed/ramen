@@ -508,10 +508,15 @@ and emit_expr ?state ~context oc expr =
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".mul") [Some t; Some t] [e1; e2]
   | Finalize, StatelessFun (_, IDiv (e1,e2)),
-    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".div") [Some t; Some t] [e1; e2]
-  | Finalize, StatelessFun (_, Div (e1,e2)),
-    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+  | Finalize, StatelessFun (_, IDiv (e1,e2)), Some (TFloat as t) ->
+    (* Here we must convert everything to float first, then divide and
+     * take the floor: *)
+    Printf.fprintf oc "(let x_ = " ;
+    emit_functionN oc ?state (omod_of_type t ^".div") [Some t; Some t] [e1; e2] ;
+    Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_)"
+  | Finalize, StatelessFun (_, Div (e1,e2)), Some (TFloat as t) ->
     emit_functionN oc ?state (omod_of_type t ^".div") [Some t; Some t] [e1; e2]
   | Finalize, StatelessFun (_, Pow (e1,e2)),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->

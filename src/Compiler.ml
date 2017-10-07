@@ -452,7 +452,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* Same as above but always return a float *)
     check_binary_op op_typ return_float ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
   | StatelessFun (op_typ, IDiv (e1, e2)) ->
-    check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
+    check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
   | StatelessFun (op_typ, Mod (e1, e2)) ->
     check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
   | StatelessFun (op_typ, Sequence (e1, e2)) ->
