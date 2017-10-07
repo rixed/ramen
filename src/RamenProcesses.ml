@@ -36,13 +36,17 @@ exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
 
-(* Compute input ringbuf and output ringbufs given the node fq name. *)
+(* Compute input ringbuf and output ringbufs given the node identifier
+ * and its input type, so that if we change the operation of a node we
+ * don't risk reading old ringbuf with incompatible values. *)
 
 let in_ringbuf_name conf node =
-  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/in"
+  let sign = C.type_signature_hash node.N.in_type in
+  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/"^ sign ^"/in"
 
 let exp_ringbuf_name conf node =
-  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/exp"
+  let sign = C.type_signature_hash node.N.out_type in
+  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/"^ sign ^"/exp"
 
 let out_ringbuf_names_ref conf node =
   conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/out_ref"

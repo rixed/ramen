@@ -31,6 +31,11 @@ let type_signature t =
       k ^ ":" ^ Lang.Expr.signature_of_typ typ ^ tag_of_rank (Option.get !rank)
     ) "" keys
 
+let md4 s =
+  Cryptohash_md4.string s |> Cryptohash_md4.to_hex
+
+let type_signature_hash = md4 % type_signature
+
 let make_temp_tup_typ () =
   { finished_typing = false ;
     fields = Hashtbl.create 7 }
@@ -60,9 +65,6 @@ let tup_typ_of_temp_tup_type ttt =
     { typ_name = typ.Expr.expr_name ;
       nullable = Option.get typ.Expr.nullable ;
       typ = Option.get typ.Expr.scalar_typ })
-
-let md4 s =
-  Cryptohash_md4.string s |> Cryptohash_md4.to_hex
 
 type history =
   { (* Store arrays of Scalar.values not hash of names to values !
@@ -355,7 +357,7 @@ let history_block_length = 10_000 (* TODO: make it a parameter? *)
 let max_history_archives = 200
 
 let make_history conf node =
-  let type_sign = type_signature node.Node.out_type |> md4 in
+  let type_sign = type_signature_hash node.Node.out_type in
   let dir = conf.persist_dir ^"/workers/history/"^ Node.fq_name node
                              ^"/"^ type_sign in
   !logger.info "Creating history for node %S" (Node.fq_name node) ;
