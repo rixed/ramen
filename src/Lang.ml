@@ -1541,6 +1541,8 @@ struct
     (* Generate values out of thin air. The difference with Select is that
      * Yield does not wait for some input. FIXME: aggregate could behave like
      * a yield when there is no input. *)
+    (* TODO: add an "EVERY x SECONDS" parameter to sleep in between values,
+       so we could have a clock for instance. *)
     | Yield of selected_field list
     (* Aggregation of several tuples into one based on some key. Superficially looks like
      * a select but much more involved. *)

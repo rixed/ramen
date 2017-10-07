@@ -54,7 +54,7 @@ a, a:visited { color: #22c; text-decoration: none; }
 
 span.label { margin-right: 0.2em; font-size: 80%; color: #222; font-weight: 700; }
 span.value { margin-right: 1em; font-size: 85%; color: #003; }
-h1, div.tab { position: relative; top:0; left:0; background-color: #fff; color: #000010;
+h1, div.tab { position: relative; top:0; left:0; background-color: #fff;
      text-align: left; margin: 0; padding: 0.5em 1em 0.5em 1em;
      font-weight: 700; font-size: 100%; }
 th p { margin: 0px; }
@@ -62,9 +62,9 @@ th p.type { font-size: 60%; font-style: italic; }
 td.number, td.float, td.u8, td.u16, td.u32, td.u64, td.u128, td.i8,
 td.i16, td.i32, td.i64, td.i128 { text-align: right; font-family: monospace; }
 
-div.tab div { float: left; min-height: 1em; height: 1em; display: flex; padding: 0 1em 0 1em; color: #000; }
+div.tab div { float: left; min-height: 1em; height: 1em; display: flex; padding: 0 1em 0 1em; }
 div.tab div { background-color: #fff; color: #aaa; }
-div.tab div.selected { background-color: #eee; }
+div.tab div.selected { background-color: #eee; color: #000; }
 
 .icon { }
 .actionable { cursor: pointer; }
