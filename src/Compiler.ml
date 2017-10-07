@@ -432,6 +432,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | StatefullFun (op_typ, _, AggrSum e) | StatelessFun (op_typ, Age e)
   | StatelessFun (op_typ, Abs e) ->
     check_unary_op op_typ identity ~exp_sub_typ:TFloat e
+  | StatefullFun (op_typ, _, AggrAvg e) ->
+    check_unary_op op_typ return_float ~exp_sub_typ:TFloat e
   | StatefullFun (op_typ, _, AggrAnd e) | StatefullFun (op_typ, _, AggrOr e)
   | StatelessFun (op_typ, Not e) ->
     check_unary_op op_typ identity ~exp_sub_typ:TBool e

@@ -588,6 +588,13 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefullFun (_, g, AggrSum (_e)), _ ->
     emit_functionN oc ?state "identity" [None] [my_state g]
 
+  | InitState, StatefullFun (_, _, AggrAvg (e)), Some (TFloat as t) ->
+    emit_functionN oc ?state "CodeGenLib.avg_init" [Some t] [e]
+  | UpdateState, StatefullFun (_, g, AggrAvg (e)), Some (TFloat as t) ->
+    emit_functionN oc ?state "CodeGenLib.avg_add" [None; Some t] [my_state g; e]
+  | Finalize, StatefullFun (_, g, AggrAvg (_e)), _ ->
+    emit_functionN oc ?state "CodeGenLib.avg_finalize" [None] [my_state g]
+
   | InitState, StatefullFun (_, _, (AggrMax e|AggrMin e|AggrFirst e|AggrLast e)), _ ->
     emit_functionN oc ?state "identity" [None] [e] (* No conversion necessary *)
   | Finalize, StatefullFun (_, g, (AggrMax _|AggrMin _|AggrFirst _|AggrLast _)), _ ->
@@ -1013,6 +1020,7 @@ let otype_of_state e =
       t ^" CodeGenLib.Seasonal.t"
     | StatefullFun (_, _, Remember _) ->
       "CodeGenLib.remember_state"
+    | StatefullFun (_, _, AggrAvg _) -> "(int * float)"
     | _ -> t in
   if Option.get typ.nullable then t ^" option" else t
 

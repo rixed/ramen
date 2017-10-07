@@ -557,10 +557,11 @@ struct
     | EndOfRange of t
 
   and statefull_fun =
-    (* TODO: Add avg, stddev... *)
+    (* TODO: Add stddev... *)
     | AggrMin of t
     | AggrMax of t
     | AggrSum of t
+    | AggrAvg of t
     | AggrAnd of t
     | AggrOr  of t
     | AggrFirst of t
@@ -728,6 +729,8 @@ struct
       Printf.fprintf fmt "max%s(%a)" (sl g) (print with_types) e ; add_types t
     | StatefullFun (t, g, AggrSum e) ->
       Printf.fprintf fmt "sum%s(%a)" (sl g) (print with_types) e ; add_types t
+    | StatefullFun (t, g, AggrAvg e) ->
+      Printf.fprintf fmt "avg%s(%a)" (sl g) (print with_types) e ; add_types t
     | StatefullFun (t, g, AggrAnd e) ->
       Printf.fprintf fmt "and%s(%a)" (sl g) (print with_types) e ; add_types t
     | StatefullFun (t, g, AggrOr e) ->
@@ -792,9 +795,10 @@ struct
       f i expr
 
     | StatefullFun (_, _, AggrMin e) | StatefullFun (_, _, AggrMax e)
-    | StatefullFun (_, _, AggrSum e) | StatefullFun (_, _, AggrAnd e)
-    | StatefullFun (_, _, AggrOr e) | StatefullFun (_, _, AggrFirst e)
-    | StatefullFun (_, _, AggrLast e) | StatelessFun (_, Age e)
+    | StatefullFun (_, _, AggrSum e) | StatefullFun (_, _, AggrAvg e)
+    | StatefullFun (_, _, AggrAnd e) | StatefullFun (_, _, AggrOr e)
+    | StatefullFun (_, _, AggrFirst e) | StatefullFun (_, _, AggrLast e)
+    | StatelessFun (_, Age e)
     | StatelessFun (_, Not e) | StatelessFun (_, Defined e)
     | StatelessFun (_, Cast e) | StatelessFun (_, Abs e)
     | StatelessFun (_, Length e) | StatelessFun (_, BeginOfRange e)
@@ -879,6 +883,8 @@ struct
       StatefullFun (f t, g, AggrMax (if recurs then map_type ~recurs f a else a))
     | StatefullFun (t, g, AggrSum a) ->
       StatefullFun (f t, g, AggrSum (if recurs then map_type ~recurs f a else a))
+    | StatefullFun (t, g, AggrAvg a) ->
+      StatefullFun (f t, g, AggrAvg (if recurs then map_type ~recurs f a else a))
     | StatefullFun (t, g, AggrAnd a) ->
       StatefullFun (f t, g, AggrAnd (if recurs then map_type ~recurs f a else a))
     | StatefullFun (t, g, AggrOr a) ->
@@ -1266,6 +1272,8 @@ struct
           StatefullFun (make_num_typ "max aggregation", g, AggrMax e)) |||
        (afun1_sf "sum" >>: fun (g, e) ->
           StatefullFun (make_num_typ "sum aggregation", g, AggrSum e)) |||
+       (afun1_sf "avg" >>: fun (g, e) ->
+          StatefullFun (make_num_typ "sum aggregation", g, AggrAvg e)) |||
        (afun1_sf "and" >>: fun (g, e) ->
           StatefullFun (make_bool_typ "and aggregation", g, AggrAnd e)) |||
        (afun1_sf "or" >>: fun (g, e) ->
@@ -1649,6 +1657,7 @@ struct
       | StatefullFun (_, _, AggrMin (Field (_, { contents=TupleIn }, field))) -> "min_"^ field
       | StatefullFun (_, _, AggrMax (Field (_, { contents=TupleIn }, field))) -> "max_"^ field
       | StatefullFun (_, _, AggrSum (Field (_, { contents=TupleIn }, field))) -> "sum_"^ field
+      | StatefullFun (_, _, AggrAvg (Field (_, { contents=TupleIn }, field))) -> "avg_"^ field
       | StatefullFun (_, _, AggrAnd (Field (_, { contents=TupleIn }, field))) -> "and_"^ field
       | StatefullFun (_, _, AggrOr (Field (_, { contents=TupleIn }, field))) -> "or_"^ field
       | StatefullFun (_, _, AggrFirst (Field (_, { contents=TupleIn }, field))) -> "first_"^ field

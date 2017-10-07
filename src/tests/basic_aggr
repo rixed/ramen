@@ -13,6 +13,7 @@ add_node p1 \
    min horsepower,
    max (horsepower),
    sum u32(horsepower) as sum_horsepower,
+   avg horsepower,
    first ((horsepower)),
    last horsepower,
    10th percentile horsepower,
@@ -20,7 +21,7 @@ add_node p1 \
  EXPORT
  COMMIT AND FLUSH WHEN group.#count >= $nb_cars"
 run
-check_equal '1,946,1262598,552,313,140,553' "$(tail_ 1 p1)"
+check_equal '1,946,1262598,278.167,552,313,140,553' "$(tail_ 1 p1)"
 
 reset
 start

@@ -52,6 +52,11 @@ let age_i128 = Int128.of_float % age_float
 
 let now () = !CodeGenLib_IO.now
 
+(* State is count * sum *)
+let avg_init x = 1, x
+let avg_add (count, sum) x = count + 1, sum +. x
+let avg_finalize (count, sum) = sum /. float_of_int count
+
 let percentile_init x = [x]
 let percentile_add prev x = x::prev
 let percentile_finalize pct lst =
