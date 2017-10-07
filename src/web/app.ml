@@ -244,7 +244,7 @@ let reload_chart () =
   | node, Some col ->
     let node = node.value in
     let field_name = (List.nth node.output_type col).Field.name in
-    let now = (new%js Js.date_now)##valueOf in
+    let now = (new%js Js.date_now)##valueOf /. 1000. in
     let content =
       object%js
         val from = js_of_float (now -. chart_duration.value)
