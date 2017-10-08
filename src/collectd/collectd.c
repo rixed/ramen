@@ -65,7 +65,7 @@ enum collectd_decode_status collectd_decode(
   // Context. We keep those values until replaced.
   // Experience shows that the data type (type=6) comes last so we commit the
   // metric when we got that one.
-  char const *host = NULL;
+  char const *host = "";  // Not nullable so better start from a valid string
   double time = 0.;
   char const *plugin_name = NULL;
   char const *plugin_instance = NULL;
