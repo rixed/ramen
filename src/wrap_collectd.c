@@ -36,13 +36,14 @@ CAMLprim value wrap_collectd_decode(value buffer_, value nb_bytes_)
 {
   CAMLparam2(buffer_, nb_bytes_);
   CAMLlocal3(res, m_tup, tmp);
-  char *buffer = String_val(buffer_);
   unsigned nb_bytes = Long_val(nb_bytes_);
-  assert(caml_string_length(buffer_) > nb_bytes);
+  assert(caml_string_length(buffer_) >= nb_bytes);
 
   unsigned nb_metrics;
-  struct collectd_metric *metrics;
+  struct collectd_metric *metrics; // Will point into mem
   char mem[4096];
+  // Must not call caml_alloc from there until we are done with buffer
+  char *buffer = String_val(buffer_);
   enum collectd_decode_status status =
     collectd_decode(nb_bytes, buffer, sizeof(mem), mem, &nb_metrics, &metrics);
 
@@ -68,7 +69,7 @@ CAMLprim value wrap_collectd_decode(value buffer_, value nb_bytes_)
       caml_modify(&Field(m_tup, 6+v), tmp);
     }
     for (; v < COLLECTD_NB_VALUES; v++) {
-      caml_modify(&Field(m_tup, 6+v), Val_int(0));
+      caml_modify(&Field(m_tup, 6+v), Val_int(0)); // None
     }
     caml_modify(&Field(res, i), m_tup);
   }

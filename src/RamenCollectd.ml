@@ -15,7 +15,7 @@ open RamenLog
 open Lwt
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
- * wrap_collectd_decode in wrap_collectd.c *)
+ * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
 type collectd_metric =
   string (* host *) * float (* time *) *
   string option (* plugin name *) * string option (* plugin instance *) *

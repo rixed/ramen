@@ -39,7 +39,6 @@ static struct collectd_metric *alloc_metric(struct arena *arena)
   return ret;
 }
 
-#if 0
 // len must include the terminal NUL byte
 static char *alloc_string(struct arena *arena, size_t len)
 {
@@ -49,7 +48,6 @@ static char *alloc_string(struct arena *arena, size_t len)
   arena->strings_size += len;
   return (char *)arena->bytes + arena->size - arena->strings_size;
 }
-#endif
 
 enum collectd_decode_status collectd_decode(
   size_t msg_size, char const *msg_, size_t mem_size, void *mem,
@@ -62,19 +60,25 @@ enum collectd_decode_status collectd_decode(
   *nb_metrics = 0;
   *metrics = arena->bytes;
 
-  // Context. We keep those values until replaced.
-  // Experience shows that the data type (type=6) comes last so we commit the
-  // metric when we got that one.
-  char const *host = "";  // Not nullable so better start from a valid string
+  /* Context. We keep those values until replaced.
+   * Experience shows that the data type (type=6) comes last so we commit the
+   * metric when we got that one.
+   * We cannot keep pointers toward the buffer, which is still an OCaml
+   * byte string, which can therefore be moved in memory next time an alloc
+   * is done (ie when wrap_collectd_decode build the resulting array. *).
+   * So we will move all interesting strings in the arena as well. */
+  char *host = "";  // Not nullable so better start from a valid string
   double time = 0.;
-  char const *plugin_name = NULL;
-  char const *plugin_instance = NULL;
-  char const *type_name = NULL;
-  char const *type_instance = NULL;
+  char *plugin_name = NULL;
+  char *plugin_instance = NULL;
+  char *type_name = NULL;
+  char *type_instance = NULL;
 
   // Each iteration decodes a part
   for (size_t p = 0; p < msg_size; ) {
-#   define CHECK(SZ) do { if (p + SZ > msg_size) return COLLECTD_SHORT_DATA; } while (0)
+#   define CHECK(SZ) do { \
+      if (p + SZ > msg_size) return COLLECTD_SHORT_DATA; \
+    } while (0)
     // decode part header
     CHECK(4);
     unsigned part_type = (msg[p] << 8U) + msg[p+1];
@@ -90,9 +94,12 @@ enum collectd_decode_status collectd_decode(
     switch (part_type) {
 #     define DECODE_STRING(VAR) do { \
         if (part_length < 1) return COLLECTD_PARSE_ERROR; \
-        VAR = (char *)(msg + p); \
+        char const *src = (char const *)(msg + p); \
         p += part_length; \
         if (msg[p-1] != '\0') return COLLECTD_PARSE_ERROR; \
+        VAR = alloc_string(arena, part_length); \
+        if (! (VAR)) return COLLECTD_NOT_ENOUGH_RAM; \
+        memcpy(VAR, src, part_length); \
       } while (0)
 
 #     define DECODE_NUM(VAR) do { \

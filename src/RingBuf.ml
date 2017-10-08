@@ -29,7 +29,7 @@ external dequeue_commit : tx -> unit = "wrap_ringbuf_dequeue_commit"
 external dequeue : t -> bytes = "wrap_ringbuf_dequeue"
 
 external write_float : tx -> int -> float -> unit = "write_float"
-external write_string : tx -> int -> string -> unit = "write_boxed_str"
+external write_string : tx -> int -> string -> unit = "write_str"
 external write_u8 : tx -> int -> Uint8.t -> unit = "write_boxed_8"
 external write_u16 : tx -> int -> Uint16.t -> unit = "write_boxed_16"
 external write_u32 : tx -> int -> Uint32.t -> unit = "write_boxed_32"

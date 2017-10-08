@@ -67,6 +67,9 @@ static value alloc_ringbuf(struct ringbuf *rb)
 
 /* type tx for struct wrap_ringbuf_tx (we wrap in there the actual rb) */
 
+// TODO: try to store the offset in there to minimize number of parameters
+// passed from OCaml to C
+
 struct wrap_ringbuf_tx {
   struct ringbuf *rb;
   struct ringbuf_tx tx;
@@ -375,13 +378,13 @@ READ_BOXED(int, 32, caml_int32_ops);
 READ_UNBOXED_INT(int, 16);
 READ_UNBOXED_INT(int, 8);
 
-CAMLprim value write_boxed_str(value tx, value off_, value v_)
+CAMLprim value write_str(value tx, value off_, value v_)
 {
   CAMLparam3(tx, off_, v_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
   assert(Is_block(v_));
-  assert(Tag_val(v_) >= String_tag);
+  assert(Tag_val(v_) == String_tag);
   uint32_t size = caml_string_length(v_);
   char const *src = Bp_val(v_);
   // We must start this variable size field with its length:
@@ -409,7 +412,7 @@ CAMLprim value write_word(value tx, value off_, value v_)
   CAMLreturn(Val_unit);
 }
 
-// We need a special case for floats thanks to the many corner cases for floats
+// We need a special case thanks to the many corner cases for floats
 CAMLprim value write_float(value tx, value off_, value v_)
 {
   CAMLparam3(tx, off_, v_);
@@ -493,7 +496,7 @@ CAMLprim value read_str(value tx, value off_)
   size_t offs = Long_val(off_);
   uint32_t size;
   read_words(wrtx, offs, (char *)&size, sizeof size);
-  v = caml_alloc_string(size);
+  v = caml_alloc_string(size);  // Will add the final '\0'
   read_words(wrtx, offs + sizeof size, String_val(v), size);
   CAMLreturn(v);
 }
