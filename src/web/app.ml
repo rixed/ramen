@@ -218,7 +218,7 @@ let reload_tail () =
       update_tail r ;
       resync ())
 
-let chart_points = make_param "chart points" [||]
+let chart_points = make_param "chart points" ("", [||])
 
 let sel_output_col = make_param "selected output column" None
 
@@ -226,7 +226,7 @@ let raw_output_mode = make_param "output mode" true
 
 let chart_duration = make_param "chart duration" (3. *. 3600.)
 
-let update_chart resp =
+let update_chart field_name resp =
   (* As we asked for only one timeseries, consider only the first result: *)
   let resp = Js.(array_get resp 0 |> optdef_get) in
   let times = Js.Unsafe.get resp "times"
@@ -237,7 +237,7 @@ let update_chart resp =
     and v = Js.(array_get values i |> Optdef.to_option |>
             option_map float_of_number) in
     t, v) in
-  set chart_points points
+  set chart_points (field_name, points)
 
 let reload_chart () =
   match List.assoc sel_node.value nodes.value,
@@ -269,7 +269,7 @@ let reload_chart () =
       end
     and path = "/timeseries" in
     http_post path content (fun r ->
-      update_chart r ;
+      update_chart field_name r ;
       resync ())
 
 let set_sel_node id =
@@ -800,7 +800,7 @@ let timechart_panel =
     | None ->
       p [ text "Select a column in the raw output panel to plot it." ]
     | Some _col ->
-      with_value chart_points (fun pts ->
+      with_value chart_points (fun (field_name, pts) ->
         let nb_pts = Array.length pts in
         if nb_pts = 0 then
           p [ text "No data received yet" ]
@@ -828,8 +828,9 @@ let timechart_panel =
           div
             [ time_selector ;
               Chart.xy_plot ~attrs ~svg_width ~svg_height
-                ~string_of_x:short_string_of_float
-                "time" "value"
+                ~string_of_x:Formats.(timestamp.to_label)
+                ~string_of_y:Formats.(numeric.to_label)
+                "time" field_name
                 vx_start vx_step nb_pts fold ]))
 
 let form_input label value =

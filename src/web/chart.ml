@@ -133,13 +133,16 @@ let xy_grid ?(show_vgrid=true) ?stroke ?stroke_width ?font_size
     v in
   let x_orig = bound_by x_min x_max (get_x 0.)
   and y_orig = bound_by y_max y_min (get_y 0.) in (* note that y_min, the Y of the origin, is actually greater the y_max, due to the fact that SVG Y starts at top of img *)
+  Formats.reset_all_states () ;
   let x_axis =
     axis ?base:x_base ?stroke ?stroke_width ?arrow_size ?tick_spacing:x_tick_spacing ?font_size ?tick_length
          ?label:x_label ?string_of_v:string_of_x (x_min, y_orig) (x_max, y_orig) vx_min vx_max in
+  Formats.reset_all_states () ;
   let y_axis =
     axis ?base:y1_base ?stroke ?stroke_width ?arrow_size ?tick_spacing:y_tick_spacing ?font_size ?tick_length
          ~extend_ticks:(if show_vgrid then x_max -. x_min else 0.)
          ?label:y_label ?string_of_v:string_of_y (x_orig, y_min) (x_orig, y_max) vy_min vy_max in
+  Formats.reset_all_states () ;
   let y2_axis = match y2 with
     | None -> g []
     | Some (label, string_of_v, vy2_min, vy2_max) ->
@@ -284,6 +287,7 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
       | base ->
         Hashtbl.replace tot_vy pen.label (base +. vy)
     done) ;
+  Formats.reset_all_states () ;
   (* The SVG *)
   let path_of_dataset pen prim get =
     let pi = if prim then 0 else 1 in
