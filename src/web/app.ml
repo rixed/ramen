@@ -158,22 +158,23 @@ let update_tail resp =
      * values. *)
     (* keep the JS bool array: *)
     let nulls = Js.array_get o 1 |> optdef_get
-    and values =
-      (* This final opt_get is needed, despite we know we cannot have
-       * null instead of the array of value, because for OCaml [a] and
-       * [nulls], coming both from [Js.array_get o], have to have the same
-       * type. *)
-      let a = Js.array_get o 2 |> optdef_get |> opt_get in
-      (* takes the only variant *)
-      let typ =
-        Js.(array_get (object_keys a) 0 |> optdef_get |> to_string) in
+    (* This final opt_get is needed, despite we know we cannot have
+     * null instead of the array of value, because for OCaml [a] and
+     * [nulls], coming both from [Js.array_get o], have to have the same
+     * type. *)
+    and a = Js.array_get o 2 |> optdef_get |> opt_get in
+    (* takes the only variant *)
+    let typ =
+      Js.(array_get (object_keys a) 0 |> optdef_get |> to_string) in
+    let values =
       Js.Unsafe.get a typ (* Keep the JS array of values *)
     in
-    nulls, values
+    typ, nulls, values
   in
   let nb_cols = columns##.length in
   for ci = 0 to nb_cols - 1 do
-    let nulls, vals = col_of_js Js.(array_get columns ci |> optdef_get) in
+    let typ, nulls, vals =
+      col_of_js Js.(array_get columns ci |> optdef_get) in
     if ci = 0 then (
       let nb_rows =
         Js.Opt.case nulls (fun () -> vals##.length)
@@ -185,7 +186,7 @@ let update_tail resp =
       if ri < Array.length !rows then (
         match Js.Opt.to_option nulls with
           Some n when not Js.(array_get n ri |> optdef_get |> to_bool) ->
-            !rows.(ri).(ci) <- None ;
+            (*!rows.(ri).(ci) <- None ; (* leave it to null *) *)
             loop vi (ri+1)
         | _ ->
             !rows.(ri).(ci) <- (
@@ -195,8 +196,10 @@ let update_tail resp =
               let v = Js.array_get vals vi |> optdef_get in
               let s = Js.Opt.case v
                         (fun () -> "nan/inf")
-                        (fun v -> v##toString |> Js.to_string |>
-                                  str_of_float_str) in
+                        (fun v ->
+                          let s = v##toString |> Js.to_string in
+                          if typ = "AFloat" then str_of_float_str s
+                          else s) in
               Some s) ;
             loop (vi+1) (ri+1))
     in
