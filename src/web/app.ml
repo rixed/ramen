@@ -221,7 +221,7 @@ let sel_output_col = make_param "selected output column" None
 
 let raw_output_mode = make_param "output mode" true
 
-let chart_duration = make_param "chart duration" 7200.
+let chart_duration = make_param "chart duration" (3. *. 3600.)
 
 let update_chart resp =
   (* As we asked for only one timeseries, consider only the first result: *)
@@ -788,7 +788,7 @@ let time_selector =
       [ id "time-selector" ;
         sel "last 10m" 600. ;
         sel "last hour" 3600. ;
-        sel "last 2h" (2. *. 3600.) ;
+        sel "last 3h" (3. *. 3600.) ;
         sel "last 8h" (8. *. 3600.) ;
         sel "last day" (24. *. 3600.) ])
 
