@@ -97,15 +97,16 @@ let emit_sersize_of_tuple name oc tuple_typ =
    * there are nullable fields, rounded to the greater or equal multiple of rb_word_size.
    * This is a constant given by the tuple type:
    *)
-  let size_for_nullmask = RingBufLib.nullmask_bytes_of_tuple_type tuple_typ in
+  let size_for_nullmask =
+    RingBufLib.nullmask_bytes_of_tuple_type tuple_typ in
   (* Let's emit the function definition, deconstructing the tuple with identifiers
    * for varsized fields: *)
   Printf.fprintf oc "let %s %a =\n\t\
-      %d (* null bitmask *) + %a\n"
+      %d (* null bitmask *) + \n\t%a\n"
     name
     (print_tuple_deconstruct TupleOut) tuple_typ
     size_for_nullmask
-    (List.print ~first:"" ~last:"" ~sep:" + " (fun fmt field_typ ->
+    (List.print ~first:"" ~last:"" ~sep:" +\n\t" (fun fmt field_typ ->
       let id = id_of_field_typ ~tuple:TupleOut field_typ in
       if field_typ.nullable then (
         Printf.fprintf fmt "(match %s with None -> 0 | Some x_ -> %a)"
