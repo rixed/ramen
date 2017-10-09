@@ -107,8 +107,10 @@ let run conf layer =
           "report_url="^ conf.C.ramen_url
                        ^ "/report/"^ Uri.pct_encode node.N.layer
                        ^ "/"^ Uri.pct_encode node.N.name ;
+          (* We need to change this dir whenever the node signature change
+           * to prevent it to reload an incompatible state: *)
           "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
-                        ^ (N.fq_name node) ;
+                        ^ (N.fq_name node) ^"/"^ node.N.signature ;
           (match !logger.logdir with
             | Some _ ->
               "log_dir="^ conf.C.persist_dir ^"/workers/log/"
