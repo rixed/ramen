@@ -221,6 +221,8 @@ let reload_tail () =
 (* A list of field_name * points *)
 let chart_points = make_param "chart points" []
 
+let chart_type = make_param "chart type" Chart.NotStacked
+
 let sel_output_cols = make_param "selected output columns" []
 
 let raw_output_mode = make_param "output mode" true
@@ -281,6 +283,7 @@ let reload_chart () =
 let set_sel_node id =
   set sel_node id ;
   set sel_output_cols [] ;
+  set chart_type Chart.NotStacked ;
   set raw_output_mode true ;
   set tail_rows [||] ;
   reload_tail ()
@@ -789,21 +792,33 @@ let time_selector =
   with_value chart_duration (fun cur_dur ->
     let sel label dur =
       if dur = cur_dur then
-        button
-          [ clss "selected" ; text label ]
+        button [ clss "selected" ; text label ]
       else
         button ~action:(fun _ ->
             set chart_duration dur ;
             reload_chart ())
-          [ clss "actionable" ; text label ]
-    in
+          [ clss "actionable" ; text label ] in
     div
-      [ id "time-selector" ;
+      [ clss "time-selector" ;
         sel "last 10m" 600. ;
         sel "last hour" 3600. ;
         sel "last 3h" (3. *. 3600.) ;
         sel "last 8h" (8. *. 3600.) ;
         sel "last day" (24. *. 3600.) ])
+
+let chart_type_selector =
+  with_value chart_type (fun cur_ct ->
+    let sel label ct =
+      if ct = cur_ct then
+        button [ clss "selected" ; text label ]
+      else
+        button ~action:(fun _ -> set chart_type ct)
+          [ clss "actionable" ; text label ] in
+    div
+      [ clss "chart-type-selector" ;
+        sel "normal" Chart.NotStacked ;
+        sel "stacked" Chart.Stacked ;
+        sel "stacked+centered" Chart.StackedCentered ])
 
 let timechart_panel =
   with_value sel_output_cols (function
@@ -842,12 +857,15 @@ let timechart_panel =
                             "; min-height:"^ string_of_float svg_height ^";") ] in
           div
             [ time_selector ;
-              Chart.xy_plot ~attrs ~svg_width ~svg_height
-                ~string_of_x:Formats.(timestamp.to_label)
-                ~string_of_y:Formats.(numeric.to_label)
-                "time"
-                (if single_field then fst_field_name else "")
-                vx_start vx_step nb_pts fold ]))
+              chart_type_selector ;
+              with_value chart_type (fun stacked_y1 ->
+                Chart.xy_plot ~attrs ~svg_width ~svg_height
+                  ~string_of_x:Formats.(timestamp.to_label)
+                  ~string_of_y:Formats.(numeric.to_label)
+                  ~stacked_y1
+                  "time"
+                  (if single_field then fst_field_name else "")
+                  vx_start vx_step nb_pts fold) ]))
 
 let form_input label value =
   elmt "label"

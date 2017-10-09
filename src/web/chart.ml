@@ -218,9 +218,11 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
   (* TODO: if vx_min is close to 0 (compared to vx_max) then clamp it to 0 *)
   let vx_max = vx_of_bucket (nb_vx-1) in
   (* Compute min/max Y for a given bucket (for primary and secondary Ys) *)
-  let max_vy = Array.init 2 (fun _ -> Array.make nb_vx ~-.max_float)
-  and min_vy = Array.init 2 (fun _ -> Array.make nb_vx max_float) in
   let label2 = ref None in
+  let max_vy = Array.init 2 (fun pi ->
+    Array.make nb_vx (if stacked.(pi) = NotStacked then ~-.max_float else 0.))
+  and min_vy = Array.init 2 (fun pi ->
+    Array.make nb_vx (if stacked.(pi) = NotStacked then max_float else 0.)) in
   let set_min_max pi =
     if stacked.(pi) = NotStacked then
       (* keep the max of the Ys *)
