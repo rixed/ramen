@@ -298,3 +298,7 @@ let read_whole_file fname =
     let buf = Bytes.create len in
     let%lwt () = read_into_exactly ic buf 0 len in
     Lwt.return (Bytes.to_string buf))
+
+let file_print oc fname =
+  let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
+  String.print oc content

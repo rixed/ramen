@@ -5,6 +5,7 @@ module C = RamenConf
 module N = RamenConf.Node
 module L = RamenConf.Layer
 open RamenSharedTypesJS
+open Helpers
 
 let fd_of_int : int -> Unix.file_descr = Obj.magic
 
@@ -97,6 +98,8 @@ let run conf layer =
           out_ringbuf_names_ref conf node in
         Helpers.mkdir_all ~is_file:true out_ringbuf_ref ;
         File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
+        !logger.info "Start %s with output to %a"
+          node.N.name file_print out_ringbuf_ref ;
         let input_ringbuf = rb_name_of node in
         let env = [|
           "OCAMLRUNPARAM=b" ;
@@ -144,8 +147,9 @@ let run conf layer =
                * us, if we are still running). *)
               let lines = File.lines_of out_ref |> List.of_enum in
               if not (List.mem input_ringbuf lines) then (
-                !logger.info "Adding %s into %s" input_ringbuf out_ref ;
-                File.write_lines out_ref (List.enum (input_ringbuf :: lines)))
+                File.write_lines out_ref (List.enum (input_ringbuf :: lines)) ;
+                !logger.info "Adding %s into %s, now %s outputs to %a (before: %a)"
+                  input_ringbuf out_ref parent.N.name file_print out_ref (List.print String.print) lines)
           ) node.N.parents
       ) layer.persist.nodes ;
     L.set_status layer Running ;
@@ -186,6 +190,8 @@ let stop conf layer =
                 out_ringbuf_names_ref conf parent in
               let out_files = File.lines_of out_ref |> List.of_enum in
               File.write_lines out_ref (List.filter ((<>) this_in) out_files |> List.enum) ;
+              !logger.info "Removed %s from output, now %s output to: %a (was: %a)"
+                node.N.name parent.N.name file_print out_ref (List.print String.print) out_files ;
             ) node.N.parents ;
           (* Get rid of the worker *)
           let open Unix in
