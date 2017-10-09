@@ -218,63 +218,69 @@ let reload_tail () =
       update_tail r ;
       resync ())
 
-let chart_points = make_param "chart points" ("", [||])
+(* A list of field_name * points *)
+let chart_points = make_param "chart points" []
 
-let sel_output_col = make_param "selected output column" None
+let sel_output_cols = make_param "selected output columns" []
 
 let raw_output_mode = make_param "output mode" true
 
 let chart_duration = make_param "chart duration" (3. *. 3600.)
 
-let update_chart field_name resp =
-  (* As we asked for only one timeseries, consider only the first result: *)
-  let resp = Js.(array_get resp 0 |> optdef_get) in
-  let times = Js.Unsafe.get resp "times"
-  and values = Js.Unsafe.get resp "values" in
-  let nb_points = times##.length in
-  let points = Array.init nb_points (fun i ->
-    let t = Js.(array_get times i |> optdef_get |> float_of_number)
-    and v = Js.(array_get values i |> Optdef.to_option |>
-            option_map float_of_number) in
-    t, v) in
-  set chart_points (field_name, points)
+let update_chart field_names resp =
+  List.mapi (fun i field_name ->
+    let resp = Js.(array_get resp i |> optdef_get) in
+    let times = Js.Unsafe.get resp "times"
+    and values = Js.Unsafe.get resp "values" in
+    let nb_points = times##.length in
+    let points = Array.init nb_points (fun i ->
+      let t = Js.(array_get times i |> optdef_get |> float_of_number)
+      and v = Js.(array_get values i |> optdef_get |> Opt.to_option |>
+              option_map float_of_number) in
+      t, v) in
+    field_name, points) field_names |>
+  set chart_points
 
 let reload_chart () =
   match List.assoc sel_node.value nodes.value,
-        sel_output_col.value with
+        sel_output_cols.value with
   | exception Not_found -> ()
-  | _, None -> ()
-  | node, Some col ->
+  | _, [] -> ()
+  | node, cols ->
     let node = node.value in
-    let field_name = (List.nth node.output_type col).Field.name in
+    let field_names =
+      List.map (fun col ->
+        (List.nth node.output_type col).Field.name) cols in
     let now = (new%js Js.date_now)##valueOf /. 1000. in
     let content =
       object%js
         val from = js_of_float (now -. chart_duration.value)
         val _to = js_of_float now
         val max_data_points_ = 800
-        val timeseries = js_of_list identity [
-          object%js
-            val id = Js.string "test"
-            val consolidation = Js.string "avg"
-            val spec =
-              object%js
-                val _Predefined =
-                  object%js
-                    val node = Js.string node.id
-                    val data_field_ = Js.string field_name
-                  end
-              end
-          end ]
+        val timeseries =
+          List.map (fun field_name ->
+            object%js
+              val id = Js.string field_name
+              val consolidation = Js.string "avg"
+              val spec =
+                object%js
+                  val _Predefined =
+                    object%js
+                      val node = Js.string node.id
+                      val data_field_ = Js.string field_name
+                    end
+                end
+            end) field_names |>
+          js_of_list identity
       end
     and path = "/timeseries" in
     http_post path content (fun r ->
-      update_chart field_name r ;
+      update_chart field_names r ;
       resync ())
 
 let set_sel_node id =
   set sel_node id ;
-  set sel_output_col None ;
+  set sel_output_cols [] ;
   set raw_output_mode true ;
   set tail_rows [||] ;
   reload_tail ()
@@ -749,13 +755,17 @@ let tail_panel =
       loop tds (ci + 1) fs in
     loop [] 0 fs
   and th_field ci f =
-    with_value sel_output_col (fun col ->
-      let action, c =
-        (* TODO: only if the type is a number *)
-        if col <> Some ci then
-          Some (fun _ -> set sel_output_col (Some ci)), "actionable"
-        else None, "selected" in
-      pretty_th ?action c f.Field.name
+    with_value sel_output_cols (fun cols ->
+      let is_selected = List.mem ci cols in
+      let action _ =
+        let toggled =
+          if is_selected then
+            List.filter ((<>) ci) cols
+          (* TODO: only if the type is a number *)
+          else ci :: cols in
+        set sel_output_cols toggled in
+      let c = if is_selected then "selected actionale" else "actionable" in
+      pretty_th ~action c f.Field.name
         (dispname_of_type f.nullable f.typ))
   in
   with_value sel_node (fun sel ->
@@ -796,29 +806,34 @@ let time_selector =
         sel "last day" (24. *. 3600.) ])
 
 let timechart_panel =
-  with_value sel_output_col (function
-    | None ->
+  with_value sel_output_cols (function
+    | [] ->
       p [ text "Select a column in the raw output panel to plot it." ]
-    | Some _col ->
-      with_value chart_points (fun (field_name, pts) ->
-        let nb_pts = Array.length pts in
-        if nb_pts = 0 then
-          p [ text "No data received yet" ]
+    | _ ->
+      with_value chart_points (fun field_pts ->
+        if field_pts = [] || Array.length (snd (List.hd field_pts)) = 0
+        then p [ text "No data received yet" ]
         else
+          (* We consider times are the same for all fields *)
+          let fst_field_name, fst_pts = List.hd field_pts in
+          let nb_pts = Array.length fst_pts in
+          let single_field = match field_pts with [_] -> true | _ -> false in
           (* Notice that we have time values but we may still not have data at
            * those times. *)
-          let vx_start = fst pts.(0) and vx_stop = fst pts.(nb_pts-1) in
+          let vx_start =
+            fst fst_pts.(0) and vx_stop = fst fst_pts.(nb_pts-1) in
           let vx_step =
             if nb_pts < 2 then 0.
             else (vx_stop -. vx_start) /. (float_of_int (nb_pts - 1)) in
-          let pen =
-            Chart.{ label = "value" ; draw_line = true ; draw_points = true ;
-                    color = "#55e" ; stroke_width = 1.5 ; opacity = 1. ;
-                    dasharray = None ; filled = true ; fill_opacity = 0.5 } in
           let fold = { Chart.fold = fun f init ->
-            (* Since for now we have only one dataset the fold over datasets
-             * is trivial. TODO: select several columns: *)
-            f init pen true (fun i -> snd pts.(i) |? 0.) } in
+            List.fold_left (fun f_val (field_name, pts) ->
+                let pen =
+                  Chart.{ label = field_name ; draw_line = true ; draw_points = true ;
+                          color = Color.random_of_string field_name ;
+                          stroke_width = 1.5 ; opacity = 1. ;
+                          dasharray = None ; filled = true ; fill_opacity = 0.3 } in
+                f f_val pen true (fun i -> snd pts.(i) |? 0. (* TODO: handle None *))
+              ) init field_pts } in
           let svg_width = 800. and svg_height = 400. in
           let attrs =
             [ clss "chart" ;
@@ -830,7 +845,8 @@ let timechart_panel =
               Chart.xy_plot ~attrs ~svg_width ~svg_height
                 ~string_of_x:Formats.(timestamp.to_label)
                 ~string_of_y:Formats.(numeric.to_label)
-                "time" field_name
+                "time"
+                (if single_field then fst_field_name else "")
                 vx_start vx_step nb_pts fold ]))
 
 let form_input label value =

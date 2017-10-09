@@ -156,8 +156,8 @@ let xy_grid ?(show_vgrid=true) ?stroke ?stroke_width ?font_size
 
   Apart from the various parameters to customize the look of the plot,
   the interesting parameter is the fold function.
-  It calls back with: the previous value, the label of the dataset,
-  a boolean telling if the dataset is mean for the primary (true) or
+  It calls back with: the previous folded value, the label of the dataset,
+  a boolean telling if the dataset is meant for the primary (true) or
   secondary (false) axis, and a getter (index -> vy).
 
   Notice the fold_t array trick to force polymorphism of fold.
@@ -267,7 +267,8 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
   done ;
   let get_x    = get_ratio x_axis_xmin x_axis_xmax vx_min vx_max
   and get_y pi = get_ratio y_axis_ymin y_axis_ymax vy_min.(pi) vy_max.(pi) in
-  (* In case we stack the values *)
+  (* In case we stack the values (only primary axis can be stacked since
+   * secondary axis can have only one plot) *)
   let prev_vy =
     if stacked.(0) = StackedCentered then
       (* Start from -0.5 * tot_y for this bucket *)
@@ -316,7 +317,8 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
             (* Bottom line (to close the area) (note: we loop here from last to first) *)
             for i = nb_vx-1 downto 0 do
               let vy' = prev_vy.(i) in
-              prev_vy.(i) <- vy' +. (get i |> rate_of_vy) ;
+              if is_stacked then
+                prev_vy.(i) <- vy' +. (get i |> rate_of_vy) ;
               Buffer.add_string buf
                 (lineto (get_x (vx_of_bucket i), get_y pi vy'))
             done ;

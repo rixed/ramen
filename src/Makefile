@@ -135,19 +135,22 @@ WEB_PACKAGES = js_of_ocaml js_of_ocaml.ppx
 web/engine.cmo: web/engine.ml Consts.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
+web/color.cmo: web/color.ml
+	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
+
 web/formats.cmo: web/formats.ml web/engine.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/chart.cmo: web/chart.ml web/engine.cmo web/formats.cmo
+web/chart.cmo: web/chart.ml web/engine.cmo web/color.cmo web/formats.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
 RamenSharedTypesJS_noPPP.cmo: RamenSharedTypesJS.ml
 	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
 
-web/app.cmo: web/app.ml RamenSharedTypesJS_noPPP.cmo web/engine.cmo web/formats.cmo web/chart.cmo
+web/app.cmo: web/app.ml RamenSharedTypesJS_noPPP.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/script.byte: Consts.cmo RamenSharedTypesJS_noPPP.cmo web/engine.cmo web/formats.cmo web/chart.cmo web/app.cmo
+web/script.byte: Consts.cmo RamenSharedTypesJS_noPPP.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo web/app.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -linkpkg $^ -o $@
 
 web/script.js: web/script.byte
