@@ -208,7 +208,8 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
   and vx_step = vx_step_unscaled *. scale_vx in
   let force_show_0 = if stacked_y1 = StackedCentered || stacked_y2 = StackedCentered then true else force_show_0 in
   let stacked = [| stacked_y1 ; stacked_y2 |] in
-  let y_label_grid = if show_rate then y_label ^"/"^ (x_label_for_rate |? x_label) else y_label in
+  let y_label_grid =
+    if show_rate && y_label <> "" then y_label ^"/"^ (x_label_for_rate |? x_label) else y_label in
   (* build iter and map from fold *)
   let iter_datasets f = fold.fold (fun _prev pen prim get -> f pen prim get) ()
   and map_datasets f = List.rev @@ fold.fold (fun prev pen prim get -> (f pen prim get) :: prev) []

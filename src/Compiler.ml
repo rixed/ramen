@@ -855,8 +855,8 @@ let compile_node conf node =
       !logger.debug "Compiled %s with: %s" node.N.name comp_cmd ;
       return_unit
     ) else (
-      !logger.error "Compilation of %s %s"
-        node.N.name (string_of_process_status status) ;
+      !logger.error "Compilation of %s with command %S %s"
+        node.N.name comp_cmd (string_of_process_status status) ;
       fail_with "Cannot generate code"
     )
 

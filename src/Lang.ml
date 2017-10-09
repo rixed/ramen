@@ -1391,11 +1391,11 @@ struct
           blanks -- strinG "else" -- blanks -+
           some lowest_prec_left_assoc) >>:
         fun ((case_cond, case_cons), else_) ->
-          Case (make_typ "if", [ { case_cond ; case_cons } ], else_)) |||
+          Case (make_typ "conditional", [ { case_cond ; case_cons } ], else_)) |||
        (afun2 "if" >>: fun (case_cond, case_cons) ->
-          Case (make_typ "if", [ { case_cond ; case_cons } ], None)) |||
+          Case (make_typ "conditional", [ { case_cond ; case_cons } ], None)) |||
        (afun3 "if" >>: fun (case_cond, case_cons, else_) ->
-          Case (make_typ "if", [ { case_cond ; case_cons } ], Some else_))) m
+          Case (make_typ "conditional", [ { case_cond ; case_cons } ], Some else_))) m
 
     and coalesce m =
       let m = "coalesce" :: m in
