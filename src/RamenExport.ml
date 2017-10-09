@@ -368,7 +368,7 @@ type timeserie_bucket =
     mutable min : float ; mutable max : float }
 
 let add_into_bucket b i v =
-  if i > 0 && i < Array.length b then (
+  if i >= 0 && i < Array.length b then (
     b.(i).count <- succ b.(i).count ;
     b.(i).min <- min b.(i).min v ;
     b.(i).max <- max b.(i).max v ;
@@ -405,9 +405,8 @@ let build_timeseries node start_field start_scale data_field duration_info
       | Some x, y -> Some (f x y) in
     !logger.debug "timeseries from=%f and to=%f" from to_ ;
     (* Since the cache is just a cache and is no comprehensive, we must use
-     * it as a deterrent only, to prevent us to explore to far, as opposed to
-     * restrict the search to a given subset of the files. As time goes it
-     * shoudl become the same though. *)
+     * it as a necessary but not sufficient condition, to prevent us from
+     * exploring too far. As time goes it should become the same though. *)
     let min_filenum, max_filenum =
       Hashtbl.enum history.C.ts_cache |>
       Enum.fold (fun (mi, ma) (filenum, (ts_min, ts_max)) ->
@@ -434,7 +433,7 @@ let build_timeseries node start_field start_scale data_field duration_info
               let fi = find_field f in
               float_of_scalar_value tup.(fi) *. s
           in
-          (* We allow duration to be < 0 *)
+          (* Allow duration to be < 0 *)
           let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
           (* Maybe update ts_cache *)
           let tmin, tmax =
