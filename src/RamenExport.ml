@@ -75,6 +75,7 @@ let archive_history history =
     history.C.block_start, history.C.block_start + history.C.count in
   let fname = C.archive_file history.C.dir filenum in
   !logger.debug "Saving history in %S" fname ;
+  Helpers.mkdir_all ~is_file:true fname ;
   File.with_file_out ~mode:[`create; `trunc] fname (fun oc ->
     (* Since we do not "clean" the array but only the count field, it is
      * important not to save anything beyond count: *)
