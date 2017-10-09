@@ -182,7 +182,8 @@ let stop conf layer =
           List.iter (fun parent ->
               let out_ref =
                 out_ringbuf_names_ref conf parent in
-              File.(lines_of out_ref // (<>) this_in |> write_lines out_ref)
+              let out_files = File.lines_of out_ref |> List.of_enum in
+              File.write_lines out_ref (List.filter ((<>) this_in) out_files |> List.enum) ;
             ) node.N.parents ;
           (* Get rid of the worker *)
           let open Unix in
