@@ -440,17 +440,17 @@ let update_graph total g =
         in_tuple_count = Js.(Unsafe.get n "in_tuple_count" |> to_int) ;
         out_tuple_count = Js.(Unsafe.get n "out_tuple_count" |> to_int) ;
         sel_tuple_count = Js.(Unsafe.get n "selected_tuple_count" |>
-                              to_int) ; 
+                              to_int) ;
         group_count = Js.(Unsafe.get n "group_count" |> Opt.to_option |>
-                          option_map to_int) ; 
-        cpu_time = Js.(Unsafe.get n "cpu_time" |> float_of_number) ; 
-        ram_usage = Js.(Unsafe.get n "ram_usage" |> to_int) ; 
+                          option_map to_int) ;
+        cpu_time = Js.(Unsafe.get n "cpu_time" |> float_of_number) ;
+        ram_usage = Js.(Unsafe.get n "ram_usage" |> to_int) ;
         in_sleep = Js.(Unsafe.get n "in_sleep" |> float_of_number) ;
         out_sleep = Js.(Unsafe.get n "out_sleep" |> float_of_number) ;
         in_bytes = Js.(Unsafe.get n "in_bytes" |> to_int) ;
         out_bytes = Js.(Unsafe.get n "out_bytes" |> to_int) ;
         pid = Js.(Unsafe.get n "pid" |> Opt.to_option |>
-                  option_map to_int) ; 
+                  option_map to_int) ;
         signature = Js.(Unsafe.get n "signature" |> Opt.to_option |>
                         option_map to_string) } in
       update_node node
@@ -469,7 +469,7 @@ let update_graph total g =
       if List.mem id !had_nodes then (
         change nodes ; true
       ) else (
-        Firebug.console##log (Js.string ("Deleting node "^ id)) ;
+        print (Js.string ("Deleting node "^ id)) ;
         false
       )) nodes.value
   ) else (
