@@ -1,5 +1,8 @@
 body { margin:0; padding:0; }
-#application { margin:0; height: 100%; background-color: #eee; }
+button { -webkit-appearance: none; border: none; background-color: #eee; }
+button:focus { outline:0; }
+button:hover { background-color: #d4d4d4; }
+#application { margin:0; height: 100%; background-color: #ddd; }
 #title, #top, #details, .subitem {
   display: flex;
   flex-direction: row;
@@ -28,7 +31,7 @@ td, th { padding: 0 1em 0 1em; }
 tfoot td, th { font-weight: bold; text-align: center; }
 span.null { font-style: italic; color: #888; font-size: 80%; }
 a, a:visited { color: #22c; text-decoration: none; }
-.selected { background-color: #ddd; }
+.selected { background-color: #ccc; }
 #title { height: 3em; width: 100%; justify-content: space-between; }
   #title .spacer { flex-grow: 10; }
   #title button { max-width: 3em; width: 3em; text-align: center; }
@@ -51,6 +54,7 @@ a, a:visited { color: #22c; text-decoration: none; }
   #operation { flex-grow: 1; }
 #output { flex-grow: 0.2; width: 100%; min-height: 8em; }
   #output .time-selector, #output .chart-type-selector { display: inline-block; padding-right: 1em; }
+  #output svg.chart { display: block; }
 #editor textarea { resize: none; }
 
 span.label { margin-right: 0.2em; font-size: 80%; color: #222; font-weight: 700; }
@@ -65,7 +69,8 @@ td.i16, td.i32, td.i64, td.i128 { text-align: right; font-family: monospace; }
 
 div.tab div { float: left; min-height: 1em; height: 1em; display: flex; padding: 0 1em 0 1em; }
 div.tab div { background-color: #fff; color: #aaa; }
-div.tab div.selected { background-color: #eee; color: #000; }
+div.tab div.selected { background-color: #ccc; color: #000; }
 
 .icon { }
 .actionable { cursor: pointer; }
+.actionable:hover { background-color: #d4d4d4; }
