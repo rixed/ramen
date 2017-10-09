@@ -117,7 +117,7 @@ let layer_node_of_user_string conf ?default_layer s =
                 Some (node.N.layer, node.N.name)
               else res) with
       | Some res -> return res
-      | None -> fail_with ("node "^ s ^" does not exist")
+      | None -> bad_request ("node "^ s ^" does not exist")
 
 (*
     Returns the graph (as JSON, dot or mermaid representation)
@@ -291,10 +291,10 @@ let get_graph conf headers layer_opt =
 let find_node_or_fail conf layer_name node_name =
   try C.find_node conf layer_name node_name |> return
   with Not_found ->
-    fail_with ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
+    bad_request ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
 
 let node_of_name conf layer_name node_name =
-  if node_name = "" then fail_with "Empty string is not a valid node name"
+  if node_name = "" then bad_request "Empty string is not a valid node name"
   else find_node_or_fail conf layer_name node_name
 
 let del_layer_ conf layer =
@@ -541,10 +541,10 @@ let timeseries conf headers body =
   let ts_of_node_field req layer node data_field =
     let%lwt _layer, node = find_node_or_fail conf layer node in
     if not (is_exporting node.N.operation) then
-      fail_with ("node "^ node.N.name ^" does not export data")
+      bad_request ("node "^ node.N.name ^" does not export data")
     else match export_event_info node.N.operation with
     | None ->
-      fail_with ("node "^ node.N.name ^" does not specify event time info")
+      bad_request ("node "^ node.N.name ^" does not specify event time info")
     | Some ((start_field, start_scale), duration_info) ->
       let open RamenExport in
       let consolidation =
@@ -596,7 +596,7 @@ let timeseries conf headers body =
             parent.N.name
             start scale stop scale2 |> return
         | _ ->
-          fail_with "This parent does not provide time information"
+          bad_request "This parent does not provide time information"
       ) else return (
         "SELECT "^ select_x ^" AS time, "
                  ^ select_y ^" AS data \
