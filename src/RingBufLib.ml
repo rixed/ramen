@@ -2,6 +2,7 @@
  * tests without bringing in the whole ringbuf libs *)
 open Batteries
 open RamenSharedTypes
+open RamenSharedTypesJS
 open RamenLog
 
 exception NoMoreRoom

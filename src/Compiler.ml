@@ -16,7 +16,6 @@
 open Batteries
 open RamenLog
 open Helpers
-open RamenSharedTypes
 module C = RamenConf
 module N = RamenConf.Node
 module L = RamenConf.Layer

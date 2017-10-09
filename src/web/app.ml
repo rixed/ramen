@@ -64,7 +64,20 @@ end
 
 module Field =
 struct
-  type t = { name : string ; nullable : bool ; typ : string }
+  let type_of_string = function
+  | "TNull" -> TNull | "TFloat" -> TFloat | "TString" -> TString
+  | "TBool" -> TBool
+  | "TU8" -> TU8 | "TU16" -> TU16 | "TU32" -> TU32
+  | "TU64" -> TU64 | "TU128" -> TU128
+  | "TI8" -> TI8 | "TI16" -> TI16 | "TI32" -> TI32
+  | "TI64" -> TI64 | "TI128" -> TI128
+  | "TEth" -> TEth | "TIpv4" -> TIpv4 | "TIpv6" -> TIpv6
+  | "TCidrv4" -> TCidrv4 | "TCidrv6" -> TCidrv6
+  | _ -> fail ()
+
+  type t =
+    { name : string ; nullable : bool ;
+      typ : scalar_typ ; typ_str : string ; typ_disp : string }
 end
 
 module Node =
@@ -367,13 +380,15 @@ let type_spec_of_js r =
     let t = Js.array_get r i in
     let name = Js.(Unsafe.get t "name_info" |> to_string)
     and nullable = Js.(Unsafe.get t "nullable_info" |> to_bool)
-    and typ = Js.(Unsafe.get t "typ_info" |> get_variant) in
-    let typ =
-      if String.length typ > 0 &&
-         typ.[0] = 'T' then
-        String.sub typ 1 (String.length typ-1)
-      else typ in
-    Field.{ name ; nullable ; typ })
+    and typ_str = Js.(Unsafe.get t "typ_info" |> get_variant) in
+    let typ = Field.type_of_string typ_str in
+    let typ_str =
+      if String.length typ_str > 0 && typ_str.[0] = 'T' then
+        String.sub typ_str 1 (String.length typ_str - 1)
+      else typ_str in
+    let typ_disp =
+      String.lowercase typ_str ^ (if nullable then " (or null)" else "") in
+    Field.{ name ; nullable ; typ ; typ_str ; typ_disp })
 
 let node_list_of_js r =
   list_init r##.length (fun i ->
@@ -726,17 +741,19 @@ let nodes_panel =
           tdf tot_ram ; tdf tot_in_bytes ; tdf tot_out_bytes ;
           tds "" ; tds "" ; tds "" ; tds "" ] ]) ]
 
-let dispname_of_type nullable typ =
-  String.lowercase typ ^ (if nullable then " (or null)" else "")
-
 let field_panel f =
-  labeled_value f.Field.name (dispname_of_type f.nullable f.typ)
+  labeled_value f.Field.name f.typ_disp
 
 let input_panel =
   with_value sel_node (fun sel ->
     if sel = "" then elmt "span" []
     else with_node sel (fun node ->
       div (List.map field_panel node.input_type)))
+
+let can_plot_type = function
+    TFloat | TU8 | TU16 | TU32 | TU64 | TU128
+  | TI8 | TI16 | TI32 | TI64 | TI128 -> true
+  | _ -> false
 
 let op_panel =
   with_value sel_node (fun sel ->
@@ -751,7 +768,7 @@ let tail_panel =
       [] -> tr (List.rev tds)
     | field::fs ->
       let tds =
-        td [ clss field.Field.typ ;
+        td [ clss field.Field.typ_str ;
              match r.(ci) with
                None -> span [ clss "null" ; text "NULL" ]
              | Some v -> text v ] :: tds in
@@ -759,17 +776,19 @@ let tail_panel =
     loop [] 0 fs
   and th_field ci f =
     with_value sel_output_cols (fun cols ->
-      let is_selected = List.mem ci cols in
-      let action _ =
-        let toggled =
-          if is_selected then
-            List.filter ((<>) ci) cols
-          (* TODO: only if the type is a number *)
-          else ci :: cols in
-        set sel_output_cols toggled in
-      let c = if is_selected then "selected actionale" else "actionable" in
-      pretty_th ~action c f.Field.name
-        (dispname_of_type f.nullable f.typ))
+      let c, action =
+        if can_plot_type f.Field.typ then
+          let is_selected = List.mem ci cols in
+          let action _ =
+            let toggled =
+              if is_selected then
+                List.filter ((<>) ci) cols
+              else ci :: cols in
+            set sel_output_cols toggled in
+          let c = if is_selected then "selected actionable" else "actionable" in
+          c, Some action
+        else "", None in
+      pretty_th ?action c f.Field.name f.typ_disp)
   in
   with_value sel_node (fun sel ->
     if sel = "" then

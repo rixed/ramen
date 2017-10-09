@@ -15,6 +15,7 @@
 open Batteries
 open RamenLog
 open RamenSharedTypes
+open RamenSharedTypesJS
 open Lang
 open Helpers
 module C = RamenConf
