@@ -545,6 +545,14 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "(=)" [Some TAny; Some TAny] [e1; e2]
   | Finalize, StatelessFun (_, Concat (e1,e2)), Some TString ->
     emit_functionN oc ?state "(^)" [Some TString; Some TString] [e1; e2]
+  | Finalize, StatelessFun (_, Like (e, p)), Some TBool ->
+    let pattern = Globs.compile ~star:'%' ~escape:'\\' p in
+    Printf.fprintf oc "(let pattern_ = \
+      Globs.{ anchored_start = %b ; anchored_end = %b ; chunks = %a } in "
+      pattern.anchored_start pattern.anchored_end
+      (List.print (fun oc s -> Printf.fprintf oc "%S" s)) pattern.chunks ;
+    emit_functionN oc ?state "Globs.matches pattern_ " [Some TString] [e];
+    Printf.fprintf oc ")"
   | Finalize, StatelessFun (_, Length (e)), Some TU16 (* The only possible output type *) ->
     emit_functionN oc ?state "String.length" [Some TString] [e]
   | Finalize, StatelessFun (_, And (e1,e2)), Some TBool ->

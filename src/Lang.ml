@@ -556,6 +556,8 @@ struct
     (* For network address range checks: *)
     | BeginOfRange of t
     | EndOfRange of t
+    (* a LIKE operator using globs, infix *)
+    | Like of t * string (* expression then pattern (using %, _ and \) *)
 
   and statefull_fun =
     (* TODO: Add stddev... *)
@@ -620,6 +622,10 @@ struct
 
   let is_virtual_field f =
     String.length f > 0 && f.[0] = '#'
+
+  let get_string_const = function
+    | Const (_ , VString s) -> Some s
+    | _ -> None
 
   let check_const what = function
     | Const _ -> ()
@@ -723,6 +729,7 @@ struct
     | StatelessFun (t, Gt (e1, e2)) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | StatelessFun (t, Eq (e1, e2)) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | StatelessFun (t, Concat (e1, e2)) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+    | StatelessFun (t, Like (e, p)) -> Printf.fprintf fmt "(%a) LIKE %S" (print with_types) e p ; add_types t
 
     | StatefullFun (t, g, AggrMin e) ->
       Printf.fprintf fmt "min%s(%a)" (sl g) (print with_types) e ; add_types t
@@ -805,7 +812,7 @@ struct
     | StatelessFun (_, Length e) | StatelessFun (_, BeginOfRange e)
     | StatelessFun (_, EndOfRange e) | StatelessFun (_, Exp e)
     | StatelessFun (_, Log e) | StatelessFun (_, Sqrt e)
-    | StatelessFun (_, Hash e) ->
+    | StatelessFun (_, Hash e) | StatelessFun (_, Like (e, _)) ->
       f (fold_by_depth f i e) expr
 
     | StatefullFun (_, _, AggrPercentile (e1, e2))
@@ -1005,6 +1012,9 @@ struct
       StatelessFun (f t, Concat (
           (if recurs then map_type ~recurs f a else a),
           (if recurs then map_type ~recurs f b else b)))
+    | StatelessFun (t, Like (e, p)) ->
+      StatelessFun (f t, Like (
+          (if recurs then map_type ~recurs f e else e), p))
     | StatelessFun (t, BeginOfRange a) ->
       StatelessFun (f t, BeginOfRange (if recurs then map_type ~recurs f a else a))
     | StatelessFun (t, EndOfRange a) ->
@@ -1125,7 +1135,8 @@ struct
     and low_prec_left_assoc m =
       let m = "comparison operator" :: m in
       let op = that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
-               that_string "=" ||| that_string "<>" ||| that_string "!="
+               that_string "=" ||| that_string "<>" ||| that_string "!=" |||
+               that_string "in" ||| that_string "like"
       and reduce t1 op t2 = match op with
         | ">" -> StatelessFun (make_bool_typ "comparison operator", Gt (t1, t2))
         | "<" -> StatelessFun (make_bool_typ "comparison operator", Gt (t2, t1))
@@ -1135,7 +1146,7 @@ struct
         | "!=" | "<>" ->
           StatelessFun (make_bool_typ "not operator", Not (
             StatelessFun (make_bool_typ "equality operator", Eq (t1, t2))))
-        | "IN" | "in" ->
+        | "in" ->
           StatelessFun (make_bool_typ "and for range", And (
             StatelessFun (make_bool_typ "comparison operator for range", Ge (
               t1,
@@ -1144,6 +1155,11 @@ struct
               StatelessFun (make_bool_typ "comparison operator for range", Ge (
                 t1,
                 StatelessFun (make_typ "end of range", EndOfRange t2)))))))
+        | "like" ->
+          (match get_string_const t2 with
+          | None -> raise (Reject "LIKE pattern must be a string constant")
+          | Some p ->
+            StatelessFun (make_bool_typ "like operator", Like (t1, p)))
         | _ -> assert false in
       binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 

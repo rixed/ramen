@@ -1,44 +1,49 @@
-open String
+open BatString
+(* TODO: implement '?' for replacing a single char. (Like wants '_') *)
+
 type pattern = { anchored_start : bool ;
                  anchored_end : bool ;
                  chunks : string list }
 
-let compile =
+let compile ?(star='*') ?(escape='\\') =
+  let open Str in
   let unescape =
     (* Replaces \* with *, once their interpretation as globs is over: *)
-    let re = Str.regexp "\\\\\\*" in (* this escalated quickly! *)
-    fun str -> Str.global_replace re "*" str
+    let re = regexp (quote (of_char escape) ^ quote (of_char star)) in
+    fun str -> global_replace re (of_char star) str
   (* The regexp below reads as: either at beginning of string or not
-   * a backslash, then a star. *)
-  and star_re = Str.regexp "\\(^\\|[^\\]\\)\\*+" in
+   * after a backslash, then a star. *)
+  and star_re = regexp ("\\(^\\|[^"^ of_char escape ^"]\\)"^ quote (of_char star) ^"+") in
   (* We cannot use Str.split because it would consider the non-\ character
    * before the star as part of the delimiter. *)
   let my_split re s =
     let add_chunk lst s =
       if s <> "" then s::lst else lst in
     let rec loop prev o =
-      match Str.search_forward re s o with
+      match search_forward re s o with
       | exception Not_found ->
-        add_chunk prev (String.sub s o (String.length s - o)) |> List.rev
+        add_chunk prev (sub s o (length s - o)) |> List.rev
       | o' ->
         assert (o' >= o) ;
         let o' = if s.[o'] <> '*' then o'+1 else o' in
-        loop (add_chunk prev (String.sub s o (o'-o))) (Str.match_end ()) in
+        loop (add_chunk prev (sub s o (o'-o))) (match_end ()) in
     loop [] 0 in
   fun s ->
     let l = length s in
-    let anchored_start = l = 0 || s.[0] <> '*' in
+    let anchored_start = l = 0 || s.[0] <> star in
     let anchored_end =
       l = 0 ||
-      s.[l-1] <> '*' ||
-      (l >= 2 && s.[l-2] = '\\') in
+      s.[l-1] <> star ||
+      (l >= 2 && s.[l-2] = escape) in
     { anchored_start ; anchored_end ;
       chunks = my_split star_re s |> List.map unescape }
 
-let string_of_pattern p =
-  (if p.anchored_start then "^" else "") ^
-  (String.concat "*" p.chunks) ^
-  (if p.anchored_end then "$" else "")
+(*$inject
+  let string_of_pattern p =
+    (if p.anchored_start then "^" else "") ^
+    (String.concat "*" p.chunks) ^
+    (if p.anchored_end then "$" else "")
+*)
 
 (*$= compile & ~printer:string_of_pattern
   { anchored_start = true ; anchored_end = false ; chunks = [ "glop" ] } \
@@ -53,16 +58,17 @@ let string_of_pattern p =
 
 (* Make the given string a glob that matches only itself,
  * by replacing any literal stars by escaped stars: *)
-let escape =
-  let re = Str.regexp "\\*" in
+let escape ?(star='*') ?(escape='\\') =
+  let open Str in
+  let re = regexp (quote (of_char star)) in
   fun str ->
-    Str.global_replace re "\\*" str
+    global_replace re (of_char escape ^ of_char star) str
 
 let string_ends_with s e =
-  let off = String.length s - String.length e in
+  let off = length s - length e in
   if off < 0 then false else
   let rec loop i =
-    if i >= String.length e then true else
+    if i >= length e then true else
     if s.[off+i] <> e.[i] then false else
     loop (i+1) in
   loop 0

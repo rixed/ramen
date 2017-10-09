@@ -8,7 +8,7 @@ endif
 
 TESTABLE_SOURCES = \
 	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml Compiler.ml \
-	Helpers.ml RamenBloomFilter.ml CodeGen_OCaml.ml
+	Helpers.ml RamenBloomFilter.ml Globs.ml CodeGen_OCaml.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
@@ -17,7 +17,7 @@ LINKED_FOR_TESTS = \
 	RingBufLib.ml RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenCollectd.ml RamenProtocols.ml Lang.ml \
-	RingBuf.ml RamenConf.ml CodeGen_OCaml.ml Compiler.ml \
+	RingBuf.ml RamenConf.ml Globs.ml CodeGen_OCaml.ml Compiler.ml \
 	RamenBloomFilter.ml
 
 RAMEN_SOURCES = \
@@ -27,7 +27,7 @@ RAMEN_SOURCES = \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
-	CodeGen_OCaml.ml Compiler.ml \
+	Globs.ml CodeGen_OCaml.ml Compiler.ml \
 	RamenGui.ml HttpSrv.ml ApiCmd.ml RingBufCmd.ml \
 	ramen.ml
 
