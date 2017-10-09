@@ -467,6 +467,7 @@ let export conf headers layer_name node_name body =
   else if not (Operation.is_exporting node.N.operation) then
     bad_request ("node "^ node_name ^" does not export data")
   else (
+    RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
     let%lwt first, columns = match node.N.history with
       | None -> (* Nothing yet, just answer with empty result *)
         return (0, [])
