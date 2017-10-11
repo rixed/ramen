@@ -1,6 +1,12 @@
 top_srcdir = ./
 
-all: tuto.html
-	$(MAKE) -C src
+SUBDIRS = src
+
+all:
+	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
+
+clean-spec:
+
+distclean-spec:
 
 include $(top_srcdir)/make.common

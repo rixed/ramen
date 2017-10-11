@@ -16,7 +16,8 @@ override CPPFLAGS += -DHAVE_INT128
 
 # Common rules
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top .js .html .adoc
-.PHONY: clean distclean all check dep install uninstall reinstall
+.PHONY: clean distclean all check dep install uninstall reinstall \
+        install-spec uninstall-spec
 
 %.cmi: %.ml
 	$(MAKE) $(addsuffix .cmo,$(basename $@))
@@ -51,13 +52,11 @@ check: all_tests.opt check-spec
 
 # Installation
 
-install: $(INSTALLED)
+install: $(INSTALLED) install-spec
 	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
-	ocamlfind install $(NAME) $^
 
-uninstall:
+uninstall: uninstall-spec
 	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
-	ocamlfind remove $(NAME)
 
 reinstall: uninstall install
 

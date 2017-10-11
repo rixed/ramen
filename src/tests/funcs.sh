@@ -52,7 +52,9 @@ start() {
   LAYER_CMD=""
   rm -f /tmp/ringbuf_*
 
-  $ramen start --no-demo -d &
+  /usr/bin/env \
+    OCAMLFIND_IGNORE_DUPS_IN="$(ocamlfind query ramen 2>/dev/null)" \
+    $ramen start --no-demo -d &
   add_temp_pid $!
   sleep 1.5
 }

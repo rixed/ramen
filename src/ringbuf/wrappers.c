@@ -15,7 +15,7 @@
 #include <caml/fail.h>
 #include <caml/callback.h>
 
-#include "ringbuf/ringbuf.h"
+#include "ringbuf.h"
 
 #define STR_(s) STR(s)
 #define STR(s) #s

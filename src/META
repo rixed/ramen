@@ -1,0 +1,8 @@
+description = "Event processor tailored for small-scale monitoring"
+version = "0.1"
+archive(native) = "codegen.cmxa"
+# parsercombinator is used by string to IP conversion :(
+requires = "lwt.ppx batteries stdint parsercombinator cohttp-lwt-unix
+            inotify.lwt binocle owl"
+# To build ramen you will also need:
+#   sqlite3 unix num ppp js_of_ocaml js_of_ocaml.ppx cmdliner cryptohash 

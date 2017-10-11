@@ -855,9 +855,12 @@ let compile_node conf node =
       !logger.debug "Compiled %s with: %s" node.N.name comp_cmd ;
       return_unit
     ) else (
-      !logger.error "Compilation of %s with command %S %s"
-        node.N.name comp_cmd (string_of_process_status status) ;
-      fail_with "Cannot generate code"
+      (* As this might well be an installation problem, makes this error
+       * report to the GUI: *)
+      let e = CannotGenerateCode {
+        node = node.N.name ; cmd = comp_cmd ;
+        status = string_of_process_status status } in
+      fail (SyntaxError e)
     )
 
 let untyped_dependency layer =

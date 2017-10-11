@@ -40,6 +40,7 @@ type syntax_error =
   | InvalidNullability of { what : string ; must_be_nullable : bool }
   | InvalidCoalesce of { what : string ; must_be_nullable : bool }
   | CannotCompleteTyping
+  | CannotGenerateCode of { node : string ; cmd : string ; status : string }
 
 exception SyntaxError of syntax_error
 
@@ -78,6 +79,10 @@ let string_of_syntax_error =
     "All elements of a COALESCE must be nullable but the last one. "^
     what ^" can"^ (if must_be_nullable then " not" else "") ^" be null."
   | CannotCompleteTyping -> "Cannot complete typing"
+  | CannotGenerateCode { node ; cmd ; status } ->
+    Printf.sprintf
+      "Cannot generate code: compilation of node %S with command %S %s"
+      node cmd status
 
 let () =
   Printexc.register_printer (function

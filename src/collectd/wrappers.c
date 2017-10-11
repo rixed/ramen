@@ -13,7 +13,7 @@
 #include <caml/fail.h>
 #include <caml/callback.h>
 
-#include "collectd/collectd.h"
+#include "collectd.h"
 
 #define STR_(s) STR(s)
 #define STR(s) #s

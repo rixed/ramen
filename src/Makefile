@@ -41,14 +41,16 @@ CODEGENLIB_SOURCES = \
 	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
-	ringbuf/ringbuf.h ringbuf/ringbuf.c
+	ringbuf/ringbuf.h ringbuf/ringbuf.c \
+	ringbuf/wrappers.c
 
 LIBCOLCOMP_SOURCES = \
 	colcomp/growblock.h colcomp/growblock.c \
 	colcomp/colcomp.h colcomp/colcomp.c
 
 LIBCOLLECTD_SOURCES = \
-	collectd/collectd.h collectd/collectd.c
+	collectd/collectd.h collectd/collectd.c \
+	collectd/wrappers.c
 
 CONFIGURATOR_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml \
@@ -61,7 +63,7 @@ ALERTER_SOURCES = \
 	ramen_alerter.ml
 
 SOURCES_ = \
-	$(RAMEN_SOURCES) wrap_ringbuf.c wrap_collectd.c $(CODEGENLIB_SOURCES) \
+	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 	$(LIBCOLCOMP_SOURCES) \
 	$(CONFIGURATOR_SOURCES) $(ALERTER_SOURCES) \
@@ -75,10 +77,12 @@ PACKAGES = \
 	binocle unix cryptohash owl
 
 INSTALLED = \
-  ramen ramen_configurator ramen_alerter \
-	codegen.cmxa $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
-	ringbuf/libringbuf.a colcomp/libcolcomp.a \
-	collectd/libcollectd.a
+  META ramen ramen_configurator ramen_alerter	\
+  codegen.cmxa codegen.a \
+  $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
+  libringbuf.a libcolcomp.a libcollectd.a
+
+bin_dir ?= /usr/local/bin
 
 all: $(INSTALLED) ringbuf_test.opt web/script.js
 
@@ -88,13 +92,13 @@ RamenFileNotify.ml: $(FILE_NOTIFIER)
 	ln -sf $< $@
 	touch $@
 
-ringbuf/libringbuf.a: ringbuf/ringbuf.o
+libringbuf.a: ringbuf/ringbuf.o ringbuf/wrappers.o
 	$(AR) rs $@ $^
 
-colcomp/libcolcomp.a: colcomp/growblock.o colcomp/colcomp.o
+libcolcomp.a: colcomp/growblock.o colcomp/colcomp.o
 	$(AR) rs $@ $^
 
-collectd/libcollectd.a: collectd/collectd.o
+libcollectd.a: collectd/collectd.o collectd/wrappers.o
 	$(AR) rs $@ $^
 
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
@@ -102,21 +106,21 @@ collectd/libcollectd.a: collectd/collectd.o
 # symbols we need as we are the only users.
 MOREFLAGS = \
 	-package "$(PACKAGES)" -I ringbuf -I collectd \
-	-cclib wrap_ringbuf.o -cclib wrap_collectd.o \
+	-cclib -L. \
 	-cclib -lstdint_stubs \
-	-cclib -Lringbuf -cclib -lringbuf \
-	-cclib -Lcollectd -cclib -lcollectd
+	-cclib -lringbuf \
+	-cclib -lcollectd
 
-ramen: $(RAMEN_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o collectd/libcollectd.a wrap_collectd.o
+ramen: $(RAMEN_SOURCES:.ml=.cmx) libringbuf.a libcollectd.a
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) ringbuf/libringbuf.a wrap_ringbuf.o collectd/libcollectd.a wrap_collectd.o
+codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) libringbuf.a libcollectd.a
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) ringbuf/libringbuf.a wrap_ringbuf.o collectd/libcollectd.a wrap_collectd
+codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) libringbuf.a libcollectd.a
 	$(OCAMLC) $(OCAMLFLAGS) -a $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
-ringbuf_test.opt: RamenLog.cmx Consts.cmx Helpers.cmx RamenSharedTypesJS.cmx RamenSharedTypes.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx ringbuf/libringbuf.a wrap_ringbuf.o
+ringbuf_test.opt: RamenLog.cmx Consts.cmx Helpers.cmx RamenSharedTypesJS.cmx RamenSharedTypes.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx libringbuf.a
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
@@ -125,7 +129,7 @@ ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
 ramen_alerter: $(ALERTER_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-all_tests.opt: ringbuf/libringbuf.a wrap_ringbuf.o colcomp/libcolcomp.a $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml
+all_tests.opt: libringbuf.a libcolcomp.a $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
 
 # Web thingies
@@ -182,7 +186,15 @@ clean-spec:
 	$(RM) ringbuf/*.o colcomp/*.o colcomp/colcomp_test
 
 distclean-spec:
-	$(RM) ramen codegen.cmxa ringbuf/*.a colcomp/*.a RamenFileNotify.ml
+	$(RM) ramen codegen.cmxa libringbuf.a libcolcomp.a libcollectd.a RamenFileNotify.ml
+
+install-spec: $(INSTALLED)
+	ocamlfind install ramen $^
+	install ramen $(prefix)$(bin_dir)/
+
+uninstall-spec:
+	ocamlfind remove ramen
+	$(RM) $(prefix)$(bin_dir)/ramen
 
 colcomp/colcomp_test: colcomp/colcomp_test.o colcomp/libcolcomp.a
 	$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) $^ -o $@
