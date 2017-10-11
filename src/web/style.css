@@ -1,65 +1,118 @@
-body { margin:0; padding:0; }
-button { -webkit-appearance: none; border: none; background-color: #eee; }
+* { margin:0; padding:0; }
+button { -webkit-appearance: none; }
 button:focus { outline:0; }
-button:hover { background-color: #d4d4d4; }
-#application { margin:0; height: 100%; background-color: #ddd; }
-#title, #top, #details, .subitem {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  overflow: auto; }
-#application, #layers, #nodes, #input, #operation, #output, .subtree {
-  display: flex;
-  flex-direction: column;
-  flex-wrap: nowrap;
-  overflow: auto; }
-
-.subtree { }
-.subitem {
-  padding-left: 20px;
-  background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='32'><line x1='6' y1='10' x2='18' y2='10' stroke-width='2' stroke='black'/><circle cx='6' cy='10' r='5' fill='white' stroke='black' stroke-width='2'/></svg>"),
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='32'><line x1='6' y1='0' x2='6' y2='32' stroke-width='2' stroke='black'/></svg>");
-  background-repeat: no-repeat, repeat-y; }
-.subitem:last-child {
-    background:
-      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='32'><line x1='6' y1='0' x2='6' y2='10' stroke-width='2' stroke='black'/><line x1='6' y1='10' x2='18' y2='10' stroke-width='2' stroke='black'/><circle cx='6' cy='10' r='5' fill='white' stroke='black' stroke-width='2'/></svg>")
-    no-repeat; }
+.actionable:hover, button:hover { background-color: #e4e4e4; }
+.actionable { cursor: pointer; border: outset 1.5px #eee; background-color: #ddd; }
+.selected { border: outset 1.5px #eee; background-color: #eee; }
+.selected-actionable { border: outset 1.5px #eee; background-color: #eee; cursor: pointer; }
 
 table { border-collapse: collapse; border-spacing: 10; }
 td, th { padding: 0 1em 0 1em; }
-tfoot td, th { font-weight: bold; text-align: center; }
+tfoot td, th { font-weight: bold; }
 span.null { font-style: italic; color: #888; font-size: 80%; }
-a, a:visited { color: #22c; text-decoration: none; }
-.selected { background-color: #ccc; }
-#title { height: 3em; width: 100%; justify-content: space-between; }
-  #title .spacer { flex-grow: 10; }
-  #title button { max-width: 3em; width: 3em; text-align: center; }
-#error { background-color: #f88; }
+.spacer { flex-grow: 10; }
 
-#top { max-height: 80%; width: 100%; flex-grow: 1; }
-  #layers { padding-right: 1em; max-width:50%; }
-    #layers div { display: flex; flex-direction: column; }
-    #layers div p.name { display: flex; flex-direction: row; justify-content: space-between; }
-    #layers .name, #layers .info, #layers .info p { margin: 0px; }
-  #nodes { flex-grow: 1; }
-    #nodes tbody td:first-child a { display: flex; flex-direction: row; justify-content: space-between; }
-    #nodes a { display: block; width: 100%; color: black; }
-    #nodes tbody tr:hover { background-color: #fff; }
-    #nodes tbody td hr { margin-left: 0; margin-top: 0; margin-bottom: 0; border: 1px solid #aaa; }
-    #nodes tbody td { white-space: nowrap; }
-#details { max-height: 80%; width: 100%; flex-grow: 0.2; }
-  #input { max-width: 50%; }
-    #input p { margin: 0; padding: 0 }
-  #operation { flex-grow: 1; }
-#output { flex-grow: 0.2; width: 100%; min-height: 8em; }
-  #output .time-selector, #output .chart-type-selector { display: inline-block; padding-right: 1em; }
-  #output svg.chart { display: block; }
+#application { margin:0; height: 100%; }
+html { background-color: #ddd; }
+
+#global {
+  position: fixed;
+  top: 0px;
+  width: 100%;
+  height: 3em;
+  border-bottom: 1px solid #888;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow: auto;
+  background-color: #ddd; }
+#global .breadcrumbs
+  { display: flex; flex-direction: row; justify-content: flex-start;
+    align-items: baseline; font-size: 125%; padding-left: 0.5em; }
+#global .breadcrumbs p { padding-left: 0.5em; }
+#global .breadcrumbs p.actionable { border: none; color: #118; }
+#global .title { display: flex; flex-direction: column; padding-left: 1em; }
+#global button { width: 3em; height: 3em; text-align: center; }
+#messages {
+  position: fixed ; top: 3em; left: 0;
+  display: block; width: 100%;
+  border-bottom: 1px solid #888;
+  font-weight: 700; font-size: 100%;
+  color: #000; }
+#messages p { padding: 1em 0 1em 1em; }
+#messages p.error { background: rgba(240, 30, 20, 0.9); }
+#messages p.ok { background: rgba(20, 210, 30, 0.9); }
+
+#top { width: 100%; padding-top: 3em; }
+h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
+
+#layers div.layer, #layers button.new-layer { display: block; float: left; margin: 5px; }
+#layers div.warning { background-color: #eaa; border: 1.5px solid #eaa; }
+#layers div.warning * { visibility: hidden; }
+#layers div.overwrite1 { position: relative; top: 0; left:0; width: 0; height: 0; overflow: visible; color: #000; }
+#layers div.overwrite2 { position: absolute; top: 0.75em; left:1em; width: 0; height: 0; overflow: visible; }
+#layers div.overwrite2 * { visibility: visible; }
+#layers div.overwrite2 p { white-space: nowrap; }
+#layers p.yes-or-no { margin: auto; padding-top: 1em; font-weight: 700; }
+#layers .yes { color: #700; cursor: pointer; padding-left: 3em; padding-right: 1em; }
+#layers .no { color: #080; cursor: pointer; padding-left: 1em; }
+#layers div.layer div.title { display: flex; flex-direction: row; justify-content: space-between; }
+#layers p.name { font-size: 105%; flex-grow: 10; }
+#layers .name, #layers .info p { padding-left: 6px; padding-right: 4px; }
+#layers .name { padding-top: 4px; }
+#layers .info:last-of-type { padding-bottom: 4px; }
+#layers button.icon { padding: 5px; }
+#layers button.new-layer { float: none; padding: 0.5em; font-weight: 700; clear: left; }
+
+#nodes thead th { border: 1px solid #ccc; }
+#nodes tbody td { white-space: nowrap; padding: 0.3em 1em 0.3em 1em; border-bottom: 1px solid #ccc; }
+#nodes tbody td hr { border: 1px solid #aaa; }
+#nodes td.export { text-align: center; }
+
+#editor { padding-left: 1em; }
+#editor h2 { font-size: 100%; margin: 1em 0 0.25em 0; }
 #editor textarea { resize: none; }
+#editor div.input { margin-bottom: 0.3em; }
+#editor input[type="text"] { margin-left: 1em; }
+#editor button { padding: 0.5em 1em 0.5em 1em; font-weight:700; font-size:100%; text-align: center; margin-right: 1em; margin-bottom: 2em; }
 
-span.label { margin-right: 0.2em; font-size: 80%; color: #222; font-weight: 700; }
-span.value { margin-right: 1em; font-size: 85%; color: #003; }
-h1, div.tab { position: relative; top:0; left:0; background-color: #fff;
+#inputs li {
+  float: left;
+  list-style-type: decimal; list-style-position: inside;
+  margin: 0.5em 0em 0.3em 1em; }
+#inputs + div { clear: left; }
+#inputs li .label { font-size: 100%; }
+
+#output table { margin-top: 1em; }
+
+#operation div.operation { text-align: center; }
+#operation pre {
+  display: inline-block;
+  text-align: left;
+  font-size: 120%;
+  margin-bottom: 1em; }
+
+#timechart {
+  padding-bottom: 10em; /* to help discover the SVG */
+  padding-top: 1em;
+  margin-left: auto;
+  margin-right: auto; }
+#timechart>p {
+  padding-left: 2em;
+  font-weight: 700; font-size: 100%; }
+
+#timechart .time-selector, #timechart .chart-type-selector {
+  display: inline-block;
+  padding: 0.5em 0.3em 1em 1em; }
+#timechart button { padding: 5px; }
+#timechart svg.chart { display: block; }
+
+span.label { margin-right: 0.2em; color: #222; font-size: 80%; font-weight: 700; }
+span.value { margin-right: 1em; color: #003; font-size: 85%; }
+
+div.tab { position: relative; top:0; left:0; background-color: #fff;
      text-align: left; margin: 0; padding: 0.5em 1em 0.5em 1em;
      font-weight: 700; font-size: 100%; }
 th p { margin: 0px; }
@@ -71,6 +124,3 @@ div.tab div { float: left; min-height: 1em; height: 1em; display: flex; padding:
 div.tab div { background-color: #fff; color: #aaa; }
 div.tab div.selected { background-color: #ccc; color: #000; }
 
-.icon { }
-.actionable { cursor: pointer; }
-.actionable:hover { background-color: #d4d4d4; }

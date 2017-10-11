@@ -1,4 +1,5 @@
 open Js_of_ocaml
+module Html = Dom_html
 open Engine
 
 (* Printers *)
@@ -108,6 +109,10 @@ struct
       out_bytes : int ;
       pid : int option ;
       signature : string option }
+
+  let name_of_id id =
+    let i = String.rindex id '/' in
+    String.sub id (i + 1) (String.length id - i - 1)
 end
 
 (* Each layer and node is its own state variable.
@@ -149,12 +154,22 @@ let update_node node =
     with Not_found ->
       print (Js.string ("Creating node "^ node.Node.name)) ;
       change nodes ;
-      make_param ("node "^ node.name) node in
+      make_param ("node "^ node.id) node in
   set p node ;
   nodes.value <- replace_assoc node.id p nodes.value
 
-(* Uses node.id as a value *)
+(* Uses node.id as a value. Avoid pointing toward a node that may be
+ * superseded by the next graph reload. *)
 let sel_node = make_param "selected node" ""
+
+(* Use layer name as a value, same reasons as for set_node. *)
+type selected_layer = NoLayer | ExistingLayer of string | NewLayer
+let sel_layer = make_param "selected layer" NoLayer
+
+(* The edition form state: *)
+type edited_layer =
+  { new_layer_name : string ref ;
+    mutable edited_nodes : (string ref * string ref) list }
 
 (* We have only one variable for all the lines because they always change
  * all together when we refresh. Value is a list of fields and an array
@@ -238,8 +253,6 @@ let chart_type = make_param "chart type" Chart.NotStacked
 
 let sel_output_cols = make_param "selected output columns" []
 
-let raw_output_mode = make_param "output mode" true
-
 let chart_duration = make_param "chart duration" (3. *. 3600.)
 
 let update_chart field_names resp =
@@ -266,7 +279,7 @@ let reload_chart () =
     let field_names =
       List.map (fun col ->
         (List.nth node.output_type col).Field.name) cols in
-    let now = (new%js Js.date_now)##valueOf /. 1000. in
+    let now = now () in
     let content =
       object%js
         val from = js_of_float (now -. chart_duration.value)
@@ -293,42 +306,9 @@ let reload_chart () =
       update_chart field_names r ;
       resync ())
 
-let set_sel_node id =
-  set sel_node id ;
-  set sel_output_cols [] ;
-  set chart_type Chart.NotStacked ;
-  set raw_output_mode true ;
-  set tail_rows [||] ;
-  reload_tail ()
+let sel_top_column = make_param "selected top column" "layer"
 
-(* TODO: add a health indicator (based on how old is the last report) *)
-let node_columns =
-  [| "layer", true, "" ; "name", true, "" ; "op", true, "" ;
-     "#in", true, "tuples" ; "#selected", true, "tuples" ;
-     "#out", true, "tuples" ; "#groups", true, "" ;
-     "export", true, "" ;
-     "CPU", true, "seconds" ;
-     "wait in", true, "seconds" ;
-     "wait out", true, "seconds" ;
-     "RAM", true, "bytes" ;
-     "volume in", true, "bytes" ;
-     "volume out", true, "bytes" ;
-     "parents", false, "" ; "children", false, "" ;
-     "PID", false, "" ; "signature", false, "" |]
-
-let sel_column = make_param "selected column" "layer"
-
-(* Tells if the GUI is in the layer edition mode where only the layer
- * panel is displayed alongside the large editor panel. *)
-type edited_layer =
-  { layer_name : string ;
-    new_layer_name : string ref ;
-    mutable edited_nodes : (string ref * string ref) list }
-
-let the_new_layer = make_param "the new layer" (Layer.make ())
-
-let editor_mode = make_param "layer edition mode" false
-
+(* name and operation of a new node in the edition form: *)
 let new_edited_node edited_nodes =
   let rec loop i =
     let name = "new node "^ string_of_int i in
@@ -339,36 +319,54 @@ let new_edited_node edited_nodes =
   let name = loop 1 in
   ref name, ref ""
 
+(* List of all names and operations of nodes in the edition form, including
+ * new nodes: *)
 let edited_nodes_of_layer l =
   let edited_nodes =
     List.fold_left (fun ns (_, n) ->
         let n = n.value in
-        if n.Node.layer <> l.Layer.name then ns
+        if n.Node.layer <> l then ns
         else (ref n.Node.name, ref n.operation) :: ns
       ) [] nodes.value in
   edited_nodes @ [ new_edited_node edited_nodes ]
 
-let edited_layer_of_layer l =
-  { layer_name = l.Layer.name ;
-    new_layer_name = ref l.Layer.name ;
+let edited_layer_of_layer = function
+  ExistingLayer l ->
+  { new_layer_name = ref l ;
     edited_nodes = edited_nodes_of_layer l }
+| NewLayer ->
+  (* edited_layer record for a new layer: *)
+  { new_layer_name = ref "new layer name" ;
+    edited_nodes = [ new_edited_node [] ] }
+| NoLayer -> fail ()
 
 let edited_layer =
-  make_param "edited nodes" (edited_layer_of_layer the_new_layer.value)
-
-let set_editor_mode = function
-  | None ->
-    set editor_mode false
-  | Some l ->
-    set editor_mode true ;
-    if l.Layer.name <> edited_layer.value.layer_name then
-      set edited_layer (edited_layer_of_layer l)
+  make_param "edited nodes" (edited_layer_of_layer NewLayer)
 
 let add_edited_node () =
   let edl = edited_layer.value in
   edl.edited_nodes <-
     edl.edited_nodes @ [ new_edited_node edl.edited_nodes ] ;
   change edited_layer
+
+let reset_for_node_change () =
+  set sel_output_cols [] ;
+  set chart_type Chart.NotStacked ;
+  set tail_rows [||] ;
+  reload_tail ()
+
+let set_sel_node = function
+  Some node ->
+  if node.Node.id <> sel_node.value then (
+    set sel_node node.id ;
+    let l = ExistingLayer node.layer in
+    set sel_layer l ;
+    set edited_layer (edited_layer_of_layer l) ;
+    reset_for_node_change ())
+| None ->
+  if sel_node.value <> "" then (
+    set sel_node "" ;
+    reset_for_node_change ())
 
 let get_variant js =
   let open Js in
@@ -431,7 +429,7 @@ let update_graph total g =
       name ; status_str ; status ;
       last_started = Js.(Unsafe.get l "last_started" |> Opt.to_option |>
                          option_map float_of_number) ;
-      last_stopped = Js.(Unsafe.get l "last_started" |> Opt.to_option |>
+      last_stopped = Js.(Unsafe.get l "last_stopped" |> Opt.to_option |>
                          option_map float_of_number) ;
       nb_nodes = nodes##.length } in
     update_layer layer ;
@@ -496,34 +494,78 @@ let update_graph total g =
      * worries. *)
   )
 
-let reload_graph () =
+let reload_graph ?redirect_to_layer () =
   http_get "/graph" (fun g ->
     update_graph true g ;
+    option_may (fun r ->
+        set sel_layer (ExistingLayer r) ;
+        set edited_layer (edited_layer_of_layer (ExistingLayer r))
+      ) redirect_to_layer ;
     resync ())
+
+(* Panel pending deletion, if any. There is only one, so selecting another
+ * layer for deletion cancel the delete status of the current one. *)
+let layer_to_delete = make_param "layer pending deletion" ""
 
 (* DOM *)
 
-let spacer = p [ clss "spacer" ]
+let breadcrumbs =
+  div
+    [ clss "breadcrumbs" ;
+      with_value sel_layer (function
+        NoLayer -> p [ text "Configuration" ]
+      | NewLayer ->
+        group
+          [ p ~action:(fun _ -> set sel_layer NoLayer)
+              [ clss "actionable" ; text "Configuration" ] ;
+            p [ text ">" ] ;
+            p [ text "New Layer" ] ]
+      | ExistingLayer layer ->
+        with_value sel_node (function
+          "" ->
+          group
+            [ p ~action:(fun _ -> set sel_layer NoLayer)
+                [ clss "actionable" ; text "Configuration" ] ;
+              p [ text ">" ] ;
+              p [ text layer ] ]
+        | snode ->
+          group
+            [ p ~action:(fun _ ->
+                  set_sel_node None ; set sel_layer NoLayer)
+                [ clss "actionable" ; text "Configuration" ] ;
+              p [ text ">" ] ;
+              p ~action:(fun _ -> set_sel_node None)
+                [ clss "actionable" ; text layer ] ;
+              p [ text "/" ] ;
+              p [ text (Node.name_of_id snode) ] ])) ]
 
 let autoreload = make_param "autoreload" true
+
+let spacer = div [ clss "spacer" ]
 
 let header_panel =
   group
     [ div
-        [ id "title" ;
-          p
-            [ text "Ramen v0.1 running on " ;
-              elmt "em" [ text "$HOSTNAME$." ] ] ;
-          spacer ;
-          with_value autoreload (fun ar ->
-            let title = (if ar then "dis" else "en")^ "able auto-reload" in
-            button ~action:(fun _ ->
-                set autoreload (not autoreload.value))
-              [ clss ("icon actionable" ^ if ar then " selected" else "") ;
-                attr "title" title ; text "⟳" ]) ] ;
-      with_value last_error (function
-        | "" -> group []
-        | e -> div [ id "error" ; p [ text e ] ]) ]
+      [ id "global" ;
+        div
+          [ clss "title" ;
+            div [ text "Ramen v0.1" ] ;
+            div [ text "running on " ;
+                em [ text "$HOSTNAME$." ] ] ] ;
+        breadcrumbs ;
+        spacer ;
+        with_value autoreload (fun ar ->
+          let title = (if ar then "dis" else "en")^ "able auto-reload" in
+          button ~action:(fun _ ->
+              set autoreload (not autoreload.value))
+            [ clss ("icon actionable" ^ if ar then " selected" else "") ;
+              attr "title" title ; text "⟳" ]) ] ;
+      with_value last_errors (fun lst ->
+        let ps =
+          List.map (fun e ->
+            p [ clss (if e.is_error then "error" else "ok") ;
+                text e.message ]) lst in
+        if ps = [] then group [] else div (id "messages" :: ps)) ]
 
 let labeled_value l v =
   p [
@@ -546,59 +588,112 @@ let with_node node_id f =
     | exception Not_found -> text ("Can't find node "^ node_id)
     | node -> f node.value)
 
-let icon_of_layer layer =
-  let icon, path, alt =
+let icon_of_layer ?(suppress_action=false) layer =
+  let icon, path, alt, what =
     match layer.Layer.status with
-    | Edition -> "✎", "/compile/"^ enc layer.Layer.name, "compile"
-    | Compiling -> "☐", "/graph/"^ enc layer.Layer.name, "reload"
-    | Compiled -> "☑", "/start/"^ enc layer.Layer.name, "start"
-    | Running -> "⚙", "/stop/"^ enc layer.Layer.name, "stop"
+    | Edition ->
+      "✎", "/compile/"^ enc layer.Layer.name,
+      "compile", Some ("Compiled "^ layer.Layer.name)
+    | Compiling ->
+      "☐", "/graph/"^ enc layer.Layer.name,
+      "reload", None
+    | Compiled ->
+      "☑", "/start/"^ enc layer.Layer.name,
+      "start", Some ("Started "^ layer.Layer.name)
+    | Running ->
+      "⚙", "/stop/"^ enc layer.Layer.name,
+      "stop", Some ("Stopped "^ layer.Layer.name)
   in
-  button ~action:(fun _ ->
-      http_get path (fun status ->
+  let action =
+    if suppress_action then None
+    else Some (fun _ ->
+      http_get path ?what (fun status ->
         (* FIXME: graph won't return a status so the following will
          * fail. make all these return proper JSON RPC *)
         if Js.(Unsafe.get status "success" |> to_bool) then
           http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
             update_graph false g ;
-            resync ()))) [
+            resync ()))) in
+  button ?action [
     clss "icon actionable" ;
-    attr "title" alt ;
+    title alt ;
     text icon ]
 
-let layer_panel layer =
+let done_edit_layer_cb ?redirect_to_layer what status =
+  if Js.(Unsafe.get status "success" |> to_bool) then (
+    Firebug.console##log (Js.string ("DONE "^ what)) ;
+    reload_graph ?redirect_to_layer ()
+  ) else (
+    Firebug.console##error_2 (Js.string ("Cannot "^ what ^" layer")) status
+  )
+
+let del_layer layer_name =
+  let path = "/graph/"^ enc layer_name
+  and what = "Deleted "^ layer_name in
+  http_del path ~what (done_edit_layer_cb "delete")
+
+let layer_panel to_del layer =
+  let is_to_del = to_del = layer.Layer.name in
+  (* In order not to change the size of the panel we paint the
+   * confirmation dialog on top of the normal tile. *)
   let e = [
-    p [
-      clss "name" ;
-      text layer.Layer.name ;
-      (if layer.status <> Running then
-        button ~action:(fun _ -> set_editor_mode (Some layer))
-          [ clss "actionable" ; text "edit" ]
-      else group []) ;
-      icon_of_layer layer ] ;
+    div
+      [ clss "title" ;
+        p [ clss "name" ; text layer.Layer.name ] ;
+        (let action =
+           if is_to_del then None
+           else Some (fun _ -> set layer_to_delete layer.name) in
+        button ?action
+          [ clss "actionable icon" ; title "delete" ; text "⌫" ]) ;
+        icon_of_layer ~suppress_action:is_to_del layer ] ;
     div [
       clss "info" ;
       labeled_value "#nodes" (string_of_int layer.nb_nodes) ;
       labeled_value "started" (date_of_ts layer.last_started) ;
       labeled_value "stopped" (date_of_ts layer.last_stopped) ] ]
   in
-  with_value sel_node (fun sel ->
-    if sel = "" then div e else
-    with_node sel (fun node ->
-      let e =
-        if node.Node.layer = layer.Layer.name then clss "selected" :: e
-        else e in
-      div e))
+  with_value sel_layer (fun slayer ->
+    if is_to_del then
+      div
+        ( clss "warning layer" ::
+          div
+            [ clss "overwrite1" ;
+              div
+                [ clss "overwrite2" ;
+                  p [ text "Delete layer " ;
+                      em [ text layer.Layer.name ] ;
+                      text "?" ] ;
+                  p [ clss "yes-or-no" ;
+                      span ~action:(fun _ -> del_layer layer.name)
+                        [ clss "yes" ; text "yes" ] ;
+                      text "/" ;
+                      span ~action:(fun _ -> set layer_to_delete "")
+                        [ clss "no" ; text "NO" ] ] ] ] :: e )
+    else if slayer = ExistingLayer layer.name then
+      div ~action:(fun _ -> set sel_layer NoLayer ; set_sel_node None)
+        (clss "selected-actionable layer" :: e)
+    else
+      div ~action:(fun _ ->
+          let l = ExistingLayer layer.name in
+          set sel_layer l ;
+          set_sel_node None ;
+          set edited_layer (edited_layer_of_layer l) ;
+          set layer_to_delete "")
+        (clss "actionable layer" :: e))
 
 let layers_panel =
   div [
     with_value layers (fun layers ->
-      List.fold_left (fun lst (_, p) ->
-        with_value p layer_panel :: lst) [] layers |>
-      List.rev |>
-      group) ;
-    button ~action:(fun _ -> set_editor_mode (Some the_new_layer.value))
-      [ clss "actionable" ; text "new" ] ]
+      with_value layer_to_delete (fun to_del ->
+        List.fold_left (fun lst (_, p) ->
+          with_value p (layer_panel to_del) :: lst) [] layers |>
+        List.rev |>
+        group)) ;
+    button ~action:(fun _ ->
+        set sel_layer NewLayer ;
+        set edited_layer (edited_layer_of_layer NewLayer) ;
+        set layer_to_delete "")
+      [ clss "actionable new-layer" ; text "new layer" ] ]
 
 let pretty_th ?action c title subtitle =
   th ?action (
@@ -608,10 +703,10 @@ let pretty_th ?action c title subtitle =
          [ p [ clss "type" ; text subtitle ] ]))
 
 let node_thead_col (title, sortable, subtitle) =
-  with_value sel_column (fun col ->
+  with_value sel_top_column (fun col ->
     let action, c =
       if sortable && col <> title then
-        Some (fun _ -> set sel_column title), "actionable"
+        Some (fun _ -> set sel_top_column title), "actionable"
       else None, if col = title then "selected" else "" in
     pretty_th ?action c title subtitle)
 
@@ -619,6 +714,9 @@ let tds v = td [ text v ]
 let tdo = function None -> tds "n.a." | Some v -> tds v
 let tdi v = td [ clss "number" ; text (string_of_int v) ]
 let tdf v = td [ clss "number" ; text (str_of_float v) ]
+(* Sometime we use floats to get bigger integers.
+ * Do not add nbsp to those: *)
+let tdfi v = td [ clss "number" ; text (string_of_float v) ]
 
 let short_node_list ?(max_len=20) layer lst =
   let pref = layer ^"/" in
@@ -634,7 +732,7 @@ let short_node_list ?(max_len=20) layer lst =
 let node_tbody_row node =
   let tdh w xs =
     td [ clss "number" ; text xs ;
-         elmt "hr" [ attr "width" (string_of_float w) ] ] in
+         hr [ attr "width" (string_of_float w) ] ] in
   let tdih tot x =
     if tot = 0. then tdi x else
     let w = 100. *. float_of_int x /. tot in
@@ -643,8 +741,9 @@ let node_tbody_row node =
     if tot = 0. then tdf x else
     let w = 100. *. x /. tot in
     tdh w (str_of_float x) in
-  let tdoi = function None -> tds "n.a." | Some v -> tdi v
-  and tdoih tot = function None -> tds "n.a." | Some v -> tdih tot v
+  let na = td [ clss "number" ; text "n.a." ] in
+  let tdoi = function None -> na | Some v -> tdi v
+  and tdoih tot = function None -> na | Some v -> tdih tot v
   in
   with_value nodes_sum (fun (_tot_nodes, tot_ins, tot_sels, tot_outs,
                              tot_grps, tot_cpu, tot_ram, tot_in_sleep,
@@ -657,7 +756,8 @@ let node_tbody_row node =
         tdih tot_sels node.sel_tuple_count ;
         tdih tot_outs node.out_tuple_count ;
         tdoih tot_grps node.group_count ;
-        tds (if node.exporting then "✓" else " ") ;
+        td [ clss "export" ;
+             text (if node.exporting then "✓" else " ") ] ;
         tdfh tot_cpu node.cpu_time ;
         tdfh tot_in_sleep node.in_sleep ;
         tdfh tot_out_sleep node.out_sleep ;
@@ -674,10 +774,10 @@ let node_tbody_row node =
      * depend only on this. *)
     with_value sel_node (fun sel ->
       if sel = node.Node.id then
-        tr ~action:(fun _ -> set_sel_node "")
-          (clss "selected actionable" :: cols)
+        tr ~action:(fun _ -> set_sel_node None ; set sel_layer NoLayer)
+          (clss "selected-actionable" :: cols)
       else
-        tr ~action:(fun _ -> set_sel_node node.id)
+        tr ~action:(fun _ -> set_sel_node (Some node))
           (clss "actionable" :: cols)))
 
 let node_sorter col =
@@ -714,6 +814,21 @@ let node_sorter col =
          | 0 -> compare a.name b.name
          | x -> x)
 
+(* TODO: add a health indicator (based on how old is the last report) *)
+let node_columns =
+  [| "layer", true, "" ; "name", true, "" ; "op", true, "" ;
+     "#in", true, "tuples" ; "#selected", true, "tuples" ;
+     "#out", true, "tuples" ; "#groups", true, "" ;
+     "export", true, "" ;
+     "CPU", true, "seconds" ;
+     "wait in", true, "seconds" ;
+     "wait out", true, "seconds" ;
+     "RAM", true, "bytes" ;
+     "volume in", true, "bytes" ;
+     "volume out", true, "bytes" ;
+     "parents", false, "" ; "children", false, "" ;
+     "PID", false, "" ; "signature", false, "" |]
+
 let nodes_panel =
   table [
     thead [
@@ -722,23 +837,29 @@ let nodes_panel =
       List.rev |> tr ] ;
     (* Table body *)
     with_value nodes (fun nodes ->
-      with_value sel_column (fun sel_col ->
-        (* Build a list of params sorted according to sel_column: *)
-        let rows =
-          List.fold_left (fun lst p -> p :: lst) [] nodes |>
-          List.fast_sort (node_sorter sel_col) in
-        List.map (fun (_, p) ->
-          with_value p node_tbody_row) rows |>
-        tbody)) ;
+      with_value sel_top_column (fun sel_col ->
+        with_value sel_layer (fun sel_lay ->
+          (* Build a list of params sorted according to sel_top_column: *)
+          let rows =
+            nodes |>
+            List.filter (fun (_, p) ->
+              sel_lay = NoLayer || sel_lay = NewLayer ||
+              sel_lay = ExistingLayer p.value.Node.layer) |>
+            List.fold_left (fun lst p -> p :: lst) [] |>
+            List.fast_sort (node_sorter sel_col) in
+          List.map (fun (_, p) ->
+            with_value p node_tbody_row) rows |>
+          tbody))) ;
     with_value nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
                                tot_grps, tot_cpu, tot_ram, tot_in_sleep,
-                               tot_out_sleep, tot_in_bytes, tot_out_bytes) ->
+                               tot_out_sleep, tot_in_bytes,
+                               tot_out_bytes) ->
       tfoot [
         tr [
-          tds "" ; tdf tot_nodes ; tds "" ; tdf tot_ins ;
-          tdf tot_sels ; tdf tot_outs ; tdf tot_grps ;
+          tds "Total:" ; tdfi tot_nodes ; tds "" ; tdfi tot_ins ;
+          tdfi tot_sels ; tdfi tot_outs ; tdfi tot_grps ;
           tds "" ; tdf tot_cpu ; tdf tot_in_sleep ; tdf tot_out_sleep ;
-          tdf tot_ram ; tdf tot_in_bytes ; tdf tot_out_bytes ;
+          tdfi tot_ram ; tdfi tot_in_bytes ; tdfi tot_out_bytes ;
           tds "" ; tds "" ; tds "" ; tds "" ] ]) ]
 
 let field_panel f =
@@ -746,9 +867,9 @@ let field_panel f =
 
 let input_panel =
   with_value sel_node (fun sel ->
-    if sel = "" then elmt "span" []
+    if sel = "" then p [ text "Select a node to see its input fields" ]
     else with_node sel (fun node ->
-      div (List.map field_panel node.input_type)))
+      ol (List.map (fun f -> li [ field_panel f ]) node.input_type)))
 
 let can_plot_type = function
     TFloat | TU8 | TU16 | TU32 | TU64 | TU128
@@ -760,7 +881,9 @@ let op_panel =
     if sel = "" then
       p [ text "Select a node to see the operation it performs" ]
     else with_node sel (fun node ->
-      elmt "pre" [ text node.operation ]))
+      div
+        [ clss "operation" ;
+          elmt "pre" [ text node.operation ] ]))
 
 let tail_panel =
   let row fs r =
@@ -784,7 +907,8 @@ let tail_panel =
               if is_selected then
                 List.filter ((<>) ci) cols
               else ci :: cols in
-            set sel_output_cols toggled in
+            set sel_output_cols toggled ;
+            reload_chart () in
           let c = if is_selected then "selected actionable" else "actionable" in
           c, Some action
         else "", None in
@@ -842,7 +966,7 @@ let chart_type_selector =
 let timechart_panel =
   with_value sel_output_cols (function
     | [] ->
-      p [ text "Select a column in the raw output panel to plot it." ]
+      p [ text "Select one or several columns to plot them." ]
     | _ ->
       with_value chart_points (fun field_pts ->
         if field_pts = [] || Array.length (snd (List.hd field_pts)) = 0
@@ -881,17 +1005,22 @@ let timechart_panel =
                 Chart.xy_plot ~attrs ~svg_width ~svg_height
                   ~string_of_x:Formats.(timestamp.to_label)
                   ~string_of_y:Formats.(numeric.to_label)
-                  ~stacked_y1
+                  ~stacked_y1 ~draw_legend:Chart.UpperRight
                   "time"
                   (if single_field then fst_field_name else "")
                   vx_start vx_step nb_pts fold) ]))
 
-let form_input label value =
-  elmt "label"
-    [ text label ;
-      input ~action:(fun v -> value := v ; change edited_layer)
-        [ attr "type" "text" ;
-          attr "value" !value ] ]
+let form_input label value placeholder =
+  let size = String.length !value + 10 in
+  div
+    [ clss "input" ;
+      elmt "label"
+        [ text label ;
+          input ~action:(fun v -> value := v ; change edited_layer)
+            [ attr "type" "text" ;
+              attr "size" (string_of_int size) ;
+              attr "placeholder" placeholder ;
+              attr "value" !value ] ] ]
 
 let get_text_size s =
   let rec loop_line nb_l longest from =
@@ -903,33 +1032,28 @@ let get_text_size s =
   in
   loop_line 0 0 0
 
-let form_input_large label value =
+let form_input_large label value placeholder =
   let cols, rows = get_text_size !value in
   let cols = max 20 (cols + 5)
   and rows = max 5 (rows + 4) in
-  elmt "label"
-    [ text label ;
-      br ;
-      textarea ~action:(fun v -> value := v ; change edited_layer)
-        [ attr "rows" (string_of_int rows) ;
-          attr "cols" (string_of_int cols) ;
-          attr "spellcheck" "false" ;
-          text !value ] ]
+  div
+    [ clss "input" ;
+      elmt "label"
+        [ text label ;
+          br ;
+          textarea ~action:(fun v -> value := v ; change edited_layer)
+            [ attr "rows" (string_of_int rows) ;
+              attr "cols" (string_of_int cols) ;
+              attr "placeholder" placeholder ;
+              attr "spellcheck" "false" ;
+              text !value ] ] ]
 
 let node_editor_panel (name, operation) =
   div
     [ clss "node-edition" ;
-      div [ form_input "Name" name ] ;
-      div [ form_input_large "Operation" operation ] ]
-
-let done_edit_cb what status =
-  if Js.(Unsafe.get status "success" |> to_bool) then (
-    Firebug.console##log (Js.string ("DONE "^ what)) ;
-    set_editor_mode None ;
-    reload_graph ()
-  ) else (
-    Firebug.console##error_2 (Js.string ("Cannot "^ what ^" layer")) status
-  )
+      form_input "Name" name "enter a node name" ;
+      form_input_large "Operation" operation "enter operation here" ;
+      hr [] ]
 
 let save_layer _ =
   let js_of_node (name, operation) =
@@ -946,81 +1070,76 @@ let save_layer _ =
       val name = Js.string !(edl.new_layer_name)
       val nodes = js_of_list js_of_node nodes
     end
-  and path = "/graph" in
-  http_put path content (done_edit_cb "save")
-
-let del_layer layer_name =
-  let path = "/graph/"^ enc layer_name in
-  http_del path (done_edit_cb "delete")
+  and path = "/graph"
+  and what = "Saved "^ !(edl.new_layer_name) in
+  http_put path content ~what
+    (done_edit_layer_cb ~redirect_to_layer:!(edl.new_layer_name) "save")
 
 let layer_editor_panel =
   with_value edited_layer (fun edl ->
     div
-      [ h2 "Layer" ;
-        form_input "Name" edl.new_layer_name ;
+      [ id "editor" ;
+        form_input "Name" edl.new_layer_name "enter a node name" ;
         h2 "Nodes" ;
         group (List.map node_editor_panel edl.edited_nodes) ;
         br ;
         button ~action:(fun _ -> add_edited_node ())
           [ clss "actionable" ; text "+" ] ;
-        button ~action:(fun _ -> set_editor_mode None)
+        button ~action:(fun _ -> set sel_layer NoLayer)
           [ clss "actionable" ; text "Cancel" ] ;
-        button ~action:(fun _ -> del_layer edl.layer_name)
-          [ clss "actionable" ; text "Delete" ] ;
         button ~action:save_layer
           [ clss "actionable" ; text "Save" ] ])
 
 let output_panel =
-  with_value raw_output_mode (function
-    true ->
-    group
-      [ div
-        [ clss "tab" ;
-          div [ clss "selected" ; text "Raw Output" ] ;
-          div ~action:(fun _ ->
-              set raw_output_mode false ;
-              reload_chart ())
-            [ clss "actionable" ; text "Time Chart" ] ] ;
-        tail_panel ]
-  | false ->
-    group
-      [ div
-        [ clss "tab" ;
-          div ~action:(fun _ ->
-              set raw_output_mode true ;
-              reload_tail ())
-            [ clss "actionable" ; text "Raw Output" ] ;
-          div [ clss "selected" ; text "Time Chart" ] ] ;
-        timechart_panel ])
+  div
+    [ id "output" ;
+      h1  "Raw Output" ;
+      tail_panel ;
+      div [ id "timechart" ; timechart_panel ] ]
+
+let top_layers =
+  div [ id "layers" ; h1 "Layers" ; layers_panel ]
+
+let top_nodes =
+  div [ id "nodes" ; h1 "Nodes" ; nodes_panel ]
 
 let dom =
   group
-    [ div [ id "global" ; header_panel ] ;
-      with_value editor_mode (function
-        true ->
-          div [ id "editor" ; layer_editor_panel ]
-      | false ->
+    [ header_panel ;
+      with_value sel_node (function
+        "" ->
+        with_value sel_layer (function
+          NoLayer ->
+          div [ id "top" ; top_layers ; top_nodes ]
+        | ExistingLayer slayer ->
+          div
+            [ id "top" ; top_layers ;
+              h1 ("Configuration for layer "^ slayer) ;
+              layer_editor_panel ]
+        | NewLayer ->
+          div
+            [ id "top" ; top_layers ;
+              h1 "New layer configuration" ;
+              layer_editor_panel ])
+      | _snode ->
         group
-          [ div
-            [ id "top" ;
-              div [ id "layers" ; h1 "Layers" ; layers_panel ] ;
-              div [ id "nodes" ; h1 "Nodes" ; nodes_panel ] ] ;
+          [ div [ id "top" ; top_layers ; top_nodes ] ;
             div
               [ id "details" ;
-                div [ id "input" ; h1 "Input" ; input_panel ] ;
+                div [ id "inputs" ; h1 "Input fields" ; input_panel ] ;
                 div [ id "operation" ; h1 "Operation" ; op_panel ] ] ;
-            div
-              [ id "output" ; output_panel ] ]) ]
+            output_panel ]) ]
 
 let () =
-  let periodically () =
-    if autoreload.value && not editor_mode.value then (
-      reload_graph () ;
-      (* Tail could benefit from a higher refresh frequency *)
-      if sel_node.value <> "" then
-        if raw_output_mode.value then reload_tail ()
-        else reload_chart ()) in
-  Dom_html.window##setInterval (Js.wrap_callback periodically) 3_500. |>
-  ignore ;
+  let rld_graph () =
+    match autoreload.value, sel_layer.value with
+      true, ExistingLayer _ -> reload_graph ()
+    | _ -> () in
+  ignore (Html.window##setInterval (Js.wrap_callback rld_graph) 3_317.) ;
+  let rld_tail () =
+    if autoreload.value && sel_node.value <> "" then (
+      reload_tail () ;
+      reload_chart ()) in
+  ignore (Html.window##setInterval (Js.wrap_callback rld_tail) 1_710.) ;
   start dom ;
   reload_graph ()

@@ -86,6 +86,7 @@ type vnode =
              last : (int * vnode) ref }
   (* No HTML produced, just for grouping: *)
   | Group of { subs : vnode list }
+  | InView (* No production, put parent in view when created *)
 
 let rec string_of_vnode = function
   | Attribute (n, v) -> "attr("^ n ^", "^ abbrev 10 v ^")"
@@ -93,6 +94,7 @@ let rec string_of_vnode = function
   | Element { tag ; subs ; _ } -> tag ^"("^ string_of_tree subs ^")"
   | Group { subs ; _ } -> "group("^ string_of_tree subs ^")"
   | Fun { param ; _ } -> "fun("^ param.name ^")"
+  | InView -> "in-view"
 and string_of_tree subs =
   List.fold_left (fun s tree ->
     s ^ (if s = "" then "" else ";") ^ string_of_vnode tree) "" subs
@@ -131,6 +133,8 @@ let text s = Text s
 
 let attr n v = Attribute (n, v)
 
+let in_view = InView
+
 let rec short_string_of_float f =
   if f = 0. then "0" else  (* take good care of ~-.0. *)
   if f < 0. then "-"^ short_string_of_float (~-.f) else
@@ -156,6 +160,7 @@ let attr_opt n =
 let attrsf_opt n =
   function None -> group [] | Some v -> attrsf n v
 let id = attr "id"
+let title = attr "title"
 let span = elmt "span"
 let table = elmt "table"
 let thead = elmt "thead"
@@ -172,6 +177,11 @@ let br = elmt "br" []
 let h1 t = elmt "h1" [ text t ]
 let h2 t = elmt "h2" [ text t ]
 let h3 t = elmt "h3" [ text t ]
+let hr = elmt "hr"
+let em = elmt "em"
+let ul = elmt "ul"
+let ol = elmt "ol"
+let li = elmt "li"
 
 (* Some more for SVG *)
 
@@ -296,8 +306,9 @@ let change p =
   p.desc.last_changed <- clock ()
 
 let set p v =
-  p.value <- v ;
-  change p
+  if v <> p.value then (
+    p.value <- v ;
+    change p)
 
 (* Current DOM, starts empty *)
 
@@ -336,7 +347,8 @@ let rec add_listeners tag (elmt : Html.element Js.t) action =
   | "button" ->
     let elmt = Html.CoerceTo.button elmt |>
                coercion_motherfucker_can_you_do_it in
-    elmt##.onclick := Html.handler (fun _ ->
+    elmt##.onclick := Html.handler (fun ev ->
+      Html.stopPropagation ev ;
       action (Js.to_string elmt##.value) ;
       resync () ;
       Js._false)
@@ -355,6 +367,12 @@ and insert (parent : Html.element Js.t) child_idx vnode =
   match vnode with
   | Attribute (n, v) ->
     parent##setAttribute (Js.string n) (Js.string v) ;
+    0
+  | InView ->
+    (* TODO: smooth (https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollIntoView) *)
+    (* TODO: make this true/false an InView parameter *)
+    (* FIXME: does not seem to work *)
+    parent##scrollIntoView Js._false ;
     0
   | Text t ->
     let data = doc##createTextNode (Js.string t) in
@@ -390,7 +408,7 @@ and sync (parent : Html.element Js.t) child_idx vdom =
     | Group { subs ; _ } ->
       List.fold_left (fun s e -> s + flat_length e) 0 subs
     | Element _ | Text _ -> 1
-    | Attribute _ -> 0
+    | Attribute _ | InView -> 0
     | Fun { last ; _ } ->
       flat_length (snd !last) in
   let ( += ) a b = a := !a + b in
@@ -411,7 +429,7 @@ and sync (parent : Html.element Js.t) child_idx vdom =
         ) subs) ;
     1
   | Text _ -> 1
-  | Attribute _ -> 0
+  | Attribute _ | InView -> 0
   | Group { subs ; _ } ->
     if worthy then (
       let i = ref 0 in
@@ -457,21 +475,50 @@ let start nd =
 
 let enc s = Js.(to_string (encodeURIComponent (string s)))
 
-let last_error = make_param "last error" ""
+(* Have a list of last error/success messages, each with a creation time
+ * and have a periodic function timeout those messages after 5s or so.
+ * Stop deleting errors on success. Instead, add a success message. *)
+type error =
+  { time : float ; message : string ; is_error: bool }
+let last_errors = make_param "last errors" []
 
-let ajax action path ?content cb =
+let now () = (new%js Js.date_now)##valueOf /. 1000.
+
+let install_err_timeouting =
+  let err_timeout = 5. and ok_timeout = 1. in
+  let timeout_of_err e =
+    if e.is_error then err_timeout else ok_timeout in
+  let timeout_errs () =
+    let now = now () in
+    let le, changed =
+      List.fold_left (fun (es, changed) e ->
+        if e.time +. timeout_of_err e < now then
+          es, true
+        else
+          e::es, changed) ([], false) last_errors.value in
+    if changed then (
+      set last_errors le ;
+      resync ()) in
+  ignore (Html.window##setInterval (Js.wrap_callback timeout_errs) 0_500.)
+
+let ajax action path ?content ?what cb =
   let req = XmlHttpRequest.create () in
   req##.onreadystatechange := Js.wrap_callback (fun () ->
     if req##.readyState = XmlHttpRequest.DONE then (
       print (Js.string "AJAX query DONE!") ;
       let js = Js._JSON##parse req##.responseText in
-      if req##.status <> 200 then (
-        print_2 (Js.string "AJAX query failed") js ;
-        set last_error Js.(Unsafe.get js "error" |> to_string)
-      ) else (
-        print js ;
-        set last_error "" ;
-        cb js) ;
+      let time = now () in
+      let last_error =
+        if req##.status <> 200 then (
+          print_2 (Js.string "AJAX query failed") js ;
+          Some { message = Js.(Unsafe.get js "error" |> to_string) ;
+                 time ; is_error = true }
+        ) else (
+          cb js ;
+          option_map (fun message ->
+            { time ; message ; is_error = false }) what) in
+      option_may (fun le ->
+        set last_errors (le :: last_errors.value)) last_error ;
       resync ())) ;
   req##_open (Js.string action)
              (Js.string path)
@@ -485,7 +532,7 @@ let ajax action path ?content cb =
       Js.some (Js._JSON##stringify js) in
   req##send content
 
-let http_get path cb = ajax "GET" path cb
-let http_post path content cb = ajax "POST" path ~content cb
-let http_put path content cb = ajax "PUT" path ~content cb
-let http_del path cb = ajax "DELETE" path cb
+let http_get path ?what cb = ajax "GET" path ?what cb
+let http_post path content ?what cb = ajax "POST" path ~content ?what cb
+let http_put path content ?what cb = ajax "PUT" path ~content ?what cb
+let http_del path ?what cb = ajax "DELETE" path ?what cb
