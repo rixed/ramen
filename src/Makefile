@@ -73,8 +73,7 @@ SOURCES = $(filter-out RamenGui.ml,$(SOURCES_))
 
 PACKAGES = \
 	ppp lwt.ppx batteries cmdliner stdint parsercombinator \
-	cohttp-lwt-unix num inotify.lwt sqlite3 \
-	binocle unix cryptohash owl
+	cohttp-lwt-unix num inotify.lwt binocle unix cryptohash owl
 
 INSTALLED = \
   META ramen ramen_configurator ramen_alerter	\
@@ -124,13 +123,24 @@ ringbuf_test.opt: RamenLog.cmx Consts.cmx Helpers.cmx RamenSharedTypesJS.cmx Ram
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package sqlite3 $(filter %.cmx, $^) -o $@
 
 ramen_alerter: $(ALERTER_SOURCES:.ml=.cmx)
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package sqlite3 $(filter %.cmx, $^) -o $@
 
 all_tests.opt: libringbuf.a libcolcomp.a $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
+
+# configurator/alerter specific sources with more packages
+
+SqliteHelpers.cmx: SqliteHelpers.ml
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
+
+Conf_of_sqlite.cmx: Conf_of_sqlite.ml
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
+
+ramen_alerter.cmx: ramen_alerter.ml
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
 
 # Web thingies
 
