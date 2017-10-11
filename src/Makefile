@@ -105,7 +105,7 @@ libcollectd.a: collectd/collectd.o collectd/wrappers.o
 # otherwise -package stdint would put it before and gcc would not include the
 # symbols we need as we are the only users.
 MOREFLAGS = \
-	-package "$(PACKAGES)" -I ringbuf -I collectd \
+	-package "$(PACKAGES)" \
 	-cclib -L. \
 	-cclib -lstdint_stubs \
 	-cclib -lringbuf \
