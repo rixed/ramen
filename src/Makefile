@@ -204,7 +204,7 @@ install-spec: $(INSTALLED)
 uninstall-spec:
 	ocamlfind remove ramen
 
-colcomp/colcomp_test: colcomp/colcomp_test.o colcomp/libcolcomp.a
+colcomp/colcomp_test: colcomp/colcomp_test.o libcolcomp.a
 	$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) $^ -o $@
 
 check-spec: ringbuf_test.opt colcomp/colcomp_test
