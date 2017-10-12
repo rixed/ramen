@@ -200,11 +200,9 @@ distclean-spec:
 
 install-spec: $(INSTALLED)
 	ocamlfind install ramen $^
-	install ramen $(prefix)$(bin_dir)/
 
 uninstall-spec:
 	ocamlfind remove ramen
-	$(RM) $(prefix)$(bin_dir)/ramen
 
 colcomp/colcomp_test: colcomp/colcomp_test.o colcomp/libcolcomp.a
 	$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) $^ -o $@
