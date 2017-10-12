@@ -251,6 +251,8 @@ let chart_points = make_param "chart points" []
 
 let chart_type = make_param "chart type" Chart.NotStacked
 
+let show_zero = make_param "show zero" false
+
 let sel_output_cols = make_param "selected output columns" []
 
 let chart_duration = make_param "chart duration" (3. *. 3600.)
@@ -352,6 +354,7 @@ let add_edited_node () =
 let reset_for_node_change () =
   set sel_output_cols [] ;
   set chart_type Chart.NotStacked ;
+  set show_zero false ;
   set tail_rows [||] ;
   reload_tail ()
 
@@ -942,7 +945,7 @@ let time_selector =
             reload_chart ())
           [ clss "actionable" ; text label ] in
     div
-      [ clss "time-selector" ;
+      [ clss "chart-buttons" ;
         sel "last 10m" 600. ;
         sel "last hour" 3600. ;
         sel "last 3h" (3. *. 3600.) ;
@@ -958,10 +961,18 @@ let chart_type_selector =
         button ~action:(fun _ -> set chart_type ct)
           [ clss "actionable" ; text label ] in
     div
-      [ clss "chart-type-selector" ;
+      [ clss "chart-buttons" ;
         sel "normal" Chart.NotStacked ;
         sel "stacked" Chart.Stacked ;
         sel "stacked+centered" Chart.StackedCentered ])
+
+let show_zero_selector =
+  with_value show_zero (fun fz ->
+    div
+      [ clss "chart-buttons" ;
+        button ~action:(fun _ -> toggle show_zero)
+          [ clss (if fz then "selected-actionable" else "actionable") ;
+            text "force zero" ] ])
 
 let timechart_panel =
   with_value sel_output_cols (function
@@ -1001,14 +1012,16 @@ let timechart_panel =
           div
             [ time_selector ;
               chart_type_selector ;
+              show_zero_selector ;
               with_value chart_type (fun stacked_y1 ->
-                Chart.xy_plot ~attrs ~svg_width ~svg_height
-                  ~string_of_x:Formats.(timestamp.to_label)
-                  ~string_of_y:Formats.(numeric.to_label)
-                  ~stacked_y1 ~draw_legend:Chart.UpperRight
-                  "time"
-                  (if single_field then fst_field_name else "")
-                  vx_start vx_step nb_pts fold) ]))
+                with_value show_zero (fun force_show_0 ->
+                  Chart.xy_plot ~attrs ~svg_width ~svg_height
+                    ~string_of_x:Formats.(timestamp.to_label)
+                    ~string_of_y:Formats.(numeric.to_label)
+                    ~stacked_y1 ~draw_legend:Chart.UpperRight
+                    ~force_show_0 "time"
+                    (if single_field then fst_field_name else "")
+                    vx_start vx_step nb_pts fold)) ]))
 
 let form_input label value placeholder =
   let size = String.length !value + 10 in

@@ -305,10 +305,12 @@ let svgtexts
 let change p =
   p.desc.last_changed <- clock ()
 
+let chg p v = p.value <- v ; change p
+
 let set p v =
-  if v <> p.value then (
-    p.value <- v ;
-    change p)
+  if v <> p.value then chg p v
+
+let toggle p = chg p (not p.value)
 
 (* Current DOM, starts empty *)
 
@@ -497,7 +499,7 @@ let install_err_timeouting =
         else
           e::es, changed) ([], false) last_errors.value in
     if changed then (
-      set last_errors le ;
+      chg last_errors le ;
       resync ()) in
   ignore (Html.window##setInterval (Js.wrap_callback timeout_errs) 0_500.)
 
@@ -518,7 +520,7 @@ let ajax action path ?content ?what cb =
           option_map (fun message ->
             { time ; message ; is_error = false }) what) in
       option_may (fun le ->
-        set last_errors (le :: last_errors.value)) last_error ;
+        chg last_errors (le :: last_errors.value)) last_error ;
       resync ())) ;
   req##_open (Js.string action)
              (Js.string path)
