@@ -194,7 +194,7 @@ struct
         xm.{ i, j } <- xs.(j)
       done) ;
     (* Now ask for the "best" parameters: *)
-    let p = Regression.linear xm ym in
+    let p = Linalg.D.linsolve xm ym in
     (* And use that to predict the new y given the new xs *)
     let _cury, cur_preds = current t in
     Array.fold_lefti (fun y i x ->
