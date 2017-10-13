@@ -4,16 +4,21 @@ FROM debian:stable-slim
 RUN echo 'APT::Install-Recommends "0";' > \
       /etc/apt/apt.conf.d/no_recommends
 
-# Update the debian
-RUN apt-get --yes update
-RUN apt-get --yes upgrade
-
 # Install a few things
-RUN apt-get --yes install opam ca-certificates rsync git aspcud m4 ocaml-nox
-RUN opam init --no-setup
+RUN apt-get --yes update && \
+    apt-get --yes install \
+      aspcud \
+      ca-certificates \
+      collectd \
+      git \
+      m4 \
+      ocaml-nox \
+      opam \
+      rsync
 
-# Add ocalme repository
-RUN opam repo add --priority=1 ocalme \
+# Comfigure opam
+RUN opam init --no-setup && \
+    opam repo add --priority=1 ocalme \
       git://github.com/rixed/ocalme-opam-repository.git
 
 # Install as fast a compiler we can get
@@ -22,9 +27,8 @@ RUN opam switch install ramen --alias-of 4.05.0+flambda
 # Install ramen
 RUN opam depext --noninteractive \
       conf-gsl conf-openblas conf-pkg-config \
-      plplot sqlite3
-RUN opam update ocalme
-RUN opam install ramen
+      plplot sqlite3 && \
+    opam install ramen
 
 # Minify the image (??)
 
@@ -35,6 +39,11 @@ ENV RAMEN_PERSIST_DIR=/ramen \
 
 # For owl not to bring down ramen workers:
 ENV HOME=/tmp
+
+# cohttp/conduit requires /etc/protocols and /etc/services,
+# which debian-slim does not provide:
+COPY protocols services /etc/
+# TODO: also collectd configuration
 
 # Command to be run:
 WORKDIR /ramen
