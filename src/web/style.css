@@ -109,6 +109,7 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #timechart button { padding: 5px; }
 #timechart svg.chart { display: block; }
 
+#layers p.error { background: rgb(240, 30, 20); }
 span.label { margin-right: 0.2em; color: #222; font-size: 80%; font-weight: 700; }
 span.value { margin-right: 1em; color: #003; font-size: 85%; }
 

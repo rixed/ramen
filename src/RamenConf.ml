@@ -202,7 +202,7 @@ struct
       Option.default_delayed (fun () ->
         { nodes = Hashtbl.create 17 ;
           timeout ; last_used = now ;
-          status = Edition ;
+          status = Edition "" ;
           last_status_change = now ;
           last_started = None ; last_stopped = None }) persist in
     let layer = { name ; persist ; importing_threads = [] } in
@@ -213,29 +213,32 @@ struct
     if persist.status = Compiled &&
        Hashtbl.values persist.nodes |> Enum.exists (fun n ->
          not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
-    then set_status layer Edition ;
+    then set_status layer (Edition "");
     (* Also, we cannot be compiling anymore: *)
-    if persist.status = Compiling then set_status layer Edition ;
+    if persist.status = Compiling then set_status layer (Edition "") ;
     (* FIXME: also, as a precaution, delete any temporary layer (maybe we
      * crashed because of it? *)
     layer
 
   let is_typed layer =
     match layer.persist.status with
-    | Edition | Compiling -> false
+    | Edition _ | Compiling -> false
     | Compiled | Running -> true
 
   (* Layer edition: only when stopped *)
-  let set_editable layer =
+  let set_editable layer reason =
     match layer.persist.status with
-    | Edition -> ()
+    | Edition _ ->
+      (* Update the error message *)
+      if reason <> "" then
+        set_status layer (Edition reason)
     | Compiling ->
       (* FIXME: rather discard the compilation, and change the compiler to
        * check the status in between compilations and before changing any value
        * (needs a mutex.) *)
       raise (InvalidCommand "Graph is compiling")
     | Compiled ->
-      set_status layer Edition ;
+      set_status layer (Edition reason) ;
       (* Also reset the info we kept from the last compilation *)
       Hashtbl.iter (fun _ node ->
         let open Node in
@@ -398,7 +401,6 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
      * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
     pid = None ; last_report = [] } in
-  Layer.set_editable layer ;
   Hashtbl.add layer.Layer.persist.Layer.nodes node_name node ;
   layer, node
 
@@ -456,7 +458,8 @@ let add_link conf src dst =
    * have to recompile an underlying layer. The dependent dst, though, must
    * be recompiled to take into account this (possible) change in it's input
    * type. *)
-  Layer.set_editable (Hashtbl.find conf.graph.layers dst.layer) ;
+  let l = Hashtbl.find conf.graph.layers dst.layer in
+  Layer.set_editable l "" ;
   src.children <- dst :: src.children ;
   dst.parents <- src :: dst.parents ;
   save_graph conf

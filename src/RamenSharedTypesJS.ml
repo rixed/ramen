@@ -1,4 +1,5 @@
-type layer_status = Edition | Compiling | Compiled | Running [@@ppp PPP_JSON]
+type layer_status = Edition of string (* last error *)
+                  | Compiling | Compiled | Running [@@ppp PPP_JSON]
 
 (* TNum is not an actual type used by any value, but it's used as a default
  * type for numeric operands that can be "promoted" to any other numerical

@@ -55,7 +55,7 @@ let out_ringbuf_names_ref conf node =
 let run conf layer =
   let open L in
   match layer.persist.status with
-  | Edition -> raise NotYetCompiled
+  | Edition _ -> raise NotYetCompiled
   | Running -> raise AlreadyRunning
   | Compiling -> raise StillCompiling
   | Compiled ->
@@ -166,7 +166,7 @@ exception NotRunning
 
 let stop conf layer =
   match layer.L.persist.L.status with
-  | Edition | Compiled -> raise NotRunning
+  | Edition _ | Compiled -> raise NotRunning
   | Compiling ->
     (* FIXME: do as for Running and make sure run() check the status hasn't
      * changed before launching workers. *)

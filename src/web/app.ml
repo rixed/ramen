@@ -42,12 +42,21 @@ open RamenSharedTypesJS_noPPP
 
 module Layer =
 struct
-  let status_of_string = function
-    "Edition" -> Edition
-  | "Compiling" -> Compiling
-  | "Compiled" -> Compiled
-  | "Running" -> Running
-  | _ -> fail ()
+  let status_of_js js =
+    let open Js in
+    let a = object_keys js in
+    let status_str = array_get a 0 |> optdef_get |> to_string in
+    (match status_str with
+      "Edition" ->
+        (* In this case we have another array as the value instead of null,
+         * with a lone string in it: *)
+        let msg = Js.(Unsafe.get js status_str |> to_string) in
+        Edition msg
+    | "Compiling" -> Compiling
+    | "Compiled" -> Compiled
+    | "Running" -> Running
+    | _ -> fail ()),
+    status_str
 
   type t =
     { name : string ;
@@ -424,8 +433,8 @@ let update_graph total g =
   for i = 0 to g##.length - 1 do
     let l = Js.array_get g i in
     let name = Js.(Unsafe.get l "name" |> to_string) in
-    let status_str = Js.(Unsafe.get l "status" |> get_variant) in
-    let status = Layer.status_of_string status_str in
+    let status_js = Js.Unsafe.get l "status" in
+    let status, status_str = Layer.status_of_js status_js in
     had_layers := name :: !had_layers ;
     let nodes = Js.Unsafe.get l "nodes" in
     let layer = Layer.{
@@ -594,7 +603,7 @@ let with_node node_id f =
 let icon_of_layer ?(suppress_action=false) layer =
   let icon, path, alt, what =
     match layer.Layer.status with
-    | Edition ->
+    | Edition _ ->
       "✎", "/compile/"^ enc layer.Layer.name,
       "compile", Some ("Compiled "^ layer.Layer.name)
     | Compiling ->
@@ -649,11 +658,15 @@ let layer_panel to_del layer =
         button ?action
           [ clss "actionable icon" ; title "delete" ; text "⌫" ]) ;
         icon_of_layer ~suppress_action:is_to_del layer ] ;
-    div [
-      clss "info" ;
-      labeled_value "#nodes" (string_of_int layer.nb_nodes) ;
-      labeled_value "started" (date_of_ts layer.last_started) ;
-      labeled_value "stopped" (date_of_ts layer.last_stopped) ] ]
+    div (
+      clss "info" ::
+      labeled_value "#nodes" (string_of_int layer.nb_nodes) ::
+      labeled_value "started" (date_of_ts layer.last_started) ::
+      labeled_value "stopped" (date_of_ts layer.last_stopped) ::
+      (match layer.status with
+      | Edition err when err <> "" ->
+        [ p [ clss "error" ; title err ; text (abbrev 25 err) ] ]
+      | _ -> [])) ]
   in
   with_value sel_layer (fun slayer ->
     if is_to_del then

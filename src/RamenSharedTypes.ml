@@ -136,7 +136,7 @@ struct
   type info =
     { name : string ;
       nodes : Node.info list ;
-      status : status [@ppp_default RamenSharedTypesJS.Edition] ;
+      status : status [@ppp_default (RamenSharedTypesJS.Edition "")] ;
       last_started : float option ;
       last_stopped : float option } [@@ppp PPP_JSON]
 end

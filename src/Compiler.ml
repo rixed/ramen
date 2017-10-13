@@ -885,7 +885,7 @@ let compile conf layer =
   | Compiled -> fail AlreadyCompiled
   | Running -> fail AlreadyCompiled
   | Compiling -> fail AlreadyCompiled
-  | Edition ->
+  | Edition _ ->
     !logger.debug "Trying to compile layer %s" layer.L.name ;
     let%lwt () =
       match untyped_dependency layer with
@@ -902,16 +902,24 @@ let compile conf layer =
           finished_typing && node_typing_is_finished conf node
         ) layer.L.persist.L.nodes true in
     (* TODO: better reporting *)
-    if not finished_typing then
-      fail (SyntaxError CannotCompleteTyping) else
-    let _, thds =
-      Hashtbl.fold (fun _ node (doing,thds) ->
-          (* Avoid compiling twice the same thing (TODO: a lockfile) *)
-          if Set.mem node.N.signature doing then doing, thds else (
-            Set.add node.N.signature doing,
-            compile_node conf node :: thds)
-        ) layer.L.persist.L.nodes (Set.empty, []) in
-    let%lwt () = join thds in
-    C.Layer.set_status layer Compiled ;
-    C.save_graph conf ;
-    return_unit
+    if not finished_typing then (
+      let e = SyntaxError CannotCompleteTyping in
+      C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
+      fail e
+    ) else (
+      let _, thds =
+        Hashtbl.fold (fun _ node (doing,thds) ->
+            (* Avoid compiling twice the same thing (TODO: a lockfile) *)
+            if Set.mem node.N.signature doing then doing, thds else (
+              Set.add node.N.signature doing,
+              compile_node conf node :: thds)
+          ) layer.L.persist.L.nodes (Set.empty, []) in
+      catch
+        (fun () ->
+          let%lwt () = join thds in
+          C.Layer.set_status layer Compiled ;
+          C.save_graph conf ;
+          return_unit)
+        (fun e ->
+          C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
+          fail e))
