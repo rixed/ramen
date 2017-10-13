@@ -65,11 +65,6 @@ struct
       nb_nodes : int ;
       last_started : float option ;
       last_stopped : float option }
-
-  let make () =
-    { name = "unnamed layer" ; nb_nodes = 0 ;
-      status = Edition ; status_str = "Edition" ;
-      last_started = None ; last_stopped = None }
 end
 
 module Field =
@@ -580,13 +575,12 @@ let header_panel =
         if ps = [] then group [] else div (id "messages" :: ps)) ]
 
 let labeled_value l v =
-  p [
-    span [
-      clss "label" ;
-      text (l ^ ":") ] ;
-    span [
-      clss "value" ;
-      text v ] ]
+  p [ span [
+        clss "label" ;
+        text (l ^ ":") ] ;
+      span [
+        clss "value" ;
+        text v ] ]
 
 let date_of_ts = function
   | Some ts ->
