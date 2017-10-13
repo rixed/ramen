@@ -75,11 +75,12 @@ PACKAGES = \
 	ppp lwt.ppx batteries cmdliner stdint parsercombinator \
 	cohttp-lwt-unix num inotify.lwt binocle unix cryptohash owl
 
-INSTALLED = \
-  META ramen ramen_configurator ramen_alerter	\
-  codegen.cmxa codegen.a \
+INSTALLED_BIN = ramen ramen_configurator ramen_alerter
+INSTALLED_LIB = \
+  META codegen.cmxa codegen.a \
   $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
   libringbuf.a libcolcomp.a libcollectd.a
+INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB)
 
 bin_dir ?= /usr/local/bin
 
@@ -202,10 +203,12 @@ distclean-spec:
 	$(RM) ramen codegen.cmxa libringbuf.a libcolcomp.a libcollectd.a RamenFileNotify.ml
 
 install-spec: $(INSTALLED)
-	ocamlfind install ramen $^
+	ocamlfind install ramen $(INSTALLED_LIB)
+	install $(INSTALLED_BIN) $(prefix)$(bin_dir)/
 
 uninstall-spec:
 	ocamlfind remove ramen
+	$(RM) $(prefix)$(bin_dir)/ramen
 
 colcomp/colcomp_test: colcomp/colcomp_test.o libcolcomp.a
 	$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) $^ -o $@
