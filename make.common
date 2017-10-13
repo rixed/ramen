@@ -4,7 +4,8 @@ OCAMLOPT   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlopt
 OCAMLDEP   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamldep
 OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlmktop
 QTEST      = qtest
-JSOO       = js_of_ocaml.exe
+JSOO       = js_of_ocaml
+JS_MINIFY  = jsoo_minify
 WARNS      = Ael-3-31-40-41-42-44-45-48
 override OCAMLOPTFLAGS += $(INCS) -w $(WARNS) -g -annot -O2 -S
 override OCAMLFLAGS    += $(INCS) -w $(WARNS) -g -annot 

@@ -40,3 +40,4 @@ src/colcomp/colcomp_test
 src/RamenFileNotify.ml
 src/RamenGui.ml
 src/web/script.js
+src/web/script.min.js
