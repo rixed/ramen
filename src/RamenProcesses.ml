@@ -102,7 +102,7 @@ let run conf layer =
           node.N.name file_print out_ringbuf_ref ;
         let input_ringbuf = rb_name_of node in
         let env = [|
-          "OCAMLRUNPARAM=b" ;
+          "OCAMLRUNPARAM="^ if conf.C.debug then "b" else "" ;
           "debug="^ string_of_bool conf.C.debug ;
           "name="^ node.N.name ;
           "input_ringbuf="^ input_ringbuf ;
@@ -118,7 +118,9 @@ let run conf layer =
             | Some _ ->
               "log_dir="^ conf.C.persist_dir ^"/workers/log/"
                         ^ (N.fq_name node)
-            | None -> "no_log_dir=") |] in
+            | None -> "no_log_dir=") ;
+          (* Owl also need HOME (See https://github.com/ryanrhymes/owl/issues/116) *)
+          "HOME="^ getenv ~def:"/tmp" "HOME" |] in
         let pid = run_background command [||] env in
         node.N.pid <- Some pid ;
         async (fun () ->

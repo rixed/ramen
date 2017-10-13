@@ -3,6 +3,7 @@ open Batteries
 open Stdint
 open RamenLog
 open Lwt
+open Helpers
 
 (* Converters from string to values *)
 
@@ -64,7 +65,7 @@ let percentile_finalize pct lst =
   Array.fast_sort Pervasives.compare arr ;
   assert (pct >= 0.0 && pct <= 100.0) ;
   let pct = pct *. 0.01 in
-  let idx = Helpers.round_to_int (pct *. float_of_int (Array.length arr - 1)) in
+  let idx = round_to_int (pct *. float_of_int (Array.length arr - 1)) in
   arr.(idx)
 
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
@@ -200,15 +201,6 @@ struct
     Array.fold_lefti (fun y i x ->
       y +. p.{i, 0} *. x) 0. cur_preds
 end
-
-let getenv ?def n =
-  try Sys.getenv n
-  with Not_found ->
-    match def with
-    | Some d -> d
-    | None ->
-      Printf.sprintf "Cannot find envvar %s" n |>
-      failwith
 
 let begin_of_range_cidr4 (n, l) = Ipv4.Cidr.and_to_len l n
 let end_of_range_cidr4 (n, l) = Ipv4.Cidr.or_to_len l n
@@ -381,7 +373,7 @@ let node_start () =
     match getenv "log_dir" with
     | exception _ -> None, node_name ^": "
     | ld -> Some ld, "" in
-  Option.may Helpers.mkdir_all logdir ;
+  Option.may mkdir_all logdir ;
   logger := make_logger ?logdir ~prefix debug ;
   !logger.debug "Starting %s process..." node_name ;
   let report_url =
@@ -406,7 +398,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
   !logger.debug "Will read CSV file %S using separator %S"
                 filename separator ;
   let of_string line =
-    let strings = Helpers.strings_of_csv separator line in
+    let strings = strings_of_csv separator line in
     tuple_of_strings (Array.of_list strings)
   in
   let outputer =
@@ -641,8 +633,8 @@ let aggregate
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
   let%lwt rb_in =
-    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.0
-                  (fun n -> return (RingBuf.load n)) rb_in_fname
+    retry ~on:(fun _ -> true) ~min_delay:1.0
+          (fun n -> return (RingBuf.load n)) rb_in_fname
   in
   CodeGenLib_IO.read_ringbuf ~delay_rec:sleep_in rb_in (fun tx ->
     let in_tuple = read_tuple tx in

@@ -901,7 +901,6 @@ let compile conf layer =
             C.print_temp_tup_typ node.N.out_type ;
           finished_typing && node_typing_is_finished conf node
         ) layer.L.persist.L.nodes true in
-    (* TODO: better reporting *)
     if not finished_typing then (
       let e = SyntaxError CannotCompleteTyping in
       C.Layer.set_status layer (Edition (Printexc.to_string e)) ;

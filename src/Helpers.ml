@@ -302,3 +302,12 @@ let read_whole_file fname =
 let file_print oc fname =
   let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
   String.print oc content
+
+let getenv ?def n =
+  try Sys.getenv n
+  with Not_found ->
+    match def with
+    | Some d -> d
+    | None ->
+      Printf.sprintf "Cannot find envvar %s" n |>
+      failwith
