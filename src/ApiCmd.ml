@@ -70,7 +70,7 @@ let run debug ramen_url () =
   Lwt_main.run (
     http_get (ramen_url ^"/run") >>= check_ok)
 
-let shutdown debug layer_name ramen_url () =
+let stop debug layer_name ramen_url () =
   logger := make_logger debug ;
   Lwt_main.run (
     let url = if layer_name = "" then
@@ -78,6 +78,16 @@ let shutdown debug layer_name ramen_url () =
     else
       ramen_url ^"/stop/"^ enc layer_name in
     http_get url >>= check_ok)
+
+let shutdown debug ramen_url () =
+  logger := make_logger debug ;
+  Lwt_main.run (
+    let url = ramen_url ^"/shutdown" in
+    (* Do not expect any response for now. *)
+    catch (fun () ->
+      Client.get (Uri.of_string url) >>=
+        fun _ -> return_unit)
+      (fun _exn -> return_unit))
 
 let resp_column_length = function
   | _typ, None, column -> column_length column

@@ -99,6 +99,15 @@ let server_start =
       $ ssl_key),
     info "start")
 
+(* Shutdown the event processor *)
+
+let server_stop =
+  Term.(
+    (const ApiCmd.shutdown
+      $ debug
+      $ server_url),
+    info "shutdown")
+
 (* TODO: check that this is actually the name of a ringbuffer file *)
 let rb_file =
   let i = Arg.info ~doc:"File with the ring buffer"
@@ -170,13 +179,13 @@ let run =
       $ server_url),
     info "run")
 
-let shutdown =
+let stop =
   Term.(
-    (const ApiCmd.shutdown
+    (const ApiCmd.stop
       $ debug
       $ layer_name
       $ server_url),
-    info "shutdown")
+    info "stop a layer (or all of them)")
 
 let as_csv =
   let i = Arg.info ~doc:"output CSV rather than JSON"
@@ -230,9 +239,9 @@ let default =
 
 let () =
   match Term.eval_choice default [
-    server_start ;
+    server_start ; server_stop ;
     dequeue ; summary ;
-    add ; compile ; run ; shutdown ;
+    add ; compile ; run ; stop ;
     tail ; test_collectd ;
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42

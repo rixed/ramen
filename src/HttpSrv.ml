@@ -438,16 +438,30 @@ let run conf headers layer_opt =
      | C.InvalidCommand _ as e ->
        bad_request (Printexc.to_string e)
 
-let stop conf headers layer_opt =
+let stop_layers conf layer_opt =
   let%lwt layers = graph_layers conf layer_opt in
+  List.iter (fun layer ->
+      let open RamenProcesses in
+      try stop conf layer with NotRunning -> ()
+    ) layers ;
+  return_unit
+
+let stop conf headers layer_opt =
   try
-    List.iter (fun layer ->
-        let open RamenProcesses in
-        try stop conf layer with NotRunning -> ()
-      ) layers ;
+    let%lwt () = stop_layers conf layer_opt in
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with C.InvalidCommand e -> bad_request e
+
+let shutdown conf _headers =
+  (* TODO: also log client info *)
+  !logger.info "Asked to shut down" ;
+  (* Stop all workers *)
+  let%lwt () = stop_layers conf None in
+  (* Hopefully cohttp will serve this answer before stopping. *)
+  List.iter (fun condvar ->
+    Lwt_condition.signal condvar ()) !http_server_done ;
+  respond_ok ()
 
 (*
     Exporting tuples
@@ -679,6 +693,7 @@ let start do_persist debug daemon no_demo to_stderr ramen_url www_dir
       | `GET, ["run" | "start" ; layer] -> run conf headers (Some layer)
       | `GET, ["stop"] -> stop conf headers None
       | `GET, ["stop" ; layer] -> stop conf headers (Some layer)
+      | `GET, ["shutdown"] -> shutdown conf headers
       | (`GET|`POST), ["export" ; layer ; node] ->
         (* TODO: a variant where we do not have to specify layer *)
         (* We must allow both POST and GET for that one since we have an optional

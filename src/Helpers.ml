@@ -58,6 +58,9 @@ let () =
       Printf.sprintf "HttpError (%d, %S)" code text)
     | _ -> None)
 
+(* List of condvars to signal to terminate all the HTTP servers: *)
+let http_server_done = ref []
+
 let http_service port cert_opt key_opt router =
   let open Lwt in
   let open Cohttp in
@@ -113,16 +116,23 @@ let http_service port cert_opt key_opt router =
   let entry_point = Server.make ~callback () in
   let tcp_mode = `TCP (`Port port) in
   let on_exn = print_exception in
+  let http_stop_thread () =
+    let cond = Lwt_condition.create () in
+    let stop = Lwt_condition.wait cond in
+    http_server_done := cond :: !http_server_done ;
+    stop in
   let t1 =
     !logger.info "Starting http server on port %d" port ;
-    Server.create ~on_exn ~mode:tcp_mode entry_point
+    let stop = http_stop_thread () in
+    Server.create ~on_exn ~stop ~mode:tcp_mode entry_point
   and t2 =
     match cert_opt, key_opt with
     | Some cert, Some key ->
       let port = port + 1 in
       let ssl_mode = `TLS (`Crt_file_path cert, `Key_file_path key, `No_password, `Port port) in
       !logger.info "Starting https server on port %d" port ;
-      Server.create ~on_exn ~mode:ssl_mode entry_point
+      let stop = http_stop_thread () in
+      Server.create ~on_exn ~stop ~mode:ssl_mode entry_point
     | None, None ->
       return (!logger.debug "Not starting https server")
     | _ ->
