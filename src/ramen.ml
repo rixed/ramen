@@ -16,6 +16,11 @@ let debug =
                    ~env [ "d"; "debug" ] in
   Arg.(value (flag i))
 
+let daemon =
+  let i = Arg.info ~doc:"daemonize"
+                   [ "daemon"; "daemonize"] in
+  Arg.(value (flag i))
+
 let no_demo =
   let env = Term.env_info "RAMEN_NO_DEMO" in
   let i = Arg.info ~doc:"do not load demo operations"
@@ -82,6 +87,7 @@ let server_start =
     (const HttpSrv.start
       $ do_persist
       $ debug
+      $ daemon
       $ no_demo
       $ to_stderr
       $ server_url

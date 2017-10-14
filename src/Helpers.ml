@@ -311,3 +311,19 @@ let getenv ?def n =
     | None ->
       Printf.sprintf "Cannot find envvar %s" n |>
       failwith
+
+(* Trick from LWT: how to exit without executing the at_exit hooks: *)
+external sys_exit : int -> 'a = "caml_sys_exit"
+
+let daemonize () =
+  let open Unix in
+  if fork () > 0 then sys_exit 0 ;
+  setsid () |> ignore ;
+  (* Close all fds, ignoring errors in case they have been closed already: *)
+  let null = openfile "/dev/null" [O_RDONLY] 0 in
+  dup2 null stdin ;
+  close null ;
+  let null = openfile "/dev/null" [O_WRONLY; O_APPEND] 0 in
+  dup2 null stdout ;
+  dup2 null stderr ;
+  close null
