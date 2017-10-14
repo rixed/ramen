@@ -6,7 +6,7 @@ all:
 	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 
 docker-build: docker/Dockerfile
-	docker build -t rixed/ramen:try docker/
+	docker build -t rixed/ramen:try --squash docker/
 
 clean-spec:
 

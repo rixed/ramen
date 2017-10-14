@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 collectd -C /etc/collectd/collectd.conf
 

@@ -10,14 +10,16 @@ RUN apt-get --yes update && \
       aspcud \
       ca-certificates \
       collectd \
+      coreutils \
       git \
+      liblz4-tool \
       liboping0 \
       m4 \
       ocaml-nox \
       opam \
       rsync
 
-# Comfigure opam
+# Configure opam
 RUN opam init --no-setup && \
     opam repo add --priority=1 ocalme \
       git://github.com/rixed/ocalme-opam-repository.git
@@ -31,15 +33,13 @@ RUN opam depext --noninteractive \
       plplot sqlite3 && \
     opam install ramen
 
-# Minify the image (??)
-
 # Environment
 ENV RAMEN_PERSIST_DIR=/ramen \
     CAML_LD_LIBRARY_PATH=/root/.opam/ramen/lib/stublibs \
     PATH=/root/.opam/ramen/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # For owl not to bring down ramen workers:
-ENV HOME=/tmp
+ENV HOME=/root
 
 # cohttp/conduit requires /etc/protocols and /etc/services,
 # which debian-slim does not provide:
@@ -66,3 +66,49 @@ EXPOSE 29380/TCP
 EXPOSE 25826/UDP
 
 LABEL maintainer="rixed-docker@happyleptic.org"
+
+# Minify the image using atime, requiring to push the mtime first (due to
+# relatime mount option).
+
+# Note: avoid touching both mtime and atime or those two dates will stay equal
+# regardless of access and find -not -anewer would fail.  Also we have to
+# 'squash' all this in a single command otherwise the layering of the FS would
+# alter the atimes and mtimes, defeating the whole trick.
+
+# So the idea is to push forward the mtime of every files, then to play a
+# functional test from the host, and then delete files that have not been
+# accessed.
+
+# This functional test must include compilation of nodes exercising all
+# possible involved libraries, including collectd (done automatically by `ramen
+# start` thanks to the demo content), owl via the fit_multi operator, reading
+# CSV...
+
+# This functional test must also exercise /bin/dash as we use it for the start
+# script (also, it's useful as an alternate entrypoint, although most shell
+# commands are about to be removed).
+
+COPY test.csv /tmp
+
+# Make the following massive touch a bit quicker by deleting content:
+RUN rm -rf /root/.opam/repo /root/.opam/system /home /boot /opt /media /mnt /srv
+
+RUN touch /img_creation && find /root /usr /var /lib /bin /sbin -type f | \
+      xargs touch -m -r /img_creation && \
+    sleep 1.1 && \
+    find /root/.opam/ramen -type f -name META -exec sed -i -e /exists_if/d {} \; && \
+    (timeout 10s collectd -f -C /etc/collectd/collectd.conf || true) && \
+    ramen start -d --daemon && sleep 2 && \
+    ramen add --op 'SELECT MIN time, fit_multi(3, value, time) AS smth1 FROM demo/collectd' \
+              --op 'READ AND DELETE CSV FILES "/tmp/test.csv" PREPROCESS WITH "lz4 -d -c" (smth1 string, smth2 u128)' \
+              test_layer && \
+    ramen compile && \
+    ramen run && \
+    sleep 5 && \
+    ramen shutdown && \
+    sleep 1 && \
+    rm -rf /ramen/* /tmp/* && \
+    /bin/dash -c 'ls / > /dev/null' && \
+    touch -a /start && \
+    (find /root /usr /var /lib /bin /sbin -type f -not -anewer /img_creation -delete || true) && \
+    rm -rf /var
