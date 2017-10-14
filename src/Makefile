@@ -229,6 +229,7 @@ long-check: ramen
 	./tests/word_split
 	./tests/case
 	./tests/season
+	./tests/fit_multi
 
 include $(top_srcdir)/make.common
 

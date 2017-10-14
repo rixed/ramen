@@ -781,7 +781,7 @@ and emit_function oc ?state impl arg_typs es vt_specs_opt =
   (* variadic arguments [ves] are passed as a last argument to impl, as an array *)
   Option.may (fun (vt, ves) ->
       (* TODO: handle NULLability *)
-      List.print ~first:"[| " ~last:" |]" ~sep:"; "
+      List.print ~first:" [| " ~last:" |]" ~sep:"; "
                  (conv_to ?state ~context:Finalize vt) oc ves)
     vt_specs_opt ;
   for _i = 0 to len do Printf.fprintf oc ")" done
@@ -1026,8 +1026,10 @@ let otype_of_state e =
      * provided some context to those functions, such as the event count in
      * current window, for instance (ie. pass the full aggr record not just
      * the fields) *)
-    | StatefullFun (_, _, (Lag _ | MovingAvg _ | LinReg _ | MultiLinReg _)) ->
+    | StatefullFun (_, _, (Lag _ | MovingAvg _ | LinReg _)) ->
       t ^" CodeGenLib.Seasonal.t"
+    | StatefullFun (_, _, MultiLinReg _) ->
+      "("^ t ^" * float array) CodeGenLib.Seasonal.t"
     | StatefullFun (_, _, Remember _) ->
       "CodeGenLib.remember_state"
     | StatefullFun (_, _, AggrAvg _) -> "(int * float)"

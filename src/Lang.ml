@@ -1327,7 +1327,7 @@ struct
           StatefullFun (make_float_typ "season_moveavg", g, MovingAvg (expr_one, e1, e2))) |||
        (afun3_sf "season_fit" >>: fun (g, e1, e2, e3) ->
           StatefullFun (make_float_typ "season_fit", g, LinReg (e1, e2, e3))) |||
-       (afun2_sf "fit" >>: fun (g,e1, e2) ->
+       (afun2_sf "fit" >>: fun (g, e1, e2) ->
           StatefullFun (make_float_typ "season_fit", g, LinReg (expr_one, e1, e2))) |||
        (afun3v_sf "season_fit_multi" >>: fun (g, e1, e2, e3, e4s) ->
           StatefullFun (make_float_typ "season_fit_multi", g, MultiLinReg (e1, e2, e3, e4s))) |||

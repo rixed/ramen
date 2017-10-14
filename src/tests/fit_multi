@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/../.."
+. $top_srcdir/src/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_cars
+add_node p1 \
+"FROM test/cars SELECT
+  fit_multi(30, horsepower, coalesce(CO, 0.5), coalesce(CO2, 300)) as h_pred
+ EXPORT"
+run
+check_equal '479.273' "$(tail_ 1 p1)"
