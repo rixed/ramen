@@ -1203,12 +1203,19 @@ struct
       (strinG n -+
        optional ~def:LocalState (blanks -+ state_lifespan) +-
        opt_blanks +- char '(' +- opt_blanks ++
-       repeat ~min:a ~max:a ~sep lowest_prec_left_assoc ++
-       repeat ~sep lowest_prec_left_assoc +- opt_blanks +- char ')') m
+       (if a > 0 then
+         repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep
+           lowest_prec_left_assoc ++
+         optional ~def:[] (sep -+ repeat ~what:"variadic arguments" ~sep
+                                         lowest_prec_left_assoc)
+        else
+         return [] ++
+         repeat ~what:"variadic arguments" ~sep lowest_prec_left_assoc) +-
+       opt_blanks +- char ')') m
 
     and afun_sf a n =
-      afunv_sf a n >>: fun (a, r) ->
-        if r = [] then a else
+      afunv_sf a n >>: fun (g, (a, r)) ->
+        if r = [] then g, a else
         raise (Reject "too many arguments")
 
     and afun1_sf n =
@@ -1220,24 +1227,26 @@ struct
       afun_sf 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
 
     and afun2v_sf n =
-      afunv_sf 2 n >>: function ((g, [a;b]), r) -> g, a, b, r | _ -> assert false
+      afunv_sf 2 n >>: function (g, ([a;b], r)) -> g, a, b, r | _ -> assert false
 
     and afun3_sf n =
       afun_sf 3 n >>: function (g, [a;b;c]) -> g, a, b, c | _ -> assert false
 
     and afun3v_sf n =
-      afunv_sf 3 n >>: function ((g, [a;b;c]), r) -> g, a, b, c, r | _ -> assert false
+      afunv_sf 3 n >>: function (g, ([a;b;c], r)) -> g, a, b, c, r | _ -> assert false
 
     and afunv a n m =
       let sep = opt_blanks -- char ',' -- opt_blanks in
       let m = n :: m in
       (strinG n -- opt_blanks -- char '(' -- opt_blanks -+
        (if a > 0 then
-         repeat ~min:a ~max:a ~sep lowest_prec_left_assoc ++
-         optional ~def:[] (sep -+ repeat ~sep lowest_prec_left_assoc)
+         repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep
+           lowest_prec_left_assoc ++
+         optional ~def:[] (sep -+ repeat ~what:"variadic arguments" ~sep
+                                         lowest_prec_left_assoc)
         else
          return [] ++
-         repeat ~sep lowest_prec_left_assoc) +-
+         repeat ~what:"variadic arguments" ~sep lowest_prec_left_assoc) +-
        opt_blanks +- char ')') m
 
     and afun a n =
