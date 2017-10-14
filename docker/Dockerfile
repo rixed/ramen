@@ -11,6 +11,7 @@ RUN apt-get --yes update && \
       ca-certificates \
       collectd \
       git \
+      liboping0 \
       m4 \
       ocaml-nox \
       opam \
@@ -43,11 +44,12 @@ ENV HOME=/tmp
 # cohttp/conduit requires /etc/protocols and /etc/services,
 # which debian-slim does not provide:
 COPY protocols services /etc/
-# TODO: also collectd configuration
+COPY collectd.conf /etc/collectd/
+COPY start /
 
 # Command to be run:
 WORKDIR /ramen
-ENTRYPOINT ["/root/.opam/ramen/bin/ramen", "start"]
+ENTRYPOINT ["/start"]
 
 # Default arguments if not provided on `docker run` command line:
 CMD ["--save-conf"]

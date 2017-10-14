@@ -1,0 +1,5 @@
+#!/bin/bash
+
+collectd -C /etc/collectd/collectd.conf
+
+exec ramen start $@
