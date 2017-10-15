@@ -1595,10 +1595,25 @@ struct
         flush_how : flush_method ;
         (* List of nodes that are our parents *)
         from : string list }
-    | ReadCSVFile of { fname : string ; unlink : bool ; separator : string ;
-                       null : string ; fields : Tuple.typ ; preprocessor : string }
+    | ReadCSVFile of { where : where_specs ; what : csv_specs ; preprocessor : string }
     | ListenFor of { net_addr : Unix.inet_addr ; port : int ;
                      proto : RamenProtocols.net_protocol }
+
+  (* ReadFile has the node reading files directly on disc.
+   * DownloadFile is (supposed to be) ramen downloading the content into
+   * a temporary directory and spawning a worker that also perform a ReadFile.
+   * UploadFile is similar: the file is actually received by ramen which write
+   * it in a temporary directory for its ReadFile worker. Those files are
+   * to be POSTed to $RAMEN_URL/upload/$url_suffix. *)
+  and where_specs = ReadFile of file_spec
+                  | UploadFile of upload_spec
+                  | DownloadFile of download_spec
+  and file_spec = { fname : string ; unlink : bool }
+  and download_spec = { url : string ; accept : string }
+  and upload_spec = { url_suffix : string }
+  and csv_specs =
+    { separator : string ; null : string ;
+      fields : Tuple.typ }
 
   let print_export fmt = function
     | None -> Printf.fprintf fmt "EXPORT"
@@ -1611,6 +1626,24 @@ struct
          | DurationConst f -> "DURATION "^ string_of_float f
          | DurationField (n, s) -> "DURATION "^ n ^ string_of_scale s
          | StopField (n, s) -> "STOPPING AT "^ n ^ string_of_scale s)
+
+  let print_csv_specs fmt specs =
+    Printf.fprintf fmt "SEPARATOR %S NULL %S %a"
+      specs.separator specs.null
+      Tuple.print_typ specs.fields
+  let print_file_specs fmt specs =
+    Printf.fprintf fmt "READ%s FILES %S"
+      (if specs.unlink then "AND DELETE " else "") specs.fname
+  let print_download_specs fmt specs =
+    Printf.fprintf fmt "DOWNLOAD FROM %S%s" specs.url
+      (if specs.accept = "" then "" else
+        Printf.sprintf " Accept: %S" specs.accept)
+  let print_upload_specs fmt specs =
+    Printf.fprintf fmt "RECEIVE VIA %S" specs.url_suffix
+  let print_where_specs fmt = function
+    | ReadFile specs -> print_file_specs fmt specs
+    | DownloadFile specs -> print_download_specs fmt specs
+    | UploadFile specs -> print_upload_specs fmt specs
 
   let print fmt =
     let sep = ", " in
@@ -1648,12 +1681,13 @@ struct
         Printf.fprintf fmt " %a WHEN %a"
           (print_flush_method ()) flush_how
           (Expr.print false) flush_when) flush_when
-    | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
-      Printf.fprintf fmt "READ %sCSV FILES %S SEPARATOR %S NULL %S %s%a"
-        (if unlink then "AND DELETE " else "")
+    | ReadCSVFile { where = where_specs ;
+                    what = csv_specs ; preprocessor } ->
+      Printf.fprintf fmt "%a %s %a"
+        print_where_specs where_specs
         (if preprocessor = "" then ""
-         else Printf.sprintf "PREPROCESS WITH %S" preprocessor)
-        fname separator null Tuple.print_typ fields
+          else Printf.sprintf "PREPROCESS WITH %S" preprocessor)
+        print_csv_specs csv_specs
     | ListenFor { net_addr ; port ; proto } ->
       Printf.fprintf fmt "LISTEN FOR %s ON %s:%d"
         (RamenProtocols.string_of_net_protocol proto)
@@ -1874,35 +1908,73 @@ struct
       ) m
 
     (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
-    let read_csv_file m =
-      let m = "read csv operation" :: m in
+    let read_file_specs m =
+      let m = "read file operation" :: m in
+      (strinG "read" -- blanks -+
+       optional ~def:false (
+         strinG "and" -- blanks -- strinG "delete" -- blanks >>:
+           fun () -> true) +-
+       (strinG "file" ||| strinG "files") +- blanks ++
+       quoted_string >>: fun (unlink, fname) ->
+         ReadFile { unlink ; fname }) m
+
+    let download_file_specs m =
+      let m = "download operation" :: m in
+      (strinG "download" -- blanks --
+       optional ~def:() (strinG "from" -- blanks) -+
+       quoted_string ++
+       repeat ~what:"download headers" ~sep:none (
+         blanks -- strinG "accept" -- opt_blanks -- char ':' --
+         opt_blanks -+ quoted_string) >>:
+       function url, [accept] ->
+         DownloadFile { url ; accept }
+       | url, [] ->
+         DownloadFile { url ; accept = "" }
+       | _ ->
+         raise (Reject "Only one header field can be set: Accept.")) m
+
+    let upload_file_specs m =
+      let m = "upload operation" :: m in
+      (strinG "receive" -- blanks --
+       optional ~def:() (strinG "via" -- blanks) -+
+       quoted_string >>: fun url_suffix ->
+         UploadFile { url_suffix }) m
+
+    let where_specs =
+      read_file_specs ||| download_file_specs ||| upload_file_specs
+
+    let csv_specs m =
+      let m = "CSV format" :: m in
       let field =
         non_keyword +- blanks ++ Scalar.Parser.typ ++
         optional ~def:true (
-          optional ~def:true (blanks -+ (strinG "not" >>: fun () -> false)) +-
+          optional ~def:true (
+            blanks -+ (strinG "not" >>: fun () -> false)) +-
           blanks +- strinG "null") >>:
         fun ((typ_name, typ), nullable) -> { typ_name ; typ ; nullable }
       in
-      (strinG "read" -- blanks -+
-       optional ~def:false (
-        strinG "and" -- blanks -- strinG "delete" -- blanks >>:
-        fun () -> true) +-
-       optional ~def:() (strinG "csv" +- blanks) +-
-       (strinG "file" ||| strinG "files") +- blanks ++
-       quoted_string +- opt_blanks ++
-       optional ~def:"," (
+      (optional ~def:"," (
          strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
        optional ~def:"" (
-         strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++
-       optional ~def:"" (
-         strinG "preprocess" -- opt_blanks -- strinG "with" -- opt_blanks -+
-         quoted_string +- opt_blanks) +-
+         strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) +-
        char '(' +- opt_blanks ++
        several ~sep:list_sep field +- opt_blanks +- char ')' >>:
-       fun (((((unlink, fname), separator), null), preprocessor), fields) ->
+       fun ((separator, null), fields) ->
          if separator = null || separator = "" then
-           raise (Reject "Invalid CSV separator/null") ;
-         ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor }) m
+           raise (Reject "Invalid CSV separator") ;
+         { separator ; null ; fields }) m
+
+    let preprocessor m =
+      let m = "file preprocessor" :: m in
+      (strinG "preprocess" -- blanks -- strinG "with" -- opt_blanks -+
+       quoted_string) m
+
+    let read_csv_file m =
+      let m = "read operation" :: m in
+      (where_specs +- blanks ++
+       optional ~def:"" (preprocessor +- blanks) ++
+       csv_specs >>: fun ((where, preprocessor), what) ->
+       ReadCSVFile { where ; what ; preprocessor }) m
 
     let default_port_of_protocol = function
       | RamenProtocols.Collectd -> 25826
@@ -2134,33 +2206,36 @@ struct
            replace_typ_in_op)
 
       (Ok (\
-        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; \
-                      separator = "," ; null = "" ; preprocessor = "" ; \
-                      fields = [ \
-                        { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
-                        { typ_name = "f2" ; nullable = false ; typ = TI32 } ] },\
-        (56, [])))\
-        (test_p p "read csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
+        ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = false } ; \
+                      preprocessor = "" ; what = { \
+                        separator = "," ; null = "" ; \
+                        fields = [ \
+                          { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
+                          { typ_name = "f2" ; nullable = false ; typ = TI32 } ] } },\
+        (52, [])))\
+        (test_p p "read file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
-        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = true ; \
-                      separator = "," ; null = "" ; preprocessor = "" ; \
-                      fields = [ \
-                        { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
-                        { typ_name = "f2" ; nullable = false ; typ = TI32 } ] },\
-        (67, [])))\
-        (test_p p "read and delete csv file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
+        ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = true } ; \
+                      preprocessor = "" ; what = { \
+                        separator = "," ; null = "" ; \
+                        fields = [ \
+                          { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
+                          { typ_name = "f2" ; nullable = false ; typ = TI32 } ] } },\
+        (63, [])))\
+        (test_p p "read and delete file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
-        ReadCSVFile { fname = "/tmp/toto.csv" ; unlink = false ; \
-                      separator = "\t" ; null = "<NULL>" ; preprocessor = "" ; \
-                      fields = [ \
-                        { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
-                        { typ_name = "f2" ; nullable = false ; typ = TI32 } ] },\
-        (85, [])))\
-        (test_p p "read csv file \"/tmp/toto.csv\" \\
-                            separator \"\\t\" null \"<NULL>\" \\
-                            (f1 bool, f2 i32 not null)")
+        ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = false } ; \
+                      preprocessor = "" ; what = { \
+                        separator = "\t" ; null = "<NULL>" ; \
+                        fields = [ \
+                          { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
+                          { typ_name = "f2" ; nullable = false ; typ = TI32 } ] } },\
+        (81, [])))\
+        (test_p p "read file \"/tmp/toto.csv\" \\
+                        separator \"\\t\" null \"<NULL>\" \\
+                        (f1 bool, f2 i32 not null)")
     *)
 
     (* Check that the expression is valid, or return an error message.

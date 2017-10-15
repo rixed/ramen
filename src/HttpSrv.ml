@@ -664,6 +664,48 @@ let rec timeout_layers conf =
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_layers conf
 
+(*
+    Data Upload
+    Data is then written to tmp_input_dirname/uploads/suffix/$random
+*)
+
+let save_in_tmp_file dir body =
+  mkdir_all dir ;
+  let fname = random_string 10 in
+  let path = dir ^"/"^ random_string 10 in
+  Lwt_io.(with_file Output path (fun oc ->
+    let%lwt () = write oc body in
+    return (path, fname)))
+
+exception Found of string
+let upload conf headers suffix body =
+  (* Look for the node handling this suffix: *)
+  match
+    Hashtbl.values conf.C.graph.C.layers |>
+    Enum.iter (fun layer ->
+      Hashtbl.values layer.L.persist.L.nodes |>
+        Enum.iter (fun node ->
+          match node.N.operation with
+          | ReadCSVFile {
+            where = UploadFile { url_suffix = suffix } ; _ } ->
+            let dir = C.upload_dir_of_node conf.C.persist_dir node suffix in
+            raise (Found dir)
+          | _ -> ())) with
+  | exception Found dir ->
+    let ct = get_content_type headers in
+    let content =
+      if ct = Consts.urlencoded_content_type then Uri.pct_decode body
+      else if ct = Consts.text_content_type then body
+      else (
+        !logger.info "Don't know how to convert content type '%s' into \
+                      CSV, trying no conversion." ct ;
+        body) in
+    let%lwt path, fname = save_in_tmp_file dir content in
+    Lwt_unix.rename path (dir ^"/_"^ fname) >>=
+    respond_ok
+  | () ->
+    bad_request ("Unknown upload target "^ suffix)
+
 let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
           www_dir version_tag persist_dir port cert_opt key_opt () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
@@ -726,6 +768,9 @@ let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
           serve_string conf headers RamenGui.with_links
       | `GET, ["style.css" | "script.js" as file] ->
         serve_file_with_replacements conf headers www_dir file
+      (* Uploads of data files *)
+      | (`POST|`PUT), ["upload"; suffix] ->
+        upload conf headers suffix body
       (* Errors *)
       | `PUT, _ | `GET, _ | `DELETE, _ ->
         fail (HttpError (404, "No such resource"))

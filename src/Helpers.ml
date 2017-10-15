@@ -337,3 +337,12 @@ let daemonize () =
   dup2 null stdout ;
   dup2 null stderr ;
   close null
+
+let random_string =
+  let chars = "0123456789abcdefghijklmnopqrstuvwxyz" in
+  let random_char _ =
+    let i = Random.int (String.length chars) in chars.[i]
+  in
+  fun len ->
+    Bytes.init len random_char |>
+    Bytes.to_string

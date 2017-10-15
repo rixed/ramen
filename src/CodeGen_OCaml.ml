@@ -1297,8 +1297,11 @@ let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
     (match op with
     | Yield fields ->
       emit_yield oc in_tuple_typ out_tuple_typ fields
-    | ReadCSVFile { fname ; unlink ; separator ; null ; fields ; preprocessor } ->
+    | ReadCSVFile { where = ReadFile { fname ; unlink } ; preprocessor ;
+                    what = { separator ; null ; fields } } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
+    | ReadCSVFile { where = (DownloadFile _ | UploadFile _) ; _ } ->
+      failwith "This never happens"
     | ListenFor { net_addr ; port ; proto } ->
       emit_listen_on oc net_addr port proto
     | Aggregate { fields ; and_all_others ; where ; key ; top ; commit_when ;

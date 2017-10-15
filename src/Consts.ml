@@ -6,6 +6,7 @@ let html_content_type = "text/html"
 let css_content_type = "text/css"
 let js_content_type = "application/javascript"
 let ocaml_marshal_type = "application/marshaled.ocaml"
+let urlencoded_content_type = "application/x-www-form-urlencoded"
 
 let in_tuple_count_metric = "in_tuple_count"
 let selected_tuple_count_metric = "selected_tuple_count"

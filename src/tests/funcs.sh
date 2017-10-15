@@ -68,14 +68,14 @@ add_node() {
 }
 
 add_123() {
-  add_node 123 "READ CSV FILE \"$fixtures/123.csv\" (
+  add_node 123 "READ FILE \"$fixtures/123.csv\" (
     n u8 not null,  -- will be 1, 2, 3
     b bool not null,  -- true, true, false
     name string null) -- \"one\", \"two\" and NULL!"
 }
 
 add_cars() {
-  add_node cars "READ CSV FILE \"$fixtures/cars.csv\" (
+  add_node cars "READ FILE \"$fixtures/cars.csv\" (
     year u16 not null,
     manufacturer string not null,
     model string not null,
@@ -87,16 +87,16 @@ add_cars() {
 nb_cars=$(wc -l "$fixtures/cars.csv" | awk '{print $1}')
 
 add_earthquakes() {
-  add_node earthquakes "READ CSV FILE \"$fixtures/earthquakes.csv\" SEPARATOR \"\\t\" (
+  add_node earthquakes "READ FILE \"$fixtures/earthquakes.csv\" SEPARATOR \"\\t\" (
     -- number of earthquakes per year
     year u16 not null,
-    n u8 not null)"
+    n u16 not null)"
 }
 
 nb_earthquakes=$(wc -l "$fixtures/earthquakes.csv" | awk '{print $1}')
 
 add_accounts() {
-  add_node accounts "READ CSV FILE \"$fixtures/accounts.csv\" (
+  add_node accounts "READ FILE \"$fixtures/accounts.csv\" (
     name string not null, amount float not null)"
 }
 

@@ -230,6 +230,7 @@ long-check: ramen
 	./tests/case
 	./tests/season
 	./tests/fit_multi
+	./tests/upload
 
 include $(top_srcdir)/make.common
 

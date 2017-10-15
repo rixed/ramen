@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/../.."
+. $top_srcdir/src/tests/funcs.sh
+
+expected_tests=2
+
+start
+add_node earthquakes "RECEIVE VIA \"test\" SEPARATOR \"\\t\"
+  (year u16 not null, n u8 not null)"
+add_node n "SELECT sequence AS seq, year FROM test/earthquakes EXPORT"
+run
+
+upload() {
+  curl -s -o /dev/null \
+       --data-urlencode @"$top_srcdir/src/tests/fixtures/earthquakes.csv" \
+       "$RAMEN_URL/upload/test"
+}
+upload
+upload
+sleep 1
+
+# Check that we processed the file twice
+check_equal '199,2015' "$(tail_ 1 n)"
+
+# Check that the tmp files have been deleted
+input_tmp_files=$(
+  ls -1 $RAMEN_PERSIST_DIR"/workers/inputs/test/earthquakes/uploads/test" |
+  wc -l)
+check_equal 0 $input_tmp_files

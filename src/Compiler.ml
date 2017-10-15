@@ -713,7 +713,7 @@ let check_operation ~in_type ~out_type =
                 commit_when ; flush_when ; flush_how ; _ } ->
     check_aggregate ~in_type ~out_type fields and_all_others where key top
                     commit_when flush_when flush_how
-  | ReadCSVFile { fields ; _ } ->
+  | ReadCSVFile { what = { fields ; _ } ; _ } ->
     let from_tuple = C.temp_tup_typ_of_tup_typ fields in
     check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleIn ~from_tuple ~to_prefix:TupleOut ~to_tuple:out_type ~autorank:false
   | ListenFor { proto ; _ } ->
@@ -841,9 +841,26 @@ let compile_node conf node =
   assert node.N.out_type.C.finished_typing ;
   let in_typ = C.tup_typ_of_temp_tup_type node.N.in_type
   and out_typ = C.tup_typ_of_temp_tup_type node.N.out_type in
+  (* In a few cases the worker sees a slightly different version of
+   * the code and the ramen daemon will adapt: *)
+  let operation =
+    let open Operation in
+    match node.N.operation with
+    | ReadCSVFile { where = UploadFile specs ; what ; preprocessor } ->
+      let dir =
+        C.upload_dir_of_node conf.C.persist_dir node specs.url_suffix in
+      mkdir_all dir ;
+      ReadCSVFile {
+        (* The underscore is to restrict ourself to complete files that
+         * will appear atomically *)
+        where = ReadFile { fname = dir ^"/_*" ; unlink = true } ;
+        what ; preprocessor }
+    | ReadCSVFile { where = DownloadFile _ ; _ } ->
+      failwith "Not Implemented"
+    | x -> x in
   let comp_cmd =
-    CodeGen_OCaml.gen_operation conf exec_name
-                                in_typ out_typ node.N.operation in
+    CodeGen_OCaml.gen_operation
+      conf exec_name in_typ out_typ operation in
   (* Let's compile (or maybe not) *)
   mkdir_all ~is_file:true exec_name ;
   if file_exists ~maybe_empty:false ~has_perms:0o100 exec_name then (
