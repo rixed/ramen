@@ -101,6 +101,8 @@ RUN touch /img_creation && find /root /usr /var /lib /bin /sbin -type f | \
     ramen start -d --daemon && sleep 2 && \
     ramen add --op 'SELECT MIN time, fit_multi(3, value, time) AS smth1 FROM demo/collectd' \
               --op 'READ AND DELETE CSV FILES "/tmp/test.csv" PREPROCESS WITH "lz4 -d -c" (smth1 string, smth2 u128)' \
+              --op 'SELECT * FROM demo/collectd WHERE COALESCE(plugin = "memory", false) EXPORT EVENT STARTING AT time' \
+              --op 'SELECT time, AVG (IF type_instance LIKE "slab%" THEN value ELSE 0) AS slab FROM demo/collectd GROUP BY host, time // 30 COMMIT AND FLUSH WHEN in.time > previous.time + 30 EXPORT EVENT STARTING AT time WITH DURATION 30' \
               test_layer && \
     ramen compile && \
     ramen run && \
@@ -109,6 +111,7 @@ RUN touch /img_creation && find /root /usr /var /lib /bin /sbin -type f | \
     sleep 1 && \
     rm -rf /ramen/* /tmp/* && \
     /bin/dash -c 'ls / > /dev/null' && \
+    hostname && \
     touch -a /start && \
     (find /root /usr /var /lib /bin /sbin -type f -not -anewer /img_creation -delete || true) && \
     rm -rf /var
