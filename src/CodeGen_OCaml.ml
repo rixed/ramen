@@ -553,8 +553,14 @@ and emit_expr ?state ~context oc expr =
       (List.print (fun oc s -> Printf.fprintf oc "%S" s)) pattern.chunks ;
     emit_functionN oc ?state "Globs.matches pattern_ " [Some TString] [e];
     Printf.fprintf oc ")"
-  | Finalize, StatelessFun (_, Length (e)), Some TU16 (* The only possible output type *) ->
+  | Finalize, StatelessFun (_, Length e), Some TU16 (* The only possible output type *) ->
     emit_functionN oc ?state "String.length" [Some TString] [e]
+  (* lowercase and uppercase assume latin1 and will gladly destroy UTF-8
+   * encoded char, therefore we use the ascii variants: *)
+  | Finalize, StatelessFun (_, Lower e), Some TString ->
+    emit_functionN oc ?state "String.lowercase_ascii" [Some TString] [e]
+  | Finalize, StatelessFun (_, Upper e), Some TString ->
+    emit_functionN oc ?state "String.uppercase_ascii" [Some TString] [e]
   | Finalize, StatelessFun (_, And (e1,e2)), Some TBool ->
     emit_functionN oc ?state "(&&)" [Some TBool; Some TBool] [e1; e2]
   | Finalize, StatelessFun (_, Or (e1,e2)), Some TBool ->

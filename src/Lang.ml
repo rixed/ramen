@@ -529,13 +529,16 @@ struct
   and state_lifespan = LocalState | GlobalState
 
   and stateless_fun =
-    (* TODO: Other functions: random, date_part, coalesce, string_split, case expressions... *)
+    (* TODO: Other functions: random, date_part... *)
     | Age of t
     | Now
     (* FIXME: see note in CodeGenLib.ml *)
     | Sequence of t * t (* start, step *)
     | Cast of t
-    | Length of t (* string length *)
+    (* String functions *)
+    | Length of t
+    | Lower of t
+    | Upper of t
     (* Unary Ops on scalars *)
     | Not of t
     | Abs of t
@@ -685,6 +688,10 @@ struct
       add_types t
     | StatelessFun (t, Length e) ->
       Printf.fprintf fmt "length (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, Lower e) ->
+      Printf.fprintf fmt "lower (%a)" (print with_types) e ; add_types t
+    | StatelessFun (t, Upper e) ->
+      Printf.fprintf fmt "upper (%a)" (print with_types) e ; add_types t
     | StatelessFun (t, Not e) ->
       Printf.fprintf fmt "NOT (%a)" (print with_types) e ; add_types t
     | StatelessFun (t, Abs e) ->
@@ -814,7 +821,8 @@ struct
     | StatelessFun (_, Age e)
     | StatelessFun (_, Not e) | StatelessFun (_, Defined e)
     | StatelessFun (_, Cast e) | StatelessFun (_, Abs e)
-    | StatelessFun (_, Length e) | StatelessFun (_, BeginOfRange e)
+    | StatelessFun (_, Length e) | StatelessFun (_, Lower e)
+    | StatelessFun (_, Upper e) | StatelessFun (_, BeginOfRange e)
     | StatelessFun (_, EndOfRange e) | StatelessFun (_, Exp e)
     | StatelessFun (_, Log e) | StatelessFun (_, Sqrt e)
     | StatelessFun (_, Hash e) | StatelessFun (_, Like (e, _)) ->
@@ -953,6 +961,10 @@ struct
       StatelessFun (f t, Cast (if recurs then map_type ~recurs f a else a))
     | StatelessFun (t, Length a) ->
       StatelessFun (f t, Length (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Lower a) ->
+      StatelessFun (f t, Lower (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Upper a) ->
+      StatelessFun (f t, Upper (if recurs then map_type ~recurs f a else a))
     | StatelessFun (t, Not a) ->
       StatelessFun (f t, Not (if recurs then map_type ~recurs f a else a))
     | StatelessFun (t, Defined a) ->
@@ -1292,6 +1304,8 @@ struct
       ((afun1 "age" >>: fun e -> StatelessFun (make_num_typ "age function", Age e)) |||
        (afun1 "abs" >>: fun e -> StatelessFun (make_num_typ "absolute value", Abs e)) |||
        (afun1 "length" >>: fun e -> StatelessFun (make_typ ~typ:TU16 "length", Length e)) |||
+       (afun1 "lower" >>: fun e -> StatelessFun (make_string_typ "lower", Lower e)) |||
+       (afun1 "upper" >>: fun e -> StatelessFun (make_string_typ "upper", Upper e)) |||
        (strinG "now" >>: fun () -> StatelessFun (make_float_typ ~nullable:false "now", Now)) |||
        (afun1 "exp" >>: fun e -> StatelessFun (make_num_typ "exponential", Exp e)) |||
        (afun1 "log" >>: fun e -> StatelessFun (make_num_typ "logarithm", Log e)) |||

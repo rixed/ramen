@@ -462,6 +462,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_binary_op op_typ return_i128 ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
   | StatelessFun (op_typ, Length e) ->
     check_unary_op op_typ return_u16 ~exp_sub_typ:TString e
+  | StatelessFun (op_typ, Lower e) ->
+    check_unary_op op_typ return_string ~exp_sub_typ:TString e
+  | StatelessFun (op_typ, Upper e) ->
+    check_unary_op op_typ return_string ~exp_sub_typ:TString e
   | StatelessFun (op_typ, Ge (e1, e2)) | StatelessFun (op_typ, Gt (e1, e2))
   | StatelessFun (op_typ, Eq (e1, e2)) ->
     (try check_binary_op op_typ return_bool ~exp_sub_typ1:TString e1 ~exp_sub_typ2:TString e2
