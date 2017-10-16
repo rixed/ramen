@@ -12,13 +12,8 @@ add_node earthquakes "RECEIVE VIA \"test\" SEPARATOR \"\\t\"
 add_node n "SELECT sequence AS seq, year FROM test/earthquakes EXPORT"
 run
 
-upload() {
-  curl -s -o /dev/null \
-       --data-urlencode @"$top_srcdir/src/tests/fixtures/earthquakes.csv" \
-       "$RAMEN_URL/upload/test"
-}
-upload
-upload
+upload earthquakes.csv test
+upload earthquakes.csv test
 sleep 1
 
 # Check that we processed the file twice

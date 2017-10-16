@@ -56,7 +56,15 @@ start() {
     OCAMLFIND_IGNORE_DUPS_IN="$(ocamlfind query ramen 2>/dev/null)" \
     $ramen start --no-demo -d --seed 1234 &
   add_temp_pid $!
-  sleep 1.5
+  sleep 2
+}
+
+upload() {
+  file=$1
+  suffix=$2
+  curl -s -o /dev/null \
+       --data-urlencode @"$top_srcdir/src/tests/fixtures/$file" \
+       "$RAMEN_URL/upload/$suffix"
 }
 
 add_node() {

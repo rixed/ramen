@@ -231,6 +231,7 @@ long-check: ramen
 	./tests/season
 	./tests/fit_multi
 	./tests/upload
+	./tests/word_count
 
 include $(top_srcdir)/make.common
 

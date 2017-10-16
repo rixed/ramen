@@ -1,0 +1,47 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/../.."
+. $top_srcdir/src/tests/funcs.sh
+
+expected_tests=2
+
+start
+# Note: "," must not be the CSV separator!
+add_node recv "RECEIVE VIA \"test\" SEPARATOR \"_\" (line string not null)"
+add_node splitter "FROM test/recv SELECT split(\" \", line) AS word"
+
+# Method 1: send the new count each time it changes
+
+add_node counter1 "FROM test/splitter WHERE word <> \"\"
+  SELECT group.#count AS count, lower(word) AS word
+  GROUP BY word
+  COMMIT WHEN true
+  FLUSH WHEN false
+	EXPORT"
+
+# Method 2: send all counts only when the word "END" is seen
+
+add_node counter2 "FROM test/splitter WHERE word <> \"\"
+  SELECT group.#count AS count, lower(word) AS word
+  GROUP BY word
+  COMMIT AND FLUSH WHEN in.word = \"END\"
+  EXPORT"
+
+run
+upload balade.txt test
+sleep 0.5 # Make sure we start by the above text
+upload end.txt test
+sleep 2
+
+check_equal '15,"nous"' \
+  "$(tail_ 240 counter1 | sort -nr | head -1)"
+
+check_equal '15,"nous"
+8,"de"
+5,"ne"
+4,"mais"
+4,"la"
+4,"et"
+3,"vueille"' \
+  "$(tail_ 61 counter2 | sort -nr | head -7)"
