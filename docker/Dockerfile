@@ -110,7 +110,7 @@ RUN touch /img_creation && find /root /usr /var /lib /bin /sbin -type f | \
     ramen shutdown && \
     sleep 1 && \
     rm -rf /ramen/* /tmp/* && \
-    /bin/dash -c 'ls / > /dev/null' && \
+    /bin/dash -c 'echo touching dash' && \
     hostname && \
     touch -a /start && \
     (find /root /usr /var /lib /bin /sbin -type f -not -anewer /img_creation -delete || true)
