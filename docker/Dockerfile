@@ -113,5 +113,4 @@ RUN touch /img_creation && find /root /usr /var /lib /bin /sbin -type f | \
     /bin/dash -c 'ls / > /dev/null' && \
     hostname && \
     touch -a /start && \
-    (find /root /usr /var /lib /bin /sbin -type f -not -anewer /img_creation -delete || true) && \
-    rm -rf /var
+    (find /root /usr /var /lib /bin /sbin -type f -not -anewer /img_creation -delete || true)
