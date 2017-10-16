@@ -276,7 +276,11 @@ let quote_at_end s =
 exception InvalidCSVQuoting
 
 let strings_of_csv separator line =
-  let strings = String.nsplit line separator in
+  (* If line is the empty string, String.nsplit returns an empty list
+   * instead of a list with a single empty value. *)
+  let strings =
+    if line = "" then [ "" ]
+    else String.nsplit line separator in
   (* Handle quoting in CSV values. TODO: enable/disable based on operation flag *)
   let strings', rem_s, has_quote =
     List.fold_left (fun (lst, prev_s, has_quote) s ->
