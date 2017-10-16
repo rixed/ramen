@@ -54,7 +54,7 @@ start() {
 
   /usr/bin/env \
     OCAMLFIND_IGNORE_DUPS_IN="$(ocamlfind query ramen 2>/dev/null)" \
-    $ramen start --no-demo -d &
+    $ramen start --no-demo -d --seed 1234 &
   add_temp_pid $!
   sleep 1.5
 }

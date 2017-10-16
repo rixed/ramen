@@ -21,6 +21,12 @@ let daemon =
                    [ "daemon"; "daemonize"] in
   Arg.(value (flag i))
 
+let rand_seed =
+  let i = Arg.info ~doc:"seed to initialize the random generator with. \
+                         (will use a random one if unset)"
+                   [ "seed"; "rand-seed" ] in
+  Arg.(value (opt (some int) None i))
+
 let no_demo =
   let env = Term.env_info "RAMEN_NO_DEMO" in
   let i = Arg.info ~doc:"do not load demo operations"
@@ -88,6 +94,7 @@ let server_start =
       $ do_persist
       $ debug
       $ daemon
+      $ rand_seed
       $ no_demo
       $ to_stderr
       $ server_url

@@ -664,11 +664,14 @@ let rec timeout_layers conf =
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_layers conf
 
-let start do_persist debug daemon no_demo to_stderr ramen_url www_dir
-          version_tag persist_dir port cert_opt key_opt () =
+let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
+          www_dir version_tag persist_dir port cert_opt key_opt () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemon then
     failwith "Option --daemon and --to-stderr are incompatible." ;
+  (match rand_seed with
+  | None -> Random.self_init ()
+  | Some seed -> Random.init seed) ;
   let logdir = if to_stderr then None else Some (persist_dir ^"/log") in
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
