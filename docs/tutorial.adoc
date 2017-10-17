@@ -1,0 +1,678 @@
+// vim:filetype=asciidoc expandtab spell spelllang=en ts=2 sw=2
+= Ramen Tutorial
+:toc:
+:icons:
+:lang: en
+:encoding: utf-8
+
+== Starting up
+
+=== Using the Docker image
+
+The docker image is about only 80MiB compressed. Run it with:
+
+[source,shell]
+----
+docker run -p 29380:29380 -p 25826:25826/udp rixed/ramen:try --to-stderr --save-conf
+----
+
++--to-stderr+ is to log on stderr instead of files so that you will see what's
+happening in the console (add an extra +--debug+ if you are curious).
++--save-conf+ is to persist the configuration on disk (in the image, unless you
+mount an external volume into the container's +/ramen+ directory).  Persisting
+the configuration allows you to stop and later restart the container without
+loosing the configuration.
+
+The port +29380+ is ramen's own port where it listen to HTTP queries. The UDP
+port +25826+ is for _collectd_ network protocol. By default, ramen listens for
+incoming collectd messages and will inject them. The docker image comes with an
+embedded +collectd+ that will monitor the container itself, but you could also
+points external collectd to this port.
+
+=== Installing collectd
+
+Aptitude install collectd
+
+Edit +/etc/collectd/collectd.conf+ (or the equivalent, such as
++/usr/local/etc/collectd.conf+ if brewed on mac OS), uncomment `LoadPlugin
+network` and make sure the stats will be sent to your server running ramen. For
+now let's say you run collectd and ramen on the same host, that means you must
+have this configuration for the network plugin:
+
+----
+<Plugin network>
+  Server "127.0.0.1" "25826"
+</Plugin>
+----
+
+WARNING: Replace "127.0.0.1" with the actual address of your host if collectd runs
+elsewhere.
+
+Then you can restart collectd (+systemctl restart collectd.service+ or
++/usr/local/sbin/collectd -f -C /usr/local/etc/collectd.conf+ or whatever works
+for you).
+
+== The GUI
+
+Ramen serevs over HTTP both an API and a basic GUI to let you see what's taking
+place.  Have a look http://localhost:29380/[over here].
+
+There are at first only two things you should see: a list of _layers_,
+initially composed by only one layer named "demo", and a list of _nodes_, with
+a single one called "collectd".
+
+Layers are set of nodes. A node is just an individual operation, which can be
+of several types: listening to some network port for some known protocol (such
+as collectd) is one of them. In general though, operations will consist of
+SQL-like operations on tuples. _Tuples_ are like a row in SQL, that is a
+collection of named fields and values. Values can have various types
+(integers, strings, booleans...) as in SQL. In a stream processor, it is
+frequent to refer to tuples as _events_. So row = event = tuple, node =
+operation consuming tuples and producing tuples, and layer = set of nodes.
+
+In a stream processor, operations are chained together and has no end. In
+ramen, nodes have _parents_ and _children_. A node sends the tuple it outputs
+to each of its children.
+
+Layers are the granularity at which nodes can be created, started and stopped.
+Within a layer you can build loops of nodes. Outside of layers, though, loops
+are not allowed: when you add a layer, all the parents node must either be in
+the layer you are adding or in a layer that's already defined.
+
+Nodes and layers have names. Layer names must be globally unique while node
+names need only be unique within the layer they belongs to. The _fully
+qualified_ name of a node is the name of the layer it belongs to, followed by a
+slash ("/"), followed by the name of the node. Consequently, the slash
+character is not allowed in a node name.
+
+=== Running The Operation
+
+For now we have a single layer named "demo" containing a single node named
+"collectd".
+
+The layer panel says that the "demo" layer has never been started.
+Indeed, ramen creates it by default but does not compile nor start it. Before we
+remedy to that, let's have a look at what this "collectd" node is doing exactly.
+If you click on the layer panel the "source code" of all its nodes will be revealed.
+In this case it is disappointingly simple. The only "collectd" node does:
+
+[source,sql]
+----
+LISTEN FOR COLLECTD
+----
+
+Let's compile that. On the layer panel you should notice a pen (✎) icon. The
+pen means that this layer is currently in edition mode (ie. you can change the
+node source code).  Click on the pen to compile the layer. A couple of seconds
+later, that icon should turn into a checked box (☑), meaning it's been
+successfully compiled. Now let's run it, by clicking again on that icon, which
+should now turn into a gear (⚙").
+
+A few seconds later the list of nodes should start living a bit, as collectd
+notifications are received and changed into tuples. If you click on the
+"collectd" node in the table, the last injected tuples will be displayed.
+
+== Meet A Tuple
+
+In this "Raw output" panel we can see the last 8 tuples emitted by that
+operation. Notice the format of the tuple: it has the hostname, the timestamp,
+various names identifying the collectd plugin that generated the event, and a
+set of values (up to five but usually just one).
+
+Pay attention to the field type written below the column names: `string`,
+`float`, `string or null`, and so on.  Ramen knows of many scalar types, such
+as float, string, boolean, network addresses, network address masks, and a
+large collection of integer types, signed or unsigned, denoted "u8", "u16", ...
+"u128" for the unsigned ones and "i8" etc for the signed ones. Beside its name,
+each tuple field has a type and a flag indicating if the value can be null.
+
+== Create Your Own Nodes
+
+Collectd events are very fine grained and one may want to build a more
+synthetic view of the state of some subsystem. Let's start with memory: Instead
+of having individual events with various bits of informations about many
+subsystems, let's try to build a stream representing, at a given time, how memory
+is allocated for various usage.
+
+So to begin with, let's filter the events generated by collectd memory probes.
+We will do all our experiments in a new layer that we will call "tutorial", so
+that we leave the collectd node alone.
+
+Click the +new layer+ button that's at the bottom of the layer list, and you should
+see a rudimentary form to create a new layer (with as many nodes as you want in
+there, but we will start with one). So enter "tutorial" instead of "unnamed
+layer" as the layer name and "memory" in place of "new node 1" as the node
+name. Then for the operation, enter:
+
+[source,sql]
+----
+SELECT * FROM demo/collectd WHERE plugin = "memory"
+EXPORT EVENT STARTING AT time
+----
+
+Without going too deep into ramen syntax, the intended meaning of this simple
+operation should be clear: we want to filter the tuples according to their
++plugin+ field and keep only those originating from the "memory" plugin.  The
++EXPORT EVENT ...+ part is required to make the resulting tuples visible in the
+GUI (otherwise, for performance reasons, tuples would not be accessible from
+the web server).
+
+[NOTE]
+The +STARTING AT ...+ bit means that, when we plot the output then the
+timestamp for these tuples are to be taken in the field called +time+.  In many
+stream processors time is a hardcoded field of a specific format. In some
+others, event time is even assumed to be current time. With ramen time is not
+mandatory and can have any format which float your boat. You can even have both
+a starting time and a ending time for each tuple. The price to pay for this
+flexibility is that, should you intend to plot the tuples or use any function
+that requires the time, then you have to instruct ramen how to get the time
+from the event.
+
+Press the +Save+ button and if all goes well you should now be able to proceed
+with the compilation of this new layer by clicking on the pen icon as you did
+earlier for the "demo" layer. This time though, you should get an error
+message that, if you are used to SQL, may surprise you:
+
+----
+In node memory: where clause must not be nullable but is
+----
+
+Correct typing is an important design goal of ramen so that it can be reliably
+used to deliver alerts (its primary intended purpose).  In particular, it is
+impossible to draw a NULL value, the SQL traditional equivalent of the dreadful
+NULL pointer of C, whenever it makes no sense (and the other way around, for
+what it's worth).
+
+The +WHERE+ clause of a +SELECT+ operation must be a non-null boolean, for
+there is no good decision to be made when the expression is indeterminate. But
+the plugin field of collectd output tuples can be NULL (because the
+https://collectd.org/wiki/index.php/Binary_protocol[collectd protocol] offers
+no guarantee that this record will be defined and indeed
+https://git.octo.it/?p=collectd.git;a=blob;f=src/network.c;h=4e684215ac732d36a593b9d2f870b011f60de707;hb=master#l2980[collectd
+source code] sets this information only conditionally). Therefore the
+expression +plugin = "memory"+ can also be NULL.
+
+We will consider that an information that's lacking a plugin information is
+not originating form the memory plugin, and therefore we can use the
++COALESCE+ operator to get rid of the nullability. As in SQL, "coalesce" takes
+a list of expressions and returns the first one that is not null.  In ramen
+there are additional constraints though: this list of expressions cannot be
+empty, the last expression is not allowed to be nullable, while every others
+must be ; so that it is guaranteed that the result of a coalesce is never
+null.
+
+So, click on the "tutorial" layer panel again and modify the text of the
+"memory" node like this:
+
+[source,sql]
+----
+SELECT * FROM demo/collectd WHERE COALESCE(plugin = "memory", false)
+EXPORT EVENT STARTING AT time
+----
+
+Save it and you should now be able to compile and run it by clicking twice on
+the pen icon.
+If you select this node in the list you should now see only collectd events
+originating from the memory plugin.
+
+You might notice that this plugin only sets one value and also that the
++type_instance+ field contains the type of memory this value refers to.  Apart
+from that, most field are useless so we could make this more readable by
+changing its operation into the following, enumerating the fields we want to keep (and
+implicitly discarding the others). Notice that you must first stop the running
+node (by clicking on the gear icon) before you can edit it.
+
+[source,sql]
+----
+SELECT time, host, type_instance, value
+FROM demo/collectd
+WHERE COALESCE(plugin = "memory", false)
+EXPORT EVENT STARTING AT time
+----
+
+The output is now easier to read; it should look something like this:
+
+[width="50%",cols=">,<,<,>",options="header"]
+|=====================
+|time +
+float
+|host +
+string
+|type_instance +
+string (or null)
+| value +
+float
+|1507295705.54 |rxdmac |free |749998080
+|1507295715.54 |rxdmac |used |1821294592
+|1507295715.54 |rxdmac |cached |3061694464
+|1507295715.54 |rxdmac |buffered |1897586688
+|1507295715.54 |rxdmac |free |783855616
+|1507295725.54 |rxdmac |used |1816403968
+|1507295725.54 |rxdmac |slab_recl |3054088192
+|1507295725.54 |rxdmac |buffered |1897594880
+|====================
+
+On your system other "type instances" might appear; please adapt as you read
+along.
+
+There is still a major annoyance though: we'd prefer to have the values for
+each possible "type instances" (here: the strings "free", "used", "cached" and
+so on) as different fields of a single row, instead of spread amongst several
+rows. Since we seem to receive one report form collectd every 10 seconds or
+so, a simple way to do this would be, for instance, to accumulate all such
+tuples for 30 seconds and then report a single value for each of them in a
+single tuple, once every 30 seconds.
+
+For this, we need to "aggregate" several tuples together, using a +GROUP BY+
+clause. Try this:
+
+[source,sql]
+----
+SELECT
+  MIN time AS time,
+  host,
+  AVG (IF type_instance = "free" THEN value ELSE 0) AS free,
+  AVG (IF type_instance = "used" THEN value ELSE 0) AS used,
+  AVG (IF type_instance = "cached" THEN value ELSE 0) AS cached,
+  AVG (IF type_instance = "buffered" THEN value ELSE 0) AS buffered,
+  AVG (IF type_instance LIKE "slab%" THEN value ELSE 0) AS slab
+FROM demo/collectd
+WHERE COALESCE (plugin = "memory", false)
+GROUP BY host, time // 30
+COMMIT AND FLUSH WHEN in.time > previous.time + 30
+EXPORT EVENT STARTING AT time WITH DURATION 30
+----
+
+There are *a lot* of new things here. Let's see them one at a time.
+
+=== Naming Fields
+
+Notice that we have explicitly named most of the field with the +AS+ keyword.
+Each field must have a name and unless ramen can reuse an incoming field name
+you will have to supply the name yourself.
+
+[NOTE]
+In simple cases ramen might come up with a name of its own making, but it's
+not always what you want. For instance in this example the second field which
+value is +MAX time+ would have been named "max_time", but I think "time" is
+more appropriate therefore I provided the name myself.
+
+=== Grouping and Aggregating
+
+As in SQL, the group by clause will define a _key_ used to group the incoming
+tuples. This key is composed of a list of expressions. In this example we want
+to group tuples by hostname (in case you configured collectd on various
+machines) and by slices of 30 seconds. To group by time we divide the time
+by 30, using the integer division denoted by the double-slash operator (+//+).
+The usual division (+/+) would yield a fractional number which would not
+map successive events into the same group.
+
+In every group we compute the average of the received values (using the +AVG+
+aggregate function) and the minimum time (using the +MIN+ aggregate function).
+This is somewhat arbitrary as we could as well have used the maximum (+MAX+),
+the last (+LAST+) or the first (+FIRST+) of any of those.
+
+Notice that each of the measurement can be NULL, and will be if and only if we
+receive no corresponding event from collectd for that particular instance-type
+during the whole 30 seconds slice, which is exactly what we want.
+
+[NOTE]
+As in python, +//+ is the _integer division_: a division where the remainder is
+discarded and thus the result truncated toward zero. The type of the result is
+still a float since +time+ is a float, though.
+
+=== Windowing
+
+Every stream processor in existence come with a windowing system that basically
+compensate for input infiniteness. Usually, windowing boils down to a condition
+triggering the "closing" of the current window; in more details, what is meant
+by "closing" a window is: the finalization of the ongoing aggregation, the
+emission of a result and the emptying of the window to restart the cycle with
+new inputs.
+
+In ramen, the control over the windowing is very fine grained, but the above
++COMMIT AND FLUSH WHEN ...some condition...+ is basically just that: when the
+condition is met, the current aggregation emits a result and the accumulated
+data is reset. Still, you should be intrigued by the condition itself:
++in.time > previous.time + 30+. For the first time, we see that field names
+can be prefixed with a _tuple names_.
+
+Indeed, here we are comparing the field "time" of the incoming tuples
+("in.time") with the field "time" that is being computed by the aggregation
+(+MIN time AS time+). "in" is the name of an input tuple, while "previous" is
+the name of the last tuple computed by a group (the tuple that would be
+emitted shall the condition yield true). It is thus interesting to notice
+that those two tuples have different types: "in" has fields "time",
+"type_instance", "value", etc, while the output tuples have fields "time",
+"free", "used", etc. Both have a field named "time" so we need to prefix
+with the tuple name to disambiguate the expression.
+
+There are many different tuples that you can address in the various clauses of
+an expression beside the "in" and the "previous" tuple, so that rich behavior
+can be obtained, but let's not dive into this for now. The overall meaning of
+this +COMMIT AND FLUSH+  expression should be clear though: we want to
+aggregate the tuples until we receive a tuple which time is greater than the
+max time we have added into our group by at least 30 seconds. This assumes we will
+receive collectd events in roughly chronological order. We could wait longer
+than 30s to leave some time for lagging events.
+
+=== Conditionals
+
+Notice that to isolate measurements for each of the values we are interested
+in, we used an +IF+ expressions to zero-out values of the wrong instance-types.
+Ramen also support +mysql+ type +IF+ functions: +IF(condition, consequent,
+alternative)+, and both are just syntactic sugar for the fully fledged SQL
++CASE+ expression.
+
+Like in SQL but unlike in some programming languages, you can use conditionals
+anywhere you could use an expression; such as in the middle of a computation
+of as a function argument, as we did here.
+
+=== Event Duration
+
+Notice that we also added +WITH DURATION 30+ to the description of the output
+event. This instruct ramen that each tuple represents a time segment that
+starts at the timestamp taken from the field "time" and that represent a time
+slice of 30s.  This will be useful in a bit, when we visualize the tuples as
+timeseries.
+
+== Visualization
+
+Now our memory node returns a much better looking result:
+
+[width="50%",cols=">,<,>,>,>,>",options="header"]
+|=====================
+|time +
+float
+|host +
+string
+|free +
+float (or null)
+|used +
+float (or null)
+|cached +
+float (or null)
+|buffered +
+float (or null)
+|slab +
+float (or null)
+|1507342021.17 |rxdmac |777793536 |503689216 |636694869.333 |79526912 |40728576
+|1507342051.17 |rxdmac |777340586.667 |503691946.667 |637033472 |79526912 |40699221.333
+|1507342081.17 |rxdmac |777027242.667 |503635626.667 |637074773.333 |79526912 |40688753.777
+|1507342111.17 |rxdmac |776763733.333 |503665664 |637330432 |79526912 |40719473.777
+|1507342141.17 |rxdmac |776679765.333 |503691605.333 |637312000 |79544661.333 |40770901.333
+|1507342171.17 |rxdmac |776135338.667 |503693994.667 |637735936 |79580160 |40784554.666
+|1507342201.17 |rxdmac |776304981.333 |503693653.333 |637580629.333 |79575722.666 |40712192
+|1507342231.17 |rxdmac |775898453.333 |503668736 |638010368 |79581525.333 |40771584
+|====================
+
+Still, staring at a table of numbers is not very satisfying.
+Instead, what we would like is to plot the data.
+
+You can plot some values evolution with time in a 2d plot by selecting some
+numerical columns in the raw output panel (by clicking on the column header).
+
+If you select all memory sections and select a stacked graph you should see how
+memory is distributed by your operating system.
+
+Although it is best to use a fully fledged monitoring dashboard such as
+http://grafana.net[Grafana] to visualize your metrics, it is nonetheless handy
+to have a small embedded visualizer when you are building your configuration.
+
+NOTE: See https://github.com/rixed/ramen-grafana-datasource-plugin[this grafana
+plugin] for more details about using ramen as a data source for Grafana.
+
+== Word count
+
+Now that we are a bit more accustomed to ramen, let's implement the "hello
+world" of stream processing: a word count. Let's start by acknowledging that
+counting words is a task that's best tackled with a map-reducer than with a
+stream processor, but let's cling to the tradition.
+
+Here is how the word count should work: you send in some prose and the stream
+processor split it into individual words and count how many occurrences of
+each of them have been seen so far, and output that count for each word. It
+must outputs a tuple composed of the word and its count each time this word
+is seen. This is a bit different from the map-reduce version of the word
+counter, where only the final counts are emitted; but there is no such thing
+as a final state for data streams.
+
+This simple task is composed of 3 successive operations:
+
+1. Read the prose and inject it line by line;
+2. Split each line into individual words and output one tuple per word;
+3. For each different word, count how many times we have seen it so far,
+   and output a tuple with this word and count.
+
+=== Accepting prose and outputting lines
+
+So far the only way to inject new data into ramen is the +LISTEN FOR+
+operation. This operation is meant to understand well known protocols but
+there is no well known protocols to transport prose. Instead, we will use the
+other operation that can read data from the outside: +READ FILE+.
+
++READ FILE+ can either read one (or several) files from the file system, or
+receive them via the HTTP server. It currently supports only files that
+are in the CSV format but will later be expended to accept files in other
+record oriented format footnote:[another good candidate for further expansion
+is to read from a database]. To read files from the file system, the syntax
+is:
+
+[source,sql]
+----
+READ [ AND DELETE ] FILES "...pattern..."
+  [ PREPROCESS WITH "...command..." ]
+  [ SEPARATOR "..." ] [ NULL "..." ]
+  ( field_name1 field_type1 [ [ NOT ] NULL ],
+    field_name1 field_type1 [ [ NOT ] NULL ],
+    ... )
+----
+
+- If +AND DELETE+ is specified then the files will be deleted as soon as
+they have been opened, meaning they won't be injected again if you restart
+ramen.
+
+- The file pattern here can use the wildcard +*+ anywhere _in a file name_;
+  Ramen will keep looking for new files matching that pattern in that directory, so you can keep copying new files there.
+
+- The optional +PREPROCESS WITH+ stanza specifies an external command to run
+  on each file before reading it, such as for instance "zcat" to uncompress it.
+
+- +SEPARATOR+ and +NULL+ sets the CSV field separator and placeholder value
+  for NULL values. By default they are the coma and the empty string.
+
+- Then follow the description of the fields, with name, type and nullability.
+
+If instead of reading files you prefer to upload them via HTTP, replace the
+first line above by: +RECEIVE+. Then, just POST the files to ramen at the
+URL +/upload/+ followed by the node fully qualified name. This is what we
+will do in this example for simplicity.
+
+Also, we will send prose not CSV. But if the CSV separator does not appear
+anywhere in the file, then prose is indistinguishable from a CSV file of
+one single field for the whole line. So the first node injecting lines
+would be:
+
+[source,sql]
+----
+RECEIVE SEPARATOR "_" (line STRING NOT NULL)
+----
+
+Go ahead and create a layer named "word_count" with a node named "receiver"
+with that simple operation.
+
+Next, we want to split those lines.
+
+=== String Splitting and Multiple Outputs
+
+The function we need for splitting incoming lines is +split+, which takes two
+strings as arguments: the separator and the string to split, in that order.
+
+It will return from 1 (if the separator is not found) to many results.
+
+When a function outputs several results then as many tuple will be output by the operation as a whole. When the SELECT statement uses several functions returning multiple results, the Cartesian product of all those results is output.
+
+So for instance the output tuples of +split(" ", "foo bar"), 42+ would be:
+
+  "foo", 42
+  "bar", 42
+
+and the output tuples of +split(" ", "foo bar"), split(" ", "baz bam")+ would be:
+
+  "foo", "baz"
+  "foo", "bam"
+  "bar", "baz"
+  "bar", "bam"
+
+In our case we just want to split incoming field +line+ by spaces:
+
+[source,sql]
+----
+SELECT SPLIT(" ", line) AS word FROM receiver
+----
+
+We could also turn all words to lowercase with the +lower+ function:
+
+[source,sql]
+----
+SELECT LOWER(SPLIT(" ", line)) AS word FROM receiver
+----
+
+WARNING: Notice that function names are case insensitive but keep in mind that
+field names are _not_!
+
+Easy enough. Let's call this node "splitter" and proceed to the actual
+counting.
+
+=== Counting Words
+
+Intuitively one might expect something like the following SQL:
+
+[source, sql]
+----
+SELECT word, COUNT(*) AS count FROM splitter GROUP BY word
+----
+
+and indeed this is a good starting point. Ramen, though, does not have a
++COUNT+ keyword yet; instead, we could count ourselves by adding ones:
+
+[source,sql]
+-----
+SELECT word, SUM 1 AS count FROM splitter GROUP BY word
+----
+
+Equivalently, there is also the _special field_ +group.#count+ that counts
+how many elements have been added to a group. We will see later about special
+fields.
+
+The main difference with SQL, though, is the lack of an implicit moment when
+to stop aggregating. For such a simple problem as word counting, traditional
+windowing where we issue an output a flush the aggregation when some
+condition is true is not powerful enough: we want a new tuple each time a
+count changes, but we want to count globally. If we did:
+
+[source,sql]
+----
+SELECT word, SUM 1 AS count FROM splitter GROUP BY word
+COMMIT AND FLUSH WHEN out.count <> previous.count
+----
+
+...then we would have a succession of +$word, 2+ tuples, emitted each other
+time a word is encountered, that would not be very useful.
+
+[NOTE]
+Notice there is an +out+ special tuple in addition to the +previous+ special
+tuple we've seen earlier.
+
+[NOTE]
+To understand why we would have a count of 2 rather than 1, you must be aware
+that the previous tuple is initially initialized with the first one, to avoid
+having to deal with yet another case of nulls. So when a word is seen for the
+first time it's previous.count is not 0 as you might expect but equal to the
+current value of count, out.count, that is 1. So one must wait until the
+second occurrence of that word for the +COMMIT+ condition to be true.
+
+What we really want to do is to aggregate the counts forever, but still emit
+a new tuple at every change (aka at every step). Fortunately, we can set
+a different condition for when to +COMMIT+ a result (ie. output the result
+tuple) and when to +FLUSH+ the aggregated group:
+
+[source,sql]
+----
+SELECT word, SUM 1 AS count FROM splitter GROUP BY WORD
+COMMIT WHEN true FLUSH WHEN false
+EXPORT
+----
+
+Simple, and does the work. You will see later that, not only can we set a
+specific condition as to when to flush but we can also select which tuple to
+flush and which to keep from one window to the next.
+
+There you have it. We added an +EXPORT+ keyword at the end of this new
+"counter" node so that you can see the result in the GUI. Let's now send some
+text.
+
+=== Uploading Some Prose
+
+By default, ramen listens at port 29380 and so, to
+upload data for our node which fully qualified name is +word_count/receiver+ a
+file has to be HTTP POSTed to
++http://localhost:29380/upload/word_count/receiver+. For instance with curl:
+
+[source,shell]
+----
+~ % curl --data-urlencode "hello world" \
+    http://localhost:29380/upload/word_count/receiver
+{"success": true}
+~ % curl --data "hello again" \
+    http://localhost:29380/upload/word_count/receiver
+{"success": true}
+----
+
+As you can see ramen is not very picky regarding content types.
+
+On the GUI you should have:
+
+.Raw Output
+[width="50%",cols="^,^",options="header"]
+|========================
+|word +
+string
+|count +
+i8
+|hello |1
+|world |1
+|hello |2
+|again |1
+|=======================
+
+as expected we have as many tuples as we had words in the input, with the
+count counting the occurrences of each.
+
+== Next Stops
+
+- More tools to play with, such as more ways to import data;
+
+- Some doc;
+
+- Simple Automatic Anomaly Detection;
+
+- Performance Improvements (Rust or LLVM for the main operation);
+
+- Anomaly Detection Improvements;
+
+- Proper Storage.
+
+== Annoyances To Be Addressed
+
+- Reliance on external compilers to generate nodes;
+
+- Better monitoring of the nodes;
+
+- Integer overflows;
+
+- Better Parse Error;s
+
+- Edition syntax-aware tools (such as context-aware suggestions, syntax
+  highlighting...  Require more annotations during parsing).
+

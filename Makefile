@@ -1,6 +1,6 @@
 top_srcdir = ./
 
-SUBDIRS = src
+SUBDIRS = src docs
 
 all:
 	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
