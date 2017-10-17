@@ -765,8 +765,10 @@ let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
         timeseries conf headers body
       | `OPTIONS, _ ->
         let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
-        let headers = Header.add headers "Access-Control-Allow-Methods" "POST" in
-        let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
+        let headers =
+          Header.add headers "Access-Control-Allow-Methods" "POST" in
+        let headers =
+          Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
         Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
       (* Top *)
       | `GET, ([]|["top"|"index.html"]) ->
