@@ -380,7 +380,7 @@ timeseries.
 
 Now our memory node returns a much better looking result:
 
-[width="50%",cols=">,<,>,>,>,>",options="header"]
+[width="50%",cols=">,<,>,>,>,>,>",options="header"]
 |=====================
 |time +
 float
