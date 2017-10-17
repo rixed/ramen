@@ -1,0 +1,42 @@
+// vim:filetype=asciidoc expandtab spell spelllang=en ts=2 sw=2
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+
+= Ramen Roadmap
+:icons:
+:lang: en
+:encoding: utf-8
+
+== Next Stops
+
+- More tools to play with, such as more ways to import data;
+
+- Some doc;
+
+- Simple Automatic Anomaly Detection;
+
+- Performance Improvements (Rust or LLVM for the main operation);
+
+- Anomaly Detection Improvements;
+
+- Proper Storage.
+
+== Annoyances To Be Addressed
+
+- Reliance on external compilers to generate nodes;
+
+- Better monitoring of the nodes;
+
+- Integer overflows;
+
+- Better parse errors;
+
+- Edition syntax-aware tools (such as context-aware suggestions, syntax
+  highlighting...  Require more annotations during parsing).
+
+

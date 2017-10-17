@@ -2,14 +2,13 @@ top_srcdir = ../
 
 all:
 
+doc: tutorial.html manual.html roadmap.html
+
 clean-spec:
 
 distclean-spec:
-	$(RM) tutorial.html
+	$(RM) tutorial.html manual.html roadmap.html
 
 install-spec:
 
-publish: tutorial.html
-	scp tutorial.html pim:public_html/ramen_tutorial.html
-	
 include $(top_srcdir)/make.common

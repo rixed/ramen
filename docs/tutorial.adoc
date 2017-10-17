@@ -668,30 +668,6 @@ i8
 as expected we have as many tuples as we had words in the input, with the
 count counting the occurrences of each.
 
-== Next Stops
-
-- More tools to play with, such as more ways to import data;
-
-- Some doc;
-
-- Simple Automatic Anomaly Detection;
-
-- Performance Improvements (Rust or LLVM for the main operation);
-
-- Anomaly Detection Improvements;
-
-- Proper Storage.
-
-== Annoyances To Be Addressed
-
-- Reliance on external compilers to generate nodes;
-
-- Better monitoring of the nodes;
-
-- Integer overflows;
-
-- Better parse errors;
-
-- Edition syntax-aware tools (such as context-aware suggestions, syntax
-  highlighting...  Require more annotations during parsing).
-
+You should now be able to survive given only the
+https://github.com/PerformanceVision/ramen/blob/master/docs/manual.adoc[reference
+manual].
