@@ -71,6 +71,7 @@ let percentile_finalize pct lst =
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 
 let split by what k =
+  if what = "" then k what else
   String.nsplit ~by what |> Lwt_list.iter_s k
 
 (* Remember values *)
