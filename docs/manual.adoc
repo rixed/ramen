@@ -539,36 +539,103 @@ Example: `95th percentile of (response_time + data_transfert_time)`
 
 ==== Timeseries functions
 
-seasonality
+`lag`, prefix, +int ⨉ any -> any+, delayed value of some expression. For
+instance, `lag (3, f)` returns the value of f 3 steps earlier.
 
-`lag`
+Following functions share the notion of _seasonality_.
 
-`mavg`
+Seasonality is like weak periodicity: a seasonal timeseries is a timeseries
+which is strongly auto-correlated for some period P without being strictly
+periodic. When this is the case, one often wants to compute some function
+over the past k same seasons. For instance, if `v` has a seasonality of 4,
+one might want to know the average of the last 10 seasons:
+`(v(t-p) + v(t-2p) + v(t-3p) + ... + v(t-10p)) / 10`.
 
-`fit`
+The following functions are such functions, parameterized by `p` (the
+seasonality) and `k` (how many seasons in the past to consider). Notice that
+in the example above as well as in the function below the current value is
+skipped: `v(t)` is not in the average. This is because we often want to
+compare such computation over the past seasons with the actual current value.
 
-`multi-fit`
+Seasonality is similar to fixed length windows but implemented at the
+function level rather than at the aggregation level.
 
-`smooth`
+`season_moveavg`, prefix, +int ⨉ int ⨉ num -> float+, seasonal moving
+average.
 
+For a timeseries of seasonality `p` (first parameter), returns the average of
+the last `k` values (second parameter), skipping the current one. The third
+parameter is numerical expression. The result will be a float. This is the
+same computation than the exemple given above.
+
+`moveavg`: same as `season_moveavg` with `p=1`.
+
+`k-moveavg` or `k-ma`: alternative infix syntax for `moveavg`.
+
+`season_fit`, prefix, +int ⨉ int ⨉ num -> float+, linear regression
+(fitting).
+
+`fit`: same as `season_fit` with `p=1`.
+
+`season_fit_multi`, prefix, +int ⨉ int ⨉ num ⨉ ... -> float+, multiple linear
+regression. This is a variadic function. The first `num` (mandatory) is the
+parameter to be fitted, and all other following optional numbers are
+regression parameters helping with the fitting.
+
+`fit_multi`: same as `season_fit_multi` for `p=1`.
+
+`smooth`, prefix, +float ⨉ num -> float+, exponential smoothing of the value
+(second parameter). The first parameter is a constant float providing the
+exponent (between 0 and 1, the smaller and the softer the smoothed value will
+be).
+
+`smooth`, prefix, +num -> float+, same as above with a default smoothing
+factor of 0.5.
 
 ==== Miscellaneous Statefull Functions
 
-`remember`
+`remember`, prefix, TODO. Parameters are about to change. Cf.
+https://github.com/PerformanceVision/ramen/issues/64
 
 ==== Conditionals
 
+Conditional expressions can appear anywhere an expression can.  Conditions
+are evaluated from left to right and evaluation stops as soon as the
+consequent is determined.
+
 ===== CASE Expressions
 
-`CASE`
+The only real conditional is the case expression. Other forms of conditionals
+are just syntactic sugar for it. Its general syntax is:
+
+[source,sql]
+----
+CASE
+  WHEN cond1 THEN cons1
+  WHEN cond2 THEN cons2
+  ...
+  ELSE alt
+END
+----
+
+...where you can have as many WHEN clauses as you want, including 0, and
+the ELSE clause is also optional.
+
+All conditions must be of type bool. Consequents can have any type, as long
+as they all have the same type. That is also the type of the result of the
+CASE expression.
+
+Regarding nullability: if there are no else branch, or if any of the
+condition or consequent is nullable, then the result is nullable. Otherwise
+it is not.
 
 ===== Variants
 
-`IF ... THEN ...`
-`IF(..., ...)`
+`IF cond THEN cons` or `IF(cond, cons)`: simple variant that produce either
+`cons` (if `cond` is true) or `NULL`.
 
-`IF ... THEN ... ELSE`
-`IF(..., ..., ...)`
+`IF cond THEN cons ELSE alt` or `IF(cond, cons, alt)`: same as above but with
+an ELSE branch.
 
 [[table-of-precedence]]
 ==== Operator precedence
@@ -610,9 +677,9 @@ The simplest is to read a CSV file:
 
 [source,sql]
 ----
-  READ FROM CSV FILE quoted_string [SEPARATOR quoted_string] [NULL quoted_string] (
-    first_field_name field_type [[not] null],
-    second_field_name field_type [[not] null],
+  READ FROM FILES quoted_string [SEPARATOR quoted_string] [NULL quoted_string] (
+    first_field_name field_type [[NOT] NULL],
+    second_field_name field_type [[NOT] NULL],
     ...
   )
 ----
