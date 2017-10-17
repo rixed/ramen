@@ -16,6 +16,7 @@ module SN = RamenSharedTypes.Node
 
 let not_implemented msg = fail (HttpError (501, msg))
 let bad_request msg = fail (HttpError (400, msg))
+let bad_request_exn msg = raise (HttpError (400, msg))
 
 let get_content_type headers =
   Header.get headers "Content-Type" |? Consts.json_content_type |> String.lowercase
@@ -724,28 +725,44 @@ let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
     !logger.info "Adding default nodes since we have nothing to do..." ;
     C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore) ;
   async (fun () -> timeout_layers conf) ;
+  let lyr = function
+    | [] -> bad_request_exn "Layer name missing from URL"
+    | lst -> String.concat "/" lst in
+  let lyr_node_of path =
+    let rec loop ls = function
+      | [] -> bad_request_exn "node name missing from URL"
+      | [x] ->
+        if ls = [] then bad_request_exn "node name missing from URL"
+        else lyr (List.rev ls), x
+      | l::rest ->
+        loop (l :: ls) rest in
+    loop [] path in
   let router meth path _params headers body =
     (* The function called for each HTTP request: *)
       match meth, path with
       (* API *)
       | `GET, ["graph"] -> get_graph conf headers None
-      | `GET, ["graph" ; layer] -> get_graph conf headers (Some layer)
+      | `GET, ("graph" :: layers) ->
+        get_graph conf headers (Some (lyr layers))
       | `PUT, ["graph"] -> put_layer conf headers body
-      | `DELETE, ["graph" ; layer] -> del_layer conf headers layer
+      | `DELETE, ("graph" :: layers) -> del_layer conf headers (lyr layers)
       | `GET, ["compile"] -> compile conf headers None
-      | `GET, ["compile" ; layer] -> compile conf headers (Some layer)
+      | `GET, ("compile" :: layers) ->
+        compile conf headers (Some (lyr layers))
       | `GET, ["run" | "start"] -> run conf headers None
-      | `GET, ["run" | "start" ; layer] -> run conf headers (Some layer)
+      | `GET, (("run" | "start") :: layers) ->
+        run conf headers (Some (lyr layers))
       | `GET, ["stop"] -> stop conf headers None
-      | `GET, ["stop" ; layer] -> stop conf headers (Some layer)
+      | `GET, ("stop" :: layers) -> stop conf headers (Some (lyr layers))
       | `GET, ["shutdown"] -> shutdown conf headers
-      | (`GET|`POST), ["export" ; layer ; node] ->
-        (* TODO: a variant where we do not have to specify layer *)
-        (* We must allow both POST and GET for that one since we have an optional
-         * body (and some client won't send a body with a GET) *)
+      | (`GET|`POST), ("export" :: path) ->
+        let layer, node = lyr_node_of path in
+        (* We must allow both POST and GET for that one since we have an
+         * optional body (and some client won't send a body with a GET) *)
         export conf headers layer node body
       (* API for children *)
-      | `PUT, ["report" ; layer ; node] ->
+      | `PUT, ("report" :: path) ->
+        let layer, node = lyr_node_of path in
         report conf headers layer node body
       (* Grafana datasource plugin *)
       | `GET, ["grafana"] -> respond_ok ()
