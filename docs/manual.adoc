@@ -383,7 +383,7 @@ xref:table-of-precedence[table of precedence] is given at the end of this
 section.
 
 Here we list all available functions. There is no way to define your own
-functions short of adding them directly into Ramen source code). Therefore,
+functions short of adding them directly into Ramen source code. Therefore,
 there is no real difference between 'operators' and 'functions'.
 
 It is more useful to distinguish between stateless and statefull functions,
@@ -394,14 +394,14 @@ function name to change this default.
 
 ===== Boolean operators
 
-`and`, `or`: infix, +bool ⨉ bool -> bool+
+`and`, `or`: infix, +bool ⨉ bool → bool+
 
-`not`: prefix, +bool -> bool+
+`not`: prefix, +bool → bool+
 
 ===== Arithmetic operators
 
-`+`, `-`, `*`, `//`, `^`: infix, +num ⨉ num -> num+, where +num+ can be
-any numeric type (integer of float).
+`+`, `-`, `*`, `//`, `^`: infix, +num ⨉ num → num+, where +num+ can be
+any numeric type (integer or float).
 
 The size of the result is the largest of the size of the operands.  Both
 operands will also be converted to the largest of their type before proceeding
@@ -412,17 +412,17 @@ explicitly cast to a larger type.
 
 Notice that `//` is the integer division
 
-`/`: infix, floating point division, +float ⨉ float -> float+.
+`/`: infix, floating point division, +float ⨉ float → float+.
 
-`%`: infix, the integer remainder, +int ⨉ int -> int+.
+`%`: infix, the integer remainder, +int ⨉ int → int+.
 
-`abs`: prefix, absolute value, +num ⨉ num -> num+.
+`abs`: prefix, absolute value, +num ⨉ num → num+.
 
 ===== Comparison operators
 
-`>`, `>=`, `<=`, `<`: infix, +num ⨉ num -> num+.
+`>`, `>=`, `<=`, `<`: infix, +num ⨉ num → bool+.
 
-`=`, `!=`, `<>`: infix, +any ⨉ any -> any+, where +any+ refers to any type.
+`=`, `!=`, `<>`: infix, +any ⨉ any → bool+, where +any+ refers to any type.
 
 Notice that `<>` and `!=` are synonymous.
 
@@ -449,7 +449,7 @@ For instance: `int16(42)` or `int16 of 42`.
 
 ===== NULL related function
 
-`is [not] null`: postfix, +any nullable -> bool+.
+`is [not] null`: postfix, +any nullable → bool+.
 
 Turns a nullable value into a boolean. Invalid on non-nullable values.
 
@@ -458,51 +458,53 @@ null` can be either true or not depending on the tuple at hand.
 
 `42 is null` is an error, though, as 42 is not nullable.
 
-`coalesce`: prefix, +any nullable ⨉ ... ⨉ any non nullable -> any non
+`coalesce`: prefix, +any nullable ⨉ ... ⨉ any non nullable → any non
 nullable+
 
 Get rid of nullability by providing a fallback non-nullable value. The result
-will be the value of the first non-null argument.
+will be the value of the first non-null argument, and is guaranteed to be
+non-nullable.
 
 ===== String functions
 
-`length`, prefix, +string -> uint16+.
+`length`, prefix, +string → uint16+: length _in bytes_ of a string.
+(TODO: length in characters)
 
-`+`, infix, +string ⨉ string -> string+, concatenation.
+`+`, infix, +string ⨉ string → string+, concatenation.
 
-`lower`, prefix, +string -> string+, convert to lowercase.
+`lower`, prefix, +string → string+, convert to lowercase.
 
-`upper`, prefix, +string -> string+, convert to uppercase.
+`upper`, prefix, +string → string+, convert to uppercase.
 
 Notice that `lower` and `upper` will alter only characters that are part
 of the US-ASCII character set.
 
-`like`, prefix, +string ⨉ pattern -> bool+ where any '%' in pattern will
-match any substring.
+`like`, prefix, +string ⨉ pattern → bool+ where any '%' in pattern will
+match any substring. TODO: '_' to match any single character.
 
-`split`, prefix, +string ⨉ string -> multiple strings+ where the first string
+`split`, prefix, +string ⨉ string → multiple strings+ where the first string
 is the delimiter where to cut the second string. This function output each
 fragment successively.
 
 ===== Arithmetic functions
 
-`abs`, prefix, +num -> num+, absolute value.
+`abs`, prefix, +num → num+, absolute value.
 
-`exp`, prefix, +num -> num+, exponential.
+`exp`, prefix, +num → float+, exponential.
 
-`log`, prefix, +num -> num+, logarithm.
+`log`, prefix, +num → float+, logarithm.
 
-`sqrt`, prefix, +num -> num+, square root.
+`sqrt`, prefix, +num → float+, square root.
 
 ===== Network functions
 
-`in`, infix, +address ⨉ cidr -> bool+, true iif the given address belongs to
+`in`, infix, +address ⨉ cidr → bool+, true iif the given address belongs to
 the CIDR range. Notice that the address can be either IPv4 or IPv6 but the
-CIDR must correspond to that.
+CIDR must correspond to it.
 
 ===== Miscellaneous stateless functions
 
-`hash`, infix, +any -> int64+, turn anything into a 64 bits integer.
+`hash`, prefix, +any → int64+, turn anything into a 64 bits integer.
 
 ==== Aggregate functions
 
@@ -532,35 +534,38 @@ Most aggregate functions needs only to keep the current aggregate value and
 can combine it with new incoming values to produce the next current
 aggregate.
 
-This function is more expensive, as it requires to actually keep all
+This function is more expensive as it requires to actually keep all
 encountered values until the aggregate is flushed.
 
 Example: `95th percentile of (response_time + data_transfert_time)`
 
+Notice the infix notation.
+
 ==== Timeseries functions
 
-`lag`, prefix, +int ⨉ any -> any+, delayed value of some expression. For
-instance, `lag (3, f)` returns the value of f 3 steps earlier.
+`lag`, prefix, +int ⨉ any → any+, delayed value of some expression. For
+instance, `lag (3, f)` returns the value of f 3 steps earlier. Can be used for
+instance to compute a poor man's derivative `f - lag(1, f)`
 
 Following functions share the notion of _seasonality_.
 
 Seasonality is like weak periodicity: a seasonal timeseries is a timeseries
 which is strongly auto-correlated for some period P without being strictly
 periodic. When this is the case, one often wants to compute some function
-over the past k same seasons. For instance, if `v` has a seasonality of 4,
+over the past k same seasons. For instance, if `v` has a seasonality of `p`,
 one might want to know the average of the last 10 seasons:
 `(v(t-p) + v(t-2p) + v(t-3p) + ... + v(t-10p)) / 10`.
 
 The following functions are such functions, parameterized by `p` (the
 seasonality) and `k` (how many seasons in the past to consider). Notice that
-in the example above as well as in the function below the current value is
+in the example above as well as in the functions below the current value is
 skipped: `v(t)` is not in the average. This is because we often want to
 compare such computation over the past seasons with the actual current value.
 
 Seasonality is similar to fixed length windows but implemented at the
 function level rather than at the aggregation level.
 
-`season_moveavg`, prefix, +int ⨉ int ⨉ num -> float+, seasonal moving
+`season_moveavg`, prefix, +int ⨉ int ⨉ num → float+, seasonal moving
 average.
 
 For a timeseries of seasonality `p` (first parameter), returns the average of
@@ -572,24 +577,23 @@ same computation than the exemple given above.
 
 `k-moveavg` or `k-ma`: alternative infix syntax for `moveavg`.
 
-`season_fit`, prefix, +int ⨉ int ⨉ num -> float+, linear regression
+`season_fit`, prefix, +int ⨉ int ⨉ num → float+, linear regression
 (fitting).
 
 `fit`: same as `season_fit` with `p=1`.
 
-`season_fit_multi`, prefix, +int ⨉ int ⨉ num ⨉ ... -> float+, multiple linear
+`season_fit_multi`, prefix, +int ⨉ int ⨉ num ⨉ ... → float+, multiple linear
 regression. This is a variadic function. The first `num` (mandatory) is the
 parameter to be fitted, and all other following optional numbers are
 regression parameters helping with the fitting.
 
 `fit_multi`: same as `season_fit_multi` for `p=1`.
 
-`smooth`, prefix, +float ⨉ num -> float+, exponential smoothing of the value
+`smooth`, prefix, +float ⨉ num → float+, exponential smoothing of the value
 (second parameter). The first parameter is a constant float providing the
-exponent (between 0 and 1, the smaller and the softer the smoothed value will
-be).
+exponent (between 0 and 1, the smaller the softer the smooth).
 
-`smooth`, prefix, +num -> float+, same as above with a default smoothing
+`smooth`, prefix, +num → float+, same as above with a default smoothing
 factor of 0.5.
 
 ==== Miscellaneous Statefull Functions
@@ -621,8 +625,8 @@ END
 ...where you can have as many WHEN clauses as you want, including 0, and
 the ELSE clause is also optional.
 
-All conditions must be of type bool. Consequents can have any type, as long
-as they all have the same type. That is also the type of the result of the
+All conditions must be of type bool. Consequents can have any type as long
+as they have all the same. That is also the type of the result of the
 CASE expression.
 
 Regarding nullability: if there are no else branch, or if any of the
