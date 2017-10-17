@@ -1616,15 +1616,14 @@ struct
   (* ReadFile has the node reading files directly on disc.
    * DownloadFile is (supposed to be) ramen downloading the content into
    * a temporary directory and spawning a worker that also perform a ReadFile.
-   * UploadFile is similar: the file is actually received by ramen which write
-   * it in a temporary directory for its ReadFile worker. Those files are
-   * to be POSTed to $RAMEN_URL/upload/$url_suffix. *)
+   * ReceiveFile is similar: the file is actually received by ramen which
+   * write it in a temporary directory for its ReadFile worker. Those files
+   * are to be POSTed to $RAMEN_URL/upload/$url_suffix. *)
   and where_specs = ReadFile of file_spec
-                  | UploadFile of upload_spec
+                  | ReceiveFile
                   | DownloadFile of download_spec
   and file_spec = { fname : string ; unlink : bool }
   and download_spec = { url : string ; accept : string }
-  and upload_spec = { url_suffix : string }
   and csv_specs =
     { separator : string ; null : string ;
       fields : Tuple.typ }
@@ -1652,12 +1651,12 @@ struct
     Printf.fprintf fmt "DOWNLOAD FROM %S%s" specs.url
       (if specs.accept = "" then "" else
         Printf.sprintf " Accept: %S" specs.accept)
-  let print_upload_specs fmt specs =
-    Printf.fprintf fmt "RECEIVE VIA %S" specs.url_suffix
+  let print_upload_specs fmt =
+    Printf.fprintf fmt "RECEIVE"
   let print_where_specs fmt = function
     | ReadFile specs -> print_file_specs fmt specs
     | DownloadFile specs -> print_download_specs fmt specs
-    | UploadFile specs -> print_upload_specs fmt specs
+    | ReceiveFile -> print_upload_specs fmt
 
   let print fmt =
     let sep = ", " in
@@ -1949,10 +1948,7 @@ struct
 
     let upload_file_specs m =
       let m = "upload operation" :: m in
-      (strinG "receive" -- blanks --
-       optional ~def:() (strinG "via" -- blanks) -+
-       quoted_string >>: fun url_suffix ->
-         UploadFile { url_suffix }) m
+      (strinG "receive" >>: fun () -> ReceiveFile) m
 
     let where_specs =
       read_file_specs ||| download_file_specs ||| upload_file_specs

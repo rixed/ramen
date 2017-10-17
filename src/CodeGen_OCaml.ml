@@ -1306,7 +1306,7 @@ let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
     | ReadCSVFile { where = ReadFile { fname ; unlink } ; preprocessor ;
                     what = { separator ; null ; fields } } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
-    | ReadCSVFile { where = (DownloadFile _ | UploadFile _) ; _ } ->
+    | ReadCSVFile { where = (DownloadFile _ | ReceiveFile) ; _ } ->
       failwith "This never happens"
     | ListenFor { net_addr ; port ; proto } ->
       emit_listen_on oc net_addr port proto

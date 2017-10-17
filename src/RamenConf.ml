@@ -172,8 +172,8 @@ let tmp_input_of_node persist_dir node =
   persist_dir ^"/workers/inputs/"^ Node.fq_name node ^"/"
               ^ type_signature node.Node.in_type
 
-let upload_dir_of_node persist_dir node suffix =
-  tmp_input_of_node persist_dir node ^"/uploads/"^ suffix
+let upload_dir_of_node persist_dir node =
+  tmp_input_of_node persist_dir node ^"/uploads"
 
 exception InvalidCommand of string
 

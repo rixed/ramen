@@ -7,13 +7,13 @@ top_srcdir=$(dirname $0)"/../.."
 expected_tests=2
 
 start
-add_node earthquakes "RECEIVE VIA \"test\" SEPARATOR \"\\t\"
+add_node earthquakes "RECEIVE SEPARATOR \"\\t\"
   (year u16 not null, n u8 not null)"
 add_node n "SELECT sequence AS seq, year FROM test/earthquakes EXPORT"
 run
 
-upload earthquakes.csv test
-upload earthquakes.csv test
+upload earthquakes.csv earthquakes
+upload earthquakes.csv earthquakes
 sleep 1
 
 # Check that we processed the file twice

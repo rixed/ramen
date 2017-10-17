@@ -61,10 +61,10 @@ start() {
 
 upload() {
   file=$1
-  suffix=$2
+  node=$2
   curl -s -o /dev/null \
        --data-urlencode @"$top_srcdir/src/tests/fixtures/$file" \
-       "$RAMEN_URL/upload/$suffix"
+       "$RAMEN_URL/upload/test/$node"
 }
 
 add_node() {

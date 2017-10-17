@@ -678,21 +678,12 @@ let save_in_tmp_file dir body =
     let%lwt () = write oc body in
     return (path, fname)))
 
-exception Found of string
-let upload conf headers suffix body =
+let upload conf headers layer node body =
+  let%lwt _layer, node = find_node_or_fail conf layer node in
   (* Look for the node handling this suffix: *)
-  match
-    Hashtbl.values conf.C.graph.C.layers |>
-    Enum.iter (fun layer ->
-      Hashtbl.values layer.L.persist.L.nodes |>
-        Enum.iter (fun node ->
-          match node.N.operation with
-          | ReadCSVFile {
-            where = UploadFile { url_suffix = suffix } ; _ } ->
-            let dir = C.upload_dir_of_node conf.C.persist_dir node suffix in
-            raise (Found dir)
-          | _ -> ())) with
-  | exception Found dir ->
+  match node.N.operation with
+  | ReadCSVFile { where = ReceiveFile ; _ } ->
+    let dir = C.upload_dir_of_node conf.C.persist_dir node in
     let ct = get_content_type headers in
     let content =
       if ct = Consts.urlencoded_content_type then Uri.pct_decode body
@@ -704,8 +695,8 @@ let upload conf headers suffix body =
     let%lwt path, fname = save_in_tmp_file dir content in
     Lwt_unix.rename path (dir ^"/_"^ fname) >>=
     respond_ok
-  | () ->
-    bad_request ("Unknown upload target "^ suffix)
+  | _ ->
+    bad_request ("Node "^ N.fq_name node ^" does not accept uploads")
 
 let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
           www_dir version_tag persist_dir port cert_opt key_opt () =
@@ -786,8 +777,9 @@ let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
       | `GET, ["style.css" | "script.js" as file] ->
         serve_file_with_replacements conf headers www_dir file
       (* Uploads of data files *)
-      | (`POST|`PUT), ["upload"; suffix] ->
-        upload conf headers suffix body
+      | (`POST|`PUT), ("upload" :: path) ->
+        let layer, node = lyr_node_of path in
+        upload conf headers layer node body
       (* Errors *)
       | `PUT, _ | `GET, _ | `DELETE, _ ->
         fail (HttpError (404, "No such resource"))

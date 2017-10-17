@@ -850,9 +850,9 @@ let compile_node conf node =
   let operation =
     let open Operation in
     match node.N.operation with
-    | ReadCSVFile { where = UploadFile specs ; what ; preprocessor } ->
+    | ReadCSVFile { where = ReceiveFile ; what ; preprocessor } ->
       let dir =
-        C.upload_dir_of_node conf.C.persist_dir node specs.url_suffix in
+        C.upload_dir_of_node conf.C.persist_dir node in
       mkdir_all dir ;
       ReadCSVFile {
         (* The underscore is to restrict ourself to complete files that

@@ -8,7 +8,7 @@ expected_tests=2
 
 start
 # Note: "," must not be the CSV separator!
-add_node recv "RECEIVE VIA \"test\" SEPARATOR \"_\" (line string not null)"
+add_node recv "RECEIVE SEPARATOR \"_\" (line string not null)"
 add_node splitter "FROM test/recv SELECT split(\" \", line) AS word"
 
 # Method 1: send the new count each time it changes
@@ -29,9 +29,9 @@ add_node counter2 "FROM test/splitter WHERE word <> \"\"
   EXPORT"
 
 run
-upload balade.txt test
+upload balade.txt recv
 sleep 0.5 # Make sure we start by the above text
-upload end.txt test
+upload end.txt recv
 sleep 2
 
 check_equal '15,"nous"' \
