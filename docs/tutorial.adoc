@@ -1,4 +1,12 @@
 // vim:filetype=asciidoc expandtab spell spelllang=en ts=2 sw=2
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+
 = Ramen Tutorial
 :toc:
 :icons:
@@ -250,7 +258,7 @@ float
 |1507295725.54 |rxdmac |used |1816403968
 |1507295725.54 |rxdmac |slab_recl |3054088192
 |1507295725.54 |rxdmac |buffered |1897594880
-|====================
+|=====================
 
 On your system other "type instances" might appear; please adapt as you read
 along.
@@ -404,7 +412,7 @@ float (or null)
 |1507342171.17 |rxdmac |776135338.667 |503693994.667 |637735936 |79580160 |40784554.666
 |1507342201.17 |rxdmac |776304981.333 |503693653.333 |637580629.333 |79575722.666 |40712192
 |1507342231.17 |rxdmac |775898453.333 |503668736 |638010368 |79581525.333 |40771584
-|====================
+|=====================
 
 Still, staring at a table of numbers is not very satisfying.
 Instead, what we would like is to plot the data.
@@ -477,6 +485,7 @@ ramen.
 
 - The optional +PREPROCESS WITH+ stanza specifies an external command to run
   on each file before reading it, such as for instance "zcat" to uncompress it.
+  The supplied command must read from stdin and output to stdout.
 
 - +SEPARATOR+ and +NULL+ sets the CSV field separator and placeholder value
   for NULL values. By default they are the coma and the empty string.
@@ -510,19 +519,23 @@ strings as arguments: the separator and the string to split, in that order.
 
 It will return from 1 (if the separator is not found) to many results.
 
-When a function outputs several results then as many tuple will be output by the operation as a whole. When the SELECT statement uses several functions returning multiple results, the Cartesian product of all those results is output.
+When a function outputs several results then as many tuple will be output by
+the node. That is, for one input there will be N outputs. When the SELECT
+statement uses several such functions returning multiple results then the
+Cartesian product of all those results is output.
 
 So for instance the output tuples of +split(" ", "foo bar"), 42+ would be:
 
   "foo", 42
   "bar", 42
 
-and the output tuples of +split(" ", "foo bar"), split(" ", "baz bam")+ would be:
+and the output tuples of +split(" ", "foo bar"), 42, split(" ", "baz bam")+
+would be:
 
-  "foo", "baz"
-  "foo", "bam"
-  "bar", "baz"
-  "bar", "bam"
+  "foo", 42, "baz"
+  "foo", 42, "bam"
+  "bar", 42, "baz"
+  "bar", 42, "bam"
 
 In our case we just want to split incoming field +line+ by spaces:
 
@@ -537,6 +550,9 @@ We could also turn all words to lowercase with the +lower+ function:
 ----
 SELECT LOWER(SPLIT(" ", line)) AS word FROM receiver
 ----
+
+In that case the function +lower+ would of course be applied to each of +split+
+results.
 
 WARNING: Notice that function names are case insensitive but keep in mind that
 field names are _not_!
@@ -559,17 +575,19 @@ and indeed this is a good starting point. Ramen, though, does not have a
 [source,sql]
 -----
 SELECT word, SUM 1 AS count FROM splitter GROUP BY word
-----
+-----
 
 Equivalently, there is also the _special field_ +group.#count+ that counts
 how many elements have been added to a group. We will see later about special
 fields.
 
-The main difference with SQL, though, is the lack of an implicit moment when
-to stop aggregating. For such a simple problem as word counting, traditional
-windowing where we issue an output a flush the aggregation when some
-condition is true is not powerful enough: we want a new tuple each time a
-count changes, but we want to count globally. If we did:
+The main difference with SQL, though, is the lack of an implicit moment when to
+stop aggregating. For such a simple problem as word counting, traditional
+windowing where we issue a tuple and flush the aggregation when some condition
+is met won't cut it: we want a new tuple each time a count changes, but we want
+to keep forever increasing the counters.
+
+If we did:
 
 [source,sql]
 ----
@@ -577,8 +595,9 @@ SELECT word, SUM 1 AS count FROM splitter GROUP BY word
 COMMIT AND FLUSH WHEN out.count <> previous.count
 ----
 
-...then we would have a succession of +$word, 2+ tuples, emitted each other
-time a word is encountered, that would not be very useful.
+...then we would have a succession of tuple with all counts equal to 2, emitted
+every time a word is encountered for the second time. That would not be very
+useful.
 
 [NOTE]
 Notice there is an +out+ special tuple in addition to the +previous+ special
@@ -586,16 +605,16 @@ tuple we've seen earlier.
 
 [NOTE]
 To understand why we would have a count of 2 rather than 1, you must be aware
-that the previous tuple is initially initialized with the first one, to avoid
-having to deal with yet another case of nulls. So when a word is seen for the
-first time it's previous.count is not 0 as you might expect but equal to the
-current value of count, out.count, that is 1. So one must wait until the
-second occurrence of that word for the +COMMIT+ condition to be true.
+that the previous tuple is initialized with the first one when an new group is
+created (to avoid having to deal with yet another case of nulls). So when a
+word is seen for the first time its previous.count is not 0 as you might expect
+but equal to out.count, that is 1. So one must wait until the second occurrence
+of that word for the +COMMIT+ condition to be true.
 
 What we really want to do is to aggregate the counts forever, but still emit
-a new tuple at every change (aka at every step). Fortunately, we can set
+a new tuple at every change (aka at every step). Fortunately we can set
 a different condition for when to +COMMIT+ a result (ie. output the result
-tuple) and when to +FLUSH+ the aggregated group:
+tuple) than the condition for when to +FLUSH+ the aggregated group:
 
 [source,sql]
 ----
@@ -605,7 +624,7 @@ EXPORT
 ----
 
 Simple, and does the work. You will see later that, not only can we set a
-specific condition as to when to flush but we can also select which tuple to
+specific condition as to when to flush but we can also select which tuples to
 flush and which to keep from one window to the next.
 
 There you have it. We added an +EXPORT+ keyword at the end of this new
@@ -644,7 +663,7 @@ i8
 |world |1
 |hello |2
 |again |1
-|=======================
+|========================
 
 as expected we have as many tuples as we had words in the input, with the
 count counting the occurrences of each.
@@ -671,7 +690,7 @@ count counting the occurrences of each.
 
 - Integer overflows;
 
-- Better Parse Error;s
+- Better parse errors;
 
 - Edition syntax-aware tools (such as context-aware suggestions, syntax
   highlighting...  Require more annotations during parsing).
