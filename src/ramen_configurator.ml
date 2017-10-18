@@ -343,14 +343,21 @@ let ddos_layer dataset_name =
     {|FROM '$CSV$' SELECT
        (capture_begin // $AVG_WIN_US$) AS start,
        min capture_begin, max capture_end,
-       sum (
-         0.9 * float(remember globally (
+       -- Traffic (of any kind) we haven't seen in the last $REM_WIN$ secs
+       sum (0.9 * float(not remember globally (
               0.1, -- 10% of false positives
               capture_begin // 1_000_000, $REM_WIN$,
               (hash (coalesce (ip4_client, ip6_client, 0)) +
                hash (coalesce (ip4_server, ip6_server, 0)))))) /
          $AVG_WIN$
-         AS nb_new_peers_per_secs
+         AS nb_new_cnxs_per_secs,
+       -- Clients we haven't seen in the last $REM_WIN$ secs
+       sum (0.9 * float(not remember globally (
+              0.1,
+              capture_begin // 1_000_000, $REM_WIN$,
+              hash (coalesce (ip4_client, ip6_client, 0))))) /
+          $AVG_WIN$
+          AS nb_new_clients_per_secs
      GROUP BY capture_begin // $AVG_WIN_US$
      COMMIT AND FLUSH WHEN
        in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN_US$)
