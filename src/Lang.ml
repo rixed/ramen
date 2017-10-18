@@ -519,7 +519,7 @@ struct
      * data2.
      * We do not further denote pure or stateful functions. *)
     | StatelessFun of typ * stateless_fun
-    | StatefullFun of typ * state_lifespan * statefull_fun
+    | StatefulFun of typ * state_lifespan * stateful_fun
     | GeneratorFun of typ * generator_fun
 
   and case_alternative =
@@ -567,7 +567,7 @@ struct
     (* a LIKE operator using globs, infix *)
     | Like of t * string (* expression then pattern (using %, _ and \) *)
 
-  and statefull_fun =
+  and stateful_fun =
     (* TODO: Add stddev... *)
     | AggrMin of t
     | AggrMax of t
@@ -743,39 +743,39 @@ struct
     | StatelessFun (t, Concat (e1, e2)) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | StatelessFun (t, Like (e, p)) -> Printf.fprintf fmt "(%a) LIKE %S" (print with_types) e p ; add_types t
 
-    | StatefullFun (t, g, AggrMin e) ->
+    | StatefulFun (t, g, AggrMin e) ->
       Printf.fprintf fmt "min%s(%a)" (sl g) (print with_types) e ; add_types t
-    | StatefullFun (t, g, AggrMax e) ->
+    | StatefulFun (t, g, AggrMax e) ->
       Printf.fprintf fmt "max%s(%a)" (sl g) (print with_types) e ; add_types t
-    | StatefullFun (t, g, AggrSum e) ->
+    | StatefulFun (t, g, AggrSum e) ->
       Printf.fprintf fmt "sum%s(%a)" (sl g) (print with_types) e ; add_types t
-    | StatefullFun (t, g, AggrAvg e) ->
+    | StatefulFun (t, g, AggrAvg e) ->
       Printf.fprintf fmt "avg%s(%a)" (sl g) (print with_types) e ; add_types t
-    | StatefullFun (t, g, AggrAnd e) ->
+    | StatefulFun (t, g, AggrAnd e) ->
       Printf.fprintf fmt "and%s(%a)" (sl g) (print with_types) e ; add_types t
-    | StatefullFun (t, g, AggrOr e) ->
+    | StatefulFun (t, g, AggrOr e) ->
       Printf.fprintf fmt "or%s(%a)" (sl g) (print with_types) e ; add_types t
-    | StatefullFun (t, g, AggrFirst e) ->
+    | StatefulFun (t, g, AggrFirst e) ->
       Printf.fprintf fmt "first%s(%a)" (sl g) (print with_types) e ; add_types t
-    | StatefullFun (t, g, AggrLast e) ->
+    | StatefulFun (t, g, AggrLast e) ->
       Printf.fprintf fmt "last%s(%a)" (sl g) (print with_types) e ; add_types t
-    | StatefullFun (t, g, AggrPercentile (p, e)) ->
+    | StatefulFun (t, g, AggrPercentile (p, e)) ->
       Printf.fprintf fmt "%ath percentile%s(%a)"
         (print with_types) p (sl g) (print with_types) e ;
       add_types t
-    | StatefullFun (t, g, Lag (e1, e2)) ->
+    | StatefulFun (t, g, Lag (e1, e2)) ->
       Printf.fprintf fmt "lag%s(%a, %a)"
         (sl g) (print with_types) e1 (print with_types) e2 ;
       add_types t
-    | StatefullFun (t, g, MovingAvg (e1, e2, e3)) ->
+    | StatefulFun (t, g, MovingAvg (e1, e2, e3)) ->
       Printf.fprintf fmt "season_moveavg%s(%a, %a, %a)"
         (sl g) (print with_types) e1 (print with_types) e2 (print with_types) e3 ;
       add_types t
-    | StatefullFun (t, g, LinReg (e1, e2, e3)) ->
+    | StatefulFun (t, g, LinReg (e1, e2, e3)) ->
       Printf.fprintf fmt "season_fit%s(%a, %a, %a)"
         (sl g) (print with_types) e1 (print with_types) e2 (print with_types) e3 ;
       add_types t
-    | StatefullFun (t, g, MultiLinReg (e1, e2, e3, e4s)) ->
+    | StatefulFun (t, g, MultiLinReg (e1, e2, e3, e4s)) ->
       Printf.fprintf fmt "season_fit_multi%s(%a, %a, %a, %a)"
         (sl g)
         (print with_types) e1
@@ -783,12 +783,12 @@ struct
         (print with_types) e3
         (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) e4s ;
       add_types t
-    | StatefullFun (t, g, Remember (tim, dur, e)) ->
+    | StatefulFun (t, g, Remember (tim, dur, e)) ->
       Printf.fprintf fmt "remember%s(%a, %a, %a)"
         (sl g)
         (print with_types) tim (print with_types) dur (print with_types) e ;
       add_types t
-    | StatefullFun (t, g, ExpSmooth (e1, e2)) ->
+    | StatefulFun (t, g, ExpSmooth (e1, e2)) ->
       Printf.fprintf fmt "smooth%s(%a, %a)"
         (sl g)  (print with_types) e1 (print with_types) e2 ;
       add_types t
@@ -800,7 +800,7 @@ struct
 
   let typ_of = function
     | Const (t, _) | Field (t, _, _) | Param (t, _) | StateField (t, _)
-    | StatelessFun (t, _) | StatefullFun (t, _, _) | GeneratorFun (t, _)
+    | StatelessFun (t, _) | StatefulFun (t, _, _) | GeneratorFun (t, _)
     | Case (t, _, _) | Coalesce (t, _) ->
       t
 
@@ -814,10 +814,10 @@ struct
     | Const _ | Param _ | Field _ | StateField _ | StatelessFun (_, Now) ->
       f i expr
 
-    | StatefullFun (_, _, AggrMin e) | StatefullFun (_, _, AggrMax e)
-    | StatefullFun (_, _, AggrSum e) | StatefullFun (_, _, AggrAvg e)
-    | StatefullFun (_, _, AggrAnd e) | StatefullFun (_, _, AggrOr e)
-    | StatefullFun (_, _, AggrFirst e) | StatefullFun (_, _, AggrLast e)
+    | StatefulFun (_, _, AggrMin e) | StatefulFun (_, _, AggrMax e)
+    | StatefulFun (_, _, AggrSum e) | StatefulFun (_, _, AggrAvg e)
+    | StatefulFun (_, _, AggrAnd e) | StatefulFun (_, _, AggrOr e)
+    | StatefulFun (_, _, AggrFirst e) | StatefulFun (_, _, AggrLast e)
     | StatelessFun (_, Age e)
     | StatelessFun (_, Not e) | StatelessFun (_, Defined e)
     | StatelessFun (_, Cast e) | StatelessFun (_, Abs e)
@@ -828,29 +828,29 @@ struct
     | StatelessFun (_, Hash e) | StatelessFun (_, Like (e, _)) ->
       f (fold_by_depth f i e) expr
 
-    | StatefullFun (_, _, AggrPercentile (e1, e2))
+    | StatefulFun (_, _, AggrPercentile (e1, e2))
     | StatelessFun (_, Sequence (e1, e2)) | StatelessFun (_, Add (e1, e2))
     | StatelessFun (_, Sub (e1, e2)) | StatelessFun (_, Mul (e1, e2))
     | StatelessFun (_, Div (e1, e2)) | StatelessFun (_, IDiv (e1, e2))
     | StatelessFun (_, Pow (e1, e2)) | StatelessFun (_, And (e1, e2))
     | StatelessFun (_, Or (e1, e2)) | StatelessFun (_, Ge (e1, e2))
     | StatelessFun (_, Gt (e1, e2)) | StatelessFun (_, Eq (e1, e2))
-    | StatelessFun (_, Mod (e1, e2)) | StatefullFun (_, _, Lag (e1, e2))
-    | StatefullFun (_, _, ExpSmooth (e1, e2))
+    | StatelessFun (_, Mod (e1, e2)) | StatefulFun (_, _, Lag (e1, e2))
+    | StatefulFun (_, _, ExpSmooth (e1, e2))
     | StatelessFun (_, Concat (e1, e2)) | GeneratorFun (_, Split (e1, e2)) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       f i'' expr
 
-    | StatefullFun (_, _, MovingAvg (e1, e2, e3))
-    | StatefullFun (_, _, LinReg (e1, e2, e3))
-    | StatefullFun (_, _, Remember (e1, e2, e3)) ->
+    | StatefulFun (_, _, MovingAvg (e1, e2, e3))
+    | StatefulFun (_, _, LinReg (e1, e2, e3))
+    | StatefulFun (_, _, Remember (e1, e2, e3)) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
       f i''' expr
 
-    | StatefullFun (_, _, MultiLinReg (e1, e2, e3, e4s)) ->
+    | StatefulFun (_, _, MultiLinReg (e1, e2, e3, e4s)) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
@@ -873,7 +873,7 @@ struct
 
   let unpure_iter f e =
     fold_by_depth (fun () -> function
-      | StatefullFun _ as e -> f e
+      | StatefulFun _ as e -> f e
       | _ -> ()) () e |> ignore
 
   (* Any expression that uses a generator is a generator: *)
@@ -898,53 +898,53 @@ struct
       Coalesce (f t,
                 if recurs then List.map (map_type ~recurs f) es else es)
 
-    | StatefullFun (t, g, AggrMin a) ->
-      StatefullFun (f t, g, AggrMin (if recurs then map_type ~recurs f a else a))
-    | StatefullFun (t, g, AggrMax a) ->
-      StatefullFun (f t, g, AggrMax (if recurs then map_type ~recurs f a else a))
-    | StatefullFun (t, g, AggrSum a) ->
-      StatefullFun (f t, g, AggrSum (if recurs then map_type ~recurs f a else a))
-    | StatefullFun (t, g, AggrAvg a) ->
-      StatefullFun (f t, g, AggrAvg (if recurs then map_type ~recurs f a else a))
-    | StatefullFun (t, g, AggrAnd a) ->
-      StatefullFun (f t, g, AggrAnd (if recurs then map_type ~recurs f a else a))
-    | StatefullFun (t, g, AggrOr a) ->
-      StatefullFun (f t, g, AggrOr (if recurs then map_type ~recurs f a else a))
-    | StatefullFun (t, g, AggrFirst a) ->
-      StatefullFun (f t, g, AggrFirst (if recurs then map_type ~recurs f a else a))
-    | StatefullFun (t, g, AggrLast a) ->
-      StatefullFun (f t, g, AggrLast (if recurs then map_type ~recurs f a else a))
-    | StatefullFun (t, g, AggrPercentile (a, b)) ->
-      StatefullFun (f t, g, AggrPercentile (
+    | StatefulFun (t, g, AggrMin a) ->
+      StatefulFun (f t, g, AggrMin (if recurs then map_type ~recurs f a else a))
+    | StatefulFun (t, g, AggrMax a) ->
+      StatefulFun (f t, g, AggrMax (if recurs then map_type ~recurs f a else a))
+    | StatefulFun (t, g, AggrSum a) ->
+      StatefulFun (f t, g, AggrSum (if recurs then map_type ~recurs f a else a))
+    | StatefulFun (t, g, AggrAvg a) ->
+      StatefulFun (f t, g, AggrAvg (if recurs then map_type ~recurs f a else a))
+    | StatefulFun (t, g, AggrAnd a) ->
+      StatefulFun (f t, g, AggrAnd (if recurs then map_type ~recurs f a else a))
+    | StatefulFun (t, g, AggrOr a) ->
+      StatefulFun (f t, g, AggrOr (if recurs then map_type ~recurs f a else a))
+    | StatefulFun (t, g, AggrFirst a) ->
+      StatefulFun (f t, g, AggrFirst (if recurs then map_type ~recurs f a else a))
+    | StatefulFun (t, g, AggrLast a) ->
+      StatefulFun (f t, g, AggrLast (if recurs then map_type ~recurs f a else a))
+    | StatefulFun (t, g, AggrPercentile (a, b)) ->
+      StatefulFun (f t, g, AggrPercentile (
           (if recurs then map_type ~recurs f a else a),
           (if recurs then map_type ~recurs f b else b)))
-    | StatefullFun (t, g, Lag (a, b)) ->
-      StatefullFun (f t, g, Lag (
+    | StatefulFun (t, g, Lag (a, b)) ->
+      StatefulFun (f t, g, Lag (
           (if recurs then map_type ~recurs f a else a),
           (if recurs then map_type ~recurs f b else b)))
-    | StatefullFun (t, g, MovingAvg (a, b, c)) ->
-      StatefullFun (f t, g, MovingAvg (
+    | StatefulFun (t, g, MovingAvg (a, b, c)) ->
+      StatefulFun (f t, g, MovingAvg (
           (if recurs then map_type ~recurs f a else a),
           (if recurs then map_type ~recurs f b else b),
           (if recurs then map_type ~recurs f c else c)))
-    | StatefullFun (t, g, LinReg (a, b, c)) ->
-      StatefullFun (f t, g, LinReg (
+    | StatefulFun (t, g, LinReg (a, b, c)) ->
+      StatefulFun (f t, g, LinReg (
           (if recurs then map_type ~recurs f a else a),
           (if recurs then map_type ~recurs f b else b),
           (if recurs then map_type ~recurs f c else c)))
-    | StatefullFun (t, g, MultiLinReg (a, b, c, d)) ->
-      StatefullFun (f t, g, MultiLinReg (
+    | StatefulFun (t, g, MultiLinReg (a, b, c, d)) ->
+      StatefulFun (f t, g, MultiLinReg (
           (if recurs then map_type ~recurs f a else a),
           (if recurs then map_type ~recurs f b else b),
           (if recurs then map_type ~recurs f c else c),
           (if recurs then List.map (map_type ~recurs f) d else d)))
-    | StatefullFun (t, g, Remember (tim, dur, e)) ->
-      StatefullFun (f t, g, Remember (
+    | StatefulFun (t, g, Remember (tim, dur, e)) ->
+      StatefulFun (f t, g, Remember (
           (if recurs then map_type ~recurs f tim else tim),
           (if recurs then map_type ~recurs f dur else dur),
           (if recurs then map_type ~recurs f e else e)))
-    | StatefullFun (t, g, ExpSmooth (a, b)) ->
-      StatefullFun (f t, g, ExpSmooth (
+    | StatefulFun (t, g, ExpSmooth (a, b)) ->
+      StatefulFun (f t, g, ExpSmooth (
           (if recurs then map_type ~recurs f a else a),
           (if recurs then map_type ~recurs f b else b)))
 
@@ -1312,49 +1312,49 @@ struct
        (afun1 "sqrt" >>: fun e -> StatelessFun (make_num_typ "square root", Sqrt e)) |||
        (afun1 "hash" >>: fun e -> StatelessFun (make_typ ~typ:TI64 "hash", Hash e)) |||
        (afun1_sf "min" >>: fun (g, e) ->
-          StatefullFun (make_num_typ "min aggregation", g, AggrMin e)) |||
+          StatefulFun (make_num_typ "min aggregation", g, AggrMin e)) |||
        (afun1_sf "max" >>: fun (g, e) ->
-          StatefullFun (make_num_typ "max aggregation", g, AggrMax e)) |||
+          StatefulFun (make_num_typ "max aggregation", g, AggrMax e)) |||
        (afun1_sf "sum" >>: fun (g, e) ->
-          StatefullFun (make_num_typ "sum aggregation", g, AggrSum e)) |||
+          StatefulFun (make_num_typ "sum aggregation", g, AggrSum e)) |||
        (afun1_sf "avg" >>: fun (g, e) ->
-          StatefullFun (make_num_typ "sum aggregation", g, AggrAvg e)) |||
+          StatefulFun (make_num_typ "sum aggregation", g, AggrAvg e)) |||
        (afun1_sf "and" >>: fun (g, e) ->
-          StatefullFun (make_bool_typ "and aggregation", g, AggrAnd e)) |||
+          StatefulFun (make_bool_typ "and aggregation", g, AggrAnd e)) |||
        (afun1_sf "or" >>: fun (g, e) ->
-          StatefullFun (make_bool_typ "or aggregation", g, AggrOr e)) |||
+          StatefulFun (make_bool_typ "or aggregation", g, AggrOr e)) |||
        (afun1_sf "first" >>: fun (g, e) ->
-          StatefullFun (make_typ "first aggregation", g, AggrFirst e)) |||
+          StatefulFun (make_typ "first aggregation", g, AggrFirst e)) |||
        (afun1_sf "last" >>: fun (g, e) ->
-          StatefullFun (make_typ "last aggregation", g, AggrLast e)) |||
+          StatefulFun (make_typ "last aggregation", g, AggrLast e)) |||
        ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
         afun1_sf "percentile" >>: fun (p, (g, e)) ->
-          StatefullFun (make_num_typ ~nullable:false "percentile aggregation",
+          StatefulFun (make_num_typ ~nullable:false "percentile aggregation",
                         g, AggrPercentile (p, e))) |||
        (afun2_sf "lag" >>: fun (g, e1, e2) ->
-          StatefullFun (make_typ "lag", g, Lag (e1, e2))) |||
+          StatefulFun (make_typ "lag", g, Lag (e1, e2))) |||
 
        (* avg perform a division thus the float type *)
        (afun3_sf "season_moveavg" >>: fun (g, e1, e2, e3) ->
-          StatefullFun (make_float_typ "season_moveavg", g, MovingAvg (e1, e2, e3))) |||
+          StatefulFun (make_float_typ "season_moveavg", g, MovingAvg (e1, e2, e3))) |||
        (afun2_sf "moveavg" >>: fun (g, e1, e2) ->
-          StatefullFun (make_float_typ "season_moveavg", g, MovingAvg (expr_one, e1, e2))) |||
+          StatefulFun (make_float_typ "season_moveavg", g, MovingAvg (expr_one, e1, e2))) |||
        (afun3_sf "season_fit" >>: fun (g, e1, e2, e3) ->
-          StatefullFun (make_float_typ "season_fit", g, LinReg (e1, e2, e3))) |||
+          StatefulFun (make_float_typ "season_fit", g, LinReg (e1, e2, e3))) |||
        (afun2_sf "fit" >>: fun (g, e1, e2) ->
-          StatefullFun (make_float_typ "season_fit", g, LinReg (expr_one, e1, e2))) |||
+          StatefulFun (make_float_typ "season_fit", g, LinReg (expr_one, e1, e2))) |||
        (afun3v_sf "season_fit_multi" >>: fun (g, e1, e2, e3, e4s) ->
-          StatefullFun (make_float_typ "season_fit_multi", g, MultiLinReg (e1, e2, e3, e4s))) |||
+          StatefulFun (make_float_typ "season_fit_multi", g, MultiLinReg (e1, e2, e3, e4s))) |||
        (afun2v_sf "fit_multi" >>: fun (g, e1, e2, e3s) ->
-          StatefullFun (make_float_typ "season_fit_multi", g, MultiLinReg (expr_one, e1, e2, e3s))) |||
+          StatefulFun (make_float_typ "season_fit_multi", g, MultiLinReg (expr_one, e1, e2, e3s))) |||
        (afun2_sf "smooth" >>: fun (g, e1, e2) ->
-          StatefullFun (make_float_typ "smooth", g, ExpSmooth (e1, e2))) |||
+          StatefulFun (make_float_typ "smooth", g, ExpSmooth (e1, e2))) |||
        (afun1_sf "smooth" >>: fun (g, e) ->
           let alpha =
             Const (make_typ ~typ:TFloat ~nullable:false "alpha", VFloat 0.5) in
-          StatefullFun (make_float_typ "smooth", g, ExpSmooth (alpha, e))) |||
+          StatefulFun (make_float_typ "smooth", g, ExpSmooth (alpha, e))) |||
        (afun3_sf "remember" >>: fun (g, tim, dir, e) ->
-          StatefullFun (make_bool_typ "remember", g, Remember (tim, dir, e))) |||
+          StatefulFun (make_bool_typ "remember", g, Remember (tim, dir, e))) |||
 
        (afun2 "split" >>: fun (e1, e2) ->
           GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
@@ -1394,7 +1394,7 @@ struct
        sep ++ highestest_prec >>: fun ((k, g), e) ->
          let k = Const (make_typ ~nullable:false ~typ:(scalar_type_of k)
                                  "moving average order", k) in
-         StatefullFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
+         StatefulFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
 
     and case m =
       let m = "case" :: m in
@@ -1483,7 +1483,7 @@ struct
 
       (Ok (\
         StatelessFun (typ, Div (\
-          StatefullFun (typ, LocalState, AggrSum (\
+          StatefulFun (typ, LocalState, AggrSum (\
             Field (typ, ref TupleIn, "bytes"))),\
           Param (typ, "avg_window"))),\
         (23, [])))\
@@ -1499,7 +1499,7 @@ struct
         (test_p p "start // (1_000_000 * $avg_window)" |> replace_typ_in_expr)
 
       (Ok (\
-        StatefullFun (typ, LocalState, AggrPercentile (\
+        StatefulFun (typ, LocalState, AggrPercentile (\
           Param (typ, "p"),\
           Field (typ, ref TupleIn, "bytes_per_sec"))),\
         (27, [])))\
@@ -1507,7 +1507,7 @@ struct
 
       (Ok (\
         StatelessFun (typ, Gt (\
-          StatefullFun (typ, LocalState, AggrMax (\
+          StatefulFun (typ, LocalState, AggrMax (\
             Field (typ, ref TupleLastSelected, "start"))),\
           StatelessFun (typ, Add (\
             Field (typ, ref TupleOut, "start"),\
@@ -1531,7 +1531,7 @@ struct
         StatelessFun (typ, Abs (\
           StatelessFun (typ, Sub (\
             Field (typ, ref TupleIn, "bps"), \
-            StatefullFun (typ, LocalState, Lag (\
+            StatefulFun (typ, LocalState, Lag (\
               Const (typ, VI8 (Int8.of_int 1)), \
               Field (typ, ref TupleIn, "bps"))))))), \
         (21, []))) \
@@ -1734,15 +1734,15 @@ struct
       | Field (_, { contents=TupleIn }, field)
           when not (is_virtual_field field) -> field
       (* Provide some default name for common aggregate functions: *)
-      | StatefullFun (_, _, AggrMin (Field (_, { contents=TupleIn }, field))) -> "min_"^ field
-      | StatefullFun (_, _, AggrMax (Field (_, { contents=TupleIn }, field))) -> "max_"^ field
-      | StatefullFun (_, _, AggrSum (Field (_, { contents=TupleIn }, field))) -> "sum_"^ field
-      | StatefullFun (_, _, AggrAvg (Field (_, { contents=TupleIn }, field))) -> "avg_"^ field
-      | StatefullFun (_, _, AggrAnd (Field (_, { contents=TupleIn }, field))) -> "and_"^ field
-      | StatefullFun (_, _, AggrOr (Field (_, { contents=TupleIn }, field))) -> "or_"^ field
-      | StatefullFun (_, _, AggrFirst (Field (_, { contents=TupleIn }, field))) -> "first_"^ field
-      | StatefullFun (_, _, AggrLast (Field (_, { contents=TupleIn }, field))) -> "last_"^ field
-      | StatefullFun (_, _, AggrPercentile (Const (_, p), Field (_, { contents=TupleIn }, field)))
+      | StatefulFun (_, _, AggrMin (Field (_, { contents=TupleIn }, field))) -> "min_"^ field
+      | StatefulFun (_, _, AggrMax (Field (_, { contents=TupleIn }, field))) -> "max_"^ field
+      | StatefulFun (_, _, AggrSum (Field (_, { contents=TupleIn }, field))) -> "sum_"^ field
+      | StatefulFun (_, _, AggrAvg (Field (_, { contents=TupleIn }, field))) -> "avg_"^ field
+      | StatefulFun (_, _, AggrAnd (Field (_, { contents=TupleIn }, field))) -> "and_"^ field
+      | StatefulFun (_, _, AggrOr (Field (_, { contents=TupleIn }, field))) -> "or_"^ field
+      | StatefulFun (_, _, AggrFirst (Field (_, { contents=TupleIn }, field))) -> "first_"^ field
+      | StatefulFun (_, _, AggrLast (Field (_, { contents=TupleIn }, field))) -> "last_"^ field
+      | StatefulFun (_, _, AggrPercentile (Const (_, p), Field (_, { contents=TupleIn }, field)))
         when Scalar.is_round_integer p ->
         Printf.sprintf "%s_%sth" field (IO.to_string Scalar.print p)
       | _ -> raise (Reject "must set alias")
@@ -2132,16 +2132,16 @@ struct
         Aggregate {\
           fields = [\
             { expr = Expr.(\
-                StatefullFun (typ, LocalState, AggrMin (\
+                StatefulFun (typ, LocalState, AggrMin (\
                   Field (typ, ref TupleIn, "start")))) ;\
               alias = "start" } ;\
             { expr = Expr.(\
-                StatefullFun (typ, LocalState, AggrMax (\
+                StatefulFun (typ, LocalState, AggrMax (\
                   Field (typ, ref TupleIn, "stop")))) ;\
               alias = "max_stop" } ;\
             { expr = Expr.(\
                 StatelessFun (typ, Div (\
-                  StatefullFun (typ, LocalState, AggrSum (\
+                  StatefulFun (typ, LocalState, AggrSum (\
                     Field (typ, ref TupleIn, "packets"))),\
                   Param (typ, "avg_window")))) ;\
               alias = "packets_per_sec" } ] ;\
@@ -2159,7 +2159,7 @@ struct
           commit_when = Expr.(\
             StatelessFun (typ, Gt (\
               StatelessFun (typ, Add (\
-                StatefullFun (typ, LocalState, AggrMax (\
+                StatefulFun (typ, LocalState, AggrMax (\
                   Field (typ, ref TupleGroupFirst, "start"))),\
                 Const (typ, VI16 (Int16.of_int 3600)))),\
               Field (typ, ref TupleOut, "start")))) ; \
@@ -2186,7 +2186,7 @@ struct
           key = [] ; top = None ;\
           commit_when = Expr.(\
             StatelessFun (typ, Ge (\
-              StatefullFun (typ, LocalState, AggrSum (\
+              StatefulFun (typ, LocalState, AggrSum (\
                 Const (typ, VI8 (Int8.one)))),\
               Const (typ, VI8 (Int8.of_int 5))))) ;\
           flush_when = None ; flush_how = Reset ; from = ["foo"] },\
@@ -2199,7 +2199,7 @@ struct
           fields = [\
             { expr = Expr.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
             { expr = Expr.(\
-                StatefullFun (typ, LocalState, Expr.Lag (\
+                StatefulFun (typ, LocalState, Expr.Lag (\
                 Expr.Const (typ, VI8 (Int8.of_int 2)), \
                 Expr.Field (typ, ref TupleIn, "n")))) ;\
               alias = "l" } ] ;\

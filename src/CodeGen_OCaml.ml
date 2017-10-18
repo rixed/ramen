@@ -354,7 +354,7 @@ let string_of_context = function
 let name_of_state =
   let open Expr in
   function
-  | StatefullFun (t, g, _) ->
+  | StatefulFun (t, g, _) ->
     let prefix = match g with
       | LocalState -> "group_"
       | GlobalState -> "global_" in
@@ -586,90 +586,90 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "CodeGenLib.sequence" [Some TI128; Some TI128] [e1; e2]
 
   (* Stateful functions *)
-  | InitState, StatefullFun (_, _, (AggrAnd e | AggrOr e)), Some TBool ->
+  | InitState, StatefulFun (_, _, (AggrAnd e | AggrOr e)), Some TBool ->
     emit_functionN oc ?state "identity" [Some TBool] [e]
-  | Finalize, StatefullFun (_, g, (AggrAnd _|AggrOr _)), Some TBool ->
+  | Finalize, StatefulFun (_, g, (AggrAnd _|AggrOr _)), Some TBool ->
     emit_functionN oc ?state "identity" [None] [my_state g]
-  | UpdateState, StatefullFun (_, g, AggrAnd (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrAnd (e)), _ ->
     emit_functionN oc ?state "(&&)" [None; Some TBool] [my_state g; e]
-  | UpdateState, StatefullFun (_, g, AggrOr (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrOr (e)), _ ->
     emit_functionN oc ?state "(||)" [None; Some TBool] [my_state g; e]
 
-  | InitState, StatefullFun (_, _, AggrSum (e)),
+  | InitState, StatefulFun (_, _, AggrSum (e)),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state "identity" [Some t] [e]
-  | UpdateState, StatefullFun (_, g, AggrSum (e)),
+  | UpdateState, StatefulFun (_, g, AggrSum (e)),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".add") [None; Some t] [my_state g; e]
-  | Finalize, StatefullFun (_, g, AggrSum (_e)), _ ->
+  | Finalize, StatefulFun (_, g, AggrSum (_e)), _ ->
     emit_functionN oc ?state "identity" [None] [my_state g]
 
-  | InitState, StatefullFun (_, _, AggrAvg (e)), Some (TFloat as t) ->
+  | InitState, StatefulFun (_, _, AggrAvg (e)), Some (TFloat as t) ->
     emit_functionN oc ?state "CodeGenLib.avg_init" [Some t] [e]
-  | UpdateState, StatefullFun (_, g, AggrAvg (e)), Some (TFloat as t) ->
+  | UpdateState, StatefulFun (_, g, AggrAvg (e)), Some (TFloat as t) ->
     emit_functionN oc ?state "CodeGenLib.avg_add" [None; Some t] [my_state g; e]
-  | Finalize, StatefullFun (_, g, AggrAvg (_e)), _ ->
+  | Finalize, StatefulFun (_, g, AggrAvg (_e)), _ ->
     emit_functionN oc ?state "CodeGenLib.avg_finalize" [None] [my_state g]
 
-  | InitState, StatefullFun (_, _, (AggrMax e|AggrMin e|AggrFirst e|AggrLast e)), _ ->
+  | InitState, StatefulFun (_, _, (AggrMax e|AggrMin e|AggrFirst e|AggrLast e)), _ ->
     emit_functionN oc ?state "identity" [None] [e] (* No conversion necessary *)
-  | Finalize, StatefullFun (_, g, (AggrMax _|AggrMin _|AggrFirst _|AggrLast _)), _ ->
+  | Finalize, StatefulFun (_, g, (AggrMax _|AggrMin _|AggrFirst _|AggrLast _)), _ ->
     emit_functionN oc ?state "identity" [None] [my_state g]
-  | UpdateState, StatefullFun (_, g, AggrMax (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrMax (e)), _ ->
     emit_functionN oc ?state "max" [None; None] [my_state g; e]
-  | UpdateState, StatefullFun (_, g, AggrMin (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrMin (e)), _ ->
     emit_functionN oc ?state "min" [None; None] [my_state g; e]
-  | UpdateState, StatefullFun (_, g, AggrFirst (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrFirst (e)), _ ->
     emit_functionN oc ?state "(fun x _ -> x)" [None; None] [my_state g; e]
-  | UpdateState, StatefullFun (_, g, AggrLast (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrLast (e)), _ ->
     emit_functionN oc ?state "(fun _ x -> x)" [None; None] [my_state g; e]
 
   (* Note: for InitState it is probably useless to check out_type.
    * For Finalize it is useful only to extract the types to be checked by Compiler. *)
-  | InitState, StatefullFun (_, _, AggrPercentile (_p,e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+  | InitState, StatefulFun (_, _, AggrPercentile (_p,e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     emit_functionN oc ?state "CodeGenLib.percentile_init" [None] [e]
-  | UpdateState, StatefullFun (_, g, AggrPercentile (_p,e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.percentile_add" [None; None] [my_state g; e]
-  | Finalize, StatefullFun (_, g, AggrPercentile (p,_e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+  | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     emit_functionN oc ?state "CodeGenLib.percentile_finalize" [Some TFloat; None] [p; my_state g]
 
-  | InitState, StatefullFun (_, _, Lag (k,e)), _ ->
+  | InitState, StatefulFun (_, _, Lag (k,e)), _ ->
     let n = expr_one in
     emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; None] [k; n; e]
-  | UpdateState, StatefullFun (_, g, Lag (_k,e)), _ ->
+  | UpdateState, StatefulFun (_, g, Lag (_k,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.add" [None; None] [my_state g; e]
-  | Finalize, StatefullFun (_, g, Lag _), _ ->
+  | Finalize, StatefulFun (_, g, Lag _), _ ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.lag" [None] [my_state g]
 
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | InitState, StatefullFun (_, _, (MovingAvg(p,n,e)|LinReg(p,n,e))), Some TFloat ->
+  | InitState, StatefulFun (_, _, (MovingAvg(p,n,e)|LinReg(p,n,e))), Some TFloat ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; Some TFloat] [p; n; e]
-  | UpdateState, StatefullFun (_, g, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
+  | UpdateState, StatefulFun (_, g, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.add" [None; Some TFloat] [my_state g; e]
-  | Finalize, StatefullFun (_, g, MovingAvg (p,n,_)), Some TFloat ->
+  | Finalize, StatefulFun (_, g, MovingAvg (p,n,_)), Some TFloat ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.avg" [Some TU16; Some TU16; None] [p; n; my_state g]
-  | Finalize, StatefullFun (_, g, LinReg (p,n,_)), Some TFloat ->
+  | Finalize, StatefulFun (_, g, LinReg (p,n,_)), Some TFloat ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.linreg" [Some TU16; Some TU16; None] [p; n; my_state g]
-  | Finalize, StatefullFun (_, g, MultiLinReg (p,n,_,_)), Some TFloat ->
+  | Finalize, StatefulFun (_, g, MultiLinReg (p,n,_,_)), Some TFloat ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.multi_linreg" [Some TU16; Some TU16; None] [p; n; my_state g]
 
-  | InitState, StatefullFun (_, _, MultiLinReg (p,n,e,es)), Some TFloat ->
+  | InitState, StatefulFun (_, _, MultiLinReg (p,n,e,es)), Some TFloat ->
     emit_functionNv oc ?state "CodeGenLib.Seasonal.init_multi_linreg" [Some TU16; Some TU16; Some TFloat] [p; n; e] (Some TFloat) es
-  | UpdateState, StatefullFun (_, g, MultiLinReg (_p,_n,e,es)), _ ->
+  | UpdateState, StatefulFun (_, g, MultiLinReg (_p,_n,e,es)), _ ->
     emit_functionNv oc ?state "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state g; e] (Some TFloat) es
 
-  | InitState, StatefullFun (_, _, ExpSmooth (_a,e)), Some TFloat ->
+  | InitState, StatefulFun (_, _, ExpSmooth (_a,e)), Some TFloat ->
     emit_functionN oc ?state "identity" [Some TFloat] [e]
-  | UpdateState, StatefullFun (_, g, ExpSmooth (a,e)), _ ->
+  | UpdateState, StatefulFun (_, g, ExpSmooth (a,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.smooth" [None; Some TFloat; Some TFloat] [my_state g; a; e]
-  | Finalize, StatefullFun (_, g, ExpSmooth _), Some TFloat ->
+  | Finalize, StatefulFun (_, g, ExpSmooth _), Some TFloat ->
     emit_functionN oc ?state "identity" [None] [my_state g]
 
-  | InitState, StatefullFun (_, _, Remember (tim,dur,e)), Some TBool ->
+  | InitState, StatefulFun (_, _, Remember (tim,dur,e)), Some TBool ->
     emit_functionN oc ?state "CodeGenLib.remember_init" [Some TFloat; Some TFloat; None] [tim; dur; e]
-  | UpdateState, StatefullFun (_, g, Remember (tim,_dur,e)), _ ->
+  | UpdateState, StatefulFun (_, g, Remember (tim,_dur,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.remember_add" [None; Some TFloat; None] [my_state g; tim; e]
-  | Finalize, StatefullFun (_, g, Remember _), Some TBool ->
+  | Finalize, StatefulFun (_, g, Remember _), Some TBool ->
     emit_functionN oc ?state "CodeGenLib.remember_finalize" [None] [my_state g]
 
   (* Generator: the function appears only during tuple generation, where
@@ -1027,18 +1027,18 @@ let otype_of_state e =
           otype_of_type in
   let t =
     match e with
-    | StatefullFun (_, _, AggrPercentile _) -> t ^" list"
+    | StatefulFun (_, _, AggrPercentile _) -> t ^" list"
     (* previous tuples and count ; Note: we could get rid of this count if we
      * provided some context to those functions, such as the event count in
      * current window, for instance (ie. pass the full aggr record not just
      * the fields) *)
-    | StatefullFun (_, _, (Lag _ | MovingAvg _ | LinReg _)) ->
+    | StatefulFun (_, _, (Lag _ | MovingAvg _ | LinReg _)) ->
       t ^" CodeGenLib.Seasonal.t"
-    | StatefullFun (_, _, MultiLinReg _) ->
+    | StatefulFun (_, _, MultiLinReg _) ->
       "("^ t ^" * float array) CodeGenLib.Seasonal.t"
-    | StatefullFun (_, _, Remember _) ->
+    | StatefulFun (_, _, Remember _) ->
       "CodeGenLib.remember_state"
-    | StatefullFun (_, _, AggrAvg _) -> "(int * float)"
+    | StatefulFun (_, _, AggrAvg _) -> "(int * float)"
     | _ -> t in
   if Option.get typ.nullable then t ^" option" else t
 
@@ -1055,7 +1055,7 @@ let emit_state_init name state_lifespan other_state_vars
    * specialize for this: *)
   let for_each_unpure_fun_my_lifespan f =
     for_each_unpure_fun selected_fields commit_when flush_when (function
-      | Lang.Expr.StatefullFun (_, lifespan, _) as e when lifespan = state_lifespan ->
+      | Lang.Expr.StatefulFun (_, lifespan, _) as e when lifespan = state_lifespan ->
         f e
       | _ -> ())
   in
@@ -1110,7 +1110,7 @@ let emit_update_state name state_var other_state_vars state_lifespan
   (* Note that for_each_unpure_fun proceed depth first so inner functions
    * state will be updated first, which is what we want. *)
   for_each_unpure_fun selected_fields commit_when flush_when (function
-    | Lang.Expr.StatefullFun (_, lifespan, _) as e when lifespan = state_lifespan ->
+    | Lang.Expr.StatefulFun (_, lifespan, _) as e when lifespan = state_lifespan ->
       Printf.fprintf oc "\t%s.%s <- (%a) ;\n"
         state_var
         (name_of_state e)
@@ -1225,7 +1225,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     fold_by_depth (fun need expr ->
       need || match expr with
         | Field (_, tuple, _) -> tuple_need_state !tuple
-        | StatefullFun _ -> true
+        | StatefulFun _ -> true
         | _ -> false
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in

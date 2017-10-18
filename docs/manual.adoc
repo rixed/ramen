@@ -386,7 +386,7 @@ Here we list all available functions. There is no way to define your own
 functions short of adding them directly into Ramen source code. Therefore,
 there is no real difference between 'operators' and 'functions'.
 
-It is more useful to distinguish between stateless and statefull functions,
+It is more useful to distinguish between stateless and stateful functions,
 though. Function state (for those that have one) can be chosen to have
 either a global lifetime or a per-group lifetime. Most of the time you want
 a per-group lifetime and that is the default. Add "globally" after the
@@ -508,7 +508,7 @@ CIDR must correspond to it.
 
 ==== Aggregate functions
 
-Aggregate functions are statefull functions that combines the current value
+Aggregate functions are stateful functions that combines the current value
 with previous values.  For instance, `max response_time` will compute the max
 of all the `response_time` fields of all incoming tuples (until the commit
 clause instruct Ramen to output this aggregated tuple).
@@ -596,7 +596,7 @@ exponent (between 0 and 1, the smaller the softer the smooth).
 `smooth`, prefix, +num → float+, same as above with a default smoothing
 factor of 0.5.
 
-==== Miscellaneous Statefull Functions
+==== Miscellaneous Stateful Functions
 
 `remember`, prefix, TODO. Parameters are about to change. Cf.
 https://github.com/PerformanceVision/ramen/issues/64
