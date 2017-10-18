@@ -162,64 +162,37 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     let changed = check_expr_type ~ok_if_larger:false ~set_null:true ~from ~to_:op_typ in
     check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type || changed
   in
-  let check_unary_op op_typ make_op_typ ?(propagate_null=true) ?exp_sub_typ ?exp_sub_nullable sub_expr =
-    (* First we check the operand: does it comply with the expected type
-     * (enlarging it if necessary)? *)
-    let changed = check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr in
-    let sub_typ = typ_of sub_expr in
-    (* So far so good. So, given the type of the operand, what is the type of the operator? *)
-    match sub_typ.scalar_typ with
-    | Some sub_typ_typ ->
-      let actual_op_typ = make_op_typ sub_typ_typ in
-      (* We propagate nullability automatically for most operator *)
-      let nullable =
-        if propagate_null then sub_typ.nullable else None in
-      (* Now check that this is OK with this operator type, enlarging it if required: *)
-      check_operator op_typ actual_op_typ nullable || changed
-    | None -> changed (* try again later *)
-  in
-  let check_binary_op op_typ make_op_typ ?(propagate_null=true)
-                      ?exp_sub_typ1 ?exp_sub_nullable1 sub_expr1
-                      ?exp_sub_typ2 ?exp_sub_nullable2 sub_expr2 =
-    let sub_typ1 = typ_of sub_expr1 and sub_typ2 = typ_of sub_expr2 in
-    let changed =
-        check_operand op_typ ?exp_sub_typ:exp_sub_typ1 ?exp_sub_nullable:exp_sub_nullable1 sub_expr1 in
-    let changed =
-        check_operand op_typ ?exp_sub_typ:exp_sub_typ2 ?exp_sub_nullable:exp_sub_nullable2 sub_expr2 || changed in
-    match sub_typ1.scalar_typ, sub_typ2.scalar_typ with
-    | Some sub_typ1_typ, Some sub_typ2_typ ->
-      let actual_op_typ = make_op_typ (sub_typ1_typ, sub_typ2_typ) in
+  let check_op op_typ make_op_typ ?(propagate_null=true) args =
+    (* First we check the operands: do they comply with the expected types
+     * (enlarging them if necessary)? *)
+    let changed, types, nullables =
+      List.fold_left (fun (changed, prev_sub_types, prev_nullables)
+                          (exp_sub_typ, exp_sub_nullable, sub_expr) ->
+          let changed =
+            check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr ||
+            changed in
+          let typ = typ_of sub_expr in
+          match typ.scalar_typ, prev_sub_types with
+          | _, None -> changed, None, [] (* already failed *)
+          | None, _ -> changed, None, [] (* failing now *)
+          | Some scal, Some lst ->
+            changed, Some (scal :: lst), (typ.nullable :: prev_nullables)
+        ) (false, Some [], []) args in
+    (* Given the types of the operands, what is the type of the operator? *)
+    match types with
+    | Some lst ->
+      (* List.fold inverted lst and nullables lists, which would confuse
+       * make_op_typ: *)
+      let lst = List.rev lst and nullables = List.rev nullables in
+      assert (lst = [] || nullables <> []) ;
+      let actual_op_typ = make_op_typ lst in
       let nullable = if propagate_null then
-          match sub_typ1.nullable, sub_typ2.nullable with
-          | Some true, _ | _, Some true -> Some true
-          | Some false, Some false -> Some false
-          | _ -> None
+          if List.exists ((=) (Some true)) nullables then Some true
+          else if List.for_all ((=) (Some false)) nullables then Some false
+          else None
         else None in
       check_operator op_typ actual_op_typ nullable || changed
-    | _ -> changed
-  in
-  let check_ternary_op op_typ make_op_typ ?(propagate_null=true)
-                       ?exp_sub_typ1 ?exp_sub_nullable1 sub_expr1
-                       ?exp_sub_typ2 ?exp_sub_nullable2 sub_expr2
-                       ?exp_sub_typ3 ?exp_sub_nullable3 sub_expr3 =
-    let sub_typ1 = typ_of sub_expr1 and sub_typ2 = typ_of sub_expr2 and sub_typ3 = typ_of sub_expr3 in
-    let changed =
-        check_operand op_typ ?exp_sub_typ:exp_sub_typ1 ?exp_sub_nullable:exp_sub_nullable1 sub_expr1 in
-    let changed =
-        check_operand op_typ ?exp_sub_typ:exp_sub_typ2 ?exp_sub_nullable:exp_sub_nullable2 sub_expr2 || changed in
-    let changed =
-        check_operand op_typ ?exp_sub_typ:exp_sub_typ3 ?exp_sub_nullable:exp_sub_nullable3 sub_expr3 || changed in
-    match sub_typ1.scalar_typ, sub_typ2.scalar_typ, sub_typ3.scalar_typ with
-    | Some sub_typ1_typ, Some sub_typ2_typ, Some sub_typ3_typ ->
-      let actual_op_typ = make_op_typ (sub_typ1_typ, sub_typ2_typ, sub_typ3_typ) in
-      let nullable = if propagate_null then
-          match sub_typ1.nullable, sub_typ2.nullable, sub_typ3.nullable with
-          | Some true, _, _ | _, Some true, _ | _, _, Some true -> Some true
-          | Some false, Some false, Some false -> Some false
-          | _ -> None
-        else None in
-      check_operator op_typ actual_op_typ nullable || changed
-    | _ -> changed
+    | None -> changed
   in
   let rec check_variadic op_typ ?(propagate_null=true) ?exp_sub_typ ?exp_sub_nullable = function
     | [] -> false
@@ -427,61 +400,61 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
   | StatefulFun (op_typ, _, AggrMin e) | StatefulFun (op_typ, _, AggrMax e)
   | StatefulFun (op_typ, _, AggrFirst e) | StatefulFun (op_typ, _, AggrLast e) ->
-    check_unary_op op_typ identity e
+    check_op op_typ List.hd [None, None, e]
   | StatefulFun (op_typ, _, AggrSum e) | StatelessFun (op_typ, Age e)
   | StatelessFun (op_typ, Abs e) ->
-    check_unary_op op_typ identity ~exp_sub_typ:TFloat e
+    check_op op_typ List.hd [Some TFloat, None,  e]
   | StatefulFun (op_typ, _, AggrAvg e) ->
-    check_unary_op op_typ return_float ~exp_sub_typ:TFloat e
+    check_op op_typ return_float [Some TFloat, None, e]
   | StatefulFun (op_typ, _, AggrAnd e) | StatefulFun (op_typ, _, AggrOr e)
   | StatelessFun (op_typ, Not e) ->
-    check_unary_op op_typ identity ~exp_sub_typ:TBool e
+    check_op op_typ List.hd [Some TBool, None, e]
   | StatelessFun (op_typ, Cast e) ->
-    check_unary_op op_typ (fun _ -> Option.get op_typ.scalar_typ) ~exp_sub_typ:TI128 e
+    check_op op_typ (fun _ -> Option.get op_typ.scalar_typ) [Some TI128, None, e]
   | StatelessFun (op_typ, Defined e) ->
-    check_unary_op op_typ return_bool ~exp_sub_nullable:true ~propagate_null:false e
+    check_op op_typ return_bool  ~propagate_null:false [None, Some true, e]
   | StatefulFun (op_typ, _, AggrPercentile (e1, e2)) ->
-    check_binary_op op_typ snd ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+    check_op op_typ List.last [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun (op_typ, Add (e1, e2)) | StatelessFun (op_typ, Sub (e1, e2))
   | StatelessFun (op_typ, Mul (e1, e2)) ->
-    check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+    check_op op_typ Scalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun (op_typ, Concat (e1, e2)) ->
-    check_binary_op op_typ return_string  ~exp_sub_typ1:TString e1 ~exp_sub_typ2:TString e2
+    check_op op_typ return_string [Some TString, None, e1 ; Some TString, None, e2]
   | StatelessFun (op_typ, Like (e, _)) ->
-    check_unary_op op_typ return_bool ~exp_sub_typ:TString e
+    check_op op_typ return_bool [Some TString, None, e]
   | StatelessFun (op_typ, Pow (e1, e2)) ->
-    check_binary_op op_typ return_float ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+    check_op op_typ return_float [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun (op_typ, Div (e1, e2)) ->
     (* Same as above but always return a float *)
-    check_binary_op op_typ return_float ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+    check_op op_typ return_float [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun (op_typ, IDiv (e1, e2)) ->
-    check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2
+    check_op op_typ Scalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun (op_typ, Mod (e1, e2)) ->
-    check_binary_op op_typ Scalar.larger_type ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
+    check_op op_typ Scalar.largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun (op_typ, Sequence (e1, e2)) ->
-    check_binary_op op_typ return_i128 ~exp_sub_typ1:TI128 e1 ~exp_sub_typ2:TI128 e2
+    check_op op_typ return_i128 [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun (op_typ, Length e) ->
-    check_unary_op op_typ return_u16 ~exp_sub_typ:TString e
+    check_op op_typ return_u16 [Some TString, None, e]
   | StatelessFun (op_typ, Lower e) ->
-    check_unary_op op_typ return_string ~exp_sub_typ:TString e
+    check_op op_typ return_string [Some TString, None, e]
   | StatelessFun (op_typ, Upper e) ->
-    check_unary_op op_typ return_string ~exp_sub_typ:TString e
+    check_op op_typ return_string [Some TString, None, e]
   | StatelessFun (op_typ, Ge (e1, e2)) | StatelessFun (op_typ, Gt (e1, e2))
   | StatelessFun (op_typ, Eq (e1, e2)) ->
-    (try check_binary_op op_typ return_bool ~exp_sub_typ1:TString e1 ~exp_sub_typ2:TString e2
+    (try check_op op_typ return_bool [Some TString, None, e1 ; Some TString, None, e2]
     with SyntaxError (CannotTypeExpression _) as e ->
       (* We do not retry for other errors to keep a better error message. *)
       !logger.debug "Equality operator between strings failed with %S, \
                      retrying with numbers" (Printexc.to_string e) ;
-      check_binary_op op_typ return_bool ~exp_sub_typ1:TFloat e1 ~exp_sub_typ2:TFloat e2)
+      check_op op_typ return_bool [Some TFloat, None, e1 ; Some TFloat, None, e2])
   | StatelessFun (op_typ, And (e1, e2)) | StatelessFun (op_typ, Or (e1, e2)) ->
-    check_binary_op op_typ return_bool ~exp_sub_typ1:TBool e1 ~exp_sub_typ2:TBool e2
+    check_op op_typ return_bool [Some TBool, None, e1 ; Some TBool, None, e2]
   | StatelessFun (op_typ, BeginOfRange e) | StatelessFun (op_typ, EndOfRange e) ->
-    (* Not really bullet-proof in theory since check_unary_op may update the
+    (* Not really bullet-proof in theory since check_op may update the
      * types of the operand, but in this case there is no modification
      * possible if it's either TCidrv4 or TCidrv6, so we should be good.  *)
-    (try check_unary_op op_typ (fun _ -> TIpv4) ~exp_sub_typ:TCidrv4 e
-    with _ -> check_unary_op op_typ (fun _ -> TIpv6) ~exp_sub_typ:TCidrv6 e)
+    (try check_op op_typ (fun _ -> TIpv4) [Some TCidrv4, None, e]
+    with _ -> check_op op_typ (fun _ -> TIpv6) [Some TCidrv6, None, e])
   | StatefulFun (op_typ, _, Lag (e1, e2)) ->
     (* e1 must be an unsigned small constant integer. For now that mean user
      * must have entered a constant. Later we might pre-evaluate constant
@@ -490,45 +463,48 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     Expr.check_const "lag" e1 ;
     (* ... and e2 can be anything and the type of lag will be the same,
      * nullable (since we might lag beyond the start of the window. *)
-    check_binary_op op_typ snd ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1 e2
+    check_op op_typ List.last [Some TU16, Some false, e1 ; None, None, e2]
   | StatefulFun (op_typ, _, MovingAvg (e1, e2, e3)) | StatefulFun (op_typ, _, LinReg (e1, e2, e3)) ->
     (* As above, but e3 must be numeric (therefore the result cannot be
      * null) *)
     (* FIXME: Check that the consts are > 0 *)
     Expr.check_const "moving average period" e1 ;
     Expr.check_const "moving average counts" e2 ;
-    check_ternary_op op_typ return_float
-      ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1
-      ~exp_sub_typ2:TU16 ~exp_sub_nullable2:false e2
-      ~exp_sub_typ3:TFloat e3
+    check_op op_typ return_float
+      [Some TU16, Some false, e1 ;
+       Some TU16, Some false, e2 ;
+       Some TFloat, None, e3]
   | StatefulFun (op_typ, _, MultiLinReg (e1, e2, e3, e4s)) ->
     (* As above, with the addition of a non empty list of predictors *)
     (* FIXME: Check that the consts are > 0 *)
     Expr.check_const "multi-linear regression period" e1 ;
     Expr.check_const "multi-linear regression counts" e2 ;
-    check_ternary_op op_typ return_float
-      ~exp_sub_typ1:TU16 ~exp_sub_nullable1:false e1
-      ~exp_sub_typ2:TU16 ~exp_sub_nullable2:false e2
-      ~exp_sub_typ3:TFloat e3 ||
+    check_op op_typ return_float
+      [Some TU16, Some false, e1 ;
+       Some TU16, Some false, e2 ;
+       Some TFloat, None, e3] ||
     check_variadic op_typ
       ~exp_sub_typ:TFloat ~exp_sub_nullable:false (*because see comment in check_variadic *) e4s
   | StatefulFun (op_typ, _, ExpSmooth (e1, e2)) ->
     (* FIXME: Check that alpha is between 0 and 1 *)
     Expr.check_const "smooth coefficient" e1 ;
-    check_binary_op op_typ return_float
-      ~exp_sub_typ1:TFloat ~exp_sub_nullable1:false e1
-      ~exp_sub_typ2:TFloat e2
+    check_op op_typ return_float
+      [Some TFloat, Some false, e1 ;
+       Some TFloat, None, e2]
   | StatelessFun (op_typ, Exp e) | StatelessFun (op_typ, Log e) | StatelessFun (op_typ, Sqrt e) ->
-    check_unary_op op_typ return_float ~exp_sub_typ:TFloat e
+    check_op op_typ return_float [Some TFloat, None, e]
   | StatelessFun (op_typ, Hash e) ->
-    check_unary_op op_typ return_i64 e
+    check_op op_typ return_i64 [None, None, e]
   | GeneratorFun (op_typ, Split (e1, e2)) ->
-    check_binary_op op_typ return_string ~exp_sub_typ1:TString e1
-                                         ~exp_sub_typ2:TString e2
-  | StatefulFun (op_typ, _, Remember (tim, dur, e)) ->
+    check_op op_typ return_string [Some TString, None, e1 ;
+                                   Some TString, None, e2]
+  | StatefulFun (op_typ, _, Remember (fpr, tim, dur, e)) ->
     (* e can be anything *)
-    check_ternary_op op_typ return_bool ~exp_sub_typ1:TFloat tim
-                                        ~exp_sub_typ2:TFloat dur e
+    check_op op_typ return_bool
+      [Some TFloat, Some false, fpr ;
+       Some TFloat, None, tim ;
+       Some TFloat, None, dur ;
+       None, None, e]
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible.

@@ -344,7 +344,8 @@ let ddos_layer dataset_name =
        (capture_begin // $AVG_WIN_US$) AS start,
        min capture_begin, max capture_end,
        sum (
-         u32(remember globally (
+         0.9 * float(remember globally (
+              0.1, -- 10% of false positives
               capture_begin // 1_000_000, $REM_WIN$,
               (hash (coalesce (ip4_client, ip6_client, 0)) +
                hash (coalesce (ip4_server, ip6_server, 0)))))) /

@@ -665,9 +665,9 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefulFun (_, g, ExpSmooth _), Some TFloat ->
     emit_functionN oc ?state "identity" [None] [my_state g]
 
-  | InitState, StatefulFun (_, _, Remember (tim,dur,e)), Some TBool ->
-    emit_functionN oc ?state "CodeGenLib.remember_init" [Some TFloat; Some TFloat; None] [tim; dur; e]
-  | UpdateState, StatefulFun (_, g, Remember (tim,_dur,e)), _ ->
+  | InitState, StatefulFun (_, _, Remember (fpr,tim,dur,e)), Some TBool ->
+    emit_functionN oc ?state "CodeGenLib.remember_init" [Some TFloat; Some TFloat; Some TFloat; None] [fpr; tim; dur; e]
+  | UpdateState, StatefulFun (_, g, Remember (_fpr,tim,_dur,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.remember_add" [None; Some TFloat; None] [my_state g; tim; e]
   | Finalize, StatefulFun (_, g, Remember _), Some TBool ->
     emit_functionN oc ?state "CodeGenLib.remember_finalize" [None] [my_state g]

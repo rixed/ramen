@@ -79,8 +79,8 @@ type remember_state =
   { filter : RamenBloomFilter.sliced_filter ;
     mutable last_remembered : bool }
 
-let remember_init tim dur e =
-  let nb_slices = 10 and false_positive_ratio = 0.015 in
+let remember_init false_positive_ratio tim dur e =
+  let nb_slices = 10 in
   let start_time = tim -. dur and slice_width = dur /. float_of_int nb_slices in
   let filter = RamenBloomFilter.make_sliced start_time nb_slices slice_width false_positive_ratio in
   let last_remembered = RamenBloomFilter.remember filter tim e in

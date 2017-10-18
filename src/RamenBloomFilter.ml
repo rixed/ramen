@@ -119,7 +119,7 @@ let make_sliced start_time nb_slices slice_width false_positive_ratio =
       make_slice nb_bits nb_keys start_time) ;
     slice_width ; nb_keys ; nb_bits_per_item ; current = 0 }
 
-(* Tells if x has been seen earlier (and remember it). If x time is
+(* Tells if x has been seen earlier (and remembers it). If x time is
  * before the range of remembered data returns false (not seen). *)
 let remember sf time x =
   (* Should we rotate? *)

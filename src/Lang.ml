@@ -262,6 +262,12 @@ struct
   let larger_type (t1, t2) =
     if compare_typ t1 t2 >= 0 then t1 else t2
 
+  let largest_type = function
+    | fst :: rest ->
+      List.fold_left (fun l t ->
+        larger_type (l, t)) fst rest
+    | _ -> invalid_arg "largest_type"
+
   let print fmt = function
     | VFloat f  -> Printf.fprintf fmt "%g" f
     | VString s -> Printf.fprintf fmt "%S" s
@@ -595,14 +601,19 @@ struct
     (* Multiple linear regression - and our first variadic function (the
      * last parameter being a list of expressions to use for the predictors) *)
     | MultiLinReg of t * t * t * t list
-    (* Rotating bloom filters. First expression is the "time", second a
-     * "duration", and third an  expression whose value to remember. The
+    (* Rotating bloom filters. First parameter is the false positive rate we
+     * aim at, second is an expression providing the "time", third a
+     * "duration", and finally an expression whose value to remember. The
      * function will return true if it *thinks* that value has been seen the
-     * same value at a time not older than the given duration. This is based on
-     * bloom-filters so there can be false positives but not false negatives.
-     * Note: to remember several expressions just use the hash function (TBD),
-     * since it's based on a hash anyway. *)
-    | Remember of t * t * t
+     * same value at a time not older than the given duration. This is based
+     * on bloom-filters so there can be false positives but not false
+     * negatives.
+     * Notes:
+     * - to remember several expressions just use the hash function.
+     * - if possible, it might save a lot of space to aim for a high false
+     * positive rate and account for it in the surrounding calculations than
+     * to aim for a low false positive rate. *)
+    | Remember of t * t * t * t
     (* Simple exponential smoothing *)
     | ExpSmooth of t * t (* coef between 0 and 1 and expression *)
 
@@ -623,6 +634,9 @@ struct
 
   let expr_null =
     Const (make_typ ~nullable:true ~typ:TNull "NULL", VNull)
+
+  let of_float v =
+    Const (make_typ ~nullable:false (string_of_float v), VFloat v)
 
   let is_true = function
     | Const (_ , VBool true) -> true
@@ -783,10 +797,13 @@ struct
         (print with_types) e3
         (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) e4s ;
       add_types t
-    | StatefulFun (t, g, Remember (tim, dur, e)) ->
-      Printf.fprintf fmt "remember%s(%a, %a, %a)"
+    | StatefulFun (t, g, Remember (fpr, tim, dur, e)) ->
+      Printf.fprintf fmt "remember%s(%a, %a, %a, %a)"
         (sl g)
-        (print with_types) tim (print with_types) dur (print with_types) e ;
+        (print with_types) fpr
+        (print with_types) tim
+        (print with_types) dur
+        (print with_types) e ;
       add_types t
     | StatefulFun (t, g, ExpSmooth (e1, e2)) ->
       Printf.fprintf fmt "smooth%s(%a, %a)"
@@ -843,12 +860,18 @@ struct
       f i'' expr
 
     | StatefulFun (_, _, MovingAvg (e1, e2, e3))
-    | StatefulFun (_, _, LinReg (e1, e2, e3))
-    | StatefulFun (_, _, Remember (e1, e2, e3)) ->
+    | StatefulFun (_, _, LinReg (e1, e2, e3)) ->
       let i' = fold_by_depth f i e1 in
       let i''= fold_by_depth f i' e2 in
       let i'''= fold_by_depth f i'' e3 in
       f i''' expr
+
+    | StatefulFun (_, _, Remember (e1, e2, e3, e4)) ->
+      let i' = fold_by_depth f i e1 in
+      let i''= fold_by_depth f i' e2 in
+      let i'''= fold_by_depth f i'' e3 in
+      let i''''= fold_by_depth f i''' e4 in
+      f i'''' expr
 
     | StatefulFun (_, _, MultiLinReg (e1, e2, e3, e4s)) ->
       let i' = fold_by_depth f i e1 in
@@ -938,8 +961,9 @@ struct
           (if recurs then map_type ~recurs f b else b),
           (if recurs then map_type ~recurs f c else c),
           (if recurs then List.map (map_type ~recurs f) d else d)))
-    | StatefulFun (t, g, Remember (tim, dur, e)) ->
+    | StatefulFun (t, g, Remember (fpr, tim, dur, e)) ->
       StatefulFun (f t, g, Remember (
+          (if recurs then map_type ~recurs f fpr else fpr),
           (if recurs then map_type ~recurs f tim else tim),
           (if recurs then map_type ~recurs f dur else dur),
           (if recurs then map_type ~recurs f e else e)))
@@ -1247,6 +1271,9 @@ struct
     and afun3v_sf n =
       afunv_sf 3 n >>: function (g, ([a;b;c], r)) -> g, a, b, c, r | _ -> assert false
 
+    and afun4_sf n =
+      afun_sf 4 n >>: function (g, [a;b;c;d]) -> g, a, b, c, d | _ -> assert false
+
     and afunv a n m =
       let sep = opt_blanks -- char ',' -- opt_blanks in
       let m = n :: m in
@@ -1354,8 +1381,12 @@ struct
             Const (make_typ ~typ:TFloat ~nullable:false "alpha", VFloat 0.5) in
           StatefulFun (make_float_typ "smooth", g, ExpSmooth (alpha, e))) |||
        (afun3_sf "remember" >>: fun (g, tim, dir, e) ->
-          StatefulFun (make_bool_typ "remember", g, Remember (tim, dir, e))) |||
-
+          let fpr = of_float 0.015 in
+          StatefulFun (make_bool_typ "remember", g,
+                       Remember (fpr, tim, dir, e))) |||
+       (afun4_sf "remember" >>: fun (g, fpr, tim, dir, e) ->
+          StatefulFun (make_bool_typ "remember", g,
+                       Remember (fpr, tim, dir, e))) |||
        (afun2 "split" >>: fun (e1, e2) ->
           GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
        k_moveavg ||| sequence ||| cast) m
