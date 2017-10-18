@@ -5,6 +5,7 @@ ifdef::env-github[]
 :important-caption: :heavy_exclamation_mark:
 :caution-caption: :fire:
 :warning-caption: :warning:
+:imagesdir: https://github.com/PerformanceVision/ramen/raw/master/docs/
 endif::[]
 
 = Ramen Manual
@@ -37,6 +38,11 @@ database.  Therefore, each node has an input and an output type: the types of
 event they accept and produce.
 
 == Glossary
+
+<<AggregationFunction>>
+Aggregation Function::
+  A function that build a result value out of several input values.
+  The result is output only when some condition is met.
 
 <<ConfGraph>>
 Configuration Graph::
@@ -73,6 +79,17 @@ Operation::
   The description, in the SQL-inspired specific language, of how a node produce
   output from its input.
 
+<<StatefulFunction>>
+Stateful function::
+  A function that requires an internal state in order to output a result.
+  xref:AggregationFunction[Aggregation functions] are a special case of
+  stateful functions.
+
+<<StatelessFunction>>
+Stateless function::
+  A function that requires nothing more than its parameters to compute its
+  result. For instance, all arithmetic functions are stateless.
+
 <<Tuple>>
 Tuple::
   What is consumed and produced by nodes.  A set of values, each of its own
@@ -90,6 +107,13 @@ eventually fall into place.
 
 Some rare reserved keywords cannot be used as identifiers, unless surrounded by
 simple quotes.
+
+==== Blanks and Comments
+
+The parsing rules should be devoid of surprise.
+Any blank or newline is a separator.
+As in SQL, two dashes introduce a line comment. Everything from those dashes
+and the end of that line is considered a space.
 
 === Values
 
@@ -695,55 +719,95 @@ From higher precedence to lower precedence:
 
 ==== Read
 
-The simplest is to read a CSV file:
+The simplest way to get tuples may be to read them from CSV files. The +READ+
+operation does just that, reading a set of files and then waiting for more
+files to appear in the specified path.
+
+Its syntax is:
 
 [source,sql]
 ----
-  READ FROM FILES quoted_string [SEPARATOR quoted_string] [NULL quoted_string] (
-    first_field_name field_type [[NOT] NULL],
-    second_field_name field_type [[NOT] NULL],
+  READ [AND DELETE] FILES "file_pattern"
+    [ PREPROCESS WITH "preprocessor" ]
+    [ SEPARATOR "separator" ] [ NULL "null" ] (
+    first_field_name first_field_type [ [ NOT ] NULL ],
+    second_field_name second_field_type [ [ NOT ] NULL ],
     ...
   )
 ----
 
-Which will inject the content of the given CSV file, in which fields are
-separated by the given string, defaulting to coma (","), and each occurrence of the
-NULL string would be assuming to be NULL (default to empty string).
+If +AND DELETE+ is specified then files will be deleted as soon they are
+opened (or as soon as they are fully read, when a preprocessor is used).
 
-Field names must be valid identifiers (aka string made of letters, underscores
-and digits but as the first character), field types must be one of `bool`,
-`string`, `float`, `u8`, `i8`, `u16`, etc...  and nullable must be either
-`null` or `not null` to specify whether this field can be NULL or not (default
-to `null`).
+The +file_pattern+, which must be quoted, is a file name that can use the
+star character ("*") as a wildcard matching any possible substring. This
+wildcard can only appear in the file name section of the path and not in any
+directory, though.
 
-Example:
+In case a proprocessor is given then it must accept the file content in its
+standard input and outputs the actual CSV in its standard output.
+
+The CSV will then be read line by line, and a tuple formed from a line by
+splitting that line according to the delimiter (the one provided or the
+default coma (",")). The rules to parse each individual data types in the CSV
+are the same as to parse them as literal values in the node operation code.
+In case a line fails to parse it will be discarded.
+
+The CSV reader cannot parse headers.  CSV field values can be double-quoted
+to escape the CSV separator from that value.
+
+If a value is equal to the string passed as NULL (the empty string by
+default) then the value will be assumed to be NULL.
+
+Field names must be valid identifiers (aka string made of letters,
+underscores and digits but as the first character), field types must be one
+of `bool`, `string`, `float`, `u8`, `i8`, `u16`, etc...  and nullable, if
+set, must be either `null` or `not null` to specify whether this field can be
+NULL or not (default to `null`).
+
+Examples:
 
 [source,sql]
 ----
-READ CSV FILE "/tmp/test.csv" SEPARATOR "\t" NULL "<NULL>" (
+READ FILE "/tmp/test.csv" SEPARATOR "\t" NULL "<NULL>" (
   first_name string NOT NULL,
   last_name string,
   year_of_birth u16 NOT NULL,
   year_of_death u16)
 ----
 
-It is also possible to monitor a whole directory for files matching a pattern, and
-all those files will be injected sequentially. New files appearing in this
-directory will then also be injected if they match the pattern.
+[source,sql]
+----
+READ FILES "/tmp/test/*.csv.gz" PREPROCESSOR "zcat" (
+  first_name string NOT NULL,
+  last_name string)
+----
+
+==== Receive
+
+A variation of the above: Instead of +READ FILE "pattern"+ just enter +RECEIVE+
+and ramen will accept CSV file POSTed at +/upload/node_fully_qualified_name/+
+and will process them as they were CSV files taken from the file system.
+
+Notice that in that case the CSV file will not be kept in the file system and
+will therefore not be read again after restart, as if +AND DELETE+ was
+provided in a +READ FILE+ operation.
 
 Example:
 
 [source,sql]
 ----
-READ CSV FILES "/tmp/test/*.csv" (
+RECEIVE SEPARATOR "\t" NULL "<NULL>" (
   first_name string NOT NULL,
   last_name string)
 ----
 
-NOTE: patterns can use the star character ('*') in place of any substring in the
-file name but not in the directory part of the given path.
-
 ==== Yield
+
+If you just want a constant expression to supply data to its child nodes
+you can use the yield expression. This is particularly useful in conjunction
+with the `now` and `sequence` functions, or for tests, but otherwise rather
+pointless.
 
 Syntax:
 
@@ -755,126 +819,312 @@ Syntax:
 Yield merely produces an infinite stream of tuples, as fast as the downstream
 nodes can consume them.
 
-==== Select
+==== Group By
 
-Syntax:
+Group-By is the meat of Ramen's operation. It performs filtering,
+aggregation, windowing and projection. As each of those processes are
+optional let's see each of them separately before diving into the big
+picture.
 
-[source,sql]
-----
-  SELECT [AND EXPORT] expression1 AS name1, expression2 AS name2, ...
-    WHERE where_clause
-----
+===== Filtering - the WHERE clause
 
-As a selected expression one can also use `*` (star) to mean: all _other_
-fields from the input tuple (by other we mean any fields that have not be
-mentioned at all in the other expression of the select clause).
-
-The where clause is an expression, typically build from the input tuple, that
-must have a non-nullable boolean result.
-
-Semantic: for each input tuple, if the where clause is true, output the tuple
-build from the select clause. If the where clause is false then ignore the
-input tuple.
-
-The +AND EXPORT+ modifier makes ramen store all selected tuples for later
-retrieval by clients (See <<export-API>>). It does not change the semantic of
-the operation.
-
-==== Aggregate
-
-Syntax:
+If all you want is to select tuples matching some conditions, all you need is
+a filter. For instance, if you have a source of persons and want to filter
+only men older than 40, you could create an operation consisting of a single +WHERE+ clause, such as:
 
 [source,sql]
 ----
-  SELECT [AND EXPORT] expression1 AS name1, expression2 AS name2, ...
-    [GROUP BY expression3, expression4, ...]
-    COMMIT WHEN commit_clause
-    (FLUSH | SLIDE n | REMOVE expression | KEEP expression) WHEN flush_clause
+WHERE is_male AND age > 40 FROM source
 ----
 
-or, if `flush_clause` is the same as `commit_clause`:
+As is evidenced above, the syntax of the +WHERE+ clause is as simple as:
 
 [source,sql]
 ----
-  SELECT [AND EXPORT] expression1 AS name1, expression2 AS name2, ...
-    [GROUP BY expression3, expression4, ...]
-    COMMIT AND (FLUSH | SLIDE n | REMOVE expression | KEEP expression)
-      WHEN commit_clause
+WHERE condition FROM source
 ----
 
-The select clause is the same as above but it can use aggregate functions and,
-in addition to the `in` tuple, can refer to the `first` and `last` tuples.
-Contrary to SQL, it is not an error to take a value from the input tuple in the
-select clause with no aggregation function specified. The output tuple will
-then just use the current input tuple to get the value (similarly to what the
-`last` aggregation function would do).
-
-This is also what happens if you use the `*` (star) designation in the
-select clause. So for instance:
+Notice that the clauses order within an operation generally doesn't
+matter so this would be equally valid:
 
 [source,sql]
 ----
-  SELECT max counter, *
-    GROUP BY name
-    COMMIT AND FLUSH WHEN max timestamp - min timestamp > 120
+FROM source WHERE condition
 ----
 
-would output tuples made of the maximum value of the field +counter+ (this
-field automatically named `max_counter` so explicit naming with +AS+ is not
-necessary here) and all the fields of input tuples, using the last encountered
-values.
+The condition can be any expression which type is a non-nullable boolean.
 
-The group-by clause is a mere list of expressions that can refer to the
-<<input-tuple>>, <<first-tuple>> and <<last-tuple>>. The resulting tuple will
-be used as the key for the aggregation. When the group-by clause is omitted
-then all input tuples are aggregated together.
+NOTE: The default +WHERE+ clause is +WHERE true+.
 
-The commit clause tells when the aggregation must be stopped and the aggregated
-tuple output. This is a major difference with SQL, which stops aggregating
-values when it has processed all the input. Since stream processors model an
-infinite stream of input one has to give this extra piece of information.
+===== Projection - the SELECT clause
 
-The flush-when clause tells when an aggregate must be removed from memory. It
-is normally when you commit the tuple, so there is a shorter syntax for it:
-`...  commit and flush when ...` But the extra control allows to achieve more
-interesting operations.
+To follow up on previous example, maybe you are just interested in the
+persons name and age. So now you could create this operation to select only
+those:
 
-Additionally, instead of flushing (aka deleting the aggregated value for that
-key) it is also possible to remove some of the aggregated tuples from the
-aggregate, and keep going with new incoming tuples. This is useful to implement
-sliding windows or decay. Instead of +FLUSH+ it is possible to specify either:
+[source,sql]
+----
+SELECT name, age FROM source
+----
 
-- +SLIDE+ followed by a positive integer, which would remove from the aggregate
-  that many input tuples (the firsts that have been received);
+Instead of mere field names you can write more interesting expressions:
 
-- +REMOVE+ followed by a boolean expression, for removing all those tuples from
-  the aggregate;
+[source,sql]
+----
+SELECT (IF is_male THEN "Mr. " ELSE "Ms. ") + name AS name,
+       age date_of_birth as age_in_seconds
+FROM source
+----
 
-- +KEEP+ to specify which tuple not to remove (syntactic sugar for +REMOVE not
-  (expression)+);
+The general syntax of the +SELECT+ clause is:
+
+[source,sql]
+----
+  SELECT expression1 AS name1, expression2 AS name2, ...
+----
+
+You can also replace _one_ expression anywhere in this list by a star (`*`).
+All fields from the input which are not already present in the list will be
+copied over to the output. What is meant here by "being present" is: having
+the same field name and a compatible type. Since field names must be unique,
+this is an error if an expression of an incompatible type is aliased to the
+same name of an input type together with the star field selector.
+
+NOTE: The default +SELECT+ clause is: +SELECT *+
+
+===== Aggregation
+
+Some functions that might be used in the +SELECT+ build their result
+from several input values, and output a result only when some condition is
+met. Aggregation functions are a special case of stateful functions.
+Stateful functions are functions that needs to maintain an internal state in
+order to be able to output a result. A simple example is the `lag` function,
+which merely output the past value for every new value.
+
+The internal state of those functions can be either global to the whole
+operation, or specific to a group, which is the default. A group is a set of
+input tuple sharing something in common. For instance, all persons with the
+same age and sex. LEt's take an example, and compute the average salary per
+sex and age. `avg` is the archetypal aggregation function.
+
+[source,sql]
+----
+SELECT avg salary FROM person GROUP BY age, is_male
+----
+
+What happens here for each incoming tuple:
+
+1. Extract the fields age and is_male and makes it the `key` of this tuple;
+
+2. Look for the group for this key.
+
+  1. If not found, create a new group made only of this tuple. Initialize its
+  average salary with this person's salary;
+
+  2. If found, add this salary to the average computation.
+
+The +GROUP BY+ clause in itself is very simple: it consists merely on a list
+of expressions building a key from any input tuple:
+
+[source,sql]
+----
+GROUP BY expression1, expression2, ...
+----
+
+You can mix stateful functions drawing their state from the group the tuple at
+hands belong to, with stateful functions having a global state. Where a
+stateful function draws its state from depends on the presence or absence of
+the `globally` modifier to the function name. For instance, let's also comp[ute
+the global average salary:
+
+[source,sql]
+----
+SELECT avg salary, avg globally salary AS global_avg_salary
+FROM person GROUP BY age, is_male
+----
+
+Each time the operation will output a result, it will have the average (so far)
+for the group that is output (automatically named `avg_salary` since no better
+name was provided) and the average (so far) globally (named explicitly
+`global_avg_salary`).
+
+Contrary to SQL, it is not an error to select a value from the input tuple with
+no aggregation function specified. The output tuple will then just use the
+current input tuple to get the value (similarly to what the `last` aggregation
+function would do).
+
+This is also what happens if you use the `*` (star) designation in the select
+clause. So for instance:
+
+[source,sql]
+----
+  SELECT avg salary, *
+  FROM person GROUP BY age, is_make
+----
+
+...would output tuples made of the average value of the input field +salary+
+and all the fields of input tuples, using the last encountered values.
+
+NOTE: The default +GROUP BY+ clause is: nothing! All tuples will be assigned
+to the same and only group, then.
+
+Hopefully all is clear so far. Now the question that's still to be addressed
+is: When does the operation output a result? That is controlled by the
++COMMIT+ clause.
+
+===== Windowing, part 1: the +COMMIT+ clause
+
+Windowing is a major difference with SQL, which stops aggregating values when
+it has processed all the input. Since stream processors model an unbounded
+stream of inputs one has to give this extra piece of information.
+
+Conceptually, each time a tuple is received Ramen will consider each group
+one by one and evaluate the +COMMIT+ condition to see if an output should be
+emitted.
+
+Obviously, Ramen tries very hard *not* to actually do this as it would be
+unbearably slow when the number of groups is large. Instead, it will consider
+only the groups for which the condition might have changed ; usually, that
+means only the group which current tuple belongs to.
+
+So, the syntax of the +COMMIT+ clause is simple:
+
+[source,sql]
+----
+COMMIT WHEN condition
+----
+
+...where, once again, condition can be any expression which type is a
+non-nullable boolean.
+
+The next and final step to consider is: when a tuple is output, what to do
+with the group? The simplest and more sensible thing to do is to delete it so
+that a fresh new one will be created if we ever met the same key.
+
+Indeed, the above syntax is actually a shorthand for:
+
+[source,sql]
+----
+COMMIT AND FLUSH WHEN condition
+----
+
+This additional +AND FLUSH+ means exactly that: when the condition is true,
+commit the tuple _and_ delete (flush) the group.
+
+If this is the default, what are the other options?
+
+===== Windowing, part 2: the +FLUSH+ clause
+
+Instead of deleting the group, one can:
+
+- Remove the `n` oldest entries with +SLIDE n+;
+- Remove all entries satisfying a condition with +REMOVE condition+;
+- Conversely, keep only the entries satisfying a condition with +KEEP condition+
+  (syntactic sugar for +REMOVE not (condition)+);
 
 Notice that +SLIDE+ assumes that the tuples are received in some meaningful
 order, which is generally not true. It is thus often safer to use a proper
 filter and use a time value (or other ordered value) from the input tuple to
 perform the selection, for a very modest performance fee.
 
-Also, it is important to understand that "removing" tuples from the aggregate
-requires that all received tuples that are kept for next aggregate have to be
-actually kept in memory and replayed when the aggregate is "flushed"; therefore
-windowing has a sizeable impact on performance, memory wise as well as
-time wise, and should be used only when a small number of tuples are kept from
-one window to the next.
+TODO: an +ORDER BY expression+ to goes with the +SLIDE+.
 
-Semantic: For each input tuple, compute the key and retrieve the current
-aggregate, if any. If no current aggregate exists for this key yet then start a
-new one.  Then evaluate the where clause: if it is false, skip that input (and
-discard the new aggregate that might have been created).  If the where clause
-yields true, accumulates that input into that aggregate and compute the current
-output-tuple. With all this, evaluates the commit clause: if it is true, output
-the output tuple. Also, should this input tuple be replayed when flushing this
-aggregate, store it. Evaluates the flush-when clause. If it is true, flush this
-aggregate (either by deleting the aggregate altogether or by replacing it with
-an aggregate build from replaying the stored input tuple)
+Also, it is important to be aware that "removing" tuples from the aggregate
+requires that all received tuples be kept for next aggregate and be "replayed"
+when the aggregate is "flushed"; therefore windowing has a sizeable impact on
+performance, memory wise as well as time wise, and should be used only when a
+small number of tuples are kept from one window to the next.
+
+So the syntax for the +COMMIT+ clause that has been given in the previous
+section should really have been:
+
+[source,sql]
+----
+COMMIT [ AND [ FLUSH | SLIDE n | REMOVE condition | KEEP condition ] ] WHEN condition
+----
+
+There is no +FLUSH+ method to keep the group as it is, but you could easily
++SLIDE 0+, for instance. But even better not to flush at all, since _when_ to
+flush is also a parameter that can be set independently of when to commit.
+
+Indeed, when its not bundled with the +COMMIT+ clause, the +FLUSH+ clause is:
+
+[source,sql]
+----
+[ FLUSH | SLIDE n | REMOVE condition | KEEP condition ] WHEN condition
+----
+
+so to keep the groups as they are the simplest is to add:
+
+[source,sql]
+----
+FLUSH WHEN false
+----
+
+Notice that when an explicit +FLUSH+ clause is present, then the flush method
+must not also be bundled with the +COMMIT+ clause, as that would be redundant
+at best and ambiguous at worse.
+
+So, as an example, suppose we want the average salaries emitted every time we
+added 10 persons in the aggregation group:
+
+[source,sql]
+----
+SELECT avg salary, avg globally salary AS global_avg_salary
+FROM person GROUP BY age, is_male
+COMMIT WHEN group.#count >= 10
+FLUSH WHEN false
+----
+
+Suppose instead we want a sliding window over the last 10 persons of a group:
+
+[source,sql]
+----
+...
+COMMIT AND SLIDE 1 WHEN group.#count >= 10
+----
+
+TODO: NOTIFY
+
+===== The Complete Picture
+
+We are now able to give the full syntax and semantic of the +Group By+ operation:
+
+[source,sql]
+----
+SELECT expression1 AS name1, expression2 AS name2, ...
+WHERE condition
+FROM source
+GROUP BY expression1, expression2, ...
+COMMIT [ AND [ FLUSH | SLIDE n | REMOVE condition | KEEP condition ] ] WHEN condition
+[ FLUSH | SLIDE n | REMOVE condition | KEEP condition ] WHEN condition
+----
+
+Each of those clauses can be specified in any order and can be omitted but for
+the +FROM+ clause.
+
+The semantic is:
+
+For each input tuple, compute the key and retrieve the current aggregate, if
+any. If no current aggregate exists for this key yet then start a new one.
+Then evaluate the where clause: if it is false, skip that input (and discard
+the new aggregate that might have been created).  If the where clause yields
+true, accumulates that input into that aggregate (actual meaning depending on
+what functions are used in the operation) and compute the current output-tuple.
+
+With all this, evaluates the commit clause: if it is true, output the output
+tuple. Also, should this input tuple be replayed when flushing this aggregate,
+store it. If the output tuple has been committed, then also evaluates the
+flush-when clause. If it is also true then flush this aggregate -- either by
+deleting the aggregate altogether or by replacing it with an aggregate build
+from replaying some of the stored input tuple.
+
+Pictures might help, especially to help with what tuple can be used in which
+clauses:
+
+image::RamenOperations.png[]
+
+image::RamenOpDetails.png[]
 
 ==== Output
 
