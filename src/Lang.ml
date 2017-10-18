@@ -1902,7 +1902,7 @@ struct
         if clauses = [] then raise (Reject "Empty select") ;
         let default_select =
           [], true, Expr.expr_true, None, "", [],
-          None, Expr.expr_true, Some Expr.expr_false, Reset, [] in
+          None, Expr.expr_true, None, Reset, [] in
         let fields, and_all_others, where, export, notify_url, key,
             top, commit_when, flush_when, flush_how, from =
           List.fold_left (
@@ -2081,7 +2081,7 @@ struct
           notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = Some (replace_typ Expr.expr_false) ;\
+          flush_when = None ;\
           flush_how = Reset ;\
           export = None ;\
           from = ["foo"] },\
@@ -2100,7 +2100,7 @@ struct
           export = None ; notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = Some (replace_typ Expr.expr_false) ;\
+          flush_when = None ;\
           flush_how = Reset ; from = ["foo"] },\
         (26, [])))\
         (test_p p "from foo where packets > 0" |> replace_typ_in_op)
@@ -2118,7 +2118,7 @@ struct
           notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = Some (replace_typ Expr.expr_false) ;\
+          flush_when = None ;\
           flush_how = Reset ; from = ["foo"] },\
         (71, [])))\
         (test_p p "from foo select t, value export event starting at t*10 with duration 60" |>\
@@ -2138,7 +2138,7 @@ struct
           export = Some (Some (("t1", 10.), StopField ("t2", 10.))) ;\
           notify_url = "" ; key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = Some (replace_typ Expr.expr_false) ;\
+          flush_when = None ;\
           flush_how = Reset ; from = ["foo"] },\
         (82, [])))\
         (test_p p "from foo select t1, t2, value export event starting at t1*10 and stopping at t2*10" |>\
@@ -2153,7 +2153,7 @@ struct
           notify_url = "http://firebrigade.com/alert.php" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = Some (replace_typ Expr.expr_false) ;\
+          flush_when = None ;\
           flush_how = Reset ; from = ["foo"] },\
         (50, [])))\
         (test_p p "from foo NOTIFY \"http://firebrigade.com/alert.php\"" |>\
@@ -2240,7 +2240,7 @@ struct
           notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
-          flush_when = Some (replace_typ Expr.expr_false) ;\
+          flush_when = None ;\
           flush_how = Reset ; from = ["foo/bar"] },\
           (37, [])))\
           (test_p p "SELECT n, lag(2, n) AS l FROM foo/bar" |>\
