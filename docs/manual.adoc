@@ -598,8 +598,26 @@ factor of 0.5.
 
 ==== Miscellaneous Stateful Functions
 
-`remember`, prefix, TODO. Parameters are about to change. Cf.
-https://github.com/PerformanceVision/ramen/issues/64
+`remember`, prefix, +float ⨉ float ⨉ float ⨉ any → bool+, tells if a value
+have been seen before.
+
+This uses rotating bloom filters. First parameter is the false positive rate
+that should be aimed at, second is how to compute the event time, third is
+the duration, in seconds, that the function should remember values, and
+finally the last argument is the value to remember. The function will return
+true if it remember that value (and it will memorize it for next calls).
+There can be false positives (`remember` returning true while in fact that
+very value has never been seen) but no false negative (`remember` returning
+false while this value had in fact been seen earlier).
+
+Notes:
+
+- To remember a value made of several components you could use the `hash`
+  function.
+
+- When possible, it might save a lot of space to aim for a high false
+  positive rate and account for it in the surrounding calculations, as
+  opposed to aim for a low false positive rate.
 
 ==== Conditionals
 
