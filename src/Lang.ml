@@ -2338,6 +2338,8 @@ struct
         Option.may (fun (n, by) ->
           (* TODO: Check also that it's an unsigned integer: *)
           Expr.check_const "TOP size" n ;
+          (* The [by] expression must be something we can use as a weight for
+           * the input tuple, so a stateless number. *)
           check_pure pure_in_top by ;
           check_fields_from [TupleIn] "TOP" by) top ;
         check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN" commit_when ;

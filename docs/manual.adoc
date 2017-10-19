@@ -39,24 +39,22 @@ event they accept and produce.
 
 == Glossary
 
-<<AggregationFunction>>
+[glossary]
+[[AggregationFunction]]
 Aggregation Function::
   A function that build a result value out of several input values.
   The result is output only when some condition is met.
-
-<<ConfGraph>>
+[[ConfGraph]]
 Configuration Graph::
   The directed graph of the defined operations. The nodes of this graph
   represent the operations while the edges represents the flow of tuples.
   This graph can be cyclic, with some limitations (see xref:Layer[]).
-
-<<FQName>>
+[[FQName]]
 Fully Qualified Name::
   The fully qualified name of a node is the name of the layer it belongs to,
   then a slash ("/"), then the name of the node. It follows that FQ names are
   globally unique.
-
-<<Layer>>
+[[Layer]]
 Layer::
   A subgraph of the xref:ConfGraph[Configuration Graph]. Containing one or
   several xref:Node[nodes]. This is the smallest subset of the configuration
@@ -64,8 +62,7 @@ Layer::
   to form cycles, but the layers themselves must form a tree.
   In addition to a set of nodes, a layer also has a name. Those names must be
   globally unique.
-
-<<Node>>
+[[Node]]
 Node::
   Vertices of the xref:ConfGraph[Configuration Graph]. A node is composed of a
   name and an operation. Node names must be unique within a layer.  Every node
@@ -73,30 +70,25 @@ Node::
   consume and produce. These types may only be known after the layer is compiled,
   though. Nodes can receive tuples from any other nodes of the same layer, or
   from any nodes of any layer defined previously.
-
-<<Operation>>
+[[Operation]]
 Operation::
   The description, in the SQL-inspired specific language, of how a node produce
   output from its input.
-
-<<StatefulFunction>>
+[[StatefulFunction]]
 Stateful function::
   A function that requires an internal state in order to output a result.
   xref:AggregationFunction[Aggregation functions] are a special case of
   stateful functions.
-
-<<StatelessFunction>>
+[[StatelessFunction]]
 Stateless function::
   A function that requires nothing more than its parameters to compute its
   result. For instance, all arithmetic functions are stateless.
-
-<<Tuple>>
+[[Tuple]]
 Tuple::
   What is consumed and produced by nodes.  A set of values, each of its own
   type. Those values are called "fields" and beside its type a field also has a
   name that must be unique in the tuple.  Tuples are the only constructed data
   type, and must itself be composed only of primitive types.
-
 
 == The Configuration Language Reference
 
@@ -108,7 +100,7 @@ eventually fall into place.
 Some rare reserved keywords cannot be used as identifiers, unless surrounded by
 simple quotes.
 
-==== Blanks and Comments
+=== Blanks and Comments
 
 The parsing rules should be devoid of surprise.
 Any blank or newline is a separator.
@@ -909,19 +901,19 @@ sex and age. `avg` is the archetypal aggregation function.
 
 [source,sql]
 ----
-SELECT avg salary FROM person GROUP BY age, is_male
+SELECT avg salary FROM employee GROUP BY age, is_male
 ----
 
 What happens here for each incoming tuple:
 
-1. Extract the fields age and is_male and makes it the `key` of this tuple;
+. Extract the fields age and is_male and makes it the `key` of this tuple;
 
-2. Look for the group for this key.
+. Look for the group for this key.
 
-  1. If not found, create a new group made only of this tuple. Initialize its
-  average salary with this person's salary;
+.. If not found, create a new group made only of this tuple. Initialize its
+   average salary with this employee's salary;
 
-  2. If found, add this salary to the average computation.
+.. If found, add this salary to the average computation.
 
 The +GROUP BY+ clause in itself is very simple: it consists merely on a list
 of expressions building a key from any input tuple:
@@ -940,7 +932,7 @@ the global average salary:
 [source,sql]
 ----
 SELECT avg salary, avg globally salary AS global_avg_salary
-FROM person GROUP BY age, is_male
+FROM employee GROUP BY age, is_male
 ----
 
 Each time the operation will output a result, it will have the average (so far)
@@ -959,7 +951,7 @@ clause. So for instance:
 [source,sql]
 ----
   SELECT avg salary, *
-  FROM person GROUP BY age, is_make
+  FROM employee GROUP BY age, is_make
 ----
 
 ...would output tuples made of the average value of the input field +salary+
@@ -1051,7 +1043,7 @@ Indeed, when its not bundled with the +COMMIT+ clause, the +FLUSH+ clause is:
 
 [source,sql]
 ----
-[ FLUSH | SLIDE n | REMOVE condition | KEEP condition ] WHEN condition
+( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) WHEN condition
 ----
 
 so to keep the groups as they are the simplest is to add:
@@ -1071,7 +1063,7 @@ added 10 persons in the aggregation group:
 [source,sql]
 ----
 SELECT avg salary, avg globally salary AS global_avg_salary
-FROM person GROUP BY age, is_male
+FROM employee GROUP BY age, is_male
 COMMIT WHEN group.#count >= 10
 FLUSH WHEN false
 ----
@@ -1084,11 +1076,148 @@ Suppose instead we want a sliding window over the last 10 persons of a group:
 COMMIT AND SLIDE 1 WHEN group.#count >= 10
 ----
 
-TODO: NOTIFY
+===== Outputting: How Tuples Are Sent To Child Nodes
+
+When Ramen commits a tuple, what tuple exactly is it?
+
+The output tuple is the one that is created by the +SELECT+ clause, with no
+more and no less fields. The types of those fields is obviously heavily
+influenced by the type on the input tuple. This type itself comes mostly from
+the output type of the parent nodes. Therefore changing an ancestor
+operation might change the output type of an unmodified node.
+
+The output tuple is then send to each of the children nodes, before a new input
+tuple is read. No batching takes place in the nodes, although batching does
+take place in the communication in between them (the ring-buffers).  Indeed,
+when a node has no tuple to read it _sleeps_ for a dynamic duration that is
+supposed to leave enough time for N tuples to arrive, so that next time the
+node is run by the operating system there are, in average, N tuples waiting.
+This behavior is designed to be efficient (minimizing syscalls when busy and
+avoiding trashing the cache), but offers no guaranteed batching. If a
+computation requires batches then those batches have to be computed using
+windowing, as described above.
+
+===== Outputting: Notifying External Tools
+
+Ramen is designed to do alerting, that is to receive a lot of information, to
+analyze and triage it, and eventually to send some output result to some
+external program. By design, there is a huge asymmetry between input and
+output: Ramen receives large amount of data and produce very few (but
+hopefully important!) data. This explains why the mechanisms for receiving
+tuples are designed to be efficient, while mechanisms for sending tuples
+outside of are designed to be convenient.
+
+And what's more convenient than a simple HTTP GET?
+
+A +Group By+ operation can have a +NOTIFY+ clause that will cause Ramen to
+get the specified URL via HTTP whenever a tuple is _selected_ (ie. passes the
++WHERE+ filter).
+
+The URL parameter is a string that can contain special placeholders for the
+input tuple field names (with or without the "in" prefix) that will be replaced
+by the actual field value.
+
+So for example, shall we want to notify some service each time a employee named
+"Waldo" is seen, we could write:
+
+[source,sql]
+----
+NOTIFY "http://i_found_waldo.com/?location=${location}"
+WHERE name = "Waldo"
+----
+
+The result of the GET is discarded.
+
+===== Outputting: Exporting Tuples For Posterity
+
+Storing output tuples can be useful, but doing so for every node would be
+wasteful.
+
+You can select which nodes output is to be stored on disc with the +EXPORT+
+clause.
+
+Just marking a +Group By+ operation with the +EXPORT+ keyword alone is enough
+for all produced tuples to be stored. Stored tuples can later be retrieved
+using the `export` API.
+
+When later retrieval of tuples is important, it is even better to tell Ramen
+how to compute the tuple-time, so that accurate timeseries can be retrieved
+using the `timeseries` API. That is what the rest of the +EXPORT+ clause is
+for.
+
+[source,sql]
+----
+EXPORT [ EVENT STARTING AT identifier [ * scale ]
+             [ WITH DURATION [ identifier [ * scale ] | constant ] |
+               AND STOPPING AT identifier [ * scale ] ] ]
+----
+
+Contrary to most stream processing tools, events have not only a time but a
+duration, that can be specified either as an actual length or as an ending
+time.
+
+In the above, +identifier+ represent the name of an input field where the
+event time (or duration) is to be found. +scale+ must be a number and the
+field it applies to must be multiplied by this number to obtain seconds
+(either to build a time as a UNIX timestamp or to obtain a duration).
++constant+ is a constant number of seconds representing the duration of the
+event, if it's known and constant.
+
+With all these information, the `timeseries` API call will be able to produce
+accurate results.
+
+In the future these might also be usd to obtain default time for functions
+requiring it (such as the `remember` function).
+
+For instance if we had minutely metric collection from sensors with a field
+"time" in milliseconds we could write:
+
+[source,sql]
+----
+SELECT whatever FROM sensors
+EXPORT EVENT STARTING AT time * 0.001 WITH DURATION 30
+----
+
+===== Outputting: Limiting The Output
+
+Many time when triaging data we want to consider only the most important of
+the aggregation groups, for some definition of "important".
+
+For instance, we may want to focus on the top 10 lowest monthly salary in our
+employee stream so that we do not waste processing time on the rest.
+
+The +TOP+ clause offers to ignore all but the most important groups:
+
+[source,sql]
+----
+SELECT name, avg salary FROM employee
+GROUP BY name, month
+TOP 10 BY -salary
+----
+
+The general syntax of the +TOP+ clause is merely:
+
+[source,sql]
+----
+TOP number BY expression
+----
+
+Where the number must be a positive integer and the expression must be
+stateless (ie. uses no stateful functions), refers only to the input tuple, and
+produce a number that will be used as a _weight_ contributed to the group by
+the input tuple.
+
+The presence of a +TOP+ clause changes slightly how a +Group By+ operation
+works. First and foremost, the number of groups that are maintained in memory
+is reduced to the same magnitude as the selected number, which can greatly
+reduce the memory footprint of the operation. Secondly, the only commit
+and flush clauses that are currently compatible with the top clause are to
+commit and flush the whole top groups at once.
 
 ===== The Complete Picture
 
-We are now able to give the full syntax and semantic of the +Group By+ operation:
+We are now able to give the full syntax and semantic of the +Group By+
+operation:
 
 [source,sql]
 ----
@@ -1096,8 +1225,12 @@ SELECT expression1 AS name1, expression2 AS name2, ...
 WHERE condition
 FROM source
 GROUP BY expression1, expression2, ...
+TOP number BY expression
 COMMIT [ AND [ FLUSH | SLIDE n | REMOVE condition | KEEP condition ] ] WHEN condition
-[ FLUSH | SLIDE n | REMOVE condition | KEEP condition ] WHEN condition
+( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) WHEN condition
+EXPORT [ EVENT STARTING AT identifier [ * scale ]
+             [ WITH DURATION [ identifier [ * scale ] | constant ] |
+               AND STOPPING AT identifier [ * scale ] ] ]
 ----
 
 Each of those clauses can be specified in any order and can be omitted but for
@@ -1110,85 +1243,38 @@ any. If no current aggregate exists for this key yet then start a new one.
 Then evaluate the where clause: if it is false, skip that input (and discard
 the new aggregate that might have been created).  If the where clause yields
 true, accumulates that input into that aggregate (actual meaning depending on
-what functions are used in the operation) and compute the current output-tuple.
+what functions are used in the operation). If a top by clause is present, limit
+the number of kept group to the top contributor according to the given metric.
+Compute the current output-tuple.
 
-With all this, evaluates the commit clause: if it is true, output the output
-tuple. Also, should this input tuple be replayed when flushing this aggregate,
-store it. If the output tuple has been committed, then also evaluates the
-flush-when clause. If it is also true then flush this aggregate -- either by
-deleting the aggregate altogether or by replacing it with an aggregate build
-from replaying some of the stored input tuple.
+With all this, evaluates the commit clause: if it is true, send the output
+tuple to all children, and if the export keyword is present also store it on
+disc. Should this input tuple be replayed when flushing this aggregate, store
+it with as part of the group. If the output tuple has been committed, then also
+evaluates the flush-when clause. If it is also true then flush this aggregate
+-- either by deleting the aggregate altogether or by replacing it with an
+aggregate build from replaying some of the stored input tuple.
 
-Pictures might help, especially to help with what tuple can be used in which
-clauses:
+A picture might help:
 
 image::RamenOperations.png[]
 
-image::RamenOpDetails.png[]
-
-==== Output
-
-+SELECT+ operations can be instructed to notify an external URL when the where
-clause is fulfilled. The given URL will then accessed, which can be customized
-with `${field_name}` that would be replaced by the actual value from the input
-tuple.
-
 === Examples
 
-==== Tumbling windows
+==== Tumbling Windows
 
-==== Sliding windows
+==== Sliding Windows
 
-==== Rate limited selection
+==== Rate Limited Selection
 
 ==== Hysteresis
 
 
 == The API
 
-=== Create/Modify/Delete nodes
+=== Create/Modify/Delete Layers
 
-Nodes have unique name, and their URL is `/node/the_name`.  A Node can be
-created or updated by HTTP-PUTting t that URL a JSON message:
-
-[source,json]
-----
-  { "operation": "... operation expression ..." }
-----
-
-For instance:
-
-[source,json]
-----
-  curl -X PUT -H 'Content-Type: application/json' -d '
-    { "operation":
-         "SELECT first_name, last_name
-            WHERE year_of_borth < 1970 AND year_of_death IS NOT NULL"
-    }' http://localhost:29380/node/some_unique_name
-----
-
-The same information can be obtained back from GETting that URL, and can be
-deleted with a DELETE command on that URL.
-
-=== Create/Modify/Delete links
-
-The URL of a link between node A and B is: `/link/A/B`.  Nodes A and B must
-exist already.
-
-The link can be created, obtained or deleted with a +PUT+, a +GET+ or a
-+DELETE+ command to that URL. Notice that those messages need no body.
-
-It is also possible to update all the links of a specific node with a +HTTP+
-+PUT+ command to `/links/some_node_name` with that JSON:
-
-----
-  { "parents": [ "some_node_name", "some_other_node", ... ],
-    "children": [ "some_node_name", "some_other_node", ... ] }
-----
-
-And this node configuration will be set accordingly.
-
-=== Export/Import the whole graph
+=== Export/Import the Whole Graph
 
 You can get the whole configuration by GETting this URL: `/graph`.  Conversely,
 a whole new graph can be uploaded and made to replace the current one with a
@@ -1204,10 +1290,13 @@ If all went well, you can then GET `/start` for Rigatoni to start all those
 executables, and then `/stop` to kill them all.
 
 [[export-API]]
-=== Receive exported tuples
+=== Receive Exported Tuples
 
 Some operations export some tuples.
 Those tuples can then be obtained from Rigatoni at `/export/NODE_NAME`.
 To limit the output, a body can be sent with two optional integer fields:
 `since`, to ask for all tuples _after_ that one, and `max_results` to ask for
 no more than that many tuples.
+
+[[timeseries-API]]
+=== Receive Values According to Time

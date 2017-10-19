@@ -663,8 +663,8 @@ let aggregate
       in
       let commit_and_flush_list to_commit to_flush =
         (* We must commit first and then flush *)
-        (* Send tuple for "others": *)
-        (* FIXME: the problem with this is that the current_out of this
+        (* Send tuple for "others":
+         * FIXME: the problem with this is that the current_out of this
          * aggregate was build from a given in_tuple and nothing tells us
          * what this additional "others" tuple represents, and that
          * possibly other keys than the one seemingly present have
