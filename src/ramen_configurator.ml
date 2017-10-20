@@ -8,6 +8,8 @@ let options debug monitor = { debug ; monitor }
 
 let rebase dataset_name name = dataset_name ^"/"^ name
 
+let enc = Uri.pct_encode
+
 (* Get the operations to import the dataset and do basic transformations.
  * Named streams belonging to this base layer:
  * - ${dataset_name}/csv: Raw imported tuples straight from the CSV;
@@ -24,7 +26,7 @@ let rep sub by str = String.nreplace ~str ~sub ~by
 
 let print_squoted oc = Printf.fprintf oc "'%s'"
 
-let traffic_op ?where dataset_name name dt =
+let traffic_node ?where dataset_name name dt =
   let dt_us = dt * 1_000_000 in
   let parents =
     List.map (rebase dataset_name) ["c2s"; "s2c"] |>
@@ -74,6 +76,93 @@ let traffic_op ?where dataset_name name dt =
                    | Some w -> op ^"\nWHERE "^ w in
   make_node name op
 
+(* Anomaly Detection
+ *
+ * For any node which output interesting timeseries (interesting = that we hand
+ * pick) we will add a node that compute all predictions we can compute for the
+ * series. We will notify when x out of y predictions are "off". for perf
+ * reasons we want the number of such nodes minimal, but as we have only one
+ * possible notify per node we also can't have one node for different unrelated
+ * things. A good trade-off is to have one node per BCN/BCA.
+ * For each timeseries to predict, we also pass a list of other timeseries that
+ * we think are good predictors. *)
+let anomaly_detection_nodes name avg_window from timeseries threshold =
+  assert (timeseries <> []) ;
+  let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ]
+  and multi_predictors = [ "fit_multi(" ] in
+  let predictor_name = name ^": predictions" in
+  let predictor_node =
+    let predictions =
+      List.fold_left (fun fields (ts, _nullable, preds) ->
+          let preds_str = String.concat ", " preds in
+          let fields = ts :: fields in
+          let i, fields =
+            List.fold_left (fun (i, fields) predictor ->
+                i+1,
+                (Printf.sprintf "%s %s) AS pred_%d_%s" predictor ts i ts) :: fields
+              ) (0, fields) stand_alone_predictors in
+          let _, fields =
+            if preds <> [] then
+              List.fold_left (fun (i, fields) multi_predictor ->
+                  i + 1,
+                  (Printf.sprintf "%s %s, %s) AS pred_%d_%s" multi_predictor ts preds_str i ts) :: fields
+                ) (i, fields) multi_predictors
+            else i, fields in
+          fields
+        ) [] timeseries
+    in
+    let op =
+      Printf.sprintf
+        "SELECT\n  \
+           start,\n  \
+           %s\n\
+         FROM '%s'\n\
+         EXPORT EVENT STARTING AT start * %d\n        \
+                 WITH DURATION %f"
+        (String.concat ",\n  " (List.rev predictions))
+        from
+        (int_of_float avg_window)
+        avg_window in
+    make_node predictor_name op in
+  let anomaly_node =
+    let is_off ts i nullable =
+      Printf.sprintf
+        (if nullable then
+           "u8(coalesce((abs pred_%d_%s - %s) / %s > 0.5, false))"
+         else
+           "u8((abs pred_%d_%s - %s) / %s > 0.5)")
+       i ts ts ts in
+    let conditions =
+      List.fold_left (fun cond (ts, nullable, preds) ->
+          let i, cond =
+            List.fold_left (fun (i, cond) _predictor ->
+                i + 1,
+                is_off ts i nullable :: cond
+              ) (0, cond) stand_alone_predictors in
+          let _, cond =
+            if preds <> [] then
+              List.fold_left (fun (i, cond) _multi_predictor ->
+                  i + 1,
+                  (is_off ts i nullable) :: cond
+                ) (i, cond) multi_predictors
+            else i, cond in
+          cond
+        ) [] timeseries in
+    let condition = String.concat " +\n      " conditions in
+    let subject = Printf.sprintf "%s is off" from
+    and text = Printf.sprintf "Many metrics from %s seams to be off." from in
+    let op =
+      Printf.sprintf
+        "FROM '%s'\n\
+         NOTIFY \"http://localhost:876/notify?subject=%s&text=%s\"\n\
+         WHEN (%s) > %d"
+        predictor_name
+        (enc subject) (enc text)
+        condition
+        threshold in
+    make_node (name ^": anomalies") op in
+  predictor_node, anomaly_node
+
 let base_layer dataset_name delete csv_dir =
   let csv =
     let op =
@@ -118,43 +207,43 @@ let base_layer dataset_name delete csv_dir =
            payload_bytes_server u64 not null,
            payload_packets_client u64 not null,
            payload_packets_server u64 not null,
-           retrans_traffic_bytes_client u64 null,
-           retrans_traffic_bytes_server u64 null,
-           retrans_payload_bytes_client u64 null,
-           retrans_payload_bytes_server u64 null,
-           syn_count_client u64 null,
-           fin_count_client u64 null,
-           fin_count_server u64 null,
-           rst_count_client u64 null,
-           rst_count_server u64 null,
+           retrans_traffic_bytes_client u64 not null,
+           retrans_traffic_bytes_server u64 not null,
+           retrans_payload_bytes_client u64 not null,
+           retrans_payload_bytes_server u64 not null,
+           syn_count_client u64 not null,
+           fin_count_client u64 not null,
+           fin_count_server u64 not null,
+           rst_count_client u64 not null,
+           rst_count_server u64 not null,
            timeout_count u64 not null,
-           close_count u64 null,
-           dupack_count_client u64 null,
-           dupack_count_server u64 null,
-           zero_window_count_client u64 null,
-           zero_window_count_server u64 null,
-           ct_count u64 null,
+           close_count u64 not null,
+           dupack_count_client u64 not null,
+           dupack_count_server u64 not null,
+           zero_window_count_client u64 not null,
+           zero_window_count_server u64 not null,
+           ct_count u64 not null,
            ct_sum u64 not null,
            ct_square_sum u64 not null,
-           rt_count_server u64 null,
+           rt_count_server u64 not null,
            rt_sum_server u64 not null,
            rt_square_sum_server u64 not null,
-           rtt_count_client u64 null,
+           rtt_count_client u64 not null,
            rtt_sum_client u64 not null,
            rtt_square_sum_client u64 not null,
-           rtt_count_server u64 null,
+           rtt_count_server u64 not null,
            rtt_sum_server u64 not null,
            rtt_square_sum_server u64 not null,
-           rd_count_client u64 null,
+           rd_count_client u64 not null,
            rd_sum_client u64 not null,
            rd_square_sum_client u64 not null,
-           rd_count_server u64 null,
+           rd_count_server u64 not null,
            rd_sum_server u64 not null,
            rd_square_sum_server u64 not null,
-           dtt_count_client u64 null,
+           dtt_count_client u64 not null,
            dtt_sum_client u64 not null,
            dtt_square_sum_client u64 not null,
-           dtt_count_server u64 null,
+           dtt_count_server u64 not null,
            dtt_sum_server u64 not null,
            dtt_square_sum_server u64 not null,
            dcerpc_uuid string null
@@ -198,9 +287,9 @@ let base_layer dataset_name delete csv_dir =
       csv ;
       to_unidir ~src:"client" ~dst:"server" "c2s" ;
       to_unidir ~src:"server" ~dst:"client" "s2c" ;
-      traffic_op dataset_name "minutely traffic" 60 ;
-      traffic_op dataset_name "hourly traffic" 3600 ;
-      traffic_op dataset_name "daily traffic" (3600 * 24) ] }
+      traffic_node dataset_name "minutely traffic" 60 ;
+      traffic_node dataset_name "hourly traffic" 3600 ;
+      traffic_node dataset_name "daily traffic" (3600 * 24) ] }
 
 (* Build the node infos corresponding to the BCN configuration *)
 let layer_of_bcns bcns dataset_name =
@@ -235,7 +324,7 @@ let layer_of_bcns bcns dataset_name =
      * - it adds zone_src and zone_dst names, which can be useful indeed
      * - it works for whatever avg_window not necessarily minutely.
      * All in all a waste of resources. We could add custom fields to
-     * traffic_op and force a minutely averaging window for the alerts. *)
+     * traffic_node and force a minutely averaging window for the alerts. *)
     let op =
       Printf.sprintf
         {|FROM '%s', '%s' SELECT
@@ -285,7 +374,6 @@ let layer_of_bcns bcns dataset_name =
          avg_per_zones_name
          bcn.percentile bcn.avg_window nb_items_per_groups in
     make_node perc_per_obs_window_name op ;
-    let enc = Uri.pct_encode in
     (* TODO: we need an hysteresis here! *)
     Option.may (fun min_bps ->
         let subject = Printf.sprintf "Too little traffic from zone %s to %s"
@@ -324,9 +412,9 @@ let layer_of_bcns bcns dataset_name =
         make_node name ops
       ) bcn.max_bps ;
     all_nodes :=
-      traffic_op ~where dataset_name (name_prefix ^": minutely traffic") 60 ::
-      traffic_op ~where dataset_name (name_prefix ^": hourly traffic") 3600 ::
-      traffic_op ~where dataset_name (name_prefix ^": daily traffic") (3600 * 24) :: !all_nodes
+      traffic_node ~where dataset_name (name_prefix ^": minutely traffic") 60 ::
+      traffic_node ~where dataset_name (name_prefix ^": hourly traffic") 3600 ::
+      traffic_node ~where dataset_name (name_prefix ^": daily traffic") (3600 * 24) :: !all_nodes
   in
   List.iter conf_of_bcn bcns ;
   RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
@@ -351,7 +439,6 @@ let layer_of_bcas bcas dataset_name =
           -- Key
           (capture_begin // $AVG_INT$) AS start,
           min capture_begin, max capture_end,
-          protostack,
           -- Traffic
           sum traffic_bytes_client / $AVG$ AS c2s_bytes_per_secs,
           sum traffic_bytes_server / $AVG$ AS s2c_bytes_per_secs,
@@ -376,64 +463,79 @@ let layer_of_bcas bcas dataset_name =
           sum zero_window_count_server / $AVG$ AS s2c_0wins_per_secs,
           -- Connection Time
           sum ct_count / $AVG$ AS ct_per_secs,
-          sum ct_sum / sum ct_count AS ct_avg,
-          sqrt ((sum ct_count * sum ct_square_sum - (sum ct_sum)^2) /
-                (sum ct_count * (sum ct_count - 1))) AS ct_stddev,
+          IF sum ct_count = 0 THEN 0 ELSE sum ct_sum / sum ct_count AS ct_avg,
+          IF sum ct_count = 0 THEN 0 ELSE
+            sqrt ((sum ct_count * sum ct_square_sum - (sum ct_sum)^2) /
+                  (sum ct_count * (sum ct_count - 1))) AS ct_stddev,
           -- Server Response Time
           sum rt_count_server / $AVG$ AS srt_per_secs,
-          sum rt_sum_server / sum rt_count_server AS srt_avg,
-          sqrt ((sum rt_count_server * sum rt_square_sum_server -
-                 (sum rt_sum_server)^2) /
-                (sum rt_count_server * (sum rt_count_server - 1)))
-            AS srt_stddev,
+          IF sum rt_count_server = 0 THEN 0 ELSE
+            sum rt_sum_server / sum rt_count_server AS srt_avg,
+          IF sum rt_count_server = 0 THEN 0 ELSE
+            sqrt ((sum rt_count_server * sum rt_square_sum_server -
+                   (sum rt_sum_server)^2) /
+                  (sum rt_count_server * (sum rt_count_server - 1)))
+              AS srt_stddev,
           -- Round Trip Time CSC
           sum rtt_count_server / $AVG$ AS crtt_per_secs,
-          sum rtt_sum_server / sum rtt_count_server AS crtt_avg,
-          sqrt ((sum rtt_count_server * sum rtt_square_sum_server -
-                 (sum rtt_sum_server)^2) /
-                (sum rtt_count_server * (sum rtt_count_server - 1)))
-            AS crtt_stddev,
+          IF sum rtt_count_server = 0 THEN 0 ELSE
+            sum rtt_sum_server / sum rtt_count_server AS crtt_avg,
+          IF sum rtt_count_server = 0 THEN 0 ELSE
+            sqrt ((sum rtt_count_server * sum rtt_square_sum_server -
+                   (sum rtt_sum_server)^2) /
+                  (sum rtt_count_server * (sum rtt_count_server - 1)))
+              AS crtt_stddev,
           -- Round Trip Time SCS
           sum rtt_count_server / $AVG$ AS srtt_per_secs,
-          sum rtt_sum_server / sum rtt_count_server AS srtt_avg,
-          sqrt ((sum rtt_count_server * sum rtt_square_sum_server -
-                 (sum rtt_sum_server)^2) /
-                (sum rtt_count_server * (sum rtt_count_server - 1)))
-            AS srtt_stddev,
+          IF sum rtt_count_server = 0 THEN 0 ELSE
+            sum rtt_sum_server / sum rtt_count_server AS srtt_avg,
+          IF sum rtt_count_server = 0 THEN 0 ELSE
+            sqrt ((sum rtt_count_server * sum rtt_square_sum_server -
+                   (sum rtt_sum_server)^2) /
+                  (sum rtt_count_server * (sum rtt_count_server - 1)))
+              AS srtt_stddev,
           -- Retransmition Delay C2S
           sum rd_count_client / $AVG$ AS crd_per_secs,
-          sum rd_sum_client / sum rd_count_client AS crd_avg,
-          sqrt ((sum rd_count_client * sum rd_square_sum_client -
-                 (sum rd_sum_client)^2) /
-                (sum rd_count_client * (sum rd_count_client - 1)))
-            AS crd_stddev,
+          IF sum rd_count_client = 0 THEN 0 ELSE
+            sum rd_sum_client / sum rd_count_client AS crd_avg,
+          IF sum rd_count_client = 0 THEN 0 ELSE
+            sqrt ((sum rd_count_client * sum rd_square_sum_client -
+                   (sum rd_sum_client)^2) /
+                  (sum rd_count_client * (sum rd_count_client - 1)))
+              AS crd_stddev,
           -- Retransmition Delay S2C
           sum rd_count_server / $AVG$ AS srd_per_secs,
-          sum rd_sum_server / sum rd_count_server AS srd_avg,
-          sqrt ((sum rd_count_server * sum rd_square_sum_server -
-                 (sum rd_sum_server)^2) /
-                (sum rd_count_server * (sum rd_count_server - 1)))
-            AS srd_stddev,
+          IF sum rd_count_server = 0 THEN 0 ELSE
+            sum rd_sum_server / sum rd_count_server AS srd_avg,
+          IF sum rd_count_server = 0 THEN 0 ELSE
+            sqrt ((sum rd_count_server * sum rd_square_sum_server -
+                   (sum rd_sum_server)^2) /
+                  (sum rd_count_server * (sum rd_count_server - 1)))
+              AS srd_stddev,
           -- Data Transfer Time C2S
           sum dtt_count_client / $AVG$ AS cdtt_per_secs,
-          sum dtt_sum_client / sum dtt_count_client AS cdtt_avg,
-          sqrt ((sum dtt_count_client * sum dtt_square_sum_client -
-                 (sum dtt_sum_client)^2) /
-                (sum dtt_count_client * (sum dtt_count_client - 1)))
-            AS cdtt_stddev,
+          IF sum dtt_count_client = 0 THEN 0 ELSE
+            sum dtt_sum_client / sum dtt_count_client AS cdtt_avg,
+          IF sum dtt_count_client = 0 THEN 0 ELSE
+            sqrt ((sum dtt_count_client * sum dtt_square_sum_client -
+                   (sum dtt_sum_client)^2) /
+                  (sum dtt_count_client * (sum dtt_count_client - 1)))
+              AS cdtt_stddev,
           -- Data Transfer Time S2C
           sum dtt_count_server / $AVG$ AS sdtt_per_secs,
-          sum dtt_sum_server / sum dtt_count_server AS sdtt_avg,
-          sqrt ((sum dtt_count_server * sum dtt_square_sum_server -
-                 (sum dtt_sum_server)^2) /
-                (sum dtt_count_server * (sum dtt_count_server - 1)))
-            AS sdtt_stddev
+          IF sum dtt_count_server = 0 THEN 0 ELSE
+            sum dtt_sum_server / sum dtt_count_server AS sdtt_avg,
+          IF sum dtt_count_server = 0 THEN 0 ELSE
+            sqrt ((sum dtt_count_server * sum dtt_square_sum_server -
+                   (sum dtt_sum_server)^2) /
+                  (sum dtt_count_server * (sum dtt_count_server - 1)))
+              AS sdtt_stddev
         WHERE application = $ID$
-        EXPORT EVENT STARTING AT start * $AVG_INT$
-               WITH DURATION $AVG$
-        GROUP BY capture_begin // $AVG_INT$, protostack
+        GROUP BY capture_begin // $AVG_INT$
         COMMIT AND FLUSH WHEN
-          in.capture_begin > out.min_capture_begin + 2 * $AVG$|} |>
+          in.capture_begin > out.min_capture_begin + 2 * $AVG$
+        EXPORT EVENT STARTING AT start * $AVG_INT$
+               WITH DURATION $AVG$|} |>
       rep "$CSV$" csv |>
       rep "$ID$" (string_of_int bca.id) |>
       rep "$AVG_INT$" (string_of_int avg_window_int) |>
@@ -455,8 +557,7 @@ let layer_of_bcas bcas dataset_name =
            min min_capture_begin AS min_capture_begin,
            max max_capture_end AS max_capture_end,
            %gth percentile (
-            srtt_avg + crtt_avg + srt_avg + cdtt_avg +
-            coalesce(cdtt_avg, 0)) AS eurt
+            srtt_avg + crtt_avg + srt_avg + cdtt_avg + sdtt_avg) AS eurt
          EXPORT EVENT STARTING AT max_capture_end * 0.000001
                  WITH DURATION %g
          COMMIT AND SLIDE 1 WHEN
@@ -465,9 +566,8 @@ let layer_of_bcas bcas dataset_name =
          avg_per_app
          bca.percentile bca.avg_window nb_items_per_groups in
     make_node perc_per_obs_window_name op ;
-    let enc = Uri.pct_encode
     (* TODO: we need an hysteresis here! *)
-    and subject =
+    let subject =
       Printf.sprintf "EURT to %s is too large" bca.name
     and text =
       Printf.sprintf
@@ -475,15 +575,35 @@ let layer_of_bcas bcas dataset_name =
          above the configured maximum of %gs for the last %g minutes."
          bca.name bca.max_eurt (bca.obs_window /. 60.) in
     let ops =
-      (* When EURT is unknown we assume it's OK :-/ *)
       Printf.sprintf
         {|NOTIFY "http://localhost:876/notify?name=EURT%%20%s&firing=1&subject=%s&text=%s"
-          WHEN COALESCE(eurt, 0) > %g FROM '%s'|}
+          WHEN eurt > %g FROM '%s'|}
           (enc bca.name) (enc subject) (enc text)
           bca.max_eurt
           perc_per_obs_window_name
-    and name = Printf.sprintf "%s: EURT too high" bca.name in
-    make_node name ops
+    and name = bca.name ^": EURT too high" in
+    make_node name ops ;
+    let pred_node, anom_node =
+      anomaly_detection_nodes
+        bca.name
+        bca.avg_window
+        avg_per_app
+        [ "c2s_bytes_per_secs", false, [] ;
+          "s2c_bytes_per_secs", false, [] ;
+          "c2s_packets_per_secs", false, [] ;
+          "s2c_packets_per_secs", false, [] ;
+          "c2s_retrans_bytes_per_secs", false, [] ;
+          "s2c_retrans_bytes_per_secs", false, [] ;
+          "c2s_syns_per_secs", false, [] ;
+          "s2c_rsts_per_secs", false, [] ;
+          "close_per_secs", false, [] ;
+          "c2s_dupacks_per_secs", false, [] ;
+          "s2c_dupacks_per_secs", false, [] ;
+          "c2s_0wins_per_secs", false, [] ;
+          "s2c_0wins_per_secs", false, [] ;
+          (* etc... *) ]
+        3 in
+    all_nodes := pred_node :: anom_node :: !all_nodes
   in
   List.iter conf_of_bca bcas ;
   RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
