@@ -87,7 +87,12 @@ let shutdown debug ramen_url () =
     catch (fun () ->
       Client.get (Uri.of_string url) >>=
         fun _ -> return_unit)
-      (fun _exn -> return_unit))
+      (fun e ->
+        (match e with
+          Unix.Unix_error(Unix.ECONNREFUSED, "connect", "") ->
+           Printf.eprintf "Cannot connect to ramen. Is it really running?\n"
+         | _ -> ()) ;
+        return_unit))
 
 let resp_column_length = function
   | _typ, None, column -> column_length column
