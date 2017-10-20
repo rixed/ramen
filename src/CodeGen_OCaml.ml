@@ -495,9 +495,9 @@ and emit_expr ?state ~context oc expr =
       | [last] ->
         Printf.fprintf oc "(%a)" (conv_to ?state ~context t) last
       | e :: rest ->
-        Printf.fprintf oc "Option.default_delayed (fun () -> " ;
+        Printf.fprintf oc "(Option.default_delayed (fun () -> " ;
         loop rest ;
-        Printf.fprintf oc ") (%a)" (conv_to ?state ~context t) e
+        Printf.fprintf oc ") (%a))" (conv_to ?state ~context t) e
     in
     loop es
   (* Stateless arithmetic functions which actual funcname depends on operand types: *)
