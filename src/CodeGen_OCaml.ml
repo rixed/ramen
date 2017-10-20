@@ -1228,12 +1228,13 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
   and where_need_state =
     (* Tells whether the where expression needs a tuple that's only
      * available once we have retrieved the key and the group (because
-     * it uses the group tuple or build an aggregation on its own): *)
+     * it uses the group tuple or build a group-wise aggregation on its
+     * own): *)
     let open Expr in
     fold_by_depth (fun need expr ->
       need || match expr with
         | Field (_, tuple, _) -> tuple_need_state !tuple
-        | StatefulFun _ -> true
+        | StatefulFun (_, LocalState, _) -> true
         | _ -> false
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
