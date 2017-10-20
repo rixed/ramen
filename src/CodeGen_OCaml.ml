@@ -213,11 +213,12 @@ let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ
    * - reading a CSV string into a tuple type (when nullable fields are option type)
    * - given such a tuple, return its serialized size
    * - given a pointer toward the ring buffer, serialize the tuple *)
-  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n\
-    let () =\n\
-      \tLwt_main.run (\n\
-      \t\tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_ %S)\n"
+  Printf.fprintf oc
+     "open Batteries\nopen Stdint\n\n\
+     %a\n%a\n%a\n\
+     let () =\n\
+       \tLwt_main.run (\n\
+       \t\tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_ %S)\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
@@ -783,7 +784,7 @@ and emit_function oc ?state impl arg_typs es vt_specs_opt =
             i ;
           i + 1, true
         ) else (
-          Printf.fprintf oc "(let x%d_ = %a in "
+          Printf.fprintf oc "(let x%d_ =\n\t\t%a in "
             i
             (conv_to ?state ~context:Finalize arg_typ) e ;
           i + 1, had_nullable
@@ -1310,6 +1311,8 @@ let compile_source exec_name fname =
 let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
   let open Operation in
   with_code_file_for exec_name conf (fun oc ->
+    Printf.fprintf oc "(* Code generated for node:\n%a\n*)\n"
+      Lang.Operation.print op ;
     (match op with
     | Yield fields ->
       emit_yield oc in_tuple_typ out_tuple_typ fields
