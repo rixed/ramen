@@ -626,6 +626,14 @@ and emit_expr ?state ~context oc expr =
 
   (* Note: for InitState it is probably useless to check out_type.
    * For Finalize it is useful only to extract the types to be checked by Compiler. *)
+  (* TODO: If any value is null the whole percentile is going to be null,
+   * which is excessive because we could very easily compute good
+   * lower and upper bounds, and that's often all that's needed. So maybe
+   * the percentile should return 2 values? Or maybe we should have an
+   * additional boolean parameter to tell which of the bounds we are
+   * interested in? Or, if more function are like that, have a proper
+   * `bound` or `pair` type constructor, with `low/high` or `first/second`
+   * accessors? *)
   | InitState, StatefulFun (_, _, AggrPercentile (_p,e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     emit_functionN oc ?state "CodeGenLib.percentile_init" [None] [e]
   | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), _ ->

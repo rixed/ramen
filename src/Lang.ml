@@ -1356,7 +1356,7 @@ struct
           StatefulFun (make_typ "last aggregation", g, AggrLast e)) |||
        ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
         afun1_sf "percentile" >>: fun (p, (g, e)) ->
-          StatefulFun (make_num_typ ~nullable:false "percentile aggregation",
+          StatefulFun (make_num_typ "percentile aggregation",
                         g, AggrPercentile (p, e))) |||
        (afun2_sf "lag" >>: fun (g, e1, e2) ->
           StatefulFun (make_typ "lag", g, Lag (e1, e2))) |||
