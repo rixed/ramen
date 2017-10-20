@@ -226,12 +226,13 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       | exception Not_found ->
         !logger.debug "Cannot find field %s in in-tuple" field ;
         if in_type.C.finished_typing then (
+          (* Maybe we meant an out tuple field instead: *)
+          (* FIXME: do not look elsewhere if "in" was explicit! *)
           (* FIXME: that's nice and all, but maybe out was actually not allowed
            * here?  Fix idea: in addition to in_type and out_type, have more
            * context telling us what tuple we can reference - ideally not only
            * the tuple but the fields within those, because in a select we can
            * only refer to out tuple fields that have been defined earlier. *)
-          (* FIXME: also, do not look elsewhere if "in" was explicit! *)
           if Hashtbl.mem out_type.C.fields field then (
             !logger.debug "Field %s appears to belongs to out!" field ;
             tuple := TupleOut ;
@@ -884,38 +885,35 @@ let compile conf layer =
   | Compiling -> fail AlreadyCompiled
   | Edition _ ->
     !logger.debug "Trying to compile layer %s" layer.L.name ;
-    let%lwt () =
-      match untyped_dependency layer with
-      | None -> return_unit
-      | Some n -> fail (MissingDependency n) in
     C.Layer.set_status layer Compiling ;
-    let%lwt () = wrap (fun () -> set_all_types conf layer) in
-    let finished_typing =
-      Hashtbl.fold (fun _ node finished_typing ->
-          !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
-            node.N.name
-            C.print_temp_tup_typ node.N.in_type
-            C.print_temp_tup_typ node.N.out_type ;
-          finished_typing && node_typing_is_finished conf node
-        ) layer.L.persist.L.nodes true in
-    if not finished_typing then (
-      let e = SyntaxError CannotCompleteTyping in
-      C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
-      fail e
-    ) else (
-      let _, thds =
-        Hashtbl.fold (fun _ node (doing,thds) ->
-            (* Avoid compiling twice the same thing (TODO: a lockfile) *)
-            if Set.mem node.N.signature doing then doing, thds else (
-              Set.add node.N.signature doing,
-              compile_node conf node :: thds)
-          ) layer.L.persist.L.nodes (Set.empty, []) in
-      catch
-        (fun () ->
-          let%lwt () = join thds in
-          C.Layer.set_status layer Compiled ;
-          C.save_graph conf ;
-          return_unit)
-        (fun e ->
-          C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
-          fail e))
+    catch (fun () ->
+      let%lwt () =
+        match untyped_dependency layer with
+        | None -> return_unit
+        | Some n -> fail (MissingDependency n) in
+      let%lwt () = wrap (fun () -> set_all_types conf layer) in
+      let finished_typing =
+        Hashtbl.fold (fun _ node finished_typing ->
+            !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
+              node.N.name
+              C.print_temp_tup_typ node.N.in_type
+              C.print_temp_tup_typ node.N.out_type ;
+            finished_typing && node_typing_is_finished conf node
+          ) layer.L.persist.L.nodes true in
+      if not finished_typing then (
+        fail (SyntaxError CannotCompleteTyping)
+      ) else (
+        let _, thds =
+          Hashtbl.fold (fun _ node (doing,thds) ->
+              (* Avoid compiling twice the same thing (TODO: a lockfile) *)
+              if Set.mem node.N.signature doing then doing, thds else (
+                Set.add node.N.signature doing,
+                compile_node conf node :: thds)
+            ) layer.L.persist.L.nodes (Set.empty, []) in
+        let%lwt () = join thds in
+        C.Layer.set_status layer Compiled ;
+        C.save_graph conf ;
+        return_unit))
+      (fun e ->
+        C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
+        fail e)

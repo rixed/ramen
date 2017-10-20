@@ -55,7 +55,7 @@ struct
     | "Compiling" -> Compiling
     | "Compiled" -> Compiled
     | "Running" -> Running
-    | _ -> fail ()),
+    | x -> fail ("Unknown layer status "^x)),
     status_str
 
   type t =
@@ -78,11 +78,12 @@ struct
   | "TI64" -> TI64 | "TI128" -> TI128
   | "TEth" -> TEth | "TIpv4" -> TIpv4 | "TIpv6" -> TIpv6
   | "TCidrv4" -> TCidrv4 | "TCidrv6" -> TCidrv6
-  | _ -> fail ()
+  | "TNum" -> TNum
+  | x -> fail ("Unknown type "^x)
 
   type t =
-    { name : string ; nullable : bool ;
-      typ : scalar_typ ; typ_str : string ; typ_disp : string }
+    { name : string ; nullable : bool option ; typ : scalar_typ option ;
+      typ_str : string ; typ_disp : string }
 end
 
 module Node =
@@ -344,7 +345,7 @@ let edited_layer_of_layer = function
   (* edited_layer record for a new layer: *)
   { new_layer_name = ref "new layer name" ;
     edited_nodes = [ new_edited_node [] ] }
-| NoLayer -> fail ()
+| NoLayer -> fail "invalid edited layer NoLayer"
 
 let edited_layer =
   make_param "edited nodes" (edited_layer_of_layer NewLayer)
@@ -384,15 +385,21 @@ let type_spec_of_js r =
   list_init r##.length (fun i ->
     let t = Js.array_get r i in
     let name = Js.(Unsafe.get t "name_info" |> to_string)
-    and nullable = Js.(Unsafe.get t "nullable_info" |> to_bool)
-    and typ_str = Js.(Unsafe.get t "typ_info" |> get_variant) in
-    let typ = Field.type_of_string typ_str in
-    let typ_str =
-      if String.length typ_str > 0 && typ_str.[0] = 'T' then
-        String.sub typ_str 1 (String.length typ_str - 1)
-      else typ_str in
-    let typ_disp =
-      String.lowercase typ_str ^ (if nullable then " (or null)" else "") in
+    and nullable = Js.(Opt.map (Unsafe.get t "nullable_info" |> some) to_bool |> Opt.to_option)
+    and typ_str = Js.(Opt.map (Unsafe.get t "typ_info" |> some) get_variant |> Opt.to_option) in
+    let typ, typ_str, typ_disp = match typ_str with
+      | None -> None, "unknown type", "unknown type"
+      | Some ts ->
+        let typ_str =
+          if String.length ts > 0 && ts.[0] = 'T' then
+            String.sub ts 1 (String.length ts - 1)
+          else ts in
+        Some (Field.type_of_string ts),
+        typ_str,
+        String.lowercase typ_str ^ (match nullable with
+          | Some true -> " (or null)"
+          | Some false -> ""
+          | None -> " (unknown nullability)") in
     Field.{ name ; nullable ; typ ; typ_str ; typ_disp })
 
 let node_list_of_js r =
@@ -882,8 +889,8 @@ let input_panel =
       ol (List.map (fun f -> li [ field_panel f ]) node.input_type)))
 
 let can_plot_type = function
-    TFloat | TU8 | TU16 | TU32 | TU64 | TU128
-  | TI8 | TI16 | TI32 | TI64 | TI128 -> true
+    Some (TFloat | TU8 | TU16 | TU32 | TU64 | TU128 |
+          TI8 | TI16 | TI32 | TI64 | TI128) -> true
   | _ -> false
 
 let op_panel =
