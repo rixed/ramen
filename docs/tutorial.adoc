@@ -31,7 +31,7 @@ mount an external volume into the container's +/ramen+ directory).  Persisting
 the configuration allows you to stop and later restart the container without
 loosing the configuration.
 
-The port +29380+ is ramen's own port where it listen to HTTP queries. The UDP
+The port +29380+ is ramen's own port where it listens to HTTP queries. The UDP
 port +25826+ is for _collectd_ network protocol. By default, ramen listens for
 incoming collectd messages and will inject them. The docker image comes with an
 embedded +collectd+ that will monitor the container itself, but you could also

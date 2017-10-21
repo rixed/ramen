@@ -52,8 +52,8 @@ Configuration Graph::
 [[FQName]]
 Fully Qualified Name::
   The fully qualified name of a node is the name of the layer it belongs to,
-  then a slash ("/"), then the name of the node. It follows that FQ names are
-  globally unique.
+  then a slash ("/"), then the name of the node. Those FQ names are globally
+  unique.
 [[Layer]]
 Layer::
   A subgraph of the xref:ConfGraph[Configuration Graph]. Containing one or
@@ -1123,8 +1123,10 @@ So for example, shall we want to notify some service each time a employee named
 [source,sql]
 ----
 NOTIFY "http://i_found_waldo.com/?location=${location}"
-WHERE name = "Waldo"
+WHEN name = "Waldo"
 ----
+
+NOTE: +WHEN+ is an alias for +WHERE+.
 
 The result of the GET is discarded.
 
