@@ -101,17 +101,17 @@ struct
       parents : string list ;
       children : string list ;
 
-      in_tuple_count : int ;
-      out_tuple_count : int ;
-      sel_tuple_count : int ;
-      group_count : int option ;
+      in_tuple_count : float ;
+      out_tuple_count : float ;
+      sel_tuple_count : float ;
+      group_count : float option ;
 
       cpu_time : float ;
       ram_usage : int ;
       in_sleep : float ;
       out_sleep : float ;
-      in_bytes : int ;
-      out_bytes : int ;
+      in_bytes : float ;
+      out_bytes : float ;
       pid : int option ;
       signature : string option }
 
@@ -414,16 +414,16 @@ let update_nodes_sum () =
                          tot_out_sleep, tot_in_bytes, tot_out_bytes)
                         (_, n) ->
         let n = n.value in
-        tot_nodes +. 1., tot_ins +. float_of_int n.Node.in_tuple_count,
-        tot_sels +. float_of_int n.sel_tuple_count,
-        tot_outs +. float_of_int n.out_tuple_count,
-        tot_grps +. float_of_int (option_def 0 n.group_count),
+        tot_nodes +. 1., tot_ins +. n.Node.in_tuple_count,
+        tot_sels +. n.sel_tuple_count,
+        tot_outs +. n.out_tuple_count,
+        tot_grps +. (option_def 0. n.group_count),
         tot_cpu +. n.cpu_time,
         tot_ram +. float_of_int n.ram_usage,
         tot_in_sleep +. n.in_sleep,
         tot_out_sleep +. n.out_sleep,
-        tot_in_bytes +. float_of_int n.in_bytes,
-        tot_out_bytes +. float_of_int n.out_bytes
+        tot_in_bytes +. n.in_bytes,
+        tot_out_bytes +. n.out_bytes
       ) zero_sums nodes.value in
   set nodes_sum sum
 
@@ -464,18 +464,18 @@ let update_graph total g =
         output_type = type_spec_of_js Js.(Unsafe.get n "output_type") ;
         parents = node_list_of_js Js.(Unsafe.get n "parents") ;
         children = node_list_of_js Js.(Unsafe.get n "children") ;
-        in_tuple_count = Js.(Unsafe.get n "in_tuple_count" |> to_int) ;
-        out_tuple_count = Js.(Unsafe.get n "out_tuple_count" |> to_int) ;
+        in_tuple_count = Js.(Unsafe.get n "in_tuple_count" |> to_float) ;
+        out_tuple_count = Js.(Unsafe.get n "out_tuple_count" |> to_float) ;
         sel_tuple_count = Js.(Unsafe.get n "selected_tuple_count" |>
-                              to_int) ;
+                              to_float) ;
         group_count = Js.(Unsafe.get n "group_count" |> Opt.to_option |>
-                          option_map to_int) ;
+                          option_map to_float) ;
         cpu_time = Js.(Unsafe.get n "cpu_time" |> float_of_number) ;
         ram_usage = Js.(Unsafe.get n "ram_usage" |> to_int) ;
         in_sleep = Js.(Unsafe.get n "in_sleep" |> float_of_number) ;
         out_sleep = Js.(Unsafe.get n "out_sleep" |> float_of_number) ;
-        in_bytes = Js.(Unsafe.get n "in_bytes" |> to_int) ;
-        out_bytes = Js.(Unsafe.get n "out_bytes" |> to_int) ;
+        in_bytes = Js.(Unsafe.get n "in_bytes" |> to_float) ;
+        out_bytes = Js.(Unsafe.get n "out_bytes" |> to_float) ;
         pid = Js.(Unsafe.get n "pid" |> Opt.to_option |>
                   option_map to_int) ;
         signature = Js.(Unsafe.get n "signature" |> Opt.to_option |>
@@ -757,10 +757,14 @@ let node_tbody_row node =
   and tdfh tot x =
     if tot = 0. then tdf x else
     let w = 100. *. x /. tot in
-    tdh w (str_of_float x) in
+    tdh w (str_of_float x)
+  and tdfih tot x =
+    if tot = 0. then tdfi x else
+    let w = 100. *. x /. tot in
+    tdh w (string_of_float x) in
   let na = td [ clss "number" ; text "n.a." ] in
   let tdoi = function None -> na | Some v -> tdi v
-  and tdoih tot = function None -> na | Some v -> tdih tot v
+  and tdofih tot = function None -> na | Some v -> tdfih tot v
   in
   with_value nodes_sum (fun (_tot_nodes, tot_ins, tot_sels, tot_outs,
                              tot_grps, tot_cpu, tot_ram, tot_in_sleep,
@@ -769,18 +773,18 @@ let node_tbody_row node =
       [ tds node.Node.layer ;
         tds node.name ;
         tds node.type_of_operation ;
-        tdih tot_ins node.in_tuple_count ;
-        tdih tot_sels node.sel_tuple_count ;
-        tdih tot_outs node.out_tuple_count ;
-        tdoih tot_grps node.group_count ;
+        tdfih tot_ins node.in_tuple_count ;
+        tdfih tot_sels node.sel_tuple_count ;
+        tdfih tot_outs node.out_tuple_count ;
+        tdofih tot_grps node.group_count ;
         td [ clss "export" ;
              text (if node.exporting then "✓" else " ") ] ;
         tdfh tot_cpu node.cpu_time ;
         tdfh tot_in_sleep node.in_sleep ;
         tdfh tot_out_sleep node.out_sleep ;
         tdih tot_ram node.ram_usage ;
-        tdih tot_in_bytes node.in_bytes ;
-        tdih tot_out_bytes node.out_bytes ;
+        tdfih tot_in_bytes node.in_bytes ;
+        tdfih tot_out_bytes node.out_bytes ;
         tds (short_node_list node.layer node.parents) ;
         tds (short_node_list node.layer node.children) ;
         tdoi node.pid ;
