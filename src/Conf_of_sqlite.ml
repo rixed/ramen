@@ -108,7 +108,8 @@ struct
       obs_window = column db.get_bcas 3 |> to_float |> required ;
       percentile = column db.get_bcas 4 |> to_float |> required ;
       min_srt_count = column db.get_bcas 5 |> to_int |> default 0 ;
-      max_eurt = column db.get_bcas 6 |> to_float |> required }
+      (* ms in the DB *)
+      max_eurt = 0.001 *. (column db.get_bcas 6 |> to_float |> required) }
 end
 
 (* Query to get flow alert parameters.
