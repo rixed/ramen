@@ -99,13 +99,13 @@ let anomaly_detection_nodes name avg_window from timeseries threshold =
           let i, fields =
             List.fold_left (fun (i, fields) predictor ->
                 i+1,
-                (Printf.sprintf "%s %s) AS pred_%d_%s" predictor ts i ts) :: fields
+                (Printf.sprintf "%s%s) AS pred_%d_%s" predictor ts i ts) :: fields
               ) (0, fields) stand_alone_predictors in
           let _, fields =
             if preds <> [] then
               List.fold_left (fun (i, fields) multi_predictor ->
                   i + 1,
-                  (Printf.sprintf "%s %s, %s) AS pred_%d_%s" multi_predictor ts preds_str i ts) :: fields
+                  (Printf.sprintf "%s%s, %s) AS pred_%d_%s" multi_predictor ts preds_str i ts) :: fields
                 ) (i, fields) multi_predictors
             else i, fields in
           fields
