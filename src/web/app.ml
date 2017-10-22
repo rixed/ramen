@@ -240,16 +240,37 @@ let update_tail resp =
   done ;
   set tail_rows !rows
 
+(* For when we use it from an action handler: *)
+let can_export node =
+  match List.assoc node.Node.layer layers.value with
+    exception Not_found -> false
+  | layer ->
+    let status = layer.value.status in
+    node.exporting &&
+    (status = Compiled || status = Running)
+
+(* For when we use it to draw the DOM: *)
+let can_export_with_layer node cb =
+  match List.assoc node.Node.layer layers.value with
+    exception Not_found -> cb false
+  | layer ->
+    if not node.exporting then cb false
+    else
+      with_value layer (fun layer ->
+        let status = layer.status in
+        cb (status = Compiled || status = Running))
+
 let reload_tail () =
   match List.assoc sel_node.value nodes.value with
   | exception Not_found -> ()
   | node ->
     let node = node.value in
-    let content = object%js val max_results_ = -8 end
-    and path = "/export/"^ enc node.layer ^"/"^ enc node.name in
-    http_post path content (fun r ->
-      update_tail r ;
-      resync ())
+    if can_export node then
+      let content = object%js val max_results_ = -8 end
+      and path = "/export/"^ enc node.layer ^"/"^ enc node.name in
+      http_post path content (fun r ->
+        update_tail r ;
+        resync ())
 
 (* A list of field_name * points *)
 let chart_points = make_param "chart points" []
@@ -1196,14 +1217,20 @@ let dom =
             [ id "top" ; top_layers ;
               h1 "New layer configuration" ;
               layer_editor_panel ])
-      | _snode ->
-        group
-          [ div [ id "top" ; top_layers ; top_nodes ] ;
-            div
-              [ id "details" ;
-                div [ id "inputs" ; h1 "Input fields" ; input_panel ] ;
-                div [ id "operation" ; h1 "Operation" ; op_panel ] ] ;
-            output_panel ]) ]
+      | snode ->
+        match List.assoc snode nodes.value with
+        | exception Not_found -> group []
+        | node ->
+          let node = node.value in
+          group
+            [ div [ id "top" ; top_layers ; top_nodes ] ;
+              div
+                [ id "details" ;
+                  div [ id "inputs" ; h1 "Input fields" ; input_panel ] ;
+                  div [ id "operation" ; h1 "Operation" ; op_panel ] ] ;
+              can_export_with_layer node (function
+                true -> output_panel
+              | false -> p [ text "This node exports no data" ]) ]) ]
 
 let () =
   let rld_graph () =
