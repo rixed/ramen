@@ -279,17 +279,16 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
     else
       Array.make nb_vx 0. in
   (* per chart infos *)
-  let tot_vy = Hashtbl.create 11
+  let tot_vy = Jstable.create ()
   and tot_vys = ref 0. in
   iter_datasets (fun pen prim get ->
     if prim then for i = 0 to nb_vx-1 do
       let vy = get i in
       tot_vys := !tot_vys +. vy ;
-      match Hashtbl.find tot_vy pen.label with
-      | exception Not_found ->
-        Hashtbl.add tot_vy pen.label vy
-      | base ->
-        Hashtbl.replace tot_vy pen.label (base +. vy)
+      let pen_label = Js.string pen.label in
+      Js.Optdef.case (Jstable.find tot_vy pen_label)
+        (fun () -> Jstable.add tot_vy pen_label vy)
+        (fun base -> Jstable.add tot_vy pen_label (base +. vy))
     done) ;
   Formats.reset_all_states () ;
   (* The SVG *)
