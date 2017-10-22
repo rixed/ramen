@@ -526,20 +526,21 @@ let install_err_timeouting =
       resync ()) in
   ignore (Html.window##setInterval (Js.wrap_callback timeout_errs) 0_500.)
 
-let ajax action path ?content ?what cb =
+let ajax action path ?content ?what ?on_done on_ok =
   let req = XmlHttpRequest.create () in
   req##.onreadystatechange := Js.wrap_callback (fun () ->
     if req##.readyState = XmlHttpRequest.DONE then (
       print (Js.string "AJAX query DONE!") ;
       let js = Js._JSON##parse req##.responseText in
       let time = now () in
+      option_may (fun f -> f ()) on_done ;
       let last_error =
         if req##.status <> 200 then (
           print_2 (Js.string "AJAX query failed") js ;
           Some { message = Js.(Unsafe.get js "error" |> to_string) ;
                  time ; is_error = true }
         ) else (
-          cb js ;
+          on_ok js ;
           option_map (fun message ->
             { time ; message ; is_error = false }) what) in
       option_may (fun le ->
@@ -557,7 +558,11 @@ let ajax action path ?content ?what cb =
       Js.some (Js._JSON##stringify js) in
   req##send content
 
-let http_get path ?what cb = ajax "GET" path ?what cb
-let http_post path content ?what cb = ajax "POST" path ~content ?what cb
-let http_put path content ?what cb = ajax "PUT" path ~content ?what cb
-let http_del path ?what cb = ajax "DELETE" path ?what cb
+let http_get path ?what ?on_done on_ok =
+  ajax "GET" path ?what ?on_done on_ok
+let http_post path content ?what ?on_done on_ok =
+  ajax "POST" path ~content ?what ?on_done on_ok
+let http_put path content ?what ?on_done on_ok =
+  ajax "PUT" path ~content ?what ?on_done on_ok
+let http_del path ?what ?on_done on_ok =
+  ajax "DELETE" path ?what ?on_done on_ok

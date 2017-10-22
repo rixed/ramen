@@ -631,14 +631,16 @@ let icon_of_layer ?(suppress_action=false) layer =
       Some (fun _ ->
         Jstable.add spinners.value js_name while_ ;
         change spinners ;
-        http_get path ?what (fun status ->
-          (* FIXME: graph won't return a status so the following will
-           * fail for Compiling. Make all these return proper JSON RPC *)
+        http_get path ?what ~on_done:(fun () ->
           Jstable.delete spinners.value js_name ;
-          if Js.(Unsafe.get status "success" |> to_bool) then
-            http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
-              update_graph false g ;
-              resync ())))) in
+          change spinners)
+          (fun status ->
+            (* FIXME: graph won't return a status so the following will
+             * fail for Compiling. Make all these return proper JSON RPC *)
+            if Js.(Unsafe.get status "success" |> to_bool) then
+              http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
+                update_graph false g ;
+                resync ())))) in
   button ?action [
     clss "icon actionable" ;
     title alt ;
@@ -647,7 +649,6 @@ let icon_of_layer ?(suppress_action=false) layer =
 let editor_spinning = make_param "editor spinning" false
 
 let done_edit_layer_cb ?redirect_to_layer what status =
-  set editor_spinning false ;
   if Js.(Unsafe.get status "success" |> to_bool) then (
     Firebug.console##log (Js.string ("DONE "^ what)) ;
     reload_graph ?redirect_to_layer ()
@@ -656,9 +657,14 @@ let done_edit_layer_cb ?redirect_to_layer what status =
   )
 
 let del_layer layer_name =
+  let js_name = Js.string layer_name in
+  Jstable.add spinners.value js_name "deleting..." ;
   let path = "/graph/"^ enc layer_name
   and what = "Deleted "^ layer_name in
-  http_del path ~what (done_edit_layer_cb "delete")
+  http_del path ~what ~on_done:(fun () ->
+    Jstable.delete spinners.value js_name ;
+    change spinners)
+    (done_edit_layer_cb "delete")
 
 let layer_panel to_del layer =
   let is_to_del = to_del = layer.Layer.name in
@@ -1127,6 +1133,7 @@ let save_layer _ =
   and what = "Saved "^ !(edl.new_layer_name) in
   set editor_spinning true ;
   http_put path content ~what
+    ~on_done:(fun () -> set editor_spinning false)
     (done_edit_layer_cb ~redirect_to_layer:!(edl.new_layer_name) "save")
 
 let layer_editor_panel =
