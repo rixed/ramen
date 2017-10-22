@@ -58,6 +58,8 @@ html { background-color: #ddd; }
 h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 
 #layers div.layer, #layers button.new-layer { display: block; float: left; margin: 5px; }
+/* To accomodate the overwritten confirmation dialog: */
+#layers div.layer { min-width: 12em; }
 #layers div.warning { background-color: #eaa; border: 1.5px solid #eaa; }
 #layers div.warning * { visibility: hidden; }
 #layers div.overwrite1 { position: relative; top: 0; left:0; width: 0; height: 0; overflow: visible; color: #000; }
