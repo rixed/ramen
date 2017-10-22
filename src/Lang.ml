@@ -1233,11 +1233,12 @@ struct
       binary_ops_reducer ~op ~right_associative:true
                          ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
-    and afunv_sf a n m = (* "sf" stands for "stateful" *)
+    (* "sf" stands for "stateful" *)
+    and afunv_sf ?(def_state=GlobalState) a n m =
       let sep = opt_blanks -- char ',' -- opt_blanks in
       let m = n :: m in
       (strinG n -+
-       optional ~def:LocalState (blanks -+ state_lifespan) +-
+       optional ~def:def_state (blanks -+ state_lifespan) +-
        opt_blanks +- char '(' +- opt_blanks ++
        (if a > 0 then
          repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep
@@ -1249,30 +1250,30 @@ struct
          repeat ~what:"variadic arguments" ~sep lowest_prec_left_assoc) +-
        opt_blanks +- char ')') m
 
-    and afun_sf a n =
-      afunv_sf a n >>: fun (g, (a, r)) ->
+    and afun_sf ?def_state a n =
+      afunv_sf ?def_state a n >>: fun (g, (a, r)) ->
         if r = [] then g, a else
         raise (Reject "too many arguments")
 
-    and afun1_sf n =
+    and afun1_sf ?(def_state=GlobalState) n =
       let sep = check (char '(') ||| blanks in
-      (strinG n -+ optional ~def:LocalState (blanks -+ state_lifespan) +-
+      (strinG n -+ optional ~def:def_state (blanks -+ state_lifespan) +-
        sep ++ highestest_prec)
 
-    and afun2_sf n =
-      afun_sf 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
+    and afun2_sf ?def_state n =
+      afun_sf ?def_state 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
 
-    and afun2v_sf n =
-      afunv_sf 2 n >>: function (g, ([a;b], r)) -> g, a, b, r | _ -> assert false
+    and afun2v_sf ?def_state n =
+      afunv_sf ?def_state 2 n >>: function (g, ([a;b], r)) -> g, a, b, r | _ -> assert false
 
-    and afun3_sf n =
-      afun_sf 3 n >>: function (g, [a;b;c]) -> g, a, b, c | _ -> assert false
+    and afun3_sf ?def_state n =
+      afun_sf ?def_state 3 n >>: function (g, [a;b;c]) -> g, a, b, c | _ -> assert false
 
-    and afun3v_sf n =
-      afunv_sf 3 n >>: function (g, ([a;b;c], r)) -> g, a, b, c, r | _ -> assert false
+    and afun3v_sf ?def_state n =
+      afunv_sf ?def_state 3 n >>: function (g, ([a;b;c], r)) -> g, a, b, c, r | _ -> assert false
 
-    and afun4_sf n =
-      afun_sf 4 n >>: function (g, [a;b;c;d]) -> g, a, b, c, d | _ -> assert false
+    and afun4_sf ?def_state n =
+      afun_sf ?def_state 4 n >>: function (g, [a;b;c;d]) -> g, a, b, c, d | _ -> assert false
 
     and afunv a n m =
       let sep = opt_blanks -- char ',' -- opt_blanks in
@@ -1338,24 +1339,24 @@ struct
        (afun1 "log" >>: fun e -> StatelessFun (make_num_typ "logarithm", Log e)) |||
        (afun1 "sqrt" >>: fun e -> StatelessFun (make_num_typ "square root", Sqrt e)) |||
        (afun1 "hash" >>: fun e -> StatelessFun (make_typ ~typ:TI64 "hash", Hash e)) |||
-       (afun1_sf "min" >>: fun (g, e) ->
+       (afun1_sf ~def_state:LocalState "min" >>: fun (g, e) ->
           StatefulFun (make_num_typ "min aggregation", g, AggrMin e)) |||
-       (afun1_sf "max" >>: fun (g, e) ->
+       (afun1_sf ~def_state:LocalState "max" >>: fun (g, e) ->
           StatefulFun (make_num_typ "max aggregation", g, AggrMax e)) |||
-       (afun1_sf "sum" >>: fun (g, e) ->
+       (afun1_sf ~def_state:LocalState "sum" >>: fun (g, e) ->
           StatefulFun (make_num_typ "sum aggregation", g, AggrSum e)) |||
-       (afun1_sf "avg" >>: fun (g, e) ->
+       (afun1_sf ~def_state:LocalState "avg" >>: fun (g, e) ->
           StatefulFun (make_num_typ "sum aggregation", g, AggrAvg e)) |||
-       (afun1_sf "and" >>: fun (g, e) ->
+       (afun1_sf ~def_state:LocalState "and" >>: fun (g, e) ->
           StatefulFun (make_bool_typ "and aggregation", g, AggrAnd e)) |||
-       (afun1_sf "or" >>: fun (g, e) ->
+       (afun1_sf ~def_state:LocalState "or" >>: fun (g, e) ->
           StatefulFun (make_bool_typ "or aggregation", g, AggrOr e)) |||
-       (afun1_sf "first" >>: fun (g, e) ->
+       (afun1_sf ~def_state:LocalState "first" >>: fun (g, e) ->
           StatefulFun (make_typ "first aggregation", g, AggrFirst e)) |||
-       (afun1_sf "last" >>: fun (g, e) ->
+       (afun1_sf ~def_state:LocalState "last" >>: fun (g, e) ->
           StatefulFun (make_typ "last aggregation", g, AggrLast e)) |||
        ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
-        afun1_sf "percentile" >>: fun (p, (g, e)) ->
+        afun1_sf ~def_state:LocalState "percentile" >>: fun (p, (g, e)) ->
           StatefulFun (make_num_typ "percentile aggregation",
                         g, AggrPercentile (p, e))) |||
        (afun2_sf "lag" >>: fun (g, e1, e2) ->
@@ -1421,7 +1422,7 @@ struct
       let sep = check (char '(') ||| blanks in
       ((unsigned_decimal_number >>: Scalar.Parser.narrowest_int_scalar) +-
        (strinG "-moveavg" ||| strinG "-ma") ++
-       optional ~def:LocalState (blanks -+ state_lifespan) +-
+       optional ~def:GlobalState (blanks -+ state_lifespan) +-
        sep ++ highestest_prec >>: fun ((k, g), e) ->
          let k = Const (make_typ ~nullable:false ~typ:(scalar_type_of k)
                                  "moving average order", k) in
@@ -1562,7 +1563,7 @@ struct
         StatelessFun (typ, Abs (\
           StatelessFun (typ, Sub (\
             Field (typ, ref TupleIn, "bps"), \
-            StatefulFun (typ, LocalState, Lag (\
+            StatefulFun (typ, GlobalState, Lag (\
               Const (typ, VI8 (Int8.of_int 1)), \
               Field (typ, ref TupleIn, "bps"))))))), \
         (21, []))) \
@@ -2230,7 +2231,7 @@ struct
           fields = [\
             { expr = Expr.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
             { expr = Expr.(\
-                StatefulFun (typ, LocalState, Expr.Lag (\
+                StatefulFun (typ, GlobalState, Expr.Lag (\
                 Expr.Const (typ, VI8 (Int8.of_int 2)), \
                 Expr.Field (typ, ref TupleIn, "n")))) ;\
               alias = "l" } ] ;\

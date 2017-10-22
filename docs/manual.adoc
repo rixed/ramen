@@ -403,10 +403,11 @@ functions short of adding them directly into Ramen source code. Therefore,
 there is no real difference between 'operators' and 'functions'.
 
 It is more useful to distinguish between stateless and stateful functions,
-though. Function state (for those that have one) can be chosen to have
-either a global lifetime or a per-group lifetime. Most of the time you want
-a per-group lifetime and that is the default. Add "globally" after the
-function name to change this default.
+though. Function state (for those that have one) can be chosen to have either a
+global lifespan or a per-group lifespan. The default lifespan for aggregate
+functions is the group and the default lifespan for other stateful functions is
+global.  Add "globally" after the function name to force it to use the global
+lifespan and "locally" to force the per-group lifespan.
 
 ===== Boolean operators
 
