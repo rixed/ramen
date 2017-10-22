@@ -427,6 +427,10 @@ let update_nodes_sum () =
       ) zero_sums nodes.value in
   set nodes_sum sum
 
+(* Jstable of spinning layers *)
+let spinners = make_param "spinners" (Jstable.create ())
+let spinner_icon = "❍" (*"°"*)
+
 let update_graph total g =
   (* g is a JS array of layers *)
   (* Keep track of the layers we had to clean the extra ones at the end: *)
@@ -602,31 +606,39 @@ let with_node node_id f =
     | node -> f node.value)
 
 let icon_of_layer ?(suppress_action=false) layer =
-  let icon, path, alt, what =
+  let icon, path, alt, what, while_ =
     match layer.Layer.status with
     | Edition _ ->
       "✎", "/compile/"^ enc layer.Layer.name,
-      "compile", Some ("Compiled "^ layer.Layer.name)
+      "compile", Some ("Compiled "^ layer.Layer.name),
+      "compiling..."
     | Compiling ->
       "☐", "/graph/"^ enc layer.Layer.name,
-      "reload", None
+      "reload", None, "compiling..."
     | Compiled ->
       "☑", "/start/"^ enc layer.Layer.name,
-      "start", Some ("Started "^ layer.Layer.name)
+      "start", Some ("Started "^ layer.Layer.name),
+      "starting..."
     | Running ->
       "⚙", "/stop/"^ enc layer.Layer.name,
-      "stop", Some ("Stopped "^ layer.Layer.name)
+      "stop", Some ("Stopped "^ layer.Layer.name),
+      "stopping..."
   in
+  let js_name = Js.string layer.name in
   let action =
     if suppress_action then None
-    else Some (fun _ ->
-      http_get path ?what (fun status ->
-        (* FIXME: graph won't return a status so the following will
-         * fail. make all these return proper JSON RPC *)
-        if Js.(Unsafe.get status "success" |> to_bool) then
-          http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
-            update_graph false g ;
-            resync ()))) in
+    else (
+      Some (fun _ ->
+        Jstable.add spinners.value js_name while_ ;
+        change spinners ;
+        http_get path ?what (fun status ->
+          (* FIXME: graph won't return a status so the following will
+           * fail for Compiling. Make all these return proper JSON RPC *)
+          Jstable.delete spinners.value js_name ;
+          if Js.(Unsafe.get status "success" |> to_bool) then
+            http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
+              update_graph false g ;
+              resync ())))) in
   button ?action [
     clss "icon actionable" ;
     title alt ;
@@ -653,12 +665,19 @@ let layer_panel to_del layer =
     div
       [ clss "title" ;
         p [ clss "name" ; text layer.Layer.name ] ;
-        (let action =
-           if is_to_del then None
-           else Some (fun _ -> set layer_to_delete layer.name) in
-        button ?action
-          [ clss "actionable icon" ; title "delete" ; text "⌫" ]) ;
-        icon_of_layer ~suppress_action:is_to_del layer ] ;
+        with_value spinners (fun spins ->
+          Js.Optdef.case (Jstable.find spins (Js.string layer.name))
+            (fun () ->
+              group [
+                (let action =
+                   if is_to_del then None
+                   else Some (fun _ -> set layer_to_delete layer.name) in
+                button ?action
+                  [ clss "actionable icon" ; title "delete" ; text "⌫" ]) ;
+                icon_of_layer ~suppress_action:is_to_del layer ])
+              (fun while_ ->
+                button [ clss "icon spinning" ; title while_ ;
+                         text spinner_icon ])) ] ;
     div (
       clss "info" ::
       labeled_value "#nodes" (string_of_int layer.nb_nodes) ::

@@ -1,14 +1,23 @@
-* { margin:0; padding:0; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
 button { -webkit-appearance: none; }
-button:focus { outline:0; }
+button:focus { outline: 0; }
 .actionable:hover, button:hover { background-color: #e4e4e4; }
 .actionable { cursor: pointer; border: outset 1.5px #eee; background-color: #ddd; }
 .selected { border: outset 1.5px #eee; background-color: #eee; }
 .selected-actionable { border: outset 1.5px #eee; background-color: #eee; cursor: pointer; }
+@keyframes rotation { to {transform: rotate(360deg);} }
+.spinning {
+  border: 0;
+  background-color: transparent;
+  cursor: default;
+  animation: rotation 0.3s linear infinite;
+  font-weight: 2000;
+}
+.spinning:hover { background-color: transparent; }
 
 table { border-collapse: collapse; border-spacing: 10; }
 td, th { padding: 0 1em 0 1em; }
-tfoot td, th { font-weight: bold; }
+tfoot td, th { font-weight: 700; }
 span.null { font-style: italic; color: #888; font-size: 80%; }
 .spacer { flex-grow: 10; }
 
@@ -63,7 +72,7 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #layers .name, #layers .info p { padding-left: 6px; padding-right: 4px; }
 #layers .name { padding-top: 4px; }
 #layers .info:last-of-type { padding-bottom: 4px; }
-#layers button.icon { padding: 5px; }
+#layers button.icon { width: 3em; height: 3em; }
 #layers button.new-layer { float: none; padding: 0.5em; font-weight: 700; clear: left; }
 
 #nodes thead th { border: 1px solid #ccc; }
