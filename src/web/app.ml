@@ -644,7 +644,10 @@ let icon_of_layer ?(suppress_action=false) layer =
     title alt ;
     text icon ]
 
+let editor_spinning = make_param "editor spinning" false
+
 let done_edit_layer_cb ?redirect_to_layer what status =
+  set editor_spinning false ;
   if Js.(Unsafe.get status "success" |> to_bool) then (
     Firebug.console##log (Js.string ("DONE "^ what)) ;
     reload_graph ?redirect_to_layer ()
@@ -1122,6 +1125,7 @@ let save_layer _ =
     end
   and path = "/graph"
   and what = "Saved "^ !(edl.new_layer_name) in
+  set editor_spinning true ;
   http_put path content ~what
     (done_edit_layer_cb ~redirect_to_layer:!(edl.new_layer_name) "save")
 
@@ -1133,12 +1137,26 @@ let layer_editor_panel =
         h2 "Nodes" ;
         group (List.map node_editor_panel edl.edited_nodes) ;
         br ;
-        button ~action:(fun _ -> add_edited_node ())
-          [ clss "actionable" ; text "+" ] ;
-        button ~action:(fun _ -> set sel_layer NoLayer)
-          [ clss "actionable" ; text "Cancel" ] ;
-        button ~action:save_layer
-          [ clss "actionable" ; text "Save" ] ])
+        with_value editor_spinning (fun spinning ->
+          group
+            [ if spinning then
+                button [ text "+" ]
+              else
+                button ~action:(fun _ -> add_edited_node ())
+                  [ clss "actionable" ; text "+" ] ;
+              if spinning then
+                button [ text "Cancel" ]
+              else
+                button ~action:(fun _ -> set sel_layer NoLayer)
+                  [ clss "actionable" ; text "Cancel" ] ;
+              if spinning then
+                button [ text "Save" ]
+              else
+                button ~action:save_layer
+                  [ clss "actionable" ; text "Save" ] ;
+              if spinning then
+                button [ clss "spinning" ; text spinner_icon ]
+              else group [] ]) ])
 
 let output_panel =
   div
