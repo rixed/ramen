@@ -1816,7 +1816,8 @@ struct
            strinG "duration" -- blanks -+ (
              (non_keyword ++ scale >>: fun n -> DurationField n) |||
              (number >>: fun n -> DurationConst n)) |||
-           blanks -- strinG "and" -- blanks -- strinG "stopping" -- blanks --
+           blanks -- strinG "and" -- blanks --
+           (strinG "stopping" ||| strinG "ending") -- blanks --
            strinG "at" -- blanks -+
              (non_keyword ++ scale >>: fun n -> StopField n)))
         >>: fun (start_field, duration) -> Some (start_field, duration)

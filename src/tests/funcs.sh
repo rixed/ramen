@@ -69,10 +69,6 @@ upload() {
 
 add_node() {
   LAYER_CMD="$LAYER_CMD --op '$1:$2'"
-  while test -n "$3" ; do
-    LAYER_CMD="$LAYER_CMD"
-    shift
-  done
 }
 
 add_123() {

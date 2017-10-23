@@ -445,7 +445,8 @@ let rec conv_to ?state ~context to_typ fmt e =
 (* state is just the name of the state that's "opened" in the local environment,
  * ie "global_" if we are initializing the global state or "local_" if we are
  * initializing the group state or nothing (empty string) if we are not initializing
- * anything and state fields must be accessed via the actual state record. *)
+ * anything and state fields must be accessed via the actual state record.
+ * It is used by stateful functions when they need to access their state. *)
 (* FIXME: return a list of type * arg instead of two lists *)
 and emit_expr ?state ~context oc expr =
   let open Expr in
@@ -1060,15 +1061,15 @@ let emit_state_init name state_lifespan other_state_vars
    * states. And we must do this in a depth first fashion, since a function
    * state might require the value of another function, which must thus
    * already be initialized and ready to fire its first value. *)
-  (* In the special case where we do not have any state at all, though, we
-   * end up with an empty record, which is illegal in OCaml so we need to
-   * specialize for this: *)
   let for_each_unpure_fun_my_lifespan f =
     for_each_unpure_fun selected_fields where commit_when flush_when (function
       | Lang.Expr.StatefulFun (_, lifespan, _) as e when lifespan = state_lifespan ->
         f e
       | _ -> ())
   in
+  (* In the special case where we do not have any state at all, though, we
+   * end up with an empty record, which is illegal in OCaml so we need to
+   * specialize for this: *)
   let need_state =
     try
       for_each_unpure_fun_my_lifespan (fun _ -> raise Exit);
