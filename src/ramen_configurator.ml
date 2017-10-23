@@ -1,4 +1,5 @@
 open Batteries
+open Helpers
 open RamenLog
 module N = RamenSharedTypes.Node
 
@@ -86,11 +87,14 @@ let traffic_node ?where dataset_name name dt =
  * things. A good trade-off is to have one node per BCN/BCA.
  * For each timeseries to predict, we also pass a list of other timeseries that
  * we think are good predictors. *)
-let anomaly_detection_nodes name avg_window from timeseries threshold =
+let anomaly_detection_nodes avg_window from timeseries =
   assert (timeseries <> []) ;
+  let threshold =
+    round_to_int (0.2 *. float_of_int (List.length timeseries)) |>
+    max 1 in
   let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ]
   and multi_predictors = [ "fit_multi(" ] in
-  let predictor_name = name ^": predictions" in
+  let predictor_name = from ^": predictions" in
   let predictor_node =
     let predictions =
       List.fold_left (fun fields (ts, _nullable, preds) ->
@@ -160,7 +164,7 @@ let anomaly_detection_nodes name avg_window from timeseries threshold =
         (enc subject) (enc text)
         condition
         threshold in
-    make_node (name ^": anomalies") op in
+    make_node (from ^": anomalies") op in
   predictor_node, anomaly_node
 
 let base_layer dataset_name delete csv_dir =
@@ -429,16 +433,13 @@ let layer_of_bcas bcas dataset_name =
   in
   let conf_of_bca bca =
     let open Conf_of_sqlite.BCA in
-    let avg_window_int = int_of_float (bca.avg_window *. 1_000_000.0) in
-    let avg_per_app =
-      Printf.sprintf "%s: averages every %gs"
-        bca.name bca.avg_window in
+    let avg_window_int = int_of_float bca.avg_window in
+    let avg_per_app = bca.name in
     let csv = rebase dataset_name "csv" in
     let op =
       {|FROM '$CSV$' SELECT
           -- Key
-          (capture_begin // $AVG_INT$) AS start,
-          min capture_begin, max capture_end,
+          (capture_begin * 0.000001 // $AVG_INT$) * $AVG_INT$ AS start,
           -- Traffic
           sum traffic_bytes_client / $AVG$ AS c2s_bytes_per_secs,
           sum traffic_bytes_server / $AVG$ AS s2c_bytes_per_secs,
@@ -520,8 +521,8 @@ let layer_of_bcas bcas dataset_name =
         WHERE application = $ID$
         GROUP BY capture_begin // $AVG_INT$
         COMMIT AND FLUSH WHEN
-          in.capture_begin > out.min_capture_begin + 2 * $AVG$
-        EXPORT EVENT STARTING AT start * $AVG_INT$
+          in.capture_begin * 0.000001 > out.start + 2 * $AVG$
+        EXPORT EVENT STARTING AT start
                WITH DURATION $AVG$|} |>
       rep "$CSV$" csv |>
       rep "$ID$" (string_of_int bca.id) |>
@@ -538,20 +539,17 @@ let layer_of_bcas bcas dataset_name =
       (* Note: The event start at the end of the observation window and lasts
        * for one avg window! *)
       (* EURT = RTTs + SRT + DTTs (DTT server to client being optional *)
+      (* FIXME: sum of percentiles rather than percentiles of avg *)
       Printf.sprintf
         {|FROM '%s' SELECT
            min start, max start,
-           min min_capture_begin AS min_capture_begin,
-           max max_capture_end AS max_capture_end,
            %gth percentile (
             srtt_avg + crtt_avg + srt_avg + cdtt_avg + sdtt_avg) AS eurt
-         EXPORT EVENT STARTING AT max_capture_end * 0.000001
-                 WITH DURATION %g
+         EXPORT EVENT STARTING AT min_start AND STOPPING AT max_start
          COMMIT AND SLIDE 1 WHEN
            group.#count >= %d OR
            in.start > out.max_start + 5|}
-         avg_per_app
-         bca.percentile bca.avg_window nb_items_per_groups in
+         avg_per_app bca.percentile nb_items_per_groups in
     make_node perc_per_obs_window_name op ;
     (* TODO: we need an hysteresis here! *)
     let subject =
@@ -572,7 +570,6 @@ let layer_of_bcas bcas dataset_name =
     make_node name ops ;
     let pred_node, anom_node =
       anomaly_detection_nodes
-        bca.name
         bca.avg_window
         avg_per_app
         [ "c2s_bytes_per_secs", false, [] ;
@@ -588,8 +585,14 @@ let layer_of_bcas bcas dataset_name =
           "s2c_dupacks_per_secs", false, [] ;
           "c2s_0wins_per_secs", false, [] ;
           "s2c_0wins_per_secs", false, [] ;
-          (* etc... *) ]
-        3 in
+          "ct_avg", false, [] ;
+          "srt_avg", false, [] ;
+          "crtt_avg", false, [] ;
+          "srtt_avg", false, [] ;
+          "crd_avg", false, [] ;
+          "srd_avg", false, [] ;
+          "cdtt_avg", false, [] ;
+          "sdtt_avg", false, [] ] in
     all_nodes := pred_node :: anom_node :: !all_nodes
   in
   List.iter conf_of_bca bcas ;
@@ -600,7 +603,8 @@ let get_config_from_db db =
 
 let ddos_layer dataset_name =
   let layer_name = rebase dataset_name "DDoS" in
-  let op_new_peers avg_win rem_win =
+  let avg_win = 60 and rem_win = 3600 in
+  let op_new_peers =
     let avg_win_us = avg_win * 1_000_000 in
     {|FROM '$CSV$' SELECT
        (capture_begin // $AVG_WIN_US$) AS start,
@@ -630,11 +634,15 @@ let ddos_layer dataset_name =
     rep "$REM_WIN$" (string_of_int rem_win) |>
     rep "$CSV$" (rebase dataset_name "csv") in
   let global_new_peers =
-    make_node "new peers" (op_new_peers 60 3600)
-  in
+    make_node "new peers" op_new_peers in
+  let pred_node, anom_node =
+    anomaly_detection_nodes
+      (float_of_int avg_win) "new peers"
+      [ "nb_new_cnxs_per_secs", false, [] ;
+        "nb_new_clients_per_secs", false, [] ] in
   RamenSharedTypes.{
     name = layer_name ;
-    nodes = [ global_new_peers ] }
+    nodes = [ global_new_peers ; pred_node ; anom_node ] }
 
 (* Daemon *)
 
