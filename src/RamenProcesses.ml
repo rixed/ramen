@@ -157,7 +157,8 @@ let run conf layer =
               if not (List.mem input_ringbuf lines) then (
                 File.write_lines out_ref (List.enum (input_ringbuf :: lines)) ;
                 !logger.info "Adding %s into %s, now %s outputs to %a (before: %a)"
-                  input_ringbuf out_ref parent.N.name file_print out_ref (List.print String.print) lines)
+                  input_ringbuf out_ref parent.N.name file_print out_ref
+                  (List.print String.print) lines)
           ) node.N.parents
       ) layer.persist.nodes ;
     L.set_status layer Running ;
