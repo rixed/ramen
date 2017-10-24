@@ -793,11 +793,11 @@ let set_all_types _conf layer =
    *)
 
   (*$= & ~printer:BatPervasives.identity
-     "ok" (test_type_single_node "SELECT 1-1 AS x")
-     "ok" (test_type_single_node "SELECT 1-200 AS x")
-     "ok" (test_type_single_node "SELECT 1-4000000000 AS x")
-     "ok" (test_type_single_node "SELECT SEQUENCE AS x")
-     "ok" (test_type_single_node "SELECT 0 AS zero, 1 AS one, SEQUENCE AS seq")
+     "ok" (test_type_single_node "SELECT 1-1 AS x FROM foo")
+     "ok" (test_type_single_node "SELECT 1-200 AS x FROM foo")
+     "ok" (test_type_single_node "SELECT 1-4000000000 AS x FROM foo")
+     "ok" (test_type_single_node "SELECT SEQUENCE AS x FROM foo")
+     "ok" (test_type_single_node "SELECT 0 AS zero, 1 AS one, SEQUENCE AS seq FROM foo")
    *)
 
   (*$= test_check_expr & ~printer:(fun x -> x)

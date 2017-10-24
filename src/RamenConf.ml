@@ -317,6 +317,7 @@ let parse_operation operation =
     let open Lang in
     raise (SyntaxError (ParseError { error ; text = operation }))
   | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
+    Lang.Operation.check op ;
     op
 
 let add_layer ?timeout conf name =

@@ -2,6 +2,7 @@
 open Batteries
 open RamenSharedTypesJS
 open RamenSharedTypes
+open RamenLog
 open Stdint
 
 type tuple_prefix =
@@ -28,7 +29,7 @@ let string_of_prefix = function
 type syntax_error =
   | ParseError of { error : string ; text : string }
   | NotConstant of string
-  | TupleNotAllowed of { tuple : tuple_prefix ; clause : string ;
+  | TupleNotAllowed of { tuple : tuple_prefix ; where : string ;
                          allowed : tuple_prefix list }
   | StatefulNotAllowed of { clause : string }
   | FieldNotInTuple of { field : string ; tuple : tuple_prefix ;
@@ -53,9 +54,9 @@ let string_of_syntax_error =
     ParseError { error ; text } ->
     "Parse error: "^ error ^" while parsing: "^ text
   | NotConstant s -> h ^ s ^" is not constant"
-  | TupleNotAllowed { tuple ; clause ; allowed } ->
-    "Invalid tuple '"^ string_of_prefix tuple ^"'; in a "^ clause ^
-    " clause, all fields must come from " ^
+  | TupleNotAllowed { tuple ; where ; allowed } ->
+    "Invalid tuple '"^ string_of_prefix tuple ^"'; in a "^ where ^
+    ", all fields must come from " ^
       (IO.to_string
         (List.print ~first:"" ~last:"" ~sep:" or " tuple_prefix_print)
         allowed)
@@ -1755,6 +1756,99 @@ struct
     | ListenFor _ | ReadCSVFile _ | Yield _ -> []
     | Aggregate { from ; _ } -> from
 
+  (* Check that the expression is valid, or return an error message.
+   * Also perform some optimisation, numeric promotions, etc... *)
+  let check =
+    let pure_in clause = StatefulNotAllowed { clause }
+    and fields_must_be_from tuple where allowed =
+      TupleNotAllowed { tuple ; where ; allowed } in
+    let pure_in_where = pure_in "WHERE"
+    and pure_in_key = pure_in "GROUP-BY"
+    and pure_in_top = pure_in "TOP"
+    and check_pure e =
+      Expr.unpure_iter (fun _ -> raise (SyntaxError e))
+    and check_fields_from lst where =
+      Expr.iter (function
+        | Expr.Field (_, tuple, _) ->
+          if not (List.mem !tuple lst) then (
+            let m = fields_must_be_from !tuple where lst in
+            raise (SyntaxError m)
+          )
+        | _ -> ())
+    and check_export fields = function
+      | None -> ()
+      | Some None -> ()
+      | Some (Some ((start_field, _), duration)) ->
+        let check_field_exists f =
+          if not (List.exists (fun sf -> sf.alias = f) fields) then
+            let m = FieldNotInTuple { field = f ; tuple = TupleOut ;
+                                      tuple_type = "" (* TODO *) } in
+            raise (SyntaxError m)
+        in
+        check_field_exists start_field ;
+        match duration with
+        | DurationConst _ -> ()
+        | DurationField (f, _)
+        | StopField (f, _) -> check_field_exists f
+    in
+    let check_stateful_fields =
+      (* Check that any stateful functions uses only the in tuple, which is
+       * the only tuple available when initializing the group or global
+       * state. *)
+      Expr.unpure_iter (fun e ->
+          let func_name = Expr.(typ_of e).expr_name in
+          !logger.info "Check that the is only tuple-in in %s" func_name ;
+          check_fields_from [TupleIn]
+            ("stateful function ("^ func_name ^")") e)
+    in function
+    | Yield fields ->
+      List.iter (fun sf ->
+          let e = StatefulNotAllowed { clause = "YIELD" } in
+          check_pure e sf.expr ;
+          check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD clause" sf.expr
+        ) fields
+      (* TODO: check unicity of aliases *)
+    | Aggregate { fields ; where ; key ; top ; commit_when ;
+                  flush_when ; flush_how ; export ; from ; _ } ->
+      List.iter (fun sf ->
+          check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr ;
+          check_stateful_fields sf.expr
+        ) fields ;
+      check_export fields export ;
+      (* TODO: we could allow this if we had not only a state per group but
+       * also a global state. But then in some place we would need a way to
+       * distinguish between group or global context. *)
+      check_pure pure_in_where where ;
+      check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOut] "WHERE clause" where ;
+      List.iter (fun k ->
+        check_pure pure_in_key k ;
+        check_fields_from [TupleIn] "Group-By KEY" k) key ;
+      Option.may (fun (n, by) ->
+        (* TODO: Check also that it's an unsigned integer: *)
+        Expr.check_const "TOP size" n ;
+        (* The [by] expression must be something we can use as a weight for
+         * the input tuple, so a stateless number. *)
+        check_pure pure_in_top by ;
+        check_fields_from [TupleIn] "TOP clause" by) top ;
+      check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
+      check_stateful_fields commit_when ;
+      Option.may (fun flush_when ->
+          check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN clause" flush_when ;
+          check_stateful_fields flush_when
+        ) flush_when ;
+      (match flush_how with
+      | Reset | Slide _ -> ()
+      | RemoveAll e | KeepOnly e ->
+        let m = StatefulNotAllowed { clause = "KEEP/REMOVE" } in
+        check_pure m e ;
+        check_fields_from [TupleGroup] "REMOVE clause" e) ;
+      if from = [] then
+        raise (SyntaxError (MissingClause { clause = "FROM" }))
+      (* TODO: check from is not empty *)
+      (* TODO: url_notify: check field names from text templates *)
+      (* TODO: check unicity of aliases *)
+    | ReadCSVFile _ | ListenFor _ -> ()
+
   module Parser =
   struct
     (*$< Parser *)
@@ -2280,86 +2374,6 @@ struct
                         separator \"\\t\" null \"<NULL>\" \\
                         (f1 bool, f2 i32 not null)")
     *)
-
-    (* Check that the expression is valid, or return an error message.
-     * Also perform some optimisation, numeric promotions, etc... *)
-    let check =
-      let pure_in clause = StatefulNotAllowed { clause }
-      and fields_must_be_from tuple clause allowed =
-        TupleNotAllowed { tuple ; clause ; allowed } in
-      let pure_in_where = pure_in "WHERE"
-      and pure_in_key = pure_in "GROUP-BY"
-      and pure_in_top = pure_in "TOP"
-      and check_pure e =
-        Expr.unpure_iter (fun _ -> raise (SyntaxError e))
-      and check_fields_from lst clause =
-        Expr.iter (function
-          | Expr.Field (_, tuple, _) ->
-            if not (List.mem !tuple lst) then (
-              let m = fields_must_be_from !tuple clause lst in
-              raise (SyntaxError m)
-            )
-          | _ -> ())
-      and check_export fields = function
-        | None -> ()
-        | Some None -> ()
-        | Some (Some ((start_field, _), duration)) ->
-          let check_field_exists f =
-            if not (List.exists (fun sf -> sf.alias = f) fields) then
-              let m = FieldNotInTuple { field = f ; tuple = TupleOut ;
-                                        tuple_type = "" (* TODO *) } in
-              raise (SyntaxError m)
-          in
-          check_field_exists start_field ;
-          match duration with
-          | DurationConst _ -> ()
-          | DurationField (f, _)
-          | StopField (f, _) -> check_field_exists f
-      in function
-      | Yield fields ->
-        List.iter (fun sf ->
-            let e = StatefulNotAllowed { clause = "YIELD" } in
-            check_pure e sf.expr ;
-            check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD" sf.expr
-          ) fields
-        (* TODO: check unicity of aliases *)
-      | Aggregate { fields ; where ; key ; top ; commit_when ;
-                    flush_when ; flush_how ; export ; from ; _ } ->
-        List.iter (fun sf ->
-            check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT" sf.expr
-          ) fields ;
-        check_export fields export ;
-        (* TODO: we could allow this if we had not only a state per group but
-         * also a global state. But then in some place we would need a way to
-         * distinguish between group or global context. *)
-        check_pure pure_in_where where ;
-        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOut] "WHERE" where ;
-        List.iter (fun k ->
-          check_pure pure_in_key k ;
-          check_fields_from [TupleIn] "KEY" k) key ;
-        Option.may (fun (n, by) ->
-          (* TODO: Check also that it's an unsigned integer: *)
-          Expr.check_const "TOP size" n ;
-          (* The [by] expression must be something we can use as a weight for
-           * the input tuple, so a stateless number. *)
-          check_pure pure_in_top by ;
-          check_fields_from [TupleIn] "TOP" by) top ;
-        check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN" commit_when ;
-        Option.may (fun flush_when ->
-            check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN" flush_when
-          ) flush_when ;
-        (match flush_how with
-        | Reset | Slide _ -> ()
-        | RemoveAll e | KeepOnly e ->
-          let m = StatefulNotAllowed { clause = "KEEP/REMOVE" } in
-          check_pure m e ;
-          check_fields_from [TupleGroup] "REMOVE" e) ;
-        if from = [] then
-          raise (SyntaxError (MissingClause { clause = "FROM" }))
-        (* TODO: check from is not empty *)
-        (* TODO: url_notify: check field names from text templates *)
-        (* TODO: check unicity of aliases *)
-      | ReadCSVFile _ | ListenFor _ -> ()
 
     (*$>*)
   end
