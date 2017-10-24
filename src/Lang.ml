@@ -42,6 +42,7 @@ type syntax_error =
   | InvalidCoalesce of { what : string ; must_be_nullable : bool }
   | CannotCompleteTyping
   | CannotGenerateCode of { node : string ; cmd : string ; status : string }
+  | AliasNotUnique of string
 
 exception SyntaxError of syntax_error
 
@@ -84,6 +85,8 @@ let string_of_syntax_error =
     Printf.sprintf
       "Cannot generate code: compilation of node %S with command %S %s"
       node cmd status
+  | AliasNotUnique name ->
+    "Alias is not unique: "^ name
 
 let () =
   Printexc.register_printer (function
@@ -1810,10 +1813,14 @@ struct
       (* TODO: check unicity of aliases *)
     | Aggregate { fields ; where ; key ; top ; commit_when ;
                   flush_when ; flush_how ; export ; from ; _ } ->
-      List.iter (fun sf ->
+      List.fold_left (fun prev_aliases sf ->
           check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr ;
-          check_stateful_fields sf.expr
-        ) fields ;
+          check_stateful_fields sf.expr ;
+          (* Check unicity of aliases *)
+          if List.mem sf.alias prev_aliases then
+            raise (SyntaxError (AliasNotUnique sf.alias)) ;
+          sf.alias :: prev_aliases
+        ) [] fields |> ignore;
       check_export fields export ;
       (* TODO: we could allow this if we had not only a state per group but
        * also a global state. But then in some place we would need a way to
@@ -1844,9 +1851,8 @@ struct
         check_fields_from [TupleGroup] "REMOVE clause" e) ;
       if from = [] then
         raise (SyntaxError (MissingClause { clause = "FROM" }))
-      (* TODO: check from is not empty *)
       (* TODO: url_notify: check field names from text templates *)
-      (* TODO: check unicity of aliases *)
+
     | ReadCSVFile _ | ListenFor _ -> ()
 
   module Parser =
