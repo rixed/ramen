@@ -1,0 +1,36 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/../.."
+. $top_srcdir/src/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_123
+# Check we can refer to fields from out defined erlier:
+add_node n1 "FROM test/123 SELECT max n, max_n+1 AS max_n_p1 EXPORT COMMIT WHEN group.#count = 3"
+
+# We also can do an aggregate function within another one:
+add_node n2 "FROM test/123 SELECT max (1 + max u8(n)) as max_np1 EXPORT COMMIT WHEN group.#count = 3"
+# FIXME: we should not need this u8 cast
+# (see https://github.com/PerformanceVision/ramen/issues/101)
+
+# Here max(np1) is not correct because we cannot init a stateful function with
+# member of out tuple, even when declared earlier.  In theory, we'd like init
+# to be able to build the fields of out that it needs (here, to compute
+# in.n+1). This would probably require to have the same function compute the
+# out tuple and the init aggr, field by field, which requires a redesign of the
+# aggregation function. So for now all we want is to detect this case and
+# return an error whenever the argument of a stateful function requires a tuple
+# that is not available to the group_init function (aka all but the in tuple).
+# This is the exact same restriction for the commit/flush clause as their state
+# are initialized and updated at the same time as the select clause states of
+# course.  Notice that we can access inner functions states (so for instance,
+# "max (1 + max)" works).  What we can't access is fields from the out tuple.
+#add_node n3 "FROM test/123 SELECT n+1 as np1, max np1 EXPORT COMMIT WHEN max np1 > 2"
+
+run
+check_equal '3,4' "$(tail_ 1 n1)"
+check_equal '4' "$(tail_ 1 n2)"
+#check_equal '4,4' "$(tail_ 1 n3)"

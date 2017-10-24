@@ -232,6 +232,7 @@ long-check: ramen
 	./tests/fit_multi
 	./tests/upload
 	./tests/word_count
+	./tests/tuples
 
 include $(top_srcdir)/make.common
 
