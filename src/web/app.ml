@@ -579,6 +579,8 @@ let breadcrumbs =
               p [ text (Node.name_of_id snode) ] ])) ]
 
 let autoreload = make_param "autoreload" true
+let display_temp = make_param "display temp layers" false
+let is_temp layer_name = string_starts_with "temp/" layer_name
 
 let spacer = div [ clss "spacer" ]
 
@@ -593,10 +595,15 @@ let header_panel =
                 em [ text "$HOSTNAME$." ] ] ] ;
         breadcrumbs ;
         spacer ;
+        with_value display_temp (fun disp ->
+          let title = (if disp then "do not " else "")^
+                      "display temporary layers" in
+          button ~action:(fun _ -> toggle display_temp)
+            [ clss ("icon actionable" ^ if disp then " selected" else "") ;
+              attr "title" title ; text "temp." ]) ;
         with_value autoreload (fun ar ->
           let title = (if ar then "dis" else "en")^ "able auto-reload" in
-          button ~action:(fun _ ->
-              set autoreload (not autoreload.value))
+          button ~action:(fun _ -> toggle autoreload)
             [ clss ("icon actionable" ^ if ar then " selected" else "") ;
               attr "title" title ; text "⟳" ]) ] ;
       with_value last_errors (fun lst ->
@@ -749,12 +756,16 @@ let layer_panel to_del layer =
 
 let layers_panel =
   div [
-    with_value layers (fun layers ->
-      with_value layer_to_delete (fun to_del ->
-        List.fold_left (fun lst (_, p) ->
-          with_value p (layer_panel to_del) :: lst) [] layers |>
-        List.rev |>
-        group)) ;
+    with_value display_temp (fun disp_temp ->
+      with_value layers (fun layers ->
+        with_value layer_to_delete (fun to_del ->
+          List.fold_left (fun lst (_, p) ->
+            with_value p (fun layer ->
+              if disp_temp || not (is_temp layer.Layer.name) then
+                layer_panel to_del layer
+              else group []) :: lst) [] layers |>
+          List.rev |>
+          group))) ;
     button ~action:(fun _ ->
         set sel_layer NewLayer ;
         set edited_layer (edited_layer_of_layer NewLayer) ;
@@ -906,20 +917,22 @@ let nodes_panel =
         node_thead_col col :: lst) [] node_columns |>
       List.rev |> tr ] ;
     (* Table body *)
-    with_value nodes (fun nodes ->
-      with_value sel_top_column (fun sel_col ->
-        with_value sel_layer (fun sel_lay ->
-          (* Build a list of params sorted according to sel_top_column: *)
-          let rows =
-            nodes |>
-            List.filter (fun (_, p) ->
-              sel_lay = NoLayer || sel_lay = NewLayer ||
-              sel_lay = ExistingLayer p.value.Node.layer) |>
-            List.fold_left (fun lst p -> p :: lst) [] |>
-            List.fast_sort (node_sorter sel_col) in
-          List.map (fun (_, p) ->
-            with_value p node_tbody_row) rows |>
-          tbody))) ;
+    with_value display_temp (fun disp_temp ->
+      with_value nodes (fun nodes ->
+        with_value sel_top_column (fun sel_col ->
+          with_value sel_layer (fun sel_lay ->
+            (* Build a list of params sorted according to sel_top_column: *)
+            let rows =
+              nodes |>
+              List.filter (fun (_, p) ->
+                ((disp_temp || not (is_temp p.value.Node.layer)) &&
+                 (sel_lay = NoLayer || sel_lay = NewLayer)) ||
+                sel_lay = ExistingLayer p.value.Node.layer) |>
+              List.fold_left (fun lst p -> p :: lst) [] |>
+              List.fast_sort (node_sorter sel_col) in
+            List.map (fun (_, p) ->
+              with_value p node_tbody_row) rows |>
+            tbody)))) ;
     with_value nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
                                tot_grps, tot_cpu, tot_ram, tot_in_sleep,
                                tot_out_sleep, tot_in_bytes,
