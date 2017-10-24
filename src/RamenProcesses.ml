@@ -143,11 +143,17 @@ let run conf layer =
             if parent.N.layer <> layer.name then
               let out_ref =
                 out_ringbuf_names_ref conf parent in
-              (* The parent ringbuf must exist at that point. If the parent is
-               * not running then it will overwrite it when it starts, with
-               * whatever running children it will have at that time (including
-               * us, if we are still running). *)
-              let lines = File.lines_of out_ref |> List.of_enum in
+              (* The parent ringbuf might not exist yet if it has never been
+               * started. If the parent is not running then it will overwrite
+               * it when it starts, with whatever running children it will
+               * have at that time (including us, if we are still running).
+               *)
+              let lines =
+                try File.lines_of out_ref |> List.of_enum
+                with Sys_error _ ->
+                  mkdir_all ~is_file:true out_ref ;
+                  []
+                in
               if not (List.mem input_ringbuf lines) then (
                 File.write_lines out_ref (List.enum (input_ringbuf :: lines)) ;
                 !logger.info "Adding %s into %s, now %s outputs to %a (before: %a)"
