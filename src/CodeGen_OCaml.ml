@@ -919,7 +919,7 @@ let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
 let emit_where
       ?(with_group=false) ?(always_true=false)
       name in_tuple_typ mentioned and_all_others oc expr =
-  Printf.fprintf oc "let %s virtual_in_count_ %a %a \
+  Printf.fprintf oc "let %s global_ virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a "
     name
@@ -928,7 +928,7 @@ let emit_where
     (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_tuple_typ ;
   if with_group then
-    Printf.fprintf oc "virtual_group_count_ virtual_group_successive_ group_ global_ %a %a "
+    Printf.fprintf oc "virtual_group_count_ virtual_group_successive_ group_ %a %a "
       (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
   if always_true then
@@ -1023,13 +1023,13 @@ let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
 
-let for_each_unpure_fun selected_fields where commit_when flush_when f =
+let for_each_unpure_fun selected_fields ?where ?commit_when ?flush_when f =
   List.iter (fun sf ->
       Expr.unpure_iter f sf.Operation.expr
     ) selected_fields ;
-  Expr.unpure_iter f where ;
-  Expr.unpure_iter f commit_when ;
-  Option.may (fun flush_when -> Expr.unpure_iter f flush_when) flush_when
+  Option.may (Expr.unpure_iter f) where ;
+  Option.may (Expr.unpure_iter f) commit_when ;
+  Option.may (Expr.unpure_iter f) flush_when
 
 let otype_of_state e =
   let open Expr in
@@ -1054,15 +1054,17 @@ let otype_of_state e =
   if Option.get typ.nullable then t ^" option" else t
 
 let emit_state_init name state_lifespan other_state_vars
+      ?where ?commit_when ?flush_when
       in_tuple_typ mentioned and_all_others
-      where commit_when flush_when oc selected_fields =
+      oc selected_fields =
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
    * states. And we must do this in a depth first fashion, since a function
    * state might require the value of another function, which must thus
    * already be initialized and ready to fire its first value. *)
   let for_each_unpure_fun_my_lifespan f =
-    for_each_unpure_fun selected_fields where commit_when flush_when (function
+    for_each_unpure_fun selected_fields ?where ?commit_when ?flush_when
+      (function
       | Lang.Expr.StatefulFun (_, lifespan, _) as e when lifespan = state_lifespan ->
         f e
       | _ -> ())
@@ -1111,8 +1113,9 @@ let emit_state_init name state_lifespan other_state_vars
   )
 
 let emit_state_update name state_var other_state_vars state_lifespan
+      ?where ?commit_when ?flush_when
       in_tuple_typ mentioned and_all_others
-      where commit_when flush_when oc selected_fields =
+      oc selected_fields =
   Printf.fprintf oc "let %s %a %a =\n"
     name
     (List.print ~first:"" ~last:"" ~sep:" " String.print)
@@ -1120,7 +1123,8 @@ let emit_state_update name state_var other_state_vars state_lifespan
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   (* Note that for_each_unpure_fun proceed depth first so inner functions
    * state will be updated first, which is what we want. *)
-  for_each_unpure_fun selected_fields where commit_when flush_when (function
+  for_each_unpure_fun selected_fields ?where ?commit_when ?flush_when
+    (function
     | Lang.Expr.StatefulFun (_, lifespan, _) as e when lifespan = state_lifespan ->
       Printf.fprintf oc "\t%s.%s <- (%a) ;\n"
         state_var
@@ -1228,11 +1232,10 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       | Reset | Slide _ -> all_exprs
       | RemoveAll e | KeepOnly e -> e :: all_exprs in
     add_all_mentioned_in_expr all_exprs
-  and where_need_state =
-    (* Tells whether the where expression needs a tuple that's only
-     * available once we have retrieved the key and the group (because
-     * it uses the group tuple or build a group-wise aggregation on its
-     * own): *)
+  and where_need_group =
+    (* Tells whether we need the group to check the where clause (because it
+     * uses the group tuple or build a group-wise aggregation on its own,
+     * despite this is forbidden in Lang.Operation.check): *)
     let open Expr in
     fold_by_depth (fun need expr ->
       need || match expr with
@@ -1247,17 +1250,18 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     | Some flush_when -> when_to_check_group_for_expr flush_when
   in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" Lang.Expr.GlobalState [] in_tuple_typ mentioned and_all_others where commit_when flush_when) selected_fields
-    (emit_state_update "global_update_" "global_" [] Lang.Expr.GlobalState in_tuple_typ mentioned and_all_others where commit_when flush_when) selected_fields
-    (emit_state_init "group_init_" Lang.Expr.LocalState ["global_"] in_tuple_typ mentioned and_all_others where commit_when flush_when) selected_fields
-    (emit_state_update "group_update_" "group_" ["global_"] Lang.Expr.LocalState in_tuple_typ mentioned and_all_others where commit_when flush_when) selected_fields
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    (emit_state_init "global_init_" Lang.Expr.GlobalState [] ~where ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
+    (emit_state_update "global_update_" "global_" [] Lang.Expr.GlobalState ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
+    (emit_state_update "global_update_for_where_" "global_" [] Lang.Expr.GlobalState ~where in_tuple_typ mentioned and_all_others) []
+    (emit_state_init "group_init_" Lang.Expr.LocalState ["global_"] ~where ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
+    (emit_state_update "group_update_" "group_" ["global_"] Lang.Expr.LocalState ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
-    (if where_need_state then
+    (if where_need_group then
       emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
     else
       emit_where "where_fast_" in_tuple_typ mentioned and_all_others) where
-    (if not where_need_state then
+    (if not where_need_group then
       emit_where "where_slow_" ~with_group:true ~always_true:true in_tuple_typ mentioned and_all_others
     else
       emit_where "where_slow_" ~with_group:true in_tuple_typ mentioned and_all_others) where
@@ -1281,7 +1285,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
            read_tuple_ sersize_of_tuple_ serialize_group_ generate_tuples_ \
            tuple_of_group_ where_fast_ where_slow_ key_of_input_ top_ \
            commit_when_ %s flush_when_ %s should_resubmit_ \
-           global_init_ global_update_ group_init_ group_update_ \
+           global_init_ global_update_ global_update_for_where_ \
+           group_init_ group_update_ \
            field_of_tuple_ %S)\n"
     when_to_check_for_commit when_to_check_for_flush notify_url
 

@@ -525,16 +525,17 @@ let aggregate
        * the aggregate look up) but if it uses only the incoming
        * tuple then we can use only where_fast. *)
       (where_fast :
+        'global_state ->
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
         bool)
       (where_slow :
+        'global_state ->
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
-        'global_state ->
         'tuple_in -> 'tuple_in -> (* first, last *)
         bool)
       (key_of_input : 'tuple_in -> 'key)
@@ -562,6 +563,7 @@ let aggregate
       (should_resubmit : ('aggr, 'tuple_in, 'generator_out) aggr_value -> 'tuple_in -> bool)
       (global_init : 'tuple_in -> 'global_state)
       (global_update : 'global_state -> 'tuple_in -> unit)
+      (global_update_for_where : 'global_state -> 'tuple_in -> unit)
       (group_init : 'global_state -> 'tuple_in -> 'aggr)
       (group_update : 'aggr -> 'global_state -> 'tuple_in -> unit)
       (field_of_tuple : 'tuple_in -> string -> string)
@@ -709,7 +711,11 @@ let aggregate
             if must flush_when a then (k, a)::l else l) h [] in
         commit_and_flush_list to_commit to_flush
       in
+      (* Regardless of the result of the WHERE filter we want to update
+       * the fields of the global state that are used in the where clause: *)
+      global_update_for_where (Option.get !global_state) in_tuple ;
       (if where_fast
+           (Option.get !global_state)
            in_count in_tuple last_in
            !selected_count !selected_successive last_selected
            !unselected_count !unselected_successive last_unselected
@@ -737,11 +743,11 @@ let aggregate
             let fields = group_init (Option.get !global_state) in_tuple
             and one = Uint64.one in
             if where_slow
+                 (Option.get !global_state)
                  in_count in_tuple last_in
                  !selected_count !selected_successive last_selected
                  !unselected_count !unselected_successive last_unselected
                  one one fields
-                 (Option.get !global_state)
                  in_tuple in_tuple
             then (
               global_update (Option.get !global_state) in_tuple ;
@@ -817,11 +823,11 @@ let aggregate
             ) else None
           | aggr -> (* Key already in the hash *)
             if where_slow
+                 (Option.get !global_state)
                  in_count in_tuple last_in
                  !selected_count !selected_successive last_selected
                  !unselected_count !unselected_successive last_unselected
                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
-                 (Option.get !global_state)
                  aggr.first_in aggr.last_in
             then (
               global_update (Option.get !global_state) in_tuple ;

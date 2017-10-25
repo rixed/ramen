@@ -32,6 +32,7 @@ type syntax_error =
   | TupleNotAllowed of { tuple : tuple_prefix ; where : string ;
                          allowed : tuple_prefix list }
   | StatefulNotAllowed of { clause : string }
+  | GroupStateNotAllowed of { clause : string }
   | FieldNotInTuple of { field : string ; tuple : tuple_prefix ;
                          tuple_type : string }
   | MissingClause of { clause : string }
@@ -63,6 +64,8 @@ let string_of_syntax_error =
         allowed)
   | StatefulNotAllowed { clause } ->
     "Stateful function not allowed in "^ clause ^" clause"
+  | GroupStateNotAllowed { clause } ->
+    "Group context not allowed in "^ clause ^" clause"
   | FieldNotInTuple { field ; tuple ; tuple_type } ->
     "Field "^ field ^" is not in the "^ string_of_prefix tuple ^" tuple"^
     (if tuple_type <> "" then " (which is "^ tuple_type ^")" else "")
@@ -1365,6 +1368,8 @@ struct
                         g, AggrPercentile (p, e))) |||
        (afun2_sf "lag" >>: fun (g, e1, e2) ->
           StatefulFun (make_typ "lag", g, Lag (e1, e2))) |||
+       (afun1_sf "lag" >>: fun (g, e) ->
+          StatefulFun (make_typ "lag", g, Lag (expr_one, e))) |||
 
        (* avg perform a division thus the float type *)
        (afun3_sf "season_moveavg" >>: fun (g, e1, e2, e3) ->
@@ -1763,13 +1768,17 @@ struct
    * Also perform some optimisation, numeric promotions, etc... *)
   let check =
     let pure_in clause = StatefulNotAllowed { clause }
+    and no_group clause = GroupStateNotAllowed { clause }
     and fields_must_be_from tuple where allowed =
       TupleNotAllowed { tuple ; where ; allowed } in
-    let pure_in_where = pure_in "WHERE"
-    and pure_in_key = pure_in "GROUP-BY"
+    let pure_in_key = pure_in "GROUP-BY"
     and pure_in_top = pure_in "TOP"
     and check_pure e =
       Expr.unpure_iter (fun _ -> raise (SyntaxError e))
+    and check_no_group e =
+      Expr.unpure_iter (function
+        | StatefulFun (_, LocalState, _) -> raise (SyntaxError e)
+        | _ -> ())
     and check_fields_from lst where =
       Expr.iter (function
         | Expr.Field (_, tuple, _) ->
@@ -1822,10 +1831,8 @@ struct
           sf.alias :: prev_aliases
         ) [] fields |> ignore;
       check_export fields export ;
-      (* TODO: we could allow this if we had not only a state per group but
-       * also a global state. But then in some place we would need a way to
-       * distinguish between group or global context. *)
-      check_pure pure_in_where where ;
+      (* Disallow group state in WHERE because it makes no sense: *)
+      check_no_group (no_group "WHERE") where ;
       check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOut] "WHERE clause" where ;
       List.iter (fun k ->
         check_pure pure_in_key k ;

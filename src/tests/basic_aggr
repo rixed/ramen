@@ -4,7 +4,7 @@ set -e
 top_srcdir=$(dirname $0)"/../.."
 . $top_srcdir/src/tests/funcs.sh
 
-expected_tests=7
+expected_tests=8
 
 start
 add_cars
@@ -39,3 +39,11 @@ check_equal 'false' "$(tail_ 1 a3)"
 check_equal 'false' "$(tail_ 1 o1)"
 check_equal 'false' "$(tail_ 1 o2)"
 check_equal 'true' "$(tail_ 1 o3)"
+
+# Check stateful functions in where clauses
+reset
+start
+add_123
+add_node n "SELECT n FROM test/123 WHERE lag n = 2 EXPORT"
+run
+check_equal '3' "$(tail_ 1 n)"
