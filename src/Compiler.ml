@@ -855,7 +855,10 @@ let compile_node conf node =
     !logger.debug "Reusing binary %S" exec_name ;
     return_unit
   ) else
-    let%lwt status = Lwt_unix.system comp_cmd in
+    (* TODO: return an array of arguments and get rid of the shell *)
+    let cmd = Lwt_process.shell comp_cmd in
+    let cmd_name = "compilation of "^ node.N.name in
+    let%lwt status = run_coprocess cmd_name cmd in
     if status = Unix.WEXITED 0 then (
       !logger.debug "Compiled %s with: %s" node.N.name comp_cmd ;
       return_unit

@@ -350,3 +350,21 @@ let random_string =
   fun len ->
     Bytes.init len random_char |>
     Bytes.to_string
+
+(* Run given command using Lwt, logging its output in our log-file *)
+let run_coprocess cmd_name cmd =
+  let open Lwt in
+  Lwt_process.with_process_full cmd (fun process ->
+    let%lwt () = Lwt_io.close process#stdin in
+    let read_lines c =
+      try%lwt
+        Lwt_io.read_lines c |>
+        Lwt_stream.iter (fun line ->
+          !logger.info "%s: %s" cmd_name line)
+      with exc ->
+        let msg = Printexc.to_string exc in
+        !logger.error "%s: Cannot read output: %s" cmd_name msg ;
+        return_unit in
+    join [ read_lines process#stdout ;
+           read_lines process#stderr ] >>
+    process#status)
