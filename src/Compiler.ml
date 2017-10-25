@@ -89,6 +89,8 @@ let set_nullable typ nullable =
 (* Improve to_ while checking compatibility with from.
  * Numerical types of to_ can be enlarged to match those of from. *)
 let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
+  !logger.debug "Improving %a from %a"
+    Expr.print_typ to_ Expr.print_typ from ;
   let changed =
     match to_.Expr.scalar_typ, from.Expr.scalar_typ with
     | None, Some _ ->
@@ -112,6 +114,8 @@ let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
     | None -> changed
     | Some from_null -> set_nullable to_ from_null
   else changed
+
+let finished_typing = function TNum | TAny -> false | _ -> true
 
 (* Check that this expression fulfill the type expected by the caller (exp_type).
  * Also, improve exp_type (set typ and nullable, enlarge numerical types ...).
@@ -165,22 +169,25 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   let check_op op_typ make_op_typ ?(propagate_null=true) args =
     (* First we check the operands: do they comply with the expected types
      * (enlarging them if necessary)? *)
-    let changed, types, nullables =
-      List.fold_left (fun (changed, prev_sub_types, prev_nullables)
+    let changed, all_typed, types, nullables =
+      List.fold_left (fun (changed, all_typed,
+                           prev_sub_types, prev_nullables)
                           (exp_sub_typ, exp_sub_nullable, sub_expr) ->
           let changed =
             check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr ||
             changed in
           let typ = typ_of sub_expr in
           match typ.scalar_typ, prev_sub_types with
-          | _, None -> changed, None, [] (* already failed *)
-          | None, _ -> changed, None, [] (* failing now *)
+          | _, None (* already failed *) | None, _ (* failing now *) ->
+            changed, false, None, []
           | Some scal, Some lst ->
-            changed, Some (scal :: lst), (typ.nullable :: prev_nullables)
-        ) (false, Some [], []) args in
-    (* Given the types of the operands, what is the type of the operator? *)
+            changed, all_typed && finished_typing scal,
+            Some (scal :: lst), (typ.nullable :: prev_nullables)
+        ) (false, true, Some [], []) args in
+    (* If we have typed all the operands, find out the type of the
+     * operator. *)
     match types with
-    | Some lst ->
+    | Some lst when all_typed ->
       (* List.fold inverted lst and nullables lists, which would confuse
        * make_op_typ: *)
       let lst = List.rev lst and nullables = List.rev nullables in
@@ -192,7 +199,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           else None
         else None in
       check_operator op_typ actual_op_typ nullable || changed
-    | None -> changed
+    | _ -> changed
   in
   let rec check_variadic op_typ ?(propagate_null=true) ?exp_sub_typ ?exp_sub_nullable = function
     | [] -> false
@@ -590,7 +597,7 @@ let check_selected_fields ~in_type ~out_type fields =
                 typ.expr_name <- name ;
                 typ
             in
-            !logger.debug "Adding out field %s (operation: %s)" name typ.Expr.expr_name ;
+            !logger.debug "Adding out-field %s (operation: %s)" name typ.Expr.expr_name ;
             Hashtbl.add out_type.C.fields name (ref (Some i), typ) ;
             typ
           | rank, typ ->

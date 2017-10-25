@@ -12,9 +12,7 @@ add_123
 add_node n1 "FROM test/123 SELECT max n, max_n+1 AS max_n_p1 EXPORT COMMIT WHEN group.#count = 3"
 
 # We also can do an aggregate function within another one:
-add_node n2 "FROM test/123 SELECT max (1 + max u8(n)) as max_np1 EXPORT COMMIT WHEN group.#count = 3"
-# FIXME: we should not need this u8 cast
-# (see https://github.com/PerformanceVision/ramen/issues/101)
+add_node n2 "FROM test/123 SELECT max (1 + max n) as max_np1 EXPORT COMMIT WHEN group.#count = 3"
 
 # Here max(np1) is not correct because we cannot init a stateful function with
 # member of out tuple, even when declared earlier.  In theory, we'd like init
