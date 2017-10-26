@@ -13,7 +13,7 @@ remove: [make "bin_dir=%{prefix}%/bin" "uninstall"]
 depends: [
   "lwt"
   "batteries"
-  "stdint" {>= "0.4.3"}
+  "stdint" {>= "0.5.0"}
   "parsercombinator"
   "cohttp-lwt-unix"
   "inotify"
