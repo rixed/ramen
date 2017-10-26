@@ -2305,13 +2305,13 @@ struct
               Field (typ, ref TupleOut, "start")))) ; \
           flush_when = None ; flush_how = Reset ;\
           from = ["foo"] },\
-          (210, [])))\
+          (200, [])))\
           (test_p p "select min start as start, \\
                             max stop as max_stop, \\
                             (sum packets)/$avg_window as packets_per_sec \\
                      from foo \\
                      group by start / (1_000_000 * $avg_window) \\
-                     commit and flush when out.start < (max group.first.start) + 3600" |>\
+                     commit when out.start < (max group.first.start) + 3600" |>\
            replace_typ_in_op)
 
       (Ok (\
@@ -2330,8 +2330,8 @@ struct
                 Const (typ, VI8 (Int8.one)))),\
               Const (typ, VI8 (Int8.of_int 5))))) ;\
           flush_when = None ; flush_how = Reset ; from = ["foo"] },\
-          (57, [])))\
-          (test_p p "select 1 as one from foo commit and flush when sum 1 >= 5" |>\
+          (47, [])))\
+          (test_p p "select 1 as one from foo commit when sum 1 >= 5" |>\
            replace_typ_in_op)
 
       (Ok (\

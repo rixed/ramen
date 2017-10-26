@@ -169,11 +169,11 @@ narrower than what you intended. Let's see an example:
 [source,sql]
 ----
   SELECT status, SUM err_count AS per_status_err_count GROUP BY status
-    COMMIT AND FLUSH WHEN per_status_err_count > 1000
+    COMMIT WHEN per_status_err_count > 1000
 ----
 
 Here the intend is to accumulate the error count until there are at least
-1000 or them. But if err_ount is a u8, the SUM will accumulate the error
+1000 or them. But if err_count is a u8, the SUM will accumulate the error
 counts in an u8 which will silently wrap around after 255. Therefore the ending
 condition (`per_status_err_count > 1000`) will never be met.  To solve this
 issue simply add a cast:
@@ -181,7 +181,7 @@ issue simply add a cast:
 [source,sql]
 ----
   SELECT status, SUM u16(err_count) AS per_status_err_count GROUP BY status
-    COMMIT AND FLUSH WHEN per_status_err_count > 1000
+    COMMIT WHEN per_status_err_count > 1000
 ----
 
 ==== Network addresses

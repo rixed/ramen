@@ -14,6 +14,6 @@ add_node p1 \
    max(min horsepower) as first_2,
    min(max horsepower) as first_3
  EXPORT
- COMMIT AND FLUSH WHEN group.#count >= $nb_cars"
+ COMMIT WHEN group.#count >= $nb_cars"
 run
 check_equal '552,552,552' "$(tail_ 1 p1)"

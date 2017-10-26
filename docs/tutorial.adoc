@@ -287,7 +287,7 @@ SELECT
 FROM demo/collectd
 WHERE COALESCE (plugin = "memory", false)
 GROUP BY host, time // 30
-COMMIT AND FLUSH WHEN in.time > previous.time + 30
+COMMIT WHEN in.time > previous.time + 30
 EXPORT EVENT STARTING AT time WITH DURATION 30
 ----
 
@@ -339,7 +339,7 @@ emission of a result and the emptying of the window to restart the cycle with
 new inputs.
 
 In ramen, the control over the windowing is very fine grained, but the above
-+COMMIT AND FLUSH WHEN ...some condition...+ is basically just that: when the
++COMMIT WHEN ...some condition...+ is basically just that: when the
 condition is met, the current aggregation emits a result and the accumulated
 data is reset. Still, you should be intrigued by the condition itself:
 +in.time > previous.time + 30+. For the first time, we see that field names
@@ -356,13 +356,13 @@ that those two tuples have different types: "in" has fields "time",
 with the tuple name to disambiguate the expression.
 
 There are many different tuples that you can address in the various clauses of
-an expression beside the "in" and the "previous" tuple, so that rich behavior
+an expression beside the "in" and the "previous" tuple so that rich behavior
 can be obtained, but let's not dive into this for now. The overall meaning of
-this +COMMIT AND FLUSH+  expression should be clear though: we want to
-aggregate the tuples until we receive a tuple which time is greater than the
-max time we have added into our group by at least 30 seconds. This assumes we will
-receive collectd events in roughly chronological order. We could wait longer
-than 30s to leave some time for lagging events.
+this +COMMIT+ expression should be clear though: we want to aggregate the
+tuples until we receive a tuple which time is greater than the max time we have
+added into our group by at least 30 seconds. This assumes we will receive
+collectd events in roughly chronological order. We could wait longer than 30s
+to leave some time for lagging events.
 
 === Conditionals
 
@@ -592,7 +592,7 @@ If we did:
 [source,sql]
 ----
 SELECT word, SUM 1 AS count FROM splitter GROUP BY word
-COMMIT AND FLUSH WHEN out.count <> previous.count
+COMMIT WHEN out.count <> previous.count
 ----
 
 ...then we would have a succession of tuple with all counts equal to 2, emitted

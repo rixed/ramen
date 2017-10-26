@@ -28,7 +28,7 @@ let run_background cmd args env =
   | 0 ->
     close_fd 0 ;
     for i = 3 to 255 do
-      try close_fd i with Unix.Unix_error(Unix.EBADF, _, _) -> ()
+      try close_fd i with Unix.Unix_error (Unix.EBADF, _, _) -> ()
     done ;
     execve cmd args env
   | pid -> pid

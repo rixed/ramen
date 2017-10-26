@@ -15,7 +15,7 @@ add_node n2 "
   FROM test/n1
   WHERE seq < 30
   EXPORT
-  COMMIT AND FLUSH WHEN group.#count=10
+  COMMIT WHEN group.#count=10
 "
 run
 

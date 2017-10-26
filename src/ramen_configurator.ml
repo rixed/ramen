@@ -66,7 +66,7 @@ let traffic_node ?where dataset_name name dt =
      EXPORT EVENT STARTING AT start * $DT$
              WITH DURATION $DT$
      GROUP BY capture_begin // $DT_US$
-     COMMIT AND FLUSH WHEN
+     COMMIT WHEN
        in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)|} |>
     rep "$DT$" (string_of_int dt) |>
     rep "$DT_US$" (string_of_int dt_us) |>
@@ -341,7 +341,7 @@ let layer_of_bcns bcns dataset_name =
           EXPORT EVENT STARTING AT start * %g
                  WITH DURATION %g
           GROUP BY capture_begin // %d
-          COMMIT AND FLUSH WHEN
+          COMMIT WHEN
             in.capture_begin > out.min_capture_begin + 2 * u64(%d)|}
         (rebase dataset_name "c2s") (rebase dataset_name "s2c")
         avg_window
@@ -520,7 +520,7 @@ let layer_of_bcas bcas dataset_name =
                    sum dtt_count_server) / 1e12) AS sdtt_stddev
         WHERE application = $ID$
         GROUP BY capture_begin // $AVG_INT$
-        COMMIT AND FLUSH WHEN
+        COMMIT WHEN
           in.capture_begin * 0.000001 > out.start + 2 * $AVG$
         EXPORT EVENT STARTING AT start
                WITH DURATION $AVG$|} |>
@@ -610,7 +610,7 @@ let ddos_layer dataset_name =
        (capture_begin // $AVG_WIN_US$) AS start,
        min capture_begin, max capture_end,
        -- Traffic (of any kind) we haven't seen in the last $REM_WIN$ secs
-       sum (0.9 * float(not remember globally (
+       sum (0.9 * float(not remember (
               0.1, -- 10% of false positives
               capture_begin // 1_000_000, $REM_WIN$,
               (hash (coalesce (ip4_client, ip6_client, 0)) +
@@ -618,14 +618,14 @@ let ddos_layer dataset_name =
          $AVG_WIN$
          AS nb_new_cnxs_per_secs,
        -- Clients we haven't seen in the last $REM_WIN$ secs
-       sum (0.9 * float(not remember globally (
+       sum (0.9 * float(not remember (
               0.1,
               capture_begin // 1_000_000, $REM_WIN$,
               hash (coalesce (ip4_client, ip6_client, 0))))) /
           $AVG_WIN$
           AS nb_new_clients_per_secs
      GROUP BY capture_begin // $AVG_WIN_US$
-     COMMIT AND FLUSH WHEN
+     COMMIT WHEN
        in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN_US$)
      EXPORT EVENT STARTING AT start * $AVG_WIN$
                   WITH DURATION $AVG_WIN$|} |>

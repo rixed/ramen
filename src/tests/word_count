@@ -25,7 +25,7 @@ add_node counter1 "FROM test/splitter WHERE word <> \"\"
 add_node counter2 "FROM test/splitter WHERE word <> \"\"
   SELECT group.#count AS count, lower(word) AS word
   GROUP BY word
-  COMMIT AND FLUSH WHEN in.word = \"END\"
+  COMMIT WHEN in.word = \"END\"
   EXPORT"
 
 run

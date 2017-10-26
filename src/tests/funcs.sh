@@ -42,6 +42,10 @@ export LAYER_CMD
 # We just know if the whole test suites have been successful or not so we have
 # to either delete all temp dirs or none. Note that it is OK to `rm -rf ''`.
 export ALL_RAMEN_PERSIST_DIRS
+export OCAMLFIND_IGNORE_DUPS_IN
+OCAMLFIND_IGNORE_DUPS_IN="$(ocamlfind query ramen 2>/dev/null)"
+export OCAMLRUNPARAM
+OCAMLRUNPARAM=b
 
 start() {
   # RANDOM returns a number between 0 and 32767
@@ -52,9 +56,8 @@ start() {
   LAYER_CMD=""
   rm -f /tmp/ringbuf_*
 
-  /usr/bin/env \
-    OCAMLFIND_IGNORE_DUPS_IN="$(ocamlfind query ramen 2>/dev/null)" \
-    $ramen start --no-demo -d --seed 1234 &
+  echo "RAMEN_URL=$RAMEN_URL"
+  $ramen start --no-demo -d --seed 1234 &
   add_temp_pid $!
   sleep 2
 }
