@@ -643,8 +643,12 @@ let aggregate
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     with_state (fun h ->
-      if !global_state = None then
-        global_state := Some (global_init in_tuple) ;
+      let do_global_updates =
+        if !global_state = None then (
+          global_state := Some (global_init in_tuple) ;
+          (* Do not call global_updates in this iteration *)
+          false
+        ) else true in
       IntCounter.add stats_in_tuple_count 1 ;
       IntCounter.add stats_rb_read_bytes (RingBuf.tx_size tx) ;
       let last_in = Option.default in_tuple !in_
@@ -695,7 +699,8 @@ let aggregate
           top_set := WeightMap.empty ;
         ) ;
         List.iter (fun (k, a) ->
-            flush_aggr group_init group_update should_resubmit (Option.get !global_state) h k a
+            flush_aggr group_init group_update should_resubmit
+                       (Option.get !global_state) h k a
           ) to_flush ;
         return_unit
       in
@@ -713,7 +718,8 @@ let aggregate
       in
       (* Regardless of the result of the WHERE filter we want to update
        * the fields of the global state that are used in the where clause: *)
-      global_update_for_where (Option.get !global_state) in_tuple ;
+      if do_global_updates then
+        global_update_for_where (Option.get !global_state) in_tuple ;
       (if where_fast
            (Option.get !global_state)
            in_count in_tuple last_in
@@ -750,7 +756,8 @@ let aggregate
                  one one fields
                  in_tuple in_tuple
             then (
-              global_update (Option.get !global_state) in_tuple ;
+              if do_global_updates then
+                global_update (Option.get !global_state) in_tuple ;
               if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               (* TODO: pass selected_successive *)
@@ -830,7 +837,8 @@ let aggregate
                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                  aggr.first_in aggr.last_in
             then (
-              global_update (Option.get !global_state) in_tuple ;
+              if do_global_updates then
+                global_update (Option.get !global_state) in_tuple ;
               if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               let prev_wk = tot_weight aggr in
