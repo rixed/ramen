@@ -889,7 +889,7 @@ let node_sorter col =
   | "wait out" -> make (fun a b -> compare b.out_sleep a.out_sleep)
   | "bytes in" -> make (fun a b -> compare b.in_bytes a.in_bytes)
   | "bytes out" -> make (fun a b -> compare b.out_bytes a.out_bytes)
-  | "RAM" -> make (fun a b -> compare b.ram_usage a.ram_usage)
+  | "heap" -> make (fun a b -> compare b.ram_usage a.ram_usage)
   | "volume in" -> make (fun a b -> compare b.in_bytes a.in_bytes)
   | "volume out" -> make (fun a b -> compare b.out_bytes a.out_bytes)
   | _ ->
@@ -910,7 +910,7 @@ let node_columns =
      "CPU", "seconds", true ;
      "wait in", "seconds", true ;
      "wait out", "seconds", true ;
-     "RAM", "bytes", true ;
+     "heap", "bytes", true ;
      "volume in", "bytes", true ;
      "volume out", "bytes", true ;
      "parents", "", false ;
