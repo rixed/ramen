@@ -569,7 +569,7 @@ let timeseries conf headers body =
       wrap (fun () ->
         build_timeseries
           node start_field start_scale data_field duration_info
-          msg.max_data_points msg.from msg.to_ consolidation)
+          msg.max_data_points msg.since msg.until consolidation)
   and create_temporary_node select_x select_y from where =
     (* First, we need to find out the name for this operation, and create it if
      * it does not exist yet. Name must be given by the operation and parent, so

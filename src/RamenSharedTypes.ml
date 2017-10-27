@@ -195,8 +195,8 @@ type timeserie_req =
     spec : timeserie_spec } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type timeseries_req =
-  { from : float ; (* from and to_ are in seconds *)
-    to_ : float [@ppp_rename "to"] ;
+  { since : float ; (* [since] and [until] are in seconds *)
+    until : float ;
     max_data_points : int ; (* FIXME: should be optional *)
     timeseries : timeserie_req list } [@@ppp PPP_JSON] [@@ppp_extensible]
 

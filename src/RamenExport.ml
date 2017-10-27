@@ -384,7 +384,7 @@ let bucket_max b =
   if b.count = 0 then None else Some b.max
 
 let build_timeseries node start_field start_scale data_field duration_info
-                     max_data_points from to_ consolidation =
+                     max_data_points since until consolidation =
   let find_field n =
     match Hashtbl.find node.N.out_type.C.fields n with
     | exception Not_found ->
@@ -393,10 +393,10 @@ let build_timeseries node start_field start_scale data_field duration_info
   let ti = find_field start_field
   and vi = find_field data_field in
   if max_data_points < 1 then failwith "invalid max_data_points" ;
-  let dt = (to_ -. from) /. float_of_int max_data_points in
+  let dt = (until -. since) /. float_of_int max_data_points in
   let buckets = Array.init max_data_points (fun _ ->
     { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
-  let bucket_of_time t = int_of_float ((t -. from) /. dt) in
+  let bucket_of_time t = int_of_float ((t -. since) /. dt) in
   match node.N.history with
   | None ->
     !logger.info "Node %s has no history" (N.fq_name node) ;
@@ -405,7 +405,7 @@ let build_timeseries node start_field start_scale data_field duration_info
     let f_opt f x y = match x, y with
       | None, y -> Some y
       | Some x, y -> Some (f x y) in
-    !logger.debug "timeseries from=%f and to=%f" from to_ ;
+    !logger.debug "timeseries since=%f and until=%f" since until ;
     (* Since the cache is just a cache and is no comprehensive, we must use
      * it as a necessary but not sufficient condition, to prevent us from
      * exploring too far. As time goes it should become the same though. *)
@@ -413,8 +413,8 @@ let build_timeseries node start_field start_scale data_field duration_info
       Hashtbl.enum history.C.ts_cache |>
       Enum.fold (fun (mi, ma) (filenum, (ts_min, ts_max)) ->
         !logger.debug "filenum %a goes from TS=%f to %f" filenum_print filenum ts_min ts_max ;
-        (if from >= ts_min then f_opt max mi filenum else mi),
-        (if to_ <= ts_max then f_opt min ma filenum else ma))
+        (if since >= ts_min then f_opt max mi filenum else mi),
+        (if until <= ts_max then f_opt min ma filenum else ma))
         (None, None) in
     let _ =
       (* As we already have max_data_points, no need for max_res *)
@@ -457,7 +457,7 @@ let build_timeseries node start_field start_scale data_field duration_info
               (* And start computing new extremes starting from the first points: *)
               t1, t2
             ) in
-          if t1 < to_ && t2 >= from then (
+          if t1 < until && t2 >= since then (
             let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
             for bi = bi1 to bi2 do
               add_into_bucket buckets bi v
@@ -465,5 +465,5 @@ let build_timeseries node start_field start_scale data_field duration_info
           ) ;
           filenum, tmin, tmax) in
     Array.mapi (fun i _ ->
-      from +. dt *. (float_of_int i +. 0.5)) buckets,
+      since +. dt *. (float_of_int i +. 0.5)) buckets,
     Array.map consolidation buckets
