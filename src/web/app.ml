@@ -779,7 +779,7 @@ let pretty_th ?action c title subtitle =
        if subtitle = "" then [] else
          [ p [ clss "type" ; text subtitle ] ]))
 
-let node_thead_col (title, sortable, subtitle) =
+let node_thead_col (title, subtitle, sortable) =
   with_value sel_top_column (fun col ->
     let action, c =
       if sortable && col <> title then
@@ -899,18 +899,24 @@ let node_sorter col =
 
 (* TODO: add a health indicator (based on how old is the last report) *)
 let node_columns =
-  [| "layer", true, "" ; "name", true, "" ; "op", true, "" ;
-     "#in", true, "tuples" ; "#selected", true, "tuples" ;
-     "#out", true, "tuples" ; "#groups", true, "" ;
-     "export", true, "" ;
-     "CPU", true, "seconds" ;
-     "wait in", true, "seconds" ;
-     "wait out", true, "seconds" ;
-     "RAM", true, "bytes" ;
-     "volume in", true, "bytes" ;
-     "volume out", true, "bytes" ;
-     "parents", false, "" ; "children", false, "" ;
-     "PID", false, "" ; "signature", false, "" |]
+  [| "layer", "", true ;
+     "name", "", true ;
+     "op", "", true ;
+     "#in", "tuples", true ;
+     "#selected", "tuples", true ;
+     "#out", "tuples", true ;
+     "#groups", "", true ;
+     "export", "", true ;
+     "CPU", "seconds", true ;
+     "wait in", "seconds", true ;
+     "wait out", "seconds", true ;
+     "RAM", "bytes", true ;
+     "volume in", "bytes", true ;
+     "volume out", "bytes", true ;
+     "parents", "", false ;
+     "children", "", false ;
+     "PID", "", false ;
+     "signature", "", false |]
 
 let nodes_panel =
   table [
