@@ -52,6 +52,7 @@ html { background-color: #ddd; }
   color: #000; }
 #messages p { padding: 1em 0 1em 1em; }
 #messages p.error { background: rgba(240, 30, 20, 0.9); }
+#messages span.err-times { font-weight: 1000; margin-left: 1em; }
 #messages p.ok { background: rgba(20, 210, 30, 0.9); }
 
 #top { width: 100%; padding-top: 3em; }

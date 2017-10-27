@@ -500,11 +500,11 @@ let start nd =
 
 let enc s = Js.(to_string (encodeURIComponent (string s)))
 
-(* Have a list of last error/success messages, each with a creation time
- * and have a periodic function timeout those messages after 5s or so.
- * Stop deleting errors on success. Instead, add a success message. *)
+(* [times] is how many times we received that message, [time] is when
+ * we received it last. *)
 type error =
-  { time : float ; message : string ; is_error: bool }
+  { mutable time : float ; mutable times : int ;
+    message : string ; is_error: bool }
 let last_errors = make_param "last errors" []
 
 let now () = (new%js Js.date_now)##valueOf /. 1000.
@@ -538,13 +538,22 @@ let ajax action path ?content ?what ?on_done on_ok =
         if req##.status <> 200 then (
           print_2 (Js.string "AJAX query failed") js ;
           Some { message = Js.(Unsafe.get js "error" |> to_string) ;
-                 time ; is_error = true }
+                 times = 1 ; time ; is_error = true }
         ) else (
           on_ok js ;
           option_map (fun message ->
-            { time ; message ; is_error = false }) what) in
+            { times = 1 ; time ; message ; is_error = false }) what) in
       option_may (fun le ->
-        chg last_errors (le :: last_errors.value)) last_error ;
+          match List.find (fun e ->
+                  e.is_error = le.is_error &&
+                  e.message = le.message) last_errors.value with
+          | exception Not_found ->
+            chg last_errors (le :: last_errors.value)
+          | e ->
+            e.time <- le.time ;
+            e.times <- e.times + 1 ;
+            change last_errors
+        ) last_error ;
       resync ())) ;
   req##_open (Js.string action)
              (Js.string path)

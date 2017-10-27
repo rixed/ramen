@@ -610,7 +610,12 @@ let header_panel =
         let ps =
           List.map (fun e ->
             p [ clss (if e.is_error then "error" else "ok") ;
-                text e.message ]) lst in
+                text e.message ;
+                if e.times > 1 then
+                  span [
+                    clss "err-times" ;
+                    text (" × "^ string_of_int e.times) ]
+                else group [] ]) lst in
         if ps = [] then group [] else div (id "messages" :: ps)) ]
 
 let labeled_value l v =
