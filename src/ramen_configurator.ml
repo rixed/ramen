@@ -89,9 +89,6 @@ let traffic_node ?where dataset_name name dt =
  * we think are good predictors. *)
 let anomaly_detection_nodes avg_window from timeseries =
   assert (timeseries <> []) ;
-  let threshold =
-    round_to_int (0.2 *. float_of_int (List.length timeseries)) |>
-    max 1 in
   let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ]
   and multi_predictors = [ "fit_multi(" ] in
   let predictor_name = from ^": predictions" in
@@ -154,7 +151,10 @@ let anomaly_detection_nodes avg_window from timeseries =
         ) [] timeseries in
     let condition = String.concat " +\n      " conditions in
     let subject = Printf.sprintf "%s is off" from
-    and text = Printf.sprintf "Many metrics from %s seams to be off." from in
+    and text = Printf.sprintf "Many metrics from %s seams to be off." from
+    and threshold =
+      round_to_int (0.2 *. float_of_int (List.length conditions)) |>
+      max 1 in
     let op =
       Printf.sprintf
         "FROM '%s'\n\
