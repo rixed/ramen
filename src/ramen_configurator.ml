@@ -519,7 +519,7 @@ let layer_of_bcas bcas dataset_name =
             sqrt (((sum dtt_square_sum_server - (sum dtt_sum_server)^2) /
                    sum dtt_count_server) / 1e12) AS sdtt_stddev
         WHERE application = $ID$
-        GROUP BY capture_begin // $AVG_INT$
+        GROUP BY capture_begin * 0.000001 // $AVG_INT$
         COMMIT WHEN
           in.capture_begin * 0.000001 > out.start + 2 * $AVG$
         EXPORT EVENT STARTING AT start
