@@ -890,6 +890,8 @@ let node_sorter col =
   | "bytes in" -> make (fun a b -> compare b.in_bytes a.in_bytes)
   | "bytes out" -> make (fun a b -> compare b.out_bytes a.out_bytes)
   | "RAM" -> make (fun a b -> compare b.ram_usage a.ram_usage)
+  | "volume in" -> make (fun a b -> compare b.in_bytes a.in_bytes)
+  | "volume out" -> make (fun a b -> compare b.out_bytes a.out_bytes)
   | _ ->
     make (fun a b -> match compare a.layer b.layer with
          | 0 -> compare a.name b.name
