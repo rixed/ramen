@@ -60,6 +60,7 @@ struct
 
   type t =
     { name : string ;
+      order : int ; (* depended upon before depending on *)
       status : layer_status ;
       status_str : string ;
       nb_nodes : int ;
@@ -465,7 +466,7 @@ let update_graph total g =
     had_layers := name :: !had_layers ;
     let nodes = Js.Unsafe.get l "nodes" in
     let layer = Layer.{
-      name ; status_str ; status ;
+      name ; status_str ; status ; order = i ;
       last_started = Js.(Unsafe.get l "last_started" |> Opt.to_option |>
                          option_map float_of_number) ;
       last_stopped = Js.(Unsafe.get l "last_stopped" |> Opt.to_option |>
@@ -508,6 +509,10 @@ let update_graph total g =
       update_node node
     done
   done ;
+  (* Order the layers according to dependencies*)
+  layers.value <-
+    List.fast_sort (fun (_, a) (_, b) ->
+      compare a.value.Layer.order b.value.Layer.order) layers.value ;
   update_nodes_sum () ;
   if total then (
     layers.value <- List.filter (fun (name, _) ->

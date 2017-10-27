@@ -270,6 +270,7 @@ let get_graph_mermaid _headers layers =
 let get_graph conf headers layer_opt =
   let accept = get_accept headers in
   let%lwt layers = graph_layers conf layer_opt in
+  let layers = L.order layers in
   if is_accepting Consts.json_content_type accept then
     get_graph_json headers layers
   else if is_accepting Consts.dot_content_type accept then
