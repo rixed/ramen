@@ -17,7 +17,7 @@ let random_colors =
 let hash s =
   let rec loop h i =
     if i >= String.length s then h
-    else loop (h + int_of_char s.[i]) (i + 1) in
+    else loop (h + (i+1) * int_of_char s.[i]) (i + 1) in
   loop 42 0
 
 let random_of_string str =
