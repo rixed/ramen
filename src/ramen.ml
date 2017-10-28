@@ -106,7 +106,9 @@ let server_start =
       $ ssl_key),
     info "start")
 
-(* Shutdown the event processor *)
+(*
+ * Shutdown the event processor
+ *)
 
 let server_stop =
   Term.(
@@ -142,7 +144,7 @@ let summary =
     info "ringbuf-summary")
 
 (*
- * API Commands
+ * Layer Creation/Edition
  *)
 
 let node_name p =
@@ -172,6 +174,10 @@ let add =
       $ node_operations),
     info "add")
 
+(*
+ * Compile/Run/Stop Layer
+ *)
+
 let compile =
   Term.(
     (const ApiCmd.compile
@@ -192,7 +198,11 @@ let stop =
       $ debug
       $ layer_name
       $ server_url),
-    info "stop a layer (or all of them)")
+    info "stop")
+
+(*
+ * Export Tuples
+ *)
 
 let as_csv =
   let i = Arg.info ~doc:"output CSV rather than JSON"
@@ -221,7 +231,7 @@ let tail =
     info "tail")
 
 (*
- * Collectd decoding test
+ * Timeseries (no support for NewTempNode (yet))
  *)
 
 let port =
