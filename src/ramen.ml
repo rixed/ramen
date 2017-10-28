@@ -234,16 +234,58 @@ let tail =
  * Timeseries (no support for NewTempNode (yet))
  *)
 
-let port =
-  let i = Arg.info ~doc:"Port where to listen to collectd events"
-                   [ "port" ] in
-  Arg.(value (opt int 25826 i))
+let since =
+  let i = Arg.info ~doc:"timestamp of first point"
+                   ~docv:"SINCE" ["since"] in
+  Arg.(required (opt (some float) None i))
 
-let test_collectd =
+let until =
+  let i = Arg.info ~doc:"timestamp of last point"
+                   ~docv:"UNTIL" ["until"] in
+  Arg.(required (opt (some float) None i))
+
+let max_data_points =
+  let i = Arg.info ~doc:"max number of points returned"
+                   ~docv:"POINTS" ["nb-points"] in
+  Arg.(value (opt int 100 i))
+
+let data_field p =
+  let i = Arg.info ~doc:"Field to retrieve values from"
+                   ~docv:"data" [] in
+  Arg.(required (pos p (some string) None i))
+
+let consolidation =
+  let i = Arg.info ~doc:"Consolidation function"
+                   ~docv:"cons.function" ["consolidation"] in
+  let cons_func =
+    let p x = x, x in
+    [ p "min" ; p "max" ; p "avg" ] in
+  Arg.(value (opt (some (enum cons_func)) None i))
+
+let timeseries =
   Term.(
-    (const RamenCollectd.test
-      $ port),
-    info "collectd")
+    (const ApiCmd.timeseries
+      $ debug
+      $ server_url
+      $ since
+      $ until
+      $ max_data_points
+      $ node_name 0
+      $ data_field 1
+      $ consolidation),
+    info "timeseries")
+
+(*
+ * Time Ranges
+ *)
+
+let timerange =
+  Term.(
+    (const ApiCmd.timerange
+      $ debug
+      $ server_url
+      $ node_name 0),
+    info "timerange")
 
 (*
  * Command line evaluation
@@ -259,7 +301,7 @@ let () =
     server_start ; server_stop ;
     dequeue ; summary ;
     add ; compile ; run ; stop ;
-    tail ; test_collectd ;
+    tail ; timeseries ; timerange
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 42
        | `Ok f -> f ()

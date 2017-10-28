@@ -188,3 +188,35 @@ let tail debug ramen_url node_name as_csv last continuous () =
     ) else return_unit
   in
   Lwt_main.run (get_next ?last ())
+
+let timeseries debug ramen_url since until max_data_points
+               node data_field consolidation () =
+  logger := make_logger debug ;
+  let url = ramen_url ^"/timeseries"
+  and msg =
+    { since ; until ; max_data_points ;
+      timeseries = [
+        { id = "cmdline" ;
+          consolidation = consolidation |? "avg" ;
+          spec = Predefined { node ; data_field } } ] } in
+  let th =
+    let%lwt body = http_post_json url timeseries_req_ppp msg in
+    Printf.printf "%s\n%!" body (* TODO *) ;
+    return_unit in
+  Lwt_main.run th
+
+let timerange debug ramen_url node_name () =
+  logger := make_logger debug ;
+  let url = ramen_url ^"/timerange/"^
+    (match String.rsplit ~by:"/" node_name with
+    | exception Not_found -> enc node_name
+    | layer, node -> enc layer ^"/"^ enc node) in
+  Lwt_main.run (
+    match%lwt http_get url >>=
+               ppp_of_string_exc time_range_resp_ppp with
+    | NoData ->
+      Printf.printf "Node has no data (yet)\n%!" ;
+      return_unit
+    | TimeRange { oldest ; latest } ->
+      Printf.printf "%f...%f\n%!" oldest latest ;
+      return_unit)
