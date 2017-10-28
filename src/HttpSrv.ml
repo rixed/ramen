@@ -295,6 +295,14 @@ let find_node_or_fail conf layer_name node_name =
   with Not_found ->
     bad_request ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
 
+let find_exporting_node_or_fail conf layer_name node_name =
+  let%lwt layer, node = find_node_or_fail conf layer_name node_name in
+  if not (L.is_typed layer) then
+    bad_request ("node "^ node_name ^" is not typed (yet)")
+  else if not (Operation.is_exporting node.N.operation) then
+    bad_request ("node "^ node_name ^" does not export data")
+  else return (layer, node)
+
 let node_of_name conf layer_name node_name =
   if node_name = "" then bad_request "Empty string is not a valid node name"
   else find_node_or_fail conf layer_name node_name
@@ -477,44 +485,40 @@ let export conf headers layer_name node_name body =
     if body = "" then return empty_export_req else
     of_json headers ("Exporting from "^ node_name) export_req_ppp body in
   (* Check that the node exists and exports *)
-  let%lwt layer, node = find_node_or_fail conf layer_name node_name in
-  if not (L.is_typed layer) then
-    bad_request ("node "^ node_name ^" is not typed (yet)")
-  else if not (Operation.is_exporting node.N.operation) then
-    bad_request ("node "^ node_name ^" does not export data")
-  else (
-    RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
-    let%lwt first, columns = match node.N.history with
-      | None -> (* Nothing yet, just answer with empty result *)
-        return (0, [])
-      | Some history ->
-        let start = Unix.gettimeofday () in
-        let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
-        let rec loop () =
-          let first, values =
-            RamenExport.fold_tuples_since
-              ?since:req.since ?max_res:req.max_results history (None, [])
-                (fun _ seqnum tup (first, prev) ->
-                  let first =
-                    if first = None then Some seqnum else first in
-                  first, List.cons tup prev) in
-          let first = first |? (req.since |? 0) in
-          let dt = Unix.gettimeofday () -. start in
-          if values = [] && dt < req.wait_up_to then (
-            (* TODO: sleep for dt, queue the wakener on this history,
-             * and wake all the sleeps when a tuple is received *)
-            Lwt_unix.sleep 0.1 >>= loop
-          ) else (
-            return (
-              first,
-              RamenExport.columns_of_tuples tuple_type values |>
-              List.map (fun (typ, nullmask, column) ->
-                typ, Option.map RamenBitmask.to_bools nullmask, column))
-          ) in
-        loop () in
-    let resp = { first ; columns } in
-    let body = PPP.to_string export_resp_ppp resp in
-    respond_ok ~body ())
+  let%lwt _layer, node =
+    find_exporting_node_or_fail conf layer_name node_name in
+  RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
+  let%lwt first, columns = match node.N.history with
+    | None -> (* Nothing yet, just answer with empty result *)
+      return (0, [])
+    | Some history ->
+      let start = Unix.gettimeofday () in
+      let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
+      let rec loop () =
+        let first, values =
+          RamenExport.fold_tuples_since
+            ?since:req.since ?max_res:req.max_results history (None, [])
+              (fun _ seqnum tup (first, prev) ->
+                let first =
+                  if first = None then Some seqnum else first in
+                first, List.cons tup prev) in
+        let first = first |? (req.since |? 0) in
+        let dt = Unix.gettimeofday () -. start in
+        if values = [] && dt < req.wait_up_to then (
+          (* TODO: sleep for dt, queue the wakener on this history,
+           * and wake all the sleeps when a tuple is received *)
+          Lwt_unix.sleep 0.1 >>= loop
+        ) else (
+          return (
+            first,
+            RamenExport.columns_of_tuples tuple_type values |>
+            List.map (fun (typ, nullmask, column) ->
+              typ, Option.map RamenBitmask.to_bools nullmask, column))
+        ) in
+      loop () in
+  let resp = { first ; columns } in
+  let body = PPP.to_string export_resp_ppp resp in
+  respond_ok ~body ()
 
 (*
     API for Workers: health and report
@@ -552,24 +556,16 @@ let complete_fields conf headers body =
 *)
 
 let timeseries conf headers body =
-  let open Operation in
   let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
   let ts_of_node_field req layer node data_field =
-    let%lwt _layer, node = find_node_or_fail conf layer node in
-    if not (is_exporting node.N.operation) then
-      bad_request ("node "^ node.N.name ^" does not export data")
-    else match export_event_info node.N.operation with
-    | None ->
-      bad_request ("node "^ node.N.name ^" does not specify event time info")
-    | Some ((start_field, start_scale), duration_info) ->
-      let open RamenExport in
-      let consolidation =
-        match String.lowercase req.consolidation with
-        | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
-      wrap (fun () ->
-        build_timeseries
-          node start_field start_scale data_field duration_info
-          msg.max_data_points msg.since msg.until consolidation)
+    let%lwt _layer, node = find_exporting_node_or_fail conf layer node in
+    let open RamenExport in
+    let consolidation =
+      match String.lowercase req.consolidation with
+      | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
+    wrap (fun () ->
+      build_timeseries node data_field msg.max_data_points
+                       msg.since msg.until consolidation)
   and create_temporary_node select_x select_y from where =
     (* First, we need to find out the name for this operation, and create it if
      * it does not exist yet. Name must be given by the operation and parent, so
@@ -659,6 +655,23 @@ let timeseries conf headers body =
       let body = PPP.to_string timeseries_resp_ppp resp in
       respond_ok ~body ())
     (function Failure err -> bad_request err | e -> fail e)
+
+let get_timerange conf headers layer_name node_name =
+  let%lwt _layer, node =
+    find_exporting_node_or_fail conf layer_name node_name in
+  let resp =
+    match node.N.history with
+    | None -> NoData
+    | Some h when h.C.filenums = [] -> NoData
+    | Some h ->
+      let sta, sto = List.hd h.C.filenums, List.last h.C.filenums in
+      let oldest = fst (RamenExport.timerange_of_filenum node h sta)
+      and latest = snd (RamenExport.timerange_of_filenum node h sto) in
+      TimeRange { oldest ; latest } in
+  switch_accepted headers [
+    Consts.json_content_type, (fun () ->
+      let body = PPP.to_string time_range_resp_ppp resp in
+      respond_ok ~body ()) ]
 
 (* A thread that hunt for unused layers *)
 let rec timeout_layers conf =
@@ -764,6 +777,9 @@ let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
         complete_fields conf headers body
       | `POST, ["timeseries"] ->
         timeseries conf headers body
+      | `GET, ("timerange" :: path) ->
+        let layer, node = lyr_node_of path in
+        get_timerange conf headers layer node
       | `OPTIONS, _ ->
         let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
         let headers =

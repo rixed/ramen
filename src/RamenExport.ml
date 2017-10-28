@@ -383,15 +383,67 @@ let bucket_min b =
 let bucket_max b =
   if b.count = 0 then None else Some b.max
 
-let build_timeseries node start_field start_scale data_field duration_info
-                     max_data_points since until consolidation =
-  let find_field n =
-    match Hashtbl.find node.N.out_type.C.fields n with
-    | exception Not_found ->
-      failwith ("field "^ n ^" does not exist")
-    | rank, _field_typ -> Option.get !rank in
-  let ti = find_field start_field
-  and vi = find_field data_field in
+exception NodeHasNoEventTimeInfo of string
+
+let find_field node n =
+  match Hashtbl.find node.N.out_type.C.fields n with
+  | exception Not_found ->
+    failwith ("field "^ n ^" does not exist")
+  | rank, _field_typ -> Option.get !rank
+
+let iter_tuples_and_update_ts_cache
+      ?min_filenum ?max_filenum ?max_res
+      node history f =
+  let open Lang.Operation in
+  match export_event_info node.N.operation with
+  | None -> raise (NodeHasNoEventTimeInfo node.N.name)
+  | Some ((start_field, start_scale), duration_info) ->
+    let ti = find_field node start_field in
+    let t2_of_tup =
+      match duration_info with
+      | DurationConst f -> fun _tup t1 -> t1 +. f
+      | DurationField (f, s) ->
+        let fi = find_field node f in
+        fun tup t1 ->
+          t1 +. float_of_scalar_value tup.(fi) *. s
+      | StopField (f, s) ->
+        let fi = find_field node f in
+        fun tup _t1 ->
+          float_of_scalar_value tup.(fi) *. s
+    in
+    fold_tuples_from_files ?min_filenum ?max_filenum ?max_res
+      history (None, max_float, min_float)
+      (fun filenum _ tup (prev_filenum, tmin, tmax) ->
+        let t = float_of_scalar_value tup.(ti) in
+        let t1 = t *. start_scale in
+        let t2 = t2_of_tup tup t1 in
+        (* Allow duration to be < 0 *)
+        let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
+        (* Maybe update ts_cache *)
+        let tmin, tmax =
+          if filenum = prev_filenum then (
+            min tmin t1, max tmax t2
+          ) else (
+            (* New filenum. Save the min/max we computed for the previous one
+             * in the ts_cache: *)
+            (match prev_filenum with
+            | None -> ()
+            | Some fn ->
+              Hashtbl.modify_opt fn (function
+                | None ->
+                  !logger.debug "Caching times for filenum %a to %g..%g"
+                    filenum_print fn tmin tmax ;
+                  Some (tmin, tmax)
+                | x -> x) history.C.ts_cache
+            ) ;
+            (* And start computing new extremes starting from the first points: *)
+            t1, t2
+          ) in
+        f t1 t2 tup ;
+        filenum, tmin, tmax) |> ignore
+
+let build_timeseries node data_field max_data_points
+                     since until consolidation =
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let dt = (until -. since) /. float_of_int max_data_points in
   let buckets = Array.init max_data_points (fun _ ->
@@ -416,54 +468,26 @@ let build_timeseries node start_field start_scale data_field duration_info
         (if since >= ts_min then f_opt max mi filenum else mi),
         (if until <= ts_max then f_opt min ma filenum else ma))
         (None, None) in
-    let _ =
-      (* As we already have max_data_points, no need for max_res *)
-      fold_tuples_from_files ?min_filenum ?max_filenum ~max_res:max_int
-        history (None, max_float, min_float)
-        (fun filenum _ tup (prev_filenum, tmin, tmax) ->
-          let t, v = float_of_scalar_value tup.(ti),
-                     float_of_scalar_value tup.(vi) in
-          let t1 = t *. start_scale in
-          let t2 =
-            let open Lang.Operation in
-            match duration_info with
-            | DurationConst f -> t1 +. f
-            | DurationField (f, s) ->
-              let fi = find_field f in
-              t1 +. float_of_scalar_value tup.(fi) *. s
-            | StopField (f, s) ->
-              let fi = find_field f in
-              float_of_scalar_value tup.(fi) *. s
-          in
-          (* Allow duration to be < 0 *)
-          let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
-          (* Maybe update ts_cache *)
-          let tmin, tmax =
-            if filenum = prev_filenum then (
-              min tmin t1, max tmax t2
-            ) else (
-              (* New filenum. Save the min/max we computed for the previous one
-               * in the ts_cache: *)
-              (match prev_filenum with
-              | None -> ()
-              | Some fn ->
-                Hashtbl.modify_opt fn (function
-                  | None ->
-                    !logger.debug "Caching times for filenum %a to %g..%g"
-                      filenum_print fn tmin tmax ;
-                    Some (tmin, tmax)
-                  | x -> x) history.C.ts_cache
-              ) ;
-              (* And start computing new extremes starting from the first points: *)
-              t1, t2
-            ) in
-          if t1 < until && t2 >= since then (
-            let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
-            for bi = bi1 to bi2 do
-              add_into_bucket buckets bi v
-            done
-          ) ;
-          filenum, tmin, tmax) in
+    (* As we already have max_data_points, no need for max_res *)
+    let vi = find_field node data_field in
+    iter_tuples_and_update_ts_cache
+      ?min_filenum ?max_filenum ~max_res:max_int node history
+      (fun t1 t2 tup ->
+        let v = float_of_scalar_value tup.(vi) in
+        if t1 < until && t2 >= since then (
+          let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
+          for bi = bi1 to bi2 do
+            add_into_bucket buckets bi v
+          done)) ;
     Array.mapi (fun i _ ->
       since +. dt *. (float_of_int i +. 0.5)) buckets,
     Array.map consolidation buckets
+
+let timerange_of_filenum node history filenum =
+  try Hashtbl.find history.C.ts_cache filenum
+  with Not_found ->
+    (* Actually read the file, just for sake of updating ts_cache *)
+    iter_tuples_and_update_ts_cache
+      ~min_filenum:filenum ~max_filenum:filenum ~max_res:max_int
+      node history (fun _t1 _t2 _tup -> ()) ;
+    Hashtbl.find history.C.ts_cache filenum

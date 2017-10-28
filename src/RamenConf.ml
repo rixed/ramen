@@ -91,6 +91,8 @@ type history =
     ts_cache : (int * int, float * float) Hashtbl.t ;
     (* Not necessarily up to date but gives a lower bound: *)
     mutable nb_files : int ; (* Count items in the list below *)
+    (* Filenum = starting * stopping sequence number, the list being ordered
+     * by starting timestamp *)
     mutable filenums : (int * int) list }
 
 let archive_file dir (block_start, block_stop) =
