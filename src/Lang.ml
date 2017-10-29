@@ -1793,8 +1793,10 @@ struct
       | Some (Some ((start_field, _), duration)) ->
         let check_field_exists f =
           if not (List.exists (fun sf -> sf.alias = f) fields) then
-            let m = FieldNotInTuple { field = f ; tuple = TupleOut ;
-                                      tuple_type = "" (* TODO *) } in
+            let m =
+              let print_alias oc sf = String.print oc sf.alias in
+              let tuple_type = IO.to_string (List.print print_alias) fields in
+              FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
             raise (SyntaxError m)
         in
         check_field_exists start_field ;
