@@ -1822,7 +1822,7 @@ struct
           check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD clause" sf.expr
         ) fields
       (* TODO: check unicity of aliases *)
-    | Aggregate { fields ; where ; key ; top ; commit_when ;
+    | Aggregate { fields ; and_all_others ; where ; key ; top ; commit_when ;
                   flush_when ; flush_how ; export ; from ; _ } ->
       List.fold_left (fun prev_aliases sf ->
           check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr ;
@@ -1832,7 +1832,7 @@ struct
             raise (SyntaxError (AliasNotUnique sf.alias)) ;
           sf.alias :: prev_aliases
         ) [] fields |> ignore;
-      check_export fields export ;
+      if not and_all_others then check_export fields export ;
       (* Disallow group state in WHERE because it makes no sense: *)
       check_no_group (no_group "WHERE") where ;
       check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOut] "WHERE clause" where ;
