@@ -19,18 +19,19 @@ RUN apt-get --yes update && \
       opam \
       rsync
 
-# Configure opam
+# Configure opam and get as fast a compiler we can get
 RUN opam init --no-setup && \
-    opam repo add --priority=1 ocalme \
-      git://github.com/rixed/ocalme-opam-repository.git
+    opam switch install ramen --alias-of 4.05.0+flambda
 
-# Install as fast a compiler we can get
-RUN opam switch install ramen --alias-of 4.05.0+flambda
+# Rebuild a new image from here
+RUN echo "version 6"
 
 # Install ramen
 RUN opam depext --noninteractive \
       conf-gsl conf-openblas conf-pkg-config \
       plplot sqlite3 && \
+    opam repo add --priority=1 ocalme \
+      git://github.com/rixed/ocalme-opam-repository.git && \
     opam install ramen
 
 # Environment
