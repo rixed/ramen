@@ -660,14 +660,20 @@ let get_timerange conf headers layer_name node_name =
   let%lwt _layer, node =
     find_exporting_node_or_fail conf layer_name node_name in
   let resp =
+    let open RamenSharedTypesJS in
     match node.N.history with
-    | None -> NoData
-    | Some h when h.C.filenums = [] -> NoData
+    | None ->
+      !logger.debug "Node %s has no history" (N.fq_name node) ; NoData
     | Some h ->
-      let sta, sto = List.hd h.C.filenums, List.last h.C.filenums in
-      let oldest = fst (RamenExport.timerange_of_filenum node h sta)
-      and latest = snd (RamenExport.timerange_of_filenum node h sto) in
-      TimeRange { oldest ; latest } in
+      (match RamenExport.hist_min_max h with
+      | None -> NoData
+      | Some (sta, sto) ->
+        let oldest, latest =
+          RamenExport.timerange_of_filenum node h sta in
+        let latest =
+          if sta = sto then latest
+          else snd (RamenExport.timerange_of_filenum node h sto) in
+        TimeRange (oldest, latest)) in
   switch_accepted headers [
     Consts.json_content_type, (fun () ->
       let body = PPP.to_string time_range_resp_ppp resp in

@@ -196,13 +196,21 @@ let import_tuples conf rb_name node =
 
 let filenum_print oc (sta, sto) = Printf.fprintf oc "%d-%d" sta sto
 
+(* Return the first and last filenums (or current block limits), or None
+ * if we haven't received any value yet *)
 let hist_min_max history =
-  let hist_max =
-    history.C.block_start, history.C.block_start + history.C.count in
-  let hist_min =
-    if history.C.filenums = [] then hist_max
-    else List.hd history.C.filenums in
-  hist_min, hist_max
+  let current_filenum =
+    history.C.block_start,
+    history.C.block_start + history.C.count in
+  if history.C.filenums = [] then
+    if history.C.count = 0 then None
+    else Some (current_filenum, current_filenum)
+  else
+    Some (
+      List.hd history.C.filenums,
+      if history.C.count = 0 then
+        List.last history.C.filenums
+      else current_filenum)
 
 (* filenums are archive files (might not exist anymore though.
  * do_fold_tuples will also look into live tuples if required to reach max_res. *)
@@ -278,13 +286,15 @@ let fold_tuples_from_files ?min_filenum ?max_filenum ?(max_res=1000)
     max_res ;
   !logger.debug "history has block_start=%d, count=%d"
     history.C.block_start history.C.count ;
-  let hist_min, hist_max = hist_min_max history in
-  let min_filenum = Option.default hist_min min_filenum
-  and max_filenum = Option.default hist_max max_filenum in
-  assert (max_res > 0) ;
-  let max_res = min max_res (snd max_filenum - fst min_filenum) in
-  let filenums, first_idx, max_res = drop_until history (fst min_filenum) max_res in
-  do_fold_tuples filenums first_idx max_res history init f
+  match hist_min_max history with
+  | None -> init
+  | Some (hist_min, hist_max) ->
+    let min_filenum = Option.default hist_min min_filenum
+    and max_filenum = Option.default hist_max max_filenum in
+    assert (max_res > 0) ;
+    let max_res = min max_res (snd max_filenum - fst min_filenum) in
+    let filenums, first_idx, max_res = drop_until history (fst min_filenum) max_res in
+    do_fold_tuples filenums first_idx max_res history init f
 
 let scalar_column_init typ len f =
   match typ with
@@ -391,9 +401,9 @@ let find_field node n =
     failwith ("field "^ n ^" does not exist")
   | rank, _field_typ -> Option.get !rank
 
-let iter_tuples_and_update_ts_cache
+let fold_tuples_and_update_ts_cache
       ?min_filenum ?max_filenum ?max_res
-      node history f =
+      node history init f =
   let open Lang.Operation in
   match export_event_info node.N.operation with
   | None -> raise (NodeHasNoEventTimeInfo node.N.name)
@@ -411,36 +421,37 @@ let iter_tuples_and_update_ts_cache
         fun tup _t1 ->
           float_of_scalar_value tup.(fi) *. s
     in
-    fold_tuples_from_files ?min_filenum ?max_filenum ?max_res
-      history (None, max_float, min_float)
-      (fun filenum _ tup (prev_filenum, tmin, tmax) ->
-        let t = float_of_scalar_value tup.(ti) in
-        let t1 = t *. start_scale in
-        let t2 = t2_of_tup tup t1 in
-        (* Allow duration to be < 0 *)
-        let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
-        (* Maybe update ts_cache *)
-        let tmin, tmax =
-          if filenum = prev_filenum then (
-            min tmin t1, max tmax t2
-          ) else (
-            (* New filenum. Save the min/max we computed for the previous one
-             * in the ts_cache: *)
-            (match prev_filenum with
-            | None -> ()
-            | Some fn ->
-              Hashtbl.modify_opt fn (function
-                | None ->
-                  !logger.debug "Caching times for filenum %a to %g..%g"
-                    filenum_print fn tmin tmax ;
-                  Some (tmin, tmax)
-                | x -> x) history.C.ts_cache
-            ) ;
-            (* And start computing new extremes starting from the first points: *)
-            t1, t2
-          ) in
-        f t1 t2 tup ;
-        filenum, tmin, tmax) |> ignore
+    let _, _, _, user_val =
+      fold_tuples_from_files ?min_filenum ?max_filenum ?max_res
+        history (None, max_float, min_float, init)
+        (fun filenum _ tup (prev_filenum, tmin, tmax, user_val) ->
+          let t = float_of_scalar_value tup.(ti) in
+          let t1 = t *. start_scale in
+          let t2 = t2_of_tup tup t1 in
+          (* Allow duration to be < 0 *)
+          let t1, t2 = if t2 >= t1 then t1, t2 else t2, t1 in
+          (* Maybe update ts_cache *)
+          let tmin, tmax =
+            if filenum = prev_filenum then (
+              min tmin t1, max tmax t2
+            ) else (
+              (* New filenum. Save the min/max we computed for the previous one
+               * in the ts_cache: *)
+              (match prev_filenum with
+              | None -> ()
+              | Some fn ->
+                Hashtbl.modify_opt fn (function
+                  | None ->
+                    !logger.debug "Caching times for filenum %a to %g..%g"
+                      filenum_print fn tmin tmax ;
+                    Some (tmin, tmax)
+                  | x -> x) history.C.ts_cache
+              ) ;
+              (* And start computing new extremes starting from the first points: *)
+              t1, t2
+            ) in
+          filenum, tmin, tmax, f user_val t1 t2 tup) in
+    user_val
 
 let build_timeseries node data_field max_data_points
                      since until consolidation =
@@ -470,9 +481,9 @@ let build_timeseries node data_field max_data_points
         (None, None) in
     (* As we already have max_data_points, no need for max_res *)
     let vi = find_field node data_field in
-    iter_tuples_and_update_ts_cache
-      ?min_filenum ?max_filenum ~max_res:max_int node history
-      (fun t1 t2 tup ->
+    fold_tuples_and_update_ts_cache
+      ?min_filenum ?max_filenum ~max_res:max_int node history ()
+      (fun () t1 t2 tup ->
         let v = float_of_scalar_value tup.(vi) in
         if t1 < until && t2 >= since then (
           let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
@@ -486,8 +497,12 @@ let build_timeseries node data_field max_data_points
 let timerange_of_filenum node history filenum =
   try Hashtbl.find history.C.ts_cache filenum
   with Not_found ->
-    (* Actually read the file, just for sake of updating ts_cache *)
-    iter_tuples_and_update_ts_cache
+    fold_tuples_and_update_ts_cache
       ~min_filenum:filenum ~max_filenum:filenum ~max_res:max_int
-      node history (fun _t1 _t2 _tup -> ()) ;
-    Hashtbl.find history.C.ts_cache filenum
+      node history None (fun prev t1 t2 _tup ->
+        match prev with
+        | None -> Some (t1, t2)
+        | Some (mi, ma) -> Some (min mi t1, max ma t2)) |>
+      (* hist_min_max goes out of his way to never return an empty
+       * filenum. Maybe we have an empty storage file? *)
+     Option.get

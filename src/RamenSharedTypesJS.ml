@@ -12,3 +12,6 @@ type scalar_typ =
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
   | TIpv4 | TIpv6 | TCidrv4 | TCidrv6 [@@ppp PPP_JSON]
+
+type time_range =
+  NoData | TimeRange of float * float [@@ppp PPP_JSON]

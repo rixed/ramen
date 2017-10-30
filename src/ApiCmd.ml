@@ -217,6 +217,6 @@ let timerange debug ramen_url node_name () =
     | NoData ->
       Printf.printf "Node has no data (yet)\n%!" ;
       return_unit
-    | TimeRange { oldest ; latest } ->
+    | TimeRange (oldest, latest) ->
       Printf.printf "%f...%f\n%!" oldest latest ;
       return_unit)

@@ -207,6 +207,4 @@ type timeserie_resp =
 
 type timeseries_resp = timeserie_resp list [@@ppp PPP_JSON]
 
-type time_range_resp =
-  NoData | TimeRange of { oldest : float ; latest : float }
-  [@@ppp PPP_JSON]
+type time_range_resp = RamenSharedTypesJS.time_range [@@ppp PPP_JSON]
