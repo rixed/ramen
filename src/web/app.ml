@@ -40,6 +40,20 @@ let str_of_float f =
 
 open RamenSharedTypesJS_noPPP
 
+(* FIXME: actually get an ocaml js object *)
+let time_range_of_js js =
+  let open Js in
+  let a = object_keys js in
+  let variant_str = array_get a 0 |> optdef_get |> to_string in
+  match variant_str with
+    "NoData" -> NoData
+  | "TimeRange" ->
+      let a = Js.(Unsafe.get js variant_str) in
+      let since = Js.(array_get a 0 |> optdef_get |> to_float)
+      and until = Js.(array_get a 1 |> optdef_get |> to_float) in
+      TimeRange (since, until)
+  | x -> fail ("Unknown time range "^x)
+
 module Layer =
 struct
   let status_of_js js =
@@ -305,35 +319,41 @@ let reload_chart () =
   | _, [] -> ()
   | node, cols ->
     let node = node.value in
-    let field_names =
-      List.map (fun col ->
-        (List.nth node.output_type col).Field.name) cols in
-    let now = now () in
-    let content =
-      object%js
-        val from = js_of_float (now -. chart_duration.value)
-        val _to = js_of_float now
-        val max_data_points_ = 800
-        val timeseries =
-          List.map (fun field_name ->
-            object%js
-              val id = Js.string field_name
-              val consolidation = Js.string "avg"
-              val spec =
+    (* Get the available time range *)
+    let path = "/timerange/"^ enc node.layer ^"/"^ enc node.name in
+    http_get path (fun r ->
+      match time_range_of_js r with
+      | NoData -> ()
+      | TimeRange (_, until) ->
+        (* Request the timeseries *)
+        let field_names =
+          List.map (fun col ->
+            (List.nth node.output_type col).Field.name) cols in
+        let content =
+          object%js
+            val since = js_of_float (until -. chart_duration.value)
+            val until = js_of_float until
+            val max_data_points_ = 800
+            val timeseries =
+              List.map (fun field_name ->
                 object%js
-                  val _Predefined =
+                  val id = Js.string field_name
+                  val consolidation = Js.string "avg"
+                  val spec =
                     object%js
-                      val node = Js.string node.id
-                      val data_field_ = Js.string field_name
+                      val _Predefined =
+                        object%js
+                          val node = Js.string node.id
+                          val data_field_ = Js.string field_name
+                        end
                     end
-                end
-            end) field_names |>
-          js_of_list identity
-      end
-    and path = "/timeseries" in
-    http_post path content (fun r ->
-      update_chart field_names r ;
-      resync ())
+                end) field_names |>
+              js_of_list identity
+          end
+        and path = "/timeseries" in
+        http_post path content (fun r ->
+          update_chart field_names r ;
+          resync ()))
 
 let sel_top_column = make_param "selected top column" "layer"
 
