@@ -395,11 +395,13 @@ let bucket_max b =
 
 exception NodeHasNoEventTimeInfo of string
 
+(* Return the rank of field named [n] in [node] out_type tuple. *)
 let find_field node n =
-  match Hashtbl.find node.N.out_type.C.fields n with
-  | exception Not_found ->
-    failwith ("field "^ n ^" does not exist")
-  | rank, _field_typ -> Option.get !rank
+  let rec loop i = function
+  | [] -> failwith ("field "^ n ^" does not exist")
+  | (name, _typ) :: rest ->
+    if name = n then i else loop (i+1) rest in
+  loop 0 node.N.out_type.C.fields
 
 let fold_tuples_and_update_ts_cache
       ?min_filenum ?max_filenum ?max_res

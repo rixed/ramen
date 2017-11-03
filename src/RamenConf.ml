@@ -4,32 +4,34 @@ open Helpers
 open RamenSharedTypes
 open RamenSharedTypesJS
 
+(* Used to type the input/output of nodes. Of course a compiled/
+ * running node must have finished_typing to true and all optional
+ * values set, but we keep that type even for typed nodes so that
+ * the typing code, which has to use both typed and untyped nodes,
+ * has to deal with only one case. We will sometime Option.get those
+ * values when we know the node is typed.
+ * The other tuple type, Lang.Tuple.typ, is used to describe tuples
+ * outside of this context (for instance, when describing a CSV or other
+ * serialization format). *)
+(* FIXME: rename this type *)
 type temp_tup_typ =
   { mutable finished_typing : bool ;
-    (* Not sure we need the rank for anything, actually *)
-    fields : (string, int option ref * Lang.Expr.typ) Hashtbl.t }
+    mutable fields : (string * Lang.Expr.typ) List.t }
 
 let print_temp_tup_typ fmt t =
   Printf.fprintf fmt "%a (%s)"
-    (Hashtbl.print ~first:"{" ~last:"}" ~sep:", " ~kvsep:""
-                   (fun _fmt _ -> ())
-                   (fun fmt (rank, expr_typ) ->
-                     Printf.fprintf fmt "[%s] %a"
-                      (match !rank with
-                      | Some r -> string_of_int r
-                      | None -> "??")
-                      Lang.Expr.print_typ expr_typ)) t.fields
+    (List.print ~first:"{" ~last:"}" ~sep:", "
+       (fun fmt (name, expr_typ) ->
+         Printf.fprintf fmt "%s: %a"
+           name
+           Lang.Expr.print_typ expr_typ)) t.fields
     (if t.finished_typing then "finished typing" else "to be typed")
 
 let type_signature t =
-  let tag_of_rank r = "["^ string_of_int r ^"]" in
-  let keys = Hashtbl.keys t.fields |> Array.of_enum in
-  Array.fast_sort String.compare keys ;
-  Array.fold_left (fun s k ->
-      let rank, typ = Hashtbl.find t.fields k in
+  List.fold_left (fun s (name, typ) ->
       (if s = "" then "" else s ^ "_") ^
-      k ^ ":" ^ Lang.Expr.signature_of_typ typ ^ tag_of_rank (Option.get !rank)
-    ) "" keys
+      name ^ ":" ^ Lang.Expr.signature_of_typ typ
+    ) "" t.fields
 
 let md4 s =
   Cryptohash_md4.string s |> Cryptohash_md4.to_hex
@@ -37,32 +39,27 @@ let md4 s =
 let type_signature_hash = md4 % type_signature
 
 let make_temp_tup_typ () =
-  { finished_typing = false ;
-    fields = Hashtbl.create 7 }
+  { finished_typing = false ; fields = [] }
 
 let temp_tup_typ_of_tup_typ tup_typ =
   let t = make_temp_tup_typ () in
   t.finished_typing <- true ;
-  List.iteri (fun i f ->
+  List.iter (fun f ->
       let expr_typ =
         Lang.Expr.make_typ ~nullable:f.nullable
                            ~typ:f.typ f.typ_name in
-      Hashtbl.add t.fields f.typ_name (ref (Some i), expr_typ)
+      t.fields <- t.fields @ [f.typ_name, expr_typ]
     ) tup_typ ;
   t
 
-let list_of_temp_tup_type ttt =
-  Hashtbl.values ttt.fields |>
-  List.of_enum |>
-  List.fast_sort (fun (r1, _) (r2, _) -> compare !r1 !r2) |>
-  List.map (fun (r, f) -> !r, f)
+let list_of_temp_tup_type ttt = ttt.fields
 
 let tup_typ_of_temp_tup_type ttt =
   let open Lang in
   assert ttt.finished_typing ;
   list_of_temp_tup_type ttt |>
-  List.map (fun (_, typ) ->
-    { typ_name = typ.Expr.expr_name ;
+  List.map (fun (name, typ) ->
+    { typ_name = name ;
       nullable = Option.get typ.Expr.nullable ;
       typ = Option.get typ.Expr.scalar_typ })
 
@@ -150,8 +147,6 @@ struct
       incr seq ;
       string_of_int !seq
 
-  (* We need the conf because we want to add in the signature the version of
-   * ramen that generated those binaries. *)
   let signature version_tag node =
     (* We'd like to be formatting independent so that operation text can be
      * reformatted without ramen recompiling it. For this it is not OK to
@@ -510,8 +505,8 @@ let complete_field_name conf name s =
     | exception Not_found -> []
     | _layer, node ->
       let s = String.(lowercase (trim s)) in
-      Hashtbl.fold (fun field_name _ lst ->
+      List.fold_left (fun lst (field_name, _) ->
           if String.starts_with (String.lowercase field_name) s then
             field_name :: lst
           else lst
-        ) node.Node.out_type.fields []
+        ) [] node.Node.out_type.fields

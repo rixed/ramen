@@ -141,11 +141,7 @@ let rec find_float_metric metrics name =
   | _::rest -> find_float_metric rest name
 
 let node_info_of_node node =
-  let to_expr_type_info lst =
-    List.sort (fun (r1,_) (r2,_) -> match r1, r2 with
-      | Some r1, Some r2 -> Int.compare r1 r2
-      | Some _, None -> -1
-      | None, _ -> 1) lst |>
+  let to_expr_type_info =
     List.map (fun (_, typ) -> Expr.to_expr_type_info typ)
   in
   let r = node.N.last_report in

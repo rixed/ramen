@@ -24,7 +24,7 @@ open Lang
 
 (* Check that we have typed all that need to be typed *)
 let check_finished_tuple_type tuple_prefix tuple_type =
-  Hashtbl.iter (fun field_name (_rank, typ) ->
+  List.iter (fun (field_name, typ) ->
       if typ.Expr.nullable = None || typ.Expr.scalar_typ = None then (
         let e = CannotTypeField {
           field = field_name ;
@@ -229,7 +229,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     if tuple_has_type_input !tuple then (
       (* Check that this field is, or could be, in in_type *)
       if Expr.is_virtual_field field then false else
-      match Hashtbl.find in_type.C.fields field with
+      match List.assoc field in_type.C.fields with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in in-tuple" field ;
         if in_type.C.finished_typing then (
@@ -240,7 +240,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
            * context telling us what tuple we can reference - ideally not only
            * the tuple but the fields within those, because in a select we can
            * only refer to out tuple fields that have been defined earlier. *)
-          if Hashtbl.mem out_type.C.fields field then (
+          if List.mem_assoc field out_type.C.fields then (
             !logger.debug "Field %s appears to belongs to out!" field ;
             tuple := TupleOut ;
             true
@@ -251,7 +251,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
             raise (SyntaxError e)
           ) else false
         ) else false
-      | _, from ->
+      | from ->
         if in_type.C.finished_typing then ( (* Save the type *)
           op_typ.nullable <- from.nullable ;
           op_typ.scalar_typ <- from.scalar_typ
@@ -261,7 +261,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       (* If we already have this field in out then check it's compatible (or
        * enlarge out or exp). If we don't have it then add it. *)
       if Expr.is_virtual_field field then false else
-      match Hashtbl.find out_type.C.fields field with
+      match List.assoc field out_type.C.fields with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in out-tuple" field ;
         if out_type.C.finished_typing then (
@@ -269,9 +269,9 @@ let rec check_expr ~in_type ~out_type ~exp_type =
             field ; tuple = !tuple ;
             tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
           raise (SyntaxError e)) ;
-        Hashtbl.add out_type.C.fields field (ref None, exp_type) ;
+        out_type.C.fields <- out_type.C.fields @ [field, exp_type] ;
         true
-      | _, out ->
+      | out ->
         if out_type.C.finished_typing then ( (* Save the type *)
           op_typ.nullable <- out.nullable ;
           op_typ.scalar_typ <- out.scalar_typ
@@ -515,55 +515,42 @@ let rec check_expr ~in_type ~out_type ~exp_type =
        None, None, e]
 
 (* Given two tuple types, transfer all fields from the parent to the child,
- * while checking those already in the child are compatible.
- * If autorank is true, do not try to reuse from rank but add them instead.
- * This is meant to be used when transferring input to output due to "select *"
- *)
-let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple ~to_prefix ~to_tuple ~autorank =
-  let max_rank fields =
-    Hashtbl.fold (fun _ (rank, _) max_rank ->
-      match !rank with
-      | None -> max_rank
-      | Some r -> max max_rank r) fields ~-1 (* start at -1 so that max+1 starts at 0 *)
-  in
+ * while checking those already in the child are compatible. *)
+let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple ~to_prefix ~to_tuple =
   (* Check that to_tuple is included in from_tuple (is is_subset) and if so
    * that they are compatible. Improve child type using parent type. *)
   let changed =
-    Hashtbl.fold (fun n (child_rank, child_field) changed ->
-        match Hashtbl.find from_tuple.C.fields n with
+    List.fold_left (fun changed (child_name, child_field) ->
+        match List.assoc child_name from_tuple.C.fields with
         | exception Not_found ->
           if is_subset && from_tuple.C.finished_typing then (
             let e = FieldNotInTuple {
-              field = n ;
+              field = child_name ;
               tuple = from_prefix ;
               tuple_type = "" (* TODO *) } in
             raise (SyntaxError e)) ;
           changed (* no-op *)
-        | parent_rank, parent_field ->
-          let c1 = check_expr_type ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field
-          and c2 = check_rank ~from:parent_rank ~to_:child_rank in
-          c1 || c2 || changed
-      ) to_tuple.C.fields false in
+        | parent_field ->
+          check_expr_type ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field ||
+          changed
+      ) false to_tuple.C.fields in
   (* Add new fields into children. *)
   let changed =
-    Hashtbl.fold (fun n (parent_rank, parent_field) changed ->
-        match Hashtbl.find to_tuple.C.fields n with
+    List.fold_left (fun changed (parent_name, parent_field) ->
+        match List.assoc parent_name to_tuple.C.fields with
         | exception Not_found ->
           if to_tuple.C.finished_typing then (
             let e = FieldNotInTuple {
-              field = n ;
+              field = parent_name ;
               tuple = to_prefix ;
               tuple_type = "" (* TODO *) } in
             raise (SyntaxError e)) ;
           let copy = Expr.copy_typ parent_field in
-          let rank =
-            if autorank then ref (Some (max_rank to_tuple.C.fields + 1))
-            else ref !parent_rank in
-          Hashtbl.add to_tuple.C.fields n (rank, copy) ;
+          to_tuple.C.fields <- to_tuple.C.fields @ [ parent_name, copy ] ;
           true
         | _ ->
           changed (* We already checked those types above. All is good. *)
-      ) from_tuple.C.fields changed in
+      ) changed from_tuple.C.fields in
   (* If typing of from_tuple is finished then so is to_tuple *)
   let changed =
     if including_complete && from_tuple.C.finished_typing && not to_tuple.C.finished_typing then (
@@ -575,12 +562,12 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
   changed
 
 let check_selected_fields ~in_type ~out_type fields =
-  List.fold_lefti (fun changed i sf ->
+  List.fold_left (fun changed sf ->
       changed || (
         let name = sf.Operation.alias in
         !logger.debug "Type-check field %s" name ;
         let exp_type =
-          match Hashtbl.find out_type.C.fields name with
+          match List.assoc name out_type.C.fields with
           | exception Not_found ->
             (* Start from the type we already know from the expression
              * because it is already set in some cases (virtual fields -
@@ -598,10 +585,9 @@ let check_selected_fields ~in_type ~out_type fields =
                 typ
             in
             !logger.debug "Adding out-field %s (operation: %s)" name typ.Expr.expr_name ;
-            Hashtbl.add out_type.C.fields name (ref (Some i), typ) ;
+            out_type.C.fields <- out_type.C.fields @ [name, typ] ;
             typ
-          | rank, typ ->
-            if !rank = None then rank := Some i ;
+          | typ ->
             !logger.debug "... already in out, current type is %a" Expr.print_typ typ ;
             typ in
         check_expr ~in_type ~out_type ~exp_type sf.Operation.expr)
@@ -676,7 +662,7 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
   ) || (
     (* If all other fields are selected, add them *)
     if and_all_others then (
-      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_prefix:TupleIn ~from_tuple:in_type ~to_prefix:TupleOut ~to_tuple:out_type ~autorank:true
+      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_prefix:TupleIn ~from_tuple:in_type ~to_prefix:TupleOut ~to_tuple:out_type
     ) else false
   ) || (
     (* If nothing changed so far and our input is finished_typing, then our output is. *)
@@ -703,10 +689,10 @@ let check_operation ~in_type ~out_type =
                     commit_when flush_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     let from_tuple = C.temp_tup_typ_of_tup_typ fields in
-    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleIn ~from_tuple ~to_prefix:TupleOut ~to_tuple:out_type ~autorank:false
+    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleIn ~from_tuple ~to_prefix:TupleOut ~to_tuple:out_type
   | ListenFor { proto ; _ } ->
     let from_tuple = C.temp_tup_typ_of_tup_typ (RamenProtocols.tuple_typ_of_proto proto) in
-    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleIn ~from_tuple ~to_prefix:TupleOut ~to_tuple:out_type ~autorank:false
+    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleIn ~from_tuple ~to_prefix:TupleOut ~to_tuple:out_type
 
 (*
  * Type inference for the graph
@@ -732,7 +718,7 @@ let check_node_types node =
         true
       ) else List.fold_left (fun changed par ->
             (* This is supposed to propagate parent completeness into in-tuple. *)
-            check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleOut ~from_tuple:par.N.out_type ~to_prefix:TupleIn ~to_tuple:node.N.in_type ~autorank:false || changed
+            check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleOut ~from_tuple:par.N.out_type ~to_prefix:TupleIn ~to_tuple:node.N.in_type || changed
           ) false node.N.parents
     ) || (
     (* Try to improve out_type and the AST types using the in_type and the
