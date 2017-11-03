@@ -427,10 +427,6 @@ struct
 
   let print_typ fmt lst =
     (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) fmt lst
-
-  type t = (string, scalar_typ) Hashtbl.t
-
-  let make_empty () = Hashtbl.create 7
 end
 
 module Expr =
