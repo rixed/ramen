@@ -213,9 +213,8 @@ uninstall-spec:
 colcomp/colcomp_test: colcomp/colcomp_test.o libcolcomp.a
 	$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) $^ -o $@
 
-check-spec: ringbuf_test.opt colcomp/colcomp_test
+check-spec: ringbuf_test.opt
 	@./ringbuf_test.opt || echo "FAILURE (ringbuf_test)"
-	@colcomp/colcomp_test || echo "FAILURE (colcomp_test)"
 
 long-check: ramen
 	@$(MAKE) check
