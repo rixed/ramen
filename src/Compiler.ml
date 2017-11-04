@@ -269,7 +269,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
             field ; tuple = !tuple ;
             tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
           raise (SyntaxError e)) ;
-        out_type.C.fields <- out_type.C.fields @ [field, exp_type] ;
+        out_type.C.fields <- (field, exp_type) :: out_type.C.fields ;
         true
       | out ->
         if out_type.C.finished_typing then ( (* Save the type *)
@@ -546,7 +546,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
               tuple_type = "" (* TODO *) } in
             raise (SyntaxError e)) ;
           let copy = Expr.copy_typ parent_field in
-          to_tuple.C.fields <- to_tuple.C.fields @ [ parent_name, copy ] ;
+          to_tuple.C.fields <- (parent_name, copy) :: to_tuple.C.fields ;
           true
         | _ ->
           changed (* We already checked those types above. All is good. *)
@@ -585,7 +585,7 @@ let check_selected_fields ~in_type ~out_type fields =
                 typ
             in
             !logger.debug "Adding out-field %s (operation: %s)" name typ.Expr.expr_name ;
-            out_type.C.fields <- out_type.C.fields @ [name, typ] ;
+            out_type.C.fields <- (name, typ) :: out_type.C.fields ;
             typ
           | typ ->
             !logger.debug "... already in out, current type is %a" Expr.print_typ typ ;
@@ -688,11 +688,17 @@ let check_operation ~in_type ~out_type =
     check_aggregate ~in_type ~out_type fields and_all_others where key top
                     commit_when flush_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-    let from_tuple = C.temp_tup_typ_of_tup_typ fields in
-    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleIn ~from_tuple ~to_prefix:TupleOut ~to_tuple:out_type
+    if out_type.C.finished_typing then false else (
+      let t = C.temp_tup_typ_of_tup_typ fields in
+      out_type.C.fields <- t.fields ;
+      C.finish_typing out_type ;
+      true)
   | ListenFor { proto ; _ } ->
-    let from_tuple = C.temp_tup_typ_of_tup_typ (RamenProtocols.tuple_typ_of_proto proto) in
-    check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleIn ~from_tuple ~to_prefix:TupleOut ~to_tuple:out_type
+    if out_type.C.finished_typing then false else (
+      let t = C.temp_tup_typ_of_tup_typ (RamenProtocols.tuple_typ_of_proto proto) in
+      out_type.C.fields <- t.fields ;
+      C.finish_typing out_type ;
+      true)
 
 (*
  * Type inference for the graph
@@ -739,6 +745,12 @@ let node_typing_is_finished conf node =
      true
    else false)
 
+(* Since we can have loops within a layer we can not propagate types
+ * immediately. Also, the star selection prevent us from propagating
+ * input from output types in one go.
+ * We do it bit by bit but will still make sure to make parent
+ * output = children input eventually, and that fields are encoded in
+ * the specified order. *)
 let set_all_types _conf layer =
   let rec loop () =
     if Hashtbl.fold (fun _ node changed ->
@@ -899,6 +911,56 @@ let compile conf layer =
       if not finished_typing then (
         fail (SyntaxError CannotCompleteTyping)
       ) else (
+        (* So far order was not taken into account.
+         * Reorder input types to match output types. Beware that the
+         * Expr.typ has a unique number so we cannot compare/copy them
+         * directly: *)
+        let cmp_fields (n1, f1) (n2, f2) =
+          compare (n1, f1.Expr.nullable, f1.Expr.scalar_typ)
+                  (n2, f2.Expr.nullable, f2.Expr.scalar_typ) in
+        let cmp_temp_tup_typ_fields t1 t2 =
+          let rec loop = function
+            | [], [] -> 0
+            | f1::rest1, f2::rest2 ->
+              (match cmp_fields f1 f2 with
+              | 0 -> loop (rest1, rest2)
+              | x -> x)
+            | [], _ -> -1 | _, [] -> 1 in
+          loop (t1, t2) in
+        Hashtbl.fold (fun _node_name node th ->
+            match node.N.parents with
+            | [] -> th
+            | parent :: other_parents ->
+              assert parent.N.out_type.C.finished_typing ;
+              assert parent.N.in_type.C.finished_typing ;
+              (* Check all parents have same output *)
+              let%lwt () =
+                match List.find (fun parent' ->
+                    assert parent'.N.out_type.C.finished_typing ;
+                    assert parent'.N.in_type.C.finished_typing ;
+                    0 <> cmp_temp_tup_typ_fields parent.N.out_type.C.fields
+                                                 parent'.N.out_type.C.fields
+                  ) other_parents with
+                | exception Not_found -> return_unit
+                | parent' ->
+                  !logger.error "Different parents have different out-types: \
+                               %s (%a) and %s (%a)"
+                              (N.fq_name parent) C.print_temp_tup_typ parent.N.out_type
+                              (N.fq_name parent') C.print_temp_tup_typ parent'.N.out_type ;
+                  fail (SyntaxError CannotCompleteTyping) in
+              (* Check parent output = child input *)
+              let f1 = List.fast_sort cmp_fields node.N.in_type.C.fields
+              and f2 = List.fast_sort cmp_fields parent.N.out_type.C.fields in
+              if cmp_temp_tup_typ_fields f1 f2 <> 0 then (
+                !logger.error "Node input (%a) differs from parent output (%a)!"
+                  C.print_temp_tup_typ_fields f1
+                  C.print_temp_tup_typ_fields f2 ;
+                fail (SyntaxError CannotCompleteTyping)
+              ) else (
+                node.N.in_type <- C.temp_tup_typ_copy  parent.N.out_type ;
+                return_unit)
+          ) layer.L.persist.L.nodes return_unit >>= fun () ->
+        (* Compile *)
         let _, thds =
           Hashtbl.fold (fun _ node (doing,thds) ->
               (* Avoid compiling twice the same thing (TODO: a lockfile) *)

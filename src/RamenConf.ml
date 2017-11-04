@@ -18,14 +18,21 @@ type temp_tup_typ =
   { mutable finished_typing : bool ;
     mutable fields : (string * Lang.Expr.typ) List.t }
 
+let print_temp_tup_typ_fields fmt fs =
+  List.print ~first:"{" ~last:"}" ~sep:", "
+    (fun fmt (name, expr_typ) ->
+      Printf.fprintf fmt "%s: %a"
+        name
+        Lang.Expr.print_typ expr_typ) fmt fs
+
 let print_temp_tup_typ fmt t =
   Printf.fprintf fmt "%a (%s)"
-    (List.print ~first:"{" ~last:"}" ~sep:", "
-       (fun fmt (name, expr_typ) ->
-         Printf.fprintf fmt "%s: %a"
-           name
-           Lang.Expr.print_typ expr_typ)) t.fields
+    print_temp_tup_typ_fields t.fields
     (if t.finished_typing then "finished typing" else "to be typed")
+
+let temp_tup_typ_copy t =
+  { t with fields =
+      List.map (fun (name, typ) -> name, Lang.Expr.copy_typ typ) t.fields }
 
 let type_signature t =
   List.fold_left (fun s (name, typ) ->
