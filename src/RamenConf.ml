@@ -41,15 +41,18 @@ let type_signature_hash = md4 % type_signature
 let make_temp_tup_typ () =
   { finished_typing = false ; fields = [] }
 
+let finish_typing t =
+  t.finished_typing <- true
+
 let temp_tup_typ_of_tup_typ tup_typ =
   let t = make_temp_tup_typ () in
-  t.finished_typing <- true ;
   List.iter (fun f ->
       let expr_typ =
         Lang.Expr.make_typ ~nullable:f.nullable
                            ~typ:f.typ f.typ_name in
       t.fields <- t.fields @ [f.typ_name, expr_typ]
     ) tup_typ ;
+  finish_typing t ;
   t
 
 let list_of_temp_tup_type ttt = ttt.fields

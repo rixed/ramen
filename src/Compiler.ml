@@ -556,7 +556,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
     if including_complete && from_tuple.C.finished_typing && not to_tuple.C.finished_typing then (
       !logger.debug "Completing to_tuple from check_inherit_tuple" ;
       check_finished_tuple_type to_prefix to_tuple ;
-      to_tuple.C.finished_typing <- true ;
+      C.finish_typing to_tuple ;
       true
     ) else changed in
   changed
@@ -601,7 +601,7 @@ let check_yield ~in_type ~out_type fields =
     if not out_type.C.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
       check_finished_tuple_type TupleOut out_type ;
-      out_type.C.finished_typing <- true ;
+      C.finish_typing out_type ;
       true
     ) else false
   )
@@ -669,7 +669,7 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
     if in_type.C.finished_typing && not out_type.C.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
       check_finished_tuple_type TupleOut out_type ;
-      out_type.C.finished_typing <- true ;
+      C.finish_typing out_type ;
       true
     ) else false
   )
@@ -714,7 +714,7 @@ let check_node_types node =
       else if node.N.parents = [] then (
         !logger.debug "Completing node %s in-type since we have no parents" node.N.name ;
         check_finished_tuple_type TupleIn node.N.in_type ;
-        node.N.in_type.C.finished_typing <- true ;
+        C.finish_typing node.N.in_type ;
         true
       ) else List.fold_left (fun changed par ->
             (* This is supposed to propagate parent completeness into in-tuple. *)
@@ -769,7 +769,7 @@ let set_all_types _conf layer =
       let exp_type = Lang.Expr.make_typ ?nullable ?typ "test" in
       let in_type = RamenConf.make_temp_tup_typ ()
       and out_type = RamenConf.make_temp_tup_typ () in
-      in_type.RamenConf.finished_typing <- true ;
+      RamenConf.finish_typing in_type ;
       let open RamenParsing in
       let p = Lang.Expr.Parser.(p +- eof) in
       let exp =
