@@ -159,22 +159,6 @@ let emit_serialize_tuple name oc tuple_typ =
     ) 0 tuple_typ in
   Printf.fprintf oc "\toffs_\n"
 
-(* Return the list of all other fields, in order *)
-let get_star_fields out_tuple_typ selected_fields and_all_others =
-  if not and_all_others then [] else
-  (* We will iter through the selected fields, marking those which have been
-   * outputted so that we do not output them again in the STAR operator. *)
-  let outputted = List.fold_left (fun set sf ->
-      match sf.Operation.expr with
-      | Expr.Field (_, tuple, field) when !tuple = TupleIn ->
-        Set.add field set
-      | _ -> set
-    ) Set.empty selected_fields in
-  List.fold_left (fun lst field ->
-      if Set.mem field.typ_name outputted then lst else field :: lst
-    ) [] out_tuple_typ |>
-  List.rev
-
 let rec emit_indent oc n =
   if n > 0 then (
     Printf.fprintf oc "\t" ;
@@ -873,25 +857,31 @@ let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_ty
               nb_gens ;
             nb_gens + 1)
         ) 0 selected_fields in
-    (* Now we have all the generated values, actually call f_ on the tuple *)
+    (* Now we have all the generated values, actually call f_ on the tuple.
+     * Note that the tuple must be in out_tuple_typ order: *)
     Printf.fprintf oc "%af_ (\n%a"
       emit_indent (1 + nb_gens)
       emit_indent (2 + nb_gens) ;
-    let _ = List.fold_lefti (fun gi i sf ->
+    let expr_of_field name =
+      let sf = List.find (fun sf ->
+                 sf.Operation.alias = name) selected_fields in
+      sf.Operation.expr in
+    let _ = List.fold_lefti (fun gi i ft ->
         if i > 0 then Printf.fprintf oc ",\n%a" emit_indent (2 + nb_gens) ;
-        if Expr.is_generator sf.Operation.expr then (
+        match Expr.is_generator (expr_of_field ft.typ_name) with
+        | exception Not_found ->
+          (* For star-imported fields: *)
+          Printf.fprintf oc "%s"
+            (id_of_field_name ft.typ_name) ;
+          gi
+        | true ->
           Printf.fprintf oc "generated_%d_" gi ;
           gi + 1
-        ) else (
+        | false ->
           Printf.fprintf oc "%s"
-            (id_of_field_name ~tuple:TupleOut sf.Operation.alias) ;
+            (id_of_field_name ~tuple:TupleOut ft.typ_name) ;
           gi
-        )) 0 selected_fields in
-    get_star_fields out_tuple_typ selected_fields and_all_others |>
-    List.iter (fun field ->
-      Printf.fprintf oc ",\n%a%s"
-      emit_indent (2 + nb_gens)
-      (id_of_field_name field.typ_name)) ;
+        ) 0 out_tuple_typ in
     for _ = 1 to nb_gens do Printf.fprintf oc ")" done ;
     Printf.fprintf oc ")\n"
   )
@@ -936,9 +926,6 @@ let emit_where
   else
     Printf.fprintf oc "=\n\t%a\n" (emit_expr ?state:None ~context:Finalize) expr
 
-(* If with aggr we have the aggregate record as first parameter
- * and also the first and last incoming tuple of this aggr as additional
- * parameters *)
 let emit_field_selection
       ?(with_selected=false) (* and unselected *)
       ?(with_group=false)
@@ -969,18 +956,14 @@ let emit_field_selection
           (id_of_field_name ~tuple:TupleOut sf.Operation.alias)
           (emit_expr ?state:None ~context:Finalize) sf.Operation.expr
     ) selected_fields ;
+  (* Here we must generate the tuple in the order specified by out_type,
+   * not selected_fields: *)
   Printf.fprintf oc "\t(\n\t\t" ;
-  List.iteri (fun i sf ->
+  List.iteri (fun i ft ->
       Printf.fprintf oc "%s%s"
         (if i > 0 then ",\n\t\t" else "")
-        (id_of_field_name ~tuple:TupleOut sf.Operation.alias) ;
-    ) selected_fields ;
-  get_star_fields out_tuple_typ selected_fields and_all_others |>
-  List.iteri (fun i field ->
-    Printf.fprintf oc "%s\n\t\t%s%s"
-      (if i > 0 || selected_fields <> [] then "," else "")
-      (if i = 0 then "(* All other fields *)\n\t\t" else "")
-      (id_of_field_name field.typ_name)) ;
+        (id_of_field_name ~tuple:TupleOut ft.typ_name) ;
+    ) out_tuple_typ ;
   Printf.fprintf oc "\n\t)\n"
 
 (* Similar to emit_field_selection but with less options, no concept of star and no

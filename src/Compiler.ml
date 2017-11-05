@@ -517,7 +517,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible. *)
 let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple ~to_prefix ~to_tuple =
-  (* Check that to_tuple is included in from_tuple (is is_subset) and if so
+  (* Check that to_tuple is included in from_tuple (if is_subset) and if so
    * that they are compatible. Improve child type using parent type. *)
   let changed =
     List.fold_left (fun changed (child_name, child_field) ->
@@ -915,6 +915,8 @@ let compile conf layer =
          * Reorder input types to match output types. Beware that the
          * Expr.typ has a unique number so we cannot compare/copy them
          * directly: *)
+        (* TODO: For select and yield operations, order out_type as
+         * selected_fields? *)
         let cmp_fields (n1, f1) (n2, f2) =
           compare (n1, f1.Expr.nullable, f1.Expr.scalar_typ)
                   (n2, f2.Expr.nullable, f2.Expr.scalar_typ) in
