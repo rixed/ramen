@@ -911,12 +911,14 @@ let compile conf layer =
       if not finished_typing then (
         fail (SyntaxError CannotCompleteTyping)
       ) else (
-        (* So far order was not taken into account.
-         * Reorder input types to match output types. Beware that the
-         * Expr.typ has a unique number so we cannot compare/copy them
-         * directly: *)
-        (* TODO: For select and yield operations, order out_type as
-         * selected_fields? *)
+        (* So far order was not taken into account.  Reorder output types to
+         * match selected fields (not strictly required but improves user
+         * experience in the GUI), and reorder input types to match output
+         * types. Beware that the Expr.typ has a unique number so we cannot
+         * compare/copy them directly (although that unique number is required
+         * to be unique only for a node, better keep it unique globally in case
+         * we want to generate several nodes in a single binary, and to avoid
+         * needless confusion when debugging): *)
         let cmp_fields (n1, f1) (n2, f2) =
           compare (n1, f1.Expr.nullable, f1.Expr.scalar_typ)
                   (n2, f2.Expr.nullable, f2.Expr.scalar_typ) in
@@ -933,7 +935,28 @@ let compile conf layer =
           Hashtbl.fold (fun _node_name node th ->
               th >>= fun () -> f node
             ) layer.L.persist.L.nodes return_unit in
-        let reorder_input node =
+        let get_selected_fields node =
+          match node.N.operation with
+          | Yield fields -> Some fields
+          | Aggregate { fields ; _ } -> Some fields
+          | _ -> None in
+        let reorder_output node =
+          get_selected_fields node |>
+          Option.may (fun selected_fields ->
+            let sf_index name =
+              try List.findi (fun _ sf ->
+                    sf.Operation.alias = name) selected_fields |>
+                  fst
+              with Not_found ->
+                (* star-imported fields - throw them all at the end in no
+                 * specific order. TODO: in parent order? *)
+                max_int in
+            let cmp (n1, _) (n2, _) =
+              compare (sf_index n1) (sf_index n2) in
+            node.N.out_type.C.fields <-
+              List.fast_sort cmp node.N.out_type.C.fields) ;
+          return_unit
+        and reorder_input node =
           match node.N.parents with
           | [] -> return_unit
           | parent :: other_parents ->
@@ -965,6 +988,7 @@ let compile conf layer =
             ) else (
               node.N.in_type <- C.temp_tup_typ_copy  parent.N.out_type ;
               return_unit) in
+        let%lwt () = iter_nodes_seq reorder_output in
         let%lwt () = iter_nodes_seq reorder_input in
         (* Compile *)
         let _, thds =
