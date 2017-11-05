@@ -1703,7 +1703,7 @@ struct
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
     | Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
                   key ; top ; commit_when ; flush_when ; flush_how ; from } ->
-      Printf.fprintf fmt "FROM %a SELECT %a%s%s"
+      Printf.fprintf fmt "FROM '%a' SELECT %a%s%s"
         (List.print ~first:"" ~last:"" ~sep String.print) from
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
