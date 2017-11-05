@@ -133,6 +133,8 @@ th p.type { font-size: 60%; font-style: italic; }
 td.number, td.float, td.u8, td.u16, td.u32, td.u64, td.u128, td.i8,
 td.i16, td.i32, td.i64, td.i128 { text-align: right; font-family: monospace; }
 
+p.nodata { font-weight: 600; font-style: italic; margin: 1em; }
+
 div.tab div { float: left; min-height: 1em; height: 1em; display: flex; padding: 0 1em 0 1em; }
 div.tab div { background-color: #fff; color: #aaa; }
 div.tab div.selected { background-color: #ccc; color: #000; }

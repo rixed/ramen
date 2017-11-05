@@ -186,9 +186,11 @@ let sel_node = make_param "selected node" ""
 type selected_layer = NoLayer | ExistingLayer of string | NewLayer
 let sel_layer = make_param "selected layer" NoLayer
 
-(* The edition form state: *)
+(* The edition form state, with as many additional nodes as requested,
+ * and the ongoing modifications: *)
 type edited_layer =
-  { new_layer_name : string ref ;
+  { title : string ;
+    new_layer_name : string ref ;
     mutable edited_nodes : (string ref * string ref) list }
 
 (* We have only one variable for all the lines because they always change
@@ -381,11 +383,13 @@ let edited_nodes_of_layer l =
 
 let edited_layer_of_layer = function
   ExistingLayer l ->
-  { new_layer_name = ref l ;
+  { title = "Configuration for "^ l ;
+    new_layer_name = ref l ;
     edited_nodes = edited_nodes_of_layer l }
 | NewLayer ->
   (* edited_layer record for a new layer: *)
-  { new_layer_name = ref "new layer name" ;
+  { title = "New layer configuration" ;
+    new_layer_name = ref "new layer name" ;
     edited_nodes = [ new_edited_node [] ] }
 | NoLayer -> fail "invalid edited layer NoLayer"
 
@@ -667,18 +671,18 @@ let icon_of_layer ?(suppress_action=false) layer =
   let icon, path, alt, what, while_ =
     match layer.Layer.status with
     | Edition _ ->
-      "✎", "/compile/"^ enc layer.Layer.name,
+      "⚙", "/compile/"^ enc layer.Layer.name,
       "compile", Some ("Compiled "^ layer.Layer.name),
       "compiling..."
     | Compiling ->
       "☐", "/graph/"^ enc layer.Layer.name,
       "reload", None, "compiling..."
     | Compiled ->
-      "☑", "/start/"^ enc layer.Layer.name,
+      "▷", "/start/"^ enc layer.Layer.name,
       "start", Some ("Started "^ layer.Layer.name),
       "starting..."
     | Running ->
-      "⚙", "/stop/"^ enc layer.Layer.name,
+      "||", "/stop/"^ enc layer.Layer.name,
       "stop", Some ("Stopped "^ layer.Layer.name),
       "stopping..."
   in
@@ -742,9 +746,9 @@ let layer_panel to_del layer =
                 button ?action
                   [ clss "actionable icon" ; title "delete" ; text "⌫" ]) ;
                 icon_of_layer ~suppress_action:is_to_del layer ])
-              (fun while_ ->
-                button [ clss "icon spinning" ; title while_ ;
-                         text spinner_icon ])) ] ;
+            (fun while_ ->
+              button [ clss "icon spinning" ; title while_ ;
+                       text spinner_icon ])) ] ;
     div (
       clss "info" ::
       labeled_value "#nodes" (string_of_int layer.nb_nodes) ::
@@ -885,7 +889,7 @@ let node_tbody_row node =
      * depend only on this. *)
     with_value sel_node (fun sel ->
       if sel = node.Node.id then
-        tr ~action:(fun _ -> set_sel_node None ; set sel_layer NoLayer)
+        tr ~action:(fun _ -> set_sel_node None)
           (clss "selected-actionable" :: cols)
       else
         tr ~action:(fun _ -> set_sel_node (Some node))
@@ -988,7 +992,9 @@ let field_panel f =
 
 let input_panel =
   with_value sel_node (fun sel ->
-    if sel = "" then p [ text "Select a node to see its input fields" ]
+    if sel = "" then
+      p [ clss "nodata" ;
+          text "Select a node to see its input fields" ]
     else with_node sel (fun node ->
       ol (List.map (fun f -> li [ field_panel f ]) node.input_type)))
 
@@ -1000,7 +1006,8 @@ let can_plot_type = function
 let op_panel =
   with_value sel_node (fun sel ->
     if sel = "" then
-      p [ text "Select a node to see the operation it performs" ]
+      p [ clss "nodata" ;
+          text "Select a node to see the operation it performs" ]
     else with_node sel (fun node ->
       div
         [ clss "operation" ;
@@ -1037,7 +1044,8 @@ let tail_panel =
   in
   with_value sel_node (fun sel ->
     if sel = "" then
-      p [ text "Select a node to see its output" ]
+      p [ clss "nodata" ;
+          text "Select a node to see its output" ]
     else with_node sel (fun node ->
       let lame_excuse t =
         tbody [ tr [ td
@@ -1095,11 +1103,13 @@ let show_zero_selector =
 let timechart_panel =
   with_value sel_output_cols (function
     | [] ->
-      p [ text "Select one or several columns to plot them." ]
+      p [ clss "nodata" ;
+          text "Select one or several columns to plot them." ]
     | _ ->
       with_value chart_points (fun field_pts ->
         if field_pts = [] || Array.length (snd (List.hd field_pts)) = 0
-        then p [ text "No data received yet" ]
+        then p [ clss "nodata" ;
+                 text "No data received yet" ]
         else
           (* We consider times are the same for all fields *)
           let fst_field_name, fst_pts = List.hd field_pts in
@@ -1212,6 +1222,7 @@ let layer_editor_panel =
   with_value edited_layer (fun edl ->
     div
       [ id "editor" ;
+        h1 edl.title ;
         form_input "Name" edl.new_layer_name "enter a node name" ;
         h2 "Nodes" ;
         group (List.map node_editor_panel edl.edited_nodes) ;
@@ -1259,15 +1270,20 @@ let dom =
           NoLayer ->
           div [ id "top" ; top_layers ; top_nodes ]
         | ExistingLayer slayer ->
-          div
-            [ id "top" ; top_layers ;
-              h1 ("Configuration for layer "^ slayer) ;
-              layer_editor_panel ]
+          with_value layers (fun layers ->
+            match List.assoc slayer layers with
+            | exception Not_found -> group []
+            | layer ->
+              with_value layer (fun layer ->
+                div
+                  [ id "top" ; top_layers ; top_nodes ;
+                    if layer.status <> Running then
+                      layer_editor_panel
+                    else
+                      p [ clss "nodata" ;
+                          text "Running layer cannot be edited" ] ]))
         | NewLayer ->
-          div
-            [ id "top" ; top_layers ;
-              h1 "New layer configuration" ;
-              layer_editor_panel ])
+          div [ id "top" ; top_layers ; layer_editor_panel ])
       | snode ->
         match List.assoc snode nodes.value with
         | exception Not_found -> group []
@@ -1281,7 +1297,8 @@ let dom =
                   div [ id "operation" ; h1 "Operation" ; op_panel ] ] ;
               can_export_with_layer node (function
                 true -> output_panel
-              | false -> p [ text "This node exports no data" ]) ]) ]
+              | false -> p [ clss "nodata" ;
+                             text "This node exports no data" ]) ]) ]
 
 let () =
   let rld_graph () =
