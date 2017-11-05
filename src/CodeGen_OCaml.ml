@@ -1298,7 +1298,7 @@ let with_code_file_for exec_name conf f =
 
 let compile_source exec_name fname =
   Printf.sprintf
-    "nice ocamlfind ocamlopt -S -g -annot -o %s -package ramen \
+    "nice -n 20 ocamlfind ocamlopt -S -g -annot -o %s -package ramen \
      -linkpkg %s"
     (shell_quote exec_name)
     (shell_quote fname)
