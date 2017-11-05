@@ -48,21 +48,29 @@ let traffic_node ?where dataset_name name dt =
        sum timeouts / $DT$ AS timeouts_per_secs,
        sum syns / $DT$ AS syns_per_secs,
        sum closes / $DT$ AS closes_per_secs,
-       sum connections / $DT$ AS connections_per_secs,
+       sum connections AS _sum_connections,
+       _sum_connections / $DT$ AS connections_per_secs,
        sum dupacks_src / $DT$ AS dupacks_per_secs,
        sum zero_windows_src / $DT$ AS zero_windows_per_secs,
-       (sum rtt_sum_src / sum rtt_count_src) / 1e6 AS rtt_avg,
-       ((sum rtt_sum2_src - float(sum rtt_sum_src)^2 / sum rtt_count_src) /
-           sum rtt_count_src) / 1e12 AS rtt_var,
-       (sum rd_sum_src / sum rd_count_src) / 1e6 AS rd_avg,
-       ((sum rd_sum2_src - float(sum rd_sum_src)^2 / sum rd_count_src) /
-           sum rd_count_src) / 1e12 AS rd_var,
-       (sum dtt_sum_src / sum dtt_count_src) / 1e6 AS dtt_avg,
-       ((sum dtt_sum2_src - float(sum dtt_sum_src)^2 / sum dtt_count_src) /
-           sum dtt_count_src) / 1e12 AS dtt_var,
-       (sum connections_time / sum connections) / 1e6 AS connection_time_avg,
-       ((sum connections_time2 - float(sum connections_time)^2 / sum connections) /
-           sum connections) / 1e12 AS connection_time_var
+       sum rtt_count_src AS _sum_rtt_count_src,
+       sum rtt_sum_src AS _sum_rtt_sum_src,
+       (_sum_rtt_sum_src / _sum_rtt_count_src) / 1e6 AS rtt_avg,
+       ((sum rtt_sum2_src - float(_sum_rtt_sum_src)^2 / _sum_rtt_count_src) /
+           _sum_rtt_count_src) / 1e12 AS rtt_var,
+       sum rd_count_src AS _sum_rd_count_src,
+       sum rd_sum_src AS _sum_rd_sum_src,
+       (_sum_rd_sum_src / _sum_rd_count_src) / 1e6 AS rd_avg,
+       ((sum rd_sum2_src - float(_sum_rd_sum_src)^2 / _sum_rd_count_src) /
+           _sum_rd_count_src) / 1e12 AS rd_var,
+       sum dtt_count_src AS _sum_dtt_count_src,
+       sum dtt_sum_src AS _sum_dtt_sum_src,
+       (_sum_dtt_sum_src / _sum_dtt_count_src) / 1e6 AS dtt_avg,
+       ((sum dtt_sum2_src - float(_sum_dtt_sum_src)^2 / _sum_dtt_count_src) /
+           _sum_dtt_count_src) / 1e12 AS dtt_var,
+       sum connections_time AS _sum_connections_time,
+       (_sum_connections_time / _sum_connections) / 1e6 AS connection_time_avg,
+       ((sum connections_time2 - float(_sum_connections_time)^2 / _sum_connections) /
+           _sum_connections) / 1e12 AS connection_time_var
      EXPORT EVENT STARTING AT start * $DT$
              WITH DURATION $DT$
      GROUP BY capture_begin // $DT_US$
@@ -463,61 +471,77 @@ let layer_of_bcas bcas dataset_name =
           sum zero_window_count_client / $AVG$ AS c2s_0wins_per_secs,
           sum zero_window_count_server / $AVG$ AS s2c_0wins_per_secs,
           -- Connection Time
-          sum ct_count / $AVG$ AS ct_per_secs,
-          IF sum ct_count = 0 THEN 0 ELSE
-            (sum ct_sum / sum ct_count) / 1e6 AS ct_avg,
-          IF sum ct_count = 0 THEN 0 ELSE
-            sqrt (((sum ct_square_sum - (sum ct_sum)^2) /
-                   sum ct_count) / 1e12) AS ct_stddev,
+          sum ct_count AS _sum_ct_count,
+          sum ct_sum AS _sum_ct_sum,
+          _sum_ct_count / $AVG$ AS ct_per_secs,
+          IF _sum_ct_count = 0 THEN 0 ELSE
+            (_sum_ct_sum / _sum_ct_count) / 1e6 AS ct_avg,
+          IF _sum_ct_count = 0 THEN 0 ELSE
+            sqrt (((sum ct_square_sum - (_sum_ct_sum)^2) /
+                   _sum_ct_count) / 1e12) AS ct_stddev,
           -- Server Response Time
-          sum rt_count_server / $AVG$ AS srt_per_secs,
-          IF sum rt_count_server = 0 THEN 0 ELSE
-            (sum rt_sum_server / sum rt_count_server) / 1e6 AS srt_avg,
-          IF sum rt_count_server = 0 THEN 0 ELSE
-            sqrt (((sum rt_square_sum_server - (sum rt_sum_server)^2) /
-                   sum rt_count_server) / 1e12) AS srt_stddev,
+          sum rt_count_server AS _sum_rt_count_server,
+          sum rt_sum_server AS _sum_rt_sum_server,
+          _sum_rt_count_server / $AVG$ AS srt_per_secs,
+          IF _sum_rt_count_server = 0 THEN 0 ELSE
+            (_sum_rt_sum_server / _sum_rt_count_server) / 1e6 AS srt_avg,
+          IF _sum_rt_count_server = 0 THEN 0 ELSE
+            sqrt (((sum rt_square_sum_server - (_sum_rt_sum_server)^2) /
+                   _sum_rt_count_server) / 1e12) AS srt_stddev,
           -- Round Trip Time CSC
-          sum rtt_count_server / $AVG$ AS crtt_per_secs,
-          IF sum rtt_count_server = 0 THEN 0 ELSE
-            (sum rtt_sum_server / sum rtt_count_server) / 1e6 AS crtt_avg,
-          IF sum rtt_count_server = 0 THEN 0 ELSE
-            sqrt (((sum rtt_square_sum_server - (sum rtt_sum_server)^2) /
-                   sum rtt_count_server) / 1e12) AS crtt_stddev,
+          sum rtt_count_server AS _sum_rtt_count_server,
+          sum rtt_sum_server AS _sum_rtt_sum_server,
+          _sum_rtt_count_server / $AVG$ AS crtt_per_secs,
+          IF _sum_rtt_count_server = 0 THEN 0 ELSE
+            (_sum_rtt_sum_server / _sum_rtt_count_server) / 1e6 AS crtt_avg,
+          IF _sum_rtt_count_server = 0 THEN 0 ELSE
+            sqrt (((sum rtt_square_sum_server - (_sum_rtt_sum_server)^2) /
+                   _sum_rtt_count_server) / 1e12) AS crtt_stddev,
           -- Round Trip Time SCS
-          sum rtt_count_server / $AVG$ AS srtt_per_secs,
-          IF sum rtt_count_server = 0 THEN 0 ELSE
-            (sum rtt_sum_server / sum rtt_count_server) / 1e6 AS srtt_avg,
-          IF sum rtt_count_server = 0 THEN 0 ELSE
-            sqrt (((sum rtt_square_sum_server - (sum rtt_sum_server)^2) /
-                   sum rtt_count_server) / 1e12) AS srtt_stddev,
+          sum rtt_count_client AS _sum_rtt_count_client,
+          sum rtt_sum_client AS _sum_rtt_sum_client,
+          _sum_rtt_count_client / $AVG$ AS srtt_per_secs,
+          IF _sum_rtt_count_client = 0 THEN 0 ELSE
+            (_sum_rtt_sum_client / _sum_rtt_count_client) / 1e6 AS srtt_avg,
+          IF _sum_rtt_count_client = 0 THEN 0 ELSE
+            sqrt (((sum rtt_square_sum_client - (_sum_rtt_sum_client)^2) /
+                   _sum_rtt_count_client) / 1e12) AS srtt_stddev,
           -- Retransmition Delay C2S
-          sum rd_count_client / $AVG$ AS crd_per_secs,
-          IF sum rd_count_client = 0 THEN 0 ELSE
-            (sum rd_sum_client / sum rd_count_client) / 1e6 AS crd_avg,
-          IF sum rd_count_client = 0 THEN 0 ELSE
-            sqrt (((sum rd_square_sum_client - (sum rd_sum_client)^2) /
-                   sum rd_count_client) / 1e12) AS crd_stddev,
+          sum rd_count_client AS _sum_rd_count_client,
+          sum rd_sum_client AS _sum_rd_sum_client,
+          _sum_rd_count_client / $AVG$ AS crd_per_secs,
+          IF _sum_rd_count_client = 0 THEN 0 ELSE
+            (_sum_rd_sum_client / _sum_rd_count_client) / 1e6 AS crd_avg,
+          IF _sum_rd_count_client = 0 THEN 0 ELSE
+            sqrt (((sum rd_square_sum_client - (_sum_rd_sum_client)^2) /
+                   _sum_rd_count_client) / 1e12) AS crd_stddev,
           -- Retransmition Delay S2C
-          sum rd_count_server / $AVG$ AS srd_per_secs,
-          IF sum rd_count_server = 0 THEN 0 ELSE
-            (sum rd_sum_server / sum rd_count_server) / 1e6 AS srd_avg,
-          IF sum rd_count_server = 0 THEN 0 ELSE
-            sqrt (((sum rd_square_sum_server - (sum rd_sum_server)^2) /
-                   sum rd_count_server) / 1e12) AS srd_stddev,
+          sum rd_count_server AS _sum_rd_count_server,
+          sum rd_sum_server AS _sum_rd_sum_server,
+          _sum_rd_count_server / $AVG$ AS srd_per_secs,
+          IF _sum_rd_count_server = 0 THEN 0 ELSE
+            (_sum_rd_sum_server / _sum_rd_count_server) / 1e6 AS srd_avg,
+          IF _sum_rd_count_server = 0 THEN 0 ELSE
+            sqrt (((sum rd_square_sum_server - (_sum_rd_sum_server)^2) /
+                   _sum_rd_count_server) / 1e12) AS srd_stddev,
           -- Data Transfer Time C2S
-          sum dtt_count_client / $AVG$ AS cdtt_per_secs,
-          IF sum dtt_count_client = 0 THEN 0 ELSE
-            (sum dtt_sum_client / sum dtt_count_client) / 1e6 AS cdtt_avg,
-          IF sum dtt_count_client = 0 THEN 0 ELSE
-            sqrt (((sum dtt_square_sum_client - (sum dtt_sum_client)^2) /
-                   sum dtt_count_client) / 1e12) AS cdtt_stddev,
+          sum dtt_count_client AS _sum_dtt_count_client,
+          sum dtt_sum_client AS _sum_dtt_sum_client,
+          _sum_dtt_count_client / $AVG$ AS cdtt_per_secs,
+          IF _sum_dtt_count_client = 0 THEN 0 ELSE
+            (_sum_dtt_sum_client / _sum_dtt_count_client) / 1e6 AS cdtt_avg,
+          IF _sum_dtt_count_client = 0 THEN 0 ELSE
+            sqrt (((sum dtt_square_sum_client - (_sum_dtt_sum_client)^2) /
+                   _sum_dtt_count_client) / 1e12) AS cdtt_stddev,
           -- Data Transfer Time S2C
-          sum dtt_count_server / $AVG$ AS sdtt_per_secs,
-          IF sum dtt_count_server = 0 THEN 0 ELSE
-            (sum dtt_sum_server / sum dtt_count_server) / 1e6 AS sdtt_avg,
-          IF sum dtt_count_server = 0 THEN 0 ELSE
-            sqrt (((sum dtt_square_sum_server - (sum dtt_sum_server)^2) /
-                   sum dtt_count_server) / 1e12) AS sdtt_stddev
+          sum dtt_count_server AS _sum_dtt_count_server,
+          sum dtt_sum_server AS _sum_dtt_sum_server,
+          _sum_dtt_count_server / $AVG$ AS sdtt_per_secs,
+          IF _sum_dtt_count_server = 0 THEN 0 ELSE
+            (_sum_dtt_sum_server / _sum_dtt_count_server) / 1e6 AS sdtt_avg,
+          IF _sum_dtt_count_server = 0 THEN 0 ELSE
+            sqrt (((sum dtt_square_sum_server - (_sum_dtt_sum_server)^2) /
+                   _sum_dtt_count_server) / 1e12) AS sdtt_stddev
         WHERE application = $ID$
         GROUP BY capture_begin * 0.000001 // $AVG_INT$
         COMMIT WHEN

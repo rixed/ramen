@@ -4,6 +4,7 @@ open RamenSharedTypesJS
 open RamenSharedTypes
 open RamenLog
 open Stdint
+open Helpers
 
 type tuple_prefix =
   | TupleIn | TupleLastIn
@@ -35,6 +36,7 @@ type syntax_error =
   | GroupStateNotAllowed of { clause : string }
   | FieldNotInTuple of { field : string ; tuple : tuple_prefix ;
                          tuple_type : string }
+  | InvalidPrivateField of { field : string }
   | MissingClause of { clause : string }
   | CannotTypeField of { field : string ; typ : string ; tuple : tuple_prefix }
   | CannotTypeExpression of { what : string ; expected_type : string ;
@@ -69,6 +71,8 @@ let string_of_syntax_error =
   | FieldNotInTuple { field ; tuple ; tuple_type } ->
     "Field "^ field ^" is not in the "^ string_of_prefix tuple ^" tuple"^
     (if tuple_type <> "" then " (which is "^ tuple_type ^")" else "")
+  | InvalidPrivateField { field } ->
+    "Cannot import field "^ field ^" which is private"
   | MissingClause { clause } ->
     "Missing "^ clause ^" clause"
   | CannotTypeField { field ; typ ; tuple } ->
@@ -644,9 +648,6 @@ struct
   let is_true = function
     | Const (_ , VBool true) -> true
     | _ -> false
-
-  let is_virtual_field f =
-    String.length f > 0 && f.[0] = '#'
 
   let get_string_const = function
     | Const (_ , VString s) -> Some s

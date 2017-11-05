@@ -150,6 +150,8 @@ let read_tuple tuple_type =
         RingBufLib.sersize_of_fixsz_typ typ
     in
     (* Read all fields one by one *)
+    (* This works because the node is running and therefore the tuples
+     * has been cleared from private fields already. *)
     let tuple_len = List.length tuple_type in
     let tuple = Array.make tuple_len VNull in
     let sz, _ =
@@ -327,6 +329,8 @@ let columns_of_tuples tuple_type values =
     let inv_i = Array.length values - 1 - i in
     values.(inv_i).(ci)
   in
+  (* This works because private fields have been expunged from tuple_type
+   * already. *)
   List.mapi (fun ci ft ->
       (* If the values are nullable then we add a column of bits (1=value is
        * present). We first check the presence of values and set this bitmask

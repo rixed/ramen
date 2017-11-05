@@ -279,7 +279,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         check_expr_type ~ok_if_larger:false ~set_null:true ~from:out ~to_:exp_type
     ) else (
       (* All other tuples are already typed (virtual fields) *)
-      if not (Expr.is_virtual_field field) then (
+      if not (is_virtual_field field) then (
         Printf.eprintf "Field %a.%s is not virtual!?\n%!"
           tuple_prefix_print !tuple
           field ;
@@ -911,14 +911,6 @@ let compile conf layer =
       if not finished_typing then (
         fail (SyntaxError CannotCompleteTyping)
       ) else (
-        (* So far order was not taken into account.  Reorder output types to
-         * match selected fields (not strictly required but improves user
-         * experience in the GUI), and reorder input types to match output
-         * types. Beware that the Expr.typ has a unique number so we cannot
-         * compare/copy them directly (although that unique number is required
-         * to be unique only for a node, better keep it unique globally in case
-         * we want to generate several nodes in a single binary, and to avoid
-         * needless confusion when debugging): *)
         let cmp_fields (n1, f1) (n2, f2) =
           compare (n1, f1.Expr.nullable, f1.Expr.scalar_typ)
                   (n2, f2.Expr.nullable, f2.Expr.scalar_typ) in
@@ -940,6 +932,30 @@ let compile conf layer =
           | Yield fields -> Some fields
           | Aggregate { fields ; _ } -> Some fields
           | _ -> None in
+        (* Now that we know where each field is coming from check that we
+         * do not import a private field from parents out-tuple: *)
+        let check_input_private node =
+          wrap (fun () ->
+            get_selected_fields node |>
+            Option.may (fun selected_fields ->
+              List.iter (fun sf ->
+                Expr.iter (function
+                  | Expr.Field (_, tuple, name) ->
+                    if tuple_has_type_input !tuple &&
+                       is_private_field name then (
+                      let m = InvalidPrivateField { field = name } in
+                      raise (SyntaxError m)
+                    )
+                  | _ -> ()) sf.Operation.expr) selected_fields)) in
+        let%lwt () = iter_nodes_seq check_input_private in
+        (* So far order was not taken into account.  Reorder output types to
+         * match selected fields (not strictly required but improves user
+         * experience in the GUI), and reorder input types to match output
+         * types. Beware that the Expr.typ has a unique number so we cannot
+         * compare/copy them directly (although that unique number is required
+         * to be unique only for a node, better keep it unique globally in case
+         * we want to generate several nodes in a single binary, and to avoid
+         * needless confusion when debugging): *)
         let reorder_output node =
           get_selected_fields node |>
           Option.may (fun selected_fields ->
@@ -1000,6 +1016,16 @@ let compile conf layer =
             ) layer.L.persist.L.nodes (Set.empty, []) in
         let%lwt () = join thds in
         C.Layer.set_status layer Compiled ;
+        (* Now that the nodes have been compiled, for all intents and
+         * purposes, including typing od dependent layers, the private
+         * fields do no exist. Remove them: *)
+        let remove_private_fields node =
+          node.N.out_type.C.fields <-
+            List.filter (fun (name, _) ->
+              not (is_private_field name)) node.N.out_type.C.fields ;
+          return_unit in
+        let%lwt () = iter_nodes_seq remove_private_fields in
+        (* All done! *)
         C.save_graph conf ;
         return_unit))
       (fun e ->

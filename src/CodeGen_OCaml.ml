@@ -108,6 +108,7 @@ let emit_sersize_of_tuple name oc tuple_typ =
     (print_tuple_deconstruct TupleOut) tuple_typ
     size_for_nullmask
     (List.print ~first:"" ~last:"" ~sep:" +\n\t" (fun fmt field_typ ->
+      if is_private_field field_typ.typ_name then Printf.fprintf fmt "0" else
       let id = id_of_field_typ ~tuple:TupleOut field_typ in
       if field_typ.nullable then (
         Printf.fprintf fmt "(match %s with None -> 0 | Some x_ -> %a)"
@@ -137,6 +138,7 @@ let emit_serialize_tuple name oc tuple_typ =
     Printf.fprintf oc "\tRingBuf.zero_bytes tx_ 0 %d ; (* zero the nullmask *)\n"
       nullmask_bytes ;
   let _ = List.fold_left (fun nulli field ->
+      if is_private_field field.typ_name then nulli else
       let id = id_of_field_typ ~tuple:TupleOut field in
       if field.nullable then (
         (* Write either nothing (since the nullmask is initialized with 0) or

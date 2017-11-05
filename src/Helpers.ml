@@ -368,3 +368,10 @@ let run_coprocess cmd_name cmd =
     join [ read_lines process#stdout ;
            read_lines process#stderr ] >>
     process#status)
+
+let start_with c f =
+  String.length f > 0 && f.[0] = c
+
+let is_virtual_field = start_with '#'
+
+let is_private_field = start_with '_'

@@ -4,6 +4,7 @@ open Batteries
 open RamenSharedTypes
 open RamenSharedTypesJS
 open RamenLog
+open Helpers
 
 exception NoMoreRoom
 exception Empty
@@ -25,7 +26,8 @@ let round_up_to_rb_word bytes =
 
 let nullmask_bytes_of_tuple_type tuple_typ =
   List.fold_left (fun s field_typ ->
-    if field_typ.nullable then s+1 else s) 0 tuple_typ |>
+    if not (is_private_field field_typ.typ_name) && field_typ.nullable
+    then s+1 else s) 0 tuple_typ |>
   bytes_for_bits |>
   round_up_to_rb_word
 
@@ -34,7 +36,7 @@ let retry_for_ringbuf ?delay_rec f =
     | NoMoreRoom | Empty -> true
     | _ -> false
   in
-  Helpers.retry ~on ~first_delay:0.001 ~max_delay:0.01 ?delay_rec
+  retry ~on ~first_delay:0.001 ~max_delay:0.01 ?delay_rec
     (fun x -> Lwt.return (f x))
 
 let rec sersize_of_fixsz_typ =
