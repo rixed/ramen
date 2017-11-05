@@ -2,7 +2,6 @@
 open Batteries
 open RamenSharedTypesJS
 open RamenSharedTypes
-open RamenLog
 open Stdint
 open Helpers
 
@@ -1808,7 +1807,6 @@ struct
        * state. *)
       Expr.unpure_iter (fun e ->
           let func_name = Expr.(typ_of e).expr_name in
-          !logger.info "Check that the is only tuple-in in %s" func_name ;
           check_fields_from [TupleIn]
             ("stateful function ("^ func_name ^")") e)
     in function

@@ -77,7 +77,11 @@ let check_rank ~from ~to_ =
 let set_nullable typ nullable =
   let open Expr in
   match typ.nullable with
-  | None -> typ.nullable <- Some nullable ; true
+  | None ->
+    !logger.debug "Set %a %snullable"
+      print_typ typ
+      (if nullable then "" else "not ") ;
+    typ.nullable <- Some nullable ; true
   | Some n ->
     if n <> nullable then (
       let e = InvalidNullability {
@@ -89,15 +93,17 @@ let set_nullable typ nullable =
 (* Improve to_ while checking compatibility with from.
  * Numerical types of to_ can be enlarged to match those of from. *)
 let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
-  !logger.debug "Improving %a from %a"
-    Expr.print_typ to_ Expr.print_typ from ;
   let changed =
     match to_.Expr.scalar_typ, from.Expr.scalar_typ with
     | None, Some _ ->
+      !logger.debug "Improving %a from %a"
+        Expr.print_typ to_ Expr.print_typ from ;
       to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
       true
     | Some to_typ, Some from_typ when to_typ <> from_typ ->
       if can_cast ~from_scalar_type:to_typ ~to_scalar_type:from_typ then (
+        !logger.debug "Improving %a from %a"
+          Expr.print_typ to_ Expr.print_typ from ;
         to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
         true
       ) else if ok_if_larger then false
@@ -129,8 +135,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   let check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr =
     let sub_typ = typ_of sub_expr in
     !logger.debug "Checking operand of (%a), of type (%a) (expected: %a)"
-      Expr.print_typ op_typ
-      Expr.print_typ sub_typ
+      print_typ op_typ
+      print_typ sub_typ
       (Option.print Scalar.print_typ) exp_sub_typ ;
     (* Start by recursing into the sub-expression to know its real type: *)
     let changed = check_expr ~in_type ~out_type ~exp_type:sub_typ sub_expr in
@@ -153,14 +159,14 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       raise (SyntaxError e)
     | _ -> ()) ;
     !logger.debug "...operand subtype found to be: %a"
-      Expr.print_typ sub_typ ;
+      print_typ sub_typ ;
     changed
   in
   (* Check that actual_typ is a better version of op_typ and improve op_typ,
    * then check that the resulting op_type fulfill exp_type. *)
   let check_operator op_typ actual_typ nullable =
     !logger.debug "Checking operator %a, of actual type %a"
-      Expr.print_typ op_typ
+      print_typ op_typ
       Scalar.print_typ actual_typ ;
     let from = make_typ ~typ:actual_typ ?nullable op_typ.expr_name in
     let changed = check_expr_type ~ok_if_larger:false ~set_null:true ~from ~to_:op_typ in
@@ -276,6 +282,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           op_typ.nullable <- out.nullable ;
           op_typ.scalar_typ <- out.scalar_typ
         ) ;
+        !logger.debug "field %s found in out type: %a" field print_typ out ;
         check_expr_type ~ok_if_larger:false ~set_null:true ~from:out ~to_:exp_type
     ) else (
       (* All other tuples are already typed (virtual fields) *)
@@ -294,7 +301,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Case (_op_typ, alts, else_) ->
     (* Rules:
      * - If a condition or a consequent is nullable then the case is;
-     * - conversely, if no condition nor any consequent is nullable, then the
+     * - conversely, if no condition nor any consequent are nullable, then the
      *   case is not;
      * - all conditions must have type bool;
      * - all consequents must have the same type (that of the case);
@@ -309,7 +316,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           let chg = check_expr ~in_type ~out_type ~exp_type:cond_typ alt.case_cond ||
                     check_expr_type ~ok_if_larger:false ~set_null:false ~from:exp_cond_type ~to_:cond_typ in
           !logger.debug "Typing CASE: condition type is now %a (changed: %b)"
-            Expr.print_typ (typ_of alt.case_cond) chg ;
+            print_typ (typ_of alt.case_cond) chg ;
           chg
         ) alts
     ) || (
@@ -321,13 +328,13 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         let chg = check_expr ~in_type ~out_type ~exp_type:typ else_ ||
                   check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
         !logger.debug "Typing CASE: CASE type is now %a (changed: %b)"
-          Expr.print_typ exp_type chg ;
+          print_typ exp_type chg ;
         chg
       | None ->
         !logger.debug "Typing CASE: No ELSE clause so CASE can be NULL" ;
         set_nullable exp_type true
     ) || (
-      (* Enlarge exp_type with the consequent: *)
+      (* Enlarge exp_type with the consequents: *)
       !logger.debug "Typing CASE: enlarging CASE from consequents" ;
       List.exists (fun alt ->
           (* First typecheck the consequent, then use it to enlarge exp_type: *)
@@ -335,11 +342,21 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           let chg = check_expr ~in_type ~out_type ~exp_type:typ alt.case_cons ||
                     check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
           !logger.debug "Typing CASE: consequent type is %a, and CASE type is now %a (changed: %b)"
-            Expr.print_typ typ
-            Expr.print_typ exp_type chg ;
+            print_typ typ
+            print_typ exp_type chg ;
           chg
         ) alts
     ) || (
+      (* So all consequents and conditions and the else clause should
+       * have been fully typed now. Let's check: *)
+      !logger.debug "Typing CASE: all items should have been fully typed by now:" ;
+      List.iter (fun alt ->
+        !logger.debug "Typing CASE: cond type: %a, cons type: %a"
+          print_typ (typ_of alt.case_cond)
+          print_typ (typ_of alt.case_cons)) alts ;
+      Option.may (fun else_ ->
+        !logger.debug "Typing CASE: else type: %a"
+          print_typ (typ_of else_)) else_ ;
       (* Now set the CASE nullability. *)
       !logger.debug "Typing CASE: figuring out if CASE is NULLable" ;
       let nullable =
@@ -353,7 +370,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
               let t1 = typ_of alt.case_cond
               and t2 = typ_of alt.case_cons in
               match n, t1.nullable, t2.nullable with
-              | None, _, _ | _, None, _ | _, _, None -> None
+              | None, _, _ | _, None, _ | _, _, None ->
+                (* We could tell earlier but it's simpler to just wait until
+                 * all items are typed: *)
+                None
               | Some n0, Some n1, Some n2 -> Some (n0 || n1 || n2)
             ) (Some n) alts
       in
@@ -380,7 +400,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         Option.may (fun last_typ ->
           if last_typ.nullable = Some false then (
             let e = InvalidCoalesce {
-              what = IO.to_string Expr.print_typ last_typ ;
+              what = IO.to_string print_typ last_typ ;
               must_be_nullable = true } in
             raise (SyntaxError e)
           )) last_typ ;
@@ -389,8 +409,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
         let chg = check_expr ~in_type ~out_type ~exp_type:typ e ||
                   check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
         !logger.debug "Typing COALESCE: expr type is %a, and COALESCE type is now %a (changed: %b)"
-          Expr.print_typ typ
-          Expr.print_typ exp_type chg ;
+          print_typ typ
+          print_typ exp_type chg ;
         changed || chg, Some typ
       ) (false, None) es in
     (match last_typ with
@@ -400,7 +420,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       | Some false -> changed
       | Some true ->
         let e  = InvalidCoalesce {
-          what = IO.to_string Expr.print_typ typ ;
+          what = IO.to_string print_typ typ ;
           must_be_nullable = false } in
         raise (SyntaxError e)
       | None -> changed)
@@ -468,7 +488,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
      * must have entered a constant. Later we might pre-evaluate constant
      * expressions into constant values. *)
     (* FIXME: Check that the const is > 0 *)
-    Expr.check_const "lag" e1 ;
+    check_const "lag" e1 ;
     (* ... and e2 can be anything and the type of lag will be the same,
      * nullable (since we might lag beyond the start of the window. *)
     check_op op_typ List.last [Some TU16, Some false, e1 ; None, None, e2]
@@ -476,8 +496,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     (* As above, but e3 must be numeric (therefore the result cannot be
      * null) *)
     (* FIXME: Check that the consts are > 0 *)
-    Expr.check_const "moving average period" e1 ;
-    Expr.check_const "moving average counts" e2 ;
+    check_const "moving average period" e1 ;
+    check_const "moving average counts" e2 ;
     check_op op_typ return_float
       [Some TU16, Some false, e1 ;
        Some TU16, Some false, e2 ;
@@ -485,8 +505,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | StatefulFun (op_typ, _, MultiLinReg (e1, e2, e3, e4s)) ->
     (* As above, with the addition of a non empty list of predictors *)
     (* FIXME: Check that the consts are > 0 *)
-    Expr.check_const "multi-linear regression period" e1 ;
-    Expr.check_const "multi-linear regression counts" e2 ;
+    check_const "multi-linear regression period" e1 ;
+    check_const "multi-linear regression counts" e2 ;
     check_op op_typ return_float
       [Some TU16, Some false, e1 ;
        Some TU16, Some false, e2 ;
@@ -495,7 +515,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       ~exp_sub_typ:TFloat ~exp_sub_nullable:false (*because see comment in check_variadic *) e4s
   | StatefulFun (op_typ, _, ExpSmooth (e1, e2)) ->
     (* FIXME: Check that alpha is between 0 and 1 *)
-    Expr.check_const "smooth coefficient" e1 ;
+    check_const "smooth coefficient" e1 ;
     check_op op_typ return_float
       [Some TFloat, Some false, e1 ;
        Some TFloat, None, e2]
