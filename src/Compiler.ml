@@ -118,7 +118,7 @@ let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
   if set_null then
     match from.Expr.nullable with
     | None -> changed
-    | Some from_null -> set_nullable to_ from_null
+    | Some from_null -> set_nullable to_ from_null || changed
   else changed
 
 let finished_typing = function TNum | TAny -> false | _ -> true
