@@ -958,11 +958,15 @@ let emit_field_selection
     ) selected_fields ;
   (* Here we must generate the tuple in the order specified by out_type,
    * not selected_fields: *)
+  let is_selected name =
+    List.exists (fun sf -> sf.Operation.alias = name) selected_fields in
   Printf.fprintf oc "\t(\n\t\t" ;
   List.iteri (fun i ft ->
+      let tuple =
+        if is_selected ft.typ_name then TupleOut else TupleIn in
       Printf.fprintf oc "%s%s"
         (if i > 0 then ",\n\t\t" else "")
-        (id_of_field_name ~tuple:TupleOut ft.typ_name) ;
+        (id_of_field_name ~tuple ft.typ_name) ;
     ) out_tuple_typ ;
   Printf.fprintf oc "\n\t)\n"
 

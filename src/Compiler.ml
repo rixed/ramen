@@ -929,39 +929,43 @@ let compile conf layer =
               | x -> x)
             | [], _ -> -1 | _, [] -> 1 in
           loop (t1, t2) in
-        Hashtbl.fold (fun _node_name node th ->
-            match node.N.parents with
-            | [] -> th
-            | parent :: other_parents ->
-              assert parent.N.out_type.C.finished_typing ;
-              assert parent.N.in_type.C.finished_typing ;
-              (* Check all parents have same output *)
-              let%lwt () =
-                match List.find (fun parent' ->
-                    assert parent'.N.out_type.C.finished_typing ;
-                    assert parent'.N.in_type.C.finished_typing ;
-                    0 <> cmp_temp_tup_typ_fields parent.N.out_type.C.fields
-                                                 parent'.N.out_type.C.fields
-                  ) other_parents with
-                | exception Not_found -> return_unit
-                | parent' ->
-                  !logger.error "Different parents have different out-types: \
-                               %s (%a) and %s (%a)"
-                              (N.fq_name parent) C.print_temp_tup_typ parent.N.out_type
-                              (N.fq_name parent') C.print_temp_tup_typ parent'.N.out_type ;
-                  fail (SyntaxError CannotCompleteTyping) in
-              (* Check parent output = child input *)
-              let f1 = List.fast_sort cmp_fields node.N.in_type.C.fields
-              and f2 = List.fast_sort cmp_fields parent.N.out_type.C.fields in
-              if cmp_temp_tup_typ_fields f1 f2 <> 0 then (
-                !logger.error "Node input (%a) differs from parent output (%a)!"
-                  C.print_temp_tup_typ_fields f1
-                  C.print_temp_tup_typ_fields f2 ;
-                fail (SyntaxError CannotCompleteTyping)
-              ) else (
-                node.N.in_type <- C.temp_tup_typ_copy  parent.N.out_type ;
-                return_unit)
-          ) layer.L.persist.L.nodes return_unit >>= fun () ->
+        let iter_nodes_seq f =
+          Hashtbl.fold (fun _node_name node th ->
+              th >>= fun () -> f node
+            ) layer.L.persist.L.nodes return_unit in
+        let reorder_input node =
+          match node.N.parents with
+          | [] -> return_unit
+          | parent :: other_parents ->
+            assert parent.N.out_type.C.finished_typing ;
+            assert parent.N.in_type.C.finished_typing ;
+            (* Check all parents have same output *)
+            let%lwt () =
+              match List.find (fun parent' ->
+                  assert parent'.N.out_type.C.finished_typing ;
+                  assert parent'.N.in_type.C.finished_typing ;
+                  0 <> cmp_temp_tup_typ_fields parent.N.out_type.C.fields
+                                               parent'.N.out_type.C.fields
+                ) other_parents with
+              | exception Not_found -> return_unit
+              | parent' ->
+                !logger.error "Different parents have different out-types: \
+                             %s (%a) and %s (%a)"
+                            (N.fq_name parent) C.print_temp_tup_typ parent.N.out_type
+                            (N.fq_name parent') C.print_temp_tup_typ parent'.N.out_type ;
+                fail (SyntaxError CannotCompleteTyping) in
+            (* Check parent output = child input *)
+            let f1 = List.fast_sort cmp_fields node.N.in_type.C.fields
+            and f2 = List.fast_sort cmp_fields parent.N.out_type.C.fields in
+            if cmp_temp_tup_typ_fields f1 f2 <> 0 then (
+              !logger.error "Node input (%a) differs from parent output (%a)!"
+                C.print_temp_tup_typ_fields f1
+                C.print_temp_tup_typ_fields f2 ;
+              fail (SyntaxError CannotCompleteTyping)
+            ) else (
+              node.N.in_type <- C.temp_tup_typ_copy  parent.N.out_type ;
+              return_unit) in
+        let%lwt () = iter_nodes_seq reorder_input in
         (* Compile *)
         let _, thds =
           Hashtbl.fold (fun _ node (doing,thds) ->
