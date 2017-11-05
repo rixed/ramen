@@ -234,7 +234,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
   | Field (op_typ, tuple, field) ->
     if tuple_has_type_input !tuple then (
       (* Check that this field is, or could be, in in_type *)
-      if Expr.is_virtual_field field then false else
+      if is_virtual_field field then false else
       match List.assoc field in_type.C.fields with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in in-tuple" field ;
@@ -266,7 +266,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     ) else if tuple_has_type_output !tuple then (
       (* If we already have this field in out then check it's compatible (or
        * enlarge out or exp). If we don't have it then add it. *)
-      if Expr.is_virtual_field field then false else
+      if is_virtual_field field then false else
       match List.assoc field out_type.C.fields with
       | exception Not_found ->
         !logger.debug "Cannot find field %s in out-tuple" field ;
