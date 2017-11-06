@@ -34,7 +34,7 @@ let traffic_node ?where dataset_name name dt =
                     print_squoted) in
   let op =
     {|FROM $PARENTS$ SELECT
-       (capture_begin // $DT_US$) AS start,
+       (capture_begin // $DT_US$) * $DT$ AS start,
        min capture_begin, max capture_end,
        sum packets_src / $DT$ AS packets_per_secs,
        sum bytes_src / $DT$ AS bytes_per_secs,
@@ -70,7 +70,7 @@ let traffic_node ?where dataset_name name dt =
        (_sum_connections_time / _sum_connections) / 1e6 AS connection_time_avg,
        ((sum connections_time2 - float(_sum_connections_time)^2 / _sum_connections) /
            _sum_connections) / 1e12 AS connection_time_var
-     EXPORT EVENT STARTING AT start * $DT$
+     EXPORT EVENT STARTING AT start
              WITH DURATION $DT$
      GROUP BY capture_begin // $DT_US$
      COMMIT WHEN
@@ -140,11 +140,10 @@ let anomaly_detection_nodes avg_window from timeseries =
            start,\n  \
            %s\n\
          FROM '%s'\n\
-         EXPORT EVENT STARTING AT start * %d\n        \
+         EXPORT EVENT STARTING AT start\n        \
                  WITH DURATION %f"
         (String.concat ",\n  " (List.rev predictions))
         from
-        (int_of_float avg_window)
         avg_window in
     make_node predictor_name op in
   let anomaly_node =
@@ -331,24 +330,24 @@ let layer_of_bcns bcns dataset_name =
     let op =
       Printf.sprintf
         {|FROM '%s', '%s' SELECT
-            (capture_begin // %d) AS start,
+            (capture_begin // %d) * %g AS start,
             min capture_begin, max capture_end,
             sum packets_src / %g AS packets_per_secs,
             sum bytes_src / %g AS bytes_per_secs,
             %S AS zone_src, %S AS zone_dst
           WHERE %s
-          EXPORT EVENT STARTING AT start * %g
+          EXPORT EVENT STARTING AT start
                  WITH DURATION %g
           GROUP BY capture_begin // %d
           COMMIT WHEN
             in.capture_begin > out.min_capture_begin + 2 * u64(%d)|}
         (rebase dataset_name "c2s") (rebase dataset_name "s2c")
-        avg_window
+        avg_window bcn.avg_window
         bcn.avg_window bcn.avg_window
         (name_of_zones bcn.source)
         (name_of_zones bcn.dest)
         where
-        bcn.avg_window bcn.avg_window
+        bcn.avg_window
         avg_window
         avg_window
         (* Note: Ideally we would want to compute the max of all.capture_begin *)
@@ -642,7 +641,7 @@ let ddos_layer dataset_name =
   let op_new_peers =
     let avg_win_us = avg_win * 1_000_000 in
     {|FROM '$CSV$' SELECT
-       (capture_begin // $AVG_WIN_US$) AS start,
+       (capture_begin // $AVG_WIN_US$) * $AVG_WIN$ AS start,
        min capture_begin, max capture_end,
        -- Traffic (of any kind) we haven't seen in the last $REM_WIN$ secs
        sum (0.9 * float(not remember (
@@ -662,7 +661,7 @@ let ddos_layer dataset_name =
      GROUP BY capture_begin // $AVG_WIN_US$
      COMMIT WHEN
        in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN_US$)
-     EXPORT EVENT STARTING AT start * $AVG_WIN$
+     EXPORT EVENT STARTING AT start
                   WITH DURATION $AVG_WIN$|} |>
     rep "$AVG_WIN_US$" (string_of_int avg_win_us) |>
     rep "$AVG_WIN$" (string_of_int avg_win) |>
