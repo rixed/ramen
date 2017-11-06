@@ -240,6 +240,7 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
     name
     (RingBufLib.nullmask_bytes_of_tuple_type in_tuple_typ) ;
   let _ = List.fold_left (fun nulli field ->
+      if is_private_field field.typ_name then nulli else
       let id = id_of_field_typ ~tuple:TupleIn field in
       if and_all_others || Set.mem field.typ_name mentioned then (
         Printf.fprintf oc "\tlet %s =\n" id ;
