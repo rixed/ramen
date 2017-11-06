@@ -98,7 +98,7 @@ let traffic_node ?where dataset_name name dt =
 let anomaly_detection_nodes avg_window from timeseries =
   assert (timeseries <> []) ;
   let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ]
-  and multi_predictors = [ "fit_multi(" ] in
+  and multi_predictors = [ "fit_multi(5, " ] in
   let predictor_name = from ^": predictions" in
   let predictor_node =
     let predictions =
@@ -423,10 +423,30 @@ let layer_of_bcns bcns dataset_name =
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
         make_node name ops
       ) bcn.max_bps ;
-    all_nodes :=
-      traffic_node ~where dataset_name (name_prefix ^": minutely traffic") 60 ::
-      traffic_node ~where dataset_name (name_prefix ^": hourly traffic") 3600 ::
-      traffic_node ~where dataset_name (name_prefix ^": daily traffic") (3600 * 24) :: !all_nodes
+    let minutely = traffic_node ~where dataset_name (name_prefix ^": minutely traffic") 60 in
+    let pred_node, anom_node =
+      anomaly_detection_nodes
+        bcn.avg_window
+        minutely.N.name
+        [ "packets_per_secs", false, [ "bytes_per_secs" ;
+                                       "packets_with_payload_per_secs" ] ;
+          "bytes_per_secs", false, [ "packets_per_secs" ;
+                                     "payload_per_secs" ] ;
+          "payload_per_secs", false, [ "bytes_per_secs" ] ;
+          "packets_with_payload_per_secs", false, [ "packets_per_secs" ] ;
+          "retrans_bytes_per_secs", false, [ "retrans_payload_per_secs" ] ;
+          "fins_per_secs", false, [ "packets_per_secs" ] ;
+          "rsts_per_secs", false, [ "packets_per_secs" ] ;
+          "syns_per_secs", false, [ "packets_per_secs" ] ;
+          "connections_per_secs", false, [] ;
+          "dupacks_per_secs", false, [] ;
+          "zero_windows_per_secs", false, [] ;
+          "rtt_avg", false, [] ;
+          "rd_avg", false, [] ;
+          "dtt_avg", false, [] ;
+          "connection_time_avg", false, [] ] in
+    all_nodes := pred_node :: anom_node :: minutely :: !all_nodes
+
   in
   List.iter conf_of_bcn bcns ;
   RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
