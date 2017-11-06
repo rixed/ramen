@@ -1,5 +1,4 @@
 open Batteries
-open Helpers
 open RamenLog
 module N = RamenSharedTypes.Node
 
@@ -102,22 +101,37 @@ let anomaly_detection_nodes avg_window from timeseries =
   let predictor_name = from ^": predictions" in
   let predictor_node =
     let predictions =
-      List.fold_left (fun fields (ts, _nullable, preds) ->
+      List.fold_left (fun fields (ts, nullable, preds) ->
           let preds_str = String.concat ", " preds in
+          (* Add first the timeseries itself: *)
           let fields = ts :: fields in
+          (* Then the predictors: *)
           let i, fields =
             List.fold_left (fun (i, fields) predictor ->
                 i+1,
                 (Printf.sprintf "%s%s) AS pred_%d_%s" predictor ts i ts) :: fields
               ) (0, fields) stand_alone_predictors in
-          let _, fields =
+          let nb_preds, fields =
             if preds <> [] then
               List.fold_left (fun (i, fields) multi_predictor ->
                   i + 1,
                   (Printf.sprintf "%s%s, %s) AS pred_%d_%s" multi_predictor ts preds_str i ts) :: fields
                 ) (i, fields) multi_predictors
             else i, fields in
-          fields
+          (* Then the "abnormality" of this timeseries: *)
+          let abnormality =
+            let rec loop sum i =
+              if i >= nb_preds then sum else
+              let pred = "pred_"^ string_of_int i ^"_"^ ts in
+              let abno = "abs("^ pred ^" - "^ ts ^")" in
+              let abno = if nullable then "coalesce("^ abno ^", 0)"
+                         else abno in
+              loop (abno :: sum) (i + 1) in
+            loop [] 0 in
+          let abnormality =
+            "("^ String.concat " +\n   " abnormality ^") /\n   ("^
+            string_of_int nb_preds ^" * "^ ts ^") AS abnormality_"^ ts in
+          abnormality :: fields
         ) [] timeseries
     in
     let op =
@@ -134,44 +148,21 @@ let anomaly_detection_nodes avg_window from timeseries =
         avg_window in
     make_node predictor_name op in
   let anomaly_node =
-    let is_off ts i nullable =
-      Printf.sprintf
-        (if nullable then
-           "u8(coalesce((abs pred_%d_%s - %s) / %s > 0.5, false))"
-         else
-           "u8((abs pred_%d_%s - %s) / %s > 0.5)")
-       i ts ts ts in
     let conditions =
-      List.fold_left (fun cond (ts, nullable, preds) ->
-          let i, cond =
-            List.fold_left (fun (i, cond) _predictor ->
-                i + 1,
-                is_off ts i nullable :: cond
-              ) (0, cond) stand_alone_predictors in
-          let _, cond =
-            if preds <> [] then
-              List.fold_left (fun (i, cond) _multi_predictor ->
-                  i + 1,
-                  (is_off ts i nullable) :: cond
-                ) (i, cond) multi_predictors
-            else i, cond in
-          cond
+      List.fold_left (fun cond (ts, _nullable, _preds) ->
+          ("abnormality_"^ ts ^" > 0.5") :: cond
         ) [] timeseries in
-    let condition = String.concat " +\n      " conditions in
+    let condition = String.concat " OR\n     " conditions in
     let subject = Printf.sprintf "%s is off" from
-    and text = Printf.sprintf "Many metrics from %s seams to be off." from
-    and threshold =
-      round_to_int (0.2 *. float_of_int (List.length conditions)) |>
-      max 1 in
+    and text = Printf.sprintf "Some metrics from %s seam to be off." from in
     let op =
       Printf.sprintf
         "FROM '%s'\n\
          NOTIFY \"http://localhost:876/notify?subject=%s&text=%s\"\n\
-         WHEN (%s) > %d"
+         WHEN %s"
         predictor_name
         (enc subject) (enc text)
-        condition
-        threshold in
+        condition in
     make_node (from ^": anomalies") op in
   predictor_node, anomaly_node
 
