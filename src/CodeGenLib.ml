@@ -196,11 +196,19 @@ struct
         xm.{ i, j } <- xs.(j)
       done) ;
     (* Now ask for the "best" parameters: *)
-    let p = Linalg.D.linsolve xm ym in
-    (* And use that to predict the new y given the new xs *)
-    let _cury, cur_preds = current t in
-    Array.fold_lefti (fun y i x ->
-      y +. p.{i, 0} *. x) 0. cur_preds
+    match Linalg.D.linsolve xm ym with
+    | exception _ ->
+      let print_mat oc mat =
+        let arr = Mat.to_arrays mat in
+        Array.print (Array.print Float.print) oc arr in
+      !logger.error "Cannot multi-fit! xm=%a, ym=%a"
+        print_mat xm print_mat ym ;
+      0.
+    | p ->
+      (* And use that to predict the new y given the new xs *)
+      let _cury, cur_preds = current t in
+      Array.fold_lefti (fun y i x ->
+        y +. p.{i, 0} *. x) 0. cur_preds
 end
 
 let begin_of_range_cidr4 (n, l) = Ipv4.Cidr.and_to_len l n
