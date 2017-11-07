@@ -127,7 +127,7 @@ ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package sqlite3 $(filter %.cmx, $^) -o $@
 
 ramen_alerter: $(ALERTER_SOURCES:.ml=.cmx)
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package sqlite3 $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package "sqlite3 syslog" $(filter %.cmx, $^) -o $@
 
 all_tests.opt: libringbuf.a libcolcomp.a $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
@@ -141,7 +141,7 @@ Conf_of_sqlite.cmx: Conf_of_sqlite.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
 
 ramen_alerter.cmx: ramen_alerter.ml
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3 syslog" -c $<
 
 # Web thingies
 

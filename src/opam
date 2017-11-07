@@ -26,5 +26,6 @@ depends: [
   "js_of_ocaml-ppx" {build}
   "cmdliner" {build}
   "cryptohash" {build}
+  "syslog" {build}
   "qcheck" {test}
 ]

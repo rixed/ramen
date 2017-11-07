@@ -20,19 +20,25 @@ let () =
       (Printexc.to_string exn)
       (Printexc.get_backtrace()))
 
+let syslog = Syslog.openlog "ramen_alerter"
+
 (* We want to have a global state of the alert management situation that we
  * can save regularly and restore whenever we start in order to limit the
  * disruption in case of a crash: *)
 
 type alert =
   { name : string ;
+    time : float ;
     team : string ;
-    (* The smaller the int, the most important the alert. 0 is the most important *)
-    importance : int ;
-    started : float ;
-    mutable stopped : float option ;
     title : string ;
-    text : string }
+    text : string ;
+    (* The smaller the int, the most important the alert. 0 is the most
+     * important one. *)
+    importance : int ;
+    (* When we _received_ the alert and started the escalation. Hopefully
+     * not too long after [time]. *)
+    started : float ;
+    mutable stopped : float option }
 
 type incident =
   { mutable alerts : alert list ;
@@ -104,17 +110,16 @@ exception Not_implemented
 
 module Contact =
 struct
-  type t = Console | Email of string | SMS of string [@@ppp PPP_OCaml]
-  let to_string = function
-    | Console -> "console"
-    | Email s -> "mail:"^ s
-    | SMS s -> "SMS:"^ s
+  type t = Console
+         | SysLog
+         | Email of { cc : string }
+         | SMS of string [@@ppp PPP_OCaml]
 end
 
 module Alert =
 struct
-  let make name team importance title text now =
-    { name ; team ; importance ; title ; text ;
+  let make name team importance title text time now =
+    { name ; team ; importance ; title ; text ; time ;
       started = now ; stopped = None }
 end
 
@@ -151,12 +156,7 @@ end
 module Diary =
 struct
   type alert_outcome =
-    Duplicate | Inhibited | STFU | Notify of Contact.t
-  let string_of_outcome = function
-    | Duplicate -> "duplicate"
-    | Inhibited -> "inhibited"
-    | STFU -> "STFU"
-    | Notify contact -> "Notify "^ (Contact.to_string contact)
+    Duplicate | Inhibited | STFU | Notify of Contact.t [@@ppp PPP_OCaml]
 
   type log_event = NewAlert of (alert * incident * alert_outcome)
                  (* TODO: we'd like to have the origin of this ack. *)
@@ -164,11 +164,12 @@ struct
                                          (* name, team, title *)
                  | StopUnstartedAlert of (string * string * string)
                  | StopAlert of (alert * incident)
+
   let string_of_log_event = function
     | NewAlert (alert, _indicent, alert_outcome) ->
       Printf.sprintf "alert %s for %s (%s), outcome=%s"
         alert.name alert.team alert.title
-        (string_of_outcome alert_outcome)
+        (PPP.to_string alert_outcome_ppp alert_outcome)
     | AckUnknown i ->
       "Ack for unknown notification "^ string_of_int i
     | Ack esc ->
@@ -179,7 +180,7 @@ struct
       "Stop for alert "^ alert.name
 
   let add log_event = (* TODO *)
-    !logger.info "Received: %s" (string_of_log_event log_event)
+    !logger.debug "Received: %s" (string_of_log_event log_event)
 end
 
 module OnCaller =
@@ -219,14 +220,26 @@ end
 
 module Sender =
 struct
-  let printer id attempt alert victim =
-    Printf.printf "Title: %s\nId: %d\nAttempt: %d\nDest: %s\n%s\n%!"
-      alert.title id attempt victim alert.text ;
-    return_unit
-
-  let get = function
-    | Contact.Console -> printer
-    | Contact.Email _ | Contact.SMS _ ->
+  let get =
+    let open Contact in
+    function
+    | Console ->
+      fun id attempt alert victim ->
+        Printf.printf "Title: %s\nId: %d\nAttempt: %d\nDest: %s\n%s\n%!"
+          alert.title id attempt victim alert.text ;
+        return_unit
+    | SysLog ->
+      fun id attempt alert victim ->
+        let level =
+          match alert.importance with
+          | 0 -> `LOG_EMERG | 1 -> `LOG_ALERT | 2 -> `LOG_CRIT
+          | 3 -> `LOG_ERR | 4 -> `LOG_WARNING | 5 -> `LOG_NOTICE
+          | _ -> `LOG_INFO in
+        Printf.sprintf "Name=%s;Title=%s;Id=%d;Attempt=%d;Dest=%s;Text=%s"
+          alert.name alert.title id attempt victim alert.text |>
+        Syslog.syslog syslog level ;
+        return_unit
+    | Email _ | SMS _ ->
       fun _id _attempt _alert _victim -> fail Not_implemented
 end
 
@@ -446,10 +459,10 @@ let save_state state =
 
 (* Everything start by: we receive an alert with a name, a team name,
  * and a description (text + title). *)
-let alert state ~name ~team ~importance ~title ~text ~firing ~now =
+let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
   if firing then (
     (* First step: deduplication *)
-    let alert = Alert.make name team importance title text now in
+    let alert = Alert.make name team importance title text time now in
     let incident, is_dup = Incident.get_or_create state alert in
     if is_dup then (
       Diary.(add (NewAlert (alert, incident, Duplicate))) ;
@@ -507,12 +520,12 @@ struct
           let hgo = Hashtbl.find_default params
           and now = Unix.gettimeofday () in
           match hgo "importance" "10" |> int_of_string,
-                hgo "now" (string_of_float now) |> float_of_string with
+                hgo "time" (string_of_float now) |> float_of_string with
           | exception _ ->
             fail (HttpError (400, "importance and now must be numeric"))
-          | importance, now ->
+          | importance, time ->
             let firing = looks_like_true firing in
-            alert state ~name ~importance ~now ~firing
+            alert state ~name ~importance ~now ~time ~firing
               ~team:(hgo "team" state.default_team)
               ~title:(hgo "title" "")
               ~text:(hgo "text" "") >>=

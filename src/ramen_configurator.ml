@@ -158,7 +158,7 @@ let anomaly_detection_nodes avg_window from timeseries =
     let op =
       Printf.sprintf
         "FROM '%s'\n\
-         NOTIFY \"http://localhost:29382/notify?name=%s&firing=1&now=${start}&title=%s&text=%s\"\n\
+         NOTIFY \"http://localhost:29382/notify?name=%s&firing=1&&time=${start}&title=%s&text=%s\"\n\
          WHEN %s"
         predictor_name
         (enc alert_name) (enc title) (enc text)
@@ -389,7 +389,7 @@ let layer_of_bcns bcns dataset_name =
         let ops = Printf.sprintf
           {|WHEN bytes_per_secs < %d
             FROM '%s'
-            NOTIFY "http://localhost:29382/notify?name=Low%%20traffic&firing=1&now=${max_start}&title=%s&text=%s"|}
+            NOTIFY "http://localhost:29382/notify?name=Low%%20traffic&firing=1&&time=${max_start}&title=%s&text=%s"|}
             min_bps
             perc_per_obs_window_name
             (enc title) (enc text) in
@@ -407,7 +407,7 @@ let layer_of_bcns bcns dataset_name =
         let ops = Printf.sprintf
           {|WHEN bytes_per_secs > %d
             FROM '%s'
-            NOTIFY "http://localhost:29382/notify?name=High%%20traffic&firing=1&now={max_start}&title=%s&text=%s"|}
+            NOTIFY "http://localhost:29382/notify?name=High%%20traffic&firing=1&&time={max_start}&title=%s&text=%s"|}
             max_bps
             perc_per_obs_window_name
             (enc title) (enc text) in
@@ -598,7 +598,7 @@ let layer_of_bcas bcas dataset_name =
          bca.name bca.max_eurt (bca.obs_window /. 60.) in
     let ops =
       Printf.sprintf
-        {|NOTIFY "http://localhost:29382/notify?name=EURT%%20%s&firing=1&now=${max_start}&title=%s&text=%s"
+        {|NOTIFY "http://localhost:29382/notify?name=EURT%%20%s&firing=1&&time=${max_start}&title=%s&text=%s"
           WHEN eurt > %g FROM '%s'|}
           (enc bca.name) (enc title) (enc text)
           bca.max_eurt
