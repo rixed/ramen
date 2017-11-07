@@ -14,6 +14,12 @@ open SqliteHelpers
 open RamenLog
 open Lwt
 
+let () =
+  async_exception_hook := (fun exn ->
+    !logger.error "Received exception %s\n%s"
+      (Printexc.to_string exn)
+      (Printexc.get_backtrace()))
+
 (* We want to have a global state of the alert management situation that we
  * can save regularly and restore whenever we start in order to limit the
  * disruption in case of a crash: *)
@@ -99,6 +105,10 @@ exception Not_implemented
 module Contact =
 struct
   type t = Console | Email of string | SMS of string [@@ppp PPP_OCaml]
+  let to_string = function
+    | Console -> "console"
+    | Email s -> "mail:"^ s
+    | SMS s -> "SMS:"^ s
 end
 
 module Alert =
@@ -142,12 +152,34 @@ module Diary =
 struct
   type alert_outcome =
     Duplicate | Inhibited | STFU | Notify of Contact.t
+  let string_of_outcome = function
+    | Duplicate -> "duplicate"
+    | Inhibited -> "inhibited"
+    | STFU -> "STFU"
+    | Notify contact -> "Notify "^ (Contact.to_string contact)
+
   type log_event = NewAlert of (alert * incident * alert_outcome)
                  (* TODO: we'd like to have the origin of this ack. *)
                  | AckUnknown of int | Ack of escalation
+                                         (* name, team, title *)
                  | StopUnstartedAlert of (string * string * string)
                  | StopAlert of (alert * incident)
-  let add = ignore (* TODO *)
+  let string_of_log_event = function
+    | NewAlert (alert, _indicent, alert_outcome) ->
+      Printf.sprintf "alert %s for %s (%s), outcome=%s"
+        alert.name alert.team alert.title
+        (string_of_outcome alert_outcome)
+    | AckUnknown i ->
+      "Ack for unknown notification "^ string_of_int i
+    | Ack esc ->
+      "Ack for alert "^ esc.alert.name
+    | StopUnstartedAlert (name, _team, _title) ->
+      "Stop for unstarted alert "^ name
+    | StopAlert (alert, _incident) ->
+      "Stop for alert "^ alert.name
+
+  let add log_event = (* TODO *)
+    !logger.info "Received: %s" (string_of_log_event log_event)
 end
 
 module OnCaller =
@@ -391,11 +423,12 @@ let get_state save_file db_config_file default_team =
       persist } in
   let rec check_escalations_loop () =
     let now = Unix.gettimeofday () in
-    catch
+    let%lwt () = catch
       (fun () -> check_escalations state now)
       (fun e ->
         print_exception e ;
-        return_unit) >>=
+        return_unit) in
+    Lwt_unix.sleep 0.2 >>=
     check_escalations_loop
   in
   async check_escalations_loop ;
@@ -504,6 +537,25 @@ let debug =
                    ~env ["d"; "debug"] in
   Arg.(value (flag i))
 
+let daemonize =
+  let env = Term.env_info "ALERT_DAEMONIZE" in
+  let i = Arg.info ~doc:"daemonize"
+                   ~env [ "daemon"; "daemonize"] in
+  Arg.(value (flag i))
+
+let to_stderr =
+  let env = Term.env_info "ALERT_LOG_TO_STDERR" in
+  let i = Arg.info ~doc:"log onto stderr"
+                   ~env [ "log-onto-stderr"; "log-to-stderr"; "to-stderr";
+                          "stderr" ] in
+  Arg.(value (flag i))
+
+let log_dir =
+  let env = Term.env_info "ALERT_LOG_DIR" in
+  let i = Arg.info ~doc:"Directory where to write log files into"
+                   ~env [ "log-dir" ] in
+  Arg.(value (opt (some string) None i))
+
 let config_db =
   let env = Term.env_info "ALERT_CONFIG_DB" in
   let i = Arg.info ~doc:"Sqlite file with the alerting configuration"
@@ -515,7 +567,7 @@ let http_port =
   let i = Arg.info ~doc:"Port where to run the HTTP server \
                          (HTTPS will be run on that port + 1)"
                    ~env [ "http-port" ] in
-  Arg.(value (opt int 29380 i))
+  Arg.(value (opt int 29382 i))
 
 let ssl_cert =
   let env = Term.env_info "ALERT_SSL_CERT_FILE" in
@@ -541,15 +593,26 @@ let default_team =
                    ~env ["default-team"] in
   Arg.(value (opt string "firefighters" i))
 
-let start_all debug save_file config_db default_team http_port ssl_cert ssl_key =
-  logger := make_logger debug ;
-  let alerter_state = get_state save_file config_db default_team in
-  HttpSrv.start http_port ssl_cert ssl_key alerter_state
+let start_all debug daemonize to_stderr logdir save_file config_db
+              default_team http_port ssl_cert ssl_key () =
+  if to_stderr && daemonize then
+    failwith "Options --daemonize and --to-stderr are incompatible." ;
+  if to_stderr && logdir <> None then
+    failwith "Options --log-dir and --to-stderr are incompatible." ;
+  Option.may mkdir_all logdir ;
+  logger := make_logger ?logdir debug ;
+  if daemonize then do_daemonize () ;
+  Lwt_main.run (
+    let alerter_state = get_state save_file config_db default_team in
+    HttpSrv.start http_port ssl_cert ssl_key alerter_state)
 
 let start_cmd =
   Term.(
     (const start_all
       $ debug
+      $ daemonize
+      $ to_stderr
+      $ log_dir
       $ save_file
       $ config_db
       $ default_team
@@ -560,5 +623,5 @@ let start_cmd =
 
 let () =
   match Term.eval start_cmd with
-  | `Ok th -> Lwt_main.run th
+  | `Ok f -> f ()
   | x -> Term.exit x

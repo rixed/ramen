@@ -329,7 +329,7 @@ let getenv ?def n =
 (* Trick from LWT: how to exit without executing the at_exit hooks: *)
 external sys_exit : int -> 'a = "caml_sys_exit"
 
-let daemonize () =
+let do_daemonize () =
   let open Unix in
   if fork () > 0 then sys_exit 0 ;
   setsid () |> ignore ;

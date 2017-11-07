@@ -16,9 +16,10 @@ let debug =
                    ~env [ "d"; "debug" ] in
   Arg.(value (flag i))
 
-let daemon =
+let daemonize =
+  let env = Term.env_info "RAMEN_DAEMONIZE" in
   let i = Arg.info ~doc:"daemonize"
-                   [ "daemon"; "daemonize"] in
+                   ~env [ "daemon"; "daemonize"] in
   Arg.(value (flag i))
 
 let rand_seed =
@@ -93,7 +94,7 @@ let server_start =
     (const HttpSrv.start
       $ do_persist
       $ debug
-      $ daemon
+      $ daemonize
       $ rand_seed
       $ no_demo
       $ to_stderr

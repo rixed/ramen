@@ -714,11 +714,11 @@ let upload conf headers layer node body =
   | _ ->
     bad_request ("Node "^ N.fq_name node ^" does not accept uploads")
 
-let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
+let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
           www_dir version_tag persist_dir port cert_opt key_opt () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
-  if to_stderr && daemon then
-    failwith "Option --daemon and --to-stderr are incompatible." ;
+  if to_stderr && daemonize then
+    failwith "Options --daemonize and --to-stderr are incompatible." ;
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed -> Random.init seed) ;
@@ -807,5 +807,5 @@ let start do_persist debug daemon rand_seed no_demo to_stderr ramen_url
       | _ ->
         fail (HttpError (405, "Method not implemented"))
   in
-  if daemon then daemonize () ;
+  if daemonize then do_daemonize () ;
   Lwt_main.run (http_service port cert_opt key_opt router)

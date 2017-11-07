@@ -152,15 +152,16 @@ let anomaly_detection_nodes avg_window from timeseries =
           ("abnormality_"^ ts ^" > 0.5") :: cond
         ) [] timeseries in
     let condition = String.concat " OR\n     " conditions in
-    let subject = Printf.sprintf "%s is off" from
+    let title = Printf.sprintf "%s is off" from
+    and alert_name = from ^" looks abnormal"
     and text = Printf.sprintf "Some metrics from %s seam to be off." from in
     let op =
       Printf.sprintf
         "FROM '%s'\n\
-         NOTIFY \"http://localhost:876/notify?subject=%s&text=%s\"\n\
+         NOTIFY \"http://localhost:29382/notify?name=%s&firing=1&now=${start}&title=%s&text=%s\"\n\
          WHEN %s"
         predictor_name
-        (enc subject) (enc text)
+        (enc alert_name) (enc title) (enc text)
         condition in
     make_node (from ^": anomalies") op in
   predictor_node, anomaly_node
@@ -378,8 +379,8 @@ let layer_of_bcns bcns dataset_name =
     make_node perc_per_obs_window_name op ;
     (* TODO: we need an hysteresis here! *)
     Option.may (fun min_bps ->
-        let subject = Printf.sprintf "Too little traffic from zone %s to %s"
-                        (name_of_zones bcn.source) (name_of_zones bcn.dest)
+        let title = Printf.sprintf "Too little traffic from zone %s to %s"
+                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
         and text = Printf.sprintf
                      "The traffic from zone %s to %s has sunk below \
                       the configured minimum of %d for the last %g minutes."
@@ -388,15 +389,15 @@ let layer_of_bcns bcns dataset_name =
         let ops = Printf.sprintf
           {|WHEN bytes_per_secs < %d
             FROM '%s'
-            NOTIFY "http://localhost:876/notify?name=Low%%20traffic&firing=1&subject=%s&text=%s"|}
+            NOTIFY "http://localhost:29382/notify?name=Low%%20traffic&firing=1&now=${max_start}&title=%s&text=%s"|}
             min_bps
             perc_per_obs_window_name
-            (enc subject) (enc text) in
+            (enc title) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
         make_node name ops
       ) bcn.min_bps ;
     Option.may (fun max_bps ->
-        let subject = Printf.sprintf "Too much traffic from zone %s to %s"
+        let title = Printf.sprintf "Too much traffic from zone %s to %s"
                         (name_of_zones bcn.source) (name_of_zones bcn.dest)
         and text = Printf.sprintf
                      "The traffic from zones %s to %s has raised above \
@@ -406,10 +407,10 @@ let layer_of_bcns bcns dataset_name =
         let ops = Printf.sprintf
           {|WHEN bytes_per_secs > %d
             FROM '%s'
-            NOTIFY "http://localhost:876/notify?name=High%%20traffic&firing=1&subject=%s&text=%s"|}
+            NOTIFY "http://localhost:29382/notify?name=High%%20traffic&firing=1&now={max_start}&title=%s&text=%s"|}
             max_bps
             perc_per_obs_window_name
-            (enc subject) (enc text) in
+            (enc title) (enc text) in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
         make_node name ops
       ) bcn.max_bps ;
@@ -579,14 +580,16 @@ let layer_of_bcas bcas dataset_name =
            min start, max start,
            %gth percentile (
             srtt_avg + crtt_avg + srt_avg + cdtt_avg + sdtt_avg) AS eurt
-         EXPORT EVENT STARTING AT min_start AND STOPPING AT max_start
+         EXPORT EVENT STARTING AT max_start WITH DURATION %g
          COMMIT AND SLIDE 1 WHEN
            group.#count >= %d OR
            in.start > out.max_start + 5|}
-         avg_per_app bca.percentile nb_items_per_groups in
+         avg_per_app bca.percentile
+         bca.obs_window
+         nb_items_per_groups in
     make_node perc_per_obs_window_name op ;
     (* TODO: we need an hysteresis here! *)
-    let subject =
+    let title =
       Printf.sprintf "EURT to %s is too large" bca.name
     and text =
       Printf.sprintf
@@ -595,9 +598,9 @@ let layer_of_bcas bcas dataset_name =
          bca.name bca.max_eurt (bca.obs_window /. 60.) in
     let ops =
       Printf.sprintf
-        {|NOTIFY "http://localhost:876/notify?name=EURT%%20%s&firing=1&subject=%s&text=%s"
+        {|NOTIFY "http://localhost:29382/notify?name=EURT%%20%s&firing=1&now=${max_start}&title=%s&text=%s"
           WHEN eurt > %g FROM '%s'|}
-          (enc bca.name) (enc subject) (enc text)
+          (enc bca.name) (enc title) (enc text)
           bca.max_eurt
           perc_per_obs_window_name
     and name = bca.name ^": EURT too high" in
