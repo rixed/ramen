@@ -96,7 +96,7 @@ let traffic_node ?where dataset_name name dt =
  * we think are good predictors. *)
 let anomaly_detection_nodes avg_window from timeseries =
   assert (timeseries <> []) ;
-  let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ]
+  let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ; "lag(" ]
   and multi_predictors = [ "fit_multi(5, " ] in
   let predictor_name = from ^": predictions" in
   let predictor_node =
