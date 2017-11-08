@@ -889,24 +889,22 @@ let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_ty
     Printf.fprintf oc ")\n"
   )
 
-let emit_field_of_tuple name mentioned and_all_others oc in_tuple_typ =
+let emit_field_of_tuple name oc tuple_typ =
   Printf.fprintf oc "let %s %a = function\n"
     name
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
+    (print_tuple_deconstruct TupleOut) tuple_typ ;
   List.iter (fun field_typ ->
-      if and_all_others || Set.mem field_typ.typ_name mentioned then (
-        Printf.fprintf oc "\t| %S -> " field_typ.typ_name ;
-        let id = id_of_field_name field_typ.typ_name in
-        if field_typ.nullable then (
-          Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> %a)\n"
-            id
-            (conv_from_to field_typ.typ ~nullable:false TString String.print) "v_"
-        ) else (
-          Printf.fprintf oc "%a\n"
-            (conv_from_to field_typ.typ ~nullable:false TString String.print) id
-        )
+      Printf.fprintf oc "\t| %S -> " field_typ.typ_name ;
+      let id = id_of_field_name ~tuple:TupleOut field_typ.typ_name in
+      if field_typ.nullable then (
+        Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> %a)\n"
+          id
+          (conv_from_to field_typ.typ ~nullable:false TString String.print) "v_"
+      ) else (
+        Printf.fprintf oc "%a\n"
+          (conv_from_to field_typ.typ ~nullable:false TString String.print) id
       )
-    ) in_tuple_typ ;
+    ) tuple_typ ;
   Printf.fprintf oc "\t| _ -> raise Not_found\n"
 
 let emit_where
@@ -1262,7 +1260,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     (emit_serialize_tuple "serialize_group_") out_tuple_typ
     (emit_generate_tuples "generate_tuples_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
     (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how
-    (emit_field_of_tuple "field_of_tuple_" mentioned and_all_others) in_tuple_typ
+    (emit_field_of_tuple "field_of_tuple_") out_tuple_typ
     (emit_top "top_" in_tuple_typ mentioned and_all_others) top ;
   (match flush_when with
   | Some flush_when ->

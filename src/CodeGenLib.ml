@@ -434,7 +434,7 @@ let listen_on addr_str port proto sersize_of_tuple serialize_tuple =
 let notify url field_of_tuple tuple =
   let expand_fields =
     let open Str in
-    let re = regexp "\\${\\(in\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
+    let re = regexp "\\${\\(out\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
     fun text tuple ->
       global_substitute re (fun s ->
           let field_name = matched_group 2 s in
@@ -574,7 +574,7 @@ let aggregate
       (global_update_for_where : 'global_state -> 'tuple_in -> unit)
       (group_init : 'global_state -> 'tuple_in -> 'aggr)
       (group_update : 'aggr -> 'global_state -> 'tuple_in -> unit)
-      (field_of_tuple : 'tuple_in -> string -> string)
+      (field_of_tuple : 'tuple_out -> string -> string)
       (notify_url : string) =
   let conf = node_start ()
   and rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
@@ -624,8 +624,11 @@ let aggregate
    !logger.debug "We will commit/flush for... %s" when_str) ;
 
   let outputer =
-    let do_out =
-      outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
+    let do_out tuple =
+      if notify_url <> "" then
+        notify notify_url field_of_tuple tuple ;
+      outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple tuple
+    in
     generate_tuples do_out in
   let commit in_tuple out_tuple =
     (* in_tuple here is useful for generators *)
@@ -766,7 +769,6 @@ let aggregate
             then (
               if do_global_updates then
                 global_update (Option.get !global_state) in_tuple ;
-              if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               (* TODO: pass selected_successive *)
               let out_generator =
@@ -847,7 +849,6 @@ let aggregate
             then (
               if do_global_updates then
                 global_update (Option.get !global_state) in_tuple ;
-              if notify_url <> "" then notify notify_url field_of_tuple in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               let prev_wk = tot_weight aggr in
               accumulate_into aggr (Some k) ;
