@@ -225,6 +225,7 @@ let emit_listen_on oc net_addr port proto =
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
 
+(* tuple must be some kind of _input_ tuple *)
 let emit_in_tuple ?(tuple=TupleIn) mentioned and_all_others oc in_tuple_typ =
   print_tuple_deconstruct tuple oc (List.filter_map (fun field_typ ->
     if and_all_others || Set.mem field_typ.typ_name mentioned then

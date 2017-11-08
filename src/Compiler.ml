@@ -1037,7 +1037,7 @@ let compile conf layer =
         let%lwt () = join thds in
         C.Layer.set_status layer Compiled ;
         (* Now that the nodes have been compiled, for all intents and
-         * purposes, including typing od dependent layers, the private
+         * purposes, including typing of dependent layers, the private
          * fields do no exist. Remove them: *)
         let remove_private_fields node =
           node.N.out_type.C.fields <-

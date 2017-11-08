@@ -680,29 +680,29 @@ let aggregate
       in
       let commit_and_flush_list to_commit to_flush =
         (* We must commit first and then flush *)
-        (* Send tuple for "others":
-         * FIXME: the problem with this is that the current_out of this
-         * aggregate was build from a given in_tuple and nothing tells us
-         * what this additional "others" tuple represents, and that
-         * possibly other keys than the one seemingly present have
-         * contributed to its aggregated values. It is not easy to fix.
-         * Idea 1: make all fields used in the key clause NULL to anonymise
-         * this entry ; but still nothing guarantee that it's distinguishable
-         * from normal top output.
-         * Idea 2: add an additional column to top operations to flag the
-         * "other" tuple.
-         * Idea 3: Or rather, have a virtual boolean field that says if this
-         * is "others", that the user could request in the selected fields
-         * and that we would pass to generate_tuples; with it the user could
-         * for instance blank values that have no sense.
-         * Idea 4: short term: do not output this additional tuple. *)
+        (* FIXME: Tops: Send tuple for "others" ? The problem with this is
+         * that the current_out of this aggregate was build from a given
+         * in_tuple and nothing tells us what this additional "others" tuple
+         * represents, and that possibly other keys than the one seemingly
+         * present have contributed to its aggregated values. It is not easy
+         * to fix.  Idea 1: make all fields used in the key clause NULL to
+         * anonymise this entry ; but still nothing guarantee that it's
+         * distinguishable from normal top output.  Idea 2: add an additional
+         * column to top operations to flag the "other" tuple.  Idea 3: Or
+         * rather, have a virtual boolean field that says if this is "others",
+         * that the user could request in the selected fields and that we
+         * would pass to generate_tuples; with it the user could for instance
+         * blank values that have no sense.  Idea 4: short term: do not output
+         * this additional tuple. *)
         (*
         let to_commit =
           if to_commit <> [] && !others <> None then
             ("others", Option.get !others) :: to_commit
           else to_commit in *)
         let%lwt () =
-          Lwt_list.iter_s (fun (_k, a) -> commit in_tuple a.current_out) to_commit in
+          Lwt_list.iter_s (fun (_k, a) ->
+              commit in_tuple a.current_out
+            ) to_commit in
         if to_flush <> [] then (
           (* This is really a temporary hack! Cannot work like this. *)
           others := None ;
