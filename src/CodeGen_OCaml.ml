@@ -1220,14 +1220,14 @@ let emit_state_update name state_var other_vars state_lifespan
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
 let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
-              oc commit_when =
+              oc when_expr =
   Printf.fprintf oc "let %s virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a \
                        virtual_out_count \
                        %a virtual_group_count_ virtual_group_successive_ group_ global_ \
                        %a %a \
-                       %a =\n\t%a\n"
+                       %a =\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_tuple_typ
@@ -1236,8 +1236,17 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
     (emit_tuple TupleGroupPrevious) out_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ
-    (emit_tuple TupleOut) out_tuple_typ
-    (emit_expr ?state:None ~context:Finalize) commit_when
+    (emit_tuple TupleOut) out_tuple_typ ;
+  (* Update the local state used by this expression: *)
+  Expr.unpure_iter (function
+      | Expr.StatefulFun (_, LocalState, _) as e ->
+        Printf.fprintf oc "\tgroup_.%s <- (%a) ;\n"
+          (name_of_state e)
+          (emit_expr ?state:None ~context:UpdateState) e
+      | _ -> ()
+    ) when_expr ;
+  Printf.fprintf oc "\t%a\n"
+    (emit_expr ?state:None ~context:Finalize) when_expr
 
 let emit_should_resubmit name in_tuple_typ mentioned and_all_others
                          oc flush_how =
