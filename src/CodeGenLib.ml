@@ -53,12 +53,11 @@ let age_i128 = Int128.of_float % age_float
 
 let now () = !CodeGenLib_IO.now
 
-(* State is count * sum *)
-let avg_init x = 1, x
+(* State is count * sum, inited with 0, 0. *)
 let avg_add (count, sum) x = count + 1, sum +. x
 let avg_finalize (count, sum) = sum /. float_of_int count
 
-let percentile_init x = [x]
+(* Initialized with an empty list *)
 let percentile_add prev x = x::prev
 let percentile_finalize pct lst =
   let arr = Array.of_list lst in
@@ -76,19 +75,34 @@ let split by what k =
 
 (* Remember values *)
 type remember_state =
-  { filter : RamenBloomFilter.sliced_filter ;
+  { mutable filter : RamenBloomFilter.sliced_filter option ;
+    false_positive_ratio : float ;
+    duration : float ;
     mutable last_remembered : bool }
 
-let remember_init false_positive_ratio tim dur e =
+let remember_init false_positive_ratio duration =
+  (* We cannot init the bloom filter before we receive the first tuple
+   * since we need starting time: *)
+  { filter = None ;
+    false_positive_ratio ;
+    duration ;
+    last_remembered = false }
+
+let remember_really_init st tim =
   let nb_slices = 10 in
-  let start_time = tim -. dur and slice_width = dur /. float_of_int nb_slices in
-  let filter = RamenBloomFilter.make_sliced start_time nb_slices slice_width false_positive_ratio in
-  let last_remembered = RamenBloomFilter.remember filter tim e in
-  assert (not last_remembered) ;
-  { filter ; last_remembered }
+  let start_time = tim -. st.duration
+  and slice_width = st.duration /. float_of_int nb_slices in
+  let filter = RamenBloomFilter.make_sliced start_time nb_slices slice_width
+                                st.false_positive_ratio in
+  st.filter <- Some filter ;
+  filter
 
 let remember_add st tim e =
-  st.last_remembered <- RamenBloomFilter.remember st.filter tim e ;
+  let filter =
+    match st.filter with
+    | None -> remember_really_init st tim
+    | Some f -> f in
+  st.last_remembered <- RamenBloomFilter.remember filter tim e ;
   st
 
 let remember_finalize st = st.last_remembered
@@ -110,10 +124,10 @@ struct
    * of past values and a tuple counter: *)
   type 'a t = 'a array * int
 
-  (* We initialize this internal state when we have the first value: *)
+  (* We initialize this internal state with a random value [x]: *)
   let init p n x =
     let p = Uint16.to_int p and n = Uint16.to_int n in
-    Array.make (n * p + 1) x, 1
+    Array.make (n * p + 1) x, 0
 
   (* Then adding a value: *)
   let add (prevs, count) x =
@@ -153,7 +167,11 @@ struct
   let current (prevs, count) =
     prevs.((count - 1) mod Array.length prevs)
 
-  let lag (prevs, count) = prevs.(count mod Array.length prevs)
+  let lag (prevs, count) =
+    let idx =
+      if count < Array.length prevs then 0
+      else count mod Array.length prevs in
+    prevs.(idx)
 
   let avg p n t =
     let p = Uint16.to_int p and n = Uint16.to_int n in
@@ -485,22 +503,21 @@ let flush_aggr group_init group_update should_resubmit global_state h k aggr =
     Hashtbl.remove h k
   else (
     let to_resubmit = List.rev aggr.to_resubmit in
-    aggr.nb_entries <- 1 ;
+    aggr.nb_entries <- 0 ;
     aggr.to_resubmit <- [] ;
+    aggr.fields <- group_init global_state ;
     (* Warning: should_resubmit might need realistic nb_entries, last_in etc *)
-    let in_tuple = List.hd to_resubmit in
-    aggr.first_in <- in_tuple ;
-    aggr.last_in <- in_tuple ;
-    aggr.fields <- group_init global_state in_tuple ;
-    if should_resubmit aggr in_tuple then
-      aggr.to_resubmit <- [ in_tuple ] ;
+    aggr.first_in <- List.hd to_resubmit ;
     List.iter (fun in_tuple ->
-        group_update aggr.fields global_state in_tuple ;
+        group_update
+          aggr.fields
+          (Uint64.of_int aggr.nb_entries)
+          global_state in_tuple ;
         aggr.nb_entries <- aggr.nb_entries + 1 ;
         aggr.last_in <- in_tuple ;
         if should_resubmit aggr in_tuple then
           aggr.to_resubmit <- in_tuple :: aggr.to_resubmit
-      ) (List.tl to_resubmit)
+      ) to_resubmit
   )
 
 type when_to_check_group = ForAll | ForAllSelected | ForAllInGroup
@@ -569,11 +586,14 @@ let aggregate
         bool)
       (when_to_check_for_flush : when_to_check_group)
       (should_resubmit : ('aggr, 'tuple_in, 'generator_out) aggr_value -> 'tuple_in -> bool)
-      (global_init : 'tuple_in -> 'global_state)
+      (global_state : 'global_state)
       (global_update : 'global_state -> 'tuple_in -> unit)
       (global_update_for_where : 'global_state -> 'tuple_in -> unit)
-      (group_init : 'global_state -> 'tuple_in -> 'aggr)
-      (group_update : 'aggr -> 'global_state -> 'tuple_in -> unit)
+      (group_init : 'global_state -> 'aggr)
+      (group_update :
+        'aggr ->
+        Uint64.t -> (* group.#count *)
+        'global_state -> 'tuple_in -> unit)
       (field_of_tuple : 'tuple_out -> string -> string)
       (notify_url : string) =
   let conf = node_start ()
@@ -584,7 +604,6 @@ let aggregate
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)
   and in_ = ref None (* last incoming tuple *)
-  and global_state = ref None (* We need the first tuple to initialize it *)
   and selected_tuple = ref None (* last incoming tuple that passed the where filter *)
   and selected_count = ref Uint64.zero
   and selected_successive = ref Uint64.zero
@@ -654,12 +673,6 @@ let aggregate
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     with_state (fun h ->
-      let do_global_updates =
-        if !global_state = None then (
-          global_state := Some (global_init in_tuple) ;
-          (* Do not call global_updates in this iteration *)
-          false
-        ) else true in
       IntCounter.add stats_in_tuple_count 1 ;
       IntCounter.add stats_rb_read_bytes (RingBuf.tx_size tx) ;
       let last_in = Option.default in_tuple !in_
@@ -674,7 +687,7 @@ let aggregate
           !unselected_count !unselected_successive last_unselected
           !out_count aggr.previous_out
           (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
-          (Option.get !global_state)
+          global_state
           aggr.first_in aggr.last_in
           aggr.current_out
       in
@@ -711,7 +724,7 @@ let aggregate
         ) ;
         List.iter (fun (k, a) ->
             flush_aggr group_init group_update should_resubmit
-                       (Option.get !global_state) h k a
+                       global_state h k a
           ) to_flush ;
         return_unit
       in
@@ -729,10 +742,9 @@ let aggregate
       in
       (* Regardless of the result of the WHERE filter we want to update
        * the fields of the global state that are used in the where clause: *)
-      if do_global_updates then
-        global_update_for_where (Option.get !global_state) in_tuple ;
+      global_update_for_where global_state in_tuple ;
       (if where_fast
-           (Option.get !global_state)
+           global_state
            in_count in_tuple last_in
            !selected_count !selected_successive last_selected
            !unselected_count !unselected_successive last_unselected
@@ -744,7 +756,6 @@ let aggregate
         (* The weight for this tuple only: *)
         let weight = top_by in_tuple in
         let accumulate_into aggr this_key =
-          group_update aggr.fields (Option.get !global_state) in_tuple ;
           aggr.last_ev_count <- !event_count ;
           aggr.nb_entries <- aggr.nb_entries + 1 ;
           if should_resubmit aggr in_tuple then
@@ -757,18 +768,21 @@ let aggregate
         let aggr_opt =
           match Hashtbl.find h k with
           | exception Not_found ->
-            let fields = group_init (Option.get !global_state) in_tuple
-            and one = Uint64.one in
+            let fields = group_init global_state
+            and zero = Uint64.zero and one = Uint64.one in
             if where_slow
-                 (Option.get !global_state)
+                 global_state
                  in_count in_tuple last_in
                  !selected_count !selected_successive last_selected
                  !unselected_count !unselected_successive last_unselected
-                 one one fields
+                 zero zero fields
+                 (* Although we correctly have 0 fields and group.#count and
+                  * #successive to 0, we have to pass first and past tuples
+                  * in that empty group; instead, pass the current tuple: *)
                  in_tuple in_tuple
             then (
-              if do_global_updates then
-                global_update (Option.get !global_state) in_tuple ;
+              global_update global_state in_tuple ;
+              group_update fields zero global_state in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               (* TODO: pass selected_successive *)
               let out_generator =
@@ -778,7 +792,7 @@ let aggregate
                   !unselected_count !unselected_successive last_unselected
                   !out_count
                   one one fields
-                  (Option.get !global_state)
+                  global_state
                   in_tuple in_tuple in
               (* What part of unknown weight might belong to this guy? *)
               let kh = BatHashtbl.hash k mod Array.length unknown_weight in
@@ -828,6 +842,10 @@ let aggregate
                     (match !others with
                     | None -> others := Some aggr
                     | Some others_aggr ->
+                      group_update
+                        others_aggr.fields
+                        (Uint64.of_int others_aggr.nb_entries)
+                        global_state in_tuple ;
                       accumulate_into others_aggr None ;
                       (* Those two are not updated by accumulate_into to allow clauses
                        * code to see their previous values *)
@@ -840,17 +858,20 @@ let aggregate
             ) else None
           | aggr -> (* Key already in the hash *)
             if where_slow
-                 (Option.get !global_state)
+                 global_state
                  in_count in_tuple last_in
                  !selected_count !selected_successive last_selected
                  !unselected_count !unselected_successive last_unselected
                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                  aggr.first_in aggr.last_in
             then (
-              if do_global_updates then
-                global_update (Option.get !global_state) in_tuple ;
+              global_update global_state in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               let prev_wk = tot_weight aggr in
+              group_update
+                aggr.fields
+                (Uint64.of_int aggr.nb_entries)
+                global_state in_tuple ;
               accumulate_into aggr (Some k) ;
               (* current_out and last_in are better updated only after we called the
                * various clauses receiving aggr *)
@@ -862,7 +883,7 @@ let aggregate
                   !unselected_count !unselected_successive last_unselected
                   !out_count
                   (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
-                  (Option.get !global_state)
+                  global_state
                   aggr.first_in aggr.last_in in
               aggr.current_out <- out_generator ;
               aggr.last_in <- in_tuple ;

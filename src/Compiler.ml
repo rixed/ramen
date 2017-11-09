@@ -528,6 +528,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
                                    Some TString, None, e2]
   | StatefulFun (op_typ, _, Remember (fpr, tim, dur, e)) ->
     (* e can be anything *)
+    check_const "remember false positive rate" fpr ;
+    check_const "remember duration" dur ;
     check_op op_typ return_bool
       [Some TFloat, Some false, fpr ;
        Some TFloat, None, tim ;

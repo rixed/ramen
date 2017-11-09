@@ -299,7 +299,10 @@ let add_all_mentioned_in_string mentioned _str =
 let emit_scalar oc =
   let open Stdint in
   function
-  | VFloat  f -> Printf.fprintf oc "(%f)" f
+  | VFloat  f ->
+    if f = infinity then String.print oc "infinity"
+    else if f = neg_infinity then String.print oc "neg_infinity"
+    else Printf.fprintf oc "(%f)" f
   | VString s -> Printf.fprintf oc "%S" s
   | VBool   b -> Printf.fprintf oc "%b" b
   | VU8     n -> Printf.fprintf oc "(Uint8.of_int (%d))" (Uint8.to_int n)
@@ -411,6 +414,71 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
 
 let freevar_name t = "fv_"^ string_of_int t.Expr.uniq_num ^"_"
 
+let min_of_num_scalar_type =
+  let open Stdint in
+  function
+  | TFloat -> VFloat neg_infinity
+  | TBool -> VBool false
+  | TU8 -> VU8 Uint8.zero
+  | TU16 -> VU16 Uint16.zero
+  | TU32 -> VU32 Uint32.zero
+  | TU64 -> VU64 Uint64.zero
+  | TU128 -> VU128 Uint128.zero
+  | TI8 -> VI8 Int8.min_int
+  | TI16 -> VI16 Int16.min_int
+  | TI32 -> VI32 Int32.min_int
+  | TI64 -> VI64 Int64.min_int
+  | TI128 -> VI128 Int128.min_int
+  | TEth -> VEth Uint48.zero
+  | TIpv4 -> VIpv4 Uint32.zero
+  | TIpv6 -> VIpv6 Uint128.zero
+  | _ -> assert false
+
+let max_of_num_scalar_type =
+  let open Stdint in
+  function
+  | TFloat -> VFloat infinity
+  | TBool -> VBool true
+  | TU8 -> VU8 Uint8.max_int
+  | TU16 -> VU16 Uint16.max_int
+  | TU32 -> VU32 Uint32.max_int
+  | TU64 -> VU64 Uint64.max_int
+  | TU128 -> VU128 Uint128.max_int
+  | TI8 -> VI8 Int8.max_int
+  | TI16 -> VI16 Int16.max_int
+  | TI32 -> VI32 Int32.max_int
+  | TI64 -> VI64 Int64.max_int
+  | TI128 -> VI128 Int128.max_int
+  | TEth -> VEth Uint48.max_int
+  | TIpv4 -> VIpv4 Uint32.max_int
+  | TIpv6 -> VIpv6 Uint128.max_int
+  | _ -> assert false
+
+let min_of_num_type t =
+  let open Expr in
+  Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "min-init",
+         min_of_num_scalar_type (Option.get t.scalar_typ))
+
+let max_of_num_type t =
+  let open Expr in
+  Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "max-init",
+         max_of_num_scalar_type (Option.get t.scalar_typ))
+
+let any_constant_of_type t =
+  let open Expr in
+  let open Stdint in
+  let c v =
+    Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "init", v)
+  in
+  c (match Option.get t.scalar_typ with
+  | TNull -> VNull
+  | TString -> VString ""
+  | TNum -> assert false
+  | TAny -> assert false
+  | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
+  | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
+  | s -> min_of_num_scalar_type s)
+
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
@@ -450,7 +518,7 @@ and emit_expr ?state ~context oc expr =
   (* Non-functions *)
   | Finalize, StateField (_, s), _ ->
     Printf.fprintf oc "%s" s
-  | Finalize, Const (_, c), _ ->
+  | _, Const (_, c), _ ->
     emit_scalar oc c
   | Finalize, Field (_, tuple, field), _ ->
     String.print oc (id_of_field_name ~tuple:!tuple field)
@@ -576,8 +644,10 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "CodeGenLib.sequence" [Some TI128; Some TI128] [e1; e2]
 
   (* Stateful functions *)
-  | InitState, StatefulFun (_, _, (AggrAnd e | AggrOr e)), Some TBool ->
-    emit_functionN oc ?state "identity" [Some TBool] [e]
+  | InitState, StatefulFun (_, _, AggrAnd _), (Some TBool as t) ->
+    conv_to ?state ~context t oc expr_true
+  | InitState, StatefulFun (_, _, AggrOr _), (Some TBool as t) ->
+    conv_to ?state ~context t oc expr_false
   | Finalize, StatefulFun (_, g, (AggrAnd _|AggrOr _)), Some TBool ->
     emit_functionN oc ?state "identity" [None] [my_state g]
   | UpdateState, StatefulFun (_, g, AggrAnd (e)), _ ->
@@ -585,24 +655,29 @@ and emit_expr ?state ~context oc expr =
   | UpdateState, StatefulFun (_, g, AggrOr (e)), _ ->
     emit_functionN oc ?state "(||)" [None; Some TBool] [my_state g; e]
 
-  | InitState, StatefulFun (_, _, AggrSum (e)),
-    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN oc ?state "identity" [Some t] [e]
+  | InitState, StatefulFun (_, _, AggrSum _),
+    (Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) as t) ->
+    conv_to ?state ~context t oc expr_zero
   | UpdateState, StatefulFun (_, g, AggrSum (e)),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".add") [None; Some t] [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrSum (_e)), _ ->
     emit_functionN oc ?state "identity" [None] [my_state g]
 
-  | InitState, StatefulFun (_, _, AggrAvg (e)), Some (TFloat as t) ->
-    emit_functionN oc ?state "CodeGenLib.avg_init" [Some t] [e]
+  | InitState, StatefulFun (_, _, AggrAvg (_)), Some TFloat ->
+    Printf.fprintf oc "0, 0."
   | UpdateState, StatefulFun (_, g, AggrAvg (e)), Some (TFloat as t) ->
     emit_functionN oc ?state "CodeGenLib.avg_add" [None; Some t] [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrAvg (_e)), _ ->
     emit_functionN oc ?state "CodeGenLib.avg_finalize" [None] [my_state g]
 
-  | InitState, StatefulFun (_, _, (AggrMax e|AggrMin e|AggrFirst e|AggrLast e)), _ ->
-    emit_functionN oc ?state "identity" [None] [e] (* No conversion necessary *)
+  | InitState, StatefulFun (_, _, AggrMax e), t ->
+    conv_to ?state ~context t oc (min_of_num_type (typ_of e))
+  | InitState, StatefulFun (_, _, AggrMin e), t ->
+    conv_to ?state ~context t oc (max_of_num_type (typ_of e))
+  | InitState, StatefulFun (_, _, (AggrFirst e|AggrLast e)), t ->
+    conv_to ?state ~context t oc (any_constant_of_type (typ_of e))
+
   | Finalize, StatefulFun (_, g, (AggrMax _|AggrMin _|AggrFirst _|AggrLast _)), _ ->
     emit_functionN oc ?state "identity" [None] [my_state g]
   | UpdateState, StatefulFun (_, g, AggrMax (e)), _ ->
@@ -610,7 +685,10 @@ and emit_expr ?state ~context oc expr =
   | UpdateState, StatefulFun (_, g, AggrMin (e)), _ ->
     emit_functionN oc ?state "min" [None; None] [my_state g; e]
   | UpdateState, StatefulFun (_, g, AggrFirst (e)), _ ->
-    emit_functionN oc ?state "(fun x _ -> x)" [None; None] [my_state g; e]
+    (* This hack relies on the fact that UpdateState is always called in
+     * a context where we have the group.#count available and that its
+     * name is "virtual_group_count_". *)
+    emit_functionN oc ?state "(fun x y -> if virtual_group_count_ = Uint64.zero then y else x)" [None; None] [my_state g; e]
   | UpdateState, StatefulFun (_, g, AggrLast (e)), _ ->
     emit_functionN oc ?state "(fun _ x -> x)" [None; None] [my_state g; e]
 
@@ -624,8 +702,8 @@ and emit_expr ?state ~context oc expr =
    * interested in? Or, if more function are like that, have a proper
    * `bound` or `pair` type constructor, with `low/high` or `first/second`
    * accessors? *)
-  | InitState, StatefulFun (_, _, AggrPercentile (_p,e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
-    emit_functionN oc ?state "CodeGenLib.percentile_init" [None] [e]
+  | InitState, StatefulFun (_, _, AggrPercentile (_p,_)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+    Printf.fprintf oc "[]"
   | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.percentile_add" [None; None] [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
@@ -633,15 +711,15 @@ and emit_expr ?state ~context oc expr =
 
   | InitState, StatefulFun (_, _, Lag (k,e)), _ ->
     let n = expr_one in
-    emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; None] [k; n; e]
+    emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; None] [k; n; any_constant_of_type (typ_of e)]
   | UpdateState, StatefulFun (_, g, Lag (_k,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.add" [None; None] [my_state g; e]
   | Finalize, StatefulFun (_, g, Lag _), _ ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.lag" [None] [my_state g]
 
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | InitState, StatefulFun (_, _, (MovingAvg(p,n,e)|LinReg(p,n,e))), Some TFloat ->
-    emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; Some TFloat] [p; n; e]
+  | InitState, StatefulFun (_, _, (MovingAvg(p,n,_)|LinReg(p,n,_))), Some TFloat ->
+    emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; Some TFloat] [p; n; expr_zero]
   | UpdateState, StatefulFun (_, g, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.add" [None; Some TFloat] [my_state g; e]
   | Finalize, StatefulFun (_, g, MovingAvg (p,n,_)), Some TFloat ->
@@ -651,20 +729,20 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefulFun (_, g, MultiLinReg (p,n,_,_)), Some TFloat ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.multi_linreg" [Some TU16; Some TU16; None] [p; n; my_state g]
 
-  | InitState, StatefulFun (_, _, MultiLinReg (p,n,e,es)), Some TFloat ->
-    emit_functionNv oc ?state "CodeGenLib.Seasonal.init_multi_linreg" [Some TU16; Some TU16; Some TFloat] [p; n; e] (Some TFloat) es
+  | InitState, StatefulFun (_, _, MultiLinReg (p,n,_,es)), Some TFloat ->
+    emit_functionNv oc ?state "CodeGenLib.Seasonal.init_multi_linreg" [Some TU16; Some TU16; Some TFloat] [p; n; expr_zero] (Some TFloat) (List.map (fun _ -> expr_zero) es)
   | UpdateState, StatefulFun (_, g, MultiLinReg (_p,_n,e,es)), _ ->
     emit_functionNv oc ?state "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state g; e] (Some TFloat) es
 
-  | InitState, StatefulFun (_, _, ExpSmooth (_a,e)), Some TFloat ->
-    emit_functionN oc ?state "identity" [Some TFloat] [e]
+  | InitState, StatefulFun (_, _, ExpSmooth (_a,_)), (Some TFloat as t) ->
+    conv_to ?state ~context t oc expr_zero
   | UpdateState, StatefulFun (_, g, ExpSmooth (a,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.smooth" [None; Some TFloat; Some TFloat] [my_state g; a; e]
   | Finalize, StatefulFun (_, g, ExpSmooth _), Some TFloat ->
     emit_functionN oc ?state "identity" [None] [my_state g]
 
-  | InitState, StatefulFun (_, _, Remember (fpr,tim,dur,e)), Some TBool ->
-    emit_functionN oc ?state "CodeGenLib.remember_init" [Some TFloat; Some TFloat; Some TFloat; None] [fpr; tim; dur; e]
+  | InitState, StatefulFun (_, _, Remember (fpr,_tim,dur,_e)), Some TBool ->
+    emit_functionN oc ?state "CodeGenLib.remember_init" [Some TFloat; Some TFloat] [fpr; dur]
   | UpdateState, StatefulFun (_, g, Remember (_fpr,tim,_dur,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.remember_add" [None; Some TFloat; None] [my_state g; tim; e]
   | Finalize, StatefulFun (_, g, Remember _), Some TBool ->
@@ -1020,6 +1098,15 @@ let for_each_unpure_fun selected_fields ?where ?commit_when ?flush_when f =
   Option.may (Expr.unpure_iter f) commit_when ;
   Option.may (Expr.unpure_iter f) flush_when
 
+let for_each_unpure_fun_my_lifespan lifespan selected_fields
+                                    ?where ?commit_when ?flush_when f =
+  let open Expr in
+  for_each_unpure_fun selected_fields ?where ?commit_when ?flush_when
+    (function
+    | StatefulFun (_, l, _) as e when l = lifespan ->
+      f e
+    | _ -> ())
+
 let otype_of_state e =
   let open Expr in
   let typ = typ_of e in
@@ -1044,39 +1131,32 @@ let otype_of_state e =
 
 let emit_state_init name state_lifespan other_state_vars
       ?where ?commit_when ?flush_when
-      in_tuple_typ mentioned and_all_others
       oc selected_fields =
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
-   * states. And we must do this in a depth first fashion, since a function
-   * state might require the value of another function, which must thus
-   * already be initialized and ready to fire its first value. *)
-  let for_each_unpure_fun_my_lifespan f =
-    for_each_unpure_fun selected_fields ?where ?commit_when ?flush_when
-      (function
-      | Lang.Expr.StatefulFun (_, lifespan, _) as e when lifespan = state_lifespan ->
-        f e
-      | _ -> ())
+   * states. *)
+  let for_each_my_unpure_fun f =
+    for_each_unpure_fun_my_lifespan
+      state_lifespan selected_fields ?where ?commit_when ?flush_when f
   in
   (* In the special case where we do not have any state at all, though, we
    * end up with an empty record, which is illegal in OCaml so we need to
    * specialize for this: *)
   let need_state =
     try
-      for_each_unpure_fun_my_lifespan (fun _ -> raise Exit);
+      for_each_my_unpure_fun (fun _ -> raise Exit);
       false
     with Exit -> true in
   if not need_state then (
     Printf.fprintf oc "type %s = unit\n" name ;
-    Printf.fprintf oc "let %s%a %a = ()\n\n"
+    Printf.fprintf oc "let %s%a = ()\n\n"
       name
       (List.print ~first:" " ~last:"" ~sep:" " String.print)
         other_state_vars
-      (emit_in_tuple mentioned and_all_others) in_tuple_typ
   ) else (
     (* First emit the record type definition: *)
     Printf.fprintf oc "type %s = {\n" name ;
-    for_each_unpure_fun_my_lifespan (fun f ->
+    for_each_my_unpure_fun (fun f ->
         Printf.fprintf oc "\tmutable %s : %s (* %a *) ;\n"
           (name_of_state f)
           (otype_of_state f)
@@ -1084,37 +1164,41 @@ let emit_state_init name state_lifespan other_state_vars
       ) ;
     Printf.fprintf oc "}\n\n" ;
     (* Then the initialization function proper: *)
-    Printf.fprintf oc "let %s%a %a =\n"
+    Printf.fprintf oc "let %s%a =\n"
       name
       (List.print ~first:" " ~last:"" ~sep:" " String.print)
-        other_state_vars
-      (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-    for_each_unpure_fun_my_lifespan (fun f ->
+        other_state_vars ;
+    for_each_my_unpure_fun (fun f ->
         Printf.fprintf oc "\tlet %s = %a in\n"
           (name_of_state f)
           (emit_expr ~context:InitState ~state:state_lifespan) f
       ) ;
     (* And now build the state record from all those fields: *)
     Printf.fprintf oc "\t{" ;
-    for_each_unpure_fun_my_lifespan (fun f ->
+    for_each_my_unpure_fun (fun f ->
         Printf.fprintf oc " %s ;" (name_of_state f)) ;
     Printf.fprintf oc " }\n"
   )
 
-let emit_state_update name state_var other_state_vars state_lifespan
+(* FIXME: once group_update is merged into tuple_of_aggr, get rid of
+ * this other_vars *)
+let emit_state_update name state_var other_vars state_lifespan
       ?where ?commit_when ?flush_when
       in_tuple_typ mentioned and_all_others
       oc selected_fields =
   Printf.fprintf oc "let %s %a %a =\n"
     name
     (List.print ~first:"" ~last:"" ~sep:" " String.print)
-      (state_var::other_state_vars)
+      (state_var::other_vars)
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   (* Note that for_each_unpure_fun proceed depth first so inner functions
    * state will be updated first, which is what we want. *)
-  for_each_unpure_fun selected_fields ?where ?commit_when ?flush_when
-    (function
-    | Lang.Expr.StatefulFun (_, lifespan, _) as e when lifespan = state_lifespan ->
+  let for_each_my_unpure_fun f =
+    for_each_unpure_fun_my_lifespan
+      state_lifespan selected_fields ?where ?commit_when ?flush_when f
+  in
+  for_each_my_unpure_fun (function
+    | Expr.StatefulFun (_, lifespan, _) as e when lifespan = state_lifespan ->
       Printf.fprintf oc "\t%s.%s <- (%a) ;\n"
         state_var
         (name_of_state e)
@@ -1240,11 +1324,11 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
   in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" Lang.Expr.GlobalState [] ~where ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
-    (emit_state_update "global_update_" "global_" [] Lang.Expr.GlobalState ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
-    (emit_state_update "global_update_for_where_" "global_" [] Lang.Expr.GlobalState ~where in_tuple_typ mentioned and_all_others) []
-    (emit_state_init "group_init_" Lang.Expr.LocalState ["global_"] ~where ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
-    (emit_state_update "group_update_" "group_" ["global_"] Lang.Expr.LocalState ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
+    (emit_state_init "global_init_" Expr.GlobalState [] ~where ~commit_when ?flush_when) selected_fields
+    (emit_state_update "global_update_" "global_" [] Expr.GlobalState ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
+    (emit_state_update "global_update_for_where_" "global_" [] Expr.GlobalState ~where in_tuple_typ mentioned and_all_others) []
+    (emit_state_init "group_init_" Expr.LocalState ["global_"] ~where ~commit_when ?flush_when) selected_fields
+    (emit_state_update "group_update_" "group_" ["virtual_group_count_"; "global_"] Expr.LocalState ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_group then
       emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
@@ -1307,7 +1391,7 @@ let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
   let open Operation in
   with_code_file_for exec_name conf (fun oc ->
     Printf.fprintf oc "(* Code generated for node:\n%a\n*)\n"
-      Lang.Operation.print op ;
+      Operation.print op ;
     (match op with
     | Yield fields ->
       emit_yield oc in_tuple_typ out_tuple_typ fields

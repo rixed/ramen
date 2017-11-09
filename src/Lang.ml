@@ -635,6 +635,9 @@ struct
   let expr_false =
     Const (make_bool_typ ~nullable:false "false", VBool false)
 
+  let expr_zero =
+    Const (make_typ ~typ:TU8 ~nullable:false "zero", VU8 (Uint8.of_int 0))
+
   let expr_one =
     Const (make_typ ~typ:TU8 ~nullable:false "one", VU8 (Uint8.of_int 1))
 
