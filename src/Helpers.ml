@@ -68,7 +68,7 @@ let http_service port cert_opt key_opt router =
   let dec = Uri.pct_decode in
   let callback _conn req body =
     let path = Uri.path (Request.uri req) in
-    !logger.debug "Requested path: %S" path ;
+    !logger.debug "Requested %S" req.Request.resource ;
     (* Make "/path" equivalent to "path" *)
     let path =
       if String.starts_with path "/" then String.lchop path else path in
