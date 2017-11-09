@@ -689,7 +689,7 @@ and emit_expr ?state ~context oc expr =
     (* This hack relies on the fact that UpdateState is always called in
      * a context where we have the group.#count available and that its
      * name is "virtual_group_count_". *)
-    emit_functionN oc ?state "(fun x y -> if virtual_group_count_ = Uint64.zero then y else x)" [None; None] [my_state g; e]
+    emit_functionN oc ?state "(fun x y -> if virtual_group_count_ = Uint64.one then y else x)" [None; None] [my_state g; e]
   | UpdateState, StatefulFun (_, g, AggrLast (e)), _ ->
     emit_functionN oc ?state "(fun _ x -> x)" [None; None] [my_state g; e]
 
@@ -1029,6 +1029,15 @@ let emit_field_selection
       (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
   Printf.fprintf oc "=\n" ;
   List.iter (fun sf ->
+      (* Update the local state as required for this field, just before
+       * computing the field actual value. *)
+      Expr.unpure_iter (function
+          | Expr.StatefulFun (_, LocalState, _) as e ->
+            Printf.fprintf oc "\tgroup_.%s <- (%a) ;\n"
+              (name_of_state e)
+              (emit_expr ?state:None ~context:UpdateState) e
+          | _ -> ()
+        ) sf.Operation.expr ;
       if Expr.is_generator sf.Operation.expr then
         (* So that we have a single out_tuple_typ both before and after tuples generation *)
         Printf.fprintf oc "\tlet %s = () in\n"
@@ -1325,12 +1334,11 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     | Some flush_when -> when_to_check_group_for_expr flush_when
   in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" Expr.GlobalState [] ~where ~commit_when ?flush_when) selected_fields
     (emit_state_update "global_update_" "global_" [] Expr.GlobalState ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
     (emit_state_update "global_update_for_where_" "global_" [] Expr.GlobalState ~where in_tuple_typ mentioned and_all_others) []
     (emit_state_init "group_init_" Expr.LocalState ["global_"] ~where ~commit_when ?flush_when) selected_fields
-    (emit_state_update "group_update_" "group_" ["virtual_group_count_"; "global_"] Expr.LocalState ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_group then
       emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
@@ -1357,12 +1365,11 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
   Printf.fprintf oc "let () =\n\
       \tLwt_main.run (\n\
       \t\tCodeGenLib.aggregate \
-           read_tuple_ sersize_of_tuple_ serialize_group_ generate_tuples_ \
-           tuple_of_group_ where_fast_ where_slow_ key_of_input_ top_ \
-           commit_when_ %s flush_when_ %s should_resubmit_ \
-           global_init_ global_update_ global_update_for_where_ \
-           group_init_ group_update_ \
-           field_of_tuple_ %S)\n"
+      \t\t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
+      \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ top_\n\
+      \t\t\tcommit_when_ %s flush_when_ %s should_resubmit_\n\
+      \t\t\tglobal_init_ global_update_ global_update_for_where_\n\
+      \t\t\tgroup_init_ field_of_tuple_ %S)\n"
     when_to_check_for_commit when_to_check_for_flush notify_url
 
 let sanitize_ocaml_fname s =

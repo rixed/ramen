@@ -497,29 +497,6 @@ type ('aggr, 'tuple_in, 'generator_out) aggr_value =
 
 let tot_weight aggr = aggr.sure_weight +. aggr.unsure_weight
 
-(* FIXME: won't work with tops or global state *)
-let flush_aggr group_init group_update should_resubmit global_state h k aggr =
-  if aggr.to_resubmit = [] then
-    Hashtbl.remove h k
-  else (
-    let to_resubmit = List.rev aggr.to_resubmit in
-    aggr.nb_entries <- 0 ;
-    aggr.to_resubmit <- [] ;
-    aggr.fields <- group_init global_state ;
-    (* Warning: should_resubmit might need realistic nb_entries, last_in etc *)
-    aggr.first_in <- List.hd to_resubmit ;
-    List.iter (fun in_tuple ->
-        group_update
-          aggr.fields
-          (Uint64.of_int aggr.nb_entries)
-          global_state in_tuple ;
-        aggr.nb_entries <- aggr.nb_entries + 1 ;
-        aggr.last_in <- in_tuple ;
-        if should_resubmit aggr in_tuple then
-          aggr.to_resubmit <- in_tuple :: aggr.to_resubmit
-      ) to_resubmit
-  )
-
 type when_to_check_group = ForAll | ForAllSelected | ForAllInGroup
 
 (* A Map from weight to keys with that weight so we can quickly find the
@@ -590,10 +567,6 @@ let aggregate
       (global_update : 'global_state -> 'tuple_in -> unit)
       (global_update_for_where : 'global_state -> 'tuple_in -> unit)
       (group_init : 'global_state -> 'aggr)
-      (group_update :
-        'aggr ->
-        Uint64.t -> (* group.#count *)
-        'global_state -> 'tuple_in -> unit)
       (field_of_tuple : 'tuple_out -> string -> string)
       (notify_url : string) =
   let conf = node_start ()
@@ -723,8 +696,39 @@ let aggregate
           top_set := WeightMap.empty ;
         ) ;
         List.iter (fun (k, a) ->
-            flush_aggr group_init group_update should_resubmit
-                       global_state h k a
+            (* FIXME: won't work with tops or global state *)
+            if a.to_resubmit = [] then
+              Hashtbl.remove h k
+            else (
+              let to_resubmit = List.rev a.to_resubmit in
+              a.nb_entries <- 0 ;
+              a.to_resubmit <- [] ;
+              a.fields <- group_init global_state ;
+              (* Warning: should_resubmit might need realistic nb_entries,
+               * last_in etc *)
+              a.first_in <- List.hd to_resubmit ;
+              List.iter (fun in_tuple ->
+                  a.nb_entries <- a.nb_entries + 1 ;
+                  tuple_of_aggr
+                    (* We cannot possibly save the values of in_count,
+                     * last_in, selected_count, etc, at the time we
+                     * originally added those tuples, so this is
+                     * approximate. Should we prevent their use in all
+                     * sliding windows cases? *)
+                    in_count in_tuple last_in
+                    !selected_count !selected_successive last_selected
+                    !unselected_count !unselected_successive last_unselected
+                    !out_count
+                    (Uint64.of_int a.nb_entries)
+                    (Uint64.of_int a.nb_successive)
+                    a.fields
+                    global_state
+                    a.first_in in_tuple |> ignore ;
+                  a.last_in <- in_tuple ;
+                  if should_resubmit a in_tuple then
+                    a.to_resubmit <- in_tuple :: a.to_resubmit
+                ) to_resubmit
+            )
           ) to_flush ;
         return_unit
       in
@@ -781,9 +785,8 @@ let aggregate
                   * in that empty group; instead, pass the current tuple: *)
                  in_tuple in_tuple
             then (
-              global_update global_state in_tuple ;
-              group_update fields zero global_state in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
+              global_update global_state in_tuple ;
               (* TODO: pass selected_successive *)
               let out_generator =
                 tuple_of_aggr
@@ -842,10 +845,19 @@ let aggregate
                     (match !others with
                     | None -> others := Some aggr
                     | Some others_aggr ->
-                      group_update
-                        others_aggr.fields
-                        (Uint64.of_int others_aggr.nb_entries)
-                        global_state in_tuple ;
+                      (* We do not care about the out tuple but we still
+                       * have to update the aggr.fields (which in turn can
+                       * need some fields from out). *)
+                    tuple_of_aggr
+                      in_count in_tuple last_in
+                      !selected_count !selected_successive last_selected
+                      !unselected_count !unselected_successive last_unselected
+                      !out_count
+                      (Uint64.of_int others_aggr.nb_entries)
+                      (Uint64.of_int others_aggr.nb_successive)
+                      others_aggr.fields
+                      global_state
+                      others_aggr.first_in in_tuple |> ignore ;
                       accumulate_into others_aggr None ;
                       (* Those two are not updated by accumulate_into to allow clauses
                        * code to see their previous values *)
@@ -868,10 +880,6 @@ let aggregate
               global_update global_state in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               let prev_wk = tot_weight aggr in
-              group_update
-                aggr.fields
-                (Uint64.of_int aggr.nb_entries)
-                global_state in_tuple ;
               accumulate_into aggr (Some k) ;
               (* current_out and last_in are better updated only after we called the
                * various clauses receiving aggr *)
