@@ -664,8 +664,9 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefulFun (_, g, AggrSum (_e)), _ ->
     emit_functionN oc ?state "identity" [None] [my_state g]
 
-  | InitState, StatefulFun (_, _, AggrAvg (_)), Some TFloat ->
-    Printf.fprintf oc "0, 0."
+  | InitState, StatefulFun (_, _, AggrAvg e), Some TFloat ->
+    Printf.fprintf oc "0, %s0."
+      (if is_nullable e then "Some " else "")
   | UpdateState, StatefulFun (_, g, AggrAvg (e)), Some (TFloat as t) ->
     emit_functionN oc ?state "CodeGenLib.avg_add" [None; Some t] [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrAvg (_e)), _ ->
@@ -702,8 +703,9 @@ and emit_expr ?state ~context oc expr =
    * interested in? Or, if more function are like that, have a proper
    * `bound` or `pair` type constructor, with `low/high` or `first/second`
    * accessors? *)
-  | InitState, StatefulFun (_, _, AggrPercentile (_p,_)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
-    Printf.fprintf oc "[]"
+  | InitState, StatefulFun (_, _, AggrPercentile (_p,e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+    Printf.fprintf oc "%s[]"
+      (if is_nullable e then "Some " else "")
   | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.percentile_add" [None; None] [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
