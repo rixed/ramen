@@ -988,6 +988,19 @@ let emit_field_of_tuple name oc tuple_typ =
     ) tuple_typ ;
   Printf.fprintf oc "\t| _ -> raise Not_found\n"
 
+let emit_state_update_for_expr oc expr =
+  Expr.unpure_iter (function
+      | Expr.StatefulFun (_, lifespan, _) as e ->
+        let state_var =
+          match lifespan with LocalState -> "group_"
+                            | GlobalState -> "global_" in
+        Printf.fprintf oc "\t%s.%s <- (%a) ;\n"
+          state_var
+          (name_of_state e)
+          (emit_expr ?state:None ~context:UpdateState) e
+      | _ -> ()
+    ) expr
+
 let emit_where
       ?(with_group=false) ?(always_true=false)
       name in_tuple_typ mentioned and_all_others oc expr =
@@ -1005,8 +1018,13 @@ let emit_where
       (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
   if always_true then
     Printf.fprintf oc "= true\n"
-  else
-    Printf.fprintf oc "=\n\t%a\n" (emit_expr ?state:None ~context:Finalize) expr
+  else (
+    Printf.fprintf oc "=\n" ;
+    (* Update the states used by this expression: *)
+    emit_state_update_for_expr oc expr ;
+    Printf.fprintf oc "\t%a\n"
+      (emit_expr ?state:None ~context:Finalize) expr
+  )
 
 let emit_field_selection
       ?(with_selected=false) (* and unselected *)
@@ -1031,13 +1049,7 @@ let emit_field_selection
   List.iter (fun sf ->
       (* Update the local state as required for this field, just before
        * computing the field actual value. *)
-      Expr.unpure_iter (function
-          | Expr.StatefulFun (_, LocalState, _) as e ->
-            Printf.fprintf oc "\tgroup_.%s <- (%a) ;\n"
-              (name_of_state e)
-              (emit_expr ?state:None ~context:UpdateState) e
-          | _ -> ()
-        ) sf.Operation.expr ;
+      Expr.unpure_iter (emit_state_update_for_expr oc) sf.Operation.expr ;
       if Expr.is_generator sf.Operation.expr then
         (* So that we have a single out_tuple_typ both before and after tuples generation *)
         Printf.fprintf oc "\tlet %s = () in\n"
@@ -1237,14 +1249,8 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ
     (emit_tuple TupleOut) out_tuple_typ ;
-  (* Update the local state used by this expression: *)
-  Expr.unpure_iter (function
-      | Expr.StatefulFun (_, LocalState, _) as e ->
-        Printf.fprintf oc "\tgroup_.%s <- (%a) ;\n"
-          (name_of_state e)
-          (emit_expr ?state:None ~context:UpdateState) e
-      | _ -> ()
-    ) when_expr ;
+  (* Update the states used by this expression: *)
+  emit_state_update_for_expr oc when_expr ;
   Printf.fprintf oc "\t%a\n"
     (emit_expr ?state:None ~context:Finalize) when_expr
 
@@ -1343,10 +1349,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     | Some flush_when -> when_to_check_group_for_expr flush_when
   in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" Expr.GlobalState [] ~where ~commit_when ?flush_when) selected_fields
-    (emit_state_update "global_update_" "global_" [] Expr.GlobalState ~commit_when ?flush_when in_tuple_typ mentioned and_all_others) selected_fields
-    (emit_state_update "global_update_for_where_" "global_" [] Expr.GlobalState ~where in_tuple_typ mentioned and_all_others) []
     (emit_state_init "group_init_" Expr.LocalState ["global_"] ~where ~commit_when ?flush_when) selected_fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_group then
@@ -1377,8 +1381,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       \t\t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
       \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ top_\n\
       \t\t\tcommit_when_ %s flush_when_ %s should_resubmit_\n\
-      \t\t\tglobal_init_ global_update_ global_update_for_where_\n\
-      \t\t\tgroup_init_ field_of_tuple_ %S)\n"
+      \t\t\tglobal_init_ group_init_ field_of_tuple_ %S)\n"
     when_to_check_for_commit when_to_check_for_flush notify_url
 
 let sanitize_ocaml_fname s =

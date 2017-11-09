@@ -564,8 +564,6 @@ let aggregate
       (when_to_check_for_flush : when_to_check_group)
       (should_resubmit : ('aggr, 'tuple_in, 'generator_out) aggr_value -> 'tuple_in -> bool)
       (global_state : 'global_state)
-      (global_update : 'global_state -> 'tuple_in -> unit)
-      (global_update_for_where : 'global_state -> 'tuple_in -> unit)
       (group_init : 'global_state -> 'aggr)
       (field_of_tuple : 'tuple_out -> string -> string)
       (notify_url : string) =
@@ -746,7 +744,6 @@ let aggregate
       in
       (* Regardless of the result of the WHERE filter we want to update
        * the fields of the global state that are used in the where clause: *)
-      global_update_for_where global_state in_tuple ;
       (if where_fast
            global_state
            in_count in_tuple last_in
@@ -786,7 +783,6 @@ let aggregate
                  in_tuple in_tuple
             then (
               IntCounter.add stats_selected_tuple_count 1 ;
-              global_update global_state in_tuple ;
               (* TODO: pass selected_successive *)
               let out_generator =
                 tuple_of_aggr
@@ -877,7 +873,6 @@ let aggregate
                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                  aggr.first_in aggr.last_in
             then (
-              global_update global_state in_tuple ;
               IntCounter.add stats_selected_tuple_count 1 ;
               let prev_wk = tot_weight aggr in
               accumulate_into aggr (Some k) ;

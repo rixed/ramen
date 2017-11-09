@@ -16,8 +16,9 @@ add_node p1 \
    -- Private field:
    COALESCE(CO2, 300) / horsepower as _co2_per_hp,
    -- We can use out fields in stateful functions:
-   90th percentile _co2_per_hp
+   90th percentile _co2_per_hp,
+   99th percentile globally _co2_per_hp
  EXPORT
  COMMIT WHEN group.#count >= $nb_cars"
 run
-check_equal '552,552,552,1.77402' "$(tail_ 1 p1)"
+check_equal '552,552,552,1.77402,2.71706' "$(tail_ 1 p1)"
