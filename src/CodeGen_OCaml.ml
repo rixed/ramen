@@ -1200,7 +1200,7 @@ let emit_state_update name state_var other_vars state_lifespan
       state_lifespan selected_fields ?where ?commit_when ?flush_when f
   in
   for_each_my_unpure_fun (function
-    | Expr.StatefulFun (_, lifespan, _) as e when lifespan = state_lifespan ->
+    | Expr.StatefulFun _ as e ->
       Printf.fprintf oc "\t%s.%s <- (%a) ;\n"
         state_var
         (name_of_state e)
