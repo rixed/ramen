@@ -1869,21 +1869,24 @@ struct
 
     let default_alias =
       let open Expr in
+      let force_public field =
+        if String.length field = 0 || field.[0] <> '_' then field
+        else String.lchop field in
       function
       | Field (_, { contents=TupleIn }, field)
           when not (is_virtual_field field) -> field
       (* Provide some default name for common aggregate functions: *)
-      | StatefulFun (_, _, AggrMin (Field (_, { contents=TupleIn }, field))) -> "min_"^ field
-      | StatefulFun (_, _, AggrMax (Field (_, { contents=TupleIn }, field))) -> "max_"^ field
-      | StatefulFun (_, _, AggrSum (Field (_, { contents=TupleIn }, field))) -> "sum_"^ field
-      | StatefulFun (_, _, AggrAvg (Field (_, { contents=TupleIn }, field))) -> "avg_"^ field
-      | StatefulFun (_, _, AggrAnd (Field (_, { contents=TupleIn }, field))) -> "and_"^ field
-      | StatefulFun (_, _, AggrOr (Field (_, { contents=TupleIn }, field))) -> "or_"^ field
-      | StatefulFun (_, _, AggrFirst (Field (_, { contents=TupleIn }, field))) -> "first_"^ field
-      | StatefulFun (_, _, AggrLast (Field (_, { contents=TupleIn }, field))) -> "last_"^ field
+      | StatefulFun (_, _, AggrMin (Field (_, { contents=TupleIn }, field))) -> "min_"^ force_public field
+      | StatefulFun (_, _, AggrMax (Field (_, { contents=TupleIn }, field))) -> "max_"^ force_public field
+      | StatefulFun (_, _, AggrSum (Field (_, { contents=TupleIn }, field))) -> "sum_"^ force_public field
+      | StatefulFun (_, _, AggrAvg (Field (_, { contents=TupleIn }, field))) -> "avg_"^ force_public field
+      | StatefulFun (_, _, AggrAnd (Field (_, { contents=TupleIn }, field))) -> "and_"^ force_public field
+      | StatefulFun (_, _, AggrOr (Field (_, { contents=TupleIn }, field))) -> "or_"^ force_public field
+      | StatefulFun (_, _, AggrFirst (Field (_, { contents=TupleIn }, field))) -> "first_"^ force_public field
+      | StatefulFun (_, _, AggrLast (Field (_, { contents=TupleIn }, field))) -> "last_"^ force_public field
       | StatefulFun (_, _, AggrPercentile (Const (_, p), Field (_, { contents=TupleIn }, field)))
         when Scalar.is_round_integer p ->
-        Printf.sprintf "%s_%sth" field (IO.to_string Scalar.print p)
+        Printf.sprintf "%s_%sth" (force_public field) (IO.to_string Scalar.print p)
       | _ -> raise (Reject "must set alias")
 
     let selected_field m =
