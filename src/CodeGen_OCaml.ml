@@ -658,18 +658,18 @@ and emit_expr ?state ~context oc expr =
   | InitState, StatefulFun (_, _, AggrSum _),
     (Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) as t) ->
     conv_to ?state ~context t oc expr_zero
-  | UpdateState, StatefulFun (_, g, AggrSum (e)),
+  | UpdateState, StatefulFun (_, g, AggrSum e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".add") [None; Some t] [my_state g; e]
-  | Finalize, StatefulFun (_, g, AggrSum (_e)), _ ->
+  | Finalize, StatefulFun (_, g, AggrSum _), _ ->
     emit_functionN oc ?state "identity" [None] [my_state g]
 
   | InitState, StatefulFun (_, _, AggrAvg e), Some TFloat ->
     Printf.fprintf oc "0, %s0."
       (if is_nullable e then "Some " else "")
-  | UpdateState, StatefulFun (_, g, AggrAvg (e)), Some (TFloat as t) ->
+  | UpdateState, StatefulFun (_, g, AggrAvg e), Some (TFloat as t) ->
     emit_functionN oc ?state "CodeGenLib.avg_add" [None; Some t] [my_state g; e]
-  | Finalize, StatefulFun (_, g, AggrAvg (_e)), _ ->
+  | Finalize, StatefulFun (_, g, AggrAvg _), _ ->
     emit_functionN oc ?state "CodeGenLib.avg_finalize" [None] [my_state g]
 
   | InitState, StatefulFun (_, _, AggrMax e), t ->
