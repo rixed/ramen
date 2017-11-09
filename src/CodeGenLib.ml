@@ -613,11 +613,13 @@ let aggregate
     | ForAllInGroup -> "the group that's updated by a tuple" in
    !logger.debug "We will commit/flush for... %s" when_str) ;
 
+  let tuple_outputer =
+    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   let outputer =
     let do_out tuple =
       if notify_url <> "" then
         notify notify_url field_of_tuple tuple ;
-      outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple tuple
+      tuple_outputer tuple
     in
     generate_tuples do_out in
   let commit in_tuple out_tuple =
