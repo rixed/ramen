@@ -123,14 +123,15 @@ let anomaly_detection_nodes avg_window from timeseries =
             let rec loop sum i =
               if i >= nb_preds then sum else
               let pred = "pred_"^ string_of_int i ^"_"^ ts in
-              let abno = "abs("^ pred ^" - "^ ts ^")" in
+              let abno = "abs("^ pred ^" - "^ ts ^") /\n     \
+                            max(abs "^ pred ^", abs "^ ts ^")" in
               let abno = if nullable then "coalesce("^ abno ^", 0)"
                          else abno in
               loop (abno :: sum) (i + 1) in
             loop [] 0 in
           let abnormality =
-            "("^ String.concat " +\n   " abnormality ^") /\n   ("^
-            string_of_int nb_preds ^" * "^ ts ^") AS abnormality_"^ ts in
+            "("^ String.concat " +\n   " abnormality ^") / "^
+            string_of_int nb_preds ^" AS abnormality_"^ ts in
           abnormality :: fields
         ) [] timeseries
     in
@@ -157,9 +158,10 @@ let anomaly_detection_nodes avg_window from timeseries =
     and text = Printf.sprintf "Some metrics from %s seam to be off." from in
     let op =
       Printf.sprintf
-        "FROM '%s'\n\
-         SELECT start, (%s) AS normal, 3-ma normal > 2 AS firing\n\
-         NOTIFY \"http://localhost:29382/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s\""
+        {|FROM '%s'
+          SELECT start, (%s) AS abnormality, 3-ma abnormality >= 2/3 AS firing
+          COMMIT WHEN firing != previous.firing
+          NOTIFY "http://localhost:29382/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"|}
         predictor_name
         condition
         (enc alert_name) (enc title) (enc text) in
@@ -389,6 +391,7 @@ let layer_of_bcns bcns dataset_name =
         let ops = Printf.sprintf
           {|SELECT max_start, bytes_per_secs > %d AS firing
             FROM '%s'
+            COMMIT WHEN firing != previous.firing
             NOTIFY "http://localhost:29382/notify?name=Low%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
             min_bps
             perc_per_obs_window_name
@@ -407,7 +410,8 @@ let layer_of_bcns bcns dataset_name =
         let ops = Printf.sprintf
           {|SELECT max_start, bytes_per_secs > %d AS firing
             FROM '%s'
-            NOTIFY "http://localhost:29382/notify?name=High%%20traffic&firing=${firing}&&time={max_start}&title=%s&text=%s"|}
+            COMMIT WHEN firing != previous.firing
+            NOTIFY "http://localhost:29382/notify?name=High%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
             max_bps
             perc_per_obs_window_name
             (enc title) (enc text) in
@@ -600,7 +604,8 @@ let layer_of_bcas bcas dataset_name =
       Printf.sprintf
         {|SELECT max_start, eurt > %g AS firing
           FROM '%s'
-          NOTIFY "http://localhost:29382/notify?name=EURT%%20%s&firing=${firing}&&time=${max_start}&title=%s&text=%s"|}
+          COMMIT WHEN firing != previous.firing
+          NOTIFY "http://localhost:29382/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
           bca.max_eurt
           perc_per_obs_window_name
           (enc bca.name) (enc title) (enc text)
