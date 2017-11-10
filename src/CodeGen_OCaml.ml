@@ -1058,7 +1058,9 @@ let emit_field_selection
   List.iter (fun sf ->
       (* Update the local state as required for this field, just before
        * computing the field actual value. *)
-      Expr.unpure_iter (emit_state_update_for_expr oc) sf.Operation.expr ;
+      Printf.fprintf oc "\t(* State Updates: *)" ;
+      emit_state_update_for_expr oc sf.Operation.expr ;
+      Printf.fprintf oc "\t(* Output field: *)" ;
       if Expr.is_generator sf.Operation.expr then
         (* So that we have a single out_tuple_typ both before and after tuples generation *)
         Printf.fprintf oc "\tlet %s = () in\n"
