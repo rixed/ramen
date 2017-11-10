@@ -375,3 +375,10 @@ let start_with c f =
 let is_virtual_field = start_with '#'
 
 let is_private_field = start_with '_'
+
+let string_of_time ts =
+  let open Unix in
+  let tm = localtime ts in
+  Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02ds"
+    (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
+    tm.tm_hour tm.tm_min tm.tm_sec

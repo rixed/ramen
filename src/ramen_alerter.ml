@@ -225,8 +225,15 @@ struct
     function
     | Console ->
       fun id attempt alert victim ->
-        Printf.printf "Title: %s\nId: %d\nAttempt: %d\nDest: %s\n%s\n%!"
-          alert.title id attempt victim alert.text ;
+        Printf.printf "\
+          Title: %s\n\
+          Time: %s\n\
+          Id: %d\n\
+          Attempt: %d\n\
+          Dest: %s\n\
+          %s\n\n%!"
+          alert.title (string_of_time alert.time)
+          id attempt victim alert.text ;
         return_unit
     | SysLog ->
       fun id attempt alert victim ->
