@@ -904,11 +904,10 @@ struct
       let i''=
         Option.map_default (fold_by_depth f i') i' else_ in
       f i'' expr
-    | Coalesce (_, es) ->
-      List.fold_left (fold_by_depth f) i es
-
+    | Coalesce (_, es)
     | StatelessFun (_, (Max es | Min es)) ->
-      List.fold_left (fold_by_depth f) i es
+      let i' = List.fold_left (fold_by_depth f) i es in
+      f i' expr
 
   let iter f = fold_by_depth (fun () e -> f e) ()
 
