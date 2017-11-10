@@ -589,34 +589,33 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
 
 let check_selected_fields ~in_type ~out_type fields =
   List.fold_left (fun changed sf ->
-      changed || (
-        let name = sf.Operation.alias in
-        !logger.debug "Type-check field %s" name ;
-        let exp_type =
-          match List.assoc name out_type.C.fields with
-          | exception Not_found ->
-            (* Start from the type we already know from the expression
-             * because it is already set in some cases (virtual fields -
-             * and for them that's our only change to get this type) *)
-            let typ =
-              let open Expr in
-              match sf.Operation.expr with
-              (* Note: we must create a new type for out distinct from the type
-               * of the expression in case the expression is another field (from
-               * in, say) because we do not want to alias them. *)
-              | Field (t, _, _) -> copy_typ ~name t
-              | _ ->
-                let typ = typ_of sf.Operation.expr in
-                typ.expr_name <- name ;
-                typ
-            in
-            !logger.debug "Adding out-field %s (operation: %s)" name typ.Expr.expr_name ;
-            out_type.C.fields <- (name, typ) :: out_type.C.fields ;
-            typ
-          | typ ->
-            !logger.debug "... already in out, current type is %a" Expr.print_typ typ ;
-            typ in
-        check_expr ~in_type ~out_type ~exp_type sf.Operation.expr)
+      let name = sf.Operation.alias in
+      !logger.debug "Type-check field %s" name ;
+      let exp_type =
+        match List.assoc name out_type.C.fields with
+        | exception Not_found ->
+          (* Start from the type we already know from the expression
+           * because it is already set in some cases (virtual fields -
+           * and for them that's our only change to get this type) *)
+          let typ =
+            let open Expr in
+            match sf.Operation.expr with
+            (* Note: we must create a new type for out distinct from the type
+             * of the expression in case the expression is another field (from
+             * in, say) because we do not want to alias them. *)
+            | Field (t, _, _) -> copy_typ ~name t
+            | _ ->
+              let typ = typ_of sf.Operation.expr in
+              typ.expr_name <- name ;
+              typ
+          in
+          !logger.debug "Adding out-field %s (operation: %s)" name typ.Expr.expr_name ;
+          out_type.C.fields <- (name, typ) :: out_type.C.fields ;
+          typ
+        | typ ->
+          !logger.debug "... already in out, current type is %a" Expr.print_typ typ ;
+          typ in
+      check_expr ~in_type ~out_type ~exp_type sf.Operation.expr || changed
     ) false fields
 
 let check_yield ~in_type ~out_type fields =
@@ -632,6 +631,9 @@ let check_yield ~in_type ~out_type fields =
     ) else false
   )
 
+(* Get rid of the short-cutting of or expressions: *)
+let (|||) a b = a || b
+
 let check_aggregate ~in_type ~out_type fields and_all_others where key top
                     commit_when flush_when flush_how =
   let open Operation in
@@ -642,7 +644,7 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
         let exp_type = Expr.typ_of k in
         check_expr ~in_type ~out_type ~exp_type k || changed
       ) false key
-  ) || (
+  ) ||| (
     match top with
     | None -> false
     | Some (n, by) ->
@@ -654,18 +656,18 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
       check_expr ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top size") n |> ignore ;
       check_expr ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top-by clause") by |> ignore ;
       false
-  ) || (
+  ) ||| (
     let exp_type = Expr.make_bool_typ ~nullable:false "commit-when clause" in
     check_expr ~in_type ~out_type ~exp_type commit_when |> ignore ;
     false
-  ) || (
+  ) ||| (
     match flush_when with
     | None -> false
     | Some flush_when ->
       let exp_type = Expr.make_bool_typ ~nullable:false "flush-when clause" in
       check_expr ~in_type ~out_type ~exp_type flush_when |> ignore ;
       false
-  ) || (
+  ) ||| (
     match flush_how with
     | Reset -> false
     | Slide _ -> false
@@ -673,7 +675,7 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
       let exp_type = Expr.make_bool_typ ~nullable:false "remove/keep clause" in
       check_expr ~in_type ~out_type ~exp_type e |> ignore ;
       false
-  ) || (
+  ) ||| (
     (* Check the expression, improving out_type and checking against in_type: *)
     let exp_type =
       (* That where expressions cannot be null seems a nice improvement
@@ -681,11 +683,11 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
       Expr.make_bool_typ ~nullable:false "where clause" in
     check_expr ~in_type ~out_type ~exp_type where |> ignore ;
     false
-  ) || (
+  ) ||| (
     (* Also check other expression and make use of them to improve out_type.
      * Everything that's selected must be (added) in out_type. *)
     check_selected_fields ~in_type ~out_type fields
-  ) || (
+  ) ||| (
     (* If all other fields are selected, add them *)
     if and_all_others then (
       check_inherit_tuple ~including_complete:false ~is_subset:false ~from_prefix:TupleIn ~from_tuple:in_type ~to_prefix:TupleOut ~to_tuple:out_type
@@ -752,7 +754,7 @@ let check_node_types node =
             (* This is supposed to propagate parent completeness into in-tuple. *)
             check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleOut ~from_tuple:par.N.out_type ~to_prefix:TupleIn ~to_tuple:node.N.in_type || changed
           ) false node.N.parents
-    ) || (
+    ) ||| (
     (* Try to improve out_type and the AST types using the in_type and the
      * operation: *)
       check_operation ~in_type:node.N.in_type ~out_type:node.N.out_type node.N.operation
