@@ -485,6 +485,8 @@ type ('aggr, 'tuple_in, 'generator_out) aggr_value =
      * aggregate: *)
     mutable first_in : 'tuple_in ; (* first in-tuple of this aggregate *)
     mutable last_in : 'tuple_in ; (* last in-tuple of this aggregate *)
+    (* We need both current and previous because we might commit/flush
+     * groups that are not the one owning the current output tuple: *)
     mutable current_out : 'generator_out ; (* The current one *)
     mutable previous_out : 'generator_out ; (* previously computed temp out tuple, if any *)
     mutable nb_entries : int ;

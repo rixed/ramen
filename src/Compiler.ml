@@ -431,7 +431,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_op op_typ List.hd [None, None, e]
   | StatefulFun (op_typ, _, AggrSum e) | StatelessFun (op_typ, Age e)
   | StatelessFun (op_typ, Abs e) ->
-    check_op op_typ List.hd [Some TFloat, None,  e]
+    check_op op_typ List.hd [Some TFloat, None, e]
   | StatefulFun (op_typ, _, AggrAvg e) ->
     check_op op_typ return_float [Some TFloat, None, e]
   | StatefulFun (op_typ, _, AggrAnd e) | StatefulFun (op_typ, _, AggrOr e)

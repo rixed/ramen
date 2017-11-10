@@ -1056,7 +1056,7 @@ let emit_field_selection
       (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
   Printf.fprintf oc "=\n" ;
   List.iter (fun sf ->
-      (* Update the local state as required for this field, just before
+      (* Update the states as required for this field, just before
        * computing the field actual value. *)
       Printf.fprintf oc "\t(* State Updates: *)" ;
       emit_state_update_for_expr oc sf.Operation.expr ;
