@@ -112,7 +112,9 @@ module Contact =
 struct
   type t = Console
          | SysLog
-         | Email of { cc : string }
+         | Email of { to_ : string [@ppp_rename "to"] ;
+                      cc : string [@ppp_default ""] ;
+                      bcc : string [@ppp_default ""] }
          | SMS of string [@@ppp PPP_OCaml]
 end
 
@@ -235,20 +237,39 @@ end
 
 module Sender =
 struct
+  let string_of_alert id attempt alert victim =
+    Printf.sprintf "\
+      Title: %s\n\
+      Time: %s\n\
+      Id: %d\n\
+      Attempt: %d\n\
+      Dest: %s\n\
+      %s\n\n%!"
+      alert.title (string_of_time alert.time)
+      id attempt victim alert.text
+
+  exception CannotSendAlert of string
+
+  let send_mail ~subject ~cc ~bcc dest body =
+    let cmd =
+      ("", [|"mail"; "-s"; subject; "-c"; cc; "-b"; bcc; dest|]) in
+    let%lwt status =
+      run_coprocess "send mail" ~timeout:10. ~to_stdin:body cmd in
+    if status = Unix.WEXITED 0 then (
+      !logger.debug "Mail sent" ;
+      return_unit
+    ) else (
+      let err = string_of_process_status status in
+      !logger.error "Cannot send mail: %s" err ;
+      fail (CannotSendAlert err)
+    )
+
   let get =
     let open Contact in
     function
     | Console ->
       fun id attempt alert victim ->
-        Printf.printf "\
-          Title: %s\n\
-          Time: %s\n\
-          Id: %d\n\
-          Attempt: %d\n\
-          Dest: %s\n\
-          %s\n\n%!"
-          alert.title (string_of_time alert.time)
-          id attempt victim alert.text ;
+        print_string (string_of_alert id attempt alert victim) ;
         return_unit
     | SysLog ->
       fun id attempt alert victim ->
@@ -261,7 +282,12 @@ struct
           alert.name alert.title id attempt victim alert.text |>
         Syslog.syslog syslog level ;
         return_unit
-    | Email _ | SMS _ ->
+    | Email { to_ ; cc ; bcc } ->
+      fun id attempt alert victim ->
+        let body = string_of_alert id attempt alert victim in
+        let subject = "ALERT: "^ alert.title in
+        send_mail ~subject ~cc ~bcc to_ body
+    | SMS _ ->
       fun _id _attempt _alert _victim -> fail Not_implemented
 end
 

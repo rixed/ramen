@@ -221,7 +221,7 @@ let () = Printexc.register_printer (function
   | _ -> None)
 
 (* Low level stuff: run jobs and return lines: *)
-let run ?timeout cmd =
+let run ?timeout ?(to_stdin="") cmd =
   let open Lwt in
   let string_of_array a =
     Array.fold_left (fun s v ->
@@ -231,12 +231,16 @@ let run ?timeout cmd =
   !logger.debug "Running command %s" (string_of_array cmd) ;
   let%lwt lines =
     Lwt_process.with_process_full ?timeout (cmd.(0), cmd) (fun process ->
+      (* What we write to stdin: *)
+      let write_stdin =
+        let%lwt () = Lwt_io.write process#stdin to_stdin in
+        Lwt_io.close process#stdin in
       (* We need to read both stdout and stderr simultaneously or risk
        * interlocking: *)
-      let%lwt () = Lwt_io.close process#stdin in
       let lines = ref [] in
-      let read_lines c =
-        match%lwt Lwt_io.read_lines c |> Lwt_stream.to_list with
+      let read_lines =
+        match%lwt Lwt_io.read_lines process#stdout |>
+                  Lwt_stream.to_list with
         | exception exc ->
           (* when this happens for some reason we are left with (null) *)
           let msg = Printexc.to_string exc in
@@ -244,9 +248,9 @@ let run ?timeout cmd =
             (string_of_array cmd) msg ;
           return_unit
         | l -> lines := l ; return_unit in
-      let monitor_stderr c =
+      let monitor_stderr =
         catch (fun () ->
-          Lwt_io.read_lines c |>
+          Lwt_io.read_lines process#stderr |>
           Lwt_stream.iter (fun l ->
               !logger.error "%s stderr: %s" (string_of_array cmd) l
             ))
@@ -254,8 +258,7 @@ let run ?timeout cmd =
             !logger.error "Error while running %s: %s"
               (string_of_array cmd) (Printexc.to_string exc) ;
             return_unit) in
-      join [ read_lines process#stdout ;
-             monitor_stderr process#stderr ] >>
+      join [ write_stdin ; read_lines ; monitor_stderr ] >>
       match%lwt process#status with
       | Unix.WEXITED 0 ->
         return !lines
@@ -352,11 +355,13 @@ let random_string =
     Bytes.to_string
 
 (* Run given command using Lwt, logging its output in our log-file *)
-let run_coprocess cmd_name cmd =
+let run_coprocess cmd_name ?timeout ?(to_stdin="") cmd =
   let open Lwt in
-  Lwt_process.with_process_full cmd (fun process ->
-    let%lwt () = Lwt_io.close process#stdin in
-    let read_lines c =
+  Lwt_process.with_process_full ?timeout cmd (fun process ->
+    let write_stdin =
+      let%lwt () = Lwt_io.write process#stdin to_stdin in
+      Lwt_io.close process#stdin
+    and read_lines c =
       try%lwt
         Lwt_io.read_lines c |>
         Lwt_stream.iter (fun line ->
@@ -365,7 +370,8 @@ let run_coprocess cmd_name cmd =
         let msg = Printexc.to_string exc in
         !logger.error "%s: Cannot read output: %s" cmd_name msg ;
         return_unit in
-    join [ read_lines process#stdout ;
+    join [ write_stdin ;
+           read_lines process#stdout ;
            read_lines process#stderr ] >>
     process#status)
 
