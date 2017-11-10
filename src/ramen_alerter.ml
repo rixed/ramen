@@ -38,7 +38,7 @@ type alert =
     (* When we _received_ the alert and started the escalation. Hopefully
      * not too long after [time]. *)
     started : float ;
-    mutable stopped : float option }
+    mutable stopped : float option } [@@ppp PPP_OCaml]
 
 type incident =
   { mutable alerts : alert list ;
@@ -126,6 +126,8 @@ end
 module Incident =
 struct
   let make state alert =
+    !logger.debug "Creating an incident for alert %s"
+      (PPP.to_string alert_ppp alert) ;
     let i = { alerts = [ alert ] ;
               stfu = false ;
               merged_with = None } in
@@ -156,7 +158,7 @@ end
 module Diary =
 struct
   type alert_outcome =
-    Duplicate | Inhibited | STFU | Notify of Contact.t [@@ppp PPP_OCaml]
+    Duplicate | Inhibited | STFU | Notify of (string * Contact.t) [@@ppp PPP_OCaml]
 
   type log_event = NewAlert of (alert * incident * alert_outcome)
                  (* TODO: we'd like to have the origin of this ack. *)
@@ -209,12 +211,25 @@ struct
       bind stmt 1 Data.(TEXT name) |> must_be_ok ;
       let contacts =
         step_all_fold stmt [] (fun prev ->
-          (column stmt 0 |> to_string |> required |>
-           PPP.of_string_exc Contact.t_ppp) :: prev) |>
-        List.rev |>
+          let s = column stmt 0 |> to_string |> required in
+          match PPP.of_string_exc Contact.t_ppp s with
+          | exception PPP.ParseError ->
+            !logger.error "Cannot parse contact %S" s ;
+            prev
+          | c -> c :: prev) |>
+        (* Since the statement select the contact by descending preference
+         * we end up with the contact list with preferred contact firsts. *)
         Array.of_list in
+      !logger.debug "Contacts for %s: %a"
+        name
+        (Array.print (fun oc c ->
+            PPP.to_string Contact.t_ppp c |>
+            String.print oc
+          )) contacts ;
       { name ; contacts }
     | _ ->
+      !logger.error "Nobody is %dth oncall for team %s at time %f"
+        rank team time ;
       default_oncaller
 end
 
@@ -263,6 +278,7 @@ struct
       alert ; incident ; attempt = 0 ; last_sent = now }
 
   let make state alert incident now =
+    !logger.debug "Creating an escalation" ;
     let to_array mask =
       let rec loop prev bit =
         if bit >= 64 then Array.of_list prev else
@@ -285,8 +301,8 @@ struct
         bind stmt 2 Data.(INT (Int64.of_int importance)) |> must_be_ok ;
         let steps =
           step_all_fold stmt [] (fun prev ->
-            let timeout = column stmt 1 |> to_float |> required
-            and victims = column stmt 2 |> to_int64 |> required |> to_array
+            let timeout = column stmt 0 |> to_float |> required
+            and victims = column stmt 1 |> to_int64 |> required |> to_array
             in
             { timeout ; victims } :: prev) |>
           List.rev |>
@@ -317,8 +333,10 @@ struct
         let open OnCaller in
         let victim = who_is_oncall state esc.alert.team rank now in
         let contact = get_cap victim.contacts esc.attempt in
+        !logger.debug "Victim is %s, contact for attempt %d is: %s"
+          victim.name esc.attempt (PPP.to_string Contact.t_ppp contact) ;
         let sender = Sender.get contact in
-        Diary.(add (NewAlert (esc.alert, esc.incident, Notify contact))) ;
+        Diary.(add (NewAlert (esc.alert, esc.incident, Notify (victim.name, contact)))) ;
         sender id esc.attempt esc.alert victim.name :: ths
       ) [] victims |>
     join
@@ -370,7 +388,7 @@ let open_config_db file =
          \"from\" INTEGER NOT NULL, \
          rank INTEGER NOT NULL)"
       "INSERT INTO schedule VALUES \
-         (\"John Doe\", 0, 1)" ;
+         (\"John Doe\", 0, 0)" ;
     ensure_db_table db
       "CREATE TABLE IF NOT EXISTS escalations ( \
          team STRING NOT NULL, \
@@ -429,9 +447,9 @@ let get_state save_file db_config_file default_team =
         Sqlite3.prepare db
           "SELECT oncallers.name \
            FROM schedule NATURAL JOIN oncallers \
-           WHERE schedule.rank <= ? AND \"schedule.from\" <= ? \
+           WHERE schedule.rank <= ? AND schedule.\"from\" <= ? \
              AND oncallers.team = ? \
-           ORDER BY \"schedule.from\" DESC, schedule.rank DESC LIMIT 1" ;
+           ORDER BY schedule.\"from\" DESC, schedule.rank DESC LIMIT 1" ;
       stmt_get_contacts =
         Sqlite3.prepare db
           "SELECT contact FROM contacts \
