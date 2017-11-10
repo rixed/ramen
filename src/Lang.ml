@@ -578,6 +578,9 @@ struct
     | EndOfRange of t
     (* a LIKE operator using globs, infix *)
     | Like of t * string (* expression then pattern (using %, _ and \) *)
+    (* Min/Max of the given values *)
+    | Max of t list
+    | Min of t list
 
   and stateful_fun =
     (* TODO: Add stddev... *)
@@ -762,6 +765,12 @@ struct
     | StatelessFun (t, Eq (e1, e2)) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | StatelessFun (t, Concat (e1, e2)) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
     | StatelessFun (t, Like (e, p)) -> Printf.fprintf fmt "(%a) LIKE %S" (print with_types) e p ; add_types t
+    | StatelessFun (t, Max es) ->
+      Printf.fprintf fmt "GREATEST (%a)" (List.print (print with_types)) es ;
+      add_types t
+    | StatelessFun (t, Min es) ->
+      Printf.fprintf fmt "LEAST (%a)" (List.print (print with_types)) es ;
+      add_types t
 
     | StatefulFun (t, g, AggrMin e) ->
       Printf.fprintf fmt "min%s(%a)" (sl g) (print with_types) e ; add_types t
@@ -896,6 +905,9 @@ struct
         Option.map_default (fold_by_depth f i') i' else_ in
       f i'' expr
     | Coalesce (_, es) ->
+      List.fold_left (fold_by_depth f) i es
+
+    | StatelessFun (_, (Max es | Min es)) ->
       List.fold_left (fold_by_depth f) i es
 
   let iter f = fold_by_depth (fun () e -> f e) ()
@@ -1066,6 +1078,12 @@ struct
       StatelessFun (f t, BeginOfRange (if recurs then map_type ~recurs f a else a))
     | StatelessFun (t, EndOfRange a) ->
       StatelessFun (f t, EndOfRange (if recurs then map_type ~recurs f a else a))
+    | StatelessFun (t, Max es) ->
+      StatelessFun (f t, Max
+        (if recurs then List.map (map_type ~recurs f) es else es))
+    | StatelessFun (t, Min es) ->
+      StatelessFun (f t, Min
+        (if recurs then List.map (map_type ~recurs f) es else es))
 
     | GeneratorFun (t, Split (a, b)) ->
       GeneratorFun (f t, Split (
@@ -1310,6 +1328,12 @@ struct
     and afun3 n =
       afun 3 n >>: function [a;b;c] -> a, b, c | _ -> assert false
 
+    and afun0v n =
+      afunv 0 n >>: function ([], r) -> r | _ -> assert false
+
+    and afun1v n =
+      afunv 1 n >>: function ([a], r) -> a, r | _ -> assert false
+
     and afun2v n =
       afunv 2 n >>: function ([a;b], r) -> a, b, r | _ -> assert false
 
@@ -1398,6 +1422,15 @@ struct
                        Remember (fpr, tim, dir, e))) |||
        (afun2 "split" >>: fun (e1, e2) ->
           GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
+       (* At least 2 args to distinguish from the aggregate functions: *)
+       (afun2v "max" >>: fun (e1, e2, e3s) ->
+          StatelessFun (make_num_typ "max", Max (e1 :: e2 :: e3s))) |||
+       (afun1v "greatest" >>: fun (e, es) ->
+          StatelessFun (make_num_typ "max", Max (e :: es))) |||
+       (afun2v "min" >>: fun (e1, e2, e3s) ->
+          StatelessFun (make_num_typ "min", Min (e1 :: e2 :: e3s))) |||
+       (afun1v "least" >>: fun (e, es) ->
+          StatelessFun (make_num_typ "min", Min (e :: es))) |||
        k_moveavg ||| sequence ||| cast) m
 
     and sequence =
@@ -1467,8 +1500,8 @@ struct
 
     and coalesce m =
       let m = "coalesce" :: m in
-      (afunv 0 "coalesce" >>: function
-         | [], r ->
+      (afun0v "coalesce" >>: function
+         | r ->
            let rec loop es = function
              | [] -> expr_null
              | [e] ->
@@ -1477,8 +1510,7 @@ struct
              | e::rest ->
                loop (e :: es) rest
            in
-           loop [] r
-         | _ -> assert false) m
+           loop [] r) m
 
     and highestest_prec m =
       (const ||| field ||| param ||| func ||| null |||

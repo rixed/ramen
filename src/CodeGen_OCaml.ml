@@ -642,6 +642,10 @@ and emit_expr ?state ~context oc expr =
    * not) *)
   | Finalize, StatelessFun (_, Sequence (e1,e2)), Some TI128 ->
     emit_functionN oc ?state "CodeGenLib.sequence" [Some TI128; Some TI128] [e1; e2]
+  | Finalize, StatelessFun (_, Max es), t ->
+    emit_functionN ~as_array:true oc ?state "Array.max" (List.map (fun _ -> t) es) es
+  | Finalize, StatelessFun (_, Min es), t ->
+    emit_functionN ~as_array:true oc ?state "Array.min" (List.map (fun _ -> t) es) es
 
   (* Stateful functions *)
   | InitState, StatefulFun (_, _, AggrAnd _), (Some TBool as t) ->
@@ -842,7 +846,7 @@ and add_missing_types arg_typs es =
  * evaluate them in order until one is found to be nullable and null, or until
  * we evaluated them all, and then only we call the function.
  * TODO: ideally we'd like to evaluate the nullable arguments first. *)
-and emit_function oc ?state impl arg_typs es vt_specs_opt =
+and emit_function ?(as_array=false) oc ?state impl arg_typs es vt_specs_opt =
   let open Expr in
   let arg_typs = add_missing_types arg_typs es in
   let len, has_nullable =
@@ -861,7 +865,12 @@ and emit_function oc ?state impl arg_typs es vt_specs_opt =
       ) (0, false) es arg_typs
   in
   Printf.fprintf oc "%s(%s" (if has_nullable then "Some " else "") impl ;
-  for i = 0 to len-1 do Printf.fprintf oc " x%d_" i done ;
+  if as_array then Printf.fprintf oc " [|" ;
+  for i = 0 to len-1 do
+    Printf.fprintf oc " x%d_" i ;
+    if as_array then Printf.fprintf oc ";"
+  done ;
+  if as_array then Printf.fprintf oc " |]" ;
   (* variadic arguments [ves] are passed as a last argument to impl, as an array *)
   Option.may (fun (vt, ves) ->
       (* TODO: handle NULLability *)
@@ -870,8 +879,8 @@ and emit_function oc ?state impl arg_typs es vt_specs_opt =
     vt_specs_opt ;
   for _i = 0 to len do Printf.fprintf oc ")" done
 
-and emit_functionN oc ?state impl arg_typs es =
-  emit_function oc ?state impl arg_typs es None
+and emit_functionN ?as_array oc ?state impl arg_typs es =
+  emit_function ?as_array oc ?state impl arg_typs es None
 
 and emit_functionNv oc ?state impl arg_typs es vt ves =
   emit_function oc ?state impl arg_typs es (Some (vt, ves))

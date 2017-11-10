@@ -483,6 +483,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
      * possible if it's either TCidrv4 or TCidrv6, so we should be good.  *)
     (try check_op op_typ (fun _ -> TIpv4) [Some TCidrv4, None, e]
     with _ -> check_op op_typ (fun _ -> TIpv6) [Some TCidrv6, None, e])
+  | StatelessFun (op_typ, (Min es | Max es)) ->
+    check_op op_typ Scalar.largest_type
+      (List.map (fun e -> Some TFloat, None, e) es)
+
   | StatefulFun (op_typ, _, Lag (e1, e2)) ->
     (* e1 must be an unsigned small constant integer. For now that mean user
      * must have entered a constant. Later we might pre-evaluate constant
