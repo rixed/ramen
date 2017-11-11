@@ -733,11 +733,16 @@ let check_operation ~in_type ~out_type =
  *)
 
 exception SyntaxErrorInNode of string * syntax_error
+exception MissingDependency of N.t (* The one we depend on *)
+exception AlreadyCompiled
 
 let () =
   Printexc.register_printer (function
     | SyntaxErrorInNode (n, e) ->
       Some ("In node "^ n ^": "^ string_of_syntax_error e)
+    | MissingDependency node ->
+      Some ("Missing dependency for node "^ N.fq_name node)
+    | AlreadyCompiled -> Some "Already compiled"
     | _ -> None)
 
 let check_node_types node =
@@ -910,9 +915,6 @@ let untyped_dependency layer =
     Enum.find (fun node ->
       List.exists (not % good) node.N.parents))
   with Not_found -> None
-
-exception MissingDependency of N.t (* The one we depend on *)
-exception AlreadyCompiled
 
 let compile conf layer =
   let open Lwt in
