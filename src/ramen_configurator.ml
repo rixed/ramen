@@ -94,11 +94,11 @@ let traffic_node ?where dataset_name name dt =
  * things. A good trade-off is to have one node per BCN/BCA.
  * For each timeseries to predict, we also pass a list of other timeseries that
  * we think are good predictors. *)
-let anomaly_detection_nodes avg_window from timeseries =
+let anomaly_detection_nodes avg_window from name timeseries =
   assert (timeseries <> []) ;
   let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ; "lag(" ]
   and multi_predictors = [ "fit_multi(5, " ] in
-  let predictor_name = from ^": predictions" in
+  let predictor_name = from ^": "^ name ^" predictions" in
   let predictor_node =
     let predictions =
       List.fold_left (fun fields (ts, nullable, preds) ->
@@ -154,18 +154,18 @@ let anomaly_detection_nodes avg_window from timeseries =
         ) [] timeseries in
     let condition = String.concat " OR\n     " conditions in
     let title = Printf.sprintf "%s is off" from
-    and alert_name = from ^" looks abnormal"
-    and text = Printf.sprintf "Some metrics from %s seam to be off." from in
+    and alert_name = from ^" "^ name ^" looks abnormal"
+    and text = Printf.sprintf "%s %s seam to be off." from name in
     let op =
       Printf.sprintf
         {|FROM '%s'
-          SELECT start, (%s) AS abnormality, 3-ma abnormality >= 2/3 AS firing
+          SELECT start, (%s) AS abnormality, 5-ma abnormality >= 4/5 AS firing
           COMMIT WHEN firing != previous.firing
           NOTIFY "http://localhost:29382/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"|}
         predictor_name
         condition
         (enc alert_name) (enc title) (enc text) in
-    make_node (from ^": anomalies") op in
+    make_node (from ^": "^ name ^" anomalies") op in
   predictor_node, anomaly_node
 
 let base_layer dataset_name delete csv_dir =
@@ -419,29 +419,31 @@ let layer_of_bcns bcns dataset_name =
         make_node name ops
       ) bcn.max_bps ;
     let minutely = traffic_node ~where dataset_name (name_prefix ^": minutely traffic") 60 in
-    let pred_node, anom_node =
-      anomaly_detection_nodes
-        bcn.avg_window
-        minutely.N.name
-        [ "packets_per_secs", false, [ "bytes_per_secs" ;
-                                       "packets_with_payload_per_secs" ] ;
-          "bytes_per_secs", false, [ "packets_per_secs" ;
-                                     "payload_per_secs" ] ;
-          "payload_per_secs", false, [ "bytes_per_secs" ] ;
-          "packets_with_payload_per_secs", false, [ "packets_per_secs" ] ;
-          "retrans_bytes_per_secs", false, [ "retrans_payload_per_secs" ] ;
-          "fins_per_secs", false, [ "packets_per_secs" ] ;
-          "rsts_per_secs", false, [ "packets_per_secs" ] ;
-          "syns_per_secs", false, [ "packets_per_secs" ] ;
-          "connections_per_secs", false, [] ;
-          "dupacks_per_secs", false, [] ;
-          "zero_windows_per_secs", false, [] ;
-          "rtt_avg", false, [] ;
-          "rd_avg", false, [] ;
-          "dtt_avg", false, [] ;
-          "connection_time_avg", false, [] ] in
-    all_nodes := pred_node :: anom_node :: minutely :: !all_nodes
-
+    all_nodes := minutely :: !all_nodes ;
+    let anom name timeseries =
+      let pred, anom = anomaly_detection_nodes bcn.avg_window minutely.N.name name timeseries in
+      all_nodes := pred :: anom :: !all_nodes in
+    anom "volume"
+      [ "packets_per_secs", false, [ "bytes_per_secs" ;
+                                     "packets_with_payload_per_secs" ] ;
+        "bytes_per_secs", false, [ "packets_per_secs" ;
+                                   "payload_per_secs" ] ;
+        "payload_per_secs", false, [ "bytes_per_secs" ] ;
+        "packets_with_payload_per_secs", false, [ "packets_per_secs" ] ] ;
+    anom "retransmissions"
+      [ "retrans_bytes_per_secs", false, [ "retrans_payload_per_secs" ] ;
+        "dupacks_per_secs", false, [] ] ;
+    anom "connections"
+      [ "fins_per_secs", false, [ "packets_per_secs" ] ;
+        "rsts_per_secs", false, [ "packets_per_secs" ] ;
+        "syns_per_secs", false, [ "packets_per_secs" ] ;
+        "connections_per_secs", false, [] ;
+        "connection_time_avg", false, [] ] ;
+    anom "0-windows"
+      [ "zero_windows_per_secs", false, [] ] ;
+    anom "RTT" [ "rtt_avg", false, [] ] ;
+    anom "RD" [ "rd_avg", false, [] ] ;
+    anom "DTT" [ "dtt_avg", false, [] ]
   in
   List.iter conf_of_bcn bcns ;
   RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
@@ -611,32 +613,37 @@ let layer_of_bcas bcas dataset_name =
           (enc bca.name) (enc title) (enc text)
     and name = bca.name ^": EURT too high" in
     make_node name ops ;
-    let pred_node, anom_node =
-      anomaly_detection_nodes
-        bca.avg_window
-        avg_per_app
-        [ "c2s_bytes_per_secs", false, [] ;
-          "s2c_bytes_per_secs", false, [] ;
-          "c2s_packets_per_secs", false, [] ;
-          "s2c_packets_per_secs", false, [] ;
-          "c2s_retrans_bytes_per_secs", false, [] ;
-          "s2c_retrans_bytes_per_secs", false, [] ;
-          "c2s_syns_per_secs", false, [] ;
-          "s2c_rsts_per_secs", false, [] ;
-          "close_per_secs", false, [] ;
-          "c2s_dupacks_per_secs", false, [] ;
-          "s2c_dupacks_per_secs", false, [] ;
-          "c2s_0wins_per_secs", false, [] ;
-          "s2c_0wins_per_secs", false, [] ;
-          "ct_avg", false, [] ;
-          "srt_avg", false, [] ;
-          "crtt_avg", false, [] ;
-          "srtt_avg", false, [] ;
-          "crd_avg", false, [] ;
-          "srd_avg", false, [] ;
-          "cdtt_avg", false, [] ;
-          "sdtt_avg", false, [] ] in
-    all_nodes := pred_node :: anom_node :: !all_nodes
+    let anom name timeseries =
+      let pred, anom = anomaly_detection_nodes bca.avg_window avg_per_app name timeseries in
+      all_nodes := pred :: anom :: !all_nodes in
+    anom "volume"
+      [ "c2s_bytes_per_secs", false, [] ;
+        "s2c_bytes_per_secs", false, [] ;
+        "c2s_packets_per_secs", false, [] ;
+        "s2c_packets_per_secs", false, [] ] ;
+    anom "retransmissions"
+      [ "c2s_retrans_bytes_per_secs", false, [] ;
+        "s2c_retrans_bytes_per_secs", false, [] ;
+        "c2s_dupacks_per_secs", false, [] ;
+        "s2c_dupacks_per_secs", false, [] ] ;
+    anom "connections"
+      [ "c2s_syns_per_secs", false, [] ;
+        "s2c_rsts_per_secs", false, [] ;
+        "close_per_secs", false, [] ;
+        "ct_avg", false, [] ] ;
+    anom "0-windows"
+      [ "c2s_0wins_per_secs", false, [] ;
+        "s2c_0wins_per_secs", false, [] ] ;
+    anom "SRT" [ "srt_avg", false, [] ] ;
+    anom "RTT"
+      [ "crtt_avg", false, [] ;
+        "srtt_avg", false, [] ] ;
+    anom "RD"
+      [ "crd_avg", false, [] ;
+        "srd_avg", false, [] ] ;
+    anom "DTT"
+      [ "cdtt_avg", false, [] ;
+        "sdtt_avg", false, [] ]
   in
   List.iter conf_of_bca bcas ;
   RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
@@ -680,7 +687,7 @@ let ddos_layer dataset_name =
     make_node "new peers" op_new_peers in
   let pred_node, anom_node =
     anomaly_detection_nodes
-      (float_of_int avg_win) "new peers"
+      (float_of_int avg_win) "new peers" "DDoS"
       [ "nb_new_cnxs_per_secs", false, [] ;
         "nb_new_clients_per_secs", false, [] ] in
   RamenSharedTypes.{
