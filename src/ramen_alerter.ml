@@ -269,7 +269,7 @@ struct
     function
     | Console ->
       fun id attempt alert victim ->
-        print_string (string_of_alert id attempt alert victim) ;
+        Printf.printf "%s\n%!" (string_of_alert id attempt alert victim) ;
         return_unit
     | SysLog ->
       fun id attempt alert victim ->
@@ -285,6 +285,7 @@ struct
     | Email { to_ ; cc ; bcc } ->
       fun id attempt alert victim ->
         let body = string_of_alert id attempt alert victim in
+        (* TODO: there should be a link to an acknowledgement URL *)
         let subject = "ALERT: "^ alert.title in
         send_mail ~subject ~cc ~bcc to_ body
     | SMS _ ->
@@ -396,9 +397,9 @@ let open_config_db file =
     ensure_db_table db
       "CREATE TABLE IF NOT EXISTS oncallers ( \
          name STRING PRIMARY KEY, \
-         team STRING NOT NULL)"
+         team STRING NOT NULL)" (* FIXME: a single person could be in several teams *)
       "INSERT INTO oncallers VALUES \
-         (\"John Doe\", \"support\")" ;
+         (\"John Doe\", \"firefighters\")" ;
     (* TODO: maybe in the future make the contact depending on day of
      * week and/or time of day? *)
     ensure_db_table db
@@ -423,8 +424,8 @@ let open_config_db file =
          timeout REAL NOT NULL, \
          victims INTEGER NOT NULL DEFAULT 1)"
       "INSERT INTO escalations VALUES \
-         (\"support\", 0, 1, 350, 1), \
-         (\"support\", 0, 2, 350, 3)" ;
+         (\"firefighters\", 0, 1, 350, 1), \
+         (\"firefighters\", 0, 2, 350, 3)" ;
     (* Reopen in read-only *)
     db_close db |> must_be string_of_bool true ;
     db_open ~mode:`READONLY file
