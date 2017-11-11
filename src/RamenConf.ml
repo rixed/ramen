@@ -310,7 +310,8 @@ type conf =
     ramen_url : string ;
     version_tag : string ;
     persist_dir : string ;
-    do_persist : bool }
+    do_persist : bool ;
+    max_simult_compilations : int ref }
 
 let parse_operation operation =
   let open RamenParsing in
@@ -479,9 +480,11 @@ let add_link conf src dst =
   dst.parents <- src :: dst.parents ;
   save_graph conf
 
-let make_conf do_persist ramen_url debug version_tag persist_dir =
+let make_conf do_persist ramen_url debug version_tag persist_dir
+              max_simult_compilations =
   { graph = load_graph do_persist persist_dir ; do_persist ;
-    ramen_url ; debug ; version_tag ; persist_dir }
+    ramen_url ; debug ; version_tag ; persist_dir ;
+    max_simult_compilations = ref max_simult_compilations }
 
 (* AutoCompletion of node/field names *)
 

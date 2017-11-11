@@ -726,7 +726,7 @@ let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
   let conf =
-    C.make_conf do_persist ramen_url debug version_tag persist_dir in
+    C.make_conf do_persist ramen_url debug version_tag persist_dir 5 (* TODO *) in
   (* When there is nothing to do, listen to collectd! *)
   if demo && Hashtbl.is_empty conf.C.graph.C.layers then (
     !logger.info "Adding default nodes since we have nothing to do..." ;

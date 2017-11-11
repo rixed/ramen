@@ -796,7 +796,7 @@ let set_all_types _conf layer =
   (*$inject
     let test_type_single_node op_text =
       try
-        let conf = RamenConf.make_conf false "http://127.0.0.1/" true "test" "/tmp" in
+        let conf = RamenConf.make_conf false "http://127.0.0.1/" true "test" "/tmp" 5 in
         RamenConf.add_node conf "test" "test" op_text |> ignore ;
         set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"
@@ -884,7 +884,8 @@ let compile_node conf node =
     (* TODO: return an array of arguments and get rid of the shell *)
     let cmd = Lwt_process.shell comp_cmd in
     let cmd_name = "compilation of "^ node.N.name in
-    let%lwt status = run_coprocess cmd_name cmd in
+    let%lwt status =
+      run_coprocess ~max_count:conf.max_simult_compilations cmd_name cmd in
     if status = Unix.WEXITED 0 then (
       !logger.debug "Compiled %s with: %s" node.N.name comp_cmd ;
       return_unit

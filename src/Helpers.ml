@@ -354,26 +354,42 @@ let random_string =
     Bytes.init len random_char |>
     Bytes.to_string
 
-(* Run given command using Lwt, logging its output in our log-file *)
-let run_coprocess cmd_name ?timeout ?(to_stdin="") cmd =
+let max_simult ~max_count =
   let open Lwt in
-  Lwt_process.with_process_full ?timeout cmd (fun process ->
-    let write_stdin =
-      let%lwt () = Lwt_io.write process#stdin to_stdin in
-      Lwt_io.close process#stdin
-    and read_lines c =
-      try%lwt
-        Lwt_io.read_lines c |>
-        Lwt_stream.iter (fun line ->
-          !logger.info "%s: %s" cmd_name line)
-      with exc ->
-        let msg = Printexc.to_string exc in
-        !logger.error "%s: Cannot read output: %s" cmd_name msg ;
-        return_unit in
-    join [ write_stdin ;
-           read_lines process#stdout ;
-           read_lines process#stderr ] >>
-    process#status)
+  fun f ->
+    let rec wait () =
+      if !max_count <= 0 then
+        Lwt_unix.sleep 0.3 >>= wait
+      else (
+        decr max_count ;
+        finalize f (fun () ->
+          incr max_count ; return_unit)) in
+    wait ()
+
+let max_coprocesses = ref max_int
+
+(* Run given command using Lwt, logging its output in our log-file *)
+let run_coprocess ?(max_count=max_coprocesses)
+                  ?timeout ?(to_stdin="") cmd_name cmd =
+  max_simult ~max_count:max_count (fun () ->
+    let open Lwt in
+    Lwt_process.with_process_full ?timeout cmd (fun process ->
+      let write_stdin =
+        let%lwt () = Lwt_io.write process#stdin to_stdin in
+        Lwt_io.close process#stdin
+      and read_lines c =
+        try%lwt
+          Lwt_io.read_lines c |>
+          Lwt_stream.iter (fun line ->
+            !logger.info "%s: %s" cmd_name line)
+        with exc ->
+          let msg = Printexc.to_string exc in
+          !logger.error "%s: Cannot read output: %s" cmd_name msg ;
+          return_unit in
+      join [ write_stdin ;
+             read_lines process#stdout ;
+             read_lines process#stderr ] >>
+      process#status))
 
 let start_with c f =
   String.length f > 0 && f.[0] = c
