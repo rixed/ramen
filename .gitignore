@@ -24,8 +24,7 @@ core
 ringbuf_ctl
 BUGS
 TODO
-config.db
-config.*.db
+*.db
 src/ramen
 src/100k.csv
 src/ramen_alerter
