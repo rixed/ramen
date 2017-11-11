@@ -952,8 +952,13 @@ let node_columns =
      "PID", "", false ;
      "signature", "", false |]
 
+let wide_table lst =
+  div
+    [ clss "wide-table" ;
+      table lst ]
+
 let nodes_panel =
-  table [
+  wide_table [
     thead [
       Array.fold_left (fun lst col ->
         node_thead_col col :: lst) [] node_columns |>
@@ -1051,13 +1056,14 @@ let tail_panel =
         tbody [ tr [ td
           [ attri "colspan" (List.length node.output_type) ;
             p [ text t ] ] ] ] in
-      table
+      wide_table
         [ thead [ tr (List.mapi th_field node.output_type) ] ;
           (if not node.exporting then
             lame_excuse ("node "^ node.id ^" does not export data")
           else
             with_value tail_rows (fun rows ->
-              Array.fold_left (fun l r -> row node.output_type r :: l) [] rows |>
+              Array.fold_left (fun l r ->
+                row node.output_type r :: l) [] rows |>
               List.rev |> tbody))]))
 
 let time_selector =
