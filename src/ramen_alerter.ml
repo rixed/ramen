@@ -618,7 +618,7 @@ let to_stderr =
 let log_dir =
   let env = Term.env_info "ALERT_LOG_DIR" in
   let i = Arg.info ~doc:"Directory where to write log files into"
-                   ~env [ "log-dir" ] in
+                   ~env [ "log-dir" ; "logdir" ] in
   Arg.(value (opt (some string) None i))
 
 let config_db =
