@@ -809,17 +809,35 @@ let layers_panel =
 let pretty_th ?action c title subtitle =
   th ?action (
     (if c <> "" then (List.cons (clss c)) else identity)
-      (p [ text title ] ::
+      (p title ::
        if subtitle = "" then [] else
          [ p [ clss "type" ; text subtitle ] ]))
 
-let node_thead_col (title, subtitle, sortable) =
+(* filter_param is a string param with a search string *)
+let node_thead_col ?filter_param (title, subtitle, sortable) =
   with_value sel_top_column (fun col ->
     let action, c =
       if sortable && col <> title then
         Some (fun _ -> set sel_top_column title), "actionable"
       else None, if col = title then "selected" else "" in
-    pretty_th ?action c title subtitle)
+    match filter_param with
+      | None ->
+        pretty_th ?action c [ text title ] subtitle
+      | Some filter ->
+        with_value filter (fun flt ->
+          pretty_th ?action c
+            [ text title ;
+              elmt "label"
+                [ clss "searchbox" ;
+                  text "🔍" ;
+                  (* We have to resync explicitly because inputs don't
+                   * resync for some reason that may not be valid any
+                   * longer *)
+                  input ~action:(fun v -> set filter v ; resync ())
+                    [ attr "type" "text" ;
+                      attr "size" "12" ;
+                      attr "placeholder" "search..." ;
+                      attr "value" flt ] ] ] subtitle))
 
 let tds v = td [ text v ]
 let tdo = function None -> tds "n.a." | Some v -> tds v
@@ -957,29 +975,36 @@ let wide_table lst =
     [ clss "wide-table" ;
       table lst ]
 
+let node_filter = make_param "node filter" ""
+
 let nodes_panel =
   wide_table [
     thead [
-      Array.fold_left (fun lst col ->
-        node_thead_col col :: lst) [] node_columns |>
+      Array.fold_left (fun lst (col_name, _, _ as col) ->
+        let filter_param =
+          if col_name = "name" then Some node_filter
+          else None in
+        node_thead_col ?filter_param col :: lst) [] node_columns |>
       List.rev |> tr ] ;
     (* Table body *)
     with_value display_temp (fun disp_temp ->
       with_value nodes (fun nodes ->
         with_value sel_top_column (fun sel_col ->
           with_value sel_layer (fun sel_lay ->
-            (* Build a list of params sorted according to sel_top_column: *)
-            let rows =
-              nodes |>
-              List.filter (fun (_, p) ->
-                ((disp_temp || not (is_temp p.value.Node.layer)) &&
-                 (sel_lay = NoLayer || sel_lay = NewLayer)) ||
-                sel_lay = ExistingLayer p.value.Node.layer) |>
-              List.fold_left (fun lst p -> p :: lst) [] |>
-              List.fast_sort (node_sorter sel_col) in
-            List.map (fun (_, p) ->
-              with_value p node_tbody_row) rows |>
-            tbody)))) ;
+            with_value node_filter (fun node_flt ->
+              (* Build a list sorted according to sel_top_column: *)
+              let rows =
+                nodes |>
+                List.filter (fun (_, p) ->
+                  (sel_lay = ExistingLayer p.value.Node.layer ||
+                   (sel_lay = NoLayer &&
+                    (disp_temp || not (is_temp p.value.Node.layer)))) &&
+                  string_starts_with node_flt p.value.Node.name) |>
+                List.fold_left (fun lst p -> p :: lst) [] |>
+                List.fast_sort (node_sorter sel_col) in
+              List.map (fun (_, p) ->
+                with_value p node_tbody_row) rows |>
+              tbody))))) ;
     with_value nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
                                tot_grps, tot_cpu, tot_ram, tot_in_sleep,
                                tot_out_sleep, tot_in_bytes,
@@ -1045,7 +1070,7 @@ let tail_panel =
           let c = if is_selected then "selected actionable" else "actionable" in
           c, Some action
         else "", None in
-      pretty_th ?action c f.Field.name f.typ_disp)
+      pretty_th ?action c [ text f.Field.name ] f.typ_disp)
   in
   with_value sel_node (fun sel ->
     if sel = "" then

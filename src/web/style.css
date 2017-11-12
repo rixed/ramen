@@ -21,6 +21,7 @@ tfoot td, th { font-weight: 700; }
 span.null { font-style: italic; color: #888; font-size: 80%; }
 .spacer { flex-grow: 10; }
 .wide-table { width: 100%; overflow-x: auto; }
+.searchbox { display: inline-block; white-space: nowrap; }
 
 #application { margin:0; height: 100%; }
 html { background-color: #ddd; }
@@ -83,6 +84,8 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #nodes tbody td { white-space: nowrap; padding: 0.3em 1em 0.3em 1em; border-bottom: 1px solid #ccc; }
 #nodes tbody td hr { border: 1px solid #aaa; }
 #nodes td.export { text-align: center; }
+#nodes thead th p { white-space: nowrap; }
+#nodes thead th label.searchbox { margin-left: 1em; }
 
 #editor { padding-left: 1em; }
 #editor h2 { font-size: 100%; margin: 1em 0 0.25em 0; }
