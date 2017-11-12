@@ -1309,8 +1309,7 @@ let dom =
 let () =
   let rld_graph () =
     match autoreload.value, sel_layer.value with
-      true, NoLayer -> reload_graph ()
-    | true, _ -> if sel_node.value <> "" then reload_graph ()
+      true, (NoLayer | ExistingLayer _) -> reload_graph ()
     | _ -> () in
   ignore (Html.window##setInterval (Js.wrap_callback rld_graph) 3_317.) ;
   let rld_tail () =
