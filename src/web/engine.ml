@@ -110,22 +110,20 @@ let rec string_of_vnode = function
   | Attribute (n, v) -> "attr("^ n ^", "^ abbrev 10 v ^")"
   | Text s -> "text(\""^ abbrev 15 s ^"\")"
   | Element { tag ; subs ; _ } -> tag ^"("^ string_of_tree subs ^")"
-  | Group { subs ; _ } -> "group("^ string_of_tree subs ^")"
+  | Group { subs } -> "group("^ string_of_tree subs ^")"
   | Fun { param ; _ } -> "fun("^ param ^")"
   | InView -> "in-view"
 and string_of_tree subs =
   List.fold_left (fun s tree ->
     s ^ (if s = "" then "" else ";") ^ string_of_vnode tree) "" subs
 
-let rec is_worthy = function
-  | Element { subs ; _ } | Group { subs ; _ } ->
-    List.exists is_worthy subs
-  | Fun { last ; param ; _ } ->
-    (match desc_of_name param with
-      Some p ->
-      p.last_changed > fst !last || is_worthy (snd !last)
-    | None -> false)
-  | _ -> false
+let rec flat_length = function
+  | Group { subs } ->
+    List.fold_left (fun s e -> s + flat_length e) 0 subs
+  | Element _ | Text _ -> 1
+  | Attribute _ | InView -> 0
+  | Fun { last ; _ } ->
+    flat_length (snd !last)
 
 let elmt tag ?(svg=false) ?action subs =
   Element { tag ; svg ; action ; subs }
@@ -317,8 +315,10 @@ let svgtexts
 
 (* Parameters *)
 
+let something_changed = ref false
 let change p =
-  p.desc.last_changed <- clock ()
+  p.desc.last_changed <- clock () ;
+  something_changed := true
 
 let chg p v = p.value <- v ; change p
 
@@ -334,9 +334,9 @@ let vdom = ref (Group { subs = [] })
 (* Rendering *)
 
 let coercion_motherfucker_can_you_do_it o =
-  Js.Opt.get o (fun () -> fail "Cannot coaerce")
+  Js.Opt.get o (fun () -> fail "Cannot coerce")
 
-let rec remove (parent : Html.element Js.t) child_idx n =
+let rec remove (parent : Dom.element Js.t) child_idx n =
   if n > 0 then (
     Js.Opt.iter (parent##.childNodes##item child_idx) (fun child ->
       print_4 (Js.string ("Removing child_idx="^ string_of_int child_idx ^
@@ -348,37 +348,67 @@ let rec remove (parent : Html.element Js.t) child_idx n =
 
 let root = ref None
 
-let rec add_listeners tag (elmt : Html.element Js.t) action =
+let rec set_listener_opt tag (elmt : Dom.element Js.t) action =
   match tag with
   | "input" ->
-    let elmt = Html.CoerceTo.input elmt |>
+    let elmt = Html.CoerceTo.element elmt |>
+               coercion_motherfucker_can_you_do_it |>
+               Html.CoerceTo.input |>
                coercion_motherfucker_can_you_do_it in
-    elmt##.oninput := Html.handler (fun _e ->
-      action (Js.to_string elmt##.value) ;
-      Js._false)
+    elmt##.oninput := (match action with
+      | Some action ->
+        Html.handler (fun _e ->
+          action (Js.to_string elmt##.value) ;
+          Js._false)
+      | None -> Html.no_handler)
   | "textarea" ->
-    let elmt = Html.CoerceTo.textarea elmt |>
+    let elmt = Html.CoerceTo.element elmt |>
+               coercion_motherfucker_can_you_do_it |>
+               Html.CoerceTo.textarea |>
                coercion_motherfucker_can_you_do_it in
-    elmt##.oninput := Html.handler (fun _e ->
-      action (Js.to_string elmt##.value) ;
-      Js._false)
+    elmt##.oninput := (match action with
+      | Some action ->
+        Html.handler (fun _e ->
+          action (Js.to_string elmt##.value) ;
+          Js._false)
+      | None -> Html.no_handler)
   | "button" ->
-    let elmt = Html.CoerceTo.button elmt |>
+    let elmt = Html.CoerceTo.element elmt |>
+               coercion_motherfucker_can_you_do_it |>
+               Html.CoerceTo.button |>
                coercion_motherfucker_can_you_do_it in
-    elmt##.onclick := Html.handler (fun ev ->
-      Html.stopPropagation ev ;
-      action (Js.to_string elmt##.value) ;
-      resync () ;
-      Js._false)
+    elmt##.onclick := (match action with
+      | Some action ->
+        Html.handler (fun ev ->
+          Html.stopPropagation ev ;
+          action (Js.to_string elmt##.value) ;
+          resync () ;
+          Js._false)
+      | None -> Html.no_handler)
   | _ ->
     print (Js.string ("No idea how to add an event listener to a "^ tag ^
                       " but I can try")) ;
-    elmt##.onclick := Html.handler (fun _ ->
-      action "click :)" ;
-      resync () ;
-      Js._false)
+    (* FIXME: if we put an action on an SVG element this cast to an HTML
+     * element will fail. In that case a cast to a Svg_dom.element would
+     * work, but that element has no onclick.
+     * Maybe we could always try Js.Unsafe.coerce to coerce this into a
+     * Html.element in any cases? *)
+    let elmt = Html.CoerceTo.element elmt |>
+               coercion_motherfucker_can_you_do_it in
+    elmt##.onclick := (match action with
+      | Some action ->
+          Html.handler (fun _ ->
+          action "click :)" ;
+          resync () ;
+          Js._false)
+      | None -> Html.no_handler)
 
-and insert (parent : Html.element Js.t) child_idx vnode =
+and set_listener tag (elmt : Dom.element Js.t) action =
+  set_listener_opt tag elmt (Some action)
+and rem_listener tag (elmt : Dom.element Js.t) =
+  set_listener_opt tag elmt None
+
+and insert (parent : Dom.element Js.t) child_idx vnode =
   print_2 (Js.string ("Appending "^ string_of_vnode vnode ^
                       " as child "^ string_of_int child_idx ^" of"))
           parent ;
@@ -390,6 +420,8 @@ and insert (parent : Html.element Js.t) child_idx vnode =
     (* TODO: smooth (https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollIntoView) *)
     (* TODO: make this true/false an InView parameter *)
     (* FIXME: does not seem to work *)
+    let parent = Html.CoerceTo.element parent |>
+                 coercion_motherfucker_can_you_do_it in
     parent##scrollIntoView Js._false ;
     0
   | Text t ->
@@ -404,9 +436,11 @@ and insert (parent : Html.element Js.t) child_idx vnode =
       else
         doc##createElement (Js.string tag) in
     option_may (fun action ->
-      add_listeners tag elmt action) action ;
+      let dom_elmt = Js.Unsafe.coerce elmt in
+      set_listener tag dom_elmt action) action ;
+    let dom_elmt = Js.Unsafe.coerce elmt in
     List.fold_left (fun i sub ->
-        i + insert elmt i sub
+        i + insert dom_elmt i sub
       ) 0 subs |> ignore ;
     let next = parent##.childNodes##item child_idx in
     Dom.insertBefore parent elmt next ;
@@ -418,32 +452,107 @@ and insert (parent : Html.element Js.t) child_idx vnode =
           last := clock (), f () ;
         insert parent child_idx (snd !last)
     | None -> 0)
-  | Group { subs ; _ } ->
+  | Group { subs } ->
     List.fold_left (fun i sub ->
         i + insert parent (child_idx + i) sub
       ) 0 subs
 
-(* Only the Fun can produce a different result. Leads_to tells us where to go
- * to have Funs. *)
-and sync (parent : Html.element Js.t) child_idx vdom =
-  let rec flat_length = function
-    | Group { subs ; _ } ->
-      List.fold_left (fun s e -> s + flat_length e) 0 subs
-    | Element _ | Text _ -> 1
-    | Attribute _ | InView -> 0
-    | Fun { last ; _ } ->
-      flat_length (snd !last) in
+and replace (parent : Dom.element Js.t) child_idx last_vnode vnode =
+  match last_vnode, vnode with
+  | Attribute (last_name, last_value),
+    Attribute (name, value) when last_name = name ->
+      if value <> last_value then
+        parent##setAttribute (Js.string name) (Js.string value) ;
+      0
+  | Text last_t, Text t ->
+      if t <> last_t then (
+        let elmt = parent##.childNodes##item child_idx |>
+                   coercion_motherfucker_can_you_do_it |>
+                   Dom.CoerceTo.text |>
+                   coercion_motherfucker_can_you_do_it in
+        elmt##.data := Js.string t) ;
+      1
+  | Element { tag = last_tag ; svg = last_svg ; action = last_action ;
+              subs = last_subs },
+    Element { tag ; svg ; action ; subs }
+    when last_tag = tag && svg = last_svg ->
+      (* We cannot compare old and new actions :-( *)
+      let elmt = parent##.childNodes##item child_idx |>
+                 coercion_motherfucker_can_you_do_it |>
+                 Dom.CoerceTo.element |>
+                 coercion_motherfucker_can_you_do_it in
+      option_may (fun _ ->
+        rem_listener tag elmt) last_action ;
+      option_may (fun action ->
+        set_listener tag elmt action) action ;
+      replace_list elmt 0 last_subs subs ;
+      1
+  | Group { subs = last_subs }, Group { subs } ->
+      replace_list parent child_idx last_subs subs ;
+      flat_length vnode
+  | Fun { last = { contents = _, last_vnode } ; _ },
+    Fun { last = { contents = last_changed, new_vnode } as last ;
+          param ; f } ->
+    (match desc_of_name param with
+      Some p ->
+      if p.last_changed > last_changed then (
+        let vnode' = f () in
+        last := clock (), vnode' ;
+        replace parent child_idx last_vnode vnode'
+      ) else
+        replace parent child_idx last_vnode new_vnode
+    | None -> 0)
+  | InView, InView -> 0
+  (* TODO: have to try Fun ! *)
+  | _ ->
+    remove parent child_idx (flat_length last_vnode) ;
+    (* Insert will refresh last *)
+    insert parent child_idx vnode
+
+and replace_list (parent : Dom.element Js.t) child_idx last_vnodes vnodes =
+  (* TODO: A smarter approach is in order:
+   *       - Try to detect single node insertions/removals;
+   *       - Use node ids as an help. *)
+  match last_vnodes, vnodes with
+  | [], [] -> ()
+  | last_vnode::last_vnodes', vnode::vnodes' ->
+    let len = replace parent child_idx last_vnode vnode in
+    replace_list parent (child_idx + len) last_vnodes' vnodes'
+  | last_vnode::last_vnodes', [] ->
+    let len = flat_length last_vnode in
+    remove parent child_idx len ;
+    replace_list parent child_idx last_vnodes' []
+  | [], vnode::vnodes ->
+    let len = insert parent child_idx vnode in
+    replace_list parent (child_idx + len) [] vnodes
+
+(* Sync just quickly locate nodes where content have changed. From there,
+ * we start actually replacing old tree with new one.
+ * Only the Fun can produce a different result. is_worthy tells us where to
+ * go to have Funs. *)
+and sync (parent : Dom.element Js.t) child_idx vnode =
   let ( += ) a b = a := !a + b in
-  let worthy = is_worthy vdom in
-  print (Js.string ("sync vnode="^ string_of_vnode vdom ^
+  let rec is_worthy = function
+    | Element { subs ; _ } | Group { subs } ->
+      (* TODO: a last_touched timestamp in Element that would be back
+       * propagated down to rool each time a param is changed? *)
+      List.exists is_worthy subs
+    | Fun { last ; param ; _ } ->
+      (match desc_of_name param with
+        Some p ->
+        p.last_changed > fst !last || is_worthy (snd !last)
+      | None -> false)
+    | _ -> false in
+  let worthy = is_worthy vnode in
+  print (Js.string ("sync vnode="^ string_of_vnode vnode ^
                     if worthy then " (worthy)" else "")) ;
-  match vdom with
+  match vnode with
   | Element { subs ; _ } ->
     if worthy then (
       (* Follow this path. Child_idx count the children so far. *)
       let parent' = parent##.childNodes##item child_idx |>
                     coercion_motherfucker_can_you_do_it |>
-                    Html.CoerceTo.element |>
+                    Dom.CoerceTo.element |>
                     coercion_motherfucker_can_you_do_it in
       let child_idx = ref 0 in
       List.iter (fun sub ->
@@ -452,26 +561,25 @@ and sync (parent : Html.element Js.t) child_idx vdom =
     1
   | Text _ -> 1
   | Attribute _ | InView -> 0
-  | Group { subs ; _ } ->
+  | Group { subs } ->
     if worthy then (
       let i = ref 0 in
       List.iter (fun sub ->
           i += sync parent (child_idx + !i) sub
         ) subs) ;
-    flat_length vdom
-  | Fun { param ; last ; _ } ->
+    flat_length vnode
+  | Fun { param ; f ; last } ->
     (match desc_of_name param with
       Some p ->
-      if p.last_changed > fst !last then (
-        (* Bingo! For now we merely discard the whole sub-element.
-         * Later: perform an actual diff. *)
-        remove parent child_idx (flat_length (snd !last)) ;
-        (* Insert will refresh last *)
-        insert parent child_idx vdom
+      let last_changed, last_vnode = !last in
+      if p.last_changed > last_changed then (
+        let vnode' = f () in
+        last := clock (), vnode' ;
+        replace parent child_idx last_vnode vnode'
       ) else if worthy then (
-        sync parent child_idx (snd !last)
+        sync parent child_idx last_vnode
       ) else (
-        flat_length (snd !last)
+        flat_length last_vnode
       )
     | None -> 0)
 
@@ -480,10 +588,16 @@ and resync () =
   let r =
     match !root with
     | None ->
-      let r = Html.getElementById "application" in
+      let r = Html.getElementById "application" |>
+              Js.Unsafe.coerce in
       root := Some r ; r
     | Some r -> r in
-  sync r 0 !vdom |> ignore
+  something_changed := false ;
+  sync r 0 !vdom |> ignore ;
+  (* The refresh of a Fun must not change any parameter that could have been
+   * used by an earlier Fun ; we chan check this by checking that the clock
+   * did not advance while syncing. *)
+  if !something_changed then fail "Rendering is updating parameters!"
 
 (* Each time we update the root, the vdom can differ with the root only
  * at Fun points. Initially though this is not the case, breaking this
