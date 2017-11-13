@@ -66,14 +66,6 @@ let of_json headers what ppp body =
         what body (Printexc.to_string e) ;
       bad_request "Can not parse body")
 
-let ok_body = "{\"success\": true}"
-let respond_ok ?(body=ok_body) ?(ct=Consts.json_content_type) () =
-  let status = `Code 200 in
-  let headers = Header.init_with "Content-Type" ct in
-  let headers = Header.add headers "Access-Control-Allow-Origin" "*" in
-  let body = body ^"\n" in
-  Server.respond_string ~status ~headers ~body ()
-
 let hostname =
   let cached = ref "" in
   fun () ->
@@ -371,29 +363,8 @@ let put_layer conf headers body =
     Serving normal files
 *)
 
-let ext_of_file fname =
-  let _, ext = String.rsplit fname ~by:"." in ext
-
-let content_type_of_ext = function
-  | "html" -> Consts.html_content_type
-  | "js" -> Consts.js_content_type
-  | "css" -> Consts.css_content_type
-  | _ -> "I_dont_know/Good_luck"
-
 let serve_file_with_replacements conf _headers path file =
-  let fname = path ^"/"^ file in (* TODO: look for those files in the www_root directory (a param from the cmd line) so that FE devs could work with prod version of ramen to improve the GUI *)
-  let%lwt body = read_whole_file fname in
-  let%lwt body = replace_placeholders conf body in
-  let ct = content_type_of_ext (ext_of_file file) in
-  respond_ok ~body ~ct ()
-
-let serve_file _conf _headers path file =
-  let fname = path ^"/"^ file in (* TODO: look for those files in the www_root directory (a param from the cmd line) so that FE devs could work with prod version of ramen to improve the GUI *)
-  let headers =
-    Header.init_with "Content-Type" (content_type_of_ext (ext_of_file file))
-  in
-  Server.respond_file ~headers ~fname ()
-
+  serve_file path file (replace_placeholders conf)
 
 (*
     Whole graph operations: compile/run/stop
@@ -789,8 +760,8 @@ let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
         let headers =
           Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
         Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
-      (* Top *)
-      | `GET, ([]|["top"|"index.html"]) ->
+      (* Web UI *)
+      | `GET, ([]|["index.html"]) ->
         if www_dir = "" then
           serve_string conf headers RamenGui.without_link
         else

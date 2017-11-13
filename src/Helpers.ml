@@ -407,3 +407,32 @@ let string_of_time ts =
   Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02ds"
     (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
     tm.tm_hour tm.tm_min tm.tm_sec
+
+(* HTTP helpers: *)
+
+let ok_body = "{\"success\": true}"
+
+let respond_ok ?(body=ok_body) ?(ct=Consts.json_content_type) () =
+  let open Cohttp in
+  let open Cohttp_lwt_unix in
+  let status = `Code 200 in
+  let headers = Header.init_with "Content-Type" ct in
+  let headers = Header.add headers "Access-Control-Allow-Origin" "*" in
+  let body = body ^"\n" in
+  Server.respond_string ~status ~headers ~body ()
+
+let content_type_of_ext = function
+  | "html" -> Consts.html_content_type
+  | "js" -> Consts.js_content_type
+  | "css" -> Consts.css_content_type
+  | _ -> "I_dont_know/Good_luck"
+
+let ext_of_file fname =
+  let _, ext = String.rsplit fname ~by:"." in ext
+
+let serve_file path file replace =
+  let fname = path ^"/"^ file in
+  let%lwt body = read_whole_file fname in
+  let%lwt body = replace body in
+  let ct = content_type_of_ext (ext_of_file file) in
+  respond_ok ~body ~ct ()

@@ -559,7 +559,13 @@ let acknowledge state id =
 
 module HttpSrv =
 struct
-  let start port cert_opt key_opt state =
+  let replace_placeholders body = return body
+
+  let serve_string body =
+    let%lwt body = replace_placeholders body in
+    respond_ok ~body ~ct:Consts.html_content_type ()
+
+  let start port cert_opt key_opt state www_dir =
     let router meth path params _headers _body =
       match meth, path with
       | `GET, ["notify"] ->
@@ -582,6 +588,15 @@ struct
               ~title:(hgo "title" "")
               ~text:(hgo "text" "") >>=
             Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~body:"")
+      (* Web UI *)
+      | `GET, ([]|["index.html"]) ->
+        if www_dir = "" then
+          serve_string AlerterGui.without_link
+        else
+          serve_string AlerterGui.with_links
+      | `GET, ["style.css" | "alerter_script.js" as file] ->
+        serve_file www_dir file replace_placeholders
+      (* Everything else is an error: *)
       | _, ["notify"] ->
         fail (HttpError (405, "Method not implemented"))
       | _ ->
@@ -658,8 +673,17 @@ let default_team =
                    ~env ["default-team"] in
   Arg.(value (opt string "firefighters" i))
 
+let www_dir =
+  let env = Term.env_info "ALERTER_WWW_DIR" in
+  let i = Arg.info ~doc:"Directory where to read the files served \
+                         via HTTP for the GUI (serve from memory \
+                         if unset)"
+                   ~env [ "www-dir" ; "www-root" ; "web-dir" ; "web-root" ] in
+  Arg.(value (opt string "" i))
+
+
 let start_all debug daemonize to_stderr logdir save_file config_db
-              default_team http_port ssl_cert ssl_key () =
+              default_team http_port ssl_cert ssl_key www_dir () =
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   if to_stderr && logdir <> None then
@@ -669,7 +693,7 @@ let start_all debug daemonize to_stderr logdir save_file config_db
   if daemonize then do_daemonize () ;
   Lwt_main.run (
     let alerter_state = get_state save_file config_db default_team in
-    HttpSrv.start http_port ssl_cert ssl_key alerter_state)
+    HttpSrv.start http_port ssl_cert ssl_key alerter_state www_dir)
 
 let start_cmd =
   Term.(
@@ -683,7 +707,8 @@ let start_cmd =
       $ default_team
       $ http_port
       $ ssl_cert
-      $ ssl_key),
+      $ ssl_key
+      $ www_dir),
     info "alert manager")
 
 let () =
