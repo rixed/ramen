@@ -66,12 +66,8 @@ type persisted_state = {
    * oncall *)
   mutable ongoing_escalations : (int, escalation) Hashtbl.t ;
 
-  (* All global (aka team-wide) inhibits, keyed by team name, value being
-   * expiration of the inhibit *)
-  team_inhibits : (string, float) Hashtbl.t ;
-
-  (* All inhibited alerts, keyed by alert name*team *)
-  alert_inhibits : (string * string, float) Hashtbl.t ;
+  (* All global (aka team-wide) inhibitions, keyed by team name *)
+  inhibitions : (string, Inhibition.t list) Hashtbl.t ;
 
   (* Used to give a unique id to any escalation so that we can ack them. *)
   mutable next_alert_id : int }
@@ -97,16 +93,20 @@ type state = {
   persist : persisted_state }
 
 let is_inhibited state name team now =
-  let in_inhibit_hash h k =
-    match Hashtbl.find h k with
-    | exception Not_found -> false
-    | end_date ->
-      if now < end_date then true else (
-        Hashtbl.remove h k ;
-        false
-      ) in
-  in_inhibit_hash state.persist.team_inhibits team ||
-  in_inhibit_hash state.persist.alert_inhibits (name, team)
+  match Hashtbl.find state.persist.inhibitions team with
+  | exception Not_found -> false
+  | inhibitions ->
+    (* First remove all expired inhibitions: *)
+    let inhibitions, changed =
+      List.fold_left (fun (inhibitions, changed) i ->
+        if i.Inhibition.end_date > now then
+          i :: inhibitions, changed
+        else
+          inhibitions, true) ([], false) inhibitions in
+    if changed then
+      Hashtbl.replace state.persist.inhibitions team inhibitions ;
+    (* See if this alert is inhibited: *)
+    List.exists (fun i -> i.Inhibition.alert = name) inhibitions
 
 exception Not_implemented
 
@@ -451,8 +451,7 @@ let get_state save_file db_config_file default_team =
   let get_new () =
     { ongoing_incidents = [] ;
       ongoing_escalations = Hashtbl.create 11 ;
-      team_inhibits = Hashtbl.create 11 ;
-      alert_inhibits = Hashtbl.create 11 ;
+      inhibitions = Hashtbl.create 11 ;
       next_alert_id = 0 }
   in
   let persist =
@@ -607,7 +606,10 @@ struct
           else
             (team, [ name ]) :: prev) |>
       List.fold_left (fun prev (team, members) ->
-        { team ; members = List.rev members } :: prev) [] in
+        let inhibitions =
+          try Hashtbl.find state.persist.inhibitions team
+          with Not_found -> [] in
+        { team ; members = List.rev members ; inhibitions } :: prev) [] in
     let body = PPP.to_string teams_resp_ppp resp in
     respond_ok ~body ()
 
