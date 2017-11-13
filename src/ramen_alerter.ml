@@ -13,6 +13,7 @@ open Helpers
 open SqliteHelpers
 open RamenLog
 open Lwt
+open AlerterSharedTypesJS
 
 let () =
   async_exception_hook := (fun exn ->
@@ -89,6 +90,7 @@ type state = {
   stmt_get_oncall : Sqlite3.stmt ;
   stmt_get_contacts : Sqlite3.stmt ;
   stmt_get_escalation : Sqlite3.stmt ;
+  stmt_get_teams : Sqlite3.stmt ;
 
   (* What is saved onto/restored from disk to avoid losing context when
    * stopping or crashing: *)
@@ -395,9 +397,10 @@ let open_config_db file =
         file err ;
     let db = db_open file in
     ensure_db_table db
+      (* FIXME: a single person could be in several teams *)
       "CREATE TABLE IF NOT EXISTS oncallers ( \
          name STRING PRIMARY KEY, \
-         team STRING NOT NULL)" (* FIXME: a single person could be in several teams *)
+         team STRING NOT NULL)"
       "INSERT INTO oncallers VALUES \
          (\"John Doe\", \"firefighters\")" ;
     (* TODO: maybe in the future make the contact depending on day of
@@ -484,7 +487,10 @@ let get_state save_file db_config_file default_team =
       stmt_get_escalation =
         Sqlite3.prepare db
           "SELECT timeout, victims FROM escalations \
-           WHERE team = ? AND importance = ? ORDER BY attempt ASC" ;
+           WHERE team = ? AND importance = ? ORDER BY attempt" ;
+      stmt_get_teams =
+        Sqlite3.prepare db
+          "SELECT team, name FROM oncallers ORDER BY team, name" ;
       persist } in
   let rec check_escalations_loop () =
     let now = Unix.gettimeofday () in
@@ -565,29 +571,53 @@ struct
     let%lwt body = replace_placeholders body in
     respond_ok ~body ~ct:Consts.html_content_type ()
 
+  let notify state params =
+    let hg = Hashtbl.find params in
+    (match hg "name", hg "firing" with
+    | exception Not_found ->
+      let m = "Missing parameter: must provide at least name and firing" in
+      fail (HttpError (400, m))
+    | name, firing ->
+      let hgo = Hashtbl.find_default params
+      and now = Unix.gettimeofday () in
+      match hgo "importance" "10" |> int_of_string,
+            hgo "time" (string_of_float now) |> float_of_string with
+      | exception _ ->
+        fail (HttpError (400, "importance and now must be numeric"))
+      | importance, time ->
+        let firing = looks_like_true firing in
+        alert state ~name ~importance ~now ~time ~firing
+          ~team:(hgo "team" state.default_team)
+          ~title:(hgo "title" "")
+          ~text:(hgo "text" "") >>=
+        Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~body:"")
+
+  let get_teams state =
+    let stmt = state.stmt_get_teams in
+    let resp =
+      step_all_fold stmt [] (fun prev ->
+        let open Sqlite3 in
+        let team = column stmt 0 |> to_string |> required
+        and name = column stmt 1 |> to_string |> required in
+        match prev with
+        | [] -> [ team, [ name ] ]
+        | (team', members) :: rest ->
+          if team = team' then
+            (team', name::members) :: rest
+          else
+            (team, [ name ]) :: prev) |>
+      List.fold_left (fun prev (team, members) ->
+        { team ; members = List.rev members } :: prev) [] in
+    let body = PPP.to_string teams_resp_ppp resp in
+    respond_ok ~body ()
+
   let start port cert_opt key_opt state www_dir =
     let router meth path params _headers _body =
       match meth, path with
       | `GET, ["notify"] ->
-        let hg = Hashtbl.find params in
-        (match hg "name", hg "firing" with
-        | exception Not_found ->
-          let m = "Missing parameter: must provide at least name and firing" in
-          fail (HttpError (400, m))
-        | name, firing ->
-          let hgo = Hashtbl.find_default params
-          and now = Unix.gettimeofday () in
-          match hgo "importance" "10" |> int_of_string,
-                hgo "time" (string_of_float now) |> float_of_string with
-          | exception _ ->
-            fail (HttpError (400, "importance and now must be numeric"))
-          | importance, time ->
-            let firing = looks_like_true firing in
-            alert state ~name ~importance ~now ~time ~firing
-              ~team:(hgo "team" state.default_team)
-              ~title:(hgo "title" "")
-              ~text:(hgo "text" "") >>=
-            Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~body:"")
+        notify state params
+      | `GET, ["teams"] ->
+        get_teams state
       (* Web UI *)
       | `GET, ([]|["index.html"]) ->
         if www_dir = "" then

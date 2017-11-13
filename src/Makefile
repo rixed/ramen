@@ -60,7 +60,7 @@ CONFIGURATOR_SOURCES = \
 
 ALERTER_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml SqliteHelpers.ml \
-	AlerterGui.ml ramen_alerter.ml
+	AlerterSharedTypesJS.ml AlerterGui.ml ramen_alerter.ml
 
 SOURCES_ = \
 	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
@@ -196,7 +196,10 @@ RamenGui.ml: web/ramen_script.js web/ramen_script.min.js web/style.css Makefile
 	@echo '<body><div id="application"></div></body>' >> $@
 	@echo '</html>|lookmadelimiter}' >> $@
 
-web/alerter_app.cmo: web/alerter_app.ml web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo
+AlerterSharedTypesJS_noPPP.cmo: AlerterSharedTypesJS.ml
+	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
+
+web/alerter_app.cmo: web/alerter_app.ml AlerterSharedTypesJS_noPPP.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
 web/alerter_script.byte: Consts.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo web/alerter_app.cmo
