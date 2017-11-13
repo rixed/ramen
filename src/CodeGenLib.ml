@@ -58,14 +58,26 @@ let avg_add (count, sum) x = count + 1, sum +. x
 let avg_finalize (count, sum) = sum /. float_of_int count
 
 (* Initialized with an empty list *)
-let percentile_add prev x = x::prev
+let percentile_add prev x =
+  (* Inf values we can deal with but nan have only two possible outcome:
+   * either we decide to make the whole percentile go nan, or we ignore them.
+   * I believe that most of the time we got a nan is because a measurement
+   * was actually missing, so let's skip them: *)
+  if Float.is_nan x then prev else x::prev
 let percentile_finalize pct lst =
   let arr = Array.of_list lst in
-  Array.fast_sort Pervasives.compare arr ;
-  assert (pct >= 0.0 && pct <= 100.0) ;
-  let pct = pct *. 0.01 in
-  let idx = round_to_int (pct *. float_of_int (Array.length arr - 1)) in
-  arr.(idx)
+  if Array.length arr = 0 then (
+    (* This is annoying, we've skipped all the values! In this case it
+     * would make sense to have the percentile function return NULL.
+     * For now, just returns 0 and see. *)
+    0.
+  ) else (
+    Array.fast_sort Pervasives.compare arr ;
+    assert (pct >= 0.0 && pct <= 100.0) ;
+    let pct = pct *. 0.01 in
+    let idx = round_to_int (pct *. float_of_int (Array.length arr - 1)) in
+    arr.(idx)
+  )
 
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 
