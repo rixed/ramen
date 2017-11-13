@@ -170,10 +170,12 @@ let flow_alert_params_query =
     WHERE \"max\" > 0 AND is_symmetric"
 
 (* Query to get the critical services: *)
+(* Note: avg_window is 6 mins since the traffic to BCA is smaller and alerts
+ * would flap if we considered 1 minute intervals. *)
 let service_alert_params_query =
   "SELECT s.id, \
           s.name, \
-          60 AS avg_window, \
+          360 AS avg_window, \
           3600 AS obs_window, \
           90. AS percentile, \
           a.min_handshake_count, \
