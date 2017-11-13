@@ -371,6 +371,9 @@ let max_coprocesses = ref max_int
 (* Run given command using Lwt, logging its output in our log-file *)
 let run_coprocess ?(max_count=max_coprocesses)
                   ?timeout ?(to_stdin="") cmd_name cmd =
+  let prog, cmdline = cmd in
+  !logger.debug "Executing: %s, %a" prog
+    (Array.print String.print) cmdline ;
   max_simult ~max_count:max_count (fun () ->
     let open Lwt in
     Lwt_process.with_process_full ?timeout cmd (fun process ->

@@ -85,8 +85,10 @@ INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB)
 bin_dir ?= /usr/local/bin
 
 all: $(INSTALLED) ringbuf_test.opt
+	@true
 
 doc: HELP.html
+	@true
 
 RamenFileNotify.ml: $(FILE_NOTIFIER)
 	ln -sf $< $@
@@ -213,8 +215,9 @@ uninstall-spec:
 colcomp/colcomp_test: colcomp/colcomp_test.o libcolcomp.a
 	$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) $^ -o $@
 
-check-spec: ringbuf_test.opt
+check-spec: all_tests.opt ringbuf_test.opt
 	@./ringbuf_test.opt || echo "FAILURE (ringbuf_test)"
+	@OCAMLRUNPARAM=b ./all_tests.opt -bt || echo "FAILURE"
 
 long-check: ramen
 	@$(MAKE) check

@@ -43,7 +43,7 @@ export LAYER_CMD
 # to either delete all temp dirs or none. Note that it is OK to `rm -rf ''`.
 export ALL_RAMEN_PERSIST_DIRS
 export OCAMLFIND_IGNORE_DUPS_IN
-OCAMLFIND_IGNORE_DUPS_IN="$(ocamlfind query ramen 2>/dev/null)"
+OCAMLFIND_IGNORE_DUPS_IN="$(ocamlfind query ramen 2>/dev/null || true)"
 export OCAMLRUNPARAM
 OCAMLRUNPARAM=b
 
@@ -56,8 +56,7 @@ start() {
   LAYER_CMD=""
   rm -f /tmp/ringbuf_*
 
-  echo "RAMEN_URL=$RAMEN_URL"
-  $ramen start --no-demo -d --seed 1234 &
+  OCAMLPATH=$top_srcdir $ramen start --no-demo -d --seed 1234 &
   add_temp_pid $!
   sleep 2
 }

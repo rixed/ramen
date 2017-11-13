@@ -1413,9 +1413,15 @@ let with_code_file_for exec_name conf f =
   fname
 
 let compile_source exec_name fname =
+  let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
+  and ocamlpath = getenv ~def:"" "OCAMLPATH" in
   Printf.sprintf
-    "nice -n 20 ocamlfind ocamlopt -S -g -annot -o %s -package ramen \
-     -linkpkg %s"
+    "env -i PATH=%s OCAMLPATH=%s \
+       nice -n 20 \
+         ocamlfind ocamlopt -S -g -annot \
+                   -o %s -package ramen -linkpkg %s"
+    (shell_quote path)
+    (shell_quote ocamlpath)
     (shell_quote exec_name)
     (shell_quote fname)
 
