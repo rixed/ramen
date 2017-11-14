@@ -56,7 +56,11 @@ let abbrev len s =
   if String.length s <= len then s else
   String.sub s 0 (len-3) ^"..."
 
-(* Conversion to JS values *)
+let date_of_ts ts =
+  let d = new%js Js.date_fromTimeValue (1000. *. ts) in
+  Js.to_string d##toLocaleString
+
+(* Conversion to/from JS values *)
 
 let js_of_list j lst =
   let a = new%js Js.array_empty in
@@ -64,6 +68,15 @@ let js_of_list j lst =
   a
 let js_of_option j = function None -> Js.null | Some v -> Js.some (j v)
 let js_of_float = Js.number_of_float
+
+let list_of_js c js =
+  list_init js##.length (fun i ->
+    let j = Js.array_get js i |> optdef_get in
+    c j)
+let of_field js n c = Js.Unsafe.get js n |> c
+let of_opt_field js n c =
+  let v = Js.Unsafe.get js n in
+  Js.Optdef.map v c |> Js.Optdef.to_option
 
 (* For a smaller JS: *)
 let string_of_float x =
@@ -130,9 +143,9 @@ let elmt tag ?(svg=false) ?action subs =
 
 let group subs = Group { subs }
 
-let with_value p f =
+let with_param p f =
   (* [last] must be the current state of the DOM.
-   * [with_value] is called only when rebuilding the DOM after a
+   * [with_param] is called only when rebuilding the DOM after a
    * parameter have changed upper toward the root of the vdom (or,
    * as a special case, in the initial populate of the DOM).
    * In that case the elements from the previous call have been
@@ -607,7 +620,7 @@ let bootup = make_param "initial populate of the DOM" ()
 
 let start nd =
   print (Js.string "starting...") ;
-  vdom := with_value bootup (fun () -> nd) ;
+  vdom := with_param bootup (fun () -> nd) ;
   Html.window##.onload := Html.handler (fun _ -> resync () ; Js._false)
 
 (* Ajax *)

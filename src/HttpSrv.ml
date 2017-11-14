@@ -14,58 +14,6 @@ module L = RamenConf.Layer
 module SL = RamenSharedTypes.Layer
 module SN = RamenSharedTypes.Node
 
-let not_implemented msg = fail (HttpError (501, msg))
-let bad_request msg = fail (HttpError (400, msg))
-let bad_request_exn msg = raise (HttpError (400, msg))
-
-let get_content_type headers =
-  Header.get headers "Content-Type" |? Consts.json_content_type |> String.lowercase
-
-let get_accept headers =
-  let h =
-    Header.get headers "Accept" |? Consts.json_content_type |>
-    String.lowercase in
-  let h =
-    try String.split ~by:";" h |> fst
-    with Not_found -> h in
-  String.split_on_char ',' h
-
-let is_accepting_anything = List.mem "*/*"
-
-let is_accepting content_type accept =
-  is_accepting_anything accept || List.mem content_type accept
-
-(* When the client cannot accept the response *)
-let cant_accept accept =
-  let msg =
-    Printf.sprintf "{\"error\": \"Can't produce any of %s\"}\n"
-      (IO.to_string (List.print ~first:"" ~last:"" ~sep:", " String.print)
-                    accept) in
-  fail (HttpError (406, msg))
-
-let check_accept headers content_type =
-  let accept = get_accept headers in
-  if not (is_accepting content_type accept) then
-    cant_accept accept
-  else return_unit
-
-let switch_accepted headers al =
-  let accept = get_accept headers in
-  match List.find (fun (ct, _) -> is_accepting ct accept) al with
-  | exception Not_found -> cant_accept accept
-  | _, k -> k ()
-
-(* Helper to deserialize an incoming json *)
-let of_json headers what ppp body =
-  if get_content_type headers <> Consts.json_content_type then
-    bad_request "Bad content type"
-  else (
-    try PPP.of_string_exc ppp body |> return
-    with e ->
-      !logger.info "%s: Cannot parse received body: %S, Exception %s"
-        what body (Printexc.to_string e) ;
-      bad_request "Can not parse body")
-
 let hostname =
   let cached = ref "" in
   fun () ->
@@ -503,7 +451,8 @@ let report conf _headers layer name body =
 *)
 
 let complete_nodes conf headers body =
-  let%lwt msg = of_json headers "Complete tables" complete_node_req_ppp body in
+  let%lwt msg =
+    of_json headers "Complete tables" complete_node_req_ppp body in
   let body =
     C.complete_node_name conf msg.node_prefix msg.only_exporting |>
     PPP.to_string complete_resp_ppp
@@ -511,7 +460,8 @@ let complete_nodes conf headers body =
   respond_ok ~body ()
 
 let complete_fields conf headers body =
-  let%lwt msg = of_json headers "Complete fields" complete_field_req_ppp body in
+  let%lwt msg =
+    of_json headers "Complete fields" complete_field_req_ppp body in
   let body =
     C.complete_field_name conf msg.node msg.field_prefix |>
     PPP.to_string complete_resp_ppp

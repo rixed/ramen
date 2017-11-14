@@ -137,13 +137,13 @@ end
 
 (* Each layer and node is its own state variable.
  * But the layers hash has to be a state variable as well, and we
- * want to call [with_value layers] just before calling [with_value]
+ * want to call [with_param layers] just before calling [with_param]
  * on any individual layer in order for the rendering algorithm to
  * discover new/deleted entries because no worthy path lead to them
  * (so we instead "touch" [layers] to direct the rendering over there.
  *
- * In practical terms, we want [with_value layers] to always immediately
- * precede [with_value some_layer]. *)
+ * In practical terms, we want [with_param layers] to always immediately
+ * precede [with_param some_layer]. *)
 (* Alternatively, for simplicity we could have a single value for the whole
  * table but then very long list of nodes would be slow. *)
 (* Value is an association list from layer name to layer *)
@@ -273,7 +273,7 @@ let can_export_with_layer node cb =
   | layer ->
     if not node.exporting then cb false
     else
-      with_value layer (fun layer ->
+      with_param layer (fun layer ->
         let status = layer.status in
         cb (status = Compiled || status = Running))
 
@@ -580,7 +580,7 @@ let layer_to_delete = make_param "layer pending deletion" ""
 let breadcrumbs =
   div
     [ clss "breadcrumbs" ;
-      with_value sel_layer (function
+      with_param sel_layer (function
         NoLayer -> p [ text "Configuration" ]
       | NewLayer ->
         group
@@ -589,7 +589,7 @@ let breadcrumbs =
             p [ text ">" ] ;
             p [ text "New Layer" ] ]
       | ExistingLayer layer ->
-        with_value sel_node (function
+        with_param sel_node (function
           "" ->
           group
             [ p ~action:(fun _ -> set sel_layer NoLayer)
@@ -624,18 +624,18 @@ let header_panel =
                 em [ text "$HOSTNAME$." ] ] ] ;
         breadcrumbs ;
         spacer ;
-        with_value display_temp (fun disp ->
+        with_param display_temp (fun disp ->
           let title = (if disp then "do not " else "")^
                       "display temporary layers" in
           button ~action:(fun _ -> toggle display_temp)
             [ clss ("icon actionable" ^ if disp then " selected" else "") ;
               attr "title" title ; text "temp." ]) ;
-        with_value autoreload (fun ar ->
+        with_param autoreload (fun ar ->
           let title = (if ar then "dis" else "en")^ "able auto-reload" in
           button ~action:(fun _ -> toggle autoreload)
             [ clss ("icon actionable" ^ if ar then " selected" else "") ;
               attr "title" title ; text "⟳" ]) ] ;
-      with_value last_errors (fun lst ->
+      with_param last_errors (fun lst ->
         let ps =
           List.map (fun e ->
             p [ clss (if e.is_error then "error" else "ok") ;
@@ -655,14 +655,8 @@ let labeled_value l v =
         clss "value" ;
         text v ] ]
 
-let date_of_ts = function
-  | Some ts ->
-    let d = new%js Js.date_fromTimeValue (1000. *. ts) in
-    Js.to_string d##toLocaleString
-  | None -> "never"
-
 let with_node node_id f =
-  with_value nodes (fun nodes ->
+  with_param nodes (fun nodes ->
     match List.assoc node_id nodes with
     | exception Not_found -> text ("Can't find node "^ node_id)
     | node -> f node.value)
@@ -730,13 +724,16 @@ let del_layer layer_name =
 
 let layer_panel to_del layer =
   let is_to_del = to_del = layer.Layer.name in
+  let date_or_never = function
+    | Some ts -> date_of_ts ts
+    | None -> "never" in
   (* In order not to change the size of the panel we paint the
    * confirmation dialog on top of the normal tile. *)
   let e = [
     div
       [ clss "title" ;
         p [ clss "name" ; text layer.Layer.name ] ;
-        with_value spinners (fun spins ->
+        with_param spinners (fun spins ->
           Js.Optdef.case (Jstable.find spins (Js.string layer.name))
             (fun () ->
               group [
@@ -752,14 +749,14 @@ let layer_panel to_del layer =
     div (
       clss "info" ::
       labeled_value "#nodes" (string_of_int layer.nb_nodes) ::
-      labeled_value "started" (date_of_ts layer.last_started) ::
-      labeled_value "stopped" (date_of_ts layer.last_stopped) ::
+      labeled_value "started" (date_or_never layer.last_started) ::
+      labeled_value "stopped" (date_or_never layer.last_stopped) ::
       (match layer.status with
       | Edition err when err <> "" ->
         [ p [ clss "error" ; title err ; text (abbrev 25 err) ] ]
       | _ -> [])) ]
   in
-  with_value sel_layer (fun slayer ->
+  with_param sel_layer (fun slayer ->
     if is_to_del then
       div
         ( clss "warning layer" ::
@@ -790,11 +787,11 @@ let layer_panel to_del layer =
 
 let layers_panel =
   div [
-    with_value display_temp (fun disp_temp ->
-      with_value layers (fun layers ->
-        with_value layer_to_delete (fun to_del ->
+    with_param display_temp (fun disp_temp ->
+      with_param layers (fun layers ->
+        with_param layer_to_delete (fun to_del ->
           List.fold_left (fun lst (_, p) ->
-            with_value p (fun layer ->
+            with_param p (fun layer ->
               if disp_temp || not (is_temp layer.Layer.name) then
                 layer_panel to_del layer
               else group []) :: lst) [] layers |>
@@ -815,7 +812,7 @@ let pretty_th ?action c title subtitle =
 
 (* filter_param is a string param with a search string *)
 let node_thead_col ?filter_param (title, subtitle, sortable) =
-  with_value sel_top_column (fun col ->
+  with_param sel_top_column (fun col ->
     let action, c =
       if sortable && col <> title then
         Some (fun _ -> set sel_top_column title), "actionable"
@@ -824,7 +821,7 @@ let node_thead_col ?filter_param (title, subtitle, sortable) =
       | None ->
         pretty_th ?action c [ text title ] subtitle
       | Some filter ->
-        with_value filter (fun flt ->
+        with_param filter (fun flt ->
           pretty_th ?action c
             [ text title ;
               elmt "label"
@@ -878,7 +875,7 @@ let node_tbody_row node =
   let tdoi = function None -> na | Some v -> tdi v
   and tdofih tot = function None -> na | Some v -> tdfih tot v
   in
-  with_value nodes_sum (fun (_tot_nodes, tot_ins, tot_sels, tot_outs,
+  with_param nodes_sum (fun (_tot_nodes, tot_ins, tot_sels, tot_outs,
                              tot_grps, tot_cpu, tot_ram, tot_in_sleep,
                              tot_out_sleep, tot_in_bytes, tot_out_bytes) ->
     let cols =
@@ -905,7 +902,7 @@ let node_tbody_row node =
      * redraw the whole table, while in theory only two lines must be redrawn.
      * Instead, we could have one individual boolean state variable per line and this would
      * depend only on this. *)
-    with_value sel_node (fun sel ->
+    with_param sel_node (fun sel ->
       if sel = node.Node.id then
         tr ~action:(fun _ -> set_sel_node None)
           (clss "selected-actionable" :: cols)
@@ -987,11 +984,11 @@ let nodes_panel =
         node_thead_col ?filter_param col :: lst) [] node_columns |>
       List.rev |> tr ] ;
     (* Table body *)
-    with_value display_temp (fun disp_temp ->
-      with_value nodes (fun nodes ->
-        with_value sel_top_column (fun sel_col ->
-          with_value sel_layer (fun sel_lay ->
-            with_value node_filter (fun node_flt ->
+    with_param display_temp (fun disp_temp ->
+      with_param nodes (fun nodes ->
+        with_param sel_top_column (fun sel_col ->
+          with_param sel_layer (fun sel_lay ->
+            with_param node_filter (fun node_flt ->
               (* Build a list sorted according to sel_top_column: *)
               let rows =
                 nodes |>
@@ -1003,9 +1000,9 @@ let nodes_panel =
                 List.fold_left (fun lst p -> p :: lst) [] |>
                 List.fast_sort (node_sorter sel_col) in
               List.map (fun (_, p) ->
-                with_value p node_tbody_row) rows |>
+                with_param p node_tbody_row) rows |>
               tbody))))) ;
-    with_value nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
+    with_param nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
                                tot_grps, tot_cpu, tot_ram, tot_in_sleep,
                                tot_out_sleep, tot_in_bytes,
                                tot_out_bytes) ->
@@ -1021,7 +1018,7 @@ let field_panel f =
   labeled_value f.Field.name f.typ_disp
 
 let input_panel =
-  with_value sel_node (fun sel ->
+  with_param sel_node (fun sel ->
     if sel = "" then
       p [ clss "nodata" ;
           text "Select a node to see its input fields" ]
@@ -1034,7 +1031,7 @@ let can_plot_type = function
   | _ -> false
 
 let op_panel =
-  with_value sel_node (fun sel ->
+  with_param sel_node (fun sel ->
     if sel = "" then
       p [ clss "nodata" ;
           text "Select a node to see the operation it performs" ]
@@ -1056,7 +1053,7 @@ let tail_panel =
       loop tds (ci + 1) fs in
     loop [] 0 fs
   and th_field ci f =
-    with_value sel_output_cols (fun cols ->
+    with_param sel_output_cols (fun cols ->
       let c, action =
         if can_plot_type f.Field.typ then
           let is_selected = List.mem ci cols in
@@ -1072,7 +1069,7 @@ let tail_panel =
         else "", None in
       pretty_th ?action c [ text f.Field.name ] f.typ_disp)
   in
-  with_value sel_node (fun sel ->
+  with_param sel_node (fun sel ->
     if sel = "" then
       p [ clss "nodata" ;
           text "Select a node to see its output" ]
@@ -1086,13 +1083,13 @@ let tail_panel =
           (if not node.exporting then
             lame_excuse ("node "^ node.id ^" does not export data")
           else
-            with_value tail_rows (fun rows ->
+            with_param tail_rows (fun rows ->
               Array.fold_left (fun l r ->
                 row node.output_type r :: l) [] rows |>
               List.rev |> tbody))]))
 
 let time_selector =
-  with_value chart_duration (fun cur_dur ->
+  with_param chart_duration (fun cur_dur ->
     let sel label dur =
       if dur = cur_dur then
         button [ clss "selected" ; text label ]
@@ -1110,7 +1107,7 @@ let time_selector =
         sel "last day" (24. *. 3600.) ])
 
 let chart_type_selector =
-  with_value chart_type (fun cur_ct ->
+  with_param chart_type (fun cur_ct ->
     let sel label ct =
       if ct = cur_ct then
         button [ clss "selected" ; text label ]
@@ -1124,7 +1121,7 @@ let chart_type_selector =
         sel "stacked+centered" Chart.StackedCentered ])
 
 let show_zero_selector =
-  with_value show_zero (fun fz ->
+  with_param show_zero (fun fz ->
     div
       [ clss "chart-buttons" ;
         button ~action:(fun _ -> toggle show_zero)
@@ -1132,12 +1129,12 @@ let show_zero_selector =
             text "force zero" ] ])
 
 let timechart_panel =
-  with_value sel_output_cols (function
+  with_param sel_output_cols (function
     | [] ->
       p [ clss "nodata" ;
           text "Select one or several columns to plot them." ]
     | _ ->
-      with_value chart_points (fun field_pts ->
+      with_param chart_points (fun field_pts ->
         if field_pts = [] || Array.length (snd (List.hd field_pts)) = 0
         then p [ clss "nodata" ;
                  text "No data received yet" ]
@@ -1172,8 +1169,8 @@ let timechart_panel =
             [ time_selector ;
               chart_type_selector ;
               show_zero_selector ;
-              with_value chart_type (fun stacked_y1 ->
-                with_value show_zero (fun force_show_0 ->
+              with_param chart_type (fun stacked_y1 ->
+                with_param show_zero (fun force_show_0 ->
                   Chart.xy_plot ~attrs ~svg_width ~svg_height
                     ~string_of_x:Formats.(timestamp.to_label)
                     ~string_of_y:Formats.(numeric.to_label)
@@ -1250,7 +1247,7 @@ let save_layer _ =
     (done_edit_layer_cb ~redirect_to_layer:!(edl.new_layer_name) "save")
 
 let layer_editor_panel =
-  with_value edited_layer (fun edl ->
+  with_param edited_layer (fun edl ->
     div
       [ id "editor" ;
         h1 edl.title ;
@@ -1258,7 +1255,7 @@ let layer_editor_panel =
         h2 "Nodes" ;
         group (List.map node_editor_panel edl.edited_nodes) ;
         br ;
-        with_value editor_spinning (fun spinning ->
+        with_param editor_spinning (fun spinning ->
           group
             [ if spinning then
                 button [ text "+" ]
@@ -1295,17 +1292,17 @@ let top_nodes =
 let dom =
   group
     [ header_panel ;
-      with_value sel_node (function
+      with_param sel_node (function
         "" ->
-        with_value sel_layer (function
+        with_param sel_layer (function
           NoLayer ->
           div [ id "top" ; top_layers ; top_nodes ]
         | ExistingLayer slayer ->
-          with_value layers (fun layers ->
+          with_param layers (fun layers ->
             match List.assoc slayer layers with
             | exception Not_found -> group []
             | layer ->
-              with_value layer (fun layer ->
+              with_param layer (fun layer ->
                 div
                   [ id "top" ; top_layers ; top_nodes ;
                     if layer.status <> Running then
