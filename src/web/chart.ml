@@ -196,7 +196,7 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
             ?(axis_font_size=14.)
             ?(draw_legend=UpperLeft) ?(legend_font_size=12.)
             ?(margin_bottom=30.) ?(margin_left=10.) ?(margin_top=30.) ?(margin_right=10.)
-            ?(y_tick_spacing=100.) ?(x_tick_spacing=170.) ?(tick_length=5.5)
+            ?(y_tick_spacing=70.) ?(x_tick_spacing=180.) ?(tick_length=5.5)
             ?(axis_arrow_h=11.) ?x_base ?y1_base ?y2_base
             ?(stacked_y1=NotStacked) ?(stacked_y2=NotStacked)
             ?(force_show_0=false) ?(show_rate=false) ?x_label_for_rate
@@ -376,7 +376,7 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
   let y2 =
     match !label2 with
     | None -> None
-    | Some label -> 
+    | Some label ->
       Some (string_of_label label, string_of_y2, vy_min.(1), vy_max.(1)) in
   let grid = xy_grid ~stroke:"#000" ~stroke_width:2.
                      ~font_size:axis_font_size
@@ -385,7 +385,7 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
                      ?string_of_x ~string_of_y ?y2 ?x_base ?y1_base ?y2_base
                      (x_axis_xmin, x_axis_xmax) (y_axis_ymin, y_axis_ymax)
                      (vx_min, vx_max) (vy_min.(0), vy_max.(0))
-  and paths = g (map_datasets path_of_dataset) 
+  and paths = g (map_datasets path_of_dataset)
   and legend =
     if draw_legend <> NoShow then (
       let nb_y1, nb_y2, width, boxes =
@@ -396,4 +396,55 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
               (inner_margin_vert *. 2. +. (float_of_int (nb_y1 + nb_y2)) *. legend_row_height) ::
          boxes)
     ) else g [] in
+  (* FIXME: xy_plot should return what's inside the SVG and stop accept
+   * attrs as a parameter *)
   svg (grid :: paths :: legend :: attrs)
+
+
+(* Chronology: represent events with their duration along the time axis,
+ * each event can have internal markers. *)
+
+type bar =
+  { start : float option ; stop : float option ;
+    color : string ;
+    markers : (float * string) list }
+
+let chronology ?(svg_width=800.) ?(svg_height=600.)
+               ?(axis_font_size=14.) ?(axis_arrow_h=11.)
+               ?(y_tick_spacing=70.) ?(x_tick_spacing=180.)
+               ?(tick_length=5.5)
+               ?(margin_bottom=30.) ?(margin_left=10.)
+               ?(margin_top=30.) ?(margin_right=10.)
+               bars vx_min vx_max =
+  let nb_bars = List.length bars in
+  let max_label_length = y_tick_spacing *. 0.9 in
+  let x_axis_xmin = margin_left +. max_label_length
+  and x_axis_xmax = svg_width -. margin_right
+  (* Counter-intuitively, y_axis_ymin is greater than y_axis_ymax,
+   * since ymin is the "start" of the Y axis, which is at the bottom of
+   * the SVG. *)
+  and y_axis_ymin = svg_height -. margin_bottom -. axis_font_size *. 1.2
+  and y_axis_ymax = margin_top in
+  let bar_height = (y_axis_ymin -. y_axis_ymax) /. float_of_int nb_bars in
+  let x_of =
+    let ratio = (x_axis_xmax -. x_axis_xmin) /. (vx_max -. vx_min) in
+    fun ts -> x_axis_xmin +. (ts -. vx_min) *. ratio
+  and y_of i = y_axis_ymin -. float_of_int i *. bar_height in
+  Formats.reset_all_states () ;
+  let x_axis =
+    axis ~stroke:"#000" ~stroke_width:2.
+         ~arrow_size:axis_arrow_h ~tick_spacing:x_tick_spacing
+         ~font_size:axis_font_size ~tick_length
+         ~label:"time" ~string_of_v:Formats.(timestamp.to_label)
+         (x_axis_xmin, y_axis_ymin) (x_axis_xmax, y_axis_ymin)
+         vx_min vx_max in
+  let svg_of_bar i b =
+    let x_start =
+      match b.start with None -> ~-.9. | Some s -> x_of s
+    and x_stop =
+      match b.stop with None -> svg_width +. 9. | Some s -> x_of s
+    and y_start = y_of (i+1) and y_stop = y_of i in
+    rect ~fill:b.color ~stroke:b.color ~fill_opacity:0.7 ~stroke_width:1.
+         x_start y_start (x_stop -. x_start) (y_stop -. y_start) in
+  let rects = List.mapi svg_of_bar bars in
+  g [ x_axis ; g rects ]

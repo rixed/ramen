@@ -27,33 +27,18 @@ let syslog = Syslog.openlog "ramen_alerter"
  * can save regularly and restore whenever we start in order to limit the
  * disruption in case of a crash: *)
 
-type escalation_step =
-  { timeout : float ;
-    (* Who to ring from the oncallers squad *)
-    victims : int array }
-
-type escalation =
-  { cause : Alert.t ; incident : Incident.t ;
-    steps : escalation_step array ;
-    mutable attempt : int ;
-    mutable last_sent : float }
-
 (* The part of the internal state that we persist on disk: *)
 type persisted_state = {
   (* Ongoing incidents stays there until they are manually closed (with
    * comment, reason, etc...) *)
   ongoing_incidents : (int, Incident.t) Hashtbl.t ;
 
-  (* The escalations that are live. Removed as soon as we managed to reach
-   * the oncall *)
-  mutable ongoing_escalations : (int, escalation) Hashtbl.t ;
-
   (* All global (aka team-wide) inhibitions, keyed by team name *)
   inhibitions : (string, Inhibition.t list) Hashtbl.t ;
 
   (* Used to give a unique id to any escalation so that we can ack them. *)
   mutable next_alert_id : int ;
-  
+
   (* Same for incidents: *)
   mutable next_incident_id : int }
 
@@ -76,7 +61,7 @@ type state = {
   (* What is saved onto/restored from disk to avoid losing context when
    * stopping or crashing: *)
   persist : persisted_state ;
-  
+
   (* TODO: a file *)
   mutable archived_incidents : Incident.t list }
 
@@ -99,23 +84,21 @@ let is_inhibited state name team now =
 
 exception Not_implemented
 
-module Contact =
-struct
-  type t = Console
-         | SysLog
-         | Email of { to_ : string [@ppp_rename "to"] ;
-                      cc : string [@ppp_default ""] ;
-                      bcc : string [@ppp_default ""] }
-         | SMS of string [@@ppp PPP_OCaml]
-end
-
 module AlertOps =
 struct
   open Alert (* type of an alert is shared with JS but not the ops *)
 
-  let make name team importance title text time now =
-    { name ; team ; importance ; title ; text ; time ;
-      received = now ; stopped = None }
+  let make state name team importance title text time now =
+    let id = state.persist.next_alert_id in
+    state.persist.next_alert_id <- state.persist.next_alert_id + 1 ;
+    { id ; name ; team ; importance ; title ; text ; time ;
+      received = now ; stopped = None ; escalation = None ; log = [] }
+
+  let log alert now event =
+    (* TODO: Save these logs in the incident they are related to *)
+    !logger.debug "Alert %s: %s"
+      alert.name (PPP.to_string Alert.event_ppp event) ;
+    alert.log <- (now, event) :: alert.log
 end
 
 module IncidentOps =
@@ -127,35 +110,50 @@ struct
       (PPP.to_string Alert.t_ppp alert) ;
     let i = { id = state.persist.next_incident_id ;
               alerts = [ alert ] ;
-              stfu = false } in
+              stfu = false ;
+              started = alert.Alert.time ;
+              stopped = None } in
     state.persist.next_incident_id <- state.persist.next_incident_id + 1 ;
     Hashtbl.add state.persist.ongoing_incidents i.id i ;
     state.dirty <- true ;
     i
 
-  let is_for_team t i =
-    match i.alerts with
-    | [] -> false
-    | a :: _ -> a.Alert.team = t
+  let is_for_team t i = team_of i = t
 
-  let find_alert state ~name ~team ~title =
+  let stopped_after ts i =
+    match i.stopped with
+    | None -> true
+    | Some s -> s > ts
+
+  let started_before ts i = i.started >= ts
+
+  let find_open_alert state ~name ~team ~title =
     Hashtbl.values state.persist.ongoing_incidents |>
     Enum.find_map (fun i ->
       if (List.hd i.alerts).team <> team then None else
       match List.find (fun a ->
-        a.Alert.name = name && a.title = title) i.alerts with
+        a.Alert.stopped = None &&
+        a.name = name && a.title = title) i.alerts with
       | exception Not_found -> None
       | a -> Some (i, a))
 
   (* Let's be conservative and create a new incident for each new alerts.
    * User could still manually merge incidents later on. *)
   let get_or_create state alert =
-    match find_alert state alert.Alert.name alert.team alert.title with
-    | exception Not_found -> make state alert, false
-    | i, _ -> i, true
+    match find_open_alert state alert.Alert.name alert.team alert.title with
+    | exception Not_found -> make state alert, None
+    | i, a -> i, Some a
 
   let fold_archived state init f =
     List.fold_left f init state.archived_incidents
+
+  let fold_ongoing state init f =
+    Hashtbl.fold (fun _id i prev ->
+      f prev i) state.persist.ongoing_incidents init
+
+  let fold state init f =
+    let init' = fold_ongoing state init f in
+    fold_archived state init' f
 
   let find state i =
     Hashtbl.find state.persist.ongoing_incidents i
@@ -167,44 +165,16 @@ struct
   let merge_into state i1 i2 =
     let inc1, inc2 = find state i1, find state i2 in
     inc2.alerts <- List.rev_append inc1.alerts inc2.alerts ;
+    inc2.started <- min inc2.started inc1.started ;
+    inc2.stopped <-
+      (match inc2.stopped, inc1.stopped with
+      | Some t2, Some t1 -> Some (max t1 t2)
+      | _ -> None) ;
     remove state i1
 
   let archive state i =
-    let incident = find state i in
-    remove state i ;
-    state.archived_incidents <- incident :: state.archived_incidents
-end
-
-module Diary =
-struct
-  type alert_outcome =
-    Duplicate | Inhibited | STFU | Notify of (string * Contact.t) [@@ppp PPP_OCaml]
-
-  type log_event = NewAlert of (Alert.t * Incident.t * alert_outcome)
-                 (* TODO: we'd like to have the origin of this ack. *)
-                 | AckUnknown of int | Ack of escalation
-                                         (* name, team, title *)
-                 | StopUnstartedAlert of (string * string * string)
-                 | StopAlert of (Alert.t * Incident.t)
-
-  let string_of_log_event = function
-    | NewAlert (alert, _indicent, alert_outcome) ->
-      Printf.sprintf "alert %s for %s (%s), outcome=%s"
-        alert.name alert.team alert.title
-        (PPP.to_string alert_outcome_ppp alert_outcome)
-    | AckUnknown i ->
-      "Ack for unknown notification "^ string_of_int i
-    | Ack esc ->
-      "Ack for alert "^ esc.cause.name
-    | StopUnstartedAlert (name, _team, _title) ->
-      "Stop for unstarted alert "^ name
-    | StopAlert (alert, _incident) ->
-      "Stop for alert "^ alert.name
-
-  let add log_event =
-    (* TODO: append somewhere on disc for later retrieval, no need to
-     * keep this in memory *)
-    !logger.debug "Received: %s" (string_of_log_event log_event)
+    remove state i.id ;
+    state.archived_incidents <- i :: state.archived_incidents
 end
 
 module OnCaller =
@@ -257,7 +227,7 @@ end
 
 module Sender =
 struct
-  let string_of_alert id attempt alert victim =
+  let string_of_alert alert attempt victim =
     Printf.sprintf "\
       Title: %s\n\
       Time: %s\n\
@@ -266,7 +236,7 @@ struct
       Dest: %s\n\
       %s\n\n%!"
       alert.Alert.title (string_of_time alert.time)
-      id attempt victim alert.text
+      alert.id attempt victim alert.text
 
   exception CannotSendAlert of string
 
@@ -288,33 +258,35 @@ struct
     let open Contact in
     function
     | Console ->
-      fun id attempt alert victim ->
-        Printf.printf "%s\n%!" (string_of_alert id attempt alert victim) ;
+      fun alert attempt victim ->
+        Printf.printf "%s\n%!" (string_of_alert alert attempt victim) ;
         return_unit
     | SysLog ->
-      fun id attempt alert victim ->
+      fun alert attempt victim ->
         let level =
           match alert.importance with
           | 0 -> `LOG_EMERG | 1 -> `LOG_ALERT | 2 -> `LOG_CRIT
           | 3 -> `LOG_ERR | 4 -> `LOG_WARNING | 5 -> `LOG_NOTICE
           | _ -> `LOG_INFO in
         Printf.sprintf "Name=%s;Title=%s;Id=%d;Attempt=%d;Dest=%s;Text=%s"
-          alert.name alert.title id attempt victim alert.text |>
+          alert.name alert.title alert.id attempt victim alert.text |>
         Syslog.syslog syslog level ;
         return_unit
     | Email { to_ ; cc ; bcc } ->
-      fun id attempt alert victim ->
-        let body = string_of_alert id attempt alert victim in
+      fun alert attempt victim ->
+        let body = string_of_alert alert attempt victim in
         (* TODO: there should be a link to an acknowledgement URL *)
         let subject = "ALERT: "^ alert.title in
         send_mail ~subject ~cc ~bcc to_ body
     | SMS _ ->
-      fun _id _attempt _alert _victim -> fail Not_implemented
+      fun _alert _attempt _victim -> fail Not_implemented
 end
 
-module Escalation =
+module EscalationOps =
 struct
-  let default_escalation cause incident now =
+  open Escalation
+
+  let default_escalation now =
     (* First send type 0, then after 5 minutes send type 1 then after 10
      * minutes send type 2, and repeat type 2 every 10 minutes: *)
     { steps = [|
@@ -322,9 +294,9 @@ struct
         { timeout = 600. ; victims = [| 0 ; 1 |] } ;
         { timeout = 600. ; victims = [| 0 ; 1 |] }
       |] ;
-      cause ; incident ; attempt = 0 ; last_sent = now }
+      attempt = 0 ; last_sent = now }
 
-  let make state cause incident now =
+  let make state alert now =
     !logger.debug "Creating an escalation" ;
     let to_array mask =
       let rec loop prev bit =
@@ -339,12 +311,12 @@ struct
      * most important alerts: *)
     let rec loop importance =
       if importance < 0 then ( (* end the recursion *)
-        default_escalation cause incident now
+        default_escalation now
       ) else (
         let open Sqlite3 in
         let stmt = state.stmt_get_escalation in
         reset stmt |> must_be_ok ;
-        bind stmt 1 Data.(TEXT cause.team) |> must_be_ok ;
+        bind stmt 1 Data.(TEXT alert.Alert.team) |> must_be_ok ;
         bind stmt 2 Data.(INT (Int64.of_int importance)) |> must_be_ok ;
         let steps =
           step_all_fold stmt [] (fun prev ->
@@ -355,14 +327,14 @@ struct
           List.rev |>
           Array.of_list in
         if steps = [||] then loop (importance - 1) else
-        { steps ; cause ; incident ;
-          attempt = 0 ; last_sent = now }
+        { steps ; attempt = 0 ; last_sent = now }
       )
     in
-    loop cause.importance
+    loop alert.importance
 
-  (* Send that alert using message king for this step. *)
-  let send_alert state id esc victims now =
+  (* Send a message and prepare the escalation *)
+  let outcry state alert esc now =
+    let step = get_cap esc.steps esc.attempt in
     (* We figure out who the oncallers are at each attempt of each alert of an
      * incident. This means that if the incident happens during an oncall
      * shift the new oncallers get involved in the middle of the action while
@@ -378,28 +350,24 @@ struct
      * targeted. *)
     Array.fold_left (fun ths rank ->
         let open OnCaller in
-        let victim = who_is_oncall state esc.cause.team rank now in
+        let victim = who_is_oncall state alert.Alert.team rank now in
         let contact = get_cap victim.contacts esc.attempt in
         !logger.debug "Victim is %s, contact for attempt %d is: %s"
           victim.name esc.attempt (PPP.to_string Contact.t_ppp contact) ;
         let sender = Sender.get contact in
-        Diary.(add (NewAlert (esc.cause, esc.incident,
-                              Notify (victim.name, contact)))) ;
-        sender id esc.attempt esc.cause victim.name :: ths
-      ) [] victims |>
+        AlertOps.log alert now (Alert.Outcry (victim.name, contact)) ;
+        sender alert esc.attempt victim.name :: ths
+      ) [] step.victims |>
     join
 
-  (* Send a message and prepare the escalation *)
-  let send state id esc now =
-    let step = get_cap esc.steps esc.attempt in
-    send_alert state id esc step.victims now
-
-  let start state esc =
-    let id = state.persist.next_alert_id in
-    state.persist.next_alert_id <- state.persist.next_alert_id + 1 ;
-    Hashtbl.add state.persist.ongoing_escalations id esc ;
-    state.dirty <- true ;
-    send state id esc
+  let fold_ongoing state init f =
+    IncidentOps.fold_ongoing state init (fun prev i ->
+      List.fold_left (fun prev a ->
+        match a.Alert.escalation with
+        | Some esc ->
+          assert (a.stopped = None) ;
+          f prev a esc
+        | None -> prev) prev i.alerts)
 end
 
 let open_config_db file =
@@ -453,23 +421,21 @@ let open_config_db file =
     db_open ~mode:`READONLY file
 
 let check_escalations state now =
-  let escals = state.persist.ongoing_escalations in
-  Hashtbl.filter_inplace (fun esc -> esc.cause.stopped = None) escals ;
-  Hashtbl.fold (fun id esc actions ->
+  EscalationOps.fold_ongoing state [] (fun prev alert esc ->
       let step = get_cap esc.steps esc.attempt in
       if now >= esc.last_sent +. step.timeout then (
         (* We must escalate *)
         esc.attempt <- esc.attempt + 1 ;
         esc.last_sent <- now ;
-        (id, esc) :: actions
-      ) else actions
-    ) escals [] |>
-  Lwt_list.iter_p (fun (id, esc) -> Escalation.send state id esc now)
+        AlertOps.log alert now (Alert.Escalate step) ;
+        EscalationOps.outcry state alert esc now :: prev ;
+      ) else prev
+    ) |>
+  join
 
 let get_state save_file db_config_file default_team =
   let get_new () =
     { ongoing_incidents = Hashtbl.create 5 ;
-      ongoing_escalations = Hashtbl.create 11 ;
       inhibitions = Hashtbl.create 11 ;
       next_alert_id = 0 ;
       next_incident_id = 0 }
@@ -540,48 +506,62 @@ let save_state state =
 let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
   if firing then (
     (* First step: deduplication *)
-    let alert = AlertOps.make name team importance title text time now in
-    let incident, is_dup = IncidentOps.get_or_create state alert in
-    if is_dup then (
-      Diary.(add (NewAlert (alert, incident, Duplicate))) ;
+    let alert =
+      AlertOps.make state name team importance title text time now in
+    match IncidentOps.get_or_create state alert with
+    | _i, Some orig_alert ->
+      AlertOps.log orig_alert now (NewNotification Duplicate) ;
       return_unit
-    ) else if is_inhibited state name team now then (
-      Diary.(add (NewAlert (alert, incident, Inhibited))) ;
-      return_unit
-    ) else if incident.stfu then (
-      Diary.(add (NewAlert (alert, incident, STFU))) ;
-      return_unit
-    ) else (
-      let esc = Escalation.make state alert incident now in
-      let%lwt () = Escalation.start state esc now in
-      save_state state ;
-      return_unit
-    )
+    | i, None ->
+      if is_inhibited state name team now then (
+        AlertOps.log alert now (NewNotification Inhibited) ;
+        return_unit
+      ) else if i.stfu then (
+        AlertOps.log alert now (NewNotification STFU) ;
+        return_unit
+      ) else (
+        let esc = EscalationOps.make state alert now in
+        alert.escalation <- Some esc ;
+        AlertOps.log alert now (NewNotification StartEscalation) ;
+        state.dirty <- true ;
+        let%lwt () = EscalationOps.outcry state alert esc now in
+        save_state state ;
+        return_unit
+      )
   ) else (
-    (* Retrieve the alert and set it's closing time *)
-    (match IncidentOps.find_alert state ~name ~team ~title with
+    (* Retrieve the alert and close it *)
+    (match IncidentOps.find_open_alert state ~name ~team ~title with
     | exception Not_found ->
-      (* Maybe we just strted in non-firing position, or the incident
+      (* Maybe we just started in non-firing position, or the incident
        * have been manually archived already. Better not ask too many
-       * questions and just log *)
-      Diary.(add (StopUnstartedAlert (name, team, title)))
+       * questions and just log. *)
+      !logger.info "Unknown alert %s for team %s titled %S stopped firing."
+        name team title
     | i, a ->
-      !logger.debug "Alert stopped." ;
+      !logger.info "Alert %s for team %s titled %S stopped firing."
+        name team title ;
       a.stopped <- Some now ;
-      Diary.(add (StopAlert (a, i))) ;
-      (* Setting this will also terminate the escalation *)) ;
+      a.escalation <- None ;
+      AlertOps.log a now Stop ;
+      (* If no more alerts are firing, archive the incident *)
+      if List.for_all (fun a -> a.Alert.stopped <> None) i.alerts then
+        IncidentOps.archive state i) ;
     return_unit
   )
 
 let acknowledge state id =
-  match Hashtbl.find state.ongoing_escalations id with
-  | exception Not_found ->
-    !logger.error "Received an ack for unknown id %d!" id ;
-    Diary.(add (AckUnknown id))
-  | esc ->
-    Diary.(add (Ack esc)) ;
-    Hashtbl.remove state.ongoing_escalations id
-
+  let now = Unix.gettimeofday () in
+  try
+    IncidentOps.fold_ongoing state () (fun () i ->
+      List.iter (fun alert ->
+          if alert.Alert.id = id then (
+            AlertOps.log alert now Ack ;
+            alert.Alert.escalation <- None ;
+            raise Exit
+          )
+        ) i.Incident.alerts) ;
+    !logger.error "Received an ack for unknown id %d!" id
+  with Exit -> ()
 
 module HttpSrv =
 struct
@@ -643,7 +623,7 @@ struct
       Hashtbl.fold (fun _id incident prev ->
           match incident.Incident.alerts with
           | [] -> prev (* Should not happen *)
-          | a :: _ -> 
+          | a :: _ ->
             let is_selected =
               match team_opt with None -> true
                                 | Some t -> a.team = t in
@@ -655,43 +635,85 @@ struct
       PPP.to_string GetOngoing.resp_ppp incidents in
     respond_ok ~body ()
 
-  let get_history state headers body =
-    let%lwt req = of_json headers "Get History" GetHistory.req_ppp body in
+  let get_history state _headers team time_range =
     (* For now we have the whole history in a single file. *)
+    let is_in_team =
+      match team with
+      | Some t -> fun i -> IncidentOps.is_for_team t i
+      | None -> fun _ -> true
+    and is_in_range =
+      match time_range with
+      | GetHistory.LastSecs s ->
+          let min_ts = Unix.gettimeofday () -. s in
+          IncidentOps.stopped_after min_ts
+      | GetHistory.SinceUntil (s, u) ->
+          fun i ->
+            IncidentOps.stopped_after s i &&
+             IncidentOps.started_before u i in
+    let is_in i = is_in_team i && is_in_range i in
     let logs =
-      IncidentOps.fold_archived state [] (fun prev i ->
-        let is_in =
-          match req.team with
-          | Some t -> IncidentOps.is_for_team t i
-          | None -> true in
-        if is_in then i :: prev else prev) in
+      IncidentOps.fold state [] (fun prev i ->
+        if is_in i then i :: prev else prev) in
     let body = PPP.to_string GetHistory.resp_ppp logs in
     respond_ok ~body ()
 
+  let get_history_post state headers body =
+    let%lwt req = of_json headers "Get History" GetHistory.req_ppp body in
+    get_history state headers req.team req.time_range
+
+  let get_history_get state headers team params =
+    let%lwt time_range =
+      match Hashtbl.find params "last" with
+      | exception Not_found ->
+        (match Hashtbl.find params "range" with
+        | exception Not_found ->
+          fail (HttpError (400, "Missing parameter: last or range"))
+        | r ->
+          (try
+            let s, u = String.split ~by:"," r in
+            GetHistory.SinceUntil (float_of_string s, float_of_string u) |>
+            return
+          with Not_found | Failure _ ->
+            let msg = "Invalid parameter: range must be \
+                       timestamp,timestamp" in
+            fail (HttpError (400, msg))))
+      | l ->
+        (try GetHistory.LastSecs (float_of_string l) |> return
+        with Failure _ ->
+          let msg = "Invalid parameter: last must be a numeric" in
+          fail (HttpError (400, msg))) in
+    get_history state headers team time_range
+
   let start port cert_opt key_opt state www_dir =
     let router meth path params headers body =
-      match meth, path with
-      | `GET, ["notify"] ->
-        notify state params
-      | `GET, ["teams"] ->
-        get_teams state
-      | `GET, ["ongoing"] ->
-        get_ongoing state None
-      | `GET, ["ongoing"; team] ->
-        get_ongoing state (Some team)
-      | (`POST|`PUT), ["history"] ->
-        get_history state headers body
-      (* Web UI *)
-      | `GET, ([]|["index.html"]) ->
-        if www_dir = "" then
-          serve_string AlerterGui.without_link
-        else
-          serve_string AlerterGui.with_links
-      | `GET, ["style.css" | "alerter_script.js" as file] ->
-        serve_file www_dir file replace_placeholders
-      (* Everything else is an error: *)
-      | _ ->
-        fail (HttpError (404, "No such resource"))
+      let%lwt resp =
+        match meth, path with
+        | `GET, ["notify"] ->
+          notify state params
+        | `GET, ["teams"] ->
+          get_teams state
+        | `GET, ["ongoing"] ->
+          get_ongoing state None
+        | `GET, ["ongoing"; team] ->
+          get_ongoing state (Some team)
+        | (`POST|`PUT), ["history"] ->
+          get_history_post state headers body
+        | `GET, ("history" :: team) ->
+          let team = if team = [] then None else Some (List.hd team) in
+          get_history_get state headers team params
+        (* Web UI *)
+        | `GET, ([]|["index.html"]) ->
+          if www_dir = "" then
+            serve_string AlerterGui.without_link
+          else
+            serve_string AlerterGui.with_links
+        | `GET, ["style.css" | "alerter_script.js" as file] ->
+          serve_file www_dir file replace_placeholders
+        (* Everything else is an error: *)
+        | _ ->
+          fail (HttpError (404, "No such resource")) in
+      save_state state ;
+      return resp
   in
   http_service port cert_opt key_opt router
 end

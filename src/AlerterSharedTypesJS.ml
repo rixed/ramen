@@ -1,7 +1,45 @@
-module Alert =
+module Contact =
 struct
   type t =
-    { name : string ;
+    | Console
+    | SysLog
+    | Email of { to_ : string [@ppp_rename "to"] ;
+                 cc : string [@ppp_default ""] ;
+                 bcc : string [@ppp_default ""] }
+    | SMS of string [@@ppp PPP_JSON]
+end
+
+module Escalation =
+struct
+  type step =
+    { timeout : float ;
+      (* Who to ring from the oncallers squad *)
+      victims : int array } [@@ppp PPP_JSON]
+
+  type t =
+    { steps : step array ;
+      (* index in the above array: *)
+      mutable attempt : int ;
+      mutable last_sent : float } [@@ppp PPP_JSON]
+end
+
+module Alert =
+struct
+  type notification_outcome =
+    | Duplicate | Inhibited | STFU | StartEscalation
+    [@@ppp PPP_JSON]
+
+  type event =
+    | NewNotification of notification_outcome
+    | Escalate of Escalation.step
+    | Outcry of (string * Contact.t)
+    (* TODO: we'd like to know the origin of this ack. *)
+    | Ack
+    | Stop [@@ppp PPP_JSON]
+
+  type t =
+    { id : int ; (* Used for acknowledgments *)
+      name : string ;
       time : float ;
       team : string ;
       title : string ;
@@ -12,7 +50,10 @@ struct
       (* When we _received_ the alert and started the escalation. Hopefully
        * not too long after [time]. *)
       received : float ;
-      mutable stopped : float option } [@@ppp PPP_JSON]
+      mutable stopped : float option ;
+      mutable escalation : Escalation.t option ;
+      (* Log for that alert, most recent first: *)
+      mutable log : (float * event) list } [@@ppp PPP_JSON]
 end
 
 module Incident =
@@ -20,7 +61,14 @@ struct
   type t =
     { id : int ;
       mutable alerts : Alert.t list ;
-      mutable stfu : bool } [@@ppp PPP_JSON]
+      mutable stfu : bool ;
+      mutable started : float ;
+      mutable stopped : float option } [@@ppp PPP_JSON]
+
+  let team_of i =
+    match i.alerts with
+    | [] -> ""
+    | a :: _ -> a.Alert.team
 end
 
 module Inhibition =
@@ -54,12 +102,12 @@ end
 
 module GetHistory =
 struct
-  type date_range = LastSecs of float
+  type time_range = LastSecs of float
                   | SinceUntil of (float * float) [@@ppp PPP_JSON]
 
   type req =
     { team : string option ;
-      date_range : date_range } [@@ppp PPP_JSON]
+      time_range : time_range } [@@ppp PPP_JSON]
 
   type resp = Incident.t list [@@ppp PPP_JSON]
 end

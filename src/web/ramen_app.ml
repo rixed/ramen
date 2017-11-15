@@ -1088,24 +1088,6 @@ let tail_panel =
                 row node.output_type r :: l) [] rows |>
               List.rev |> tbody))]))
 
-let time_selector =
-  with_param chart_duration (fun cur_dur ->
-    let sel label dur =
-      if dur = cur_dur then
-        button [ clss "selected" ; text label ]
-      else
-        button ~action:(fun _ ->
-            set chart_duration dur ;
-            reload_chart ())
-          [ clss "actionable" ; text label ] in
-    div
-      [ clss "chart-buttons" ;
-        sel "last 10m" 600. ;
-        sel "last hour" 3600. ;
-        sel "last 3h" (3. *. 3600.) ;
-        sel "last 8h" (8. *. 3600.) ;
-        sel "last day" (24. *. 3600.) ])
-
 let chart_type_selector =
   with_param chart_type (fun cur_ct ->
     let sel label ct =
@@ -1166,7 +1148,7 @@ let timechart_panel =
                             "; height:"^ string_of_float svg_height ^
                             "; min-height:"^ string_of_float svg_height ^";") ] in
           div
-            [ time_selector ;
+            [ time_selector ~action:reload_chart chart_duration ;
               chart_type_selector ;
               show_zero_selector ;
               with_param chart_type (fun stacked_y1 ->

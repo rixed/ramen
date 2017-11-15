@@ -202,7 +202,7 @@ AlerterSharedTypesJS_noPPP.cmo: AlerterSharedTypesJS.ml
 web/alerter_app.cmo: web/alerter_app.ml AlerterSharedTypesJS_noPPP.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/alerter_script.byte: Consts.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo web/alerter_app.cmo
+web/alerter_script.byte: AlerterSharedTypesJS_noPPP.cmo Consts.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo web/alerter_app.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -linkpkg $^ -o $@
 
 web/alerter_script.js: web/alerter_script.byte

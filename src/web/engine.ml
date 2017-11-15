@@ -12,6 +12,10 @@ let fail msg =
   Firebug.console##log (Js.string ("Failure: "^ msg)) ;
   Firebug.console##assert_ Js._false ;
   assert false
+let fail_2 msg x =
+  Firebug.console##log_2 (Js.string ("Failure: "^ msg)) x ;
+  Firebug.console##assert_ Js._false ;
+  assert false
 
 (* Stdlib complement: *)
 
@@ -74,9 +78,28 @@ let list_of_js c js =
     let j = Js.array_get js i |> optdef_get in
     c j)
 let of_field js n c = Js.Unsafe.get js n |> c
-let of_opt_field js n c =
-  let v = Js.Unsafe.get js n in
-  Js.Optdef.map v c |> Js.Optdef.to_option
+let of_opt_field js (n : string) c =
+  (* Value can be unset or undef *)
+  Js.Optdef.case (Js.Unsafe.get js n)
+    (fun () -> None)
+    (fun v ->
+      Js.Opt.case v
+        (fun () -> None)
+        (fun v -> Some (c v)))
+let variant_of_js vars js =
+  let rec loop = function
+  | [] -> fail_2 "Unknown variant" js
+  | (name, conv)::vars ->
+    Js.Optdef.case (Js.Unsafe.get js name)
+      (fun () -> loop vars)
+      (fun v -> conv v) in
+  loop vars
+let pair_of_js c1 c2 js =
+  c1 (Js.array_get js 0 |> optdef_get),
+  c2 (Js.array_get js 1 |> optdef_get)
+let array_of_js c js =
+  Array.init js##.length (fun i ->
+    Js.array_get js i |> optdef_get |> c)
 
 (* For a smaller JS: *)
 let string_of_float x =
@@ -702,3 +725,23 @@ let http_put path content ?what ?on_done on_ok =
   ajax "PUT" path ~content ?what ?on_done on_ok
 let http_del path ?what ?on_done on_ok =
   ajax "DELETE" path ?what ?on_done on_ok
+
+(* Dom library *)
+
+let time_selector ?action duration_param =
+  with_param duration_param (fun cur_dur ->
+    let sel label dur =
+      if dur = cur_dur then
+        button [ clss "selected" ; text label ]
+      else
+        button ~action:(fun _ ->
+            set duration_param dur ;
+            option_may (fun f -> f ()) action)
+          [ clss "actionable" ; text label ] in
+    div
+      [ clss "chart-buttons" ;
+        sel "last 10m" 600. ;
+        sel "last hour" 3600. ;
+        sel "last 3h" (3. *. 3600.) ;
+        sel "last 8h" (8. *. 3600.) ;
+        sel "last day" (24. *. 3600.) ])
