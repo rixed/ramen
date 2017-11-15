@@ -88,11 +88,12 @@ module AlertOps =
 struct
   open Alert (* type of an alert is shared with JS but not the ops *)
 
-  let make state name team importance title text time now =
+  let make state name team importance title text started_firing now =
     let id = state.persist.next_alert_id in
     state.persist.next_alert_id <- state.persist.next_alert_id + 1 ;
-    { id ; name ; team ; importance ; title ; text ; time ;
-      received = now ; stopped = None ; escalation = None ; log = [] }
+    { id ; name ; team ; importance ; title ; text ; started_firing ;
+      stopped_firing = None ; received = now ; escalation = None ;
+      log = [] }
 
   let log alert now event =
     (* TODO: Save these logs in the incident they are related to *)
@@ -110,9 +111,7 @@ struct
       (PPP.to_string Alert.t_ppp alert) ;
     let i = { id = state.persist.next_incident_id ;
               alerts = [ alert ] ;
-              stfu = false ;
-              started = alert.Alert.time ;
-              stopped = None } in
+              stfu = false } in
     state.persist.next_incident_id <- state.persist.next_incident_id + 1 ;
     Hashtbl.add state.persist.ongoing_incidents i.id i ;
     state.dirty <- true ;
@@ -121,18 +120,19 @@ struct
   let is_for_team t i = team_of i = t
 
   let stopped_after ts i =
-    match i.stopped with
+    match stopped i with
     | None -> true
     | Some s -> s > ts
 
-  let started_before ts i = i.started >= ts
+  let started_before ts i =
+    Incident.started i >= ts
 
   let find_open_alert state ~name ~team ~title =
     Hashtbl.values state.persist.ongoing_incidents |>
     Enum.find_map (fun i ->
       if (List.hd i.alerts).team <> team then None else
       match List.find (fun a ->
-        a.Alert.stopped = None &&
+        a.Alert.stopped_firing = None &&
         a.name = name && a.title = title) i.alerts with
       | exception Not_found -> None
       | a -> Some (i, a))
@@ -165,11 +165,6 @@ struct
   let merge_into state i1 i2 =
     let inc1, inc2 = find state i1, find state i2 in
     inc2.alerts <- List.rev_append inc1.alerts inc2.alerts ;
-    inc2.started <- min inc2.started inc1.started ;
-    inc2.stopped <-
-      (match inc2.stopped, inc1.stopped with
-      | Some t2, Some t1 -> Some (max t1 t2)
-      | _ -> None) ;
     remove state i1
 
   let archive state i =
@@ -235,7 +230,7 @@ struct
       Attempt: %d\n\
       Dest: %s\n\
       %s\n\n%!"
-      alert.Alert.title (string_of_time alert.time)
+      alert.Alert.title (string_of_time alert.started_firing)
       alert.id attempt victim alert.text
 
   exception CannotSendAlert of string
@@ -365,7 +360,7 @@ struct
       List.fold_left (fun prev a ->
         match a.Alert.escalation with
         | Some esc ->
-          assert (a.stopped = None) ;
+          assert (a.stopped_firing = None) ;
           f prev a esc
         | None -> prev) prev i.alerts)
 end
@@ -540,11 +535,12 @@ let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
     | i, a ->
       !logger.info "Alert %s for team %s titled %S stopped firing."
         name team title ;
-      a.stopped <- Some now ;
+      a.stopped_firing <- Some now ;
       a.escalation <- None ;
       AlertOps.log a now Stop ;
       (* If no more alerts are firing, archive the incident *)
-      if List.for_all (fun a -> a.Alert.stopped <> None) i.alerts then
+      let stopped_firing a = a.Alert.stopped_firing <> None in
+      if List.for_all stopped_firing i.alerts then
         IncidentOps.archive state i) ;
     return_unit
   )
@@ -650,7 +646,8 @@ struct
           fun i ->
             IncidentOps.stopped_after s i &&
              IncidentOps.started_before u i in
-    let is_in i = is_in_team i && is_in_range i in
+    let is_in i =
+      is_in_team i && is_in_range i in
     let logs =
       IncidentOps.fold state [] (fun prev i ->
         if is_in i then i :: prev else prev) in

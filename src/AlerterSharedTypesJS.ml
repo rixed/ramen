@@ -40,7 +40,8 @@ struct
   type t =
     { id : int ; (* Used for acknowledgments *)
       name : string ;
-      time : float ;
+      started_firing : float ;
+      mutable stopped_firing : float option ;
       team : string ;
       title : string ;
       text : string ;
@@ -50,7 +51,6 @@ struct
       (* When we _received_ the alert and started the escalation. Hopefully
        * not too long after [time]. *)
       received : float ;
-      mutable stopped : float option ;
       mutable escalation : Escalation.t option ;
       (* Log for that alert, most recent first: *)
       mutable log : (float * event) list } [@@ppp PPP_JSON]
@@ -61,14 +61,25 @@ struct
   type t =
     { id : int ;
       mutable alerts : Alert.t list ;
-      mutable stfu : bool ;
-      mutable started : float ;
-      mutable stopped : float option } [@@ppp PPP_JSON]
+      mutable stfu : bool } [@@ppp PPP_JSON]
 
   let team_of i =
     match i.alerts with
     | [] -> ""
     | a :: _ -> a.Alert.team
+
+  let started i =
+    List.fold_left (fun mi a ->
+        min mi a.Alert.started_firing
+      ) max_float i.alerts
+
+  let stopped i =
+    List.fold_left (fun ma a ->
+        match ma, a.Alert.stopped_firing with
+        | None, x -> x
+        | _, None -> ma
+        | Some ma, Some ts -> Some (max ma ts)
+      ) None i.alerts
 end
 
 module Inhibition =

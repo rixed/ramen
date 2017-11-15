@@ -70,13 +70,13 @@ let alert_of_js js =
   Alert.{
     id = of_field js "id" identity ;
     name = of_field js "name" Js.to_string ;
-    time = of_field js "time" Js.to_float ;
+    started_firing = of_field js "started_firing" Js.to_float ;
     team = of_field js "team" Js.to_string ;
     title = of_field js "title" Js.to_string ;
     text = of_field js "text" Js.to_string ;
     importance = of_field js "importance" identity ;
     received = of_field js "received" Js.to_float ;
-    stopped = of_opt_field js "stopped" Js.to_float ;
+    stopped_firing = of_opt_field js "stopped_firing" Js.to_float ;
     escalation = of_opt_field js "escalation" escalation_of_js ;
     log = of_field js "log" (list_of_js log_entry_of_js) }
 
@@ -84,9 +84,7 @@ let incident_of_js i =
   Incident.{
     id = of_field i "id" identity ;
     alerts = of_field i "alerts" (list_of_js alert_of_js) ;
-    stfu = of_field i "stfu" Js.to_bool ;
-    started = of_field i "started" Js.to_float ;
-    stopped = of_opt_field i "stopped" Js.to_float }
+    stfu = of_field i "stfu" Js.to_bool }
 
 (*
  * States
@@ -182,7 +180,7 @@ let live_incidents =
             List.fold_left (fun (prev_txt, prev_time, _) a ->
                 prev_txt ^(if prev_txt <> "" then ", " else "")^
                   a.Alert.name,
-                min prev_time a.time,
+                min prev_time a.started_firing,
                 Some a.Alert.team
               ) ("", max_float, None) i.Incident.alerts in
           let team = option_get team in
@@ -242,9 +240,10 @@ let page_hand_over = todo "hand over"
 let page_history =
   with_param history (fun incidents ->
     let bars = List.map (fun i ->
+      Firebug.console##log_2 (Incident.started i) (Incident.stopped i) ;
       Chart.{
-        start = Some i.Incident.started ;
-        stop = i.stopped ;
+        start = Some (Incident.started i) ;
+        stop = Incident.stopped i ;
         color = Color.random_of_string (Incident.team_of i) ;
         markers = [] }) incidents
     and margin_vert = 15. and margin_horiz = 5.
