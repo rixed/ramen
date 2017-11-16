@@ -1,50 +1,5 @@
+open WebHelpers
 open Engine
-
-let log_base base n = log n /. log base
-
-let grid_interval ?(base=10.) n start stop =
-  let dv = stop -. start in
-  (* find the round value closest to dv/n (by round we mean 1, 5, 10...) *)
-  let l = dv /. float_of_int n in (* l = length if we split dv in n equal parts *)
-  let f = base ** floor (log_base base l) in (* f closest power of 10 below l *)
-  let i = floor (l /. f) in (* i >= 1, how much f is smaller than l *)
-  if i < 2.5 || 5. *. f >= dv then f else (* if it's less than 2.5 times smaller, use it *)
-  if i < 7.5 || 10. *. f >= dv then 5. *. f else (* if it's around 5 times smaller, use 5*f *)
-  10. *. f
-
-(*$Q grid_interval
-  (Q.triple Q.small_int Q.float Q.pos_float) (fun (n, start, width) -> \
-    n = 0 || width = 0. || \
-    let interval = grid_interval n start (start +. width) in \
-    interval >= 0. && interval <= width)
- *)
-
-(* Given a range of values [start:stop], returns an enum of approximatively [n]
- * round intermediate values *)
-
-let grid ?base n start stop =
-  let interval = grid_interval ?base n start stop in
-  let lo = interval *. floor (start /. interval) in
-  let lo = if lo >= start then lo else lo +. interval in
-  (*Enum.seq lo ((+.) interval) ((>=) stop)*)
-  let rec loop prev i =
-    if stop >= i then
-      loop (i :: prev) (i +. interval)
-    else List.rev prev in
-  loop [] lo
-
-(*$Q grid
-  (Q.triple Q.small_int Q.float Q.pos_float) (fun (n, start, width) -> \
-    n = 0 || width = 0. || \
-    let stop = start +. width in \
-    grid n start stop |> Enum.for_all (fun x -> x >= start && x <= stop))
- *)
-
-(* Functions related to enriching labels.
- * Many functions receive string labels but may want to know what the string refers to
- * to be able to offer links or more. So we keep native repr as long as possible. *)
-
-let js_of_label l = "{ label:'"^ l ^"' }"
 
 (** {1 Plot Chart}
 

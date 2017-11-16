@@ -1,5 +1,6 @@
 (* Converts from floats to string for label *)
 open Engine
+open WebHelpers
 
 type t = {
   to_label : float -> string ;

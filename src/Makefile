@@ -8,7 +8,8 @@ endif
 
 TESTABLE_SOURCES = \
 	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml Compiler.ml \
-	Helpers.ml RamenBloomFilter.ml Globs.ml CodeGen_OCaml.ml
+	Helpers.ml RamenBloomFilter.ml Globs.ml CodeGen_OCaml.ml \
+	web/WebHelpers.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
@@ -18,7 +19,8 @@ LINKED_FOR_TESTS = \
 	EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenCollectd.ml RamenProtocols.ml Lang.ml \
 	RingBuf.ml RamenConf.ml Globs.ml CodeGen_OCaml.ml Compiler.ml \
-	RamenBloomFilter.ml
+	RamenBloomFilter.ml \
+	web/WebHelpers.ml
 
 RAMEN_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml \
@@ -63,10 +65,14 @@ ALERTER_SOURCES = \
 	AlerterSharedTypesJS.ml AlerterGui.ml RamenHttpHelpers.ml \
 	ramen_alerter.ml
 
+WEB_SOURCES = \
+	web/WebHelpers.ml web/engine.ml web/color.ml web/formats.ml \
+	web/chart.ml web/ramen_app.ml web/alerter_app.ml
+
 SOURCES_ = \
 	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
-	$(LIBCOLCOMP_SOURCES) \
+	$(LIBCOLCOMP_SOURCES) $(WEB_SOURCES) \
 	$(CONFIGURATOR_SOURCES) $(ALERTER_SOURCES) \
 	ringbuf_test.ml colcomp/colcomp_test.c
 # Do not take into account generated code that depends on compilation:
@@ -133,7 +139,7 @@ ramen_alerter: $(ALERTER_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package "sqlite3 syslog" $(filter %.cmx, $^) -o $@
 
 all_tests.opt: libringbuf.a libcolcomp.a $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck -I web $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
 
 # configurator/alerter specific sources with more packages
 
@@ -156,19 +162,19 @@ web/engine.cmo: web/engine.ml Consts.cmo
 web/color.cmo: web/color.ml
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/formats.cmo: web/formats.ml web/engine.cmo
+web/formats.cmo: web/formats.ml web/WebHelpers.cmo web/engine.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/chart.cmo: web/chart.ml web/engine.cmo web/color.cmo web/formats.cmo
+web/chart.cmo: web/chart.ml web/WebHelpers.cmo web/engine.cmo web/color.cmo web/formats.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
 RamenSharedTypesJS_noPPP.cmo: RamenSharedTypesJS.ml
 	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
 
-web/ramen_app.cmo: web/ramen_app.ml RamenSharedTypesJS_noPPP.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo
+web/ramen_app.cmo: web/ramen_app.ml RamenSharedTypesJS_noPPP.cmo web/WebHelpers.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/ramen_script.byte: Consts.cmo RamenSharedTypesJS_noPPP.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo web/ramen_app.cmo
+web/ramen_script.byte: Consts.cmo RamenSharedTypesJS_noPPP.cmo web/WebHelpers.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo web/ramen_app.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -linkpkg $^ -o $@
 
 web/ramen_script.js: web/ramen_script.byte
@@ -200,10 +206,10 @@ RamenGui.ml: web/ramen_script.js web/ramen_script.min.js web/style.css Makefile
 AlerterSharedTypesJS_noPPP.cmo: AlerterSharedTypesJS.ml
 	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
 
-web/alerter_app.cmo: web/alerter_app.ml AlerterSharedTypesJS_noPPP.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo
+web/alerter_app.cmo: web/alerter_app.ml AlerterSharedTypesJS_noPPP.cmo web/WebHelpers.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/alerter_script.byte: AlerterSharedTypesJS_noPPP.cmo Consts.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo web/alerter_app.cmo
+web/alerter_script.byte: AlerterSharedTypesJS_noPPP.cmo Consts.cmo web/WebHelpers.cmo web/engine.cmo web/color.cmo web/formats.cmo web/chart.cmo web/alerter_app.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -linkpkg $^ -o $@
 
 web/alerter_script.js: web/alerter_script.byte

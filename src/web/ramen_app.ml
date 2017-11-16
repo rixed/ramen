@@ -1,6 +1,7 @@
 open Js_of_ocaml
 module Html = Dom_html
 open Engine
+open WebHelpers
 
 (* Printers *)
 

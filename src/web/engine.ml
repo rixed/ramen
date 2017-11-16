@@ -1,4 +1,5 @@
 open Js_of_ocaml
+open WebHelpers
 module Html = Dom_html
 let doc = Html.window##.document
 
@@ -17,50 +18,10 @@ let fail_2 msg x =
   Firebug.console##assert_ Js._false ;
   assert false
 
-(* Stdlib complement: *)
-
-let identity x = x
-
-let apply f = f ()
-
-let option_may f = function
-  | None -> ()
-  | Some x -> f x
-
-let option_map f = function
-  | None -> None
-  | Some x -> Some (f x)
-
-let option_def x = function None -> x | Some v -> v
-let (|?) a b = option_def b a
-
 let option_get = function Some x -> x | None -> fail "Invalid None"
-
 let optdef_get x = Js.Optdef.get x (fun () -> fail "Invalid undef")
-
-let list_init n f =
-  let rec loop prev i =
-    if i >= n then List.rev prev else
-    loop (f i :: prev) (i + 1) in
-  loop [] 0
-
-let replace_assoc n v l = (n, v) :: List.remove_assoc n l
-
 let opt_get x = Js.Opt.get x (fun () -> fail "Invalid None")
 let to_int x = Js.float_of_number x |> int_of_float
-
-let string_starts_with p s =
-  let open String in
-  length s >= length p &&
-  sub s 0 (length p) = p
-
-let rec string_times n s =
-  if n = 0 then "" else s ^ string_times (n - 1) s
-
-let abbrev len s =
-  Firebug.console##assert_ (Js.bool (len >= 3)) ;
-  if String.length s <= len then s else
-  String.sub s 0 (len-3) ^"..."
 
 let date_of_ts ts =
   let d = new%js Js.date_fromTimeValue (1000. *. ts) in
@@ -185,21 +146,6 @@ let text s = Text s
 let attr n v = Attribute (n, v)
 
 let in_view = InView
-
-let rec short_string_of_float f =
-  if f = 0. then "0" else  (* take good care of ~-.0. *)
-  if f < 0. then "-"^ short_string_of_float (~-.f) else
-  (* SVG don't like digits ending with a dot *)
-  let s = Printf.sprintf "%.5f" f in (* limit number of significant digits to reduce page size *)
-  (* chop trailing zeros and trailing dot *)
-  let rec chop last l =
-    let c = s.[l] in
-    if last || l < 1 || c <> '0' && c <> '.' then (
-      if l = String.length s - 1 then s else
-      String.sub s 0 (l + 1)
-    ) else
-      chop (c = '.') (l - 1) in
-  chop false (String.length s - 1)
 
 (* We like em so much: *)
 let div = elmt "div"
