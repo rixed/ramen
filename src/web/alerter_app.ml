@@ -95,12 +95,6 @@ let incident_of_js i =
 
 let teams : GetTeam.resp param = make_param "teams" []
 
-let reload_teams () =
-  http_get "/teams" (fun resp ->
-    let roster = list_of_js team_of_js resp in
-    set teams roster ;
-    resync ())
-
 (* Team Selection: all of them or just one *)
 
 type team_selection = AllTeams | SingleTeam of string
@@ -163,17 +157,6 @@ let set_known_incidents incidents =
           ) selected_alert.value
     ) selected_incident.value
 
-let reload_ongoing () =
-  let url =
-    match team_selection.value with
-    | AllTeams -> "/ongoing"
-    | SingleTeam t -> "/ongoing/"^ enc t in
-  http_get url (fun resp ->
-    let incidents = list_of_js incident_of_js resp in
-    set_known_incidents incidents ;
-    List.iter update_event_time_from_incident incidents ;
-    resync ())
-
 let fold_incidents incidents team_selection init f =
   List.fold_left (fun prev incident ->
       match incident.Incident.alerts with
@@ -189,6 +172,27 @@ let fold_incidents incidents team_selection init f =
 let histo_duration = make_param "history duration" (3. *. 3600.)
 
 let histo_relto = make_param "history rel.to" true
+
+(*
+ * Reload
+ *)
+
+let reload_ongoing () =
+  let url =
+    match team_selection.value with
+    | AllTeams -> "/ongoing"
+    | SingleTeam t -> "/ongoing/"^ enc t in
+  http_get url (fun resp ->
+    let incidents = list_of_js incident_of_js resp in
+    set_known_incidents incidents ;
+    List.iter update_event_time_from_incident incidents ;
+    resync ())
+
+let reload_teams () =
+  http_get "/teams" (fun resp ->
+    let roster = list_of_js team_of_js resp in
+    set teams roster ;
+    resync ())
 
 let reload_history () =
   let url = match team_selection.value with
@@ -206,6 +210,13 @@ let reload_history () =
     let incidents = list_of_js incident_of_js resp in
     List.iter update_event_time_from_incident incidents ;
     set_known_incidents incidents)
+
+let reload_for_current_page () =
+  match current_page.value with
+  | PageLive -> reload_ongoing ()
+  | PageHistory -> reload_history ()
+  | PageTeam -> reload_teams ()
+  | _ -> ()
 
 (*
  * DOM
@@ -382,9 +393,7 @@ let page_history =
 let tab label page =
   div ~action:(fun _ ->
       set current_page page ;
-      if page = PageLive then reload_ongoing () else
-      if page = PageHistory then reload_history () else
-      if page = PageTeam then reload_teams () else ())
+      reload_for_current_page ())
     [ with_param current_page (fun p ->
         if p = page then clss "tab selected"
                     else clss "tab actionable") ;
@@ -408,7 +417,8 @@ let dom =
   div [ menu ; page ]
 
 let () =
-  start dom ;
-  reload_teams () ;
-  reload_ongoing () ;
-  reload_history ()
+  reload_for_current_page () ;
+  Html.window##setInterval
+    (Js.wrap_callback reload_for_current_page) 5_137. |>
+  ignore ;
+  start dom
