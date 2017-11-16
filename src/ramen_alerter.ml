@@ -123,10 +123,10 @@ struct
   let stopped_after ts i =
     match stopped i with
     | None -> true
-    | Some s -> s > ts
+    | Some s -> s >= ts
 
   let started_before ts i =
-    Incident.started i >= ts
+    Incident.started i <= ts
 
   let find_open_alert state ~name ~team ~title =
     Hashtbl.values state.persist.ongoing_incidents |>
