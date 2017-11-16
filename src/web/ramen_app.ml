@@ -300,6 +300,8 @@ let sel_output_cols = make_param "selected output columns" []
 
 let chart_duration = make_param "chart duration" (3. *. 3600.)
 
+let chart_relto = make_param "chart rel.to" true
+
 let update_chart field_names resp =
   List.mapi (fun i field_name ->
     let resp = Js.(array_get resp i |> optdef_get) in
@@ -321,41 +323,46 @@ let reload_chart () =
   | _, [] -> ()
   | node, cols ->
     let node = node.value in
-    (* Get the available time range *)
-    let path = "/timerange/"^ enc node.layer ^"/"^ enc node.name in
-    http_get path (fun r ->
-      match time_range_of_js r with
-      | NoData -> ()
-      | TimeRange (_, until) ->
-        (* Request the timeseries *)
-        let field_names =
-          List.map (fun col ->
-            (List.nth node.output_type col).Field.name) cols in
-        let content =
-          object%js
-            val since = js_of_float (until -. chart_duration.value)
-            val until = js_of_float until
-            val max_data_points_ = 800
-            val timeseries =
-              List.map (fun field_name ->
-                object%js
-                  val id = Js.string field_name
-                  val consolidation = Js.string "avg"
-                  val spec =
-                    object%js
-                      val _Predefined =
-                        object%js
-                          val node = Js.string node.id
-                          val data_field_ = Js.string field_name
-                        end
-                    end
-                end) field_names |>
-              js_of_list identity
-          end
-        and path = "/timeseries" in
-        http_post path content (fun r ->
-          update_chart field_names r ;
-          resync ()))
+    let get_timeseries_until until =
+      (* Request the timeseries *)
+      let field_names =
+        List.map (fun col ->
+          (List.nth node.output_type col).Field.name) cols in
+      let content =
+        object%js
+          val since = js_of_float (until -. chart_duration.value)
+          val until = js_of_float until
+          val max_data_points_ = 800
+          val timeseries =
+            List.map (fun field_name ->
+              object%js
+                val id = Js.string field_name
+                val consolidation = Js.string "avg"
+                val spec =
+                  object%js
+                    val _Predefined =
+                      object%js
+                        val node = Js.string node.id
+                        val data_field_ = Js.string field_name
+                      end
+                  end
+              end) field_names |>
+            js_of_list identity
+        end
+      and path = "/timeseries" in
+      http_post path content (fun r ->
+        update_chart field_names r ;
+        resync ())
+    in
+    if chart_relto.value then
+      (* Get the available time range *)
+      let path = "/timerange/"^ enc node.layer ^"/"^ enc node.name in
+      http_get path (fun r ->
+        match time_range_of_js r with
+        | NoData -> ()
+        | TimeRange (_, until) ->
+          get_timeseries_until until)
+    else get_timeseries_until (now ())
 
 let sel_top_column = make_param "selected top column" "layer"
 
@@ -1148,7 +1155,7 @@ let timechart_panel =
                             "; height:"^ string_of_float svg_height ^
                             "; min-height:"^ string_of_float svg_height ^";") ] in
           div
-            [ time_selector ~action:reload_chart chart_duration ;
+            [ time_selector ~action:reload_chart chart_duration chart_relto ;
               chart_type_selector ;
               show_zero_selector ;
               with_param chart_type (fun stacked_y1 ->

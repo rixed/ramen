@@ -21,6 +21,8 @@ let fail_2 msg x =
 
 let identity x = x
 
+let apply f = f ()
+
 let option_may f = function
   | None -> ()
   | Some x -> f x
@@ -728,7 +730,7 @@ let http_del path ?what ?on_done on_ok =
 
 (* Dom library *)
 
-let time_selector ?action duration_param =
+let time_selector ?action duration_param relto_param =
   with_param duration_param (fun cur_dur ->
     let sel label dur =
       if dur = cur_dur then
@@ -736,7 +738,7 @@ let time_selector ?action duration_param =
       else
         button ~action:(fun _ ->
             set duration_param dur ;
-            option_may (fun f -> f ()) action)
+            option_may apply action)
           [ clss "actionable" ; text label ] in
     div
       [ clss "chart-buttons" ;
@@ -744,4 +746,16 @@ let time_selector ?action duration_param =
         sel "last hour" 3600. ;
         sel "last 3h" (3. *. 3600.) ;
         sel "last 8h" (8. *. 3600.) ;
-        sel "last day" (24. *. 3600.) ])
+        sel "last day" (24. *. 3600.) ;
+        let action _ =
+          toggle relto_param ;
+          option_may apply action in
+        with_param relto_param (function
+          | true ->
+              button ~action
+                [ clss "actionable selected" ;
+                  text "rel.to event time" ]
+          | false ->
+              button ~action
+                [ clss "actionable" ;
+                  text "rel.to event time" ]) ])

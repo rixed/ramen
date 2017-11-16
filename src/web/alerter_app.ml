@@ -124,6 +124,18 @@ let current_page = make_param "tab" PageLive
 
 (* Incidents *)
 
+let event_time = ref 0.
+
+let update_event_time_from_alert a =
+  match a.Alert.stopped_firing with
+  | Some t ->
+      event_time := max !event_time t
+  | None ->
+      event_time := max !event_time a.started_firing
+
+let update_event_time_from_incident i =
+  List.iter update_event_time_from_alert i.Incident.alerts
+
 let ongoing = make_param "ongoing" []
 
 let reload_ongoing () =
@@ -134,6 +146,7 @@ let reload_ongoing () =
   http_get url (fun resp ->
     let incidents = list_of_js incident_of_js resp in
     set ongoing incidents ;
+    List.iter update_event_time_from_incident incidents ;
     resync ())
 
 let fold_incidents incidents team_selection init f =
@@ -150,6 +163,8 @@ let fold_incidents incidents team_selection init f =
 
 let histo_duration = make_param "history duration" (3. *. 3600.)
 
+let histo_relto = make_param "history rel.to" true
+
 let history = make_param "history" []
 
 let reload_history () =
@@ -157,10 +172,16 @@ let reload_history () =
     | AllTeams -> "/history"
     | SingleTeam t -> "/history/"^ enc t in
   let date_range =
-    "last="^ enc (string_of_float histo_duration.value) in
+    if histo_relto.value then (
+      let until = !event_time in
+      let since = until -. histo_duration.value in
+      "range="^ enc (string_of_float since ^","^ string_of_float until)
+    ) else
+      "last="^ enc (string_of_float histo_duration.value) in
   let url = url ^"?"^ date_range in
   http_get url (fun resp ->
     let incidents = list_of_js incident_of_js resp in
+    List.iter update_event_time_from_incident incidents ;
     set history incidents)
 
 (*
@@ -253,7 +274,7 @@ let page_history =
       2. *. margin_vert +. 20. (* axis approx height *) +.
       float_of_int (List.length bars) *. bar_height in
     div
-      [ time_selector histo_duration ;
+      [ time_selector ~action:reload_history histo_duration histo_relto ;
         svg
           [ clss "chart" ;
             attr "style"
@@ -261,14 +282,18 @@ let page_history =
                "; height:"^ string_of_float svg_height ^
                "; min-height:"^ string_of_float svg_height ^";") ;
             with_param histo_duration (fun dur ->
-              let n = now () in
-              Chart.chronology ~svg_width:svg_width
-                               ~svg_height:svg_height
-                               ~margin_bottom:margin_vert
-                               ~margin_top:margin_vert
-                               ~margin_left:margin_horiz
-                               ~margin_right:margin_horiz
-                               bars (n -. dur) n) ] ])
+              with_param histo_relto (fun relto_event ->
+                let base_time =
+                  if relto_event && !event_time > 0. then !event_time
+                  else now () in
+                Chart.chronology ~svg_width:svg_width
+                                 ~svg_height:svg_height
+                                 ~margin_bottom:margin_vert
+                                 ~margin_top:margin_vert
+                                 ~margin_left:margin_horiz
+                                 ~margin_right:margin_horiz
+                                 bars
+                                 (base_time -. dur) base_time)) ] ])
 
 let tab label page =
   div ~action:(fun _ -> set current_page page)
