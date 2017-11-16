@@ -977,7 +977,7 @@ let node_columns =
 
 let wide_table lst =
   div
-    [ clss "wide-table" ;
+    [ clss "wide" ;
       table lst ]
 
 let node_filter = make_param "node filter" ""

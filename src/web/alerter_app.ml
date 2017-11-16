@@ -317,27 +317,30 @@ let chronology incidents dur relto_event =
     2. *. margin_vert +. 20. (* axis approx height *) +.
     float_of_int (List.length bars) *. bar_height in
   div
-    [ svg
-        [ clss "chart" ;
-          attr "style"
-            ("width:"^ string_of_float svg_width ^
-             "; height:"^ string_of_float svg_height ^
-             "; min-height:"^ string_of_float svg_height ^";") ;
-          let base_time =
-            if relto_event && !event_time > 0. then !event_time
-            else now () in
-          Chart.chronology
-            ~svg_width:svg_width ~svg_height:svg_height
-            ~margin_bottom:margin_vert ~margin_top:margin_vert
-            ~margin_left:margin_horiz ~margin_right:margin_horiz
-            ~click_on_bar:(fun i ->
-              let incident = List.nth incidents i in
-              set selected_incident (Some incident) ;
-              let first_alert =
-                try Some (List.hd incident.alerts)
-                with Failure _ -> None in
-              set selected_alert first_alert)
-            bars (base_time -. dur) base_time ] ;
+    [ clss "chronology" ;
+      div
+        [ clss "wide" ;
+          svg
+            [ clss "chart" ;
+              attr "style"
+                ("width:"^ string_of_float svg_width ^
+                 "; height:"^ string_of_float svg_height ^
+                 "; min-height:"^ string_of_float svg_height ^";") ;
+              let base_time =
+                if relto_event && !event_time > 0. then !event_time
+                else now () in
+              Chart.chronology
+                ~svg_width:svg_width ~svg_height:svg_height
+                ~margin_bottom:margin_vert ~margin_top:margin_vert
+                ~margin_left:margin_horiz ~margin_right:margin_horiz
+                ~click_on_bar:(fun i ->
+                  let incident = List.nth incidents i in
+                  set selected_incident (Some incident) ;
+                  let first_alert =
+                    try Some (List.hd incident.alerts)
+                    with Failure _ -> None in
+                  set selected_alert first_alert)
+                bars (base_time -. dur) base_time ] ] ;
       selected_incident_detail ]
 
 let page_live =
