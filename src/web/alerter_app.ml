@@ -128,16 +128,40 @@ let current_page = make_param "tab" PageLive
 let event_time = ref 0.
 
 let update_event_time_from_alert a =
-  match a.Alert.stopped_firing with
-  | Some t ->
-      event_time := max !event_time t
-  | None ->
-      event_time := max !event_time a.started_firing
+  event_time :=
+    List.fold_left (fun ma (t, _) ->
+        max ma t
+      ) !event_time a.Alert.log
 
 let update_event_time_from_incident i =
   List.iter update_event_time_from_alert i.Incident.alerts
 
-let ongoing = make_param "ongoing" []
+(* Whatever the page, all incidents are stored in here, so that all
+ * references to incidents (selected_incident...) points here: *)
+let known_incidents = make_param "ongoing" []
+
+(* Individually selected incidents and alerts: *)
+let selected_incident = make_param "selected incident" None
+let selected_alert = make_param "selected alert" None
+
+let set_known_incidents incidents =
+  set known_incidents incidents ;
+  option_may (fun sel ->
+      match List.find (fun i ->
+              i.Incident.id = sel.Incident.id) incidents with
+      | exception Not_found ->
+        set selected_incident None ;
+        set selected_alert None
+      | i ->
+        set selected_incident (Some i) ;
+        option_may (fun sel ->
+            set selected_alert
+              (match List.find (fun a ->
+                       a.Alert.id = sel.Alert.id) i.Incident.alerts with
+              | exception Not_found -> None
+              | a -> Some a)
+          ) selected_alert.value
+    ) selected_incident.value
 
 let reload_ongoing () =
   let url =
@@ -146,7 +170,7 @@ let reload_ongoing () =
     | SingleTeam t -> "/ongoing/"^ enc t in
   http_get url (fun resp ->
     let incidents = list_of_js incident_of_js resp in
-    set ongoing incidents ;
+    set_known_incidents incidents ;
     List.iter update_event_time_from_incident incidents ;
     resync ())
 
@@ -166,8 +190,6 @@ let histo_duration = make_param "history duration" (3. *. 3600.)
 
 let histo_relto = make_param "history rel.to" true
 
-let history = make_param "history" []
-
 let reload_history () =
   let url = match team_selection.value with
     | AllTeams -> "/history"
@@ -183,10 +205,7 @@ let reload_history () =
   http_get url (fun resp ->
     let incidents = list_of_js incident_of_js resp in
     List.iter update_event_time_from_incident incidents ;
-    set history incidents)
-
-let selected_incident = make_param "selected incident" None
-let selected_alert = make_param "selected alert" None
+    set_known_incidents incidents)
 
 (*
  * DOM
@@ -198,29 +217,34 @@ let todo what =
 let live_incidents =
   with_param team_selection (fun tsel ->
     let with_team_col = tsel = AllTeams in
-    with_param ongoing (fun incidents ->
+    with_param known_incidents (fun incidents ->
       let incident_rows =
         List.fold_left (fun prev i ->
-          let alerts_txt, min_time, team =
-            List.fold_left (fun (prev_txt, prev_time, _) a ->
-                prev_txt ^(if prev_txt <> "" then ", " else "")^
-                  a.Alert.name,
-                min prev_time a.started_firing,
-                Some a.Alert.team
-              ) ("", max_float, None) i.Incident.alerts in
-          let team = option_get team in
-          let row =
-            (if with_team_col then td [ text team ] else group []) ::
-            [ td [ text (date_of_ts min_time) ] ;
-              td [ text alerts_txt ] ] |> tr in
-          row :: prev) [] incidents in
+          List.fold_left (fun prev a ->
+            let alert_txt = a.Alert.name in
+            let ack _ =
+              http_get ("/ack/"^ string_of_int a.id) (fun _ ->
+                reload_ongoing ()) in
+            let need_ack = a.escalation <> None in
+            let row =
+              (if with_team_col then td [ text a.team ] else group []) ::
+              [ td [ text (date_of_ts a.started_firing) ] ;
+                td [ text alert_txt ] ;
+                td [ if need_ack then
+                       button ~action:ack
+                         [ clss "icon actionable" ;
+                           attr "title" "Acknowledge this alert" ;
+                           text "Ack" ]
+                     else group [] ] ] |> tr in
+            row :: prev) prev i.Incident.alerts) [] incidents in
       table
         [ clss "incidents" ;
           thead
             [ tr
               ((if with_team_col then th [ text "team" ] else group []) ::
               [ th [ text "since" ] ;
-                th [ text "alerts" ] ]) ] ;
+                th [ text "alert" ] ;
+                th [] ]) ] ;
           tbody incident_rows ]))
 
 let selected_incident_detail =
@@ -311,7 +335,7 @@ let page_live =
       h2 "Opened incidents" ;
       live_incidents ;
       h2 "Chronology" ;
-      with_param ongoing (fun incidents ->
+      with_param known_incidents (fun incidents ->
         let n = now () in
         let min_ts =
           List.fold_left (fun mi i ->
@@ -347,7 +371,7 @@ let page_teams =
 let page_hand_over = todo "hand over"
 
 let page_history =
-  with_param history (fun incidents ->
+  with_param known_incidents (fun incidents ->
     div
       [ h2 "Chronology" ;
         time_selector ~action:reload_history histo_duration histo_relto ;
@@ -358,8 +382,9 @@ let page_history =
 let tab label page =
   div ~action:(fun _ ->
       set current_page page ;
-      set selected_alert None ;
-      set selected_incident None)
+      if page = PageLive then reload_ongoing () else
+      if page = PageHistory then reload_history () else
+      if page = PageTeam then reload_teams () else ())
     [ with_param current_page (fun p ->
         if p = page then clss "tab selected"
                     else clss "tab actionable") ;

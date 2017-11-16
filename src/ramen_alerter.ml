@@ -138,6 +138,13 @@ struct
       | exception Not_found -> None
       | a -> Some (i, a))
 
+  let find_open_alert_by_id state id =
+    Hashtbl.values state.persist.ongoing_incidents |>
+    Enum.find_map (fun i ->
+      match List.find (fun a -> a.Alert.id = id) i.alerts with
+    | exception Not_found -> None
+    | a -> Some (i, a))
+
   (* Let's be conservative and create a new incident for each new alerts.
    * User could still manually merge incidents later on. *)
   let get_or_create state alert =
@@ -683,6 +690,16 @@ struct
           fail (HttpError (400, msg))) in
     get_history state headers team time_range
 
+  let get_ack state id =
+    match IncidentOps.find_open_alert_by_id state id with
+    | exception Not_found ->
+      bad_request "No alert with that id in opened incidents"
+    | _i, a ->
+      (* We record the ack regardless of stopped_firing *)
+      AlertOps.log a (Unix.gettimeofday ()) Alert.Ack ;
+      a.escalation <- None ;
+      respond_ok ()
+
   let start port cert_opt key_opt state www_dir =
     let router meth path params headers body =
       let%lwt resp =
@@ -700,6 +717,11 @@ struct
         | `GET, ("history" :: team) ->
           let team = if team = [] then None else Some (List.hd team) in
           get_history_get state headers team params
+        | `GET, ["ack" ; id] ->
+          (match int_of_string id with
+          | exception Failure _ ->
+              bad_request "alert id must be numeric"
+          | id -> get_ack state id)
         (* Web UI *)
         | `GET, ([]|["index.html"]) ->
           if www_dir = "" then
