@@ -30,10 +30,11 @@ struct
       string_of_int i ^"th" in
     let len = Array.length a in
     let rec loop s i =
-      if i = len then s ^" oncalls" else
+      if i = len then s ^" oncall"^ (if i > 1 then "s" else "") else
       loop
-        (s ^(if i = len - 1 then " and " else
-             if i > 0 then ", " else "")^ soi i)
+        (s ^(if i > 0 then (
+               if i = len - 1 then " and " else ", "
+             ) else "")^ soi i)
         (i + 1) in
     loop "" 0
 
