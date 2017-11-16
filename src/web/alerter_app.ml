@@ -223,96 +223,7 @@ let live_incidents =
                 th [ text "alerts" ] ]) ] ;
           tbody incident_rows ]))
 
-let chronology incidents dur relto_event =
-  let marker_of_event (ts, ev) = ts, Alert.string_of_event ev in
-  let markers_of_alert a =
-    let m =
-      (a.Alert.started_firing, "Started") ::
-      List.map marker_of_event a.log in
-    match a.stopped_firing with
-    | None -> m
-    | Some t -> (t, "Stopped") :: m in
-  let bars = List.map (fun i ->
-    Chart.{
-      start = Some (Incident.started i) ;
-      stop = Incident.stopped i ;
-      color = Color.random_of_string (Incident.team_of i) ;
-      markers = List.fold_left (fun prev a ->
-          List.rev_append (markers_of_alert a) prev
-        ) [] i.alerts }) incidents
-  and margin_vert = 15. and margin_horiz = 50.
-  and bar_height = 36.
-  and svg_width = 800. in
-  let svg_height =
-    2. *. margin_vert +. 20. (* axis approx height *) +.
-    float_of_int (List.length bars) *. bar_height in
-  svg
-    [ clss "chart" ;
-      attr "style"
-        ("width:"^ string_of_float svg_width ^
-         "; height:"^ string_of_float svg_height ^
-         "; min-height:"^ string_of_float svg_height ^";") ;
-      let base_time =
-        if relto_event && !event_time > 0. then !event_time
-        else now () in
-      Chart.chronology
-        ~svg_width:svg_width ~svg_height:svg_height
-        ~margin_bottom:margin_vert ~margin_top:margin_vert
-        ~margin_left:margin_horiz ~margin_right:margin_horiz
-        ~click_on_bar:(fun i ->
-          let incident = List.nth incidents i in
-          set selected_incident (Some incident) ;
-          let first_alert =
-            try Some (List.hd incident.alerts)
-            with Failure _ -> None in
-          set selected_alert first_alert)
-        bars (base_time -. dur) base_time ]
-
-let incident_detail = todo "detail"
-
-let page_live =
-  div
-    [ id "page-live" ;
-      h2 "Opened incidents" ;
-      live_incidents ;
-      h2 "Chronology" ;
-      with_param ongoing (fun incidents ->
-        let n = now () in
-        let min_ts =
-          List.fold_left (fun mi i ->
-            min mi (Incident.started i)) n incidents in
-        let dur = n -. min_ts in
-        chronology incidents dur false) ;
-      incident_detail ]
-
-let inhibition i =
-  let open Inhibition in
-  text ("alert "^ i.what ^" up to "^ date_of_ts i.end_date ^
-        " by "^ i.who ^" since "^ date_of_ts i.start_date ^
-        " because: "^ i.why)
-
-let page_team team =
-  (* TODO: edit inhibitions *)
-  let open GetTeam in
-  div
-    [ clss "team-info" ;
-      h2 ("Team "^ team.name) ;
-      h3 "Members" ;
-      ul (List.map (fun m -> li [ text m ]) team.members) ;
-      h3 "Inhibitions" ;
-      ul (List.map (fun i -> li [ inhibition i ]) team.inhibitions) ]
-
-let page_teams =
-  with_param teams (fun teams ->
-    with_param team_selection (fun sel ->
-      div
-        (clss "team-list" ::
-         fold_teams teams sel [] (fun prev team ->
-           page_team team :: prev))))
-
-let page_hand_over = todo "hand over"
-
-let selected_incident_log =
+let selected_incident_detail =
   with_param selected_incident (function
   | None ->
     p [ text "Select an incident to see its composition" ]
@@ -347,6 +258,94 @@ let selected_incident_log =
                                td [ text (Alert.string_of_event e) ] ]
                         )) ] ] ]))
 
+let chronology incidents dur relto_event =
+  let marker_of_event (ts, ev) = ts, Alert.string_of_event ev in
+  let markers_of_alert a =
+    let m =
+      (a.Alert.started_firing, "Started") ::
+      List.map marker_of_event a.log in
+    match a.stopped_firing with
+    | None -> m
+    | Some t -> (t, "Stopped") :: m in
+  let bars = List.map (fun i ->
+    Chart.{
+      start = Some (Incident.started i) ;
+      stop = Incident.stopped i ;
+      color = Color.random_of_string (Incident.team_of i) ;
+      markers = List.fold_left (fun prev a ->
+          List.rev_append (markers_of_alert a) prev
+        ) [] i.alerts }) incidents
+  and margin_vert = 15. and margin_horiz = 50.
+  and bar_height = 36.
+  and svg_width = 800. in
+  let svg_height =
+    2. *. margin_vert +. 20. (* axis approx height *) +.
+    float_of_int (List.length bars) *. bar_height in
+  div
+    [ svg
+        [ clss "chart" ;
+          attr "style"
+            ("width:"^ string_of_float svg_width ^
+             "; height:"^ string_of_float svg_height ^
+             "; min-height:"^ string_of_float svg_height ^";") ;
+          let base_time =
+            if relto_event && !event_time > 0. then !event_time
+            else now () in
+          Chart.chronology
+            ~svg_width:svg_width ~svg_height:svg_height
+            ~margin_bottom:margin_vert ~margin_top:margin_vert
+            ~margin_left:margin_horiz ~margin_right:margin_horiz
+            ~click_on_bar:(fun i ->
+              let incident = List.nth incidents i in
+              set selected_incident (Some incident) ;
+              let first_alert =
+                try Some (List.hd incident.alerts)
+                with Failure _ -> None in
+              set selected_alert first_alert)
+            bars (base_time -. dur) base_time ] ;
+      selected_incident_detail ]
+
+let page_live =
+  div
+    [ id "page-live" ;
+      h2 "Opened incidents" ;
+      live_incidents ;
+      h2 "Chronology" ;
+      with_param ongoing (fun incidents ->
+        let n = now () in
+        let min_ts =
+          List.fold_left (fun mi i ->
+            min mi (Incident.started i)) n incidents in
+        let dur = n -. min_ts in
+        chronology incidents dur false) ]
+
+let inhibition i =
+  let open Inhibition in
+  text ("alert "^ i.what ^" up to "^ date_of_ts i.end_date ^
+        " by "^ i.who ^" since "^ date_of_ts i.start_date ^
+        " because: "^ i.why)
+
+let page_team team =
+  (* TODO: edit inhibitions *)
+  let open GetTeam in
+  div
+    [ clss "team-info" ;
+      h2 ("Team "^ team.name) ;
+      h3 "Members" ;
+      ul (List.map (fun m -> li [ text m ]) team.members) ;
+      h3 "Inhibitions" ;
+      ul (List.map (fun i -> li [ inhibition i ]) team.inhibitions) ]
+
+let page_teams =
+  with_param teams (fun teams ->
+    with_param team_selection (fun sel ->
+      div
+        (clss "team-list" ::
+         fold_teams teams sel [] (fun prev team ->
+           page_team team :: prev))))
+
+let page_hand_over = todo "hand over"
+
 let page_history =
   with_param history (fun incidents ->
     div
@@ -354,11 +353,13 @@ let page_history =
         time_selector ~action:reload_history histo_duration histo_relto ;
         with_param histo_duration (fun dur ->
           with_param histo_relto (fun relto_event ->
-            chronology incidents dur relto_event)) ;
-        selected_incident_log ])
+            chronology incidents dur relto_event)) ])
 
 let tab label page =
-  div ~action:(fun _ -> set current_page page)
+  div ~action:(fun _ ->
+      set current_page page ;
+      set selected_alert None ;
+      set selected_incident None)
     [ with_param current_page (fun p ->
         if p = page then clss "tab selected"
                     else clss "tab actionable") ;
