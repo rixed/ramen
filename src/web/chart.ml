@@ -415,6 +415,7 @@ let chronology ?(svg_width=800.) ?(svg_height=600.)
                ?(tick_length=5.5)
                ?(margin_bottom=30.) ?(margin_left=10.)
                ?(margin_top=30.) ?(margin_right=10.)
+               ?click_on_bar
                bars vx_min vx_max =
   let nb_bars = List.length bars in
   let max_label_length = y_tick_spacing *. 0.9 in
@@ -463,6 +464,7 @@ let chronology ?(svg_width=800.) ?(svg_height=600.)
             svgtext ~x:(x+.4.) ~y:y_text ~font_size:mark_text_height
                     ~fill:"#000" s ]
         ) b.markers in
-    g (bar :: marks) in
+    let action = option_map (fun a -> fun _ -> a i) click_on_bar in
+    g ?action (bar :: marks) in
   let rects = List.mapi svg_of_bar bars in
   g [ x_axis ; g rects ]

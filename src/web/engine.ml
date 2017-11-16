@@ -387,6 +387,14 @@ let rec remove (parent : Dom.element Js.t) child_idx n =
 let root = ref None
 
 let rec set_listener_opt tag (elmt : Dom.element Js.t) action =
+  let set_generic_handler elmt action =
+    elmt##.onclick := (match action with
+      | Some action ->
+          Html.handler (fun _ ->
+          action "click :)" ;
+          resync () ;
+          Js._false)
+      | None -> Html.no_handler) in
   match tag with
   | "input" ->
     let elmt = Html.CoerceTo.element elmt |>
@@ -423,6 +431,14 @@ let rec set_listener_opt tag (elmt : Dom.element Js.t) action =
           resync () ;
           Js._false)
       | None -> Html.no_handler)
+  | "g" ->
+    (* Ohoh, a SVG element! We are lucky since this one inherits from
+     * Dom_html.element. *)
+    let elmt = Dom_svg.CoerceTo.element elmt |>
+               coercion_motherfucker_can_you_do_it |>
+               Dom_svg.CoerceTo.g |>
+               coercion_motherfucker_can_you_do_it in
+    set_generic_handler (elmt :> Html.eventTarget Js.t) action
   | _ ->
     print (Js.string ("No idea how to add an event listener to a "^ tag ^
                       " but I can try")) ;
@@ -433,13 +449,7 @@ let rec set_listener_opt tag (elmt : Dom.element Js.t) action =
      * Html.element in any cases? *)
     let elmt = Html.CoerceTo.element elmt |>
                coercion_motherfucker_can_you_do_it in
-    elmt##.onclick := (match action with
-      | Some action ->
-          Html.handler (fun _ ->
-          action "click :)" ;
-          resync () ;
-          Js._false)
-      | None -> Html.no_handler)
+    set_generic_handler elmt action
 
 and set_listener tag (elmt : Dom.element Js.t) action =
   set_listener_opt tag elmt (Some action)

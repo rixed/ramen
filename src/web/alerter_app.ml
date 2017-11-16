@@ -184,6 +184,9 @@ let reload_history () =
     List.iter update_event_time_from_incident incidents ;
     set history incidents)
 
+let selected_incident = make_param "selected incident" None
+let selected_alert = make_param "selected alert" None
+
 (*
  * DOM
  *)
@@ -258,6 +261,41 @@ let page_teams =
 
 let page_hand_over = todo "hand over"
 
+let selected_incident_log =
+  with_param selected_incident (function
+  | None ->
+    p [ text "Select an incident to see its composition" ]
+  | Some i ->
+    with_param selected_alert (fun sel_alert ->
+      div
+        [ div
+            [ clss "alert_list" ;
+              h2 "alerts" ;
+              group
+                (List.map (fun a ->
+                    let c =
+                      match sel_alert with
+                      | Some sa when sa == a -> "selected"
+                      | _ -> "actionable" in
+                    p ~action:(fun _ ->
+                        set selected_alert (Some a))
+                      [ clss c ; text a.Alert.name ]
+                  ) i.Incident.alerts) ] ;
+          match sel_alert with
+          | None ->
+            p [ text "Select an alert to see its history" ]
+          | Some a ->
+            div
+              [ clss "log_list" ;
+                h2 "log" ;
+                table
+                  [ tbody
+                      (List.rev a.Alert.log |>
+                       List.map (fun (t, e) ->
+                          tr [ th [ text (date_of_ts t) ] ;
+                               td [ text (Alert.string_of_event e) ] ]
+                        )) ] ] ]))
+
 let page_history =
   with_param history (fun incidents ->
     let marker_of_event (ts, ev) = ts, Alert.string_of_event ev in
@@ -295,14 +333,19 @@ let page_history =
                 let base_time =
                   if relto_event && !event_time > 0. then !event_time
                   else now () in
-                Chart.chronology ~svg_width:svg_width
-                                 ~svg_height:svg_height
-                                 ~margin_bottom:margin_vert
-                                 ~margin_top:margin_vert
-                                 ~margin_left:margin_horiz
-                                 ~margin_right:margin_horiz
-                                 bars
-                                 (base_time -. dur) base_time)) ] ])
+                Chart.chronology
+                  ~svg_width:svg_width ~svg_height:svg_height
+                  ~margin_bottom:margin_vert ~margin_top:margin_vert
+                  ~margin_left:margin_horiz ~margin_right:margin_horiz
+                  ~click_on_bar:(fun i ->
+                    let incident = List.nth incidents i in
+                    set selected_incident (Some incident) ;
+                    let first_alert =
+                      try Some (List.hd incident.alerts)
+                      with Failure _ -> None in
+                    set selected_alert first_alert)
+                  bars (base_time -. dur) base_time)) ] ;
+        selected_incident_log ])
 
 let tab label page =
   div ~action:(fun _ -> set current_page page)
