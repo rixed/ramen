@@ -646,7 +646,7 @@ struct
       | GetHistory.SinceUntil (s, u) ->
           fun i ->
             IncidentOps.stopped_after s i &&
-             IncidentOps.started_before u i in
+            IncidentOps.started_before u i in
     let is_in i =
       is_in_team i && is_in_range i in
     let logs =
@@ -669,7 +669,8 @@ struct
         | r ->
           (try
             let s, u = String.split ~by:"," r in
-            GetHistory.SinceUntil (float_of_string s, float_of_string u) |>
+            GetHistory.SinceUntil (float_of_string (min s u),
+                                   float_of_string (max s u)) |>
             return
           with Not_found | Failure _ ->
             let msg = "Invalid parameter: range must be \

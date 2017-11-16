@@ -261,7 +261,6 @@ let page_hand_over = todo "hand over"
 let page_history =
   with_param history (fun incidents ->
     let bars = List.map (fun i ->
-      Firebug.console##log_2 (Incident.started i) (Incident.stopped i) ;
       Chart.{
         start = Some (Incident.started i) ;
         stop = Incident.stopped i ;
