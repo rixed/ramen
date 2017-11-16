@@ -430,6 +430,11 @@ let chronology ?(svg_width=800.) ?(svg_height=600.)
     let ratio = (x_axis_xmax -. x_axis_xmin) /. (vx_max -. vx_min) in
     fun ts -> x_axis_xmin +. (ts -. vx_min) *. ratio
   and y_of i = y_axis_ymin -. float_of_int i *. bar_height in
+  let mark_text_height = 9. in
+  let nb_texts_lines_in_bar =
+    int_of_float (bar_height /. mark_text_height) in
+  let mark_textline_height = (* expand to spread lines evenly *)
+    bar_height /. float_of_int nb_texts_lines_in_bar in
   Formats.reset_all_states () ;
   let x_axis =
     axis ~stroke:"#000" ~stroke_width:2.
@@ -444,7 +449,20 @@ let chronology ?(svg_width=800.) ?(svg_height=600.)
     and x_stop =
       match b.stop with None -> svg_width +. 9. | Some s -> x_of s
     and y_start = y_of (i+1) and y_stop = y_of i in
-    rect ~fill:b.color ~stroke:b.color ~fill_opacity:0.7 ~stroke_width:1.
-         x_start y_start (x_stop -. x_start) (y_stop -. y_start) in
+    let bar =
+      rect ~fill:b.color ~stroke:b.color ~fill_opacity:0.7 ~stroke_width:1.
+           x_start y_start (x_stop -. x_start) (y_stop -. y_start)
+    and marks =
+      List.mapi (fun i (t, s) ->
+        let x = x_of t in
+        let y_text = y_start +.
+          float_of_int (1 + (i mod nb_texts_lines_in_bar)) *.
+          mark_textline_height in
+        g [ line ~stroke:"#000" ~stroke_width:1. ~stroke_opacity:1.
+                 ~stroke_dasharray:"1,3" (x, y_start) (x, y_stop) ;
+            svgtext ~x:(x+.4.) ~y:y_text ~font_size:mark_text_height
+                    ~fill:"#000" s ]
+        ) b.markers in
+    g (bar :: marks) in
   let rects = List.mapi svg_of_bar bars in
   g [ x_axis ; g rects ]

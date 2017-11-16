@@ -7,6 +7,12 @@ struct
                  cc : string [@ppp_default ""] ;
                  bcc : string [@ppp_default ""] }
     | SMS of string [@@ppp PPP_JSON]
+
+  let to_string = function
+    | Console -> "console"
+    | SysLog -> "syslog"
+    | Email { to_ ; _ } -> to_
+    | SMS num -> "SMS to "^ num
 end
 
 module Escalation =
@@ -15,6 +21,21 @@ struct
     { timeout : float ;
       (* Who to ring from the oncallers squad *)
       victims : int array } [@@ppp PPP_JSON]
+
+  let string_of_victims a =
+    let soi i =
+      if i = 0 then "1st" else
+      if i = 1 then "2nd" else
+      if i = 2 then "3rd" else
+      string_of_int i ^"th" in
+    let len = Array.length a in
+    let rec loop s i =
+      if i = len then s ^" oncalls" else
+      loop
+        (s ^(if i = len - 1 then " and " else
+             if i > 0 then ", " else "")^ soi i)
+        (i + 1) in
+    loop "" 0
 
   type t =
     { steps : step array ;
@@ -36,6 +57,18 @@ struct
     (* TODO: we'd like to know the origin of this ack. *)
     | Ack
     | Stop [@@ppp PPP_JSON]
+
+  let string_of_event = function
+    | NewNotification Duplicate -> "Received duplicate notification"
+    | NewNotification Inhibited -> "Received inhibited notification"
+    | NewNotification STFU -> "Received notification for silenced incident"
+    | NewNotification StartEscalation -> "Notified"
+    | Escalate step ->
+        "Escalated to "^ Escalation.string_of_victims step.victims
+    | Outcry (name, contact) ->
+        "Contacted "^ name ^" via "^ Contact.to_string contact
+    | Ack -> "Acknowledged"
+    | Stop -> "Notified to stop"
 
   type t =
     { id : int ; (* Used for acknowledgments *)

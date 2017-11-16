@@ -260,14 +260,24 @@ let page_hand_over = todo "hand over"
 
 let page_history =
   with_param history (fun incidents ->
+    let marker_of_event (ts, ev) = ts, Alert.string_of_event ev in
+    let markers_of_alert a =
+      let m =
+        (a.Alert.started_firing, "Started") ::
+        List.map marker_of_event a.log in
+      match a.stopped_firing with
+      | None -> m
+      | Some t -> (t, "Stopped") :: m in
     let bars = List.map (fun i ->
       Chart.{
         start = Some (Incident.started i) ;
         stop = Incident.stopped i ;
         color = Color.random_of_string (Incident.team_of i) ;
-        markers = [] }) incidents
-    and margin_vert = 15. and margin_horiz = 5.
-    and bar_height = 16.
+        markers = List.fold_left (fun prev a ->
+            List.rev_append (markers_of_alert a) prev
+          ) [] i.alerts }) incidents
+    and margin_vert = 15. and margin_horiz = 25.
+    and bar_height = 36.
     and svg_width = 800. in
     let svg_height =
       2. *. margin_vert +. 20. (* axis approx height *) +.

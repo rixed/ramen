@@ -536,7 +536,7 @@ let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
     | i, a ->
       !logger.info "Alert %s for team %s titled %S stopped firing."
         name team title ;
-      a.stopped_firing <- Some now ;
+      a.stopped_firing <- Some time ;
       a.escalation <- None ;
       AlertOps.log a now Stop ;
       (* If no more alerts are firing, archive the incident *)
