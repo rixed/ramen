@@ -366,15 +366,13 @@ type bar =
 
 let chronology ?(svg_width=800.) ?(svg_height=600.)
                ?(axis_font_size=14.) ?(axis_arrow_h=11.)
-               ?(y_tick_spacing=70.) ?(x_tick_spacing=180.)
-               ?(tick_length=5.5)
+               ?(x_tick_spacing=180.) ?(tick_length=5.5)
                ?(margin_bottom=30.) ?(margin_left=10.)
                ?(margin_top=30.) ?(margin_right=10.)
                ?click_on_bar
                bars vx_min vx_max =
   let nb_bars = List.length bars in
-  let max_label_length = y_tick_spacing *. 0.9 in
-  let x_axis_xmin = margin_left +. max_label_length
+  let x_axis_xmin = margin_left
   and x_axis_xmax = svg_width -. margin_right
   (* Counter-intuitively, y_axis_ymin is greater than y_axis_ymax,
    * since ymin is the "start" of the Y axis, which is at the bottom of

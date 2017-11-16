@@ -310,7 +310,7 @@ let chronology incidents dur relto_event =
       markers = List.fold_left (fun prev a ->
           List.rev_append (markers_of_alert a) prev
         ) [] i.alerts }) incidents
-  and margin_vert = 15. and margin_horiz = 50.
+  and margin_vert = 15.
   and bar_height = 36.
   and svg_width = 800. in
   let svg_height =
@@ -331,8 +331,9 @@ let chronology incidents dur relto_event =
                 else now () in
               Chart.chronology
                 ~svg_width:svg_width ~svg_height:svg_height
-                ~margin_bottom:margin_vert ~margin_top:margin_vert
-                ~margin_left:margin_horiz ~margin_right:margin_horiz
+                ~margin_bottom:(margin_vert+.10.) (* for the scrollbar *)
+                ~margin_top:margin_vert
+                ~margin_left:0. ~margin_right:70.
                 ~click_on_bar:(fun i ->
                   let incident = List.nth incidents i in
                   set selected_incident (Some incident) ;
@@ -404,7 +405,8 @@ let tab label page =
 
 let menu =
   div
-    [ tab "Live" PageLive ;
+    [ clss "tabs" ;
+      tab "Live" PageLive ;
       tab "Team" PageTeam ;
       tab "Hand Over" PageHandOver ;
       tab "History" PageHistory ]
