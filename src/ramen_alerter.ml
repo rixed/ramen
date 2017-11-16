@@ -10,6 +10,7 @@
  *)
 open Batteries
 open Helpers
+open RamenHttpHelpers
 open SqliteHelpers
 open RamenLog
 open Lwt

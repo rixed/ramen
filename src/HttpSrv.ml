@@ -7,6 +7,7 @@ open Lwt
 open RamenLog
 open RamenSharedTypes
 open Helpers
+open RamenHttpHelpers
 open Lang
 module C = RamenConf
 module N = RamenConf.Node
@@ -716,7 +717,7 @@ let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
           serve_string conf headers RamenGui.without_link
         else
           serve_string conf headers RamenGui.with_links
-      | `GET, ["style.css" | "script.js" as file] ->
+      | `GET, ["style.css" | "ramen_script.js" as file] ->
         serve_file_with_replacements conf headers www_dir file
       (* Uploads of data files *)
       | (`POST|`PUT), ("upload" :: path) ->

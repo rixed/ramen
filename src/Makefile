@@ -28,8 +28,8 @@ RAMEN_SOURCES = \
 	RingBufLib.ml RingBuf.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
 	Globs.ml CodeGen_OCaml.ml Compiler.ml \
-	RamenGui.ml HttpSrv.ml ApiCmd.ml RingBufCmd.ml \
-	ramen.ml
+	RamenGui.ml RamenHttpHelpers.ml HttpSrv.ml ApiCmd.ml \
+	RingBufCmd.ml ramen.ml
 
 CODEGENLIB_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml Globs.ml \
@@ -60,7 +60,8 @@ CONFIGURATOR_SOURCES = \
 
 ALERTER_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml SqliteHelpers.ml \
-	AlerterSharedTypesJS.ml AlerterGui.ml ramen_alerter.ml
+	AlerterSharedTypesJS.ml AlerterGui.ml RamenHttpHelpers.ml \
+	ramen_alerter.ml
 
 SOURCES_ = \
 	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
