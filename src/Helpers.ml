@@ -46,6 +46,9 @@ let retry
 let shell_quote s =
   "'"^ String.nreplace s "'" "'\\''" ^"'"
 
+let sql_quote s =
+  "'"^ String.nreplace s "'" "''" ^"'"
+
 let print_exception e =
   !logger.error "Exception: %s\n%s"
     (Printexc.to_string e)

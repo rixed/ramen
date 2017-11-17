@@ -257,32 +257,75 @@ struct
       fail (CannotSendAlert err)
     )
 
+  let via_console alert attempt victim =
+    Printf.printf "%s\n%!" (string_of_alert alert attempt victim) ;
+    return_unit
+
+  let via_syslog alert attempt victim =
+    let level =
+      match alert.Alert.importance with
+      | 0 -> `LOG_EMERG | 1 -> `LOG_ALERT | 2 -> `LOG_CRIT
+      | 3 -> `LOG_ERR | 4 -> `LOG_WARNING | 5 -> `LOG_NOTICE
+      | _ -> `LOG_INFO in
+    let msg =
+      Printf.sprintf "Name=%s;Title=%s;Id=%d;Attempt=%d;Dest=%s;Text=%s"
+        alert.name alert.title alert.id attempt victim alert.text in
+    wrap (fun () -> Syslog.syslog syslog level msg)
+
+  let via_email to_ cc bcc alert attempt victim =
+    let body = string_of_alert alert attempt victim in
+    (* TODO: there should be a link to an acknowledgement URL *)
+    let subject = "ALERT: "^ alert.title in
+    send_mail ~subject ~cc ~bcc to_ body
+
+  let via_sqlite file insert_q create_q alert attempt victim =
+    let open Sqlite3 in
+    let db = db_open file in
+    let replacements =
+      [ "$ID$", string_of_int alert.Alert.id ;
+        "$NAME$", sql_quote alert.name ;
+        "$STARTED$", string_of_float alert.started_firing ;
+        "$STOPPED$", (match alert.stopped_firing with
+                     | Some f -> string_of_float f
+                     | None -> "NULL") ;
+        "$TEXT$", sql_quote alert.text ;
+        "$TITLE$", sql_quote alert.title ;
+        "$TEAM$", sql_quote alert.team ;
+        "$IMPORTANCE$", string_of_int alert.importance ;
+        "$VICTIM$", sql_quote victim ;
+        "$ATTEMPT$", string_of_int attempt ] in
+    let q = List.fold_left (fun str (sub, by) ->
+      String.nreplace ~str ~sub ~by) insert_q replacements in
+    let db_fail err q =
+      let msg =
+        Printf.sprintf "Cannot %S into sqlite DB %S: %s"
+          q file (Rc.to_string err) in
+      fail (CannotSendAlert msg) in
+    let exec_or_fail q =
+      match exec db q with
+      | Rc.OK -> return_unit
+      | err -> db_fail err q in
+    let%lwt () =
+      match exec db q with
+      | Rc.OK -> return_unit
+      | Rc.ERROR when create_q <> "" ->
+        !logger.info "Creating table in sqlite DB %S" file ;
+        let%lwt () = exec_or_fail create_q in
+        exec_or_fail q
+      | err ->
+        db_fail err q in
+    close ~max_tries:30 db
+
+  let via_todo _alert _attempt _victim = fail Not_implemented
+
   let get =
     let open Contact in
     function
-    | Console ->
-      fun alert attempt victim ->
-        Printf.printf "%s\n%!" (string_of_alert alert attempt victim) ;
-        return_unit
-    | SysLog ->
-      fun alert attempt victim ->
-        let level =
-          match alert.importance with
-          | 0 -> `LOG_EMERG | 1 -> `LOG_ALERT | 2 -> `LOG_CRIT
-          | 3 -> `LOG_ERR | 4 -> `LOG_WARNING | 5 -> `LOG_NOTICE
-          | _ -> `LOG_INFO in
-        Printf.sprintf "Name=%s;Title=%s;Id=%d;Attempt=%d;Dest=%s;Text=%s"
-          alert.name alert.title alert.id attempt victim alert.text |>
-        Syslog.syslog syslog level ;
-        return_unit
-    | Email { to_ ; cc ; bcc } ->
-      fun alert attempt victim ->
-        let body = string_of_alert alert attempt victim in
-        (* TODO: there should be a link to an acknowledgement URL *)
-        let subject = "ALERT: "^ alert.title in
-        send_mail ~subject ~cc ~bcc to_ body
-    | SMS _ ->
-      fun _alert _attempt _victim -> fail Not_implemented
+    | Console -> via_console
+    | SysLog -> via_syslog
+    | Email { to_ ; cc ; bcc } -> via_email to_ cc bcc
+    | Sqlite { file ; insert ; create } -> via_sqlite file insert create
+    | SMS _ -> via_todo
 end
 
 module EscalationOps =

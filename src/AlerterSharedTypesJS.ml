@@ -6,13 +6,20 @@ struct
     | Email of { to_ : string [@ppp_rename "to"] ;
                  cc : string [@ppp_default ""] ;
                  bcc : string [@ppp_default ""] }
-    | SMS of string [@@ppp PPP_JSON]
+    | SMS of string
+    | Sqlite of { file : string ;
+                  (* $ID$, $STARTED$, $STOPPED$, $TEXT$, $TITLE$,
+                   * $TEAM$ and $IMPORTANCE$ replaced by actual values *)
+                  insert : string ;
+                  create : string [@ppp_default ""] }
+    [@@ppp PPP_JSON]
 
   let to_string = function
     | Console -> "console"
     | SysLog -> "syslog"
     | Email { to_ ; _ } -> to_
     | SMS num -> "SMS to "^ num
+    | Sqlite { file ; _ } -> "sqlite DB "^ file
 end
 
 module Escalation =
