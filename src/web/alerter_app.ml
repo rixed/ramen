@@ -114,7 +114,7 @@ let fold_teams teams selection init f =
 
 (* Main views of the application: *)
 
-type page = PageLive | PageTeam | PageHandOver | PageHistory
+type page = PageLive | PageTeam | PageHandOver | PageHistory | Reports
 let current_page = make_param "tab" PageLive
 
 (* Incidents *)
@@ -385,6 +385,8 @@ let page_teams =
 
 let page_hand_over = todo "hand over"
 
+let page_reports = todo "reports"
+
 let page_history =
   with_param known_incidents (fun incidents ->
     div
@@ -409,14 +411,16 @@ let menu =
       tab "Live" PageLive ;
       tab "Team" PageTeam ;
       tab "Hand Over" PageHandOver ;
-      tab "History" PageHistory ]
+      tab "History" PageHistory ;
+      tab "Reports" Reports ]
 
 let page =
   with_param current_page (function
     | PageLive -> page_live
     | PageTeam -> page_teams
     | PageHandOver -> page_hand_over
-    | PageHistory -> page_history)
+    | PageHistory -> page_history
+    | Reports -> page_reports)
 
 let dom =
   div [ menu ; page ]

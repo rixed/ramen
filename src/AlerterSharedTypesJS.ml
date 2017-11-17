@@ -81,8 +81,8 @@ struct
   type t =
     { id : int ; (* Used for acknowledgments *)
       name : string ;
-      started_firing : float ;
-      mutable stopped_firing : float option ;
+      started_firing : float ; (* event time *)
+      mutable stopped_firing : float option ; (* event time *)
       team : string ;
       title : string ;
       text : string ;
