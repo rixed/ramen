@@ -379,8 +379,7 @@ struct
     loop alert.importance
 
   (* Send a message and prepare the escalation *)
-  let outcry state alert esc now =
-    let step = get_cap esc.steps esc.attempt in
+  let outcry_once state alert step attempt now =
     (* We figure out who the oncallers are at each attempt of each alert of an
      * incident. This means that if the incident happens during an oncall
      * shift the new oncallers get involved in the middle of the action while
@@ -397,14 +396,34 @@ struct
     Array.fold_left (fun ths rank ->
         let open OnCaller in
         let victim = who_is_oncall state alert.Alert.team rank now in
-        let contact = get_cap victim.contacts esc.attempt in
-        !logger.debug "Victim is %s, contact for attempt %d is: %s"
-          victim.name esc.attempt (PPP.to_string Contact.t_ppp contact) ;
+        let contact = get_cap victim.contacts (attempt - 1) in
+        !logger.debug "%d oncall is %s, contact for attempt %d is: %s"
+          rank victim.name attempt (PPP.to_string Contact.t_ppp contact) ;
         let sender = Sender.get contact in
         AlertOps.log alert now (Alert.Outcry (victim.name, contact)) ;
-        sender alert esc.attempt victim.name :: ths
+        sender alert attempt victim.name :: ths
       ) [] step.victims |>
     join
+
+  (* Same as above, but escalate until delivery *)
+  let outcry state alert esc now =
+    let rec loop () =
+      let step = get_cap esc.steps esc.attempt in
+      esc.attempt <- esc.attempt + 1 ;
+      AlertOps.log alert now (Alert.Escalate step) ;
+      (try%lwt
+        let%lwt () = outcry_once state alert step esc.attempt now in
+        esc.last_sent <- now ;
+        return_unit
+      with exn ->
+        !logger.error "Cannot reach oncaller: %s"
+          (Printexc.to_string exn) ;
+        if esc.attempt - 1 < Array.length esc.steps - 1 then (
+          loop ()
+        ) else (
+          !logger.error "All contacts have failed, giving up" ;
+          return_unit)) in
+    loop ()
 
   let fold_ongoing state init f =
     IncidentOps.fold_ongoing state init (fun prev i ->
@@ -468,13 +487,14 @@ let open_config_db file =
 
 let check_escalations state now =
   EscalationOps.fold_ongoing state [] (fun prev alert esc ->
-      let step = get_cap esc.steps esc.attempt in
-      if now >= esc.last_sent +. step.timeout then (
-        (* We must escalate *)
-        esc.attempt <- esc.attempt + 1 ;
-        esc.last_sent <- now ;
-        AlertOps.log alert now (Alert.Escalate step) ;
-        EscalationOps.outcry state alert esc now :: prev ;
+      let timeout =
+        (* If we have not tried yet there is no possible timeout. *)
+        if esc.attempt = 0 then 0. else
+          (* Check the timeout of the current attempt: *)
+          let step = get_cap esc.steps (esc.attempt - 1) in
+          esc.last_sent +. step.timeout in
+      if now >= timeout then (
+        EscalationOps.outcry state alert esc now :: prev
       ) else prev
     ) |>
   join
@@ -531,7 +551,7 @@ let get_state save_file db_config_file default_team =
       (fun e ->
         print_exception e ;
         return_unit) in
-    Lwt_unix.sleep 0.2 >>=
+    Lwt_unix.sleep 0.5 >>=
     check_escalations_loop
   in
   async check_escalations_loop ;
@@ -570,7 +590,7 @@ let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
         alert.escalation <- Some esc ;
         AlertOps.log alert now (NewNotification StartEscalation) ;
         state.dirty <- true ;
-        let%lwt () = EscalationOps.outcry state alert esc now in
+        (* Let the implicit timeout or 0 deliver the first page. *)
         save_state state ;
         return_unit
       )
