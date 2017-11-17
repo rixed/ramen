@@ -1,5 +1,7 @@
 top_srcdir = ../
 
+CPPFLAGS += -I $(shell ocamlfind query stdint)
+
 ifeq ($(shell uname),Darwin)
 FILE_NOTIFIER = RamenFileNotify_Poller.ml
 else
@@ -17,7 +19,7 @@ LINKED_FOR_TESTS = \
 	RamenSharedTypesJS.ml RamenSharedTypes.ml \
 	RingBufLib.ml RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml \
-	RamenCollectd.ml RamenProtocols.ml Lang.ml \
+	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml Lang.ml \
 	RingBuf.ml RamenConf.ml Globs.ml CodeGen_OCaml.ml Compiler.ml \
 	RamenBloomFilter.ml \
 	web/WebHelpers.ml
@@ -25,7 +27,7 @@ LINKED_FOR_TESTS = \
 RAMEN_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml \
 	RamenSharedTypesJS.ml RamenSharedTypes.ml \
-	RamenCollectd.ml RamenProtocols.ml \
+	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \
 	RamenConf.ml RamenExport.ml RamenProcesses.ml \
@@ -37,7 +39,7 @@ CODEGENLIB_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml Globs.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenSharedTypesJS.ml RamenSharedTypes.ml \
-	RamenCollectd.ml RamenProtocols.ml \
+	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml \
 	RingBufLib.ml RingBuf.ml \
 	RamenBloomFilter.ml RamenFileNotify.ml \
 	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
@@ -53,6 +55,9 @@ LIBCOLCOMP_SOURCES = \
 LIBCOLLECTD_SOURCES = \
 	collectd/collectd.h collectd/collectd.c \
 	collectd/wrappers.c
+
+LIBNETFLOW_SOURCES = \
+	netflow/v5.c
 
 CONFIGURATOR_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml \
@@ -72,7 +77,7 @@ WEB_SOURCES = \
 SOURCES_ = \
 	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
-	$(LIBCOLCOMP_SOURCES) $(WEB_SOURCES) \
+	$(LIBCOLLECTD_SOURCES) $(LIBNETFLOW_SOURCES) $(WEB_SOURCES) \
 	$(CONFIGURATOR_SOURCES) $(ALERTER_SOURCES) \
 	ringbuf_test.ml colcomp/colcomp_test.c
 # Do not take into account generated code that depends on compilation:
@@ -86,7 +91,7 @@ INSTALLED_BIN = ramen ramen_configurator ramen_alerter
 INSTALLED_LIB = \
   META codegen.cmxa codegen.a \
   $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
-  libringbuf.a libcolcomp.a libcollectd.a
+  libringbuf.a libcolcomp.a libcollectd.a libnetflow.a
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB)
 
 bin_dir ?= /usr/local/bin
@@ -110,6 +115,9 @@ libcolcomp.a: colcomp/growblock.o colcomp/colcomp.o
 libcollectd.a: collectd/collectd.o collectd/wrappers.o
 	$(AR) rs $@ $^
 
+libnetflow.a: netflow/v5.o
+	$(AR) rs $@ $^
+
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
 # symbols we need as we are the only users.
@@ -118,15 +126,16 @@ MOREFLAGS = \
 	-cclib -L. \
 	-cclib -lstdint_stubs \
 	-cclib -lringbuf \
-	-cclib -lcollectd
+	-cclib -lcollectd \
+	-cclib -lnetflow
 
-ramen: $(RAMEN_SOURCES:.ml=.cmx) libringbuf.a libcollectd.a
+ramen: $(RAMEN_SOURCES:.ml=.cmx) libringbuf.a libcollectd.a libnetflow.a
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) libringbuf.a libcollectd.a
+codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) libringbuf.a libcollectd.a libnetflow.a
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) libringbuf.a libcollectd.a
+codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) libringbuf.a libcollectd.a libnetflow.a
 	$(OCAMLC) $(OCAMLFLAGS) -a $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
 ringbuf_test.opt: RamenLog.cmx Consts.cmx Helpers.cmx RamenSharedTypesJS.cmx RamenSharedTypes.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx libringbuf.a
@@ -244,7 +253,8 @@ clean-spec:
 	$(RM) ringbuf/*.o colcomp/*.o colcomp/colcomp_test
 
 distclean-spec:
-	$(RM) ramen codegen.cmxa libringbuf.a libcolcomp.a libcollectd.a RamenFileNotify.ml
+	$(RM) ramen codegen.cmxa RamenFileNotify.ml
+	$(RM) libringbuf.a libcolcomp.a libcollectd.a libnetflow.a
 
 install-spec: $(INSTALLED)
 	ocamlfind install ramen $(INSTALLED_LIB)

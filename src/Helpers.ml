@@ -321,3 +321,30 @@ let string_of_time ts =
   Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02ds"
     (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
     tm.tm_hour tm.tm_min tm.tm_sec
+
+let udp_server ?(buffer_size=2000) ~inet_addr ~port k =
+  let open Lwt in
+  let open Lwt_unix in
+  (* FIXME: it seems that binding that socket makes cohttp leack descriptors
+   * when sending reports to ramen. Oh boy! *)
+  let sock_of_domain domain =
+    let sock = socket domain SOCK_DGRAM 0 in
+    let%lwt () = bind sock (ADDR_INET (inet_addr, port)) in
+    return sock in
+  let%lwt sock =
+    catch (fun () -> sock_of_domain PF_INET6)
+          (fun _ -> sock_of_domain PF_INET) in
+  !logger.debug "Listening for datagrams on port %d" port ;
+  let buffer = Bytes.create buffer_size in
+  let rec forever () =
+    let%lwt recv_len, sockaddr =
+      recvfrom sock buffer 0 (Bytes.length buffer) [] in
+    let sender =
+      match sockaddr with
+      | ADDR_INET (addr, port) ->
+        Printf.sprintf "%s:%d" (Unix.string_of_inet_addr addr) port
+      | _ -> "??" in
+    k sender buffer recv_len >>=
+    forever
+  in
+  forever ()

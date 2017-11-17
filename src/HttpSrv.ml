@@ -649,10 +649,11 @@ let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
   logger := make_logger ?logdir debug ;
   let conf =
     C.make_conf do_persist ramen_url debug version_tag persist_dir 5 (* TODO *) in
-  (* When there is nothing to do, listen to collectd! *)
+  (* When there is nothing to do, listen to collectd and netflow! *)
   if demo && Hashtbl.is_empty conf.C.graph.C.layers then (
     !logger.info "Adding default nodes since we have nothing to do..." ;
-    C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore) ;
+    C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore ;
+    C.add_node conf "netflow" "demo" "LISTEN FOR NETFLOW" |> ignore) ;
   async (fun () -> timeout_layers conf) ;
   let lyr = function
     | [] -> bad_request_exn "Layer name missing from URL"

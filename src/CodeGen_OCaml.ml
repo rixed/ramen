@@ -211,16 +211,19 @@ let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ
     csv_fname unlink csv_separator preprocessor
 
 let emit_listen_on oc net_addr port proto =
-  let tuple_typ = RamenProtocols.tuple_typ_of_proto proto in
+  let open RamenProtocols in
+  let tuple_typ = tuple_typ_of_proto proto in
+  let collector = collector_of_proto proto in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n\
     let () =\n\
       \tLwt_main.run (\n\
-      \t\tCodeGenLib.listen_on %S %d RamenProtocols.%s sersize_of_tuple_ serialize_tuple_)\n"
+      \t\tCodeGenLib.listen_on %s %S %d RamenProtocols.%s sersize_of_tuple_ serialize_tuple_)\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
+    collector
     (Unix.string_of_inet_addr net_addr) port
-    (RamenProtocols.string_of_net_protocol proto)
+    (string_of_proto proto)
 
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ

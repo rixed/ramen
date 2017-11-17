@@ -450,16 +450,17 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
       return_unit ;
     | tuple -> outputer tuple)
 
-let listen_on addr_str port proto sersize_of_tuple serialize_tuple =
+let listen_on collector addr_str port proto
+              sersize_of_tuple serialize_tuple =
   let _conf = node_start () in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   and inet_addr = Unix.inet_addr_of_string addr_str
   in
   !logger.debug "Will listen to port %d for incoming %s messages"
-                port (RamenProtocols.string_of_net_protocol proto) ;
+                port (RamenProtocols.string_of_proto proto) ;
   let outputer =
     outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
-  RamenCollectd.collectd_collector ~inet_addr ~port outputer
+  collector ~inet_addr ~port outputer
 
 let notify url field_of_tuple tuple =
   let expand_fields =

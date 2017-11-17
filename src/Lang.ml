@@ -1774,7 +1774,7 @@ struct
         print_csv_specs csv_specs
     | ListenFor { net_addr ; port ; proto } ->
       Printf.fprintf fmt "LISTEN FOR %s ON %s:%d"
-        (RamenProtocols.string_of_net_protocol proto)
+        (RamenProtocols.string_of_proto proto)
         (Unix.string_of_inet_addr net_addr)
         port
 
@@ -1782,12 +1782,14 @@ struct
     | Aggregate { export = Some _ ; _ } -> true
     (* It's low rate enough. TODO: add an "EXPORT" option to ListenFor and set
      * it to true on the demo operation and false otherwise. *)
-    | ListenFor { proto = RamenProtocols.Collectd ; _ } -> true
+    | ListenFor _ (*{ proto = RamenProtocols.Collectd ; _ }*) -> true
     | _ -> false
   let export_event_info = function
     | Aggregate { export = Some e ; _ } -> e
     | ListenFor { proto = RamenProtocols.Collectd ; _ } ->
       Some (("time", 1.), DurationConst 0.)
+    | ListenFor { proto = RamenProtocols.NetflowV5 ; _ } ->
+      Some (("first", 1.), StopField ("last", 1.))
     | _ -> None
 
   let parents_of_operation = function
@@ -2162,10 +2164,13 @@ struct
 
     let default_port_of_protocol = function
       | RamenProtocols.Collectd -> 25826
+      | RamenProtocols.NetflowV5 -> 2055
 
     let net_protocol m =
       let m = "network protocol" :: m in
-      (strinG "collectd" >>: fun () -> RamenProtocols.Collectd) m
+      ((strinG "collectd" >>: fun () -> RamenProtocols.Collectd) |||
+       ((strinG "netflow" ||| strinG "netflowv5") >>: fun () ->
+          RamenProtocols.NetflowV5)) m
 
     let network_address =
       several ~sep:none (cond "inet address" (fun c ->

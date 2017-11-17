@@ -13,6 +13,7 @@
 open Batteries
 open RamenLog
 open Lwt
+open Helpers
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
@@ -40,43 +41,18 @@ let tuple_typ =
 
 external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
 
-let udp_server ~inet_addr ~port k =
-  let open Lwt_unix in
-  (* FIXME: it seems that binding that socket makes cohttp leack descriptors
-   * when sending reports to ramen. Oh boy! *)
-  let sock_of_domain domain =
-    let sock = socket domain SOCK_DGRAM 0 in
-    let%lwt () = bind sock (ADDR_INET (inet_addr, port)) in
-    return sock in
-  let%lwt sock =
-    catch (fun () -> sock_of_domain PF_INET6)
-          (fun _ -> sock_of_domain PF_INET) in
-  !logger.debug "Listening for collectd datagrams on port %d" port ;
-  (* collectd current network.c says 1452: *)
-  let buffer = Bytes.create 1500 in
-  let rec forever () =
-    let%lwt recv_len, sockaddr = recvfrom sock buffer 0 (Bytes.length buffer) [] in
-    let sender =
-      match sockaddr with
-      | ADDR_INET (addr, port) ->
-        Printf.sprintf "%s:%d" (Unix.string_of_inet_addr addr) port
-      | _ -> "??" in
-    k sender buffer recv_len >>=
-    forever
-  in
-  forever ()
-
-let collectd_collector ~inet_addr ?(port=25826) k =
+let collector ~inet_addr ~port k =
   (* Listen to incoming UDP datagrams on given port: *)
   let serve sender buffer recv_len =
     !logger.debug "Received %d bytes from collectd @ %s" recv_len sender ;
     decode buffer recv_len |>
-    Array.fold_left (fun th tuple -> th >>= fun () -> k tuple) (return ())
+    Array.fold_left (fun th tuple -> th >>= fun () -> k tuple) return_unit
   in
-  udp_server ~inet_addr ~port serve
+  (* collectd current network.c buffer is 1452 bytes: *)
+  udp_server ~buffer_size:1500 ~inet_addr ~port serve
 
-let test port () =
+let test ?(port=25826) () =
   logger := make_logger true ;
   let display_tuple _t =
     return_unit in
-  Lwt_main.run (collectd_collector ~inet_addr:Unix.inet_addr_any ~port display_tuple)
+  Lwt_main.run (collector ~inet_addr:Unix.inet_addr_any ~port display_tuple)
