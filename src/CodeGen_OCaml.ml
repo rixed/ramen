@@ -713,9 +713,13 @@ and emit_expr ?state ~context oc expr =
   | InitState, StatefulFun (_, _, AggrPercentile (_p,e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     Printf.fprintf oc "%s[]"
       (if is_nullable e then "Some " else "")
+  | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), Some TFloat ->
+    emit_functionN oc ?state "CodeGenLib.float_percentile_add" [None; None] [my_state g; e]
+  | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some TFloat ->
+    emit_functionN oc ?state "CodeGenLib.float_percentile_finalize" [Some TFloat; None] [p; my_state g]
   | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.percentile_add" [None; None] [my_state g; e]
-  | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+  | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     emit_functionN oc ?state "CodeGenLib.percentile_finalize" [Some TFloat; None] [p; my_state g]
 
   | InitState, StatefulFun (_, _, Lag (k,e)), _ ->
