@@ -806,7 +806,8 @@ let set_all_types _conf layer =
         set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"
       with e ->
-        Printf.sprintf "Exception in set_all_types: %s\n%s"
+        Printf.sprintf "Exception when parsing/typing operation %S: %s\n%s"
+          op_text
           (Printexc.to_string e)
           (Printexc.get_backtrace ())
 

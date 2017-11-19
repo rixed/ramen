@@ -1160,7 +1160,6 @@ struct
           Some { where = ParsersMisc.Item ((0,7), 'c') ;\
                  what = ["\"#successive\"";"field"]})))\
         (test_p field "first.#count" |> replace_typ_in_expr)
-
     *)
 
     let param m =
@@ -2209,8 +2208,7 @@ struct
 
     let p m =
       let m = "operation" :: m in
-      (yield ||| aggregate ||| read_csv_file ||| listen_on
-      ) m
+      (yield ||| aggregate ||| read_csv_file ||| listen_on) m
 
     (*$= p & ~printer:(test_printer print)
       (Ok (\
