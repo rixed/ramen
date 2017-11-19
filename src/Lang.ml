@@ -1835,15 +1835,6 @@ struct
         | DurationConst _ -> ()
         | DurationField (f, _)
         | StopField (f, _) -> check_field_exists f
-    in
-    let check_stateful_fields =
-      (* Check that any stateful functions uses only the in tuple, which is
-       * the only tuple available when initializing the group or global
-       * state. *)
-      Expr.unpure_iter (fun e ->
-          let func_name = Expr.(typ_of e).expr_name in
-          check_fields_from [TupleIn]
-            ("stateful function ("^ func_name ^")") e)
     in function
     | Yield fields ->
       List.iter (fun sf ->
@@ -1856,7 +1847,6 @@ struct
                   flush_when ; flush_how ; export ; from ; _ } ->
       List.fold_left (fun prev_aliases sf ->
           check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr ;
-          check_stateful_fields sf.expr ;
           (* Check unicity of aliases *)
           if List.mem sf.alias prev_aliases then
             raise (SyntaxError (AliasNotUnique sf.alias)) ;
@@ -1877,10 +1867,8 @@ struct
         check_pure pure_in_top by ;
         check_fields_from [TupleIn] "TOP clause" by) top ;
       check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
-      check_stateful_fields commit_when ;
       Option.may (fun flush_when ->
-          check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN clause" flush_when ;
-          check_stateful_fields flush_when
+          check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN clause" flush_when
         ) flush_when ;
       (match flush_how with
       | Reset | Slide _ -> ()
