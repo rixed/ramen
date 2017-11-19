@@ -118,7 +118,7 @@ run() {
 }
 
 tail_() {
-  $ramen tail --cont --last "$1" --as-csv "test/$2"
+  timeout --preserve-status 10s $ramen tail --cont --last "$1" --as-csv "test/$2"
 }
 
 check_equal() {

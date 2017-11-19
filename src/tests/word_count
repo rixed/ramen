@@ -30,7 +30,7 @@ add_node counter2 "FROM test/splitter WHERE word <> \"\"
 
 run
 upload balade.txt recv
-sleep 0.5 # Make sure we start by the above text
+sleep 1 # Make sure we start by the above text
 upload end.txt recv
 sleep 2
 
