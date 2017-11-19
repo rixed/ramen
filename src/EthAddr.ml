@@ -1,21 +1,30 @@
 (* Functions related to eth addresses handling *)
 open Batteries
 open Stdint
+open Helpers
+
+let to_string =
+  let ff = Uint48.of_int 0xff in
+  fun n ->
+    let s = String.create 17 in
+    let rec loop shf i =
+      if shf >= 0 then (
+        let v = Uint48.(shift_right_logical n shf |> logand ff |> to_int) in
+        s.[i] <- hex_of (v lsr 4) ;
+        s.[i+1] <- hex_of (v land 0xf) ;
+        let i' = if shf = 0 then i+2 else (s.[i+2] <- ':' ; i+3) in
+        loop (shf - 8) i'
+      ) in
+    loop 40 0 ;
+    Bytes.to_string s
+
+(*$= to_string & ~printer:(fun x -> x)
+  "01:23:45:67:89:ab" \
+    (to_string (Stdint.Uint48.of_string "0x123456789AB"))
+ *)
 
 let print fmt n =
-  let ff = Uint48.of_int 0xff in
-  let rec loop shf =
-    if shf >= 0 then (
-      let v = Uint48.(shift_right_logical n shf |> logand ff |> to_int) in
-      Printf.fprintf fmt "%02x%s" v (if shf = 0 then "" else ":") ;
-      loop (shf - 8)
-    ) in
-  loop 40
-
-(*$= print & ~printer:(fun x -> x)
-  "01:23:45:67:89:ab" \
-    (BatIO.to_string print (Stdint.Uint48.of_string "0x123456789AB"))
- *)
+  String.print fmt (to_string n)
 
 module Parser =
 struct

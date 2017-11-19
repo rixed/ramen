@@ -2,18 +2,41 @@
 open Batteries
 open Stdint
 
-let print fmt n =
+let to_string =
   let mask = Uint32.of_int 255 in
-  let digit shf =
+  let digit n shf =
     Uint32.(shift_right_logical n shf |>
             logand mask |>
             to_int) in
-  Printf.fprintf fmt "%d.%d.%d.%d"
-    (digit 24) (digit 16) (digit 8) (digit 0)
-(*$= print & ~printer:(fun x -> x)
+  let digit_sz n =
+    if n < 10 then 1 else if n < 100 then 2 else 3 in
+  let zero = Char.code '0' in
+  let char_of n =
+    Char.chr (zero + n) in
+  fun n ->
+    let ns = List.map (digit n) [24; 16; 8; 0] in
+    let sz = List.fold_left (fun s n -> digit_sz n + s) 3 ns in
+    let s = String.create sz in
+    List.fold_left (fun si n ->
+      let si =
+        if si = 0 then 0 else (s.[si] <- '.' ; si + 1) in
+      let si =
+        if n < 100 then si else (
+          s.[si] <- char_of (n / 100) ; si + 1) in
+      let si =
+        if n < 10 then si else (
+          s.[si] <- char_of ((n / 10) mod 10) ; si + 1) in
+      let si =
+        s.[si] <- char_of (n mod 10) ; si + 1 in
+      si) 0 ns |> ignore ;
+    Bytes.to_string s
+(*$= to_string & ~printer:(fun x -> x)
   "123.45.67.89" \
-    (BatIO.to_string print (Stdint.Uint32.of_string "0x7B2D4359"))
+    (to_string (Stdint.Uint32.of_string "0x7B2D4359"))
  *)
+
+let print fmt n =
+  String.print fmt (to_string n)
 
 module Parser =
 struct
@@ -49,14 +72,6 @@ struct
     let shf = 32 - len in
     Uint32.(logor net ((shift_left one shf) - one))
 
-  let print fmt (net, len) =
-    let net = Uint32.(logand (netmask_of_len len) net) in
-    Printf.fprintf fmt "%a/%d" print net len
-  (*$= print & ~printer:(fun x -> x)
-     "192.168.10.0/24" \
-       (BatIO.to_string print (Stdint.Uint32.of_string "0xC0A80A00", 24))
-   *)
-
   module Parser =
   struct
     open RamenParsing
@@ -78,5 +93,16 @@ struct
      (Stdint.Uint32.of_int32 0x0A0A0100l, 24) (of_string "10.10.1.0/24")
      (Stdint.Uint32.of_int32 0x0A0A0100l, 24) (of_string "10.10.1.42/24")
    *)
+
+  let to_string (net, len) =
+    let net = Uint32.(logand (netmask_of_len len) net) in
+    to_string net ^"/"^ string_of_int len
+  (*$= to_string & ~printer:(fun x -> x)
+     "192.168.10.0/24" \
+       (to_string (Stdint.Uint32.of_string "0xC0A80A00", 24))
+   *)
+
+  let print fmt t = String.print fmt (to_string t)
+
   (*$>*)
 end

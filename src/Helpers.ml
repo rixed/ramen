@@ -348,3 +348,10 @@ let udp_server ?(buffer_size=2000) ~inet_addr ~port k =
     forever
   in
   forever ()
+
+let hex_of =
+  let zero = Char.code '0'
+  and ten = Char.code 'a' - 10 in
+  fun n ->
+    if n < 10 then Char.chr (zero + n)
+    else Char.chr (ten + n)

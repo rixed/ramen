@@ -373,15 +373,20 @@ let omod_of_type = function
   | TString -> "String"
   | TBool -> "Bool"
   | TU8 | TU16 | TU32 | TU64 | TU128
-  | TI8 | TI16 | TI32 | TI64 | TI128
-  | TEth | TIpv4 | TIpv6 as t ->
+  | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
     String.capitalize (otype_of_type t)
-  | TCidrv4 | TCidrv6 -> assert false (* Must not be used since no conversion from/to those *)
+  | TEth -> "EthAddr"
+  | TIpv4 -> "Ipv4"
+  | TIpv6 -> "Ipv6"
+  | TCidrv4 -> "Ipv4.Cidr"
+  | TCidrv6 -> "Ipv6.Cidr"
   | TNull -> assert false (* Never used on NULLs *)
   | TNum | TAny -> assert false
 
-(* TODO: Why don't we have explicit casts in the AST so that we could stop caring
- * about those pesky conversions once and for all? *)
+(* TODO: Why don't we have explicit casts in the AST so that we could stop
+ * caring about those pesky conversions once and for all? *)
+(* Note: for field_of_tuple, we must be able to convert any value into a
+ * string *)
 let conv_from_to from_typ ~nullable to_typ p fmt e =
   match from_typ, to_typ with
   | a, b when a = b -> p fmt e
@@ -410,6 +415,9 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
     (* We could as well just print "()" but this is easier for debugging,
      * and hopefully the compiler will make it the same: *)
     Printf.fprintf fmt "(ignore %a)" p e
+  | (TEth|TIpv4|TIpv6|TCidrv4|TCidrv6), TString ->
+    Printf.fprintf fmt "(%s.to_string %a)"
+      (omod_of_type from_typ) p e
   | _ ->
     failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
                 (IO.to_string Scalar.print_typ from_typ)

@@ -1,25 +1,46 @@
 (* Function related to IPv6 addresses *)
 open Batteries
 open Stdint
+open Helpers
 
-let print fmt n =
+let to_string =
   let mask = Uint128.of_int 65535 in
-  let digit shf =
+  let digit n shf =
     Uint128.(shift_right_logical n shf |>
              logand mask |>
              to_int) in
-  (* TODO: longest sequence of 0 (but more than a single word)
-   * should be omitted *)
-  for d = 0 to 7 do
-    Printf.fprintf fmt "%s%x"
-      (if d > 0 then ":" else "")
-      (digit (112 - d*16))
-  done
-(*$= print & ~printer:(fun x -> x)
+  fun n ->
+    (* TODO: longest sequence of 0 (but more than a single word)
+     * should be omitted *)
+    let s = Bytes.create (8*(4+1)) in
+    let rec loop d i =
+      if d = 8 then i else (
+        let i =
+          if i = 0 then i else (
+            s.[i] <- ':' ; i + 1) in
+          let v = digit n (112 - d*16) in
+          let i =
+            if v < 0x1000 then i else (
+              s.[i] <- hex_of (v lsr 12) ; i + 1) in
+          let i =
+            if v < 0x100 then i else (
+              s.[i] <- hex_of ((v lsr 8) land 0xf) ; i + 1) in
+          let i =
+            if v < 0x10 then i else (
+              s.[i] <- hex_of ((v lsr 4) land 0xf) ; i + 1) in
+          let i =
+            s.[i] <- hex_of (v land 0xf) ; i + 1 in
+          loop (d + 1) i) in
+    let len = loop 0 0 in
+    Bytes.sub_string s 0 len
+
+(*$= to_string & ~printer:(fun x -> x)
   "2001:db8:0:0:0:ff00:42:8329" \
-    (BatIO.to_string print (Stdint.Uint128.of_string \
+    (to_string (Stdint.Uint128.of_string \
       "0x20010DB8000000000000FF0000428329"))
  *)
+
+let print fmt n = String.print fmt (to_string n)
 
 module Parser =
 struct
@@ -75,14 +96,16 @@ struct
     let shf = 128 - len in
     Uint128.(logor net ((shift_left one shf) - one))
 
-  let print fmt (net, len) =
+  let to_string (net, len) =
     let net = and_to_len len net in
-    Printf.fprintf fmt "%a/%d" print net len
-  (*$= print & ~printer:(fun x -> x)
+    to_string net ^"/"^ string_of_int len
+  (*$= to_string & ~printer:(fun x -> x)
      "2001:db8:0:0:0:ff00:42:8300/120" \
-       (BatIO.to_string print \
-         (Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428300", 120))
+       (to_string (Stdint.Uint128.of_string \
+         "0x20010DB8000000000000FF0000428300", 120))
    *)
+
+  let print fmt t = String.print fmt (to_string t)
 
   module Parser =
   struct
