@@ -49,6 +49,11 @@ let shell_quote s =
 let sql_quote s =
   "'"^ String.nreplace s "'" "''" ^"'"
 
+let list_existsi f l =
+  match List.findi (fun i v -> f i v) l with
+  | exception Not_found -> false
+  | _ -> true
+
 let print_exception e =
   !logger.error "Exception: %s\n%s"
     (Printexc.to_string e)

@@ -4,8 +4,10 @@ open RamenSharedTypesJS
 open RamenSharedTypes
 open Stdint
 open Helpers
+open RamenLog
 
 type tuple_prefix =
+  | TupleUnknown (* Either In or Out *)
   | TupleIn | TupleLastIn
   | TupleSelected | TupleLastSelected
   | TupleUnselected | TupleLastUnselected
@@ -25,6 +27,7 @@ let string_of_prefix = function
   | TupleGroupLast -> "group.last"
   | TupleGroupPrevious -> "group.previous"
   | TupleOut -> "out"
+  | TupleUnknown -> "unknown"
 
 type syntax_error =
   | ParseError of { error : string ; text : string }
@@ -99,11 +102,11 @@ let () =
     | SyntaxError e -> Some (string_of_syntax_error e)
     | _ -> None)
 
-let parse_prefix m =
+let parse_prefix ~def m =
   let open RamenParsing in
   let m = "tuple prefix" :: m in
   let prefix s = strinG (s ^ ".") in
-  (optional ~def:TupleIn (
+  (optional ~def (
     (prefix "in" >>: fun () -> TupleIn) |||
     (prefix "in.last" >>: fun () -> TupleLastIn) |||
     (prefix "selected" >>: fun () -> TupleSelected) |||
@@ -173,6 +176,12 @@ let tuple_need_state = function
     (p +- eof) [] None Parsers.no_error_correction (PConfig.stream_of_string s) |>
     to_result |>
     strip_linecol
+
+  let test_op p s =
+    match test_p p s with
+    | Ok (res, _) as ok_res ->
+      Lang.Operation.check res ; ok_res
+    | x -> x
 
   let typ = Lang.Expr.make_typ "replaced for tests"
 
@@ -1110,7 +1119,7 @@ struct
 
     let field m =
       let m = "field" :: m in
-      ((parse_prefix ++ non_keyword >>:
+      ((parse_prefix ~def:TupleUnknown ++ non_keyword >>:
         fun (tuple, field) ->
           (* This is important here that the type name is the raw field name,
            * because we use the tuple field type name as their identifier (unless
@@ -1118,11 +1127,11 @@ struct
            * computed on the fly and have no variable corresponding to them in
            * the tuple) *)
           Field (make_typ field, ref tuple, field)) |||
-       (parse_prefix ++ that_string "#count" >>:
+       (parse_prefix ~def:TupleIn ++ that_string "#count" >>:
         fun (tuple, field) ->
           if not (tuple_has_count tuple) then raise (Reject "This tuple has no #count") ;
           Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field)) |||
-       (parse_prefix ++ that_string "#successive" >>:
+       (parse_prefix ~def:TupleIn ++ that_string "#successive" >>:
         fun (tuple, field) ->
           if not (tuple_has_successive tuple) then raise (Reject "This tuple has no #successive") ;
           Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field))
@@ -1130,7 +1139,7 @@ struct
 
     (*$= field & ~printer:(test_printer (print false))
       (Ok (\
-        Field (typ, ref TupleIn, "bytes"),\
+        Field (typ, ref TupleUnknown, "bytes"),\
         (5, [])))\
         (test_p field "bytes" |> replace_typ_in_expr)
 
@@ -1527,12 +1536,12 @@ struct
         (test_p p "true" |> replace_typ_in_expr)
 
       (Ok (\
-        StatelessFun (typ, Not (StatelessFun (typ, Defined (Field (typ, ref TupleIn, "zone_src"))))),\
+        StatelessFun (typ, Not (StatelessFun (typ, Defined (Field (typ, ref TupleUnknown, "zone_src"))))),\
         (16, [])))\
         (test_p p "zone_src IS NULL" |> replace_typ_in_expr)
 
       (Ok (\
-        StatelessFun (typ, Eq (Field (typ, ref TupleIn, "zone_src"), Param (typ, "z1"))),\
+        StatelessFun (typ, Eq (Field (typ, ref TupleUnknown, "zone_src"), Param (typ, "z1"))),\
         (14, [])))\
         (test_p p "zone_src = $z1" |> replace_typ_in_expr)
 
@@ -1540,13 +1549,13 @@ struct
         StatelessFun (typ, And (\
           StatelessFun (typ, Or (\
             StatelessFun (typ, Not (\
-              StatelessFun (typ, Defined (Field (typ, ref TupleIn, "zone_src"))))),\
-            StatelessFun (typ, Eq (Field (typ, ref TupleIn, "zone_src"), Param (typ, "z1"))))),\
+              StatelessFun (typ, Defined (Field (typ, ref TupleUnknown, "zone_src"))))),\
+            StatelessFun (typ, Eq (Field (typ, ref TupleUnknown, "zone_src"), Param (typ, "z1"))))),\
           StatelessFun (typ, Or (\
             StatelessFun (typ, Not (\
-              StatelessFun (typ, Defined (Field (typ, ref TupleIn, "zone_dst"))))),\
+              StatelessFun (typ, Defined (Field (typ, ref TupleUnknown, "zone_dst"))))),\
             StatelessFun (typ, Eq (\
-              Field (typ, ref TupleIn, "zone_dst"), Param (typ, "z2"))))))),\
+              Field (typ, ref TupleUnknown, "zone_dst"), Param (typ, "z2"))))))),\
         (77, [])))\
         (test_p p "(zone_src IS NULL or zone_src = $z1) and \\
                    (zone_dst IS NULL or zone_dst = $z2)" |> replace_typ_in_expr)
@@ -1554,14 +1563,14 @@ struct
       (Ok (\
         StatelessFun (typ, Div (\
           StatefulFun (typ, LocalState, AggrSum (\
-            Field (typ, ref TupleIn, "bytes"))),\
+            Field (typ, ref TupleUnknown, "bytes"))),\
           Param (typ, "avg_window"))),\
         (23, [])))\
         (test_p p "(sum bytes)/$avg_window" |> replace_typ_in_expr)
 
       (Ok (\
         StatelessFun (typ, IDiv (\
-          Field (typ, ref TupleIn, "start"),\
+          Field (typ, ref TupleUnknown, "start"),\
           StatelessFun (typ, Mul (\
             Const (typ, VI32 1_000_000l),\
             Param (typ, "avg_window"))))),\
@@ -1571,7 +1580,7 @@ struct
       (Ok (\
         StatefulFun (typ, LocalState, AggrPercentile (\
           Param (typ, "p"),\
-          Field (typ, ref TupleIn, "bytes_per_sec"))),\
+          Field (typ, ref TupleUnknown, "bytes_per_sec"))),\
         (27, [])))\
         (test_p p "$p percentile bytes_per_sec" |> replace_typ_in_expr)
 
@@ -1600,10 +1609,10 @@ struct
       (Ok ( \
         StatelessFun (typ, Abs (\
           StatelessFun (typ, Sub (\
-            Field (typ, ref TupleIn, "bps"), \
+            Field (typ, ref TupleUnknown, "bps"), \
             StatefulFun (typ, GlobalState, Lag (\
               Const (typ, VI8 (Int8.of_int 1)), \
-              Field (typ, ref TupleIn, "bps"))))))), \
+              Field (typ, ref TupleUnknown, "bps"))))))), \
         (21, []))) \
         (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
     *)
@@ -1795,6 +1804,22 @@ struct
     | ListenFor _ | ReadCSVFile _ | Yield _ -> []
     | Aggregate { from ; _ } -> from
 
+  let iter_expr f = function
+    | ListenFor _ | ReadCSVFile _ -> ()
+    | Yield fields ->
+        List.iter (fun sf -> f sf.expr) fields
+    | Aggregate { fields ; where ; key ; top ; commit_when ;
+                  flush_when ; flush_how ; _ } ->
+        List.iter (fun sf -> f sf.expr) fields ;
+        f where ;
+        List.iter f key ;
+        Option.may (fun (n, by) -> f n ; f by) top ;
+        f commit_when ;
+        Option.may f flush_when ;
+        match flush_how with
+        | Slide _ | Reset -> ()
+        | RemoveAll e | KeepOnly e -> f e
+
   (* Check that the expression is valid, or return an error message.
    * Also perform some optimisation, numeric promotions, etc... *)
   let check =
@@ -1844,7 +1869,50 @@ struct
         ) fields
       (* TODO: check unicity of aliases *)
     | Aggregate { fields ; and_all_others ; where ; key ; top ; commit_when ;
-                  flush_when ; flush_how ; export ; from ; _ } ->
+                  flush_when ; flush_how ; export ; from ; _ } as op ->
+      (* Set of fields known to come from in (to help prefix_smart): *)
+      let fields_from_in = ref Set.empty in
+      iter_expr (function
+        | Field (_, { contents = (TupleIn|TupleLastIn|TupleSelected|
+                                  TupleLastSelected|TupleUnselected|
+                                  TupleLastUnselected) }, alias) ->
+            fields_from_in := Set.add alias !fields_from_in
+        | _ -> ()) op ;
+      let is_selected_fields ?i alias = (* Tells if a field is in _out_ *)
+        list_existsi (fun i' sf ->
+          sf.alias = alias &&
+          Option.map_default (fun i -> i' < i) true i) fields in
+      (* Resolve TupleUnknown into either TupleIn or TupleOut depending
+       * on the presence of this alias in selected_fields (optionally,
+       * only before position i) *)
+      let prefix_smart ?i =
+        Expr.iter (function
+          | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
+              if Set.mem alias !fields_from_in then
+                pref := TupleIn
+              else if is_selected_fields ?i alias then
+                pref := TupleOut
+              else (
+                pref := TupleIn ;
+                fields_from_in := Set.add alias !fields_from_in) ;
+              !logger.debug "Field %S thought to belong to %s"
+                alias (string_of_prefix !pref)
+          | _ -> ())
+      and prefix_def def =
+        Expr.iter (function
+          | Field (_, ({ contents = TupleUnknown } as pref), _) ->
+              pref := def
+          | _ -> ()) in
+      List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
+      prefix_smart where ;
+      List.iter (prefix_def TupleIn) key ;
+      Option.may (fun (n, by) ->
+        prefix_smart n ; prefix_def TupleIn  by) top ;
+      prefix_smart commit_when ;
+      Option.may prefix_smart flush_when ;
+      (match flush_how with
+      | KeepOnly e | RemoveAll e -> prefix_def TupleGroup e
+      | _ -> ()) ;
       List.fold_left (fun prev_aliases sf ->
           check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr ;
           (* Check unicity of aliases *)
@@ -1893,18 +1961,18 @@ struct
         if String.length field = 0 || field.[0] <> '_' then field
         else String.lchop field in
       function
-      | Field (_, { contents=TupleIn }, field)
+      | Field (_, _, field)
           when not (is_virtual_field field) -> field
       (* Provide some default name for common aggregate functions: *)
-      | StatefulFun (_, _, AggrMin (Field (_, { contents=TupleIn }, field))) -> "min_"^ force_public field
-      | StatefulFun (_, _, AggrMax (Field (_, { contents=TupleIn }, field))) -> "max_"^ force_public field
-      | StatefulFun (_, _, AggrSum (Field (_, { contents=TupleIn }, field))) -> "sum_"^ force_public field
-      | StatefulFun (_, _, AggrAvg (Field (_, { contents=TupleIn }, field))) -> "avg_"^ force_public field
-      | StatefulFun (_, _, AggrAnd (Field (_, { contents=TupleIn }, field))) -> "and_"^ force_public field
-      | StatefulFun (_, _, AggrOr (Field (_, { contents=TupleIn }, field))) -> "or_"^ force_public field
-      | StatefulFun (_, _, AggrFirst (Field (_, { contents=TupleIn }, field))) -> "first_"^ force_public field
-      | StatefulFun (_, _, AggrLast (Field (_, { contents=TupleIn }, field))) -> "last_"^ force_public field
-      | StatefulFun (_, _, AggrPercentile (Const (_, p), Field (_, { contents=TupleIn }, field)))
+      | StatefulFun (_, _, AggrMin (Field (_, _, field))) -> "min_"^ force_public field
+      | StatefulFun (_, _, AggrMax (Field (_, _, field))) -> "max_"^ force_public field
+      | StatefulFun (_, _, AggrSum (Field (_, _, field))) -> "sum_"^ force_public field
+      | StatefulFun (_, _, AggrAvg (Field (_, _, field))) -> "avg_"^ force_public field
+      | StatefulFun (_, _, AggrAnd (Field (_, _, field))) -> "and_"^ force_public field
+      | StatefulFun (_, _, AggrOr (Field (_, _, field))) -> "or_"^ force_public field
+      | StatefulFun (_, _, AggrFirst (Field (_, _, field))) -> "first_"^ force_public field
+      | StatefulFun (_, _, AggrLast (Field (_, _, field))) -> "last_"^ force_public field
+      | StatefulFun (_, _, AggrPercentile (Const (_, p), Field (_, _, field)))
         when Scalar.is_round_integer p ->
         Printf.sprintf "%s_%sth" (force_public field) (IO.to_string Scalar.print p)
       | _ -> raise (Reject "must set alias")
@@ -1914,7 +1982,8 @@ struct
       (Expr.Parser.p ++ optional ~def:None (
          blanks -- strinG "as" -- blanks -+ some non_keyword) >>:
        fun (expr, alias) ->
-        let alias = Option.default_delayed (fun () -> default_alias expr) alias in
+        let alias =
+          Option.default_delayed (fun () -> default_alias expr) alias in
         { expr ; alias }) m
 
     let list_sep m =
@@ -2220,7 +2289,7 @@ struct
           export = None ;\
           from = ["foo"] },\
         (67, [])))\
-        (test_p p "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
+        (test_op p "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
          replace_typ_in_op)
 
       (Ok (\
@@ -2237,7 +2306,7 @@ struct
           flush_when = None ;\
           flush_how = Reset ; from = ["foo"] },\
         (26, [])))\
-        (test_p p "from foo where packets > 0" |> replace_typ_in_op)
+        (test_op p "from foo where packets > 0" |> replace_typ_in_op)
 
       (Ok (\
         Aggregate {\
@@ -2255,7 +2324,7 @@ struct
           flush_when = None ;\
           flush_how = Reset ; from = ["foo"] },\
         (71, [])))\
-        (test_p p "from foo select t, value export event starting at t*10 with duration 60" |>\
+        (test_op p "from foo select t, value export event starting at t*10 with duration 60" |>\
          replace_typ_in_op)
 
       (Ok (\
@@ -2275,7 +2344,7 @@ struct
           flush_when = None ;\
           flush_how = Reset ; from = ["foo"] },\
         (82, [])))\
-        (test_p p "from foo select t1, t2, value export event starting at t1*10 and stopping at t2*10" |>\
+        (test_op p "from foo select t1, t2, value export event starting at t1*10 and stopping at t2*10" |>\
          replace_typ_in_op)
 
       (Ok (\
@@ -2290,7 +2359,7 @@ struct
           flush_when = None ;\
           flush_how = Reset ; from = ["foo"] },\
         (50, [])))\
-        (test_p p "from foo NOTIFY \"http://firebrigade.com/alert.php\"" |>\
+        (test_op p "from foo NOTIFY \"http://firebrigade.com/alert.php\"" |>\
          replace_typ_in_op)
 
       (Ok (\
@@ -2331,9 +2400,9 @@ struct
           flush_when = None ; flush_how = Reset ;\
           from = ["foo"] },\
           (200, [])))\
-          (test_p p "select min start as start, \\
-                            max stop as max_stop, \\
-                            (sum packets)/$avg_window as packets_per_sec \\
+          (test_op p "select min start as start, \\
+                             max stop as max_stop, \\
+                             (sum packets)/$avg_window as packets_per_sec \\
                      from foo \\
                      group by start / (1_000_000 * $avg_window) \\
                      commit when out.start < (max group.first.start) + 3600" |>\
@@ -2356,7 +2425,7 @@ struct
               Const (typ, VI8 (Int8.of_int 5))))) ;\
           flush_when = None ; flush_how = Reset ; from = ["foo"] },\
           (47, [])))\
-          (test_p p "select 1 as one from foo commit when sum 1 >= 5" |>\
+          (test_op p "select 1 as one from foo commit when sum 1 >= 5" |>\
            replace_typ_in_op)
 
       (Ok (\
@@ -2377,7 +2446,7 @@ struct
           flush_when = None ;\
           flush_how = Reset ; from = ["foo/bar"] },\
           (37, [])))\
-          (test_p p "SELECT n, lag(2, n) AS l FROM foo/bar" |>\
+          (test_op p "SELECT n, lag(2, n) AS l FROM foo/bar" |>\
            replace_typ_in_op)
 
       (Ok (\
@@ -2388,7 +2457,7 @@ struct
                           { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
                           { typ_name = "f2" ; nullable = false ; typ = TI32 } ] } },\
         (52, [])))\
-        (test_p p "read file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
+        (test_op p "read file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
         ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = true } ; \
@@ -2398,7 +2467,7 @@ struct
                           { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
                           { typ_name = "f2" ; nullable = false ; typ = TI32 } ] } },\
         (63, [])))\
-        (test_p p "read and delete file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
+        (test_op p "read and delete file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
       (Ok (\
         ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = false } ; \
@@ -2408,7 +2477,7 @@ struct
                           { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
                           { typ_name = "f2" ; nullable = false ; typ = TI32 } ] } },\
         (81, [])))\
-        (test_p p "read file \"/tmp/toto.csv\" \\
+        (test_op p "read file \"/tmp/toto.csv\" \\
                         separator \"\\t\" null \"<NULL>\" \\
                         (f1 bool, f2 i32 not null)")
     *)

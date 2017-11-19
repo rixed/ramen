@@ -239,23 +239,10 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       | exception Not_found ->
         !logger.debug "Cannot find field %s in in-tuple" field ;
         if in_type.C.finished_typing then (
-          (* Maybe we meant an out tuple field instead: *)
-          (* FIXME: do not look elsewhere if "in" was explicit! *)
-          (* FIXME: that's nice and all, but maybe out was actually not allowed
-           * here?  Fix idea: in addition to in_type and out_type, have more
-           * context telling us what tuple we can reference - ideally not only
-           * the tuple but the fields within those, because in a select we can
-           * only refer to out tuple fields that have been defined earlier. *)
-          if List.mem_assoc field out_type.C.fields then (
-            !logger.debug "Field %s appears to belongs to out!" field ;
-            tuple := TupleOut ;
-            true
-          ) else if out_type.C.finished_typing then (
-            let e = FieldNotInTuple {
-              field ; tuple = !tuple ;
-              tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
-            raise (SyntaxError e)
-          ) else false
+          let e = FieldNotInTuple {
+            field ; tuple = !tuple ;
+            tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
+          raise (SyntaxError e)
         ) else false
       | from ->
         if in_type.C.finished_typing then ( (* Save the type *)
