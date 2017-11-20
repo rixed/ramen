@@ -1229,32 +1229,6 @@ let emit_state_init name state_lifespan other_state_vars
     Printf.fprintf oc " }\n"
   )
 
-(* FIXME: once group_update is merged into tuple_of_aggr, get rid of
- * this other_vars *)
-let emit_state_update name state_var other_vars state_lifespan
-      ?where ?commit_when ?flush_when
-      in_tuple_typ mentioned and_all_others
-      oc selected_fields =
-  Printf.fprintf oc "let %s %a %a =\n"
-    name
-    (List.print ~first:"" ~last:"" ~sep:" " String.print)
-      (state_var::other_vars)
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
-  (* Note that for_each_unpure_fun proceed depth first so inner functions
-   * state will be updated first, which is what we want. *)
-  let for_each_my_unpure_fun f =
-    for_each_unpure_fun_my_lifespan
-      state_lifespan selected_fields ?where ?commit_when ?flush_when f
-  in
-  for_each_my_unpure_fun (function
-    | Expr.StatefulFun _ as e ->
-      Printf.fprintf oc "\t%s.%s <- (%a) ;\n"
-        state_var
-        (name_of_state e)
-        (emit_expr ?state:None ~context:UpdateState) e
-    | _ -> ()) ;
-  Printf.fprintf oc "\t()\n"
-
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
 let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
