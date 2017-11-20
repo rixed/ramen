@@ -912,26 +912,28 @@ let aggregate
                   aggr.first_in aggr.last_in in
               aggr.current_out <- out_generator ;
               aggr.last_in <- in_tuple ;
-              (* We consider we always have to move in the weight map although
-               * sometime weight may be unchanged. *)
-              (* Move in the WeightMap. First remove: *)
-              weightmap := WeightMap.modify_opt prev_wk (function
-                | None -> assert false
-                  (* If this is not the usual case then we are in trouble. In
-                   * other words you should not have many of your top_n heavy
-                   * hitters with the same weight. *)
-                | Some [k'] ->
-                  assert (k = k') ; None
-                | Some lst ->
-                  let lst' = List.filter ((<>) k) lst in
-                  assert (lst' <> []) ;
-                  Some lst') !weightmap ;
-              (* reinsert with new weight: *)
               let new_wk = tot_weight float_of_top_state aggr in
-              weightmap := WeightMap.modify_opt new_wk (function
-                | None -> Some [k]
-                | Some lst as prev ->
-                  if List.mem k lst then prev else Some (k::lst)) !weightmap ;
+              (* No need to update the weightmap if the weight haven't changed.
+               * If it seldom happen when using a TOP clause, it does happen
+               * all the time when _not_ using one! *)
+              if prev_wk <> new_wk then (
+                (* Move in the WeightMap. First remove: *)
+                weightmap := WeightMap.modify_opt prev_wk (function
+                  | None -> assert false
+                  | Some [k'] ->
+                    (* If this is not the usual case then we are in trouble. In
+                     * other words you should not have many of your top_n heavy
+                     * hitters with the same weight. *)
+                    assert (k = k') ; None
+                  | Some lst ->
+                    let lst' = List.filter ((<>) k) lst in
+                    assert (lst' <> []) ;
+                    Some lst') !weightmap ;
+                (* reinsert with new weight: *)
+                weightmap := WeightMap.modify_opt new_wk (function
+                  | None -> Some [k]
+                  | Some lst as prev ->
+                    if List.mem k lst then prev else Some (k::lst)) !weightmap) ;
               Some aggr
             ) else None in
         (match aggr_opt with
