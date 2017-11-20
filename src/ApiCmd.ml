@@ -98,6 +98,30 @@ let resp_column_length = function
   | _typ, None, column -> column_length column
   | _typ, Some nullmask, _column -> Array.length nullmask
 
+let column_value_at n =
+  let g a = Array.get a n in
+  let open Lang.Scalar in
+  function
+  | AFloat a -> to_string (VFloat (g a))
+  | AString a -> to_string (VString (g a))
+  | ABool a -> to_string (VBool (g a))
+  | AU8 a -> to_string (VU8 (g a))
+  | AU16 a -> to_string (VU16 (g a))
+  | AU32 a -> to_string (VU32 (g a))
+  | AU64 a -> to_string (VU64 (g a))
+  | AU128 a -> to_string (VU128 (g a))
+  | AI8 a -> to_string (VI8 (g a))
+  | AI16 a -> to_string (VI16 (g a))
+  | AI32 a -> to_string (VI32 (g a))
+  | AI64 a -> to_string (VI64 (g a))
+  | AI128 a -> to_string (VI128 (g a))
+  | ANull _ -> to_string VNull
+  | AEth a -> g a
+  | AIpv4 a -> g a
+  | AIpv6 a -> g a
+  | ACidrv4 a -> g a
+  | ACidrv6 a -> g a
+
 let tuples_of_columns columns =
   assert (columns <> []) ;
   let nb_tuples = resp_column_length (List.hd columns) in
@@ -106,7 +130,7 @@ let tuples_of_columns columns =
     List.map (fun (typ_name, nullmask_opt, ts) ->
       let nullable = nullmask_opt <> None in
       { typ_name ; nullable ; typ = type_of_column ts }) columns in
-  (* Build the tuple of line l *)
+  (* Build the (all-string) tuple of line l *)
   let value_idx_of_tuple_idx col_idx =
     let _typ, nullmask, column = List.at columns col_idx in
     match nullmask with
@@ -123,7 +147,7 @@ let tuples_of_columns columns =
           ) 0 nullmask in
       fun tuple_idx ->
         match value_idx_of_tuple_idx.(tuple_idx) with
-        | -1 -> VNull
+        | -1 -> Lang.Scalar.to_string VNull
         | i -> column_value_at i column
   in
   let value_at = List.init nb_fields value_idx_of_tuple_idx in
@@ -140,11 +164,11 @@ let display_tuple_as_csv ?(with_header=false) ?(separator=",") ?(null="") to_dro
   (* TODO: print header line? *)
   ignore with_header ;
   ignore null ;
-  let print_value =
+  let print_row =
     List.print ~first:"" ~last:"\n" ~sep:separator
-                Lang.Scalar.print in
+                String.print in
   List.print ~first:"" ~last:"" ~sep:""
-             print_value stdout tuples
+             print_row stdout tuples
 
 (* TODO: make as_csv the only possible option *)
 let display_tuple_as_is t =

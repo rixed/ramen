@@ -427,7 +427,7 @@ let export conf headers layer_name node_name body =
         ) else (
           return (
             first,
-            RamenExport.columns_of_tuples tuple_type values |>
+            RamenExport.export_columns_of_tuples tuple_type values |>
             List.map (fun (typ, nullmask, column) ->
               typ, Option.map RamenBitmask.to_bools nullmask, column))
         ) in

@@ -314,15 +314,15 @@ let scalar_column_init typ len f =
   | TI32 -> AI32 (Array.init len (fun i -> match f i with VI32 x -> x | _ -> assert false))
   | TI64 -> AI64 (Array.init len (fun i -> match f i with VI64 x -> x | _ -> assert false))
   | TI128 -> AI128 (Array.init len (fun i -> match f i with VI128 x -> x | _ -> assert false))
-  | TEth -> AEth (Array.init len (fun i -> match f i with VEth x -> x | _ -> assert false))
-  | TIpv4 -> AIpv4 (Array.init len (fun i -> match f i with VIpv4 x -> x | _ -> assert false))
-  | TIpv6 -> AIpv6 (Array.init len (fun i -> match f i with VIpv6 x -> x | _ -> assert false))
-  | TCidrv4 -> ACidrv4 (Array.init len (fun i -> match f i with VCidrv4 x -> x | _ -> assert false))
-  | TCidrv6 -> ACidrv6 (Array.init len (fun i -> match f i with VCidrv6 x -> x | _ -> assert false))
+  | TEth -> AEth (Array.init len (fun i -> match f i with VEth x -> EthAddr.to_string x | _ -> assert false))
+  | TIpv4 -> AIpv4 (Array.init len (fun i -> match f i with VIpv4 x -> Ipv4.to_string x | _ -> assert false))
+  | TIpv6 -> AIpv6 (Array.init len (fun i -> match f i with VIpv6 x -> Ipv6.to_string x | _ -> assert false))
+  | TCidrv4 -> ACidrv4 (Array.init len (fun i -> match f i with VCidrv4 x -> Ipv4.Cidr.to_string x | _ -> assert false))
+  | TCidrv6 -> ACidrv6 (Array.init len (fun i -> match f i with VCidrv6 x -> Ipv6.Cidr.to_string x | _ -> assert false))
   | TNum | TAny -> assert false
 
 (* Note: the list of values is ordered latest to oldest *)
-let columns_of_tuples tuple_type values =
+let export_columns_of_tuples tuple_type values =
   let values = Array.of_list values in
   let nb_values = Array.length values in
   let get_val ci i =

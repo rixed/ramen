@@ -26,19 +26,22 @@ let scalar_type_of = function
   | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6
   | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6
 
-(* A "columnar" type, to help store/send large number of values *)
-
-type column =
-  | AFloat of float array | AString of string array
+(* A "columnar" type, to help send large number of values to clients.
+ * Exotic types not available to JSON are converting to string by the
+ * server to help clients. *)
+type export_column =
+  (* TODO: round those to a given decimal length to save bandwidth? *)
+  | AFloat of float array
+  | AString of string array
   | ABool of bool array | AU8 of uint8 array
   | AU16 of uint16 array | AU32 of uint32 array
   | AU64 of uint64 array | AU128 of uint128 array
   | AI8 of int8 array | AI16 of int16 array
   | AI32 of int32 array | AI64 of int64 array
   | AI128 of int128 array | ANull of int (* length of the array! *)
-  | AEth of uint48 array
-  | AIpv4 of uint32 array | AIpv6 of uint128 array
-  | ACidrv4 of (uint32 * int) array | ACidrv6 of (uint128 * int) array
+  | AEth of string array
+  | AIpv4 of string array | AIpv6 of string array
+  | ACidrv4 of string array | ACidrv6 of string array
   [@@ppp PPP_JSON]
 
 let type_of_column = function
@@ -48,20 +51,6 @@ let type_of_column = function
   | AI64 _ -> TI64 | AI128 _ -> TI128 | ANull _ -> TNull
   | AEth _ -> TEth | AIpv4 _ -> TIpv4 | AIpv6 _ -> TIpv6
   | ACidrv4 _ -> TCidrv4 | ACidrv6 _ -> TCidrv6
-
-let column_value_at n =
-  let g a = Array.get a n in
-  function
-  | AFloat a -> VFloat (g a) | AString a -> VString (g a)
-  | ABool a -> VBool (g a) | AU8 a -> VU8 (g a)
-  | AU16 a -> VU16 (g a) | AU32 a -> VU32 (g a)
-  | AU64 a -> VU64 (g a) | AU128 a -> VU128 (g a)
-  | AI8 a -> VI8 (g a) | AI16 a -> VI16 (g a)
-  | AI32 a -> VI32 (g a) | AI64 a -> VI64 (g a)
-  | AI128 a -> VI128 (g a) | ANull _ -> VNull
-  | AEth a -> VEth (g a)
-  | AIpv4 a -> VIpv4 (g a) | AIpv6 a -> VIpv6 (g a)
-  | ACidrv4 a -> VCidrv4 (g a) | ACidrv6 a -> VCidrv6 (g a)
 
 type column_mapper =
   { f : 'a. 'a array -> 'a array ;
@@ -165,7 +154,8 @@ let empty_export_req =
 
 type export_resp =
   { first: int ;
-    columns : (string * bool array option * column) list } [@@ppp PPP_JSON]
+    columns : (string * bool array option * export_column) list }
+    [@@ppp PPP_JSON]
 
 (* Autocompletion of names: *)
 

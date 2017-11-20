@@ -287,26 +287,28 @@ struct
         larger_type (l, t)) fst rest
     | _ -> invalid_arg "largest_type"
 
-  let print fmt = function
-    | VFloat f  -> Printf.fprintf fmt "%g" f
-    | VString s -> Printf.fprintf fmt "%S" s
-    | VBool b   -> Printf.fprintf fmt "%b" b
-    | VU8 i     -> Printf.fprintf fmt "%s" (Uint8.to_string i)
-    | VU16 i    -> Printf.fprintf fmt "%s" (Uint16.to_string i)
-    | VU32 i    -> Printf.fprintf fmt "%s" (Uint32.to_string i)
-    | VU64 i    -> Printf.fprintf fmt "%s" (Uint64.to_string i)
-    | VU128 i   -> Printf.fprintf fmt "%s" (Uint128.to_string i)
-    | VI8 i     -> Printf.fprintf fmt "%s" (Int8.to_string i)
-    | VI16 i    -> Printf.fprintf fmt "%s" (Int16.to_string i)
-    | VI32 i    -> Printf.fprintf fmt "%s" (Int32.to_string i)
-    | VI64 i    -> Printf.fprintf fmt "%s" (Int64.to_string i)
-    | VI128 i   -> Printf.fprintf fmt "%s" (Int128.to_string i)
-    | VNull     -> Printf.fprintf fmt "NULL"
-    | VEth i    -> EthAddr.print fmt i
-    | VIpv4 i   -> Ipv4.print fmt i
-    | VIpv6 i   -> Ipv6.print fmt i
-    | VCidrv4 i -> Ipv4.Cidr.print fmt i
-    | VCidrv6 i -> Ipv6.Cidr.print fmt i
+  let to_string = function
+    | VFloat f  -> Printf.sprintf "%g" f
+    | VString s -> Printf.sprintf "%S" s
+    | VBool b   -> Printf.sprintf "%b" b
+    | VU8 i     -> Uint8.to_string i
+    | VU16 i    -> Uint16.to_string i
+    | VU32 i    -> Uint32.to_string i
+    | VU64 i    -> Uint64.to_string i
+    | VU128 i   -> Uint128.to_string i
+    | VI8 i     -> Int8.to_string i
+    | VI16 i    -> Int16.to_string i
+    | VI32 i    -> Int32.to_string i
+    | VI64 i    -> Int64.to_string i
+    | VI128 i   -> Int128.to_string i
+    | VNull     -> "NULL"
+    | VEth i    -> EthAddr.to_string i
+    | VIpv4 i   -> Ipv4.to_string i
+    | VIpv6 i   -> Ipv6.to_string i
+    | VCidrv4 i -> Ipv4.Cidr.to_string i
+    | VCidrv6 i -> Ipv6.Cidr.to_string i
+
+  let print fmt v = String.print fmt (to_string v)
 
   let is_round_integer = function
     | VFloat f  -> fst(modf f) = 0.

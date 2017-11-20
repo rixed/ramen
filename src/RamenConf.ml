@@ -75,7 +75,7 @@ let tup_typ_of_temp_tup_type ttt =
 
 type history =
   { (* Store arrays of Scalar.values not hash of names to values !
-     * TODO: ideally storing scalar_columns would be even better *)
+     * TODO: ideally storing columns would be even better *)
     tuples : scalar_value array array ;
     (* Start seqnum of the next block: *)
     mutable block_start : int ;
