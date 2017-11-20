@@ -520,7 +520,8 @@ and emit_expr ?state ~context oc expr =
   let out_typ = typ_of expr in
   let my_state lifespan =
     let state_name =
-      match lifespan with LocalState -> "group_" | GlobalState -> "global_" in
+      match lifespan with LocalState -> "group_"
+                        | GlobalState -> "global_" in
     StateField (out_typ,
                (if state = Some lifespan then "" else state_name ^".") ^
                name_of_state expr)
@@ -1114,43 +1115,60 @@ let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
   Printf.fprintf oc "\n\t)\n"
 
 let emit_top name in_tuple_typ mentioned and_all_others oc top =
-  Printf.fprintf oc "let %s = " name ;
+  Printf.fprintf oc "let %s =" name ;
   match top with
-  | None -> Printf.fprintf oc "None\n"
+  | None -> Printf.fprintf oc " None\n"
   | Some (n, by) ->
-    Printf.fprintf oc
-      "Some (\n\
-       \t(Uint32.to_int (%a)),\n\
-       \t(fun %a -> %a))\n"
-      (conv_to ~context:Finalize (Some TU32)) n
+    (* The function that updates top_state from in_tuple: *)
+    (* FIXME: rename all those "group_" by "local_" *)
+    Printf.fprintf oc "\n\tlet top_update_ global_ group_ %a =\n\t\t%a in\n"
       (emit_in_tuple mentioned and_all_others) in_tuple_typ
-      (conv_to ~context:Finalize (Some TFloat)) by
+      emit_state_update_for_expr by ;
+    Printf.fprintf oc
+      "\tSome (\n\
+       \t\t(Uint32.to_int (%a)),\n\
+       \t\ttop_update_)\n"
+      (conv_to ~context:Finalize (Some TU32)) n
 
-let emit_yield oc in_tuple_typ out_tuple_typ selected_fields =
-  let mentioned =
-    let all_exprs = List.map (fun sf -> sf.Operation.expr) selected_fields in
-    add_all_mentioned_in_expr all_exprs in
-  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n\
-    let () =\n\
-      \tLwt_main.run (\n\
-      \t\tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_)\n"
-    (emit_field_selection "select_" in_tuple_typ mentioned false out_tuple_typ) selected_fields
-    (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
-    (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
+let emit_float_of_top name oc top_by =
+  Printf.fprintf oc "let %s group_ = " name ;
+  match top_by with
+  | None -> String.print oc "0."
+  | Some top_by ->
+    Printf.fprintf oc "\t%a\n"
+      (conv_to ~context:Finalize (Some TFloat)) top_by
 
-let for_each_unpure_fun selected_fields ?where ?commit_when ?flush_when f =
+let emit_yield oc in_tuple_typ out_tuple_typ = function
+  | Operation.Yield selected_fields as op ->
+    let mentioned =
+      let all_exprs = Operation.fold_expr [] (fun l s -> s::l) op in
+      add_all_mentioned_in_expr all_exprs in
+    Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
+      %a\n%a\n%a\n\
+      let () =\n\
+        \tLwt_main.run (\n\
+        \t\tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_)\n"
+      (emit_field_selection "select_" in_tuple_typ mentioned false out_tuple_typ) selected_fields
+      (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
+      (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
+  | _ -> assert false
+
+let for_each_unpure_fun selected_fields
+                        ?where ?commit_when ?flush_when ?top_by f =
   List.iter (fun sf ->
       Expr.unpure_iter f sf.Operation.expr
     ) selected_fields ;
   Option.may (Expr.unpure_iter f) where ;
   Option.may (Expr.unpure_iter f) commit_when ;
-  Option.may (Expr.unpure_iter f) flush_when
+  Option.may (Expr.unpure_iter f) flush_when ;
+  Option.may (Expr.unpure_iter f) top_by
 
 let for_each_unpure_fun_my_lifespan lifespan selected_fields
-                                    ?where ?commit_when ?flush_when f =
+                                    ?where ?commit_when ?flush_when
+                                    ?top_by f =
   let open Expr in
-  for_each_unpure_fun selected_fields ?where ?commit_when ?flush_when
+  for_each_unpure_fun selected_fields
+                      ?where ?commit_when ?flush_when ?top_by
     (function
     | StatefulFun (_, l, _) as e when l = lifespan ->
       f e
@@ -1179,14 +1197,15 @@ let otype_of_state e =
   if Option.get typ.nullable then t ^" option" else t
 
 let emit_state_init name state_lifespan other_state_vars
-      ?where ?commit_when ?flush_when
+      ?where ?commit_when ?flush_when ?top_by
       oc selected_fields =
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
    * states. *)
   let for_each_my_unpure_fun f =
     for_each_unpure_fun_my_lifespan
-      state_lifespan selected_fields ?where ?commit_when ?flush_when f
+      state_lifespan selected_fields ?where ?commit_when
+      ?flush_when ?top_by f
   in
   (* In the special case where we do not have any state at all, though, we
    * end up with an empty record, which is illegal in OCaml so we need to
@@ -1220,8 +1239,7 @@ let emit_state_init name state_lifespan other_state_vars
     for_each_my_unpure_fun (fun f ->
         Printf.fprintf oc "\tlet %s = %a in\n"
           (name_of_state f)
-          (emit_expr ~context:InitState ~state:state_lifespan) f
-      ) ;
+          (emit_expr ~context:InitState ~state:state_lifespan) f) ;
     (* And now build the state record from all those fields: *)
     Printf.fprintf oc "\t{" ;
     for_each_my_unpure_fun (fun f ->
@@ -1257,14 +1275,14 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
 let emit_should_resubmit name in_tuple_typ mentioned and_all_others
                          oc flush_how =
   let open Operation in
-  Printf.fprintf oc "let %s group_state_ %a =\n"
+  Printf.fprintf oc "let %s group_ %a =\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   match flush_how with
   | Reset ->
     Printf.fprintf oc "\tfalse\n"
   | Slide n ->
-    Printf.fprintf oc "\tgroup_state_.CodeGenLib.nb_entries > %d\n" n
+    Printf.fprintf oc "\tgroup_.CodeGenLib.nb_entries > %d\n" n
   | KeepOnly e ->
     Printf.fprintf oc "\t%a\n" (emit_expr ?state:None ~context:Finalize) e
   | RemoveAll e ->
@@ -1292,45 +1310,14 @@ let when_to_check_group_for_expr expr =
   if need_selected then "CodeGenLib.ForAllSelected" else
   "CodeGenLib.ForAllInGroup"
 
-let emit_aggregate oc in_tuple_typ out_tuple_typ
-                   selected_fields and_all_others where key top
-                   commit_when flush_when flush_how notify_url =
-(* We need:
- * - as above: a where filter, a serializer,
- * - a function computing the key as a tuple computed from input, exactly as in
- *   a select,
- * - a function of in and out and others and any, that returns true when we
- *   must emit the out tuple
- * - contrary to select, the selected fields are not used to build a function
- *   returning tuple out given tuple in. Here, the select fields are used to
- *   build 2 things:
- *   - a function that returns tuple out init (a mutable record!) from a tuple
- *     in
- *   - a function that update tuple out (record) given a tuple in
- *   We cannot generate less code than that if we want to use a record for
- *   tuple out.
- * With all this CodeGenLib will easily implement a basic version of aggregate
- * and could also implement more sophisticated versions.
- *
- * Note: some aggregation function value cannot be computed in the update.
- * For instance, percentile accumulates all encountered values into a list
- * and must then, at the end, sort that list and return only the requested
- * percentile. That is why when we read the group_ record we do not get
- * the value directly but uses a function specific to the aggregation
- * function (which often reduces to identity). *)
+let emit_aggregate oc in_tuple_typ out_tuple_typ = function
+  | Operation.Aggregate { fields ; and_all_others ; where ; key ; top ;
+                          commit_when ; flush_when ; flush_how ;
+                          notify_url ; _ } as op ->
   let mentioned =
-    let all_exprs =
-      where :: commit_when :: key @
-      List.map (fun sf -> sf.Operation.expr) selected_fields in
-    let all_exprs = match flush_when with
-      | None -> all_exprs
-      | Some flush_when -> flush_when :: all_exprs in
-    let all_exprs =
-      let open Operation in
-      match flush_how with
-      | Reset | Slide _ -> all_exprs
-      | RemoveAll e | KeepOnly e -> e :: all_exprs in
+    let all_exprs = Operation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
+  and top_by = Option.map snd top
   and where_need_group =
     (* Tells whether we need the group to check the where clause (because it
      * uses the group tuple or build a group-wise aggregation on its own,
@@ -1349,9 +1336,9 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
     | Some flush_when -> when_to_check_group_for_expr flush_when
   in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" Expr.GlobalState [] ~where ~commit_when ?flush_when) selected_fields
-    (emit_state_init "group_init_" Expr.LocalState ["global_"] ~where ~commit_when ?flush_when) selected_fields
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    (emit_state_init "global_init_" Expr.GlobalState [] ~where ~commit_when ?flush_when ?top_by:None) fields
+    (emit_state_init "group_init_" Expr.LocalState ["global_"] ~where ~commit_when ?flush_when ?top_by:None) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_group then
       emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
@@ -1363,13 +1350,15 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       emit_where "where_slow_" ~with_group:true in_tuple_typ mentioned and_all_others) where
     (emit_key_of_input "key_of_input_" in_tuple_typ mentioned and_all_others) key
     (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
-    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
+    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_tuple_typ mentioned and_all_others out_tuple_typ) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
     (emit_serialize_tuple "serialize_group_") out_tuple_typ
-    (emit_generate_tuples "generate_tuples_" in_tuple_typ mentioned and_all_others out_tuple_typ) selected_fields
+    (emit_generate_tuples "generate_tuples_" in_tuple_typ mentioned and_all_others out_tuple_typ) fields
     (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how
     (emit_field_of_tuple "field_of_tuple_") out_tuple_typ
-    (emit_top "top_" in_tuple_typ mentioned and_all_others) top ;
+    (emit_state_init "top_init_" Expr.LocalState ["global_"] ?where:None ?commit_when:None ?flush_when:None ?top_by) []
+    (emit_top "top_" in_tuple_typ mentioned and_all_others) top
+    (emit_float_of_top "float_of_top_state_") top_by ;
   (match flush_when with
   | Some flush_when ->
     emit_when "flush_when_" in_tuple_typ mentioned and_all_others out_tuple_typ oc flush_when
@@ -1379,10 +1368,12 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ
       \tLwt_main.run (\n\
       \t\tCodeGenLib.aggregate \
       \t\t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
-      \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ top_\n\
+      \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ \n\
+      \t\t\ttop_ top_init_ float_of_top_state_\n\
       \t\t\tcommit_when_ %s flush_when_ %s should_resubmit_\n\
       \t\t\tglobal_init_ group_init_ field_of_tuple_ %S)\n"
     when_to_check_for_commit when_to_check_for_flush notify_url
+  | _ -> assert false
 
 let sanitize_ocaml_fname s =
   let open Str in
@@ -1420,8 +1411,8 @@ let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
     Printf.fprintf oc "(* Code generated for node:\n%a\n*)\n"
       Operation.print op ;
     (match op with
-    | Yield fields ->
-      emit_yield oc in_tuple_typ out_tuple_typ fields
+    | Yield _->
+      emit_yield oc in_tuple_typ out_tuple_typ op
     | ReadCSVFile { where = ReadFile { fname ; unlink } ; preprocessor ;
                     what = { separator ; null ; fields } } ->
       emit_read_csv_file oc fname unlink separator null fields preprocessor
@@ -1429,9 +1420,7 @@ let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
       failwith "This never happens"
     | ListenFor { net_addr ; port ; proto } ->
       emit_listen_on oc net_addr port proto
-    | Aggregate { fields ; and_all_others ; where ; key ; top ; commit_when ;
-                  flush_when ; flush_how ; notify_url ; _ } ->
-      emit_aggregate oc in_tuple_typ out_tuple_typ fields and_all_others where
-                     key top commit_when flush_when flush_how notify_url)) |>
+    | Aggregate _ ->
+      emit_aggregate oc in_tuple_typ out_tuple_typ op)) |>
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   compile_source exec_name

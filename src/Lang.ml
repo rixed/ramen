@@ -1806,21 +1806,26 @@ struct
     | ListenFor _ | ReadCSVFile _ | Yield _ -> []
     | Aggregate { from ; _ } -> from
 
-  let iter_expr f = function
-    | ListenFor _ | ReadCSVFile _ -> ()
+  let fold_expr init f = function
+    | ListenFor _ | ReadCSVFile _ -> init
     | Yield fields ->
-        List.iter (fun sf -> f sf.expr) fields
+        List.fold_left (fun prev sf -> f prev sf.expr) init fields
     | Aggregate { fields ; where ; key ; top ; commit_when ;
                   flush_when ; flush_how ; _ } ->
-        List.iter (fun sf -> f sf.expr) fields ;
-        f where ;
-        List.iter f key ;
-        Option.may (fun (n, by) -> f n ; f by) top ;
-        f commit_when ;
-        Option.may f flush_when ;
+        let x =
+          List.fold_left (fun prev sf -> f prev sf.expr) init fields in
+        let x = f x where in
+        let x = List.fold_left f x key in
+        let x = Option.map_default (fun (n, by) ->
+          let x = f x n in f x by) x top in
+        let x = f x commit_when in
+        let x = Option.map_default (f x) x flush_when in
         match flush_how with
-        | Slide _ | Reset -> ()
-        | RemoveAll e | KeepOnly e -> f e
+        | Slide _ | Reset -> x
+        | RemoveAll e | KeepOnly e -> f x e
+
+  let iter_expr f op =
+    fold_expr () (fun () e -> f e) op
 
   (* Check that the expression is valid, or return an error message.
    * Also perform some optimisation, numeric promotions, etc... *)
@@ -1830,7 +1835,6 @@ struct
     and fields_must_be_from tuple where allowed =
       TupleNotAllowed { tuple ; where ; allowed } in
     let pure_in_key = pure_in "GROUP-BY"
-    and pure_in_top = pure_in "TOP"
     and check_pure e =
       Expr.unpure_iter (fun _ -> raise (SyntaxError e))
     and check_no_group e =
@@ -1932,9 +1936,6 @@ struct
       Option.may (fun (n, by) ->
         (* TODO: Check also that it's an unsigned integer: *)
         Expr.check_const "TOP size" n ;
-        (* The [by] expression must be something we can use as a weight for
-         * the input tuple, so a stateless number. *)
-        check_pure pure_in_top by ;
         check_fields_from [TupleIn] "TOP clause" by) top ;
       check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
       Option.may (fun flush_when ->

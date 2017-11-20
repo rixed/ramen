@@ -11,7 +11,7 @@ add_accounts
 add_node n "
   FROM test/accounts
   SELECT name, sum amount
-  TOP 3 BY amount
+  TOP 3 BY sum amount
   GROUP BY name
   COMMIT WHEN in.#count >= $nb_accounts
   EXPORT"
