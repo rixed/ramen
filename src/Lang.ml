@@ -2056,7 +2056,8 @@ struct
     let top_clause m =
       let m ="top-by clause" :: m in
       (strinG "top" -- blanks -+ Expr.Parser.p +- blanks +-
-       strinG "by" +- blanks ++ Expr.Parser.p) m
+       strinG "by" +- blanks ++ Expr.Parser.p +- blanks +-
+       strinG "when" +- blanks ++ Expr.Parser.p) m
 
     let flush m =
       let m = "flush clause" :: m in
@@ -2092,7 +2093,7 @@ struct
       | ExportClause of event_time_info
       | NotifyClause of string
       | GroupByClause of Expr.t list
-      | TopByClause of (Expr.t (* N *) * Expr.t (* by *))
+      | TopByClause of ((Expr.t (* N *) * Expr.t (* by *)) * Expr.t (* when *))
       | CommitClause of flush_method option * Expr.t
       | FlushClause of flush_method * Expr.t
       | FromClause of string list
@@ -2111,9 +2112,12 @@ struct
         (from_clause >>: fun lst -> FromClause lst) in
       (several ~sep:blanks part >>: fun clauses ->
         if clauses = [] then raise (Reject "Empty select") ;
+        (* Used for its address: *)
+        let default_commit_when = Expr.expr_true in
+        let is_default_commit = (==) default_commit_when in
         let default_select =
           [], true, Expr.expr_true, None, "", [],
-          None, Expr.expr_true, None, Reset, [] in
+          None, default_commit_when, None, Reset, [] in
         let fields, and_all_others, where, export, notify_url, key,
             top, commit_when, flush_when, flush_how, from =
           List.fold_left (
@@ -2158,6 +2162,16 @@ struct
                 fields, and_all_others, where, export, notify_url, key,
                 top, commit_when, flush_when, flush_how, from
             ) default_select clauses in
+        let commit_when, top =
+          match top with
+          | None -> commit_when, None
+          | Some (top, top_when) ->
+            if not (is_default_commit commit_when) ||
+               flush_when <> None ||
+               flush_how <> Reset then
+              raise (Reject "COMMIT and FLUSH clauses are incompatible \
+                             with TOP") ;
+            top_when, Some top in
         Aggregate { fields ; and_all_others ; where ; export ; notify_url ; key ;
                     top ; commit_when ; flush_when ; flush_how ; from }
       ) m
