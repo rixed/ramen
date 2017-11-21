@@ -1,6 +1,5 @@
 (* Converts from floats to string for label *)
-open Engine
-open WebHelpers
+open RamenHtml
 
 type t = {
   to_label : float -> string ;
@@ -17,16 +16,8 @@ let numeric = {
 (* We must reset this state after each axis... *)
 let last_s = ref ""
 
-let label_of_timestamp t =
-  let rec len l s =
-    if String.length s >= l then s else len l ("0"^s) in
-  let jst = new%js Js.date_fromTimeValue (1000. *. t) in
-  let s = (string_of_int jst##getFullYear |> len 4) ^"-"^
-          (string_of_int (jst##getMonth + 1) |> len 2) ^"-"^
-          (string_of_int jst##getDate |> len 2) ^" "^
-          (string_of_int jst##getHours |> len 2) ^"h"^
-          (string_of_int jst##getMinutes |> len 2) ^"m"^
-          (string_of_int jst##getSeconds |> len 2) ^"s" in
+let label_of_timestamp string_of_timestamp t =
+  let s = string_of_timestamp t in
   let rec prefix_len i =
     if i >= String.length !last_s ||
        s.[i] <> !last_s.[i] then i
@@ -50,14 +41,10 @@ let label_of_timestamp t =
           if e > 10 then 13 else e in
   String.sub s pl (e + 1 - pl)
 
-let timestamp = {
+let timestamp string_of_timestamp = {
   name = "timestamp" ;
   base = 60. ;
-  to_label = label_of_timestamp 
+  to_label = label_of_timestamp string_of_timestamp
 }
 
 let reset_all_states () = last_s := ""
-
-let all =
-  [ "numeric", numeric ;
-    "timestamp", timestamp ]

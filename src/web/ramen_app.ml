@@ -2,6 +2,7 @@ open Js_of_ocaml
 module Html = Dom_html
 open Engine
 open WebHelpers
+open RamenHtml
 
 (* Printers *)
 
@@ -293,7 +294,7 @@ let reload_tail () =
 (* A list of field_name * points *)
 let chart_points = make_param "chart points" []
 
-let chart_type = make_param "chart type" Chart.NotStacked
+let chart_type = make_param "chart type" RamenChart.NotStacked
 
 let show_zero = make_param "show zero" false
 
@@ -412,7 +413,7 @@ let add_edited_node () =
 
 let reset_for_node_change () =
   set sel_output_cols [] ;
-  set chart_type Chart.NotStacked ;
+  set chart_type RamenChart.NotStacked ;
   set show_zero false ;
   set tail_rows [||] ;
   reload_tail ()
@@ -1106,9 +1107,9 @@ let chart_type_selector =
           [ clss "actionable" ; text label ] in
     div
       [ clss "chart-buttons" ;
-        sel "normal" Chart.NotStacked ;
-        sel "stacked" Chart.Stacked ;
-        sel "stacked+centered" Chart.StackedCentered ])
+        sel "normal" RamenChart.NotStacked ;
+        sel "stacked" RamenChart.Stacked ;
+        sel "stacked+centered" RamenChart.StackedCentered ])
 
 let show_zero_selector =
   with_param show_zero (fun fz ->
@@ -1140,11 +1141,11 @@ let timechart_panel =
           let vx_step =
             if nb_pts < 2 then 0.
             else (vx_stop -. vx_start) /. (float_of_int (nb_pts - 1)) in
-          let fold = { Chart.fold = fun f init ->
+          let fold = { RamenChart.fold = fun f init ->
             List.fold_left (fun f_val (field_name, pts) ->
                 let pen =
-                  Chart.{ label = field_name ; draw_line = true ; draw_points = true ;
-                          color = Color.random_of_string field_name ;
+                  RamenChart.{ label = field_name ; draw_line = true ; draw_points = true ;
+                          color = RamenColor.random_of_string field_name ;
                           stroke_width = 1.5 ; opacity = 1. ;
                           dasharray = None ; filled = true ; fill_opacity = 0.3 } in
                 f f_val pen true (fun i -> snd pts.(i) |? 0. (* TODO: handle None *))
@@ -1161,13 +1162,13 @@ let timechart_panel =
               show_zero_selector ;
               with_param chart_type (fun stacked_y1 ->
                 with_param show_zero (fun force_show_0 ->
-                  Chart.xy_plot ~attrs ~svg_width ~svg_height
-                    ~string_of_x:Formats.(timestamp.to_label)
-                    ~string_of_y:Formats.(numeric.to_label)
-                    ~stacked_y1 ~draw_legend:Chart.UpperRight
+                  RamenChart.xy_plot ~attrs ~svg_width ~svg_height
+                    ~string_of_x:RamenFormats.((timestamp string_of_timestamp).to_label)
+                    ~string_of_y:RamenFormats.(numeric.to_label)
+                    ~stacked_y1 ~draw_legend:RamenChart.UpperRight
                     ~force_show_0 "time"
                     (if single_field then fst_field_name else "")
-                    vx_start vx_step nb_pts fold)) ]))
+                    vx_start vx_step nb_pts shash fold)) ]))
 
 let form_input label value placeholder =
   let size = String.length !value + 10 in

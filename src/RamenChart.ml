@@ -1,5 +1,4 @@
-open WebHelpers
-open Engine
+open RamenHtml
 
 (** {1 Plot Chart}
 
@@ -88,16 +87,16 @@ let xy_grid ?(show_vgrid=true) ?stroke ?stroke_width ?font_size
     v in
   let x_orig = bound_by x_min x_max (get_x 0.)
   and y_orig = bound_by y_max y_min (get_y 0.) in (* note that y_min, the Y of the origin, is actually greater the y_max, due to the fact that SVG Y starts at top of img *)
-  Formats.reset_all_states () ;
+  RamenFormats.reset_all_states () ;
   let x_axis =
     axis ?base:x_base ?stroke ?stroke_width ?arrow_size ?tick_spacing:x_tick_spacing ?font_size ?tick_length
          ?label:x_label ?string_of_v:string_of_x (x_min, y_orig) (x_max, y_orig) vx_min vx_max in
-  Formats.reset_all_states () ;
+  RamenFormats.reset_all_states () ;
   let y_axis =
     axis ?base:y1_base ?stroke ?stroke_width ?arrow_size ?tick_spacing:y_tick_spacing ?font_size ?tick_length
          ~extend_ticks:(if show_vgrid then x_max -. x_min else 0.)
          ?label:y_label ?string_of_v:string_of_y (x_orig, y_min) (x_orig, y_max) vy_min vy_max in
-  Formats.reset_all_states () ;
+  RamenFormats.reset_all_states () ;
   let y2_axis = match y2 with
     | None -> g []
     | Some (label, string_of_v, vy2_min, vy2_max) ->
@@ -143,6 +142,10 @@ type fold_t = {
      * false once at most for the "secondary" plot. Note: the secondary plot
      * is displayed with a distinct Y axis. *)
     fold : 'a. ('a -> pen -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
+type ('h, 'v) shash_t = {
+    create : unit -> 'h ;
+    find : 'h -> string -> 'v option ;
+    add : 'h -> string -> 'v -> unit }
             (* I wonder what's the world record in argument list length? *)
 let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
             ?(string_of_y2=short_string_of_float)
@@ -158,7 +161,7 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
             ?(scale_vx=1.)
             x_label y_label
             vx_min_unscaled vx_step_unscaled nb_vx
-            fold =
+            shash fold =
   let vx_min = vx_min_unscaled *. scale_vx
   and vx_step = vx_step_unscaled *. scale_vx in
   let force_show_0 = if stacked_y1 = StackedCentered || stacked_y2 = StackedCentered then true else force_show_0 in
@@ -234,18 +237,17 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
     else
       Array.make nb_vx 0. in
   (* per chart infos *)
-  let tot_vy = Jstable.create ()
+  let tot_vy = shash.create ()
   and tot_vys = ref 0. in
   iter_datasets (fun pen prim get ->
     if prim then for i = 0 to nb_vx-1 do
       let vy = get i in
       tot_vys := !tot_vys +. vy ;
-      let pen_label = Js.string pen.label in
-      Js.Optdef.case (Jstable.find tot_vy pen_label)
-        (fun () -> Jstable.add tot_vy pen_label vy)
-        (fun base -> Jstable.add tot_vy pen_label (base +. vy))
+      match shash.find tot_vy pen.label with
+      | None -> shash.add tot_vy pen.label vy
+      | Some base -> shash.add tot_vy pen.label (base +. vy)
     done) ;
-  Formats.reset_all_states () ;
+  RamenFormats.reset_all_states () ;
   (* The SVG *)
   let path_of_dataset pen prim get =
     let pi = if prim then 0 else 1 in
@@ -369,7 +371,7 @@ let chronology ?(svg_width=800.) ?(svg_height=600.)
                ?(x_tick_spacing=180.) ?(tick_length=5.5)
                ?(margin_bottom=30.) ?(margin_left=10.)
                ?(margin_top=30.) ?(margin_right=10.)
-               ?click_on_bar
+               ?click_on_bar ?string_of_t
                bars vx_min vx_max =
   let nb_bars = List.length bars in
   let x_axis_xmin = margin_left
@@ -389,12 +391,12 @@ let chronology ?(svg_width=800.) ?(svg_height=600.)
     int_of_float (bar_height /. mark_text_height) in
   let mark_textline_height = (* expand to spread lines evenly *)
     bar_height /. float_of_int nb_texts_lines_in_bar in
-  Formats.reset_all_states () ;
+  RamenFormats.reset_all_states () ;
   let x_axis =
     axis ~stroke:"#000" ~stroke_width:2.
          ~arrow_size:axis_arrow_h ~tick_spacing:x_tick_spacing
          ~font_size:axis_font_size ~tick_length
-         ~label:"time" ~string_of_v:Formats.(timestamp.to_label)
+         ~label:"time" ?string_of_v:string_of_t
          (x_axis_xmin, y_axis_ymin) (x_axis_xmax, y_axis_ymin)
          vx_min vx_max in
   let svg_of_bar i b =
@@ -417,7 +419,9 @@ let chronology ?(svg_width=800.) ?(svg_height=600.)
             svgtext ~x:(x+.4.) ~y:y_text ~font_size:mark_text_height
                     ~fill:"#000" s ]
         ) b.markers in
-    let action = option_map (fun a -> fun _ -> a i) click_on_bar in
+    let action = match click_on_bar with
+      | None -> None
+      | Some a -> Some (fun _ -> a i) in
     g ?action (bar :: marks) in
   let rects = List.mapi svg_of_bar bars in
   g [ x_axis ; g rects ]

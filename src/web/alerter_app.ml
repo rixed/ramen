@@ -1,6 +1,7 @@
 open Js_of_ocaml
 module Html = Dom_html
 open Engine
+open RamenHtml
 open WebHelpers
 open AlerterSharedTypesJS_noPPP
 
@@ -303,10 +304,10 @@ let chronology incidents dur relto_event =
     | None -> m
     | Some t -> (t, "Stopped") :: m in
   let bars = List.map (fun i ->
-    Chart.{
+    RamenChart.{
       start = Some (Incident.started i) ;
       stop = Incident.stopped i ;
-      color = Color.random_of_string (Incident.team_of i) ;
+      color = RamenColor.random_of_string (Incident.team_of i) ;
       markers = List.fold_left (fun prev a ->
           List.rev_append (markers_of_alert a) prev
         ) [] i.alerts }) incidents
@@ -329,11 +330,12 @@ let chronology incidents dur relto_event =
               let base_time =
                 if relto_event && !event_time > 0. then !event_time
                 else now () in
-              Chart.chronology
+              RamenChart.chronology
                 ~svg_width:svg_width ~svg_height:svg_height
                 ~margin_bottom:(margin_vert+.10.) (* for the scrollbar *)
                 ~margin_top:margin_vert
                 ~margin_left:0. ~margin_right:70.
+                ~string_of_t:RamenFormats.((timestamp string_of_timestamp).to_label)
                 ~click_on_bar:(fun i ->
                   let incident = List.nth incidents i in
                   set selected_incident (Some incident) ;
