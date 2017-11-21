@@ -703,17 +703,26 @@ let aggregate
           if to_commit <> [] && !others <> None then
             ("others", Option.get !others) :: to_commit
           else to_commit in *)
-        let%lwt () =
-          Lwt_list.iter_s (fun (_k, a) ->
-              commit in_tuple a.current_out
-            ) to_commit in
-        if to_flush <> [] then (
-          (* This is really a temporary hack! Cannot work like this. *)
+        if to_flush <> [] && top_n <> 0 then (
+          (* For top operations we must commit and flush all or nothing. *)
+          !logger.debug "Committing/Flushing the whole TOP" ;
+          let%lwt () =
+            Hashtbl.fold (fun _k a th ->
+              let%lwt () = th in
+              commit in_tuple a.current_out) h return_unit in
+          (* TODO: handle resubmission *)
+          Hashtbl.clear h ;
           others := None ;
           Array.fill unknown_weights 0 (Array.length unknown_weights) 0. ;
           weightmap := WeightMap.empty ;
-        ) ;
-        List.iter (fun (k, a) ->
+          return_unit
+        ) else (
+          (* Not in a top, so things properly: *)
+          let%lwt () =
+            Lwt_list.iter_s (fun (_k, a) ->
+                commit in_tuple a.current_out
+              ) to_commit in
+          List.iter (fun (k, a) ->
             (* FIXME: won't work with tops or global state *)
             if a.to_resubmit = [] then
               Hashtbl.remove h k
@@ -745,10 +754,9 @@ let aggregate
                   a.last_in <- in_tuple ;
                   if should_resubmit a in_tuple then
                     a.to_resubmit <- in_tuple :: a.to_resubmit
-                ) to_resubmit
-            )
-          ) to_flush ;
-        return_unit
+                ) to_resubmit)
+            ) to_flush ;
+          return_unit)
       in
       let commit_and_flush_all_if check_when =
         let to_commit =

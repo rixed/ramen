@@ -48,6 +48,7 @@ type syntax_error =
   | CannotCompleteTyping
   | CannotGenerateCode of { node : string ; cmd : string ; status : string }
   | AliasNotUnique of string
+  | OnlyTumblingWindowForTop
 
 exception SyntaxError of syntax_error
 
@@ -96,6 +97,9 @@ let string_of_syntax_error =
       node cmd status
   | AliasNotUnique name ->
     "Alias is not unique: "^ name
+  | OnlyTumblingWindowForTop ->
+    "When using TOP the only windowing mode supported is \
+     \"COMMIT AND FLUSH\""
 
 let () =
   Printexc.register_printer (function
@@ -1936,7 +1940,10 @@ struct
       Option.may (fun (n, by) ->
         (* TODO: Check also that it's an unsigned integer: *)
         Expr.check_const "TOP size" n ;
-        check_fields_from [TupleIn] "TOP clause" by) top ;
+        check_fields_from [TupleIn] "TOP clause" by ;
+        (* The only windowing mode supported is then `commit and flush`: *)
+        if flush_when <> None then
+          raise (SyntaxError OnlyTumblingWindowForTop)) top ;
       check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
       Option.may (fun flush_when ->
           check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "FLUSH WHEN clause" flush_when
