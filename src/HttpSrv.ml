@@ -572,8 +572,6 @@ let timeseries conf headers body =
               return (layer, node, data_field)
             | NewTempNode { select_x ; select_y ; from ; where } ->
               create_temporary_node select_x select_y from where in
-          let%lwt _layer, node =
-            find_node_or_fail conf layer_name node_name in
           let%lwt times, values =
             ts_of_node_field req layer_name node_name data_field in
           return { id = req.id ; times ; values }
@@ -582,24 +580,26 @@ let timeseries conf headers body =
       respond_ok ~body ())
     (function Failure err -> bad_request err | e -> fail e)
 
+let timerange_of_node node =
+  let open RamenSharedTypesJS in
+  match node.N.history with
+  | None ->
+    !logger.debug "Node %s has no history" (N.fq_name node) ; NoData
+  | Some h ->
+    (match RamenExport.hist_min_max h with
+    | None -> NoData
+    | Some (sta, sto) ->
+      let oldest, latest =
+        RamenExport.timerange_of_filenum node h sta in
+      let latest =
+        if sta = sto then latest
+        else snd (RamenExport.timerange_of_filenum node h sto) in
+      TimeRange (oldest, latest))
+
 let get_timerange conf headers layer_name node_name =
   let%lwt _layer, node =
     find_exporting_node_or_fail conf layer_name node_name in
-  let resp =
-    let open RamenSharedTypesJS in
-    match node.N.history with
-    | None ->
-      !logger.debug "Node %s has no history" (N.fq_name node) ; NoData
-    | Some h ->
-      (match RamenExport.hist_min_max h with
-      | None -> NoData
-      | Some (sta, sto) ->
-        let oldest, latest =
-          RamenExport.timerange_of_filenum node h sta in
-        let latest =
-          if sta = sto then latest
-          else snd (RamenExport.timerange_of_filenum node h sto) in
-        TimeRange (oldest, latest)) in
+  let resp = timerange_of_node node in
   switch_accepted headers [
     Consts.json_content_type, (fun () ->
       let body = PPP.to_string time_range_resp_ppp resp in
@@ -610,6 +610,104 @@ let rec timeout_layers conf =
   let%lwt () = wrap (fun () -> RamenProcesses.timeout_layers conf) in
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_layers conf
+
+(*
+   Obtaining an SVG plot for an exporting node
+*)
+
+let plot conf _headers layer_name node_name params =
+  (* Get all the parameters: *)
+  let get ?def name conv =
+    let lwt_conv s =
+      try return (conv s)
+      with Failure s -> bad_request ("Parameter "^ name ^": "^ s) in
+    match Hashtbl.find params name with
+    | exception Not_found ->
+      (match def with
+      | None -> bad_request ("Parameter "^ name ^" is mandatory")
+      | Some def -> lwt_conv def)
+    | x -> lwt_conv x in
+  let to_relto s =
+    match String.lowercase s with
+    | "metric" -> true
+    | "wallclock" -> false
+    | _ -> failwith "rel must be 'metric' or 'wallclock'"
+  and to_stacked s =
+    let open RamenChart in
+    match String.lowercase s with
+    | "no" | "not" -> NotStacked
+    | "yes" -> Stacked
+    | "centered" -> StackedCentered
+    | _ -> failwith "must be 'yes', 'no' or 'centered'"
+  and to_float s =
+    try float_of_string s
+    with _ -> failwith "must be a float"
+  and to_bool s =
+    try bool_of_string s
+    with _ -> failwith "must be 'false' or 'true'"
+  in
+  let%lwt fields = get "fields" identity in
+  let fields = String.split_on_char ',' fields in
+  let%lwt svg_width = get "width" ~def:"800" to_float in
+  let%lwt svg_height = get "height" ~def:"400" to_float in
+  let%lwt rel_to_metric = get "relto" ~def:"metric" to_relto in
+  let%lwt duration = get "duration" ~def:"10800" to_float in
+  let%lwt force_zero = get "force_zero" ~def:"false" to_bool in
+  let%lwt stacked = get "stacked" ~def:"no" to_stacked in
+  let%lwt single_field =
+    match fields with
+    | [] -> bad_request "You must supply at least one field"
+    | [_] -> return_true
+    | _ -> return_false in
+  (* Fetch timeseries: *)
+  let%lwt _layer, node =
+    find_exporting_node_or_fail conf layer_name node_name in
+  let now = Unix.gettimeofday () in
+  let%lwt until =
+    if rel_to_metric then
+      match timerange_of_node node with
+      | NoData -> return now
+      | TimeRange (_oldest, latest) -> return latest
+    else return now in
+  let since = until -. duration in
+  let pen_of_field field_name =
+    RamenChart.{
+      label = field_name ; draw_line = true ; draw_points = true ;
+      color = RamenColor.random_of_string field_name ;
+      stroke_width = 1.5 ; opacity = 1. ;
+      dasharray = None ; filled = true ; fill_opacity = 0.3 } in
+  let%lwt data_points =
+    wrap (fun () ->
+      List.map (fun data_field ->
+          pen_of_field data_field,
+          RamenExport.(
+            build_timeseries node data_field (int_of_float svg_width + 1)
+                             since until bucket_avg)
+        ) fields) in
+  let _fst_pen, (fst_times, _fst_data) = List.hd data_points in
+  let nb_pts = Array.length fst_times in
+  let shash = RamenChart.{
+    create = (fun () -> Hashtbl.create 11) ;
+    find = Hashtbl.find_option ;
+    add = Hashtbl.add } in
+  let open RamenHtml in
+  let html =
+    if nb_pts = 0 then svg svg_width svg_height [ svgtext "No data" ] else
+    let vx_start = fst_times.(0) and vx_stop = fst_times.(nb_pts-1) in
+    let fold = RamenChart.{ fold = fun f i ->
+      List.fold_left (fun i (pen, (_times, data)) ->
+        (* FIXME: xy_plout should handle None itself *)
+        let getter j = data.(j) |? 0. in
+        f i pen true getter) i data_points } in
+    RamenChart.xy_plot
+      ~svg_width ~svg_height ~force_show_0:force_zero ~stacked_y1:stacked
+      ~string_of_x:RamenFormats.((timestamp string_of_timestamp).to_label)
+      "time" (if single_field then List.hd fields else "")
+      vx_start vx_stop nb_pts shash fold in
+  let body = string_of_html html in
+  let headers = Header.init_with "Content-Type" Consts.svg_content_type in
+  let status = `Code 200 in
+  Server.respond_string ~headers ~status ~body ()
 
 (*
     Data Upload
@@ -675,7 +773,7 @@ let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
       | l::rest ->
         loop (l :: ls) rest in
     loop [] path in
-  let router meth path _params headers body =
+  let router meth path params headers body =
     (* The function called for each HTTP request: *)
       match meth, path with
       (* API *)
@@ -698,6 +796,9 @@ let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
         (* We must allow both POST and GET for that one since we have an
          * optional body (and some client won't send a body with a GET) *)
         export conf headers layer node body
+      | `GET, ("plot" :: path) ->
+        let layer, node = lyr_node_of path in
+        plot conf headers layer node params
       (* API for children *)
       | `PUT, ("report" :: path) ->
         let layer, node = lyr_node_of path in

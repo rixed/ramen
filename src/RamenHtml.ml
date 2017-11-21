@@ -89,6 +89,28 @@ and string_of_tree subs =
   List.fold_left (fun s tree ->
     s ^ (if s = "" then "" else ";") ^ string_of_vnode tree) "" subs
 
+let rec string_of_html ?(in_svg=false) = function
+  | Attribute (n, v) -> n ^"='"^ v ^"'"
+  | Text s -> s
+  | Element { tag ; subs ; svg ; _ } ->
+    let attrs, others = List.fold_left (fun (a, o) -> function
+        | Attribute _ as n -> n::a, o
+        | _ as n -> a, n::o) ([], []) subs in
+    "<"^ tag ^ (if svg && not in_svg then
+                  " xmlns=\"http://www.w3.org/2000/svg\" \
+                    xmlns:xlink=\"http://www.w3.org/1999/xlink\""
+                else "") ^
+      List.fold_left (fun s a ->
+      s ^" "^ string_of_html ~in_svg:svg a) "" attrs ^">"^
+    string_of_htmls ~in_svg:svg others ^
+    "</"^ tag ^">"
+  | Group { subs } -> string_of_htmls ~in_svg subs
+  | Fun { last = { contents = _, html } ; _ } ->
+    string_of_html ~in_svg html
+  | _ -> ""
+and string_of_htmls ?in_svg h =
+  List.fold_left (fun s e -> s ^ string_of_html ?in_svg e) "" h
+
 let rec flat_length = function
   | Group { subs } ->
     List.fold_left (fun s e -> s + flat_length e) 0 subs
@@ -143,7 +165,14 @@ let li = elmt "li"
 
 (* Some more for SVG *)
 
-let svg = elmt ~svg:true "svg"
+let svg width height subs =
+  let subs =
+    let to_s f = string_of_int (int_of_float f) in
+    attr "style" ("width:"^ to_s width ^
+                  "; height:"^ to_s height ^
+                  "; min-height:"^ to_s height ^";") ::
+    subs in
+  elmt ~svg:true "svg" subs
 
 let g = elmt ~svg:true "g"
 

@@ -322,12 +322,8 @@ let chronology incidents dur relto_event =
     [ clss "chronology" ;
       div
         [ clss "wide" ;
-          svg
+          svg svg_width svg_height
             [ clss "chart" ;
-              attr "style"
-                ("width:"^ string_of_float svg_width ^
-                 "; height:"^ string_of_float svg_height ^
-                 "; min-height:"^ string_of_float svg_height ^";") ;
               let base_time =
                 if relto_event && !event_time > 0. then !event_time
                 else now () in

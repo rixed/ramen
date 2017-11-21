@@ -359,8 +359,7 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
     ) else g [] in
   (* FIXME: xy_plot should return what's inside the SVG, so that we can compose
    * various components, and stop accept attrs as a parameter *)
-  svg (grid :: paths :: legend :: attrs)
-
+  svg svg_width svg_height (grid :: paths :: legend :: attrs)
 
 (* Chronology: represent events with their duration along the time axis,
  * each event can have internal markers. *)

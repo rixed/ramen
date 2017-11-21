@@ -172,5 +172,10 @@ let of_json headers what ppp body =
         what body (Printexc.to_string e) ;
       bad_request "Can not parse body")
 
-
-
+(* Back-end version of JsHelpers.string_of_timestamp: *)
+let string_of_timestamp t =
+  let open Unix in
+  let tm = localtime t in
+  Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02ds"
+    (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
+    tm.tm_hour tm.tm_min tm.tm_sec

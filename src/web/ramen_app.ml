@@ -1142,18 +1142,15 @@ let timechart_panel =
           let fold = { RamenChart.fold = fun f init ->
             List.fold_left (fun f_val (field_name, pts) ->
                 let pen =
-                  RamenChart.{ label = field_name ; draw_line = true ; draw_points = true ;
-                          color = RamenColor.random_of_string field_name ;
-                          stroke_width = 1.5 ; opacity = 1. ;
-                          dasharray = None ; filled = true ; fill_opacity = 0.3 } in
+                  RamenChart.{
+                    label = field_name ; draw_line = true ; draw_points = true ;
+                    color = RamenColor.random_of_string field_name ;
+                    stroke_width = 1.5 ; opacity = 1. ;
+                    dasharray = None ; filled = true ; fill_opacity = 0.3 } in
                 f f_val pen true (fun i -> snd pts.(i) |? 0. (* TODO: handle None *))
               ) init field_pts } in
           let svg_width = 800. and svg_height = 400. in
-          let attrs =
-            [ clss "chart" ;
-              attr "style" ("width:"^ string_of_float svg_width ^
-                            "; height:"^ string_of_float svg_height ^
-                            "; min-height:"^ string_of_float svg_height ^";") ] in
+          let attrs = [ clss "chart" ] in
           div
             [ time_selector ~action:reload_chart chart_duration chart_relto ;
               chart_type_selector ;
