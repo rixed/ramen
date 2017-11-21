@@ -58,7 +58,7 @@ start() {
 
   OCAMLPATH=$top_srcdir $ramen start --no-demo -d --seed 1234 &
   add_temp_pid $!
-  sleep 2
+  sleep 3
 }
 
 upload() {
@@ -114,7 +114,7 @@ run() {
   $ramen run
   # We must give it time to process the CSV :(
   # FIXME: add the wait parameter to the tail cli command and use that instead.
-  sleep 2
+  sleep 3
 }
 
 tail_() {
