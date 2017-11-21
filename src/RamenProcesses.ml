@@ -219,9 +219,12 @@ let stop conf layer =
  * By unused, we mean either: no layer depends on it, or no one cares for
  * what it exports. *)
 
-let use_layer conf now layer_name =
-  let layer = Hashtbl.find conf.C.graph.C.layers layer_name in
+let use_layer now layer =
   layer.L.persist.L.last_used <- now
+
+let use_layer_by_name conf now layer_name =
+  Hashtbl.find conf.C.graph.C.layers layer_name |>
+  use_layer now
 
 let timeout_layers conf =
   (* FIXME: We need a lock on the graph config *)
@@ -236,7 +239,7 @@ let timeout_layers conf =
         ) layer.L.persist.L.nodes used
     ) conf.C.graph.C.layers (Set.empty, Set.empty) in
   let now = Unix.gettimeofday () in
-  Set.iter (use_layer conf now) used ;
+  Set.iter (use_layer_by_name conf now) used ;
   let unused = Set.diff defined used in
   Set.iter (fun layer_name ->
       let layer = Hashtbl.find conf.C.graph.C.layers layer_name in

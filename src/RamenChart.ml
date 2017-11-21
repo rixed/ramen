@@ -160,8 +160,12 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
             ?(force_show_0=false) ?(show_rate=false) ?x_label_for_rate
             ?(scale_vx=1.)
             x_label y_label
-            vx_min_unscaled vx_step_unscaled nb_vx
+            vx_min_unscaled vx_max_unscaled nb_vx
             shash fold =
+  let vx_step_unscaled =
+    if nb_vx < 2 then 0.
+    else (vx_max_unscaled -. vx_min_unscaled) /.
+         (float_of_int (nb_vx - 1)) in
   let vx_min = vx_min_unscaled *. scale_vx
   and vx_step = vx_step_unscaled *. scale_vx in
   let force_show_0 = if stacked_y1 = StackedCentered || stacked_y2 = StackedCentered then true else force_show_0 in
@@ -353,8 +357,8 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
               (inner_margin_vert *. 2. +. (float_of_int (nb_y1 + nb_y2)) *. legend_row_height) ::
          boxes)
     ) else g [] in
-  (* FIXME: xy_plot should return what's inside the SVG and stop accept
-   * attrs as a parameter *)
+  (* FIXME: xy_plot should return what's inside the SVG, so that we can compose
+   * various components, and stop accept attrs as a parameter *)
   svg (grid :: paths :: legend :: attrs)
 
 

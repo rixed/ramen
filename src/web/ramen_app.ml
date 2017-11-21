@@ -2,6 +2,7 @@ open Js_of_ocaml
 module Html = Dom_html
 open Engine
 open WebHelpers
+open JsHelpers
 open RamenHtml
 
 (* Printers *)
@@ -1138,9 +1139,6 @@ let timechart_panel =
            * those times. *)
           let vx_start =
             fst fst_pts.(0) and vx_stop = fst fst_pts.(nb_pts-1) in
-          let vx_step =
-            if nb_pts < 2 then 0.
-            else (vx_stop -. vx_start) /. (float_of_int (nb_pts - 1)) in
           let fold = { RamenChart.fold = fun f init ->
             List.fold_left (fun f_val (field_name, pts) ->
                 let pen =
@@ -1168,7 +1166,7 @@ let timechart_panel =
                     ~stacked_y1 ~draw_legend:RamenChart.UpperRight
                     ~force_show_0 "time"
                     (if single_field then fst_field_name else "")
-                    vx_start vx_step nb_pts shash fold)) ]))
+                    vx_start vx_stop nb_pts shash fold)) ]))
 
 let form_input label value placeholder =
   let size = String.length !value + 10 in

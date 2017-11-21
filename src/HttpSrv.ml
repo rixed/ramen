@@ -228,9 +228,12 @@ let get_graph conf headers layer_opt =
 *)
 
 let find_node_or_fail conf layer_name node_name =
-  try C.find_node conf layer_name node_name |> return
-  with Not_found ->
+  match C.find_node conf layer_name node_name with
+  | exception Not_found ->
     bad_request ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
+  | layer, _node as both ->
+    RamenProcesses.use_layer (Unix.gettimeofday ()) layer ;
+    return both
 
 let find_exporting_node_or_fail conf layer_name node_name =
   let%lwt layer, node = find_node_or_fail conf layer_name node_name in
@@ -395,16 +398,11 @@ let shutdown conf _headers =
     Clients can request to be sent the tuples from an exporting node.
 *)
 
-let export conf headers layer_name node_name body =
-  let%lwt () = check_accept headers Consts.json_content_type in
-  let%lwt req =
-    if body = "" then return empty_export_req else
-    of_json headers ("Exporting from "^ node_name) export_req_ppp body in
+let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
   (* Check that the node exists and exports *)
   let%lwt _layer, node =
     find_exporting_node_or_fail conf layer_name node_name in
-  RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
-  let%lwt first, columns = match node.N.history with
+  match node.N.history with
     | None -> (* Nothing yet, just answer with empty result *)
       return (0, [])
     | Some history ->
@@ -413,14 +411,14 @@ let export conf headers layer_name node_name body =
       let rec loop () =
         let first, values =
           RamenExport.fold_tuples_since
-            ?since:req.since ?max_res:req.max_results history (None, [])
+            ?since ?max_res history (None, [])
               (fun _ seqnum tup (first, prev) ->
                 let first =
                   if first = None then Some seqnum else first in
                 first, List.cons tup prev) in
-        let first = first |? (req.since |? 0) in
+        let first = first |? (since |? 0) in
         let dt = Unix.gettimeofday () -. start in
-        if values = [] && dt < req.wait_up_to then (
+        if values = [] && dt < wait_up_to then (
           (* TODO: sleep for dt, queue the wakener on this history,
            * and wake all the sleeps when a tuple is received *)
           Lwt_unix.sleep 0.1 >>= loop
@@ -431,12 +429,21 @@ let export conf headers layer_name node_name body =
             List.map (fun (typ, nullmask, column) ->
               typ, Option.map RamenBitmask.to_bools nullmask, column))
         ) in
-      loop () in
+      loop ()
+
+let export conf headers layer_name node_name body =
+  let%lwt () = check_accept headers Consts.json_content_type in
+  let%lwt req =
+    if body = "" then return empty_export_req else
+    of_json headers ("Exporting from "^ node_name) export_req_ppp body in
+  let%lwt first, columns =
+    get_tuples conf ?since:req.since ?max_res:req.max_results
+                    ~wait_up_to:req.wait_up_to layer_name node_name in
   let resp = { first ; columns } in
   let body = PPP.to_string export_resp_ppp resp in
   respond_ok ~body ()
 
-(*
+ (*
     API for Workers: health and report
 *)
 
@@ -474,7 +481,8 @@ let complete_fields conf headers body =
 *)
 
 let timeseries conf headers body =
-  let%lwt msg = of_json headers "time series query" timeseries_req_ppp body in
+  let%lwt msg =
+    of_json headers "time series query" timeseries_req_ppp body in
   let ts_of_node_field req layer node data_field =
     let%lwt _layer, node = find_exporting_node_or_fail conf layer node in
     let open RamenExport in
@@ -564,8 +572,8 @@ let timeseries conf headers body =
               return (layer, node, data_field)
             | NewTempNode { select_x ; select_y ; from ; where } ->
               create_temporary_node select_x select_y from where in
-          let%lwt _layer, node = find_node_or_fail conf layer_name node_name in
-          RamenProcesses.use_layer conf (Unix.gettimeofday ()) node.N.layer ;
+          let%lwt _layer, node =
+            find_node_or_fail conf layer_name node_name in
           let%lwt times, values =
             ts_of_node_field req layer_name node_name data_field in
           return { id = req.id ; times ; values }

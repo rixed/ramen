@@ -3,6 +3,7 @@ module Html = Dom_html
 open Engine
 open RamenHtml
 open WebHelpers
+open JsHelpers
 open AlerterSharedTypesJS_noPPP
 
 (* Conversions from to Js *)
