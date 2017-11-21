@@ -51,8 +51,6 @@ let age_i64 = Int64.of_float % age_float
 let age_i128 = Int128.of_float % age_float
 (* FIXME: typecheck age_eth, age_ipv4 etc out of existence *)
 
-let now () = !CodeGenLib_IO.now
-
 (* State is count * sum, inited with 0, 0. *)
 let avg_add (count, sum) x = count + 1, sum +. x
 let avg_finalize (count, sum) = sum /. float_of_int count

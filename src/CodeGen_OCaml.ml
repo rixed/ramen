@@ -325,7 +325,7 @@ let emit_scalar oc =
                  Printf.fprintf oc "(Uint32.of_string %S, %d)" (Uint32.to_string n) l
   | VCidrv6 (n,l) ->
                  Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
-  | VNull     -> Printf.fprintf oc "()"
+  | VNull     -> Printf.fprintf oc "None"
 
 (* Given a function name and an output type, return the actual function
  * returning that type, and the types each input parameters must be converted
@@ -647,7 +647,7 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state name [Some to_typ] [e]
   (* TODO: Now() for Uint62? *)
   | Finalize, StatelessFun (_, Now), Some TFloat ->
-    emit_functionN oc ?state "CodeGenLib.now" [] []
+    String.print oc "!CodeGenLib_IO.now"
   | Finalize, StatelessFun (_, Cast (e)), t ->
     emit_functionN oc ?state "identity" [t] [e]
   (* Sequence build a sequence of as-large-as-convenient integers (signed or
