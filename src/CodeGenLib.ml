@@ -375,9 +375,12 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
       and to_close = Set.diff current next in
       Set.iter (fun fname ->
         !logger.debug "Unmapping %S" fname ;
-        let rb, _ = Hashtbl.find out_h fname in
-        RingBuf.unload rb ;
-        Hashtbl.remove out_h fname) to_close ;
+        match Hashtbl.find out_h fname with
+        | exception Not_found ->
+          !logger.error "While unmapping %S: this file is not mapped?!" fname
+        | rb, _ ->
+          RingBuf.unload rb ;
+          Hashtbl.remove out_h fname) to_close ;
       Set.iter (fun fname ->
           !logger.debug "Mapping %S" fname ;
           let rb = RingBuf.load fname in
@@ -392,9 +395,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
           Hashtbl.add out_h fname (rb,
             RingBufLib.retry_for_ringbuf ~delay_rec:sleep_out once)
         ) to_open ;
-      out_l := Hashtbl.values out_h /@ snd |> List.of_enum ;
-      !logger.debug "Will now output into %a"
-        (Enum.print String.print) (Hashtbl.keys out_h)) fnames ;
+      out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
     let sersize = sersize_of_tuple tuple in
     IntCounter.add stats_rb_write_bytes sersize ;
     List.map (fun out -> out (sersize, tuple)) !out_l |>
@@ -811,7 +812,7 @@ let aggregate
                   global_state
                   in_tuple in_tuple in
               (* What part of unknown weight might belong to this guy? *)
-              let kh = BatHashtbl.hash k mod Array.length unknown_weights in
+              let kh = Hashtbl.hash k mod Array.length unknown_weights in
               let aggr = {
                 first_in = in_tuple ;
                 last_in = in_tuple ;
@@ -832,23 +833,32 @@ let aggregate
                 if should_resubmit aggr in_tuple then
                   aggr.to_resubmit <- [ in_tuple ]
               in
-              if top_n = 0 || BatHashtbl.length h < top_n then (
+              if top_n = 0 || Hashtbl.length h < top_n then (
                 add_entry () ;
                 Some aggr
               ) else (
                 (* H is crowded already, maybe dispose of the less heavy hitter? *)
                 match WeightMap.min_binding !weightmap with
-                | _wk, [] -> assert false
+                | exception Not_found ->
+                  !logger.error "Empty weightmap but full hashtbl?" ;
+                  assert false
+                | _wk, [] ->
+                  !logger.error "Weightmap entry with no map key" ;
+                  assert false
                 | wk, (min_k::min_ks) ->
                   if wk < tot_weight float_of_top_state aggr then (
                     (* Remove previous entry *)
-                    let removed = Hashtbl.find h min_k in (* FIXME: in one go! Hashtbl.extract? *)
-                    Hashtbl.remove h min_k ;
-                    let kh' = BatHashtbl.hash min_k mod Array.length unknown_weights in
-                    (* Note: the unsure_weight we took it from unknown_weights.(kh')
-                     * already and it's still there *)
-                    unknown_weights.(kh') <-
-                      unknown_weights.(kh') +. float_of_top_state removed.sure_weight_state ;
+                    (match Hashtbl.find h min_k with
+                    | exception Not_found ->
+                      !logger.error "Weight %f from weightmap does not point to a group?!" wk
+                    | removed ->
+                      (* FIXME: find and remove in one go! Hashtbl.extract? *)
+                      Hashtbl.remove h min_k ;
+                      let kh' = Hashtbl.hash min_k mod Array.length unknown_weights in
+                      (* Note: the unsure_weight we took it from unknown_weights.(kh')
+                       * already and it's still there *)
+                      unknown_weights.(kh') <-
+                        unknown_weights.(kh') +. float_of_top_state removed.sure_weight_state) ;
                     weightmap := snd (WeightMap.pop_min_binding !weightmap) ;
                     if min_ks <> [] then
                       weightmap := WeightMap.add wk min_ks !weightmap ;
