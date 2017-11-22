@@ -16,26 +16,23 @@ endif::[]
 
 == Overview
 
-Ramen is a _stream processor_. Unlike other stream processors that are designed
-to scale to many servers, Ramen is designed to be efficient on a single (or
-very few) servers. In other words, it is not designed to be distributed. As a
-trade off, what we gain from relaxing this constraint is a much simpler design
-and faster program.
+Ramen is a non-distributed _stream processor_.
 
-Ramen is composed by a central server that serves an API allowing clients to
-edit the configuration. This configuration consists of a graph of operations,
-each of which is given using a specialized high level language that's inspired
-by SQL and alleviate users to program the operations in actual programing
-languages. These operations are then compiled by the central server down to
-machine code into individual programs for faster execution. Also, events sent
-from one operation to the next are sent directly from the emitter to the
-recipient using memory-mapped ring-buffers, thus avoiding another source of
-complexity and latency.
+Unlike other stream processors that are designed to scale to many servers,
+Ramen is designed to be efficient on a single (or very few) servers.
 
-The last design principle is that events must be _tuples_ of primitive types,
-with no special field, and are statically typed; not unlike tuples from a SQL
-database.  Therefore, each node has an input and an output type: the types of
-event they accept and produce.
+It is composed of a central program that serves an API allowing clients to edit
+the configuration. This configuration consists of a graph of operations, each
+of which is given using a specialized high level language inspired by SQL.
+These operations are then compiled by the central server down to machine code
+into individual programs, the _workers_, for parallel execution.
+
+Each worker accepts input of a given type and produces output of a given type,
+not unlike SQL rows being consumed by a SQL query that produces other rows used
+as input to a sub query. As in SQL, each row is a _tuple_ of primitive types.
+This stream of tuples flows directly from one worker to the next using
+efficient memory-mapped ring buffers.  All those tuples are statically typed at
+compile time to avoid runtime crash and improve speed.
 
 == Glossary
 
@@ -70,6 +67,10 @@ Node::
   consume and produce. These types may only be known after the layer is compiled,
   though. Nodes can receive tuples from any other nodes of the same layer, or
   from any nodes of any layer defined previously.
+[[Nullable]]
+Nullable::
+  Said of a tuple field that can hold the NULL value. Most fields should not be
+  nullable as it implies expensive runtime checks.
 [[Operation]]
 Operation::
   The description, in the SQL-inspired specific language, of how a node produce
@@ -93,47 +94,54 @@ Tuple::
 == The Configuration Language Reference
 
 We describe first values, then expressions, then operations.  All these
-concepts references each others so there is no reading order that would save
+concepts reference each others so there is no reading order that would save
 you from jumping around. First reading may not be clear but everything should
 eventually fall into place.
 
-Some rare reserved keywords cannot be used as identifiers, unless surrounded by
-simple quotes.
+=== Blanks
 
-=== Blanks and Comments
-
-The parsing rules should be devoid of surprise.
 Any blank or newline is a separator.
+
+=== Comments
+
 As in SQL, two dashes introduce a line comment. Everything from those dashes
 and the end of that line is considered a space.
+
+There is no block comments.
+
+=== Quotation
+
+Some rare reserved keywords cannot be used as identifiers unless surrounded by
+simple quotes.
 
 === Values
 
 ==== NULLs
 
-Like in SQL, some field values may be NULL. Ramen typing system knows what
+Like in SQL, some field may have the NULL value. Ramen typing system knows what
 value can be NULL and spare the NULL checks unless necessary.
 
-Users can check if a NULL-able value is NULL using the +IS NULL+ or +IS NOT
-NULL+ operators, which turn a NULL-able value into a boolean. This is useful
+Users can check if a nullable value is indeed NULL using the +IS NULL+ or +IS
+NOT NULL+ operators, which turn a nullable value into a boolean. This is useful
 in where clauses.
 
 +NULL+ is both a type and a value. The +NULL+ value is the only possible value
-of the +NULL+ type, or a possible value for any NULL-able type.
+of the +NULL+ type, or a possible value for any nullable field.
 
-To write a literal +NULL+ value (of the +NULL+ type), enter `NULL`.
+To write a literal +NULL+ value (of the +NULL+ type, for what it's worth),
+enter `NULL`.
 
 ==== Booleans
 
-The type for booleans is called `bool`.
-Booleans true and false are spelled `true` and `false`.
+The type for booleans is called `boolean` (`bool` is also accepted).
+Boolean true and false are spelled `true` and `false`.
 
 ==== Strings
 
 The type for character strings is called `string`.  A literal string is double
 quoted (with +"+). To include a double-quote, backslash it.  Other characters
 can be backslashed: single quote (`"\'"`), newlines (`"\n"` and `"\r"`),
-horizontal tab (`"\t"`) and backspace (`"\b"`), and backslash itself (`"\\"`).
+horizontal tab (`"\t"`), backspace (`"\b"`) and the backslash itself (`"\\"`).
 
 Some functions consider strings as UTF-8 encoded, some consider strings as mere
 sequence of bytes.
@@ -167,7 +175,7 @@ Ethernet addresses are accepted with the usual notation, such as:
 internally stored as 48bits unsigned integers and can be casted from/to other
 integer types.
 
-IP addresses are also accepted, either v4 or v6, and again without strings.
+IP addresses are also accepted, either v4 or v6, again without strings.
 
 CIDR addresses are also accepted; for instance `192.168.10.0/24`.
 
@@ -383,7 +391,11 @@ though. Function state (for those that have one) can be chosen to have either a
 global lifespan or a per-group lifespan. The default lifespan for aggregate
 functions is the group and the default lifespan for other stateful functions is
 global.  Add "globally" after the function name to force it to use the global
-lifespan and "locally" to force the per-group lifespan.
+lifespan and "locally" to force the per-group lifespan. For instance, the `sum`
+function, being an aggregate function, use a group-wise state by default,
+meaning +sum x+ is equivalent to +sum locally x+. To make it use a global state
+(and build the sum over all incoming tuples regardless of how they are
+grouped), write: +sum globally x+.
 
 ===== Boolean operators
 
@@ -928,7 +940,7 @@ clause. So for instance:
 [source,sql]
 ----
   SELECT avg salary, *
-  FROM employee GROUP BY age, is_make
+  FROM employee GROUP BY age, is_male
 ----
 
 ...would output tuples made of the average value of the input field +salary+
@@ -1169,36 +1181,42 @@ EXPORT EVENT STARTING AT time * 0.001 WITH DURATION 30
 Many time when triaging data we want to consider only the most important of
 the aggregation groups, for some definition of "important".
 
-For instance, we may want to focus on the top 10 lowest monthly salary in our
+For instance, we may want to focus on the top 10 lowest yearly salary in our
 employee stream so that we do not waste processing time on the rest.
 
 The +TOP+ clause offers to ignore all but the most important groups:
 
 [source,sql]
 ----
-SELECT name, avg salary FROM employee
-GROUP BY name, month
-TOP 10 BY -salary
+SELECT name FROM employee
+GROUP BY name
+TOP 10 BY -avg(salary) WHEN group.#count = 12
 ----
 
-The general syntax of the +TOP+ clause is merely:
+Notice that the minus sign before the `avg` function: this is because TOP
+selects the highest result of the given expression. As we want to select the
+lowest salaries we have to ask for the top negative salaries.
+
+Notice also that the top replaces both the +COMMIT+ and +FLUSH+ clauses with a
+single condition that will in practice work like a global +COMMIT AND FLUSH+
+clause: once this condition is met all groups will be output and reset. After
+that a whole new TOP will start with the next tuples to come.
+
+The general syntax of the +TOP+ clause is:
 
 [source,sql]
 ----
-TOP number BY expression
+TOP number BY expression WHEN condition
 ----
 
-Where the number must be a positive integer and the expression must be
-stateless (ie. uses no stateful functions), refers only to the input tuple, and
-produce a number that will be used as a _weight_ contributed to the group by
-the input tuple.
+Where the number must be a positive integer and the expression must refers only
+to the input tuple and produce a number that will be used as a _weight_
+contributed to the group by that input tuple.
 
 The presence of a +TOP+ clause changes slightly how a +Group By+ operation
 works. First and foremost, the number of groups that are maintained in memory
 is reduced to the same magnitude as the selected number, which can greatly
-reduce the memory footprint of the operation. Secondly, the only commit
-and flush clauses that are currently compatible with the top clause are to
-commit and flush the whole top groups at once.
+reduce the memory footprint of the operation.
 
 ===== The Complete Picture
 
@@ -1211,8 +1229,8 @@ SELECT expression1 AS name1, expression2 AS name2, ...
 WHERE condition
 FROM source
 GROUP BY expression1, expression2, ...
-TOP number BY expression
-COMMIT [ AND [ FLUSH | SLIDE n | REMOVE condition | KEEP condition ] ] WHEN condition
+TOP number BY expression WHEN condition
+COMMIT [ AND ( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) ] WHEN condition
 ( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) WHEN condition
 EXPORT [ EVENT STARTING AT identifier [ * scale ]
              [ WITH DURATION [ identifier [ * scale ] | constant ] |
@@ -1220,7 +1238,8 @@ EXPORT [ EVENT STARTING AT identifier [ * scale ]
 ----
 
 Each of those clauses can be specified in any order and can be omitted but for
-the +FROM+ clause.
+the +FROM+ clause; Also, when +TOP+ is specified then no +COMMIT+ or +FLUSH+
+must be present.
 
 The semantic is:
 
@@ -1230,16 +1249,18 @@ Then evaluate the where clause: if it is false, skip that input (and discard
 the new aggregate that might have been created).  If the where clause yields
 true, accumulates that input into that aggregate (actual meaning depending on
 what functions are used in the operation). If a top by clause is present, limit
-the number of kept group to the top contributor according to the given metric.
-Compute the current output-tuple.
+the number of kept groups to the top N contributors according to the given
+metric.  Compute the current output-tuple.
 
-With all this, evaluates the commit clause: if it is true, send the output
-tuple to all children, and if the export keyword is present also store it on
-disc. Should this input tuple be replayed when flushing this aggregate, store
-it with as part of the group. If the output tuple has been committed, then also
-evaluates the flush-when clause. If it is also true then flush this aggregate
--- either by deleting the aggregate altogether or by replacing it with an
-aggregate build from replaying some of the stored input tuple.
+With all this, evaluates the commit clause (or the top condition): if it is
+true then send the output tuple to all children, and if the export keyword is
+present also store it on disc. Should this input tuple be replayed when
+flushing this aggregate, store it with as part of the group. If the output
+tuple has been committed, then also evaluates the flush-when clause. If it is
+also true then flush this aggregate -- either by deleting the aggregate
+altogether or by replacing it with an aggregate build from replaying some of
+the stored input tuple. If this was a top operation, though, all groups will be
+committed and flushed.
 
 A picture might help:
 
