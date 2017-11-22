@@ -22,7 +22,7 @@ depends: [
   "sqlite3" {build}
   "num" {build}
   "ppp" {build}
-  "js_of_ocaml" {build}
+  "js_of_ocaml" {build & >= "3.0.1"}
   "js_of_ocaml-ppx" {build}
   "cmdliner" {build}
   "cryptohash" {build}

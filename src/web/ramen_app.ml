@@ -698,7 +698,7 @@ let icon_of_layer ?(suppress_action=false) layer =
         Jstable.add spinners.value js_name while_ ;
         change spinners ;
         http_get path ?what ~on_done:(fun () ->
-          Jstable.delete spinners.value js_name ;
+          Jstable.remove spinners.value js_name ;
           change spinners)
           (fun status ->
             (* FIXME: graph won't return a status so the following will
@@ -728,7 +728,7 @@ let del_layer layer_name =
   let path = "/graph/"^ enc layer_name
   and what = "Deleted "^ layer_name in
   http_del path ~what ~on_done:(fun () ->
-    Jstable.delete spinners.value js_name ;
+    Jstable.remove spinners.value js_name ;
     change spinners)
     (done_edit_layer_cb "delete")
 
