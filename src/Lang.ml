@@ -151,7 +151,6 @@ let tuple_need_state = function
   | _ -> false
 
 (*$inject
-  open Stdint
   open Batteries
   open RamenSharedTypes
   open RamenParsing
@@ -326,13 +325,7 @@ struct
     open RamenParsing
 
     let narrowest_int_scalar =
-      let min_i8 = Num.of_string "-128"
-      and max_i8 = Num.of_string "127"
-      and max_u8 = Num.of_string "255"
-      and min_i16 = Num.of_string "-32768"
-      and max_i16 = Num.of_string "32767"
-      and max_u16 = Num.of_string "65535"
-      and min_i32 = Num.of_string "-2147483648"
+      let min_i32 = Num.of_string "-2147483648"
       and max_i32 = Num.of_string "2147483647"
       and max_u32 = Num.of_string "4294967295"
       and min_i64 = Num.of_string "-9223372036854775808"
@@ -344,10 +337,6 @@ struct
       and zero = Num.zero
       in fun i ->
         let s = Num.to_string i in
-        if Num.le_num min_i8 i && Num.le_num i max_i8  then VI8 (Int8.of_string s) else
-        if Num.le_num zero i && Num.le_num i max_u8  then VU8 (Uint8.of_string s) else
-        if Num.le_num min_i16 i && Num.le_num i max_i16  then VI16 (Int16.of_string s) else
-        if Num.le_num zero i && Num.le_num i max_u16  then VU16 (Uint16.of_string s) else
         if Num.le_num min_i32 i && Num.le_num i max_i32  then VI32 (Int32.of_string s) else
         if Num.le_num zero i && Num.le_num i max_u32  then VU32 (Uint32.of_string s) else
         if Num.le_num min_i64 i && Num.le_num i max_i64  then VI64 (Int64.of_string s) else
@@ -381,8 +370,8 @@ struct
       (Ipv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
 
     (*$= p & ~printer:(test_printer print)
-      (Ok (VI16 (Int16.of_int 31000), (5,[])))   (test_p p "31000")
-      (Ok (VU16 (Uint16.of_int 61000), (5,[])))  (test_p p "61000")
+      (Ok (VI32 (Int32.of_int 31000), (5,[])))   (test_p p "31000")
+      (Ok (VI32 (Int32.of_int 61000), (5,[])))   (test_p p "61000")
       (Ok (VFloat 3.14, (4,[])))                 (test_p p "3.14")
       (Ok (VFloat ~-.3.14, (5,[])))              (test_p p "-3.14")
       (Ok (VBool false, (5,[])))                 (test_p p "false")
@@ -1617,7 +1606,7 @@ struct
           StatelessFun (typ, Sub (\
             Field (typ, ref TupleUnknown, "bps"), \
             StatefulFun (typ, GlobalState, Lag (\
-              Const (typ, VI8 (Int8.of_int 1)), \
+              Const (typ, VI32 (Int32.of_int 1)), \
               Field (typ, ref TupleUnknown, "bps"))))))), \
         (21, []))) \
         (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
@@ -2323,7 +2312,7 @@ struct
           where = Expr.(\
             StatelessFun (typ, Gt (\
               Field (typ, ref TupleIn, "packets"),\
-              Const (typ, VI8 (Int8.of_int 0))))) ;\
+              Const (typ, VI32 (Int32.of_int 0))))) ;\
           export = None ; notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
@@ -2419,7 +2408,7 @@ struct
               StatelessFun (typ, Add (\
                 StatefulFun (typ, LocalState, AggrMax (\
                   Field (typ, ref TupleGroupFirst, "start"))),\
-                Const (typ, VI16 (Int16.of_int 3600)))),\
+                Const (typ, VI32 (Int32.of_int 3600)))),\
               Field (typ, ref TupleOut, "start")))) ; \
           flush_when = None ; flush_how = Reset ;\
           from = ["foo"] },\
@@ -2435,7 +2424,7 @@ struct
       (Ok (\
         Aggregate {\
           fields = [\
-            { expr = Expr.Const (typ, VI8 (Int8.one)) ;\
+            { expr = Expr.Const (typ, VI32 (Int32.one)) ;\
               alias = "one" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
@@ -2445,8 +2434,8 @@ struct
           commit_when = Expr.(\
             StatelessFun (typ, Ge (\
               StatefulFun (typ, LocalState, AggrSum (\
-                Const (typ, VI8 (Int8.one)))),\
-              Const (typ, VI8 (Int8.of_int 5))))) ;\
+                Const (typ, VI32 (Int32.one)))),\
+              Const (typ, VI32 (Int32.of_int 5))))) ;\
           flush_when = None ; flush_how = Reset ; from = ["foo"] },\
           (47, [])))\
           (test_op p "select 1 as one from foo commit when sum 1 >= 5" |>\
@@ -2458,7 +2447,7 @@ struct
             { expr = Expr.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
             { expr = Expr.(\
                 StatefulFun (typ, GlobalState, Expr.Lag (\
-                Expr.Const (typ, VI8 (Int8.of_int 2)), \
+                Expr.Const (typ, VI32 (Int32.of_int 2)), \
                 Expr.Field (typ, ref TupleIn, "n")))) ;\
               alias = "l" } ] ;\
           and_all_others = false ;\

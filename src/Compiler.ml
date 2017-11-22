@@ -827,16 +827,16 @@ let set_all_types _conf layer =
    *)
 
   (*$= test_check_expr & ~printer:(fun x -> x)
-     "(1 [constant of type I8]) + (1 [constant of type I8]) [addition of type I8]" \
+     "(1 [constant of type I32]) + (1 [constant of type I32]) [addition of type I32]" \
        (test_check_expr "1+1")
 
      "(sum locally (1 [constant of type I16]) [sum aggregation of type I16]) > \\
-      (500 [constant of type I16]) [comparison operator of type BOOL]" \
+      (500 [constant of type I32]) [comparison operator of type BOOL]" \
        (test_check_expr "sum 1i16 > 500")
 
-     "(sum locally (cast(I16, 1 [constant of type I8]) [cast to I16 of type I16]) \\
+     "(sum locally (cast(I16, 1 [constant of type I32]) [cast to I16 of type I16]) \\
           [sum aggregation of type I16]) > \\
-      (500 [constant of type I16]) [comparison operator of type BOOL]" \
+      (500 [constant of type I32]) [comparison operator of type BOOL]" \
        (test_check_expr "sum i16(1) > 500")
    *)
 
