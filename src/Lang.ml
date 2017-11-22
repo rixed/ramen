@@ -382,7 +382,7 @@ struct
     let typ =
       (strinG "float" >>: fun () -> TFloat) |||
       (strinG "string" >>: fun () -> TString) |||
-      (strinG "bool" >>: fun () -> TBool) |||
+      ((strinG "bool" ||| strinG "boolean") >>: fun () -> TBool) |||
       (strinG "u8" >>: fun () -> TU8) |||
       (strinG "u16" >>: fun () -> TU16) |||
       (strinG "u32" >>: fun () -> TU32) |||
