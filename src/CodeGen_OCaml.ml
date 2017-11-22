@@ -733,7 +733,7 @@ and emit_expr ?state ~context oc expr =
 
   | InitState, StatefulFun (_, _, Lag (k,e)), _ ->
     let n = expr_one in
-    emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; None] [k; n; any_constant_of_type (typ_of e)]
+    emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU32; Some TU32; None] [k; n; any_constant_of_type (typ_of e)]
   | UpdateState, StatefulFun (_, g, Lag (_k,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.add" [None; None] [my_state g; e]
   | Finalize, StatefulFun (_, g, Lag _), _ ->
@@ -741,18 +741,18 @@ and emit_expr ?state ~context oc expr =
 
   (* We force the inputs to be float since we are going to return a float anyway. *)
   | InitState, StatefulFun (_, _, (MovingAvg(p,n,_)|LinReg(p,n,_))), Some TFloat ->
-    emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU16; Some TU16; Some TFloat] [p; n; expr_zero]
+    emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU32; Some TU32; Some TFloat] [p; n; expr_zero]
   | UpdateState, StatefulFun (_, g, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.add" [None; Some TFloat] [my_state g; e]
   | Finalize, StatefulFun (_, g, MovingAvg (p,n,_)), Some TFloat ->
-    emit_functionN oc ?state "CodeGenLib.Seasonal.avg" [Some TU16; Some TU16; None] [p; n; my_state g]
+    emit_functionN oc ?state "CodeGenLib.Seasonal.avg" [Some TU32; Some TU32; None] [p; n; my_state g]
   | Finalize, StatefulFun (_, g, LinReg (p,n,_)), Some TFloat ->
-    emit_functionN oc ?state "CodeGenLib.Seasonal.linreg" [Some TU16; Some TU16; None] [p; n; my_state g]
+    emit_functionN oc ?state "CodeGenLib.Seasonal.linreg" [Some TU32; Some TU32; None] [p; n; my_state g]
   | Finalize, StatefulFun (_, g, MultiLinReg (p,n,_,_)), Some TFloat ->
-    emit_functionN oc ?state "CodeGenLib.Seasonal.multi_linreg" [Some TU16; Some TU16; None] [p; n; my_state g]
+    emit_functionN oc ?state "CodeGenLib.Seasonal.multi_linreg" [Some TU32; Some TU32; None] [p; n; my_state g]
 
   | InitState, StatefulFun (_, _, MultiLinReg (p,n,_,es)), Some TFloat ->
-    emit_functionNv oc ?state "CodeGenLib.Seasonal.init_multi_linreg" [Some TU16; Some TU16; Some TFloat] [p; n; expr_zero] (Some TFloat) (List.map (fun _ -> expr_zero) es)
+    emit_functionNv oc ?state "CodeGenLib.Seasonal.init_multi_linreg" [Some TU32; Some TU32; Some TFloat] [p; n; expr_zero] (Some TFloat) (List.map (fun _ -> expr_zero) es)
   | UpdateState, StatefulFun (_, g, MultiLinReg (_p,_n,e,es)), _ ->
     emit_functionNv oc ?state "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state g; e] (Some TFloat) es
 

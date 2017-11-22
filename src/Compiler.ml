@@ -482,7 +482,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_const "lag" e1 ;
     (* ... and e2 can be anything and the type of lag will be the same,
      * nullable (since we might lag beyond the start of the window. *)
-    check_op op_typ List.last [Some TU16, Some false, e1 ; None, None, e2]
+    check_op op_typ List.last [Some TU64, Some false, e1 ; None, None, e2]
   | StatefulFun (op_typ, _, MovingAvg (e1, e2, e3)) | StatefulFun (op_typ, _, LinReg (e1, e2, e3)) ->
     (* As above, but e3 must be numeric (therefore the result cannot be
      * null) *)
@@ -490,8 +490,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_const "moving average period" e1 ;
     check_const "moving average counts" e2 ;
     check_op op_typ return_float
-      [Some TU16, Some false, e1 ;
-       Some TU16, Some false, e2 ;
+      [Some TU64, Some false, e1 ;
+       Some TU64, Some false, e2 ;
        Some TFloat, None, e3]
   | StatefulFun (op_typ, _, MultiLinReg (e1, e2, e3, e4s)) ->
     (* As above, with the addition of a non empty list of predictors *)
@@ -499,8 +499,8 @@ let rec check_expr ~in_type ~out_type ~exp_type =
     check_const "multi-linear regression period" e1 ;
     check_const "multi-linear regression counts" e2 ;
     check_op op_typ return_float
-      [Some TU16, Some false, e1 ;
-       Some TU16, Some false, e2 ;
+      [Some TU64, Some false, e1 ;
+       Some TU64, Some false, e2 ;
        Some TFloat, None, e3] ||
     check_variadic op_typ
       ~exp_sub_typ:TFloat ~exp_sub_nullable:false (*because see comment in check_variadic *) e4s

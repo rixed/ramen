@@ -138,7 +138,7 @@ struct
 
   (* We initialize this internal state with a random value [x]: *)
   let init p n x =
-    let p = Uint16.to_int p and n = Uint16.to_int n in
+    let p = Uint32.to_int p and n = Uint32.to_int n in
     Array.make (n * p + 1) x, 0
 
   (* Then adding a value: *)
@@ -186,11 +186,11 @@ struct
     prevs.(idx)
 
   let avg p n t =
-    let p = Uint16.to_int p and n = Uint16.to_int n in
+    let p = Uint32.to_int p and n = Uint32.to_int n in
     (fold p n t 0. (+.)) /. float_of_int n
 
   let linreg p n t =
-    let p = Uint16.to_int p and n = Uint16.to_int n in
+    let p = Uint32.to_int p and n = Uint32.to_int n in
     let b1n, b1d, last =
       let x_avg = float_of_int (n - 1) /. 2. in
       let sq x = x *. x in
@@ -209,7 +209,7 @@ struct
   let init_multi_linreg p n x preds = init p n (x, preds)
   let add_multi_linreg t x preds = add t (x, preds)
   let multi_linreg p n t =
-    let p = Uint16.to_int p and n = Uint16.to_int n in
+    let p = Uint32.to_int p and n = Uint32.to_int n in
     let open Owl in
     (* We first want to know how many observations and predictors we have: *)
     let nb_preds, nb_obs =
