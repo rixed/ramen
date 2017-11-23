@@ -6,25 +6,27 @@ RUN echo 'APT::Install-Recommends "0";' > \
 
 # Install a few things
 RUN apt-get --yes update && \
-    apt-get --yes install \
-      aspcud \
-      ca-certificates \
-      collectd \
-      coreutils \
-      git \
-      liblz4-tool \
-      liboping0 \
-      m4 \
-      ocaml-nox \
-      opam \
-      rsync
+    DEBIAN_FRONTEND=noninteractive \
+      apt-get --yes install \
+        aspcud \
+        ca-certificates \
+        collectd \
+        coreutils \
+        fprobe \
+        git \
+        liblz4-tool \
+        liboping0 \
+        m4 \
+        ocaml-nox \
+        opam \
+        rsync
 
 # Configure opam and get as fast a compiler we can get
 RUN opam init --no-setup && \
     opam switch install ramen --alias-of 4.05.0+flambda
 
 # Rebuild a new image from here
-RUN echo "version 6"
+RUN echo "version 4"
 
 # Install ramen
 RUN opam depext --noninteractive \
@@ -98,6 +100,7 @@ RUN touch /img_creation && find /root /usr /var /lib /bin /sbin -type f | \
       xargs touch -m -r /img_creation && \
     sleep 1.1 && \
     find /root/.opam/ramen -type f -name META -exec sed -i -e /exists_if/d {} \; && \
+    fprobe -i eth0 -fip localhost:2055 && \
     (timeout 10s collectd -f -C /etc/collectd/collectd.conf || true) && \
     ramen start -d --daemon && sleep 2 && \
     ramen add --op 'SELECT MIN time, fit_multi(3, value, time) AS smth1 FROM demo/collectd' \
