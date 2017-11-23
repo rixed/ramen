@@ -681,7 +681,10 @@ let aggregate
       let last_in = Option.default in_tuple !last_in_tuple
       and in_count = !CodeGenLib_IO.tuple_count
       and last_selected = Option.default in_tuple !selected_tuple
-      and last_unselected = Option.default in_tuple !unselected_tuple in
+      and last_unselected = Option.default in_tuple !unselected_tuple
+      and already_output_aggr = ref None in
+      let already_output a =
+        Option.map_default ((==) a) false !already_output_aggr in
       (* Tells if the group must be committed/flushed: *)
       let must cond aggr = (* TODO: pass selected_successive *)
         cond
@@ -777,12 +780,14 @@ let aggregate
         let to_commit =
           if when_to_check_for_commit <> check_when then [] else
             Hashtbl.fold (fun k a l ->
-              if must commit_when a then (k, a)::l else l) h [] in
+              if not (already_output a) &&
+                 must commit_when a then (k, a)::l else l) h [] in
         let to_flush =
           if flush_when == commit_when then to_commit else
-          if when_to_check_for_commit <> check_when then [] else
+          if when_to_check_for_flush <> check_when then [] else
           Hashtbl.fold (fun k a l ->
-            if must flush_when a then (k, a)::l else l) h [] in
+            if not (already_output a) &&
+               must flush_when a then (k, a)::l else l) h [] in
         (* TODO: get rid of flush when and this is not necessary any longer: *)
         let to_commit =
           List.map (fun (_k, a) -> a.current_out) to_commit in
@@ -1006,18 +1011,16 @@ let aggregate
           let to_commit, to_flush =
             (* FIXME: we should do the check that early for all when_to_check_for_commit
              * (and skip this aggr when doing ForAllSelected or ForAll)., so that we can
-             * commit_before this group (for others that does not matter since we do not
+             * commit_before this group (for others that does not matter since we did not
              * change them). *)
-            if when_to_check_for_commit = ForInGroup &&
-               must commit_when aggr
+            if must commit_when aggr
             then [
               if commit_before then aggr.previous_out
               else aggr.current_out
             ], [ k, aggr ] else [], [] in
           let to_flush =
             if flush_when == commit_when then to_flush else
-            if when_to_check_for_flush = ForInGroup &&
-               must flush_when aggr
+            if must flush_when aggr
             then [ k, aggr ] else [] in
           if commit_before then
             List.iter (fun (_k, a) ->
@@ -1029,6 +1032,7 @@ let aggregate
            * or flush this aggr twice since when_to_check_for_commit force
            * either one or the other (or none at all) of these chunks of
            * code to be run. *)
+          already_output_aggr := Some aggr ;
           let%lwt () = commit_and_flush_all_if ForAllSelected in
           aggr.previous_out <- aggr.current_out ;
           return_unit)
