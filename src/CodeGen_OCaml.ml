@@ -681,7 +681,7 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "identity" [None] [my_state g]
 
   | InitState, StatefulFun (_, _, AggrAvg e), Some TFloat ->
-    Printf.fprintf oc "0, %s0."
+    Printf.fprintf oc "%s(0, 0.)"
       (if is_nullable e then "Some " else "")
   | UpdateState, StatefulFun (_, g, AggrAvg e), Some (TFloat as t) ->
     emit_functionN oc ?state "CodeGenLib.avg_add" [None; Some t] [my_state g; e]
