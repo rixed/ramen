@@ -36,7 +36,8 @@ let cidr6_of_string = Ipv6.Cidr.of_string
  * And we want sequence(start,step) to be reset at start at every
  * group (and maybe another, stateless, global sequence). *)
 let sequence start inc =
-  Int128.(start + (of_uint64 !CodeGenLib_IO.tuple_count) * inc)
+  Int128.(start +
+    (of_uint64 (Uint64.pred !CodeGenLib_IO.tuple_count)) * inc)
 
 let age_float x = x -. !CodeGenLib_IO.now
 let age_u8 = Uint8.of_float % age_float
@@ -407,7 +408,8 @@ type worker_conf =
 let node_start () =
   let debug = getenv ~def:"false" "debug" |> bool_of_string
   and node_name = getenv ~def:"?" "name" in
-  let default_persist_dir = "/tmp/worker_"^ node_name ^"_"^ string_of_int (Unix.getpid ()) in
+  let default_persist_dir =
+    "/tmp/worker_"^ node_name ^"_"^ string_of_int (Unix.getpid ()) in
   let persist_dir = getenv ~def:default_persist_dir "persist_dir" in
   let logdir, prefix =
     match getenv "log_dir" with
@@ -463,6 +465,22 @@ let listen_on collector addr_str port proto
     outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   collector ~inet_addr ~port outputer
 
+let yield sersize_of_tuple serialize_tuple select =
+  let _conf = node_start () in
+  let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
+  in
+  let outputer =
+    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
+  let rec loop () =
+    CodeGenLib_IO.on_each_input_pre () ;
+    let%lwt () = outputer (select Uint64.zero () ()) in
+    loop () in
+  loop ()
+
+(*
+ * Aggregate operation
+ *)
+
 let notify url field_of_tuple tuple =
   let expand_fields =
     let open Str in
@@ -480,19 +498,6 @@ let notify url field_of_tuple tuple =
   let url = expand_fields url tuple in
   !logger.debug "Notifying url %S" url ;
   async (fun () -> CodeGenLib_IO.http_notify url)
-
-let yield sersize_of_tuple serialize_tuple select =
-  let _conf = node_start () in
-  let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-  in
-  let outputer =
-    outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
-  let rec loop () =
-    CodeGenLib_IO.on_each_input_pre () ;
-    let%lwt () = outputer (select Uint64.zero () ()) in
-    CodeGenLib_IO.on_each_input_post () ;
-    loop () in
-  loop ()
 
 type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
   { (* used to compute the actual selected field when outputing the
@@ -514,7 +519,15 @@ type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
 let tot_weight float_of_top_state aggr =
   float_of_top_state aggr.sure_weight_state +. aggr.unsure_weight
 
-type when_to_check_group = ForAll | ForAllSelected | ForAllInGroup
+(* TODO: instead of a single point, have 3 conditions for committing
+ * (and 3 more for flushing) the groups; So that we could maybe split a
+ * complex expression in smaller (faster) sub-conditions? But beware
+ * of committing several times the same tuple. *)
+type when_to_check_group = ForAll | ForAllSelected | ForInGroup
+let string_of_when_to_check_group = function
+  | ForAll -> "every group at every tuple"
+  | ForAllSelected -> "every group at every selected tuple"
+  | ForInGroup -> "the group that's updated by a tuple"
 
 (* A Map from weight to keys with that weight so we can quickly find the
  * lighter of our heavy hitters: *)
@@ -570,6 +583,7 @@ let aggregate
         'global_state ->
         'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
         bool)
+      commit_before
       (when_to_check_for_commit : when_to_check_group)
       (flush_when :
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
@@ -586,14 +600,16 @@ let aggregate
       (group_init : 'global_state -> 'aggr)
       (field_of_tuple : 'tuple_out -> string -> string)
       (notify_url : string) =
-  let conf = node_start ()
-  and rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
+  let conf = node_start () in
+  let when_str = string_of_when_to_check_group when_to_check_for_commit in
+  !logger.debug "We will commit/flush for... %s" when_str ;
+  let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
   (* FIXME: most of this should be in the saved state! *)
   and event_count = ref 0 (* used to fake others.count etc *)
   and last_key = ref None (* used for successive count *)
-  and in_ = ref None (* last incoming tuple *)
+  and last_in_tuple = ref None (* last incoming tuple *)
   and selected_tuple = ref None (* last incoming tuple that passed the where filter *)
   and selected_count = ref Uint64.zero
   and selected_successive = ref Uint64.zero
@@ -618,19 +634,11 @@ let aggregate
   and unknown_weights = Array.make 1024 0.
   (* The aggregate entry for "others": *)
   and others = ref None
-  and top_n, top_by = Option.default (0, fun _ _ _ -> ()) top
-
   and stats_group_count =
     IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
-  in
+  and top_n, top_by = Option.default (0, fun _ _ _ -> ()) top in
+  assert (not commit_before || top_n = 0) ;
   IntGauge.set stats_group_count 0 ;
-
-  (let when_str = match when_to_check_for_commit with
-    | ForAll -> "every group at every tuple"
-    | ForAllSelected -> "every group at every selected tuple"
-    | ForAllInGroup -> "the group that's updated by a tuple" in
-   !logger.debug "We will commit/flush for... %s" when_str) ;
-
   let tuple_outputer =
     outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   let outputer =
@@ -660,24 +668,30 @@ let aggregate
     retry ~on:(fun _ -> true) ~min_delay:1.0
           (fun n -> return (RingBuf.load n)) rb_in_fname
   in
+  (* The big event loop: *)
   CodeGenLib_IO.read_ringbuf ~delay_rec:sleep_in rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     with_state (fun h ->
+      (* Update per in-tuple stats *)
       IntCounter.add stats_in_tuple_count 1 ;
       IntCounter.add stats_rb_read_bytes (RingBuf.tx_size tx) ;
-      let last_in = Option.default in_tuple !in_
+      (* Define some short-hand values and functions we will keep
+       * referring to: *)
+      let last_in = Option.default in_tuple !last_in_tuple
+      and in_count = !CodeGenLib_IO.tuple_count
       and last_selected = Option.default in_tuple !selected_tuple
       and last_unselected = Option.default in_tuple !unselected_tuple in
-      in_ := Some in_tuple ;
-      let in_count = Uint64.succ !CodeGenLib_IO.tuple_count in
-      (* TODO: pass selected_successive *)
-      let must f aggr =
-        f in_count in_tuple last_in
+      (* Tells if the group must be committed/flushed: *)
+      let must cond aggr = (* TODO: pass selected_successive *)
+        cond
+          in_count in_tuple last_in
           !selected_count !selected_successive last_selected
           !unselected_count !unselected_successive last_unselected
           !out_count aggr.previous_out
-          (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+          (Uint64.of_int aggr.nb_entries)
+          (Uint64.of_int aggr.nb_successive)
+          aggr.fields
           global_state
           aggr.first_in aggr.last_in
           aggr.current_out
@@ -717,13 +731,14 @@ let aggregate
           weightmap := WeightMap.empty ;
           return_unit
         ) else (
-          (* Not in a top, so things properly: *)
+          (* Not in a top, do things properly: *)
+          (* Commit *)
           let%lwt () =
-            Lwt_list.iter_s (fun (_k, a) ->
-                commit in_tuple a.current_out
+            Lwt_list.iter_s (fun out ->
+                commit in_tuple out
               ) to_commit in
+          (* Flush/Keep/Slide *)
           List.iter (fun (k, a) ->
-            (* FIXME: won't work with tops or global state *)
             if a.to_resubmit = [] then
               Hashtbl.remove h k
             else (
@@ -768,16 +783,28 @@ let aggregate
           if when_to_check_for_commit <> check_when then [] else
           Hashtbl.fold (fun k a l ->
             if must flush_when a then (k, a)::l else l) h [] in
+        (* TODO: get rid of flush when and this is not necessary any longer: *)
+        let to_commit =
+          List.map (fun (_k, a) -> a.current_out) to_commit in
         commit_and_flush_list to_commit to_flush
       in
-      (* Regardless of the result of the WHERE filter we want to update
-       * the fields of the global state that are used in the where clause: *)
+      (* Now that this is all in place, here are the next steps:
+       * 1. filtering (fast path)
+       * 2. retrieve the group
+       * 3. filtering (slow path)
+       * 4. compute new out_tuple (aggregation)
+       * 5. post-condition to commit and flush
+       *
+       * Note that steps 3 and 4 have two implementations, depending on
+       * whether the group is a new one or not. If the group is new we have
+       * additional code due to the TOP operation. *)
       (if where_fast
            global_state
            in_count in_tuple last_in
            !selected_count !selected_successive last_selected
            !unselected_count !unselected_successive last_unselected
       then (
+        (* build the key and retrieve the group *)
         IntGauge.set stats_group_count (Hashtbl.length h) ;
         let k = key_of_input in_tuple in
         let prev_last_key = !last_key in
@@ -791,10 +818,15 @@ let aggregate
             aggr.nb_successive <- aggr.nb_successive + 1 ;
           top_by global_state aggr.sure_weight_state in_tuple
         in
-        (* Update/create the group *)
+        (* Update/create the group if it passes where_slow (or None) *)
         let aggr_opt =
           match Hashtbl.find h k with
           | exception Not_found ->
+            (*
+             * The group does not exist for that key, create one?
+             * This is also where the TOP selection happens.
+             * Notice there is no "commit-before" for new groups.
+             *)
             let fields = group_init global_state
             and zero = Uint64.zero and one = Uint64.one in
             if where_slow
@@ -834,6 +866,7 @@ let aggregate
                 sure_weight_state = top_init global_state ;
                 unsure_weight = unknown_weights.(kh) } in
               top_by global_state aggr.sure_weight_state in_tuple ;
+              (* Adding this group and updating the TOP *)
               let add_entry () =
                 Hashtbl.add h k aggr ;
                 let wk = tot_weight float_of_top_state aggr in
@@ -901,8 +934,11 @@ let aggregate
                       unknown_weights.(kh) +. float_of_top_state aggr.sure_weight_state ;
                     None)
               )
-            ) else None
-          | aggr -> (* Key already in the hash *)
+            ) else None (* in-tuple does not pass where_slow *)
+          | aggr ->
+            (*
+             * The group already exist.
+             *)
             if where_slow
                  global_state
                  in_count in_tuple last_in
@@ -913,11 +949,12 @@ let aggregate
             then (
               IntCounter.add stats_selected_tuple_count 1 ;
               let prev_wk = tot_weight float_of_top_state aggr in
+              (* Compute the new out_tuple and update the group *)
               accumulate_into aggr (Some k) ;
               (* current_out and last_in are better updated only after we called the
                * various clauses receiving aggr *)
               (* TODO: pass selected_successive *)
-              let out_generator =
+              aggr.current_out <-
                 tuple_of_aggr
                   in_count in_tuple last_in
                   !selected_count !selected_successive last_selected
@@ -925,8 +962,7 @@ let aggregate
                   !out_count
                   (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                   global_state
-                  aggr.first_in aggr.last_in in
-              aggr.current_out <- out_generator ;
+                  aggr.first_in aggr.last_in ;
               aggr.last_in <- in_tuple ;
               let new_wk = tot_weight float_of_top_state aggr in
               (* No need to update the weightmap if the weight haven't changed.
@@ -951,7 +987,7 @@ let aggregate
                   | Some lst as prev ->
                     if List.mem k lst then prev else Some (k::lst)) !weightmap) ;
               Some aggr
-            ) else None in
+            ) else None (* in-tuple does not pass where_slow *) in
         (match aggr_opt with
         | None ->
           selected_successive := Uint64.zero ;
@@ -967,23 +1003,43 @@ let aggregate
           selected_count := Uint64.succ !selected_count ;
           selected_successive := Uint64.succ !selected_successive ;
           (* Committing / Flushing *)
-          let to_commit =
-            if when_to_check_for_commit = ForAllInGroup && must commit_when aggr
-            then [ k, aggr ] else [] in
+          let to_commit, to_flush =
+            (* FIXME: we should do the check that early for all when_to_check_for_commit
+             * (and skip this aggr when doing ForAllSelected or ForAll)., so that we can
+             * commit_before this group (for others that does not matter since we do not
+             * change them). *)
+            if when_to_check_for_commit = ForInGroup &&
+               must commit_when aggr
+            then [
+              if commit_before then aggr.previous_out
+              else aggr.current_out
+            ], [ k, aggr ] else [], [] in
           let to_flush =
-            if flush_when == commit_when then to_commit else
-            if when_to_check_for_flush = ForAllInGroup && must flush_when aggr
+            if flush_when == commit_when then to_flush else
+            if when_to_check_for_flush = ForInGroup &&
+               must flush_when aggr
             then [ k, aggr ] else [] in
+          if commit_before then
+            List.iter (fun (_k, a) ->
+              match a.to_resubmit with
+              | hd::_ when hd == in_tuple -> ()
+              | _ -> a.to_resubmit <- in_tuple :: a.to_resubmit) to_flush ;
           let%lwt () = commit_and_flush_list to_commit to_flush in
-          (* Maybe any other groups. Notice that there is no risk to commit/flush
-           * this aggr twice since when_to_check_for_commit force either one or the
-           * other (or none at all) of these chunks of code to be run. *)
+          (* Maybe any other groups. Notice that there is no risk to commit
+           * or flush this aggr twice since when_to_check_for_commit force
+           * either one or the other (or none at all) of these chunks of
+           * code to be run. *)
           let%lwt () = commit_and_flush_all_if ForAllSelected in
           aggr.previous_out <- aggr.current_out ;
           return_unit)
-      ) else return_unit) >>= fun () ->
-      (* Now there is also the possibility that we need to commit / flush for
-       * every single input tuple :-< *)
+      ) else
+        (* in_tuple failed where_fast *)
+        return_unit
+      ) >>= fun () ->
+      (* Save last_in: *)
+      last_in_tuple := Some in_tuple ;
+      (* Now there is also the possibility that we need to commit or flush
+       * for every single input tuple :-< *)
       let%lwt () = commit_and_flush_all_if ForAll in
       return h)
   )

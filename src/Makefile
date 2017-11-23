@@ -285,6 +285,7 @@ long-check: ramen
 	./tests/upload
 	./tests/word_count
 	./tests/tuples
+	./tests/commit_before
 
 include $(top_srcdir)/make.common
 

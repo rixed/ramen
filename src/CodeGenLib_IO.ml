@@ -8,8 +8,7 @@ let tuple_count = ref Uint64.zero
 let now = ref 0.
 
 let on_each_input_pre () =
-  now := Unix.gettimeofday ()
-let on_each_input_post () =
+  now := Unix.gettimeofday ();
   tuple_count := Uint64.succ !tuple_count
 
 let read_file_lines ?(do_unlink=false) filename preprocessor k =
@@ -54,7 +53,6 @@ let read_file_lines ?(do_unlink=false) filename preprocessor k =
       | line ->
         on_each_input_pre () ;
         let%lwt () = k line in
-        on_each_input_post () ;
         read_next_line ()
     in
     read_next_line ()
@@ -93,7 +91,6 @@ let read_ringbuf ?delay_rec rb f =
     on_each_input_pre () ;
     let%lwt tx = RingBufLib.retry_for_ringbuf ?delay_rec dequeue_alloc rb in
     let%lwt () = f tx in
-    on_each_input_post () ;
     read_next ()
   in
   read_next ()

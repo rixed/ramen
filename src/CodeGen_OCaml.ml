@@ -1296,6 +1296,10 @@ let emit_should_resubmit name in_tuple_typ mentioned and_all_others
 let when_to_check_group_for_expr expr =
   (* Tells whether the commit condition needs the all or the selected tuple *)
   let open Expr in
+  (* FIXME: for TOP, since we flush all when a single group matches, we
+   * should relax this a bit: if we need_all (because, say, we use in.#count
+   * in the condition) but the condition uses no field specific to group
+   * then it's safe to check only ForInGroup. *)
   let need_all, need_selected =
     fold_by_depth (fun (need_all, need_selected) -> function
         | Field (_, tuple, _) ->
@@ -1308,12 +1312,12 @@ let when_to_check_group_for_expr expr =
   in
   if need_all then "CodeGenLib.ForAll" else
   if need_selected then "CodeGenLib.ForAllSelected" else
-  "CodeGenLib.ForAllInGroup"
+  "CodeGenLib.ForInGroup"
 
 let emit_aggregate oc in_tuple_typ out_tuple_typ = function
   | Operation.Aggregate { fields ; and_all_others ; where ; key ; top ;
-                          commit_when ; flush_when ; flush_how ;
-                          notify_url ; _ } as op ->
+                          commit_before ; commit_when ; flush_when ;
+                          flush_how ; notify_url ; _ } as op ->
   let mentioned =
     let all_exprs = Operation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
@@ -1370,9 +1374,10 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
       \t\t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
       \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ \n\
       \t\t\ttop_ top_init_ float_of_top_state_\n\
-      \t\t\tcommit_when_ %s flush_when_ %s should_resubmit_\n\
+      \t\t\tcommit_when_ %b %s flush_when_ %s should_resubmit_\n\
       \t\t\tglobal_init_ group_init_ field_of_tuple_ %S)\n"
-    when_to_check_for_commit when_to_check_for_flush notify_url
+    commit_before when_to_check_for_commit
+    when_to_check_for_flush notify_url
   | _ -> assert false
 
 let sanitize_ocaml_fname s =
