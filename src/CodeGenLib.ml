@@ -332,12 +332,12 @@ let send_stats url =
   let%lwt resp, body = Client.put ~headers ~body (Uri.of_string url) in
   let code = resp |> Response.status |> Code.code_of_status in
   if code <> 200 then (
-    let%lwt body = Cohttp_lwt_body.to_string body in
+    let%lwt body = Cohttp_lwt.Body.to_string body in
     !logger.error "Received code %d, body %S, when reporting stats to %S"
       code body url ;
     return_unit
   ) else
-    Cohttp_lwt_body.drain_body body (* to actually close the connection *)
+    Cohttp_lwt.Body.drain_body body (* to actually close the connection *)
 
 let update_stats_th report_url period () =
   while%lwt true do

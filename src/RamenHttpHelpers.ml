@@ -1,4 +1,3 @@
-open Batteries
 open RamenLog
 open Helpers
 
@@ -7,6 +6,7 @@ open Helpers
 open Cohttp
 open Cohttp_lwt_unix
 open Lwt
+open Batteries
 
 exception HttpError of (int * string)
 let () =
@@ -44,7 +44,7 @@ let http_service port cert_opt key_opt router =
         | exception Not_found -> ()
         | pn, pv -> Hashtbl.add params (dec pn) (dec pv))) ;
     let headers = Request.headers req in
-    let%lwt body = Cohttp_lwt_body.to_string body
+    let%lwt body = Cohttp_lwt.Body.to_string body
     in
     catch
       (fun () ->

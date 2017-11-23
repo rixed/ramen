@@ -711,7 +711,7 @@ let put_layer ramen_url layer =
     Helpers.retry ~on:(fun _ -> true) ~min_delay:1.
       (Client.put ~headers ~body) (Uri.of_string url) in
   let code = resp |> Response.status |> Code.code_of_status in
-  let%lwt body = Cohttp_lwt_body.to_string body in
+  let%lwt body = Cohttp_lwt.Body.to_string body in
   if code <> 200 then (
     !logger.error "Error code %d: %S" code body ;
     exit 1) ;

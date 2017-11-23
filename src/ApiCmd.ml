@@ -9,7 +9,7 @@ let enc = Uri.pct_encode
 
 let check_code (resp, body) =
   let code = resp |> Response.status |> Code.code_of_status in
-  let%lwt body = Cohttp_lwt_body.to_string body in
+  let%lwt body = Cohttp_lwt.Body.to_string body in
   if code <> 200 then (
     !logger.error "Response code: %d" code ;
     !logger.error "Answer: %S" body ;

@@ -1,8 +1,8 @@
 (* Start an HTTP(S) daemon to allow setting up the configuration graph. *)
-open Batteries
-open BatOption.Infix
 open Cohttp
 open Cohttp_lwt_unix
+open Batteries
+open BatOption.Infix
 open Lwt
 open RamenLog
 open RamenSharedTypes
