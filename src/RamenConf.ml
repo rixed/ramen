@@ -73,35 +73,6 @@ let tup_typ_of_temp_tup_type ttt =
       nullable = Option.get typ.Expr.nullable ;
       typ = Option.get typ.Expr.scalar_typ })
 
-type history =
-  { (* Store arrays of Scalar.values not hash of names to values !
-     * TODO: ideally storing columns would be even better *)
-    tuples : scalar_value array array ;
-    (* Start seqnum of the next block: *)
-    mutable block_start : int ;
-    (* How many tuples we already have in memory: *)
-    mutable count : int ;
-    (* Files are saved with a name composed of block_start-block_end (aka
-     * next block_start). *)
-    (* dir is named after the node output type so that we won't run the risk
-     * to read data that have been archived in a different format. Other than
-     * that, we make no attempt to clean these archives even when the node is
-     * edited. It's best if deletion is explicit (TODO: add an option in the
-     * put layer command). Another way to get rid of the history is to rename
-     * the node. Since we need output type to locate the history, a node
-     * cannot have a history before it's typed. *)
-    dir : string ;
-    (* A cache to save first/last timestamps of each archive file we've
-     * visited.  This assume the timestamps are always increasing. If it's
-     * not the case the cache performances will be poor but returned data
-     * should still be correct. *)
-    ts_cache : (int * int, float * float) Hashtbl.t ;
-    (* Not necessarily up to date but gives a lower bound: *)
-    mutable nb_files : int ; (* Count items in the list below *)
-    (* Filenum = starting * stopping sequence number, the list being ordered
-     * by starting timestamp *)
-    mutable filenums : (int * int) list }
-
 let archive_file dir (block_start, block_stop) =
   dir ^"/"^ string_of_int block_start ^"-"^ string_of_int block_stop
 
@@ -142,9 +113,6 @@ struct
       mutable parents : t list ;
       (* Children are either in this layer or in a layer _above_ *)
       mutable children : t list ;
-      (* List of tuples exported from that node: *)
-      (* FIXME: a pretty bad name *)
-      mutable history : history option ;
       (* Worker info, only relevant if it is running: *)
       mutable pid : int option ;
       mutable last_report : Binocle.metric list }
@@ -362,47 +330,6 @@ let del_layer conf layer =
 let save_file_of persist_dir =
   persist_dir ^"/configuration/1" (* TODO: versioning *)
 
-let save_graph conf =
-  if conf.do_persist then
-    let persist =
-      Hashtbl.map (fun _ l -> l.Layer.persist) conf.graph.layers in
-    let save_file = save_file_of conf.persist_dir in
-    !logger.debug "Saving graph in %S" save_file ;
-    mkdir_all ~is_file:true save_file ;
-    File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
-      Marshal.output oc persist)
-
-(* Store history of past tuple output by a given node: *)
-let history_block_length = 10_000 (* TODO: make it a parameter? *)
-let max_history_archives = 200
-
-let make_history conf node =
-  let type_sign = type_signature_hash node.Node.out_type in
-  let dir = conf.persist_dir ^"/workers/history/"^ Node.fq_name node
-                             ^"/"^ type_sign in
-  !logger.info "Creating history for node %S" (Node.fq_name node) ;
-  mkdir_all dir ;
-  (* Note: this is OK to share this [||] since we use it only as a placeholder *)
-  let tuples = Array.make history_block_length [||] in
-  let nb_files, filenums, max_seqnum =
-    Sys.readdir dir |>
-    Array.fold_left (fun (nb_files, arcs, ma as prev) fname ->
-        match Scanf.sscanf fname "%d-%d" (fun a b -> a, b) with
-        | exception _ -> prev
-        | _, stop as m ->
-          nb_files + 1, m :: arcs, max stop ma
-      ) (0, [], min_int) in
-  let filenums =
-    List.fast_sort (fun (m1, _) (m2, _) -> Int.compare m1 m2) filenums in
-  let block_start =
-    if nb_files = 0 then 0
-    else (
-      !logger.debug "%d archive files from %d up to %d"
-        nb_files (fst (List.hd filenums)) max_seqnum ;
-      max_seqnum) in
-  { tuples ; block_start ; count = 0 ; dir ; nb_files ; filenums ;
-    ts_cache = Hashtbl.create (max_history_archives / 8) }
-
 let add_parsed_node ?timeout conf node_name layer_name op_text operation =
   let layer =
     try Hashtbl.find conf.graph.layers layer_name
@@ -413,7 +340,7 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
   let node = Node.{
     layer = layer_name ; name = node_name ;
     operation ; signature = "" ; op_text ;
-    parents = [] ; children = [] ; history = None ;
+    parents = [] ; children = [] ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;

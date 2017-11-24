@@ -183,7 +183,9 @@ let stop conf layer =
     !logger.debug "Stopping layer %s" layer.L.name ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
-        Option.may RamenExport.archive_history node.N.history ;
+        (match Hashtbl.find RamenExport.imported_tuples (N.fq_name node) with
+        | exception Not_found -> ()
+        | history -> RamenExport.archive_history history) ;
         match node.N.pid with
         | None ->
           !logger.error "Node %s has no pid?!" node.N.name
@@ -211,8 +213,7 @@ let stop conf layer =
     L.set_status layer Compiled ;
     layer.L.persist.L.last_stopped <- Some now ;
     List.iter cancel layer.L.importing_threads ;
-    layer.L.importing_threads <- [] ;
-    C.save_graph conf
+    layer.L.importing_threads <- []
 
 (* Timeout unused layers.
  * By unused, we mean either: no layer depends on it, or no one cares for

@@ -402,10 +402,10 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
   (* Check that the node exists and exports *)
   let%lwt _layer, node =
     find_exporting_node_or_fail conf layer_name node_name in
-  match node.N.history with
-    | None -> (* Nothing yet, just answer with empty result *)
+  match Hashtbl.find RamenExport.imported_tuples (N.fq_name node) with
+  | exception Not_found -> (* Nothing yet, just answer with empty result *)
       return (0, [])
-    | Some history ->
+  | history ->
       let start = Unix.gettimeofday () in
       let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
       let rec loop () =
@@ -582,10 +582,10 @@ let timeseries conf headers body =
 
 let timerange_of_node node =
   let open RamenSharedTypesJS in
-  match node.N.history with
-  | None ->
+  match Hashtbl.find RamenExport.imported_tuples (N.fq_name node) with
+  | exception Not_found ->
     !logger.debug "Node %s has no history" (N.fq_name node) ; NoData
-  | Some h ->
+  | h ->
     (match RamenExport.hist_min_max h with
     | None -> NoData
     | Some (sta, sto) ->

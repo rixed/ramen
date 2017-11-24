@@ -4,6 +4,7 @@ open RamenSharedTypes
 open RamenSharedTypesJS
 module C = RamenConf
 module N = RamenConf.Node
+open Helpers
 open Stdint
 
 (* Possible solutions:
@@ -52,46 +53,83 @@ open Stdint
 (* History of past tuples:
  *
  * We store tuples output by exporting nodes both in RAM (for the last ones)
- * on disk (in a "history" subdir). Each file is numbered and a cursor in the
- * history of some node might be given by file number, tuple offset (the
+ * and on disk (in a "history" subdir). Each file is numbered and a cursor in
+ * the history of some node might be given by file number, tuple offset (the
  * count below). Since only the ramen process ever write or read those files
  * there is not much to worry about. For now those are merely Marshalled
  * array or array of scalar value (tuples in the record below). *)
 
+let history_block_length = 10_000 (* TODO: make it a parameter? *)
+let max_history_archives = 200
+
+type history =
+  { (* Store arrays of Scalar.values not hash of names to values !
+     * TODO: ideally storing columns would be even better *)
+    tuples : scalar_value array array ;
+    (* Start seqnum of the next block: *)
+    mutable block_start : int ;
+    (* How many tuples we already have in memory: *)
+    mutable count : int ;
+    (* Files are saved with a name composed of block_start-block_end (aka
+     * next block_start). *)
+    (* dir is named after the node output type so that we won't run the risk
+     * to read data that have been archived in a different format. Other than
+     * that, we make no attempt to clean these archives even when the node is
+     * edited. It's best if deletion is explicit (TODO: add an option in the
+     * put layer command). Another way to get rid of the history is to rename
+     * the node. Since we need output type to locate the history, a node
+     * cannot have a history before it's typed. *)
+    dir : string ;
+    (* A cache to save first/last timestamps of each archive file we've
+     * visited.  This assume the timestamps are always increasing. If it's
+     * not the case the cache performances will be poor but returned data
+     * should still be correct. *)
+    ts_cache : (int * int, float * float) Hashtbl.t ;
+    (* Not necessarily up to date but gives a lower bound: *)
+    mutable nb_files : int ; (* Count items in the list below *)
+    (* Filenum = starting * stopping sequence number, the list being ordered
+     * by starting timestamp *)
+    mutable filenums : (int * int) list }
+
+(* Store history of past tuple output by a given node. Not stored in the
+ * node itself because we do not want to serialize such a big data structure
+ * for every HTTP query, nor "rollback" it when a graph change fails. *)
+let imported_tuples : (string, history) Hashtbl.t = Hashtbl.create 11
+
 let clean_archives history =
-  while history.C.nb_files > C.max_history_archives do
-    assert (history.C.filenums <> []) ;
-    let filenum = List.hd history.C.filenums in
-    let fname = C.archive_file history.C.dir filenum in
+  while history.nb_files > max_history_archives do
+    assert (history.filenums <> []) ;
+    let filenum = List.hd history.filenums in
+    let fname = C.archive_file history.dir filenum in
     !logger.debug "Deleting history archive %S" fname ;
     Unix.unlink fname ;
-    Hashtbl.remove history.C.ts_cache filenum ;
-    history.C.filenums <- List.tl history.C.filenums ;
-    history.C.nb_files <- history.C.nb_files - 1
+    Hashtbl.remove history.ts_cache filenum ;
+    history.filenums <- List.tl history.filenums ;
+    history.nb_files <- history.nb_files - 1
   done
 
 let archive_history history =
   let filenum =
-    history.C.block_start, history.C.block_start + history.C.count in
-  let fname = C.archive_file history.C.dir filenum in
+    history.block_start, history.block_start + history.count in
+  let fname = C.archive_file history.dir filenum in
   !logger.debug "Saving history in %S" fname ;
   Helpers.mkdir_all ~is_file:true fname ;
   File.with_file_out ~mode:[`create; `trunc] fname (fun oc ->
     (* Since we do not "clean" the array but only the count field, it is
      * important not to save anything beyond count: *)
-    (if history.C.count == Array.length history.C.tuples then
-       history.C.tuples
+    (if history.count == Array.length history.tuples then
+       history.tuples
      else (
       !logger.info "Saving an incomplete history of only %d tuples in %S"
-        history.C.count fname ;
-      Array.sub history.C.tuples 0 history.C.count)
+        history.count fname ;
+      Array.sub history.tuples 0 history.count)
     ) |>
     Marshal.output oc) ;
   (* FIXME: a ring data structure: *)
-  history.C.filenums <- history.C.filenums @ [ filenum ] ;
-  history.C.nb_files <- history.C.nb_files + 1 ;
-  history.C.block_start <- history.C.block_start + history.C.count ;
-  history.C.count <- 0 ;
+  history.filenums <- history.filenums @ [ filenum ] ;
+  history.nb_files <- history.nb_files + 1 ;
+  history.block_start <- history.block_start + history.count ;
+  history.count <- 0 ;
   clean_archives history
 
 let read_archive dir filenum =
@@ -100,19 +138,46 @@ let read_archive dir filenum =
   try Some (File.with_file_in fname Marshal.input)
   with Sys_error _ -> None
 
+let make_history conf node =
+  let type_sign = C.type_signature_hash node.N.out_type in
+  let dir = conf.C.persist_dir ^"/workers/history/"^ N.fq_name node
+                               ^"/"^ type_sign in
+  !logger.info "Creating history for node %S" (N.fq_name node) ;
+  mkdir_all dir ;
+  (* Note: this is OK to share this [||] since we use it only as a placeholder *)
+  let tuples = Array.make history_block_length [||] in
+  let nb_files, filenums, max_seqnum =
+    Sys.readdir dir |>
+    Array.fold_left (fun (nb_files, arcs, ma as prev) fname ->
+        match Scanf.sscanf fname "%d-%d" (fun a b -> a, b) with
+        | exception _ -> prev
+        | _, stop as m ->
+          nb_files + 1, m :: arcs, max stop ma
+      ) (0, [], min_int) in
+  let filenums =
+    List.fast_sort (fun (m1, _) (m2, _) -> Int.compare m1 m2) filenums in
+  let block_start =
+    if nb_files = 0 then 0
+    else (
+      !logger.debug "%d archive files from %d up to %d"
+        nb_files (fst (List.hd filenums)) max_seqnum ;
+      max_seqnum) in
+  { tuples ; block_start ; count = 0 ; dir ; nb_files ; filenums ;
+    ts_cache = Hashtbl.create (max_history_archives / 8) }
+
 let add_tuple conf node tuple =
+	let fqn = N.fq_name node in
   let history =
-    match node.N.history with
-    | Some h -> h
-    | None ->
-      let h = C.make_history conf node in
-      node.N.history <- Some h ;
-      h in
-  if history.C.count >= Array.length history.C.tuples then
+    try Hashtbl.find imported_tuples fqn
+    with Not_found ->
+      let history = make_history conf node in
+      Hashtbl.add imported_tuples fqn history ;
+      history in
+  if history.count >= Array.length history.tuples then
     archive_history history ;
-  let idx = history.C.count in
-  history.C.tuples.(idx) <- tuple ;
-  history.C.count <- history.C.count + 1
+  let idx = history.count in
+  history.tuples.(idx) <- tuple ;
+  history.count <- history.count + 1
 
 let read_tuple tuple_type =
   (* First read the nullmask *)
@@ -202,16 +267,16 @@ let filenum_print oc (sta, sto) = Printf.fprintf oc "%d-%d" sta sto
  * if we haven't received any value yet *)
 let hist_min_max history =
   let current_filenum =
-    history.C.block_start,
-    history.C.block_start + history.C.count in
-  if history.C.filenums = [] then
-    if history.C.count = 0 then None
+    history.block_start,
+    history.block_start + history.count in
+  if history.filenums = [] then
+    if history.count = 0 then None
     else Some (current_filenum, current_filenum)
   else
     Some (
-      List.hd history.C.filenums,
-      if history.C.count = 0 then
-        List.last history.C.filenums
+      List.hd history.filenums,
+      if history.count = 0 then
+        List.last history.filenums
       else current_filenum)
 
 (* filenums are archive files (might not exist anymore though.
@@ -232,10 +297,10 @@ let do_fold_tuples filenums first_idx max_res history init f =
     | [] ->
       (* Look into live tuples *)
       let _nb_res, x =
-        loop_tup history.C.tuples None history.C.block_start history.C.count first_idx nb_res x in
+        loop_tup history.tuples None history.block_start history.count first_idx nb_res x in
       x
     | filenum :: filenums' ->
-      match read_archive history.C.dir filenum with
+      match read_archive history.dir filenum with
       | None -> loop_file (filenums') 0 nb_res x
       | Some tuples ->
         let nb_res, x =
@@ -248,8 +313,8 @@ let do_fold_tuples filenums first_idx max_res history init f =
 let drop_until history seqnum max_res =
   let rec loop = function
     | [] ->
-      if seqnum >= history.C.block_start then
-        [], seqnum - history.C.block_start, max_res
+      if seqnum >= history.block_start then
+        [], seqnum - history.block_start, max_res
       else
         (* gap *)
         [], 0, max_res
@@ -262,19 +327,19 @@ let drop_until history seqnum max_res =
       else
         loop filenums'
   in
-  loop history.C.filenums
+  loop history.filenums
 
 let fold_tuples_since ?since ?(max_res=1000)
                       history init f =
   !logger.debug "fold_tuples_since since=%a max_res=%d"
     (Option.print Int.print) since max_res ;
   !logger.debug "history has block_start=%d, count=%d"
-    history.C.block_start history.C.count ;
+    history.block_start history.count ;
   let filenums, first_idx, max_res =
     match since with
     | None ->
-      if max_res >= 0 then history.C.filenums, 0, max_res
-      else drop_until history (history.C.block_start + history.C.count + max_res) ~-max_res
+      if max_res >= 0 then history.filenums, 0, max_res
+      else drop_until history (history.block_start + history.count + max_res) ~-max_res
     | Some since ->
       if max_res >= 0 then drop_until history since max_res
       else drop_until history (since + max_res) ~-max_res in
@@ -287,7 +352,7 @@ let fold_tuples_from_files ?min_filenum ?max_filenum ?(max_res=1000)
     (Option.print filenum_print) max_filenum
     max_res ;
   !logger.debug "history has block_start=%d, count=%d"
-    history.C.block_start history.C.count ;
+    history.block_start history.count ;
   match hist_min_max history with
   | None -> init
   | Some (hist_min, hist_max) ->
@@ -451,7 +516,7 @@ let fold_tuples_and_update_ts_cache
                     !logger.debug "Caching times for filenum %a to %g..%g"
                       filenum_print fn tmin tmax ;
                     Some (tmin, tmax)
-                  | x -> x) history.C.ts_cache
+                  | x -> x) history.ts_cache
               ) ;
               (* And start computing new extremes starting from the first points: *)
               t1, t2
@@ -466,11 +531,11 @@ let build_timeseries node data_field max_data_points
   let buckets = Array.init max_data_points (fun _ ->
     { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
   let bucket_of_time t = int_of_float ((t -. since) /. dt) in
-  match node.N.history with
-  | None ->
+  match Hashtbl.find imported_tuples (N.fq_name node) with
+  | exception Not_found ->
     !logger.info "Node %s has no history" (N.fq_name node) ;
     [||], [||]
-  | Some history ->
+  | history ->
     let f_opt f x y = match x, y with
       | None, y -> Some y
       | Some x, y -> Some (f x y) in
@@ -479,7 +544,7 @@ let build_timeseries node data_field max_data_points
      * it as a necessary but not sufficient condition, to prevent us from
      * exploring too far. As time goes it should become the same though. *)
     let min_filenum, max_filenum =
-      Hashtbl.enum history.C.ts_cache |>
+      Hashtbl.enum history.ts_cache |>
       Enum.fold (fun (mi, ma) (filenum, (ts_min, ts_max)) ->
         !logger.debug "filenum %a goes from TS=%f to %f" filenum_print filenum ts_min ts_max ;
         (if since >= ts_min then f_opt max mi filenum else mi),
@@ -501,7 +566,7 @@ let build_timeseries node data_field max_data_points
     Array.map consolidation buckets
 
 let timerange_of_filenum node history filenum =
-  try Hashtbl.find history.C.ts_cache filenum
+  try Hashtbl.find history.ts_cache filenum
   with Not_found ->
     fold_tuples_and_update_ts_cache
       ~min_filenum:filenum ~max_filenum:filenum ~max_res:max_int
