@@ -454,7 +454,7 @@ let open_config_db file =
          name STRING PRIMARY KEY, \
          team STRING NOT NULL)"
       "INSERT INTO oncallers VALUES \
-         (\"John Doe\", \"firefighters\")" ;
+         ('John Doe', 'firefighters')" ;
     (* TODO: maybe in the future make the contact depending on day of
      * week and/or time of day? *)
     ensure_db_table db
@@ -463,14 +463,14 @@ let open_config_db file =
          preferred INTEGER NOT NULL, \
          contact STRING NOT NULL)"
       "INSERT INTO contacts VALUES \
-         (\"John Doe\", 1, \"Console\")" ;
+         ('John Doe', 1, '{\"Console\":null}')" ;
     ensure_db_table db
       "CREATE TABLE IF NOT EXISTS schedule ( \
          oncaller STRING REFERENCES oncallers (name) ON DELETE SET NULL, \
          \"from\" INTEGER NOT NULL, \
          rank INTEGER NOT NULL)"
       "INSERT INTO schedule VALUES \
-         (\"John Doe\", 0, 0)" ;
+         ('John Doe', 0, 0)" ;
     ensure_db_table db
       "CREATE TABLE IF NOT EXISTS escalations ( \
          team STRING NOT NULL, \
@@ -479,8 +479,8 @@ let open_config_db file =
          timeout REAL NOT NULL, \
          victims INTEGER NOT NULL DEFAULT 1)"
       "INSERT INTO escalations VALUES \
-         (\"firefighters\", 0, 1, 350, 1), \
-         (\"firefighters\", 0, 2, 350, 3)" ;
+         ('firefighters', 0, 1, 350, 1), \
+         ('firefighters', 0, 2, 350, 3)" ;
     (* Reopen in read-only *)
     db_close db |> must_be string_of_bool true ;
     db_open ~mode:`READONLY file
