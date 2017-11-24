@@ -639,25 +639,20 @@ struct
     respond_ok ~body ~ct:Consts.html_content_type ()
 
   let notify state params =
-    let hg = Hashtbl.find params in
-    (match hg "name", hg "firing" with
-    | exception Not_found ->
-      let m = "Missing parameter: must provide at least name and firing" in
-      fail (HttpError (400, m))
-    | name, firing ->
-      let hgo = Hashtbl.find_default params
-      and now = Unix.gettimeofday () in
-      match hgo "importance" "10" |> int_of_string,
-            hgo "time" (string_of_float now) |> float_of_string with
-      | exception _ ->
-        fail (HttpError (400, "importance and now must be numeric"))
-      | importance, time ->
-        let firing = looks_like_true firing in
-        alert state ~name ~importance ~now ~time ~firing
-          ~team:(hgo "team" state.default_team)
-          ~title:(hgo "title" "")
-          ~text:(hgo "text" "") >>=
-        Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~body:"")
+    let hg = Hashtbl.find_default params
+    and now = Unix.gettimeofday () in
+    match hg "name" "alert",
+          hg "importance" "10" |> int_of_string,
+          hg "time" (string_of_float now) |> float_of_string,
+          hg "firing" "true" |> looks_like_true with
+    | exception _ ->
+      fail (HttpError (400, "importance and now must be numeric"))
+    | name, importance, time, firing ->
+      alert state ~name ~importance ~now ~time ~firing
+        ~team:(hg "team" state.default_team)
+        ~title:(hg "title" "")
+        ~text:(hg "text" "") >>=
+      Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~body:""
 
   let get_teams state =
     let open Sqlite3 in
@@ -837,7 +832,7 @@ let config_db =
   let env = Term.env_info "ALERT_CONFIG_DB" in
   let i = Arg.info ~doc:"Sqlite file with the alerting configuration"
                    ~env [ "config"; "config-file" ] in
-  Arg.(required (opt (some string) None i))
+  Arg.(value (opt string "alerter.db" i))
 
 let http_port =
   let env = Term.env_info "ALERT_HTTP_PORT" in
@@ -906,7 +901,7 @@ let start_cmd =
       $ ssl_cert
       $ ssl_key
       $ www_dir),
-    info "alert manager")
+    info "ramen_alerter")
 
 let () =
   match Term.eval start_cmd with
