@@ -1662,11 +1662,8 @@ struct
 
   type t =
     (* Generate values out of thin air. The difference with Select is that
-     * Yield does not wait for some input. FIXME: aggregate could behave like
-     * a yield when there is no input. *)
-    (* TODO: add an "EVERY x SECONDS" parameter to sleep in between values,
-       so we could have a clock for instance. *)
-    | Yield of selected_field list
+     * Yield does not wait for some input. *)
+    | Yield of { fields : selected_field list ; every : float }
     (* Aggregation of several tuples into one based on some key. Superficially looks like
      * a select but much more involved. *)
     | Aggregate of {
@@ -1738,9 +1735,10 @@ struct
   let print fmt =
     let sep = ", " in
     function
-    | Yield fields ->
-      Printf.fprintf fmt "YIELD %a"
+    | Yield { fields ; every } ->
+      Printf.fprintf fmt "YIELD %a EVERY %g SECONDS"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
+        every
     | Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
                   key ; top ; commit_when ; commit_before ; flush_how ;
                   from } ->
@@ -1801,7 +1799,7 @@ struct
 
   let fold_expr init f = function
     | ListenFor _ | ReadCSVFile _ -> init
-    | Yield fields ->
+    | Yield { fields ; _ } ->
         List.fold_left (fun prev sf -> f prev sf.expr) init fields
     | Aggregate { fields ; where ; key ; top ; commit_when ;
                   flush_how ; _ } ->
@@ -1859,7 +1857,7 @@ struct
         | DurationField (f, _)
         | StopField (f, _) -> check_field_exists f
     in function
-    | Yield fields ->
+    | Yield { fields ; _ } ->
       List.iter (fun sf ->
           let e = StatefulNotAllowed { clause = "YIELD" } in
           check_pure e sf.expr ;
@@ -1986,12 +1984,16 @@ struct
 
     let yield =
       strinG "yield" -- blanks -+
-      several ~sep:list_sep selected_field >>: fun fields -> Yield fields
+      several ~sep:list_sep selected_field ++
+      optional ~def:0.
+        (blanks -- strinG "every" -- blanks -+ number +-
+         blanks +- strinG "seconds") >>: fun (fields, every) ->
+        if every < 0. then
+          raise (Reject "sleep duration must be greater than 0") ;
+        Yield { fields ; every }
 
     let export_clause m =
       let m = "export clause" :: m in
-      let number =
-        floating_point ||| (decimal_number >>: Num.to_float) in
       let scale m =
         let m = "scale event field" :: m in
         (optional ~def:1. (

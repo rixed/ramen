@@ -1139,7 +1139,7 @@ let emit_float_of_top name oc top_by =
       (conv_to ~context:Finalize (Some TFloat)) top_by
 
 let emit_yield oc in_tuple_typ out_tuple_typ = function
-  | Operation.Yield selected_fields as op ->
+  | Operation.Yield { fields ; every } as op ->
     let mentioned =
       let all_exprs = Operation.fold_expr [] (fun l s -> s::l) op in
       add_all_mentioned_in_expr all_exprs in
@@ -1147,10 +1147,11 @@ let emit_yield oc in_tuple_typ out_tuple_typ = function
       %a\n%a\n%a\n\
       let () =\n\
         \tLwt_main.run (\n\
-        \t\tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_)\n"
-      (emit_field_selection "select_" in_tuple_typ mentioned false out_tuple_typ) selected_fields
+        \t\tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_ %f)\n"
+      (emit_field_selection "select_" in_tuple_typ mentioned false out_tuple_typ) fields
       (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
       (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
+      every
   | _ -> assert false
 
 let for_each_unpure_fun selected_fields

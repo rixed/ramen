@@ -465,16 +465,20 @@ let listen_on collector addr_str port proto
     outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   collector ~inet_addr ~port outputer
 
-let yield sersize_of_tuple serialize_tuple select =
+let yield sersize_of_tuple serialize_tuple select every =
   let _conf = node_start () in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   in
   let outputer =
     outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   let rec loop () =
+    let start = Unix.gettimeofday () in
     CodeGenLib_IO.on_each_input_pre () ;
     let%lwt () = outputer (select Uint64.zero () ()) in
-    loop () in
+    let sleep_time = every -. Unix.gettimeofday () +. start in
+    if sleep_time > 0. then
+      Lwt_unix.sleep sleep_time >>= loop
+    else loop () in
   loop ()
 
 (*

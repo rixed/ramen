@@ -688,7 +688,7 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
 let check_operation ~in_type ~out_type =
   let open Operation in
   function
-  | Yield fields ->
+  | Yield { fields ; _ } ->
     check_yield ~in_type ~out_type fields
   | Aggregate { fields ; and_all_others ; where ; key ; top ;
                 commit_when ; flush_how ; _ } ->
@@ -940,7 +940,7 @@ let compile conf layer =
             ) layer.L.persist.L.nodes return_unit in
         let get_selected_fields node =
           match node.N.operation with
-          | Yield fields -> Some fields
+          | Yield { fields ; _ } -> Some fields
           | Aggregate { fields ; _ } -> Some fields
           | _ -> None in
         (* Now that we know where each field is coming from check that we

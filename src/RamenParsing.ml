@@ -44,3 +44,6 @@ let node_identifier =
      cond "quoted node identifier" (fun c -> c <> '\'') 'x') +-
    id_quote >>:
   fun s -> String.of_list s)
+
+let number =
+  floating_point ||| (decimal_number >>: Num.to_float)
