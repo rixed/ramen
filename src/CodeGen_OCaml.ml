@@ -1154,21 +1154,19 @@ let emit_yield oc in_tuple_typ out_tuple_typ = function
   | _ -> assert false
 
 let for_each_unpure_fun selected_fields
-                        ?where ?commit_when ?flush_when ?top_by f =
+                        ?where ?commit_when ?top_by f =
   List.iter (fun sf ->
       Expr.unpure_iter f sf.Operation.expr
     ) selected_fields ;
   Option.may (Expr.unpure_iter f) where ;
   Option.may (Expr.unpure_iter f) commit_when ;
-  Option.may (Expr.unpure_iter f) flush_when ;
   Option.may (Expr.unpure_iter f) top_by
 
 let for_each_unpure_fun_my_lifespan lifespan selected_fields
-                                    ?where ?commit_when ?flush_when
-                                    ?top_by f =
+                                    ?where ?commit_when ?top_by f =
   let open Expr in
   for_each_unpure_fun selected_fields
-                      ?where ?commit_when ?flush_when ?top_by
+                      ?where ?commit_when ?top_by
     (function
     | StatefulFun (_, l, _) as e when l = lifespan ->
       f e
@@ -1197,15 +1195,14 @@ let otype_of_state e =
   if Option.get typ.nullable then t ^" option" else t
 
 let emit_state_init name state_lifespan other_state_vars
-      ?where ?commit_when ?flush_when ?top_by
+      ?where ?commit_when ?top_by
       oc selected_fields =
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
    * states. *)
   let for_each_my_unpure_fun f =
     for_each_unpure_fun_my_lifespan
-      state_lifespan selected_fields ?where ?commit_when
-      ?flush_when ?top_by f
+      state_lifespan selected_fields ?where ?commit_when ?top_by f
   in
   (* In the special case where we do not have any state at all, though, we
    * end up with an empty record, which is illegal in OCaml so we need to
@@ -1279,7 +1276,7 @@ let emit_should_resubmit name in_tuple_typ mentioned and_all_others
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
   match flush_how with
-  | Reset ->
+  | Reset | Never ->
     Printf.fprintf oc "\tfalse\n"
   | Slide n ->
     Printf.fprintf oc "\tgroup_.CodeGenLib.nb_entries > %d\n" n
@@ -1316,8 +1313,8 @@ let when_to_check_group_for_expr expr =
 
 let emit_aggregate oc in_tuple_typ out_tuple_typ = function
   | Operation.Aggregate { fields ; and_all_others ; where ; key ; top ;
-                          commit_before ; commit_when ; flush_when ;
-                          flush_how ; notify_url ; _ } as op ->
+                          commit_before ; commit_when ; flush_how ;
+                          notify_url ; _ } as op ->
   let mentioned =
     let all_exprs = Operation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
@@ -1334,15 +1331,10 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
         | _ -> false
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
-  let when_to_check_for_flush =
-    match flush_when with
-    | None -> when_to_check_for_commit
-    | Some flush_when -> when_to_check_group_for_expr flush_when
-  in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" Expr.GlobalState [] ~where ~commit_when ?flush_when ?top_by:None) fields
-    (emit_state_init "group_init_" Expr.LocalState ["global_"] ~where ~commit_when ?flush_when ?top_by:None) fields
+    (emit_state_init "global_init_" Expr.GlobalState [] ~where ~commit_when ?top_by:None) fields
+    (emit_state_init "group_init_" Expr.LocalState ["global_"] ~where ~commit_when ?top_by:None) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_group then
       emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
@@ -1360,24 +1352,18 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
     (emit_generate_tuples "generate_tuples_" in_tuple_typ mentioned and_all_others out_tuple_typ) fields
     (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how
     (emit_field_of_tuple "field_of_tuple_") out_tuple_typ
-    (emit_state_init "top_init_" Expr.LocalState ["global_"] ?where:None ?commit_when:None ?flush_when:None ?top_by) []
+    (emit_state_init "top_init_" Expr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
     (emit_top "top_" in_tuple_typ mentioned and_all_others) top
     (emit_float_of_top "float_of_top_state_") top_by ;
-  (match flush_when with
-  | Some flush_when ->
-    emit_when "flush_when_" in_tuple_typ mentioned and_all_others out_tuple_typ oc flush_when
-  | None ->
-    Printf.fprintf oc "let flush_when_ = commit_when_\n") ;
   Printf.fprintf oc "let () =\n\
       \tLwt_main.run (\n\
       \t\tCodeGenLib.aggregate \
       \t\t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
       \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ \n\
       \t\t\ttop_ top_init_ float_of_top_state_\n\
-      \t\t\tcommit_when_ %b %s flush_when_ %s should_resubmit_\n\
+      \t\t\tcommit_when_ %b %b %s should_resubmit_\n\
       \t\t\tglobal_init_ group_init_ field_of_tuple_ %S)\n"
-    commit_before when_to_check_for_commit
-    when_to_check_for_flush notify_url
+    commit_before (flush_how <> Never) when_to_check_for_commit notify_url
   | _ -> assert false
 
 let sanitize_ocaml_fname s =

@@ -622,7 +622,7 @@ let check_yield ~in_type ~out_type fields =
 let (|||) a b = a || b
 
 let check_aggregate ~in_type ~out_type fields and_all_others where key top
-                    commit_when flush_when flush_how =
+                    commit_when flush_how =
   let open Operation in
   (
     (* Improve out_type using all expressions. Check we satisfy in_type. *)
@@ -648,16 +648,8 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
     check_expr ~in_type ~out_type ~exp_type commit_when |> ignore ;
     false
   ) ||| (
-    match flush_when with
-    | None -> false
-    | Some flush_when ->
-      let exp_type = Expr.make_bool_typ ~nullable:false "flush-when clause" in
-      check_expr ~in_type ~out_type ~exp_type flush_when |> ignore ;
-      false
-  ) ||| (
     match flush_how with
-    | Reset -> false
-    | Slide _ -> false
+    | Reset | Never | Slide _ -> false
     | RemoveAll e | KeepOnly e ->
       let exp_type = Expr.make_bool_typ ~nullable:false "remove/keep clause" in
       check_expr ~in_type ~out_type ~exp_type e |> ignore ;
@@ -699,9 +691,9 @@ let check_operation ~in_type ~out_type =
   | Yield fields ->
     check_yield ~in_type ~out_type fields
   | Aggregate { fields ; and_all_others ; where ; key ; top ;
-                commit_when ; flush_when ; flush_how ; _ } ->
+                commit_when ; flush_how ; _ } ->
     check_aggregate ~in_type ~out_type fields and_all_others where key top
-                    commit_when flush_when flush_how
+                    commit_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     if out_type.C.finished_typing then false else (
       let t = C.temp_tup_typ_of_tup_typ fields in

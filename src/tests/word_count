@@ -16,8 +16,7 @@ add_node splitter "FROM test/recv SELECT split(\" \", line) AS word"
 add_node counter1 "FROM test/splitter WHERE word <> \"\"
   SELECT group.#count AS count, lower(word) AS word
   GROUP BY word
-  COMMIT WHEN true
-  FLUSH WHEN false
+  COMMIT AND KEEP ALL WHEN true
 	EXPORT"
 
 # Method 2: send all counts only when the word "END" is seen

@@ -584,17 +584,8 @@ let aggregate
         'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
         bool)
       commit_before
+      do_flush
       (when_to_check_for_commit : when_to_check_group)
-      (flush_when :
-        Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
-        Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
-        Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-        Uint64.t -> 'generator_out -> (* out.#count, previous *)
-        Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
-        'global_state ->
-        'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
-        bool)
-      (when_to_check_for_flush : when_to_check_group)
       (should_resubmit : ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value -> 'tuple_in -> bool)
       (global_state : 'global_state)
       (group_init : 'global_state -> 'aggr)
@@ -699,7 +690,7 @@ let aggregate
           aggr.first_in aggr.last_in
           aggr.current_out
       in
-      let commit_and_flush_list to_commit to_flush =
+      let commit_and_flush_list to_commit =
         (* We must commit first and then flush *)
         (* FIXME: Tops: Send tuple for "others" ? The problem with this is
          * that the current_out of this aggregate was build from a given
@@ -720,7 +711,8 @@ let aggregate
           if to_commit <> [] && !others <> None then
             ("others", Option.get !others) :: to_commit
           else to_commit in *)
-        if to_flush <> [] && top_n <> 0 then (
+        if to_commit = [] then return_unit
+        else if top_n <> 0 then (
           (* For top operations we must commit and flush all or nothing. *)
           !logger.debug "Committing/Flushing the whole TOP" ;
           let%lwt () =
@@ -736,62 +728,54 @@ let aggregate
         ) else (
           (* Not in a top, do things properly: *)
           (* Commit *)
-          let%lwt () =
-            Lwt_list.iter_s (fun out ->
-                commit in_tuple out
-              ) to_commit in
-          (* Flush/Keep/Slide *)
-          List.iter (fun (k, a) ->
-            if a.to_resubmit = [] then
-              Hashtbl.remove h k
-            else (
-              let to_resubmit = List.rev a.to_resubmit in
-              a.nb_entries <- 0 ;
-              a.to_resubmit <- [] ;
-              a.fields <- group_init global_state ;
-              (* Warning: should_resubmit might need realistic nb_entries,
-               * last_in etc *)
-              a.first_in <- List.hd to_resubmit ;
-              List.iter (fun in_tuple ->
-                  a.nb_entries <- a.nb_entries + 1 ;
-                  tuple_of_aggr
-                    (* We cannot possibly save the values of in_count,
-                     * last_in, selected_count, etc, at the time we
-                     * originally added those tuples, so this is
-                     * approximate. Should we prevent their use in all
-                     * sliding windows cases? *)
-                    in_count in_tuple last_in
-                    !selected_count !selected_successive last_selected
-                    !unselected_count !unselected_successive last_unselected
-                    !out_count
-                    (Uint64.of_int a.nb_entries)
-                    (Uint64.of_int a.nb_successive)
-                    a.fields
-                    global_state
-                    a.first_in in_tuple |> ignore ;
-                  a.last_in <- in_tuple ;
-                  if should_resubmit a in_tuple then
-                    a.to_resubmit <- in_tuple :: a.to_resubmit
-                ) to_resubmit)
-            ) to_flush ;
-          return_unit)
+          Lwt_list.iter_s (fun (k, a, out) ->
+            (* Flush/Keep/Slide *)
+            if do_flush then (
+              if a.to_resubmit = [] then
+                Hashtbl.remove h k
+              else (
+                let to_resubmit = List.rev a.to_resubmit in
+                a.nb_entries <- 0 ;
+                a.to_resubmit <- [] ;
+                a.fields <- group_init global_state ;
+                (* Warning: should_resubmit might need realistic nb_entries,
+                 * last_in etc *)
+                a.first_in <- List.hd to_resubmit ;
+                List.iter (fun in_tuple ->
+                    a.nb_entries <- a.nb_entries + 1 ;
+                    tuple_of_aggr
+                      (* We cannot possibly save the values of in_count,
+                       * last_in, selected_count, etc, at the time we
+                       * originally added those tuples, so this is
+                       * approximate. Should we prevent their use in all
+                       * sliding windows cases? *)
+                      in_count in_tuple last_in
+                      !selected_count !selected_successive last_selected
+                      !unselected_count !unselected_successive last_unselected
+                      !out_count
+                      (Uint64.of_int a.nb_entries)
+                      (Uint64.of_int a.nb_successive)
+                      a.fields
+                      global_state
+                      a.first_in in_tuple |> ignore ;
+                    a.last_in <- in_tuple ;
+                    if should_resubmit a in_tuple then
+                      a.to_resubmit <- in_tuple :: a.to_resubmit
+                  ) to_resubmit)
+            ) ;
+            (* Output the tuple *)
+            commit in_tuple out) to_commit)
       in
       let commit_and_flush_all_if check_when =
         let to_commit =
           if when_to_check_for_commit <> check_when then [] else
             Hashtbl.fold (fun k a l ->
-              if not (already_output a) &&
-                 must commit_when a then (k, a)::l else l) h [] in
-        let to_flush =
-          if flush_when == commit_when then to_commit else
-          if when_to_check_for_flush <> check_when then [] else
-          Hashtbl.fold (fun k a l ->
-            if not (already_output a) &&
-               must flush_when a then (k, a)::l else l) h [] in
-        (* TODO: get rid of flush when and this is not necessary any longer: *)
-        let to_commit =
-          List.map (fun (_k, a) -> a.current_out) to_commit in
-        commit_and_flush_list to_commit to_flush
+                if not (already_output a) &&
+                   must commit_when a then
+                  (k, a, a.current_out)::l
+                else l
+              ) h [] in
+        commit_and_flush_list to_commit
       in
       (* Now that this is all in place, here are the next steps:
        * 1. filtering (fast path)
@@ -1015,19 +999,16 @@ let aggregate
              * change them). *)
             if must commit_when aggr
             then [
+              k, aggr,
               if commit_before then aggr.previous_out
               else aggr.current_out
             ], [ k, aggr ] else [], [] in
-          let to_flush =
-            if flush_when == commit_when then to_flush else
-            if must flush_when aggr
-            then [ k, aggr ] else [] in
           if commit_before then
             List.iter (fun (_k, a) ->
               match a.to_resubmit with
               | hd::_ when hd == in_tuple -> ()
               | _ -> a.to_resubmit <- in_tuple :: a.to_resubmit) to_flush ;
-          let%lwt () = commit_and_flush_list to_commit to_flush in
+          let%lwt () = commit_and_flush_list to_commit in
           (* Maybe any other groups. Notice that there is no risk to commit
            * or flush this aggr twice since when_to_check_for_commit force
            * either one or the other (or none at all) of these chunks of
