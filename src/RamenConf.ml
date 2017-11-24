@@ -279,7 +279,7 @@ type conf =
     ramen_url : string ;
     version_tag : string ;
     persist_dir : string ;
-    do_persist : bool ;
+    do_persist : bool ; (* false for tests *)
     max_simult_compilations : int ref }
 
 let parse_operation operation =

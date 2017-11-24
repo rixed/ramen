@@ -5,11 +5,6 @@ open Batteries
  * Start the event processor
  *)
 
-let do_persist =
-  let i = Arg.info ~doc:"save/restore graph file from the persist_dir"
-                   [ "save-graph"; "save-conf" ] in
-  Arg.(value (flag i))
-
 let debug =
   let env = Term.env_info "RAMEN_DEBUG" in
   let i = Arg.info ~doc:"increase verbosity"
@@ -92,7 +87,6 @@ let persist_dir =
 let server_start =
   Term.(
     (const HttpSrv.start
-      $ do_persist
       $ debug
       $ daemonize
       $ rand_seed

@@ -742,7 +742,7 @@ let upload conf headers layer node body =
   | _ ->
     bad_request ("Node "^ N.fq_name node ^" does not accept uploads")
 
-let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
+let start debug daemonize rand_seed no_demo to_stderr ramen_url
           www_dir version_tag persist_dir port cert_opt key_opt () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemonize then
@@ -754,7 +754,7 @@ let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
   let conf =
-    C.make_conf do_persist ramen_url debug version_tag persist_dir 5 (* TODO *) in
+    C.make_conf true ramen_url debug version_tag persist_dir 5 (* TODO *) in
   (* When there is nothing to do, listen to collectd and netflow! *)
   if demo && Hashtbl.is_empty conf.C.graph.C.layers then (
     !logger.info "Adding default nodes since we have nothing to do..." ;
