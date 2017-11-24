@@ -209,7 +209,7 @@ struct
     if status <> Running then
       Hashtbl.iter (fun _ n -> n.Node.pid <- None) layer.persist.nodes
 
-  let make persist_dir ?persist ?(timeout=0.) name =
+  let make persist_dir ?persist ?(timeout=0.) ?(restart=false) name =
     assert (String.length name > 0) ;
     let persist =
       let now = Unix.gettimeofday () in
@@ -220,18 +220,19 @@ struct
           last_status_change = now ;
           last_started = None ; last_stopped = None }) persist in
     let layer = { name ; persist ; importing_threads = [] } in
-    (* Downgrade the status to compiled since the workers can't be running
-     * anymore. *)
-    if persist.status = Running then set_status layer Compiled ;
-    (* Further downgrade to edition if the binaries are not there anymore *)
-    if persist.status = Compiled &&
-       Hashtbl.values persist.nodes |> Enum.exists (fun n ->
-         not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
-    then set_status layer (Edition "");
-    (* Also, we cannot be compiling anymore: *)
-    if persist.status = Compiling then set_status layer (Edition "") ;
-    (* FIXME: also, as a precaution, delete any temporary layer (maybe we
-     * crashed because of it? *)
+    if restart then (
+      (* Downgrade the status to compiled since the workers can't be running
+       * anymore. *)
+      if persist.status = Running then set_status layer Compiled ;
+      (* Further downgrade to edition if the binaries are not there anymore *)
+      if persist.status = Compiled &&
+         Hashtbl.values persist.nodes |> Enum.exists (fun n ->
+           not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
+      then set_status layer (Edition "");
+      (* Also, we cannot be compiling anymore: *)
+      if persist.status = Compiling then set_status layer (Edition "") ;
+      (* FIXME: also, as a precaution, delete any temporary layer (maybe we
+       * crashed because of it? *)) ;
     layer
 
   let is_typed layer =
@@ -432,19 +433,15 @@ let add_node conf node_name layer_name op_text =
     invalid_arg "node name" ;
   assert (node_name <> "") ;
   let operation = parse_operation op_text in
-  let res = add_parsed_node conf node_name layer_name op_text operation in
-  (* FIXME: Delay this with a dirty flag, and save_if_dirty after every
-   * HTTP query *)
-  save_graph conf ;
-  res
+  add_parsed_node conf node_name layer_name op_text operation
 
-let make_graph persist_dir ?persist () =
+let make_graph persist_dir ?persist ?restart () =
   let persist =
     Option.default_delayed (fun () -> Hashtbl.create 11) persist in
   { layers = Hashtbl.map (fun name persist ->
-               Layer.make persist_dir ~persist name) persist }
+               Layer.make persist_dir ~persist ?restart name) persist }
 
-let load_graph do_persist persist_dir =
+let load_graph ?restart do_persist persist_dir =
   let save_file = save_file_of persist_dir in
   let persist : persisted option =
     if do_persist then
@@ -459,7 +456,42 @@ let load_graph do_persist persist_dir =
         None
     else None
   in
-  make_graph persist_dir ?persist ()
+  make_graph persist_dir ?persist ?restart ()
+
+let save_graph conf =
+  if conf.do_persist then
+    let persist =
+      Hashtbl.map (fun name l ->
+        !logger.debug "Saving layer %s which status = %s"
+          name (PPP.to_string layer_status_ppp l.Layer.persist.Layer.status) ;
+        l.Layer.persist) conf.graph.layers in
+    let save_file = save_file_of conf.persist_dir in
+    !logger.debug "Saving graph in %S" save_file ;
+    mkdir_all ~is_file:true save_file ;
+    File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
+      Marshal.output oc persist)
+
+let reload_graph conf =
+  conf.graph <- load_graph ~restart:false conf.do_persist conf.persist_dir
+
+let with_lock ~rw conf f =
+  let open Lwt_unix in
+  let fname = conf.persist_dir ^ "/.lock" in
+  let%lwt fd = openfile fname [O_RDWR; O_CREAT; O_CLOEXEC] 0o640 in
+  let%lwt () = lockf fd (if rw then F_LOCK else F_RLOCK) 0 in
+  reload_graph conf ;
+  Lwt.finalize
+    (fun () ->
+      let%lwt res = f () in
+      (* Save the config only if f did not fail: *)
+      if rw then save_graph conf ;
+      Lwt.return res)
+    (fun () ->
+      let%lwt () = lockf fd F_ULOCK 0 in
+      close fd)
+
+let with_rlock conf f = with_lock ~rw:false conf f
+let with_rwlock conf f = with_lock ~rw:true conf f
 
 let find_node conf layer name =
   let layer = Hashtbl.find conf.graph.layers layer in
@@ -477,13 +509,12 @@ let add_link conf src dst =
   let l = Hashtbl.find conf.graph.layers dst.layer in
   Layer.set_editable l "" ;
   src.children <- dst :: src.children ;
-  dst.parents <- src :: dst.parents ;
-  save_graph conf
+  dst.parents <- src :: dst.parents
 
 let make_conf do_persist ramen_url debug version_tag persist_dir
               max_simult_compilations =
-  { graph = load_graph do_persist persist_dir ; do_persist ;
-    ramen_url ; debug ; version_tag ; persist_dir ;
+  { graph = load_graph ~restart:true do_persist persist_dir ;
+    do_persist ; ramen_url ; debug ; version_tag ; persist_dir ;
     max_simult_compilations = ref max_simult_compilations }
 
 (* AutoCompletion of node/field names *)

@@ -276,7 +276,7 @@ let put_layer conf headers body =
      * TODO: Start a transaction with the conf and save it only if there
      * are no errors. This is OK because we check that the layer is not
      * running therefore the only modification we will do is in the conf
-     * (no process killed, no thread cancelled) . *)
+     * (no process killed, no thread cancelled). *)
     let%lwt () =
       match Hashtbl.find conf.C.graph.C.layers layer_name with
       | exception Not_found -> return_unit
@@ -761,6 +761,7 @@ let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
     C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore ;
     C.add_node conf "netflow" "demo" "LISTEN FOR NETFLOW" |> ignore) ;
   async (fun () -> timeout_layers conf) ;
+  C.save_graph conf ;
   let lyr = function
     | [] -> bad_request_exn "Layer name missing from URL"
     | lst -> String.concat "/" lst in
@@ -773,71 +774,83 @@ let start do_persist debug daemonize rand_seed no_demo to_stderr ramen_url
       | l::rest ->
         loop (l :: ls) rest in
     loop [] path in
+  (* The function called for each HTTP request: *)
   let router meth path params headers body =
-    (* The function called for each HTTP request: *)
-      match meth, path with
-      (* API *)
-      | `GET, ["graph"] -> get_graph conf headers None
-      | `GET, ("graph" :: layers) ->
-        get_graph conf headers (Some (lyr layers))
-      | `PUT, ["graph"] -> put_layer conf headers body
-      | `DELETE, ("graph" :: layers) -> del_layer conf headers (lyr layers)
-      | `GET, ["compile"] -> compile conf headers None
-      | `GET, ("compile" :: layers) ->
-        compile conf headers (Some (lyr layers))
-      | `GET, ["run" | "start"] -> run conf headers None
-      | `GET, (("run" | "start") :: layers) ->
-        run conf headers (Some (lyr layers))
-      | `GET, ["stop"] -> stop conf headers None
-      | `GET, ("stop" :: layers) -> stop conf headers (Some (lyr layers))
-      | `GET, ["shutdown"] -> shutdown conf headers
-      | (`GET|`POST), ("export" :: path) ->
-        let layer, node = lyr_node_of path in
-        (* We must allow both POST and GET for that one since we have an
-         * optional body (and some client won't send a body with a GET) *)
-        export conf headers layer node body
-      | `GET, ("plot" :: path) ->
-        let layer, node = lyr_node_of path in
-        plot conf headers layer node params
-      (* API for children *)
-      | `PUT, ("report" :: path) ->
-        let layer, node = lyr_node_of path in
-        report conf headers layer node body
-      (* Grafana datasource plugin *)
-      | `GET, ["grafana"] -> respond_ok ()
-      | `POST, ["complete"; "nodes"] ->
-        complete_nodes conf headers body
-      | `POST, ["complete"; "fields"] ->
-        complete_fields conf headers body
-      | `POST, ["timeseries"] ->
-        timeseries conf headers body
-      | `GET, ("timerange" :: path) ->
-        let layer, node = lyr_node_of path in
-        get_timerange conf headers layer node
-      | `OPTIONS, _ ->
-        let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
-        let headers =
-          Header.add headers "Access-Control-Allow-Methods" "POST" in
-        let headers =
-          Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
-        Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
-      (* Web UI *)
-      | `GET, ([]|["index.html"]) ->
+    (* Start by loading the graph from disk *)
+    match meth, path with
+    (* API *)
+    | `GET, ["graph"] ->
+      C.with_rlock conf (fun () -> get_graph conf headers None)
+    | `GET, ("graph" :: layers) ->
+      C.with_rlock conf (fun () -> get_graph conf headers (Some (lyr layers)))
+    | `PUT, ["graph"] ->
+      C.with_rwlock conf (fun () -> put_layer conf headers body)
+    | `DELETE, ("graph" :: layers) ->
+      C.with_rwlock conf (fun () -> del_layer conf headers (lyr layers))
+    | `GET, ["compile"] ->
+      C.with_rwlock conf (fun () -> compile conf headers None)
+    | `GET, ("compile" :: layers) ->
+      C.with_rwlock conf (fun () -> compile conf headers (Some (lyr layers)))
+    | `GET, ["run" | "start"] ->
+      C.with_rwlock conf (fun () -> run conf headers None)
+    | `GET, (("run" | "start") :: layers) ->
+      C.with_rwlock conf (fun () -> run conf headers (Some (lyr layers)))
+    | `GET, ["stop"] ->
+      C.with_rwlock conf (fun () -> stop conf headers None)
+    | `GET, ("stop" :: layers) ->
+      C.with_rwlock conf (fun () -> stop conf headers (Some (lyr layers)))
+    | `GET, ["shutdown"] ->
+      C.with_rwlock conf (fun () -> shutdown conf headers)
+    | (`GET|`POST), ("export" :: path) ->
+      let layer, node = lyr_node_of path in
+      (* We must allow both POST and GET for that one since we have an
+       * optional body (and some client won't send a body with a GET) *)
+      C.with_rlock conf (fun () -> export conf headers layer node body)
+    | `GET, ("plot" :: path) ->
+      let layer, node = lyr_node_of path in
+      C.with_rlock conf (fun () -> plot conf headers layer node params)
+    (* API for children *)
+    | `PUT, ("report" :: path) ->
+      let layer, node = lyr_node_of path in
+      C.with_rwlock conf (fun () -> report conf headers layer node body)
+    (* Grafana datasource plugin *)
+    | `GET, ["grafana"] ->
+      respond_ok ()
+    | `POST, ["complete"; "nodes"] ->
+      C.with_rlock conf (fun () -> complete_nodes conf headers body)
+    | `POST, ["complete"; "fields"] ->
+      C.with_rlock conf (fun () -> complete_fields conf headers body)
+    | `POST, ["timeseries"] ->
+      C.with_rlock conf (fun () -> timeseries conf headers body)
+    | `GET, ("timerange" :: path) ->
+      let layer, node = lyr_node_of path in
+      C.with_rlock conf (fun () -> get_timerange conf headers layer node)
+    | `OPTIONS, _ ->
+      let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+      let headers =
+        Header.add headers "Access-Control-Allow-Methods" "POST" in
+      let headers =
+        Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
+      Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
+    (* Web UI *)
+    | `GET, ([]|["index.html"]) ->
+      C.with_rlock conf (fun () ->
         if www_dir = "" then
           serve_string conf headers RamenGui.without_link
         else
-          serve_string conf headers RamenGui.with_links
-      | `GET, ["style.css" | "ramen_script.js" as file] ->
-        serve_file_with_replacements conf headers www_dir file
-      (* Uploads of data files *)
-      | (`POST|`PUT), ("upload" :: path) ->
-        let layer, node = lyr_node_of path in
-        upload conf headers layer node body
-      (* Errors *)
-      | `PUT, _ | `GET, _ | `DELETE, _ ->
-        fail (HttpError (404, "No such resource"))
-      | _ ->
-        fail (HttpError (405, "Method not implemented"))
+          serve_string conf headers RamenGui.with_links)
+    | `GET, ["style.css" | "ramen_script.js" as file] ->
+      C.with_rlock conf (fun () ->
+        serve_file_with_replacements conf headers www_dir file)
+    (* Uploads of data files *)
+    | (`POST|`PUT), ("upload" :: path) ->
+      let layer, node = lyr_node_of path in
+      C.with_rlock conf (fun () -> upload conf headers layer node body)
+    (* Errors *)
+    | `PUT, _ | `GET, _ | `DELETE, _ ->
+      fail (HttpError (404, "No such resource"))
+    | _ ->
+      fail (HttpError (405, "Method not implemented"))
   in
   if daemonize then do_daemonize () ;
   Lwt_main.run (http_service port cert_opt key_opt router)

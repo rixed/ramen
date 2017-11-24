@@ -168,8 +168,7 @@ let run conf layer =
           let rb = rb_name_for_export_of node in
           RamenExport.import_tuples conf rb node :: lst
         ) else lst
-      ) layer.L.persist.L.nodes [] ;
-    C.save_graph conf
+      ) layer.L.persist.L.nodes []
 
 exception NotRunning
 
@@ -252,5 +251,4 @@ let timeout_layers conf =
         (try stop conf layer with NotRunning -> ()) ;
         Hashtbl.remove conf.C.graph.C.layers layer_name
       )
-    ) unused ;
-  C.save_graph conf
+    ) unused

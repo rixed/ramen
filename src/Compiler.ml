@@ -1035,10 +1035,7 @@ let compile conf layer =
             List.filter (fun (name, _) ->
               not (is_private_field name)) node.N.out_type.C.fields ;
           return_unit in
-        let%lwt () = iter_nodes_seq remove_private_fields in
-        (* All done! *)
-        C.save_graph conf ;
-        return_unit))
+        iter_nodes_seq remove_private_fields))
       (fun e ->
         C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
         fail e)
