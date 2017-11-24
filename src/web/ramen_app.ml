@@ -419,13 +419,21 @@ let reset_for_node_change () =
   set tail_rows [||] ;
   reload_tail ()
 
+let set_sel_layer l =
+  if sel_layer.value <> l then (
+    set sel_layer l ;
+    if l <> NoLayer then
+      (* Try to keep edited content as long as possible: *)
+      let el = edited_layer_of_layer l in
+      if edited_layer.value.title <> el.title then
+        set edited_layer el)
+
 let set_sel_node = function
   Some node ->
   if node.Node.id <> sel_node.value then (
     set sel_node node.id ;
     let l = ExistingLayer node.layer in
-    set sel_layer l ;
-    set edited_layer (edited_layer_of_layer l) ;
+    set_sel_layer l ;
     reset_for_node_change ())
 | None ->
   if sel_node.value <> "" then (
@@ -576,8 +584,7 @@ let reload_graph ?redirect_to_layer () =
   http_get "/graph" (fun g ->
     update_graph true g ;
     option_may (fun r ->
-        set sel_layer (ExistingLayer r) ;
-        set edited_layer (edited_layer_of_layer (ExistingLayer r))
+        set_sel_layer (ExistingLayer r)
       ) redirect_to_layer ;
     resync ())
 
@@ -594,7 +601,7 @@ let breadcrumbs =
         NoLayer -> p [ text "Configuration" ]
       | NewLayer ->
         group
-          [ p ~action:(fun _ -> set sel_layer NoLayer)
+          [ p ~action:(fun _ -> set_sel_layer NoLayer)
               [ clss "actionable" ; text "Configuration" ] ;
             p [ text ">" ] ;
             p [ text "New Layer" ] ]
@@ -602,14 +609,14 @@ let breadcrumbs =
         with_param sel_node (function
           "" ->
           group
-            [ p ~action:(fun _ -> set sel_layer NoLayer)
+            [ p ~action:(fun _ -> set_sel_layer NoLayer)
                 [ clss "actionable" ; text "Configuration" ] ;
               p [ text ">" ] ;
               p [ text layer ] ]
         | snode ->
           group
             [ p ~action:(fun _ ->
-                  set_sel_node None ; set sel_layer NoLayer)
+                  set_sel_node None ; set_sel_layer NoLayer)
                 [ clss "actionable" ; text "Configuration" ] ;
               p [ text ">" ] ;
               p ~action:(fun _ -> set_sel_node None)
@@ -784,14 +791,13 @@ let layer_panel to_del layer =
                       span ~action:(fun _ -> set layer_to_delete "")
                         [ clss "no" ; text "NO" ] ] ] ] :: e )
     else if slayer = ExistingLayer layer.name then
-      div ~action:(fun _ -> set sel_layer NoLayer ; set_sel_node None)
+      div ~action:(fun _ -> set_sel_layer NoLayer ; set_sel_node None)
         (clss "selected-actionable layer" :: e)
     else
       div ~action:(fun _ ->
           let l = ExistingLayer layer.name in
-          set sel_layer l ;
+          set_sel_layer l ;
           set_sel_node None ;
-          set edited_layer (edited_layer_of_layer l) ;
           set layer_to_delete "")
         (clss "actionable layer" :: e))
 
@@ -807,11 +813,15 @@ let layers_panel =
               else group []) :: lst) [] layers |>
           List.rev |>
           group))) ;
-    button ~action:(fun _ ->
-        set sel_layer NewLayer ;
-        set edited_layer (edited_layer_of_layer NewLayer) ;
-        set layer_to_delete "")
-      [ clss "actionable new-layer" ; text "new layer" ] ]
+    with_param sel_layer (fun sl ->
+      let c, action =
+        if sl = NewLayer then "selected new-layer", (fun _ ->
+          set_sel_layer NoLayer)
+        else "actionable new-layer", (fun _ ->
+          set_sel_layer NewLayer ;
+          set_sel_node None ;
+          set layer_to_delete "") in
+      button ~action [ clss c ; text "new layer" ]) ]
 
 let pretty_th ?action c title subtitle =
   th ?action (
@@ -1251,7 +1261,7 @@ let layer_editor_panel =
               if spinning then
                 button [ text "Cancel" ]
               else
-                button ~action:(fun _ -> set sel_layer NoLayer)
+                button ~action:(fun _ -> set_sel_layer NoLayer)
                   [ clss "actionable" ; text "Cancel" ] ;
               if spinning then
                 button [ text "Save" ]
