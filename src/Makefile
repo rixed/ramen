@@ -15,7 +15,7 @@ TESTABLE_SOURCES = \
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
-	RamenLog.ml Consts.ml Helpers.ml \
+	RamenLog.ml Consts.ml Helpers.ml RWLock.ml \
 	RamenSharedTypesJS.ml RamenSharedTypes.ml \
 	RingBufLib.ml RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml \
@@ -26,7 +26,7 @@ LINKED_FOR_TESTS = \
 
 RAMEN_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml \
-	RamenSharedTypesJS.ml RamenSharedTypes.ml \
+	RWLock.ml RamenSharedTypesJS.ml RamenSharedTypes.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
 	RingBufLib.ml RingBuf.ml \

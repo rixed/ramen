@@ -280,7 +280,8 @@ type conf =
     version_tag : string ;
     persist_dir : string ;
     do_persist : bool ; (* false for tests *)
-    max_simult_compilations : int ref }
+    max_simult_compilations : int ref ;
+    lock : RWLock.t }
 
 let parse_operation operation =
   let open RamenParsing in
@@ -401,24 +402,18 @@ let save_graph conf =
 let reload_graph conf =
   conf.graph <- load_graph ~restart:false conf.do_persist conf.persist_dir
 
-let with_lock ~rw conf f =
-  let open Lwt_unix in
-  let fname = conf.persist_dir ^ "/.lock" in
-  let%lwt fd = openfile fname [O_RDWR; O_CREAT; O_CLOEXEC] 0o640 in
-  let%lwt () = lockf fd (if rw then F_LOCK else F_RLOCK) 0 in
-  reload_graph conf ;
-  Lwt.finalize
-    (fun () ->
-      let%lwt res = f () in
-      (* Save the config only if f did not fail: *)
-      if rw then save_graph conf ;
-      Lwt.return res)
-    (fun () ->
-      let%lwt () = lockf fd F_ULOCK 0 in
-      close fd)
+let with_rlock conf f =
+  RWLock.with_r_lock conf.lock (fun () ->
+    reload_graph conf ;
+    f ())
 
-let with_rlock conf f = with_lock ~rw:false conf f
-let with_rwlock conf f = with_lock ~rw:true conf f
+let with_wlock conf f =
+  RWLock.with_w_lock conf.lock (fun () ->
+    reload_graph conf ;
+    let%lwt res = f () in
+    (* Save the config only if f did not fail: *)
+    save_graph conf ;
+    Lwt.return res)
 
 let find_node conf layer name =
   let layer = Hashtbl.find conf.graph.layers layer in
@@ -442,7 +437,8 @@ let make_conf do_persist ramen_url debug version_tag persist_dir
               max_simult_compilations =
   { graph = load_graph ~restart:true do_persist persist_dir ;
     do_persist ; ramen_url ; debug ; version_tag ; persist_dir ;
-    max_simult_compilations = ref max_simult_compilations }
+    max_simult_compilations = ref max_simult_compilations ;
+    lock = RWLock.make () }
 
 (* AutoCompletion of node/field names *)
 

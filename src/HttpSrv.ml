@@ -784,23 +784,23 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
     | `GET, ("graph" :: layers) ->
       C.with_rlock conf (fun () -> get_graph conf headers (Some (lyr layers)))
     | `PUT, ["graph"] ->
-      C.with_rwlock conf (fun () -> put_layer conf headers body)
+      C.with_wlock conf (fun () -> put_layer conf headers body)
     | `DELETE, ("graph" :: layers) ->
-      C.with_rwlock conf (fun () -> del_layer conf headers (lyr layers))
+      C.with_wlock conf (fun () -> del_layer conf headers (lyr layers))
     | `GET, ["compile"] ->
-      C.with_rwlock conf (fun () -> compile conf headers None)
+      C.with_wlock conf (fun () -> compile conf headers None)
     | `GET, ("compile" :: layers) ->
-      C.with_rwlock conf (fun () -> compile conf headers (Some (lyr layers)))
+      C.with_wlock conf (fun () -> compile conf headers (Some (lyr layers)))
     | `GET, ["run" | "start"] ->
-      C.with_rwlock conf (fun () -> run conf headers None)
+      C.with_wlock conf (fun () -> run conf headers None)
     | `GET, (("run" | "start") :: layers) ->
-      C.with_rwlock conf (fun () -> run conf headers (Some (lyr layers)))
+      C.with_wlock conf (fun () -> run conf headers (Some (lyr layers)))
     | `GET, ["stop"] ->
-      C.with_rwlock conf (fun () -> stop conf headers None)
+      C.with_wlock conf (fun () -> stop conf headers None)
     | `GET, ("stop" :: layers) ->
-      C.with_rwlock conf (fun () -> stop conf headers (Some (lyr layers)))
+      C.with_wlock conf (fun () -> stop conf headers (Some (lyr layers)))
     | `GET, ["shutdown"] ->
-      C.with_rwlock conf (fun () -> shutdown conf headers)
+      C.with_wlock conf (fun () -> shutdown conf headers)
     | (`GET|`POST), ("export" :: path) ->
       let layer, node = lyr_node_of path in
       (* We must allow both POST and GET for that one since we have an
@@ -812,7 +812,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
     (* API for children *)
     | `PUT, ("report" :: path) ->
       let layer, node = lyr_node_of path in
-      C.with_rwlock conf (fun () -> report conf headers layer node body)
+      C.with_wlock conf (fun () -> report conf headers layer node body)
     (* Grafana datasource plugin *)
     | `GET, ["grafana"] ->
       respond_ok ()
