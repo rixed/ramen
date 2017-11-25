@@ -29,7 +29,7 @@ let tuple_typ =
     { typ_name = "next_hop" ; nullable = false ; typ = TIpv4 } ;
     { typ_name = "src_port" ; nullable = false ; typ = TU16 } ;
     { typ_name = "dst_port" ; nullable = false ; typ = TU16 } ;
-    { typ_name = "in_ifce" ; nullable = false ; typ = TU16 } ;
+    { typ_name = "in_iface" ; nullable = false ; typ = TU16 } ;
     { typ_name = "out_iface" ; nullable = false ; typ = TU16 } ;
     { typ_name = "packets" ; nullable = false ; typ = TU32 } ;
     { typ_name = "bytes" ; nullable = false ; typ = TU32 } ;
