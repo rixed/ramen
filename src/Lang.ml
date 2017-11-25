@@ -38,6 +38,7 @@ type syntax_error =
   | GroupStateNotAllowed of { clause : string }
   | FieldNotInTuple of { field : string ; tuple : tuple_prefix ;
                          tuple_type : string }
+  | TupleHasOnlyVirtuals of { tuple : tuple_prefix ; alias : string }
   | InvalidPrivateField of { field : string }
   | MissingClause of { clause : string }
   | CannotTypeField of { field : string ; typ : string ; tuple : tuple_prefix }
@@ -100,6 +101,9 @@ let string_of_syntax_error =
   | OnlyTumblingWindowForTop ->
     "When using TOP the only windowing mode supported is \
      \"COMMIT AND FLUSH\""
+  | TupleHasOnlyVirtuals { tuple ; alias } ->
+    "Tuple "^ string_of_prefix tuple ^" has only virtual fields, so no \
+     field named "^ alias
 
 let () =
   Printexc.register_printer (function
@@ -1800,19 +1804,28 @@ struct
   let fold_expr init f = function
     | ListenFor _ | ReadCSVFile _ -> init
     | Yield { fields ; _ } ->
-        List.fold_left (fun prev sf -> f prev sf.expr) init fields
+        List.fold_left (fun prev sf ->
+            Expr.fold_by_depth f prev sf.expr
+          ) init fields
     | Aggregate { fields ; where ; key ; top ; commit_when ;
                   flush_how ; _ } ->
         let x =
-          List.fold_left (fun prev sf -> f prev sf.expr) init fields in
-        let x = f x where in
-        let x = List.fold_left f x key in
+          List.fold_left (fun prev sf ->
+              Expr.fold_by_depth f prev sf.expr
+            ) init fields in
+        let x = Expr.fold_by_depth f x where in
+        let x = List.fold_left (fun prev ke ->
+              Expr.fold_by_depth f prev ke
+            ) x key in
         let x = Option.map_default (fun (n, by) ->
-          let x = f x n in f x by) x top in
-        let x = f x commit_when in
+            let x = Expr.fold_by_depth f x n in
+            Expr.fold_by_depth f x by
+          ) x top in
+        let x = Expr.fold_by_depth f x commit_when in
         match flush_how with
         | Slide _ | Never | Reset -> x
-        | RemoveAll e | KeepOnly e -> f x e
+        | RemoveAll e | KeepOnly e ->
+          Expr.fold_by_depth f x e
 
   let iter_expr f op =
     fold_expr () (fun () e -> f e) op
@@ -1908,6 +1921,14 @@ struct
       (match flush_how with
       | KeepOnly e | RemoveAll e -> prefix_def TupleGroup e
       | _ -> ()) ;
+      (* Check that we use the TupleGroup only for virtual fields: *)
+      iter_expr (function
+        | Field (_, { contents = TupleGroup }, alias) ->
+          if not (is_virtual_field alias) then
+            raise (SyntaxError (TupleHasOnlyVirtuals { tuple = TupleGroup ;
+                                                       alias }))
+        | _ -> ()) op ;
+      (* Now check what tuple prefix are used: *)
       List.fold_left (fun prev_aliases sf ->
           check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr ;
           (* Check unicity of aliases *)
