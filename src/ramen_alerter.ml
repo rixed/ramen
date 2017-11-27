@@ -85,24 +85,6 @@ let is_inhibited state name team now =
 
 exception Not_implemented
 
-module AlertOps =
-struct
-  open Alert (* type of an alert is shared with JS but not the ops *)
-
-  let make state name team importance title text started_firing now =
-    let id = state.persist.next_alert_id in
-    state.persist.next_alert_id <- state.persist.next_alert_id + 1 ;
-    { id ; name ; team ; importance ; title ; text ; started_firing ;
-      stopped_firing = None ; received = now ; escalation = None ;
-      log = [] }
-
-  let log alert now event =
-    (* TODO: Save these logs in the incident they are related to *)
-    !logger.debug "Alert %s: %s"
-      alert.name (PPP.to_string Alert.event_ppp event) ;
-    alert.log <- (now, event) :: alert.log
-end
-
 module IncidentOps =
 struct
   open Incident (* type of an incident is shared with JS but not the ops *)
@@ -178,6 +160,33 @@ struct
   let archive state i =
     remove state i.id ;
     state.archived_incidents <- i :: state.archived_incidents
+end
+
+module AlertOps =
+struct
+  open Alert (* type of an alert is shared with JS but not the ops *)
+
+  let make state name team importance title text started_firing now =
+    let id = state.persist.next_alert_id in
+    state.persist.next_alert_id <- state.persist.next_alert_id + 1 ;
+    { id ; name ; team ; importance ; title ; text ; started_firing ;
+      stopped_firing = None ; received = now ; escalation = None ;
+      log = [] }
+
+  let log alert now event =
+    (* TODO: Save these logs in the incident they are related to *)
+    !logger.debug "Alert %s: %s"
+      alert.name (PPP.to_string Alert.event_ppp event) ;
+    alert.log <- (now, event) :: alert.log
+
+  let stop state i a source time =
+    a.stopped_firing <- Some time ;
+    a.escalation <- None ;
+    log a time (Stop source) ;
+    (* If no more alerts are firing, archive the incident *)
+    let stopped_firing a = a.Alert.stopped_firing <> None in
+    if List.for_all stopped_firing i.Incident.alerts then
+      IncidentOps.archive state i
 end
 
 module OnCaller =
@@ -606,13 +615,7 @@ let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
     | i, a ->
       !logger.info "Alert %s for team %s titled %S stopped firing."
         name team title ;
-      a.stopped_firing <- Some time ;
-      a.escalation <- None ;
-      AlertOps.log a now Stop ;
-      (* If no more alerts are firing, archive the incident *)
-      let stopped_firing a = a.Alert.stopped_firing <> None in
-      if List.for_all stopped_firing i.alerts then
-        IncidentOps.archive state i) ;
+      AlertOps.stop state i a Notification time) ;
     return_unit
   )
 
@@ -748,18 +751,32 @@ struct
           fail (HttpError (400, msg))) in
     get_history state headers team time_range
 
-  let get_ack state id =
-    match IncidentOps.find_open_alert_by_id state id with
-    | exception Not_found ->
+  let alert_of_id state id =
+    try IncidentOps.find_open_alert_by_id state id |> return
+    with Not_found ->
       bad_request "No alert with that id in opened incidents"
-    | _i, a ->
-      (* We record the ack regardless of stopped_firing *)
-      AlertOps.log a (Unix.gettimeofday ()) Alert.Ack ;
-      a.escalation <- None ;
-      respond_ok ()
+
+  let get_ack state id =
+    let%lwt _i, a = alert_of_id state id in
+    (* We record the ack regardless of stopped_firing *)
+    AlertOps.log a (Unix.gettimeofday ()) Alert.Ack ;
+    a.escalation <- None ;
+    respond_ok ()
+
+  (* Stops an alert as if a notification with firing=f have been received *)
+  let get_stop state id =
+    let%lwt i, a = alert_of_id state id in
+    let now = Unix.gettimeofday () in
+    AlertOps.stop state i a Manual now ;
+    respond_ok ()
 
   let start port cert_opt key_opt state www_dir =
     let router meth path params headers body =
+      let alert_id_of_string s =
+        match int_of_string s with
+        | exception Failure _ ->
+            bad_request "alert id must be numeric"
+        | id -> return id in
       let%lwt resp =
         match meth, path with
         | `GET, ["notify"] ->
@@ -776,10 +793,11 @@ struct
           let team = if team = [] then None else Some (List.hd team) in
           get_history_get state headers team params
         | `GET, ["ack" ; id] ->
-          (match int_of_string id with
-          | exception Failure _ ->
-              bad_request "alert id must be numeric"
-          | id -> get_ack state id)
+          let%lwt id = alert_id_of_string id in
+          get_ack state id
+        | `GET, ["stop" ; id] ->
+          let%lwt id = alert_id_of_string id in
+          get_stop state id
         (* Web UI *)
         | `GET, ([]|["index.html"]) ->
           if www_dir = "" then

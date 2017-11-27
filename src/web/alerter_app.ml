@@ -64,7 +64,9 @@ let log_event_of_js =
     "Outcry",
       (fun js -> Outcry (pair_of_js Js.to_string contact_of_js js)) ;
     "Ack", (fun _ -> Ack) ;
-    "Stop", (fun _ -> Stop) ]
+    "Stop", variant_of_js [
+      "Notification", (fun _ -> Stop Notification) ;
+      "Manual", (fun _ -> Stop Manual) ] ]
 
 let log_entry_of_js js =
   pair_of_js Js.to_float log_event_of_js js
@@ -237,6 +239,9 @@ let live_incidents =
             let alert_txt = a.Alert.name in
             let ack _ =
               http_get ("/ack/"^ string_of_int a.id) (fun _ ->
+                reload_ongoing ())
+            and stop _ =
+              http_get ("/stop/"^ string_of_int a.id) (fun _ ->
                 reload_ongoing ()) in
             let need_ack = a.escalation <> None in
             let row =
@@ -248,7 +253,11 @@ let live_incidents =
                          [ clss "icon actionable" ;
                            attr "title" "Acknowledge this alert" ;
                            text "Ack" ]
-                     else group [] ] ] |> tr in
+                     else group [] ] ;
+                td [ button ~action:stop
+                        [ clss "icon actionable" ;
+                          attr "title" "Terminate this alert" ;
+                          text "Stop" ] ] ] |> tr in
             row :: prev) prev i.Incident.alerts) [] incidents in
       table
         [ clss "incidents" ;

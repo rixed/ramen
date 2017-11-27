@@ -58,13 +58,15 @@ struct
     | Duplicate | Inhibited | STFU | StartEscalation
     [@@ppp PPP_JSON]
 
+  type stop_source = Notification | Manual [@@ppp PPP_JSON]
+
   type event =
     | NewNotification of notification_outcome
     | Escalate of Escalation.step
     | Outcry of (string * Contact.t)
     (* TODO: we'd like to know the origin of this ack. *)
     | Ack
-    | Stop [@@ppp PPP_JSON]
+    | Stop of stop_source [@@ppp PPP_JSON]
 
   let string_of_event = function
     | NewNotification Duplicate -> "Received duplicate notification"
@@ -76,7 +78,8 @@ struct
     | Outcry (name, contact) ->
         "Contacted "^ name ^" via "^ Contact.to_string contact
     | Ack -> "Acknowledged"
-    | Stop -> "Notified to stop"
+    | Stop Notification -> "Notified to stop"
+    | Stop Manual -> "Manual stop"
 
   type t =
     { id : int ; (* Used for acknowledgments *)
