@@ -591,15 +591,16 @@ let timeseries conf headers body =
   catch
     (fun () ->
       let%lwt resp = Lwt_list.map_s (fun req ->
+          let%lwt layer_name, node_name, data_field =
+            match req.spec with
+            | Predefined { node ; data_field } ->
+              let%lwt layer, node = layer_node_of_user_string conf node in
+              return (layer, node, data_field)
+            | NewTempNode { select_x ; select_y ; from ; where } ->
+              C.with_wlock conf (fun () ->
+                create_temporary_node select_x select_y from where) in
           let%lwt times, values =
             C.with_rlock conf (fun () ->
-              let%lwt layer_name, node_name, data_field =
-                match req.spec with
-                | Predefined { node ; data_field } ->
-                  let%lwt layer, node = layer_node_of_user_string conf node in
-                  return (layer, node, data_field)
-                | NewTempNode { select_x ; select_y ; from ; where } ->
-                  create_temporary_node select_x select_y from where in
               ts_of_node_field req layer_name node_name data_field) in
           return { id = req.id ; times ; values }
         ) msg.timeseries in
