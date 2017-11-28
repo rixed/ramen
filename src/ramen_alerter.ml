@@ -174,8 +174,7 @@ struct
       log = [] }
 
   let log alert now event =
-    (* TODO: Save these logs in the incident they are related to *)
-    !logger.debug "Alert %s: %s"
+    !logger.info "Alert %s: %s"
       alert.name (PPP.to_string Alert.event_ppp event) ;
     alert.log <- (now, event) :: alert.log
 
@@ -613,8 +612,6 @@ let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
       !logger.info "Unknown alert %s for team %s titled %S stopped firing."
         name team title
     | i, a ->
-      !logger.info "Alert %s for team %s titled %S stopped firing."
-        name team title ;
       AlertOps.stop state i a Notification time) ;
     return_unit
   )
