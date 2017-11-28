@@ -401,17 +401,23 @@ struct
      * so we now need to know who exactly are we going to bother. Note that
      * here [victims] is nothing but the rank of the oncallers to be
      * targeted. *)
-    Array.fold_left (fun ths rank ->
-        let open OnCaller in
-        let victim = who_is_oncall state alert.Alert.team rank now in
-        let contact = get_cap victim.contacts (attempt - 1) in
-        !logger.debug "%d oncall is %s, contact for attempt %d is: %s"
-          rank victim.name attempt (PPP.to_string Contact.t_ppp contact) ;
-        let sender = Sender.get contact in
-        AlertOps.log alert now (Alert.Outcry (victim.name, contact)) ;
-        sender alert attempt victim.name :: ths
-      ) [] step.victims |>
-    join
+    let _contacted, ths =
+      Array.fold_left (fun (contacted, ths as prev) rank ->
+          let open OnCaller in
+          let victim = who_is_oncall state alert.Alert.team rank now in
+          let contact = get_cap victim.contacts (attempt - 1) in
+          !logger.debug "%d oncall is %s, contact for attempt %d is: %s"
+            rank victim.name attempt (PPP.to_string Contact.t_ppp contact) ;
+          if Set.mem contact contacted then (
+              !logger.debug "Skipping since already contacted" ;
+              prev
+          ) else (
+            let sender = Sender.get contact in
+            AlertOps.log alert now (Alert.Outcry (victim.name, contact)) ;
+            Set.add contact contacted,
+            sender alert attempt victim.name :: ths)
+        ) (Set.empty, []) step.victims in
+    join ths
 
   (* Same as above, but escalate until delivery *)
   let outcry state alert esc now =
