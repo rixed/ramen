@@ -173,10 +173,11 @@ struct
       stopped_firing = None ; received = now ; escalation = None ;
       log = [] }
 
-  let log alert now event =
+  let log alert event_time event =
+    let current_time = Unix.gettimeofday () in
     !logger.info "Alert %s: %s"
       alert.name (PPP.to_string Alert.event_ppp event) ;
-    alert.log <- (now, event) :: alert.log
+    alert.log <- { current_time ; event_time ; event } :: alert.log
 
   let stop state i a source time =
     a.stopped_firing <- Some time ;
@@ -590,19 +591,19 @@ let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
       AlertOps.make state name team importance title text time now in
     match IncidentOps.get_or_create state alert with
     | _i, Some orig_alert ->
-      AlertOps.log orig_alert now (NewNotification Duplicate) ;
+      AlertOps.log orig_alert time (NewNotification Duplicate) ;
       return_unit
     | i, None ->
       if is_inhibited state name team now then (
-        AlertOps.log alert now (NewNotification Inhibited) ;
+        AlertOps.log alert time (NewNotification Inhibited) ;
         return_unit
       ) else if i.stfu then (
-        AlertOps.log alert now (NewNotification STFU) ;
+        AlertOps.log alert time (NewNotification STFU) ;
         return_unit
       ) else (
         let esc = EscalationOps.make state alert now in
         alert.escalation <- Some esc ;
-        AlertOps.log alert now (NewNotification StartEscalation) ;
+        AlertOps.log alert time (NewNotification StartEscalation) ;
         state.dirty <- true ;
         (* Let the implicit timeout or 0 deliver the first page. *)
         save_state state ;
@@ -623,6 +624,7 @@ let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
   )
 
 let acknowledge state id =
+  (* TODO: the time when the ack was sent *)
   let now = Unix.gettimeofday () in
   try
     IncidentOps.fold_ongoing state () (fun () i ->

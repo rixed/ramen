@@ -55,7 +55,7 @@ let escalation_of_js js =
     attempt = of_field js "attempt" identity ;
     last_sent = of_field js "last_sent" Js.to_float }
 
-let log_event_of_js =
+let log_event_of_js js =
   let open Alert in
   variant_of_js [
     "NewNotification",
@@ -66,10 +66,13 @@ let log_event_of_js =
     "Ack", (fun _ -> Ack) ;
     "Stop", variant_of_js [
       "Notification", (fun _ -> Stop Notification) ;
-      "Manual", (fun _ -> Stop Manual) ] ]
+      "Manual", (fun _ -> Stop Manual) ] ] js
 
 let log_entry_of_js js =
-  pair_of_js Js.to_float log_event_of_js js
+  Alert.{
+    current_time = of_field js "current_time" Js.to_float ;
+    event_time = of_field js "event_time" Js.to_float ;
+    event = log_event_of_js js }
 
 let alert_of_js js =
   Alert.{
@@ -127,8 +130,8 @@ let event_time = ref 0.
 
 let update_event_time_from_alert a =
   event_time :=
-    List.fold_left (fun ma (t, _) ->
-        max ma t
+    List.fold_left (fun ma l ->
+        max ma l.Alert.event_time
       ) !event_time a.Alert.log
 
 let update_event_time_from_incident i =
@@ -297,15 +300,23 @@ let selected_incident_detail =
               [ clss "log_list" ;
                 h2 "log" ;
                 table
-                  [ tbody
+                  [ thead
+                      [ tr
+                        [ th [ text "sent" ] ;
+                          th [ text "recvd" ] ;
+                          th [ text "event" ] ] ] ;
+                    tbody
                       (List.rev a.Alert.log |>
-                       List.map (fun (t, e) ->
-                          tr [ th [ text (date_of_ts t) ] ;
-                               td [ text (Alert.string_of_event e) ] ]
+                       List.map (fun l ->
+                          tr [ td [ text (date_of_ts l.Alert.event_time) ] ;
+                               td [ text (date_of_ts l.current_time) ] ;
+                               td [ text (Alert.string_of_event l.event) ] ]
                         )) ] ] ]))
 
 let chronology incidents dur relto_event =
-  let marker_of_event (ts, ev) = ts, Alert.string_of_event ev in
+  (* TODO: markers should have start/stop times *)
+  let marker_of_event l =
+    l.Alert.current_time, Alert.string_of_event l.event in
   let markers_of_alert a =
     let m =
       (a.Alert.started_firing, "Started") ::

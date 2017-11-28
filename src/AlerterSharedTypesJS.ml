@@ -81,6 +81,11 @@ struct
     | Stop Notification -> "Notified to stop"
     | Stop Manual -> "Manual stop"
 
+  type log =
+    { current_time : float ;
+      event_time : float ;
+      event : event } [@@ppp PPP_JSON]
+
   type t =
     { id : int ; (* Used for acknowledgments *)
       name : string ;
@@ -97,7 +102,7 @@ struct
       received : float ;
       mutable escalation : Escalation.t option ;
       (* Log for that alert, most recent first: *)
-      mutable log : (float * event) list } [@@ppp PPP_JSON]
+      mutable log : log list } [@@ppp PPP_JSON]
 end
 
 module Incident =
