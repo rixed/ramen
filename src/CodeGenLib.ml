@@ -422,7 +422,7 @@ let node_start () =
     (* The real one will have a process identifier instead of "anonymous" *)
     getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in
   let report_period =
-    getenv ~def:"5" "report_period" |> float_of_string in
+    getenv ~def:"23.9" "report_period" |> float_of_string in
   async (update_stats_th report_url report_period) (* TODO: catch exceptions in async_exception_hook *) ;
   { debug ; persist_dir ; report_url }
 

@@ -206,7 +206,8 @@ let get_graph_mermaid _headers layers =
 
 let get_graph conf headers layer_opt =
   let accept = get_accept headers in
-  let%lwt layers = graph_layers conf layer_opt in
+  let%lwt layers = C.with_rlock conf (fun () ->
+    graph_layers conf layer_opt) in
   let layers = L.order layers in
   if is_accepting Consts.json_content_type accept then
     get_graph_json headers layers
@@ -257,12 +258,14 @@ let del_layer_ conf layer =
     with C.InvalidCommand e -> bad_request e
 
 let del_layer conf _headers layer_name =
-  match Hashtbl.find conf.C.graph.C.layers layer_name with
-  | exception Not_found ->
-    let e = "Layer "^ layer_name ^" does not exist" in
-    bad_request e
-  | layer ->
-    del_layer_ conf layer >>= respond_ok
+  C.with_wlock conf (fun () ->
+    match Hashtbl.find conf.C.graph.C.layers layer_name with
+    | exception Not_found ->
+      let e = "Layer "^ layer_name ^" does not exist" in
+      bad_request e
+    | layer ->
+      del_layer_ conf layer) >>=
+  respond_ok
 
 let put_layer conf headers body =
   let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
@@ -277,38 +280,39 @@ let put_layer conf headers body =
      * are no errors. This is OK because we check that the layer is not
      * running therefore the only modification we will do is in the conf
      * (no process killed, no thread cancelled). *)
-    let%lwt () =
-      match Hashtbl.find conf.C.graph.C.layers layer_name with
-      | exception Not_found -> return_unit
-      | layer -> del_layer_ conf layer in
-    (* TODO: Check that this layer node names are unique within the layer *)
-    (* Create all the nodes *)
-    let%lwt nodes = Lwt_list.map_s (fun def ->
-        let name =
-          if def.SN.name <> "" then def.SN.name
-          else N.make_name () in
-        try
-          let _layer, node =
-            C.add_node conf name layer_name def.SN.operation in
-          return node
-        with Invalid_argument x -> bad_request ("Invalid "^ x)
-           | SyntaxError e -> bad_request (string_of_syntax_error e)
-           | e -> fail e
-      ) msg.nodes in
-    (* Then all the links *)
-    (* FIXME: actually, we might have nodes of other layers on top of this
-     * one, feeding from these new nodes (check the operation FROM) that
-     * we should reconnect as well. *)
-    let%lwt () = Lwt_list.iter_s (fun node ->
-        Operation.parents_of_operation node.N.operation |>
-        Lwt_list.iter_s (fun p ->
-            let%lwt parent_layer, parent_name =
-              layer_node_of_user_string conf ~default_layer:layer_name p in
-            let%lwt _layer, src = node_of_name conf parent_layer parent_name in
-            wrap (fun () -> C.add_link conf src node)
-          )
-      ) nodes in
-    respond_ok ())
+    C.with_wlock conf (fun () ->
+      let%lwt () =
+        match Hashtbl.find conf.C.graph.C.layers layer_name with
+        | exception Not_found -> return_unit
+        | layer -> del_layer_ conf layer in
+      (* TODO: Check that this layer node names are unique within the layer *)
+      (* Create all the nodes *)
+      let%lwt nodes = Lwt_list.map_s (fun def ->
+          let name =
+            if def.SN.name <> "" then def.SN.name
+            else N.make_name () in
+          try
+            let _layer, node =
+              C.add_node conf name layer_name def.SN.operation in
+            return node
+          with Invalid_argument x -> bad_request ("Invalid "^ x)
+             | SyntaxError e -> bad_request (string_of_syntax_error e)
+             | e -> fail e
+        ) msg.nodes in
+      (* Then all the links *)
+      (* FIXME: actually, we might have nodes of other layers on top of this
+       * one, feeding from these new nodes (check the operation FROM) that
+       * we should reconnect as well. *)
+      Lwt_list.iter_s (fun node ->
+          Operation.parents_of_operation node.N.operation |>
+          Lwt_list.iter_s (fun p ->
+              let%lwt parent_layer, parent_name =
+                layer_node_of_user_string conf ~default_layer:layer_name p in
+              let%lwt _layer, src = node_of_name conf parent_layer parent_name in
+              wrap (fun () -> C.add_link conf src node)
+            )
+        ) nodes) >>=
+    respond_ok)
   (* TODO: why wait before compiling this layer? *)
 
 (*
@@ -323,7 +327,6 @@ let serve_file_with_replacements conf _headers path file =
 *)
 
 let compile conf headers layer_opt =
-  let%lwt layers = graph_layers conf layer_opt in
   catch
     (fun () ->
       let rec loop left_try layers =
@@ -343,7 +346,10 @@ let compile conf headers layer_opt =
           ) [] layers >>=
         loop (left_try-1)
       in
-      let%lwt () = loop (List.length layers) layers in
+      let%lwt () =
+        C.with_wlock conf (fun () ->
+          let%lwt layers = graph_layers conf layer_opt in
+          loop (List.length layers) layers) in
       switch_accepted headers [
         Consts.json_content_type, (fun () -> respond_ok ()) ])
     (function SyntaxError _
@@ -353,34 +359,42 @@ let compile conf headers layer_opt =
             | e -> fail e)
 
 let run conf headers layer_opt =
-  let%lwt layers = graph_layers conf layer_opt in
-  let layers = L.order layers in
-  try
-    List.iter (fun layer ->
-        let open RamenProcesses in
-        try run conf layer with AlreadyRunning -> ()
-      ) layers ;
-    switch_accepted headers [
-      Consts.json_content_type, (fun () -> respond_ok ()) ]
-  with SyntaxError _
-     | Compiler.SyntaxErrorInNode _
-     | C.InvalidCommand _ as e ->
-       bad_request (Printexc.to_string e)
+  catch
+    (fun () ->
+      let%lwt () =
+        C.with_wlock conf (fun () ->
+          let%lwt layers = graph_layers conf layer_opt in
+          let layers = L.order layers in
+          wrap (fun () ->
+            List.iter (fun layer ->
+                let open RamenProcesses in
+                try run conf layer with AlreadyRunning -> ()
+              ) layers)) in
+      switch_accepted headers [
+        Consts.json_content_type, (fun () -> respond_ok ()) ])
+    (function SyntaxError _
+            | Compiler.SyntaxErrorInNode _
+            | C.InvalidCommand _ as e ->
+              bad_request (Printexc.to_string e)
+            | x -> fail x)
 
 let stop_layers conf layer_opt =
-  let%lwt layers = graph_layers conf layer_opt in
-  List.iter (fun layer ->
-      let open RamenProcesses in
-      try stop conf layer with NotRunning -> ()
-    ) layers ;
-  return_unit
+  C.with_wlock conf (fun () ->
+    let%lwt layers = graph_layers conf layer_opt in
+    wrap (fun () ->
+      List.iter (fun layer ->
+          let open RamenProcesses in
+          try stop conf layer with NotRunning -> ()
+        ) layers))
 
 let stop conf headers layer_opt =
-  try
-    let%lwt () = stop_layers conf layer_opt in
-    switch_accepted headers [
-      Consts.json_content_type, (fun () -> respond_ok ()) ]
-  with C.InvalidCommand e -> bad_request e
+  catch
+    (fun () ->
+      let%lwt () = stop_layers conf layer_opt in
+      switch_accepted headers [
+        Consts.json_content_type, (fun () -> respond_ok ()) ])
+    (function C.InvalidCommand e -> bad_request e
+            | x -> fail x)
 
 let shutdown conf _headers =
   (* TODO: also log client info *)
@@ -437,8 +451,9 @@ let export conf headers layer_name node_name body =
     if body = "" then return empty_export_req else
     of_json headers ("Exporting from "^ node_name) export_req_ppp body in
   let%lwt first, columns =
-    get_tuples conf ?since:req.since ?max_res:req.max_results
-                    ~wait_up_to:req.wait_up_to layer_name node_name in
+    C.with_rlock conf (fun () ->
+      get_tuples conf ?since:req.since ?max_res:req.max_results
+                      ~wait_up_to:req.wait_up_to layer_name node_name) in
   let resp = { first ; columns } in
   let body = PPP.to_string export_resp_ppp resp in
   respond_ok ~body ()
@@ -449,10 +464,15 @@ let export conf headers layer_name node_name body =
 
 let report conf _headers layer name body =
   (* TODO: check application-type is marshaled.ocaml *)
+  (* Notice the absence of read-lock, as a lesser of two evils (the other
+   * evil here: https://github.com/PerformanceVision/ramen/issues/154) *)
   let last_report = Marshal.from_string body 0 in
-  let%lwt _layer, node = find_node_or_fail conf layer name in
-  node.N.last_report <- last_report ;
-  respond_ok ()
+  C.with_wlock conf (fun () ->
+    let%lwt _layer, node =
+      find_node_or_fail conf layer name in
+    node.N.last_report <- last_report ;
+    return_unit) >>=
+  respond_ok
 
 (*
     Grafana Datasource: autocompletion of node/field names
@@ -461,18 +481,24 @@ let report conf _headers layer name body =
 let complete_nodes conf headers body =
   let%lwt msg =
     of_json headers "Complete tables" complete_node_req_ppp body in
+  let%lwt lst =
+    C.with_rlock conf (fun () ->
+      C.complete_node_name conf msg.node_prefix msg.only_exporting |>
+      return) in
   let body =
-    C.complete_node_name conf msg.node_prefix msg.only_exporting |>
-    PPP.to_string complete_resp_ppp
+    PPP.to_string complete_resp_ppp lst
   in
   respond_ok ~body ()
 
 let complete_fields conf headers body =
   let%lwt msg =
     of_json headers "Complete fields" complete_field_req_ppp body in
+  let%lwt lst =
+    C.with_rlock conf (fun () ->
+      C.complete_field_name conf msg.node msg.field_prefix |>
+      return) in
   let body =
-    C.complete_field_name conf msg.node msg.field_prefix |>
-    PPP.to_string complete_resp_ppp
+    PPP.to_string complete_resp_ppp lst
   in
   respond_ok ~body ()
 
@@ -565,15 +591,16 @@ let timeseries conf headers body =
   catch
     (fun () ->
       let%lwt resp = Lwt_list.map_s (fun req ->
-          let%lwt layer_name, node_name, data_field =
-            match req.spec with
-            | Predefined { node ; data_field } ->
-              let%lwt layer, node = layer_node_of_user_string conf node in
-              return (layer, node, data_field)
-            | NewTempNode { select_x ; select_y ; from ; where } ->
-              create_temporary_node select_x select_y from where in
           let%lwt times, values =
-            ts_of_node_field req layer_name node_name data_field in
+            C.with_rlock conf (fun () ->
+              let%lwt layer_name, node_name, data_field =
+                match req.spec with
+                | Predefined { node ; data_field } ->
+                  let%lwt layer, node = layer_node_of_user_string conf node in
+                  return (layer, node, data_field)
+                | NewTempNode { select_x ; select_y ; from ; where } ->
+                  create_temporary_node select_x select_y from where in
+              ts_of_node_field req layer_name node_name data_field) in
           return { id = req.id ; times ; values }
         ) msg.timeseries in
       let body = PPP.to_string timeseries_resp_ppp resp in
@@ -597,9 +624,11 @@ let timerange_of_node node =
       TimeRange (oldest, latest))
 
 let get_timerange conf headers layer_name node_name =
-  let%lwt _layer, node =
-    find_exporting_node_or_fail conf layer_name node_name in
-  let resp = timerange_of_node node in
+  let%lwt resp =
+    C.with_rlock conf (fun () ->
+      let%lwt _layer, node =
+        find_exporting_node_or_fail conf layer_name node_name in
+      return (timerange_of_node node)) in
   switch_accepted headers [
     Consts.json_content_type, (fun () ->
       let body = PPP.to_string time_range_resp_ppp resp in
@@ -661,7 +690,8 @@ let plot conf _headers layer_name node_name params =
     | _ -> return_false in
   (* Fetch timeseries: *)
   let%lwt _layer, node =
-    find_exporting_node_or_fail conf layer_name node_name in
+    C.with_rlock conf (fun () ->
+      find_exporting_node_or_fail conf layer_name node_name) in
   let now = Unix.gettimeofday () in
   let%lwt until =
     if rel_to_metric then
@@ -723,7 +753,9 @@ let save_in_tmp_file dir body =
     return (path, fname)))
 
 let upload conf headers layer node body =
-  let%lwt _layer, node = find_node_or_fail conf layer node in
+  let%lwt _layer, node =
+    C.with_rlock conf (fun () ->
+      find_node_or_fail conf layer node) in
   (* Look for the node handling this suffix: *)
   match node.N.operation with
   | ReadCSVFile { where = ReceiveFile ; _ } ->
@@ -780,51 +812,51 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
     match meth, path with
     (* API *)
     | `GET, ["graph"] ->
-      C.with_rlock conf (fun () -> get_graph conf headers None)
+      get_graph conf headers None
     | `GET, ("graph" :: layers) ->
-      C.with_rlock conf (fun () -> get_graph conf headers (Some (lyr layers)))
+      get_graph conf headers (Some (lyr layers))
     | `PUT, ["graph"] ->
-      C.with_wlock conf (fun () -> put_layer conf headers body)
+      put_layer conf headers body
     | `DELETE, ("graph" :: layers) ->
-      C.with_wlock conf (fun () -> del_layer conf headers (lyr layers))
+      del_layer conf headers (lyr layers)
     | `GET, ["compile"] ->
-      C.with_wlock conf (fun () -> compile conf headers None)
+      compile conf headers None
     | `GET, ("compile" :: layers) ->
-      C.with_wlock conf (fun () -> compile conf headers (Some (lyr layers)))
+      compile conf headers (Some (lyr layers))
     | `GET, ["run" | "start"] ->
-      C.with_wlock conf (fun () -> run conf headers None)
+      run conf headers None
     | `GET, (("run" | "start") :: layers) ->
-      C.with_wlock conf (fun () -> run conf headers (Some (lyr layers)))
+      run conf headers (Some (lyr layers))
     | `GET, ["stop"] ->
-      C.with_wlock conf (fun () -> stop conf headers None)
+      stop conf headers None
     | `GET, ("stop" :: layers) ->
-      C.with_wlock conf (fun () -> stop conf headers (Some (lyr layers)))
+      stop conf headers (Some (lyr layers))
     | `GET, ["shutdown"] ->
-      C.with_wlock conf (fun () -> shutdown conf headers)
+      shutdown conf headers
     | (`GET|`POST), ("export" :: path) ->
       let layer, node = lyr_node_of path in
       (* We must allow both POST and GET for that one since we have an
        * optional body (and some client won't send a body with a GET) *)
-      C.with_rlock conf (fun () -> export conf headers layer node body)
+      export conf headers layer node body
     | `GET, ("plot" :: path) ->
       let layer, node = lyr_node_of path in
-      C.with_rlock conf (fun () -> plot conf headers layer node params)
+      plot conf headers layer node params
     (* API for children *)
     | `PUT, ("report" :: path) ->
       let layer, node = lyr_node_of path in
-      C.with_wlock conf (fun () -> report conf headers layer node body)
+      report conf headers layer node body
     (* Grafana datasource plugin *)
     | `GET, ["grafana"] ->
       respond_ok ()
     | `POST, ["complete"; "nodes"] ->
-      C.with_rlock conf (fun () -> complete_nodes conf headers body)
+      complete_nodes conf headers body
     | `POST, ["complete"; "fields"] ->
-      C.with_rlock conf (fun () -> complete_fields conf headers body)
+      complete_fields conf headers body
     | `POST, ["timeseries"] ->
-      C.with_rlock conf (fun () -> timeseries conf headers body)
+      timeseries conf headers body
     | `GET, ("timerange" :: path) ->
       let layer, node = lyr_node_of path in
-      C.with_rlock conf (fun () -> get_timerange conf headers layer node)
+      get_timerange conf headers layer node
     | `OPTIONS, _ ->
       let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
       let headers =
@@ -834,18 +866,16 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
       Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
     (* Web UI *)
     | `GET, ([]|["index.html"]) ->
-      C.with_rlock conf (fun () ->
-        if www_dir = "" then
-          serve_string conf headers RamenGui.without_link
-        else
-          serve_string conf headers RamenGui.with_links)
+      if www_dir = "" then
+        serve_string conf headers RamenGui.without_link
+      else
+        serve_string conf headers RamenGui.with_links
     | `GET, ["style.css" | "ramen_script.js" as file] ->
-      C.with_rlock conf (fun () ->
-        serve_file_with_replacements conf headers www_dir file)
+      serve_file_with_replacements conf headers www_dir file
     (* Uploads of data files *)
     | (`POST|`PUT), ("upload" :: path) ->
       let layer, node = lyr_node_of path in
-      C.with_rlock conf (fun () -> upload conf headers layer node body)
+      upload conf headers layer node body
     (* Errors *)
     | `PUT, _ | `GET, _ | `DELETE, _ ->
       fail (HttpError (404, "No such resource"))
