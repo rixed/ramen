@@ -280,17 +280,23 @@ let can_export_with_layer node cb =
         let status = layer.status in
         cb (status = Compiled || status = Running))
 
-let reload_tail () =
-  match List.assoc sel_node.value nodes.value with
-  | exception Not_found -> ()
-  | node ->
-    let node = node.value in
-    if can_export node then
-      let content = object%js val max_results_ = -8 end
-      and path = "/export/"^ enc node.layer ^"/"^ enc node.name in
-      http_post path content (fun r ->
-        update_tail r ;
-        resync ())
+let reload_tail =
+  let reloading = ref None in
+  fun ?(single=false) () ->
+    match List.assoc sel_node.value nodes.value with
+    | exception Not_found -> ()
+    | node ->
+      let node = node.value in
+      if can_export node then
+        let content = object%js val max_results_ = -8 end
+        and path = "/export/"^ enc node.layer ^"/"^ enc node.name in
+        if not single || !reloading <> Some path then (
+          reloading := Some path ;
+          http_post path content ~on_done:(fun () ->
+              reloading := None)
+            (fun r ->
+              update_tail r ;
+              resync ()))
 
 (* A list of field_name * points *)
 let chart_points = make_param "chart points" []
@@ -319,53 +325,58 @@ let update_chart field_names resp =
     field_name, points) field_names |>
   set chart_points
 
-let reload_chart () =
-  match List.assoc sel_node.value nodes.value,
-        sel_output_cols.value with
-  | exception Not_found -> ()
-  | _, [] -> ()
-  | node, cols ->
-    let node = node.value in
-    let get_timeseries_until until =
-      (* Request the timeseries *)
-      let field_names =
-        List.map (fun col ->
-          (List.nth node.output_type col).Field.name) cols in
-      let content =
-        object%js
-          val since = js_of_float (until -. chart_duration.value)
-          val until = js_of_float until
-          val max_data_points_ = 800
-          val timeseries =
-            List.map (fun field_name ->
-              object%js
-                val id = Js.string field_name
-                val consolidation = Js.string "avg"
-                val spec =
-                  object%js
-                    val _Predefined =
-                      object%js
-                        val node = Js.string node.id
-                        val data_field_ = Js.string field_name
-                      end
-                  end
-              end) field_names |>
-            js_of_list identity
-        end
-      and path = "/timeseries" in
-      http_post path content (fun r ->
-        update_chart field_names r ;
-        resync ())
-    in
-    if chart_relto.value then
-      (* Get the available time range *)
-      let path = "/timerange/"^ enc node.layer ^"/"^ enc node.name in
-      http_get path (fun r ->
-        match time_range_of_js r with
-        | NoData -> ()
-        | TimeRange (_, until) ->
-          get_timeseries_until until)
-    else get_timeseries_until (now ())
+let reload_chart =
+  let reloading = ref None in
+  fun ?(single=false) () ->
+    match List.assoc sel_node.value nodes.value,
+          sel_output_cols.value with
+    | exception Not_found -> ()
+    | _, [] -> ()
+    | node, cols ->
+      let node = node.value in
+      let get_timeseries_until until =
+        (* Request the timeseries *)
+        let field_names =
+          List.map (fun col ->
+            (List.nth node.output_type col).Field.name) cols in
+        let content =
+          object%js
+            val since = js_of_float (until -. chart_duration.value)
+            val until = js_of_float until
+            val max_data_points_ = 800
+            val timeseries =
+              List.map (fun field_name ->
+                object%js
+                  val id = Js.string field_name
+                  val consolidation = Js.string "avg"
+                  val spec =
+                    object%js
+                      val _Predefined =
+                        object%js
+                          val node = Js.string node.id
+                          val data_field_ = Js.string field_name
+                        end
+                    end
+                end) field_names |>
+              js_of_list identity
+          end
+        and path = "/timeseries" in
+        if not single || !reloading <> Some content then
+          http_post path content ~on_done:(fun () ->
+              reloading := None)
+            (fun r ->
+              update_chart field_names r ;
+              resync ())
+      in
+      if chart_relto.value then
+        (* Get the available time range *)
+        let path = "/timerange/"^ enc node.layer ^"/"^ enc node.name in
+        http_get path (fun r ->
+          match time_range_of_js r with
+          | NoData -> ()
+          | TimeRange (_, until) ->
+            get_timeseries_until until)
+      else get_timeseries_until (now ())
 
 let sel_top_column = make_param "selected top column" "layer"
 
@@ -580,13 +591,19 @@ let update_graph total g =
      * worries. *)
   )
 
-let reload_graph ?redirect_to_layer () =
-  http_get "/graph" (fun g ->
-    update_graph true g ;
-    option_may (fun r ->
-        set_sel_layer (ExistingLayer r)
-      ) redirect_to_layer ;
-    resync ())
+let reload_graph =
+  let reloading = ref false in
+  fun ?redirect_to_layer ?(single=false) () ->
+    if not single || not !reloading then (
+      reloading := true ;
+      http_get "/graph" ~on_done:(fun () ->
+          if single then reloading := false)
+        (fun g ->
+          update_graph true g ;
+          option_may (fun r ->
+              set_sel_layer (ExistingLayer r)
+            ) redirect_to_layer ;
+          resync ()))
 
 (* Panel pending deletion, if any. There is only one, so selecting another
  * layer for deletion cancel the delete status of the current one. *)
@@ -1327,13 +1344,13 @@ let dom =
 let () =
   let rld_graph () =
     match autoreload.value, sel_layer.value with
-      true, (NoLayer | ExistingLayer _) -> reload_graph ()
+      true, (NoLayer | ExistingLayer _) -> reload_graph ~single:true ()
     | _ -> () in
-  ignore (Html.window##setInterval (Js.wrap_callback rld_graph) 3_317.) ;
+  ignore (Html.window##setInterval (Js.wrap_callback rld_graph) 7_919.) ;
   let rld_tail () =
     if autoreload.value && sel_node.value <> "" then (
-      reload_tail () ;
-      reload_chart ()) in
+      reload_tail ~single:true () ;
+      reload_chart ~single:true ()) in
   ignore (Html.window##setInterval (Js.wrap_callback rld_tail) 1_710.) ;
   start dom ;
-  reload_graph ()
+  reload_graph ~single:true ()

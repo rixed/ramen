@@ -386,7 +386,7 @@ let ajax action path ?content ?what ?on_done on_ok =
       print (Js.string "AJAX query DONE!") ;
       let js = Js._JSON##parse req##.responseText in
       let time = now () in
-      option_may (fun f -> f ()) on_done ;
+      option_may apply on_done ;
       let last_error =
         if req##.status <> 200 then (
           print_2 (Js.string "AJAX query failed") js ;
