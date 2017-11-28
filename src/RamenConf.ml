@@ -389,9 +389,7 @@ let load_graph ?restart do_persist persist_dir =
 let save_graph conf =
   if conf.do_persist then
     let persist =
-      Hashtbl.map (fun name l ->
-        !logger.debug "Saving layer %s which status = %s"
-          name (PPP.to_string layer_status_ppp l.Layer.persist.Layer.status) ;
+      Hashtbl.map (fun _ l ->
         l.Layer.persist) conf.graph.layers in
     let save_file = save_file_of conf.persist_dir in
     !logger.debug "Saving graph in %S" save_file ;

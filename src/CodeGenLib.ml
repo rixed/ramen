@@ -516,7 +516,7 @@ type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
     mutable nb_successive : int ;
     mutable last_ev_count : int ; (* used for others.successive (TODO) *)
     mutable to_resubmit : 'tuple_in list ; (* in_tuples to resubmit at flush *)
-    mutable fields : 'aggr (* the record of aggregation values *) ;
+    mutable fields : 'aggr (* the record of aggregation values aka the group or local state *) ;
     mutable sure_weight_state : 'top_state ;
     mutable unsure_weight : float }
 

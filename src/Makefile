@@ -287,6 +287,8 @@ long-check: ramen
 	./tests/tuples
 	./tests/commit_before
 
+check-long: long-check
+
 include $(top_srcdir)/make.common
 
 # Dependencies
