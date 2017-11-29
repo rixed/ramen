@@ -183,7 +183,8 @@ let stop conf layer =
     !logger.debug "Stopping layer %s" layer.L.name ;
     let now = Unix.gettimeofday () in
     Hashtbl.iter (fun _ node ->
-        (match Hashtbl.find RamenExport.imported_tuples (N.fq_name node) with
+        let k = RamenExport.history_key node in
+        (match Hashtbl.find RamenExport.imported_tuples k with
         | exception Not_found -> ()
         | history -> RamenExport.archive_history history) ;
         match node.N.pid with

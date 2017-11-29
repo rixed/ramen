@@ -93,8 +93,15 @@ type history =
 
 (* Store history of past tuple output by a given node. Not stored in the
  * node itself because we do not want to serialize such a big data structure
- * for every HTTP query, nor "rollback" it when a graph change fails. *)
-let imported_tuples : (string, history) Hashtbl.t = Hashtbl.create 11
+ * for every HTTP query, nor "rollback" it when a graph change fails.
+ * Indexed by node fq_name and output signature: *)
+let imported_tuples : (string * string, history) Hashtbl.t =
+  Hashtbl.create 11
+
+let history_key node =
+  let fq_name = N.fq_name node in
+  let type_sign = C.type_signature_hash node.N.out_type in
+  fq_name, type_sign
 
 let clean_archives history =
   while history.nb_files > max_history_archives do
@@ -166,12 +173,12 @@ let make_history conf node =
     ts_cache = Hashtbl.create (max_history_archives / 8) }
 
 let add_tuple conf node tuple =
-	let fqn = N.fq_name node in
+	let k = history_key node in
   let history =
-    try Hashtbl.find imported_tuples fqn
+    try Hashtbl.find imported_tuples k
     with Not_found ->
       let history = make_history conf node in
-      Hashtbl.add imported_tuples fqn history ;
+      Hashtbl.add imported_tuples k history ;
       history in
   if history.count >= Array.length history.tuples then
     archive_history history ;
@@ -531,7 +538,7 @@ let build_timeseries node data_field max_data_points
   let buckets = Array.init max_data_points (fun _ ->
     { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
   let bucket_of_time t = int_of_float ((t -. since) /. dt) in
-  match Hashtbl.find imported_tuples (N.fq_name node) with
+  match Hashtbl.find imported_tuples (history_key node) with
   | exception Not_found ->
     !logger.info "Node %s has no history" (N.fq_name node) ;
     [||], [||]
