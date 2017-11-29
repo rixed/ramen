@@ -51,21 +51,21 @@ let traffic_node ?where dataset_name name dt =
        _sum_connections / $DT$ AS connections_per_secs,
        sum dupacks_src / $DT$ AS dupacks_per_secs,
        sum zero_windows_src / $DT$ AS zero_windows_per_secs,
-       sum rtt_count_src AS _sum_rtt_count_src,
+       sum rtt_count_src AS sum_rtt_count_src,
        sum rtt_sum_src AS _sum_rtt_sum_src,
-       (_sum_rtt_sum_src / _sum_rtt_count_src) / 1e6 AS rtt_avg,
-       ((sum rtt_sum2_src - float(_sum_rtt_sum_src)^2 / _sum_rtt_count_src) /
-           _sum_rtt_count_src) / 1e12 AS rtt_var,
-       sum rd_count_src AS _sum_rd_count_src,
+       (_sum_rtt_sum_src / sum_rtt_count_src) / 1e6 AS rtt_avg,
+       ((sum rtt_sum2_src - float(_sum_rtt_sum_src)^2 / sum_rtt_count_src) /
+           sum_rtt_count_src) / 1e12 AS rtt_var,
+       sum rd_count_src AS sum_rd_count_src,
        sum rd_sum_src AS _sum_rd_sum_src,
-       (_sum_rd_sum_src / _sum_rd_count_src) / 1e6 AS rd_avg,
-       ((sum rd_sum2_src - float(_sum_rd_sum_src)^2 / _sum_rd_count_src) /
-           _sum_rd_count_src) / 1e12 AS rd_var,
-       sum dtt_count_src AS _sum_dtt_count_src,
+       (_sum_rd_sum_src / sum_rd_count_src) / 1e6 AS rd_avg,
+       ((sum rd_sum2_src - float(_sum_rd_sum_src)^2 / sum_rd_count_src) /
+           sum_rd_count_src) / 1e12 AS rd_var,
+       sum dtt_count_src AS sum_dtt_count_src,
        sum dtt_sum_src AS _sum_dtt_sum_src,
-       (_sum_dtt_sum_src / _sum_dtt_count_src) / 1e6 AS dtt_avg,
-       ((sum dtt_sum2_src - float(_sum_dtt_sum_src)^2 / _sum_dtt_count_src) /
-           _sum_dtt_count_src) / 1e12 AS dtt_var,
+       (_sum_dtt_sum_src / sum_dtt_count_src) / 1e6 AS dtt_avg,
+       ((sum dtt_sum2_src - float(_sum_dtt_sum_src)^2 / sum_dtt_count_src) /
+           sum_dtt_count_src) / 1e12 AS dtt_var,
        sum connections_time AS _sum_connections_time,
        (_sum_connections_time / _sum_connections) / 1e6 AS connection_time_avg,
        ((sum connections_time2 - float(_sum_connections_time)^2 / _sum_connections) /
@@ -101,7 +101,7 @@ let anomaly_detection_nodes avg_window from name timeseries =
   let predictor_name = from ^": "^ name ^" predictions" in
   let predictor_node =
     let predictions =
-      List.fold_left (fun fields (ts, nullable, preds) ->
+      List.fold_left (fun fields (ts, condition, nullable, preds) ->
           let preds_str = String.concat ", " preds in
           (* Add first the timeseries itself: *)
           let fields = ts :: fields in
@@ -115,7 +115,8 @@ let anomaly_detection_nodes avg_window from name timeseries =
             if preds <> [] then
               List.fold_left (fun (i, fields) multi_predictor ->
                   i + 1,
-                  (Printf.sprintf "%s%s, %s) AS pred_%d_%s" multi_predictor ts preds_str i ts) :: fields
+                  (Printf.sprintf "%s%s, %s) AS pred_%d_%s"
+                     multi_predictor ts preds_str i ts) :: fields
                 ) (i, fields) multi_predictors
             else i, fields in
           (* Then the "abnormality" of this timeseries: *)
@@ -131,7 +132,13 @@ let anomaly_detection_nodes avg_window from name timeseries =
             loop [] 0 in
           let abnormality =
             "("^ String.concat " +\n   " abnormality ^") / "^
-            string_of_int nb_preds ^" AS abnormality_"^ ts in
+            string_of_int nb_preds in
+          let abnormality =
+            match condition with
+            | "" -> abnormality
+            | cond ->
+              "IF "^ cond ^" THEN "^ abnormality ^" ELSE 0" in
+          let abnormality = abnormality ^" AS abnormality_"^ ts in
           abnormality :: fields
         ) [] timeseries
     in
@@ -149,7 +156,7 @@ let anomaly_detection_nodes avg_window from name timeseries =
     make_node predictor_name op in
   let anomaly_node =
     let conditions =
-      List.fold_left (fun cond (ts, _nullable, _preds) ->
+      List.fold_left (fun cond (ts, _condition, _nullable, _preds) ->
           ("abnormality_"^ ts ^" > 0.75") :: cond
         ) [] timeseries in
     let condition = String.concat " OR\n     " conditions in
@@ -427,26 +434,30 @@ let layer_of_bcns bcns dataset_name =
       let pred, anom = anomaly_detection_nodes bcn.avg_window minutely.N.name name timeseries in
       all_nodes := pred :: anom :: !all_nodes in
     anom "volume"
-      [ "packets_per_secs", false, [ "bytes_per_secs" ;
-                                     "packets_with_payload_per_secs" ] ;
-        "bytes_per_secs", false, [ "packets_per_secs" ;
-                                   "payload_per_secs" ] ;
-        "payload_per_secs", false, [ "bytes_per_secs" ] ;
-        "packets_with_payload_per_secs", false, [ "packets_per_secs" ] ] ;
+      [ "packets_per_secs", "packets_per_secs > 10", false,
+          [ "bytes_per_secs" ; "packets_with_payload_per_secs" ] ;
+        "bytes_per_secs", "bytes_per_secs > 1000", false,
+          [ "packets_per_secs" ; "payload_per_secs" ] ;
+        "payload_per_secs", "payload_per_secs > 1000", false,
+          [ "bytes_per_secs" ] ;
+        "packets_with_payload_per_secs",
+          "packets_with_payload_per_secs > 10", false,
+          [ "packets_per_secs" ] ] ;
     anom "retransmissions"
-      [ "retrans_bytes_per_secs", false, [ "retrans_payload_per_secs" ] ;
-        "dupacks_per_secs", false, [] ] ;
+      [ "retrans_bytes_per_secs", "retrans_bytes_per_secs > 1000", false,
+        [ "retrans_payload_per_secs" ] ;
+        "dupacks_per_secs", "dupacks_per_secs > 1", false, [] ] ;
     anom "connections"
-      [ "fins_per_secs", false, [ "packets_per_secs" ] ;
-        "rsts_per_secs", false, [ "packets_per_secs" ] ;
-        "syns_per_secs", false, [ "packets_per_secs" ] ;
-        "connections_per_secs", false, [] ;
-        "connection_time_avg", false, [] ] ;
+      [ "fins_per_secs", "fins_per_secs > 1", false, [ "packets_per_secs" ] ;
+        "rsts_per_secs", "rsts_per_secs > 1", false, [ "packets_per_secs" ] ;
+        "syns_per_secs", "syns_per_secs > 1", false, [ "packets_per_secs" ] ;
+        "connections_per_secs", "connections_per_secs > 1", false, [] ;
+        "connection_time_avg", "connections_per_secs > 1", false, [] ] ;
     anom "0-windows"
-      [ "zero_windows_per_secs", false, [] ] ;
-    anom "RTT" [ "rtt_avg", false, [] ] ;
-    anom "RD" [ "rd_avg", false, [] ] ;
-    anom "DTT" [ "dtt_avg", false, [] ]
+      [ "zero_windows_per_secs", "zero_windows_per_secs > 1", false, [] ] ;
+    anom "RTT" [ "rtt_avg", "sum_rtt_count_src > 10", false, [] ] ;
+    anom "RD" [ "rd_avg", "sum_rd_count_src > 10", false, [] ] ;
+    anom "DTT" [ "dtt_avg", "sum_dtt_count_src > 10", false, [] ]
   in
   List.iter conf_of_bcn bcns ;
   RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
@@ -491,77 +502,77 @@ let layer_of_bcas bcas dataset_name =
           sum zero_window_count_client / $AVG$ AS c2s_0wins_per_secs,
           sum zero_window_count_server / $AVG$ AS s2c_0wins_per_secs,
           -- Connection Time
-          sum ct_count AS _sum_ct_count,
+          sum ct_count AS sum_ct_count,
           sum ct_sum AS _sum_ct_sum,
-          _sum_ct_count / $AVG$ AS ct_per_secs,
-          IF _sum_ct_count = 0 THEN 0 ELSE
-            (_sum_ct_sum / _sum_ct_count) / 1e6 AS ct_avg,
-          IF _sum_ct_count = 0 THEN 0 ELSE
+          sum_ct_count / $AVG$ AS ct_per_secs,
+          IF sum_ct_count = 0 THEN 0 ELSE
+            (_sum_ct_sum / sum_ct_count) / 1e6 AS ct_avg,
+          IF sum_ct_count = 0 THEN 0 ELSE
             sqrt (((sum ct_square_sum - (_sum_ct_sum)^2) /
-                   _sum_ct_count) / 1e12) AS ct_stddev,
+                   sum_ct_count) / 1e12) AS ct_stddev,
           -- Server Response Time
-          sum rt_count_server AS _sum_rt_count_server,
+          sum rt_count_server AS sum_rt_count_server,
           sum rt_sum_server AS _sum_rt_sum_server,
-          _sum_rt_count_server / $AVG$ AS srt_per_secs,
-          IF _sum_rt_count_server = 0 THEN 0 ELSE
-            (_sum_rt_sum_server / _sum_rt_count_server) / 1e6 AS srt_avg,
-          IF _sum_rt_count_server = 0 THEN 0 ELSE
+          sum_rt_count_server / $AVG$ AS srt_per_secs,
+          IF sum_rt_count_server = 0 THEN 0 ELSE
+            (_sum_rt_sum_server / sum_rt_count_server) / 1e6 AS srt_avg,
+          IF sum_rt_count_server = 0 THEN 0 ELSE
             sqrt (((sum rt_square_sum_server - (_sum_rt_sum_server)^2) /
-                   _sum_rt_count_server) / 1e12) AS srt_stddev,
+                   sum_rt_count_server) / 1e12) AS srt_stddev,
           -- Round Trip Time CSC
-          sum rtt_count_server AS _sum_rtt_count_server,
+          sum rtt_count_server AS sum_rtt_count_server,
           sum rtt_sum_server AS _sum_rtt_sum_server,
-          _sum_rtt_count_server / $AVG$ AS crtt_per_secs,
-          IF _sum_rtt_count_server = 0 THEN 0 ELSE
-            (_sum_rtt_sum_server / _sum_rtt_count_server) / 1e6 AS crtt_avg,
-          IF _sum_rtt_count_server = 0 THEN 0 ELSE
+          sum_rtt_count_server / $AVG$ AS crtt_per_secs,
+          IF sum_rtt_count_server = 0 THEN 0 ELSE
+            (_sum_rtt_sum_server / sum_rtt_count_server) / 1e6 AS crtt_avg,
+          IF sum_rtt_count_server = 0 THEN 0 ELSE
             sqrt (((sum rtt_square_sum_server - (_sum_rtt_sum_server)^2) /
-                   _sum_rtt_count_server) / 1e12) AS crtt_stddev,
+                   sum_rtt_count_server) / 1e12) AS crtt_stddev,
           -- Round Trip Time SCS
-          sum rtt_count_client AS _sum_rtt_count_client,
+          sum rtt_count_client AS sum_rtt_count_client,
           sum rtt_sum_client AS _sum_rtt_sum_client,
-          _sum_rtt_count_client / $AVG$ AS srtt_per_secs,
-          IF _sum_rtt_count_client = 0 THEN 0 ELSE
-            (_sum_rtt_sum_client / _sum_rtt_count_client) / 1e6 AS srtt_avg,
-          IF _sum_rtt_count_client = 0 THEN 0 ELSE
+          sum_rtt_count_client / $AVG$ AS srtt_per_secs,
+          IF sum_rtt_count_client = 0 THEN 0 ELSE
+            (_sum_rtt_sum_client / sum_rtt_count_client) / 1e6 AS srtt_avg,
+          IF sum_rtt_count_client = 0 THEN 0 ELSE
             sqrt (((sum rtt_square_sum_client - (_sum_rtt_sum_client)^2) /
-                   _sum_rtt_count_client) / 1e12) AS srtt_stddev,
+                   sum_rtt_count_client) / 1e12) AS srtt_stddev,
           -- Retransmition Delay C2S
-          sum rd_count_client AS _sum_rd_count_client,
+          sum rd_count_client AS sum_rd_count_client,
           sum rd_sum_client AS _sum_rd_sum_client,
-          _sum_rd_count_client / $AVG$ AS crd_per_secs,
-          IF _sum_rd_count_client = 0 THEN 0 ELSE
-            (_sum_rd_sum_client / _sum_rd_count_client) / 1e6 AS crd_avg,
-          IF _sum_rd_count_client = 0 THEN 0 ELSE
+          sum_rd_count_client / $AVG$ AS crd_per_secs,
+          IF sum_rd_count_client = 0 THEN 0 ELSE
+            (_sum_rd_sum_client / sum_rd_count_client) / 1e6 AS crd_avg,
+          IF sum_rd_count_client = 0 THEN 0 ELSE
             sqrt (((sum rd_square_sum_client - (_sum_rd_sum_client)^2) /
-                   _sum_rd_count_client) / 1e12) AS crd_stddev,
+                   sum_rd_count_client) / 1e12) AS crd_stddev,
           -- Retransmition Delay S2C
-          sum rd_count_server AS _sum_rd_count_server,
+          sum rd_count_server AS sum_rd_count_server,
           sum rd_sum_server AS _sum_rd_sum_server,
-          _sum_rd_count_server / $AVG$ AS srd_per_secs,
-          IF _sum_rd_count_server = 0 THEN 0 ELSE
-            (_sum_rd_sum_server / _sum_rd_count_server) / 1e6 AS srd_avg,
-          IF _sum_rd_count_server = 0 THEN 0 ELSE
+          sum_rd_count_server / $AVG$ AS srd_per_secs,
+          IF sum_rd_count_server = 0 THEN 0 ELSE
+            (_sum_rd_sum_server / sum_rd_count_server) / 1e6 AS srd_avg,
+          IF sum_rd_count_server = 0 THEN 0 ELSE
             sqrt (((sum rd_square_sum_server - (_sum_rd_sum_server)^2) /
-                   _sum_rd_count_server) / 1e12) AS srd_stddev,
+                   sum_rd_count_server) / 1e12) AS srd_stddev,
           -- Data Transfer Time C2S
-          sum dtt_count_client AS _sum_dtt_count_client,
+          sum dtt_count_client AS sum_dtt_count_client,
           sum dtt_sum_client AS _sum_dtt_sum_client,
-          _sum_dtt_count_client / $AVG$ AS cdtt_per_secs,
-          IF _sum_dtt_count_client = 0 THEN 0 ELSE
-            (_sum_dtt_sum_client / _sum_dtt_count_client) / 1e6 AS cdtt_avg,
-          IF _sum_dtt_count_client = 0 THEN 0 ELSE
+          sum_dtt_count_client / $AVG$ AS cdtt_per_secs,
+          IF sum_dtt_count_client = 0 THEN 0 ELSE
+            (_sum_dtt_sum_client / sum_dtt_count_client) / 1e6 AS cdtt_avg,
+          IF sum_dtt_count_client = 0 THEN 0 ELSE
             sqrt (((sum dtt_square_sum_client - (_sum_dtt_sum_client)^2) /
-                   _sum_dtt_count_client) / 1e12) AS cdtt_stddev,
+                   sum_dtt_count_client) / 1e12) AS cdtt_stddev,
           -- Data Transfer Time S2C
-          sum dtt_count_server AS _sum_dtt_count_server,
+          sum dtt_count_server AS sum_dtt_count_server,
           sum dtt_sum_server AS _sum_dtt_sum_server,
-          _sum_dtt_count_server / $AVG$ AS sdtt_per_secs,
-          IF _sum_dtt_count_server = 0 THEN 0 ELSE
-            (_sum_dtt_sum_server / _sum_dtt_count_server) / 1e6 AS sdtt_avg,
-          IF _sum_dtt_count_server = 0 THEN 0 ELSE
+          sum_dtt_count_server / $AVG$ AS sdtt_per_secs,
+          IF sum_dtt_count_server = 0 THEN 0 ELSE
+            (_sum_dtt_sum_server / sum_dtt_count_server) / 1e6 AS sdtt_avg,
+          IF sum_dtt_count_server = 0 THEN 0 ELSE
             sqrt (((sum dtt_square_sum_server - (_sum_dtt_sum_server)^2) /
-                   _sum_dtt_count_server) / 1e12) AS sdtt_stddev
+                   sum_dtt_count_server) / 1e12) AS sdtt_stddev
         WHERE application = $ID$
         GROUP BY capture_begin * 0.000001 // $AVG_INT$
         COMMIT WHEN
@@ -620,33 +631,33 @@ let layer_of_bcas bcas dataset_name =
       let pred, anom = anomaly_detection_nodes bca.avg_window avg_per_app name timeseries in
       all_nodes := pred :: anom :: !all_nodes in
     anom "volume"
-      [ "c2s_bytes_per_secs", false, [] ;
-        "s2c_bytes_per_secs", false, [] ;
-        "c2s_packets_per_secs", false, [] ;
-        "s2c_packets_per_secs", false, [] ] ;
+      [ "c2s_bytes_per_secs", "c2s_bytes_per_secs > 1000", false, [] ;
+        "s2c_bytes_per_secs", "s2c_bytes_per_secs > 1000", false, [] ;
+        "c2s_packets_per_secs", "c2s_packets_per_secs > 10", false, [] ;
+        "s2c_packets_per_secs", "s2c_packets_per_secs > 10", false, [] ] ;
     anom "retransmissions"
-      [ "c2s_retrans_bytes_per_secs", false, [] ;
-        "s2c_retrans_bytes_per_secs", false, [] ;
-        "c2s_dupacks_per_secs", false, [] ;
-        "s2c_dupacks_per_secs", false, [] ] ;
+      [ "c2s_retrans_bytes_per_secs", "c2s_retrans_bytes_per_secs > 1000", false, [] ;
+        "s2c_retrans_bytes_per_secs", "s2c_retrans_bytes_per_secs > 1000", false, [] ;
+        "c2s_dupacks_per_secs", "c2s_dupacks_per_secs > 10", false, [] ;
+        "s2c_dupacks_per_secs", "s2c_dupacks_per_secs > 10", false, [] ] ;
     anom "connections"
-      [ "c2s_syns_per_secs", false, [] ;
-        "s2c_rsts_per_secs", false, [] ;
-        "close_per_secs", false, [] ;
-        "ct_avg", false, [] ] ;
+      [ "c2s_syns_per_secs", "c2s_syns_per_secs > 1", false, [] ;
+        "s2c_rsts_per_secs", "s2c_rsts_per_secs > 1", false, [] ;
+        "close_per_secs", "close_per_secs > 1", false, [] ;
+        "ct_avg", "sum_ct_count > 10", false, [] ] ;
     anom "0-windows"
-      [ "c2s_0wins_per_secs", false, [] ;
-        "s2c_0wins_per_secs", false, [] ] ;
-    anom "SRT" [ "srt_avg", false, [] ] ;
+      [ "c2s_0wins_per_secs", "c2s_0wins_per_secs > 1", false, [] ;
+        "s2c_0wins_per_secs", "s2c_0wins_per_secs > 1", false, [] ] ;
+    anom "SRT" [ "srt_avg", "sum_rt_count_server > 10", false, [] ] ;
     anom "RTT"
-      [ "crtt_avg", false, [] ;
-        "srtt_avg", false, [] ] ;
+      [ "crtt_avg", "sum_rtt_count_server > 10", false, [] ;
+        "srtt_avg", "sum_rtt_count_client > 10", false, [] ] ;
     anom "RD"
-      [ "crd_avg", false, [] ;
-        "srd_avg", false, [] ] ;
+      [ "crd_avg", "sum_rd_count_client > 10", false, [] ;
+        "srd_avg", "sum_rd_count_server > 10", false, [] ] ;
     anom "DTT"
-      [ "cdtt_avg", false, [] ;
-        "sdtt_avg", false, [] ]
+      [ "cdtt_avg", "sum_dtt_count_client > 10", false, [] ;
+        "sdtt_avg", "sum_dtt_count_server > 10", false, [] ]
   in
   List.iter conf_of_bca bcas ;
   RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
@@ -691,8 +702,8 @@ let ddos_layer dataset_name =
   let pred_node, anom_node =
     anomaly_detection_nodes
       (float_of_int avg_win) "new peers" "DDoS"
-      [ "nb_new_cnxs_per_secs", false, [] ;
-        "nb_new_clients_per_secs", false, [] ] in
+      [ "nb_new_cnxs_per_secs", "nb_new_cnxs_per_secs > 1", false, [] ;
+        "nb_new_clients_per_secs", "nb_new_clients_per_secs > 1", false, [] ] in
   RamenSharedTypes.{
     name = layer_name ;
     nodes = [ global_new_peers ; pred_node ; anom_node ] }
