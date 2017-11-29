@@ -1,5 +1,6 @@
 #!/bin/sh
 
 collectd -C /etc/collectd/collectd.conf
+fprobe 127.0.0.1:2055
 
 exec ramen start $@

@@ -26,10 +26,12 @@ RUN opam init --no-setup && \
     opam switch install ramen --alias-of 4.05.0+flambda
 
 # Rebuild a new image from here
-RUN echo "version 4"
+RUN echo "version 6"
 
 # Install ramen
-RUN opam depext --noninteractive \
+RUN opam update && \
+    opam install depext && \
+    opam depext --noninteractive \
       conf-gsl conf-openblas conf-pkg-config \
       plplot sqlite3 && \
     opam repo add --priority=1 ocalme \
