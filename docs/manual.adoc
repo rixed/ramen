@@ -16,7 +16,8 @@ endif::[]
 
 == Overview
 
-Ramen is a non-distributed _stream processor_.
+Ramen is a non-distributed xref:StreamProcessor[stream processor] geared
+toward network monitoring.
 
 Unlike other stream processors that are designed to scale to many servers,
 Ramen is designed to be efficient on a single (or very few) servers.
@@ -25,71 +26,119 @@ It is composed of a central program that serves an API allowing clients to edit
 the configuration. This configuration consists of a graph of operations, each
 of which is given using a specialized high level language inspired by SQL.
 These operations are then compiled by the central server down to machine code
-into individual programs, the _workers_, for parallel execution.
+into individual programs, the xref:Worker[workers], for parallel execution.
 
 Each worker accepts input of a given type and produces output of a given type,
 not unlike SQL rows being consumed by a SQL query that produces other rows used
-as input to a sub query. As in SQL, each row is a _tuple_ of primitive types.
-This stream of tuples flows directly from one worker to the next using
-efficient memory-mapped ring buffers.  All those tuples are statically typed at
-compile time to avoid runtime crash and improve speed.
+as input to a sub query. As in SQL, each row is a xref:Tuple[tuple] of
+primitive types.  This stream of tuples flows directly from one worker to the
+next using efficient memory-mapped ring buffers.  All those tuples are
+statically typed at compile time to avoid runtime failures and improve speed.
 
 == Glossary
 
 [glossary]
-[[AggregationFunction]]
-Aggregation Function::
+[[AggregationFunction]]Aggregation Function::
   A function that build a result value out of several input values.
   The result is output only when some condition is met.
-[[ConfGraph]]
-Configuration Graph::
+
+[[Commit]]Commit::
+  When aggregating incoming xref:Tuple[tuples] into a single
+  xref:Group[group] met some defined condition then the result of the
+  aggregation is going to be output. This is called to _commit_ the group.
+  What happens next to the group depends on the configuration but oftentimes
+  it will merely be deleted.
+
+[[ConfGraph]]Configuration Graph::
   The directed graph of the defined operations. The nodes of this graph
   represent the operations while the edges represents the flow of tuples.
   This graph can be cyclic, with some limitations (see xref:Layer[]).
-[[FQName]]
-Fully Qualified Name::
+
+[[Event]]Event::
+  An individual message to be processed. In Ramen events are
+  xref:Tuples[tuples].
+
+[[FQName]]Fully Qualified Name::
   The fully qualified name of a node is the name of the layer it belongs to,
   then a slash ("/"), then the name of the node. Those FQ names are globally
   unique.
-[[Layer]]
-Layer::
+
+[[Group]]Group::
+  Within the context of a operation, a `group` refers to an aggregation group,
+  ie the set of tuples sharing the same key and aggregated together. This
+  group live as long as it is committed (and then it can be deleted or reduced
+  before resuming the operation). Aggregation groups are therefore closely
+  related to the concept of xref:Windowing[windows].
+
+[[Layer]]Layer::
   A subgraph of the xref:ConfGraph[Configuration Graph]. Containing one or
   several xref:Node[nodes]. This is the smallest subset of the configuration
   that can be edited/compiled/started/stopped. Inside a layer nodes are allowed
   to form cycles, but the layers themselves must form a tree.
   In addition to a set of nodes, a layer also has a name. Those names must be
   globally unique.
-[[Node]]
-Node::
+
+[[Node]]Node::
   Vertices of the xref:ConfGraph[Configuration Graph]. A node is composed of a
   name and an operation. Node names must be unique within a layer.  Every node
   has an input and an output type, which is the types of the tuples they
   consume and produce. These types may only be known after the layer is compiled,
   though. Nodes can receive tuples from any other nodes of the same layer, or
   from any nodes of any layer defined previously.
-[[Nullable]]
-Nullable::
+
+[[Nullable]]Nullable::
   Said of a tuple field that can hold the NULL value. Most fields should not be
   nullable as it implies expensive runtime checks.
-[[Operation]]
-Operation::
+
+[[Operation]]Operation::
   The description, in the SQL-inspired specific language, of how a node produce
   output from its input.
-[[StatefulFunction]]
-Stateful function::
+
+[[RingBuffer]]Ring-Buffer::
+  Fixed sized buffer with a cursor where the writers add content to, and
+  another cursor where the readers read values from, both wrapping around the
+  buffer, thus implementing a fixed size FIFO.
+
+[[RotatingBloomFilters]]Rotating Bloom Filters::
+  Array of https://en.wikipedia.org/wiki/Bloom_filter[bloom filters], each
+  entry coding for a particular slice of time, and rotated as time passes, in
+  order to make (approximate) deletion possible.
+
+[[StatefulFunction]]Stateful function::
   A function that requires an internal state in order to output a result.
   xref:AggregationFunction[Aggregation functions] are a special case of
   stateful functions.
-[[StatelessFunction]]
-Stateless function::
+
+[[StatelessFunction]]Stateless function::
   A function that requires nothing more than its parameters to compute its
   result. For instance, all arithmetic functions are stateless.
-[[Tuple]]
-Tuple::
+
+[[StreamProcessor]]Stream Processor::
+  A software which purpose it to perform user defined computation on a
+  theoretically infinite stream of data.
+  See: https://en.wikipedia.org/wiki/Data_stream_management_system.
+
+[[Tuple]]Tuple::
   What is consumed and produced by nodes.  A set of values, each of its own
   type. Those values are called "fields" and beside its type a field also has a
   name that must be unique in the tuple.  Tuples are the only constructed data
   type, and must itself be composed only of primitive types.
+
+[[Windowing]]Windowing::
+  In a xref:StreamProcessor[stream processor], _windowing_ refers to how
+  incoming events are batched before processing. Usually windows are either
+  sliding or tumbling, with variations (see for instance
+  https://i.stack.imgur.com/mm06A.jpg[this picture]). Ramen is rather unique
+  in this regard that it has n o notion of a window, especially not one bound
+  to time, since it has no preconception of time. Instead, Ramen has explicit
+  conditions for when to stop a aggregation (to xref:Commit[commit] the
+  group), and what to keep from one aggregation to the next. This makes it
+  possible to configure any conceivable windows, including non sequential
+  "windows".
+
+[[Worker]]Worker::
+  One of the possibly many programs generated and executed by Ramen to carry
+  out some operation on the data stream.
 
 == The Configuration Language Reference
 
@@ -140,8 +189,8 @@ Boolean true and false are spelled `true` and `false`.
 
 The type for character strings is called `string`.  A literal string is double
 quoted (with +"+). To include a double-quote, backslash it.  Other characters
-can be backslashed: single quote (`"\'"`), newlines (`"\n"` and `"\r"`),
-horizontal tab (`"\t"`), backspace (`"\b"`) and the backslash itself (`"\\"`).
+can be backslashed: single quote (+"\'"+), newlines (+"\n"+ and +"\r"+),
+horizontal tab (+"\t"+), backspace (+"\b"+) and the backslash itself (+"\\"+).
 
 Some functions consider strings as UTF-8 encoded, some consider strings as mere
 sequence of bytes.
@@ -565,7 +614,7 @@ The following functions are such functions, parameterized by `p` (the
 seasonality) and `k` (how many seasons in the past to consider). Notice that
 in the example above as well as in the functions below the current value is
 skipped: `v(t)` is not in the average. This is because we often want to
-compare such computation over the past seasons with the actual current value.
+compare the past seasons with the current value.
 
 Seasonality is similar to fixed length windows but implemented at the
 function level rather than at the aggregation level.
@@ -767,7 +816,7 @@ READ FILES "/tmp/test/*.csv.gz" PREPROCESSOR "zcat" (
 ==== Receive
 
 A variation of the above: Instead of +READ FILE "pattern"+ just enter +RECEIVE+
-and ramen will accept CSV file POSTed at +/upload/node_fully_qualified_name/+
+and Ramen will accept CSV file POSTed at +/upload/node_fully_qualified_name/+
 and will process them as they were CSV files taken from the file system.
 
 Notice that in that case the CSV file will not be kept in the file system and
@@ -912,11 +961,11 @@ of expressions building a key from any input tuple:
 GROUP BY expression1, expression2, ...
 ----
 
-You can mix stateful functions drawing their state from the group the tuple at
-hands belong to, with stateful functions having a global state. Where a
-stateful function draws its state from depends on the presence or absence of
-the `globally` modifier to the function name. For instance, let's also comp[ute
-the global average salary:
+You can mix stateful functions drawing their state from the group the tuple
+under consideration belongs to, with stateful functions having a global state.
+Where a stateful function draws its state from depends on the presence or
+absence of the `globally` modifier to the function name. For instance, let's
+also compute the global average salary:
 
 [source,sql]
 ----
@@ -1080,7 +1129,7 @@ influenced by the type on the input tuple. This type itself comes mostly from
 the output type of the parent nodes. Therefore changing an ancestor
 operation might change the output type of an unmodified node.
 
-The output tuple is then send to each of the children nodes, before a new input
+The output tuple is then sent to each of the children nodes, before a new input
 tuple is read. No batching takes place in the nodes, although batching does
 take place in the communication in between them (the ring-buffers).  Indeed,
 when a node has no tuple to read it _sleeps_ for a dynamic duration that is
@@ -1096,22 +1145,22 @@ windowing, as described above.
 Ramen is designed to do alerting, that is to receive a lot of information, to
 analyze and triage it, and eventually to send some output result to some
 external program. By design, there is a huge asymmetry between input and
-output: Ramen receives large amount of data and produce very few (but
-hopefully important!) data. This explains why the mechanisms for receiving
-tuples are designed to be efficient, while mechanisms for sending tuples
-outside of are designed to be convenient.
+output: Ramen receives large amount of data and produces very little of it.
+This explains why the mechanisms for receiving tuples are designed to be
+efficient while mechanisms for sending tuples outside are rather designed to
+be convenient.
 
 And what's more convenient than a simple HTTP GET?
 
 A +Group By+ operation can have a +NOTIFY+ clause that will cause Ramen to
-get the specified URL via HTTP whenever a tuple is _emitted_.
+get the specified URL via HTTP whenever a tuple is xref:Commit[committed].
 
 The URL parameter is a string that can contain special placeholders for the
 output tuple field names (with or without the "out" prefix) that will be
 replaced by the actual field value.
 
-So for example, shall we want to notify some service each time a employee named
-"Waldo" is seen, we could write:
+So for example, given a stream of people with both a name and a location, we
+could notify some service each time a person named "Waldo" is spotted:
 
 [source,sql]
 ----
@@ -1164,7 +1213,7 @@ event, if it's known and constant.
 With all these information, the `timeseries` API call will be able to produce
 accurate results.
 
-In the future these might also be usd to obtain default time for functions
+In the future these might also be used to obtain default time for functions
 requiring it (such as the `remember` function).
 
 For instance if we had minutely metric collection from sensors with a field
@@ -1172,7 +1221,7 @@ For instance if we had minutely metric collection from sensors with a field
 
 [source,sql]
 ----
-SELECT whatever FROM sensors
+SELECT whatever FROM sensors WHERE some_condition
 EXPORT EVENT STARTING AT time * 0.001 WITH DURATION 30
 ----
 
@@ -1293,17 +1342,23 @@ Once your configuration is ready you can compile it by GETting `/compile`.
 This will check all the operations and types in details, and generate the
 executable implementing each node, or return any encountered error.
 
-If all went well, you can then GET `/start` for Rigatoni to start all those
+If all went well, you can then GET `/start` for Ramen to start all those
 executables, and then `/stop` to kill them all.
 
 [[export-API]]
 === Receive Exported Tuples
 
 Some operations export some tuples.
-Those tuples can then be obtained from Rigatoni at `/export/NODE_NAME`.
+Those tuples can then be obtained from Ramen at `/export/NODE_NAME`.
 To limit the output, a body can be sent with two optional integer fields:
 `since`, to ask for all tuples _after_ that one, and `max_results` to ask for
 no more than that many tuples.
 
 [[timeseries-API]]
 === Receive Values According to Time
+
+[[upload-API]]
+=== Upload data
+
++RECEIVE+ nodes expect that the data be sent to Ramen, as a CSV, via an HTTP
+POST to +/upload/NODE_NAME/+.
