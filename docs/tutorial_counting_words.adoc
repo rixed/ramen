@@ -1,0 +1,253 @@
+// vim:filetype=asciidoc expandtab spell spelllang=en ts=2 sw=2
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+
+= Counting words
+:toc:
+:icons:
+:lang: en
+:encoding: utf-8
+
+== The problem
+
+In this tutorial we divert from network monitoring to turn to the "hello
+world" of stream processing: a word count. Let's start by acknowledging that
+counting words is a task that's best tackled with a map-reducer than with a
+stream processor, but let's cling to the tradition.
+
+Here is how the word count should work: you send in some prose and the stream
+processor split it into individual words and count how many occurrences of
+each of them have been seen so far, and output that count for each word. It
+must outputs a tuple composed of the word and its count each time this word
+is seen. This is a bit different from the map-reduce version of the word
+counter, where only the final counts are emitted; but there is no such thing
+as a final state for data streams.
+
+This simple task is composed of 3 successive operations:
+
+1. Read the prose and inject it line by line;
+2. Split each line into individual words and output one tuple per word;
+3. For each different word, count how many times we have seen it so far,
+   and output a tuple with this word and count.
+
+=== Accepting prose and outputting lines
+
+So far the only way to inject new data into Ramen is the +LISTEN FOR+
+operation. This operation is meant to understand well known protocols but
+there is no well known protocols to transport prose. Instead, we will use the
+other operation that can read data from the outside: +READ FILE+.
+
++READ FILE+ can either read one (or several) files from the file system, or
+receive them via the HTTP server. It currently supports only files that
+are in the CSV format but will later be expended to accept files in other
+record oriented format footnote:[another good candidate for further expansion
+is to read from a database]. To read files from the file system, the syntax
+is:
+
+[source,sql]
+----
+READ [ AND DELETE ] FILES "...pattern..."
+  [ PREPROCESS WITH "...command..." ]
+  [ SEPARATOR "..." ] [ NULL "..." ]
+  ( field_name1 field_type1 [ [ NOT ] NULL ],
+    field_name1 field_type1 [ [ NOT ] NULL ],
+    ... )
+----
+
+- If +AND DELETE+ is specified then the files will be deleted as soon as
+they have been opened, meaning they won't be injected again if you restart
+Ramen.
+
+- The file pattern here can use the wildcard +*+ anywhere _in a file name_;
+  Ramen will keep looking for new files matching that pattern in that directory, so you can keep copying new files there.
+
+- The optional +PREPROCESS WITH+ stanza specifies an external command to run
+  on each file before reading it, such as for instance "zcat" to uncompress it.
+  The supplied command must read from stdin and output to stdout.
+
+- +SEPARATOR+ and +NULL+ sets the CSV field separator and placeholder value
+  for NULL values. By default they are the coma and the empty string.
+
+- Then follow the description of the fields, with name, type and nullability.
+
+If instead of reading files you prefer to upload them via HTTP, replace the
+first line above by: +RECEIVE+. Then, just POST the files to Ramen at the
+URL +/upload/+ followed by the node fully qualified name. This is what we
+will do in this example for simplicity.
+
+Also, we will send prose not CSV. But if the CSV separator does not appear
+anywhere in the file, then prose is indistinguishable from a CSV file of
+one single field for the whole line. So the first node injecting lines
+would be:
+
+[source,sql]
+----
+RECEIVE SEPARATOR "_" (line STRING NOT NULL)
+----
+
+Go ahead and create a layer named "word_count" with a node named "receiver"
+with that simple operation.
+
+Next, we want to split those lines.
+
+=== String Splitting and Multiple Outputs
+
+The function we need for splitting incoming lines is +split+, which takes two
+strings as arguments: the separator and the string to split, in that order.
+
+It will return from 1 (if the separator is not found) to many results.
+
+When a function outputs several results then as many tuple will be output by
+the node. That is, for one input there will be N outputs. When the SELECT
+statement uses several such functions returning multiple results then the
+Cartesian product of all those results is output.
+
+So for instance the output tuples of +split(" ", "foo bar"), 42+ would be:
+
+  "foo", 42
+  "bar", 42
+
+and the output tuples of +split(" ", "foo bar"), 42, split(" ", "baz bam")+
+would be:
+
+  "foo", 42, "baz"
+  "foo", 42, "bam"
+  "bar", 42, "baz"
+  "bar", 42, "bam"
+
+In our case we just want to split incoming field +line+ by spaces:
+
+[source,sql]
+----
+SELECT SPLIT(" ", line) AS word FROM receiver
+----
+
+We could also turn all words to lowercase with the +lower+ function:
+
+[source,sql]
+----
+SELECT LOWER(SPLIT(" ", line)) AS word FROM receiver
+----
+
+In that case the function +lower+ would of course be applied to each of +split+
+results.
+
+WARNING: Notice that function names are case insensitive but keep in mind that
+field names are _not_!
+
+Easy enough. Let's call this node "splitter" and proceed to the actual
+counting.
+
+=== Counting Words
+
+Intuitively one might expect something like the following SQL:
+
+[source, sql]
+----
+SELECT word, COUNT(*) AS count FROM splitter GROUP BY word
+----
+
+and indeed this is a good starting point. Ramen, though, does not have a
++COUNT+ keyword yet; instead, we could count ourselves by adding ones:
+
+[source,sql]
+-----
+SELECT word, SUM 1 AS count FROM splitter GROUP BY word
+-----
+
+Equivalently, there is also the _virtual field_ +group.#count+ that counts
+how many elements have been added to a group. We will see later about virtual
+fields.
+
+The main difference with SQL, though, is the lack of an implicit moment when to
+stop aggregating. For such a simple problem as word counting, traditional
+windowing where we issue a tuple and flush the aggregation when some condition
+is met won't cut it: we want a new tuple each time a count changes, but we want
+to keep forever increasing the counters.
+
+If we did:
+
+[source,sql]
+----
+SELECT word, SUM 1 AS count FROM splitter GROUP BY word
+COMMIT WHEN out.count <> previous.count
+----
+
+...then we would have a succession of tuple with all counts equal to 2, emitted
+every time a word is encountered for the second time. That would not be very
+useful.
+
+[NOTE]
+Notice there is an +out+ special tuple in addition to the +previous+ special
+tuple we've seen earlier.
+
+[NOTE]
+To understand why we would have a count of 2 rather than 1, you must be aware
+that the previous tuple is initialized with the first one when an new group is
+created (to avoid having to deal with yet another case of nulls). So when a
+word is seen for the first time its previous.count is not 0 as you might expect
+but equal to out.count, that is 1. So one must wait until the second occurrence
+of that word for the +COMMIT+ condition to be true.
+
+What we really want to do is to aggregate the counts forever, but still emit
+a new tuple at every change (aka at every step). Fortunately we can set
+a different condition for when to +COMMIT+ a result (ie. output the result
+tuple) than the condition for when to +FLUSH+ the aggregated group:
+
+[source,sql]
+----
+SELECT word, SUM 1 AS count FROM splitter GROUP BY word
+COMMIT WHEN true FLUSH WHEN false
+EXPORT
+----
+
+Simple, and does the work. You will see later that, not only can we set a
+specific condition as to when to flush but we can also select which tuples to
+flush and which to keep from one window to the next.
+
+There you have it. We added an +EXPORT+ keyword at the end of this new
+"counter" node so that you can see the result in the GUI. Let's now send some
+text.
+
+=== Uploading Some Prose
+
+By default, Ramen listens at port 29380 and so, to
+upload data for our node which fully qualified name is +word_count/receiver+ a
+file has to be HTTP POSTed to
++http://localhost:29380/upload/word_count/receiver+. For instance with curl:
+
+[source,shell]
+----
+~ % curl --data-urlencode "hello world" \
+    http://localhost:29380/upload/word_count/receiver
+{"success": true}
+~ % curl --data "hello again" \
+    http://localhost:29380/upload/word_count/receiver
+{"success": true}
+----
+
+As you can see Ramen is not very picky regarding content types.
+
+On the GUI you should have:
+
+.Raw Output
+[width="50%",cols="^,^",options="header"]
+|========================
+|word +
+string
+|count +
+i8
+|hello |1
+|world |1
+|hello |2
+|again |1
+|========================
+
+as expected we have as many tuples as we had words in the input, with the
+count counting the number of occurrences of each.
+
