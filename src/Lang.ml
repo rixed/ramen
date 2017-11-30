@@ -87,7 +87,7 @@ let string_of_syntax_error =
     " but got "^ got ^" of type "^ got_type
   | InvalidNullability { what ; must_be_nullable } ->
     what ^" must"^ (if must_be_nullable then "" else " not") ^
-    " be nullable but is"^ if must_be_nullable then " not" else ""
+    " be nullable"
   | InvalidCoalesce { what ; must_be_nullable } ->
     "All elements of a COALESCE must be nullable but the last one. "^
     what ^" can"^ (if must_be_nullable then " not" else "") ^" be null."

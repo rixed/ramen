@@ -275,11 +275,8 @@ let put_layer conf headers body =
     bad_request "Layers must have non-empty names"
   (* Check that this layer is new or stopped *)
   else (
-    (* Delete the layer if it already exists.
-     * TODO: Start a transaction with the conf and save it only if there
-     * are no errors. This is OK because we check that the layer is not
-     * running therefore the only modification we will do is in the conf
-     * (no process killed, no thread cancelled). *)
+    (* Delete the layer if it already exists. No worries the conf won't be
+     * changed if there is any error. *)
     C.with_wlock conf (fun () ->
       let%lwt () =
         match Hashtbl.find conf.C.graph.C.layers layer_name with
@@ -880,8 +877,9 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
       let layer, node = lyr_node_of path in
       upload conf headers layer node body
     (* Errors *)
-    | `PUT, _ | `GET, _ | `DELETE, _ ->
-      fail (HttpError (404, "No such resource"))
+    | `PUT, p | `GET, p | `DELETE, p ->
+      let path = String.join "/" p in
+      fail (HttpError (404, "Unknown resource "^ path))
     | _ ->
       fail (HttpError (405, "Method not implemented"))
   in
