@@ -492,7 +492,7 @@ let notify url field_of_tuple tuple =
     fun text tuple ->
       global_substitute re (fun s ->
           let field_name = matched_group 2 s in
-          try field_of_tuple tuple field_name
+          try field_of_tuple tuple field_name |> Uri.pct_encode
           with Not_found ->
             !logger.error "Field %S used in text substitution is not \
                            present in the input!" field_name ;
