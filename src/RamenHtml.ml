@@ -168,6 +168,10 @@ let li = elmt "li"
 let svg width height subs =
   let subs =
     let to_s f = string_of_int (int_of_float f) in
+    (* Specific with and height attributes helps when displaying the
+     * image as loaded form a file., for some reason *)
+    attr "width" (to_s width) ::
+    attr "height" (to_s height) ::
     attr "style" ("width:"^ to_s width ^
                   "; height:"^ to_s height ^
                   "; min-height:"^ to_s height ^";") ::
