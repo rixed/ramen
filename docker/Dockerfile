@@ -67,8 +67,12 @@ HEALTHCHECK CMD wget -O /dev/null http://localhost:29380/graph
 
 # HTTP API:
 EXPOSE 29380/TCP
+# Alerter:
+EXPOSE 29382/TCP
 # Collectd:
 EXPOSE 25826/UDP
+# Fprobe:
+EXPOSE 2055/UDP
 
 LABEL maintainer="rixed-docker@happyleptic.org"
 
@@ -109,6 +113,7 @@ RUN touch /img_creation && find /root /usr /var /lib /bin /sbin -type f | \
               --op 'READ AND DELETE FILES "/tmp/test.csv" PREPROCESS WITH "lz4 -d -c" (smth1 string, smth2 u128)' \
               --op 'SELECT * FROM demo/collectd WHERE COALESCE(plugin = "memory", false) EXPORT EVENT STARTING AT time' \
               --op 'SELECT time, AVG (IF type_instance LIKE "slab%" THEN value ELSE 0) AS slab FROM demo/collectd GROUP BY host, time // 30 COMMIT AND FLUSH WHEN in.time > previous.time + 30 EXPORT EVENT STARTING AT time WITH DURATION 30' \
+              --op 'SELECT 5-ma (packets > 10) >= 4 AS foo FROM demo/netflow' \
               test_layer && \
     ramen compile && \
     ramen run && \
