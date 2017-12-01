@@ -28,7 +28,7 @@ let axis ?(extend_ticks=0.) ?(stroke="#000") ?(stroke_width=1.)
   let mostly_horiz = (if invert then not else identity) mostly_horiz in
   let add (ax, ay) (bx, by) = ax +. bx, ay +. by in
   let goto x y = x *. ux +. y *. vx, x *. uy +. y *. vy in
-  g (
+  g [] (
     (path ~stroke ~stroke_width ~fill:"none" ?stroke_opacity:opacity
       (moveto (x1, y1) ^
       lineto (x2, y2) ^
@@ -48,7 +48,8 @@ let axis ?(extend_ticks=0.) ?(stroke="#000") ?(stroke_width=1.)
         let t = ((v -. v_min) /. (v_max -. v_min)) *. axis_len in
         let tick_start = add (x1, y1) (goto t ~-.tick_length) in
         let tick_stop  = add (x1, y1) (goto t tick_length) in
-        g [ line ?stroke_opacity:opacity ~stroke ~stroke_width tick_start tick_stop ;
+        g []
+          [ line ?stroke_opacity:opacity ~stroke ~stroke_width tick_start tick_stop ;
             line ~stroke ~stroke_width:(stroke_width *. 0.6) ~stroke_opacity:0.1
                  tick_stop (add tick_stop (goto 0. extend_ticks)) ;
             let x, y =
@@ -60,7 +61,7 @@ let axis ?(extend_ticks=0.) ?(stroke="#000") ?(stroke_width=1.)
             let style =
               if mostly_horiz then "text-anchor:middle; dominant-baseline:hanging"
                               else "text-anchor:end; dominant-baseline:central" in
-            g (
+            g [] (
               string_of_v v |>
               String.split_on_char '\n' |>
               List.map (fun s -> s, font_size) |>
@@ -98,12 +99,12 @@ let xy_grid ?(show_vgrid=true) ?stroke ?stroke_width ?font_size
          ?label:y_label ?string_of_v:string_of_y (x_orig, y_min) (x_orig, y_max) vy_min vy_max in
   RamenFormats.reset_all_states () ;
   let y2_axis = match y2 with
-    | None -> g []
+    | None -> g [] []
     | Some (label, string_of_v, vy2_min, vy2_max) ->
       axis ?base:y2_base ?stroke ?stroke_width ?arrow_size ?tick_spacing:y_tick_spacing ?font_size
            ?tick_length ~invert:true ~label ~string_of_v ~opacity:0.5
            (x_max, y_min) (x_max, y_max) vy2_min vy2_max in
-  g [ x_axis ; y_axis ; y2_axis ]
+  g [] [ x_axis ; y_axis ; y2_axis ]
 
 
 (** Draws a XY plot.
@@ -292,7 +293,7 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
     let p = if pen.draw_points then (
         (* TODO *) p
       ) else p in
-    g p in
+    g [] p in
   let avg_char_width = 0.6 in
   let nb_y, max_label_width = fold.fold (fun (nb_y, w) pen _prim _get ->
     let label_str = string_of_label pen.label in
@@ -324,7 +325,7 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
     let width = max width row_width in
     let nb_y = float_of_int (nb_y1 + nb_y2) in
     let y = outer_margin_vert +. inner_margin_vert +. legend_row_height *. nb_y in
-    let s = g [
+    let s = g [] [
       rect ~fill:pen.color ~fill_opacity:1.
            ~stroke_width:1. ~stroke:"#000"
            (outer_margin_horiz +. inner_margin_horiz) y
@@ -346,20 +347,20 @@ let xy_plot ?(attrs=[]) ?(string_of_y=short_string_of_float)
                      ?string_of_x ~string_of_y ?y2 ?x_base ?y1_base ?y2_base
                      (x_axis_xmin, x_axis_xmax) (y_axis_ymin, y_axis_ymax)
                      (vx_min, vx_max) (vy_min.(0), vy_max.(0))
-  and paths = g (map_datasets path_of_dataset)
+  and paths = g [] (map_datasets path_of_dataset)
   and legend =
     if draw_legend <> NoShow then (
       let nb_y1, nb_y2, width, boxes =
         fold.fold legend_of_dataset (0, 0, 0., []) in
-      g (rect ~fill:"#ddd" ~fill_opacity:0.7 ~stroke_width:0.
+      g [] (rect ~fill:"#ddd" ~fill_opacity:0.7 ~stroke_width:0.
               outer_margin_horiz outer_margin_vert
               (inner_margin_horiz *. 2. +. width)
               (inner_margin_vert *. 2. +. (float_of_int (nb_y1 + nb_y2)) *. legend_row_height) ::
          boxes)
-    ) else g [] in
+    ) else g [] [] in
   (* FIXME: xy_plot should return what's inside the SVG, so that we can compose
    * various components, and stop accept attrs as a parameter *)
-  svg svg_width svg_height (grid :: paths :: legend :: attrs)
+  svg svg_width svg_height attrs [ grid ; paths ; legend ]
 
 (* Chronology: represent events with their duration along the time axis,
  * each event can have internal markers. *)
@@ -417,14 +418,14 @@ let chronology ?(svg_width=800.) ?(svg_height=600.)
         let y_text = y_start +.
           float_of_int (1 + (i mod nb_texts_lines_in_bar)) *.
           mark_textline_height in
-        g [ line ~stroke:"#000" ~stroke_width:1. ~stroke_opacity:1.
-                 ~stroke_dasharray:"1,3" (x, y_start) (x, y_stop) ;
+        g [] [ line ~stroke:"#000" ~stroke_width:1. ~stroke_opacity:1.
+                    ~stroke_dasharray:"1,3" (x, y_start) (x, y_stop) ;
             svgtext ~x:(x+.4.) ~y:y_text ~font_size:mark_text_height
                     ~fill:"#000" s ]
         ) b.markers in
     let action = match click_on_bar with
       | None -> None
       | Some a -> Some (fun _ -> a i) in
-    g ?action (bar :: marks) in
+    g ?action [] (bar :: marks) in
   let rects = List.mapi svg_of_bar bars in
-  g [ x_axis ; g rects ]
+  g [] [ x_axis ; g [] rects ]

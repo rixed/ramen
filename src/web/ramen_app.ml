@@ -613,49 +613,49 @@ let layer_to_delete = make_param "layer pending deletion" ""
 
 let breadcrumbs =
   div
-    [ clss "breadcrumbs" ;
-      with_param sel_layer (function
-        NoLayer -> p [ text "Configuration" ]
+    [ clss "breadcrumbs" ]
+    [ with_param sel_layer (function
+        NoLayer -> p [] [ text "Configuration" ]
       | NewLayer ->
         group
           [ p ~action:(fun _ -> set_sel_layer NoLayer)
-              [ clss "actionable" ; text "Configuration" ] ;
-            p [ text ">" ] ;
-            p [ text "New Layer" ] ]
+              [ clss "actionable" ] [ text "Configuration" ] ;
+            p [] [ text ">" ] ;
+            p [] [ text "New Layer" ] ]
       | ExistingLayer layer ->
         with_param sel_node (function
           "" ->
           group
             [ p ~action:(fun _ -> set_sel_layer NoLayer)
-                [ clss "actionable" ; text "Configuration" ] ;
-              p [ text ">" ] ;
-              p [ text layer ] ]
+                [ clss "actionable" ] [ text "Configuration" ] ;
+              p [] [ text ">" ] ;
+              p [] [ text layer ] ]
         | snode ->
           group
             [ p ~action:(fun _ ->
                   set_sel_node None ; set_sel_layer NoLayer)
-                [ clss "actionable" ; text "Configuration" ] ;
-              p [ text ">" ] ;
+                [ clss "actionable" ] [ text "Configuration" ] ;
+              p [] [ text ">" ] ;
               p ~action:(fun _ -> set_sel_node None)
-                [ clss "actionable" ; text layer ] ;
-              p [ text "/" ] ;
-              p [ text (Node.name_of_id snode) ] ])) ]
+                [ clss "actionable" ] [ text layer ] ;
+              p [] [ text "/" ] ;
+              p [] [ text (Node.name_of_id snode) ] ])) ]
 
 let autoreload = make_param "autoreload" true
 let display_temp = make_param "display temp layers" false
 let is_temp layer_name = string_starts_with "temp/" layer_name
 
-let spacer = div [ clss "spacer" ]
+let spacer = div [ clss "spacer" ] []
 
 let header_panel =
   group
     [ div
-      [ id "global" ;
-        div
-          [ clss "title" ;
-            div [ text "Ramen v0.1" ] ;
-            div [ text "running on " ;
-                em [ text "$HOSTNAME$." ] ] ] ;
+      [ id "global" ]
+      [ div
+          [ clss "title" ]
+          [ div [] [ text "Ramen v0.1" ] ;
+            div [] [ text "running on " ;
+                     em [ text "$HOSTNAME$." ] ] ] ;
         breadcrumbs ;
         spacer ;
         with_param display_temp (fun disp ->
@@ -663,31 +663,29 @@ let header_panel =
                       "display temporary layers" in
           button ~action:(fun _ -> toggle display_temp)
             [ clss ("icon actionable" ^ if disp then " selected" else "") ;
-              attr "title" title ; text "temp." ]) ;
+              attr "title" title ]
+            [ text "temp." ]) ;
         with_param autoreload (fun ar ->
           let title = (if ar then "dis" else "en")^ "able auto-reload" in
           button ~action:(fun _ -> toggle autoreload)
             [ clss ("icon actionable" ^ if ar then " selected" else "") ;
-              attr "title" title ; text "⟳" ]) ] ;
+              attr "title" title ]
+            [ text "⟳" ]) ] ;
       with_param last_errors (fun lst ->
         let ps =
           List.map (fun e ->
-            p [ clss (if e.is_error then "error" else "ok") ;
-                text e.message ;
+            p [ clss (if e.is_error then "error" else "ok") ]
+              [ text e.message ;
                 if e.times > 1 then
-                  span [
-                    clss "err-times" ;
-                    text (" × "^ string_of_int e.times) ]
+                  span [ clss "err-times" ]
+                       [ text (" × "^ string_of_int e.times) ]
                 else group [] ]) lst in
-        if ps = [] then group [] else div (id "messages" :: ps)) ]
+        if ps = [] then group [] else div [ id "messages" ] ps) ]
 
 let labeled_value l v =
-  p [ span [
-        clss "label" ;
-        text (l ^ ":") ] ;
-      span [
-        clss "value" ;
-        text v ] ]
+  p [] [
+      span [ clss "label" ] [ text (l ^ ":") ] ;
+      span [ clss "value" ] [ text v ] ]
 
 let with_node node_id f =
   with_param nodes (fun nodes ->
@@ -731,10 +729,8 @@ let icon_of_layer ?(suppress_action=false) layer =
               http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
                 update_graph false g ;
                 resync ())))) in
-  button ?action [
-    clss "icon actionable" ;
-    title alt ;
-    text icon ]
+  button ?action
+    [ clss "icon actionable" ; title alt ] [ text icon ]
 
 let editor_spinning = make_param "editor spinning" false
 
@@ -765,8 +761,8 @@ let layer_panel to_del layer =
    * confirmation dialog on top of the normal tile. *)
   let e = [
     div
-      [ clss "title" ;
-        p [ clss "name" ; text layer.Layer.name ] ;
+      [ clss "title" ]
+      [ p [ clss "name" ] [ text layer.Layer.name ] ;
         with_param spinners (fun spins ->
           Js.Optdef.case (Jstable.find spins (Js.string layer.name))
             (fun () ->
@@ -775,51 +771,52 @@ let layer_panel to_del layer =
                    if is_to_del then None
                    else Some (fun _ -> set layer_to_delete layer.name) in
                 button ?action
-                  [ clss "actionable icon" ; title "delete" ; text "⌫" ]) ;
+                  [ clss "actionable icon" ; title "delete" ] [ text "⌫" ]) ;
                 icon_of_layer ~suppress_action:is_to_del layer ])
             (fun while_ ->
-              button [ clss "icon spinning" ; title while_ ;
-                       text spinner_icon ])) ] ;
-    div (
-      clss "info" ::
-      labeled_value "#nodes" (string_of_int layer.nb_nodes) ::
-      labeled_value "started" (date_or_never layer.last_started) ::
-      labeled_value "stopped" (date_or_never layer.last_stopped) ::
-      (match layer.status with
-      | Edition err when err <> "" ->
-        [ p [ clss "error" ; title err ; text (abbrev 25 err) ] ]
-      | _ -> [])) ]
+              button [ clss "icon spinning" ; title while_ ]
+                     [ text spinner_icon ])) ] ;
+    div
+      [ clss "info" ]
+      (labeled_value "#nodes" (string_of_int layer.nb_nodes) ::
+       labeled_value "started" (date_or_never layer.last_started) ::
+       labeled_value "stopped" (date_or_never layer.last_stopped) ::
+       (match layer.status with
+       | Edition err when err <> "" ->
+         [ p [ clss "error" ; title err ] [ text (abbrev 25 err) ] ]
+       | _ -> [])) ]
   in
   with_param sel_layer (fun slayer ->
     if is_to_del then
       div
-        ( clss "warning layer" ::
-          div
-            [ clss "overwrite1" ;
-              div
-                [ clss "overwrite2" ;
-                  p [ text "Delete layer " ;
+        [ clss "warning layer" ]
+        ( div
+            [ clss "overwrite1" ]
+            [ div
+                [ clss "overwrite2" ]
+                [ p []
+                    [ text "Delete layer " ;
                       em [ text layer.Layer.name ] ;
                       text "?" ] ;
-                  p [ clss "yes-or-no" ;
-                      span ~action:(fun _ -> del_layer layer.name)
-                        [ clss "yes" ; text "yes" ] ;
+                  p [ clss "yes-or-no" ]
+                    [ span ~action:(fun _ -> del_layer layer.name)
+                        [ clss "yes" ] [ text "yes" ] ;
                       text "/" ;
                       span ~action:(fun _ -> set layer_to_delete "")
-                        [ clss "no" ; text "NO" ] ] ] ] :: e )
+                        [ clss "no" ] [ text "NO" ] ] ] ] :: e )
     else if slayer = ExistingLayer layer.name then
       div ~action:(fun _ -> set_sel_layer NoLayer ; set_sel_node None)
-        (clss "selected-actionable layer" :: e)
+        [ clss "selected-actionable layer" ] e
     else
       div ~action:(fun _ ->
           let l = ExistingLayer layer.name in
           set_sel_layer l ;
           set_sel_node None ;
           set layer_to_delete "")
-        (clss "actionable layer" :: e))
+        [ clss "actionable layer" ] e)
 
 let layers_panel =
-  div [
+  div [] [
     with_param display_temp (fun disp_temp ->
       with_param layers (fun layers ->
         with_param layer_to_delete (fun to_del ->
@@ -838,14 +835,14 @@ let layers_panel =
           set_sel_layer NewLayer ;
           set_sel_node None ;
           set layer_to_delete "") in
-      button ~action [ clss c ; text "new layer" ]) ]
+      button ~action [ clss c ] [ text "new layer" ]) ]
 
 let pretty_th ?action c title subtitle =
-  th ?action (
-    (if c <> "" then (List.cons (clss c)) else identity)
-      (p title ::
-       if subtitle = "" then [] else
-         [ p [ clss "type" ; text subtitle ] ]))
+  th ?action
+    (if c <> "" then [ clss c ] else [])
+    (p [] title ::
+     if subtitle = "" then []
+     else [ p [ clss "type" ] [ text subtitle ] ])
 
 (* filter_param is a string param with a search string *)
 let node_thead_col ?filter_param (title, subtitle, sortable) =
@@ -862,8 +859,8 @@ let node_thead_col ?filter_param (title, subtitle, sortable) =
           pretty_th ?action c
             [ text title ;
               elmt "label"
-                [ clss "searchbox" ;
-                  text "🔍" ;
+                [ clss "searchbox" ]
+                [ text "🔍" ;
                   (* We have to resync explicitly because inputs don't
                    * resync for some reason that may not be valid any
                    * longer *)
@@ -873,13 +870,13 @@ let node_thead_col ?filter_param (title, subtitle, sortable) =
                       attr "placeholder" "search..." ;
                       attr "value" flt ] ] ] subtitle))
 
-let tds v = td [ text v ]
+let tds v = td [] [ text v ]
 let tdo = function None -> tds "n.a." | Some v -> tds v
-let tdi v = td [ clss "number" ; text (string_of_int v) ]
-let tdf v = td [ clss "number" ; text (str_of_float v) ]
+let tdi v = td [ clss "number" ] [ text (string_of_int v) ]
+let tdf v = td [ clss "number" ] [ text (str_of_float v) ]
 (* Sometime we use floats to get bigger integers.
  * Do not add nbsp to those: *)
-let tdfi v = td [ clss "number" ; text (string_of_float v) ]
+let tdfi v = td [ clss "number" ] [ text (string_of_float v) ]
 
 let short_node_list ?(max_len=20) layer lst =
   let pref = layer ^"/" in
@@ -894,7 +891,8 @@ let short_node_list ?(max_len=20) layer lst =
 
 let node_tbody_row node =
   let tdh w xs =
-    td [ clss "number" ; text xs ;
+    td [ clss "number" ]
+       [ text xs ;
          hr [ attr "width" (string_of_float w) ] ] in
   let tdih tot x =
     if tot = 0. then tdi x else
@@ -908,7 +906,7 @@ let node_tbody_row node =
     if tot = 0. then tdfi x else
     let w = 100. *. x /. tot in
     tdh w (string_of_float x) in
-  let na = td [ clss "number" ; text "n.a." ] in
+  let na = td [ clss "number" ] [ text "n.a." ] in
   let tdoi = function None -> na | Some v -> tdi v
   and tdofih tot = function None -> na | Some v -> tdfih tot v
   in
@@ -923,8 +921,8 @@ let node_tbody_row node =
         tdfih tot_sels node.sel_tuple_count ;
         tdfih tot_outs node.out_tuple_count ;
         tdofih tot_grps node.group_count ;
-        td [ clss "export" ;
-             text (if node.exporting then "✓" else " ") ] ;
+        td [ clss "export" ]
+           [ text (if node.exporting then "✓" else " ") ] ;
         tdfh tot_cpu node.cpu_time ;
         tdfh tot_in_sleep node.in_sleep ;
         tdfh tot_out_sleep node.out_sleep ;
@@ -942,10 +940,10 @@ let node_tbody_row node =
     with_param sel_node (fun sel ->
       if sel = node.Node.id then
         tr ~action:(fun _ -> set_sel_node None)
-          (clss "selected-actionable" :: cols)
+          [ clss "selected-actionable" ] cols
       else
         tr ~action:(fun _ -> set_sel_node (Some node))
-          (clss "actionable" :: cols)))
+          [ clss "actionable" ] cols))
 
 let node_sorter col =
   (* Numbers are sorted greater to smaller while strings are sorted
@@ -1006,20 +1004,20 @@ let node_columns =
 
 let wide_table lst =
   div
-    [ clss "wide" ;
-      table lst ]
+    [ clss "wide" ]
+    [ table [] lst ]
 
 let node_filter = make_param "node filter" ""
 
 let nodes_panel =
   wide_table [
-    thead [
+    thead [] [
       Array.fold_left (fun lst (col_name, _, _ as col) ->
         let filter_param =
           if col_name = "name" then Some node_filter
           else None in
         node_thead_col ?filter_param col :: lst) [] node_columns |>
-      List.rev |> tr ] ;
+      List.rev |> tr [] ] ;
     (* Table body *)
     with_param display_temp (fun disp_temp ->
       with_param nodes (fun nodes ->
@@ -1038,13 +1036,13 @@ let nodes_panel =
                 List.fast_sort (node_sorter sel_col) in
               List.map (fun (_, p) ->
                 with_param p node_tbody_row) rows |>
-              tbody))))) ;
+              tbody []))))) ;
     with_param nodes_sum (fun (tot_nodes, tot_ins, tot_sels, tot_outs,
                                tot_grps, tot_cpu, tot_ram, tot_in_sleep,
                                tot_out_sleep, tot_in_bytes,
                                tot_out_bytes) ->
-      tfoot [
-        tr [
+      tfoot [] [
+        tr [] [
           tds "Total:" ; tdfi tot_nodes ; tds "" ; tdfi tot_ins ;
           tdfi tot_sels ; tdfi tot_outs ; tdfi tot_grps ;
           tds "" ; tdf tot_cpu ; tdf tot_in_sleep ; tdf tot_out_sleep ;
@@ -1057,10 +1055,10 @@ let field_panel f =
 let input_panel =
   with_param sel_node (fun sel ->
     if sel = "" then
-      p [ clss "nodata" ;
-          text "Select a node to see its input fields" ]
+      p [ clss "nodata" ]
+        [ text "Select a node to see its input fields" ]
     else with_node sel (fun node ->
-      ol (List.map (fun f -> li [ field_panel f ]) node.input_type)))
+      ol [] (List.map (fun f -> li [] [ field_panel f ]) node.input_type)))
 
 let can_plot_type = function
     Some (TFloat | TU8 | TU16 | TU32 | TU64 | TU128 |
@@ -1070,23 +1068,23 @@ let can_plot_type = function
 let op_panel =
   with_param sel_node (fun sel ->
     if sel = "" then
-      p [ clss "nodata" ;
-          text "Select a node to see the operation it performs" ]
+      p [ clss "nodata" ]
+        [ text "Select a node to see the operation it performs" ]
     else with_node sel (fun node ->
       div
-        [ clss "operation" ;
-          elmt "pre" [ text node.operation ] ]))
+        [ clss "operation" ]
+        [ elmt "pre" [] [ text node.operation ] ]))
 
 let tail_panel =
   let row fs r =
     let rec loop tds ci = function
-      [] -> tr (List.rev tds)
+      [] -> tr [] (List.rev tds)
     | field::fs ->
       let tds =
-        td [ clss field.Field.typ_str ;
-             match r.(ci) with
-               None -> span [ clss "null" ; text "NULL" ]
-             | Some v -> text v ] :: tds in
+        (td [ clss field.Field.typ_str ]
+            [ match r.(ci) with
+                None -> span [ clss "null" ] [ text "NULL" ]
+              | Some v -> text v ]) :: tds in
       loop tds (ci + 1) fs in
     loop [] 0 fs
   and th_field ci f =
@@ -1101,62 +1099,63 @@ let tail_panel =
               else ci :: cols in
             set sel_output_cols toggled ;
             reload_chart () in
-          let c = if is_selected then "selected actionable" else "actionable" in
+          let c = if is_selected then "selected actionable"
+                                 else "actionable" in
           c, Some action
         else "", None in
       pretty_th ?action c [ text f.Field.name ] f.typ_disp)
   in
   with_param sel_node (fun sel ->
     if sel = "" then
-      p [ clss "nodata" ;
-          text "Select a node to see its output" ]
+      p [ clss "nodata" ]
+        [ text "Select a node to see its output" ]
     else with_node sel (fun node ->
       let lame_excuse t =
-        tbody [ tr [ td
-          [ attri "colspan" (List.length node.output_type) ;
-            p [ text t ] ] ] ] in
+        tbody [] [ tr [] [ td
+          [ attri "colspan" (List.length node.output_type) ]
+          [ p [] [ text t ] ] ] ] in
       wide_table
-        [ thead [ tr (List.mapi th_field node.output_type) ] ;
+        [ thead [] [ tr [] (List.mapi th_field node.output_type) ] ;
           (if not node.exporting then
             lame_excuse ("node "^ node.id ^" does not export data")
           else
             with_param tail_rows (fun rows ->
               Array.fold_left (fun l r ->
                 row node.output_type r :: l) [] rows |>
-              List.rev |> tbody))]))
+              List.rev |> tbody []))]))
 
 let chart_type_selector =
   with_param chart_type (fun cur_ct ->
     let sel label ct =
       if ct = cur_ct then
-        button [ clss "selected" ; text label ]
+        button [ clss "selected" ] [ text label ]
       else
         button ~action:(fun _ -> set chart_type ct)
-          [ clss "actionable" ; text label ] in
+          [ clss "actionable" ] [ text label ] in
     div
-      [ clss "chart-buttons" ;
-        sel "normal" RamenChart.NotStacked ;
+      [ clss "chart-buttons" ]
+      [ sel "normal" RamenChart.NotStacked ;
         sel "stacked" RamenChart.Stacked ;
         sel "stacked+centered" RamenChart.StackedCentered ])
 
 let show_zero_selector =
   with_param show_zero (fun fz ->
     div
-      [ clss "chart-buttons" ;
-        button ~action:(fun _ -> toggle show_zero)
-          [ clss (if fz then "selected-actionable" else "actionable") ;
-            text "force zero" ] ])
+      [ clss "chart-buttons" ]
+      [ button ~action:(fun _ -> toggle show_zero)
+          [ clss (if fz then "selected-actionable" else "actionable") ]
+          [ text "force zero" ] ])
 
 let timechart_panel =
   with_param sel_output_cols (function
     | [] ->
-      p [ clss "nodata" ;
-          text "Select one or several columns to plot them." ]
+      p [ clss "nodata" ]
+        [ text "Select one or several columns to plot them." ]
     | _ ->
       with_param chart_points (fun field_pts ->
         if field_pts = [] || Array.length (snd (List.hd field_pts)) = 0
-        then p [ clss "nodata" ;
-                 text "No data received yet" ]
+        then p [ clss "nodata" ]
+               [ text "No data received yet" ]
         else
           (* We consider times are the same for all fields *)
           let fst_field_name, fst_pts = List.hd field_pts in
@@ -1178,7 +1177,7 @@ let timechart_panel =
               ) init field_pts } in
           let svg_width = 800. and svg_height = 400. in
           let attrs = [ clss "chart" ] in
-          div
+          div []
             [ time_selector ~action:reload_chart chart_duration chart_relto ;
               chart_type_selector ;
               show_zero_selector ;
@@ -1195,8 +1194,8 @@ let timechart_panel =
 let form_input label value placeholder =
   let size = String.length !value + 10 in
   div
-    [ clss "input" ;
-      elmt "label"
+    [ clss "input" ]
+    [ elmt "label" []
         [ text label ;
           input ~action:(fun v -> value := v ; change edited_layer)
             [ attr "type" "text" ;
@@ -1219,21 +1218,21 @@ let form_input_large label value placeholder =
   let cols = max 20 (cols + 5)
   and rows = max 5 (rows + 4) in
   div
-    [ clss "input" ;
-      elmt "label"
+    [ clss "input" ]
+    [ elmt "label" []
         [ text label ;
           br ;
           textarea ~action:(fun v -> value := v ; change edited_layer)
             [ attr "rows" (string_of_int rows) ;
               attr "cols" (string_of_int cols) ;
               attr "placeholder" placeholder ;
-              attr "spellcheck" "false" ;
-              text !value ] ] ]
+              attr "spellcheck" "false" ]
+            [ text !value ] ] ]
 
 let node_editor_panel (name, operation) =
   div
-    [ clss "node-edition" ;
-      form_input "Name" name "enter a node name" ;
+    [ clss "node-edition" ]
+    [ form_input "Name" name "enter a node name" ;
       form_input_large "Operation" operation "enter operation here" ;
       hr [] ]
 
@@ -1262,8 +1261,8 @@ let save_layer _ =
 let layer_editor_panel =
   with_param edited_layer (fun edl ->
     div
-      [ id "editor" ;
-        h1 edl.title ;
+      [ id "editor" ]
+      [ h1 edl.title ;
         form_input "Name" edl.new_layer_name "enter a node name" ;
         h2 "Nodes" ;
         group (List.map node_editor_panel edl.edited_nodes) ;
@@ -1271,36 +1270,36 @@ let layer_editor_panel =
         with_param editor_spinning (fun spinning ->
           group
             [ if spinning then
-                button [ text "+" ]
+                button [] [ text "+" ]
               else
                 button ~action:(fun _ -> add_edited_node ())
-                  [ clss "actionable" ; text "+" ] ;
+                  [ clss "actionable" ] [ text "+" ] ;
               if spinning then
-                button [ text "Cancel" ]
+                button [] [ text "Cancel" ]
               else
                 button ~action:(fun _ -> set_sel_layer NoLayer)
-                  [ clss "actionable" ; text "Cancel" ] ;
+                  [ clss "actionable" ] [ text "Cancel" ] ;
               if spinning then
-                button [ text "Save" ]
+                button [] [ text "Save" ]
               else
                 button ~action:save_layer
-                  [ clss "actionable" ; text "Save" ] ;
+                  [ clss "actionable" ] [ text "Save" ] ;
               if spinning then
-                button [ clss "spinning" ; text spinner_icon ]
+                button [ clss "spinning" ] [ text spinner_icon ]
               else group [] ]) ])
 
 let output_panel =
   div
-    [ id "output" ;
-      h1  "Raw Output" ;
+    [ id "output" ]
+    [ h1  "Raw Output" ;
       tail_panel ;
-      div [ id "timechart" ; timechart_panel ] ]
+      div [ id "timechart" ] [ timechart_panel ] ]
 
 let top_layers =
-  div [ id "layers" ; h1 "Layers" ; layers_panel ]
+  div [ id "layers" ] [ h1 "Layers" ; layers_panel ]
 
 let top_nodes =
-  div [ id "nodes" ; h1 "Nodes" ; nodes_panel ]
+  div [ id "nodes" ] [ h1 "Nodes" ; nodes_panel ]
 
 let dom =
   group
@@ -1309,7 +1308,7 @@ let dom =
         "" ->
         with_param sel_layer (function
           NoLayer ->
-          div [ id "top" ; top_layers ; top_nodes ]
+          div [ id "top" ] [ top_layers ; top_nodes ]
         | ExistingLayer slayer ->
           with_param layers (fun layers ->
             match List.assoc slayer layers with
@@ -1317,29 +1316,30 @@ let dom =
             | layer ->
               with_param layer (fun layer ->
                 div
-                  [ id "top" ; top_layers ; top_nodes ;
+                  [ id "top" ]
+                  [ top_layers ; top_nodes ;
                     if layer.status <> Running then
                       layer_editor_panel
                     else
-                      p [ clss "nodata" ;
-                          text "Running layer cannot be edited" ] ]))
+                      p [ clss "nodata" ]
+                        [ text "Running layer cannot be edited" ] ]))
         | NewLayer ->
-          div [ id "top" ; top_layers ; layer_editor_panel ])
+          div [ id "top" ] [ top_layers ; layer_editor_panel ])
       | snode ->
         match List.assoc snode nodes.value with
         | exception Not_found -> group []
         | node ->
           let node = node.value in
           group
-            [ div [ id "top" ; top_layers ; top_nodes ] ;
+            [ div [ id "top" ] [ top_layers ; top_nodes ] ;
               div
-                [ id "details" ;
-                  div [ id "inputs" ; h1 "Input fields" ; input_panel ] ;
-                  div [ id "operation" ; h1 "Operation" ; op_panel ] ] ;
+                [ id "details" ]
+                [ div [ id "inputs" ] [ h1 "Input fields" ; input_panel ] ;
+                  div [ id "operation" ] [ h1 "Operation" ; op_panel ] ] ;
               can_export_with_layer node (function
                 true -> output_panel
-              | false -> p [ clss "nodata" ;
-                             text "This node exports no data" ]) ]) ]
+              | false -> p [ clss "nodata" ]
+                           [ text "This node exports no data" ]) ]) ]
 
 let () =
   let rld_graph () =

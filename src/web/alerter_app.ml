@@ -230,7 +230,7 @@ let reload_for_current_page () =
  *)
 
 let todo what =
-  p [ text ("TODO: "^ what) ]
+  p [] [ text ("TODO: "^ what) ]
 
 let live_incidents =
   with_param team_selection (fun tsel ->
@@ -248,40 +248,40 @@ let live_incidents =
                 reload_ongoing ()) in
             let need_ack = a.escalation <> None in
             let row =
-              (if with_team_col then td [ text a.team ] else group []) ::
-              [ td [ text (date_of_ts a.started_firing) ] ;
-                td [ text alert_txt ] ;
-                td [ if need_ack then
+              (if with_team_col then td [] [ text a.team ] else group []) ::
+              [ td [] [ text (date_of_ts a.started_firing) ] ;
+                td [] [ text alert_txt ] ;
+                td [] [ if need_ack then
                        button ~action:ack
                          [ clss "icon actionable" ;
-                           attr "title" "Acknowledge this alert" ;
-                           text "Ack" ]
+                           title "Acknowledge this alert" ]
+                         [ text "Ack" ]
                      else group [] ] ;
-                td [ button ~action:stop
+                td [] [ button ~action:stop
                         [ clss "icon actionable" ;
-                          attr "title" "Terminate this alert" ;
-                          text "Stop" ] ] ] |> tr in
+                          title "Terminate this alert" ]
+                        [ text "Stop" ] ] ] |> tr [] in
             row :: prev) prev i.Incident.alerts) [] incidents in
       table
-        [ clss "incidents" ;
-          thead
-            [ tr
-              ((if with_team_col then th [ text "team" ] else group []) ::
-              [ th [ text "since" ] ;
-                th [ text "alert" ] ;
-                th [] ]) ] ;
-          tbody incident_rows ]))
+        [ clss "incidents" ]
+        [ thead []
+            [ tr []
+              ((if with_team_col then th [] [ text "team" ] else group []) ::
+              [ th [] [ text "since" ] ;
+                th [] [ text "alert" ] ;
+                th [] [] ]) ] ;
+          tbody [] incident_rows ]))
 
 let selected_incident_detail =
   with_param selected_incident (function
   | None ->
-    p [ text "Select an incident to see its composition" ]
+    p [] [ text "Select an incident to see its composition" ]
   | Some i ->
     with_param selected_alert (fun sel_alert ->
-      div
+      div []
         [ div
-            [ clss "alert_list" ;
-              h2 "alerts" ;
+            [ clss "alert_list" ]
+            [ h2 "alerts" ;
               group
                 (List.map (fun a ->
                     let c =
@@ -290,27 +290,28 @@ let selected_incident_detail =
                       | _ -> "actionable" in
                     p ~action:(fun _ ->
                         set selected_alert (Some a))
-                      [ clss c ; text a.Alert.name ]
+                      [ clss c ] [ text a.Alert.name ]
                   ) i.Incident.alerts) ] ;
           match sel_alert with
           | None ->
-            p [ text "Select an alert to see its history" ]
+            p [] [ text "Select an alert to see its history" ]
           | Some a ->
             div
-              [ clss "log_list" ;
-                h2 "log" ;
-                table
-                  [ thead
-                      [ tr
-                        [ th [ text "sent" ] ;
-                          th [ text "recvd" ] ;
-                          th [ text "event" ] ] ] ;
-                    tbody
+              [ clss "log_list" ]
+              [ h2 "log" ;
+                table []
+                  [ thead []
+                      [ tr []
+                        [ th [] [ text "sent" ] ;
+                          th [] [ text "recvd" ] ;
+                          th [] [ text "event" ] ] ] ;
+                    tbody []
                       (List.rev a.Alert.log |>
                        List.map (fun l ->
-                          tr [ td [ text (date_of_ts l.Alert.event_time) ] ;
-                               td [ text (date_of_ts l.current_time) ] ;
-                               td [ text (Alert.string_of_event l.event) ] ]
+                          tr []
+                            [ td [] [ text (date_of_ts l.Alert.event_time) ] ;
+                              td [] [ text (date_of_ts l.current_time) ] ;
+                              td [] [ text (Alert.string_of_event l.event) ] ]
                         )) ] ] ]))
 
 let chronology incidents dur relto_event =
@@ -339,12 +340,12 @@ let chronology incidents dur relto_event =
     2. *. margin_vert +. 20. (* axis approx height *) +.
     float_of_int (List.length bars) *. bar_height in
   div
-    [ clss "chronology" ;
-      div
-        [ clss "wide" ;
-          svg svg_width svg_height
-            [ clss "chart" ;
-              let base_time =
+    [ clss "chronology" ]
+    [ div
+        [ clss "wide" ]
+        [ svg svg_width svg_height
+            [ clss "chart" ]
+            [ let base_time =
                 if relto_event && !event_time > 0. then !event_time
                 else now () in
               RamenChart.chronology
@@ -365,8 +366,8 @@ let chronology incidents dur relto_event =
 
 let page_live =
   div
-    [ id "page-live" ;
-      h2 "Opened incidents" ;
+    [ id "page-live" ]
+    [ h2 "Opened incidents" ;
       live_incidents ;
       h2 "Chronology" ;
       with_param known_incidents (fun incidents ->
@@ -387,19 +388,19 @@ let page_team team =
   (* TODO: edit inhibitions *)
   let open GetTeam in
   div
-    [ clss "team-info" ;
-      h2 ("Team "^ team.name) ;
+    [ clss "team-info" ]
+    [ h2 ("Team "^ team.name) ;
       h3 "Members" ;
-      ul (List.map (fun m -> li [ text m ]) team.members) ;
+      ul [] (List.map (fun m -> li [] [ text m ]) team.members) ;
       h3 "Inhibitions" ;
-      ul (List.map (fun i -> li [ inhibition i ]) team.inhibitions) ]
+      ul [] (List.map (fun i -> li [] [ inhibition i ]) team.inhibitions) ]
 
 let page_teams =
   with_param teams (fun teams ->
     with_param team_selection (fun sel ->
       div
-        (clss "team-list" ::
-         fold_teams teams sel [] (fun prev team ->
+        [ clss "team-list" ]
+        (fold_teams teams sel [] (fun prev team ->
            page_team team :: prev))))
 
 let page_hand_over = todo "hand over"
@@ -408,7 +409,7 @@ let page_reports = todo "reports"
 
 let page_history =
   with_param known_incidents (fun incidents ->
-    div
+    div []
       [ h2 "Chronology" ;
         time_selector ~action:reload_history histo_duration histo_relto ;
         with_param histo_duration (fun dur ->
@@ -416,18 +417,18 @@ let page_history =
             chronology incidents dur relto_event)) ])
 
 let tab label page =
-  div ~action:(fun _ ->
-      set current_page page ;
-      reload_for_current_page ())
-    [ with_param current_page (fun p ->
-        if p = page then clss "tab selected"
-                    else clss "tab actionable") ;
-      p [ text label ] ]
+  with_param current_page (fun cp ->
+    div ~action:(fun _ ->
+        set current_page page ;
+        reload_for_current_page ())
+      [ if cp = page then clss "tab selected"
+                     else clss "tab actionable" ]
+      [ p [] [ text label ] ])
 
 let menu =
   div
-    [ clss "tabs" ;
-      tab "Live" PageLive ;
+    [ clss "tabs" ]
+    [ tab "Live" PageLive ;
       tab "Team" PageTeam ;
       tab "Hand Over" PageHandOver ;
       tab "History" PageHistory ;
@@ -442,7 +443,7 @@ let page =
     | Reports -> page_reports)
 
 let dom =
-  div [ menu ; page ]
+  div [] [ menu ; page ]
 
 let () =
   reload_for_current_page () ;

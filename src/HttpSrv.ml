@@ -722,7 +722,8 @@ let plot conf _headers layer_name node_name params =
     add = Hashtbl.add } in
   let open RamenHtml in
   let html =
-    if nb_pts = 0 then svg svg_width svg_height [ svgtext "No data" ] else
+    if nb_pts = 0 then svg svg_width svg_height [] [ svgtext "No data" ]
+    else
     let vx_start = fst_times.(0) and vx_stop = fst_times.(nb_pts-1) in
     let fold = RamenChart.{ fold = fun f i ->
       List.fold_left (fun i (pen, (_times, data)) ->

@@ -148,13 +148,10 @@ and rem_listener tag (elmt : Dom.element Js.t) =
   set_listener_opt tag elmt None
 
 and insert (parent : Dom.element Js.t) child_idx vnode =
-  print_2 (Js.string ("Appending "^ string_of_vnode vnode ^
+  print_2 (Js.string ("Appending "^ string_of_html vnode ^
                       " as child "^ string_of_int child_idx ^" of"))
           parent ;
   match vnode with
-  | Attribute (n, v) ->
-    parent##setAttribute (Js.string n) (Js.string v) ;
-    0
   | InView ->
     (* TODO: smooth (https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollIntoView) *)
     (* TODO: make this true/false an InView parameter *)
@@ -168,12 +165,14 @@ and insert (parent : Dom.element Js.t) child_idx vnode =
     let next = parent##.childNodes##item child_idx in
     Dom.insertBefore parent data next ;
     1
-  | Element { tag ; svg ; action ; subs ; _ } ->
+  | Element { tag ; svg ; attrs ; action ; subs ; _ } ->
 		let elmt =
       if svg then
         doc##createElementNS Dom_svg.xmlns (Js.string tag)
       else
         doc##createElement (Js.string tag) in
+    List.iter (fun (n, v) ->
+      elmt##setAttribute (Js.string n) (Js.string v)) attrs ;
     option_may (fun action ->
       let dom_elmt = Js.Unsafe.coerce elmt in
       set_listener tag dom_elmt action) action ;
@@ -198,11 +197,6 @@ and insert (parent : Dom.element Js.t) child_idx vnode =
 
 and replace (parent : Dom.element Js.t) child_idx last_vnode vnode =
   match last_vnode, vnode with
-  | Attribute (last_name, last_value),
-    Attribute (name, value) when last_name = name ->
-      if value <> last_value then
-        parent##setAttribute (Js.string name) (Js.string value) ;
-      0
   | Text last_t, Text t ->
       if t <> last_t then (
         let elmt = parent##.childNodes##item child_idx |>
@@ -211,15 +205,39 @@ and replace (parent : Dom.element Js.t) child_idx last_vnode vnode =
                    coercion_motherfucker_can_you_do_it in
         elmt##.data := Js.string t) ;
       1
-  | Element { tag = last_tag ; svg = last_svg ; action = last_action ;
-              subs = last_subs },
-    Element { tag ; svg ; action ; subs }
+  | Element { tag = last_tag ; svg = last_svg ; attrs = last_attrs ;
+              action = last_action ; subs = last_subs },
+    Element { tag ; svg ; attrs ; action ; subs }
     when last_tag = tag && svg = last_svg ->
-      (* We cannot compare old and new actions :-( *)
       let elmt = parent##.childNodes##item child_idx |>
                  coercion_motherfucker_can_you_do_it |>
                  Dom.CoerceTo.element |>
                  coercion_motherfucker_can_you_do_it in
+      (* Note: attrs are already sorted *)
+      let rec merge a1 a2 =
+        match a1, a2 with
+        | [], [] -> ()
+        | (last_n, last_v)::r1, (n, v)::r2 ->
+          (match compare last_n n with
+          | 0 ->
+            if last_v <> v then
+              elmt##setAttribute (Js.string n) (Js.string v) ;
+            merge r1 r2
+          | -1 ->
+            elmt##removeAttribute (Js.string last_n) ;
+            merge r1 a2
+          | _ ->
+            elmt##setAttribute (Js.string n) (Js.string v) ;
+            merge a1 r2)
+        | (last_n, _)::r1, [] ->
+          elmt##removeAttribute (Js.string last_n) ;
+          merge r1 a2
+        | [], (n, v)::r2 ->
+          elmt##setAttribute (Js.string n) (Js.string v) ;
+          merge a1 r2
+      in
+      merge last_attrs attrs ;
+      (* We cannot compare old and new actions :-( *)
       option_may (fun _ ->
         rem_listener tag elmt) last_action ;
       option_may (fun action ->
@@ -242,7 +260,6 @@ and replace (parent : Dom.element Js.t) child_idx last_vnode vnode =
         replace parent child_idx last_vnode new_vnode
     | None -> 0)
   | InView, InView -> 0
-  (* TODO: have to try Fun ! *)
   | _ ->
     remove parent child_idx (flat_length last_vnode) ;
     (* Insert will refresh last *)
@@ -283,7 +300,7 @@ and sync (parent : Dom.element Js.t) child_idx vnode =
       | None -> false)
     | _ -> false in
   let worthy = is_worthy vnode in
-  print (Js.string ("sync vnode="^ string_of_vnode vnode ^
+  print (Js.string ("sync vnode="^ string_of_html vnode ^
                     if worthy then " (worthy)" else "")) ;
   match vnode with
   | Element { subs ; _ } ->
@@ -299,7 +316,7 @@ and sync (parent : Dom.element Js.t) child_idx vnode =
         ) subs) ;
     1
   | Text _ -> 1
-  | Attribute _ | InView -> 0
+  | InView -> 0
   | Group { subs } ->
     if worthy then (
       let i = ref 0 in
@@ -435,15 +452,15 @@ let time_selector ?action duration_param relto_param =
   with_param duration_param (fun cur_dur ->
     let sel label dur =
       if dur = cur_dur then
-        button [ clss "selected" ; text label ]
+        button [ clss "selected" ] [ text label ]
       else
         button ~action:(fun _ ->
             set duration_param dur ;
             option_may apply action)
-          [ clss "actionable" ; text label ] in
+          [ clss "actionable" ] [ text label ] in
     div
-      [ clss "chart-buttons" ;
-        sel "last 10m" 600. ;
+      [ clss "chart-buttons" ]
+      [ sel "last 10m" 600. ;
         sel "last hour" 3600. ;
         sel "last 3h" (3. *. 3600.) ;
         sel "last 8h" (8. *. 3600.) ;
@@ -454,9 +471,9 @@ let time_selector ?action duration_param relto_param =
         with_param relto_param (function
           | true ->
               button ~action
-                [ clss "actionable selected" ;
-                  text "rel.to event time" ]
+                [ clss "actionable selected" ]
+                [ text "rel.to event time" ]
           | false ->
               button ~action
-                [ clss "actionable" ;
-                  text "rel.to event time" ]) ])
+                [ clss "actionable" ]
+                [ text "rel.to event time" ]) ])

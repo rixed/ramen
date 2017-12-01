@@ -68,9 +68,11 @@ let grid ?base n start stop =
 (* Then HTML as a tree: *)
 
 type vnode =
-  | Attribute of string * string
   | Text of string
-  | Element of { tag : string ; svg : bool ; action : (string -> unit) option ; subs : vnode list }
+  | Element of { tag : string ; svg : bool ;
+                 attrs : (string * string) list ;
+                 action : (string -> unit) option ;
+                 subs : vnode list }
   (* Name of the parameter and function that, given this param, generate the vnode *)
   | Fun of { param : string ; f : unit -> vnode ;
              last : (int * vnode) ref }
@@ -78,31 +80,16 @@ type vnode =
   | Group of { subs : vnode list }
   | InView (* No production, put parent in view when created *)
 
-let rec string_of_vnode = function
-  | Attribute (n, v) -> "attr("^ n ^", "^ abbrev 10 v ^")"
-  | Text s -> "text(\""^ abbrev 15 s ^"\")"
-  | Element { tag ; subs ; _ } -> tag ^"("^ string_of_tree subs ^")"
-  | Group { subs } -> "group("^ string_of_tree subs ^")"
-  | Fun { param ; _ } -> "fun("^ param ^")"
-  | InView -> "in-view"
-and string_of_tree subs =
-  List.fold_left (fun s tree ->
-    s ^ (if s = "" then "" else ";") ^ string_of_vnode tree) "" subs
-
 let rec string_of_html ?(in_svg=false) = function
-  | Attribute (n, v) -> n ^"='"^ v ^"'"
   | Text s -> s
-  | Element { tag ; subs ; svg ; _ } ->
-    let attrs, others = List.fold_left (fun (a, o) -> function
-        | Attribute _ as n -> n::a, o
-        | _ as n -> a, n::o) ([], []) subs in
+  | Element { tag ; attrs ; subs ; svg ; _ } ->
     "<"^ tag ^ (if svg && not in_svg then
                   " xmlns=\"http://www.w3.org/2000/svg\" \
                     xmlns:xlink=\"http://www.w3.org/1999/xlink\""
                 else "") ^
-      List.fold_left (fun s a ->
-      s ^" "^ string_of_html ~in_svg:svg a) "" attrs ^">"^
-    string_of_htmls ~in_svg:svg others ^
+      List.fold_left (fun s (n, v) ->
+      s ^" "^ n ^"='"^ v ^"'") "" attrs ^">"^
+    string_of_htmls ~in_svg:svg subs ^
     "</"^ tag ^">"
   | Group { subs } -> string_of_htmls ~in_svg subs
   | Fun { last = { contents = _, html } ; _ } ->
@@ -115,18 +102,22 @@ let rec flat_length = function
   | Group { subs } ->
     List.fold_left (fun s e -> s + flat_length e) 0 subs
   | Element _ | Text _ -> 1
-  | Attribute _ | InView -> 0
+  | InView -> 0
   | Fun { last ; _ } ->
     flat_length (snd !last)
 
-let elmt tag ?(svg=false) ?action subs =
-  Element { tag ; svg ; action ; subs }
+let elmt tag ?(svg=false) ?action attrs subs =
+  let attrs = List.sort (fun (n1, v1) (n2, v2) ->
+    match compare n1 n2 with
+    | 0 -> compare v1 v2
+    | x -> x) attrs in
+  Element { tag ; svg ; attrs ; action ; subs }
+
+let attr (n : string) (v : string) = n, v
 
 let group subs = Group { subs }
 
 let text s = Text s
-
-let attr n v = Attribute (n, v)
 
 let in_view = InView
 
@@ -135,10 +126,10 @@ let div = elmt "div"
 let clss = attr "class"
 let attri n i = attr n (string_of_int i)
 let attrsf n f = attr n (short_string_of_float f)
-let attr_opt n =
-  function None -> group [] | Some v -> attr n v
-let attrsf_opt n =
-  function None -> group [] | Some v -> attrsf n v
+let attr_opt n vo lst =
+  match vo with None -> lst | Some v -> attr n v :: lst
+let attrsf_opt n vo lst =
+  match vo with None -> lst | Some v -> attrsf n v :: lst
 let id = attr "id"
 let title = attr "title"
 let span = elmt "span"
@@ -151,22 +142,22 @@ let td = elmt "td"
 let th = elmt "th"
 let p = elmt "p"
 let button = elmt "button"
-let input = elmt "input"
+let input ?action attrs = elmt ?action "input" attrs []
 let textarea = elmt "textarea"
-let br = elmt "br" []
-let h1 t = elmt "h1" [ text t ]
-let h2 t = elmt "h2" [ text t ]
-let h3 t = elmt "h3" [ text t ]
-let hr = elmt "hr"
-let em = elmt "em"
+let h1 ?(attrs=[]) t = elmt "h1" attrs [ text t ]
+let h2 ?(attrs=[]) t = elmt "h2" attrs [ text t ]
+let h3 ?(attrs=[]) t = elmt "h3" attrs [ text t ]
+let br = elmt "br" [] []
+let hr attrs = elmt "hr" attrs []
+let em = elmt "em" []
 let ul = elmt "ul"
 let ol = elmt "ol"
 let li = elmt "li"
 
 (* Some more for SVG *)
 
-let svg width height subs =
-  let subs =
+let svg width height attrs subs =
+  let attrs =
     let to_s f = string_of_int (int_of_float f) in
     (* Specific with and height attributes helps when displaying the
      * image as loaded form a file., for some reason *)
@@ -175,56 +166,54 @@ let svg width height subs =
     attr "style" ("width:"^ to_s width ^
                   "; height:"^ to_s height ^
                   "; min-height:"^ to_s height ^";") ::
-    subs in
-  elmt ~svg:true "svg" subs
+    attrs in
+  elmt ~svg:true "svg" attrs subs
 
 let g = elmt ~svg:true "g"
 
 let rect
     ?(attrs=[]) ?fill ?stroke ?stroke_opacity ?stroke_dasharray ?fill_opacity
     ?stroke_width x y width height =
-  let attrs = List.rev_append attrs
-    [ attrsf "x" x ;
-      attrsf "y" y ;
-      attrsf "width" width ;
-      attrsf "height" height ;
-      attr_opt "fill" fill ;
-      attrsf_opt "stroke-opacity" stroke_opacity ;
-      attr_opt "stroke-dasharray" stroke_dasharray ;
-      attrsf_opt "fill-opacity" fill_opacity ;
-      attr_opt "stroke" stroke ;
-      attrsf_opt "stroke-width" stroke_width ] in
-  elmt ~svg:true "rect" attrs
+  let attrs =
+    attrsf "x" x ::
+    attrsf "y" y ::
+    attrsf "width" width ::
+    attrsf "height" height :: attrs in
+  let attrs = attr_opt "fill" fill attrs in
+  let attrs = attrsf_opt "stroke-opacity" stroke_opacity attrs in
+  let attrs = attr_opt "stroke-dasharray" stroke_dasharray attrs in
+  let attrs = attrsf_opt "fill-opacity" fill_opacity attrs in
+  let attrs = attr_opt "stroke" stroke attrs in
+  let attrs = attrsf_opt "stroke-width" stroke_width attrs in
+  elmt ~svg:true "rect" attrs []
 
 let circle
     ?(attrs=[]) ?cx ?cy ?fill ?stroke ?stroke_opacity ?stroke_dasharray
     ?fill_opacity ?stroke_width r =
-  let attrs = List.rev_append attrs
-    [ attrsf "r" r ;
-      attrsf_opt "cx" cx ;
-      attrsf_opt "cy" cy ;
-      attr_opt "fill" fill ;
-      attrsf_opt "stroke-opacity" stroke_opacity ;
-      attr_opt "stroke-dasharray" stroke_dasharray ;
-      attrsf_opt "fill-opacity" fill_opacity ;
-      attr_opt "stroke" stroke ;
-      attrsf_opt "stroke-width" stroke_width ] in
-  elmt ~svg:true "circle" attrs
+  let attrs = attrsf "r" r :: attrs in
+  let attrs = attr_opt "fill" fill attrs in
+  let attrs = attr_opt "stroke-dasharray" stroke_dasharray attrs in
+  let attrs = attr_opt "stroke" stroke attrs in
+  let attrs = attrsf_opt "cx" cx attrs in
+  let attrs = attrsf_opt "cy" cy attrs in
+  let attrs = attrsf_opt "stroke-opacity" stroke_opacity attrs in
+  let attrs = attrsf_opt "fill-opacity" fill_opacity attrs in
+  let attrs = attrsf_opt "stroke-width" stroke_width attrs in
+  elmt ~svg:true "circle" attrs []
 
 let path
     ?(attrs=[]) ?style ?transform ?fill ?stroke ?stroke_width
     ?stroke_opacity ?stroke_dasharray ?fill_opacity d =
-  let attrs = List.rev_append attrs
-    [ attr "d" d ;
-      attr_opt "style" style ;
-      attr_opt "transform" transform ;
-      attr_opt "fill" fill ;
-      attrsf_opt "stroke-opacity" stroke_opacity ;
-      attr_opt "stroke-dasharray" stroke_dasharray ;
-      attrsf_opt "fill-opacity" fill_opacity ;
-      attr_opt "stroke" stroke ;
-      attrsf_opt "stroke-width" stroke_width ] in
-  elmt ~svg:true "path" attrs
+  let attrs = attr "d" d :: attrs in
+  let attrs = attr_opt "style" style attrs in
+  let attrs = attr_opt "transform" transform attrs in
+  let attrs = attr_opt "fill" fill attrs in
+  let attrs = attrsf_opt "stroke-opacity" stroke_opacity attrs in
+  let attrs = attr_opt "stroke-dasharray" stroke_dasharray attrs in
+  let attrs = attrsf_opt "fill-opacity" fill_opacity attrs in
+  let attrs = attr_opt "stroke" stroke attrs in
+  let attrs = attrsf_opt "stroke-width" stroke_width attrs in
+  elmt ~svg:true "path" attrs []
 
 let moveto (x, y) =
   "M "^ short_string_of_float x ^" "^ short_string_of_float y ^" "
@@ -242,40 +231,39 @@ let closepath = "Z"
 let line
     ?(attrs=[]) ?style ?stroke ?stroke_width ?stroke_opacity
     ?stroke_dasharray (x1, y1) (x2, y2) =
-  let attrs = List.rev_append attrs
-    [ attrsf "x1" x1 ;
-      attrsf "y1" y1 ;
-      attrsf "x2" x2 ;
-      attrsf "y2" y2 ;
-      attr_opt "style" style ;
-      attrsf_opt "stroke-opacity" stroke_opacity ;
-      attr_opt "stroke-dasharray" stroke_dasharray ;
-      attr_opt "stroke" stroke ;
-      attrsf_opt "stroke-width" stroke_width ] in
-  elmt ~svg:true "line" attrs
+  let attrs =
+    attrsf "x1" x1 ::
+    attrsf "y1" y1 ::
+    attrsf "x2" x2 ::
+    attrsf "y2" y2 :: attrs in
+  let attrs = attr_opt "style" style attrs in
+  let attrs = attrsf_opt "stroke-opacity" stroke_opacity attrs in
+  let attrs = attr_opt "stroke-dasharray" stroke_dasharray attrs in
+  let attrs = attr_opt "stroke" stroke attrs in
+  let attrs = attrsf_opt "stroke-width" stroke_width attrs in
+  elmt ~svg:true "line" attrs []
 
 let svgtext
     ?(attrs=[]) ?x ?y ?dx ?dy ?style ?rotate ?text_length ?length_adjust
     ?font_family ?font_size ?fill ?stroke ?stroke_width ?stroke_opacity
     ?stroke_dasharray ?fill_opacity txt =
-  let attrs = List.rev_append attrs
-    [ attrsf_opt "x" x ;
-      attrsf_opt "y" y ;
-      attrsf_opt "dx" dx ;
-      attrsf_opt "dy" dy ;
-      attr_opt "style" style ;
-      attrsf_opt "rotate" rotate ;
-      attrsf_opt "textLength" text_length ;
-      attrsf_opt "lengthAdjust" length_adjust ;
-      attr_opt "font-family" font_family ;
-      attrsf_opt "font-size" font_size ;
-      attr_opt "fill" fill ;
-      attrsf_opt "stroke-opacity" stroke_opacity ;
-      attr_opt "stroke-dasharray" stroke_dasharray ;
-      attrsf_opt "fill-opacity" fill_opacity ;
-      attr_opt "stroke" stroke ;
-      attrsf_opt "stroke-width" stroke_width ] in
-  elmt ~svg:true "text" (text txt :: attrs)
+  let attrs = attrsf_opt "x" x attrs in
+  let attrs = attrsf_opt "y" y attrs in
+  let attrs = attrsf_opt "dx" dx attrs in
+  let attrs = attrsf_opt "dy" dy attrs in
+  let attrs = attr_opt "style" style attrs in
+  let attrs = attrsf_opt "rotate" rotate attrs in
+  let attrs = attrsf_opt "textLength" text_length attrs in
+  let attrs = attrsf_opt "lengthAdjust" length_adjust attrs in
+  let attrs = attr_opt "font-family" font_family attrs in
+  let attrs = attrsf_opt "font-size" font_size attrs in
+  let attrs = attr_opt "fill" fill attrs in
+  let attrs = attrsf_opt "stroke-opacity" stroke_opacity attrs in
+  let attrs = attr_opt "stroke-dasharray" stroke_dasharray attrs in
+  let attrs = attrsf_opt "fill-opacity" fill_opacity attrs in
+  let attrs = attr_opt "stroke" stroke attrs in
+  let attrs = attrsf_opt "stroke-width" stroke_width attrs in
+  elmt ~svg:true "text" attrs [ text txt ]
 
 (* Takes a list of (string * font_size) *)
 let svgtexts
