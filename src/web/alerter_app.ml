@@ -72,7 +72,7 @@ let log_entry_of_js js =
   Alert.{
     current_time = of_field js "current_time" Js.to_float ;
     event_time = of_field js "event_time" Js.to_float ;
-    event = log_event_of_js js }
+    event = of_field js "event" log_event_of_js }
 
 let alert_of_js js =
   Alert.{
