@@ -237,31 +237,39 @@ let live_incidents =
     let with_team_col = tsel = AllTeams in
     with_param known_incidents (fun incidents ->
       let incident_rows =
-        List.fold_left (fun prev i ->
-          List.fold_left (fun prev a ->
-            let alert_txt = a.Alert.name in
-            let ack _ =
-              http_get ("/ack/"^ string_of_int a.id) (fun _ ->
-                reload_ongoing ())
-            and stop _ =
-              http_get ("/stop/"^ string_of_int a.id) (fun _ ->
-                reload_ongoing ()) in
-            let need_ack = a.escalation <> None in
-            let row =
-              (if with_team_col then td [] [ text a.team ] else group []) ::
-              [ td [] [ text (date_of_ts a.started_firing) ] ;
-                td [] [ text alert_txt ] ;
-                td [] [ if need_ack then
-                       button ~action:ack
-                         [ clss "icon actionable" ;
-                           title "Acknowledge this alert" ]
-                         [ text "Ack" ]
-                     else group [] ] ;
-                td [] [ button ~action:stop
-                        [ clss "icon actionable" ;
-                          title "Terminate this alert" ]
-                        [ text "Stop" ] ] ] |> tr [] in
-            row :: prev) prev i.Incident.alerts) [] incidents in
+        with_param selected_alert (fun sel_alert ->
+          List.fold_left (fun prev i ->
+            List.fold_left (fun prev a ->
+              let alert_txt = a.Alert.name in
+              let ack _ =
+                http_get ("/ack/"^ string_of_int a.id) (fun _ ->
+                  reload_ongoing ())
+              and stop _ =
+                http_get ("/stop/"^ string_of_int a.id) (fun _ ->
+                  reload_ongoing ()) in
+              let need_ack = a.escalation <> None in
+              let row =
+                tr ~action:(fun _ ->
+                    set selected_incident (Some i) ;
+                    set selected_alert (Some a))
+                  [ clss (
+                    (match sel_alert with Some sa when sa == a -> "selected "
+                                        | _ -> "") ^"actionable") ]
+                  [ (if with_team_col then td [] [ text a.team ] else group []) ;
+                    td [] [ text (date_of_ts a.started_firing) ] ;
+                    td [] [ text alert_txt ] ;
+                    td [] [ if need_ack then
+                           button ~action:ack
+                             [ clss "icon actionable" ;
+                               title "Acknowledge this alert" ]
+                             [ text "Ack" ]
+                         else group [] ] ;
+                    td [] [ button ~action:stop
+                            [ clss "icon actionable" ;
+                              title "Terminate this alert" ]
+                            [ text "Stop" ] ] ] in
+              row :: prev) prev i.Incident.alerts) [] incidents |>
+              tbody []) in
       table
         [ clss "incidents" ]
         [ thead []
@@ -270,7 +278,7 @@ let live_incidents =
               [ th [] [ text "since" ] ;
                 th [] [ text "alert" ] ;
                 th [] [] ]) ] ;
-          tbody [] incident_rows ]))
+          incident_rows ]))
 
 let selected_incident_detail =
   with_param selected_incident (function
