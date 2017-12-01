@@ -325,6 +325,7 @@ let chronology incidents dur relto_event =
     match a.stopped_firing with
     | None -> m
     | Some t -> (t, "Stopped") :: m in
+  let now = now () in
   let bars = List.map (fun i ->
     RamenChart.{
       start = Some (Incident.started i) ;
@@ -332,10 +333,37 @@ let chronology incidents dur relto_event =
       color = RamenColor.random_of_string (Incident.team_of i) ;
       markers = List.fold_left (fun prev a ->
           List.rev_append (markers_of_alert a) prev
-        ) [] i.alerts }) incidents
-  and margin_vert = 15.
-  and bar_height = 36.
-  and svg_width = 800. in
+        ) [] i.alerts }) incidents in
+  (* Guess a good svg_width given the time range and min duration
+   * between markers. *)
+  let ts =
+    List.fold_left (fun i bar ->
+        List.fold_left (fun prev (t, _) -> t :: prev
+          ) i bar.RamenChart.markers
+      ) [] bars |>
+    List.fast_sort compare in
+  let fst_lst_mi =
+    List.fold_left (fun (fst_lst_mi) t ->
+      match fst_lst_mi with
+      | None -> (* first mark *)
+        Some (t, t, None)
+      | Some (fst, prev, mi) ->
+        Some (
+          fst, t,
+          let dt = t -. prev in
+          if dt < min_float then mi else
+          (match mi with None -> Some dt
+                       | Some mi -> Some (min mi dt)))
+      ) None ts in
+  let min_svg_width = 800. and max_svg_width = 4000. and min_pix = 30. in
+  let svg_width = match fst_lst_mi with
+    | None | Some (_, _, None) -> 800. (* 0 or 1 mark? wtv. *)
+    | Some (fst, lst, Some min_sp) ->
+      let w = min_pix *. (lst -. fst) /. min_sp in
+      if w < min_svg_width then min_svg_width else
+      if w > max_svg_width then max_svg_width else w in
+  let margin_vert = 15.
+  and bar_height = 36. in
   let svg_height =
     2. *. margin_vert +. 20. (* axis approx height *) +.
     float_of_int (List.length bars) *. bar_height in
@@ -347,7 +375,7 @@ let chronology incidents dur relto_event =
             [ clss "chart" ]
             [ let base_time =
                 if relto_event && !event_time > 0. then !event_time
-                else now () in
+                else now in
               RamenChart.chronology
                 ~svg_width:svg_width ~svg_height:svg_height
                 ~margin_bottom:(margin_vert+.10.) (* for the scrollbar *)
