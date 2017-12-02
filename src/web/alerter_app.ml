@@ -350,23 +350,30 @@ let chronology incidents dur relto_event =
           ) i bar.RamenChart.markers
       ) [] bars |>
     List.fast_sort compare in
+  let past_marks = Array.create 4 0. in (* past 4 marks *)
   let fst_lst_mi =
     List.fold_left (fun (fst_lst_mi) t ->
       match fst_lst_mi with
       | None -> (* first mark *)
-        Some (t, t, None)
-      | Some (fst, prev, mi) ->
+        Some (t, None, 0)
+      | Some (fst, mi, idx) ->
+        let idx' = (idx + 1) mod (Array.length past_marks) in
+        let dt = t -. past_marks.(idx) in
+        past_marks.(idx) <- t ;
         Some (
-          fst, t,
-          let dt = t -. prev in
-          if dt < min_float then mi else
-          (match mi with None -> Some dt
-                       | Some mi -> Some (min mi dt)))
+          fst,
+          (if dt < min_float then mi else
+           match mi with None -> Some dt
+                       | Some mi -> Some (min mi dt)),
+          idx')
       ) None ts in
   let min_svg_width = 800. and max_svg_width = 4000. and min_pix = 30. in
   let svg_width = match fst_lst_mi with
-    | None | Some (_, _, None) -> 800. (* 0 or 1 mark? wtv. *)
-    | Some (fst, lst, Some min_sp) ->
+    | None | Some (_, None, _) -> 800. (* 0 or 1 mark? wtv. *)
+    | Some (fst, Some min_sp, idx) ->
+      let prev_idx =
+        (idx - 1 + Array.length past_marks) mod (Array.length past_marks) in
+      let lst = past_marks.(prev_idx) in
       let w = min_pix *. (lst -. fst) /. min_sp in
       if w < min_svg_width then min_svg_width else
       if w > max_svg_width then max_svg_width else w in
