@@ -20,13 +20,13 @@ depends: [
   "inotify"
   "binocle"
   "owl" {>= "0.2.9"}
-  "sqlite3" {build}
-  "num" {build}
-  "ppp" {build}
+  "sqlite3"
+  "num"
+  "ppp"
   "js_of_ocaml" {build & >= "3.0.1"}
   "js_of_ocaml-ppx" {build}
-  "cmdliner" {build}
-  "cryptohash" {build}
-  "syslog" {build}
+  "cmdliner"
+  "cryptohash"
+  "syslog"
   "qcheck" {test}
 ]
