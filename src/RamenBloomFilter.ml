@@ -1,6 +1,7 @@
 (* Small Bloom Filter for the novelty operator. *)
 open Batteries
 open RamenLog
+open Helpers
 
 (* TODO: use RamenBitmask *)
 type t =
@@ -10,7 +11,6 @@ type t =
     mutable nb_bits_set : int }
 
 let make nb_bits nb_keys =
-  let max_int_for_random = 0x3FFFFFFF in
   let len = (nb_bits + 7)/ 8 in
   { bytes = Bytes.make len (Char.chr 0) ;
     nb_bits ; nb_keys ; nb_bits_set = 0 ;

@@ -122,6 +122,7 @@ let fold_teams teams selection init f =
 (* Main views of the application: *)
 
 type page = PageLive | PageTeam | PageHandOver | PageHistory | Reports
+          | Configuration
 let current_page = make_param "tab" PageLive
 
 (* Incidents *)
@@ -450,6 +451,21 @@ let page_hand_over = todo "hand over"
 
 let page_reports = todo "reports"
 
+let page_config =
+  div [ id "configuration" ]
+    [ p []
+        [ a [ href "/config.db" ]
+            [ text "download database" ] ] ;
+      p []
+        [ elmt "form"
+          [ attr "action" "/config.db" ;
+            attr "method" "POST" ;
+            attr "enctype" "multipart/form-data" ]
+          [ input [ attr "type" "file" ;
+                    attr "name" "config.db" ] ;
+            button [ attr "type" "submit" ]
+                   [ text "Upload" ] ] ] ]
+
 let page_history =
   with_param known_incidents (fun incidents ->
     div []
@@ -475,7 +491,8 @@ let menu =
       tab "Team" PageTeam ;
       tab "Hand Over" PageHandOver ;
       tab "History" PageHistory ;
-      tab "Reports" Reports ]
+      tab "Reports" Reports ;
+      tab "Configuration" Configuration ]
 
 let page =
   with_param current_page (function
@@ -483,7 +500,8 @@ let page =
     | PageTeam -> page_teams
     | PageHandOver -> page_hand_over
     | PageHistory -> page_history
-    | Reports -> page_reports)
+    | Reports -> page_reports
+    | Configuration -> page_config)
 
 let dom =
   div [] [ menu ; page ]

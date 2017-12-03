@@ -775,7 +775,46 @@ struct
     AlertOps.stop state i a Manual now ;
     respond_ok ()
 
-  let start port cert_opt key_opt state www_dir =
+  let download_db _state config_db _headers =
+    serve_raw_file Consts.sqlite_content_type config_db
+
+  let upload_db _state config_db headers body =
+    (* Get the file content out of the form-data: *)
+    let content_type = get_content_type headers in
+    let%lwt data = match
+      let open CodecMultipartFormData in
+      parse_multipart_args content_type body |>
+      List.find (fun (name, _) -> name = "config.db") with
+      | exception Not_found -> bad_request "Cannot find config.db"
+      | exception e -> bad_request (Printexc.to_string e)
+      | _, { value ; content_type ; _ }  ->
+        if content_type <> "application/octet-stream" then
+          bad_request ("Bad content type for config.db file: expected \
+                        application/octet-stream but got "^ content_type)
+        else return value in
+    (* A temporary file name in the same directory of the actual
+     * config.db so we can rename it in place: *)
+    let tmp =
+      config_db ^".tmp."^
+      string_of_int (Random.int max_int_for_random) in
+    let%lwt () =
+      Lwt_stream.of_string data |>
+      Lwt_io.chars_to_file tmp in
+    catch
+      (fun () ->
+        let db = open_config_db tmp in
+        ignore db ; (* Good enough that we made it here. *)
+        !logger.info "Replacing %S" config_db ;
+        let%lwt () = Lwt_unix.unlink config_db in
+        let%lwt () = Lwt_unix.rename tmp config_db in
+        respond_ok ())
+      (fun e ->
+        let msg = Printexc.to_string e in
+        !logger.error "Cannot use uploaded config: %s" msg ;
+        let%lwt () = Lwt_unix.unlink tmp in
+        bad_request msg)
+
+  let start port cert_opt key_opt state config_db www_dir =
     let router meth path params headers body =
       let alert_id_of_string s =
         match int_of_string s with
@@ -803,6 +842,11 @@ struct
         | `GET, ["stop" ; id] ->
           let%lwt id = alert_id_of_string id in
           get_stop state id
+        (* Upload/Download of the sqlite configuration *)
+        | `GET, ["config.db"] ->
+          download_db state config_db headers
+        | `POST, ["config.db"] ->
+          upload_db state config_db headers body
         (* Web UI *)
         | `GET, ([]|["index.html"]) ->
           if www_dir = "" then
@@ -908,7 +952,7 @@ let start_all debug daemonize to_stderr logdir save_file config_db
   if daemonize then do_daemonize () ;
   Lwt_main.run (
     let alerter_state = get_state save_file config_db default_team in
-    HttpSrv.start http_port ssl_cert ssl_key alerter_state www_dir)
+    HttpSrv.start http_port ssl_cert ssl_key alerter_state config_db www_dir)
 
 let start_cmd =
   Term.(

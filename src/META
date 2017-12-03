@@ -6,4 +6,4 @@ requires = "lwt.ppx batteries stdint parsercombinator cohttp-lwt-unix
             inotify.lwt binocle owl"
 # To build ramen you will also need:
 #   sqlite3 unix num ppp js_of_ocaml js_of_ocaml-ppx cmdliner cryptohash
-#   syslog
+#   syslog net_codecs

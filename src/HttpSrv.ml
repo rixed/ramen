@@ -761,7 +761,7 @@ let upload conf headers layer node body =
   match node.N.operation with
   | ReadCSVFile { where = ReceiveFile ; _ } ->
     let dir = C.upload_dir_of_node conf.C.persist_dir node in
-    let ct = get_content_type headers in
+    let ct = get_content_type headers |> String.lowercase in
     let content =
       if ct = Consts.urlencoded_content_type then Uri.pct_decode body
       else if ct = Consts.text_content_type then body

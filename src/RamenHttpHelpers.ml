@@ -112,6 +112,10 @@ let content_type_of_ext = function
 let ext_of_file fname =
   let _, ext = String.rsplit fname ~by:"." in ext
 
+let serve_raw_file ct fname =
+  let headers = Header.init_with "Content-Type" ct in
+  Server.respond_file ~headers ~fname ()
+
 let serve_file path file replace =
   let fname = path ^"/"^ file in
   let%lwt body = read_whole_file fname in
@@ -123,9 +127,9 @@ let not_implemented msg = fail (HttpError (501, msg))
 let bad_request msg = fail (HttpError (400, msg))
 let bad_request_exn msg = raise (HttpError (400, msg))
 
+(* Case is significant for multipart boundaries *)
 let get_content_type headers =
-  Header.get headers "Content-Type" |? Consts.json_content_type |>
-  String.lowercase
+  Header.get headers "Content-Type" |? Consts.json_content_type
 
 let get_accept headers =
   let h =
@@ -163,7 +167,8 @@ let switch_accepted headers al =
 
 (* Helper to deserialize an incoming json *)
 let of_json headers what ppp body =
-  if get_content_type headers <> Consts.json_content_type then
+  let ct = get_content_type headers |> String.lowercase in
+  if ct <> Consts.json_content_type then
     bad_request "Bad content type"
   else (
     try PPP.of_string_exc ppp body |> return

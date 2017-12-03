@@ -8,6 +8,7 @@ let svg_content_type = "image/svg+xml"
 let js_content_type = "application/javascript"
 let ocaml_marshal_type = "application/marshaled.ocaml"
 let urlencoded_content_type = "application/x-www-form-urlencoded"
+let sqlite_content_type = "application/x-sqlite3"
 
 let in_tuple_count_metric = "in_tuple_count"
 let selected_tuple_count_metric = "selected_tuple_count"
