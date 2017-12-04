@@ -9,12 +9,13 @@ open AlerterSharedTypesJS_noPPP
 (* Conversions from to Js *)
 
 let inhibition_of_js js =
-  let what = of_field js "what" Js.to_string
+  let id = of_field js "id" identity
+  and what = of_field js "what" Js.to_string
   and start_date = of_field js "start_date" Js.to_float
-  and end_date = of_field js "end_date" Js.to_float
+  and stop_date = of_field js "stop_date" Js.to_float
   and who = of_field js "who" Js.to_string
   and why = of_field js "why" Js.to_string in
-  Inhibition.{ what ; start_date ; end_date ; who ; why }
+  Inhibition.{ id ; what ; start_date ; stop_date ; who ; why }
 
 let team_of_js js =
   let name = of_field js "name" Js.to_string
@@ -91,8 +92,7 @@ let alert_of_js js =
 let incident_of_js i =
   Incident.{
     id = of_field i "id" identity ;
-    alerts = of_field i "alerts" (list_of_js alert_of_js) ;
-    stfu = of_field i "stfu" Js.to_bool }
+    alerts = of_field i "alerts" (list_of_js alert_of_js) }
 
 (*
  * States
@@ -107,17 +107,20 @@ let teams : GetTeam.resp param = make_param "teams" []
 type team_selection = AllTeams | SingleTeam of string
 let team_selection = make_param "team selection" AllTeams
 
-let team_is_selected sel team =
+let is_team_selected sel team =
   match sel with
   | AllTeams -> true
   | SingleTeam n -> team = n
 
 let fold_teams teams selection init f =
   List.fold_left (fun prev team ->
-      if team_is_selected selection team.GetTeam.name then
+      if is_team_selected selection team.GetTeam.name then
         f prev team
       else prev
     ) init teams
+
+let find_team teams name =
+  List.find (fun t -> t.GetTeam.name = name) teams
 
 (* Main views of the application: *)
 
@@ -127,13 +130,14 @@ let current_page = make_param "tab" PageLive
 
 (* Incidents *)
 
-let event_time = ref 0.
+let event_time = make_param "event time" 0.
+let chart_now = make_param "current time" (now ())
 
 let update_event_time_from_alert a =
-  event_time :=
-    List.fold_left (fun ma l ->
+  set event_time
+    (List.fold_left (fun ma l ->
         max ma l.Alert.event_time
-      ) !event_time a.Alert.log
+      ) event_time.value a.Alert.log)
 
 let update_event_time_from_incident i =
   List.iter update_event_time_from_alert i.Incident.alerts
@@ -170,7 +174,7 @@ let fold_incidents incidents team_selection init f =
       match incident.Incident.alerts with
       | [] -> prev
       | a :: _ ->
-        if team_is_selected team_selection a.Alert.team then
+        if is_team_selected team_selection a.Alert.team then
           f prev incident
         else prev
     ) init incidents
@@ -194,6 +198,7 @@ let reload_ongoing () =
     let incidents = list_of_js incident_of_js resp in
     set_known_incidents incidents ;
     List.iter update_event_time_from_incident incidents ;
+    set chart_now (now ()) ;
     resync ())
 
 let reload_teams () =
@@ -208,7 +213,7 @@ let reload_history () =
     | SingleTeam t -> "/history/"^ enc t in
   let date_range =
     if histo_relto.value then (
-      let until = !event_time in
+      let until = event_time.value in
       let since = until -. histo_duration.value in
       "range="^ enc (string_of_float since ^","^ string_of_float until)
     ) else
@@ -241,7 +246,8 @@ let live_incidents =
         with_param selected_alert (fun sel_alert ->
           List.fold_left (fun prev i ->
             List.fold_left (fun prev a ->
-              let alert_txt = a.Alert.name in
+              let with_action_cols = tsel = SingleTeam a.Alert.team
+              and alert_txt = a.Alert.name in
               let ack _ =
                 http_get ("/ack/"^ string_of_int a.id) (fun _ ->
                   reload_ongoing ())
@@ -259,16 +265,23 @@ let live_incidents =
                   [ (if with_team_col then td [] [ text a.team ] else group []) ;
                     td [] [ text (date_of_ts a.started_firing) ] ;
                     td [] [ text alert_txt ] ;
-                    td [] [ if need_ack then
+                    td [] [
+                      if need_ack then
+                        if with_action_cols then
                            button ~action:ack
                              [ clss "icon actionable" ;
                                title "Acknowledge this alert" ]
                              [ text "Ack" ]
-                         else group [] ] ;
-                    td [] [ button ~action:stop
-                            [ clss "icon actionable" ;
-                              title "Terminate this alert" ]
-                            [ text "Stop" ] ] ] in
+                        else
+                          text "not acked"
+                      else group [] ] ;
+                    td [] [
+                      if with_action_cols then
+                        button ~action:stop
+                          [ clss "icon actionable" ;
+                            title "Terminate this alert" ]
+                          [ text "Stop" ]
+                      else group [] ] ] in
               row :: prev) prev i.Incident.alerts) [] incidents |>
               tbody []) in
       table
@@ -334,7 +347,6 @@ let chronology incidents dur relto_event =
     match a.stopped_firing with
     | None -> m
     | Some t -> (t, "Stopped") :: m in
-  let now = now () in
   let bars = List.map (fun i ->
     RamenChart.{
       start = Some (Incident.started i) ;
@@ -389,30 +401,58 @@ let chronology incidents dur relto_event =
         [ clss "wide" ]
         [ svg svg_width svg_height
             [ clss "chart" ]
-            [ let base_time =
-                if relto_event && !event_time > 0. then !event_time
-                else now in
-              RamenChart.chronology
-                ~svg_width:svg_width ~svg_height:svg_height
-                ~margin_bottom:(margin_vert+.10.) (* for the scrollbar *)
-                ~margin_top:margin_vert
-                ~margin_left:0. ~margin_right:70.
-                ~string_of_t:RamenFormats.((timestamp string_of_timestamp).to_label)
-                ~click_on_bar:(fun i ->
-                  let incident = List.nth incidents i in
-                  set selected_incident (Some incident) ;
-                  let first_alert =
-                    try Some (List.hd incident.alerts)
-                    with Failure _ -> None in
-                  set selected_alert first_alert)
-                bars (base_time -. dur) base_time ] ] ;
+            [ (if relto_event then with_param event_time
+              else with_param chart_now) (fun base_time ->
+                RamenChart.chronology
+                  ~svg_width:svg_width ~svg_height:svg_height
+                  ~margin_bottom:(margin_vert+.10.) (* for the scrollbar *)
+                  ~margin_top:margin_vert
+                  ~margin_left:0. ~margin_right:70.
+                  ~string_of_t:RamenFormats.((timestamp string_of_timestamp).to_label)
+                  (* TODO: Wouldn't that be easier if we had one bar per alert, grouped
+                   * by incident? *)
+                  ~click_on_bar:(fun i ->
+                    let incident = List.nth incidents i in
+                    set selected_incident (Some incident) ;
+                    let first_alert =
+                      try Some (List.hd incident.alerts)
+                      with Failure _ -> None in
+                    set selected_alert first_alert)
+                  bars (base_time -. dur) base_time) ] ] ;
       selected_incident_detail ]
 
+let stfu =
+  with_param team_selection (function
+    | AllTeams -> group []
+    | SingleTeam team ->
+      with_param teams (fun teams ->
+        match find_team teams team with
+        | exception Not_found -> (* better not ask *) group []
+        | team ->
+          let now = now () in
+          match List.fold_left (fun o i ->
+              if i.Inhibition.what = "" then
+                match o with None -> Some i.stop_date
+                           | Some t -> Some (max t i.stop_date)
+              else o) None team.inhibitions with
+          | Some t when t > now ->
+             p [ clss "stfu" ]
+               [ text ("Everything is silenced until "^ date_of_ts t ^
+                       " for team "^ team.name) ]
+          | _ ->
+            button ~action:(fun _ ->
+                let path = "/stfu/"^ enc team.name in
+                http_get path (fun _ -> reload_teams ()))
+              [ clss "actionable" ]
+              [ text ("Silence EVERYTHING for team "^ team.name) ]))
+
 let page_live =
+  (* TODO: STFU button *)
   div
     [ id "page-live" ]
     [ h2 "Opened incidents" ;
       live_incidents ;
+      stfu ;
       h2 "Chronology" ;
       with_param known_incidents (fun incidents ->
         let n = now () in
@@ -422,22 +462,101 @@ let page_live =
         let dur = n -. min_ts in
         chronology incidents dur false) ]
 
+let inhibit_what = make_param "inhibit what" ""
+let inhibit_why = make_param "inhibit why" ""
+let inhibit_start = make_param "inhibit start" ""
+let inhibit_stop = make_param "inhibit stop" ""
+
+let reset_inhibit_form () =
+  set inhibit_what "" ;
+  set inhibit_why "" ;
+  set inhibit_start "" ;
+  set inhibit_stop ""
+
 let inhibition i =
   let open Inhibition in
-  text ("alert "^ i.what ^" up to "^ date_of_ts i.end_date ^
-        " by "^ i.who ^" since "^ date_of_ts i.start_date ^
-        " because: "^ i.why)
+  div
+    [ clss "inhibition" ]
+    (* TODO: if i.what = "" then display merely "STFU until ..." *)
+    [ text ("alert "^ i.what ^" up to "^ date_of_ts i.stop_date ^
+            " by "^ i.who ^" since "^ date_of_ts i.start_date ^
+            " because: "^ i.why) ]
+
+let input_text ~label ~size ~placeholder param =
+  elmt "label" []
+    [ text (label ^": ") ;
+      input ~action:(fun v -> set param v ; resync ())
+        [ attr "type" "text" ;
+          attr "size" (string_of_int size) ;
+          attr "placeholder" placeholder ;
+          attr "value" param.value ] ]
 
 let page_team team =
-  (* TODO: edit inhibitions *)
   let open GetTeam in
-  div
-    [ clss "team-info" ]
-    [ h2 ("Team "^ team.name) ;
-      h3 "Members" ;
-      ul [] (List.map (fun m -> li [] [ text m ]) team.members) ;
-      h3 "Inhibitions" ;
-      ul [] (List.map (fun i -> li [] [ inhibition i ]) team.inhibitions) ]
+  with_param team_selection (fun tsel ->
+    div
+      [ clss "team-info" ]
+      [ (let action =
+          if tsel = SingleTeam team.name then
+            (fun _ -> reset_inhibit_form () ;
+                      set team_selection AllTeams)
+          else
+            (fun _ -> reset_inhibit_form () ;
+                      set team_selection (SingleTeam team.name)) in
+        h2 ~action ~attrs:[clss "actionable"] ("Team "^ team.name)) ;
+        h3 "Members" ;
+        ul [] (List.map (fun m -> li [] [ text m ]) team.members) ;
+        h3 "Inhibitions" ;
+        (if tsel = SingleTeam team.name then
+          let new_inhibition =
+            with_param inhibit_what (fun _what ->
+              with_param inhibit_why (fun _why ->
+                with_param inhibit_start (fun _start ->
+                  with_param inhibit_stop (fun _stop ->
+                      li [] [
+                        input_text ~label:"alert" ~size:16 ~placeholder:"alert name (or prefix)" inhibit_what ;
+                        input_text ~label:"reason" ~size:32 ~placeholder:"why should this be silenced?" inhibit_why ;
+                        input_text ~label:"from" ~size:9 ~placeholder:"timestamp" inhibit_start ;
+                        input_text ~label:"to" ~size:9 ~placeholder:"timestamp" inhibit_stop ;
+                        button ~action:(fun _ ->
+                            (* TODO: catch errors and display an err msg beside
+                             * the field if not convertible: *)
+                            let start = float_of_string inhibit_start.value
+                            and stop = float_of_string inhibit_stop.value in
+                            let req =
+                              object%js
+                                val what = Js.string inhibit_what.value
+                                val why = Js.string inhibit_why.value
+                                val start_date_ = start
+                                val stop_date_ = stop
+                              end in
+                            let path = "/inhibit/add/"^ enc team.name in
+                            http_post path req (fun _ ->
+                              reset_inhibit_form () ;
+                              reload_teams ()))
+                          [ clss "actionable" ] [ text "inhibit" ] ])))) in
+          ul [] (new_inhibition :: List.map (fun i ->
+              li []
+                 [ inhibition i ;
+                   let now = now () in
+                   if i.stop_date > now then
+                     button ~action:(fun _ ->
+                         let req =
+                           object%js
+                             val id = i.id
+                             val what = Js.string i.what
+                             val why = Js.string "deleted from GUI"
+                             val start_date_ = js_of_float i.start_date
+                             val stop_date_ = now
+                           end in
+                         let path = "/inhibit/edit/"^ enc team.name in
+                         http_post path req (fun _ -> reload_teams ()))
+                       [ clss "actionable" ] [ text "delete" ]
+                   else group [] ]
+            ) team.inhibitions)
+        else (* team is not selected *)
+          ul [] (List.map (fun i ->
+            li [] [ inhibition i ]) team.inhibitions)) ])
 
 let page_teams =
   with_param teams (fun teams ->

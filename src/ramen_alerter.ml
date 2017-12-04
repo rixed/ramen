@@ -16,6 +16,9 @@ open RamenLog
 open Lwt
 open AlerterSharedTypesJS
 
+(* Purge inhibitions stopped for more than: *)
+let max_inhibit_age = 24. *. 3600.
+
 let () =
   async_exception_hook := (fun exn ->
     !logger.error "Received exception %s\n%s"
@@ -41,7 +44,10 @@ type persisted_state = {
   mutable next_alert_id : int ;
 
   (* Same for incidents: *)
-  mutable next_incident_id : int }
+  mutable next_incident_id : int ;
+
+  (* And inhibitions: *)
+  mutable next_inhibition_id : int }
 
 type state = {
   (* Where this state is saved *)
@@ -74,14 +80,16 @@ let is_inhibited state name team now =
     (* First remove all expired inhibitions: *)
     let inhibitions, changed =
       List.fold_left (fun (inhibitions, changed) i ->
-        if i.end_date > now then
+        if i.stop_date > now -. max_inhibit_age then
           i :: inhibitions, changed
         else
           inhibitions, true) ([], false) inhibitions in
     if changed then
       Hashtbl.replace state.persist.inhibitions team inhibitions ;
     (* See if this alert is inhibited: *)
-    List.exists (fun i -> String.starts_with name i.what) inhibitions
+    List.exists (fun i ->
+        i.stop_date > now && String.starts_with name i.what
+      ) inhibitions
 
 exception Not_implemented
 
@@ -93,8 +101,7 @@ struct
     !logger.debug "Creating an incident for alert %s"
       (PPP.to_string Alert.t_ppp alert) ;
     let i = { id = state.persist.next_incident_id ;
-              alerts = [ alert ] ;
-              stfu = false } in
+              alerts = [ alert ] } in
     state.persist.next_incident_id <- state.persist.next_incident_id + 1 ;
     Hashtbl.add state.persist.ongoing_incidents i.id i ;
     state.dirty <- true ;
@@ -519,7 +526,8 @@ let get_state save_file db_config_file default_team =
     { ongoing_incidents = Hashtbl.create 5 ;
       inhibitions = Hashtbl.create 11 ;
       next_alert_id = 0 ;
-      next_incident_id = 0 }
+      next_incident_id = 0 ;
+      next_inhibition_id = 0 }
   in
   let persist =
     match save_file with
@@ -593,12 +601,9 @@ let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
     | _i, Some orig_alert ->
       AlertOps.log orig_alert time (NewNotification Duplicate) ;
       return_unit
-    | i, None ->
+    | _i, None ->
       if is_inhibited state name team now then (
         AlertOps.log alert time (NewNotification Inhibited) ;
-        return_unit
-      ) else if i.stfu then (
-        AlertOps.log alert time (NewNotification STFU) ;
         return_unit
       ) else (
         let esc = EscalationOps.make state alert now in
@@ -666,6 +671,9 @@ struct
     let open Sqlite3 in
     let stmt = state.stmt_get_teams in
     reset stmt |> must_be_ok ;
+    let now = Unix.gettimeofday () in
+    (* Do not send inhibits older than that: *)
+    let last_stop = now -. max_inhibit_age in
     let resp =
       step_all_fold stmt [] (fun prev ->
         let team = column stmt 0 |> to_string |> required
@@ -679,7 +687,8 @@ struct
             (team, [ name ]) :: prev) |>
       List.fold_left (fun prev (team, members) ->
         let inhibitions =
-          try Hashtbl.find state.persist.inhibitions team
+          try Hashtbl.find state.persist.inhibitions team |>
+              List.filter (fun i -> i.Inhibition.stop_date >= last_stop)
           with Not_found -> [] in
         GetTeam.{
           name = team ;
@@ -775,6 +784,60 @@ struct
     AlertOps.stop state i a Manual now ;
     respond_ok ()
 
+  (* Inhibitions *)
+
+  let user = "anonymous user"
+
+  let add_inhibit_ state team inhibit =
+    let open Inhibition in
+    let id = state.persist.next_inhibition_id in
+    state.persist.next_inhibition_id <-
+      state.persist.next_inhibition_id + 1 ;
+    let inhibit = { inhibit with id } in
+    (* TODO: lock this hash with a RW lock *)
+    match Hashtbl.find state.persist.inhibitions team with
+    | exception Not_found ->
+      Hashtbl.add state.persist.inhibitions team [ inhibit ]
+    | lst ->
+      (match List.find (fun i -> i.id = inhibit.id) lst with
+      | exception Not_found ->
+        Hashtbl.replace state.persist.inhibitions team (inhibit :: lst)
+      | _ -> !logger.error "Found an inhibit with next id?" ;
+             assert false)
+
+  let edit_inhibit state headers team body =
+    let open Inhibition in
+    let%lwt inhibit = of_json headers "Inhibit" Inhibition.t_ppp body in
+    (* Note: one do not delete inhibitions but one can set a past
+     * stop_date. *)
+    match Hashtbl.find state.persist.inhibitions team with
+    | exception Not_found ->
+      bad_request "No such inhibition"
+    | lst ->
+      (match List.find (fun i -> i.id = inhibit.id) lst with
+      | exception Not_found ->
+        bad_request "No such inhibition"
+      | i ->
+        i.what <- inhibit.what ;
+        i.start_date <- inhibit.start_date ;
+        i.stop_date <- inhibit.stop_date ;
+        i.why <- inhibit.why ;
+        respond_ok ())
+
+  let add_inhibit state headers team body =
+    let%lwt inhibit = of_json headers "Inhibit" Inhibition.t_ppp body in
+    add_inhibit_ state team inhibit ;
+    respond_ok () (* TODO: why not returning the GetTeam.resp directly? *)
+
+  let stfu state _headers team =
+    let open Inhibition in
+    let now = Unix.gettimeofday () in
+    let inhibit =
+      { id = -1 ; what = "" ; start_date = now ; stop_date = now +. 3600. ;
+        who = user ; why = "STFU!" } in
+    add_inhibit_ state team inhibit ;
+    respond_ok ()
+
   let download_db _state config_db _headers =
     serve_raw_file Consts.sqlite_content_type config_db
 
@@ -842,6 +905,12 @@ struct
         | `GET, ["stop" ; id] ->
           let%lwt id = alert_id_of_string id in
           get_stop state id
+        | `POST, ["inhibit"; "add"; team] ->
+          add_inhibit state headers team body
+        | `POST, ["inhibit"; "edit" ; team] ->
+          edit_inhibit state headers team body
+        | `GET, ["stfu" ; team] ->
+          stfu state headers team
         (* Upload/Download of the sqlite configuration *)
         | `GET, ["config.db"] ->
           download_db state config_db headers
@@ -939,7 +1008,6 @@ let www_dir =
                          if unset)"
                    ~env [ "www-dir" ; "www-root" ; "web-dir" ; "web-root" ] in
   Arg.(value (opt string "" i))
-
 
 let start_all debug daemonize to_stderr logdir save_file config_db
               default_team http_port ssl_cert ssl_key www_dir () =

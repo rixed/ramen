@@ -146,9 +146,9 @@ let href = attr "href"
 let button = elmt "button"
 let input ?action attrs = elmt ?action "input" attrs []
 let textarea = elmt "textarea"
-let h1 ?(attrs=[]) t = elmt "h1" attrs [ text t ]
-let h2 ?(attrs=[]) t = elmt "h2" attrs [ text t ]
-let h3 ?(attrs=[]) t = elmt "h3" attrs [ text t ]
+let h1 ?action ?(attrs=[]) t = elmt "h1" ?action attrs [ text t ]
+let h2 ?action ?(attrs=[]) t = elmt "h2" ?action attrs [ text t ]
+let h3 ?action ?(attrs=[]) t = elmt "h3" ?action attrs [ text t ]
 let br = elmt "br" [] []
 let hr attrs = elmt "hr" attrs []
 let em = elmt "em" []

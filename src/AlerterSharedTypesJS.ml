@@ -109,8 +109,7 @@ module Incident =
 struct
   type t =
     { id : int ;
-      mutable alerts : Alert.t list ;
-      mutable stfu : bool } [@@ppp PPP_JSON]
+      mutable alerts : Alert.t list } [@@ppp PPP_JSON]
 
   let team_of i =
     match i.alerts with
@@ -134,11 +133,17 @@ end
 module Inhibition =
 struct
   type t =
-    { what: string ; (* all alerts starting with this prefix *)
-      start_date : float ;
-      end_date : float ;
-      who : string ;
-      why : string } [@@ppp PPP_JSON]
+    { (* Abstract identifier ; we want to be able to have several
+         inhibits with the same prefix (to cover several time
+         ranges). *)
+      id : int [@ppp_default -1] ;
+      mutable what : string ; (* all alerts starting with this prefix *)
+      mutable start_date : float ;
+      mutable stop_date : float ;
+      who : string [@ppp_default "anonymous"] ;
+      mutable why : string } [@@ppp PPP_JSON]
+
+  type list_resp = (string * t list) list [@@ppp PPP_JSON]
 end
 
 module GetTeam =
