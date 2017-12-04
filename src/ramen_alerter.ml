@@ -49,21 +49,24 @@ type persisted_state = {
   (* And inhibitions: *)
   mutable next_inhibition_id : int }
 
+type db = {
+  (* Sqlite configuration for oncallers and escalations (will be created if
+   * it does not exist) *)
+  handle : Sqlite3.db ;
+
+  (* A few prepared statements *)
+  stmt_get_oncall : Sqlite3.stmt ;
+  stmt_get_contacts : Sqlite3.stmt ;
+  stmt_get_escalation : Sqlite3.stmt ;
+  stmt_get_teams : Sqlite3.stmt }
+
 type state = {
   (* Where this state is saved *)
   save_file : string option ;
   default_team : string ;
   mutable dirty : bool ;
 
-  (* Sqlite configuration for oncallers and escalations (will be created if
-   * it does not exist) *)
-  db : Sqlite3.db ;
-
-  (* A few prepared statements *)
-  stmt_get_oncall : Sqlite3.stmt ;
-  stmt_get_contacts : Sqlite3.stmt ;
-  stmt_get_escalation : Sqlite3.stmt ;
-  stmt_get_teams : Sqlite3.stmt ;
+  mutable db : db ;
 
   (* What is saved onto/restored from disk to avoid losing context when
    * stopping or crashing: *)
@@ -209,7 +212,7 @@ struct
   (* Return the list of oncallers for a team at time t *)
   let who_is_oncall state team rank time =
     let open Sqlite3 in
-    let stmt = state.stmt_get_oncall in
+    let stmt = state.db.stmt_get_oncall in
     reset stmt |> must_be_ok ;
     bind stmt 1 Data.(INT (Int64.of_int rank)) |> must_be_ok ;
     bind stmt 2 Data.(FLOAT time) |> must_be_ok ;
@@ -217,7 +220,7 @@ struct
     match step stmt with
     | Rc.ROW ->
       let name = column stmt 0 |> to_string |> required in
-      let stmt = state.stmt_get_contacts in
+      let stmt = state.db.stmt_get_contacts in
       reset stmt |> must_be_ok ;
       bind stmt 1 Data.(TEXT name) |> must_be_ok ;
       let contacts =
@@ -296,7 +299,7 @@ struct
 
   let via_sqlite file insert_q create_q alert attempt victim =
     let open Sqlite3 in
-    let db = db_open file in
+    let handle = db_open file in
     let replacements =
       [ "$ID$", string_of_int alert.Alert.id ;
         "$NAME$", sql_quote alert.name ;
@@ -318,11 +321,11 @@ struct
           q file (Rc.to_string err) in
       fail (CannotSendAlert msg) in
     let exec_or_fail q =
-      match exec db q with
+      match exec handle q with
       | Rc.OK -> return_unit
       | err -> db_fail err q in
     let%lwt () =
-      match exec db q with
+      match exec handle q with
       | Rc.OK -> return_unit
       | Rc.ERROR when create_q <> "" ->
         !logger.info "Creating table in sqlite DB %S" file ;
@@ -330,7 +333,7 @@ struct
         exec_or_fail q
       | err ->
         db_fail err q in
-    close ~max_tries:30 db
+    close ~max_tries:30 handle
 
   let via_todo _alert _attempt _victim = fail Not_implemented
 
@@ -376,7 +379,7 @@ struct
         default_escalation now
       ) else (
         let open Sqlite3 in
-        let stmt = state.stmt_get_escalation in
+        let stmt = state.db.stmt_get_escalation in
         reset stmt |> must_be_ok ;
         bind stmt 1 Data.(TEXT alert.Alert.team) |> must_be_ok ;
         bind stmt 2 Data.(INT (Int64.of_int importance)) |> must_be_ok ;
@@ -459,53 +462,86 @@ end
 
 let open_config_db file =
   let open Sqlite3 in
-  let ensure_db_table db create insert =
+  let ensure_db_table handle create insert =
     !logger.debug "Exec: %s" create ;
-    exec db create |> must_be_ok ;
+    exec handle create |> must_be_ok ;
     !logger.debug "Exec: %s" insert ;
-    exec db insert |> must_be_ok
+    exec handle insert |> must_be_ok
   in
-  try db_open ~mode:`READONLY file
-  with Error err ->
-    !logger.debug "Cannot open DB %S: %s, will create a new one."
-        file err ;
-    let db = db_open file in
-    ensure_db_table db
-      (* FIXME: a single person could be in several teams *)
-      "CREATE TABLE IF NOT EXISTS oncallers ( \
-         name STRING PRIMARY KEY, \
-         team STRING NOT NULL)"
-      "INSERT INTO oncallers VALUES \
-         ('John Doe', 'firefighters')" ;
-    (* TODO: maybe in the future make the contact depending on day of
-     * week and/or time of day? *)
-    ensure_db_table db
-      "CREATE TABLE IF NOT EXISTS contacts ( \
-         oncaller STRING REFERENCES oncallers (name) ON DELETE CASCADE, \
-         preferred INTEGER NOT NULL, \
-         contact STRING NOT NULL)"
-      "INSERT INTO contacts VALUES \
-         ('John Doe', 1, '{\"Console\":null}')" ;
-    ensure_db_table db
-      "CREATE TABLE IF NOT EXISTS schedule ( \
-         oncaller STRING REFERENCES oncallers (name) ON DELETE SET NULL, \
-         \"from\" INTEGER NOT NULL, \
-         rank INTEGER NOT NULL)"
-      "INSERT INTO schedule VALUES \
-         ('John Doe', 0, 0)" ;
-    ensure_db_table db
-      "CREATE TABLE IF NOT EXISTS escalations ( \
-         team STRING NOT NULL, \
-         importance INTEGER NOT NULL, \
-         attempt INTEGER NOT NULL, \
-         timeout REAL NOT NULL, \
-         victims INTEGER NOT NULL DEFAULT 1)"
-      "INSERT INTO escalations VALUES \
-         ('firefighters', 0, 1, 350, 1), \
-         ('firefighters', 0, 2, 350, 3)" ;
-    (* Reopen in read-only *)
-    db_close db |> must_be string_of_bool true ;
-    db_open ~mode:`READONLY file
+  let%lwt handle =
+    catch
+      (fun () ->
+        SqliteHelpers.db_open ~mode:`READONLY file)
+      (function Error err ->
+        !logger.debug "Cannot open DB %S: %s, will create a new one."
+            file err ;
+        let%lwt handle = SqliteHelpers.db_open file in
+        ensure_db_table handle
+          (* FIXME: a single person could be in several teams *)
+          "CREATE TABLE IF NOT EXISTS oncallers ( \
+             name STRING PRIMARY KEY, \
+             team STRING NOT NULL)"
+          "INSERT INTO oncallers VALUES \
+             ('John Doe', 'firefighters')" ;
+        (* TODO: maybe in the future make the contact depending on day of
+         * week and/or time of day? *)
+        ensure_db_table handle
+          "CREATE TABLE IF NOT EXISTS contacts ( \
+             oncaller STRING REFERENCES oncallers (name) ON DELETE CASCADE, \
+             preferred INTEGER NOT NULL, \
+             contact STRING NOT NULL)"
+          "INSERT INTO contacts VALUES \
+             ('John Doe', 1, '{\"Console\":null}')" ;
+        ensure_db_table handle
+          "CREATE TABLE IF NOT EXISTS schedule ( \
+             oncaller STRING REFERENCES oncallers (name) ON DELETE SET NULL, \
+             \"from\" INTEGER NOT NULL, \
+             rank INTEGER NOT NULL)"
+          "INSERT INTO schedule VALUES \
+             ('John Doe', 0, 0)" ;
+        ensure_db_table handle
+          "CREATE TABLE IF NOT EXISTS escalations ( \
+             team STRING NOT NULL, \
+             importance INTEGER NOT NULL, \
+             attempt INTEGER NOT NULL, \
+             timeout REAL NOT NULL, \
+             victims INTEGER NOT NULL DEFAULT 1)"
+          "INSERT INTO escalations VALUES \
+             ('firefighters', 0, 1, 350, 1), \
+             ('firefighters', 0, 2, 350, 3)" ;
+        (* Reopen in read-only *)
+        let%lwt () = close ~max_tries:10 handle in
+        SqliteHelpers.db_open ~mode:`READONLY file
+      | err -> fail err) in
+    return
+      { handle ;
+        stmt_get_oncall =
+          prepare handle
+            "SELECT oncallers.name \
+             FROM schedule NATURAL JOIN oncallers \
+             WHERE schedule.rank <= ? AND schedule.\"from\" <= ? \
+               AND oncallers.team = ? \
+             ORDER BY schedule.\"from\" DESC, schedule.rank DESC LIMIT 1" ;
+        stmt_get_contacts =
+          prepare handle
+            "SELECT contact FROM contacts \
+             WHERE oncaller = ? ORDER BY preferred DESC" ;
+        stmt_get_escalation =
+          prepare handle
+            "SELECT timeout, victims FROM escalations \
+             WHERE team = ? AND importance = ? ORDER BY attempt" ;
+        stmt_get_teams =
+          prepare handle
+            "SELECT team, name FROM oncallers ORDER BY team, name" }
+
+let close_config_db db =
+  let open Sqlite3 in
+  let open SqliteHelpers in
+  finalize db.stmt_get_oncall |> must_be_ok ;
+  finalize db.stmt_get_contacts |> must_be_ok ;
+  finalize db.stmt_get_escalation |> must_be_ok ;
+  finalize db.stmt_get_teams |> must_be_ok ;
+  close ~max_tries:30 db.handle
 
 let check_escalations state now =
   EscalationOps.fold_ongoing state [] (fun prev alert esc ->
@@ -544,29 +580,10 @@ let get_state save_file db_config_file default_team =
              get_new ())
     | None -> get_new ()
   in
-  let db = open_config_db db_config_file in
+  let%lwt db = open_config_db db_config_file in
   let state =
     { save_file ; dirty = false ; default_team ; db ;
-      stmt_get_oncall =
-        Sqlite3.prepare db
-          "SELECT oncallers.name \
-           FROM schedule NATURAL JOIN oncallers \
-           WHERE schedule.rank <= ? AND schedule.\"from\" <= ? \
-             AND oncallers.team = ? \
-           ORDER BY schedule.\"from\" DESC, schedule.rank DESC LIMIT 1" ;
-      stmt_get_contacts =
-        Sqlite3.prepare db
-          "SELECT contact FROM contacts \
-           WHERE oncaller = ? ORDER BY preferred DESC" ;
-      stmt_get_escalation =
-        Sqlite3.prepare db
-          "SELECT timeout, victims FROM escalations \
-           WHERE team = ? AND importance = ? ORDER BY attempt" ;
-      stmt_get_teams =
-        Sqlite3.prepare db
-          "SELECT team, name FROM oncallers ORDER BY team, name" ;
-      persist ;
-      archived_incidents = [] } in
+      persist ; archived_incidents = [] } in
   let rec check_escalations_loop () =
     let now = Unix.gettimeofday () in
     let%lwt () = catch
@@ -578,7 +595,7 @@ let get_state save_file db_config_file default_team =
     check_escalations_loop
   in
   async check_escalations_loop ;
-  state
+  return state
 
 let save_state state =
   if state.dirty then (
@@ -669,7 +686,7 @@ struct
 
   let get_teams state =
     let open Sqlite3 in
-    let stmt = state.stmt_get_teams in
+    let stmt = state.db.stmt_get_teams in
     reset stmt |> must_be_ok ;
     let now = Unix.gettimeofday () in
     (* Do not send inhibits older than that: *)
@@ -841,7 +858,7 @@ struct
   let download_db _state config_db _headers =
     serve_raw_file Consts.sqlite_content_type config_db
 
-  let upload_db _state config_db headers body =
+  let upload_db state config_db headers body =
     (* Get the file content out of the form-data: *)
     let content_type = get_content_type headers in
     let%lwt data = match
@@ -865,11 +882,12 @@ struct
       Lwt_io.chars_to_file tmp in
     catch
       (fun () ->
-        let db = open_config_db tmp in
-        ignore db ; (* Good enough that we made it here. *)
+        let%lwt db = open_config_db tmp in
         !logger.info "Replacing %S" config_db ;
+        let%lwt () = close_config_db state.db in
         let%lwt () = Lwt_unix.unlink config_db in
         let%lwt () = Lwt_unix.rename tmp config_db in
+        state.db <- db ;
         respond_ok ())
       (fun e ->
         let msg = Printexc.to_string e in
@@ -1019,7 +1037,7 @@ let start_all debug daemonize to_stderr logdir save_file config_db
   logger := make_logger ?logdir debug ;
   if daemonize then do_daemonize () ;
   Lwt_main.run (
-    let alerter_state = get_state save_file config_db default_team in
+    let%lwt alerter_state = get_state save_file config_db default_team in
     HttpSrv.start http_port ssl_cert ssl_key alerter_state config_db www_dir)
 
 let start_cmd =

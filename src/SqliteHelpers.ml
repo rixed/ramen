@@ -64,6 +64,10 @@ let rec step_all_fold stmt init f =
   | Rc.ROW -> step_all_fold stmt (f init) f
   | rc -> failwith ("Unexpected Sqlite3 return code: "^ Rc.to_string rc)
 
+let db_open ?mode file =
+  !logger.info "Opening sqlite DB %S" file ;
+  Lwt.wrap (fun () -> Sqlite3.db_open ?mode file)
+
 let rec close ~max_tries db =
   let open Sqlite3 in
   let open Lwt in
