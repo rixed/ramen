@@ -30,3 +30,5 @@ let string_starts_with p s =
   let open String in
   length s >= length p &&
   sub s 0 (length p) = p
+
+let string_contains p s = s##indexOf p <> -1

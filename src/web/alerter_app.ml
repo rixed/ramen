@@ -8,6 +8,23 @@ open AlerterSharedTypesJS_noPPP
 
 (* Conversions from to Js *)
 
+module Searchable =
+struct
+  let of_string s = (Js.string s)##toLowerCase
+
+  type team =
+    { name : string ;
+      inhibitions : Inhibition.t list ;
+      searchable_name : Js.js_string Js.t ;
+      members : (string * Js.js_string Js.t) list }
+
+  let of_team team =
+    { name = team.GetTeam.name ;
+      inhibitions = team.inhibitions ;
+      searchable_name = of_string team.name ;
+      members = List.map (fun m -> m, of_string m) team.members }
+end
+
 let inhibition_of_js js =
   let id = of_field js "id" identity
   and what = of_field js "what" Js.to_string
@@ -22,7 +39,7 @@ let team_of_js js =
   and members = of_field js "members" (list_of_js Js.to_string)
   and inhibitions =
     of_field js "inhibitions" (list_of_js inhibition_of_js) in
-  GetTeam.{ name ; members ; inhibitions }
+  Searchable.of_team GetTeam.{ name ; members ; inhibitions }
 
 let contact_of_js =
   let open Contact in
@@ -100,7 +117,8 @@ let incident_of_js i =
 
 (* Alerter state *)
 
-let teams : GetTeam.resp param = make_param "teams" []
+let teams : Searchable.team list param = make_param "teams" []
+let team_search = make_param "team search" ""
 
 (* Team Selection: all of them or just one *)
 
@@ -112,15 +130,29 @@ let is_team_selected sel team =
   | AllTeams -> true
   | SingleTeam n -> team = n
 
-let fold_teams teams selection init f =
+let fold_teams teams selection search_str init f =
   List.fold_left (fun prev team ->
-      if is_team_selected selection team.GetTeam.name then
-        f prev team
+      if is_team_selected selection team.Searchable.name &&
+         (string_contains search_str team.searchable_name ||
+          List.exists (fun (_, m) ->
+              string_contains search_str m
+            ) team.members)
+      then
+          f prev team
       else prev
     ) init teams
 
+let fold_members team search_str init f =
+  let team_match_search =
+    string_contains search_str team.Searchable.searchable_name in
+  List.fold_left (fun prev (member, searchable_member) ->
+      if team_match_search || string_contains search_str searchable_member then
+        f prev member
+      else prev
+    ) init team.members
+
 let find_team teams name =
-  List.find (fun t -> t.GetTeam.name = name) teams
+  List.find (fun t -> t.Searchable.name = name) teams
 
 (* Main views of the application: *)
 
@@ -178,6 +210,19 @@ let fold_incidents incidents team_selection init f =
           f prev incident
         else prev
     ) init incidents
+
+(* Inhibitions *)
+
+let inhibit_what = make_param "inhibit what" ""
+let inhibit_why = make_param "inhibit why" ""
+let inhibit_start = make_param "inhibit start" ""
+let inhibit_stop = make_param "inhibit stop" ""
+
+let reset_inhibit_form () =
+  set inhibit_what "" ;
+  set inhibit_why "" ;
+  set inhibit_start "" ;
+  set inhibit_stop ""
 
 (* History *)
 
@@ -462,17 +507,6 @@ let page_live =
         let dur = n -. min_ts in
         chronology incidents dur false) ]
 
-let inhibit_what = make_param "inhibit what" ""
-let inhibit_why = make_param "inhibit why" ""
-let inhibit_start = make_param "inhibit start" ""
-let inhibit_stop = make_param "inhibit stop" ""
-
-let reset_inhibit_form () =
-  set inhibit_what "" ;
-  set inhibit_why "" ;
-  set inhibit_start "" ;
-  set inhibit_stop ""
-
 let inhibition i =
   let open Inhibition in
   div
@@ -491,72 +525,75 @@ let input_text ~label ~size ~placeholder param =
           attr "placeholder" placeholder ;
           attr "value" param.value ] ]
 
-let page_team team =
-  let open GetTeam in
-  with_param team_selection (fun tsel ->
-    div
-      [ clss "team-info" ]
-      [ (let action =
-          if tsel = SingleTeam team.name then
-            (fun _ -> reset_inhibit_form () ;
-                      set team_selection AllTeams)
-          else
-            (fun _ -> reset_inhibit_form () ;
-                      set team_selection (SingleTeam team.name)) in
-        h2 ~action ~attrs:[clss "actionable"] ("Team "^ team.name)) ;
-        h3 "Members" ;
-        ul [] (List.map (fun m -> li [] [ text m ]) team.members) ;
-        h3 "Inhibitions" ;
-        (if tsel = SingleTeam team.name then
-          let new_inhibition =
-            with_param inhibit_what (fun _what ->
-              with_param inhibit_why (fun _why ->
-                with_param inhibit_start (fun _start ->
-                  with_param inhibit_stop (fun _stop ->
-                      li [] [
-                        input_text ~label:"alert" ~size:16 ~placeholder:"alert name (or prefix)" inhibit_what ;
-                        input_text ~label:"reason" ~size:32 ~placeholder:"why should this be silenced?" inhibit_why ;
-                        input_text ~label:"from" ~size:9 ~placeholder:"timestamp" inhibit_start ;
-                        input_text ~label:"to" ~size:9 ~placeholder:"timestamp" inhibit_stop ;
-                        button ~action:(fun _ ->
-                            (* TODO: catch errors and display an err msg beside
-                             * the field if not convertible: *)
-                            let start = float_of_string inhibit_start.value
-                            and stop = float_of_string inhibit_stop.value in
-                            let req =
-                              object%js
-                                val what = Js.string inhibit_what.value
-                                val why = Js.string inhibit_why.value
-                                val start_date_ = start
-                                val stop_date_ = stop
-                              end in
-                            let path = "/inhibit/add/"^ enc team.name in
-                            http_post path req (fun _ ->
-                              reset_inhibit_form () ;
-                              reload_teams ()))
-                          [ clss "actionable" ] [ text "inhibit" ] ])))) in
-          ul [] (new_inhibition :: List.map (fun i ->
-              li []
-                 [ inhibition i ;
-                   let now = now () in
-                   if i.stop_date > now then
-                     button ~action:(fun _ ->
-                         let req =
-                           object%js
-                             val id = i.id
-                             val what = Js.string i.what
-                             val why = Js.string "deleted from GUI"
-                             val start_date_ = js_of_float i.start_date
-                             val stop_date_ = now
-                           end in
-                         let path = "/inhibit/edit/"^ enc team.name in
-                         http_post path req (fun _ -> reload_teams ()))
-                       [ clss "actionable" ] [ text "delete" ]
-                   else group [] ]
-            ) team.inhibitions)
-        else (* team is not selected *)
-          ul [] (List.map (fun i ->
-            li [] [ inhibition i ]) team.inhibitions)) ])
+let team_member team m =
+  text m (* TODO *)
+
+let page_team search_str tsel team =
+  let open Searchable in
+  div
+    [ clss "team-info" ]
+    [ (let action =
+        if tsel = SingleTeam team.name then
+          (fun _ -> reset_inhibit_form () ;
+                    set team_selection AllTeams)
+        else
+          (fun _ -> reset_inhibit_form () ;
+                    set team_selection (SingleTeam team.name)) in
+      h2 ~action ~attrs:[clss "actionable"] ("Team "^ team.name)) ;
+      h3 "Members" ;
+      ul [] (fold_members team search_str [] (fun prev m ->
+        li [] [ team_member team m ] :: prev)) ;
+      h3 "Inhibitions" ;
+      (if tsel = SingleTeam team.name then
+        let new_inhibition =
+          with_param inhibit_what (fun _what ->
+            with_param inhibit_why (fun _why ->
+              with_param inhibit_start (fun _start ->
+                with_param inhibit_stop (fun _stop ->
+                    li [] [
+                      input_text ~label:"alert" ~size:16 ~placeholder:"alert name (or prefix)" inhibit_what ;
+                      input_text ~label:"reason" ~size:32 ~placeholder:"why should this be silenced?" inhibit_why ;
+                      input_text ~label:"from" ~size:9 ~placeholder:"timestamp" inhibit_start ;
+                      input_text ~label:"to" ~size:9 ~placeholder:"timestamp" inhibit_stop ;
+                      button ~action:(fun _ ->
+                          (* TODO: catch errors and display an err msg beside
+                           * the field if not convertible: *)
+                          let start = float_of_string inhibit_start.value
+                          and stop = float_of_string inhibit_stop.value in
+                          let req =
+                            object%js
+                              val what = Js.string inhibit_what.value
+                              val why = Js.string inhibit_why.value
+                              val start_date_ = start
+                              val stop_date_ = stop
+                            end in
+                          let path = "/inhibit/add/"^ enc team.name in
+                          http_post path req (fun _ ->
+                            reset_inhibit_form () ;
+                            reload_teams ()))
+                        [ clss "actionable" ] [ text "inhibit" ] ])))) in
+        ul [] (new_inhibition :: List.map (fun i ->
+            li []
+               [ inhibition i ;
+                 let now = now () in
+                 if i.stop_date > now then
+                   button ~action:(fun _ ->
+                       let req =
+                         object%js
+                           val id = i.id
+                           val what = Js.string i.what
+                           val why = Js.string "deleted from GUI"
+                           val start_date_ = js_of_float i.start_date
+                           val stop_date_ = now
+                         end in
+                       let path = "/inhibit/edit/"^ enc team.name in
+                       http_post path req (fun _ -> reload_teams ()))
+                     [ clss "actionable" ] [ text "delete" ]
+                 else group [] ]
+          ) team.inhibitions)
+      else (* team is not selected *)
+        ul [] (List.map (fun i ->
+          li [] [ inhibition i ]) team.inhibitions)) ]
 
 let up_down_conf =
   div [ id "up-down-conf" ]
@@ -575,13 +612,19 @@ let up_down_conf =
 
 let page_teams =
   with_param teams (fun teams ->
-    with_param team_selection (fun sel ->
-      group
-        [ div
-          [ clss "team-list" ]
-          (fold_teams teams sel [] (fun prev team ->
-             page_team team :: prev)) ;
-          up_down_conf ]))
+    with_param team_selection (fun tsel ->
+      with_param team_search (fun search_str ->
+        let search_str = Searchable.of_string search_str in
+        group
+          [ div
+              [ clss "searchbox" ]
+              [ input_text ~label:"🔍" ~size:8 ~placeholder:"search"
+                           team_search ] ;
+            div
+              [ clss "team-list" ]
+              (fold_teams teams tsel search_str [] (fun prev team ->
+                 page_team search_str tsel team :: prev)) ;
+              up_down_conf ])))
 
 let page_hand_over = todo "hand over"
 
