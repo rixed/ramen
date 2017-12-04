@@ -558,20 +558,8 @@ let page_team team =
           ul [] (List.map (fun i ->
             li [] [ inhibition i ]) team.inhibitions)) ])
 
-let page_teams =
-  with_param teams (fun teams ->
-    with_param team_selection (fun sel ->
-      div
-        [ clss "team-list" ]
-        (fold_teams teams sel [] (fun prev team ->
-           page_team team :: prev))))
-
-let page_hand_over = todo "hand over"
-
-let page_reports = todo "reports"
-
-let page_config =
-  div [ id "configuration" ]
+let up_down_conf =
+  div [ id "up-down-conf" ]
     [ p []
         [ a [ href "/config.db" ]
             [ text "download database" ] ] ;
@@ -584,6 +572,24 @@ let page_config =
                     attr "name" "config.db" ] ;
             button [ attr "type" "submit" ]
                    [ text "Upload" ] ] ] ]
+
+let page_teams =
+  with_param teams (fun teams ->
+    with_param team_selection (fun sel ->
+      group
+        [ div
+          [ clss "team-list" ]
+          (fold_teams teams sel [] (fun prev team ->
+             page_team team :: prev)) ;
+          up_down_conf ]))
+
+let page_hand_over = todo "hand over"
+
+let page_reports = todo "reports"
+
+let page_config =
+  div [ id "configuration" ]
+      [ up_down_conf ]
 
 let page_history =
   with_param known_incidents (fun incidents ->
@@ -607,11 +613,13 @@ let menu =
   div
     [ clss "tabs" ]
     [ tab "Live" PageLive ;
-      tab "Team" PageTeam ;
-      tab "Hand Over" PageHandOver ;
+      (*tab "Hand Over" PageHandOver ;*)
       tab "History" PageHistory ;
-      tab "Reports" Reports ;
-      tab "Configuration" Configuration ]
+      with_param team_selection (function
+        | AllTeams -> tab "Teams" PageTeam
+        | SingleTeam t -> tab ("Team "^ t) PageTeam) ;
+      (*tab "Reports" Reports ;*)
+      (*tab "Configuration" Configuration*) ]
 
 let page =
   with_param current_page (function
