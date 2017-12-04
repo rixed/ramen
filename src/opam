@@ -16,7 +16,7 @@ depends: [
   "stdint" {>= "0.5.0"}
   "parsercombinator"
   "cohttp-lwt-unix"
-  "net_codecs" {>= "1.2"}
+  "net_codecs" {>= "0.2"}
   "inotify"
   "binocle"
   "owl" {>= "0.2.9"}
