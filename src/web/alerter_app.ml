@@ -555,8 +555,7 @@ let input_text ~label ~size ~placeholder param =
           attr "placeholder" placeholder ;
           attr "value" param.value ] ]
 
-let team_member _team name =
-  (* TODO: use team to display what other teams this contact is on *)
+let team_member teams team name =
   let js_name = Js.string name in
   let oncaller_p =
     let prev = Jstable.find oncallers js_name in
@@ -571,14 +570,26 @@ let team_member _team name =
   with_param oncaller_p (function
     | None -> text ("loading "^ name ^"...")
     | Some oncaller ->
+      let other_teams =
+        List.filter (fun t ->
+            t.Searchable.name <> team.Searchable.name &&
+            List.exists (fun (m, _) -> m = name) t.members
+          ) teams in
       div [ clss "oncaller-tile" ]
           [ p [ clss "oncaller-name" ] [ text name ] ;
             ul [ clss "oncaller-contacts" ]
-               (Array.fold_left (fun lst c ->
-                    li [] [ text (Contact.to_string c) ] :: lst
-                  ) [] oncaller.OnCaller.contacts) ])
+               ( Array.fold_left (fun lst c ->
+                     li [] [ text (Contact.to_string c) ] :: lst
+                   ) [] oncaller.OnCaller.contacts ) ;
+            if other_teams = [] then group [] else
+            p [ clss "oncaller-other-teams" ]
+              ( text "also in teams: " ::
+                List.map (fun t ->
+                    span [ clss "oncaller-other-team" ]
+                         [ text t.Searchable.name ]
+                  ) other_teams ) ])
 
-let page_team search_str tsel team =
+let page_team teams search_str tsel team =
   let open Searchable in
   div
     [ clss "team-info" ]
@@ -592,7 +603,7 @@ let page_team search_str tsel team =
       h2 ~action ~attrs:[clss "actionable"] ("Team "^ team.name)) ;
       h3 "Members" ;
       ul [] (fold_members team search_str [] (fun prev m ->
-        li [] [ team_member team m ] :: prev)) ;
+        li [] [ team_member teams team m ] :: prev)) ;
       h3 "Inhibitions" ;
       (if tsel = SingleTeam team.name then
         let new_inhibition =
@@ -673,7 +684,7 @@ let page_teams =
             div
               [ clss "team-list" ]
               (fold_teams teams tsel search_str [] (fun prev team ->
-                 page_team search_str tsel team :: prev)) ;
+                 page_team teams search_str tsel team :: prev)) ;
               up_down_conf ])))
 
 let page_hand_over = todo "hand over"
