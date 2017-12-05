@@ -54,6 +54,11 @@ let contact_of_js =
     "Email", email_of_js ;
     "SMS", (fun js -> SMS (Js.to_string js)) ]
 
+let oncaller_of_js js =
+  let name = of_field js "name" Js.to_string
+  and contacts = of_field js "contacts" (array_of_js contact_of_js) in
+  OnCaller.{ name ; contacts }
+
 let notif_outcome_of_js js =
   let open Alert in
   variant_of_js [
@@ -154,6 +159,25 @@ let fold_members team search_str init f =
 let find_team teams name =
   List.find (fun t -> t.Searchable.name = name) teams
 
+let oncallers : OnCaller.t option param Jstable.t = Jstable.create ()
+
+let invalidate_oncaller name =
+  let js_name = Js.string name in
+  Jstable.remove oncallers js_name
+
+let set_oncaller name oncaller_opt =
+  let js_name = Js.string name in
+  let previous = Jstable.find oncallers js_name in
+  Js.Optdef.case previous
+    (fun () ->
+      let param_name = "oncaller "^ name in
+      let param = make_param param_name oncaller_opt in
+      Jstable.add oncallers js_name param ;
+      param)
+    (fun param ->
+      set param oncaller_opt ;
+      param)
+
 (* Main views of the application: *)
 
 type page = PageLive | PageTeam | PageHandOver | PageHistory | Reports
@@ -245,6 +269,12 @@ let reload_ongoing () =
     List.iter update_event_time_from_incident incidents ;
     set chart_now (now ()) ;
     resync ())
+
+let reload_oncaller name =
+  let path = "/oncaller/"^ enc name in
+  http_get path (fun resp ->
+    let oncaller = oncaller_of_js resp in
+    set_oncaller name (Some oncaller) |> ignore)
 
 let reload_teams () =
   http_get "/teams" (fun resp ->
@@ -525,8 +555,28 @@ let input_text ~label ~size ~placeholder param =
           attr "placeholder" placeholder ;
           attr "value" param.value ] ]
 
-let team_member team m =
-  text m (* TODO *)
+let team_member _team name =
+  (* TODO: use team to display what other teams this contact is on *)
+  let js_name = Js.string name in
+  let oncaller_p =
+    let prev = Jstable.find oncallers js_name in
+    Js.Optdef.case prev
+      (fun () ->
+        (* We want to grab the param right now so we can reference it
+         * in our output: *)
+        let param = set_oncaller name None in
+        reload_oncaller name ;
+        param)
+      identity in
+  with_param oncaller_p (function
+    | None -> text ("loading "^ name ^"...")
+    | Some oncaller ->
+      div [ clss "oncaller-tile" ]
+          [ p [ clss "oncaller-name" ] [ text name ] ;
+            ul [ clss "oncaller-contacts" ]
+               (Array.fold_left (fun lst c ->
+                    li [] [ text (Contact.to_string c) ] :: lst
+                  ) [] oncaller.OnCaller.contacts) ])
 
 let page_team search_str tsel team =
   let open Searchable in

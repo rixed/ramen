@@ -199,15 +199,35 @@ struct
       IncidentOps.archive state i
 end
 
-module OnCaller =
+module OnCallerOps =
 struct
-  type t =
-    { name : string ;
-      contacts : Contact.t array }
+  open OnCaller
 
   let default_oncaller =
     { name = "default_oncall" ;
       contacts = [| Contact.Console |] }
+
+  let get_contacts state name =
+    let open Sqlite3 in
+    let stmt = state.db.stmt_get_contacts in
+    reset stmt |> must_be_ok ;
+    bind stmt 1 Data.(TEXT name) |> must_be_ok ;
+    step_all_fold stmt [] (fun prev ->
+      let s = column stmt 0 |> to_string |> required in
+      match PPP.of_string_exc Contact.t_ppp s with
+      | exception PPP.ParseError ->
+        !logger.error "Cannot parse contact %S" s ;
+        prev
+      | c -> c :: prev) |>
+    (* Since the statement select the contact by descending preference
+     * we end up with the contact list with preferred contact firsts. *)
+    Array.of_list
+
+  let get state name =
+    (* Notice this does not even check the name is in the DB at all,
+     * but that's not really needed ATM. *)
+    let contacts = get_contacts state name in
+    { name ; contacts }
 
   (* Return the list of oncallers for a team at time t *)
   let who_is_oncall state team rank time =
@@ -220,27 +240,7 @@ struct
     match step stmt with
     | Rc.ROW ->
       let name = column stmt 0 |> to_string |> required in
-      let stmt = state.db.stmt_get_contacts in
-      reset stmt |> must_be_ok ;
-      bind stmt 1 Data.(TEXT name) |> must_be_ok ;
-      let contacts =
-        step_all_fold stmt [] (fun prev ->
-          let s = column stmt 0 |> to_string |> required in
-          match PPP.of_string_exc Contact.t_ppp s with
-          | exception PPP.ParseError ->
-            !logger.error "Cannot parse contact %S" s ;
-            prev
-          | c -> c :: prev) |>
-        (* Since the statement select the contact by descending preference
-         * we end up with the contact list with preferred contact firsts. *)
-        Array.of_list in
-      !logger.debug "Contacts for %s: %a"
-        name
-        (Array.print (fun oc c ->
-            PPP.to_string Contact.t_ppp c |>
-            String.print oc
-          )) contacts ;
-      { name ; contacts }
+      get state name
     | _ ->
       !logger.error "Nobody is %dth oncall for team %s at time %f"
         rank team time ;
@@ -414,7 +414,7 @@ struct
      * targeted. *)
     let _contacted, ths =
       Array.fold_left (fun (contacted, ths as prev) rank ->
-          let open OnCaller in
+          let open OnCallerOps in
           let victim = who_is_oncall state alert.Alert.team rank now in
           let contact = get_cap victim.contacts (attempt - 1) in
           !logger.debug "%d oncall is %s, contact for attempt %d is: %s"
@@ -714,6 +714,11 @@ struct
     let body = PPP.to_string GetTeam.resp_ppp resp in
     respond_ok ~body ()
 
+  let get_oncaller state _headers name =
+    let oncaller = OnCallerOps.get state name in
+    let body = PPP.to_string OnCaller.t_ppp oncaller in
+    respond_ok ~body ()
+
   let get_ongoing state team_opt =
     let incidents =
       Hashtbl.fold (fun _id incident prev ->
@@ -908,6 +913,8 @@ struct
           notify state params
         | `GET, ["teams"] ->
           get_teams state
+        | `GET, ["oncaller"; name] ->
+          get_oncaller state headers name
         | `GET, ["ongoing"] ->
           get_ongoing state None
         | `GET, ["ongoing"; team] ->

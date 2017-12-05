@@ -22,6 +22,14 @@ struct
     | Sqlite { file ; _ } -> "sqlite DB "^ file
 end
 
+module OnCaller =
+struct
+  type t =
+    { name : string ;
+      (* TODO: make this a list *)
+      contacts : Contact.t array } [@@ppp PPP_JSON]
+end
+
 module Escalation =
 struct
   type step =
