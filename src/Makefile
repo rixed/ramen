@@ -72,7 +72,7 @@ ALERTER_SOURCES = \
 	ramen_alerter.ml
 
 WEB_SOURCES = \
-	web/WebHelpers.ml web/JsHelpers.ml web/engine.ml \
+	web/WebHelpers.ml web/JsHelpers.ml web/engine.ml web/gui.ml \
 	web/ramen_app.ml web/alerter_app.ml
 
 SOURCES_ = \
@@ -175,13 +175,16 @@ web/WebHelpers.cmo: web/WebHelpers.ml RamenChart.cmo
 web/engine.cmo: web/engine.ml web/WebHelpers.cmo web/JsHelpers.cmo RamenHtml.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
+web/gui.cmo: web/gui.ml web/engine.cmo RamenHtml.cmo
+	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
+
 RamenSharedTypesJS_noPPP.cmo: RamenSharedTypesJS.ml
 	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
 
-web/ramen_app.cmo: web/ramen_app.ml RamenSharedTypesJS_noPPP.cmo RamenHtml.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo
+web/ramen_app.cmo: web/ramen_app.ml RamenSharedTypesJS_noPPP.cmo RamenHtml.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/ramen_script.byte: Consts.cmo RamenHtml.cmo RamenSharedTypesJS_noPPP.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo web/ramen_app.cmo
+web/ramen_script.byte: Consts.cmo RamenHtml.cmo RamenSharedTypesJS_noPPP.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo web/ramen_app.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -linkpkg $^ -o $@
 
 web/ramen_script.js: web/ramen_script.byte
@@ -213,10 +216,10 @@ RamenGui.ml: web/ramen_script.js web/ramen_script.min.js web/style.css Makefile
 AlerterSharedTypesJS_noPPP.cmo: AlerterSharedTypesJS.ml
 	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
 
-web/alerter_app.cmo: web/alerter_app.ml AlerterSharedTypesJS_noPPP.cmo RamenHtml.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo
+web/alerter_app.cmo: web/alerter_app.ml AlerterSharedTypesJS_noPPP.cmo RamenHtml.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/alerter_script.byte: AlerterSharedTypesJS_noPPP.cmo RamenHtml.cmo Consts.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo web/alerter_app.cmo
+web/alerter_script.byte: AlerterSharedTypesJS_noPPP.cmo RamenHtml.cmo Consts.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo web/alerter_app.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -linkpkg $^ -o $@
 
 web/alerter_script.js: web/alerter_script.byte

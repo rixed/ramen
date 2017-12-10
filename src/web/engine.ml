@@ -96,6 +96,7 @@ let rec set_listener_opt tag (elmt : Dom.element Js.t) action =
       | Some action ->
         Html.handler (fun _e ->
           action (Js.to_string elmt##.value) ;
+          resync () ;
           Js._false)
       | None -> Html.no_handler)
   | "textarea" ->
@@ -107,6 +108,7 @@ let rec set_listener_opt tag (elmt : Dom.element Js.t) action =
       | Some action ->
         Html.handler (fun _e ->
           action (Js.to_string elmt##.value) ;
+          resync () ;
           Js._false)
       | None -> Html.no_handler)
   | "button" ->
@@ -118,6 +120,18 @@ let rec set_listener_opt tag (elmt : Dom.element Js.t) action =
       | Some action ->
         Html.handler (fun ev ->
           Html.stopPropagation ev ;
+          action (Js.to_string elmt##.value) ;
+          resync () ;
+          Js._false)
+      | None -> Html.no_handler)
+  | "select" ->
+    let elmt = Html.CoerceTo.element elmt |>
+               coercion_motherfucker_can_you_do_it |>
+               Html.CoerceTo.select |>
+               coercion_motherfucker_can_you_do_it in
+    elmt##.onchange := (match action with
+      | Some action ->
+        Html.handler (fun _e ->
           action (Js.to_string elmt##.value) ;
           resync () ;
           Js._false)

@@ -155,6 +155,7 @@ let em = elmt "em" []
 let ul = elmt "ul"
 let ol = elmt "ol"
 let li = elmt "li"
+let form = elmt "form"
 
 (* Some more for SVG *)
 
@@ -280,3 +281,13 @@ let svgtexts
                 ?stroke_width ?stroke_opacity ?fill_opacity str) :: res)
             (y +. sz *. 1.05) txts' in
   List.rev (aux [] y txts)
+
+(* Forms *)
+
+let select_box ?action ?name ?selected opts =
+  elmt "select" ?action
+    (match name with Some n -> [ attr "name" n ] | None -> [])
+    ( List.map (fun o ->
+        elmt "option"
+          (if selected = Some o then [ attr "selected" "yes" ] else [])
+          [ text o ]) opts )

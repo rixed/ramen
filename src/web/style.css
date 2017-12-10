@@ -150,3 +150,7 @@ div.tab div { float: left; min-height: 1em; height: 1em; display: flex; padding:
 div.tab div { background-color: #fff; color: #aaa; }
 div.tab div.selected { background-color: #ccc; color: #000; }
 
+/* Specific for alerter: */
+
+ul.team-members li, ol.oncaller-contacts li { margin-left: 1em; }
+.contact.changed { background-color: orange; }

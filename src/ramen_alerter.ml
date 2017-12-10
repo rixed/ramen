@@ -31,14 +31,20 @@ let syslog = Syslog.openlog "ramen_alerter"
  * can save regularly and restore whenever we start in order to limit the
  * disruption in case of a crash: *)
 
+(* Notice there is no team: if someone is in a team and is found to be
+ * oncall at some time then he will be sent the alerts.
+ * If your belon to several team but want to be oncall for only one then
+ * merely create several identities. *)
+type schedule = {
+  rank : int ;
+  from : float ;
+  oncaller : string }
+
 (* The part of the internal state that we persist on disk: *)
 type persisted_state = {
   (* Ongoing incidents stays there until they are manually closed (with
    * comment, reason, etc...) *)
   ongoing_incidents : (int, Incident.t) Hashtbl.t ;
-
-  (* All global (aka team-wide) inhibitions, keyed by team name *)
-  inhibitions : (string, Inhibition.t list) Hashtbl.t ;
 
   (* Used to give a unique id to any escalation so that we can ack them. *)
   mutable next_alert_id : int ;
@@ -47,26 +53,18 @@ type persisted_state = {
   mutable next_incident_id : int ;
 
   (* And inhibitions: *)
-  mutable next_inhibition_id : int }
+  mutable next_inhibition_id : int ;
 
-type db = {
-  (* Sqlite configuration for oncallers and escalations (will be created if
-   * it does not exist) *)
-  handle : Sqlite3.db ;
-
-  (* A few prepared statements *)
-  stmt_get_oncall : Sqlite3.stmt ;
-  stmt_get_contacts : Sqlite3.stmt ;
-  stmt_get_escalation : Sqlite3.stmt ;
-  stmt_get_teams : Sqlite3.stmt }
+  (* Teams *)
+  mutable oncallers : OnCaller.t list ;
+  mutable teams : Team.t list ;
+  schedule : schedule list }
 
 type state = {
   (* Where this state is saved *)
   save_file : string option ;
   default_team : string ;
   mutable dirty : bool ;
-
-  mutable db : db ;
 
   (* What is saved onto/restored from disk to avoid losing context when
    * stopping or crashing: *)
@@ -76,19 +74,20 @@ type state = {
   mutable archived_incidents : Incident.t list }
 
 let is_inhibited state name team now =
-  let open Inhibition in
-  match Hashtbl.find state.persist.inhibitions team with
+  match List.find (fun t -> t.Team.name = team) state.persist.teams with
   | exception Not_found -> false
-  | inhibitions ->
+  | team ->
+    let open Inhibition in
     (* First remove all expired inhibitions: *)
     let inhibitions, changed =
       List.fold_left (fun (inhibitions, changed) i ->
         if i.stop_date > now -. max_inhibit_age then
           i :: inhibitions, changed
         else
-          inhibitions, true) ([], false) inhibitions in
-    if changed then
-      Hashtbl.replace state.persist.inhibitions team inhibitions ;
+          inhibitions, true) ([], false) team.Team.inhibitions in
+    if changed then (
+      team.inhibitions <- inhibitions ;
+      state.dirty <- true) ;
     (* See if this alert is inhibited: *)
     List.exists (fun i ->
         i.stop_date > now && String.starts_with name i.what
@@ -207,21 +206,11 @@ struct
     { name = "default_oncall" ;
       contacts = [| Contact.Console |] }
 
-  let get_contacts state name =
-    let open Sqlite3 in
-    let stmt = state.db.stmt_get_contacts in
-    reset stmt |> must_be_ok ;
-    bind stmt 1 Data.(TEXT name) |> must_be_ok ;
-    step_all_fold stmt [] (fun prev ->
-      let s = column stmt 0 |> to_string |> required in
-      match PPP.of_string_exc Contact.t_ppp s with
-      | exception PPP.ParseError ->
-        !logger.error "Cannot parse contact %S" s ;
-        prev
-      | c -> c :: prev) |>
-    (* Since the statement select the contact by descending preference
-     * we end up with the contact list with preferred contact firsts. *)
-    Array.of_list
+  let get_contacts state oncaller_name =
+    match List.find (fun c -> c.OnCaller.name = oncaller_name
+            ) state.persist.oncallers with
+    | exception Not_found -> [||]
+    | oncaller -> oncaller.OnCaller.contacts
 
   let get state name =
     (* Notice this does not even check the name is in the DB at all,
@@ -229,22 +218,52 @@ struct
     let contacts = get_contacts state name in
     { name ; contacts }
 
-  (* Return the list of oncallers for a team at time t *)
   let who_is_oncall state team rank time =
-    let open Sqlite3 in
-    let stmt = state.db.stmt_get_oncall in
-    reset stmt |> must_be_ok ;
-    bind stmt 1 Data.(INT (Int64.of_int rank)) |> must_be_ok ;
-    bind stmt 2 Data.(FLOAT time) |> must_be_ok ;
-    bind stmt 3 Data.(TEXT team) |> must_be_ok ;
-    match step stmt with
-    | Rc.ROW ->
-      let name = column stmt 0 |> to_string |> required in
-      get state name
-    | _ ->
-      !logger.error "Nobody is %dth oncall for team %s at time %f"
-        rank team time ;
+    match List.find (fun t -> t.Team.name = team) state.persist.teams with
+    | exception Not_found ->
       default_oncaller
+    | team ->
+      (match
+        List.fold_left (fun best_s s ->
+            if s.rank <> rank || s.from > time ||
+               not (List.exists ((=) s.oncaller) team.members)
+            then best_s else
+            match best_s with
+            | None -> Some s
+            | Some best ->
+              if s.from >= best.from then Some s else best_s
+          ) None state.persist.schedule with
+      | None -> default_oncaller
+      | Some s -> get state s.oncaller)
+
+  let assign_unassigned state =
+    (* All oncallers not member of any team will be added to the "slackers"
+     * team, which will be created if it doesn't exists. *)
+    let all_assigned =
+      List.fold_left (fun s t ->
+          List.fold_left (fun s o ->
+            Set.add o s) s t.Team.members
+        ) Set.empty state.persist.teams in
+    let unassigned =
+      List.filter_map (fun o ->
+          if Set.mem o.name all_assigned then None
+          else Some o.name
+        ) state.persist.oncallers in
+    if unassigned <> [] then (
+      !logger.info "Oncallers %a are slackers"
+        (List.print String.print) unassigned ;
+      state.dirty <- true ;
+      let slackers = "Slackers" in
+      match List.find (fun t -> t.Team.name = slackers)
+                      state.persist.teams with
+      | exception Not_found ->
+        state.persist.teams <-
+          Team.{ name = slackers ; members = unassigned ;
+                 escalations = [] ; inhibitions = [] } ::
+            state.persist.teams
+      | t ->
+        t.members <- List.rev_append unassigned t.members
+    )
 end
 
 module Sender =
@@ -357,45 +376,33 @@ struct
     { steps = [|
         { timeout = 350. ; victims = [| 0 |] } ;
         { timeout = 600. ; victims = [| 0 ; 1 |] } ;
-        { timeout = 600. ; victims = [| 0 ; 1 |] }
-      |] ;
+        { timeout = 600. ; victims = [| 0 ; 1 |] } |] ;
       attempt = 0 ; last_sent = now }
 
   let make state alert now =
     !logger.debug "Creating an escalation" ;
-    let to_array mask =
-      let rec loop prev bit =
-        if bit >= 64 then Array.of_list prev else
-        let prev' =
-          if 0L = Int64.(logand mask (shift_left 1L bit)) then prev else
-          bit :: prev in
-        loop prev' (bit+1) in
-      loop [] 0 in
     (* We might not find a configuration corresponding to this alert
      * importance. In that case we take the configuration for the next
      * most important alerts: *)
-    let rec loop importance =
-      if importance < 0 then ( (* end the recursion *)
-        default_escalation now
-      ) else (
-        let open Sqlite3 in
-        let stmt = state.db.stmt_get_escalation in
-        reset stmt |> must_be_ok ;
-        bind stmt 1 Data.(TEXT alert.Alert.team) |> must_be_ok ;
-        bind stmt 2 Data.(INT (Int64.of_int importance)) |> must_be_ok ;
-        let steps =
-          step_all_fold stmt [] (fun prev ->
-            let timeout = column stmt 0 |> to_float |> required
-            and victims = column stmt 1 |> to_int64 |> required |> to_array
-            in
-            { timeout ; victims } :: prev) |>
-          List.rev |>
-          Array.of_list in
-        if steps = [||] then loop (importance - 1) else
-        { steps ; attempt = 0 ; last_sent = now }
-      )
-    in
-    loop alert.importance
+    match List.find (fun t -> t.Team.name = alert.Alert.team
+            ) state.persist.teams with
+    | exception Not_found ->
+      default_escalation now
+    | team ->
+      (match 
+        List.fold_left (fun best esc ->
+            if esc.Team.importance > alert.Alert.importance then best else
+            match best with
+            | None -> Some esc
+            | Some best_e ->
+              if esc.importance > best_e.importance then Some esc
+              else best
+          ) None team.escalations with
+      | None -> default_escalation now
+      | Some e ->
+        Escalation.{
+          steps = Array.of_list e.Team.steps ;
+          attempt = 0 ; last_sent = now })
 
   (* Send a message and prepare the escalation *)
   let outcry_once state alert step attempt now =
@@ -460,89 +467,6 @@ struct
         | None -> prev) prev i.alerts)
 end
 
-let open_config_db file =
-  let open Sqlite3 in
-  let ensure_db_table handle create insert =
-    !logger.debug "Exec: %s" create ;
-    exec handle create |> must_be_ok ;
-    !logger.debug "Exec: %s" insert ;
-    exec handle insert |> must_be_ok
-  in
-  let%lwt handle =
-    catch
-      (fun () ->
-        SqliteHelpers.db_open ~mode:`READONLY file)
-      (function Error err ->
-        !logger.debug "Cannot open DB %S: %s, will create a new one."
-            file err ;
-        let%lwt handle = SqliteHelpers.db_open file in
-        ensure_db_table handle
-          (* FIXME: a single person could be in several teams *)
-          "CREATE TABLE IF NOT EXISTS oncallers ( \
-             name STRING PRIMARY KEY, \
-             team STRING NOT NULL)"
-          "INSERT INTO oncallers VALUES \
-             ('John Doe', 'firefighters')" ;
-        (* TODO: maybe in the future make the contact depending on day of
-         * week and/or time of day? *)
-        ensure_db_table handle
-          "CREATE TABLE IF NOT EXISTS contacts ( \
-             oncaller STRING REFERENCES oncallers (name) ON DELETE CASCADE, \
-             preferred INTEGER NOT NULL, \
-             contact STRING NOT NULL)"
-          "INSERT INTO contacts VALUES \
-             ('John Doe', 1, '{\"Console\":null}')" ;
-        ensure_db_table handle
-          "CREATE TABLE IF NOT EXISTS schedule ( \
-             oncaller STRING REFERENCES oncallers (name) ON DELETE SET NULL, \
-             \"from\" INTEGER NOT NULL, \
-             rank INTEGER NOT NULL)"
-          "INSERT INTO schedule VALUES \
-             ('John Doe', 0, 0)" ;
-        ensure_db_table handle
-          "CREATE TABLE IF NOT EXISTS escalations ( \
-             team STRING NOT NULL, \
-             importance INTEGER NOT NULL, \
-             attempt INTEGER NOT NULL, \
-             timeout REAL NOT NULL, \
-             victims INTEGER NOT NULL DEFAULT 1)"
-          "INSERT INTO escalations VALUES \
-             ('firefighters', 0, 1, 350, 1), \
-             ('firefighters', 0, 2, 350, 3)" ;
-        (* Reopen in read-only *)
-        let%lwt () = close ~max_tries:10 handle in
-        SqliteHelpers.db_open ~mode:`READONLY file
-      | err -> fail err) in
-    return
-      { handle ;
-        stmt_get_oncall =
-          prepare handle
-            "SELECT oncallers.name \
-             FROM schedule NATURAL JOIN oncallers \
-             WHERE schedule.rank <= ? AND schedule.\"from\" <= ? \
-               AND oncallers.team = ? \
-             ORDER BY schedule.\"from\" DESC, schedule.rank DESC LIMIT 1" ;
-        stmt_get_contacts =
-          prepare handle
-            "SELECT contact FROM contacts \
-             WHERE oncaller = ? ORDER BY preferred DESC" ;
-        stmt_get_escalation =
-          prepare handle
-            "SELECT timeout, victims FROM escalations \
-             WHERE team = ? AND importance = ? ORDER BY attempt" ;
-        stmt_get_teams =
-          prepare handle
-            "SELECT team, name FROM oncallers ORDER BY team, name" }
-
-let close_config_db db =
-  let open Sqlite3 in
-  let open SqliteHelpers in
-  finalize db.stmt_get_oncall |> must_be_ok ;
-  finalize db.stmt_get_contacts |> must_be_ok ;
-  finalize db.stmt_get_escalation |> must_be_ok ;
-  finalize db.stmt_get_teams |> must_be_ok ;
-  close ~max_tries:30 db.handle
-
 let check_escalations state now =
   EscalationOps.fold_ongoing state [] (fun prev alert esc ->
       let timeout =
@@ -557,13 +481,24 @@ let check_escalations state now =
     ) |>
   join
 
-let get_state save_file db_config_file default_team =
+let get_state save_file default_team =
   let get_new () =
     { ongoing_incidents = Hashtbl.create 5 ;
-      inhibitions = Hashtbl.create 11 ;
       next_alert_id = 0 ;
       next_incident_id = 0 ;
-      next_inhibition_id = 0 }
+      next_inhibition_id = 0 ;
+      oncallers = [ OnCaller.{ name = "John Doe" ;
+                               contacts = [| Contact.Console |] } ] ;
+      teams = [
+        Team.{ name = "Firefighters" ;
+               members = [ "John Doe" ] ;
+               escalations = [
+                 { importance = 0 ;
+                   steps = Escalation.[
+                     { victims = [| 0 |] ; timeout = 350. } ;
+                     { victims = [| 0; 1 |] ; timeout = 350. } ] } ] ;
+               inhibitions = [] } ] ;
+      schedule = [ { rank = 0 ; from = 0. ; oncaller = "John Doe" } ] }
   in
   let persist =
     match save_file with
@@ -580,9 +515,8 @@ let get_state save_file db_config_file default_team =
              get_new ())
     | None -> get_new ()
   in
-  let%lwt db = open_config_db db_config_file in
   let state =
-    { save_file ; dirty = false ; default_team ; db ;
+    { save_file ; dirty = false ; default_team ;
       persist ; archived_incidents = [] } in
   let rec check_escalations_loop () =
     let now = Unix.gettimeofday () in
@@ -668,6 +602,12 @@ struct
     let%lwt body = replace_placeholders body in
     respond_ok ~body ~ct:Consts.html_content_type ()
 
+  let find_team state name =
+    match List.find (fun t -> t.Team.name = name) state.persist.teams with
+    | exception Not_found ->
+      bad_request ("unknown team "^ name)
+    | t -> return t
+
   let notify state params =
     let hg = Hashtbl.find_default params
     and now = Unix.gettimeofday () in
@@ -678,6 +618,7 @@ struct
     | exception _ ->
       fail (HttpError (400, "importance and now must be numeric"))
     | name, importance, time, firing ->
+      state.dirty <- true ;
       alert state ~name ~importance ~now ~time ~firing
         ~team:(hg "team" state.default_team)
         ~title:(hg "title" "")
@@ -685,34 +626,19 @@ struct
       Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~body:""
 
   let get_teams state =
-    let open Sqlite3 in
-    let stmt = state.db.stmt_get_teams in
-    reset stmt |> must_be_ok ;
-    let now = Unix.gettimeofday () in
-    (* Do not send inhibits older than that: *)
-    let last_stop = now -. max_inhibit_age in
-    let resp =
-      step_all_fold stmt [] (fun prev ->
-        let team = column stmt 0 |> to_string |> required
-        and name = column stmt 1 |> to_string |> required in
-        match prev with
-        | [] -> [ team, [ name ] ]
-        | (team', members) :: rest ->
-          if team = team' then
-            (team', name::members) :: rest
-          else
-            (team, [ name ]) :: prev) |>
-      List.fold_left (fun prev (team, members) ->
-        let inhibitions =
-          try Hashtbl.find state.persist.inhibitions team |>
-              List.filter (fun i -> i.Inhibition.stop_date >= last_stop)
-          with Not_found -> [] in
-        GetTeam.{
-          name = team ;
-          members = List.rev members ;
-          inhibitions } :: prev) [] in
-    let body = PPP.to_string GetTeam.resp_ppp resp in
+    let body = PPP.to_string Team.get_resp_ppp state.persist.teams in
     respond_ok ~body ()
+
+  let new_team state _headers name =
+    match List.find (fun t -> t.Team.name = name) state.persist.teams with
+    | exception Not_found ->
+      state.persist.teams <-
+        Team.{ name ; members = [] ; escalations = [] ;
+               inhibitions = [] } :: state.persist.teams ;
+      state.dirty <- true ;
+      respond_ok ()
+    | _ ->
+      bad_request ("Team "^ name ^" already exists")
 
   let get_oncaller state _headers name =
     let oncaller = OnCallerOps.get state name in
@@ -797,6 +723,7 @@ struct
     (* We record the ack regardless of stopped_firing *)
     AlertOps.log a (Unix.gettimeofday ()) Alert.Ack ;
     a.escalation <- None ;
+    state.dirty <- true ;
     respond_ok ()
 
   (* Stops an alert as if a notification with firing=f have been received *)
@@ -804,6 +731,7 @@ struct
     let%lwt i, a = alert_of_id state id in
     let now = Unix.gettimeofday () in
     AlertOps.stop state i a Manual now ;
+    state.dirty <- true ;
     respond_ok ()
 
   (* Inhibitions *)
@@ -812,44 +740,41 @@ struct
 
   let add_inhibit_ state team inhibit =
     let open Inhibition in
+    let%lwt team = find_team state team in
     let id = state.persist.next_inhibition_id in
     state.persist.next_inhibition_id <-
       state.persist.next_inhibition_id + 1 ;
+    state.dirty <- true ;
     let inhibit = { inhibit with id } in
-    (* TODO: lock this hash with a RW lock *)
-    match Hashtbl.find state.persist.inhibitions team with
+    (* TODO: lock the conf with a RW lock *)
+    match List.find (fun i -> i.id = inhibit.id) team.Team.inhibitions with
     | exception Not_found ->
-      Hashtbl.add state.persist.inhibitions team [ inhibit ]
-    | lst ->
-      (match List.find (fun i -> i.id = inhibit.id) lst with
-      | exception Not_found ->
-        Hashtbl.replace state.persist.inhibitions team (inhibit :: lst)
-      | _ -> !logger.error "Found an inhibit with next id?" ;
-             assert false)
+      team.inhibitions <- inhibit :: team.inhibitions ;
+      return_unit
+    | _ ->
+      failwith "Found an inhibit with next id?"
 
   let edit_inhibit state headers team body =
     let open Inhibition in
     let%lwt inhibit = of_json headers "Inhibit" Inhibition.t_ppp body in
+    let%lwt team = find_team state team in
     (* Note: one do not delete inhibitions but one can set a past
      * stop_date. *)
-    match Hashtbl.find state.persist.inhibitions team with
+    match List.find (fun i -> i.id = inhibit.id) team.Team.inhibitions with
     | exception Not_found ->
       bad_request "No such inhibition"
-    | lst ->
-      (match List.find (fun i -> i.id = inhibit.id) lst with
-      | exception Not_found ->
-        bad_request "No such inhibition"
-      | i ->
-        i.what <- inhibit.what ;
-        i.start_date <- inhibit.start_date ;
-        i.stop_date <- inhibit.stop_date ;
-        i.why <- inhibit.why ;
-        respond_ok ())
+    | i ->
+      i.what <- inhibit.what ;
+      i.start_date <- inhibit.start_date ;
+      i.stop_date <- inhibit.stop_date ;
+      i.why <- inhibit.why ;
+      state.dirty <- true ;
+      respond_ok ()
 
   let add_inhibit state headers team body =
     let%lwt inhibit = of_json headers "Inhibit" Inhibition.t_ppp body in
-    add_inhibit_ state team inhibit ;
-    respond_ok () (* TODO: why not returning the GetTeam.resp directly? *)
+    add_inhibit_ state team inhibit >>=
+    respond_ok (* TODO: why not returning the GetTeam.resp directly? *)
 
   let stfu state _headers team =
     let open Inhibition in
@@ -857,50 +782,33 @@ struct
     let inhibit =
       { id = -1 ; what = "" ; start_date = now ; stop_date = now +. 3600. ;
         who = user ; why = "STFU!" } in
-    add_inhibit_ state team inhibit ;
+    add_inhibit_ state team inhibit >>=
+    respond_ok
+
+  let save_oncaller state headers name body =
+    let%lwt oncaller =
+      of_json headers "Save Oncaller" OnCaller.t_ppp body in
+    let rec list_replace prev = function
+      | [] -> List.rev (oncaller :: prev) (* New one *)
+      | c :: rest ->
+        if c.OnCaller.name = name then
+          List.rev_append prev (oncaller :: rest)
+        else
+          list_replace (c :: prev) rest in
+    state.persist.oncallers <- list_replace [] state.persist.oncallers ;
+    state.dirty <- true ;
     respond_ok ()
 
-  let download_db _state config_db _headers =
-    serve_raw_file Consts.sqlite_content_type config_db
+  let save_members state headers name body =
+    let%lwt members =
+      of_json headers "Save members" Team.set_members_ppp body in
+    let%lwt team = find_team state name in
+    team.Team.members <- members ;
+    OnCallerOps.assign_unassigned state ;
+    state.dirty <- true ;
+    respond_ok ()
 
-  let upload_db state config_db headers body =
-    (* Get the file content out of the form-data: *)
-    let content_type = get_content_type headers in
-    let%lwt data = match
-      let open CodecMultipartFormData in
-      parse_multipart_args content_type body |>
-      List.find (fun (name, _) -> name = "config.db") with
-      | exception Not_found -> bad_request "Cannot find config.db"
-      | exception e -> bad_request (Printexc.to_string e)
-      | _, { value ; content_type ; _ }  ->
-        if content_type <> "application/octet-stream" then
-          bad_request ("Bad content type for config.db file: expected \
-                        application/octet-stream but got "^ content_type)
-        else return value in
-    (* A temporary file name in the same directory of the actual
-     * config.db so we can rename it in place: *)
-    let tmp =
-      config_db ^".tmp."^
-      string_of_int (Random.int max_int_for_random) in
-    let%lwt () =
-      Lwt_stream.of_string data |>
-      Lwt_io.chars_to_file tmp in
-    catch
-      (fun () ->
-        let%lwt db = open_config_db tmp in
-        !logger.info "Replacing %S" config_db ;
-        let%lwt () = close_config_db state.db in
-        let%lwt () = Lwt_unix.unlink config_db in
-        let%lwt () = Lwt_unix.rename tmp config_db in
-        state.db <- db ;
-        respond_ok ())
-      (fun e ->
-        let msg = Printexc.to_string e in
-        !logger.error "Cannot use uploaded config: %s" msg ;
-        let%lwt () = Lwt_unix.unlink tmp in
-        bad_request msg)
-
-  let start port cert_opt key_opt state config_db www_dir =
+  let start port cert_opt key_opt state www_dir =
     let router meth path params headers body =
       let alert_id_of_string s =
         match int_of_string s with
@@ -913,6 +821,8 @@ struct
           notify state params
         | `GET, ["teams"] ->
           get_teams state
+        | `GET, ["team"; "new"; name] ->
+          new_team state headers name
         | `GET, ["oncaller"; name] ->
           get_oncaller state headers name
         | `GET, ["ongoing"] ->
@@ -936,11 +846,10 @@ struct
           edit_inhibit state headers team body
         | `GET, ["stfu" ; team] ->
           stfu state headers team
-        (* Upload/Download of the sqlite configuration *)
-        | `GET, ["config.db"] ->
-          download_db state config_db headers
-        | `POST, ["config.db"] ->
-          upload_db state config_db headers body
+        | `POST, ["oncaller"; name] ->
+          save_oncaller state headers name body
+        | `POST, ["members"; name] ->
+          save_members state headers name body
         (* Web UI *)
         | `GET, ([]|["index.html"]) ->
           if www_dir = "" then
@@ -989,12 +898,6 @@ let log_dir =
                    ~env [ "log-dir" ; "logdir" ] in
   Arg.(value (opt (some string) None i))
 
-let config_db =
-  let env = Term.env_info "ALERT_CONFIG_DB" in
-  let i = Arg.info ~doc:"Sqlite file with the alerting configuration"
-                   ~env [ "config"; "config-file" ] in
-  Arg.(value (opt string "alerter.db" i))
-
 let http_port =
   let env = Term.env_info "ALERT_HTTP_PORT" in
   let i = Arg.info ~doc:"Port where to run the HTTP server \
@@ -1034,7 +937,7 @@ let www_dir =
                    ~env [ "www-dir" ; "www-root" ; "web-dir" ; "web-root" ] in
   Arg.(value (opt string "" i))
 
-let start_all debug daemonize to_stderr logdir save_file config_db
+let start_all debug daemonize to_stderr logdir save_file
               default_team http_port ssl_cert ssl_key www_dir () =
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
@@ -1044,8 +947,8 @@ let start_all debug daemonize to_stderr logdir save_file config_db
   logger := make_logger ?logdir debug ;
   if daemonize then do_daemonize () ;
   Lwt_main.run (
-    let%lwt alerter_state = get_state save_file config_db default_team in
-    HttpSrv.start http_port ssl_cert ssl_key alerter_state config_db www_dir)
+    let%lwt alerter_state = get_state save_file default_team in
+    HttpSrv.start http_port ssl_cert ssl_key alerter_state www_dir)
 
 let start_cmd =
   Term.(
@@ -1055,7 +958,6 @@ let start_cmd =
       $ to_stderr
       $ log_dir
       $ save_file
-      $ config_db
       $ default_team
       $ http_port
       $ ssl_cert

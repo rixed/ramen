@@ -26,7 +26,7 @@ module OnCaller =
 struct
   type t =
     { name : string ;
-      (* TODO: make this a list *)
+      (* Contacts ordered by preference, preferred one first: *)
       contacts : Contact.t array } [@@ppp PPP_JSON]
 end
 
@@ -154,14 +154,20 @@ struct
   type list_resp = (string * t list) list [@@ppp PPP_JSON]
 end
 
-module GetTeam =
+module Team =
 struct
-  type team =
-    { name : string ;
-      members : string list ;
-      inhibitions : Inhibition.t list } [@@ppp PPP_JSON]
+  type escalation =
+    { importance : int ;
+      steps : Escalation.step list } [@@ppp PPP_JSON]
 
-  type resp = team list [@@ppp PPP_JSON]
+  type t =
+    { name : string ;
+      mutable members : string list ;
+      escalations : escalation list ;
+      mutable inhibitions : Inhibition.t list } [@@ppp PPP_JSON]
+
+  type get_resp = t list [@@ppp PPP_JSON]
+  type set_members = string list [@@ppp PPP_JSON]
 end
 
 (* Query returning ongoing incidents *)

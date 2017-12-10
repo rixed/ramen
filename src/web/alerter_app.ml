@@ -8,21 +8,38 @@ open AlerterSharedTypesJS_noPPP
 
 (* Conversions from to Js *)
 
-module Searchable =
+(* Editable versions of some common types (with searchable strings) *)
+module Editable =
 struct
   let of_string s = (Js.string s)##toLowerCase
 
-  type team =
-    { name : string ;
-      inhibitions : Inhibition.t list ;
-      searchable_name : Js.js_string Js.t ;
-      members : (string * Js.js_string Js.t) list }
+  module Team =
+  struct
+    type t =
+      { name : string ;
+        searchable_name : Js.js_string Js.t ;
+        inhibitions : Inhibition.t list ;
+        mutable members : (string * Js.js_string Js.t) list }
 
-  let of_team team =
-    { name = team.GetTeam.name ;
-      inhibitions = team.inhibitions ;
-      searchable_name = of_string team.name ;
-      members = List.map (fun m -> m, of_string m) team.members }
+    let of_team team =
+      { name = team.Team.name ;
+        inhibitions = team.inhibitions ;
+        searchable_name = of_string team.name ;
+        members = List.map (fun m -> m, of_string m) team.members }
+  end
+
+  module OnCaller =
+  struct
+    type contact =
+      { contact : Contact.t ;
+        to_del : bool ;
+        (* if None this is a new entry not backed up yet *)
+        old : Contact.t option }
+
+    type t =
+      { name : string ;
+        contacts : contact list }
+  end
 end
 
 let inhibition_of_js js =
@@ -34,12 +51,25 @@ let inhibition_of_js js =
   and why = of_field js "why" Js.to_string in
   Inhibition.{ id ; what ; start_date ; stop_date ; who ; why }
 
+let escalation_step_of_js js =
+  Escalation.{
+    timeout = of_field js "timeout" Js.to_float ;
+    victims = of_field js "victims" (array_of_js identity) }
+
+let escalation_of_js js =
+  Team.{
+    importance = of_field js "importance" identity ;
+    steps = of_field js "steps" (list_of_js escalation_step_of_js) }
+
 let team_of_js js =
   let name = of_field js "name" Js.to_string
   and members = of_field js "members" (list_of_js Js.to_string)
+  and escalations =
+    of_field js "escalations" (list_of_js escalation_of_js)
   and inhibitions =
     of_field js "inhibitions" (list_of_js inhibition_of_js) in
-  Searchable.of_team GetTeam.{ name ; members ; inhibitions }
+  Editable.Team.of_team Team.{
+    name ; members ; escalations ; inhibitions }
 
 let contact_of_js =
   let open Contact in
@@ -56,8 +86,11 @@ let contact_of_js =
 
 let oncaller_of_js js =
   let name = of_field js "name" Js.to_string
-  and contacts = of_field js "contacts" (array_of_js contact_of_js) in
-  OnCaller.{ name ; contacts }
+  and contacts = of_field js "contacts" (list_of_js (fun js ->
+    let open Editable.OnCaller in
+    let contact = contact_of_js js in
+    { to_del = false ; contact ; old = Some contact })) in
+  Editable.OnCaller.{ name ; contacts }
 
 let notif_outcome_of_js js =
   let open Alert in
@@ -116,14 +149,60 @@ let incident_of_js i =
     id = of_field i "id" identity ;
     alerts = of_field i "alerts" (list_of_js alert_of_js) }
 
+let js_of_contact = function
+  | Contact.Console -> object%js
+        val _Console = Js.def Js.null
+        val _SysLog = Js.undefined
+        val _Email = Js.undefined
+        val _SMS = Js.undefined
+        val _Sqlite = Js.undefined
+      end
+  | Contact.SysLog -> object%js
+        val _Console = Js.undefined
+        val _SysLog = Js.def Js.null
+        val _Email = Js.undefined
+        val _SMS = Js.undefined
+        val _Sqlite = Js.undefined
+      end
+  | Contact.Email { to_ ; cc ; bcc } -> object%js
+        val _Console = Js.undefined
+        val _SysLog = Js.undefined
+        val _Email = Js.def (object%js
+          val _to = Js.string to_
+          val cc = Js.string cc
+          val bcc = Js.string bcc
+        end)
+        val _SMS = Js.undefined
+        val _Sqlite = Js.undefined
+      end
+  | Contact.SMS to_ -> object%js
+        val _Console = Js.undefined
+        val _SysLog = Js.undefined
+        val _Email = Js.undefined
+        val _SMS = Js.def (Js.string to_)
+        val _Sqlite = Js.undefined
+      end
+  | Contact.Sqlite _ -> object%js
+        val _Console = Js.undefined
+        val _SysLog = Js.undefined
+        val _Email = Js.undefined
+        val _SMS = Js.undefined
+        val _Sqlite = Js.def (object%js
+          val todo = Js.string "todo"
+        end)
+      end
+
 (*
  * States
  *)
 
 (* Alerter state *)
 
-let teams : Searchable.team list param = make_param "teams" []
+let teams = make_param "teams" []
 let team_search = make_param "team search" ""
+
+let find_team teams name =
+  List.find (fun t -> t.Editable.Team.name = name) teams
 
 (* Team Selection: all of them or just one *)
 
@@ -137,7 +216,7 @@ let is_team_selected sel team =
 
 let fold_teams teams selection search_str init f =
   List.fold_left (fun prev team ->
-      if is_team_selected selection team.Searchable.name &&
+      if is_team_selected selection team.Editable.Team.name &&
          (string_contains search_str team.searchable_name ||
           List.exists (fun (_, m) ->
               string_contains search_str m
@@ -149,17 +228,17 @@ let fold_teams teams selection search_str init f =
 
 let fold_members team search_str init f =
   let team_match_search =
-    string_contains search_str team.Searchable.searchable_name in
+    string_contains search_str team.Editable.Team.searchable_name in
   List.fold_left (fun prev (member, searchable_member) ->
       if team_match_search || string_contains search_str searchable_member then
         f prev member
       else prev
     ) init team.members
 
-let find_team teams name =
-  List.find (fun t -> t.Searchable.name = name) teams
-
-let oncallers : OnCaller.t option param Jstable.t = Jstable.create ()
+(* The option below is for having the param before we receive the
+ * oncaller info from the server: *)
+let oncallers : Editable.OnCaller.t option param Jstable.t =
+  Jstable.create ()
 
 let invalidate_oncaller name =
   let js_name = Js.string name in
@@ -181,7 +260,6 @@ let set_oncaller name oncaller_opt =
 (* Main views of the application: *)
 
 type page = PageLive | PageTeam | PageHandOver | PageHistory | Reports
-          | Configuration
 let current_page = make_param "tab" PageLive
 
 (* Incidents *)
@@ -237,16 +315,14 @@ let fold_incidents incidents team_selection init f =
 
 (* Inhibitions *)
 
-let inhibit_what = make_param "inhibit what" ""
-let inhibit_why = make_param "inhibit why" ""
-let inhibit_start = make_param "inhibit start" ""
-let inhibit_stop = make_param "inhibit stop" ""
+type new_inhibition =
+  { what : string ; why : string ; start : string ; stop : string }
 
-let reset_inhibit_form () =
-  set inhibit_what "" ;
-  set inhibit_why "" ;
-  set inhibit_start "" ;
-  set inhibit_stop ""
+let new_inhibition =
+  make_param "new inhibit" { what = "" ; why = "" ; start = "" ; stop = "" }
+
+let reset_new_inhibit () =
+  set new_inhibition { what = "" ; why = "" ; start = "" ; stop = "" }
 
 (* History *)
 
@@ -299,12 +375,18 @@ let reload_history () =
     List.iter update_event_time_from_incident incidents ;
     set_known_incidents incidents)
 
-let reload_for_current_page () =
+let reload_for_current_page init =
   match current_page.value with
   | PageLive -> reload_ongoing ()
   | PageHistory -> reload_history ()
-  | PageTeam -> reload_teams ()
+  | PageTeam -> if init then reload_teams () else ()
   | _ -> ()
+
+let save_members name members =
+  let path = "/members/"^ enc name in
+  let content = List.map fst members |> js_of_list Js.string in
+  let what = "Saved members of team "^ name in
+  http_post path content ~what reload_teams
 
 (*
  * DOM
@@ -522,7 +604,6 @@ let stfu =
               [ text ("Silence EVERYTHING for team "^ team.name) ]))
 
 let page_live =
-  (* TODO: STFU button *)
   div
     [ id "page-live" ]
     [ h2 "Opened incidents" ;
@@ -546,16 +627,91 @@ let inhibition i =
             " by "^ i.who ^" since "^ date_of_ts i.start_date ^
             " because: "^ i.why) ]
 
-let input_text ~label ~size ~placeholder param =
-  elmt "label" []
-    [ text (label ^": ") ;
-      input ~action:(fun v -> set param v ; resync ())
-        [ attr "type" "text" ;
-          attr "size" (string_of_int size) ;
-          attr "placeholder" placeholder ;
-          attr "value" param.value ] ]
+(* Here param is the oncaller option that's being edited. For us it will
+ * always be Some oncaller.
+ * Returns the node and a boolean indicating whether anything have been
+ * changed in this contact. *)
+let contact_edit contact param idx =
+  let open Contact in
+  let open Editable.OnCaller in
+  let map_contact f i c = if i = idx then f c else c in
+  let map_contacts f contacts = List.mapi (map_contact f) contacts in
+  let set_to_field oncaller v = option_map (fun oncaller ->
+    { oncaller with
+      contacts = map_contacts (fun c ->
+        { c with contact = match c.contact with
+        | Email { cc ; bcc ; _ } -> Email { cc ; bcc ; to_ = v }
+        | _ -> assert false }) oncaller.contacts }) oncaller in
+  let set_cc_field oncaller v = option_map (fun oncaller ->
+    { oncaller with
+      contacts = map_contacts (fun c ->
+        { c with contact = match c.contact with
+        | Email { to_ ; bcc ; _ } -> Email { cc = v ; bcc ; to_ }
+        | _ -> assert false }) oncaller.contacts }) oncaller in
+  let set_bcc_field oncaller v = option_map (fun oncaller ->
+    { oncaller with
+      contacts = map_contacts (fun c ->
+        { c with contact = match c.contact with
+        | Email { to_ ; cc ; _ } -> Email { cc ; bcc = v ; to_ }
+        | _ -> assert false }) oncaller.contacts }) oncaller in
+  let set_sms_field oncaller v = option_map (fun oncaller ->
+    { oncaller with
+      contacts = map_contacts (fun c ->
+        { c with contact = match c.contact with
+        | SMS _ -> SMS v
+        | _ -> assert false }) oncaller.contacts }) oncaller in
+  let del_contact oncaller = option_map (fun oncaller ->
+    { oncaller with
+      contacts = map_contacts (fun c ->
+        { c with to_del = not c.to_del }) oncaller.contacts |>
+                 List.filter (fun c ->
+                   not (c.to_del && c.old = None)) }) oncaller in
+  let undel_contact = del_contact in
+  if contact.to_del then
+    div [ clss "contact changed deleted" ]
+        [ elmt "s" [] [ text (Contact.to_string contact.contact) ] ;
+          Gui.button ~param ~next_state:undel_contact
+                     [ clss "icon" ] [text "⌦" ] ],
+    true
+  else
+    let selected, inp = match contact.contact with
+      | Console -> "console", group []
+      | SysLog -> "syslog", group []
+      | Email { to_ ; cc ; bcc } ->
+        "email",
+        group [
+          Gui.input_text ~label:"To:" ~placeholder:"recipient"
+                         ~param ~next_state:set_to_field [] to_ ;
+          Gui.input_text ~label:"Cc:" ~placeholder:"carbon-copy"
+                         ~param ~next_state:set_cc_field [] cc ;
+          Gui.input_text ~label:"Bcc:" ~placeholder:"blind carbon-copy"
+                         ~param ~next_state:set_bcc_field [] bcc ]
+      | SMS to_ ->
+        "SMS",
+        Gui.input_text ~label:"To:" ~placeholder:"phone number"
+                       ~param ~next_state:set_sms_field [] to_
+      | Sqlite _ -> "sqlite", group [] in
+    let set_contact_type oncaller v = option_map (fun oncaller ->
+    { oncaller with
+      contacts = map_contacts (fun c ->
+        { c with contact = match v with
+        | "console" -> Console
+        | "syslog" -> SysLog
+        | "email" -> Email { to_ = "" ; cc = "" ; bcc = "" }
+        | "SMS" -> SMS ""
+        | _ -> assert false }) oncaller.contacts }) oncaller in
+    let typ = Gui.select_box ~param ~next_state:set_contact_type ~selected
+                [ "console" ; "syslog" ; "email" ; "SMS" ; "sqlite" ] in
+    let changed = contact.old <> Some contact.contact in
+    div [ clss ("contact"^ if changed then " changed" else "") ]
+        [ typ ; inp ;
+          Gui.button ~param ~next_state:del_contact
+                     [ clss "icon" ] [text "⌫" ] ],
+    changed
 
-let team_member teams team name =
+let team_member team name =
+  let open Editable in
+  let open OnCaller in
   let js_name = Js.string name in
   let oncaller_p =
     let prev = Jstable.find oncallers js_name in
@@ -570,70 +726,162 @@ let team_member teams team name =
   with_param oncaller_p (function
     | None -> text ("loading "^ name ^"...")
     | Some oncaller ->
+      let add_contact oncaller = option_map (fun oncaller ->
+        { oncaller with contacts =
+            { old = None ; to_del = false ;
+              contact = Console } :: oncaller.contacts }) oncaller in
+      let save_oncaller _ =
+        (* URL has the current name while the json has the new name
+         * (although for now you cannot change it. TODO. *)
+        let path = "/oncaller/"^ enc name in
+        let contacts = list_map_filter (fun c ->
+              if c.to_del then None else Some c.contact
+            ) oncaller.contacts in
+        let content =
+          object%js
+            val name = Js.string oncaller.name
+            val contacts = js_of_list js_of_contact contacts
+          end in
+        let what = "Saved "^ oncaller.name in
+        http_post path content ~what (fun _ ->
+          reload_oncaller oncaller.name) in
+      let leave_team _ =
+        let members = List.filter (fun (m, _) ->
+          m <> oncaller.name) team.Team.members in
+        save_members team.Team.name members in
       let other_teams =
         List.filter (fun t ->
-            t.Searchable.name <> team.Searchable.name &&
+            t.Team.name <> team.Team.name &&
             List.exists (fun (m, _) -> m = name) t.members
-          ) teams in
+          ) teams.value in
+      let nodes, anything_changed =
+        list_fold_lefti (fun i (lst, changed) c ->
+            let node, c = contact_edit c oncaller_p i in
+            li [] [ node ] :: lst, changed || c
+          ) ([], false) oncaller.contacts in
       div [ clss "oncaller-tile" ]
-          [ p [ clss "oncaller-name" ] [ text name ] ;
-            ul [ clss "oncaller-contacts" ]
-               ( Array.fold_left (fun lst c ->
-                     li [] [ text (Contact.to_string c) ] :: lst
-                   ) [] oncaller.OnCaller.contacts ) ;
-            if other_teams = [] then group [] else
-            p [ clss "oncaller-other-teams" ]
-              ( text "also in teams: " ::
-                List.map (fun t ->
-                    span [ clss "oncaller-other-team" ]
-                         [ text t.Searchable.name ]
-                  ) other_teams ) ])
+          [ (* name being the identifier we cannot edit it. Shall we
+             * want to make the name editable then we could add an id
+             * in the oncaller type. *)
+            p [ clss "oncaller-name" ] [ text name ] ;
+            button ~action:leave_team
+              [ clss "icon actionable" ]
+              [ text "leave" ] ;
+            ol [ clss "oncaller-contacts" ]
+               [ group nodes ;
+                 li []
+                    [ Gui.button ~param:oncaller_p
+                                 ~next_state:add_contact
+                                 [ clss "icon actionable" ]
+                                 [ text "+" ] ] ] ;
+            ( if other_teams = [] then group [] else
+              p [ clss "oncaller-other-teams" ]
+                ( text "also in teams: " ::
+                  List.map (fun t ->
+                      span [ clss "oncaller-other-team" ]
+                           [ text t.Team.name ]
+                    ) other_teams ) ) ;
+            if anything_changed then
+              button ~action:save_oncaller
+                [ clss "icon actionable" ]
+                [ text "💾" ]
+            else group [] ] )
 
-let page_team teams search_str tsel team =
-  let open Searchable in
+let fold_oncaller teams init f =
+  List.fold_left (fun prev t ->
+      List.fold_left (fun prev (m, _) ->
+          f prev m
+        ) prev t.Editable.Team.members
+    ) init teams
+
+let other_team_mate = make_param "other team mate" ""
+let new_team_mate = make_param "new team mate" ""
+
+let new_team_member team =
+  let open Editable in
+  (* First, add oncaller from another team: *)
+  let other_oncallers =
+    fold_oncaller teams.value [] (fun prev c ->
+      if List.exists (fun (m, _) -> m = c) team.Team.members
+      then prev else c :: prev) |>
+    List.sort_uniq compare in
+  let set_new_team_mate _old new_name = new_name in
+  let save_team_members _ =
+    let n = new_team_mate.value in
+    let n = if n = "" then other_team_mate.value else n in
+    if n <> "" then
+      save_members team.name ((n, of_string n) :: team.members) in
+  div []
+    [ if other_oncallers <> [] then group [
+        elmt "label" []
+          [ text "Add existing: " ;
+            Gui.select_box ~param:other_team_mate
+                           ~next_state:set_new_team_mate
+                           ("" :: other_oncallers) ] ;
+        text " or " ] else group [] ;
+      elmt "label" []
+        [ text "Create a new team mate: " ;
+          Gui.input_text ~placeholder:"enter a name" ~width:25
+                         ~param:new_team_mate
+                         ~next_state:set_new_team_mate
+                         [] new_team_mate.value ] ;
+      button ~action:save_team_members
+        [ clss "icon" ] [ text "add" ] ]
+
+let page_team search_str tsel team =
   div
     [ clss "team-info" ]
     [ (let action =
-        if tsel = SingleTeam team.name then
-          (fun _ -> reset_inhibit_form () ;
+        if tsel = SingleTeam team.Editable.Team.name then
+          (fun _ -> reset_new_inhibit () ;
                     set team_selection AllTeams)
         else
-          (fun _ -> reset_inhibit_form () ;
+          (fun _ -> reset_new_inhibit () ;
                     set team_selection (SingleTeam team.name)) in
       h2 ~action ~attrs:[clss "actionable"] ("Team "^ team.name)) ;
       h3 "Members" ;
-      ul [] (fold_members team search_str [] (fun prev m ->
-        li [] [ team_member teams team m ] :: prev)) ;
+      ul [ clss "team-members" ]
+         (fold_members team search_str [ new_team_member team ]
+            (fun prev m -> li [] [ team_member team m ] :: prev)) ;
       h3 "Inhibitions" ;
       (if tsel = SingleTeam team.name then
-        let new_inhibition =
-          with_param inhibit_what (fun _what ->
-            with_param inhibit_why (fun _why ->
-              with_param inhibit_start (fun _start ->
-                with_param inhibit_stop (fun _stop ->
-                    li [] [
-                      input_text ~label:"alert" ~size:16 ~placeholder:"alert name (or prefix)" inhibit_what ;
-                      input_text ~label:"reason" ~size:32 ~placeholder:"why should this be silenced?" inhibit_why ;
-                      input_text ~label:"from" ~size:9 ~placeholder:"timestamp" inhibit_start ;
-                      input_text ~label:"to" ~size:9 ~placeholder:"timestamp" inhibit_stop ;
-                      button ~action:(fun _ ->
-                          (* TODO: catch errors and display an err msg beside
-                           * the field if not convertible: *)
-                          let start = float_of_string inhibit_start.value
-                          and stop = float_of_string inhibit_stop.value in
-                          let req =
-                            object%js
-                              val what = Js.string inhibit_what.value
-                              val why = Js.string inhibit_why.value
-                              val start_date_ = start
-                              val stop_date_ = stop
-                            end in
-                          let path = "/inhibit/add/"^ enc team.name in
-                          http_post path req (fun _ ->
-                            reset_inhibit_form () ;
-                            reload_teams ()))
-                        [ clss "actionable" ] [ text "inhibit" ] ])))) in
-        ul [] (new_inhibition :: List.map (fun i ->
+        let new_inhibition_form =
+          with_param new_inhibition (fun inhibition ->
+            let param = new_inhibition in
+            li [] [
+              Gui.input_text ~label:"alert" ~width:16 ~param
+                             ~placeholder:"alert name (or prefix)"
+                             ~next_state:(fun i what -> { i with what })
+                             [] inhibition.what ;
+              Gui.input_text ~label:"reason" ~width:32 ~param
+                             ~placeholder:"why should this be silenced?"
+                             ~next_state:(fun i why -> { i with why })
+                             [] inhibition.why ;
+              Gui.input_text ~label:"from" ~width:9 ~placeholder:"timestamp"
+                             ~param
+                             ~next_state:(fun i start -> { i with start })
+                             [] inhibition.start ;
+              Gui.input_text ~label:"to" ~width:9 ~placeholder:"timestamp"
+                             ~param
+                             ~next_state:(fun i stop -> { i with stop })
+                             [] inhibition.stop ;
+              button ~action:(fun _ ->
+                  (* TODO: catch errors and display an err msg beside
+                   * the field if not convertible: *)
+                  let i = new_inhibition.value in
+                  let req =
+                    object%js
+                      val what = Js.string i.what
+                      val why = Js.string i.why
+                      val start_date_ = float_of_string i.start
+                      val stop_date_ = float_of_string i.stop
+                    end in
+                  let path = "/inhibit/add/"^ enc team.name in
+                  http_post path req (fun _ ->
+                    reset_new_inhibit () ;
+                    reload_teams ()))
+                [ clss "actionable" ] [ text "inhibit" ] ]) in
+        ul [] (new_inhibition_form :: List.map (fun i ->
             li []
                [ inhibition i ;
                  let now = now () in
@@ -656,44 +904,44 @@ let page_team teams search_str tsel team =
         ul [] (List.map (fun i ->
           li [] [ inhibition i ]) team.inhibitions)) ]
 
-let up_down_conf =
-  div [ id "up-down-conf" ]
-    [ p []
-        [ a [ href "/config.db" ]
-            [ text "download database" ] ] ;
-      p []
-        [ elmt "form"
-          [ attr "action" "/config.db" ;
-            attr "method" "POST" ;
-            attr "enctype" "multipart/form-data" ]
-          [ input [ attr "type" "file" ;
-                    attr "name" "config.db" ] ;
-            button [ attr "type" "submit" ]
-                   [ text "Upload" ] ] ] ]
+let new_team = make_param "new team" ""
 
 let page_teams =
+  let set_new_team _old new_name = new_name in
+  let save_team _ =
+    let path = "/team/new/"^ enc new_team.value in
+    http_get path (fun _ -> reload_teams ()) in
+  let new_team =
+    div [ clss "new-team" ]
+      [ Gui.input_text ~label:"Create a new team: "
+                       ~placeholder:"enter a name" ~width:25
+                       ~param:new_team ~next_state:set_new_team
+                       [] new_team.value ;
+        with_param new_team (fun nt ->
+          if nt = "" then group [] else
+            button ~action:save_team
+              [ clss "icon actionable" ]
+              [ text "💾" ]) ] in
   with_param teams (fun teams ->
     with_param team_selection (fun tsel ->
       with_param team_search (fun search_str ->
-        let search_str = Searchable.of_string search_str in
+        let search_str = Editable.of_string search_str in
         group
           [ div
               [ clss "searchbox" ]
-              [ input_text ~label:"🔍" ~size:8 ~placeholder:"search"
-                           team_search ] ;
+              [ Gui.input_text ~label:"🔍" ~width:8 ~placeholder:"search"
+                               ~param:team_search
+                               ~next_state:(fun _ x -> x)
+                               [] team_search.value ] ;
             div
               [ clss "team-list" ]
-              (fold_teams teams tsel search_str [] (fun prev team ->
-                 page_team teams search_str tsel team :: prev)) ;
-              up_down_conf ])))
+              (fold_teams teams tsel search_str [ new_team ]
+                 (fun prev team ->
+                    page_team search_str tsel team :: prev)) ])))
 
 let page_hand_over = todo "hand over"
 
 let page_reports = todo "reports"
-
-let page_config =
-  div [ id "configuration" ]
-      [ up_down_conf ]
 
 let page_history =
   with_param known_incidents (fun incidents ->
@@ -708,7 +956,7 @@ let tab label page =
   with_param current_page (fun cp ->
     div ~action:(fun _ ->
         set current_page page ;
-        reload_for_current_page ())
+        reload_for_current_page true)
       [ if cp = page then clss "tab selected"
                      else clss "tab actionable" ]
       [ p [] [ text label ] ])
@@ -722,8 +970,7 @@ let menu =
       with_param team_selection (function
         | AllTeams -> tab "Teams" PageTeam
         | SingleTeam t -> tab ("Team "^ t) PageTeam) ;
-      (*tab "Reports" Reports ;*)
-      (*tab "Configuration" Configuration*) ]
+      (*tab "Reports" Reports ;*) ]
 
 let page =
   with_param current_page (function
@@ -731,15 +978,14 @@ let page =
     | PageTeam -> page_teams
     | PageHandOver -> page_hand_over
     | PageHistory -> page_history
-    | Reports -> page_reports
-    | Configuration -> page_config)
+    | Reports -> page_reports)
 
 let dom =
   div [] [ menu ; page ]
 
 let () =
-  reload_for_current_page () ;
+  reload_for_current_page true ;
   Html.window##setInterval
-    (Js.wrap_callback reload_for_current_page) 5_137. |>
+    (Js.wrap_callback (fun () -> reload_for_current_page false)) 5_137. |>
   ignore ;
   start dom

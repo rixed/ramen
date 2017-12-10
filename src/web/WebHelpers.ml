@@ -32,3 +32,17 @@ let string_starts_with p s =
   sub s 0 (length p) = p
 
 let string_contains p s = s##indexOf p <> -1
+
+let list_fold_lefti f init l =
+  List.fold_left (fun (i, prev) x -> i+1, f i prev x) (0, init) l |>
+  snd
+
+let list_map_filter f l =
+  let rec loop prev = function
+    | [] -> List.rev prev
+    | x :: rest ->
+      let prev =
+        match f x with None -> prev
+                     | Some y -> y :: prev in
+      loop prev rest in
+  loop [] l
