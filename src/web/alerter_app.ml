@@ -706,11 +706,21 @@ let contact_edit contact param idx =
     let console = "console" and syslog = "syslog" and email = "email"
     and sms = "SMS" and sqlite = "sqlite" in
     let selected, inp = match contact.contact with
-      | Console -> console, group []
-      | SysLog -> syslog, group []
+      | Console ->
+        console,
+        group [
+          p [ clss "explanations" ]
+            [ text "Alerts will appear on the console." ] ]
+      | SysLog ->
+        syslog,
+        group [
+          p [ clss "explanations" ]
+            [ text "Alerts will be logged." ] ]
       | Email { to_ ; cc ; bcc } ->
         email,
         group [
+          p [ clss "explanations" ]
+            [ text "To be notified via emails enter your address below:" ] ;
           Gui.input_text ~label:"To:" ~placeholder:"recipient"
                          ~param ~next_state:set_to_field [] to_ ;
           Gui.input_text ~label:"Cc:" ~placeholder:"carbon-copy"
@@ -719,8 +729,11 @@ let contact_edit contact param idx =
                          ~param ~next_state:set_bcc_field [] bcc ]
       | SMS to_ ->
         sms,
-        Gui.input_text ~label:"To:" ~placeholder:"phone number"
-                       ~param ~next_state:set_sms_field [] to_
+        group [
+          p [ clss "explanations" ]
+            [ text "SMS are currently not implemented." ] ;
+          Gui.input_text ~label:"To:" ~placeholder:"phone number"
+                         ~param ~next_state:set_sms_field [] to_ ]
       | Sqlite { file ; insert ; create } ->
         let rep n w =
           li [] [ span [ clss "sqlite-placeholder" ]
@@ -1004,16 +1017,18 @@ let page_team search_str tsel team =
                      [ clss "actionable" ] [ text "delete" ]
                  else group [] ]
           ) team.inhibitions in
-        div [ clss "inhibitions" ]
-          [ h3 [] [ text "Inhibitions" ] ;
-            ul [] cur_inhibitions ;
-            new_inhibition_form ]
+        div [ clss "inhibitions-outer" ]
+            [ div [ clss "inhibitions" ]
+                  [ h3 [] [ text "Inhibitions" ] ;
+                    ul [] cur_inhibitions ;
+                    new_inhibition_form ] ] ;
       else (* team is not selected *)
         let cur_inhibitions = List.map (fun i ->
             li [] [ inhibition i ]) team.inhibitions in
-        if cur_inhibitions <> [] then div [ clss "inhibitions" ] [
-          h3 [] [ text "Inhibitions" ] ;
-          ul [] cur_inhibitions
+        if cur_inhibitions <> [] then div [ clss "inhibitions-outer" ] [
+          div [ clss "inhibitions" ]
+              [ h3 [] [ text "Inhibitions" ] ;
+                ul [] cur_inhibitions ]
         ] else group []) ]
 
 let new_team = make_param "new team" ""

@@ -187,22 +187,29 @@ div.team-list div.team-info:first-child h2 { margin-top: .5em; }
 
 div.team-empty { font-style: italic; }
 
-div.inhibitions {
+div.inhibitions-outer {
   background-image: url("data:image/svg+xml;base64,BASE64(`
-<svg width="900" height="400" xmlns="http://www.w3.org/2000/svg">
+<svg width="800" height="400" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <pattern id="Stripes" patternUnits="userSpaceOnUse"
-             x="0" y="0" width="400" height="40" >
-      <rect fill="#d0e070" width="400" height="40"/>
-      <line x1="-400" y1="40" x2="400" y2="-40" stroke="#80b0a0" stroke-width="23"/>
-      <line x1="0" y1="40" x2="400" y2="0" stroke="#80c0a5" stroke-width="23"/>
-      <line x1="0" y1="80" x2="800" y2="0" stroke="#80c0a5" stroke-width="23"/>
+             x="0" y="0" width="40" height="40" >
+      <rect fill="#d0e070" width="40" height="40"/>
+      <line x1="-40" y1="40" x2="40" y2="-40" stroke="#80c0a5" stroke-width="13"/>
+      <line x1="0" y1="40" x2="40" y2="0" stroke="#80c0a5" stroke-width="13"/>
+      <line x1="0" y1="80" x2="80" y2="0" stroke="#80c0a5" stroke-width="13"/>
     </pattern> 
   </defs>
 
-  <rect fill="url(#Stripes)" width="900" height="400" />
+  <rect fill="url(#Stripes)" width="800" height="400" />
 </svg>')");
 	background-repeat: repeat;
+  padding: 1em;
+  border: 2px solid #80c0a5;
+}
+div.inhibitions {
+  background-color: #eee;
+  padding: 1em;
+  border: 2px solid #80c0a5;
 }
 
 div.add-members {
