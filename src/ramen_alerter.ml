@@ -239,30 +239,42 @@ struct
   let assign_unassigned state =
     (* All oncallers not member of any team will be added to the "slackers"
      * team, which will be created if it doesn't exists. *)
+    let slackers = "Slackers" in
     let all_assigned =
       List.fold_left (fun s t ->
+          if t.Team.name = slackers then s else
           List.fold_left (fun s o ->
             Set.add o s) s t.Team.members
         ) Set.empty state.persist.teams in
     let unassigned =
-      List.filter_map (fun o ->
-          if Set.mem o.name all_assigned then None
-          else Some o.name
-        ) state.persist.oncallers in
-    if unassigned <> [] then (
+      List.fold_left (fun s o ->
+          if Set.mem o.name all_assigned then s
+          else Set.add o.name s
+        ) Set.empty state.persist.oncallers in
+    if Set.is_empty unassigned then (
+      (* Delete the team of Slackers if it exists *)
+      let changed, teams =
+        List.fold_left (fun (changed, teams) t ->
+            if t.Team.name = slackers then true, teams
+            else changed, t::teams
+          ) (false, []) state.persist.teams in
+      if changed then (
+        !logger.info "No more slackers!" ;
+        state.persist.teams <- teams ;
+        state.dirty <- true)
+    ) else (
       !logger.info "Oncallers %a are slackers"
-        (List.print String.print) unassigned ;
+        (Set.print String.print) unassigned ;
       state.dirty <- true ;
-      let slackers = "Slackers" in
       match List.find (fun t -> t.Team.name = slackers)
                       state.persist.teams with
       | exception Not_found ->
         state.persist.teams <-
-          Team.{ name = slackers ; members = unassigned ;
+          Team.{ name = slackers ; members = Set.to_list unassigned ;
                  escalations = [] ; inhibitions = [] } ::
             state.persist.teams
       | t ->
-        t.members <- List.rev_append unassigned t.members
+        t.members <- Set.to_list unassigned
     )
 end
 
@@ -640,6 +652,19 @@ struct
     | _ ->
       bad_request ("Team "^ name ^" already exists")
 
+  let del_team state _headers name =
+    match List.find (fun t -> t.Team.name = name) state.persist.teams with
+    | exception Not_found ->
+      bad_request ("Team "^ name ^" does not exist")
+    | t ->
+      if t.Team.members <> [] then
+        bad_request ("Team "^ name ^" is not empty")
+      else (
+        !logger.info "Delete team %s" name ;
+        state.persist.teams <-
+          List.filter (fun t -> t.Team.name <> name) state.persist.teams ;
+        respond_ok ())
+
   let get_oncaller state _headers name =
     let oncaller = OnCallerOps.get state name in
     let body = PPP.to_string OnCaller.t_ppp oncaller in
@@ -821,8 +846,10 @@ struct
           notify state params
         | `GET, ["teams"] ->
           get_teams state
-        | `GET, ["team"; "new"; name] ->
+        | `PUT, ["team"; name] ->
           new_team state headers name
+        | `DELETE, ["team"; name] ->
+          del_team state headers name
         | `GET, ["oncaller"; name] ->
           get_oncaller state headers name
         | `GET, ["ongoing"] ->

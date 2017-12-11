@@ -1,3 +1,5 @@
+/* vim: ft=css
+*/
 * { margin: 0; padding: 0; box-sizing: border-box; }
 button { -webkit-appearance: none; }
 button:focus { outline: 0; }
@@ -14,6 +16,7 @@ button:focus { outline: 0; }
   font-weight: 2000;
 }
 .spinning:hover { background-color: transparent; }
+button.icon { width: 3em; height: 3em; }
 
 table { border-collapse: collapse; border-spacing: 10; }
 td, th { padding: 0 1em 0 1em; }
@@ -77,7 +80,6 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #layers .name, #layers .info p { padding-left: 6px; padding-right: 4px; }
 #layers .name { padding-top: 4px; }
 #layers .info:last-of-type { padding-bottom: 4px; }
-#layers button.icon { width: 3em; height: 3em; }
 #layers button.new-layer { float: none; padding: 0.5em; font-weight: 700; clear: left; }
 
 #nodes thead th { border: 1px solid #ccc; }
@@ -152,5 +154,81 @@ div.tab div.selected { background-color: #ccc; color: #000; }
 
 /* Specific for alerter: */
 
-ul.team-members li, ol.oncaller-contacts li { margin-left: 1em; }
+li { margin-left: 1em; }
 .contact.changed { background-color: orange; }
+
+ul.team-members {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;;
+  align-items: stretch;
+}
+
+ul.team-members > li {
+  display: block;
+  border: 5px solid #d4d4d4;
+  margin: 5px;
+  padding: 1em;
+  position: relative;
+	min-width: 200px;
+}
+
+p.oncaller-name {
+	display: inline-block;
+	font-size: 140%;
+}
+p.inhibition { display: inline-block; }
+
+button.tile-save { position: absolute; right: 1em; bottom: 1em; }
+
+div.team-list h2 { margin-top: 1.5em; }
+div.team-list div.team-info:first-child h2 { margin-top: .5em; }
+
+div.team-empty { font-style: italic; }
+
+div.inhibitions {
+  background-image: url("data:image/svg+xml;base64,BASE64(`
+<svg width="900" height="400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <pattern id="Stripes" patternUnits="userSpaceOnUse"
+             x="0" y="0" width="400" height="40" >
+      <rect fill="#d0e070" width="400" height="40"/>
+      <line x1="-400" y1="40" x2="400" y2="-40" stroke="#80b0a0" stroke-width="23"/>
+      <line x1="0" y1="40" x2="400" y2="0" stroke="#80c0a5" stroke-width="23"/>
+      <line x1="0" y1="80" x2="800" y2="0" stroke="#80c0a5" stroke-width="23"/>
+    </pattern> 
+  </defs>
+
+  <rect fill="url(#Stripes)" width="900" height="400" />
+</svg>')");
+	background-repeat: repeat;
+}
+
+div.add-members {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	justify-content: flex-start;
+	align-items: center;
+}
+div.add-members-from {
+	display: flex;
+	flex-direction: column;
+  flex-wrap: nowrap;
+	align-items: center;
+	margin-right: 1em;
+}
+div.add-members button {
+	margin-left: 1em;
+	vertical-align: middle;
+}
+
+h2 span.team-name { font-style: italic; }
+h2 span.title-smaller { margin-left: 1em; font-size: 70%; }
+
+p.explanations, p.oncaller-other-teams { font-style: italic; font-size: 90%; }
+
+span.sqlite-placeholder { margin-right: 1em; }
+span.sqlite-placeholder:after { content: ":"; }
+p.sqlite-placeholder-help { display: inline-block; }

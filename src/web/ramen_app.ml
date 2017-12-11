@@ -1262,9 +1262,9 @@ let layer_editor_panel =
   with_param edited_layer (fun edl ->
     div
       [ id "editor" ]
-      [ h1 edl.title ;
+      [ h1 [] [ text edl.title ] ;
         form_input "Name" edl.new_layer_name "enter a node name" ;
-        h2 "Nodes" ;
+        h2 [] [ text "Nodes" ] ;
         group (List.map node_editor_panel edl.edited_nodes) ;
         br ;
         with_param editor_spinning (fun spinning ->
@@ -1291,15 +1291,15 @@ let layer_editor_panel =
 let output_panel =
   div
     [ id "output" ]
-    [ h1  "Raw Output" ;
+    [ h1 [] [ text "Raw Output" ] ;
       tail_panel ;
       div [ id "timechart" ] [ timechart_panel ] ]
 
 let top_layers =
-  div [ id "layers" ] [ h1 "Layers" ; layers_panel ]
+  div [ id "layers" ] [ h1 [] [ text "Layers" ] ; layers_panel ]
 
 let top_nodes =
-  div [ id "nodes" ] [ h1 "Nodes" ; nodes_panel ]
+  div [ id "nodes" ] [ h1 [] [ text "Nodes" ] ; nodes_panel ]
 
 let dom =
   group
@@ -1334,8 +1334,10 @@ let dom =
             [ div [ id "top" ] [ top_layers ; top_nodes ] ;
               div
                 [ id "details" ]
-                [ div [ id "inputs" ] [ h1 "Input fields" ; input_panel ] ;
-                  div [ id "operation" ] [ h1 "Operation" ; op_panel ] ] ;
+                [ div [ id "inputs" ]
+                      [ h1 [] [ text "Input fields" ] ; input_panel ] ;
+                  div [ id "operation" ]
+                      [ h1 [] [ text "Operation" ] ; op_panel ] ] ;
               can_export_with_layer node (function
                 true -> output_panel
               | false -> p [ clss "nodata" ]

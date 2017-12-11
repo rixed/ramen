@@ -146,9 +146,9 @@ let href = attr "href"
 let button = elmt "button"
 let input ?action attrs = elmt ?action "input" attrs []
 let textarea = elmt "textarea"
-let h1 ?action ?(attrs=[]) t = elmt "h1" ?action attrs [ text t ]
-let h2 ?action ?(attrs=[]) t = elmt "h2" ?action attrs [ text t ]
-let h3 ?action ?(attrs=[]) t = elmt "h3" ?action attrs [ text t ]
+let h1 = elmt "h1"
+let h2 = elmt "h2"
+let h3 = elmt "h3"
 let br = elmt "br" [] []
 let hr attrs = elmt "hr" attrs []
 let em = elmt "em" []
@@ -287,7 +287,9 @@ let svgtexts
 let select_box ?action ?name ?selected opts =
   elmt "select" ?action
     (match name with Some n -> [ attr "name" n ] | None -> [])
-    ( List.map (fun o ->
-        elmt "option"
-          (if selected = Some o then [ attr "selected" "yes" ] else [])
-          [ text o ]) opts )
+    ( List.map (fun (lab, value) ->
+        let a =
+          attr "value" value ::
+          (if selected = Some value then [ attr "selected" "yes" ]
+                                    else []) in
+        elmt "option" a [ text lab ]) opts )
