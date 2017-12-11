@@ -96,7 +96,6 @@ struct
   type info =
     (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
     { definition : definition ;
-      type_of_operation : string option ;
       exporting : bool ;
       input_type : expr_type_info list ;
       output_type : expr_type_info list ;

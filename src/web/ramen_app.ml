@@ -110,7 +110,6 @@ struct
     { layer : string ;
       name : string ;
       id : string ;
-      type_of_operation : string ;
       exporting : bool ;
       operation : string ;
       input_type : Field.t list ;
@@ -535,8 +534,6 @@ let update_graph total g =
       let node = Node.{
         layer = layer.Layer.name ;
         name ; id ;
-        type_of_operation = Js.(Unsafe.get n "type_of_operation" |>
-                                to_string) ;
         exporting = Js.(Unsafe.get n "exporting" |> to_bool) ;
         operation = Js.(Unsafe.get definition "operation" |> to_string) ;
         input_type = type_spec_of_js Js.(Unsafe.get n "input_type") ;
@@ -916,7 +913,6 @@ let node_tbody_row node =
     let cols =
       [ tds node.Node.layer ;
         tds node.name ;
-        tds node.type_of_operation ;
         tdfih tot_ins node.in_tuple_count ;
         tdfih tot_sels node.sel_tuple_count ;
         tdfih tot_outs node.out_tuple_count ;
@@ -953,8 +949,6 @@ let node_sorter col =
     f a b in
   let open Node in
   match col with
-  | "op" ->
-    make (fun a b -> compare a.type_of_operation b.type_of_operation)
   | "#in" ->
     make (fun a b -> compare b.in_tuple_count a.in_tuple_count)
   | "#selected" ->
@@ -985,7 +979,6 @@ let node_sorter col =
 let node_columns =
   [| "layer", "", true ;
      "name", "", true ;
-     "op", "", true ;
      "#in", "tuples", true ;
      "#selected", "tuples", true ;
      "#out", "tuples", true ;
@@ -1043,7 +1036,7 @@ let nodes_panel =
                                tot_out_bytes) ->
       tfoot [] [
         tr [] [
-          tds "Total:" ; tdfi tot_nodes ; tds "" ; tdfi tot_ins ;
+          tds "Total:" ; tdfi tot_nodes ; tdfi tot_ins ;
           tdfi tot_sels ; tdfi tot_outs ; tdfi tot_grps ;
           tds "" ; tdf tot_cpu ; tdf tot_in_sleep ; tdf tot_out_sleep ;
           tdfi tot_ram ; tdfi tot_in_bytes ; tdfi tot_out_bytes ;

@@ -172,7 +172,7 @@ value can be NULL and spare the NULL checks unless necessary.
 
 Users can check if a nullable value is indeed NULL using the +IS NULL+ or +IS
 NOT NULL+ operators, which turn a nullable value into a boolean. This is useful
-in where clauses.
+in `where` clauses.
 
 +NULL+ is both a type and a value. The +NULL+ value is the only possible value
 of the +NULL+ type, or a possible value for any nullable field.
@@ -252,9 +252,8 @@ Here is a list of all possible tuples, in order of appearance in the data flow:
 The tuple that has been received as input.  Its name is `in` and that's also
 the default tuple when the tuple name is omitted.
 
-You can use the `in` tuple in all clauses but in a +YIELD+ operation or a
-+READ+ operation, since those have no input.  When used in the commit clause
-of a +GROUP BY+ operation, it refers to the last received tuple.
+You can use the `in` tuple in all clauses as long as there is an input.
+When used in a `commit` clause, it refers to the last received tuple.
 
 [[last-in-tuple]]
 ===== Last Input tuple
@@ -262,7 +261,7 @@ of a +GROUP BY+ operation, it refers to the last received tuple.
 Named `in.last`, it is the _previous_ input tuple.
 Can be used to retrieve the field of the previous received tuple.
 
-Can be used in the +WHERE+, +SELECT+ and +COMMIT/FLUSH+ clauses.
+Can be used in the `where`, `select` and `commit/flush` clauses.
 
 When `in` is the first tuple ever, then `in.last` is the same as `in`.
 
@@ -272,7 +271,7 @@ When `in` is the first tuple ever, then `in.last` is the same as `in`.
 Named `selected.last`, this is the last tuple that passed the +WHERE+ filter
 (before `in`).
 
-The `selected.last` tuple can be used anywhere but in a group-by clause.
+The `selected.last` tuple can be used anywhere but in a `group-by` clause.
 
 There is also a `selected` tuple that has only virtual fields.
 See xref:virtual-fields[next section about virtual fields] for details.
@@ -299,9 +298,9 @@ There is also a `unselected` tuple that has only virtual fields.
 
 The tuple that is going to be output (if the +COMMIT+ condition holds
 `true`).  Its name is `out`.  The only places where it can be used is in the
-commit and flush-when clauses.
+commit and `flush-when` clauses.
 
-It is also possible to refer to fields from the out tuple in +SELECT+ clauses
+It is also possible to refer to fields from the out tuple in `select` clauses
 which creates the out tuple, but only if the referred fields has been defined
 earlier. So for instance this is valid:
 
@@ -333,7 +332,7 @@ different types.
 ===== First tuple
 
 Named `group.first` or just `first`, refers to the first tuple of an
-aggregation.  Can be used anywhere but in the group-by clause itself.
+aggregation.  Can be used anywhere but in the `group-by` clause itself.
 
 Same type as the input tuple.
 
@@ -341,7 +340,8 @@ There is also a `group` tuple with only virtual fields.
 
 [NOTE]
 It is worth noting that it makes the operation slower to use any tuple from
-the `group` family in the +WHERE+ clause since it requires to build the key and retrieve the aggregate even for tuples that will end up being filtered out.
+the `group` family in the `where` clause since it requires to build the key and
+retrieve the aggregate even for tuples that will end up being filtered out.
 
 [[last-tuple]]
 ===== Last tuple
@@ -353,7 +353,7 @@ Same type as the input tuple.
 
 Differs from `previous` by its type (`previous` is the current product of the
 operation while `last` is the last aggregated _input_ tuple) and in that it
-can also be used in the select clause and the where clause.
+can also be used in the `select` clause and the `where` clause.
 
 [[previous-tuple]]
 ===== Previous tuple
@@ -363,7 +363,7 @@ the output tuple. Notice that this is not the lastly output tuple but the
 previous value for `out`, which have actually been output only if the commit
 expression returned true (and the aggregate haven't been flushed).
 
-Can only be used in the +COMMIT+ clause or +FLUSH-WHEN+ clause.
+Can only be used in the `commit` clause or `flush-when` clause.
 
 When the aggregate is fresh new then that tuple is set to `out`.
 
@@ -410,17 +410,17 @@ virtual fields and which tuple they apply to:
 | How many tuples have failed the WHERE filter without any incoming tuple passing it.
 
 | `group.#count`
-| How many tuples were added so far to form the output tuple. Can be used both in the where clause and in the select clause.
+| How many tuples were added so far to form the output tuple. Can be used both in the `where` clause and in the `select` clause.
 
 | `group.#successive`
 | How many successive incoming tuples were assigned to that group (same `group by` key).
 
 | `out.#count`
-| In the select clause of a +GROUP BY+ operation, how many tuples have been output so far. For +SELECT+ operations, use `selected.#count` instead.
+| In the `select` clause, how many tuples have been output so far. For +SELECT+ operations, use `selected.#count` instead.
 |===
 
 NOTE: `group.#successive` is unchanged by an aggregate flush operation and
-therefore make little sense in a +REMOVE/KEEP+ clause.
+therefore make little sense in a `remove/keep` clause.
 
 ==== Operators and Functions
 
@@ -564,7 +564,7 @@ CIDR must correspond to it.
 
 Aggregate functions are stateful functions that combines the current value
 with previous values.  For instance, `max response_time` will compute the max
-of all the `response_time` fields of all incoming tuples (until the commit
+of all the `response_time` fields of all incoming tuples (until the `commit`
 clause instruct Ramen to output this aggregated tuple).
 
 ===== Min, Max, Sum, Avg
@@ -694,8 +694,8 @@ CASE
 END
 ----
 
-...where you can have as many WHEN clauses as you want, including 0, and
-the ELSE clause is also optional.
+...where you can have as many `when` clauses as you want, including 0, and
+the `else` clause is also optional.
 
 All conditions must be of type bool. Consequents can have any type as long
 as they have all the same. That is also the type of the result of the
@@ -856,18 +856,19 @@ aggregation, windowing and projection. As each of those processes are
 optional let's see each of them separately before diving into the big
 picture.
 
-===== Filtering - the WHERE clause
+===== Filtering - the `where` clause
 
-If all you want is to select tuples matching some conditions, all you need is
-a filter. For instance, if you have a source of persons and want to filter
-only men older than 40, you could create an operation consisting of a single +WHERE+ clause, such as:
+If all you want is to select tuples matching some conditions, all you need is a
+filter. For instance, if you have a source of persons and want to filter only
+men older than 40, you could create an operation consisting of a single `where`
+clause, such as:
 
 [source,sql]
 ----
 WHERE is_male AND age > 40 FROM source
 ----
 
-As is evidenced above, the syntax of the +WHERE+ clause is as simple as:
+As is evidenced above, the syntax of the `where` clause is as simple as:
 
 [source,sql]
 ----
@@ -884,9 +885,9 @@ FROM source WHERE condition
 
 The condition can be any expression which type is a non-nullable boolean.
 
-NOTE: The default +WHERE+ clause is +WHERE true+.
+NOTE: The default `where` clause is +WHERE true+.
 
-===== Projection - the SELECT clause
+===== Projection - the `select` clause
 
 To follow up on previous example, maybe you are just interested in the
 persons name and age. So now you could create this operation to select only
@@ -906,7 +907,7 @@ SELECT (IF is_male THEN "Mr. " ELSE "Ms. ") + name AS name,
 FROM source
 ----
 
-The general syntax of the +SELECT+ clause is:
+The general syntax of the `select` clause is:
 
 [source,sql]
 ----
@@ -920,7 +921,7 @@ the same field name and a compatible type. Since field names must be unique,
 this is an error if an expression of an incompatible type is aliased to the
 same name of an input type together with the star field selector.
 
-NOTE: The default +SELECT+ clause is: +SELECT *+
+NOTE: The default `select` clause is: +SELECT *+
 
 ===== Aggregation
 
@@ -953,8 +954,8 @@ What happens here for each incoming tuple:
 
 .. If found, add this salary to the average computation.
 
-The +GROUP BY+ clause in itself is very simple: it consists merely on a list
-of expressions building a key from any input tuple:
+The `group-by` clause in itself is very simple: it consists merely on a list of
+expressions building a key from any input tuple:
 
 [source,sql]
 ----
@@ -983,7 +984,7 @@ no aggregation function specified. The output tuple will then just use the
 current input tuple to get the value (similarly to what the `last` aggregation
 function would do).
 
-This is also what happens if you use the `*` (star) designation in the select
+This is also what happens if you use the `*` (star) designation in the `select`
 clause. So for instance:
 
 [source,sql]
@@ -995,14 +996,14 @@ clause. So for instance:
 ...would output tuples made of the average value of the input field +salary+
 and all the fields of input tuples, using the last encountered values.
 
-NOTE: The default +GROUP BY+ clause is: nothing! All tuples will be assigned
+NOTE: The default `group-by` clause is: nothing! All tuples will be assigned
 to the same and only group, then.
 
 Hopefully all is clear so far. Now the question that's still to be addressed
 is: When does the operation output a result? That is controlled by the
-+COMMIT+ clause.
+`commit` clause.
 
-===== Windowing, part 1: the +COMMIT+ clause
+===== Windowing, part 1: the `commit` clause
 
 Windowing is a major difference with SQL, which stops aggregating values when
 it has processed all the input. Since stream processors model an unbounded
@@ -1017,7 +1018,7 @@ unbearably slow when the number of groups is large. Instead, it will consider
 only the groups for which the condition might have changed ; usually, that
 means only the group which current tuple belongs to.
 
-So, the syntax of the +COMMIT+ clause is simple:
+So, the syntax of the `commit` clause is simple:
 
 [source,sql]
 ----
@@ -1027,7 +1028,7 @@ COMMIT WHEN condition
 ...where, once again, condition can be any expression which type is a
 non-nullable boolean.
 
-NOTE: The default +COMMIT+ clause is: +true+, to commit every selected tuples.
+NOTE: The default `commit` clause is: +true+, to commit every selected tuples.
 
 The next and final step to consider is: when a tuple is output, what to do
 with the group? The simplest and more sensible thing to do is to delete it so
@@ -1045,7 +1046,7 @@ commit the tuple _and_ delete (flush) the group.
 
 If this is the default, what are the other options?
 
-===== Windowing, part 2: the +FLUSH+ clause
+===== Windowing, part 2: the `flush` clause
 
 Instead of deleting the group, one can:
 
@@ -1067,7 +1068,7 @@ when the aggregate is "flushed"; therefore windowing has a sizeable impact on
 performance, memory wise as well as time wise, and should be used only when a
 small number of tuples are kept from one window to the next.
 
-So the syntax for the +COMMIT+ clause that has been given in the previous
+So the syntax for the `commit` clause that has been given in the previous
 section should really have been:
 
 [source,sql]
@@ -1079,7 +1080,7 @@ There is no +FLUSH+ method to keep the group as it is, but you could easily
 +SLIDE 0+, for instance. But even better not to flush at all, since _when_ to
 flush is also a parameter that can be set independently of when to commit.
 
-Indeed, when its not bundled with the +COMMIT+ clause, the +FLUSH+ clause is:
+Indeed, when its not bundled with the `commit` clause, the `flush` clause is:
 
 [source,sql]
 ----
@@ -1093,8 +1094,8 @@ so to keep the groups as they are the simplest is to add:
 FLUSH WHEN false
 ----
 
-Notice that when an explicit +FLUSH+ clause is present, then the flush method
-must not also be bundled with the +COMMIT+ clause, as that would be redundant
+Notice that when an explicit `flush` clause is present, then the flush method
+must not also be bundled with the `commit` clause, as that would be redundant
 at best and ambiguous at worse.
 
 So, as an example, suppose we want the average salaries emitted every time we
@@ -1116,14 +1117,14 @@ Suppose instead we want a sliding window over the last 10 persons of a group:
 COMMIT AND SLIDE 1 WHEN group.#count >= 10
 ----
 
-NOTE: The default +FLUSH+ clause is to flush the group after committing a
+NOTE: The default `flush` clause is to flush the group after committing a
 tuple.
 
 ===== Outputting: How Tuples Are Sent To Child Nodes
 
 When Ramen commits a tuple, what tuple exactly is it?
 
-The output tuple is the one that is created by the +SELECT+ clause, with no
+The output tuple is the one that is created by the `select` clause, with no
 more and no less fields. The types of those fields is obviously heavily
 influenced by the type on the input tuple. This type itself comes mostly from
 the output type of the parent nodes. Therefore changing an ancestor
@@ -1152,7 +1153,7 @@ be convenient.
 
 And what's more convenient than a simple HTTP GET?
 
-A +Group By+ operation can have a +NOTIFY+ clause that will cause Ramen to
+A +Group By+ operation can have a `notify` clause that will cause Ramen to
 get the specified URL via HTTP whenever a tuple is xref:Commit[committed].
 
 The URL parameter is a string that can contain special placeholders for the
@@ -1170,8 +1171,8 @@ WHEN name = "Waldo"
 
 NOTE: +WHEN+ is an alias for +WHERE+.
 
-This works because the default +SELECT+ clause is +SELECT *+ and the default
-+COMMIT+ clause is to commit every selected tuple.
+This works because the default `select` clause is +SELECT *+ and the default
+`commit` clause is to commit every selected tuple.
 
 The result of the GET is discarded.
 
@@ -1180,7 +1181,7 @@ The result of the GET is discarded.
 Storing output tuples can be useful, but doing so for every node would be
 wasteful.
 
-You can select which nodes output is to be stored on disc with the +EXPORT+
+You can select which nodes output is to be stored on disc with the `export`
 clause.
 
 Just marking a +Group By+ operation with the +EXPORT+ keyword alone is enough
@@ -1189,7 +1190,7 @@ using the `export` API.
 
 When later retrieval of tuples is important, it is even better to tell Ramen
 how to compute the tuple-time, so that accurate timeseries can be retrieved
-using the `timeseries` API. That is what the rest of the +EXPORT+ clause is
+using the `timeseries` API. That is what the rest of the `export` clause is
 for.
 
 [source,sql]
@@ -1233,7 +1234,7 @@ the aggregation groups, for some definition of "important".
 For instance, we may want to focus on the top 10 lowest yearly salary in our
 employee stream so that we do not waste processing time on the rest.
 
-The +TOP+ clause offers to ignore all but the most important groups:
+The `top` clause offers to ignore all but the most important groups:
 
 [source,sql]
 ----
@@ -1246,12 +1247,12 @@ Notice that the minus sign before the `avg` function: this is because TOP
 selects the highest result of the given expression. As we want to select the
 lowest salaries we have to ask for the top negative salaries.
 
-Notice also that the top replaces both the +COMMIT+ and +FLUSH+ clauses with a
-single condition that will in practice work like a global +COMMIT AND FLUSH+
+Notice also that the top replaces both the `commit` and `flush` clauses with a
+single condition that will in practice work like a global `commit and flush`
 clause: once this condition is met all groups will be output and reset. After
 that a whole new TOP will start with the next tuples to come.
 
-The general syntax of the +TOP+ clause is:
+The general syntax of the `top` clause is:
 
 [source,sql]
 ----
@@ -1262,7 +1263,7 @@ Where the number must be a positive integer and the expression must refers only
 to the input tuple and produce a number that will be used as a _weight_
 contributed to the group by that input tuple.
 
-The presence of a +TOP+ clause changes slightly how a +Group By+ operation
+The presence of a `top` clause changes slightly how a +Group By+ operation
 works. First and foremost, the number of groups that are maintained in memory
 is reduced to the same magnitude as the selected number, which can greatly
 reduce the memory footprint of the operation.
@@ -1287,25 +1288,25 @@ EXPORT [ EVENT STARTING AT identifier [ * scale ]
 ----
 
 Each of those clauses can be specified in any order and can be omitted but for
-the +FROM+ clause; Also, when +TOP+ is specified then no +COMMIT+ or +FLUSH+
+the `from` clause; Also, when +TOP+ is specified then no +COMMIT+ or +FLUSH+
 must be present.
 
 The semantic is:
 
 For each input tuple, compute the key and retrieve the current aggregate, if
 any. If no current aggregate exists for this key yet then start a new one.
-Then evaluate the where clause: if it is false, skip that input (and discard
-the new aggregate that might have been created).  If the where clause yields
+Then evaluate the `where` clause: if it is false, skip that input (and discard
+the new aggregate that might have been created).  If the `where` clause yields
 true, accumulates that input into that aggregate (actual meaning depending on
-what functions are used in the operation). If a top by clause is present, limit
-the number of kept groups to the top N contributors according to the given
-metric.  Compute the current output-tuple.
+what functions are used in the operation). If a `top-by` clause is present,
+limit the number of kept groups to the top N contributors according to the
+given metric.  Compute the current output-tuple.
 
-With all this, evaluates the commit clause (or the top condition): if it is
+With all this, evaluates the `commit` clause (or the top condition): if it is
 true then send the output tuple to all children, and if the export keyword is
 present also store it on disc. Should this input tuple be replayed when
 flushing this aggregate, store it with as part of the group. If the output
-tuple has been committed, then also evaluates the flush-when clause. If it is
+tuple has been committed, then also evaluates the `flush-when` clause. If it is
 also true then flush this aggregate -- either by deleting the aggregate
 altogether or by replacing it with an aggregate build from replaying some of
 the stored input tuple. If this was a top operation, though, all groups will be

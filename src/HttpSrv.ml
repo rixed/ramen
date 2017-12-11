@@ -37,14 +37,6 @@ let serve_string conf _headers body =
   let%lwt body = replace_placeholders conf body in
   respond_ok ~body ~ct:Consts.html_content_type ()
 
-let type_of_operation =
-  let open Operation in
-  function
-  | Yield _ -> "YIELD"
-  | Aggregate _ -> "GROUP BY"
-  | ReadCSVFile _ -> "READ CSV"
-  | ListenFor _ -> "LISTEN"
-
 let layer_node_of_user_string conf ?default_layer s =
   let s = String.trim s in
   (* rsplit because we might want to have '/'s in the layer name. *)
@@ -91,7 +83,6 @@ let node_info_of_node node =
       name = node.N.name ;
       operation = node.N.op_text ;
     } ;
-    type_of_operation = Some (type_of_operation node.N.operation) ;
     exporting = Operation.is_exporting node.N.operation ;
     signature = if node.N.signature = "" then None else Some node.N.signature ;
     pid = node.N.pid ;
