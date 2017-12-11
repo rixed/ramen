@@ -520,6 +520,41 @@ type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
     mutable sure_weight_state : 'top_state ;
     mutable unsure_weight : float }
 
+(* A Map from weight to keys with that weight so we can quickly find the
+ * lighter of our heavy hitters: *)
+module WeightMap = Map.Float
+
+type ('key, 'aggr, 'tuple_in, 'generator_out, 'top_state) aggr_persist_state =
+  { event_count : int ; (* TBD. used to fake others.count etc *)
+    mutable last_key : 'key option ;
+    mutable last_in_tuple : 'tuple_in option ; (* last incoming tuple *)
+    mutable selected_tuple : 'tuple_in option ; (* last incoming tuple that passed the where filter *)
+    mutable selected_count : Uint64.t ;
+    mutable selected_successive : Uint64.t ;
+    mutable unselected_tuple : 'tuple_in option ;
+    mutable unselected_count : Uint64.t ;
+    mutable unselected_successive : Uint64.t ;
+    mutable out_count : Uint64.t ;
+    (* Top book-keeping:
+     * In addition to the hash of aggr (which for each entry has a weight)
+     * we need to quickly find the key of the smallest weight, thus the
+     * WeightMap defined above: *)
+    mutable weightmap : 'key list WeightMap.t ;
+    (* Each time we have no idea who the weight belongs to we pour it in
+     * there, at the bucket corresponding to the hash of the key.
+     * Each time we start tracking an item we must (pessimistically) report
+     * all of it as its unknown weight.  Unfortunately there is no way this
+     * value could ever decrease. *)
+    (* TODO: dynamically size according to how quickly we fill it to XX%,
+     * which is very cheap to measure. What is less easy is how to spread
+     * the keys when we extend it. So, maybe just the other way around:
+     * start from very large and reduce it? *)
+    unknown_weights : float array ;
+    (* The aggregate entry for "others": *)
+    mutable others : ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value option ;
+    (* The hash of all groups: *)
+    groups : ('key, ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value) Hashtbl.t }
+
 let tot_weight float_of_top_state aggr =
   float_of_top_state aggr.sure_weight_state +. aggr.unsure_weight
 
@@ -532,10 +567,6 @@ let string_of_when_to_check_group = function
   | ForAll -> "every group at every tuple"
   | ForAllSelected -> "every group at every selected tuple"
   | ForInGroup -> "the group that's updated by a tuple"
-
-(* A Map from weight to keys with that weight so we can quickly find the
- * lighter of our heavy hitters: *)
-module WeightMap = Map.Float
 
 let print_weightmap fmt map =
   let print_key fmt lst =
@@ -601,34 +632,6 @@ let aggregate
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   and stats_selected_tuple_count = make_stats_selected_tuple_count ()
-  (* FIXME: most of this should be in the saved state! *)
-  and event_count = ref 0 (* used to fake others.count etc *)
-  and last_key = ref None (* used for successive count *)
-  and last_in_tuple = ref None (* last incoming tuple *)
-  and selected_tuple = ref None (* last incoming tuple that passed the where filter *)
-  and selected_count = ref Uint64.zero
-  and selected_successive = ref Uint64.zero
-  and unselected_tuple = ref None
-  and unselected_count = ref Uint64.zero
-  and unselected_successive = ref Uint64.zero
-  and out_count = ref Uint64.zero
-  (* Top book-keeping:
-   * In addition to the hash of aggr (which for each entry has a weight) we
-   * need to quickly find the key of the smallest weight, thus the WeightMap
-   * defined above: *)
-  and weightmap : 'key list WeightMap.t ref = ref WeightMap.empty
-  (* Each time we have no idea who the weight belongs to we pour it in there,
-   * at the bucket corresponding to the hash of the key.
-   * Each time we start tracking an item we must (pessimistically) report all of
-   * it as its unknown weight.  Unfortunately there is no way this value could
-   * ever decrease. *)
-  (* TODO: dynamically size according to how quickly we fill it to XX%, which
-   * is very cheap to measure. What is less easy is how to spread the keys when
-   * we extend it. So, maybe just the other way around: start from very large
-   * and reduce it? *)
-  and unknown_weights = Array.make 1024 0.
-  (* The aggregate entry for "others": *)
-  and others = ref None
   and stats_group_count =
     IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
   and top_n, top_by = Option.default (0, fun _ _ _ -> ()) top in
@@ -643,14 +646,29 @@ let aggregate
       tuple_outputer tuple
     in
     generate_tuples do_out in
-  let commit in_tuple out_tuple =
+  let commit s in_tuple out_tuple =
     (* in_tuple here is useful for generators *)
-    out_count := Uint64.succ !out_count ;
+    s.out_count <- Uint64.succ s.out_count ;
     outputer in_tuple out_tuple
   and with_state =
     let open CodeGenLib_State.Persistent in
-    let init_state = Hashtbl.create 701 in
-    let state = ref (make conf.persist_dir "aggregate" init_state) in
+    let init_state =
+      { event_count = 0 ;
+        last_key = None ;
+        last_in_tuple = None ;
+        selected_tuple = None ;
+        selected_count = Uint64.zero ;
+        selected_successive = Uint64.zero ;
+        unselected_tuple = None ;
+        unselected_count = Uint64.zero ;
+        unselected_successive = Uint64.zero ;
+        out_count = Uint64.zero ;
+        weightmap = WeightMap.empty ;
+        unknown_weights = Array.make 1024 0. ;
+        others = None ;
+        groups = Hashtbl.create 701 } in
+    let state =
+      ref (make conf.persist_dir "aggregate" init_state) in
     fun f ->
       let v = restore !state in
       (* We do _not_ want to save the value when f raises an exception: *)
@@ -667,16 +685,16 @@ let aggregate
   CodeGenLib_IO.read_ringbuf ~delay_rec:sleep_in rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
-    with_state (fun h ->
+    with_state (fun s ->
       (* Update per in-tuple stats *)
       IntCounter.add stats_in_tuple_count 1 ;
       IntCounter.add stats_rb_read_bytes (RingBuf.tx_size tx) ;
       (* Define some short-hand values and functions we will keep
        * referring to: *)
-      let last_in = Option.default in_tuple !last_in_tuple
+      let last_in = Option.default in_tuple s.last_in_tuple
       and in_count = !CodeGenLib_IO.tuple_count
-      and last_selected = Option.default in_tuple !selected_tuple
-      and last_unselected = Option.default in_tuple !unselected_tuple
+      and last_selected = Option.default in_tuple s.selected_tuple
+      and last_unselected = Option.default in_tuple s.unselected_tuple
       and already_output_aggr = ref None in
       let already_output a =
         Option.map_default ((==) a) false !already_output_aggr in
@@ -684,9 +702,9 @@ let aggregate
       let must cond aggr = (* TODO: pass selected_successive *)
         cond
           in_count in_tuple last_in
-          !selected_count !selected_successive last_selected
-          !unselected_count !unselected_successive last_unselected
-          !out_count aggr.previous_out
+          s.selected_count s.selected_successive last_selected
+          s.unselected_count s.unselected_successive last_unselected
+          s.out_count aggr.previous_out
           (Uint64.of_int aggr.nb_entries)
           (Uint64.of_int aggr.nb_successive)
           aggr.fields
@@ -722,12 +740,12 @@ let aggregate
           let%lwt () =
             Hashtbl.fold (fun _k a th ->
               let%lwt () = th in
-              commit in_tuple a.current_out) h return_unit in
+              commit s in_tuple a.current_out) s.groups return_unit in
           (* TODO: handle resubmission *)
-          Hashtbl.clear h ;
-          others := None ;
-          Array.fill unknown_weights 0 (Array.length unknown_weights) 0. ;
-          weightmap := WeightMap.empty ;
+          Hashtbl.clear s.groups ;
+          s.others <- None ;
+          Array.fill s.unknown_weights 0 (Array.length s.unknown_weights) 0. ;
+          s.weightmap <- WeightMap.empty ;
           return_unit
         ) else (
           (* Not in a top, do things properly: *)
@@ -736,7 +754,7 @@ let aggregate
             (* Flush/Keep/Slide *)
             if do_flush then (
               if a.to_resubmit = [] then
-                Hashtbl.remove h k
+                Hashtbl.remove s.groups k
               else (
                 let to_resubmit = List.rev a.to_resubmit in
                 a.nb_entries <- 0 ;
@@ -754,9 +772,9 @@ let aggregate
                        * approximate. Should we prevent their use in all
                        * sliding windows cases? *)
                       in_count in_tuple last_in
-                      !selected_count !selected_successive last_selected
-                      !unselected_count !unselected_successive last_unselected
-                      !out_count
+                      s.selected_count s.selected_successive last_selected
+                      s.unselected_count s.unselected_successive last_unselected
+                      s.out_count
                       (Uint64.of_int a.nb_entries)
                       (Uint64.of_int a.nb_successive)
                       a.fields
@@ -768,7 +786,7 @@ let aggregate
                   ) to_resubmit)
             ) ;
             (* Output the tuple *)
-            commit in_tuple out) to_commit)
+            commit s in_tuple out) to_commit)
       in
       let commit_and_flush_all_if check_when =
         let to_commit =
@@ -778,7 +796,7 @@ let aggregate
                    must commit_when a then
                   (k, a, a.current_out)::l
                 else l
-              ) h [] in
+              ) s.groups [] in
         commit_and_flush_list to_commit
       in
       (* Now that this is all in place, here are the next steps:
@@ -794,16 +812,16 @@ let aggregate
       (if where_fast
            global_state
            in_count in_tuple last_in
-           !selected_count !selected_successive last_selected
-           !unselected_count !unselected_successive last_unselected
+           s.selected_count s.selected_successive last_selected
+           s.unselected_count s.unselected_successive last_unselected
       then (
         (* build the key and retrieve the group *)
-        IntGauge.set stats_group_count (Hashtbl.length h) ;
+        IntGauge.set stats_group_count (Hashtbl.length s.groups) ;
         let k = key_of_input in_tuple in
-        let prev_last_key = !last_key in
-        last_key := Some k ;
+        let prev_last_key = s.last_key in
+        s.last_key <- Some k ;
         let accumulate_into aggr this_key =
-          aggr.last_ev_count <- !event_count ;
+          aggr.last_ev_count <- s.event_count ;
           aggr.nb_entries <- aggr.nb_entries + 1 ;
           if should_resubmit aggr in_tuple then
             aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
@@ -813,7 +831,7 @@ let aggregate
         in
         (* Update/create the group if it passes where_slow (or None) *)
         let aggr_opt =
-          match Hashtbl.find h k with
+          match Hashtbl.find s.groups k with
           | exception Not_found ->
             (*
              * The group does not exist for that key, create one?
@@ -825,8 +843,8 @@ let aggregate
             if where_slow
                  global_state
                  in_count in_tuple last_in
-                 !selected_count !selected_successive last_selected
-                 !unselected_count !unselected_successive last_unselected
+                 s.selected_count s.selected_successive last_selected
+                 s.unselected_count s.unselected_successive last_unselected
                  zero zero fields
                  (* Although we correctly have 0 fields and group.#count and
                   * #successive to 0, we have to pass first and past tuples
@@ -838,14 +856,14 @@ let aggregate
               let out_generator =
                 tuple_of_aggr
                   in_count in_tuple last_in
-                  !selected_count !selected_successive last_selected
-                  !unselected_count !unselected_successive last_unselected
-                  !out_count
+                  s.selected_count s.selected_successive last_selected
+                  s.unselected_count s.unselected_successive last_unselected
+                  s.out_count
                   one one fields
                   global_state
                   in_tuple in_tuple in
               (* What part of unknown weight might belong to this guy? *)
-              let kh = Hashtbl.hash k mod Array.length unknown_weights in
+              let kh = Hashtbl.hash k mod Array.length s.unknown_weights in
               let aggr = {
                 first_in = in_tuple ;
                 last_in = in_tuple ;
@@ -853,26 +871,26 @@ let aggregate
                 previous_out = out_generator ; (* Not correct for the very first check *)
                 nb_entries = 1 ;
                 nb_successive = 1 ;
-                last_ev_count = !event_count ;
+                last_ev_count = s.event_count ;
                 to_resubmit = [] ;
                 fields ;
                 sure_weight_state = top_init global_state ;
-                unsure_weight = unknown_weights.(kh) } in
+                unsure_weight = s.unknown_weights.(kh) } in
               top_by global_state aggr.sure_weight_state in_tuple ;
               (* Adding this group and updating the TOP *)
               let add_entry () =
-                Hashtbl.add h k aggr ;
+                Hashtbl.add s.groups k aggr ;
                 let wk = tot_weight float_of_top_state aggr in
-                weightmap := WeightMap.modify_def [] wk (List.cons k) !weightmap ;
+                s.weightmap <- WeightMap.modify_def [] wk (List.cons k) s.weightmap ;
                 if should_resubmit aggr in_tuple then
                   aggr.to_resubmit <- [ in_tuple ]
               in
-              if top_n = 0 || Hashtbl.length h < top_n then (
+              if top_n = 0 || Hashtbl.length s.groups < top_n then (
                 add_entry () ;
                 Some aggr
               ) else (
                 (* H is crowded already, maybe dispose of the less heavy hitter? *)
-                match WeightMap.min_binding !weightmap with
+                match WeightMap.min_binding s.weightmap with
                 | exception Not_found ->
                   !logger.error "Empty weightmap but full hashtbl?" ;
                   assert false
@@ -882,36 +900,36 @@ let aggregate
                 | wk, (min_k::min_ks) ->
                   if wk < tot_weight float_of_top_state aggr then (
                     (* Remove previous entry *)
-                    (match Hashtbl.find h min_k with
+                    (match Hashtbl.find s.groups min_k with
                     | exception Not_found ->
                       !logger.error "Weight %f from weightmap does not point to a group?!" wk
                     | removed ->
                       (* FIXME: find and remove in one go! Hashtbl.extract? *)
-                      Hashtbl.remove h min_k ;
-                      let kh' = Hashtbl.hash min_k mod Array.length unknown_weights in
+                      Hashtbl.remove s.groups min_k ;
+                      let kh' = Hashtbl.hash min_k mod Array.length s.unknown_weights in
                       (* Note: the unsure_weight we took it from unknown_weights.(kh')
                        * already and it's still there *)
-                      unknown_weights.(kh') <-
-                        unknown_weights.(kh') +. float_of_top_state removed.sure_weight_state) ;
-                    weightmap := snd (WeightMap.pop_min_binding !weightmap) ;
+                      s.unknown_weights.(kh') <-
+                        s.unknown_weights.(kh') +. float_of_top_state removed.sure_weight_state) ;
+                    s.weightmap <- snd (WeightMap.pop_min_binding s.weightmap) ;
                     if min_ks <> [] then
-                      weightmap := WeightMap.add wk min_ks !weightmap ;
+                      s.weightmap <- WeightMap.add wk min_ks s.weightmap ;
                     (* Add new one *)
                     add_entry () ;
                     Some aggr
                   ) else (
                     (* Do not track; aggregate with "others" *)
-                    (match !others with
-                    | None -> others := Some aggr
+                    (match s.others with
+                    | None -> s.others <- Some aggr
                     | Some others_aggr ->
                       (* We do not care about the out tuple but we still
                        * have to update the aggr.fields (which in turn can
                        * need some fields from out). *)
                       tuple_of_aggr
                         in_count in_tuple last_in
-                        !selected_count !selected_successive last_selected
-                        !unselected_count !unselected_successive last_unselected
-                        !out_count
+                        s.selected_count s.selected_successive last_selected
+                        s.unselected_count s.unselected_successive last_unselected
+                        s.out_count
                         (Uint64.of_int others_aggr.nb_entries)
                         (Uint64.of_int others_aggr.nb_successive)
                         others_aggr.fields
@@ -922,9 +940,9 @@ let aggregate
                          * code to see their previous values *)
                         others_aggr.current_out <- out_generator ;
                         aggr.last_in <- in_tuple) ;
-                    last_key := None ;
-                    unknown_weights.(kh) <-
-                      unknown_weights.(kh) +. float_of_top_state aggr.sure_weight_state ;
+                    s.last_key <- None ;
+                    s.unknown_weights.(kh) <-
+                      s.unknown_weights.(kh) +. float_of_top_state aggr.sure_weight_state ;
                     None)
               )
             ) else None (* in-tuple does not pass where_slow *)
@@ -935,8 +953,8 @@ let aggregate
             if where_slow
                  global_state
                  in_count in_tuple last_in
-                 !selected_count !selected_successive last_selected
-                 !unselected_count !unselected_successive last_unselected
+                 s.selected_count s.selected_successive last_selected
+                 s.unselected_count s.unselected_successive last_unselected
                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                  aggr.first_in aggr.last_in
             then (
@@ -950,9 +968,9 @@ let aggregate
               aggr.current_out <-
                 tuple_of_aggr
                   in_count in_tuple last_in
-                  !selected_count !selected_successive last_selected
-                  !unselected_count !unselected_successive last_unselected
-                  !out_count
+                  s.selected_count s.selected_successive last_selected
+                  s.unselected_count s.unselected_successive last_unselected
+                  s.out_count
                   (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                   global_state
                   aggr.first_in aggr.last_in ;
@@ -963,7 +981,7 @@ let aggregate
                * all the time when _not_ using one! *)
               if prev_wk <> new_wk then (
                 (* Move in the WeightMap. First remove: *)
-                weightmap := WeightMap.modify_opt prev_wk (function
+                s.weightmap <- WeightMap.modify_opt prev_wk (function
                   | None -> assert false
                   | Some [k'] ->
                     (* If this is not the usual case then we are in trouble. In
@@ -973,28 +991,28 @@ let aggregate
                   | Some lst ->
                     let lst' = List.filter ((<>) k) lst in
                     assert (lst' <> []) ;
-                    Some lst') !weightmap ;
+                    Some lst') s.weightmap ;
                 (* reinsert with new weight: *)
-                weightmap := WeightMap.modify_opt new_wk (function
+                s.weightmap <- WeightMap.modify_opt new_wk (function
                   | None -> Some [k]
                   | Some lst as prev ->
-                    if List.mem k lst then prev else Some (k::lst)) !weightmap) ;
+                    if List.mem k lst then prev else Some (k::lst)) s.weightmap) ;
               Some aggr
             ) else None (* in-tuple does not pass where_slow *) in
         (match aggr_opt with
         | None ->
-          selected_successive := Uint64.zero ;
-          unselected_tuple := Some in_tuple ;
-          unselected_count := Uint64.succ !unselected_count ;
-          unselected_successive := Uint64.succ !unselected_successive ;
+          s.selected_successive <- Uint64.zero ;
+          s.unselected_tuple <- Some in_tuple ;
+          s.unselected_count <- Uint64.succ s.unselected_count ;
+          s.unselected_successive <- Uint64.succ s.unselected_successive ;
           return_unit
         | Some aggr ->
           (* Here we passed the where filter and the selected_tuple (and
            * selected_count) must be updated. *)
-          unselected_successive := Uint64.zero ;
-          selected_tuple := Some in_tuple ;
-          selected_count := Uint64.succ !selected_count ;
-          selected_successive := Uint64.succ !selected_successive ;
+          s.unselected_successive <- Uint64.zero ;
+          s.selected_tuple <- Some in_tuple ;
+          s.selected_count <- Uint64.succ s.selected_count ;
+          s.selected_successive <- Uint64.succ s.selected_successive ;
           (* Committing / Flushing *)
           let to_commit, to_flush =
             (* FIXME: we should do the check that early for all when_to_check_for_commit
@@ -1026,11 +1044,11 @@ let aggregate
         return_unit
       ) >>= fun () ->
       (* Save last_in: *)
-      last_in_tuple := Some in_tuple ;
+      s.last_in_tuple <- Some in_tuple ;
       (* Now there is also the possibility that we need to commit or flush
        * for every single input tuple :-< *)
       let%lwt () = commit_and_flush_all_if ForAll in
-      return h)
+      return s)
   )
 
 let () =
