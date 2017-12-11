@@ -222,9 +222,9 @@ struct
     let xm = Mat.zeros nb_obs nb_preds
     and ym = Mat.zeros nb_obs 1 in
     iteri p n t (fun i (y, xs) ->
-      ym.{ i, 0 } <- y ;
+      Mat.set ym i 0 y ;
       for j = 0 to nb_preds-1 do
-        xm.{ i, j } <- xs.(j)
+        Mat.set xm i j xs.(j)
       done) ;
     (* Now ask for the "best" parameters: *)
     match Linalg.D.linsolve xm ym with
@@ -239,7 +239,7 @@ struct
       (* And use that to predict the new y given the new xs *)
       let _cury, cur_preds = current t in
       Array.fold_lefti (fun y i x ->
-        y +. p.{i, 0} *. x) 0. cur_preds
+        y +. Mat.get p i 0 *. x) 0. cur_preds
 end
 
 let begin_of_range_cidr4 (n, l) = Ipv4.Cidr.and_to_len l n
