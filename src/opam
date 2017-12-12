@@ -18,7 +18,7 @@ depends: [
   "cohttp-lwt-unix"
   "net_codecs" {>= "0.2"}
   "inotify"
-  "binocle"
+  "binocle" {>= "0.2"}
   "owl" {>= "0.2.9"}
   "sqlite3"
   "num"

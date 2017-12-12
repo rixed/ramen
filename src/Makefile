@@ -29,8 +29,8 @@ RAMEN_SOURCES = \
 	RWLock.ml RamenSharedTypesJS.ml RamenSharedTypes.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
-	RingBufLib.ml RingBuf.ml \
-	RamenConf.ml RamenExport.ml RamenProcesses.ml \
+	RingBufLib.ml RingBuf.ml RamenConf.ml \
+	RamenBinocle.ml RamenExport.ml RamenProcesses.ml \
 	Globs.ml CodeGen_OCaml.ml Compiler.ml \
 	RamenHtml.ml RamenColor.ml RamenFormats.ml RamenChart.ml \
 	RamenGui.ml RamenHttpHelpers.ml HttpSrv.ml \
@@ -41,7 +41,7 @@ CODEGENLIB_SOURCES = \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenSharedTypesJS.ml RamenSharedTypes.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml \
-	RingBufLib.ml RingBuf.ml \
+	RingBufLib.ml RingBuf.ml RamenBinocle.ml \
 	RamenBloomFilter.ml RamenFileNotify.ml \
 	CodeGenLib_IO.ml CodeGenLib_State.ml CodeGenLib.ml
 

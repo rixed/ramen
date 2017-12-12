@@ -93,6 +93,18 @@ struct
   type definition =
     { name : string ; operation : string } [@@ppp PPP_JSON]
 
+  type worker_stats =
+    { in_tuple_count : int option ;
+      selected_tuple_count : int option ;
+      out_tuple_count : int option ;
+      group_count : int option ;
+      cpu_time : float ;
+      ram_usage : int ;
+      in_sleep : float option ;
+      out_sleep : float option ;
+      in_bytes : int option ;
+      out_bytes : int option } [@@ppp PPP_JSON]
+
   type info =
     (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
     { definition : definition ;
@@ -105,16 +117,7 @@ struct
       (* Info about the running process (if any) *)
       signature : string option ;
       pid : int option ;
-      in_tuple_count : int ;
-      selected_tuple_count : int ;
-      out_tuple_count : int ;
-      group_count : int option ;
-      cpu_time : float ;
-      ram_usage : int ;
-      in_sleep : float ;
-      out_sleep : float ;
-      in_bytes : int ;
-      out_bytes : int } [@@ppp PPP_JSON]
+      stats : worker_stats } [@@ppp PPP_JSON]
 end
 
 module Layer =

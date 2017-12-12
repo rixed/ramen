@@ -85,16 +85,6 @@ let read_glob_lines ?do_unlink path preprocessor k =
     !logger.debug "New file %S in dir %S!" filename dirname ;
     import_file_if_match filename) handler
 
-let read_ringbuf ?delay_rec rb f =
-  let open RingBuf in
-  let rec read_next () =
-    on_each_input_pre () ;
-    let%lwt tx = RingBufLib.retry_for_ringbuf ?delay_rec dequeue_alloc rb in
-    let%lwt () = f tx in
-    read_next ()
-  in
-  read_next ()
-
 let http_notify url =
   (* TODO: time this and add a stat *)
   !logger.debug "Send HTTP notification to %S" url ;

@@ -320,11 +320,11 @@ let tot_ram_usage =
     let stat = Gc.quick_stat () in
     stat.Gc.heap_words * word_size
 
-let send_stats url =
+let send_stats_via_http url =
   let open Cohttp in
   let open Cohttp_lwt_unix in
   let metrics = Hashtbl.fold (fun _name exporter lst ->
-    List.rev_append (exporter ()) lst) Binocle.all_measures [] in
+    List.rev_append (exporter ()) lst) all_measures [] in
   let body = `String Marshal.(to_string metrics []) in
   let headers = Header.init_with "Content-Type" Consts.ocaml_marshal_type in
   (* TODO: but also fix the server never timeouting! *)
@@ -340,11 +340,46 @@ let send_stats url =
   ) else
     Cohttp_lwt.Body.drain_body body (* to actually close the connection *)
 
-let update_stats_th report_url period () =
+let update_stats () =
+  FloatCounter.set stats_cpu (tot_cpu_time ()) ;
+  IntGauge.set stats_ram (tot_ram_usage ())
+
+(* Basic tuple without aggregate specific counters: *)
+let get_binocle_tuple worker ic sc gc () : RamenBinocle.tuple =
+  let si v = Some (Uint64.of_int v) in
+  let s v = Some v in
+  let i v = Option.map (fun r -> Uint64.of_int r) v in
+  worker,
+  ic,
+  sc,
+  IntCounter.get stats_out_tuple_count |> si,
+  gc,
+  FloatCounter.get stats_cpu,
+  (* Assuming we call update_stats before this: *)
+  IntGauge.get stats_ram |> i |> Option.get,
+  FloatCounter.get stats_rb_read_sleep_time |> s,
+  FloatCounter.get stats_rb_write_sleep_time |> s,
+  IntCounter.get stats_rb_read_bytes |> si,
+  IntCounter.get stats_rb_write_bytes |> si
+
+(* Contrary to the http version above, here we sent only known, selected
+ * fields in a well defined tuple, rather than sending everything we have
+ * in a serialized map. *)
+let send_stats_via_rb rb tuple =
+  let sersize = RamenBinocle.max_sersize_of_tuple tuple in
+  match RingBuf.enqueue_alloc rb sersize with
+  | exception RingBufLib.NoMoreRoom -> () (* Just skip *)
+  | tx ->
+    let offs = RamenBinocle.serialize tx tuple in
+    assert (offs <= sersize) ;
+    RingBuf.enqueue_commit tx
+
+let update_stats_rb period rb_name get_tuple () =
+  let rb = RingBuf.load rb_name in
   while%lwt true do
-    FloatCounter.set stats_cpu (tot_cpu_time ()) ;
-    IntGauge.set stats_ram (tot_ram_usage ()) ;
-    let%lwt () = send_stats report_url in
+    update_stats () ;
+    let tuple : RamenBinocle.tuple = get_tuple () in
+    send_stats_via_rb rb tuple ;
     Lwt_unix.sleep period
   done
 
@@ -403,35 +438,38 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
     join
 
 type worker_conf =
-  { debug : bool ; persist_dir : string ; report_url : string }
+  { debug : bool ; persist_dir : string }
 
-let node_start () =
-  let debug = getenv ~def:"false" "debug" |> bool_of_string
-  and node_name = getenv ~def:"?" "name" in
+let worker_start worker_name get_binocle_tuple =
+  let debug = getenv ~def:"false" "debug" |> bool_of_string in
   let default_persist_dir =
-    "/tmp/worker_"^ node_name ^"_"^ string_of_int (Unix.getpid ()) in
+    "/tmp/worker_"^ worker_name ^"_"^ string_of_int (Unix.getpid ()) in
   let persist_dir = getenv ~def:default_persist_dir "persist_dir" in
   let logdir, prefix =
     match getenv "log_dir" with
-    | exception _ -> None, node_name ^": "
+    | exception _ -> None, worker_name ^": "
     | ld -> Some ld, "" in
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir ~prefix debug ;
-  !logger.debug "Starting %s process..." node_name ;
-  let report_url =
-    (* The real one will have a process identifier instead of "anonymous" *)
-    getenv ~def:"http://localhost:29380/report/anonymous" "report_url" in
+  !logger.debug "Starting %s process..." worker_name ;
   let report_period =
-    getenv ~def:"23.9" "report_period" |> float_of_string in
-  async (update_stats_th report_url report_period) (* TODO: catch exceptions in async_exception_hook *) ;
-  { debug ; persist_dir ; report_url }
+    getenv ~def:"3.7" "report_period" |> float_of_string in
+  let report_rb =
+    getenv ~def:"/tmp/ringbuf_in_report" "report_ringbuf" in
+  (* Must call this once before get_binocle_tuple because cpu/ram gauges
+   * must not be NULL: *)
+  update_stats () ;
+  async (update_stats_rb report_period report_rb get_binocle_tuple) ;
+  { debug ; persist_dir }
 
 
 (* Operations that nodes may run: *)
 
 let read_csv_file filename do_unlink separator sersize_of_tuple
                   serialize_tuple tuple_of_strings preprocessor =
-  let _conf = node_start () in
+  let worker_name = getenv ~def:"?" "name" in
+  let _conf =
+    worker_start worker_name (get_binocle_tuple worker_name None None None) in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   (* For tests, allow to overwrite what's specified in the operation: *)
   and filename = getenv ~def:filename "csv_filename"
@@ -455,7 +493,9 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
 
 let listen_on collector addr_str port proto
               sersize_of_tuple serialize_tuple =
-  let _conf = node_start () in
+  let worker_name = getenv ~def:"?" "name" in
+  let _conf =
+    worker_start worker_name (get_binocle_tuple worker_name None None None) in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   and inet_addr = Unix.inet_addr_of_string addr_str
   in
@@ -466,7 +506,9 @@ let listen_on collector addr_str port proto
   collector ~inet_addr ~port outputer
 
 let yield sersize_of_tuple serialize_tuple select every =
-  let _conf = node_start () in
+  let worker_name = getenv ~def:"?" "name" in
+  let _conf =
+    worker_start worker_name (get_binocle_tuple worker_name None None None) in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   in
   let outputer =
@@ -626,17 +668,27 @@ let aggregate
       (group_init : 'global_state -> 'aggr)
       (field_of_tuple : 'tuple_out -> string -> string)
       (notify_url : string) =
-  let conf = node_start () in
+  let stats_selected_tuple_count = make_stats_selected_tuple_count ()
+  and stats_group_count =
+    IntGauge.make Consts.group_count_metric
+                  "Number of groups currently maintained." in
+  IntGauge.set stats_group_count 0 ;
+  let worker_name = getenv ~def:"?" "name" in
+  let get_binocle_tuple =
+    let si v = Some (Uint64.of_int v) in
+    let i v = Option.map (fun r -> Uint64.of_int r) v in
+    get_binocle_tuple
+      worker_name
+      (IntCounter.get stats_in_tuple_count |> si)
+      (IntCounter.get stats_selected_tuple_count |> si)
+      (IntGauge.get stats_group_count |> i) in
+  let conf = worker_start worker_name get_binocle_tuple in
   let when_str = string_of_when_to_check_group when_to_check_for_commit in
   !logger.debug "We will commit/flush for... %s" when_str ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-  and stats_selected_tuple_count = make_stats_selected_tuple_count ()
-  and stats_group_count =
-    IntGauge.make Consts.group_count_metric "Number of groups currently maintained."
   and top_n, top_by = Option.default (0, fun _ _ _ -> ()) top in
   assert (not commit_before || top_n = 0) ;
-  IntGauge.set stats_group_count 0 ;
   let tuple_outputer =
     outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   let outputer =
@@ -682,7 +734,8 @@ let aggregate
           (fun n -> return (RingBuf.load n)) rb_in_fname
   in
   (* The big event loop: *)
-  CodeGenLib_IO.read_ringbuf ~delay_rec:sleep_in rb_in (fun tx ->
+  RingBuf.read_ringbuf ~delay_rec:sleep_in rb_in (fun tx ->
+    CodeGenLib_IO.on_each_input_pre () ;
     let in_tuple = read_tuple tx in
     RingBuf.dequeue_commit tx ;
     with_state (fun s ->

@@ -77,8 +77,8 @@ let node_info_of_node node =
   let to_expr_type_info =
     List.map (fun (_, typ) -> Expr.to_expr_type_info typ)
   in
-  let r = node.N.last_report in
-  SN.{
+  let%lwt stats = RamenProcesses.last_report (N.fq_name node) in
+  return SN.{
     definition = {
       name = node.N.name ;
       operation = node.N.op_text ;
@@ -90,23 +90,16 @@ let node_info_of_node node =
     output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
     parents = List.map N.fq_name node.N.parents ;
     children = List.map N.fq_name node.N.children ;
-    in_tuple_count = find_int_metric r Consts.in_tuple_count_metric ;
-    selected_tuple_count = find_int_metric r Consts.selected_tuple_count_metric ;
-    out_tuple_count = find_int_metric r Consts.out_tuple_count_metric ;
-    group_count = find_int_opt_metric r Consts.group_count_metric ;
-    cpu_time = find_float_metric r Consts.cpu_time_metric ;
-    ram_usage = find_int_metric r Consts.ram_usage_metric ;
-    in_sleep = find_float_metric r Consts.rb_wait_read_metric ;
-    out_sleep = find_float_metric r Consts.rb_wait_write_metric ;
-    in_bytes = find_int_metric r Consts.rb_read_bytes_metric ;
-    out_bytes = find_int_metric r Consts.rb_write_bytes_metric }
+    stats }
 
 let layer_info_of_layer layer =
-  SL.{
+  let%lwt nodes =
+    Hashtbl.values layer.L.persist.L.nodes |>
+    List.of_enum |>
+    Lwt_list.map_s node_info_of_node in
+  return SL.{
     name = layer.L.name ;
-    nodes = Hashtbl.values layer.L.persist.L.nodes /@
-            node_info_of_node |>
-            List.of_enum ;
+    nodes ;
     status = layer.L.persist.L.status ;
     last_started = layer.L.persist.L.last_started ;
     last_stopped = layer.L.persist.L.last_stopped }
@@ -123,8 +116,8 @@ let graph_layers conf = function
     with Not_found -> bad_request ("Unknown layer "^l)
 
 let get_graph_json _headers layers =
-  let body = List.map layer_info_of_layer layers |>
-             PPP.to_string get_graph_resp_ppp in
+  let%lwt graph = Lwt_list.map_s layer_info_of_layer layers in
+  let body = PPP.to_string get_graph_resp_ppp graph in
   respond_ok ~body ()
 
 let dot_of_graph layers =
@@ -446,22 +439,6 @@ let export conf headers layer_name node_name body =
   let resp = { first ; columns } in
   let body = PPP.to_string export_resp_ppp resp in
   respond_ok ~body ()
-
- (*
-    API for Workers: health and report
-*)
-
-let report conf _headers layer name body =
-  (* TODO: check application-type is marshaled.ocaml *)
-  (* Notice the absence of read-lock, as a lesser of two evils (the other
-   * evil here: https://github.com/PerformanceVision/ramen/issues/154) *)
-  let last_report = Marshal.from_string body 0 in
-  C.with_wlock conf (fun () ->
-    let%lwt _layer, node =
-      find_node_or_fail conf layer name in
-    node.N.last_report <- last_report ;
-    return_unit) >>=
-  respond_ok
 
 (*
     Grafana Datasource: autocompletion of node/field names
@@ -786,6 +763,9 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
     C.add_node conf "netflow" "demo" "LISTEN FOR NETFLOW" |> ignore) ;
   async (fun () -> timeout_layers conf) ;
   C.save_graph conf ;
+  (* Read the instrumentation ringbuf: *)
+  RamenProcesses.read_reports conf ;
+  (* Start the HTTP server: *)
   let lyr = function
     | [] -> bad_request_exn "Layer name missing from URL"
     | lst -> String.concat "/" lst in
@@ -833,10 +813,6 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
     | `GET, ("plot" :: path) ->
       let layer, node = lyr_node_of path in
       plot conf headers layer node params
-    (* API for children *)
-    | `PUT, ("report" :: path) ->
-      let layer, node = lyr_node_of path in
-      report conf headers layer node body
     (* Grafana datasource plugin *)
     | `GET, ["grafana"] ->
       respond_ok ()

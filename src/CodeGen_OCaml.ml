@@ -49,9 +49,7 @@ let emit_sersize_of_fixsz_typ oc typ =
 let emit_sersize_of_field_var typ oc var =
   match typ with
   | TString ->
-    Printf.fprintf oc "\
-      (%d + RingBufLib.round_up_to_rb_word(String.length %s))"
-      RingBufLib.rb_word_bytes var
+    Printf.fprintf oc "(RingBufLib.sersize_of_string %s)" var
   | _ -> emit_sersize_of_fixsz_typ oc typ
 
 (* Emit the code to retrieve the sersize of some serialized value *)

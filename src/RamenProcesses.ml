@@ -52,6 +52,9 @@ let exp_ringbuf_name conf node =
 let out_ringbuf_names_ref conf node =
   conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/out_ref"
 
+let report_ringbuf conf =
+  conf.C.persist_dir ^"/instrumentation"
+
 let run conf layer =
   let open L in
   match layer.persist.status with
@@ -104,12 +107,10 @@ let run conf layer =
         let env = [|
           "OCAMLRUNPARAM="^ if conf.C.debug then "b" else "" ;
           "debug="^ string_of_bool conf.C.debug ;
-          "name="^ node.N.name ;
+          "name="^ N.fq_name node ;
           "input_ringbuf="^ input_ringbuf ;
           "output_ringbufs_ref="^ out_ringbuf_ref ;
-          "report_url="^ conf.C.ramen_url
-                       ^ "/report/"^ Uri.pct_encode node.N.layer
-                       ^ "/"^ Uri.pct_encode node.N.name ;
+          "report_ringbuf="^ report_ringbuf conf ;
           (* We need to change this dir whenever the node signature change
            * to prevent it to reload an incompatible state: *)
           "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
@@ -254,3 +255,44 @@ let timeout_layers conf =
         Hashtbl.remove conf.C.graph.C.layers layer_name
       )
     ) unused
+
+(* Instrumentation: Reading workers stats *)
+
+open Stdint
+
+let reports_lock = RWLock.make ()
+let last_reports = Hashtbl.create 31
+
+let read_reports conf =
+  let rb_name = report_ringbuf conf
+  and rb_sz_words = 1000000 in
+  RingBuf.create rb_name rb_sz_words ;
+  let rb = RingBuf.load rb_name in
+  async (fun () ->
+    (* TODO: we probably want to move this function elsewhere than in a
+     * lib that's designed for workers: *)
+    RingBuf.read_ringbuf rb (fun tx ->
+      let worker, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo =
+        RamenBinocle.unserialize tx in
+      RingBuf.dequeue_commit tx ;
+      RWLock.with_w_lock reports_lock (fun () ->
+        Hashtbl.replace last_reports worker RamenSharedTypes.Node.{
+          in_tuple_count = Option.map Uint64.to_int ic ;
+          selected_tuple_count = Option.map Uint64.to_int sc ;
+          out_tuple_count = Option.map Uint64.to_int oc ;
+          group_count = Option.map Uint64.to_int gc ;
+          cpu_time = cpu ; ram_usage = Uint64.to_int ram ;
+          in_sleep = wi ; out_sleep = wo ;
+          in_bytes = Option.map Uint64.to_int bi ;
+          out_bytes = Option.map Uint64.to_int bo } ;
+        return_unit)))
+
+let last_report fq_name =
+  RWLock.with_r_lock reports_lock (fun () ->
+    Hashtbl.find_option last_reports fq_name |?
+    { in_tuple_count = None ; selected_tuple_count = None ;
+      out_tuple_count = None ; group_count = None ;
+      cpu_time = 0. ; ram_usage = 0 ;
+      in_sleep = None ; out_sleep = None ;
+      in_bytes = None ; out_bytes = None } |>
+    return)

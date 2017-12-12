@@ -39,6 +39,9 @@ let retry_for_ringbuf ?delay_rec f =
   retry ~on ~first_delay:0.001 ~max_delay:0.01 ?delay_rec
     (fun x -> Lwt.return (f x))
 
+let sersize_of_string s =
+  rb_word_bytes + round_up_to_rb_word (String.length s)
+
 let rec sersize_of_fixsz_typ =
   function
   | TFloat -> round_up_to_rb_word 8

@@ -106,6 +106,18 @@ end
 
 module Node =
 struct
+  type worker_stats =
+    { in_tuple_count : float option ;
+      out_tuple_count : float option ;
+      sel_tuple_count : float option ;
+      group_count : float option ;
+      cpu_time : float ;
+      ram_usage : int ;
+      in_sleep : float option ;
+      out_sleep : float option ;
+      in_bytes : float option ;
+      out_bytes : float option }
+
   type t =
     { layer : string ;
       name : string ;
@@ -118,17 +130,8 @@ struct
       parents : string list ;
       children : string list ;
 
-      in_tuple_count : float ;
-      out_tuple_count : float ;
-      sel_tuple_count : float ;
-      group_count : float option ;
+      stats : worker_stats ;
 
-      cpu_time : float ;
-      ram_usage : int ;
-      in_sleep : float ;
-      out_sleep : float ;
-      in_bytes : float ;
-      out_bytes : float ;
       pid : int option ;
       signature : string option }
 
@@ -488,22 +491,55 @@ let update_nodes_sum () =
                          tot_out_sleep, tot_in_bytes, tot_out_bytes)
                         (_, n) ->
         let n = n.value in
-        tot_nodes +. 1., tot_ins +. n.Node.in_tuple_count,
-        tot_sels +. n.sel_tuple_count,
-        tot_outs +. n.out_tuple_count,
-        tot_grps +. (option_def 0. n.group_count),
-        tot_cpu +. n.cpu_time,
-        tot_ram +. float_of_int n.ram_usage,
-        tot_in_sleep +. n.in_sleep,
-        tot_out_sleep +. n.out_sleep,
-        tot_in_bytes +. n.in_bytes,
-        tot_out_bytes +. n.out_bytes
+        tot_nodes +. 1.,
+        tot_ins +. (n.Node.stats.in_tuple_count |? 0.),
+        tot_sels +. (n.stats.sel_tuple_count |? 0.),
+        tot_outs +. (n.stats.out_tuple_count |? 0.),
+        tot_grps +. (n.stats.group_count |? 0.),
+        tot_cpu +. n.stats.cpu_time,
+        tot_ram +. float_of_int n.stats.ram_usage,
+        tot_in_sleep +. (n.stats.in_sleep |? 0.),
+        tot_out_sleep +. (n.stats.out_sleep |? 0.),
+        tot_in_bytes +. (n.stats.in_bytes |? 0.),
+        tot_out_bytes +. (n.stats.out_bytes |? 0.)
       ) zero_sums nodes.value in
   set nodes_sum sum
 
 (* Jstable of spinning layers *)
 let spinners = make_param "spinners" (Jstable.create ())
 let spinner_icon = "❍" (*"°"*)
+
+let definition_of_js js =
+  of_field js "name" Js.to_string,
+  of_field js "operation" Js.to_string
+
+let worker_stats_of_js js =
+  Node.{
+    in_tuple_count = of_opt_field js "in_tuple_count" identity ;
+    out_tuple_count = of_opt_field js "out_tuple_count" identity ;
+    sel_tuple_count = of_opt_field js "selected_tuple_count" identity ;
+    group_count = of_opt_field js "group_count" identity ;
+    cpu_time = of_field js "cpu_time" Js.to_float ;
+    ram_usage = of_field js "ram_usage" identity ;
+    in_sleep = of_opt_field js "in_sleep" Js.to_float ;
+    out_sleep = of_opt_field js "out_sleep" Js.to_float ;
+    in_bytes = of_opt_field js "in_bytes" Js.to_float ;
+    out_bytes = of_opt_field js "out_bytes" Js.to_float }
+
+let node_of_js layer js =
+  let name, operation = of_field js "definition" definition_of_js in
+  let id = layer.Layer.name ^"/"^ name in
+  Node.{
+    layer = layer.Layer.name ;
+    name ; id ; operation ;
+    exporting = of_field js "exporting" Js.to_bool ;
+    input_type = of_field js "input_type" type_spec_of_js ;
+    output_type = of_field js "output_type" type_spec_of_js ;
+    parents = of_field js "parents" node_list_of_js ;
+    children = of_field js "children" node_list_of_js ;
+    stats = of_field js "stats" worker_stats_of_js ;
+    pid = of_opt_field js "pid" identity ;
+    signature = of_opt_field js "signature" Js.to_string }
 
 let update_graph total g =
   (* g is a JS array of layers *)
@@ -527,35 +563,8 @@ let update_graph total g =
     update_layer layer ;
     for j = 0 to nodes##.length - 1 do
       let n = Js.array_get nodes j in
-      let definition = Js.Unsafe.get n "definition" in
-      let name = Js.(Unsafe.get definition "name" |> to_string) in
-      let id = layer.Layer.name ^"/"^ name in
-      had_nodes := id :: !had_nodes ;
-      let node = Node.{
-        layer = layer.Layer.name ;
-        name ; id ;
-        exporting = Js.(Unsafe.get n "exporting" |> to_bool) ;
-        operation = Js.(Unsafe.get definition "operation" |> to_string) ;
-        input_type = type_spec_of_js Js.(Unsafe.get n "input_type") ;
-        output_type = type_spec_of_js Js.(Unsafe.get n "output_type") ;
-        parents = node_list_of_js Js.(Unsafe.get n "parents") ;
-        children = node_list_of_js Js.(Unsafe.get n "children") ;
-        in_tuple_count = Js.(Unsafe.get n "in_tuple_count" |> to_float) ;
-        out_tuple_count = Js.(Unsafe.get n "out_tuple_count" |> to_float) ;
-        sel_tuple_count = Js.(Unsafe.get n "selected_tuple_count" |>
-                              to_float) ;
-        group_count = Js.(Unsafe.get n "group_count" |> Opt.to_option |>
-                          option_map to_float) ;
-        cpu_time = Js.(Unsafe.get n "cpu_time" |> float_of_number) ;
-        ram_usage = Js.(Unsafe.get n "ram_usage" |> to_int) ;
-        in_sleep = Js.(Unsafe.get n "in_sleep" |> float_of_number) ;
-        out_sleep = Js.(Unsafe.get n "out_sleep" |> float_of_number) ;
-        in_bytes = Js.(Unsafe.get n "in_bytes" |> to_float) ;
-        out_bytes = Js.(Unsafe.get n "out_bytes" |> to_float) ;
-        pid = Js.(Unsafe.get n "pid" |> Opt.to_option |>
-                  option_map to_int) ;
-        signature = Js.(Unsafe.get n "signature" |> Opt.to_option |>
-                        option_map to_string) } in
+      let node = node_of_js layer n in
+      had_nodes := node.Node.id :: !had_nodes ;
       update_node node
     done
   done ;
@@ -891,6 +900,7 @@ let node_tbody_row node =
     td [ clss "number" ]
        [ text xs ;
          hr [ attr "width" (string_of_float w) ] ] in
+  let na = td [ clss "number" ] [ text "n.a." ] in
   let tdih tot x =
     if tot = 0. then tdi x else
     let w = 100. *. float_of_int x /. tot in
@@ -899,32 +909,34 @@ let node_tbody_row node =
     if tot = 0. then tdf x else
     let w = 100. *. x /. tot in
     tdh w (str_of_float x)
-  and tdfih tot x =
-    if tot = 0. then tdfi x else
-    let w = 100. *. x /. tot in
-    tdh w (string_of_float x) in
-  let na = td [ clss "number" ] [ text "n.a." ] in
-  let tdoi = function None -> na | Some v -> tdi v
-  and tdofih tot = function None -> na | Some v -> tdfih tot v
-  in
+  and tdofih tot = function
+    | None -> na
+    | Some x ->
+      if tot = 0. then tdfi x else
+      let w = 100. *. x /. tot in
+      tdh w (string_of_float x) in
+  let tdofh tot = function
+    | None -> na
+    | Some x -> tdfh tot x in
+  let tdoi = function None -> na | Some v -> tdi v in
   with_param nodes_sum (fun (_tot_nodes, tot_ins, tot_sels, tot_outs,
                              tot_grps, tot_cpu, tot_ram, tot_in_sleep,
                              tot_out_sleep, tot_in_bytes, tot_out_bytes) ->
     let cols =
       [ tds node.Node.layer ;
         tds node.name ;
-        tdfih tot_ins node.in_tuple_count ;
-        tdfih tot_sels node.sel_tuple_count ;
-        tdfih tot_outs node.out_tuple_count ;
-        tdofih tot_grps node.group_count ;
+        tdofih tot_ins node.stats.in_tuple_count ;
+        tdofih tot_sels node.stats.sel_tuple_count ;
+        tdofih tot_outs node.stats.out_tuple_count ;
+        tdofih tot_grps node.stats.group_count ;
         td [ clss "export" ]
            [ text (if node.exporting then "✓" else " ") ] ;
-        tdfh tot_cpu node.cpu_time ;
-        tdfh tot_in_sleep node.in_sleep ;
-        tdfh tot_out_sleep node.out_sleep ;
-        tdih tot_ram node.ram_usage ;
-        tdfih tot_in_bytes node.in_bytes ;
-        tdfih tot_out_bytes node.out_bytes ;
+        tdfh tot_cpu node.stats.cpu_time ;
+        tdofh tot_in_sleep node.stats.in_sleep ;
+        tdofh tot_out_sleep node.stats.out_sleep ;
+        tdih tot_ram node.stats.ram_usage ;
+        tdofih tot_in_bytes node.stats.in_bytes ;
+        tdofih tot_out_bytes node.stats.out_bytes ;
         tds (short_node_list node.layer node.parents) ;
         tds (short_node_list node.layer node.children) ;
         tdoi node.pid ;
@@ -950,26 +962,26 @@ let node_sorter col =
   let open Node in
   match col with
   | "#in" ->
-    make (fun a b -> compare b.in_tuple_count a.in_tuple_count)
+    make (fun a b -> compare b.stats.in_tuple_count a.stats.in_tuple_count)
   | "#selected" ->
-    make (fun a b -> compare b.sel_tuple_count a.sel_tuple_count)
+    make (fun a b -> compare b.stats.sel_tuple_count a.stats.sel_tuple_count)
   | "#out" ->
-    make (fun a b -> compare b.out_tuple_count a.out_tuple_count)
+    make (fun a b -> compare b.stats.out_tuple_count a.stats.out_tuple_count)
   | "#groups" ->
-    make (fun a b -> match b.group_count, a.group_count with
+    make (fun a b -> match b.stats.group_count, a.stats.group_count with
          | None, None -> 0
          | Some _, None -> 1
          | None, Some _ -> -1
          | Some i2, Some i1 -> compare i2 i1)
   | "export" -> make (fun a b -> compare b.exporting a.exporting)
-  | "CPU" -> make (fun a b -> compare b.cpu_time a.cpu_time)
-  | "wait in" -> make (fun a b -> compare b.in_sleep a.in_sleep)
-  | "wait out" -> make (fun a b -> compare b.out_sleep a.out_sleep)
-  | "bytes in" -> make (fun a b -> compare b.in_bytes a.in_bytes)
-  | "bytes out" -> make (fun a b -> compare b.out_bytes a.out_bytes)
-  | "heap" -> make (fun a b -> compare b.ram_usage a.ram_usage)
-  | "volume in" -> make (fun a b -> compare b.in_bytes a.in_bytes)
-  | "volume out" -> make (fun a b -> compare b.out_bytes a.out_bytes)
+  | "CPU" -> make (fun a b -> compare b.stats.cpu_time a.stats.cpu_time)
+  | "wait in" -> make (fun a b -> compare b.stats.in_sleep a.stats.in_sleep)
+  | "wait out" -> make (fun a b -> compare b.stats.out_sleep a.stats.out_sleep)
+  | "bytes in" -> make (fun a b -> compare b.stats.in_bytes a.stats.in_bytes)
+  | "bytes out" -> make (fun a b -> compare b.stats.out_bytes a.stats.out_bytes)
+  | "heap" -> make (fun a b -> compare b.stats.ram_usage a.stats.ram_usage)
+  | "volume in" -> make (fun a b -> compare b.stats.in_bytes a.stats.in_bytes)
+  | "volume out" -> make (fun a b -> compare b.stats.out_bytes a.stats.out_bytes)
   | _ ->
     make (fun a b -> match compare a.layer b.layer with
          | 0 -> compare a.name b.name

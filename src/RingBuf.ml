@@ -101,29 +101,10 @@ let read_cidr6 tx offs =
   let len = read_u16 tx (offs + RingBufLib.round_up_to_rb_word 16) in
   addr, Uint16.to_int len
 
-(* Note: each primitive operation is generic but for a few things:
- *
- * - how to bind values from the incoming tuple to a local variables (a tuple)
- *
- * - functions returning values from the tuple (for instance, the function to
- * extract a key of the tuple)
- *
- * - function to stringify a tuple to write it into an output ring buffer (in
- * field name order).
- *
- * We need to generate the OCaml code for all of these (all unserializers and
- * all configuration functions). The we could write the final program that
- * would implement either a single operation or several.
- *
- * Notice that if we encode two successive operations in the same program then
- * we can save the ringbuffer and serialization between them, in addition to
- * the additional inlining opportunities. This require those two operations to
- * be implemented in the same language and that we won't need to restart one
- * without restarting the other.
- *
- * The simple operations (projection, column renaming, extensions) are good
- * candidates for this bundling.
- *
- * The API to this code generator is composed of: operation name, input format,
- * parameters (including function expressions). The output format is inferred
- * and need not be given. *)
+let read_ringbuf ?delay_rec rb f =
+  let open Lwt in
+  let rec read_next () =
+    let%lwt tx = RingBufLib.retry_for_ringbuf ?delay_rec dequeue_alloc rb in
+    f tx >>= read_next
+  in
+  read_next ()

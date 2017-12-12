@@ -114,8 +114,7 @@ struct
       (* Children are either in this layer or in a layer _above_ *)
       mutable children : t list ;
       (* Worker info, only relevant if it is running: *)
-      mutable pid : int option ;
-      mutable last_report : Binocle.metric list }
+      mutable pid : int option }
 
   let fq_name node = node.layer ^"/"^ node.name
 
@@ -345,7 +344,7 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
-    pid = None ; last_report = [] } in
+    pid = None } in
   Hashtbl.add layer.Layer.persist.Layer.nodes node_name node ;
   layer, node
 
