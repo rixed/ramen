@@ -11,22 +11,22 @@ build-test: [make "check"]
 install: [make "bin_dir=%{prefix}%/bin" "install"]
 remove: [make "bin_dir=%{prefix}%/bin" "uninstall"]
 depends: [
-  "ocamlfind"
-  "lwt"
-  "batteries"
+  "ocamlfind" {= "1.7.3"}
+  "lwt" {= "3.1.0"}
+  "batteries" {= "2.8.0"}
   "stdint" {>= "0.5.0"}
-  "parsercombinator"
-  "cohttp-lwt-unix"
-  "inotify"
+  "parsercombinator" {= "0.2"}
+  "cohttp-lwt-unix" {= "1.0.0"}
+  "inotify" {= "2.3"}
   "binocle" {>= "0.2"}
-  "owl" {>= "0.2.9"}
-  "sqlite3"
+  "owl" {= "0.2.9"}
+  "sqlite3" {= "4.3.2"}
   "num"
-  "ppp"
-  "js_of_ocaml" {build & >= "3.0.1"}
+  "ppp" {= "0.1"}
+  "js_of_ocaml" {build & = "3.0.2"}
   "js_of_ocaml-ppx" {build}
-  "cmdliner"
-  "cryptohash"
-  "syslog"
+  "cmdliner" {= "1.0.2"}
+  "cryptohash" {= "0.1.2"}
+  "syslog" {= "1.4"}
   "qcheck" {test}
 ]
