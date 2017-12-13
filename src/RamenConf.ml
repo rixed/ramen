@@ -324,7 +324,7 @@ struct
         oncallers = [ OnCaller.{ name = "John Doe" ;
                                  contacts = [| Contact.Console |] } ] ;
         teams = [
-          Team.{ name = "Firefighters" ;
+          Team.{ name = "firefighters" ;
                  members = [ "John Doe" ] ;
                  escalations = [
                    { importance = 0 ;
