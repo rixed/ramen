@@ -27,7 +27,6 @@ TODO
 *.db
 src/ramen
 src/100k.csv
-src/ramen_alerter
 src/ramen_configurator
 *.Rmd
 stream_in

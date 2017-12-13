@@ -215,7 +215,7 @@ let find_team teams name =
 (* Team Selection: all of them or just one *)
 
 type team_selection = AllTeams | SingleTeam of string
-let team_selection = make_param "team selection" AllTeams
+let sel_team = make_param "team selection" AllTeams
 
 let is_team_selected sel team =
   match sel with
@@ -265,11 +265,6 @@ let set_oncaller name oncaller_opt =
       set param oncaller_opt ;
       param)
 
-(* Main views of the application: *)
-
-type page = PageLive | PageTeam | PageHandOver | PageHistory | Reports
-let current_page = make_param "tab" PageLive
-
 (* Incidents *)
 
 let event_time = make_param "event time" 0.
@@ -311,12 +306,12 @@ let set_known_incidents incidents =
           ) selected_alert.value
     ) selected_incident.value
 
-let fold_incidents incidents team_selection init f =
+let fold_incidents incidents sel_team init f =
   List.fold_left (fun prev incident ->
       match incident.Incident.alerts with
       | [] -> prev
       | a :: _ ->
-        if is_team_selected team_selection a.Alert.team then
+        if is_team_selected sel_team a.Alert.team then
           f prev incident
         else prev
     ) init incidents
@@ -344,7 +339,7 @@ let histo_relto = make_param "history rel.to" true
 
 let reload_ongoing () =
   let url =
-    match team_selection.value with
+    match sel_team.value with
     | AllTeams -> "/ongoing"
     | SingleTeam t -> "/ongoing/"^ enc t in
   http_get url (fun resp ->
@@ -367,7 +362,7 @@ let reload_teams () =
     resync ())
 
 let reload_history () =
-  let url = match team_selection.value with
+  let url = match sel_team.value with
     | AllTeams -> "/history"
     | SingleTeam t -> "/history/"^ enc t in
   let date_range =
@@ -383,13 +378,6 @@ let reload_history () =
     List.iter update_event_time_from_incident incidents ;
     set_known_incidents incidents)
 
-let reload_for_current_page init =
-  match current_page.value with
-  | PageLive -> reload_ongoing ()
-  | PageHistory -> reload_history ()
-  | PageTeam -> if init then reload_teams () else ()
-  | _ -> ()
-
 let save_members name members =
   let path = "/members/"^ enc name in
   let content = List.map fst members |> js_of_list Js.string in
@@ -404,7 +392,7 @@ let todo what =
   p [] [ text ("TODO: "^ what) ]
 
 let live_incidents =
-  with_param team_selection (fun tsel ->
+  with_param sel_team (fun tsel ->
     let with_team_col = tsel = AllTeams in
     with_param known_incidents (fun incidents ->
       let incident_rows =
@@ -417,7 +405,7 @@ let live_incidents =
                 http_get ("/ack/"^ string_of_int a.id) (fun _ ->
                   reload_ongoing ())
               and stop _ =
-                http_get ("/stop/"^ string_of_int a.id) (fun _ ->
+                http_get ("/extinguish/"^ string_of_int a.id) (fun _ ->
                   reload_ongoing ()) in
               let need_ack = a.escalation <> None in
               let row =
@@ -587,7 +575,7 @@ let chronology incidents dur relto_event =
       selected_incident_detail ]
 
 let stfu =
-  with_param team_selection (function
+  with_param sel_team (function
     | AllTeams -> group []
     | SingleTeam team ->
       with_param teams (fun teams ->
@@ -935,10 +923,10 @@ let page_team search_str tsel team =
        let action =
         if is_sel then
           (fun _ -> reset_new_inhibit () ;
-                    set team_selection AllTeams)
+                    set sel_team AllTeams)
         else
           (fun _ -> reset_new_inhibit () ;
-                    set team_selection (SingleTeam team.name)) in
+                    set sel_team (SingleTeam team.name)) in
       h2 ~action [ clss "actionable" ]
         [ text "Team " ;
           span [ clss "team-name" ]
@@ -1040,7 +1028,7 @@ let page_teams =
     let what = "Saving team "^ new_team.value in
     http_put path "" ~what (fun _ -> reload_teams ()) in
   with_param teams (fun teams ->
-    with_param team_selection (fun tsel ->
+    with_param sel_team (fun tsel ->
       let new_team_form =
         if tsel = AllTeams then
           div [ clss "new-team" ]
@@ -1069,8 +1057,6 @@ let page_teams =
                  (fun prev team ->
                     page_team search_str tsel team :: prev)) ])))
 
-let page_hand_over = todo "hand over"
-
 let page_reports = todo "reports"
 
 let page_history =
@@ -1081,41 +1067,3 @@ let page_history =
         with_param histo_duration (fun dur ->
           with_param histo_relto (fun relto_event ->
             chronology incidents dur relto_event)) ])
-
-let tab label page =
-  with_param current_page (fun cp ->
-    div ~action:(fun _ ->
-        set current_page page ;
-        reload_for_current_page true)
-      [ if cp = page then clss "tab selected"
-                     else clss "tab actionable" ]
-      [ p [] [ text label ] ])
-
-let menu =
-  div
-    [ clss "tabs" ]
-    [ tab "Live" PageLive ;
-      (*tab "Hand Over" PageHandOver ;*)
-      tab "History" PageHistory ;
-      with_param team_selection (function
-        | AllTeams -> tab "Teams" PageTeam
-        | SingleTeam t -> tab ("Team "^ t) PageTeam) ;
-      (*tab "Reports" Reports ;*) ]
-
-let page =
-  with_param current_page (function
-    | PageLive -> page_live
-    | PageTeam -> page_teams
-    | PageHandOver -> page_hand_over
-    | PageHistory -> page_history
-    | Reports -> page_reports)
-
-let dom =
-  div [] [ menu ; page ]
-
-let () =
-  reload_for_current_page true ;
-  Html.window##setInterval
-    (Js.wrap_callback (fun () -> reload_for_current_page false)) 5_137. |>
-  ignore ;
-  start dom

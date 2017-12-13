@@ -41,6 +41,11 @@ let str_of_float f =
 
 (* State variables *)
 
+(* Main views of the application: *)
+
+type page = PageLive | PageHistory | PageEventProcessor | PageTeam
+let current_page = make_param "tab" PageLive
+
 open RamenSharedTypesJS_noPPP
 
 (* FIXME: actually get an ocaml js object *)
@@ -615,43 +620,48 @@ let reload_graph =
  * layer for deletion cancel the delete status of the current one. *)
 let layer_to_delete = make_param "layer pending deletion" ""
 
-(* DOM *)
-
-let breadcrumbs =
-  div
-    [ clss "breadcrumbs" ]
-    [ with_param sel_layer (function
-        NoLayer -> p [] [ text "Configuration" ]
-      | NewLayer ->
-        group
-          [ p ~action:(fun _ -> set_sel_layer NoLayer)
-              [ clss "actionable" ] [ text "Configuration" ] ;
-            p [] [ text ">" ] ;
-            p [] [ text "New Layer" ] ]
-      | ExistingLayer layer ->
-        with_param sel_node (function
-          "" ->
-          group
-            [ p ~action:(fun _ -> set_sel_layer NoLayer)
-                [ clss "actionable" ] [ text "Configuration" ] ;
-              p [] [ text ">" ] ;
-              p [] [ text layer ] ]
-        | snode ->
-          group
-            [ p ~action:(fun _ ->
-                  set_sel_node None ; set_sel_layer NoLayer)
-                [ clss "actionable" ] [ text "Configuration" ] ;
-              p [] [ text ">" ] ;
-              p ~action:(fun _ -> set_sel_node None)
-                [ clss "actionable" ] [ text layer ] ;
-              p [] [ text "/" ] ;
-              p [] [ text (Node.name_of_id snode) ] ])) ]
-
 let autoreload = make_param "autoreload" true
 let display_temp = make_param "display temp layers" false
 let is_temp layer_name = string_starts_with "temp/" layer_name
 
+(* Loading / Saving data *)
+
+let reload_for_current_page init =
+  if init || autoreload.value then (
+    match current_page.value with
+    | PageEventProcessor ->
+      (match sel_layer.value with
+      | NoLayer | ExistingLayer _ -> reload_graph ~single:true ()
+      | _ -> ()) ;
+      if sel_node.value <> "" then (
+        reload_tail ~single:true () ;
+        reload_chart ~single:true ())
+    | PageLive -> Alerter_app.reload_ongoing ()
+    | PageHistory -> Alerter_app.reload_history ()
+    | PageTeam -> if init then Alerter_app.reload_teams () else ())
+
+(* DOM *)
+
 let spacer = div [ clss "spacer" ] []
+
+let tab label page =
+  with_param current_page (fun cp ->
+    div ~action:(fun _ ->
+        set current_page page ;
+        reload_for_current_page true)
+      [ if cp = page then clss "tab selected"
+                     else clss "tab actionable" ]
+      [ p [] [ text label ] ])
+
+let nav_bar =
+  div
+    [ clss "tabs" ]
+    [ tab "Live" PageLive ;
+      tab "History" PageHistory ;
+      with_param Alerter_app.sel_team (function
+        | AllTeams -> tab "Teams" PageTeam
+        | SingleTeam t -> tab ("Team "^ t) PageTeam) ;
+      tab "Event Processor" PageEventProcessor ]
 
 let header_panel =
   group
@@ -662,7 +672,7 @@ let header_panel =
           [ div [] [ text "Ramen v0.1" ] ;
             div [] [ text "running on " ;
                      em [ text "$HOSTNAME$." ] ] ] ;
-        breadcrumbs ;
+        nav_bar ;
         spacer ;
         with_param display_temp (fun disp ->
           let title = (if disp then "do not " else "")^
@@ -1306,58 +1316,62 @@ let top_layers =
 let top_nodes =
   div [ id "nodes" ] [ h1 [] [ text "Nodes" ] ; nodes_panel ]
 
+let event_processor_page =
+  with_param sel_node (function
+    "" ->
+    with_param sel_layer (function
+      NoLayer ->
+      div [ id "top" ] [ top_layers ; top_nodes ]
+    | ExistingLayer slayer ->
+      with_param layers (fun layers ->
+        match List.assoc slayer layers with
+        | exception Not_found -> group []
+        | layer ->
+          with_param layer (fun layer ->
+            div
+              [ id "top" ]
+              [ top_layers ; top_nodes ;
+                if layer.status <> Running then
+                  layer_editor_panel
+                else
+                  p [ clss "nodata" ]
+                    [ text "Running layer cannot be edited" ] ]))
+    | NewLayer ->
+      div [ id "top" ] [ top_layers ; layer_editor_panel ])
+  | snode ->
+    match List.assoc snode nodes.value with
+    | exception Not_found -> group []
+    | node ->
+      let node = node.value in
+      group
+        [ div [ id "top" ] [ top_layers ; top_nodes ] ;
+          div
+            [ id "details" ]
+            [ div [ id "inputs" ]
+                  [ h1 [] [ text "Input fields" ] ; input_panel ] ;
+              div [ id "operation" ]
+                  [ h1 [] [ text "Operation" ] ; op_panel ] ] ;
+          can_export_with_layer node (function
+            true -> output_panel
+          | false -> p [ clss "nodata" ]
+                       [ text "This node exports no data" ]) ])
+
+
 let dom =
   group
     [ header_panel ;
-      with_param sel_node (function
-        "" ->
-        with_param sel_layer (function
-          NoLayer ->
-          div [ id "top" ] [ top_layers ; top_nodes ]
-        | ExistingLayer slayer ->
-          with_param layers (fun layers ->
-            match List.assoc slayer layers with
-            | exception Not_found -> group []
-            | layer ->
-              with_param layer (fun layer ->
-                div
-                  [ id "top" ]
-                  [ top_layers ; top_nodes ;
-                    if layer.status <> Running then
-                      layer_editor_panel
-                    else
-                      p [ clss "nodata" ]
-                        [ text "Running layer cannot be edited" ] ]))
-        | NewLayer ->
-          div [ id "top" ] [ top_layers ; layer_editor_panel ])
-      | snode ->
-        match List.assoc snode nodes.value with
-        | exception Not_found -> group []
-        | node ->
-          let node = node.value in
-          group
-            [ div [ id "top" ] [ top_layers ; top_nodes ] ;
-              div
-                [ id "details" ]
-                [ div [ id "inputs" ]
-                      [ h1 [] [ text "Input fields" ] ; input_panel ] ;
-                  div [ id "operation" ]
-                      [ h1 [] [ text "Operation" ] ; op_panel ] ] ;
-              can_export_with_layer node (function
-                true -> output_panel
-              | false -> p [ clss "nodata" ]
-                           [ text "This node exports no data" ]) ]) ]
+      div [ id "page" ]
+          [ with_param current_page (function
+            | PageEventProcessor ->
+              event_processor_page
+            | PageLive -> Alerter_app.page_live
+            | PageHistory -> Alerter_app.page_history
+            | PageTeam -> Alerter_app.page_teams) ] ]
 
 let () =
-  let rld_graph () =
-    match autoreload.value, sel_layer.value with
-      true, (NoLayer | ExistingLayer _) -> reload_graph ~single:true ()
-    | _ -> () in
-  ignore (Html.window##setInterval (Js.wrap_callback rld_graph) 7_919.) ;
-  let rld_tail () =
-    if autoreload.value && sel_node.value <> "" then (
-      reload_tail ~single:true () ;
-      reload_chart ~single:true ()) in
-  ignore (Html.window##setInterval (Js.wrap_callback rld_tail) 1_710.) ;
-  start dom ;
-  reload_graph ~single:true ()
+  reload_for_current_page true ;
+  Html.window##setInterval (Js.wrap_callback
+      (fun () -> reload_for_current_page false)
+    ) 3_137. |>
+  ignore ;
+  start dom

@@ -84,6 +84,12 @@ let persist_dir =
                    ~env [ "persist-dir" ] in
   Arg.(value (opt string "/tmp/ramen" i))
 
+let default_team =
+  let env = Term.env_info "ALERT_DEFAULT_TEAM" in
+  let i = Arg.info ~doc:"default team when unspecified in the notification"
+                   ~env ["default-team"] in
+  Arg.(value (opt string "firefighters" i))
+
 let server_start =
   Term.(
     (const HttpSrv.start
@@ -96,6 +102,7 @@ let server_start =
       $ www_dir
       $ version_tag
       $ persist_dir
+      $ default_team
       $ http_port
       $ ssl_cert
       $ ssl_key),

@@ -3,7 +3,8 @@ version = "0.1"
 archive(native) = "codegen.cmxa"
 # parsercombinator is used by string to IP conversion :(
 requires = "lwt.ppx batteries stdint parsercombinator cohttp-lwt-unix
-            inotify.lwt binocle owl"
+            findlib inotify.lwt binocle owl"
+# The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   sqlite3 unix num ppp js_of_ocaml js_of_ocaml-ppx cmdliner cryptohash
 #   syslog net_codecs

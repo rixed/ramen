@@ -743,8 +743,8 @@ let upload conf headers layer node body =
   | _ ->
     bad_request ("Node "^ N.fq_name node ^" does not accept uploads")
 
-let start debug daemonize rand_seed no_demo to_stderr ramen_url
-          www_dir version_tag persist_dir port cert_opt key_opt () =
+let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
+          version_tag persist_dir default_team port cert_opt key_opt () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
@@ -755,7 +755,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
   let conf =
-    C.make_conf true ramen_url debug version_tag persist_dir 5 (* TODO *) in
+    C.make_conf true ramen_url debug version_tag persist_dir default_team 5 (* TODO *) in
   (* When there is nothing to do, listen to collectd and netflow! *)
   if demo && Hashtbl.is_empty conf.C.graph.C.layers then (
     !logger.info "Adding default nodes since we have nothing to do..." ;
@@ -765,6 +765,8 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
   C.save_graph conf ;
   (* Read the instrumentation ringbuf: *)
   RamenProcesses.read_reports conf ;
+  (* Start the alerter *)
+  RamenAlerter.start_escalation_loop conf ;
   (* Start the HTTP server: *)
   let lyr = function
     | [] -> bad_request_exn "Layer name missing from URL"
@@ -778,11 +780,15 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
       | l::rest ->
         loop (l :: ls) rest in
     loop [] path in
+  let alert_id_of_string s =
+    match int_of_string s with
+    | exception Failure _ ->
+        bad_request "alert id must be numeric"
+    | id -> return id in
   (* The function called for each HTTP request: *)
   let router meth path params headers body =
-    (* Start by loading the graph from disk *)
     match meth, path with
-    (* API *)
+    (* Ramen API *)
     | `GET, ["graph"] ->
       get_graph conf headers None
     | `GET, ("graph" :: layers) ->
@@ -832,18 +838,54 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url
       let headers =
         Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
       Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
+    (* Uploads of data files *)
+    | (`POST|`PUT), ("upload" :: path) ->
+      let layer, node = lyr_node_of path in
+      upload conf headers layer node body
+    (* Alerter API *)
+    | `GET, ["notify"] ->
+      RamenAlerter.Api.notify conf params
+    | `GET, ["teams"] ->
+      RamenAlerter.Api.get_teams conf
+    | `PUT, ["team"; name] ->
+      RamenAlerter.Api.new_team conf headers name
+    | `DELETE, ["team"; name] ->
+      RamenAlerter.Api.del_team conf headers name
+    | `GET, ["oncaller"; name] ->
+      RamenAlerter.Api.get_oncaller conf headers name
+    | `GET, ["ongoing"] ->
+      RamenAlerter.Api.get_ongoing conf None
+    | `GET, ["ongoing"; team] ->
+      RamenAlerter.Api.get_ongoing conf (Some team)
+    | (`POST|`PUT), ["history"] ->
+      RamenAlerter.Api.get_history_post conf headers body
+    | `GET, ("history" :: team) ->
+      let team = if team = [] then None else Some (List.hd team) in
+      RamenAlerter.Api.get_history_get conf headers team params
+    | `GET, ["ack" ; id] ->
+      let%lwt id = alert_id_of_string id in
+      RamenAlerter.Api.get_ack conf id
+    | `GET, ["extinguish" ; id] ->
+      let%lwt id = alert_id_of_string id in
+      RamenAlerter.Api.get_stop conf id
+    | `POST, ["inhibit"; "add"; team] ->
+      RamenAlerter.Api.add_inhibit conf headers team body
+    | `POST, ["inhibit"; "edit" ; team] ->
+      RamenAlerter.Api.edit_inhibit conf headers team body
+    | `GET, ["stfu" ; team] ->
+      RamenAlerter.Api.stfu conf headers team
+    | `POST, ["oncaller"; name] ->
+      RamenAlerter.Api.edit_oncaller conf headers name body
+    | `POST, ["members"; name] ->
+      RamenAlerter.Api.edit_members conf headers name body
     (* Web UI *)
     | `GET, ([]|["index.html"]) ->
       if www_dir = "" then
         serve_string conf headers RamenGui.without_link
       else
         serve_string conf headers RamenGui.with_links
-    | `GET, ["style.css" | "ramen_script.js" as file] ->
+    | `GET, [ "style.css" | "ramen_script.js" as file ] ->
       serve_file_with_replacements conf headers www_dir file
-    (* Uploads of data files *)
-    | (`POST|`PUT), ("upload" :: path) ->
-      let layer, node = lyr_node_of path in
-      upload conf headers layer node body
     (* Errors *)
     | `PUT, p | `GET, p | `DELETE, p ->
       let path = String.join "/" p in

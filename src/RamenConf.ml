@@ -3,6 +3,7 @@ open RamenLog
 open Helpers
 open RamenSharedTypes
 open RamenSharedTypesJS
+open AlerterSharedTypesJS
 
 (* Used to type the input/output of nodes. Of course a compiled/
  * running node must have finished_typing to true and all optional
@@ -272,15 +273,101 @@ type graph =
 
 type persisted = (string, Layer.persist) Hashtbl.t
 
+module Alerter =
+struct
+  (* Notice there is no team: if someone is in a team and is found to be
+   * oncall at some time then he will be sent the alerts.
+   * If your belon to several team but want to be oncall for only one then
+   * merely create several identities. *)
+  type schedule = {
+    rank : int ;
+    from : float ;
+    oncaller : string }
+
+  (* The part of the internal state that we persist on disk: *)
+  type t = {
+    (* Ongoing incidents stays there until they are manually closed (with
+     * comment, reason, etc...) *)
+    ongoing_incidents : (int, Incident.t) Hashtbl.t ;
+
+    (* Used to give a unique id to any escalation so that we can ack them. *)
+    mutable next_alert_id : int ;
+
+    (* Same for incidents: *)
+    mutable next_incident_id : int ;
+
+    (* And inhibitions: *)
+    mutable next_inhibition_id : int ;
+
+    (* Teams *)
+    mutable oncallers : OnCaller.t list ;
+    mutable teams : Team.t list ;
+    schedule : schedule list }
+
+  let save_file persist_dir alerting_version =
+    persist_dir ^"/alerting/"^ alerting_version
+
+  (* TODO: write using Lwt *)
+  let save_state persist_dir alerting_version state =
+    let fname = save_file persist_dir alerting_version in
+    mkdir_all ~is_file:true fname ;
+    !logger.debug "Saving state in file %S." fname ;
+    File.with_file_out ~mode:[`create; `trunc] fname (fun oc ->
+      Marshal.output oc state)
+
+  let get_state do_persist persist_dir alerting_version =
+    let get_new () =
+      { ongoing_incidents = Hashtbl.create 5 ;
+        next_alert_id = 0 ;
+        next_incident_id = 0 ;
+        next_inhibition_id = 0 ;
+        oncallers = [ OnCaller.{ name = "John Doe" ;
+                                 contacts = [| Contact.Console |] } ] ;
+        teams = [
+          Team.{ name = "Firefighters" ;
+                 members = [ "John Doe" ] ;
+                 escalations = [
+                   { importance = 0 ;
+                     steps = Escalation.[
+                       { victims = [| 0 |] ; timeout = 350. } ;
+                       { victims = [| 0; 1 |] ; timeout = 350. } ] } ] ;
+                 inhibitions = [] } ] ;
+        schedule = [ { rank = 0 ; from = 0. ; oncaller = "John Doe" } ] }
+    in
+    if do_persist then (
+      let fname = save_file persist_dir alerting_version in
+      mkdir_all ~is_file:true fname ;
+      try
+        File.with_file_in fname (fun ic -> Marshal.input ic)
+      with Sys_error err ->
+        !logger.debug "Cannot read state from file %S: %s. Starting anew."
+            fname err ;
+        get_new ()
+      | BatInnerIO.No_more_input ->
+        !logger.debug "Cannot read state from file %S: not enough input. Starting anew."
+           fname ;
+        get_new ()
+    ) else get_new ()
+end
+
 type conf =
   { mutable graph : graph ;
+    graph_lock : RWLock.t ; (* Protects the above graph *)
+    alerts : Alerter.t ;
+    (* TODO: use the RWLock and forget about that dirty flag: *)
+    alerts_lock : RWLock.t ; (* Protects the above alerts *)
+    default_team : string ; (* TODO: https://github.com/PerformanceVision/ramen/issues/177 *)
+    (* TODO: a file *)
+    mutable archived_incidents : Incident.t list ;
+
     debug : bool ;
     ramen_url : string ;
     version_tag : string ;
+    alerting_version : string ;
+    instrumentation_version : string ;
     persist_dir : string ;
     do_persist : bool ; (* false for tests *)
-    max_simult_compilations : int ref ;
-    lock : RWLock.t }
+    max_simult_compilations : int ref }
 
 let parse_operation operation =
   let open RamenParsing in
@@ -400,12 +487,12 @@ let reload_graph conf =
   conf.graph <- load_graph ~restart:false conf.do_persist conf.persist_dir
 
 let with_rlock conf f =
-  RWLock.with_r_lock conf.lock (fun () ->
+  RWLock.with_r_lock conf.graph_lock (fun () ->
     reload_graph conf ;
     f ())
 
 let with_wlock conf f =
-  RWLock.with_w_lock conf.lock (fun () ->
+  RWLock.with_w_lock conf.graph_lock (fun () ->
     reload_graph conf ;
     let%lwt res = f () in
     (* Save the config only if f did not fail: *)
@@ -431,11 +518,15 @@ let add_link conf src dst =
   dst.parents <- src :: dst.parents
 
 let make_conf do_persist ramen_url debug version_tag persist_dir
-              max_simult_compilations =
+              default_team max_simult_compilations =
+  let alerting_version = "v0" and instrumentation_version = "v0" in
   { graph = load_graph ~restart:true do_persist persist_dir ;
+    graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
+    alerts = Alerter.get_state do_persist persist_dir alerting_version ;
+    default_team ; archived_incidents = [] ;
+    alerting_version ; instrumentation_version ;
     do_persist ; ramen_url ; debug ; version_tag ; persist_dir ;
-    max_simult_compilations = ref max_simult_compilations ;
-    lock = RWLock.make () }
+    max_simult_compilations = ref max_simult_compilations }
 
 (* AutoCompletion of node/field names *)
 

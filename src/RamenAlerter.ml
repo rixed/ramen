@@ -15,83 +15,33 @@ open SqliteHelpers
 open RamenLog
 open Lwt
 open AlerterSharedTypesJS
+module C = RamenConf
+module CA = C.Alerter
 
 (* Purge inhibitions stopped for more than: *)
 let max_inhibit_age = 24. *. 3600.
 
-let () =
-  async_exception_hook := (fun exn ->
-    !logger.error "Received exception %s\n%s"
-      (Printexc.to_string exn)
-      (Printexc.get_backtrace ()))
-
-let syslog = Syslog.openlog "ramen_alerter"
+let syslog = Syslog.openlog "ramen"
 
 (* We want to have a global state of the alert management situation that we
  * can save regularly and restore whenever we start in order to limit the
  * disruption in case of a crash: *)
 
-(* Notice there is no team: if someone is in a team and is found to be
- * oncall at some time then he will be sent the alerts.
- * If your belon to several team but want to be oncall for only one then
- * merely create several identities. *)
-type schedule = {
-  rank : int ;
-  from : float ;
-  oncaller : string }
-
-(* The part of the internal state that we persist on disk: *)
-type persisted_state = {
-  (* Ongoing incidents stays there until they are manually closed (with
-   * comment, reason, etc...) *)
-  ongoing_incidents : (int, Incident.t) Hashtbl.t ;
-
-  (* Used to give a unique id to any escalation so that we can ack them. *)
-  mutable next_alert_id : int ;
-
-  (* Same for incidents: *)
-  mutable next_incident_id : int ;
-
-  (* And inhibitions: *)
-  mutable next_inhibition_id : int ;
-
-  (* Teams *)
-  mutable oncallers : OnCaller.t list ;
-  mutable teams : Team.t list ;
-  schedule : schedule list }
-
-type state = {
-  (* Where this state is saved *)
-  save_file : string option ;
-  default_team : string ;
-  mutable dirty : bool ;
-
-  (* What is saved onto/restored from disk to avoid losing context when
-   * stopping or crashing: *)
-  persist : persisted_state ;
-
-  (* TODO: a file *)
-  mutable archived_incidents : Incident.t list }
-
 let is_inhibited state name team now =
-  match List.find (fun t -> t.Team.name = team) state.persist.teams with
+  match List.find (fun t -> t.Team.name = team) state.CA.teams with
   | exception Not_found -> false
   | team ->
     let open Inhibition in
-    (* First remove all expired inhibitions: *)
-    let inhibitions, changed =
-      List.fold_left (fun (inhibitions, changed) i ->
-        if i.stop_date > now -. max_inhibit_age then
-          i :: inhibitions, changed
-        else
-          inhibitions, true) ([], false) team.Team.inhibitions in
-    if changed then (
-      team.inhibitions <- inhibitions ;
-      state.dirty <- true) ;
-    (* See if this alert is inhibited: *)
-    List.exists (fun i ->
-        i.stop_date > now && String.starts_with name i.what
-      ) inhibitions
+    (* Expunge expired inhibitions while at it: *)
+    let inhibitions, inhibited =
+      List.fold_left (fun (inhibitions, inhibited) i ->
+          (if i.stop_date > now -. max_inhibit_age
+          then i :: inhibitions else inhibitions),
+          inhibited ||
+          i.stop_date > now && String.starts_with name i.what
+        ) ([], false) team.Team.inhibitions in
+    team.inhibitions <- inhibitions ;
+    inhibited
 
 exception Not_implemented
 
@@ -102,11 +52,10 @@ struct
   let make state alert =
     !logger.debug "Creating an incident for alert %s"
       (PPP.to_string Alert.t_ppp alert) ;
-    let i = { id = state.persist.next_incident_id ;
+    let i = { id = state.CA.next_incident_id ;
               alerts = [ alert ] } in
-    state.persist.next_incident_id <- state.persist.next_incident_id + 1 ;
-    Hashtbl.add state.persist.ongoing_incidents i.id i ;
-    state.dirty <- true ;
+    state.CA.next_incident_id <- state.CA.next_incident_id + 1 ;
+    Hashtbl.add state.CA.ongoing_incidents i.id i ;
     i
 
   let is_for_team t i = team_of i = t
@@ -120,7 +69,7 @@ struct
     Incident.started i <= ts
 
   let find_open_alert state ~name ~team ~title =
-    Hashtbl.values state.persist.ongoing_incidents |>
+    Hashtbl.values state.CA.ongoing_incidents |>
     Enum.find_map (fun i ->
       if (List.hd i.alerts).team <> team then None else
       match List.find (fun a ->
@@ -130,7 +79,7 @@ struct
       | a -> Some (i, a))
 
   let find_open_alert_by_id state id =
-    Hashtbl.values state.persist.ongoing_incidents |>
+    Hashtbl.values state.CA.ongoing_incidents |>
     Enum.find_map (fun i ->
       match List.find (fun a -> a.Alert.id = id) i.alerts with
     | exception Not_found -> None
@@ -143,22 +92,22 @@ struct
     | exception Not_found -> make state alert, None
     | i, a -> i, Some a
 
-  let fold_archived state init f =
-    List.fold_left f init state.archived_incidents
+  let fold_archived conf init f =
+    List.fold_left f init conf.C.archived_incidents
 
   let fold_ongoing state init f =
     Hashtbl.fold (fun _id i prev ->
-      f prev i) state.persist.ongoing_incidents init
+      f prev i) state.CA.ongoing_incidents init
 
-  let fold state init f =
-    let init' = fold_ongoing state init f in
-    fold_archived state init' f
+  let fold conf init f =
+    let init' = fold_ongoing conf.C.alerts init f in
+    fold_archived conf init' f
 
   let find state i =
-    Hashtbl.find state.persist.ongoing_incidents i
+    Hashtbl.find state.CA.ongoing_incidents i
 
   let remove state i =
-    Hashtbl.remove state.persist.ongoing_incidents i
+    Hashtbl.remove state.CA.ongoing_incidents i
 
   (* Move i1 alerts into i2 *)
   let merge_into state i1 i2 =
@@ -166,9 +115,9 @@ struct
     inc2.alerts <- List.rev_append inc1.alerts inc2.alerts ;
     remove state i1
 
-  let archive state i =
-    remove state i.id ;
-    state.archived_incidents <- i :: state.archived_incidents
+  let archive conf i =
+    remove conf.C.alerts i.id ;
+    conf.C.archived_incidents <- i :: conf.C.archived_incidents
 end
 
 module AlertOps =
@@ -176,8 +125,8 @@ struct
   open Alert (* type of an alert is shared with JS but not the ops *)
 
   let make state name team importance title text started_firing now =
-    let id = state.persist.next_alert_id in
-    state.persist.next_alert_id <- state.persist.next_alert_id + 1 ;
+    let id = state.CA.next_alert_id in
+    state.CA.next_alert_id <- state.CA.next_alert_id + 1 ;
     { id ; name ; team ; importance ; title ; text ; started_firing ;
       stopped_firing = None ; received = now ; escalation = None ;
       log = [] }
@@ -188,14 +137,14 @@ struct
       alert.name (PPP.to_string Alert.event_ppp event) ;
     alert.log <- { current_time ; event_time ; event } :: alert.log
 
-  let stop state i a source time =
+  let stop conf i a source time =
     a.stopped_firing <- Some time ;
     a.escalation <- None ;
     log a time (Stop source) ;
     (* If no more alerts are firing, archive the incident *)
     let stopped_firing a = a.Alert.stopped_firing <> None in
     if List.for_all stopped_firing i.Incident.alerts then
-      IncidentOps.archive state i
+      IncidentOps.archive conf i
 end
 
 module OnCallerOps =
@@ -208,7 +157,7 @@ struct
 
   let get_contacts state oncaller_name =
     match List.find (fun c -> c.OnCaller.name = oncaller_name
-            ) state.persist.oncallers with
+            ) state.CA.oncallers with
     | exception Not_found -> [||]
     | oncaller -> oncaller.OnCaller.contacts
 
@@ -219,22 +168,22 @@ struct
     { name ; contacts }
 
   let who_is_oncall state team rank time =
-    match List.find (fun t -> t.Team.name = team) state.persist.teams with
+    match List.find (fun t -> t.Team.name = team) state.CA.teams with
     | exception Not_found ->
       default_oncaller
     | team ->
       (match
         List.fold_left (fun best_s s ->
-            if s.rank <> rank || s.from > time ||
-               not (List.exists ((=) s.oncaller) team.members)
+            if s.CA.rank <> rank || s.CA.from > time ||
+               not (List.exists ((=) s.CA.oncaller) team.members)
             then best_s else
             match best_s with
             | None -> Some s
             | Some best ->
-              if s.from >= best.from then Some s else best_s
-          ) None state.persist.schedule with
+              if s.CA.from >= best.CA.from then Some s else best_s
+          ) None state.CA.schedule with
       | None -> default_oncaller
-      | Some s -> get state s.oncaller)
+      | Some s -> get state s.CA.oncaller)
 
   let assign_unassigned state =
     (* All oncallers not member of any team will be added to the "slackers"
@@ -245,34 +194,32 @@ struct
           if t.Team.name = slackers then s else
           List.fold_left (fun s o ->
             Set.add o s) s t.Team.members
-        ) Set.empty state.persist.teams in
+        ) Set.empty state.CA.teams in
     let unassigned =
       List.fold_left (fun s o ->
           if Set.mem o.name all_assigned then s
           else Set.add o.name s
-        ) Set.empty state.persist.oncallers in
+        ) Set.empty state.CA.oncallers in
     if Set.is_empty unassigned then (
       (* Delete the team of Slackers if it exists *)
       let changed, teams =
         List.fold_left (fun (changed, teams) t ->
             if t.Team.name = slackers then true, teams
             else changed, t::teams
-          ) (false, []) state.persist.teams in
+          ) (false, []) state.CA.teams in
       if changed then (
         !logger.info "No more slackers!" ;
-        state.persist.teams <- teams ;
-        state.dirty <- true)
+        state.CA.teams <- teams)
     ) else (
       !logger.info "Oncallers %a are slackers"
         (Set.print String.print) unassigned ;
-      state.dirty <- true ;
       match List.find (fun t -> t.Team.name = slackers)
-                      state.persist.teams with
+                      state.CA.teams with
       | exception Not_found ->
-        state.persist.teams <-
+        state.CA.teams <-
           Team.{ name = slackers ; members = Set.to_list unassigned ;
                  escalations = [] ; inhibitions = [] } ::
-            state.persist.teams
+            state.CA.teams
       | t ->
         t.members <- Set.to_list unassigned
     )
@@ -397,7 +344,7 @@ struct
      * importance. In that case we take the configuration for the next
      * most important alerts: *)
     match List.find (fun t -> t.Team.name = alert.Alert.team
-            ) state.persist.teams with
+            ) state.CA.teams with
     | exception Not_found ->
       default_escalation now
     | team ->
@@ -493,93 +440,45 @@ let check_escalations state now =
     ) |>
   join
 
-let get_state save_file default_team =
-  let get_new () =
-    { ongoing_incidents = Hashtbl.create 5 ;
-      next_alert_id = 0 ;
-      next_incident_id = 0 ;
-      next_inhibition_id = 0 ;
-      oncallers = [ OnCaller.{ name = "John Doe" ;
-                               contacts = [| Contact.Console |] } ] ;
-      teams = [
-        Team.{ name = "Firefighters" ;
-               members = [ "John Doe" ] ;
-               escalations = [
-                 { importance = 0 ;
-                   steps = Escalation.[
-                     { victims = [| 0 |] ; timeout = 350. } ;
-                     { victims = [| 0; 1 |] ; timeout = 350. } ] } ] ;
-               inhibitions = [] } ] ;
-      schedule = [ { rank = 0 ; from = 0. ; oncaller = "John Doe" } ] }
-  in
-  let persist =
-    match save_file with
-    | Some fname ->
-      (try
-         File.with_file_in fname (fun ic -> Marshal.input ic)
-       with Sys_error err ->
-             !logger.debug "Cannot read state from file %S: %s. Starting anew."
-                 fname err ;
-             get_new ()
-          | BatInnerIO.No_more_input ->
-             !logger.debug "Cannot read state from file %S: not enough input. Starting anew."
-                 fname ;
-             get_new ())
-    | None -> get_new ()
-  in
-  let state =
-    { save_file ; dirty = false ; default_team ;
-      persist ; archived_incidents = [] } in
+let start_escalation_loop conf =
   let rec check_escalations_loop () =
     let now = Unix.gettimeofday () in
-    let%lwt () = catch
-      (fun () -> check_escalations state now)
-      (fun e ->
-        print_exception e ;
-        return_unit) in
+    let%lwt () =
+      catch
+        (fun () -> check_escalations conf.C.alerts now)
+        (fun e ->
+          print_exception e ;
+          return_unit) in
     Lwt_unix.sleep 0.5 >>=
     check_escalations_loop
   in
-  async check_escalations_loop ;
-  return state
-
-let save_state state =
-  if state.dirty then (
-    Option.may (fun fname ->
-        !logger.debug "Saving state in file %S." fname ;
-        File.with_file_out ~mode:[`create; `trunc] fname (fun oc ->
-          Marshal.output oc state.persist)
-      ) state.save_file ;
-    state.dirty <- false
-  )
+  async check_escalations_loop
 
 (* Everything start by: we receive an alert with a name, a team name,
  * and a description (text + title). *)
-let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
+let alert conf ~name ~team ~importance ~title ~text ~firing ~time ~now =
   if firing then (
     (* First step: deduplication *)
     let alert =
-      AlertOps.make state name team importance title text time now in
-    match IncidentOps.get_or_create state alert with
+      AlertOps.make conf.C.alerts name team importance title text time now in
+    match IncidentOps.get_or_create conf.C.alerts alert with
     | _i, Some orig_alert ->
       AlertOps.log orig_alert time (NewNotification Duplicate) ;
       return_unit
     | _i, None ->
-      if is_inhibited state name team now then (
+      if is_inhibited conf.C.alerts name team now then (
         AlertOps.log alert time (NewNotification Inhibited) ;
         return_unit
       ) else (
-        let esc = EscalationOps.make state alert now in
+        let esc = EscalationOps.make conf.C.alerts alert now in
         alert.escalation <- Some esc ;
         AlertOps.log alert time (NewNotification StartEscalation) ;
-        state.dirty <- true ;
         (* Let the implicit timeout or 0 deliver the first page. *)
-        save_state state ;
         return_unit
       )
   ) else (
     (* Retrieve the alert and close it *)
-    (match IncidentOps.find_open_alert state ~name ~team ~title with
+    (match IncidentOps.find_open_alert conf.C.alerts ~name ~team ~title with
     | exception Not_found ->
       (* Maybe we just started in non-firing position, or the incident
        * have been manually archived already. Better not ask too many
@@ -587,7 +486,7 @@ let alert state ~name ~team ~importance ~title ~text ~firing ~time ~now =
       !logger.info "Unknown alert %s for team %s titled %S stopped firing."
         name team title
     | i, a ->
-      AlertOps.stop state i a Notification time) ;
+      AlertOps.stop conf i a Notification time) ;
     return_unit
   )
 
@@ -606,89 +505,102 @@ let acknowledge state id =
     !logger.error "Received an ack for unknown id %d!" id
   with Exit -> ()
 
-module HttpSrv =
+let with_rlock conf f =
+  RWLock.with_r_lock conf.C.alerts_lock f
+
+let with_wlock conf f =
+  RWLock.with_w_lock conf.C.alerts_lock (fun () ->
+    let%lwt res = f () in
+    (* Save the config only if f did not fail: *)
+    CA.save_state conf.C.persist_dir conf.C.alerting_version conf.C.alerts ;
+    Lwt.return res)
+
+module Api =
 struct
-  let replace_placeholders body = return body
-
-  let serve_string body =
-    let%lwt body = replace_placeholders body in
-    respond_ok ~body ~ct:Consts.html_content_type ()
-
   let find_team state name =
-    match List.find (fun t -> t.Team.name = name) state.persist.teams with
+    match List.find (fun t -> t.Team.name = name) state.CA.teams with
     | exception Not_found ->
       bad_request ("unknown team "^ name)
     | t -> return t
 
-  let notify state params =
-    let hg = Hashtbl.find_default params
-    and now = Unix.gettimeofday () in
-    match hg "name" "alert",
-          hg "importance" "10" |> int_of_string,
-          hg "time" (string_of_float now) |> float_of_string,
-          hg "firing" "true" |> looks_like_true with
-    | exception _ ->
-      fail (HttpError (400, "importance and now must be numeric"))
-    | name, importance, time, firing ->
-      state.dirty <- true ;
-      alert state ~name ~importance ~now ~time ~firing
-        ~team:(hg "team" state.default_team)
-        ~title:(hg "title" "")
-        ~text:(hg "text" "") >>=
-      Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~body:""
+  let notify conf params =
+    with_wlock conf (fun () ->
+      let hg = Hashtbl.find_default params
+      and now = Unix.gettimeofday () in
+      match hg "name" "alert",
+            hg "importance" "10" |> int_of_string,
+            hg "time" (string_of_float now) |> float_of_string,
+            hg "firing" "true" |> looks_like_true with
+      | exception _ ->
+        fail (HttpError (400, "importance and now must be numeric"))
+      | name, importance, time, firing ->
+        alert conf ~name ~importance ~now ~time ~firing
+          ~team:(hg "team" conf.C.default_team)
+          ~title:(hg "title" "")
+          ~text:(hg "text" "")) >>=
+    respond_ok ~body:""
 
-  let get_teams state =
-    let body = PPP.to_string Team.get_resp_ppp state.persist.teams in
+  let get_teams conf =
+    let%lwt body =
+      with_rlock conf (fun () ->
+        return (PPP.to_string Team.get_resp_ppp conf.C.alerts.teams)) in
     respond_ok ~body ()
 
-  let new_team state _headers name =
-    match List.find (fun t -> t.Team.name = name) state.persist.teams with
-    | exception Not_found ->
-      state.persist.teams <-
-        Team.{ name ; members = [] ; escalations = [] ;
-               inhibitions = [] } :: state.persist.teams ;
-      state.dirty <- true ;
-      respond_ok ()
-    | _ ->
-      bad_request ("Team "^ name ^" already exists")
+  let new_team conf _headers name =
+    with_wlock conf (fun () ->
+      let teams = conf.C.alerts.teams in
+      match List.find (fun t -> t.Team.name = name) teams with
+      | exception Not_found ->
+        conf.C.alerts.teams <-
+          Team.{ name ; members = [] ; escalations = [] ;
+                 inhibitions = [] } :: teams ;
+        return_unit
+      | _ ->
+        bad_request ("Team "^ name ^" already exists")) >>=
+    respond_ok
 
-  let del_team state _headers name =
-    match List.find (fun t -> t.Team.name = name) state.persist.teams with
-    | exception Not_found ->
-      bad_request ("Team "^ name ^" does not exist")
-    | t ->
-      if t.Team.members <> [] then
-        bad_request ("Team "^ name ^" is not empty")
-      else (
-        !logger.info "Delete team %s" name ;
-        state.persist.teams <-
-          List.filter (fun t -> t.Team.name <> name) state.persist.teams ;
-        respond_ok ())
+  let del_team conf _headers name =
+    with_wlock conf (fun () ->
+      let teams = conf.C.alerts.teams in
+      match List.find (fun t -> t.Team.name = name) teams with
+      | exception Not_found ->
+        bad_request ("Team "^ name ^" does not exist")
+      | t ->
+        if t.Team.members <> [] then
+          bad_request ("Team "^ name ^" is not empty")
+        else (
+          !logger.info "Delete team %s" name ;
+          conf.C.alerts.teams <-
+            List.filter (fun t -> t.Team.name <> name) teams ;
+          return_unit)) >>=
+    respond_ok
 
-  let get_oncaller state _headers name =
-    let oncaller = OnCallerOps.get state name in
-    let body = PPP.to_string OnCaller.t_ppp oncaller in
+  let get_oncaller conf _headers name =
+    let%lwt body =
+      with_rlock conf (fun () ->
+        let oncaller = OnCallerOps.get conf.C.alerts name in
+        return (PPP.to_string OnCaller.t_ppp oncaller)) in
     respond_ok ~body ()
 
-  let get_ongoing state team_opt =
-    let incidents =
-      Hashtbl.fold (fun _id incident prev ->
-          match incident.Incident.alerts with
-          | [] -> prev (* Should not happen *)
-          | a :: _ ->
-            let is_selected =
-              match team_opt with None -> true
-                                | Some t -> a.team = t in
-            if is_selected then (
-              incident :: prev
-            ) else prev
-        ) state.persist.ongoing_incidents [] in
-    let body =
-      PPP.to_string GetOngoing.resp_ppp incidents in
+  let get_ongoing conf team_opt =
+    let%lwt body =
+      with_rlock conf (fun () ->
+        let incidents =
+          Hashtbl.fold (fun _id incident prev ->
+              match incident.Incident.alerts with
+              | [] -> prev (* Should not happen *)
+              | a :: _ ->
+                let is_selected =
+                  match team_opt with None -> true
+                                    | Some t -> a.team = t in
+                if is_selected then (
+                  incident :: prev
+                ) else prev
+            ) conf.C.alerts.ongoing_incidents [] in
+        return (PPP.to_string GetOngoing.resp_ppp incidents)) in
     respond_ok ~body ()
 
-  let get_history state _headers team time_range =
-    (* For now we have the whole history in a single file. *)
+  let get_history conf _headers team time_range =
     let is_in_team =
       match team with
       | Some t -> fun i -> IncidentOps.is_for_team t i
@@ -704,17 +616,19 @@ struct
             IncidentOps.started_before u i in
     let is_in i =
       is_in_team i && is_in_range i in
-    let logs =
-      IncidentOps.fold state [] (fun prev i ->
-        if is_in i then i :: prev else prev) in
-    let body = PPP.to_string GetHistory.resp_ppp logs in
+    let%lwt body =
+      with_rlock conf (fun () ->
+        let logs =
+          IncidentOps.fold conf [] (fun prev i ->
+            if is_in i then i :: prev else prev) in
+        return (PPP.to_string GetHistory.resp_ppp logs)) in
     respond_ok ~body ()
 
-  let get_history_post state headers body =
+  let get_history_post conf headers body =
     let%lwt req = of_json headers "Get History" GetHistory.req_ppp body in
-    get_history state headers req.team req.time_range
+    get_history conf headers req.team req.time_range
 
-  let get_history_get state headers team params =
+  let get_history_get conf headers team params =
     let%lwt time_range =
       match Hashtbl.find params "last" with
       | exception Not_found ->
@@ -736,28 +650,30 @@ struct
         with Failure _ ->
           let msg = "Invalid parameter: last must be a numeric" in
           fail (HttpError (400, msg))) in
-    get_history state headers team time_range
+    get_history conf headers team time_range
 
   let alert_of_id state id =
     try IncidentOps.find_open_alert_by_id state id |> return
     with Not_found ->
       bad_request "No alert with that id in opened incidents"
 
-  let get_ack state id =
-    let%lwt _i, a = alert_of_id state id in
-    (* We record the ack regardless of stopped_firing *)
-    AlertOps.log a (Unix.gettimeofday ()) Alert.Ack ;
-    a.escalation <- None ;
-    state.dirty <- true ;
-    respond_ok ()
+  let get_ack conf id =
+    with_wlock conf (fun () ->
+      let%lwt _i, a = alert_of_id conf.C.alerts id in
+      (* We record the ack regardless of stopped_firing *)
+      AlertOps.log a (Unix.gettimeofday ()) Alert.Ack ;
+      a.escalation <- None ;
+      return_unit) >>=
+    respond_ok
 
   (* Stops an alert as if a notification with firing=f have been received *)
-  let get_stop state id =
-    let%lwt i, a = alert_of_id state id in
-    let now = Unix.gettimeofday () in
-    AlertOps.stop state i a Manual now ;
-    state.dirty <- true ;
-    respond_ok ()
+  let get_stop conf id =
+    with_wlock conf (fun () ->
+      let%lwt i, a = alert_of_id conf.C.alerts id in
+      let now = Unix.gettimeofday () in
+      AlertOps.stop conf i a Manual now ;
+      return_unit) >>=
+    respond_ok
 
   (* Inhibitions *)
 
@@ -766,10 +682,8 @@ struct
   let add_inhibit_ state team inhibit =
     let open Inhibition in
     let%lwt team = find_team state team in
-    let id = state.persist.next_inhibition_id in
-    state.persist.next_inhibition_id <-
-      state.persist.next_inhibition_id + 1 ;
-    state.dirty <- true ;
+    let id = state.CA.next_inhibition_id in
+    state.CA.next_inhibition_id <- state.CA.next_inhibition_id + 1 ;
     let inhibit = { inhibit with id } in
     (* TODO: lock the conf with a RW lock *)
     match List.find (fun i -> i.id = inhibit.id) team.Team.inhibitions with
@@ -779,38 +693,42 @@ struct
     | _ ->
       failwith "Found an inhibit with next id?"
 
-  let edit_inhibit state headers team body =
+  let edit_inhibit conf headers team body =
     let open Inhibition in
     let%lwt inhibit = of_json headers "Inhibit" Inhibition.t_ppp body in
-    let%lwt team = find_team state team in
-    (* Note: one do not delete inhibitions but one can set a past
-     * stop_date. *)
-    match List.find (fun i -> i.id = inhibit.id) team.Team.inhibitions with
-    | exception Not_found ->
-      bad_request "No such inhibition"
-    | i ->
-      i.what <- inhibit.what ;
-      i.start_date <- inhibit.start_date ;
-      i.stop_date <- inhibit.stop_date ;
-      i.why <- inhibit.why ;
-      state.dirty <- true ;
-      respond_ok ()
+    with_wlock conf (fun () ->
+      let%lwt team = find_team conf.C.alerts team in
+      (* Note: one do not delete inhibitions but one can set a past
+       * stop_date. *)
+      match List.find (fun i -> i.id = inhibit.id)
+                      team.Team.inhibitions with
+      | exception Not_found ->
+        bad_request "No such inhibition"
+      | i ->
+        i.what <- inhibit.what ;
+        i.start_date <- inhibit.start_date ;
+        i.stop_date <- inhibit.stop_date ;
+        i.why <- inhibit.why ;
+        return_unit) >>=
+    respond_ok
 
-  let add_inhibit state headers team body =
+  let add_inhibit conf headers team body =
     let%lwt inhibit = of_json headers "Inhibit" Inhibition.t_ppp body in
-    add_inhibit_ state team inhibit >>=
+    with_wlock conf (fun () ->
+      add_inhibit_ conf.C.alerts team inhibit) >>=
     respond_ok (* TODO: why not returning the GetTeam.resp directly? *)
 
-  let stfu state _headers team =
+  let stfu conf _headers team =
     let open Inhibition in
     let now = Unix.gettimeofday () in
     let inhibit =
       { id = -1 ; what = "" ; start_date = now ; stop_date = now +. 3600. ;
         who = user ; why = "STFU!" } in
-    add_inhibit_ state team inhibit >>=
+    with_wlock conf (fun () ->
+      add_inhibit_ conf.C.alerts team inhibit) >>=
     respond_ok
 
-  let save_oncaller state headers name body =
+  let edit_oncaller conf headers name body =
     let%lwt oncaller =
       of_json headers "Save Oncaller" OnCaller.t_ppp body in
     let rec list_replace prev = function
@@ -820,179 +738,19 @@ struct
           List.rev_append prev (oncaller :: rest)
         else
           list_replace (c :: prev) rest in
-    state.persist.oncallers <- list_replace [] state.persist.oncallers ;
-    state.dirty <- true ;
-    respond_ok ()
+    with_wlock conf (fun () ->
+      conf.C.alerts.oncallers <-
+        list_replace [] conf.C.alerts.oncallers ;
+      return_unit) >>=
+    respond_ok
 
-  let save_members state headers name body =
+  let edit_members conf headers name body =
     let%lwt members =
       of_json headers "Save members" Team.set_members_ppp body in
-    let%lwt team = find_team state name in
-    team.Team.members <- members ;
-    OnCallerOps.assign_unassigned state ;
-    state.dirty <- true ;
-    respond_ok ()
-
-  let start port cert_opt key_opt state www_dir =
-    let router meth path params headers body =
-      let alert_id_of_string s =
-        match int_of_string s with
-        | exception Failure _ ->
-            bad_request "alert id must be numeric"
-        | id -> return id in
-      let%lwt resp =
-        match meth, path with
-        | `GET, ["notify"] ->
-          notify state params
-        | `GET, ["teams"] ->
-          get_teams state
-        | `PUT, ["team"; name] ->
-          new_team state headers name
-        | `DELETE, ["team"; name] ->
-          del_team state headers name
-        | `GET, ["oncaller"; name] ->
-          get_oncaller state headers name
-        | `GET, ["ongoing"] ->
-          get_ongoing state None
-        | `GET, ["ongoing"; team] ->
-          get_ongoing state (Some team)
-        | (`POST|`PUT), ["history"] ->
-          get_history_post state headers body
-        | `GET, ("history" :: team) ->
-          let team = if team = [] then None else Some (List.hd team) in
-          get_history_get state headers team params
-        | `GET, ["ack" ; id] ->
-          let%lwt id = alert_id_of_string id in
-          get_ack state id
-        | `GET, ["stop" ; id] ->
-          let%lwt id = alert_id_of_string id in
-          get_stop state id
-        | `POST, ["inhibit"; "add"; team] ->
-          add_inhibit state headers team body
-        | `POST, ["inhibit"; "edit" ; team] ->
-          edit_inhibit state headers team body
-        | `GET, ["stfu" ; team] ->
-          stfu state headers team
-        | `POST, ["oncaller"; name] ->
-          save_oncaller state headers name body
-        | `POST, ["members"; name] ->
-          save_members state headers name body
-        (* Web UI *)
-        | `GET, ([]|["index.html"]) ->
-          if www_dir = "" then
-            serve_string AlerterGui.without_link
-          else
-            serve_string AlerterGui.with_links
-        | `GET, ["style.css" | "alerter_script.js" as file] ->
-          serve_file www_dir file replace_placeholders
-        (* Everything else is an error: *)
-        | _ ->
-          fail (HttpError (404, "No such resource")) in
-      save_state state ;
-      return resp
-  in
-  http_service port cert_opt key_opt router
+    with_wlock conf (fun () ->
+      let%lwt team = find_team conf.C.alerts name in
+      team.Team.members <- members ;
+      OnCallerOps.assign_unassigned conf.C.alerts ;
+      return_unit) >>=
+    respond_ok
 end
-
-(*
- * Start the notification listener
- *)
-
-open Cmdliner
-
-let debug =
-  let env = Term.env_info "ALERT_DEBUG" in
-  let i = Arg.info ~doc:"increase verbosity"
-                   ~env ["d"; "debug"] in
-  Arg.(value (flag i))
-
-let daemonize =
-  let env = Term.env_info "ALERT_DAEMONIZE" in
-  let i = Arg.info ~doc:"daemonize"
-                   ~env [ "daemon"; "daemonize"] in
-  Arg.(value (flag i))
-
-let to_stderr =
-  let env = Term.env_info "ALERT_LOG_TO_STDERR" in
-  let i = Arg.info ~doc:"log onto stderr"
-                   ~env [ "log-onto-stderr"; "log-to-stderr"; "to-stderr";
-                          "stderr" ] in
-  Arg.(value (flag i))
-
-let log_dir =
-  let env = Term.env_info "ALERT_LOG_DIR" in
-  let i = Arg.info ~doc:"Directory where to write log files into"
-                   ~env [ "log-dir" ; "logdir" ] in
-  Arg.(value (opt (some string) None i))
-
-let http_port =
-  let env = Term.env_info "ALERT_HTTP_PORT" in
-  let i = Arg.info ~doc:"Port where to run the HTTP server \
-                         (HTTPS will be run on that port + 1)"
-                   ~env [ "http-port" ] in
-  Arg.(value (opt int 29382 i))
-
-let ssl_cert =
-  let env = Term.env_info "ALERT_SSL_CERT_FILE" in
-  let i = Arg.info ~doc:"File containing the SSL certificate"
-                   ~env [ "ssl-certificate" ] in
-  Arg.(value (opt (some string) None i))
-
-let ssl_key =
-  let env = Term.env_info "ALERT_SSL_KEY_FILE" in
-  let i = Arg.info ~doc:"File containing the SSL private key"
-                   ~env [ "ssl-key" ] in
-  Arg.(value (opt (some string) None i))
-
-let save_file =
-  let env = Term.env_info "ALERT_SAVE_FILE" in
-  let i = Arg.info ~doc:"file where to save the current state of alerting"
-                   ~env ["save-file"] in
-  Arg.(value (opt (some string) None i))
-
-let default_team =
-  let env = Term.env_info "ALERT_DEFAULT_TEAM" in
-  let i = Arg.info ~doc:"default team when unspecified in the notification"
-                   ~env ["default-team"] in
-  Arg.(value (opt string "firefighters" i))
-
-let www_dir =
-  let env = Term.env_info "ALERTER_WWW_DIR" in
-  let i = Arg.info ~doc:"Directory where to read the files served \
-                         via HTTP for the GUI (serve from memory \
-                         if unset)"
-                   ~env [ "www-dir" ; "www-root" ; "web-dir" ; "web-root" ] in
-  Arg.(value (opt string "" i))
-
-let start_all debug daemonize to_stderr logdir save_file
-              default_team http_port ssl_cert ssl_key www_dir () =
-  if to_stderr && daemonize then
-    failwith "Options --daemonize and --to-stderr are incompatible." ;
-  if to_stderr && logdir <> None then
-    failwith "Options --log-dir and --to-stderr are incompatible." ;
-  Option.may mkdir_all logdir ;
-  logger := make_logger ?logdir debug ;
-  if daemonize then do_daemonize () ;
-  Lwt_main.run (
-    let%lwt alerter_state = get_state save_file default_team in
-    HttpSrv.start http_port ssl_cert ssl_key alerter_state www_dir)
-
-let start_cmd =
-  Term.(
-    (const start_all
-      $ debug
-      $ daemonize
-      $ to_stderr
-      $ log_dir
-      $ save_file
-      $ default_team
-      $ http_port
-      $ ssl_cert
-      $ ssl_key
-      $ www_dir),
-    info "ramen_alerter")
-
-let () =
-  match Term.eval start_cmd with
-  | `Ok f -> f ()
-  | x -> Term.exit x

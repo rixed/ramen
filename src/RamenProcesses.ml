@@ -53,7 +53,7 @@ let out_ringbuf_names_ref conf node =
   conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/out_ref"
 
 let report_ringbuf conf =
-  conf.C.persist_dir ^"/instrumentation"
+  conf.C.persist_dir ^"/instrumentation/"^ conf.C.instrumentation_version
 
 let run conf layer =
   let open L in

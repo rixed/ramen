@@ -16,7 +16,7 @@ TESTABLE_SOURCES = \
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
 	RamenLog.ml Consts.ml Helpers.ml RWLock.ml \
-	RamenSharedTypesJS.ml RamenSharedTypes.ml \
+	RamenSharedTypesJS.ml RamenSharedTypes.ml AlerterSharedTypesJS.ml \
 	RingBufLib.ml RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml Lang.ml \
@@ -25,16 +25,15 @@ LINKED_FOR_TESTS = \
 	RamenHtml.ml
 
 RAMEN_SOURCES = \
-	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml \
-	RWLock.ml RamenSharedTypesJS.ml RamenSharedTypes.ml \
-	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml \
-	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml \
-	RingBufLib.ml RingBuf.ml RamenConf.ml \
-	RamenBinocle.ml RamenExport.ml RamenProcesses.ml \
-	Globs.ml CodeGen_OCaml.ml Compiler.ml \
-	RamenHtml.ml RamenColor.ml RamenFormats.ml RamenChart.ml \
-	RamenGui.ml RamenHttpHelpers.ml HttpSrv.ml \
-	ApiCmd.ml RingBufCmd.ml ramen.ml
+	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml RWLock.ml \
+	RamenSharedTypesJS.ml AlerterSharedTypesJS.ml RamenSharedTypes.ml \
+	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml RamenParsing.ml \
+	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml RingBufLib.ml RingBuf.ml RamenConf.ml \
+	RamenBinocle.ml RamenExport.ml RamenProcesses.ml Globs.ml \
+	CodeGen_OCaml.ml Compiler.ml RamenHtml.ml RamenColor.ml RamenFormats.ml \
+	RamenChart.ml RamenGui.ml RamenHttpHelpers.ml \
+	SqliteHelpers.ml RamenAlerter.ml HttpSrv.ml ApiCmd.ml RingBufCmd.ml \
+	ramen.ml
 
 CODEGENLIB_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml Globs.ml \
@@ -66,11 +65,6 @@ CONFIGURATOR_SOURCES = \
 	SqliteHelpers.ml Conf_of_sqlite.ml \
 	ramen_configurator.ml
 
-ALERTER_SOURCES = \
-	Consts.ml RamenLog.ml Helpers.ml SqliteHelpers.ml \
-	AlerterSharedTypesJS.ml AlerterGui.ml RamenHttpHelpers.ml \
-	ramen_alerter.ml
-
 WEB_SOURCES = \
 	web/WebHelpers.ml web/JsHelpers.ml web/engine.ml web/gui.ml \
 	web/ramen_app.ml web/alerter_app.ml
@@ -79,16 +73,16 @@ SOURCES_ = \
 	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 	$(LIBCOLLECTD_SOURCES) $(LIBNETFLOW_SOURCES) $(WEB_SOURCES) \
-	$(CONFIGURATOR_SOURCES) $(ALERTER_SOURCES) \
+	$(CONFIGURATOR_SOURCES) \
 	ringbuf_test.ml colcomp/colcomp_test.c
 # Do not take into account generated code that depends on compilation:
-SOURCES = $(filter-out AlerterGui.ml, $(filter-out RamenGui.ml,$(SOURCES_)))
+SOURCES = $(filter-out RamenGui.ml,$(SOURCES_))
 
 PACKAGES = \
-	ppp lwt.ppx batteries cmdliner stdint parsercombinator \
-	cohttp-lwt-unix num inotify.lwt binocle unix cryptohash owl
+	ppp lwt.ppx batteries cmdliner stdint parsercombinator syslog sqlite3 \
+	cohttp-lwt-unix num inotify.lwt binocle unix cryptohash owl \
 
-INSTALLED_BIN = ramen ramen_configurator ramen_alerter
+INSTALLED_BIN = ramen ramen_configurator
 INSTALLED_LIB = \
   META codegen.cmxa codegen.a \
   $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
@@ -145,9 +139,6 @@ ringbuf_test.opt: RamenLog.cmx Consts.cmx Helpers.cmx RamenSharedTypesJS.cmx Ram
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES) sqlite3" $(filter %.cmx, $^) -o $@
 
-ramen_alerter: $(ALERTER_SOURCES:.ml=.cmx)
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES) sqlite3 syslog net_codecs" $(filter %.cmx, $^) -o $@
-
 all_tests.opt: libringbuf.a libcollectd.a libnetflow.a $(LINKED_FOR_TESTS:.ml=.cmx) all_tests.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck -I web $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
 
@@ -158,9 +149,6 @@ SqliteHelpers.cmx: SqliteHelpers.ml
 
 Conf_of_sqlite.cmx: Conf_of_sqlite.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
-
-ramen_alerter.cmx: ramen_alerter.ml
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3 syslog net_codecs" -c $<
 
 # Web thingies
 
@@ -178,13 +166,19 @@ web/engine.cmo: web/engine.ml web/WebHelpers.cmo web/JsHelpers.cmo RamenHtml.cmo
 web/gui.cmo: web/gui.ml web/engine.cmo RamenHtml.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
+AlerterSharedTypesJS_noPPP.cmo: AlerterSharedTypesJS.ml
+	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
+
+web/alerter_app.cmo: web/alerter_app.ml AlerterSharedTypesJS_noPPP.cmo RamenHtml.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo
+	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
+
 RamenSharedTypesJS_noPPP.cmo: RamenSharedTypesJS.ml
 	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
 
-web/ramen_app.cmo: web/ramen_app.ml RamenSharedTypesJS_noPPP.cmo RamenHtml.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo
+web/ramen_app.cmo: web/ramen_app.ml RamenSharedTypesJS_noPPP.cmo RamenHtml.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo web/alerter_app.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
 
-web/ramen_script.byte: Consts.cmo RamenHtml.cmo RamenSharedTypesJS_noPPP.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo web/ramen_app.cmo
+web/ramen_script.byte: Consts.cmo RamenHtml.cmo RamenSharedTypesJS_noPPP.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo AlerterSharedTypesJS_noPPP.cmo web/alerter_app.cmo web/ramen_app.cmo
 	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -linkpkg $^ -o $@
 
 web/ramen_script.js: web/ramen_script.byte
@@ -212,41 +206,6 @@ RamenGui.ml: web/ramen_script.js web/ramen_script.min.js web/style.css Makefile
 	@echo '<title>Ramen</title>' >> $@
 	@echo '<link href="style.css" rel="stylesheet" media="all"/>' >> $@
 	@echo '<script src="ramen_script.js"></script>' >> $@
-	@echo '</head>' >> $@
-	@echo '<body><div id="application"></div></body>' >> $@
-	@echo '</html>|lookmadelimiter}' >> $@
-
-AlerterSharedTypesJS_noPPP.cmo: AlerterSharedTypesJS.ml
-	$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
-
-web/alerter_app.cmo: web/alerter_app.ml AlerterSharedTypesJS_noPPP.cmo RamenHtml.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo
-	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I web -c $<
-
-web/alerter_script.byte: AlerterSharedTypesJS_noPPP.cmo RamenHtml.cmo Consts.cmo web/WebHelpers.cmo web/JsHelpers.cmo web/engine.cmo web/gui.cmo RamenColor.cmo RamenFormats.cmo RamenChart.cmo web/alerter_app.cmo
-	$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -linkpkg $^ -o $@
-
-web/alerter_script.js: web/alerter_script.byte
-	$(JSOO) --pretty --opt=3 $^ -o $@
-
-web/alerter_script.min.js: web/alerter_script.js
-	$(JS_MINIFY) $<
-
-AlerterGui.ml: web/alerter_script.js web/alerter_script.min.js web/style.css Makefile
-	@echo '(* Generated by Makefile - edition is futile *)' > $@
-	@echo 'let without_link = {lookmadelimiter|<html>' >> $@
-	@echo '<head><meta charset="UTF-8">' >> $@
-	@echo '<title>Alerter</title><style media="all">' >> $@
-	@cat web/style.css >> $@
-	@echo '</style><script>' >> $@
-	@cat web/alerter_script.min.js >> $@
-	@echo '</script></head>' >> $@
-	@echo '<body><div id="application"></div></body>' >> $@
-	@echo '</html>|lookmadelimiter}' >> $@
-	@echo 'let with_links = {lookmadelimiter|<html>' >> $@
-	@echo '<head><meta charset="UTF-8">' >> $@
-	@echo '<title>Alerter</title>' >> $@
-	@echo '<link href="style.css" rel="stylesheet" media="all"/>' >> $@
-	@echo '<script src="alerter_script.js"></script>' >> $@
 	@echo '</head>' >> $@
 	@echo '<body><div id="application"></div></body>' >> $@
 	@echo '</html>|lookmadelimiter}' >> $@
