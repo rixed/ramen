@@ -170,7 +170,7 @@ let anomaly_detection_nodes avg_window from name timeseries =
           (%s) AS abnormality,
           5-ma abnormality >= 4/5 AS firing
           COMMIT AND KEEP ALL WHEN firing != previous.firing
-          NOTIFY "http://localhost:29382/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"
+          NOTIFY "http://localhost:29380/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"
           EXPORT EVENT STARTING AT start|}
         predictor_name
         condition
@@ -402,7 +402,7 @@ let layer_of_bcns bcns dataset_name =
           {|SELECT max_start, bytes_per_secs > %d AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != previous.firing
-            NOTIFY "http://localhost:29382/notify?name=Low%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+            NOTIFY "http://localhost:29380/notify?name=Low%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
             min_bps
             perc_per_obs_window_name
             (enc title) (enc text) in
@@ -421,7 +421,7 @@ let layer_of_bcns bcns dataset_name =
           {|SELECT max_start, bytes_per_secs > %d AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != previous.firing
-            NOTIFY "http://localhost:29382/notify?name=High%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+            NOTIFY "http://localhost:29380/notify?name=High%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
             max_bps
             perc_per_obs_window_name
             (enc title) (enc text) in
@@ -621,7 +621,7 @@ let layer_of_bcas bcas dataset_name =
         {|SELECT max_start, eurt > %g AS firing
           FROM '%s'
           COMMIT AND KEEP ALL WHEN firing != previous.firing
-          NOTIFY "http://localhost:29382/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+          NOTIFY "http://localhost:29380/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
           bca.max_eurt
           perc_per_obs_window_name
           (enc bca.name) (enc title) (enc text)
