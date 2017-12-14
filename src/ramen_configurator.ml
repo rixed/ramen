@@ -178,12 +178,11 @@ let anomaly_detection_nodes avg_window from name timeseries =
     make_node (from ^": "^ name ^" anomalies") op in
   predictor_node, anomaly_node
 
-let base_layer dataset_name delete csv_dir =
+let base_layer dataset_name delete uncompress csv_dir =
   let csv =
     let op =
       Printf.sprintf {|
-        READ%s FILES "%s/tcp_v29.*.csv.lz4"
-               PREPROCESS WITH "lz4 -d -c"
+        READ%s FILES "%s/tcp_v29.*.csv%s" %s
                SEPARATOR "\t" NULL "<NULL>" (
            poller string not null,
            capture_begin u64 not null,
@@ -263,7 +262,10 @@ let base_layer dataset_name delete csv_dir =
            dtt_square_sum_server u64 not null,
            dcerpc_uuid string null
          )|}
-      (if delete then " AND DELETE" else "") csv_dir in
+      (if delete then " AND DELETE" else "")
+      csv_dir
+      (if uncompress then ".lz4" else "")
+      (if uncompress then "PREPROCESS WITH \"lz4 -d -c\"" else "") in
     make_node "csv" op in
   let to_unidir ~src ~dst name =
     let cs_fields = [
@@ -733,15 +735,15 @@ let put_layer ramen_url layer =
   !logger.debug "Body: %s\n" body ;
   return_unit
 
-let start conf ramen_url db_name dataset_name delete csv_dir
-          with_base with_bcns with_bcas with_ddos =
+let start conf ramen_url db_name dataset_name delete uncompress
+          csv_dir with_base with_bcns with_bcas with_ddos =
   logger := make_logger conf.debug ;
   let open Conf_of_sqlite in
   let db = get_db db_name in
   let update () =
     (* TODO: The base layer for this client *)
     let%lwt () = if with_base then (
-        let base = base_layer dataset_name delete csv_dir in
+        let base = base_layer dataset_name delete uncompress csv_dir in
         put_layer ramen_url base
       ) else return_unit in
     let%lwt () = if with_bcns > 0 || with_bcas > 0 then (
@@ -811,6 +813,11 @@ let delete_opt =
                    [ "delete" ] in
   Arg.(value (flag i))
 
+let uncompress_opt =
+  let i = Arg.info ~doc:"CSV are compressed with lz4"
+                   [ "uncompress" ; "uncompress-csv" ] in
+  Arg.(value (flag i))
+
 let csv_dir =
   let i = Arg.info ~doc:"Path where the CSV files are stored"
                    [ "csv-dir" ] in
@@ -845,6 +852,7 @@ let start_cmd =
       $ db_name
       $ dataset_name
       $ delete_opt
+      $ uncompress_opt
       $ csv_dir
       $ with_base
       $ with_bcns
