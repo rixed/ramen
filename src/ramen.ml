@@ -122,7 +122,7 @@ let server_stop =
 (* TODO: check that this is actually the name of a ringbuffer file *)
 let rb_file =
   let i = Arg.info ~doc:"File with the ring buffer"
-                   ~docv:"FILE" [] in
+                   ~docv:"file" [] in
   Arg.(required (pos 0 (some string) None i))
 
 let nb_tuples =
