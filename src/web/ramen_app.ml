@@ -145,6 +145,15 @@ struct
     String.sub id (i + 1) (String.length id - i - 1)
 end
 
+(* Value is an association list from node id to node.
+ * Note: in theory node names are optional, and would be supplied by the
+ * server if missing, but we do not make use of this behavior here. *)
+let nodes = make_param "nodes" []
+
+(* Use layer name as a value, same reasons as for set_node. *)
+type selected_layer = NoLayer | ExistingLayer of string | NewLayer
+let sel_layer = make_param "selected layer" NoLayer
+
 (* Each layer and node is its own state variable.
  * But the layers hash has to be a state variable as well, and we
  * want to call [with_param layers] just before calling [with_param]
@@ -159,6 +168,53 @@ end
 (* Value is an association list from layer name to layer *)
 let layers = make_param "layers" []
 
+(* The edition form state, with as many additional nodes as requested,
+ * and the ongoing modifications: *)
+type edited_layer =
+  { mutable is_new : bool ;
+    (* Name of the new layer.
+     * Note that once created a layer cannot be renamed. *)
+    layer_name : string ref ;
+    mutable edited_nodes : (string ref * string ref) list }
+
+(* name and operation of a new node in the edition form: *)
+let new_edited_node edited_nodes =
+  let rec loop i =
+    let name = "new node "^ string_of_int i in
+    if List.exists (fun (n, _) -> !n = name) edited_nodes then
+      loop (i + 1)
+    else name
+  in
+  let name = loop 1 in
+  ref name, ref ""
+
+(* List of all names and operations of nodes in the edition form, including
+ * new nodes: *)
+let edited_nodes_of_layer l =
+  let edited_nodes =
+    List.fold_left (fun ns (_, n) ->
+        let n = n.value in
+        if n.Node.layer <> l then ns
+        else (ref n.Node.name, ref n.operation) :: ns
+      ) [] nodes.value in
+  edited_nodes @ [ new_edited_node edited_nodes ]
+
+let edited_layer_of_layer = function
+  ExistingLayer l ->
+  { is_new = false ;
+    layer_name = ref l ;
+    edited_nodes = edited_nodes_of_layer l }
+| NewLayer ->
+  (* edited_layer record for a new layer: *)
+  { is_new = true ;
+    layer_name = ref "new layer name" ;
+    edited_nodes = [ new_edited_node [] ] }
+| NoLayer -> fail "invalid edited layer NoLayer"
+
+let edited_layer =
+  make_param "edited nodes" (edited_layer_of_layer NewLayer)
+
+
 let update_layer layer =
   let p =
     try List.assoc layer.Layer.name layers.value
@@ -167,12 +223,12 @@ let update_layer layer =
       change layers ;
       make_param ("layer "^ layer.name) layer in
   set p layer ;
-  layers.value <- replace_assoc layer.name p layers.value
-
-(* Value is an association list from node id to node.
- * Note: in theory node names are optional, and would be supplied by the
- * server if missing, but we do not make use of this behavior here. *)
-let nodes = make_param "nodes" []
+  layers.value <- replace_assoc layer.name p layers.value ;
+  (* Also, if we were editing this layer, change its is_new status: *)
+  if !(edited_layer.value.layer_name) = layer.name &&
+     edited_layer.value.is_new then (
+    edited_layer.value.is_new <- false ;
+    change edited_layer)
 
 (* We use floats for every counter since JS integers are only 32bits *)
 let zero_sums = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
@@ -191,17 +247,6 @@ let update_node node =
 (* Uses node.id as a value. Avoid pointing toward a node that may be
  * superseded by the next graph reload. *)
 let sel_node = make_param "selected node" ""
-
-(* Use layer name as a value, same reasons as for set_node. *)
-type selected_layer = NoLayer | ExistingLayer of string | NewLayer
-let sel_layer = make_param "selected layer" NoLayer
-
-(* The edition form state, with as many additional nodes as requested,
- * and the ongoing modifications: *)
-type edited_layer =
-  { title : string ;
-    new_layer_name : string ref ;
-    mutable edited_nodes : (string ref * string ref) list }
 
 (* We have only one variable for all the lines because they always change
  * all together when we refresh. Value is a list of fields and an array
@@ -387,49 +432,6 @@ let reload_chart =
 
 let sel_top_column = make_param "selected top column" "layer"
 
-(* name and operation of a new node in the edition form: *)
-let new_edited_node edited_nodes =
-  let rec loop i =
-    let name = "new node "^ string_of_int i in
-    if List.exists (fun (n, _) -> !n = name) edited_nodes then
-      loop (i + 1)
-    else name
-  in
-  let name = loop 1 in
-  ref name, ref ""
-
-(* List of all names and operations of nodes in the edition form, including
- * new nodes: *)
-let edited_nodes_of_layer l =
-  let edited_nodes =
-    List.fold_left (fun ns (_, n) ->
-        let n = n.value in
-        if n.Node.layer <> l then ns
-        else (ref n.Node.name, ref n.operation) :: ns
-      ) [] nodes.value in
-  edited_nodes @ [ new_edited_node edited_nodes ]
-
-let edited_layer_of_layer = function
-  ExistingLayer l ->
-  { title = "Configuration for "^ l ;
-    new_layer_name = ref l ;
-    edited_nodes = edited_nodes_of_layer l }
-| NewLayer ->
-  (* edited_layer record for a new layer: *)
-  { title = "New layer configuration" ;
-    new_layer_name = ref "new layer name" ;
-    edited_nodes = [ new_edited_node [] ] }
-| NoLayer -> fail "invalid edited layer NoLayer"
-
-let edited_layer =
-  make_param "edited nodes" (edited_layer_of_layer NewLayer)
-
-let add_edited_node () =
-  let edl = edited_layer.value in
-  edl.edited_nodes <-
-    edl.edited_nodes @ [ new_edited_node edl.edited_nodes ] ;
-  change edited_layer
-
 let reset_for_node_change () =
   set sel_output_cols [] ;
   set chart_type RamenChart.NotStacked ;
@@ -443,7 +445,7 @@ let set_sel_layer l =
     if l <> NoLayer then
       (* Try to keep edited content as long as possible: *)
       let el = edited_layer_of_layer l in
-      if edited_layer.value.title <> el.title then
+      if !(edited_layer.value.layer_name) <> !(el.layer_name) then
         set edited_layer el)
 
 let set_sel_node = function
@@ -1263,22 +1265,33 @@ let save_layer _ =
       !name <> "" && !operation <> "") edl.edited_nodes in
   let content =
     object%js
-      val name = Js.string !(edl.new_layer_name)
+      val name = Js.string !(edl.layer_name)
       val nodes = js_of_list js_of_node nodes
     end
   and path = "/graph"
-  and what = "Saved "^ !(edl.new_layer_name) in
+  and what = "Saved "^ !(edl.layer_name) in
   set editor_spinning true ;
   http_put path content ~what
     ~on_done:(fun () -> set editor_spinning false)
-    (done_edit_layer_cb ~redirect_to_layer:!(edl.new_layer_name) "save")
+    (done_edit_layer_cb ~redirect_to_layer:!(edl.layer_name) "save")
+
+let add_edited_node () =
+  let edl = edited_layer.value in
+  edl.edited_nodes <-
+    edl.edited_nodes @ [ new_edited_node edl.edited_nodes ] ;
+  change edited_layer
 
 let layer_editor_panel =
   with_param edited_layer (fun edl ->
+    let title =
+      if edl.is_new then "New layer configuration"
+      else "Configuration for "^ !(edl.layer_name) in
     div
       [ id "editor" ]
-      [ h1 [] [ text edl.title ] ;
-        form_input "Name" edl.new_layer_name "enter a node name" ;
+      [ h1 [] [ text title ] ;
+        (if edl.is_new then
+          form_input "Name" edl.layer_name "enter a node name"
+        else group []) ;
         h2 [] [ text "Nodes" ] ;
         group (List.map node_editor_panel edl.edited_nodes) ;
         br ;

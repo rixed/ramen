@@ -135,7 +135,9 @@ end
 type get_graph_resp = Layer.info list [@@ppp PPP_JSON]
 
 type put_layer_req =
-  { name : string ;
+  { (* Name of the layer. If this layer already exists then it is
+     * replaced. *)
+    name : string ;
     nodes : Node.definition list } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)
