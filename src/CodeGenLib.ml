@@ -345,7 +345,7 @@ let update_stats () =
   IntGauge.set stats_ram (tot_ram_usage ())
 
 (* Basic tuple without aggregate specific counters: *)
-let get_binocle_tuple worker ic sc gc () : RamenBinocle.tuple =
+let get_binocle_tuple worker ic sc gc : RamenBinocle.tuple =
   let si v = Some (Uint64.of_int v) in
   let s v = Some v in
   let i v = Option.map (fun r -> Uint64.of_int r) v in
@@ -469,7 +469,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
                   serialize_tuple tuple_of_strings preprocessor =
   let worker_name = getenv ~def:"?" "name" in
   let _conf =
-    worker_start worker_name (get_binocle_tuple worker_name None None None) in
+    worker_start worker_name (fun () -> get_binocle_tuple worker_name None None None) in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   (* For tests, allow to overwrite what's specified in the operation: *)
   and filename = getenv ~def:filename "csv_filename"
@@ -495,7 +495,7 @@ let listen_on collector addr_str port proto
               sersize_of_tuple serialize_tuple =
   let worker_name = getenv ~def:"?" "name" in
   let _conf =
-    worker_start worker_name (get_binocle_tuple worker_name None None None) in
+    worker_start worker_name (fun () -> get_binocle_tuple worker_name None None None) in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   and inet_addr = Unix.inet_addr_of_string addr_str
   in
@@ -508,7 +508,7 @@ let listen_on collector addr_str port proto
 let yield sersize_of_tuple serialize_tuple select every =
   let worker_name = getenv ~def:"?" "name" in
   let _conf =
-    worker_start worker_name (get_binocle_tuple worker_name None None None) in
+    worker_start worker_name (fun () -> get_binocle_tuple worker_name None None None) in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   in
   let outputer =
@@ -674,7 +674,7 @@ let aggregate
                   "Number of groups currently maintained." in
   IntGauge.set stats_group_count 0 ;
   let worker_name = getenv ~def:"?" "name" in
-  let get_binocle_tuple =
+  let get_binocle_tuple () =
     let si v = Some (Uint64.of_int v) in
     let i v = Option.map (fun r -> Uint64.of_int r) v in
     get_binocle_tuple
