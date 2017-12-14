@@ -71,20 +71,19 @@ struct
       max_rr : float option }
 
   let of_step db =
-    let open Sqlite3 in
-    let main_source = column db.get_bcns 1 |> to_int
-    and main_dest = column db.get_bcns 2 |> to_int in
-    { name = column db.get_bcns 0 |> to_string |> required ;
+    let main_source = with_field db.get_bcns 1 "zone_from" to_int
+    and main_dest = with_field db.get_bcns 2 "zone_to" to_int in
+    { name = with_field db.get_bcns 0 "name" (required % to_string) ;
       source = main_source |> add_subzones_down_to main_dest ;
       dest = main_dest |> add_subzones_down_to main_source ;
-      avg_window = column db.get_bcns 3 |> to_float |> required ;
-      obs_window = column db.get_bcns 4 |> to_float |> required ;
-      percentile = column db.get_bcns 5 |> to_float |> required ;
-      min_bps = column db.get_bcns 6 |> to_int ;
-      max_bps = column db.get_bcns 7 |> to_int ;
-      min_for_relevance = column db.get_bcns 8 |> to_int |> default 0 ;
-      max_rtt = column db.get_bcns 9 |> to_float ;
-      max_rr = column db.get_bcns 10 |> to_float }
+      avg_window = with_field db.get_bcns 3 "avg_window" (required % to_float) ;
+      obs_window = with_field db.get_bcns 4 "obs_window" (required % to_float) ;
+      percentile = with_field db.get_bcns 5 "percentile" (required % to_float) ;
+      min_bps = with_field db.get_bcns 6 "min" to_int ;
+      max_bps = with_field db.get_bcns 7 "max" to_int ;
+      min_for_relevance = with_field db.get_bcns 8 "relevance" (default 0 % to_int) ;
+      max_rtt = with_field db.get_bcns 9 "max_rtt" to_float ;
+      max_rr = with_field db.get_bcns 10 "max_rr" to_float }
 end
 
 module BCA =
@@ -101,15 +100,14 @@ struct
       min_srt_count : int }
 
   let of_step db =
-    let open Sqlite3 in
-    { id = column db.get_bcas 0 |> to_int |> required ;
-      name = column db.get_bcas 1 |> to_string |> required ;
-      avg_window = column db.get_bcas 2 |> to_float |> required ;
-      obs_window = column db.get_bcas 3 |> to_float |> required ;
-      percentile = column db.get_bcas 4 |> to_float |> required ;
-      min_srt_count = column db.get_bcas 5 |> to_int |> default 0 ;
+    { id = with_field db.get_bcas 0 "id" (required % to_int) ;
+      name = with_field db.get_bcas 1 "name" (required % to_string) ;
+      avg_window = with_field db.get_bcas 2 "avg_window" (required % to_float) ;
+      obs_window = with_field db.get_bcas 3 "obs_window" (required % to_float) ;
+      percentile = with_field db.get_bcas 4 "percentile" (required % to_float) ;
+      min_srt_count = with_field db.get_bcas 5 "min_handshake_count" (default 0 % to_int) ;
       (* ms in the DB *)
-      max_eurt = 0.001 *. (column db.get_bcas 6 |> to_float |> required) }
+      max_eurt = 0.001 *. (with_field db.get_bcas 6 "threshold_alert" (required % to_float)) }
 end
 
 (* Query to get flow alert parameters.
@@ -135,7 +133,7 @@ let flow_alert_params_query =
           90. AS percentile, \
           NULL AS \"min\", \
           bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
-          bandw_min_asc AS \"relevancy\", \
+          bandw_min_asc AS \"relevance\", \
           rtt_alert_asc AS \"max_rtt\", \
           rr_alert_asc AS \"max_rr\" \
    FROM bcnthresholds \
@@ -149,7 +147,7 @@ let flow_alert_params_query =
           90. AS percentile, \
           NULL AS \"min\", \
           bandwrate_alert_dsc * bandw_available_dsc / 100 AS \"max\", \
-          bandw_min_dsc AS \"relevancy\", \
+          bandw_min_dsc AS \"relevance\", \
           rtt_alert_dsc AS \"max_rtt\", \
           rr_alert_dsc AS \"max_rr\" \
    FROM bcnthresholds \
@@ -163,7 +161,7 @@ let flow_alert_params_query =
           90. AS percentile, \
           NULL AS \"min\", \
           bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
-          bandw_min_asc AS \"relevancy\", \
+          bandw_min_asc AS \"relevance\", \
           rtt_alert_asc AS \"max_rtt\", \
           rr_alert_asc AS \"max_rr\" \
     FROM bcnthresholds \
@@ -198,7 +196,7 @@ let get_db_mtime stmt =
   let open Sqlite3 in
   match step stmt with
   | Rc.ROW ->
-    let t = column stmt 0 |> to_float |> required in
+    let t = with_field stmt 0 "mtime" (required % to_float) in
     !logger.debug "Max mtime in DB: %g" t ;
     reset stmt |> must_be_ok ;
     t
@@ -248,8 +246,8 @@ let get_config db =
   let rec loop () =
     match step db.get_zones with
     | Rc.ROW ->
-      let id = column db.get_zones 0 |> to_int |> required
-      and name = column db.get_zones 1 |> to_string |> required in
+      let id = with_field db.get_zones 0 "id" (required % to_int)
+      and name = with_field db.get_zones 1 "name" (required % to_string) in
       Hashtbl.add zone_name_of_id id name ;
       loop ()
     | Rc.DONE ->

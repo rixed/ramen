@@ -39,7 +39,7 @@ let of_float_or_null = function
   | None -> Data.NULL
 
 let required = function
-  | None -> failwith "Missing required value"
+  | None -> failwith "must not be NULL"
   | Some x -> x
 
 let default x = function
@@ -56,6 +56,10 @@ let must_be_ok actual =
 
 let must_be_done actual =
   let open Rc in must_be to_string DONE actual
+
+let with_field stmt n name f =
+  try column stmt n |> f
+  with Failure x -> failwith ("Field "^ name ^": "^ x)
 
 let rec step_all_fold stmt init f =
   let open Sqlite3 in
