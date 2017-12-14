@@ -76,7 +76,7 @@ let version_tag =
                    ~env [ "version-tag"; "tag" ] in
   (* If you leave this "dev" here then you'll have to manually delete all
    * produced files (in /tmp/ramen) if you change the code. *)
-  Arg.(value (opt string "dev" i))
+  Arg.(value (opt string "1.0.0" i))
 
 let persist_dir =
   let env = Term.env_info "RAMEN_PERSIST_DIR" in
