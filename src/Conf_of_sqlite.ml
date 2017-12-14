@@ -186,8 +186,11 @@ let service_alert_params_query =
     a.threshold_alert > 0"
 
 let last_mtime_query =
+  (* Note: there is no date_modify in bcathresholds. Not my problem. *)
   "SELECT strftime('%s', MAX(date_modify)) as mtime FROM \
-   (SELECT date_modify FROM bcnthresholds UNION SELECT date_modify FROM zone)"
+   (SELECT date_modify FROM bcnthresholds UNION \
+    SELECT date_modify FROM zone UNION \
+    SELECT '1976-01-01' as date_modify)" (* <- fallback *)
 
 let get_zones_query =
   "SELECT id, name FROM zone WHERE NOT is_deleted"
