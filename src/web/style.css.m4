@@ -188,7 +188,7 @@ div.team-list div.team-info:first-child h2 { margin-top: .5em; }
 div.team-empty { font-style: italic; }
 
 div.inhibitions-outer {
-  background-image: url("data:image/svg+xml;base64,BASE64(`
+  background-image: url("data:image/svg+xml;base64,BASE64([
 <svg width="800" height="400" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <pattern id="Stripes" patternUnits="userSpaceOnUse"
@@ -201,7 +201,7 @@ div.inhibitions-outer {
   </defs>
 
   <rect fill="url(#Stripes)" width="800" height="400" />
-</svg>')");
+</svg>])");
 	background-repeat: repeat;
   padding: 1em;
   border: 2px solid #80c0a5;
