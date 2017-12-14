@@ -754,7 +754,8 @@ let upload conf headers layer node body =
     bad_request ("Node "^ N.fq_name node ^" does not accept uploads")
 
 let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
-          version_tag persist_dir default_team port cert_opt key_opt () =
+          version_tag persist_dir default_team max_history_archives
+          port cert_opt key_opt () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
@@ -765,7 +766,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
   let conf =
-    C.make_conf true ramen_url debug version_tag persist_dir default_team 5 (* TODO *) in
+    C.make_conf true ramen_url debug version_tag persist_dir default_team 5 (* TODO *) max_history_archives in
   (* When there is nothing to do, listen to collectd and netflow! *)
   if demo && Hashtbl.is_empty conf.C.graph.C.layers then (
     !logger.info "Adding default nodes since we have nothing to do..." ;

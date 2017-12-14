@@ -780,7 +780,7 @@ let set_all_types _conf layer =
   (*$inject
     let test_type_single_node op_text =
       try
-        let conf = RamenConf.make_conf false "http://127.0.0.1/" true "test" "/tmp" "defteam" 5 in
+        let conf = RamenConf.make_conf false "http://127.0.0.1/" true "test" "/tmp" "defteam" 5 0 in
         RamenConf.add_node conf "test" "test" op_text |> ignore ;
         set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"

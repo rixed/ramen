@@ -85,10 +85,17 @@ let persist_dir =
   Arg.(value (opt string "/tmp/ramen" i))
 
 let default_team =
-  let env = Term.env_info "ALERT_DEFAULT_TEAM" in
+  let env = Term.env_info "RAMEN_DEFAULT_TEAM" in
   let i = Arg.info ~doc:"default team when unspecified in the notification"
                    ~env ["default-team"] in
   Arg.(value (opt string "firefighters" i))
+
+let max_history_archives =
+  let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
+  let i = Arg.info ~doc:"max number of archive files to keep per history ; \
+                         0 would disable archiving altogether."
+                   ~env ["max-history-archives" ; "max-history-files" ] in
+  Arg.(value (opt int 200 i))
 
 let server_start =
   Term.(
@@ -103,6 +110,7 @@ let server_start =
       $ version_tag
       $ persist_dir
       $ default_team
+      $ max_history_archives
       $ http_port
       $ ssl_cert
       $ ssl_key),

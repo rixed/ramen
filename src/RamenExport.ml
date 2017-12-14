@@ -60,7 +60,6 @@ open Stdint
  * array or array of scalar value (tuples in the record below). *)
 
 let history_block_length = 10_000 (* TODO: make it a parameter? *)
-let max_history_archives = 200
 
 type history =
   { (* Store arrays of Scalar.values not hash of names to values !
@@ -103,8 +102,9 @@ let history_key node =
   let type_sign = C.type_signature_hash node.N.out_type in
   fq_name, type_sign
 
-let clean_archives history =
-  while history.nb_files > max_history_archives do
+let clean_archives conf history =
+  while history.nb_files > 0 &&
+        history.nb_files > conf.C.max_history_archives do
     assert (history.filenums <> []) ;
     let filenum = List.hd history.filenums in
     let fname = C.archive_file history.dir filenum in
@@ -115,7 +115,8 @@ let clean_archives history =
     history.nb_files <- history.nb_files - 1
   done
 
-let archive_history history =
+let archive_history conf history =
+  if conf.C.max_history_archives <= 0 then () else
   let filenum =
     history.block_start, history.block_start + history.count in
   let fname = C.archive_file history.dir filenum in
@@ -137,7 +138,7 @@ let archive_history history =
   history.nb_files <- history.nb_files + 1 ;
   history.block_start <- history.block_start + history.count ;
   history.count <- 0 ;
-  clean_archives history
+  clean_archives conf history
 
 let read_archive dir filenum =
   let fname = C.archive_file dir filenum in
@@ -170,7 +171,7 @@ let make_history conf node =
         nb_files (fst (List.hd filenums)) max_seqnum ;
       max_seqnum) in
   { tuples ; block_start ; count = 0 ; dir ; nb_files ; filenums ;
-    ts_cache = Hashtbl.create (max_history_archives / 8) }
+    ts_cache = Hashtbl.create (conf.C.max_history_archives / 8) }
 
 let add_tuple conf node tuple =
 	let k = history_key node in
@@ -181,7 +182,7 @@ let add_tuple conf node tuple =
       Hashtbl.add imported_tuples k history ;
       history in
   if history.count >= Array.length history.tuples then
-    archive_history history ;
+    archive_history conf history ;
   let idx = history.count in
   history.tuples.(idx) <- tuple ;
   history.count <- history.count + 1

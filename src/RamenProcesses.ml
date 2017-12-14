@@ -187,7 +187,7 @@ let stop conf layer =
         let k = RamenExport.history_key node in
         (match Hashtbl.find RamenExport.imported_tuples k with
         | exception Not_found -> ()
-        | history -> RamenExport.archive_history history) ;
+        | history -> RamenExport.archive_history conf history) ;
         match node.N.pid with
         | None ->
           !logger.error "Node %s has no pid?!" node.N.name

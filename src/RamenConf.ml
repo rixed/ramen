@@ -367,7 +367,8 @@ type conf =
     instrumentation_version : string ;
     persist_dir : string ;
     do_persist : bool ; (* false for tests *)
-    max_simult_compilations : int ref }
+    max_simult_compilations : int ref ;
+    max_history_archives : int }
 
 let parse_operation operation =
   let open RamenParsing in
@@ -518,7 +519,7 @@ let add_link conf src dst =
   dst.parents <- src :: dst.parents
 
 let make_conf do_persist ramen_url debug version_tag persist_dir
-              default_team max_simult_compilations =
+              default_team max_simult_compilations max_history_archives =
   let alerting_version = "v0" and instrumentation_version = "v0" in
   { graph = load_graph ~restart:true do_persist persist_dir ;
     graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
@@ -526,7 +527,8 @@ let make_conf do_persist ramen_url debug version_tag persist_dir
     default_team ; archived_incidents = [] ;
     alerting_version ; instrumentation_version ;
     do_persist ; ramen_url ; debug ; version_tag ; persist_dir ;
-    max_simult_compilations = ref max_simult_compilations }
+    max_simult_compilations = ref max_simult_compilations ;
+    max_history_archives }
 
 (* AutoCompletion of node/field names *)
 
