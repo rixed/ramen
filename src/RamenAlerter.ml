@@ -21,7 +21,9 @@ module CA = C.Alerter
 (* Purge inhibitions stopped for more than: *)
 let max_inhibit_age = 24. *. 3600.
 
-let syslog = Syslog.openlog "ramen"
+let syslog =
+  try Some (Syslog.openlog "ramen")
+  with _ -> None
 
 (* We want to have a global state of the alert management situation that we
  * can save regularly and restore whenever we start in order to limit the
@@ -267,7 +269,11 @@ struct
     let msg =
       Printf.sprintf "Name=%s;Title=%s;Id=%d;Attempt=%d;Dest=%s;Text=%s"
         alert.name alert.title alert.id attempt victim alert.text in
-    wrap (fun () -> Syslog.syslog syslog level msg)
+    match syslog with
+    | None ->
+      fail_with "No syslog on this host"
+    | Some slog ->
+      wrap (fun () -> Syslog.syslog slog level msg)
 
   let via_email to_ cc bcc alert attempt victim =
     let body = string_of_alert alert attempt victim in
