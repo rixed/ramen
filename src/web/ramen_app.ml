@@ -1365,6 +1365,9 @@ let event_processor_page =
                   [ h1 [] [ text "Input fields" ] ; input_panel ] ;
               div [ id "operation" ]
                   [ h1 [] [ text "Operation" ] ; op_panel ] ] ;
+          (* TODO: instead of true/false this should return
+           * ExportNothing/ExportOut/ExportWithTime so that we know if we
+           * can offer to plot the chart as well as display the tail. *)
           can_export_with_layer node (function
             true -> output_panel
           | false -> p [ clss "nodata" ]

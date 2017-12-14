@@ -470,6 +470,11 @@ let bucket_max b =
   if b.count = 0 then None else Some b.max
 
 exception NodeHasNoEventTimeInfo of string
+let () =
+  Printexc.register_printer (function
+    | NodeHasNoEventTimeInfo n -> Some (
+      Printf.sprintf "Node %S has no event-time information" n)
+    | _ -> None)
 
 (* Return the rank of field named [n] in [node] out_type tuple. *)
 let find_field node n =

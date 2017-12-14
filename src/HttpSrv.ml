@@ -482,8 +482,11 @@ let timeseries conf headers body =
       match String.lowercase req.consolidation with
       | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
     wrap (fun () ->
-      build_timeseries node data_field msg.max_data_points
-                       msg.since msg.until consolidation)
+      try
+        build_timeseries node data_field msg.max_data_points
+                         msg.since msg.until consolidation
+      with NodeHasNoEventTimeInfo _ as e ->
+        bad_request_exn (Printexc.to_string e))
   and create_temporary_node select_x select_y from where =
     (* First, we need to find out the name for this operation, and create it if
      * it does not exist yet. Name must be given by the operation and parent, so
@@ -596,7 +599,9 @@ let get_timerange conf headers layer_name node_name =
     C.with_rlock conf (fun () ->
       let%lwt _layer, node =
         find_exporting_node_or_fail conf layer_name node_name in
-      return (timerange_of_node node)) in
+      try return (timerange_of_node node)
+      with RamenExport.NodeHasNoEventTimeInfo _ as e ->
+        bad_request (Printexc.to_string e)) in
   switch_accepted headers [
     Consts.json_content_type, (fun () ->
       let body = PPP.to_string time_range_resp_ppp resp in
@@ -664,6 +669,8 @@ let plot conf _headers layer_name node_name params =
   let%lwt until =
     if rel_to_metric then
       match timerange_of_node node with
+      | exception (RamenExport.NodeHasNoEventTimeInfo _ as e) ->
+        bad_request (Printexc.to_string e)
       | NoData -> return now
       | TimeRange (_oldest, latest) -> return latest
     else return now in
@@ -676,12 +683,15 @@ let plot conf _headers layer_name node_name params =
       dasharray = None ; filled = true ; fill_opacity = 0.3 } in
   let%lwt data_points =
     wrap (fun () ->
-      List.map (fun data_field ->
-          pen_of_field data_field,
-          RamenExport.(
-            build_timeseries node data_field (int_of_float svg_width + 1)
-                             since until bucket_avg)
-        ) fields) in
+      try
+        List.map (fun data_field ->
+            pen_of_field data_field,
+            RamenExport.(
+              build_timeseries node data_field (int_of_float svg_width + 1)
+                               since until bucket_avg)
+          ) fields
+      with RamenExport.NodeHasNoEventTimeInfo _ as e ->
+        bad_request_exn (Printexc.to_string e)) in
   let _fst_pen, (fst_times, _fst_data) = List.hd data_points in
   let nb_pts = Array.length fst_times in
   let shash = RamenChart.{
