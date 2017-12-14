@@ -801,9 +801,10 @@ let db_name =
   Arg.(required (opt (some string) None i))
 
 let dataset_name =
-  let i = Arg.info ~doc:"Name identifying this data set"
-                   ~docv:"NAME" [] in
-  Arg.(required (pos 0 (some string) None i))
+  let i = Arg.info ~doc:"Name identifying this data set. Will be used to \
+                         prefix any created layers."
+                   [ "name" ; "dataset" ; "dataset-name" ] in
+  Arg.(required (opt (some string) None i))
 
 let delete_opt =
   let i = Arg.info ~doc:"Delete CSV files once injected"
