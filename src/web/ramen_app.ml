@@ -783,11 +783,13 @@ let layer_panel to_del layer =
           Js.Optdef.case (Jstable.find spins (Js.string layer.name))
             (fun () ->
               group [
-                (let action =
-                   if is_to_del then None
-                   else Some (fun _ -> set layer_to_delete layer.name) in
-                button ?action
-                  [ clss "actionable icon" ; title "delete" ] [ text "⌫" ]) ;
+                if layer.status <> Running then (
+                  let action =
+                     if is_to_del then None
+                     else Some (fun _ -> set layer_to_delete layer.name) in
+                  button ?action
+                    [ clss "actionable icon" ; title "delete" ] [ text "⌫" ]
+                ) else group [] ;
                 icon_of_layer ~suppress_action:is_to_del layer ])
             (fun while_ ->
               button [ clss "icon spinning" ; title while_ ]
