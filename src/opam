@@ -30,3 +30,6 @@ depends: [
   "syslog" {= "1.4"}
   "qcheck" {test}
 ]
+depexts: [
+  [["debian"] ["libc-dev openssl m4"]]
+]
