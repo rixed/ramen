@@ -26,7 +26,7 @@ RUN opam init --no-setup && \
     opam switch install ramen --alias-of 4.05.0+flambda
 
 # Rebuild a new image from here
-RUN echo "version 6"
+RUN echo "version 11"
 
 # Install ramen
 RUN opam update && \
@@ -57,7 +57,7 @@ WORKDIR /ramen
 ENTRYPOINT ["/start"]
 
 # Default arguments if not provided on `docker run` command line:
-CMD ["--save-conf"]
+CMD ["--damon"]
 
 # TODO: where to store stuff
 # CMD ["--directories etc"]
@@ -102,12 +102,13 @@ COPY test.csv /tmp
 # Make the following massive touch a bit quicker by deleting content:
 RUN rm -rf /root/.opam/repo /root/.opam/system /home /boot /opt /media /mnt /srv
 
-RUN touch /img_creation && find /root /usr /var /lib /bin /sbin -type f | \
-      xargs touch -m -r /img_creation && \
+RUN touch /img_creation && \
+    find /root /usr /var /lib /bin /sbin -type f | xargs touch -m -r /img_creation && \
     sleep 1.1 && \
     find /root/.opam/ramen -type f -name META -exec sed -i -e /exists_if/d {} \; && \
     fprobe -i eth0 -fip localhost:2055 && \
     (timeout 10s collectd -f -C /etc/collectd/collectd.conf || true) && \
+    ramen_configurator --help && \
     ramen start -d --daemon && sleep 2 && \
     ramen add --op 'SELECT MIN time, fit_multi(3, value, time) AS smth1 FROM demo/collectd' \
               --op 'READ AND DELETE FILES "/tmp/test.csv" PREPROCESS WITH "lz4 -d -c" (smth1 string, smth2 u128)' \
@@ -124,4 +125,16 @@ RUN touch /img_creation && find /root /usr /var /lib /bin /sbin -type f | \
     /bin/dash -c 'echo touching dash' && \
     hostname && \
     touch -a /start && \
-    (find /root /usr /var /lib /bin /sbin -type f -not -anewer /img_creation -delete || true)
+    (find /root /usr /var /lib /bin /sbin -type f -not -anewer /img_creation -delete || true) && \
+    (find /root /usr /var /lib /bin /sbin -xtype l -delete || true) && \
+    (find /root /usr /var /lib /bin /sbin -type d -empty -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin /sbin -xtype l -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin /sbin -type d -empty -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin /sbin -xtype l -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin /sbin -type d -empty -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin -xtype l -delete || true) && \
+    (find /root /usr /var /lib /bin -type d -empty -delete || true) && \
+    (find /root /usr /var /lib /bin -xtype l -delete || true) && \
+    (find /root /usr /var /lib /bin -type d -empty -delete || true) && \
+    (find /root /usr /var /lib /bin -xtype l -delete || true) && \
+    (find /root /usr /var /lib /bin -type d -empty -delete || true)
