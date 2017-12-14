@@ -613,9 +613,7 @@ let reload_graph =
           if single then reloading := false)
         (fun g ->
           update_graph true g ;
-          option_may (fun r ->
-              set_sel_layer (ExistingLayer r)
-            ) redirect_to_layer ;
+          option_may set_sel_layer redirect_to_layer ;
           resync ()))
 
 (* Panel pending deletion, if any. There is only one, so selecting another
@@ -768,7 +766,7 @@ let del_layer layer_name =
   http_del path ~what ~on_done:(fun () ->
     Jstable.remove spinners.value js_name ;
     change spinners)
-    (done_edit_layer_cb "delete")
+    (done_edit_layer_cb ~redirect_to_layer:NoLayer "delete")
 
 let layer_panel to_del layer =
   let is_to_del = to_del = layer.Layer.name in
@@ -1271,9 +1269,10 @@ let save_layer _ =
   and path = "/graph"
   and what = "Saved "^ !(edl.layer_name) in
   set editor_spinning true ;
+  let redirect_to_layer = ExistingLayer !(edl.layer_name) in
   http_put path content ~what
     ~on_done:(fun () -> set editor_spinning false)
-    (done_edit_layer_cb ~redirect_to_layer:!(edl.layer_name) "save")
+    (done_edit_layer_cb ~redirect_to_layer "save")
 
 let add_edited_node () =
   let edl = edited_layer.value in
