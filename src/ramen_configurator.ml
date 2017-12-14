@@ -744,13 +744,15 @@ let start conf ramen_url db_name dataset_name delete csv_dir
         let base = base_layer dataset_name delete csv_dir in
         put_layer ramen_url base
       ) else return_unit in
-    let%lwt () = if with_bcns || with_bcas then (
+    let%lwt () = if with_bcns > 0 || with_bcas > 0 then (
         let bcns, bcas = get_config_from_db db in
-        let%lwt () = if with_bcns then (
+        let bcns = List.take with_bcns bcns
+        and bcas = List.take with_bcas bcas in
+        let%lwt () = if bcns <> [] then (
             let bcns = layer_of_bcns bcns dataset_name in
             put_layer ramen_url bcns
           ) else return_unit in
-        if with_bcas then (
+        if bcas <> [] then (
           let bcas = layer_of_bcas bcas dataset_name in
           put_layer ramen_url bcas
         ) else return_unit
@@ -822,12 +824,12 @@ let with_base =
 let with_bcns =
   let i = Arg.info ~doc:"Also output the layer with BCN configuration"
                    [ "with-bcns" ; "with-bcn" ; "bcns" ; "bcn" ] in
-  Arg.(value (flag i))
+  Arg.(value (opt ~vopt:10 int 0 i))
 
 let with_bcas =
   let i = Arg.info ~doc:"Also output the layer with BCA configuration"
                    [ "with-bcas" ; "with-bca" ; "bcas" ; "bca" ] in
-  Arg.(value (flag i))
+  Arg.(value (opt ~vopt:10 int 0 i))
 
 let with_ddos =
   let i = Arg.info ~doc:"Also output the layer with DDoS detection"
