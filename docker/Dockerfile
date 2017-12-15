@@ -57,7 +57,7 @@ WORKDIR /ramen
 ENTRYPOINT ["/start"]
 
 # Default arguments if not provided on `docker run` command line:
-CMD ["--damon"]
+CMD ["--daemon"]
 
 # TODO: where to store stuff
 # CMD ["--directories etc"]
