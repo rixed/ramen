@@ -67,8 +67,6 @@ HEALTHCHECK CMD wget -O /dev/null http://localhost:29380/graph
 
 # HTTP API:
 EXPOSE 29380/TCP
-# Alerter:
-EXPOSE 29382/TCP
 # Collectd:
 EXPOSE 25826/UDP
 # Fprobe:
