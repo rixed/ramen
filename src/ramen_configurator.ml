@@ -26,7 +26,7 @@ let rep sub by str = String.nreplace ~str ~sub ~by
 
 let print_squoted oc = Printf.fprintf oc "'%s'"
 
-let traffic_node ?where dataset_name name dt =
+let traffic_node ?where dataset_name name dt export =
   let dt_us = dt * 1_000_000 in
   let parents =
     List.map (rebase dataset_name) ["c2s"; "s2c"] |>
@@ -70,11 +70,12 @@ let traffic_node ?where dataset_name name dt =
        (_sum_connections_time / _sum_connections) / 1e6 AS connection_time_avg,
        ((sum connections_time2 - float(_sum_connections_time)^2 / _sum_connections) /
            _sum_connections) / 1e12 AS connection_time_var
-     EXPORT EVENT STARTING AT start
-             WITH DURATION $DT$
      GROUP BY capture_begin // $DT_US$
      COMMIT WHEN
-       in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)|} |>
+       in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)|}^
+     (if export then {|
+     EXPORT EVENT STARTING AT start
+             WITH DURATION $DT$|} else "") |>
     rep "$DT$" (string_of_int dt) |>
     rep "$DT_US$" (string_of_int dt_us) |>
     rep "$PARENTS$" parents
@@ -94,7 +95,7 @@ let traffic_node ?where dataset_name name dt =
  * things. A good trade-off is to have one node per BCN/BCA.
  * For each timeseries to predict, we also pass a list of other timeseries that
  * we think are good predictors. *)
-let anomaly_detection_nodes avg_window from name timeseries =
+let anomaly_detection_nodes avg_window from name timeseries export =
   assert (timeseries <> []) ;
   let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ; "lag(" ]
   and multi_predictors = [ "fit_multi(5, " ] in
@@ -147,12 +148,16 @@ let anomaly_detection_nodes avg_window from name timeseries =
         "SELECT\n  \
            start,\n  \
            %s\n\
-         FROM '%s'\n\
+         FROM '%s'"
+        (String.concat ",\n  " (List.rev predictions))
+        from in
+  let op =
+    if export then
+      op ^ Printf.sprintf "\n\
          EXPORT EVENT STARTING AT start\n        \
                  WITH DURATION %f"
-        (String.concat ",\n  " (List.rev predictions))
-        from
-        avg_window in
+        avg_window
+    else op in
     make_node predictor_name op in
   let anomaly_node =
     let conditions =
@@ -170,15 +175,18 @@ let anomaly_detection_nodes avg_window from name timeseries =
           (%s) AS abnormality,
           5-ma abnormality >= 4/5 AS firing
           COMMIT AND KEEP ALL WHEN firing != previous.firing
-          NOTIFY "http://localhost:29380/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"
-          EXPORT EVENT STARTING AT start|}
+          NOTIFY "http://localhost:29380/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"|}
         predictor_name
         condition
         (enc alert_name) (enc title) (enc text) in
+    let op =
+      if export then op ^ {|
+        EXPORT EVENT STARTING AT start|}
+      else op in
     make_node (from ^": "^ name ^" anomalies") op in
   predictor_node, anomaly_node
 
-let base_layer dataset_name delete uncompress csv_dir =
+let base_layer dataset_name delete uncompress csv_dir export =
   let csv =
     let op =
       Printf.sprintf {|
@@ -296,7 +304,12 @@ let base_layer dataset_name delete uncompress csv_dir =
          ct_square_sum AS connections_time2, syn_count_client AS syns,|}^
          cs_fields ^{|
          dcerpc_uuid
-       WHERE traffic_packets_|}^ src ^" > 0" in
+       WHERE traffic_packets_|}^ src ^" > 0"^
+       (if export then {|
+         EXPORT EVENT STARTING AT capture_begin * 1e-6
+                  AND STOPPING AT capture_end * 1e-6|}
+        else "")
+       in
     make_node name op in
   RamenSharedTypes.{
     name = dataset_name ;
@@ -304,12 +317,12 @@ let base_layer dataset_name delete uncompress csv_dir =
       csv ;
       to_unidir ~src:"client" ~dst:"server" "c2s" ;
       to_unidir ~src:"server" ~dst:"client" "s2c" ;
-      traffic_node dataset_name "minutely traffic" 60 ;
-      traffic_node dataset_name "hourly traffic" 3600 ;
-      traffic_node dataset_name "daily traffic" (3600 * 24) ] }
+      traffic_node dataset_name "minutely traffic" 60 export ;
+      traffic_node dataset_name "hourly traffic" 3600 export ;
+      traffic_node dataset_name "daily traffic" (3600 * 24) export ] }
 
 (* Build the node infos corresponding to the BCN configuration *)
-let layer_of_bcns bcns dataset_name =
+let layer_of_bcns bcns dataset_name export =
   let layer_name = rebase dataset_name "BCN" in
   let name_of_zones = function
     | [] -> "any"
@@ -351,8 +364,6 @@ let layer_of_bcns bcns dataset_name =
             sum bytes_src / %g AS bytes_per_secs,
             %S AS zone_src, %S AS zone_dst
           WHERE %s
-          EXPORT EVENT STARTING AT start
-                 WITH DURATION %g
           GROUP BY capture_begin // %d
           COMMIT WHEN
             in.capture_begin > out.min_capture_begin + 2 * u64(%d)|}
@@ -362,9 +373,14 @@ let layer_of_bcns bcns dataset_name =
         (name_of_zones bcn.source)
         (name_of_zones bcn.dest)
         where
-        bcn.avg_window
         avg_window
-        avg_window
+        avg_window in
+    let op =
+      if export then op ^ Printf.sprintf {|
+          EXPORT EVENT STARTING AT start
+                 WITH DURATION %g|}
+          bcn.avg_window
+      else op
         (* Note: Ideally we would want to compute the max of all.capture_begin *)
     in
     make_node avg_per_zones_name op ;
@@ -383,13 +399,18 @@ let layer_of_bcns bcns dataset_name =
            max max_capture_end AS max_capture_end,
            %gth percentile bytes_per_secs AS bytes_per_secs,
            zone_src, zone_dst
-         EXPORT EVENT STARTING AT max_capture_end * 0.000001
-                 WITH DURATION %g
          COMMIT AND SLIDE 1 WHEN
            group.#count >= %d OR
            in.start > out.max_start + 5|}
          avg_per_zones_name
-         bcn.percentile bcn.avg_window nb_items_per_groups in
+         bcn.percentile nb_items_per_groups in
+    let op =
+      if export then
+        op ^ Printf.sprintf {|
+         EXPORT EVENT STARTING AT max_capture_end * 0.000001
+                 WITH DURATION %g|}
+           bcn.avg_window
+      else op in
     make_node perc_per_obs_window_name op ;
     (* TODO: we need an hysteresis here! *)
     Option.may (fun min_bps ->
@@ -400,7 +421,7 @@ let layer_of_bcns bcns dataset_name =
                       the configured minimum of %d for the last %g minutes."
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       min_bps (bcn.obs_window /. 60.) in
-        let ops = Printf.sprintf
+        let op = Printf.sprintf
           {|SELECT max_start, bytes_per_secs > %d AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != previous.firing
@@ -408,8 +429,12 @@ let layer_of_bcns bcns dataset_name =
             min_bps
             perc_per_obs_window_name
             (enc title) (enc text) in
+        let op =
+          if export then op ^ {|
+            EXPORT EVENT STARTING AT max_start|}
+          else op in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
-        make_node name ops
+        make_node name op
       ) bcn.min_bps ;
     Option.may (fun max_bps ->
         let title = Printf.sprintf "Too much traffic from zone %s to %s"
@@ -419,7 +444,7 @@ let layer_of_bcns bcns dataset_name =
                       the configured maximum of %d for the last %g minutes."
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
                       max_bps (bcn.obs_window /. 60.) in
-        let ops = Printf.sprintf
+        let op = Printf.sprintf
           {|SELECT max_start, bytes_per_secs > %d AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != previous.firing
@@ -427,13 +452,19 @@ let layer_of_bcns bcns dataset_name =
             max_bps
             perc_per_obs_window_name
             (enc title) (enc text) in
+        let op =
+          if export then op ^ {|
+            EXPORT EVENT STARTING AT max_start|}
+          else op in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
-        make_node name ops
+        make_node name op
       ) bcn.max_bps ;
-    let minutely = traffic_node ~where dataset_name (name_prefix ^": minutely traffic") 60 in
+    let minutely =
+      traffic_node ~where dataset_name (name_prefix ^": minutely traffic") 60 export in
     all_nodes := minutely :: !all_nodes ;
     let anom name timeseries =
-      let pred, anom = anomaly_detection_nodes bcn.avg_window minutely.N.name name timeseries in
+      let pred, anom =
+        anomaly_detection_nodes bcn.avg_window minutely.N.name name timeseries export in
       all_nodes := pred :: anom :: !all_nodes in
     anom "volume"
       [ "packets_per_secs", "packets_per_secs > 10", false,
@@ -465,7 +496,7 @@ let layer_of_bcns bcns dataset_name =
   RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
 
 (* Build the node infos corresponding to the BCA configuration *)
-let layer_of_bcas bcas dataset_name =
+let layer_of_bcas bcas dataset_name export =
   let layer_name = rebase dataset_name "BCA" in
   let all_nodes = ref [] in
   let make_node name operation =
@@ -578,9 +609,11 @@ let layer_of_bcas bcas dataset_name =
         WHERE application = $ID$
         GROUP BY capture_begin * 0.000001 // $AVG_INT$
         COMMIT WHEN
-          in.capture_begin * 0.000001 > out.start + 2 * $AVG$
+          in.capture_begin * 0.000001 > out.start + 2 * $AVG$|}^
+        (if export then {|
         EXPORT EVENT STARTING AT start
-               WITH DURATION $AVG$|} |>
+               WITH DURATION $AVG$|}
+        else "") |>
       rep "$CSV$" csv |>
       rep "$ID$" (string_of_int bca.id) |>
       rep "$AVG_INT$" (string_of_int avg_window_int) |>
@@ -602,13 +635,16 @@ let layer_of_bcas bcas dataset_name =
            min start, max start,
            %gth percentile (
             srtt_avg + crtt_avg + srt_avg + cdtt_avg + sdtt_avg) AS eurt
-         EXPORT EVENT STARTING AT max_start WITH DURATION %g
          COMMIT AND SLIDE 1 WHEN
            group.#count >= %d OR
            in.start > out.max_start + 5|}
          avg_per_app bca.percentile
-         bca.obs_window
          nb_items_per_groups in
+    let op =
+      if export then op ^ Printf.sprintf {|
+         EXPORT EVENT STARTING AT max_start WITH DURATION %g|}
+         bca.obs_window
+      else op in
     make_node perc_per_obs_window_name op ;
     (* TODO: we need an hysteresis here! *)
     let title =
@@ -618,7 +654,7 @@ let layer_of_bcas bcas dataset_name =
         "The average end user response time to application %s has raised \
          above the configured maximum of %gs for the last %g minutes."
          bca.name bca.max_eurt (bca.obs_window /. 60.) in
-    let ops =
+    let op =
       Printf.sprintf
         {|SELECT max_start, eurt > %g AS firing
           FROM '%s'
@@ -626,11 +662,16 @@ let layer_of_bcas bcas dataset_name =
           NOTIFY "http://localhost:29380/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
           bca.max_eurt
           perc_per_obs_window_name
-          (enc bca.name) (enc title) (enc text)
-    and name = bca.name ^": EURT too high" in
-    make_node name ops ;
+          (enc bca.name) (enc title) (enc text) in
+    let op =
+      if export then op ^ {|
+          EXPORT EVENT STARTING AT max_start|}
+      else op in
+    let name = bca.name ^": EURT too high" in
+    make_node name op ;
     let anom name timeseries =
-      let pred, anom = anomaly_detection_nodes bca.avg_window avg_per_app name timeseries in
+      let pred, anom =
+        anomaly_detection_nodes bca.avg_window avg_per_app name timeseries export in
       all_nodes := pred :: anom :: !all_nodes in
     anom "volume"
       [ "c2s_bytes_per_secs", "c2s_bytes_per_secs > 1000", false, [] ;
@@ -667,7 +708,7 @@ let layer_of_bcas bcas dataset_name =
 let get_config_from_db db =
   Conf_of_sqlite.get_config db
 
-let ddos_layer dataset_name =
+let ddos_layer dataset_name export =
   let layer_name = rebase dataset_name "DDoS" in
   let avg_win = 60 and rem_win = 3600 in
   let op_new_peers =
@@ -692,9 +733,11 @@ let ddos_layer dataset_name =
           AS nb_new_clients_per_secs
      GROUP BY capture_begin // $AVG_WIN_US$
      COMMIT WHEN
-       in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN_US$)
+       in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN_US$)|}^
+     (if export then {|
      EXPORT EVENT STARTING AT start
-                  WITH DURATION $AVG_WIN$|} |>
+                  WITH DURATION $AVG_WIN$|}
+     else "") |>
     rep "$AVG_WIN_US$" (string_of_int avg_win_us) |>
     rep "$AVG_WIN$" (string_of_int avg_win) |>
     rep "$REM_WIN$" (string_of_int rem_win) |>
@@ -705,7 +748,8 @@ let ddos_layer dataset_name =
     anomaly_detection_nodes
       (float_of_int avg_win) "new peers" "DDoS"
       [ "nb_new_cnxs_per_secs", "nb_new_cnxs_per_secs > 1", false, [] ;
-        "nb_new_clients_per_secs", "nb_new_clients_per_secs > 1", false, [] ] in
+        "nb_new_clients_per_secs", "nb_new_clients_per_secs > 1", false, [] ]
+      export in
   RamenSharedTypes.{
     name = layer_name ;
     nodes = [ global_new_peers ; pred_node ; anom_node ] }
@@ -736,14 +780,15 @@ let put_layer ramen_url layer =
   return_unit
 
 let start conf ramen_url db_name dataset_name delete uncompress
-          csv_dir with_base with_bcns with_bcas with_ddos =
+          csv_dir with_base with_bcns with_bcas with_ddos export_all =
   logger := make_logger conf.debug ;
   let open Conf_of_sqlite in
   let db = get_db db_name in
   let update () =
     (* TODO: The base layer for this client *)
     let%lwt () = if with_base then (
-        let base = base_layer dataset_name delete uncompress csv_dir in
+        let base =
+          base_layer dataset_name delete uncompress csv_dir export_all in
         put_layer ramen_url base
       ) else return_unit in
     let%lwt () = if with_bcns > 0 || with_bcas > 0 then (
@@ -751,17 +796,17 @@ let start conf ramen_url db_name dataset_name delete uncompress
         let bcns = List.take with_bcns bcns
         and bcas = List.take with_bcas bcas in
         let%lwt () = if bcns <> [] then (
-            let bcns = layer_of_bcns bcns dataset_name in
+            let bcns = layer_of_bcns bcns dataset_name export_all in
             put_layer ramen_url bcns
           ) else return_unit in
         if bcas <> [] then (
-          let bcas = layer_of_bcas bcas dataset_name in
+          let bcas = layer_of_bcas bcas dataset_name export_all in
           put_layer ramen_url bcas
         ) else return_unit
       ) else return_unit in
     if with_ddos then (
       (* Several DDoS detection approaches, regrouped in a "DDoS" layer. *)
-      let ddos = ddos_layer dataset_name in
+      let ddos = ddos_layer dataset_name export_all in
       put_layer ramen_url ddos
     ) else return_unit
   in
@@ -844,6 +889,12 @@ let with_ddos =
                    [ "with-ddos" ; "with-dos" ; "ddos" ; "dos" ] in
   Arg.(value (flag i))
 
+let export_all =
+  let i = Arg.info ~doc:"Export all possible nodes (rather than just \
+                         the ones that make sense). Useful for debugging."
+                   [ "export-all" ] in
+  Arg.(value (flag i))
+
 let start_cmd =
   Term.(
     (const start
@@ -857,7 +908,8 @@ let start_cmd =
       $ with_base
       $ with_bcns
       $ with_bcas
-      $ with_ddos),
+      $ with_ddos
+      $export_all),
     info "ramen_configurator")
 
 let () =
