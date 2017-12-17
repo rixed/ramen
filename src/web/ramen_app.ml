@@ -117,7 +117,7 @@ struct
       sel_tuple_count : float option ;
       group_count : float option ;
       cpu_time : float ;
-      ram_usage : int ;
+      ram_usage : float ;
       in_sleep : float option ;
       out_sleep : float option ;
       in_bytes : float option ;
@@ -504,7 +504,7 @@ let update_nodes_sum () =
         tot_outs +. (n.stats.out_tuple_count |? 0.),
         tot_grps +. (n.stats.group_count |? 0.),
         tot_cpu +. n.stats.cpu_time,
-        tot_ram +. float_of_int n.stats.ram_usage,
+        tot_ram +. n.stats.ram_usage,
         tot_in_sleep +. (n.stats.in_sleep |? 0.),
         tot_out_sleep +. (n.stats.out_sleep |? 0.),
         tot_in_bytes +. (n.stats.in_bytes |? 0.),
@@ -527,7 +527,7 @@ let worker_stats_of_js js =
     sel_tuple_count = of_opt_field js "selected_tuple_count" identity ;
     group_count = of_opt_field js "group_count" identity ;
     cpu_time = of_field js "cpu_time" Js.to_float ;
-    ram_usage = of_field js "ram_usage" identity ;
+    ram_usage = of_field js "ram_usage" Js.to_float ;
     in_sleep = of_opt_field js "in_sleep" Js.to_float ;
     out_sleep = of_opt_field js "out_sleep" Js.to_float ;
     in_bytes = of_opt_field js "in_bytes" Js.to_float ;
@@ -913,11 +913,7 @@ let node_tbody_row node =
        [ text xs ;
          hr [ attr "width" (string_of_float w) ] ] in
   let na = td [ clss "number" ] [ text "n.a." ] in
-  let tdih tot x =
-    if tot = 0. then tdi x else
-    let w = 100. *. float_of_int x /. tot in
-    tdh w (string_of_int x)
-  and tdfh tot x =
+  let tdfh tot x =
     if tot = 0. then tdf x else
     let w = 100. *. x /. tot in
     tdh w (str_of_float x)
@@ -946,7 +942,7 @@ let node_tbody_row node =
         tdfh tot_cpu node.stats.cpu_time ;
         tdofh tot_in_sleep node.stats.in_sleep ;
         tdofh tot_out_sleep node.stats.out_sleep ;
-        tdih tot_ram node.stats.ram_usage ;
+        tdfh tot_ram node.stats.ram_usage ;
         tdofih tot_in_bytes node.stats.in_bytes ;
         tdofih tot_out_bytes node.stats.out_bytes ;
         tds (short_node_list node.layer node.parents) ;
