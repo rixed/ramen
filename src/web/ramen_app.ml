@@ -112,7 +112,8 @@ end
 module Node =
 struct
   type worker_stats =
-    { in_tuple_count : float option ;
+    { time : float ;
+      in_tuple_count : float option ;
       out_tuple_count : float option ;
       sel_tuple_count : float option ;
       group_count : float option ;
@@ -135,6 +136,7 @@ struct
       parents : string list ;
       children : string list ;
 
+      mutable last_stats : worker_stats ;
       stats : worker_stats ;
 
       pid : int option ;
@@ -193,9 +195,8 @@ let new_edited_node edited_nodes =
 let edited_nodes_of_layer l =
   let edited_nodes =
     List.fold_left (fun ns (_, n) ->
-        let n = n.value in
-        if n.Node.layer <> l then ns
-        else (ref n.Node.name, ref n.operation) :: ns
+        if n.value.Node.layer <> l then ns
+        else (ref n.value.Node.name, ref n.value.operation) :: ns
       ) [] nodes.value in
   edited_nodes @ [ new_edited_node edited_nodes ]
 
@@ -232,16 +233,26 @@ let update_layer layer =
 
 (* We use floats for every counter since JS integers are only 32bits *)
 let zero_sums = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
+(* FIXME: should be in the single param with nodes info (which should be a
+ * record type). Also we should compute both the sum of cumulative and
+ * current values. *)
 let nodes_sum = make_param "nodes sum" zero_sums
 
+(* FIXME: have a single param for all the nodes *)
 let update_node node =
   let p =
-    try List.assoc node.Node.id nodes.value
+    try
+      let p = List.assoc node.Node.id nodes.value in
+      if node.stats.time > p.value.stats.time then
+        node.last_stats <- p.value.stats
+      else
+        node.last_stats <- p.value.last_stats ;
+      set p node ;
+      p
     with Not_found ->
       print (Js.string ("Creating node "^ node.Node.name)) ;
       change nodes ;
       make_param ("node "^ node.id) node in
-  set p node ;
   nodes.value <- replace_assoc node.id p nodes.value
 
 (* Uses node.id as a value. Avoid pointing toward a node that may be
@@ -337,8 +348,8 @@ let reload_tail =
   fun ?(single=false) () ->
     match List.assoc sel_node.value nodes.value with
     | exception Not_found -> ()
-    | node ->
-      let node = node.value in
+    | node_p ->
+      let node = node_p.value in
       if can_export node then
         let content = object%js val max_results_ = -8 end
         and path = "/export/"^ enc node.layer ^"/"^ enc node.name in
@@ -522,10 +533,11 @@ let definition_of_js js =
 
 let worker_stats_of_js js =
   Node.{
-    in_tuple_count = of_opt_field js "in_tuple_count" identity ;
-    out_tuple_count = of_opt_field js "out_tuple_count" identity ;
-    sel_tuple_count = of_opt_field js "selected_tuple_count" identity ;
-    group_count = of_opt_field js "group_count" identity ;
+    time = of_field js "time" Js.to_float ;
+    in_tuple_count = of_opt_field js "in_tuple_count" Js.to_float ;
+    out_tuple_count = of_opt_field js "out_tuple_count" Js.to_float ;
+    sel_tuple_count = of_opt_field js "selected_tuple_count" Js.to_float ;
+    group_count = of_opt_field js "group_count" Js.to_float ;
     cpu_time = of_field js "cpu_time" Js.to_float ;
     ram_usage = of_field js "ram_usage" Js.to_float ;
     in_sleep = of_opt_field js "in_sleep" Js.to_float ;
@@ -536,6 +548,7 @@ let worker_stats_of_js js =
 let node_of_js layer js =
   let name, operation = of_field js "definition" definition_of_js in
   let id = layer.Layer.name ^"/"^ name in
+  let stats = of_field js "stats" worker_stats_of_js in
   Node.{
     layer = layer.Layer.name ;
     name ; id ; operation ;
@@ -544,8 +557,9 @@ let node_of_js layer js =
     output_type = of_field js "output_type" type_spec_of_js ;
     parents = of_field js "parents" node_list_of_js ;
     children = of_field js "children" node_list_of_js ;
-    stats = of_field js "stats" worker_stats_of_js ;
-    pid = of_opt_field js "pid" identity ;
+    stats ;
+    last_stats = stats ; (* set later by update_node *)
+    pid = of_opt_field js "pid" to_int ;
     signature = of_opt_field js "signature" Js.to_string }
 
 let update_graph total g =
@@ -623,6 +637,16 @@ let layer_to_delete = make_param "layer pending deletion" ""
 let autoreload = make_param "autoreload" true
 let display_temp = make_param "display temp layers" false
 let is_temp layer_name = string_starts_with "temp/" layer_name
+let cumul_tot_ins = make_param "cumul tot_ins" true
+let cumul_tot_sels = make_param "cumul tot_sels" true
+let cumul_tot_outs = make_param "cumul tot_outs" true
+let cumul_tot_grps = make_param "cumul tot_grps" true
+let cumul_tot_cpu = make_param "cumul tot_cpu" true
+let cumul_tot_in_sleep = make_param "cumul tot_in_sleep" true
+let cumul_tot_out_sleep = make_param "cumul tot_out_sleep" true
+let cumul_tot_ram = make_param "cumul tot_ram" true
+let cumul_tot_in_bytes = make_param "cumul tot_in_bytes" true
+let cumul_tot_out_bytes = make_param "cumul tot_out_bytes" true
 
 (* Loading / Saving data *)
 
@@ -663,6 +687,13 @@ let nav_bar =
         | SingleTeam t -> tab ("Team "^ t) PageTeam) ;
       tab "Event Processor" PageEventProcessor ]
 
+let icon_class ?help sel =
+  let attrs =
+    [ clss ("icon actionable"^ if sel then " selected" else "") ] in
+  match help with
+  | None -> attrs
+  | Some h -> attr "title" h :: attrs
+
 let header_panel =
   group
     [ div
@@ -675,17 +706,15 @@ let header_panel =
         nav_bar ;
         spacer ;
         with_param display_temp (fun disp ->
-          let title = (if disp then "do not " else "")^
-                      "display temporary layers" in
+          let help = (if disp then "do not " else "")^
+                     "display temporary layers" in
           button ~action:(fun _ -> toggle display_temp)
-            [ clss ("icon actionable" ^ if disp then " selected" else "") ;
-              attr "title" title ]
+            (icon_class ~help disp)
             [ text "temp." ]) ;
         with_param autoreload (fun ar ->
-          let title = (if ar then "dis" else "en")^ "able auto-reload" in
+          let help = (if ar then "dis" else "en")^ "able auto-reload" in
           button ~action:(fun _ -> toggle autoreload)
-            [ clss ("icon actionable" ^ if ar then " selected" else "") ;
-              attr "title" title ]
+            (icon_class ~help ar)
             [ text "⟳" ]) ] ;
       with_param last_errors (fun lst ->
         let ps =
@@ -855,38 +884,47 @@ let layers_panel =
           set layer_to_delete "") in
       button ~action [ clss c ] [ text "new layer" ]) ]
 
-let pretty_th ?action c title subtitle =
-  th ?action
-    (if c <> "" then [ clss c ] else [])
-    (p [] title ::
-     if subtitle = "" then []
-     else [ p [ clss "type" ] [ text subtitle ] ])
-
 (* filter_param is a string param with a search string *)
-let node_thead_col ?filter_param (title, subtitle, sortable) =
+let node_thead_col ?filter_param (title, subtitle, sortable, cumul_opt) =
   with_param sel_top_column (fun col ->
-    let action, c =
-      if sortable && col <> title then
-        Some (fun _ -> set sel_top_column title), "actionable"
-      else None, if col = title then "selected" else "" in
-    match filter_param with
-      | None ->
-        pretty_th ?action c [ text title ] subtitle
+    let sort_me =
+      if sortable then
+        let help = "Sort the table according to this column" in
+        button ~action:(fun _ ->
+            if col = title then
+              set sel_top_column "layer" (* the default *)
+            else
+              set sel_top_column title)
+          (icon_class ~help (col = title))
+          [ text "sort" ]
+      else group [] in
+    let cumul_me =
+      match cumul_opt with
+      | None -> group []
+      | Some p ->
+        with_param p (fun cumul ->
+          let help =
+            "display "^(if cumul then "instant" else "cumulative")^" stats" in
+          button ~action:(fun _ -> toggle p)
+            (icon_class ~help (not cumul))
+            [ text "/s" ]) in
+    let search_box = match filter_param with
+      | None -> group []
       | Some filter ->
-        with_param filter (fun flt ->
-          pretty_th ?action c
-            [ text title ;
-              elmt "label"
-                [ clss "searchbox" ]
-                [ text "🔍" ;
-                  (* We have to resync explicitly because inputs don't
-                   * resync for some reason that may not be valid any
-                   * longer *)
-                  input ~action:(fun v -> set filter v ; resync ())
-                    [ attr "type" "text" ;
-                      attr "size" "12" ;
-                      attr "placeholder" "search..." ;
-                      attr "value" flt ] ] ] subtitle))
+          with_param filter (fun flt ->
+            elmt "label"
+              [ clss "searchbox" ]
+              [ text "🔍" ;
+                input ~action:(fun v -> set filter v)
+                  [ attr "type" "text" ;
+                    attr "size" "12" ;
+                    attr "placeholder" "search..." ;
+                    attr "value" flt ] ]) in
+    th []
+       [ p []
+           [ text title ; cumul_me ; sort_me ; search_box ] ;
+         if subtitle = "" then group [] else
+         p [ clss "type" ] [ text subtitle ] ])
 
 let tds v = td [] [ text v ]
 let tdo = function None -> tds "n.a." | Some v -> tds v
@@ -908,43 +946,57 @@ let short_node_list ?(max_len=20) layer lst =
     ) "" lst)
 
 let node_tbody_row node =
-  let tdh w xs =
-    td [ clss "number" ]
-       [ text xs ;
-         hr [ attr "width" (string_of_float w) ] ] in
+  let dt = node.Node.stats.time -. node.Node.last_stats.time in
   let na = td [ clss "number" ] [ text "n.a." ] in
-  let tdfh tot x =
-    if tot = 0. then tdf x else
-    let w = 100. *. x /. tot in
-    tdh w (str_of_float x)
-  and tdofih tot = function
+  let unk = td [ clss "number" ] [ text "unknown" ] in
+  let tdh ~to_str tot x =
+    td [ clss "number" ]
+       [ text (to_str x) ;
+         if tot = 0. then group [] else
+         let w = 100. *. x /. tot in
+         hr [ attr "width" (string_of_float w) ] ] in
+  let tdhcs ~to_str cumul_p tot x last_x =
+    with_param cumul_p (function
+      | true -> tdh ~to_str tot x
+      | false ->
+          match last_x with
+          | None -> unk
+          | Some last_x ->
+            if dt = 0. then unk else
+            let x = (x -. last_x) /. dt in
+            (* In non-cumulative mode we don't have round numbers anymore
+             * so we force str_of_float for conversions: *)
+            tdh ~to_str:str_of_float tot x) in
+  let tdfh cumul_p tot x last_x =
+    tdhcs ~to_str:str_of_float cumul_p tot x last_x
+  and tdofih cumul_p tot x last_x =
+    match x with
     | None -> na
     | Some x ->
-      if tot = 0. then tdfi x else
-      let w = 100. *. x /. tot in
-      tdh w (string_of_float x) in
-  let tdofh tot = function
+      tdhcs ~to_str:string_of_float cumul_p tot x last_x in
+  let tdofh cumul_p tot x last_x =
+    match x with
     | None -> na
-    | Some x -> tdfh tot x in
+    | Some x -> tdfh cumul_p tot x last_x in
   let tdoi = function None -> na | Some v -> tdi v in
   with_param nodes_sum (fun (_tot_nodes, tot_ins, tot_sels, tot_outs,
                              tot_grps, tot_cpu, tot_ram, tot_in_sleep,
                              tot_out_sleep, tot_in_bytes, tot_out_bytes) ->
     let cols =
-      [ tds node.Node.layer ;
+      [ tds node.layer ;
         tds node.name ;
-        tdofih tot_ins node.stats.in_tuple_count ;
-        tdofih tot_sels node.stats.sel_tuple_count ;
-        tdofih tot_outs node.stats.out_tuple_count ;
-        tdofih tot_grps node.stats.group_count ;
+        tdofih cumul_tot_ins tot_ins node.stats.in_tuple_count node.last_stats.in_tuple_count ;
+        tdofih cumul_tot_sels tot_sels node.stats.sel_tuple_count node.last_stats.sel_tuple_count ;
+        tdofih cumul_tot_outs tot_outs node.stats.out_tuple_count node.last_stats.out_tuple_count ;
+        tdofih cumul_tot_grps tot_grps node.stats.group_count node.last_stats.group_count ;
         td [ clss "export" ]
            [ text (if node.exporting then "✓" else " ") ] ;
-        tdfh tot_cpu node.stats.cpu_time ;
-        tdofh tot_in_sleep node.stats.in_sleep ;
-        tdofh tot_out_sleep node.stats.out_sleep ;
-        tdfh tot_ram node.stats.ram_usage ;
-        tdofih tot_in_bytes node.stats.in_bytes ;
-        tdofih tot_out_bytes node.stats.out_bytes ;
+        tdfh cumul_tot_cpu tot_cpu node.stats.cpu_time (Some node.last_stats.cpu_time) ;
+        tdofh cumul_tot_in_sleep tot_in_sleep node.stats.in_sleep node.last_stats.in_sleep ;
+        tdofh cumul_tot_out_sleep tot_out_sleep node.stats.out_sleep node.last_stats.out_sleep ;
+        tdfh cumul_tot_ram tot_ram node.stats.ram_usage (Some node.last_stats.ram_usage) ;
+        tdofih cumul_tot_in_bytes tot_in_bytes node.stats.in_bytes node.last_stats.in_bytes ;
+        tdofih cumul_tot_out_bytes tot_out_bytes node.stats.out_bytes node.last_stats.out_bytes ;
         tds (short_node_list node.layer node.parents) ;
         tds (short_node_list node.layer node.children) ;
         tdoi node.pid ;
@@ -965,8 +1017,8 @@ let node_sorter col =
   (* Numbers are sorted greater to smaller while strings are sorted
    * in ascending order: *)
   let make f (_, a) (_, b) =
-    let a = a.value and b = b.value in
-    f a b in
+    (* TODO: when !cumul_stats, f should take both a and last_a *)
+    f a.value b.value in
   let open Node in
   match col with
   | "#in" ->
@@ -997,23 +1049,23 @@ let node_sorter col =
 
 (* TODO: add a health indicator (based on how old is the last report) *)
 let node_columns =
-  [| "layer", "", true ;
-     "name", "", true ;
-     "#in", "tuples", true ;
-     "#selected", "tuples", true ;
-     "#out", "tuples", true ;
-     "#groups", "", true ;
-     "export", "", true ;
-     "CPU", "seconds", true ;
-     "wait in", "seconds", true ;
-     "wait out", "seconds", true ;
-     "heap", "bytes", true ;
-     "volume in", "bytes", true ;
-     "volume out", "bytes", true ;
-     "parents", "", false ;
-     "children", "", false ;
-     "PID", "", false ;
-     "signature", "", false |]
+  [| "layer", "", true, None ;
+     "name", "", true, None ;
+     "#in", "tuples", true, Some cumul_tot_ins ;
+     "#selected", "tuples", true, Some cumul_tot_sels ;
+     "#out", "tuples", true, Some cumul_tot_outs ;
+     "#groups", "", true, Some cumul_tot_grps ;
+     "export", "", true, None ;
+     "CPU", "seconds", true, Some cumul_tot_cpu ;
+     "wait in", "seconds", true, Some cumul_tot_in_sleep ;
+     "wait out", "seconds", true, Some cumul_tot_out_sleep ;
+     "heap", "bytes", true, Some cumul_tot_ram ;
+     "volume in", "bytes", true, Some cumul_tot_in_bytes ;
+     "volume out", "bytes", true, Some cumul_tot_out_bytes ;
+     "parents", "", false, None ;
+     "children", "", false, None ;
+     "PID", "", false, None ;
+     "signature", "", false, None |]
 
 let wide_table lst =
   div
@@ -1025,7 +1077,7 @@ let node_filter = make_param "node filter" ""
 let nodes_panel =
   wide_table [
     thead [] [
-      Array.fold_left (fun lst (col_name, _, _ as col) ->
+      Array.fold_left (fun lst (col_name, _, _, _ as col) ->
         let filter_param =
           if col_name = "name" then Some node_filter
           else None in
@@ -1041,10 +1093,11 @@ let nodes_panel =
               let rows =
                 nodes |>
                 List.filter (fun (_, p) ->
-                  (sel_lay = ExistingLayer p.value.Node.layer ||
+                  let n = p.value in
+                  (sel_lay = ExistingLayer n.Node.layer ||
                    (sel_lay = NoLayer &&
-                    (disp_temp || not (is_temp p.value.Node.layer)))) &&
-                  string_starts_with node_flt p.value.Node.name) |>
+                    (disp_temp || not (is_temp n.Node.layer)))) &&
+                  string_starts_with node_flt n.Node.name) |>
                 List.fold_left (fun lst p -> p :: lst) [] |>
                 List.fast_sort (node_sorter sel_col) in
               List.map (fun (_, p) ->
@@ -1089,6 +1142,12 @@ let op_panel =
         [ elmt "pre" [] [ text node.operation ] ]))
 
 let tail_panel =
+  let pretty_th ?action c title subtitle =
+    th ?action
+      (if c <> "" then [ clss c ] else [])
+      (p [] title ::
+       if subtitle = "" then []
+       else [ p [ clss "type" ] [ text subtitle ] ]) in
   let row fs r =
     let rec loop tds ci = function
       [] -> tr [] (List.rev tds)

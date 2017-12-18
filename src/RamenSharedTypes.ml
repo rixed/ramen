@@ -94,7 +94,8 @@ struct
     { name : string ; operation : string } [@@ppp PPP_JSON]
 
   type worker_stats =
-    { in_tuple_count : int option ;
+    { time : float ;
+      in_tuple_count : int option ;
       selected_tuple_count : int option ;
       out_tuple_count : int option ;
       group_count : int option ;

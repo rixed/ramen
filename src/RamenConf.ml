@@ -520,7 +520,7 @@ let add_link conf src dst =
 
 let make_conf do_persist ramen_url debug version_tag persist_dir
               default_team max_simult_compilations max_history_archives =
-  let alerting_version = "v0" and instrumentation_version = "v0" in
+  let alerting_version = "v0" and instrumentation_version = "v1" in
   { graph = load_graph ~restart:true do_persist persist_dir ;
     graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
     alerts = Alerter.get_state do_persist persist_dir alerting_version ;

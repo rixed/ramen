@@ -272,11 +272,12 @@ let read_reports conf =
     (* TODO: we probably want to move this function elsewhere than in a
      * lib that's designed for workers: *)
     RingBuf.read_ringbuf rb (fun tx ->
-      let worker, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo =
+      let worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo =
         RamenBinocle.unserialize tx in
       RingBuf.dequeue_commit tx ;
       RWLock.with_w_lock reports_lock (fun () ->
         Hashtbl.replace last_reports worker RamenSharedTypes.Node.{
+          time ;
           in_tuple_count = Option.map Uint64.to_int ic ;
           selected_tuple_count = Option.map Uint64.to_int sc ;
           out_tuple_count = Option.map Uint64.to_int oc ;
@@ -290,7 +291,8 @@ let read_reports conf =
 let last_report fq_name =
   RWLock.with_r_lock reports_lock (fun () ->
     Hashtbl.find_option last_reports fq_name |?
-    { in_tuple_count = None ; selected_tuple_count = None ;
+    { time = 0. ;
+      in_tuple_count = None ; selected_tuple_count = None ;
       out_tuple_count = None ; group_count = None ;
       cpu_time = 0. ; ram_usage = 0 ;
       in_sleep = None ; out_sleep = None ;

@@ -12,7 +12,7 @@ open Stdint
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * tuple_typ below! *)
 type tuple =
-  string *
+  string * float *
   Uint64.t option * Uint64.t option * Uint64.t option * Uint64.t option *
   float * Uint64.t * float option * float option * Uint64.t option *
   Uint64.t option
@@ -22,6 +22,7 @@ type tuple =
 let tuple_typ =
   let open RamenSharedTypes in
   [ { typ_name = "worker" ;         nullable = false ;  typ = TString } ;
+    { typ_name = "time" ;           nullable = false ;  typ = TFloat } ;
     { typ_name = "in_count" ;       nullable = true ;   typ = TU64 } ;
     { typ_name = "selected_count" ; nullable = true ;   typ = TU64 } ;
     { typ_name = "out_count" ;      nullable = true ;   typ = TU64 } ;
@@ -47,11 +48,11 @@ let fix_sz =
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
-let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _) =
+let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _) =
   let open RingBufLib in
   nullmask_sz + fix_sz + sersize_of_string worker
 
-let serialize tx (worker, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =
+let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =
   RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->
@@ -70,6 +71,9 @@ let serialize tx (worker, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =
   let offs =
     RingBuf.write_string tx offs worker ;
     offs + RingBufLib.sersize_of_string worker in
+  let offs =
+    RingBuf.write_float tx offs time ;
+    offs + RingBufLib.sersize_of_fixsz_typ TFloat in
   let offs = write_nullable_u64 offs 0 ic in
   let offs = write_nullable_u64 offs 1 sc in
   let offs = write_nullable_u64 offs 2 oc in
@@ -101,6 +105,8 @@ let unserialize tx =
   let offs = nullmask_sz in
   let worker = RingBuf.read_string tx offs in
   let offs = offs + RingBufLib.sersize_of_string worker in
+  let time = RingBuf.read_float tx offs in
+  let offs = offs + RingBufLib.sersize_of_fixsz_typ TFloat in
   let ic, offs = read_nullable_u64 tx 0 offs in
   let sc, offs = read_nullable_u64 tx 1 offs in
   let oc, offs = read_nullable_u64 tx 2 offs in
@@ -113,6 +119,6 @@ let unserialize tx =
   let wo, offs = read_nullable_float tx 5 offs in
   let bi, offs = read_nullable_u64 tx 6 offs in
   let bo, offs = read_nullable_u64 tx 7 offs in
-  let t = worker, ic, sc , oc, gc, cpu, ram, wi, wo, bi, bo in
+  let t = worker, time, ic, sc , oc, gc, cpu, ram, wi, wo, bi, bo in
   assert (offs <= max_sersize_of_tuple t) ;
   t
