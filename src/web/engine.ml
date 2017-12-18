@@ -23,7 +23,7 @@ let all_params : param_desc Jstable.t = Jstable.create ()
 let desc_of_name n =
   Jstable.find all_params (Js.string n) |> Js.Optdef.to_option
 
-(* A parameter is essentially named ref cell *)
+(* A parameter is essentially a named ref cell *)
 type 'a param = { desc : param_desc ; mutable value : 'a }
 
 let make_param name value =

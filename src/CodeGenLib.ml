@@ -1117,4 +1117,4 @@ let () =
   async_exception_hook := (fun exn ->
     !logger.error "Received exception %s\n%s"
       (Printexc.to_string exn)
-      (Printexc.get_backtrace()))
+      (Printexc.get_backtrace ()))
