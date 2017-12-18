@@ -428,7 +428,11 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
            * ordering along the stream and avoid ending up with many threads
            * retrying to write to the same child. *)
           Hashtbl.add out_h fname (rb,
-            RingBufLib.retry_for_ringbuf ~delay_rec:sleep_out once)
+            RingBufLib.retry_for_ringbuf
+              (* TODO: it's enough to do this from time to time to avoid
+               * deadlooping writing in a stopped child: *)
+              ~while_:(fun () -> RingBufLib.is_in_out rb_ref_out_fname fname)
+              ~delay_rec:sleep_out once)
         ) to_open ;
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
     let sersize = sersize_of_tuple tuple in

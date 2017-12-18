@@ -31,12 +31,12 @@ let nullmask_bytes_of_tuple_type tuple_typ =
   bytes_for_bits |>
   round_up_to_rb_word
 
-let retry_for_ringbuf ?delay_rec f =
+let retry_for_ringbuf ?(while_=(fun () -> true)) ?delay_rec f =
   let on = function
-    | NoMoreRoom | Empty -> true
+    | NoMoreRoom | Empty -> while_ ()
     | _ -> false
   in
-  retry ~on ~first_delay:0.001 ~max_delay:0.01 ?delay_rec
+  retry ~on ~first_delay:0.001 ~max_delay:0.1 ?delay_rec
     (fun x -> Lwt.return (f x))
 
 let sersize_of_string s =
@@ -73,3 +73,8 @@ let out_ringbuf_names outbuf_ref_fname =
       lines := File.lines_of outbuf_ref_fname |> Set.of_enum ;
       return (Some !lines)
     ) else return_none
+
+(* Check that fname is listed in outbuf_ref_fname: *)
+let is_in_out outbuf_ref_fname fname =
+  File.lines_of outbuf_ref_fname |>
+  Enum.exists ((=) fname)
