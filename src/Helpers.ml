@@ -16,7 +16,7 @@ let round_to_int f =
   int_of_float (Float.round f)
 
 let retry
-    ~on ?(first_delay=1.0) ?(min_delay=0.000001) ?(max_delay=10.0)
+    ~on ?(first_delay=1.0) ?(min_delay=0.0001) ?(max_delay=10.0)
     ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.1) ?delay_rec f =
   let open Lwt in
   let next_delay = ref first_delay in
@@ -30,7 +30,7 @@ let retry
         let delay = max delay min_delay in
         next_delay := !next_delay *. delay_adjust_nok ;
         cumul_delay := !cumul_delay +. delay ;
-        if !cumul_delay > 5. then (
+        if !cumul_delay > 1. then (
           cumul_delay := 0. ;
           !logger.info "Retryable error: %s, pausing %gs"
             (Printexc.to_string e) delay) ;

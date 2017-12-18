@@ -420,6 +420,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
           !logger.debug "Mapping %S" fname ;
           let rb = RingBuf.load fname in
           let once = output rb serialize_tuple in
+          let retry_count = ref 0 in
           (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
            * case the ringbuf disappear altogether because the child is
            * terminated then we won't deadloop.  Also, if one child is full
@@ -429,9 +430,11 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
            * retrying to write to the same child. *)
           Hashtbl.add out_h fname (rb,
             RingBufLib.retry_for_ringbuf
-              (* TODO: it's enough to do this from time to time to avoid
-               * deadlooping writing in a stopped child: *)
-              ~while_:(fun () -> RingBufLib.is_in_out rb_ref_out_fname fname)
+              ~while_:(fun () ->
+                incr retry_count ;
+                if !retry_count < 5 then true else (
+                  retry_count := 0 ;
+                  RingBufLib.is_in_out rb_ref_out_fname fname))
               ~delay_rec:sleep_out once)
         ) to_open ;
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
