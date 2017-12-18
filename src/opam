@@ -1,6 +1,5 @@
 opam-version: "1.2"
 name: "ramen"
-version: "0.1"
 maintainer: "rixed-opam@happyleptic.org"
 authors: "rixed-opam@happyleptic.org"
 homepage: "https://github.com/PerformanceVision/ramen"
