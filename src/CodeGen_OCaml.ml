@@ -1358,10 +1358,11 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
       \tLwt_main.run (\n\
       \t\tCodeGenLib.aggregate \
       \t\t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
-      \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ \n\
+      \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ %b \n\
       \t\t\ttop_ top_init_ float_of_top_state_\n\
       \t\t\tcommit_when_ %b %b %s should_resubmit_\n\
       \t\t\tglobal_init_ group_init_ field_of_tuple_ %S)\n"
+    (key = [])
     commit_before (flush_how <> Never) when_to_check_for_commit notify_url
   | _ -> assert false
 

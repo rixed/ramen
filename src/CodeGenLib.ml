@@ -660,6 +660,7 @@ let aggregate
         'tuple_in -> 'tuple_in -> (* first, last *)
         bool)
       (key_of_input : 'tuple_in -> 'key)
+      (is_single_key : bool)
       (top : (int * ('global_state -> 'top_state -> 'tuple_in -> unit)) option)
       (top_init : 'global_state -> 'top_state)
       (float_of_top_state : 'top_state -> float)
@@ -716,6 +717,12 @@ let aggregate
     outputer in_tuple out_tuple
   and with_state =
     let open CodeGenLib_State.Persistent in
+    (* Try top make the state as small as possible: *)
+    let unknown_weights =
+      Array.make (if top_n = 0 then 1 else 1024) 0.
+    and groups =
+      Hashtbl.create (if is_single_key then 1 else 701)
+    in
     let init_state =
       { event_count = 0 ;
         last_key = None ;
@@ -728,9 +735,8 @@ let aggregate
         unselected_successive = Uint64.zero ;
         out_count = Uint64.zero ;
         weightmap = WeightMap.empty ;
-        unknown_weights = Array.make 1024 0. ;
         others = None ;
-        groups = Hashtbl.create 701 } in
+        unknown_weights ; groups } in
     let state =
       ref (make conf.persist_dir "aggregate" init_state) in
     fun f ->
