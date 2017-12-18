@@ -177,7 +177,8 @@ struct
     if status <> Running then
       Hashtbl.iter (fun _ n -> n.Node.pid <- None) layer.persist.nodes
 
-  let make persist_dir ?persist ?(timeout=0.) ?(restart=false) name =
+  let make persist_dir version_tag ?persist ?(timeout=0.) ?(restart=false)
+           name =
     assert (String.length name > 0) ;
     let persist =
       let now = Unix.gettimeofday () in
@@ -189,14 +190,21 @@ struct
           last_started = None ; last_stopped = None }) persist in
     let layer = { name ; persist ; importing_threads = [] } in
     if restart then (
-      (* Downgrade the status to compiled since the workers can't be running
+      (* Demote the status to compiled since the workers can't be running
        * anymore. *)
       if persist.status = Running then set_status layer Compiled ;
-      (* Further downgrade to edition if the binaries are not there anymore *)
+      (* Recompute the node signatures if the version_tag changed, so that
+       * we won't reuse former paths: *)
+      Hashtbl.iter (fun name node ->
+        let new_sign = Node.signature version_tag node in
+        if node.Node.signature <> new_sign then (
+          !logger.debug "Node %s is from a previous version" name ;
+          node.signature <- new_sign)) persist.nodes ;
+      (* Further demote to edition if the binaries are not there anymore: *)
       if persist.status = Compiled &&
          Hashtbl.values persist.nodes |> Enum.exists (fun n ->
            not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
-      then set_status layer (Edition "");
+      then set_status layer (Edition "") ;
       (* Also, we cannot be compiling anymore: *)
       if persist.status = Compiling then set_status layer (Edition "") ;
       (* FIXME: also, as a precaution, delete any temporary layer (maybe we
@@ -386,7 +394,7 @@ let parse_operation operation =
     op
 
 let add_layer ?timeout conf name =
-  let layer = Layer.make conf.persist_dir ?timeout name in
+  let layer = Layer.make conf.persist_dir conf.version_tag ?timeout name in
   Hashtbl.add conf.graph.layers name layer ;
   layer
 
@@ -450,13 +458,14 @@ let add_node conf node_name layer_name op_text =
   let operation = parse_operation op_text in
   add_parsed_node conf node_name layer_name op_text operation
 
-let make_graph persist_dir ?persist ?restart () =
+let make_graph persist_dir version_tag ?persist ?restart () =
   let persist =
     Option.default_delayed (fun () -> Hashtbl.create 11) persist in
   { layers = Hashtbl.map (fun name persist ->
-               Layer.make persist_dir ~persist ?restart name) persist }
+               Layer.make persist_dir version_tag
+                          ~persist ?restart name) persist }
 
-let load_graph ?restart do_persist persist_dir =
+let load_graph ?restart do_persist persist_dir version_tag =
   let save_file = save_file_of persist_dir in
   let persist : persisted option =
     if do_persist then
@@ -471,7 +480,7 @@ let load_graph ?restart do_persist persist_dir =
         None
     else None
   in
-  make_graph persist_dir ?persist ?restart ()
+  make_graph persist_dir version_tag ?persist ?restart ()
 
 let save_graph conf =
   if conf.do_persist then
@@ -486,6 +495,7 @@ let save_graph conf =
 
 let reload_graph conf =
   conf.graph <- load_graph ~restart:false conf.do_persist conf.persist_dir
+                           conf.version_tag
 
 let with_rlock conf f =
   RWLock.with_r_lock conf.graph_lock (fun () ->
@@ -521,7 +531,7 @@ let add_link conf src dst =
 let make_conf do_persist ramen_url debug version_tag persist_dir
               default_team max_simult_compilations max_history_archives =
   let alerting_version = "v0" and instrumentation_version = "v1" in
-  { graph = load_graph ~restart:true do_persist persist_dir ;
+  { graph = load_graph ~restart:true do_persist persist_dir version_tag ;
     graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
     alerts = Alerter.get_state do_persist persist_dir alerting_version ;
     default_team ; archived_incidents = [] ;
