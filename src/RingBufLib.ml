@@ -77,4 +77,6 @@ let out_ringbuf_names outbuf_ref_fname =
 (* Check that fname is listed in outbuf_ref_fname: *)
 let is_in_out outbuf_ref_fname fname =
   File.lines_of outbuf_ref_fname |>
-  Enum.exists ((=) fname)
+  (* Force reading until EOF so that the file is closed: *)
+  List.of_enum |>
+  List.exists ((=) fname)
