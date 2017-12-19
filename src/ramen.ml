@@ -74,9 +74,7 @@ let version_tag =
   let i = Arg.info ~doc:"unique tag identifying the version of ramen \
                          (such as git tag name or sha1)"
                    ~env [ "version-tag"; "tag" ] in
-  (* If you leave this "dev" here then you'll have to manually delete all
-   * produced files (in /tmp/ramen) if you change the code. *)
-  Arg.(value (opt string "1.0.1" i))
+  Arg.(value (opt string "1.0.2" i))
 
 let persist_dir =
   let env = Term.env_info "RAMEN_PERSIST_DIR" in
