@@ -6,6 +6,10 @@ type options = { debug : bool ; monitor : bool }
 
 let options debug monitor = { debug ; monitor }
 
+type export_what = ExportAll | ExportSome | ExportNone
+let export_some = function ExportAll | ExportSome -> true | _ -> false
+let export_all = function ExportAll -> true | _ -> false
+
 let rebase dataset_name name = dataset_name ^"/"^ name
 
 let enc = Uri.pct_encode
@@ -73,7 +77,7 @@ let traffic_node ?where dataset_name name dt export =
      GROUP BY capture_begin // $DT_US$
      COMMIT WHEN
        in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)|}^
-     (if export then {|
+     (if export_some export then {|
      EXPORT EVENT STARTING AT start
              WITH DURATION $DT$|} else "") |>
     rep "$DT$" (string_of_int dt) |>
@@ -152,7 +156,7 @@ let anomaly_detection_nodes avg_window from name timeseries export =
         (String.concat ",\n  " (List.rev predictions))
         from in
   let op =
-    if export then
+    if export_all export then
       op ^ Printf.sprintf "\n\
          EXPORT EVENT STARTING AT start\n        \
                  WITH DURATION %f"
@@ -180,7 +184,7 @@ let anomaly_detection_nodes avg_window from name timeseries export =
         condition
         (enc alert_name) (enc title) (enc text) in
     let op =
-      if export then op ^ {|
+      if export_all export then op ^ {|
         EXPORT EVENT STARTING AT start|}
       else op in
     make_node (from ^": "^ name ^" anomalies") op in
@@ -305,7 +309,7 @@ let base_layer dataset_name delete uncompress csv_dir export =
          cs_fields ^{|
          dcerpc_uuid
        WHERE traffic_packets_|}^ src ^" > 0"^
-       (if export then {|
+       (if export_all export then {|
          EXPORT EVENT STARTING AT capture_begin * 1e-6
                   AND STOPPING AT capture_end * 1e-6|}
         else "")
@@ -376,7 +380,7 @@ let layer_of_bcns bcns dataset_name export =
         avg_window
         avg_window in
     let op =
-      if export then op ^ Printf.sprintf {|
+      if export_all export then op ^ Printf.sprintf {|
           EXPORT EVENT STARTING AT start
                  WITH DURATION %g|}
           bcn.avg_window
@@ -405,7 +409,7 @@ let layer_of_bcns bcns dataset_name export =
          avg_per_zones_name
          bcn.percentile nb_items_per_groups in
     let op =
-      if export then
+      if export_some export then
         op ^ Printf.sprintf {|
          EXPORT EVENT STARTING AT max_capture_end * 0.000001
                  WITH DURATION %g|}
@@ -430,7 +434,7 @@ let layer_of_bcns bcns dataset_name export =
             perc_per_obs_window_name
             (enc title) (enc text) in
         let op =
-          if export then op ^ {|
+          if export_all export then op ^ {|
             EXPORT EVENT STARTING AT max_start|}
           else op in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
@@ -453,7 +457,7 @@ let layer_of_bcns bcns dataset_name export =
             perc_per_obs_window_name
             (enc title) (enc text) in
         let op =
-          if export then op ^ {|
+          if export_all export then op ^ {|
             EXPORT EVENT STARTING AT max_start|}
           else op in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
@@ -610,7 +614,7 @@ let layer_of_bcas bcas dataset_name export =
         GROUP BY capture_begin * 0.000001 // $AVG_INT$
         COMMIT WHEN
           in.capture_begin * 0.000001 > out.start + 2 * $AVG$|}^
-        (if export then {|
+        (if export_all export then {|
         EXPORT EVENT STARTING AT start
                WITH DURATION $AVG$|}
         else "") |>
@@ -633,6 +637,7 @@ let layer_of_bcas bcas dataset_name export =
       Printf.sprintf
         {|FROM '%s' SELECT
            min start, max start,
+           srtt_avg, crtt_avg, srt_avg, cdtt_avg, sdtt_avg,
            %gth percentile (
             srtt_avg + crtt_avg + srt_avg + cdtt_avg + sdtt_avg) AS eurt
          COMMIT AND SLIDE 1 WHEN
@@ -641,7 +646,7 @@ let layer_of_bcas bcas dataset_name export =
          avg_per_app bca.percentile
          nb_items_per_groups in
     let op =
-      if export then op ^ Printf.sprintf {|
+      if export_some export then op ^ Printf.sprintf {|
          EXPORT EVENT STARTING AT max_start WITH DURATION %g|}
          bca.obs_window
       else op in
@@ -664,7 +669,7 @@ let layer_of_bcas bcas dataset_name export =
           perc_per_obs_window_name
           (enc bca.name) (enc title) (enc text) in
     let op =
-      if export then op ^ {|
+      if export_all export then op ^ {|
           EXPORT EVENT STARTING AT max_start|}
       else op in
     let name = bca.name ^": EURT too high" in
@@ -734,7 +739,7 @@ let ddos_layer dataset_name export =
      GROUP BY capture_begin // $AVG_WIN_US$
      COMMIT WHEN
        in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN_US$)|}^
-     (if export then {|
+     (if export_some export then {|
      EXPORT EVENT STARTING AT start
                   WITH DURATION $AVG_WIN$|}
      else "") |>
@@ -889,11 +894,15 @@ let with_ddos =
                    [ "with-ddos" ; "with-dos" ; "ddos" ; "dos" ] in
   Arg.(value (flag i))
 
-let export_all =
-  let i = Arg.info ~doc:"Export all possible nodes (rather than just \
-                         the ones that make sense). Useful for debugging."
-                   [ "export-all" ] in
-  Arg.(value (flag i))
+let exports =
+  Arg.(value (vflag ExportNone [
+    ExportNone, Arg.info ~doc:"No node will export data (the default)"
+                         [ "export-none" ; "no-exports" ] ;
+    ExportSome, Arg.info ~doc:"A few important nodes will export data"
+                         [ "export-some" ; "exports" ] ;
+    ExportAll,  Arg.info ~doc:"All node will export data (useful for \
+                               debugging but expensive in CPU and IO)"
+                         [ "export-all" ] ]))
 
 let start_cmd =
   Term.(
@@ -909,7 +918,7 @@ let start_cmd =
       $ with_bcns
       $ with_bcas
       $ with_ddos
-      $export_all),
+      $ exports),
     info "ramen_configurator")
 
 let () =
