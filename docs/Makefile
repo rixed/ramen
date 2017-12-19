@@ -5,7 +5,7 @@ all:
 
 doc: \
 	tutorial_network_monitoring.html tutorial_counting_words.html \
-	manual.html roadmap.html
+	manual.html roadmap.html alerter.html
 
 tutorial_network_monitoring.html: tutorial_group_by.svg sample_chart1.svg
 
