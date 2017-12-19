@@ -952,7 +952,9 @@ let aggregate
               let add_entry () =
                 Hashtbl.add s.groups k aggr ;
                 let wk = tot_weight float_of_top_state aggr in
-                s.weightmap <- WeightMap.modify_def [] wk (List.cons k) s.weightmap ;
+                if top_n <> 0 then
+                  s.weightmap <-
+                    WeightMap.modify_def [] wk (List.cons k) s.weightmap ;
                 if should_resubmit aggr in_tuple then
                   aggr.to_resubmit <- [ in_tuple ]
               in
@@ -1046,28 +1048,29 @@ let aggregate
                   global_state
                   aggr.first_in aggr.last_in ;
               aggr.last_in <- in_tuple ;
-              let new_wk = tot_weight float_of_top_state aggr in
-              (* No need to update the weightmap if the weight haven't changed.
-               * If it seldom happen when using a TOP clause, it does happen
-               * all the time when _not_ using one! *)
-              if prev_wk <> new_wk then (
-                (* Move in the WeightMap. First remove: *)
-                s.weightmap <- WeightMap.modify_opt prev_wk (function
-                  | None -> assert false
-                  | Some [k'] ->
-                    (* If this is not the usual case then we are in trouble. In
-                     * other words you should not have many of your top_n heavy
-                     * hitters with the same weight. *)
-                    assert (k = k') ; None
-                  | Some lst ->
-                    let lst' = List.filter ((<>) k) lst in
-                    assert (lst' <> []) ;
-                    Some lst') s.weightmap ;
-                (* reinsert with new weight: *)
-                s.weightmap <- WeightMap.modify_opt new_wk (function
-                  | None -> Some [k]
-                  | Some lst as prev ->
-                    if List.mem k lst then prev else Some (k::lst)) s.weightmap) ;
+              if top_n <> 0 then (
+                let new_wk = tot_weight float_of_top_state aggr in
+                (* No need to update the weightmap if the weight haven't changed.
+                 * If it seldom happen when using a TOP clause, it does happen
+                 * all the time when _not_ using one! *)
+                if prev_wk <> new_wk then (
+                  (* Move in the WeightMap. First remove: *)
+                  s.weightmap <- WeightMap.modify_opt prev_wk (function
+                    | None -> assert false
+                    | Some [k'] ->
+                      (* If this is not the usual case then we are in trouble. In
+                       * other words you should not have many of your top_n heavy
+                       * hitters with the same weight. *)
+                      assert (k = k') ; None
+                    | Some lst ->
+                      let lst' = List.filter ((<>) k) lst in
+                      assert (lst' <> []) ;
+                      Some lst') s.weightmap ;
+                  (* reinsert with new weight: *)
+                  s.weightmap <- WeightMap.modify_opt new_wk (function
+                    | None -> Some [k]
+                    | Some lst as prev ->
+                      if List.mem k lst then prev else Some (k::lst)) s.weightmap)) ;
               Some aggr
             ) else None (* in-tuple does not pass where_slow *) in
         (match aggr_opt with
