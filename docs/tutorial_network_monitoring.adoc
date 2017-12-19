@@ -22,7 +22,7 @@ The docker image is about 81MiB compressed. Run it with:
 [source,shell]
 ----
 docker run -p 29380:29380 -p 29382:29382 -p 25826:25826/udp -p 2055:2055/udp \
-           rixed/ramen:try --to-stderr
+           rixed/ramen:demo --to-stderr
 ----
 
 +--to-stderr+ is to log on stderr instead of files so that you will see what's
