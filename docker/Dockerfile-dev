@@ -24,7 +24,7 @@ RUN opam init --no-setup && \
     opam switch install ramen --alias-of 4.05.0+flambda
 
 # Rebuild a new image from here
-RUN echo "version 1"
+RUN echo "version dev-1"
 
 # Install ramen
 RUN opam update && \

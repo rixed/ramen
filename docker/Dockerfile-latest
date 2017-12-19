@@ -24,9 +24,6 @@ RUN apt-get --yes update && \
 RUN opam init --no-setup && \
     opam switch install ramen --alias-of 4.05.0+flambda
 
-# Rebuild a new image from here
-RUN echo "version 1"
-
 # Install ramen
 RUN opam update && \
     opam install depext && \
@@ -35,7 +32,7 @@ RUN opam update && \
       plplot sqlite3 && \
     opam repo add --priority=1 ocalme \
       git://github.com/rixed/ocalme-opam-repository.git && \
-    opam install ramen
+    opam install ramen.1.0.2
 
 # Environment
 ENV RAMEN_PERSIST_DIR=/ramen \
