@@ -170,6 +170,32 @@ struct
   type set_members = string list [@@ppp PPP_JSON]
 end
 
+module StaticConf =
+struct
+  (* Schedule: Who carries the pager when. The alerter needs to be provided
+   * with just enough insight to be able to route the alerts that are coming
+   * now and in the near future. Data on the past is unused. Ideally those
+   * are provided by another tool, although an incorporated constraint solver
+   * is supposed to do this at some point in the future.
+   *
+   * Notice that there is no team: if someone is in a team and is found to be
+   * oncall at some time then he will be sent the alerts.  If you belong to
+   * several teams but want to be oncall for only one then merely create
+   * several identities. *)
+  type schedule =
+    { rank : int ;
+      from : float ;
+      oncaller : string } [@@ppp PPP_JSON]
+
+  (* The part of the configuration that's static for the purpose of routing
+   * alerts, and that can be easily exported/imported to backup/restore the
+   * configuration. *)
+  type t =
+    { mutable oncallers : OnCaller.t list ;
+      mutable teams : Team.t list ;
+      schedule : schedule list } [@@ppp PPP_JSON]
+end
+
 (* Query returning ongoing incidents *)
 
 module GetOngoing =

@@ -30,7 +30,7 @@ let syslog =
  * disruption in case of a crash: *)
 
 let is_inhibited state name team now =
-  match List.find (fun t -> t.Team.name = team) state.CA.teams with
+  match List.find (fun t -> t.Team.name = team) state.CA.static.teams with
   | exception Not_found -> false
   | team ->
     let open Inhibition in
@@ -159,7 +159,7 @@ struct
 
   let get_contacts state oncaller_name =
     match List.find (fun c -> c.OnCaller.name = oncaller_name
-            ) state.CA.oncallers with
+            ) state.CA.static.oncallers with
     | exception Not_found -> [||]
     | oncaller -> oncaller.OnCaller.contacts
 
@@ -170,22 +170,23 @@ struct
     { name ; contacts }
 
   let who_is_oncall state team rank time =
-    match List.find (fun t -> t.Team.name = team) state.CA.teams with
+    match List.find (fun t -> t.Team.name = team) state.CA.static.teams with
     | exception Not_found ->
       default_oncaller
     | team ->
       (match
         List.fold_left (fun best_s s ->
-            if s.CA.rank <> rank || s.CA.from > time ||
-               not (List.exists ((=) s.CA.oncaller) team.members)
+            if s.StaticConf.rank <> rank || s.StaticConf.from > time ||
+               not (List.exists ((=) s.StaticConf.oncaller) team.members)
             then best_s else
             match best_s with
             | None -> Some s
             | Some best ->
-              if s.CA.from >= best.CA.from then Some s else best_s
-          ) None state.CA.schedule with
+              if s.StaticConf.from >= best.StaticConf.from then
+                Some s else best_s
+          ) None state.CA.static.schedule with
       | None -> default_oncaller
-      | Some s -> get state s.CA.oncaller)
+      | Some s -> get state s.StaticConf.oncaller)
 
   let assign_unassigned state =
     (* All oncallers not member of any team will be added to the "slackers"
@@ -196,32 +197,32 @@ struct
           if t.Team.name = slackers then s else
           List.fold_left (fun s o ->
             Set.add o s) s t.Team.members
-        ) Set.empty state.CA.teams in
+        ) Set.empty state.CA.static.teams in
     let unassigned =
       List.fold_left (fun s o ->
           if Set.mem o.name all_assigned then s
           else Set.add o.name s
-        ) Set.empty state.CA.oncallers in
+        ) Set.empty state.CA.static.oncallers in
     if Set.is_empty unassigned then (
       (* Delete the team of Slackers if it exists *)
       let changed, teams =
         List.fold_left (fun (changed, teams) t ->
             if t.Team.name = slackers then true, teams
             else changed, t::teams
-          ) (false, []) state.CA.teams in
+          ) (false, []) state.CA.static.teams in
       if changed then (
         !logger.info "No more slackers!" ;
-        state.CA.teams <- teams)
+        state.CA.static.teams <- teams)
     ) else (
       !logger.info "Oncallers %a are slackers"
         (Set.print String.print) unassigned ;
       match List.find (fun t -> t.Team.name = slackers)
-                      state.CA.teams with
+                      state.CA.static.teams with
       | exception Not_found ->
-        state.CA.teams <-
+        state.CA.static.teams <-
           Team.{ name = slackers ; members = Set.to_list unassigned ;
                  escalations = [] ; inhibitions = [] } ::
-            state.CA.teams
+            state.CA.static.teams
       | t ->
         t.members <- Set.to_list unassigned
     )
@@ -350,7 +351,7 @@ struct
      * importance. In that case we take the configuration for the next
      * most important alerts: *)
     match List.find (fun t -> t.Team.name = alert.Alert.team
-            ) state.CA.teams with
+            ) state.CA.static.teams with
     | exception Not_found ->
       default_escalation now
     | team ->
@@ -524,7 +525,7 @@ let with_wlock conf f =
 module Api =
 struct
   let find_team state name =
-    match List.find (fun t -> t.Team.name = name) state.CA.teams with
+    match List.find (fun t -> t.Team.name = name) state.CA.static.teams with
     | exception Not_found ->
       bad_request ("unknown team "^ name)
     | t -> return t
@@ -549,15 +550,15 @@ struct
   let get_teams conf =
     let%lwt body =
       with_rlock conf (fun () ->
-        return (PPP.to_string Team.get_resp_ppp conf.C.alerts.teams)) in
+        return (PPP.to_string Team.get_resp_ppp conf.C.alerts.static.teams)) in
     respond_ok ~body ()
 
   let new_team conf _headers name =
     with_wlock conf (fun () ->
-      let teams = conf.C.alerts.teams in
+      let teams = conf.C.alerts.static.teams in
       match List.find (fun t -> t.Team.name = name) teams with
       | exception Not_found ->
-        conf.C.alerts.teams <-
+        conf.C.alerts.static.teams <-
           Team.{ name ; members = [] ; escalations = [] ;
                  inhibitions = [] } :: teams ;
         return_unit
@@ -567,7 +568,7 @@ struct
 
   let del_team conf _headers name =
     with_wlock conf (fun () ->
-      let teams = conf.C.alerts.teams in
+      let teams = conf.C.alerts.static.teams in
       match List.find (fun t -> t.Team.name = name) teams with
       | exception Not_found ->
         bad_request ("Team "^ name ^" does not exist")
@@ -576,7 +577,7 @@ struct
           bad_request ("Team "^ name ^" is not empty")
         else (
           !logger.info "Delete team %s" name ;
-          conf.C.alerts.teams <-
+          conf.C.alerts.static.teams <-
             List.filter (fun t -> t.Team.name <> name) teams ;
           return_unit)) >>=
     respond_ok
@@ -681,6 +682,40 @@ struct
       return_unit) >>=
     respond_ok
 
+  let export_static_conf conf =
+    let%lwt body =
+      with_rlock conf (fun () ->
+        return (PPP.to_string StaticConf.t_ppp conf.C.alerts.static)) in
+    respond_ok ~body ()
+
+  let upload_static_conf conf headers body =
+    let content_type = get_content_type headers in
+    let%lwt data = match
+      let open CodecMultipartFormData in
+      parse_multipart_args content_type body |>
+      List.find (fun (name, _) -> name = "config.json") with
+      | exception Not_found -> bad_request "Cannot find config.json"
+      | exception e -> bad_request (Printexc.to_string e)
+      | _, { value ; content_type ; _ }  ->
+        if content_type <> "application/json" then
+          bad_request ("Bad content type for config.json file: expected \
+                        application/json but got "^ content_type)
+        else return value in
+    let%lwt static =
+      of_json_body "Static Configuration" StaticConf.t_ppp data in
+    with_wlock conf (fun () ->
+      conf.C.alerts.static <- static ;
+      return_unit)
+    (* Let HttpSrv answer the query *)
+
+  let put_static_conf conf headers body =
+    let%lwt static =
+      of_json headers "Static Configuration" StaticConf.t_ppp body in
+    with_wlock conf (fun () ->
+      conf.C.alerts.static <- static ;
+      return_unit) >>=
+    respond_ok
+
   (* Inhibitions *)
 
   let user = "anonymous user"
@@ -745,8 +780,8 @@ struct
         else
           list_replace (c :: prev) rest in
     with_wlock conf (fun () ->
-      conf.C.alerts.oncallers <-
-        list_replace [] conf.C.alerts.oncallers ;
+      conf.C.alerts.static.oncallers <-
+        list_replace [] conf.C.alerts.static.oncallers ;
       return_unit) >>=
     respond_ok
 

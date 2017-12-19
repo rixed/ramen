@@ -289,7 +289,8 @@ let put_layer conf headers body =
           Lwt_list.iter_s (fun p ->
               let%lwt parent_layer, parent_name =
                 layer_node_of_user_string conf ~default_layer:layer_name p in
-              let%lwt _layer, src = node_of_name conf parent_layer parent_name in
+              let%lwt _layer, src =
+                node_of_name conf parent_layer parent_name in
               wrap (fun () -> C.add_link conf src node)
             )
         ) nodes) >>=
@@ -302,6 +303,12 @@ let put_layer conf headers body =
 
 let serve_file_with_replacements conf _headers path file =
   serve_file path file (replace_placeholders conf)
+
+let get_index www_dir conf headers =
+  if www_dir = "" then
+    serve_string conf headers RamenGui.without_link
+  else
+    serve_string conf headers RamenGui.with_links
 
 (*
     Whole graph operations: compile/run/stop
@@ -889,12 +896,21 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
       RamenAlerter.Api.edit_oncaller conf headers name body
     | `POST, ["members"; name] ->
       RamenAlerter.Api.edit_members conf headers name body
+    | `GET, ["alerting"; "configuration"] ->
+      RamenAlerter.Api.export_static_conf conf
+    | `PUT, ["alerting"; "configuration"] ->
+      RamenAlerter.Api.put_static_conf conf headers body
+      (* Same as above, but for multipart form-data: *)
+    | `POST, ["alerting"; "configuration"] ->
+      let%lwt () =
+        RamenAlerter.Api.upload_static_conf conf headers body in
+      switch_accepted headers [
+        Consts.html_content_type, (fun () ->
+          get_index www_dir conf headers) ;
+        Consts.json_content_type, (fun () -> respond_ok ()) ]
     (* Web UI *)
     | `GET, ([]|["index.html"]) ->
-      if www_dir = "" then
-        serve_string conf headers RamenGui.without_link
-      else
-        serve_string conf headers RamenGui.with_links
+      get_index www_dir conf headers
     | `GET, [ "style.css" | "ramen_script.js" as file ] ->
       serve_file_with_replacements conf headers www_dir file
     (* Errors *)

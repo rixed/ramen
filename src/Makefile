@@ -80,7 +80,7 @@ SOURCES = $(filter-out RamenGui.ml,$(SOURCES_))
 
 PACKAGES = \
 	ppp lwt.ppx batteries cmdliner stdint parsercombinator syslog sqlite3 \
-	cohttp-lwt-unix num inotify.lwt binocle unix cryptohash owl
+	cohttp-lwt-unix num inotify.lwt binocle unix cryptohash owl net_codecs
 
 INSTALLED_BIN = ramen ramen_configurator
 INSTALLED_LIB = \
@@ -204,8 +204,8 @@ RamenGui.ml: web/ramen_script.js web/ramen_script.min.js web/style.css Makefile
 	@echo 'let with_links = {lookmadelimiter|<html>' >> $@
 	@echo '<head><meta charset="UTF-8">' >> $@
 	@echo '<title>Ramen</title>' >> $@
-	@echo '<link href="style.css" rel="stylesheet" media="all"/>' >> $@
-	@echo '<script src="ramen_script.js"></script>' >> $@
+	@echo '<link href="/style.css" rel="stylesheet" media="all"/>' >> $@
+	@echo '<script src="/ramen_script.js"></script>' >> $@
 	@echo '</head>' >> $@
 	@echo '<body><div id="application"></div></body>' >> $@
 	@echo '</html>|lookmadelimiter}' >> $@

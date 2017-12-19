@@ -165,17 +165,20 @@ let switch_accepted headers al =
   | exception Not_found -> cant_accept accept
   | _, k -> k ()
 
-(* Helper to deserialize an incoming json *)
+(* Helpers to deserialize an incoming json *)
+let of_json_body what ppp body =
+  try PPP.of_string_exc ppp body |> return
+  with e ->
+    !logger.info "%s: Cannot parse received body: %S, Exception %s"
+      what body (Printexc.to_string e) ;
+    bad_request "Can not parse body"
+
 let of_json headers what ppp body =
   let ct = get_content_type headers |> String.lowercase in
   if ct <> Consts.json_content_type then
     bad_request "Bad content type"
-  else (
-    try PPP.of_string_exc ppp body |> return
-    with e ->
-      !logger.info "%s: Cannot parse received body: %S, Exception %s"
-        what body (Printexc.to_string e) ;
-      bad_request "Can not parse body")
+  else
+    of_json_body what ppp body
 
 (* Back-end version of JsHelpers.string_of_timestamp: *)
 let string_of_timestamp t =

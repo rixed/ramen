@@ -283,34 +283,22 @@ type persisted = (string, Layer.persist) Hashtbl.t
 
 module Alerter =
 struct
-  (* Notice there is no team: if someone is in a team and is found to be
-   * oncall at some time then he will be sent the alerts.
-   * If your belon to several team but want to be oncall for only one then
-   * merely create several identities. *)
-  type schedule = {
-    rank : int ;
-    from : float ;
-    oncaller : string }
-
   (* The part of the internal state that we persist on disk: *)
-  type t = {
-    (* Ongoing incidents stays there until they are manually closed (with
-     * comment, reason, etc...) *)
-    ongoing_incidents : (int, Incident.t) Hashtbl.t ;
+  type t =
+    { (* Ongoing incidents stays there until they are manually closed (with
+        * comment, reason, etc...) *)
+      ongoing_incidents : (int, Incident.t) Hashtbl.t ;
 
-    (* Used to give a unique id to any escalation so that we can ack them. *)
-    mutable next_alert_id : int ;
+      (* Used to assign an id to any escalation so that we can ack them. *)
+      mutable next_alert_id : int ;
 
-    (* Same for incidents: *)
-    mutable next_incident_id : int ;
+      (* Same for incidents: *)
+      mutable next_incident_id : int ;
 
-    (* And inhibitions: *)
-    mutable next_inhibition_id : int ;
+      (* And inhibitions: *)
+      mutable next_inhibition_id : int ;
 
-    (* Teams *)
-    mutable oncallers : OnCaller.t list ;
-    mutable teams : Team.t list ;
-    schedule : schedule list }
+      mutable static : StaticConf.t }
 
   let save_file persist_dir alerting_version =
     persist_dir ^"/alerting/"^ alerting_version
@@ -329,18 +317,20 @@ struct
         next_alert_id = 0 ;
         next_incident_id = 0 ;
         next_inhibition_id = 0 ;
-        oncallers = [ OnCaller.{ name = "John Doe" ;
-                                 contacts = [| Contact.Console |] } ] ;
-        teams = [
-          Team.{ name = "firefighters" ;
-                 members = [ "John Doe" ] ;
-                 escalations = [
-                   { importance = 0 ;
-                     steps = Escalation.[
-                       { victims = [| 0 |] ; timeout = 350. } ;
-                       { victims = [| 0; 1 |] ; timeout = 350. } ] } ] ;
-                 inhibitions = [] } ] ;
-        schedule = [ { rank = 0 ; from = 0. ; oncaller = "John Doe" } ] }
+        static =
+          { oncallers = [ OnCaller.{ name = "John Doe" ;
+                                     contacts = [| Contact.Console |] } ] ;
+            teams = [
+              Team.{ name = "firefighters" ;
+                     members = [ "John Doe" ] ;
+                     escalations = [
+                       { importance = 0 ;
+                         steps = Escalation.[
+                           { victims = [| 0 |] ; timeout = 350. } ;
+                           { victims = [| 0; 1 |] ; timeout = 350. } ] } ] ;
+                     inhibitions = [] } ] ;
+            schedule =
+              [ { rank = 0 ; from = 0. ; oncaller = "John Doe" } ] } }
     in
     if do_persist then (
       let fname = save_file persist_dir alerting_version in

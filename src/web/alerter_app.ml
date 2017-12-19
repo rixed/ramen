@@ -1046,6 +1046,21 @@ let page_teams =
         let search_str = Editable.of_string search_str in
         group
           [ div
+              [ clss "import-export" ]
+              [ p []
+                  [ a
+                      [ href "/alerting/configuration" ]
+                      [ text "download the configuration" ] ;
+                    text "/" ;
+                    elmt "form"
+                      [ attr "action" "/alerting/configuration" ;
+                        attr "method" "POST" ;
+                        attr "enctype" "multipart/form-data" ]
+                      [ input [ attr "type" "file" ;
+                                attr "name" "config.json" ] ;
+                        button [ attr "type" "submit" ]
+                               [ text "Upload" ] ] ] ] ;
+            div
               [ clss "searchbox" ]
               [ Gui.input_text ~label:"🔍" ~width:8 ~placeholder:"search"
                                ~param:team_search
