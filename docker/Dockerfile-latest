@@ -1,3 +1,4 @@
+# We cannot start from rixed/ramen:dev since it would prevent squashing
 FROM debian:stable-slim
 
 # Do not install recommends:
@@ -10,9 +11,7 @@ RUN apt-get --yes update && \
       apt-get --yes install \
         aspcud \
         ca-certificates \
-        collectd \
         coreutils \
-        fprobe \
         git \
         liblz4-tool \
         liboping0 \
@@ -26,7 +25,7 @@ RUN opam init --no-setup && \
     opam switch install ramen --alias-of 4.05.0+flambda
 
 # Rebuild a new image from here
-RUN echo "version 11"
+RUN echo "version 1"
 
 # Install ramen
 RUN opam update && \
@@ -49,7 +48,6 @@ ENV HOME=/root
 # cohttp/conduit requires /etc/protocols and /etc/services,
 # which debian-slim does not provide:
 COPY protocols services /etc/
-COPY collectd.conf /etc/collectd/
 COPY start /
 
 # Command to be run:
@@ -57,7 +55,7 @@ WORKDIR /ramen
 ENTRYPOINT ["/start"]
 
 # Default arguments if not provided on `docker run` command line:
-CMD ["--daemon"]
+CMD ["--daemon --no-demo"]
 
 # TODO: where to store stuff
 # CMD ["--directories etc"]
@@ -104,8 +102,6 @@ RUN touch /img_creation && \
     find /root /usr /var /lib /bin /sbin -type f | xargs touch -m -r /img_creation && \
     sleep 1.1 && \
     find /root/.opam/ramen -type f -name META -exec sed -i -e /exists_if/d {} \; && \
-    fprobe -i eth0 -fip localhost:2055 && \
-    (timeout 10s collectd -f -C /etc/collectd/collectd.conf || true) && \
     ramen_configurator --help && \
     ramen start -d --daemon && sleep 2 && \
     ramen add --op 'SELECT MIN time, fit_multi(3, value, time) AS smth1 FROM demo/collectd' \

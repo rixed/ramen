@@ -1,0 +1,72 @@
+FROM debian:stable-slim
+
+# Do not install recommends:
+RUN echo 'APT::Install-Recommends "0";' > \
+      /etc/apt/apt.conf.d/no_recommends
+
+# Install a few things
+RUN apt-get --yes update && \
+    DEBIAN_FRONTEND=noninteractive \
+      apt-get --yes install \
+        aspcud \
+        ca-certificates \
+        coreutils \
+        git \
+        liblz4-tool \
+        liboping0 \
+        m4 \
+        ocaml-nox \
+        opam \
+        rsync
+
+# Configure opam and get as fast a compiler we can get
+RUN opam init --no-setup && \
+    opam switch install ramen --alias-of 4.05.0+flambda
+
+# Rebuild a new image from here
+RUN echo "version 1"
+
+# Install ramen
+RUN opam update && \
+    opam install depext && \
+    opam depext --noninteractive \
+      conf-gsl conf-openblas conf-pkg-config \
+      plplot sqlite3 && \
+    opam repo add --priority=1 ocalme \
+      git://github.com/rixed/ocalme-opam-repository.git && \
+    opam install ramen
+
+# Environment
+ENV RAMEN_PERSIST_DIR=/ramen \
+    CAML_LD_LIBRARY_PATH=/root/.opam/ramen/lib/stublibs \
+    PATH=/root/.opam/ramen/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# For owl not to bring down ramen workers:
+ENV HOME=/root
+
+# cohttp/conduit requires /etc/protocols and /etc/services,
+# which debian-slim does not provide:
+COPY protocols services /etc/
+COPY start /
+
+# Command to be run:
+WORKDIR /ramen
+ENTRYPOINT ["/start"]
+
+# Default arguments if not provided on `docker run` command line:
+CMD ["--daemon"]
+
+# TODO: where to store stuff
+# CMD ["--directories etc"]
+
+# TODO: better healthcheck
+HEALTHCHECK CMD wget -O /dev/null http://localhost:29380/graph
+
+# HTTP API:
+EXPOSE 29380/TCP
+# Collectd:
+EXPOSE 25826/UDP
+# Fprobe:
+EXPOSE 2055/UDP
+
+LABEL maintainer="rixed-docker@happyleptic.org"

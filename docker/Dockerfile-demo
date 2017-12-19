@@ -1,0 +1,119 @@
+# We cannot start from rixed/ramen:dev since it would prevent squashing
+FROM debian:stable-slim
+
+# Do not install recommends:
+RUN echo 'APT::Install-Recommends "0";' > \
+      /etc/apt/apt.conf.d/no_recommends
+
+# Install a few things
+RUN apt-get --yes update && \
+    DEBIAN_FRONTEND=noninteractive \
+      apt-get --yes install \
+        aspcud \
+        ca-certificates \
+        collectd \
+        coreutils \
+        fprobe \
+        git \
+        liblz4-tool \
+        liboping0 \
+        m4 \
+        ocaml-nox \
+        opam \
+        rsync
+
+# Configure opam and get as fast a compiler we can get
+RUN opam init --no-setup && \
+    opam switch install ramen --alias-of 4.05.0+flambda
+
+# Rebuild a new image from here
+RUN echo "version 1"
+
+# Install ramen
+RUN opam update && \
+    opam install depext && \
+    opam depext --noninteractive \
+      conf-gsl conf-openblas conf-pkg-config \
+      plplot sqlite3 && \
+    opam repo add --priority=1 ocalme \
+      git://github.com/rixed/ocalme-opam-repository.git && \
+    opam install ramen
+
+# Environment
+ENV RAMEN_PERSIST_DIR=/ramen \
+    CAML_LD_LIBRARY_PATH=/root/.opam/ramen/lib/stublibs \
+    PATH=/root/.opam/ramen/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# For owl not to bring down ramen workers:
+ENV HOME=/root
+
+# cohttp/conduit requires /etc/protocols and /etc/services,
+# which debian-slim does not provide:
+COPY protocols services /etc/
+COPY start /
+
+# Command to be run:
+WORKDIR /ramen
+ENTRYPOINT ["/start"]
+
+# Default arguments if not provided on `docker run` command line:
+CMD ["--daemon"]
+
+# TODO: where to store stuff
+# CMD ["--directories etc"]
+
+# TODO: better healthcheck
+HEALTHCHECK CMD wget -O /dev/null http://localhost:29380/graph
+
+# HTTP API:
+EXPOSE 29380/TCP
+# Collectd:
+EXPOSE 25826/UDP
+# Fprobe:
+EXPOSE 2055/UDP
+
+LABEL maintainer="rixed-docker@happyleptic.org"
+
+# Minify the image. See Dockerfile-minified for details.
+
+COPY test.csv /tmp
+
+# Make the following massive touch a bit quicker by deleting content:
+RUN rm -rf /root/.opam/repo /root/.opam/system /home /boot /opt /media /mnt /srv
+
+RUN touch /img_creation && \
+    find /root /usr /var /lib /bin /sbin -type f | xargs touch -m -r /img_creation && \
+    sleep 1.1 && \
+    find /root/.opam/ramen -type f -name META -exec sed -i -e /exists_if/d {} \; && \
+    fprobe -i eth0 -fip localhost:2055 && \
+    (timeout 10s collectd -f -C /etc/collectd/collectd.conf || true) && \
+    ramen_configurator --help && \
+    ramen start -d --daemon && sleep 2 && \
+    ramen add --op 'SELECT MIN time, fit_multi(3, value, time) AS smth1 FROM demo/collectd' \
+              --op 'READ AND DELETE FILES "/tmp/test.csv" PREPROCESS WITH "lz4 -d -c" (smth1 string, smth2 u128)' \
+              --op 'SELECT * FROM demo/collectd WHERE COALESCE(plugin = "memory", false) EXPORT EVENT STARTING AT time' \
+              --op 'SELECT time, AVG (IF type_instance LIKE "slab%" THEN value ELSE 0) AS slab FROM demo/collectd GROUP BY host, time // 30 COMMIT AND FLUSH WHEN in.time > previous.time + 30 EXPORT EVENT STARTING AT time WITH DURATION 30' \
+              --op 'SELECT 5-ma (packets > 10) >= 4 AS foo FROM demo/netflow' \
+              test_layer && \
+    ramen compile && \
+    ramen run && \
+    sleep 5 && \
+    ramen shutdown && \
+    sleep 1 && \
+    rm -rf /ramen/* /tmp/* && \
+    /bin/dash -c 'echo touching dash' && \
+    hostname && \
+    touch -a /start && \
+    (find /root /usr /var /lib /bin /sbin -type f -not -anewer /img_creation -delete || true) && \
+    (find /root /usr /var /lib /bin /sbin -xtype l -delete || true) && \
+    (find /root /usr /var /lib /bin /sbin -type d -empty -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin /sbin -xtype l -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin /sbin -type d -empty -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin /sbin -xtype l -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin /sbin -type d -empty -delete 2>/dev/null || true) && \
+    (find /root /usr /var /lib /bin -xtype l -delete || true) && \
+    (find /root /usr /var /lib /bin -type d -empty -delete || true) && \
+    (find /root /usr /var /lib /bin -xtype l -delete || true) && \
+    (find /root /usr /var /lib /bin -type d -empty -delete || true) && \
+    (find /root /usr /var /lib /bin -xtype l -delete || true) && \
+    (find /root /usr /var /lib /bin -type d -empty -delete || true)
