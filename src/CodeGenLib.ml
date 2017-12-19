@@ -440,7 +440,13 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
     let sersize = sersize_of_tuple tuple in
     IntCounter.add stats_rb_write_bytes sersize ;
-    List.map (fun out -> out (sersize, tuple)) !out_l |>
+    List.map (fun out ->
+        try%lwt out (sersize, tuple)
+        with RingBufLib.NoMoreRoom ->
+          (* It is OK, just skip it. Next tuple we will reread fnames
+           * if it has changed. *)
+          return_unit
+      ) !out_l |>
     join
 
 type worker_conf =
