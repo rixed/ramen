@@ -141,7 +141,7 @@ struct
 end
 
 let exec_of_node persist_dir node =
-  persist_dir ^"/workers/bin/"^ node.Node.signature
+  persist_dir ^"/workers/bin/worker_"^ node.Node.signature
 
 let tmp_input_of_node persist_dir node =
   persist_dir ^"/workers/inputs/"^ Node.fq_name node ^"/"
