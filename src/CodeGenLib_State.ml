@@ -20,7 +20,7 @@ let do_save fd v =
   let open Unix in
   lseek fd 0 SEEK_SET |> ignore ;
   (* Leak memory for some reason / and do not write anything to the file
-   * is we Marshal.to_channel directly. :-/ *)
+   * if we Marshal.to_channel directly. :-/ *)
   let bytes = Marshal.to_bytes v [] in
   let len = Bytes.length bytes in
   write fd bytes 0 len |> ignore

@@ -30,7 +30,7 @@ let retry
         let delay = max delay min_delay in
         next_delay := !next_delay *. delay_adjust_nok ;
         cumul_delay := !cumul_delay +. delay ;
-        if !cumul_delay > 1. then (
+        if !cumul_delay > 30. then (
           cumul_delay := 0. ;
           !logger.info "Retryable error: %s, pausing %gs"
             (Printexc.to_string e) delay) ;
