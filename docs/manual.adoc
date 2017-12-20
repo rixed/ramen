@@ -5,7 +5,7 @@ ifdef::env-github[]
 :important-caption: :heavy_exclamation_mark:
 :caution-caption: :fire:
 :warning-caption: :warning:
-:imagesdir: https://github.com/PerformanceVision/ramen/raw/master/docs/
+:imagesdir: https://github.com/rixed/ramen/raw/master/docs/
 endif::[]
 
 = Ramen Manual

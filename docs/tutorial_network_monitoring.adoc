@@ -763,5 +763,5 @@ and you have it!
 
 
 You should now be able to survive given only the
-https://github.com/PerformanceVision/ramen/blob/master/docs/manual.adoc[reference
+https://github.com/rixed/ramen/blob/master/docs/manual.adoc[reference
 manual].

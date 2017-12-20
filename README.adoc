@@ -2,8 +2,7 @@
 
 Non-distributed, high throughput stream processor tailored for network monitoring.
 
-- https://github.com/PerformanceVision/ramen/blob/master/docs/tutorial_network_monitoring.adoc[tutorial 1]
-- https://github.com/PerformanceVision/ramen/blob/master/docs/tutorial_counting_words.adoc[tutorial 2]
-- https://github.com/PerformanceVision/ramen/blob/master/docs/manual.adoc[manual]
-- https://github.com/PerformanceVision/ramen/blob/master/docs/dev.adoc[dev environment]
-- https://github.com/PerformanceVision/ramen/blob/master/docs/roadmap.adoc[roadmap]
+- https://github.com/rixed/ramen/blob/master/docs/tutorial_network_monitoring.adoc[tutorial 1]
+- https://github.com/rixed/ramen/blob/master/docs/tutorial_counting_words.adoc[tutorial 2]
+- https://github.com/rixed/ramen/blob/master/docs/manual.adoc[manual]
+- https://github.com/rixed/ramen/blob/master/docs/dev.adoc[dev environment]

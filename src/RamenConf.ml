@@ -354,7 +354,7 @@ type conf =
     alerts : Alerter.t ;
     (* TODO: use the RWLock and forget about that dirty flag: *)
     alerts_lock : RWLock.t ; (* Protects the above alerts *)
-    default_team : string ; (* TODO: https://github.com/PerformanceVision/ramen/issues/177 *)
+    default_team : string ; (* TODO: https://github.com/rixed/ramen/issues/177 *)
     (* TODO: a file *)
     mutable archived_incidents : Incident.t list ;
 
