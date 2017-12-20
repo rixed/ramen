@@ -1049,7 +1049,8 @@ let page_teams =
               [ clss "import-export" ]
               [ p []
                   [ a
-                      [ href "/alerting/configuration" ]
+                      [ href "/alerting/configuration" ;
+                        attr "target" "_blank" ]
                       [ text "download the configuration" ] ;
                     text "/" ;
                     elmt "form"
