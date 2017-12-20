@@ -4,6 +4,7 @@ open Engine
 open WebHelpers
 open JsHelpers
 open RamenHtml
+open Style
 
 (* Printers *)
 
@@ -686,13 +687,6 @@ let nav_bar =
         | AllTeams -> tab "Teams" PageTeam
         | SingleTeam t -> tab ("Team "^ t) PageTeam) ;
       tab "Event Processor" PageEventProcessor ]
-
-let icon_class ?help sel =
-  let attrs =
-    [ clss ("icon actionable"^ if sel then " selected" else "") ] in
-  match help with
-  | None -> attrs
-  | Some h -> attr "title" h :: attrs
 
 let header_panel =
   group

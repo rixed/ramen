@@ -5,6 +5,7 @@ open RamenHtml
 open WebHelpers
 open JsHelpers
 open AlerterSharedTypesJS_noPPP
+open Style
 
 (* Conversions from to Js *)
 
@@ -70,6 +71,10 @@ let team_of_js js =
     of_field js "inhibitions" (list_of_js inhibition_of_js) in
   Editable.Team.of_team Team.{
     name ; members ; escalations ; inhibitions }
+
+let teams_get_of_js js =
+  of_field js "teams" (list_of_js team_of_js),
+  of_field js "default_team" Js.to_string
 
 let contact_of_js =
   let open Contact in
@@ -206,7 +211,7 @@ let js_of_contact = function
 
 (* Alerter state *)
 
-let teams = make_param "teams" []
+let teams = make_param "teams" ([], "") (* teams * default_team *)
 let team_search = make_param "team search" ""
 
 let find_team teams name =
@@ -357,8 +362,8 @@ let reload_oncaller name =
 
 let reload_teams () =
   http_get "/teams" (fun resp ->
-    let roster = list_of_js team_of_js resp in
-    set teams roster ;
+    teams_get_of_js resp |>
+    set teams ;
     resync ())
 
 let reload_history () =
@@ -383,6 +388,12 @@ let save_members name members =
   let content = List.map fst members |> js_of_list Js.string in
   let what = "Saved members of team "^ name in
   http_post path content ~what reload_teams
+
+let save_default_team name =
+  let path = "/set_default_team/"^ enc name in
+  let what = "Set team "^ name ^" the default" in
+  http_get path ~what (fun _ ->
+    reload_teams ())
 
 (*
  * DOM
@@ -578,7 +589,7 @@ let stfu =
   with_param sel_team (function
     | AllTeams -> group []
     | SingleTeam team ->
-      with_param teams (fun teams ->
+      with_param teams (fun (teams, _) ->
         match find_team teams team with
         | exception Not_found -> (* better not ask *) group []
         | team ->
@@ -840,7 +851,7 @@ let team_member team name =
         List.filter (fun t ->
             t.Team.name <> team.Team.name &&
             List.exists (fun (m, _) -> m = name) t.members
-          ) teams.value in
+          ) (fst teams.value) in
       let nodes, anything_changed =
         list_fold_lefti (fun i (lst, changed) c ->
             let node, c = contact_edit c oncaller_p i in
@@ -890,7 +901,7 @@ let new_team_member team =
   let open Editable in
   (* First, add oncaller from another team: *)
   let other_oncallers =
-    fold_oncaller teams.value [] (fun prev c ->
+    fold_oncaller (fst teams.value) [] (fun prev c ->
       if List.exists (fun (m, _) -> m = c) team.Team.members
       then prev else (c, c) :: prev) |>
     List.sort_uniq compare in
@@ -916,24 +927,35 @@ let new_team_member team =
       button ~action:save_team_members
         [ clss "actionable icon" ] [ text "Add" ] ]
 
-let page_team search_str tsel team =
+let page_team search_str tsel team is_default =
+  let is_sel = tsel = SingleTeam team.Editable.Team.name in
   div
     [ clss "team-info" ]
-    [ (let is_sel = tsel = SingleTeam team.Editable.Team.name in
-       let action =
-        if is_sel then
-          (fun _ -> reset_new_inhibit () ;
-                    set sel_team AllTeams)
-        else
-          (fun _ -> reset_new_inhibit () ;
-                    set sel_team (SingleTeam team.name)) in
-      h2 ~action [ clss "actionable" ]
-        [ text "Team " ;
-          span [ clss "team-name" ]
-               [ text team.name ] ;
-          span [ clss "title-smaller" ]
-               [ text ("(click to "^ (if is_sel then "un" else "")
-                                   ^"select)") ] ]) ;
+    [ h2 []
+         [ text "Team " ;
+           span [ clss "team-name" ]
+                [ text team.name ] ;
+           (let help =
+              "Click to "^ (if is_sel then "un" else "") ^"select" in
+           button ~action:(
+                if is_sel then
+                  (fun _ -> reset_new_inhibit () ;
+                            set sel_team AllTeams)
+                else
+                  (fun _ -> reset_new_inhibit () ;
+                            set sel_team (SingleTeam team.name)))
+             (icon_class ~help is_sel)
+             [ text "select" ]) ;
+           (let help =
+              if is_default then "This team is the default team for alerts"
+              else "Make this team the default team for alerts"
+           and actionable = not is_default
+           and action =
+            if is_default then None else Some (fun _ ->
+              save_default_team team.Editable.Team.name) in
+           button ?action
+             (icon_class ~actionable ~help is_default)
+             [ text "default" ]) ] ;
       (if team.Editable.Team.members = [] then
         div [ clss "team-empty" ]
             [ text "This team is currently empty and can be " ;
@@ -1027,7 +1049,7 @@ let page_teams =
     let path = "/team/"^ enc new_team.value in
     let what = "Saving team "^ new_team.value in
     http_put path "" ~what (fun _ -> reload_teams ()) in
-  with_param teams (fun teams ->
+  with_param teams (fun (teams, default_team) ->
     with_param sel_team (fun tsel ->
       let new_team_form =
         if tsel = AllTeams then
@@ -1071,7 +1093,8 @@ let page_teams =
               [ clss "team-list" ]
               (fold_teams teams tsel search_str [ new_team_form ]
                  (fun prev team ->
-                    page_team search_str tsel team :: prev)) ])))
+                    let is_default = team.name = default_team in
+                    page_team search_str tsel team is_default :: prev)) ])))
 
 let page_reports = todo "reports"
 

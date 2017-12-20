@@ -166,7 +166,10 @@ struct
       escalations : escalation list ;
       mutable inhibitions : Inhibition.t list } [@@ppp PPP_JSON]
 
-  type get_resp = t list [@@ppp PPP_JSON]
+  type get_resp =
+    { teams : t list ;
+      default_team : string } [@@ppp PPP_JSON]
+
   type set_members = string list [@@ppp PPP_JSON]
 end
 
@@ -193,6 +196,8 @@ struct
   type t =
     { mutable oncallers : OnCaller.t list ;
       mutable teams : Team.t list ;
+      (* The team that receives the alerts with no team set: *)
+      mutable default_team: string ;
       schedule : schedule list } [@@ppp PPP_JSON]
 end
 

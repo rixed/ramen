@@ -542,7 +542,7 @@ struct
         fail (HttpError (400, "importance and now must be numeric"))
       | name, importance, time, firing ->
         alert conf ~name ~importance ~now ~time ~firing
-          ~team:(hg "team" conf.C.default_team)
+          ~team:(hg "team" conf.C.alerts.static.default_team)
           ~title:(hg "title" "")
           ~text:(hg "text" "")) >>=
     respond_ok ~body:""
@@ -550,7 +550,10 @@ struct
   let get_teams conf =
     let%lwt body =
       with_rlock conf (fun () ->
-        return (PPP.to_string Team.get_resp_ppp conf.C.alerts.static.teams)) in
+        let resp =
+          Team.{ teams = conf.C.alerts.static.teams ;
+                 default_team = conf.C.alerts.static.default_team } in
+        return (PPP.to_string Team.get_resp_ppp resp)) in
     respond_ok ~body ()
 
   let new_team conf _headers name =
@@ -575,6 +578,8 @@ struct
       | t ->
         if t.Team.members <> [] then
           bad_request ("Team "^ name ^" is not empty")
+        else if conf.C.alerts.static.default_team = name then
+          bad_request "Cannot delete the default team"
         else (
           !logger.info "Delete team %s" name ;
           conf.C.alerts.static.teams <-
@@ -688,6 +693,26 @@ struct
         return (PPP.to_string StaticConf.t_ppp conf.C.alerts.static)) in
     respond_ok ~body ()
 
+  let set_static conf static =
+    (* Sanity checks *)
+    (* All teams must have a distinct, non empty name: *)
+    let team_names =
+      List.fold_left (fun s t ->
+          Set.add t.Team.name s
+        ) Set.empty static.StaticConf.teams in
+    if Set.cardinal team_names <> List.length static.teams then
+      bad_request "Team names must be unique"
+    else if Set.mem "" team_names then
+      bad_request "Team names must not be empty"
+    else if static.default_team = "" then
+      bad_request "Default team must be set"
+    else if not (Set.mem static.default_team team_names) then
+      bad_request "Default team does not exist"
+    else
+      with_wlock conf (fun () ->
+        conf.C.alerts.static <- static ;
+        return_unit)
+
   let upload_static_conf conf headers body =
     let content_type = get_content_type headers in
     let%lwt data = match
@@ -703,17 +728,13 @@ struct
         else return value in
     let%lwt static =
       of_json_body "Static Configuration" StaticConf.t_ppp data in
-    with_wlock conf (fun () ->
-      conf.C.alerts.static <- static ;
-      return_unit)
+    set_static conf static
     (* Let HttpSrv answer the query *)
 
   let put_static_conf conf headers body =
     let%lwt static =
       of_json headers "Static Configuration" StaticConf.t_ppp body in
-    with_wlock conf (fun () ->
-      conf.C.alerts.static <- static ;
-      return_unit) >>=
+    set_static conf static >>=
     respond_ok
 
   (* Inhibitions *)
@@ -793,5 +814,18 @@ struct
       team.Team.members <- members ;
       OnCallerOps.assign_unassigned conf.C.alerts ;
       return_unit) >>=
+    respond_ok
+
+  let set_default_team conf _headers name =
+    (* Sanity checks *)
+    if name = "" then
+      bad_request "Default team must be set"
+    else with_wlock conf (fun () ->
+      if not (List.exists (fun t -> t.Team.name = name)
+                          conf.C.alerts.static.teams) then
+        bad_request ("Team "^ name ^" does not exist")
+      else (
+        conf.C.alerts.static.default_team <- name ;
+        return_unit)) >>=
     respond_ok
 end
