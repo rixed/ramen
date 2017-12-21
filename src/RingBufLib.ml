@@ -63,20 +63,11 @@ let out_ringbuf_names outbuf_ref_fname =
     let open Lwt_unix in
     let%lwt s = stat fname in return s.st_mtime in
   let last_read = ref 0. in
-  let lines = ref Set.empty in
   fun () ->
     let%lwt t = last_touched outbuf_ref_fname in
     if t > !last_read then (
       if !last_read <> 0. then
         !logger.info "Have to re-read %s" outbuf_ref_fname ;
       last_read := t ;
-      lines := File.lines_of outbuf_ref_fname |> Set.of_enum ;
-      return (Some !lines)
+      return (Some (RamenOutRef.read outbuf_ref_fname))
     ) else return_none
-
-(* Check that fname is listed in outbuf_ref_fname: *)
-let is_in_out outbuf_ref_fname fname =
-  File.lines_of outbuf_ref_fname |>
-  (* Force reading until EOF so that the file is closed: *)
-  List.of_enum |>
-  List.exists ((=) fname)

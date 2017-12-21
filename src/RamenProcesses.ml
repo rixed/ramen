@@ -86,21 +86,22 @@ let run conf layer =
            * which case their ringbuffer exists already), otherwise we would
            * hang. *)
           node.N.children |>
-          List.filter (fun node ->
-            node.N.layer = layer.L.name ||
-            match Hashtbl.find conf.C.graph.C.layers node.N.layer with
-            | exception Not_found -> false (* uh? Better not ask.*)
-            | layer when layer.L.persist.L.status = Running -> true
-            | _ -> false) |>
-          List.map rb_name_of in
+          List.fold_left (fun outs node ->
+            if node.N.layer = layer.L.name ||
+               match Hashtbl.find conf.C.graph.C.layers node.N.layer with
+               | exception Not_found -> false (* uh? Better not ask.*)
+               | layer when layer.L.persist.L.status = Running -> true
+               | _ -> false
+            then
+              Set.add (rb_name_of node) outs
+            else outs) Set.empty in
         let output_ringbufs =
           if Lang.Operation.is_exporting node.N.operation then
-            rb_name_for_export_of node :: output_ringbufs
+            Set.add (rb_name_for_export_of node) output_ringbufs
           else output_ringbufs in
         let out_ringbuf_ref =
           out_ringbuf_names_ref conf node in
-        Helpers.mkdir_all ~is_file:true out_ringbuf_ref ;
-        File.write_lines out_ringbuf_ref (List.enum output_ringbufs) ;
+        RamenOutRef.set out_ringbuf_ref output_ringbufs ;
         !logger.info "Start %s with output to %a"
           node.N.name file_print out_ringbuf_ref ;
         let input_ringbuf = rb_name_of node in
@@ -147,19 +148,8 @@ let run conf layer =
               (* The parent ringbuf might not exist yet if it has never been
                * started. If the parent is not running then it will overwrite
                * it when it starts, with whatever running children it will
-               * have at that time (including us, if we are still running).
-               *)
-              let lines =
-                try File.lines_of out_ref |> List.of_enum
-                with Sys_error _ ->
-                  mkdir_all ~is_file:true out_ref ;
-                  []
-                in
-              if not (List.mem input_ringbuf lines) then (
-                File.write_lines out_ref (List.enum (input_ringbuf :: lines)) ;
-                !logger.info "Adding %s into %s, now %s outputs to %a (before: %a)"
-                  input_ringbuf out_ref parent.N.name file_print out_ref
-                  (List.print String.print) lines)
+               * have at that time (including us, if we are still running).  *)
+              RamenOutRef.add out_ref input_ringbuf
           ) node.N.parents
       ) layer.persist.nodes ;
     L.set_status layer Running ;
@@ -200,10 +190,7 @@ let stop conf layer =
           List.iter (fun parent ->
               let out_ref =
                 out_ringbuf_names_ref conf parent in
-              let out_files = File.lines_of out_ref |> List.of_enum in
-              File.write_lines out_ref (List.filter ((<>) this_in) out_files |> List.enum) ;
-              !logger.info "Removed %s from output, now %s output to: %a (was: %a)"
-                node.N.name parent.N.name file_print out_ref (List.print String.print) out_files ;
+              RamenOutRef.remove out_ref this_in
             ) node.N.parents ;
           (* Get rid of the worker *)
           let open Unix in

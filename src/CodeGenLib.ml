@@ -434,7 +434,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
                 incr retry_count ;
                 if !retry_count < 5 then true else (
                   retry_count := 0 ;
-                  RingBufLib.is_in_out rb_ref_out_fname fname))
+                  RamenOutRef.mem rb_ref_out_fname fname))
               ~delay_rec:sleep_out once)
         ) to_open ;
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
