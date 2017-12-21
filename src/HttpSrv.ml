@@ -31,7 +31,8 @@ let replace_placeholders conf s =
   let rep sub by str = String.nreplace ~str ~sub ~by in
   return (
     rep "$RAMEN_URL$" conf.C.ramen_url s |>
-    rep "$HOSTNAME$" hostname)
+    rep "$HOSTNAME$" hostname |>
+    rep "$VERSION$" conf.C.version_tag)
 
 let serve_string conf _headers body =
   let%lwt body = replace_placeholders conf body in

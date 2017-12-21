@@ -694,7 +694,7 @@ let header_panel =
       [ id "global" ]
       [ div
           [ clss "title" ]
-          [ div [] [ text "Ramen v0.1" ] ;
+          [ div [] [ text "Ramen $VERSION$" ] ;
             div [] [ text "running on " ;
                      em [ text "$HOSTNAME$." ] ] ] ;
         nav_bar ;
