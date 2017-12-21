@@ -679,13 +679,20 @@ struct
     respond_ok
 
   (* Stops an alert as if a notification with firing=f have been received *)
-  let get_stop conf id =
+  let stop_alert conf id reason =
     with_wlock conf (fun () ->
       let%lwt i, a = alert_of_id conf.C.alerts id in
       let now = Unix.gettimeofday () in
-      AlertOps.stop conf i a Manual now ;
+      AlertOps.stop conf i a (Manual reason) now ;
       return_unit) >>=
     respond_ok
+
+  let get_stop conf id =
+    stop_alert conf id "todo"
+
+  let post_stop conf headers body =
+    let%lwt req = of_json headers "Stop Alert" Alert.stop_req_ppp body in
+    stop_alert conf req.alert_id req.reason
 
   let export_static_conf conf =
     let%lwt body =

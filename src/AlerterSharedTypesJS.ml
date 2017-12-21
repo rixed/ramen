@@ -66,7 +66,7 @@ struct
     | Duplicate | Inhibited | STFU | StartEscalation
     [@@ppp PPP_JSON]
 
-  type stop_source = Notification | Manual [@@ppp PPP_JSON]
+  type stop_source = Notification | Manual of string [@@ppp PPP_JSON]
 
   type event =
     | NewNotification of notification_outcome
@@ -87,7 +87,7 @@ struct
         "Contacted "^ name ^" via "^ Contact.to_string contact
     | Ack -> "Acknowledged"
     | Stop Notification -> "Notified to stop"
-    | Stop Manual -> "Manual stop"
+    | Stop (Manual reason) -> "Manual stop: "^ reason
 
   type log =
     { current_time : float ;
@@ -111,6 +111,9 @@ struct
       mutable escalation : Escalation.t option ;
       (* Log for that alert, most recent first: *)
       mutable log : log list } [@@ppp PPP_JSON]
+
+  type stop_req =
+    { alert_id : int ; reason : string } [@@ppp PPP_JSON]
 end
 
 module Incident =

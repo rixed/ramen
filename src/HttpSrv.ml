@@ -885,7 +885,10 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
       RamenAlerter.Api.get_ack conf id
     | `GET, ["extinguish" ; id] ->
       let%lwt id = alert_id_of_string id in
+      (* TODO: a parameter for reason *)
       RamenAlerter.Api.get_stop conf id
+    | `POST, ["extinguish"] ->
+      RamenAlerter.Api.post_stop conf headers body
     | `POST, ["inhibit"; "add"; team] ->
       RamenAlerter.Api.add_inhibit conf headers team body
     | `POST, ["inhibit"; "edit" ; team] ->

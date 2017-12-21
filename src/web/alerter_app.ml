@@ -133,7 +133,7 @@ let log_event_of_js js =
     "Ack", (fun _ -> Ack) ;
     "Stop", variant_of_js [
       "Notification", (fun _ -> Stop Notification) ;
-      "Manual", (fun _ -> Stop Manual) ] ] js
+      "Manual", (fun js -> Stop (Manual (Js.to_string js))) ] ] js
 
 let log_entry_of_js js =
   Alert.{
@@ -321,6 +321,10 @@ let fold_incidents incidents sel_team init f =
         else prev
     ) init incidents
 
+(* Each ongoing incident has a stop button that starts a dialog: *)
+type stopping_alert_stage = AskWhy of string | Stopping
+let stopping_alerts = make_param "stopping alerts" []
+
 (* Inhibitions *)
 
 type new_inhibition =
@@ -352,6 +356,14 @@ let reload_ongoing () =
     set_known_incidents incidents ;
     List.iter update_event_time_from_incident incidents ;
     set chart_now (now ()) ;
+    (* purge stopping_alerts from non-ongoing alerts *)
+    let exists_alert id =
+      List.exists (fun i ->
+        List.exists (fun a ->
+          a.Alert.id = id) i.Incident.alerts) incidents in
+    let rem_stoppings =
+      List.filter (fun (id, _) -> exists_alert id) stopping_alerts.value in
+    set stopping_alerts rem_stoppings ;
     resync ())
 
 let reload_oncaller name =
@@ -395,6 +407,35 @@ let save_default_team name =
   http_get path ~what (fun _ ->
     reload_teams ())
 
+let confirm_stop id lst =
+  let rec loop = function
+    | [] ->
+      (* Not stopping yet, start the process: *)
+      (id, ref (AskWhy "")) :: lst
+    | (id', stage) :: s' ->
+      if id' = id then match !stage with
+        | AskWhy reason ->
+          http_post "/extinguish"
+            (object%js
+              val alert_id_ = id
+              val reason = Js.string reason
+             end)
+            (fun _ -> reload_ongoing ()) ;
+          stage := Stopping ;
+          lst
+        | Stopping -> lst
+      else loop s' in
+  loop lst
+
+let update_reason id lst reason =
+  let rec loop = function
+    | [] -> assert false
+    | (id', ({ contents = AskWhy _ } as stage)) :: _ when id = id' ->
+        stage := AskWhy reason ;
+        lst
+    | _ :: s' -> loop s' in
+  loop lst
+
 (*
  * DOM
  *)
@@ -414,9 +455,6 @@ let live_incidents =
               and alert_txt = a.Alert.name in
               let ack _ =
                 http_get ("/ack/"^ string_of_int a.id) (fun _ ->
-                  reload_ongoing ())
-              and stop _ =
-                http_get ("/extinguish/"^ string_of_int a.id) (fun _ ->
                   reload_ongoing ()) in
               let need_ack = a.escalation <> None in
               let row =
@@ -441,10 +479,28 @@ let live_incidents =
                       else group [] ] ;
                     td [] [
                       if with_action_cols then
-                        button ~action:stop
-                          [ clss "icon actionable" ;
-                            title "Terminate this alert" ]
-                          [ text "Stop" ]
+                        with_param stopping_alerts (fun stops ->
+                          let param = stopping_alerts in
+                          match List.assoc a.id stops with
+                          | exception Not_found ->
+                            (* merely display the stop button *)
+                            Gui.button ~param
+                              ~next_state:(confirm_stop a.id)
+                              [ clss "icon actionable" ;
+                                title "Terminate this alert" ]
+                              [ text "Stop" ]
+                          | { contents = AskWhy s } ->
+                            group
+                              [ Gui.input_text ~param
+                                  ~next_state:(update_reason a.id)
+                                  ~placeholder:"reason" [] s ;
+                                Gui.button ~param
+                                  ~next_state:(confirm_stop a.id)
+                                  [ clss "icon actionable" ;
+                                    title "Terminate this alert" ]
+                                  [ text "Stop" ] ]
+                          | { contents = Stopping } ->
+                            text "stopping...")
                       else group [] ] ] in
               row :: prev) prev i.Incident.alerts) [] incidents |>
               tbody []) in
