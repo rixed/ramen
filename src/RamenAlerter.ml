@@ -461,6 +461,31 @@ let start_escalation_loop conf =
   in
   async check_escalations_loop
 
+let check_static_conf static =
+  (* All teams must have a distinct, non empty name: *)
+  let team_names =
+    List.fold_left (fun s t ->
+        Set.add t.Team.name s
+      ) Set.empty static.StaticConf.teams in
+  if Set.cardinal team_names <> List.length static.teams then
+    failwith "Team names must be unique" ;
+  if Set.mem "" team_names then
+    failwith "Team names must not be empty" ;
+  if static.default_team = "" then
+    failwith "Default team must be set" ;
+  if not (Set.mem static.default_team team_names) then
+    failwith "Default team does not exist"
+
+let start ?initial_json conf =
+  Option.may (fun fname ->
+      let static =
+        read_whole_file fname |>
+        PPP.of_string_exc StaticConf.t_ppp in
+      check_static_conf static ;
+      conf.C.alerts.static <- static
+    ) initial_json ;
+  start_escalation_loop conf
+
 (* Everything start by: we receive an alert with a name, a team name,
  * and a description (text + title). *)
 let alert conf ~name ~team ~importance ~title ~text ~firing ~time ~now =
@@ -700,25 +725,12 @@ struct
         return (PPP.to_string StaticConf.t_ppp conf.C.alerts.static)) in
     respond_ok ~body ()
 
-  let set_static conf static =
-    (* Sanity checks *)
-    (* All teams must have a distinct, non empty name: *)
-    let team_names =
-      List.fold_left (fun s t ->
-          Set.add t.Team.name s
-        ) Set.empty static.StaticConf.teams in
-    if Set.cardinal team_names <> List.length static.teams then
-      bad_request "Team names must be unique"
-    else if Set.mem "" team_names then
-      bad_request "Team names must not be empty"
-    else if static.default_team = "" then
-      bad_request "Default team must be set"
-    else if not (Set.mem static.default_team team_names) then
-      bad_request "Default team does not exist"
-    else
-      with_wlock conf (fun () ->
-        conf.C.alerts.static <- static ;
-        return_unit)
+  let set_static_conf conf static =
+    match check_static_conf static with
+    | exception Failure msg -> bad_request msg
+    | () -> with_wlock conf (fun () ->
+      conf.C.alerts.static <- static ;
+      return_unit)
 
   let upload_static_conf conf headers body =
     let content_type = get_content_type headers in
@@ -735,13 +747,13 @@ struct
         else return value in
     let%lwt static =
       of_json_body "Static Configuration" StaticConf.t_ppp data in
-    set_static conf static
+    set_static_conf conf static
     (* Let HttpSrv answer the query *)
 
   let put_static_conf conf headers body =
     let%lwt static =
       of_json headers "Static Configuration" StaticConf.t_ppp body in
-    set_static conf static >>=
+    set_static_conf conf static >>=
     respond_ok
 
   (* Inhibitions *)

@@ -231,7 +231,7 @@ let strings_of_csv separator line =
   [ "John" ; "+500" ] (strings_of_csv "," "\"John\",+500")
  *)
 
-let read_whole_file fname =
+let lwt_read_whole_file fname =
   let open Lwt_io in
   let%lwt len = file_length fname in
   let len = Int64.to_int len in
@@ -239,6 +239,9 @@ let read_whole_file fname =
     let buf = Bytes.create len in
     let%lwt () = read_into_exactly ic buf 0 len in
     Lwt.return (Bytes.to_string buf))
+
+let read_whole_file fname =
+  File.with_file_in ~mode:[`text] fname IO.read_all
 
 let file_print oc fname =
   let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in

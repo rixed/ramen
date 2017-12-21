@@ -118,7 +118,7 @@ let serve_raw_file ct fname =
 
 let serve_file path file replace =
   let fname = path ^"/"^ file in
-  let%lwt body = read_whole_file fname in
+  let%lwt body = lwt_read_whole_file fname in
   let%lwt body = replace body in
   let ct = content_type_of_ext (ext_of_file file) in
   respond_ok ~body ~ct ()

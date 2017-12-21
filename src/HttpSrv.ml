@@ -762,7 +762,7 @@ let upload conf headers layer node body =
 
 let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
           version_tag persist_dir max_history_archives
-          port cert_opt key_opt () =
+          port cert_opt key_opt alert_conf_json () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
@@ -784,7 +784,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   (* Read the instrumentation ringbuf: *)
   RamenProcesses.read_reports conf ;
   (* Start the alerter *)
-  RamenAlerter.start_escalation_loop conf ;
+  RamenAlerter.start ?initial_json:alert_conf_json conf ;
   (* Start the HTTP server: *)
   let lyr = function
     | [] -> bad_request_exn "Layer name missing from URL"
