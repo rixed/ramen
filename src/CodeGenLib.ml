@@ -746,7 +746,7 @@ let aggregate
         others = None ;
         unknown_weights ; groups } in
     let state =
-      ref (make conf.persist_dir "aggregate" init_state) in
+      ref (make conf.persist_dir "snapshot" init_state) in
     fun f ->
       let v = restore !state in
       (* We do _not_ want to save the value when f raises an exception: *)

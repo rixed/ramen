@@ -34,7 +34,7 @@ open Batteries
 
 let create_or_read persist_dir id v =
   let open Unix in
-  let fname = persist_dir ^"/states/"^ id in
+  let fname = persist_dir ^"/"^ id in
   Helpers.mkdir_all ~is_file:true fname ;
   let init_restore () =
     let fd = openfile fname [O_RDWR] 0o640 in
