@@ -584,7 +584,7 @@ type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
  * lighter of our heavy hitters: *)
 module WeightMap = Map.Float
 
-type ('key, 'aggr, 'tuple_in, 'generator_out, 'top_state) aggr_persist_state =
+type ('key, 'aggr, 'tuple_in, 'generator_out, 'global_state, 'top_state) aggr_persist_state =
   { event_count : int ; (* TBD. used to fake others.count etc *)
     mutable last_key : 'key option ;
     mutable last_in_tuple : 'tuple_in option ; (* last incoming tuple *)
@@ -595,6 +595,7 @@ type ('key, 'aggr, 'tuple_in, 'generator_out, 'top_state) aggr_persist_state =
     mutable unselected_count : Uint64.t ;
     mutable unselected_successive : Uint64.t ;
     mutable out_count : Uint64.t ;
+    global_state : 'global_state ;
     (* Top book-keeping:
      * In addition to the hash of aggr (which for each entry has a weight)
      * we need to quickly find the key of the smallest weight, thus the
@@ -739,6 +740,7 @@ let aggregate
         unselected_tuple = None ;
         unselected_count = Uint64.zero ;
         unselected_successive = Uint64.zero ;
+        global_state ;
         out_count = Uint64.zero ;
         weightmap = WeightMap.empty ;
         others = None ;
@@ -785,7 +787,7 @@ let aggregate
           (Uint64.of_int aggr.nb_entries)
           (Uint64.of_int aggr.nb_successive)
           aggr.fields
-          global_state
+          s.global_state
           aggr.first_in aggr.last_in
           aggr.current_out
       in
@@ -836,7 +838,7 @@ let aggregate
                 let to_resubmit = List.rev a.to_resubmit in
                 a.nb_entries <- 0 ;
                 a.to_resubmit <- [] ;
-                a.fields <- group_init global_state ;
+                a.fields <- group_init s.global_state ;
                 (* Warning: should_resubmit might need realistic nb_entries,
                  * last_in etc *)
                 a.first_in <- List.hd to_resubmit ;
@@ -855,7 +857,7 @@ let aggregate
                       (Uint64.of_int a.nb_entries)
                       (Uint64.of_int a.nb_successive)
                       a.fields
-                      global_state
+                      s.global_state
                       a.first_in in_tuple |> ignore ;
                     a.last_in <- in_tuple ;
                     if should_resubmit a in_tuple then
@@ -887,7 +889,7 @@ let aggregate
        * whether the group is a new one or not. If the group is new we have
        * additional code due to the TOP operation. *)
       (if where_fast
-           global_state
+           s.global_state
            in_count in_tuple last_in
            s.selected_count s.selected_successive last_selected
            s.unselected_count s.unselected_successive last_unselected
@@ -904,7 +906,7 @@ let aggregate
             aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
           if prev_last_key = this_key then
             aggr.nb_successive <- aggr.nb_successive + 1 ;
-          top_by global_state aggr.sure_weight_state in_tuple
+          top_by s.global_state aggr.sure_weight_state in_tuple
         in
         (* Update/create the group if it passes where_slow (or None) *)
         let aggr_opt =
@@ -915,10 +917,10 @@ let aggregate
              * This is also where the TOP selection happens.
              * Notice there is no "commit-before" for new groups.
              *)
-            let fields = group_init global_state
+            let fields = group_init s.global_state
             and zero = Uint64.zero and one = Uint64.one in
             if where_slow
-                 global_state
+                 s.global_state
                  in_count in_tuple last_in
                  s.selected_count s.selected_successive last_selected
                  s.unselected_count s.unselected_successive last_unselected
@@ -937,7 +939,7 @@ let aggregate
                   s.unselected_count s.unselected_successive last_unselected
                   s.out_count
                   one one fields
-                  global_state
+                  s.global_state
                   in_tuple in_tuple in
               (* What part of unknown weight might belong to this guy? *)
               let kh = Hashtbl.hash k mod Array.length s.unknown_weights in
@@ -951,9 +953,9 @@ let aggregate
                 last_ev_count = s.event_count ;
                 to_resubmit = [] ;
                 fields ;
-                sure_weight_state = top_init global_state ;
+                sure_weight_state = top_init s.global_state ;
                 unsure_weight = s.unknown_weights.(kh) } in
-              top_by global_state aggr.sure_weight_state in_tuple ;
+              top_by s.global_state aggr.sure_weight_state in_tuple ;
               (* Adding this group and updating the TOP *)
               let add_entry () =
                 Hashtbl.add s.groups k aggr ;
@@ -1012,7 +1014,7 @@ let aggregate
                         (Uint64.of_int others_aggr.nb_entries)
                         (Uint64.of_int others_aggr.nb_successive)
                         others_aggr.fields
-                        global_state
+                        s.global_state
                         others_aggr.first_in in_tuple |> ignore ;
                         accumulate_into others_aggr None ;
                         (* Those two are not updated by accumulate_into to allow clauses
@@ -1030,7 +1032,7 @@ let aggregate
              * The group already exist.
              *)
             if where_slow
-                 global_state
+                 s.global_state
                  in_count in_tuple last_in
                  s.selected_count s.selected_successive last_selected
                  s.unselected_count s.unselected_successive last_unselected
@@ -1051,7 +1053,7 @@ let aggregate
                   s.unselected_count s.unselected_successive last_unselected
                   s.out_count
                   (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
-                  global_state
+                  s.global_state
                   aggr.first_in aggr.last_in ;
               aggr.last_in <- in_tuple ;
               if top_n <> 0 then (
