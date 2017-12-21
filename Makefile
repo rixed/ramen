@@ -5,10 +5,10 @@ SUBDIRS = src docs
 .PHONY: doc docker-dev docker-demo docker-latest docker-build docker-push
 
 all:
-	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
+	@set -e ; for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 
 doc:
-	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
+	@set -e ; for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 
 docker-dev: docker/Dockerfile-dev
 	docker build -t rixed/ramen:dev --squash -f $< docker/
@@ -30,7 +30,7 @@ install-spec:
 	@true
 
 check-spec:
-	@for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
+	@set -e ; for d in $(SUBDIRS) ; do $(MAKE) -C $$d $@ ; done
 
 clean-spec:
 	@true # Avoids "nothing to be done for ..." message
