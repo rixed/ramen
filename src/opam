@@ -27,7 +27,7 @@ depends: [
   "cmdliner" {= "1.0.2"}
   "cryptohash" {= "0.1.2"}
   "syslog" {= "1.4"}
-  "net_codecs" {>= "1.2"}
+  "net_codecs" {>= "0.2"}
   "qcheck" {test}
 ]
 depexts: [
