@@ -31,10 +31,10 @@ let nullmask_bytes_of_tuple_type tuple_typ =
   bytes_for_bits |>
   round_up_to_rb_word
 
-let retry_for_ringbuf ?(while_=(fun () -> true)) ?delay_rec f =
+let retry_for_ringbuf ?(while_=(fun () -> Lwt.return_true)) ?delay_rec f =
   let on = function
     | NoMoreRoom | Empty -> while_ ()
-    | _ -> false
+    | _ -> Lwt.return_false
   in
   retry ~on ~first_delay:0.001 ~max_delay:0.1 ?delay_rec
     (fun x -> Lwt.return (f x))
@@ -69,5 +69,6 @@ let out_ringbuf_names outbuf_ref_fname =
       if !last_read <> 0. then
         !logger.info "Have to re-read %s" outbuf_ref_fname ;
       last_read := t ;
-      return (Some (RamenOutRef.read outbuf_ref_fname))
+      let%lwt lines = RamenOutRef.read outbuf_ref_fname in
+      return (Some lines)
     ) else return_none

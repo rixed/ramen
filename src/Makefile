@@ -36,7 +36,7 @@ RAMEN_SOURCES = \
 	ramen.ml
 
 CODEGENLIB_SOURCES = \
-	Consts.ml RamenLog.ml Helpers.ml Globs.ml RamenOutRef.ml \
+	Consts.ml RamenLog.ml Helpers.ml Globs.ml RWLock.ml RamenOutRef.ml \
 	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenSharedTypesJS.ml RamenSharedTypes.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml \
@@ -133,7 +133,7 @@ codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) libringbuf.a libcollectd.a libnetfl
 codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) libringbuf.a libcollectd.a libnetflow.a
 	$(OCAMLC) $(OCAMLFLAGS) -a $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
-ringbuf_test.opt: RamenLog.cmx Consts.cmx Helpers.cmx RamenSharedTypesJS.cmx RamenSharedTypes.cmx RamenOutRef.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx libringbuf.a libcollectd.a libnetflow.a
+ringbuf_test.opt: RamenLog.cmx Consts.cmx Helpers.cmx RamenSharedTypesJS.cmx RamenSharedTypes.cmx RWLock.cmx RamenOutRef.cmx RingBufLib.cmx RingBuf.cmx ringbuf_test.cmx libringbuf.a libcollectd.a libnetflow.a
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)

@@ -773,7 +773,7 @@ let put_layer ramen_url layer =
   (* TODO: but also fix the server never timeouting! *)
   let headers = Header.init_with "Connection" "close" in
   let%lwt (resp, body) =
-    Helpers.retry ~on:(fun _ -> true) ~min_delay:1.
+    Helpers.retry ~on:(fun _ -> return_true) ~min_delay:1.
       (Client.put ~headers ~body) (Uri.of_string url) in
   let code = resp |> Response.status |> Code.code_of_status in
   let%lwt body = Cohttp_lwt.Body.to_string body in

@@ -395,8 +395,8 @@ let output rb serialize_tuple (sersize, tuple) =
  * will change dynamically as children are added/removed. *)
 let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
-  and out_l = ref []  (* list of outputer *)
-  and get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
+  and out_l = ref []  (* list of outputer *) in
+  let get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
   fun tuple ->
     IntCounter.add stats_out_tuple_count 1 ;
     let%lwt fnames = get_out_fnames () in
@@ -432,7 +432,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
             RingBufLib.retry_for_ringbuf
               ~while_:(fun () ->
                 incr retry_count ;
-                if !retry_count < 5 then true else (
+                if !retry_count < 5 then return_true else (
                   retry_count := 0 ;
                   RamenOutRef.mem rb_ref_out_fname fname))
               ~delay_rec:sleep_out once)
@@ -754,7 +754,7 @@ let aggregate
   in
   !logger.debug "Will read ringbuffer %S" rb_in_fname ;
   let%lwt rb_in =
-    retry ~on:(fun _ -> true) ~min_delay:1.0
+    retry ~on:(fun _ -> return_true) ~min_delay:1.0
           (fun n -> return (RingBuf.load n)) rb_in_fname
   in
   (* The big event loop: *)

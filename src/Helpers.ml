@@ -24,7 +24,8 @@ let retry
   let rec loop x =
     (match%lwt f x with
     | exception e ->
-      if on e then (
+      let%lwt should_retry = on e in
+      if should_retry then (
         let delay = !next_delay in
         let delay = min delay max_delay in
         let delay = max delay min_delay in

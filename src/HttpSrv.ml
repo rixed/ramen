@@ -354,11 +354,10 @@ let run conf headers layer_opt =
         C.with_wlock conf (fun () ->
           let%lwt layers = graph_layers conf layer_opt in
           let layers = L.order layers in
-          wrap (fun () ->
-            List.iter (fun layer ->
-                let open RamenProcesses in
-                try run conf layer with AlreadyRunning -> ()
-              ) layers)) in
+          Lwt_list.iter_p (fun layer ->
+              try%lwt RamenProcesses.run conf layer
+              with RamenProcesses.AlreadyRunning -> return_unit
+            ) layers) in
       switch_accepted headers [
         Consts.json_content_type, (fun () -> respond_ok ()) ])
     (function SyntaxError _
@@ -370,11 +369,10 @@ let run conf headers layer_opt =
 let stop_layers conf layer_opt =
   C.with_wlock conf (fun () ->
     let%lwt layers = graph_layers conf layer_opt in
-    wrap (fun () ->
-      List.iter (fun layer ->
-          let open RamenProcesses in
-          try stop conf layer with NotRunning -> ()
-        ) layers))
+    Lwt_list.iter_p (fun layer ->
+        try RamenProcesses.stop conf layer
+        with RamenProcesses.NotRunning -> return_unit
+      ) layers)
 
 let stop conf headers layer_opt =
   catch
@@ -561,7 +559,7 @@ let timeseries conf headers body =
           conf node_name layer_name op_text operation in
       let%lwt () = wrap (fun () -> C.add_link conf parent node) in
       let%lwt () = Compiler.compile conf layer in
-      wrap (fun () -> RamenProcesses.run conf layer)
+      RamenProcesses.run conf layer
     )) >>= fun () ->
     return (layer_name, node_name, "data")
   in
@@ -617,7 +615,7 @@ let get_timerange conf headers layer_name node_name =
 
 (* A thread that hunt for unused layers *)
 let rec timeout_layers conf =
-  let%lwt () = wrap (fun () -> RamenProcesses.timeout_layers conf) in
+  let%lwt () = RamenProcesses.timeout_layers conf in
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_layers conf
 
