@@ -55,6 +55,9 @@ exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
 
+let input_spec conf node =
+  in_ringbuf_name conf node, []
+
 let run_node conf layer node =
   let command = C.exec_of_node conf.C.persist_dir node
   and output_ringbufs =
@@ -71,17 +74,17 @@ let run_node conf layer node =
          | layer when layer.L.persist.L.status = Running -> true
          | _ -> false
       then
-        Set.add (in_ringbuf_name conf child) outs
-      else outs) Set.empty in
+        let k, v = input_spec conf child in
+        Map.add k v outs
+      else outs) Map.empty in
   let output_ringbufs =
     if Lang.Operation.is_exporting node.N.operation then
-      Set.add (exp_ringbuf_name conf node) output_ringbufs
+      Map.add (exp_ringbuf_name conf node) [] output_ringbufs
     else output_ringbufs in
   let out_ringbuf_ref =
     out_ringbuf_names_ref conf node in
   let%lwt () = RamenOutRef.set out_ringbuf_ref output_ringbufs in
-  !logger.info "Start %s with output to %a"
-    node.N.name file_print out_ringbuf_ref ;
+  !logger.info "Start %s" node.N.name ;
   let input_ringbuf = in_ringbuf_name conf node in
   let env = [|
     "OCAMLRUNPARAM="^ if conf.C.debug then "b" else "" ;
@@ -130,7 +133,7 @@ let run_node conf layer node =
          * started. If the parent is not running then it will overwrite
          * it when it starts, with whatever running children it will
          * have at that time (including us, if we are still running).  *)
-        RamenOutRef.add out_ref input_ringbuf
+        RamenOutRef.add out_ref (input_spec conf node)
     ) node.N.parents
 
 let run conf layer =

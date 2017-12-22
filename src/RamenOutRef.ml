@@ -33,38 +33,53 @@ struct
   let with_w_lock fname = with_lock RWLock.with_w_lock F_LOCK fname
 end
 
-type out_spec = string
+type out_spec = string * string list
+
+let string_of_out_spec (fname, fields) =
+  let fields = List.fast_sort String.compare fields in
+  fname ^"|"^ String.concat "," fields
+
+let out_spec_of_string str =
+  let fname, fields = String.split str ~by:"|" in
+  fname, String.split_on_char ',' fields
+
+let print_out_specs oc outs =
+  Map.print ~sep:"; " String.print (List.print String.print) oc outs
 
 (* Used by ramen when starting a new worker to initialize (or reset) its
  * output: *)
 let set_ fname outs =
   mkdir_all ~is_file:true fname ;
-  File.write_lines fname (Set.enum outs)
+  File.write_lines fname (Map.enum outs /@ string_of_out_spec)
 
 let set fname outs =
   Lock.with_w_lock fname (fun () ->
     wrap (fun () -> set_ fname outs))
 
 let read_ fname =
-  File.lines_of fname |> Set.of_enum
+  File.lines_of fname /@ out_spec_of_string |> Map.of_enum
 
 let read fname =
   Lock.with_r_lock fname (fun () ->
     wrap (fun () -> read_ fname))
 
 (* Used by ramen when starting a new worker to add it to its parents outref: *)
-let add_ fname out =
+let add_ fname (out_fname, out_fields) =
   let lines =
     try read_ fname
     with Sys_error _ ->
-      set_ fname Set.empty ;
-      Set.empty
+      set_ fname Map.empty ;
+      Map.empty
     in
-  if not (Set.mem out lines) then (
-    let outs = Set.add out lines in
+  let rewrite () =
+    let outs = Map.add out_fname out_fields lines in
     set_ fname outs ;
     !logger.info "Adding %s into %s, now outputting to %a"
-      out fname (Set.print String.print) outs)
+      out_fname fname print_out_specs outs in
+  match Map.find out_fname lines with
+  | exception Not_found -> rewrite ()
+  | prev_fields ->
+    if prev_fields <> out_fields then rewrite ()
 
 let add fname out =
   Lock.with_w_lock fname (fun () ->
@@ -72,21 +87,21 @@ let add fname out =
 
 (* Used by ramen when stopping a node to remove its input from its parents
  * out_ref: *)
-let remove_ fname out =
+let remove_ fname out_fname =
   let out_files = read_ fname in
-  set_ fname (Set.remove out out_files) ;
+  set_ fname (Map.remove out_fname out_files) ;
   !logger.info "Removed %s from %s, now output only to: %a"
-    out fname (Set.print String.print) out_files
+    out_fname fname print_out_specs out_files
 
-let remove fname out =
+let remove fname out_fname =
   Lock.with_w_lock fname (fun () ->
-    remove_ fname out ;
+    remove_ fname out_fname ;
     return_unit)
 
 (* Check that fname is listed in outbuf_ref_fname: *)
-let mem_ fname out =
-  read_ fname |> Set.mem out
+let mem_ fname out_fname =
+  read_ fname |> Map.mem out_fname
 
-let mem fname out =
+let mem fname out_fname =
   Lock.with_r_lock fname (fun () ->
-    mem_ fname out |> return)
+    mem_ fname out_fname |> return)

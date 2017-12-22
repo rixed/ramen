@@ -400,14 +400,16 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
   fun tuple ->
     IntCounter.add stats_out_tuple_count 1 ;
     let%lwt fnames = get_out_fnames () in
-    Option.may (fun next ->
-      (if Set.is_empty next then !logger.info else !logger.debug)
+    Option.may (fun out_spec ->
+      (if Map.is_empty out_spec then !logger.info else !logger.debug)
         "Must now output to: %a"
-        (Set.print String.print) next ;
+        RamenOutRef.print_out_specs out_spec ;
       (* Change occurred, load/unload as required *)
       let current = Hashtbl.keys out_h |> Set.of_enum in
+      let next = Map.keys out_spec |> Set.of_enum in
       let to_open = Set.diff next current
       and to_close = Set.diff current next in
+      (* Close some: *)
       Set.iter (fun fname ->
         !logger.debug "Unmapping %S" fname ;
         match Hashtbl.find out_h fname with
@@ -416,6 +418,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
         | rb, _ ->
           RingBuf.unload rb ;
           Hashtbl.remove out_h fname) to_close ;
+      (* Open some: *)
       Set.iter (fun fname ->
           !logger.debug "Mapping %S" fname ;
           let rb = RingBuf.load fname in
