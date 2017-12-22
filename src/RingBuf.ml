@@ -2,10 +2,14 @@ open Stdint
 
 type t (* abstract, represents a ring buffer mmapped file *)
 
+let prepend_rb_name f fname =
+  try f fname
+  with Failure msg -> failwith (fname ^": "^ msg)
+
 external create_ : string -> int -> unit = "wrap_ringbuf_create"
 let create fname =
   Helpers.mkdir_all ~is_file:true fname ;
-  create_ fname
+  prepend_rb_name create_ fname
 
 type stats = {
   capacity : int ; (* in words *)
@@ -14,7 +18,8 @@ type stats = {
   prod_head : int ;
   cons_head : int }
 
-external load : string -> t = "wrap_ringbuf_load"
+external load_ : string -> t = "wrap_ringbuf_load"
+let load = prepend_rb_name load_
 external unload : t -> unit = "wrap_ringbuf_unload"
 external stats : t -> stats = "wrap_ringbuf_stats"
 

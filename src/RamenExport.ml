@@ -247,7 +247,7 @@ let import_tuples conf rb_name node =
   let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
   !logger.debug "Starting to import output from node %s (in ringbuf %S), which outputs %a"
     (N.fq_name node) rb_name C.print_temp_tup_typ node.N.out_type ;
-  let rb = RingBuf.load rb_name in
+  let%lwt rb = wrap (fun () -> RingBuf.load rb_name) in
   catch
     (fun () ->
       let dequeue =
@@ -261,8 +261,7 @@ let import_tuples conf rb_name node =
       done)
     (function Canceled ->
       !logger.info "Import from %s was cancelled" rb_name ;
-      RingBuf.unload rb ;
-      return_unit
+      wrap (fun () -> RingBuf.unload rb)
             | e ->
       !logger.error "Importing tuples failed with %s,\n%s"
         (Printexc.to_string e)

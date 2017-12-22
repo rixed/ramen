@@ -148,11 +148,12 @@ let run conf layer =
     let layer_nodes =
       Hashtbl.values layer.persist.nodes |> List.of_enum in
     let rb_sz_words = 1000000 in
-    List.iter (fun node ->
-        RingBuf.create (in_ringbuf_name conf node) rb_sz_words ;
-        if Lang.Operation.is_exporting node.N.operation then
-          RingBuf.create (exp_ringbuf_name conf node) rb_sz_words
-      ) layer_nodes ;
+    let%lwt () = Lwt_list.iter_p (fun node ->
+        wrap (fun () ->
+          RingBuf.create (in_ringbuf_name conf node) rb_sz_words ;
+          if Lang.Operation.is_exporting node.N.operation then
+            RingBuf.create (exp_ringbuf_name conf node) rb_sz_words)
+      ) layer_nodes in
     (* Now run everything *)
     !logger.debug "Launching generated programs..." ;
     let now = Unix.gettimeofday () in
