@@ -55,8 +55,12 @@ exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
 
+let fields_spec tup_typ =
+  List.map fst tup_typ.C.fields
+
 let input_spec conf node =
-  in_ringbuf_name conf node, []
+  in_ringbuf_name conf node,
+  fields_spec node.N.in_type
 
 let run_node conf layer node =
   let command = C.exec_of_node conf.C.persist_dir node
@@ -79,7 +83,8 @@ let run_node conf layer node =
       else outs) Map.empty in
   let output_ringbufs =
     if Lang.Operation.is_exporting node.N.operation then
-      Map.add (exp_ringbuf_name conf node) [] output_ringbufs
+      Map.add (exp_ringbuf_name conf node)
+              (fields_spec node.N.out_type) output_ringbufs
     else output_ringbufs in
   let out_ringbuf_ref =
     out_ringbuf_names_ref conf node in
