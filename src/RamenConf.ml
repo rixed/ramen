@@ -49,16 +49,15 @@ let print_tuple_type fmt = function
   | TypedTuple { user ; _ } ->
       Lang.Tuple.print_typ fmt user
 
+exception BadTupleTypedness of string
 let typed_tuple_type = function
   | TypedTuple { user ; ser } -> user, ser
   | UntypedTuple _ ->
-      !logger.error "Node should be typed by now!" ;
-      assert false
+      raise (BadTupleTypedness "Node should be typed by now!")
 
 let untyped_tuple_type = function
   | TypedTuple _ ->
-      !logger.error "This node should not be typed!" ;
-      assert false
+      raise (BadTupleTypedness "This node should not be typed!")
   | UntypedTuple temp_tup_typ -> temp_tup_typ
 
 let tuple_ser_type = snd % typed_tuple_type
@@ -243,7 +242,9 @@ struct
       (* Recompute the node signatures if the version_tag changed, so that
        * we won't reuse former paths: *)
       Hashtbl.iter (fun name node ->
-        let new_sign = Node.signature version_tag node in
+        let new_sign =
+          try Node.signature version_tag node
+          with BadTupleTypedness _ -> "" in
         if node.Node.signature <> new_sign then (
           !logger.debug "Node %s is from a previous version" name ;
           node.signature <- new_sign)) persist.nodes ;
