@@ -159,6 +159,27 @@ let type_of_parent_field parent tuple_of_field field =
         IO.to_string C.print_tuple_type parent.out_type } in
     raise (SyntaxError e)
 
+(* Same as the above, but return the type common to all parents,
+ * or raise SyntaxError FieldNotSameTypeInAllParents if the type is not the
+ * same in every parents, or SyntaxError FieldNotInTuple if a parent lacks
+ * that field, and SyntaxError NoParentForField if the parents list is
+ * empty. *)
+let type_of_parents_field parents tuple_of_field field =
+  match List.fold_left (fun prev_typ par ->
+        let typ = type_of_parent_field par tuple_of_field field in
+        (* All parents must have exactly the same type *)
+        (match prev_typ with None -> Some typ | Some ptyp ->
+           if typ.Expr.nullable = ptyp.Expr.nullable &&
+              typ.Expr.scalar_typ = ptyp.Expr.scalar_typ
+           then Some typ else
+           let e = FieldNotSameTypeInAllParents { field } in
+           raise (SyntaxError e))
+      ) None parents with
+  | None ->
+    let e = NoParentForField { field } in
+    raise (SyntaxError e) ;
+  | Some ptyp -> ptyp
+
 (* Check that this expression fulfill the type expected by the caller (exp_type).
  * Also, improve exp_type (set typ and nullable, enlarge numerical types ...).
  * When we recurse from an operator to its operand we set the exp_type to the one
@@ -286,20 +307,9 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
           raise (SyntaxError e)
         ) else (
           (* If all our parents have this field let's bring it in! *)
-          match List.fold_left (fun prev_typ par ->
-            let typ = type_of_parent_field par !tuple field in
-            (* All parents must have exactly the same type *)
-            (match prev_typ with None -> Some typ | Some ptyp ->
-               if typ.Expr.nullable = ptyp.Expr.nullable &&
-                  typ.Expr.scalar_typ = ptyp.Expr.scalar_typ
-               then Some typ else
-               let e = FieldNotSameTypeInAllParents { field } in
-               raise (SyntaxError e))) None parents with
+          match type_of_parents_field parents !tuple field with
           | exception ParentIsUntyped -> false
-          | None ->
-            let e = NoParentForField { field } in
-            raise (SyntaxError e)
-          | Some ptyp ->
+          | ptyp ->
             !logger.debug "Copying field %s from parents, with type %a"
               field Expr.print_typ ptyp ;
             if is_private_field field then (
@@ -699,8 +709,23 @@ let check_yield node fields =
     ) else false
   )
 
+let set_of_fields = function
+  | C.TypedTuple { ser ; _ } ->
+      List.fold_left (fun s t ->
+          Set.add t.typ_name s
+        ) Set.empty ser
+  | C.UntypedTuple ttt ->
+      List.fold_left (fun s (name, _) ->
+          Set.add name s
+        ) Set.empty ttt.fields
+
 (* Get rid of the short-cutting of or expressions: *)
 let (|||) a b = a || b
+
+let all_parents_finished node =
+  List.for_all (fun parent ->
+      tuple_type_is_finished parent.N.out_type
+    ) node.N.parents
 
 let check_aggregate node fields and_all_others where key top
                     commit_when flush_how =
@@ -709,13 +734,30 @@ let check_aggregate node fields and_all_others where key top
   and parents = node.N.parents in
   let open Operation in
   (
-    (* Improve in_type using parent out_type and out_type using in_type if we propagates it all: *)
-    if and_all_others then (
-      List.fold_left (fun changed parent ->
-          (* This is supposed to propagate parent completeness into in-tuple. *)
-          let from_tuple = C.temp_tup_typ_of_tuple_type parent.N.out_type in
-          check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleOut ~from_tuple ~to_prefix:TupleIn ~to_tuple:in_type || changed
-        ) false parents |||
+    (* Improve in_type using parent out_type and out_type using in_type if we
+     * propagates it all: *)
+    (* TODO: find a way to do this only once, since once all_parents_finished
+     * returns true there is no use for another try. *)
+    if and_all_others && parents <> [] && all_parents_finished node then (
+      (* Add all the fields present (same name and same type) in all the parents,
+       * and ignore the fields that are not present everywhere. *)
+      let inter_parents =
+        List.fold_left (fun inter parent ->
+            Set.intersect inter (set_of_fields parent.N.out_type)
+          ) (set_of_fields (List.hd parents).out_type) (List.tl parents) in
+      (* Remove those that have different types: *)
+      let inter_ptyps =
+        Set.fold (fun field ptyps ->
+            match type_of_parents_field parents TupleOut field with
+            | exception SyntaxError _ -> ptyps
+            | ptyp -> (field, ptyp) :: ptyps) inter_parents [] in
+      !logger.debug "Adding * fields: %a"
+        C.print_temp_tup_typ_fields inter_ptyps ;
+      let from_tuple = C.{ finished_typing = true ;
+                           fields = inter_ptyps } in
+      (* This is supposed to propagate parent completeness into in-tuple. *)
+      check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleOut ~from_tuple ~to_prefix:TupleIn ~to_tuple:in_type
+      |||
       (* If all other fields are selected, add them *)
       check_inherit_tuple ~including_complete:false ~is_subset:false ~from_prefix:TupleIn ~from_tuple:in_type ~to_prefix:TupleOut ~to_tuple:out_type
     ) else (
