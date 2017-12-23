@@ -74,7 +74,7 @@ let version_tag =
   let i = Arg.info ~doc:"unique tag identifying the version of ramen \
                          (such as git tag name or sha1)"
                    ~env [ "version-tag"; "tag" ] in
-  Arg.(value (opt string "1.1.0~0" i))
+  Arg.(value (opt string "1.1.0~1" i))
 
 let persist_dir =
   let env = Term.env_info "RAMEN_PERSIST_DIR" in

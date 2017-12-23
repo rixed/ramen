@@ -19,10 +19,11 @@ open Helpers
 module C = RamenConf
 module N = RamenConf.Node
 module L = RamenConf.Layer
+open RamenSharedTypes
 open RamenSharedTypesJS
 open Lang
 
-(* Check that we have typed all that need to be typed *)
+(* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =
   List.iter (fun (field_name, typ) ->
       if typ.Expr.nullable = None || typ.Expr.scalar_typ = None then (
@@ -31,7 +32,8 @@ let check_finished_tuple_type tuple_prefix tuple_type =
           typ = IO.to_string Expr.print_typ typ ;
           tuple = tuple_prefix } in
         raise (SyntaxError e)))
-    tuple_type.C.fields
+    tuple_type.C.fields ;
+  C.finish_typing tuple_type
 
 let can_cast ~from_scalar_type ~to_scalar_type =
   (* On TBool and Integer conversions:
@@ -121,13 +123,52 @@ let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
     | Some from_null -> set_nullable to_ from_null || changed
   else changed
 
-let finished_typing = function TNum | TAny -> false | _ -> true
+let scalar_finished_typing = function TNum | TAny -> false | _ -> true
+
+exception ParentIsUntyped
+(* Can raise ParentIsUntyped if the parent is still untyped or
+ * SyntaxError when the field does not exist. *)
+let type_of_parent_field parent tuple_of_field field =
+  (* Wait until the parent has finished typing.
+   * Note that it won't work in case of loop. For this we
+   * would need to propagate type info as we have it and
+   * also detects when we have stopped making progress, or
+   * easier: use a constraint solver. *)
+  let find_field () =
+    match parent.N.out_type with
+    | C.UntypedTuple temp_tup_typ ->
+      if not temp_tup_typ.C.finished_typing then
+        raise ParentIsUntyped ;
+      List.assoc field temp_tup_typ.C.fields
+    | C.TypedTuple { user ; _ } ->
+      List.find_map (fun f ->
+        if f.typ_name = field then Some (
+          (* Mimick a temp_tup_typ which uniq_num will never be used *)
+          Expr.{ expr_name = f.typ_name ;
+                 uniq_num = 0 ;
+                 nullable = Some f.nullable ;
+                 scalar_typ = Some f.typ }
+        ) else None) user in
+  try find_field ()
+  with Not_found ->
+    !logger.debug "Cannot find field %s in parent %s"
+      field parent.name ;
+    let e = FieldNotInTuple {
+      field ; tuple = tuple_of_field ;
+      tuple_type =
+        IO.to_string C.print_tuple_type parent.out_type } in
+    raise (SyntaxError e)
 
 (* Check that this expression fulfill the type expected by the caller (exp_type).
  * Also, improve exp_type (set typ and nullable, enlarge numerical types ...).
  * When we recurse from an operator to its operand we set the exp_type to the one
- * in the operator so we improve typing of the AST along the way. *)
-let rec check_expr ~in_type ~out_type ~exp_type =
+ * in the operator so we improve typing of the AST along the way.
+ * in_type is the currently know input type of the node, while parents are the
+ * currently known output types of this node's parents. We will bring new field
+ * in in_type from parents as needed.
+ * Notice than when we recurse within the expression we stays in the same node
+ * with the same parents. parents is not modified in here. *)
+let rec check_expr ~parents ~in_type ~out_type ~exp_type =
   let open Expr in
   (* Check that the operand [sub_expr] is compatible with expectation (re. type
    * and null) set by the caller (the operator). [op_typ] is used for printing only.
@@ -139,7 +180,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       print_typ sub_typ
       (Option.print Scalar.print_typ) exp_sub_typ ;
     (* Start by recursing into the sub-expression to know its real type: *)
-    let changed = check_expr ~in_type ~out_type ~exp_type:sub_typ sub_expr in
+    let changed = check_expr ~parents ~in_type ~out_type ~exp_type:sub_typ sub_expr in
     (* Now we check this comply with the operator expectations about its operand : *)
     (match sub_typ.scalar_typ, exp_sub_typ with
     | Some actual_typ, Some exp_sub_typ ->
@@ -187,7 +228,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           | _, None (* already failed *) | None, _ (* failing now *) ->
             changed, false, None, []
           | Some scal, Some lst ->
-            changed, all_typed && finished_typing scal,
+            changed, all_typed && scalar_finished_typing scal,
             Some (scal :: lst), (typ.nullable :: prev_nullables)
         ) (false, true, Some [], []) args in
     (* If we have typed all the operands, find out the type of the
@@ -243,7 +284,30 @@ let rec check_expr ~in_type ~out_type ~exp_type =
             field ; tuple = !tuple ;
             tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
           raise (SyntaxError e)
-        ) else false
+        ) else (
+          (* If all our parents have this field let's bring it in! *)
+          match List.fold_left (fun prev_typ par ->
+            let typ = type_of_parent_field par !tuple field in
+            (* All parents must have exactly the same type *)
+            (match prev_typ with None -> Some typ | Some ptyp ->
+               if typ.Expr.nullable = ptyp.Expr.nullable &&
+                  typ.Expr.scalar_typ = ptyp.Expr.scalar_typ
+               then Some typ else
+               let e = FieldNotSameTypeInAllParents { field } in
+               raise (SyntaxError e))) None parents with
+          | exception ParentIsUntyped -> false
+          | None ->
+            let e = NoParentForField { field } in
+            raise (SyntaxError e)
+          | Some ptyp ->
+            !logger.debug "Copying field %s from parents, with type %a"
+              field Expr.print_typ ptyp ;
+            if is_private_field field then (
+              let m = InvalidPrivateField { field } in
+              raise (SyntaxError m)) ;
+            let copy = Expr.copy_typ ptyp in
+            in_type.C.fields <- (field, copy) :: in_type.C.fields ;
+            true)
       | from ->
         if in_type.C.finished_typing then ( (* Save the type *)
           op_typ.nullable <- from.nullable ;
@@ -300,7 +364,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       List.exists (fun alt ->
           (* First typecheck the condition, then check it's a bool: *)
           let cond_typ = typ_of alt.case_cond in
-          let chg = check_expr ~in_type ~out_type ~exp_type:cond_typ alt.case_cond ||
+          let chg = check_expr ~parents ~in_type ~out_type ~exp_type:cond_typ alt.case_cond ||
                     check_expr_type ~ok_if_larger:false ~set_null:false ~from:exp_cond_type ~to_:cond_typ in
           !logger.debug "Typing CASE: condition type is now %a (changed: %b)"
             print_typ (typ_of alt.case_cond) chg ;
@@ -312,7 +376,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       | Some else_ ->
         (* First type the else_ then use the actual type to enlarge exp_type: *)
         let typ = typ_of else_ in
-        let chg = check_expr ~in_type ~out_type ~exp_type:typ else_ ||
+        let chg = check_expr ~parents ~in_type ~out_type ~exp_type:typ else_ ||
                   check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
         !logger.debug "Typing CASE: CASE type is now %a (changed: %b)"
           print_typ exp_type chg ;
@@ -326,7 +390,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
       List.exists (fun alt ->
           (* First typecheck the consequent, then use it to enlarge exp_type: *)
           let typ = typ_of alt.case_cons in
-          let chg = check_expr ~in_type ~out_type ~exp_type:typ alt.case_cons ||
+          let chg = check_expr ~parents ~in_type ~out_type ~exp_type:typ alt.case_cons ||
                     check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
           !logger.debug "Typing CASE: consequent type is %a, and CASE type is now %a (changed: %b)"
             print_typ typ
@@ -393,7 +457,7 @@ let rec check_expr ~in_type ~out_type ~exp_type =
           )) last_typ ;
 
         (* First typecheck e, then use it to enlarge exp_type: *)
-        let chg = check_expr ~in_type ~out_type ~exp_type:typ e ||
+        let chg = check_expr ~parents ~in_type ~out_type ~exp_type:typ e ||
                   check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
         !logger.debug "Typing COALESCE: expr type is %a, and COALESCE type is now %a (changed: %b)"
           print_typ typ
@@ -569,12 +633,11 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
     if including_complete && from_tuple.C.finished_typing && not to_tuple.C.finished_typing then (
       !logger.debug "Completing to_tuple from check_inherit_tuple" ;
       check_finished_tuple_type to_prefix to_tuple ;
-      C.finish_typing to_tuple ;
       true
     ) else changed in
   changed
 
-let check_selected_fields ~in_type ~out_type fields =
+let check_selected_fields ~parents ~in_type ~out_type fields =
   List.fold_left (fun changed sf ->
       let name = sf.Operation.alias in
       !logger.debug "Type-check field %s" name ;
@@ -587,10 +650,11 @@ let check_selected_fields ~in_type ~out_type fields =
           let typ =
             let open Expr in
             match sf.Operation.expr with
-            (* Note: we must create a new type for out distinct from the type
-             * of the expression in case the expression is another field (from
-             * in, say) because we do not want to alias them. *)
-            | Field (t, _, _) -> copy_typ ~name t
+            | Field (t, _, _) ->
+              (* Note: we must create a new type for out distinct from the type
+               * of the expression in case the expression is another field (from
+               * in, say) because we do not want to alias them. *)
+              copy_typ ~name t
             | _ ->
               let typ = typ_of sf.Operation.expr in
               typ.expr_name <- name ;
@@ -602,18 +666,35 @@ let check_selected_fields ~in_type ~out_type fields =
         | typ ->
           !logger.debug "... already in out, current type is %a" Expr.print_typ typ ;
           typ in
-      check_expr ~in_type ~out_type ~exp_type sf.Operation.expr || changed
+      check_expr ~parents ~in_type ~out_type ~exp_type sf.Operation.expr || changed
     ) false fields
 
-let check_yield ~in_type ~out_type fields =
+let tuple_type_is_finished = function
+  | C.TypedTuple _ -> true
+  | C.UntypedTuple temp_tup_typ -> temp_tup_typ.finished_typing
+
+let check_input_finished ~parents ~in_type =
+  if not in_type.C.finished_typing &&
+     List.for_all (fun par ->
+       tuple_type_is_finished par.N.out_type) parents
+  then (
+    !logger.debug "Completing in_type because none of our parent output will change any more." ;
+    check_finished_tuple_type TupleIn in_type ;
+    true
+  ) else false
+
+let check_yield node fields =
+  let in_type = C.untyped_tuple_type node.N.in_type
+  and out_type = C.untyped_tuple_type node.N.out_type in
   (
-    check_selected_fields ~in_type ~out_type fields
+    check_selected_fields ~parents:[] ~in_type ~out_type fields
+  ) || (
+    check_input_finished ~parents:[] ~in_type
   ) || (
     (* If nothing changed so far then we are done *)
     if not out_type.C.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
       check_finished_tuple_type TupleOut out_type ;
-      C.finish_typing out_type ;
       true
     ) else false
   )
@@ -621,15 +702,33 @@ let check_yield ~in_type ~out_type fields =
 (* Get rid of the short-cutting of or expressions: *)
 let (|||) a b = a || b
 
-let check_aggregate ~in_type ~out_type fields and_all_others where key top
+let check_aggregate node fields and_all_others where key top
                     commit_when flush_how =
+  let in_type = C.untyped_tuple_type node.N.in_type
+  and out_type = C.untyped_tuple_type node.N.out_type
+  and parents = node.N.parents in
   let open Operation in
   (
+    (* Improve in_type using parent out_type and out_type using in_type if we propagates it all: *)
+    if and_all_others then (
+      List.fold_left (fun changed parent ->
+          (* This is supposed to propagate parent completeness into in-tuple. *)
+          let from_tuple = C.temp_tup_typ_of_tuple_type parent.N.out_type in
+          check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleOut ~from_tuple ~to_prefix:TupleIn ~to_tuple:in_type || changed
+        ) false parents |||
+      (* If all other fields are selected, add them *)
+      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_prefix:TupleIn ~from_tuple:in_type ~to_prefix:TupleOut ~to_tuple:out_type
+    ) else (
+      (* If we do not select star then we will bring in fields from (all)
+       * parents as they are needed. *)
+      false
+    )
+  ) ||| (
     (* Improve out_type using all expressions. Check we satisfy in_type. *)
     List.fold_left (fun changed k ->
         (* The key can be anything *)
         let exp_type = Expr.typ_of k in
-        check_expr ~in_type ~out_type ~exp_type k || changed
+        check_expr ~parents ~in_type ~out_type ~exp_type k || changed
       ) false key
   ) ||| (
     match top with
@@ -640,19 +739,19 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
       (* check_expr will try to improve exp_type. We don't care we just want
        * to check it does not raise an exception. Here exp_type is build at
        * every call so we wouldn't make progress anyway. *)
-      check_expr ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top size") n |> ignore ;
-      check_expr ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top-by clause") by |> ignore ;
+      check_expr ~parents ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top size") n |> ignore ;
+      check_expr ~parents ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top-by clause") by |> ignore ;
       false
   ) ||| (
     let exp_type = Expr.make_bool_typ ~nullable:false "commit-when clause" in
-    check_expr ~in_type ~out_type ~exp_type commit_when |> ignore ;
+    check_expr ~parents ~in_type ~out_type ~exp_type commit_when |> ignore ;
     false
   ) ||| (
     match flush_how with
     | Reset | Never | Slide _ -> false
     | RemoveAll e | KeepOnly e ->
       let exp_type = Expr.make_bool_typ ~nullable:false "remove/keep clause" in
-      check_expr ~in_type ~out_type ~exp_type e |> ignore ;
+      check_expr ~parents ~in_type ~out_type ~exp_type e |> ignore ;
       false
   ) ||| (
     (* Check the expression, improving out_type and checking against in_type: *)
@@ -660,23 +759,23 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
       (* That where expressions cannot be null seems a nice improvement
        * over SQL. *)
       Expr.make_bool_typ ~nullable:false "where clause" in
-    check_expr ~in_type ~out_type ~exp_type where |> ignore ;
+    check_expr ~parents ~in_type ~out_type ~exp_type where |> ignore ;
     false
   ) ||| (
     (* Also check other expression and make use of them to improve out_type.
      * Everything that's selected must be (added) in out_type. *)
-    check_selected_fields ~in_type ~out_type fields
-  ) ||| (
-    (* If all other fields are selected, add them *)
-    if and_all_others then (
-      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_prefix:TupleIn ~from_tuple:in_type ~to_prefix:TupleOut ~to_tuple:out_type
-    ) else false
+    check_selected_fields ~parents ~in_type ~out_type fields
+  ) || (
+    (* If nothing changed so far and our parents output is finished_typing,
+     * then so is out input. *)
+    check_input_finished ~parents ~in_type
   ) || (
     (* If nothing changed so far and our input is finished_typing, then our output is. *)
-    if in_type.C.finished_typing && not out_type.C.finished_typing then (
+    if in_type.C.finished_typing &&
+       not out_type.C.finished_typing
+    then (
       !logger.debug "Completing out_type because it won't change any more." ;
       check_finished_tuple_type TupleOut out_type ;
-      C.finish_typing out_type ;
       true
     ) else false
   )
@@ -685,26 +784,28 @@ let check_aggregate ~in_type ~out_type fields and_all_others where key top
  * Improve out_type using in_type and this node operation.
  * in_type is a given, don't modify it!
  *)
-let check_operation ~in_type ~out_type =
+let check_operation node =
   let open Operation in
-  function
+  match node.N.operation with
   | Yield { fields ; _ } ->
-    check_yield ~in_type ~out_type fields
+    check_yield node fields
   | Aggregate { fields ; and_all_others ; where ; key ; top ;
                 commit_when ; flush_how ; _ } ->
-    check_aggregate ~in_type ~out_type fields and_all_others where key top
+    check_aggregate node fields and_all_others where key top
                     commit_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-    if out_type.C.finished_typing then false else (
-      let t = C.temp_tup_typ_of_tup_typ fields in
-      out_type.C.fields <- t.fields ;
-      C.finish_typing out_type ;
+    if tuple_type_is_finished node.N.out_type then false else (
+      let user = fields in
+      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
+      node.N.out_type <- C.TypedTuple { user ; ser } ;
+      node.N.in_type <- C.TypedTuple { user = [] ; ser = [] } ;
       true)
   | ListenFor { proto ; _ } ->
-    if out_type.C.finished_typing then false else (
-      let t = C.temp_tup_typ_of_tup_typ (RamenProtocols.tuple_typ_of_proto proto) in
-      out_type.C.fields <- t.fields ;
-      C.finish_typing out_type ;
+    if tuple_type_is_finished node.N.out_type then false else (
+      let user = RamenProtocols.tuple_typ_of_proto proto in
+      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
+      node.N.out_type <- C.TypedTuple { user ; ser } ;
+      node.N.in_type <- C.TypedTuple { user = [] ; ser = [] } ;
       true)
 
 (*
@@ -726,42 +827,19 @@ let () =
 
 let check_node_types node =
   try ( (* Prepend the node name to any SyntaxError *)
-    (* Try to improve the in_type using the out_type of parents: *)
-    (
-      if node.N.in_type.C.finished_typing then false
-      else if node.N.parents = [] then (
-        !logger.debug "Completing node %s in-type since we have no parents" node.N.name ;
-        check_finished_tuple_type TupleIn node.N.in_type ;
-        C.finish_typing node.N.in_type ;
-        true
-      ) else List.fold_left (fun changed par ->
-            (* This is supposed to propagate parent completeness into in-tuple. *)
-            check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleOut ~from_tuple:par.N.out_type ~to_prefix:TupleIn ~to_tuple:node.N.in_type || changed
-          ) false node.N.parents
-    ) ||| (
     (* Try to improve out_type and the AST types using the in_type and the
      * operation: *)
-      check_operation ~in_type:node.N.in_type ~out_type:node.N.out_type node.N.operation
-    )
+    check_operation node
   ) with SyntaxError e ->
     !logger.debug "Compilation error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
     raise (SyntaxErrorInNode (node.N.name, e))
 
-let node_typing_is_finished conf node =
-  node.N.signature <> "" ||
-  (if node.N.in_type.C.finished_typing &&
-      node.N.out_type.C.finished_typing then
-     let s = N.signature conf.C.version_tag node in
-     node.N.signature <- s ;
-     true
-   else false)
-
 (* Since we can have loops within a layer we can not propagate types
  * immediately. Also, the star selection prevent us from propagating
  * input from output types in one go.
  * We do it bit by bit but will still make sure to make parent
- * output = children input eventually, and that fields are encoded in
+ * output >= children input eventually, and that fields are encoded in
  * the specified order. *)
 let set_all_types _conf layer =
   let rec loop () =
@@ -793,7 +871,8 @@ let set_all_types _conf layer =
     let test_check_expr ?nullable ?typ expr_text =
       let exp_type = Lang.Expr.make_typ ?nullable ?typ "test" in
       let in_type = RamenConf.make_temp_tup_typ ()
-      and out_type = RamenConf.make_temp_tup_typ () in
+      and out_type = RamenConf.make_temp_tup_typ ()
+      and parents = [] in
       RamenConf.finish_typing in_type ;
       let open RamenParsing in
       let p = Lang.Expr.Parser.(p +- eof) in
@@ -805,7 +884,7 @@ let set_all_types _conf layer =
             BatIO.to_string (print_bad_result (Lang.Expr.print false)) e in
           failwith err
         | Batteries.Ok (exp, _) -> exp in
-      if not (check_expr ~in_type ~out_type ~exp_type exp) then
+      if not (check_expr ~parents ~in_type ~out_type ~exp_type exp) then
         failwith "Cannot type expression" ;
       BatIO.to_string (Lang.Expr.print true) exp
    *)
@@ -836,10 +915,8 @@ let compile_node conf node =
   let open Lwt in
   let exec_name = C.exec_of_node conf.C.persist_dir node in
   mkdir_all ~is_file:true exec_name ;
-  assert node.N.in_type.C.finished_typing ;
-  assert node.N.out_type.C.finished_typing ;
-  let in_typ = C.tup_typ_of_temp_tup_type node.N.in_type
-  and out_typ = C.tup_typ_of_temp_tup_type node.N.out_type in
+  let in_typ = C.tuple_user_type node.N.in_type
+  and out_typ = C.tuple_user_type node.N.out_type in
   (* In a few cases the worker sees a slightly different version of
    * the code and the ramen daemon will adapt: *)
   let operation =
@@ -889,12 +966,30 @@ let untyped_dependency layer =
    * dependency, or None. *)
   let good node =
     node.N.layer = layer.L.name ||
-    node.N.out_type.C.finished_typing in
+    C.tuple_is_typed node.N.out_type in
   try Some (
     Hashtbl.values layer.L.persist.L.nodes |>
     Enum.find (fun node ->
       List.exists (not % good) node.N.parents))
   with Not_found -> None
+
+let typed_of_untyped_tuple ?cmp = function
+  | C.TypedTuple _ as x -> x
+  | C.UntypedTuple temp_tup_typ ->
+      if not temp_tup_typ.C.finished_typing then
+        raise (SyntaxError CannotCompleteTyping) ;
+      let user = C.tup_typ_of_temp_tup_type temp_tup_typ in
+      let user =
+        match cmp with None -> user
+        | Some cmp -> List.fast_sort cmp user in
+      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
+      TypedTuple { user ; ser }
+
+let get_selected_fields node =
+  match node.N.operation with
+  | Yield { fields ; _ } -> Some fields
+  | Aggregate { fields ; _ } -> Some fields
+  | _ -> None
 
 let compile conf layer =
   let open Lwt in
@@ -906,136 +1001,51 @@ let compile conf layer =
     !logger.debug "Trying to compile layer %s" layer.L.name ;
     C.Layer.set_status layer Compiling ;
     catch (fun () ->
-      let%lwt () =
-        match untyped_dependency layer with
-        | None -> return_unit
-        | Some n -> fail (MissingDependency n) in
-      let%lwt () = wrap (fun () -> set_all_types conf layer) in
-      let finished_typing =
-        Hashtbl.fold (fun _ node finished_typing ->
+      let%lwt () = wrap (fun () ->
+        untyped_dependency layer |>
+        Option.may (fun n -> raise (MissingDependency n)) ;
+        set_all_types conf layer ;
+        Hashtbl.iter (fun _ node ->
             !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
               node.N.name
-              C.print_temp_tup_typ node.N.in_type
-              C.print_temp_tup_typ node.N.out_type ;
-            finished_typing && node_typing_is_finished conf node
-          ) layer.L.persist.L.nodes true in
-      if not finished_typing then (
-        fail (SyntaxError CannotCompleteTyping)
-      ) else (
-        let cmp_fields (n1, f1) (n2, f2) =
-          compare (n1, f1.Expr.nullable, f1.Expr.scalar_typ)
-                  (n2, f2.Expr.nullable, f2.Expr.scalar_typ) in
-        let cmp_temp_tup_typ_fields t1 t2 =
-          let rec loop = function
-            | [], [] -> 0
-            | f1::rest1, f2::rest2 ->
-              (match cmp_fields f1 f2 with
-              | 0 -> loop (rest1, rest2)
-              | x -> x)
-            | [], _ -> -1 | _, [] -> 1 in
-          loop (t1, t2) in
-        let iter_nodes_seq f =
-          Hashtbl.fold (fun _node_name node th ->
-              th >>= fun () -> f node
-            ) layer.L.persist.L.nodes return_unit in
-        let get_selected_fields node =
-          match node.N.operation with
-          | Yield { fields ; _ } -> Some fields
-          | Aggregate { fields ; _ } -> Some fields
-          | _ -> None in
-        (* Now that we know where each field is coming from check that we
-         * do not import a private field from parents out-tuple: *)
-        let check_input_private node =
-          wrap (fun () ->
-            get_selected_fields node |>
-            Option.may (fun selected_fields ->
-              List.iter (fun sf ->
-                Expr.iter (function
-                  | Expr.Field (_, tuple, name) ->
-                    if tuple_has_type_input !tuple &&
-                       is_private_field name then (
-                      let m = InvalidPrivateField { field = name } in
-                      raise (SyntaxError m)
-                    )
-                  | _ -> ()) sf.Operation.expr) selected_fields)) in
-        let%lwt () = iter_nodes_seq check_input_private in
-        (* So far order was not taken into account.  Reorder output types to
-         * match selected fields (not strictly required but improves user
-         * experience in the GUI), and reorder input types to match output
-         * types. Beware that the Expr.typ has a unique number so we cannot
-         * compare/copy them directly (although that unique number is required
-         * to be unique only for a node, better keep it unique globally in case
-         * we want to generate several nodes in a single binary, and to avoid
-         * needless confusion when debugging): *)
-        let reorder_output node =
-          get_selected_fields node |>
-          Option.may (fun selected_fields ->
-            let sf_index name =
-              try List.findi (fun _ sf ->
-                    sf.Operation.alias = name) selected_fields |>
-                  fst
-              with Not_found ->
-                (* star-imported fields - throw them all at the end in no
-                 * specific order. TODO: in parent order? *)
-                max_int in
-            let cmp (n1, _) (n2, _) =
-              compare (sf_index n1) (sf_index n2) in
-            node.N.out_type.C.fields <-
-              List.fast_sort cmp node.N.out_type.C.fields) ;
-          return_unit
-        and reorder_input node =
-          match node.N.parents with
-          | [] -> return_unit
-          | parent :: other_parents ->
-            assert parent.N.out_type.C.finished_typing ;
-            assert parent.N.in_type.C.finished_typing ;
-            (* Check all parents have same output *)
-            let%lwt () =
-              match List.find (fun parent' ->
-                  assert parent'.N.out_type.C.finished_typing ;
-                  assert parent'.N.in_type.C.finished_typing ;
-                  0 <> cmp_temp_tup_typ_fields parent.N.out_type.C.fields
-                                               parent'.N.out_type.C.fields
-                ) other_parents with
-              | exception Not_found -> return_unit
-              | parent' ->
-                !logger.error "Different parents have different out-types: \
-                             %s (%a) and %s (%a)"
-                            (N.fq_name parent) C.print_temp_tup_typ parent.N.out_type
-                            (N.fq_name parent') C.print_temp_tup_typ parent'.N.out_type ;
-                fail (SyntaxError CannotCompleteTyping) in
-            (* Check parent output = child input *)
-            let f1 = List.fast_sort cmp_fields node.N.in_type.C.fields
-            and f2 = List.fast_sort cmp_fields parent.N.out_type.C.fields in
-            if cmp_temp_tup_typ_fields f1 f2 <> 0 then (
-              !logger.error "Node input (%a) differs from parent output (%a)!"
-                C.print_temp_tup_typ_fields f1
-                C.print_temp_tup_typ_fields f2 ;
-              fail (SyntaxError CannotCompleteTyping)
-            ) else (
-              node.N.in_type <- C.temp_tup_typ_copy  parent.N.out_type ;
-              return_unit) in
-        let%lwt () = iter_nodes_seq reorder_output in
-        let%lwt () = iter_nodes_seq reorder_input in
-        (* Compile *)
-        let _, thds =
-          Hashtbl.fold (fun _ node (doing,thds) ->
-              (* Avoid compiling twice the same thing (TODO: a lockfile) *)
-              if Set.mem node.N.signature doing then doing, thds else (
-                Set.add node.N.signature doing,
-                compile_node conf node :: thds)
-            ) layer.L.persist.L.nodes (Set.empty, []) in
-        let%lwt () = join thds in
-        C.Layer.set_status layer Compiled ;
-        (* Now that the nodes have been compiled, for all intents and
-         * purposes, including typing of dependent layers, the private
-         * fields do no exist. Remove them: *)
-        let remove_private_fields node =
-          node.N.out_type.C.fields <-
-            List.filter (fun (name, _) ->
-              not (is_private_field name)) node.N.out_type.C.fields ;
-          return_unit in
-        iter_nodes_seq remove_private_fields))
+              C.print_tuple_type node.N.in_type
+              C.print_tuple_type node.N.out_type ;
+            node.N.in_type <- typed_of_untyped_tuple node.N.in_type ;
+            (* So far order was not taken into account. Reorder output types
+             * to match selected fields (not strictly required but improves
+             * user experience in the GUI). Beware that the Expr.typ has a
+             * unique number so we cannot compare/copy them directly (although
+             * that unique number is required to be unique only for a node,
+             * better keep it unique globally in case we want to generate
+             * several nodes in a single binary, and to avoid needless
+             * confusion when debugging): *)
+            let cmp =
+              get_selected_fields node |>
+              Option.map (fun selected_fields ->
+                let sf_index name =
+                  try List.findi (fun _ sf ->
+                        sf.Operation.alias = name) selected_fields |>
+                      fst
+                  with Not_found ->
+                    (* star-imported fields - throw them all at the end in no
+                     * specific order. TODO: in parent order? *)
+                    max_int in
+                fun f1 f2 ->
+                  compare (sf_index f1.typ_name) (sf_index f2.typ_name)) in
+            node.N.out_type <- typed_of_untyped_tuple ?cmp node.N.out_type ;
+            node.N.signature <- N.signature conf.C.version_tag node
+          ) layer.L.persist.L.nodes) in
+      (* Compile *)
+      let _, thds =
+        Hashtbl.fold (fun _ node (doing,thds) ->
+            (* Avoid compiling twice the same thing (TODO: a lockfile) *)
+            if Set.mem node.N.signature doing then doing, thds else (
+              Set.add node.N.signature doing,
+              compile_node conf node :: thds)
+          ) layer.L.persist.L.nodes (Set.empty, []) in
+      let%lwt () = join thds in
+      C.Layer.set_status layer Compiled ;
+      return_unit)
       (fun e ->
         C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
         fail e)

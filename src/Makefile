@@ -28,7 +28,7 @@ RAMEN_SOURCES = \
 	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml RWLock.ml RamenOutRef.ml \
 	RamenSharedTypesJS.ml AlerterSharedTypesJS.ml RamenSharedTypes.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml RamenParsing.ml \
-	EthAddr.ml Ipv4.ml Ipv6.ml Lang.ml RingBufLib.ml RingBuf.ml RamenConf.ml \
+	EthAddr.ml Ipv4.ml Ipv6.ml RingBufLib.ml Lang.ml RingBuf.ml RamenConf.ml \
 	RamenBinocle.ml RamenExport.ml RamenProcesses.ml Globs.ml \
 	CodeGen_OCaml.ml Compiler.ml RamenHtml.ml RamenColor.ml RamenFormats.ml \
 	RamenChart.ml RamenGui.ml RamenHttpHelpers.ml \

@@ -75,9 +75,6 @@ let rec find_float_metric metrics name =
   | _::rest -> find_float_metric rest name
 
 let node_info_of_node node =
-  let to_expr_type_info =
-    List.map (fun (_, typ) -> Expr.to_expr_type_info typ)
-  in
   let%lwt stats = RamenProcesses.last_report (N.fq_name node) in
   return SN.{
     definition = {
@@ -87,8 +84,8 @@ let node_info_of_node node =
     exporting = Operation.is_exporting node.N.operation ;
     signature = if node.N.signature = "" then None else Some node.N.signature ;
     pid = node.N.pid ;
-    input_type = C.list_of_temp_tup_type node.N.in_type |> to_expr_type_info ;
-    output_type = C.list_of_temp_tup_type node.N.out_type |> to_expr_type_info ;
+    input_type = C.info_of_tuple_type node.N.in_type ;
+    output_type = C.info_of_tuple_type node.N.out_type ;
     parents = List.map N.fq_name node.N.parents ;
     children = List.map N.fq_name node.N.children ;
     stats }
@@ -403,16 +400,16 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
   (* Check that the node exists and exports *)
   let%lwt _layer, node =
     find_exporting_node_or_fail conf layer_name node_name in
-  let k = RamenExport.history_key node in
-  match Hashtbl.find RamenExport.imported_tuples k with
+  let open RamenExport in
+  let k = history_key node in
+  match Hashtbl.find imported_tuples k with
   | exception Not_found -> (* Nothing yet, just answer with empty result *)
       return (0, [])
   | history ->
       let start = Unix.gettimeofday () in
-      let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
       let rec loop () =
         let first, values =
-          RamenExport.fold_tuples_since
+          fold_tuples_since
             ?since ?max_res history (None, [])
               (fun _ seqnum tup (first, prev) ->
                 let first =
@@ -427,7 +424,9 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
         ) else (
           return (
             first,
-            RamenExport.export_columns_of_tuples tuple_type values |>
+            export_columns_of_tuples
+              history.ser_tuple_type values |>
+            List.fast_sort (reorder_columns_to_user history) |>
             List.map (fun (typ, nullmask, column) ->
               typ, Option.map RamenBitmask.to_bools nullmask, column))
         ) in

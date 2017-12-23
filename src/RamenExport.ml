@@ -7,6 +7,9 @@ module N = RamenConf.Node
 open Helpers
 open Stdint
 
+(* If true, the import of tuple with log details about serialization *)
+let verbose_serialization = false
+
 (* Possible solutions:
  *
  * 1. Simple for the node, complex for ramen:
@@ -62,7 +65,14 @@ open Stdint
 let history_block_length = 10_000 (* TODO: make it a parameter? *)
 
 type history =
-  { (* Store arrays of Scalar.values not hash of names to values !
+  { (* The type stored in there, which must correspond to the node
+       out_type serialized type, and will since the history is associated
+       with the node name and output signature. *)
+    ser_tuple_type : field_typ list ;
+    (* List of the serialized fields in order of appearance in the user
+     * provided tuple so that we can reorder exported tuples: *)
+    pos_in_user_tuple : string array ;
+    (* Store arrays of Scalar.values not hash of names to values !
      * TODO: ideally storing columns would be even better *)
     tuples : scalar_value array array ;
     (* Start seqnum of the next block: *)
@@ -147,11 +157,22 @@ let read_archive dir filenum =
   with Sys_error _ -> None
 
 let make_history conf node =
+  let history_version_tag = "~1" in
   let type_sign = C.type_signature_hash node.N.out_type in
   let dir = conf.C.persist_dir ^"/workers/history/"^ N.fq_name node
-                               ^"/"^ type_sign in
+                               ^"/"^ type_sign ^ history_version_tag in
   !logger.info "Creating history for node %S" (N.fq_name node) ;
   mkdir_all dir ;
+  let ser_tuple_type, pos_in_user_tuple =
+    match node.N.out_type with
+    | UntypedTuple _ -> assert false
+    | TypedTuple { user ; ser } ->
+      ser,
+      (* The pos_in_user_tuple is merely user without private fields: *)
+      List.filter_map (fun f ->
+        if is_private_field f.typ_name then None
+        else Some f.typ_name) user |>
+      Array.of_list in
   (* Note: this is OK to share this [||] since we use it only as a placeholder *)
   let tuples = Array.make history_block_length [||] in
   let nb_files, filenums, max_seqnum =
@@ -170,7 +191,8 @@ let make_history conf node =
       !logger.debug "%d archive files from %d up to %d"
         nb_files (fst (List.hd filenums)) max_seqnum ;
       max_seqnum) in
-  { tuples ; block_start ; count = 0 ; dir ; nb_files ; filenums ;
+  { ser_tuple_type ; pos_in_user_tuple ; tuples ; block_start ;
+    count = 0 ; dir ; nb_files ; filenums ;
     ts_cache = Hashtbl.create (conf.C.max_history_archives / 8) }
 
 let add_tuple conf node tuple =
@@ -187,10 +209,7 @@ let add_tuple conf node tuple =
   history.tuples.(idx) <- tuple ;
   history.count <- history.count + 1
 
-let read_tuple tuple_type =
-  (* First read the nullmask *)
-  let nullmask_size =
-    RingBufLib.nullmask_bytes_of_tuple_type tuple_type in
+let read_tuple ser_tuple_typ nullmask_size =
   fun tx ->
     let read_single_value offs =
       let open RingBuf in
@@ -223,30 +242,43 @@ let read_tuple tuple_type =
         RingBufLib.sersize_of_fixsz_typ typ
     in
     (* Read all fields one by one *)
-    (* This works because the node is running and therefore the tuples
-     * has been cleared from private fields already. *)
-    let tuple_len = List.length tuple_type in
+    if verbose_serialization then
+      !logger.debug "Importing the serialized tuple %a"
+        Lang.Tuple.print_typ ser_tuple_typ ;
+    let tuple_len = List.length ser_tuple_typ in
     let tuple = Array.make tuple_len VNull in
     let sz, _ =
       List.fold_lefti (fun (offs, b) i typ ->
+          assert (not (is_private_field typ.typ_name)) ;
           let value, offs', b' =
             if typ.nullable && not (RingBuf.get_bit tx b) then (
               None, offs, b+1
             ) else (
               let value = read_single_value offs typ.typ in
+              if verbose_serialization then
+                !logger.debug "Importing a single value for %a at offset %d: %a"
+                  Lang.Tuple.print_field_typ typ
+                  offs Lang.Scalar.print value ;
               let offs' = offs + sersize_of (typ.typ, value) in
               Some value, offs', if typ.nullable then b+1 else b
             ) in
           Option.may (Array.set tuple i) value ;
           offs', b'
-        ) (nullmask_size, 0) tuple_type in
+        ) (nullmask_size, 0) ser_tuple_typ in
     tuple, sz
 
 let import_tuples conf rb_name node =
   let open Lwt in
-  let tuple_type = C.tup_typ_of_temp_tup_type node.N.out_type in
-  !logger.debug "Starting to import output from node %s (in ringbuf %S), which outputs %a"
-    (N.fq_name node) rb_name C.print_temp_tup_typ node.N.out_type ;
+  let ser_tuple_typ = C.tuple_ser_type node.N.out_type in
+  let nullmask_size =
+    RingBufLib.nullmask_bytes_of_tuple_type ser_tuple_typ in
+  (* We will store tuples in serialized column order but will reorder
+   * the columns when answering user queries. *)
+  !logger.debug "Starting to import output from node %s (in ringbuf %S), \
+                 which outputs %a, serialized into %a."
+    (N.fq_name node) rb_name
+    C.print_tuple_type node.N.out_type
+    Lang.Tuple.print_typ ser_tuple_typ ;
   let%lwt rb = wrap (fun () -> RingBuf.load rb_name) in
   catch
     (fun () ->
@@ -254,9 +286,9 @@ let import_tuples conf rb_name node =
         RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in
       while%lwt true do
         let%lwt tx = dequeue rb in
-        let tuple, _sz = read_tuple tuple_type tx in
+        let ser_tuple, _sz = read_tuple ser_tuple_typ nullmask_size tx in
         RingBuf.dequeue_commit tx ;
-        wrap (fun () -> add_tuple conf node tuple) >>=
+        wrap (fun () -> add_tuple conf node ser_tuple) >>=
         Lwt_main.yield
       done)
     (function Canceled ->
@@ -429,6 +461,24 @@ let export_columns_of_tuples tuple_type values =
       )
     ) tuple_type
 
+let reorder_columns_to_user history =
+  let idx_of_field n =
+    Array.findi ((=) n) history.pos_in_user_tuple in
+  if verbose_serialization then
+    !logger.debug "Reordering columns like this: %a"
+      (Array.print String.print) history.pos_in_user_tuple ;
+  fun (n1, _, _) (n2, _, _) ->
+    try
+      let i1 = idx_of_field n1
+      and i2 = idx_of_field n2 in
+      Int.compare i1 i2
+    with Not_found ->
+      !logger.error "Cannot find fields %s and %s in %a, \
+                     user ordering will be wrong!"
+        n1 n2
+        Lang.Tuple.print_typ history.ser_tuple_type ;
+      String.compare n1 n2 (* Still we want List.sort to terminate *)
+
 (* Garbage in / garbage out *)
 let float_of_scalar_value = function
   | VFloat x -> x
@@ -476,13 +526,17 @@ let () =
       Printf.sprintf "Node %S has no event-time information" n)
     | _ -> None)
 
-(* Return the rank of field named [n] in [node] out_type tuple. *)
-let find_field node n =
-  let rec loop i = function
-  | [] -> failwith ("field "^ n ^" does not exist")
-  | (name, _typ) :: rest ->
-    if name = n then i else loop (i+1) rest in
-  loop 0 node.N.out_type.C.fields
+(* Return the rank of field named [n] in the serialized tuple. *)
+let find_ser_field tuple_type n =
+  match tuple_type with
+  | C.UntypedTuple _ ->
+      !logger.error "Asked for serialized rank of an untyped output" ;
+      assert false
+  | C.TypedTuple { ser ; _ } ->
+    (match List.findi (fun _i field -> field.typ_name = n) ser with
+    | exception Not_found ->
+        failwith ("field "^ n ^" does not exist")
+    | i, _ -> i)
 
 let fold_tuples_and_update_ts_cache
       ?min_filenum ?max_filenum ?max_res
@@ -491,16 +545,16 @@ let fold_tuples_and_update_ts_cache
   match export_event_info node.N.operation with
   | None -> raise (NodeHasNoEventTimeInfo node.N.name)
   | Some ((start_field, start_scale), duration_info) ->
-    let ti = find_field node start_field in
+    let ti = find_ser_field node.N.out_type start_field in
     let t2_of_tup =
       match duration_info with
       | DurationConst f -> fun _tup t1 -> t1 +. f
       | DurationField (f, s) ->
-        let fi = find_field node f in
+        let fi = find_ser_field node.N.out_type f in
         fun tup t1 ->
           t1 +. float_of_scalar_value tup.(fi) *. s
       | StopField (f, s) ->
-        let fi = find_field node f in
+        let fi = find_ser_field node.N.out_type f in
         fun tup _t1 ->
           float_of_scalar_value tup.(fi) *. s
     in
@@ -563,7 +617,7 @@ let build_timeseries node data_field max_data_points
         (if until <= ts_max then f_opt min ma filenum else ma))
         (None, None) in
     (* As we already have max_data_points, no need for max_res *)
-    let vi = find_field node data_field in
+    let vi = find_ser_field node.N.out_type data_field in
     fold_tuples_and_update_ts_cache
       ?min_filenum ?max_filenum ~max_res:max_int node history ()
       (fun () t1 t2 tup ->

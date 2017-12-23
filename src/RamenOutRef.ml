@@ -35,18 +35,20 @@ struct
   let with_w_lock fname = with_lock RWLock.with_w_lock F_LOCK fname
 end
 
-type out_spec = string * string list
+type out_spec = string * bool list
 
-let string_of_out_spec (fname, fields) =
-  let fields = List.fast_sort String.compare fields in
-  fname ^"|"^ String.concat "," fields
+let string_of_out_spec (fname, keep) =
+  fname ^"|"^ String.of_list (List.map (fun keep ->
+    if keep then 'X' else '_') keep)
 
 let out_spec_of_string str =
-  let fname, fields = String.split str ~by:"|" in
-  fname, String.split_on_char ',' fields
+  let fname, skiplist = String.split str ~by:"|" in
+  fname,
+  String.to_list skiplist |> List.map ((=) 'X')
 
+(* For debug only: *)
 let print_out_specs oc outs =
-  Map.print ~sep:"; " String.print (List.print String.print) oc outs
+  Map.print ~sep:"; " String.print (List.print Bool.print) oc outs
 
 (* Used by ramen when starting a new worker to initialize (or reset) its
  * output: *)

@@ -55,12 +55,11 @@ exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
 
-let fields_spec tup_typ =
-  List.map fst tup_typ.C.fields
-
-let input_spec conf node =
+let input_spec conf parent node =
   in_ringbuf_name conf node,
-  fields_spec node.N.in_type
+  let out_type = C.tuple_ser_type parent.N.out_type
+  and in_type = C.tuple_ser_type node.N.in_type in
+  RingBufLib.skip_list ~out_type ~in_type
 
 let run_node conf layer node =
   let command = C.exec_of_node conf.C.persist_dir node
@@ -78,13 +77,15 @@ let run_node conf layer node =
          | layer when layer.L.persist.L.status = Running -> true
          | _ -> false
       then
-        let k, v = input_spec conf child in
+        let k, v = input_spec conf node child in
         Map.add k v outs
       else outs) Map.empty in
   let output_ringbufs =
     if Lang.Operation.is_exporting node.N.operation then
+      let typ = C.tuple_ser_type node.N.out_type in
       Map.add (exp_ringbuf_name conf node)
-              (fields_spec node.N.out_type) output_ringbufs
+              (RingBufLib.skip_list ~out_type:typ ~in_type:typ)
+              output_ringbufs
     else output_ringbufs in
   let out_ringbuf_ref =
     out_ringbuf_names_ref conf node in
@@ -138,7 +139,7 @@ let run_node conf layer node =
          * started. If the parent is not running then it will overwrite
          * it when it starts, with whatever running children it will
          * have at that time (including us, if we are still running).  *)
-        RamenOutRef.add out_ref (input_spec conf node)
+        RamenOutRef.add out_ref (input_spec conf parent node)
     ) node.N.parents
 
 let run conf layer =

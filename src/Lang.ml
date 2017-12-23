@@ -38,6 +38,8 @@ type syntax_error =
   | GroupStateNotAllowed of { clause : string }
   | FieldNotInTuple of { field : string ; tuple : tuple_prefix ;
                          tuple_type : string }
+  | FieldNotSameTypeInAllParents of { field : string }
+  | NoParentForField of { field : string }
   | TupleHasOnlyVirtuals of { tuple : tuple_prefix ; alias : string }
   | InvalidPrivateField of { field : string }
   | MissingClause of { clause : string }
@@ -75,13 +77,17 @@ let string_of_syntax_error =
   | FieldNotInTuple { field ; tuple ; tuple_type } ->
     "Field "^ field ^" is not in the "^ string_of_prefix tuple ^" tuple"^
     (if tuple_type <> "" then " (which is "^ tuple_type ^")" else "")
+  | FieldNotSameTypeInAllParents { field } ->
+    "Field "^ field ^" has different types in differentparents"
+  | NoParentForField { field } ->
+    "Input field "^ field ^" is used but node has no parent"
   | InvalidPrivateField { field } ->
     "Cannot import field "^ field ^" which is private"
   | MissingClause { clause } ->
     "Missing "^ clause ^" clause"
   | CannotTypeField { field ; typ ; tuple } ->
     "Cannot find out the type of field "^ field ^" ("^ typ ^") \
-     supposed to be a member of "^ string_of_prefix tuple
+     supposed to be a member of "^ string_of_prefix tuple ^" tuple"
   | CannotTypeExpression { what ; expected_type ; got ; got_type } ->
     what ^" must have type (compatible with) "^ expected_type ^
     " but got "^ got ^" of type "^ got_type
@@ -452,15 +458,6 @@ struct
       uniq_num : int ; (* to build var names or record field names *)
       mutable nullable : bool option ;
       mutable scalar_typ : scalar_typ option }
-
-  let signature_of_typ typ =
-    Scalar.string_of_typ (Option.get typ.scalar_typ) ^
-    (if Option.get typ.nullable then " null" else " notnull")
-
-  let to_expr_type_info typ =
-    { name_info = typ.expr_name ;
-      nullable_info = typ.nullable ;
-      typ_info = typ.scalar_typ }
 
   let print_typ fmt typ =
     Printf.fprintf fmt "%s of %s%s"

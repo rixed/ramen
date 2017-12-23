@@ -52,6 +52,13 @@ let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _) =
   let open RingBufLib in
   nullmask_sz + fix_sz + sersize_of_string worker
 
+(* TODO: for now those are being (un)serialized "by hand" so field
+ * ordering does not matter. But when later we'll want to have an
+ * internal datasource with this stream then we will have to rethink this.
+ * Will we want to read for a specific node or all of them? Will we want
+ * each node to output to each consumer, or will we want ramen itself to
+ * copy this stream to consumers? *)
+
 let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =
   RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function

@@ -20,6 +20,9 @@ open Lang
 open Helpers
 module C = RamenConf
 
+(* If true, the generated code will log details about serialization *)
+let verbose_serialization = false
+
 let id_of_prefix tuple =
   String.nreplace (string_of_prefix tuple) "." "_"
 
@@ -106,7 +109,8 @@ let emit_sersize_of_tuple name oc tuple_typ =
     (print_tuple_deconstruct TupleOut) tuple_typ
     size_for_nullmask
     (List.print ~first:"" ~last:"" ~sep:" +\n\t" (fun fmt field_typ ->
-      if is_private_field field_typ.typ_name then Printf.fprintf fmt "0" else
+      if is_private_field field_typ.typ_name then
+        Printf.fprintf fmt "0 (* private *)" else
       let id = id_of_field_typ ~tuple:TupleOut field_typ in
       if field_typ.nullable then (
         Printf.fprintf fmt "(match %s with None -> 0 | Some x_ -> %a)"
@@ -121,43 +125,66 @@ let emit_set_value tx_var offs_var field_var oc field_typ =
     (id_of_typ field_typ) tx_var offs_var field_var
 
 (* The function that will serialize the fields of the tuple at the given
- * addresses.  Everything else (allocating on the RB and writing the record
- * size) is independent of the tuple type and is handled in the library.
- * Also, the lib ensure that null bitmask is 0 at the beginning. Returns
- * the final offset for checking with serialized size of this tuple. *)
+ * addresses. The first argument is a bitmask of the fields that we must
+ * actually output (true = output, false = skip) in serialization order.
+ * CodeGenLib will first call the function with this single parameter, leaving
+ * us the oportunity to specialize the actual outputer according to this
+ * skiplist (here we merely compute the nullmask size).
+ * Everything else (allocating on the RB and writing the record size) is
+ * independent of the tuple type and is handled in the library.
+ * Returns the final offset for * checking with serialized size of this
+ * tuple. *)
 let emit_serialize_tuple name oc tuple_typ =
-  Printf.fprintf oc "let %s tx_ %a =\n"
-    name
+  (* Serialize in tuple_typ.typ_name order: *)
+  let ser_tuple_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
+  Printf.fprintf oc "let %s skiplist_ =\n" name ;
+  Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;
+  Printf.fprintf oc "\t\tList.fold_left2 (fun s nullable keep ->\n" ;
+  Printf.fprintf oc "\t\t\tif nullable && keep then s+1 else s) 0\n" ;
+  Printf.fprintf oc "\t\t\t%a\n"
+    (List.print (fun oc field -> Bool.print oc field.nullable))
+      ser_tuple_typ ;
+  Printf.fprintf oc "\t\t\tskiplist_ |>\n" ;
+  Printf.fprintf oc "\t\tRingBufLib.bytes_for_bits |>\n" ;
+  Printf.fprintf oc "\t\tRingBufLib.round_up_to_rb_word in\n" ;
+  Printf.fprintf oc "\tfun tx_ %a ->\n"
     (print_tuple_deconstruct TupleOut) tuple_typ ;
-  let nullmask_bytes = RingBufLib.nullmask_bytes_of_tuple_type tuple_typ in
-  Printf.fprintf oc "\tlet offs_ = %d in\n" nullmask_bytes ;
+  if verbose_serialization then
+    Printf.fprintf oc "\t\t!RamenLog.logger.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;\n" ;
   (* Start by zeroing the nullmask *)
-  if nullmask_bytes > 0 then
-    Printf.fprintf oc "\tRingBuf.zero_bytes tx_ 0 %d ; (* zero the nullmask *)\n"
-      nullmask_bytes ;
-  let _ = List.fold_left (fun nulli field ->
-      if is_private_field field.typ_name then nulli else
+  Printf.fprintf oc "\t\tif nullmask_bytes_ > 0 then\n\
+                     \t\t\tRingBuf.zero_bytes tx_ 0 nullmask_bytes_ ; (* zero the nullmask *)\n" ;
+  Printf.fprintf oc "\t\tlet offs_, nulli_ = nullmask_bytes_, 0 in\n" ;
+  List.iter (fun field ->
+      Printf.fprintf oc "\t\tlet offs_, nulli_ =\n\
+                         \t\t\tif List.hd skiplist_ then (\n" ;
       let id = id_of_field_typ ~tuple:TupleOut field in
       if field.nullable then (
         (* Write either nothing (since the nullmask is initialized with 0) or
          * the nullmask bit and the value *)
-        Printf.fprintf oc "\tlet offs_ = match %s with\n" id ;
-        Printf.fprintf oc "\t| None -> offs_\n" ;
-        Printf.fprintf oc "\t| Some x_ ->\n" ;
-        Printf.fprintf oc "\t\tRingBuf.set_bit tx_ %d ;\n" nulli ;
-        Printf.fprintf oc "\t\t%a ;\n"
+        Printf.fprintf oc "\t\t\t\tmatch %s with\n" id ;
+        Printf.fprintf oc "\t\t\t\t| None -> offs_, nulli_ + 1\n" ;
+        Printf.fprintf oc "\t\t\t\t| Some x_ ->\n" ;
+        Printf.fprintf oc "\t\t\t\t\tRingBuf.set_bit tx_ nulli_ ;\n" ;
+        Printf.fprintf oc "\t\t\t\t\t%a ;\n"
           (emit_set_value "tx_" "offs_" "x_") field.typ ;
-        Printf.fprintf oc "\t\toffs_ + %a in\n"
+        if verbose_serialization then
+          Printf.fprintf oc "\t\t\t\t!RamenLog.logger.debug \"Serializing %s (Some %%s) at offset %%d\" (dump x_) offs_ ;\n" id ;
+        Printf.fprintf oc "\t\t\t\t\toffs_ + %a, nulli_ + 1\n"
           (emit_sersize_of_field_var field.typ) "x_"
       ) else (
-        Printf.fprintf oc "\t%a ;\n"
+        Printf.fprintf oc "\t\t\t\t%a ;\n"
           (emit_set_value "tx_" "offs_" id) field.typ ;
-        Printf.fprintf oc "\tlet offs_ = offs_ + %a in\n"
+        if verbose_serialization then
+          Printf.fprintf oc "\t\t\t\t!RamenLog.logger.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) offs_ ;\n" id id ;
+        Printf.fprintf oc "\t\t\t\toffs_ + %a, nulli_\n"
           (emit_sersize_of_field_var field.typ) id
       ) ;
-      nulli + (if field.nullable then 1 else 0)
-    ) 0 tuple_typ in
-  Printf.fprintf oc "\toffs_\n"
+      Printf.fprintf oc "\t\t\t) else offs_, nulli_ in\n" ;
+      Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n"
+    ) ser_tuple_typ ;
+  Printf.fprintf oc "\t\tignore skiplist_ ;\n" ;
+  Printf.fprintf oc "\t\toffs_\n"
 
 let rec emit_indent oc n =
   if n > 0 then (
@@ -236,15 +263,19 @@ let emit_in_tuple ?(tuple=TupleIn) mentioned and_all_others oc in_tuple_typ =
  * so extract a tuple from the ring buffer. As an optimisation, read
  * (and return) only the mentioned fields. *)
 let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
+  (* Deserialize in in_tuple_typ.typ_name order: *)
+  let ser_tuple_typ = RingBufLib.ser_tuple_typ_of_tuple_typ in_tuple_typ in
   Printf.fprintf oc "\
     let %s tx_ =\n\
     \tlet offs_ = %d in\n"
     name
-    (RingBufLib.nullmask_bytes_of_tuple_type in_tuple_typ) ;
+    (RingBufLib.nullmask_bytes_of_tuple_type ser_tuple_typ) ;
+  if verbose_serialization then
+    Printf.fprintf oc "\t!RamenLog.logger.debug \"Deserializing a tuple\" ;\n" ;
   let _ = List.fold_left (fun nulli field ->
-      if is_private_field field.typ_name then nulli else
       let id = id_of_field_typ ~tuple:TupleIn field in
       if and_all_others || Set.mem field.typ_name mentioned then (
+        (* TODO: let id, offs_ = ... would be faster *)
         Printf.fprintf oc "\tlet %s =\n" id ;
         if field.nullable then
           Printf.fprintf oc "\
@@ -256,6 +287,8 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
           Printf.fprintf oc "\
             \t\tRingBuf.read_%s tx_ offs_ in\n"
             (id_of_typ field.typ) ;
+        if verbose_serialization then
+          Printf.fprintf oc "\t!RamenLog.logger.debug \"deserialized field %s (%%s) at ofset %%d\" (dump %s) offs_ ;\n" id id ;
         Printf.fprintf oc "\tlet offs_ = " ;
         if field.nullable then
           Printf.fprintf oc
@@ -271,7 +304,7 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
           (emit_sersize_of_field_tx "tx_" "offs_" nulli) field
       ) ;
       nulli + (if field.nullable then 1 else 0)
-    ) 0 in_tuple_typ in
+    ) 0 ser_tuple_typ in
   Printf.fprintf oc "\tignore offs_ ;\n" ; (* avoid a warning *)
   Printf.fprintf oc "\t%a\n"
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
@@ -1356,7 +1389,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
     (emit_float_of_top "float_of_top_state_") top_by ;
   Printf.fprintf oc "let () =\n\
       \tLwt_main.run (\n\
-      \t\tCodeGenLib.aggregate \
+      \t\tCodeGenLib.aggregate\n\
       \t\t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
       \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ %b \n\
       \t\t\ttop_ top_init_ float_of_top_state_\n\

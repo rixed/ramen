@@ -96,12 +96,12 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #editor input[type="text"] { margin-left: 1em; }
 #editor button { padding: 0.5em 1em 0.5em 1em; font-weight:700; font-size:100%; text-align: center; margin-right: 1em; margin-bottom: 2em; }
 
-#inputs li {
+#in-out li {
   float: left;
   list-style-type: decimal; list-style-position: outside;
   margin: 0.5em 0em 0.3em 1em; }
-#inputs + div { clear: left; }
-#inputs li .label { font-size: 100%; }
+#in-out + div, #in-out > h1 { clear: left; }
+#in-out li .label { font-size: 100%; }
 
 #output table { margin-top: 1em; }
 

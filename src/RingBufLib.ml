@@ -72,3 +72,38 @@ let out_ringbuf_names outbuf_ref_fname =
       let%lwt lines = RamenOutRef.read outbuf_ref_fname in
       return (Some lines)
     ) else return_none
+
+(* To allow a node to select only some fields from its parent and write only
+ * a skip list in the out_ref (to makes serialization easier not out_ref
+ * smaller) we serialize all fields in the same order: *)
+let ser_tuple_field_cmp t1 t2 =
+  String.compare t1.typ_name t2.typ_name
+
+let ser_tuple_typ_of_tuple_typ tuple_typ =
+  tuple_typ |>
+  List.filter (fun t -> not (is_private_field t.typ_name)) |>
+  List.fast_sort ser_tuple_field_cmp
+
+let skip_list ~out_type ~in_type =
+  let ser_out = ser_tuple_typ_of_tuple_typ out_type
+  and ser_in = ser_tuple_typ_of_tuple_typ in_type in
+  let rec loop v = function
+    | [], [] -> List.rev v
+    | _::os', [] -> loop (false :: v) (os', [])
+    | o::os', (i::is' as is) ->
+      let c = ser_tuple_field_cmp o i in
+      if c < 0 then
+        (* not interested in o *)
+        loop (false :: v) (os', is)
+      else if c = 0 then
+        (* we want o *)
+        loop (true :: v) (os', is')
+      else (
+        (* not possible: i must be in o *)
+        !logger.error "Field %s is not in it's parent output" i.typ_name ;
+        assert false)
+    | [], _ ->
+      !logger.error "More inputs than parent outputs?" ;
+      assert false
+  in
+  loop [] (ser_out, ser_in)

@@ -389,7 +389,10 @@ let output rb serialize_tuple (sersize, tuple) =
   let tx = enqueue_alloc rb sersize in
   let offs = serialize_tuple tx tuple in
   enqueue_commit tx ;
-  assert (offs = sersize)
+  (* sersize return the size for the whole out_tuple while we might end up
+   * serializing only a few fields. TODO: pass the skiplist as first
+   * argument of sersize_of_tuple so that we can compute a better value. *)
+  assert (offs <= sersize)
 
 (* Each node can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
@@ -421,8 +424,9 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
       (* Open some: *)
       Set.iter (fun fname ->
           !logger.debug "Mapping %S" fname ;
+          let skiplist = Map.find fname out_spec in
           let rb = RingBuf.load fname in
-          let once = output rb serialize_tuple in
+          let once = output rb (serialize_tuple skiplist) in
           let retry_count = ref 0 in
           (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
            * case the ringbuf disappear altogether because the child is
@@ -640,7 +644,7 @@ let print_weightmap fmt map =
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
       (sersize_of_tuple : 'tuple_out -> int)
-      (serialize_tuple : RingBuf.tx -> 'tuple_out -> int)
+      (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> 'tuple_out -> int)
       (generate_tuples : ('tuple_out -> unit Lwt.t) -> 'tuple_in -> 'generator_out -> unit Lwt.t)
       (tuple_of_aggr :
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)

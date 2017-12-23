@@ -1112,13 +1112,19 @@ let nodes_panel =
 let field_panel f =
   labeled_value f.Field.name f.typ_disp
 
-let input_panel =
+let input_output_panel =
   with_param sel_node (fun sel ->
     if sel = "" then
       p [ clss "nodata" ]
-        [ text "Select a node to see its input fields" ]
+        [ text "Select a node to see its input/output" ]
     else with_node sel (fun node ->
-      ol [] (List.map (fun f -> li [] [ field_panel f ]) node.input_type)))
+      group [
+        h1 [] [ text "Input fields" ] ;
+        ol [] (List.map (fun f ->
+          li [] [ field_panel f ]) node.input_type) ;
+        h1 [] [ text "Output fields" ] ;
+        ol [] (List.map (fun f ->
+          li [] [ field_panel f]) node.output_type) ]))
 
 let can_plot_type = function
     Some (TFloat | TU8 | TU16 | TU32 | TU64 | TU128 |
@@ -1410,8 +1416,8 @@ let event_processor_page =
         [ div [ id "top" ] [ top_layers ; top_nodes ] ;
           div
             [ id "details" ]
-            [ div [ id "inputs" ]
-                  [ h1 [] [ text "Input fields" ] ; input_panel ] ;
+            [ div [ id "in-out" ]
+                  [ input_output_panel ] ;
               div [ id "operation" ]
                   [ h1 [] [ text "Operation" ] ; op_panel ] ] ;
           (* TODO: instead of true/false this should return

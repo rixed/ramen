@@ -35,11 +35,43 @@ let temp_tup_typ_copy t =
   { t with fields =
       List.map (fun (name, typ) -> name, Lang.Expr.copy_typ typ) t.fields }
 
-let type_signature t =
-  List.fold_left (fun s (name, typ) ->
+type tuple_type = UntypedTuple of temp_tup_typ
+                | TypedTuple of { user : field_typ list ;
+                                  ser : field_typ list }
+
+let tuple_is_typed = function
+  | TypedTuple _ -> true
+  | UntypedTuple _ -> false
+
+let print_tuple_type fmt = function
+  | UntypedTuple temp_tup_typ ->
+      print_temp_tup_typ fmt temp_tup_typ
+  | TypedTuple { user ; _ } ->
+      Lang.Tuple.print_typ fmt user
+
+let typed_tuple_type = function
+  | TypedTuple { user ; ser } -> user, ser
+  | UntypedTuple _ ->
+      !logger.error "Node should be typed by now!" ;
+      assert false
+
+let untyped_tuple_type = function
+  | TypedTuple _ ->
+      !logger.error "This node should not be typed!" ;
+      assert false
+  | UntypedTuple temp_tup_typ -> temp_tup_typ
+
+let tuple_ser_type = snd % typed_tuple_type
+let tuple_user_type = fst % typed_tuple_type
+
+let type_signature tuple_type =
+  let ser = tuple_ser_type tuple_type in
+  List.fold_left (fun s field ->
       (if s = "" then "" else s ^ "_") ^
-      name ^ ":" ^ Lang.Expr.signature_of_typ typ
-    ) "" t.fields
+      field.typ_name ^ ":" ^
+      Lang.Scalar.string_of_typ field.typ ^
+      if field.nullable then " null" else " notnull"
+    ) "" ser
 
 let md4 s =
   Cryptohash_md4.string s |> Cryptohash_md4.to_hex
@@ -63,16 +95,31 @@ let temp_tup_typ_of_tup_typ tup_typ =
   finish_typing t ;
   t
 
-let list_of_temp_tup_type ttt = ttt.fields
+let info_of_tuple_type = function
+  | UntypedTuple ttt ->
+      (* Is it really useful to send unfinished types? *)
+      List.map (fun (name, typ) ->
+          { name_info = name ;
+            nullable_info = typ.Lang.Expr.nullable ;
+            typ_info = typ.scalar_typ }) ttt.fields
+  | TypedTuple { user ; _ } ->
+      List.filter_map (fun f ->
+          if is_private_field f.typ_name then None else Some (
+            { name_info = f.typ_name ;
+              nullable_info = Some f.nullable ;
+              typ_info = Some f.typ })) user
+
+let temp_tup_typ_of_tuple_type = function
+  | UntypedTuple temp_tup_typ -> temp_tup_typ
+  | TypedTuple { ser ; _ } -> temp_tup_typ_of_tup_typ ser
 
 let tup_typ_of_temp_tup_type ttt =
   let open Lang in
   assert ttt.finished_typing ;
-  list_of_temp_tup_type ttt |>
   List.map (fun (name, typ) ->
     { typ_name = name ;
       nullable = Option.get typ.Expr.nullable ;
-      typ = Option.get typ.Expr.scalar_typ })
+      typ = Option.get typ.Expr.scalar_typ }) ttt.fields
 
 let archive_file dir (block_start, block_stop) =
   dir ^"/"^ string_of_int block_start ^"-"^ string_of_int block_stop
@@ -97,8 +144,8 @@ struct
       name : string ;
       (* Parsed operation and its in/out types: *)
       mutable operation : Lang.Operation.t ;
-      mutable in_type : temp_tup_typ ;
-      mutable out_type : temp_tup_typ ;
+      mutable in_type : tuple_type ;
+      mutable out_type : tuple_type ;
       (* The signature identifies the operation and therefore the binary.
        * It does not identifies a node! Only layer name + node name identifies
        * a node. Indeed, it is frequent that different nodes in the graph have
@@ -233,8 +280,8 @@ struct
       (* Also reset the info we kept from the last compilation *)
       Hashtbl.iter (fun _ node ->
         let open Node in
-        node.in_type <- make_temp_tup_typ () ;
-        node.out_type <- make_temp_tup_typ () ;
+        node.in_type <- UntypedTuple (make_temp_tup_typ ()) ;
+        node.out_type <- UntypedTuple (make_temp_tup_typ ()) ;
         node.pid <- None) layer.persist.nodes
     | Running ->
       raise (InvalidCommand "Graph is running")
@@ -429,7 +476,8 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
     parents = [] ; children = [] ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
-    in_type = make_temp_tup_typ () ; out_type = make_temp_tup_typ () ;
+    in_type = UntypedTuple (make_temp_tup_typ ()) ;
+    out_type = UntypedTuple (make_temp_tup_typ ()) ;
     pid = None } in
   Hashtbl.add layer.Layer.persist.Layer.nodes node_name node ;
   layer, node
@@ -561,9 +609,14 @@ let complete_field_name conf name s =
     match find_node conf layer_name node_name with
     | exception Not_found -> []
     | _layer, node ->
-      let s = String.(lowercase (trim s)) in
-      List.fold_left (fun lst (field_name, _) ->
-          if String.starts_with (String.lowercase field_name) s then
-            field_name :: lst
-          else lst
-        ) [] node.Node.out_type.fields
+      (match node.Node.out_type with
+      | UntypedTuple _ -> []
+      (* Avoid private fields by looking only at ser: *)
+      | TypedTuple { ser ; _ } ->
+        let s = String.(lowercase (trim s)) in
+        List.fold_left (fun lst field ->
+            let n = field.typ_name in
+            if String.starts_with (String.lowercase n) s then
+              n :: lst
+            else lst
+          ) [] ser)
