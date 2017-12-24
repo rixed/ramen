@@ -51,7 +51,7 @@ let http_service port cert_opt key_opt router =
         try router (Request.meth req) path params headers body
         with exn -> fail exn)
       (function
-        HttpError (code, msg) as exn ->
+      | HttpError (code, msg) as exn ->
         print_exception exn ;
         let status = Code.status_of_code code in
         let headers =
