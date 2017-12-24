@@ -32,7 +32,7 @@ RUN opam update && \
       plplot sqlite3 && \
     opam repo add --priority=1 ocalme \
       git://github.com/rixed/ocalme-opam-repository.git && \
-    opam install ramen.1.0.3
+    opam install ramen.1.1.0
 
 # Environment
 ENV RAMEN_PERSIST_DIR=/ramen \
