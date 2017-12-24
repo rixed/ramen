@@ -254,6 +254,7 @@ long-check: ramen
 	./tests/word_count
 	./tests/tuples
 	./tests/commit_before
+	./tests/from
 
 check-long: long-check
 
