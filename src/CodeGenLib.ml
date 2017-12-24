@@ -296,7 +296,7 @@ let stats_rb_read_bytes =
 
 let stats_rb_write_bytes =
   IntCounter.make Consts.rb_write_bytes_metric
-    "Number of bytes written in each output ring buffer."
+    "Number of bytes written in output ring buffers."
 
 let stats_rb_read_sleep_time =
   FloatCounter.make Consts.rb_wait_read_metric
@@ -384,15 +384,14 @@ let update_stats_rb period rb_name get_tuple () =
 
 (* Helpers *)
 
-let output rb serialize_tuple (sersize, tuple) =
+let output rb serialize_tuple sersize_of_tuple tuple =
   let open RingBuf in
+  let sersize = sersize_of_tuple tuple in
+  IntCounter.add stats_rb_write_bytes sersize ;
   let tx = enqueue_alloc rb sersize in
   let offs = serialize_tuple tx tuple in
   enqueue_commit tx ;
-  (* sersize return the size for the whole out_tuple while we might end up
-   * serializing only a few fields. TODO: pass the skiplist as first
-   * argument of sersize_of_tuple so that we can compute a better value. *)
-  assert (offs <= sersize)
+  assert (offs = sersize)
 
 (* Each node can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
@@ -426,7 +425,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
           !logger.debug "Mapping %S" fname ;
           let skiplist = Map.find fname out_spec in
           let rb = RingBuf.load fname in
-          let once = output rb (serialize_tuple skiplist) in
+          let once = output rb (serialize_tuple skiplist)
+                               (sersize_of_tuple skiplist) in
           let retry_count = ref 0 in
           (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
            * case the ringbuf disappear altogether because the child is
@@ -444,11 +444,10 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
                   RamenOutRef.mem rb_ref_out_fname fname))
               ~delay_rec:sleep_out once)
         ) to_open ;
+      (* Update the current list of outputers: *)
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
-    let sersize = sersize_of_tuple tuple in
-    IntCounter.add stats_rb_write_bytes sersize ;
     List.map (fun out ->
-        try%lwt out (sersize, tuple)
+        try%lwt out tuple
         with RingBufLib.NoMoreRoom ->
           (* It is OK, just skip it. Next tuple we will reread fnames
            * if it has changed. *)
@@ -643,7 +642,7 @@ let print_weightmap fmt map =
 
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
-      (sersize_of_tuple : 'tuple_out -> int)
+      (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
       (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> 'tuple_out -> int)
       (generate_tuples : ('tuple_out -> unit Lwt.t) -> 'tuple_in -> 'generator_out -> unit Lwt.t)
       (tuple_of_aggr :

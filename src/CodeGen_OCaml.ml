@@ -94,31 +94,44 @@ let id_of_typ typ =
 let emit_value_of_string typ oc var =
   Printf.fprintf oc "CodeGenLib.%s_of_string %s" (id_of_typ typ) var
 
+let emit_compute_nullmask_size oc ser_tuple_typ =
+  Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;
+  Printf.fprintf oc "\t\tList.fold_left2 (fun s nullable keep ->\n" ;
+  Printf.fprintf oc "\t\t\tif nullable && keep then s+1 else s) 0\n" ;
+  Printf.fprintf oc "\t\t\t%a\n"
+    (List.print (fun oc field -> Bool.print oc field.nullable))
+      ser_tuple_typ ;
+  Printf.fprintf oc "\t\t\tskiplist_ |>\n" ;
+  Printf.fprintf oc "\t\tRingBufLib.bytes_for_bits |>\n" ;
+  Printf.fprintf oc "\t\tRingBufLib.round_up_to_rb_word in\n"
+
 let emit_sersize_of_tuple name oc tuple_typ =
-  (* For nullable fields each ringbuf record has a bitmask of as many bits as
-   * there are nullable fields, rounded to the greater or equal multiple of rb_word_size.
-   * This is a constant given by the tuple type:
-   *)
-  let size_for_nullmask =
-    RingBufLib.nullmask_bytes_of_tuple_type tuple_typ in
-  (* Let's emit the function definition, deconstructing the tuple with identifiers
-   * for varsized fields: *)
-  Printf.fprintf oc "let %s %a =\n\t\
-      %d (* null bitmask *) + \n\t%a\n"
-    name
-    (print_tuple_deconstruct TupleOut) tuple_typ
-    size_for_nullmask
-    (List.print ~first:"" ~last:"" ~sep:" +\n\t" (fun fmt field_typ ->
-      if is_private_field field_typ.typ_name then
-        Printf.fprintf fmt "0 (* private *)" else
-      let id = id_of_field_typ ~tuple:TupleOut field_typ in
-      if field_typ.nullable then (
-        Printf.fprintf fmt "(match %s with None -> 0 | Some x_ -> %a)"
+  (* We want the sersize of the serialized version of course: *)
+  let ser_tuple_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
+  (* Like for serialize_tuple, we receive first the skiplist and then the
+   * actual tuple, so we can compute the nullmask in advance: *)
+  Printf.fprintf oc "let %s skiplist_ =\n" name ;
+  emit_compute_nullmask_size oc ser_tuple_typ ;
+  (* Now for the code run for each tuple: *)
+  Printf.fprintf oc "\tfun %a ->\n"
+    (print_tuple_deconstruct TupleOut) tuple_typ ;
+  Printf.fprintf oc "\t\tlet sz_ = nullmask_bytes_ in\n" ;
+  List.iter (fun field ->
+      let id = id_of_field_typ ~tuple:TupleOut field in
+      Printf.fprintf oc "\t\t(* %s *)\n" id ;
+      Printf.fprintf oc "\t\tlet sz_ = sz_ + if List.hd skiplist_ then (\n" ;
+      if field.nullable then
+        Printf.fprintf oc "\t\t\tmatch %s with None -> 0 | Some x_ -> %a\n"
           id
-          (emit_sersize_of_field_var field_typ.typ) "x_"
-      ) else (
-        Printf.fprintf fmt "%a" (emit_sersize_of_field_var field_typ.typ) id
-      ))) tuple_typ
+          (emit_sersize_of_field_var field.typ) "x_"
+      else
+        Printf.fprintf oc "\t\t\t%a"
+          (emit_sersize_of_field_var field.typ) id ;
+      Printf.fprintf oc "\t\t) else 0 in\n" ;
+      Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n" ;
+    ) ser_tuple_typ ;
+  Printf.fprintf oc "\t\tignore skiplist_ ;\n" ;
+  Printf.fprintf oc "\t\tsz_\n"
 
 let emit_set_value tx_var offs_var field_var oc field_typ =
   Printf.fprintf oc "RingBuf.write_%s %s %s %s"
@@ -138,15 +151,7 @@ let emit_serialize_tuple name oc tuple_typ =
   (* Serialize in tuple_typ.typ_name order: *)
   let ser_tuple_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
   Printf.fprintf oc "let %s skiplist_ =\n" name ;
-  Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;
-  Printf.fprintf oc "\t\tList.fold_left2 (fun s nullable keep ->\n" ;
-  Printf.fprintf oc "\t\t\tif nullable && keep then s+1 else s) 0\n" ;
-  Printf.fprintf oc "\t\t\t%a\n"
-    (List.print (fun oc field -> Bool.print oc field.nullable))
-      ser_tuple_typ ;
-  Printf.fprintf oc "\t\t\tskiplist_ |>\n" ;
-  Printf.fprintf oc "\t\tRingBufLib.bytes_for_bits |>\n" ;
-  Printf.fprintf oc "\t\tRingBufLib.round_up_to_rb_word in\n" ;
+  emit_compute_nullmask_size oc ser_tuple_typ ;
   Printf.fprintf oc "\tfun tx_ %a ->\n"
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   if verbose_serialization then
