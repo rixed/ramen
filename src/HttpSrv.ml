@@ -402,35 +402,42 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
     find_exporting_node_or_fail conf layer_name node_name in
   let open RamenExport in
   let k = history_key node in
-  match Hashtbl.find imported_tuples k with
-  | exception Not_found -> (* Nothing yet, just answer with empty result *)
-      return (0, [])
-  | history ->
-      let start = Unix.gettimeofday () in
-      let rec loop () =
-        let first, values =
+  let get_values () =
+    match Hashtbl.find imported_tuples k with
+    | exception Not_found -> 0, 0, [], None
+    | history ->
+        let first, nb_values, values =
           fold_tuples_since
-            ?since ?max_res history (None, [])
-              (fun _ seqnum tup (first, prev) ->
+            ?since ?max_res history (None, 0, [])
+              (fun _ seqnum tup (first, nbv, prev) ->
                 let first =
                   if first = None then Some seqnum else first in
-                first, List.cons tup prev) in
+                first, nbv+1, List.cons tup prev) in
         let first = first |? (since |? 0) in
-        let dt = Unix.gettimeofday () -. start in
-        if values = [] && dt < wait_up_to then (
-          (* TODO: sleep for dt, queue the wakener on this history,
-           * and wake all the sleeps when a tuple is received *)
-          Lwt_unix.sleep 0.1 >>= loop
-        ) else (
-          return (
-            first,
-            export_columns_of_tuples
-              history.ser_tuple_type values |>
-            List.fast_sort (reorder_columns_to_user history) |>
-            List.map (fun (typ, nullmask, column) ->
-              typ, Option.map RamenBitmask.to_bools nullmask, column))
-        ) in
-      loop ()
+        first, nb_values, values, Some history in
+  let rec loop () =
+    let start = Unix.gettimeofday () in
+    let first, nb_values, values, history = get_values () in
+    let dt = Unix.gettimeofday () -. start in
+    if values = [] && dt < wait_up_to then (
+      (* TODO: sleep for dt, queue the wakener on this history,
+       * and wake all the sleeps when a tuple is received *)
+      Lwt_unix.sleep 0.1 >>= loop
+    ) else (
+      !logger.debug "Exporting %d tuples" nb_values ;
+      return (
+        match history with
+        | None -> 0, []
+        | Some history ->
+          first,
+          export_columns_of_tuples
+            history.ser_tuple_type values |>
+          List.fast_sort (reorder_columns_to_user history) |>
+          List.map (fun (typ, nullmask, column) ->
+            typ, Option.map RamenBitmask.to_bools nullmask, column))
+    )
+  in
+  loop ()
 
 let export conf headers layer_name node_name body =
   let%lwt () = check_accept headers Consts.json_content_type in
