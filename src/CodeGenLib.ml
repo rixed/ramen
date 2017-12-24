@@ -397,7 +397,7 @@ let output rb serialize_tuple sersize_of_tuple tuple =
  * will change dynamically as children are added/removed. *)
 let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
-  and out_l = ref []  (* list of outputer *) in
+  and out_l = ref []  (* list of outputers *) in
   let get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
   fun tuple ->
     IntCounter.add stats_out_tuple_count 1 ;
@@ -416,7 +416,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
         !logger.debug "Unmapping %S" fname ;
         match Hashtbl.find out_h fname with
         | exception Not_found ->
-          !logger.error "While unmapping %S: this file is not mapped?!" fname
+          !logger.error "While unmapping %S: this file is not mapped?!"
+            fname
         | rb, _ ->
           RingBuf.unload rb ;
           Hashtbl.remove out_h fname) to_close ;
