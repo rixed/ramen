@@ -20,7 +20,6 @@ let retry
     ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.1) ?delay_rec f =
   let open Lwt in
   let next_delay = ref first_delay in
-  let cumul_delay = ref 0. in
   let rec loop x =
     (match%lwt f x with
     | exception e ->
@@ -30,11 +29,6 @@ let retry
         let delay = min delay max_delay in
         let delay = max delay min_delay in
         next_delay := !next_delay *. delay_adjust_nok ;
-        cumul_delay := !cumul_delay +. delay ;
-        if !cumul_delay > 30. then (
-          cumul_delay := 0. ;
-          !logger.info "Retryable error: %s, pausing %gs"
-            (Printexc.to_string e) delay) ;
         Option.may (fun f -> f delay) delay_rec ;
         let%lwt () = Lwt_unix.sleep delay in
         loop x
