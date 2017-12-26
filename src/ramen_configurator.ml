@@ -17,9 +17,9 @@ let enc = Uri.pct_encode
 (* Get the operations to import the dataset and do basic transformations.
  * Named streams belonging to this base layer:
  * - ${dataset_name}/tcp, etc: Raw imported tuples straight from the CSV;
- * - ${dataset_name}/tcp c2s: The first of a pair of streams of traffic info
+ * - ${dataset_name}/c2s tcp: The first of a pair of streams of traffic info
  *                            (source to dest rather than client to server);
- * - ${dataset_name}/tcp s2c: The second stream of traffic info;
+ * - ${dataset_name}/s2c tcp: The second stream of traffic info;
  *
  * If you wish to process traffic info you must feed on both c2s and s2c.
  *)
@@ -34,7 +34,7 @@ let print_squoted oc = Printf.fprintf oc "'%s'"
 let tcp_traffic_node ?where dataset_name name dt export =
   let dt_us = dt * 1_000_000 in
   let parents =
-    List.map (rebase dataset_name) ["tcp c2s"; "tcp s2c"] |>
+    List.map (rebase dataset_name) ["c2s tcp"; "s2c tcp"] |>
     IO.to_string (List.print ~first:"" ~last:"" ~sep:","
                     print_squoted) in
   let op =
@@ -199,7 +199,8 @@ let base_layer dataset_name delete uncompress csv_dir export =
                ^ (if uncompress then ".lz4" else "") ^"\""^
     (if uncompress then " PREPROCESS WITH \"lz4 -d -c\"" else "") ^
     " SEPARATOR \"\\t\" NULL \"<NULL>\" ("^ fields ^")"
-  (* Helper to build dsr-dst view of clt-srv TCP and UDP metrics: *)
+  (* Helper to build dsr-dst view of clt-srv metrics, keeping only the fields
+   * that are useful for traffic-related computations: *)
   and to_unidir csv non_cs_fields cs_fields ~src ~dst name =
     let cs_fields = cs_fields |>
       List.fold_left (fun s (field, alias) ->
@@ -361,16 +362,136 @@ let base_layer dataset_name delete uncompress csv_dir export =
     "ip6", "" ; "port", "" ; "diffserv", "" ; "mtu", "" ;
     "traffic_packets", "packets" ; "traffic_bytes", "bytes" ;
     "payload_bytes", "payload" ]
+  (* IP (non UDP/TCP) CSV Importer: *)
+  and icmp = csv_import {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null,
+      zone_server u32 not null,
+      ip4_client u32 null,
+      ip6_client i128 null,
+      ip4_server u32 null,
+      ip6_server i128 null,
+      ip4_external u32 null,
+      ip6_external i128 null,
+      diffserv_client u8 not null,
+      diffserv_server u8 not null,
+      mtu_client u16 null,
+      mtu_server u16 null,
+      application u32 not null,
+      protostack string null,
+      traffic_bytes_client u64 not null,
+      traffic_bytes_server u64 not null,
+      traffic_packets_client u64 not null,
+      traffic_packets_server u64 not null,
+      icmp_type u8 not null,
+      icmp_code u8 not null,
+      error_ip4_client u32 null,
+      error_ip6_client i128 null,
+      error_ip4_server u32 null,
+      error_ip6_server i128 null,
+      error_port_client u16 null,
+      error_port_server u16 null,
+      error_ip_proto u8 null,
+      error_zone_client u32 null,
+      error_zone_server u32 null|} |>
+    make_node "icmp"
+  and icmp_to_unidir = to_unidir "icmp" {|
+    poller, capture_begin, capture_end,
+    ip4_external, ip6_external,
+    application, protostack|} [
+    "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
+    "ip6", "" ; "diffserv", "" ; "mtu", "" ;
+    "traffic_packets", "packets" ; "traffic_bytes", "bytes" ]
+  (* IP (non UDP/TCP) CSV Importer: *)
+  and other_ip = csv_import {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null,
+      zone_server u32 not null,
+      ip4_client u32 null,
+      ip6_client i128 null,
+      ip4_server u32 null,
+      ip6_server i128 null,
+      diffserv_client u8 not null,
+      diffserv_server u8 not null,
+      mtu_client u16 null,
+      mtu_server u16 null,
+      ip_protocol u8 not null,
+      application u32 not null,
+      protostack string null,
+      traffic_bytes_client u64 not null,
+      traffic_bytes_server u64 not null,
+      traffic_packets_client u64 not null,
+      traffic_packets_server u64 not null|} |>
+    make_node "other-than-ip"
+  and other_ip_to_unidir = to_unidir "other-than-ip" {|
+    poller, capture_begin, capture_end,
+    application, protostack|} [
+    "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
+    "ip6", "" ; "diffserv", "" ; "mtu", "" ;
+    "traffic_packets", "packets" ; "traffic_bytes", "bytes" ]
+  (* non-IP CSV Importer: *)
+  and non_ip = csv_import {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null,
+      zone_server u32 not null,
+      mtu_client u16 null,
+      mtu_server u16 null,
+      eth_type u16 not null,
+      application u32 not null,
+      protostack string null,
+      traffic_bytes_client u64 not null,
+      traffic_bytes_server u64 not null,
+      traffic_packets_client u64 not null,
+      traffic_packets_server u64 not null|} |>
+    make_node "non-ip"
+  and non_ip_to_unidir = to_unidir "non-ip" {|
+    poller, capture_begin, capture_end,
+    application, protostack|} [
+    "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "mtu", "" ;
+    "traffic_packets", "packets" ; "traffic_bytes", "bytes" ]
   in
   RamenSharedTypes.{
     name = dataset_name ;
     nodes = [
       tcp ;
-      tcp_to_unidir ~src:"client" ~dst:"server" "tcp c2s" ;
-      tcp_to_unidir ~src:"server" ~dst:"client" "tcp s2c" ;
+      tcp_to_unidir ~src:"client" ~dst:"server" "c2s tcp" ;
+      tcp_to_unidir ~src:"server" ~dst:"client" "s2c tcp" ;
       udp ;
-      udp_to_unidir ~src:"client" ~dst:"server" "udp c2s" ;
-      udp_to_unidir ~src:"server" ~dst:"client" "udp s2c" ;
+      udp_to_unidir ~src:"client" ~dst:"server" "c2s udp" ;
+      udp_to_unidir ~src:"server" ~dst:"client" "s2c udp" ;
+      icmp ;
+      icmp_to_unidir ~src:"client" ~dst:"server" "c2s icmp" ;
+      icmp_to_unidir ~src:"server" ~dst:"client" "s2c icmp" ;
+      other_ip ;
+      other_ip_to_unidir ~src:"client" ~dst:"server" "c2s other-than-ip" ;
+      other_ip_to_unidir ~src:"server" ~dst:"client" "s2c other-than-ip" ;
+      non_ip ;
+      non_ip_to_unidir ~src:"client" ~dst:"server" "c2s non-ip" ;
+      non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ;
       (* TODO: replace with global traffic: *)
       tcp_traffic_node dataset_name "TCP minutely traffic" 60 export ;
       tcp_traffic_node dataset_name "TCP hourly traffic" 3600 export ;
@@ -410,8 +531,9 @@ let layer_of_bcns bcns dataset_name export =
      * - it lacks many of the TCP-only fields and so can apply on all traffic;
      * - it works for whatever avg_window not necessarily minutely. *)
     let op =
-      Printf.sprintf
-        {|FROM '%s', '%s', '%s', '%s' SELECT
+      Printf.sprintf {|
+          FROM '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'
+          SELECT
             (capture_begin // %d) * %g AS start,
             min capture_begin, max capture_end,
             sum packets_src / %g AS packets_per_secs,
@@ -421,8 +543,11 @@ let layer_of_bcns bcns dataset_name export =
           GROUP BY capture_begin // %d
           COMMIT WHEN
             in.capture_begin > out.min_capture_begin + 2 * u64(%d)|}
-        (rebase dataset_name "tcp c2s") (rebase dataset_name "tcp s2c")
-        (rebase dataset_name "udp c2s") (rebase dataset_name "udp s2c")
+        (rebase dataset_name "c2s tcp") (rebase dataset_name "s2c tcp")
+        (rebase dataset_name "c2s udp") (rebase dataset_name "s2c udp")
+        (rebase dataset_name "c2s icmp") (rebase dataset_name "s2c icmp")
+        (rebase dataset_name "c2s other-than-ip") (rebase dataset_name "s2c other-than-ip")
+        (rebase dataset_name "c2s non-ip") (rebase dataset_name "s2c non-ip")
         avg_window bcn.avg_window
         bcn.avg_window bcn.avg_window
         (name_of_zones bcn.source)
@@ -770,7 +895,7 @@ let ddos_layer dataset_name export =
   let avg_win = 60 and rem_win = 3600 in
   let op_new_peers =
     let avg_win_us = avg_win * 1_000_000 in
-    {|FROM '$CSV$' SELECT
+    {|FROM $CSVS$ SELECT
        (capture_begin // $AVG_WIN_US$) * $AVG_WIN$ AS start,
        min capture_begin, max capture_end,
        -- Traffic (of any kind) we haven't seen in the last $REM_WIN$ secs
@@ -798,7 +923,9 @@ let ddos_layer dataset_name export =
     rep "$AVG_WIN_US$" (string_of_int avg_win_us) |>
     rep "$AVG_WIN$" (string_of_int avg_win) |>
     rep "$REM_WIN$" (string_of_int rem_win) |>
-    rep "$CSV$" (rebase dataset_name "tcp") in
+    rep "$CSVS$" (["tcp" ; "udp" ; "icmp" ; "other-than-ip"] |>
+                  List.map (fun p -> "'"^ rebase dataset_name p ^"'") |>
+                  String.join ",") in
   let global_new_peers =
     make_node "new peers" op_new_peers in
   let pred_node, anom_node =
