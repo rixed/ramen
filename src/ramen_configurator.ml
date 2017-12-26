@@ -16,10 +16,10 @@ let enc = Uri.pct_encode
 
 (* Get the operations to import the dataset and do basic transformations.
  * Named streams belonging to this base layer:
- * - ${dataset_name}/csv: Raw imported tuples straight from the CSV;
- * - ${dataset_name}/c2s: The first of a pair of streams of traffic info
- *                        (source to dest rather than client to server);
- * - ${dataset_name}/s2c: The second stream of traffic info;
+ * - ${dataset_name}/tcp, etc: Raw imported tuples straight from the CSV;
+ * - ${dataset_name}/tcp c2s: The first of a pair of streams of traffic info
+ *                            (source to dest rather than client to server);
+ * - ${dataset_name}/tcp s2c: The second stream of traffic info;
  *
  * If you wish to process traffic info you must feed on both c2s and s2c.
  *)
@@ -30,10 +30,11 @@ let rep sub by str = String.nreplace ~str ~sub ~by
 
 let print_squoted oc = Printf.fprintf oc "'%s'"
 
-let traffic_node ?where dataset_name name dt export =
+(* Aggregating TCP metrics for alert discovery: *)
+let tcp_traffic_node ?where dataset_name name dt export =
   let dt_us = dt * 1_000_000 in
   let parents =
-    List.map (rebase dataset_name) ["c2s"; "s2c"] |>
+    List.map (rebase dataset_name) ["tcp c2s"; "tcp s2c"] |>
     IO.to_string (List.print ~first:"" ~last:"" ~sep:","
                     print_squoted) in
   let op =
@@ -191,139 +192,189 @@ let anomaly_detection_nodes avg_window from name timeseries export =
   predictor_node, anomaly_node
 
 let base_layer dataset_name delete uncompress csv_dir export =
-  let csv =
-    let op =
-      Printf.sprintf {|
-        READ%s FILES "%s/tcp_v29.*.csv%s" %s
-               SEPARATOR "\t" NULL "<NULL>" (
-           poller string not null,
-           capture_begin u64 not null,
-           capture_end u64 not null,
-           device_client u8 null,
-           device_server u8 null,
-           vlan_client u32 null,
-           vlan_server u32 null,
-           mac_client u64 null,
-           mac_server u64 null,
-           zone_client u32 not null,
-           zone_server u32 not null,
-           ip4_client u32 null,
-           ip6_client i128 null,
-           ip4_server u32 null,
-           ip6_server i128 null,
-           ip4_external u32 null,
-           ip6_external i128 null,
-           port_client u16 not null,
-           port_server u16 not null,
-           diffserv_client u8 not null,
-           diffserv_server u8 not null,
-           os_client u8 null,
-           os_server u8 null,
-           mtu_client u16 null,
-           mtu_server u16 null,
-           captured_pcap string null,
-           application u32 not null,
-           protostack string null,
-           uuid string null,
-           traffic_bytes_client u64 not null,
-           traffic_bytes_server u64 not null,
-           traffic_packets_client u64 not null,
-           traffic_packets_server u64 not null,
-           payload_bytes_client u64 not null,
-           payload_bytes_server u64 not null,
-           payload_packets_client u64 not null,
-           payload_packets_server u64 not null,
-           retrans_traffic_bytes_client u64 not null,
-           retrans_traffic_bytes_server u64 not null,
-           retrans_payload_bytes_client u64 not null,
-           retrans_payload_bytes_server u64 not null,
-           syn_count_client u64 not null,
-           fin_count_client u64 not null,
-           fin_count_server u64 not null,
-           rst_count_client u64 not null,
-           rst_count_server u64 not null,
-           timeout_count u64 not null,
-           close_count u64 not null,
-           dupack_count_client u64 not null,
-           dupack_count_server u64 not null,
-           zero_window_count_client u64 not null,
-           zero_window_count_server u64 not null,
-           ct_count u64 not null,
-           ct_sum u64 not null,
-           ct_square_sum u64 not null,
-           rt_count_server u64 not null,
-           rt_sum_server u64 not null,
-           rt_square_sum_server u64 not null,
-           rtt_count_client u64 not null,
-           rtt_sum_client u64 not null,
-           rtt_square_sum_client u64 not null,
-           rtt_count_server u64 not null,
-           rtt_sum_server u64 not null,
-           rtt_square_sum_server u64 not null,
-           rd_count_client u64 not null,
-           rd_sum_client u64 not null,
-           rd_square_sum_client u64 not null,
-           rd_count_server u64 not null,
-           rd_sum_server u64 not null,
-           rd_square_sum_server u64 not null,
-           dtt_count_client u64 not null,
-           dtt_sum_client u64 not null,
-           dtt_square_sum_client u64 not null,
-           dtt_count_server u64 not null,
-           dtt_sum_server u64 not null,
-           dtt_square_sum_server u64 not null,
-           dcerpc_uuid string null
-         )|}
-      (if delete then " AND DELETE" else "")
-      csv_dir
-      (if uncompress then ".lz4" else "")
-      (if uncompress then "PREPROCESS WITH \"lz4 -d -c\"" else "") in
-    make_node "csv" op in
-  let to_unidir ~src ~dst name =
-    let cs_fields = [
-         "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
-         "ip6", "" ; "port", "" ; "diffserv", "" ; "os", "" ; "mtu", "" ;
-         "traffic_packets", "packets" ; "traffic_bytes", "bytes" ;
-         "payload_bytes", "payload" ;
-         "payload_packets", "packets_with_payload" ;
-         "retrans_traffic_bytes", "retrans_bytes" ;
-         "retrans_payload_bytes", "retrans_payload" ;
-         "fin_count", "fins" ; "rst_count", "rsts" ;
-         "dupack_count", "dupacks" ; "zero_window_count", "zero_windows" ;
-         "rtt_count", "" ; "rtt_sum", "" ; "rtt_square_sum", "rtt_sum2" ;
-         "rd_count", "" ; "rd_sum", "" ; "rd_square_sum", "rd_sum2" ;
-         "dtt_count", "" ; "dtt_sum", "" ; "dtt_square_sum", "dtt_sum2" ] |>
+  (* Outlines of CSV importers: *)
+  let csv_import fields =
+    "READ"^ (if delete then " AND DELETE" else "") ^
+    " FILES \""^ csv_dir ^"/tcp_v29.*.csv"
+               ^ (if uncompress then ".lz4" else "") ^"\""^
+    (if uncompress then " PREPROCESS WITH \"lz4 -d -c\"" else "") ^
+    " SEPARATOR \"\\t\" NULL \"<NULL>\" ("^ fields ^")"
+  (* Helper to build dsr-dst view of clt-srv TCP and UDP metrics: *)
+  and to_unidir csv non_cs_fields cs_fields ~src ~dst name =
+    let cs_fields = cs_fields |>
       List.fold_left (fun s (field, alias) ->
         let alias = if alias <> "" then alias else field in
-        s ^"  "^ field ^"_"^ src ^" AS "^ alias ^"_src, "
-               ^ field ^"_"^ dst ^" AS "^ alias ^"_dst,\n") ""
+        s ^"    "^ field ^"_"^ src ^" AS "^ alias ^"_src, "
+                 ^ field ^"_"^ dst ^" AS "^ alias ^"_dst,\n") ""
     in
     let op =
-      {|FROM '|}^ rebase dataset_name "csv" ^{|' SELECT
-         poller, capture_begin, capture_end,
-         ip4_external, ip6_external,
-         captured_pcap, application, protostack, uuid,
-         timeout_count AS timeouts, close_count AS closes,
-         ct_count AS connections, ct_sum AS connections_time,
-         ct_square_sum AS connections_time2, syn_count_client AS syns,|}^
-         cs_fields ^{|
-         dcerpc_uuid
-       WHERE traffic_packets_|}^ src ^" > 0"^
+      "FROM '"^ rebase dataset_name csv ^"' SELECT\n"^
+      cs_fields ^ non_cs_fields ^"\n"^
+      "WHERE traffic_packets_"^ src ^" > 0"^
        (if export_all export then {|
          EXPORT EVENT STARTING AT capture_begin * 1e-6
                   AND STOPPING AT capture_end * 1e-6|}
         else "")
        in
     make_node name op in
+  (* TCP CSV Importer: *)
+  let tcp = csv_import {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null,
+      zone_server u32 not null,
+      ip4_client u32 null,
+      ip6_client i128 null,
+      ip4_server u32 null,
+      ip6_server i128 null,
+      ip4_external u32 null,
+      ip6_external i128 null,
+      port_client u16 not null,
+      port_server u16 not null,
+      diffserv_client u8 not null,
+      diffserv_server u8 not null,
+      os_client u8 null,
+      os_server u8 null,
+      mtu_client u16 null,
+      mtu_server u16 null,
+      captured_pcap string null,
+      application u32 not null,
+      protostack string null,
+      uuid string null,
+      traffic_bytes_client u64 not null,
+      traffic_bytes_server u64 not null,
+      traffic_packets_client u64 not null,
+      traffic_packets_server u64 not null,
+      payload_bytes_client u64 not null,
+      payload_bytes_server u64 not null,
+      payload_packets_client u64 not null,
+      payload_packets_server u64 not null,
+      retrans_traffic_bytes_client u64 not null,
+      retrans_traffic_bytes_server u64 not null,
+      retrans_payload_bytes_client u64 not null,
+      retrans_payload_bytes_server u64 not null,
+      syn_count_client u64 not null,
+      fin_count_client u64 not null,
+      fin_count_server u64 not null,
+      rst_count_client u64 not null,
+      rst_count_server u64 not null,
+      timeout_count u64 not null,
+      close_count u64 not null,
+      dupack_count_client u64 not null,
+      dupack_count_server u64 not null,
+      zero_window_count_client u64 not null,
+      zero_window_count_server u64 not null,
+      ct_count u64 not null,
+      ct_sum u64 not null,
+      ct_square_sum u64 not null,
+      rt_count_server u64 not null,
+      rt_sum_server u64 not null,
+      rt_square_sum_server u64 not null,
+      rtt_count_client u64 not null,
+      rtt_sum_client u64 not null,
+      rtt_square_sum_client u64 not null,
+      rtt_count_server u64 not null,
+      rtt_sum_server u64 not null,
+      rtt_square_sum_server u64 not null,
+      rd_count_client u64 not null,
+      rd_sum_client u64 not null,
+      rd_square_sum_client u64 not null,
+      rd_count_server u64 not null,
+      rd_sum_server u64 not null,
+      rd_square_sum_server u64 not null,
+      dtt_count_client u64 not null,
+      dtt_sum_client u64 not null,
+      dtt_square_sum_client u64 not null,
+      dtt_count_server u64 not null,
+      dtt_sum_server u64 not null,
+      dtt_square_sum_server u64 not null,
+      dcerpc_uuid string null|} |>
+    make_node "tcp"
+  and tcp_to_unidir = to_unidir "tcp" {|
+    poller, capture_begin, capture_end,
+    ip4_external, ip6_external,
+    captured_pcap, application, protostack, uuid,
+    timeout_count AS timeouts, close_count AS closes,
+    ct_count AS connections, ct_sum AS connections_time,
+    ct_square_sum AS connections_time2, syn_count_client AS syns,
+    dcerpc_uuid|} [
+    "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
+    "ip6", "" ; "port", "" ; "diffserv", "" ; "os", "" ; "mtu", "" ;
+    "traffic_packets", "packets" ; "traffic_bytes", "bytes" ;
+    "payload_bytes", "payload" ;
+    "payload_packets", "packets_with_payload" ;
+    "retrans_traffic_bytes", "retrans_bytes" ;
+    "retrans_payload_bytes", "retrans_payload" ;
+    "fin_count", "fins" ; "rst_count", "rsts" ;
+    "dupack_count", "dupacks" ; "zero_window_count", "zero_windows" ;
+    "rtt_count", "" ; "rtt_sum", "" ; "rtt_square_sum", "rtt_sum2" ;
+    "rd_count", "" ; "rd_sum", "" ; "rd_square_sum", "rd_sum2" ;
+    "dtt_count", "" ; "dtt_sum", "" ; "dtt_square_sum", "dtt_sum2" ]
+  (* UDP CSV Importer: *)
+  and udp = csv_import {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null,
+      zone_server u32 not null,
+      ip4_client u32 null,
+      ip6_client i128 null,
+      ip4_server u32 null,
+      ip6_server i128 null,
+      ip4_external u32 null,
+      ip6_external i128 null,
+      port_client u16 not null,
+      port_server u16 not null,
+      diffserv_client u8 not null,
+      diffserv_server u8 not null,
+      mtu_client u16 null,
+      mtu_server u16 null,
+      application u32 not null,
+      protostack string null,
+      traffic_bytes_client u64 not null,
+      traffic_bytes_server u64 not null,
+      traffic_packets_client u64 not null,
+      traffic_packets_server u64 not null,
+      payload_bytes_client u64 not null,
+      payload_bytes_server u64 not null,
+      dcerpc_uuid string null|} |>
+    make_node "udp"
+  and udp_to_unidir = to_unidir "udp" {|
+    poller, capture_begin, capture_end,
+    ip4_external, ip6_external,
+    application, protostack,
+    dcerpc_uuid|} [
+    "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
+    "ip6", "" ; "port", "" ; "diffserv", "" ; "mtu", "" ;
+    "traffic_packets", "packets" ; "traffic_bytes", "bytes" ;
+    "payload_bytes", "payload" ]
+  in
   RamenSharedTypes.{
     name = dataset_name ;
     nodes = [
-      csv ;
-      to_unidir ~src:"client" ~dst:"server" "c2s" ;
-      to_unidir ~src:"server" ~dst:"client" "s2c" ;
-      traffic_node dataset_name "minutely traffic" 60 export ;
-      traffic_node dataset_name "hourly traffic" 3600 export ;
-      traffic_node dataset_name "daily traffic" (3600 * 24) export ] }
+      tcp ;
+      tcp_to_unidir ~src:"client" ~dst:"server" "tcp c2s" ;
+      tcp_to_unidir ~src:"server" ~dst:"client" "tcp s2c" ;
+      udp ;
+      udp_to_unidir ~src:"client" ~dst:"server" "udp c2s" ;
+      udp_to_unidir ~src:"server" ~dst:"client" "udp s2c" ;
+      (* TODO: replace with global traffic: *)
+      tcp_traffic_node dataset_name "TCP minutely traffic" 60 export ;
+      tcp_traffic_node dataset_name "TCP hourly traffic" 3600 export ;
+      tcp_traffic_node dataset_name "TCP daily traffic" (3600 * 24) export ] }
 
 (* Build the node infos corresponding to the BCN configuration *)
 let layer_of_bcns bcns dataset_name export =
@@ -354,14 +405,13 @@ let layer_of_bcns bcns dataset_name export =
     let where =
       (in_zone "in.zone_src" bcn.source) ^" AND "^
       (in_zone "in.zone_dst" bcn.dest) in
-    (* FIXME: this operation is exactly like minutely, except that:
-     * - it adds zone_src and zone_dst names, which can be useful indeed
-     * - it works for whatever avg_window not necessarily minutely.
-     * All in all a waste of resources. We could add custom fields to
-     * traffic_node and force a minutely averaging window for the alerts. *)
+    (* This operation differs from tcp_traffic_node:
+     * - it adds zone_src and zone_dst names, which can be useful indeed;
+     * - it lacks many of the TCP-only fields and so can apply on all traffic;
+     * - it works for whatever avg_window not necessarily minutely. *)
     let op =
       Printf.sprintf
-        {|FROM '%s', '%s' SELECT
+        {|FROM '%s', '%s', '%s', '%s' SELECT
             (capture_begin // %d) * %g AS start,
             min capture_begin, max capture_end,
             sum packets_src / %g AS packets_per_secs,
@@ -371,7 +421,8 @@ let layer_of_bcns bcns dataset_name export =
           GROUP BY capture_begin // %d
           COMMIT WHEN
             in.capture_begin > out.min_capture_begin + 2 * u64(%d)|}
-        (rebase dataset_name "c2s") (rebase dataset_name "s2c")
+        (rebase dataset_name "tcp c2s") (rebase dataset_name "tcp s2c")
+        (rebase dataset_name "udp c2s") (rebase dataset_name "udp s2c")
         avg_window bcn.avg_window
         bcn.avg_window bcn.avg_window
         (name_of_zones bcn.source)
@@ -464,12 +515,13 @@ let layer_of_bcns bcns dataset_name export =
         make_node name op
       ) bcn.max_bps ;
     let minutely =
-      traffic_node ~where dataset_name (name_prefix ^": minutely traffic") 60 export in
+      tcp_traffic_node ~where dataset_name (name_prefix ^": TCP minutely traffic") 60 export in
     all_nodes := minutely :: !all_nodes ;
     let anom name timeseries =
       let pred, anom =
         anomaly_detection_nodes bcn.avg_window minutely.N.name name timeseries export in
       all_nodes := pred :: anom :: !all_nodes in
+    (* TODO: a volume anomaly for other protocols as well *)
     anom "volume"
       [ "packets_per_secs", "packets_per_secs > 10", false,
           [ "bytes_per_secs" ; "packets_with_payload_per_secs" ] ;
@@ -511,7 +563,7 @@ let layer_of_bcas bcas dataset_name export =
     let open Conf_of_sqlite.BCA in
     let avg_window_int = int_of_float bca.avg_window in
     let avg_per_app = bca.name in
-    let csv = rebase dataset_name "csv" in
+    let csv = rebase dataset_name "tcp" in
     let op =
       {|FROM '$CSV$' SELECT
           -- Key
@@ -746,7 +798,7 @@ let ddos_layer dataset_name export =
     rep "$AVG_WIN_US$" (string_of_int avg_win_us) |>
     rep "$AVG_WIN$" (string_of_int avg_win) |>
     rep "$REM_WIN$" (string_of_int rem_win) |>
-    rep "$CSV$" (rebase dataset_name "csv") in
+    rep "$CSV$" (rebase dataset_name "tcp") in
   let global_new_peers =
     make_node "new peers" op_new_peers in
   let pred_node, anom_node =
