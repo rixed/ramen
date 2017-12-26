@@ -491,11 +491,7 @@ let base_layer dataset_name delete uncompress csv_dir export =
       other_ip_to_unidir ~src:"server" ~dst:"client" "s2c other-than-ip" ;
       non_ip ;
       non_ip_to_unidir ~src:"client" ~dst:"server" "c2s non-ip" ;
-      non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ;
-      (* TODO: replace with global traffic: *)
-      tcp_traffic_node dataset_name "TCP minutely traffic" 60 export ;
-      tcp_traffic_node dataset_name "TCP hourly traffic" 3600 export ;
-      tcp_traffic_node dataset_name "TCP daily traffic" (3600 * 24) export ] }
+      non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ] }
 
 (* Build the node infos corresponding to the BCN configuration *)
 let layer_of_bcns bcns dataset_name export =
