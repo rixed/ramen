@@ -193,9 +193,9 @@ let anomaly_detection_nodes avg_window from name timeseries export =
 
 let base_layer dataset_name delete uncompress csv_dir export =
   (* Outlines of CSV importers: *)
-  let csv_import fields =
+  let csv_import csv fields =
     "READ"^ (if delete then " AND DELETE" else "") ^
-    " FILES \""^ csv_dir ^"/tcp_v29.*.csv"
+    " FILES \""^ csv_dir ^"/"^ csv ^"_v29.*.csv"
                ^ (if uncompress then ".lz4" else "") ^"\""^
     (if uncompress then " PREPROCESS WITH \"lz4 -d -c\"" else "") ^
     " SEPARATOR \"\\t\" NULL \"<NULL>\" ("^ fields ^")"
@@ -219,7 +219,7 @@ let base_layer dataset_name delete uncompress csv_dir export =
        in
     make_node name op in
   (* TCP CSV Importer: *)
-  let tcp = csv_import {|
+  let tcp = csv_import "tcp" {|
       poller string not null,
       capture_begin u64 not null,
       capture_end u64 not null,
@@ -319,7 +319,7 @@ let base_layer dataset_name delete uncompress csv_dir export =
     "rd_count", "" ; "rd_sum", "" ; "rd_square_sum", "rd_sum2" ;
     "dtt_count", "" ; "dtt_sum", "" ; "dtt_square_sum", "dtt_sum2" ]
   (* UDP CSV Importer: *)
-  and udp = csv_import {|
+  and udp = csv_import "udp" {|
       poller string not null,
       capture_begin u64 not null,
       capture_end u64 not null,
@@ -363,7 +363,7 @@ let base_layer dataset_name delete uncompress csv_dir export =
     "traffic_packets", "packets" ; "traffic_bytes", "bytes" ;
     "payload_bytes", "payload" ]
   (* IP (non UDP/TCP) CSV Importer: *)
-  and icmp = csv_import {|
+  and icmp = csv_import "icmp" {|
       poller string not null,
       capture_begin u64 not null,
       capture_end u64 not null,
@@ -411,7 +411,7 @@ let base_layer dataset_name delete uncompress csv_dir export =
     "ip6", "" ; "diffserv", "" ; "mtu", "" ;
     "traffic_packets", "packets" ; "traffic_bytes", "bytes" ]
   (* IP (non UDP/TCP) CSV Importer: *)
-  and other_ip = csv_import {|
+  and other_ip = csv_import "other_ip" {|
       poller string not null,
       capture_begin u64 not null,
       capture_end u64 not null,
@@ -446,7 +446,7 @@ let base_layer dataset_name delete uncompress csv_dir export =
     "ip6", "" ; "diffserv", "" ; "mtu", "" ;
     "traffic_packets", "packets" ; "traffic_bytes", "bytes" ]
   (* non-IP CSV Importer: *)
-  and non_ip = csv_import {|
+  and non_ip = csv_import "non_ip" {|
       poller string not null,
       capture_begin u64 not null,
       capture_end u64 not null,
