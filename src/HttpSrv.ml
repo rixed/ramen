@@ -765,6 +765,12 @@ let upload conf headers layer node body =
   | _ ->
     bad_request ("Node "^ N.fq_name node ^" does not accept uploads")
 
+let () =
+  async_exception_hook := (fun exn ->
+    !logger.error "Received exception %s\n%s"
+      (Printexc.to_string exn)
+      (Printexc.get_backtrace ()))
+
 let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
           version_tag persist_dir max_history_archives
           port cert_opt key_opt alert_conf_json () =
