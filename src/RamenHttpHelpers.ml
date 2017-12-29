@@ -25,12 +25,16 @@ let http_service port cert_opt key_opt router =
     !logger.debug "Requested %S" req.Request.resource ;
     (* Make "/path" equivalent to "path" *)
     let path =
-      if String.starts_with path "/" then String.lchop path else path in
+      let rec loop s =
+        if String.starts_with s "/" then loop (String.lchop s) else s in
+      loop path in
     (* Make "path/" equivalent to "path" for convenience. Beware that in
      * general "foo//bar" is not equivalent to "foo/bar" so not seemingly
      * spurious slashes can be omitted! *)
     let path =
-      if String.ends_with path "/" then String.rchop path else path in
+      let rec loop s =
+        if String.ends_with s "/" then loop (String.rchop s) else s in
+      loop path in
     let path =
       String.nsplit path "/" |>
       List.map dec in
