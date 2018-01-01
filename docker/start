@@ -1,6 +1,10 @@
 #!/bin/sh
 
-collectd -C /etc/collectd/collectd.conf
-fprobe 127.0.0.1:2055
+if test -x /usr/sbin/collectd ; then
+  /usr/sbin/collectd -C /etc/collectd/collectd.conf
+fi
+if test -x /usr/sbin/fprobe ; then
+  /usr/sbin/fprobe 127.0.0.1:2055
+fi
 
 exec ramen start $@
