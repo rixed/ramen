@@ -56,7 +56,7 @@ let node_info_of_op op =
 let add debug ramen_url name ops () =
   logger := make_logger debug ;
   let nodes = List.map node_info_of_op ops in
-  let msg = { name ; nodes } in
+  let msg = { name ; nodes ; ok_if_running = false } in
   Lwt_main.run (
     http_put_json (ramen_url ^"/graph") put_layer_req_ppp msg >>= check_ok)
 

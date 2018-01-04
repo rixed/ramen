@@ -139,6 +139,8 @@ type put_layer_req =
   { (* Name of the layer. If this layer already exists then it is
      * replaced. *)
     name : string ;
+    (* If this layer is already running stop it then restart it: *)
+    ok_if_running : bool [@ppp_default false] ;
     nodes : Node.definition list } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)

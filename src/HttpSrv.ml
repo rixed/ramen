@@ -249,51 +249,78 @@ let del_layer conf _headers layer_name =
       del_layer_ conf layer) >>=
   respond_ok
 
+(* FIXME: instead of stopping/starting for real we must build two sets of
+ * programs to stop/start and perform with changing the processes only
+ * when we are about to save the new configuration. *)
+
+let run_ conf layer =
+  try%lwt RamenProcesses.run conf layer
+  with RamenProcesses.AlreadyRunning -> return_unit
+
+let stop_ conf layer =
+  try RamenProcesses.stop conf layer
+  with RamenProcesses.NotRunning -> return_unit
+
+let compile_ conf layer =
+  try%lwt Compiler.compile conf layer
+  with Compiler.AlreadyCompiled -> return_unit
+
 let put_layer conf headers body =
   let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
   let layer_name = msg.name in
   (* Disallow anonymous layers for simplicity: *)
   if layer_name = "" then
-    bad_request "Layers must have non-empty names"
-  (* Check that this layer is new or stopped *)
-  else (
-    (* Delete the layer if it already exists. No worries the conf won't be
-     * changed if there is any error. *)
-    C.with_wlock conf (fun () ->
-      let%lwt () =
-        match Hashtbl.find conf.C.graph.C.layers layer_name with
-        | exception Not_found -> return_unit
-        | layer -> del_layer_ conf layer in
-      (* TODO: Check that this layer node names are unique within the layer *)
-      (* Create all the nodes *)
-      let%lwt nodes = Lwt_list.map_s (fun def ->
-          let name =
-            if def.SN.name <> "" then def.SN.name
-            else N.make_name () in
-          try
-            let _layer, node =
-              C.add_node conf name layer_name def.SN.operation in
-            return node
-          with Invalid_argument x -> bad_request ("Invalid "^ x)
-             | SyntaxError e -> bad_request (string_of_syntax_error e)
-             | e -> fail e
-        ) msg.nodes in
-      (* Then all the links *)
-      (* FIXME: actually, we might have nodes of other layers on top of this
-       * one, feeding from these new nodes (check the operation FROM) that
-       * we should reconnect as well. *)
+    bad_request "Layers must have non-empty names" else (
+  (* Delete the layer if it already exists. No worries the conf won't be
+   * changed if there is any error. *)
+  C.with_wlock conf (fun () ->
+    let%lwt must_stop =
+      match Hashtbl.find conf.C.graph.C.layers layer_name with
+      | exception Not_found -> return_false
+      | layer ->
+        if msg.ok_if_running && layer.L.persist.L.status = Running then (
+          let%lwt () = stop_ conf layer in
+          let%lwt () = del_layer_ conf layer in
+          return_true
+        ) else (
+          let%lwt () = del_layer_ conf layer in
+          return_false
+        ) in
+    (* TODO: Check that this layer node names are unique within the layer *)
+    (* Create all the nodes *)
+    let%lwt nodes = Lwt_list.map_s (fun def ->
+        let name =
+          if def.SN.name <> "" then def.SN.name
+          else N.make_name () in
+        try
+          let _layer, node =
+            C.add_node conf name layer_name def.SN.operation in
+          return node
+        with Invalid_argument x -> bad_request ("Invalid "^ x)
+           | SyntaxError e -> bad_request (string_of_syntax_error e)
+           | e -> fail e
+      ) msg.nodes in
+    (* Then all the links *)
+    (* FIXME: actually, we might have nodes of other layers on top of this
+     * one, feeding from these new nodes (check the operation FROM) that
+     * we should reconnect as well. *)
+    let%lwt () =
       Lwt_list.iter_s (fun node ->
-          Operation.parents_of_operation node.N.operation |>
-          Lwt_list.iter_s (fun p ->
-              let%lwt parent_layer, parent_name =
-                layer_node_of_user_string conf ~default_layer:layer_name p in
-              let%lwt _layer, src =
-                node_of_name conf parent_layer parent_name in
-              wrap (fun () -> C.add_link conf src node)
-            )
-        ) nodes) >>=
-    respond_ok)
-  (* TODO: why wait before compiling this layer? *)
+        Operation.parents_of_operation node.N.operation |>
+        Lwt_list.iter_s (fun p ->
+            let%lwt parent_layer, parent_name =
+              layer_node_of_user_string conf ~default_layer:layer_name p in
+            let%lwt _layer, src =
+              node_of_name conf parent_layer parent_name in
+            wrap (fun () -> C.add_link conf src node))) nodes in
+    (* must restart *)
+    if must_stop then
+      let layer = Hashtbl.find conf.C.graph.C.layers layer_name in
+      let%lwt () = compile_ conf layer in
+      run_ conf layer
+    else return_unit) >>=
+  respond_ok)
+  (* TODO: Why not compile right now? *)
 
 (*
     Serving normal files
@@ -351,10 +378,7 @@ let run conf headers layer_opt =
         C.with_wlock conf (fun () ->
           let%lwt layers = graph_layers conf layer_opt in
           let layers = L.order layers in
-          Lwt_list.iter_p (fun layer ->
-              try%lwt RamenProcesses.run conf layer
-              with RamenProcesses.AlreadyRunning -> return_unit
-            ) layers) in
+          Lwt_list.iter_p (run_ conf) layers) in
       switch_accepted headers [
         Consts.json_content_type, (fun () -> respond_ok ()) ])
     (function SyntaxError _
@@ -366,10 +390,7 @@ let run conf headers layer_opt =
 let stop_layers conf layer_opt =
   C.with_wlock conf (fun () ->
     let%lwt layers = graph_layers conf layer_opt in
-    Lwt_list.iter_p (fun layer ->
-        try RamenProcesses.stop conf layer
-        with RamenProcesses.NotRunning -> return_unit
-      ) layers)
+    Lwt_list.iter_p (stop_ conf) layers)
 
 let stop conf headers layer_opt =
   catch

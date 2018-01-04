@@ -476,6 +476,7 @@ let base_layer dataset_name delete uncompress csv_dir export =
   in
   RamenSharedTypes.{
     name = dataset_name ;
+    ok_if_running = true ;
     nodes = [
       tcp ;
       tcp_to_unidir ~src:"client" ~dst:"server" "c2s tcp" ;
@@ -670,7 +671,10 @@ let layer_of_bcns bcns dataset_name export =
     anom "DTT" [ "dtt_avg", "sum_dtt_count_src > 10", false, [] ]
   in
   List.iter conf_of_bcn bcns ;
-  RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
+  RamenSharedTypes.{
+    name = layer_name ;
+    ok_if_running = true ;
+    nodes = !all_nodes }
 
 (* Build the node infos corresponding to the BCA configuration *)
 let layer_of_bcas bcas dataset_name export =
@@ -881,7 +885,10 @@ let layer_of_bcas bcas dataset_name export =
         "sdtt_avg", "sum_dtt_count_server > 10", false, [] ]
   in
   List.iter conf_of_bca bcas ;
-  RamenSharedTypes.{ name = layer_name ; nodes = !all_nodes }
+  RamenSharedTypes.{
+    name = layer_name ;
+    ok_if_running = true ;
+    nodes = !all_nodes }
 
 let get_config_from_db db =
   Conf_of_sqlite.get_config db
@@ -932,6 +939,7 @@ let ddos_layer dataset_name export =
       export in
   RamenSharedTypes.{
     name = layer_name ;
+    ok_if_running = true ;
     nodes = [ global_new_peers ; pred_node ; anom_node ] }
 
 (* Daemon *)
