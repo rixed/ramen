@@ -161,8 +161,10 @@ let display_tuple_as_csv ?(with_header=false) ?(separator=",") ?(null="") to_dro
   let _field_types, tuples =
     tuples_of_columns resp.columns in
   let tuples = List.drop to_drop tuples in
-  (* TODO: print header line? *)
-  ignore with_header ;
+  if with_header then
+    List.print ~first:"#" ~last:"\n" ~sep:separator
+               (fun fmt (name, _, _) -> String.print fmt name)
+               stdout resp.columns ;
   ignore null ;
   let print_row =
     List.print ~first:"" ~last:"\n" ~sep:separator
@@ -175,8 +177,8 @@ let display_tuple_as_is t =
   let s = PPP.to_string export_resp_ppp t in
   Printf.printf "%s\n" s
 
-let display_tuple as_csv to_drop t =
-  if as_csv then display_tuple_as_csv to_drop t
+let display_tuple as_csv with_header to_drop t =
+  if as_csv then display_tuple_as_csv ~with_header to_drop t
   else display_tuple_as_is t ;
   Printf.printf "%!"
 
@@ -185,7 +187,7 @@ let ppp_of_string_exc ppp s =
   with e -> fail e
 
 (* TODO: separator and null placeholder for csv *)
-let tail debug ramen_url node_name as_csv last continuous () =
+let tail debug ramen_url node_name as_csv with_header last continuous () =
   logger := make_logger debug ;
   let url = ramen_url ^"/export/"^
     (match String.rsplit ~by:"/" node_name with
@@ -201,7 +203,7 @@ let tail debug ramen_url node_name as_csv last continuous () =
     let to_drop = Option.map_default (fun last ->
         if len > last then len - last else 0) 0 last in
     if resp.columns <> [] then (
-      display_tuple as_csv to_drop resp ;
+      display_tuple as_csv with_header to_drop resp ;
       flush stdout) ;
     if continuous then (
       let last = Option.map (fun l -> l - len) last in

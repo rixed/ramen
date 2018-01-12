@@ -217,6 +217,11 @@ let as_csv =
                    [ "as-csv"; "csv" ] in
   Arg.(value (flag i))
 
+let with_header =
+  let i = Arg.info ~doc:"Output the header line in CSV"
+                   [ "with-header"; "header" ] in
+  Arg.(value (flag i))
+
 let last =
   let i = Arg.info ~doc:"output only the last N tuples"
                    [ "last" ] in
@@ -234,6 +239,7 @@ let tail =
       $ server_url
       $ node_name 0
       $ as_csv
+      $ with_header
       $ last
       $ continuous),
     info "tail")
