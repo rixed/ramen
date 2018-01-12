@@ -217,11 +217,23 @@ struct
       mutable importing_threads : unit Lwt.t list }
 
   let set_status layer status =
+    !logger.debug "Layer %s status %s -> %s"
+      layer.name
+      (Layer.string_of_status status)
+      (Layer.string_of_status layer.persist.status) ;
     layer.persist.status <- status ;
     layer.persist.last_status_change <- Unix.gettimeofday () ;
     (* If we are not running, clean pid info *)
     if status <> Running then
-      Hashtbl.iter (fun _ n -> n.Node.pid <- None) layer.persist.nodes
+      Hashtbl.iter (fun _ n -> n.Node.pid <- None) layer.persist.nodes ;
+    (* If we are now in Edition _untype_ the nodes *)
+    match status with Edition _ ->
+      Hashtbl.iter (fun _ n ->
+        let open Node in
+        n.in_type <- UntypedTuple (make_temp_tup_typ ()) ;
+        n.out_type <- UntypedTuple (make_temp_tup_typ ()) ;
+        n.pid <- None) layer.persist.nodes
+    | _ -> ()
 
   let make persist_dir version_tag ?persist ?(timeout=0.) ?(restart=false)
            name =
@@ -248,7 +260,8 @@ struct
         if node.Node.signature <> new_sign then (
           !logger.debug "Node %s is from a previous version" name ;
           node.signature <- new_sign)) persist.nodes ;
-      (* Further demote to edition if the binaries are not there anymore: *)
+      (* Further demote to edition if the binaries are not there anymore
+       * (which will be the case if we just updated the node signatures): *)
       if persist.status = Compiled &&
          Hashtbl.values persist.nodes |> Enum.exists (fun n ->
            not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
@@ -278,12 +291,6 @@ struct
       raise (InvalidCommand "Graph is compiling")
     | Compiled ->
       set_status layer (Edition reason) ;
-      (* Also reset the info we kept from the last compilation *)
-      Hashtbl.iter (fun _ node ->
-        let open Node in
-        node.in_type <- UntypedTuple (make_temp_tup_typ ()) ;
-        node.out_type <- UntypedTuple (make_temp_tup_typ ()) ;
-        node.pid <- None) layer.persist.nodes
     | Running ->
       raise (InvalidCommand "Graph is running")
 

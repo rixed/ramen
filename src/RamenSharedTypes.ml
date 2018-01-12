@@ -125,6 +125,12 @@ module Layer =
 struct
   type status = RamenSharedTypesJS.layer_status [@@ppp PPP_JSON]
 
+  let string_of_status = function
+    | Edition reason -> "Edition ("^ reason ^")"
+    | Compiling -> "Compiling"
+    | Compiled -> "Compiled"
+    | Running -> "Running"
+
   type info =
     { name : string ;
       nodes : Node.info list ;
