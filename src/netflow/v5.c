@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 #define CAML_NAME_SPACE
 #include <caml/mlvalues.h>
