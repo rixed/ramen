@@ -422,6 +422,7 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
   let%lwt _layer, node =
     find_exporting_node_or_fail conf layer_name node_name in
   let open RamenExport in
+  let start = Unix.gettimeofday () in
   let k = history_key node in
   let get_values () =
     match Hashtbl.find imported_tuples k with
@@ -437,7 +438,6 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
         let first = first |? (since |? 0) in
         first, nb_values, values, Some history in
   let rec loop () =
-    let start = Unix.gettimeofday () in
     let first, nb_values, values, history = get_values () in
     let dt = Unix.gettimeofday () -. start in
     if values = [] && dt < wait_up_to then (
