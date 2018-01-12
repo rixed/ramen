@@ -13,4 +13,4 @@ add_node p1 \
   fit_multi (30, horsepower, coalesce(CO, 0.5), coalesce(CO2, 300)) as h_pred
  EXPORT"
 run
-check_equal '479.273' "$(tail_ 1 p1)"
+check_equal '479.273058512' "$(tail_ 1 p1)"

@@ -21,4 +21,4 @@ add_node p1 \
  EXPORT
  COMMIT WHEN group.#count >= $nb_cars"
 run
-check_equal '552,552,552,1.77402,2.71706' "$(tail_ 1 p1)"
+check_equal '552,552,552,1.77402298851,2.71705617978' "$(tail_ 1 p1)"

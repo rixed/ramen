@@ -21,7 +21,7 @@ add_node p1 \
  EXPORT
  COMMIT WHEN group.#count >= $nb_cars"
 run
-check_equal '1,946,1262598,278.167,552,313,140,553' "$(tail_ 1 p1)"
+check_equal '1,946,1262598,278.16655651,552,313,140,553' "$(tail_ 1 p1)"
 
 reset
 start

@@ -300,10 +300,17 @@ struct
         larger_type (l, t)) fst rest
     | _ -> invalid_arg "largest_type"
 
+  (* The original Float.to_string adds a useless dot at the end of
+   * round numbers: *)
+  let my_float_to_string v =
+    let s = Float.to_string v in
+    assert (String.length s > 0) ;
+    if s.[String.length s - 1] <> '.' then s else String.rchop s
+
   let to_string = function
-    | VFloat f  -> Printf.sprintf "%g" f
+    | VFloat f  -> my_float_to_string f
     | VString s -> Printf.sprintf "%S" s
-    | VBool b   -> Printf.sprintf "%b" b
+    | VBool b   -> Bool.to_string b
     | VU8 i     -> Uint8.to_string i
     | VU16 i    -> Uint16.to_string i
     | VU32 i    -> Uint32.to_string i
