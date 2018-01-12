@@ -426,7 +426,8 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
   let k = history_key node in
   let get_values () =
     match Hashtbl.find imported_tuples k with
-    | exception Not_found -> 0, 0, [], None
+    | exception Not_found ->
+        0, 0, [], None
     | history ->
         let first, nb_values, values =
           fold_tuples_since
@@ -443,6 +444,7 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
     if values = [] && dt < wait_up_to then (
       (* TODO: sleep for dt, queue the wakener on this history,
        * and wake all the sleeps when a tuple is received *)
+      !logger.debug "Sleeping... with the lock!?" ;
       Lwt_unix.sleep 0.1 >>= loop
     ) else (
       !logger.debug "Exporting %d tuples" nb_values ;

@@ -545,15 +545,20 @@ let reload_graph conf =
 
 let with_rlock conf f =
   RWLock.with_r_lock conf.graph_lock (fun () ->
+    !logger.debug "Took graph lock (read)" ;
     reload_graph conf ;
-    f ())
+    let%lwt x = f () in
+    !logger.debug "Release graph lock (read)" ;
+    Lwt.return x)
 
 let with_wlock conf f =
   RWLock.with_w_lock conf.graph_lock (fun () ->
+    !logger.debug "Took graph lock (write)" ;
     reload_graph conf ;
     let%lwt res = f () in
     (* Save the config only if f did not fail: *)
     save_graph conf ;
+    !logger.debug "Release graph lock (write)" ;
     Lwt.return res)
 
 let find_node conf layer name =
