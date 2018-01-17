@@ -94,7 +94,7 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #editor h2 { font-size: 100%; margin: 1em 0 0.25em 0; }
 #editor textarea { resize: none; }
 #editor div.input { margin-bottom: 0.3em; }
-#editor input[type="text"] { margin-left: 1em; }
+#editor input[[type="text"]] { margin-left: 1em; }
 #editor button { padding: 0.5em 1em 0.5em 1em; font-weight:700; font-size:100%; text-align: center; margin-right: 1em; margin-bottom: 2em; }
 
 #in-out li {
