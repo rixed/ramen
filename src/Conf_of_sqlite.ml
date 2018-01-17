@@ -40,6 +40,8 @@ struct
   type config =
     { (* Name used in the alert configuration: *)
       name : string ;
+      (* Id used in the alert text: *)
+      id : int ;
       (* Sources of traffic covered by this rule (empty list for any): *)
       source : int list ;
       (* Destinations of traffic covered by this rule (empty list for any): *)
@@ -71,26 +73,28 @@ struct
       max_rr : float option }
 
   let of_step db =
-    let main_source = with_field db.get_bcns 1 "zone_from" to_int
-    and main_dest = with_field db.get_bcns 2 "zone_to" to_int in
-    { name = with_field db.get_bcns 0 "name" (required % to_string) ;
+    let main_source = with_field db.get_bcns 2 "zone_from" to_int
+    and main_dest = with_field db.get_bcns 3 "zone_to" to_int in
+    { id = with_field db.get_bcns 0 "id" (required % to_int) ;
+      name = with_field db.get_bcns 1 "name" (required % to_string) ;
       source = main_source |> add_subzones_down_to main_dest ;
       dest = main_dest |> add_subzones_down_to main_source ;
-      avg_window = with_field db.get_bcns 3 "avg_window" (required % to_float) ;
-      obs_window = with_field db.get_bcns 4 "obs_window" (required % to_float) ;
-      percentile = with_field db.get_bcns 5 "percentile" (required % to_float) ;
-      min_bps = with_field db.get_bcns 6 "min" to_int ;
-      max_bps = with_field db.get_bcns 7 "max" to_int ;
-      min_for_relevance = with_field db.get_bcns 8 "relevance" (default 0 % to_int) ;
-      max_rtt = with_field db.get_bcns 9 "max_rtt" to_float ;
-      max_rr = with_field db.get_bcns 10 "max_rr" to_float }
+      avg_window = with_field db.get_bcns 4 "avg_window" (required % to_float) ;
+      obs_window = with_field db.get_bcns 5 "obs_window" (required % to_float) ;
+      percentile = with_field db.get_bcns 6 "percentile" (required % to_float) ;
+      min_bps = with_field db.get_bcns 7 "min" to_int ;
+      max_bps = with_field db.get_bcns 8 "max" to_int ;
+      min_for_relevance = with_field db.get_bcns 9 "relevance" (default 0 % to_int) ;
+      max_rtt = with_field db.get_bcns 10 "max_rtt" to_float ;
+      max_rr = with_field db.get_bcns 11 "max_rr" to_float }
 end
 
 module BCA =
 struct
   type config =
-    { (*First fields are similar to BCN *)
+    { (* First fields are similar to BCN *)
       id : int ;
+      service_id : int ;
       name : string ;
       avg_window : float ;
       obs_window : float ;
@@ -100,14 +104,15 @@ struct
       min_srt_count : int }
 
   let of_step db =
-    { id = with_field db.get_bcas 0 "id" (required % to_int) ;
-      name = with_field db.get_bcas 1 "name" (required % to_string) ;
-      avg_window = with_field db.get_bcas 2 "avg_window" (required % to_float) ;
-      obs_window = with_field db.get_bcas 3 "obs_window" (required % to_float) ;
-      percentile = with_field db.get_bcas 4 "percentile" (required % to_float) ;
-      min_srt_count = with_field db.get_bcas 5 "min_handshake_count" (default 0 % to_int) ;
+    { id = with_field db.get_bcas 0 "bca_id" (required % to_int) ;
+      service_id = with_field db.get_bcas 1 "service_id" (required % to_int) ;
+      name = with_field db.get_bcas 2 "name" (required % to_string) ;
+      avg_window = with_field db.get_bcas 3 "avg_window" (required % to_float) ;
+      obs_window = with_field db.get_bcas 4 "obs_window" (required % to_float) ;
+      percentile = with_field db.get_bcas 5 "percentile" (required % to_float) ;
+      min_srt_count = with_field db.get_bcas 6 "min_handshake_count" (default 0 % to_int) ;
       (* ms in the DB *)
-      max_eurt = 0.001 *. (with_field db.get_bcas 6 "threshold_alert" (required % to_float)) }
+      max_eurt = 0.001 *. (with_field db.get_bcas 7 "threshold_alert" (required % to_float)) }
 end
 
 (* Query to get flow alert parameters.
@@ -125,7 +130,8 @@ end
  * - max RR in 0-1
  *)
 let flow_alert_params_query =
-  "SELECT zone_from || '-' || zone_to AS name, \
+  "SELECT id, \
+          zone_from || '-' || zone_to AS name, \
           zone_from AS source, \
           zone_to AS dest, \
           60 AS avg_window, \
@@ -139,7 +145,8 @@ let flow_alert_params_query =
    FROM bcnthresholds \
    WHERE \"max\" > 0 \
    UNION \
-   SELECT zone_to || '-' || zone_from AS name, \
+   SELECT id, \
+          zone_to || '-' || zone_from AS name, \
           zone_to AS source, \
           zone_from AS dest, \
           60 AS avg_window, \
@@ -153,7 +160,8 @@ let flow_alert_params_query =
    FROM bcnthresholds \
    WHERE \"max\" > 0 AND NOT is_symmetric \
    UNION \
-   SELECT zone_to || '-' || zone_from AS name, \
+   SELECT id, \
+          zone_to || '-' || zone_from AS name, \
           zone_to AS source, \
           zone_from AS dest, \
           60 AS avg_window, \
@@ -171,7 +179,8 @@ let flow_alert_params_query =
 (* Note: avg_window is 6 mins since the traffic to BCA is smaller and alerts
  * would flap if we considered 1 minute intervals. *)
 let service_alert_params_query =
-  "SELECT s.id, \
+  "SELECT s.bca_id, \
+          s.id, \
           s.name, \
           360 AS avg_window, \
           600 AS obs_window, \

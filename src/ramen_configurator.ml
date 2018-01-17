@@ -90,6 +90,18 @@ let tcp_traffic_node ?where dataset_name name dt export =
                    | Some w -> op ^"\nWHERE "^ w in
   make_node name op
 
+(* Alerts:
+ *
+ * We want to direct all alerts into a custom SQLite database that other
+ * programs will monitor.
+ * This DB will have a single table named "alerts" with fields: "id", "name",
+ * "started", "stopped", "title" and "text" (coming straight from the NOTIFY
+ * parameters). The interesting field here is "text"; we will make it a JSON
+ * string with more informations depending on the context: IPs, BCA/BCN, etc *)
+let alert_text fields =
+  "{"^ (List.map (fun (n, v) -> Printf.sprintf "%S:%S" n v) fields |>
+        String.concat ", ") ^"}"
+
 (* Anomaly Detection
  *
  * For any node which output interesting timeseries (interesting = that we hand
@@ -100,7 +112,7 @@ let tcp_traffic_node ?where dataset_name name dt export =
  * things. A good trade-off is to have one node per BCN/BCA.
  * For each timeseries to predict, we also pass a list of other timeseries that
  * we think are good predictors. *)
-let anomaly_detection_nodes avg_window from name timeseries export =
+let anomaly_detection_nodes avg_window from name timeseries alert_fields export =
   assert (timeseries <> []) ;
   let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ; "lag(" ]
   and multi_predictors = [ "fit_multi(5, " ] in
@@ -172,7 +184,7 @@ let anomaly_detection_nodes avg_window from name timeseries export =
     let condition = String.concat " OR\n     " conditions in
     let title = Printf.sprintf "%s is off" from
     and alert_name = from ^" "^ name ^" looks abnormal"
-    and text = Printf.sprintf "%s %s seam to be off." from name in
+    and text = alert_text alert_fields in
     let op =
       Printf.sprintf
         {|FROM '%s'
@@ -593,11 +605,13 @@ let layer_of_bcns bcns dataset_name export =
     Option.may (fun min_bps ->
         let title = Printf.sprintf "Too little traffic from zone %s to %s"
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
-        and text = Printf.sprintf
+        and text = alert_text [
+          "descr", Printf.sprintf
                      "The traffic from zone %s to %s has sunk below \
                       the configured minimum of %d for the last %g minutes."
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
-                      min_bps (bcn.obs_window /. 60.) in
+                      min_bps (bcn.obs_window /. 60.) ;
+          "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
           {|SELECT max_start, bytes_per_secs > %d AS firing
             FROM '%s'
@@ -616,11 +630,13 @@ let layer_of_bcns bcns dataset_name export =
     Option.may (fun max_bps ->
         let title = Printf.sprintf "Too much traffic from zone %s to %s"
                         (name_of_zones bcn.source) (name_of_zones bcn.dest)
-        and text = Printf.sprintf
+        and text = alert_text [
+          "descr", Printf.sprintf
                      "The traffic from zones %s to %s has raised above \
                       the configured maximum of %d for the last %g minutes."
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
-                      max_bps (bcn.obs_window /. 60.) in
+                      max_bps (bcn.obs_window /. 60.) ;
+          "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
           {|SELECT max_start, bytes_per_secs > %d AS firing
             FROM '%s'
@@ -639,9 +655,13 @@ let layer_of_bcns bcns dataset_name export =
     let minutely =
       tcp_traffic_node ~where dataset_name (name_prefix ^": TCP minutely traffic") 60 export in
     all_nodes := minutely :: !all_nodes ;
+    let alert_fields = [
+      "descr", "anomaly detected" ;
+      "bcn_id", string_of_int bcn.id ] in
     let anom name timeseries =
+      let alert_fields = ("metric", name) :: alert_fields in
       let pred, anom =
-        anomaly_detection_nodes bcn.avg_window minutely.N.name name timeseries export in
+        anomaly_detection_nodes bcn.avg_window minutely.N.name name timeseries alert_fields export in
       all_nodes := pred :: anom :: !all_nodes in
     (* TODO: a volume anomaly for other protocols as well *)
     anom "volume"
@@ -796,7 +816,7 @@ let layer_of_bcas bcas dataset_name export =
                WITH DURATION $AVG$|}
         else "") |>
       rep "$CSV$" csv |>
-      rep "$ID$" (string_of_int bca.id) |>
+      rep "$ID$" (string_of_int bca.service_id) |>
       rep "$AVG_INT$" (string_of_int avg_window_int) |>
       rep "$AVG$" (string_of_float bca.avg_window)
     in
@@ -831,11 +851,13 @@ let layer_of_bcas bcas dataset_name export =
     (* TODO: we need an hysteresis here! *)
     let title =
       Printf.sprintf "EURT to %s is too large" bca.name
-    and text =
-      Printf.sprintf
+    and text = alert_text [
+      "descr", Printf.sprintf
         "The average end user response time to application %s has raised \
          above the configured maximum of %gs for the last %g minutes."
-         bca.name bca.max_eurt (bca.obs_window /. 60.) in
+         bca.name bca.max_eurt (bca.obs_window /. 60.) ;
+      "bca_id", string_of_int bca.id ;
+      "service_id", string_of_int bca.service_id ] in
     let op =
       Printf.sprintf
         {|SELECT max_start, eurt > %g AS firing
@@ -851,9 +873,13 @@ let layer_of_bcas bcas dataset_name export =
       else op in
     let name = bca.name ^": EURT too high" in
     make_node name op ;
+    let alert_fields = [
+      "descr", "anomaly detected" ;
+      "bca_id", string_of_int bca.id ] in
     let anom name timeseries =
+      let alert_fields = ("metric", name) :: alert_fields in
       let pred, anom =
-        anomaly_detection_nodes bca.avg_window avg_per_app name timeseries export in
+        anomaly_detection_nodes bca.avg_window avg_per_app name timeseries alert_fields export in
       all_nodes := pred :: anom :: !all_nodes in
     anom "volume"
       [ "c2s_bytes_per_secs", "c2s_bytes_per_secs > 1000", false, [] ;
@@ -936,6 +962,7 @@ let ddos_layer dataset_name export =
       (float_of_int avg_win) "new peers" "DDoS"
       [ "nb_new_cnxs_per_secs", "nb_new_cnxs_per_secs > 1", false, [] ;
         "nb_new_clients_per_secs", "nb_new_clients_per_secs > 1", false, [] ]
+      [ "descr", "possible DDoS" ]
       export in
   RamenSharedTypes.{
     name = layer_name ;
