@@ -42,7 +42,7 @@ html { background-color: #ddd; }
   flex-wrap: nowrap;
   overflow: auto;
   background-color: #ddd; }
-#global + * { margin-top: 3em; }
+#global + #page { margin-top: 3em; }
 #global .breadcrumbs
   { display: flex; flex-direction: row; justify-content: flex-start;
     align-items: baseline; font-size: 125%; padding-left: 0.5em; }
