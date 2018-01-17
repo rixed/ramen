@@ -7,8 +7,8 @@ bug-reports: "https://github.com/rixed/ramen/issues"
 dev-repo: "https://github.com/rixed/ramen.git"
 build: [make]
 build-test: [make "check"]
-install: [make "bin_dir=%{prefix}%/bin" "install"]
-remove: [make "bin_dir=%{prefix}%/bin" "uninstall"]
+install: [make "bin_dir=%{bin}%" "install"]
+remove: [make "bin_dir=%{bin}%" "uninstall"]
 depends: [
   "ocamlfind" {= "1.7.3"}
   "lwt" {= "3.1.0"}
