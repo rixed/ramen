@@ -42,6 +42,7 @@ html { background-color: #ddd; }
   flex-wrap: nowrap;
   overflow: auto;
   background-color: #ddd; }
+#global + * { margin-top: 3em; }
 #global .breadcrumbs
   { display: flex; flex-direction: row; justify-content: flex-start;
     align-items: baseline; font-size: 125%; padding-left: 0.5em; }
@@ -60,7 +61,7 @@ html { background-color: #ddd; }
 #messages span.err-times { font-weight: 1000; margin-left: 1em; }
 #messages p.ok { background: rgba(20, 210, 30, 0.9); }
 
-#top { width: 100%; padding-top: 3em; }
+#top { width: 100%; }
 h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 
 #layers div.layer, #layers button.new-layer { display: block; float: left; margin: 5px; }
