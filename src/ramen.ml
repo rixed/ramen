@@ -91,7 +91,7 @@ let max_history_archives =
 
 let alert_conf_json =
   let env = Term.env_info "RAMEN_ALERTER_INITIAL_JSON" in
-  let i = Arg.info ~doc:"JSON initial configuration for the alerter"
+  let i = Arg.info ~doc:"JSON configuration file for the alerter"
                    ~env [ "alerter-conf" ; "alerter-json" ] in
   Arg.(value (opt (some string) None i))
 

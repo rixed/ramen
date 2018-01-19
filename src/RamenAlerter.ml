@@ -370,7 +370,7 @@ struct
           steps = Array.of_list e.Team.steps ;
           attempt = 0 ; last_sent = now })
 
-  (* Send a message and prepare the escalation *)
+  (* Send a message to all victims *)
   let outcry_once state alert step attempt now =
     (* We figure out who the oncallers are at each attempt of each alert of an
      * incident. This means that if the incident happens during an oncall
@@ -393,7 +393,8 @@ struct
           !logger.debug "%d oncall is %s, contact for attempt %d is: %s"
             rank victim.name attempt (PPP.to_string Contact.t_ppp contact) ;
           if Set.mem contact contacted then (
-              !logger.debug "Skipping since already contacted" ;
+              !logger.debug "Skipping %s since already contacted at this step"
+                (Contact.to_string contact) ;
               prev
           ) else (
             let sender = Sender.get contact in
@@ -414,12 +415,12 @@ struct
         esc.last_sent <- now ;
         return_unit
       with exn ->
-        !logger.error "Cannot reach oncaller: %s"
+        !logger.error "Cannot reach oncaller(s): %s, escalating"
           (Printexc.to_string exn) ;
         if esc.attempt - 1 < Array.length esc.steps - 1 then (
           loop ()
         ) else (
-          !logger.error "All contacts have failed, giving up" ;
+          !logger.error "All escalation steps have failed, giving up" ;
           return_unit)) in
     loop ()
 
