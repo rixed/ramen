@@ -814,8 +814,9 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
     !logger.info "Adding default nodes since we have nothing to do..." ;
     C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore ;
     C.add_node conf "netflow" "demo" "LISTEN FOR NETFLOW" |> ignore) ;
+  C.save_conf conf ;
+  (* *After* the conf has been cleaned/saved, start the timeouting threads: *)
   async (fun () -> timeout_layers conf) ;
-  C.save_graph conf ;
   (* Read the instrumentation ringbuf: *)
   RamenProcesses.read_reports conf ;
   (* Start the alerter *)

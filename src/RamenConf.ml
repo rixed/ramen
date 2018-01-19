@@ -219,8 +219,8 @@ struct
   let set_status layer status =
     !logger.debug "Layer %s status %s -> %s"
       layer.name
-      (Layer.string_of_status status)
-      (Layer.string_of_status layer.persist.status) ;
+      (Layer.string_of_status layer.persist.status)
+      (Layer.string_of_status status) ;
     layer.persist.status <- status ;
     layer.persist.last_status_change <- Unix.gettimeofday () ;
     (* If we are not running, clean pid info *)
@@ -235,6 +235,8 @@ struct
         n.pid <- None) layer.persist.nodes
     | _ -> ()
 
+  (* [restart] is true when ramen restarted and read it's config for the first
+   * time. Some additional cleaning needs to be done then. *)
   let make persist_dir version_tag ?persist ?(timeout=0.) ?(restart=false)
            name =
     assert (String.length name > 0) ;
@@ -248,6 +250,7 @@ struct
           last_started = None ; last_stopped = None }) persist in
     let layer = { name ; persist ; importing_threads = [] } in
     if restart then (
+      !logger.info "Reloading and cleaning the configuration after restart." ;
       (* Demote the status to compiled since the workers can't be running
        * anymore. *)
       if persist.status = Running then set_status layer Compiled ;
@@ -528,7 +531,7 @@ let load_graph ?restart do_persist persist_dir version_tag =
   in
   make_graph persist_dir version_tag ?persist ?restart ()
 
-let save_graph conf =
+let save_conf conf =
   if conf.do_persist then
     let persist =
       Hashtbl.map (fun _ l ->
