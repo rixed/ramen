@@ -7,7 +7,12 @@ open RamenSharedTypes
 
 let enc = Uri.pct_encode
 
-let check_code (resp, body) =
+let exhort http_cmd =
+  let on = function
+    | Unix.Unix_error(Unix.ECONNREFUSED, "connect", "") -> return_true
+    | _ -> return_false in
+  let%lwt resp, body =
+    Helpers.retry ~first_delay:0.2 ~on ~max_retry:3 http_cmd () in
   let code = resp |> Response.status |> Code.code_of_status in
   let%lwt body = Cohttp_lwt.Body.to_string body in
   if code <> 200 then (
@@ -28,7 +33,7 @@ let http_do ?(cmd=Client.put) ?content_type ?body url =
     | None -> headers in
   !logger.debug "%S < %a" url (Option.print String.print) body ;
   let body = Option.map (fun s -> `String s) body in
-  cmd ~headers ?body (Uri.of_string url) >>= check_code
+  exhort (fun () -> cmd ~headers ?body (Uri.of_string url))
 
 (* Return the answered body *)
 let http_put_json url ppp msg =
@@ -40,7 +45,7 @@ let http_post_json url ppp msg =
   http_do ~cmd:Client.post ~content_type:Consts.json_content_type ~body url
 
 let http_get url =
-  Client.get (Uri.of_string url) >>= check_code
+  exhort (fun () -> Client.get (Uri.of_string url))
 
 let check_ok body =
   (* Yeah that's grand *)
