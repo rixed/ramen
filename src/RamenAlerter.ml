@@ -284,7 +284,7 @@ struct
 
   let via_sqlite file insert_q create_q alert attempt victim =
     let open Sqlite3 in
-    let handle = db_open file in
+    let%lwt handle = wrap (fun () -> db_open file) in
     let replacements =
       [ "$ID$", string_of_int alert.Alert.id ;
         "$NAME$", sql_quote alert.name ;
