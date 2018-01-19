@@ -201,12 +201,10 @@ let export_and_display ramen_url node_name as_csv with_header continuous =
     if resp.columns <> [] then (
       display_tuple as_csv with_header 0 resp ;
       flush stdout) ;
-    if continuous then (
-      let max_results = Option.map (fun l -> l - len) max_results in
-      if max_results |? 1 > 0 then (
-        let since = resp.first + len in
-        get_next ~since ?max_results ()
-      ) else return_unit
+    let max_results = Option.map (fun l -> l - len) max_results in
+    if max_results |? (if continuous then 1 else 0) > 0 then (
+      let since = resp.first + len in
+      get_next ~since ?max_results ()
     ) else return_unit
   in
   get_next
