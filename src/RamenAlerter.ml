@@ -402,7 +402,15 @@ struct
             Set.add contact contacted,
             sender alert attempt victim.name :: ths)
         ) (Set.empty, []) step.victims in
-    join ths
+    (* Keep trying to reach out other victims after one failed *)
+    match%lwt
+      Lwt_list.fold_left_s (fun exn th ->
+        try%lwt
+          let%lwt () = th in
+          return exn
+        with e -> return (Some e)) None ths with
+    | None -> return_unit
+    | Some exn -> fail exn
 
   (* Same as above, but escalate until delivery *)
   let outcry state alert esc now =
