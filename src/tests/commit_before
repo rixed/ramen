@@ -14,7 +14,7 @@ add_node n \
  COMMIT BEFORE sum_n > 4
  EXPORT"
 run
-check_equal '3' "$(tail_ 1 n)"
+check_equal '3' "$(tail_ $nb_123 1 n)"
 
 reset
 start
@@ -25,6 +25,7 @@ add_node count_cars \
  COMMIT BEFORE out.manufacturer != previous.manufacturer
  EXPORT"
 run
+# Note: we won't have "Volvo" at the end since it will never be commited:
 check_equal '"aston martin",8
 "Audi",51
 "Bentley",8
@@ -53,4 +54,4 @@ check_equal '"aston martin",8
 "Tesla",22
 "Toyota",503
 "Volkswagen",32
-"Volkswagen Group of",284' "$(tail_ 29 count_cars)"
+"Volkswagen Group of",284' "$(tail_ 29 29 count_cars)"

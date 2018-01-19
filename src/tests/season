@@ -18,4 +18,4 @@ add_node p1 \
   fit (3, n) as f3
  EXPORT"
 run
-check_equal '16,16.5,14.8,12,5,10' "$(tail_ 1 p1)"
+check_equal '16,16.5,14.8,12,5,10' "$(tail_ $nb_earthquakes 1 p1)"

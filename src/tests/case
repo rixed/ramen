@@ -33,4 +33,4 @@ add_node p1 \
 run
 check_equal '"lo","one",1,6,-1,"one"
 "meh","more",2,666,-2,"two"
-"hi","more",9999999999999999999,NULL,-2,"three"' "$(tail_ 3 p1)"
+"hi","more",9999999999999999999,NULL,-2,"three"' "$(tail_ $nb_123 3 p1)"

@@ -15,4 +15,4 @@ add_node p2 "YIELD 17 as bar, 2 as two, 1 as one, 4 as four EVERY 0.1 SECONDS"
 add_node n "FROM test/p1, test/p2 SELECT two, * EXPORT"
 
 run
-check_equal '2,1' "$(tail_ 1 n)"
+check_equal '2,1' "$(tail_ 1 1 n)"

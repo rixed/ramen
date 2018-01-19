@@ -31,10 +31,9 @@ run
 upload balade.txt recv
 sleep 1 # Make sure we start by the above text
 upload end.txt recv
-sleep 2
 
 check_equal '15,"nous"' \
-  "$(tail_ 240 counter1 | sort -nr | head -1)"
+  "$(tail_ 240 240 counter1 | sort -nr | head -1)"
 
 check_equal '15,"nous"
 8,"de"
@@ -43,4 +42,4 @@ check_equal '15,"nous"
 4,"la"
 4,"et"
 3,"vueille"' \
-  "$(tail_ 61 counter2 | sort -nr | head -7)"
+  "$(tail_ 61 61 counter2 | sort -nr | head -7)"

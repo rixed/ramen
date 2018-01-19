@@ -14,10 +14,9 @@ run
 
 upload earthquakes.csv earthquakes
 upload earthquakes.csv earthquakes
-sleep 2
 
 # Check that we processed the file twice
-check_equal '199,2015' "$(tail_ 1 n)"
+check_equal '199,2015' "$(tail_ $(($nb_earthquakes*2)) 1 n)"
 
 # Check that the tmp files have been deleted
 input_tmp_files=$(

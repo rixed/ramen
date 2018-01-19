@@ -29,6 +29,6 @@ add_node n2 "FROM test/123 SELECT max (1 + max n) as max_np1 EXPORT COMMIT WHEN 
 #add_node n3 "FROM test/123 SELECT n+1 as np1, max np1 EXPORT COMMIT WHEN max np1 > 2"
 
 run
-check_equal '3,4' "$(tail_ 1 n1)"
-check_equal '4' "$(tail_ 1 n2)"
+check_equal '3,4' "$(tail_ 1 1 n1)"
+check_equal '4' "$(tail_ 1 1 n2)"
 #check_equal '4,4' "$(tail_ 1 n3)"

@@ -11,6 +11,11 @@ at_exit() {
   do_at_exit="$1; $do_at_exit"
 }
 
+# wc is such a pain
+nb_lines() {
+  sed -n '$=' $1
+}
+
 add_temp_file() {
   at_exit "rm -f '$temp_files'"
 }
@@ -58,7 +63,6 @@ start() {
 
   OCAMLPATH=$top_srcdir $ramen start --no-demo -d --seed 1234 &
   add_temp_pid $!
-  sleep 3
 }
 
 upload() {
@@ -80,6 +84,8 @@ add_123() {
     name string null) -- \"one\", \"two\" and NULL!"
 }
 
+nb_123=$(nb_lines $fixtures/123.csv)
+
 add_cars() {
   add_node cars "READ FILE \"$fixtures/cars.csv\" (
     year u16 not null,
@@ -90,7 +96,7 @@ add_cars() {
     CO2 float)"
 }
 
-nb_cars=$(wc -l "$fixtures/cars.csv" | awk '{print $1}')
+nb_cars=$(nb_lines "$fixtures/cars.csv")
 
 add_earthquakes() {
   add_node earthquakes "READ FILE \"$fixtures/earthquakes.csv\" SEPARATOR \"\\t\" (
@@ -99,26 +105,28 @@ add_earthquakes() {
     n u16 not null)"
 }
 
-nb_earthquakes=$(wc -l "$fixtures/earthquakes.csv" | awk '{print $1}')
+nb_earthquakes=$(nb_lines "$fixtures/earthquakes.csv")
 
 add_accounts() {
   add_node accounts "READ FILE \"$fixtures/accounts.csv\" (
     name string not null, amount float not null)"
 }
 
-nb_accounts=$(wc -l "$fixtures/accounts.csv" | awk '{print $1}')
+nb_accounts=$(nb_lines "$fixtures/accounts.csv")
 
 run() {
   eval "$ramen add test $LAYER_CMD" &&
   $ramen compile &&
   $ramen run
-  # We must give it time to process the CSV :(
-  # FIXME: add the wait parameter to the tail cli command and use that instead.
-  sleep 3
 }
 
 tail_() {
-  timeout --preserve-status 10s $ramen tail --last "$1" --as-csv "test/$2"
+  # Also pass the total number of lines so that we can also wait for the end of the processing?
+  total=$1
+  wanted=$2
+  node="test/$3"
+  timeout --preserve-status 10s $ramen tail --last "$total" --as-csv $node |
+    tail -n "$wanted"
 }
 
 check_equal() {

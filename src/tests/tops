@@ -19,4 +19,4 @@ run
 check_equal '"Joe",985
 "John",587
 "Willy",950' \
-  "$(tail_ 3 n | sort)"
+  "$(tail_ 3 3 n | sort)"

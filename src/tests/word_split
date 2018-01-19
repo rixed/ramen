@@ -13,7 +13,7 @@ run
 
 check_equal '"glop","glop"
 "pas","glop"' \
-  "$(tail_ 2 n | sort)"
+  "$(tail_ 2 2 n | sort)"
 
 reset
 
@@ -26,7 +26,7 @@ check_equal '"bar","glop"
 "bar","pas"
 "foo","glop"
 "foo","pas"' \
-  "$(tail_ 4 n | sort)"
+  "$(tail_ 4 4 n | sort)"
 
 reset
 
@@ -44,7 +44,7 @@ check_equal '"glop glop","pas glop"
 "glop glop","pas pas"
 "pas glop","pas glop"
 "pas glop","pas pas"' \
-  "$(tail_ 4 n | sort)"
+  "$(tail_ 4 4 n | sort)"
 
 reset
 
@@ -57,4 +57,4 @@ run
 
 check_equal '"pas glop"
 "pas glop"' \
-  "$(tail_ 2 n | sort)"
+  "$(tail_ 2 2 n | sort)"
