@@ -232,7 +232,6 @@ let use_layer_by_name conf now layer_name =
   use_layer now
 
 let timeout_layers conf =
-  (* FIXME: We need a lock on the graph config *)
   (* Build the set of all defined and all used layers *)
   let defined, used = Hashtbl.fold (fun layer_name layer (defined, used) ->
       Set.add layer_name defined,

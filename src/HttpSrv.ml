@@ -644,7 +644,8 @@ let get_timerange conf headers layer_name node_name =
 
 (* A thread that hunt for unused layers *)
 let rec timeout_layers conf =
-  let%lwt () = RamenProcesses.timeout_layers conf in
+  let%lwt () = C.with_wlock conf (fun () ->
+    RamenProcesses.timeout_layers conf) in
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_layers conf
 
