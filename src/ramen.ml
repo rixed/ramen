@@ -225,7 +225,7 @@ let with_header =
 let last =
   let i = Arg.info ~doc:"output only the last N tuples"
                    [ "last" ] in
-  Arg.(value (opt (some int) None i))
+  Arg.(value (opt int 10 i))
 
 let continuous =
   let i = Arg.info ~doc:"When done, wait for more tuples instead of quitting"
@@ -242,6 +242,22 @@ let tail =
       $ with_header
       $ last
       $ continuous),
+    info "tail")
+
+let max_results =
+  let i = Arg.info ~doc:"output only the first N tuples"
+                   [ "max" ] in
+  Arg.(value (opt (some int) None i))
+
+let export =
+  Term.(
+    (const ApiCmd.export
+      $ debug
+      $ server_url
+      $ node_name 0
+      $ as_csv
+      $ with_header
+      $ max_results),
     info "tail")
 
 (*

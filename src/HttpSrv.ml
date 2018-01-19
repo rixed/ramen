@@ -429,6 +429,12 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
     | exception Not_found ->
         0, 0, [], None
     | history ->
+        (* If since is < 0 here it means to take the last N tuples. *)
+        let since =
+          Option.map (fun s ->
+            if s >= 0 then s
+            else history.block_start + history.count + s
+          ) since in
         let first, nb_values, values =
           fold_tuples_since
             ?since ?max_res history (None, 0, [])
@@ -436,31 +442,28 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
                 let first =
                   if first = None then Some seqnum else first in
                 first, nbv+1, List.cons tup prev) in
+        (* when is first None here? *)
         let first = first |? (since |? 0) in
         first, nb_values, values, Some history in
-  let rec loop () =
-    let first, nb_values, values, history = get_values () in
-    let dt = Unix.gettimeofday () -. start in
-    if values = [] && dt < wait_up_to then (
-      (* TODO: sleep for dt, queue the wakener on this history,
-       * and wake all the sleeps when a tuple is received *)
-      !logger.debug "Sleeping... with the lock!?" ;
-      Lwt_unix.sleep 0.1 >>= loop
-    ) else (
-      !logger.debug "Exporting %d tuples" nb_values ;
-      return (
-        match history with
-        | None -> 0, []
-        | Some history ->
-          first,
-          export_columns_of_tuples
-            history.ser_tuple_type values |>
-          List.fast_sort (reorder_columns_to_user history) |>
-          List.map (fun (typ, nullmask, column) ->
-            typ, Option.map RamenBitmask.to_bools nullmask, column))
-    )
-  in
-  loop ()
+  let first, nb_values, values, history = get_values () in
+  let dt = Unix.gettimeofday () -. start in
+  if values = [] && dt < wait_up_to then (
+    (* We cannot sleep with the lock so we fail with_r_lock and
+     * ask it to retry us. That's ok because we haven't performed
+     * any work yet. *)
+    fail (C.RetryLater 0.5)
+  ) else (
+    !logger.debug "Exporting %d tuples" nb_values ;
+    return (
+      match history with
+      | None -> 0, []
+      | Some history ->
+        first,
+        export_columns_of_tuples
+          history.ser_tuple_type values |>
+        List.fast_sort (reorder_columns_to_user history) |>
+        List.map (fun (typ, nullmask, column) ->
+          typ, Option.map RamenBitmask.to_bools nullmask, column)))
 
 let export conf headers layer_name node_name body =
   let%lwt () = check_accept headers Consts.json_content_type in

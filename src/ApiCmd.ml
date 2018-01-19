@@ -186,34 +186,45 @@ let ppp_of_string_exc ppp s =
   try PPP.of_string_exc ppp s |> return
   with e -> fail e
 
-(* TODO: separator and null placeholder for csv *)
-let tail debug ramen_url node_name as_csv with_header last continuous () =
-  logger := make_logger debug ;
+let export_and_display ramen_url node_name as_csv with_header continuous =
   let url = ramen_url ^"/export/"^
     (match String.rsplit ~by:"/" node_name with
     | exception Not_found -> enc node_name
     | layer, node -> enc layer ^"/"^ enc node) in
-  let rec get_next ?since ?max_results ?last () =
+  let rec get_next ?since ?max_results () =
     let msg = { since ; max_results ; wait_up_to = 2.0 (* TODO: a param? *) } in
     let%lwt resp = http_post_json url export_req_ppp msg >>=
                    ppp_of_string_exc export_resp_ppp in
     (* TODO: check first_seqnum is not bigger than expected *)
     let len = if resp.columns = [] then 0
               else resp_column_length (List.hd resp.columns) in
-    let to_drop = Option.map_default (fun last ->
-        if len > last then len - last else 0) 0 last in
     if resp.columns <> [] then (
-      display_tuple as_csv with_header to_drop resp ;
+      display_tuple as_csv with_header 0 resp ;
       flush stdout) ;
     if continuous then (
-      let last = Option.map (fun l -> l - len) last in
-      if last |? 1 > 0 then (
+      let max_results = Option.map (fun l -> l - len) max_results in
+      if max_results |? 1 > 0 then (
         let since = resp.first + len in
-        get_next ~since ?max_results:last ?last ()
+        get_next ~since ?max_results ()
       ) else return_unit
     ) else return_unit
   in
-  Lwt_main.run (get_next ?last ())
+  get_next
+
+(* TODO: separator and null placeholder for csv *)
+let tail debug ramen_url node_name as_csv with_header last continuous () =
+  logger := make_logger debug ;
+  let exporter = export_and_display ramen_url node_name as_csv with_header continuous in
+  let max_results =
+    if continuous then None else Some last
+  and since = ~- last in
+  Lwt_main.run (exporter ?max_results ~since ())
+
+(* TODO: separator and null placeholder for csv *)
+let export debug ramen_url node_name as_csv with_header max_results continuous () =
+  logger := make_logger debug ;
+  let exporter = export_and_display ramen_url node_name as_csv with_header continuous in
+  Lwt_main.run (exporter ?max_results ())
 
 let timeseries debug ramen_url since until max_data_points
                node data_field consolidation () =

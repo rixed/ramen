@@ -546,23 +546,39 @@ let reload_graph conf =
   conf.graph <- load_graph ~restart:false conf.do_persist conf.persist_dir
                            conf.version_tag
 
+exception RetryLater of float
+
 let with_rlock conf f =
-  RWLock.with_r_lock conf.graph_lock (fun () ->
-    !logger.debug "Took graph lock (read)" ;
-    reload_graph conf ;
-    let%lwt x = f () in
-    !logger.debug "Release graph lock (read)" ;
-    Lwt.return x)
+  let open Lwt in
+  let rec loop () =
+    try%lwt
+      RWLock.with_r_lock conf.graph_lock (fun () ->
+        !logger.debug "Took graph lock (read)" ;
+        reload_graph conf ;
+        let%lwt x = f () in
+        !logger.debug "Release graph lock (read)" ;
+        return x)
+    with RetryLater s ->
+      Lwt_unix.sleep s >>= loop
+  in
+  loop ()
 
 let with_wlock conf f =
-  RWLock.with_w_lock conf.graph_lock (fun () ->
-    !logger.debug "Took graph lock (write)" ;
-    reload_graph conf ;
-    let%lwt res = f () in
-    (* Save the config only if f did not fail: *)
-    save_graph conf ;
-    !logger.debug "Release graph lock (write)" ;
-    Lwt.return res)
+  let open Lwt in
+  let rec loop () =
+    try%lwt
+      RWLock.with_w_lock conf.graph_lock (fun () ->
+        !logger.debug "Took graph lock (write)" ;
+        reload_graph conf ;
+        let%lwt res = f () in
+        (* Save the config only if f did not fail: *)
+        save_conf conf ;
+        !logger.debug "Release graph lock (write)" ;
+        return res)
+    with RetryLater s ->
+      Lwt_unix.sleep s >>= loop
+  in
+  loop ()
 
 let find_node conf layer name =
   let layer = Hashtbl.find conf.graph.layers layer in
