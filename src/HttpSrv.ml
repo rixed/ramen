@@ -387,10 +387,13 @@ let run conf headers layer_opt =
               bad_request (Printexc.to_string e)
             | x -> fail x)
 
+let stop_layers_ conf layer_opt =
+  let%lwt layers = graph_layers conf layer_opt in
+  Lwt_list.iter_p (stop_ conf) layers
+
 let stop_layers conf layer_opt =
   C.with_wlock conf (fun () ->
-    let%lwt layers = graph_layers conf layer_opt in
-    Lwt_list.iter_p (stop_ conf) layers)
+    stop_layers_ conf layer_opt)
 
 let stop conf headers layer_opt =
   catch
@@ -401,15 +404,19 @@ let stop conf headers layer_opt =
     (function C.InvalidCommand e -> bad_request e
             | x -> fail x)
 
+let shutdown_ conf =
+  (* Stop all workers *)
+  let%lwt () = stop_layers conf None in
+  List.iter (fun condvar ->
+    Lwt_condition.signal condvar ()) !http_server_done ;
+  return_unit
+
 let shutdown conf _headers =
   (* TODO: also log client info *)
   !logger.info "Asked to shut down" ;
-  (* Stop all workers *)
-  let%lwt () = stop_layers conf None in
   (* Hopefully cohttp will serve this answer before stopping. *)
-  List.iter (fun condvar ->
-    Lwt_condition.signal condvar ()) !http_server_done ;
-  respond_ok ()
+  shutdown_ conf >>=
+  respond_ok
 
 (*
     Exporting tuples
@@ -965,4 +972,20 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
       fail (HttpError (405, "Method not implemented"))
   in
   if daemonize then do_daemonize () ;
-  Lwt_main.run (http_service port cert_opt key_opt router)
+  (* Install signal handlers *)
+  let quit = ref false in
+  Sys.(set_signal sigterm (Signal_handle (fun _ ->
+    !logger.info "Received TERM" ;
+    quit := true))) ;
+  let rec monitor_quit () =
+    let%lwt () = Lwt_unix.sleep 1. in
+    if !quit then
+      C.with_wlock conf (fun () ->
+        let%lwt () = stop_layers_ conf None in
+        List.iter (fun condvar ->
+          Lwt_condition.signal condvar ()) !http_server_done ;
+        return_unit)
+    else monitor_quit () in
+  Lwt_main.run (join
+    [ monitor_quit () ;
+      http_service port cert_opt key_opt router ])
