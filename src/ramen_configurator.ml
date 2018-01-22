@@ -203,12 +203,11 @@ let anomaly_detection_nodes avg_window from name timeseries alert_fields export 
     make_node (from ^": "^ name ^" anomalies") op in
   predictor_node, anomaly_node
 
-let base_layer dataset_name delete uncompress csv_dir export =
+let base_layer dataset_name delete uncompress csv_glob export =
   (* Outlines of CSV importers: *)
   let csv_import csv fields =
     "READ"^ (if delete then " AND DELETE" else "") ^
-    " FILES \""^ csv_dir ^"/"^ csv ^"_v29.*.csv"
-               ^ (if uncompress then ".lz4" else "") ^"\""^
+    " FILES \""^ (csv_glob |> rep "%" csv) ^"\""^
     (if uncompress then " PREPROCESS WITH \"lz4 -d -c\"" else "") ^
     " SEPARATOR \"\\t\" NULL \"<NULL>\" ("^ fields ^")"
   (* Helper to build dsr-dst view of clt-srv metrics, keeping only the fields
@@ -995,7 +994,7 @@ let put_layer ramen_url layer =
   return_unit
 
 let start conf ramen_url db_name dataset_name delete uncompress
-          csv_dir with_base with_bcns with_bcas with_ddos export_all =
+          csv_glob with_base with_bcns with_bcas with_ddos export_all =
   logger := make_logger conf.debug ;
   let open Conf_of_sqlite in
   let db = get_db db_name in
@@ -1003,7 +1002,7 @@ let start conf ramen_url db_name dataset_name delete uncompress
     (* TODO: The base layer for this client *)
     let%lwt () = if with_base then (
         let base =
-          base_layer dataset_name delete uncompress csv_dir export_all in
+          base_layer dataset_name delete uncompress csv_glob export_all in
         put_layer ramen_url base
       ) else return_unit in
     let%lwt () = if with_bcns > 0 || with_bcas > 0 then (
@@ -1078,9 +1077,10 @@ let uncompress_opt =
                    [ "uncompress" ; "uncompress-csv" ] in
   Arg.(value (flag i))
 
-let csv_dir =
-  let i = Arg.info ~doc:"Path where the CSV files are stored"
-                   [ "csv-dir" ] in
+let csv_glob =
+  let i = Arg.info ~doc:"File glob for the CSV files, where % will be \
+                         replaced by the CSV type (\"tcp\", \"udp\"...)"
+                   [ "csv" ] in
   Arg.(required (opt (some string) None i))
 
 let with_base =
@@ -1123,7 +1123,7 @@ let start_cmd =
       $ dataset_name
       $ delete_opt
       $ uncompress_opt
-      $ csv_dir
+      $ csv_glob
       $ with_base
       $ with_bcns
       $ with_bcas
