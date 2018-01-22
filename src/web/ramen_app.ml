@@ -921,7 +921,7 @@ let node_thead_col ?filter_param (title, subtitle, sortable, cumul_opt) =
          p [ clss "type" ] [ text subtitle ] ])
 
 let tds v = td [] [ text v ]
-let tdo = function None -> tds "n.a." | Some v -> tds v
+let tdo = function None -> tds "n/a" | Some v -> tds v
 let tdi v = td [ clss "number" ] [ text (string_of_int v) ]
 let tdf v = td [ clss "number" ] [ text (str_of_float v) ]
 (* Sometime we use floats to get bigger integers.
@@ -941,7 +941,7 @@ let short_node_list ?(max_len=20) layer lst =
 
 let node_tbody_row node =
   let dt = node.Node.stats.time -. node.Node.last_stats.time in
-  let na = td [ clss "number" ] [ text "n.a." ] in
+  let na = td [ clss "number" ] [ text "n/a" ] in
   let unk = td [ clss "number" ] [ text "unknown" ] in
   let tdh ~to_str tot x =
     td [ clss "number" ]
