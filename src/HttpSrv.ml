@@ -378,7 +378,7 @@ let run conf headers layer_opt =
         C.with_wlock conf (fun () ->
           let%lwt layers = graph_layers conf layer_opt in
           let layers = L.order layers in
-          Lwt_list.iter_p (run_ conf) layers) in
+          Lwt_list.iter_s (run_ conf) layers) in
       switch_accepted headers [
         Consts.json_content_type, (fun () -> respond_ok ()) ])
     (function SyntaxError _
