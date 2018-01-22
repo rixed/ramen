@@ -258,7 +258,7 @@ let run_ conf layer =
   with RamenProcesses.AlreadyRunning -> return_unit
 
 let stop_ conf layer =
-  try RamenProcesses.stop conf layer
+  try%lwt RamenProcesses.stop conf layer
   with RamenProcesses.NotRunning -> return_unit
 
 let compile_ conf layer =
