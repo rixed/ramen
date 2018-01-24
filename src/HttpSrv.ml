@@ -316,6 +316,7 @@ let put_layer conf headers body =
     (* must restart *)
     if must_stop then
       let layer = Hashtbl.find conf.C.graph.C.layers layer_name in
+      !logger.debug "Trying to restart layer %s" layer.L.name ;
       let%lwt () = compile_ conf layer in
       run_ conf layer
     else return_unit) >>=
