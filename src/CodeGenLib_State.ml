@@ -17,13 +17,13 @@
 let int_of_fd fd : int = Obj.magic fd
 
 let do_save fd v =
-  let open Unix in
+  let open BatUnix in
   lseek fd 0 SEEK_SET |> ignore ;
   (* Leak memory for some reason / and do not write anything to the file
    * if we Marshal.to_channel directly. :-/ *)
   let bytes = Marshal.to_bytes v [] in
   let len = Bytes.length bytes in
-  write fd bytes 0 len |> ignore
+  restart_on_EINTR (write fd bytes 0) len |> ignore
 
 let do_restore fd =
   let open Unix in

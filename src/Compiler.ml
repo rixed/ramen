@@ -976,9 +976,9 @@ let compile_node conf node =
     | ReadCSVFile { where = DownloadFile _ ; _ } ->
       failwith "Not Implemented"
     | x -> x in
-  let comp_cmd =
+  let%lwt comp_cmd = wrap (fun () ->
     CodeGen_OCaml.gen_operation
-      conf exec_name in_typ out_typ operation in
+      conf exec_name in_typ out_typ operation) in
   (* Let's compile (or maybe not) *)
   mkdir_all ~is_file:true exec_name ;
   if file_exists ~maybe_empty:false ~has_perms:0o100 exec_name then (

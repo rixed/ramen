@@ -154,7 +154,9 @@ let run ?timeout ?(to_stdin="") cmd =
     Lwt_process.with_process_full ?timeout (cmd.(0), cmd) (fun process ->
       (* What we write to stdin: *)
       let write_stdin =
-        let%lwt () = Lwt_io.write process#stdin to_stdin in
+        let%lwt () =
+          try%lwt Lwt_io.write process#stdin to_stdin
+          with (Unix.Unix_error (Unix.EPIPE, _, _)) -> return_unit in
         Lwt_io.close process#stdin in
       (* We need to read both stdout and stderr simultaneously or risk
        * interlocking: *)
@@ -302,7 +304,9 @@ let run_coprocess ?(max_count=max_coprocesses)
     let open Lwt in
     Lwt_process.with_process_full ?timeout cmd (fun process ->
       let write_stdin =
-        let%lwt () = Lwt_io.write process#stdin to_stdin in
+        let%lwt () =
+          try%lwt Lwt_io.write process#stdin to_stdin
+          with Unix.Unix_error (Unix.EPIPE, _, _) -> return_unit in
         Lwt_io.close process#stdin
       and read_lines c =
         try%lwt
