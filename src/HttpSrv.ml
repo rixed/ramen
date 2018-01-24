@@ -404,19 +404,14 @@ let stop conf headers layer_opt =
     (function C.InvalidCommand e -> bad_request e
             | x -> fail x)
 
-let shutdown_ conf =
-  (* Stop all workers *)
-  let%lwt () = stop_layers conf None in
-  List.iter (fun condvar ->
-    Lwt_condition.signal condvar ()) !http_server_done ;
-  return_unit
+let quit = ref false
 
-let shutdown conf _headers =
+let shutdown _conf _headers =
   (* TODO: also log client info *)
   !logger.info "Asked to shut down" ;
   (* Hopefully cohttp will serve this answer before stopping. *)
-  shutdown_ conf >>=
-  respond_ok
+  quit := true ;
+  respond_ok ()
 
 (*
     Exporting tuples
@@ -973,7 +968,6 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   in
   if daemonize then do_daemonize () ;
   (* Install signal handlers *)
-  let quit = ref false in
   Sys.(set_signal sigterm (Signal_handle (fun _ ->
     !logger.info "Received TERM" ;
     quit := true))) ;
