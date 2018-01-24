@@ -367,6 +367,8 @@ let base_layer dataset_name delete uncompress csv_glob export =
   and udp_to_unidir = to_unidir "udp" {|
     poller, capture_begin, capture_end,
     ip4_external, ip6_external,
+    0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u64 AS packets_with_payload_src, 0u64 AS rd_count_src,
     application, protostack,
     dcerpc_uuid|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
@@ -417,6 +419,8 @@ let base_layer dataset_name delete uncompress csv_glob export =
   and icmp_to_unidir = to_unidir "icmp" {|
     poller, capture_begin, capture_end,
     ip4_external, ip6_external,
+    0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u64 AS packets_with_payload_src, 0u64 AS rd_count_src,
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
     "ip6", "" ; "diffserv", "" ; "mtu", "" ;
@@ -452,6 +456,8 @@ let base_layer dataset_name delete uncompress csv_glob export =
     make_node "other-than-ip"
   and other_ip_to_unidir = to_unidir "other-than-ip" {|
     poller, capture_begin, capture_end,
+    0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u64 AS packets_with_payload_src, 0u64 AS rd_count_src,
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
     "ip6", "" ; "diffserv", "" ; "mtu", "" ;
@@ -481,6 +487,8 @@ let base_layer dataset_name delete uncompress csv_glob export =
     make_node "non-ip"
   and non_ip_to_unidir = to_unidir "non-ip" {|
     poller, capture_begin, capture_end,
+    0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u64 AS packets_with_payload_src, 0u64 AS rd_count_src,
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "mtu", "" ;
     "traffic_packets", "packets" ; "traffic_bytes", "bytes" ]
@@ -544,8 +552,17 @@ let layer_of_bcns bcns dataset_name export =
           SELECT
             (capture_begin // %d) * %g AS start,
             min capture_begin, max capture_end,
+            -- Traffic
             sum packets_src / %g AS packets_per_secs,
             sum bytes_src / %g AS bytes_per_secs,
+            -- RTT (in seconds)
+            sum rtt_count_src AS _sum_rtt_count_src,
+            IF _sum_rtt_count_src = 0 THEN 0 ELSE
+              (sum rtt_sum_src / _sum_rtt_count_src) / 1e6 AS avg_rtt,
+            -- RD: percentage of retransmitted packets over packets with payload
+            sum packets_with_payload_src AS _sum_packets_with_payload_src,
+            IF _sum_packets_with_payload_src = 0 THEN 0 ELSE
+              (sum rd_count_src / _sum_packets_with_payload_src) / 100 AS avg_rr,
             %S AS zone_src, %S AS zone_dst
           WHERE %s
           GROUP BY capture_begin // %d
@@ -586,12 +603,15 @@ let layer_of_bcns bcns dataset_name export =
            min min_capture_begin AS min_capture_begin,
            max max_capture_end AS max_capture_end,
            %gth percentile bytes_per_secs AS bytes_per_secs,
+           %gth percentile avg_rtt AS rtt,
+           %gth percentile avg_rr AS rr,
            zone_src, zone_dst
          COMMIT AND SLIDE 1 WHEN
            group.#count >= %d OR
            in.start > out.max_start + 5|}
          avg_per_zones_name
-         bcn.percentile nb_items_per_groups in
+         bcn.percentile bcn.percentile bcn.percentile
+         nb_items_per_groups in
     let op =
       if export_some export then
         op ^ Printf.sprintf {|
@@ -651,6 +671,58 @@ let layer_of_bcns bcns dataset_name export =
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
         make_node name op
       ) bcn.max_bps ;
+    Option.may (fun max_rtt ->
+        let title = Printf.sprintf "RTT too hight from zone %s to %s"
+                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+        and text = alert_text [
+          "descr", Printf.sprintf
+                     "Traffic from zone %s to zone %s has an average RTT \
+                      of _rtt_, greater than the configured maximum of %gs, \
+                      for the last %g minutes."
+                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                      max_rtt (bcn.obs_window /. 60.) ;
+          "bcn_id", string_of_int bcn.id ] in
+        let op = Printf.sprintf
+          {|SELECT max_start, rtt > %f AS firing
+            FROM '%s'
+            COMMIT AND KEEP ALL WHEN firing != previous.firing
+            NOTIFY "http://localhost:29380/notify?name=High%%20RTT&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+            max_rtt
+            perc_per_obs_window_name
+            (enc title) (enc text |> rep "_rtt_" "${rtt}") in
+        let op =
+          if export_all export then op ^ {|
+            EXPORT EVENT STARTING AT max_start|}
+          else op in
+        let name = Printf.sprintf "%s: alert RTT" name_prefix in
+        make_node name op
+      ) bcn.max_rtt ;
+    Option.may (fun max_rr ->
+        let title = Printf.sprintf "Too many retransmissions from zone %s to %s"
+                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+        and text = alert_text [
+          "descr", Printf.sprintf
+                     "Traffic from zone %s to zone %s has an average \
+                      retransmission rate of _rr_%%, greater than the \
+                      configured maximum of %gs, for the last %g minutes."
+                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                      max_rr (bcn.obs_window /. 60.) ;
+          "bcn_id", string_of_int bcn.id ] in
+        let op = Printf.sprintf
+          {|SELECT max_start, rr > %f AS firing
+            FROM '%s'
+            COMMIT AND KEEP ALL WHEN firing != previous.firing
+            NOTIFY "http://localhost:29380/notify?name=High%%20RR&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+            max_rr
+            perc_per_obs_window_name
+            (enc title) (enc text |> rep "_rr_" "${rr}") in
+        let op =
+          if export_all export then op ^ {|
+            EXPORT EVENT STARTING AT max_start|}
+          else op in
+        let name = Printf.sprintf "%s: alert RR" name_prefix in
+        make_node name op
+      ) bcn.max_rr ;
     let minutely =
       tcp_traffic_node ~where dataset_name (name_prefix ^": TCP minutely traffic") 60 export in
     all_nodes := minutely :: !all_nodes ;
