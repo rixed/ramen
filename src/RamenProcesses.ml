@@ -61,7 +61,7 @@ let input_spec conf parent node =
   and in_type = C.tuple_ser_type node.N.in_type in
   RingBufLib.skip_list ~out_type ~in_type
 
-let run_node conf layer node =
+let rec run_node conf layer node =
   let command = C.exec_of_node conf.C.persist_dir node
   and output_ringbufs =
     (* Start to output to nodes of this layer. They have all been
@@ -118,15 +118,30 @@ let run_node conf layer node =
       match%lwt Lwt_unix.waitpid [] pid with
       | exception Unix.Unix_error (Unix.EINTR, _, _) -> wait_child ()
       | exception exn ->
+        (* This should not be used *)
         (* TODO: save this error on the node record *)
         !logger.error "Cannot wait for pid %d: %s"
           pid (Printexc.to_string exn) ;
         return_unit
       | _, status ->
         (* TODO: save this error on the node record *)
-        !logger.info "Node %s (pid %d) %s"
-          node.N.name pid (Helpers.string_of_process_status status) ;
-        return_unit in
+        !logger.info "Node %s (pid %d) %s."
+          (N.fq_name node) pid (Helpers.string_of_process_status status) ;
+        (* We might want to restart it: *)
+        (match status with Unix.WSIGNALED signal when signal <> Sys.sigterm ->
+          let%lwt () = Lwt_unix.sleep 3. in
+          C.with_wlock conf (fun () ->
+            (* Look again for that layer by name: *)
+            match C.find_node conf layer.L.name node.N.name with
+            | exception Not_found -> return_unit
+            | layer, node ->
+                if layer.persist.status <> Running then return_unit else (
+                  !logger.info "Restarting node %s which is supposed to be running."
+                    (N.fq_name node) ;
+                  (* Note: run_node will start another waiter for that other worker. *)
+                  run_node conf layer node))
+         | _ -> return_unit)
+    in
     wait_child ()) ;
   (* Update the parents out_ringbuf_ref if it's in another layer *)
   Lwt_list.iter_p (fun parent ->
