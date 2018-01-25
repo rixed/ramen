@@ -100,7 +100,7 @@ let skip_list ~out_type ~in_type =
         loop (true :: v) (os', is')
       else (
         (* not possible: i must be in o *)
-        !logger.error "Field %s is not in it's parent output" i.typ_name ;
+        !logger.error "Field %s is not in its parent output" i.typ_name ;
         assert false)
     | [], _ ->
       !logger.error "More inputs than parent outputs?" ;

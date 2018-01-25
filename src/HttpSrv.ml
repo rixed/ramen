@@ -221,7 +221,7 @@ let node_of_name conf layer_name node_name =
 
 let del_layer_ conf layer =
   if layer.L.persist.L.status = Running then
-    bad_request "Cannot update a running layer"
+    bad_request "Cannot delete a running layer"
   else
     try
       C.del_layer conf layer ;

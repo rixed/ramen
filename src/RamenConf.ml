@@ -233,7 +233,7 @@ struct
         n.pid <- None) layer.persist.nodes
     | _ -> ()
 
-  (* [restart] is true when ramen restarted and read it's config for the first
+  (* [restart] is true when ramen restarted and read its config for the first
    * time. Some additional cleaning needs to be done then. *)
   let make persist_dir version_tag ?persist ?(timeout=0.) ?(restart=false)
            name =
@@ -248,7 +248,8 @@ struct
           last_started = None ; last_stopped = None }) persist in
     let layer = { name ; persist ; importing_threads = [] } in
     if restart then (
-      !logger.info "Reloading and cleaning the configuration after restart." ;
+      !logger.info "Reloading and cleaning the configuration for layer %S \
+                    after restart." name ;
       (* Demote the status to compiled since the workers can't be running
        * anymore. *)
       if persist.status = Running then set_status layer Compiled ;
@@ -507,6 +508,8 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
 
 (* Create the node but not the links to parents (this is so we can have
  * loops) *)
+(* FIXME: got bitten by the fact that node_name and layer_name are 2 strings
+ * so you can mix them up. Make specialized types for all those strings. *)
 let add_node conf node_name layer_name op_text =
   !logger.debug "Creating node %s/%s" layer_name node_name ;
   (* New lines have to be forbidden because of the out_ref ringbuf files.

@@ -116,6 +116,7 @@ let rec run_node conf layer node =
   let%lwt pid =
     wrap (fun () -> run_background command [||] env) in
   node.N.pid <- Some pid ;
+  (* Monitor this worker, wait for its termination, restart...: *)
   async (fun () ->
     let rec wait_child () =
       match%lwt Lwt_unix.waitpid [] pid with
@@ -169,6 +170,7 @@ let rec run_node conf layer node =
           RamenOutRef.add out_ref (input_spec conf parent node)
     ) node.N.parents
 
+(* Takes a locked conf *)
 let run conf layer =
   let open L in
   match layer.persist.status with
@@ -227,7 +229,7 @@ let stop conf layer =
         | Some pid ->
           !logger.debug "Stopping node %s, pid %d" node.N.name pid ;
           (* Start by removing this worker ringbuf from all its parent output
-           * reference *)
+           * references *)
           let this_in = in_ringbuf_name conf node in
           let%lwt () = Lwt_list.iter_p (fun (parent_layer, parent_name) ->
               match C.find_node conf parent_layer parent_name with
