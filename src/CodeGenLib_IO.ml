@@ -73,15 +73,14 @@ let read_glob_lines ?do_unlink path preprocessor k =
   let glob = Globs.compile glob in
   let import_file_if_match filename =
     if Globs.matches glob filename then
-      catch
-        (fun () ->
-          read_file_lines ?do_unlink (dirname ^"/"^ filename) preprocessor k)
-        (fun exn ->
-          !logger.error "Exception while reading file %s: %s\n%s"
-            filename
-            (Printexc.to_string exn)
-            (Printexc.get_backtrace ()) ;
-          return_unit)
+      try%lwt
+        read_file_lines ?do_unlink (dirname ^"/"^ filename) preprocessor k
+      with exn ->
+        !logger.error "Exception while reading file %s: %s\n%s"
+          filename
+          (Printexc.to_string exn)
+          (Printexc.get_backtrace ()) ;
+        return_unit
     else (
       !logger.debug "File %S is not interesting." filename ;
       return_unit

@@ -280,25 +280,24 @@ let import_tuples conf rb_name node =
     C.print_tuple_type node.N.out_type
     Lang.Tuple.print_typ ser_tuple_typ ;
   let%lwt rb = wrap (fun () -> RingBuf.load rb_name) in
-  catch
-    (fun () ->
-      let dequeue =
-        RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in
-      while%lwt true do
-        let%lwt tx = dequeue rb in
-        let ser_tuple, _sz = read_tuple ser_tuple_typ nullmask_size tx in
-        RingBuf.dequeue_commit tx ;
-        wrap (fun () -> add_tuple conf node ser_tuple) >>=
-        Lwt_main.yield
-      done)
-    (function Canceled ->
-      !logger.info "Import from %s was cancelled" rb_name ;
-      wrap (fun () -> RingBuf.unload rb)
-            | e ->
-      !logger.error "Importing tuples failed with %s,\n%s"
-        (Printexc.to_string e)
-        (Printexc.get_backtrace ()) ;
-      fail e)
+  try%lwt
+    let dequeue =
+      RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in
+    while%lwt true do
+      let%lwt tx = dequeue rb in
+      let ser_tuple, _sz = read_tuple ser_tuple_typ nullmask_size tx in
+      RingBuf.dequeue_commit tx ;
+      wrap (fun () -> add_tuple conf node ser_tuple) >>=
+      Lwt_main.yield
+    done
+  with Canceled ->
+        !logger.info "Import from %s was cancelled" rb_name ;
+        wrap (fun () -> RingBuf.unload rb)
+     | e ->
+        !logger.error "Importing tuples failed with %s,\n%s"
+          (Printexc.to_string e)
+          (Printexc.get_backtrace ()) ;
+        fail e
 
 let filenum_print oc (sta, sto) = Printf.fprintf oc "%d-%d" sta sto
 

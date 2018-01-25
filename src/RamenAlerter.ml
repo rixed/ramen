@@ -460,11 +460,11 @@ let start_escalation_loop conf =
   let rec check_escalations_loop () =
     let now = Unix.gettimeofday () in
     let%lwt () =
-      catch
-        (fun () -> check_escalations conf.C.alerts now)
-        (fun e ->
-          print_exception e ;
-          return_unit) in
+      try%lwt
+        check_escalations conf.C.alerts now
+      with e ->
+        print_exception e ;
+        return_unit in
     Lwt_unix.sleep 0.5 >>=
     check_escalations_loop
   in

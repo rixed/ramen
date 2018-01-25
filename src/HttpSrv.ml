@@ -20,9 +20,9 @@ let hostname =
   fun () ->
     if !cached <> "" then return !cached else
     let%lwt c =
-      catch
-        (fun () -> run ~timeout:2. [| "hostname" |])
-        (function _ -> return "unknown host") in
+      try%lwt
+        run ~timeout:2. [| "hostname" |]
+      with _ -> return "unknown host" in
     cached := c ;
     return c
 
@@ -316,52 +316,50 @@ let get_index www_dir conf headers =
 *)
 
 let compile conf headers layer_opt =
-  catch
-    (fun () ->
-      let rec loop left_try layers =
-        !logger.debug "%d layers left to compile..." (List.length layers) ;
-        if layers = [] then return_unit else
-        if left_try < 0 then bad_request "Unsolvable dependency loop" else
-        Lwt_list.fold_left_s (fun failed layer ->
-            let open Compiler in
-            catch
-              (fun () -> let%lwt () = compile conf layer in
-                         return failed)
-              (function AlreadyCompiled -> return failed
-                      | MissingDependency n ->
-                        !logger.debug "We miss node %s" (N.fq_name n) ;
-                        return (layer::failed)
-                      | e -> fail e)
-          ) [] layers >>=
-        loop (left_try-1)
-      in
-      let%lwt () =
-        C.with_wlock conf (fun () ->
-          let%lwt layers = graph_layers conf layer_opt in
-          loop (List.length layers) layers) in
-      switch_accepted headers [
-        Consts.json_content_type, (fun () -> respond_ok ()) ])
-    (function SyntaxError _
-            | Compiler.SyntaxErrorInNode _
-            | C.InvalidCommand _ as e ->
-              bad_request (Printexc.to_string e)
-            | e -> fail e)
+  try%lwt
+    let rec loop left_try layers =
+      !logger.debug "%d layers left to compile..." (List.length layers) ;
+      if layers = [] then return_unit else
+      if left_try < 0 then bad_request "Unsolvable dependency loop" else
+      Lwt_list.fold_left_s (fun failed layer ->
+          let open Compiler in
+          try%lwt
+            let%lwt () = compile conf layer in
+            return failed
+          with AlreadyCompiled -> return failed
+             | MissingDependency n ->
+               !logger.debug "We miss node %s" (N.fq_name n) ;
+               return (layer::failed)
+             | e -> fail e
+        ) [] layers >>=
+      loop (left_try-1)
+    in
+    let%lwt () =
+      C.with_wlock conf (fun () ->
+        let%lwt layers = graph_layers conf layer_opt in
+        loop (List.length layers) layers) in
+    switch_accepted headers [
+      Consts.json_content_type, (fun () -> respond_ok ()) ]
+  with SyntaxError _
+     | Compiler.SyntaxErrorInNode _
+     | C.InvalidCommand _ as e ->
+       bad_request (Printexc.to_string e)
+     | e -> fail e
 
 let run conf headers layer_opt =
-  catch
-    (fun () ->
-      let%lwt () =
-        C.with_wlock conf (fun () ->
-          let%lwt layers = graph_layers conf layer_opt in
-          let layers = L.order layers in
-          Lwt_list.iter_s (run_ conf) layers) in
-      switch_accepted headers [
-        Consts.json_content_type, (fun () -> respond_ok ()) ])
-    (function SyntaxError _
-            | Compiler.SyntaxErrorInNode _
-            | C.InvalidCommand _ as e ->
-              bad_request (Printexc.to_string e)
-            | x -> fail x)
+  try%lwt
+    let%lwt () =
+      C.with_wlock conf (fun () ->
+        let%lwt layers = graph_layers conf layer_opt in
+        let layers = L.order layers in
+        Lwt_list.iter_s (run_ conf) layers) in
+    switch_accepted headers [
+      Consts.json_content_type, (fun () -> respond_ok ()) ]
+  with SyntaxError _
+     | Compiler.SyntaxErrorInNode _
+     | C.InvalidCommand _ as e ->
+       bad_request (Printexc.to_string e)
+     | x -> fail x
 
 let stop_layers_ conf layer_opt =
   let%lwt layers = graph_layers conf layer_opt in
@@ -372,13 +370,12 @@ let stop_layers conf layer_opt =
     stop_layers_ conf layer_opt)
 
 let stop conf headers layer_opt =
-  catch
-    (fun () ->
-      let%lwt () = stop_layers conf layer_opt in
-      switch_accepted headers [
-        Consts.json_content_type, (fun () -> respond_ok ()) ])
-    (function C.InvalidCommand e -> bad_request e
-            | x -> fail x)
+  try%lwt
+    let%lwt () = stop_layers conf layer_opt in
+    switch_accepted headers [
+      Consts.json_content_type, (fun () -> respond_ok ()) ]
+  with C.InvalidCommand e -> bad_request e
+     | x -> fail x
 
 let quit = ref false
 
@@ -573,27 +570,27 @@ let timeseries conf headers body =
     )) >>= fun () ->
     return (layer_name, node_name, "data")
   in
-  catch
-    (fun () ->
-      let%lwt resp = Lwt_list.map_s (fun req ->
-          let%lwt layer_name, node_name, data_field =
-            match req.spec with
-            | Predefined { node ; data_field } ->
-              let%lwt layer, node =
-                try C.layer_node_of_user_string conf node |> return
-                with Not_found -> bad_request ("node "^ node ^" does not exist") in
-              return (layer, node, data_field)
-            | NewTempNode { select_x ; select_y ; from ; where } ->
-              C.with_wlock conf (fun () ->
-                create_temporary_node select_x select_y from where) in
-          let%lwt times, values =
-            C.with_rlock conf (fun () ->
-              ts_of_node_field req layer_name node_name data_field) in
-          return { id = req.id ; times ; values }
-        ) msg.timeseries in
-      let body = PPP.to_string timeseries_resp_ppp resp in
-      respond_ok ~body ())
-    (function Failure err -> bad_request err | e -> fail e)
+  try%lwt
+    let%lwt resp = Lwt_list.map_s (fun req ->
+        let%lwt layer_name, node_name, data_field =
+          match req.spec with
+          | Predefined { node ; data_field } ->
+            let%lwt layer, node =
+              try C.layer_node_of_user_string conf node |> return
+              with Not_found -> bad_request ("node "^ node ^" does not exist") in
+            return (layer, node, data_field)
+          | NewTempNode { select_x ; select_y ; from ; where } ->
+            C.with_wlock conf (fun () ->
+              create_temporary_node select_x select_y from where) in
+        let%lwt times, values =
+          C.with_rlock conf (fun () ->
+            ts_of_node_field req layer_name node_name data_field) in
+        return { id = req.id ; times ; values }
+      ) msg.timeseries in
+    let body = PPP.to_string timeseries_resp_ppp resp in
+    respond_ok ~body ()
+  with Failure err -> bad_request err
+     | e -> fail e
 
 let timerange_of_node node =
   let open RamenSharedTypesJS in

@@ -89,15 +89,13 @@ let shutdown debug ramen_url () =
   Lwt_main.run (
     let url = ramen_url ^"/shutdown" in
     (* Do not expect any response for now. *)
-    catch (fun () ->
-      Client.get (Uri.of_string url) >>=
-        fun _ -> return_unit)
-      (fun e ->
-        (match e with
-          Unix.Unix_error(Unix.ECONNREFUSED, "connect", "") ->
-           Printf.eprintf "Cannot connect to ramen. Is it really running?\n"
-         | _ -> ()) ;
-        return_unit))
+    try%lwt
+      let%lwt _ = Client.get (Uri.of_string url) in
+      return_unit
+    with Unix.Unix_error(Unix.ECONNREFUSED, "connect", "") ->
+           Printf.eprintf "Cannot connect to ramen. Is it really running?\n" ;
+           return_unit
+       | _ -> return_unit)
 
 let resp_column_length = function
   | _typ, None, column -> column_length column

@@ -164,23 +164,22 @@ let run ?timeout ?(to_stdin="") cmd =
       let read_lines =
         match%lwt Lwt_io.read_lines process#stdout |>
                   Lwt_stream.to_list with
-        | exception exc ->
+        | exception exn ->
           (* when this happens for some reason we are left with (null) *)
-          let msg = Printexc.to_string exc in
+          let msg = Printexc.to_string exn in
           !logger.error "%s exception: %s"
             (string_of_array cmd) msg ;
           return_unit
         | l -> lines := l ; return_unit in
       let monitor_stderr =
-        catch (fun () ->
+        try%lwt
           Lwt_io.read_lines process#stderr |>
           Lwt_stream.iter (fun l ->
-              !logger.error "%s stderr: %s" (string_of_array cmd) l
-            ))
-          (fun exc ->
-            !logger.error "Error while running %s: %s"
-              (string_of_array cmd) (Printexc.to_string exc) ;
-            return_unit) in
+              !logger.error "%s stderr: %s" (string_of_array cmd) l)
+        with exn ->
+          !logger.error "Error while running %s: %s"
+            (string_of_array cmd) (Printexc.to_string exn) ;
+          return_unit in
       join [ write_stdin ; read_lines ; monitor_stderr ] >>
       match%lwt process#status with
       | Unix.WEXITED 0 ->
@@ -313,8 +312,8 @@ let run_coprocess ?(max_count=max_coprocesses)
           Lwt_io.read_lines c |>
           Lwt_stream.iter (fun line ->
             !logger.info "%s: %s" cmd_name line)
-        with exc ->
-          let msg = Printexc.to_string exc in
+        with exn ->
+          let msg = Printexc.to_string exn in
           !logger.error "%s: Cannot read output: %s" cmd_name msg ;
           return_unit in
       join [ write_stdin ;
@@ -346,8 +345,8 @@ let udp_server ?(buffer_size=2000) ~inet_addr ~port k =
     let%lwt () = bind sock (ADDR_INET (inet_addr, port)) in
     return sock in
   let%lwt sock =
-    catch (fun () -> sock_of_domain PF_INET6)
-          (fun _ -> sock_of_domain PF_INET) in
+    try%lwt sock_of_domain PF_INET6
+    with _ -> sock_of_domain PF_INET in
   !logger.debug "Listening for datagrams on port %d" port ;
   let buffer = Bytes.create buffer_size in
   let rec forever () =

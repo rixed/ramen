@@ -50,26 +50,24 @@ let http_service port cert_opt key_opt router =
     let headers = Request.headers req in
     let%lwt body = Cohttp_lwt.Body.to_string body
     in
-    catch
-      (fun () ->
-        try router (Request.meth req) path params headers body
-        with exn -> fail exn)
-      (function
-      | HttpError (code, msg) as exn ->
-        print_exception exn ;
-        let status = Code.status_of_code code in
-        let headers =
-          Header.init_with "Access-Control-Allow-Origin" "*" in
-        let headers =
-          Header.add headers "Content-Type" Consts.json_content_type in
-        let body =
-          Printf.sprintf "{\"success\": false, \"error\": %S}\n" msg in
-        Server.respond_string ~headers ~status ~body ()
-      | exn ->
-        print_exception exn ;
-        let body = Printexc.to_string exn ^ "\n" in
-        let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
-        Server.respond_error ~headers ~body ())
+    try%lwt
+      try router (Request.meth req) path params headers body
+      with exn -> fail exn
+    with HttpError (code, msg) as exn ->
+           print_exception exn ;
+           let status = Code.status_of_code code in
+           let headers =
+             Header.init_with "Access-Control-Allow-Origin" "*" in
+           let headers =
+             Header.add headers "Content-Type" Consts.json_content_type in
+           let body =
+             Printf.sprintf "{\"success\": false, \"error\": %S}\n" msg in
+           Server.respond_string ~headers ~status ~body ()
+       | exn ->
+           print_exception exn ;
+           let body = Printexc.to_string exn ^ "\n" in
+           let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+           Server.respond_error ~headers ~body ()
   in
   let entry_point = Server.make ~callback () in
   let tcp_mode = `TCP (`Port port) in

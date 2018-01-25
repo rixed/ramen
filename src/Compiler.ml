@@ -1050,7 +1050,7 @@ let compile conf layer =
   | Edition _ ->
     !logger.debug "Trying to compile layer %s" layer.L.name ;
     C.Layer.set_status layer Compiling ;
-    catch (fun () ->
+    try%lwt
       let%lwt () = wrap (fun () ->
         untyped_dependency conf layer |>
         Option.may (fun n -> raise (MissingDependency n)) ;
@@ -1095,7 +1095,7 @@ let compile conf layer =
           ) layer.L.persist.L.nodes (Set.empty, []) in
       let%lwt () = join thds in
       C.Layer.set_status layer Compiled ;
-      return_unit)
-      (fun e ->
-        C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
-        fail e)
+      return_unit
+    with e ->
+      C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
+      fail e
