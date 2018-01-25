@@ -157,9 +157,7 @@ struct
       (* Also keep the string as defined by the client to preserve formatting: *)
       mutable op_text : string ;
       (* Parents are either in this layer or a layer _below_. *)
-      mutable parents : t list ;
-      (* Children are either in this layer or in a layer _above_ *)
-      mutable children : t list ;
+      mutable parents : (string * string) list ;
       (* Worker info, only relevant if it is running: *)
       mutable pid : int option }
 
@@ -301,8 +299,8 @@ struct
     (* One day we will have a lock on the configuration and we will be able to
      * mark visited nodes *)
     Hashtbl.fold (fun _node_name node called ->
-        List.fold_left (fun called parent ->
-            let dependency = parent.Node.layer in
+        List.fold_left (fun called (parent_layer, _parent_node) ->
+            let dependency = parent_layer in
             if Set.mem dependency called then called else (
               f dependency ;
               Set.add dependency called)
@@ -453,26 +451,35 @@ let del_layer conf layer =
     raise (InvalidCommand "Layer is running") ;
   if layer.importing_threads <> [] then
     raise (InvalidCommand "Layer has running threads") ;
-  (* OK so now we should be able to restart on error *)
-  (* Remove the nodes and links *)
-  Hashtbl.iter (fun _ node ->
-      let open Node in
-      List.iter (fun parent ->
-          parent.children <-
-            List.filter (fun c -> c != node) parent.children
-        ) node.parents ;
-      List.iter (fun child ->
-          if child.layer <> layer.name then
-            !logger.info "Node %S will miss layer %S"
-              (Node.fq_name child) layer.name ;
-          child.parents <-
-            List.filter (fun p -> p != node) child.parents
-        ) node.children
-    ) layer.persist.nodes ;
   Hashtbl.remove conf.graph.layers layer.name
 
 let save_file_of persist_dir =
   persist_dir ^"/configuration/1" (* TODO: versioning *)
+
+let fold_nodes conf init f =
+  Hashtbl.fold (fun _ layer prev ->
+    Hashtbl.fold (fun _ node prev ->
+      f prev layer node
+    ) layer.Layer.persist.Layer.nodes prev
+  ) conf.graph.layers init
+
+let layer_node_of_user_string conf ?default_layer s =
+  let s = String.trim s in
+  (* rsplit because we might want to have '/'s in the layer name. *)
+  try String.rsplit ~by:"/" s
+  with Not_found ->
+    match default_layer with
+    | Some l -> l, s
+    | None ->
+      (* Last resort: look for the first node with that name: *)
+      match fold_nodes conf None (fun res _layer node ->
+              if res = None && node.Node.name = s then
+                Some (node.Node.layer, node.Node.name)
+              else res) with
+      | Some res -> res
+      | None ->
+        !logger.error "Cannot find node %S" s ;
+        raise Not_found
 
 let add_parsed_node ?timeout conf node_name layer_name op_text operation =
   let layer =
@@ -481,10 +488,15 @@ let add_parsed_node ?timeout conf node_name layer_name op_text operation =
   if Hashtbl.mem layer.Layer.persist.Layer.nodes node_name then
     raise (InvalidCommand (
              "Node "^ node_name ^" already exists in layer "^ layer_name)) ;
+  let parents =
+    Lang.Operation.parents_of_operation operation |>
+    List.map (fun p ->
+      try layer_node_of_user_string conf ~default_layer:layer_name p
+      with Not_found ->
+        raise (InvalidCommand ("Node "^ p ^" does not exist"))) in
   let node = Node.{
     layer = layer_name ; name = node_name ;
-    operation ; signature = "" ; op_text ;
-    parents = [] ; children = [] ;
+    operation ; signature = "" ; op_text ; parents ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = UntypedTuple (make_temp_tup_typ ()) ;
@@ -584,20 +596,6 @@ let find_node conf layer name =
   let layer = Hashtbl.find conf.graph.layers layer in
   layer, Hashtbl.find layer.Layer.persist.Layer.nodes name
 
-(* Both src and dst have to exist already. *)
-let add_link conf src dst =
-  let open Node in
-  !logger.debug "Create link between nodes %s/%s and %s/%s"
-    src.layer src.name dst.layer dst.name ;
-  (* Leave the src layer as it is if <> dst layer, since we must not
-   * have to recompile an underlying layer. The dependent dst, though, must
-   * be recompiled to take into account this (possible) change in it's input
-   * type. *)
-  let l = Hashtbl.find conf.graph.layers dst.layer in
-  Layer.set_editable l "" ;
-  src.children <- dst :: src.children ;
-  dst.parents <- src :: dst.parents
-
 let make_conf do_persist ramen_url debug version_tag persist_dir
               max_simult_compilations max_history_archives =
   let alerting_version = "v0" and instrumentation_version = "v1" in
@@ -615,15 +613,10 @@ let make_conf do_persist ramen_url debug version_tag persist_dir
 (* Autocompletion of *all* nodes; not only exporting ones since we might want
  * to graph some meta data. Also maybe we should export on demand? *)
 
-let fold_nodes conf init f =
-  Hashtbl.fold (fun _ layer prev ->
-      Hashtbl.fold (fun _ node prev -> f prev node) layer.Layer.persist.Layer.nodes prev
-    ) conf.graph.layers init
-
 let complete_node_name conf s only_exporting =
   let s = String.(lowercase (trim s)) in
   (* TODO: a better search structure for case-insensitive prefix search *)
-  fold_nodes conf [] (fun lst node ->
+  fold_nodes conf [] (fun lst _layer node ->
       let lc_name = String.lowercase node.Node.name in
       let fq_name = Node.fq_name node in
       let lc_fq_name = String.lowercase fq_name in

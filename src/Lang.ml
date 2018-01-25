@@ -52,6 +52,7 @@ type syntax_error =
   | CannotGenerateCode of { node : string ; cmd : string ; status : string }
   | AliasNotUnique of string
   | OnlyTumblingWindowForTop
+  | UnknownNode of string
 
 exception SyntaxError of syntax_error
 
@@ -110,6 +111,8 @@ let string_of_syntax_error =
   | TupleHasOnlyVirtuals { tuple ; alias } ->
     "Tuple "^ string_of_prefix tuple ^" has only virtual fields, so no \
      field named "^ alias
+  | UnknownNode n ->
+    "Referenced node "^ n ^" does not exist"
 
 let () =
   Printexc.register_printer (function

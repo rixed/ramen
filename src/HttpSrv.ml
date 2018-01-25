@@ -38,22 +38,6 @@ let serve_string conf _headers body =
   let%lwt body = replace_placeholders conf body in
   respond_ok ~body ~ct:Consts.html_content_type ()
 
-let layer_node_of_user_string conf ?default_layer s =
-  let s = String.trim s in
-  (* rsplit because we might want to have '/'s in the layer name. *)
-  try String.rsplit ~by:"/" s |> return
-  with Not_found ->
-    match default_layer with
-    | Some l -> return (l, s)
-    | None ->
-      (* Last resort: look for the first node with that name: *)
-      match C.fold_nodes conf None (fun res node ->
-              if res = None && node.N.name = s then
-                Some (node.N.layer, node.N.name)
-              else res) with
-      | Some res -> return res
-      | None -> bad_request ("node "^ s ^" does not exist")
-
 (*
     Returns the graph (as JSON, dot or mermaid representation)
 *)
@@ -74,7 +58,7 @@ let rec find_float_metric metrics name =
   | { measure = MFloat n ; _ } as m ::_ when m.name = name -> n
   | _::rest -> find_float_metric rest name
 
-let node_info_of_node node =
+let node_info_of_node conf node =
   let%lwt stats = RamenProcesses.last_report (N.fq_name node) in
   return SN.{
     definition = {
@@ -86,15 +70,16 @@ let node_info_of_node node =
     pid = node.N.pid ;
     input_type = C.info_of_tuple_type node.N.in_type ;
     output_type = C.info_of_tuple_type node.N.out_type ;
-    parents = List.map N.fq_name node.N.parents ;
-    children = List.map N.fq_name node.N.children ;
+    parents = List.map (fun (l, n) -> l ^"/"^ n) node.N.parents ;
+    children = C.fold_nodes conf [] (fun children _l n ->
+      N.fq_name n :: children) ;
     stats }
 
-let layer_info_of_layer layer =
+let layer_info_of_layer conf layer =
   let%lwt nodes =
     Hashtbl.values layer.L.persist.L.nodes |>
     List.of_enum |>
-    Lwt_list.map_s node_info_of_node in
+    Lwt_list.map_s (node_info_of_node conf) in
   return SL.{
     name = layer.L.name ;
     nodes ;
@@ -113,11 +98,6 @@ let graph_layers conf = function
         return
     with Not_found -> bad_request ("Unknown layer "^l)
 
-let get_graph_json _headers layers =
-  let%lwt graph = Lwt_list.map_s layer_info_of_layer layers in
-  let body = PPP.to_string get_graph_resp_ppp graph in
-  respond_ok ~body ()
-
 let dot_of_graph layers =
   let dot = IO.output_string () in
   Printf.fprintf dot "digraph g {\n" ;
@@ -129,8 +109,9 @@ let dot_of_graph layers =
   Printf.fprintf dot "\n" ;
   List.iter (fun layer ->
     Hashtbl.iter (fun _ node ->
-        List.iter (fun p ->
-            Printf.fprintf dot "\t%S -> %S\n" (N.fq_name p) (N.fq_name node)
+        List.iter (fun (pl, pn) ->
+            Printf.fprintf dot "\t%S -> %S\n"
+              (pl ^"/"^ pn) (node.N.layer ^"/"^ node.N.name)
           ) node.N.parents
       ) layer.L.persist.L.nodes
     ) layers ;
@@ -168,10 +149,10 @@ let mermaid_of_graph layers =
   Printf.fprintf txt "\n" ;
   List.iter (fun layer ->
     Hashtbl.iter (fun _ node ->
-        List.iter (fun p ->
+        List.iter (fun (pl, pn) ->
             Printf.fprintf txt "\t%s-->%s\n"
-              (mermaid_id (N.fq_name p))
-              (mermaid_id (N.fq_name node))
+              (mermaid_id (pl ^"/"^ pn))
+              (mermaid_id (node.N.layer ^"/"^ node.N.name))
           ) node.N.parents
       ) layer.L.persist.L.nodes
     ) layers ;
@@ -188,17 +169,25 @@ let get_graph_mermaid _headers layers =
 
 let get_graph conf headers layer_opt =
   let accept = get_accept headers in
-  let%lwt layers = C.with_rlock conf (fun () ->
-    graph_layers conf layer_opt) in
-  let layers = L.order layers in
   if is_accepting Consts.json_content_type accept then
-    get_graph_json headers layers
-  else if is_accepting Consts.dot_content_type accept then
-    get_graph_dot headers layers
-  else if is_accepting Consts.mermaid_content_type accept then
-    get_graph_mermaid headers layers
-  else
-    cant_accept accept
+    let%lwt graph = C.with_rlock conf (fun () ->
+      let%lwt layers = graph_layers conf layer_opt in
+      let layers = L.order layers in
+      Lwt_list.map_s (layer_info_of_layer conf) layers) in
+    let body = PPP.to_string get_graph_resp_ppp graph in
+    respond_ok ~body ()
+  else (
+    (* For non-json we can release the lock sooner as we don't need the
+     * children: *)
+    let%lwt layers = C.with_rlock conf (fun () ->
+      graph_layers conf layer_opt) in
+    let layers = L.order layers in
+    if is_accepting Consts.dot_content_type accept then
+      get_graph_dot headers layers
+    else if is_accepting Consts.mermaid_content_type accept then
+      get_graph_mermaid headers layers
+    else
+      cant_accept accept)
 
 (*
     Add/Remove layers
@@ -288,31 +277,17 @@ let put_layer conf headers body =
         ) in
     (* TODO: Check that this layer node names are unique within the layer *)
     (* Create all the nodes *)
-    let%lwt nodes = Lwt_list.map_s (fun def ->
+    let%lwt () = Lwt_list.iter_p (fun def ->
         let name =
           if def.SN.name <> "" then def.SN.name
           else N.make_name () in
         try
-          let _layer, node =
-            C.add_node conf name layer_name def.SN.operation in
-          return node
+          C.add_node conf name layer_name def.SN.operation |> ignore ;
+          return_unit
         with Invalid_argument x -> bad_request ("Invalid "^ x)
            | SyntaxError e -> bad_request (string_of_syntax_error e)
            | e -> fail e
       ) msg.nodes in
-    (* Then all the links *)
-    (* FIXME: actually, we might have nodes of other layers on top of this
-     * one, feeding from these new nodes (check the operation FROM) that
-     * we should reconnect as well. *)
-    let%lwt () =
-      Lwt_list.iter_s (fun node ->
-        Operation.parents_of_operation node.N.operation |>
-        Lwt_list.iter_s (fun p ->
-            let%lwt parent_layer, parent_name =
-              layer_node_of_user_string conf ~default_layer:layer_name p in
-            let%lwt _layer, src =
-              node_of_name conf parent_layer parent_name in
-            wrap (fun () -> C.add_link conf src node))) nodes in
     (* must restart *)
     if must_stop then
       let layer = Hashtbl.find conf.C.graph.C.layers layer_name in
@@ -539,7 +514,8 @@ let timeseries conf headers body =
      * everything the user sent (aka operation text and parent name) but for the
      * formatting. We thus start by parsing and pretty-printing the operation: *)
     let%lwt parent_layer, parent_name =
-      layer_node_of_user_string conf from in
+      try C.layer_node_of_user_string conf from |> return
+      with Not_found -> bad_request ("node "^ from ^" does not exist") in
     let%lwt _layer, parent = node_of_name conf parent_layer parent_name in
     let%lwt op_text =
       if select_x = "" then (
@@ -589,10 +565,9 @@ let timeseries conf headers body =
       return_unit
     ) else (
       (* Add this layer to the running configuration: *)
-      let layer, node =
+      let layer, _node =
         C.add_parsed_node ~timeout:300.
           conf node_name layer_name op_text operation in
-      let%lwt () = wrap (fun () -> C.add_link conf parent node) in
       let%lwt () = Compiler.compile conf layer in
       RamenProcesses.run conf layer
     )) >>= fun () ->
@@ -604,7 +579,9 @@ let timeseries conf headers body =
           let%lwt layer_name, node_name, data_field =
             match req.spec with
             | Predefined { node ; data_field } ->
-              let%lwt layer, node = layer_node_of_user_string conf node in
+              let%lwt layer, node =
+                try C.layer_node_of_user_string conf node |> return
+                with Not_found -> bad_request ("node "^ node ^" does not exist") in
               return (layer, node, data_field)
             | NewTempNode { select_x ; select_y ; from ; where } ->
               C.with_wlock conf (fun () ->

@@ -23,6 +23,10 @@ open RamenSharedTypes
 open RamenSharedTypesJS
 open Lang
 
+exception SyntaxErrorInNode of string * syntax_error
+exception MissingDependency of N.t (* The one we depend on *)
+exception AlreadyCompiled
+
 (* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =
   List.iter (fun (field_name, typ) ->
@@ -722,23 +726,28 @@ let set_of_fields = function
 (* Get rid of the short-cutting of or expressions: *)
 let (|||) a b = a || b
 
-let all_parents_finished node =
-  List.for_all (fun parent ->
-      tuple_type_is_finished parent.N.out_type
-    ) node.N.parents
+let all_finished nodes =
+  List.for_all (fun node ->
+      tuple_type_is_finished node.N.out_type
+    ) nodes
 
-let check_aggregate node fields and_all_others where key top
+let check_aggregate conf node fields and_all_others where key top
                     commit_when flush_how =
   let in_type = C.untyped_tuple_type node.N.in_type
   and out_type = C.untyped_tuple_type node.N.out_type
-  and parents = node.N.parents in
+  and parents = List.map (fun (layer, name) ->
+      try C.find_node conf layer name |> snd
+      with Not_found ->
+        let e = UnknownNode (layer ^"/"^ name) in
+        raise (SyntaxErrorInNode (node.N.name, e))
+    ) node.N.parents in
   let open Operation in
   (
     (* Improve in_type using parent out_type and out_type using in_type if we
      * propagates it all: *)
-    (* TODO: find a way to do this only once, since once all_parents_finished
+    (* TODO: find a way to do this only once, since once all_finished
      * returns true there is no use for another try. *)
-    if and_all_others && parents <> [] && all_parents_finished node then (
+    if and_all_others && parents <> [] && all_finished parents then (
       (* Add all the fields present (same name and same type) in all the parents,
        * and ignore the fields that are not present everywhere. *)
       let inter_parents =
@@ -826,14 +835,14 @@ let check_aggregate node fields and_all_others where key top
  * Improve out_type using in_type and this node operation.
  * in_type is a given, don't modify it!
  *)
-let check_operation node =
+let check_operation conf node =
   let open Operation in
   match node.N.operation with
   | Yield { fields ; _ } ->
     check_yield node fields
   | Aggregate { fields ; and_all_others ; where ; key ; top ;
                 commit_when ; flush_how ; _ } ->
-    check_aggregate node fields and_all_others where key top
+    check_aggregate conf node fields and_all_others where key top
                     commit_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     if tuple_type_is_finished node.N.out_type then false else (
@@ -854,10 +863,6 @@ let check_operation node =
  * Type inference for the graph
  *)
 
-exception SyntaxErrorInNode of string * syntax_error
-exception MissingDependency of N.t (* The one we depend on *)
-exception AlreadyCompiled
-
 let () =
   Printexc.register_printer (function
     | SyntaxErrorInNode (n, e) ->
@@ -867,11 +872,11 @@ let () =
     | AlreadyCompiled -> Some "Already compiled"
     | _ -> None)
 
-let check_node_types node =
+let check_node_types conf node =
   try ( (* Prepend the node name to any SyntaxError *)
     (* Try to improve out_type and the AST types using the in_type and the
      * operation: *)
-    check_operation node
+    check_operation conf node
   ) with SyntaxError e ->
     !logger.debug "Compilation error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
@@ -883,10 +888,10 @@ let check_node_types node =
  * We do it bit by bit but will still make sure to make parent
  * output >= children input eventually, and that fields are encoded in
  * the specified order. *)
-let set_all_types _conf layer =
+let set_all_types conf layer =
   let rec loop () =
     if Hashtbl.fold (fun _ node changed ->
-          check_node_types node || changed
+          check_node_types conf node || changed
         ) layer.L.persist.L.nodes false
     then loop ()
   in
@@ -901,7 +906,7 @@ let set_all_types _conf layer =
     let test_type_single_node op_text =
       try
         let conf = RamenConf.make_conf false "http://127.0.0.1/" true "test" "/tmp" 5 0 in
-        RamenConf.add_node conf "test" "test" op_text |> ignore ;
+        RamenConf.add_node conf "foo" "test" op_text |> ignore ;
         set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"
       with e ->
@@ -1002,13 +1007,16 @@ let compile_node conf node =
       fail (SyntaxError e)
     )
 
-let untyped_dependency layer =
+let untyped_dependency conf layer =
   (* Check all layers we depend on (parents only) either belong to
    * this layer or are compiled already. Return the first untyped
    * dependency, or None. *)
-  let good node =
-    node.N.layer = layer.L.name ||
-    C.tuple_is_typed node.N.out_type in
+  let good (layer_name, node_name) =
+    layer_name = layer.L.name ||
+    match C.find_node conf layer_name node_name with
+    | exception Not_found -> false
+    | _, node ->
+      C.tuple_is_typed node.N.out_type in
   try Some (
     Hashtbl.values layer.L.persist.L.nodes |>
     Enum.find (fun node ->
@@ -1044,7 +1052,7 @@ let compile conf layer =
     C.Layer.set_status layer Compiling ;
     catch (fun () ->
       let%lwt () = wrap (fun () ->
-        untyped_dependency layer |>
+        untyped_dependency conf layer |>
         Option.may (fun n -> raise (MissingDependency n)) ;
         set_all_types conf layer ;
         Hashtbl.iter (fun _ node ->

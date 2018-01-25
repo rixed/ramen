@@ -61,25 +61,28 @@ let input_spec conf parent node =
   and in_type = C.tuple_ser_type node.N.in_type in
   RingBufLib.skip_list ~out_type ~in_type
 
+(* Takes a locked conf.
+ * FIXME: a phantom type for this *)
 let rec run_node conf layer node =
   let command = C.exec_of_node conf.C.persist_dir node
   and output_ringbufs =
     (* Start to output to nodes of this layer. They have all been
-     * created above, and we want to allow loops in a layer. Avoids
-     * outputing to other layers, unless they are already running (in
-     * which case their ringbuffer exists already), otherwise we would
+     * created above (in [run]), and we want to allow loops in a layer. Avoids
+     * outputting to other layers, unless they are already running (in
+     * which case their ring-buffer exists already), otherwise we would
      * hang. *)
-    node.N.children |>
-    List.fold_left (fun outs child ->
-      if child.N.layer = layer.L.name ||
-         match Hashtbl.find conf.C.graph.C.layers child.N.layer with
-         | exception Not_found -> false (* uh? Better not ask.*)
-         | layer when layer.L.persist.L.status = Running -> true
-         | _ -> false
-      then
-        let k, v = input_spec conf node child in
+    C.fold_nodes conf Map.empty (fun outs l n ->
+      (* Select all node's children that are either running or in the same
+       * layer *)
+      if (n.N.layer = layer.L.name || l.L.persist.L.status = Running) &&
+         List.exists (fun (pl, pn) ->
+           pl = layer.L.name && pn = node.N.name
+         ) n.N.parents
+      then (
+        !logger.debug "%s will output to %s" (N.fq_name node) (N.fq_name n) ;
+        let k, v = input_spec conf node n in
         Map.add k v outs
-      else outs) Map.empty in
+      ) else outs) in
   let output_ringbufs =
     if Lang.Operation.is_exporting node.N.operation then
       let typ = C.tuple_ser_type node.N.out_type in
@@ -143,18 +146,27 @@ let rec run_node conf layer node =
          | _ -> return_unit)
     in
     wait_child ()) ;
-  (* Update the parents out_ringbuf_ref if it's in another layer *)
-  Lwt_list.iter_p (fun parent ->
-      if parent.N.layer = layer.name then
+  (* Update the parents out_ringbuf_ref if it's in another layer (otherwise
+   * we have set the correct out_ringbuf_ref just above already) *)
+  Lwt_list.iter_p (fun (parent_layer, parent_name) ->
+      if parent_layer = layer.name then
         return_unit
       else
-        let out_ref =
-          out_ringbuf_names_ref conf parent in
-        (* The parent ringbuf might not exist yet if it has never been
-         * started. If the parent is not running then it will overwrite
-         * it when it starts, with whatever running children it will
-         * have at that time (including us, if we are still running).  *)
-        RamenOutRef.add out_ref (input_spec conf parent node)
+        match C.find_node conf parent_layer parent_name with
+        | exception Not_found ->
+          !logger.warning "Starting node %s which parent %s/%s does not \
+                           exist yet"
+            (N.fq_name node)
+            parent_layer parent_name ;
+          return_unit
+        | _, parent ->
+          let out_ref =
+            out_ringbuf_names_ref conf parent in
+          (* The parent ringbuf might not exist yet if it has never been
+           * started. If the parent is not running then it will overwrite
+           * it when it starts, with whatever running children it will
+           * have at that time (including us, if we are still running).  *)
+          RamenOutRef.add out_ref (input_spec conf parent node)
     ) node.N.parents
 
 let run conf layer =
@@ -217,9 +229,12 @@ let stop conf layer =
           (* Start by removing this worker ringbuf from all its parent output
            * reference *)
           let this_in = in_ringbuf_name conf node in
-          let%lwt () = Lwt_list.iter_p (fun parent ->
-              let out_ref = out_ringbuf_names_ref conf parent in
-              RamenOutRef.remove out_ref this_in
+          let%lwt () = Lwt_list.iter_p (fun (parent_layer, parent_name) ->
+              match C.find_node conf parent_layer parent_name with
+              | exception Not_found -> return_unit
+              | _, parent ->
+                let out_ref = out_ringbuf_names_ref conf parent in
+                RamenOutRef.remove out_ref this_in
             ) node.N.parents in
           (* Get rid of the worker *)
           let open Unix in
@@ -251,9 +266,9 @@ let timeout_layers conf =
   let defined, used = Hashtbl.fold (fun layer_name layer (defined, used) ->
       Set.add layer_name defined,
       Hashtbl.fold (fun _node_name node used ->
-          List.fold_left (fun used parent ->
-              if parent.N.layer = layer_name then used
-              else Set.add parent.N.layer used
+          List.fold_left (fun used (parent_layer, _parent_node) ->
+              if parent_layer = layer_name then used
+              else Set.add parent_layer used
             ) used node.N.parents
         ) layer.L.persist.L.nodes used
     ) conf.C.graph.C.layers (Set.empty, Set.empty) in
