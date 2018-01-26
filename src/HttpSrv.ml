@@ -947,7 +947,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
     !logger.info "Received TERM" ;
     quit := true))) ;
   let rec monitor_quit () =
-    let%lwt () = Lwt_unix.sleep 1. in
+    let%lwt () = Lwt_unix.sleep 0.3 in
     if !quit then
       C.with_wlock conf (fun () ->
         let%lwt () = stop_layers_ conf None in

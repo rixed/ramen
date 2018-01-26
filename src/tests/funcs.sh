@@ -157,6 +157,11 @@ stop() {
     ret=0
   fi
 
+  # Wait for ramen to actualy exit before deleting files (or it would
+  # recreate those dirs to save its configuration one last time)
+  # This 0.3 corresponds to the HttpSrv.monitor_quit loop.
+  sleep 0.3
+
   if test "$ret" -eq 0 ; then
     eval "rm -rf $ALL_RAMEN_PERSIST_DIRS"
     rmdir /tmp/ramen_tests 2>/dev/null || true
