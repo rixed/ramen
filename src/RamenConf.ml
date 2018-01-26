@@ -179,8 +179,7 @@ struct
      * types and encode input/output types explicitly below: *)
     "OP="^ IO.to_string Lang.Operation.print node.operation ^
     "IN="^ type_signature node.in_type ^
-    "OUT="^ type_signature node.out_type ^
-    "V="^ RamenVersions.codegen |>
+    "OUT="^ type_signature node.out_type |>
     md4
 end
 
@@ -255,17 +254,8 @@ struct
       (* Demote the status to compiled since the workers can't be running
        * anymore. *)
       if persist.status = Running then set_status layer Compiled ;
-      (* Recompute the node signatures so that, if the codegen version
-       * changed we won't reuse former paths: *)
-      Hashtbl.iter (fun name node ->
-        let new_sign =
-          try Node.signature node
-          with BadTupleTypedness _ -> "" in
-        if node.Node.signature <> new_sign then (
-          !logger.debug "Node %s is from a previous version" name ;
-          node.signature <- new_sign)) persist.nodes ;
       (* Further demote to edition if the binaries are not there anymore
-       * (which will be the case if we just updated the node signatures): *)
+       * (which will be the case if codegen version changed): *)
       if persist.status = Compiled &&
          Hashtbl.values persist.nodes |> Enum.exists (fun n ->
            not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
