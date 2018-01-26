@@ -75,12 +75,13 @@ let time what f =
 
 (* TODO: add this into batteries *)
 
+let is_directory f =
+  try Sys.is_directory f with _ -> false
+
 let mkdir_all ?(is_file=false) dir =
-  let dir_exist d =
-    try Sys.is_directory d with Sys_error _ -> false in
   let dir = if is_file then Filename.dirname dir else dir in
   let rec ensure_exist d =
-    if String.length d > 0 && not (dir_exist d) then (
+    if String.length d > 0 && not (is_directory d) then (
       ensure_exist (Filename.dirname d) ;
       !logger.debug "mkdir %S" d ;
       try Unix.mkdir d 0o755
@@ -93,10 +94,18 @@ let mkdir_all ?(is_file=false) dir =
 let file_exists ?(maybe_empty=true) ?(has_perms=0) fname =
   let open Unix in
   match stat fname with
-  | exception Unix_error (ENOENT, _, _) -> false
+  | exception _ -> false
   | s ->
     (maybe_empty || s.st_size > 0) &&
     s.st_perm land has_perms = has_perms
+
+let file_is_older_than age fname =
+  let open Unix in
+  match stat fname with
+  | exception  _ -> false
+  | s ->
+    let now = gettimeofday () in
+    s.st_mtime > now -. age
 
 let name_of_signal s =
   let open Sys in
@@ -368,3 +377,10 @@ let hex_of =
   fun n ->
     if n < 10 then Char.chr (zero + n)
     else Char.chr (ten + n)
+
+let rec restart_on_failure f x =
+  try%lwt f x
+  with e ->
+    print_exception e ;
+    let%lwt () = Lwt_unix.sleep 0.5 in
+    restart_on_failure f x

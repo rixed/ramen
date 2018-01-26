@@ -17,6 +17,10 @@ let red = colored "1;31"
 let yellow = colored "1;33"
 let green = colored "1;32"
 
+let log_file tm =
+  Printf.sprintf "%04d-%02d-%02d"
+    (tm.Unix.tm_year+1900) (tm.Unix.tm_mon+1) tm.Unix.tm_mday
+
 let make_logger ?logdir ?(prefix="") dbg =
   let prefix = colored "1;34" prefix in
   let fd = ref None and fname = ref "" in
@@ -29,9 +33,7 @@ let make_logger ?logdir ?(prefix="") dbg =
     let oc =
       match logdir with
       | Some logdir ->
-        let fname' =
-          Printf.sprintf "%04d-%02d-%02d"
-            (tm.tm_year+1900) (tm.tm_mon+1) tm.tm_mday in
+        let fname' = log_file tm in
         if fname' <> !fname then (
           fname := fname' ;
           Option.may IO.close_out !fd ;

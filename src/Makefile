@@ -37,7 +37,7 @@ RAMEN_SOURCES = \
 	ramen.ml
 
 CODEGENLIB_SOURCES = \
-	RamenVersions.ml Consts.ml RamenLog.ml Helpers.ml Globs.ml RWLock.ml \
+	Consts.ml RamenLog.ml Helpers.ml Globs.ml RWLock.ml \
 	RamenOutRef.ml RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenSharedTypesJS.ml RamenSharedTypes.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml \

@@ -114,7 +114,9 @@ let rec run_node conf layer node =
     (* We need to change this dir whenever the node signature change
      * to prevent it to reload an incompatible state: *)
     "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
-                  ^ (N.fq_name node) ^"/"^ node.N.signature ;
+                  ^ RamenVersions.worker_state
+                  ^"/"^ (N.fq_name node)
+                  ^"/"^ node.N.signature ;
     (match !logger.logdir with
       | Some _ ->
         "log_dir="^ conf.C.persist_dir ^"/workers/log/"

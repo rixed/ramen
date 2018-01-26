@@ -775,6 +775,63 @@ let () =
       (Printexc.to_string exn)
       (Printexc.get_backtrace ()))
 
+let cleanup_old_files conf =
+  (* Have a list of directories and regexps and current version,
+   * Iter through this list for file matching the regexp and that are also directories.
+   * If this direntry matches the current version, touch it.
+   * If not, and if it hasn't been touched for X days, assume that's an old one and delete it.
+   * Then sleep for one day and restart. *)
+  let get_log_file () =
+    Unix.gettimeofday () |> Unix.localtime |> RamenLog.log_file
+  and touch_file fname =
+    let now = Unix.gettimeofday () in
+    Lwt_unix.utimes fname now now
+  and delete_directory fname = (* TODO: should really delete *)
+    Lwt_unix.rename fname (fname ^".todel")
+  in
+  let open Str in
+  let cleanup_dir (dir, sub_re, current) =
+    let dir = conf.C.persist_dir ^"/"^ dir in
+    !logger.debug "Cleaning directory %S" dir ;
+    Lwt_unix.files_of_directory dir |>
+    Lwt_stream.iter_s (fun fname ->
+      let full_path = dir ^"/"^ fname in
+      if fname = current then (
+        !logger.debug "Touching %S." full_path ;
+        touch_file full_path
+      ) else if string_match sub_re fname 0 &&
+         is_directory full_path &&
+         file_is_older_than (1. *. 86400.) fname (* TODO: should be 10 days *)
+      then (
+        !logger.info "Deleting old version %S." fname ;
+        delete_directory full_path
+      ) else (
+        !logger.debug "Ignoring %S for now." fname ;
+        return_unit))
+  in
+  let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
+  and v_regexp = regexp "v[0-9]+"
+  and v1v2_regexp = regexp "v[0-9]+_v[0-9]+" in
+  let rec loop () =
+    let to_clean =
+      [ "log", date_regexp, get_log_file () ;
+        "alerting", v_regexp, RamenVersions.alerting_state ;
+        "configuration", v_regexp, RamenVersions.graph_config ;
+        "instrumentation_ringbuf", v1v2_regexp, (RamenVersions.instrumentation_tuple ^"_"^ RamenVersions.ringbuf) ;
+        "workers/log", v_regexp, get_log_file () ;
+        "workers/bin", v_regexp, RamenVersions.codegen ;
+        "workers/history", v_regexp, RamenVersions.history ;
+        "workers/ringbufs", v_regexp, RamenVersions.ringbuf ;
+        "workers/out_ref", v_regexp, RamenVersions.out_ref ;
+        "workers/src", v_regexp, RamenVersions.codegen ;
+        "workers/tmp", v_regexp, RamenVersions.worker_state ]
+    in
+    !logger.info "Cleaning old unused files..." ;
+    let%lwt () = Lwt_list.iter_s cleanup_dir to_clean in
+    Lwt_unix.sleep 86400. >>= loop
+  in
+  loop ()
+
 let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
           persist_dir max_history_archives
           port cert_opt key_opt alert_conf_json () =
@@ -956,5 +1013,6 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
         return_unit)
     else monitor_quit () in
   Lwt_main.run (join
-    [ monitor_quit () ;
-      http_service port cert_opt key_opt router ])
+    [ restart_on_failure monitor_quit () ;
+      restart_on_failure cleanup_old_files conf ;
+      restart_on_failure (http_service port cert_opt key_opt) router ])
