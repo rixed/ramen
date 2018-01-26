@@ -380,7 +380,8 @@ let hex_of =
 
 let rec restart_on_failure f x =
   try%lwt f x
-  with e ->
+  with e -> (
     print_exception e ;
-    let%lwt () = Lwt_unix.sleep 0.5 in
-    restart_on_failure f x
+    !logger.error "Will restart..." ;
+    let%lwt () = Lwt_unix.sleep (0.5 +. Random.float 0.5) in
+    restart_on_failure f x)

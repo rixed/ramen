@@ -775,7 +775,7 @@ let () =
       (Printexc.to_string exn)
       (Printexc.get_backtrace ()))
 
-let cleanup_old_files conf =
+let cleanup_old_files persist_dir =
   (* Have a list of directories and regexps and current version,
    * Iter through this list for file matching the regexp and that are also directories.
    * If this direntry matches the current version, touch it.
@@ -791,23 +791,29 @@ let cleanup_old_files conf =
   in
   let open Str in
   let cleanup_dir (dir, sub_re, current) =
-    let dir = conf.C.persist_dir ^"/"^ dir in
-    !logger.debug "Cleaning directory %S" dir ;
-    Lwt_unix.files_of_directory dir |>
-    Lwt_stream.iter_s (fun fname ->
-      let full_path = dir ^"/"^ fname in
-      if fname = current then (
-        !logger.debug "Touching %S." full_path ;
-        touch_file full_path
-      ) else if string_match sub_re fname 0 &&
-         is_directory full_path &&
-         file_is_older_than (1. *. 86400.) fname (* TODO: should be 10 days *)
-      then (
-        !logger.info "Deleting old version %S." fname ;
-        delete_directory full_path
-      ) else (
-        !logger.debug "Ignoring %S for now." fname ;
-        return_unit))
+    let dir = persist_dir ^"/"^ dir in
+    !logger.debug "Cleaning directory %s" dir ;
+    (* Error in there will be delivered to the stream reader: *)
+    let files = Lwt_unix.files_of_directory dir in
+    try%lwt
+      Lwt_stream.iter_s (fun fname ->
+        let full_path = dir ^"/"^ fname in
+        if fname = current then (
+          !logger.debug "Touching %s." full_path ;
+          touch_file full_path
+        ) else if string_match sub_re fname 0 &&
+           is_directory full_path &&
+           file_is_older_than (1. *. 86400.) fname (* TODO: should be 10 days *)
+        then (
+          !logger.info "Deleting old version %s." fname ;
+          delete_directory full_path
+        ) else return_unit
+      ) files
+    with Unix.Unix_error (Unix.ENOENT, _, _) ->
+        return_unit
+       | exn ->
+        !logger.error "Cannot list %s: %s" dir (Printexc.to_string exn) ;
+        return_unit
   in
   let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
   and v_regexp = regexp "v[0-9]+"
@@ -852,8 +858,6 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
     C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore ;
     C.add_node conf "netflow" "demo" "LISTEN FOR NETFLOW" |> ignore) ;
   C.save_conf conf ;
-  (* *After* the conf has been cleaned/saved, start the timeouting threads: *)
-  async (fun () -> timeout_layers conf) ;
   (* Read the instrumentation ringbuf: *)
   RamenProcesses.read_reports conf ;
   (* Start the alerter *)
@@ -1009,10 +1013,17 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
       C.with_wlock conf (fun () ->
         let%lwt () = stop_layers_ conf None in
         List.iter (fun condvar ->
+          !logger.info "Signaling condvar..." ;
           Lwt_condition.signal condvar ()) !http_server_done ;
+        !logger.info "Quitting monitor_quit..." ;
         return_unit)
     else monitor_quit () in
   Lwt_main.run (join
-    [ restart_on_failure monitor_quit () ;
-      restart_on_failure cleanup_old_files conf ;
+    [ (* TIL the hard way that although you can use async outside of
+       * Lwt_main.run, the result will be totally unpredictable. *)
+      (let%lwt () = Lwt_unix.sleep 1. in
+      async (fun () -> restart_on_failure timeout_layers conf) ;
+      async (fun () -> restart_on_failure cleanup_old_files conf.C.persist_dir) ;
+      return_unit) ;
+      restart_on_failure monitor_quit () ;
       restart_on_failure (http_service port cert_opt key_opt) router ])
