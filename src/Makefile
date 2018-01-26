@@ -241,6 +241,10 @@ check-spec: all_tests.opt ringbuf_test.opt
 long-check: ramen
 	@$(MAKE) check
 	@./ringbuf_test.opt || echo "FAILURE"
+	@if test -e /tmp/ramen_tests ; then \
+		echo "Warning: /tmp/ramen_tests exists already!" ;\
+		echo "If subdirs are reused result of tests should not be relied upon." ;\
+	fi
 	./tests/tops
 	./tests/basic_aggr
 	./tests/count_lines

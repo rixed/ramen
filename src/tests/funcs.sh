@@ -159,6 +159,7 @@ stop() {
 
   if test "$ret" -eq 0 ; then
     eval "rm -rf $ALL_RAMEN_PERSIST_DIRS"
+    rmdir /tmp/ramen_tests 2>/dev/null || true
   fi
 
   exit $ret
