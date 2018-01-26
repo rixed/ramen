@@ -905,7 +905,7 @@ let set_all_types conf layer =
   (*$inject
     let test_type_single_node op_text =
       try
-        let conf = RamenConf.make_conf false "http://127.0.0.1/" true "test" "/tmp" 5 0 in
+        let conf = RamenConf.make_conf false "http://127.0.0.1/" true "/tmp" 5 0 in
         RamenConf.add_node conf "foo" "test" op_text |> ignore ;
         set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"
@@ -1083,7 +1083,7 @@ let compile conf layer =
                 fun f1 f2 ->
                   compare (sf_index f1.typ_name) (sf_index f2.typ_name)) in
             node.N.out_type <- typed_of_untyped_tuple ?cmp node.N.out_type ;
-            node.N.signature <- N.signature conf.C.version_tag node
+            node.N.signature <- N.signature node
           ) layer.L.persist.L.nodes) in
       (* Compile *)
       let _, thds =

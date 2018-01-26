@@ -169,7 +169,7 @@ struct
       incr seq ;
       string_of_int !seq
 
-  let signature version_tag node =
+  let signature node =
     (* We'd like to be formatting independent so that operation text can be
      * reformatted without ramen recompiling it. For this it is not OK to
      * strip redundant white spaces as some of those might be part of literal
@@ -180,12 +180,14 @@ struct
     "OP="^ IO.to_string Lang.Operation.print node.operation ^
     "IN="^ type_signature node.in_type ^
     "OUT="^ type_signature node.out_type ^
-    "V="^ version_tag |>
+    "V="^ RamenVersions.codegen |>
     md4
 end
 
 let exec_of_node persist_dir node =
-  persist_dir ^"/workers/bin/worker_"^ node.Node.signature
+  persist_dir ^"/workers/bin/"
+              ^ RamenVersions.codegen
+              ^"/ramen_worker_"^ node.Node.signature
 
 let tmp_input_of_node persist_dir node =
   persist_dir ^"/workers/inputs/"^ Node.fq_name node ^"/"
@@ -235,7 +237,7 @@ struct
 
   (* [restart] is true when ramen restarted and read its config for the first
    * time. Some additional cleaning needs to be done then. *)
-  let make persist_dir version_tag ?persist ?(timeout=0.) ?(restart=false)
+  let make persist_dir ?persist ?(timeout=0.) ?(restart=false)
            name =
     assert (String.length name > 0) ;
     let persist =
@@ -253,11 +255,11 @@ struct
       (* Demote the status to compiled since the workers can't be running
        * anymore. *)
       if persist.status = Running then set_status layer Compiled ;
-      (* Recompute the node signatures if the version_tag changed, so that
-       * we won't reuse former paths: *)
+      (* Recompute the node signatures so that, if the codegen version
+       * changed we won't reuse former paths: *)
       Hashtbl.iter (fun name node ->
         let new_sign =
-          try Node.signature version_tag node
+          try Node.signature node
           with BadTupleTypedness _ -> "" in
         if node.Node.signature <> new_sign then (
           !logger.debug "Node %s is from a previous version" name ;
@@ -357,18 +359,18 @@ struct
 
       mutable static : StaticConf.t }
 
-  let save_file persist_dir alerting_version =
-    persist_dir ^"/alerting/"^ alerting_version
+  let save_file persist_dir =
+    persist_dir ^"/alerting/"^ RamenVersions.alerting_state ^"/state"
 
   (* TODO: write using Lwt *)
-  let save_state persist_dir alerting_version state =
-    let fname = save_file persist_dir alerting_version in
+  let save_state persist_dir state =
+    let fname = save_file persist_dir in
     mkdir_all ~is_file:true fname ;
     !logger.debug "Saving state in file %S." fname ;
     File.with_file_out ~mode:[`create; `trunc] fname (fun oc ->
       Marshal.output oc state)
 
-  let get_state do_persist persist_dir alerting_version =
+  let get_state do_persist persist_dir =
     let get_new () =
       { ongoing_incidents = Hashtbl.create 5 ;
         next_alert_id = 0 ;
@@ -391,7 +393,7 @@ struct
               [ { rank = 0 ; from = 0. ; oncaller = "John Doe" } ] } }
     in
     if do_persist then (
-      let fname = save_file persist_dir alerting_version in
+      let fname = save_file persist_dir in
       mkdir_all ~is_file:true fname ;
       try
         File.with_file_in fname (fun ic -> Marshal.input ic)
@@ -417,9 +419,6 @@ type conf =
 
     debug : bool ;
     ramen_url : string ;
-    version_tag : string ;
-    alerting_version : string ;
-    instrumentation_version : string ;
     persist_dir : string ;
     do_persist : bool ; (* false for tests *)
     max_simult_compilations : int ref ;
@@ -441,7 +440,7 @@ let parse_operation operation =
     op
 
 let add_layer ?timeout conf name =
-  let layer = Layer.make conf.persist_dir conf.version_tag ?timeout name in
+  let layer = Layer.make conf.persist_dir ?timeout name in
   Hashtbl.add conf.graph.layers name layer ;
   layer
 
@@ -455,7 +454,8 @@ let del_layer conf layer =
   Hashtbl.remove conf.graph.layers layer.name
 
 let save_file_of persist_dir =
-  persist_dir ^"/configuration/1" (* TODO: versioning *)
+  (* Later we might have several files (so that we have partial locks) *)
+  persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/conf"
 
 let fold_nodes conf init f =
   Hashtbl.fold (fun _ layer prev ->
@@ -522,14 +522,14 @@ let add_node conf node_name layer_name op_text =
   let operation = parse_operation op_text in
   add_parsed_node conf node_name layer_name op_text operation
 
-let make_graph persist_dir version_tag ?persist ?restart () =
+let make_graph persist_dir ?persist ?restart () =
   let persist =
     Option.default_delayed (fun () -> Hashtbl.create 11) persist in
   { layers = Hashtbl.map (fun name persist ->
-               Layer.make persist_dir version_tag
+               Layer.make persist_dir
                           ~persist ?restart name) persist }
 
-let load_graph ?restart do_persist persist_dir version_tag =
+let load_graph ?restart do_persist persist_dir =
   let save_file = save_file_of persist_dir in
   let persist : persisted option =
     if do_persist then
@@ -544,7 +544,7 @@ let load_graph ?restart do_persist persist_dir version_tag =
         None
     else None
   in
-  make_graph persist_dir version_tag ?persist ?restart ()
+  make_graph persist_dir ?persist ?restart ()
 
 let save_conf conf =
   if conf.do_persist then
@@ -559,7 +559,6 @@ let save_conf conf =
 
 let reload_graph conf =
   conf.graph <- load_graph ~restart:false conf.do_persist conf.persist_dir
-                           conf.version_tag
 
 exception RetryLater of float
 
@@ -599,15 +598,13 @@ let find_node conf layer name =
   let layer = Hashtbl.find conf.graph.layers layer in
   layer, Hashtbl.find layer.Layer.persist.Layer.nodes name
 
-let make_conf do_persist ramen_url debug version_tag persist_dir
+let make_conf do_persist ramen_url debug persist_dir
               max_simult_compilations max_history_archives =
-  let alerting_version = "v0" and instrumentation_version = "v1" in
-  { graph = load_graph ~restart:true do_persist persist_dir version_tag ;
+  { graph = load_graph ~restart:true do_persist persist_dir ;
     graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
-    alerts = Alerter.get_state do_persist persist_dir alerting_version ;
+    alerts = Alerter.get_state do_persist persist_dir ;
     archived_incidents = [] ;
-    alerting_version ; instrumentation_version ;
-    do_persist ; ramen_url ; debug ; version_tag ; persist_dir ;
+    do_persist ; ramen_url ; debug ; persist_dir ;
     max_simult_compilations = ref max_simult_compilations ;
     max_history_archives }
 

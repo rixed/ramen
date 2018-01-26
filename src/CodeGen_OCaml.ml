@@ -1413,7 +1413,9 @@ let sanitize_ocaml_fname s =
 
 let with_code_file_for exec_name conf f =
   let fname =
-    conf.C.persist_dir ^"/workers/src/ocaml/m"^ (Filename.basename exec_name) ^".ml" in
+    conf.C.persist_dir ^"/workers/src/"
+                       ^ RamenVersions.codegen
+                       ^"/ocaml/m"^ (Filename.basename exec_name) ^".ml" in
   mkdir_all ~is_file:true fname ;
   if file_exists ~maybe_empty:false fname then
     !logger.debug "Reusing source file %S" fname

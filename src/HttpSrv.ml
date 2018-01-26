@@ -32,7 +32,7 @@ let replace_placeholders conf s =
   return (
     rep "$RAMEN_URL$" conf.C.ramen_url s |>
     rep "$HOSTNAME$" hostname |>
-    rep "$VERSION$" conf.C.version_tag)
+    rep "$VERSION$" RamenVersions.release_tag)
 
 let serve_string conf _headers body =
   let%lwt body = replace_placeholders conf body in
@@ -776,7 +776,7 @@ let () =
       (Printexc.get_backtrace ()))
 
 let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
-          version_tag persist_dir max_history_archives
+          persist_dir max_history_archives
           port cert_opt key_opt alert_conf_json () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemonize then
@@ -788,7 +788,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
   let conf =
-    C.make_conf true ramen_url debug version_tag persist_dir 5 (* TODO *) max_history_archives in
+    C.make_conf true ramen_url debug persist_dir 5 (* TODO *) max_history_archives in
   (* When there is nothing to do, listen to collectd and netflow! *)
   if demo && Hashtbl.is_empty conf.C.graph.C.layers then (
     !logger.info "Adding default nodes since we have nothing to do..." ;

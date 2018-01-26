@@ -15,7 +15,7 @@ TESTABLE_SOURCES = \
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
-	RamenLog.ml Consts.ml Helpers.ml RWLock.ml RamenOutRef.ml \
+	RamenVersions.ml RamenLog.ml Consts.ml Helpers.ml RWLock.ml RamenOutRef.ml \
 	RamenSharedTypesJS.ml RamenSharedTypes.ml AlerterSharedTypesJS.ml \
 	RingBufLib.ml RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml \
@@ -25,7 +25,8 @@ LINKED_FOR_TESTS = \
 	RamenHtml.ml
 
 RAMEN_SOURCES = \
-	Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml RWLock.ml RamenOutRef.ml \
+	RamenVersions.ml Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml \
+	RWLock.ml RamenOutRef.ml \
 	RamenSharedTypesJS.ml AlerterSharedTypesJS.ml RamenSharedTypes.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml RingBufLib.ml Lang.ml RingBuf.ml RamenConf.ml \
@@ -36,8 +37,8 @@ RAMEN_SOURCES = \
 	ramen.ml
 
 CODEGENLIB_SOURCES = \
-	Consts.ml RamenLog.ml Helpers.ml Globs.ml RWLock.ml RamenOutRef.ml \
-	RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
+	RamenVersions.ml Consts.ml RamenLog.ml Helpers.ml Globs.ml RWLock.ml \
+	RamenOutRef.ml RamenParsing.ml EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenSharedTypesJS.ml RamenSharedTypes.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml \
 	RingBufLib.ml RingBuf.ml RamenBinocle.ml \

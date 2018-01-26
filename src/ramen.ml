@@ -69,13 +69,6 @@ let www_dir =
                    ~env [ "www-dir" ; "www-root" ; "web-dir" ; "web-root" ] in
   Arg.(value (opt string "" i))
 
-let version_tag =
-  let env = Term.env_info "RAMEN_VERSION_TAG" in
-  let i = Arg.info ~doc:"unique tag identifying the version of ramen \
-                         (such as git tag name or sha1)"
-                   ~env [ "version-tag"; "tag" ] in
-  Arg.(value (opt string "1.1.3~1" i))
-
 let persist_dir =
   let env = Term.env_info "RAMEN_PERSIST_DIR" in
   let i = Arg.info ~doc:"Directory where are stored data persisted on disc"
@@ -105,7 +98,6 @@ let server_start =
       $ to_stderr
       $ server_url
       $ www_dir
-      $ version_tag
       $ persist_dir
       $ max_history_archives
       $ http_port

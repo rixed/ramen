@@ -20,6 +20,7 @@ struct
   let internal_lock = RWLock.make ()
 
   let with_lock with_int_lock op fname f =
+    mkdir_all ~is_file:true fname ;
     (* Of course we lock ourself before locking other processes. *)
     let%lwt fd = openfile fname [O_RDWR; O_CREAT] 0o640 in
     with_int_lock internal_lock (fun () ->
@@ -53,7 +54,6 @@ let print_out_specs oc outs =
 (* Used by ramen when starting a new worker to initialize (or reset) its
  * output: *)
 let set_ fname outs =
-  mkdir_all ~is_file:true fname ;
   File.write_lines fname (Map.enum outs /@ string_of_out_spec)
 
 let set fname outs =
@@ -103,8 +103,7 @@ let remove_ fname out_fname =
 let remove fname out_fname =
   Lock.with_w_lock fname (fun () ->
     !logger.debug "Got write lock for remove on %s" fname ;
-    remove_ fname out_fname ;
-    return_unit)
+    wrap (fun () -> remove_ fname out_fname))
 
 (* Check that fname is listed in outbuf_ref_fname: *)
 let mem_ fname out_fname =
@@ -113,4 +112,4 @@ let mem_ fname out_fname =
 let mem fname out_fname =
   Lock.with_r_lock fname (fun () ->
     !logger.debug "Got read lock for mem on %s" fname ;
-    mem_ fname out_fname |> return)
+    wrap (fun () -> mem_ fname out_fname))

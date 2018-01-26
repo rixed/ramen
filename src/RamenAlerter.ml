@@ -553,7 +553,7 @@ let with_wlock conf f =
   RWLock.with_w_lock conf.C.alerts_lock (fun () ->
     let%lwt res = f () in
     (* Save the config only if f did not fail: *)
-    CA.save_state conf.C.persist_dir conf.C.alerting_version conf.C.alerts ;
+    CA.save_state conf.C.persist_dir conf.C.alerts ;
     Lwt.return res)
 
 module Api =

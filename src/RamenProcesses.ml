@@ -39,17 +39,26 @@ let run_background cmd args env =
 
 let in_ringbuf_name conf node =
   let sign = C.type_signature_hash node.N.in_type in
-  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/"^ sign ^"/in"
+  conf.C.persist_dir ^"/workers/ringbufs/"
+                     ^ RamenVersions.ringbuf ^"/"
+                     ^ N.fq_name node ^"/"^ sign ^"/in"
 
 let exp_ringbuf_name conf node =
   let sign = C.type_signature_hash node.N.out_type in
-  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/"^ sign ^"/exp"
+  conf.C.persist_dir ^"/workers/ringbufs/"
+                     ^ RamenVersions.ringbuf ^"/"
+                     ^ N.fq_name node ^"/"^ sign ^"/exp"
 
 let out_ringbuf_names_ref conf node =
-  conf.C.persist_dir ^"/workers/ringbufs/"^ N.fq_name node ^"/out_ref"
+  conf.C.persist_dir ^"/workers/out_ref/"
+                     ^ RamenVersions.out_ref ^"/"
+                     ^ N.fq_name node ^"/out_ref"
 
 let report_ringbuf conf =
-  conf.C.persist_dir ^"/instrumentation/"^ conf.C.instrumentation_version
+  conf.C.persist_dir ^"/instrumentation_ringbuf/"
+                     ^ RamenVersions.instrumentation_tuple ^"_"
+                     ^ RamenVersions.ringbuf
+                     ^"/ringbuf"
 
 exception NotYetCompiled
 exception AlreadyRunning

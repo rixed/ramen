@@ -159,7 +159,9 @@ let read_archive dir filenum =
 let make_history conf node =
   let history_version_tag = "~1" in
   let type_sign = C.type_signature_hash node.N.out_type in
-  let dir = conf.C.persist_dir ^"/workers/history/"^ N.fq_name node
+  let dir = conf.C.persist_dir ^"/workers/history/"
+                               ^ RamenVersions.history
+                               ^"/"^ N.fq_name node
                                ^"/"^ type_sign ^ history_version_tag in
   !logger.info "Creating history for node %S" (N.fq_name node) ;
   mkdir_all dir ;
