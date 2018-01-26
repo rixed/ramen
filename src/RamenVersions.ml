@@ -3,7 +3,7 @@
 
 (* Release tag just for information purpose but not actually used to version
  * anything. *)
-let release_tag = "v1.1.3"
+let release_tag = "v1.1.4"
 
 (* Ramen graph configuration *)
 let graph_config = "v1"
