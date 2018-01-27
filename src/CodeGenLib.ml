@@ -591,10 +591,13 @@ type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
  * lighter of our heavy hitters: *)
 module WeightMap = Map.Float
 
+(* WARNING: increase RamenVersions.worker_start whenever this record is
+ * changed. *)
 type ('key, 'aggr, 'tuple_in, 'generator_out, 'global_state, 'top_state) aggr_persist_state =
   { event_count : int ; (* TBD. used to fake others.count etc *)
     mutable last_key : 'key option ;
     mutable last_in_tuple : 'tuple_in option ; (* last incoming tuple *)
+    mutable last_out_tuple : 'generator_out option ; (* last committed tuple generator *)
     mutable selected_tuple : 'tuple_in option ; (* last incoming tuple that passed the where filter *)
     mutable selected_count : Uint64.t ;
     mutable selected_successive : Uint64.t ;
@@ -650,9 +653,8 @@ let aggregate
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-        Uint64.t -> (* out.#count *)
-        'generator_out option -> (* previous value of group.out *)
-        Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
+        Uint64.t -> 'generator_out option -> 'generator_out option -> (* out.#count, last_out, group_previous *)
+        Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, previous *)
         'global_state ->
         'tuple_in -> 'tuple_in -> (* first, last *)
         'generator_out)
@@ -683,7 +685,7 @@ let aggregate
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-        Uint64.t -> 'generator_out option -> (* out.#count, previous *)
+        Uint64.t -> 'generator_out option -> 'generator_out option -> (* out.#count, out_last, group_previous *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
         'global_state ->
         'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
@@ -729,6 +731,7 @@ let aggregate
   let commit s in_tuple out_tuple =
     (* in_tuple here is useful for generators *)
     s.out_count <- Uint64.succ s.out_count ;
+    s.last_out_tuple <- Some out_tuple ;
     outputer in_tuple out_tuple
   and with_state =
     let open CodeGenLib_State.Persistent in
@@ -742,6 +745,7 @@ let aggregate
       { event_count = 0 ;
         last_key = None ;
         last_in_tuple = None ;
+        last_out_tuple = None ;
         selected_tuple = None ;
         selected_count = Uint64.zero ;
         selected_successive = Uint64.zero ;
@@ -791,7 +795,7 @@ let aggregate
           in_count in_tuple last_in
           s.selected_count s.selected_successive last_selected
           s.unselected_count s.unselected_successive last_unselected
-          s.out_count aggr.previous_out
+          s.out_count s.last_out_tuple aggr.previous_out
           (Uint64.of_int aggr.nb_entries)
           (Uint64.of_int aggr.nb_successive)
           aggr.fields
@@ -861,7 +865,7 @@ let aggregate
                       in_count in_tuple last_in
                       s.selected_count s.selected_successive last_selected
                       s.unselected_count s.unselected_successive last_unselected
-                      s.out_count a.previous_out
+                      s.out_count s.last_out_tuple a.previous_out
                       (Uint64.of_int a.nb_entries)
                       (Uint64.of_int a.nb_successive)
                       a.fields
@@ -948,7 +952,7 @@ let aggregate
                   in_count in_tuple last_in
                   s.selected_count s.selected_successive last_selected
                   s.unselected_count s.unselected_successive last_unselected
-                  s.out_count None
+                  s.out_count s.last_out_tuple None
                   one one fields
                   s.global_state
                   in_tuple in_tuple in
@@ -1021,7 +1025,7 @@ let aggregate
                         in_count in_tuple last_in
                         s.selected_count s.selected_successive last_selected
                         s.unselected_count s.unselected_successive last_unselected
-                        s.out_count others_aggr.previous_out
+                        s.out_count s.last_out_tuple others_aggr.previous_out
                         (Uint64.of_int others_aggr.nb_entries)
                         (Uint64.of_int others_aggr.nb_successive)
                         others_aggr.fields
@@ -1062,7 +1066,7 @@ let aggregate
                   in_count in_tuple last_in
                   s.selected_count s.selected_successive last_selected
                   s.unselected_count s.unselected_successive last_unselected
-                  s.out_count aggr.previous_out
+                  s.out_count s.last_out_tuple aggr.previous_out
                   (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                   s.global_state
                   aggr.first_in aggr.last_in ;

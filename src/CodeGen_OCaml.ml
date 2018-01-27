@@ -545,8 +545,8 @@ let rec conv_to ?state ~context to_typ fmt e =
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string Scalar.print_typ b))
 
-(* The vector TupleGroupPrevious is optional: the commit when and select
- * clauses of aggregate operations either have it or not (Some tuple / None).
+(* The vectors Tuple{Group,Out}Previous are optional: the commit when and
+ * select clauses of aggregate operations either have it or not.
  * Each time they need access to a field they call a function "maybe_XXX_"
  * with that optional tuple, which avoids propagating out_typ down to
  * emit_expr - but hopefully the compiler will inline this.
@@ -556,9 +556,9 @@ and emit_maybe_fields oc out_tuple_typ =
     Printf.fprintf oc "let maybe_%s_ = function\n" ft.typ_name ;
     Printf.fprintf oc "  | None -> None\n" ;
     Printf.fprintf oc "  | Some %a -> %s%s\n\n"
-      (emit_tuple TupleGroupPrevious) out_tuple_typ
+      (emit_tuple TupleOut) out_tuple_typ
       (if ft.nullable then "" else "Some ")
-      (id_of_field_name ~tuple:TupleGroupPrevious ft.typ_name)
+      (id_of_field_name ~tuple:TupleOut ft.typ_name)
   ) out_tuple_typ
 
 (* state is just the name of the state that's "opened" in the local environment,
@@ -585,10 +585,13 @@ and emit_expr ?state ~context oc expr =
   | _, Const (_, c), _ ->
     emit_scalar oc c
   | Finalize, Field (_, tuple, field), _ ->
-    if !tuple = TupleGroupPrevious then
+    (match !tuple with
+    | TupleGroupPrevious ->
       Printf.fprintf oc "(maybe_%s_ group_previous_opt_)" field
-    else
-      String.print oc (id_of_field_name ~tuple:!tuple field)
+    | TupleOutPrevious ->
+      Printf.fprintf oc "(maybe_%s_ out_previous_opt_)" field
+    | _ ->
+      String.print oc (id_of_field_name ~tuple:!tuple field))
   | Finalize, Param _, _ ->
     failwith "TODO: code gen for params"
   | Finalize, Case (_, alts, else_), t ->
@@ -1125,7 +1128,7 @@ let emit_field_selection
       (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_tuple_typ ;
   if with_group then
-    Printf.fprintf oc "virtual_out_count group_previous_opt_ \
+    Printf.fprintf oc "virtual_out_count out_previous_opt_ group_previous_opt_ \
                        virtual_group_count_ virtual_group_successive_ group_ global_ %a %a "
       (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
@@ -1311,7 +1314,7 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
   Printf.fprintf oc "let %s virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a \
-                       virtual_out_count group_previous_opt_ \
+                       virtual_out_count out_previous_opt_ group_previous_opt_ \
                        virtual_group_count_ virtual_group_successive_ group_ global_ \
                        %a %a \
                        %a =\n"

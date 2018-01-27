@@ -27,4 +27,4 @@ let ringbuf = "v1"
 let out_ref = "v1"
 
 (* Workers state format *)
-let worker_state = "v1"
+let worker_state = "v2"

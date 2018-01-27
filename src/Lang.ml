@@ -19,6 +19,8 @@ type tuple_prefix =
   (* last output tuple computed for that group. Cannot be used in a SELECT
    * clause because we would have no tuple to init the group *)
   | TupleGroupPrevious
+  (* last output tuple committed by any group *)
+  | TupleOutPrevious
   | TupleOut
   (* TODO: TupleOthers? *)
 
@@ -33,6 +35,7 @@ let string_of_prefix = function
   | TupleGroupFirst -> "group.first"
   | TupleGroupLast -> "group.last"
   | TupleGroupPrevious -> "group.previous"
+  | TupleOutPrevious -> "out.previous"
   | TupleOut -> "out"
   | TupleUnknown -> "unknown"
 
@@ -143,8 +146,7 @@ let parse_prefix ~def m =
     (prefix "group.last" >>: fun () -> TupleGroupLast) |||
     (prefix "last" >>: fun () -> TupleGroupLast) |||
     (prefix "group.previous" >>: fun () -> TupleGroupPrevious) |||
-    (* NOPE: make it a TupleOutPrevious 
-    (prefix "previous" >>: fun () -> TupleGroupPrevious) |||*)
+    (prefix "out.previous" >>: fun () -> TupleOutPrevious) |||
     (prefix "out" >>: fun () -> TupleOut))
   ) m
 
@@ -164,7 +166,7 @@ let tuple_has_type_input = function
 
 (* Tuple that has the fields of this node output type *)
 let tuple_has_type_output = function
-  | TupleGroupPrevious | TupleOut -> true
+  | TupleGroupPrevious | TupleOutPrevious | TupleOut -> true
   | _ -> false
 
 let tuple_need_state = function
@@ -2016,7 +2018,7 @@ struct
         | _ -> ()) op ;
       (* Now check what tuple prefix are used: *)
       List.fold_left (fun prev_aliases sf ->
-          check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *); TupleGroupPrevious] "SELECT clause" sf.expr ;
+          check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *); TupleGroupPrevious; TupleOutPrevious] "SELECT clause" sf.expr ;
           (* Check unicity of aliases *)
           if List.mem sf.alias prev_aliases then
             raise (SyntaxError (AliasNotUnique sf.alias)) ;
@@ -2036,7 +2038,7 @@ struct
         (* The only windowing mode supported is then `commit and flush`: *)
         if flush_how <> Reset then
           raise (SyntaxError OnlyTumblingWindowForTop)) top ;
-      check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
+      check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
       (match flush_how with
       | Reset | Never | Slide _ -> ()
       | RemoveAll e | KeepOnly e ->
