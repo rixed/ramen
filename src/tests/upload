@@ -20,6 +20,6 @@ check_equal '199,2015' "$(tail_ $(($nb_earthquakes*2)) 1 n)"
 
 # Check that the tmp files have been deleted
 input_tmp_files=$(
-  ls -1 $RAMEN_PERSIST_DIR"/workers/inputs/test/earthquakes/uploads/test" |
+  ls -1 $RAMEN_PERSIST_DIR"/workers/inputs/test/earthquakes/uploads/test" 2>/dev/null |
   wc -l)
 check_equal 0 $input_tmp_files

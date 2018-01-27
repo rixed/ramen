@@ -1112,7 +1112,7 @@ let emit_where
 
 let emit_field_selection
       ?(with_selected=false) (* and unselected *)
-      ?(with_group=false)
+      ?(with_group=false) (* including previous, of type tuple_out option *)
       name in_tuple_typ mentioned
       and_all_others out_tuple_typ oc selected_fields =
   Printf.fprintf oc "let %s virtual_in_count_ %a %a "
@@ -1133,9 +1133,9 @@ let emit_field_selection
   List.iter (fun sf ->
       (* Update the states as required for this field, just before
        * computing the field actual value. *)
-      Printf.fprintf oc "\t(* State Updates: *)" ;
+      Printf.fprintf oc "\t(* State Updates: *)\n" ;
       emit_state_update_for_expr oc sf.Operation.expr ;
-      Printf.fprintf oc "\t(* Output field: *)" ;
+      Printf.fprintf oc "\t(* Output field: *)\n" ;
       if Expr.is_generator sf.Operation.expr then
         (* So that we have a single out_tuple_typ both before and after tuples generation *)
         Printf.fprintf oc "\tlet %s = () in\n"

@@ -480,8 +480,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
     assert (es <> []) ;
     !logger.debug "%sTyping COALESCE: enlarging COALESCE from elements" indent ;
     let changed, last_typ = List.fold_left (fun (changed, last_typ) e ->
-        let typ = typ_of e in
-        (* So last_nullable is not allowed to be not nullable: *)
+        (* So last_typ (so far) is not allowed to be not nullable: *)
         Option.may (fun last_typ ->
           if last_typ.nullable = Some false then (
             let e = InvalidCoalesce {
@@ -490,6 +489,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
             raise (SyntaxError e)
           )) last_typ ;
 
+        let typ = typ_of e in
         (* First typecheck e, then use it to enlarge exp_type: *)
         let chg = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ e ||
                   check_expr_type ~indent ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
