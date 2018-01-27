@@ -1213,8 +1213,8 @@ struct
       let m = "logical operator" :: m in
       let op = that_string "and" ||| that_string "or"
       and reduce t1 op t2 = match op with
-        | "and" -> StatelessFun (make_bool_typ "and operator", And (t1, t2))
-        | "or" -> StatelessFun (make_bool_typ "or operator", Or (t1, t2))
+        | "and" -> StatelessFun (make_bool_typ "and", And (t1, t2))
+        | "or" -> StatelessFun (make_bool_typ "or", Or (t1, t2))
         | _ -> assert false in
       (* FIXME: we do not need a blanks if we had parentheses ("(x)AND(y)" is OK) *)
       binary_ops_reducer ~op ~term:low_prec_left_assoc ~sep:blanks ~reduce m
@@ -1225,20 +1225,20 @@ struct
                that_string "=" ||| that_string "<>" ||| that_string "!=" |||
                that_string "in" ||| that_string "like"
       and reduce t1 op t2 = match op with
-        | ">" -> StatelessFun (make_bool_typ "comparison operator", Gt (t1, t2))
-        | "<" -> StatelessFun (make_bool_typ "comparison operator", Gt (t2, t1))
-        | ">=" -> StatelessFun (make_bool_typ "comparison operator", Ge (t1, t2))
-        | "<=" -> StatelessFun (make_bool_typ "comparison operator", Ge (t2, t1))
-        | "=" -> StatelessFun (make_bool_typ "equality operator", Eq (t1, t2))
+        | ">" -> StatelessFun (make_bool_typ "comparison", Gt (t1, t2))
+        | "<" -> StatelessFun (make_bool_typ "comparison", Gt (t2, t1))
+        | ">=" -> StatelessFun (make_bool_typ "comparison", Ge (t1, t2))
+        | "<=" -> StatelessFun (make_bool_typ "comparison", Ge (t2, t1))
+        | "=" -> StatelessFun (make_bool_typ "equality", Eq (t1, t2))
         | "!=" | "<>" ->
-          StatelessFun (make_bool_typ "not operator", Not (
-            StatelessFun (make_bool_typ "equality operator", Eq (t1, t2))))
+          StatelessFun (make_bool_typ "not", Not (
+            StatelessFun (make_bool_typ "equality", Eq (t1, t2))))
         | "in" ->
           StatelessFun (make_bool_typ "and for range", And (
             StatelessFun (make_bool_typ "comparison operator for range", Ge (
               t1,
               StatelessFun (make_typ "begin of range", BeginOfRange t2))),
-            StatelessFun (make_bool_typ "not operator for range", Not (
+            StatelessFun (make_bool_typ "not for range", Not (
               StatelessFun (make_bool_typ "comparison operator for range", Ge (
                 t1,
                 StatelessFun (make_typ "end of range", EndOfRange t2)))))))
@@ -1246,7 +1246,7 @@ struct
           (match get_string_const t2 with
           | None -> raise (Reject "LIKE pattern must be a string constant")
           | Some p ->
-            StatelessFun (make_bool_typ "like operator", Like (t1, p)))
+            StatelessFun (make_bool_typ "like", Like (t1, p)))
         | _ -> assert false in
       binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -1369,7 +1369,7 @@ struct
       afunv 3 n >>: function ([a;b;c], r) -> a, b, c, r | _ -> assert false
 
     and highest_prec_left_assoc m =
-      ((afun1 "not" >>: fun e -> StatelessFun (make_bool_typ "not operator", Not e)) |||
+      ((afun1 "not" >>: fun e -> StatelessFun (make_bool_typ "not", Not e)) |||
        (highestest_prec ++
         optional ~def:None (
           blanks -- strinG "is" -- blanks -+
@@ -1378,10 +1378,10 @@ struct
           strinG "null") >>: function
             | e, None -> e
             | e, Some false ->
-              StatelessFun (make_bool_typ ~nullable:false "not operator",
-                Not (StatelessFun (make_bool_typ ~nullable:false "is_not_null operator", Defined e)))
+              StatelessFun (make_bool_typ ~nullable:false "not",
+                Not (StatelessFun (make_bool_typ ~nullable:false "is_not_null", Defined e)))
             | e, Some true ->
-              StatelessFun (make_bool_typ ~nullable:false "is_not_null operator", Defined e))
+              StatelessFun (make_bool_typ ~nullable:false "is_not_null", Defined e))
       ) m
 
     and func m =
