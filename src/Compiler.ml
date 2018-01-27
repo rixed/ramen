@@ -30,13 +30,22 @@ exception AlreadyCompiled
 (* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =
   List.iter (fun (field_name, typ) ->
-      if typ.Expr.nullable = None || typ.Expr.scalar_typ = None then (
-        let e = CannotTypeField {
-          field = field_name ;
-          typ = IO.to_string Expr.print_typ typ ;
-          tuple = tuple_prefix } in
-        raise (SyntaxError e)))
-    tuple_type.C.fields ;
+    let open Expr in
+    (* If we couldn't determine nullability for an out field, it means
+     * we can pick freely: *)
+    if tuple_prefix = TupleOut &&
+       typ.scalar_typ <> None && typ.nullable = None
+    then (
+      !logger.debug "Field %s has no constraint on nullability. \
+                     Let's make it non-null." field_name ;
+      typ.nullable <- Some false) ;
+    if typ.nullable = None || typ.scalar_typ = None then (
+      let e = CannotTypeField {
+        field = field_name ;
+        typ = IO.to_string print_typ typ ;
+        tuple = tuple_prefix } in
+      raise (SyntaxError e))
+  ) tuple_type.C.fields ;
   C.finish_typing tuple_type
 
 let can_cast ~from_scalar_type ~to_scalar_type =
@@ -912,12 +921,23 @@ let set_all_types conf layer =
         ) layer.L.persist.L.nodes false
     then loop ()
   in
-  loop ()
-  (* TODO:
-   * - check that input type empty <=> no parents
-   * - check that output type empty <=> no children
-   * - Move all typing in a separate module
-   *)
+  loop () ;
+  (* We reached the fixed point.
+   * We still have a few things to check: *)
+  Hashtbl.iter (fun _ node ->
+    (* Check that input type no parents => no input *)
+    let in_type = (C.temp_tup_typ_of_tuple_type node.N.in_type).fields in
+    assert (node.N.parents <> [] || in_type = []) ;
+    (* Check that all expressions have indeed be typed: *)
+    Operation.iter_expr (fun e ->
+      let open Expr in
+      let typ = typ_of e in
+      if typ.nullable = None || typ.scalar_typ = None then
+        let what = IO.to_string (print true) e in
+        raise (SyntaxErrorInNode (node.N.name, CannotCompleteTyping what))
+    ) node.N.operation
+  ) layer.L.persist.L.nodes
+  (* TODO: Move all typing in a separate module *)
 
   (*$inject
     let test_type_single_node op_text =
@@ -1043,8 +1063,9 @@ let untyped_dependency conf layer =
 let typed_of_untyped_tuple ?cmp = function
   | C.TypedTuple _ as x -> x
   | C.UntypedTuple temp_tup_typ ->
-      if not temp_tup_typ.C.finished_typing then
-        raise (SyntaxError CannotCompleteTyping) ;
+      if not temp_tup_typ.C.finished_typing then (
+        let what = IO.to_string C.print_temp_tup_typ temp_tup_typ in
+        raise (SyntaxError (CannotCompleteTyping what))) ;
       let user = C.tup_typ_of_temp_tup_type temp_tup_typ in
       let user =
         match cmp with None -> user

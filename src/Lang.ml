@@ -55,7 +55,7 @@ type syntax_error =
                               got : string ; got_type : string }
   | InvalidNullability of { what : string ; must_be_nullable : bool }
   | InvalidCoalesce of { what : string ; must_be_nullable : bool }
-  | CannotCompleteTyping
+  | CannotCompleteTyping of string
   | CannotGenerateCode of { node : string ; cmd : string ; status : string }
   | AliasNotUnique of string
   | OnlyTumblingWindowForTop
@@ -105,7 +105,7 @@ let string_of_syntax_error =
   | InvalidCoalesce { what ; must_be_nullable } ->
     "All elements of a COALESCE must be nullable but the last one. "^
     what ^" can"^ (if must_be_nullable then " not" else "") ^" be null."
-  | CannotCompleteTyping -> "Cannot complete typing"
+  | CannotCompleteTyping s -> "Cannot complete typing of "^ s
   | CannotGenerateCode { node ; cmd ; status } ->
     Printf.sprintf
       "Cannot generate code: compilation of node %S with command %S %s"
@@ -143,7 +143,8 @@ let parse_prefix ~def m =
     (prefix "group.last" >>: fun () -> TupleGroupLast) |||
     (prefix "last" >>: fun () -> TupleGroupLast) |||
     (prefix "group.previous" >>: fun () -> TupleGroupPrevious) |||
-    (prefix "previous" >>: fun () -> TupleGroupPrevious) |||
+    (* NOPE: make it a TupleOutPrevious 
+    (prefix "previous" >>: fun () -> TupleGroupPrevious) |||*)
     (prefix "out" >>: fun () -> TupleOut))
   ) m
 
@@ -1349,6 +1350,12 @@ struct
     and afun3 n =
       afun 3 n >>: function [a;b;c] -> a, b, c | _ -> assert false
 
+    and afun4 n =
+      afun 4 n >>: function [a;b;c;d] -> a, b, c, d | _ -> assert false
+
+    and afun5 n =
+      afun 5 n >>: function [a;b;c;d;e] -> a, b, c, d, e | _ -> assert false
+
     and afun0v n =
       afunv 0 n >>: function ([], r) -> r | _ -> assert false
 
@@ -1452,7 +1459,7 @@ struct
           StatelessFun (make_num_typ "min", Min (e1 :: e2 :: e3s))) |||
        (afun1v "least" >>: fun (e, es) ->
           StatelessFun (make_num_typ "min", Min (e :: es))) |||
-       k_moveavg ||| sequence ||| cast) m
+       k_moveavg ||| sequence ||| cast ||| hysteresis) m
 
     and sequence =
       let seq = "sequence"
@@ -1489,6 +1496,57 @@ struct
          let k = Const (make_typ ~nullable:false ~typ:(scalar_type_of k)
                                  "moving average order", k) in
          StatefulFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
+
+    (* Syntactic sugar for threshold with hysteresis check, basically
+     * replacing:
+     *   hysteresis(result, measured, threshold, 0.1)
+     * by:
+     *   measured >= threshold - (IF result THEN threshold * 0.1
+     *                                      ELSE 0) AS result *)
+    and hysteresis m =
+      let m = "hysteresis" :: m in
+      let build_hysteresis prev meas thrd gap is_max =
+        let case =
+          Case (
+            make_num_typ "case for hysteresis",
+            [ { case_cond = prev ;
+                case_cons =
+                  StatelessFun (
+                    make_num_typ "hysteresis gap",
+                    Mul (gap, thrd)) } ],
+            (* else *)
+            Some expr_zero) in
+        let thrd' =
+          if is_max then
+            StatelessFun (
+              make_num_typ "subtraction for hysteresis",
+              Sub (thrd, case))
+          else
+            StatelessFun (
+              make_num_typ "addition for hysteresis",
+              Add (thrd, case)) in
+        StatelessFun (
+          make_bool_typ "comparison operator for hysteresis",
+          if is_max then Ge (meas, thrd') else Ge (thrd', meas)) in
+      let gap = Const (make_float_typ ~nullable:false "hysteresis ratio",
+                       VFloat 0.15)
+      in
+      ((afun4 "hysteresis_max" >>: fun (res, meas, thrd, gap) ->
+          build_hysteresis res meas thrd gap true) |||
+       (afun3 "hysteresis_max" >>: fun (res, meas, thrd) ->
+          build_hysteresis res meas thrd gap true) |||
+       (afun4 "hysteresis_min" >>: fun (res, meas, thrd, gap) ->
+          build_hysteresis res meas thrd gap false) |||
+       (afun3 "hysteresis_min" >>: fun (res, meas, thrd) ->
+          build_hysteresis res meas thrd gap false) |||
+       (afun4 "hysteresis" >>: fun (res, meas, min, max) ->
+          StatelessFun (make_bool_typ "or", Or (
+            build_hysteresis res meas max gap true,
+            build_hysteresis res meas min gap false))) |||
+       (afun5 "hysteresis" >>: fun (res, meas, min, max, gap) ->
+          StatelessFun (make_bool_typ "or", Or (
+            build_hysteresis res meas max gap true,
+            build_hysteresis res meas min gap false)))) m
 
     and case m =
       let m = "case" :: m in
@@ -1629,6 +1687,20 @@ struct
               Field (typ, ref TupleUnknown, "bps"))))))), \
         (21, []))) \
         (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
+
+      (Ok ( \
+        StatelessFun (typ, Ge (\
+          Field (typ, ref TupleUnknown, "value"),\
+          StatelessFun (typ, Sub (\
+            Const (typ, VI32 (Int32.of_int 1000)),\
+            Case (typ, [\
+              { case_cond = Field (typ, ref TupleGroupPrevious, "firing") ;\
+                case_cons = StatelessFun (typ, Mul (\
+                  Const (typ, VFloat 0.15),\
+                  Const (typ, VI32 (Int32.of_int 1000)))) } ],\
+              Some (Const (typ, VI8 (Stdint.Int8.of_int 0)))))))),\
+        (50, [])))\
+        (test_p p "hysteresis_max(group.previous.firing, value, 1000)" |> replace_typ_in_expr)
     *)
 
     (*$>*)

@@ -190,8 +190,8 @@ let anomaly_detection_nodes avg_window from name timeseries alert_fields export 
         {|FROM '%s'
           SELECT start,
           (%s) AS abnormality,
-          5-ma abnormality >= 4/5 AS firing
-          COMMIT AND KEEP ALL WHEN firing != previous.firing
+          hysteresis_max (COALESCE(group.previous.firing, false), 5-ma abnormality, 4/5) AS firing
+          COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
           NOTIFY "http://localhost:29380/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"|}
         predictor_name
         condition
@@ -620,7 +620,6 @@ let layer_of_bcns bcns dataset_name export =
            bcn.avg_window
       else op in
     make_node perc_per_obs_window_name op ;
-    (* TODO: we need an hysteresis here! *)
     Option.may (fun min_bps ->
         let title = Printf.sprintf "Too little traffic from zone %s to %s"
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
@@ -632,9 +631,11 @@ let layer_of_bcns bcns dataset_name export =
                       min_bps (bcn.obs_window /. 60.) ;
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
-          {|SELECT max_start, bytes_per_secs > %d AS firing
+          {|SELECT
+              max_start,
+              hysteresis_min (COALESCE(group.previous.firing, false), bytes_per_secs, %d) AS firing
             FROM '%s'
-            COMMIT AND KEEP ALL WHEN firing != previous.firing
+            COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
             NOTIFY "http://localhost:29380/notify?name=Low%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
             min_bps
             perc_per_obs_window_name
@@ -657,9 +658,11 @@ let layer_of_bcns bcns dataset_name export =
                       max_bps (bcn.obs_window /. 60.) ;
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
-          {|SELECT max_start, bytes_per_secs > %d AS firing
+          {|SELECT
+              max_start,
+              hysteresis_max (COALESCE(group.previous.firing, false), bytes_per_secs, %d) AS firing
             FROM '%s'
-            COMMIT AND KEEP ALL WHEN firing != previous.firing
+            COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
             NOTIFY "http://localhost:29380/notify?name=High%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
             max_bps
             perc_per_obs_window_name
@@ -683,9 +686,11 @@ let layer_of_bcns bcns dataset_name export =
                       max_rtt (bcn.obs_window /. 60.) ;
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
-          {|SELECT max_start, rtt > %f AS firing
+          {|SELECT
+              max_start,
+              hysteresis_max (COALESCE(group.previous.firing, false), rtt, %f) AS firing
             FROM '%s'
-            COMMIT AND KEEP ALL WHEN firing != previous.firing
+            COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
             NOTIFY "http://localhost:29380/notify?name=High%%20RTT&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
             max_rtt
             perc_per_obs_window_name
@@ -709,9 +714,11 @@ let layer_of_bcns bcns dataset_name export =
                       max_rr (bcn.obs_window /. 60.) ;
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
-          {|SELECT max_start, rr > %f AS firing
+          {|SELECT
+              max_start,
+              hysteresis_max (COALESCE(group.previous.firing, false), rr, %f) AS firing
             FROM '%s'
-            COMMIT AND KEEP ALL WHEN firing != previous.firing
+            COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
             NOTIFY "http://localhost:29380/notify?name=High%%20RR&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
             max_rr
             perc_per_obs_window_name
@@ -919,7 +926,6 @@ let layer_of_bcas bcas dataset_name export =
          bca.obs_window
       else op in
     make_node perc_per_obs_window_name op ;
-    (* TODO: we need an hysteresis here! *)
     let title =
       Printf.sprintf "EURT to %s is too large" bca.name
     and text = alert_text [
@@ -931,9 +937,11 @@ let layer_of_bcas bcas dataset_name export =
       "service_id", string_of_int bca.service_id ] in
     let op =
       Printf.sprintf
-        {|SELECT max_start, eurt > %g AS firing
+        {|SELECT
+            max_start,
+            hysteresis_max (COALESCE(group.previous.firing, false), eurt, %g) AS firing
           FROM '%s'
-          COMMIT AND KEEP ALL WHEN firing != previous.firing
+          COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
           NOTIFY "http://localhost:29380/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
           bca.max_eurt
           perc_per_obs_window_name
