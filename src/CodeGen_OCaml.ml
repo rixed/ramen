@@ -1093,7 +1093,8 @@ let emit_where
       name in_tuple_typ mentioned and_all_others oc expr =
   Printf.fprintf oc "let %s global_ virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
-                       virtual_unselected_count_ virtual_unselected_successive_ %a "
+                       virtual_unselected_count_ virtual_unselected_successive_ %a \
+                       virtual_out_count_ out_previous_opt_ "
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_tuple_typ

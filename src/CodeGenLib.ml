@@ -667,12 +667,14 @@ let aggregate
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+        Uint64.t -> 'generator_out option -> (* out.#count, previous.out *)
         bool)
       (where_slow :
         'global_state ->
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+        Uint64.t -> 'generator_out option -> (* out.#count, previous.out *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
         'tuple_in -> 'tuple_in -> (* first, last *)
         bool)
@@ -908,6 +910,7 @@ let aggregate
            in_count in_tuple last_in
            s.selected_count s.selected_successive last_selected
            s.unselected_count s.unselected_successive last_unselected
+           s.out_count s.last_out_tuple
       then (
         (* build the key and retrieve the group *)
         IntGauge.set stats_group_count (Hashtbl.length s.groups) ;
@@ -939,6 +942,7 @@ let aggregate
                  in_count in_tuple last_in
                  s.selected_count s.selected_successive last_selected
                  s.unselected_count s.unselected_successive last_unselected
+                 s.out_count s.last_out_tuple
                  zero zero fields
                  (* Although we correctly have 0 fields and group.#count and
                   * #successive to 0, we have to pass first and past tuples
@@ -1051,6 +1055,7 @@ let aggregate
                  in_count in_tuple last_in
                  s.selected_count s.selected_successive last_selected
                  s.unselected_count s.unselected_successive last_unselected
+                 s.out_count s.last_out_tuple
                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                  aggr.first_in aggr.last_in
             then (

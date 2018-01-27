@@ -2027,7 +2027,7 @@ struct
       if not and_all_others then check_export fields export ;
       (* Disallow group state in WHERE because it makes no sense: *)
       check_no_group (no_group "WHERE") where ;
-      check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast] "WHERE clause" where ;
+      check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOutPrevious] "WHERE clause" where ;
       List.iter (fun k ->
         check_pure pure_in_key k ;
         check_fields_from [TupleIn] "Group-By KEY" k) key ;
