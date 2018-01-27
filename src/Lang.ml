@@ -485,7 +485,7 @@ struct
       (match typ.nullable with
       | None -> ", maybe nullable"
       | Some true -> ", nullable"
-      | Some false -> "")
+      | Some false -> ", not nullable")
 
   let uniq_num_seq = ref 0
   let make_typ ?nullable ?typ expr_name =

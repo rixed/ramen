@@ -80,11 +80,11 @@ let check_rank ~from ~to_ =
    * would complain. *)
   | _ -> false
 
-let set_nullable typ nullable =
+let set_nullable ?(indent="") typ nullable =
   let open Expr in
   match typ.nullable with
   | None ->
-    !logger.debug "Set %a %snullable"
+    !logger.debug "%sSet %a to %snullable" indent
       print_typ typ
       (if nullable then "" else "not ") ;
     typ.nullable <- Some nullable ; true
@@ -98,17 +98,17 @@ let set_nullable typ nullable =
 
 (* Improve to_ while checking compatibility with from.
  * Numerical types of to_ can be enlarged to match those of from. *)
-let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
+let check_expr_type ~indent ~ok_if_larger ~set_null ~from ~to_ =
   let changed =
     match to_.Expr.scalar_typ, from.Expr.scalar_typ with
     | None, Some _ ->
-      !logger.debug "Improving %a from %a"
+      !logger.debug "%sImproving %a from %a" indent
         Expr.print_typ to_ Expr.print_typ from ;
       to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
       true
     | Some to_typ, Some from_typ when to_typ <> from_typ ->
       if can_cast ~from_scalar_type:to_typ ~to_scalar_type:from_typ then (
-        !logger.debug "Improving %a from %a"
+        !logger.debug "%sImproving %a from %a" indent
           Expr.print_typ to_ Expr.print_typ from ;
         to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
         true
@@ -124,7 +124,7 @@ let check_expr_type ~ok_if_larger ~set_null ~from ~to_ =
   if set_null then
     match from.Expr.nullable with
     | None -> changed
-    | Some from_null -> set_nullable to_ from_null || changed
+    | Some from_null -> set_nullable ~indent to_ from_null || changed
   else changed
 
 let scalar_finished_typing = function TNum | TAny -> false | _ -> true
@@ -196,19 +196,20 @@ let (|||) a b = a || b
  * in in_type from parents as needed.
  * Notice than when we recurse within the expression we stays in the same node
  * with the same parents. parents is not modified in here. *)
-let rec check_expr ~parents ~in_type ~out_type ~exp_type =
+let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
+  let indent = String.make depth ' ' and depth = depth + 2 in
   let open Expr in
   (* Check that the operand [sub_expr] is compatible with expectation (re. type
    * and null) set by the caller (the operator). [op_typ] is used for printing only.
    * Extends the type of sub_expr as required. *)
   let check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr =
     let sub_typ = typ_of sub_expr in
-    !logger.debug "Checking operand of (%a), of type (%a) (expected: %a)"
+    !logger.debug "%sChecking operand of (%a), of type (%a) (expected: %a)" indent
       print_typ op_typ
       print_typ sub_typ
       (Option.print Scalar.print_typ) exp_sub_typ ;
     (* Start by recursing into the sub-expression to know its real type: *)
-    let changed = check_expr ~parents ~in_type ~out_type ~exp_type:sub_typ sub_expr in
+    let changed = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:sub_typ sub_expr in
     (* Now we check this comply with the operator expectations about its operand : *)
     (match sub_typ.scalar_typ, exp_sub_typ with
     | Some actual_typ, Some exp_sub_typ ->
@@ -227,19 +228,19 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
         must_be_nullable = n1 } in
       raise (SyntaxError e)
     | _ -> ()) ;
-    !logger.debug "...operand subtype found to be: %a"
+    !logger.debug "%s...operand subtype found to be: %a" indent
       print_typ sub_typ ;
     changed
   in
   (* Check that actual_typ is a better version of op_typ and improve op_typ,
    * then check that the resulting op_type fulfill exp_type. *)
   let check_operator op_typ actual_typ nullable =
-    !logger.debug "Checking operator %a, of actual type %a"
+    !logger.debug "%sChecking operator %a, of actual type %a" indent
       print_typ op_typ
       Scalar.print_typ actual_typ ;
     let from = make_typ ~typ:actual_typ ?nullable op_typ.expr_name in
-    let changed = check_expr_type ~ok_if_larger:false ~set_null:true ~from ~to_:op_typ in
-    check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type || changed
+    let changed = check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from ~to_:op_typ in
+    check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type || changed
   in
   let check_op op_typ make_op_typ ?(propagate_null=true) args =
     (* First we check the operands: do they comply with the expected types
@@ -296,17 +297,19 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
   and return_u16 _ = TU16
   and return_string _ = TString
   in
-  function
+  fun expr ->
+  !logger.debug "%s-- Typing expression %a --" indent (Expr.print true) expr ;
+  match expr with
   | Const (op_typ, _) ->
     (* op_typ is already optimal. But is it compatible with exp_type? *)
-    check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
+    check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
   | Field (op_typ, tuple, field) ->
     if tuple_has_type_input !tuple then (
       (* Check that this field is, or could be, in in_type *)
       if is_virtual_field field then false else
       match List.assoc field in_type.C.fields with
       | exception Not_found ->
-        !logger.debug "Cannot find field %s in in-tuple" field ;
+        !logger.debug "%sCannot find field in in-tuple" indent ;
         if in_type.C.finished_typing then (
           let e = FieldNotInTuple {
             field ; tuple = !tuple ;
@@ -317,7 +320,7 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
           match type_of_parents_field parents !tuple field with
           | exception ParentIsUntyped -> false
           | ptyp ->
-            !logger.debug "Copying field %s from parents, with type %a"
+            !logger.debug "%sCopying field %s from parents, with type %a" indent
               field Expr.print_typ ptyp ;
             if is_private_field field then (
               let m = InvalidPrivateField { field } in
@@ -330,7 +333,7 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
           op_typ.nullable <- from.nullable ;
           op_typ.scalar_typ <- from.scalar_typ
         ) ;
-        check_expr_type ~ok_if_larger:false ~set_null:true ~from ~to_:exp_type
+        check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from ~to_:exp_type
     ) else if tuple_has_type_output !tuple then (
       (* FIXME: It is forbidden to access the field of TupleGroupPrevious if it's a generator *)
       (* First thing we know is that if the field is from TupleGroupPrevious
@@ -390,40 +393,40 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
      * - if there are no else branch then the case is nullable. *)
     (
       (* All conditions must have type bool *)
-      !logger.debug "Typing CASE: checking boolness of conditions" ;
+      !logger.debug "%sTyping CASE: checking boolness of conditions" indent ;
       let exp_cond_type = make_bool_typ "case condition" in
       List.exists (fun alt ->
           (* First typecheck the condition, then check it's a bool: *)
           let cond_typ = typ_of alt.case_cond in
-          let chg = check_expr ~parents ~in_type ~out_type ~exp_type:cond_typ alt.case_cond ||
-                    check_expr_type ~ok_if_larger:false ~set_null:false ~from:exp_cond_type ~to_:cond_typ in
-          !logger.debug "Typing CASE: condition type is now %a (changed: %b)"
+          let chg = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:cond_typ alt.case_cond ||
+                    check_expr_type ~indent ~ok_if_larger:false ~set_null:false ~from:exp_cond_type ~to_:cond_typ in
+          !logger.debug "%sTyping CASE: condition type is now %a (changed: %b)" indent
             print_typ (typ_of alt.case_cond) chg ;
           chg
         ) alts
     ) || (
-      !logger.debug "Typing CASE: enlarging CASE from ELSE" ;
+      !logger.debug "%sTyping CASE: enlarging CASE from ELSE" indent ;
       match else_ with
       | Some else_ ->
         (* First type the else_ then use the actual type to enlarge exp_type: *)
         let typ = typ_of else_ in
-        let chg = check_expr ~parents ~in_type ~out_type ~exp_type:typ else_ ||
-                  check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
-        !logger.debug "Typing CASE: CASE type is now %a (changed: %b)"
+        let chg = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ else_ ||
+                  check_expr_type ~indent ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
+        !logger.debug "%sTyping CASE: CASE type is now %a (changed: %b)" indent
           print_typ exp_type chg ;
         chg
       | None ->
-        !logger.debug "Typing CASE: No ELSE clause so CASE can be NULL" ;
-        set_nullable exp_type true
+        !logger.debug "%sTyping CASE: No ELSE clause so CASE can be NULL" indent ;
+        set_nullable ~indent exp_type true
     ) || (
       (* Enlarge exp_type with the consequents: *)
-      !logger.debug "Typing CASE: enlarging CASE from consequents" ;
+      !logger.debug "%sTyping CASE: enlarging CASE from consequents" indent ;
       List.exists (fun alt ->
           (* First typecheck the consequent, then use it to enlarge exp_type: *)
           let typ = typ_of alt.case_cons in
-          let chg = check_expr ~parents ~in_type ~out_type ~exp_type:typ alt.case_cons ||
-                    check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
-          !logger.debug "Typing CASE: consequent type is %a, and CASE type is now %a (changed: %b)"
+          let chg = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ alt.case_cons ||
+                    check_expr_type ~indent ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
+          !logger.debug "%sTyping CASE: consequent type is %a, and CASE type is now %a (changed: %b)" indent
             print_typ typ
             print_typ exp_type chg ;
           chg
@@ -431,16 +434,16 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
     ) || (
       (* So all consequents and conditions and the else clause should
        * have been fully typed now. Let's check: *)
-      !logger.debug "Typing CASE: all items should have been fully typed by now:" ;
+      !logger.debug "%sTyping CASE: all items should have been fully typed by now:" indent ;
       List.iter (fun alt ->
-        !logger.debug "Typing CASE: cond type: %a, cons type: %a"
+        !logger.debug "%sTyping CASE: cond type: %a, cons type: %a" indent
           print_typ (typ_of alt.case_cond)
           print_typ (typ_of alt.case_cons)) alts ;
       Option.may (fun else_ ->
-        !logger.debug "Typing CASE: else type: %a"
+        !logger.debug "%sTyping CASE: else type: %a" indent
           print_typ (typ_of else_)) else_ ;
       (* Now set the CASE nullability. *)
-      !logger.debug "Typing CASE: figuring out if CASE is NULLable" ;
+      !logger.debug "%sTyping CASE: figuring out if CASE is NULLable" indent ;
       let nullable =
         match else_ with
         | None -> Some true (* No else clause: nullable! *)
@@ -461,7 +464,7 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
       in
       Option.map_default (fun nullable ->
           if exp_type.nullable <> Some nullable then (
-            !logger.debug "Typing CASE: Setting the CASE to %sNULLable"
+            !logger.debug "%sTyping CASE: Setting the CASE to %sNULLable" indent
               (if nullable then "" else "not ") ;
             exp_type.nullable <- Some nullable ;
             true
@@ -475,7 +478,7 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
      * - the last element of the list must not be nullable. *)
     (* Enlarge exp_type with the consequent: *)
     assert (es <> []) ;
-    !logger.debug "Typing COALESCE: enlarging COALESCE from elements" ;
+    !logger.debug "%sTyping COALESCE: enlarging COALESCE from elements" indent ;
     let changed, last_typ = List.fold_left (fun (changed, last_typ) e ->
         let typ = typ_of e in
         (* So last_nullable is not allowed to be not nullable: *)
@@ -488,9 +491,9 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
           )) last_typ ;
 
         (* First typecheck e, then use it to enlarge exp_type: *)
-        let chg = check_expr ~parents ~in_type ~out_type ~exp_type:typ e ||
-                  check_expr_type ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
-        !logger.debug "Typing COALESCE: expr type is %a, and COALESCE type is now %a (changed: %b)"
+        let chg = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ e ||
+                  check_expr_type ~indent ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
+        !logger.debug "%sTyping COALESCE: expr type is %a, and COALESCE type is now %a (changed: %b)" indent
           print_typ typ
           print_typ exp_type chg ;
         changed || chg, Some typ
@@ -507,7 +510,7 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
         raise (SyntaxError e)
       | None -> changed)
   | StatelessFun (op_typ, Now) ->
-    check_expr_type ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
+    check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
   | StatefulFun (op_typ, _, AggrMin e) | StatefulFun (op_typ, _, AggrMax e)
   | StatefulFun (op_typ, _, AggrFirst e) | StatefulFun (op_typ, _, AggrLast e) ->
     check_op op_typ List.hd [None, None, e]
@@ -554,8 +557,8 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
     (try check_op op_typ return_bool [Some TString, None, e1 ; Some TString, None, e2]
     with SyntaxError (CannotTypeExpression _) as e ->
       (* We do not retry for other errors to keep a better error message. *)
-      !logger.debug "Equality operator between strings failed with %S, \
-                     retrying with numbers" (Printexc.to_string e) ;
+      !logger.debug "%sEquality operator between strings failed with %S, \
+                     retrying with numbers" indent (Printexc.to_string e) ;
       check_op op_typ return_bool [Some TFloat, None, e1 ; Some TFloat, None, e2])
   | StatelessFun (op_typ, And (e1, e2)) | StatelessFun (op_typ, Or (e1, e2)) ->
     check_op op_typ return_bool [Some TBool, None, e1 ; Some TBool, None, e2]
@@ -639,7 +642,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
             raise (SyntaxError e)) ;
           changed (* no-op *)
         | parent_field ->
-          check_expr_type ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field ||
+          check_expr_type ~indent:"" ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field ||
           changed
       ) false to_tuple.C.fields in
   (* Add new fields into children. *)
@@ -959,16 +962,16 @@ let set_all_types conf layer =
    *)
 
   (*$= test_check_expr & ~printer:(fun x -> x)
-     "(1 [constant of type I32]) + (1 [constant of type I32]) [addition of type I32]" \
+     "(1 [constant of type I32, not nullable]) + (1 [constant of type I32, not nullable]) [addition of type I32, not nullable]" \
        (test_check_expr "1+1")
 
-     "(sum locally (1 [constant of type I16]) [sum aggregation of type I16]) > \\
-      (500 [constant of type I32]) [comparison operator of type BOOL]" \
+     "(sum locally (1 [constant of type I16, not nullable]) [sum aggregation of type I16, not nullable]) > \\
+      (500 [constant of type I32, not nullable]) [comparison operator of type BOOL, not nullable]" \
        (test_check_expr "sum 1i16 > 500")
 
-     "(sum locally (cast(I16, 1 [constant of type I32]) [cast to I16 of type I16]) \\
-          [sum aggregation of type I16]) > \\
-      (500 [constant of type I32]) [comparison operator of type BOOL]" \
+     "(sum locally (cast(I16, 1 [constant of type I32, not nullable]) [cast to I16 of type I16, not nullable]) \\
+          [sum aggregation of type I16, not nullable]) > \\
+      (500 [constant of type I32, not nullable]) [comparison operator of type BOOL, not nullable]" \
        (test_check_expr "sum i16(1) > 500")
    *)
 
