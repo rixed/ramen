@@ -1698,7 +1698,7 @@ struct
                 case_cons = StatelessFun (typ, Mul (\
                   Const (typ, VFloat 0.15),\
                   Const (typ, VI32 (Int32.of_int 1000)))) } ],\
-              Some (Const (typ, VI8 (Stdint.Int8.of_int 0)))))))),\
+              Some (Const (typ, VU8 (Stdint.Uint8.of_int 0)))))))),\
         (50, [])))\
         (test_p p "hysteresis_max(group.previous.firing, value, 1000)" |> replace_typ_in_expr)
     *)
