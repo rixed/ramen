@@ -690,8 +690,12 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "(&&)" [Some TBool; Some TBool] [e1; e2]
   | Finalize, StatelessFun (_, Or (e1,e2)), Some TBool ->
     emit_functionN oc ?state "(||)" [Some TBool; Some TBool] [e1; e2]
-  | Finalize, StatelessFun (_, Not (e)), Some TBool ->
+  | Finalize, StatelessFun (_, Not e), Some TBool ->
     emit_functionN oc ?state "not" [Some TBool] [e]
+  | Finalize, StatelessFun (_, Defined e), Some TBool ->
+    (* Do not call emit_functionN to avoid null propagation: *)
+    Printf.fprintf oc "(match %a with None -> false | _ -> true)"
+      (emit_expr ?state ~context) e
   | Finalize, StatelessFun (_, Age e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ)
   | Finalize, StatelessFun (_, BeginOfRange e),
