@@ -11,7 +11,14 @@ type tuple_prefix =
   | TupleIn | TupleLastIn
   | TupleSelected | TupleLastSelected
   | TupleUnselected | TupleLastUnselected
-  | TupleGroup | TupleGroupFirst | TupleGroupLast | TupleGroupPrevious
+  | TupleGroup
+  (* first input tuple aggregated into that group *)
+  | TupleGroupFirst
+  (* last input tuple aggregated into that group *)
+  | TupleGroupLast
+  (* last output tuple computed for that group. Cannot be used in a SELECT
+   * clause because we would have no tuple to init the group *)
+  | TupleGroupPrevious
   | TupleOut
   (* TODO: TupleOthers? *)
 
@@ -1937,7 +1944,7 @@ struct
         | _ -> ()) op ;
       (* Now check what tuple prefix are used: *)
       List.fold_left (fun prev_aliases sf ->
-          check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *)] "SELECT clause" sf.expr ;
+          check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *); TupleGroupPrevious] "SELECT clause" sf.expr ;
           (* Check unicity of aliases *)
           if List.mem sf.alias prev_aliases then
             raise (SyntaxError (AliasNotUnique sf.alias)) ;

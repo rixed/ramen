@@ -578,7 +578,7 @@ type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
     (* We need both current and previous because we might commit/flush
      * groups that are not the one owning the current output tuple: *)
     mutable current_out : 'generator_out ; (* The current one *)
-    mutable previous_out : 'generator_out ; (* previously computed temp out tuple, if any *)
+    mutable previous_out : 'generator_out option ; (* previously computed temp out tuple, if any *)
     mutable nb_entries : int ;
     mutable nb_successive : int ;
     mutable last_ev_count : int ; (* used for others.successive (TODO) *)
@@ -651,6 +651,7 @@ let aggregate
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
         Uint64.t -> (* out.#count *)
+        'generator_out option -> (* previous value of group.out *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
         'global_state ->
         'tuple_in -> 'tuple_in -> (* first, last *)
@@ -682,7 +683,7 @@ let aggregate
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
-        Uint64.t -> 'generator_out -> (* out.#count, previous *)
+        Uint64.t -> 'generator_out option -> (* out.#count, previous *)
         Uint64.t -> Uint64.t -> 'aggr -> (* group.#count, #successive, aggr *)
         'global_state ->
         'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
@@ -836,7 +837,7 @@ let aggregate
         ) else (
           (* Not in a top, do things properly: *)
           (* Commit *)
-          Lwt_list.iter_s (fun (k, a, out) ->
+          Lwt_list.iter_s (fun (k, a, out_opt) ->
             (* Flush/Keep/Slide *)
             if do_flush then (
               if a.to_resubmit = [] then
@@ -860,7 +861,7 @@ let aggregate
                       in_count in_tuple last_in
                       s.selected_count s.selected_successive last_selected
                       s.unselected_count s.unselected_successive last_unselected
-                      s.out_count
+                      s.out_count a.previous_out
                       (Uint64.of_int a.nb_entries)
                       (Uint64.of_int a.nb_successive)
                       a.fields
@@ -872,7 +873,10 @@ let aggregate
                   ) to_resubmit)
             ) ;
             (* Output the tuple *)
-            commit s in_tuple out) to_commit)
+            match out_opt with
+            | Some out -> commit s in_tuple out
+            | None -> return_unit
+          ) to_commit)
       in
       let commit_and_flush_all_if check_when =
         let to_commit =
@@ -880,7 +884,7 @@ let aggregate
             Hashtbl.fold (fun k a l ->
                 if not (already_output a) &&
                    must commit_when a then
-                  (k, a, a.current_out)::l
+                  (k, a, Some a.current_out)::l
                 else l
               ) s.groups [] in
         commit_and_flush_list to_commit
@@ -944,7 +948,7 @@ let aggregate
                   in_count in_tuple last_in
                   s.selected_count s.selected_successive last_selected
                   s.unselected_count s.unselected_successive last_unselected
-                  s.out_count
+                  s.out_count None
                   one one fields
                   s.global_state
                   in_tuple in_tuple in
@@ -954,7 +958,7 @@ let aggregate
                 first_in = in_tuple ;
                 last_in = in_tuple ;
                 current_out =  out_generator ;
-                previous_out = out_generator ; (* Not correct for the very first check *)
+                previous_out = None ;
                 nb_entries = 1 ;
                 nb_successive = 1 ;
                 last_ev_count = s.event_count ;
@@ -1017,7 +1021,7 @@ let aggregate
                         in_count in_tuple last_in
                         s.selected_count s.selected_successive last_selected
                         s.unselected_count s.unselected_successive last_unselected
-                        s.out_count
+                        s.out_count others_aggr.previous_out
                         (Uint64.of_int others_aggr.nb_entries)
                         (Uint64.of_int others_aggr.nb_successive)
                         others_aggr.fields
@@ -1058,7 +1062,7 @@ let aggregate
                   in_count in_tuple last_in
                   s.selected_count s.selected_successive last_selected
                   s.unselected_count s.unselected_successive last_unselected
-                  s.out_count
+                  s.out_count aggr.previous_out
                   (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
                   s.global_state
                   aggr.first_in aggr.last_in ;
@@ -1112,7 +1116,7 @@ let aggregate
             then [
               k, aggr,
               if commit_before then aggr.previous_out
-              else aggr.current_out
+                               else Some aggr.current_out
             ], [ k, aggr ] else [], [] in
           if commit_before then
             List.iter (fun (_k, a) ->
@@ -1126,7 +1130,7 @@ let aggregate
            * code to be run. *)
           already_output_aggr := Some aggr ;
           let%lwt () = commit_and_flush_all_if ForAllSelected in
-          aggr.previous_out <- aggr.current_out ;
+          aggr.previous_out <- Some aggr.current_out ;
           return_unit)
       ) else
         (* in_tuple failed where_fast *)

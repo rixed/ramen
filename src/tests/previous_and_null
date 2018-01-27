@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/../.."
+. $top_srcdir/src/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_123
+add_node n \
+'FROM test/123 SELECT
+  -- beware that in.name is nullable but not out.sum_name
+  COALESCE(group.previous.sum_name, "") ||
+  (IF group.previous.sum_name IS NOT NULL THEN "+" ELSE "") ||
+  COALESCE(name, "three") AS sum_name,
+  n + COALESCE(group.previous.x, 0) AS x
+GROUP BY true
+COMMIT WHEN group.#count >= '$nb_123'
+EXPORT'
+run
+check_equal '"one+two+three",6' "$(tail_ $nb_123 3 n)"

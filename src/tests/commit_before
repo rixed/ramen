@@ -22,7 +22,7 @@ add_cars
 add_node count_cars \
 "FROM test/cars
  SELECT manufacturer, SUM 1 as nb_models
- COMMIT BEFORE out.manufacturer != previous.manufacturer
+ COMMIT BEFORE out.manufacturer != COALESCE(group.previous.manufacturer, out.manufacturer)
  EXPORT"
 run
 # Note: we won't have "Volvo" at the end since it will never be commited:

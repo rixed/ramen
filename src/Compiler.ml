@@ -184,6 +184,9 @@ let type_of_parents_field parents tuple_of_field field =
     raise (SyntaxError e) ;
   | Some ptyp -> ptyp
 
+(* Get rid of the short-cutting of or expressions: *)
+let (|||) a b = a || b
+
 (* Check that this expression fulfill the type expected by the caller (exp_type).
  * Also, improve exp_type (set typ and nullable, enlarge numerical types ...).
  * When we recurse from an operator to its operand we set the exp_type to the one
@@ -329,26 +332,40 @@ let rec check_expr ~parents ~in_type ~out_type ~exp_type =
         ) ;
         check_expr_type ~ok_if_larger:false ~set_null:true ~from ~to_:exp_type
     ) else if tuple_has_type_output !tuple then (
-      (* If we already have this field in out then check it's compatible (or
-       * enlarge out or exp). If we don't have it then add it. *)
-      if is_virtual_field field then false else
-      match List.assoc field out_type.C.fields with
-      | exception Not_found ->
-        !logger.debug "Cannot find field %s in out-tuple" field ;
-        if out_type.C.finished_typing then (
-          let e = FieldNotInTuple {
-            field ; tuple = !tuple ;
-            tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
-          raise (SyntaxError e)) ;
-        out_type.C.fields <- (field, exp_type) :: out_type.C.fields ;
-        true
-      | out ->
-        if out_type.C.finished_typing then ( (* Save the type *)
-          op_typ.nullable <- out.nullable ;
-          op_typ.scalar_typ <- out.scalar_typ
-        ) ;
-        !logger.debug "field %s found in out type: %a" field print_typ out ;
-        check_expr_type ~ok_if_larger:false ~set_null:true ~from:out ~to_:exp_type
+      (* FIXME: It is forbidden to access the field of TupleGroupPrevious if it's a generator *)
+      (* First thing we know is that if the field is from TupleGroupPrevious
+       * then it is nullable: *)
+      (
+        if !tuple = TupleGroupPrevious then (
+          !logger.debug "%sField %s is from previous so nullable." indent field ;
+          set_nullable ~indent exp_type true
+        ) else false
+      ) ||| (
+        (* If we already have this field in out then check it's compatible (or
+         * enlarge out or exp). If we don't have it then add it. *)
+        if is_virtual_field field then false else
+        match List.assoc field out_type.C.fields with
+        | exception Not_found ->
+          !logger.debug "%sCannot find field %s in out-tuple" indent field ;
+          if out_type.C.finished_typing then (
+            let e = FieldNotInTuple {
+              field ; tuple = !tuple ;
+              tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
+            raise (SyntaxError e)) ;
+          out_type.C.fields <- (field, exp_type) :: out_type.C.fields ;
+          true
+        | out ->
+          if out_type.C.finished_typing then ( (* Save the type *)
+            op_typ.nullable <-
+              (* Regardless of the actual type of the output tuple, fields from
+               * group.previous must always be considered nullable as the whole
+               * tuple is optional: *)
+              if !tuple = TupleGroupPrevious then Some true else out.nullable ;
+            op_typ.scalar_typ <- out.scalar_typ
+          ) ;
+          !logger.debug "%sfield %s found in out type: %a" indent field print_typ out ;
+          check_expr_type ~indent ~ok_if_larger:false ~set_null:(!tuple <> TupleGroupPrevious) ~from:out ~to_:exp_type
+      )
     ) else (
       (* All other tuples are already typed (virtual fields) *)
       if not (is_virtual_field field) then (
@@ -722,9 +739,6 @@ let set_of_fields = function
       List.fold_left (fun s (name, _) ->
           Set.add name s
         ) Set.empty ttt.fields
-
-(* Get rid of the short-cutting of or expressions: *)
-let (|||) a b = a || b
 
 let all_finished nodes =
   List.for_all (fun node ->

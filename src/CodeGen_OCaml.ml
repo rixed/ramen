@@ -545,6 +545,22 @@ let rec conv_to ?state ~context to_typ fmt e =
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string Scalar.print_typ b))
 
+(* The vector TupleGroupPrevious is optional: the commit when and select
+ * clauses of aggregate operations either have it or not (Some tuple / None).
+ * Each time they need access to a field they call a function "maybe_XXX_"
+ * with that optional tuple, which avoids propagating out_typ down to
+ * emit_expr - but hopefully the compiler will inline this.
+ * (TODO: have a context in a single place and inline it directly?) *)
+and emit_maybe_fields oc out_tuple_typ =
+  List.iter (fun ft ->
+    Printf.fprintf oc "let maybe_%s_ = function\n" ft.typ_name ;
+    Printf.fprintf oc "  | None -> None\n" ;
+    Printf.fprintf oc "  | Some %a -> %s%s\n\n"
+      (emit_tuple TupleGroupPrevious) out_tuple_typ
+      (if ft.nullable then "" else "Some ")
+      (id_of_field_name ~tuple:TupleGroupPrevious ft.typ_name)
+  ) out_tuple_typ
+
 (* state is just the name of the state that's "opened" in the local environment,
  * ie "global_" if we are initializing the global state or "local_" if we are
  * initializing the group state or nothing (empty string) if we are not initializing
@@ -569,7 +585,10 @@ and emit_expr ?state ~context oc expr =
   | _, Const (_, c), _ ->
     emit_scalar oc c
   | Finalize, Field (_, tuple, field), _ ->
-    String.print oc (id_of_field_name ~tuple:!tuple field)
+    if !tuple = TupleGroupPrevious then
+      Printf.fprintf oc "(maybe_%s_ group_previous_opt_)" field
+    else
+      String.print oc (id_of_field_name ~tuple:!tuple field)
   | Finalize, Param _, _ ->
     failwith "TODO: code gen for params"
   | Finalize, Case (_, alts, else_), t ->
@@ -1102,7 +1121,7 @@ let emit_field_selection
       (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_tuple_typ ;
   if with_group then
-    Printf.fprintf oc "virtual_out_count \
+    Printf.fprintf oc "virtual_out_count group_previous_opt_ \
                        virtual_group_count_ virtual_group_successive_ group_ global_ %a %a "
       (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
       (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
@@ -1288,8 +1307,8 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
   Printf.fprintf oc "let %s virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a \
-                       virtual_out_count \
-                       %a virtual_group_count_ virtual_group_successive_ group_ global_ \
+                       virtual_out_count group_previous_opt_ \
+                       virtual_group_count_ virtual_group_successive_ group_ global_ \
                        %a %a \
                        %a =\n"
     name
@@ -1297,7 +1316,6 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
     (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_tuple_typ
-    (emit_tuple TupleGroupPrevious) out_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
     (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ
     (emit_tuple TupleOut) out_tuple_typ ;
@@ -1369,7 +1387,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" Expr.GlobalState [] ~where ~commit_when ?top_by:None) fields
     (emit_state_init "group_init_" Expr.LocalState ["global_"] ~where ~commit_when ?top_by:None) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
@@ -1382,6 +1400,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
     else
       emit_where "where_slow_" ~with_group:true in_tuple_typ mentioned and_all_others) where
     (emit_key_of_input "key_of_input_" in_tuple_typ mentioned and_all_others) key
+    emit_maybe_fields out_tuple_typ
     (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
     (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_tuple_typ mentioned and_all_others out_tuple_typ) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
