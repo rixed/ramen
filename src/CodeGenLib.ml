@@ -591,7 +591,7 @@ type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
  * lighter of our heavy hitters: *)
 module WeightMap = Map.Float
 
-(* WARNING: increase RamenVersions.worker_start whenever this record is
+(* WARNING: increase RamenVersions.worker_state whenever this record is
  * changed. *)
 type ('key, 'aggr, 'tuple_in, 'generator_out, 'global_state, 'top_state) aggr_persist_state =
   { event_count : int ; (* TBD. used to fake others.count etc *)
