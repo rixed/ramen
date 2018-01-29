@@ -144,11 +144,11 @@ let summary =
     info "ringbuf-summary")
 
 (*
- * Layer Creation/Edition
+ * Program Creation/Edition
  *)
 
 let layer_name =
-  let i = Arg.info ~doc:"Layer unique name."
+  let i = Arg.info ~doc:"Program unique name."
                    ~docv:"layer" [] in
   Arg.(required (pos 0 (some string) None i))
 
@@ -167,7 +167,7 @@ let add =
     info "add")
 
 (*
- * Compile/Run/Stop Layer
+ * Compile/Run/Stop Program
  *)
 
 let compile =
@@ -197,7 +197,7 @@ let stop =
  *)
 
 let node_name p =
-  let i = Arg.info ~doc:"Node unique name."
+  let i = Arg.info ~doc:"Function unique name."
                    ~docv:"node" [] in
   Arg.(required (pos p (some string) None i))
 
@@ -250,7 +250,7 @@ let export =
     info "tail")
 
 (*
- * Timeseries (no support for NewTempNode (yet))
+ * Timeseries (no support for NewTempFunc (yet))
  *)
 
 let since =

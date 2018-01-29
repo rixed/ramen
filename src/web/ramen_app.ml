@@ -63,7 +63,7 @@ let time_range_of_js js =
       TimeRange (since, until)
   | x -> fail ("Unknown time range "^x)
 
-module Layer =
+module Program =
 struct
   let status_of_js js =
     let open Js in
@@ -111,7 +111,7 @@ struct
       typ_str : string ; typ_disp : string }
 end
 
-module Node =
+module Func =
 struct
   type worker_stats =
     { time : float ;
@@ -155,8 +155,8 @@ end
 let nodes = make_param "nodes" []
 
 (* Use layer name as a value, same reasons as for set_node. *)
-type selected_layer = NoLayer | ExistingLayer of string | NewLayer
-let sel_layer = make_param "selected layer" NoLayer
+type selected_layer = NoProgram | ExistingProgram of string | NewProgram
+let sel_layer = make_param "selected layer" NoProgram
 
 (* Each layer and node is its own state variable.
  * But the layers hash has to be a state variable as well, and we
@@ -184,29 +184,29 @@ type edited_layer =
 let program_of_layer l =
   match List.assoc l layers.value with
   | exception Not_found -> ""
-  | layer -> layer.value.Layer.program
+  | layer -> layer.value.Program.program
 
 let edited_layer_of_layer = function
-  ExistingLayer l ->
+  ExistingProgram l ->
   { is_new = false ;
     layer_name = ref l ;
     layer_program = ref (program_of_layer l) }
-| NewLayer ->
+| NewProgram ->
   (* edited_layer record for a new layer: *)
   { is_new = true ;
     layer_name = ref "new layer name" ;
     layer_program = ref "" }
-| NoLayer -> fail "invalid edited layer NoLayer"
+| NoProgram -> fail "invalid edited layer NoProgram"
 
 let edited_layer =
-  make_param "edited nodes" (edited_layer_of_layer NewLayer)
+  make_param "edited nodes" (edited_layer_of_layer NewProgram)
 
 
 let update_layer layer =
   let p =
-    try List.assoc layer.Layer.name layers.value
+    try List.assoc layer.Program.name layers.value
     with Not_found ->
-      print (Js.string ("Creating layer "^ layer.Layer.name)) ;
+      print (Js.string ("Creating layer "^ layer.Program.name)) ;
       change layers ;
       make_param ("layer "^ layer.name) layer in
   set p layer ;
@@ -228,15 +228,15 @@ let nodes_sum = make_param "nodes sum" zero_sums
 let update_node node =
   let p =
     try
-      let p = List.assoc node.Node.id nodes.value in
-      if node.stats.time > p.value.Node.stats.time then
+      let p = List.assoc node.Func.id nodes.value in
+      if node.stats.time > p.value.Func.stats.time then
         node.last_stats <- p.value.stats
       else
         node.last_stats <- p.value.last_stats ;
       set p node ;
       p
     with Not_found ->
-      print (Js.string ("Creating node "^ node.Node.name)) ;
+      print (Js.string ("Creating node "^ node.Func.name)) ;
       change nodes ;
       make_param ("node "^ node.id) node in
   nodes.value <- replace_assoc node.id p nodes.value
@@ -311,7 +311,7 @@ let update_tail resp =
 
 (* For when we use it from an action handler: *)
 let can_export node =
-  match List.assoc node.Node.layer layers.value with
+  match List.assoc node.Func.layer layers.value with
     exception Not_found -> false
   | layer ->
     let status = layer.value.status in
@@ -320,7 +320,7 @@ let can_export node =
 
 (* For when we use it to draw the DOM: *)
 let can_export_with_layer node cb =
-  match List.assoc node.Node.layer layers.value with
+  match List.assoc node.Func.layer layers.value with
     exception Not_found -> cb false
   | layer ->
     if not node.exporting then cb false
@@ -439,7 +439,7 @@ let reset_for_node_change () =
 let set_sel_layer l =
   if sel_layer.value <> l then (
     set sel_layer l ;
-    if l <> NoLayer then
+    if l <> NoProgram then
       (* Try to keep edited content as long as possible: *)
       let el = edited_layer_of_layer l in
       if !(edited_layer.value.layer_name) <> !(el.layer_name) then
@@ -447,9 +447,9 @@ let set_sel_layer l =
 
 let set_sel_node = function
   Some node ->
-  if node.Node.id <> sel_node.value then (
+  if node.Func.id <> sel_node.value then (
     set sel_node node.id ;
-    let l = ExistingLayer node.layer in
+    let l = ExistingProgram node.layer in
     set_sel_layer l ;
     reset_for_node_change ())
 | None ->
@@ -496,7 +496,7 @@ let update_nodes_sum () =
                         (_, n) ->
         let n = n.value in
         tot_nodes +. 1.,
-        tot_ins +. (n.Node.stats.in_tuple_count |? 0.),
+        tot_ins +. (n.Func.stats.in_tuple_count |? 0.),
         tot_sels +. (n.stats.sel_tuple_count |? 0.),
         tot_outs +. (n.stats.out_tuple_count |? 0.),
         tot_grps +. (n.stats.group_count |? 0.),
@@ -518,7 +518,7 @@ let definition_of_js js =
   of_field js "operation" Js.to_string
 
 let worker_stats_of_js js =
-  Node.{
+  Func.{
     time = of_field js "time" Js.to_float ;
     in_tuple_count = of_opt_field js "in_tuple_count" Js.to_float ;
     out_tuple_count = of_opt_field js "out_tuple_count" Js.to_float ;
@@ -533,10 +533,10 @@ let worker_stats_of_js js =
 
 let node_of_js layer js =
   let name, operation = of_field js "definition" definition_of_js in
-  let id = layer.Layer.name ^"/"^ name in
+  let id = layer.Program.name ^"/"^ name in
   let stats = of_field js "stats" worker_stats_of_js in
-  Node.{
-    layer = layer.Layer.name ;
+  Func.{
+    layer = layer.Program.name ;
     name ; id ; operation ;
     exporting = of_field js "exporting" Js.to_bool ;
     input_type = of_field js "input_type" type_spec_of_js ;
@@ -558,10 +558,10 @@ let update_graph total g =
     let name = Js.(Unsafe.get l "name" |> to_string) in
     let program = Js.(Unsafe.get l "program" |> to_string) in
     let status_js = Js.Unsafe.get l "status" in
-    let status, status_str = Layer.status_of_js status_js in
+    let status, status_str = Program.status_of_js status_js in
     had_layers := name :: !had_layers ;
     let nodes = Js.Unsafe.get l "nodes" in
-    let layer = Layer.{
+    let layer = Program.{
       name ; program ; status_str ; status ; order = i ;
       last_started = Js.(Unsafe.get l "last_started" |> Opt.to_option |>
                          option_map float_of_number) ;
@@ -572,14 +572,14 @@ let update_graph total g =
     for j = 0 to nodes##.length - 1 do
       let n = Js.array_get nodes j in
       let node = node_of_js layer n in
-      had_nodes := node.Node.id :: !had_nodes ;
+      had_nodes := node.Func.id :: !had_nodes ;
       update_node node
     done
   done ;
   (* Order the layers according to dependencies*)
   layers.value <-
     List.fast_sort (fun (_, a) (_, b) ->
-      compare a.value.Layer.order b.value.Layer.order) layers.value ;
+      compare a.value.Program.order b.value.Program.order) layers.value ;
   update_nodes_sum () ;
   if total then (
     layers.value <- List.filter (fun (name, _) ->
@@ -642,7 +642,7 @@ let reload_for_current_page init =
     match current_page.value with
     | PageEventProcessor ->
       (match sel_layer.value with
-      | NoLayer | ExistingLayer _ -> reload_graph ~single:true ()
+      | NoProgram | ExistingProgram _ -> reload_graph ~single:true ()
       | _ -> ()) ;
       if sel_node.value <> "" then (
         reload_tail ~single:true () ;
@@ -720,21 +720,21 @@ let with_node node_id f =
 
 let icon_of_layer ?(suppress_action=false) layer =
   let icon, path, alt, what, while_ =
-    match layer.Layer.status with
+    match layer.Program.status with
     | Edition _ ->
-      "⚙", "/compile/"^ enc layer.Layer.name,
-      "compile", Some ("Compiled "^ layer.Layer.name),
+      "⚙", "/compile/"^ enc layer.Program.name,
+      "compile", Some ("Compiled "^ layer.Program.name),
       "compiling..."
     | Compiling ->
-      "☐", "/graph/"^ enc layer.Layer.name,
+      "☐", "/graph/"^ enc layer.Program.name,
       "reload", None, "compiling..."
     | Compiled ->
-      "▷", "/start/"^ enc layer.Layer.name,
-      "start", Some ("Started "^ layer.Layer.name),
+      "▷", "/start/"^ enc layer.Program.name,
+      "start", Some ("Started "^ layer.Program.name),
       "starting..."
     | Running ->
-      "||", "/stop/"^ enc layer.Layer.name,
-      "stop", Some ("Stopped "^ layer.Layer.name),
+      "||", "/stop/"^ enc layer.Program.name,
+      "stop", Some ("Stopped "^ layer.Program.name),
       "stopping..."
   in
   let js_name = Js.string layer.name in
@@ -751,7 +751,7 @@ let icon_of_layer ?(suppress_action=false) layer =
             (* FIXME: graph won't return a status so the following will
              * fail for Compiling. Make all these return proper JSON RPC *)
             if Js.(Unsafe.get status "success" |> to_bool) then
-              http_get ("/graph/" ^ enc layer.Layer.name) (fun g ->
+              http_get ("/graph/" ^ enc layer.Program.name) (fun g ->
                 update_graph false g ;
                 resync ())))) in
   button ?action
@@ -775,10 +775,10 @@ let del_layer layer_name =
   http_del path ~what ~on_done:(fun () ->
     Jstable.remove spinners.value js_name ;
     change spinners)
-    (done_edit_layer_cb ~redirect_to_layer:NoLayer "delete")
+    (done_edit_layer_cb ~redirect_to_layer:NoProgram "delete")
 
 let layer_panel to_del layer =
-  let is_to_del = to_del = layer.Layer.name in
+  let is_to_del = to_del = layer.Program.name in
   let date_or_never = function
     | Some ts -> date_of_ts ts
     | None -> "never" in
@@ -787,7 +787,7 @@ let layer_panel to_del layer =
   let e = [
     div
       [ clss "title" ]
-      [ p [ clss "name" ] [ text layer.Layer.name ] ;
+      [ p [ clss "name" ] [ text layer.Program.name ] ;
         with_param spinners (fun spins ->
           Js.Optdef.case (Jstable.find spins (Js.string layer.name))
             (fun () ->
@@ -823,7 +823,7 @@ let layer_panel to_del layer =
                 [ clss "overwrite2" ]
                 [ p []
                     [ text "Delete layer " ;
-                      em [ text layer.Layer.name ] ;
+                      em [ text layer.Program.name ] ;
                       text "?" ] ;
                   p [ clss "yes-or-no" ]
                     [ span ~action:(fun _ -> del_layer layer.name)
@@ -831,12 +831,12 @@ let layer_panel to_del layer =
                       text "/" ;
                       span ~action:(fun _ -> set layer_to_delete "")
                         [ clss "no" ] [ text "NO" ] ] ] ] :: e )
-    else if slayer = ExistingLayer layer.name then
-      div ~action:(fun _ -> set_sel_layer NoLayer ; set_sel_node None)
+    else if slayer = ExistingProgram layer.name then
+      div ~action:(fun _ -> set_sel_layer NoProgram ; set_sel_node None)
         [ clss "selected-actionable layer" ] e
     else
       div ~action:(fun _ ->
-          let l = ExistingLayer layer.name in
+          let l = ExistingProgram layer.name in
           set_sel_layer l ;
           set_sel_node None ;
           set layer_to_delete "")
@@ -849,17 +849,17 @@ let layers_panel =
         with_param layer_to_delete (fun to_del ->
           List.fold_left (fun lst (_, p) ->
             with_param p (fun layer ->
-              if disp_temp || not (is_temp layer.Layer.name) then
+              if disp_temp || not (is_temp layer.Program.name) then
                 layer_panel to_del layer
               else group []) :: lst) [] layers |>
           List.rev |>
           group))) ;
     with_param sel_layer (fun sl ->
       let c, action =
-        if sl = NewLayer then "selected new-layer", (fun _ ->
-          set_sel_layer NoLayer)
+        if sl = NewProgram then "selected new-layer", (fun _ ->
+          set_sel_layer NoProgram)
         else "actionable new-layer", (fun _ ->
-          set_sel_layer NewLayer ;
+          set_sel_layer NewProgram ;
           set_sel_node None ;
           set layer_to_delete "") in
       button ~action [ clss c ] [ text "new layer" ]) ]
@@ -926,7 +926,7 @@ let short_node_list ?(max_len=20) layer lst =
     ) "" lst)
 
 let node_tbody_row node =
-  let dt = node.Node.stats.time -. node.Node.last_stats.time in
+  let dt = node.Func.stats.time -. node.Func.last_stats.time in
   let na = td [ clss "number" ] [ text "n/a" ] in
   let unk = td [ clss "number" ] [ text "unknown" ] in
   let tdh ~to_str tot x =
@@ -986,7 +986,7 @@ let node_tbody_row node =
      * Instead, we could have one individual boolean state variable per line and this would
      * depend only on this. *)
     with_param sel_node (fun sel ->
-      if sel = node.Node.id then
+      if sel = node.Func.id then
         tr ~action:(fun _ -> set_sel_node None)
           [ clss "selected-actionable" ] cols
       else
@@ -999,7 +999,7 @@ let node_sorter col =
   let make f (_, a) (_, b) =
     (* TODO: when !cumul_stats, f should take both a and last_a *)
     f a.value b.value in
-  let open Node in
+  let open Func in
   match col with
   | "#in" ->
     make (fun a b -> compare b.stats.in_tuple_count a.stats.in_tuple_count)
@@ -1074,10 +1074,10 @@ let nodes_panel =
                 nodes |>
                 List.filter (fun (_, p) ->
                   let n = p.value in
-                  (sel_lay = ExistingLayer n.Node.layer ||
-                   (sel_lay = NoLayer &&
-                    (disp_temp || not (is_temp n.Node.layer)))) &&
-                  string_starts_with node_flt n.Node.name) |>
+                  (sel_lay = ExistingProgram n.Func.layer ||
+                   (sel_lay = NoProgram &&
+                    (disp_temp || not (is_temp n.Func.layer)))) &&
+                  string_starts_with node_flt n.Func.name) |>
                 List.fold_left (fun lst p -> p :: lst) [] |>
                 List.fast_sort (node_sorter sel_col) in
               List.map (fun (_, p) ->
@@ -1303,7 +1303,7 @@ let save_layer _ =
   and path = "/graph"
   and what = "Saved "^ !(edl.layer_name) in
   set editor_spinning true ;
-  let redirect_to_layer = ExistingLayer !(edl.layer_name) in
+  let redirect_to_layer = ExistingProgram !(edl.layer_name) in
   http_put path content ~what
     ~on_done:(fun () -> set editor_spinning false)
     (done_edit_layer_cb ~redirect_to_layer "save")
@@ -1327,7 +1327,7 @@ let layer_editor_panel =
             [ if spinning then
                 button [] [ text "Cancel" ]
               else
-                button ~action:(fun _ -> set_sel_layer NoLayer)
+                button ~action:(fun _ -> set_sel_layer NoProgram)
                   [ clss "actionable" ] [ text "Cancel" ] ;
               if spinning then
                 button [] [ text "Save" ]
@@ -1346,18 +1346,18 @@ let output_panel =
       div [ id "timechart" ] [ timechart_panel ] ]
 
 let top_layers =
-  div [ id "layers" ] [ h1 [] [ text "Layers" ] ; layers_panel ]
+  div [ id "layers" ] [ h1 [] [ text "Programs" ] ; layers_panel ]
 
 let top_nodes =
-  div [ id "nodes" ] [ h1 [] [ text "Nodes" ] ; nodes_panel ]
+  div [ id "nodes" ] [ h1 [] [ text "Funcs" ] ; nodes_panel ]
 
 let event_processor_page =
   with_param sel_node (function
     "" ->
     with_param sel_layer (function
-      NoLayer ->
+      NoProgram ->
       div [ id "top" ] [ top_layers ; top_nodes ]
-    | ExistingLayer slayer ->
+    | ExistingProgram slayer ->
       with_param layers (fun layers ->
         match List.assoc slayer layers with
         | exception Not_found -> group []
@@ -1374,7 +1374,7 @@ let event_processor_page =
                         [ text "Running layer cannot be edited" ] ;
                       elmt "pre" [ clss "program" ]
                         [ text layer.program ] ] ]))
-    | NewLayer ->
+    | NewProgram ->
       div [ id "top" ] [ top_layers ; layer_editor_panel ])
   | snode ->
     match List.assoc snode nodes.value with

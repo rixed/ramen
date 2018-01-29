@@ -171,9 +171,10 @@ let switch_accepted headers al =
 let of_json_body what ppp body =
   try PPP.of_string_exc ppp body |> return
   with e ->
+    let err = Printexc.to_string e in
     !logger.info "%s: Cannot parse received body: %S, Exception %s"
-      what body (Printexc.to_string e) ;
-    bad_request "Can not parse body"
+      what body err ;
+    bad_request ("Can not parse body: "^ err)
 
 let of_json headers what ppp body =
   let ct = get_content_type headers |> String.lowercase in

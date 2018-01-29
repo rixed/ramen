@@ -17,13 +17,13 @@ open Batteries
 open RamenLog
 open Helpers
 module C = RamenConf
-module N = RamenConf.Node
-module L = RamenConf.Layer
+module N = RamenConf.Func
+module L = RamenConf.Program
 open RamenSharedTypes
 open RamenSharedTypesJS
 open Lang
 
-exception SyntaxErrorInNode of string * syntax_error
+exception SyntaxErrorInFunc of string * syntax_error
 exception MissingDependency of N.t (* The one we depend on *)
 exception AlreadyCompiled
 
@@ -764,8 +764,8 @@ let check_aggregate conf node fields and_all_others where key top
   and parents = List.map (fun (layer, name) ->
       try C.find_node conf layer name |> snd
       with Not_found ->
-        let e = UnknownNode (layer ^"/"^ name) in
-        raise (SyntaxErrorInNode (node.N.name, e))
+        let e = UnknownFunc (layer ^"/"^ name) in
+        raise (SyntaxErrorInFunc (node.N.name, e))
     ) node.N.parents in
   let open Operation in
   (
@@ -891,7 +891,7 @@ let check_operation conf node =
 
 let () =
   Printexc.register_printer (function
-    | SyntaxErrorInNode (n, e) ->
+    | SyntaxErrorInFunc (n, e) ->
       Some ("In node "^ n ^": "^ string_of_syntax_error e)
     | MissingDependency node ->
       Some ("Missing dependency for node "^ N.fq_name node)
@@ -906,7 +906,7 @@ let check_node_types conf node =
   ) with SyntaxError e ->
     !logger.debug "Compilation error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
-    raise (SyntaxErrorInNode (node.N.name, e))
+    raise (SyntaxErrorInFunc (node.N.name, e))
 
 (* Since we can have loops within a layer we can not propagate types
  * immediately. Also, the star selection prevent us from propagating
@@ -934,7 +934,7 @@ let set_all_types conf layer =
       let typ = typ_of e in
       if typ.nullable = None || typ.scalar_typ = None then
         let what = IO.to_string (print true) e in
-        raise (SyntaxErrorInNode (node.N.name, CannotCompleteTyping what))
+        raise (SyntaxErrorInFunc (node.N.name, CannotCompleteTyping what))
     ) node.N.operation
   ) layer.L.persist.L.nodes
   (* TODO: Move all typing in a separate module *)
@@ -1088,7 +1088,7 @@ let compile conf layer =
   | Compiling -> fail AlreadyCompiled
   | Edition _ ->
     !logger.debug "Trying to compile layer %s" layer.L.name ;
-    C.Layer.set_status layer Compiling ;
+    C.Program.set_status layer Compiling ;
     try%lwt
       let%lwt () = wrap (fun () ->
         untyped_dependency conf layer |>
@@ -1133,8 +1133,8 @@ let compile conf layer =
               compile_node conf node :: thds)
           ) layer.L.persist.L.nodes (Set.empty, []) in
       let%lwt () = join thds in
-      C.Layer.set_status layer Compiled ;
+      C.Program.set_status layer Compiled ;
       return_unit
     with e ->
-      C.Layer.set_status layer (Edition (Printexc.to_string e)) ;
+      C.Program.set_status layer (Edition (Printexc.to_string e)) ;
       fail e

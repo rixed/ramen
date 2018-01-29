@@ -2,8 +2,9 @@ open Batteries
 open Lwt
 open RamenLog
 module C = RamenConf
-module N = RamenConf.Node
-module L = RamenConf.Layer
+module N = RamenConf.Func
+module L = RamenConf.Program
+module SN = RamenSharedTypes.Info.Func
 open RamenSharedTypesJS
 open Helpers
 
@@ -140,7 +141,7 @@ let rec run_node conf layer node =
         return_unit
       | _, status ->
         (* TODO: save this error on the node record *)
-        !logger.info "Node %s (pid %d) %s."
+        !logger.info "Function %s (pid %d) %s."
           (N.fq_name node) pid (Helpers.string_of_process_status status) ;
         (* We might want to restart it: *)
         (match status with Unix.WSIGNALED signal when signal <> Sys.sigterm ->
@@ -235,7 +236,7 @@ let stop conf layer =
         | history -> RamenExport.archive_history conf history) ;
         match node.N.pid with
         | None ->
-          !logger.error "Node %s has no pid?!" node.N.name ;
+          !logger.error "Function %s has no pid?!" node.N.name ;
           return_unit
         | Some pid ->
           !logger.debug "Stopping node %s, pid %d" node.N.name pid ;
@@ -324,7 +325,7 @@ let read_reports conf =
         RamenBinocle.unserialize tx in
       RingBuf.dequeue_commit tx ;
       RWLock.with_w_lock reports_lock (fun () ->
-        Hashtbl.replace last_reports worker RamenSharedTypes.Node.{
+        Hashtbl.replace last_reports worker SN.{
           time ;
           in_tuple_count = Option.map Uint64.to_int ic ;
           selected_tuple_count = Option.map Uint64.to_int sc ;

@@ -3,7 +3,7 @@ open RamenLog
 open RamenSharedTypes
 open RamenSharedTypesJS
 module C = RamenConf
-module N = RamenConf.Node
+module N = RamenConf.Func
 open Helpers
 open Stdint
 
@@ -520,11 +520,11 @@ let bucket_min b =
 let bucket_max b =
   if b.count = 0 then None else Some b.max
 
-exception NodeHasNoEventTimeInfo of string
+exception FuncHasNoEventTimeInfo of string
 let () =
   Printexc.register_printer (function
-    | NodeHasNoEventTimeInfo n -> Some (
-      Printf.sprintf "Node %S has no event-time information" n)
+    | FuncHasNoEventTimeInfo n -> Some (
+      Printf.sprintf "Function %S has no event-time information" n)
     | _ -> None)
 
 (* Return the rank of field named [n] in the serialized tuple. *)
@@ -544,7 +544,7 @@ let fold_tuples_and_update_ts_cache
       node history init f =
   let open Lang.Operation in
   match export_event_info node.N.operation with
-  | None -> raise (NodeHasNoEventTimeInfo node.N.name)
+  | None -> raise (FuncHasNoEventTimeInfo node.N.name)
   | Some ((start_field, start_scale), duration_info) ->
     let ti = find_ser_field node.N.out_type start_field in
     let t2_of_tup =
@@ -600,7 +600,7 @@ let build_timeseries node data_field max_data_points
   let bucket_of_time t = int_of_float ((t -. since) /. dt) in
   match Hashtbl.find imported_tuples (history_key node) with
   | exception Not_found ->
-    !logger.info "Node %s has no history" (N.fq_name node) ;
+    !logger.info "Function %s has no history" (N.fq_name node) ;
     [||], [||]
   | history ->
     let f_opt f x y = match x, y with

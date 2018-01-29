@@ -246,7 +246,7 @@ let timerange debug ramen_url node_name () =
     match%lwt http_get url >>=
                ppp_of_string_exc time_range_resp_ppp with
     | NoData ->
-      Printf.printf "Node has no data (yet)\n%!" ;
+      Printf.printf "Function has no data (yet)\n%!" ;
       return_unit
     | TimeRange (oldest, latest) ->
       Printf.printf "%f...%f\n%!" oldest latest ;

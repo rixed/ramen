@@ -1,6 +1,6 @@
 open Batteries
 open RamenLog
-module N = RamenSharedTypes.Node
+module SN = RamenSharedTypes.Info.Func
 
 type options = { debug : bool ; monitor : bool }
 
@@ -24,11 +24,11 @@ let enc = Uri.pct_encode
  * If you wish to process traffic info you must feed on both c2s and s2c.
  *)
 
-let make_node name operation = N.{ name ; operation }
+let make_node name operation = SN.{ name ; operation }
 
 let program_of_nodes nodes =
   List.fold_left (fun s n ->
-    s ^ "DEFINE '"^ n.N.name ^"' AS "^ n.N.operation ^";\n"
+    s ^ "DEFINE '"^ n.SN.name ^"' AS "^ n.SN.operation ^";\n"
   ) "" nodes
 
 let rep sub by str = String.nreplace ~str ~sub ~by
@@ -744,7 +744,7 @@ let layer_of_bcns bcns dataset_name export =
     let anom name timeseries =
       let alert_fields = ("metric", name) :: alert_fields in
       let pred, anom =
-        anomaly_detection_nodes bcn.avg_window minutely.N.name name timeseries alert_fields export in
+        anomaly_detection_nodes bcn.avg_window minutely.SN.name name timeseries alert_fields export in
       all_nodes := pred :: anom :: !all_nodes in
     (* TODO: a volume anomaly for other protocols as well *)
     anom "volume"

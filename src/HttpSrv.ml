@@ -10,10 +10,10 @@ open Helpers
 open RamenHttpHelpers
 open Lang
 module C = RamenConf
-module N = RamenConf.Node
-module L = RamenConf.Layer
-module SL = RamenSharedTypes.Layer
-module SN = RamenSharedTypes.Node
+module N = RamenConf.Func
+module L = RamenConf.Program
+module SL = RamenSharedTypes.Info.Program
+module SN = RamenSharedTypes.Info.Func
 
 let hostname =
   let cached = ref "" in
@@ -192,7 +192,7 @@ let get_graph conf headers layer_opt =
 (*
     Add/Remove layers
 
-    Layers and nodes within a layer are referred to via name that can be
+    Programs and nodes within a layer are referred to via name that can be
     anything as long as they are unique.  So the clients decide on the name.
     The server ensure uniqueness by forbidding creation of a new layers by the
     same name as one that exists already.
@@ -202,7 +202,7 @@ let get_graph conf headers layer_opt =
 let find_node_or_fail conf layer_name node_name =
   match C.find_node conf layer_name node_name with
   | exception Not_found ->
-    bad_request ("Node "^ layer_name ^"/"^ node_name ^" does not exist")
+    bad_request ("Function "^ layer_name ^"/"^ node_name ^" does not exist")
   | layer, _node as both ->
     RamenProcesses.use_layer (Unix.gettimeofday ()) layer ;
     return both
@@ -232,7 +232,7 @@ let del_layer conf _headers layer_name =
   C.with_wlock conf (fun () ->
     match Hashtbl.find conf.C.graph.C.layers layer_name with
     | exception Not_found ->
-      let e = "Layer "^ layer_name ^" does not exist" in
+      let e = "Program "^ layer_name ^" does not exist" in
       bad_request e
     | layer ->
       del_layer_ conf layer) >>=
@@ -259,7 +259,7 @@ let put_layer conf headers body =
   let layer_name = msg.name in
   (* Disallow anonymous layers for simplicity: *)
   if layer_name = "" then
-    bad_request "Layers must have non-empty names" else (
+    bad_request "Programs must have non-empty names" else (
   (* Delete the layer if it already exists. No worries the conf won't be
    * changed if there is any error. *)
   C.with_wlock conf (fun () ->
@@ -334,7 +334,7 @@ let compile conf headers layer_opt =
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with SyntaxError _
-     | Compiler.SyntaxErrorInNode _
+     | Compiler.SyntaxErrorInFunc _
      | C.InvalidCommand _ as e ->
        bad_request (Printexc.to_string e)
      | e -> fail e
@@ -349,7 +349,7 @@ let run conf headers layer_opt =
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with SyntaxError _
-     | Compiler.SyntaxErrorInNode _
+     | Compiler.SyntaxErrorInFunc _
      | C.InvalidCommand _ as e ->
        bad_request (Printexc.to_string e)
      | x -> fail x
@@ -491,7 +491,7 @@ let timeseries conf headers body =
       try
         build_timeseries node data_field msg.max_data_points
                          msg.since msg.until consolidation
-      with NodeHasNoEventTimeInfo _ as e ->
+      with FuncHasNoEventTimeInfo _ as e ->
         bad_request_exn (Printexc.to_string e))
   and create_temporary_node select_x select_y from where =
     (* First, we need to find out the name for this operation, and create it if
@@ -551,7 +551,7 @@ let timeseries conf headers body =
     and node_name = "operation" in
     (* So far so good. In all likelihood this layer exists already: *)
     (if Hashtbl.mem conf.C.graph.C.layers layer_name then (
-      !logger.debug "Layer %S already there" layer_name ;
+      !logger.debug "Program %S already there" layer_name ;
       return_unit
     ) else (
       (* Add this layer to the running configuration: *)
@@ -570,7 +570,7 @@ let timeseries conf headers body =
               try C.layer_node_of_user_string node |> return
               with Not_found -> bad_request ("node "^ node ^" does not exist") in
             return (layer, node, data_field)
-          | NewTempNode { select_x ; select_y ; from ; where } ->
+          | NewTempFunc { select_x ; select_y ; from ; where } ->
             C.with_wlock conf (fun () ->
               create_temporary_node select_x select_y from where) in
         let%lwt times, values =
@@ -588,7 +588,7 @@ let timerange_of_node node =
   let k = RamenExport.history_key node in
   match Hashtbl.find RamenExport.imported_tuples k with
   | exception Not_found ->
-    !logger.debug "Node %s has no history" (N.fq_name node) ; NoData
+    !logger.debug "Function %s has no history" (N.fq_name node) ; NoData
   | h ->
     (match RamenExport.hist_min_max h with
     | None -> NoData
@@ -606,7 +606,7 @@ let get_timerange conf headers layer_name node_name =
       let%lwt _layer, node =
         find_exporting_node_or_fail conf layer_name node_name in
       try return (timerange_of_node node)
-      with RamenExport.NodeHasNoEventTimeInfo _ as e ->
+      with RamenExport.FuncHasNoEventTimeInfo _ as e ->
         bad_request (Printexc.to_string e)) in
   switch_accepted headers [
     Consts.json_content_type, (fun () ->
@@ -676,7 +676,7 @@ let plot conf _headers layer_name node_name params =
   let%lwt until =
     if rel_to_metric then
       match timerange_of_node node with
-      | exception (RamenExport.NodeHasNoEventTimeInfo _ as e) ->
+      | exception (RamenExport.FuncHasNoEventTimeInfo _ as e) ->
         bad_request (Printexc.to_string e)
       | NoData -> return now
       | TimeRange (_oldest, latest) -> return latest
@@ -697,7 +697,7 @@ let plot conf _headers layer_name node_name params =
               build_timeseries node data_field (int_of_float svg_width + 1)
                                since until bucket_avg)
           ) fields
-      with RamenExport.NodeHasNoEventTimeInfo _ as e ->
+      with RamenExport.FuncHasNoEventTimeInfo _ as e ->
         bad_request_exn (Printexc.to_string e)) in
   let _fst_pen, (fst_times, _fst_data) = List.hd data_points in
   let nb_pts = Array.length fst_times in
@@ -758,7 +758,7 @@ let upload conf headers layer node body =
     Lwt_unix.rename path (dir ^"/_"^ fname) >>=
     respond_ok
   | _ ->
-    bad_request ("Node "^ N.fq_name node ^" does not accept uploads")
+    bad_request ("Function "^ N.fq_name node ^" does not accept uploads")
 
 let () =
   async_exception_hook := (fun exn ->
@@ -856,7 +856,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   RamenAlerter.start ?initial_json:alert_conf_json conf ;
   (* Start the HTTP server: *)
   let lyr = function
-    | [] -> bad_request_exn "Layer name missing from URL"
+    | [] -> bad_request_exn "Program name missing from URL"
     | lst -> String.concat "/" lst in
   let lyr_node_of path =
     let rec loop ls = function

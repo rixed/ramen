@@ -86,61 +86,64 @@ type expr_type_info =
     nullable_info : bool option ;
     typ_info : scalar_typ option } [@@ppp PPP_JSON]
 
-(* Nodes  / Layers / Graphs *)
+(* Funcs  / Programs / Graphs *)
 
-module Node =
+module Info =
 struct
-  type definition =
-    { name : string ; operation : string } [@@ppp PPP_JSON]
+  module Func =
+  struct
+    type definition =
+      { name : string ; operation : string } [@@ppp PPP_JSON]
 
-  type worker_stats =
-    { time : float ;
-      in_tuple_count : int option ;
-      selected_tuple_count : int option ;
-      out_tuple_count : int option ;
-      group_count : int option ;
-      cpu_time : float ;
-      ram_usage : int ;
-      in_sleep : float option ;
-      out_sleep : float option ;
-      in_bytes : int option ;
-      out_bytes : int option } [@@ppp PPP_JSON]
+    type worker_stats =
+      { time : float ;
+        in_tuple_count : int option ;
+        selected_tuple_count : int option ;
+        out_tuple_count : int option ;
+        group_count : int option ;
+        cpu_time : float ;
+        ram_usage : int ;
+        in_sleep : float option ;
+        out_sleep : float option ;
+        in_bytes : int option ;
+        out_bytes : int option } [@@ppp PPP_JSON]
 
-  type info =
-    (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
-    { definition : definition ;
-      exporting : bool ;
-      input_type : expr_type_info list ;
-      output_type : expr_type_info list ;
-      (* fq names of parents/children *)
-      parents : string list ;
-      children : string list ;
-      (* Info about the running process (if any) *)
-      signature : string option ;
-      pid : int option ;
-      stats : worker_stats } [@@ppp PPP_JSON]
+    type info =
+      (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
+      { definition : definition ;
+        exporting : bool ;
+        input_type : expr_type_info list ;
+        output_type : expr_type_info list ;
+        (* fq names of parents/children *)
+        parents : string list ;
+        children : string list ;
+        (* Info about the running process (if any) *)
+        signature : string option ;
+        pid : int option ;
+        stats : worker_stats } [@@ppp PPP_JSON]
+  end
+
+  module Program =
+  struct
+    type status = RamenSharedTypesJS.layer_status [@@ppp PPP_JSON]
+
+    let string_of_status = function
+      | Edition reason -> "Edition ("^ reason ^")"
+      | Compiling -> "Compiling"
+      | Compiled -> "Compiled"
+      | Running -> "Running"
+
+    type info =
+      { name : string ;
+        program : string ;
+        nodes : Func.info list ;
+        status : status [@ppp_default (RamenSharedTypesJS.Edition "")] ;
+        last_started : float option ;
+        last_stopped : float option } [@@ppp PPP_JSON]
+  end
 end
 
-module Layer =
-struct
-  type status = RamenSharedTypesJS.layer_status [@@ppp PPP_JSON]
-
-  let string_of_status = function
-    | Edition reason -> "Edition ("^ reason ^")"
-    | Compiling -> "Compiling"
-    | Compiled -> "Compiled"
-    | Running -> "Running"
-
-  type info =
-    { name : string ;
-      program : string ;
-      nodes : Node.info list ;
-      status : status [@ppp_default (RamenSharedTypesJS.Edition "")] ;
-      last_started : float option ;
-      last_stopped : float option } [@@ppp PPP_JSON]
-end
-
-type get_graph_resp = Layer.info list [@@ppp PPP_JSON]
+type get_graph_resp = Info.Program.info list [@@ppp PPP_JSON]
 
 type put_layer_req =
   { (* Name of the layer. If this layer already exists then it is
@@ -187,7 +190,7 @@ type complete_resp = string list [@@ppp PPP_JSON]
 type timeserie_spec = Predefined of { node : string ; data_field : string }
                     (* If select_x is not given we will reuse the parent event
                      * configuration *)
-                    | NewTempNode of { select_x : string [@ppp_default ""] ;
+                    | NewTempFunc of { select_x : string [@ppp_default ""] ;
                                        select_y : string ;
                                        from : string [@ppp_default ""] ;
                                        where : string [@ppp_default ""] }

@@ -61,9 +61,9 @@ type syntax_error =
   | CannotCompleteTyping of string
   | CannotGenerateCode of { node : string ; cmd : string ; status : string }
   | AliasNotUnique of string
-  | NodeNameNotUnique of string
+  | FuncNameNotUnique of string
   | OnlyTumblingWindowForTop
-  | UnknownNode of string
+  | UnknownFunc of string
 
 exception SyntaxError of syntax_error
 
@@ -116,8 +116,8 @@ let string_of_syntax_error =
       node cmd status
   | AliasNotUnique name ->
     "Alias is not unique: "^ name
-  | NodeNameNotUnique name ->
-    "Node names must be unique within a layer but '"^ name ^"' is defined \
+  | FuncNameNotUnique name ->
+    "Function names must be unique within a layer but '"^ name ^"' is defined \
      several times"
   | OnlyTumblingWindowForTop ->
     "When using TOP the only windowing mode supported is \
@@ -125,7 +125,7 @@ let string_of_syntax_error =
   | TupleHasOnlyVirtuals { tuple ; alias } ->
     "Tuple "^ string_of_prefix tuple ^" has only virtual fields, so no \
      field named "^ alias
-  | UnknownNode n ->
+  | UnknownFunc n ->
     "Referenced node "^ n ^" does not exist"
 
 let () =
@@ -2654,7 +2654,7 @@ struct
     List.fold_left (fun s n ->
       Operation.check n.operation ;
       if Set.mem n.name s then
-        raise (SyntaxError (NodeNameNotUnique n.name)) ;
+        raise (SyntaxError (FuncNameNotUnique n.name)) ;
       Set.add n.name s
     ) Set.empty lst |> ignore
 

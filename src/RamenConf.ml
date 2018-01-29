@@ -53,7 +53,7 @@ exception BadTupleTypedness of string
 let typed_tuple_type = function
   | TypedTuple { user ; ser } -> user, ser
   | UntypedTuple _ ->
-      raise (BadTupleTypedness "Node should be typed by now!")
+      raise (BadTupleTypedness "Function should be typed by now!")
 
 let untyped_tuple_type = function
   | TypedTuple _ ->
@@ -123,11 +123,11 @@ let tup_typ_of_temp_tup_type ttt =
 let archive_file dir (block_start, block_stop) =
   dir ^"/"^ string_of_int block_start ^"-"^ string_of_int block_stop
 
-module Node =
+module Func =
 struct
   type t =
-    { (* Nodes are added/removed to/from the graph in group called layers.
-       * Layers can connect to nodes from any other layers and non existing
+    { (* Funcs are added/removed to/from the graph in group called layers.
+       * Programs can connect to nodes from any other layers and non existing
        * nodes, but there is still the notion of layers "depending" (or lying on)
        * others; we must prevent change of higher level layers to restart lower
        * level layers, while update of a low level layers can trigger the
@@ -178,21 +178,21 @@ end
 let exec_of_node persist_dir node =
   persist_dir ^"/workers/bin/"
               ^ RamenVersions.codegen
-              ^"/ramen_worker_"^ node.Node.signature
+              ^"/ramen_worker_"^ node.Func.signature
 
 let tmp_input_of_node persist_dir node =
-  persist_dir ^"/workers/inputs/"^ Node.fq_name node ^"/"
-              ^ type_signature node.Node.in_type
+  persist_dir ^"/workers/inputs/"^ Func.fq_name node ^"/"
+              ^ type_signature node.Func.in_type
 
 let upload_dir_of_node persist_dir node =
   tmp_input_of_node persist_dir node ^"/uploads"
 
 exception InvalidCommand of string
 
-module Layer =
+module Program =
 struct
   type persist =
-    { nodes : (string, Node.t) Hashtbl.t ;
+    { nodes : (string, Func.t) Hashtbl.t ;
       (* Also keep the string as defined by the client to preserve
        * formatting, comments, etc: *)
       mutable program : string ;
@@ -211,19 +211,19 @@ struct
       mutable importing_threads : unit Lwt.t list }
 
   let set_status layer status =
-    !logger.debug "Layer %s status %s -> %s"
+    !logger.debug "Program %s status %s -> %s"
       layer.name
-      (Layer.string_of_status layer.persist.status)
-      (Layer.string_of_status status) ;
+      (Info.Program.string_of_status layer.persist.status)
+      (Info.Program.string_of_status status) ;
     layer.persist.status <- status ;
     layer.persist.last_status_change <- Unix.gettimeofday () ;
     (* If we are not running, clean pid info *)
     if status <> Running then
-      Hashtbl.iter (fun _ n -> n.Node.pid <- None) layer.persist.nodes ;
+      Hashtbl.iter (fun _ n -> n.Func.pid <- None) layer.persist.nodes ;
     (* If we are now in Edition _untype_ the nodes *)
     match status with Edition _ ->
       Hashtbl.iter (fun _ n ->
-        let open Node in
+        let open Func in
         n.in_type <- UntypedTuple (make_temp_tup_typ ()) ;
         n.out_type <- UntypedTuple (make_temp_tup_typ ()) ;
         n.pid <- None) layer.persist.nodes
@@ -234,7 +234,7 @@ struct
     | Edition _ | Compiling -> false
     | Compiled | Running -> true
 
-  (* Layer edition: only when stopped *)
+  (* Program edition: only when stopped *)
   let set_editable layer reason =
     match layer.persist.status with
     | Edition _ ->
@@ -260,7 +260,7 @@ struct
             if Set.mem dependency called then called else (
               f dependency ;
               Set.add dependency called)
-          ) called node.Node.parents
+          ) called node.Func.parents
       ) layer.persist.nodes (Set.singleton layer.name) |>
     ignore
 
@@ -273,7 +273,7 @@ struct
           List.fold_left (fun (progress, ordered, later) l ->
               try
                 iter_dependencies l (fun dep ->
-                  !logger.debug "Layer %S depends on %S" l.name dep ;
+                  !logger.debug "Program %S depends on %S" l.name dep ;
                   let in_list = List.exists (fun o -> o.name = dep) in
                   if in_list layers && not (in_list ordered) then
                     raise Exit) ;
@@ -289,9 +289,9 @@ struct
 end
 
 type graph =
-  { layers : (string, Layer.t) Hashtbl.t }
+  { layers : (string, Program.t) Hashtbl.t }
 
-type persisted = (string, Layer.persist) Hashtbl.t
+type persisted = (string, Program.persist) Hashtbl.t
 
 module Alerter =
 struct
@@ -410,12 +410,12 @@ let parse_program program =
     nodes
 
 let del_layer conf layer =
-  let open Layer in
+  let open Program in
   !logger.info "Deleting layer %S" layer.name ;
   if layer.persist.status = Running then
-    raise (InvalidCommand "Layer is running") ;
+    raise (InvalidCommand "Program is running") ;
   if layer.importing_threads <> [] then
-    raise (InvalidCommand "Layer has running threads") ;
+    raise (InvalidCommand "Program has running threads") ;
   Hashtbl.remove conf.graph.layers layer.name
 
 let save_file_of persist_dir =
@@ -426,7 +426,7 @@ let fold_nodes conf init f =
   Hashtbl.fold (fun _ layer prev ->
     Hashtbl.fold (fun _ node prev ->
       f prev layer node
-    ) layer.Layer.persist.Layer.nodes prev
+    ) layer.Program.persist.Program.nodes prev
   ) conf.graph.layers init
 
 let layer_node_of_user_string ?default_layer s =
@@ -459,7 +459,7 @@ let make_node layer_name node_name operation =
       try layer_node_of_user_string ~default_layer:layer_name p
       with Not_found ->
         raise (InvalidCommand ("Parent node "^ p ^" does not exist"))) in
-  Node.{
+  Func.{
     layer = layer_name ; name = node_name ;
     operation ; signature = "" ; parents ;
     (* Set once the whole graph is known and reset each time the graph is
@@ -473,7 +473,7 @@ let make_node layer_name node_name operation =
 let make_layer ?(timeout=0.) conf name program =
   assert (String.length name > 0) ;
   let now = Unix.gettimeofday () in
-  let persist = Layer.{
+  let persist = Program.{
       nodes = Hashtbl.create 17 ; program ;
       timeout ; last_used = now ;
       status = Edition "" ; last_status_change = now ;
@@ -484,31 +484,31 @@ let make_layer ?(timeout=0.) conf name program =
     let node_name = def.Lang.Program.name in
     if Hashtbl.mem persist.nodes node_name then
       raise (InvalidCommand (
-         "Node "^ node_name ^" already exists in layer "^ name)) ;
+         "Function "^ node_name ^" already exists in layer "^ name)) ;
     make_node name node_name def.Lang.Program.operation |>
     Hashtbl.add persist.nodes def.name) ;
-  let layer = Layer.{ name ; persist ; importing_threads = [] } in
+  let layer = Program.{ name ; persist ; importing_threads = [] } in
   Hashtbl.add conf.graph.layers name layer ;
   layer
 
 (* [restart] is true when ramen restarted and read its config for the first
  * time. Some additional cleaning needs to be done then. *)
 let load_layer ?(restart=false) ~persist persist_dir name =
-  let layer = Layer.{ name ; persist ; importing_threads = [] } in
+  let layer = Program.{ name ; persist ; importing_threads = [] } in
   if restart then (
     !logger.info "Reloading and cleaning the configuration for layer %S \
                   after restart." name ;
     (* Demote the status to compiled since the workers can't be running
      * anymore. *)
-    if persist.status = Running then Layer.set_status layer Compiled ;
+    if persist.status = Running then Program.set_status layer Compiled ;
     (* Further demote to edition if the binaries are not there anymore
      * (which will be the case if codegen version changed): *)
     if persist.status = Compiled &&
        Hashtbl.values persist.nodes |> Enum.exists (fun n ->
          not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
-    then Layer.set_status layer (Edition "") ;
+    then Program.set_status layer (Edition "") ;
     (* Also, we cannot be compiling anymore: *)
-    if persist.status = Compiling then Layer.set_status layer (Edition "") ;
+    if persist.status = Compiling then Program.set_status layer (Edition "") ;
     (* FIXME: also, as a precaution, delete any temporary layer (maybe we
      * crashed because of it? *)) ;
   layer
@@ -540,7 +540,7 @@ let save_conf conf =
   if conf.do_persist then
     let persist =
       Hashtbl.map (fun _ l ->
-        l.Layer.persist) conf.graph.layers in
+        l.Program.persist) conf.graph.layers in
     let save_file = save_file_of conf.persist_dir in
     !logger.debug "Saving graph in %S" save_file ;
     mkdir_all ~is_file:true save_file ;
@@ -586,7 +586,7 @@ let with_wlock conf f =
 
 let find_node conf layer name =
   let layer = Hashtbl.find conf.graph.layers layer in
-  layer, Hashtbl.find layer.Layer.persist.Layer.nodes name
+  layer, Hashtbl.find layer.Program.persist.Program.nodes name
 
 let make_conf do_persist ramen_url debug persist_dir
               max_simult_compilations max_history_archives =
@@ -607,11 +607,11 @@ let complete_node_name conf s only_exporting =
   let s = String.(lowercase (trim s)) in
   (* TODO: a better search structure for case-insensitive prefix search *)
   fold_nodes conf [] (fun lst _layer node ->
-      let lc_name = String.lowercase node.Node.name in
-      let fq_name = Node.fq_name node in
+      let lc_name = String.lowercase node.Func.name in
+      let fq_name = Func.fq_name node in
       let lc_fq_name = String.lowercase fq_name in
       if String.(starts_with lc_fq_name s || starts_with lc_name s) &&
-         (not only_exporting || Lang.Operation.is_exporting node.Node.operation)
+         (not only_exporting || Lang.Operation.is_exporting node.Func.operation)
       then fq_name :: lst
       else lst
     )
@@ -624,7 +624,7 @@ let complete_field_name conf name s =
     match find_node conf layer_name node_name with
     | exception Not_found -> []
     | _layer, node ->
-      (match node.Node.out_type with
+      (match node.Func.out_type with
       | UntypedTuple _ -> []
       (* Avoid private fields by looking only at ser: *)
       | TypedTuple { ser ; _ } ->
