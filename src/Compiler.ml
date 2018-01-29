@@ -348,7 +348,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
       (* First thing we know is that if the field is from TupleGroupPrevious
        * then it is nullable: *)
       (
-        if !tuple = TupleGroupPrevious then (
+        if !tuple = TupleGroupPrevious || !tuple = TupleOutPrevious then (
           !logger.debug "%sField %s is from previous so nullable." indent field ;
           set_nullable ~indent exp_type true
         ) else false
@@ -372,11 +372,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
               (* Regardless of the actual type of the output tuple, fields from
                * group.previous must always be considered nullable as the whole
                * tuple is optional: *)
-              if !tuple = TupleGroupPrevious then Some true else out.nullable ;
+              if !tuple = TupleGroupPrevious || !tuple = TupleOutPrevious then Some true else out.nullable ;
             op_typ.scalar_typ <- out.scalar_typ
           ) ;
           !logger.debug "%sfield %s found in out type: %a" indent field print_typ out ;
-          check_expr_type ~indent ~ok_if_larger:false ~set_null:(!tuple <> TupleGroupPrevious) ~from:out ~to_:exp_type
+          check_expr_type ~indent ~ok_if_larger:false ~set_null:(!tuple <> TupleGroupPrevious && !tuple <> TupleOutPrevious) ~from:out ~to_:exp_type
       )
     ) else (
       (* All other tuples are already typed (virtual fields) *)
