@@ -8,7 +8,7 @@ expected_tests=1
 
 start
 add_123
-add_node n "FROM test/123 SELECT 10*n AS ten_n, in.#count AS count WHERE n=3 EXPORT"
+add_node n "FROM test/n123 SELECT 10*n AS ten_n, in.#count AS count WHERE n=3 EXPORT"
 run
 
 check_equal '30,3' "$(tail_ 1 1 n)"

@@ -63,8 +63,7 @@ let node_info_of_node conf node =
   return SN.{
     definition = {
       name = node.N.name ;
-      operation = node.N.op_text ;
-    } ;
+      operation = IO.to_string Operation.print node.N.operation } ;
     exporting = Operation.is_exporting node.N.operation ;
     signature = if node.N.signature = "" then None else Some node.N.signature ;
     pid = node.N.pid ;
@@ -82,6 +81,7 @@ let layer_info_of_layer conf layer =
     Lwt_list.map_s (node_info_of_node conf) in
   return SL.{
     name = layer.L.name ;
+    program = layer.L.persist.L.program ;
     nodes ;
     status = layer.L.persist.L.status ;
     last_started = layer.L.persist.L.last_started ;
@@ -275,25 +275,18 @@ let put_layer conf headers body =
           let%lwt () = del_layer_ conf layer in
           return_false
         ) in
-    (* TODO: Check that this layer node names are unique within the layer *)
     (* Create all the nodes *)
-    let%lwt () = Lwt_list.iter_p (fun def ->
-        let name =
-          if def.SN.name <> "" then def.SN.name
-          else N.make_name () in
-        try
-          C.add_node conf name layer_name def.SN.operation |> ignore ;
-          return_unit
-        with Invalid_argument x -> bad_request ("Invalid "^ x)
-           | SyntaxError e -> bad_request (string_of_syntax_error e)
-           | e -> fail e
-      ) msg.nodes in
+    let%lwt layer =
+      try C.make_layer conf layer_name msg.program |>
+          return
+      with Invalid_argument x -> bad_request ("Invalid "^ x)
+         | SyntaxError e -> bad_request (string_of_syntax_error e)
+         | e -> fail e in
     (* must restart *)
-    if must_stop then
-      let layer = Hashtbl.find conf.C.graph.C.layers layer_name in
+    if must_stop then (
       !logger.debug "Trying to restart layer %s" layer.L.name ;
       let%lwt () = compile_ conf layer in
-      run_ conf layer
+      run_ conf layer)
     else return_unit) >>=
   respond_ok)
   (* TODO: Why not compile right now? *)
@@ -511,7 +504,7 @@ let timeseries conf headers body =
      * everything the user sent (aka operation text and parent name) but for the
      * formatting. We thus start by parsing and pretty-printing the operation: *)
     let%lwt parent_layer, parent_name =
-      try C.layer_node_of_user_string conf from |> return
+      try C.layer_node_of_user_string from |> return
       with Not_found -> bad_request ("node "^ from ^" does not exist") in
     let%lwt _layer, parent = node_of_name conf parent_layer parent_name in
     let%lwt op_text =
@@ -562,9 +555,7 @@ let timeseries conf headers body =
       return_unit
     ) else (
       (* Add this layer to the running configuration: *)
-      let layer, _node =
-        C.add_parsed_node ~timeout:300.
-          conf node_name layer_name op_text operation in
+      let layer = C.make_layer ~timeout:300. conf layer_name op_text in
       let%lwt () = Compiler.compile conf layer in
       RamenProcesses.run conf layer
     )) >>= fun () ->
@@ -576,7 +567,7 @@ let timeseries conf headers body =
           match req.spec with
           | Predefined { node ; data_field } ->
             let%lwt layer, node =
-              try C.layer_node_of_user_string conf node |> return
+              try C.layer_node_of_user_string node |> return
               with Not_found -> bad_request ("node "^ node ^" does not exist") in
             return (layer, node, data_field)
           | NewTempNode { select_x ; select_y ; from ; where } ->
@@ -855,8 +846,9 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   (* When there is nothing to do, listen to collectd and netflow! *)
   if demo && Hashtbl.is_empty conf.C.graph.C.layers then (
     !logger.info "Adding default nodes since we have nothing to do..." ;
-    C.add_node conf "collectd" "demo" "LISTEN FOR COLLECTD" |> ignore ;
-    C.add_node conf "netflow" "demo" "LISTEN FOR NETFLOW" |> ignore) ;
+    C.make_layer conf "demo"
+      "DEFINE collectd AS LISTEN FOR COLLECTD;\n\
+       DEFINE netflow AS LISTEN FOR NETFLOW;" |> ignore) ;
   C.save_conf conf ;
   (* Read the instrumentation ringbuf: *)
   RamenProcesses.read_reports conf ;

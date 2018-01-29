@@ -83,6 +83,7 @@ struct
 
   type t =
     { name : string ;
+      program : string ;
       order : int ; (* depended upon before depending on *)
       status : layer_status ;
       status_str : string ;
@@ -178,39 +179,23 @@ type edited_layer =
     (* Name of the new layer.
      * Note that once created a layer cannot be renamed. *)
     layer_name : string ref ;
-    mutable edited_nodes : (string ref * string ref) list }
+    mutable layer_program : string ref }
 
-(* name and operation of a new node in the edition form: *)
-let new_edited_node edited_nodes =
-  let rec loop i =
-    let name = "new node "^ string_of_int i in
-    if List.exists (fun (n, _) -> !n = name) edited_nodes then
-      loop (i + 1)
-    else name
-  in
-  let name = loop 1 in
-  ref name, ref ""
-
-(* List of all names and operations of nodes in the edition form, including
- * new nodes: *)
-let edited_nodes_of_layer l =
-  let edited_nodes =
-    List.fold_left (fun ns (_, n) ->
-        if n.value.Node.layer <> l then ns
-        else (ref n.value.Node.name, ref n.value.operation) :: ns
-      ) [] nodes.value in
-  edited_nodes @ [ new_edited_node edited_nodes ]
+let program_of_layer l =
+  match List.assoc l layers.value with
+  | exception Not_found -> ""
+  | layer -> layer.value.Layer.program
 
 let edited_layer_of_layer = function
   ExistingLayer l ->
   { is_new = false ;
     layer_name = ref l ;
-    edited_nodes = edited_nodes_of_layer l }
+    layer_program = ref (program_of_layer l) }
 | NewLayer ->
   (* edited_layer record for a new layer: *)
   { is_new = true ;
     layer_name = ref "new layer name" ;
-    edited_nodes = [ new_edited_node [] ] }
+    layer_program = ref "" }
 | NoLayer -> fail "invalid edited layer NoLayer"
 
 let edited_layer =
@@ -244,7 +229,7 @@ let update_node node =
   let p =
     try
       let p = List.assoc node.Node.id nodes.value in
-      if node.stats.time > p.value.stats.time then
+      if node.stats.time > p.value.Node.stats.time then
         node.last_stats <- p.value.stats
       else
         node.last_stats <- p.value.last_stats ;
@@ -571,12 +556,13 @@ let update_graph total g =
   for i = 0 to g##.length - 1 do
     let l = Js.array_get g i in
     let name = Js.(Unsafe.get l "name" |> to_string) in
+    let program = Js.(Unsafe.get l "program" |> to_string) in
     let status_js = Js.Unsafe.get l "status" in
     let status, status_str = Layer.status_of_js status_js in
     had_layers := name :: !had_layers ;
     let nodes = Js.Unsafe.get l "nodes" in
     let layer = Layer.{
-      name ; status_str ; status ; order = i ;
+      name ; program ; status_str ; status ; order = i ;
       last_started = Js.(Unsafe.get l "last_started" |> Opt.to_option |>
                          option_map float_of_number) ;
       last_stopped = Js.(Unsafe.get l "last_stopped" |> Opt.to_option |>
@@ -1301,27 +1287,18 @@ let form_input_large label value placeholder =
               attr "spellcheck" "false" ]
             [ text !value ] ] ]
 
-let node_editor_panel (name, operation) =
+let program_editor_panel program =
   div
-    [ clss "node-edition" ]
-    [ form_input "Name" name "enter a node name" ;
-      form_input_large "Operation" operation "enter operation here" ;
+    [ clss "program-edition" ]
+    [ form_input_large "Program" program "enter program here" ;
       hr [] ]
 
 let save_layer _ =
-  let js_of_node (name, operation) =
-    object%js
-      val name = Js.string !name
-      val operation = Js.string !operation
-    end
-  and edl = edited_layer.value in
-  let nodes =
-    List.filter (fun (name, operation) ->
-      !name <> "" && !operation <> "") edl.edited_nodes in
+  let edl = edited_layer.value in
   let content =
     object%js
       val name = Js.string !(edl.layer_name)
-      val nodes = js_of_list js_of_node nodes
+      val program = Js.string !(edl.layer_program)
     end
   and path = "/graph"
   and what = "Saved "^ !(edl.layer_name) in
@@ -1330,12 +1307,6 @@ let save_layer _ =
   http_put path content ~what
     ~on_done:(fun () -> set editor_spinning false)
     (done_edit_layer_cb ~redirect_to_layer "save")
-
-let add_edited_node () =
-  let edl = edited_layer.value in
-  edl.edited_nodes <-
-    edl.edited_nodes @ [ new_edited_node edl.edited_nodes ] ;
-  change edited_layer
 
 let layer_editor_panel =
   with_param edited_layer (fun edl ->
@@ -1348,17 +1319,12 @@ let layer_editor_panel =
         (if edl.is_new then
           form_input "Name" edl.layer_name "enter a node name"
         else group []) ;
-        h2 [] [ text "Nodes" ] ;
-        group (List.map node_editor_panel edl.edited_nodes) ;
+        h2 [] [ text "Program" ] ;
+        program_editor_panel edl.layer_program ;
         br ;
         with_param editor_spinning (fun spinning ->
           group
             [ if spinning then
-                button [] [ text "+" ]
-              else
-                button ~action:(fun _ -> add_edited_node ())
-                  [ clss "actionable" ] [ text "+" ] ;
-              if spinning then
                 button [] [ text "Cancel" ]
               else
                 button ~action:(fun _ -> set_sel_layer NoLayer)
@@ -1403,8 +1369,11 @@ let event_processor_page =
                 if layer.status <> Running then
                   layer_editor_panel
                 else
-                  p [ clss "nodata" ]
-                    [ text "Running layer cannot be edited" ] ]))
+                  group
+                    [ p [ clss "nodata" ]
+                        [ text "Running layer cannot be edited" ] ;
+                      elmt "pre" [ clss "program" ]
+                        [ text layer.program ] ] ]))
     | NewLayer ->
       div [ id "top" ] [ top_layers ; layer_editor_panel ])
   | snode ->

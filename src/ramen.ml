@@ -147,23 +147,15 @@ let summary =
  * Layer Creation/Edition
  *)
 
-let node_name p =
-  let i = Arg.info ~doc:"Node unique name."
-                   ~docv:"node" [] in
-  Arg.(required (pos p (some string) None i))
-
 let layer_name =
   let i = Arg.info ~doc:"Layer unique name."
                    ~docv:"layer" [] in
   Arg.(required (pos 0 (some string) None i))
 
-let node_operations =
-  let i = Arg.info ~doc:"New operation (such as 'SELECT etc...') \
-                         optionally prefixed with a name and colon \
-                         (for instance: 'FOO_FILTER:SELECT * WHERE FOO'). \
-                         Names can then be used with --link."
-                        [ "node"; "operation"; "op" ] in
-  Arg.(non_empty (opt_all string [] i))
+let program =
+  let i = Arg.info ~doc:"New program (such as 'DEFINE xyz AS SELECT...')"
+                   ~docv:"program" [] in
+  Arg.(required (pos 1 (some string) None i))
 
 let add =
   Term.(
@@ -171,7 +163,7 @@ let add =
       $ debug
       $ server_url
       $ layer_name
-      $ node_operations),
+      $ program),
     info "add")
 
 (*
@@ -203,6 +195,11 @@ let stop =
 (*
  * Export Tuples
  *)
+
+let node_name p =
+  let i = Arg.info ~doc:"Node unique name."
+                   ~docv:"node" [] in
+  Arg.(required (pos p (some string) None i))
 
 let as_csv =
   let i = Arg.info ~doc:"output CSV rather than JSON"

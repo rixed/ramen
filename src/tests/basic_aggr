@@ -26,12 +26,12 @@ check_equal '1,946,1262598,278.16655651,552,313,140,553' "$(tail_ 1 1 p1)"
 reset
 start
 add_123
-add_node a1 "FROM test/123 SELECT AND b EXPORT COMMIT WHEN selected.#count = 1"
-add_node a2 "FROM test/123 SELECT AND b EXPORT COMMIT WHEN selected.#count = 2"
-add_node a3 "FROM test/123 SELECT AND b EXPORT COMMIT WHEN selected.#count = 3"
-add_node o1 "FROM test/123 SELECT OR (not b) AS not_b EXPORT COMMIT WHEN selected.#count = 1"
-add_node o2 "FROM test/123 SELECT OR (not b) AS not_b EXPORT COMMIT WHEN selected.#count = 2"
-add_node o3 "FROM test/123 SELECT OR (not b) AS not_b EXPORT COMMIT WHEN selected.#count = 3"
+add_node a1 "FROM test/n123 SELECT AND b EXPORT COMMIT WHEN selected.#count = 1"
+add_node a2 "FROM test/n123 SELECT AND b EXPORT COMMIT WHEN selected.#count = 2"
+add_node a3 "FROM test/n123 SELECT AND b EXPORT COMMIT WHEN selected.#count = 3"
+add_node o1 "FROM test/n123 SELECT OR (not b) AS not_b EXPORT COMMIT WHEN selected.#count = 1"
+add_node o2 "FROM test/n123 SELECT OR (not b) AS not_b EXPORT COMMIT WHEN selected.#count = 2"
+add_node o3 "FROM test/n123 SELECT OR (not b) AS not_b EXPORT COMMIT WHEN selected.#count = 3"
 run
 check_equal 'true' "$(tail_ 1 1 a1)"
 check_equal 'true' "$(tail_ 1 1 a2)"
@@ -44,6 +44,6 @@ check_equal 'true' "$(tail_ 1 1 o3)"
 reset
 start
 add_123
-add_node n "SELECT n FROM test/123 WHERE lag n = 2 EXPORT"
+add_node n "SELECT n FROM test/n123 WHERE lag n = 2 EXPORT"
 run
 check_equal '3' "$(tail_ 1 1 n)"

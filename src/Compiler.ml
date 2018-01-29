@@ -943,7 +943,8 @@ let set_all_types conf layer =
     let test_type_single_node op_text =
       try
         let conf = RamenConf.make_conf false "http://127.0.0.1/" true "/tmp" 5 0 in
-        RamenConf.add_node conf "foo" "test" op_text |> ignore ;
+        RamenConf.make_layer conf "test" ("DEFINE foo AS "^ op_text) |>
+        ignore ;
         set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
         "ok"
       with e ->

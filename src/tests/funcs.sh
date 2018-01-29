@@ -43,7 +43,7 @@ ramen="$top_srcdir/src/ramen"
 export RAMEN_HTTP_PORT
 export RAMEN_PERSIST_DIR
 export RAMEN_URL
-export LAYER_CMD
+export PROGRAM
 # We just know if the whole test suites have been successful or not so we have
 # to either delete all temp dirs or none. Note that it is OK to `rm -rf ''`.
 export ALL_RAMEN_PERSIST_DIRS
@@ -58,7 +58,7 @@ start() {
   RAMEN_PERSIST_DIR="/tmp/ramen_tests/$RAMEN_HTTP_PORT"
   ALL_RAMEN_PERSIST_DIRS="$ALL_RAMEN_PERSIST_DIRS '$RAMEN_PERSIST_DIR'"
   RAMEN_URL="http://127.0.0.1:$RAMEN_HTTP_PORT"
-  LAYER_CMD=""
+  PROGRAM=""
   rm -f /tmp/ringbuf_*
 
   OCAMLPATH=$top_srcdir $ramen start --no-demo -d --seed 1234 &
@@ -74,11 +74,14 @@ upload() {
 }
 
 add_node() {
-  LAYER_CMD="$LAYER_CMD --op '$1:$2'"
+  # Beware that $2 might end with a comment
+  PROGRAM=$PROGRAM"DEFINE '$1' AS $2
+;
+"
 }
 
 add_123() {
-  add_node 123 "READ FILE \"$fixtures/123.csv\" (
+  add_node n123 "READ FILE \"$fixtures/123.csv\" (
     n u8 not null,  -- will be 1, 2, 3
     b bool not null,  -- true, true, false
     name string null) -- \"one\", \"two\" and NULL!"
@@ -115,7 +118,7 @@ add_accounts() {
 nb_accounts=$(nb_lines "$fixtures/accounts.csv")
 
 run() {
-  eval "$ramen add test $LAYER_CMD" &&
+  eval "$ramen add test '$PROGRAM'" &&
   $ramen compile &&
   $ramen run
 }

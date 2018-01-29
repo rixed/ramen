@@ -52,16 +52,9 @@ let check_ok body =
   ignore body ;
   return_unit
 
-let node_info_of_op op =
-  let name, operation =
-    try String.split ~by:":" op
-    with Not_found -> "", op in
-  Node.{ name ; operation }
-
-let add debug ramen_url name ops () =
+let add debug ramen_url name program () =
   logger := make_logger debug ;
-  let nodes = List.map node_info_of_op ops in
-  let msg = { name ; nodes ; ok_if_running = false } in
+  let msg = { name ; ok_if_running = false ; program } in
   Lwt_main.run (
     http_put_json (ramen_url ^"/graph") put_layer_req_ppp msg >>= check_ok)
 

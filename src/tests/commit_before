@@ -9,7 +9,7 @@ expected_tests=2
 start
 add_123
 add_node n \
-"FROM test/123
+"FROM test/n123
  SELECT SUM n
  COMMIT BEFORE sum_n > 4
  EXPORT"

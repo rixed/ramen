@@ -133,6 +133,7 @@ struct
 
   type info =
     { name : string ;
+      program : string ;
       nodes : Node.info list ;
       status : status [@ppp_default (RamenSharedTypesJS.Edition "")] ;
       last_started : float option ;
@@ -147,7 +148,7 @@ type put_layer_req =
     name : string ;
     (* If this layer is already running stop it then restart it: *)
     ok_if_running : bool [@ppp_default false] ;
-    nodes : Node.definition list } [@@ppp PPP_JSON]
+    program : string } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)
 

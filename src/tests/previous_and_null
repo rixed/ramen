@@ -9,7 +9,7 @@ expected_tests=1
 start
 add_123
 add_node n \
-'FROM test/123 SELECT
+'FROM test/n123 SELECT
   -- beware that in.name is nullable but not out.sum_name
   COALESCE(group.previous.sum_name, "") ||
   (IF group.previous.sum_name IS NOT NULL THEN "+" ELSE "") ||

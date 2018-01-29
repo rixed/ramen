@@ -26,6 +26,11 @@ let enc = Uri.pct_encode
 
 let make_node name operation = N.{ name ; operation }
 
+let program_of_nodes nodes =
+  List.fold_left (fun s n ->
+    s ^ "DEFINE '"^ n.N.name ^"' AS "^ n.N.operation ^";\n"
+  ) "" nodes
+
 let rep sub by str = String.nreplace ~str ~sub ~by
 
 let print_squoted oc = Printf.fprintf oc "'%s'"
@@ -496,7 +501,7 @@ let base_layer dataset_name delete uncompress csv_glob export =
   RamenSharedTypes.{
     name = dataset_name ;
     ok_if_running = true ;
-    nodes = [
+    program = program_of_nodes [
       tcp ;
       tcp_to_unidir ~src:"client" ~dst:"server" "c2s tcp" ;
       tcp_to_unidir ~src:"server" ~dst:"client" "s2c tcp" ;
@@ -772,7 +777,7 @@ let layer_of_bcns bcns dataset_name export =
   RamenSharedTypes.{
     name = layer_name ;
     ok_if_running = true ;
-    nodes = !all_nodes }
+    program = program_of_nodes !all_nodes }
 
 (* Build the node infos corresponding to the BCA configuration *)
 let layer_of_bcas bcas dataset_name export =
@@ -993,7 +998,7 @@ let layer_of_bcas bcas dataset_name export =
   RamenSharedTypes.{
     name = layer_name ;
     ok_if_running = true ;
-    nodes = !all_nodes }
+    program = program_of_nodes !all_nodes }
 
 let get_config_from_db db =
   Conf_of_sqlite.get_config db
@@ -1046,7 +1051,8 @@ let ddos_layer dataset_name export =
   RamenSharedTypes.{
     name = layer_name ;
     ok_if_running = true ;
-    nodes = [ global_new_peers ; pred_node ; anom_node ] }
+    program = program_of_nodes [
+      global_new_peers ; pred_node ; anom_node ] }
 
 (* Daemon *)
 

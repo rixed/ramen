@@ -61,6 +61,7 @@ type syntax_error =
   | CannotCompleteTyping of string
   | CannotGenerateCode of { node : string ; cmd : string ; status : string }
   | AliasNotUnique of string
+  | NodeNameNotUnique of string
   | OnlyTumblingWindowForTop
   | UnknownNode of string
 
@@ -115,6 +116,9 @@ let string_of_syntax_error =
       node cmd status
   | AliasNotUnique name ->
     "Alias is not unique: "^ name
+  | NodeNameNotUnique name ->
+    "Node names must be unique within a layer but '"^ name ^"' is defined \
+     several times"
   | OnlyTumblingWindowForTop ->
     "When using TOP the only windowing mode supported is \
      \"COMMIT AND FLUSH\""
@@ -218,13 +222,13 @@ let tuple_need_state = function
     | Ok (expr, rest) -> Ok (replace_typ expr, rest)
     | x -> x
 
-  let replace_typ_in_op =
+  let replace_typ_in_operation =
     let open Lang.Operation in
     function
-    | Ok (Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
-                      key ; top ; commit_before ; commit_when ; flush_how ;
-                      from }, rest) ->
-      Ok (Aggregate {
+    | Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
+                  key ; top ; commit_before ; commit_when ; flush_how ;
+                  from } ->
+      Aggregate {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ;
         where = replace_typ where ;
@@ -236,7 +240,22 @@ let tuple_need_state = function
         flush_how = (match flush_how with
           | Reset | Never | Slide _ -> flush_how
           | RemoveAll e -> RemoveAll (replace_typ e)
-          | KeepOnly e -> KeepOnly (replace_typ e)) }, rest)
+          | KeepOnly e -> KeepOnly (replace_typ e)) }
+    | x -> x
+
+  let replace_typ_in_op = function
+    | Ok (op, rest) -> Ok (replace_typ_in_operation op, rest)
+    | x -> x
+
+  let replace_typ_in_program =
+    let open Lang.Program in
+    function
+    | Ok (prog, rest) ->
+      Ok (
+        List.map (fun func ->
+          { func with operation = replace_typ_in_operation func.operation }
+        ) prog,
+        rest)
     | x -> x
  *)
 
@@ -1919,7 +1938,9 @@ struct
     fold_expr () (fun () e -> f e) op
 
   (* Check that the expression is valid, or return an error message.
-   * Also perform some optimisation, numeric promotions, etc... *)
+   * Also perform some optimisation, numeric promotions, etc...
+   * This is done after the parse rather than Rejecting the parsing
+   * result for better error messages. *)
   let check =
     let pure_in clause = StatefulNotAllowed { clause }
     and no_group clause = GroupStateNotAllowed { clause }
@@ -2180,7 +2201,7 @@ struct
     let from_clause m =
       let m = "from clause" :: m in
       (strinG "from" -- blanks -+
-       several ~sep:list_sep node_identifier) m
+       several ~sep:list_sep (node_identifier ~layer_allowed:true)) m
 
     type select_clauses =
       | SelectClause of selected_field option list
@@ -2204,7 +2225,6 @@ struct
         (commit_when >>: fun c -> CommitClause c) |||
         (from_clause >>: fun c -> FromClause c) in
       (several ~sep:blanks part >>: fun clauses ->
-        if clauses = [] then raise (Reject "Empty select") ;
         (* Used for its address: *)
         let default_commit_when = Expr.expr_true in
         let is_default_commit = (==) default_commit_when in
@@ -2597,6 +2617,91 @@ struct
         (test_op p "read file \"/tmp/toto.csv\" \\
                         separator \"\\t\" null \"<NULL>\" \\
                         (f1 bool, f2 i32 not null)")
+    *)
+
+    (*$>*)
+  end
+  (*$>*)
+end
+
+module Program =
+struct
+  (*$< Program *)
+
+  type func = { name : string ; operation : Operation.t }
+  type t = func list
+
+  let make_name =
+    let seq = ref ~-1 in
+    fun () ->
+      incr seq ;
+      "f"^ string_of_int !seq
+
+  let make_func ?name operation =
+    { name = (match name with Some n -> n | None -> make_name ()) ;
+      operation }
+
+  let print_func oc n =
+    (* TODO: keep the info that func was anonymous? *)
+    Printf.fprintf oc "DEFINE '%s' AS %a"
+      n.name
+      Operation.print n.operation
+
+  let print oc p =
+    List.print ~sep:"\n" print_func oc p
+
+  let check lst =
+    List.fold_left (fun s n ->
+      Operation.check n.operation ;
+      if Set.mem n.name s then
+        raise (SyntaxError (NodeNameNotUnique n.name)) ;
+      Set.add n.name s
+    ) Set.empty lst |> ignore
+
+  module Parser =
+  struct
+    (*$< Parser *)
+    open RamenParsing
+
+    let anonymous_node m =
+      let m = "anonymous node" :: m in
+      (Operation.Parser.p >>: make_func) m
+
+    let named_node m =
+      let m = "node" :: m in
+      (strinG "define" -- blanks -+ node_identifier ~layer_allowed:false +-
+       blanks +- strinG "as" +- blanks ++
+       Operation.Parser.p >>: fun (name, op) -> make_func ~name op) m
+
+    let node m =
+      let m = "node" :: m in
+      (anonymous_node ||| named_node) m
+
+    let p m =
+      let m = "program" :: m in
+      let sep = opt_blanks -- char ';' -- opt_blanks in
+      (several ~sep node +- optional ~def:() (opt_blanks -- char ';')) m
+
+    (*$= p & ~printer:(test_printer print)
+     (Ok ([\
+      { name = "bar" ;\
+        operation = \
+          Aggregate {\
+            fields = [\
+              { expr = Expr.Const (typ, VI32 42l) ;\
+                alias = "the_answer" } ] ;\
+            and_all_others = false ;\
+            where = Expr.Const (typ, VBool true) ;\
+            notify_url = "" ;\
+            key = [] ; top = None ;\
+            commit_when = Expr.Const (typ, VBool true) ;\
+            commit_before = false ;\
+            flush_how = Reset ;\
+            export = None ;\
+            from = ["foo"] } } ],\
+        (46, [])))\
+        (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
+         replace_typ_in_program)
     *)
 
     (*$>*)

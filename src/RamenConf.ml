@@ -154,20 +154,12 @@ struct
        * This field is computed as soon as the node is typed, and is otherwise
        * empty. *)
       mutable signature : string ;
-      (* Also keep the string as defined by the client to preserve formatting: *)
-      mutable op_text : string ;
       (* Parents are either in this layer or a layer _below_. *)
       mutable parents : (string * string) list ;
       (* Worker info, only relevant if it is running: *)
       mutable pid : int option }
 
   let fq_name node = node.layer ^"/"^ node.name
-
-  let make_name =
-    let seq = ref 0 in
-    fun () ->
-      incr seq ;
-      string_of_int !seq
 
   let signature node =
     (* We'd like to be formatting independent so that operation text can be
@@ -201,8 +193,11 @@ module Layer =
 struct
   type persist =
     { nodes : (string, Node.t) Hashtbl.t ;
-      (* How long can this layer can stays without dependent nodes before it's
-       * reclaimed. Set to 0 for no timeout. *)
+      (* Also keep the string as defined by the client to preserve
+       * formatting, comments, etc: *)
+      mutable program : string ;
+      (* How long can this layer can stays without dependent nodes before
+       * it's reclaimed. Set to 0 for no timeout. *)
       timeout : float ;
       mutable last_used : float ;
       mutable status : layer_status ;
@@ -233,38 +228,6 @@ struct
         n.out_type <- UntypedTuple (make_temp_tup_typ ()) ;
         n.pid <- None) layer.persist.nodes
     | _ -> ()
-
-  (* [restart] is true when ramen restarted and read its config for the first
-   * time. Some additional cleaning needs to be done then. *)
-  let make persist_dir ?persist ?(timeout=0.) ?(restart=false)
-           name =
-    assert (String.length name > 0) ;
-    let persist =
-      let now = Unix.gettimeofday () in
-      Option.default_delayed (fun () ->
-        { nodes = Hashtbl.create 17 ;
-          timeout ; last_used = now ;
-          status = Edition "" ;
-          last_status_change = now ;
-          last_started = None ; last_stopped = None }) persist in
-    let layer = { name ; persist ; importing_threads = [] } in
-    if restart then (
-      !logger.info "Reloading and cleaning the configuration for layer %S \
-                    after restart." name ;
-      (* Demote the status to compiled since the workers can't be running
-       * anymore. *)
-      if persist.status = Running then set_status layer Compiled ;
-      (* Further demote to edition if the binaries are not there anymore
-       * (which will be the case if codegen version changed): *)
-      if persist.status = Compiled &&
-         Hashtbl.values persist.nodes |> Enum.exists (fun n ->
-           not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
-      then set_status layer (Edition "") ;
-      (* Also, we cannot be compiling anymore: *)
-      if persist.status = Compiling then set_status layer (Edition "") ;
-      (* FIXME: also, as a precaution, delete any temporary layer (maybe we
-       * crashed because of it? *)) ;
-    layer
 
   let is_typed layer =
     match layer.persist.status with
@@ -418,7 +381,8 @@ let parse_operation operation =
   let open RamenParsing in
   let p = Lang.(opt_blanks -+ Operation.Parser.p +- opt_blanks +- eof) in
   (* TODO: enable error correction *)
-  match p ["operation"] None Parsers.no_error_correction (stream_of_string operation) |>
+  let stream = stream_of_string operation in
+  match p ["operation"] None Parsers.no_error_correction stream |>
         to_result with
   | Bad e ->
     let error =
@@ -429,10 +393,21 @@ let parse_operation operation =
     Lang.Operation.check op ;
     op
 
-let add_layer ?timeout conf name =
-  let layer = Layer.make conf.persist_dir ?timeout name in
-  Hashtbl.add conf.graph.layers name layer ;
-  layer
+let parse_program program =
+  let open RamenParsing in
+  let p = Lang.(opt_blanks -+ Program.Parser.p +- opt_blanks +- eof) in
+  let stream = stream_of_string program in
+  (* TODO: enable error correction *)
+  match p ["program"] None Parsers.no_error_correction stream |>
+        to_result with
+  | Bad e ->
+    let error =
+      IO.to_string (print_bad_result Lang.Program.print) e in
+    let open Lang in
+    raise (SyntaxError (ParseError { error ; text = program }))
+  | Ok (nodes, _) ->
+    Lang.Program.check nodes ;
+    nodes
 
 let del_layer conf layer =
   let open Layer in
@@ -454,7 +429,7 @@ let fold_nodes conf init f =
     ) layer.Layer.persist.Layer.nodes prev
   ) conf.graph.layers init
 
-let layer_node_of_user_string conf ?default_layer s =
+let layer_node_of_user_string ?default_layer s =
   let s = String.trim s in
   (* rsplit because we might want to have '/'s in the layer name. *)
   try String.rsplit ~by:"/" s
@@ -462,45 +437,14 @@ let layer_node_of_user_string conf ?default_layer s =
     match default_layer with
     | Some l -> l, s
     | None ->
-      (* Last resort: look for the first node with that name: *)
-      match fold_nodes conf None (fun res _layer node ->
-              if res = None && node.Node.name = s then
-                Some (node.Node.layer, node.Node.name)
-              else res) with
-      | Some res -> res
-      | None ->
         !logger.error "Cannot find node %S" s ;
         raise Not_found
-
-let add_parsed_node ?timeout conf node_name layer_name op_text operation =
-  let layer =
-    try Hashtbl.find conf.graph.layers layer_name
-    with Not_found -> add_layer ?timeout conf layer_name in
-  if Hashtbl.mem layer.Layer.persist.Layer.nodes node_name then
-    raise (InvalidCommand (
-             "Node "^ node_name ^" already exists in layer "^ layer_name)) ;
-  let parents =
-    Lang.Operation.parents_of_operation operation |>
-    List.map (fun p ->
-      try layer_node_of_user_string conf ~default_layer:layer_name p
-      with Not_found ->
-        raise (InvalidCommand ("Node "^ p ^" does not exist"))) in
-  let node = Node.{
-    layer = layer_name ; name = node_name ;
-    operation ; signature = "" ; op_text ; parents ;
-    (* Set once the whole graph is known and reset each time the graph is
-     * edited: *)
-    in_type = UntypedTuple (make_temp_tup_typ ()) ;
-    out_type = UntypedTuple (make_temp_tup_typ ()) ;
-    pid = None } in
-  Hashtbl.add layer.Layer.persist.Layer.nodes node_name node ;
-  layer, node
 
 (* Create the node but not the links to parents (this is so we can have
  * loops) *)
 (* FIXME: got bitten by the fact that node_name and layer_name are 2 strings
  * so you can mix them up. Make specialized types for all those strings. *)
-let add_node conf node_name layer_name op_text =
+let make_node layer_name node_name operation =
   !logger.debug "Creating node %s/%s" layer_name node_name ;
   (* New lines have to be forbidden because of the out_ref ringbuf files.
    * slashes have to be forbidden because we rsplit to get layer names. *)
@@ -509,15 +453,71 @@ let add_node conf node_name layer_name op_text =
        bad || c = '\n' || c = '\r' || c = '/') false node_name then
     invalid_arg "node name" ;
   assert (node_name <> "") ;
-  let operation = parse_operation op_text in
-  add_parsed_node conf node_name layer_name op_text operation
+  let parents =
+    Lang.Operation.parents_of_operation operation |>
+    List.map (fun p ->
+      try layer_node_of_user_string ~default_layer:layer_name p
+      with Not_found ->
+        raise (InvalidCommand ("Parent node "^ p ^" does not exist"))) in
+  Node.{
+    layer = layer_name ; name = node_name ;
+    operation ; signature = "" ; parents ;
+    (* Set once the whole graph is known and reset each time the graph is
+     * edited: *)
+    in_type = UntypedTuple (make_temp_tup_typ ()) ;
+    out_type = UntypedTuple (make_temp_tup_typ ()) ;
+    pid = None }
+
+(* [restart] is true when ramen restarted and read its config for the first
+ * time. Some additional cleaning needs to be done then. *)
+let make_layer ?(timeout=0.) conf name program =
+  assert (String.length name > 0) ;
+  let now = Unix.gettimeofday () in
+  let persist = Layer.{
+      nodes = Hashtbl.create 17 ; program ;
+      timeout ; last_used = now ;
+      status = Edition "" ; last_status_change = now ;
+      last_started = None ; last_stopped = None } in
+  (* Since we have lost our nodes, rebuilt them: *)
+  parse_program program |>
+  List.iter (fun def ->
+    let node_name = def.Lang.Program.name in
+    if Hashtbl.mem persist.nodes node_name then
+      raise (InvalidCommand (
+         "Node "^ node_name ^" already exists in layer "^ name)) ;
+    make_node name node_name def.Lang.Program.operation |>
+    Hashtbl.add persist.nodes def.name) ;
+  let layer = Layer.{ name ; persist ; importing_threads = [] } in
+  Hashtbl.add conf.graph.layers name layer ;
+  layer
+
+(* [restart] is true when ramen restarted and read its config for the first
+ * time. Some additional cleaning needs to be done then. *)
+let load_layer ?(restart=false) ~persist persist_dir name =
+  let layer = Layer.{ name ; persist ; importing_threads = [] } in
+  if restart then (
+    !logger.info "Reloading and cleaning the configuration for layer %S \
+                  after restart." name ;
+    (* Demote the status to compiled since the workers can't be running
+     * anymore. *)
+    if persist.status = Running then Layer.set_status layer Compiled ;
+    (* Further demote to edition if the binaries are not there anymore
+     * (which will be the case if codegen version changed): *)
+    if persist.status = Compiled &&
+       Hashtbl.values persist.nodes |> Enum.exists (fun n ->
+         not (file_exists ~has_perms:0o100 (exec_of_node persist_dir n)))
+    then Layer.set_status layer (Edition "") ;
+    (* Also, we cannot be compiling anymore: *)
+    if persist.status = Compiling then Layer.set_status layer (Edition "") ;
+    (* FIXME: also, as a precaution, delete any temporary layer (maybe we
+     * crashed because of it? *)) ;
+  layer
 
 let make_graph persist_dir ?persist ?restart () =
   let persist =
     Option.default_delayed (fun () -> Hashtbl.create 11) persist in
   { layers = Hashtbl.map (fun name persist ->
-               Layer.make persist_dir
-                          ~persist ?restart name) persist }
+               load_layer ?restart ~persist persist_dir name) persist }
 
 let load_graph ?restart do_persist persist_dir =
   let save_file = save_file_of persist_dir in

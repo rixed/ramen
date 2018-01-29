@@ -12,7 +12,7 @@ expected_tests=1
 start
 add_123
 add_node p1 \
-'FROM test/123 SELECT
+'FROM test/n123 SELECT
    CASE WHEN n > 2 THEN "hi"
         WHEN n < 2 THEN "lo"
         ELSE "meh"
