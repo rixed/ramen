@@ -352,6 +352,12 @@ tuple.
 
 Can be used in `select`, `where` and `commit` clauses.
 
+When no tuples have been output yet that tuple has all its field set to Null.
+Therefore, if you use this tuple you must check for nulls accordingly.
+
+Same type as the `out` tuple, with all fields nullable.
+
+
 [[group-first-tuple]]
 ===== First tuple in group
 
@@ -391,7 +397,8 @@ group, while there is only one `out.previous`.
 
 Can be used in the `select` and `commit` clause.
 
-When the aggregate is fresh new then that tuple has all its field set to Null. Therefore, if you use this tuple you must check for nulls accordingly.
+When the aggregate is fresh new then that tuple has all its field set to Null.
+Therefore, if you use this tuple you must check for nulls accordingly.
 
 Same type as the `out` tuple, with all fields nullable.
 
@@ -400,7 +407,7 @@ Usage example:
 [source,sql]
 ----
   SELECT key, signal GROUP BY key
-  COMMIT AND KEEP ALL WHEN signal != group.previous.signal
+  COMMIT AND KEEP ALL WHEN signal != COALESCE(group.previous.signal, 0)
 ----
 
 To transform a succession of `key, signal` with possibly many times the same
