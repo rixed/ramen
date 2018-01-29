@@ -151,6 +151,7 @@ let parse_prefix ~def m =
     (prefix "last" >>: fun () -> TupleGroupLast) |||
     (prefix "group.previous" >>: fun () -> TupleGroupPrevious) |||
     (prefix "out.previous" >>: fun () -> TupleOutPrevious) |||
+    (prefix "previous" >>: fun () -> TupleOutPrevious) |||
     (prefix "out" >>: fun () -> TupleOut))
   ) m
 
