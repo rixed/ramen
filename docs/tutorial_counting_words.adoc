@@ -77,12 +77,12 @@ Ramen.
 
 If instead of reading files you prefer to upload them via HTTP, replace the
 first line above by: +RECEIVE+. Then, just POST the files to Ramen at the
-URL +/upload/+ followed by the node fully qualified name. This is what we
+URL +/upload/+ followed by the operation fully qualified name. This is what we
 will do in this example for simplicity.
 
 Also, we will send prose not CSV. But if the CSV separator does not appear
 anywhere in the file, then prose is indistinguishable from a CSV file of
-one single field for the whole line. So the first node injecting lines
+one single field for the whole line. So the first operation injecting lines
 would be:
 
 [source,sql]
@@ -90,8 +90,13 @@ would be:
 RECEIVE SEPARATOR "_" (line STRING NOT NULL)
 ----
 
-Go ahead and create a layer named "word_count" with a node named "receiver"
-with that simple operation.
+Go ahead and create a program named "word_count" with a single operation named
+"receiver" with that simple operation:
+
+[source,sql]
+----
+DEFINE received AS RECEIVE SEPARATOR "_" (line STRING NOT NULL);
+----
 
 Next, we want to split those lines.
 
@@ -103,7 +108,7 @@ strings as arguments: the separator and the string to split, in that order.
 It will return from 1 (if the separator is not found) to many results.
 
 When a function outputs several results then as many tuple will be output by
-the node. That is, for one input there will be N outputs. When the SELECT
+the operation. That is, for one input there will be N outputs. When the SELECT
 statement uses several such functions returning multiple results then the
 Cartesian product of all those results is output.
 
@@ -124,14 +129,14 @@ In our case we just want to split incoming field +line+ by spaces:
 
 [source,sql]
 ----
-SELECT SPLIT(" ", line) AS word FROM receiver
+DEFINE splitter AS SELECT SPLIT(" ", line) AS word FROM receiver;
 ----
 
 We could also turn all words to lowercase with the +lower+ function:
 
 [source,sql]
 ----
-SELECT LOWER(SPLIT(" ", line)) AS word FROM receiver
+DEFINE splitter AS SELECT LOWER(SPLIT(" ", line)) AS word FROM receiver;
 ----
 
 In that case the function +lower+ would of course be applied to each of +split+
@@ -140,8 +145,7 @@ results.
 WARNING: Notice that function names are case insensitive but keep in mind that
 field names are _not_!
 
-Easy enough. Let's call this node "splitter" and proceed to the actual
-counting.
+Easy enough.
 
 === Counting Words
 
@@ -201,24 +205,25 @@ tuple) than the condition for when to +FLUSH+ the aggregated group:
 
 [source,sql]
 ----
-SELECT word, SUM 1 AS count FROM splitter GROUP BY word
-COMMIT WHEN true FLUSH WHEN false
-EXPORT
+DEFINE counter AS
+  SELECT word, SUM 1 AS count FROM splitter GROUP BY word
+  COMMIT AND KEEP ALL WHEN true
+  EXPORT;
 ----
 
-Simple, and does the work. You will see later that, not only can we set a
+Simple, and does the job. You will see later that, not only can we set a
 specific condition as to when to flush but we can also select which tuples to
 flush and which to keep from one window to the next.
 
 There you have it. We added an +EXPORT+ keyword at the end of this new
-"counter" node so that you can see the result in the GUI. Let's now send some
-text.
+"counter" operation so that you can see the result in the GUI. Let's now send
+some text.
 
 === Uploading Some Prose
 
 By default, Ramen listens at port 29380 and so, to
-upload data for our node which fully qualified name is +word_count/receiver+ a
-file has to be HTTP POSTed to
+upload data for our operation which fully qualified name is
++word_count/receiver+ a file has to be HTTP POSTed to
 +http://localhost:29380/upload/word_count/receiver+. For instance with curl:
 
 [source,shell]

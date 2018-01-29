@@ -22,15 +22,15 @@ toward network monitoring.
 Unlike other stream processors that are designed to scale to many servers,
 Ramen is designed to be efficient on a single (or very few) servers.
 
-It is composed of a central program that serves an API allowing clients to edit
+It is composed of a central daemon that serves an API allowing clients to edit
 the configuration. This configuration consists of a graph of operations, each
 of which is given using a specialized high level language inspired by SQL.
 These operations are then compiled by the central server down to machine code
-into individual programs, the xref:Worker[workers], for parallel execution.
+into individual executables, the xref:Worker[workers], for parallel execution.
 
 Each worker accepts input of a given type and produces output of a given type,
 not unlike SQL rows being consumed by a SQL query that produces other rows used
-as input to a sub query. As in SQL, each row is a xref:Tuple[tuple] of
+as input to a sub query. As in SQL, each row is a xref:Tuple[tuple] made of
 primitive types.  This stream of tuples flows directly from one worker to the
 next using efficient memory-mapped ring buffers.  All those tuples are
 statically typed at compile time to avoid runtime failures and improve speed.
@@ -40,64 +40,67 @@ statically typed at compile time to avoid runtime failures and improve speed.
 [glossary]
 [[AggregationFunction]]Aggregation Function::
   A function that build a result value out of several input values.
-  The result is output only when some condition is met.
+  The result is finalized and output when some given condition is met
+  (see xref:Commit[]).
+
+[[Clause]]Clause::
+  Part of an xref:Operation[operation]. Especially, the aggregate operation
+  has a `select` clause, a `where` clause, a `group-by` clause, etc...
 
 [[Commit]]Commit::
-  When aggregating incoming xref:Tuple[tuples] into a single
-  xref:Group[group] met some defined condition then the result of the
-  aggregation is going to be output. This is called to _commit_ the group.
-  What happens next to the group depends on the configuration but oftentimes
-  it will merely be deleted.
+  When several incoming xref:Tuple[tuples] are aggregated into a single
+  xref:Group[group], a condition must be specified that, when met, will trigger
+  the output of the aggregated value. This is called to _commit_ the group.
+  What happens to the group after the result tuple has been output depends on
+  the configuration but oftentimes it will merely be reset (tumbling windows),
+  but it is also possible to resume the aggregation from where it was or to
+  expels oldest events (sliding window) or really any other behavior.
 
 [[ConfGraph]]Configuration Graph::
-  The directed graph of the defined operations. The nodes of this graph
+  The directed graph of the defined operations. The functions of this graph
   represent the operations while the edges represents the flow of tuples.
-  This graph can be cyclic, with some limitations (see xref:Layer[]).
+  This graph can be cyclic, with some limitations (see xref:Program[]).
 
 [[Event]]Event::
   An individual message to be processed. In Ramen events are
   xref:Tuples[tuples].
 
 [[FQName]]Fully Qualified Name::
-  The fully qualified name of a node is the name of the layer it belongs to,
-  then a slash ("/"), then the name of the node. Those FQ names are globally
-  unique.
+  The fully qualified name of an xref:Operation[operation] is the name of the
+  xref:Program[program] it belongs to, followed by a slash ("/"), followed by
+  the operation name. Those FQ names are globally unique.
 
 [[Group]]Group::
-  Within the context of a operation, a `group` refers to an aggregation group,
-  ie the set of tuples sharing the same key and aggregated together. This
-  group live as long as it is committed (and then it can be deleted or reduced
-  before resuming the operation). Aggregation groups are therefore closely
+  Within the context of an operation, a `group` refers to an aggregation group,
+  ie. the set of tuples sharing the same key and aggregated together. This
+  group live until it is committed, when it can be deleted or downsized
+  before resuming the operation. Aggregation groups are therefore closely
   related to the concept of xref:Windowing[windows].
 
-[[Layer]]Layer::
+[[Program]]Program::
   A subgraph of the xref:ConfGraph[Configuration Graph]. Containing one or
-  several xref:Node[nodes]. This is the smallest subset of the configuration
-  that can be edited/compiled/started/stopped. Inside a layer nodes are allowed
-  to form cycles, but the layers themselves must form a tree.
-  In addition to a set of nodes, a layer also has a name. Those names must be
-  globally unique.
-
-[[Node]]Node::
-  Vertices of the xref:ConfGraph[Configuration Graph]. A node is composed of a
-  name and an operation. Node names must be unique within a layer.  Every node
-  has an input and an output type, which is the types of the tuples they
-  consume and produce. These types may only be known after the layer is compiled,
-  though. Nodes can receive tuples from any other nodes of the same layer, or
-  from any nodes of any layer defined previously.
+  several xref:Operation[operations]. This is the smallest subset of the
+  configuration that can be edited/compiled/started/stopped. Inside a program
+  functions are allowed to form cycles, but the programs themselves must form a
+  tree.  In addition to a set of operations, a program also has a name. Those
+  names must be globally unique.
 
 [[Nullable]]Nullable::
   Said of a tuple field that can hold the NULL value. Most fields should not be
   nullable as it implies expensive runtime checks.
 
 [[Operation]]Operation::
-  The description, in the SQL-inspired specific language, of how a node produce
-  output from its input.
+  Vertices of the xref:ConfGraph[Configuration Graph]. An operation is composed
+  of a name and the description, in the SQL-inspired specific language, of how
+  to produce the output from the inputs. Operation names must be unique within
+  a xref:Program[program].  Every operation has an input and an output type,
+  which is the types of the tuples they consume and produce. These types may
+  only be known after the program is compiled, though. Operations can receive
+  tuples from any other operations of the same program, or from any operations
+  of any program already defined.
 
 [[RingBuffer]]Ring-Buffer::
-  Fixed sized buffer with a cursor where the writers add content to, and
-  another cursor where the readers read values from, both wrapping around the
-  buffer, thus implementing a fixed size FIFO.
+  Fixed sized FIFO buffer used by workers to exchange tuples.
 
 [[RotatingBloomFilters]]Rotating Bloom Filters::
   Array of https://en.wikipedia.org/wiki/Bloom_filter[bloom filters], each
@@ -114,12 +117,12 @@ statically typed at compile time to avoid runtime failures and improve speed.
   result. For instance, all arithmetic functions are stateless.
 
 [[StreamProcessor]]Stream Processor::
-  A software which purpose it to perform user defined computation on a
+  A software which purpose is to perform user defined computations on a
   theoretically infinite stream of data.
   See: https://en.wikipedia.org/wiki/Data_stream_management_system.
 
 [[Tuple]]Tuple::
-  What is consumed and produced by nodes.  A set of values, each of its own
+  What is consumed and produced by functions.  A set of values, each of its own
   type. Those values are called "fields" and beside its type a field also has a
   name that must be unique in the tuple.  Tuples are the only constructed data
   type, and must itself be composed only of primitive types.
@@ -129,39 +132,43 @@ statically typed at compile time to avoid runtime failures and improve speed.
   incoming events are batched before processing. Usually windows are either
   sliding or tumbling, with variations (see for instance
   https://i.stack.imgur.com/mm06A.jpg[this picture]). Ramen is rather unique
-  in this regard that it has n o notion of a window, especially not one bound
+  in this regard that it has no notion of a window, especially not one bound
   to time, since it has no preconception of time. Instead, Ramen has explicit
   conditions for when to stop a aggregation (to xref:Commit[commit] the
   group), and what to keep from one aggregation to the next. This makes it
-  possible to configure any conceivable windows, including non sequential
-  "windows".
+  possible to configure any conceivable windows, including tumbling or sliding
+  or non sequential "windows".
 
 [[Worker]]Worker::
-  One of the possibly many programs generated and executed by Ramen to carry
-  out some operation on the data stream.
+  One of the possibly many executables generated and run by Ramen to carry out
+  some operation on the data stream.
 
 == The Configuration Language Reference
 
-We describe first values, then expressions, then operations.  All these
-concepts reference each others so there is no reading order that would save
-you from jumping around. First reading may not be clear but everything should
-eventually fall into place.
+We describe first values, then expressions, then operations, and finally
+programs.  All these concepts reference each others so there is no reading
+order that would save you from jumping around. First reading may not be clear
+but everything should eventually fall into place.
 
-=== Blanks
+=== Basic Syntax
 
-Any blank or newline is a separator.
+==== Blanks
 
-=== Comments
+Any space, tab, newline or comment is a separator.
+
+==== Comments
 
 As in SQL, two dashes introduce a line comment. Everything from those dashes
-and the end of that line is considered a space.
+and the end of that line is treated as space.
 
 There is no block comments.
 
-=== Quotation
+==== Quotation
 
 Some rare reserved keywords cannot be used as identifiers unless surrounded by
 simple quotes.
+Quotes can also be used around operation names if they include characters
+that would be illegal in an identifier, such as spaces or dashes.
 
 === Values
 
@@ -171,11 +178,12 @@ Like in SQL, some field may have the NULL value. Ramen typing system knows what
 value can be NULL and spare the NULL checks unless necessary.
 
 Users can check if a nullable value is indeed NULL using the +IS NULL+ or +IS
-NOT NULL+ operators, which turn a nullable value into a boolean. This is useful
-in `where` clauses.
+NOT NULL+ operators, which turn a nullable value into a (non-nullable)
+boolean. This is very useful in `where` clauses, since the result of a `where`
+clause is not allowed to be nullable.
 
 +NULL+ is both a type and a value. The +NULL+ value is the only possible value
-of the +NULL+ type, or a possible value for any nullable field.
+of the +NULL+ type. It is also a possible value for any nullable type.
 
 To write a literal +NULL+ value (of the +NULL+ type, for what it's worth),
 enter `NULL`.
@@ -207,26 +215,33 @@ Ramen allows integer types of 5 different sizes from 8 to 128 bits, signed
 or unsigned: `i8`, `i16`, `i32`, `i64`, `i128`, that are signed, and `u8`,
 `u16`, `u32`, `u64` and `u128`, that are unsigned.
 
-When writing a literal integer you can specify its intended type by suffixing
-it with the type name (for instance: `42u128` would be an unsigned integer 128
-bits wide). If you do not then Ramen will choose the narrowest possible type
-that can accommodate that integer value and that's not smaller than i32.  Thus,
-to get a literal integer smaller than i32 one has to suffix it.
+Ramen uses the conventional 2-complement encoding of integers with silent
+wrap-around in case of overflow.
+
+When writing a literal integer it is possible to specify the intended type by
+suffixing it with the type name; for instance: `42u128` would be an unsigned
+integer 128 bits wide with value `42`. If no such suffix is present then Ramen
+will choose the narrowest possible type that can accommodate that integer
+value and that's not smaller than i32.  Thus, to get a literal integer smaller
+than i32 one has to suffix it. This is to avoid having non-intentionally
+narrow constant values that would wrap around unexpectedly.
 
 In addition to the suffix, you can also use a cast, using the type name as a
 function: `u128(42)`. This is equivalent but more general as it can be used on
-other expression than simple literal integers.
+other expression than simple literal integers, such as floats or booleans.
 
 ==== Network addresses
 
 Ethernet addresses are accepted with the usual notation, such as:
 `18:d6:c7:28:71:f5` (without quotes, those are not strings!) They are
-internally stored as 48bits unsigned integers and can be casted from/to other
+internally stored as 48bits unsigned integers and can be cast from/to other
 integer types.
 
 IP addresses are also accepted, either v4 or v6, again without strings.
 
-CIDR addresses are also accepted; for instance `192.168.10.0/24`.
+CIDR addresses are also accepted; for instance `192.168.10.0/24` (there is no
+ambiguity with integer division since arithmetic operators do not apply to IP
+addresses).
 
 Some functions will check that an IP belongs to a CIDR.
 
@@ -239,7 +254,7 @@ Any literal value (as described in the previous section) is a valid expression.
 ==== Tuple field names
 
 In addition to literal values one can refer to a tuple field. Which tuples are
-available depends on the clause but the general syntax is:
+available depends on the xref:Clause[clause] but the general syntax is:
 `tuple_name.field_name`. The prefix (before the dot) can be omitted in most
 cases and then the field is understood to refer to the "in" tuple (the input
 tuple).
@@ -263,7 +278,8 @@ Can be used to retrieve the field of the previous received tuple.
 
 Can be used in the `where`, `select` and `commit/flush` clauses.
 
-When `in` is the first tuple ever, then `in.last` is the same as `in`.
+When `in` is the first tuple ever, then `in.last` is the same as `in`.  This
+situation can nonetheless be detected using the `#count` virtual field.
 
 [[selected-tuple]]
 ===== Selected tuple
@@ -298,7 +314,7 @@ There is also a `unselected` tuple that has only virtual fields.
 
 The tuple that is going to be output (if the +COMMIT+ condition holds
 `true`).  Its name is `out`.  The only places where it can be used is in the
-commit and `flush-when` clauses.
+commit clause.
 
 It is also possible to refer to fields from the out tuple in `select` clauses
 which creates the out tuple, but only if the referred fields has been defined
@@ -326,10 +342,18 @@ This would be an equivalent, more explicit statement:
 ----
 
 It is important to keep in mind that the input and output tuples have
-different types.
+different types (in general).
 
-[[first-tuple]]
-===== First tuple
+[[previous-tuple]]
+===== Previous tuple
+
+Named `out.previous` or just `previous`, refers to the last output
+tuple.
+
+Can be used in `select`, `where` and `commit` clauses.
+
+[[group-first-tuple]]
+===== First tuple in group
 
 Named `group.first` or just `first`, refers to the first tuple of an
 aggregation.  Can be used anywhere but in the `group-by` clause itself.
@@ -343,39 +367,40 @@ It is worth noting that it makes the operation slower to use any tuple from
 the `group` family in the `where` clause since it requires to build the key and
 retrieve the aggregate even for tuples that will end up being filtered out.
 
-[[last-tuple]]
-===== Last tuple
+[[group-last-tuple]]
+===== Last tuple in group
 
 Named `group.last` or just `last`.  Same as `first`, but refers to the last
 tuple aggregated in the current bucket.
 
 Same type as the input tuple.
 
-Differs from `previous` by its type (`previous` is the current product of the
-operation while `last` is the last aggregated _input_ tuple) and in that it
-can also be used in the `select` clause and the `where` clause.
+Differs from `previous` by its type (`previous` is the current result of the
+aggregation while `last` is the last aggregated _input_ tuple) and by the fact
+that it can also be used in the `select` clause and the `where` clause.
 
-[[previous-tuple]]
-===== Previous tuple
+[[group-previous-tuple]]
+===== Previous tuple out of group
 
-Named `group.previous` or just `previous`, refers to the previous version of
-the output tuple. Notice that this is not the lastly output tuple but the
-previous value for `out`, which have actually been output only if the commit
-expression returned true (and the aggregate haven't been flushed).
+Named `group.previous`, refers to the previous version of the aggregation
+result for that group.  Notice that this is not the lastly output tuple (that
+would be `out.previous`) but rather the previous value for `out`, which have
+actually been output only if the commit expression returned true (and the
+aggregate haven't been flushed). There is one distinct `group.previous` per
+group, while there is only one `out.previous`.
 
-Can only be used in the `commit` clause or `flush-when` clause.
+Can be used in the `select` and `commit` clause.
 
-When the aggregate is fresh new then that tuple is set to `out`.
+When the aggregate is fresh new then that tuple has all its field set to Null. Therefore, if you use this tuple you must check for nulls accordingly.
 
-Same type as the `out` tuple, obviously.
+Same type as the `out` tuple, with all fields nullable.
 
 Usage example:
 
 [source,sql]
 ----
-  SELECT key, LAST(signal) AS signal GROUP BY key
-    COMMIT WHEN previous.signal != out.signal
-    FLUSH WHEN false
+  SELECT key, signal GROUP BY key
+  COMMIT AND KEEP ALL WHEN signal != group.previous.signal
 ----
 
 To transform a succession of `key, signal` with possibly many times the same
@@ -673,6 +698,8 @@ Notes:
   positive rate and account for it in the surrounding calculations, as
   opposed to aim for a low false positive rate.
 
+`hysteresis`, TBD
+
 ==== Conditionals
 
 Conditional expressions can appear anywhere an expression can.  Conditions
@@ -780,7 +807,7 @@ standard input and outputs the actual CSV in its standard output.
 The CSV will then be read line by line, and a tuple formed from a line by
 splitting that line according to the delimiter (the one provided or the
 default coma (",")). The rules to parse each individual data types in the CSV
-are the same as to parse them as literal values in the node operation code.
+are the same as to parse them as literal values in the function operation code.
 In case a line fails to parse it will be discarded.
 
 The CSV reader cannot parse headers.  CSV field values can be double-quoted
@@ -816,7 +843,7 @@ READ FILES "/tmp/test/*.csv.gz" PREPROCESSOR "zcat" (
 ==== Receive
 
 A variation of the above: Instead of +READ FILE "pattern"+ just enter +RECEIVE+
-and Ramen will accept CSV file POSTed at +/upload/node_fully_qualified_name/+
+and Ramen will accept CSV file POSTed at +/upload/function_fully_qualified_name/+
 and will process them as they were CSV files taken from the file system.
 
 Notice that in that case the CSV file will not be kept in the file system and
@@ -834,7 +861,7 @@ RECEIVE SEPARATOR "\t" NULL "<NULL>" (
 
 ==== Yield
 
-If you just want a constant expression to supply data to its child nodes
+If you just want a constant expression to supply data to its child functions
 you can use the yield expression. This is particularly useful in conjunction
 with the `now` and `sequence` functions, or for tests, but otherwise rather
 pointless.
@@ -847,7 +874,7 @@ Syntax:
 ----
 
 Yield merely produces an infinite stream of tuples, as fast as the downstream
-nodes can consume them.
+functions can consume them.
 
 ==== Group By
 
@@ -1054,6 +1081,8 @@ Instead of deleting the group, one can:
 - Remove all entries satisfying a condition with +REMOVE condition+;
 - Conversely, keep only the entries satisfying a condition with +KEEP condition+
   (syntactic sugar for +REMOVE not (condition)+);
+- Keep everything and resume aggregation without changing the group in any
+  way, with +KEEP ALL+.
 
 Notice that +SLIDE+ assumes that the tuples are received in some meaningful
 order, which is generally not true. It is thus often safer to use a proper
@@ -1073,7 +1102,7 @@ section should really have been:
 
 [source,sql]
 ----
-COMMIT [ AND [ FLUSH | SLIDE n | REMOVE condition | KEEP condition ] ] WHEN condition
+COMMIT [ AND [ FLUSH | SLIDE n | REMOVE condition | KEEP [ condition | ALL ] ] ] WHEN condition
 ----
 
 There is no +FLUSH+ method to keep the group as it is, but you could easily
@@ -1084,14 +1113,14 @@ Indeed, when its not bundled with the `commit` clause, the `flush` clause is:
 
 [source,sql]
 ----
-( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) WHEN condition
+( FLUSH | SLIDE n | REMOVE condition | KEEP [ condition | ALL ]) WHEN condition
 ----
 
 so to keep the groups as they are the simplest is to add:
 
 [source,sql]
 ----
-FLUSH WHEN false
+KEEP ALL
 ----
 
 Notice that when an explicit `flush` clause is present, then the flush method
@@ -1105,8 +1134,7 @@ added 10 persons in the aggregation group:
 ----
 SELECT avg salary, avg globally salary AS global_avg_salary
 FROM employee GROUP BY age, is_male
-COMMIT WHEN group.#count >= 10
-FLUSH WHEN false
+COMMIT AND KEEL ALL WHEN group.#count >= 10
 ----
 
 Suppose instead we want a sliding window over the last 10 persons of a group:
@@ -1120,22 +1148,22 @@ COMMIT AND SLIDE 1 WHEN group.#count >= 10
 NOTE: The default `flush` clause is to flush the group after committing a
 tuple.
 
-===== Outputting: How Tuples Are Sent To Child Nodes
+===== Outputting: How Tuples Are Sent To Child Functions
 
 When Ramen commits a tuple, what tuple exactly is it?
 
 The output tuple is the one that is created by the `select` clause, with no
 more and no less fields. The types of those fields is obviously heavily
-influenced by the type on the input tuple. This type itself comes mostly from
-the output type of the parent nodes. Therefore changing an ancestor
-operation might change the output type of an unmodified node.
+influenced by the type of the input tuple. This type itself comes mostly from
+the output type of the parent operations. Therefore changing an ancestor
+operation might change the output type of an unmodified operation.
 
-The output tuple is then sent to each of the children nodes, before a new input
-tuple is read. No batching takes place in the nodes, although batching does
+The output tuple is then sent to each of the children operations, before a new input
+tuple is read. No batching takes place in the operations, although batching does
 take place in the communication in between them (the ring-buffers).  Indeed,
-when a node has no tuple to read it _sleeps_ for a dynamic duration that is
+when an operation has no tuple to read it _sleeps_ for a dynamic duration that is
 supposed to leave enough time for N tuples to arrive, so that next time the
-node is run by the operating system there are, in average, N tuples waiting.
+operation is run by the operating system there are, in average, N tuples waiting.
 This behavior is designed to be efficient (minimizing syscalls when busy and
 avoiding trashing the cache), but offers no guaranteed batching. If a
 computation requires batches then those batches have to be computed using
@@ -1178,10 +1206,10 @@ The result of the GET is discarded.
 
 ===== Outputting: Exporting Tuples For Posterity
 
-Storing output tuples can be useful, but doing so for every node would be
+Storing output tuples can be useful, but doing so for every operation would be
 wasteful.
 
-You can select which nodes output is to be stored on disc with the `export`
+You can select which operations output is to be stored on disc with the `export`
 clause.
 
 Just marking a +Group By+ operation with the +EXPORT+ keyword alone is enough
@@ -1306,15 +1334,30 @@ With all this, evaluates the `commit` clause (or the top condition): if it is
 true then send the output tuple to all children, and if the export keyword is
 present also store it on disc. Should this input tuple be replayed when
 flushing this aggregate, store it with as part of the group. If the output
-tuple has been committed, then also evaluates the `flush-when` clause. If it is
-also true then flush this aggregate -- either by deleting the aggregate
-altogether or by replacing it with an aggregate build from replaying some of
-the stored input tuple. If this was a top operation, though, all groups will be
-committed and flushed.
+tuple has been committed, then lush this aggregate -- either by deleting the
+aggregate altogether or by replacing it with an aggregate build from replaying
+some of the stored input tuple. If this was a top operation, though, all
+groups will be committed and flushed.
 
 A picture might help:
 
 image::RamenOperations.png[]
+
+=== Programs
+
+A program is a set of operations. The order of definitions does not matter.
+The semi-colon is used as a separator (although a final semi-colon is
+allowed). The syntax is simple and can be grasped with a single example:
+
+[source,sql]
+----
+  DEFINE foo AS SELECT * FROM other_program/operation WHERE bar > 0;
+  DEFINE foobar AS SELECT foo, bar FROM bazibar WHERE foo >= 42;
+----
+
+You can also have anonymous operations (without the +DEFINE xxx AS+ part),
+but then of course their output could not be +SELECT+ed from another 
+operation.
 
 === Examples
 
@@ -1329,7 +1372,7 @@ image::RamenOperations.png[]
 
 == The API
 
-=== Create/Modify/Delete Layers
+=== Create/Modify/Delete Programs
 
 === Export/Import the Whole Graph
 
@@ -1341,7 +1384,7 @@ PUT at the same location.
 
 Once your configuration is ready you can compile it by GETting `/compile`.
 This will check all the operations and types in details, and generate the
-executable implementing each node, or return any encountered error.
+executable implementing each operation, or return any encountered error.
 
 If all went well, you can then GET `/start` for Ramen to start all those
 executables, and then `/stop` to kill them all.
@@ -1361,5 +1404,5 @@ no more than that many tuples.
 [[upload-API]]
 === Upload data
 
-+RECEIVE+ nodes expect that the data be sent to Ramen, as a CSV, via an HTTP
++RECEIVE+ operations expect that the data be sent to Ramen, as a CSV, via an HTTP
 POST to +/upload/NODE_NAME/+.

@@ -75,14 +75,14 @@ you could direct them to the container port 2055 for more interesting data.
 Ramen serves over HTTP both an API and a basic GUI to let you see what's taking
 place.  Have a look http://localhost:29380/[over here].
 
-There are at first only two things you should see: a list of _layers_,
-initially composed of only one layer named "demo", and a list of _nodes_, with
-one called "collectd" and one "netflow".
+There are at first only two things you should see: a list of _programs_,
+initially composed of only one program named "demo", and a list of
+_operations_, with one called "collectd" and one "netflow".
 
-Layers are sets of nodes. A node is just an individual operation, which can be
+Programs are sets of operations. An operation is just an individual operation, which can be
 of several types: listening to some network port for some known protocol (such
 as collectd or netflow) is one of them. In general though, operations will
-consist of SQL-like operations on tuples ("SELECT foo, bar FROM another_node
+consist of SQL-like operations on tuples ("SELECT foo, bar FROM another_operation
 WHERE foo = 42...").  _Tuples_ are like a row in SQL: a collection of named
 fields and values. Values can have various types (integers, strings,
 booleans...) as in SQL. For instance, here is a tuple:
@@ -97,56 +97,56 @@ It is frequent to refer to tuples as _events_ and we might use one or the other
 term.
 
 In a stream processor, operations are chained together and run forever (in
-theory). In ramen, nodes have _parents_ and _children_. A node sends the tuple
+theory). In ramen, operations have _parents_ and _children_. An operation sends the tuple
 it produces to each of its children.
 
-Layers are the granularity at which nodes can be created, started and stopped.
-Within a layer you can build loops of nodes. Outside of layers, though, loops
-are not allowed: when you add a layer, all the parent nodes must either be in
-the layer you are adding or in a layer that's already defined.
+Programs are the granularity at which operations can be created, started and stopped.
+Within a program you can build loops of operations. Outside of programs, though, loops
+are not allowed: when you add a program, all the parent operations must either be in
+the program you are adding or in a program that's already defined.
 
-Nodes and layers have names. Layer names must be globally unique while node
-names need only be unique within the layer they belong to. The _fully
-qualified_ name of a node is the name of the layer it belongs to, followed by a
-slash ("/"), followed by the name of the node. Consequently, the slash
-character is not allowed in a node name.
+Operations and programs have names. Program names must be globally unique while operation
+names need only be unique within the program they belong to. The _fully
+qualified_ name of an operation is the name of the program it belongs to, followed by a
+slash ("/"), followed by the name of the operation. Consequently, the slash
+character is not allowed in an operation name.
 
 For instance, "base/per_hosts/hourly_traffic" is the fully qualified name of
-the node "hourly_traffic" in the layer named "base/per_hosts". Notice that the
-slash ("/") in the layer name is just a convention with no particular meaning.
+the operation "hourly_traffic" in the program named "base/per_hosts". Notice that the
+slash ("/") in the program name is just a convention with no particular meaning.
 
 === Running The Operation
 
-For now we have a single layer named "demo" containing only two nodes.
+For now we have a single program named "demo" containing only two operations.
 
-The layer panel says that the "demo" layer has never been started.  Indeed,
+The program panel says that the "demo" program has never been started.  Indeed,
 ramen creates it by default but does not compile nor start it. Before we remedy
-to that, let's have a look at what these nodes are doing exactly.  If you click
-on the layer panel the "source code" of all its nodes will be revealed.  In
-this case it is disappointingly simple. The "collectd" node does only:
+to that, let's have a look at what these operations are doing exactly.  If you click
+on the program panel the "source code" of all its operations will be revealed.  In
+this case it is disappointingly simple. The "collectd" operation does only:
 
 [source,sql]
 ----
 LISTEN FOR COLLECTD
 ----
 
-and similarly for the "netflow" node:
+and similarly for the "netflow" operation:
 
 [source,sql]
 ----
 LISTEN FOR NETFLOW
 ----
 
-Let's compile that. On the layer panel you should notice a gear (⚙) icon.
-Click on it to compile the layer. A couple of seconds later, that icon should
+Let's compile that. On the program panel you should notice a gear (⚙) icon.
+Click on it to compile the program. A couple of seconds later, that icon should
 turn into a triangle (▷), meaning it has been successfully compiled and is
 ready to run. Now let's run it by clicking on that icon, which should now turn
 into a pause sign (||) that, if clicked, would stop the execution of this
-layer.
+program.
 
 As collectd and netflow messages are received by ramen the statistics in the
-node table should start to show signs of life. If you click on a row in the
-node list then the last tuples produced by this node will be displayed below.
+operation table should start to show signs of life. If you click on a row in the
+operation list then the last tuples produced by this operation will be displayed below.
 
 Let's look at the collectd statistics for now.
 
@@ -164,7 +164,7 @@ types, signed or unsigned, denoted "u8", "u16", ...  "u128" for the unsigned
 ones and "i8" etc for the signed ones. Beside its name, each tuple field has a
 type and a flag indicating if the value can be null.
 
-== Create Your Own Nodes
+== Create Your Own Operations
 
 Monitoring usually involves three phases: first, collect all possible data,
 then turn that data into meaningful information, and finally alert on that
@@ -177,14 +177,14 @@ many subsystems, let's try to build a stream representing, at a given time,
 how memory is allocated for various usage.
 
 So to begin with, let's filter the events generated by collectd memory probes.
-We will do all our experiments in a new layer that we will call "hosts", for
+We will do all our experiments in a new program that we will call "hosts", for
 we will monitor hosts health in it.
 
-Click the +new layer+ button that's at the bottom of the layer list, and you
-should see a rudimentary form to create a new layer (with as many nodes as you
+Click the +new program+ button that's at the bottom of the program list, and you
+should see a rudimentary form to create a new program (with as many operations as you
 want in there, but we will start with just one). So enter "hosts" instead
-of "unnamed layer" as the layer name and "memory" in place of "new node 1" as
-the node name. Then for the operation, enter:
+of "unnamed program" as the program name and "memory" in place of "new operation 1" as
+the operation name. Then for the operation, enter:
 
 [source,sql]
 ----
@@ -212,12 +212,12 @@ to plot the tuples or use any function that requires the time, then you have
 to instruct ramen how to get the time from the event.
 
 Press the +Save+ button and if all goes well you should now be able to proceed
-with the compilation of this new layer by clicking on the gear icon as you did
-earlier for the "demo" layer. This time though, you should get an error
+with the compilation of this new program by clicking on the gear icon as you did
+earlier for the "demo" program. This time though, you should get an error
 message that, if you are used to SQL, may surprise you:
 
 ----
-In node memory: where clause must not be nullable
+In operation memory: where clause must not be nullable
 ----
 
 Correct typing is an important design goal of ramen so that it can be reliably
@@ -240,8 +240,8 @@ empty, the last expression is not allowed to be nullable, while every others
 must be ; so that it is guaranteed that the result of a coalesce is never
 null.
 
-So, click on the "tutorial" layer panel again and modify the text of the
-"memory" node to look like this:
+So, click on the "tutorial" program panel again and modify the text of the
+"memory" operation to look like this:
 
 [source,sql]
 ----
@@ -251,7 +251,7 @@ EXPORT EVENT STARTING AT time
 
 Save it and you should now be able to compile and run it by clicking on
 the gear icon and then the triangle icon.
-If you select this node in the list you should now see only collectd events
+If you select this operation in the list you should now see only collectd events
 originating from the memory plugin.
 
 You might notice that this plugin only sets one value and also that the
@@ -259,7 +259,7 @@ You might notice that this plugin only sets one value and also that the
 from that, most field are useless so we could make this more readable by
 changing its operation into the following, enumerating the fields we want to
 keep (and implicitly discarding the others). Notice that you must first stop
-the running node (by clicking on the double-bar icon) before you can edit it.
+the running operation (by clicking on the double-bar icon) before you can edit it.
 
 [source,sql]
 ----
@@ -422,7 +422,7 @@ timeseries.
 
 == Visualization
 
-Now our memory node returns a much better looking result:
+Now our memory operation returns a much better looking result:
 
 [width="50%",cols=">,<,>,>,>,>,>",options="header"]
 |=====================
@@ -477,7 +477,7 @@ plugin] for more details about using ramen as a data source for Grafana.
 
 Ramen only ways to notify the external world of some condition is the +NOTIFY+
 clause that takes an HTTP URL as a parameter and that will get (as in +HTTP
-GET+) that URL each time the node commits a tuple. Ramen comes with an alert
+GET+) that URL each time the operation commits a tuple. Ramen comes with an alert
 manager that can perform the last mile of alert delivery (as well as a few
 other things) that we are going to use here but you could as well direct those
 URL to any other alerting service of your liking.
@@ -486,7 +486,7 @@ As a simple example, let's say we want to be alerted whenever the "used" memory
 grows beyond 50% of the total.
 
 We can use the +NOTIFY+ keyword to instruct Ramen to contact some external
-system in addition to emitting a tuple. Let's add to the hosts layer a node
+system in addition to emitting a tuple. Let's add to the hosts program an operation
 named "memory alert" and defined like this:
 
 [source,sql]
@@ -521,7 +521,7 @@ Notice the +NOTIFY+ clause: it just needs an URL within which actual field
 values can be inserted. This actual URL is the one of the alerter bundled in
 the docker image.
 
-Let's compile our new layer.
+Let's compile our new program.
 Wait, what? Now the compiler is complaining that used_ratio can be NULL?
 Had you noticed that all of out memory values could be NULL? That's typically
 the kind of surprise Ramen type system is meant to avoid.
@@ -530,7 +530,7 @@ Of course, collectd "type_instance" field is nullable, so is the +IF
 type_instance = "whatever"+ conditional, so are each of the averaged memory
 volumes. We could wrap each use of type_instance into a +COALESCE+ function but
 that would be tedious. Rather, let's put in practice our new knowledge about
-private fields. Turn the memory node into:
+private fields. Turn the memory operation into:
 
 [source,sql]
 ----
@@ -567,7 +567,7 @@ It is also possible to notify the alerter that a particular alert have stopped
 firing, thanks to the "firing" parameter that can be 0 (non-firing) or 1
 (firing). When absent, as above, the alerter assumes that the alert is firing.
 
-Let's try to do that.  Edit the "memory alert" node into this:
+Let's try to do that.  Edit the "memory alert" operation into this:
 
 [source,sql]
 ----
@@ -602,7 +602,7 @@ todo list.
 
 Let's now turn into netflow.
 
-If you click on the netflow node you will see that it outputs almost without
+If you click on the netflow operation you will see that it outputs almost without
 interpretation a stream of netflow records ; fields meaning should be obvious
 if you are already familiar with
 https://www.cisco.com/c/en/us/td/docs/net_mgmt/netflow_collection_engine/3-6/user/guide/format.html#wp1006186[netflow].
@@ -636,7 +636,7 @@ in two, saying that the traffic that have been received on interface X and
 emitted on interface Y count as traffic for interface X and traffic for
 interface Y, counting indifferently incoming and outgoing traffic.
 
-Let's therefore create a new layer named "traffic", with two nodes that we
+Let's therefore create a new program named "traffic", with two operations that we
 could name respectively "traffic in" and "traffic out":
 
 [source,sql]
@@ -654,10 +654,10 @@ FROM demo/netflow
 ----
 
 Both will read the netflows and output flows with a single +iface+ field for
-both incoming and outgoing traffic. We can then read from both those nodes and
+both incoming and outgoing traffic. We can then read from both those operations and
 have a single view of all traffic going through a given interface (in or out).
 
-Let's jut do that. In a node named "total", grouping by interface (that is, by
+Let's jut do that. In an operation named "total", grouping by interface (that is, by
 +source+ and +iface+) and aggregating the traffic (+bytes+ and +packets+),
 until enough time has passed (300 seconds in this example):
 
@@ -673,11 +673,11 @@ COMMIT WHEN out.last - out.first > 300
 EXPORT EVENT STARTING AT first AND STOPPING AT last
 ----
 
-It might be the first time you see a FROM clause with more that one node.
-You are allowed to read from several nodes as long as all these nodes output
+It might be the first time you see a FROM clause with more that one operation.
+You are allowed to read from several operations as long as all these operations output
 the exact same format.
 
-You could plot the "bytes" or "packets" field of this node to get the total
+You could plot the "bytes" or "packets" field of this operation to get the total
 traffic reaching any interface.
 
 For convenience let's rather compute the number of packets and bytes _per
