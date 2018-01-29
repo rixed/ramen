@@ -58,73 +58,73 @@ let rec find_float_metric metrics name =
   | { measure = MFloat n ; _ } as m ::_ when m.name = name -> n
   | _::rest -> find_float_metric rest name
 
-let node_info_of_node conf node =
-  let%lwt stats = RamenProcesses.last_report (N.fq_name node) in
+let func_info_of_func conf func =
+  let%lwt stats = RamenProcesses.last_report (N.fq_name func) in
   return SN.{
     definition = {
-      name = node.N.name ;
-      operation = IO.to_string Operation.print node.N.operation } ;
-    exporting = Operation.is_exporting node.N.operation ;
-    signature = if node.N.signature = "" then None else Some node.N.signature ;
-    pid = node.N.pid ;
-    input_type = C.info_of_tuple_type node.N.in_type ;
-    output_type = C.info_of_tuple_type node.N.out_type ;
-    parents = List.map (fun (l, n) -> l ^"/"^ n) node.N.parents ;
-    children = C.fold_nodes conf [] (fun children _l n ->
+      name = func.N.name ;
+      operation = IO.to_string Operation.print func.N.operation } ;
+    exporting = Operation.is_exporting func.N.operation ;
+    signature = if func.N.signature = "" then None else Some func.N.signature ;
+    pid = func.N.pid ;
+    input_type = C.info_of_tuple_type func.N.in_type ;
+    output_type = C.info_of_tuple_type func.N.out_type ;
+    parents = List.map (fun (l, n) -> l ^"/"^ n) func.N.parents ;
+    children = C.fold_funcs conf [] (fun children _l n ->
       N.fq_name n :: children) ;
     stats }
 
-let layer_info_of_layer conf layer =
-  let%lwt nodes =
-    Hashtbl.values layer.L.persist.L.nodes |>
+let program_info_of_program conf program =
+  let%lwt funcs =
+    Hashtbl.values program.L.persist.L.funcs |>
     List.of_enum |>
-    Lwt_list.map_s (node_info_of_node conf) in
+    Lwt_list.map_s (func_info_of_func conf) in
   return SL.{
-    name = layer.L.name ;
-    program = layer.L.persist.L.program ;
-    nodes ;
-    status = layer.L.persist.L.status ;
-    last_started = layer.L.persist.L.last_started ;
-    last_stopped = layer.L.persist.L.last_stopped }
+    name = program.L.name ;
+    program = program.L.persist.L.program ;
+    funcs ;
+    status = program.L.persist.L.status ;
+    last_started = program.L.persist.L.last_started ;
+    last_stopped = program.L.persist.L.last_stopped }
 
-let graph_layers conf = function
+let graph_programs conf = function
   | None ->
-    Hashtbl.values conf.C.graph.C.layers |>
+    Hashtbl.values conf.C.graph.C.programs |>
     List.of_enum |>
     return
   | Some l ->
-    try Hashtbl.find conf.C.graph.C.layers l |>
+    try Hashtbl.find conf.C.graph.C.programs l |>
         List.singleton |>
         return
-    with Not_found -> bad_request ("Unknown layer "^l)
+    with Not_found -> bad_request ("Unknown program "^l)
 
-let dot_of_graph layers =
+let dot_of_graph programs =
   let dot = IO.output_string () in
   Printf.fprintf dot "digraph g {\n" ;
-  List.iter (fun layer ->
-    Hashtbl.iter (fun _ node ->
-        Printf.fprintf dot "\t%S\n" (N.fq_name node)
-      ) layer.L.persist.L.nodes
-    ) layers ;
+  List.iter (fun program ->
+    Hashtbl.iter (fun _ func ->
+        Printf.fprintf dot "\t%S\n" (N.fq_name func)
+      ) program.L.persist.L.funcs
+    ) programs ;
   Printf.fprintf dot "\n" ;
-  List.iter (fun layer ->
-    Hashtbl.iter (fun _ node ->
+  List.iter (fun program ->
+    Hashtbl.iter (fun _ func ->
         List.iter (fun (pl, pn) ->
             Printf.fprintf dot "\t%S -> %S\n"
-              (pl ^"/"^ pn) (node.N.layer ^"/"^ node.N.name)
-          ) node.N.parents
-      ) layer.L.persist.L.nodes
-    ) layers ;
+              (pl ^"/"^ pn) (func.N.program ^"/"^ func.N.name)
+          ) func.N.parents
+      ) program.L.persist.L.funcs
+    ) programs ;
   Printf.fprintf dot "}\n" ;
   IO.close_out dot
 
-let get_graph_dot _headers layers =
-  let body = dot_of_graph layers in
+let get_graph_dot _headers programs =
+  let body = dot_of_graph programs in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" Consts.dot_content_type in
   Server.respond_string ~headers ~status ~body ()
 
-let mermaid_of_graph layers =
+let mermaid_of_graph programs =
   (* Build unique identifier that are valid for mermaid: *)
   let is_alphanum c =
     Char.(is_letter c || is_digit c) in
@@ -139,27 +139,27 @@ let mermaid_of_graph layers =
   in
   let txt = IO.output_string () in
   Printf.fprintf txt "graph LR\n" ;
-  List.iter (fun layer ->
-    Hashtbl.iter (fun _ node ->
+  List.iter (fun program ->
+    Hashtbl.iter (fun _ func ->
         Printf.fprintf txt "%s(%s)\n"
-          (mermaid_id (N.fq_name node))
-          (mermaid_label node.N.name)
-      ) layer.L.persist.L.nodes
-    ) layers ;
+          (mermaid_id (N.fq_name func))
+          (mermaid_label func.N.name)
+      ) program.L.persist.L.funcs
+    ) programs ;
   Printf.fprintf txt "\n" ;
-  List.iter (fun layer ->
-    Hashtbl.iter (fun _ node ->
+  List.iter (fun program ->
+    Hashtbl.iter (fun _ func ->
         List.iter (fun (pl, pn) ->
             Printf.fprintf txt "\t%s-->%s\n"
               (mermaid_id (pl ^"/"^ pn))
-              (mermaid_id (node.N.layer ^"/"^ node.N.name))
-          ) node.N.parents
-      ) layer.L.persist.L.nodes
-    ) layers ;
+              (mermaid_id (func.N.program ^"/"^ func.N.name))
+          ) func.N.parents
+      ) program.L.persist.L.funcs
+    ) programs ;
   IO.close_out txt
 
-let get_graph_mermaid _headers layers =
-  let body = mermaid_of_graph layers in
+let get_graph_mermaid _headers programs =
+  let body = mermaid_of_graph programs in
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" Consts.mermaid_content_type in
   let headers = Header.add headers "Access-Control-Allow-Origin" "*" in
@@ -167,126 +167,126 @@ let get_graph_mermaid _headers layers =
   let headers = Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
   Server.respond_string ~headers ~status ~body ()
 
-let get_graph conf headers layer_opt =
+let get_graph conf headers program_opt =
   let accept = get_accept headers in
   if is_accepting Consts.json_content_type accept then
     let%lwt graph = C.with_rlock conf (fun () ->
-      let%lwt layers = graph_layers conf layer_opt in
-      let layers = L.order layers in
-      Lwt_list.map_s (layer_info_of_layer conf) layers) in
+      let%lwt programs = graph_programs conf program_opt in
+      let programs = L.order programs in
+      Lwt_list.map_s (program_info_of_program conf) programs) in
     let body = PPP.to_string get_graph_resp_ppp graph in
     respond_ok ~body ()
   else (
     (* For non-json we can release the lock sooner as we don't need the
      * children: *)
-    let%lwt layers = C.with_rlock conf (fun () ->
-      graph_layers conf layer_opt) in
-    let layers = L.order layers in
+    let%lwt programs = C.with_rlock conf (fun () ->
+      graph_programs conf program_opt) in
+    let programs = L.order programs in
     if is_accepting Consts.dot_content_type accept then
-      get_graph_dot headers layers
+      get_graph_dot headers programs
     else if is_accepting Consts.mermaid_content_type accept then
-      get_graph_mermaid headers layers
+      get_graph_mermaid headers programs
     else
       cant_accept accept)
 
 (*
-    Add/Remove layers
+    Add/Remove programs
 
-    Programs and nodes within a layer are referred to via name that can be
+    Programs and funcs within a program are referred to via name that can be
     anything as long as they are unique.  So the clients decide on the name.
-    The server ensure uniqueness by forbidding creation of a new layers by the
+    The server ensure uniqueness by forbidding creation of a new programs by the
     same name as one that exists already.
 
 *)
 
-let find_node_or_fail conf layer_name node_name =
-  match C.find_node conf layer_name node_name with
+let find_func_or_fail conf program_name func_name =
+  match C.find_func conf program_name func_name with
   | exception Not_found ->
-    bad_request ("Function "^ layer_name ^"/"^ node_name ^" does not exist")
-  | layer, _node as both ->
-    RamenProcesses.use_layer (Unix.gettimeofday ()) layer ;
+    bad_request ("Function "^ program_name ^"/"^ func_name ^" does not exist")
+  | program, _func as both ->
+    RamenProcesses.use_program (Unix.gettimeofday ()) program ;
     return both
 
-let find_exporting_node_or_fail conf layer_name node_name =
-  let%lwt layer, node = find_node_or_fail conf layer_name node_name in
-  if not (L.is_typed layer) then
-    bad_request ("node "^ node_name ^" is not typed (yet)")
-  else if not (Operation.is_exporting node.N.operation) then
-    bad_request ("node "^ node_name ^" does not export data")
-  else return (layer, node)
+let find_exporting_func_or_fail conf program_name func_name =
+  let%lwt program, func = find_func_or_fail conf program_name func_name in
+  if not (L.is_typed program) then
+    bad_request ("func "^ func_name ^" is not typed (yet)")
+  else if not (Operation.is_exporting func.N.operation) then
+    bad_request ("func "^ func_name ^" does not export data")
+  else return (program, func)
 
-let node_of_name conf layer_name node_name =
-  if node_name = "" then bad_request "Empty string is not a valid node name"
-  else find_node_or_fail conf layer_name node_name
+let func_of_name conf program_name func_name =
+  if func_name = "" then bad_request "Empty string is not a valid func name"
+  else find_func_or_fail conf program_name func_name
 
-let del_layer_ conf layer =
-  if layer.L.persist.L.status = Running then
-    bad_request "Cannot delete a running layer"
+let del_program_ conf program =
+  if program.L.persist.L.status = Running then
+    bad_request "Cannot delete a running program"
   else
     try
-      C.del_layer conf layer ;
+      C.del_program conf program ;
       return_unit
     with C.InvalidCommand e -> bad_request e
 
-let del_layer conf _headers layer_name =
+let del_program conf _headers program_name =
   C.with_wlock conf (fun () ->
-    match Hashtbl.find conf.C.graph.C.layers layer_name with
+    match Hashtbl.find conf.C.graph.C.programs program_name with
     | exception Not_found ->
-      let e = "Program "^ layer_name ^" does not exist" in
+      let e = "Program "^ program_name ^" does not exist" in
       bad_request e
-    | layer ->
-      del_layer_ conf layer) >>=
+    | program ->
+      del_program_ conf program) >>=
   respond_ok
 
 (* FIXME: instead of stopping/starting for real we must build two sets of
  * programs to stop/start and perform with changing the processes only
  * when we are about to save the new configuration. *)
 
-let run_ conf layer =
-  try%lwt RamenProcesses.run conf layer
+let run_ conf program =
+  try%lwt RamenProcesses.run conf program
   with RamenProcesses.AlreadyRunning -> return_unit
 
-let stop_ conf layer =
-  try%lwt RamenProcesses.stop conf layer
+let stop_ conf program =
+  try%lwt RamenProcesses.stop conf program
   with RamenProcesses.NotRunning -> return_unit
 
-let compile_ conf layer =
-  try%lwt Compiler.compile conf layer
+let compile_ conf program =
+  try%lwt Compiler.compile conf program
   with Compiler.AlreadyCompiled -> return_unit
 
-let put_layer conf headers body =
-  let%lwt msg = of_json headers "Uploading layer" put_layer_req_ppp body in
-  let layer_name = msg.name in
-  (* Disallow anonymous layers for simplicity: *)
-  if layer_name = "" then
+let put_program conf headers body =
+  let%lwt msg = of_json headers "Uploading program" put_program_req_ppp body in
+  let program_name = msg.name in
+  (* Disallow anonymous programs for simplicity: *)
+  if program_name = "" then
     bad_request "Programs must have non-empty names" else (
-  (* Delete the layer if it already exists. No worries the conf won't be
+  (* Delete the program if it already exists. No worries the conf won't be
    * changed if there is any error. *)
   C.with_wlock conf (fun () ->
     let%lwt must_stop =
-      match Hashtbl.find conf.C.graph.C.layers layer_name with
+      match Hashtbl.find conf.C.graph.C.programs program_name with
       | exception Not_found -> return_false
-      | layer ->
-        if msg.ok_if_running && layer.L.persist.L.status = Running then (
-          let%lwt () = stop_ conf layer in
-          let%lwt () = del_layer_ conf layer in
+      | program ->
+        if msg.ok_if_running && program.L.persist.L.status = Running then (
+          let%lwt () = stop_ conf program in
+          let%lwt () = del_program_ conf program in
           return_true
         ) else (
-          let%lwt () = del_layer_ conf layer in
+          let%lwt () = del_program_ conf program in
           return_false
         ) in
-    (* Create all the nodes *)
-    let%lwt layer =
-      try C.make_layer conf layer_name msg.program |>
+    (* Create all the funcs *)
+    let%lwt program =
+      try C.make_program conf program_name msg.program |>
           return
       with Invalid_argument x -> bad_request ("Invalid "^ x)
          | SyntaxError e -> bad_request (string_of_syntax_error e)
          | e -> fail e in
     (* must restart *)
     if must_stop then (
-      !logger.debug "Trying to restart layer %s" layer.L.name ;
-      let%lwt () = compile_ conf layer in
-      run_ conf layer)
+      !logger.debug "Trying to restart program %s" program.L.name ;
+      let%lwt () = compile_ conf program in
+      run_ conf program)
     else return_unit) >>=
   respond_ok)
   (* TODO: Why not compile right now? *)
@@ -308,29 +308,29 @@ let get_index www_dir conf headers =
     Whole graph operations: compile/run/stop
 *)
 
-let compile conf headers layer_opt =
+let compile conf headers program_opt =
   try%lwt
-    let rec loop left_try layers =
-      !logger.debug "%d layers left to compile..." (List.length layers) ;
-      if layers = [] then return_unit else
+    let rec loop left_try programs =
+      !logger.debug "%d programs left to compile..." (List.length programs) ;
+      if programs = [] then return_unit else
       if left_try < 0 then bad_request "Unsolvable dependency loop" else
-      Lwt_list.fold_left_s (fun failed layer ->
+      Lwt_list.fold_left_s (fun failed program ->
           let open Compiler in
           try%lwt
-            let%lwt () = compile conf layer in
+            let%lwt () = compile conf program in
             return failed
           with AlreadyCompiled -> return failed
              | MissingDependency n ->
-               !logger.debug "We miss node %s" (N.fq_name n) ;
-               return (layer::failed)
+               !logger.debug "We miss func %s" (N.fq_name n) ;
+               return (program::failed)
              | e -> fail e
-        ) [] layers >>=
+        ) [] programs >>=
       loop (left_try-1)
     in
     let%lwt () =
       C.with_wlock conf (fun () ->
-        let%lwt layers = graph_layers conf layer_opt in
-        loop (List.length layers) layers) in
+        let%lwt programs = graph_programs conf program_opt in
+        loop (List.length programs) programs) in
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with SyntaxError _
@@ -339,13 +339,13 @@ let compile conf headers layer_opt =
        bad_request (Printexc.to_string e)
      | e -> fail e
 
-let run conf headers layer_opt =
+let run conf headers program_opt =
   try%lwt
     let%lwt () =
       C.with_wlock conf (fun () ->
-        let%lwt layers = graph_layers conf layer_opt in
-        let layers = L.order layers in
-        Lwt_list.iter_s (run_ conf) layers) in
+        let%lwt programs = graph_programs conf program_opt in
+        let programs = L.order programs in
+        Lwt_list.iter_s (run_ conf) programs) in
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with SyntaxError _
@@ -354,17 +354,17 @@ let run conf headers layer_opt =
        bad_request (Printexc.to_string e)
      | x -> fail x
 
-let stop_layers_ conf layer_opt =
-  let%lwt layers = graph_layers conf layer_opt in
-  Lwt_list.iter_p (stop_ conf) layers
+let stop_programs_ conf program_opt =
+  let%lwt programs = graph_programs conf program_opt in
+  Lwt_list.iter_p (stop_ conf) programs
 
-let stop_layers conf layer_opt =
+let stop_programs conf program_opt =
   C.with_wlock conf (fun () ->
-    stop_layers_ conf layer_opt)
+    stop_programs_ conf program_opt)
 
-let stop conf headers layer_opt =
+let stop conf headers program_opt =
   try%lwt
-    let%lwt () = stop_layers conf layer_opt in
+    let%lwt () = stop_programs conf program_opt in
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with C.InvalidCommand e -> bad_request e
@@ -382,16 +382,16 @@ let shutdown _conf _headers =
 (*
     Exporting tuples
 
-    Clients can request to be sent the tuples from an exporting node.
+    Clients can request to be sent the tuples from an exporting func.
 *)
 
-let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
-  (* Check that the node exists and exports *)
-  let%lwt _layer, node =
-    find_exporting_node_or_fail conf layer_name node_name in
+let get_tuples conf ?since ?max_res ?(wait_up_to=0.) program_name func_name =
+  (* Check that the func exists and exports *)
+  let%lwt _program, func =
+    find_exporting_func_or_fail conf program_name func_name in
   let open RamenExport in
   let start = Unix.gettimeofday () in
-  let k = history_key node in
+  let k = history_key func in
   let get_values () =
     match Hashtbl.find imported_tuples k with
     | exception Not_found ->
@@ -433,29 +433,29 @@ let get_tuples conf ?since ?max_res ?(wait_up_to=0.) layer_name node_name =
         List.map (fun (typ, nullmask, column) ->
           typ, Option.map RamenBitmask.to_bools nullmask, column)))
 
-let export conf headers layer_name node_name body =
+let export conf headers program_name func_name body =
   let%lwt () = check_accept headers Consts.json_content_type in
   let%lwt req =
     if body = "" then return empty_export_req else
-    of_json headers ("Exporting from "^ node_name) export_req_ppp body in
+    of_json headers ("Exporting from "^ func_name) export_req_ppp body in
   let%lwt first, columns =
     C.with_rlock conf (fun () ->
       get_tuples conf ?since:req.since ?max_res:req.max_results
-                      ~wait_up_to:req.wait_up_to layer_name node_name) in
+                      ~wait_up_to:req.wait_up_to program_name func_name) in
   let resp = { first ; columns } in
   let body = PPP.to_string export_resp_ppp resp in
   respond_ok ~body ()
 
 (*
-    Grafana Datasource: autocompletion of node/field names
+    Grafana Datasource: autocompletion of func/field names
 *)
 
-let complete_nodes conf headers body =
+let complete_funcs conf headers body =
   let%lwt msg =
-    of_json headers "Complete tables" complete_node_req_ppp body in
+    of_json headers "Complete tables" complete_func_req_ppp body in
   let%lwt lst =
     C.with_rlock conf (fun () ->
-      C.complete_node_name conf msg.node_prefix msg.only_exporting |>
+      C.complete_func_name conf msg.func_prefix msg.only_exporting |>
       return) in
   let body =
     PPP.to_string complete_resp_ppp lst
@@ -467,7 +467,7 @@ let complete_fields conf headers body =
     of_json headers "Complete fields" complete_field_req_ppp body in
   let%lwt lst =
     C.with_rlock conf (fun () ->
-      C.complete_field_name conf msg.node msg.field_prefix |>
+      C.complete_field_name conf msg.func msg.field_prefix |>
       return) in
   let body =
     PPP.to_string complete_resp_ppp lst
@@ -481,32 +481,32 @@ let complete_fields conf headers body =
 let timeseries conf headers body =
   let%lwt msg =
     of_json headers "time series query" timeseries_req_ppp body in
-  let ts_of_node_field req layer node data_field =
-    let%lwt _layer, node = find_exporting_node_or_fail conf layer node in
+  let ts_of_func_field req program func data_field =
+    let%lwt _program, func = find_exporting_func_or_fail conf program func in
     let open RamenExport in
     let consolidation =
       match String.lowercase req.consolidation with
       | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
     wrap (fun () ->
       try
-        build_timeseries node data_field msg.max_data_points
+        build_timeseries func data_field msg.max_data_points
                          msg.since msg.until consolidation
       with FuncHasNoEventTimeInfo _ as e ->
         bad_request_exn (Printexc.to_string e))
-  and create_temporary_node select_x select_y from where =
+  and create_temporary_func select_x select_y from where =
     (* First, we need to find out the name for this operation, and create it if
      * it does not exist yet. Name must be given by the operation and parent, so
-     * that we do not create new nodes when not required (avoiding a costly
+     * that we do not create new funcs when not required (avoiding a costly
      * compilation and losing export history). This is not equivalent to the
      * signature: the signature identifies operation and types (aka the binary)
      * but not the data (since the same worker can be placed at several places
      * in the graph); while here we want to identify the data, that depends on
      * everything the user sent (aka operation text and parent name) but for the
      * formatting. We thus start by parsing and pretty-printing the operation: *)
-    let%lwt parent_layer, parent_name =
-      try C.layer_node_of_user_string from |> return
-      with Not_found -> bad_request ("node "^ from ^" does not exist") in
-    let%lwt _layer, parent = node_of_name conf parent_layer parent_name in
+    let%lwt parent_program, parent_name =
+      try C.program_func_of_user_string from |> return
+      with Not_found -> bad_request ("func "^ from ^" does not exist") in
+    let%lwt _program, parent = func_of_name conf parent_program parent_name in
     let%lwt op_text =
       if select_x = "" then (
         let open Operation in
@@ -546,36 +546,36 @@ let timeseries conf headers body =
       if where = "" then op_text else op_text ^" WHERE "^ where in
     let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
     let reformatted_op = IO.to_string Operation.print operation in
-    let layer_name =
+    let program_name =
       "temp/"^ Cryptohash_md4.(string reformatted_op |> to_hex)
-    and node_name = "operation" in
-    (* So far so good. In all likelihood this layer exists already: *)
-    (if Hashtbl.mem conf.C.graph.C.layers layer_name then (
-      !logger.debug "Program %S already there" layer_name ;
+    and func_name = "operation" in
+    (* So far so good. In all likelihood this program exists already: *)
+    (if Hashtbl.mem conf.C.graph.C.programs program_name then (
+      !logger.debug "Program %S already there" program_name ;
       return_unit
     ) else (
-      (* Add this layer to the running configuration: *)
-      let layer = C.make_layer ~timeout:300. conf layer_name op_text in
-      let%lwt () = Compiler.compile conf layer in
-      RamenProcesses.run conf layer
+      (* Add this program to the running configuration: *)
+      let program = C.make_program ~timeout:300. conf program_name op_text in
+      let%lwt () = Compiler.compile conf program in
+      RamenProcesses.run conf program
     )) >>= fun () ->
-    return (layer_name, node_name, "data")
+    return (program_name, func_name, "data")
   in
   try%lwt
     let%lwt resp = Lwt_list.map_s (fun req ->
-        let%lwt layer_name, node_name, data_field =
+        let%lwt program_name, func_name, data_field =
           match req.spec with
-          | Predefined { node ; data_field } ->
-            let%lwt layer, node =
-              try C.layer_node_of_user_string node |> return
-              with Not_found -> bad_request ("node "^ node ^" does not exist") in
-            return (layer, node, data_field)
+          | Predefined { func ; data_field } ->
+            let%lwt program, func =
+              try C.program_func_of_user_string func |> return
+              with Not_found -> bad_request ("func "^ func ^" does not exist") in
+            return (program, func, data_field)
           | NewTempFunc { select_x ; select_y ; from ; where } ->
             C.with_wlock conf (fun () ->
-              create_temporary_node select_x select_y from where) in
+              create_temporary_func select_x select_y from where) in
         let%lwt times, values =
           C.with_rlock conf (fun () ->
-            ts_of_node_field req layer_name node_name data_field) in
+            ts_of_func_field req program_name func_name data_field) in
         return { id = req.id ; times ; values }
       ) msg.timeseries in
     let body = PPP.to_string timeseries_resp_ppp resp in
@@ -583,29 +583,29 @@ let timeseries conf headers body =
   with Failure err -> bad_request err
      | e -> fail e
 
-let timerange_of_node node =
+let timerange_of_func func =
   let open RamenSharedTypesJS in
-  let k = RamenExport.history_key node in
+  let k = RamenExport.history_key func in
   match Hashtbl.find RamenExport.imported_tuples k with
   | exception Not_found ->
-    !logger.debug "Function %s has no history" (N.fq_name node) ; NoData
+    !logger.debug "Function %s has no history" (N.fq_name func) ; NoData
   | h ->
     (match RamenExport.hist_min_max h with
     | None -> NoData
     | Some (sta, sto) ->
       let oldest, latest =
-        RamenExport.timerange_of_filenum node h sta in
+        RamenExport.timerange_of_filenum func h sta in
       let latest =
         if sta = sto then latest
-        else snd (RamenExport.timerange_of_filenum node h sto) in
+        else snd (RamenExport.timerange_of_filenum func h sto) in
       TimeRange (oldest, latest))
 
-let get_timerange conf headers layer_name node_name =
+let get_timerange conf headers program_name func_name =
   let%lwt resp =
     C.with_rlock conf (fun () ->
-      let%lwt _layer, node =
-        find_exporting_node_or_fail conf layer_name node_name in
-      try return (timerange_of_node node)
+      let%lwt _program, func =
+        find_exporting_func_or_fail conf program_name func_name in
+      try return (timerange_of_func func)
       with RamenExport.FuncHasNoEventTimeInfo _ as e ->
         bad_request (Printexc.to_string e)) in
   switch_accepted headers [
@@ -613,18 +613,18 @@ let get_timerange conf headers layer_name node_name =
       let body = PPP.to_string time_range_resp_ppp resp in
       respond_ok ~body ()) ]
 
-(* A thread that hunt for unused layers *)
-let rec timeout_layers conf =
+(* A thread that hunt for unused programs *)
+let rec timeout_programs conf =
   let%lwt () = C.with_wlock conf (fun () ->
-    RamenProcesses.timeout_layers conf) in
+    RamenProcesses.timeout_programs conf) in
   let%lwt () = Lwt_unix.sleep 7.1 in
-  timeout_layers conf
+  timeout_programs conf
 
 (*
-   Obtaining an SVG plot for an exporting node
+   Obtaining an SVG plot for an exporting func
 *)
 
-let plot conf _headers layer_name node_name params =
+let plot conf _headers program_name func_name params =
   (* Get all the parameters: *)
   let get ?def name conv =
     let lwt_conv s =
@@ -669,13 +669,13 @@ let plot conf _headers layer_name node_name params =
     | [_] -> return_true
     | _ -> return_false in
   (* Fetch timeseries: *)
-  let%lwt _layer, node =
+  let%lwt _program, func =
     C.with_rlock conf (fun () ->
-      find_exporting_node_or_fail conf layer_name node_name) in
+      find_exporting_func_or_fail conf program_name func_name) in
   let now = Unix.gettimeofday () in
   let%lwt until =
     if rel_to_metric then
-      match timerange_of_node node with
+      match timerange_of_func func with
       | exception (RamenExport.FuncHasNoEventTimeInfo _ as e) ->
         bad_request (Printexc.to_string e)
       | NoData -> return now
@@ -694,7 +694,7 @@ let plot conf _headers layer_name node_name params =
         List.map (fun data_field ->
             pen_of_field data_field,
             RamenExport.(
-              build_timeseries node data_field (int_of_float svg_width + 1)
+              build_timeseries func data_field (int_of_float svg_width + 1)
                                since until bucket_avg)
           ) fields
       with RamenExport.FuncHasNoEventTimeInfo _ as e ->
@@ -738,14 +738,14 @@ let save_in_tmp_file dir body =
     let%lwt () = write oc body in
     return (path, fname)))
 
-let upload conf headers layer node body =
-  let%lwt _layer, node =
+let upload conf headers program func body =
+  let%lwt _program, func =
     C.with_rlock conf (fun () ->
-      find_node_or_fail conf layer node) in
-  (* Look for the node handling this suffix: *)
-  match node.N.operation with
+      find_func_or_fail conf program func) in
+  (* Look for the func handling this suffix: *)
+  match func.N.operation with
   | ReadCSVFile { where = ReceiveFile ; _ } ->
-    let dir = C.upload_dir_of_node conf.C.persist_dir node in
+    let dir = C.upload_dir_of_func conf.C.persist_dir func in
     let ct = get_content_type headers |> String.lowercase in
     let content =
       if ct = Consts.urlencoded_content_type then Uri.pct_decode body
@@ -758,7 +758,7 @@ let upload conf headers layer node body =
     Lwt_unix.rename path (dir ^"/_"^ fname) >>=
     respond_ok
   | _ ->
-    bad_request ("Function "^ N.fq_name node ^" does not accept uploads")
+    bad_request ("Function "^ N.fq_name func ^" does not accept uploads")
 
 let () =
   async_exception_hook := (fun exn ->
@@ -844,9 +844,9 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   let conf =
     C.make_conf true ramen_url debug persist_dir 5 (* TODO *) max_history_archives in
   (* When there is nothing to do, listen to collectd and netflow! *)
-  if demo && Hashtbl.is_empty conf.C.graph.C.layers then (
-    !logger.info "Adding default nodes since we have nothing to do..." ;
-    C.make_layer conf "demo"
+  if demo && Hashtbl.is_empty conf.C.graph.C.programs then (
+    !logger.info "Adding default funcs since we have nothing to do..." ;
+    C.make_program conf "demo"
       "DEFINE collectd AS LISTEN FOR COLLECTD;\n\
        DEFINE netflow AS LISTEN FOR NETFLOW;" |> ignore) ;
   C.save_conf conf ;
@@ -858,11 +858,11 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   let lyr = function
     | [] -> bad_request_exn "Program name missing from URL"
     | lst -> String.concat "/" lst in
-  let lyr_node_of path =
+  let lyr_func_of path =
     let rec loop ls = function
-      | [] -> bad_request_exn "node name missing from URL"
+      | [] -> bad_request_exn "func name missing from URL"
       | [x] ->
-        if ls = [] then bad_request_exn "node name missing from URL"
+        if ls = [] then bad_request_exn "func name missing from URL"
         else lyr (List.rev ls), x
       | l::rest ->
         loop (l :: ls) rest in
@@ -878,46 +878,46 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
     (* Ramen API *)
     | `GET, ["graph"] ->
       get_graph conf headers None
-    | `GET, ("graph" :: layers) ->
-      get_graph conf headers (Some (lyr layers))
+    | `GET, ("graph" :: programs) ->
+      get_graph conf headers (Some (lyr programs))
     | `PUT, ["graph"] ->
-      put_layer conf headers body
-    | `DELETE, ("graph" :: layers) ->
-      del_layer conf headers (lyr layers)
+      put_program conf headers body
+    | `DELETE, ("graph" :: programs) ->
+      del_program conf headers (lyr programs)
     | `GET, ["compile"] ->
       compile conf headers None
-    | `GET, ("compile" :: layers) ->
-      compile conf headers (Some (lyr layers))
+    | `GET, ("compile" :: programs) ->
+      compile conf headers (Some (lyr programs))
     | `GET, ["run" | "start"] ->
       run conf headers None
-    | `GET, (("run" | "start") :: layers) ->
-      run conf headers (Some (lyr layers))
+    | `GET, (("run" | "start") :: programs) ->
+      run conf headers (Some (lyr programs))
     | `GET, ["stop"] ->
       stop conf headers None
-    | `GET, ("stop" :: layers) ->
-      stop conf headers (Some (lyr layers))
+    | `GET, ("stop" :: programs) ->
+      stop conf headers (Some (lyr programs))
     | `GET, ["shutdown"] ->
       shutdown conf headers
     | (`GET|`POST), ("export" :: path) ->
-      let layer, node = lyr_node_of path in
+      let program, func = lyr_func_of path in
       (* We must allow both POST and GET for that one since we have an
        * optional body (and some client won't send a body with a GET) *)
-      export conf headers layer node body
+      export conf headers program func body
     | `GET, ("plot" :: path) ->
-      let layer, node = lyr_node_of path in
-      plot conf headers layer node params
+      let program, func = lyr_func_of path in
+      plot conf headers program func params
     (* Grafana datasource plugin *)
     | `GET, ["grafana"] ->
       respond_ok ()
-    | `POST, ["complete"; "nodes"] ->
-      complete_nodes conf headers body
+    | `POST, ["complete"; "funcs"] ->
+      complete_funcs conf headers body
     | `POST, ["complete"; "fields"] ->
       complete_fields conf headers body
     | `POST, ["timeseries"] ->
       timeseries conf headers body
     | `GET, ("timerange" :: path) ->
-      let layer, node = lyr_node_of path in
-      get_timerange conf headers layer node
+      let program, func = lyr_func_of path in
+      get_timerange conf headers program func
     | `OPTIONS, _ ->
       let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
       let headers =
@@ -927,8 +927,8 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
       Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
     (* Uploads of data files *)
     | (`POST|`PUT), ("upload" :: path) ->
-      let layer, node = lyr_node_of path in
-      upload conf headers layer node body
+      let program, func = lyr_func_of path in
+      upload conf headers program func body
     (* Alerter API *)
     | `GET, ["notify"] ->
       RamenAlerter.Api.notify conf params
@@ -1003,7 +1003,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
     let%lwt () = Lwt_unix.sleep 0.3 in
     if !quit then
       C.with_wlock conf (fun () ->
-        let%lwt () = stop_layers_ conf None in
+        let%lwt () = stop_programs_ conf None in
         List.iter (fun condvar ->
           !logger.info "Signaling condvar..." ;
           Lwt_condition.signal condvar ()) !http_server_done ;
@@ -1014,7 +1014,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
     [ (* TIL the hard way that although you can use async outside of
        * Lwt_main.run, the result will be totally unpredictable. *)
       (let%lwt () = Lwt_unix.sleep 1. in
-      async (fun () -> restart_on_failure timeout_layers conf) ;
+      async (fun () -> restart_on_failure timeout_programs conf) ;
       async (fun () -> restart_on_failure cleanup_old_files conf.C.persist_dir) ;
       return_unit) ;
       restart_on_failure monitor_quit () ;

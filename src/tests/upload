@@ -7,9 +7,9 @@ top_srcdir=$(dirname $0)"/../.."
 expected_tests=2
 
 start
-add_node earthquakes "RECEIVE SEPARATOR \"\\t\"
+add_func earthquakes "RECEIVE SEPARATOR \"\\t\"
   (year u16 not null, n u8 not null)"
-add_node n "SELECT sequence AS seq, year FROM test/earthquakes EXPORT"
+add_func n "SELECT sequence AS seq, year FROM test/earthquakes EXPORT"
 run
 
 upload earthquakes.csv earthquakes

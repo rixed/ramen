@@ -33,20 +33,20 @@ let slash = char ~what:"slash" '/'
 
 let id_quote = char ~what:"quote" '\''
 
-let node_identifier ~layer_allowed =
+let func_identifier ~program_allowed =
   let first_char =
-    if layer_allowed then
+    if program_allowed then
       letter ||| underscore ||| slash
     else
       letter ||| underscore in
   let any_char = first_char ||| decimal_digit in
   (first_char ++
-     repeat_greedy ~sep:none ~what:"node identifier" any_char >>:
+     repeat_greedy ~sep:none ~what:"func identifier" any_char >>:
    fun (c, s) -> String.of_list (c :: s)) |||
   (id_quote -+
-   repeat_greedy ~sep:none ~what:"node identifier" (
-     cond "quoted node identifier" (fun c ->
-       c <> '\'' && (layer_allowed || c <> '/')) 'x') +-
+   repeat_greedy ~sep:none ~what:"func identifier" (
+     cond "quoted func identifier" (fun c ->
+       c <> '\'' && (program_allowed || c <> '/')) 'x') +-
    id_quote >>:
   fun s -> String.of_list s)
 

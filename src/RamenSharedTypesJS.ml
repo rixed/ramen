@@ -1,4 +1,4 @@
-type layer_status = Edition of string (* last error *)
+type program_status = Edition of string (* last error *)
                   | Compiling | Compiled | Running [@@ppp PPP_JSON]
 
 (* TNum is not an actual type used by any value, but it's used as a default

@@ -1,7 +1,7 @@
 (* Binocle is the instrumentation lib we use to monitor the workers.
  * Workers output a stream of statistics that are sent through a ringbuf
  * to ramen as they do with exported tuples.
- * Ramen then keep only the latest received info for each node (not in the
+ * Ramen then keep only the latest received info for each func (not in the
  * configuration persistent tree). This info is then added to the json
  * returning the current state of the configuration (/graph).
  *
@@ -55,8 +55,8 @@ let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _) =
 (* TODO: for now those are being (un)serialized "by hand" so field
  * ordering does not matter. But when later we'll want to have an
  * internal datasource with this stream then we will have to rethink this.
- * Will we want to read for a specific node or all of them? Will we want
- * each node to output to each consumer, or will we want ramen itself to
+ * Will we want to read for a specific func or all of them? Will we want
+ * each func to output to each consumer, or will we want ramen itself to
  * copy this stream to consumers? *)
 
 let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =

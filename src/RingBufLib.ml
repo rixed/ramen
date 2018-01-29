@@ -73,7 +73,7 @@ let out_ringbuf_names outbuf_ref_fname =
       return (Some lines)
     ) else return_none
 
-(* To allow a node to select only some fields from its parent and write only
+(* To allow a func to select only some fields from its parent and write only
  * a skip list in the out_ref (to makes serialization easier not out_ref
  * smaller) we serialize all fields in the same order: *)
 let ser_tuple_field_cmp t1 t2 =

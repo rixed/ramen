@@ -7,8 +7,8 @@ top_srcdir=$(dirname $0)"/../.."
 expected_tests=4
 
 start
-add_node bla "YIELD \"pas glop\" AS s"
-add_node n "FROM test/bla SELECT split(\" \", s) AS s1, \"glop\" AS s2 EXPORT"
+add_func bla "YIELD \"pas glop\" AS s"
+add_func n "FROM test/bla SELECT split(\" \", s) AS s1, \"glop\" AS s2 EXPORT"
 run
 
 check_equal '"glop","glop"
@@ -18,8 +18,8 @@ check_equal '"glop","glop"
 reset
 
 start
-add_node bla "YIELD \"foo bar\" AS s1, \"pas glop\" AS s2"
-add_node n "FROM test/bla SELECT split(\" \", s1) AS s1, split(\" \", s2) AS s2 EXPORT"
+add_func bla "YIELD \"foo bar\" AS s1, \"pas glop\" AS s2"
+add_func n "FROM test/bla SELECT split(\" \", s1) AS s1, split(\" \", s2) AS s2 EXPORT"
 run
 
 check_equal '"bar","glop"
@@ -33,8 +33,8 @@ reset
 # Now with some surrounding functions:
 
 start
-add_node bla "YIELD \"pas glop\" AS s"
-add_node n "
+add_func bla "YIELD \"pas glop\" AS s"
+add_func n "
   FROM test/bla
   SELECT split(\" \", s) || \" glop\" AS s1,
          \"pas \" || split(\" \", s) AS s2 EXPORT" bla
@@ -51,8 +51,8 @@ reset
 # Now with embedded functions:
 
 start
-add_node bla "YIELD \"glop\" AS s"
-add_node n "FROM test/bla SELECT \"pas \" || split(\" \", s || \" glop\") AS s1 EXPORT"
+add_func bla "YIELD \"glop\" AS s"
+add_func n "FROM test/bla SELECT \"pas \" || split(\" \", s || \" glop\") AS s1 EXPORT"
 run
 
 check_equal '"pas glop"

@@ -9,10 +9,10 @@ expected_tests=2
 start
 add_123
 # Check we can refer to fields from out defined erlier:
-add_node n1 "FROM test/n123 SELECT max n, max_n+1 AS max_n_p1 EXPORT COMMIT WHEN group.#count = 3"
+add_func n1 "FROM test/n123 SELECT max n, max_n+1 AS max_n_p1 EXPORT COMMIT WHEN group.#count = 3"
 
 # We also can do an aggregate function within another one:
-add_node n2 "FROM test/n123 SELECT max (1 + max n) as max_np1 EXPORT COMMIT WHEN group.#count = 3"
+add_func n2 "FROM test/n123 SELECT max (1 + max n) as max_np1 EXPORT COMMIT WHEN group.#count = 3"
 
 # Here max(np1) is not correct because we cannot init a stateful function with
 # member of out tuple, even when declared earlier.  In theory, we'd like init
@@ -26,7 +26,7 @@ add_node n2 "FROM test/n123 SELECT max (1 + max n) as max_np1 EXPORT COMMIT WHEN
 # are initialized and updated at the same time as the select clause states of
 # course.  Notice that we can access inner functions states (so for instance,
 # "max (1 + max)" works).  What we can't access is fields from the out tuple.
-#add_node n3 "FROM test/n123 SELECT n+1 as np1, max np1 EXPORT COMMIT WHEN max np1 > 2"
+#add_func n3 "FROM test/n123 SELECT n+1 as np1, max np1 EXPORT COMMIT WHEN max np1 > 2"
 
 run
 check_equal '3,4' "$(tail_ 1 1 n1)"

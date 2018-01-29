@@ -8,7 +8,7 @@ expected_tests=2
 
 start
 add_123
-add_node n \
+add_func n \
 "FROM test/n123
  SELECT SUM n
  COMMIT BEFORE sum_n > 4
@@ -19,7 +19,7 @@ check_equal '3' "$(tail_ $nb_123 1 n)"
 reset
 start
 add_cars
-add_node count_cars \
+add_func count_cars \
 "FROM test/cars
  SELECT manufacturer, SUM 1 as nb_models
  COMMIT BEFORE out.manufacturer != COALESCE(group.previous.manufacturer, out.manufacturer)

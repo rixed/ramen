@@ -1,4 +1,4 @@
-(* OutRef files are the files describing where a node should send its
+(* OutRef files are the files describing where a func should send its
  * output. It's basically a list of ringbuf files, but soon we will have
  * more info in there.
  *
@@ -92,7 +92,7 @@ let add fname out =
     !logger.debug "Got write lock for add on %s" fname ;
     wrap (fun () -> add_ fname out))
 
-(* Used by ramen when stopping a node to remove its input from its parents
+(* Used by ramen when stopping a func to remove its input from its parents
  * out_ref: *)
 let remove_ fname out_fname =
   let out_files = read_ fname in

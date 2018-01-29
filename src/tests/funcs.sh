@@ -67,13 +67,13 @@ start() {
 
 upload() {
   file=$1
-  node=$2
+  func=$2
   curl -s -o /dev/null \
        --data-urlencode @"$top_srcdir/src/tests/fixtures/$file" \
-       "$RAMEN_URL/upload/test/$node"
+       "$RAMEN_URL/upload/test/$func"
 }
 
-add_node() {
+add_func() {
   # Beware that $2 might end with a comment
   PROGRAM=$PROGRAM"DEFINE '$1' AS $2
 ;
@@ -81,7 +81,7 @@ add_node() {
 }
 
 add_123() {
-  add_node n123 "READ FILE \"$fixtures/123.csv\" (
+  add_func n123 "READ FILE \"$fixtures/123.csv\" (
     n u8 not null,  -- will be 1, 2, 3
     b bool not null,  -- true, true, false
     name string null) -- \"one\", \"two\" and NULL!"
@@ -90,7 +90,7 @@ add_123() {
 nb_123=$(nb_lines $fixtures/123.csv)
 
 add_cars() {
-  add_node cars "READ FILE \"$fixtures/cars.csv\" (
+  add_func cars "READ FILE \"$fixtures/cars.csv\" (
     year u16 not null,
     manufacturer string not null,
     model string not null,
@@ -102,7 +102,7 @@ add_cars() {
 nb_cars=$(nb_lines "$fixtures/cars.csv")
 
 add_earthquakes() {
-  add_node earthquakes "READ FILE \"$fixtures/earthquakes.csv\" SEPARATOR \"\\t\" (
+  add_func earthquakes "READ FILE \"$fixtures/earthquakes.csv\" SEPARATOR \"\\t\" (
     -- number of earthquakes per year
     year u16 not null,
     n u16 not null)"
@@ -111,7 +111,7 @@ add_earthquakes() {
 nb_earthquakes=$(nb_lines "$fixtures/earthquakes.csv")
 
 add_accounts() {
-  add_node accounts "READ FILE \"$fixtures/accounts.csv\" (
+  add_func accounts "READ FILE \"$fixtures/accounts.csv\" (
     name string not null, amount float not null)"
 }
 
@@ -127,8 +127,8 @@ tail_() {
   # Also pass the total number of lines so that we can also wait for the end of the processing?
   total=$1
   wanted=$2
-  node="test/$3"
-  timeout --preserve-status 10s $ramen tail --last "$total" --as-csv $node |
+  func="test/$3"
+  timeout --preserve-status 10s $ramen tail --last "$total" --as-csv $func |
     tail -n "$wanted"
 }
 

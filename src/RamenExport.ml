@@ -12,10 +12,10 @@ let verbose_serialization = false
 
 (* Possible solutions:
  *
- * 1. Simple for the node, complex for ramen:
+ * 1. Simple for the func, complex for ramen:
  *
- * The export is a normal children for the exporting node, it mirror the
- * output tuple there as it would for any other child node. Ramen, thus, must
+ * The export is a normal children for the exporting func, it mirror the
+ * output tuple there as it would for any other child func. Ramen, thus, must
  * read a normal ringbuf although it has no generated code for this. So the
  * ringbuf header must be enriched with field names and types, and ramen must
  * be able to process the ringbuf fast enough.
@@ -26,16 +26,16 @@ let verbose_serialization = false
  * - ringbuf is smaller than if the client converted into another format, and
  *   we have a single format (the ringbuf message itself) for all client and
  *   the history we want to keep;
- * - does not slow down the nodes even a bit;
+ * - does not slow down the funcs even a bit;
  * - does not make them any more complex;
  *
  * Cons:
  *
  * - slower than dedicated code to read the ringbuf from ramen;
  *
- * 2. Simple for ramen, complex for the nodes:
+ * 2. Simple for ramen, complex for the funcs:
  *
- * The nodes know that they export and have a specific code to output the tuple
+ * The funcs know that they export and have a specific code to output the tuple
  * as a string in this special ringbuf. From there ramen can read, store and
  * serve those strings.
  *
@@ -47,7 +47,7 @@ let verbose_serialization = false
  * Cons:
  *
  * - Bigger ringbufs;
- * - more work for the nodes;
+ * - more work for the funcs;
  * - can have only one syntax for the websocket data (likely json).
  *
  * Let's go with 1.
@@ -55,9 +55,9 @@ let verbose_serialization = false
 
 (* History of past tuples:
  *
- * We store tuples output by exporting nodes both in RAM (for the last ones)
+ * We store tuples output by exporting funcs both in RAM (for the last ones)
  * and on disk (in a "history" subdir). Each file is numbered and a cursor in
- * the history of some node might be given by file number, tuple offset (the
+ * the history of some func might be given by file number, tuple offset (the
  * count below). Since only the ramen process ever write or read those files
  * there is not much to worry about. For now those are merely Marshalled
  * array or array of scalar value (tuples in the record below). *)
@@ -65,9 +65,9 @@ let verbose_serialization = false
 let history_block_length = 10_000 (* TODO: make it a parameter? *)
 
 type history =
-  { (* The type stored in there, which must correspond to the node
+  { (* The type stored in there, which must correspond to the func
        out_type serialized type, and will since the history is associated
-       with the node name and output signature. *)
+       with the func name and output signature. *)
     ser_tuple_type : field_typ list ;
     (* List of the serialized fields in order of appearance in the user
      * provided tuple so that we can reorder exported tuples: *)
@@ -81,12 +81,12 @@ type history =
     mutable count : int ;
     (* Files are saved with a name composed of block_start-block_end (aka
      * next block_start). *)
-    (* dir is named after the node output type so that we won't run the risk
+    (* dir is named after the func output type so that we won't run the risk
      * to read data that have been archived in a different format. Other than
-     * that, we make no attempt to clean these archives even when the node is
+     * that, we make no attempt to clean these archives even when the func is
      * edited. It's best if deletion is explicit (TODO: add an option in the
-     * put layer command). Another way to get rid of the history is to rename
-     * the node. Since we need output type to locate the history, a node
+     * put program command). Another way to get rid of the history is to rename
+     * the func. Since we need output type to locate the history, a func
      * cannot have a history before it's typed. *)
     dir : string ;
     (* A cache to save first/last timestamps of each archive file we've
@@ -100,16 +100,16 @@ type history =
      * by starting timestamp *)
     mutable filenums : (int * int) list }
 
-(* Store history of past tuple output by a given node. Not stored in the
- * node itself because we do not want to serialize such a big data structure
+(* Store history of past tuple output by a given func. Not stored in the
+ * func itself because we do not want to serialize such a big data structure
  * for every HTTP query, nor "rollback" it when a graph change fails.
- * Indexed by node fq_name and output signature: *)
+ * Indexed by func fq_name and output signature: *)
 let imported_tuples : (string * string, history) Hashtbl.t =
   Hashtbl.create 11
 
-let history_key node =
-  let fq_name = N.fq_name node in
-  let type_sign = C.type_signature_hash node.N.out_type in
+let history_key func =
+  let fq_name = N.fq_name func in
+  let type_sign = C.type_signature_hash func.N.out_type in
   fq_name, type_sign
 
 let clean_archives conf history =
@@ -156,17 +156,17 @@ let read_archive dir filenum =
   try Some (File.with_file_in fname Marshal.input)
   with Sys_error _ -> None
 
-let make_history conf node =
+let make_history conf func =
   let history_version_tag = "~1" in
-  let type_sign = C.type_signature_hash node.N.out_type in
+  let type_sign = C.type_signature_hash func.N.out_type in
   let dir = conf.C.persist_dir ^"/workers/history/"
                                ^ RamenVersions.history
-                               ^"/"^ N.fq_name node
+                               ^"/"^ N.fq_name func
                                ^"/"^ type_sign ^ history_version_tag in
-  !logger.info "Creating history for node %S" (N.fq_name node) ;
+  !logger.info "Creating history for func %S" (N.fq_name func) ;
   mkdir_all dir ;
   let ser_tuple_type, pos_in_user_tuple =
-    match node.N.out_type with
+    match func.N.out_type with
     | UntypedTuple _ -> assert false
     | TypedTuple { user ; ser } ->
       ser,
@@ -197,12 +197,12 @@ let make_history conf node =
     count = 0 ; dir ; nb_files ; filenums ;
     ts_cache = Hashtbl.create (conf.C.max_history_archives / 8) }
 
-let add_tuple conf node tuple =
-	let k = history_key node in
+let add_tuple conf func tuple =
+	let k = history_key func in
   let history =
     try Hashtbl.find imported_tuples k
     with Not_found ->
-      let history = make_history conf node in
+      let history = make_history conf func in
       Hashtbl.add imported_tuples k history ;
       history in
   if history.count >= Array.length history.tuples then
@@ -269,17 +269,17 @@ let read_tuple ser_tuple_typ nullmask_size =
         ) (nullmask_size, 0) ser_tuple_typ in
     tuple, sz
 
-let import_tuples conf rb_name node =
+let import_tuples conf rb_name func =
   let open Lwt in
-  let ser_tuple_typ = C.tuple_ser_type node.N.out_type in
+  let ser_tuple_typ = C.tuple_ser_type func.N.out_type in
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type ser_tuple_typ in
   (* We will store tuples in serialized column order but will reorder
    * the columns when answering user queries. *)
-  !logger.debug "Starting to import output from node %s (in ringbuf %S), \
+  !logger.debug "Starting to import output from func %s (in ringbuf %S), \
                  which outputs %a, serialized into %a."
-    (N.fq_name node) rb_name
-    C.print_tuple_type node.N.out_type
+    (N.fq_name func) rb_name
+    C.print_tuple_type func.N.out_type
     Lang.Tuple.print_typ ser_tuple_typ ;
   let%lwt rb = wrap (fun () -> RingBuf.load rb_name) in
   try%lwt
@@ -289,7 +289,7 @@ let import_tuples conf rb_name node =
       let%lwt tx = dequeue rb in
       let ser_tuple, _sz = read_tuple ser_tuple_typ nullmask_size tx in
       RingBuf.dequeue_commit tx ;
-      wrap (fun () -> add_tuple conf node ser_tuple) >>=
+      wrap (fun () -> add_tuple conf func ser_tuple) >>=
       Lwt_main.yield
     done
   with Canceled ->
@@ -541,21 +541,21 @@ let find_ser_field tuple_type n =
 
 let fold_tuples_and_update_ts_cache
       ?min_filenum ?max_filenum ?max_res
-      node history init f =
+      func history init f =
   let open Lang.Operation in
-  match export_event_info node.N.operation with
-  | None -> raise (FuncHasNoEventTimeInfo node.N.name)
+  match export_event_info func.N.operation with
+  | None -> raise (FuncHasNoEventTimeInfo func.N.name)
   | Some ((start_field, start_scale), duration_info) ->
-    let ti = find_ser_field node.N.out_type start_field in
+    let ti = find_ser_field func.N.out_type start_field in
     let t2_of_tup =
       match duration_info with
       | DurationConst f -> fun _tup t1 -> t1 +. f
       | DurationField (f, s) ->
-        let fi = find_ser_field node.N.out_type f in
+        let fi = find_ser_field func.N.out_type f in
         fun tup t1 ->
           t1 +. float_of_scalar_value tup.(fi) *. s
       | StopField (f, s) ->
-        let fi = find_ser_field node.N.out_type f in
+        let fi = find_ser_field func.N.out_type f in
         fun tup _t1 ->
           float_of_scalar_value tup.(fi) *. s
     in
@@ -591,16 +591,16 @@ let fold_tuples_and_update_ts_cache
           filenum, tmin, tmax, f user_val t1 t2 tup) in
     user_val
 
-let build_timeseries node data_field max_data_points
+let build_timeseries func data_field max_data_points
                      since until consolidation =
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let dt = (until -. since) /. float_of_int max_data_points in
   let buckets = Array.init max_data_points (fun _ ->
     { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
   let bucket_of_time t = int_of_float ((t -. since) /. dt) in
-  match Hashtbl.find imported_tuples (history_key node) with
+  match Hashtbl.find imported_tuples (history_key func) with
   | exception Not_found ->
-    !logger.info "Function %s has no history" (N.fq_name node) ;
+    !logger.info "Function %s has no history" (N.fq_name func) ;
     [||], [||]
   | history ->
     let f_opt f x y = match x, y with
@@ -618,9 +618,9 @@ let build_timeseries node data_field max_data_points
         (if until <= ts_max then f_opt min ma filenum else ma))
         (None, None) in
     (* As we already have max_data_points, no need for max_res *)
-    let vi = find_ser_field node.N.out_type data_field in
+    let vi = find_ser_field func.N.out_type data_field in
     fold_tuples_and_update_ts_cache
-      ?min_filenum ?max_filenum ~max_res:max_int node history ()
+      ?min_filenum ?max_filenum ~max_res:max_int func history ()
       (fun () t1 t2 tup ->
         let v = float_of_scalar_value tup.(vi) in
         if t1 < until && t2 >= since then (
@@ -632,12 +632,12 @@ let build_timeseries node data_field max_data_points
       since +. dt *. (float_of_int i +. 0.5)) buckets,
     Array.map consolidation buckets
 
-let timerange_of_filenum node history filenum =
+let timerange_of_filenum func history filenum =
   try Hashtbl.find history.ts_cache filenum
   with Not_found ->
     fold_tuples_and_update_ts_cache
       ~min_filenum:filenum ~max_filenum:filenum ~max_res:max_int
-      node history None (fun prev t1 t2 _tup ->
+      func history None (fun prev t1 t2 _tup ->
         match prev with
         | None -> Some (t1, t2)
         | Some (mi, ma) -> Some (min mi t1, max ma t2)) |>

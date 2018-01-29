@@ -15,7 +15,7 @@ let rebase dataset_name name = dataset_name ^"/"^ name
 let enc = Uri.pct_encode
 
 (* Get the operations to import the dataset and do basic transformations.
- * Named streams belonging to this base layer:
+ * Named streams belonging to this base program:
  * - ${dataset_name}/tcp, etc: Raw imported tuples straight from the CSV;
  * - ${dataset_name}/c2s tcp: The first of a pair of streams of traffic info
  *                            (source to dest rather than client to server);
@@ -24,19 +24,19 @@ let enc = Uri.pct_encode
  * If you wish to process traffic info you must feed on both c2s and s2c.
  *)
 
-let make_node name operation = SN.{ name ; operation }
+let make_func name operation = SN.{ name ; operation }
 
-let program_of_nodes nodes =
+let program_of_funcs funcs =
   List.fold_left (fun s n ->
     s ^ "DEFINE '"^ n.SN.name ^"' AS "^ n.SN.operation ^";\n"
-  ) "" nodes
+  ) "" funcs
 
 let rep sub by str = String.nreplace ~str ~sub ~by
 
 let print_squoted oc = Printf.fprintf oc "'%s'"
 
 (* Aggregating TCP metrics for alert discovery: *)
-let tcp_traffic_node ?where dataset_name name dt export =
+let tcp_traffic_func ?where dataset_name name dt export =
   let dt_us = dt * 1_000_000 in
   let parents =
     List.map (rebase dataset_name) ["c2s tcp"; "s2c tcp"] |>
@@ -93,7 +93,7 @@ let tcp_traffic_node ?where dataset_name name dt export =
   let op =
     match where with None -> op
                    | Some w -> op ^"\nWHERE "^ w in
-  make_node name op
+  make_func name op
 
 (* Alerts:
  *
@@ -109,20 +109,20 @@ let alert_text fields =
 
 (* Anomaly Detection
  *
- * For any node which output interesting timeseries (interesting = that we hand
- * pick) we will add a node that compute all predictions we can compute for the
+ * For any func which output interesting timeseries (interesting = that we hand
+ * pick) we will add a func that compute all predictions we can compute for the
  * series. We will notify when x out of y predictions are "off". for perf
- * reasons we want the number of such nodes minimal, but as we have only one
- * possible notify per node we also can't have one node for different unrelated
- * things. A good trade-off is to have one node per BCN/BCA.
+ * reasons we want the number of such funcs minimal, but as we have only one
+ * possible notify per func we also can't have one func for different unrelated
+ * things. A good trade-off is to have one func per BCN/BCA.
  * For each timeseries to predict, we also pass a list of other timeseries that
  * we think are good predictors. *)
-let anomaly_detection_nodes avg_window from name timeseries alert_fields export =
+let anomaly_detection_funcs avg_window from name timeseries alert_fields export =
   assert (timeseries <> []) ;
   let stand_alone_predictors = [ "smooth(" ; "fit(5, " ; "5-ma(" ; "lag(" ]
   and multi_predictors = [ "fit_multi(5, " ] in
   let predictor_name = from ^": "^ name ^" predictions" in
-  let predictor_node =
+  let predictor_func =
     let predictions =
       List.fold_left (fun fields (ts, condition, nullable, preds) ->
           let preds_str = String.concat ", " preds in
@@ -180,8 +180,8 @@ let anomaly_detection_nodes avg_window from name timeseries alert_fields export 
                  WITH DURATION %f"
         avg_window
     else op in
-    make_node predictor_name op in
-  let anomaly_node =
+    make_func predictor_name op in
+  let anomaly_func =
     let conditions =
       List.fold_left (fun cond (ts, _condition, _nullable, _preds) ->
           ("abnormality_"^ ts ^" > 0.75") :: cond
@@ -205,10 +205,10 @@ let anomaly_detection_nodes avg_window from name timeseries alert_fields export 
       if export_all export then op ^ {|
         EXPORT EVENT STARTING AT start|}
       else op in
-    make_node (from ^": "^ name ^" anomalies") op in
-  predictor_node, anomaly_node
+    make_func (from ^": "^ name ^" anomalies") op in
+  predictor_func, anomaly_func
 
-let base_layer dataset_name delete uncompress csv_glob export =
+let base_program dataset_name delete uncompress csv_glob export =
   (* Outlines of CSV importers: *)
   let csv_import csv fields =
     "READ"^ (if delete then " AND DELETE" else "") ^
@@ -233,7 +233,7 @@ let base_layer dataset_name delete uncompress csv_glob export =
                   AND STOPPING AT capture_end * 1e-6|}
         else "")
        in
-    make_node name op in
+    make_func name op in
   (* TCP CSV Importer: *)
   let tcp = csv_import "tcp" {|
       poller string not null,
@@ -313,7 +313,7 @@ let base_layer dataset_name delete uncompress csv_glob export =
       dtt_sum_server u64 not null,
       dtt_square_sum_server u64 not null,
       dcerpc_uuid string null|} |>
-    make_node "tcp"
+    make_func "tcp"
   and tcp_to_unidir = to_unidir "tcp" {|
     poller, capture_begin, capture_end,
     ip4_external, ip6_external,
@@ -368,7 +368,7 @@ let base_layer dataset_name delete uncompress csv_glob export =
       payload_bytes_client u64 not null,
       payload_bytes_server u64 not null,
       dcerpc_uuid string null|} |>
-    make_node "udp"
+    make_func "udp"
   and udp_to_unidir = to_unidir "udp" {|
     poller, capture_begin, capture_end,
     ip4_external, ip6_external,
@@ -420,7 +420,7 @@ let base_layer dataset_name delete uncompress csv_glob export =
       error_ip_proto u8 null,
       error_zone_client u32 null,
       error_zone_server u32 null|} |>
-    make_node "icmp"
+    make_func "icmp"
   and icmp_to_unidir = to_unidir "icmp" {|
     poller, capture_begin, capture_end,
     ip4_external, ip6_external,
@@ -458,7 +458,7 @@ let base_layer dataset_name delete uncompress csv_glob export =
       traffic_bytes_server u64 not null,
       traffic_packets_client u64 not null,
       traffic_packets_server u64 not null|} |>
-    make_node "other-than-ip"
+    make_func "other-than-ip"
   and other_ip_to_unidir = to_unidir "other-than-ip" {|
     poller, capture_begin, capture_end,
     0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
@@ -489,7 +489,7 @@ let base_layer dataset_name delete uncompress csv_glob export =
       traffic_bytes_server u64 not null,
       traffic_packets_client u64 not null,
       traffic_packets_server u64 not null|} |>
-    make_node "non-ip"
+    make_func "non-ip"
   and non_ip_to_unidir = to_unidir "non-ip" {|
     poller, capture_begin, capture_end,
     0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
@@ -501,7 +501,7 @@ let base_layer dataset_name delete uncompress csv_glob export =
   RamenSharedTypes.{
     name = dataset_name ;
     ok_if_running = true ;
-    program = program_of_nodes [
+    program = program_of_funcs [
       tcp ;
       tcp_to_unidir ~src:"client" ~dst:"server" "c2s tcp" ;
       tcp_to_unidir ~src:"server" ~dst:"client" "s2c tcp" ;
@@ -518,16 +518,16 @@ let base_layer dataset_name delete uncompress csv_glob export =
       non_ip_to_unidir ~src:"client" ~dst:"server" "c2s non-ip" ;
       non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ] }
 
-(* Build the node infos corresponding to the BCN configuration *)
-let layer_of_bcns bcns dataset_name export =
-  let layer_name = rebase dataset_name "BCN" in
+(* Build the func infos corresponding to the BCN configuration *)
+let program_of_bcns bcns dataset_name export =
+  let program_name = rebase dataset_name "BCN" in
   let name_of_zones = function
     | [] -> "any"
     | main::_ -> string_of_int main in
-  let all_nodes = ref [] in
-  let make_node name operation =
-    let node = make_node name operation in
-    all_nodes := node :: !all_nodes
+  let all_funcs = ref [] in
+  let make_func name operation =
+    let func = make_func name operation in
+    all_funcs := func :: !all_funcs
   in
   let conf_of_bcn bcn =
     (* bcn.min_bps, bcn.max_bps, bcn.obs_window, bcn.avg_window, bcn.percentile, bcn.source bcn.dest *)
@@ -547,7 +547,7 @@ let layer_of_bcns bcns dataset_name export =
     let where =
       (in_zone "in.zone_src" bcn.source) ^" AND "^
       (in_zone "in.zone_dst" bcn.dest) in
-    (* This operation differs from tcp_traffic_node:
+    (* This operation differs from tcp_traffic_func:
      * - it adds zone_src and zone_dst names, which can be useful indeed;
      * - it lacks many of the TCP-only fields and so can apply on all traffic;
      * - it works for whatever avg_window not necessarily minutely. *)
@@ -593,7 +593,7 @@ let layer_of_bcns bcns dataset_name export =
       else op
         (* Note: Ideally we would want to compute the max of all.capture_begin *)
     in
-    make_node avg_per_zones_name op ;
+    make_func avg_per_zones_name op ;
     let perc_per_obs_window_name =
       Printf.sprintf "%s: %gth perc on last %gs"
         name_prefix bcn.percentile bcn.obs_window in
@@ -624,7 +624,7 @@ let layer_of_bcns bcns dataset_name export =
                  WITH DURATION %g|}
            bcn.avg_window
       else op in
-    make_node perc_per_obs_window_name op ;
+    make_func perc_per_obs_window_name op ;
     Option.may (fun min_bps ->
         let title = Printf.sprintf "Too little traffic from zone %s to %s"
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
@@ -650,7 +650,7 @@ let layer_of_bcns bcns dataset_name export =
             EXPORT EVENT STARTING AT max_start|}
           else op in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
-        make_node name op
+        make_func name op
       ) bcn.min_bps ;
     Option.may (fun max_bps ->
         let title = Printf.sprintf "Too much traffic from zone %s to %s"
@@ -677,7 +677,7 @@ let layer_of_bcns bcns dataset_name export =
             EXPORT EVENT STARTING AT max_start|}
           else op in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
-        make_node name op
+        make_func name op
       ) bcn.max_bps ;
     Option.may (fun max_rtt ->
         let title = Printf.sprintf "RTT too hight from zone %s to %s"
@@ -705,7 +705,7 @@ let layer_of_bcns bcns dataset_name export =
             EXPORT EVENT STARTING AT max_start|}
           else op in
         let name = Printf.sprintf "%s: alert RTT" name_prefix in
-        make_node name op
+        make_func name op
       ) bcn.max_rtt ;
     Option.may (fun max_rr ->
         let title = Printf.sprintf "Too many retransmissions from zone %s to %s"
@@ -733,19 +733,19 @@ let layer_of_bcns bcns dataset_name export =
             EXPORT EVENT STARTING AT max_start|}
           else op in
         let name = Printf.sprintf "%s: alert RR" name_prefix in
-        make_node name op
+        make_func name op
       ) bcn.max_rr ;
     let minutely =
-      tcp_traffic_node ~where dataset_name (name_prefix ^": TCP minutely traffic") 60 export in
-    all_nodes := minutely :: !all_nodes ;
+      tcp_traffic_func ~where dataset_name (name_prefix ^": TCP minutely traffic") 60 export in
+    all_funcs := minutely :: !all_funcs ;
     let alert_fields = [
       "descr", "anomaly detected" ;
       "bcn_id", string_of_int bcn.id ] in
     let anom name timeseries =
       let alert_fields = ("metric", name) :: alert_fields in
       let pred, anom =
-        anomaly_detection_nodes bcn.avg_window minutely.SN.name name timeseries alert_fields export in
-      all_nodes := pred :: anom :: !all_nodes in
+        anomaly_detection_funcs bcn.avg_window minutely.SN.name name timeseries alert_fields export in
+      all_funcs := pred :: anom :: !all_funcs in
     (* TODO: a volume anomaly for other protocols as well *)
     anom "volume"
       [ "packets_per_secs", "packets_per_secs > 10", false,
@@ -775,17 +775,17 @@ let layer_of_bcns bcns dataset_name export =
   in
   List.iter conf_of_bcn bcns ;
   RamenSharedTypes.{
-    name = layer_name ;
+    name = program_name ;
     ok_if_running = true ;
-    program = program_of_nodes !all_nodes }
+    program = program_of_funcs !all_funcs }
 
-(* Build the node infos corresponding to the BCA configuration *)
-let layer_of_bcas bcas dataset_name export =
-  let layer_name = rebase dataset_name "BCA" in
-  let all_nodes = ref [] in
-  let make_node name operation =
-    let node = make_node name operation in
-    all_nodes := node :: !all_nodes
+(* Build the func infos corresponding to the BCA configuration *)
+let program_of_bcas bcas dataset_name export =
+  let program_name = rebase dataset_name "BCA" in
+  let all_funcs = ref [] in
+  let make_func name operation =
+    let func = make_func name operation in
+    all_funcs := func :: !all_funcs
   in
   let conf_of_bca bca =
     let open Conf_of_sqlite.BCA in
@@ -903,7 +903,7 @@ let layer_of_bcas bcas dataset_name export =
       rep "$AVG_INT$" (string_of_int avg_window_int) |>
       rep "$AVG$" (string_of_float bca.avg_window)
     in
-    make_node avg_per_app op ;
+    make_func avg_per_app op ;
     let perc_per_obs_window_name =
       Printf.sprintf "%s: %gth perc on last %gs"
         bca.name bca.percentile bca.obs_window in
@@ -930,7 +930,7 @@ let layer_of_bcas bcas dataset_name export =
          EXPORT EVENT STARTING AT max_start WITH DURATION %g|}
          bca.obs_window
       else op in
-    make_node perc_per_obs_window_name op ;
+    make_func perc_per_obs_window_name op ;
     let title =
       Printf.sprintf "EURT to %s is too large" bca.name
     and text = alert_text [
@@ -956,15 +956,15 @@ let layer_of_bcas bcas dataset_name export =
           EXPORT EVENT STARTING AT max_start|}
       else op in
     let name = bca.name ^": EURT too high" in
-    make_node name op ;
+    make_func name op ;
     let alert_fields = [
       "descr", "anomaly detected" ;
       "bca_id", string_of_int bca.id ] in
     let anom name timeseries =
       let alert_fields = ("metric", name) :: alert_fields in
       let pred, anom =
-        anomaly_detection_nodes bca.avg_window avg_per_app name timeseries alert_fields export in
-      all_nodes := pred :: anom :: !all_nodes in
+        anomaly_detection_funcs bca.avg_window avg_per_app name timeseries alert_fields export in
+      all_funcs := pred :: anom :: !all_funcs in
     anom "volume"
       [ "c2s_bytes_per_secs", "c2s_bytes_per_secs > 1000", false, [] ;
         "s2c_bytes_per_secs", "s2c_bytes_per_secs > 1000", false, [] ;
@@ -996,15 +996,15 @@ let layer_of_bcas bcas dataset_name export =
   in
   List.iter conf_of_bca bcas ;
   RamenSharedTypes.{
-    name = layer_name ;
+    name = program_name ;
     ok_if_running = true ;
-    program = program_of_nodes !all_nodes }
+    program = program_of_funcs !all_funcs }
 
 let get_config_from_db db =
   Conf_of_sqlite.get_config db
 
-let ddos_layer dataset_name export =
-  let layer_name = rebase dataset_name "DDoS" in
+let ddos_program dataset_name export =
+  let program_name = rebase dataset_name "DDoS" in
   let avg_win = 60 and rem_win = 3600 in
   let op_new_peers =
     let avg_win_us = avg_win * 1_000_000 in
@@ -1040,19 +1040,19 @@ let ddos_layer dataset_name export =
                   List.map (fun p -> "'"^ rebase dataset_name p ^"'") |>
                   String.join ",") in
   let global_new_peers =
-    make_node "new peers" op_new_peers in
-  let pred_node, anom_node =
-    anomaly_detection_nodes
+    make_func "new peers" op_new_peers in
+  let pred_func, anom_func =
+    anomaly_detection_funcs
       (float_of_int avg_win) "new peers" "DDoS"
       [ "nb_new_cnxs_per_secs", "nb_new_cnxs_per_secs > 1", false, [] ;
         "nb_new_clients_per_secs", "nb_new_clients_per_secs > 1", false, [] ]
       [ "descr", "possible DDoS" ]
       export in
   RamenSharedTypes.{
-    name = layer_name ;
+    name = program_name ;
     ok_if_running = true ;
-    program = program_of_nodes [
-      global_new_peers ; pred_node ; anom_node ] }
+    program = program_of_funcs [
+      global_new_peers ; pred_func ; anom_func ] }
 
 (* Daemon *)
 
@@ -1060,8 +1060,8 @@ open Lwt
 open Cohttp
 open Cohttp_lwt_unix
 
-let put_layer ramen_url layer =
-  let req = PPP.to_string RamenSharedTypes.put_layer_req_ppp layer in
+let put_program ramen_url program =
+  let req = PPP.to_string RamenSharedTypes.put_program_req_ppp program in
   let url = ramen_url ^"/graph/" in
   !logger.debug "Will send %s to %S" req url ;
   let body = `String req in
@@ -1085,29 +1085,29 @@ let start conf ramen_url db_name dataset_name delete uncompress
   let open Conf_of_sqlite in
   let db = get_db db_name in
   let update () =
-    (* TODO: The base layer for this client *)
+    (* TODO: The base program for this client *)
     let%lwt () = if with_base then (
         let base =
-          base_layer dataset_name delete uncompress csv_glob export_all in
-        put_layer ramen_url base
+          base_program dataset_name delete uncompress csv_glob export_all in
+        put_program ramen_url base
       ) else return_unit in
     let%lwt () = if with_bcns > 0 || with_bcas > 0 then (
         let bcns, bcas = get_config_from_db db in
         let bcns = List.take with_bcns bcns
         and bcas = List.take with_bcas bcas in
         let%lwt () = if bcns <> [] then (
-            let bcns = layer_of_bcns bcns dataset_name export_all in
-            put_layer ramen_url bcns
+            let bcns = program_of_bcns bcns dataset_name export_all in
+            put_program ramen_url bcns
           ) else return_unit in
         if bcas <> [] then (
-          let bcas = layer_of_bcas bcas dataset_name export_all in
-          put_layer ramen_url bcas
+          let bcas = program_of_bcas bcas dataset_name export_all in
+          put_program ramen_url bcas
         ) else return_unit
       ) else return_unit in
     if with_ddos then (
-      (* Several DDoS detection approaches, regrouped in a "DDoS" layer. *)
-      let ddos = ddos_layer dataset_name export_all in
-      put_layer ramen_url ddos
+      (* Several DDoS detection approaches, regrouped in a "DDoS" program. *)
+      let ddos = ddos_program dataset_name export_all in
+      put_program ramen_url ddos
     ) else return_unit
   in
   let%lwt () = update () in
@@ -1149,7 +1149,7 @@ let db_name =
 
 let dataset_name =
   let i = Arg.info ~doc:"Name identifying this data set. Will be used to \
-                         prefix any created layers."
+                         prefix any created programs."
                    [ "name" ; "dataset" ; "dataset-name" ] in
   Arg.(required (opt (some string) None i))
 
@@ -1170,33 +1170,33 @@ let csv_glob =
   Arg.(required (opt (some string) None i))
 
 let with_base =
-  let i = Arg.info ~doc:"Output the base layer with CSV input and first \
+  let i = Arg.info ~doc:"Output the base program with CSV input and first \
                          operations"
                    [ "with-base" ; "base" ] in
   Arg.(value (flag i))
 
 let with_bcns =
-  let i = Arg.info ~doc:"Also output the layer with BCN configuration"
+  let i = Arg.info ~doc:"Also output the program with BCN configuration"
                    [ "with-bcns" ; "with-bcn" ; "bcns" ; "bcn" ] in
   Arg.(value (opt ~vopt:10 int 0 i))
 
 let with_bcas =
-  let i = Arg.info ~doc:"Also output the layer with BCA configuration"
+  let i = Arg.info ~doc:"Also output the program with BCA configuration"
                    [ "with-bcas" ; "with-bca" ; "bcas" ; "bca" ] in
   Arg.(value (opt ~vopt:10 int 0 i))
 
 let with_ddos =
-  let i = Arg.info ~doc:"Also output the layer with DDoS detection"
+  let i = Arg.info ~doc:"Also output the program with DDoS detection"
                    [ "with-ddos" ; "with-dos" ; "ddos" ; "dos" ] in
   Arg.(value (flag i))
 
 let exports =
   Arg.(value (vflag ExportNone [
-    ExportNone, Arg.info ~doc:"No node will export data (the default)"
+    ExportNone, Arg.info ~doc:"No func will export data (the default)"
                          [ "export-none" ; "no-exports" ] ;
-    ExportSome, Arg.info ~doc:"A few important nodes will export data"
+    ExportSome, Arg.info ~doc:"A few important funcs will export data"
                          [ "export-some" ; "exports" ] ;
-    ExportAll,  Arg.info ~doc:"All node will export data (useful for \
+    ExportAll,  Arg.info ~doc:"All func will export data (useful for \
                                debugging but expensive in CPU and IO)"
                          [ "export-all" ] ]))
 

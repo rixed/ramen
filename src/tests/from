@@ -7,12 +7,12 @@ top_srcdir=$(dirname $0)"/../.."
 expected_tests=1
 
 start
-# Create two nodes outputing same subset of fields in different orders:
-add_node p1 "YIELD 1 as one, 2 as two, 3 as three, 42 as foo EVERY 0.1 SECONDS"
-add_node p2 "YIELD 17 as bar, 2 as two, 1 as one, 4 as four EVERY 0.1 SECONDS"
+# Create two funcs outputing same subset of fields in different orders:
+add_func p1 "YIELD 1 as one, 2 as two, 3 as three, 42 as foo EVERY 0.1 SECONDS"
+add_func p2 "YIELD 17 as bar, 2 as two, 1 as one, 4 as four EVERY 0.1 SECONDS"
 
 # This should compile and select two and one:
-add_node n "FROM test/p1, test/p2 SELECT two, * EXPORT"
+add_func n "FROM test/p1, test/p2 SELECT two, * EXPORT"
 
 run
 check_equal '2,1' "$(tail_ 1 1 n)"

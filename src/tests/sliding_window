@@ -9,8 +9,8 @@ expected_tests=2
 # Tumbling windows:
 
 start
-add_node n1 "YIELD sequence as seq"
-add_node n2 "
+add_func n1 "YIELD sequence as seq"
+add_func n2 "
   SELECT first seq, last seq, group.#count as count, sum(1) as alt_count
   FROM test/n1
   WHERE seq < 30
@@ -28,8 +28,8 @@ check_equal '0,9,10,10
 reset
 
 start
-add_node n1 "YIELD sequence as seq"
-add_node n2 "
+add_func n1 "YIELD sequence as seq"
+add_func n2 "
   SELECT first seq, last seq, group.#count as count, sum(1) as alt_count
   FROM test/n1
   WHERE seq < 14

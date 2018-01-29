@@ -8,7 +8,7 @@ expected_tests=1
 
 start
 add_accounts
-add_node n "
+add_func n "
   FROM test/accounts
   SELECT name, sum amount
   TOP 3 BY sum amount WHEN in.#count >= $nb_accounts

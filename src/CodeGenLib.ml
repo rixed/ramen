@@ -249,12 +249,12 @@ let end_of_range_cidr6 (n, l) = Ipv6.Cidr.or_to_len l n
 
 (* Health and Stats
  *
- * Each node has to periodically report to ramen http server its health and some stats.
+ * Each func has to periodically report to ramen http server its health and some stats.
  * Could have been the other way around, and that would have made the
  * connection establishment easier possibly (since we already must be able to
- * ssh to other machines in order to start a node) but we already have an http
+ * ssh to other machines in order to start a func) but we already have an http
  * server on Ramen and probably want to avoid opening too many ports everywhere, and forcing
- * generated nodes to implement too many things.
+ * generated funcs to implement too many things.
  *
  * Stats must include:
  *
@@ -269,20 +269,20 @@ open Binocle
 let stats_in_tuple_count =
   IntCounter.make Consts.in_tuple_count_metric
     "Number of received tuples that have been processed since the \
-     node started."
+     func started."
 
 let make_stats_selected_tuple_count () =
   IntCounter.make Consts.selected_tuple_count_metric
     "Number of tuples that have passed the WHERE filter, since the \
-     node started."
+     func started."
 
 let stats_out_tuple_count =
   IntCounter.make Consts.out_tuple_count_metric
-    "Number of emitted tuples to each child of this node since it started."
+    "Number of emitted tuples to each child of this func since it started."
 
 let stats_cpu =
   FloatCounter.make Consts.cpu_time_metric
-    "Total CPU time, in seconds, spent in this node (this process and any \
+    "Total CPU time, in seconds, spent in this func (this process and any \
      subprocesses)."
 
 let stats_ram =
@@ -393,7 +393,7 @@ let output rb serialize_tuple sersize_of_tuple tuple =
   enqueue_commit tx ;
   assert (offs = sersize)
 
-(* Each node can write in several ringbuffers (one per children). This list
+(* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
 let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
@@ -482,7 +482,7 @@ let worker_start worker_name get_binocle_tuple =
   { debug ; persist_dir }
 
 
-(* Operations that nodes may run: *)
+(* Operations that funcs may run: *)
 
 let read_csv_file filename do_unlink separator sersize_of_tuple
                   serialize_tuple tuple_of_strings preprocessor =

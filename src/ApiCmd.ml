@@ -56,7 +56,7 @@ let add debug ramen_url name program () =
   logger := make_logger debug ;
   let msg = { name ; ok_if_running = false ; program } in
   Lwt_main.run (
-    http_put_json (ramen_url ^"/graph") put_layer_req_ppp msg >>= check_ok)
+    http_put_json (ramen_url ^"/graph") put_program_req_ppp msg >>= check_ok)
 
 let compile debug ramen_url () =
   logger := make_logger debug ;
@@ -68,13 +68,13 @@ let run debug ramen_url () =
   Lwt_main.run (
     http_get (ramen_url ^"/run") >>= check_ok)
 
-let stop debug layer_name ramen_url () =
+let stop debug program_name ramen_url () =
   logger := make_logger debug ;
   Lwt_main.run (
-    let url = if layer_name = "" then
+    let url = if program_name = "" then
       ramen_url ^"/stop"
     else
-      ramen_url ^"/stop/"^ enc layer_name in
+      ramen_url ^"/stop/"^ enc program_name in
     http_get url >>= check_ok)
 
 let shutdown debug ramen_url () =
@@ -182,11 +182,11 @@ let ppp_of_string_exc ppp s =
   try PPP.of_string_exc ppp s |> return
   with e -> fail e
 
-let export_and_display ramen_url node_name as_csv with_header continuous =
+let export_and_display ramen_url func_name as_csv with_header continuous =
   let url = ramen_url ^"/export/"^
-    (match String.rsplit ~by:"/" node_name with
-    | exception Not_found -> enc node_name
-    | layer, node -> enc layer ^"/"^ enc node) in
+    (match String.rsplit ~by:"/" func_name with
+    | exception Not_found -> enc func_name
+    | program, func -> enc program ^"/"^ enc func) in
   let rec get_next ?since ?max_results () =
     let msg = { since ; max_results ; wait_up_to = 2.0 (* TODO: a param? *) } in
     let%lwt resp = http_post_json url export_req_ppp msg >>=
@@ -206,22 +206,22 @@ let export_and_display ramen_url node_name as_csv with_header continuous =
   get_next
 
 (* TODO: separator and null placeholder for csv *)
-let tail debug ramen_url node_name as_csv with_header last continuous () =
+let tail debug ramen_url func_name as_csv with_header last continuous () =
   logger := make_logger debug ;
-  let exporter = export_and_display ramen_url node_name as_csv with_header continuous in
+  let exporter = export_and_display ramen_url func_name as_csv with_header continuous in
   let max_results =
     if continuous then None else Some last
   and since = ~- last in
   Lwt_main.run (exporter ?max_results ~since ())
 
 (* TODO: separator and null placeholder for csv *)
-let export debug ramen_url node_name as_csv with_header max_results continuous () =
+let export debug ramen_url func_name as_csv with_header max_results continuous () =
   logger := make_logger debug ;
-  let exporter = export_and_display ramen_url node_name as_csv with_header continuous in
+  let exporter = export_and_display ramen_url func_name as_csv with_header continuous in
   Lwt_main.run (exporter ?max_results ())
 
 let timeseries debug ramen_url since until max_data_points
-               node data_field consolidation () =
+               func data_field consolidation () =
   logger := make_logger debug ;
   let url = ramen_url ^"/timeseries"
   and msg =
@@ -229,19 +229,19 @@ let timeseries debug ramen_url since until max_data_points
       timeseries = [
         { id = "cmdline" ;
           consolidation = consolidation |? "avg" ;
-          spec = Predefined { node ; data_field } } ] } in
+          spec = Predefined { func ; data_field } } ] } in
   let th =
     let%lwt body = http_post_json url timeseries_req_ppp msg in
     Printf.printf "%s\n%!" body (* TODO *) ;
     return_unit in
   Lwt_main.run th
 
-let timerange debug ramen_url node_name () =
+let timerange debug ramen_url func_name () =
   logger := make_logger debug ;
   let url = ramen_url ^"/timerange/"^
-    (match String.rsplit ~by:"/" node_name with
-    | exception Not_found -> enc node_name
-    | layer, node -> enc layer ^"/"^ enc node) in
+    (match String.rsplit ~by:"/" func_name with
+    | exception Not_found -> enc func_name
+    | program, func -> enc program ^"/"^ enc func) in
   Lwt_main.run (
     match%lwt http_get url >>=
                ppp_of_string_exc time_range_resp_ppp with

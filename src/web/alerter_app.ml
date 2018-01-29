@@ -692,7 +692,7 @@ let inhibition i =
 
 (* Here param is the oncaller option that's being edited. For us it will
  * always be Some oncaller.
- * Returns the node and a boolean indicating whether anything have been
+ * Returns the func and a boolean indicating whether anything have been
  * changed in this contact. *)
 let contact_edit contact param idx =
   let open Contact in
@@ -908,10 +908,10 @@ let team_member team name =
             t.Team.name <> team.Team.name &&
             List.exists (fun (m, _) -> m = name) t.members
           ) (fst teams.value) in
-      let nodes, anything_changed =
+      let funcs, anything_changed =
         list_fold_lefti (fun i (lst, changed) c ->
-            let node, c = contact_edit c oncaller_p i in
-            li [] [ node ] :: lst, changed || c
+            let func, c = contact_edit c oncaller_p i in
+            li [] [ func ] :: lst, changed || c
           ) ([], false) oncaller.contacts in
       div [ clss "oncaller-tile" ]
           [ (* name being the identifier we cannot edit it. Shall we
@@ -931,7 +931,7 @@ let team_member team name =
             p [ clss "explanations" ]
               [ text "Contacts by order of preference:" ] ;
             ol [ clss "oncaller-contacts" ]
-               [ group nodes ;
+               [ group funcs ;
                  li []
                     [ Gui.button ~param:oncaller_p
                                  ~next_state:add_contact

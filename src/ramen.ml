@@ -147,9 +147,9 @@ let summary =
  * Program Creation/Edition
  *)
 
-let layer_name =
+let program_name =
   let i = Arg.info ~doc:"Program unique name."
-                   ~docv:"layer" [] in
+                   ~docv:"program" [] in
   Arg.(required (pos 0 (some string) None i))
 
 let program =
@@ -162,7 +162,7 @@ let add =
     (const ApiCmd.add
       $ debug
       $ server_url
-      $ layer_name
+      $ program_name
       $ program),
     info "add")
 
@@ -188,7 +188,7 @@ let stop =
   Term.(
     (const ApiCmd.stop
       $ debug
-      $ layer_name
+      $ program_name
       $ server_url),
     info "stop")
 
@@ -196,9 +196,9 @@ let stop =
  * Export Tuples
  *)
 
-let node_name p =
+let func_name p =
   let i = Arg.info ~doc:"Function unique name."
-                   ~docv:"node" [] in
+                   ~docv:"func" [] in
   Arg.(required (pos p (some string) None i))
 
 let as_csv =
@@ -226,7 +226,7 @@ let tail =
     (const ApiCmd.tail
       $ debug
       $ server_url
-      $ node_name 0
+      $ func_name 0
       $ as_csv
       $ with_header
       $ last
@@ -243,7 +243,7 @@ let export =
     (const ApiCmd.export
       $ debug
       $ server_url
-      $ node_name 0
+      $ func_name 0
       $ as_csv
       $ with_header
       $ max_results),
@@ -289,7 +289,7 @@ let timeseries =
       $ since
       $ until
       $ max_data_points
-      $ node_name 0
+      $ func_name 0
       $ data_field 1
       $ consolidation),
     info "timeseries")
@@ -303,7 +303,7 @@ let timerange =
     (const ApiCmd.timerange
       $ debug
       $ server_url
-      $ node_name 0),
+      $ func_name 0),
     info "timerange")
 
 (*

@@ -1,4 +1,4 @@
-(* Same HTML node definitions that are used in the back-end (for
+(* Same HTML func definitions that are used in the back-end (for
  * server rendered charts for instance) than in the front-end (for virtual
  * DOM tree diffing). *)
 
@@ -67,17 +67,17 @@ let grid ?base n start stop =
 
 (* Then HTML as a tree: *)
 
-type vnode =
+type vfunc =
   | Text of string
   | Element of { tag : string ; svg : bool ;
                  attrs : (string * string) list ;
                  action : (string -> unit) option ;
-                 subs : vnode list }
-  (* Name of the parameter and function that, given this param, generate the vnode *)
-  | Fun of { param : string ; f : unit -> vnode ;
-             last : (int * vnode) ref }
+                 subs : vfunc list }
+  (* Name of the parameter and function that, given this param, generate the vfunc *)
+  | Fun of { param : string ; f : unit -> vfunc ;
+             last : (int * vfunc) ref }
   (* No HTML produced, just for grouping: *)
-  | Group of { subs : vnode list }
+  | Group of { subs : vfunc list }
   | InView (* No production, put parent in view when created *)
 
 let rec string_of_html ?(in_svg=false) = function

@@ -2,7 +2,7 @@
  * Compilation of a graph
  *
  * We must first check all input/output tuple types.  For this we have two
- * temp_tuple_typ per node, one for input tuple and one for output tuple.  Each
+ * temp_tuple_typ per func, one for input tuple and one for output tuple.  Each
  * check operation takes those as input and returns true if they completed any
  * of those.  Beware that those lists are completed bit by bit, since one
  * iteration of the loop might reveal only some info of some field.
@@ -10,8 +10,8 @@
  * Once the fixed point is reached we check if we have all the fields we should
  * have.
  *
- * Types propagate to parents output to node input, then from operations to
- * node output, via the expected_type of each expression.
+ * Types propagate to parents output to func input, then from operations to
+ * func output, via the expected_type of each expression.
  *)
 open Batteries
 open RamenLog
@@ -200,10 +200,10 @@ let (|||) a b = a || b
  * Also, improve exp_type (set typ and nullable, enlarge numerical types ...).
  * When we recurse from an operator to its operand we set the exp_type to the one
  * in the operator so we improve typing of the AST along the way.
- * in_type is the currently know input type of the node, while parents are the
- * currently known output types of this node's parents. We will bring new field
+ * in_type is the currently know input type of the func, while parents are the
+ * currently known output types of this func's parents. We will bring new field
  * in in_type from parents as needed.
- * Notice than when we recurse within the expression we stays in the same node
+ * Notice than when we recurse within the expression we stays in the same func
  * with the same parents. parents is not modified in here. *)
 let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
   let indent = String.make depth ' ' and depth = depth + 2 in
@@ -726,9 +726,9 @@ let check_input_finished ~parents ~in_type =
     true
   ) else false
 
-let check_yield node fields =
-  let in_type = C.untyped_tuple_type node.N.in_type
-  and out_type = C.untyped_tuple_type node.N.out_type in
+let check_yield func fields =
+  let in_type = C.untyped_tuple_type func.N.in_type
+  and out_type = C.untyped_tuple_type func.N.out_type in
   (
     check_selected_fields ~parents:[] ~in_type ~out_type fields
   ) || (
@@ -752,21 +752,21 @@ let set_of_fields = function
           Set.add name s
         ) Set.empty ttt.fields
 
-let all_finished nodes =
-  List.for_all (fun node ->
-      tuple_type_is_finished node.N.out_type
-    ) nodes
+let all_finished funcs =
+  List.for_all (fun func ->
+      tuple_type_is_finished func.N.out_type
+    ) funcs
 
-let check_aggregate conf node fields and_all_others where key top
+let check_aggregate conf func fields and_all_others where key top
                     commit_when flush_how =
-  let in_type = C.untyped_tuple_type node.N.in_type
-  and out_type = C.untyped_tuple_type node.N.out_type
-  and parents = List.map (fun (layer, name) ->
-      try C.find_node conf layer name |> snd
+  let in_type = C.untyped_tuple_type func.N.in_type
+  and out_type = C.untyped_tuple_type func.N.out_type
+  and parents = List.map (fun (program, name) ->
+      try C.find_func conf program name |> snd
       with Not_found ->
-        let e = UnknownFunc (layer ^"/"^ name) in
-        raise (SyntaxErrorInFunc (node.N.name, e))
-    ) node.N.parents in
+        let e = UnknownFunc (program ^"/"^ name) in
+        raise (SyntaxErrorInFunc (func.N.name, e))
+    ) func.N.parents in
   let open Operation in
   (
     (* Improve in_type using parent out_type and out_type using in_type if we
@@ -858,31 +858,31 @@ let check_aggregate conf node fields and_all_others where key top
   )
 
 (*
- * Improve out_type using in_type and this node operation.
+ * Improve out_type using in_type and this func operation.
  * in_type is a given, don't modify it!
  *)
-let check_operation conf node =
+let check_operation conf func =
   let open Operation in
-  match node.N.operation with
+  match func.N.operation with
   | Yield { fields ; _ } ->
-    check_yield node fields
+    check_yield func fields
   | Aggregate { fields ; and_all_others ; where ; key ; top ;
                 commit_when ; flush_how ; _ } ->
-    check_aggregate conf node fields and_all_others where key top
+    check_aggregate conf func fields and_all_others where key top
                     commit_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-    if tuple_type_is_finished node.N.out_type then false else (
+    if tuple_type_is_finished func.N.out_type then false else (
       let user = fields in
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
-      node.N.out_type <- C.TypedTuple { user ; ser } ;
-      node.N.in_type <- C.TypedTuple { user = [] ; ser = [] } ;
+      func.N.out_type <- C.TypedTuple { user ; ser } ;
+      func.N.in_type <- C.TypedTuple { user = [] ; ser = [] } ;
       true)
   | ListenFor { proto ; _ } ->
-    if tuple_type_is_finished node.N.out_type then false else (
+    if tuple_type_is_finished func.N.out_type then false else (
       let user = RamenProtocols.tuple_typ_of_proto proto in
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
-      node.N.out_type <- C.TypedTuple { user ; ser } ;
-      node.N.in_type <- C.TypedTuple { user = [] ; ser = [] } ;
+      func.N.out_type <- C.TypedTuple { user ; ser } ;
+      func.N.in_type <- C.TypedTuple { user = [] ; ser = [] } ;
       true)
 
 (*
@@ -892,60 +892,60 @@ let check_operation conf node =
 let () =
   Printexc.register_printer (function
     | SyntaxErrorInFunc (n, e) ->
-      Some ("In node "^ n ^": "^ string_of_syntax_error e)
-    | MissingDependency node ->
-      Some ("Missing dependency for node "^ N.fq_name node)
+      Some ("In func "^ n ^": "^ string_of_syntax_error e)
+    | MissingDependency func ->
+      Some ("Missing dependency for func "^ N.fq_name func)
     | AlreadyCompiled -> Some "Already compiled"
     | _ -> None)
 
-let check_node_types conf node =
-  try ( (* Prepend the node name to any SyntaxError *)
+let check_func_types conf func =
+  try ( (* Prepend the func name to any SyntaxError *)
     (* Try to improve out_type and the AST types using the in_type and the
      * operation: *)
-    check_operation conf node
+    check_operation conf func
   ) with SyntaxError e ->
     !logger.debug "Compilation error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
-    raise (SyntaxErrorInFunc (node.N.name, e))
+    raise (SyntaxErrorInFunc (func.N.name, e))
 
-(* Since we can have loops within a layer we can not propagate types
+(* Since we can have loops within a program we can not propagate types
  * immediately. Also, the star selection prevent us from propagating
  * input from output types in one go.
  * We do it bit by bit but will still make sure to make parent
  * output >= children input eventually, and that fields are encoded in
  * the specified order. *)
-let set_all_types conf layer =
+let set_all_types conf program =
   let rec loop () =
-    if Hashtbl.fold (fun _ node changed ->
-          check_node_types conf node || changed
-        ) layer.L.persist.L.nodes false
+    if Hashtbl.fold (fun _ func changed ->
+          check_func_types conf func || changed
+        ) program.L.persist.L.funcs false
     then loop ()
   in
   loop () ;
   (* We reached the fixed point.
    * We still have a few things to check: *)
-  Hashtbl.iter (fun _ node ->
+  Hashtbl.iter (fun _ func ->
     (* Check that input type no parents => no input *)
-    let in_type = (C.temp_tup_typ_of_tuple_type node.N.in_type).fields in
-    assert (node.N.parents <> [] || in_type = []) ;
+    let in_type = (C.temp_tup_typ_of_tuple_type func.N.in_type).fields in
+    assert (func.N.parents <> [] || in_type = []) ;
     (* Check that all expressions have indeed be typed: *)
     Operation.iter_expr (fun e ->
       let open Expr in
       let typ = typ_of e in
       if typ.nullable = None || typ.scalar_typ = None then
         let what = IO.to_string (print true) e in
-        raise (SyntaxErrorInFunc (node.N.name, CannotCompleteTyping what))
-    ) node.N.operation
-  ) layer.L.persist.L.nodes
+        raise (SyntaxErrorInFunc (func.N.name, CannotCompleteTyping what))
+    ) func.N.operation
+  ) program.L.persist.L.funcs
   (* TODO: Move all typing in a separate module *)
 
   (*$inject
-    let test_type_single_node op_text =
+    let test_type_single_func op_text =
       try
         let conf = RamenConf.make_conf false "http://127.0.0.1/" true "/tmp" 5 0 in
-        RamenConf.make_layer conf "test" ("DEFINE foo AS "^ op_text) |>
+        RamenConf.make_program conf "test" ("DEFINE foo AS "^ op_text) |>
         ignore ;
-        set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.layers "test") ;
+        set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.programs "test") ;
         "ok"
       with e ->
         Printf.sprintf "Exception when parsing/typing operation %S: %s\n%s"
@@ -975,11 +975,11 @@ let set_all_types conf layer =
    *)
 
   (*$= & ~printer:BatPervasives.identity
-     "ok" (test_type_single_node "SELECT 1-1 AS x FROM foo")
-     "ok" (test_type_single_node "SELECT 1-200 AS x FROM foo")
-     "ok" (test_type_single_node "SELECT 1-4000000000 AS x FROM foo")
-     "ok" (test_type_single_node "SELECT SEQUENCE AS x FROM foo")
-     "ok" (test_type_single_node "SELECT 0 AS zero, 1 AS one, SEQUENCE AS seq FROM foo")
+     "ok" (test_type_single_func "SELECT 1-1 AS x FROM foo")
+     "ok" (test_type_single_func "SELECT 1-200 AS x FROM foo")
+     "ok" (test_type_single_func "SELECT 1-4000000000 AS x FROM foo")
+     "ok" (test_type_single_func "SELECT SEQUENCE AS x FROM foo")
+     "ok" (test_type_single_func "SELECT 0 AS zero, 1 AS one, SEQUENCE AS seq FROM foo")
    *)
 
   (*$= test_check_expr & ~printer:(fun x -> x)
@@ -996,20 +996,20 @@ let set_all_types conf layer =
        (test_check_expr "sum i16(1) > 500")
    *)
 
-let compile_node conf node =
+let compile_func conf func =
   let open Lwt in
-  let exec_name = C.exec_of_node conf.C.persist_dir node in
+  let exec_name = C.exec_of_func conf.C.persist_dir func in
   mkdir_all ~is_file:true exec_name ;
-  let in_typ = C.tuple_user_type node.N.in_type
-  and out_typ = C.tuple_user_type node.N.out_type in
+  let in_typ = C.tuple_user_type func.N.in_type
+  and out_typ = C.tuple_user_type func.N.out_type in
   (* In a few cases the worker sees a slightly different version of
    * the code and the ramen daemon will adapt: *)
   let operation =
     let open Operation in
-    match node.N.operation with
+    match func.N.operation with
     | ReadCSVFile { where = ReceiveFile ; what ; preprocessor } ->
       let dir =
-        C.upload_dir_of_node conf.C.persist_dir node in
+        C.upload_dir_of_func conf.C.persist_dir func in
       mkdir_all dir ;
       ReadCSVFile {
         (* The underscore is to restrict ourself to complete files that
@@ -1030,35 +1030,35 @@ let compile_node conf node =
   ) else
     (* TODO: return an array of arguments and get rid of the shell *)
     let cmd = Lwt_process.shell comp_cmd in
-    let cmd_name = "compilation of "^ node.N.name in
+    let cmd_name = "compilation of "^ func.N.name in
     let%lwt status =
       run_coprocess ~max_count:conf.max_simult_compilations cmd_name cmd in
     if status = Unix.WEXITED 0 then (
-      !logger.debug "Compiled %s with: %s" node.N.name comp_cmd ;
+      !logger.debug "Compiled %s with: %s" func.N.name comp_cmd ;
       return_unit
     ) else (
       (* As this might well be an installation problem, makes this error
        * report to the GUI: *)
       let e = CannotGenerateCode {
-        node = node.N.name ; cmd = comp_cmd ;
+        func = func.N.name ; cmd = comp_cmd ;
         status = string_of_process_status status } in
       fail (SyntaxError e)
     )
 
-let untyped_dependency conf layer =
-  (* Check all layers we depend on (parents only) either belong to
-   * this layer or are compiled already. Return the first untyped
+let untyped_dependency conf program =
+  (* Check all programs we depend on (parents only) either belong to
+   * this program or are compiled already. Return the first untyped
    * dependency, or None. *)
-  let good (layer_name, node_name) =
-    layer_name = layer.L.name ||
-    match C.find_node conf layer_name node_name with
+  let good (program_name, func_name) =
+    program_name = program.L.name ||
+    match C.find_func conf program_name func_name with
     | exception Not_found -> false
-    | _, node ->
-      C.tuple_is_typed node.N.out_type in
+    | _, func ->
+      C.tuple_is_typed func.N.out_type in
   try Some (
-    Hashtbl.values layer.L.persist.L.nodes |>
-    Enum.find (fun node ->
-      List.exists (not % good) node.N.parents))
+    Hashtbl.values program.L.persist.L.funcs |>
+    Enum.find (fun func ->
+      List.exists (not % good) func.N.parents))
   with Not_found -> None
 
 let typed_of_untyped_tuple ?cmp = function
@@ -1074,42 +1074,42 @@ let typed_of_untyped_tuple ?cmp = function
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
       TypedTuple { user ; ser }
 
-let get_selected_fields node =
-  match node.N.operation with
+let get_selected_fields func =
+  match func.N.operation with
   | Yield { fields ; _ } -> Some fields
   | Aggregate { fields ; _ } -> Some fields
   | _ -> None
 
-let compile conf layer =
+let compile conf program =
   let open Lwt in
-  match layer.L.persist.L.status with
+  match program.L.persist.L.status with
   | Compiled -> fail AlreadyCompiled
   | Running -> fail AlreadyCompiled
   | Compiling -> fail AlreadyCompiled
   | Edition _ ->
-    !logger.debug "Trying to compile layer %s" layer.L.name ;
-    C.Program.set_status layer Compiling ;
+    !logger.debug "Trying to compile program %s" program.L.name ;
+    C.Program.set_status program Compiling ;
     try%lwt
       let%lwt () = wrap (fun () ->
-        untyped_dependency conf layer |>
+        untyped_dependency conf program |>
         Option.may (fun n -> raise (MissingDependency n)) ;
-        set_all_types conf layer ;
-        Hashtbl.iter (fun _ node ->
-            !logger.debug "node %S:\n\tinput type: %a\n\toutput type: %a"
-              node.N.name
-              C.print_tuple_type node.N.in_type
-              C.print_tuple_type node.N.out_type ;
-            node.N.in_type <- typed_of_untyped_tuple node.N.in_type ;
+        set_all_types conf program ;
+        Hashtbl.iter (fun _ func ->
+            !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
+              func.N.name
+              C.print_tuple_type func.N.in_type
+              C.print_tuple_type func.N.out_type ;
+            func.N.in_type <- typed_of_untyped_tuple func.N.in_type ;
             (* So far order was not taken into account. Reorder output types
              * to match selected fields (not strictly required but improves
              * user experience in the GUI). Beware that the Expr.typ has a
              * unique number so we cannot compare/copy them directly (although
-             * that unique number is required to be unique only for a node,
+             * that unique number is required to be unique only for a func,
              * better keep it unique globally in case we want to generate
-             * several nodes in a single binary, and to avoid needless
+             * several funcs in a single binary, and to avoid needless
              * confusion when debugging): *)
             let cmp =
-              get_selected_fields node |>
+              get_selected_fields func |>
               Option.map (fun selected_fields ->
                 let sf_index name =
                   try List.findi (fun _ sf ->
@@ -1121,20 +1121,20 @@ let compile conf layer =
                     max_int in
                 fun f1 f2 ->
                   compare (sf_index f1.typ_name) (sf_index f2.typ_name)) in
-            node.N.out_type <- typed_of_untyped_tuple ?cmp node.N.out_type ;
-            node.N.signature <- N.signature node
-          ) layer.L.persist.L.nodes) in
+            func.N.out_type <- typed_of_untyped_tuple ?cmp func.N.out_type ;
+            func.N.signature <- N.signature func
+          ) program.L.persist.L.funcs) in
       (* Compile *)
       let _, thds =
-        Hashtbl.fold (fun _ node (doing,thds) ->
+        Hashtbl.fold (fun _ func (doing,thds) ->
             (* Avoid compiling twice the same thing (TODO: a lockfile) *)
-            if Set.mem node.N.signature doing then doing, thds else (
-              Set.add node.N.signature doing,
-              compile_node conf node :: thds)
-          ) layer.L.persist.L.nodes (Set.empty, []) in
+            if Set.mem func.N.signature doing then doing, thds else (
+              Set.add func.N.signature doing,
+              compile_func conf func :: thds)
+          ) program.L.persist.L.funcs (Set.empty, []) in
       let%lwt () = join thds in
-      C.Program.set_status layer Compiled ;
+      C.Program.set_status program Compiled ;
       return_unit
     with e ->
-      C.Program.set_status layer (Edition (Printexc.to_string e)) ;
+      C.Program.set_status program (Edition (Printexc.to_string e)) ;
       fail e

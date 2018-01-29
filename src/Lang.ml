@@ -59,7 +59,7 @@ type syntax_error =
   | InvalidNullability of { what : string ; must_be_nullable : bool }
   | InvalidCoalesce of { what : string ; must_be_nullable : bool }
   | CannotCompleteTyping of string
-  | CannotGenerateCode of { node : string ; cmd : string ; status : string }
+  | CannotGenerateCode of { func : string ; cmd : string ; status : string }
   | AliasNotUnique of string
   | FuncNameNotUnique of string
   | OnlyTumblingWindowForTop
@@ -92,7 +92,7 @@ let string_of_syntax_error =
   | FieldNotSameTypeInAllParents { field } ->
     "Field "^ field ^" has different types in differentparents"
   | NoParentForField { field } ->
-    "Input field "^ field ^" is used but node has no parent"
+    "Input field "^ field ^" is used but func has no parent"
   | InvalidPrivateField { field } ->
     "Cannot import field "^ field ^" which is private"
   | MissingClause { clause } ->
@@ -110,14 +110,14 @@ let string_of_syntax_error =
     "All elements of a COALESCE must be nullable but the last one. "^
     what ^" can"^ (if must_be_nullable then " not" else "") ^" be null."
   | CannotCompleteTyping s -> "Cannot complete typing of "^ s
-  | CannotGenerateCode { node ; cmd ; status } ->
+  | CannotGenerateCode { func ; cmd ; status } ->
     Printf.sprintf
-      "Cannot generate code: compilation of node %S with command %S %s"
-      node cmd status
+      "Cannot generate code: compilation of func %S with command %S %s"
+      func cmd status
   | AliasNotUnique name ->
     "Alias is not unique: "^ name
   | FuncNameNotUnique name ->
-    "Function names must be unique within a layer but '"^ name ^"' is defined \
+    "Function names must be unique within a program but '"^ name ^"' is defined \
      several times"
   | OnlyTumblingWindowForTop ->
     "When using TOP the only windowing mode supported is \
@@ -126,7 +126,7 @@ let string_of_syntax_error =
     "Tuple "^ string_of_prefix tuple ^" has only virtual fields, so no \
      field named "^ alias
   | UnknownFunc n ->
-    "Referenced node "^ n ^" does not exist"
+    "Referenced func "^ n ^" does not exist"
 
 let () =
   Printexc.register_printer (function
@@ -162,13 +162,13 @@ let tuple_has_successive = function
   | TupleSelected | TupleUnselected | TupleGroup -> true
   | _ -> false
 
-(* Tuple that has the fields of this node input type *)
+(* Tuple that has the fields of this func input type *)
 let tuple_has_type_input = function
   | TupleIn | TupleLastIn | TupleLastSelected | TupleLastUnselected
   | TupleGroupFirst | TupleGroupLast -> true
   | _ -> false
 
-(* Tuple that has the fields of this node output type *)
+(* Tuple that has the fields of this func output type *)
 let tuple_has_type_output = function
   | TupleGroupPrevious | TupleOutPrevious | TupleOut -> true
   | _ -> false
@@ -1792,13 +1792,13 @@ struct
         commit_before : bool ; (* commit first and aggregate later *)
         (* How to flush: reset or slide values *)
         flush_how : flush_method ;
-        (* List of nodes that are our parents *)
+        (* List of funcs that are our parents *)
         from : string list }
     | ReadCSVFile of { where : where_specs ; what : csv_specs ; preprocessor : string }
     | ListenFor of { net_addr : Unix.inet_addr ; port : int ;
                      proto : RamenProtocols.net_protocol }
 
-  (* ReadFile has the node reading files directly on disc.
+  (* ReadFile has the func reading files directly on disc.
    * DownloadFile is (supposed to be) ramen downloading the content into
    * a temporary directory and spawning a worker that also perform a ReadFile.
    * ReceiveFile is similar: the file is actually received by ramen which
@@ -2201,7 +2201,7 @@ struct
     let from_clause m =
       let m = "from clause" :: m in
       (strinG "from" -- blanks -+
-       several ~sep:list_sep (node_identifier ~layer_allowed:true)) m
+       several ~sep:list_sep (func_identifier ~program_allowed:true)) m
 
     type select_clauses =
       | SelectClause of selected_field option list
@@ -2663,24 +2663,24 @@ struct
     (*$< Parser *)
     open RamenParsing
 
-    let anonymous_node m =
-      let m = "anonymous node" :: m in
+    let anonymous_func m =
+      let m = "anonymous func" :: m in
       (Operation.Parser.p >>: make_func) m
 
-    let named_node m =
-      let m = "node" :: m in
-      (strinG "define" -- blanks -+ node_identifier ~layer_allowed:false +-
+    let named_func m =
+      let m = "func" :: m in
+      (strinG "define" -- blanks -+ func_identifier ~program_allowed:false +-
        blanks +- strinG "as" +- blanks ++
        Operation.Parser.p >>: fun (name, op) -> make_func ~name op) m
 
-    let node m =
-      let m = "node" :: m in
-      (anonymous_node ||| named_node) m
+    let func m =
+      let m = "func" :: m in
+      (anonymous_func ||| named_func) m
 
     let p m =
       let m = "program" :: m in
       let sep = opt_blanks -- char ';' -- opt_blanks in
-      (several ~sep node +- optional ~def:() (opt_blanks -- char ';')) m
+      (several ~sep func +- optional ~def:() (opt_blanks -- char ';')) m
 
     (*$= p & ~printer:(test_printer print)
      (Ok ([\

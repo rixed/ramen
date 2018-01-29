@@ -64,31 +64,31 @@ html { background-color: #ddd; }
 #top { width: 100%; }
 h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 
-#layers div.layer, #layers button.new-layer { display: block; float: left; margin: 5px; }
+#programs div.program, #programs button.new-program { display: block; float: left; margin: 5px; }
 /* To accomodate the overwritten confirmation dialog: */
-#layers div.layer { min-width: 12em; }
-#layers div.warning { background-color: #eaa; border: 1.5px solid #eaa; }
-#layers div.warning * { visibility: hidden; }
-#layers div.overwrite1 { position: relative; top: 0; left:0; width: 0; height: 0; overflow: visible; color: #000; }
-#layers div.overwrite2 { position: absolute; top: 0.75em; left:1em; width: 0; height: 0; overflow: visible; }
-#layers div.overwrite2 * { visibility: visible; }
-#layers div.overwrite2 p { white-space: nowrap; }
-#layers p.yes-or-no { margin: auto; padding-top: 1em; font-weight: 700; }
-#layers .yes { color: #700; cursor: pointer; padding-left: 3em; padding-right: 1em; }
-#layers .no { color: #080; cursor: pointer; padding-left: 1em; }
-#layers div.layer div.title { display: flex; flex-direction: row; justify-content: space-between; }
-#layers p.name { font-size: 105%; flex-grow: 10; }
-#layers .name, #layers .info p { padding-left: 6px; padding-right: 4px; }
-#layers .name { padding-top: 4px; }
-#layers .info:last-of-type { padding-bottom: 4px; }
-#layers button.new-layer { float: none; padding: 0.5em; font-weight: 700; clear: left; }
+#programs div.program { min-width: 12em; }
+#programs div.warning { background-color: #eaa; border: 1.5px solid #eaa; }
+#programs div.warning * { visibility: hidden; }
+#programs div.overwrite1 { position: relative; top: 0; left:0; width: 0; height: 0; overflow: visible; color: #000; }
+#programs div.overwrite2 { position: absolute; top: 0.75em; left:1em; width: 0; height: 0; overflow: visible; }
+#programs div.overwrite2 * { visibility: visible; }
+#programs div.overwrite2 p { white-space: nowrap; }
+#programs p.yes-or-no { margin: auto; padding-top: 1em; font-weight: 700; }
+#programs .yes { color: #700; cursor: pointer; padding-left: 3em; padding-right: 1em; }
+#programs .no { color: #080; cursor: pointer; padding-left: 1em; }
+#programs div.program div.title { display: flex; flex-direction: row; justify-content: space-between; }
+#programs p.name { font-size: 105%; flex-grow: 10; }
+#programs .name, #programs .info p { padding-left: 6px; padding-right: 4px; }
+#programs .name { padding-top: 4px; }
+#programs .info:last-of-type { padding-bottom: 4px; }
+#programs button.new-program { float: none; padding: 0.5em; font-weight: 700; clear: left; }
 
-#nodes thead th { border: 1px solid #ccc; }
-#nodes tbody td { white-space: nowrap; padding: 0.3em 1em 0.3em 1em; border-bottom: 1px solid #ccc; }
-#nodes tbody td hr { border: 1px solid #aaa; }
-#nodes td.export { text-align: center; }
-#nodes thead th p { white-space: nowrap; }
-#nodes thead th label.searchbox { margin-left: 1em; }
+#funcs thead th { border: 1px solid #ccc; }
+#funcs tbody td { white-space: nowrap; padding: 0.3em 1em 0.3em 1em; border-bottom: 1px solid #ccc; }
+#funcs tbody td hr { border: 1px solid #aaa; }
+#funcs td.export { text-align: center; }
+#funcs thead th p { white-space: nowrap; }
+#funcs thead th label.searchbox { margin-left: 1em; }
 
 #editor { padding-left: 1em; }
 #editor h2 { font-size: 100%; margin: 1em 0 0.25em 0; }
@@ -128,7 +128,7 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #timechart button { padding: 5px; }
 #timechart svg.chart { display: block; }
 
-#layers p.error { background: rgb(240, 30, 20); }
+#programs p.error { background: rgb(240, 30, 20); }
 span.label { margin-right: 0.2em; color: #222; font-size: 80%; font-weight: 700; }
 span.value { margin-right: 1em; color: #003; font-size: 85%; }
 

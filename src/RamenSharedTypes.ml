@@ -125,7 +125,7 @@ struct
 
   module Program =
   struct
-    type status = RamenSharedTypesJS.layer_status [@@ppp PPP_JSON]
+    type status = RamenSharedTypesJS.program_status [@@ppp PPP_JSON]
 
     let string_of_status = function
       | Edition reason -> "Edition ("^ reason ^")"
@@ -136,7 +136,7 @@ struct
     type info =
       { name : string ;
         program : string ;
-        nodes : Func.info list ;
+        funcs : Func.info list ;
         status : status [@ppp_default (RamenSharedTypesJS.Edition "")] ;
         last_started : float option ;
         last_stopped : float option } [@@ppp PPP_JSON]
@@ -145,11 +145,11 @@ end
 
 type get_graph_resp = Info.Program.info list [@@ppp PPP_JSON]
 
-type put_layer_req =
-  { (* Name of the layer. If this layer already exists then it is
+type put_program_req =
+  { (* Name of the program. If this program already exists then it is
      * replaced. *)
     name : string ;
-    (* If this layer is already running stop it then restart it: *)
+    (* If this program is already running stop it then restart it: *)
     ok_if_running : bool [@ppp_default false] ;
     program : string } [@@ppp PPP_JSON]
 
@@ -177,17 +177,17 @@ type export_resp =
 (* Autocompletion of names: *)
 
 (* TODO: exporting : bool option ; temporary : bool option *)
-type complete_node_req =
-  { node_prefix : string ; only_exporting : bool } [@@ppp PPP_JSON] [@@ppp_extensible]
+type complete_func_req =
+  { func_prefix : string ; only_exporting : bool } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type complete_field_req =
-  { node : string ; field_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
+  { func : string ; field_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type complete_resp = string list [@@ppp PPP_JSON]
 
 (* Time series retrieval: *)
 
-type timeserie_spec = Predefined of { node : string ; data_field : string }
+type timeserie_spec = Predefined of { func : string ; data_field : string }
                     (* If select_x is not given we will reuse the parent event
                      * configuration *)
                     | NewTempFunc of { select_x : string [@ppp_default ""] ;

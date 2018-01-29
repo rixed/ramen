@@ -1466,7 +1466,7 @@ let compile_source exec_name fname =
 let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
   let open Operation in
   with_code_file_for exec_name conf (fun oc ->
-    Printf.fprintf oc "(* Code generated for node:\n%a\n*)\n"
+    Printf.fprintf oc "(* Code generated for func:\n%a\n*)\n"
       Operation.print op ;
     (match op with
     | Yield _->
