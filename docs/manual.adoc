@@ -705,7 +705,25 @@ Notes:
   positive rate and account for it in the surrounding calculations, as
   opposed to aim for a low false positive rate.
 
-`hysteresis`, TBD
+`hysteresis`, prefix, +float ⨉ float ⨉ float → bool+, tells if a measured value
+is within some permitted range, with an hysteresis once it has ventured
+outside.
+
+The first parameter is the measured value, the second parameter is the acceptable
+value and the last one is the maximum value. Starting from a +true+ position,
+the result of hysteresis will stay true as long as the measured value stays
+below the defined maximum. Once it has reached or exceeded that maximum then
+the hysteresis value will be +false+, and the measured value now has to return
+below the acceptable value for hysteresis to return +true+ again.
+
+For instance, +hysteresis(x, 8, 10)+ starts at +true+. Then is +x+ goes above
++10+ the returned value will turn to +false+, and will stay +false+ until +x+
+decrease to below +8+.
+
+If the accepted value is greater than the maximum, it works the other way
+around: the maximum is interpreted as a minimum and the acceptable value is the
+smallest value that the measured value must reach in order for the hysteresis
+to be +true+ again once it had ventured below the minimum.
 
 ==== Conditionals
 

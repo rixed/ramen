@@ -122,6 +122,12 @@ let remember_finalize st = st.last_remembered
 
 let hash x = Hashtbl.hash x |> Int64.of_int
 
+let hysteresis_update was_ok v accept max =
+  let extr =
+    if was_ok then max else accept in
+  if max >= accept then v <= extr else v >= extr
+let hysteresis_finalize is_ok = is_ok
+
 (* We often want functions that work on the last k elements, or the last k
  * periods of length p for seasonal data. So we often need a small sliding
  * window as a function internal state. If we could join between two different

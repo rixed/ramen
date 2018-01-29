@@ -195,8 +195,8 @@ let anomaly_detection_funcs avg_window from name timeseries alert_fields export 
         {|FROM '%s'
           SELECT start,
           (%s) AS abnormality,
-          hysteresis_max (COALESCE(group.previous.firing, false), 5-ma abnormality, 4/5) AS firing
-          COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
+          hysteresis (5-ma abnormality, 3/5, 4/5) AS firing
+          COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
           NOTIFY "http://localhost:29380/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"|}
         predictor_name
         condition
@@ -638,11 +638,11 @@ let program_of_bcns bcns dataset_name export =
         let op = Printf.sprintf
           {|SELECT
               max_start,
-              hysteresis_min (COALESCE(group.previous.firing, false), bytes_per_secs, %d) AS firing
+              hysteresis (bytes_per_secs, %d, %d) AS firing
             FROM '%s'
-            COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
+            COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
             NOTIFY "http://localhost:29380/notify?name=Low%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
-            min_bps
+            (min_bps + min_bps/10) min_bps
             perc_per_obs_window_name
             (enc title) (enc text) in
         let op =
@@ -665,11 +665,11 @@ let program_of_bcns bcns dataset_name export =
         let op = Printf.sprintf
           {|SELECT
               max_start,
-              hysteresis_max (COALESCE(group.previous.firing, false), bytes_per_secs, %d) AS firing
+              hysteresis (bytes_per_secs, %d, %d) AS firing
             FROM '%s'
-            COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
+            COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
             NOTIFY "http://localhost:29380/notify?name=High%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
-            max_bps
+            (max_bps - max_bps/10) max_bps
             perc_per_obs_window_name
             (enc title) (enc text) in
         let op =
@@ -693,11 +693,11 @@ let program_of_bcns bcns dataset_name export =
         let op = Printf.sprintf
           {|SELECT
               max_start,
-              hysteresis_max (COALESCE(group.previous.firing, false), rtt, %f) AS firing
+              hysteresis (rtt, %f, %f) AS firing
             FROM '%s'
-            COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
+            COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
             NOTIFY "http://localhost:29380/notify?name=High%%20RTT&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
-            max_rtt
+            (max_rtt -. max_rtt /. 10.) max_rtt
             perc_per_obs_window_name
             (enc title) (enc text |> rep "_rtt_" "${rtt}") in
         let op =
@@ -721,11 +721,11 @@ let program_of_bcns bcns dataset_name export =
         let op = Printf.sprintf
           {|SELECT
               max_start,
-              hysteresis_max (COALESCE(group.previous.firing, false), rr, %f) AS firing
+              hysteresis (rr, %f, %f) AS firing
             FROM '%s'
-            COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
+            COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
             NOTIFY "http://localhost:29380/notify?name=High%%20RR&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
-            max_rr
+            (max_rr -. max_rr /. 10.) max_rr
             perc_per_obs_window_name
             (enc title) (enc text |> rep "_rr_" "${rr}") in
         let op =
@@ -944,11 +944,11 @@ let program_of_bcas bcas dataset_name export =
       Printf.sprintf
         {|SELECT
             max_start,
-            hysteresis_max (COALESCE(group.previous.firing, false), eurt, %g) AS firing
+            hysteresis (eurt, %g, %g) AS firing
           FROM '%s'
-          COMMIT AND KEEP ALL WHEN firing != COALESCE(group.previous.firing, false)
+          COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
           NOTIFY "http://localhost:29380/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
-          bca.max_eurt
+          (bca.max_eurt -. bca.max_eurt /. 10.) bca.max_eurt
           perc_per_obs_window_name
           (enc bca.name) (enc title) (enc text) in
     let op =

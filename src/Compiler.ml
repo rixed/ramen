@@ -633,6 +633,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
        Some TFloat, None, tim ;
        Some TFloat, None, dur ;
        None, None, e]
+  | StatefulFun (op_typ, _, Hysteresis (meas, accept, max)) ->
+    check_op op_typ return_bool
+      [Some TFloat, None, meas ;
+       Some TFloat, Some false, accept ;
+       Some TFloat, Some false, max]
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible. *)

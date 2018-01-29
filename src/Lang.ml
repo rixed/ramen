@@ -671,6 +671,8 @@ struct
     | Remember of t * t * t * t
     (* Simple exponential smoothing *)
     | ExpSmooth of t * t (* coef between 0 and 1 and expression *)
+    (* Hysteresis *)
+    | Hysteresis of t * t * t (* measured value, acceptable, maximum *)
 
   and generator_fun =
     (* First function returning more than once (Generator). Here the typ is
@@ -870,6 +872,13 @@ struct
       Printf.fprintf fmt "smooth%s(%a, %a)"
         (sl g)  (print with_types) e1 (print with_types) e2 ;
       add_types t
+    | StatefulFun (t, g, Hysteresis (meas, accept, max)) ->
+      Printf.fprintf fmt "hysteresis%s(%a, %a, %a)"
+        (sl g)
+        (print with_types) meas
+        (print with_types) accept
+        (print with_types) max ;
+      add_types t
 
     | GeneratorFun (t, Split (e1, e2)) ->
       Printf.fprintf fmt "split(%a, %a)"
@@ -940,6 +949,12 @@ struct
       let i'''= fold_by_depth f i'' e3 in
       let i''''= List.fold_left (fold_by_depth f) i''' e4s in
       f i'''' expr
+
+    | StatefulFun (_, _, Hysteresis (e1, e2, e3)) ->
+      let i' = fold_by_depth f i e1 in
+      let i''= fold_by_depth f i' e2 in
+      let i'''= fold_by_depth f i'' e3 in
+      f i''' expr
 
     | Case (_, alts, else_) ->
       let i' =
@@ -1034,6 +1049,11 @@ struct
       StatefulFun (f t, g, ExpSmooth (
           (if recurs then map_type ~recurs f a else a),
           (if recurs then map_type ~recurs f b else b)))
+    | StatefulFun (t, g, Hysteresis (a, b, c)) ->
+      StatefulFun (f t, g, Hysteresis (
+          (if recurs then map_type ~recurs f a else a),
+          (if recurs then map_type ~recurs f b else b),
+          (if recurs then map_type ~recurs f c else c)))
 
     | StatelessFun (t, Age a) ->
       StatelessFun (f t, Age (if recurs then map_type ~recurs f a else a))
@@ -1470,6 +1490,9 @@ struct
        (afun4_sf "remember" >>: fun (g, fpr, tim, dir, e) ->
           StatefulFun (make_bool_typ "remember", g,
                        Remember (fpr, tim, dir, e))) |||
+       (afun3_sf "hysteresis" >>: fun (g, value, accept, max) ->
+          StatefulFun (make_bool_typ ~nullable:false "hysteresis", g,
+                       Hysteresis (value, accept, max))) |||
        (afun2 "split" >>: fun (e1, e2) ->
           GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
        (* At least 2 args to distinguish from the aggregate functions: *)
@@ -1481,7 +1504,7 @@ struct
           StatelessFun (make_num_typ "min", Min (e1 :: e2 :: e3s))) |||
        (afun1v "least" >>: fun (e, es) ->
           StatelessFun (make_num_typ "min", Min (e :: es))) |||
-       k_moveavg ||| sequence ||| cast ||| hysteresis) m
+       k_moveavg ||| sequence ||| cast) m
 
     and sequence =
       let seq = "sequence"
@@ -1518,57 +1541,6 @@ struct
          let k = Const (make_typ ~nullable:false ~typ:(scalar_type_of k)
                                  "moving average order", k) in
          StatefulFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
-
-    (* Syntactic sugar for threshold with hysteresis check, basically
-     * replacing:
-     *   hysteresis(result, measured, threshold, 0.1)
-     * by:
-     *   measured >= threshold - (IF result THEN threshold * 0.1
-     *                                      ELSE 0) AS result *)
-    and hysteresis m =
-      let m = "hysteresis" :: m in
-      let build_hysteresis prev meas thrd gap is_max =
-        let case =
-          Case (
-            make_num_typ "case for hysteresis",
-            [ { case_cond = prev ;
-                case_cons =
-                  StatelessFun (
-                    make_num_typ "hysteresis gap",
-                    Mul (gap, thrd)) } ],
-            (* else *)
-            Some expr_zero) in
-        let thrd' =
-          if is_max then
-            StatelessFun (
-              make_num_typ "subtraction for hysteresis",
-              Sub (thrd, case))
-          else
-            StatelessFun (
-              make_num_typ "addition for hysteresis",
-              Add (thrd, case)) in
-        StatelessFun (
-          make_bool_typ "comparison operator for hysteresis",
-          if is_max then Ge (meas, thrd') else Ge (thrd', meas)) in
-      let gap = Const (make_float_typ ~nullable:false "hysteresis ratio",
-                       VFloat 0.15)
-      in
-      ((afun4 "hysteresis_max" >>: fun (res, meas, thrd, gap) ->
-          build_hysteresis res meas thrd gap true) |||
-       (afun3 "hysteresis_max" >>: fun (res, meas, thrd) ->
-          build_hysteresis res meas thrd gap true) |||
-       (afun4 "hysteresis_min" >>: fun (res, meas, thrd, gap) ->
-          build_hysteresis res meas thrd gap false) |||
-       (afun3 "hysteresis_min" >>: fun (res, meas, thrd) ->
-          build_hysteresis res meas thrd gap false) |||
-       (afun4 "hysteresis" >>: fun (res, meas, min, max) ->
-          StatelessFun (make_bool_typ "or", Or (
-            build_hysteresis res meas max gap true,
-            build_hysteresis res meas min gap false))) |||
-       (afun5 "hysteresis" >>: fun (res, meas, min, max, gap) ->
-          StatelessFun (make_bool_typ "or", Or (
-            build_hysteresis res meas max gap true,
-            build_hysteresis res meas min gap false)))) m
 
     and case m =
       let m = "case" :: m in
@@ -1711,18 +1683,12 @@ struct
         (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
 
       (Ok ( \
-        StatelessFun (typ, Ge (\
+        StatefulFun (typ, GlobalState, Hysteresis (\
           Field (typ, ref TupleUnknown, "value"),\
-          StatelessFun (typ, Sub (\
-            Const (typ, VI32 (Int32.of_int 1000)),\
-            Case (typ, [\
-              { case_cond = Field (typ, ref TupleGroupPrevious, "firing") ;\
-                case_cons = StatelessFun (typ, Mul (\
-                  Const (typ, VFloat 0.15),\
-                  Const (typ, VI32 (Int32.of_int 1000)))) } ],\
-              Some (Const (typ, VU8 (Stdint.Uint8.of_int 0)))))))),\
-        (50, [])))\
-        (test_p p "hysteresis_max(group.previous.firing, value, 1000)" |> replace_typ_in_expr)
+          Const (typ, VI32 (Int32.of_int 900)),\
+          Const (typ, VI32 (Int32.of_int 1000)))),\
+        (28, [])))\
+        (test_p p "hysteresis(value, 900, 1000)" |> replace_typ_in_expr)
     *)
 
     (*$>*)

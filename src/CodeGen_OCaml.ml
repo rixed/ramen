@@ -832,6 +832,14 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefulFun (_, g, Remember _), Some TBool ->
     emit_functionN oc ?state "CodeGenLib.remember_finalize" [None] [my_state g]
 
+  | InitState, StatefulFun (_, _, Hysteresis _), t ->
+    conv_to ?state ~context t oc expr_true (* initially within bounds *)
+  | UpdateState, StatefulFun (_, g, Hysteresis (meas, accept, max)), Some TBool ->
+    let t = (typ_of meas).scalar_typ in (* TODO: shouldn't we promote everything to the most accurate of those types? *)
+    emit_functionN oc ?state "CodeGenLib.hysteresis_update" [None; t; t; t] [my_state g; meas; accept; max]
+  | Finalize, StatefulFun (_, g, Hysteresis _), Some TBool ->
+    emit_functionN oc ?state "CodeGenLib.hysteresis_finalize" [None] [my_state g]
+
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name t).
    * In normal expressions we merely refer to that free variable. *)
