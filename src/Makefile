@@ -21,7 +21,8 @@ LINKED_FOR_TESTS = \
 	EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml Lang.ml \
 	RingBuf.ml RamenConf.ml Globs.ml CodeGen_OCaml.ml \
-	RamenProcesses.ml Compiler.ml RamenBloomFilter.ml RamenHtml.ml
+	RamenBinocle.ml RamenBitmask.ml RamenExport.ml RamenProcesses.ml \
+	Compiler.ml RamenBloomFilter.ml RamenHtml.ml
 
 RAMEN_SOURCES = \
 	RamenVersions.ml Consts.ml RamenLog.ml Helpers.ml RamenBitmask.ml \
