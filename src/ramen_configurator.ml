@@ -497,6 +497,40 @@ let base_program dataset_name delete uncompress csv_glob export =
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "mtu", "" ;
     "traffic_packets", "packets" ; "traffic_bytes", "bytes" ]
+  (* DNS CSV Importer: *)
+  and dns = csv_import "dns" {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null,
+      zone_server u32 not null,
+      ip4_client u32 null,
+      ip6_client i128 null,
+      ip4_server u32 null,
+      ip6_server i128 null,
+      query_name string not null,
+      query_type u16 not null,
+      query_class u16 not null,
+      error_code u8 not null,
+      error_count u8 not null,
+      answer_type u16 not null,
+      answer_class u16 not null,
+      capture_file string null,
+      connection_uuid string null,
+      traffic_bytes_client u64 not null,
+      traffic_bytes_server u64 not null,
+      traffic_packets_client u64 not null,
+      traffic_packets_server u64 not null,
+      rt_count_server u64 not null,
+      rt_sum_server u64 not null,
+      rt_square_sum_server u64 not null|} |>
+    make_func "dns"
   in
   RamenSharedTypes.{
     name = dataset_name ;
@@ -516,7 +550,8 @@ let base_program dataset_name delete uncompress csv_glob export =
       other_ip_to_unidir ~src:"server" ~dst:"client" "s2c other-than-ip" ;
       non_ip ;
       non_ip_to_unidir ~src:"client" ~dst:"server" "c2s non-ip" ;
-      non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ] }
+      non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ;
+      dns ] }
 
 (* Build the func infos corresponding to the BCN configuration *)
 let program_of_bcns bcns dataset_name export =
