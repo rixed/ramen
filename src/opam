@@ -21,7 +21,7 @@ depends: [
   "owl" {= "0.2.9"}
   "sqlite3" {= "4.3.2"}
   "num"
-  "ppp" {= "0.1"}
+  "ppp" {= "1.0"}
   "js_of_ocaml" {build & = "3.0.2"}
   "js_of_ocaml-ppx" {build}
   "cmdliner" {= "1.0.2"}
