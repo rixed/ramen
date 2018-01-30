@@ -75,14 +75,14 @@ let func_info_of_func conf func =
     stats }
 
 let program_info_of_program conf program =
-  let%lwt funcs =
+  let%lwt operations =
     Hashtbl.values program.L.persist.L.funcs |>
     List.of_enum |>
     Lwt_list.map_s (func_info_of_func conf) in
   return SL.{
     name = program.L.name ;
     program = program.L.persist.L.program ;
-    funcs ;
+    operations ;
     status = program.L.persist.L.status ;
     last_started = program.L.persist.L.last_started ;
     last_stopped = program.L.persist.L.last_stopped }
@@ -455,7 +455,7 @@ let complete_funcs conf headers body =
     of_json headers "Complete tables" complete_func_req_ppp body in
   let%lwt lst =
     C.with_rlock conf (fun () ->
-      C.complete_func_name conf msg.func_prefix msg.only_exporting |>
+      C.complete_func_name conf msg.prefix msg.only_exporting |>
       return) in
   let body =
     PPP.to_string complete_resp_ppp lst
@@ -467,7 +467,7 @@ let complete_fields conf headers body =
     of_json headers "Complete fields" complete_field_req_ppp body in
   let%lwt lst =
     C.with_rlock conf (fun () ->
-      C.complete_field_name conf msg.func msg.field_prefix |>
+      C.complete_field_name conf msg.operation msg.prefix |>
       return) in
   let body =
     PPP.to_string complete_resp_ppp lst
@@ -564,10 +564,10 @@ let timeseries conf headers body =
     let%lwt resp = Lwt_list.map_s (fun req ->
         let%lwt program_name, func_name, data_field =
           match req.spec with
-          | Predefined { func ; data_field } ->
+          | Predefined { operation ; data_field } ->
             let%lwt program, func =
-              try C.program_func_of_user_string func |> return
-              with Not_found -> bad_request ("func "^ func ^" does not exist") in
+              try C.program_func_of_user_string operation |> return
+              with Not_found -> bad_request ("func "^ operation ^" does not exist") in
             return (program, func, data_field)
           | NewTempFunc { select_x ; select_y ; from ; where } ->
             C.with_wlock conf (fun () ->
@@ -908,7 +908,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
     (* Grafana datasource plugin *)
     | `GET, ["grafana"] ->
       respond_ok ()
-    | `POST, ["complete"; "funcs"] ->
+    | `POST, ["complete"; "operations"] ->
       complete_funcs conf headers body
     | `POST, ["complete"; "fields"] ->
       complete_fields conf headers body

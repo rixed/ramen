@@ -136,7 +136,7 @@ struct
     type info =
       { name : string ;
         program : string ;
-        funcs : Func.info list ;
+        operations : Func.info list ;
         status : status [@ppp_default (RamenSharedTypesJS.Edition "")] ;
         last_started : float option ;
         last_stopped : float option } [@@ppp PPP_JSON]
@@ -178,16 +178,16 @@ type export_resp =
 
 (* TODO: exporting : bool option ; temporary : bool option *)
 type complete_func_req =
-  { func_prefix : string ; only_exporting : bool } [@@ppp PPP_JSON] [@@ppp_extensible]
+  { prefix : string ; only_exporting : bool } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type complete_field_req =
-  { func : string ; field_prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
+  { operation : string ; prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type complete_resp = string list [@@ppp PPP_JSON]
 
 (* Time series retrieval: *)
 
-type timeserie_spec = Predefined of { func : string ; data_field : string }
+type timeserie_spec = Predefined of { operation : string ; data_field : string }
                     (* If select_x is not given we will reuse the parent event
                      * configuration *)
                     | NewTempFunc of { select_x : string [@ppp_default ""] ;

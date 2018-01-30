@@ -221,7 +221,7 @@ let export debug ramen_url func_name as_csv with_header max_results continuous (
   Lwt_main.run (exporter ?max_results ())
 
 let timeseries debug ramen_url since until max_data_points
-               func data_field consolidation () =
+               operation data_field consolidation () =
   logger := make_logger debug ;
   let url = ramen_url ^"/timeseries"
   and msg =
@@ -229,7 +229,7 @@ let timeseries debug ramen_url since until max_data_points
       timeseries = [
         { id = "cmdline" ;
           consolidation = consolidation |? "avg" ;
-          spec = Predefined { func ; data_field } } ] } in
+          spec = Predefined { operation ; data_field } } ] } in
   let th =
     let%lwt body = http_post_json url timeseries_req_ppp msg in
     Printf.printf "%s\n%!" body (* TODO *) ;

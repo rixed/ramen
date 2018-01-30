@@ -402,7 +402,7 @@ let reload_chart =
                     object%js
                       val _Predefined =
                         object%js
-                          val func = Js.string func.id
+                          val operation = Js.string func.id
                           val data_field_ = Js.string field_name
                         end
                     end
@@ -560,7 +560,7 @@ let update_graph total g =
     let status_js = Js.Unsafe.get l "status" in
     let status, status_str = Program.status_of_js status_js in
     had_programs := name :: !had_programs ;
-    let funcs = Js.Unsafe.get l "funcs" in
+    let funcs = Js.Unsafe.get l "operations" in
     let program = Program.{
       name ; program ; status_str ; status ; order = i ;
       last_started = Js.(Unsafe.get l "last_started" |> Opt.to_option |>
