@@ -1992,7 +1992,7 @@ struct
       prefix_smart where ;
       List.iter (prefix_def TupleIn) key ;
       Option.may (fun (n, by) ->
-        prefix_smart n ; prefix_def TupleIn  by) top ;
+        prefix_smart n ; prefix_def TupleIn by) top ;
       prefix_smart commit_when ;
       (match flush_how with
       | KeepOnly e | RemoveAll e -> prefix_def TupleGroup e

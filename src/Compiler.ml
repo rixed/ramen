@@ -307,7 +307,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
   and return_string _ = TString
   in
   fun expr ->
-  !logger.debug "%s-- Typing expression %a --" indent (Expr.print true) expr ;
+  !logger.debug "%s-- Typing expression %a" indent (Expr.print true) expr ;
   match expr with
   | Const (op_typ, _) ->
     (* op_typ is already optimal. But is it compatible with exp_type? *)
@@ -344,12 +344,21 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
         ) ;
         check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from ~to_:exp_type
     ) else if tuple_has_type_output !tuple then (
-      (* FIXME: It is forbidden to access the field of TupleGroupPrevious if it's a generator *)
-      (* First thing we know is that if the field is from TupleGroupPrevious
-       * then it is nullable: *)
+      (* Some tuples are passed to callback via an option type, and are None
+       * each time they are undefined (beginning of worker or of group).
+       * Workers access those fields via a special functions, and all fields
+       * are forced nullable during typing. *)
+      let tuple_is_optional =
+        !tuple = TupleGroupPrevious || !tuple = TupleOutPrevious in
+      (* In those cases, as only the generators are passed rather than
+       * the actual tuples, access to generated fields is forbidden (see
+       * Lang.Operation.check) *)
+      (* First thing we know is that if the field is from
+       * Tuple{Out,Group}Previous then it is nullable: *)
       (
-        if !tuple = TupleGroupPrevious || !tuple = TupleOutPrevious then (
-          !logger.debug "%sField %s is from previous so nullable." indent field ;
+        if tuple_is_optional then (
+          !logger.debug "%sField %s is from previous therefore nullable."
+            indent field ;
           set_nullable ~indent exp_type true
         ) else false
       ) ||| (
@@ -372,11 +381,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
               (* Regardless of the actual type of the output tuple, fields from
                * group.previous must always be considered nullable as the whole
                * tuple is optional: *)
-              if !tuple = TupleGroupPrevious || !tuple = TupleOutPrevious then Some true else out.nullable ;
+              if tuple_is_optional then Some true else out.nullable ;
             op_typ.scalar_typ <- out.scalar_typ
           ) ;
           !logger.debug "%sfield %s found in out type: %a" indent field print_typ out ;
-          check_expr_type ~indent ~ok_if_larger:false ~set_null:(!tuple <> TupleGroupPrevious && !tuple <> TupleOutPrevious) ~from:out ~to_:exp_type
+          check_expr_type ~indent ~ok_if_larger:false ~set_null:(not tuple_is_optional) ~from:out ~to_:exp_type
       )
     ) else (
       (* All other tuples are already typed (virtual fields) *)
@@ -656,7 +665,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
             raise (SyntaxError e)) ;
           changed (* no-op *)
         | parent_field ->
-          check_expr_type ~indent:"" ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field ||
+          check_expr_type ~indent:"  " ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field ||
           changed
       ) false to_tuple.C.fields in
   (* Add new fields into children. *)
@@ -714,7 +723,7 @@ let check_selected_fields ~parents ~in_type ~out_type fields =
         | typ ->
           !logger.debug "... already in out, current type is %a" Expr.print_typ typ ;
           typ in
-      check_expr ~parents ~in_type ~out_type ~exp_type sf.Operation.expr || changed
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type sf.Operation.expr || changed
     ) false fields
 
 let tuple_type_is_finished = function
@@ -810,7 +819,7 @@ let check_aggregate conf func fields and_all_others where key top
     List.fold_left (fun changed k ->
         (* The key can be anything *)
         let exp_type = Expr.typ_of k in
-        check_expr ~parents ~in_type ~out_type ~exp_type k || changed
+        check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type k || changed
       ) false key
   ) ||| (
     match top with
@@ -821,19 +830,19 @@ let check_aggregate conf func fields and_all_others where key top
       (* check_expr will try to improve exp_type. We don't care we just want
        * to check it does not raise an exception. Here exp_type is build at
        * every call so we wouldn't make progress anyway. *)
-      check_expr ~parents ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top size") n |> ignore ;
-      check_expr ~parents ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top-by clause") by |> ignore ;
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top size") n |> ignore ;
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top-by clause") by |> ignore ;
       false
   ) ||| (
     let exp_type = Expr.make_bool_typ ~nullable:false "commit-when clause" in
-    check_expr ~parents ~in_type ~out_type ~exp_type commit_when |> ignore ;
+    check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type commit_when |> ignore ;
     false
   ) ||| (
     match flush_how with
     | Reset | Never | Slide _ -> false
     | RemoveAll e | KeepOnly e ->
       let exp_type = Expr.make_bool_typ ~nullable:false "remove/keep clause" in
-      check_expr ~parents ~in_type ~out_type ~exp_type e |> ignore ;
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type e |> ignore ;
       false
   ) ||| (
     (* Check the expression, improving out_type and checking against in_type: *)
@@ -841,7 +850,7 @@ let check_aggregate conf func fields and_all_others where key top
       (* That where expressions cannot be null seems a nice improvement
        * over SQL. *)
       Expr.make_bool_typ ~nullable:false "where clause" in
-    check_expr ~parents ~in_type ~out_type ~exp_type where |> ignore ;
+    check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type where |> ignore ;
     false
   ) ||| (
     (* Also check other expression and make use of them to improve out_type.
@@ -867,6 +876,7 @@ let check_aggregate conf func fields and_all_others where key top
  * in_type is a given, don't modify it!
  *)
 let check_operation conf func =
+  !logger.debug "-- Typing operation %a" Operation.print func.N.operation ;
   let open Operation in
   match func.N.operation with
   | Yield { fields ; _ } ->
