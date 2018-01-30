@@ -211,7 +211,7 @@ struct
       mutable importing_threads : unit Lwt.t list }
 
   let set_status program status =
-    !logger.debug "Program %s status %s -> %s"
+    !logger.info "Program %s status %s -> %s"
       program.name
       (Info.Program.string_of_status program.persist.status)
       (Info.Program.string_of_status status) ;
@@ -251,17 +251,18 @@ struct
     | Running ->
       raise (InvalidCommand "Graph is running")
 
-  let iter_dependencies program f =
+  let fold_dependencies program init f =
     (* One day we will have a lock on the configuration and we will be able to
      * mark visited funcs *)
-    Hashtbl.fold (fun _func_name func called ->
-        List.fold_left (fun called (parent_program, _parent_func) ->
-            let dependency = parent_program in
-            if Set.mem dependency called then called else (
-              f dependency ;
-              Set.add dependency called)
-          ) called func.Func.parents
-      ) program.persist.funcs (Set.singleton program.name) |>
+    Hashtbl.fold (fun _func_name func (init, called) ->
+      List.fold_left (fun (init, called as prev)
+                          (parent_program, _parent_func) ->
+        let dependency = parent_program in
+        if Set.mem dependency called then prev else (
+          f init dependency,
+          Set.add dependency called)
+      ) (init, called) func.Func.parents
+    ) program.persist.funcs (init, Set.singleton program.name) |>
     ignore
 
   (* Order programs according to dependency, depended upon first. *)
@@ -272,7 +273,7 @@ struct
         let progress, ordered, later =
           List.fold_left (fun (progress, ordered, later) l ->
               try
-                iter_dependencies l (fun dep ->
+                fold_dependencies l () (fun () dep ->
                   !logger.debug "Program %S depends on %S" l.name dep ;
                   let in_list = List.exists (fun o -> o.name = dep) in
                   if in_list programs && not (in_list ordered) then

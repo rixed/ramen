@@ -190,6 +190,7 @@ let run conf program =
   | Running -> fail AlreadyRunning
   | Compiling -> fail StillCompiling
   | Compiled ->
+    !logger.info "Starting program %s" program.L.name ;
     (* First prepare all the required ringbuffers *)
     !logger.debug "Creating ringbuffers..." ;
     let program_funcs =
@@ -225,7 +226,7 @@ let stop conf program =
      * changed before launching workers. *)
     fail NotRunning
   | Running ->
-    !logger.debug "Stopping program %s" program.L.name ;
+    !logger.info "Stopping program %s" program.L.name ;
     let now = Unix.gettimeofday () in
     let program_funcs =
       Hashtbl.values program.L.persist.L.funcs |> List.of_enum in

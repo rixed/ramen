@@ -1103,7 +1103,7 @@ let compile conf program =
   | Compiling -> fail AlreadyCompiled
   | Edition _ ->
     !logger.debug "Trying to compile program %s" program.L.name ;
-    C.Program.set_status program Compiling ;
+    L.set_status program Compiling ;
     try%lwt
       let%lwt () = wrap (fun () ->
         untyped_dependency conf program |>
@@ -1141,15 +1141,33 @@ let compile conf program =
           ) program.L.persist.L.funcs) in
       (* Compile *)
       let _, thds =
-        Hashtbl.fold (fun _ func (doing,thds) ->
+        Hashtbl.fold (fun _ func (doing, thds) ->
             (* Avoid compiling twice the same thing (TODO: a lockfile) *)
             if Set.mem func.N.signature doing then doing, thds else (
               Set.add func.N.signature doing,
               compile_func conf func :: thds)
           ) program.L.persist.L.funcs (Set.empty, []) in
       let%lwt () = join thds in
-      C.Program.set_status program Compiled ;
+      (* Since we really recompiled that program, all programs depending on it
+       * must return to edition mode as they must be typed again. *)
+      !logger.info "Stopping all programs depending on %s" program.L.name ;
+      let thds, _ =
+        C.fold_funcs conf ([], Set.singleton program.L.name)
+          (fun (_, visited as prev) program' func ->
+            if Set.mem func.program visited then prev else
+            List.fold_left (fun (thds, visited as prev)
+                                (parent_program, _) ->
+              if parent_program = program.L.name then (
+                (let%lwt () =
+                  try%lwt RamenProcesses.stop conf program'
+                  with RamenProcesses.NotRunning -> return_unit in
+                L.set_editable program' ("Depend on "^ program.L.name) ;
+                return_unit) :: thds,
+                Set.add func.program visited
+              ) else prev) prev func.N.parents) in
+      let%lwt () = join thds in
+      L.set_status program Compiled ;
       return_unit
     with e ->
-      C.Program.set_status program (Edition (Printexc.to_string e)) ;
+      L.set_status program (Edition (Printexc.to_string e)) ;
       fail e

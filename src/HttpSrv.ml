@@ -260,9 +260,9 @@ let put_program conf headers body =
   (* Disallow anonymous programs for simplicity: *)
   if program_name = "" then
     bad_request "Programs must have non-empty names" else (
-  (* Delete the program if it already exists. No worries the conf won't be
-   * changed if there is any error. *)
   C.with_wlock conf (fun () ->
+    (* Delete the program if it already exists. No worries the conf won't be
+     * changed if there is any error. *)
     let%lwt must_stop =
       match Hashtbl.find conf.C.graph.C.programs program_name with
       | exception Not_found -> return_false
