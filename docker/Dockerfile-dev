@@ -70,3 +70,7 @@ EXPOSE 25826/UDP
 EXPOSE 2055/UDP
 
 LABEL maintainer="rixed-docker@happyleptic.org"
+
+# Work around https://github.com/ryanrhymes/owl/issues/116
+COPY empty /root/.owl/dataset/
+COPY empty /root/.owl/zoo/

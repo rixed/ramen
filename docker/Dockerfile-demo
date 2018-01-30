@@ -117,3 +117,7 @@ RUN touch /img_creation && \
     (find /root /usr /var /lib /bin -type d -empty -delete || true) && \
     (find /root /usr /var /lib /bin -xtype l -delete || true) && \
     (find /root /usr /var /lib /bin -type d -empty -delete || true)
+
+# Work around https://github.com/ryanrhymes/owl/issues/116
+COPY empty /root/.owl/dataset/
+COPY empty /root/.owl/zoo/

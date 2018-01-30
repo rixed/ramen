@@ -1,8 +1,5 @@
 #!/bin/sh
 
-# Work around https://github.com/ryanrhymes/owl/issues/116
-mkdir -p /root/.owl/dataset /root/.owl/zoo
-
 if test -x /usr/sbin/collectd ; then
   /usr/sbin/collectd -C /etc/collectd/collectd.conf
 fi
