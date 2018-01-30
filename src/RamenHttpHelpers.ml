@@ -71,7 +71,11 @@ let http_service port cert_opt key_opt router =
   in
   let entry_point = Server.make ~callback () in
   let tcp_mode = `TCP (`Port port) in
-  let on_exn = print_exception in
+  let on_exn = function
+    | Unix.Unix_error (Unix.EPIPE, "write", _) ->
+        !logger.warning "EPIPE while write, client probably closed its \
+                         connection" ;
+    | exn -> print_exception exn in
   let http_stop_thread () =
     let cond = Lwt_condition.create () in
     let stop = Lwt_condition.wait cond in
