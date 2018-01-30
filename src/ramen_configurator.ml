@@ -531,6 +531,81 @@ let base_program dataset_name delete uncompress csv_glob export =
       rt_sum_server u64 not null,
       rt_square_sum_server u128 not null|} |>
     make_func "dns"
+  (* HTTP CSV Importer: *)
+  and http = csv_import "http" {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null, -- 10
+      zone_server u32 not null,
+      ip4_client u32 null,
+      ip6_client i128 null,
+      ip4_server u32 null,
+      ip6_server i128 null,
+      port_client u16 not null,
+      port_server u16 not null,
+      connection_uuid string null,
+      id string not null,
+      parent_id string not null,  -- 20
+      referrer_id string null,
+      deep_inspect bool not null,
+      contributed bool not null,
+      timeouted bool not null,
+      host string null,
+      user_agent string null,
+      url string not null,
+      server string null,
+      compressed bool not null,
+      chunked_encoding bool not null,  -- 30
+      ajax bool not null,
+      ip4_orig_client u32 null,
+      ip6_orig_client i128 null,
+      page_count u32 not null,
+      hardcoded_one_facepalm bool not null,
+      query_begin_ts u64 not null,
+      query_end_ts u64 not null,
+      query_method u8 not null,
+      query_headers u32 not null,
+      query_payload u32 not null,  -- 40
+      query_pkts u32 not null,
+      query_content string null,
+      query_content_length u32 null,
+      query_content_length_count u32 not null,
+      query_mime_type string null,
+      resp_begin_ts u64 null,
+      resp_end_ts u64 null,
+      resp_code u32 null,
+      resp_headers u32 not null,
+      resp_payload u32 not null,  -- 50
+      resp_pkts u32 not null,
+      resp_content string null,
+      resp_content_length u32 null,
+      resp_content_length_count u32 not null,
+      resp_mime_type string null,
+      tot_volume_query u32 null,
+      tot_volume_response u32 null,
+      tot_count u32 not null,
+      tot_errors u16 not null,
+      tot_timeouts u16 not null,  -- 60
+      tot_begin_ts u64 not null,
+      tot_end_ts u64 not null,
+      tot_load_time u64 not null,
+      tot_load_time_squared u128 not null,
+      rt_count_server u32 not null,
+      rt_sum_server u64 not null,
+      rt_square_sum_server u128 not null,
+      dtt_sum_client u64 not null,
+      dtt_square_sum_client u128 not null,
+      dtt_sum_server u64 not null,  -- 70
+      dtt_square_sum_server u128 not null,
+      application u32 not null|} |>
+    make_func "http"
   in
   RamenSharedTypes.{
     name = dataset_name ;
@@ -551,7 +626,7 @@ let base_program dataset_name delete uncompress csv_glob export =
       non_ip ;
       non_ip_to_unidir ~src:"client" ~dst:"server" "c2s non-ip" ;
       non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ;
-      dns ] }
+      dns ; http ] }
 
 (* Build the func infos corresponding to the BCN configuration *)
 let program_of_bcns bcns dataset_name export =
