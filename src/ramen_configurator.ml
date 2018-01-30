@@ -290,28 +290,28 @@ let base_program dataset_name delete uncompress csv_glob export =
       zero_window_count_server u64 not null,
       ct_count u64 not null,
       ct_sum u64 not null,
-      ct_square_sum u64 not null,
+      ct_square_sum u128 not null,
       rt_count_server u64 not null,
       rt_sum_server u64 not null,
-      rt_square_sum_server u64 not null,
+      rt_square_sum_server u128 not null,
       rtt_count_client u64 not null,
       rtt_sum_client u64 not null,
-      rtt_square_sum_client u64 not null,
+      rtt_square_sum_client u128 not null,
       rtt_count_server u64 not null,
       rtt_sum_server u64 not null,
-      rtt_square_sum_server u64 not null,
+      rtt_square_sum_server u128 not null,
       rd_count_client u64 not null,
       rd_sum_client u64 not null,
-      rd_square_sum_client u64 not null,
+      rd_square_sum_client u128 not null,
       rd_count_server u64 not null,
       rd_sum_server u64 not null,
-      rd_square_sum_server u64 not null,
+      rd_square_sum_server u128 not null,
       dtt_count_client u64 not null,
       dtt_sum_client u64 not null,
-      dtt_square_sum_client u64 not null,
+      dtt_square_sum_client u128 not null,
       dtt_count_server u64 not null,
       dtt_sum_server u64 not null,
-      dtt_square_sum_server u64 not null,
+      dtt_square_sum_server u128 not null,
       dcerpc_uuid string null|} |>
     make_func "tcp"
   and tcp_to_unidir = to_unidir "tcp" {|
@@ -518,7 +518,7 @@ let base_program dataset_name delete uncompress csv_glob export =
       query_type u16 not null,
       query_class u16 not null,
       error_code u8 not null,
-      error_count u8 not null,
+      error_count u32 not null,
       answer_type u16 not null,
       answer_class u16 not null,
       capture_file string null,
@@ -529,7 +529,7 @@ let base_program dataset_name delete uncompress csv_glob export =
       traffic_packets_server u64 not null,
       rt_count_server u64 not null,
       rt_sum_server u64 not null,
-      rt_square_sum_server u64 not null|} |>
+      rt_square_sum_server u128 not null|} |>
     make_func "dns"
   in
   RamenSharedTypes.{
