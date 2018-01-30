@@ -385,3 +385,5 @@ let rec restart_on_failure f x =
     !logger.error "Will restart..." ;
     let%lwt () = Lwt_unix.sleep (0.5 +. Random.float 0.5) in
     restart_on_failure f x)
+
+let md5 str = Digest.(string str |> to_hex)

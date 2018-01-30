@@ -25,7 +25,6 @@ depends: [
   "js_of_ocaml" {build & = "3.0.2"}
   "js_of_ocaml-ppx" {build}
   "cmdliner" {= "1.0.2"}
-  "cryptohash" {= "0.1.2"}
   "syslog" {= "1.4"}
   "net_codecs" {>= "0.2"}
   "qcheck" {test}

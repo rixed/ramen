@@ -546,8 +546,7 @@ let timeseries conf headers body =
       if where = "" then op_text else op_text ^" WHERE "^ where in
     let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
     let reformatted_op = IO.to_string Operation.print operation in
-    let program_name =
-      "temp/"^ Cryptohash_md4.(string reformatted_op |> to_hex)
+    let program_name = "temp/"^ md5 reformatted_op
     and func_name = "operation" in
     (* So far so good. In all likelihood this program exists already: *)
     (if Hashtbl.mem conf.C.graph.C.programs program_name then (

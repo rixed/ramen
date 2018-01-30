@@ -81,7 +81,7 @@ SOURCES = $(filter-out RamenGui.ml,$(SOURCES_))
 
 PACKAGES = \
 	ppp lwt.ppx batteries cmdliner stdint parsercombinator syslog sqlite3 \
-	cohttp-lwt-unix num inotify.lwt binocle unix cryptohash owl net_codecs
+	cohttp-lwt-unix num inotify.lwt binocle unix owl net_codecs
 
 INSTALLED_BIN = ramen ramen_configurator
 INSTALLED_LIB = \

@@ -72,10 +72,7 @@ let type_signature tuple_type =
       if field.nullable then " null" else " notnull"
     ) "" ser
 
-let md4 s =
-  Cryptohash_md4.string s |> Cryptohash_md4.to_hex
-
-let type_signature_hash = md4 % type_signature
+let type_signature_hash = md5 % type_signature
 
 let make_temp_tup_typ () =
   { finished_typing = false ; fields = [] }
@@ -172,7 +169,7 @@ struct
     "OP="^ IO.to_string Lang.Operation.print func.operation ^
     "IN="^ type_signature func.in_type ^
     "OUT="^ type_signature func.out_type |>
-    md4
+    md5
 end
 
 let exec_of_func persist_dir func =
