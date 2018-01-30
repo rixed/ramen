@@ -6,10 +6,10 @@
 let release_tag = "v1.1.4"
 
 (* Ramen graph configuration *)
-let graph_config = "v1"
+let graph_config = "v2"
 
 (* Code generation: sources, binaries... *)
-let codegen = "v1"
+let codegen = "v2"
 
 (* Alerting state *)
 let alerting_state = "v1"
