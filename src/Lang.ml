@@ -64,6 +64,7 @@ type syntax_error =
   | FuncNameNotUnique of string
   | OnlyTumblingWindowForTop
   | UnknownFunc of string
+  | NoAccessToGeneratedFields of { alias : string }
 
 exception SyntaxError of syntax_error
 
@@ -127,6 +128,8 @@ let string_of_syntax_error =
      field named "^ alias
   | UnknownFunc n ->
     "Referenced func "^ n ^" does not exist"
+  | NoAccessToGeneratedFields { alias } ->
+    "Cannot access output field "^ alias ^" as it is the result of a generator"
 
 let () =
   Printexc.register_printer (function
@@ -2034,7 +2037,20 @@ struct
         check_pure m e ;
         check_fields_from [TupleGroup] "REMOVE clause" e) ;
       if from = [] then
-        raise (SyntaxError (MissingClause { clause = "FROM" }))
+        raise (SyntaxError (MissingClause { clause = "FROM" })) ;
+      (* Check that we do not use any fields from out that is generated: *)
+      let generators = List.filter_map (fun sf ->
+          if Expr.is_generator sf.expr then Some sf.alias else None
+        ) fields in
+      iter_expr (function
+          | Field (_, tuple_ref, alias)
+            when !tuple_ref = TupleOutPrevious ||
+                 !tuple_ref = TupleGroupPrevious ->
+              if List.mem alias generators then
+                let e = NoAccessToGeneratedFields { alias } in
+                raise (SyntaxError e)
+          | _ -> ()) op
+
       (* TODO: url_notify: check field names from text templates *)
 
     | ReadCSVFile _ | ListenFor _ -> ()
