@@ -155,7 +155,7 @@ let emit_serialize_tuple name oc tuple_typ =
   Printf.fprintf oc "\tfun tx_ %a ->\n"
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   if verbose_serialization then
-    Printf.fprintf oc "\t\t!RamenLog.logger.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;\n" ;
+    Printf.fprintf oc "\t\t!RamenLog.logger.RamenLog.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;\n" ;
   (* Start by zeroing the nullmask *)
   Printf.fprintf oc "\t\tif nullmask_bytes_ > 0 then\n\
                      \t\t\tRingBuf.zero_bytes tx_ 0 nullmask_bytes_ ; (* zero the nullmask *)\n" ;
@@ -174,14 +174,14 @@ let emit_serialize_tuple name oc tuple_typ =
         Printf.fprintf oc "\t\t\t\t\t%a ;\n"
           (emit_set_value "tx_" "offs_" "x_") field.typ ;
         if verbose_serialization then
-          Printf.fprintf oc "\t\t\t\t!RamenLog.logger.debug \"Serializing %s (Some %%s) at offset %%d\" (dump x_) offs_ ;\n" id ;
+          Printf.fprintf oc "\t\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing %s (Some %%s) at offset %%d\" (dump x_) offs_ ;\n" id ;
         Printf.fprintf oc "\t\t\t\t\toffs_ + %a, nulli_ + 1\n"
           (emit_sersize_of_field_var field.typ) "x_"
       ) else (
         Printf.fprintf oc "\t\t\t\t%a ;\n"
           (emit_set_value "tx_" "offs_" id) field.typ ;
         if verbose_serialization then
-          Printf.fprintf oc "\t\t\t\t!RamenLog.logger.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) offs_ ;\n" id id ;
+          Printf.fprintf oc "\t\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) offs_ ;\n" id id ;
         Printf.fprintf oc "\t\t\t\toffs_ + %a, nulli_\n"
           (emit_sersize_of_field_var field.typ) id
       ) ;
@@ -206,17 +206,21 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
   let nb_fields = List.length tuple_typ in
   List.iteri (fun i field_typ ->
     let sep = if i < nb_fields - 1 then "," else "" in
+    Printf.fprintf oc "\t\t(try (\n" ;
     if field_typ.nullable then (
-      Printf.fprintf oc "\t\t(let s_ = strs_.(%d) in\n" i ;
-      Printf.fprintf oc "\t\tif s_ = %S then None else Some (%a))%s\n"
+      Printf.fprintf oc "\t\t\t(let s_ = strs_.(%d) in\n" i ;
+      Printf.fprintf oc "\t\t\tif s_ = %S then None else Some (%a))\n"
         csv_null
         (emit_value_of_string field_typ.typ) "s_"
-        sep
     ) else (
       let s_var = Printf.sprintf "strs_.(%d)" i in
-      Printf.fprintf oc "\t\t%a%s\n"
-        (emit_value_of_string field_typ.typ) s_var sep
-    )) tuple_typ ;
+      Printf.fprintf oc "\t\t\t%a\n"
+        (emit_value_of_string field_typ.typ) s_var
+    ) ;
+    Printf.fprintf oc "\t\t) with exn -> (\n" ;
+    Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.error \"Cannot parse field %d: %s\" ;\n" i field_typ.typ_name ;
+    Printf.fprintf oc "\t\t\traise exn))%s\n" sep ;
+  ) tuple_typ ;
   Printf.fprintf oc "\t)\n"
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
@@ -276,7 +280,7 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
     name
     (RingBufLib.nullmask_bytes_of_tuple_type ser_tuple_typ) ;
   if verbose_serialization then
-    Printf.fprintf oc "\t!RamenLog.logger.debug \"Deserializing a tuple\" ;\n" ;
+    Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"Deserializing a tuple\" ;\n" ;
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ ~tuple:TupleIn field in
       if and_all_others || Set.mem field.typ_name mentioned then (
@@ -293,7 +297,7 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
             \t\tRingBuf.read_%s tx_ offs_ in\n"
             (id_of_typ field.typ) ;
         if verbose_serialization then
-          Printf.fprintf oc "\t!RamenLog.logger.debug \"deserialized field %s (%%s) at ofset %%d\" (dump %s) offs_ ;\n" id id ;
+          Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"deserialized field %s (%%s) at ofset %%d\" (dump %s) offs_ ;\n" id id ;
         Printf.fprintf oc "\tlet offs_ = " ;
         if field.nullable then
           Printf.fprintf oc
