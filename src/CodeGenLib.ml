@@ -9,7 +9,9 @@ open Helpers
 
 let float_of_string = Pervasives.float_of_string
 let string_of_string x = x
-let bool_of_string = Pervasives.bool_of_string
+let bool_of_string = function
+  | "true" | "TRUE" | "t" | "T" | "y" | "Y" | "on" | "ON" | "#t" | "1" -> true
+  | _ -> false
 let u8_of_string = Uint8.of_string
 let u16_of_string = Uint16.of_string
 let u32_of_string = Uint32.of_string
