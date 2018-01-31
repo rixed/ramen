@@ -753,14 +753,64 @@ let base_program dataset_name delete uncompress csv_glob export =
       rt_count_server u32 not null,
       rt_sum_server u64 not null,
       rt_square_sum_server u128 not null,
-      dtt_cout_client u32 not null,  -- 50
+      dtt_count_client u32 not null,  -- 50
       dtt_sum_client u64 not null,
       dtt_square_sum_client u128 not null,
-      dtt_cout_server u32 not null,
+      dtt_count_server u32 not null,
       dtt_sum_server u64 not null,
       dtt_square_sum_server u128 not null,
       application u32 not null|} |>
     make_func "smb"
+  (* SQL CSV Importer: *)
+  and sql = csv_import "sql" {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null,  -- 10
+      zone_server u32 not null,
+      ip4_client u32 null,
+      ip6_client i128 null,
+      ip4_server u32 null,
+      ip6_server i128 null,
+      port_client u16 not null,
+      port_server u16 not null,
+      query string not null,
+      timeouted bool not null,
+      protostack string null,  -- 20
+      user string null,
+      dbname string null,
+      error_sql_status string null,
+      error_code string null,
+      error_msg string null,
+      is_error bool not null,
+      hardcoded_one_facepalm bool not null,
+      command u32 null,
+      connection_uuid string null,
+      query_begin_ts u64 not null,  -- 30
+      query_end_ts u64 not null,
+      query_payload u32 not null,
+      query_pkts u32 not null,
+      resp_begin_ts u64 null,
+      resp_end_ts u64 null,
+      resp_payload u32 not null,
+      resp_pkts u32 not null,
+      rt_count_server u32 not null,
+      rt_sum_server u64 not null,
+      rt_square_sum_server u128 not null,  -- 40
+      dtt_count_client u32 not null,
+      dtt_sum_client u64 not null,
+      dtt_square_sum_client u128 not null,
+      dtt_count_server u32 not null,
+      dtt_sum_server u64 not null,
+      dtt_square_sum_server u128 not null,
+      application u32 not null|} |>
+    make_func "sql"
   in
   RamenSharedTypes.{
     name = dataset_name ;
@@ -781,7 +831,7 @@ let base_program dataset_name delete uncompress csv_glob export =
       non_ip ;
       non_ip_to_unidir ~src:"client" ~dst:"server" "c2s non-ip" ;
       non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ;
-      dns ; http ; citrix ; citrix_chanless ; smb ] }
+      dns ; http ; citrix ; citrix_chanless ; smb ; sql ] }
 
 (* Build the func infos corresponding to the BCN configuration *)
 let program_of_bcns bcns dataset_name export =
