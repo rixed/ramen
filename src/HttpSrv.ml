@@ -279,24 +279,27 @@ let compile_ conf program_name =
       | to_compile ->
           (match to_compile.L.status with
           | Edition _ ->
-              L.set_status to_compile Compiling ;
-              let%lwt parents =
-                wrap (fun () ->
-                  Hashtbl.map (fun _func_name func ->
-                    List.map (fun (par_prog, par_name) ->
-                      match C.find_func programs par_prog par_name with
-                      | exception Not_found ->
-                        let e = UnknownFunc (par_prog ^"/"^ par_name) in
-                        raise (Compiler.SyntaxErrorInFunc (func.N.name, e))
-                      | par_prog, par_func ->
-                        (* Parent exist, but is it typed? *)
-                        if par_prog.L.name = program_name ||
-                           C.tuple_is_typed par_func.N.out_type
-                        then par_func
-                        else raise (Compiler.MissingDependency par_func)
-                    ) func.N.parents
-                  ) to_compile.L.funcs) in
-              return (Some (to_compile, parents))
+              (match
+                Hashtbl.map (fun _func_name func ->
+                  List.map (fun (par_prog, par_name) ->
+                    match C.find_func programs par_prog par_name with
+                    | exception Not_found ->
+                      let e = UnknownFunc (par_prog ^"/"^ par_name) in
+                      raise (Compiler.SyntaxErrorInFunc (func.N.name, e))
+                    | par_prog, par_func ->
+                      (* Parent exist, but is it typed? *)
+                      if par_prog.L.name = program_name ||
+                         C.tuple_is_typed par_func.N.out_type
+                      then par_func
+                      else raise (Compiler.MissingDependency par_func)
+                  ) func.N.parents
+                ) to_compile.L.funcs with
+              | exception exn ->
+                  L.set_status to_compile (Edition (Printexc.to_string exn)) ;
+                  return_none
+              | parents ->
+                  L.set_status to_compile Compiling ;
+                  return (Some (to_compile, parents)))
           | _ -> return_none)) with
   | None -> (* Nothing to compile *) return_unit
   | Some (to_compile, parents) ->
