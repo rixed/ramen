@@ -811,6 +811,93 @@ let base_program dataset_name delete uncompress csv_glob export =
       dtt_square_sum_server u128 not null,
       application u32 not null|} |>
     make_func "sql"
+  (* VoIP CSV Importer: *)
+  and voip = csv_import "voip" {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null,  -- 10
+      zone_server u32 not null,
+      ip4_client u32 null,
+      ip6_client i128 null,
+      ip4_server u32 null,
+      ip6_server i128 null,
+      port_client u16 not null,
+      port_server u16 not null,
+      capture_file string null,
+      application u32 not null,
+      protostack string null,
+      connection_uuid string null,
+      ip_protocol u8 not null,
+      had_voice bool not null,
+      call_direction_is_out bool null,
+      last_call_state u8 not null,
+      is_starting bool not null,
+      is_finished bool not null,
+      hardcoded_0 bool not null,
+      last_error u32 not null,
+      call_id string not null,
+      rtp_duration u64 null,
+      id_caller string not null,
+      caller_mac u64 not null,
+      ip4_caller u32 null,
+      ip6_caller i128 null,
+      zone_caller u32 not null,
+      caller_codec string null,
+      id_callee string not null,
+      callee_mac u64 not null,
+      ip4_callee u32 null,
+      ip6_callee i128 null,
+      zone_callee u32 not null,
+      callee_codec string null,
+      sign_bytes_client u32 not null,
+      sign_bytes_server u32 not null,
+      sign_count_client u32 not null,
+      sign_count_server u32 not null,
+      sign_payload_client u32 not null,
+      sign_payload_server u32 not null,
+      rtp_rtcp_bytes_client u32 not null,
+      rtp_rtcp_bytes_server u32 not null,
+      rtp_rtcp_count_client u32 not null,
+      rtp_rtcp_count_server u32 not null,
+      rtp_rtcp_payload_client u32 not null,
+      rtp_rtcp_payload_server u32 not null,
+      rt_count_server u32 not null,
+      rt_sum_server u64 not null,
+      rt_square_sum_server u128 not null,
+      jitter_count_caller u32 not null,
+      jitter_sum_caller u64 not null,
+      jitter_square_sum_caller u128 not null,
+      jitter_count_callee u32 not null,
+      jitter_sum_callee u64 not null,
+      jitter_square_sum_callee u128 not null,
+      rtt_count_caller u32 not null,
+      rtt_sum_caller u64 not null,
+      rtt_square_sum_caller u128 not null,
+      rtt_count_callee u32 not null,
+      rtt_sum_callee u64 not null,
+      rtt_square_sum_callee u128 not null,
+      loss_callee2caller_alt_count u32 not null,
+      loss_caller2callee_alt_count u32 not null,
+      sign_rtt_count_client u32 not null,
+      sign_rtt_sum_client u64 not null,
+      sign_rtt_square_sum_client u128 not null,
+      sign_rtt_count_server u32 not null,
+      sign_rtt_sum_server u64 not null,
+      sign_rtt_square_sum_server u128 not null,
+      sign_rd_count_client u32 not null,
+      sign_rd_sum_client u64 not null,
+      sign_rd_square_sum_client u128 not null,
+      sign_rd_count_server u32 not null,
+      sign_rd_sum_server u64 not null,
+      sign_rd_square_sum_server u128 not null|} |>
+    make_func "voip"
   in
   RamenSharedTypes.{
     name = dataset_name ;
@@ -831,7 +918,7 @@ let base_program dataset_name delete uncompress csv_glob export =
       non_ip ;
       non_ip_to_unidir ~src:"client" ~dst:"server" "c2s non-ip" ;
       non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ;
-      dns ; http ; citrix ; citrix_chanless ; smb ; sql ] }
+      dns ; http ; citrix ; citrix_chanless ; smb ; sql ; voip ] }
 
 (* Build the func infos corresponding to the BCN configuration *)
 let program_of_bcns bcns dataset_name export =
