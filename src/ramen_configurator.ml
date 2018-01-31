@@ -702,6 +702,65 @@ let base_program dataset_name delete uncompress csv_glob export =
       domain string null,
       citrix_application string null|} |>
     make_func "citrix_chanless"
+  (* SMB CSV Importer: *)
+  and smb = csv_import "smb" {|
+      poller string not null,
+      capture_begin u64 not null,
+      capture_end u64 not null,
+      device_client u8 null,
+      device_server u8 null,
+      vlan_client u32 null,
+      vlan_server u32 null,
+      mac_client u64 null,
+      mac_server u64 null,
+      zone_client u32 not null,  -- 10
+      zone_server u32 not null,
+      ip4_client u32 null,
+      ip6_client i128 null,
+      ip4_server u32 null,
+      ip6_server i128 null,
+      port_client u16 not null,
+      port_server u16 not null,
+      version u32 not null,
+      protostack string null,
+      user string null,  -- 20
+      domain string null,
+      file_id u128 null,
+      path string null,
+      tree_id u32 null,
+      tree string null,
+      status u32 null,
+      command u32 not null,
+      subcommand u32 null,
+      timeouted bool not null,
+      is_error bool not null,  -- 30
+      is_warning bool not null,
+      hardcoded_one_facepalm bool not null,
+      connection_uuid string null,
+      query_begin_ts u64 not null,
+      query_end_ts u64 not null,
+      query_payload u32 not null,
+      query_pkts u32 not null,
+      resp_begin_ts u64 null,
+      resp_end_ts u64 null,
+      resp_payload u32 not null,  -- 40
+      resp_pkts u32 not null,
+      meta_read_bytes u32 not null,
+      meta_write_bytes u32 not null,
+      query_write_bytes u32 not null,
+      resp_read_bytes u32 not null,
+      resp_write_bytes u32 not null,
+      rt_count_server u32 not null,
+      rt_sum_server u64 not null,
+      rt_square_sum_server u128 not null,
+      dtt_cout_client u32 not null,  -- 50
+      dtt_sum_client u64 not null,
+      dtt_square_sum_client u128 not null,
+      dtt_cout_server u32 not null,
+      dtt_sum_server u64 not null,
+      dtt_square_sum_server u128 not null,
+      application u32 not null|} |>
+    make_func "smb"
   in
   RamenSharedTypes.{
     name = dataset_name ;
@@ -722,7 +781,7 @@ let base_program dataset_name delete uncompress csv_glob export =
       non_ip ;
       non_ip_to_unidir ~src:"client" ~dst:"server" "c2s non-ip" ;
       non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ;
-      dns ; http ; citrix ; citrix_chanless ] }
+      dns ; http ; citrix ; citrix_chanless ; smb ] }
 
 (* Build the func infos corresponding to the BCN configuration *)
 let program_of_bcns bcns dataset_name export =
