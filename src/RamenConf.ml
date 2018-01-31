@@ -139,7 +139,7 @@ struct
        * provided automatically if its not meant to be referenced. *)
       name : string ;
       (* Parsed operation and its in/out types: *)
-      mutable operation : Lang.Operation.t ;
+      operation : Lang.Operation.t ;
       mutable in_type : tuple_type ;
       mutable out_type : tuple_type ;
       (* The signature identifies the operation and therefore the binary.
@@ -152,7 +152,7 @@ struct
        * empty. *)
       mutable signature : string ;
       (* Parents are either in this program or a program _below_. *)
-      mutable parents : (string * string) list ;
+      parents : (string * string) list ;
       (* Worker info, only relevant if it is running: *)
       mutable pid : int option }
 
@@ -188,8 +188,9 @@ exception InvalidCommand of string
 
 module Program =
 struct
-  type persist =
-    { funcs : (string, Func.t) Hashtbl.t ;
+  type t =
+    { name : string ;
+      mutable funcs : (string, Func.t) Hashtbl.t ;
       (* Also keep the string as defined by the client to preserve
        * formatting, comments, etc: *)
       mutable program : string ;
@@ -202,38 +203,40 @@ struct
       mutable last_started : float option ;
       mutable last_stopped : float option }
 
-  type t =
-    { name : string ;
-      persist : persist ;
-      mutable importing_threads : unit Lwt.t list }
+  let print oc t =
+    Printf.fprintf oc "status=%s"
+      (Info.Program.string_of_status t.status)
+
+  let importing_threads : (string, unit Lwt.t list) Hashtbl.t =
+    Hashtbl.create 11
 
   let set_status program status =
     !logger.info "Program %s status %s -> %s"
       program.name
-      (Info.Program.string_of_status program.persist.status)
+      (Info.Program.string_of_status program.status)
       (Info.Program.string_of_status status) ;
-    program.persist.status <- status ;
-    program.persist.last_status_change <- Unix.gettimeofday () ;
+    program.status <- status ;
+    program.last_status_change <- Unix.gettimeofday () ;
     (* If we are not running, clean pid info *)
     if status <> Running then
-      Hashtbl.iter (fun _ n -> n.Func.pid <- None) program.persist.funcs ;
+      Hashtbl.iter (fun _ n -> n.Func.pid <- None) program.funcs ;
     (* If we are now in Edition _untype_ the funcs *)
     match status with Edition _ ->
       Hashtbl.iter (fun _ n ->
         let open Func in
         n.in_type <- UntypedTuple (make_temp_tup_typ ()) ;
         n.out_type <- UntypedTuple (make_temp_tup_typ ()) ;
-        n.pid <- None) program.persist.funcs
+        n.pid <- None) program.funcs
     | _ -> ()
 
   let is_typed program =
-    match program.persist.status with
+    match program.status with
     | Edition _ | Compiling -> false
     | Compiled | Running -> true
 
   (* Program edition: only when stopped *)
   let set_editable program reason =
-    match program.persist.status with
+    match program.status with
     | Edition _ ->
       (* Update the error message *)
       if reason <> "" then
@@ -259,7 +262,7 @@ struct
           f init dependency,
           Set.add dependency called)
       ) (init, called) func.Func.parents
-    ) program.persist.funcs (init, Set.singleton program.name) |>
+    ) program.funcs (init, Set.singleton program.name) |>
     ignore
 
   (* Order programs according to dependency, depended upon first. *)
@@ -285,11 +288,6 @@ struct
     in
     loop [] programs
 end
-
-type graph =
-  { programs : (string, Program.t) Hashtbl.t }
-
-type persisted = (string, Program.persist) Hashtbl.t
 
 module Alerter =
 struct
@@ -360,14 +358,12 @@ struct
 end
 
 type conf =
-  { mutable graph : graph ;
-    graph_lock : RWLock.t ; (* Protects the above graph *)
+  { graph_lock : RWLock.t ; (* Protects the persisted programs (all at once) *)
     alerts : Alerter.t ;
     (* TODO: use the RWLock and forget about that dirty flag: *)
     alerts_lock : RWLock.t ; (* Protects the above alerts *)
     (* TODO: a file *)
     mutable archived_incidents : Incident.t list ;
-
     debug : bool ;
     ramen_url : string ;
     persist_dir : string ;
@@ -407,25 +403,29 @@ let parse_program program =
     Lang.Program.check funcs ;
     funcs
 
-let del_program conf program =
+let del_program programs program =
   let open Program in
-  !logger.info "Deleting program %S" program.name ;
-  if program.persist.status = Running then
-    raise (InvalidCommand "Program is running") ;
-  if program.importing_threads <> [] then
-    raise (InvalidCommand "Program has running threads") ;
-  Hashtbl.remove conf.graph.programs program.name
+  match Hashtbl.find programs program.name with
+  | exception Not_found ->
+      !logger.info "Program %s does not exist" program.name
+  | program ->
+      !logger.info "Deleting program %S" program.name ;
+      if program.status = Running then
+        raise (InvalidCommand "Program is running") ;
+      if Hashtbl.mem importing_threads program.name then
+        raise (InvalidCommand "Program has running threads") ;
+      Hashtbl.remove programs program.name
 
-let save_file_of persist_dir =
-  (* Later we might have several files (so that we have partial locks) *)
-  persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/conf"
-
-let fold_funcs conf init f =
+let fold_programs programs init f =
   Hashtbl.fold (fun _ program prev ->
+    f prev program
+  ) programs init
+
+let fold_funcs programs init f =
+  fold_programs programs init (fun prev program ->
     Hashtbl.fold (fun _ func prev ->
       f prev program func
-    ) program.Program.persist.Program.funcs prev
-  ) conf.graph.programs init
+    ) program.Program.funcs prev)
 
 let program_func_of_user_string ?default_program s =
   let s = String.trim s in
@@ -466,13 +466,11 @@ let make_func program_name func_name operation =
     out_type = UntypedTuple (make_temp_tup_typ ()) ;
     pid = None }
 
-(* [restart] is true when ramen restarted and read its config for the first
- * time. Some additional cleaning needs to be done then. *)
-let make_program ?(timeout=0.) conf name program =
+let make_program ?(timeout=0.) programs name program =
   assert (String.length name > 0) ;
   let now = Unix.gettimeofday () in
-  let persist = Program.{
-      funcs = Hashtbl.create 17 ; program ;
+  let p = Program.{
+      name ; funcs = Hashtbl.create 17 ; program ;
       timeout ; last_used = now ;
       status = Edition "" ; last_status_change = now ;
       last_started = None ; last_stopped = None } in
@@ -480,73 +478,45 @@ let make_program ?(timeout=0.) conf name program =
   parse_program program |>
   List.iter (fun def ->
     let func_name = def.Lang.Program.name in
-    if Hashtbl.mem persist.funcs func_name then
+    if Hashtbl.mem p.funcs func_name then
       raise (InvalidCommand (
          "Function "^ func_name ^" already exists in program "^ name)) ;
     make_func name func_name def.Lang.Program.operation |>
-    Hashtbl.add persist.funcs def.name) ;
-  let program = Program.{ name ; persist ; importing_threads = [] } in
-  Hashtbl.add conf.graph.programs name program ;
-  program
+    Hashtbl.add p.funcs def.name) ;
+  Hashtbl.add programs name p ;
+  p
 
-(* [restart] is true when ramen restarted and read its config for the first
- * time. Some additional cleaning needs to be done then. *)
-let load_program ?(restart=false) ~persist persist_dir name =
-  let program = Program.{ name ; persist ; importing_threads = [] } in
-  if restart then (
-    !logger.info "Reloading and cleaning the configuration for program %S \
-                  after restart." name ;
-    (* Demote the status to compiled since the workers can't be running
-     * anymore. *)
-    if persist.status = Running then Program.set_status program Compiled ;
-    (* Further demote to edition if the binaries are not there anymore
-     * (which will be the case if codegen version changed): *)
-    if persist.status = Compiled &&
-       Hashtbl.values persist.funcs |> Enum.exists (fun n ->
-         not (file_exists ~has_perms:0o100 (exec_of_func persist_dir n)))
-    then Program.set_status program (Edition "") ;
-    (* Also, we cannot be compiling anymore: *)
-    if persist.status = Compiling then Program.set_status program (Edition "") ;
-    (* FIXME: also, as a precaution, delete any temporary program (maybe we
-     * crashed because of it? *)) ;
-  program
+(* What we save on disc for programs *)
+type programs = (string, Program.t) Hashtbl.t
 
-let make_graph persist_dir ?persist ?restart () =
-  let persist =
-    Option.default_delayed (fun () -> Hashtbl.create 11) persist in
-  { programs = Hashtbl.map (fun name persist ->
-               load_program ?restart ~persist persist_dir name) persist }
+let save_file_of_programs persist_dir =
+  (* Later we might have several files (so that we have partial locks) *)
+  persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/conf"
 
-let load_graph ?restart do_persist persist_dir =
-  let save_file = save_file_of persist_dir in
-  let persist : persisted option =
-    if do_persist then
-      try
-        File.with_file_in save_file (fun ic ->
-          let persist = Marshal.input ic in
-          Some persist)
-      with
-      | e ->
-        !logger.error "Cannot read state from file %S: %s. Starting anew."
-          save_file (Printexc.to_string e) ;
-        None
-    else None
-  in
-  make_graph persist_dir ?persist ?restart ()
+let non_persisted_programs = ref (Hashtbl.create 11)
 
-let save_conf conf =
+let load_programs conf : programs =
+  let save_file = save_file_of_programs conf.persist_dir in
   if conf.do_persist then
-    let persist =
-      Hashtbl.map (fun _ l ->
-        l.Program.persist) conf.graph.programs in
-    let save_file = save_file_of conf.persist_dir in
-    !logger.debug "Saving graph in %S" save_file ;
+    try
+      !logger.debug "Loading programs from %S" save_file ;
+      File.with_file_in save_file Marshal.input
+    with
+    | e ->
+      !logger.error "Cannot read state from file %S: %s. Starting anew."
+        save_file (Printexc.to_string e) ;
+      Hashtbl.create 11
+  else !non_persisted_programs
+
+let save_programs conf (programs : programs) =
+  if conf.do_persist then
+    let save_file = save_file_of_programs conf.persist_dir in
+    !logger.debug "Saving programs into %S: %a"
+      save_file
+      (Hashtbl.print String.print Program.print) programs ;
     mkdir_all ~is_file:true save_file ;
     File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
-      Marshal.output oc persist)
-
-let reload_graph conf =
-  conf.graph <- load_graph ~restart:false conf.do_persist conf.persist_dir
+      Marshal.output oc programs)
 
 exception RetryLater of float
 
@@ -556,8 +526,8 @@ let with_rlock conf f =
     try%lwt
       RWLock.with_r_lock conf.graph_lock (fun () ->
         !logger.debug "Took graph lock (read)" ;
-        reload_graph conf ;
-        let%lwt x = f () in
+        let programs = load_programs conf in
+        let%lwt x = f programs in
         !logger.debug "Release graph lock (read)" ;
         return x)
     with RetryLater s ->
@@ -571,10 +541,10 @@ let with_wlock conf f =
     try%lwt
       RWLock.with_w_lock conf.graph_lock (fun () ->
         !logger.debug "Took graph lock (write)" ;
-        reload_graph conf ;
-        let%lwt res = f () in
+        let programs = load_programs conf in
+        let%lwt res = f programs in
         (* Save the config only if f did not fail: *)
-        save_conf conf ;
+        save_programs conf programs ;
         !logger.debug "Release graph lock (write)" ;
         return res)
     with RetryLater s ->
@@ -582,14 +552,13 @@ let with_wlock conf f =
   in
   loop ()
 
-let find_func conf program name =
-  let program = Hashtbl.find conf.graph.programs program in
-  program, Hashtbl.find program.Program.persist.Program.funcs name
+let find_func programs program name =
+  let program = Hashtbl.find programs program in
+  program, Hashtbl.find program.Program.funcs name
 
 let make_conf do_persist ramen_url debug persist_dir
               max_simult_compilations max_history_archives =
-  { graph = load_graph ~restart:true do_persist persist_dir ;
-    graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
+  { graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
     alerts = Alerter.get_state do_persist persist_dir ;
     archived_incidents = [] ;
     do_persist ; ramen_url ; debug ; persist_dir ;
@@ -601,10 +570,10 @@ let make_conf do_persist ramen_url debug persist_dir
 (* Autocompletion of *all* funcs; not only exporting ones since we might want
  * to graph some meta data. Also maybe we should export on demand? *)
 
-let complete_func_name conf s only_exporting =
+let complete_func_name programs s only_exporting =
   let s = String.(lowercase (trim s)) in
   (* TODO: a better search structure for case-insensitive prefix search *)
-  fold_funcs conf [] (fun lst _program func ->
+  fold_funcs programs [] (fun lst _program func ->
       let lc_name = String.lowercase func.Func.name in
       let fq_name = Func.fq_name func in
       let lc_fq_name = String.lowercase fq_name in
@@ -614,12 +583,12 @@ let complete_func_name conf s only_exporting =
       else lst
     )
 
-let complete_field_name conf name s =
+let complete_field_name programs name s =
   (* rsplit because we might want to have '/'s in the program name. *)
   match String.rsplit ~by:"/" (String.trim name) with
   | exception Not_found -> []
   | program_name, func_name ->
-    match find_func conf program_name func_name with
+    match find_func programs program_name func_name with
     | exception Not_found -> []
     | _program, func ->
       (match func.Func.out_type with

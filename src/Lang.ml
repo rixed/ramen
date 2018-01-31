@@ -65,6 +65,7 @@ type syntax_error =
   | OnlyTumblingWindowForTop
   | UnknownFunc of string
   | NoAccessToGeneratedFields of { alias : string }
+  | UnsolvableDependencyLoop of { program : string }
 
 exception SyntaxError of syntax_error
 
@@ -130,6 +131,8 @@ let string_of_syntax_error =
     "Referenced func "^ n ^" does not exist"
   | NoAccessToGeneratedFields { alias } ->
     "Cannot access output field "^ alias ^" as it is the result of a generator"
+  | UnsolvableDependencyLoop { program } ->
+    "Unsolvable dependency loop prevent the compilation of "^ program
 
 let () =
   Printexc.register_printer (function

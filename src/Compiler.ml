@@ -771,16 +771,10 @@ let all_finished funcs =
       tuple_type_is_finished func.N.out_type
     ) funcs
 
-let check_aggregate conf func fields and_all_others where key top
+let check_aggregate parents func fields and_all_others where key top
                     commit_when flush_how =
   let in_type = C.untyped_tuple_type func.N.in_type
-  and out_type = C.untyped_tuple_type func.N.out_type
-  and parents = List.map (fun (program, name) ->
-      try C.find_func conf program name |> snd
-      with Not_found ->
-        let e = UnknownFunc (program ^"/"^ name) in
-        raise (SyntaxErrorInFunc (func.N.name, e))
-    ) func.N.parents in
+  and out_type = C.untyped_tuple_type func.N.out_type in
   let open Operation in
   (
     (* Improve in_type using parent out_type and out_type using in_type if we
@@ -875,7 +869,7 @@ let check_aggregate conf func fields and_all_others where key top
  * Improve out_type using in_type and this func operation.
  * in_type is a given, don't modify it!
  *)
-let check_operation conf func =
+let check_operation parents func =
   !logger.debug "-- Typing operation %a" Operation.print func.N.operation ;
   let open Operation in
   match func.N.operation with
@@ -883,7 +877,7 @@ let check_operation conf func =
     check_yield func fields
   | Aggregate { fields ; and_all_others ; where ; key ; top ;
                 commit_when ; flush_how ; _ } ->
-    check_aggregate conf func fields and_all_others where key top
+    check_aggregate parents func fields and_all_others where key top
                     commit_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     if tuple_type_is_finished func.N.out_type then false else (
@@ -909,15 +903,15 @@ let () =
     | SyntaxErrorInFunc (n, e) ->
       Some ("In func "^ n ^": "^ string_of_syntax_error e)
     | MissingDependency func ->
-      Some ("Missing dependency for func "^ N.fq_name func)
+      Some ("Missing dependency: "^ N.fq_name func)
     | AlreadyCompiled -> Some "Already compiled"
     | _ -> None)
 
-let check_func_types conf func =
+let check_func_types parents func =
   try ( (* Prepend the func name to any SyntaxError *)
     (* Try to improve out_type and the AST types using the in_type and the
      * operation: *)
-    check_operation conf func
+    check_operation parents func
   ) with SyntaxError e ->
     !logger.debug "Compilation error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
@@ -929,11 +923,12 @@ let check_func_types conf func =
  * We do it bit by bit but will still make sure to make parent
  * output >= children input eventually, and that fields are encoded in
  * the specified order. *)
-let set_all_types conf program =
+let set_all_types parents program =
   let rec loop () =
     if Hashtbl.fold (fun _ func changed ->
-          check_func_types conf func || changed
-        ) program.L.persist.L.funcs false
+          let parents = Hashtbl.find_default parents func.N.name [] in
+          check_func_types parents func || changed
+        ) program.L.funcs false
     then loop ()
   in
   loop () ;
@@ -951,16 +946,18 @@ let set_all_types conf program =
         let what = IO.to_string (print true) e in
         raise (SyntaxErrorInFunc (func.N.name, CannotCompleteTyping what))
     ) func.N.operation
-  ) program.L.persist.L.funcs
+  ) program.L.funcs
   (* TODO: Move all typing in a separate module *)
 
   (*$inject
     let test_type_single_func op_text =
       try
-        let conf = RamenConf.make_conf false "http://127.0.0.1/" true "/tmp" 5 0 in
-        RamenConf.make_program conf "test" ("DEFINE foo AS "^ op_text) |>
-        ignore ;
-        set_all_types conf (Hashtbl.find conf.RamenConf.graph.RamenConf.programs "test") ;
+        let programs = Hashtbl.create 3 in
+        let p =
+          RamenConf.make_program programs "test" ("DEFINE foo AS "^ op_text) in
+        let parents = BatHashtbl.of_list [ "test", [] ] in
+        Hashtbl.add programs "test" p ;
+        set_all_types parents p ;
         "ok"
       with e ->
         Printf.sprintf "Exception when parsing/typing operation %S: %s\n%s"
@@ -1060,22 +1057,6 @@ let compile_func conf func =
       fail (SyntaxError e)
     )
 
-let untyped_dependency conf program =
-  (* Check all programs we depend on (parents only) either belong to
-   * this program or are compiled already. Return the first untyped
-   * dependency, or None. *)
-  let good (program_name, func_name) =
-    program_name = program.L.name ||
-    match C.find_func conf program_name func_name with
-    | exception Not_found -> false
-    | _, func ->
-      C.tuple_is_typed func.N.out_type in
-  try Some (
-    Hashtbl.values program.L.persist.L.funcs |>
-    Enum.find (fun func ->
-      List.exists (not % good) func.N.parents))
-  with Not_found -> None
-
 let typed_of_untyped_tuple ?cmp = function
   | C.TypedTuple _ as x -> x
   | C.UntypedTuple temp_tup_typ ->
@@ -1095,79 +1076,71 @@ let get_selected_fields func =
   | Aggregate { fields ; _ } -> Some fields
   | _ -> None
 
-let compile conf program =
+let compile conf parents program =
   let open Lwt in
-  match program.L.persist.L.status with
-  | Compiled -> fail AlreadyCompiled
-  | Running -> fail AlreadyCompiled
-  | Compiling -> fail AlreadyCompiled
-  | Edition _ ->
-    !logger.debug "Trying to compile program %s" program.L.name ;
-    L.set_status program Compiling ;
-    try%lwt
-      let%lwt () = wrap (fun () ->
-        untyped_dependency conf program |>
-        Option.may (fun n -> raise (MissingDependency n)) ;
-        set_all_types conf program ;
-        Hashtbl.iter (fun _ func ->
-            !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
-              func.N.name
-              C.print_tuple_type func.N.in_type
-              C.print_tuple_type func.N.out_type ;
-            func.N.in_type <- typed_of_untyped_tuple func.N.in_type ;
-            (* So far order was not taken into account. Reorder output types
-             * to match selected fields (not strictly required but improves
-             * user experience in the GUI). Beware that the Expr.typ has a
-             * unique number so we cannot compare/copy them directly (although
-             * that unique number is required to be unique only for a func,
-             * better keep it unique globally in case we want to generate
-             * several funcs in a single binary, and to avoid needless
-             * confusion when debugging): *)
-            let cmp =
-              get_selected_fields func |>
-              Option.map (fun selected_fields ->
-                let sf_index name =
-                  try List.findi (fun _ sf ->
-                        sf.Operation.alias = name) selected_fields |>
-                      fst
-                  with Not_found ->
-                    (* star-imported fields - throw them all at the end in no
-                     * specific order. TODO: in parent order? *)
-                    max_int in
-                fun f1 f2 ->
-                  compare (sf_index f1.typ_name) (sf_index f2.typ_name)) in
-            func.N.out_type <- typed_of_untyped_tuple ?cmp func.N.out_type ;
-            func.N.signature <- N.signature func
-          ) program.L.persist.L.funcs) in
-      (* Compile *)
-      let _, thds =
-        Hashtbl.fold (fun _ func (doing, thds) ->
-            (* Avoid compiling twice the same thing (TODO: a lockfile) *)
-            if Set.mem func.N.signature doing then doing, thds else (
-              Set.add func.N.signature doing,
-              compile_func conf func :: thds)
-          ) program.L.persist.L.funcs (Set.empty, []) in
-      let%lwt () = join thds in
-      (* Since we really recompiled that program, all programs depending on it
-       * must return to edition mode as they must be typed again. *)
-      !logger.info "Stopping all programs depending on %s" program.L.name ;
-      let thds, _ =
-        C.fold_funcs conf ([], Set.singleton program.L.name)
-          (fun (_, visited as prev) program' func ->
-            if Set.mem func.program visited then prev else
-            List.fold_left (fun (thds, visited as prev)
-                                (parent_program, _) ->
-              if parent_program = program.L.name then (
-                (let%lwt () =
-                  try%lwt RamenProcesses.stop conf program'
-                  with RamenProcesses.NotRunning -> return_unit in
-                L.set_editable program' ("Depends on "^ program.L.name) ;
-                return_unit) :: thds,
-                Set.add func.program visited
-              ) else prev) prev func.N.parents) in
-      let%lwt () = join thds in
-      L.set_status program Compiled ;
-      return_unit
-    with e ->
-      L.set_status program (Edition (Printexc.to_string e)) ;
-      fail e
+  assert (program.L.status = Compiling) ;
+  !logger.debug "Trying to compile program %s" program.L.name ;
+  let%lwt () = wrap (fun () ->
+    set_all_types parents program ;
+    Hashtbl.iter (fun _ func ->
+        !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
+          func.N.name
+          C.print_tuple_type func.N.in_type
+          C.print_tuple_type func.N.out_type ;
+        func.N.in_type <- typed_of_untyped_tuple func.N.in_type ;
+        (* So far order was not taken into account. Reorder output types
+         * to match selected fields (not strictly required but improves
+         * user experience in the GUI). Beware that the Expr.typ has a
+         * unique number so we cannot compare/copy them directly (although
+         * that unique number is required to be unique only for a func,
+         * better keep it unique globally in case we want to generate
+         * several funcs in a single binary, and to avoid needless
+         * confusion when debugging): *)
+        let cmp =
+          get_selected_fields func |>
+          Option.map (fun selected_fields ->
+            let sf_index name =
+              try List.findi (fun _ sf ->
+                    sf.Operation.alias = name) selected_fields |>
+                  fst
+              with Not_found ->
+                (* star-imported fields - throw them all at the end in no
+                 * specific order. TODO: in parent order? *)
+                max_int in
+            fun f1 f2 ->
+              compare (sf_index f1.typ_name) (sf_index f2.typ_name)) in
+        func.N.out_type <- typed_of_untyped_tuple ?cmp func.N.out_type ;
+        func.N.signature <- N.signature func
+      ) program.L.funcs) in
+  (* Compile *)
+  let _, thds =
+    Hashtbl.fold (fun _ func (doing, thds) ->
+        (* Avoid compiling twice the same thing (TODO: a lockfile) *)
+        if Set.mem func.N.signature doing then doing, thds else (
+          Set.add func.N.signature doing,
+          compile_func conf func :: thds)
+      ) program.L.funcs (Set.empty, []) in
+  join thds
+
+let stop_all_dependents conf programs program =
+  let open Lwt in
+  (* Since we really recompiled that program, all programs depending on it
+   * must return to edition mode as they must be typed again. *)
+  !logger.info "Stopping all programs depending on %s" program.L.name ;
+  let thds, to_restart, _ =
+    C.fold_funcs programs ([], [], Set.singleton program.L.name)
+      (fun (_, _, visited as prev) program' func ->
+        if Set.mem func.program visited then prev else
+        List.fold_left (fun (thds, to_restart, visited as prev)
+                            (parent_program, _) ->
+          if parent_program = program.L.name then (
+            (let%lwt () =
+              try%lwt RamenProcesses.stop conf programs program'
+              with RamenProcesses.NotRunning -> return_unit in
+            L.set_editable program' ("Depends on "^ program.L.name) ;
+            return_unit) :: thds,
+            program'.L.name :: to_restart,
+            Set.add func.program visited
+          ) else prev) prev func.N.parents) in
+  let%lwt () = join thds in
+  return to_restart

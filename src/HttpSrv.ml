@@ -58,7 +58,7 @@ let rec find_float_metric metrics name =
   | { measure = MFloat n ; _ } as m ::_ when m.name = name -> n
   | _::rest -> find_float_metric rest name
 
-let func_info_of_func conf func =
+let func_info_of_func programs func =
   let%lwt stats = RamenProcesses.last_report (N.fq_name func) in
   return SN.{
     definition = {
@@ -70,30 +70,30 @@ let func_info_of_func conf func =
     input_type = C.info_of_tuple_type func.N.in_type ;
     output_type = C.info_of_tuple_type func.N.out_type ;
     parents = List.map (fun (l, n) -> l ^"/"^ n) func.N.parents ;
-    children = C.fold_funcs conf [] (fun children _l n ->
+    children = C.fold_funcs programs [] (fun children _l n ->
       N.fq_name n :: children) ;
     stats }
 
-let program_info_of_program conf program =
+let program_info_of_program programs program =
   let%lwt operations =
-    Hashtbl.values program.L.persist.L.funcs |>
+    Hashtbl.values program.L.funcs |>
     List.of_enum |>
-    Lwt_list.map_s (func_info_of_func conf) in
+    Lwt_list.map_s (func_info_of_func programs) in
   return SL.{
     name = program.L.name ;
-    program = program.L.persist.L.program ;
+    program = program.L.program ;
     operations ;
-    status = program.L.persist.L.status ;
-    last_started = program.L.persist.L.last_started ;
-    last_stopped = program.L.persist.L.last_stopped }
+    status = program.L.status ;
+    last_started = program.L.last_started ;
+    last_stopped = program.L.last_stopped }
 
-let graph_programs conf = function
+let graph_programs programs = function
   | None ->
-    Hashtbl.values conf.C.graph.C.programs |>
+    Hashtbl.values programs |>
     List.of_enum |>
     return
   | Some l ->
-    try Hashtbl.find conf.C.graph.C.programs l |>
+    try Hashtbl.find programs l |>
         List.singleton |>
         return
     with Not_found -> bad_request ("Unknown program "^l)
@@ -104,7 +104,7 @@ let dot_of_graph programs =
   List.iter (fun program ->
     Hashtbl.iter (fun _ func ->
         Printf.fprintf dot "\t%S\n" (N.fq_name func)
-      ) program.L.persist.L.funcs
+      ) program.L.funcs
     ) programs ;
   Printf.fprintf dot "\n" ;
   List.iter (fun program ->
@@ -113,7 +113,7 @@ let dot_of_graph programs =
             Printf.fprintf dot "\t%S -> %S\n"
               (pl ^"/"^ pn) (func.N.program ^"/"^ func.N.name)
           ) func.N.parents
-      ) program.L.persist.L.funcs
+      ) program.L.funcs
     ) programs ;
   Printf.fprintf dot "}\n" ;
   IO.close_out dot
@@ -144,7 +144,7 @@ let mermaid_of_graph programs =
         Printf.fprintf txt "%s(%s)\n"
           (mermaid_id (N.fq_name func))
           (mermaid_label func.N.name)
-      ) program.L.persist.L.funcs
+      ) program.L.funcs
     ) programs ;
   Printf.fprintf txt "\n" ;
   List.iter (fun program ->
@@ -154,7 +154,7 @@ let mermaid_of_graph programs =
               (mermaid_id (pl ^"/"^ pn))
               (mermaid_id (func.N.program ^"/"^ func.N.name))
           ) func.N.parents
-      ) program.L.persist.L.funcs
+      ) program.L.funcs
     ) programs ;
   IO.close_out txt
 
@@ -170,17 +170,17 @@ let get_graph_mermaid _headers programs =
 let get_graph conf headers program_opt =
   let accept = get_accept headers in
   if is_accepting Consts.json_content_type accept then
-    let%lwt graph = C.with_rlock conf (fun () ->
-      let%lwt programs = graph_programs conf program_opt in
-      let programs = L.order programs in
-      Lwt_list.map_s (program_info_of_program conf) programs) in
+    let%lwt graph = C.with_rlock conf (fun programs ->
+      let%lwt programs' = graph_programs programs program_opt in
+      let programs' = L.order programs' in
+      Lwt_list.map_s (program_info_of_program programs) programs') in
     let body = PPP.to_string get_graph_resp_ppp graph in
     respond_ok ~body ()
   else (
     (* For non-json we can release the lock sooner as we don't need the
      * children: *)
-    let%lwt programs = C.with_rlock conf (fun () ->
-      graph_programs conf program_opt) in
+    let%lwt programs = C.with_rlock conf (fun programs ->
+      graph_programs programs program_opt) in
     let programs = L.order programs in
     if is_accepting Consts.dot_content_type accept then
       get_graph_dot headers programs
@@ -199,60 +199,143 @@ let get_graph conf headers program_opt =
 
 *)
 
-let find_func_or_fail conf program_name func_name =
-  match C.find_func conf program_name func_name with
+let find_func_or_fail programs program_name func_name =
+  match C.find_func programs program_name func_name with
   | exception Not_found ->
     bad_request ("Function "^ program_name ^"/"^ func_name ^" does not exist")
   | program, _func as both ->
     RamenProcesses.use_program (Unix.gettimeofday ()) program ;
     return both
 
-let find_exporting_func_or_fail conf program_name func_name =
-  let%lwt program, func = find_func_or_fail conf program_name func_name in
+let find_exporting_func_or_fail programs program_name func_name =
+  let%lwt program, func =
+    find_func_or_fail programs program_name func_name in
   if not (L.is_typed program) then
     bad_request ("func "^ func_name ^" is not typed (yet)")
   else if not (Operation.is_exporting func.N.operation) then
     bad_request ("func "^ func_name ^" does not export data")
   else return (program, func)
 
-let func_of_name conf program_name func_name =
+let func_of_name programs program_name func_name =
   if func_name = "" then bad_request "Empty string is not a valid func name"
-  else find_func_or_fail conf program_name func_name
+  else find_func_or_fail programs program_name func_name
 
-let del_program_ conf program =
-  if program.L.persist.L.status = Running then
+let del_program_ programs program =
+  if program.L.status = Running then
     bad_request "Cannot delete a running program"
   else
     try
-      C.del_program conf program ;
+      C.del_program programs program ;
       return_unit
     with C.InvalidCommand e -> bad_request e
 
 let del_program conf _headers program_name =
-  C.with_wlock conf (fun () ->
-    match Hashtbl.find conf.C.graph.C.programs program_name with
+  C.with_wlock conf (fun programs  ->
+    match Hashtbl.find programs program_name with
     | exception Not_found ->
       let e = "Program "^ program_name ^" does not exist" in
       bad_request e
     | program ->
-      del_program_ conf program) >>=
+      del_program_ programs program) >>=
   respond_ok
 
 (* FIXME: instead of stopping/starting for real we must build two sets of
  * programs to stop/start and perform with changing the processes only
  * when we are about to save the new configuration. *)
 
-let run_ conf program =
-  try%lwt RamenProcesses.run conf program
+let run_ conf programs program =
+  try%lwt RamenProcesses.run conf programs program
   with RamenProcesses.AlreadyRunning -> return_unit
 
-let stop_ conf program =
-  try%lwt RamenProcesses.stop conf program
+let stop_ conf programs program =
+  try%lwt RamenProcesses.stop conf programs program
   with RamenProcesses.NotRunning -> return_unit
 
-let compile_ conf program =
-  try%lwt Compiler.compile conf program
-  with Compiler.AlreadyCompiled -> return_unit
+let run_by_name conf to_run =
+  C.with_wlock conf (fun programs ->
+    match Hashtbl.find programs to_run with
+    | exception Not_found ->
+        (* Cannot be an error since we are not passed programs. *)
+        !logger.warning "Cannot run unknown program %s" to_run ;
+        return_unit
+    | p ->
+        run_ conf programs p)
+
+let compile_ conf program_name =
+  (* Compilation taking a long time, we do a two phase approach:
+   * First we take the wlock, read the programs and put their status
+   * to compiling, and release the wlock. Then we compile everything
+   * at our own peace. Then we take the wlock again, check that the
+   * status is still compiling, and store the result of the
+   * compilation. *)
+  !logger.debug "Compiling phase 1: copy the program info" ;
+  match%lwt
+    C.with_wlock conf (fun programs ->
+      match Hashtbl.find programs program_name with
+      | exception Not_found ->
+          !logger.warning "Cannot compile unknown node %s" program_name ;
+          (* Cannot be a hard error since caller had no lock *)
+          return_none
+      | to_compile ->
+          (match to_compile.L.status with
+          | Edition _ ->
+              L.set_status to_compile Compiling ;
+              let%lwt parents =
+                wrap (fun () ->
+                  Hashtbl.map (fun _func_name func ->
+                    List.map (fun (par_prog, par_name) ->
+                      match C.find_func programs par_prog par_name with
+                      | exception Not_found ->
+                        let e = UnknownFunc (par_prog ^"/"^ par_name) in
+                        raise (Compiler.SyntaxErrorInFunc (func.N.name, e))
+                      | par_prog, par_func ->
+                        (* Parent exist, but is it typed? *)
+                        if par_prog.L.name = program_name ||
+                           C.tuple_is_typed par_func.N.out_type
+                        then par_func
+                        else raise (Compiler.MissingDependency par_func)
+                    ) func.N.parents
+                  ) to_compile.L.funcs) in
+              return (Some (to_compile, parents))
+          | _ -> return_none)) with
+  | None -> (* Nothing to compile *) return_unit
+  | Some (to_compile, parents) ->
+    (* Helper to retrieve to_compile: *)
+    let with_compiled_program programs def f =
+      match Hashtbl.find programs to_compile.L.name with
+      | exception Not_found ->
+          !logger.error "Compiled program %s disappeared"
+            to_compile.L.name ;
+          def
+      | program ->
+          if program.L.status <> Compiling then (
+            !logger.error "Status of %s have been changed to %s \
+                           during compilation (at %10.0f)!"
+                program.L.name
+                (SL.string_of_status program.L.status)
+                program.L.last_status_change ;
+            (* Doing nothing is probably the safest bet *)
+            def
+          ) else f program in
+    (* From now on this program is our. Let's make sure we return it
+     * if we mess up. *)
+    !logger.debug "Compiling phase 2: compiling %s" to_compile.L.name ;
+    try%lwt
+      let%lwt () = Compiler.compile conf parents to_compile in
+      !logger.debug "Compiling phase 3: Returning the program" ;
+      let%lwt to_restart =
+        C.with_wlock conf (fun programs ->
+          with_compiled_program programs return_nil (fun program ->
+            L.set_status program Compiled ;
+            program.funcs <- to_compile.funcs ;
+            Compiler.stop_all_dependents conf programs program)) in
+      (* Be lenient if some of those programs are not there anymore: *)
+      Lwt_list.iter_s (run_by_name conf) to_restart
+    with exn ->
+      C.with_wlock conf (fun programs ->
+        with_compiled_program programs return_unit (fun program ->
+          L.set_status program (Edition (Printexc.to_string exn)) ;
+          return_unit))
 
 let put_program conf headers body =
   let%lwt msg = of_json headers "Uploading program" put_program_req_ppp body in
@@ -260,36 +343,37 @@ let put_program conf headers body =
   (* Disallow anonymous programs for simplicity: *)
   if program_name = "" then
     bad_request "Programs must have non-empty names" else (
-  C.with_wlock conf (fun () ->
-    (* Delete the program if it already exists. No worries the conf won't be
-     * changed if there is any error. *)
-    let%lwt must_stop =
-      match Hashtbl.find conf.C.graph.C.programs program_name with
-      | exception Not_found -> return_false
-      | program ->
-        if msg.ok_if_running && program.L.persist.L.status = Running then (
-          let%lwt () = stop_ conf program in
-          let%lwt () = del_program_ conf program in
-          return_true
-        ) else (
-          let%lwt () = del_program_ conf program in
-          return_false
-        ) in
-    (* Create all the funcs *)
-    let%lwt program =
-      try C.make_program conf program_name msg.program |>
-          return
-      with Invalid_argument x -> bad_request ("Invalid "^ x)
-         | SyntaxError e -> bad_request (string_of_syntax_error e)
-         | e -> fail e in
-    (* must restart *)
-    if must_stop then (
-      !logger.debug "Trying to restart program %s" program.L.name ;
-      let%lwt () = compile_ conf program in
-      run_ conf program)
-    else return_unit) >>=
-  respond_ok)
-  (* TODO: Why not compile right now? *)
+  let%lwt must_start =
+    C.with_wlock conf (fun programs ->
+      (* Delete the program if it already exists. No worries the conf won't be
+       * changed if there is any error. *)
+      let%lwt stopped_it =
+        match Hashtbl.find programs program_name with
+        | exception Not_found -> return_false
+        | program ->
+          if msg.ok_if_running && program.L.status = Running then (
+            let%lwt () = stop_ conf programs program in
+            let%lwt () = del_program_ programs program in
+            return_true
+          ) else (
+            let%lwt () = del_program_ programs program in
+            return_false
+          ) in
+      (* Create all the funcs *)
+      let%lwt _program =
+        try C.make_program programs program_name msg.program |>
+            return
+        with Invalid_argument x -> bad_request ("Invalid "^ x)
+           | SyntaxError e -> bad_request (string_of_syntax_error e)
+           | e -> fail e in
+      return stopped_it) in
+  let%lwt () =
+    if must_start then (
+      !logger.debug "Trying to restart program %s" program_name ;
+      let%lwt () = compile_ conf program_name in
+      run_by_name conf program_name
+    ) else return_unit in
+  respond_ok ())
 
 (*
     Serving normal files
@@ -309,43 +393,59 @@ let get_index www_dir conf headers =
 *)
 
 let compile conf headers program_opt =
-  try%lwt
-    let rec loop left_try programs =
-      !logger.debug "%d programs left to compile..." (List.length programs) ;
-      if programs = [] then return_unit else
-      if left_try < 0 then bad_request "Unsolvable dependency loop" else
-      Lwt_list.fold_left_s (fun failed program ->
-          let open Compiler in
-          try%lwt
-            let%lwt () = compile conf program in
-            return failed
-          with AlreadyCompiled -> return failed
-             | MissingDependency n ->
-               !logger.debug "We miss func %s" (N.fq_name n) ;
-               return (program::failed)
-             | e -> fail e
-        ) [] programs >>=
-      loop (left_try-1)
-    in
-    let%lwt () =
-      C.with_wlock conf (fun () ->
-        let%lwt programs = graph_programs conf program_opt in
-        loop (List.length programs) programs) in
+  (* Loop until all the given programs are compiled.
+   * Return a list of programs that should be re-started. *)
+  let rec compile_loop left_try failures to_retry = function
+  | [] ->
+      if to_retry = [] then return failures
+      else compile_loop (List.length to_retry + 1) failures [] to_retry
+  | to_compile :: rest ->
+    !logger.debug "%d programs left to compile..."
+      (List.length rest + 1 + List.length to_retry) ;
+    if left_try < 0 then (
+      let more_failure =
+        SyntaxError (UnsolvableDependencyLoop { program = to_compile }),
+        to_compile in
+      return (more_failure :: failures)
+    ) else (
+      let open Compiler in
+      try%lwt
+        let%lwt () = compile_ conf to_compile in
+        compile_loop (left_try - 1) failures to_retry rest
+      with MissingDependency n ->
+            !logger.debug "We miss func %s" (N.fq_name n) ;
+            compile_loop (left_try - 1) failures
+                         (to_compile :: to_retry) rest
+         | exn ->
+            compile_loop (left_try - 1) ((exn, to_compile) :: failures)
+                         to_retry rest)
+  in
+  let%lwt failures = match program_opt with
+  | Some to_compile ->
+      compile_loop 1 [] [] [ to_compile ]
+  | None ->
+      (* In this case we want to compile *everything* *)
+      let%lwt uncompiled = C.with_rlock conf (fun programs ->
+        C.fold_programs programs [] (fun lst p ->
+          match p.status with
+          | Edition _ -> p.name :: lst
+          | _ -> lst) |> return) in
+      compile_loop (List.length uncompiled) [] [] uncompiled
+  in
+  if failures = [] then
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
-  with SyntaxError _
-     | Compiler.SyntaxErrorInFunc _
-     | C.InvalidCommand _ as e ->
-       bad_request (Printexc.to_string e)
-     | e -> fail e
+  else
+    let first_e, _ = List.hd failures in
+    bad_request (Printexc.to_string first_e)
 
 let run conf headers program_opt =
   try%lwt
     let%lwt () =
-      C.with_wlock conf (fun () ->
-        let%lwt programs = graph_programs conf program_opt in
-        let programs = L.order programs in
-        Lwt_list.iter_s (run_ conf) programs) in
+      C.with_wlock conf (fun programs ->
+        let%lwt to_run = graph_programs programs program_opt in
+        let to_run = L.order to_run in
+        Lwt_list.iter_s (run_ conf programs) to_run) in
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with SyntaxError _
@@ -354,13 +454,13 @@ let run conf headers program_opt =
        bad_request (Printexc.to_string e)
      | x -> fail x
 
-let stop_programs_ conf program_opt =
-  let%lwt programs = graph_programs conf program_opt in
-  Lwt_list.iter_p (stop_ conf) programs
+let stop_programs_ conf programs program_opt =
+  let%lwt to_stop = graph_programs programs program_opt in
+  Lwt_list.iter_p (stop_ conf programs) to_stop
 
 let stop_programs conf program_opt =
-  C.with_wlock conf (fun () ->
-    stop_programs_ conf program_opt)
+  C.with_wlock conf (fun programs  ->
+    stop_programs_ conf programs program_opt)
 
 let stop conf headers program_opt =
   try%lwt
@@ -385,10 +485,11 @@ let shutdown _conf _headers =
     Clients can request to be sent the tuples from an exporting func.
 *)
 
-let get_tuples conf ?since ?max_res ?(wait_up_to=0.) program_name func_name =
+let get_tuples ?since ?max_res ?(wait_up_to=0.)
+               programs program_name func_name =
   (* Check that the func exists and exports *)
   let%lwt _program, func =
-    find_exporting_func_or_fail conf program_name func_name in
+    find_exporting_func_or_fail programs program_name func_name in
   let open RamenExport in
   let start = Unix.gettimeofday () in
   let k = history_key func in
@@ -439,9 +540,9 @@ let export conf headers program_name func_name body =
     if body = "" then return empty_export_req else
     of_json headers ("Exporting from "^ func_name) export_req_ppp body in
   let%lwt first, columns =
-    C.with_rlock conf (fun () ->
-      get_tuples conf ?since:req.since ?max_res:req.max_results
-                      ~wait_up_to:req.wait_up_to program_name func_name) in
+    C.with_rlock conf (fun programs ->
+      get_tuples ?since:req.since ?max_res:req.max_results
+        ~wait_up_to:req.wait_up_to programs program_name func_name) in
   let resp = { first ; columns } in
   let body = PPP.to_string export_resp_ppp resp in
   respond_ok ~body ()
@@ -454,8 +555,8 @@ let complete_funcs conf headers body =
   let%lwt msg =
     of_json headers "Complete tables" complete_func_req_ppp body in
   let%lwt lst =
-    C.with_rlock conf (fun () ->
-      C.complete_func_name conf msg.prefix msg.only_exporting |>
+    C.with_rlock conf (fun programs ->
+      C.complete_func_name programs msg.prefix msg.only_exporting |>
       return) in
   let body =
     PPP.to_string complete_resp_ppp lst
@@ -466,8 +567,8 @@ let complete_fields conf headers body =
   let%lwt msg =
     of_json headers "Complete fields" complete_field_req_ppp body in
   let%lwt lst =
-    C.with_rlock conf (fun () ->
-      C.complete_field_name conf msg.operation msg.prefix |>
+    C.with_rlock conf (fun programs ->
+      C.complete_field_name programs msg.operation msg.prefix |>
       return) in
   let body =
     PPP.to_string complete_resp_ppp lst
@@ -481,8 +582,9 @@ let complete_fields conf headers body =
 let timeseries conf headers body =
   let%lwt msg =
     of_json headers "time series query" timeseries_req_ppp body in
-  let ts_of_func_field req program func data_field =
-    let%lwt _program, func = find_exporting_func_or_fail conf program func in
+  let ts_of_func_field programs req program func data_field =
+    let%lwt _program, func =
+      find_exporting_func_or_fail programs program func in
     let open RamenExport in
     let consolidation =
       match String.lowercase req.consolidation with
@@ -493,7 +595,7 @@ let timeseries conf headers body =
                          msg.since msg.until consolidation
       with FuncHasNoEventTimeInfo _ as e ->
         bad_request_exn (Printexc.to_string e))
-  and create_temporary_func select_x select_y from where =
+  and create_temporary_func programs select_x select_y from where =
     (* First, we need to find out the name for this operation, and create it if
      * it does not exist yet. Name must be given by the operation and parent, so
      * that we do not create new funcs when not required (avoiding a costly
@@ -506,7 +608,8 @@ let timeseries conf headers body =
     let%lwt parent_program, parent_name =
       try C.program_func_of_user_string from |> return
       with Not_found -> bad_request ("func "^ from ^" does not exist") in
-    let%lwt _program, parent = func_of_name conf parent_program parent_name in
+    let%lwt _program, parent =
+      func_of_name programs parent_program parent_name in
     let%lwt op_text =
       if select_x = "" then (
         let open Operation in
@@ -549,15 +652,12 @@ let timeseries conf headers body =
     let program_name = "temp/"^ md5 reformatted_op
     and func_name = "operation" in
     (* So far so good. In all likelihood this program exists already: *)
-    (if Hashtbl.mem conf.C.graph.C.programs program_name then (
-      !logger.debug "Program %S already there" program_name ;
-      return_unit
+    if Hashtbl.mem programs program_name then (
+      !logger.debug "Program %S already there" program_name
     ) else (
       (* Add this program to the running configuration: *)
-      let program = C.make_program ~timeout:300. conf program_name op_text in
-      let%lwt () = Compiler.compile conf program in
-      RamenProcesses.run conf program
-    )) >>= fun () ->
+      C.make_program ~timeout:300. programs program_name op_text |> ignore
+    ) ;
     return (program_name, func_name, "data")
   in
   try%lwt
@@ -570,11 +670,15 @@ let timeseries conf headers body =
               with Not_found -> bad_request ("func "^ operation ^" does not exist") in
             return (program, func, data_field)
           | NewTempFunc { select_x ; select_y ; from ; where } ->
-            C.with_wlock conf (fun () ->
-              create_temporary_func select_x select_y from where) in
+            let%lwt (program_name, _func_name, _data_field as res) =
+              C.with_wlock conf (fun programs ->
+                create_temporary_func programs select_x select_y from where) in
+            let%lwt () = compile_ conf program_name in
+            let%lwt () = run_by_name conf program_name in
+            return res in
         let%lwt times, values =
-          C.with_rlock conf (fun () ->
-            ts_of_func_field req program_name func_name data_field) in
+          C.with_rlock conf (fun programs ->
+            ts_of_func_field programs req program_name func_name data_field) in
         return { id = req.id ; times ; values }
       ) msg.timeseries in
     let body = PPP.to_string timeseries_resp_ppp resp in
@@ -601,9 +705,9 @@ let timerange_of_func func =
 
 let get_timerange conf headers program_name func_name =
   let%lwt resp =
-    C.with_rlock conf (fun () ->
+    C.with_rlock conf (fun programs ->
       let%lwt _program, func =
-        find_exporting_func_or_fail conf program_name func_name in
+        find_exporting_func_or_fail programs program_name func_name in
       try return (timerange_of_func func)
       with RamenExport.FuncHasNoEventTimeInfo _ as e ->
         bad_request (Printexc.to_string e)) in
@@ -614,8 +718,8 @@ let get_timerange conf headers program_name func_name =
 
 (* A thread that hunt for unused programs *)
 let rec timeout_programs conf =
-  let%lwt () = C.with_wlock conf (fun () ->
-    RamenProcesses.timeout_programs conf) in
+  let%lwt () = C.with_wlock conf (fun programs ->
+    RamenProcesses.timeout_programs conf programs) in
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_programs conf
 
@@ -669,8 +773,8 @@ let plot conf _headers program_name func_name params =
     | _ -> return_false in
   (* Fetch timeseries: *)
   let%lwt _program, func =
-    C.with_rlock conf (fun () ->
-      find_exporting_func_or_fail conf program_name func_name) in
+    C.with_rlock conf (fun programs ->
+      find_exporting_func_or_fail programs program_name func_name) in
   let now = Unix.gettimeofday () in
   let%lwt until =
     if rel_to_metric then
@@ -739,8 +843,8 @@ let save_in_tmp_file dir body =
 
 let upload conf headers program func body =
   let%lwt _program, func =
-    C.with_rlock conf (fun () ->
-      find_func_or_fail conf program func) in
+    C.with_rlock conf (fun programs ->
+      find_func_or_fail programs program func) in
   (* Look for the func handling this suffix: *)
   match func.N.operation with
   | ReadCSVFile { where = ReceiveFile ; _ } ->
@@ -842,13 +946,6 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   logger := make_logger ?logdir debug ;
   let conf =
     C.make_conf true ramen_url debug persist_dir 5 (* TODO *) max_history_archives in
-  (* When there is nothing to do, listen to collectd and netflow! *)
-  if demo && Hashtbl.is_empty conf.C.graph.C.programs then (
-    !logger.info "Adding default funcs since we have nothing to do..." ;
-    C.make_program conf "demo"
-      "DEFINE collectd AS LISTEN FOR COLLECTD;\n\
-       DEFINE netflow AS LISTEN FOR NETFLOW;" |> ignore) ;
-  C.save_conf conf ;
   (* Read the instrumentation ringbuf: *)
   RamenProcesses.read_reports conf ;
   (* Start the alerter *)
@@ -994,6 +1091,15 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
       fail (HttpError (405, "Method not implemented"))
   in
   if daemonize then do_daemonize () ;
+  (* When there is nothing to do, listen to collectd and netflow! *)
+  let run_demo () =
+    C.with_wlock conf (fun programs ->
+      if demo && Hashtbl.is_empty programs then (
+        !logger.info "Adding default funcs since we have nothing to do..." ;
+        C.make_program programs "demo"
+          "DEFINE collectd AS LISTEN FOR COLLECTD;\n\
+           DEFINE netflow AS LISTEN FOR NETFLOW;" |> ignore) ;
+      return_unit) in
   (* Install signal handlers *)
   Sys.(set_signal sigterm (Signal_handle (fun _ ->
     !logger.info "Received TERM" ;
@@ -1002,9 +1108,9 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
     let%lwt () = Lwt_unix.sleep 0.3 in
     if !quit then (
       !logger.info "Waiting for the wlock for quitting..." ;
-      C.with_wlock conf (fun () ->
+      C.with_wlock conf (fun programs ->
         !logger.info "Stopping all workers..." ;
-        let%lwt () = stop_programs_ conf None in
+        let%lwt () = stop_programs_ conf programs None in
         List.iter (fun condvar ->
           !logger.info "Signaling condvar..." ;
           Lwt_condition.signal condvar ()) !http_server_done ;
@@ -1018,5 +1124,6 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
       async (fun () -> restart_on_failure timeout_programs conf) ;
       async (fun () -> restart_on_failure cleanup_old_files conf.C.persist_dir) ;
       return_unit) ;
+      run_demo () ;
       restart_on_failure monitor_quit () ;
       restart_on_failure (http_service port cert_opt key_opt) router ])

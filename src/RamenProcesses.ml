@@ -73,7 +73,7 @@ let input_spec conf parent func =
 
 (* Takes a locked conf.
  * FIXME: a phantom type for this *)
-let rec run_func conf program func =
+let rec run_func conf programs program func =
   let command = C.exec_of_func conf.C.persist_dir func
   and output_ringbufs =
     (* Start to output to funcs of this program. They have all been
@@ -81,10 +81,10 @@ let rec run_func conf program func =
      * outputting to other programs, unless they are already running (in
      * which case their ring-buffer exists already), otherwise we would
      * hang. *)
-    C.fold_funcs conf Map.empty (fun outs l n ->
+    C.fold_funcs programs Map.empty (fun outs l n ->
       (* Select all func's children that are either running or in the same
        * program *)
-      if (n.N.program = program.L.name || l.L.persist.L.status = Running) &&
+      if (n.N.program = program.L.name || l.L.status = Running) &&
          List.exists (fun (pl, pn) ->
            pl = program.L.name && pn = func.N.name
          ) n.N.parents
@@ -146,16 +146,16 @@ let rec run_func conf program func =
         (* We might want to restart it: *)
         (match status with Unix.WSIGNALED signal when signal <> Sys.sigterm ->
           let%lwt () = Lwt_unix.sleep 3. in
-          C.with_wlock conf (fun () ->
+          C.with_wlock conf (fun programs ->
             (* Look again for that program by name: *)
-            match C.find_func conf program.L.name func.N.name with
+            match C.find_func programs program.L.name func.N.name with
             | exception Not_found -> return_unit
             | program, func ->
-                if program.persist.status <> Running then return_unit else (
+                if program.status <> Running then return_unit else (
                   !logger.info "Restarting func %s which is supposed to be running."
                     (N.fq_name func) ;
                   (* Note: run_func will start another waiter for that other worker. *)
-                  run_func conf program func))
+                  run_func conf programs program func))
          | _ -> return_unit)
     in
     wait_child ()) ;
@@ -165,7 +165,7 @@ let rec run_func conf program func =
       if parent_program = program.name then
         return_unit
       else
-        match C.find_func conf parent_program parent_name with
+        match C.find_func programs parent_program parent_name with
         | exception Not_found ->
           !logger.warning "Starting func %s which parent %s/%s does not \
                            exist yet"
@@ -182,10 +182,9 @@ let rec run_func conf program func =
           RamenOutRef.add out_ref (input_spec conf parent func)
     ) func.N.parents
 
-(* Takes a locked conf *)
-let run conf program =
+let run conf programs program =
   let open L in
-  match program.persist.status with
+  match program.status with
   | Edition _ -> fail NotYetCompiled
   | Running -> fail AlreadyRunning
   | Compiling -> fail StillCompiling
@@ -194,7 +193,7 @@ let run conf program =
     (* First prepare all the required ringbuffers *)
     !logger.debug "Creating ringbuffers..." ;
     let program_funcs =
-      Hashtbl.values program.persist.funcs |> List.of_enum in
+      Hashtbl.values program.funcs |> List.of_enum in
     let rb_sz_words = 1000000 in
     let%lwt () = Lwt_list.iter_p (fun func ->
         wrap (fun () ->
@@ -205,21 +204,24 @@ let run conf program =
     (* Now run everything *)
     !logger.debug "Launching generated programs..." ;
     let now = Unix.gettimeofday () in
-    let%lwt () = Lwt_list.iter_p (run_func conf program) program_funcs in
+    let%lwt () =
+      Lwt_list.iter_p (run_func conf programs program) program_funcs in
     L.set_status program Running ;
-    program.L.persist.L.last_started <- Some now ;
-    program.L.importing_threads <- Hashtbl.fold (fun _ func lst ->
+    program.L.last_started <- Some now ;
+    let importing_threads =
+      Hashtbl.fold (fun _ func lst ->
         if Lang.Operation.is_exporting func.N.operation then (
           let rb = exp_ringbuf_name conf func in
           RamenExport.import_tuples conf rb func :: lst
         ) else lst
-      ) program.L.persist.L.funcs [] ;
+      ) program.L.funcs [] in
+    Hashtbl.add L.importing_threads program.L.name importing_threads ;
     return_unit
 
 exception NotRunning
 
-let stop conf program =
-  match program.L.persist.L.status with
+let stop conf programs program =
+  match program.L.status with
   | Edition _ | Compiled -> fail NotRunning
   | Compiling ->
     (* FIXME: do as for Running and make sure run() check the status hasn't
@@ -229,7 +231,7 @@ let stop conf program =
     !logger.info "Stopping program %s" program.L.name ;
     let now = Unix.gettimeofday () in
     let program_funcs =
-      Hashtbl.values program.L.persist.L.funcs |> List.of_enum in
+      Hashtbl.values program.L.funcs |> List.of_enum in
     let%lwt () = Lwt_list.iter_p (fun func ->
         let k = RamenExport.history_key func in
         (match Hashtbl.find RamenExport.imported_tuples k with
@@ -245,7 +247,7 @@ let stop conf program =
            * references *)
           let this_in = in_ringbuf_name conf func in
           let%lwt () = Lwt_list.iter_p (fun (parent_program, parent_name) ->
-              match C.find_func conf parent_program parent_name with
+              match C.find_func programs parent_program parent_name with
               | exception Not_found -> return_unit
               | _, parent ->
                 let out_ref = out_ringbuf_names_ref conf parent in
@@ -260,9 +262,11 @@ let stop conf program =
           return_unit
       ) program_funcs in
     L.set_status program Compiled ;
-    program.L.persist.L.last_stopped <- Some now ;
-    List.iter cancel program.L.importing_threads ;
-    program.L.importing_threads <- [] ;
+    program.L.last_stopped <- Some now ;
+    Hashtbl.modify_opt program.L.name (function
+      | None -> None
+      | Some lst -> List.iter cancel lst ; None
+    ) L.importing_threads ;
     return_unit
 
 (* Timeout unused programs.
@@ -270,13 +274,13 @@ let stop conf program =
  * what it exports. *)
 
 let use_program now program =
-  program.L.persist.L.last_used <- now
+  program.L.last_used <- now
 
-let use_program_by_name conf now program_name =
-  Hashtbl.find conf.C.graph.C.programs program_name |>
+let use_program_by_name programs now program_name =
+  Hashtbl.find programs program_name |>
   use_program now
 
-let timeout_programs conf =
+let timeout_programs conf programs =
   (* Build the set of all defined and all used programs *)
   let defined, used = Hashtbl.fold (fun program_name program (defined, used) ->
       Set.add program_name defined,
@@ -285,23 +289,23 @@ let timeout_programs conf =
               if parent_program = program_name then used
               else Set.add parent_program used
             ) used func.N.parents
-        ) program.L.persist.L.funcs used
-    ) conf.C.graph.C.programs (Set.empty, Set.empty) in
+        ) program.L.funcs used
+    ) programs (Set.empty, Set.empty) in
   let now = Unix.gettimeofday () in
-  Set.iter (use_program_by_name conf now) used ;
+  Set.iter (use_program_by_name programs now) used ;
   let unused = Set.diff defined used |>
                Set.to_list in
   Lwt_list.iter_p (fun program_name ->
-      let program = Hashtbl.find conf.C.graph.C.programs program_name in
-      if program.L.persist.L.timeout > 0. &&
-         now > program.L.persist.L.last_used +. program.L.persist.L.timeout
+      let program = Hashtbl.find programs program_name in
+      if program.L.timeout > 0. &&
+         now > program.L.last_used +. program.L.timeout
       then (
         !logger.info "Deleting unused program %s after a %gs timeout"
-          program_name program.L.persist.L.timeout ;
+          program_name program.L.timeout ;
         (* Kill first, and only then forget about it. *)
         let%lwt () =
-          try%lwt stop conf program with NotRunning -> return_unit in
-        Hashtbl.remove conf.C.graph.C.programs program_name ;
+          try%lwt stop conf programs program with NotRunning -> return_unit in
+        Hashtbl.remove programs program_name ;
         return_unit
       ) else return_unit
     ) unused
