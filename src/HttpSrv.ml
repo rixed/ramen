@@ -1000,15 +1000,17 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
     quit := true))) ;
   let rec monitor_quit () =
     let%lwt () = Lwt_unix.sleep 0.3 in
-    if !quit then
+    if !quit then (
+      !logger.info "Waiting for the wlock for quitting..." ;
       C.with_wlock conf (fun () ->
+        !logger.info "Stopping all workers..." ;
         let%lwt () = stop_programs_ conf None in
         List.iter (fun condvar ->
           !logger.info "Signaling condvar..." ;
           Lwt_condition.signal condvar ()) !http_server_done ;
         !logger.info "Quitting monitor_quit..." ;
         return_unit)
-    else monitor_quit () in
+    ) else monitor_quit () in
   Lwt_main.run (join
     [ (* TIL the hard way that although you can use async outside of
        * Lwt_main.run, the result will be totally unpredictable. *)

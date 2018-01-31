@@ -1161,7 +1161,7 @@ let compile conf program =
                 (let%lwt () =
                   try%lwt RamenProcesses.stop conf program'
                   with RamenProcesses.NotRunning -> return_unit in
-                L.set_editable program' ("Depend on "^ program.L.name) ;
+                L.set_editable program' ("Depends on "^ program.L.name) ;
                 return_unit) :: thds,
                 Set.add func.program visited
               ) else prev) prev func.N.parents) in

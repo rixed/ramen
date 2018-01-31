@@ -1801,7 +1801,7 @@ struct
       Tuple.print_typ specs.fields
   let print_file_specs fmt specs =
     Printf.fprintf fmt "READ%s FILES %S"
-      (if specs.unlink then "AND DELETE " else "") specs.fname
+      (if specs.unlink then " AND DELETE" else "") specs.fname
   let print_download_specs fmt specs =
     Printf.fprintf fmt "DOWNLOAD FROM %S%s" specs.url
       (if specs.accept = "" then "" else

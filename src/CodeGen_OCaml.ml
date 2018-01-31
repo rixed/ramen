@@ -218,7 +218,7 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
         (emit_value_of_string field_typ.typ) s_var
     ) ;
     Printf.fprintf oc "\t\t) with exn -> (\n" ;
-    Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.error \"Cannot parse field %d: %s\" ;\n" i field_typ.typ_name ;
+    Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.error \"Cannot parse field %d: %s\" ;\n" (i+1) field_typ.typ_name ;
     Printf.fprintf oc "\t\t\traise exn))%s\n" sep ;
   ) tuple_typ ;
   Printf.fprintf oc "\t)\n"
