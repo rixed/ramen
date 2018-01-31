@@ -267,49 +267,49 @@ let base_program dataset_name delete uncompress csv_glob export =
       uuid string null,
       traffic_bytes_client u64 not null,
       traffic_bytes_server u64 not null,
-      traffic_packets_client u64 not null,
-      traffic_packets_server u64 not null,
+      traffic_packets_client u32 not null,
+      traffic_packets_server u32 not null,
       payload_bytes_client u64 not null,
       payload_bytes_server u64 not null,
-      payload_packets_client u64 not null,
-      payload_packets_server u64 not null,
+      payload_packets_client u32 not null,
+      payload_packets_server u32 not null,
       retrans_traffic_bytes_client u64 not null,
       retrans_traffic_bytes_server u64 not null,
       retrans_payload_bytes_client u64 not null,
       retrans_payload_bytes_server u64 not null,
-      syn_count_client u64 not null,
-      fin_count_client u64 not null,
-      fin_count_server u64 not null,
-      rst_count_client u64 not null,
-      rst_count_server u64 not null,
-      timeout_count u64 not null,
-      close_count u64 not null,
-      dupack_count_client u64 not null,
-      dupack_count_server u64 not null,
-      zero_window_count_client u64 not null,
-      zero_window_count_server u64 not null,
-      ct_count u64 not null,
+      syn_count_client u32 not null,
+      fin_count_client u32 not null,
+      fin_count_server u32 not null,
+      rst_count_client u32 not null,
+      rst_count_server u32 not null,
+      timeout_count u32 not null,
+      close_count u32 not null,
+      dupack_count_client u32 not null,
+      dupack_count_server u32 not null,
+      zero_window_count_client u32 not null,
+      zero_window_count_server u32 not null,
+      ct_count u32 not null,
       ct_sum u64 not null,
       ct_square_sum u128 not null,
-      rt_count_server u64 not null,
+      rt_count_server u32 not null,
       rt_sum_server u64 not null,
       rt_square_sum_server u128 not null,
-      rtt_count_client u64 not null,
+      rtt_count_client u32 not null,
       rtt_sum_client u64 not null,
       rtt_square_sum_client u128 not null,
-      rtt_count_server u64 not null,
+      rtt_count_server u32 not null,
       rtt_sum_server u64 not null,
       rtt_square_sum_server u128 not null,
-      rd_count_client u64 not null,
+      rd_count_client u32 not null,
       rd_sum_client u64 not null,
       rd_square_sum_client u128 not null,
-      rd_count_server u64 not null,
+      rd_count_server u32 not null,
       rd_sum_server u64 not null,
       rd_square_sum_server u128 not null,
-      dtt_count_client u64 not null,
+      dtt_count_client u32 not null,
       dtt_sum_client u64 not null,
       dtt_square_sum_client u128 not null,
-      dtt_count_server u64 not null,
+      dtt_count_server u32 not null,
       dtt_sum_server u64 not null,
       dtt_square_sum_server u128 not null,
       dcerpc_uuid string null|} |>
@@ -363,8 +363,8 @@ let base_program dataset_name delete uncompress csv_glob export =
       protostack string null,
       traffic_bytes_client u64 not null,
       traffic_bytes_server u64 not null,
-      traffic_packets_client u64 not null,
-      traffic_packets_server u64 not null,
+      traffic_packets_client u32 not null,
+      traffic_packets_server u32 not null,
       payload_bytes_client u64 not null,
       payload_bytes_server u64 not null,
       dcerpc_uuid string null|} |>
@@ -372,8 +372,8 @@ let base_program dataset_name delete uncompress csv_glob export =
   and udp_to_unidir = to_unidir "udp" {|
     poller, capture_begin, capture_end,
     ip4_external, ip6_external,
-    0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
-    0u64 AS packets_with_payload_src, 0u64 AS rd_count_src,
+    0u32 AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u32 AS packets_with_payload_src, 0u32 AS rd_count_src,
     application, protostack,
     dcerpc_uuid|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
@@ -407,8 +407,8 @@ let base_program dataset_name delete uncompress csv_glob export =
       protostack string null,
       traffic_bytes_client u64 not null,
       traffic_bytes_server u64 not null,
-      traffic_packets_client u64 not null,
-      traffic_packets_server u64 not null,
+      traffic_packets_client u32 not null,
+      traffic_packets_server u32 not null,
       icmp_type u8 not null,
       icmp_code u8 not null,
       error_ip4_client u32 null,
@@ -424,8 +424,8 @@ let base_program dataset_name delete uncompress csv_glob export =
   and icmp_to_unidir = to_unidir "icmp" {|
     poller, capture_begin, capture_end,
     ip4_external, ip6_external,
-    0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
-    0u64 AS packets_with_payload_src, 0u64 AS rd_count_src,
+    0u32 AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u32 AS packets_with_payload_src, 0u32 AS rd_count_src,
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
     "ip6", "" ; "diffserv", "" ; "mtu", "" ;
@@ -456,13 +456,13 @@ let base_program dataset_name delete uncompress csv_glob export =
       protostack string null,
       traffic_bytes_client u64 not null,
       traffic_bytes_server u64 not null,
-      traffic_packets_client u64 not null,
-      traffic_packets_server u64 not null|} |>
+      traffic_packets_client u32 not null,
+      traffic_packets_server u32 not null|} |>
     make_func "other-than-ip"
   and other_ip_to_unidir = to_unidir "other-than-ip" {|
     poller, capture_begin, capture_end,
-    0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
-    0u64 AS packets_with_payload_src, 0u64 AS rd_count_src,
+    0u32 AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u32 AS packets_with_payload_src, 0u32 AS rd_count_src,
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
     "ip6", "" ; "diffserv", "" ; "mtu", "" ;
@@ -487,13 +487,13 @@ let base_program dataset_name delete uncompress csv_glob export =
       protostack string null,
       traffic_bytes_client u64 not null,
       traffic_bytes_server u64 not null,
-      traffic_packets_client u64 not null,
-      traffic_packets_server u64 not null|} |>
+      traffic_packets_client u32 not null,
+      traffic_packets_server u32 not null|} |>
     make_func "non-ip"
   and non_ip_to_unidir = to_unidir "non-ip" {|
     poller, capture_begin, capture_end,
-    0u64 AS rtt_count_src, 0u64 AS rtt_sum_src,
-    0u64 AS packets_with_payload_src, 0u64 AS rd_count_src,
+    0u32 AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u32 AS packets_with_payload_src, 0u32 AS rd_count_src,
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "mtu", "" ;
     "traffic_packets", "packets" ; "traffic_bytes", "bytes" ]
@@ -525,9 +525,9 @@ let base_program dataset_name delete uncompress csv_glob export =
       connection_uuid string null,
       traffic_bytes_client u64 not null,
       traffic_bytes_server u64 not null,
-      traffic_packets_client u64 not null,
-      traffic_packets_server u64 not null,
-      rt_count_server u64 not null,
+      traffic_packets_client u32 not null,
+      traffic_packets_server u32 not null,
+      rt_count_server u32 not null,
       rt_sum_server u64 not null,
       rt_square_sum_server u128 not null|} |>
     make_func "dns"
