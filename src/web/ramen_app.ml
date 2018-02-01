@@ -805,7 +805,7 @@ let program_panel to_del program =
                      [ text spinner_icon ])) ] ;
     div
       [ clss "info" ]
-      (labeled_value "#funcs" (string_of_int program.nb_funcs) ::
+      (labeled_value "#ops" (string_of_int program.nb_funcs) ::
        labeled_value "started" (date_or_never program.last_started) ::
        labeled_value "stopped" (date_or_never program.last_stopped) ::
        (match program.status with
@@ -1319,7 +1319,6 @@ let program_editor_panel =
         (if edl.is_new then
           form_input "Name" edl.program_name "enter a func name"
         else group []) ;
-        h2 [] [ text "Program" ] ;
         program_editor_panel edl.program_program ;
         br ;
         with_param editor_spinning (fun spinning ->
