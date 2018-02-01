@@ -261,6 +261,7 @@ let run_by_name conf to_run =
     | p ->
         run_ conf programs p)
 
+(* Compile one program and stop those that depended on it. *)
 let compile_ conf program_name =
   (* Compilation taking a long time, we do a two phase approach:
    * First we take the wlock, read the programs and put their status
