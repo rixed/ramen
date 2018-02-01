@@ -101,12 +101,12 @@ RUN touch /img_creation && \
     find /root/.opam/ramen -type f -name META -exec sed -i -e /exists_if/d {} \; && \
     ramen_configurator --help && \
     ramen start -d --daemon && sleep 2 && \
-    ramen add --op 'SELECT MIN time, fit_multi(3, value, time) AS smth1 FROM demo/collectd' \
-              --op 'READ AND DELETE FILES "/tmp/test.csv" PREPROCESS WITH "lz4 -d -c" (smth1 string, smth2 u128)' \
-              --op 'SELECT * FROM demo/collectd WHERE COALESCE(plugin = "memory", false) EXPORT EVENT STARTING AT time' \
-              --op 'SELECT time, AVG (IF type_instance LIKE "slab%" THEN value ELSE 0) AS slab FROM demo/collectd GROUP BY host, time // 30 COMMIT AND FLUSH WHEN in.time > previous.time + 30 EXPORT EVENT STARTING AT time WITH DURATION 30' \
-              --op 'SELECT 5-ma (packets > 10) >= 4 AS foo FROM demo/netflow' \
-              test_layer && \
+    ramen add test_layer \
+      'SELECT MIN time, fit_multi(3, value, time) AS smth1 FROM demo/collectd; \
+      READ AND DELETE FILES "/tmp/test.csv" PREPROCESS WITH "lz4 -d -c" (smth1 string, smth2 u128); \
+      SELECT * FROM demo/collectd WHERE COALESCE(plugin = "memory", false) EXPORT EVENT STARTING AT time; \
+      SELECT time, AVG (IF type_instance LIKE "slab%" THEN value ELSE 0) AS slab FROM demo/collectd GROUP BY host, time // 30 COMMIT AND FLUSH WHEN in.time > COALESCE(group.previous.time,0) + 30 EXPORT EVENT STARTING AT time WITH DURATION 30; \
+      SELECT 5-ma (packets > 10) >= 4 AS foo FROM demo/netflow' && \
     ramen compile && \
     ramen run && \
     sleep 5 && \
