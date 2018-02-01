@@ -335,6 +335,8 @@ let compile_ conf program_name =
       (* Be lenient if some of those programs are not there anymore: *)
       Lwt_list.iter_s (run_by_name conf) to_restart
     with exn ->
+      !logger.error "Compilation of %s failed with %s"
+        to_compile.L.name (Printexc.to_string exn) ;
       C.with_wlock conf (fun programs ->
         with_compiled_program programs return_unit (fun program ->
           L.set_status program (Edition (Printexc.to_string exn)) ;
