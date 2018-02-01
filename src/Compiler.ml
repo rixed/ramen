@@ -852,7 +852,7 @@ let check_aggregate parents func fields and_all_others where key top
     check_selected_fields ~parents ~in_type ~out_type fields
   ) || (
     (* If nothing changed so far and our parents output is finished_typing,
-     * then so is out input. *)
+     * then so is our input. *)
     check_input_finished ~parents ~in_type
   ) || (
     (* If nothing changed so far and our input is finished_typing, then our output is. *)
