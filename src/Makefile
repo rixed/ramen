@@ -21,7 +21,8 @@ LINKED_FOR_TESTS = \
 	EthAddr.ml Ipv4.ml Ipv6.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml Lang.ml \
 	RingBuf.ml RamenConf.ml Globs.ml CodeGen_OCaml.ml \
-	RamenBinocle.ml RamenBitmask.ml RamenExport.ml RamenProcesses.ml \
+	RamenBinocle.ml RamenBitmask.ml RamenExport.ml \
+	RamenHttpHelpers.ml RamenProcesses.ml \
 	Compiler.ml RamenBloomFilter.ml RamenHtml.ml
 
 RAMEN_SOURCES = \
@@ -30,9 +31,10 @@ RAMEN_SOURCES = \
 	RamenSharedTypesJS.ml AlerterSharedTypesJS.ml RamenSharedTypes.ml \
 	RamenCollectd.ml RamenNetflow.ml RamenProtocols.ml RamenParsing.ml \
 	EthAddr.ml Ipv4.ml Ipv6.ml RingBufLib.ml Lang.ml RingBuf.ml RamenConf.ml \
-	RamenBinocle.ml RamenExport.ml RamenProcesses.ml Globs.ml \
+	RamenBinocle.ml RamenExport.ml \
+	RamenHttpHelpers.ml RamenProcesses.ml Globs.ml \
 	CodeGen_OCaml.ml Compiler.ml RamenHtml.ml RamenColor.ml RamenFormats.ml \
-	RamenChart.ml RamenGui.ml RamenHttpHelpers.ml \
+	RamenChart.ml RamenGui.ml \
 	SqliteHelpers.ml RamenAlerter.ml HttpSrv.ml ApiCmd.ml RingBufCmd.ml \
 	ramen.ml
 

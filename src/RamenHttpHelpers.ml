@@ -194,3 +194,14 @@ let string_of_timestamp t =
   Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02ds"
     (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
     tm.tm_hour tm.tm_min tm.tm_sec
+
+let http_notify url =
+  let headers = Header.init_with "Connection" "close" in
+  let%lwt resp, body = Client.get ~headers (Uri.of_string url) in
+  let code = resp |> Response.status |> Code.code_of_status in
+  if code <> 200 then (
+    let%lwt body = Cohttp_lwt.Body.to_string body in
+    !logger.error "Received code %d from %S (%S)" code url body ;
+    return_unit
+  ) else
+    Cohttp_lwt.Body.drain_body body

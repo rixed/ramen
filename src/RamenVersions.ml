@@ -17,6 +17,9 @@ let alerting_state = "v1"
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v1"
 
+(* Notifications sent from workers to Ramen *)
+let notify_tuple = "v1"
+
 (* History file format *)
 let history = "v1"
 

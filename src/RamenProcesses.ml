@@ -61,6 +61,12 @@ let report_ringbuf conf =
                      ^ RamenVersions.ringbuf
                      ^"/ringbuf"
 
+let notify_ringbuf conf =
+  conf.C.persist_dir ^"/notify_ringbuf/"
+                     ^ RamenVersions.notify_tuple ^"_"
+                     ^ RamenVersions.ringbuf
+                     ^"/ringbuf"
+
 exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
@@ -112,6 +118,7 @@ let rec run_func conf programs program func =
     "input_ringbuf="^ input_ringbuf ;
     "output_ringbufs_ref="^ out_ringbuf_ref ;
     "report_ringbuf="^ report_ringbuf conf ;
+    "notify_ringbuf="^ notify_ringbuf conf ;
     (* We need to change this dir whenever the func signature change
      * to prevent it to reload an incompatible state: *)
     "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
@@ -317,30 +324,23 @@ open Stdint
 let reports_lock = RWLock.make ()
 let last_reports = Hashtbl.create 31
 
-let read_reports conf =
-  let rb_name = report_ringbuf conf
-  and rb_sz_words = 1000000 in
-  RingBuf.create rb_name rb_sz_words ;
-  let rb = RingBuf.load rb_name in
-  async (fun () ->
-    (* TODO: we probably want to move this function elsewhere than in a
-     * lib that's designed for workers: *)
-    RingBuf.read_ringbuf rb (fun tx ->
-      let worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo =
-        RamenBinocle.unserialize tx in
-      RingBuf.dequeue_commit tx ;
-      RWLock.with_w_lock reports_lock (fun () ->
-        Hashtbl.replace last_reports worker SN.{
-          time ;
-          in_tuple_count = Option.map Uint64.to_int ic ;
-          selected_tuple_count = Option.map Uint64.to_int sc ;
-          out_tuple_count = Option.map Uint64.to_int oc ;
-          group_count = Option.map Uint64.to_int gc ;
-          cpu_time = cpu ; ram_usage = Uint64.to_int ram ;
-          in_sleep = wi ; out_sleep = wo ;
-          in_bytes = Option.map Uint64.to_int bi ;
-          out_bytes = Option.map Uint64.to_int bo } ;
-        return_unit)))
+let read_reports rb =
+  RingBuf.read_ringbuf rb (fun tx ->
+    let worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo =
+      RamenBinocle.unserialize tx in
+    RingBuf.dequeue_commit tx ;
+    RWLock.with_w_lock reports_lock (fun () ->
+      Hashtbl.replace last_reports worker SN.{
+        time ;
+        in_tuple_count = Option.map Uint64.to_int ic ;
+        selected_tuple_count = Option.map Uint64.to_int sc ;
+        out_tuple_count = Option.map Uint64.to_int oc ;
+        group_count = Option.map Uint64.to_int gc ;
+        cpu_time = cpu ; ram_usage = Uint64.to_int ram ;
+        in_sleep = wi ; out_sleep = wo ;
+        in_bytes = Option.map Uint64.to_int bi ;
+        out_bytes = Option.map Uint64.to_int bo } ;
+      return_unit))
 
 let last_report fq_name =
   RWLock.with_r_lock reports_lock (fun () ->
@@ -352,3 +352,25 @@ let last_report fq_name =
       in_sleep = None ; out_sleep = None ;
       in_bytes = None ; out_bytes = None } |>
     return)
+
+(* Notifications:
+ * To alleviate workers from the hassle to send HTTP notifications, those are
+ * sent to Ramen via a ringbuffer. Advantages are many:
+ * Workers do not need an HTTP client and are therefore smaller, faster to
+ * link, and easier to port to another language.
+ * Also, they might as well be easier to link with the libraries bundle. *)
+
+let read_notifications rb =
+  let unserialize tx =
+    let offs = 0 in (* Nothing can be null in this tuple *)
+    let worker = RingBuf.read_string tx offs in
+    let offs = offs + RingBufLib.sersize_of_string worker in
+    let url = RingBuf.read_string tx offs in
+    worker, url
+  in
+  RingBuf.read_ringbuf rb (fun tx ->
+    let worker, url = unserialize tx in
+    !logger.info "Received notify instruction from %s to %s"
+      worker url ;
+    RingBuf.dequeue_commit tx ;
+    RamenHttpHelpers.http_notify url)

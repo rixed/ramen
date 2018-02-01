@@ -92,17 +92,15 @@ let read_glob_lines ?do_unlink path preprocessor k =
     !logger.debug "New file %S in dir %S!" filename dirname ;
     import_file_if_match filename) handler
 
-let http_notify url =
-  (* TODO: time this and add a stat *)
-  !logger.debug "Send HTTP notification to %S" url ;
-  let open Cohttp in
-  let open Cohttp_lwt_unix in
-  let headers = Header.init_with "Connection" "close" in
-  let%lwt resp, body = Client.get ~headers (Uri.of_string url) in
-  let code = resp |> Response.status |> Code.code_of_status in
-  if code <> 200 then (
-    let%lwt body = Cohttp_lwt.Body.to_string body in
-    !logger.error "Received code %d from %S (%S)" code url body ;
-    return_unit
-  ) else
-    Cohttp_lwt.Body.drain_body body
+let url_encode =
+  let char_encode c =
+    let c = Char.code c in
+    Printf.sprintf "%%%X%X" (c lsr 4) (c land 0xf) in
+  let reserved_chars = "!*'();:@&=+$,/?#[]" in
+  let is_in_set set c =
+    try ignore (String.index set c); true with Not_found -> false in
+  let is_reserved = is_in_set reserved_chars in
+  fun s ->
+    let rep c =
+      (if is_reserved c then char_encode else String.of_char) c in
+    String.replace_chars rep s

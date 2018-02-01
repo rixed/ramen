@@ -949,10 +949,6 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   logger := make_logger ?logdir debug ;
   let conf =
     C.make_conf true ramen_url debug persist_dir 5 (* TODO *) max_history_archives in
-  (* Read the instrumentation ringbuf: *)
-  RamenProcesses.read_reports conf ;
-  (* Start the alerter *)
-  RamenAlerter.start ?initial_json:alert_conf_json conf ;
   (* Start the HTTP server: *)
   let lyr = function
     | [] -> bad_request_exn "Program name missing from URL"
@@ -1120,13 +1116,25 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
         !logger.info "Quitting monitor_quit..." ;
         return_unit)
     ) else monitor_quit () in
+  (* Prepare ringbuffers for reports and notifications: *)
+  let rb_sz_words = 1000000 in
+  let rb_name = RamenProcesses.report_ringbuf conf in
+  RingBuf.create rb_name rb_sz_words ;
+  let reports_rb = RingBuf.load rb_name in
+  let rb_name = RamenProcesses.notify_ringbuf conf in
+  RingBuf.create rb_name rb_sz_words ;
+  let notify_rb = RingBuf.load rb_name in
   Lwt_main.run (join
     [ (* TIL the hard way that although you can use async outside of
        * Lwt_main.run, the result will be totally unpredictable. *)
-      (let%lwt () = Lwt_unix.sleep 1. in
-      async (fun () -> restart_on_failure timeout_programs conf) ;
-      async (fun () -> restart_on_failure cleanup_old_files conf.C.persist_dir) ;
-      return_unit) ;
+      (let%lwt () =
+        Lwt_unix.sleep 1. in
+        async (fun () -> restart_on_failure timeout_programs conf) ;
+        async (fun () -> restart_on_failure cleanup_old_files conf.C.persist_dir) ;
+        async (fun () -> restart_on_failure RamenProcesses.read_reports reports_rb) ;
+        async (fun () -> restart_on_failure RamenProcesses.read_notifications notify_rb) ;
+        RamenAlerter.start ?initial_json:alert_conf_json conf ;
+        return_unit) ;
       run_demo () ;
       restart_on_failure monitor_quit () ;
       restart_on_failure (http_service port cert_opt key_opt) router ])

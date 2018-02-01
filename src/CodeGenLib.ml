@@ -540,14 +540,24 @@ let yield sersize_of_tuple serialize_tuple select every =
  * Aggregate operation
  *)
 
-let notify url field_of_tuple tuple =
+let send_notif rb worker url =
+  RingBufLib.retry_for_ringbuf ~delay_rec:sleep_out (fun () ->
+    let sersize = RingBufLib.sersize_of_string worker +
+                  RingBufLib.sersize_of_string url in
+    let tx = RingBuf.enqueue_alloc rb sersize in
+    RingBuf.write_string tx 0 worker ;
+    let offs = RingBufLib.sersize_of_string worker in
+    RingBuf.write_string tx offs url ;
+    RingBuf.enqueue_commit tx) ()
+
+let notify rb worker url field_of_tuple tuple =
   let expand_fields =
     let open Str in
     let re = regexp "\\${\\(out\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
     fun text tuple ->
       global_substitute re (fun s ->
           let field_name = matched_group 2 s in
-          try field_of_tuple tuple field_name |> Uri.pct_encode
+          try field_of_tuple tuple field_name |> CodeGenLib_IO.url_encode
           with Not_found ->
             !logger.error "Field %S used in text substitution is not \
                            present in the input!" field_name ;
@@ -555,8 +565,7 @@ let notify url field_of_tuple tuple =
         ) text
   in
   let url = expand_fields url tuple in
-  !logger.debug "Notifying url %S" url ;
-  async (fun () -> CodeGenLib_IO.http_notify url)
+  send_notif rb worker url
 
 type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
   { (* used to compute the actual selected field when outputing the
@@ -707,14 +716,18 @@ let aggregate
   !logger.debug "We will commit/flush for... %s" when_str ;
   let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
   and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
+  and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify" "notify_ringbuf"
   and top_n, top_by = Option.default (0, fun _ _ _ -> ()) top in
   assert (not commit_before || top_n = 0) ;
+  let notify_rb = RingBuf.load notify_rb_name in
   let tuple_outputer =
     outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
   let outputer =
     let do_out tuple =
-      if notify_url <> "" then
-        notify notify_url field_of_tuple tuple ;
+      let%lwt () =
+        if notify_url <> "" then
+          notify notify_rb worker_name notify_url field_of_tuple tuple
+        else return_unit in
       tuple_outputer tuple
     in
     generate_tuples do_out in
