@@ -828,22 +828,25 @@ let check_aggregate parents func fields and_all_others where key top
       check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top-by clause") by |> ignore ;
       false
   ) ||| (
-    let exp_type = Expr.make_bool_typ ~nullable:false "commit-when clause" in
+    let exp_type = Expr.typ_of commit_when in
+    exp_type.nullable <- Some false ;
+    exp_type.scalar_typ <- Some TBool ;
     check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type commit_when |> ignore ;
     false
   ) ||| (
     match flush_how with
     | Reset | Never | Slide _ -> false
     | RemoveAll e | KeepOnly e ->
-      let exp_type = Expr.make_bool_typ ~nullable:false "remove/keep clause" in
+      let exp_type = Expr.typ_of e in
+      exp_type.nullable <- Some false ;
+      exp_type.scalar_typ <- Some TBool ;
       check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type e |> ignore ;
       false
   ) ||| (
     (* Check the expression, improving out_type and checking against in_type: *)
-    let exp_type =
-      (* That where expressions cannot be null seems a nice improvement
-       * over SQL. *)
-      Expr.make_bool_typ ~nullable:false "where clause" in
+    let exp_type = Expr.typ_of where in
+    exp_type.nullable <- Some false ;
+    exp_type.scalar_typ <- Some TBool ;
     check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type where |> ignore ;
     false
   ) ||| (
