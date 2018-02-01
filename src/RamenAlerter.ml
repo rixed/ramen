@@ -21,6 +21,9 @@ module CA = C.Alerter
 (* Purge inhibitions stopped for more than: *)
 let max_inhibit_age = 24. *. 3600.
 
+(* Delay received notifications before acting on them, to detect flapping: *)
+let flapping_detect_delay = 90.
+
 let syslog =
   try Some (Syslog.openlog "ramen")
   with _ -> None
@@ -445,8 +448,12 @@ end
 let check_escalations state now =
   EscalationOps.fold_ongoing state [] (fun prev alert esc ->
       let timeout =
-        (* If we have not tried yet there is no possible timeout. *)
-        if esc.attempt = 0 then 0. else
+        (* If we have not tried yet there is no possible timeout,
+         * but we still want to wait a bit to protect the victims
+         * against flapping alerts: *)
+        if esc.attempt = 0 then
+          alert.received +. flapping_detect_delay
+        else
           (* Check the timeout of the current attempt: *)
           let step = get_cap esc.steps (esc.attempt - 1) in
           esc.last_sent +. step.timeout in
@@ -514,7 +521,6 @@ let alert conf ~name ~team ~importance ~title ~text ~firing ~time ~now =
         let esc = EscalationOps.make conf.C.alerts alert now in
         alert.escalation <- Some esc ;
         AlertOps.log alert time (NewNotification StartEscalation) ;
-        (* Let the implicit timeout or 0 deliver the first page. *)
         return_unit
       )
   ) else (

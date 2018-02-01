@@ -106,7 +106,7 @@ struct
        * important one. *)
       importance : int ;
       (* When we _received_ the alert and started the escalation. Hopefully
-       * not too long after [time]. *)
+       * not too long after [started_firing]. *)
       received : float ;
       mutable escalation : Escalation.t option ;
       (* Log for that alert, most recent first: *)
