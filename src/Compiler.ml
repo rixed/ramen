@@ -1079,6 +1079,16 @@ let get_selected_fields func =
 let compile conf parents program =
   let open Lwt in
   assert (program.L.status = Compiling) ;
+  (* Check that parents are typed *)
+  let%lwt () =
+    Hashtbl.fold (fun _ funcs thds ->
+      List.fold_left (fun thds func ->
+        if func.N.program = program.L.name ||
+           C.tuple_is_typed func.N.out_type
+        then thds
+        else fail (MissingDependency func)
+      ) thds funcs
+    ) parents return_unit in
   !logger.debug "Trying to compile program %s" program.L.name ;
   let%lwt () = wrap (fun () ->
     set_all_types parents program ;
@@ -1130,17 +1140,20 @@ let stop_all_dependents conf programs program =
   let thds, to_restart, _ =
     C.fold_funcs programs ([], [], Set.singleton program.L.name)
       (fun (_, _, visited as prev) program' func ->
-        if Set.mem func.program visited then prev else
+        if Set.mem func.program visited ||
+           program'.L.status <> Running then prev else
         List.fold_left (fun (thds, to_restart, visited as prev)
                             (parent_program, _) ->
           if parent_program = program.L.name then (
             (let%lwt () =
               try%lwt RamenProcesses.stop conf programs program'
               with RamenProcesses.NotRunning -> return_unit in
-            L.set_editable program' ("Depends on "^ program.L.name) ;
+            L.set_editable program' ("Stopped since depends on "^
+                                     program.L.name) ;
             return_unit) :: thds,
             program'.L.name :: to_restart,
             Set.add func.program visited
-          ) else prev) prev func.N.parents) in
+          ) else prev
+        ) prev func.N.parents) in
   let%lwt () = join thds in
   return to_restart

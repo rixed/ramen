@@ -286,12 +286,7 @@ let compile_ conf program_name =
                     | exception Not_found ->
                       let e = UnknownFunc (par_prog ^"/"^ par_name) in
                       raise (Compiler.SyntaxErrorInFunc (func.N.name, e))
-                    | par_prog, par_func ->
-                      (* Parent exist, but is it typed? *)
-                      if par_prog.L.name = program_name ||
-                         C.tuple_is_typed par_func.N.out_type
-                      then par_func
-                      else raise (Compiler.MissingDependency par_func)
+                    | _, par_func -> par_func
                   ) func.N.parents
                 ) to_compile.L.funcs with
               | exception exn ->
@@ -323,8 +318,17 @@ let compile_ conf program_name =
     (* From now on this program is our. Let's make sure we return it
      * if we mess up. *)
     !logger.debug "Compiling phase 2: compiling %s" to_compile.L.name ;
-    try%lwt
-      let%lwt () = Compiler.compile conf parents to_compile in
+    match%lwt Compiler.compile conf parents to_compile with
+    | exception exn ->
+      !logger.error "Compilation of %s failed with %s"
+        to_compile.L.name (Printexc.to_string exn) ;
+      !logger.debug "Compiling phase 3: Returning the erroneous program" ;
+      let%lwt () = C.with_wlock conf (fun programs ->
+        with_compiled_program programs return_unit (fun program ->
+          L.set_status program (Edition (Printexc.to_string exn)) ;
+          return_unit)) in
+      fail exn
+    | () ->
       !logger.debug "Compiling phase 3: Returning the program" ;
       let%lwt to_restart =
         C.with_wlock conf (fun programs ->
@@ -334,13 +338,6 @@ let compile_ conf program_name =
             Compiler.stop_all_dependents conf programs program)) in
       (* Be lenient if some of those programs are not there anymore: *)
       Lwt_list.iter_s (run_by_name conf) to_restart
-    with exn ->
-      !logger.error "Compilation of %s failed with %s"
-        to_compile.L.name (Printexc.to_string exn) ;
-      C.with_wlock conf (fun programs ->
-        with_compiled_program programs return_unit (fun program ->
-          L.set_status program (Edition (Printexc.to_string exn)) ;
-          return_unit))
 
 let put_program conf headers body =
   let%lwt msg = of_json headers "Uploading program" put_program_req_ppp body in
