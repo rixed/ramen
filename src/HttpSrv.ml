@@ -64,7 +64,7 @@ let func_info_of_func programs func =
     definition = {
       name = func.N.name ;
       operation = IO.to_string Operation.print func.N.operation } ;
-    exporting = Operation.is_exporting func.N.operation ;
+    exporting = func.N.exporting ;
     signature = if func.N.signature = "" then None else Some func.N.signature ;
     pid = func.N.pid ;
     input_type = C.info_of_tuple_type func.N.in_type ;
@@ -212,7 +212,7 @@ let find_exporting_func_or_fail programs program_name func_name =
     find_func_or_fail programs program_name func_name in
   if not (L.is_typed program) then
     bad_request ("func "^ func_name ^" is not typed (yet)")
-  else if not (Operation.is_exporting func.N.operation) then
+  else if not func.N.exporting then
     bad_request ("func "^ func_name ^" does not export data")
   else return (program, func)
 
@@ -1118,12 +1118,11 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
         return_unit)
     ) else monitor_quit () in
   (* Prepare ringbuffers for reports and notifications: *)
-  let rb_sz_words = 1000000 in
   let rb_name = RamenProcesses.report_ringbuf conf in
-  RingBuf.create rb_name rb_sz_words ;
+  RingBuf.create rb_name RingBufLib.rb_default_words ;
   let reports_rb = RingBuf.load rb_name in
   let rb_name = RamenProcesses.notify_ringbuf conf in
-  RingBuf.create rb_name rb_sz_words ;
+  RingBuf.create rb_name RingBufLib.rb_default_words ;
   let notify_rb = RingBuf.load rb_name in
   Lwt_main.run (join
     [ (* TIL the hard way that although you can use async outside of

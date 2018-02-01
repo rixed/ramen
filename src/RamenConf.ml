@@ -142,6 +142,8 @@ struct
       operation : Lang.Operation.t ;
       mutable in_type : tuple_type ;
       mutable out_type : tuple_type ;
+      (* If true then export tuples toward Ramen. Can be changed on demand. *)
+      mutable exporting : bool ;
       (* The signature identifies the operation and therefore the binary.
        * It does not identifies a func! Only program name + func name identifies
        * a func. Indeed, it is frequent that different funcs in the graph have
@@ -170,6 +172,10 @@ struct
     "IN="^ type_signature func.in_type ^
     "OUT="^ type_signature func.out_type |>
     md5
+
+  (* key is the FQN of the node *)
+  let importing_threads : (string, unit Lwt.t) Hashtbl.t =
+    Hashtbl.create 11
 end
 
 let exec_of_func persist_dir func =
@@ -206,9 +212,6 @@ struct
   let print oc t =
     Printf.fprintf oc "status=%s"
       (Info.Program.string_of_status t.status)
-
-  let importing_threads : (string, unit Lwt.t list) Hashtbl.t =
-    Hashtbl.create 11
 
   let set_status program status =
     !logger.info "Program %s status %s -> %s"
@@ -412,8 +415,6 @@ let del_program programs program =
       !logger.info "Deleting program %S" program.name ;
       if program.status = Running then
         raise (InvalidCommand "Program is running") ;
-      if Hashtbl.mem importing_threads program.name then
-        raise (InvalidCommand "Program has running threads") ;
       Hashtbl.remove programs program.name
 
 let fold_programs programs init f =
@@ -459,7 +460,7 @@ let make_func program_name func_name operation =
         raise (InvalidCommand ("Parent func "^ p ^" does not exist"))) in
   Func.{
     program = program_name ; name = func_name ;
-    operation ; signature = "" ; parents ;
+    operation ; exporting = false ; signature = "" ; parents ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = UntypedTuple (make_temp_tup_typ ()) ;
@@ -578,7 +579,7 @@ let complete_func_name programs s only_exporting =
       let fq_name = Func.fq_name func in
       let lc_fq_name = String.lowercase fq_name in
       if String.(starts_with lc_fq_name s || starts_with lc_name s) &&
-         (not only_exporting || Lang.Operation.is_exporting func.Func.operation)
+         (not only_exporting || func.Func.exporting)
       then fq_name :: lst
       else lst
     )

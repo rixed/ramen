@@ -17,6 +17,8 @@ let rb_word_bytes = 4
 let rb_word_bits = rb_word_bytes * 8
 let rb_word_mask = (1 lsl rb_word_bits) - 1
 
+let rb_default_words = 1000000
+
 let bytes_for_bits n =
   n / 8 + (if n land 7 = 0 then 0 else 1)
 

@@ -61,6 +61,10 @@ let print_exception e =
     (Printexc.to_string e)
     (Printexc.get_backtrace ())
 
+let log_exceptions f x =
+  try f x
+  with e -> print_exception e
+
 let looks_like_true s =
   s = "1" || (
     String.length s > 1 &&

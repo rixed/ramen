@@ -6,6 +6,7 @@ module N = RamenConf.Func
 module L = RamenConf.Program
 module SN = RamenSharedTypes.Info.Func
 open RamenSharedTypesJS
+open Helpers
 
 let fd_of_int : int -> Unix.file_descr = Obj.magic
 
@@ -99,7 +100,7 @@ let rec run_func conf programs program func =
         Map.add k v outs
       ) else outs) in
   let output_ringbufs =
-    if Lang.Operation.is_exporting func.N.operation then
+    if func.N.exporting then
       let typ = C.tuple_ser_type func.N.out_type in
       Map.add (exp_ringbuf_name conf func)
               (RingBufLib.skip_list ~out_type:typ ~in_type:typ)
@@ -186,6 +187,42 @@ let rec run_func conf programs program func =
           RamenOutRef.add out_ref (input_spec conf parent func)
     ) func.N.parents
 
+(* Caller must have a wlock on the programs *)
+let start_import conf func =
+  let fqn = N.fq_name func in
+  if func.N.exporting then
+    !logger.debug "Function %s is already exporting" fqn
+  else (
+    !logger.info "Function %s starts exporting" fqn ;
+    let rb_name = exp_ringbuf_name conf func in
+    RingBuf.create rb_name RingBufLib.rb_default_words ;
+    let thd = RamenExport.import_tuples conf rb_name func in
+    Hashtbl.modify_opt fqn (function
+      | None -> Some thd
+      | Some old_thd ->
+          !logger.error "Found an old importing threads!?" ;
+          cancel old_thd ;
+          Some thd
+    ) N.importing_threads ;
+    func.N.exporting <- true)
+
+(* Caller must have a wlock on the programs *)
+let stop_import conf func =
+  let fqn = N.fq_name func in
+  if not func.N.exporting then
+    !logger.debug "Function %s is not exporting" fqn
+  else (
+    !logger.info "Function %s stops exporting" fqn ;
+    Hashtbl.modify_opt fqn (function
+      | None ->
+          !logger.error "Cannot retrieve importing thread?!" ;
+          None
+      | Some thd -> cancel thd ; None
+    ) N.importing_threads ;
+    let rb_name = exp_ringbuf_name conf func in
+    log_exceptions Unix.unlink rb_name ;
+    func.N.exporting <- false)
+
 let run conf programs program =
   let open L in
   match program.status with
@@ -198,29 +235,27 @@ let run conf programs program =
     !logger.debug "Creating ringbuffers..." ;
     let program_funcs =
       Hashtbl.values program.funcs |> List.of_enum in
-    let rb_sz_words = 1000000 in
-    let%lwt () = Lwt_list.iter_p (fun func ->
-        wrap (fun () ->
-          RingBuf.create (in_ringbuf_name conf func) rb_sz_words ;
-          if Lang.Operation.is_exporting func.N.operation then
-            RingBuf.create (exp_ringbuf_name conf func) rb_sz_words)
-      ) program_funcs in
-    (* Now run everything *)
-    !logger.debug "Launching generated programs..." ;
-    let now = Unix.gettimeofday () in
-    let%lwt () =
-      Lwt_list.iter_p (run_func conf programs program) program_funcs in
-    L.set_status program Running ;
-    program.L.last_started <- Some now ;
-    let importing_threads =
-      Hashtbl.fold (fun _ func lst ->
-        if Lang.Operation.is_exporting func.N.operation then (
-          let rb = exp_ringbuf_name conf func in
-          RamenExport.import_tuples conf rb func :: lst
-        ) else lst
-      ) program.L.funcs [] in
-    Hashtbl.add L.importing_threads program.L.name importing_threads ;
-    return_unit
+    try%lwt
+      (* Be sure to cancel any thread/export we start in case of failure: *)
+      let%lwt () = Lwt_list.iter_p (fun func ->
+          wrap (fun () ->
+            RingBuf.create (in_ringbuf_name conf func) RingBufLib.rb_default_words ;
+            if Lang.Operation.is_exporting func.N.operation then
+              start_import conf func)
+        ) program_funcs in
+      (* Now run everything *)
+      !logger.debug "Launching generated programs..." ;
+      let now = Unix.gettimeofday () in
+      let%lwt () =
+        Lwt_list.iter_p (run_func conf programs program) program_funcs in
+      L.set_status program Running ;
+      program.L.last_started <- Some now ;
+      return_unit
+    with exn ->
+      Hashtbl.iter (fun _ func ->
+        if func.N.exporting then stop_import conf func
+      ) program.funcs ;
+      fail exn
 
 exception NotRunning
 
@@ -267,10 +302,9 @@ let stop conf programs program =
       ) program_funcs in
     L.set_status program Compiled ;
     program.L.last_stopped <- Some now ;
-    Hashtbl.modify_opt program.L.name (function
-      | None -> None
-      | Some lst -> List.iter cancel lst ; None
-    ) L.importing_threads ;
+    Hashtbl.iter (fun _ func ->
+      if func.N.exporting then stop_import conf func
+    ) program.L.funcs ;
     return_unit
 
 (* Timeout unused programs.
