@@ -400,7 +400,7 @@ let compile conf headers program_opt =
   let rec compile_loop left_try failures to_retry = function
   | [] ->
       if to_retry = [] then return failures
-      else compile_loop (List.length to_retry + 1) failures [] to_retry
+      else compile_loop (left_try - 1) failures [] to_retry
   | to_compile :: rest ->
     !logger.debug "%d programs left to compile..."
       (List.length rest + 1 + List.length to_retry) ;
@@ -432,7 +432,8 @@ let compile conf headers program_opt =
           match p.status with
           | Edition _ -> p.name :: lst
           | _ -> lst) |> return) in
-      compile_loop (List.length uncompiled) [] [] uncompiled
+      let len = List.length uncompiled in
+      compile_loop (1 + len * (len - 1) / 2) [] [] uncompiled
   in
   if failures = [] then
     switch_accepted headers [
