@@ -618,7 +618,7 @@ let timeseries conf headers body =
       if select_x = "" then (
         let open Operation in
         match parent.N.operation with
-        | Aggregate { export = Some (Some ((start, scale), DurationConst dur)) ; _ } ->
+        | Aggregate { event_time = Some ((start, scale), DurationConst dur) ; _ } ->
           Printf.sprintf
             "SELECT %s, %s AS data \
              FROM '%s' \
@@ -626,7 +626,7 @@ let timeseries conf headers body =
             start select_y
             parent.N.name
             start scale dur |> return
-        | Aggregate { export = Some (Some ((start, scale), DurationField (dur, scale2))) ; _ } ->
+        | Aggregate { event_time = Some ((start, scale), DurationField (dur, scale2)) ; _ } ->
           Printf.sprintf
             "SELECT %s, %s AS data \
              FROM '%s' \
@@ -634,7 +634,7 @@ let timeseries conf headers body =
             start select_y
             parent.N.name
             start scale dur scale2 |> return
-        | Aggregate { export = Some (Some ((start, scale), StopField (stop, scale2))) ; _ } ->
+        | Aggregate { event_time = Some ((start, scale), StopField (stop, scale2)) ; _ } ->
           Printf.sprintf
             "SELECT %s, %s, %s AS data \
              FROM '%s' \

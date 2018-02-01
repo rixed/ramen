@@ -232,14 +232,14 @@ let tuple_need_state = function
   let replace_typ_in_operation =
     let open Lang.Operation in
     function
-    | Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
+    | Aggregate { fields ; and_all_others ; where ; event_time ; force_export ; notify_url ;
                   key ; top ; commit_before ; commit_when ; flush_how ;
                   from } ->
       Aggregate {
         fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
         and_all_others ;
         where = replace_typ where ;
-        export ; notify_url ; from ;
+        event_time ; force_export ; notify_url ; from ;
         key = List.map replace_typ key ;
         top = Option.map (fun (n, e) -> replace_typ n, replace_typ e) top ;
         commit_when = replace_typ commit_when ;
@@ -1742,7 +1742,7 @@ struct
   type event_duration = DurationConst of float (* seconds *)
                       | DurationField of (string * float)
                       | StopField of (string * float)
-  type event_time_info = (event_start * event_duration) option
+  type event_time = (event_start * event_duration)
 
   type t =
     (* Generate values out of thin air. The difference with Select is that
@@ -1756,7 +1756,8 @@ struct
         and_all_others : bool ;
         (* Simple way to filter out incoming tuples: *)
         where : Expr.t ;
-        export : event_time_info option ;
+        event_time : event_time option ;
+        force_export : bool ;
         (* If not empty, will notify this URL with a HTTP GET: *)
         notify_url : string ;
         key : Expr.t list ;
@@ -1786,17 +1787,15 @@ struct
     { separator : string ; null : string ;
       fields : Tuple.typ }
 
-  let print_export fmt = function
-    | None -> Printf.fprintf fmt "EXPORT"
-    | Some (start_field, duration) ->
-      let string_of_scale f = "*"^ string_of_float f in
-      Printf.fprintf fmt "EXPORT EVENT STARTING AT %s%s AND %s"
-        (fst start_field)
-        (string_of_scale (snd start_field))
-        (match duration with
-         | DurationConst f -> "DURATION "^ string_of_float f
-         | DurationField (n, s) -> "DURATION "^ n ^ string_of_scale s
-         | StopField (n, s) -> "STOPPING AT "^ n ^ string_of_scale s)
+  let print_event_time fmt (start_field, duration) =
+    let string_of_scale f = "*"^ string_of_float f in
+    Printf.fprintf fmt "EXPORT EVENT STARTING AT %s%s AND %s"
+      (fst start_field)
+      (string_of_scale (snd start_field))
+      (match duration with
+       | DurationConst f -> "DURATION "^ string_of_float f
+       | DurationField (n, s) -> "DURATION "^ n ^ string_of_scale s
+       | StopField (n, s) -> "STOPPING AT "^ n ^ string_of_scale s)
 
   let print_csv_specs fmt specs =
     Printf.fprintf fmt "SEPARATOR %S NULL %S %a"
@@ -1823,9 +1822,9 @@ struct
       Printf.fprintf fmt "YIELD %a EVERY %g SECONDS"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         every
-    | Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
-                  key ; top ; commit_when ; commit_before ; flush_how ;
-                  from } ->
+    | Aggregate { fields ; and_all_others ; where ; event_time ;
+                  force_export ; notify_url ; key ; top ; commit_when ;
+                  commit_before ; flush_how ; from } ->
       Printf.fprintf fmt "FROM '%a' SELECT %a%s%s"
         (List.print ~first:"" ~last:"" ~sep String.print) from
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
@@ -1834,7 +1833,9 @@ struct
       if not (Expr.is_true where) then
         Printf.fprintf fmt " WHERE %a"
           (Expr.print false) where ;
-      Option.may (fun e -> Printf.fprintf fmt " %a" print_export e) export ;
+      Option.may (fun e -> Printf.fprintf fmt " %a" print_event_time  e) event_time ;
+      if force_export then
+        Printf.fprintf fmt " EXPORT" ;
       if notify_url <> "" then
         Printf.fprintf fmt " NOTIFY %S" notify_url ;
       if key <> [] then
@@ -1864,13 +1865,15 @@ struct
         port
 
   let is_exporting = function
-    | Aggregate { export = Some _ ; _ } -> true
+    | Aggregate { force_export ; _ } ->
+      force_export (* FIXME: this info should come from the func *)
     (* It's low rate enough. TODO: add an "EXPORT" option to ListenFor and set
      * it to true on the demo operation and false otherwise. *)
     | ListenFor _ (*{ proto = RamenProtocols.Collectd ; _ }*) -> true
     | _ -> false
-  let export_event_info = function
-    | Aggregate { export = Some e ; _ } -> e
+
+  let event_time_of_operation = function
+    | Aggregate { event_time ; _ } -> event_time
     | ListenFor { proto = RamenProtocols.Collectd ; _ } ->
       Some (("time", 1.), DurationConst 0.)
     | ListenFor { proto = RamenProtocols.NetflowV5 ; _ } ->
@@ -1934,24 +1937,22 @@ struct
             raise (SyntaxError m)
           )
         | _ -> ())
-    and check_export fields = function
-      | None -> ()
-      | Some None -> ()
-      | Some (Some ((start_field, _), duration)) ->
-        let check_field_exists f =
-          if not (List.exists (fun sf -> sf.alias = f) fields) then
-            let m =
-              let print_alias oc sf = String.print oc sf.alias in
-              let tuple_type = IO.to_string (List.print print_alias) fields in
-              FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
-            raise (SyntaxError m)
-        in
-        check_field_exists start_field ;
-        match duration with
-        | DurationConst _ -> ()
-        | DurationField (f, _)
-        | StopField (f, _) -> check_field_exists f
-    in function
+    and check_event_time fields ((start_field, _), duration) =
+      let check_field_exists f =
+        if not (List.exists (fun sf -> sf.alias = f) fields) then
+          let m =
+            let print_alias oc sf = String.print oc sf.alias in
+            let tuple_type = IO.to_string (List.print print_alias) fields in
+            FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
+          raise (SyntaxError m)
+      in
+      check_field_exists start_field ;
+      match duration with
+      | DurationConst _ -> ()
+      | DurationField (f, _)
+      | StopField (f, _) -> check_field_exists f
+    in
+    function
     | Yield { fields ; _ } ->
       List.iter (fun sf ->
           let e = StatefulNotAllowed { clause = "YIELD" } in
@@ -1959,8 +1960,9 @@ struct
           check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD clause" sf.expr
         ) fields
       (* TODO: check unicity of aliases *)
-    | Aggregate { fields ; and_all_others ; where ; key ; top ; commit_when ;
-                  flush_how ; export ; from ; _ } as op ->
+    | Aggregate { fields ; and_all_others ; where ; key ; top ;
+                  commit_when ; flush_how ; event_time ;
+                  from ; _ } as op ->
       (* Set of fields known to come from in (to help prefix_smart): *)
       let fields_from_in = ref Set.empty in
       iter_expr (function
@@ -2018,7 +2020,7 @@ struct
             raise (SyntaxError (AliasNotUnique sf.alias)) ;
           sf.alias :: prev_aliases
         ) [] fields |> ignore;
-      if not and_all_others then check_export fields export ;
+      if not and_all_others then Option.may (check_event_time fields) event_time ;
       (* Disallow group state in WHERE because it makes no sense: *)
       check_no_group (no_group "WHERE") where ;
       check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOutPrevious] "WHERE clause" where ;
@@ -2110,17 +2112,18 @@ struct
 
     let export_clause m =
       let m = "export clause" :: m in
+      (strinG "export" >>: fun () -> true) m
+
+    let event_time_clause m =
+      let m = "event time clause" :: m in
       let scale m =
         let m = "scale event field" :: m in
         (optional ~def:1. (
           (optional ~def:() blanks -- char '*' --
            optional ~def:() blanks -+ number ))
         ) m
-      in
-      let export_no_time_info =
-        strinG "export" >>: fun () -> None
-      and export_with_time_info =
-        strinG "export" -- blanks -- strinG "event" -- blanks -- strinG "starting" -- blanks --
+      in (
+        strinG "event" -- blanks -- strinG "starting" -- blanks --
         strinG "at" -- blanks -+ non_keyword ++ scale ++
         optional ~def:(DurationConst 0.) (
           (blanks -- optional ~def:() ((strinG "and" ||| strinG "with") -- blanks) --
@@ -2130,10 +2133,7 @@ struct
            blanks -- strinG "and" -- blanks --
            (strinG "stopping" ||| strinG "ending") -- blanks --
            strinG "at" -- blanks -+
-             (non_keyword ++ scale >>: fun n -> StopField n)))
-        >>: fun (start_field, duration) -> Some (start_field, duration)
-      in
-      (export_no_time_info ||| export_with_time_info) m
+             (non_keyword ++ scale >>: fun n -> StopField n)))) m
 
     let notify_clause m =
       let m = "notify clause" :: m in
@@ -2192,7 +2192,8 @@ struct
     type select_clauses =
       | SelectClause of selected_field option list
       | WhereClause of Expr.t
-      | ExportClause of event_time_info
+      | ExportClause of bool
+      | EventTimeClause of event_time
       | NotifyClause of string
       | GroupByClause of Expr.t list
       | TopByClause of ((Expr.t (* N *) * Expr.t (* by *)) * Expr.t (* when *))
@@ -2205,6 +2206,7 @@ struct
         (select_clause >>: fun c -> SelectClause c) |||
         (where_clause >>: fun c -> WhereClause c) |||
         (export_clause >>: fun c -> ExportClause c) |||
+        (event_time_clause >>: fun c -> EventTimeClause c) |||
         (notify_clause >>: fun c -> NotifyClause c) |||
         (group_by >>: fun c -> GroupByClause c) |||
         (top_clause >>: fun c -> TopByClause c) |||
@@ -2215,14 +2217,14 @@ struct
         let default_commit_when = Expr.expr_true in
         let is_default_commit = (==) default_commit_when in
         let default_select =
-          [], true, Expr.expr_true, None, "", [],
+          [], true, Expr.expr_true, false, None, "", [],
           None, false, default_commit_when, Reset, [] in
-        let fields, and_all_others, where, export, notify_url, key,
-            top, commit_before, commit_when, flush_how, from =
+        let fields, and_all_others, where, force_export, event_time,
+            notify_url, key, top, commit_before, commit_when, flush_how, from =
           List.fold_left (
-            fun (fields, and_all_others, where, export, notify_url, key,
-                 top, commit_before, commit_when, flush_how,
-                 from) -> function
+            fun (fields, and_all_others, where, export, event_time, notify_url,
+                 key, top, commit_before, commit_when, flush_how, from) ->
+              function
               | SelectClause fields_or_stars ->
                 let fields, and_all_others =
                   List.fold_left (fun (fields, and_all_others) -> function
@@ -2232,31 +2234,34 @@ struct
                     ) ([], false) fields_or_stars in
                 (* The above fold_left inverted the field order. *)
                 let fields = List.rev fields in
-                fields, and_all_others, where, export, notify_url, key,
+                fields, and_all_others, where, export, event_time, notify_url, key,
                 top, commit_before, commit_when, flush_how, from
               | WhereClause where ->
-                fields, and_all_others, where, export, notify_url, key,
+                fields, and_all_others, where, export, event_time, notify_url, key,
                 top, commit_before, commit_when, flush_how, from
               | ExportClause export ->
-                fields, and_all_others, where, Some export, notify_url, key,
+                fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from
+              | EventTimeClause event_time ->
+                fields, and_all_others, where, export, Some event_time, notify_url, key,
                 top, commit_before, commit_when, flush_how, from
               | NotifyClause notify_url ->
-                fields, and_all_others, where, export, notify_url, key,
+                fields, and_all_others, where, export, event_time, notify_url, key,
                 top, commit_before, commit_when, flush_how, from
               | GroupByClause key ->
-                fields, and_all_others, where, export, notify_url, key,
+                fields, and_all_others, where, export, event_time, notify_url, key,
                 top, commit_before, commit_when, flush_how, from
               | CommitClause ((Some flush_how, commit_before), commit_when) ->
-                fields, and_all_others, where, export, notify_url, key,
+                fields, and_all_others, where, export, event_time, notify_url, key,
                 top, commit_before, commit_when, flush_how, from
               | CommitClause ((None, commit_before), commit_when) ->
-                fields, and_all_others, where, export, notify_url, key,
+                fields, and_all_others, where, export, event_time, notify_url, key,
                 top, commit_before, commit_when, flush_how, from
               | TopByClause top ->
-                fields, and_all_others, where, export, notify_url, key,
+                fields, and_all_others, where, export, event_time, notify_url, key,
                 Some top, commit_before, commit_when, flush_how, from
               | FromClause from ->
-                fields, and_all_others, where, export, notify_url, key,
+                fields, and_all_others, where, export, event_time, notify_url, key,
                 top, commit_before, commit_when, flush_how, from
             ) default_select clauses in
         let commit_when, top =
@@ -2268,9 +2273,9 @@ struct
               raise (Reject "COMMIT and FLUSH clauses are incompatible \
                              with TOP") ;
             top_when, Some top in
-        Aggregate { fields ; and_all_others ; where ; export ; notify_url ;
-                    key ; top ; commit_before ; commit_when ; flush_how ;
-                    from }
+        Aggregate { fields ; and_all_others ; where ; force_export ; event_time ;
+                    notify_url ; key ; top ; commit_before ; commit_when ;
+                    flush_how ; from }
       ) m
 
     (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
@@ -2407,7 +2412,7 @@ struct
           commit_when = replace_typ Expr.expr_true ;\
           commit_before = false ;\
           flush_how = Reset ;\
-          export = None ;\
+          force_export = false ; event_time = None ;\
           from = ["foo"] },\
         (67, [])))\
         (test_op p "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
@@ -2421,7 +2426,7 @@ struct
             StatelessFun (typ, Gt (\
               Field (typ, ref TupleIn, "packets"),\
               Const (typ, VI32 (Int32.of_int 0))))) ;\
-          export = None ; notify_url = "" ;\
+          force_export = false ; event_time = None ; notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
           commit_before = false ;\
@@ -2438,7 +2443,7 @@ struct
               alias = "value" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = Some (Some (("t", 10.), DurationConst 60.)) ;\
+          force_export = true ; event_time = Some (("t", 10.), DurationConst 60.) ;\
           notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
@@ -2459,7 +2464,7 @@ struct
               alias = "value" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = Some (Some (("t1", 10.), StopField ("t2", 10.))) ;\
+          force_export = true ; event_time = Some (("t1", 10.), StopField ("t2", 10.)) ;\
           notify_url = "" ; key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
           commit_before = false ;\
@@ -2473,7 +2478,7 @@ struct
           fields = [] ;\
           and_all_others = true ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = None ;\
+          force_export = false ; event_time = None ;\
           notify_url = "http://firebrigade.com/alert.php" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
@@ -2502,7 +2507,7 @@ struct
               alias = "packets_per_sec" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = None ; \
+          force_export = false ; event_time = None ; \
           notify_url = "" ;\
           key = [ Expr.(\
             StatelessFun (typ, Div (\
@@ -2537,7 +2542,7 @@ struct
               alias = "one" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = None ; \
+          force_export = false ; event_time = None ; \
           notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = Expr.(\
@@ -2562,7 +2567,7 @@ struct
               alias = "l" } ] ;\
           and_all_others = false ;\
           where = Expr.Const (typ, VBool true) ;\
-          export = None ; \
+          force_export = false ; event_time = None ; \
           notify_url = "" ;\
           key = [] ; top = None ;\
           commit_when = replace_typ Expr.expr_true ;\
@@ -2683,7 +2688,7 @@ struct
             commit_when = Expr.Const (typ, VBool true) ;\
             commit_before = false ;\
             flush_how = Reset ;\
-            export = None ;\
+            force_export = false ; event_time = None ;\
             from = ["foo"] } } ],\
         (46, [])))\
         (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
