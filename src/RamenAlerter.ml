@@ -463,20 +463,6 @@ let check_escalations state now =
     ) |>
   join
 
-let start_escalation_loop conf =
-  let rec check_escalations_loop () =
-    let now = Unix.gettimeofday () in
-    let%lwt () =
-      try%lwt
-        check_escalations conf.C.alerts now
-      with e ->
-        print_exception e ;
-        return_unit in
-    Lwt_unix.sleep 0.5 >>=
-    check_escalations_loop
-  in
-  async check_escalations_loop
-
 let check_static_conf static =
   (* All teams must have a distinct, non empty name: *)
   let team_names =
@@ -491,16 +477,6 @@ let check_static_conf static =
     failwith "Default team must be set" ;
   if not (Set.mem static.default_team team_names) then
     failwith "Default team does not exist"
-
-let start ?initial_json conf =
-  Option.may (fun fname ->
-      let static =
-        read_whole_file fname |>
-        PPP.of_string_exc StaticConf.t_ppp in
-      check_static_conf static ;
-      conf.C.alerts.static <- static
-    ) initial_json ;
-  start_escalation_loop conf
 
 (* Everything start by: we receive an alert with a name, a team name,
  * and a description (text + title). *)
@@ -863,3 +839,26 @@ struct
         return_unit)) >>=
     respond_ok
 end
+
+(* Alerting Daemon *)
+
+let rec check_escalations_loop conf =
+  let now = Unix.gettimeofday () in
+  let%lwt () =
+    try%lwt
+      check_escalations conf.C.alerts now
+    with e ->
+      print_exception e ;
+      return_unit in
+  let%lwt () = Lwt_unix.sleep 0.5 in
+  check_escalations_loop conf
+
+let start ?initial_json conf =
+  Option.may (fun fname ->
+      let static =
+        read_whole_file fname |>
+        PPP.of_string_exc StaticConf.t_ppp in
+      check_static_conf static ;
+      conf.C.alerts.static <- static
+    ) initial_json ;
+  async (fun () -> restart_on_failure check_escalations_loop conf)
