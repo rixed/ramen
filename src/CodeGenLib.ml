@@ -328,26 +328,6 @@ let tot_ram_usage =
     let stat = Gc.quick_stat () in
     stat.Gc.heap_words * word_size
 
-let send_stats_via_http url =
-  let open Cohttp in
-  let open Cohttp_lwt_unix in
-  let metrics = Hashtbl.fold (fun _name exporter lst ->
-    List.rev_append (exporter ()) lst) all_measures [] in
-  let body = `String Marshal.(to_string metrics []) in
-  let headers = Header.init_with "Content-Type" Consts.ocaml_marshal_type in
-  (* TODO: but also fix the server never timeouting! *)
-  let headers = Header.add headers "Connection" "close" in
-  !logger.debug "Send stats to %S" url ;
-  let%lwt resp, body = Client.put ~headers ~body (Uri.of_string url) in
-  let code = resp |> Response.status |> Code.code_of_status in
-  if code <> 200 then (
-    let%lwt body = Cohttp_lwt.Body.to_string body in
-    !logger.error "Received code %d, body %S, when reporting stats to %S"
-      code body url ;
-    return_unit
-  ) else
-    Cohttp_lwt.Body.drain_body body (* to actually close the connection *)
-
 let update_stats () =
   FloatCounter.set stats_cpu (tot_cpu_time ()) ;
   IntGauge.set stats_ram (tot_ram_usage ())
@@ -372,7 +352,7 @@ let get_binocle_tuple worker ic sc gc : RamenBinocle.tuple =
 (* Contrary to the http version above, here we sent only known, selected
  * fields in a well defined tuple, rather than sending everything we have
  * in a serialized map. *)
-let send_stats_via_rb rb tuple =
+let send_stats rb tuple =
   let sersize = RamenBinocle.max_sersize_of_tuple tuple in
   match RingBuf.enqueue_alloc rb sersize with
   | exception RingBufLib.NoMoreRoom -> () (* Just skip *)
@@ -386,7 +366,7 @@ let update_stats_rb period rb_name get_tuple () =
   while%lwt true do
     update_stats () ;
     let tuple : RamenBinocle.tuple = get_tuple () in
-    send_stats_via_rb rb tuple ;
+    send_stats rb tuple ;
     Lwt_unix.sleep period
   done
 
