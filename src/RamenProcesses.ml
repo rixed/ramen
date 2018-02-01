@@ -6,7 +6,6 @@ module N = RamenConf.Func
 module L = RamenConf.Program
 module SN = RamenSharedTypes.Info.Func
 open RamenSharedTypesJS
-open Helpers
 
 let fd_of_int : int -> Unix.file_descr = Obj.magic
 
@@ -129,9 +128,7 @@ let rec run_func conf programs program func =
       | Some _ ->
         "log_dir="^ conf.C.persist_dir ^"/workers/log/"
                   ^ (N.fq_name func)
-      | None -> "no_log_dir=") ;
-    (* Owl also need HOME (See https://github.com/ryanrhymes/owl/issues/116) *)
-    "HOME="^ getenv ~def:"/tmp" "HOME" |] in
+      | None -> "no_log_dir=") |] in
   let%lwt pid =
     wrap (fun () -> run_background command [||] env) in
   func.N.pid <- Some pid ;

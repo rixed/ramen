@@ -44,9 +44,6 @@ ENV RAMEN_PERSIST_DIR=/ramen \
     CAML_LD_LIBRARY_PATH=/root/.opam/ramen/lib/stublibs \
     PATH=/root/.opam/ramen/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# For owl not to bring down ramen workers:
-ENV HOME=/root
-
 # cohttp/conduit requires /etc/protocols and /etc/services,
 # which debian-slim does not provide:
 COPY protocols services /etc/
@@ -117,7 +114,3 @@ RUN touch /img_creation && \
     (find /root /usr /var /lib /bin -type d -empty -delete || true) && \
     (find /root /usr /var /lib /bin -xtype l -delete || true) && \
     (find /root /usr /var /lib /bin -type d -empty -delete || true)
-
-# Work around https://github.com/ryanrhymes/owl/issues/116
-COPY empty /root/.owl/dataset/
-COPY empty /root/.owl/zoo/

@@ -219,7 +219,7 @@ struct
   let add_multi_linreg t x preds = add t (x, preds)
   let multi_linreg p n t =
     let p = Uint32.to_int p and n = Uint32.to_int n in
-    let open Owl in
+    let open Lacaml.D in
     (* We first want to know how many observations and predictors we have: *)
     let nb_preds, nb_obs =
       fold p n t (-1, 0) (fun (nbp, nbo) (_y, xs) ->
@@ -227,27 +227,28 @@ struct
         assert (nbp = -1 || nbp = nbp') ;
         nbp', nbo+1) in
     (* Build the x and y matrices *)
-    let xm = Mat.zeros nb_obs nb_preds
-    and ym = Mat.zeros nb_obs 1 in
+    let xm = Mat.create nb_obs nb_preds
+    and ym = Mat.create_mvec nb_obs in (* 1 column of nb_obs rows *)
     iteri p n t (fun i (y, xs) ->
-      Mat.set ym i 0 y ;
+      (* Fortran flavors. Indices start at 0 and first index is row: *)
+      ym.{i+1, 1} <- y ;
       for j = 0 to nb_preds-1 do
-        Mat.set xm i j xs.(j)
+        xm.{i+1, j+1} <- xs.(j)
       done) ;
     (* Now ask for the "best" parameters: *)
-    match Linalg.D.linsolve xm ym with
+    match gels xm ym with
     | exception _ ->
       let print_mat oc mat =
-        let arr = Mat.to_arrays mat in
+        let arr = Mat.to_array mat in
         Array.print (Array.print Float.print) oc arr in
       !logger.error "Cannot multi-fit! xm=%a, ym=%a"
         print_mat xm print_mat ym ;
       0.
-    | p ->
+    | () -> (* Results are in ym *)
       (* And use that to predict the new y given the new xs *)
       let _cury, cur_preds = current t in
       Array.fold_lefti (fun y i x ->
-        y +. Mat.get p i 0 *. x) 0. cur_preds
+        y +. ym.{i+1, 1} *. x) 0. cur_preds
 end
 
 let begin_of_range_cidr4 (n, l) = Ipv4.Cidr.and_to_len l n
