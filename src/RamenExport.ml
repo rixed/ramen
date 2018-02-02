@@ -6,6 +6,7 @@ module C = RamenConf
 module N = RamenConf.Func
 open Helpers
 open Stdint
+open Lwt
 
 (* If true, the import of tuple with log details about serialization *)
 let verbose_serialization = false
@@ -100,13 +101,6 @@ type history =
      * by starting timestamp *)
     mutable filenums : (int * int) list }
 
-(* Store history of past tuple output by a given func. Not stored in the
- * func itself because we do not want to serialize such a big data structure
- * for every HTTP query, nor "rollback" it when a graph change fails.
- * Indexed by func fq_name and output signature: *)
-let imported_tuples : (string * string, history) Hashtbl.t =
-  Hashtbl.create 11
-
 let history_key func =
   let fq_name = N.fq_name func in
   let type_sign = C.type_signature_hash func.N.out_type in
@@ -126,7 +120,7 @@ let clean_archives conf history =
   done
 
 let archive_history conf history =
-  if conf.C.max_history_archives <= 0 then () else
+  if history.count <= 0 || conf.C.max_history_archives <= 0 then () else
   let filenum =
     history.block_start, history.block_start + history.count in
   let fname = C.archive_file history.dir filenum in
@@ -178,12 +172,15 @@ let make_history conf func =
   (* Note: this is OK to share this [||] since we use it only as a placeholder *)
   let tuples = Array.make history_block_length [||] in
   let nb_files, filenums, max_seqnum =
+    (* TODO: use Lwt for scanning the dir *)
     Sys.readdir dir |>
     Array.fold_left (fun (nb_files, arcs, ma as prev) fname ->
         match Scanf.sscanf fname "%d-%d" (fun a b -> a, b) with
         | exception _ -> prev
-        | _, stop as m ->
-          nb_files + 1, m :: arcs, max stop ma
+        | start, stop as m ->
+          if stop > start then
+            nb_files + 1, m :: arcs, max stop ma
+          else prev
       ) (0, [], min_int) in
   let filenums =
     List.fast_sort (fun (m1, _) (m2, _) -> Int.compare m1 m2) filenums in
@@ -197,14 +194,7 @@ let make_history conf func =
     count = 0 ; dir ; nb_files ; filenums ;
     ts_cache = Hashtbl.create (conf.C.max_history_archives / 8) }
 
-let add_tuple conf func tuple =
-	let k = history_key func in
-  let history =
-    try Hashtbl.find imported_tuples k
-    with Not_found ->
-      let history = make_history conf func in
-      Hashtbl.add imported_tuples k history ;
-      history in
+let add_tuple conf history tuple =
   if history.count >= Array.length history.tuples then
     archive_history conf history ;
   let idx = history.count in
@@ -269,18 +259,14 @@ let read_tuple ser_tuple_typ nullmask_size =
         ) (nullmask_size, 0) ser_tuple_typ in
     tuple, sz
 
-let import_tuples conf rb_name func =
-  let open Lwt in
-  let ser_tuple_typ = C.tuple_ser_type func.N.out_type in
+let import_tuples conf history rb_name ser_tuple_typ =
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type ser_tuple_typ in
   (* We will store tuples in serialized column order but will reorder
    * the columns when answering user queries. *)
-  !logger.debug "Starting to import output from func %s (in ringbuf %S), \
-                 which outputs %a, serialized into %a."
-    (N.fq_name func) rb_name
-    C.print_tuple_type func.N.out_type
-    Lang.Tuple.print_typ ser_tuple_typ ;
+  !logger.debug "Starting to import output from ringbuf %S, \
+                 which outputs %a."
+    rb_name Lang.Tuple.print_typ ser_tuple_typ ;
   let%lwt rb = wrap (fun () -> RingBuf.load rb_name) in
   try%lwt
     let dequeue =
@@ -289,7 +275,7 @@ let import_tuples conf rb_name func =
       let%lwt tx = dequeue rb in
       let ser_tuple, _sz = read_tuple ser_tuple_typ nullmask_size tx in
       RingBuf.dequeue_commit tx ;
-      wrap (fun () -> add_tuple conf func ser_tuple) >>=
+      wrap (fun () -> add_tuple conf history ser_tuple) >>=
       Lwt_main.yield
     done
   with Canceled ->
@@ -300,6 +286,105 @@ let import_tuples conf rb_name func =
           (Printexc.to_string e)
           (Printexc.get_backtrace ()) ;
         fail e
+
+(* Store history of past tuple output by a given func. Not stored in the
+ * func itself because we do not want to serialize such a big data structure
+ * for every HTTP query, nor "rollback" it when a graph change fails.
+ * Indexed by func fq_name and output signature (see history_key): *)
+type export =
+  { importer : unit Lwt.t ;
+    history : history ;
+    fqn : string ;
+    rb_name : string ;
+    out_rb_ref : string ;
+    mutable last_used : float ;
+    force_export : bool }
+let make_export importer history fqn rb_name out_rb_ref force_export =
+  { importer ; history ; fqn ; rb_name ; out_rb_ref ; force_export ;
+    last_used = Unix.gettimeofday () }
+(* Key can be obtained from history_key *)
+let exports : (string (* FQN *) * string (* out sign *), export) Hashtbl.t =
+  Hashtbl.create 31
+(* To protect the above exports hashtbl: *)
+let exports_mutex = Lwt_mutex.create ()
+
+let is_exporting k =
+  Lwt_mutex.with_lock exports_mutex (fun () ->
+    return (Hashtbl.mem exports k))
+
+let is_func_exporting func =
+  (* func needs to have out_type typed, at least: *)
+  if not (C.tuple_is_typed func.N.out_type) then return_false
+  else
+    let k = history_key func in
+    is_exporting k
+
+(* Caller need no wlock on the programs since func is not modified *)
+(* func must be typed though! *)
+let get_or_start conf func =
+  let (fqn, _ as k) = history_key func in
+  Lwt_mutex.with_lock exports_mutex (fun () ->
+    match Hashtbl.find exports k with
+    | exception Not_found ->
+        !logger.info "Function %s starts exporting" fqn ;
+        let%lwt typ = wrap (fun () -> C.tuple_ser_type func.N.out_type) in
+        let rb_name = C.exp_ringbuf_name conf func in
+        let out_rb_ref = C.out_ringbuf_names_ref conf func in
+        RingBuf.create rb_name RingBufLib.rb_default_words ;
+        let history = make_history conf func in
+        let importer = import_tuples conf history rb_name typ in
+        let force_export = Lang.Operation.is_exporting func.N.operation in
+        let export = make_export importer history fqn rb_name out_rb_ref
+                                 force_export in
+        Hashtbl.add exports k export ;
+        let skip_none =
+          RingBufLib.skip_list ~out_type:typ ~in_type:typ in
+        let%lwt () =
+          RamenOutRef.add out_rb_ref (rb_name, skip_none) in
+        return history
+    | exp ->
+        !logger.debug "Function %s is already exporting" fqn ;
+        exp.last_used <- Unix.gettimeofday () ;
+        return exp.history)
+
+(* Caller need no wlock on the programs since func is not modified *)
+let stop_export conf exp =
+  (* Start by asking the worker to stop exporting, then kill the
+   * importer, then get rid of the ringbuf.
+   * TODO: Ideally these steps are synchronous. *)
+  let%lwt () = RamenOutRef.remove exp.out_rb_ref exp.rb_name in
+  cancel exp.importer ;
+  archive_history conf exp.history ;
+  log_exceptions Unix.unlink exp.rb_name ;
+  return_unit
+
+let stop conf func =
+  let (fqn, _ as k) = history_key func in
+  Lwt_mutex.with_lock exports_mutex (fun () ->
+    match Hashtbl.find exports k with
+    | exception Not_found ->
+        !logger.debug "Operation %s was not exporting" fqn ;
+        return_unit
+    | exp ->
+        !logger.info "Function %s stops exporting" fqn ;
+        Hashtbl.remove exports k ;
+        stop_export conf exp)
+
+let timeout_exports conf =
+  let now = Unix.gettimeofday () in
+  (* timeout exports oldest that that: *)
+  let oldest = now -. 10. in
+  Lwt_mutex.with_lock exports_mutex (fun () ->
+    let to_stop = ref [] in
+    Hashtbl.filter_inplace (fun exp ->
+      if not exp.force_export && exp.last_used < oldest then (
+        !logger.info "Timeouting export from %s" exp.fqn ;
+        to_stop := exp :: !to_stop ;
+        false
+      ) else true
+    ) exports ;
+    (* TODO: iter_p *)
+    Lwt_list.iter_s (stop_export conf) !to_stop)
 
 let filenum_print oc (sta, sto) = Printf.fprintf oc "%d-%d" sta sto
 
@@ -591,46 +676,41 @@ let fold_tuples_and_update_ts_cache
           filenum, tmin, tmax, f user_val t1 t2 tup) in
     user_val
 
-let build_timeseries func data_field max_data_points
+let build_timeseries func history data_field max_data_points
                      since until consolidation =
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let dt = (until -. since) /. float_of_int max_data_points in
   let buckets = Array.init max_data_points (fun _ ->
     { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
   let bucket_of_time t = int_of_float ((t -. since) /. dt) in
-  match Hashtbl.find imported_tuples (history_key func) with
-  | exception Not_found ->
-    !logger.info "Function %s has no history" (N.fq_name func) ;
-    [||], [||]
-  | history ->
-    let f_opt f x y = match x, y with
-      | None, y -> Some y
-      | Some x, y -> Some (f x y) in
-    !logger.debug "timeseries since=%f and until=%f" since until ;
-    (* Since the cache is just a cache and is no comprehensive, we must use
-     * it as a necessary but not sufficient condition, to prevent us from
-     * exploring too far. As time goes it should become the same though. *)
-    let min_filenum, max_filenum =
-      Hashtbl.enum history.ts_cache |>
-      Enum.fold (fun (mi, ma) (filenum, (ts_min, ts_max)) ->
-        !logger.debug "filenum %a goes from TS=%f to %f" filenum_print filenum ts_min ts_max ;
-        (if since >= ts_min then f_opt max mi filenum else mi),
-        (if until <= ts_max then f_opt min ma filenum else ma))
-        (None, None) in
-    (* As we already have max_data_points, no need for max_res *)
-    let vi = find_ser_field func.N.out_type data_field in
-    fold_tuples_and_update_ts_cache
-      ?min_filenum ?max_filenum ~max_res:max_int func history ()
-      (fun () t1 t2 tup ->
-        let v = float_of_scalar_value tup.(vi) in
-        if t1 < until && t2 >= since then (
-          let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
-          for bi = bi1 to bi2 do
-            add_into_bucket buckets bi v
-          done)) ;
-    Array.mapi (fun i _ ->
-      since +. dt *. (float_of_int i +. 0.5)) buckets,
-    Array.map consolidation buckets
+  let f_opt f x y = match x, y with
+    | None, y -> Some y
+    | Some x, y -> Some (f x y) in
+  !logger.debug "timeseries since=%f and until=%f" since until ;
+  (* Since the cache is just a cache and is no comprehensive, we must use
+   * it as a necessary but not sufficient condition, to prevent us from
+   * exploring too far. As time goes it should become the same though. *)
+  let min_filenum, max_filenum =
+    Hashtbl.enum history.ts_cache |>
+    Enum.fold (fun (mi, ma) (filenum, (ts_min, ts_max)) ->
+      !logger.debug "filenum %a goes from TS=%f to %f" filenum_print filenum ts_min ts_max ;
+      (if since >= ts_min then f_opt max mi filenum else mi),
+      (if until <= ts_max then f_opt min ma filenum else ma))
+      (None, None) in
+  (* As we already have max_data_points, no need for max_res *)
+  let vi = find_ser_field func.N.out_type data_field in
+  fold_tuples_and_update_ts_cache
+    ?min_filenum ?max_filenum ~max_res:max_int func history ()
+    (fun () t1 t2 tup ->
+      let v = float_of_scalar_value tup.(vi) in
+      if t1 < until && t2 >= since then (
+        let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
+        for bi = bi1 to bi2 do
+          add_into_bucket buckets bi v
+        done)) ;
+  Array.mapi (fun i _ ->
+    since +. dt *. (float_of_int i +. 0.5)) buckets,
+  Array.map consolidation buckets
 
 let timerange_of_filenum func history filenum =
   try Hashtbl.find history.ts_cache filenum
@@ -641,6 +721,6 @@ let timerange_of_filenum func history filenum =
         match prev with
         | None -> Some (t1, t2)
         | Some (mi, ma) -> Some (min mi t1, max ma t2)) |>
-      (* hist_min_max goes out of his way to never return an empty
-       * filenum. Maybe we have an empty storage file? *)
-     Option.get
+    (* hist_min_max goes out of his way to never return an empty
+     * filenum. Maybe we have an empty storage file? *)
+    Option.get

@@ -315,19 +315,16 @@ let can_export func =
     exception Not_found -> false
   | program ->
     let status = program.value.status in
-    func.exporting &&
-    (status = Compiled || status = Running)
+    status = Compiled || status = Running
 
 (* For when we use it to draw the DOM: *)
 let can_export_with_program func cb =
   match List.assoc func.Func.program programs.value with
     exception Not_found -> cb false
   | program ->
-    if not func.exporting then cb false
-    else
-      with_param program (fun program ->
-        let status = program.status in
-        cb (status = Compiled || status = Running))
+    with_param program (fun program ->
+      let status = program.status in
+      cb (status = Compiled || status = Running))
 
 let reload_tail =
   let reloading = ref None in
@@ -1168,19 +1165,12 @@ let tail_panel =
       p [ clss "nodata" ]
         [ text "Select an operation to see its output" ]
     else with_func sel (fun func ->
-      let lame_excuse t =
-        tbody [] [ tr [] [ td
-          [ attri "colspan" (List.length func.output_type) ]
-          [ p [] [ text t ] ] ] ] in
       wide_table
         [ thead [] [ tr [] (List.mapi th_field func.output_type) ] ;
-          (if not func.exporting then
-            lame_excuse ("func "^ func.id ^" does not export data")
-          else
-            with_param tail_rows (fun rows ->
-              Array.fold_left (fun l r ->
-                row func.output_type r :: l) [] rows |>
-              List.rev |> tbody []))]))
+          with_param tail_rows (fun rows ->
+            Array.fold_left (fun l r ->
+              row func.output_type r :: l) [] rows |>
+            List.rev |> tbody [])]))
 
 let chart_type_selector =
   with_param chart_type (fun cur_ct ->

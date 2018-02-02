@@ -60,11 +60,12 @@ let rec find_float_metric metrics name =
 
 let func_info_of_func programs func =
   let%lwt stats = RamenProcesses.last_report (N.fq_name func) in
+  let%lwt exporting = RamenExport.is_func_exporting func in
   return SN.{
     definition = {
       name = func.N.name ;
       operation = IO.to_string Operation.print func.N.operation } ;
-    exporting = func.N.exporting ;
+    exporting ;
     signature = if func.N.signature = "" then None else Some func.N.signature ;
     pid = func.N.pid ;
     input_type = C.info_of_tuple_type func.N.in_type ;
@@ -207,14 +208,16 @@ let find_func_or_fail programs program_name func_name =
     RamenProcesses.use_program (Unix.gettimeofday ()) program ;
     return both
 
-let find_exporting_func_or_fail programs program_name func_name =
+(* Caller must have a wlock on programs *)
+let find_history_or_fail conf programs program_name func_name =
   let%lwt program, func =
     find_func_or_fail programs program_name func_name in
+  (* We need the output type to find the history *)
   if not (L.is_typed program) then
     bad_request ("func "^ func_name ^" is not typed (yet)")
-  else if not func.N.exporting then
-    bad_request ("func "^ func_name ^" does not export data")
-  else return (program, func)
+  else (
+    let%lwt history = RamenExport.get_or_start conf func in
+    return (program, func, history))
 
 let func_of_name programs program_name func_name =
   if func_name = "" then bad_request "Empty string is not a valid func name"
@@ -246,10 +249,6 @@ let del_program conf _headers program_name =
 let run_ conf programs program =
   try%lwt RamenProcesses.run conf programs program
   with RamenProcesses.AlreadyRunning -> return_unit
-
-let stop_ conf programs program =
-  try%lwt RamenProcesses.stop conf programs program
-  with RamenProcesses.NotRunning -> return_unit
 
 let run_by_name conf to_run =
   C.with_wlock conf (fun programs ->
@@ -355,7 +354,7 @@ let put_program conf headers body =
         | exception Not_found -> return_false
         | program ->
           if msg.ok_if_running && program.L.status = Running then (
-            let%lwt () = stop_ conf programs program in
+            let%lwt () = RamenProcesses.stop conf programs program in
             let%lwt () = del_program_ programs program in
             return_true
           ) else (
@@ -460,7 +459,7 @@ let run conf headers program_opt =
 
 let stop_programs_ conf programs program_opt =
   let%lwt to_stop = graph_programs programs program_opt in
-  Lwt_list.iter_p (stop_ conf programs) to_stop
+  Lwt_list.iter_p (RamenProcesses.stop conf programs) to_stop
 
 let stop_programs conf program_opt =
   C.with_wlock conf (fun programs  ->
@@ -485,39 +484,32 @@ let shutdown _conf _headers =
 
 (*
     Exporting tuples
-
-    Clients can request to be sent the tuples from an exporting func.
 *)
 
 let get_tuples ?since ?max_res ?(wait_up_to=0.)
-               programs program_name func_name =
+               conf programs program_name func_name =
   (* Check that the func exists and exports *)
-  let%lwt _program, func =
-    find_exporting_func_or_fail programs program_name func_name in
+  let%lwt _program, _func, history =
+    find_history_or_fail conf programs program_name func_name in
   let open RamenExport in
   let start = Unix.gettimeofday () in
-  let k = history_key func in
   let get_values () =
-    match Hashtbl.find imported_tuples k with
-    | exception Not_found ->
-        0, 0, [], None
-    | history ->
-        (* If since is < 0 here it means to take the last N tuples. *)
-        let since =
-          Option.map (fun s ->
-            if s >= 0 then s
-            else history.block_start + history.count + s
-          ) since in
-        let first, nb_values, values =
-          fold_tuples_since
-            ?since ?max_res history (None, 0, [])
-              (fun _ seqnum tup (first, nbv, prev) ->
-                let first =
-                  if first = None then Some seqnum else first in
-                first, nbv+1, List.cons tup prev) in
-        (* when is first None here? *)
-        let first = first |? (since |? 0) in
-        first, nb_values, values, Some history in
+    (* If since is < 0 here it means to take the last N tuples. *)
+    let since =
+      Option.map (fun s ->
+        if s >= 0 then s
+        else history.block_start + history.count + s
+      ) since in
+    let first, nb_values, values =
+      fold_tuples_since
+        ?since ?max_res history (None, 0, [])
+          (fun _ seqnum tup (first, nbv, prev) ->
+            let first =
+              if first = None then Some seqnum else first in
+            first, nbv+1, List.cons tup prev) in
+    (* when is first None here? *)
+    let first = first |? (since |? 0) in
+    first, nb_values, values, Some history in
   let first, nb_values, values, history = get_values () in
   let dt = Unix.gettimeofday () -. start in
   if values = [] && dt < wait_up_to then (
@@ -545,7 +537,7 @@ let export conf headers program_name func_name body =
     of_json headers ("Exporting from "^ func_name) export_req_ppp body in
   let%lwt first, columns =
     C.with_rlock conf (fun programs ->
-      get_tuples ?since:req.since ?max_res:req.max_results
+      get_tuples ?since:req.since ?max_res:req.max_results conf
         ~wait_up_to:req.wait_up_to programs program_name func_name) in
   let resp = { first ; columns } in
   let body = PPP.to_string export_resp_ppp resp in
@@ -560,7 +552,7 @@ let complete_funcs conf headers body =
     of_json headers "Complete tables" complete_func_req_ppp body in
   let%lwt lst =
     C.with_rlock conf (fun programs ->
-      C.complete_func_name programs msg.prefix msg.only_exporting |>
+      C.complete_func_name programs msg.prefix |>
       return) in
   let body =
     PPP.to_string complete_resp_ppp lst
@@ -587,15 +579,15 @@ let timeseries conf headers body =
   let%lwt msg =
     of_json headers "time series query" timeseries_req_ppp body in
   let ts_of_func_field programs req program func data_field =
-    let%lwt _program, func =
-      find_exporting_func_or_fail programs program func in
+    let%lwt _program, func, history =
+      find_history_or_fail conf programs program func in
     let open RamenExport in
     let consolidation =
       match String.lowercase req.consolidation with
       | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
     wrap (fun () ->
       try
-        build_timeseries func data_field msg.max_data_points
+        build_timeseries func history data_field msg.max_data_points
                          msg.since msg.until consolidation
       with FuncHasNoEventTimeInfo _ as e ->
         bad_request_exn (Printexc.to_string e))
@@ -690,29 +682,24 @@ let timeseries conf headers body =
   with Failure err -> bad_request err
      | e -> fail e
 
-let timerange_of_func func =
+let timerange_of_func func history =
   let open RamenSharedTypesJS in
-  let k = RamenExport.history_key func in
-  match Hashtbl.find RamenExport.imported_tuples k with
-  | exception Not_found ->
-    !logger.debug "Function %s has no history" (N.fq_name func) ; NoData
-  | h ->
-    (match RamenExport.hist_min_max h with
-    | None -> NoData
-    | Some (sta, sto) ->
-      let oldest, latest =
-        RamenExport.timerange_of_filenum func h sta in
-      let latest =
-        if sta = sto then latest
-        else snd (RamenExport.timerange_of_filenum func h sto) in
-      TimeRange (oldest, latest))
+  match RamenExport.hist_min_max history with
+  | None -> NoData
+  | Some (sta, sto) ->
+    let oldest, latest =
+      RamenExport.timerange_of_filenum func history sta in
+    let latest =
+      if sta = sto then latest
+      else snd (RamenExport.timerange_of_filenum func history sto) in
+    TimeRange (oldest, latest)
 
 let get_timerange conf headers program_name func_name =
   let%lwt resp =
     C.with_rlock conf (fun programs ->
-      let%lwt _program, func =
-        find_exporting_func_or_fail programs program_name func_name in
-      try return (timerange_of_func func)
+      let%lwt _program, func, history =
+        find_history_or_fail conf programs program_name func_name in
+      try return (timerange_of_func func history)
       with RamenExport.FuncHasNoEventTimeInfo _ as e ->
         bad_request (Printexc.to_string e)) in
   switch_accepted headers [
@@ -720,10 +707,12 @@ let get_timerange conf headers program_name func_name =
       let body = PPP.to_string time_range_resp_ppp resp in
       respond_ok ~body ()) ]
 
-(* A thread that hunt for unused programs *)
+(* A thread that hunt for unused programs / imports *)
 let rec timeout_programs conf =
   let%lwt () = C.with_wlock conf (fun programs ->
     RamenProcesses.timeout_programs conf programs) in
+  (* No need for a lock on conf for that one: *)
+  let%lwt () = RamenExport.timeout_exports conf in
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_programs conf
 
@@ -776,17 +765,17 @@ let plot conf _headers program_name func_name params =
     | [_] -> return_true
     | _ -> return_false in
   (* Fetch timeseries: *)
-  let%lwt _program, func =
+  let%lwt _program, func, history =
     C.with_rlock conf (fun programs ->
-      find_exporting_func_or_fail programs program_name func_name) in
+      find_history_or_fail conf programs program_name func_name) in
   let now = Unix.gettimeofday () in
   let%lwt until =
     if rel_to_metric then
-      match timerange_of_func func with
+      match timerange_of_func func history with
       | exception (RamenExport.FuncHasNoEventTimeInfo _ as e) ->
         bad_request (Printexc.to_string e)
-      | NoData -> return now
-      | TimeRange (_oldest, latest) -> return latest
+      | RamenSharedTypesJS.NoData -> return now
+      | RamenSharedTypesJS.TimeRange (_oldest, latest) -> return latest
     else return now in
   let since = until -. duration in
   let pen_of_field field_name =
@@ -801,7 +790,8 @@ let plot conf _headers program_name func_name params =
         List.map (fun data_field ->
             pen_of_field data_field,
             RamenExport.(
-              build_timeseries func data_field (int_of_float svg_width + 1)
+              build_timeseries func history data_field
+                               (int_of_float svg_width + 1)
                                since until bucket_avg)
           ) fields
       with RamenExport.FuncHasNoEventTimeInfo _ as e ->
@@ -1118,10 +1108,10 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
         return_unit)
     ) else monitor_quit () in
   (* Prepare ringbuffers for reports and notifications: *)
-  let rb_name = RamenProcesses.report_ringbuf conf in
+  let rb_name = C.report_ringbuf conf in
   RingBuf.create rb_name RingBufLib.rb_default_words ;
   let reports_rb = RingBuf.load rb_name in
-  let rb_name = RamenProcesses.notify_ringbuf conf in
+  let rb_name = C.notify_ringbuf conf in
   RingBuf.create rb_name RingBufLib.rb_default_words ;
   let notify_rb = RingBuf.load rb_name in
   Lwt_main.run (join

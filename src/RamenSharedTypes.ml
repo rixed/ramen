@@ -178,7 +178,7 @@ type export_resp =
 
 (* TODO: exporting : bool option ; temporary : bool option *)
 type complete_func_req =
-  { prefix : string ; only_exporting : bool } [@@ppp PPP_JSON] [@@ppp_extensible]
+  { prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]
 
 type complete_field_req =
   { operation : string ; prefix : string } [@@ppp PPP_JSON] [@@ppp_extensible]

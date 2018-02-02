@@ -6,7 +6,6 @@ module N = RamenConf.Func
 module L = RamenConf.Program
 module SN = RamenSharedTypes.Info.Func
 open RamenSharedTypesJS
-open Helpers
 
 let fd_of_int : int -> Unix.file_descr = Obj.magic
 
@@ -34,45 +33,12 @@ let run_background cmd args env =
     execve cmd args env
   | pid -> pid
 
-(* Compute input ringbuf and output ringbufs given the func identifier
- * and its input type, so that if we change the operation of a func we
- * don't risk reading old ringbuf with incompatible values. *)
-
-let in_ringbuf_name conf func =
-  let sign = C.type_signature_hash func.N.in_type in
-  conf.C.persist_dir ^"/workers/ringbufs/"
-                     ^ RamenVersions.ringbuf ^"/"
-                     ^ N.fq_name func ^"/"^ sign ^"/in"
-
-let exp_ringbuf_name conf func =
-  let sign = C.type_signature_hash func.N.out_type in
-  conf.C.persist_dir ^"/workers/ringbufs/"
-                     ^ RamenVersions.ringbuf ^"/"
-                     ^ N.fq_name func ^"/"^ sign ^"/exp"
-
-let out_ringbuf_names_ref conf func =
-  conf.C.persist_dir ^"/workers/out_ref/"
-                     ^ RamenVersions.out_ref ^"/"
-                     ^ N.fq_name func ^"/out_ref"
-
-let report_ringbuf conf =
-  conf.C.persist_dir ^"/instrumentation_ringbuf/"
-                     ^ RamenVersions.instrumentation_tuple ^"_"
-                     ^ RamenVersions.ringbuf
-                     ^"/ringbuf"
-
-let notify_ringbuf conf =
-  conf.C.persist_dir ^"/notify_ringbuf/"
-                     ^ RamenVersions.notify_tuple ^"_"
-                     ^ RamenVersions.ringbuf
-                     ^"/ringbuf"
-
 exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
 
 let input_spec conf parent func =
-  in_ringbuf_name conf func,
+  C.in_ringbuf_name conf func,
   let out_type = C.tuple_ser_type parent.N.out_type
   and in_type = C.tuple_ser_type func.N.in_type in
   RingBufLib.skip_list ~out_type ~in_type
@@ -99,26 +65,25 @@ let rec run_func conf programs program func =
         let k, v = input_spec conf func n in
         Map.add k v outs
       ) else outs) in
-  let output_ringbufs =
-    if func.N.exporting then
-      let typ = C.tuple_ser_type func.N.out_type in
-      Map.add (exp_ringbuf_name conf func)
-              (RingBufLib.skip_list ~out_type:typ ~in_type:typ)
-              output_ringbufs
-    else output_ringbufs in
-  let out_ringbuf_ref =
-    out_ringbuf_names_ref conf func in
+  let out_ringbuf_ref = C.out_ringbuf_names_ref conf func in
   let%lwt () = RamenOutRef.set out_ringbuf_ref output_ringbufs in
+  (* Now that the out_ref exists, but before we actually fork the worker,
+   * we can start importing: *)
+  let%lwt () =
+    if Lang.Operation.is_exporting func.N.operation then
+      let%lwt _ = RamenExport.get_or_start conf func in
+      return_unit
+    else return_unit in
   !logger.info "Start %s" func.N.name ;
-  let input_ringbuf = in_ringbuf_name conf func in
+  let input_ringbuf = C.in_ringbuf_name conf func in
   let env = [|
     "OCAMLRUNPARAM="^ if conf.C.debug then "b" else "" ;
     "debug="^ string_of_bool conf.C.debug ;
     "name="^ N.fq_name func ;
     "input_ringbuf="^ input_ringbuf ;
     "output_ringbufs_ref="^ out_ringbuf_ref ;
-    "report_ringbuf="^ report_ringbuf conf ;
-    "notify_ringbuf="^ notify_ringbuf conf ;
+    "report_ringbuf="^ C.report_ringbuf conf ;
+    "notify_ringbuf="^ C.notify_ringbuf conf ;
     (* We need to change this dir whenever the func signature change
      * to prevent it to reload an incompatible state: *)
     "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
@@ -179,83 +144,13 @@ let rec run_func conf programs program func =
           return_unit
         | _, parent ->
           let out_ref =
-            out_ringbuf_names_ref conf parent in
+            C.out_ringbuf_names_ref conf parent in
           (* The parent ringbuf might not exist yet if it has never been
            * started. If the parent is not running then it will overwrite
            * it when it starts, with whatever running children it will
            * have at that time (including us, if we are still running).  *)
           RamenOutRef.add out_ref (input_spec conf parent func)
     ) func.N.parents
-
-(* Caller must have a wlock on the programs *)
-let start_import conf func =
-  let fqn = N.fq_name func in
-  if func.N.exporting then
-    !logger.debug "Function %s is already exporting" fqn
-  else (
-    !logger.info "Function %s starts exporting" fqn ;
-    let rb_name = exp_ringbuf_name conf func in
-    RingBuf.create rb_name RingBufLib.rb_default_words ;
-    let thd = RamenExport.import_tuples conf rb_name func in
-    Hashtbl.modify_opt fqn (function
-      | None -> Some thd
-      | Some old_thd ->
-          !logger.error "Found an old importing threads!?" ;
-          cancel old_thd ;
-          Some thd
-    ) N.importing_threads ;
-    func.N.exporting <- true)
-
-(* Caller must have a wlock on the programs *)
-let stop_import conf func =
-  let fqn = N.fq_name func in
-  if not func.N.exporting then
-    !logger.debug "Function %s is not exporting" fqn
-  else (
-    !logger.info "Function %s stops exporting" fqn ;
-    Hashtbl.modify_opt fqn (function
-      | None ->
-          !logger.error "Cannot retrieve importing thread?!" ;
-          None
-      | Some thd -> cancel thd ; None
-    ) N.importing_threads ;
-    let rb_name = exp_ringbuf_name conf func in
-    log_exceptions Unix.unlink rb_name ;
-    func.N.exporting <- false)
-
-let run conf programs program =
-  let open L in
-  match program.status with
-  | Edition _ -> fail NotYetCompiled
-  | Running -> fail AlreadyRunning
-  | Compiling -> fail StillCompiling
-  | Compiled ->
-    !logger.info "Starting program %s" program.L.name ;
-    (* First prepare all the required ringbuffers *)
-    !logger.debug "Creating ringbuffers..." ;
-    let program_funcs =
-      Hashtbl.values program.funcs |> List.of_enum in
-    try%lwt
-      (* Be sure to cancel any thread/export we start in case of failure: *)
-      let%lwt () = Lwt_list.iter_p (fun func ->
-          wrap (fun () ->
-            RingBuf.create (in_ringbuf_name conf func) RingBufLib.rb_default_words ;
-            if Lang.Operation.is_exporting func.N.operation then
-              start_import conf func)
-        ) program_funcs in
-      (* Now run everything *)
-      !logger.debug "Launching generated programs..." ;
-      let now = Unix.gettimeofday () in
-      let%lwt () =
-        Lwt_list.iter_p (run_func conf programs program) program_funcs in
-      L.set_status program Running ;
-      program.L.last_started <- Some now ;
-      return_unit
-    with exn ->
-      Hashtbl.iter (fun _ func ->
-        if func.N.exporting then stop_import conf func
-      ) program.funcs ;
-      fail exn
 
 let stop conf programs program =
   match program.L.status with
@@ -270,10 +165,7 @@ let stop conf programs program =
     let program_funcs =
       Hashtbl.values program.L.funcs |> List.of_enum in
     let%lwt () = Lwt_list.iter_p (fun func ->
-        let k = RamenExport.history_key func in
-        (match Hashtbl.find RamenExport.imported_tuples k with
-        | exception Not_found -> ()
-        | history -> RamenExport.archive_history conf history) ;
+        let%lwt () = RamenExport.stop conf func in
         match func.N.pid with
         | None ->
           !logger.error "Function %s has no pid?!" func.N.name ;
@@ -282,12 +174,12 @@ let stop conf programs program =
           !logger.debug "Stopping func %s, pid %d" func.N.name pid ;
           (* Start by removing this worker ringbuf from all its parent output
            * references *)
-          let this_in = in_ringbuf_name conf func in
+          let this_in = C.in_ringbuf_name conf func in
           let%lwt () = Lwt_list.iter_p (fun (parent_program, parent_name) ->
               match C.find_func programs parent_program parent_name with
               | exception Not_found -> return_unit
               | _, parent ->
-                let out_ref = out_ringbuf_names_ref conf parent in
+                let out_ref = C.out_ringbuf_names_ref conf parent in
                 RamenOutRef.remove out_ref this_in
             ) func.N.parents in
           (* Get rid of the worker *)
@@ -300,10 +192,41 @@ let stop conf programs program =
       ) program_funcs in
     L.set_status program Compiled ;
     program.L.last_stopped <- Some now ;
-    Hashtbl.iter (fun _ func ->
-      if func.N.exporting then stop_import conf func
-    ) program.L.funcs ;
     return_unit
+
+let run conf programs program =
+  let open L in
+  match program.status with
+  | Edition _ -> fail NotYetCompiled
+  | Running -> fail AlreadyRunning
+  | Compiling -> fail StillCompiling
+  | Compiled ->
+    !logger.info "Starting program %s" program.L.name ;
+    (* First prepare all the required ringbuffers *)
+    !logger.debug "Creating ringbuffers..." ;
+    let program_funcs =
+      Hashtbl.values program.funcs |> List.of_enum in
+    (* Be sure to cancel everything (threads/execs) we started in case of
+     * failure: *)
+    try%lwt
+      (* We must create all the ringbuffers before starting any worker
+       * because there is no good order in which to start them: *)
+      let%lwt () = Lwt_list.iter_p (fun func ->
+        wrap (fun () ->
+          let rb_name = C.in_ringbuf_name conf func in
+          RingBuf.create rb_name RingBufLib.rb_default_words
+        )) program_funcs in
+      (* Now run everything in any order: *)
+      !logger.debug "Launching generated programs..." ;
+      let now = Unix.gettimeofday () in
+      let%lwt () =
+        Lwt_list.iter_p (run_func conf programs program) program_funcs in
+      L.set_status program Running ;
+      program.L.last_started <- Some now ;
+      return_unit
+    with exn ->
+      let%lwt () = stop conf programs program in
+      fail exn
 
 (* Timeout unused programs.
  * By unused, we mean either: no program depends on it, or no one cares for
@@ -318,7 +241,8 @@ let use_program_by_name programs now program_name =
 
 let timeout_programs conf programs =
   (* Build the set of all defined and all used programs *)
-  let defined, used = Hashtbl.fold (fun program_name program (defined, used) ->
+  let defined, used =
+    Hashtbl.fold (fun program_name program (defined, used) ->
       Set.add program_name defined,
       Hashtbl.fold (fun _func_name func used ->
           List.fold_left (fun used (parent_program, _parent_func) ->

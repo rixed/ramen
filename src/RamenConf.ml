@@ -142,8 +142,6 @@ struct
       operation : Lang.Operation.t ;
       mutable in_type : tuple_type ;
       mutable out_type : tuple_type ;
-      (* If true then export tuples toward Ramen. Can be changed on demand. *)
-      mutable exporting : bool ;
       (* The signature identifies the operation and therefore the binary.
        * It does not identifies a func! Only program name + func name identifies
        * a func. Indeed, it is frequent that different funcs in the graph have
@@ -172,10 +170,6 @@ struct
     "IN="^ type_signature func.in_type ^
     "OUT="^ type_signature func.out_type |>
     md5
-
-  (* key is the FQN of the node *)
-  let importing_threads : (string, unit Lwt.t) Hashtbl.t =
-    Hashtbl.create 11
 end
 
 let exec_of_func persist_dir func =
@@ -460,7 +454,7 @@ let make_func program_name func_name operation =
         raise (InvalidCommand ("Parent func "^ p ^" does not exist"))) in
   Func.{
     program = program_name ; name = func_name ;
-    operation ; exporting = false ; signature = "" ; parents ;
+    operation ; signature = "" ; parents ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = UntypedTuple (make_temp_tup_typ ()) ;
@@ -568,18 +562,14 @@ let make_conf do_persist ramen_url debug persist_dir
 
 (* AutoCompletion of func/field names *)
 
-(* Autocompletion of *all* funcs; not only exporting ones since we might want
- * to graph some meta data. Also maybe we should export on demand? *)
-
-let complete_func_name programs s only_exporting =
+let complete_func_name programs s =
   let s = String.(lowercase (trim s)) in
   (* TODO: a better search structure for case-insensitive prefix search *)
   fold_funcs programs [] (fun lst _program func ->
       let lc_name = String.lowercase func.Func.name in
       let fq_name = Func.fq_name func in
       let lc_fq_name = String.lowercase fq_name in
-      if String.(starts_with lc_fq_name s || starts_with lc_name s) &&
-         (not only_exporting || func.Func.exporting)
+      if String.(starts_with lc_fq_name s || starts_with lc_name s)
       then fq_name :: lst
       else lst
     )
@@ -603,3 +593,38 @@ let complete_field_name programs name s =
               n :: lst
             else lst
           ) [] ser)
+
+(* Various directory names: *)
+
+(* Compute input ringbuf and output ringbufs given the func identifier
+ * and its input type, so that if we change the operation of a func we
+ * don't risk reading old ringbuf with incompatible values. *)
+
+let in_ringbuf_name conf func =
+  let sign = type_signature_hash func.Func.in_type in
+  conf.persist_dir ^"/workers/ringbufs/"
+                   ^ RamenVersions.ringbuf ^"/"
+                   ^ Func.fq_name func ^"/"^ sign ^"/in"
+
+let exp_ringbuf_name conf func =
+  let sign = type_signature_hash func.Func.out_type in
+  conf.persist_dir ^"/workers/ringbufs/"
+                   ^ RamenVersions.ringbuf ^"/"
+                   ^ Func.fq_name func ^"/"^ sign ^"/exp"
+
+let out_ringbuf_names_ref conf func =
+  conf.persist_dir ^"/workers/out_ref/"
+                   ^ RamenVersions.out_ref ^"/"
+                   ^ Func.fq_name func ^"/out_ref"
+
+let report_ringbuf conf =
+  conf.persist_dir ^"/instrumentation_ringbuf/"
+                   ^ RamenVersions.instrumentation_tuple ^"_"
+                   ^ RamenVersions.ringbuf
+                   ^"/ringbuf"
+
+let notify_ringbuf conf =
+  conf.persist_dir ^"/notify_ringbuf/"
+                   ^ RamenVersions.notify_tuple ^"_"
+                   ^ RamenVersions.ringbuf
+                   ^"/ringbuf"
