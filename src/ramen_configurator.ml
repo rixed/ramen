@@ -902,6 +902,7 @@ let base_program dataset_name delete uncompress csv_glob export =
   RamenSharedTypes.{
     name = dataset_name ;
     ok_if_running = true ;
+    start = true ;
     program = program_of_funcs [
       tcp ;
       tcp_to_unidir ~src:"client" ~dst:"server" "c2s tcp" ;
@@ -1179,6 +1180,7 @@ let program_of_bcns bcns dataset_name export =
   RamenSharedTypes.{
     name = program_name ;
     ok_if_running = true ;
+    start = true ;
     program = program_of_funcs !all_funcs }
 
 (* Build the func infos corresponding to the BCA configuration *)
@@ -1400,6 +1402,7 @@ let program_of_bcas bcas dataset_name export =
   RamenSharedTypes.{
     name = program_name ;
     ok_if_running = true ;
+    start = true ;
     program = program_of_funcs !all_funcs }
 
 let get_config_from_db db =
@@ -1453,6 +1456,7 @@ let ddos_program dataset_name export =
   RamenSharedTypes.{
     name = program_name ;
     ok_if_running = true ;
+    start = true ;
     program = program_of_funcs [
       global_new_peers ; pred_func ; anom_func ] }
 

@@ -340,12 +340,13 @@ let compile_ conf program_name =
       Lwt_list.iter_s (run_by_name conf) to_restart
 
 let put_program conf headers body =
-  let%lwt msg = of_json headers "Uploading program" put_program_req_ppp body in
+  let%lwt msg =
+    of_json headers "Uploading program" put_program_req_ppp body in
   let program_name = msg.name in
   (* Disallow anonymous programs for simplicity: *)
   if program_name = "" then
     bad_request "Programs must have non-empty names" else (
-  let%lwt must_start =
+  let%lwt must_restart =
     C.with_wlock conf (fun programs ->
       (* Delete the program if it already exists. No worries the conf won't be
        * changed if there is any error. *)
@@ -353,10 +354,14 @@ let put_program conf headers body =
         match Hashtbl.find programs program_name with
         | exception Not_found -> return_false
         | program ->
-          if msg.ok_if_running && program.L.status = Running then (
-            let%lwt () = RamenProcesses.stop conf programs program in
-            let%lwt () = del_program_ programs program in
-            return_true
+          if program.L.status = Running then (
+            if msg.ok_if_running then (
+              let%lwt () = RamenProcesses.stop conf programs program in
+              let%lwt () = del_program_ programs program in
+              return_true
+            ) else (
+              bad_request ("Program "^ program_name ^" is running")
+            )
           ) else (
             let%lwt () = del_program_ programs program in
             return_false
@@ -370,8 +375,8 @@ let put_program conf headers body =
            | e -> fail e in
       return stopped_it) in
   let%lwt () =
-    if must_start then (
-      !logger.debug "Trying to restart program %s" program_name ;
+    if must_restart || msg.start then (
+      !logger.debug "Trying to (re)start program %s" program_name ;
       let%lwt () = compile_ conf program_name in
       run_by_name conf program_name
     ) else return_unit in

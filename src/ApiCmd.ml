@@ -54,7 +54,8 @@ let check_ok body =
 
 let add debug ramen_url name program () =
   logger := make_logger debug ;
-  let msg = { name ; ok_if_running = false ; program } in
+  (* TODO: option to start would make unit test faster *)
+  let msg = { name ; ok_if_running = false ; start = false ; program } in
   Lwt_main.run (
     http_put_json (ramen_url ^"/graph") put_program_req_ppp msg >>= check_ok)
 

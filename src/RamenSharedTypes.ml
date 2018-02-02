@@ -151,6 +151,7 @@ type put_program_req =
     name : string ;
     (* If this program is already running stop it then restart it: *)
     ok_if_running : bool [@ppp_default false] ;
+    start : bool [@ppp_default false] ;
     program : string } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)
