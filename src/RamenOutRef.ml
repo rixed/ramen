@@ -96,9 +96,10 @@ let add fname out =
  * out_ref: *)
 let remove_ fname out_fname =
   let out_files = read_ fname in
-  set_ fname (Map.remove out_fname out_files) ;
+  let out_files' = Map.remove out_fname out_files in
+  set_ fname out_files' ;
   !logger.info "Removed %s from %s, now output only to: %a"
-    out_fname fname print_out_specs out_files
+    out_fname fname print_out_specs out_files'
 
 let remove fname out_fname =
   Lock.with_w_lock fname (fun () ->
