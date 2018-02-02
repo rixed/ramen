@@ -236,7 +236,7 @@ let update_func func =
       set p func ;
       p
     with Not_found ->
-      print (Js.string ("Creating func "^ func.Func.name)) ;
+      print (Js.string ("Creating operation "^ func.Func.name)) ;
       change funcs ;
       make_param ("func "^ func.id) func in
   funcs.value <- replace_assoc func.id p funcs.value
@@ -593,7 +593,7 @@ let update_graph total g =
       if List.mem id !had_funcs then (
         change funcs ; true
       ) else (
-        print (Js.string ("Deleting func "^ id)) ;
+        print (Js.string ("Deleting operation "^ id)) ;
         false
       )) funcs.value
   ) else (
@@ -715,7 +715,7 @@ let labeled_value l v =
 let with_func func_id f =
   with_param funcs (fun funcs ->
     match List.assoc func_id funcs with
-    | exception Not_found -> text ("Can't find func "^ func_id)
+    | exception Not_found -> text ("Can't find operation "^ func_id)
     | func -> f func.value)
 
 let icon_of_program ?(suppress_action=false) program =
@@ -1102,7 +1102,7 @@ let input_output_panel =
   with_param sel_func (fun sel ->
     if sel = "" then
       p [ clss "nodata" ]
-        [ text "Select a func to see its input/output" ]
+        [ text "Select an operation to see its input/output" ]
     else with_func sel (fun func ->
       group [
         h1 [] [ text "Input fields" ] ;
@@ -1121,7 +1121,7 @@ let op_panel =
   with_param sel_func (fun sel ->
     if sel = "" then
       p [ clss "nodata" ]
-        [ text "Select a func to see the operation it performs" ]
+        [ text "Select an operation to see its program" ]
     else with_func sel (fun func ->
       div
         [ clss "operation" ]
@@ -1166,7 +1166,7 @@ let tail_panel =
   with_param sel_func (fun sel ->
     if sel = "" then
       p [ clss "nodata" ]
-        [ text "Select a func to see its output" ]
+        [ text "Select an operation to see its output" ]
     else with_func sel (fun func ->
       let lame_excuse t =
         tbody [] [ tr [] [ td
@@ -1317,7 +1317,7 @@ let program_editor_panel =
       [ id "editor" ]
       [ h1 [] [ text title ] ;
         (if edl.is_new then
-          form_input "Name" edl.program_name "enter a func name"
+          form_input "Name" edl.program_name "enter an operation name"
         else group []) ;
         program_editor_panel edl.program_program ;
         br ;
@@ -1348,7 +1348,7 @@ let top_programs =
   div [ id "programs" ] [ h1 [] [ text "Programs" ] ; programs_panel ]
 
 let top_funcs =
-  div [ id "funcs" ] [ h1 [] [ text "Funcs" ] ; funcs_panel ]
+  div [ id "funcs" ] [ h1 [] [ text "Operations" ] ; funcs_panel ]
 
 let event_processor_page =
   with_param sel_func (function
@@ -1394,7 +1394,7 @@ let event_processor_page =
           can_export_with_program func (function
             true -> output_panel
           | false -> p [ clss "nodata" ]
-                       [ text "This func exports no data" ]) ])
+                       [ text "This operation is not typed yet" ]) ])
 
 
 let dom =
