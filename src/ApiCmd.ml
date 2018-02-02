@@ -52,10 +52,9 @@ let check_ok body =
   ignore body ;
   return_unit
 
-let add debug ramen_url name program () =
+let add debug ramen_url name program start () =
   logger := make_logger debug ;
-  (* TODO: option to start would make unit test faster *)
-  let msg = { name ; ok_if_running = false ; start = false ; program } in
+  let msg = { name ; ok_if_running = false ; start ; program } in
   Lwt_main.run (
     http_put_json (ramen_url ^"/graph") put_program_req_ppp msg >>= check_ok)
 

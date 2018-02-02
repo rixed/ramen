@@ -157,13 +157,19 @@ let program =
                    ~docv:"program" [] in
   Arg.(required (pos 1 (some string) None i))
 
+let and_start =
+  let i = Arg.info ~doc:"Also start that new program"
+                   [ "start" ] in
+  Arg.(value (flag i))
+
 let add =
   Term.(
     (const ApiCmd.add
       $ debug
       $ server_url
       $ program_name
-      $ program),
+      $ program
+      $ and_start),
     info "add")
 
 (*
