@@ -1149,8 +1149,7 @@ let stop_all_dependents conf programs program =
                             (parent_program, _) ->
           if parent_program = program.L.name then (
             (let%lwt () =
-              try%lwt RamenProcesses.stop conf programs program'
-              with RamenProcesses.NotRunning -> return_unit in
+              RamenProcesses.stop conf programs program' in
             L.set_editable program' ("Stopped since depends on "^
                                      program.L.name) ;
             return_unit) :: thds,

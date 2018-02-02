@@ -257,15 +257,13 @@ let run conf programs program =
       ) program.funcs ;
       fail exn
 
-exception NotRunning
-
 let stop conf programs program =
   match program.L.status with
-  | Edition _ | Compiled -> fail NotRunning
+  | Edition _ | Compiled -> return_unit
   | Compiling ->
     (* FIXME: do as for Running and make sure run() check the status hasn't
      * changed before launching workers. *)
-    fail NotRunning
+    return_unit
   | Running ->
     !logger.info "Stopping program %s" program.L.name ;
     let now = Unix.gettimeofday () in
@@ -341,8 +339,7 @@ let timeout_programs conf programs =
         !logger.info "Deleting unused program %s after a %gs timeout"
           program_name program.L.timeout ;
         (* Kill first, and only then forget about it. *)
-        let%lwt () =
-          try%lwt stop conf programs program with NotRunning -> return_unit in
+        let%lwt () = stop conf programs program in
         Hashtbl.remove programs program_name ;
         return_unit
       ) else return_unit
