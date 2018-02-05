@@ -114,7 +114,7 @@ let string_of_syntax_error =
   | CannotCompleteTyping s -> "Cannot complete typing of "^ s
   | CannotGenerateCode { func ; cmd ; status } ->
     Printf.sprintf
-      "Cannot generate code: compilation of func %S with command %S %s"
+      "Cannot generate code: compilation of func %S with %S %s"
       func cmd status
   | AliasNotUnique name ->
     "Alias is not unique: "^ name
