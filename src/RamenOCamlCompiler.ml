@@ -58,7 +58,8 @@ let compile_internal conf func_name src_file bin_file =
     List.map (fun d -> conf.C.bundle_dir ^"/"^ d) RamenDepLibs.objfiles @
     [ cmx_file ] in
 
-  let ppf = Format.err_formatter in (* FIXME: direct this to logs *)
+  let tm = Unix.(gettimeofday () |> localtime) in
+  let ppf = BatFormat.formatter_of_output (RamenLog.output ?logdir:!logger.logdir tm)(*Format.err_formatter *) in
   Asmlink.reset () ;
   try
     Optcompile.implementation ~backend ppf src_file
