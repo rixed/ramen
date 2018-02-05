@@ -1,0 +1,6 @@
+Package: ramen
+Version: 1.1.5
+Architecture: amd64
+Maintainer: rixed-github@happyleptic.org
+Depends: libc-dev, openssl, libblas-dev, liblapack-dev
+Description: Event processor tailored for small-scale monitoring

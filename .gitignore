@@ -45,3 +45,5 @@ src/web/alerter_script.min.js
 src/web/style.css
 src/RamenCompilConfig.ml
 bundle
+*.deb
+debtmp/
