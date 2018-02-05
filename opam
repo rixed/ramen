@@ -9,10 +9,10 @@ dev-repo: "https://github.com/rixed/ramen.git"
 build: [make]
 build-test: [make "check"]
 install: [
-  [make "-C" "src" "bin_dir=%{bin}%" "lib_dir=%{lib}%" "install"]
-  [make "-C" "src" "bin_dir=%{bin}%" "lib_dir=%{lib}%" "install-bundle"]
+  [make "bin_dir=%{bin}%" "lib_dir=%{lib}%" "install"]
+  [make "bin_dir=%{bin}%" "lib_dir=%{lib}%" "install-bundle"]
 ]
-remove: [make "-C" "src" "bin_dir=%{bin}%" "lib_dir=%{lib}%" "uninstall"]
+remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%" "uninstall"]
 depends: [
   "ocamlfind" {= "1.7.3"}
   "lwt" {= "3.1.0"}
