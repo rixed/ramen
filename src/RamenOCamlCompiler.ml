@@ -32,7 +32,7 @@ let compile_internal conf func_name src_file bin_file =
   let backend = (module Backend : Backend_intf.S) in
   !logger.info "Compiling %S" src_file ;
   reset () ;
-  native_code := true;
+  native_code := true ;
   binary_annotations := conf.C.debug ;
   debug := conf.C.debug ;
   verbose := conf.C.debug ;
@@ -40,7 +40,7 @@ let compile_internal conf func_name src_file bin_file =
   !logger.debug "Use bundled libraries from %S" conf.C.bundle_dir ;
   include_dirs :=
     List.map (fun d -> conf.C.bundle_dir ^"/"^ d) RamenDepLibs.incdirs ;
-  dlcode := false ;
+  dlcode := true ;
   keep_asm_file := conf.C.debug ;
   (* equivalent to -O2: *)
   if conf.C.debug then (
