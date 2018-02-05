@@ -43,3 +43,4 @@ src/web/ramen_script.min.js
 src/web/alerter_script.js
 src/web/alerter_script.min.js
 src/web/style.css
+src/RamenCompilConfig.ml

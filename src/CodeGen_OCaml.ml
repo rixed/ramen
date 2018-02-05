@@ -1462,35 +1462,24 @@ let with_code_file_for exec_name conf f =
     File.with_file_out ~mode:[`create; `text] fname f ;
   fname
 
-let compile_source exec_name fname =
-  let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
-  and ocamlpath = getenv ~def:"" "OCAMLPATH" in
-  Printf.sprintf
-    "env -i PATH=%s OCAMLPATH=%s \
-       nice -n 20 \
-         ocamlfind ocamlopt -S -g -annot \
-                   -o %s -package ramen -linkpkg %s"
-    (shell_quote path)
-    (shell_quote ocamlpath)
-    (shell_quote exec_name)
-    (shell_quote fname)
-
-let gen_operation conf exec_name in_tuple_typ out_tuple_typ op =
+let compile conf func_name exec_name in_tuple_typ out_tuple_typ op =
   let open Operation in
-  with_code_file_for exec_name conf (fun oc ->
-    Printf.fprintf oc "(* Code generated for func:\n%a\n*)\n"
-      Operation.print op ;
-    (match op with
-    | Yield _->
-      emit_yield oc in_tuple_typ out_tuple_typ op
-    | ReadCSVFile { where = ReadFile { fname ; unlink } ; preprocessor ;
-                    what = { separator ; null ; fields } } ->
-      emit_read_csv_file oc fname unlink separator null fields preprocessor
-    | ReadCSVFile { where = (DownloadFile _ | ReceiveFile) ; _ } ->
-      failwith "This never happens"
-    | ListenFor { net_addr ; port ; proto } ->
-      emit_listen_on oc net_addr port proto
-    | Aggregate _ ->
-      emit_aggregate oc in_tuple_typ out_tuple_typ op)) |>
+  let src_file =
+    with_code_file_for exec_name conf (fun oc ->
+      Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n"
+        func_name
+        Operation.print op ;
+      (match op with
+      | Yield _->
+        emit_yield oc in_tuple_typ out_tuple_typ op
+      | ReadCSVFile { where = ReadFile { fname ; unlink } ; preprocessor ;
+                      what = { separator ; null ; fields } } ->
+        emit_read_csv_file oc fname unlink separator null fields preprocessor
+      | ReadCSVFile { where = (DownloadFile _ | ReceiveFile) ; _ } ->
+        failwith "This never happens"
+      | ListenFor { net_addr ; port ; proto } ->
+        emit_listen_on oc net_addr port proto
+      | Aggregate _ ->
+        emit_aggregate oc in_tuple_typ out_tuple_typ op)) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
-  compile_source exec_name
+  RamenOCamlCompiler.compile conf func_name src_file exec_name

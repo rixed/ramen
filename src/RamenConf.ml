@@ -366,7 +366,9 @@ type conf =
     persist_dir : string ;
     do_persist : bool ; (* false for tests *)
     max_simult_compilations : int ref ;
-    max_history_archives : int }
+    max_history_archives : int ;
+    use_embedded_compiler : bool ;
+    bundle_dir : string }
 
 let parse_operation operation =
   let open RamenParsing in
@@ -552,13 +554,14 @@ let find_func programs program name =
   program, Hashtbl.find program.Program.funcs name
 
 let make_conf do_persist ramen_url debug persist_dir
-              max_simult_compilations max_history_archives =
+              max_simult_compilations max_history_archives
+              use_embedded_compiler bundle_dir =
   { graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
     alerts = Alerter.get_state do_persist persist_dir ;
     archived_incidents = [] ;
     do_persist ; ramen_url ; debug ; persist_dir ;
     max_simult_compilations = ref max_simult_compilations ;
-    max_history_archives }
+    max_history_archives ; use_embedded_compiler ; bundle_dir }
 
 (* AutoCompletion of func/field names *)
 

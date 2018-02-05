@@ -61,7 +61,7 @@ start() {
   PROGRAM=""
   rm -f /tmp/ringbuf_*
 
-  OCAMLPATH=$top_srcdir $ramen start --no-demo -d --seed 1234 &
+  OCAMLPATH=$top_srcdir $ramen start --no-demo -d --seed 1234 --use-embedded-compiler --bundle-dir=$top_srcdir/src/bundle &
   add_temp_pid $!
 }
 

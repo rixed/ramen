@@ -1015,50 +1015,32 @@ let compile_func conf func =
   let open Lwt in
   let exec_name = C.exec_of_func conf.C.persist_dir func in
   mkdir_all ~is_file:true exec_name ;
-  let in_typ = C.tuple_user_type func.N.in_type
-  and out_typ = C.tuple_user_type func.N.out_type in
-  (* In a few cases the worker sees a slightly different version of
-   * the code and the ramen daemon will adapt: *)
-  let operation =
-    let open Operation in
-    match func.N.operation with
-    | ReadCSVFile { where = ReceiveFile ; what ; preprocessor } ->
-      let dir =
-        C.upload_dir_of_func conf.C.persist_dir func in
-      mkdir_all dir ;
-      ReadCSVFile {
-        (* The underscore is to restrict ourself to complete files that
-         * will appear atomically *)
-        where = ReadFile { fname = dir ^"/_*" ; unlink = true } ;
-        what ; preprocessor }
-    | ReadCSVFile { where = DownloadFile _ ; _ } ->
-      failwith "Not Implemented"
-    | x -> x in
-  let%lwt comp_cmd = wrap (fun () ->
-    CodeGen_OCaml.gen_operation
-      conf exec_name in_typ out_typ operation) in
   (* Let's compile (or maybe not) *)
-  mkdir_all ~is_file:true exec_name ;
   if file_exists ~maybe_empty:false ~has_perms:0o100 exec_name then (
     !logger.debug "Reusing binary %S" exec_name ;
     return_unit
-  ) else
-    (* TODO: return an array of arguments and get rid of the shell *)
-    let cmd = Lwt_process.shell comp_cmd in
-    let cmd_name = "compilation of "^ func.N.name in
-    let%lwt status =
-      run_coprocess ~max_count:conf.max_simult_compilations cmd_name cmd in
-    if status = Unix.WEXITED 0 then (
-      !logger.debug "Compiled %s with: %s" func.N.name comp_cmd ;
-      return_unit
-    ) else (
-      (* As this might well be an installation problem, makes this error
-       * report to the GUI: *)
-      let e = CannotGenerateCode {
-        func = func.N.name ; cmd = comp_cmd ;
-        status = string_of_process_status status } in
-      fail (SyntaxError e)
-    )
+  ) else (
+    let in_typ = C.tuple_user_type func.N.in_type
+    and out_typ = C.tuple_user_type func.N.out_type in
+    (* In a few cases the worker sees a slightly different version of
+     * the code and the ramen daemon will adapt: *)
+    let operation =
+      let open Operation in
+      match func.N.operation with
+      | ReadCSVFile { where = ReceiveFile ; what ; preprocessor } ->
+        let dir =
+          C.upload_dir_of_func conf.C.persist_dir func in
+        mkdir_all dir ;
+        ReadCSVFile {
+          (* The underscore is to restrict ourself to complete files that
+           * will appear atomically *)
+          where = ReadFile { fname = dir ^"/_*" ; unlink = true } ;
+          what ; preprocessor }
+      | ReadCSVFile { where = DownloadFile _ ; _ } ->
+        failwith "Not Implemented"
+      | x -> x in
+    CodeGen_OCaml.compile conf func.N.name exec_name in_typ out_typ
+                          operation)
 
 let typed_of_untyped_tuple ?cmp = function
   | C.TypedTuple _ as x -> x

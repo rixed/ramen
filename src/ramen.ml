@@ -82,6 +82,20 @@ let max_history_archives =
                    ~env ["max-history-archives" ; "max-history-files" ] in
   Arg.(value (opt int 200 i))
 
+let use_embedded_compiler =
+  let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
+  let i = Arg.info ~doc:"use embedded compiler rather than calling system one."
+                   ~env [ "use-embedded-compiler"; "use-internal-compiler";
+                          "embedded-compiler"; "internal-compiler" ] in
+  Arg.(value (flag i))
+
+let bundle_dir =
+  let env = Term.env_info "RAMEN_BUNDLE_DIR" in
+  let i = Arg.info ~doc:"Directory where to find libraries for the embedded \
+                         compiler."
+                   ~env [ "bundle-dir" ] in
+  Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))
+
 let alert_conf_json =
   let env = Term.env_info "RAMEN_ALERTER_INITIAL_JSON" in
   let i = Arg.info ~doc:"JSON configuration file for the alerter"
@@ -100,6 +114,8 @@ let server_start =
       $ www_dir
       $ persist_dir
       $ max_history_archives
+      $ use_embedded_compiler
+      $ bundle_dir
       $ http_port
       $ ssl_cert
       $ ssl_key

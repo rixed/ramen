@@ -932,7 +932,7 @@ let cleanup_old_files persist_dir =
   loop ()
 
 let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
-          persist_dir max_history_archives
+          persist_dir max_history_archives use_embedded_compiler bundle_dir
           port cert_opt key_opt alert_conf_json () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemonize then
@@ -944,7 +944,7 @@ let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir debug ;
   let conf =
-    C.make_conf true ramen_url debug persist_dir 5 (* TODO *) max_history_archives in
+    C.make_conf true ramen_url debug persist_dir 5 (* TODO *) max_history_archives use_embedded_compiler bundle_dir in
   (* Start the HTTP server: *)
   let lyr = function
     | [] -> bad_request_exn "Program name missing from URL"
