@@ -427,7 +427,6 @@ uninstall:
 	@ocamlfind remove ramen
 	@echo "Uninstalling binaries and libraries bundle"
 	@$(RM) $(prefix)$(bin_dir)/ramen $(prefix)$(bin_dir)/ramen_configurator
-	@$(RM) -r $(prefix)$(lib_dir)
 
 uninstall-bundle:
 	@echo "Uninstalling libraries bundle"
