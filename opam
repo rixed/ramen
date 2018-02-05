@@ -1,4 +1,5 @@
 opam-version: "1.2"
+version: "1.1.5"
 name: "ramen"
 maintainer: "rixed-opam@happyleptic.org"
 authors: "rixed-opam@happyleptic.org"
@@ -8,10 +9,10 @@ dev-repo: "https://github.com/rixed/ramen.git"
 build: [make]
 build-test: [make "check"]
 install: [
-  make "bin_dir=%{bin}%" "lib_dir=%{lib}%" "install"
-  make "bin_dir=%{bin}%" "lib_dir=%{lib}%" "install-bundle"
+  [make "-C" "src" "bin_dir=%{bin}%" "lib_dir=%{lib}%" "install"]
+  [make "-C" "src" "bin_dir=%{bin}%" "lib_dir=%{lib}%" "install-bundle"]
 ]
-remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%" "uninstall"]
+remove: [make "-C" "src" "bin_dir=%{bin}%" "lib_dir=%{lib}%" "uninstall"]
 depends: [
   "ocamlfind" {= "1.7.3"}
   "lwt" {= "3.1.0"}
@@ -19,7 +20,6 @@ depends: [
   "stdint" {>= "0.5.0"}
   "parsercombinator" {= "0.2"}
   "cohttp-lwt-unix" {= "1.0.0"}
-  "inotify" {= "2.3"}
   "binocle" {>= "0.2"}
   "lacaml" {= "10.0.2"}
   "sqlite3" {= "4.3.2"}
@@ -33,6 +33,7 @@ depends: [
   "qcheck" {test}
   "ocaml-compiler-libs" {build & = "v0.9.0"}
 ]
+depopts: [ "inotify" ]
 depexts: [
   [["debian"] ["libc-dev openssl m4"]]
 ]

@@ -1,5 +1,7 @@
 # vim:ft=sh
 
+top_srcdir="."
+
 fixtures="$top_srcdir/src/tests/fixtures"
 
 nb_tests_tot=0
@@ -61,7 +63,8 @@ start() {
   PROGRAM=""
   rm -f /tmp/ringbuf_*
 
-  OCAMLPATH=$top_srcdir $ramen start --no-demo -d --seed 1234 --use-embedded-compiler --bundle-dir=$top_srcdir/src/bundle &
+  # OCAMLPATH=$top_srcdir/  useless with embedded compiler
+  $ramen start --no-demo -d --seed 1234 --use-embedded-compiler --bundle-dir=$top_srcdir/bundle &
   add_temp_pid $!
 }
 
