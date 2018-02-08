@@ -50,7 +50,8 @@ all: $(INSTALLED)
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top .js .html .adoc
 .PHONY: clean distclean all check dep install uninstall reinstall \
         bundle doc deb \
-        docker-dev docker-demo docker-latest docker-build docker-push
+        docker-dev docker-demo docker-latest docker-build docker-push \
+				docker-deb
 
 %.cmo: %.ml
 	@echo "Compiling $@ into bytecode"
@@ -209,7 +210,9 @@ OCAML_WHERE_LEN = $(shell printf '_%s/' $(OCAML_WHERE) | wc -m | xargs echo)
 
 BUNDLE_DIR = bundle
 
-bundle:
+bundle: bundle/date
+
+bundle/date:
 	@echo "Bundling libs together into $(BUNDLE_DIR)"
 	@$(RM) -r '$(BUNDLE_DIR)'
 	@mkdir -p '$(BUNDLE_DIR)'
@@ -233,6 +236,7 @@ bundle:
 	@# to clear a clang warning:
 	@mkdir $(BUNDLE_DIR)/num
 	@mkdir $(BUNDLE_DIR)/bytes
+	@touch $@
 
 # Bootstrapping this is a bit special as ocamlfind needs to know the ramen
 # package first. Therefore this file is included with the source package for
@@ -438,9 +442,9 @@ reinstall: uninstall install
 
 deb: ramen.$(VERSION).deb
 
-ramen.$(VERSION).deb: $(INSTALLED) bundle
+ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 	@echo "Building debian package $@"
-	@$(RM) -r debtmp
+	@sudo rm -r debtmp
 	@install -d debtmp/usr/bin debtmp/$(lib_dir)
 	@install $(INSTALLED_BIN) debtmp/usr/bin
 	@cp -r $(BUNDLE_DIR) debtmp/$(lib_dir)
@@ -465,6 +469,13 @@ docker-latest: docker/Dockerfile-latest
 	@echo "Building docker image for prod"
 	@docker build -t rixed/ramen:latest --squash -f $< docker/
 
+docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
+	@cp -fl $< $@
+
+docker-deb: docker/Dockerfile-deb docker/ramen.$(VERSION).deb
+	@echo "Building docker image for testing DEB version"
+	@docker build -t rixed/ramen:deb --squash -f $< docker/
+
 docker-build: docker-dev docker-demo docker-latest
 
 docker-push:
@@ -480,7 +491,7 @@ clean:
 	@$(RM) src/*.cm[o] src/*.s src/*.annot src/*.o
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
 	@$(RM) src/ringbuf/*.o src/colcomp/*.o src/colcomp/colcomp_test
-	@$(RM) -r debtmp
+	@sudo rm -r debtmp
 
 distclean: clean
 	@echo "Cleaning all build files"
