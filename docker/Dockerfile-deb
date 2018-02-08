@@ -1,6 +1,10 @@
 # We cannot start from rixed/ramen:dev since it would prevent squashing
 FROM debian:stable-slim
 
+# Do not install recommends:
+RUN echo 'APT::Install-Recommends "0";' > \
+      /etc/apt/apt.conf.d/no_recommends
+
 # Install a few things
 RUN apt-get --yes update && \
     DEBIAN_FRONTEND=noninteractive \
@@ -9,7 +13,9 @@ RUN apt-get --yes update && \
 				openssl \
 				libblas-dev \
 				liblapack-dev \
-        libsqlite3-0
+        libsqlite3-0 \
+        collectd \
+        fprobe
 
 # Do not install recommends:
 RUN echo 'APT::Install-Recommends "0";' > \

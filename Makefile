@@ -476,13 +476,11 @@ docker-deb: docker/Dockerfile-deb docker/ramen.$(VERSION).deb
 	@echo "Building docker image for testing DEB version"
 	@docker build -t rixed/ramen:deb --squash -f $< docker/
 
-docker-build: docker-dev docker-demo docker-latest docker-deb
+docker-build: docker-deb
 
 docker-push:
 	@echo "Uploading docker images"
-	@docker push rixed/ramen:dev
-	@docker push rixed/ramen:demo
-	@docker push rixed/ramen:latest
+	@docker push rixed/ramen:deb
 
 # Cleaning
 
