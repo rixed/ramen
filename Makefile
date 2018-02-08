@@ -443,7 +443,7 @@ deb: ramen.$(VERSION).deb
 
 ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 	@echo "Building debian package $@"
-	@sudo rm -r debtmp
+	@sudo rm -rf debtmp
 	@install -d debtmp/usr/bin debtmp/$(lib_dir)
 	@install $(INSTALLED_BIN) debtmp/usr/bin
 	@cp -r $(BUNDLE_DIR) debtmp/$(lib_dir)
@@ -476,7 +476,7 @@ clean:
 	@$(RM) src/*.cm[o] src/*.s src/*.annot src/*.o
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
 	@$(RM) src/ringbuf/*.o src/colcomp/*.o src/colcomp/colcomp_test
-	@sudo rm -r debtmp
+	@sudo rm -rf debtmp
 
 distclean: clean
 	@echo "Cleaning all build files"
