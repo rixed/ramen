@@ -611,6 +611,7 @@ let timeseries conf headers body =
       with Not_found -> bad_request ("func "^ from ^" does not exist") in
     let%lwt _program, parent =
       func_of_name programs parent_program parent_name in
+    (* FIXME: this should be a program directly, so that we could get rid of parse_operation *)
     let%lwt op_text =
       if select_x = "" then (
         let open Operation in
