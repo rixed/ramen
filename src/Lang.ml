@@ -1817,6 +1817,7 @@ struct
 
   let print fmt =
     let sep = ", " in
+    let print_single_quoted oc s = Printf.fprintf oc "'%s'" s in
     function
     | Yield { fields ; every } ->
       Printf.fprintf fmt "YIELD %a EVERY %g SECONDS"
@@ -1825,8 +1826,8 @@ struct
     | Aggregate { fields ; and_all_others ; where ; event_time ;
                   force_export ; notify_url ; key ; top ; commit_when ;
                   commit_before ; flush_how ; from } ->
-      Printf.fprintf fmt "FROM '%a' SELECT %a%s%s"
-        (List.print ~first:"" ~last:"" ~sep String.print) from
+      Printf.fprintf fmt "FROM %a SELECT %a%s%s"
+        (List.print ~first:"" ~last:"" ~sep print_single_quoted) from
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "") ;
