@@ -2261,9 +2261,10 @@ struct
               | TopByClause top ->
                 fields, and_all_others, where, export, event_time, notify_url, key,
                 Some top, commit_before, commit_when, flush_how, from
-              | FromClause from ->
+              | FromClause from' ->
                 fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from
+                top, commit_before, commit_when, flush_how,
+                (List.rev_append from' from)
             ) default_select clauses in
         let commit_when, top =
           match top with
