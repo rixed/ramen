@@ -41,7 +41,7 @@ WORKDIR /ramen
 ENTRYPOINT ["/start"]
 
 # Default arguments if not provided on `docker run` command line:
-CMD ["--use-embedded-compiler --no-demo"]
+CMD ["--use-embedded-compiler --to-stderr"]
 
 # TODO: where to store stuff
 # CMD ["--directories etc"]
