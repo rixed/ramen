@@ -50,8 +50,7 @@ all: $(INSTALLED)
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top .js .html .adoc
 .PHONY: clean distclean all check dep install uninstall reinstall \
         bundle doc deb \
-        docker-dev docker-demo docker-latest docker-build docker-push \
-				docker-deb
+        docker-latest docker-build docker-push
 
 %.cmo: %.ml
 	@echo "Compiling $@ into bytecode"
@@ -457,30 +456,18 @@ ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 
 # Docker image
 
-docker-dev: docker/Dockerfile-dev
-	@echo "Building docker image for dev"
-	@docker build -t rixed/ramen:dev --squash -f $< docker/
-
-docker-demo: docker/Dockerfile-demo
-	@echo "Building docker image for demo"
-	@docker build -t rixed/ramen:demo --squash -f $< docker/
-
-docker-latest: docker/Dockerfile-latest
-	@echo "Building docker image for prod"
-	@docker build -t rixed/ramen:latest --squash -f $< docker/
-
 docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
 	@cp -fl $< $@
 
-docker-deb: docker/Dockerfile-deb docker/ramen.$(VERSION).deb
+docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo "Building docker image for testing DEB version"
-	@docker build -t rixed/ramen:deb --squash -f $< docker/
+	@docker build -t rixed/ramen:latest --squash -f $< docker/
 
-docker-build: docker-deb
+docker-build: docker-latest
 
 docker-push:
 	@echo "Uploading docker images"
-	@docker push rixed/ramen:deb
+	@docker push rixed/ramen:latest
 
 # Cleaning
 
