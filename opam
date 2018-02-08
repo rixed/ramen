@@ -1,5 +1,5 @@
 opam-version: "1.2"
-version: "1.1.5"
+version: "1.2.0"
 name: "ramen"
 maintainer: "rixed-opam@happyleptic.org"
 authors: "rixed-opam@happyleptic.org"
