@@ -82,6 +82,7 @@ let max_history_archives =
                    ~env ["max-history-archives" ; "max-history-files" ] in
   Arg.(value (opt int 200 i))
 
+(* Make it an enum option so that it's easier to change the default *)
 let use_embedded_compiler =
   let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
   let i = Arg.info ~doc:"use embedded compiler rather than calling system one."
