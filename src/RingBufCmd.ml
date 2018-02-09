@@ -3,8 +3,8 @@ open RamenLog
 
 (* Dequeue command *)
 
-let dequeue debug file n () =
-  logger := make_logger debug ;
+let dequeue copts file n () =
+  logger := make_logger copts.ApiCmd.debug ;
   let open RingBuf in
   let rb = load file in
   let rec dequeue_loop n =
@@ -19,8 +19,8 @@ let dequeue debug file n () =
 
 (* Summary command *)
 
-let summary debug file () =
-  logger := make_logger debug ;
+let summary copts file () =
+  logger := make_logger copts.ApiCmd.debug ;
   let open RingBuf in
   let rb = load file in
   let s = stats rb in

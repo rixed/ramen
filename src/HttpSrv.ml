@@ -932,21 +932,9 @@ let cleanup_old_files persist_dir =
   in
   loop ()
 
-let start debug daemonize rand_seed no_demo to_stderr ramen_url www_dir
-          persist_dir max_history_archives use_embedded_compiler bundle_dir
-          port cert_opt key_opt alert_conf_json () =
-  let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
-  if to_stderr && daemonize then
-    failwith "Options --daemonize and --to-stderr are incompatible." ;
-  (match rand_seed with
-  | None -> Random.self_init ()
-  | Some seed -> Random.init seed) ;
-  let logdir = if to_stderr then None else Some (persist_dir ^"/log") in
-  Option.may mkdir_all logdir ;
-  logger := make_logger ?logdir debug ;
-  let conf =
-    C.make_conf true ramen_url debug persist_dir 5 (* TODO *) max_history_archives use_embedded_compiler bundle_dir in
-  (* Start the HTTP server: *)
+(* Start the HTTP server: *)
+let start conf daemonize demo www_dir port cert_opt key_opt
+          alert_conf_json =
   let lyr = function
     | [] -> bad_request_exn "Program name missing from URL"
     | lst -> String.concat "/" lst in

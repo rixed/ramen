@@ -2,14 +2,28 @@ open Cmdliner
 open Batteries
 
 (*
- * Start the event processor
+ * Common options
  *)
 
-let debug =
-  let env = Term.env_info "RAMEN_DEBUG" in
-  let i = Arg.info ~doc:"increase verbosity"
-                   ~env [ "d"; "debug" ] in
-  Arg.(value (flag i))
+let copts =
+  let docs = Manpage.s_common_options in
+  let debug =
+    let env = Term.env_info "RAMEN_DEBUG" in
+    let i = Arg.info ~doc:"increase verbosity"
+                     ~docs ~env [ "d"; "debug" ] in
+    Arg.(value (flag i)) in
+  let server_url =
+    let env = Term.env_info "RAMEN_URL" in
+    let i = Arg.info ~doc:"URL to reach ramen"
+                     ~docs ~env [ "ramen-url" ] in
+    Arg.(value (opt string "http://127.0.0.1:29380" i))
+  in
+  Term.(const (fun debug server_url -> ApiCmd.{ debug ; server_url }) $
+              debug $ server_url)
+
+(*
+ * Start the event processor
+ *)
 
 let daemonize =
   let env = Term.env_info "RAMEN_DAEMONIZE" in
@@ -55,12 +69,6 @@ let ssl_key =
                    ~env [ "ssl-key" ] in
   Arg.(value (opt (some string) None i))
 
-let server_url =
-  let env = Term.env_info "RAMEN_URL" in
-  let i = Arg.info ~doc:"URL to reach ramen"
-                   ~env [ "ramen-url" ] in
-  Arg.(value (opt string "http://127.0.0.1:29380" i))
-
 let www_dir =
   let env = Term.env_info "RAMEN_WWW_DIR" in
   let i = Arg.info ~doc:"Directory where to read the files served \
@@ -105,13 +113,12 @@ let alert_conf_json =
 
 let server_start =
   Term.(
-    (const HttpSrv.start
-      $ debug
+    (const ApiCmd.start
+      $ copts
       $ daemonize
       $ rand_seed
       $ no_demo
       $ to_stderr
-      $ server_url
       $ www_dir
       $ persist_dir
       $ max_history_archives
@@ -130,8 +137,7 @@ let server_start =
 let server_stop =
   Term.(
     (const ApiCmd.shutdown
-      $ debug
-      $ server_url),
+      $ copts),
     info "shutdown")
 
 (* TODO: check that this is actually the name of a ringbuffer file *)
@@ -148,7 +154,7 @@ let nb_tuples =
 let dequeue =
   Term.(
     (const RingBufCmd.dequeue
-      $ debug
+      $ copts
       $ rb_file
       $ nb_tuples),
     info "dequeue")
@@ -156,7 +162,7 @@ let dequeue =
 let summary =
   Term.(
     (const RingBufCmd.summary
-      $ debug
+      $ copts
       $ rb_file),
     info "ringbuf-summary")
 
@@ -182,8 +188,7 @@ let and_start =
 let add =
   Term.(
     (const ApiCmd.add
-      $ debug
-      $ server_url
+      $ copts
       $ program_name
       $ program
       $ and_start),
@@ -196,23 +201,20 @@ let add =
 let compile =
   Term.(
     (const ApiCmd.compile
-      $ debug
-      $ server_url),
+      $ copts),
     info "compile")
 
 let run =
   Term.(
     (const ApiCmd.run
-      $ debug
-      $ server_url),
+      $ copts),
     info "run")
 
 let stop =
   Term.(
     (const ApiCmd.stop
-      $ debug
-      $ program_name
-      $ server_url),
+      $ copts
+      $ program_name),
     info "stop")
 
 (*
@@ -247,8 +249,7 @@ let continuous =
 let tail =
   Term.(
     (const ApiCmd.tail
-      $ debug
-      $ server_url
+      $ copts
       $ func_name 0
       $ as_csv
       $ with_header
@@ -264,8 +265,7 @@ let max_results =
 let export =
   Term.(
     (const ApiCmd.export
-      $ debug
-      $ server_url
+      $ copts
       $ func_name 0
       $ as_csv
       $ with_header
@@ -307,8 +307,7 @@ let consolidation =
 let timeseries =
   Term.(
     (const ApiCmd.timeseries
-      $ debug
-      $ server_url
+      $ copts
       $ since
       $ until
       $ max_data_points
@@ -324,8 +323,7 @@ let timeseries =
 let timerange =
   Term.(
     (const ApiCmd.timerange
-      $ debug
-      $ server_url
+      $ copts
       $ func_name 0),
     info "timerange")
 
@@ -334,9 +332,11 @@ let timerange =
  *)
 
 let default =
+  let sdocs = Manpage.s_common_options in
   let doc = "Ramen Stream Processor" in
+  let version = RamenVersions.release_tag in
   Term.((ret (const (`Help (`Pager, None)))),
-        info "Ramen" ~doc)
+        info "Ramen" ~version ~doc ~sdocs)
 
 let () =
   match Term.eval_choice default [
@@ -345,5 +345,5 @@ let () =
     add ; compile ; run ; stop ;
     tail ; timeseries ; timerange
   ] with `Error _ -> exit 1
-       | `Version | `Help -> exit 42
+       | `Version | `Help -> exit 0
        | `Ok f -> f ()

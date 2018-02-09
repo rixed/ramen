@@ -4,6 +4,11 @@ open Cohttp
 open Cohttp_lwt_unix
 open RamenLog
 open RamenSharedTypes
+open Helpers
+module C = RamenConf
+
+type copts =
+  { debug : bool ; server_url : string }
 
 let enc = Uri.pct_encode
 
@@ -52,35 +57,53 @@ let check_ok body =
   ignore body ;
   return_unit
 
-let add debug ramen_url name program start () =
-  logger := make_logger debug ;
+let add copts name program start () =
+  logger := make_logger copts.debug ;
   let msg = { name ; ok_if_running = false ; start ; program } in
   Lwt_main.run (
-    http_put_json (ramen_url ^"/graph") put_program_req_ppp msg >>= check_ok)
+    http_put_json (copts.server_url ^"/graph") put_program_req_ppp msg >>= check_ok)
 
-let compile debug ramen_url () =
-  logger := make_logger debug ;
+let compile copts () =
+  logger := make_logger copts.debug ;
   Lwt_main.run (
-    http_get (ramen_url ^"/compile") >>= check_ok)
+    http_get (copts.server_url ^"/compile") >>= check_ok)
 
-let run debug ramen_url () =
-  logger := make_logger debug ;
+let run copts () =
+  logger := make_logger copts.debug ;
   Lwt_main.run (
-    http_get (ramen_url ^"/run") >>= check_ok)
+    http_get (copts.server_url ^"/run") >>= check_ok)
 
-let stop debug program_name ramen_url () =
-  logger := make_logger debug ;
+let start copts daemonize rand_seed no_demo to_stderr www_dir persist_dir
+          max_history_archives use_embedded_compiler bundle_dir http_port
+          ssl_cert ssl_key alert_conf_json () =
+  let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
+  if to_stderr && daemonize then
+    failwith "Options --daemonize and --to-stderr are incompatible." ;
+  (match rand_seed with
+  | None -> Random.self_init ()
+  | Some seed -> Random.init seed) ;
+  let logdir = if to_stderr then None else Some (persist_dir ^"/log") in
+  Option.may mkdir_all logdir ;
+  logger := make_logger ?logdir copts.debug ;
+  let conf =
+    C.make_conf true copts.server_url copts.debug persist_dir 5 (* TODO *)
+                max_history_archives use_embedded_compiler bundle_dir in
+  HttpSrv.start conf daemonize demo www_dir http_port ssl_cert ssl_key
+                alert_conf_json
+
+let stop copts program_name () =
+  logger := make_logger copts.debug ;
   Lwt_main.run (
     let url = if program_name = "" then
-      ramen_url ^"/stop"
+      copts.server_url ^"/stop"
     else
-      ramen_url ^"/stop/"^ enc program_name in
+      copts.server_url ^"/stop/"^ enc program_name in
     http_get url >>= check_ok)
 
-let shutdown debug ramen_url () =
-  logger := make_logger debug ;
+let shutdown copts () =
+  logger := make_logger copts.debug ;
   Lwt_main.run (
-    let url = ramen_url ^"/shutdown" in
+    let url = copts.server_url ^"/shutdown" in
     (* Do not expect any response for now. *)
     try%lwt
       let%lwt _ = Client.get (Uri.of_string url) in
@@ -182,8 +205,8 @@ let ppp_of_string_exc ppp s =
   try PPP.of_string_exc ppp s |> return
   with e -> fail e
 
-let export_and_display ramen_url func_name as_csv with_header continuous =
-  let url = ramen_url ^"/export/"^
+let export_and_display server_url func_name as_csv with_header continuous =
+  let url = server_url ^"/export/"^
     (match String.rsplit ~by:"/" func_name with
     | exception Not_found -> enc func_name
     | program, func -> enc program ^"/"^ enc func) in
@@ -206,24 +229,24 @@ let export_and_display ramen_url func_name as_csv with_header continuous =
   get_next
 
 (* TODO: separator and null placeholder for csv *)
-let tail debug ramen_url func_name as_csv with_header last continuous () =
-  logger := make_logger debug ;
-  let exporter = export_and_display ramen_url func_name as_csv with_header continuous in
+let tail copts func_name as_csv with_header last continuous () =
+  logger := make_logger copts.debug ;
+  let exporter = export_and_display copts.server_url func_name as_csv with_header continuous in
   let max_results =
     if continuous then None else Some last
   and since = ~- last in
   Lwt_main.run (exporter ?max_results ~since ())
 
 (* TODO: separator and null placeholder for csv *)
-let export debug ramen_url func_name as_csv with_header max_results continuous () =
-  logger := make_logger debug ;
-  let exporter = export_and_display ramen_url func_name as_csv with_header continuous in
+let export copts func_name as_csv with_header max_results continuous () =
+  logger := make_logger copts.debug ;
+  let exporter = export_and_display copts.server_url func_name as_csv with_header continuous in
   Lwt_main.run (exporter ?max_results ())
 
-let timeseries debug ramen_url since until max_data_points
+let timeseries copts since until max_data_points
                operation data_field consolidation () =
-  logger := make_logger debug ;
-  let url = ramen_url ^"/timeseries"
+  logger := make_logger copts.debug ;
+  let url = copts.server_url ^"/timeseries"
   and msg =
     { since ; until ; max_data_points ;
       timeseries = [
@@ -236,9 +259,9 @@ let timeseries debug ramen_url since until max_data_points
     return_unit in
   Lwt_main.run th
 
-let timerange debug ramen_url func_name () =
-  logger := make_logger debug ;
-  let url = ramen_url ^"/timerange/"^
+let timerange copts func_name () =
+  logger := make_logger copts.debug ;
+  let url = copts.server_url ^"/timerange/"^
     (match String.rsplit ~by:"/" func_name with
     | exception Not_found -> enc func_name
     | program, func -> enc program ^"/"^ enc func) in
