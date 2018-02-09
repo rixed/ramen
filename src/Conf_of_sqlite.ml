@@ -139,8 +139,8 @@ let flow_alert_params_query =
           600 AS obs_window, \
           90. AS percentile, \
           NULL AS \"min\", \
-          bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
-          bandw_min_asc AS \"relevance\", \
+          (bandwrate_alert_asc * bandw_available_asc / 100) / 8 AS \"max\", \
+          bandw_min_asc / 8 AS \"relevance\", \
           rtt_alert_asc / 1000000.0 AS \"max_rtt\", \
           rr_alert_asc AS \"max_rr\" \
    FROM bcnthresholds \
@@ -154,8 +154,8 @@ let flow_alert_params_query =
           600 AS obs_window, \
           90. AS percentile, \
           NULL AS \"min\", \
-          bandwrate_alert_dsc * bandw_available_dsc / 100 AS \"max\", \
-          bandw_min_dsc AS \"relevance\", \
+          (bandwrate_alert_dsc * bandw_available_dsc / 100) / 8 AS \"max\", \
+          bandw_min_dsc / 8 AS \"relevance\", \
           rtt_alert_dsc / 1000000.0 AS \"max_rtt\", \
           rr_alert_dsc AS \"max_rr\" \
    FROM bcnthresholds \
@@ -169,8 +169,8 @@ let flow_alert_params_query =
           600 AS obs_window, \
           90. AS percentile, \
           NULL AS \"min\", \
-          bandwrate_alert_asc * bandw_available_asc / 100 AS \"max\", \
-          bandw_min_asc AS \"relevance\", \
+          (bandwrate_alert_asc * bandw_available_asc / 100) / 8 AS \"max\", \
+          bandw_min_asc / 8 AS \"relevance\", \
           rtt_alert_asc / 1000000.0 AS \"max_rtt\", \
           rr_alert_asc AS \"max_rr\" \
     FROM bcnthresholds \
