@@ -1,0 +1,55 @@
+# FROM ADDED BY MAKEFILE
+# vim: ft=dockerfile
+
+# Do not install recommends
+RUN echo 'APT::Install-Recommends "0";' > \
+      /etc/apt/apt.conf.d/no_recommends
+
+# Install a few things
+RUN apt-get --yes update && \
+    DEBIAN_FRONTEND=noninteractive \
+    apt-get --yes install \
+      aspcud \
+      bzip2 \
+      ca-certificates \
+      coreutils \
+      git \
+      m4 \
+      make \
+      ocaml-nox \
+      patch \
+      rsync \
+      sudo \
+      unzip \
+      wget
+
+RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh -O - | \
+    sh -s /usr/local/bin
+
+RUN /usr/local/bin/opam init --comp 4.05.0+flambda --no-setup
+
+# Environment
+ENV CAML_LD_LIBRARY_PATH=/root/.opam/4.05.0+flambda/lib/stublibs \
+    PATH=/root/.opam/4.05.0+flambda/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin
+
+RUN opam update && \
+    opam install depext && \
+    opam depext --noninteractive \
+      conf-gsl conf-openblas conf-pkg-config sqlite3 && \
+    opam repo add --priority=1 ocalme \
+      git://github.com/rixed/ocalme-opam-repository.git
+
+RUN echo "~0"
+
+# Compile Ramen from git (we need the makefile to build the deb)
+RUN cd /root &&\
+    git clone https://github.com/rixed/ramen.git && \
+    cd ramen && \
+    opam pin --no-action add ramen /root/ramen && \
+    opam install --deps-only ramen
+
+COPY build-deb /
+
+LABEL maintainer="rixed-docker@happyleptic.org"
+
+ENTRYPOINT ["/build-deb"]

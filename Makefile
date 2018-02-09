@@ -50,7 +50,7 @@ all: $(INSTALLED)
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top .js .html .adoc
 .PHONY: clean distclean all check dep install uninstall reinstall \
         bundle doc deb \
-        docker-latest docker-build docker-push
+        docker-latest docker-build-image docker-build-builder docker-push
 
 %.cmo: %.ml
 	@echo "Compiling $@ into bytecode"
@@ -463,11 +463,23 @@ docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo "Building docker image for testing DEB version"
 	@docker build -t rixed/ramen:latest --squash -f $< docker/
 
-docker-build: docker-latest
+docker-build-builder: docker/Dockerfile-builder
+	@for distrib in jessie stretch ; do \
+		echo "Building docker image for building the DEB packages for $$distrib" ;\
+		echo 'FROM debian:'$$distrib > docker/Dockerfile-builder.$$distrib ;\
+		cat docker/Dockerfile-builder >> docker/Dockerfile-builder.$$distrib ;\
+		docker build -t rixed/ramen-builder:$$distrib \
+		             -f docker/Dockerfile-builder.$$distrib docker/ ;\
+		$(RM) docker/Dockerfile-builder.$$distrib ;\
+	done
+
+docker-build-image: docker-latest
 
 docker-push:
 	@echo "Uploading docker images"
 	@docker push rixed/ramen:latest
+	@docker push rixed/ramen-builder:jessie
+	@docker push rixed/ramen-builder:stretch
 
 # Cleaning
 

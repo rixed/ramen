@@ -1,0 +1,49 @@
+#!/bin/sh
+
+set -e
+
+cd /root/ramen
+
+while true ; do
+  echo
+  echo "1) Build " $(grep ^VERSION Makefile)
+  echo "2) Pull"
+  echo "3) Checkout a particular tag/sha1"
+  echo -n "Choice: "
+  read REPLY
+
+  case "$REPLY" in
+    (2)
+      echo "Updating the source tree"
+      git checkout master && git pull
+      ;;
+    (3)
+      echo -n "What version: "
+      read REPLY
+      if test -n "$REPLY" ; then
+        echo "Checking out $REPLY"
+        git checkout "$REPLY" || true
+      else
+        echo "never mind."
+      fi
+      ;;
+    (1)
+      echo "Cleaning previous deb files..."
+      rm -f ramen.*.deb
+
+      # Also, make bundle will work only if the opam version is up to date:
+      opam install --yes ramen || opam upgrade --yes ramen
+      # Now we can build the deb:
+      make deb
+
+      file=$(ls -1 ramen.*.deb)
+
+      echo "Done. Get your file with:"
+      echo "docker cp <container id>:/root/ramen/$file ."
+      echo
+      ;;
+    (*)
+      echo "Redo from start?"
+      ;;
+  esac
+done
