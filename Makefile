@@ -211,7 +211,7 @@ BUNDLE_DIR = bundle
 
 bundle: bundle/date
 
-bundle/date:
+bundle/date: src/codegen.cmxa
 	@echo "Bundling libs together into $(BUNDLE_DIR)"
 	@$(RM) -r '$(BUNDLE_DIR)'
 	@mkdir -p '$(BUNDLE_DIR)'
