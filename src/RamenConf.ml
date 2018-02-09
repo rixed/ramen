@@ -154,7 +154,8 @@ struct
       (* Parents are either in this program or a program _below_. *)
       parents : (string * string) list ;
       (* Worker info, only relevant if it is running: *)
-      mutable pid : int option }
+      mutable pid : int option ;
+      mutable last_exit : string }
 
   let fq_name func = func.program ^"/"^ func.name
 
@@ -214,16 +215,13 @@ struct
       (Info.Program.string_of_status status) ;
     program.status <- status ;
     program.last_status_change <- Unix.gettimeofday () ;
-    (* If we are not running, clean pid info *)
-    if status <> Running then
-      Hashtbl.iter (fun _ n -> n.Func.pid <- None) program.funcs ;
     (* If we are now in Edition _untype_ the funcs *)
     match status with Edition _ ->
       Hashtbl.iter (fun _ n ->
         let open Func in
         n.in_type <- UntypedTuple (make_temp_tup_typ ()) ;
-        n.out_type <- UntypedTuple (make_temp_tup_typ ()) ;
-        n.pid <- None) program.funcs
+        n.out_type <- UntypedTuple (make_temp_tup_typ ())
+      ) program.funcs
     | _ -> ()
 
   let is_typed program =
@@ -424,6 +422,9 @@ let fold_funcs programs init f =
       f prev program func
     ) program.Program.funcs prev)
 
+let iter_funcs programs f =
+  fold_funcs programs () (fun () prog func -> f prog func)
+
 let program_func_of_user_string ?default_program s =
   let s = String.trim s in
   (* rsplit because we might want to have '/'s in the program name. *)
@@ -461,7 +462,7 @@ let make_func program_name func_name operation =
      * edited: *)
     in_type = UntypedTuple (make_temp_tup_typ ()) ;
     out_type = UntypedTuple (make_temp_tup_typ ()) ;
-    pid = None }
+    pid = None ; last_exit = "" }
 
 let make_program ?(timeout=0.) programs name program =
   assert (String.length name > 0) ;

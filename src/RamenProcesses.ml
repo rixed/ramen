@@ -110,23 +110,42 @@ let rec run_func conf programs program func =
           pid (Printexc.to_string exn) ;
         return_unit
       | _, status ->
-        (* TODO: save this error on the func record *)
-        !logger.info "Function %s (pid %d) %s."
-          (N.fq_name func) pid (Helpers.string_of_process_status status) ;
-        (* We might want to restart it: *)
-        (match status with Unix.WSIGNALED signal when signal <> Sys.sigterm ->
-          let%lwt () = Lwt_unix.sleep 3. in
-          C.with_wlock conf (fun programs ->
-            (* Look again for that program by name: *)
-            match C.find_func programs program.L.name func.N.name with
-            | exception Not_found -> return_unit
-            | program, func ->
-                if program.status <> Running then return_unit else (
-                  !logger.info "Restarting func %s which is supposed to be running."
-                    (N.fq_name func) ;
-                  (* Note: run_func will start another waiter for that other worker. *)
-                  run_func conf programs program func))
-         | _ -> return_unit)
+        let status_str = Helpers.string_of_process_status status in
+        !logger.info "Operation %s (pid %d) %s."
+          (N.fq_name func) pid status_str ;
+        (* First and foremost we want to set the error status and clean
+         * the PID of this process (if only because another thread might
+         * wait for the result of its own kill) *)
+        C.with_wlock conf (fun programs ->
+          (* Look again for that program by name: *)
+          match C.find_func programs func.N.program func.N.name with
+          | exception Not_found ->
+              !logger.error "Operation %s (pid %d) %s is not \
+                             in the configuration any more!"
+                (N.fq_name func) pid status_str ;
+              return_unit
+          | program, func ->
+              (* Check this is still the same program: *)
+              if func.pid <> Some pid then (
+                !logger.error "Operation %s (pid %d) %s is in \
+                               the configuration under pid %a!"
+                  (N.fq_name func) pid status_str
+                  (Option.print Int.print) func.pid ;
+                return_unit
+              ) else (
+                func.pid <- None ;
+                func.last_exit <- status_str ;
+                (* Now we might want to restart it: *)
+                (match status with Unix.WSIGNALED signal
+                  when signal <> Sys.sigterm && signal <> Sys.sigkill ->
+                    if program.status <> Running then return_unit else (
+                      !logger.info "Restarting func %s which is supposed to be running."
+                        (N.fq_name func) ;
+                      let%lwt () = Lwt_unix.sleep (Random.float 2.) in
+                      (* Note: run_func will start another waiter for that
+                       * other worker so our job is done. *)
+                      run_func conf programs program func)
+                | _ -> return_unit)))
     in
     wait_child ()) ;
   (* Update the parents out_ringbuf_ref if it's in another program (otherwise
@@ -151,6 +170,41 @@ let rec run_func conf programs program func =
            * have at that time (including us, if we are still running).  *)
           RamenOutRef.add out_ref (input_spec conf parent func)
     ) func.N.parents
+
+(* We take _programs as a sign that we have the lock *)
+let kill_worker conf _programs func pid =
+  let try_kill pid signal =
+    try Unix.kill pid signal
+    with Unix.Unix_error _ as e ->
+      !logger.error "Cannot kill pid %d: %s" pid (Printexc.to_string e)
+  in
+  (* First ask politely: *)
+  !logger.info "Killing worker %s (pid %d)" (N.fq_name func) pid ;
+  try_kill pid Sys.sigterm ;
+  (* No the worker is supposed to tidy up everything and terminate.
+   * Then we have a thread that is waiting for him, perform a quick
+   * autopsy and clear the pid ; as soon as he get a chance because
+   * we are currently holding the conf.
+   * We want to check in a few seconds that this had happened: *)
+  async (fun () ->
+    let%lwt () = Lwt_unix.sleep (1. +. Random.float 1.) in
+    C.with_rlock conf (fun programs ->
+      !logger.debug "Checking that pid %d is not around any longer." pid ;
+      (* Find that program again, and if it's still having the same pid
+       * then shoot him down: *)
+      match C.find_func programs func.N.program func.N.name with
+      | exception Not_found -> return_unit (* that's fine *)
+      | program, func ->
+        (* Here it is assumed that the program was not launched again
+         * within 2 seconds with the same pid. In a world where this
+         * assumption wouldn't hold we would have to increment a counter
+         * in the func for instance... *)
+        if func.N.pid = Some pid then (
+          !logger.warning "Killing worker %s (pid %d) with bigger guns"
+            (N.fq_name func) pid ;
+          try_kill pid Sys.sigkill ;
+        ) ;
+        return_unit))
 
 let stop conf programs program =
   match program.L.status with
@@ -183,11 +237,7 @@ let stop conf programs program =
                 RamenOutRef.remove out_ref this_in
             ) func.N.parents in
           (* Get rid of the worker *)
-          let open Unix in
-          (try kill pid Sys.sigterm
-           with Unix_error _ as e ->
-            !logger.error "Cannot kill pid %d: %s" pid (Printexc.to_string e)) ;
-          func.N.pid <- None ;
+          kill_worker conf programs func pid ;
           return_unit
       ) program_funcs in
     L.set_status program Compiled ;

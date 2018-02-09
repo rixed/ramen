@@ -41,7 +41,7 @@ let tuple_typ =
 
 external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
 
-let collector ~inet_addr ~port k =
+let collector ~inet_addr ~port ?while_ k =
   (* Listen to incoming UDP datagrams on given port: *)
   let serve sender buffer recv_len =
     !logger.debug "Received %d bytes from collectd @ %s" recv_len sender ;
@@ -49,7 +49,7 @@ let collector ~inet_addr ~port k =
     Array.fold_left (fun th tuple -> th >>= fun () -> k tuple) return_unit
   in
   (* collectd current network.c buffer is 1452 bytes: *)
-  udp_server ~buffer_size:1500 ~inet_addr ~port serve
+  udp_server ~buffer_size:1500 ~inet_addr ~port ?while_ serve
 
 let test ?(port=25826) () =
   logger := make_logger true ;

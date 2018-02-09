@@ -68,6 +68,7 @@ let func_info_of_func programs func =
     exporting ;
     signature = if func.N.signature = "" then None else Some func.N.signature ;
     pid = func.N.pid ;
+    last_exit = func.N.last_exit ;
     input_type = C.info_of_tuple_type func.N.in_type ;
     output_type = C.info_of_tuple_type func.N.out_type ;
     parents = List.map (fun (l, n) -> l ^"/"^ n) func.N.parents ;
@@ -1092,14 +1093,35 @@ let start conf daemonize demo www_dir port cert_opt key_opt
     let%lwt () = Lwt_unix.sleep 0.3 in
     if !quit then (
       !logger.info "Waiting for the wlock for quitting..." ;
-      C.with_wlock conf (fun programs ->
-        !logger.info "Stopping all workers..." ;
-        let%lwt () = stop_programs_ conf programs None in
-        List.iter (fun condvar ->
-          !logger.info "Signaling condvar..." ;
-          Lwt_condition.signal condvar ()) !http_server_done ;
-        !logger.info "Quitting monitor_quit..." ;
-        return_unit)
+      let%lwt () =
+        C.with_wlock conf (fun programs ->
+          !logger.info "Stopping HTTP server(s)..." ;
+          List.iter (fun condvar ->
+            Lwt_condition.signal condvar ()) !http_server_done ;
+          !logger.info "Stopping all workers..." ;
+          let%lwt () = stop_programs_ conf programs None in
+          return_unit) in
+      !logger.info "Waiting for all workers to terminate..." ;
+      let last_nb_running = ref 0 in
+      let rec loop () =
+        let%lwt still_running =
+          C.with_rlock conf (fun programs ->
+            let nb_running =
+              C.fold_funcs programs 0 (fun c program func ->
+                if func.N.pid = None then c else c + 1) in
+            if nb_running > 0 then (
+              if nb_running != !last_nb_running then (
+                !logger.info "%d workers are still working..." nb_running ;
+                last_nb_running := nb_running
+              ) ;
+              return_true
+            ) else return_false) in
+        if still_running then (
+          Lwt_unix.sleep 0.1 >>= loop
+        ) else return_unit in
+      let%lwt () = loop () in
+      !logger.info "Quitting monitor_quit..." ;
+      return_unit
     ) else monitor_quit () in
   (* Prepare ringbuffers for reports and notifications: *)
   let rb_name = C.report_ringbuf conf in

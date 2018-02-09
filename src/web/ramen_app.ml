@@ -142,6 +142,7 @@ struct
       stats : worker_stats ;
 
       pid : int option ;
+      last_exit : string ;
       signature : string option }
 
   let name_of_id id =
@@ -543,6 +544,7 @@ let func_of_js program js =
     stats ;
     last_stats = stats ; (* set later by update_func *)
     pid = of_opt_field js "pid" to_int ;
+    last_exit = of_field js "last_exit" Js.to_string ;
     signature = of_opt_field js "signature" Js.to_string }
 
 let update_graph total g =

@@ -106,10 +106,15 @@ let read_cidr6 tx offs =
   let len = read_u16 tx (offs + RingBufLib.round_up_to_rb_word 16) in
   addr, Uint16.to_int len
 
-let read_ringbuf ?delay_rec rb f =
+let read_ringbuf ?(while_=(fun () -> true)) ?delay_rec rb f =
   let open Lwt in
   let rec read_next () =
-    let%lwt tx = RingBufLib.retry_for_ringbuf ?delay_rec dequeue_alloc rb in
-    f tx >>= read_next
+    if while_ () then (
+      let%lwt tx =
+        RingBufLib.retry_for_ringbuf
+          ~while_:(fun () -> return (while_ ()))
+          ?delay_rec dequeue_alloc rb in
+      f tx >>= read_next
+    ) else return_unit
   in
   read_next ()

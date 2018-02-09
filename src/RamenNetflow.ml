@@ -45,7 +45,7 @@ external decode :
   Bytes.t -> int -> string -> netflow_metric array =
   "wrap_netflow_v5_decode"
 
-let collector ~inet_addr ~port k =
+let collector ~inet_addr ~port ?while_ k =
   (* Listen to incoming UDP datagrams on given port: *)
   let serve sender buffer recv_len =
     !logger.debug "Received %d bytes from netflow source @ %s"
@@ -53,7 +53,7 @@ let collector ~inet_addr ~port k =
     decode buffer recv_len sender |>
     Array.fold_left (fun th tuple -> th >>= fun () -> k tuple) return_unit
   in
-  udp_server ~inet_addr ~port serve
+  udp_server ~inet_addr ~port ?while_ serve
 
 let test ?(port=2055) () =
   logger := make_logger true ;

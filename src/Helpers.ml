@@ -349,7 +349,8 @@ let string_of_time ts =
     (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
     tm.tm_hour tm.tm_min tm.tm_sec
 
-let udp_server ?(buffer_size=2000) ~inet_addr ~port k =
+let udp_server ?(buffer_size=2000) ~inet_addr ~port
+               ?(while_=(fun () -> true)) k =
   let open Lwt in
   let open Lwt_unix in
   (* FIXME: it seems that binding that socket makes cohttp leack descriptors
@@ -364,15 +365,17 @@ let udp_server ?(buffer_size=2000) ~inet_addr ~port k =
   !logger.debug "Listening for datagrams on port %d" port ;
   let buffer = Bytes.create buffer_size in
   let rec forever () =
-    let%lwt recv_len, sockaddr =
-      recvfrom sock buffer 0 (Bytes.length buffer) [] in
-    let sender =
-      match sockaddr with
-      | ADDR_INET (addr, port) ->
-        Printf.sprintf "%s:%d" (Unix.string_of_inet_addr addr) port
-      | _ -> "??" in
-    k sender buffer recv_len >>=
-    forever
+    if while_ () then
+      let%lwt recv_len, sockaddr =
+        recvfrom sock buffer 0 (Bytes.length buffer) [] in
+      let sender =
+        match sockaddr with
+        | ADDR_INET (addr, port) ->
+          Printf.sprintf "%s:%d" (Unix.string_of_inet_addr addr) port
+        | _ -> "??" in
+      k sender buffer recv_len >>=
+      forever
+    else return_unit
   in
   forever ()
 

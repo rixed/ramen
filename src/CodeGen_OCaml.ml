@@ -237,8 +237,7 @@ let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ
      "open Batteries\nopen Stdint\n\n\
      %a\n%a\n%a\n\
      let () =\n\
-       \tLwt_main.run (\n\
-       \t\tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_ %S)\n"
+       \tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_ %S\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
@@ -251,8 +250,7 @@ let emit_listen_on oc net_addr port proto =
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n\
     let () =\n\
-      \tLwt_main.run (\n\
-      \t\tCodeGenLib.listen_on %s %S %d RamenProtocols.%s sersize_of_tuple_ serialize_tuple_)\n"
+      \tCodeGenLib.listen_on %s %S %d RamenProtocols.%s sersize_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     collector
@@ -1221,8 +1219,7 @@ let emit_yield oc in_tuple_typ out_tuple_typ = function
     Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
       %a\n%a\n%a\n\
       let () =\n\
-        \tLwt_main.run (\n\
-        \t\tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_ %f)\n"
+        \tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_ %f\n"
       (emit_field_selection "select_" in_tuple_typ mentioned false out_tuple_typ) fields
       (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
       (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
@@ -1432,13 +1429,12 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
     (emit_top "top_" in_tuple_typ mentioned and_all_others) top
     (emit_float_of_top "float_of_top_state_") top_by ;
   Printf.fprintf oc "let () =\n\
-      \tLwt_main.run (\n\
-      \t\tCodeGenLib.aggregate\n\
-      \t\t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
-      \t\t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ %b \n\
-      \t\t\ttop_ top_init_ float_of_top_state_\n\
-      \t\t\tcommit_when_ %b %b %s should_resubmit_\n\
-      \t\t\tglobal_init_ group_init_ field_of_tuple_ %S)\n"
+      \tCodeGenLib.aggregate\n\
+      \t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
+      \t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ %b \n\
+      \t\ttop_ top_init_ float_of_top_state_\n\
+      \t\tcommit_when_ %b %b %s should_resubmit_\n\
+      \t\tglobal_init_ group_init_ field_of_tuple_ %S\n"
     (key = [])
     commit_before (flush_how <> Never) when_to_check_for_commit notify_url
   | _ -> assert false

@@ -4,18 +4,24 @@ open RamenLog
 
 type notifier =
   { mutable reported : (string * float (* time *)) list ;
-    dirname : string }
+    dirname : string ;
+    while_ : unit -> bool }
 
-let make dirname = return { reported = [] ; dirname }
+let make ?(while_=(fun () -> true)) dirname =
+  { reported = [] ; dirname ; while_ }
 
 let rec for_each f n =
+  if not (n.while_ ()) then return_unit else
   let%lwt files = Lwt_unix.files_of_directory n.dirname |>
                   Lwt_stream.to_list in
   let files = Array.of_list files in (* FIXME *)
   !logger.debug "%d files in %s" (Array.length files) n.dirname ;
   Array.fast_sort String.compare files ;
   let rec merge prev i next_reported =
-    if i >= Array.length files then (
+    if not (n.while_ ()) then (
+      !logger.info "Stop listening to directory %s" n.dirname ;
+      return_unit
+    ) else if i >= Array.length files then (
       !logger.debug "No new files in %s" n.dirname ;
       n.reported <- List.rev_append prev next_reported ;
       let%lwt () = Lwt_unix.sleep 1. in

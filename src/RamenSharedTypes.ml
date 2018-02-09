@@ -120,6 +120,7 @@ struct
         (* Info about the running process (if any) *)
         signature : string option ;
         pid : int option ;
+        last_exit : string ;
         stats : worker_stats } [@@ppp PPP_JSON]
   end
 

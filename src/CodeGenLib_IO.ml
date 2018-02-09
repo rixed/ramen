@@ -11,7 +11,8 @@ let on_each_input_pre () =
   now := Unix.gettimeofday ();
   tuple_count := Uint64.succ !tuple_count
 
-let read_file_lines ?(do_unlink=false) filename preprocessor k =
+let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
+                    filename preprocessor k =
   let open_file =
     if preprocessor = "" then (
       fun () ->
@@ -41,19 +42,24 @@ let read_file_lines ?(do_unlink=false) filename preprocessor k =
     !logger.debug "Start reading %S" filename ;
     let%lwt () =
       (* If we used a preprocessor we must wait for EOF before
-       * unlinking the file. *)
+       * unlinking the file. And in case we crash before the end
+       * of the file it is safer to skip the file rather than redo
+       * the lines that have been read already. *)
       if do_unlink && preprocessor = "" then
         Lwt_unix.unlink filename else return_unit in
     let rec read_next_line () =
-      match%lwt Lwt_io.read_line chan with
-      | exception End_of_file ->
+      let on_eof () =
         let%lwt () = Lwt_io.close chan in
         if do_unlink && preprocessor <> "" then
-          Lwt_unix.unlink filename else return_unit
-      | line ->
-        on_each_input_pre () ;
-        let%lwt () = k line in
-        read_next_line ()
+          Lwt_unix.unlink filename else return_unit in
+      if while_ () then (
+        match%lwt Lwt_io.read_line chan with
+        | exception End_of_file -> on_eof ()
+        | line ->
+          on_each_input_pre () ;
+          let%lwt () = k line in
+          read_next_line ()
+      ) else on_eof ()
     in
     read_next_line ()
 
@@ -67,14 +73,14 @@ let check_file_exist kind kind_name path =
 
 let check_dir_exist = check_file_exist Lwt_unix.S_DIR "directory"
 
-let read_glob_lines ?do_unlink path preprocessor k =
+let read_glob_lines ?while_ ?do_unlink path preprocessor k =
   let dirname = Filename.dirname path
   and glob = Filename.basename path in
   let glob = Globs.compile glob in
   let import_file_if_match filename =
     if Globs.matches glob filename then
       try%lwt
-        read_file_lines ?do_unlink (dirname ^"/"^ filename) preprocessor k
+        read_file_lines ?while_ ?do_unlink (dirname ^"/"^ filename) preprocessor k
       with exn ->
         !logger.error "Exception while reading file %s: %s\n%s"
           filename
@@ -86,7 +92,7 @@ let read_glob_lines ?do_unlink path preprocessor k =
       return_unit
     ) in
   let%lwt () = check_dir_exist dirname in
-  let%lwt handler = RamenFileNotify.make dirname in
+  let handler = RamenFileNotify.make ?while_ dirname in
   !logger.debug "Import all files in dir %S..." dirname ;
   RamenFileNotify.for_each (fun filename ->
     !logger.debug "New file %S in dir %S!" filename dirname ;
