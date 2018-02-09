@@ -9,9 +9,9 @@ OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlmktop
 QTEST      = qtest
 JSOO       = js_of_ocaml
 JS_MINIFY  = jsoo_minify
-WARNS      = Ael-3-31-40-41-42-44-45-48
-override OCAMLOPTFLAGS += -I src -w $(WARNS) -g -annot -O2 -S
-override OCAMLFLAGS    += -I src -w $(WARNS) -g -annot
+WARNS      = -w -40
+override OCAMLOPTFLAGS += -I src $(WARNS) -g -annot -O2 -S
+override OCAMLFLAGS    += -I src $(WARNS) -g -annot
 override CFLAGS        += --std=c11 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += --std=c11 -D_GNU_SOURCE \
                           -I $(shell ocamlfind ocamlc -where) \

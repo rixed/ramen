@@ -583,7 +583,7 @@ let chronology incidents dur relto_event =
           ) i bar.RamenChart.markers
       ) [] bars |>
     List.fast_sort compare in
-  let past_marks = Array.create 4 0. in (* past 4 marks *)
+  let past_marks = Array.make 4 0. in (* past 4 marks *)
   let fst_lst_mi =
     List.fold_left (fun (fst_lst_mi) t ->
       match fst_lst_mi with

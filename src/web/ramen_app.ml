@@ -474,7 +474,7 @@ let type_spec_of_js r =
           else ts in
         Some (Field.type_of_string ts),
         typ_str,
-        String.lowercase typ_str ^ (match nullable with
+        String.lowercase_ascii typ_str ^ (match nullable with
           | Some true -> " (or null)"
           | Some false -> ""
           | None -> " (unknown nullability)") in

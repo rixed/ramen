@@ -527,7 +527,7 @@ let export_columns_of_tuples tuple_type values =
        * so that we know how long our vector of values needs to be. *)
       if ft.nullable then (
         let nullmask = RamenBitmask.make nb_values in
-        let val_idx_to_tuple_idx = Array.create nb_values ~-1 in
+        let val_idx_to_tuple_idx = Array.make nb_values ~-1 in
         let nb_set =
           Array.fold_lefti (fun nb_set i _value ->
               match get_val ci i with

@@ -193,7 +193,7 @@ let run ?timeout ?(to_stdin="") cmd =
           !logger.error "Error while running %s: %s"
             (string_of_array cmd) (Printexc.to_string exn) ;
           return_unit in
-      join [ write_stdin ; read_lines ; monitor_stderr ] >>
+      let%lwt () = join [ write_stdin ; read_lines ; monitor_stderr ] in
       match%lwt process#status with
       | Unix.WEXITED 0 ->
         return !lines
@@ -329,9 +329,10 @@ let run_coprocess ?(max_count=max_coprocesses)
           let msg = Printexc.to_string exn in
           !logger.error "%s: Cannot read output: %s" cmd_name msg ;
           return_unit in
-      join [ write_stdin ;
-             read_lines process#stdout ;
-             read_lines process#stderr ] >>
+      let%lwt () =
+        join [ write_stdin ;
+               read_lines process#stdout ;
+               read_lines process#stderr ] in
       process#status))
 
 let start_with c f =
