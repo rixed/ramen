@@ -8,7 +8,7 @@ type notifier =
     while_ : unit -> bool }
 
 let make ?(while_=(fun () -> true)) dirname =
-  { reported = [] ; dirname ; while_ }
+  return { reported = [] ; dirname ; while_ }
 
 let rec for_each f n =
   if not (n.while_ ()) then return_unit else

@@ -92,7 +92,7 @@ let read_glob_lines ?while_ ?do_unlink path preprocessor k =
       return_unit
     ) in
   let%lwt () = check_dir_exist dirname in
-  let handler = RamenFileNotify.make ?while_ dirname in
+  let%lwt handler = RamenFileNotify.make ?while_ dirname in
   !logger.debug "Import all files in dir %S..." dirname ;
   RamenFileNotify.for_each (fun filename ->
     !logger.debug "New file %S in dir %S!" filename dirname ;
