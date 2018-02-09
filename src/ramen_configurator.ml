@@ -1083,7 +1083,7 @@ let program_of_bcns bcns dataset_name export =
         make_func name op
       ) bcn.max_bps ;
     Option.may (fun max_rtt ->
-        let title = Printf.sprintf "RTT too hight from zone %s to %s"
+        let title = Printf.sprintf "RTT too high from zone %s to %s"
                       (name_of_zones bcn.source) (name_of_zones bcn.dest)
         and text = alert_text [
           "descr", Printf.sprintf

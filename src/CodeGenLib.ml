@@ -428,6 +428,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
           Hashtbl.add out_h fname (rb,
             RingBufLib.retry_for_ringbuf
               ~while_:(fun () ->
+                (* Also check from time to time we are still supposed to
+                 * write in there: *)
                 incr retry_count ;
                 if !retry_count < 5 then return_true else (
                   retry_count := 0 ;

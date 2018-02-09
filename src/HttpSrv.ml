@@ -1133,14 +1133,13 @@ let start conf daemonize demo www_dir port cert_opt key_opt
   Lwt_main.run (join
     [ (* TIL the hard way that although you can use async outside of
        * Lwt_main.run, the result will be totally unpredictable. *)
-      (let%lwt () =
-        Lwt_unix.sleep 1. in
-        async (fun () -> restart_on_failure timeout_programs conf) ;
-        async (fun () -> restart_on_failure cleanup_old_files conf.C.persist_dir) ;
-        async (fun () -> restart_on_failure RamenProcesses.read_reports reports_rb) ;
-        async (fun () -> restart_on_failure RamenProcesses.read_notifications notify_rb) ;
-        RamenAlerter.start ?initial_json:alert_conf_json conf ;
-        return_unit) ;
+      (let%lwt () = Lwt_unix.sleep 1. in
+       async (fun () -> restart_on_failure timeout_programs conf) ;
+       async (fun () -> restart_on_failure cleanup_old_files conf.C.persist_dir) ;
+       async (fun () -> restart_on_failure RamenProcesses.read_reports reports_rb) ;
+       async (fun () -> restart_on_failure RamenProcesses.read_notifications notify_rb) ;
+       RamenAlerter.start ?initial_json:alert_conf_json conf ;
+       return_unit) ;
       run_demo () ;
       restart_on_failure monitor_quit () ;
       restart_on_failure (http_service port cert_opt key_opt) router ])

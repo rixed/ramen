@@ -66,9 +66,9 @@ struct
       (* Additionally, each time an average volume is above this
        * min_for_relevance... *)
       min_for_relevance : int ;
-      (* We also check that the same percentile over the same obs_window of the
-       * averaged round trip time and retransmission rate are below those limits:
-       *)
+      (* ...then we also check that the same percentile over the same
+       * obs_window of the averaged round trip time and retransmission rate
+       * are below those limits: *)
       max_rtt : float option (* in seconds *) ;
       max_rr : float option (* fraction of retransmitted packets over packets
                                with payload *) }
