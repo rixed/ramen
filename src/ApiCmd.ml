@@ -12,17 +12,22 @@ type copts =
 
 let enc = Uri.pct_encode
 
-let exhort http_cmd =
+let exhort ?(err_ok=false) http_cmd =
   let on = function
-    | Unix.Unix_error(Unix.ECONNREFUSED, "connect", "") -> return_true
+    | Unix.Unix_error (Unix.ECONNREFUSED, "connect", "") -> return_true
     | _ -> return_false in
   let%lwt resp, body =
     Helpers.retry ~first_delay:0.2 ~on ~max_retry:3 http_cmd () in
   let code = resp |> Response.status |> Code.code_of_status in
   let%lwt body = Cohttp_lwt.Body.to_string body in
   if code <> 200 then (
-    !logger.error "Response code: %d" code ;
-    !logger.error "Answer: %S" body ;
+    if err_ok then (
+      !logger.debug "Response code: %d" code ;
+      !logger.debug "Answer: %S" body
+    ) else (
+      !logger.error "Response code: %d" code ;
+      !logger.error "Answer: %S" body
+    ) ;
     fail_with ("Error HTTP "^ string_of_int code)
   ) else (
     !logger.debug "Response code: %d" code ;
@@ -49,8 +54,8 @@ let http_post_json url ppp msg =
   let body = PPP.to_string ppp msg in
   http_do ~cmd:Client.post ~content_type:Consts.json_content_type ~body url
 
-let http_get url =
-  exhort (fun () -> Client.get (Uri.of_string (sure_is_http url)))
+let http_get ?err_ok url =
+  exhort ?err_ok (fun () -> Client.get (Uri.of_string (sure_is_http url)))
 
 let check_ok body =
   (* Yeah that's grand *)
@@ -274,3 +279,49 @@ let timerange copts func_name () =
     | TimeRange (oldest, latest) ->
       Printf.printf "%f...%f\n%!" oldest latest ;
       return_unit)
+
+
+let get_program_info_remote ?err_ok copts name_opt =
+  let url = copts.server_url ^"/graph"^
+            (Option.map (fun n -> "/"^n) name_opt |? "") in
+  http_get ?err_ok url >>=
+  ppp_of_string_exc get_graph_resp_ppp
+
+let get_program_info = get_program_info_remote
+
+let display_program_infos infos =
+  let str = PPP.to_string get_graph_resp_ppp infos |>
+            PPP_prettify.prettify in
+  Printf.printf "%s\n" str
+
+let display_operation_info info =
+  let str = PPP.to_string Info.Func.info_ppp info |>
+            PPP_prettify.prettify in
+  Printf.printf "%s\n" str
+
+let info copts name_opt () =
+  logger := make_logger copts.debug ;
+  Lwt_main.run (
+    match%lwt get_program_info ~err_ok:true copts name_opt with
+    | exception (Failure _ as e) ->
+        (* Maybe we supplied an operation name rather than a program name,
+         * try again with only the `dirname` and print only that operation *)
+        (match String.rsplit (name_opt |? "") ~by:"/" with
+        | exception Not_found -> fail e
+        | program, func ->
+            (match%lwt get_program_info copts (Some program) with
+            | [ program_info ] -> (* Since we ask for a single program *)
+                (match List.find (fun n ->
+                         n.Info.Func.definition.name = func
+                       ) program_info.Info.Program.operations with
+                | exception Not_found ->
+                    fail_with ("Unknown object '"^ func ^"/"^ program ^"'")
+                | func_info ->
+                    display_operation_info func_info ;
+                    return_unit)
+            | lst ->
+                fail_with (Printf.sprintf "Received %d results"
+                             (List.length lst))))
+    | infos ->
+        display_program_infos infos ;
+        return_unit)

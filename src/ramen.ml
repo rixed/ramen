@@ -329,6 +329,22 @@ let timerange =
          "timerange")
 
 (*
+ * Info
+ *)
+
+let name_opt =
+  let i = Arg.info ~doc:"Program of operation unique name."
+                   ~docv:"name" [] in
+  Arg.(value (pos 0 (some string) None i))
+
+let get_info =
+  Term.(
+    (const ApiCmd.info
+      $ copts
+      $ name_opt),
+    info ~doc:"Get info about a program or an operation" "info")
+
+(*
  * Command line evaluation
  *)
 
@@ -344,7 +360,8 @@ let () =
     server_start ; server_stop ;
     dequeue ; summary ;
     add ; compile ; run ; stop ;
-    tail ; timeseries ; timerange
+    tail ; timeseries ; timerange ;
+    get_info
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> f ()
