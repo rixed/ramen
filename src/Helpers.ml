@@ -395,3 +395,17 @@ let rec restart_on_failure f x =
     restart_on_failure f x)
 
 let md5 str = Digest.(string str |> to_hex)
+
+(* Cohttp does not enforce any scheme but we want to be friendlier with
+ * user entered urls so we add one if it's missing, assuming http: *)
+let sure_is_http str =
+  if match String.find str "://" with
+     | exception Not_found -> true
+     | n -> n > 10
+  then "http://" ^ str
+  else str
+(*$= sure_is_http & ~printer:identity
+  "http://blabla.com" (sure_is_http "http://blabla.com")
+  "http://blabla.com" (sure_is_http "blabla.com")
+  "https://blabla.com" (sure_is_http "https://blabla.com")
+ *)

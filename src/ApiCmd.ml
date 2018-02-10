@@ -38,7 +38,7 @@ let http_do ?(cmd=Client.put) ?content_type ?body url =
     | None -> headers in
   !logger.debug "%S < %a" url (Option.print String.print) body ;
   let body = Option.map (fun s -> `String s) body in
-  exhort (fun () -> cmd ~headers ?body (Uri.of_string url))
+  exhort (fun () -> cmd ~headers ?body (Uri.of_string (sure_is_http url)))
 
 (* Return the answered body *)
 let http_put_json url ppp msg =
@@ -50,7 +50,7 @@ let http_post_json url ppp msg =
   http_do ~cmd:Client.post ~content_type:Consts.json_content_type ~body url
 
 let http_get url =
-  exhort (fun () -> Client.get (Uri.of_string url))
+  exhort (fun () -> Client.get (Uri.of_string (sure_is_http url)))
 
 let check_ok body =
   (* Yeah that's grand *)
@@ -106,7 +106,7 @@ let shutdown copts () =
     let url = copts.server_url ^"/shutdown" in
     (* Do not expect any response for now. *)
     try%lwt
-      let%lwt _ = Client.get (Uri.of_string url) in
+      let%lwt _ = Client.get (Uri.of_string (sure_is_http url)) in
       return_unit
     with Unix.Unix_error(Unix.ECONNREFUSED, "connect", "") ->
            Printf.eprintf "Cannot connect to ramen. Is it really running?\n" ;
