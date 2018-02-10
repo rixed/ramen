@@ -128,7 +128,7 @@ let server_start =
       $ ssl_cert
       $ ssl_key
       $ alert_conf_json),
-    info "start")
+    info ~doc:"Start the processes orchestrator" "start")
 
 (*
  * Shutdown the event processor
@@ -138,7 +138,7 @@ let server_stop =
   Term.(
     (const ApiCmd.shutdown
       $ copts),
-    info "shutdown")
+    info ~doc:"Stop all processes" "shutdown")
 
 (* TODO: check that this is actually the name of a ringbuffer file *)
 let rb_file =
@@ -157,14 +157,14 @@ let dequeue =
       $ copts
       $ rb_file
       $ nb_tuples),
-    info "dequeue")
+    info ~doc:"Dequeue a message from a ringbuffer" "dequeue")
 
 let summary =
   Term.(
     (const RingBufCmd.summary
       $ copts
       $ rb_file),
-    info "ringbuf-summary")
+    info ~doc:"Dump info about a ringbuffer" "ringbuf-summary")
 
 (*
  * Program Creation/Edition
@@ -192,7 +192,7 @@ let add =
       $ program_name
       $ program
       $ and_start),
-    info "add")
+    info ~doc:"Define a new program or replace a previous one" "add")
 
 (*
  * Compile/Run/Stop Program
@@ -202,28 +202,28 @@ let compile =
   Term.(
     (const ApiCmd.compile
       $ copts),
-    info "compile")
+    info ~doc:"Compile one (or all) program(s)" "compile")
 
 let run =
   Term.(
     (const ApiCmd.run
       $ copts),
-    info "run")
+    info ~doc:"Run one (or all) program(s)" "run")
 
 let stop =
   Term.(
     (const ApiCmd.stop
       $ copts
       $ program_name),
-    info "stop")
+    info ~doc:"Stop one (or all) program(s)" "stop")
 
 (*
  * Export Tuples
  *)
 
 let func_name p =
-  let i = Arg.info ~doc:"Function unique name."
-                   ~docv:"func" [] in
+  let i = Arg.info ~doc:"Operation unique name."
+                   ~docv:"operation" [] in
   Arg.(required (pos p (some string) None i))
 
 let as_csv =
@@ -255,7 +255,7 @@ let tail =
       $ with_header
       $ last
       $ continuous),
-    info "tail")
+    info ~doc:"Display the last outputs of an operation" "tail")
 
 let max_results =
   let i = Arg.info ~doc:"output only the first N tuples"
@@ -270,7 +270,7 @@ let export =
       $ as_csv
       $ with_header
       $ max_results),
-    info "tail")
+    info ~doc:"Dump a range of output from an operation" "export")
 
 (*
  * Timeseries (no support for NewTempFunc (yet))
@@ -314,7 +314,7 @@ let timeseries =
       $ func_name 0
       $ data_field 1
       $ consolidation),
-    info "timeseries")
+    info ~doc:"Extract a timeseries from an operation" "timeseries")
 
 (*
  * Time Ranges
@@ -325,7 +325,8 @@ let timerange =
     (const ApiCmd.timerange
       $ copts
       $ func_name 0),
-    info "timerange")
+    info ~doc:"Retrieve the available time range of an operation output"
+         "timerange")
 
 (*
  * Command line evaluation
