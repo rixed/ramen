@@ -15,7 +15,7 @@ let copts =
   let server_url =
     let env = Term.env_info "RAMEN_URL" in
     let i = Arg.info ~doc:"URL to reach ramen"
-                     ~docs ~env [ "ramen-url" ] in
+                     ~docs ~env [ "ramen-url" ; "server-url" ; "url" ] in
     Arg.(value (opt string "http://127.0.0.1:29380" i))
   in
   Term.(const (fun debug server_url -> ApiCmd.{ debug ; server_url }) $
@@ -337,10 +337,22 @@ let name_opt =
                    ~docv:"name" [] in
   Arg.(value (pos 0 (some string) None i))
 
+let as_json =
+  let i = Arg.info ~doc:"Dump the raw json response."
+                   [ "json" ; "as-json" ] in
+  Arg.(value (flag i))
+
+let short =
+  let i = Arg.info ~doc:"Display only a short summary."
+                   [ "short" ] in
+  Arg.(value (flag i))
+
 let get_info =
   Term.(
     (const ApiCmd.info
       $ copts
+      $ as_json
+      $ short
       $ name_opt),
     info ~doc:"Get info about a program or an operation" "info")
 

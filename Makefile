@@ -82,7 +82,8 @@ RAMEN_SOURCES = \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/Compiler.ml src/RamenHtml.ml src/RamenColor.ml \
 	src/RamenFormats.ml src/RamenChart.ml src/RamenGui.ml \
-	src/SqliteHelpers.ml src/RamenAlerter.ml src/HttpSrv.ml src/ApiCmd.ml \
+	src/SqliteHelpers.ml src/RamenAlerter.ml src/HttpSrv.ml \
+	src/TermTable.ml src/ApiCmd.ml \
 	src/RingBufCmd.ml src/ramen.ml
 
 CODEGENLIB_SOURCES = \

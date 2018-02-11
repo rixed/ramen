@@ -344,10 +344,13 @@ let is_private_field = start_with '_'
 
 let string_of_time ts =
   let open Unix in
-  let tm = localtime ts in
-  Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02ds"
-    (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
-    tm.tm_hour tm.tm_min tm.tm_sec
+  match localtime ts with
+  | exception Unix_error (EINVAL, _, _) ->
+      Printf.sprintf "Invalid date %f" ts
+  | tm ->
+      Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02ds"
+        (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
+        tm.tm_hour tm.tm_min tm.tm_sec
 
 let udp_server ?(buffer_size=2000) ~inet_addr ~port
                ?(while_=(fun () -> true)) k =

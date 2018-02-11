@@ -289,17 +289,130 @@ let get_program_info_remote ?err_ok copts name_opt =
 
 let get_program_info = get_program_info_remote
 
-let display_program_infos infos =
-  let str = PPP.to_string get_graph_resp_ppp infos |>
-            PPP_prettify.prettify in
-  Printf.printf "%s\n" str
+let int_or_na = function
+  | None -> TermTable.ValStr "n/a"
+  | Some i -> TermTable.ValInt i
 
-let display_operation_info info =
-  let str = PPP.to_string Info.Func.info_ppp info |>
-            PPP_prettify.prettify in
-  Printf.printf "%s\n" str
+let flt_or_na = function
+  | None -> TermTable.ValStr "n/a"
+  | Some f -> TermTable.ValFlt f
 
-let info copts name_opt () =
+let str_or_na = function
+  | None -> TermTable.ValStr "n/a"
+  | Some s -> TermTable.ValStr s
+
+let time_or_na = function
+  | None -> TermTable.ValStr "n/a"
+  | Some f -> TermTable.ValStr (string_of_time f)
+
+let abbrev_str_list lst =
+  TermTable.ValStr (
+    if lst = [] then "ø" else
+    let s =
+      List.fold_left (fun s n ->
+        (if s = "" then s else s ^", ")^ n
+      ) "" lst in
+    let s = RamenHtml.abbrev 17 s in
+    s ^" ("^ string_of_int (List.length lst) ^")")
+
+let display_program_info json short info =
+  if json then
+    let str = PPP.to_string get_graph_resp_ppp info |>
+              PPP_prettify.prettify in
+    Printf.printf "%s\n" str
+  else if short then
+    let open TermTable in
+    let head = [| "name" ; "#ops" ; "status" ; "started" ; "stopped" |] in
+    let lines =
+      List.map (fun prog ->
+        let open Info.Program in
+        [| ValStr prog.name ;
+           ValInt (List.length prog.operations) ;
+           ValStr (string_of_status prog.status) ;
+           time_or_na prog.last_started ;
+           time_or_na prog.last_stopped |]
+      ) info in
+    print_table head lines
+  else
+    let open TermTable in
+    let head = [| "program" ; "operation" ; "#in" ; "#selected" ; "#out" ;
+                  "#groups" ; "CPU" ; "wait in" ; "wait out" ; "heap" ;
+                  "volume in" ; "volume out" ; "#parents" ; "#children" ;
+                  "pid" ; "signature" |] in
+    let lines =
+      List.fold_left (fun lines prog ->
+        List.fold_left (fun lines func ->
+          let open Info.Func in
+          [| ValStr prog.Info.Program.name ;
+             ValStr func.definition.name ;
+             int_or_na func.stats.in_tuple_count ;
+             int_or_na func.stats.selected_tuple_count ;
+             int_or_na func.stats.out_tuple_count ;
+             int_or_na func.stats.group_count ;
+             ValFlt func.stats.cpu_time ;
+             flt_or_na func.stats.in_sleep ;
+             flt_or_na func.stats.out_sleep ;
+             ValInt func.stats.ram_usage ;
+             int_or_na func.stats.in_bytes ;
+             int_or_na func.stats.out_bytes ;
+             ValInt (List.length func.parents) ;
+             ValInt (List.length func.children) ;
+             int_or_na func.pid ;
+             str_or_na func.signature |] :: lines
+        ) lines prog.operations
+      ) [] info in
+    print_table head lines
+
+let form_of_type =
+  List.map (fun ti ->
+    ti.name_info,
+    TermTable.ValStr (
+      (match ti.typ_info with
+      | None -> "unknown type"
+      | Some t -> Lang.Scalar.string_of_typ t) ^", "^
+      (match ti.nullable_info with
+      | None -> "unknown nullability"
+      | Some true -> "NULL"
+      | Some false -> "NOT NULL")))
+
+let display_operation_info json short func =
+  if json then
+    let str = PPP.to_string Info.Func.info_ppp func |>
+              PPP_prettify.prettify in
+    Printf.printf "%s\n" str
+  else
+    let open Info.Func in
+    let open TermTable in
+    let form =
+      [ "Name", ValStr func.definition.name ;
+        "#in", int_or_na func.stats.in_tuple_count ;
+        "#selected", int_or_na func.stats.selected_tuple_count ;
+        "#out", int_or_na func.stats.out_tuple_count ;
+        "#group", int_or_na func.stats.group_count ;
+        "Event time", ValStr (string_of_time func.stats.time) ;
+        "CPU", ValFlt func.stats.cpu_time ;
+        "Wait-in", flt_or_na func.stats.in_sleep ;
+        "Wait-out", flt_or_na func.stats.out_sleep ;
+        "RAM", ValInt func.stats.ram_usage ;
+        "Read", int_or_na func.stats.in_bytes ;
+        "Written", int_or_na func.stats.out_bytes ;
+        "Parents", abbrev_str_list func.parents ;
+        "Children", abbrev_str_list func.children ;
+        "PID", int_or_na func.pid ;
+        "Signature", str_or_na func.signature ;
+        "Last Exit Status", ValStr func.last_exit ] in
+    print_form form ;
+    if not short then (
+      Printf.printf "\nInput:\n" ;
+      print_form (form_of_type func.input_type) ;
+      Printf.printf "\nOperation:\n%s\n"
+        (PPP_prettify.prettify func.definition.operation) ;
+      Printf.printf "\nOutput:\n" ;
+      print_form (form_of_type func.output_type))
+
+let info copts json short name_opt () =
+  if json && short then
+    failwith "Options --json and --short are incompatible." ;
   logger := make_logger copts.debug ;
   Lwt_main.run (
     match%lwt get_program_info ~err_ok:true copts name_opt with
@@ -317,11 +430,11 @@ let info copts name_opt () =
                 | exception Not_found ->
                     fail_with ("Unknown object '"^ func ^"/"^ program ^"'")
                 | func_info ->
-                    display_operation_info func_info ;
+                    display_operation_info json short func_info ;
                     return_unit)
             | lst ->
                 fail_with (Printf.sprintf "Received %d results"
                              (List.length lst))))
-    | infos ->
-        display_program_infos infos ;
+    | info ->
+        display_program_info json short info ;
         return_unit)
