@@ -349,12 +349,13 @@ let put_program conf headers body =
   if program_name = "" then
     bad_request "Programs must have non-empty names" else (
   let%lwt funcs = wrap (fun () -> C.parse_program msg.program) in
-  let test_id, funcs =
+  let program_name, test_id, funcs =
     if msg.for_test then
       let test_id = RamenTests.get_id () in
-      Some test_id,
-      RamenTests.reprogram test_id funcs
-    else None, funcs in
+      let new_program_name = "temp/tests/"^ test_id in
+      new_program_name, Some test_id,
+      List.map (RamenTests.reprogram program_name new_program_name) funcs
+    else program_name, None, funcs in
   let%lwt must_restart =
     C.with_wlock conf (fun programs ->
       (* Delete the program if it already exists. No worries the conf won't be
@@ -663,7 +664,7 @@ let timeseries conf headers body =
       if where = "" then op_text else op_text ^" WHERE "^ where in
     let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
     let reformatted_op = IO.to_string Operation.print operation in
-    let program_name = "temp/"^ md5 reformatted_op
+    let program_name = "temp/timeseries/"^ md5 reformatted_op
     and func_name = "operation" in
     (* So far so good. In all likelihood this program exists already: *)
     if Hashtbl.mem programs program_name then (
