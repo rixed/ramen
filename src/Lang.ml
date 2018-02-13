@@ -1873,6 +1873,10 @@ struct
     | ListenFor _ (*{ proto = RamenProtocols.Collectd ; _ }*) -> true
     | _ -> false
 
+  let run_in_tests = function
+    | Aggregate _ | Yield _ -> true
+    | ReadCSVFile _ | ListenFor _ -> false
+
   let event_time_of_operation = function
     | Aggregate { event_time ; _ } -> event_time
     | ListenFor { proto = RamenProtocols.Collectd ; _ } ->

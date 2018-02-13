@@ -219,26 +219,35 @@ let stop conf programs program =
     let program_funcs =
       Hashtbl.values program.L.funcs |> List.of_enum in
     let%lwt () = Lwt_list.iter_p (fun func ->
-        let%lwt () = RamenExport.stop conf func in
-        match func.N.pid with
-        | None ->
-          !logger.error "Function %s has no pid?!" func.N.name ;
+        if program.test_id <> "" &&
+           Lang.Operation.run_in_tests func.N.operation
+        then (
+          if func.N.pid <> None then
+            !logger.error "Node %s should not be running during a test!"
+              (N.fq_name func) ;
           return_unit
-        | Some pid ->
-          !logger.debug "Stopping func %s, pid %d" func.N.name pid ;
-          (* Start by removing this worker ringbuf from all its parent output
-           * references *)
-          let this_in = C.in_ringbuf_name conf func in
-          let%lwt () = Lwt_list.iter_p (fun (parent_program, parent_name) ->
-              match C.find_func programs parent_program parent_name with
-              | exception Not_found -> return_unit
-              | _, parent ->
-                let out_ref = C.out_ringbuf_names_ref conf parent in
-                RamenOutRef.remove out_ref this_in
-            ) func.N.parents in
-          (* Get rid of the worker *)
-          kill_worker conf programs func pid ;
-          return_unit
+        ) else (
+          let%lwt () = RamenExport.stop conf func in
+          match func.N.pid with
+          | None ->
+            !logger.error "Function %s has no pid?!" func.N.name ;
+            return_unit
+          | Some pid ->
+            !logger.debug "Stopping func %s, pid %d" func.N.name pid ;
+            (* Start by removing this worker ringbuf from all its parent output
+             * references *)
+            let this_in = C.in_ringbuf_name conf func in
+            let%lwt () = Lwt_list.iter_p (fun (parent_program, parent_name) ->
+                match C.find_func programs parent_program parent_name with
+                | exception Not_found -> return_unit
+                | _, parent ->
+                  let out_ref = C.out_ringbuf_names_ref conf parent in
+                  RamenOutRef.remove out_ref this_in
+              ) func.N.parents in
+            (* Get rid of the worker *)
+            kill_worker conf programs func pid ;
+            return_unit
+        )
       ) program_funcs in
     L.set_status program Compiled ;
     program.L.last_stopped <- Some now ;
@@ -270,7 +279,15 @@ let run conf programs program =
       !logger.debug "Launching generated programs..." ;
       let now = Unix.gettimeofday () in
       let%lwt () =
-        Lwt_list.iter_p (run_func conf programs program) program_funcs in
+        Lwt_list.iter_p (fun func ->
+          if program.test_id <> "" &&
+             Lang.Operation.run_in_tests func.N.operation
+          then (
+            !logger.info "Skipping %s in tests" (N.fq_name func) ;
+            return_unit
+          ) else
+            run_func conf programs program func
+        ) program_funcs in
       L.set_status program Running ;
       program.L.last_started <- Some now ;
       return_unit
