@@ -11,15 +11,47 @@ let copts =
     let env = Term.env_info "RAMEN_DEBUG" in
     let i = Arg.info ~doc:"increase verbosity"
                      ~docs ~env [ "d"; "debug" ] in
-    Arg.(value (flag i)) in
-  let server_url =
+    Arg.(value (flag i))
+  and server_url =
     let env = Term.env_info "RAMEN_URL" in
     let i = Arg.info ~doc:"URL to reach ramen"
                      ~docs ~env [ "ramen-url" ; "server-url" ; "url" ] in
     Arg.(value (opt string "http://127.0.0.1:29380" i))
+  and persist_dir =
+    let env = Term.env_info "RAMEN_PERSIST_DIR" in
+    let i = Arg.info ~doc:"directory where are stored data persisted on disc"
+                     ~env [ "persist-dir" ] in
+    Arg.(value (opt string "/tmp/ramen" i))
+  and max_history_archives =
+    let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
+    let i = Arg.info ~doc:"max number of archive files to keep per history ; \
+                           0 would disable archiving altogether"
+                     ~env ["max-history-archives" ; "max-history-files" ] in
+    Arg.(value (opt int 200 i))
+  (* Make it an enum option so that it's easier to change the default *)
+  and use_embedded_compiler =
+    let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
+    let i = Arg.info ~doc:"use embedded compiler rather than calling system one"
+                     ~env [ "use-embedded-compiler"; "use-internal-compiler";
+                            "embedded-compiler"; "internal-compiler" ] in
+    Arg.(value (flag i))
+  and bundle_dir =
+    let env = Term.env_info "RAMEN_BUNDLE_DIR" in
+    let i = Arg.info ~doc:"directory where to find libraries for the embedded \
+                           compiler"
+                     ~env [ "bundle-dir" ] in
+    Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))
+  and max_simult_compilations =
+    let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
+    let i = Arg.info ~doc:"max number of compilations to perform \
+                           simultansously"
+                     ~env ["max-simult-compil" ;
+                           "max-simultaneous-compilations" ] in
+    Arg.(value (opt int 4 i))
   in
-  Term.(const (fun debug server_url -> ApiCmd.{ debug ; server_url }) $
-              debug $ server_url)
+  Term.(const ApiCmd.make_copts
+    $ debug $ server_url $ persist_dir $ max_history_archives
+    $ use_embedded_compiler $ bundle_dir $ max_simult_compilations)
 
 (*
  * Start the event processor
@@ -77,34 +109,6 @@ let www_dir =
                    ~env [ "www-dir" ; "www-root" ; "web-dir" ; "web-root" ] in
   Arg.(value (opt string "" i))
 
-let persist_dir =
-  let env = Term.env_info "RAMEN_PERSIST_DIR" in
-  let i = Arg.info ~doc:"Directory where are stored data persisted on disc"
-                   ~env [ "persist-dir" ] in
-  Arg.(value (opt string "/tmp/ramen" i))
-
-let max_history_archives =
-  let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
-  let i = Arg.info ~doc:"max number of archive files to keep per history ; \
-                         0 would disable archiving altogether."
-                   ~env ["max-history-archives" ; "max-history-files" ] in
-  Arg.(value (opt int 200 i))
-
-(* Make it an enum option so that it's easier to change the default *)
-let use_embedded_compiler =
-  let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
-  let i = Arg.info ~doc:"use embedded compiler rather than calling system one."
-                   ~env [ "use-embedded-compiler"; "use-internal-compiler";
-                          "embedded-compiler"; "internal-compiler" ] in
-  Arg.(value (flag i))
-
-let bundle_dir =
-  let env = Term.env_info "RAMEN_BUNDLE_DIR" in
-  let i = Arg.info ~doc:"Directory where to find libraries for the embedded \
-                         compiler."
-                   ~env [ "bundle-dir" ] in
-  Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))
-
 let alert_conf_json =
   let env = Term.env_info "RAMEN_ALERTER_INITIAL_JSON" in
   let i = Arg.info ~doc:"JSON configuration file for the alerter"
@@ -120,10 +124,6 @@ let server_start =
       $ no_demo
       $ to_stderr
       $ www_dir
-      $ persist_dir
-      $ max_history_archives
-      $ use_embedded_compiler
-      $ bundle_dir
       $ http_port
       $ ssl_cert
       $ ssl_key
@@ -185,13 +185,25 @@ let and_start =
                    [ "start" ] in
   Arg.(value (flag i))
 
+let ok_if_running =
+  let i = Arg.info ~doc:"If a program exist by that name and is running, \
+                         stop it and replace it."
+                   [ "ok-if-running" ] in
+  Arg.(value (flag i))
+
+let remote =
+  let i = Arg.info ~doc:"Use the remote access API" ["remote"] in
+  Arg.(value (flag i))
+
 let add =
   Term.(
     (const ApiCmd.add
       $ copts
       $ program_name
       $ program
-      $ and_start),
+      $ ok_if_running
+      $ and_start
+      $ remote),
     info ~doc:"Define a new program or replace a previous one" "add")
 
 (*

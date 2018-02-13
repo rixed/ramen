@@ -8,7 +8,14 @@ open Helpers
 module C = RamenConf
 
 type copts =
-  { debug : bool ; server_url : string }
+  { debug : bool ; server_url : string ; persist_dir : string ;
+    max_history_archives : int ; use_embedded_compiler : bool ;
+    bundle_dir : string ; max_simult_compilations : int }
+
+let make_copts debug server_url persist_dir max_history_archives
+               use_embedded_compiler bundle_dir max_simult_compilations =
+  { debug ; server_url ; persist_dir ; max_history_archives ;
+    use_embedded_compiler ; bundle_dir ; max_simult_compilations }
 
 let enc = Uri.pct_encode
 
@@ -62,12 +69,24 @@ let check_ok body =
   ignore body ;
   return_unit
 
-let add copts name program start () =
+let add copts name program ok_if_running start remote () =
   logger := make_logger copts.debug ;
-  let msg = { name ; ok_if_running = false ; for_test = false ;
-              start ; program } in
+  if remote && ok_if_running then
+    failwith "Options --remote and --ok-if-running are incompatible." ;
+  if remote && start then
+    failwith "Options --remote and --start are incompatible." ;
   Lwt_main.run (
-    http_put_json (copts.server_url ^"/graph") put_program_req_ppp msg >>= check_ok)
+    if remote then
+      let msg = { name ; ok_if_running ; for_test = false ;
+                  start ; program } in
+      http_put_json (copts.server_url ^"/graph") put_program_req_ppp msg >>=
+      check_ok
+    else
+      let conf =
+        C.make_conf true copts.server_url copts.debug copts.persist_dir
+                    copts.max_simult_compilations copts.max_history_archives
+                    copts.use_embedded_compiler copts.bundle_dir in
+      RamenOps.set_program conf ~ok_if_running ~start ~name ~program)
 
 let compile copts () =
   logger := make_logger copts.debug ;
@@ -79,8 +98,7 @@ let run copts () =
   Lwt_main.run (
     http_get (copts.server_url ^"/run") >>= check_ok)
 
-let start copts daemonize rand_seed no_demo to_stderr www_dir persist_dir
-          max_history_archives use_embedded_compiler bundle_dir http_port
+let start copts daemonize rand_seed no_demo to_stderr www_dir http_port
           ssl_cert ssl_key alert_conf_json () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemonize then
@@ -88,12 +106,14 @@ let start copts daemonize rand_seed no_demo to_stderr www_dir persist_dir
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed -> Random.init seed) ;
-  let logdir = if to_stderr then None else Some (persist_dir ^"/log") in
+  let logdir =
+    if to_stderr then None else Some (copts.persist_dir ^"/log") in
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir copts.debug ;
   let conf =
-    C.make_conf true copts.server_url copts.debug persist_dir 5 (* TODO *)
-                max_history_archives use_embedded_compiler bundle_dir in
+    C.make_conf true copts.server_url copts.debug copts.persist_dir
+                copts.max_simult_compilations copts.max_history_archives
+                copts.use_embedded_compiler copts.bundle_dir in
   HttpSrv.start conf daemonize demo www_dir http_port ssl_cert ssl_key
                 alert_conf_json
 

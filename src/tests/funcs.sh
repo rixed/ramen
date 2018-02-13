@@ -121,7 +121,7 @@ add_accounts() {
 nb_accounts=$(nb_lines "$fixtures/accounts.csv")
 
 run() {
-  eval "$ramen add --start test '$PROGRAM'"
+  eval "$ramen add --start --remote test '$PROGRAM'"
 }
 
 tail_() {

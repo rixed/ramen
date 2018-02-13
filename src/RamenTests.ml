@@ -2,7 +2,6 @@ open Batteries
 open Lwt
 open Helpers
 open RamenLog
-module C = RamenConf
 module N = RamenConf.Func
 module L = RamenConf.Program
 
