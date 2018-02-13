@@ -236,7 +236,7 @@ let base_program dataset_name delete uncompress csv_glob export =
     make_func name op in
   (* TCP CSV Importer: *)
   let tcp = csv_import "tcp" {|
-      poller string not null,
+      poller string not null,  -- 1
       capture_begin u64 not null,
       capture_end u64 not null,
       device_client u8 null,
@@ -245,7 +245,7 @@ let base_program dataset_name delete uncompress csv_glob export =
       vlan_server u32 null,
       mac_client u64 null,
       mac_server u64 null,
-      zone_client u32 not null,
+      zone_client u32 not null,  -- 10
       zone_server u32 not null,
       ip4_client u32 null,
       ip6_client i128 null,
@@ -255,17 +255,17 @@ let base_program dataset_name delete uncompress csv_glob export =
       ip6_external i128 null,
       port_client u16 not null,
       port_server u16 not null,
-      diffserv_client u8 not null,
+      diffserv_client u8 not null,  -- 20
       diffserv_server u8 not null,
       os_client u8 null,
       os_server u8 null,
-      mtu_client u16 null,
-      mtu_server u16 null,
+      mtu_client u32 null,
+      mtu_server u32 null,
       captured_pcap string null,
       application u32 not null,
       protostack string null,
       uuid string null,
-      traffic_bytes_client u64 not null,
+      traffic_bytes_client u64 not null,  -- 30
       traffic_bytes_server u64 not null,
       traffic_packets_client u32 not null,
       traffic_packets_server u32 not null,
@@ -336,7 +336,7 @@ let base_program dataset_name delete uncompress csv_glob export =
     "dtt_count", "" ; "dtt_sum", "" ; "dtt_square_sum", "dtt_sum2" ]
   (* UDP CSV Importer: *)
   and udp = csv_import "udp" {|
-      poller string not null,
+      poller string not null,  -- 1
       capture_begin u64 not null,
       capture_end u64 not null,
       device_client u8 null,
@@ -345,7 +345,7 @@ let base_program dataset_name delete uncompress csv_glob export =
       vlan_server u32 null,
       mac_client u64 null,
       mac_server u64 null,
-      zone_client u32 not null,
+      zone_client u32 not null,  -- 10
       zone_server u32 not null,
       ip4_client u32 null,
       ip6_client i128 null,
@@ -355,17 +355,17 @@ let base_program dataset_name delete uncompress csv_glob export =
       ip6_external i128 null,
       port_client u16 not null,
       port_server u16 not null,
-      diffserv_client u8 not null,
+      diffserv_client u8 not null,  -- 20
       diffserv_server u8 not null,
-      mtu_client u16 null,
-      mtu_server u16 null,
+      mtu_client u32 null,
+      mtu_server u32 null,
       application u32 not null,
       protostack string null,
       traffic_bytes_client u64 not null,
       traffic_bytes_server u64 not null,
       traffic_packets_client u32 not null,
       traffic_packets_server u32 not null,
-      payload_bytes_client u64 not null,
+      payload_bytes_client u64 not null,  -- 30
       payload_bytes_server u64 not null,
       dcerpc_uuid string null|} |>
     make_func "udp"
