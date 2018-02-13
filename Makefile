@@ -82,8 +82,8 @@ RAMEN_SOURCES = \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/Compiler.ml src/RamenHtml.ml src/RamenColor.ml \
 	src/RamenFormats.ml src/RamenChart.ml src/RamenGui.ml \
-	src/SqliteHelpers.ml src/RamenAlerter.ml src/HttpSrv.ml \
-	src/TermTable.ml src/ApiCmd.ml \
+	src/SqliteHelpers.ml src/RamenAlerter.ml \
+	src/RamenTests.ml src/HttpSrv.ml src/TermTable.ml src/ApiCmd.ml \
 	src/RingBufCmd.ml src/ramen.ml
 
 CODEGENLIB_SOURCES = \
@@ -407,7 +407,7 @@ check-long: long-check
 
 doc: \
 	docs/tutorial_network_monitoring.html docs/tutorial_counting_words.html \
-	docs/manual.html docs/roadmap.html docs/alerter.html
+	docs/manual.html docs/roadmap.html docs/alerter.html docs/tests.html
 
 docs/tutorial_network_monitoring.html: docs/tutorial_group_by.svg docs/sample_chart1.svg
 

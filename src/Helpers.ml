@@ -412,3 +412,16 @@ let sure_is_http str =
   "http://blabla.com" (sure_is_http "blabla.com")
   "https://blabla.com" (sure_is_http "https://blabla.com")
  *)
+
+let packed_string_of_int n =
+  let buf = Buffer.create 8 in
+  let rec loop n =
+    if n = 0 then Buffer.contents buf else (
+      Buffer.add_char buf (Char.chr (n land 255)) ;
+      loop (n / 256) (* Beware that n is signed *))
+  in
+  loop n
+(*$= packed_string_of_int & ~printer:identity
+  "abc" (packed_string_of_int 0x636261)
+  "" (packed_string_of_int 0)
+ *)

@@ -956,8 +956,10 @@ let set_all_types parents program =
     let test_type_single_func op_text =
       try
         let programs = Hashtbl.create 3 in
+        let txt = "DEFINE foo AS "^ op_text in
+        let funcs = RamenConf.parse_program txt in
         let p =
-          RamenConf.make_program programs "test" ("DEFINE foo AS "^ op_text) in
+          RamenConf.make_program programs "test" txt funcs in
         let parents = BatHashtbl.of_list [ "test", [] ] in
         Hashtbl.add programs "test" p ;
         set_all_types parents p ;

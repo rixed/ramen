@@ -64,7 +64,8 @@ let check_ok body =
 
 let add copts name program start () =
   logger := make_logger copts.debug ;
-  let msg = { name ; ok_if_running = false ; start ; program } in
+  let msg = { name ; ok_if_running = false ; for_test = false ;
+              start ; program } in
   Lwt_main.run (
     http_put_json (copts.server_url ^"/graph") put_program_req_ppp msg >>= check_ok)
 
@@ -438,3 +439,8 @@ let info copts json short name_opt () =
     | info ->
         display_program_info json short info ;
         return_unit)
+
+let test copts conf tests () =
+  logger := make_logger copts.debug ;
+  Lwt_main.run (
+    RamenTests.run conf tests)

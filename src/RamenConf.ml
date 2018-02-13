@@ -198,6 +198,8 @@ struct
       (* How long can this program can stays without dependent funcs before
        * it's reclaimed. Set to 0 for no timeout. *)
       timeout : float ;
+      (* If this is for a test suite, which one: *)
+      test_id : string ;
       mutable last_used : float ;
       mutable status : program_status ;
       mutable last_status_change : float ;
@@ -464,23 +466,28 @@ let make_func program_name func_name operation =
     out_type = UntypedTuple (make_temp_tup_typ ()) ;
     pid = None ; last_exit = "" }
 
-let make_program ?(timeout=0.) programs name program =
+(* Compile a program and add it to the configuration.
+ * [timeout]: if not zero, the program will be destroyed automatically if
+ * no client ask for its output for that long
+ * [test_id]: if not nul, this program is just meant to be tested, so its
+ * program must be renamed and rewritten, and then flagged as a test
+ * program. *)
+let make_program ?(test_id="") ?(timeout=0.) programs name program funcs_lst =
   assert (String.length name > 0) ;
   let now = Unix.gettimeofday () in
-  let p = Program.{
-      name ; funcs = Hashtbl.create 17 ; program ;
-      timeout ; last_used = now ;
-      status = Edition "" ; last_status_change = now ;
-      last_started = None ; last_stopped = None } in
-  (* Since we have lost our funcs, rebuilt them: *)
-  parse_program program |>
+  let funcs = Hashtbl.create (List.length funcs_lst) in
   List.iter (fun def ->
     let func_name = def.Lang.Program.name in
-    if Hashtbl.mem p.funcs func_name then
+    if Hashtbl.mem funcs func_name then
       raise (InvalidCommand (
          "Function "^ func_name ^" already exists in program "^ name)) ;
     make_func name func_name def.Lang.Program.operation |>
-    Hashtbl.add p.funcs def.name) ;
+    Hashtbl.add funcs def.name
+  ) funcs_lst ;
+  let p = Program.{
+      name ; funcs ; program ; timeout ; last_used = now ;
+      status = Edition "" ; last_status_change = now ;
+      last_started = None ; last_stopped = None ; test_id } in
   Hashtbl.add programs name p ;
   p
 

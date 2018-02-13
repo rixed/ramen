@@ -357,6 +357,28 @@ let get_info =
     info ~doc:"Get info about a program or an operation" "info")
 
 (*
+ * Tests
+ *)
+
+let conf_file =
+  let i = Arg.info ~doc:"Configuration file to be tested."
+                   ~docv:"conf.json" [] in
+  Arg.(required (pos 0 (some string) None i))
+
+let test_files =
+  let i = Arg.info ~doc:"Definition of a test to run."
+                   ~docv:"test.json" [] in
+  Arg.(non_empty (pos_right 0 string [] i))
+
+let test =
+  Term.(
+    (const ApiCmd.test
+      $ copts
+      $ conf_file
+      $ test_files),
+    info ~doc:"Test a configuration against a test suite" "test")
+
+(*
  * Command line evaluation
  *)
 
@@ -373,7 +395,7 @@ let () =
     dequeue ; summary ;
     add ; compile ; run ; stop ;
     tail ; timeseries ; timerange ;
-    get_info
+    get_info ; test
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> f ()

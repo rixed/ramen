@@ -85,6 +85,7 @@ let program_info_of_program programs program =
     name = program.L.name ;
     program = program.L.program ;
     operations ;
+    test_id = program.L.test_id ;
     status = program.L.status ;
     last_started = program.L.last_started ;
     last_stopped = program.L.last_stopped }
@@ -347,6 +348,13 @@ let put_program conf headers body =
   (* Disallow anonymous programs for simplicity: *)
   if program_name = "" then
     bad_request "Programs must have non-empty names" else (
+  let%lwt funcs = wrap (fun () -> C.parse_program msg.program) in
+  let test_id, funcs =
+    if msg.for_test then
+      let test_id = RamenTests.get_id () in
+      Some test_id,
+      RamenTests.reprogram test_id funcs
+    else None, funcs in
   let%lwt must_restart =
     C.with_wlock conf (fun programs ->
       (* Delete the program if it already exists. No worries the conf won't be
@@ -367,9 +375,9 @@ let put_program conf headers body =
             let%lwt () = del_program_ programs program in
             return_false
           ) in
-      (* Create all the funcs *)
+      (* Create the program *)
       let%lwt _program =
-        try C.make_program programs program_name msg.program |>
+        try C.make_program ?test_id programs program_name msg.program funcs |>
             return
         with Invalid_argument x -> bad_request ("Invalid "^ x)
            | SyntaxError e -> bad_request (string_of_syntax_error e)
@@ -381,7 +389,10 @@ let put_program conf headers body =
       let%lwt () = compile_ conf program_name in
       run_by_name conf program_name
     ) else return_unit in
-  respond_ok ())
+  let body =
+    PPP.to_string put_program_resp_ppp
+      { success = true ; test_id } in
+  respond_ok ~body ())
 
 (*
     Serving normal files
@@ -656,12 +667,15 @@ let timeseries conf headers body =
     and func_name = "operation" in
     (* So far so good. In all likelihood this program exists already: *)
     if Hashtbl.mem programs program_name then (
-      !logger.debug "Program %S already there" program_name
+      !logger.debug "Program %S already there" program_name ;
+      return (program_name, func_name, "data")
     ) else (
       (* Add this program to the running configuration: *)
-      C.make_program ~timeout:300. programs program_name op_text |> ignore
-    ) ;
-    return (program_name, func_name, "data")
+      let%lwt funcs = wrap (fun () -> C.parse_program op_text) in
+      C.make_program ~timeout:300. programs program_name op_text funcs |>
+      ignore ;
+      return (program_name, func_name, "data")
+    )
   in
   try%lwt
     let%lwt resp = Lwt_list.map_s (fun req ->
@@ -1081,10 +1095,13 @@ let start conf daemonize demo www_dir port cert_opt key_opt
     C.with_wlock conf (fun programs ->
       if demo && Hashtbl.is_empty programs then (
         !logger.info "Adding default funcs since we have nothing to do..." ;
-        C.make_program programs "demo"
+        let txt =
           "DEFINE collectd AS LISTEN FOR COLLECTD;\n\
-           DEFINE netflow AS LISTEN FOR NETFLOW;" |> ignore) ;
-      return_unit) in
+           DEFINE netflow AS LISTEN FOR NETFLOW;" in
+        let%lwt funcs = wrap (fun () -> C.parse_program txt) in
+        C.make_program programs "demo" txt funcs |> ignore ;
+        return_unit
+      ) else return_unit) in
   (* Install signal handlers *)
   Sys.(set_signal sigterm (Signal_handle (fun _ ->
     !logger.info "Received TERM" ;

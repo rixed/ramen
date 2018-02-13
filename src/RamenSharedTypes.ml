@@ -138,6 +138,7 @@ struct
       { name : string ;
         program : string ;
         operations : Func.info list ;
+        test_id : string [@ppp_default ""] ;
         status : status [@ppp_default (RamenSharedTypesJS.Edition "")] ;
         last_started : float option ;
         last_stopped : float option } [@@ppp PPP_JSON]
@@ -153,7 +154,12 @@ type put_program_req =
     (* If this program is already running stop it then restart it: *)
     ok_if_running : bool [@ppp_default false] ;
     start : bool [@ppp_default false] ;
+    for_test : bool [@ppp_default false] ;
     program : string } [@@ppp PPP_JSON]
+
+type put_program_resp =
+  { success : bool ;
+    test_id : string option [@ppp_default None] } [@@ppp PPP_JSON]
 
 (* Commands/Answers related to export *)
 
