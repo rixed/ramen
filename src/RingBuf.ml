@@ -65,11 +65,11 @@ let write_i16 tx offs i = write_i16_ tx offs (Int16.to_int i)
 
 let write_cidr4 tx offs (n, l) =
   write_u32 tx offs n ;
-  write_u8 tx (offs + RingBufLib.round_up_to_rb_word 4) l
+  write_u8 tx (offs + RingBufLib.round_up_to_rb_word 4) (Uint8.of_int l)
 
 let write_cidr6 tx offs (n, l) =
   write_u128 tx offs n ;
-  write_u16 tx (offs + RingBufLib.round_up_to_rb_word 16) l
+  write_u16 tx (offs + RingBufLib.round_up_to_rb_word 16) (Uint16.of_int l)
 
 external read_float : tx -> int -> float = "read_float"
 external read_string : tx -> int -> string = "read_str"
