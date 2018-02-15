@@ -73,6 +73,7 @@ let can_cast ~from_scalar_type ~to_scalar_type =
     | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ; TNum ]
     | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
     | TI128 -> [ TI128 ; TFloat ; TNum ]
+    | TFloat -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
     | TBool -> [ TBool ; TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
     | x -> [ x ] in
   List.mem to_scalar_type compatible_types
