@@ -106,6 +106,8 @@ let read_cidr6 tx offs =
   let len = read_u16 tx (offs + RingBufLib.round_up_to_rb_word 16) in
   addr, Uint16.to_int len
 
+(* Have to be there rather than in RingBufLib because it depends on
+ * RingBuf. *)
 let read_ringbuf ?(while_=(fun () -> true)) ?delay_rec rb f =
   let open Lwt in
   let rec read_next () =

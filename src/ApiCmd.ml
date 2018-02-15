@@ -210,7 +210,8 @@ let export_and_display server_url func_name as_csv with_header continuous =
 (* TODO: separator and null placeholder for csv *)
 let tail copts func_name as_csv with_header last continuous () =
   logger := make_logger copts.debug ;
-  let exporter = export_and_display copts.server_url func_name as_csv with_header continuous in
+  let exporter = export_and_display copts.server_url func_name as_csv
+                                    with_header continuous in
   let max_results =
     if continuous then None else Some last
   and since = ~- last in

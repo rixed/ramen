@@ -541,8 +541,10 @@ let rec conv_to ?state ~context to_typ fmt e =
   ) ;
   let nullable = Option.get t.nullable in
   match t.scalar_typ, to_typ with
-  | Some a, Some b -> conv_from_to a ~nullable b (emit_expr ~context ?state) fmt e
-  | _, None -> (emit_expr ~context ?state) fmt e (* No conversion required *)
+  | Some a, Some b ->
+    conv_from_to a ~nullable b (emit_expr ~context ?state) fmt e
+  | _, None ->
+    (emit_expr ~context ?state) fmt e (* No conversion required *)
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string Scalar.print_typ b))
