@@ -281,7 +281,7 @@ let run conf programs program =
       let%lwt () =
         Lwt_list.iter_p (fun func ->
           if program.test_id <> "" &&
-             Lang.Operation.run_in_tests func.N.operation
+             not (Lang.Operation.run_in_tests func.N.operation)
           then (
             !logger.info "Skipping %s in tests" (N.fq_name func) ;
             return_unit

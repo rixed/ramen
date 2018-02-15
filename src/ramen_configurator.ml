@@ -902,7 +902,6 @@ let base_program dataset_name delete uncompress csv_glob export =
   RamenSharedTypes.{
     name = dataset_name ;
     ok_if_running = true ;
-    for_test = false ;
     start = true ;
     program = program_of_funcs [
       tcp ;
@@ -1181,7 +1180,6 @@ let program_of_bcns bcns dataset_name export =
   RamenSharedTypes.{
     name = program_name ;
     ok_if_running = true ;
-    for_test = false ;
     start = true ;
     program = program_of_funcs !all_funcs }
 
@@ -1404,7 +1402,6 @@ let program_of_bcas bcas dataset_name export =
   RamenSharedTypes.{
     name = program_name ;
     ok_if_running = true ;
-    for_test = false ;
     start = true ;
     program = program_of_funcs !all_funcs }
 
@@ -1459,7 +1456,6 @@ let ddos_program dataset_name export =
   RamenSharedTypes.{
     name = program_name ;
     ok_if_running = true ;
-    for_test = false ;
     start = true ;
     program = program_of_funcs [
       global_new_peers ; pred_func ; anom_func ] }

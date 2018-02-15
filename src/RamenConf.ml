@@ -617,6 +617,11 @@ let in_ringbuf_name conf func =
                    ^ RamenVersions.ringbuf ^"/"
                    ^ Func.fq_name func ^"/"^ sign ^"/in"
 
+let temp_in_ringbuf_name conf identifier =
+  conf.persist_dir ^"/tmp/ringbufs/"
+                   ^ RamenVersions.ringbuf ^"/"
+                   ^ identifier ^"/in"
+
 let exp_ringbuf_name conf func =
   let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/ringbufs/"

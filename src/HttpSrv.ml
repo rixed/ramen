@@ -247,15 +247,13 @@ let put_program conf headers body =
   let%lwt msg =
     of_json headers "Uploading program" put_program_req_ppp body in
   try%lwt
-    let test_id =
-      if msg.for_test then Some (RamenTests.get_id ()) else None in
-    let%lwt () =
+    let%lwt program_name =
       RamenOps.set_program
         conf ~ok_if_running:msg.ok_if_running ~start:msg.start
-        ~name:msg.name ~program:msg.program ?test_id in
+        msg.name msg.program in
     let body =
       PPP.to_string put_program_resp_ppp
-        { success = true ; test_id } in
+        { success = true ; program_name = Some program_name } in
     respond_ok ~body ()
   with exn ->
     bad_request (Printexc.to_string exn)
@@ -278,46 +276,12 @@ let get_index www_dir conf headers =
 *)
 
 let compile conf headers program_opt =
-  (* Loop until all the given programs are compiled.
-   * Return a list of programs that should be re-started. *)
-  let rec compile_loop left_try failures to_retry = function
-  | [] ->
-      if to_retry = [] then return failures
-      else compile_loop (left_try - 1) failures [] to_retry
-  | to_compile :: rest ->
-    !logger.debug "%d programs left to compile..."
-      (List.length rest + 1 + List.length to_retry) ;
-    if left_try < 0 then (
-      let more_failure =
-        SyntaxError (UnsolvableDependencyLoop { program = to_compile }),
-        to_compile in
-      return (more_failure :: failures)
-    ) else (
-      let open Compiler in
-      try%lwt
-        let%lwt () = RamenOps.compile conf to_compile in
-        compile_loop (left_try - 1) failures to_retry rest
-      with MissingDependency n ->
-            !logger.debug "We miss func %s" (N.fq_name n) ;
-            compile_loop (left_try - 1) failures
-                         (to_compile :: to_retry) rest
-         | exn ->
-            compile_loop (left_try - 1) ((exn, to_compile) :: failures)
-                         to_retry rest)
-  in
-  let%lwt failures = match program_opt with
-  | Some to_compile ->
-      compile_loop 1 [] [] [ to_compile ]
-  | None ->
-      (* In this case we want to compile *everything* *)
-      let%lwt uncompiled = C.with_rlock conf (fun programs ->
-        C.fold_programs programs [] (fun lst p ->
-          match p.status with
-          | Edition _ -> p.name :: lst
-          | _ -> lst) |> return) in
-      let len = List.length uncompiled in
-      compile_loop (1 + len * (len - 1) / 2) [] [] uncompiled
-  in
+  let%lwt program_names =
+    C.with_rlock conf (fun programs ->
+      let%lwt programs = graph_programs programs program_opt in
+      List.map (fun p -> p.L.name) programs |>
+      return) in
+  let%lwt failures = RamenOps.compile_programs conf program_names in
   if failures = [] then
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
@@ -556,7 +520,7 @@ let timeseries conf headers body =
             let%lwt (program_name, _func_name, _data_field as res) =
               C.with_wlock conf (fun programs ->
                 create_temporary_func programs select_x select_y from where) in
-            let%lwt () = RamenOps.compile conf program_name in
+            let%lwt () = RamenOps.compile_one conf program_name in
             let%lwt () = RamenOps.start_program_by_name conf program_name in
             return res in
         let%lwt times, values =

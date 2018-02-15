@@ -5,6 +5,7 @@ open Cohttp_lwt_unix
 open RamenLog
 open RamenSharedTypes
 open Helpers
+open RamenHttpHelpers
 module C = RamenConf
 
 type copts =
@@ -13,72 +14,25 @@ type copts =
     bundle_dir : string ; max_simult_compilations : int }
 
 let make_copts debug server_url persist_dir max_history_archives
-               use_embedded_compiler bundle_dir max_simult_compilations =
+               use_embedded_compiler bundle_dir max_simult_compilations
+               rand_seed =
+  (match rand_seed with
+  | None -> Random.self_init ()
+  | Some seed -> Random.init seed) ;
   { debug ; server_url ; persist_dir ; max_history_archives ;
     use_embedded_compiler ; bundle_dir ; max_simult_compilations }
 
 let enc = Uri.pct_encode
 
-let exhort ?(err_ok=false) http_cmd =
-  let on = function
-    | Unix.Unix_error (Unix.ECONNREFUSED, "connect", "") -> return_true
-    | _ -> return_false in
-  let%lwt resp, body =
-    Helpers.retry ~first_delay:0.2 ~on ~max_retry:3 http_cmd () in
-  let code = resp |> Response.status |> Code.code_of_status in
-  let%lwt body = Cohttp_lwt.Body.to_string body in
-  if code <> 200 then (
-    if err_ok then (
-      !logger.debug "Response code: %d" code ;
-      !logger.debug "Answer: %S" body
-    ) else (
-      !logger.error "Response code: %d" code ;
-      !logger.error "Answer: %S" body
-    ) ;
-    fail_with ("Error HTTP "^ string_of_int code)
-  ) else (
-    !logger.debug "Response code: %d" code ;
-    !logger.debug "Answer: %S" body ;
-    return body
-  )
-
-(* Return the answered body *)
-let http_do ?(cmd=Client.put) ?content_type ?body url =
-  let headers = Header.init_with "Connection" "close" in
-  let headers = match content_type with
-    | Some ct -> Header.add headers "Content-Type" ct
-    | None -> headers in
-  !logger.debug "%S < %a" url (Option.print String.print) body ;
-  let body = Option.map (fun s -> `String s) body in
-  exhort (fun () -> cmd ~headers ?body (Uri.of_string (sure_is_http url)))
-
-(* Return the answered body *)
-let http_put_json url ppp msg =
-  let body = PPP.to_string ppp msg in
-  http_do ~content_type:Consts.json_content_type ~body url
-
-let http_post_json url ppp msg =
-  let body = PPP.to_string ppp msg in
-  http_do ~cmd:Client.post ~content_type:Consts.json_content_type ~body url
-
-let http_get ?err_ok url =
-  exhort ?err_ok (fun () -> Client.get (Uri.of_string (sure_is_http url)))
-
-let check_ok body =
-  (* Yeah that's grand *)
-  ignore body ;
-  return_unit
-
 let add copts name program ok_if_running start remote () =
   logger := make_logger copts.debug ;
-  if remote && ok_if_running then
-    failwith "Options --remote and --ok-if-running are incompatible." ;
-  if remote && start then
-    failwith "Options --remote and --start are incompatible." ;
+  if not remote && ok_if_running then
+    failwith "Option --ok-if-running is only supported if --remote." ;
+  if not remote && start then
+    failwith "Option --start is only supported if --remote." ;
   Lwt_main.run (
     if remote then
-      let msg = { name ; ok_if_running ; for_test = false ;
-                  start ; program } in
+      let msg = { name ; ok_if_running ; start ; program } in
       http_put_json (copts.server_url ^"/graph") put_program_req_ppp msg >>=
       check_ok
     else
@@ -86,7 +40,9 @@ let add copts name program ok_if_running start remote () =
         C.make_conf true copts.server_url copts.debug copts.persist_dir
                     copts.max_simult_compilations copts.max_history_archives
                     copts.use_embedded_compiler copts.bundle_dir in
-      RamenOps.set_program conf ~ok_if_running ~start ~name ~program)
+      let%lwt _program_name =
+        RamenOps.set_program ~ok_if_running ~start conf name program in
+      return_unit)
 
 let compile copts () =
   logger := make_logger copts.debug ;
@@ -96,16 +52,13 @@ let compile copts () =
 let run copts () =
   logger := make_logger copts.debug ;
   Lwt_main.run (
-    http_get (copts.server_url ^"/run") >>= check_ok)
+    http_get (copts.server_url ^"/start") >>= check_ok)
 
-let start copts daemonize rand_seed no_demo to_stderr www_dir http_port
+let start copts daemonize no_demo to_stderr www_dir http_port
           ssl_cert ssl_key alert_conf_json () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
-  (match rand_seed with
-  | None -> Random.self_init ()
-  | Some seed -> Random.init seed) ;
   let logdir =
     if to_stderr then None else Some (copts.persist_dir ^"/log") in
   Option.may mkdir_all logdir ;
@@ -460,7 +413,11 @@ let info copts json short name_opt () =
         display_program_info json short info ;
         return_unit)
 
-let test copts conf tests () =
+let test copts conf_file tests () =
   logger := make_logger copts.debug ;
+  let conf =
+    C.make_conf true copts.server_url copts.debug copts.persist_dir
+                copts.max_simult_compilations copts.max_history_archives
+                copts.use_embedded_compiler copts.bundle_dir in
   Lwt_main.run (
-    RamenTests.run conf tests)
+    RamenTests.run conf copts.server_url conf_file tests)

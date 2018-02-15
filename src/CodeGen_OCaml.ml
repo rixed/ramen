@@ -92,7 +92,7 @@ let id_of_typ typ =
   | TNum | TAny -> assert false
 
 let emit_value_of_string typ oc var =
-  Printf.fprintf oc "CodeGenLib.%s_of_string %s" (id_of_typ typ) var
+  Printf.fprintf oc "RamenTypeConverters.%s_of_string %s" (id_of_typ typ) var
 
 let emit_compute_nullmask_size oc ser_tuple_typ =
   Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;

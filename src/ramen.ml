@@ -48,10 +48,16 @@ let copts =
                      ~env ["max-simult-compil" ;
                            "max-simultaneous-compilations" ] in
     Arg.(value (opt int 4 i))
+  and rand_seed =
+    let i = Arg.info ~doc:"seed to initialize the random generator with. \
+                           (will use a random one if unset)"
+                     [ "seed"; "rand-seed" ] in
+    Arg.(value (opt (some int) None i))
   in
   Term.(const ApiCmd.make_copts
     $ debug $ server_url $ persist_dir $ max_history_archives
-    $ use_embedded_compiler $ bundle_dir $ max_simult_compilations)
+    $ use_embedded_compiler $ bundle_dir $ max_simult_compilations
+    $ rand_seed)
 
 (*
  * Start the event processor
@@ -62,12 +68,6 @@ let daemonize =
   let i = Arg.info ~doc:"daemonize"
                    ~env [ "daemon"; "daemonize"] in
   Arg.(value (flag i))
-
-let rand_seed =
-  let i = Arg.info ~doc:"seed to initialize the random generator with. \
-                         (will use a random one if unset)"
-                   [ "seed"; "rand-seed" ] in
-  Arg.(value (opt (some int) None i))
 
 let no_demo =
   let env = Term.env_info "RAMEN_NO_DEMO" in
@@ -120,7 +120,6 @@ let server_start =
     (const ApiCmd.start
       $ copts
       $ daemonize
-      $ rand_seed
       $ no_demo
       $ to_stderr
       $ www_dir
@@ -410,4 +409,9 @@ let () =
     get_info ; test
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
-       | `Ok f -> f ()
+       | `Ok f -> (
+          try f ()
+          with Exit -> exit 0
+             | Failure msg ->
+                 Printf.eprintf "%s" msg ;
+                 exit 1)

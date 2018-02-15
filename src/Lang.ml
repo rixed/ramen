@@ -375,6 +375,52 @@ struct
     | VCidrv4 _ | VCidrv6 _ -> false
     | _ -> true
 
+  let value_of_string typ s =
+    let open RamenTypeConverters in
+    match typ with
+    | TFloat -> VFloat (float_of_string s)
+    | TString -> VString (string_of_string s)
+    | TBool -> VBool (bool_of_string s)
+    | TU8 -> VU8 (u8_of_string s)
+    | TU16 -> VU16 (u16_of_string s)
+    | TU32 -> VU32 (u32_of_string s)
+    | TU64 -> VU64 (u64_of_string s)
+    | TU128 -> VU128 (u128_of_string s)
+    | TI8 -> VI8 (i8_of_string s)
+    | TI16 -> VI16 (i16_of_string s)
+    | TI32 -> VI32 (i32_of_string s)
+    | TI64 -> VI64 (i64_of_string s)
+    | TI128 -> VI128 (i128_of_string s)
+    | TEth -> VEth (eth_of_string s)
+    | TIpv4 -> VIpv4 (ip4_of_string s)
+    | TIpv6 -> VIpv6 (ip6_of_string s)
+    | TCidrv4 -> VCidrv4 (cidr4_of_string s)
+    | TCidrv6 -> VCidrv6 (cidr6_of_string s)
+    | TNull -> VNull
+    | TNum | TAny -> assert false
+
+  let any_value_of_type = function
+    | TFloat -> VFloat 0.
+    | TString -> VString "hello"
+    | TBool -> VBool true
+    | TU8 -> VU8 Uint8.zero
+    | TU16 -> VU16 Uint16.zero
+    | TU32 -> VU32 Uint32.zero
+    | TU64 -> VU64 Uint64.zero
+    | TU128 -> VU128 Uint128.zero
+    | TI8 -> VI8 Int8.zero
+    | TI16 -> VI16 Int16.zero
+    | TI32 -> VI32 Int32.zero
+    | TI64 -> VI64 Int64.zero
+    | TI128 -> VI128 Int128.zero
+    | TEth -> VEth Uint48.zero
+    | TIpv4 -> VIpv4 Uint32.zero
+    | TIpv6 -> VIpv6 Uint128.zero
+    | TCidrv4 -> VCidrv4 (Uint32.zero, 0)
+    | TCidrv6 -> VCidrv6 (Uint128.zero, 0)
+    | TNull -> VNull
+    | TNum | TAny -> assert false
+
   module Parser =
   struct
     (*$< Parser *)

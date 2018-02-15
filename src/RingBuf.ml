@@ -118,3 +118,17 @@ let read_ringbuf ?(while_=(fun () -> true)) ?delay_rec rb f =
     ) else return_unit
   in
   read_next ()
+
+let with_enqueue_tx rb sz f =
+  let open Lwt in
+  let%lwt tx =
+    RingBufLib.retry_for_ringbuf (enqueue_alloc rb) sz in
+  try
+    f tx ;
+    enqueue_commit tx ;
+    return_unit
+  with exn ->
+    (* There is no such thing as enqueue_rollback. We cannot make the rb
+     * pointer go backward (or... can we?) but we could have a 1 bit header
+     * indicating if an entry is valid or not. *)
+    fail exn

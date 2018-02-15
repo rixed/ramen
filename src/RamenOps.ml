@@ -29,7 +29,7 @@ let start_program_by_name conf to_run =
         with RamenProcesses.AlreadyRunning -> return_unit)
 
 (* Compile one program and stop those that depended on it. *)
-let compile conf program_name =
+let compile_one conf program_name =
   (* Compilation taking a long time, we do a two phase approach:
    * First we take the wlock, read the programs and put their status
    * to compiling, and release the wlock. Then we compile everything
@@ -58,8 +58,9 @@ let compile conf program_name =
                   ) func.N.parents
                 ) to_compile.L.funcs with
               | exception exn ->
+                  (* This is a parse error that must be reported *)
                   L.set_status to_compile (Edition (Printexc.to_string exn)) ;
-                  return_none
+                  fail exn
               | parents ->
                   L.set_status to_compile Compiling ;
                   return (Some (to_compile, parents)))
@@ -107,7 +108,86 @@ let compile conf program_name =
       (* Be lenient if some of those programs are not there anymore: *)
       Lwt_list.iter_s (start_program_by_name conf) to_restart
 
-let set_program ?test_id conf ~ok_if_running ~start ~name ~program =
+(* Compile all the given programs, returning the names of those who've
+ * failed *)
+let compile_programs conf program_names =
+  !logger.info "Going to compile %a"
+    (List.print String.print) program_names ;
+  (* Loop until all the given programs are compiled.
+   * Return a list of programs that should be re-started. *)
+  let rec compile_loop left_try failures to_retry = function
+  | [] ->
+      if to_retry = [] then return failures
+      else compile_loop (left_try - 1) failures [] to_retry
+  | to_compile :: rest ->
+    !logger.debug "%d programs left to compile..."
+      (List.length rest + 1 + List.length to_retry) ;
+    if left_try < 0 then (
+      let more_failure =
+        Lang.SyntaxError (UnsolvableDependencyLoop { program = to_compile }),
+        to_compile in
+      return (more_failure :: failures)
+    ) else (
+      let open Compiler in
+      try%lwt
+        let%lwt () = compile_one conf to_compile in
+        compile_loop (left_try - 1) failures to_retry rest
+      with MissingDependency n ->
+            !logger.debug "We miss func %s" (N.fq_name n) ;
+            compile_loop (left_try - 1) failures
+                         (to_compile :: to_retry) rest
+         | exn ->
+            compile_loop (left_try - 1) ((exn, to_compile) :: failures)
+                         to_retry rest)
+  in
+  let%lwt uncompiled =
+    C.with_rlock conf (fun programs ->
+      List.filter_map (fun name ->
+        match Hashtbl.find programs name with
+        | exception Not_found ->
+            (* Not a hard error since lock was released *)
+            !logger.warning "Program %S does not exist" name ;
+            None
+        | p ->
+            (match p.status with
+            | Edition _ -> Some p.name
+            | _ -> None)
+      ) program_names |> return) in
+  let len = List.length uncompiled in
+  compile_loop (1 + len * (len - 1) / 2) [] [] uncompiled
+
+(* Change the FROMs from program_name to new_program_name,
+ * warn if time-related functions are used, and force the export. *)
+let reprogram_for_test old_program_name new_program_name func =
+  let open Lang in
+  let rename s =
+    if String.starts_with s old_program_name then
+      let len = String.length old_program_name in
+      if String.length s = len then new_program_name
+      else if s.[len] = '/' then
+        new_program_name ^ String.lchop ~n:len s
+      else s
+    else s
+  in
+  Operation.iter_expr (function
+    | Expr.(StatelessFun (_, (Age _ | Now))) ->
+        !logger.warning "Test uses time related functions"
+    | _ -> ()) func.Program.operation ;
+  match func.operation with
+  | Operation.Yield { every ; _ } ->
+      if every > 0. then !logger.warning "Test uses YIELD EVERY" ;
+      func
+  | Operation.ReadCSVFile _ | Operation.ListenFor _ -> func
+  | Operation.Aggregate ({ from ; _ } as r) ->
+      { func with operation =
+          Operation.Aggregate { r with from = List.map rename from ;
+                                       force_export = true } }
+
+(* TODO: Alternative: let the tester reprogram the code, and add a flag
+ * in the func to prevent it from being started *)
+(* Return the name of the program (not necessarily the same as input *)
+let set_program ?test_id ?(ok_if_running=false) ?(start=false)
+                conf name program =
   (* Disallow anonymous programs for simplicity: *)
   if name = "" then
     fail_with "Programs must have non-empty names" else (
@@ -116,9 +196,9 @@ let set_program ?test_id conf ~ok_if_running ~start ~name ~program =
     match test_id with
     | None -> name, funcs
     | Some id ->
-      let new_program_name = "temp/tests/"^ id in
-      new_program_name,
-      List.map (RamenTests.reprogram name new_program_name) funcs in
+      let new_name = "temp/tests/"^ id ^"/"^ name in
+      new_name,
+      List.map (reprogram_for_test name new_name) funcs in
   let%lwt must_restart =
     C.with_wlock conf (fun programs ->
       (* Delete the program if it already exists. No worries the conf won't be
@@ -143,8 +223,10 @@ let set_program ?test_id conf ~ok_if_running ~start ~name ~program =
       let%lwt _program =
         wrap (fun () -> C.make_program ?test_id programs name program funcs) in
       return stopped_it) in
-  if must_restart || start then (
-    !logger.debug "Trying to (re)start program %s" name ;
-    let%lwt () = compile conf name in
-    start_program_by_name conf name
-  ) else return_unit)
+  let%lwt () =
+    if must_restart || start then (
+      !logger.debug "Trying to (re)start program %s" name ;
+      let%lwt () = compile_one conf name in
+      start_program_by_name conf name
+    ) else return_unit in
+  return name)

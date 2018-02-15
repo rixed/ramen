@@ -352,6 +352,17 @@ let string_of_time ts =
         (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
         tm.tm_hour tm.tm_min tm.tm_sec
 
+let string_remove c s =
+  let len = String.length s in
+  let buf = Buffer.create len in
+  for i = 0 to len-1 do
+    if s.[i] <> c then Buffer.add_char buf s.[i]
+  done ;
+  Buffer.contents buf
+(*$= string_remove & ~printer:identity
+  "1234" (string_remove ':' "::12:34")
+ *)
+
 let udp_server ?(buffer_size=2000) ~inet_addr ~port
                ?(while_=(fun () -> true)) k =
   let open Lwt in
@@ -425,3 +436,23 @@ let packed_string_of_int n =
   "abc" (packed_string_of_int 0x636261)
   "" (packed_string_of_int 0)
  *)
+
+let hash_iter_s h f =
+  Hashtbl.fold (fun k v thd ->
+    let%lwt () = f k v in thd
+  ) h Lwt.return_unit
+
+let hash_map_s h f =
+  let res = Hashtbl.create (Hashtbl.length h) in
+  let%lwt () =
+    hash_iter_s h (fun k v ->
+      let%lwt v' = f k v in
+      Hashtbl.add res k v' ;
+      Lwt.return_unit) in
+  Lwt.return res
+
+let hash_fold_s h f i =
+  Hashtbl.fold (fun k v thd ->
+    let%lwt prev = thd in
+    f k v prev
+  ) h (Lwt.return i)

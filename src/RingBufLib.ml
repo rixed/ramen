@@ -44,20 +44,66 @@ let retry_for_ringbuf ?(while_=(fun () -> Lwt.return_true)) ?delay_rec f =
 let sersize_of_string s =
   rb_word_bytes + round_up_to_rb_word (String.length s)
 
-let rec sersize_of_fixsz_typ =
-  function
-  | TFloat -> round_up_to_rb_word 8
-  | TBool | TU8 | TI8 -> round_up_to_rb_word 1
-  | TU16 | TI16 -> round_up_to_rb_word 2
-  | TU32 | TI32 | TIpv4 -> round_up_to_rb_word 4
-  | TU64 | TI64 -> round_up_to_rb_word 8
-  | TU128 | TI128 | TIpv6 -> round_up_to_rb_word 16
-  | TNull -> 0
-  | TEth -> round_up_to_rb_word 6
-  | TCidrv4 -> sersize_of_fixsz_typ TIpv4 + sersize_of_fixsz_typ TU8
-  | TCidrv6 -> sersize_of_fixsz_typ TIpv6 + sersize_of_fixsz_typ TU16
-  | TString -> assert false
-  | TNum | TAny -> assert false
+let sersize_of_float = round_up_to_rb_word 8
+let sersize_of_bool = round_up_to_rb_word 1
+let sersize_of_u8 = round_up_to_rb_word 1
+let sersize_of_i8 = round_up_to_rb_word 1
+let sersize_of_u16 = round_up_to_rb_word 2
+let sersize_of_i16 = round_up_to_rb_word 2
+let sersize_of_u32 = round_up_to_rb_word 4
+let sersize_of_i32 = round_up_to_rb_word 4
+let sersize_of_ipv4 = round_up_to_rb_word 4
+let sersize_of_u64 = round_up_to_rb_word 8
+let sersize_of_i64 = round_up_to_rb_word 8
+let sersize_of_u128 = round_up_to_rb_word 16
+let sersize_of_i128 = round_up_to_rb_word 16
+let sersize_of_ipv6 = round_up_to_rb_word 16
+let sersize_of_null = 0
+let sersize_of_eth = round_up_to_rb_word 6
+let sersize_of_cidrv4 = sersize_of_ipv4 + sersize_of_u8
+let sersize_of_cidrv6 = sersize_of_ipv6 + sersize_of_u16
+
+let rec sersize_of_fixsz_typ = function
+  | TFloat -> sersize_of_float
+  | TBool -> sersize_of_bool
+  | TU8 -> sersize_of_u8
+  | TI8 -> sersize_of_i8
+  | TU16 -> sersize_of_u16
+  | TI16 -> sersize_of_i16
+  | TU32 -> sersize_of_u32
+  | TI32 -> sersize_of_i32
+  | TIpv4 -> sersize_of_ipv4
+  | TU64 -> sersize_of_u64
+  | TI64 -> sersize_of_i64
+  | TU128 -> sersize_of_u128
+  | TI128 -> sersize_of_i128
+  | TIpv6 -> sersize_of_ipv6
+  | TNull -> sersize_of_null
+  | TEth -> sersize_of_eth
+  | TCidrv4 -> sersize_of_cidrv4
+  | TCidrv6 -> sersize_of_cidrv6
+  | TString | TNum | TAny -> assert false
+
+let sersize_of_value = function
+  | VString s -> sersize_of_string s
+  | VFloat _ -> sersize_of_float
+  | VBool _ -> sersize_of_bool
+  | VU8 _ -> sersize_of_u8
+  | VI8 _ -> sersize_of_i8
+  | VU16 _ -> sersize_of_u16
+  | VI16 _ -> sersize_of_i16
+  | VU32 _ -> sersize_of_u32
+  | VI32 _ -> sersize_of_i32
+  | VIpv4 _ -> sersize_of_ipv4
+  | VU64 _ -> sersize_of_u64
+  | VI64 _ -> sersize_of_i64
+  | VU128 _ -> sersize_of_u128
+  | VI128 _ -> sersize_of_i128
+  | VIpv6 _ -> sersize_of_ipv6
+  | VNull -> sersize_of_null
+  | VEth _ -> sersize_of_eth
+  | VCidrv4 _ -> sersize_of_cidrv4
+  | VCidrv6 _ -> sersize_of_cidrv6
 
 let out_ringbuf_names outbuf_ref_fname =
   let open Lwt in

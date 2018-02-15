@@ -1381,7 +1381,7 @@ allowed). The syntax is simple and can be grasped with a single example:
 ----
 
 You can also have anonymous operations (without the +DEFINE xxx AS+ part),
-but then of course their output could not be +SELECT+ed from another 
+but then of course their output could not be +SELECT+ed from another
 operation.
 
 === Examples
@@ -1431,3 +1431,244 @@ no more than that many tuples.
 
 +RECEIVE+ operations expect that the data be sent to Ramen, as a CSV, via an HTTP
 POST to +/upload/NODE_NAME/+.
+
+== Tests
+
+Two things need to be tested:
+
+1. That given some inputs, Ramen outputs will match some expected pattern,
+   including that the expected notifications will be send; In other words,
+   that Ramen computes what we think it does.
+
+2. That given some notifications, the expected pages will be sent and will
+   be properly escalated in all possible situations; in other words, that
+   the alerter configuration behave and escalate pages as we think it does.
+
+The first set of tests depends on what we measure while the second one
+depends on the oncaller team workflow.
+
+Both are equally important. Ramen is designed in such a way that tests are
+as easy, convenient and reliable as possible. Tests are integrated directly
+in the design.
+
+=== Testing Ramen Configuration
+
+In order to test a configuration you must first write that configuration.
+It can be the current configuration, a modified version or a totally new one.
+
+So suppose Ramen is running some configuration and you have a modified
+version of the configuration that you would like to test, in +to_test.json+.
+Then you must write the test suite, as a series of JSON files each specifying
+a test. A test supply some input tuples to any operation you want, and
+describe some expected output tuples/notifications. The exact format of those
+file will be given later.
+
+You then run:
+
+[source,shell]
+----
+ramen test <config.json> <test1.json> <test2.json> ...
+----
+
+Ramen will then create the configuration described in +config.json+ but
+isolated from the running configuration, in a temporary namespace (merely
+prefixing all program names with "test/<some_unique_number>" in their
+definition and any references to them. Any operation listening from the
+network or reading files on disk will be disabled, but every other will be
+run in this temporary namespace. Then each test will be run one by one.
+For each of them, Ramen will fill the input ringbuffer of the nodes with
+the specified input, while collecting the output from the operations which
+output have been specified. Then it will compare those with the specification
+and output a report. Then it will destroy the temporary namespace with all
+the programs under test. During the test, the clock value will be faked so that
+we can simulate time lapses.
+
+Since listening from the network and reading from disc is disabled to not
+interfere with the production configuration, a test cannot specify those
+operation inputs. Rather it must specify their output. Indeed, it is
+actually possible to inject tuples in either input or output of any operation.
+For Ramen it's all the same anyway: it will just write the given tuple in some
+ringbuffers.
+
+Now that we have covered the basics, let's see how to specify the inputs and
+the expected outputs.
+
+.Alternative Considered
+****
+Instead of  reusing the same Ramen instance and the same supervisor daemon,
+why not run the tests with a specific supervisor, saving the configuration
+in a temporary, random $RAMEN_PERSIST_DIR and $RAMEN_URL of its own? Thus,
+rewriting the configuration would not be necessary, and there would be no risk
+of interfering with the production instance.
+
+Several reasons:
+
+1. The tested configuration can read some tuples from some production programs;
+
+2. We keep the cache of compiled programs (but we could of course have a common
+directory to hold that cache);
+
+3. We'd still need to disable LISTENs and READs;
+
+4. If the user wants to use any other tool to query the test then it is
+inconvenient to have to use a random directory and port;
+
+5. If you need the extra isolation you can still run the tests on a separate
+instance, picking random $RAMEN_PERSIST_DIR and $RAMEN_URL yourself.
+****
+
+
+==== Specifying the Inputs
+
+Few things make specifying inputs for test suites complicated:
+
+- We don't want to specify everything: not every inputs and not every fields;
+- We need a way to specify also the time relation between the inputs to various
+  nodes;
+- We need a way to specify time lapses.
+
+Regarding the later concern, the easier is to specify the inputs in the order
+they are supposed to happen, keeping in mind that there is no other
+synchronisation mechanism between different operations than the ones required
+by their own relationship.
+
+So we specify all inputs to all nodes in a single sequence.
+
+NOTE: Later we might also instruct Ramen to introduce some amount of disorder.
+
+Regarding the first concern: just name the fields you want to specify and leave
+the others uninitialized. Arbitrary values will be provided.
+
+So each input specification follows this pattern:
+
+.Specification of a single input
+[source,json]
+----
+{ "operation": "fully qualified name",
+  "tuple": { "field1": "value1", "field2": "value2", ... } }
+----
+
+It is important that the field values are _strings_, whatever the actual
+datatype is (although JSON is not picky about types, Ramen is. Soon Ramen
+will be able to take specifications in a better language than JSON).
+
+Before a tuple is sent it is possible to introduce a time laps, in seconds,
+by adding a "pause" fields.:
+
+.Specification of a time gap
+[source,json]
+----
+  "pause": 123.456
+----
+
+And the full input specifications is therefore nothing but an array of those,
+named "inputs":
+
+.Specifications of a test inputs
+[source,json]
+----
+"inputs": [
+  { "operation": ..., "tuple": ... },
+  { "operation": ..., "tuple": ... },
+  { "pause": ..., "operation": ..., "tuple": ... },
+  ...
+]
+----
+
+==== Specifying the Expected Outputs
+
+Then we want to instruct Ramen that by the time the tests are over, some
+outputs/notifications must have been issued and some other must not.
+
+To specify that some tuples must have been output from some operation:
+
+.Specifications of expected output tuples
+[source,json]
+----
+"operation FQ name": {
+  "tuples": {
+    "present" : [
+      { "field1": "value1", "field2": "value2", ... },
+      ... ],
+----
+
+Where of course you need only specify the fields you care about.
+
+Occasionally, one want to make sure that a tuple is _not_ emitted. The
+"absent" field serves this purpose:
+
+.Specifications of forbidden output tuples
+[source,json]
+----
+    "absent": [
+      { "field1": "value1", "field2", "value2", ... },
+      ... ]
+  }
+----
+
+Notifications are specified using regular expression, which syntax must (for
+now) follow http://caml.inria.fr/pub/docs/manual-ocaml/libref/Str.html[OCaml
+regular expressions].
+
+.Specifications of expected notifications
+[source,json]
+----
+  "notifications": {
+    "present" : [
+      "^http://my_alerting_system.com/alert?id=123&",
+      ... ],
+    "absent" : [ ... ],
+  }
+}
+----
+
+All those expectations are given in a single JSON array named "outputs".
+
+==== Wrapping everything together in a single test specification
+
+Complete example:
+
+.Test specification example
+[source,json]
+----
+{
+  "inputs": [
+    { "operation": "FQ name1",
+      "tuple": { "field1": "value1", "field2": "value2", ... } },
+    { "operation": "FQ name2",
+      "tuple": { "field1": "value1", "field2": "value2", ... } },
+    { "pause": 123.456,
+      "operation": "FQ name3",
+      "tuple": { "field1": "value1", "field2": "value2", ... } },
+    ...
+  ],
+  "outputs": {
+    "FQ name1": {
+      "tuples": {
+        "present" : [
+          { "field1": "value1", "field2": "value2", ... },
+          { "field1": "value1", "field2": "value2", ... },
+          ...
+        ],
+        "absent" : [ ... ]
+      },
+      "notifications": {
+        "present" : [
+          "^http://my_alerting_system.com/alert?id=123&",
+          "^http://my_alerting_system.com/alert?id=456&",
+          ...
+        ],
+        "absent" : [ ... ]
+      },
+    },
+    "FQ name2": {
+      "tuples": [ ... ],
+      "notifications": [ ... ]
+    }, ...
+  }
+}
+----
+
+=== Testing Alerter Configuration
+
+TODO

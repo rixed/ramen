@@ -74,16 +74,18 @@ RAMEN_SOURCES = \
 	src/RamenVersions.ml src/Consts.ml src/RamenLog.ml src/Helpers.ml \
 	src/RamenBitmask.ml src/RWLock.ml src/RamenOutRef.ml \
 	src/RamenSharedTypesJS.ml src/AlerterSharedTypesJS.ml \
+	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
 	src/RamenSharedTypes.ml src/RamenCollectd.ml src/RamenNetflow.ml \
-	src/RamenProtocols.ml src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml \
-	src/Ipv6.ml src/RingBufLib.ml src/Lang.ml src/RingBuf.ml \
+	src/RamenProtocols.ml src/RingBufLib.ml \
+	src/RamenTypeConverters.ml src/Lang.ml \
+	src/RingBuf.ml src/RamenSerialization.ml \
 	src/RamenConf.ml src/RamenBinocle.ml src/RamenExport.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/Compiler.ml src/RamenHtml.ml src/RamenColor.ml \
 	src/RamenFormats.ml src/RamenChart.ml src/RamenGui.ml \
 	src/SqliteHelpers.ml src/RamenAlerter.ml \
-	src/RamenTests.ml src/RamenOps.ml \
+	src/RamenOps.ml src/RamenTests.ml \
 	src/HttpSrv.ml src/TermTable.ml src/ApiCmd.ml \
 	src/RingBufCmd.ml src/ramen.ml
 
@@ -94,7 +96,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
 	src/RingBufLib.ml src/RingBuf.ml src/RamenBinocle.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
-	src/CodeGenLib_State.ml src/CodeGenLib.ml
+	src/CodeGenLib_State.ml src/CodeGenLib.ml src/RamenTypeConverters.ml
 
 LIBRINGBUF_SOURCES = \
 	src/ringbuf/ringbuf.h src/ringbuf/ringbuf.c src/ringbuf/wrappers.c
@@ -353,10 +355,12 @@ LINKED_FOR_TESTS = \
 	src/RamenSharedTypes.ml src/AlerterSharedTypesJS.ml src/RingBufLib.ml \
 	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
 	src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
-	src/Lang.ml src/RingBuf.ml src/RamenConf.ml src/Globs.ml \
+	src/RamenTypeConverters.ml src/Lang.ml src/RingBuf.ml src/RamenConf.ml \
+	src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/RamenBinocle.ml src/RamenBitmask.ml \
-	src/RamenExport.ml src/RamenHttpHelpers.ml src/RamenProcesses.ml \
+	src/RamenSerialization.ml src/RamenExport.ml \
+	src/RamenHttpHelpers.ml src/RamenProcesses.ml \
 	src/Compiler.ml src/RamenBloomFilter.ml src/RamenHtml.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
@@ -408,7 +412,7 @@ check-long: long-check
 
 doc: \
 	docs/tutorial_network_monitoring.html docs/tutorial_counting_words.html \
-	docs/manual.html docs/roadmap.html docs/alerter.html docs/tests.html
+	docs/manual.html docs/roadmap.html docs/alerter.html
 
 docs/tutorial_network_monitoring.html: docs/tutorial_group_by.svg docs/sample_chart1.svg
 

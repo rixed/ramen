@@ -205,3 +205,59 @@ let http_notify url =
     return_unit
   ) else
     Cohttp_lwt.Body.drain_body body
+
+(* Helpers for clients: *)
+
+(* Retry an HTTP command reasonably *)
+let exhort ?(err_ok=false) http_cmd =
+  let on = function
+    | Unix.Unix_error (Unix.ECONNREFUSED, "connect", "") -> return_true
+    | _ -> return_false in
+  let%lwt resp, body =
+    Helpers.retry ~first_delay:1. ~on ~max_retry:3 http_cmd () in
+  let code = resp |> Response.status |> Code.code_of_status in
+  let%lwt body = Cohttp_lwt.Body.to_string body in
+  if code <> 200 then (
+    if err_ok then (
+      !logger.debug "Response code: %d" code ;
+      !logger.debug "Answer: %S" body
+    ) else (
+      !logger.error "Response code: %d" code ;
+      !logger.error "Answer: %S" body
+    ) ;
+    fail_with ("Error HTTP "^ string_of_int code)
+  ) else (
+    !logger.debug "Response code: %d" code ;
+    !logger.debug "Answer: %S" body ;
+    return body
+  )
+
+(* Return the answered body *)
+let http_do ?(cmd=Client.put) ?content_type ?body url =
+  let headers = Header.init_with "Connection" "close" in
+  let headers = match content_type with
+    | Some ct -> Header.add headers "Content-Type" ct
+    | None -> headers in
+  !logger.debug "%S < %a" url (Option.print String.print) body ;
+  let body = Option.map (fun s -> `String s) body in
+  exhort (fun () -> cmd ~headers ?body (Uri.of_string (sure_is_http url)))
+
+(* Return the answered body *)
+let http_put_json url ppp msg =
+  !logger.debug "HTTP PUT %s" url ;
+  let body = PPP.to_string ppp msg in
+  http_do ~content_type:Consts.json_content_type ~body url
+
+let http_post_json url ppp msg =
+  !logger.debug "HTTP POST %s" url ;
+  let body = PPP.to_string ppp msg in
+  http_do ~cmd:Client.post ~content_type:Consts.json_content_type ~body url
+
+let http_get ?err_ok url =
+  !logger.debug "HTTP GET %s" url ;
+  exhort ?err_ok (fun () -> Client.get (Uri.of_string (sure_is_http url)))
+
+let check_ok body =
+  (* Yeah that's grand *)
+  ignore body ;
+  return_unit
