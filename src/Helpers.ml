@@ -17,15 +17,15 @@ let round_to_int f =
 
 let retry
     ~on ?(first_delay=1.0) ?(min_delay=0.0001) ?(max_delay=10.0)
-    ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.1) ?delay_rec
+    ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.5) ?delay_rec
     ?(max_retry=max_int) f =
   let open Lwt in
   let next_delay = ref first_delay in
-  let rec loop max_retry x =
+  let rec loop nb_try x =
     (match%lwt f x with
     | exception e ->
       let%lwt should_retry =
-        if max_retry > 0 then return_true else on e in
+        if nb_try >= max_retry then return_false else on e in
       if should_retry then (
         let delay = !next_delay in
         let delay = min delay max_delay in
@@ -33,17 +33,17 @@ let retry
         next_delay := !next_delay *. delay_adjust_nok ;
         Option.may (fun f -> f delay) delay_rec ;
         let%lwt () = Lwt_unix.sleep delay in
-        loop (max_retry - 1) x
+        loop (nb_try + 1) x
       ) else (
-        !logger.error "Non-retryable error: %s"
-          (Printexc.to_string e) ;
+        !logger.error "Non-retryable error: %s after %d attempt%s"
+          (Printexc.to_string e) nb_try (if nb_try > 1 then "s" else "") ;
         fail e
       )
     | r ->
       next_delay := !next_delay *. delay_adjust_ok ;
       return r)
   in
-  loop max_retry
+  loop 1
 
 let shell_quote s =
   "'"^ String.nreplace s "'" "'\\''" ^"'"
