@@ -1789,7 +1789,7 @@ struct
 
   let print_event_time fmt (start_field, duration) =
     let string_of_scale f = "*"^ string_of_float f in
-    Printf.fprintf fmt "EXPORT EVENT STARTING AT %s%s AND %s"
+    Printf.fprintf fmt "EVENT STARTING AT %s%s AND %s"
       (fst start_field)
       (string_of_scale (snd start_field))
       (match duration with
