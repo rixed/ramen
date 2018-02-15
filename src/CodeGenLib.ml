@@ -772,7 +772,7 @@ let aggregate
             (fun n -> return (RingBuf.load n)) rb_in_fname
     in
     (* The big event loop: *)
-    let while_ () = not !quit in
+    let while_ () = if !quit then return_false else return_true in
     RingBuf.read_ringbuf ~while_ ~delay_rec:sleep_in rb_in (fun tx ->
       CodeGenLib_IO.on_each_input_pre () ;
       let in_tuple = read_tuple tx in

@@ -108,16 +108,13 @@ let read_cidr6 tx offs =
 
 (* Have to be there rather than in RingBufLib because it depends on
  * RingBuf. *)
-let read_ringbuf ?(while_=(fun () -> true)) ?delay_rec rb f =
+let read_ringbuf ?while_ ?delay_rec rb f =
   let open Lwt in
   let rec read_next () =
-    if while_ () then (
-      let%lwt tx =
-        RingBufLib.retry_for_ringbuf
-          ~while_:(fun () -> return (while_ ()))
-          ?delay_rec dequeue_alloc rb in
-      f tx >>= read_next
-    ) else return_unit
+    match%lwt RingBufLib.retry_for_ringbuf
+                ?while_ ?delay_rec dequeue_alloc rb with
+    | exception Exit -> return_unit
+    | tx -> f tx >>= read_next
   in
   read_next ()
 
