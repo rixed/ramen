@@ -48,7 +48,7 @@ let check_finished_tuple_type tuple_prefix tuple_type =
   ) tuple_type.C.fields ;
   C.finish_typing tuple_type
 
-let can_cast ~from_scalar_type ~to_scalar_type =
+let can_enlarge ~from_scalar_type ~to_scalar_type =
   (* On TBool and Integer conversions:
    * We want to convert easily from bool to int to ease the usage of
    * booleans in arithmetic operations (for instance, summing how many times
@@ -73,7 +73,6 @@ let can_cast ~from_scalar_type ~to_scalar_type =
     | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ; TNum ]
     | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
     | TI128 -> [ TI128 ; TFloat ; TNum ]
-    | TFloat -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
     | TBool -> [ TBool ; TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
     | x -> [ x ] in
   List.mem to_scalar_type compatible_types
@@ -117,7 +116,7 @@ let check_expr_type ~indent ~ok_if_larger ~set_null ~from ~to_ =
       to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
       true
     | Some to_typ, Some from_typ when to_typ <> from_typ ->
-      if can_cast ~from_scalar_type:to_typ ~to_scalar_type:from_typ then (
+      if can_enlarge ~from_scalar_type:to_typ ~to_scalar_type:from_typ then (
         !logger.debug "%sImproving %a from %a" indent
           Expr.print_typ to_ Expr.print_typ from ;
         to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
@@ -223,7 +222,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
     (* Now we check this comply with the operator expectations about its operand : *)
     (match sub_typ.scalar_typ, exp_sub_typ with
     | Some actual_typ, Some exp_sub_typ ->
-      if not (can_cast ~from_scalar_type:actual_typ ~to_scalar_type:exp_sub_typ) then
+      if not (can_enlarge ~from_scalar_type:actual_typ ~to_scalar_type:exp_sub_typ) then
         let e = CannotTypeExpression {
           what = "Operand of "^ op_typ.expr_name ;
           expected_type = IO.to_string Scalar.print_typ exp_sub_typ ;
@@ -542,7 +541,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
   | StatelessFun (op_typ, Not e) ->
     check_op op_typ List.hd [Some TBool, None, e]
   | StatelessFun (op_typ, Cast e) ->
-    check_op op_typ (fun _ -> Option.get op_typ.scalar_typ) [Some TI128, None, e]
+    (* No type restriction on the operand: we might want to forbid some
+     * types at some point, for instance strings... *)
+    check_op op_typ (fun _ -> Option.get op_typ.scalar_typ) [None, None, e]
   | StatelessFun (op_typ, Defined e) ->
     check_op op_typ return_bool  ~propagate_null:false [None, Some true, e]
   | StatefulFun (op_typ, _, AggrPercentile (e1, e2)) ->
@@ -1012,6 +1013,12 @@ let set_all_types parents program =
           [sum aggregation of type I16, not nullable]) > \\
       (500 [constant of type I32, not nullable]) [comparison of type BOOL, not nullable]" \
        (test_check_expr "sum i16(1) > 500")
+
+     "cast(I8, 1.5 [constant of type FLOAT, not nullable]) [cast to I8 of type I8, not nullable]" \
+       (test_check_expr "i8(1.5)")
+
+     "cast(I8, 9999 [constant of type I32, not nullable]) [cast to I8 of type I8, not nullable]" \
+       (test_check_expr "i8(9999)")
    *)
 
 let compile_func conf func =
