@@ -413,5 +413,5 @@ let () =
           try f ()
           with Exit -> exit 0
              | Failure msg ->
-                 Printf.eprintf "%s" msg ;
+                 Printf.eprintf "%s\n" msg ;
                  exit 1)
