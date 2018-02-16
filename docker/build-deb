@@ -9,6 +9,7 @@ while true ; do
   echo "1) Build " $(grep ^VERSION Makefile)
   echo "2) Pull"
   echo "3) Checkout a particular tag/sha1"
+  echo "4) Exit"
   echo -n "Choice: "
   read REPLY
 
@@ -41,6 +42,9 @@ while true ; do
       echo "Done. Get your file with:"
       echo "docker cp <container id>:/root/ramen/$file ."
       echo
+      ;;
+    (4)
+      exit
       ;;
     (*)
       echo "Redo from start?"

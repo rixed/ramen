@@ -26,11 +26,11 @@ RUN apt-get --yes update && \
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh -O - | \
     sh -s /usr/local/bin
 
-RUN /usr/local/bin/opam init --comp 4.05.0+flambda --no-setup
+RUN /usr/local/bin/opam init --comp 4.06.0+flambda --no-setup
 
 # Environment
-ENV CAML_LD_LIBRARY_PATH=/root/.opam/4.05.0+flambda/lib/stublibs \
-    PATH=/root/.opam/4.05.0+flambda/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin
+ENV CAML_LD_LIBRARY_PATH=/root/.opam/4.06.0+flambda/lib/stublibs \
+    PATH=/root/.opam/4.06.0+flambda/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin
 
 RUN opam update && \
     opam install depext && \
@@ -45,6 +45,7 @@ RUN echo "~0"
 RUN cd /root &&\
     git clone https://github.com/rixed/ramen.git && \
     cd ramen && \
+    git checkout v1.2.1 && \
     opam pin --no-action add ramen /root/ramen && \
     opam install --deps-only ramen
 

@@ -480,10 +480,13 @@ docker-build-builder: docker/Dockerfile-builder
 	done
 
 docker-build-image: docker-latest
+	@echo "Tagging latest docker image to v$(VERSION)"
+	@docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
 
 docker-push:
 	@echo "Uploading docker images"
 	@docker push rixed/ramen:latest
+	@docker push rixed/ramen:v$(VERSION)
 	@docker push rixed/ramen-builder:jessie
 	@docker push rixed/ramen-builder:stretch
 
