@@ -16,6 +16,7 @@ let () =
     | _ -> None)
 
 (* List of condvars to signal to terminate all the HTTP servers: *)
+(* FIXME: a single condvar that we broadcast to *)
 let http_server_done = ref []
 
 let http_service port cert_opt key_opt router =

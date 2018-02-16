@@ -939,7 +939,7 @@ let start conf daemonize demo www_dir port cert_opt key_opt
   let rec monitor_quit () =
     let%lwt () = Lwt_unix.sleep 0.3 in
     if !quit then (
-      !logger.info "Waiting for the wlock for quitting..." ;
+      !logger.debug "Waiting for the wlock for quitting..." ;
       let%lwt () =
         C.with_wlock conf (fun programs ->
           !logger.info "Stopping HTTP server(s)..." ;
