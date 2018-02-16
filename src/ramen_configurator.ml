@@ -449,8 +449,8 @@ let base_program dataset_name delete uncompress csv_glob export =
       traffic_bytes_server u64 not null,
       traffic_packets_client u32 not null,
       traffic_packets_server u32 not null|} |>
-    make_func "other-than-ip"
-  and other_ip_to_unidir = to_unidir "other-than-ip" {|
+    make_func "other-ip"
+  and other_ip_to_unidir = to_unidir "other-ip" {|
     poller, capture_begin, capture_end,
     0u32 AS rtt_count_src, 0u64 AS rtt_sum_src,
     0u32 AS packets_with_payload_src, 0u32 AS rd_count_src,
@@ -905,8 +905,8 @@ let base_program dataset_name delete uncompress csv_glob export =
       icmp_to_unidir ~src:"client" ~dst:"server" "c2s icmp" ;
       icmp_to_unidir ~src:"server" ~dst:"client" "s2c icmp" ;
       other_ip ;
-      other_ip_to_unidir ~src:"client" ~dst:"server" "c2s other-than-ip" ;
-      other_ip_to_unidir ~src:"server" ~dst:"client" "s2c other-than-ip" ;
+      other_ip_to_unidir ~src:"client" ~dst:"server" "c2s other-ip" ;
+      other_ip_to_unidir ~src:"server" ~dst:"client" "s2c other-ip" ;
       non_ip ;
       non_ip_to_unidir ~src:"client" ~dst:"server" "c2s non-ip" ;
       non_ip_to_unidir ~src:"server" ~dst:"client" "s2c non-ip" ;
@@ -971,7 +971,7 @@ let program_of_bcns bcns dataset_name export =
         (rebase dataset_name "c2s tcp") (rebase dataset_name "s2c tcp")
         (rebase dataset_name "c2s udp") (rebase dataset_name "s2c udp")
         (rebase dataset_name "c2s icmp") (rebase dataset_name "s2c icmp")
-        (rebase dataset_name "c2s other-than-ip") (rebase dataset_name "s2c other-than-ip")
+        (rebase dataset_name "c2s other-ip") (rebase dataset_name "s2c other-ip")
         (rebase dataset_name "c2s non-ip") (rebase dataset_name "s2c non-ip")
         avg_window bcn.avg_window
         bcn.avg_window bcn.avg_window
@@ -1408,7 +1408,7 @@ let ddos_program dataset_name export =
     rep "$AVG_WIN_US$" (string_of_int avg_win_us) |>
     rep "$AVG_WIN$" (string_of_int avg_win) |>
     rep "$REM_WIN$" (string_of_int rem_win) |>
-    rep "$CSVS$" (["tcp" ; "udp" ; "icmp" ; "other-than-ip"] |>
+    rep "$CSVS$" (["tcp" ; "udp" ; "icmp" ; "other-ip"] |>
                   List.map (fun p -> "'"^ rebase dataset_name p ^"'") |>
                   String.join ",") |>
     rep "$EXPORT$" (if export_some export then "EXPORT" else "") in
