@@ -1075,7 +1075,7 @@ let program_of_bcns bcns dataset_name export =
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
           {|SELECT
-              max_start,
+              max_start, rtt,
               hysteresis (rtt, %f, %f) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
@@ -1101,7 +1101,7 @@ let program_of_bcns bcns dataset_name export =
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
           {|SELECT
-              max_start,
+              max_start, rr,
               hysteresis (rr, %f, %f) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
