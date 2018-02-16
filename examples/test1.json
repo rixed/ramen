@@ -1,0 +1,23 @@
+{
+  "inputs": [
+    { "operation": "t/qps", "tuple": { "time": "0.1", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "0.1", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "0.2", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "0.2", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "0.3", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "0.3", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "0.4", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "0.4", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "0.5", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "0.5", "host": "h1" } },
+    { "operation": "t/qps", "tuple": { "time": "9", "host": "h1" } }
+  ],
+  "outputs": {
+    "t/qps": {
+      "present": [ { "time": "0.1", "qps": "10" } ]
+    },
+    "t/alert": {
+      "present": [ { "time": "0.1", "qps": "10" } ]
+    }
+  }
+}
