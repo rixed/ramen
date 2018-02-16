@@ -34,7 +34,8 @@ module Escalation =
 struct
   type step =
     { timeout : float ;
-      (* Who to ring from the oncallers squad *)
+      (* Who to ring from the oncallers squad. Can be empty (useful at the
+       * end of the escalation to stop notifying). *)
       victims : int array } [@@ppp PPP_JSON]
 
   let string_of_victims a =

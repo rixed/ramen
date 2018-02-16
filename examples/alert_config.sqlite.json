@@ -1,0 +1,48 @@
+{
+   "oncallers" : [
+      {
+         "name" : "John Doe",
+         "contacts" : [
+            {
+               "Sqlite" : {
+                  "file" : "/tmp/ramen/alerts.db",
+                  "create" : "CREATE TABLE \"alerts\" (\n  \"insert_time\" INTEGER NOT NULL,\n  \"id\" INTEGER NOT NULL,\n  \"name\" TEXT NOT NULL,\n  \"started\" INTEGER,\n  \"stopped\" INTEGER,\n  \"title\" TEXT NOT NULL,\n  \"text\" TEXT NOT NULL\n);",
+                  "insert" : "INSERT INTO \"alerts\" (\n  \"insert_time\", \"id\", \"name\", \"started\", \"stopped\", \"title\", \"text\"\n) VALUES (\n  datetime(\"now\"),\n  $ID$, $NAME$, $STARTED$, $STOPPED$, $TITLE$, $TEXT$\n);"
+               }
+            }
+         ]
+      }
+   ],
+   "teams" : [
+      {
+         "name" : "firefighters",
+         "inhibitions" : [],
+         "escalations" : [
+            {
+               "steps" : [
+                  {
+                     "timeout" : 350,
+                     "victims" : [ 0 ]
+                  },
+                  {
+                     "timeout" : 9999,
+                     "victims" : [ ]
+                  }
+               ],
+               "importance" : 0
+            }
+         ],
+         "members" : [
+            "John Doe"
+         ]
+      }
+   ],
+   "default_team" : "firefighters",
+   "schedule" : [
+      {
+         "from" : 0,
+         "rank" : 0,
+         "oncaller" : "John Doe"
+      }
+   ]
+}

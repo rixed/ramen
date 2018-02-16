@@ -112,7 +112,8 @@ let www_dir =
 let alert_conf_json =
   let env = Term.env_info "RAMEN_ALERTER_INITIAL_JSON" in
   let i = Arg.info ~doc:"JSON configuration file for the alerter"
-                   ~env [ "alerter-conf" ; "alerter-json" ] in
+                   ~env [ "alerter-config" ; "alerter-json" ;
+                          "alerting-config" ; "alerting-json" ] in
   Arg.(value (opt (some string) None i))
 
 let server_start =

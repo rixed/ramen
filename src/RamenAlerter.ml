@@ -456,7 +456,9 @@ let check_escalations state now =
         else
           (* Check the timeout of the current attempt: *)
           let step = get_cap esc.steps (esc.attempt - 1) in
-          esc.last_sent +. step.timeout in
+          (* Prevent stupid config to draw too much ressources: *)
+          let step_timeout = max 3. step.timeout in
+          esc.last_sent +. step_timeout in
       if now >= timeout then (
         EscalationOps.outcry state alert esc now :: prev
       ) else prev
