@@ -82,13 +82,12 @@ let tcp_traffic_func ?where dataset_name name dt export =
            _sum_connections) / 1e12 AS connection_time_var
      GROUP BY capture_begin // $DT_US$
      COMMIT WHEN
-       in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)|}^
-     (if export_some export then {|
-     EXPORT EVENT STARTING AT start
-             WITH DURATION $DT$|} else "") |>
+       in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)
+     $EXPORT$ EVENT STARTING AT start WITH DURATION $DT$|} |>
     rep "$DT$" (string_of_int dt) |>
     rep "$DT_US$" (string_of_int dt_us) |>
-    rep "$PARENTS$" parents
+    rep "$PARENTS$" parents |>
+    rep "$EXPORT$" (if export_some export then "EXPORT " else "")
   in
   let op =
     match where with None -> op
@@ -170,16 +169,12 @@ let anomaly_detection_funcs avg_window from name timeseries alert_fields export 
         "SELECT\n  \
            start,\n  \
            %s\n\
-         FROM '%s'"
+         FROM '%s'\n\
+         %sEVENT STARTING AT start WITH DURATION %f"
         (String.concat ",\n  " (List.rev predictions))
-        from in
-  let op =
-    if export_all export then
-      op ^ Printf.sprintf "\n\
-         EXPORT EVENT STARTING AT start\n        \
-                 WITH DURATION %f"
-        avg_window
-    else op in
+        from
+        (if export_all export then "EXPORT " else "")
+        avg_window in
     make_func predictor_name op in
   let anomaly_func =
     let conditions =
@@ -197,14 +192,12 @@ let anomaly_detection_funcs avg_window from name timeseries alert_fields export 
           (%s) AS abnormality,
           hysteresis (5-ma abnormality, 3/5, 4/5) AS firing
           COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-          NOTIFY "http://localhost:29380/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"|}
+          NOTIFY "http://localhost:29380/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"
+          %sEVENT STARTING AT start|}
         predictor_name
         condition
-        (enc alert_name) (enc title) (enc text) in
-    let op =
-      if export_all export then op ^ {|
-        EXPORT EVENT STARTING AT start|}
-      else op in
+        (enc alert_name) (enc title) (enc text)
+        (if export_all export then "EXPORT " else "") in
     make_func (from ^": "^ name ^" anomalies") op in
   predictor_func, anomaly_func
 
@@ -227,12 +220,10 @@ let base_program dataset_name delete uncompress csv_glob export =
     let op =
       "FROM '"^ rebase dataset_name csv ^"' SELECT\n"^
       cs_fields ^ non_cs_fields ^"\n"^
-      "WHERE traffic_packets_"^ src ^" > 0"^
-       (if export_all export then {|
-         EXPORT EVENT STARTING AT capture_begin * 1e-6
-                  AND STOPPING AT capture_end * 1e-6|}
-        else "")
-       in
+      "WHERE traffic_packets_"^ src ^" > 0\n"^
+      if export_all export then "EXPORT\n" else "" ^{|
+         EVENT STARTING AT capture_begin * 1e-6
+           AND STOPPING AT capture_end * 1e-6|} in
     make_func name op in
   (* TCP CSV Importer: *)
   let tcp = csv_import "tcp" {|
@@ -975,7 +966,8 @@ let program_of_bcns bcns dataset_name export =
           WHERE %s
           GROUP BY capture_begin // %d
           COMMIT WHEN
-            in.capture_begin > out.min_capture_begin + 2 * u64(%d)|}
+            in.capture_begin > out.min_capture_begin + 2 * u64(%d)
+          %sEVENT STARTING AT start WITH DURATION %g|}
         (rebase dataset_name "c2s tcp") (rebase dataset_name "s2c tcp")
         (rebase dataset_name "c2s udp") (rebase dataset_name "s2c udp")
         (rebase dataset_name "c2s icmp") (rebase dataset_name "s2c icmp")
@@ -987,13 +979,9 @@ let program_of_bcns bcns dataset_name export =
         (name_of_zones bcn.dest)
         where
         avg_window
-        avg_window in
-    let op =
-      if export_all export then op ^ Printf.sprintf {|
-          EXPORT EVENT STARTING AT start
-                 WITH DURATION %g|}
-          bcn.avg_window
-      else op
+        avg_window
+        (if export_all export then "EXPORT " else "")
+        bcn.avg_window
         (* Note: Ideally we would want to compute the max of all.capture_begin *)
     in
     make_func avg_per_zones_name op ;
@@ -1016,17 +1004,13 @@ let program_of_bcns bcns dataset_name export =
            zone_src, zone_dst
          COMMIT AND SLIDE 1 WHEN
            group.#count >= %d OR
-           in.start > out.max_start + 5|}
+           in.start > out.max_start + 5
+         %sEVENT STARTING AT max_capture_end * 0.000001 WITH DURATION %g|}
          avg_per_zones_name
          bcn.percentile bcn.percentile bcn.percentile
-         nb_items_per_groups in
-    let op =
-      if export_some export then
-        op ^ Printf.sprintf {|
-         EXPORT EVENT STARTING AT max_capture_end * 0.000001
-                 WITH DURATION %g|}
-           bcn.avg_window
-      else op in
+         nb_items_per_groups
+         (if export_some export then "EXPORT " else "")
+         bcn.avg_window in
     make_func perc_per_obs_window_name op ;
     Option.may (fun min_bps ->
         let title = Printf.sprintf "Too little traffic from zone %s to %s"
@@ -1044,14 +1028,12 @@ let program_of_bcns bcns dataset_name export =
               hysteresis (bytes_per_secs, %d, %d) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-            NOTIFY "http://localhost:29380/notify?name=Low%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+            NOTIFY "http://localhost:29380/notify?name=Low%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s
+            %sEVENT STARTING AT max_start"|}
             (min_bps + min_bps/10) min_bps
             perc_per_obs_window_name
-            (enc title) (enc text) in
-        let op =
-          if export_all export then op ^ {|
-            EXPORT EVENT STARTING AT max_start|}
-          else op in
+            (enc title) (enc text)
+            (if export_all export then "EXPORT " else "") in
         let name = Printf.sprintf "%s: alert traffic too low" name_prefix in
         make_func name op
       ) bcn.min_bps ;
@@ -1071,14 +1053,12 @@ let program_of_bcns bcns dataset_name export =
               hysteresis (bytes_per_secs, %d, %d) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-            NOTIFY "http://localhost:29380/notify?name=High%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+            NOTIFY "http://localhost:29380/notify?name=High%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"
+            %sEVENT STARTING AT max_start|}
             (max_bps - max_bps/10) max_bps
             perc_per_obs_window_name
-            (enc title) (enc text) in
-        let op =
-          if export_all export then op ^ {|
-            EXPORT EVENT STARTING AT max_start|}
-          else op in
+            (enc title) (enc text)
+            (if export_all export then "EXPORT " else "") in
         let name = Printf.sprintf "%s: alert traffic too high" name_prefix in
         make_func name op
       ) bcn.max_bps ;
@@ -1099,14 +1079,12 @@ let program_of_bcns bcns dataset_name export =
               hysteresis (rtt, %f, %f) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-            NOTIFY "http://localhost:29380/notify?name=High%%20RTT&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+            NOTIFY "http://localhost:29380/notify?name=High%%20RTT&firing=${firing}&time=${max_start}&title=%s&text=%s"
+            %sEVENT STARTING AT max_start|}
             (max_rtt -. max_rtt /. 10.) max_rtt
             perc_per_obs_window_name
-            (enc title) (enc text |> rep "_rtt_" "${rtt}") in
-        let op =
-          if export_all export then op ^ {|
-            EXPORT EVENT STARTING AT max_start|}
-          else op in
+            (enc title) (enc text |> rep "_rtt_" "${rtt}")
+            (if export_all export then "EXPORT " else "") in
         let name = Printf.sprintf "%s: alert RTT" name_prefix in
         make_func name op
       ) bcn.max_rtt ;
@@ -1127,14 +1105,12 @@ let program_of_bcns bcns dataset_name export =
               hysteresis (rr, %f, %f) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-            NOTIFY "http://localhost:29380/notify?name=High%%20RR&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+            NOTIFY "http://localhost:29380/notify?name=High%%20RR&firing=${firing}&time=${max_start}&title=%s&text=%s"
+            %sEVENT STARTING AT max_start|}
             (max_rr -. max_rr /. 10.) max_rr
             perc_per_obs_window_name
-            (enc title) (enc text |> rep "_rr_" "${rr}") in
-        let op =
-          if export_all export then op ^ {|
-            EXPORT EVENT STARTING AT max_start|}
-          else op in
+            (enc title) (enc text |> rep "_rr_" "${rr}")
+            (if export_all export then "EXPORT " else "") in
         let name = Printf.sprintf "%s: alert RR" name_prefix in
         make_func name op
       ) bcn.max_rr ;
@@ -1297,15 +1273,13 @@ let program_of_bcas bcas dataset_name export =
         WHERE application = $ID$
         GROUP BY capture_begin * 0.000001 // $AVG_INT$
         COMMIT WHEN
-          in.capture_begin * 0.000001 > out.start + 2 * $AVG$|}^
-        (if export_all export then {|
-        EXPORT EVENT STARTING AT start
-               WITH DURATION $AVG$|}
-        else "") |>
+          in.capture_begin * 0.000001 > out.start + 2 * $AVG$
+        $EXPORT$ EVENT STARTING AT start WITH DURATION $AVG$|} |>
       rep "$CSV$" csv |>
       rep "$ID$" (string_of_int bca.service_id) |>
       rep "$AVG_INT$" (string_of_int avg_window_int) |>
-      rep "$AVG$" (string_of_float bca.avg_window)
+      rep "$AVG$" (string_of_float bca.avg_window) |>
+      rep "$EXPORT$" (if export_all export then "EXPORT" else "")
     in
     make_func avg_per_app op ;
     let perc_per_obs_window_name =
@@ -1326,14 +1300,12 @@ let program_of_bcas bcas dataset_name export =
             srtt_avg + crtt_avg + srt_avg + cdtt_avg + sdtt_avg) AS eurt
          COMMIT AND SLIDE 1 WHEN
            group.#count >= %d OR
-           in.start > out.max_start + 5|}
+           in.start > out.max_start + 5
+         %sEVENT STARTING AT max_start WITH DURATION %g|}
          avg_per_app bca.percentile
-         nb_items_per_groups in
-    let op =
-      if export_some export then op ^ Printf.sprintf {|
-         EXPORT EVENT STARTING AT max_start WITH DURATION %g|}
-         bca.obs_window
-      else op in
+         nb_items_per_groups
+         (if export_some export then "EXPORT " else "")
+         bca.obs_window in
     make_func perc_per_obs_window_name op ;
     let title =
       Printf.sprintf "EURT to %s is too large" bca.name
@@ -1351,14 +1323,12 @@ let program_of_bcas bcas dataset_name export =
             hysteresis (eurt, %g, %g) AS firing
           FROM '%s'
           COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-          NOTIFY "http://localhost:29380/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"|}
+          NOTIFY "http://localhost:29380/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"
+          %sEVENT STARTING AT max_start|}
           (bca.max_eurt -. bca.max_eurt /. 10.) bca.max_eurt
           perc_per_obs_window_name
-          (enc bca.name) (enc title) (enc text) in
-    let op =
-      if export_all export then op ^ {|
-          EXPORT EVENT STARTING AT max_start|}
-      else op in
+          (enc bca.name) (enc title) (enc text)
+          (if export_all export then "EXPORT " else "") in
     let name = bca.name ^": EURT too high" in
     make_func name op ;
     let alert_fields = [
@@ -1433,17 +1403,15 @@ let ddos_program dataset_name export =
           AS nb_new_clients_per_secs
      GROUP BY capture_begin // $AVG_WIN_US$
      COMMIT WHEN
-       in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN_US$)|}^
-     (if export_some export then {|
-     EXPORT EVENT STARTING AT start
-                  WITH DURATION $AVG_WIN$|}
-     else "") |>
+       in.capture_begin > out.min_capture_begin + 2 * u64($AVG_WIN_US$)
+     $EXPORT$ EVENT STARTING AT start WITH DURATION $AVG_WIN$|} |>
     rep "$AVG_WIN_US$" (string_of_int avg_win_us) |>
     rep "$AVG_WIN$" (string_of_int avg_win) |>
     rep "$REM_WIN$" (string_of_int rem_win) |>
     rep "$CSVS$" (["tcp" ; "udp" ; "icmp" ; "other-than-ip"] |>
                   List.map (fun p -> "'"^ rebase dataset_name p ^"'") |>
-                  String.join ",") in
+                  String.join ",") |>
+    rep "$EXPORT$" (if export_some export then "EXPORT" else "") in
   let global_new_peers =
     make_func "new peers" op_new_peers in
   let pred_func, anom_func =
