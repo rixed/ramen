@@ -41,7 +41,7 @@ RUN opam update && \
 
 RUN echo "~0"
 
-# Compile Ramen from git (we need the makefile to build the deb)
+# Install all ramen dependencies using opam
 RUN cd /root &&\
     git clone https://github.com/rixed/ramen.git && \
     cd ramen && \
