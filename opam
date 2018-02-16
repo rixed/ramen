@@ -26,7 +26,7 @@ depends: [
   "js_of_ocaml" {build & = "3.0.2"}
   "js_of_ocaml-ppx" {build}
   "cmdliner" {build & = "1.0.2"}
-  "syslog" {= "1.4"}
+  "syslog" {= "1.5"}
   "net_codecs" {>= "0.2"}
   "qtest" {test}
   "ocaml-compiler-libs" {build & = "v0.10.0"}
