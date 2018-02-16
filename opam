@@ -17,19 +17,19 @@ depends: [
   "batteries" {= "2.8.0"}
   "stdint" {>= "0.5.0"}
   "parsercombinator" {>= "0.2"}
-  "cohttp-lwt-unix" {= "1.0.2"}
+  "cohttp-lwt-unix" {build & = "1.0.2"}
   "binocle" {>= "0.2"}
   "lacaml" {= "10.0.2"}
   "sqlite3" {= "4.3.2"}
   "num"
-  "ppp" {= "1.0"}
+  "ppp" {build & >= "1.1"}
   "js_of_ocaml" {build & = "3.0.2"}
   "js_of_ocaml-ppx" {build}
-  "cmdliner" {= "1.0.2"}
+  "cmdliner" {build & = "1.0.2"}
   "syslog" {= "1.4"}
   "net_codecs" {>= "0.2"}
   "qtest" {test}
-  "ocaml-compiler-libs" {build & = "v0.9.0"}
+  "ocaml-compiler-libs" {build & = "v0.10.0"}
   "inotify" {= "2.3"}
 ]
 depexts: [
