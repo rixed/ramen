@@ -212,7 +212,7 @@ let import_tuples conf history rb_name ser_tuple_typ =
       RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in
     while%lwt true do
       let%lwt tx = dequeue rb in
-      let ser_tuple, _sz =
+      let ser_tuple =
         RamenSerialization.read_tuple ser_tuple_typ nullmask_size tx in
       RingBuf.dequeue_commit tx ;
       wrap (fun () -> add_tuple conf history ser_tuple) >>=

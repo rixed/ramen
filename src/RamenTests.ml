@@ -25,24 +25,24 @@ module Input = struct
 end
 
 module Output = struct
-  module Tuples = struct
-    type spec =
-      { present : tuple_spec list [@ppp_default []] ;
-        absent : tuple_spec list [@ppp_default []] } [@@ppp PPP_JSON]
-  end
-  module Notifications = struct
-    type spec =
-      { present : string list [@ppp_default []] ;
-        absent : string list [@ppp_default []] } [@@ppp PPP_JSON]
-  end
   type spec =
-    { tuples : Tuples.spec [@ppp_default Tuples.{ present=[]; absent=[] }] ;
-      notifications : Notifications.spec [@ppp_default Notifications.{ present=[]; absent=[] }] } [@@ppp PPP_JSON]
+    { present : tuple_spec list [@ppp_default []] ;
+      absent : tuple_spec list [@ppp_default []] } [@@ppp PPP_JSON]
+end
+
+module Notifs = struct
+  type spec =
+    { present : string list [@ppp_default []] ;
+      absent : string list [@ppp_default []] } [@@ppp PPP_JSON]
 end
 
 type test_spec =
-  { inputs : Input.spec list ;
-    outputs : (string, Output.spec) Hashtbl.t } [@@ppp PPP_JSON]
+  { inputs : Input.spec list [@ppp_default []] ;
+    outputs : (string, Output.spec) Hashtbl.t
+      [@ppp_default Hashtbl.create 0] ;
+    notifications : Notifs.spec
+      [@ppp_default Notifs.{ present=[]; absent=[] }] }
+    [@@ppp PPP_JSON]
 
 let enc = Uri.pct_encode
 
@@ -142,11 +142,10 @@ let test_output ser_type in_rb output_spec =
       (fun (field, value) -> field_index field, value) |>
       List.of_enum) in
   let%lwt tuples_to_find = wrap (fun () -> ref (
-    field_indices_of_tuples output_spec.Output.tuples.present)) in
+    field_indices_of_tuples output_spec.Output.present)) in
   let%lwt tuples_must_be_absent = wrap (fun () ->
-    field_indices_of_tuples output_spec.Output.tuples.absent) in
+    field_indices_of_tuples output_spec.Output.absent) in
   let tuples_to_not_find = ref [] in
-  (* TODO: notifications *)
   let start = Unix.gettimeofday () in
   (* With tuples that must be absent, when to stop listening?
    * For now the rule is simple:
@@ -154,13 +153,13 @@ let test_output ser_type in_rb output_spec =
    * must be present and the time did not ran out. *)
   let timeout = 5. in (* TODO: a parameter in the test spec *)
   let while_ () =
-    !tuples_to_find <> [] &&
-    !tuples_to_not_find = [] &&
-    Unix.gettimeofday () -. start < timeout in
+    if !tuples_to_find <> [] &&
+       !tuples_to_not_find = [] &&
+       Unix.gettimeofday () -. start < timeout
+    then return_true else return_false in
+  let unserialize = RamenSerialization.read_tuple ser_type nullmask_sz in
   let%lwt () =
-    RingBuf.read_ringbuf ~while_ in_rb (fun tx ->
-      let tuple, _sz =
-        RamenSerialization.read_tuple ser_type nullmask_sz tx in
+    RamenSerialization.read_tuples ~while_ unserialize in_rb (fun tuple ->
       tuples_to_find :=
         List.filter (fun spec ->
           List.for_all (fun (idx, value) ->
@@ -189,6 +188,43 @@ let test_output ser_type in_rb output_spec =
   in
   return (success, msg)
 
+let test_notifications notify_rb notif_spec =
+  (* We keep pat in order to be able to print it later: *)
+  let to_regexp pat = pat, Str.regexp pat in
+  let notifs_must_be_absent = List.map to_regexp notif_spec.Notifs.absent
+  and notifs_to_find = ref (List.map to_regexp notif_spec.Notifs.present)
+  and notifs_to_not_find = ref []
+  and timeout = 5. (* TODO: a parameter in the test spec *)
+  and start = Unix.gettimeofday () in
+  let while_ () =
+    if !notifs_to_find <> [] &&
+       !notifs_to_not_find = [] &&
+       Unix.gettimeofday () -. start < timeout
+    then return_true else return_false in
+  let%lwt () =
+    RamenSerialization.read_notifs ~while_ notify_rb (fun (worker, url) ->
+      !logger.debug "Got notification from %s: %S" worker url ;
+      notifs_to_find :=
+        List.filter (fun (_pat, re) ->
+          Str.string_match re url 0 |>  not) !notifs_to_find ;
+      notifs_to_not_find :=
+        List.filter (fun (_pat, re) ->
+          Str.string_match re url 0) notifs_must_be_absent |>
+        List.rev_append !notifs_to_not_find ;
+      return_unit) in
+  let success = !notifs_to_find = [] && !notifs_to_not_find = [] in
+  let re_print oc (pat, _re) = String.print oc pat in
+  let msg =
+    if success then "" else
+    (if !notifs_to_find = [] then "" else
+      "Could not find these notifs: "^
+        IO.to_string (List.print re_print) !notifs_to_find) ^
+    (if !notifs_to_not_find = [] then "" else
+      "Found these notifs: "^
+        IO.to_string (List.print re_print) !notifs_to_not_find)
+  in
+  return (success, msg)
+
 let test_one conf server_url conf_spec test =
   (* Create the configuration: *)
   let test_id = get_id () in
@@ -207,7 +243,11 @@ let test_one conf server_url conf_spec test =
       let msg = "Cannot compile these programs: "^
                 IO.to_string (List.print print_failure) failures in
       fail_with msg) in
-   (* Ask the supervisor to start them all: *)
+  (* Create the notification RB before the workers try to load it: *)
+  let notify_rb_name = C.notify_ringbuf ~test_id conf in
+  !logger.info "Creating ringbuffer for notifications in %s" notify_rb_name ;
+  RingBuf.create notify_rb_name RingBufLib.rb_default_words ;
+  (* Ask the supervisor to start them all: *)
   !logger.info "Starting test programs..." ;
   let%lwt () =
     try%lwt
@@ -251,10 +291,10 @@ let test_one conf server_url conf_spec test =
   !logger.info "Reading all outputs..." ;
   let%lwt tester_threads =
     hash_fold_s test.outputs (fun user_fq_name output_spec thds ->
-      let my_input_rb =
+      let in_rb_name =
         C.temp_in_ringbuf_name conf ("tests/"^ test_id ^"/"^ user_fq_name) in
-      RingBuf.create my_input_rb RingBufLib.rb_default_words ;
-      let in_rb = RingBuf.load my_input_rb in
+      RingBuf.create in_rb_name RingBufLib.rb_default_words ;
+      let in_rb = RingBuf.load in_rb_name in
       let%lwt tester_thread =
         match Hashtbl.find workers user_fq_name with
         | exception Not_found ->
@@ -265,18 +305,27 @@ let test_one conf server_url conf_spec test =
             let in_type = out_type in (* Just receive everything *)
             let skip_list = RingBufLib.skip_list ~out_type ~in_type in
             let%lwt () =
-              RamenOutRef.add out_ref_fname (my_input_rb, skip_list) in
+              RamenOutRef.add out_ref_fname (in_rb_name, skip_list) in
             return
               (finalize
                 (fun () -> test_output in_type in_rb output_spec)
                 (fun () ->
                   let%lwt () =
-                    RamenOutRef.remove out_ref_fname my_input_rb in
+                    RamenOutRef.remove out_ref_fname in_rb_name in
                   RingBuf.unload in_rb ;
                   (* TODO: unlink *)
                   return_unit)) in
       return (tester_thread :: thds)
     ) [] in
+  (* Similarly, read all notifications: *)
+  let notify_rb = RingBuf.load notify_rb_name in
+  let tester_threads =
+    finalize
+      (fun () -> test_notifications notify_rb test.notifications)
+      (fun () ->
+        RingBuf.unload notify_rb ;
+        (* TODO: unlink *)
+        return_unit) :: tester_threads in
   (* Feed the workers *)
   !logger.info "Feeding workers with test inputs..." ;
   let worker_cache = Hashtbl.create 11 in
@@ -324,12 +373,17 @@ let run conf server_url conf_file tests =
   (* Run all tests: *)
   (* Note: The workers states must be cleaned in between 2 tests ; the
    * simpler is to draw a new test_id. *)
-  let%lwt all_good =
-    Lwt_list.fold_left_s (fun all_good test ->
+  let%lwt nb_good, nb_tests =
+    Lwt_list.fold_left_s (fun (nb_good, nb_tests) test ->
       let%lwt res = test_one conf server_url conf_spec test in
-      return (res && all_good)
-    ) true test_specs in
-  if all_good then (
-    Printf.printf "All test succeeded.\n" ;
+      return ((nb_good + if res then 1 else 0), nb_tests + 1)
+    ) (0, 0) test_specs in
+  if nb_good = nb_tests then (
+    Printf.printf "All %d test%s succeeded.\n" nb_tests (if nb_tests > 1 then "s" else "") ;
     return_unit
-  ) else fail_with "Some test failed."
+  ) else
+    let nb_fail = nb_tests - nb_good in
+    let msg =
+      Printf.sprintf "%d test%s failed."
+        nb_fail (if nb_fail > 1 then "s" else "") in
+    fail_with msg

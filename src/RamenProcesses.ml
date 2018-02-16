@@ -76,6 +76,12 @@ let rec run_func conf programs program func =
     else return_unit in
   !logger.info "Start %s" func.N.name ;
   let input_ringbuf = C.in_ringbuf_name conf func in
+  let notify_ringbuf =
+    (* Where that worker must write its notifications. Normally toward a
+     * ringbuffer that's read by Ramen, unless it's a test programs. Tests
+     * must not send their notifications to Ramen with real ones, but instead
+     * to a ringbuffer specific to the test_id. *)
+    C.notify_ringbuf ~test_id:program.test_id conf in
   let env = [|
     "OCAMLRUNPARAM="^ if conf.C.debug then "b" else "" ;
     "debug="^ string_of_bool conf.C.debug ;
@@ -83,7 +89,7 @@ let rec run_func conf programs program func =
     "input_ringbuf="^ input_ringbuf ;
     "output_ringbufs_ref="^ out_ringbuf_ref ;
     "report_ringbuf="^ C.report_ringbuf conf ;
-    "notify_ringbuf="^ C.notify_ringbuf conf ;
+    "notify_ringbuf="^ notify_ringbuf ;
     (* We need to change this dir whenever the func signature change
      * to prevent it to reload an incompatible state: *)
     "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
@@ -379,17 +385,8 @@ let last_report fq_name =
  * link, and easier to port to another language.
  * Also, they might as well be easier to link with the libraries bundle. *)
 
-let read_notifications rb =
-  let unserialize tx =
-    let offs = 0 in (* Nothing can be null in this tuple *)
-    let worker = RingBuf.read_string tx offs in
-    let offs = offs + RingBufLib.sersize_of_string worker in
-    let url = RingBuf.read_string tx offs in
-    worker, url
-  in
-  RingBuf.read_ringbuf rb (fun tx ->
-    let worker, url = unserialize tx in
+let process_notifications rb =
+  RamenSerialization.read_notifs rb (fun (worker, url) ->
     !logger.info "Received notify instruction from %s to %s"
       worker url ;
-    RingBuf.dequeue_commit tx ;
     RamenHttpHelpers.http_notify url)

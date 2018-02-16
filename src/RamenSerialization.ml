@@ -42,7 +42,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
       Lang.Tuple.print_typ ser_tuple_typ ;
   let tuple_len = List.length ser_tuple_typ in
   let tuple = Array.make tuple_len VNull in
-  let sz, _ =
+  let _ =
     List.fold_lefti (fun (offs, b) i typ ->
         assert (not (is_private_field typ.typ_name)) ;
         let value, offs', b' =
@@ -60,6 +60,20 @@ let read_tuple ser_tuple_typ nullmask_size tx =
         Option.may (Array.set tuple i) value ;
         offs', b'
       ) (nullmask_size, 0) ser_tuple_typ in
-  tuple, sz
+  tuple
 
+let read_tuples ?while_ unserialize rb f =
+  RingBuf.read_ringbuf ?while_ rb (fun tx ->
+    let tuple = unserialize tx in
+    RingBuf.dequeue_commit tx ;
+    f tuple)
 
+let read_notifs ?while_ rb f =
+  let unserialize tx =
+    let offs = 0 in (* Nothing can be null in this tuple *)
+    let worker = RingBuf.read_string tx offs in
+    let offs = offs + RingBufLib.sersize_of_string worker in
+    let url = RingBuf.read_string tx offs in
+    worker, url
+  in
+  read_tuples ?while_ unserialize rb f

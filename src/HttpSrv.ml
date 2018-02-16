@@ -984,7 +984,7 @@ let start conf daemonize demo www_dir port cert_opt key_opt
        async (fun () -> restart_on_failure timeout_programs conf) ;
        async (fun () -> restart_on_failure cleanup_old_files conf.C.persist_dir) ;
        async (fun () -> restart_on_failure RamenProcesses.read_reports reports_rb) ;
-       async (fun () -> restart_on_failure RamenProcesses.read_notifications notify_rb) ;
+       async (fun () -> restart_on_failure RamenProcesses.process_notifications notify_rb) ;
        RamenAlerter.start ?initial_json:alert_conf_json conf ;
        return_unit) ;
       run_demo () ;

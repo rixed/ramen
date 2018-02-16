@@ -1586,10 +1586,9 @@ To specify that some tuples must have been output from some operation:
 [source,json]
 ----
 "operation FQ name": {
-  "tuples": {
-    "present" : [
-      { "field1": "value1", "field2": "value2", ... },
-      ... ],
+  "present" : [
+    { "field1": "value1", "field2": "value2", ... },
+    ... ],
 ----
 
 Where of course you need only specify the fields you care about.
@@ -1600,29 +1599,28 @@ Occasionally, one want to make sure that a tuple is _not_ emitted. The
 .Specifications of forbidden output tuples
 [source,json]
 ----
-    "absent": [
-      { "field1": "value1", "field2", "value2", ... },
-      ... ]
-  }
+  "absent": [
+    { "field1": "value1", "field2", "value2", ... },
+    ... ]
+}
 ----
 
-Notifications are specified using regular expression, which syntax must (for
+All those expectations are given in a single JSON array named "outputs".
+
+Notifications are specified using regular expressions, which syntax must (for
 now) follow http://caml.inria.fr/pub/docs/manual-ocaml/libref/Str.html[OCaml
 regular expressions].
 
 .Specifications of expected notifications
 [source,json]
 ----
-  "notifications": {
-    "present" : [
-      "^http://my_alerting_system.com/alert?id=123&",
-      ... ],
-    "absent" : [ ... ],
-  }
+"notifications": {
+  "present" : [
+    "^http://my_alerting_system.com/alert?id=123&",
+    ... ],
+  "absent" : [ ... ],
 }
 ----
-
-All those expectations are given in a single JSON array named "outputs".
 
 ==== Wrapping everything together in a single test specification
 
@@ -1644,27 +1642,25 @@ Complete example:
   ],
   "outputs": {
     "FQ name1": {
-      "tuples": {
-        "present" : [
-          { "field1": "value1", "field2": "value2", ... },
-          { "field1": "value1", "field2": "value2", ... },
-          ...
-        ],
-        "absent" : [ ... ]
-      },
-      "notifications": {
-        "present" : [
-          "^http://my_alerting_system.com/alert?id=123&",
-          "^http://my_alerting_system.com/alert?id=456&",
-          ...
-        ],
-        "absent" : [ ... ]
-      },
+      "present" : [
+        { "field1": "value1", "field2": "value2", ... },
+        { "field1": "value1", "field2": "value2", ... },
+        ...
+      ],
+      "absent" : [ ... ]
     },
     "FQ name2": {
-      "tuples": [ ... ],
-      "notifications": [ ... ]
+      "present": [ ... ],
+      "absent": [ ... ],
     }, ...
+  }
+  "notifications": {
+    "present" : [
+      "^http://my_alerting_system.com/alert?id=123&",
+      "^http://my_alerting_system.com/alert?id=456&",
+      ...
+    ],
+    "absent" : [ ... ]
   }
 }
 ----
