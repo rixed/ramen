@@ -448,9 +448,9 @@ let worker_start worker_name get_binocle_tuple k =
    * must not be NULL: *)
   update_stats () ;
   let conf = { debug ; persist_dir } in
-  Sys.(set_signal sigterm (Signal_handle (fun _ ->
-    !logger.info "Received TERM" ;
-    quit := true))) ;
+  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
+    !logger.info "Received signal %s" (name_of_signal s) ;
+    quit := true)) ;
   Lwt_main.run (join [
     (let%lwt () = return_unit in
      async (fun () ->

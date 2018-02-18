@@ -1,11 +1,14 @@
 open Batteries
 open Lwt
 open RamenLog
+open Helpers
 module C = RamenConf
 module N = RamenConf.Func
 module L = RamenConf.Program
 module SN = RamenSharedTypes.Info.Func
 open RamenSharedTypesJS
+
+let quit = ref false
 
 let fd_of_int : int -> Unix.file_descr = Obj.magic
 
@@ -116,7 +119,7 @@ let rec run_func conf programs program func =
           pid (Printexc.to_string exn) ;
         return_unit
       | _, status ->
-        let status_str = Helpers.string_of_process_status status in
+        let status_str = string_of_process_status status in
         !logger.info "Operation %s (pid %d) %s."
           (N.fq_name func) pid status_str ;
         (* First and foremost we want to set the error status and clean
@@ -141,17 +144,23 @@ let rec run_func conf programs program func =
               ) else (
                 func.pid <- None ;
                 func.last_exit <- status_str ;
+                (* We leave the program.status as it is since we have no
+                 * idea what;s happening to other operations. *)
                 (* Now we might want to restart it: *)
-                (match status with Unix.WSIGNALED signal
-                  when signal <> Sys.sigterm && signal <> Sys.sigkill ->
-                    if program.status <> Running then return_unit else (
-                      !logger.info "Restarting func %s which is supposed to be running."
-                        (N.fq_name func) ;
-                      let%lwt () = Lwt_unix.sleep (Random.float 2.) in
-                      (* Note: run_func will start another waiter for that
-                       * other worker so our job is done. *)
-                      run_func conf programs program func)
-                | _ -> return_unit)))
+                match status with Unix.WSIGNALED signal
+                  when program.status = Running &&
+                       not !quit &&
+                       signal <> Sys.sigterm &&
+                       signal <> Sys.sigkill &&
+                       signal <> Sys.sigint ->
+                    !logger.info "Restarting func %s which is supposed to \
+                                  be running."
+                      (N.fq_name func) ;
+                    let%lwt () = Lwt_unix.sleep (Random.float 2.) in
+                    (* Note: run_func will start another waiter for that
+                     * other worker so our job is done. *)
+                    run_func conf programs program func
+                | _ -> return_unit))
     in
     wait_child ()) ;
   (* Update the parents out_ringbuf_ref if it's in another program (otherwise
@@ -234,25 +243,25 @@ let stop conf programs program =
           return_unit
         ) else (
           let%lwt () = RamenExport.stop conf func in
-          match func.N.pid with
+          (* Start by removing this worker ringbuf from all its parent
+           * output references *)
+          let this_in = C.in_ringbuf_name conf func in
+          let%lwt () = Lwt_list.iter_p (fun (parent_program, parent_name) ->
+              match C.find_func programs parent_program parent_name with
+              | exception Not_found -> return_unit
+              | _, parent ->
+                let out_ref = C.out_ringbuf_names_ref conf parent in
+                RamenOutRef.remove out_ref this_in
+            ) func.N.parents in
+          (match func.N.pid with
           | None ->
-            !logger.error "Function %s has no pid?!" func.N.name ;
-            return_unit
+            !logger.warning "Function %s stopped already (INTerrupted?)"
+              func.N.name
           | Some pid ->
             !logger.debug "Stopping func %s, pid %d" func.N.name pid ;
-            (* Start by removing this worker ringbuf from all its parent output
-             * references *)
-            let this_in = C.in_ringbuf_name conf func in
-            let%lwt () = Lwt_list.iter_p (fun (parent_program, parent_name) ->
-                match C.find_func programs parent_program parent_name with
-                | exception Not_found -> return_unit
-                | _, parent ->
-                  let out_ref = C.out_ringbuf_names_ref conf parent in
-                  RamenOutRef.remove out_ref this_in
-              ) func.N.parents in
             (* Get rid of the worker *)
-            kill_worker conf programs func pid ;
-            return_unit
+            kill_worker conf programs func pid) ;
+          return_unit
         )
       ) program_funcs in
     L.set_status program Compiled ;
@@ -390,3 +399,75 @@ let process_notifications rb =
     !logger.info "Received notify instruction from %s to %s"
       worker url ;
     RamenHttpHelpers.http_notify url)
+
+(* A thread that hunt for unused programs / imports *)
+let rec timeout_programs_loop conf =
+  let%lwt () = C.with_wlock conf (fun programs ->
+    timeout_programs conf programs) in
+  (* No need for a lock on conf for that one: *)
+  let%lwt () = RamenExport.timeout_exports conf in
+  let%lwt () = Lwt_unix.sleep 7.1 in
+  timeout_programs_loop conf
+
+let cleanup_old_files persist_dir =
+  (* Have a list of directories and regexps and current version,
+   * Iter through this list for file matching the regexp and that are also directories.
+   * If this direntry matches the current version, touch it.
+   * If not, and if it hasn't been touched for X days, assume that's an old one and delete it.
+   * Then sleep for one day and restart. *)
+  let get_log_file () =
+    Unix.gettimeofday () |> Unix.localtime |> RamenLog.log_file
+  and touch_file fname =
+    let now = Unix.gettimeofday () in
+    Lwt_unix.utimes fname now now
+  and delete_directory fname = (* TODO: should really delete *)
+    Lwt_unix.rename fname (fname ^".todel")
+  in
+  let open Str in
+  let cleanup_dir (dir, sub_re, current) =
+    let dir = persist_dir ^"/"^ dir in
+    !logger.debug "Cleaning directory %s" dir ;
+    (* Error in there will be delivered to the stream reader: *)
+    let files = Lwt_unix.files_of_directory dir in
+    try%lwt
+      Lwt_stream.iter_s (fun fname ->
+        let full_path = dir ^"/"^ fname in
+        if fname = current then (
+          !logger.debug "Touching %s." full_path ;
+          touch_file full_path
+        ) else if string_match sub_re fname 0 &&
+           is_directory full_path &&
+           file_is_older_than (1. *. 86400.) fname (* TODO: should be 10 days *)
+        then (
+          !logger.info "Deleting old version %s." fname ;
+          delete_directory full_path
+        ) else return_unit
+      ) files
+    with Unix.Unix_error (Unix.ENOENT, _, _) ->
+        return_unit
+       | exn ->
+        !logger.error "Cannot list %s: %s" dir (Printexc.to_string exn) ;
+        return_unit
+  in
+  let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
+  and v_regexp = regexp "v[0-9]+"
+  and v1v2_regexp = regexp "v[0-9]+_v[0-9]+" in
+  let rec loop () =
+    let to_clean =
+      [ "log", date_regexp, get_log_file () ;
+        "alerting", v_regexp, RamenVersions.alerting_state ;
+        "configuration", v_regexp, RamenVersions.graph_config ;
+        "instrumentation_ringbuf", v1v2_regexp, (RamenVersions.instrumentation_tuple ^"_"^ RamenVersions.ringbuf) ;
+        "workers/log", v_regexp, get_log_file () ;
+        "workers/bin", v_regexp, RamenVersions.codegen ;
+        "workers/history", v_regexp, RamenVersions.history ;
+        "workers/ringbufs", v_regexp, RamenVersions.ringbuf ;
+        "workers/out_ref", v_regexp, RamenVersions.out_ref ;
+        "workers/src", v_regexp, RamenVersions.codegen ;
+        "workers/tmp", v_regexp, RamenVersions.worker_state ]
+    in
+    !logger.info "Cleaning old unused files..." ;
+    let%lwt () = Lwt_list.iter_s cleanup_dir to_clean in
+    Lwt_unix.sleep 86400. >>= loop
+  in
+  loop ()

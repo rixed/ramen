@@ -150,6 +150,11 @@ let name_of_signal s =
   else if s = sigxfsz then "XFSZ"
   else "Unknown OCaml signal number "^ string_of_int s
 
+let set_signals sigs behavior =
+  List.iter (fun s ->
+    Sys.set_signal s behavior
+  ) sigs
+
 let string_of_process_status = function
   | Unix.WEXITED 127 -> "shell couldn't be executed"
   | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code

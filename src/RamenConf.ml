@@ -284,6 +284,26 @@ struct
         loop ordered later
     in
     loop [] programs
+
+  let check_not_running ~persist_dir program =
+    (* Demote the status to compiled since the workers can't be running
+     * anymore. *)
+    if program.status = Running then set_status program Compiled ;
+    (* Further demote to edition if the binaries are not there anymore
+     * (which will be the case if codegen version changed): *)
+    if program.status = Compiled &&
+       Hashtbl.values program.funcs |> Enum.exists (fun n ->
+         not (file_exists ~has_perms:0o100 (exec_of_func persist_dir n)))
+    then set_status program (Edition "") ;
+    (* Also, we cannot be compiling anymore: *)
+    if program.status = Compiling then set_status program (Edition "") ;
+    (* Also clean the pid. Note: we must not do that in set_status as we
+     * need the pid when supervising workers termination. *)
+    Hashtbl.iter (fun _ f ->
+      if f.Func.pid <> None then f.pid <- None
+    ) program.funcs ;
+    (* FIXME: also, as a precaution, delete any temporary program (maybe we
+     * crashed because of it? *)
 end
 
 module Alerter =

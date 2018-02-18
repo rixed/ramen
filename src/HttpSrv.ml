@@ -320,13 +320,11 @@ let stop conf headers program_opt =
   with C.InvalidCommand e -> bad_request e
      | x -> fail x
 
-let quit = ref false
-
 let shutdown _conf _headers =
   (* TODO: also log client info *)
   !logger.info "Asked to shut down" ;
   (* Hopefully cohttp will serve this answer before stopping. *)
-  quit := true ;
+  RamenProcesses.quit := true ;
   respond_ok ()
 
 (*
@@ -558,15 +556,6 @@ let get_timerange conf headers program_name func_name =
       let body = PPP.to_string time_range_resp_ppp resp in
       respond_ok ~body ()) ]
 
-(* A thread that hunt for unused programs / imports *)
-let rec timeout_programs conf =
-  let%lwt () = C.with_wlock conf (fun programs ->
-    RamenProcesses.timeout_programs conf programs) in
-  (* No need for a lock on conf for that one: *)
-  let%lwt () = RamenExport.timeout_exports conf in
-  let%lwt () = Lwt_unix.sleep 7.1 in
-  timeout_programs conf
-
 (*
    Obtaining an SVG plot for an exporting func
 *)
@@ -707,75 +696,6 @@ let upload conf headers program func body =
     respond_ok
   | _ ->
     bad_request ("Function "^ N.fq_name func ^" does not accept uploads")
-
-let () =
-  async_exception_hook := (fun exn ->
-    !logger.error "Received exception %s\n%s"
-      (Printexc.to_string exn)
-      (Printexc.get_backtrace ()))
-
-let cleanup_old_files persist_dir =
-  (* Have a list of directories and regexps and current version,
-   * Iter through this list for file matching the regexp and that are also directories.
-   * If this direntry matches the current version, touch it.
-   * If not, and if it hasn't been touched for X days, assume that's an old one and delete it.
-   * Then sleep for one day and restart. *)
-  let get_log_file () =
-    Unix.gettimeofday () |> Unix.localtime |> RamenLog.log_file
-  and touch_file fname =
-    let now = Unix.gettimeofday () in
-    Lwt_unix.utimes fname now now
-  and delete_directory fname = (* TODO: should really delete *)
-    Lwt_unix.rename fname (fname ^".todel")
-  in
-  let open Str in
-  let cleanup_dir (dir, sub_re, current) =
-    let dir = persist_dir ^"/"^ dir in
-    !logger.debug "Cleaning directory %s" dir ;
-    (* Error in there will be delivered to the stream reader: *)
-    let files = Lwt_unix.files_of_directory dir in
-    try%lwt
-      Lwt_stream.iter_s (fun fname ->
-        let full_path = dir ^"/"^ fname in
-        if fname = current then (
-          !logger.debug "Touching %s." full_path ;
-          touch_file full_path
-        ) else if string_match sub_re fname 0 &&
-           is_directory full_path &&
-           file_is_older_than (1. *. 86400.) fname (* TODO: should be 10 days *)
-        then (
-          !logger.info "Deleting old version %s." fname ;
-          delete_directory full_path
-        ) else return_unit
-      ) files
-    with Unix.Unix_error (Unix.ENOENT, _, _) ->
-        return_unit
-       | exn ->
-        !logger.error "Cannot list %s: %s" dir (Printexc.to_string exn) ;
-        return_unit
-  in
-  let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
-  and v_regexp = regexp "v[0-9]+"
-  and v1v2_regexp = regexp "v[0-9]+_v[0-9]+" in
-  let rec loop () =
-    let to_clean =
-      [ "log", date_regexp, get_log_file () ;
-        "alerting", v_regexp, RamenVersions.alerting_state ;
-        "configuration", v_regexp, RamenVersions.graph_config ;
-        "instrumentation_ringbuf", v1v2_regexp, (RamenVersions.instrumentation_tuple ^"_"^ RamenVersions.ringbuf) ;
-        "workers/log", v_regexp, get_log_file () ;
-        "workers/bin", v_regexp, RamenVersions.codegen ;
-        "workers/history", v_regexp, RamenVersions.history ;
-        "workers/ringbufs", v_regexp, RamenVersions.ringbuf ;
-        "workers/out_ref", v_regexp, RamenVersions.out_ref ;
-        "workers/src", v_regexp, RamenVersions.codegen ;
-        "workers/tmp", v_regexp, RamenVersions.worker_state ]
-    in
-    !logger.info "Cleaning old unused files..." ;
-    let%lwt () = Lwt_list.iter_s cleanup_dir to_clean in
-    Lwt_unix.sleep 86400. >>= loop
-  in
-  loop ()
 
 (* Start the HTTP server: *)
 let start conf daemonize demo www_dir port cert_opt key_opt
@@ -919,7 +839,6 @@ let start conf daemonize demo www_dir port cert_opt key_opt
     | _ ->
       fail (HttpError (405, "Method not implemented"))
   in
-  if daemonize then do_daemonize () ;
   (* When there is nothing to do, listen to collectd and netflow! *)
   let run_demo () =
     C.with_wlock conf (fun programs ->
@@ -933,12 +852,12 @@ let start conf daemonize demo www_dir port cert_opt key_opt
         return_unit
       ) else return_unit) in
   (* Install signal handlers *)
-  Sys.(set_signal sigterm (Signal_handle (fun _ ->
-    !logger.info "Received TERM" ;
-    quit := true))) ;
+  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
+    !logger.info "Received signal %s" (name_of_signal s) ;
+    RamenProcesses.quit := true)) ;
   let rec monitor_quit () =
     let%lwt () = Lwt_unix.sleep 0.3 in
-    if !quit then (
+    if !RamenProcesses.quit then (
       !logger.debug "Waiting for the wlock for quitting..." ;
       let%lwt () =
         C.with_wlock conf (fun programs ->
@@ -970,23 +889,7 @@ let start conf daemonize demo www_dir port cert_opt key_opt
       !logger.info "Quitting monitor_quit..." ;
       return_unit
     ) else monitor_quit () in
-  (* Prepare ringbuffers for reports and notifications: *)
-  let rb_name = C.report_ringbuf conf in
-  RingBuf.create rb_name RingBufLib.rb_default_words ;
-  let reports_rb = RingBuf.load rb_name in
-  let rb_name = C.notify_ringbuf conf in
-  RingBuf.create rb_name RingBufLib.rb_default_words ;
-  let notify_rb = RingBuf.load rb_name in
-  Lwt_main.run (join
-    [ (* TIL the hard way that although you can use async outside of
-       * Lwt_main.run, the result will be totally unpredictable. *)
-      (let%lwt () = Lwt_unix.sleep 1. in
-       async (fun () -> restart_on_failure timeout_programs conf) ;
-       async (fun () -> restart_on_failure cleanup_old_files conf.C.persist_dir) ;
-       async (fun () -> restart_on_failure RamenProcesses.read_reports reports_rb) ;
-       async (fun () -> restart_on_failure RamenProcesses.process_notifications notify_rb) ;
-       RamenAlerter.start ?initial_json:alert_conf_json conf ;
-       return_unit) ;
-      run_demo () ;
-      restart_on_failure monitor_quit () ;
-      restart_on_failure (http_service port cert_opt key_opt) router ])
+  join [
+    run_demo () ;
+    restart_on_failure monitor_quit () ;
+    restart_on_failure (http_service port cert_opt key_opt) router ]

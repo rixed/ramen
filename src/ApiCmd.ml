@@ -8,6 +8,12 @@ open Helpers
 open RamenHttpHelpers
 module C = RamenConf
 
+let () =
+  async_exception_hook := (fun exn ->
+    !logger.error "Received exception %s\n%s"
+      (Printexc.to_string exn)
+      (Printexc.get_backtrace ()))
+
 type copts =
   { debug : bool ; server_url : string ; persist_dir : string ;
     max_history_archives : int ; use_embedded_compiler : bool ;
@@ -54,6 +60,17 @@ let run copts () =
   Lwt_main.run (
     http_get (copts.server_url ^"/start") >>= check_ok)
 
+(* When starting the program supervisor, no program should be running
+   already. Check that the conf reflects this. *)
+let check_not_running conf =
+  !logger.info "Cleaning workers status..." ;
+  C.with_wlock conf (fun programs ->
+    Hashtbl.iter (fun _name program ->
+      C.Program.check_not_running ~persist_dir:conf.persist_dir program
+    ) programs ;
+    return_unit)
+
+(* This both starts the HTTP server and the process monitor. TODO: split *)
 let start copts daemonize no_demo to_stderr www_dir http_port
           ssl_cert ssl_key alert_conf_json () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
@@ -67,8 +84,32 @@ let start copts daemonize no_demo to_stderr www_dir http_port
     C.make_conf true copts.server_url copts.debug copts.persist_dir
                 copts.max_simult_compilations copts.max_history_archives
                 copts.use_embedded_compiler copts.bundle_dir in
-  HttpSrv.start conf daemonize demo www_dir http_port ssl_cert ssl_key
-                alert_conf_json
+  if daemonize then do_daemonize () ;
+  (* Prepare ringbuffers for reports and notifications: *)
+  let rb_name = C.report_ringbuf conf in
+  RingBuf.create rb_name RingBufLib.rb_default_words ;
+  let reports_rb = RingBuf.load rb_name in
+  let rb_name = C.notify_ringbuf conf in
+  RingBuf.create rb_name RingBufLib.rb_default_words ;
+  let notify_rb = RingBuf.load rb_name in
+  Lwt_main.run (
+    let%lwt () = check_not_running conf in
+    join [
+      (* TIL the hard way that although you can use async outside of
+       * Lwt_main.run, the result will be totally unpredictable. *)
+      (let%lwt () = Lwt_unix.sleep 1. in
+       async (fun () ->
+         restart_on_failure RamenProcesses.timeout_programs_loop conf) ;
+       async (fun () ->
+         restart_on_failure RamenProcesses.cleanup_old_files conf.C.persist_dir) ;
+       async (fun () ->
+         restart_on_failure RamenProcesses.read_reports reports_rb) ;
+       async (fun () ->
+         restart_on_failure RamenProcesses.process_notifications notify_rb) ;
+       RamenAlerter.start ?initial_json:alert_conf_json conf ;
+       return_unit) ;
+      HttpSrv.start conf daemonize demo www_dir http_port ssl_cert ssl_key
+                    alert_conf_json ])
 
 let stop copts program_name () =
   logger := make_logger copts.debug ;
