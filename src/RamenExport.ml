@@ -152,6 +152,7 @@ let make_history conf func =
   let type_sign = C.type_signature_hash func.N.out_type in
   let dir = conf.C.persist_dir ^"/workers/history/"
                                ^ RamenVersions.history
+                               ^"/"^ Config.version
                                ^"/"^ N.fq_name func
                                ^"/"^ type_sign ^ history_version_tag in
   !logger.info "Creating history for func %S" (N.fq_name func) ;

@@ -326,7 +326,9 @@ struct
       mutable static : StaticConf.t }
 
   let save_file persist_dir =
-    persist_dir ^"/alerting/"^ RamenVersions.alerting_state ^"/state"
+    persist_dir ^"/alerting/"
+                ^ RamenVersions.alerting_state
+                ^"/"^ Config.version ^"/state"
 
   (* TODO: write using Lwt *)
   let save_state persist_dir state =
@@ -516,7 +518,9 @@ type programs = (string, Program.t) Hashtbl.t
 
 let save_file_of_programs persist_dir =
   (* Later we might have several files (so that we have partial locks) *)
-  persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/conf"
+  persist_dir ^"/configuration/"
+              ^ RamenVersions.graph_config
+              ^"/"^ Config.version ^"/conf"
 
 let non_persisted_programs = ref (Hashtbl.create 11)
 

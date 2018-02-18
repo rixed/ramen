@@ -95,8 +95,9 @@ let rec run_func conf programs program func =
     "notify_ringbuf="^ notify_ringbuf ;
     (* We need to change this dir whenever the func signature change
      * to prevent it to reload an incompatible state: *)
-    "persist_dir="^ conf.C.persist_dir ^"/workers/tmp/"
+    "persist_dir="^ conf.C.persist_dir ^"/workers/states/"
                   ^ RamenVersions.worker_state
+                  ^"/"^ Config.version
                   ^"/"^ (N.fq_name func)
                   ^"/"^ func.N.signature ;
     (match !logger.logdir with
@@ -464,7 +465,7 @@ let cleanup_old_files persist_dir =
         "workers/ringbufs", v_regexp, RamenVersions.ringbuf ;
         "workers/out_ref", v_regexp, RamenVersions.out_ref ;
         "workers/src", v_regexp, RamenVersions.codegen ;
-        "workers/tmp", v_regexp, RamenVersions.worker_state ]
+        "workers/states", v_regexp, RamenVersions.worker_state ]
     in
     !logger.info "Cleaning old unused files..." ;
     let%lwt () = Lwt_list.iter_s cleanup_dir to_clean in
