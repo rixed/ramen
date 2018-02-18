@@ -373,8 +373,8 @@ let read_reports rb =
         group_count = Option.map Uint64.to_int gc ;
         cpu_time = cpu ; ram_usage = Uint64.to_int ram ;
         in_sleep = wi ; out_sleep = wo ;
-        in_bytes = Option.map Uint64.to_int bi ;
-        out_bytes = Option.map Uint64.to_int bo } ;
+        in_bytes = Option.map Uint64.to_float bi ;
+        out_bytes = Option.map Uint64.to_float bo } ;
       return_unit))
 
 let last_report fq_name =

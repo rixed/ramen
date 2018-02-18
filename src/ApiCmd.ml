@@ -369,8 +369,8 @@ let display_program_info json short info =
              flt_or_na func.stats.in_sleep ;
              flt_or_na func.stats.out_sleep ;
              ValInt func.stats.ram_usage ;
-             int_or_na func.stats.in_bytes ;
-             int_or_na func.stats.out_bytes ;
+             flt_or_na func.stats.in_bytes ;
+             flt_or_na func.stats.out_bytes ;
              ValInt (List.length func.parents) ;
              ValInt (List.length func.children) ;
              int_or_na func.pid ;
@@ -410,8 +410,8 @@ let display_operation_info json short func =
         "Wait-in", flt_or_na func.stats.in_sleep ;
         "Wait-out", flt_or_na func.stats.out_sleep ;
         "RAM", ValInt func.stats.ram_usage ;
-        "Read", int_or_na func.stats.in_bytes ;
-        "Written", int_or_na func.stats.out_bytes ;
+        "Read", flt_or_na func.stats.in_bytes ;
+        "Written", flt_or_na func.stats.out_bytes ;
         "Parents", abbrev_str_list func.parents ;
         "Children", abbrev_str_list func.children ;
         "PID", int_or_na func.pid ;

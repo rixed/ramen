@@ -105,8 +105,8 @@ struct
         ram_usage : int ;
         in_sleep : float option ;
         out_sleep : float option ;
-        in_bytes : int option ;
-        out_bytes : int option } [@@ppp PPP_JSON]
+        in_bytes : float option ; (* 31bit integers would be too small *)
+        out_bytes : float option } [@@ppp PPP_JSON]
 
     type info =
       (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
