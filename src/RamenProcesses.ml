@@ -197,7 +197,7 @@ let kill_worker conf _programs func pid =
   (* First ask politely: *)
   !logger.info "Killing worker %s (pid %d)" (N.fq_name func) pid ;
   try_kill pid Sys.sigterm ;
-  (* No the worker is supposed to tidy up everything and terminate.
+  (* Now the worker is supposed to tidy up everything and terminate.
    * Then we have a thread that is waiting for him, perform a quick
    * autopsy and clear the pid ; as soon as he get a chance because
    * we are currently holding the conf.

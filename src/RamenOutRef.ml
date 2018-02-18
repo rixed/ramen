@@ -24,10 +24,10 @@ struct
     (* Of course we lock ourself before locking other processes. *)
     let%lwt fd = openfile fname [O_RDWR; O_CREAT] 0o640 in
     with_int_lock internal_lock (fun () ->
-      !logger.debug "Got internal lock" ;
+      (*!logger.debug "Got internal lock" ;*)
       (* Just grab the first "byte", probably simpler than the whole file *)
       let%lwt () = lockf fd op 1 in
-      !logger.debug "Got lockf on %s" fname ;
+      (*!logger.debug "Got lockf on %s" fname ;*)
       finalize f (fun () ->
         let%lwt () = lockf fd F_ULOCK 1 in
         close fd))
@@ -58,7 +58,7 @@ let set_ fname outs =
 
 let set fname outs =
   Lock.with_w_lock fname (fun () ->
-    !logger.debug "Got write lock for set on %s" fname ;
+    (*!logger.debug "Got write lock for set on %s" fname ;*)
     wrap (fun () -> set_ fname outs))
 
 let read_ fname =
@@ -66,7 +66,7 @@ let read_ fname =
 
 let read fname =
   Lock.with_r_lock fname (fun () ->
-    !logger.debug "Got read lock for read on %s" fname ;
+    (*!logger.debug "Got read lock for read on %s" fname ;*)
     wrap (fun () -> read_ fname))
 
 (* Used by ramen when starting a new worker to add it to its parents outref: *)
@@ -89,7 +89,7 @@ let add_ fname (out_fname, out_fields) =
 
 let add fname out =
   Lock.with_w_lock fname (fun () ->
-    !logger.debug "Got write lock for add on %s" fname ;
+    (*!logger.debug "Got write lock for add on %s" fname ;*)
     wrap (fun () -> add_ fname out))
 
 (* Used by ramen when stopping a func to remove its input from its parents
@@ -103,7 +103,7 @@ let remove_ fname out_fname =
 
 let remove fname out_fname =
   Lock.with_w_lock fname (fun () ->
-    !logger.debug "Got write lock for remove on %s" fname ;
+    (*!logger.debug "Got write lock for remove on %s" fname ;*)
     wrap (fun () -> remove_ fname out_fname))
 
 (* Check that fname is listed in outbuf_ref_fname: *)
@@ -112,5 +112,5 @@ let mem_ fname out_fname =
 
 let mem fname out_fname =
   Lock.with_r_lock fname (fun () ->
-    !logger.debug "Got read lock for mem on %s" fname ;
+    (*!logger.debug "Got read lock for mem on %s" fname ;*)
     wrap (fun () -> mem_ fname out_fname))

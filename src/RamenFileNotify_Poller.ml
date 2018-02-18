@@ -15,14 +15,14 @@ let rec for_each f n =
   let%lwt files = Lwt_unix.files_of_directory n.dirname |>
                   Lwt_stream.to_list in
   let files = Array.of_list files in (* FIXME *)
-  !logger.debug "%d files in %s" (Array.length files) n.dirname ;
+  (*!logger.debug "%d files in %s" (Array.length files) n.dirname ;*)
   Array.fast_sort String.compare files ;
   let rec merge prev i next_reported =
     if not (n.while_ ()) then (
       !logger.info "Stop listening to directory %s" n.dirname ;
       return_unit
     ) else if i >= Array.length files then (
-      !logger.debug "No new files in %s" n.dirname ;
+      (*!logger.debug "No new files in %s" n.dirname ;*)
       n.reported <- List.rev_append prev next_reported ;
       let%lwt () = Lwt_unix.sleep 1. in
       for_each f n
@@ -37,7 +37,7 @@ let rec for_each f n =
           (match String.compare r files.(i) with
           | 0 ->
             if f_mtime > r_mtime then  (
-              !logger.debug "File %S have changed" files.(i) ;
+              !logger.debug "File %S has changed" files.(i) ;
               let%lwt () = f files.(i) in
               merge ((r, f_mtime) :: prev) (i + 1) rest
             ) else (
