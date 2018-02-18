@@ -1914,9 +1914,6 @@ struct
   let is_exporting = function
     | Aggregate { force_export ; _ } ->
       force_export (* FIXME: this info should come from the func *)
-    (* It's low rate enough. TODO: add an "EXPORT" option to ListenFor and set
-     * it to true on the demo operation and false otherwise. *)
-    | ListenFor _ (*{ proto = RamenProtocols.Collectd ; _ }*) -> true
     | _ -> false
 
   let run_in_tests = function
