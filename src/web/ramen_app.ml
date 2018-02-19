@@ -431,7 +431,7 @@ let sel_top_column = make_param "selected top column" "program"
 let reset_for_func_change () =
   set sel_output_cols [] ;
   set chart_type RamenChart.NotStacked ;
-  set show_zero false ;
+  set chart_points [] ;
   set tail_rows [||] ;
   reload_tail ()
 
