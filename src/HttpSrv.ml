@@ -71,9 +71,14 @@ let func_info_of_func programs func =
     last_exit = func.N.last_exit ;
     input_type = C.info_of_tuple_type func.N.in_type ;
     output_type = C.info_of_tuple_type func.N.out_type ;
-    parents = List.map (fun (l, n) -> l ^"/"^ n) func.N.parents ;
-    children = C.fold_funcs programs [] (fun children _l n ->
-      N.fq_name n :: children) ;
+    parents = List.map (fun (p, f) -> p ^"/"^ f) func.N.parents ;
+    children =
+      C.fold_funcs programs [] (fun children _l n ->
+        if List.exists (fun (p, f) ->
+             p = func.program && f = func.name
+           ) n.parents
+        then N.fq_name n :: children
+        else children) ;
     stats }
 
 let program_info_of_program programs program =
@@ -300,10 +305,7 @@ let run conf headers program_opt =
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with SyntaxError _
      | Compiler.SyntaxErrorInFunc _
-     | C.InvalidCommand _
-     | RamenProcesses.NotYetCompiled
-     | RamenProcesses.AlreadyRunning
-     | RamenProcesses.StillCompiling as e ->
+     | C.InvalidCommand _ as e ->
        bad_request (Printexc.to_string e)
      | x -> fail x
 
