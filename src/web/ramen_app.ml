@@ -187,6 +187,8 @@ let program_of_program l =
   | exception Not_found -> ""
   | program -> program.value.Program.program
 
+let new_program_name = "new program name"
+
 let edited_program_of_program = function
   ExistingProgram l ->
   { is_new = false ;
@@ -195,7 +197,7 @@ let edited_program_of_program = function
 | NewProgram ->
   (* edited_program record for a new program: *)
   { is_new = true ;
-    program_name = ref "new program name" ;
+    program_name = ref new_program_name ;
     program_program = ref "" }
 | NoProgram -> fail "invalid edited program NoProgram"
 
@@ -1294,18 +1296,21 @@ let program_editor_panel program =
 let save_program _ =
   let edl = edited_program.value in
   let program_name = !(edl.program_name) in
-  let content =
-    object%js
-      val name = Js.string program_name
-      val program = Js.string !(edl.program_program)
-    end
-  and path = "/graph"
-  and what = "Saved "^ program_name in
-  set editor_spinning true ;
-  let redirect_to_program = ExistingProgram program_name in
-  http_put path content ~what
-    ~on_done:(fun () -> set editor_spinning false)
-    (done_edit_program_cb ~program_name ~redirect_to_program "save")
+  if program_name = new_program_name then
+    add_error "You must first set the new program name"
+  else
+    let content =
+      object%js
+        val name = Js.string program_name
+        val program = Js.string !(edl.program_program)
+      end
+    and path = "/graph"
+    and what = "Saved "^ program_name in
+    set editor_spinning true ;
+    let redirect_to_program = ExistingProgram program_name in
+    http_put path content ~what
+      ~on_done:(fun () -> set editor_spinning false)
+      (done_edit_program_cb ~program_name ~redirect_to_program "save")
 
 let program_editor_panel =
   with_param edited_program (fun edl ->

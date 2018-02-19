@@ -410,34 +410,37 @@ let install_err_timeouting =
       resync ()) in
   ignore (Html.window##setInterval (Js.wrap_callback timeout_errs) 0_500.)
 
+let add_message m =
+  match List.find (fun e ->
+          e.is_error = m.is_error &&
+          e.message = m.message
+        ) last_errors.value with
+  | exception Not_found ->
+    chg last_errors (m :: last_errors.value)
+  | e ->
+    e.time <- m.time ;
+    e.times <- e.times + 1 ;
+    change last_errors
+
+let add_notif ?(is_error=false) message =
+  let err = { message ; times = 1 ; time = now () ; is_error } in
+  add_message err
+
+let add_error = add_notif ~is_error:true
+
 let ajax action path ?content ?what ?on_done on_ok =
   let req = XmlHttpRequest.create () in
   req##.onreadystatechange := Js.wrap_callback (fun () ->
     if req##.readyState = XmlHttpRequest.DONE then (
       print (Js.string "AJAX query DONE!") ;
       let js = Js._JSON##parse req##.responseText in
-      let time = now () in
       option_may apply on_done ;
-      let last_error =
-        if req##.status <> 200 then (
-          print_2 (Js.string "AJAX query failed") js ;
-          Some { message = Js.(Unsafe.get js "error" |> to_string) ;
-                 times = 1 ; time ; is_error = true }
-        ) else (
-          on_ok js ;
-          option_map (fun message ->
-            { times = 1 ; time ; message ; is_error = false }) what) in
-      option_may (fun le ->
-          match List.find (fun e ->
-                  e.is_error = le.is_error &&
-                  e.message = le.message) last_errors.value with
-          | exception Not_found ->
-            chg last_errors (le :: last_errors.value)
-          | e ->
-            e.time <- le.time ;
-            e.times <- e.times + 1 ;
-            change last_errors
-        ) last_error ;
+      if req##.status <> 200 then (
+        print_2 (Js.string "AJAX query failed") js ;
+        add_error Js.(Unsafe.get js "error" |> to_string) ;
+      ) else (
+        on_ok js ;
+        option_may add_notif what) ;
       resync ())) ;
   req##_open (Js.string action)
              (Js.string path)
