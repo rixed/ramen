@@ -328,7 +328,7 @@ let can_export_with_program func cb =
       cb (status = Compiled || status = Running))
 
 let reload_tail =
-  let reloading = ref None in
+  let reloading = ref false in
   fun ?(single=false) () ->
     match List.assoc sel_func.value funcs.value with
     | exception Not_found -> ()
@@ -337,10 +337,10 @@ let reload_tail =
       if can_export func then
         let content = object%js val max_results_ = -8 end
         and path = "/export/"^ enc func.program ^"/"^ enc func.name in
-        if not single || !reloading <> Some path then (
-          reloading := Some path ;
+        if not single || not !reloading then (
+          if single then reloading := true ;
           http_post path content ~on_done:(fun () ->
-              reloading := None)
+              if single then reloading := false)
             (fun r ->
               update_tail r ;
               resync ()))
@@ -373,7 +373,7 @@ let update_chart field_names resp =
   set chart_points
 
 let reload_chart =
-  let reloading = ref None in
+  let reloading = ref false in
   fun ?(single=false) () ->
     match List.assoc sel_func.value funcs.value,
           sel_output_cols.value with
@@ -408,9 +408,10 @@ let reload_chart =
               js_of_list identity
           end
         and path = "/timeseries" in
-        if not single || !reloading <> Some content then
+        if not single || not !reloading then
+          if single then reloading := true ;
           http_post path content ~on_done:(fun () ->
-              reloading := None)
+              if single then reloading := false)
             (fun r ->
               update_chart field_names r ;
               resync ())
@@ -604,11 +605,12 @@ let update_graph total g =
      * worries. *)
   )
 
+(* [single] option means: do it only if one is not running already *)
 let reload_graph =
   let reloading = ref false in
   fun ?redirect_to_program ?(single=false) () ->
     if not single || not !reloading then (
-      reloading := true ;
+      if single then reloading := true ;
       http_get "/graph" ~on_done:(fun () ->
           if single then reloading := false)
         (fun g ->
@@ -760,7 +762,6 @@ let editor_spinning = make_param "editor spinning" false
 
 let done_edit_program_cb ?redirect_to_program what status =
   if Js.(Unsafe.get status "success" |> to_bool) then (
-    Firebug.console##log (Js.string ("DONE "^ what)) ;
     reload_graph ?redirect_to_program ()
   ) else (
     Firebug.console##error_2 (Js.string ("Cannot "^ what ^" program")) status
