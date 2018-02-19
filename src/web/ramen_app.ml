@@ -584,11 +584,12 @@ let update_graph total g =
   if total then (
     programs.value <- List.filter (fun (name, _) ->
       if List.mem name !had_programs then (
-        change programs ; true
+        true
       ) else (
         print (Js.string ("Deleting program "^ name)) ;
         false
       )) programs.value ;
+    change programs ;
     funcs.value <- List.filter (fun (id, _) ->
       if List.mem id !had_funcs then (
         change funcs ; true
@@ -825,11 +826,12 @@ let program_panel to_del program =
             [ div
                 [ clss "overwrite2" ]
                 [ p []
-                    [ text "Delete program " ;
+                    [ text "Delete " ;
                       em [ text program.Program.name ] ;
                       text "?" ] ;
                   p [ clss "yes-or-no" ]
-                    [ span ~action:(fun _ -> del_program program.name)
+                    [ span ~action:(fun _ -> set program_to_delete "" ;
+                                             del_program program.name)
                         [ clss "yes" ] [ text "yes" ] ;
                       text "/" ;
                       span ~action:(fun _ -> set program_to_delete "")
