@@ -608,13 +608,16 @@ let update_graph total g =
 (* [single] option means: do it only if one is not running already *)
 let reload_graph =
   let reloading = ref false in
-  fun ?redirect_to_program ?(single=false) () ->
+  fun ?redirect_to_program ?program_name ?(single=false) () ->
     if not single || not !reloading then (
       if single then reloading := true ;
-      http_get "/graph" ~on_done:(fun () ->
+      let url = match program_name with
+        | None -> "/graph"
+        | Some pn -> "/graph/"^ enc pn in
+      http_get url ~on_done:(fun () ->
           if single then reloading := false)
         (fun g ->
-          update_graph true g ;
+          update_graph (program_name = None) g ;
           option_may set_sel_program redirect_to_program ;
           resync ()))
 
@@ -760,9 +763,9 @@ let icon_of_program ?(suppress_action=false) program =
 
 let editor_spinning = make_param "editor spinning" false
 
-let done_edit_program_cb ?redirect_to_program what status =
+let done_edit_program_cb ?program_name ?redirect_to_program what status =
   if Js.(Unsafe.get status "success" |> to_bool) then (
-    reload_graph ?redirect_to_program ()
+    reload_graph ?program_name ?redirect_to_program ()
   ) else (
     Firebug.console##error_2 (Js.string ("Cannot "^ what ^" program")) status
   )
@@ -1288,18 +1291,19 @@ let program_editor_panel program =
 
 let save_program _ =
   let edl = edited_program.value in
+  let program_name = !(edl.program_name) in
   let content =
     object%js
-      val name = Js.string !(edl.program_name)
+      val name = Js.string program_name
       val program = Js.string !(edl.program_program)
     end
   and path = "/graph"
-  and what = "Saved "^ !(edl.program_name) in
+  and what = "Saved "^ program_name in
   set editor_spinning true ;
-  let redirect_to_program = ExistingProgram !(edl.program_name) in
+  let redirect_to_program = ExistingProgram program_name in
   http_put path content ~what
     ~on_done:(fun () -> set editor_spinning false)
-    (done_edit_program_cb ~redirect_to_program "save")
+    (done_edit_program_cb ~program_name ~redirect_to_program "save")
 
 let program_editor_panel =
   with_param edited_program (fun edl ->
