@@ -300,7 +300,10 @@ let run conf headers program_opt =
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with SyntaxError _
      | Compiler.SyntaxErrorInFunc _
-     | C.InvalidCommand _ as e ->
+     | C.InvalidCommand _
+     | RamenProcesses.NotYetCompiled
+     | RamenProcesses.AlreadyRunning
+     | RamenProcesses.StillCompiling as e ->
        bad_request (Printexc.to_string e)
      | x -> fail x
 
