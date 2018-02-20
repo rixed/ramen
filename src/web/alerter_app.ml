@@ -451,8 +451,7 @@ let live_incidents =
         with_param selected_alert (fun sel_alert ->
           List.fold_left (fun prev i ->
             List.fold_left (fun prev a ->
-              let with_action_cols = tsel = SingleTeam a.Alert.team
-              and alert_txt = a.Alert.name in
+              let with_action_cols = tsel = SingleTeam a.Alert.team in
               let ack _ =
                 http_get ("/ack/"^ string_of_int a.id) (fun _ ->
                   reload_ongoing ()) in
@@ -466,7 +465,8 @@ let live_incidents =
                                         | _ -> "") ^"actionable") ]
                   [ (if with_team_col then td [] [ text a.team ] else group []) ;
                     td [] [ text (date_of_ts a.started_firing) ] ;
-                    td [] [ text alert_txt ] ;
+                    td [] [ text a.Alert.name ] ;
+                    td [] [ text a.Alert.title ] ;
                     td [] [
                       if need_ack then
                         if with_action_cols then
@@ -510,7 +510,8 @@ let live_incidents =
             [ tr []
               ((if with_team_col then th [] [ text "team" ] else group []) ::
               [ th [] [ text "since" ] ;
-                th [] [ text "alert" ] ;
+                th [] [ text "alert name" ] ;
+                th [] [ text "alert title" ] ;
                 th [] [] ]) ] ;
           incident_rows ]))
 

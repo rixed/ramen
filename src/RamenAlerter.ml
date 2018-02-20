@@ -487,6 +487,7 @@ let alert conf ~name ~team ~importance ~title ~text ~firing ~time ~now =
     (* First step: deduplication *)
     let alert =
       AlertOps.make conf.C.alerts name team importance title text time now in
+    (* Create one incident per unique alert name + team + title *)
     match IncidentOps.get_or_create conf.C.alerts alert with
     | _i, Some orig_alert ->
       AlertOps.log orig_alert time (NewNotification Duplicate) ;
