@@ -8,6 +8,7 @@
  * Here we define the tuple type used to store these statistics and various
  * related functions. *)
 open Stdint
+open RamenLog
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * tuple_typ below! *)
@@ -59,7 +60,24 @@ let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _) =
  * each func to output to each consumer, or will we want ramen itself to
  * copy this stream to consumers? *)
 
-let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =
+let check_tuple (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =
+  let too_voluminous =
+    let max_vol = Stdint.Uint64.of_string "1000000000000" in
+    function
+      | None -> false
+      | Some f -> f > max_vol in
+  if too_voluminous bi || too_voluminous bo then (
+    let s = Uint64.to_string in
+    let o = function None -> "None" | Some u -> s u in
+    let f = function None -> "None" | Some f -> string_of_float f in
+    !logger.error "volume stats incorrect! Full deserialized tuple: \
+      %s, %f, %s, %s, %s, %s, %f, %s, %s, %s, %s, %s"
+      worker time (o ic) (o sc) (o oc) (o gc) cpu (s ram) (f wi) (f wo)
+      (o bi) (o bo)
+  )
+
+let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo as t) =
+  check_tuple t ;
   RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->
@@ -128,4 +146,5 @@ let unserialize tx =
   let bo, offs = read_nullable_u64 tx 7 offs in
   let t = worker, time, ic, sc , oc, gc, cpu, ram, wi, wo, bi, bo in
   assert (offs <= max_sersize_of_tuple t) ;
+  check_tuple t ;
   t
