@@ -17,6 +17,7 @@ button:focus { outline: 0; }
 }
 .spinning:hover { background-color: transparent; }
 button.icon { width: 3em; height: 3em; }
+button.xxl { width: 5em; }
 
 table { border-collapse: collapse; border-spacing: 10; }
 td, th { padding: 0 1em 0 1em; }

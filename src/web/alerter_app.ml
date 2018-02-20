@@ -1000,7 +1000,7 @@ let page_team search_str tsel team is_default =
                 else
                   (fun _ -> reset_new_inhibit () ;
                             set sel_team (SingleTeam team.name)))
-             (icon_class ~help is_sel)
+             (icon_class ~extra_large:true ~help is_sel)
              [ text "select" ]) ;
            (let help =
               if is_default then "This team is the default team for alerts"
@@ -1010,7 +1010,7 @@ let page_team search_str tsel team is_default =
             if is_default then None else Some (fun _ ->
               save_default_team team.Editable.Team.name) in
            button ?action
-             (icon_class ~actionable ~help is_default)
+             (icon_class ~extra_large:true ~actionable ~help is_default)
              [ text "default" ]) ] ;
       (if team.Editable.Team.members = [] then
         div [ clss "team-empty" ]
