@@ -61,10 +61,11 @@ let rec find_float_metric metrics name =
 let func_info_of_func programs func =
   let%lwt stats = RamenProcesses.last_report (N.fq_name func) in
   let%lwt exporting = RamenExport.is_func_exporting func in
+  let operation =
+    IO.to_string Operation.print func.N.operation |>
+    PPP_prettify.prettify in
   return SN.{
-    definition = {
-      name = func.N.name ;
-      operation = IO.to_string Operation.print func.N.operation } ;
+    definition = { name = func.N.name ; operation } ;
     exporting ;
     signature = if func.N.signature = "" then None else Some func.N.signature ;
     pid = func.N.pid ;
