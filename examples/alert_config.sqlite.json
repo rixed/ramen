@@ -25,7 +25,7 @@
                      "victims" : [ 0 ]
                   },
                   {
-                     "timeout" : 9999,
+                     "timeout" : 99999,
                      "victims" : [ ]
                   }
                ],

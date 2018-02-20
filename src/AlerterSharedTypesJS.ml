@@ -52,7 +52,7 @@ struct
                if i = len - 1 then " and " else ", "
              ) else "")^ soi i)
         (i + 1) in
-    loop "" 0
+    if len = 0 then "no one" else loop "" 0
 
   type t =
     { steps : step array ;
