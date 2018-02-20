@@ -433,14 +433,18 @@ let ajax action path ?content ?what ?on_done on_ok =
   req##.onreadystatechange := Js.wrap_callback (fun () ->
     if req##.readyState = XmlHttpRequest.DONE then (
       print (Js.string "AJAX query DONE!") ;
-      let js = Js._JSON##parse req##.responseText in
       option_may apply on_done ;
-      if req##.status <> 200 then (
-        print_2 (Js.string "AJAX query failed") js ;
-        add_error Js.(Unsafe.get js "error" |> to_string) ;
-      ) else (
-        on_ok js ;
-        option_may add_notif what) ;
+      (try
+        let js = Js._JSON##parse req##.responseText in
+        if req##.status <> 200 then (
+          print_2 (Js.string "AJAX query failed") js ;
+          add_error Js.(Unsafe.get js "error" |> to_string) ;
+        ) else (
+          on_ok js ;
+          option_may add_notif what
+        )
+      with Js.Error err ->
+        add_error Js.(err##toString |> to_string)) ;
       resync ())) ;
   req##_open (Js.string action)
              (Js.string path)
