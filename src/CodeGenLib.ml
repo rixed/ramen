@@ -5,6 +5,12 @@ open RamenLog
 open Lwt
 open Helpers
 
+let () =
+  async_exception_hook := (fun exn ->
+    !logger.error "Received exception %s\n%s"
+      (Printexc.to_string exn)
+      (Printexc.get_backtrace ()))
+
 (* Functions *)
 
 (* We are not allowed to have any state specific to this function.
@@ -1150,9 +1156,3 @@ let aggregate
          * for every single input tuple :-< *)
         let%lwt () = commit_and_flush_all_if ForAll in
         return s)))
-
-let () =
-  async_exception_hook := (fun exn ->
-    !logger.error "Received exception %s\n%s"
-      (Printexc.to_string exn)
-      (Printexc.get_backtrace ()))
