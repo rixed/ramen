@@ -18,7 +18,7 @@ depends: [
   "stdint" {>= "0.5.0"}
   "parsercombinator" {>= "0.2"}
   "cohttp-lwt-unix" {build & = "1.0.2"}
-  "binocle" {>= "0.2"}
+  "binocle" {>= "0.3"}
   "lacaml" {= "10.0.2"}
   "sqlite3" {= "4.3.2"}
   "num"
