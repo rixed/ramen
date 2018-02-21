@@ -317,7 +317,9 @@ let update_stats () =
 
 (* Basic tuple without aggregate specific counters: *)
 let get_binocle_tuple worker ic sc gc : RamenBinocle.tuple =
-  let si v = Some (Uint64.of_int v) in
+  let si v =
+    if v < 0 then !logger.error "Negative int counter: %d" v ;
+    Some (Uint64.of_int v) in
   let s v = Some v in
   let i v = Option.map (fun r -> Uint64.of_int r) v in
   let time = Unix.gettimeofday () in
@@ -359,6 +361,9 @@ let output rb serialize_tuple sersize_of_tuple tuple =
   let open RingBuf in
   let sersize = sersize_of_tuple tuple in
   IntCounter.add stats_rb_write_bytes sersize ;
+  if IntCounter.get stats_rb_write_bytes < 0 then
+    !logger.error "After adding %d, out vol = %d"
+      sersize (IntCounter.get stats_rb_write_bytes) ;
   let tx = enqueue_alloc rb sersize in
   let offs = serialize_tuple tx tuple in
   enqueue_commit tx ;

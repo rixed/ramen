@@ -70,7 +70,7 @@ let check_tuple (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =
     let s = Uint64.to_string in
     let o = function None -> "None" | Some u -> s u in
     let f = function None -> "None" | Some f -> string_of_float f in
-    !logger.error "volume stats incorrect! Full deserialized tuple: \
+    !logger.error "volume stats incorrect: \
       %s, %f, %s, %s, %s, %s, %f, %s, %s, %s, %s, %s"
       worker time (o ic) (o sc) (o oc) (o gc) cpu (s ram) (f wi) (f wo)
       (o bi) (o bo)
