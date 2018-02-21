@@ -27,37 +27,41 @@ let rec for_each f n =
       let%lwt () = Lwt_unix.sleep 1. in
       for_each f n
     ) else (
-      let s = Unix.stat (n.dirname ^"/"^ files.(i)) in
-      if s.Unix.st_kind = Unix.S_DIR then
-        merge prev (i + 1) next_reported
-      else (
-        let f_mtime = s.Unix.st_mtime in
-        match next_reported with
-        | (r, r_mtime as rpair)::rest ->
-          (match String.compare r files.(i) with
-          | 0 ->
-            if f_mtime > r_mtime then  (
-              !logger.debug "File %S has changed" files.(i) ;
+      match Unix.stat (n.dirname ^"/"^ files.(i)) with
+      | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
+          (* File might have been read and deleted by another worker already *)
+          merge prev (i + 1) next_reported
+      | s ->
+        if s.Unix.st_kind = Unix.S_DIR then
+          merge prev (i + 1) next_reported
+        else (
+          let f_mtime = s.Unix.st_mtime in
+          match next_reported with
+          | (r, r_mtime as rpair)::rest ->
+            (match String.compare r files.(i) with
+            | 0 ->
+              if f_mtime > r_mtime then  (
+                !logger.debug "File %S has changed" files.(i) ;
+                let%lwt () = f files.(i) in
+                merge ((r, f_mtime) :: prev) (i + 1) rest
+              ) else (
+                (* Still the same, keep going *)
+                merge (rpair :: prev) (i + 1) rest
+              )
+            | 1 ->
+              (* files.(i) is new: insert and notify *)
+              !logger.debug "File %S is new" files.(i) ;
               let%lwt () = f files.(i) in
-              merge ((r, f_mtime) :: prev) (i + 1) rest
-            ) else (
-              (* Still the same, keep going *)
-              merge (rpair :: prev) (i + 1) rest
+              merge ((files.(i), f_mtime) :: prev) (i + 1) next_reported
+            | _ ->
+              !logger.debug "File %S is new" files.(i) ;
+              let%lwt () = f files.(i) in
+              merge ((files.(i), f_mtime) :: rpair :: prev) (i + 1) rest
             )
-          | 1 ->
-            (* files.(i) is new: insert and notify *)
+          | [] ->
             !logger.debug "File %S is new" files.(i) ;
             let%lwt () = f files.(i) in
-            merge ((files.(i), f_mtime) :: prev) (i + 1) next_reported
-          | _ ->
-            !logger.debug "File %S is new" files.(i) ;
-            let%lwt () = f files.(i) in
-            merge ((files.(i), f_mtime) :: rpair :: prev) (i + 1) rest
-          )
-        | [] ->
-          !logger.debug "File %S is new" files.(i) ;
-          let%lwt () = f files.(i) in
-          merge ((files.(i), f_mtime) :: prev) (i + 1) []
-      )
+            merge ((files.(i), f_mtime) :: prev) (i + 1) []
+        )
     ) in
   merge [] 0 n.reported
