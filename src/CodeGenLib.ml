@@ -413,15 +413,15 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
            * ordering along the stream and avoid ending up with many threads
            * retrying to write to the same child. *)
           Hashtbl.add out_h fname (rb,
-            RingBufLib.retry_for_ringbuf
-              ~while_:(fun () ->
-                (* Also check from time to time we are still supposed to
-                 * write in there: *)
-                incr retry_count ;
-                if !retry_count < 5 then return_true else (
-                  retry_count := 0 ;
-                  RamenOutRef.mem rb_ref_out_fname fname))
-              ~delay_rec:sleep_out once)
+              RingBufLib.retry_for_ringbuf
+                ~while_:(fun () ->
+                  (* Also check from time to time we are still supposed to
+                   * write in there: *)
+                  incr retry_count ;
+                  if !retry_count < 5 then return_true else (
+                    retry_count := 0 ;
+                    RamenOutRef.mem rb_ref_out_fname fname))
+                ~delay_rec:sleep_out once)
         ) to_open ;
       (* Update the current list of outputers: *)
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
@@ -430,6 +430,10 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
         with RingBufLib.NoMoreRoom ->
           (* It is OK, just skip it. Next tuple we will reread fnames
            * if it has changed. *)
+          return_unit
+           | Exit ->
+          (* retry_for_ringbuf failing because the recipient is no more in
+           * our out_ref: *)
           return_unit
       ) !out_l |>
     join
