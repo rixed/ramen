@@ -425,18 +425,17 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
         ) to_open ;
       (* Update the current list of outputers: *)
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
-    List.map (fun out ->
-        try%lwt out tuple
-        with RingBufLib.NoMoreRoom ->
-          (* It is OK, just skip it. Next tuple we will reread fnames
-           * if it has changed. *)
-          return_unit
-           | Exit ->
-          (* retry_for_ringbuf failing because the recipient is no more in
-           * our out_ref: *)
-          return_unit
-      ) !out_l |>
-    join
+    Lwt_list.iter_p (fun out ->
+      try%lwt out tuple
+      with RingBufLib.NoMoreRoom ->
+        (* It is OK, just skip it. Next tuple we will reread fnames
+         * if it has changed. *)
+        return_unit
+         | Exit ->
+        (* retry_for_ringbuf failing because the recipient is no more in
+         * our out_ref: *)
+        return_unit
+    ) !out_l
 
 type worker_conf =
   { debug : bool ; persist_dir : string }
