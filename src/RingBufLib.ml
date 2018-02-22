@@ -109,7 +109,12 @@ let out_ringbuf_names outbuf_ref_fname =
   let open Lwt in
   let last_touched fname =
     let open Lwt_unix in
-    let%lwt s = stat fname in return s.st_mtime in
+    match%lwt stat fname with
+    | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
+        !logger.warning "last_touched: file %S is missing" fname ;
+        return 0.
+    | s ->
+        return s.st_mtime in
   let last_read = ref 0. in
   fun () ->
     let%lwt t = last_touched outbuf_ref_fname in
