@@ -85,8 +85,10 @@ let rec run_func conf programs program func =
      * must not send their notifications to Ramen with real ones, but instead
      * to a ringbuffer specific to the test_id. *)
     C.notify_ringbuf ~test_id:program.test_id conf in
+  let ocamlrunparam =
+    getenv ~def:(if conf.C.debug then "b" else "") "OCAMLRUNPARAM" in
   let env = [|
-    "OCAMLRUNPARAM="^ if conf.C.debug then "b" else "" ;
+    "OCAMLRUNPARAM="^ ocamlrunparam ;
     "debug="^ string_of_bool conf.C.debug ;
     "name="^ N.fq_name func ;
     "input_ringbuf="^ input_ringbuf ;
