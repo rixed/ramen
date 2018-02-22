@@ -137,6 +137,17 @@ let rec run_func conf programs program func =
                 (N.fq_name func) pid status_str ;
               return_unit
           | program, func ->
+              let restart () =
+                if program.status = Running &&
+                   not !quit then (
+                  !logger.info "Restarting func %s which is supposed to \
+                                be running."
+                    (N.fq_name func) ;
+                  let%lwt () = Lwt_unix.sleep (Random.float 2.) in
+                  (* Note: run_func will start another waiter for that
+                   * other worker so our job is done. *)
+                  run_func conf programs program func
+                ) else return_unit in
               (* Check this is still the same program: *)
               if func.pid <> Some pid then (
                 !logger.error "Operation %s (pid %d) %s is in \
@@ -150,19 +161,12 @@ let rec run_func conf programs program func =
                 (* We leave the program.status as it is since we have no
                  * idea what;s happening to other operations. *)
                 (* Now we might want to restart it: *)
-                match status with Unix.WSIGNALED signal
-                  when program.status = Running &&
-                       not !quit &&
-                       signal <> Sys.sigterm &&
+                match status with
+                | Unix.WSIGNALED signal
+                  when signal <> Sys.sigterm &&
                        signal <> Sys.sigkill &&
-                       signal <> Sys.sigint ->
-                    !logger.info "Restarting func %s which is supposed to \
-                                  be running."
-                      (N.fq_name func) ;
-                    let%lwt () = Lwt_unix.sleep (Random.float 2.) in
-                    (* Note: run_func will start another waiter for that
-                     * other worker so our job is done. *)
-                    run_func conf programs program func
+                       signal <> Sys.sigint -> restart ()
+                | Unix.WEXITED code when code <> 0 -> restart ()
                 | _ -> return_unit))
     in
     wait_child ()) ;
