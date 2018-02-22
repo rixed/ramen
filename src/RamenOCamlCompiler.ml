@@ -81,7 +81,7 @@ let compile_external conf func_name src_file bin_file =
   let comp_cmd =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
-         nice -n 20 \
+         nice -n 1 \
            ocamlfind ocamlopt%s \
                      -o %s -package ramen -linkpkg %s"
       (shell_quote path)
