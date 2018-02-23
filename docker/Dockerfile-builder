@@ -39,10 +39,10 @@ RUN opam update && \
     opam repo add --priority=1 ocalme \
       git://github.com/rixed/ocalme-opam-repository.git
 
-RUN echo "~0"
+RUN echo "~0" && opam update
 
 # Install all ramen dependencies using opam
-RUN cd /root &&\
+RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
     cd ramen && \
     git checkout v1.2.2 && \
