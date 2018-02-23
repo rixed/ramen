@@ -63,7 +63,7 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
     in
     read_next_line ()
 
-let check_file_exist kind kind_name path =
+let check_file_exists kind kind_name path =
   !logger.debug "Checking %S is a %s..." path kind_name ;
   let open Lwt_unix in
   match%lwt stat path with
@@ -74,7 +74,7 @@ let check_file_exist kind kind_name path =
       fail_with (Printf.sprintf "Path %S is not a %s" path kind_name)
     else return_unit
 
-let check_dir_exist = check_file_exist Lwt_unix.S_DIR "directory"
+let check_dir_exists = check_file_exists Lwt_unix.S_DIR "directory"
 
 let read_glob_lines ?while_ ?do_unlink path preprocessor k =
   let dirname = Filename.dirname path
@@ -94,7 +94,7 @@ let read_glob_lines ?while_ ?do_unlink path preprocessor k =
       !logger.debug "File %S is not interesting." filename ;
       return_unit
     ) in
-  let%lwt () = check_dir_exist dirname in
+  let%lwt () = check_dir_exists dirname in
   let%lwt handler = RamenFileNotify.make ?while_ dirname in
   !logger.debug "Import all files in dir %S..." dirname ;
   RamenFileNotify.for_each (fun filename ->
