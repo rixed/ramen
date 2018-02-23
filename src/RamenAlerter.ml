@@ -138,8 +138,10 @@ struct
 
   let log alert event_time event =
     let current_time = Unix.gettimeofday () in
-    !logger.info "Alert %s: %s"
-      alert.name (PPP.to_string Alert.event_ppp event) ;
+    !logger.info "event@%s: Alert %s: %s"
+      (string_of_time event_time)
+      alert.name
+      (PPP.to_string Alert.event_ppp event) ;
     alert.log <- { current_time ; event_time ; event } :: alert.log
 
   let stop conf i a source time =
@@ -560,6 +562,13 @@ struct
       | exception _ ->
         fail (HttpError (400, "importance and now must be numeric"))
       | name, importance, time, firing ->
+        let max_event_time_age = 60. in
+        if time > now then
+          !logger.warning "Event time %s is greater than current time %s"
+            (string_of_time time) (string_of_time now)
+        else if now -. time > max_event_time_age then
+          !logger.warning "Event time %s is older than %g seconds"
+            (string_of_time time) max_event_time_age ;
         alert conf ~name ~importance ~now ~time ~firing
           ~team:(hg "team" conf.C.alerts.static.default_team)
           ~title:(hg "title" "")
