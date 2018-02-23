@@ -15,7 +15,7 @@ depends: [
   "lwt" {= "3.2.1"}
   "lwt_ppx" {= "1.0.1"}
   "batteries" {= "2.8.0"}
-  "stdint" {>= "0.5.0"}
+  "stdint" {= "0.5.0fix1"}
   "parsercombinator" {>= "0.2"}
   "cohttp-lwt-unix" {build & = "1.0.2"}
   "binocle" {>= "0.3"}
