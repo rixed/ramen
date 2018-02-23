@@ -1,0 +1,46 @@
+// vim:filetype=asciidoc expandtab spell spelllang=en ts=2 sw=2
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+:imagesdir: https://github.com/rixed/ramen/raw/master/docs/
+endif::[]
+
+= Release Process
+:icons:
+:lang: en
+:encoding: utf-8
+
+1. `git grep '${old_version}'` -> replace by the new version.
+   of course other versions listed in RamenVersions.ml have been
+   upgraded at the same time as any related change, but it's worth
+   taking this opportunity to check.
+
+2. `git commit -m 'Bump version to ${new_version}' && git push`
+
+3. `git tag v${new_version} && git push --tags`
+
+4. create a new ramen version in ocalme repository by copying previous version
+
+5. copy ramen/opam into ocalme repository in `ramen/ramen.${new_version}/opam`
+
+6. wget from github the latest tag and md5sum it to fix the url file
+
+7. `git add * && git commit -m 'Ramen v${new_version}'`
+
+8. `make docker-build-builder` to build the builder docker images
+
+9. Using these builder, build the deb package:
+   `docker run -ti --name builder --rm rixed/ramen-builder:stretch`.
+   Then press 1 (build).
+
+10. *before* quitting the builder, extract the debian package and copy
+    in into the docker directory:
+    `docker cp builder:/root/ramen/ramen.${new_version}.deb docker/`
+
+11. build the final image: `make docker-build-image`
+
+12. Push all the images: `make docker-push`
+
