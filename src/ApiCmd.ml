@@ -297,13 +297,20 @@ let timerange copts func_name () =
       return_unit)
 
 
-let get_program_info_remote ?err_ok copts name_opt =
-  let url = copts.server_url ^"/graph"^
+let get_program_info_remote ?err_ok server_url name_opt =
+  let url = server_url ^"/graph"^
             (Option.map (fun n -> "/"^n) name_opt |? "") in
   http_get ?err_ok url >>=
   ppp_of_string_exc get_graph_resp_ppp
 
-let get_program_info = get_program_info_remote
+let get_program_info_local conf name_opt =
+  RamenOps.graph_info conf name_opt
+
+let get_program_info ?err_ok conf copts name_opt remote =
+  if remote then
+    get_program_info_remote ?err_ok copts.server_url name_opt
+  else
+    get_program_info_local conf name_opt
 
 let int_or_na = function
   | None -> TermTable.ValStr "n/a"
@@ -426,19 +433,24 @@ let display_operation_info json short func =
       Printf.printf "\nOutput:\n" ;
       print_form (form_of_type func.output_type))
 
-let info copts json short name_opt () =
+(* TODO: options to get a dot/mermaid instead *)
+let info copts json short name_opt remote () =
   if json && short then
     failwith "Options --json and --short are incompatible." ;
   logger := make_logger copts.debug ;
+  let conf =
+    C.make_conf true copts.server_url copts.debug copts.persist_dir
+                copts.max_simult_compilations copts.max_history_archives
+                copts.use_embedded_compiler copts.bundle_dir in
   Lwt_main.run (
-    match%lwt get_program_info ~err_ok:true copts name_opt with
+    match%lwt get_program_info conf ~err_ok:true copts name_opt remote with
     | exception (Failure _ as e) ->
         (* Maybe we supplied an operation name rather than a program name,
          * try again with only the `dirname` and print only that operation *)
         (match String.rsplit (name_opt |? "") ~by:"/" with
         | exception Not_found -> fail e
         | program, func ->
-            (match%lwt get_program_info copts (Some program) with
+            (match%lwt get_program_info conf copts (Some program) remote with
             | [ program_info ] -> (* Since we ask for a single program *)
                 (match List.find (fun n ->
                          n.Info.Func.definition.name = func

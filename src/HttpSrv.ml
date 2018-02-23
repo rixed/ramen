@@ -42,71 +42,6 @@ let serve_string conf _headers body =
     Returns the graph (as JSON, dot or mermaid representation)
 *)
 
-let rec find_int_opt_metric metrics name =
-  let open Binocle in
-  match metrics with
-  | [] -> None
-  | { measure = MInt n ; _ } as m ::_ when m.name = name -> Some n
-  | _::rest -> find_int_opt_metric rest name
-
-let find_int_metric metrics name = find_int_opt_metric metrics name |? 0
-
-let rec find_float_metric metrics name =
-  let open Binocle in
-  match metrics with
-  | [] -> 0.
-  | { measure = MFloat n ; _ } as m ::_ when m.name = name -> n
-  | _::rest -> find_float_metric rest name
-
-let func_info_of_func programs func =
-  let%lwt stats = RamenProcesses.last_report (N.fq_name func) in
-  let%lwt exporting = RamenExport.is_func_exporting func in
-  let operation =
-    IO.to_string Operation.print func.N.operation |>
-    PPP_prettify.prettify in
-  return SN.{
-    definition = { name = func.N.name ; operation } ;
-    exporting ;
-    signature = if func.N.signature = "" then None else Some func.N.signature ;
-    pid = func.N.pid ;
-    last_exit = func.N.last_exit ;
-    input_type = C.info_of_tuple_type func.N.in_type ;
-    output_type = C.info_of_tuple_type func.N.out_type ;
-    parents = List.map (fun (p, f) -> p ^"/"^ f) func.N.parents ;
-    children =
-      C.fold_funcs programs [] (fun children _l n ->
-        if List.exists (fun (p, f) ->
-             p = func.program && f = func.name
-           ) n.parents
-        then N.fq_name n :: children
-        else children) ;
-    stats }
-
-let program_info_of_program programs program =
-  let%lwt operations =
-    Hashtbl.values program.L.funcs |>
-    List.of_enum |>
-    Lwt_list.map_s (func_info_of_func programs) in
-  return SL.{
-    name = program.L.name ;
-    program = program.L.program ;
-    operations ;
-    test_id = program.L.test_id ;
-    status = program.L.status ;
-    last_started = program.L.last_started ;
-    last_stopped = program.L.last_stopped }
-
-let graph_programs programs = function
-  | None ->
-    Hashtbl.values programs |>
-    List.of_enum |>
-    return
-  | Some l ->
-    try Hashtbl.find programs l |>
-        List.singleton |>
-        return
-    with Not_found -> bad_request ("Unknown program "^l)
-
 let dot_of_graph programs =
   let dot = IO.output_string () in
   Printf.fprintf dot "digraph g {\n" ;
@@ -180,17 +115,14 @@ let get_graph_mermaid _headers programs =
 let get_graph conf headers program_opt =
   let accept = get_accept headers in
   if is_accepting Consts.json_content_type accept then
-    let%lwt graph = C.with_rlock conf (fun programs ->
-      let%lwt programs' = graph_programs programs program_opt in
-      let programs' = L.order programs' in
-      Lwt_list.map_s (program_info_of_program programs) programs') in
+    let%lwt graph = RamenOps.graph_info conf program_opt in
     let body = PPP.to_string get_graph_resp_ppp graph in
     respond_ok ~body ()
   else (
     (* For non-json we can release the lock sooner as we don't need the
      * children: *)
     let%lwt programs = C.with_rlock conf (fun programs ->
-      graph_programs programs program_opt) in
+      RamenOps.graph_programs programs program_opt) in
     let programs = L.order programs in
     if is_accepting Consts.dot_content_type accept then
       get_graph_dot headers programs
@@ -285,7 +217,7 @@ let get_index www_dir conf headers =
 let compile conf headers program_opt =
   let%lwt program_names =
     C.with_rlock conf (fun programs ->
-      let%lwt programs = graph_programs programs program_opt in
+      let%lwt programs = RamenOps.graph_programs programs program_opt in
       List.map (fun p -> p.L.name) programs |>
       return) in
   let%lwt failures = RamenOps.compile_programs conf program_names in
@@ -300,7 +232,7 @@ let run conf headers program_opt =
   try%lwt
     let%lwt () =
       C.with_wlock conf (fun programs ->
-        let%lwt to_run = graph_programs programs program_opt in
+        let%lwt to_run = RamenOps.graph_programs programs program_opt in
         let to_run = L.order to_run in
         Lwt_list.iter_s (RamenProcesses.run conf programs) to_run) in
     switch_accepted headers [
@@ -312,7 +244,7 @@ let run conf headers program_opt =
      | x -> fail x
 
 let stop_programs_ conf programs program_opt =
-  let%lwt to_stop = graph_programs programs program_opt in
+  let%lwt to_stop = RamenOps.graph_programs programs program_opt in
   Lwt_list.iter_p (RamenProcesses.stop conf programs) to_stop
 
 let stop_programs conf program_opt =

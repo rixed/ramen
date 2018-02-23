@@ -230,3 +230,59 @@ let set_program ?test_id ?(ok_if_running=false) ?(start=false)
       start_program_by_name conf name
     ) else return_unit in
   return name)
+
+let func_info_of_func programs func =
+  let%lwt stats = RamenProcesses.last_report (N.fq_name func) in
+  let%lwt exporting = RamenExport.is_func_exporting func in
+  let operation =
+    IO.to_string Lang.Operation.print func.N.operation |>
+    PPP_prettify.prettify in
+  return SN.{
+    definition = { name = func.N.name ; operation } ;
+    exporting ;
+    signature = if func.N.signature = "" then None else Some func.N.signature ;
+    pid = func.N.pid ;
+    last_exit = func.N.last_exit ;
+    input_type = C.info_of_tuple_type func.N.in_type ;
+    output_type = C.info_of_tuple_type func.N.out_type ;
+    parents = List.map (fun (p, f) -> p ^"/"^ f) func.N.parents ;
+    children =
+      C.fold_funcs programs [] (fun children _l n ->
+        if List.exists (fun (p, f) ->
+             p = func.program && f = func.name
+           ) n.parents
+        then N.fq_name n :: children
+        else children) ;
+    stats }
+
+let program_info_of_program programs program =
+  let%lwt operations =
+    Hashtbl.values program.L.funcs |>
+    List.of_enum |>
+    Lwt_list.map_s (func_info_of_func programs) in
+  return SL.{
+    name = program.L.name ;
+    program = program.L.program ;
+    operations ;
+    test_id = program.L.test_id ;
+    status = program.L.status ;
+    last_started = program.L.last_started ;
+    last_stopped = program.L.last_stopped }
+
+(* Return either one or all programs *)
+let graph_programs programs = function
+  | None ->
+    Hashtbl.values programs |>
+    List.of_enum |>
+    return
+  | Some l ->
+    try Hashtbl.find programs l |>
+        List.singleton |>
+        return
+    with Not_found -> fail_with ("Unknown program "^l)
+
+let graph_info conf program_opt =
+  C.with_rlock conf (fun programs ->
+    let%lwt programs' = graph_programs programs program_opt in
+    let programs' = L.order programs' in
+    Lwt_list.map_s (program_info_of_program programs) programs')

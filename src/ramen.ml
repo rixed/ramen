@@ -365,7 +365,8 @@ let get_info =
       $ copts
       $ as_json
       $ short
-      $ name_opt),
+      $ name_opt
+      $ remote),
     info ~doc:"Get info about a program or an operation" "info")
 
 (*
