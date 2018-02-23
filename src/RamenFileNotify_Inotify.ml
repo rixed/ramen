@@ -21,12 +21,10 @@ let make ?(while_=(fun () -> true)) dirname =
 
 let for_each f n =
   let%lwt () =
-    List.fold_left (fun thd fname ->
-      if n.while_ () then
-        let%lwt () = thd in
-        f fname
-      else thd
-    ) return_unit n.already_present in
+    Lwt_list.iter_s (fun fname ->
+      if n.while_ () then f fname
+      else return_unit
+    ) n.already_present in
   let rec loop () =
     if not (n.while_ ()) then return_unit else (
       match%lwt Lwt_inotify.read n.handler with
