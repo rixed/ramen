@@ -176,7 +176,7 @@ end
 let exec_of_func persist_dir func =
   persist_dir ^"/workers/bin/"
               ^ RamenVersions.codegen
-              ^"/ramen_worker_"^ func.Func.signature
+              ^"/ramen_"^ func.Func.signature
 
 let tmp_input_of_func persist_dir func =
   persist_dir ^"/workers/inputs/"^ Func.fq_name func ^"/"
