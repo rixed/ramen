@@ -110,6 +110,7 @@ let graph_programs programs = function
 let dot_of_graph programs =
   let dot = IO.output_string () in
   Printf.fprintf dot "digraph g {\n" ;
+  Printf.fprintf dot "\trankdir=LR\n" ;
   List.iter (fun program ->
     Hashtbl.iter (fun _ func ->
         Printf.fprintf dot "\t%S\n" (N.fq_name func)
