@@ -194,7 +194,7 @@ let rec run_func conf programs program func =
     ) func.N.parents
 
 (* We take _programs as a sign that we have the lock *)
-let kill_worker conf _programs func pid =
+let kill_worker conf timeout _programs func pid =
   let try_kill pid signal =
     try Unix.kill pid signal
     with Unix.Unix_error _ as e ->
@@ -209,7 +209,7 @@ let kill_worker conf _programs func pid =
    * we are currently holding the conf.
    * We want to check in a few seconds that this had happened: *)
   async (fun () ->
-    let%lwt () = Lwt_unix.sleep (1. +. Random.float 1.) in
+    let%lwt () = Lwt_unix.sleep (timeout +. Random.float 1.) in
     C.with_rlock conf (fun programs ->
       !logger.debug "Checking that pid %d is not around any longer." pid ;
       (* Find that program again, and if it's still having the same pid
@@ -240,6 +240,7 @@ let stop conf programs program =
     let now = Unix.gettimeofday () in
     let program_funcs =
       Hashtbl.values program.L.funcs |> List.of_enum in
+    let timeout = 1. +. float_of_int (List.length program_funcs) *. 0.02 in
     let%lwt () = Lwt_list.iter_p (fun func ->
         if program.test_id <> "" &&
            Lang.Operation.run_in_tests func.N.operation
@@ -267,7 +268,7 @@ let stop conf programs program =
           | Some pid ->
             !logger.debug "Stopping func %s, pid %d" func.N.name pid ;
             (* Get rid of the worker *)
-            kill_worker conf programs func pid) ;
+            kill_worker conf timeout programs func pid) ;
           return_unit
         )
       ) program_funcs in
