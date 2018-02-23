@@ -15,6 +15,8 @@ let make ?(while_=(fun () -> true)) dirname =
     Lwt_unix.files_of_directory dirname |>
     Lwt_stream.to_list in
   let already_present = List.fast_sort String.compare already_present in
+  !logger.info "%d files already present when starting inotifier"
+    (List.length already_present) ;
   return { already_present ; dirname ; handler ; while_ }
 
 let for_each f n =
@@ -28,6 +30,10 @@ let for_each f n =
   let rec loop () =
     if not (n.while_ ()) then return_unit else (
       match%lwt Lwt_inotify.read n.handler with
+      | exception exn ->
+        !logger.error "Cannot Lwt_inotify.read: %s"
+          (Printexc.to_string exn) ;
+        Lwt_unix.sleep 1. >>= loop
       | _watch, kinds, _cookie, Some filename
         when (List.mem Inotify.Create kinds ||
               List.mem Inotify.Moved_to kinds) &&

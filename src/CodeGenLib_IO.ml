@@ -66,10 +66,13 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
 let check_file_exist kind kind_name path =
   !logger.debug "Checking %S is a %s..." path kind_name ;
   let open Lwt_unix in
-  let%lwt stats = stat path in
-  if stats.st_kind <> kind then
-    fail_with (Printf.sprintf "Path %S is not a %s" path kind_name)
-  else return_unit
+  match%lwt stat path with
+  | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
+    fail_with (path ^" does not exist")
+  | stats ->
+    if stats.st_kind <> kind then
+      fail_with (Printf.sprintf "Path %S is not a %s" path kind_name)
+    else return_unit
 
 let check_dir_exist = check_file_exist Lwt_unix.S_DIR "directory"
 
