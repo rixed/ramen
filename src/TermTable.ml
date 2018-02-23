@@ -9,11 +9,11 @@ let string_of_val = function
 
 let print_table head lines =
   Array.iter (fun h ->
-    Printf.printf "%s " h) head ;
+    Printf.printf "%s\t" h) head ;
   Printf.printf "\n" ;
   List.iter (fun line ->
     Array.iter (fun v ->
-      Printf.printf "%s " (string_of_val v)
+      Printf.printf "%s\t" (string_of_val v)
     ) line ;
     Printf.printf "\n"
   ) lines
