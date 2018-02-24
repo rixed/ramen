@@ -248,6 +248,9 @@ let tuple_need_state = function
           | Reset | Never | Slide _ -> flush_how
           | RemoveAll e -> RemoveAll (replace_typ e)
           | KeepOnly e -> KeepOnly (replace_typ e)) }
+    | Yield { fields ; every } ->
+      Yield { fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
+              every }
     | x -> x
 
   let replace_typ_in_op = function
@@ -2148,16 +2151,6 @@ struct
       let m = "list separator" :: m in
       (opt_blanks -- char ',' -- opt_blanks) m
 
-    let yield =
-      strinG "yield" -- blanks -+
-      several ~sep:list_sep selected_field ++
-      optional ~def:0.
-        (blanks -- strinG "every" -- blanks -+ number +-
-         blanks +- strinG "seconds") >>: fun (fields, every) ->
-        if every < 0. then
-          raise (Reject "sleep duration must be greater than 0") ;
-        Yield { fields ; every }
-
     let export_clause m =
       let m = "export clause" :: m in
       (strinG "export" >>: fun () -> true) m
@@ -2186,6 +2179,20 @@ struct
     let notify_clause m =
       let m = "notify clause" :: m in
       (strinG "notify" -- blanks -+ quoted_string) m
+
+    let yield_clause m =
+      let m = "yield clause" :: m in
+      (strinG "yield" -- blanks -+
+       several ~sep:list_sep selected_field) m
+
+    let yield_every_clause m =
+      let m = "every clause" :: m in
+      ((strinG "every" -- blanks -+ number +- blanks +-
+        (strinG "seconds" ||| strinG "second")) >>:
+        fun every ->
+          if every < 0. then
+            raise (Reject "sleep duration must be greater than 0") ;
+          every) m
 
     let select_clause m =
       let m = "select clause" :: m in
@@ -2247,8 +2254,10 @@ struct
       | TopByClause of ((Expr.t (* N *) * Expr.t (* by *)) * Expr.t (* when *))
       | CommitClause of ((flush_method option * bool) * Expr.t)
       | FromClause of string list
+      | YieldClause of selected_field list
+      | EveryClause of float
 
-    let aggregate m =
+    let aggregate_or_yield m =
       let m = "operation" :: m in
       let part =
         (select_clause >>: fun c -> SelectClause c) |||
@@ -2259,19 +2268,37 @@ struct
         (group_by >>: fun c -> GroupByClause c) |||
         (top_clause >>: fun c -> TopByClause c) |||
         (commit_when >>: fun c -> CommitClause c) |||
-        (from_clause >>: fun c -> FromClause c) in
+        (from_clause >>: fun c -> FromClause c) |||
+        (yield_clause >>: fun c -> YieldClause c) |||
+        (yield_every_clause >>: fun c -> EveryClause c) in
       (several ~sep:blanks part >>: fun clauses ->
         (* Used for its address: *)
-        let default_commit_when = Expr.expr_true in
-        let is_default_commit = (==) default_commit_when in
-        let default_select =
-          [], true, Expr.expr_true, false, None, "", [],
-          None, false, default_commit_when, Reset, [] in
-        let fields, and_all_others, where, force_export, event_time,
-            notify_url, key, top, commit_before, commit_when, flush_how, from =
+        let default_select_fields = []
+        and default_star = true
+        and default_where = Expr.expr_true
+        and default_export = false
+        and default_event_time = None
+        and default_notify = ""
+        and default_key = []
+        and default_top = None
+        and default_commit_before = false
+        and default_commit_when = Expr.expr_true
+        and default_flush_how = Reset
+        and default_from = []
+        and default_yield_fields = []
+        and default_yield_every = 0. in
+        let default_clauses =
+          default_select_fields, default_star, default_where, default_export,
+          default_event_time, default_notify, default_key, default_top,
+          default_commit_before, default_commit_when, default_flush_how,
+          default_from, default_yield_fields, default_yield_every in
+        let select_fields, and_all_others, where, force_export, event_time,
+            notify_url, key, top, commit_before, commit_when, flush_how, from,
+            yield_fields, yield_every =
           List.fold_left (
-            fun (fields, and_all_others, where, export, event_time, notify_url,
-                 key, top, commit_before, commit_when, flush_how, from) ->
+            fun (select_fields, and_all_others, where, export, event_time, notify_url,
+                 key, top, commit_before, commit_when, flush_how, from,
+                 yield_fields, yield_every) ->
               function
               | SelectClause fields_or_stars ->
                 let fields, and_all_others =
@@ -2281,50 +2308,71 @@ struct
                       | None -> raise (Reject "All fields (\"*\") included several times")
                     ) ([], false) fields_or_stars in
                 (* The above fold_left inverted the field order. *)
-                let fields = List.rev fields in
-                fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from
+                let select_fields = List.rev fields in
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
               | WhereClause where ->
-                fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
               | ExportClause export ->
-                fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
               | EventTimeClause event_time ->
-                fields, and_all_others, where, export, Some event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from
+                select_fields, and_all_others, where, export, Some event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
               | NotifyClause notify_url ->
-                fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
               | GroupByClause key ->
-                fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
               | CommitClause ((Some flush_how, commit_before), commit_when) ->
-                fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
               | CommitClause ((None, commit_before), commit_when) ->
-                fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
               | TopByClause top ->
-                fields, and_all_others, where, export, event_time, notify_url, key,
-                Some top, commit_before, commit_when, flush_how, from
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                Some top, commit_before, commit_when, flush_how, from,
+                yield_fields, yield_every
               | FromClause from' ->
-                fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how,
-                (List.rev_append from' from)
-            ) default_select clauses in
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, (List.rev_append from' from),
+                yield_fields, yield_every
+              | YieldClause fields ->
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, fields, yield_every
+              | EveryClause yield_every ->
+                select_fields, and_all_others, where, export, event_time, notify_url, key,
+                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+            ) default_clauses clauses in
         let commit_when, top =
           match top with
           | None -> commit_when, None
           | Some (top, top_when) ->
-            if not (is_default_commit commit_when) ||
-               flush_how <> Reset then
+            if commit_when != default_commit_when ||
+               flush_how != default_flush_how then (
+              Printf.eprintf "Incompatible top/aggr\n%!" ;
               raise (Reject "COMMIT and FLUSH clauses are incompatible \
-                             with TOP") ;
+                             with TOP")) ;
             top_when, Some top in
-        Aggregate { fields ; and_all_others ; where ; force_export ; event_time ;
-                    notify_url ; key ; top ; commit_before ; commit_when ;
-                    flush_how ; from }
+        (* Distinguish between Aggregate and Yield: *)
+        if yield_fields == default_yield_fields &&
+           yield_every == default_yield_every then
+          Aggregate { fields = select_fields ; and_all_others ; where ;
+                      force_export ; event_time ; notify_url ; key ; top ;
+                      commit_before ; commit_when ; flush_how ; from }
+        else if select_fields == default_select_fields && where == default_where &&
+                key == default_key && top == default_top &&
+                commit_before == default_commit_before &&
+                commit_when == default_commit_when &&
+                flush_how == default_flush_how && from == default_from &&
+                yield_fields != default_yield_fields then
+          Yield { fields = yield_fields ; every = yield_every }
+        else (
+          Printf.eprintf "Incompatible yield/aggr\n%!" ;
+          raise (Reject "Incompatible mix of clauses"))
       ) m
 
     (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
@@ -2440,7 +2488,7 @@ struct
 
     let p m =
       let m = "operation" :: m in
-      (yield ||| aggregate ||| read_csv_file ||| listen_on) m
+      (aggregate_or_yield ||| read_csv_file ||| listen_on) m
 
     (*$= p & ~printer:(test_printer print)
       (Ok (\
@@ -2657,6 +2705,14 @@ struct
         (test_op p "read file \"/tmp/toto.csv\" \\
                         separator \"\\t\" null \"<NULL>\" \\
                         (f1 bool, f2 i32 not null)")
+
+      (Ok (\
+        Yield {\
+          fields = [ { expr = Expr.Const (typ, VI32 1l) ; alias = "one" } ] ;\
+          every = 1. },\
+          (29, [])))\
+          (test_op p "YIELD 1 AS one EVERY 1 SECOND" |>\
+           replace_typ_in_op)
     *)
 
     (*$>*)
