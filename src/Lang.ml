@@ -2289,163 +2289,6 @@ struct
             | Some (addr, Some port) -> addr, Num.int_of_num port in
           net_addr, port, proto) m
 
-    type select_clauses =
-      | SelectClause of selected_field option list
-      | WhereClause of Expr.t
-      | ExportClause of bool
-      | EventTimeClause of event_time
-      | NotifyClause of string
-      | GroupByClause of Expr.t list
-      | TopByClause of ((Expr.t (* N *) * Expr.t (* by *)) * Expr.t (* when *))
-      | CommitClause of ((flush_method option * bool) * Expr.t)
-      | FromClause of string list
-      | YieldClause of selected_field list
-      | EveryClause of float
-      | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
-
-    let aggregate_or_yield_or_listen m =
-      let m = "operation" :: m in
-      let part =
-        (select_clause >>: fun c -> SelectClause c) |||
-        (where_clause >>: fun c -> WhereClause c) |||
-        (export_clause >>: fun c -> ExportClause c) |||
-        (event_time_clause >>: fun c -> EventTimeClause c) |||
-        (notify_clause >>: fun c -> NotifyClause c) |||
-        (group_by >>: fun c -> GroupByClause c) |||
-        (top_clause >>: fun c -> TopByClause c) |||
-        (commit_when >>: fun c -> CommitClause c) |||
-        (from_clause >>: fun c -> FromClause c) |||
-        (yield_clause >>: fun c -> YieldClause c) |||
-        (yield_every_clause >>: fun c -> EveryClause c) |||
-        (listen_clause >>: fun c -> ListenClause c) in
-      (several ~sep:blanks part >>: fun clauses ->
-        (* Used for its address: *)
-        let default_select_fields = []
-        and default_star = true
-        and default_where = Expr.expr_true
-        and default_export = false
-        and default_event_time = None
-        and default_notify = ""
-        and default_key = []
-        and default_top = None
-        and default_commit_before = false
-        and default_commit_when = Expr.expr_true
-        and default_flush_how = Reset
-        and default_from = []
-        and default_yield_fields = []
-        and default_yield_every = 0.
-        and default_listen = None in
-        let default_clauses =
-          default_select_fields, default_star, default_where, default_export,
-          default_event_time, default_notify, default_key, default_top,
-          default_commit_before, default_commit_when, default_flush_how,
-          default_from, default_yield_fields, default_yield_every,
-          default_listen in
-        let select_fields, and_all_others, where, force_export, event_time,
-            notify_url, key, top, commit_before, commit_when, flush_how, from,
-            yield_fields, yield_every, listen =
-          List.fold_left (
-            fun (select_fields, and_all_others, where, export, event_time, notify_url,
-                 key, top, commit_before, commit_when, flush_how, from,
-                 yield_fields, yield_every, listen) ->
-              function
-              | SelectClause fields_or_stars ->
-                let fields, and_all_others =
-                  List.fold_left (fun (fields, and_all_others) -> function
-                      | Some f -> f::fields, and_all_others
-                      | None when not and_all_others -> fields, true
-                      | None -> raise (Reject "All fields (\"*\") included several times")
-                    ) ([], false) fields_or_stars in
-                (* The above fold_left inverted the field order. *)
-                let select_fields = List.rev fields in
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, listen
-              | WhereClause where ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, listen
-              | ExportClause export ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, listen
-              | EventTimeClause event_time ->
-                select_fields, and_all_others, where, export, Some event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, listen
-              | NotifyClause notify_url ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, listen
-              | GroupByClause key ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, listen
-              | CommitClause ((Some flush_how, commit_before), commit_when) ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, listen
-              | CommitClause ((None, commit_before), commit_when) ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, listen
-              | TopByClause top ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, Some top, commit_before, commit_when,
-                flush_how, from, yield_fields, yield_every, listen
-              | FromClause from' ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                (List.rev_append from' from), yield_fields, yield_every, listen
-              | YieldClause fields ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, fields, yield_every, listen
-              | EveryClause yield_every ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, listen
-              | ListenClause l ->
-                select_fields, and_all_others, where, export, event_time,
-                notify_url, key, top, commit_before, commit_when, flush_how,
-                from, yield_fields, yield_every, Some l
-            ) default_clauses clauses in
-        let commit_when, top =
-          match top with
-          | None -> commit_when, None
-          | Some (top, top_when) ->
-            if commit_when != default_commit_when ||
-               flush_how != default_flush_how then (
-              Printf.eprintf "Incompatible top/aggr\n%!" ;
-              raise (Reject "COMMIT and FLUSH clauses are incompatible \
-                             with TOP")) ;
-            top_when, Some top in
-        (* Distinguish between Aggregate, Yield ans ListenFor: *)
-        let not_aggregate =
-          select_fields == default_select_fields && where == default_where &&
-          key == default_key && top == default_top &&
-          commit_before == default_commit_before &&
-          commit_when == default_commit_when &&
-          flush_how == default_flush_how && from == default_from
-        and not_yield =
-          yield_fields == default_yield_fields &&
-          yield_every == default_yield_every
-        and not_listen = listen = None in
-        if not_yield && not_listen then
-          Aggregate { fields = select_fields ; and_all_others ; where ;
-                      force_export ; event_time ; notify_url ; key ; top ;
-                      commit_before ; commit_when ; flush_how ; from }
-        else if not_aggregate && not_listen &&
-                yield_fields != default_yield_fields then
-          Yield { fields = yield_fields ; every = yield_every }
-        else if not_aggregate && not_yield && listen <> None then
-          let net_addr, port, proto = Option.get listen in
-          ListenFor { net_addr ; port ; proto }
-        else (
-          Printf.eprintf "Incompatible yield/aggr\n%!" ;
-          raise (Reject "Incompatible mix of clauses"))
-      ) m
-
     (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
     let read_file_specs m =
       let m = "read file operation" :: m in
@@ -2476,10 +2319,10 @@ struct
       let m = "upload operation" :: m in
       (strinG "receive" >>: fun () -> ReceiveFile) m
 
-    let where_specs =
+    let external_data_clause =
       read_file_specs ||| download_file_specs ||| upload_file_specs
 
-    let csv_specs m =
+    let csv_specs  m =
       let m = "CSV format" :: m in
       let field =
         non_keyword +- blanks ++ Scalar.Parser.typ ++
@@ -2500,21 +2343,214 @@ struct
            raise (Reject "Invalid CSV separator") ;
          { separator ; null ; fields }) m
 
-    let preprocessor m =
+    let preprocessor_clause m =
       let m = "file preprocessor" :: m in
       (strinG "preprocess" -- blanks -- strinG "with" -- opt_blanks -+
        quoted_string) m
 
-    let read_csv_file m =
-      let m = "read operation" :: m in
-      (where_specs +- blanks ++
-       optional ~def:"" (preprocessor +- blanks) ++
-       csv_specs >>: fun ((where, preprocessor), what) ->
-       ReadCSVFile { where ; what ; preprocessor }) m
+    type select_clauses =
+      | SelectClause of selected_field option list
+      | WhereClause of Expr.t
+      | ExportClause of bool
+      | EventTimeClause of event_time
+      | NotifyClause of string
+      | GroupByClause of Expr.t list
+      | TopByClause of ((Expr.t (* N *) * Expr.t (* by *)) * Expr.t (* when *))
+      | CommitClause of ((flush_method option * bool) * Expr.t)
+      | FromClause of string list
+      | YieldClause of selected_field list
+      | EveryClause of float
+      | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
+      | ExternalDataClause of where_specs
+      | PreprocessorClause of string
+      | CsvSpecsClause of csv_specs
 
     let p m =
       let m = "operation" :: m in
-      (aggregate_or_yield_or_listen ||| read_csv_file) m
+      let part =
+        (select_clause >>: fun c -> SelectClause c) |||
+        (where_clause >>: fun c -> WhereClause c) |||
+        (export_clause >>: fun c -> ExportClause c) |||
+        (event_time_clause >>: fun c -> EventTimeClause c) |||
+        (notify_clause >>: fun c -> NotifyClause c) |||
+        (group_by >>: fun c -> GroupByClause c) |||
+        (top_clause >>: fun c -> TopByClause c) |||
+        (commit_when >>: fun c -> CommitClause c) |||
+        (from_clause >>: fun c -> FromClause c) |||
+        (yield_clause >>: fun c -> YieldClause c) |||
+        (yield_every_clause >>: fun c -> EveryClause c) |||
+        (listen_clause >>: fun c -> ListenClause c) |||
+        (external_data_clause >>: fun c -> ExternalDataClause c) |||
+        (preprocessor_clause >>: fun c -> PreprocessorClause c) |||
+        (csv_specs >>: fun c -> CsvSpecsClause c) in
+      (several ~sep:blanks part >>: fun clauses ->
+        (* Used for its address: *)
+        let default_select_fields = []
+        and default_star = true
+        and default_where = Expr.expr_true
+        and default_export = false
+        and default_event_time = None
+        and default_notify = ""
+        and default_key = []
+        and default_top = None
+        and default_commit_before = false
+        and default_commit_when = Expr.expr_true
+        and default_flush_how = Reset
+        and default_from = []
+        and default_yield_fields = []
+        and default_yield_every = 0.
+        and default_listen = None
+        and default_ext_data = None
+        and default_preprocessor = ""
+        and default_csv_specs = None in
+        let default_clauses =
+          default_select_fields, default_star, default_where, default_export,
+          default_event_time, default_notify, default_key, default_top,
+          default_commit_before, default_commit_when, default_flush_how,
+          default_from, default_yield_fields, default_yield_every,
+          default_listen, default_ext_data, default_preprocessor,
+          default_csv_specs in
+        let select_fields, and_all_others, where, force_export, event_time,
+            notify_url, key, top, commit_before, commit_when, flush_how, from,
+            yield_fields, yield_every, listen, ext_data, preprocessor,
+            csv_specs =
+          List.fold_left (
+            fun (select_fields, and_all_others, where, export, event_time,
+                 notify_url, key, top, commit_before, commit_when, flush_how,
+                 from, yield_fields, yield_every, listen, ext_data,
+                 preprocessor, csv_specs) ->
+              function
+              | SelectClause fields_or_stars ->
+                let fields, and_all_others =
+                  List.fold_left (fun (fields, and_all_others) -> function
+                      | Some f -> f::fields, and_all_others
+                      | None when not and_all_others -> fields, true
+                      | None -> raise (Reject "All fields (\"*\") included several times")
+                    ) ([], false) fields_or_stars in
+                (* The above fold_left inverted the field order. *)
+                let select_fields = List.rev fields in
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | WhereClause where ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | ExportClause export ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | EventTimeClause event_time ->
+                select_fields, and_all_others, where, export, Some event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | NotifyClause notify_url ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | GroupByClause key ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | CommitClause ((Some flush_how, commit_before), commit_when) ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | CommitClause ((None, commit_before), commit_when) ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | TopByClause top ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, Some top, commit_before, commit_when,
+                flush_how, from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | FromClause from' ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                (List.rev_append from' from), yield_fields, yield_every, listen,
+                ext_data, preprocessor, csv_specs
+              | YieldClause fields ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, fields, yield_every, listen, ext_data, preprocessor,
+                csv_specs
+              | EveryClause yield_every ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | ListenClause l ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, Some l, ext_data,
+                preprocessor, csv_specs
+              | ExternalDataClause c ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, Some c,
+                preprocessor, csv_specs
+              | PreprocessorClause preprocessor ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, csv_specs
+              | CsvSpecsClause c ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen, ext_data,
+                preprocessor, Some c
+            ) default_clauses clauses in
+        let commit_when, top =
+          match top with
+          | None -> commit_when, None
+          | Some (top, top_when) ->
+            if commit_when != default_commit_when ||
+               flush_how != default_flush_how then
+              raise (Reject "COMMIT and FLUSH clauses are incompatible \
+                             with TOP") ;
+            top_when, Some top in
+        (* Distinguish between Aggregate, Yield ans ListenFor: *)
+        let not_aggregate =
+          select_fields == default_select_fields && where == default_where &&
+          key == default_key && top == default_top &&
+          commit_before == default_commit_before &&
+          commit_when == default_commit_when &&
+          flush_how == default_flush_how && from == default_from
+        and not_yield =
+          yield_fields == default_yield_fields &&
+          yield_every == default_yield_every
+        and not_listen = listen = None
+        and not_csv =
+          ext_data = None && preprocessor == default_preprocessor &&
+          csv_specs = None in
+        if not_yield && not_listen && not_csv then
+          Aggregate { fields = select_fields ; and_all_others ; where ;
+                      force_export ; event_time ; notify_url ; key ; top ;
+                      commit_before ; commit_when ; flush_how ; from }
+        else if not_aggregate && not_listen && not_csv &&
+                yield_fields != default_yield_fields then
+          Yield { fields = yield_fields ; every = yield_every }
+        else if not_aggregate && not_yield && not_csv &&
+                listen <> None then
+          let net_addr, port, proto = Option.get listen in
+          ListenFor { net_addr ; port ; proto }
+        else if not_aggregate && not_yield && not_listen &&
+                ext_data <> None && csv_specs <> None then
+          ReadCSVFile { where = Option.get ext_data ;
+                        what = Option.get csv_specs ;
+                        preprocessor }
+        else
+          raise (Reject "Incompatible mix of clauses")
+      ) m
 
     (*$= p & ~printer:(test_printer print)
       (Ok (\
