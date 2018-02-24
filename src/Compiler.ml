@@ -1037,7 +1037,8 @@ let compile_func conf func =
     let operation =
       let open Operation in
       match func.N.operation with
-      | ReadCSVFile { where = ReceiveFile ; what ; preprocessor } ->
+      | ReadCSVFile { where = ReceiveFile ; what ; preprocessor ;
+                      force_export ; event_time } ->
         let dir =
           C.upload_dir_of_func conf.C.persist_dir func in
         mkdir_all dir ;
@@ -1045,7 +1046,7 @@ let compile_func conf func =
           (* The underscore is to restrict ourself to complete files that
            * will appear atomically *)
           where = ReadFile { fname = dir ^"/_*" ; unlink = true } ;
-          what ; preprocessor }
+          what ; preprocessor ; force_export ; event_time  }
       | ReadCSVFile { where = DownloadFile _ ; _ } ->
         failwith "Not Implemented"
       | x -> x in

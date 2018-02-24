@@ -248,9 +248,9 @@ let tuple_need_state = function
           | Reset | Never | Slide _ -> flush_how
           | RemoveAll e -> RemoveAll (replace_typ e)
           | KeepOnly e -> KeepOnly (replace_typ e)) }
-    | Yield { fields ; every } ->
+    | Yield { fields ; every ; force_export ; event_time } ->
       Yield { fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
-              every }
+              every ; force_export ; event_time }
     | x -> x
 
   let replace_typ_in_op = function
@@ -1796,7 +1796,11 @@ struct
   type t =
     (* Generate values out of thin air. The difference with Select is that
      * Yield does not wait for some input. *)
-    | Yield of { fields : selected_field list ; every : float }
+    | Yield of {
+        fields : selected_field list ;
+        every : float ;
+        event_time : event_time option ;
+        force_export : bool }
     (* Aggregation of several tuples into one based on some key. Superficially looks like
      * a select but much more involved. *)
     | Aggregate of {
@@ -1817,9 +1821,18 @@ struct
         flush_how : flush_method ;
         (* List of funcs that are our parents *)
         from : string list }
-    | ReadCSVFile of { where : where_specs ; what : csv_specs ; preprocessor : string }
-    | ListenFor of { net_addr : Unix.inet_addr ; port : int ;
-                     proto : RamenProtocols.net_protocol }
+    | ReadCSVFile of {
+        where : where_specs ;
+        what : csv_specs ;
+        preprocessor : string ;
+        event_time : event_time option ;
+        force_export : bool }
+    | ListenFor of {
+        net_addr : Unix.inet_addr ;
+        port : int ;
+        proto : RamenProtocols.net_protocol ;
+        event_time : event_time option ;
+        force_export : bool }
 
   (* ReadFile has the func reading files directly on disc.
    * DownloadFile is (supposed to be) ramen downloading the content into
@@ -1867,11 +1880,15 @@ struct
   let print fmt =
     let sep = ", " in
     let print_single_quoted oc s = Printf.fprintf oc "'%s'" s in
+    let print_export fmt event_time force_export =
+      Option.may (fun e -> Printf.fprintf fmt " %a" print_event_time e) event_time ;
+      if force_export then Printf.fprintf fmt " EXPORT" in
     function
-    | Yield { fields ; every } ->
+    | Yield { fields ; every ; event_time ; force_export } ->
       Printf.fprintf fmt "YIELD %a EVERY %g SECONDS"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
-        every
+        every ;
+      print_export fmt event_time force_export ;
     | Aggregate { fields ; and_all_others ; where ; event_time ;
                   force_export ; notify_url ; key ; top ; commit_when ;
                   commit_before ; flush_how ; from } ->
@@ -1883,9 +1900,7 @@ struct
       if not (Expr.is_true where) then
         Printf.fprintf fmt " WHERE %a"
           (Expr.print false) where ;
-      Option.may (fun e -> Printf.fprintf fmt " %a" print_event_time  e) event_time ;
-      if force_export then
-        Printf.fprintf fmt " EXPORT" ;
+      print_export fmt event_time force_export ;
       if notify_url <> "" then
         Printf.fprintf fmt " NOTIFY %S" notify_url ;
       if key <> [] then
@@ -1902,22 +1917,27 @@ struct
           (if commit_before then "BEFORE" else "AFTER")
           (Expr.print false) commit_when
     | ReadCSVFile { where = where_specs ;
-                    what = csv_specs ; preprocessor } ->
+                    what = csv_specs ; preprocessor ; event_time ;
+                    force_export } ->
       Printf.fprintf fmt "%a %s %a"
         print_where_specs where_specs
         (if preprocessor = "" then ""
           else Printf.sprintf "PREPROCESS WITH %S" preprocessor)
-        print_csv_specs csv_specs
-    | ListenFor { net_addr ; port ; proto } ->
+        print_csv_specs csv_specs ;
+      print_export fmt event_time force_export ;
+    | ListenFor { net_addr ; port ; proto ; event_time ; force_export } ->
       Printf.fprintf fmt "LISTEN FOR %s ON %s:%d"
         (RamenProtocols.string_of_proto proto)
         (Unix.string_of_inet_addr net_addr)
-        port
+        port ;
+      print_export fmt event_time force_export
 
   let is_exporting = function
-    | Aggregate { force_export ; _ } ->
+    | Aggregate { force_export ; _ }
+    | Yield { force_export ; _ }
+    | ListenFor { force_export ; _ }
+    | ReadCSVFile { force_export ; _ } ->
       force_export (* FIXME: this info should come from the func *)
-    | _ -> false
 
   let run_in_tests = function
     | Aggregate _ | Yield _ -> true
@@ -2538,16 +2558,18 @@ struct
                       commit_before ; commit_when ; flush_how ; from }
         else if not_aggregate && not_listen && not_csv &&
                 yield_fields != default_yield_fields then
-          Yield { fields = yield_fields ; every = yield_every }
+          Yield { fields = yield_fields ; every = yield_every ;
+                  force_export ; event_time }
         else if not_aggregate && not_yield && not_csv &&
                 listen <> None then
           let net_addr, port, proto = Option.get listen in
-          ListenFor { net_addr ; port ; proto }
+          ListenFor { net_addr ; port ; proto ; force_export ; event_time }
         else if not_aggregate && not_yield && not_listen &&
                 ext_data <> None && csv_specs <> None then
           ReadCSVFile { where = Option.get ext_data ;
                         what = Option.get csv_specs ;
-                        preprocessor }
+                        preprocessor ;
+                        force_export ; event_time }
         else
           raise (Reject "Incompatible mix of clauses")
       ) m
@@ -2738,7 +2760,8 @@ struct
 
       (Ok (\
         ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = false } ; \
-                      preprocessor = "" ; what = { \
+                      preprocessor = "" ; force_export = false ; event_time = None ; \
+                      what = { \
                         separator = "," ; null = "" ; \
                         fields = [ \
                           { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
@@ -2748,7 +2771,8 @@ struct
 
       (Ok (\
         ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = true } ; \
-                      preprocessor = "" ; what = { \
+                      preprocessor = "" ; force_export = false ; event_time = None ; \
+                      what = { \
                         separator = "," ; null = "" ; \
                         fields = [ \
                           { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
@@ -2758,7 +2782,8 @@ struct
 
       (Ok (\
         ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = false } ; \
-                      preprocessor = "" ; what = { \
+                      preprocessor = "" ; force_export = false ; event_time = None ; \
+                      what = { \
                         separator = "\t" ; null = "<NULL>" ; \
                         fields = [ \
                           { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
@@ -2771,9 +2796,9 @@ struct
       (Ok (\
         Yield {\
           fields = [ { expr = Expr.Const (typ, VI32 1l) ; alias = "one" } ] ;\
-          every = 1. },\
-          (29, [])))\
-          (test_op p "YIELD 1 AS one EVERY 1 SECOND" |>\
+          every = 1. ; force_export = true ; event_time = None },\
+          (36, [])))\
+          (test_op p "YIELD 1 AS one EVERY 1 SECOND EXPORT" |>\
            replace_typ_in_op)
     *)
 
