@@ -2244,6 +2244,51 @@ struct
       (strinG "from" -- blanks -+
        several ~sep:list_sep (func_identifier ~program_allowed:true)) m
 
+    let default_port_of_protocol = function
+      | RamenProtocols.Collectd -> 25826
+      | RamenProtocols.NetflowV5 -> 2055
+
+    let net_protocol m =
+      let m = "network protocol" :: m in
+      ((strinG "collectd" >>: fun () -> RamenProtocols.Collectd) |||
+       ((strinG "netflow" ||| strinG "netflowv5") >>: fun () ->
+          RamenProtocols.NetflowV5)) m
+
+    let network_address =
+      several ~sep:none (cond "inet address" (fun c ->
+        (c >= '0' && c <= '9') ||
+        (c >= 'a' && c <= 'f') ||
+        (c >= 'A' && c <= 'A') ||
+        c == '.' || c == ':') '0') >>:
+      fun s ->
+        let s = String.of_list s in
+        try Unix.inet_addr_of_string s
+        with Failure x -> raise (Reject x)
+
+    let inet_addr m =
+      let m = "network address" :: m in
+      ((string "*" >>: fun () -> Unix.inet_addr_any) |||
+       (string "[*]" >>: fun () -> Unix.inet6_addr_any) |||
+       (network_address)) m
+
+    let listen_clause m =
+      let m = "listen on operation" :: m in
+      (strinG "listen" -- blanks --
+       optional ~def:() (strinG "for" -- blanks) -+
+       net_protocol ++
+       optional ~def:None (
+         blanks --
+         optional ~def:() (strinG "on" -- blanks) -+
+         some (inet_addr ++
+               optional ~def:None (char ':' -+ some unsigned_decimal_number))) >>:
+       fun (proto, addr_opt) ->
+          let net_addr, port =
+            match addr_opt with
+            | None -> Unix.inet_addr_any, default_port_of_protocol proto
+            | Some (addr, None) -> addr, default_port_of_protocol proto
+            | Some (addr, Some port) -> addr, Num.int_of_num port in
+          net_addr, port, proto) m
+
     type select_clauses =
       | SelectClause of selected_field option list
       | WhereClause of Expr.t
@@ -2256,8 +2301,9 @@ struct
       | FromClause of string list
       | YieldClause of selected_field list
       | EveryClause of float
+      | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
 
-    let aggregate_or_yield m =
+    let aggregate_or_yield_or_listen m =
       let m = "operation" :: m in
       let part =
         (select_clause >>: fun c -> SelectClause c) |||
@@ -2270,7 +2316,8 @@ struct
         (commit_when >>: fun c -> CommitClause c) |||
         (from_clause >>: fun c -> FromClause c) |||
         (yield_clause >>: fun c -> YieldClause c) |||
-        (yield_every_clause >>: fun c -> EveryClause c) in
+        (yield_every_clause >>: fun c -> EveryClause c) |||
+        (listen_clause >>: fun c -> ListenClause c) in
       (several ~sep:blanks part >>: fun clauses ->
         (* Used for its address: *)
         let default_select_fields = []
@@ -2286,19 +2333,21 @@ struct
         and default_flush_how = Reset
         and default_from = []
         and default_yield_fields = []
-        and default_yield_every = 0. in
+        and default_yield_every = 0.
+        and default_listen = None in
         let default_clauses =
           default_select_fields, default_star, default_where, default_export,
           default_event_time, default_notify, default_key, default_top,
           default_commit_before, default_commit_when, default_flush_how,
-          default_from, default_yield_fields, default_yield_every in
+          default_from, default_yield_fields, default_yield_every,
+          default_listen in
         let select_fields, and_all_others, where, force_export, event_time,
             notify_url, key, top, commit_before, commit_when, flush_how, from,
-            yield_fields, yield_every =
+            yield_fields, yield_every, listen =
           List.fold_left (
             fun (select_fields, and_all_others, where, export, event_time, notify_url,
                  key, top, commit_before, commit_when, flush_how, from,
-                 yield_fields, yield_every) ->
+                 yield_fields, yield_every, listen) ->
               function
               | SelectClause fields_or_stars ->
                 let fields, and_all_others =
@@ -2309,43 +2358,57 @@ struct
                     ) ([], false) fields_or_stars in
                 (* The above fold_left inverted the field order. *)
                 let select_fields = List.rev fields in
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen
               | WhereClause where ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen
               | ExportClause export ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen
               | EventTimeClause event_time ->
-                select_fields, and_all_others, where, export, Some event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+                select_fields, and_all_others, where, export, Some event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen
               | NotifyClause notify_url ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen
               | GroupByClause key ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen
               | CommitClause ((Some flush_how, commit_before), commit_when) ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen
               | CommitClause ((None, commit_before), commit_when) ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen
               | TopByClause top ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                Some top, commit_before, commit_when, flush_how, from,
-                yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, Some top, commit_before, commit_when,
+                flush_how, from, yield_fields, yield_every, listen
               | FromClause from' ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, (List.rev_append from' from),
-                yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                (List.rev_append from' from), yield_fields, yield_every, listen
               | YieldClause fields ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, fields, yield_every, listen
               | EveryClause yield_every ->
-                select_fields, and_all_others, where, export, event_time, notify_url, key,
-                top, commit_before, commit_when, flush_how, from, yield_fields, yield_every
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, listen
+              | ListenClause l ->
+                select_fields, and_all_others, where, export, event_time,
+                notify_url, key, top, commit_before, commit_when, flush_how,
+                from, yield_fields, yield_every, Some l
             ) default_clauses clauses in
         let commit_when, top =
           match top with
@@ -2357,19 +2420,27 @@ struct
               raise (Reject "COMMIT and FLUSH clauses are incompatible \
                              with TOP")) ;
             top_when, Some top in
-        (* Distinguish between Aggregate and Yield: *)
-        if yield_fields == default_yield_fields &&
-           yield_every == default_yield_every then
+        (* Distinguish between Aggregate, Yield ans ListenFor: *)
+        let not_aggregate =
+          select_fields == default_select_fields && where == default_where &&
+          key == default_key && top == default_top &&
+          commit_before == default_commit_before &&
+          commit_when == default_commit_when &&
+          flush_how == default_flush_how && from == default_from
+        and not_yield =
+          yield_fields == default_yield_fields &&
+          yield_every == default_yield_every
+        and not_listen = listen = None in
+        if not_yield && not_listen then
           Aggregate { fields = select_fields ; and_all_others ; where ;
                       force_export ; event_time ; notify_url ; key ; top ;
                       commit_before ; commit_when ; flush_how ; from }
-        else if select_fields == default_select_fields && where == default_where &&
-                key == default_key && top == default_top &&
-                commit_before == default_commit_before &&
-                commit_when == default_commit_when &&
-                flush_how == default_flush_how && from == default_from &&
+        else if not_aggregate && not_listen &&
                 yield_fields != default_yield_fields then
           Yield { fields = yield_fields ; every = yield_every }
+        else if not_aggregate && not_yield && listen <> None then
+          let net_addr, port, proto = Option.get listen in
+          ListenFor { net_addr ; port ; proto }
         else (
           Printf.eprintf "Incompatible yield/aggr\n%!" ;
           raise (Reject "Incompatible mix of clauses"))
@@ -2441,54 +2512,9 @@ struct
        csv_specs >>: fun ((where, preprocessor), what) ->
        ReadCSVFile { where ; what ; preprocessor }) m
 
-    let default_port_of_protocol = function
-      | RamenProtocols.Collectd -> 25826
-      | RamenProtocols.NetflowV5 -> 2055
-
-    let net_protocol m =
-      let m = "network protocol" :: m in
-      ((strinG "collectd" >>: fun () -> RamenProtocols.Collectd) |||
-       ((strinG "netflow" ||| strinG "netflowv5") >>: fun () ->
-          RamenProtocols.NetflowV5)) m
-
-    let network_address =
-      several ~sep:none (cond "inet address" (fun c ->
-        (c >= '0' && c <= '9') ||
-        (c >= 'a' && c <= 'f') ||
-        (c >= 'A' && c <= 'A') ||
-        c == '.' || c == ':') '0') >>:
-      fun s ->
-        let s = String.of_list s in
-        try Unix.inet_addr_of_string s
-        with Failure x -> raise (Reject x)
-
-    let inet_addr m =
-      let m = "network address" :: m in
-      ((string "*" >>: fun () -> Unix.inet_addr_any) |||
-       (string "[*]" >>: fun () -> Unix.inet6_addr_any) |||
-       (network_address)) m
-
-    let listen_on m =
-      let m = "listen on operation" :: m in
-      (strinG "listen" -- blanks --
-       optional ~def:() (strinG "for" -- blanks) -+
-       net_protocol ++
-       optional ~def:None (
-         blanks --
-         optional ~def:() (strinG "on" -- blanks) -+
-         some (inet_addr ++
-               optional ~def:None (char ':' -+ some unsigned_decimal_number))) >>:
-       fun (proto, addr_opt) ->
-          let net_addr, port =
-            match addr_opt with
-            | None -> Unix.inet_addr_any, default_port_of_protocol proto
-            | Some (addr, None) -> addr, default_port_of_protocol proto
-            | Some (addr, Some port) -> addr, Num.int_of_num port in
-          ListenFor { net_addr ; port ; proto }) m
-
     let p m =
       let m = "operation" :: m in
-      (aggregate_or_yield ||| read_csv_file ||| listen_on) m
+      (aggregate_or_yield_or_listen ||| read_csv_file) m
 
     (*$= p & ~printer:(test_printer print)
       (Ok (\
