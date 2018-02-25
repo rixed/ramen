@@ -92,7 +92,7 @@ let string_of_syntax_error =
     "Field "^ field ^" is not in the "^ string_of_prefix tuple ^" tuple"^
     (if tuple_type <> "" then " (which is "^ tuple_type ^")" else "")
   | FieldNotSameTypeInAllParents { field } ->
-    "Field "^ field ^" has different types in differentparents"
+    "Field "^ field ^" has different types in different parents"
   | NoParentForField { field } ->
     "Input field "^ field ^" is used but func has no parent"
   | InvalidPrivateField { field } ->
