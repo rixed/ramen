@@ -71,7 +71,7 @@ let check_not_running conf =
     return_unit)
 
 (* This both starts the HTTP server and the process monitor. TODO: split *)
-let start copts daemonize no_demo to_stderr www_dir http_port
+let start copts daemonize no_demo to_stderr www_dir
           ssl_cert ssl_key alert_conf_json () =
   let demo = not no_demo in (* FIXME: in the future do not start demo by default? *)
   if to_stderr && daemonize then
@@ -108,7 +108,7 @@ let start copts daemonize no_demo to_stderr www_dir http_port
          restart_on_failure RamenProcesses.process_notifications notify_rb) ;
        RamenAlerter.start ?initial_json:alert_conf_json conf ;
        return_unit) ;
-      HttpSrv.start conf daemonize demo www_dir http_port ssl_cert ssl_key
+      HttpSrv.start conf daemonize demo www_dir ssl_cert ssl_key
                     alert_conf_json ])
 
 let stop copts program_name () =

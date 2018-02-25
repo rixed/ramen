@@ -1128,7 +1128,7 @@ let page_teams =
               [ clss "import-export" ]
               [ p []
                   [ a
-                      [ href "/alerting/configuration" ;
+                      [ href "$RAMEN_URL$/alerting/configuration" ;
                         attr "target" "_blank" ]
                       [ text "download the configuration" ] ;
                     text "/" ;

@@ -19,10 +19,20 @@ let () =
 (* FIXME: a single condvar that we broadcast to *)
 let http_server_done = ref []
 
-let http_service port cert_opt key_opt router =
+let http_service_ port url_prefix cert_opt key_opt router =
   let dec = Uri.pct_decode in
   let callback _conn req body =
     let path = Uri.path (Request.uri req) in
+    (* Check path starts with url_prefix and chop off that prefix: *)
+    let path =
+      if String.starts_with path url_prefix then
+        String.lchop ~n:(String.length url_prefix) path
+      else (
+        !logger.error "URL %S does not start with expected prefix (%S)"
+          path url_prefix ;
+        (* Keep going and hope for the best *)
+        path
+      ) in
     !logger.debug "Requested %S" req.Request.resource ;
     (* Make "/path" equivalent to "path" *)
     let path =
@@ -100,6 +110,22 @@ let http_service port cert_opt key_opt router =
       return (!logger.info "Missing some of SSL configuration")
   in
   join [ t1 ; t2 ]
+
+let http_service url cert_opt key_opt router =
+  (* We take the port and URL prefix from the given URL but does not take
+   * into account the hostname or the scheme. *)
+  let uri = Uri.of_string url in
+  (* In a user-supplied URL string the default port should be as usual for
+   * HTTP scheme: *)
+  let port =
+    match Uri.port uri with
+    | Some p -> p
+    | None ->
+      (match Uri.scheme uri with
+      | Some "https" -> 443
+      | _ -> 80) in
+  let url_prefix = Uri.path uri in
+  http_service_ port url_prefix cert_opt key_opt router
 
 let ok_body = "{\"success\": true}"
 

@@ -637,8 +637,7 @@ let upload conf headers program func body =
     bad_request ("Function "^ N.fq_name func ^" does not accept uploads")
 
 (* Start the HTTP server: *)
-let start conf daemonize demo www_dir port cert_opt key_opt
-          alert_conf_json =
+let start conf daemonize demo www_dir cert_opt key_opt alert_conf_json =
   let lyr = function
     | [] -> bad_request_exn "Program name missing from URL"
     | lst -> String.concat "/" lst in
@@ -831,4 +830,4 @@ let start conf daemonize demo www_dir port cert_opt key_opt
   join [
     run_demo () ;
     restart_on_failure monitor_quit () ;
-    restart_on_failure (http_service port cert_opt key_opt) router ]
+    restart_on_failure (http_service conf.ramen_url cert_opt key_opt) router ]

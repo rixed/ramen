@@ -1513,7 +1513,7 @@ let common_opts =
 let ramen_url =
   let env = Term.env_info "RAMEN_URL" in
   let i = Arg.info ~doc:"URL to reach ramen"
-                   ~env [ "ramen-url" ] in
+                   ~env [ "ramen-url" ; "server-url" ; "url" ] in
   Arg.(value (opt string "http://127.0.0.1:29380" i))
 
 let db_name =

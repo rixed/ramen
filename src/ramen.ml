@@ -82,13 +82,6 @@ let to_stderr =
                           "stderr" ] in
   Arg.(value (flag i))
 
-let http_port =
-  let env = Term.env_info "RAMEN_HTTP_PORT" in
-  let i = Arg.info ~doc:"Port where to run the HTTP server \
-                         (HTTPS will be run on that port + 1)"
-                   ~env [ "http-port" ] in
-  Arg.(value (opt int 29380 i))
-
 let ssl_cert =
   let env = Term.env_info "RAMEN_SSL_CERT_FILE" in
   let i = Arg.info ~doc:"File containing the SSL certificate"
@@ -124,7 +117,6 @@ let server_start =
       $ no_demo
       $ to_stderr
       $ www_dir
-      $ http_port
       $ ssl_cert
       $ ssl_key
       $ alert_conf_json),
