@@ -587,7 +587,9 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StateField (_, s), _ ->
     Printf.fprintf oc "%s" s
   | _, Const (_, c), _ ->
-    emit_scalar oc c
+    Printf.fprintf oc "%s%a"
+      (if is_nullable expr then "Some " else "")
+      emit_scalar c
   | Finalize, Field (_, tuple, field), _ ->
     (match !tuple with
     | TupleGroupPrevious ->

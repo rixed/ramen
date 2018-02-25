@@ -221,9 +221,11 @@ let tuple_need_state = function
     | x -> x
 
   let typ = Lang.Expr.make_typ "replaced for tests"
+  let typn = Lang.Expr.make_typ ~nullable:true "replaced for tests"
 
   let replace_typ e =
-    Lang.Expr.map_type (fun _ -> typ) e
+    Lang.Expr.map_type (fun t -> if t.nullable = Some true then typn
+                                 else typ) e
 
   let replace_typ_in_expr = function
     | Ok (expr, rest) -> Ok (replace_typ expr, rest)
@@ -1218,11 +1220,20 @@ struct
     (* Single things *)
     let const m =
       let m = "constant" :: m in
-      (Scalar.Parser.p >>: fun c ->
-       Const (make_typ ~nullable:false ~typ:(scalar_type_of c) "constant", c)) m
+      (Scalar.Parser.p ++
+       optional ~def:false (
+         char ~case_sensitive:false 'n' >>: fun _ -> true) >>:
+       fun (c, nullable) ->
+         Const (make_typ ~nullable ~typ:(scalar_type_of c) "constant", c)) m
     (*$= const & ~printer:(test_printer (print false))
       (Ok (Const (typ, VBool true), (4, [])))\
         (test_p const "true" |> replace_typ_in_expr)
+
+      (Ok (Const (typ, VI8 (Stdint.Int8.of_int 15)), (4, []))) \
+        (test_p const "15i8" |> replace_typ_in_expr)
+
+      (Ok (Const (typn, VI8 (Stdint.Int8.of_int 15)), (5, []))) \
+        (test_p const "15i8n" |> replace_typ_in_expr)
     *)
 
     let null m =
