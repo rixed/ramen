@@ -26,16 +26,17 @@ let hostname =
     cached := c ;
     return c
 
-let replace_placeholders conf s =
+let replace_placeholders ramen_url url_prefix s =
   let%lwt hostname = hostname () in
   let rep sub by str = String.nreplace ~str ~sub ~by in
   return (
-    rep "$RAMEN_URL$" conf.C.ramen_url s |>
+    rep "$RAMEN_URL$" ramen_url s |>
+    rep "$RAMEN_PATH_PREFIX$" url_prefix |>
     rep "$HOSTNAME$" hostname |>
     rep "$VERSION$" RamenVersions.release_tag)
 
-let serve_string conf _headers body =
-  let%lwt body = replace_placeholders conf body in
+let serve_string ramen_url url_prefix _headers body =
+  let%lwt body = replace_placeholders ramen_url url_prefix body in
   respond_ok ~body ~ct:Consts.html_content_type ()
 
 (*
@@ -122,7 +123,7 @@ let get_graph conf headers program_opt =
     (* For non-json we can release the lock sooner as we don't need the
      * children: *)
     let%lwt programs = C.with_rlock conf (fun programs ->
-      RamenOps.graph_programs programs program_opt) in
+      RamenProcesses.graph_programs programs program_opt) in
     let programs = L.order programs in
     if is_accepting Consts.dot_content_type accept then
       get_graph_dot headers programs
@@ -201,14 +202,14 @@ let put_program conf headers body =
     Serving normal files
 *)
 
-let serve_file_with_replacements conf _headers path file =
-  serve_file path file (replace_placeholders conf)
+let serve_file_with_replacements ramen_url url_prefix _headers path file =
+  serve_file path file (replace_placeholders ramen_url url_prefix)
 
-let get_index www_dir conf headers =
+let get_index www_dir ramen_url url_prefix headers =
   if www_dir = "" then
-    serve_string conf headers RamenGui.without_link
+    serve_string ramen_url url_prefix headers RamenGui.without_link
   else
-    serve_string conf headers RamenGui.with_links
+    serve_string ramen_url url_prefix headers RamenGui.with_links
 
 (*
     Whole graph operations: compile/run/stop
@@ -217,7 +218,7 @@ let get_index www_dir conf headers =
 let compile conf headers program_opt =
   let%lwt program_names =
     C.with_rlock conf (fun programs ->
-      let%lwt programs = RamenOps.graph_programs programs program_opt in
+      let%lwt programs = RamenProcesses.graph_programs programs program_opt in
       List.map (fun p -> p.L.name) programs |>
       return) in
   let%lwt failures = RamenOps.compile_programs conf program_names in
@@ -232,7 +233,7 @@ let run conf headers program_opt =
   try%lwt
     let%lwt () =
       C.with_wlock conf (fun programs ->
-        let%lwt to_run = RamenOps.graph_programs programs program_opt in
+        let%lwt to_run = RamenProcesses.graph_programs programs program_opt in
         let to_run = L.order to_run in
         Lwt_list.iter_s (RamenProcesses.run conf programs) to_run) in
     switch_accepted headers [
@@ -243,13 +244,9 @@ let run conf headers program_opt =
        bad_request (Printexc.to_string e)
      | x -> fail x
 
-let stop_programs_ conf programs program_opt =
-  let%lwt to_stop = RamenOps.graph_programs programs program_opt in
-  Lwt_list.iter_p (RamenProcesses.stop conf programs) to_stop
-
 let stop_programs conf program_opt =
   C.with_wlock conf (fun programs  ->
-    stop_programs_ conf programs program_opt)
+    RamenProcesses.stop_programs conf programs program_opt)
 
 let stop conf headers program_opt =
   try%lwt
@@ -637,7 +634,7 @@ let upload conf headers program func body =
     bad_request ("Function "^ N.fq_name func ^" does not accept uploads")
 
 (* Start the HTTP server: *)
-let start conf daemonize demo www_dir cert_opt key_opt alert_conf_json =
+let router conf www_dir url_prefix =
   let lyr = function
     | [] -> bad_request_exn "Program name missing from URL"
     | lst -> String.concat "/" lst in
@@ -656,7 +653,7 @@ let start conf daemonize demo www_dir cert_opt key_opt alert_conf_json =
         bad_request "alert id must be numeric"
     | id -> return id in
   (* The function called for each HTTP request: *)
-  let router meth path params headers body =
+  fun meth path params headers body ->
     match meth, path with
     (* Ramen API *)
     | `GET, ["graph"] ->
@@ -763,71 +760,17 @@ let start conf daemonize demo www_dir cert_opt key_opt alert_conf_json =
         RamenAlerter.Api.upload_static_conf conf headers body in
       switch_accepted headers [
         Consts.html_content_type, (fun () ->
-          get_index www_dir conf headers) ;
+          get_index www_dir conf.C.ramen_url url_prefix headers) ;
         Consts.json_content_type, (fun () -> respond_ok ()) ]
     (* Web UI *)
     | `GET, ([]|["index.html"]) ->
-      get_index www_dir conf headers
+      get_index www_dir conf.C.ramen_url url_prefix headers
     | `GET, [ "style.css" | "ramen_script.js" as file ] ->
-      serve_file_with_replacements conf headers www_dir file
+      serve_file_with_replacements conf.C.ramen_url url_prefix
+                                   headers www_dir file
     (* Errors *)
     | `PUT, p | `GET, p | `DELETE, p ->
       let path = String.join "/" p in
       fail (HttpError (404, "Unknown resource "^ path))
     | _ ->
       fail (HttpError (405, "Method not implemented"))
-  in
-  (* When there is nothing to do, listen to collectd and netflow! *)
-  let run_demo () =
-    C.with_wlock conf (fun programs ->
-      if demo && Hashtbl.is_empty programs then (
-        !logger.info "Adding default funcs since we have nothing to do..." ;
-        let txt =
-          "DEFINE collectd AS LISTEN FOR COLLECTD;\n\
-           DEFINE netflow AS LISTEN FOR NETFLOW;" in
-        let%lwt funcs = wrap (fun () -> C.parse_program txt) in
-        C.make_program programs "demo" txt funcs |> ignore ;
-        return_unit
-      ) else return_unit) in
-  (* Install signal handlers *)
-  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    !logger.info "Received signal %s" (name_of_signal s) ;
-    RamenProcesses.quit := true)) ;
-  let rec monitor_quit () =
-    let%lwt () = Lwt_unix.sleep 0.3 in
-    if !RamenProcesses.quit then (
-      !logger.debug "Waiting for the wlock for quitting..." ;
-      let%lwt () =
-        C.with_wlock conf (fun programs ->
-          !logger.info "Stopping HTTP server(s)..." ;
-          List.iter (fun condvar ->
-            Lwt_condition.signal condvar ()) !http_server_done ;
-          !logger.info "Stopping all workers..." ;
-          let%lwt () = stop_programs_ conf programs None in
-          return_unit) in
-      !logger.info "Waiting for all workers to terminate..." ;
-      let last_nb_running = ref 0 in
-      let rec loop () =
-        let%lwt still_running =
-          C.with_rlock conf (fun programs ->
-            let nb_running =
-              C.fold_funcs programs 0 (fun c program func ->
-                if func.N.pid = None then c else c + 1) in
-            if nb_running > 0 then (
-              if nb_running != !last_nb_running then (
-                !logger.info "%d workers are still working..." nb_running ;
-                last_nb_running := nb_running
-              ) ;
-              return_true
-            ) else return_false) in
-        if still_running then (
-          Lwt_unix.sleep 0.1 >>= loop
-        ) else return_unit in
-      let%lwt () = loop () in
-      !logger.info "Quitting monitor_quit..." ;
-      return_unit
-    ) else monitor_quit () in
-  join [
-    run_demo () ;
-    restart_on_failure monitor_quit () ;
-    restart_on_failure (http_service conf.ramen_url cert_opt key_opt) router ]

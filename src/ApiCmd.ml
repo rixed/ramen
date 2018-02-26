@@ -92,6 +92,35 @@ let start copts daemonize no_demo to_stderr www_dir
   let rb_name = C.notify_ringbuf conf in
   RingBuf.create rb_name RingBufLib.rb_default_words ;
   let notify_rb = RingBuf.load rb_name in
+  (* When there is nothing to do, listen to collectd and netflow! *)
+  let run_demo () =
+    C.with_wlock conf (fun programs ->
+      if demo && Hashtbl.is_empty programs then (
+        !logger.info "Adding default funcs since we have nothing to do..." ;
+        let txt =
+          "DEFINE collectd AS LISTEN FOR COLLECTD;\n\
+           DEFINE netflow AS LISTEN FOR NETFLOW;" in
+        let%lwt funcs = wrap (fun () -> C.parse_program txt) in
+        C.make_program programs "demo" txt funcs |> ignore ;
+        return_unit
+      ) else return_unit) in
+  (* Install signal handlers *)
+  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
+    !logger.info "Received signal %s" (name_of_signal s) ;
+    RamenProcesses.quit := true)) ;
+  (* We take the port and URL prefix from the given URL but does not take
+   * into account the hostname or the scheme. *)
+  let uri = Uri.of_string copts.server_url in
+  (* In a user-supplied URL string the default port should be as usual for
+   * HTTP scheme: *)
+  let port =
+    match Uri.port uri with
+    | Some p -> p
+    | None ->
+      (match Uri.scheme uri with
+      | Some "https" -> 443
+      | _ -> 80) in
+  let url_prefix = Uri.path uri in
   Lwt_main.run (
     let%lwt () = check_not_running conf in
     join [
@@ -108,8 +137,10 @@ let start copts daemonize no_demo to_stderr www_dir
          restart_on_failure RamenProcesses.process_notifications notify_rb) ;
        RamenAlerter.start ?initial_json:alert_conf_json conf ;
        return_unit) ;
-      HttpSrv.start conf daemonize demo www_dir ssl_cert ssl_key
-                    alert_conf_json ])
+      run_demo () ;
+      restart_on_failure RamenProcesses.monitor_quit conf ;
+      restart_on_failure (http_service port url_prefix ssl_cert ssl_key)
+        (HttpSrv.router conf www_dir url_prefix) ])
 
 let stop copts program_name () =
   logger := make_logger copts.debug ;

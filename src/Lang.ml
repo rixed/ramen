@@ -1892,7 +1892,9 @@ struct
     let sep = ", " in
     let print_single_quoted oc s = Printf.fprintf oc "'%s'" s in
     let print_export fmt event_time force_export =
-      Option.may (fun e -> Printf.fprintf fmt " %a" print_event_time e) event_time ;
+      Option.may (fun e ->
+        Printf.fprintf fmt " %a" print_event_time e
+      ) event_time ;
       if force_export then Printf.fprintf fmt " EXPORT" in
     function
     | Yield { fields ; every ; event_time ; force_export } ->

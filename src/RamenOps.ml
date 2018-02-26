@@ -269,20 +269,8 @@ let program_info_of_program programs program =
     last_started = program.L.last_started ;
     last_stopped = program.L.last_stopped }
 
-(* Return either one or all programs *)
-let graph_programs programs = function
-  | None ->
-    Hashtbl.values programs |>
-    List.of_enum |>
-    return
-  | Some l ->
-    try Hashtbl.find programs l |>
-        List.singleton |>
-        return
-    with Not_found -> fail_with ("Unknown program "^l)
-
 let graph_info conf program_opt =
   C.with_rlock conf (fun programs ->
-    let%lwt programs' = graph_programs programs program_opt in
+    let%lwt programs' = RamenProcesses.graph_programs programs program_opt in
     let programs' = L.order programs' in
     Lwt_list.map_s (program_info_of_program programs) programs')

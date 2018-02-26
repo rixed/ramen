@@ -318,6 +318,63 @@ let run conf programs program =
       let%lwt () = stop conf programs program in
       fail exn
 
+(*
+ * Thread that stops programs at termination (!quit)
+ *)
+
+(* Return either one or all programs *)
+let graph_programs programs = function
+  | None ->
+    Hashtbl.values programs |>
+    List.of_enum |>
+    return
+  | Some l ->
+    try Hashtbl.find programs l |>
+        List.singleton |>
+        return
+    with Not_found -> fail_with ("Unknown program "^l)
+
+let stop_programs conf programs program_opt =
+  let%lwt to_stop = graph_programs programs program_opt in
+  Lwt_list.iter_p (stop conf programs) to_stop
+
+let rec monitor_quit conf =
+  let%lwt () = Lwt_unix.sleep 0.3 in
+  if !quit then (
+    !logger.debug "Waiting for the wlock for quitting..." ;
+    let%lwt () =
+      C.with_wlock conf (fun programs ->
+        !logger.info "Stopping HTTP server(s)..." ;
+        List.iter (fun condvar ->
+          Lwt_condition.signal condvar ()
+        ) !RamenHttpHelpers.http_server_done ;
+        !logger.info "Stopping all workers..." ;
+        let%lwt () = stop_programs conf programs None in
+        return_unit) in
+    !logger.info "Waiting for all workers to terminate..." ;
+    let last_nb_running = ref 0 in
+    let rec loop () =
+      let%lwt still_running =
+        C.with_rlock conf (fun programs ->
+          let nb_running =
+            C.fold_funcs programs 0 (fun c program func ->
+              if func.C.Func.pid = None then c else c + 1) in
+          if nb_running > 0 then (
+            if nb_running != !last_nb_running then (
+              !logger.info "%d workers are still working..." nb_running ;
+              last_nb_running := nb_running
+            ) ;
+            return_true
+          ) else return_false) in
+      if still_running then (
+        Lwt_unix.sleep 0.1 >>= loop
+      ) else return_unit in
+    let%lwt () = loop () in
+    !logger.info "Quitting monitor_quit..." ;
+    return_unit
+  ) else monitor_quit conf
+
+
 (* Timeout unused programs.
  * By unused, we mean either: no program depends on it, or no one cares for
  * what it exports. *)

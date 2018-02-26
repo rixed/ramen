@@ -447,7 +447,7 @@ let ajax action path ?content ?what ?on_done on_ok =
         add_error Js.(err##toString |> to_string)) ;
       resync ())) ;
   req##_open (Js.string action)
-             (Js.string ("$RAMEN_URL$" ^ path))
+             (Js.string ("$RAMEN_PATH_PREFIX$" ^ path))
              (Js.bool true) ;
   let ct = Js.string Consts.json_content_type in
   req##setRequestHeader (Js.string "Accept") ct ;
