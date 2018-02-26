@@ -50,28 +50,28 @@ let tcp_traffic_func ?where dataset_name name dt export =
        sum bytes_src / $DT$ AS bytes_per_secs,
        sum payload_src / $DT$ AS payload_per_secs,
        sum packets_with_payload_src / $DT$ AS packets_with_payload_per_secs,
-       sum retrans_bytes_src / $DT$ AS retrans_bytes_per_secs,
-       sum retrans_payload_src / $DT$ AS retrans_payload_per_secs,
-       sum fins_src / $DT$ AS fins_per_secs,
-       sum rsts_src / $DT$ AS rsts_per_secs,
+       sum COALESCE(retrans_bytes_src, 0) / $DT$ AS retrans_bytes_per_secs,
+       sum COALESCE(retrans_payload_src, 0) / $DT$ AS retrans_payload_per_secs,
+       sum COALESCE(fins_src, 0) / $DT$ AS fins_per_secs,
+       sum COALESCE(rsts_src, 0) / $DT$ AS rsts_per_secs,
        sum timeouts / $DT$ AS timeouts_per_secs,
-       sum syns / $DT$ AS syns_per_secs,
-       sum closes / $DT$ AS closes_per_secs,
-       sum connections AS _sum_connections,
+       sum COALESCE(syns, 0) / $DT$ AS syns_per_secs,
+       sum COALESCE(closes, 0) / $DT$ AS closes_per_secs,
+       sum COALESCE(connections, 0) AS _sum_connections,
        _sum_connections / $DT$ AS connections_per_secs,
-       sum dupacks_src / $DT$ AS dupacks_per_secs,
-       sum zero_windows_src / $DT$ AS zero_windows_per_secs,
-       sum rtt_count_src AS sum_rtt_count_src,
+       sum COALESCE(dupacks_src, 0) / $DT$ AS dupacks_per_secs,
+       sum COALESCE(zero_windows_src, 0) / $DT$ AS zero_windows_per_secs,
+       sum COALESCE(rtt_count_src, 0) AS sum_rtt_count_src,
        sum rtt_sum_src AS _sum_rtt_sum_src,
        (_sum_rtt_sum_src / sum_rtt_count_src) / 1e6 AS rtt_avg,
        ((sum rtt_sum2_src - float(_sum_rtt_sum_src)^2 / sum_rtt_count_src) /
            sum_rtt_count_src) / 1e12 AS rtt_var,
-       sum rd_count_src AS sum_rd_count_src,
+       sum COALESCE(rd_count_src, 0) AS sum_rd_count_src,
        sum rd_sum_src AS _sum_rd_sum_src,
        (_sum_rd_sum_src / sum_rd_count_src) / 1e6 AS rd_avg,
        ((sum rd_sum2_src - float(_sum_rd_sum_src)^2 / sum_rd_count_src) /
            sum_rd_count_src) / 1e12 AS rd_var,
-       sum dtt_count_src AS sum_dtt_count_src,
+       sum COALESCE(dtt_count_src, 0) AS sum_dtt_count_src,
        sum dtt_sum_src AS _sum_dtt_sum_src,
        (_sum_dtt_sum_src / sum_dtt_count_src) / 1e6 AS dtt_avg,
        ((sum dtt_sum2_src - float(_sum_dtt_sum_src)^2 / sum_dtt_count_src) /
@@ -80,6 +80,19 @@ let tcp_traffic_func ?where dataset_name name dt export =
        (_sum_connections_time / _sum_connections) / 1e6 AS connection_time_avg,
        ((sum connections_time2 - float(_sum_connections_time)^2 / _sum_connections) /
            _sum_connections) / 1e12 AS connection_time_var
+     -- Exclude netflow traffic
+     WHERE retrans_bytes_src IS NOT NULL AND
+           retrans_payload_src IS NOT NULL AND
+           syns IS NOT NULL AND
+           fins_src IS NOT NULL AND
+           rsts_src IS NOT NULL AND
+           closes IS NOT NULL AND
+           connections IS NOT NULL AND
+           dupacks_src IS NOT NULL AND
+           zero_windows_src IS NOT NULL AND
+           rtt_count_src IS NOT NULL AND
+           rd_count_src IS NOT NULL AND
+           dtt_count_src IS NOT NULL
      GROUP BY capture_begin // $DT_US$
      COMMIT WHEN
        in.capture_begin > out.min_capture_begin + 2 * u64($DT_US$)
@@ -264,43 +277,44 @@ let base_program dataset_name delete uncompress csv_glob export =
       payload_bytes_server u64 not null,
       payload_packets_client u32 not null,
       payload_packets_server u32 not null,
-      retrans_traffic_bytes_client u64 not null,
-      retrans_traffic_bytes_server u64 not null,
-      retrans_payload_bytes_client u64 not null,
-      retrans_payload_bytes_server u64 not null,
-      syn_count_client u32 not null,
-      fin_count_client u32 not null,
-      fin_count_server u32 not null,
-      rst_count_client u32 not null,
-      rst_count_server u32 not null,
+      retrans_traffic_bytes_client u64 null,
+      retrans_traffic_bytes_server u64 null,
+      retrans_payload_bytes_client u64 null,
+      retrans_payload_bytes_server u64 null,
+      syn_count_client u32 null,
+      fin_count_client u32 null,
+      fin_count_server u32 null,
+      rst_count_client u32 null,
+      rst_count_server u32 null,
       timeout_count u32 not null,
-      close_count u32 not null,
-      dupack_count_client u32 not null,
-      dupack_count_server u32 not null,
-      zero_window_count_client u32 not null,
-      zero_window_count_server u32 not null,
-      ct_count u32 not null,
+      close_count u32 null,
+      dupack_count_client u32 null,
+      dupack_count_server u32 null,
+      zero_window_count_client u32 null,
+      zero_window_count_server u32 null,
+      -- Some counts can be null althgouh the sums cannot ...
+      ct_count u32 null,
       ct_sum u64 not null,
       ct_square_sum u128 not null,
-      rt_count_server u32 not null,
+      rt_count_server u32 null,
       rt_sum_server u64 not null,
       rt_square_sum_server u128 not null,
-      rtt_count_client u32 not null,
+      rtt_count_client u32 null,
       rtt_sum_client u64 not null,
       rtt_square_sum_client u128 not null,
-      rtt_count_server u32 not null,
+      rtt_count_server u32 null,
       rtt_sum_server u64 not null,
       rtt_square_sum_server u128 not null,
-      rd_count_client u32 not null,
+      rd_count_client u32 null,
       rd_sum_client u64 not null,
       rd_square_sum_client u128 not null,
-      rd_count_server u32 not null,
+      rd_count_server u32 null,
       rd_sum_server u64 not null,
       rd_square_sum_server u128 not null,
-      dtt_count_client u32 not null,
+      dtt_count_client u32 null,
       dtt_sum_client u64 not null,
       dtt_square_sum_client u128 not null,
-      dtt_count_server u32 not null,
+      dtt_count_server u32 null,
       dtt_sum_server u64 not null,
       dtt_square_sum_server u128 not null,
       dcerpc_uuid string null|} |>
@@ -363,8 +377,8 @@ let base_program dataset_name delete uncompress csv_glob export =
   and udp_to_unidir = to_unidir "udp" {|
     poller, capture_begin, capture_end,
     ip4_external, ip6_external,
-    0u32 AS rtt_count_src, 0u64 AS rtt_sum_src,
-    0u32 AS packets_with_payload_src, 0u32 AS rd_count_src,
+    0u32n AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u32 AS packets_with_payload_src, 0u32n AS rd_count_src,
     application, protostack,
     dcerpc_uuid|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
@@ -415,8 +429,8 @@ let base_program dataset_name delete uncompress csv_glob export =
   and icmp_to_unidir = to_unidir "icmp" {|
     poller, capture_begin, capture_end,
     ip4_external, ip6_external,
-    0u32 AS rtt_count_src, 0u64 AS rtt_sum_src,
-    0u32 AS packets_with_payload_src, 0u32 AS rd_count_src,
+    0u32n AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u32 AS packets_with_payload_src, 0u32n AS rd_count_src,
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
     "ip6", "" ; "diffserv", "" ; "mtu", "" ;
@@ -452,8 +466,8 @@ let base_program dataset_name delete uncompress csv_glob export =
     make_func "other-ip"
   and other_ip_to_unidir = to_unidir "other-ip" {|
     poller, capture_begin, capture_end,
-    0u32 AS rtt_count_src, 0u64 AS rtt_sum_src,
-    0u32 AS packets_with_payload_src, 0u32 AS rd_count_src,
+    0u32n AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u32 AS packets_with_payload_src, 0u32n AS rd_count_src,
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "ip4", "" ;
     "ip6", "" ; "diffserv", "" ; "mtu", "" ;
@@ -483,8 +497,8 @@ let base_program dataset_name delete uncompress csv_glob export =
     make_func "non-ip"
   and non_ip_to_unidir = to_unidir "non-ip" {|
     poller, capture_begin, capture_end,
-    0u32 AS rtt_count_src, 0u64 AS rtt_sum_src,
-    0u32 AS packets_with_payload_src, 0u32 AS rd_count_src,
+    0u32n AS rtt_count_src, 0u64 AS rtt_sum_src,
+    0u32 AS packets_with_payload_src, 0u32n AS rd_count_src,
     application, protostack|} [
     "device", "" ; "vlan", "" ; "mac", "" ; "zone", "" ; "mtu", "" ;
     "traffic_packets", "packets" ; "traffic_bytes", "bytes" ]
@@ -955,13 +969,13 @@ let program_of_bcns bcns dataset_name export =
             sum packets_src / %g AS packets_per_secs,
             sum bytes_src / %g AS bytes_per_secs,
             -- RTT (in seconds)
-            sum rtt_count_src AS _sum_rtt_count_src,
+            sum COALESCE(rtt_count_src, 0) AS _sum_rtt_count_src,
             IF _sum_rtt_count_src = 0 THEN 0 ELSE
               (sum rtt_sum_src / _sum_rtt_count_src) / 1e6 AS avg_rtt,
             -- RD: percentage of retransmitted packets over packets with payload
             sum packets_with_payload_src AS _sum_packets_with_payload_src,
             IF _sum_packets_with_payload_src = 0 THEN 0 ELSE
-              (sum rd_count_src / _sum_packets_with_payload_src) / 100 AS avg_rr,
+              (sum COALESCE(rd_count_src, 0) / _sum_packets_with_payload_src) / 100 AS avg_rr,
             %S AS zone_src, %S AS zone_dst
           WHERE %s
           GROUP BY capture_begin // %d
@@ -1182,24 +1196,24 @@ let program_of_bcas bcas dataset_name export =
           sum traffic_packets_client / $AVG$ AS c2s_packets_per_secs,
           sum traffic_packets_server / $AVG$ AS s2c_packets_per_secs,
           -- Retransmissions
-          sum retrans_traffic_bytes_client / $AVG$
+          sum COALESCE(retrans_traffic_bytes_client, 0) / $AVG$
             AS c2s_retrans_bytes_per_secs,
-          sum retrans_traffic_bytes_server / $AVG$
+          sum COALESCE(retrans_traffic_bytes_server, 0) / $AVG$
             AS s2c_retrans_bytes_per_secs,
           -- TCP flags
-          sum syn_count_client / $AVG$ AS c2s_syns_per_secs,
-          sum fin_count_client / $AVG$ AS c2s_fins_per_secs,
-          sum fin_count_server / $AVG$ AS s2c_fins_per_secs,
-          sum rst_count_client / $AVG$ AS c2s_rsts_per_secs,
-          sum rst_count_server / $AVG$ AS s2c_rsts_per_secs,
-          sum close_count / $AVG$ AS close_per_secs,
+          sum COALESCE(syn_count_client, 0) / $AVG$ AS c2s_syns_per_secs,
+          sum COALESCE(fin_count_client, 0) / $AVG$ AS c2s_fins_per_secs,
+          sum COALESCE(fin_count_server, 0) / $AVG$ AS s2c_fins_per_secs,
+          sum COALESCE(rst_count_client, 0) / $AVG$ AS c2s_rsts_per_secs,
+          sum COALESCE(rst_count_server, 0) / $AVG$ AS s2c_rsts_per_secs,
+          sum COALESCE(close_count, 0) / $AVG$ AS close_per_secs,
           -- TCP issues
-          sum dupack_count_client / $AVG$ AS c2s_dupacks_per_secs,
-          sum dupack_count_server / $AVG$ AS s2c_dupacks_per_secs,
-          sum zero_window_count_client / $AVG$ AS c2s_0wins_per_secs,
-          sum zero_window_count_server / $AVG$ AS s2c_0wins_per_secs,
+          sum COALESCE(dupack_count_client, 0) / $AVG$ AS c2s_dupacks_per_secs,
+          sum COALESCE(dupack_count_server, 0) / $AVG$ AS s2c_dupacks_per_secs,
+          sum COALESCE(zero_window_count_client, 0) / $AVG$ AS c2s_0wins_per_secs,
+          sum COALESCE(zero_window_count_server, 0) / $AVG$ AS s2c_0wins_per_secs,
           -- Connection Time
-          sum ct_count AS sum_ct_count,
+          sum COALESCE(ct_count, 0) AS sum_ct_count,
           sum ct_sum AS _sum_ct_sum,
           sum_ct_count / $AVG$ AS ct_per_secs,
           IF sum_ct_count = 0 THEN 0 ELSE
@@ -1208,7 +1222,7 @@ let program_of_bcas bcas dataset_name export =
             sqrt (((sum ct_square_sum - (_sum_ct_sum)^2) /
                    sum_ct_count) / 1e12) AS ct_stddev,
           -- Server Response Time
-          sum rt_count_server AS sum_rt_count_server,
+          sum COALESCE(rt_count_server, 0) AS sum_rt_count_server,
           sum rt_sum_server AS _sum_rt_sum_server,
           sum_rt_count_server / $AVG$ AS srt_per_secs,
           IF sum_rt_count_server = 0 THEN 0 ELSE
@@ -1217,7 +1231,7 @@ let program_of_bcas bcas dataset_name export =
             sqrt (((sum rt_square_sum_server - (_sum_rt_sum_server)^2) /
                    sum_rt_count_server) / 1e12) AS srt_stddev,
           -- Round Trip Time CSC
-          sum rtt_count_server AS sum_rtt_count_server,
+          sum COALESCE(rtt_count_server, 0) AS sum_rtt_count_server,
           sum rtt_sum_server AS _sum_rtt_sum_server,
           sum_rtt_count_server / $AVG$ AS crtt_per_secs,
           IF sum_rtt_count_server = 0 THEN 0 ELSE
@@ -1226,7 +1240,7 @@ let program_of_bcas bcas dataset_name export =
             sqrt (((sum rtt_square_sum_server - (_sum_rtt_sum_server)^2) /
                    sum_rtt_count_server) / 1e12) AS crtt_stddev,
           -- Round Trip Time SCS
-          sum rtt_count_client AS sum_rtt_count_client,
+          sum COALESCE(rtt_count_client, 0) AS sum_rtt_count_client,
           sum rtt_sum_client AS _sum_rtt_sum_client,
           sum_rtt_count_client / $AVG$ AS srtt_per_secs,
           IF sum_rtt_count_client = 0 THEN 0 ELSE
@@ -1235,7 +1249,7 @@ let program_of_bcas bcas dataset_name export =
             sqrt (((sum rtt_square_sum_client - (_sum_rtt_sum_client)^2) /
                    sum_rtt_count_client) / 1e12) AS srtt_stddev,
           -- Retransmition Delay C2S
-          sum rd_count_client AS sum_rd_count_client,
+          sum COALESCE(rd_count_client, 0) AS sum_rd_count_client,
           sum rd_sum_client AS _sum_rd_sum_client,
           sum_rd_count_client / $AVG$ AS crd_per_secs,
           IF sum_rd_count_client = 0 THEN 0 ELSE
@@ -1244,7 +1258,7 @@ let program_of_bcas bcas dataset_name export =
             sqrt (((sum rd_square_sum_client - (_sum_rd_sum_client)^2) /
                    sum_rd_count_client) / 1e12) AS crd_stddev,
           -- Retransmition Delay S2C
-          sum rd_count_server AS sum_rd_count_server,
+          sum COALESCE(rd_count_server, 0) AS sum_rd_count_server,
           sum rd_sum_server AS _sum_rd_sum_server,
           sum_rd_count_server / $AVG$ AS srd_per_secs,
           IF sum_rd_count_server = 0 THEN 0 ELSE
@@ -1253,7 +1267,7 @@ let program_of_bcas bcas dataset_name export =
             sqrt (((sum rd_square_sum_server - (_sum_rd_sum_server)^2) /
                    sum_rd_count_server) / 1e12) AS srd_stddev,
           -- Data Transfer Time C2S
-          sum dtt_count_client AS sum_dtt_count_client,
+          sum COALESCE(dtt_count_client, 0) AS sum_dtt_count_client,
           sum dtt_sum_client AS _sum_dtt_sum_client,
           sum_dtt_count_client / $AVG$ AS cdtt_per_secs,
           IF sum_dtt_count_client = 0 THEN 0 ELSE
@@ -1262,7 +1276,7 @@ let program_of_bcas bcas dataset_name export =
             sqrt (((sum dtt_square_sum_client - (_sum_dtt_sum_client)^2) /
                    sum_dtt_count_client) / 1e12) AS cdtt_stddev,
           -- Data Transfer Time S2C
-          sum dtt_count_server AS sum_dtt_count_server,
+          sum COALESCE(dtt_count_server, 0) AS sum_dtt_count_server,
           sum dtt_sum_server AS _sum_dtt_sum_server,
           sum_dtt_count_server / $AVG$ AS sdtt_per_secs,
           IF sum_dtt_count_server = 0 THEN 0 ELSE
@@ -1270,7 +1284,28 @@ let program_of_bcas bcas dataset_name export =
           IF sum_dtt_count_server = 0 THEN 0 ELSE
             sqrt (((sum dtt_square_sum_server - (_sum_dtt_sum_server)^2) /
                    sum_dtt_count_server) / 1e12) AS sdtt_stddev
-        WHERE application = $ID$
+        WHERE application = $ID$ AND
+              -- Exclude netflow
+              retrans_traffic_bytes_client IS NOT NULL AND
+              retrans_traffic_bytes_server IS NOT NULL AND
+              syn_count_client IS NOT NULL AND
+              fin_count_client IS NOT NULL AND
+              fin_count_server IS NOT NULL AND
+              rst_count_client IS NOT NULL AND
+              rst_count_server IS NOT NULL AND
+              close_count IS NOT NULL AND
+              dupack_count_client IS NOT NULL AND
+              dupack_count_server IS NOT NULL AND
+              zero_window_count_client IS NOT NULL AND
+              zero_window_count_server IS NOT NULL AND
+              ct_count IS NOT NULL AND
+              rt_count_server IS NOT NULL AND
+              rtt_count_server IS NOT NULL AND
+              rtt_count_client IS NOT NULL AND
+              rd_count_client IS NOT NULL AND
+              rd_count_server IS NOT NULL AND
+              dtt_count_client IS NOT NULL AND
+              dtt_count_server IS NOT NULL
         GROUP BY capture_begin * 0.000001 // $AVG_INT$
         COMMIT WHEN
           in.capture_begin * 0.000001 > out.start + 2 * $AVG$
