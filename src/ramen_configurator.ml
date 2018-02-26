@@ -205,7 +205,7 @@ let anomaly_detection_funcs avg_window from name timeseries alert_fields export 
           (%s) AS abnormality,
           hysteresis (5-ma abnormality, 3/5, 4/5) AS firing
           COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-          NOTIFY "http://localhost:29380/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"
+          NOTIFY "$RAMEN_URL$/notify?name=%s&firing=${firing}&time=${start}&title=%s&text=%s"
           %sEVENT STARTING AT start|}
         predictor_name
         condition
@@ -1042,7 +1042,7 @@ let program_of_bcns bcns dataset_name export =
               hysteresis (bytes_per_secs, %d, %d) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-            NOTIFY "http://localhost:29380/notify?name=Low%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s
+            NOTIFY "$RAMEN_URL$/notify?name=Low%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s
             %sEVENT STARTING AT max_start"|}
             (min_bps + min_bps/10) min_bps
             perc_per_obs_window_name
@@ -1067,7 +1067,7 @@ let program_of_bcns bcns dataset_name export =
               hysteresis (bytes_per_secs, %d, %d) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-            NOTIFY "http://localhost:29380/notify?name=High%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"
+            NOTIFY "$RAMEN_URL$/notify?name=High%%20traffic&firing=${firing}&time=${max_start}&title=%s&text=%s"
             %sEVENT STARTING AT max_start|}
             (max_bps - max_bps/10) max_bps
             perc_per_obs_window_name
@@ -1093,7 +1093,7 @@ let program_of_bcns bcns dataset_name export =
               hysteresis (rtt, %f, %f) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-            NOTIFY "http://localhost:29380/notify?name=High%%20RTT&firing=${firing}&time=${max_start}&title=%s&text=%s"
+            NOTIFY "$RAMEN_URL$/notify?name=High%%20RTT&firing=${firing}&time=${max_start}&title=%s&text=%s"
             %sEVENT STARTING AT max_start|}
             (max_rtt -. max_rtt /. 10.) max_rtt
             perc_per_obs_window_name
@@ -1119,7 +1119,7 @@ let program_of_bcns bcns dataset_name export =
               hysteresis (rr, %f, %f) AS firing
             FROM '%s'
             COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-            NOTIFY "http://localhost:29380/notify?name=High%%20RR&firing=${firing}&time=${max_start}&title=%s&text=%s"
+            NOTIFY "$RAMEN_URL$/notify?name=High%%20RR&firing=${firing}&time=${max_start}&title=%s&text=%s"
             %sEVENT STARTING AT max_start|}
             (max_rr -. max_rr /. 10.) max_rr
             perc_per_obs_window_name
@@ -1358,7 +1358,7 @@ let program_of_bcas bcas dataset_name export =
             hysteresis (eurt, %g, %g) AS firing
           FROM '%s'
           COMMIT AND KEEP ALL WHEN firing != COALESCE(previous.firing, false)
-          NOTIFY "http://localhost:29380/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"
+          NOTIFY "$RAMEN_URL$/notify?name=EURT%%20%s&firing=${firing}&time=${max_start}&title=%s&text=%s"
           %sEVENT STARTING AT max_start|}
           (bca.max_eurt -. bca.max_eurt /. 10.) bca.max_eurt
           perc_per_obs_window_name

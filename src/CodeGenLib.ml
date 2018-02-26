@@ -438,7 +438,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
     ) !out_l
 
 type worker_conf =
-  { debug : bool ; persist_dir : string }
+  { debug : bool ; persist_dir : string ; ramen_url : string }
 
 let quit = ref false
 
@@ -447,6 +447,7 @@ let worker_start worker_name get_binocle_tuple k =
   let default_persist_dir =
     "/tmp/worker_"^ worker_name ^"_"^ string_of_int (Unix.getpid ()) in
   let persist_dir = getenv ~def:default_persist_dir "persist_dir" in
+  let ramen_url = getenv ~def:"http://localhost:29380" "ramen_url" in
   let logdir, prefix =
     match getenv "log_dir" with
     | exception _ -> None, worker_name ^": "
@@ -461,7 +462,7 @@ let worker_start worker_name get_binocle_tuple k =
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   update_stats () ;
-  let conf = { debug ; persist_dir } in
+  let conf = { debug ; persist_dir ; ramen_url } in
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     quit := true)) ;
@@ -561,7 +562,7 @@ let send_notif rb worker url =
     RingBuf.write_string tx offs url ;
     RingBuf.enqueue_commit tx) ()
 
-let notify rb worker url field_of_tuple tuple =
+let notify conf rb worker url field_of_tuple tuple =
   let expand_fields =
     let open Str in
     let re = regexp "\\${\\(out\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
@@ -575,6 +576,8 @@ let notify rb worker url field_of_tuple tuple =
             "??"^ field_name ^"??"
         ) text
   in
+  let rep sub by str = String.nreplace ~str ~sub ~by in
+  let url = rep "$RAMEN_URL$" conf.ramen_url url in
   let url = expand_fields url tuple in
   send_notif rb worker url
 
@@ -737,7 +740,7 @@ let aggregate
       let do_out tuple =
         let%lwt () =
           if notify_url <> "" then
-            notify notify_rb worker_name notify_url field_of_tuple tuple
+            notify conf notify_rb worker_name notify_url field_of_tuple tuple
           else return_unit in
         tuple_outputer tuple
       in

@@ -1133,7 +1133,8 @@ let page_teams =
                       [ text "download the configuration" ] ;
                     text "/" ;
                     elmt "form"
-                      [ attr "action" "/alerting/configuration" ;
+                      [ attr "action"
+                             "$RAMEN_PATH_PREFIX$/alerting/configuration" ;
                         attr "method" "POST" ;
                         attr "enctype" "multipart/form-data" ]
                       [ input [ attr "type" "file" ;

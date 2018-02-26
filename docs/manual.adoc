@@ -1229,6 +1229,18 @@ This works because the default `select` clause is +SELECT *+ and the default
 
 The result of the GET is discarded.
 
+If you plan to use the internal alert manager present in ramen, then the URL
+should be:
+
+----
+$RAMEN_URL$/notify?name=...&firing=...&time=...&title=...&text=...
+----
+
++$RAMEN_URL$+ will be replaced with the value of the value of the
++--ramen-url+ command line parameter.
+
+See the alerter manual for more information.
+
 ===== Outputting: Exporting Tuples For Posterity
 
 Storing output tuples can be useful, but doing so for every operation would be

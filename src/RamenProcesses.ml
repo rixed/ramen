@@ -102,6 +102,7 @@ let rec run_func conf programs program func =
                   ^"/"^ Config.version
                   ^"/"^ (N.fq_name func)
                   ^"/"^ func.N.signature ;
+    "ramen_url="^ conf.C.ramen_url ;
     (match !logger.logdir with
       | Some _ ->
         "log_dir="^ conf.C.persist_dir ^"/workers/log/"
