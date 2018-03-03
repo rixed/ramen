@@ -716,6 +716,8 @@ and emit_expr ?state ~context oc expr =
   (* TODO: Now() for Uint62? *)
   | Finalize, StatelessFun (_, Now), Some TFloat ->
     String.print oc "!CodeGenLib_IO.now"
+  | Finalize, StatelessFun (_, Random), Some TFloat ->
+    String.print oc "(Random.float 1.)"
   | Finalize, StatelessFun (_, Cast (e)), t ->
     emit_functionN oc ?state "identity" [t] [e]
   (* Sequence build a sequence of as-large-as-convenient integers (signed or

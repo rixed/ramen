@@ -106,6 +106,7 @@ and case_alternative =
 
 and stateless_fun =
   | Now
+  | Random
   (* TODO: Other functions: date_part... *)
   | Age of t
   | Cast of t
@@ -268,6 +269,8 @@ let rec print with_types fmt =
     Printf.fprintf fmt "age (%a)" (print with_types) e ; add_types t
   | StatelessFun (t, Now) ->
     Printf.fprintf fmt "now" ; add_types t
+  | StatelessFun (t, Random) ->
+    Printf.fprintf fmt "random" ; add_types t
   | StatelessFun (t, Sequence (e1, e2)) ->
     Printf.fprintf fmt "sequence(%a, %a)"
       (print with_types) e1 (print with_types) e2 ;
@@ -417,7 +420,8 @@ let is_nullable e =
 (* Propagate values up the tree only, depth first. *)
 let rec fold_by_depth f i expr =
   match expr with
-  | Const _ | Param _ | Field _ | StateField _ | StatelessFun (_, Now) ->
+  | Const _ | Param _ | Field _ | StateField _
+  | StatelessFun (_, (Now | Random)) ->
     f i expr
 
   | StatefulFun (_, _, AggrMin e) | StatefulFun (_, _, AggrMax e)
@@ -577,6 +581,7 @@ let rec map_type ?(recurs=true) f = function
   | StatelessFun (t, Age a) ->
     StatelessFun (f t, Age (if recurs then map_type ~recurs f a else a))
   | StatelessFun (t, Now) -> StatelessFun (f t, Now)
+  | StatelessFun (t, Random) -> StatelessFun (f t, Random)
   | StatelessFun (t, Sequence (a, b)) ->
     StatelessFun (f t, Sequence (
         (if recurs then map_type ~recurs f a else a),
@@ -963,6 +968,7 @@ struct
      (afun1 "lower" >>: fun e -> StatelessFun (make_string_typ "lower", Lower e)) |||
      (afun1 "upper" >>: fun e -> StatelessFun (make_string_typ "upper", Upper e)) |||
      (strinG "now" >>: fun () -> StatelessFun (make_float_typ ~nullable:false "now", Now)) |||
+     (strinG "rand" >>: fun () -> StatelessFun (make_float_typ ~nullable:false "rand", Random)) |||
      (afun1 "exp" >>: fun e -> StatelessFun (make_num_typ "exponential", Exp e)) |||
      (afun1 "log" >>: fun e -> StatelessFun (make_num_typ "logarithm", Log e)) |||
      (afun1 "sqrt" >>: fun e -> StatelessFun (make_num_typ "square root", Sqrt e)) |||

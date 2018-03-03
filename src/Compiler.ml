@@ -529,6 +529,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
       | None -> changed)
   | StatelessFun (op_typ, Now) ->
     check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
+  | StatelessFun (op_typ, Random) ->
+    check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
   | StatefulFun (op_typ, _, AggrMin e) | StatefulFun (op_typ, _, AggrMax e)
   | StatefulFun (op_typ, _, AggrFirst e) | StatefulFun (op_typ, _, AggrLast e) ->
     check_op op_typ List.hd [None, None, e]
