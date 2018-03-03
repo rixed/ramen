@@ -96,7 +96,10 @@ type t =
    * of data over the group, while Max(data1, data2) is the max of data1 and
    * data2.
    * We do not further denote pure or stateful functions. *)
-  | StatelessFun of typ * stateless_fun
+  | StatelessFun0 of typ * stateless_fun0
+  | StatelessFun1 of typ * stateless_fun1 * t
+  | StatelessFun2 of typ * stateless_fun2 * t * t
+  | StatelessFunMisc of typ * stateless_fun_misc
   | StatefulFun of typ * state_lifespan * stateful_fun
   | GeneratorFun of typ * generator_fun (*[@@ppp PPP_OCaml]*)
 
@@ -104,43 +107,49 @@ and case_alternative =
   { case_cond : t (* Must be bool *) ;
     case_cons : t (* All alternatives must share a type *) } (*[@@ppp PPP_OCaml]*)
 
-and stateless_fun =
+and stateless_fun0 =
   | Now
   | Random
+
+and stateless_fun1 =
   (* TODO: Other functions: date_part... *)
-  | Age of t
-  | Cast of t
+  | Age
+  | Cast
   (* String functions *)
-  | Length of t
-  | Lower of t
-  | Upper of t
+  | Length
+  | Lower
+  | Upper
   (* Unary Ops on scalars *)
-  | Not of t
-  | Abs of t
-  | Defined of t
-  | Exp of t
-  | Log of t
-  | Sqrt of t
-  | Hash of t
+  | Not
+  | Abs
+  | Defined
+  | Exp
+  | Log
+  | Sqrt
+  | Hash
   (* For network address range checks: *)
-  | BeginOfRange of t
-  | EndOfRange of t
+  | BeginOfRange
+  | EndOfRange
+
+and stateless_fun2 =
   (* FIXME: see note in CodeGenLib.ml *)
-  | Sequence of t * t (* start, step *)
+  | Sequence (* start, step *)
   (* Binary Ops scalars *)
-  | Add of t * t
-  | Sub of t * t
-  | Mul of t * t
-  | Div of t * t
-  | IDiv of t * t
-  | Mod of t * t
-  | Pow of t * t
-  | And of t * t
-  | Or of t * t
-  | Ge of t * t
-  | Gt of t * t
-  | Eq of t * t
-  | Concat of t * t
+  | Add
+  | Sub
+  | Mul
+  | Div
+  | IDiv
+  | Mod
+  | Pow
+  | And
+  | Or
+  | Ge
+  | Gt
+  | Eq
+  | Concat
+
+and stateless_fun_misc =
   (* a LIKE operator using globs, infix *)
   | Like of t * string (* expression then pattern (using %, _ and \) *)
   (* Min/Max of the given values *)
@@ -265,80 +274,80 @@ let rec print with_types fmt =
       (List.print ~first:"(" ~last:")" ~sep:", "
         (print with_types)) es ;
     add_types t
-  | StatelessFun (t, Age e) ->
+  | StatelessFun1 (t, Age, e) ->
     Printf.fprintf fmt "age (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, Now) ->
+  | StatelessFun0 (t, Now) ->
     Printf.fprintf fmt "now" ; add_types t
-  | StatelessFun (t, Random) ->
+  | StatelessFun0 (t, Random) ->
     Printf.fprintf fmt "random" ; add_types t
-  | StatelessFun (t, Sequence (e1, e2)) ->
+  | StatelessFun2 (t, Sequence, e1, e2) ->
     Printf.fprintf fmt "sequence(%a, %a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
-  | StatelessFun (t, Cast e) ->
+  | StatelessFun1 (t, Cast, e) ->
     Printf.fprintf fmt "cast(%a, %a)"
       RamenScalar.print_typ (Option.get t.scalar_typ) (print with_types) e ;
     add_types t
-  | StatelessFun (t, Length e) ->
+  | StatelessFun1 (t, Length, e) ->
     Printf.fprintf fmt "length (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, Lower e) ->
+  | StatelessFun1 (t, Lower, e) ->
     Printf.fprintf fmt "lower (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, Upper e) ->
+  | StatelessFun1 (t, Upper, e) ->
     Printf.fprintf fmt "upper (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, Not e) ->
+  | StatelessFun1 (t, Not, e) ->
     Printf.fprintf fmt "NOT (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, Abs e) ->
+  | StatelessFun1 (t, Abs, e) ->
     Printf.fprintf fmt "ABS (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, Defined e) ->
+  | StatelessFun1 (t, Defined, e) ->
     Printf.fprintf fmt "(%a) IS NOT NULL" (print with_types) e ; add_types t
-  | StatelessFun (t, Add (e1, e2)) ->
+  | StatelessFun2 (t, Add, e1, e2) ->
     Printf.fprintf fmt "(%a) + (%a)" (print with_types) e1 (print with_types) e2 ;
     add_types t
-  | StatelessFun (t, Sub (e1, e2)) ->
+  | StatelessFun2 (t, Sub, e1, e2) ->
     Printf.fprintf fmt "(%a) - (%a)" (print with_types) e1 (print with_types) e2 ;
     add_types t
-  | StatelessFun (t, Mul (e1, e2)) ->
+  | StatelessFun2 (t, Mul, e1, e2) ->
     Printf.fprintf fmt "(%a) * (%a)" (print with_types) e1 (print with_types) e2 ;
     add_types t
-  | StatelessFun (t, Div (e1, e2)) ->
+  | StatelessFun2 (t, Div, e1, e2) ->
     Printf.fprintf fmt "(%a) / (%a)" (print with_types) e1 (print with_types) e2 ;
     add_types t
-  | StatelessFun (t, IDiv (e1, e2)) ->
+  | StatelessFun2 (t, IDiv, e1, e2) ->
     Printf.fprintf fmt "(%a) // (%a)" (print with_types) e1 (print with_types) e2 ;
     add_types t
-  | StatelessFun (t, Mod (e1, e2)) ->
+  | StatelessFun2 (t, Mod, e1, e2) ->
     Printf.fprintf fmt "(%a) %% (%a)" (print with_types) e1 (print with_types) e2 ;
     add_types t
-  | StatelessFun (t, Pow (e1, e2)) ->
+  | StatelessFun2 (t, Pow, e1, e2) ->
     Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ;
     add_types t
-  | StatelessFun (t, Exp e) ->
+  | StatelessFun1 (t, Exp, e) ->
     Printf.fprintf fmt "exp (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, Log e) ->
+  | StatelessFun1 (t, Log, e) ->
     Printf.fprintf fmt "log (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, Sqrt e) ->
+  | StatelessFun1 (t, Sqrt, e) ->
     Printf.fprintf fmt "sqrt (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, Hash e) ->
+  | StatelessFun1 (t, Hash, e) ->
     Printf.fprintf fmt "hash (%a)" (print with_types) e ; add_types t
-  | StatelessFun (t, And (
-      StatelessFun (_, Ge (e1, StatelessFun (_, BeginOfRange e2))),
-      StatelessFun (_, Not (
-        StatelessFun (_, Ge (e1', StatelessFun (_, EndOfRange e2'))))))) ->
+  | StatelessFun2 (t, And,
+      StatelessFun2 (_, Ge, e1, StatelessFun1 (_, BeginOfRange, e2)),
+      StatelessFun1 (_, Not,
+        StatelessFun2 (_, Ge, e1', StatelessFun1 (_, EndOfRange, e2')))) ->
     assert (e2 = e2') ;
     assert (e1 = e1') ;
     Printf.fprintf fmt "(%a) IN (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-  | StatelessFun (_, (BeginOfRange _|EndOfRange _)) -> assert false
-  | StatelessFun (t, And (e1, e2)) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-  | StatelessFun (t, Or (e1, e2)) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-  | StatelessFun (t, Ge (e1, e2)) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-  | StatelessFun (t, Gt (e1, e2)) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-  | StatelessFun (t, Eq (e1, e2)) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-  | StatelessFun (t, Concat (e1, e2)) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-  | StatelessFun (t, Like (e, p)) -> Printf.fprintf fmt "(%a) LIKE %S" (print with_types) e p ; add_types t
-  | StatelessFun (t, Max es) ->
+  | StatelessFun1 (_, (BeginOfRange|EndOfRange), _) -> assert false
+  | StatelessFun2 (t, And, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, Or, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, Ge, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, Gt, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, Eq, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, Concat, e1, e2) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFunMisc (t, Like (e, p)) -> Printf.fprintf fmt "(%a) LIKE %S" (print with_types) e p ; add_types t
+  | StatelessFunMisc (t, Max es) ->
     Printf.fprintf fmt "GREATEST (%a)" (List.print (print with_types)) es ;
     add_types t
-  | StatelessFun (t, Min es) ->
+  | StatelessFunMisc (t, Min es) ->
     Printf.fprintf fmt "LEAST (%a)" (List.print (print with_types)) es ;
     add_types t
 
@@ -409,7 +418,9 @@ let rec print with_types fmt =
 
 let typ_of = function
   | Const (t, _) | Field (t, _, _) | Param (t, _) | StateField (t, _)
-  | StatelessFun (t, _) | StatefulFun (t, _, _) | GeneratorFun (t, _)
+  | StatelessFun0 (t, _) | StatelessFun1 (t, _, _)
+  | StatelessFun2 (t, _, _, _) | StatelessFunMisc (t, _)
+  | StatefulFun (t, _, _) | GeneratorFun (t, _)
   | Case (t, _, _) | Coalesce (t, _) ->
     t
 
@@ -421,33 +432,21 @@ let is_nullable e =
 let rec fold_by_depth f i expr =
   match expr with
   | Const _ | Param _ | Field _ | StateField _
-  | StatelessFun (_, (Now | Random)) ->
+  | StatelessFun0 _ ->
     f i expr
 
   | StatefulFun (_, _, AggrMin e) | StatefulFun (_, _, AggrMax e)
   | StatefulFun (_, _, AggrSum e) | StatefulFun (_, _, AggrAvg e)
   | StatefulFun (_, _, AggrAnd e) | StatefulFun (_, _, AggrOr e)
   | StatefulFun (_, _, AggrFirst e) | StatefulFun (_, _, AggrLast e)
-  | StatelessFun (_, Age e)
-  | StatelessFun (_, Not e) | StatelessFun (_, Defined e)
-  | StatelessFun (_, Cast e) | StatelessFun (_, Abs e)
-  | StatelessFun (_, Length e) | StatelessFun (_, Lower e)
-  | StatelessFun (_, Upper e) | StatelessFun (_, BeginOfRange e)
-  | StatelessFun (_, EndOfRange e) | StatelessFun (_, Exp e)
-  | StatelessFun (_, Log e) | StatelessFun (_, Sqrt e)
-  | StatelessFun (_, Hash e) | StatelessFun (_, Like (e, _)) ->
+  | StatelessFun1 (_, _, e) | StatelessFunMisc (_, Like (e, _)) ->
     f (fold_by_depth f i e) expr
 
   | StatefulFun (_, _, AggrPercentile (e1, e2))
-  | StatelessFun (_, Sequence (e1, e2)) | StatelessFun (_, Add (e1, e2))
-  | StatelessFun (_, Sub (e1, e2)) | StatelessFun (_, Mul (e1, e2))
-  | StatelessFun (_, Div (e1, e2)) | StatelessFun (_, IDiv (e1, e2))
-  | StatelessFun (_, Pow (e1, e2)) | StatelessFun (_, And (e1, e2))
-  | StatelessFun (_, Or (e1, e2)) | StatelessFun (_, Ge (e1, e2))
-  | StatelessFun (_, Gt (e1, e2)) | StatelessFun (_, Eq (e1, e2))
-  | StatelessFun (_, Mod (e1, e2)) | StatefulFun (_, _, Lag (e1, e2))
+  | StatelessFun2 (_, _, e1, e2)
+  | StatefulFun (_, _, Lag (e1, e2))
   | StatefulFun (_, _, ExpSmooth (e1, e2))
-  | StatelessFun (_, Concat (e1, e2)) | GeneratorFun (_, Split (e1, e2)) ->
+  | GeneratorFun (_, Split (e1, e2)) ->
     let i' = fold_by_depth f i e1 in
     let i''= fold_by_depth f i' e2 in
     f i'' expr
@@ -489,7 +488,7 @@ let rec fold_by_depth f i expr =
       Option.map_default (fold_by_depth f i') i' else_ in
     f i'' expr
   | Coalesce (_, es)
-  | StatelessFun (_, (Max es | Min es)) ->
+  | StatelessFunMisc (_, (Max es|Min es)) ->
     let i' = List.fold_left (fold_by_depth f) i es in
     f i' expr
 
@@ -578,100 +577,23 @@ let rec map_type ?(recurs=true) f = function
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c)))
 
-  | StatelessFun (t, Age a) ->
-    StatelessFun (f t, Age (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Now) -> StatelessFun (f t, Now)
-  | StatelessFun (t, Random) -> StatelessFun (f t, Random)
-  | StatelessFun (t, Sequence (a, b)) ->
-    StatelessFun (f t, Sequence (
+  | StatelessFun0 (t, cst) ->
+    StatelessFun0 (f t, cst)
+
+  | StatelessFun1 (t, cst, a) ->
+    StatelessFun1 (f t, cst, (if recurs then map_type ~recurs f a else a))
+  | StatelessFun2 (t, cst, a, b) ->
+    StatelessFun2 (f t, cst,
         (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Abs a) ->
-    StatelessFun (f t, Abs (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Cast a) ->
-    StatelessFun (f t, Cast (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Length a) ->
-    StatelessFun (f t, Length (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Lower a) ->
-    StatelessFun (f t, Lower (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Upper a) ->
-    StatelessFun (f t, Upper (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Not a) ->
-    StatelessFun (f t, Not (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Defined a) ->
-    StatelessFun (f t, Defined (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Add (a, b)) ->
-    StatelessFun (f t, Add (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Sub (a, b)) ->
-    StatelessFun (f t, Sub (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Mul (a, b)) ->
-    StatelessFun (f t, Mul (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Div (a, b)) ->
-    StatelessFun (f t, Div (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, IDiv (a, b)) ->
-    StatelessFun (f t, IDiv (
-         (if recurs then map_type ~recurs f a else a),
-         (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Mod (a, b)) ->
-    StatelessFun (f t, Mod (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Pow (a, b)) ->
-    StatelessFun (f t, Pow (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Exp a) ->
-    StatelessFun (f t, Exp (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Log a) ->
-    StatelessFun (f t, Log (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Sqrt a) ->
-    StatelessFun (f t, Sqrt (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Hash a) ->
-    StatelessFun (f t, Hash (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, And (a, b)) ->
-    StatelessFun (f t, And (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Or (a, b)) ->
-    StatelessFun (f t, Or (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Ge (a, b)) ->
-    StatelessFun (f t, Ge (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Gt (a, b)) ->
-    StatelessFun (f t, Gt (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Eq (a, b)) ->
-    StatelessFun (f t, Eq (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Concat (a, b)) ->
-    StatelessFun (f t, Concat (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatelessFun (t, Like (e, p)) ->
-    StatelessFun (f t, Like (
+        (if recurs then map_type ~recurs f b else b))
+  | StatelessFunMisc (t, Like (e, p)) ->
+    StatelessFunMisc (f t, Like (
         (if recurs then map_type ~recurs f e else e), p))
-  | StatelessFun (t, BeginOfRange a) ->
-    StatelessFun (f t, BeginOfRange (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, EndOfRange a) ->
-    StatelessFun (f t, EndOfRange (if recurs then map_type ~recurs f a else a))
-  | StatelessFun (t, Max es) ->
-    StatelessFun (f t, Max
+  | StatelessFunMisc (t, Max es) ->
+    StatelessFunMisc (f t, Max
       (if recurs then List.map (map_type ~recurs f) es else es))
-  | StatelessFun (t, Min es) ->
-    StatelessFun (f t, Min
+  | StatelessFunMisc (t, Min es) ->
+    StatelessFunMisc (f t, Min
       (if recurs then List.map (map_type ~recurs f) es else es))
 
   | GeneratorFun (t, Split (a, b)) ->
@@ -788,8 +710,8 @@ struct
     let m = "logical operator" :: m in
     let op = that_string "and" ||| that_string "or"
     and reduce t1 op t2 = match op with
-      | "and" -> StatelessFun (make_bool_typ "and", And (t1, t2))
-      | "or" -> StatelessFun (make_bool_typ "or", Or (t1, t2))
+      | "and" -> StatelessFun2 (make_bool_typ "and", And, t1, t2)
+      | "or" -> StatelessFun2 (make_bool_typ "or", Or, t1, t2)
       | _ -> assert false in
     (* FIXME: we do not need a blanks if we had parentheses ("(x)AND(y)" is OK) *)
     binary_ops_reducer ~op ~term:low_prec_left_assoc ~sep:blanks ~reduce m
@@ -800,28 +722,28 @@ struct
              that_string "=" ||| that_string "<>" ||| that_string "!=" |||
              that_string "in" ||| that_string "like"
     and reduce t1 op t2 = match op with
-      | ">" -> StatelessFun (make_bool_typ "comparison", Gt (t1, t2))
-      | "<" -> StatelessFun (make_bool_typ "comparison", Gt (t2, t1))
-      | ">=" -> StatelessFun (make_bool_typ "comparison", Ge (t1, t2))
-      | "<=" -> StatelessFun (make_bool_typ "comparison", Ge (t2, t1))
-      | "=" -> StatelessFun (make_bool_typ "equality", Eq (t1, t2))
+      | ">" -> StatelessFun2 (make_bool_typ "comparison", Gt, t1, t2)
+      | "<" -> StatelessFun2 (make_bool_typ "comparison", Gt, t2, t1)
+      | ">=" -> StatelessFun2 (make_bool_typ "comparison", Ge, t1, t2)
+      | "<=" -> StatelessFun2 (make_bool_typ "comparison", Ge, t2, t1)
+      | "=" -> StatelessFun2 (make_bool_typ "equality", Eq, t1, t2)
       | "!=" | "<>" ->
-        StatelessFun (make_bool_typ "not", Not (
-          StatelessFun (make_bool_typ "equality", Eq (t1, t2))))
+        StatelessFun1 (make_bool_typ "not", Not,
+          StatelessFun2 (make_bool_typ "equality", Eq, t1, t2))
       | "in" ->
-        StatelessFun (make_bool_typ "and for range", And (
-          StatelessFun (make_bool_typ "comparison operator for range", Ge (
+        StatelessFun2 (make_bool_typ "and for range", And,
+          StatelessFun2 (make_bool_typ "comparison operator for range", Ge,
             t1,
-            StatelessFun (make_typ "begin of range", BeginOfRange t2))),
-          StatelessFun (make_bool_typ "not for range", Not (
-            StatelessFun (make_bool_typ "comparison operator for range", Ge (
+            StatelessFun1 (make_typ "begin of range", BeginOfRange, t2)),
+          StatelessFun1 (make_bool_typ "not for range", Not,
+            StatelessFun2 (make_bool_typ "comparison operator for range", Ge,
               t1,
-              StatelessFun (make_typ "end of range", EndOfRange t2)))))))
+              StatelessFun1 (make_typ "end of range", EndOfRange, t2))))
       | "like" ->
         (match get_string_const t2 with
         | None -> raise (Reject "LIKE pattern must be a string constant")
         | Some p ->
-          StatelessFun (make_bool_typ "like", Like (t1, p)))
+          StatelessFunMisc (make_bool_typ "like", Like (t1, p)))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -829,9 +751,9 @@ struct
     let m = "arithmetic operator" :: m in
     let op = that_string "+" ||| that_string "-" ||| that_string "||"
     and reduce t1 op t2 = match op with
-      | "+" -> StatelessFun (make_num_typ "addition", Add (t1, t2))
-      | "-" -> StatelessFun (make_num_typ "subtraction", Sub (t1, t2))
-      | "||" -> StatelessFun (make_string_typ "concatenation", Concat (t1, t2))
+      | "+" -> StatelessFun2 (make_num_typ "addition", Add, t1, t2)
+      | "-" -> StatelessFun2 (make_num_typ "subtraction", Sub, t1, t2)
+      | "||" -> StatelessFun2 (make_string_typ "concatenation", Concat, t1, t2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -839,18 +761,18 @@ struct
     let m = "arithmetic operator" :: m in
     let op = that_string "*" ||| that_string "//" ||| that_string "/" ||| that_string "%"
     and reduce t1 op t2 = match op with
-      | "*" -> StatelessFun (make_num_typ "multiplication", Mul (t1, t2))
+      | "*" -> StatelessFun2 (make_num_typ "multiplication", Mul, t1, t2)
       (* Note: We want the default division to output floats by default *)
-      | "/" -> StatelessFun (make_typ ~typ:TFloat "division", Div (t1, t2))
-      | "//" -> StatelessFun (make_num_typ "integer-division", IDiv (t1, t2))
-      | "%" -> StatelessFun (make_num_typ "modulo", Mod (t1, t2))
+      | "/" -> StatelessFun2 (make_typ ~typ:TFloat "division", Div, t1, t2)
+      | "//" -> StatelessFun2 (make_num_typ "integer-division", IDiv, t1, t2)
+      | "%" -> StatelessFun2 (make_num_typ "modulo", Mod, t1, t2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks ~reduce m
 
   and higher_prec_right_assoc m =
     let m = "arithmetic operator" :: m in
     let op = char '^'
-    and reduce t1 _ t2 = StatelessFun (make_num_typ "exponentiation", Pow (t1, t2)) in
+    and reduce t1 _ t2 = StatelessFun2 (make_num_typ "exponentiation", Pow, t1, t2) in
     binary_ops_reducer ~op ~right_associative:true
                        ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -944,7 +866,8 @@ struct
     afunv 3 n >>: function ([a;b;c], r) -> a, b, c, r | _ -> assert false
 
   and highest_prec_left_assoc m =
-    ((afun1 "not" >>: fun e -> StatelessFun (make_bool_typ "not", Not e)) |||
+    ((afun1 "not" >>: fun e ->
+        StatelessFun1 (make_bool_typ "not", Not, e)) |||
      (highestest_prec ++
       optional ~def:None (
         blanks -- strinG "is" -- blanks -+
@@ -953,26 +876,26 @@ struct
         strinG "null") >>: function
           | e, None -> e
           | e, Some false ->
-            StatelessFun (make_bool_typ ~nullable:false "not",
-              Not (StatelessFun (make_bool_typ ~nullable:false "is_not_null", Defined e)))
+            StatelessFun1 (make_bool_typ ~nullable:false "not", Not,
+              StatelessFun1 (make_bool_typ ~nullable:false "is_not_null", Defined, e))
           | e, Some true ->
-            StatelessFun (make_bool_typ ~nullable:false "is_not_null", Defined e))
+            StatelessFun1 (make_bool_typ ~nullable:false "is_not_null", Defined, e))
     ) m
 
   and func m =
     let m = "function" :: m in
     (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
-    ((afun1 "age" >>: fun e -> StatelessFun (make_num_typ "age function", Age e)) |||
-     (afun1 "abs" >>: fun e -> StatelessFun (make_num_typ "absolute value", Abs e)) |||
-     (afun1 "length" >>: fun e -> StatelessFun (make_typ ~typ:TU16 "length", Length e)) |||
-     (afun1 "lower" >>: fun e -> StatelessFun (make_string_typ "lower", Lower e)) |||
-     (afun1 "upper" >>: fun e -> StatelessFun (make_string_typ "upper", Upper e)) |||
-     (strinG "now" >>: fun () -> StatelessFun (make_float_typ ~nullable:false "now", Now)) |||
-     (strinG "rand" >>: fun () -> StatelessFun (make_float_typ ~nullable:false "rand", Random)) |||
-     (afun1 "exp" >>: fun e -> StatelessFun (make_num_typ "exponential", Exp e)) |||
-     (afun1 "log" >>: fun e -> StatelessFun (make_num_typ "logarithm", Log e)) |||
-     (afun1 "sqrt" >>: fun e -> StatelessFun (make_num_typ "square root", Sqrt e)) |||
-     (afun1 "hash" >>: fun e -> StatelessFun (make_typ ~typ:TI64 "hash", Hash e)) |||
+    ((afun1 "age" >>: fun e -> StatelessFun1 (make_num_typ "age function", Age, e)) |||
+     (afun1 "abs" >>: fun e -> StatelessFun1 (make_num_typ "absolute value", Abs, e)) |||
+     (afun1 "length" >>: fun e -> StatelessFun1 (make_typ ~typ:TU16 "length", Length, e)) |||
+     (afun1 "lower" >>: fun e -> StatelessFun1 (make_string_typ "lower", Lower, e)) |||
+     (afun1 "upper" >>: fun e -> StatelessFun1 (make_string_typ "upper", Upper, e)) |||
+     (strinG "now" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "now", Now)) |||
+     (strinG "rand" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "rand", Random)) |||
+     (afun1 "exp" >>: fun e -> StatelessFun1 (make_num_typ "exponential", Exp, e)) |||
+     (afun1 "log" >>: fun e -> StatelessFun1 (make_num_typ "logarithm", Log, e)) |||
+     (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_num_typ "square root", Sqrt, e)) |||
+     (afun1 "hash" >>: fun e -> StatelessFun1 (make_typ ~typ:TI64 "hash", Hash, e)) |||
      (afun1_sf ~def_state:LocalState "min" >>: fun (g, e) ->
         StatefulFun (make_num_typ "min aggregation", g, AggrMin e)) |||
      (afun1_sf ~def_state:LocalState "max" >>: fun (g, e) ->
@@ -1031,13 +954,13 @@ struct
         GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
      (* At least 2 args to distinguish from the aggregate functions: *)
      (afun2v "max" >>: fun (e1, e2, e3s) ->
-        StatelessFun (make_num_typ "max", Max (e1 :: e2 :: e3s))) |||
+        StatelessFunMisc (make_num_typ "max", Max (e1 :: e2 :: e3s))) |||
      (afun1v "greatest" >>: fun (e, es) ->
-        StatelessFun (make_num_typ "max", Max (e :: es))) |||
+        StatelessFunMisc (make_num_typ "max", Max (e :: es))) |||
      (afun2v "min" >>: fun (e1, e2, e3s) ->
-        StatelessFun (make_num_typ "min", Min (e1 :: e2 :: e3s))) |||
+        StatelessFunMisc (make_num_typ "min", Min (e1 :: e2 :: e3s))) |||
      (afun1v "least" >>: fun (e, es) ->
-        StatelessFun (make_num_typ "min", Min (e :: es))) |||
+        StatelessFunMisc (make_num_typ "min", Min (e :: es))) |||
      k_moveavg ||| sequence ||| cast) m
 
   and sequence =
@@ -1050,11 +973,11 @@ struct
     fun m ->
       let m = "sequence function" :: m in
       ((afun2 seq >>: fun (e1, e2) ->
-          StatelessFun (seq_typ, Sequence (e1, e2))) |||
+          StatelessFun2 (seq_typ, Sequence, e1, e2)) |||
        (afun1 seq >>: fun e1 ->
-          StatelessFun (seq_typ, Sequence (e1, seq_default_step))) |||
+          StatelessFun2 (seq_typ, Sequence, e1, seq_default_step)) |||
        (strinG seq >>: fun () ->
-          StatelessFun (seq_typ, Sequence (seq_default_start, seq_default_step)))
+          StatelessFun2 (seq_typ, Sequence, seq_default_start, seq_default_step))
       ) m
 
   and cast m =
@@ -1062,7 +985,7 @@ struct
     let sep = check (char '(') ||| blanks in
     (RamenScalar.Parser.typ +- sep ++
      highestest_prec >>: fun (typ, e) ->
-       StatelessFun (make_typ ~typ ("cast to "^ IO.to_string RamenScalar.print_typ typ), Cast e)
+       StatelessFun1 (make_typ ~typ ("cast to "^ IO.to_string RamenScalar.print_typ typ), Cast, e)
     ) m
 
   and k_moveavg m =
@@ -1136,44 +1059,45 @@ struct
       (test_p p "true" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun (typ, Not (StatelessFun (typ, Defined (Field (typ, ref TupleUnknown, "zone_src"))))),\
+      StatelessFun1 (typ, Not, StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, "zone_src"))),\
       (16, [])))\
       (test_p p "zone_src IS NULL" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun (typ, Eq (Field (typ, ref TupleUnknown, "zone_src"), Param (typ, "z1"))),\
+      StatelessFun2 (typ, Eq, Field (typ, ref TupleUnknown, "zone_src"), Param (typ, "z1")),\
       (14, [])))\
       (test_p p "zone_src = $z1" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun (typ, And (\
-        StatelessFun (typ, Or (\
-          StatelessFun (typ, Not (\
-            StatelessFun (typ, Defined (Field (typ, ref TupleUnknown, "zone_src"))))),\
-          StatelessFun (typ, Eq (Field (typ, ref TupleUnknown, "zone_src"), Param (typ, "z1"))))),\
-        StatelessFun (typ, Or (\
-          StatelessFun (typ, Not (\
-            StatelessFun (typ, Defined (Field (typ, ref TupleUnknown, "zone_dst"))))),\
-          StatelessFun (typ, Eq (\
-            Field (typ, ref TupleUnknown, "zone_dst"), Param (typ, "z2"))))))),\
+      StatelessFun2 (typ, And, \
+        StatelessFun2 (typ, Or, \
+          StatelessFun1 (typ, Not, \
+            StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, "zone_src"))),\
+          StatelessFun2 (typ, Eq, Field (typ, ref TupleUnknown, "zone_src"), Param (typ, "z1"))), \
+        StatelessFun2 (typ, Or, \
+          StatelessFun1 (typ, Not, \
+            StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, "zone_dst"))),\
+          StatelessFun2 (typ, Eq, \
+            Field (typ, ref TupleUnknown, "zone_dst"), \
+            Param (typ, "z2")))),\
       (77, [])))\
       (test_p p "(zone_src IS NULL or zone_src = $z1) and \\
                  (zone_dst IS NULL or zone_dst = $z2)" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun (typ, Div (\
+      StatelessFun2 (typ, Div, \
         StatefulFun (typ, LocalState, AggrSum (\
           Field (typ, ref TupleUnknown, "bytes"))),\
-        Param (typ, "avg_window"))),\
+        Param (typ, "avg_window")),\
       (23, [])))\
       (test_p p "(sum bytes)/$avg_window" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun (typ, IDiv (\
+      StatelessFun2 (typ, IDiv, \
         Field (typ, ref TupleUnknown, "start"),\
-        StatelessFun (typ, Mul (\
+        StatelessFun2 (typ, Mul, \
           Const (typ, VI32 1_000_000l),\
-          Param (typ, "avg_window"))))),\
+          Param (typ, "avg_window"))),\
       (34, [])))\
       (test_p p "start // (1_000_000 * $avg_window)" |> replace_typ_in_expr)
 
@@ -1185,34 +1109,34 @@ struct
       (test_p p "$p percentile bytes_per_sec" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun (typ, Gt (\
+      StatelessFun2 (typ, Gt, \
         StatefulFun (typ, LocalState, AggrMax (\
           Field (typ, ref TupleLastSelected, "start"))),\
-        StatelessFun (typ, Add (\
+        StatelessFun2 (typ, Add, \
           Field (typ, ref TupleOut, "start"),\
-          StatelessFun (typ, Mul (\
-            StatelessFun (typ, Mul (\
+          StatelessFun2 (typ, Mul, \
+            StatelessFun2 (typ, Mul, \
               Param (typ, "obs_window"),\
-              Const (typ, VFloat 1.15))),\
-            Const (typ, VI32 1_000_000l))))))),\
+              Const (typ, VFloat 1.15)),\
+            Const (typ, VI32 1_000_000l)))),\
       (70, [])))\
       (test_p p "max selected.last.start > \\
                  out.start + ($obs_window * 1.15) * 1_000_000" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun (typ, Mod (\
+      StatelessFun2 (typ, Mod, \
         Param (typ, "x"),\
-        Param (typ, "y"))),\
+        Param (typ, "y")),\
       (7, [])))\
       (test_p p "$x % $y" |> replace_typ_in_expr)
 
     (Ok ( \
-      StatelessFun (typ, Abs (\
-        StatelessFun (typ, Sub (\
+      StatelessFun1 (typ, Abs, \
+        StatelessFun2 (typ, Sub, \
           Field (typ, ref TupleUnknown, "bps"), \
           StatefulFun (typ, GlobalState, Lag (\
             Const (typ, VI32 (Int32.of_int 1)), \
-            Field (typ, ref TupleUnknown, "bps"))))))), \
+            Field (typ, ref TupleUnknown, "bps"))))), \
       (21, []))) \
       (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
 

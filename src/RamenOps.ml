@@ -170,7 +170,8 @@ let reprogram_for_test old_program_name new_program_name func =
     else s
   in
   RamenOperation.iter_expr (function
-    | RamenExpr.(StatelessFun (_, (Age _ | Now))) ->
+    | RamenExpr.(StatelessFun1 (_, Age, _) |
+                 StatelessFun0 (_, Now)) ->
         !logger.warning "Test uses time related functions"
     | _ -> ()) func.RamenProgram.operation ;
   match func.operation with

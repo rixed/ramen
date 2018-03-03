@@ -634,52 +634,52 @@ and emit_expr ?state ~context oc expr =
     in
     loop es
   (* Stateless arithmetic functions which actual funcname depends on operand types: *)
-  | Finalize, StatelessFun (_, Add(e1,e2)),
+  | Finalize, StatelessFun2 (_, Add, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".add") [Some t; Some t] [e1; e2]
-  | Finalize, StatelessFun (_, Sub (e1,e2)),
+  | Finalize, StatelessFun2 (_, Sub, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".sub") [Some t; Some t] [e1; e2]
-  | Finalize, StatelessFun (_, Mul (e1,e2)),
+  | Finalize, StatelessFun2 (_, Mul, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".mul") [Some t; Some t] [e1; e2]
-  | Finalize, StatelessFun (_, IDiv (e1,e2)),
+  | Finalize, StatelessFun2 (_, IDiv, e1, e2),
     Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".div") [Some t; Some t] [e1; e2]
-  | Finalize, StatelessFun (_, IDiv (e1,e2)), Some (TFloat as t) ->
+  | Finalize, StatelessFun2 (_, IDiv, e1, e2), Some (TFloat as t) ->
     (* Here we must convert everything to float first, then divide and
      * take the floor: *)
     Printf.fprintf oc "(let x_ = " ;
     emit_functionN oc ?state (omod_of_type t ^".div") [Some t; Some t] [e1; e2] ;
     Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_)"
-  | Finalize, StatelessFun (_, Div (e1,e2)), Some (TFloat as t) ->
+  | Finalize, StatelessFun2 (_, Div, e1, e2), Some (TFloat as t) ->
     emit_functionN oc ?state (omod_of_type t ^".div") [Some t; Some t] [e1; e2]
-  | Finalize, StatelessFun (_, Pow (e1,e2)),
+  | Finalize, StatelessFun2 (_, Pow, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".( ** )") [Some t; Some t] [e1; e2]
 
-  | Finalize, StatelessFun (_, Abs (e)),
+  | Finalize, StatelessFun1 (_, Abs, e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".abs") [Some t] [e]
-  | Finalize, StatelessFun (_, Exp (e)), Some TFloat ->
+  | Finalize, StatelessFun1 (_, Exp, e), Some TFloat ->
     emit_functionN oc ?state "exp" [Some TFloat] [e]
-  | Finalize, StatelessFun (_, Log (e)), Some TFloat ->
+  | Finalize, StatelessFun1 (_, Log, e), Some TFloat ->
     emit_functionN oc ?state "log" [Some TFloat] [e]
-  | Finalize, StatelessFun (_, Sqrt (e)), Some TFloat ->
+  | Finalize, StatelessFun1 (_, Sqrt, e), Some TFloat ->
     emit_functionN oc ?state "sqrt" [Some TFloat] [e]
-  | Finalize, StatelessFun (_, Hash (e)), Some TI64 ->
+  | Finalize, StatelessFun1 (_, Hash, e), Some TI64 ->
     emit_functionN oc ?state "CodeGenLib.hash" [None] [e]
 
   (* Other stateless functions *)
-  | Finalize, StatelessFun (_, Ge (e1,e2)), Some TBool ->
+  | Finalize, StatelessFun2 (_, Ge, e1, e2), Some TBool ->
     emit_functionN oc ?state "(>=)" [Some TAny; Some TAny] [e1; e2]
-  | Finalize, StatelessFun (_, Gt (e1,e2)), Some TBool ->
+  | Finalize, StatelessFun2 (_, Gt, e1, e2), Some TBool ->
     emit_functionN oc ?state "(>)" [Some TAny; Some TAny] [e1; e2]
-  | Finalize, StatelessFun (_, Eq (e1,e2)), Some TBool ->
+  | Finalize, StatelessFun2 (_, Eq, e1, e2), Some TBool ->
     emit_functionN oc ?state "(=)" [Some TAny; Some TAny] [e1; e2]
-  | Finalize, StatelessFun (_, Concat (e1,e2)), Some TString ->
+  | Finalize, StatelessFun2 (_, Concat, e1, e2), Some TString ->
     emit_functionN oc ?state "(^)" [Some TString; Some TString] [e1; e2]
-  | Finalize, StatelessFun (_, Like (e, p)), Some TBool ->
+  | Finalize, StatelessFunMisc (_, Like (e, p)), Some TBool ->
     let pattern = Globs.compile ~star:'%' ~escape:'\\' p in
     Printf.fprintf oc "(let pattern_ = \
       Globs.{ anchored_start = %b ; anchored_end = %b ; chunks = %a } in "
@@ -687,46 +687,46 @@ and emit_expr ?state ~context oc expr =
       (List.print (fun oc s -> Printf.fprintf oc "%S" s)) pattern.chunks ;
     emit_functionN oc ?state "Globs.matches pattern_ " [Some TString] [e];
     Printf.fprintf oc ")"
-  | Finalize, StatelessFun (_, Length e), Some TU16 (* The only possible output type *) ->
+  | Finalize, StatelessFun1 (_, Length, e), Some TU16 (* The only possible output type *) ->
     emit_functionN oc ?state "String.length" [Some TString] [e]
   (* lowercase and uppercase assume latin1 and will gladly destroy UTF-8
    * encoded char, therefore we use the ascii variants: *)
-  | Finalize, StatelessFun (_, Lower e), Some TString ->
+  | Finalize, StatelessFun1 (_, Lower, e), Some TString ->
     emit_functionN oc ?state "String.lowercase_ascii" [Some TString] [e]
-  | Finalize, StatelessFun (_, Upper e), Some TString ->
+  | Finalize, StatelessFun1 (_, Upper, e), Some TString ->
     emit_functionN oc ?state "String.uppercase_ascii" [Some TString] [e]
-  | Finalize, StatelessFun (_, And (e1,e2)), Some TBool ->
+  | Finalize, StatelessFun2 (_, And, e1, e2), Some TBool ->
     emit_functionN oc ?state "(&&)" [Some TBool; Some TBool] [e1; e2]
-  | Finalize, StatelessFun (_, Or (e1,e2)), Some TBool ->
+  | Finalize, StatelessFun2 (_, Or, e1,e2), Some TBool ->
     emit_functionN oc ?state "(||)" [Some TBool; Some TBool] [e1; e2]
-  | Finalize, StatelessFun (_, Not e), Some TBool ->
+  | Finalize, StatelessFun1 (_, Not, e), Some TBool ->
     emit_functionN oc ?state "not" [Some TBool] [e]
-  | Finalize, StatelessFun (_, Defined e), Some TBool ->
+  | Finalize, StatelessFun1 (_, Defined, e), Some TBool ->
     (* Do not call emit_functionN to avoid null propagation: *)
     Printf.fprintf oc "(match %a with None -> false | _ -> true)"
       (emit_expr ?state ~context) e
-  | Finalize, StatelessFun (_, Age e),
+  | Finalize, StatelessFun1 (_, Age, e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ)
-  | Finalize, StatelessFun (_, BeginOfRange e),
+  | Finalize, StatelessFun1 (_, BeginOfRange, e),
     Some (TCidrv4 | TCidrv6 as to_typ) ->
     let in_type_name =
       String.lowercase (IO.to_string RamenScalar.print_typ to_typ) in
     let name = "CodeGenLib.age_"^ in_type_name in
     emit_functionN oc ?state name [Some to_typ] [e]
   (* TODO: Now() for Uint62? *)
-  | Finalize, StatelessFun (_, Now), Some TFloat ->
+  | Finalize, StatelessFun0 (_, Now), Some TFloat ->
     String.print oc "!CodeGenLib_IO.now"
-  | Finalize, StatelessFun (_, Random), Some TFloat ->
+  | Finalize, StatelessFun0 (_, Random), Some TFloat ->
     String.print oc "(Random.float 1.)"
-  | Finalize, StatelessFun (_, Cast (e)), t ->
+  | Finalize, StatelessFun1 (_, Cast, e), t ->
     emit_functionN oc ?state "identity" [t] [e]
   (* Sequence build a sequence of as-large-as-convenient integers (signed or
    * not) *)
-  | Finalize, StatelessFun (_, Sequence (e1,e2)), Some TI128 ->
+  | Finalize, StatelessFun2 (_, Sequence, e1, e2), Some TI128 ->
     emit_functionN oc ?state "CodeGenLib.sequence" [Some TI128; Some TI128] [e1; e2]
-  | Finalize, StatelessFun (_, Max es), t ->
+  | Finalize, StatelessFunMisc (_, Max es), t ->
     emit_functionN ~as_array:true oc ?state "Array.max" (List.map (fun _ -> t) es) es
-  | Finalize, StatelessFun (_, Min es), t ->
+  | Finalize, StatelessFunMisc (_, Min es), t ->
     emit_functionN ~as_array:true oc ?state "Array.min" (List.map (fun _ -> t) es) es
 
   (* Stateful functions *)

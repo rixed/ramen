@@ -527,70 +527,68 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
           must_be_nullable = false } in
         raise (SyntaxError e)
       | None -> changed)
-  | StatelessFun (op_typ, Now) ->
+  | StatelessFun0 (op_typ, Now) ->
     check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
-  | StatelessFun (op_typ, Random) ->
+  | StatelessFun0 (op_typ, Random) ->
     check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
   | StatefulFun (op_typ, _, AggrMin e) | StatefulFun (op_typ, _, AggrMax e)
   | StatefulFun (op_typ, _, AggrFirst e) | StatefulFun (op_typ, _, AggrLast e) ->
     check_op op_typ List.hd [None, None, e]
-  | StatefulFun (op_typ, _, AggrSum e) | StatelessFun (op_typ, Age e)
-  | StatelessFun (op_typ, Abs e) ->
+  | StatefulFun (op_typ, _, AggrSum e) | StatelessFun1 (op_typ, Age, e)
+  | StatelessFun1 (op_typ, Abs, e) ->
     check_op op_typ List.hd [Some TFloat, None, e]
   | StatefulFun (op_typ, _, AggrAvg e) ->
     check_op op_typ return_float [Some TFloat, None, e]
   | StatefulFun (op_typ, _, AggrAnd e) | StatefulFun (op_typ, _, AggrOr e)
-  | StatelessFun (op_typ, Not e) ->
+  | StatelessFun1 (op_typ, Not, e) ->
     check_op op_typ List.hd [Some TBool, None, e]
-  | StatelessFun (op_typ, Cast e) ->
+  | StatelessFun1 (op_typ, Cast, e) ->
     (* No type restriction on the operand: we might want to forbid some
      * types at some point, for instance strings... *)
     check_op op_typ (fun _ -> Option.get op_typ.scalar_typ) [None, None, e]
-  | StatelessFun (op_typ, Defined e) ->
+  | StatelessFun1 (op_typ, Defined, e) ->
     check_op op_typ return_bool  ~propagate_null:false [None, Some true, e]
   | StatefulFun (op_typ, _, AggrPercentile (e1, e2)) ->
     check_op op_typ List.last [Some TFloat, None, e1 ; Some TFloat, None, e2]
-  | StatelessFun (op_typ, Add (e1, e2)) | StatelessFun (op_typ, Sub (e1, e2))
-  | StatelessFun (op_typ, Mul (e1, e2)) ->
+  | StatelessFun2 (op_typ, (Add|Sub|Mul), e1, e2) ->
     check_op op_typ RamenScalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
-  | StatelessFun (op_typ, Concat (e1, e2)) ->
+  | StatelessFun2 (op_typ, Concat, e1, e2) ->
     check_op op_typ return_string [Some TString, None, e1 ; Some TString, None, e2]
-  | StatelessFun (op_typ, Like (e, _)) ->
+  | StatelessFunMisc (op_typ, Like (e, _)) ->
     check_op op_typ return_bool [Some TString, None, e]
-  | StatelessFun (op_typ, Pow (e1, e2)) ->
+  | StatelessFun2 (op_typ, Pow, e1, e2) ->
     check_op op_typ return_float [Some TFloat, None, e1 ; Some TFloat, None, e2]
-  | StatelessFun (op_typ, Div (e1, e2)) ->
+  | StatelessFun2 (op_typ, Div, e1, e2) ->
     (* Same as above but always return a float *)
     check_op op_typ return_float [Some TFloat, None, e1 ; Some TFloat, None, e2]
-  | StatelessFun (op_typ, IDiv (e1, e2)) ->
+  | StatelessFun2 (op_typ, IDiv, e1, e2) ->
     check_op op_typ RamenScalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
-  | StatelessFun (op_typ, Mod (e1, e2)) ->
+  | StatelessFun2 (op_typ, Mod, e1, e2) ->
     check_op op_typ RamenScalar.largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
-  | StatelessFun (op_typ, Sequence (e1, e2)) ->
+  | StatelessFun2 (op_typ, Sequence, e1, e2) ->
     check_op op_typ return_i128 [Some TI128, None, e1 ; Some TI128, None, e2]
-  | StatelessFun (op_typ, Length e) ->
+  | StatelessFun1 (op_typ, Length, e) ->
     check_op op_typ return_u16 [Some TString, None, e]
-  | StatelessFun (op_typ, Lower e) ->
+  | StatelessFun1 (op_typ, Lower, e) ->
     check_op op_typ return_string [Some TString, None, e]
-  | StatelessFun (op_typ, Upper e) ->
+  | StatelessFun1 (op_typ, Upper, e) ->
     check_op op_typ return_string [Some TString, None, e]
-  | StatelessFun (op_typ, Ge (e1, e2)) | StatelessFun (op_typ, Gt (e1, e2))
-  | StatelessFun (op_typ, Eq (e1, e2)) ->
+  | StatelessFun2 (op_typ, (Ge|Gt|Eq), e1, e2) ->
     (try check_op op_typ return_bool [Some TString, None, e1 ; Some TString, None, e2]
     with SyntaxError (CannotTypeExpression _) as e ->
       (* We do not retry for other errors to keep a better error message. *)
       !logger.debug "%sEquality operator between strings failed with %S, \
                      retrying with numbers" indent (Printexc.to_string e) ;
       check_op op_typ return_bool [Some TFloat, None, e1 ; Some TFloat, None, e2])
-  | StatelessFun (op_typ, And (e1, e2)) | StatelessFun (op_typ, Or (e1, e2)) ->
+  | StatelessFun2 (op_typ, (And|Or), e1, e2) ->
     check_op op_typ return_bool [Some TBool, None, e1 ; Some TBool, None, e2]
-  | StatelessFun (op_typ, BeginOfRange e) | StatelessFun (op_typ, EndOfRange e) ->
+  | StatelessFun1 (op_typ, (BeginOfRange|EndOfRange), e) ->
     (* Not really bullet-proof in theory since check_op may update the
      * types of the operand, but in this case there is no modification
      * possible if it's either TCidrv4 or TCidrv6, so we should be good.  *)
     (try check_op op_typ (fun _ -> TIpv4) [Some TCidrv4, None, e]
     with _ -> check_op op_typ (fun _ -> TIpv6) [Some TCidrv6, None, e])
-  | StatelessFun (op_typ, (Min es | Max es)) ->
+  | StatelessFunMisc (op_typ, (Min es | Max es)) ->
     check_op op_typ RamenScalar.largest_type
       (List.map (fun e -> Some TFloat, None, e) es)
 
@@ -630,9 +628,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
     check_op op_typ return_float
       [Some TFloat, Some false, e1 ;
        Some TFloat, None, e2]
-  | StatelessFun (op_typ, Exp e) | StatelessFun (op_typ, Log e) | StatelessFun (op_typ, Sqrt e) ->
+  | StatelessFun1 (op_typ, (Exp|Log|Sqrt), e) ->
     check_op op_typ return_float [Some TFloat, None, e]
-  | StatelessFun (op_typ, Hash e) ->
+  | StatelessFun1 (op_typ, Hash, e) ->
     check_op op_typ return_i64 [None, None, e]
   | GeneratorFun (op_typ, Split (e1, e2)) ->
     check_op op_typ return_string [Some TString, None, e1 ;

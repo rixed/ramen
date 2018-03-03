@@ -861,9 +861,9 @@ struct
         fields = [] ;\
         and_all_others = true ;\
         where = Expr.(\
-          StatelessFun (typ, Gt (\
+          StatelessFun2 (typ, Gt, \
             Field (typ, ref TupleIn, "packets"),\
-            Const (typ, VI32 (Int32.of_int 0))))) ;\
+            Const (typ, VI32 (Int32.of_int 0)))) ;\
         force_export = false ; event_time = None ; notify_url = "" ;\
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
@@ -938,29 +938,29 @@ struct
                 Field (typ, ref TupleIn, "stop")))) ;\
             alias = "max_stop" } ;\
           { expr = Expr.(\
-              StatelessFun (typ, Div (\
+              StatelessFun2 (typ, Div, \
                 StatefulFun (typ, LocalState, AggrSum (\
                   Field (typ, ref TupleIn, "packets"))),\
-                Param (typ, "avg_window")))) ;\
+                Param (typ, "avg_window"))) ;\
             alias = "packets_per_sec" } ] ;\
         and_all_others = false ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ; \
         notify_url = "" ;\
         key = [ Expr.(\
-          StatelessFun (typ, Div (\
+          StatelessFun2 (typ, Div, \
             Field (typ, ref TupleIn, "start"),\
-            StatelessFun (typ, Mul (\
+            StatelessFun2 (typ, Mul, \
               Const (typ, VI32 1_000_000l),\
-              Param (typ, "avg_window")))))) ] ;\
+              Param (typ, "avg_window")))) ] ;\
         top = None ;\
         commit_when = Expr.(\
-          StatelessFun (typ, Gt (\
-            StatelessFun (typ, Add (\
+          StatelessFun2 (typ, Gt, \
+            StatelessFun2 (typ, Add, \
               StatefulFun (typ, LocalState, AggrMax (\
                 Field (typ, ref TupleGroupFirst, "start"))),\
-              Const (typ, VI32 (Int32.of_int 3600)))),\
-            Field (typ, ref TupleOut, "start")))) ; \
+              Const (typ, VI32 (Int32.of_int 3600))),\
+            Field (typ, ref TupleOut, "start"))) ; \
         commit_before = false ;\
         flush_how = Reset ;\
         from = ["foo"] },\
@@ -984,10 +984,10 @@ struct
         notify_url = "" ;\
         key = [] ; top = None ;\
         commit_when = Expr.(\
-          StatelessFun (typ, Ge (\
+          StatelessFun2 (typ, Ge, \
             StatefulFun (typ, LocalState, AggrSum (\
               Const (typ, VI32 (Int32.one)))),\
-            Const (typ, VI32 (Int32.of_int 5))))) ;\
+            Const (typ, VI32 (Int32.of_int 5)))) ;\
         commit_before = true ;\
         flush_how = Reset ; from = ["foo"] },\
         (49, [])))\
