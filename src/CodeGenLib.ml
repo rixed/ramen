@@ -511,7 +511,7 @@ let listen_on (collector :
                 ?while_:(unit -> bool) ->
                 ('a -> unit Lwt.t) ->
                 unit Lwt.t)
-                addr_str port proto
+              addr_str port proto_name
               sersize_of_tuple serialize_tuple =
   let worker_name = getenv ~def:"?" "name" in
   let get_binocle_tuple () =
@@ -521,7 +521,7 @@ let listen_on (collector :
     and inet_addr = Unix.inet_addr_of_string addr_str
     in
     !logger.debug "Will listen to port %d for incoming %s messages"
-                  port (RamenProtocols.string_of_proto proto) ;
+                  port proto_name ;
     let outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
     let while_ () = not !quit in

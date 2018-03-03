@@ -94,7 +94,7 @@ CODEGENLIB_SOURCES = \
 	src/Consts.ml src/RamenLog.ml src/Helpers.ml src/Globs.ml src/RWLock.ml \
 	src/RamenOutRef.ml src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml \
 	src/Ipv6.ml src/RamenSharedTypesJS.ml src/RamenSharedTypes.ml \
-	src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
+	src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RingBufLib.ml src/RingBuf.ml src/RamenBinocle.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml src/CodeGenLib.ml src/RamenTypeConverters.ml

@@ -250,7 +250,7 @@ let emit_listen_on oc net_addr port proto =
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n\
     let () =\n\
-      \tCodeGenLib.listen_on %s %S %d RamenProtocols.%s sersize_of_tuple_ serialize_tuple_\n"
+      \tCodeGenLib.listen_on %s %S %d %S sersize_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     collector
