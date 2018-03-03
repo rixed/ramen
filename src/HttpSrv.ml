@@ -117,7 +117,7 @@ let get_graph conf headers program_opt =
   let accept = get_accept headers in
   if is_accepting Consts.json_content_type accept then
     let%lwt graph = RamenOps.graph_info conf program_opt in
-    let body = PPP.to_string get_graph_resp_ppp graph in
+    let body = PPP.to_string (get_graph_resp_ppp_json ()) graph in
     respond_ok ~body ()
   else (
     (* For non-json we can release the lock sooner as we don't need the
@@ -185,14 +185,14 @@ let del_program conf _headers program_name =
 
 let put_program conf headers body =
   let%lwt msg =
-    of_json headers "Uploading program" put_program_req_ppp body in
+    of_json headers "Uploading program" (put_program_req_ppp_json ()) body in
   try%lwt
     let%lwt program_name =
       RamenOps.set_program
         conf ~ok_if_running:msg.ok_if_running ~start:msg.start
         msg.name msg.program in
     let body =
-      PPP.to_string put_program_resp_ppp
+      PPP.to_string (put_program_resp_ppp_json ())
         { success = true ; program_name = Some program_name } in
     respond_ok ~body ()
   with exn ->
@@ -315,13 +315,13 @@ let export conf headers program_name func_name body =
   let%lwt () = check_accept headers Consts.json_content_type in
   let%lwt req =
     if body = "" then return empty_export_req else
-    of_json headers ("Exporting from "^ func_name) export_req_ppp body in
+    of_json headers ("Exporting from "^ func_name) (export_req_ppp_json ()) body in
   let%lwt first, columns =
     C.with_rlock conf (fun programs ->
       get_tuples ?since:req.since ?max_res:req.max_results conf
         ~wait_up_to:req.wait_up_to programs program_name func_name) in
   let resp = { first ; columns } in
-  let body = PPP.to_string export_resp_ppp resp in
+  let body = PPP.to_string (export_resp_ppp_json ()) resp in
   respond_ok ~body ()
 
 (*
@@ -330,25 +330,25 @@ let export conf headers program_name func_name body =
 
 let complete_funcs conf headers body =
   let%lwt msg =
-    of_json headers "Complete tables" complete_func_req_ppp body in
+    of_json headers "Complete tables" (complete_func_req_ppp_json ()) body in
   let%lwt lst =
     C.with_rlock conf (fun programs ->
       C.complete_func_name programs msg.prefix |>
       return) in
   let body =
-    PPP.to_string complete_resp_ppp lst
+    PPP.to_string (complete_resp_ppp_json ()) lst
   in
   respond_ok ~body ()
 
 let complete_fields conf headers body =
   let%lwt msg =
-    of_json headers "Complete fields" complete_field_req_ppp body in
+    of_json headers "Complete fields" (complete_field_req_ppp_json ()) body in
   let%lwt lst =
     C.with_rlock conf (fun programs ->
       C.complete_field_name programs msg.operation msg.prefix |>
       return) in
   let body =
-    PPP.to_string complete_resp_ppp lst
+    PPP.to_string (complete_resp_ppp_json ()) lst
   in
   respond_ok ~body ()
 
@@ -358,7 +358,7 @@ let complete_fields conf headers body =
 
 let timeseries conf headers body =
   let%lwt msg =
-    of_json headers "time series query" timeseries_req_ppp body in
+    of_json headers "time series query" (timeseries_req_ppp_json ()) body in
   let ts_of_func_field programs req program func data_field =
     let%lwt _program, func, history =
       find_history_or_fail conf programs program func in
@@ -390,7 +390,7 @@ let timeseries conf headers body =
     (* FIXME: this should be a program directly, so that we could get rid of parse_operation *)
     let%lwt op_text =
       if select_x = "" then (
-        let open Operation in
+        let open RamenOperation in
         match parent.N.operation with
         | Aggregate { event_time = Some ((start, scale), DurationConst dur) ; _ } ->
           Printf.sprintf
@@ -426,7 +426,7 @@ let timeseries conf headers body =
     let op_text =
       if where = "" then op_text else op_text ^" WHERE "^ where in
     let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
-    let reformatted_op = IO.to_string Operation.print operation in
+    let reformatted_op = IO.to_string RamenOperation.print operation in
     let program_name = "temp/timeseries/"^ md5 reformatted_op
     and func_name = "operation" in
     (* So far so good. In all likelihood this program exists already: *)
@@ -462,7 +462,7 @@ let timeseries conf headers body =
             ts_of_func_field programs req program_name func_name data_field) in
         return { id = req.id ; times ; values }
       ) msg.timeseries in
-    let body = PPP.to_string timeseries_resp_ppp resp in
+    let body = PPP.to_string (timeseries_resp_ppp_json ()) resp in
     respond_ok ~body ()
   with Failure err -> bad_request err
      | e -> fail e
@@ -489,7 +489,7 @@ let get_timerange conf headers program_name func_name =
         bad_request (Printexc.to_string e)) in
   switch_accepted headers [
     Consts.json_content_type, (fun () ->
-      let body = PPP.to_string time_range_resp_ppp resp in
+      let body = PPP.to_string (time_range_resp_ppp_json ()) resp in
       respond_ok ~body ()) ]
 
 (*

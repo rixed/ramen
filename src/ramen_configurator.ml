@@ -1470,7 +1470,7 @@ open Cohttp
 open Cohttp_lwt_unix
 
 let put_program ramen_url program =
-  let req = PPP.to_string RamenSharedTypes.put_program_req_ppp program in
+  let req = PPP.to_string (RamenSharedTypes.put_program_req_ppp_json ()) program in
   let url = ramen_url ^"/graph/" in
   !logger.debug "Will send %s to %S" req url ;
   let body = `String req in

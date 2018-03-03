@@ -169,18 +169,18 @@ let reprogram_for_test old_program_name new_program_name func =
       else s
     else s
   in
-  Operation.iter_expr (function
-    | Expr.(StatelessFun (_, (Age _ | Now))) ->
+  RamenOperation.iter_expr (function
+    | RamenExpr.(StatelessFun (_, (Age _ | Now))) ->
         !logger.warning "Test uses time related functions"
-    | _ -> ()) func.Program.operation ;
+    | _ -> ()) func.RamenProgram.operation ;
   match func.operation with
-  | Operation.Yield { every ; _ } ->
+  | RamenOperation.Yield { every ; _ } ->
       if every > 0. then !logger.warning "Test uses YIELD EVERY" ;
       func
-  | Operation.ReadCSVFile _ | Operation.ListenFor _ -> func
-  | Operation.Aggregate ({ from ; _ } as r) ->
+  | RamenOperation.ReadCSVFile _ | RamenOperation.ListenFor _ -> func
+  | RamenOperation.Aggregate ({ from ; _ } as r) ->
       { func with operation =
-          Operation.Aggregate { r with from = List.map rename from ;
+          RamenOperation.Aggregate { r with from = List.map rename from ;
                                        force_export = true } }
 
 (* TODO: Alternative: let the tester reprogram the code, and add a flag
@@ -235,7 +235,7 @@ let func_info_of_func programs func =
   let%lwt stats = RamenProcesses.last_report (N.fq_name func) in
   let%lwt exporting = RamenExport.is_func_exporting func in
   let operation =
-    IO.to_string Lang.Operation.print func.N.operation |>
+    IO.to_string RamenOperation.print func.N.operation |>
     PPP_prettify.prettify in
   return SN.{
     definition = { name = func.N.name ; operation } ;

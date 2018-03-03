@@ -73,7 +73,7 @@ let rec run_func conf programs program func =
   (* Now that the out_ref exists, but before we actually fork the worker,
    * we can start importing: *)
   let%lwt () =
-    if Lang.Operation.is_exporting func.N.operation then
+    if RamenOperation.is_exporting func.N.operation then
       let%lwt _ = RamenExport.get_or_start conf func in
       return_unit
     else return_unit in
@@ -244,7 +244,7 @@ let stop conf programs program =
     let timeout = 1. +. float_of_int (List.length program_funcs) *. 0.02 in
     let%lwt () = Lwt_list.iter_p (fun func ->
         if program.test_id <> "" &&
-           Lang.Operation.run_in_tests func.N.operation
+           RamenOperation.run_in_tests func.N.operation
         then (
           if func.N.pid <> None then
             !logger.error "Node %s should not be running during a test!"
@@ -305,7 +305,7 @@ let run conf programs program =
       let%lwt () =
         Lwt_list.iter_p (fun func ->
           if program.test_id <> "" &&
-             not (Lang.Operation.run_in_tests func.N.operation)
+             not (RamenOperation.run_in_tests func.N.operation)
           then (
             !logger.info "Skipping %s in tests" (N.fq_name func) ;
             return_unit

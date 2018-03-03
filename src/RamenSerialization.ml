@@ -39,7 +39,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
   (* Read all fields one by one *)
   if verbose_serialization then
     !logger.debug "Importing the serialized tuple %a"
-      Lang.Tuple.print_typ ser_tuple_typ ;
+      RamenTuple.print_typ ser_tuple_typ ;
   let tuple_len = List.length ser_tuple_typ in
   let tuple = Array.make tuple_len VNull in
   let _ =
@@ -52,8 +52,8 @@ let read_tuple ser_tuple_typ nullmask_size tx =
             let value = read_single_value offs typ.typ in
             if verbose_serialization then
               !logger.debug "Importing a single value for %a at offset %d: %a"
-                Lang.Tuple.print_field_typ typ
-                offs Lang.Scalar.print value ;
+                RamenTuple.print_field_typ typ
+                offs RamenScalar.print value ;
             let offs' = offs + sersize_of (typ.typ, value) in
             Some value, offs', if typ.nullable then b+1 else b
           ) in

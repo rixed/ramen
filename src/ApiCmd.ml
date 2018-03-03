@@ -39,7 +39,7 @@ let add copts name program ok_if_running start remote () =
   Lwt_main.run (
     if remote then
       let msg = { name ; ok_if_running ; start ; program } in
-      http_put_json (copts.server_url ^"/graph") put_program_req_ppp msg >>=
+      http_put_json (copts.server_url ^"/graph") (put_program_req_ppp_json ()) msg >>=
       check_ok
     else
       let conf =
@@ -170,7 +170,7 @@ let resp_column_length = function
 
 let column_value_at n =
   let g a = Array.get a n in
-  let open Lang.Scalar in
+  let open RamenScalar in
   function
   | AFloat a -> to_string (VFloat (g a))
   | AString a -> to_string (VString (g a))
@@ -217,7 +217,7 @@ let tuples_of_columns columns =
           ) 0 nullmask in
       fun tuple_idx ->
         match value_idx_of_tuple_idx.(tuple_idx) with
-        | -1 -> Lang.Scalar.to_string VNull
+        | -1 -> RamenScalar.to_string VNull
         | i -> column_value_at i column
   in
   let value_at = List.init nb_fields value_idx_of_tuple_idx in
@@ -244,7 +244,7 @@ let display_tuple_as_csv ?(with_header=false) ?(separator=",") ?(null="") to_dro
 
 (* TODO: make as_csv the only possible option *)
 let display_tuple_as_is t =
-  let s = PPP.to_string export_resp_ppp t in
+  let s = PPP.to_string (export_resp_ppp_json ()) t in
   Printf.printf "%s\n" s
 
 let display_tuple as_csv with_header to_drop t =
@@ -263,8 +263,8 @@ let export_and_display server_url func_name as_csv with_header continuous =
     | program, func -> enc program ^"/"^ enc func) in
   let rec get_next ?since ?max_results () =
     let msg = { since ; max_results ; wait_up_to = 2.0 (* TODO: a param? *) } in
-    let%lwt resp = http_post_json url export_req_ppp msg >>=
-                   ppp_of_string_exc export_resp_ppp in
+    let%lwt resp = http_post_json url (export_req_ppp_json ()) msg >>=
+                   ppp_of_string_exc (export_resp_ppp_json ()) in
     (* TODO: check first_seqnum is not bigger than expected *)
     let len = if resp.columns = [] then 0
               else resp_column_length (List.hd resp.columns) in
@@ -306,7 +306,7 @@ let timeseries copts since until max_data_points
           consolidation = consolidation |? "avg" ;
           spec = Predefined { operation ; data_field } } ] } in
   let th =
-    let%lwt body = http_post_json url timeseries_req_ppp msg in
+    let%lwt body = http_post_json url (timeseries_req_ppp_json ()) msg in
     Printf.printf "%s\n%!" body (* TODO *) ;
     return_unit in
   Lwt_main.run th
@@ -319,7 +319,7 @@ let timerange copts func_name () =
     | program, func -> enc program ^"/"^ enc func) in
   Lwt_main.run (
     match%lwt http_get url >>=
-               ppp_of_string_exc time_range_resp_ppp with
+               ppp_of_string_exc (time_range_resp_ppp_json ()) with
     | NoData ->
       Printf.printf "Function has no data (yet)\n%!" ;
       return_unit
@@ -332,7 +332,7 @@ let get_program_info_remote ?err_ok server_url name_opt =
   let url = server_url ^"/graph"^
             (Option.map (fun n -> "/"^n) name_opt |? "") in
   http_get ?err_ok url >>=
-  ppp_of_string_exc get_graph_resp_ppp
+  ppp_of_string_exc (get_graph_resp_ppp_json ())
 
 let get_program_info_local conf name_opt =
   RamenOps.graph_info conf name_opt
@@ -371,7 +371,7 @@ let abbrev_str_list lst =
 
 let display_program_info json short info =
   if json then
-    let str = PPP.to_string get_graph_resp_ppp info |>
+    let str = PPP.to_string (get_graph_resp_ppp_json ()) info |>
               PPP_prettify.prettify in
     Printf.printf "%s\n" str
   else if short then
@@ -423,7 +423,7 @@ let form_of_type =
     TermTable.ValStr (
       (match ti.typ_info with
       | None -> "unknown type"
-      | Some t -> Lang.Scalar.string_of_typ t) ^", "^
+      | Some t -> RamenScalar.string_of_typ t) ^", "^
       (match ti.nullable_info with
       | None -> "unknown nullability"
       | Some true -> "NULL"
@@ -431,7 +431,7 @@ let form_of_type =
 
 let display_operation_info json short func =
   if json then
-    let str = PPP.to_string Info.Func.info_ppp func |>
+    let str = PPP.to_string (Info.Func.info_ppp_json ()) func |>
               PPP_prettify.prettify in
     Printf.printf "%s\n" str
   else

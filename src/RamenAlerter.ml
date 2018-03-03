@@ -56,7 +56,7 @@ struct
 
   let make state alert =
     !logger.debug "Creating an incident for alert %s"
-      (PPP.to_string Alert.t_ppp alert) ;
+      (PPP.to_string (Alert.t_ppp_json ()) alert) ;
     let i = { id = state.CA.next_incident_id ;
               alerts = [ alert ] } in
     state.CA.next_incident_id <- state.CA.next_incident_id + 1 ;
@@ -141,7 +141,7 @@ struct
     !logger.info "event@%s: Alert %s: %s"
       (string_of_time event_time)
       alert.name
-      (PPP.to_string Alert.event_ppp event) ;
+      (PPP.to_string (Alert.event_ppp_json ()) event) ;
     alert.log <- { current_time ; event_time ; event } :: alert.log
 
   let stop conf i a source time =
@@ -396,7 +396,7 @@ struct
           let victim = who_is_oncall state alert.Alert.team rank now in
           let contact = get_cap victim.contacts (attempt - 1) in
           !logger.debug "%d oncall is %s, contact for attempt %d is: %s"
-            rank victim.name attempt (PPP.to_string Contact.t_ppp contact) ;
+            rank victim.name attempt (PPP.to_string (Contact.t_ppp_json ()) contact) ;
           if Set.mem contact contacted then (
               !logger.debug "Skipping %s since already contacted at this step"
                 (Contact.to_string contact) ;
@@ -581,7 +581,7 @@ struct
         let resp =
           Team.{ teams = conf.C.alerts.static.teams ;
                  default_team = conf.C.alerts.static.default_team } in
-        return (PPP.to_string Team.get_resp_ppp resp)) in
+        return (PPP.to_string (Team.get_resp_ppp_json ()) resp)) in
     respond_ok ~body ()
 
   let new_team conf _headers name =
@@ -619,7 +619,7 @@ struct
     let%lwt body =
       with_rlock conf (fun () ->
         let oncaller = OnCallerOps.get conf.C.alerts name in
-        return (PPP.to_string OnCaller.t_ppp oncaller)) in
+        return (PPP.to_string (OnCaller.t_ppp_json ()) oncaller)) in
     respond_ok ~body ()
 
   let get_ongoing conf team_opt =
@@ -637,7 +637,7 @@ struct
                   incident :: prev
                 ) else prev
             ) conf.C.alerts.ongoing_incidents [] in
-        return (PPP.to_string GetOngoing.resp_ppp incidents)) in
+        return (PPP.to_string (GetOngoing.resp_ppp_json ()) incidents)) in
     respond_ok ~body ()
 
   let get_history conf _headers team time_range =
@@ -661,11 +661,11 @@ struct
         let logs =
           IncidentOps.fold conf [] (fun prev i ->
             if is_in i then i :: prev else prev) in
-        return (PPP.to_string GetHistory.resp_ppp logs)) in
+        return (PPP.to_string (GetHistory.resp_ppp_json ()) logs)) in
     respond_ok ~body ()
 
   let get_history_post conf headers body =
-    let%lwt req = of_json headers "Get History" GetHistory.req_ppp body in
+    let%lwt req = of_json headers "Get History" (GetHistory.req_ppp_json ()) body in
     get_history conf headers req.team req.time_range
 
   let get_history_get conf headers team params =
@@ -719,13 +719,13 @@ struct
     stop_alert conf id "todo"
 
   let post_stop conf headers body =
-    let%lwt req = of_json headers "Stop Alert" Alert.stop_req_ppp body in
+    let%lwt req = of_json headers "Stop Alert" (Alert.stop_req_ppp_json ()) body in
     stop_alert conf req.alert_id req.reason
 
   let export_static_conf conf =
     let%lwt body =
       with_rlock conf (fun () ->
-        return (PPP.to_string StaticConf.t_ppp conf.C.alerts.static)) in
+        return (PPP.to_string (StaticConf.t_ppp_json ()) conf.C.alerts.static)) in
     respond_ok ~body ()
 
   let set_static_conf conf static =
@@ -749,13 +749,13 @@ struct
                         application/json but got "^ content_type)
         else return value in
     let%lwt static =
-      of_json_body "Static Configuration" StaticConf.t_ppp data in
+      of_json_body "Static Configuration" (StaticConf.t_ppp_json ()) data in
     set_static_conf conf static
     (* Let HttpSrv answer the query *)
 
   let put_static_conf conf headers body =
     let%lwt static =
-      of_json headers "Static Configuration" StaticConf.t_ppp body in
+      of_json headers "Static Configuration" (StaticConf.t_ppp_json ()) body in
     set_static_conf conf static >>=
     respond_ok
 
@@ -779,7 +779,7 @@ struct
 
   let edit_inhibit conf headers team body =
     let open Inhibition in
-    let%lwt inhibit = of_json headers "Inhibit" Inhibition.t_ppp body in
+    let%lwt inhibit = of_json headers "Inhibit" (Inhibition.t_ppp_json ()) body in
     with_wlock conf (fun () ->
       let%lwt team = find_team conf.C.alerts team in
       (* Note: one do not delete inhibitions but one can set a past
@@ -797,7 +797,7 @@ struct
     respond_ok
 
   let add_inhibit conf headers team body =
-    let%lwt inhibit = of_json headers "Inhibit" Inhibition.t_ppp body in
+    let%lwt inhibit = of_json headers "Inhibit" (Inhibition.t_ppp_json ()) body in
     with_wlock conf (fun () ->
       add_inhibit_ conf.C.alerts team inhibit) >>=
     respond_ok (* TODO: why not returning the GetTeam.resp directly? *)
@@ -814,7 +814,7 @@ struct
 
   let edit_oncaller conf headers name body =
     let%lwt oncaller =
-      of_json headers "Save Oncaller" OnCaller.t_ppp body in
+      of_json headers "Save Oncaller" (OnCaller.t_ppp_json ()) body in
     let rec list_replace prev = function
       | [] -> List.rev (oncaller :: prev) (* New one *)
       | c :: rest ->
@@ -830,7 +830,7 @@ struct
 
   let edit_members conf headers name body =
     let%lwt members =
-      of_json headers "Save members" Team.set_members_ppp body in
+      of_json headers "Save members" (Team.set_members_ppp_json ()) body in
     with_wlock conf (fun () ->
       let%lwt team = find_team conf.C.alerts name in
       team.Team.members <- members ;
@@ -869,7 +869,7 @@ let start ?initial_json conf =
   Option.may (fun fname ->
       let static =
         read_whole_file fname |>
-        PPP.of_string_exc StaticConf.t_ppp in
+        PPP.of_string_exc (StaticConf.t_ppp_json ()) in
       check_static_conf static ;
       conf.C.alerts.static <- static
     ) initial_json ;

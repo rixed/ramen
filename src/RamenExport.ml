@@ -70,7 +70,7 @@ type history =
     (* List of the serialized fields in order of appearance in the user
      * provided tuple so that we can reorder exported tuples: *)
     pos_in_user_tuple : string array ;
-    (* Store arrays of Scalar.values not hash of names to values !
+    (* Store arrays of RamenScalar.values not hash of names to values !
      * TODO: ideally storing columns would be even better *)
     tuples : scalar_value array array ;
     (* Start seqnum of the next block: *)
@@ -206,7 +206,7 @@ let import_tuples conf history rb_name ser_tuple_typ =
    * the columns when answering user queries. *)
   !logger.debug "Starting to import output from ringbuf %S, \
                  which outputs %a."
-    rb_name Lang.Tuple.print_typ ser_tuple_typ ;
+    rb_name RamenTuple.print_typ ser_tuple_typ ;
   let%lwt rb = wrap (fun () -> RingBuf.load rb_name) in
   try%lwt
     let dequeue =
@@ -274,7 +274,7 @@ let get_or_start conf func =
         RingBuf.create rb_name RingBufLib.rb_default_words ;
         let history = make_history conf func in
         let importer = import_tuples conf history rb_name typ in
-        let force_export = Lang.Operation.is_exporting func.N.operation in
+        let force_export = RamenOperation.is_exporting func.N.operation in
         let export = make_export importer history fqn rb_name out_rb_ref
                                  force_export in
         Hashtbl.add exports k export ;
@@ -500,7 +500,7 @@ let reorder_columns_to_user history =
       !logger.error "Cannot find fields %s and %s in %a, \
                      user ordering will be wrong!"
         n1 n2
-        Lang.Tuple.print_typ history.ser_tuple_type ;
+        RamenTuple.print_typ history.ser_tuple_type ;
       String.compare n1 n2 (* Still we want List.sort to terminate *)
 
 (* Garbage in / garbage out *)
@@ -565,7 +565,7 @@ let find_ser_field tuple_type n =
 let fold_tuples_and_update_ts_cache
       ?min_filenum ?max_filenum ?max_res
       func history init f =
-  let open Lang.Operation in
+  let open RamenOperation in
   match event_time_of_operation func.N.operation with
   | None -> raise (FuncHasNoEventTimeInfo func.N.name)
   | Some ((start_field, start_scale), duration_info) ->

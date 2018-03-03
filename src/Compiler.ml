@@ -30,7 +30,7 @@ exception AlreadyCompiled
 (* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =
   List.iter (fun (field_name, typ) ->
-    let open Expr in
+    let open RamenExpr in
     (* If we couldn't determine nullability for an out field, it means
      * we can pick freely: *)
     if tuple_prefix = TupleOut &&
@@ -90,7 +90,7 @@ let check_rank ~from ~to_ =
   | _ -> false
 
 let set_nullable ?(indent="") typ nullable =
-  let open Expr in
+  let open RamenExpr in
   match typ.nullable with
   | None ->
     !logger.debug "%sSet %a to %snullable" indent
@@ -109,29 +109,29 @@ let set_nullable ?(indent="") typ nullable =
  * Numerical types of to_ can be enlarged to match those of from. *)
 let check_expr_type ~indent ~ok_if_larger ~set_null ~from ~to_ =
   let changed =
-    match to_.Expr.scalar_typ, from.Expr.scalar_typ with
+    match to_.RamenExpr.scalar_typ, from.RamenExpr.scalar_typ with
     | None, Some _ ->
       !logger.debug "%sImproving %a from %a" indent
-        Expr.print_typ to_ Expr.print_typ from ;
-      to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
+        RamenExpr.print_typ to_ RamenExpr.print_typ from ;
+      to_.RamenExpr.scalar_typ <- from.RamenExpr.scalar_typ ;
       true
     | Some to_typ, Some from_typ when to_typ <> from_typ ->
       if can_enlarge ~from_scalar_type:to_typ ~to_scalar_type:from_typ then (
         !logger.debug "%sImproving %a from %a" indent
-          Expr.print_typ to_ Expr.print_typ from ;
-        to_.Expr.scalar_typ <- from.Expr.scalar_typ ;
+          RamenExpr.print_typ to_ RamenExpr.print_typ from ;
+        to_.RamenExpr.scalar_typ <- from.RamenExpr.scalar_typ ;
         true
       ) else if ok_if_larger then false
       else
         let e = CannotTypeExpression {
-          what = to_.Expr.expr_name ;
-          expected_type = IO.to_string Scalar.print_typ to_typ ;
-          got = from.Expr.expr_name ;
-          got_type = IO.to_string Scalar.print_typ from_typ } in
+          what = to_.RamenExpr.expr_name ;
+          expected_type = IO.to_string RamenScalar.print_typ to_typ ;
+          got = from.RamenExpr.expr_name ;
+          got_type = IO.to_string RamenScalar.print_typ from_typ } in
         raise (SyntaxError e)
     | _ -> false in
   if set_null then
-    match from.Expr.nullable with
+    match from.RamenExpr.nullable with
     | None -> changed
     | Some from_null -> set_nullable ~indent to_ from_null || changed
   else changed
@@ -157,7 +157,7 @@ let type_of_parent_field parent tuple_of_field field =
       List.find_map (fun f ->
         if f.typ_name = field then Some (
           (* Mimick a temp_tup_typ which uniq_num will never be used *)
-          Expr.{ expr_name = f.typ_name ;
+          RamenExpr.{ expr_name = f.typ_name ;
                  uniq_num = 0 ;
                  nullable = Some f.nullable ;
                  scalar_typ = Some f.typ }
@@ -182,8 +182,8 @@ let type_of_parents_field parents tuple_of_field field =
         let typ = type_of_parent_field par tuple_of_field field in
         (* All parents must have exactly the same type *)
         (match prev_typ with None -> Some typ | Some ptyp ->
-           if typ.Expr.nullable = ptyp.Expr.nullable &&
-              typ.Expr.scalar_typ = ptyp.Expr.scalar_typ
+           if typ.RamenExpr.nullable = ptyp.RamenExpr.nullable &&
+              typ.RamenExpr.scalar_typ = ptyp.RamenExpr.scalar_typ
            then Some typ else
            let e = FieldNotSameTypeInAllParents { field } in
            raise (SyntaxError e))
@@ -207,7 +207,7 @@ let (|||) a b = a || b
  * with the same parents. parents is not modified in here. *)
 let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
   let indent = String.make depth ' ' and depth = depth + 2 in
-  let open Expr in
+  let open RamenExpr in
   (* Check that the operand [sub_expr] is compatible with expectation (re. type
    * and null) set by the caller (the operator). [op_typ] is used for printing only.
    * Extends the type of sub_expr as required. *)
@@ -216,7 +216,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
     !logger.debug "%sChecking operand of (%a), of type (%a) (expected: %a)" indent
       print_typ op_typ
       print_typ sub_typ
-      (Option.print Scalar.print_typ) exp_sub_typ ;
+      (Option.print RamenScalar.print_typ) exp_sub_typ ;
     (* Start by recursing into the sub-expression to know its real type: *)
     let changed = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:sub_typ sub_expr in
     (* Now we check this comply with the operator expectations about its operand : *)
@@ -225,9 +225,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
       if not (can_enlarge ~from_scalar_type:actual_typ ~to_scalar_type:exp_sub_typ) then
         let e = CannotTypeExpression {
           what = "Operand of "^ op_typ.expr_name ;
-          expected_type = IO.to_string Scalar.print_typ exp_sub_typ ;
+          expected_type = IO.to_string RamenScalar.print_typ exp_sub_typ ;
           got = "an expression" ;
-          got_type = IO.to_string Scalar.print_typ actual_typ } in
+          got_type = IO.to_string RamenScalar.print_typ actual_typ } in
         raise (SyntaxError e)
     | _ -> ()) ;
     (match exp_sub_nullable, sub_typ.nullable with
@@ -246,7 +246,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
   let check_operator op_typ actual_typ nullable =
     !logger.debug "%sChecking operator %a, of actual type %a" indent
       print_typ op_typ
-      Scalar.print_typ actual_typ ;
+      RamenScalar.print_typ actual_typ ;
     let from = make_typ ~typ:actual_typ ?nullable op_typ.expr_name in
     let changed = check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from ~to_:op_typ in
     check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type || changed
@@ -307,7 +307,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
   and return_string _ = TString
   in
   fun expr ->
-  !logger.debug "%s-- Typing expression %a" indent (Expr.print true) expr ;
+  !logger.debug "%s-- Typing expression %a" indent (RamenExpr.print true) expr ;
   match expr with
   | Const (op_typ, _) ->
     (* op_typ is already optimal. But is it compatible with exp_type? *)
@@ -330,11 +330,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
           | exception ParentIsUntyped -> false
           | ptyp ->
             !logger.debug "%sCopying field %s from parents, with type %a" indent
-              field Expr.print_typ ptyp ;
+              field RamenExpr.print_typ ptyp ;
             if is_private_field field then (
               let m = InvalidPrivateField { field } in
               raise (SyntaxError m)) ;
-            let copy = Expr.copy_typ ptyp in
+            let copy = RamenExpr.copy_typ ptyp in
             in_type.C.fields <- (field, copy) :: in_type.C.fields ;
             true)
       | from ->
@@ -352,7 +352,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
         !tuple = TupleGroupPrevious || !tuple = TupleOutPrevious in
       (* In those cases, as only the generators are passed rather than
        * the actual tuples, access to generated fields is forbidden (see
-       * Lang.Operation.check) *)
+       * RamenOperation.check) *)
       (* First thing we know is that if the field is from
        * Tuple{Out,Group}Previous then it is nullable: *)
       (
@@ -550,7 +550,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
     check_op op_typ List.last [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun (op_typ, Add (e1, e2)) | StatelessFun (op_typ, Sub (e1, e2))
   | StatelessFun (op_typ, Mul (e1, e2)) ->
-    check_op op_typ Scalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
+    check_op op_typ RamenScalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun (op_typ, Concat (e1, e2)) ->
     check_op op_typ return_string [Some TString, None, e1 ; Some TString, None, e2]
   | StatelessFun (op_typ, Like (e, _)) ->
@@ -561,9 +561,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
     (* Same as above but always return a float *)
     check_op op_typ return_float [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun (op_typ, IDiv (e1, e2)) ->
-    check_op op_typ Scalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
+    check_op op_typ RamenScalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun (op_typ, Mod (e1, e2)) ->
-    check_op op_typ Scalar.largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
+    check_op op_typ RamenScalar.largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun (op_typ, Sequence (e1, e2)) ->
     check_op op_typ return_i128 [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun (op_typ, Length e) ->
@@ -589,7 +589,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
     (try check_op op_typ (fun _ -> TIpv4) [Some TCidrv4, None, e]
     with _ -> check_op op_typ (fun _ -> TIpv6) [Some TCidrv6, None, e])
   | StatelessFun (op_typ, (Min es | Max es)) ->
-    check_op op_typ Scalar.largest_type
+    check_op op_typ RamenScalar.largest_type
       (List.map (fun e -> Some TFloat, None, e) es)
 
   | StatefulFun (op_typ, _, Lag (e1, e2)) ->
@@ -681,7 +681,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
               tuple = to_prefix ;
               tuple_type = "" (* TODO *) } in
             raise (SyntaxError e)) ;
-          let copy = Expr.copy_typ parent_field in
+          let copy = RamenExpr.copy_typ parent_field in
           to_tuple.C.fields <- (parent_name, copy) :: to_tuple.C.fields ;
           true
         | _ ->
@@ -698,7 +698,7 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
 
 let check_selected_fields ~parents ~in_type ~out_type fields =
   List.fold_left (fun changed sf ->
-      let name = sf.Operation.alias in
+      let name = sf.RamenOperation.alias in
       !logger.debug "Type-check field %s" name ;
       let exp_type =
         match List.assoc name out_type.C.fields with
@@ -707,25 +707,25 @@ let check_selected_fields ~parents ~in_type ~out_type fields =
            * because it is already set in some cases (virtual fields -
            * and for them that's our only change to get this type) *)
           let typ =
-            let open Expr in
-            match sf.Operation.expr with
+            let open RamenExpr in
+            match sf.RamenOperation.expr with
             | Field (t, _, _) ->
               (* Note: we must create a new type for out distinct from the type
                * of the expression in case the expression is another field (from
                * in, say) because we do not want to alias them. *)
               copy_typ ~name t
             | _ ->
-              let typ = typ_of sf.Operation.expr in
+              let typ = typ_of sf.RamenOperation.expr in
               typ.expr_name <- name ;
               typ
           in
-          !logger.debug "Adding out-field %s (operation: %s)" name typ.Expr.expr_name ;
+          !logger.debug "Adding out-field %s (operation: %s)" name typ.RamenExpr.expr_name ;
           out_type.C.fields <- (name, typ) :: out_type.C.fields ;
           typ
         | typ ->
-          !logger.debug "... already in out, current type is %a" Expr.print_typ typ ;
+          !logger.debug "... already in out, current type is %a" RamenExpr.print_typ typ ;
           typ in
-      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type sf.Operation.expr || changed
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type sf.RamenOperation.expr || changed
     ) false fields
 
 let tuple_type_is_finished = function
@@ -777,7 +777,7 @@ let check_aggregate parents func fields and_all_others where key top
                     commit_when flush_how =
   let in_type = C.untyped_tuple_type func.N.in_type
   and out_type = C.untyped_tuple_type func.N.out_type in
-  let open Operation in
+  let open RamenOperation in
   (
     (* Improve in_type using parent out_type and out_type using in_type if we
      * propagates it all: *)
@@ -814,7 +814,7 @@ let check_aggregate parents func fields and_all_others where key top
     (* Improve out_type using all expressions. Check we satisfy in_type. *)
     List.fold_left (fun changed k ->
         (* The key can be anything *)
-        let exp_type = Expr.typ_of k in
+        let exp_type = RamenExpr.typ_of k in
         check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type k || changed
       ) false key
   ) ||| (
@@ -822,15 +822,15 @@ let check_aggregate parents func fields and_all_others where key top
     | None -> false
     | Some (n, by) ->
       (* See the Lag operator for remarks about precomputing constants *)
-      Expr.check_const "top size" n ;
+      RamenExpr.check_const "top size" n ;
       (* check_expr will try to improve exp_type. We don't care we just want
        * to check it does not raise an exception. Here exp_type is build at
        * every call so we wouldn't make progress anyway. *)
-      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top size") n |> ignore ;
-      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type:(Expr.make_num_typ "top-by clause") by |> ignore ;
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type:(RamenExpr.make_num_typ "top size") n |> ignore ;
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type:(RamenExpr.make_num_typ "top-by clause") by |> ignore ;
       false
   ) ||| (
-    let exp_type = Expr.typ_of commit_when in
+    let exp_type = RamenExpr.typ_of commit_when in
     exp_type.nullable <- Some false ;
     exp_type.scalar_typ <- Some TBool ;
     check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type commit_when |> ignore ;
@@ -839,14 +839,14 @@ let check_aggregate parents func fields and_all_others where key top
     match flush_how with
     | Reset | Never | Slide _ -> false
     | RemoveAll e | KeepOnly e ->
-      let exp_type = Expr.typ_of e in
+      let exp_type = RamenExpr.typ_of e in
       exp_type.nullable <- Some false ;
       exp_type.scalar_typ <- Some TBool ;
       check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type e |> ignore ;
       false
   ) ||| (
     (* Check the expression, improving out_type and checking against in_type: *)
-    let exp_type = Expr.typ_of where in
+    let exp_type = RamenExpr.typ_of where in
     exp_type.nullable <- Some false ;
     exp_type.scalar_typ <- Some TBool ;
     check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type where |> ignore ;
@@ -875,8 +875,8 @@ let check_aggregate parents func fields and_all_others where key top
  * in_type is a given, don't modify it!
  *)
 let check_operation parents func =
-  !logger.debug "-- Typing operation %a" Operation.print func.N.operation ;
-  let open Operation in
+  !logger.debug "-- Typing operation %a" RamenOperation.print func.N.operation ;
+  let open RamenOperation in
   match func.N.operation with
   | Yield { fields ; _ } ->
     check_yield func fields
@@ -944,8 +944,8 @@ let set_all_types parents program =
     let in_type = (C.temp_tup_typ_of_tuple_type func.N.in_type).fields in
     assert (func.N.parents <> [] || in_type = []) ;
     (* Check that all expressions have indeed be typed: *)
-    Operation.iter_expr (fun e ->
-      let open Expr in
+    RamenOperation.iter_expr (fun e ->
+      let open RamenExpr in
       let typ = typ_of e in
       if typ.nullable = None || typ.scalar_typ = None then
         let what = IO.to_string (print true) e in
@@ -973,24 +973,24 @@ let set_all_types parents program =
           (Printexc.get_backtrace ())
 
     let test_check_expr ?nullable ?typ expr_text =
-      let exp_type = Lang.Expr.make_typ ?nullable ?typ "test" in
+      let exp_type = RamenExpr.make_typ ?nullable ?typ "test" in
       let in_type = RamenConf.make_temp_tup_typ ()
       and out_type = RamenConf.make_temp_tup_typ ()
       and parents = [] in
       RamenConf.finish_typing in_type ;
       let open RamenParsing in
-      let p = Lang.Expr.Parser.(p +- eof) in
+      let p = RamenExpr.Parser.(p +- eof) in
       let exp =
         match p [] None Parsers.no_error_correction (stream_of_string expr_text) |>
               to_result with
         | Batteries.Bad e ->
           let err =
-            BatIO.to_string (print_bad_result (Lang.Expr.print false)) e in
+            BatIO.to_string (print_bad_result (RamenExpr.print false)) e in
           failwith err
         | Batteries.Ok (exp, _) -> exp in
       if not (check_expr ~parents ~in_type ~out_type ~exp_type exp) then
         failwith "Cannot type expression" ;
-      BatIO.to_string (Lang.Expr.print true) exp
+      BatIO.to_string (RamenExpr.print true) exp
    *)
 
   (*$= & ~printer:BatPervasives.identity
@@ -1035,7 +1035,7 @@ let compile_func conf func =
     (* In a few cases the worker sees a slightly different version of
      * the code and the ramen daemon will adapt: *)
     let operation =
-      let open Operation in
+      let open RamenOperation in
       match func.N.operation with
       | ReadCSVFile { where = ReceiveFile ; what ; preprocessor ;
                       force_export ; event_time } ->
@@ -1107,7 +1107,7 @@ let compile conf parents program =
           Option.map (fun selected_fields ->
             let sf_index name =
               try List.findi (fun _ sf ->
-                    sf.Operation.alias = name) selected_fields |>
+                    sf.RamenOperation.alias = name) selected_fields |>
                   fst
               with Not_found ->
                 (* star-imported fields - throw them all at the end in no

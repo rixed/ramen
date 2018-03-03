@@ -4,6 +4,7 @@ open Helpers
 open RamenSharedTypes
 open RamenSharedTypesJS
 open AlerterSharedTypesJS
+module Expr = RamenExpr
 
 (* Used to type the input/output of funcs. Of course a compiled/
  * running func must have finished_typing to true and all optional
@@ -11,20 +12,20 @@ open AlerterSharedTypesJS
  * the typing code, which has to use both typed and untyped funcs,
  * has to deal with only one case. We will sometime Option.get those
  * values when we know the func is typed.
- * The other tuple type, Lang.Tuple.typ, is used to describe tuples
+ * The other tuple type, RamenTuple.typ, is used to describe tuples
  * outside of this context (for instance, when describing a CSV or other
  * serialization format). *)
 (* FIXME: rename this type *)
 type temp_tup_typ =
   { mutable finished_typing : bool ;
-    mutable fields : (string * Lang.Expr.typ) List.t }
+    mutable fields : (string * Expr.typ) List.t } (*[@@ppp PPP_OCaml]*)
 
 let print_temp_tup_typ_fields fmt fs =
   List.print ~first:"{" ~last:"}" ~sep:", "
     (fun fmt (name, expr_typ) ->
       Printf.fprintf fmt "%s: %a"
         name
-        Lang.Expr.print_typ expr_typ) fmt fs
+        Expr.print_typ expr_typ) fmt fs
 
 let print_temp_tup_typ fmt t =
   Printf.fprintf fmt "%a (%s)"
@@ -33,11 +34,11 @@ let print_temp_tup_typ fmt t =
 
 let temp_tup_typ_copy t =
   { t with fields =
-      List.map (fun (name, typ) -> name, Lang.Expr.copy_typ typ) t.fields }
+      List.map (fun (name, typ) -> name, Expr.copy_typ typ) t.fields }
 
 type tuple_type = UntypedTuple of temp_tup_typ
                 | TypedTuple of { user : field_typ list ;
-                                  ser : field_typ list }
+                                  ser : field_typ list } (*[@@ppp PPP_OCaml]*)
 
 let tuple_is_typed = function
   | TypedTuple _ -> true
@@ -47,7 +48,7 @@ let print_tuple_type fmt = function
   | UntypedTuple temp_tup_typ ->
       print_temp_tup_typ fmt temp_tup_typ
   | TypedTuple { user ; _ } ->
-      Lang.Tuple.print_typ fmt user
+      RamenTuple.print_typ fmt user
 
 exception BadTupleTypedness of string
 let typed_tuple_type = function
@@ -68,7 +69,7 @@ let type_signature tuple_type =
   List.fold_left (fun s field ->
       (if s = "" then "" else s ^ "_") ^
       field.typ_name ^ ":" ^
-      Lang.Scalar.string_of_typ field.typ ^
+      RamenScalar.string_of_typ field.typ ^
       if field.nullable then " null" else " notnull"
     ) "" ser
 
@@ -84,7 +85,7 @@ let temp_tup_typ_of_tup_typ tup_typ =
   let t = make_temp_tup_typ () in
   List.iter (fun f ->
       let expr_typ =
-        Lang.Expr.make_typ ~nullable:f.nullable
+        Expr.make_typ ~nullable:f.nullable
                            ~typ:f.typ f.typ_name in
       t.fields <- t.fields @ [f.typ_name, expr_typ]
     ) tup_typ ;
@@ -96,7 +97,7 @@ let info_of_tuple_type = function
       (* Is it really useful to send unfinished types? *)
       List.map (fun (name, typ) ->
           { name_info = name ;
-            nullable_info = typ.Lang.Expr.nullable ;
+            nullable_info = typ.Expr.nullable ;
             typ_info = typ.scalar_typ }) ttt.fields
   | TypedTuple { user ; _ } ->
       List.filter_map (fun f ->
@@ -139,7 +140,7 @@ struct
        * provided automatically if its not meant to be referenced. *)
       name : string ;
       (* Parsed operation and its in/out types: *)
-      operation : Lang.Operation.t ;
+      operation : RamenOperation.t ;
       mutable in_type : tuple_type ;
       mutable out_type : tuple_type ;
       (* The signature identifies the operation and therefore the binary.
@@ -155,7 +156,7 @@ struct
       parents : (string * string) list ;
       (* Worker info, only relevant if it is running: *)
       mutable pid : int option ;
-      mutable last_exit : string }
+      mutable last_exit : string } (*[@@ppp PPP_OCaml]*)
 
   let fq_name func = func.program ^"/"^ func.name
 
@@ -167,7 +168,7 @@ struct
      * This is not enough to print the expression with types, as those do not
      * contain relevant info such as field rank. We therefore print without
      * types and encode input/output types explicitly below: *)
-    "OP="^ IO.to_string Lang.Operation.print func.operation ^
+    "OP="^ IO.to_string RamenOperation.print func.operation ^
     "IN="^ type_signature func.in_type ^
     "OUT="^ type_signature func.out_type |>
     md5
@@ -204,7 +205,7 @@ struct
       mutable status : program_status ;
       mutable last_status_change : float ;
       mutable last_started : float option ;
-      mutable last_stopped : float option }
+      mutable last_stopped : float option } (*[@@ppp PPP_OCaml]*)
 
   let print oc t =
     Printf.fprintf oc "status=%s"
@@ -394,34 +395,34 @@ type conf =
 
 let parse_operation operation =
   let open RamenParsing in
-  let p = Lang.(opt_blanks -+ Operation.Parser.p +- opt_blanks +- eof) in
+  let p = Lang.(opt_blanks -+ RamenOperation.Parser.p +- opt_blanks +- eof) in
   (* TODO: enable error correction *)
   let stream = stream_of_string operation in
   match p ["operation"] None Parsers.no_error_correction stream |>
         to_result with
   | Bad e ->
     let error =
-      IO.to_string (print_bad_result Lang.Operation.print) e in
+      IO.to_string (print_bad_result RamenOperation.print) e in
     let open Lang in
     raise (SyntaxError (ParseError { error ; text = operation }))
   | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
-    Lang.Operation.check op ;
+    RamenOperation.check op ;
     op
 
 let parse_program program =
   let open RamenParsing in
-  let p = Lang.(opt_blanks -+ Program.Parser.p +- opt_blanks +- eof) in
+  let p = opt_blanks -+ RamenProgram.Parser.p +- opt_blanks +- eof in
   let stream = stream_of_string program in
   (* TODO: enable error correction *)
   match p ["program"] None Parsers.no_error_correction stream |>
         to_result with
   | Bad e ->
     let error =
-      IO.to_string (print_bad_result Lang.Program.print) e in
+      IO.to_string (print_bad_result RamenProgram.print) e in
     let open Lang in
     raise (SyntaxError (ParseError { error ; text = program }))
   | Ok (funcs, _) ->
-    Lang.Program.check funcs ;
+    RamenProgram.check funcs ;
     funcs
 
 let del_program programs program =
@@ -474,7 +475,7 @@ let make_func program_name func_name operation =
     invalid_arg "func name" ;
   assert (func_name <> "") ;
   let parents =
-    Lang.Operation.parents_of_operation operation |>
+    RamenOperation.parents_of_operation operation |>
     List.map (fun p ->
       try program_func_of_user_string ~default_program:program_name p
       with Not_found ->
@@ -499,11 +500,11 @@ let make_program ?(test_id="") ?(timeout=0.) programs name program funcs_lst =
   let now = Unix.gettimeofday () in
   let funcs = Hashtbl.create (List.length funcs_lst) in
   List.iter (fun def ->
-    let func_name = def.Lang.Program.name in
+    let func_name = def.RamenProgram.name in
     if Hashtbl.mem funcs func_name then
       raise (InvalidCommand (
          "Function "^ func_name ^" already exists in program "^ name)) ;
-    make_func name func_name def.Lang.Program.operation |>
+    make_func name func_name def.RamenProgram.operation |>
     Hashtbl.add funcs def.name
   ) funcs_lst ;
   let p = Program.{
@@ -514,7 +515,7 @@ let make_program ?(test_id="") ?(timeout=0.) programs name program funcs_lst =
   p
 
 (* What we save on disc for programs *)
-type programs = (string, Program.t) Hashtbl.t
+type programs = (string, Program.t) Hashtbl.t (*[@@ppp PPP_OCaml]*)
 
 let save_file_of_programs persist_dir =
   (* Later we might have several files (so that we have partial locks) *)

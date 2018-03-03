@@ -81,13 +81,13 @@ let send_tuple conf func rb tuple =
             null_i + 1, lst
         | s ->
             null_i + 1,
-            (Some null_i, Lang.Scalar.value_of_string ftyp.typ s) :: lst
+            (Some null_i, RamenScalar.value_of_string ftyp.typ s) :: lst
       else
         match Hashtbl.find tuple ftyp.typ_name with
         | exception Not_found ->
-            null_i, (None, Lang.Scalar.any_value_of_type ftyp.typ) :: lst
+            null_i, (None, RamenScalar.any_value_of_type ftyp.typ) :: lst
         | s ->
-            null_i, (None, Lang.Scalar.value_of_string ftyp.typ s) :: lst
+            null_i, (None, RamenScalar.value_of_string ftyp.typ s) :: lst
     ) (0, []) ser |>
     fun (null_i, lst) ->
       RingBufLib.(round_up_to_rb_word (bytes_for_bits null_i)),
@@ -133,7 +133,7 @@ let test_output ser_type in_rb output_spec =
     match List.findi (fun _ ftyp -> ftyp.typ_name = field) ser_type with
     | exception Not_found ->
         let msg = Printf.sprintf "Unknown field %s in %s" field
-                    (IO.to_string Lang.Tuple.print_typ ser_type) in
+                    (IO.to_string RamenTuple.print_typ ser_type) in
         failwith msg
     | idx, _ -> idx in
   let field_indices_of_tuples =
@@ -163,12 +163,12 @@ let test_output ser_type in_rb output_spec =
       tuples_to_find :=
         List.filter (fun spec ->
           List.for_all (fun (idx, value) ->
-            Lang.Scalar.to_string tuple.(idx) = value) spec |> not
+            RamenScalar.to_string tuple.(idx) = value) spec |> not
         ) !tuples_to_find ;
       tuples_to_not_find :=
         List.filter (fun spec ->
           List.for_all (fun (idx, value) ->
-            Lang.Scalar.to_string tuple.(idx) = value) spec
+            RamenScalar.to_string tuple.(idx) = value) spec
         ) tuples_must_be_absent |>
         List.rev_append !tuples_to_not_find ;
       return_unit) in
@@ -255,7 +255,7 @@ let test_one conf server_url conf_spec test =
         let%lwt resp_str =
           RamenHttpHelpers.http_get (server_url ^"/start/"^ enc new_name) in
         let%lwt resp =
-          wrap (fun () -> PPP.of_string_exc put_program_resp_ppp resp_str) in
+          wrap (fun () -> PPP.of_string_exc (put_program_resp_ppp_json ()) resp_str) in
         if not resp.success then
           fail_with "Cannot start test program"
         else return_unit)
@@ -363,12 +363,12 @@ let run conf server_url conf_file tests =
   let open RamenHttpHelpers in
   (* Parse the conf json file *)
   !logger.info "Parsing configuration in %S..." conf_file ;
-  let%lwt conf_spec = ppp_of_file programs_spec_ppp conf_file in
+  let%lwt conf_spec = ppp_of_file (programs_spec_ppp_json ()) conf_file in
   (* And tests so that we won't have to clean anything if they are bogus *)
   let%lwt test_specs =
     Lwt_list.map_s (fun fname ->
       !logger.info "Parsing test specification in %S..." fname ;
-      ppp_of_file test_spec_ppp fname
+      ppp_of_file (test_spec_ppp_json ()) fname
     ) tests in
   (* Run all tests: *)
   (* Note: The workers states must be cleaned in between 2 tests ; the

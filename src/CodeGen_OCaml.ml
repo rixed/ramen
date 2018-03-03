@@ -319,7 +319,7 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
 (* Returns the set of all field names from the "in" tuple mentioned
  * anywhere in the given expression: *)
 let add_mentioned prev =
-  let open Expr in
+  let open RamenExpr in
   fold_by_depth (fun prev e ->
     match e with
     | Field (_, tuple, field) when tuple_has_type_input !tuple ->
@@ -385,7 +385,7 @@ let string_of_context = function
   | Generator -> "Generator"
 
 let name_of_state =
-  let open Expr in
+  let open RamenExpr in
   function
   | StatefulFun (t, g, _) ->
     let prefix = match g with
@@ -458,10 +458,10 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
       (omod_of_type from_typ) p e
   | _ ->
     failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
-                (IO.to_string Scalar.print_typ from_typ)
-                (IO.to_string Scalar.print_typ to_typ))
+                (IO.to_string RamenScalar.print_typ from_typ)
+                (IO.to_string RamenScalar.print_typ to_typ))
 
-let freevar_name t = "fv_"^ string_of_int t.Expr.uniq_num ^"_"
+let freevar_name t = "fv_"^ string_of_int t.RamenExpr.uniq_num ^"_"
 
 let min_of_num_scalar_type =
   let open Stdint in
@@ -504,17 +504,17 @@ let max_of_num_scalar_type =
   | _ -> assert false
 
 let min_of_num_type t =
-  let open Expr in
+  let open RamenExpr in
   Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "min-init",
          min_of_num_scalar_type (Option.get t.scalar_typ))
 
 let max_of_num_type t =
-  let open Expr in
+  let open RamenExpr in
   Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "max-init",
          max_of_num_scalar_type (Option.get t.scalar_typ))
 
 let any_constant_of_type t =
-  let open Expr in
+  let open RamenExpr in
   let open Stdint in
   let c v =
     Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "init", v)
@@ -532,12 +532,12 @@ let any_constant_of_type t =
  * This printer wrap an expression into a converter according to its current
  * type. *)
 let rec conv_to ?state ~context to_typ fmt e =
-  let open Expr in
+  let open RamenExpr in
   let t = typ_of e in
   if t.nullable = None then (
     !logger.error "Problem: Have to convert expression %a into %a"
       (print true) e
-      Scalar.print_typ (Option.get to_typ)
+      RamenScalar.print_typ (Option.get to_typ)
   ) ;
   let nullable = Option.get t.nullable in
   match t.scalar_typ, to_typ with
@@ -547,7 +547,7 @@ let rec conv_to ?state ~context to_typ fmt e =
     (emit_expr ~context ?state) fmt e (* No conversion required *)
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
-                (IO.to_string Scalar.print_typ b))
+                (IO.to_string RamenScalar.print_typ b))
 
 (* The vectors Tuple{Group,Out}Previous are optional: the commit when and
  * select clauses of aggregate operations either have it or not.
@@ -572,7 +572,7 @@ and emit_maybe_fields oc out_tuple_typ =
  * It is used by stateful functions when they need to access their state. *)
 (* FIXME: return a list of type * arg instead of two lists *)
 and emit_expr ?state ~context oc expr =
-  let open Expr in
+  let open RamenExpr in
   let out_typ = typ_of expr in
   let my_state lifespan =
     let state_name =
@@ -710,7 +710,7 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatelessFun (_, BeginOfRange e),
     Some (TCidrv4 | TCidrv6 as to_typ) ->
     let in_type_name =
-      String.lowercase (IO.to_string Scalar.print_typ to_typ) in
+      String.lowercase (IO.to_string RamenScalar.print_typ to_typ) in
     let name = "CodeGenLib.age_"^ in_type_name in
     emit_functionN oc ?state name [Some to_typ] [e]
   (* TODO: Now() for Uint62? *)
@@ -864,7 +864,7 @@ and emit_expr ?state ~context oc expr =
     assert false
 
 and add_missing_types arg_typs es =
-  let open Expr in
+  let open RamenExpr in
   (* The list of args is composed of:
    * - at first, individual types tailored for each argument
    * - then a unique type large enough for all remaining arguments,
@@ -877,7 +877,7 @@ and add_missing_types arg_typs es =
   let merge_types t1 t2 =
     match t1, t2 with
     | None, t | t, None -> t
-    | Some t1, Some t2 -> Some (Scalar.larger_type (t1, t2)) in
+    | Some t1, Some t2 -> Some (RamenScalar.larger_type (t1, t2)) in
   let rec loop ht rt any_type n = function
   | [], _ -> (* No more arguments *)
     (* Replace all None types by a common type large enough to accommodate
@@ -903,9 +903,9 @@ and add_missing_types arg_typs es =
   open Batteries
   open Stdint
   open RamenSharedTypes
-  let const typ v = Lang.(Expr.(Const (make_typ ~typ "test", v)))
+  let const typ v = Lang.(RamenExpr.(Const (make_typ ~typ "test", v)))
  *)
-(*$= add_missing_types & ~printer:(IO.to_string (List.print (Option.print (Lang.Scalar.print_typ))))
+(*$= add_missing_types & ~printer:(IO.to_string (List.print (Option.print (RamenScalar.print_typ))))
   [Some TFloat] \
     (add_missing_types [Some TFloat] [const TFloat (VFloat 1.)])
   [Some TFloat] \
@@ -939,7 +939,7 @@ and add_missing_types arg_typs es =
  * we evaluated them all, and then only we call the function.
  * TODO: ideally we'd like to evaluate the nullable arguments first. *)
 and emit_function ?(as_array=false) oc ?state impl arg_typs es vt_specs_opt =
-  let open Expr in
+  let open RamenExpr in
   let arg_typs = add_missing_types arg_typs es in
   let len, has_nullable =
     List.fold_left2 (fun (i, had_nullable) e arg_typ ->
@@ -987,7 +987,7 @@ and emit_functionNv oc ?state impl arg_typs es vt ves =
  *    k (expr ...)))))
  *)
 let emit_generator user_fun oc expr =
-  let open Expr in
+  let open RamenExpr in
 
   let generators = fold_by_depth (fun prev e ->
     match e with
@@ -1019,7 +1019,7 @@ let emit_generator user_fun oc expr =
 let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_typ oc selected_fields =
   let has_generator =
     List.exists (fun sf ->
-      Expr.is_generator sf.Operation.expr)
+      RamenExpr.is_generator sf.RamenOperation.expr)
       selected_fields in
   if not has_generator then
     Printf.fprintf oc "let %s f_ _it_ ot_ = f_ ot_ \n" name
@@ -1032,13 +1032,13 @@ let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_ty
      * as many times as there are values. *)
     let nb_gens =
       List.fold_left (fun nb_gens sf ->
-          if not (Expr.is_generator sf.Operation.expr) then nb_gens
+          if not (RamenExpr.is_generator sf.RamenOperation.expr) then nb_gens
           else (
             let ff_ = "ff_"^ string_of_int nb_gens ^"_" in
             Printf.fprintf oc "%a(fun %s -> %a) (fun generated_%d_ ->\n"
               emit_indent (1 + nb_gens)
               ff_
-              (emit_generator ff_) sf.Operation.expr
+              (emit_generator ff_) sf.RamenOperation.expr
               nb_gens ;
             nb_gens + 1)
         ) 0 selected_fields in
@@ -1049,11 +1049,11 @@ let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_ty
       emit_indent (2 + nb_gens) ;
     let expr_of_field name =
       let sf = List.find (fun sf ->
-                 sf.Operation.alias = name) selected_fields in
-      sf.Operation.expr in
+                 sf.RamenOperation.alias = name) selected_fields in
+      sf.RamenOperation.expr in
     let _ = List.fold_lefti (fun gi i ft ->
         if i > 0 then Printf.fprintf oc ",\n%a" emit_indent (2 + nb_gens) ;
-        match Expr.is_generator (expr_of_field ft.typ_name) with
+        match RamenExpr.is_generator (expr_of_field ft.typ_name) with
         | exception Not_found ->
           (* For star-imported fields: *)
           Printf.fprintf oc "%s"
@@ -1090,8 +1090,8 @@ let emit_field_of_tuple name oc tuple_typ =
   Printf.fprintf oc "\t| _ -> raise Not_found\n"
 
 let emit_state_update_for_expr oc expr =
-  Expr.unpure_iter (function
-      | Expr.StatefulFun (_, lifespan, _) as e ->
+  RamenExpr.unpure_iter (function
+      | RamenExpr.StatefulFun (_, lifespan, _) as e ->
         let state_var =
           match lifespan with LocalState -> "group_"
                             | GlobalState -> "global_" in
@@ -1152,21 +1152,21 @@ let emit_field_selection
       (* Update the states as required for this field, just before
        * computing the field actual value. *)
       Printf.fprintf oc "\t(* State Updates: *)\n" ;
-      emit_state_update_for_expr oc sf.Operation.expr ;
+      emit_state_update_for_expr oc sf.RamenOperation.expr ;
       Printf.fprintf oc "\t(* Output field: *)\n" ;
-      if Expr.is_generator sf.Operation.expr then
+      if RamenExpr.is_generator sf.RamenOperation.expr then
         (* So that we have a single out_tuple_typ both before and after tuples generation *)
         Printf.fprintf oc "\tlet %s = () in\n"
-          (id_of_field_name ~tuple:TupleOut sf.Operation.alias)
+          (id_of_field_name ~tuple:TupleOut sf.RamenOperation.alias)
       else
         Printf.fprintf oc "\tlet %s = %a in\n"
-          (id_of_field_name ~tuple:TupleOut sf.Operation.alias)
-          (emit_expr ?state:None ~context:Finalize) sf.Operation.expr
+          (id_of_field_name ~tuple:TupleOut sf.RamenOperation.alias)
+          (emit_expr ?state:None ~context:Finalize) sf.RamenOperation.expr
     ) selected_fields ;
   (* Here we must generate the tuple in the order specified by out_type,
    * not selected_fields: *)
   let is_selected name =
-    List.exists (fun sf -> sf.Operation.alias = name) selected_fields in
+    List.exists (fun sf -> sf.RamenOperation.alias = name) selected_fields in
   Printf.fprintf oc "\t(\n\t\t" ;
   List.iteri (fun i ft ->
       let tuple =
@@ -1216,9 +1216,9 @@ let emit_float_of_top name oc top_by =
       (conv_to ~context:Finalize (Some TFloat)) top_by
 
 let emit_yield oc in_tuple_typ out_tuple_typ = function
-  | Operation.Yield { fields ; every } as op ->
+  | RamenOperation.Yield { fields ; every } as op ->
     let mentioned =
-      let all_exprs = Operation.fold_expr [] (fun l s -> s::l) op in
+      let all_exprs = RamenOperation.fold_expr [] (fun l s -> s::l) op in
       add_all_mentioned_in_expr all_exprs in
     Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
       %a\n%a\n%a\n\
@@ -1233,15 +1233,15 @@ let emit_yield oc in_tuple_typ out_tuple_typ = function
 let for_each_unpure_fun selected_fields
                         ?where ?commit_when ?top_by f =
   List.iter (fun sf ->
-      Expr.unpure_iter f sf.Operation.expr
+      RamenExpr.unpure_iter f sf.RamenOperation.expr
     ) selected_fields ;
-  Option.may (Expr.unpure_iter f) where ;
-  Option.may (Expr.unpure_iter f) commit_when ;
-  Option.may (Expr.unpure_iter f) top_by
+  Option.may (RamenExpr.unpure_iter f) where ;
+  Option.may (RamenExpr.unpure_iter f) commit_when ;
+  Option.may (RamenExpr.unpure_iter f) top_by
 
 let for_each_unpure_fun_my_lifespan lifespan selected_fields
                                     ?where ?commit_when ?top_by f =
-  let open Expr in
+  let open RamenExpr in
   for_each_unpure_fun selected_fields
                       ?where ?commit_when ?top_by
     (function
@@ -1250,7 +1250,7 @@ let for_each_unpure_fun_my_lifespan lifespan selected_fields
     | _ -> ())
 
 let otype_of_state e =
-  let open Expr in
+  let open RamenExpr in
   let typ = typ_of e in
   let t = Option.get typ.scalar_typ |>
           otype_of_type in
@@ -1302,7 +1302,7 @@ let emit_state_init name state_lifespan other_state_vars
         Printf.fprintf oc "\tmutable %s : %s (* %a *) ;\n"
           (name_of_state f)
           (otype_of_state f)
-          Expr.print_typ (Expr.typ_of f)
+          RamenExpr.print_typ (RamenExpr.typ_of f)
       ) ;
     Printf.fprintf oc "}\n\n" ;
     (* Then the initialization function proper: *)
@@ -1347,7 +1347,7 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
 
 let emit_should_resubmit name in_tuple_typ mentioned and_all_others
                          oc flush_how =
-  let open Operation in
+  let open RamenOperation in
   Printf.fprintf oc "let %s group_ %a =\n"
     name
     (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
@@ -1368,7 +1368,7 @@ let emit_should_resubmit name in_tuple_typ mentioned and_all_others
  * with few groups only. *)
 let when_to_check_group_for_expr expr =
   (* Tells whether the commit condition needs the all or the selected tuple *)
-  let open Expr in
+  let open RamenExpr in
   (* FIXME: for TOP, since we flush all when a single group matches, we
    * should relax this a bit: if we need_all (because, say, we use in.#count
    * in the condition) but the condition uses no field specific to group
@@ -1388,18 +1388,18 @@ let when_to_check_group_for_expr expr =
   "CodeGenLib.ForInGroup"
 
 let emit_aggregate oc in_tuple_typ out_tuple_typ = function
-  | Operation.Aggregate { fields ; and_all_others ; where ; key ; top ;
+  | RamenOperation.Aggregate { fields ; and_all_others ; where ; key ; top ;
                           commit_before ; commit_when ; flush_how ;
                           notify_url ; _ } as op ->
   let mentioned =
-    let all_exprs = Operation.fold_expr [] (fun l s -> s :: l) op in
+    let all_exprs = RamenOperation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
   and top_by = Option.map snd top
   and where_need_group =
     (* Tells whether we need the group to check the where clause (because it
      * uses the group tuple or build a group-wise aggregation on its own,
-     * despite this is forbidden in Lang.Operation.check): *)
-    let open Expr in
+     * despite this is forbidden in RamenOperation.check): *)
+    let open RamenExpr in
     fold_by_depth (fun need expr ->
       need || match expr with
         | Field (_, tuple, _) -> tuple_need_state !tuple
@@ -1409,8 +1409,8 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" Expr.GlobalState [] ~where ~commit_when ?top_by:None) fields
-    (emit_state_init "group_init_" Expr.LocalState ["global_"] ~where ~commit_when ?top_by:None) fields
+    (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when ?top_by:None) fields
+    (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when ?top_by:None) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
     (if where_need_group then
       emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
@@ -1429,7 +1429,7 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
     (emit_generate_tuples "generate_tuples_" in_tuple_typ mentioned and_all_others out_tuple_typ) fields
     (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how
     (emit_field_of_tuple "field_of_tuple_") out_tuple_typ
-    (emit_state_init "top_init_" Expr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
+    (emit_state_init "top_init_" RamenExpr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
     (emit_top "top_" in_tuple_typ mentioned and_all_others) top
     (emit_float_of_top "float_of_top_state_") top_by ;
   Printf.fprintf oc "let () =\n\
@@ -1463,12 +1463,12 @@ let with_code_file_for exec_name conf f =
   fname
 
 let compile conf func_name exec_name in_tuple_typ out_tuple_typ op =
-  let open Operation in
+  let open RamenOperation in
   let src_file =
     with_code_file_for exec_name conf (fun oc ->
       Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n"
         func_name
-        Operation.print op ;
+        RamenOperation.print op ;
       (match op with
       | Yield _->
         emit_yield oc in_tuple_typ out_tuple_typ op

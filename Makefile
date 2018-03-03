@@ -24,7 +24,8 @@ FILE_NOTIFIER = src/RamenFileNotify_Inotify.ml
 endif
 
 PACKAGES = \
-	ppp lwt.ppx batteries cmdliner stdint parsercombinator syslog sqlite3 \
+	ppp ppp.unix lwt.ppx batteries cmdliner stdint parsercombinator \
+	syslog sqlite3 \
 	cohttp-lwt-unix num inotify.lwt binocle unix lacaml net_codecs \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp
@@ -53,12 +54,12 @@ all: $(INSTALLED)
         docker-latest docker-build-image docker-build-builder docker-push
 
 %.cmo: %.ml
-	@echo "Compiling $@ into bytecode"
+	@echo "Compiling $@ (bytecode)"
 	@$(OCAMLC) $(OCAMLFLAGS) -package "$(PACKAGES)" -c $<
 
 %.cmx %.annot: %.ml
-	@echo "Compiling $@ into native code"
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+	@echo "Compiling $@ (native code)"
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.top: %.cma
 	@echo "Building $@ top level"
@@ -76,8 +77,8 @@ RAMEN_SOURCES = \
 	src/RamenSharedTypesJS.ml src/AlerterSharedTypesJS.ml \
 	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
 	src/RamenSharedTypes.ml src/RamenCollectd.ml src/RamenNetflow.ml \
-	src/RamenProtocols.ml src/RingBufLib.ml \
-	src/RamenTypeConverters.ml src/Lang.ml \
+	src/RamenProtocols.ml src/RingBufLib.ml src/RamenTypeConverters.ml \
+	src/Lang.ml src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
 	src/RingBuf.ml src/RamenSerialization.ml \
 	src/RamenConf.ml src/RamenBinocle.ml src/RamenExport.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
@@ -121,11 +122,14 @@ WEB_SOURCES = \
 	src/web/gui.ml src/web/style.ml src/web/ramen_app.ml \
 	src/web/alerter_app.ml
 
+TESTONLY_SOURCES = \
+	src/TestHelpers.ml
+
 SOURCES_ = \
 	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 	$(LIBCOLLECTD_SOURCES) $(LIBNETFLOW_SOURCES) $(WEB_SOURCES) \
-	$(CONFIGURATOR_SOURCES) \
+	$(CONFIGURATOR_SOURCES) $(TESTONLY_SOURCES) \
 	src/ringbuf_test.ml src/colcomp/colcomp_test.c
 # Do not take into account generated code that depends on compilation:
 SOURCES = $(filter-out src/RamenGui.ml,$(SOURCES_))
@@ -195,11 +199,11 @@ src/codegen.cma: $(CODEGENLIB_SOURCES:.ml=.cmo) src/libringbuf.a src/libcollectd
 # configurator/alerter specific sources with more packages
 
 src/SqliteHelpers.cmx: src/SqliteHelpers.ml
-	@echo "Compiling $@ into native code"
+	@echo "Compiling $@ (native code)"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
 
 src/Conf_of_sqlite.cmx: src/Conf_of_sqlite.ml
-	@echo "Compiling $@ into native code"
+	@echo "Compiling $@ (native code)"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
 
 src/ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
@@ -269,39 +273,39 @@ src/RamenCompilConfig.ml:
 WEB_PACKAGES = js_of_ocaml js_of_ocaml.ppx
 
 src/web/JsHelpers.cmo: src/web/JsHelpers.ml src/web/WebHelpers.cmo
-	@echo "Compiling $@ into byte code for JS"
+	@echo "Compiling $@ (byte code for JS)"
 	@$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I src/web -c $<
 
 src/web/WebHelpers.cmo: src/web/WebHelpers.ml src/RamenChart.cmo
-	@echo "Compiling $@ into byte code for JS"
+	@echo "Compiling $@ (byte code for JS)"
 	@$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I src/web -c $<
 
 src/web/engine.cmo: src/web/engine.ml src/web/WebHelpers.cmo src/web/JsHelpers.cmo src/RamenHtml.cmo
-	@echo "Compiling $@ into byte code for JS"
+	@echo "Compiling $@ (byte code for JS)"
 	@$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I src/web -c $<
 
 src/web/gui.cmo: src/web/gui.ml src/web/engine.cmo src/RamenHtml.cmo
-	@echo "Compiling $@ into byte code for JS"
+	@echo "Compiling $@ (byte code for JS)"
 	@$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I src/web -c $<
 
 src/web/style.cmo: src/web/style.ml src/RamenHtml.cmo
-	@echo "Compiling $@ into byte code for JS"
+	@echo "Compiling $@ (byte code for JS)"
 	@$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I src/web -c $<
 
 src/AlerterSharedTypesJS_noPPP.cmo: src/AlerterSharedTypesJS.ml
-	@echo "Compiling $@ into byte code for JS"
+	@echo "Compiling $@ (byte code for JS)"
 	@$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
 
 src/web/alerter_app.cmo: src/web/alerter_app.ml src/AlerterSharedTypesJS_noPPP.cmo src/RamenHtml.cmo src/web/WebHelpers.cmo src/web/JsHelpers.cmo src/web/engine.cmo src/web/gui.cmo src/web/style.cmo src/RamenColor.cmo src/RamenFormats.cmo src/RamenChart.cmo
-	@echo "Compiling $@ into byte code for JS"
+	@echo "Compiling $@ (byte code for JS)"
 	@$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I src/web -c $<
 
 src/RamenSharedTypesJS_noPPP.cmo: src/RamenSharedTypesJS.ml
-	@echo "Compiling $@ into byte code for JS"
+	@echo "Compiling $@ (byte code for JS)"
 	@$(OCAMLC) $(OCAMLFLAGS) -c $< -o $@
 
 src/web/ramen_app.cmo: src/web/ramen_app.ml src/RamenSharedTypesJS_noPPP.cmo src/RamenHtml.cmo src/web/WebHelpers.cmo src/web/JsHelpers.cmo src/web/engine.cmo src/web/gui.cmo src/web/style.cmo src/RamenColor.cmo src/RamenFormats.cmo src/RamenChart.cmo src/web/alerter_app.cmo
-	@echo "Compiling $@ into byte code for JS"
+	@echo "Compiling $@ (byte code for JS)"
 	@$(OCAMLC) $(OCAMLFLAGS) -package "$(WEB_PACKAGES)" -I src/web -c $<
 
 src/web/ramen_script.byte: src/Consts.cmo src/RamenHtml.cmo src/RamenSharedTypesJS_noPPP.cmo src/web/WebHelpers.cmo src/web/JsHelpers.cmo src/web/engine.cmo src/web/gui.cmo src/web/style.cmo src/RamenColor.cmo src/RamenFormats.cmo src/RamenChart.cmo src/AlerterSharedTypesJS_noPPP.cmo src/web/alerter_app.cmo src/web/ramen_app.cmo
@@ -344,7 +348,9 @@ src/RamenGui.ml: src/web/ramen_script.js src/web/ramen_script.min.js src/web/sty
 # Tests
 
 TESTABLE_SOURCES = \
-	src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml src/Lang.ml src/Compiler.ml \
+	src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
+	src/Lang.ml src/RamenScalar.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
+	src/Compiler.ml \
 	src/Helpers.ml src/RamenBloomFilter.ml src/Globs.ml src/CodeGen_OCaml.ml \
 	src/RamenHtml.ml
 
@@ -355,13 +361,16 @@ LINKED_FOR_TESTS = \
 	src/RamenSharedTypes.ml src/AlerterSharedTypesJS.ml src/RingBufLib.ml \
 	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
 	src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
-	src/RamenTypeConverters.ml src/Lang.ml src/RingBuf.ml src/RamenConf.ml \
+	src/RamenTypeConverters.ml \
+	src/Lang.ml src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
+	src/RingBuf.ml src/RamenConf.ml \
 	src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/RamenBinocle.ml src/RamenBitmask.ml \
 	src/RamenSerialization.ml src/RamenExport.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml \
-	src/Compiler.ml src/RamenBloomFilter.ml src/RamenHtml.ml
+	src/Compiler.ml src/RamenBloomFilter.ml src/RamenHtml.ml \
+	src/TestHelpers.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
 	@echo "Generating unit tests into $@"

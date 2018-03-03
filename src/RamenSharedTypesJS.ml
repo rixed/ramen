@@ -1,5 +1,6 @@
 type program_status = Edition of string (* last error *)
-                  | Compiling | Compiled | Running [@@ppp PPP_JSON]
+                  | Compiling | Compiled | Running
+                  [@@ppp PPP_JSON] [@@ppp PPP_OCaml]
 
 (* TNum is not an actual type used by any value, but it's used as a default
  * type for numeric operands that can be "promoted" to any other numerical
@@ -11,7 +12,7 @@ type scalar_typ =
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
-  | TIpv4 | TIpv6 | TCidrv4 | TCidrv6 [@@ppp PPP_JSON]
+  | TIpv4 | TIpv6 | TCidrv4 | TCidrv6 [@@ppp PPP_JSON] [@@ppp PPP_OCaml]
 
 type time_range =
   NoData | TimeRange of float * float [@@ppp PPP_JSON]

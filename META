@@ -6,6 +6,6 @@ requires = "lwt.ppx batteries stdint parsercombinator
             findlib inotify.lwt binocle lacaml"
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
-#   sqlite3 unix num ppp js_of_ocaml js_of_ocaml-ppx cmdliner
+#   sqlite3 unix num ppp.unix js_of_ocaml js_of_ocaml-ppx cmdliner
 #   syslog net_codecs cohttp-lwt-unix compiler-libs compiler-libs.common
 #   compiler-libs.bytecomp compiler-libs.optcomp
