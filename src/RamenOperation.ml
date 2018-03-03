@@ -11,7 +11,7 @@ module Expr = RamenExpr
 *)
 
 (* Direct field selection (not for group-bys) *)
-type selected_field = { expr : Expr.t ; alias : string } (*[@@ppp PPP_OCaml]*)
+type selected_field = { expr : Expr.t ; alias : string } [@@ppp PPP_OCaml]
 
 let print_selected_field fmt f =
   let need_alias =
@@ -28,7 +28,7 @@ let print_selected_field fmt f =
 
 type flush_method = Reset | Slide of int
                   | KeepOnly of Expr.t | RemoveAll of Expr.t
-                  | Never (*[@@ppp PPP_OCaml]*)
+                  | Never [@@ppp PPP_OCaml]
 
 let print_flush_method ?(prefix="") ?(suffix="") () oc = function
   | Reset ->
@@ -102,7 +102,7 @@ type t =
       port : int ;
       proto : RamenProtocols.net_protocol ;
       event_time : event_time option ;
-      force_export : bool } (*[@@ppp PPP_OCaml]*)
+      force_export : bool } [@@ppp PPP_OCaml]
 
 let print_event_time fmt (start_field, duration) =
   let string_of_scale f = "*"^ string_of_float f in

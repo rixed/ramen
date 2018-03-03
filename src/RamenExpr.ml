@@ -45,6 +45,52 @@ let copy_typ ?name typ =
 type state_lifespan = LocalState | GlobalState [@@ppp PPP_OCaml]
 
 (* Expressions on scalars (aka fields) *)
+
+type stateless_fun0 =
+  | Now
+  | Random
+  [@@ppp PPP_OCaml]
+
+type stateless_fun1 =
+  (* TODO: Other functions: date_part... *)
+  | Age
+  | Cast
+  (* String functions *)
+  | Length
+  | Lower
+  | Upper
+  (* Unary Ops on scalars *)
+  | Not
+  | Abs
+  | Defined
+  | Exp
+  | Log
+  | Sqrt
+  | Hash
+  (* For network address range checks: *)
+  | BeginOfRange
+  | EndOfRange
+  [@@ppp PPP_OCaml]
+
+type stateless_fun2 =
+  (* FIXME: see note in CodeGenLib.ml *)
+  | Sequence (* start, step *)
+  (* Binary Ops scalars *)
+  | Add
+  | Sub
+  | Mul
+  | Div
+  | IDiv
+  | Mod
+  | Pow
+  | And
+  | Or
+  | Ge
+  | Gt
+  | Eq
+  | Concat
+  [@@ppp PPP_OCaml]
+
 (* FIXME: when we end prototyping use objects to make it easier to add
  * operations *)
 type t =
@@ -101,60 +147,21 @@ type t =
   | StatelessFun2 of typ * stateless_fun2 * t * t
   | StatelessFunMisc of typ * stateless_fun_misc
   | StatefulFun of typ * state_lifespan * stateful_fun
-  | GeneratorFun of typ * generator_fun (*[@@ppp PPP_OCaml]*)
+  | GeneratorFun of typ * generator_fun
+  [@@ppp PPP_OCaml]
 
 and case_alternative =
   { case_cond : t (* Must be bool *) ;
-    case_cons : t (* All alternatives must share a type *) } (*[@@ppp PPP_OCaml]*)
-
-and stateless_fun0 =
-  | Now
-  | Random
-
-and stateless_fun1 =
-  (* TODO: Other functions: date_part... *)
-  | Age
-  | Cast
-  (* String functions *)
-  | Length
-  | Lower
-  | Upper
-  (* Unary Ops on scalars *)
-  | Not
-  | Abs
-  | Defined
-  | Exp
-  | Log
-  | Sqrt
-  | Hash
-  (* For network address range checks: *)
-  | BeginOfRange
-  | EndOfRange
-
-and stateless_fun2 =
-  (* FIXME: see note in CodeGenLib.ml *)
-  | Sequence (* start, step *)
-  (* Binary Ops scalars *)
-  | Add
-  | Sub
-  | Mul
-  | Div
-  | IDiv
-  | Mod
-  | Pow
-  | And
-  | Or
-  | Ge
-  | Gt
-  | Eq
-  | Concat
+    case_cons : t (* All alternatives must share a type *) }
+  [@@ppp PPP_OCaml]
 
 and stateless_fun_misc =
   (* a LIKE operator using globs, infix *)
   | Like of t * string (* expression then pattern (using %, _ and \) *)
   (* Min/Max of the given values *)
   | Max of t list
-  | Min of t list (*[@@ppp PPP_OCaml]*)
+  | Min of t list
+  [@@ppp PPP_OCaml]
 
 and stateful_fun =
   (* TODO: Add stddev... *)
@@ -201,13 +208,14 @@ and stateful_fun =
   | ExpSmooth of t * t (* coef between 0 and 1 and expression *)
   (* Hysteresis *)
   | Hysteresis of t * t * t (* measured value, acceptable, maximum *)
-  (*[@@ppp PPP_OCaml]*)
+  [@@ppp PPP_OCaml]
 
 and generator_fun =
   (* First function returning more than once (Generator). Here the typ is
    * type of a single value but the function is a generator and can return
    * from 0 to N such values. *)
-  | Split of t * t (*[@@ppp PPP_OCaml]*)
+  | Split of t * t
+  [@@ppp PPP_OCaml]
 
 let expr_true =
   Const (make_bool_typ ~nullable:false "true", VBool true)

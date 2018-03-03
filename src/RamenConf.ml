@@ -18,7 +18,8 @@ module Expr = RamenExpr
 (* FIXME: rename this type *)
 type temp_tup_typ =
   { mutable finished_typing : bool ;
-    mutable fields : (string * Expr.typ) List.t } (*[@@ppp PPP_OCaml]*)
+    mutable fields : (string * Expr.typ) list }
+  [@@ppp PPP_OCaml]
 
 let print_temp_tup_typ_fields fmt fs =
   List.print ~first:"{" ~last:"}" ~sep:", "
@@ -38,7 +39,8 @@ let temp_tup_typ_copy t =
 
 type tuple_type = UntypedTuple of temp_tup_typ
                 | TypedTuple of { user : field_typ list ;
-                                  ser : field_typ list } (*[@@ppp PPP_OCaml]*)
+                                  ser : field_typ list }
+                  [@@ppp PPP_OCaml]
 
 let tuple_is_typed = function
   | TypedTuple _ -> true
@@ -156,7 +158,8 @@ struct
       parents : (string * string) list ;
       (* Worker info, only relevant if it is running: *)
       mutable pid : int option ;
-      mutable last_exit : string } (*[@@ppp PPP_OCaml]*)
+      mutable last_exit : string }
+    [@@ppp PPP_OCaml]
 
   let fq_name func = func.program ^"/"^ func.name
 
@@ -205,7 +208,8 @@ struct
       mutable status : program_status ;
       mutable last_status_change : float ;
       mutable last_started : float option ;
-      mutable last_stopped : float option } (*[@@ppp PPP_OCaml]*)
+      mutable last_stopped : float option }
+    [@@ppp PPP_OCaml]
 
   let print oc t =
     Printf.fprintf oc "status=%s"
@@ -515,7 +519,7 @@ let make_program ?(test_id="") ?(timeout=0.) programs name program funcs_lst =
   p
 
 (* What we save on disc for programs *)
-type programs = (string, Program.t) Hashtbl.t (*[@@ppp PPP_OCaml]*)
+type programs = (string, Program.t) Hashtbl.t [@@ppp PPP_OCaml]
 
 let save_file_of_programs persist_dir =
   (* Later we might have several files (so that we have partial locks) *)
