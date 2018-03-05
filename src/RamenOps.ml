@@ -191,7 +191,9 @@ let set_program ?test_id ?(ok_if_running=false) ?(start=false)
                 conf name program =
   (* Disallow anonymous programs for simplicity: *)
   if name = "" then
-    fail_with "Programs must have non-empty names" else (
+    fail_with "Programs must have non-empty names" else
+  if has_dotnames name then
+    fail_with "Program names cannot include directory dotnames" else (
   let%lwt funcs = wrap (fun () -> C.parse_program program) in
   let name, funcs =
     match test_id with

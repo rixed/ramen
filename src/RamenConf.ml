@@ -138,7 +138,7 @@ struct
        * Of course to compile a program, all programs it depends on must have been
        * compiled. *)
       program : string ;
-      (* within a program, funcs are identified by a name that can be optionally
+      (* Within a program, funcs are identified by a name that can be optionally
        * provided automatically if its not meant to be referenced. *)
       name : string ;
       (* Parsed operation and its in/out types: *)
@@ -518,39 +518,50 @@ let make_program ?(test_id="") ?(timeout=0.) programs name program funcs_lst =
   Hashtbl.add programs name p ;
   p
 
-(* What we save on disc for programs *)
-type programs = (string, Program.t) Hashtbl.t [@@ppp PPP_OCaml]
-
-let save_file_of_programs persist_dir =
+let save_dir_of_programs persist_dir =
   (* Later we might have several files (so that we have partial locks) *)
   persist_dir ^"/configuration/"
               ^ RamenVersions.graph_config
-              ^"/"^ Config.version ^"/conf"
+              ^"/"^ Config.version ^"/programs"
+
+let save_file_of_program persist_dir p =
+  save_dir_of_programs persist_dir ^"/"^ p ^"/conf"
 
 let non_persisted_programs = ref (Hashtbl.create 11)
 
-let load_programs conf : programs =
-  let save_file = save_file_of_programs conf.persist_dir in
+let load_program conf p : Program.t =
+  let save_file = save_file_of_program conf.persist_dir p in
+  !logger.debug "Loading program from %s" save_file ;
+  File.with_file_in save_file Marshal.input
+
+let load_programs conf =
+  let save_dir = save_dir_of_programs conf.persist_dir in
   if conf.do_persist then
     try
-      !logger.debug "Loading programs from %S" save_file ;
-      File.with_file_in save_file Marshal.input
+      let h = Hashtbl.create 11 in
+      dir_subtree_iter ~on_dir:(fun p ->
+        Hashtbl.add h p (load_program conf p)
+      ) save_dir ;
+      h
     with
     | e ->
-      !logger.error "Cannot read state from file %S: %s. Starting anew."
-        save_file (Printexc.to_string e) ;
+      !logger.error "Cannot read state from directory %s: %s. Starting anew."
+        save_dir (Printexc.to_string e) ;
       Hashtbl.create 11
   else !non_persisted_programs
 
-let save_programs conf (programs : programs) =
+let save_program conf p =
+  let save_file = save_file_of_program conf.persist_dir p.Program.name in
+  !logger.debug "Saving program %s" save_file ;
+  mkdir_all ~is_file:true save_file ;
+  File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
+    Marshal.output oc p)
+
+let save_programs conf programs =
   if conf.do_persist then
-    let save_file = save_file_of_programs conf.persist_dir in
-    !logger.debug "Saving programs into %S: %a"
-      save_file
-      (Hashtbl.print String.print Program.print) programs ;
-    mkdir_all ~is_file:true save_file ;
-    File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
-      Marshal.output oc programs)
+    Hashtbl.iter (fun _name p ->
+      save_program conf p
+    ) programs
 
 exception RetryLater of float
 

@@ -118,6 +118,48 @@ let file_is_older_than age fname =
     let now = gettimeofday () in
     s.st_mtime > now -. age
 
+let dir_subtree_iter ?on_dir ?on_file root =
+  let open Unix in
+  let rec loop_subtree path_from_root =
+    let path =
+      (* Avoid using "./" as we want path to correspond to program names: *)
+      if path_from_root = "" then root else root ^"/"^ path_from_root in
+    let dh = opendir path in
+    let rec loop_files () =
+      match readdir dh with
+      | exception End_of_file -> ()
+      (* Ignore dotnames *)
+      | "." | ".." ->
+          loop_files ()
+      | fname_from_path ->
+          let fname = path ^"/"^ fname_from_path in
+          let fname_from_root =
+            if path_from_root = "" then fname_from_path
+            else path_from_root ^"/"^ fname_from_path in
+          if is_directory fname then (
+            Option.may (fun f -> f fname_from_root) on_dir ;
+            let path_from_root' =
+              if path_from_root = "" then fname_from_path
+              else path_from_root ^"/"^ fname_from_path in
+            loop_subtree path_from_root'
+          ) else
+            Option.may (fun f -> f fname_from_root) on_file ;
+          loop_files ()
+    in
+    loop_files () ;
+    closedir dh
+  in
+  loop_subtree ""
+
+let has_dotnames s =
+  s = "." || s = ".." ||
+  String.starts_with s "./" ||
+  String.starts_with s "../" ||
+  String.ends_with s "/." ||
+  String.ends_with s "/.." ||
+  String.exists s "/./" ||
+  String.exists s "/../"
+
 let name_of_signal s =
   let open Sys in
   if s = sigabrt then "ABORT"
