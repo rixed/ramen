@@ -398,7 +398,7 @@ let display_program_info json short info =
         List.fold_left (fun lines func ->
           let open Info.Func in
           [| ValStr prog.Info.Program.name ;
-             ValStr func.definition.name ;
+             ValStr func.name ;
              int_or_na func.stats.in_tuple_count ;
              int_or_na func.stats.selected_tuple_count ;
              int_or_na func.stats.out_tuple_count ;
@@ -438,7 +438,7 @@ let display_operation_info json short func =
     let open Info.Func in
     let open TermTable in
     let form =
-      [ "Name", ValStr func.definition.name ;
+      [ "Name", ValStr func.name ;
         "#in", int_or_na func.stats.in_tuple_count ;
         "#selected", int_or_na func.stats.selected_tuple_count ;
         "#out", int_or_na func.stats.out_tuple_count ;
@@ -460,7 +460,7 @@ let display_operation_info json short func =
       Printf.printf "\nInput:\n" ;
       print_form (form_of_type func.input_type) ;
       Printf.printf "\nOperation:\n%s\n"
-        (PPP_prettify.prettify func.definition.operation) ;
+        (PPP_prettify.prettify func.operation) ;
       Printf.printf "\nOutput:\n" ;
       print_form (form_of_type func.output_type))
 
@@ -484,7 +484,7 @@ let info copts json short name_opt remote () =
             (match%lwt get_program_info conf copts (Some program) remote with
             | [ program_info ] -> (* Since we ask for a single program *)
                 (match List.find (fun n ->
-                         n.Info.Func.definition.name = func
+                         n.Info.Func.name = func
                        ) program_info.Info.Program.operations with
                 | exception Not_found ->
                     fail_with ("Unknown object '"^ func ^"/"^ program ^"'")

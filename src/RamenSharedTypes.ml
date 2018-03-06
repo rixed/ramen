@@ -94,9 +94,6 @@ module Info =
 struct
   module Func =
   struct
-    type definition =
-      { name : string ; operation : string } [@@ppp PPP_JSON]
-
     type worker_stats =
       { time : float ;
         in_tuple_count : int option ;
@@ -111,8 +108,9 @@ struct
         out_bytes : float option } [@@ppp PPP_JSON]
 
     type info =
-      (* I'd like to offer the AST but PPP still fails on recursive types :-( *)
-      { definition : definition ;
+      { name : string ;
+        (* TODO: Export the AST instead *)
+        operation : string ;
         exporting : bool ;
         input_type : expr_type_info list ;
         output_type : expr_type_info list ;

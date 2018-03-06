@@ -241,7 +241,8 @@ let func_info_of_func programs func =
     IO.to_string RamenOperation.print func.N.operation |>
     PPP_prettify.prettify in
   return SN.{
-    definition = { name = func.N.name ; operation } ;
+    name = func.N.name ;
+    operation ;
     exporting ;
     signature = if func.N.signature = "" then None else Some func.N.signature ;
     pid = func.N.pid ;
