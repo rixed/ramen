@@ -929,9 +929,6 @@ let base_program dataset_name delete uncompress csv_glob export =
 (* Build the func infos corresponding to the BCN configuration *)
 let program_of_bcns bcns dataset_name export =
   let program_name = rebase dataset_name "BCN" in
-  let name_of_zones = function
-    | [] -> "any"
-    | main::_ -> string_of_int main in
   let all_funcs = ref [] in
   let make_func name operation =
     let func = make_func name operation in
@@ -941,7 +938,7 @@ let program_of_bcns bcns dataset_name export =
     (* bcn.min_bps, bcn.max_bps, bcn.obs_window, bcn.avg_window, bcn.percentile, bcn.source bcn.dest *)
     let open Conf_of_sqlite.BCN in
     let name_prefix = Printf.sprintf "%s to %s"
-      (name_of_zones bcn.source) (name_of_zones bcn.dest) in
+      bcn.source_name bcn.dest_name in
     let avg_window = int_of_float (bcn.avg_window *. 1_000_000.0) in
     let avg_per_zones_name =
       Printf.sprintf "%s: avg traffic every %gs"
@@ -989,8 +986,8 @@ let program_of_bcns bcns dataset_name export =
         (rebase dataset_name "c2s non-ip") (rebase dataset_name "s2c non-ip")
         avg_window bcn.avg_window
         bcn.avg_window bcn.avg_window
-        (name_of_zones bcn.source)
-        (name_of_zones bcn.dest)
+        bcn.source_name
+        bcn.dest_name
         where
         avg_window
         avg_window
@@ -1028,12 +1025,12 @@ let program_of_bcns bcns dataset_name export =
     make_func perc_per_obs_window_name op ;
     Option.may (fun min_bps ->
         let title = Printf.sprintf "Too little traffic from zone %s to %s"
-                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                      bcn.source_name bcn.dest_name
         and text = alert_text [
           "descr", Printf.sprintf
                      "The traffic from zone %s to %s has sunk below \
                       the configured minimum of %d for the last %g minutes."
-                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                      bcn.source_name bcn.dest_name
                       min_bps (bcn.obs_window /. 60.) ;
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
@@ -1053,12 +1050,12 @@ let program_of_bcns bcns dataset_name export =
       ) bcn.min_bps ;
     Option.may (fun max_bps ->
         let title = Printf.sprintf "Too much traffic from zone %s to %s"
-                        (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                        bcn.source_name bcn.dest_name
         and text = alert_text [
           "descr", Printf.sprintf
                      "The traffic from zones %s to %s has raised above \
                       the configured maximum of %d for the last %g minutes."
-                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                      bcn.source_name bcn.dest_name
                       max_bps (bcn.obs_window /. 60.) ;
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
@@ -1078,13 +1075,13 @@ let program_of_bcns bcns dataset_name export =
       ) bcn.max_bps ;
     Option.may (fun max_rtt ->
         let title = Printf.sprintf "RTT too high from zone %s to %s"
-                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                      bcn.source_name bcn.dest_name
         and text = alert_text [
           "descr", Printf.sprintf
                      "Traffic from zone %s to zone %s has an average RTT \
                       of _rtt_, greater than the configured maximum of %gs, \
                       for the last %g minutes."
-                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                      bcn.source_name bcn.dest_name
                       max_rtt (bcn.obs_window /. 60.) ;
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf
@@ -1104,13 +1101,13 @@ let program_of_bcns bcns dataset_name export =
       ) bcn.max_rtt ;
     Option.may (fun max_rr ->
         let title = Printf.sprintf "Too many retransmissions from zone %s to %s"
-                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                      bcn.source_name bcn.dest_name
         and text = alert_text [
           "descr", Printf.sprintf
                      "Traffic from zone %s to zone %s has an average \
                       retransmission rate of _rr_%%, greater than the \
                       configured maximum of %gs, for the last %g minutes."
-                      (name_of_zones bcn.source) (name_of_zones bcn.dest)
+                      bcn.source_name bcn.dest_name
                       max_rr (bcn.obs_window /. 60.) ;
           "bcn_id", string_of_int bcn.id ] in
         let op = Printf.sprintf

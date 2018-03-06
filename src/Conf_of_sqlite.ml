@@ -35,6 +35,14 @@ let add_subzones_down_to z' z_opt =
     z :: fold_zones (fun id name lst ->
       if name << Some z_name && not (name << z'name) then id::lst else lst)
 
+let zone_name_of = function
+  | None -> "any"
+  | Some z ->
+    (* '/' is forbidden in operation names: *)
+    let n = Hashtbl.find_default zone_name_of_id z (string_of_int z) in
+    let parts = String.nsplit ~by:"/" n |> List.filter ((<>) "") in
+    String.concat "-" parts
+
 module BCN =
 struct
   type config =
@@ -44,6 +52,9 @@ struct
       source : int list ;
       (* Destinations of traffic covered by this rule (empty list for any): *)
       dest : int list ;
+      (* Name of source/dest, used in various alert texts: *)
+      source_name : string ;
+      dest_name : string ;
       (* Individual measurements are aggregated over that period of time
        * (typically 5 minutes), and we henceforth consider only the averages over
        * that duration. If incoming events are already aggregated (which they
@@ -77,6 +88,8 @@ struct
     { id = with_field db.get_bcns 0 "id" (required % to_int) ;
       source = main_source |> add_subzones_down_to main_dest ;
       dest = main_dest |> add_subzones_down_to main_source ;
+      source_name = zone_name_of main_source ;
+      dest_name = zone_name_of main_dest ;
       avg_window = with_field db.get_bcns 3 "avg_window" (required % to_float) ;
       obs_window = with_field db.get_bcns 4 "obs_window" (required % to_float) ;
       percentile = with_field db.get_bcns 5 "percentile" (required % to_float) ;
