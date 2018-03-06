@@ -2,10 +2,10 @@
 
 VERSION = 1.2.2
 
-OCAMLC     = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlc
-OCAMLOPT   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlopt
-OCAMLDEP   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamldep
-OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlmktop
+OCAMLC     = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamlc
+OCAMLOPT   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamlopt
+OCAMLDEP   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamldep
+OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamlmktop
 QTEST      = qtest
 JSOO       = js_of_ocaml
 JS_MINIFY  = jsoo_minify
