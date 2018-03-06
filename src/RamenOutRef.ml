@@ -80,7 +80,7 @@ let add_ fname (out_fname, out_fields) =
   let rewrite () =
     let outs = Map.add out_fname out_fields lines in
     set_ fname outs ;
-    !logger.info "Adding %s into %s, now outputting to %a"
+    !logger.debug "Adding %s into %s, now outputting to %a"
       out_fname fname print_out_specs outs in
   match Map.find out_fname lines with
   | exception Not_found -> rewrite ()
@@ -98,7 +98,7 @@ let remove_ fname out_fname =
   let out_files = read_ fname in
   let out_files' = Map.remove out_fname out_files in
   set_ fname out_files' ;
-  !logger.info "Removed %s from %s, now output only to: %a"
+  !logger.debug "Removed %s from %s, now output only to: %a"
     out_fname fname print_out_specs out_files'
 
 let remove fname out_fname =
