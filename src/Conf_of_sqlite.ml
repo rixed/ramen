@@ -38,9 +38,7 @@ let add_subzones_down_to z' z_opt =
 module BCN =
 struct
   type config =
-    { (* Name used in the alert configuration: *)
-      name : string ;
-      (* Id used in the alert text: *)
+    { (* Id used in the alert text: *)
       id : int ;
       (* Sources of traffic covered by this rule (empty list for any): *)
       source : int list ;
@@ -74,20 +72,19 @@ struct
                                with payload *) }
 
   let of_step db =
-    let main_source = with_field db.get_bcns 2 "zone_from" to_int
-    and main_dest = with_field db.get_bcns 3 "zone_to" to_int in
+    let main_source = with_field db.get_bcns 1 "zone_from" to_int
+    and main_dest = with_field db.get_bcns 2 "zone_to" to_int in
     { id = with_field db.get_bcns 0 "id" (required % to_int) ;
-      name = with_field db.get_bcns 1 "name" (required % to_string) ;
       source = main_source |> add_subzones_down_to main_dest ;
       dest = main_dest |> add_subzones_down_to main_source ;
-      avg_window = with_field db.get_bcns 4 "avg_window" (required % to_float) ;
-      obs_window = with_field db.get_bcns 5 "obs_window" (required % to_float) ;
-      percentile = with_field db.get_bcns 6 "percentile" (required % to_float) ;
-      min_bps = with_field db.get_bcns 7 "min" to_int ;
-      max_bps = with_field db.get_bcns 8 "max" to_int ;
-      min_for_relevance = with_field db.get_bcns 9 "relevance" (default 0 % to_int) ;
-      max_rtt = with_field db.get_bcns 10 "max_rtt" to_float ;
-      max_rr = with_field db.get_bcns 11 "max_rr" to_float }
+      avg_window = with_field db.get_bcns 3 "avg_window" (required % to_float) ;
+      obs_window = with_field db.get_bcns 4 "obs_window" (required % to_float) ;
+      percentile = with_field db.get_bcns 5 "percentile" (required % to_float) ;
+      min_bps = with_field db.get_bcns 6 "min" to_int ;
+      max_bps = with_field db.get_bcns 7 "max" to_int ;
+      min_for_relevance = with_field db.get_bcns 8 "relevance" (default 0 % to_int) ;
+      max_rtt = with_field db.get_bcns 9 "max_rtt" to_float ;
+      max_rr = with_field db.get_bcns 10 "max_rr" to_float }
 end
 
 module BCA =
@@ -132,7 +129,6 @@ end
  *)
 let flow_alert_params_query =
   "SELECT id, \
-          zone_from || '-' || zone_to AS name, \
           zone_from AS source, \
           zone_to AS dest, \
           60 AS avg_window, \
@@ -147,7 +143,6 @@ let flow_alert_params_query =
    WHERE \"max\" > 0 \
    UNION \
    SELECT id, \
-          zone_to || '-' || zone_from AS name, \
           zone_to AS source, \
           zone_from AS dest, \
           60 AS avg_window, \
@@ -162,7 +157,6 @@ let flow_alert_params_query =
    WHERE \"max\" > 0 AND NOT is_symmetric \
    UNION \
    SELECT id, \
-          zone_to || '-' || zone_from AS name, \
           zone_to AS source, \
           zone_from AS dest, \
           60 AS avg_window, \
