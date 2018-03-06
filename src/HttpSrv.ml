@@ -179,6 +179,24 @@ let del_program conf _headers program_name =
       del_program_ programs program) >>=
   respond_ok
 
+(* Returns info about a given operation *)
+let op_info conf headers program_name func_name params =
+  let bool_opt n =
+    try Hashtbl.find params n |> bool_of_string |> return
+    with Not_found -> return_true
+       | e -> fail e in
+  let%lwt with_stats = bool_opt "stats" in
+  let%lwt with_code = bool_opt "code" in
+  let%lwt () = check_accept headers Consts.json_content_type in
+  let%lwt info =
+    C.with_rlock conf (fun programs ->
+      let%lwt _program, func =
+        find_func_or_fail programs program_name func_name in
+      RamenOps.func_info_of_func ~with_stats ~with_code programs func) in
+  let body = PPP.to_string (SN.info_ppp_json ()) info in
+  respond_ok ~body ()
+
+
 (* FIXME: instead of stopping/starting for real we must build two sets of
  * programs to stop/start and perform with changing the processes only
  * when we are about to save the new configuration. *)
@@ -664,6 +682,9 @@ let router conf www_dir url_prefix =
       put_program conf headers body
     | `DELETE, ("graph" :: programs) ->
       del_program conf headers (lyr programs)
+    | `GET, ("operation" :: path) ->
+      let program, func = lyr_func_of path in
+      op_info conf headers program func params
     | `GET, ["compile"] ->
       compile conf headers None
     | `GET, ("compile" :: programs) ->

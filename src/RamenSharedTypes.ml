@@ -107,13 +107,16 @@ struct
         in_bytes : float option ; (* 31bit integers would be too small *)
         out_bytes : float option } [@@ppp PPP_JSON]
 
-    type info =
-      { name : string ;
-        (* TODO: Export the AST instead *)
+    type code =
+      { (* TODO: Export the AST instead *)
         operation : string ;
-        exporting : bool ;
         input_type : expr_type_info list ;
-        output_type : expr_type_info list ;
+        output_type : expr_type_info list } [@@ppp PPP_JSON]
+
+    type info =
+      { program : string ;
+        name : string ;
+        exporting : bool ;
         (* fq names of parents/children *)
         parents : string list ;
         children : string list ;
@@ -121,7 +124,9 @@ struct
         signature : string option ;
         pid : int option ;
         last_exit : string ;
-        stats : worker_stats } [@@ppp PPP_JSON]
+        code : code option [@ppp_default None] ;
+        stats : worker_stats option [@ppp_default None] }
+        [@@ppp PPP_JSON]
   end
 
   module Program =
@@ -137,7 +142,7 @@ struct
     type info =
       { name : string ;
         program : string ;
-        operations : Func.info list ;
+        operations : string list ;
         test_id : string [@ppp_default ""] ;
         status : status [@ppp_default (RamenSharedTypesJS.Edition "")] ;
         last_started : float option ;

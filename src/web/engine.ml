@@ -428,23 +428,25 @@ let add_notif ?(is_error=false) message =
 
 let add_error = add_notif ~is_error:true
 
-let ajax action path ?content ?what ?on_done on_ok =
+let ajax action path ?content ?what ?finally ?on_err on_ok =
   let req = XmlHttpRequest.create () in
   req##.onreadystatechange := Js.wrap_callback (fun () ->
     if req##.readyState = XmlHttpRequest.DONE then (
       print (Js.string "AJAX query DONE!") ;
-      option_may apply on_done ;
       (try
         let js = Js._JSON##parse req##.responseText in
         if req##.status <> 200 then (
           print_2 (Js.string "AJAX query failed") js ;
-          add_error Js.(Unsafe.get js "error" |> to_string) ;
+          option_may apply on_err ;
+          add_error Js.(Unsafe.get js "error" |> to_string)
         ) else (
           on_ok js ;
           option_may add_notif what
         )
       with Js.Error err ->
+        option_may apply on_err ;
         add_error Js.(err##toString |> to_string)) ;
+      option_may apply finally ;
       resync ())) ;
   req##_open (Js.string action)
              (Js.string ("$RAMEN_PATH_PREFIX$" ^ path))
@@ -458,14 +460,14 @@ let ajax action path ?content ?what ?on_done on_ok =
       Js.some (Js._JSON##stringify js) in
   req##send content
 
-let http_get path ?what ?on_done on_ok =
-  ajax "GET" path ?what ?on_done on_ok
-let http_post path content ?what ?on_done on_ok =
-  ajax "POST" path ~content ?what ?on_done on_ok
-let http_put path content ?what ?on_done on_ok =
-  ajax "PUT" path ~content ?what ?on_done on_ok
-let http_del path ?what ?on_done on_ok =
-  ajax "DELETE" path ?what ?on_done on_ok
+let http_get path ?what ?finally ?on_err on_ok =
+  ajax "GET" path ?what ?finally ?on_err on_ok
+let http_post path content ?what ?finally ?on_err on_ok =
+  ajax "POST" path ~content ?what ?finally ?on_err on_ok
+let http_put path content ?what ?finally ?on_err on_ok =
+  ajax "PUT" path ~content ?what ?finally ?on_err on_ok
+let http_del path ?what ?finally ?on_err on_ok =
+  ajax "DELETE" path ?what ?finally ?on_err on_ok
 
 (* Dom library *)
 

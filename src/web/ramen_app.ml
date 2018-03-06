@@ -83,11 +83,12 @@ struct
 
   type t =
     { name : string ;
-      program : string ;
+      program : string ; (* the code *)
       order : int ; (* depended upon before depending on *)
       status : program_status ;
       status_str : string ;
       nb_funcs : int ;
+      func_names : string list ;
       last_started : float option ;
       last_stopped : float option }
 end
@@ -126,20 +127,23 @@ struct
       in_bytes : float option ;
       out_bytes : float option }
 
+  type code =
+    { input_type : Field.t list ;
+      output_type : Field.t list ;
+      operation : string }
+
   type t =
     { program : string ;
       name : string ;
       id : string ;
       exporting : bool ;
-      operation : string ;
-      input_type : Field.t list ;
-      output_type : Field.t list ;
 
       parents : string list ;
       children : string list ;
 
       mutable last_stats : worker_stats ;
       stats : worker_stats ;
+      code : code option ;
 
       pid : int option ;
       last_exit : string ;
@@ -148,6 +152,9 @@ struct
   let name_of_id id =
     let i = String.rindex id '/' in
     String.sub id (i + 1) (String.length id - i - 1)
+
+  let id_of prog_name func_name =
+    prog_name ^"/"^ func_name
 end
 
 (* Value is an association list from func id to func.
@@ -341,7 +348,7 @@ let reload_tail =
         and path = "/export/"^ enc func.program ^"/"^ enc func.name in
         if not single || not !reloading then (
           if single then reloading := true ;
-          http_post path content ~on_done:(fun () ->
+          http_post path content ~finally:(fun () ->
               if single then reloading := false)
             (fun r ->
               update_tail r ;
@@ -380,14 +387,14 @@ let reload_chart =
     match List.assoc sel_func.value funcs.value,
           sel_output_cols.value with
     | exception Not_found -> ()
-    | _, [] -> ()
-    | func, cols ->
+    | func, cols when func.value.code <> None && cols <> [] ->
       let func = func.value in
+      let code = option_get func.code in
       let get_timeseries_until until =
         (* Request the timeseries *)
         let field_names =
           List.map (fun col ->
-            (List.nth func.output_type col).Field.name) cols in
+            (List.nth code.Func.output_type col).Field.name) cols in
         let content =
           object%js
             val since = js_of_float (until -. chart_duration.value)
@@ -412,7 +419,7 @@ let reload_chart =
         and path = "/timeseries" in
         if not single || not !reloading then
           if single then reloading := true ;
-          http_post path content ~on_done:(fun () ->
+          http_post path content ~finally:(fun () ->
               if single then reloading := false)
             (fun r ->
               update_chart field_names r ;
@@ -427,6 +434,7 @@ let reload_chart =
           | TimeRange (_, until) ->
             get_timeseries_until until)
       else get_timeseries_until (now ())
+    | _ -> ()
 
 let sel_top_column = make_param "selected top column" "program"
 
@@ -446,17 +454,19 @@ let set_sel_program l =
       if !(edited_program.value.program_name) <> !(el.program_name) then
         set edited_program el)
 
-let set_sel_func = function
-  Some func ->
-  if func.Func.id <> sel_func.value then (
-    set sel_func func.id ;
-    let l = ExistingProgram func.program in
-    set_sel_program l ;
-    reset_for_func_change ())
-| None ->
-  if sel_func.value <> "" then (
-    set sel_func "" ;
-    reset_for_func_change ())
+let worker_stats_of_js js =
+  Func.{
+    time = of_field js "time" Js.to_float ;
+    in_tuple_count = of_opt_field js "in_tuple_count" Js.to_float ;
+    out_tuple_count = of_opt_field js "out_tuple_count" Js.to_float ;
+    sel_tuple_count = of_opt_field js "selected_tuple_count" Js.to_float ;
+    group_count = of_opt_field js "group_count" Js.to_float ;
+    cpu_time = of_field js "cpu_time" Js.to_float ;
+    ram_usage = of_field js "ram_usage" Js.to_float ;
+    in_sleep = of_opt_field js "in_sleep" Js.to_float ;
+    out_sleep = of_opt_field js "out_sleep" Js.to_float ;
+    in_bytes = of_opt_field js "in_bytes" Js.to_float ;
+    out_bytes = of_opt_field js "out_bytes" Js.to_float }
 
 let get_variant js =
   let open Js in
@@ -484,9 +494,51 @@ let type_spec_of_js r =
           | None -> " (unknown nullability)") in
     Field.{ name ; nullable ; typ ; typ_str ; typ_disp })
 
+let code_of_js js =
+  Func.{
+    operation = of_field js "operation" Js.to_string ;
+    input_type = of_field js "input_type" type_spec_of_js ;
+    output_type = of_field js "output_type" type_spec_of_js }
+
 let func_list_of_js r =
   list_init r##.length (fun i ->
     Js.array_get r i |> optdef_get |> Js.to_string)
+
+let func_of_js js =
+  let name = of_field js "name" Js.to_string in
+  let program = of_field js "program" Js.to_string in
+  let id = Func.id_of program name in
+  (* Stats field is not optional here: we need it and always ask for it *)
+  let stats = of_field js "stats" worker_stats_of_js in
+  let code = of_opt_field js "code" code_of_js in
+  (* TODO: code *)
+  Func.{
+    program ; name ; id ; code ;
+    exporting = of_field js "exporting" Js.to_bool ;
+    parents = of_field js "parents" func_list_of_js ;
+    children = of_field js "children" func_list_of_js ;
+    stats ;
+    last_stats = stats ; (* set later by update_func *)
+    pid = of_opt_field js "pid" to_int ;
+    last_exit = of_field js "last_exit" Js.to_string ;
+    signature = of_opt_field js "signature" Js.to_string }
+
+let reload_single_func prog_name func_name =
+  let url = "/operation/"^ enc prog_name ^"/"^ enc func_name ^"?code=true" in
+  http_get url (fun f -> func_of_js f |> update_func)
+
+let set_sel_func = function
+  | Some func ->
+    if func.Func.id <> sel_func.value then (
+      set sel_func func.id ;
+      let l = ExistingProgram func.program in
+      set_sel_program l ;
+      reload_single_func func.program func.name ;
+      reset_for_func_change ())
+  | None ->
+    if sel_func.value <> "" then (
+      set sel_func "" ;
+      reset_for_func_change ())
 
 (* Recompute the sums from the funcs *)
 let update_funcs_sum () =
@@ -514,75 +566,76 @@ let update_funcs_sum () =
 let spinners = make_param "spinners" (Jstable.create ())
 let spinner_icon = "❍" (*"°"*)
 
-let definition_of_js js =
-  of_field js "name" Js.to_string,
-  of_field js "operation" Js.to_string
+let spinner = button [ clss "spinning" ] [ text spinner_icon ]
 
-let worker_stats_of_js js =
-  Func.{
-    time = of_field js "time" Js.to_float ;
-    in_tuple_count = of_opt_field js "in_tuple_count" Js.to_float ;
-    out_tuple_count = of_opt_field js "out_tuple_count" Js.to_float ;
-    sel_tuple_count = of_opt_field js "selected_tuple_count" Js.to_float ;
-    group_count = of_opt_field js "group_count" Js.to_float ;
-    cpu_time = of_field js "cpu_time" Js.to_float ;
-    ram_usage = of_field js "ram_usage" Js.to_float ;
-    in_sleep = of_opt_field js "in_sleep" Js.to_float ;
-    out_sleep = of_opt_field js "out_sleep" Js.to_float ;
-    in_bytes = of_opt_field js "in_bytes" Js.to_float ;
-    out_bytes = of_opt_field js "out_bytes" Js.to_float }
+let update_all_funcs fs =
+  let had_funcs = ref [] in
+  List.iter (fun f ->
+    let func = func_of_js f in
+    had_funcs := func.Func.id :: !had_funcs ;
+    update_func func
+  ) fs ;
+  update_funcs_sum () ;
+  funcs.value <- List.filter (fun (id, _) ->
+    if List.mem id !had_funcs then (
+      change funcs ; true
+    ) else (
+      print (Js.string ("Deleting operation "^ id)) ;
+      false
+    )) funcs.value
 
-let func_of_js program js =
-  let name, operation = of_field js "definition" definition_of_js in
-  let id = program.Program.name ^"/"^ name in
-  let stats = of_field js "stats" worker_stats_of_js in
-  Func.{
-    program = program.Program.name ;
-    name ; id ; operation ;
-    exporting = of_field js "exporting" Js.to_bool ;
-    input_type = of_field js "input_type" type_spec_of_js ;
-    output_type = of_field js "output_type" type_spec_of_js ;
-    parents = of_field js "parents" func_list_of_js ;
-    children = of_field js "children" func_list_of_js ;
-    stats ;
-    last_stats = stats ; (* set later by update_func *)
-    pid = of_opt_field js "pid" to_int ;
-    last_exit = of_field js "last_exit" Js.to_string ;
-    signature = of_opt_field js "signature" Js.to_string }
+(* Reload info (id + stats) for all known operations *)
+(* [single] option means: do it only if one is not running already *)
+let reload_funcs =
+  (* TODO: a combinator [single] *)
+  let reloading = ref false in
+  fun ?(single=false) () ->
+    if not single || not !reloading then (
+      let rec loop fs progs prog_name = function
+      | [] ->
+        (match progs with
+        | [] ->
+            if single then reloading := false ;
+            update_all_funcs fs
+        | (prog_name, prog_param) :: rest ->
+            loop fs rest prog_name prog_param.value.Program.func_names)
+      | func_name :: rest ->
+          let url =
+            "/operation/"^ enc prog_name ^"/"^ enc func_name ^"?code="^
+            string_of_bool (sel_func.value = Func.id_of prog_name func_name) in
+          http_get url ~on_err:(fun () -> loop fs progs prog_name rest)
+                   (fun f -> loop (f :: fs) progs prog_name rest)
+      in
+      match programs.value with
+      | [] -> ()
+      | (prog_name, prog_param) :: rest ->
+          if single then reloading := true ;
+          loop [] rest prog_name prog_param.value.Program.func_names)
 
 let update_graph total g =
   (* g is a JS array of programs *)
   (* Keep track of the programs we had to clean the extra ones at the end: *)
   let had_programs = ref [] in
-  let had_funcs = ref [] in
   for i = 0 to g##.length - 1 do
     let l = Js.array_get g i in
-    let name = Js.(Unsafe.get l "name" |> to_string) in
-    let program = Js.(Unsafe.get l "program" |> to_string) in
+    let name = of_field l "name" Js.to_string in
+    let program = of_field l "program" Js.to_string in
     let status_js = Js.Unsafe.get l "status" in
     let status, status_str = Program.status_of_js status_js in
     had_programs := name :: !had_programs ;
-    let funcs = Js.Unsafe.get l "operations" in
+    let func_names = of_field l "operations" (list_of_js Js.to_string) in
     let program = Program.{
       name ; program ; status_str ; status ; order = i ;
-      last_started = Js.(Unsafe.get l "last_started" |> Opt.to_option |>
-                         option_map float_of_number) ;
-      last_stopped = Js.(Unsafe.get l "last_stopped" |> Opt.to_option |>
-                         option_map float_of_number) ;
-      nb_funcs = funcs##.length } in
+      last_started = of_opt_field l "last_started" Js.float_of_number ;
+      last_stopped = of_opt_field l "last_stopped" Js.float_of_number ;
+      nb_funcs = List.length func_names ;
+      func_names } in
     update_program program ;
-    for j = 0 to funcs##.length - 1 do
-      let n = Js.array_get funcs j in
-      let func = func_of_js program n in
-      had_funcs := func.Func.id :: !had_funcs ;
-      update_func func
-    done
   done ;
   (* Order the programs according to dependencies*)
   programs.value <-
     List.fast_sort (fun (_, a) (_, b) ->
       compare a.value.Program.order b.value.Program.order) programs.value ;
-  update_funcs_sum () ;
   if total then (
     programs.value <- List.filter (fun (name, _) ->
       if List.mem name !had_programs then (
@@ -592,13 +645,6 @@ let update_graph total g =
         false
       )) programs.value ;
     change programs ;
-    funcs.value <- List.filter (fun (id, _) ->
-      if List.mem id !had_funcs then (
-        change funcs ; true
-      ) else (
-        print (Js.string ("Deleting operation "^ id)) ;
-        false
-      )) funcs.value
   ) else (
     (* Still, this is total for the funcs of these programs. But so far
      * when we ask for a partial graph we do not modify the composition
@@ -617,10 +663,11 @@ let reload_graph =
       let url = match program_name with
         | None -> "/graph"
         | Some pn -> "/graph/"^ enc pn in
-      http_get url ~on_done:(fun () ->
+      http_get url ~finally:(fun () ->
           if single then reloading := false)
         (fun g ->
           update_graph (program_name = None) g ;
+          reload_funcs ~single () ;
           option_may set_sel_program redirect_to_program ;
           resync ()))
 
@@ -723,7 +770,7 @@ let with_func func_id f =
   with_param funcs (fun funcs ->
     match List.assoc func_id funcs with
     | exception Not_found -> text ("Can't find operation "^ func_id)
-    | func -> f func.value)
+    | func -> with_param func f)
 
 let icon_of_program ?(suppress_action=false) program =
   let icon, path, alt, what, while_ =
@@ -751,7 +798,7 @@ let icon_of_program ?(suppress_action=false) program =
       Some (fun _ ->
         Jstable.add spinners.value js_name while_ ;
         change spinners ;
-        http_get path ?what ~on_done:(fun () ->
+        http_get path ?what ~finally:(fun () ->
           Jstable.remove spinners.value js_name ;
           change spinners)
           (fun status ->
@@ -778,7 +825,7 @@ let del_program program_name =
   Jstable.add spinners.value js_name "deleting..." ;
   let path = "/graph/"^ enc program_name
   and what = "Deleted "^ program_name in
-  http_del path ~what ~on_done:(fun () ->
+  http_del path ~what ~finally:(fun () ->
     Jstable.remove spinners.value js_name ;
     change spinners)
     (done_edit_program_cb ~redirect_to_program:NoProgram "delete")
@@ -1111,13 +1158,16 @@ let input_output_panel =
       p [ clss "nodata" ]
         [ text "Select an operation to see its input/output" ]
     else with_func sel (fun func ->
-      group [
-        h1 [] [ text "Input fields" ] ;
-        ol [] (List.map (fun f ->
-          li [] [ field_panel f ]) func.input_type) ;
-        h1 [] [ text "Output fields" ] ;
-        ol [] (List.map (fun f ->
-          li [] [ field_panel f]) func.output_type) ]))
+      match func.code with
+      | Some code ->
+          group [
+            h1 [] [ text "Input fields" ] ;
+            ol [] (List.map (fun f ->
+              li [] [ field_panel f ]) code.input_type) ;
+            h1 [] [ text "Output fields" ] ;
+            ol [] (List.map (fun f ->
+              li [] [ field_panel f]) code.output_type) ]
+      | None -> spinner))
 
 let can_plot_type = function
     Some (TFloat | TU8 | TU16 | TU32 | TU64 | TU128 |
@@ -1130,9 +1180,12 @@ let op_panel =
       p [ clss "nodata" ]
         [ text "Select an operation to see its program" ]
     else with_func sel (fun func ->
-      div
-        [ clss "operation" ]
-        [ elmt "pre" [] [ text func.operation ] ]))
+      match func.code with
+      | Some code ->
+          div
+            [ clss "operation" ]
+            [ elmt "pre" [] [ text code.operation ] ]
+      | None -> spinner))
 
 let tail_panel =
   let pretty_th ?action c title subtitle =
@@ -1175,12 +1228,15 @@ let tail_panel =
       p [ clss "nodata" ]
         [ text "Select an operation to see its output" ]
     else with_func sel (fun func ->
-      wide_table
-        [ thead [] [ tr [] (List.mapi th_field func.output_type) ] ;
-          with_param tail_rows (fun rows ->
-            Array.fold_left (fun l r ->
-              row func.output_type r :: l) [] rows |>
-            List.rev |> tbody [])]))
+      match func.code with
+      | Some code ->
+          wide_table
+            [ thead [] [ tr [] (List.mapi th_field code.output_type) ] ;
+              with_param tail_rows (fun rows ->
+                Array.fold_left (fun l r ->
+                  row code.output_type r :: l) [] rows |>
+                List.rev |> tbody [])]
+      | None -> spinner))
 
 let chart_type_selector =
   with_param chart_type (fun cur_ct ->
@@ -1309,7 +1365,7 @@ let save_program _ =
     set editor_spinning true ;
     let redirect_to_program = ExistingProgram program_name in
     http_put path content ~what
-      ~on_done:(fun () -> set editor_spinning false)
+      ~finally:(fun () -> set editor_spinning false)
       (done_edit_program_cb ~program_name ~redirect_to_program "save")
 
 let program_editor_panel =

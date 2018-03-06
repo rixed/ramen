@@ -234,21 +234,30 @@ let set_program ?test_id ?(ok_if_running=false) ?(start=false)
     ) else return_unit in
   return name)
 
-let func_info_of_func programs func =
-  let%lwt stats = RamenProcesses.last_report (N.fq_name func) in
+let func_info_of_func ~with_code ~with_stats programs func =
   let%lwt exporting = RamenExport.is_func_exporting func in
   let operation =
     IO.to_string RamenOperation.print func.N.operation |>
     PPP_prettify.prettify in
+  let%lwt stats =
+    if with_stats then
+      let%lwt report = RamenProcesses.last_report (N.fq_name func) in
+      return (Some report)
+    else return_none in
+  let code =
+    if with_code then
+      Some (SN.{
+        operation ;
+        input_type = C.info_of_tuple_type func.N.in_type ;
+        output_type = C.info_of_tuple_type func.N.out_type })
+    else None in
   return SN.{
+    program = func.N.program ;
     name = func.N.name ;
-    operation ;
     exporting ;
     signature = if func.N.signature = "" then None else Some func.N.signature ;
     pid = func.N.pid ;
     last_exit = func.N.last_exit ;
-    input_type = C.info_of_tuple_type func.N.in_type ;
-    output_type = C.info_of_tuple_type func.N.out_type ;
     parents = List.map (fun (p, f) -> p ^"/"^ f) func.N.parents ;
     children =
       C.fold_funcs programs [] (fun children _l n ->
@@ -257,13 +266,20 @@ let func_info_of_func programs func =
            ) n.parents
         then N.fq_name n :: children
         else children) ;
+    code ;
     stats }
 
+let func_info ?(with_code=true) ?(with_stats=true) conf program_name func_name =
+  C.with_rlock conf (fun programs ->
+    let%lwt func = wrap (fun () ->
+      let prog = Hashtbl.find programs program_name in
+      Hashtbl.find prog.L.funcs func_name) in
+    func_info_of_func ~with_code ~with_stats programs func)
+
 let program_info_of_program programs program =
-  let%lwt operations =
-    Hashtbl.values program.L.funcs |>
-    List.of_enum |>
-    Lwt_list.map_s (func_info_of_func programs) in
+  let operations =
+    Hashtbl.keys program.L.funcs |>
+    List.of_enum in
   return SL.{
     name = program.L.name ;
     program = program.L.program ;

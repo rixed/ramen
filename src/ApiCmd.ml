@@ -7,6 +7,8 @@ open RamenSharedTypes
 open Helpers
 open RamenHttpHelpers
 module C = RamenConf
+module SN = RamenSharedTypes.Info.Func
+module SL = RamenSharedTypes.Info.Program
 
 let () =
   async_exception_hook := (fun exn ->
@@ -327,10 +329,28 @@ let timerange copts func_name () =
       Printf.printf "%f...%f\n%!" oldest latest ;
       return_unit)
 
+let get_op_info_remote ?with_stats ?with_code server_url prog_name op_name =
+  let bool_param n = function
+    | None -> ""
+    | Some b -> "&"^ n ^"="^ string_of_bool b in
+  let url = server_url ^"/operation/"^ enc prog_name ^"/"^ enc op_name ^"?"
+          ^ bool_param "stats" with_stats
+          ^ bool_param "code" with_code in
+  http_get url >>=
+  ppp_of_string_exc (SN.info_ppp_json ())
+
+let get_op_info_local ?with_stats ?with_code conf prog_name op_name =
+  RamenOps.func_info ?with_stats ?with_code conf prog_name op_name
+
+let get_func_info ?with_stats ?with_code conf copts prog_name op_name remote =
+  if remote then
+    get_op_info_remote ?with_stats ?with_code copts.server_url prog_name op_name
+  else
+    get_op_info_local ?with_stats ?with_code conf prog_name op_name
 
 let get_program_info_remote ?err_ok server_url name_opt =
   let url = server_url ^"/graph"^
-            (Option.map (fun n -> "/"^n) name_opt |? "") in
+            (Option.map (fun n -> "/"^ enc n) name_opt |? "") in
   http_get ?err_ok url >>=
   ppp_of_string_exc (get_graph_resp_ppp_json ())
 
@@ -369,9 +389,9 @@ let abbrev_str_list lst =
     let s = RamenHtml.abbrev 17 s in
     s ^" ("^ string_of_int (List.length lst) ^")")
 
-let display_program_info json short info =
+let display_program_info json short progs_info ops_info =
   if json then
-    let str = PPP.to_string (get_graph_resp_ppp_json ()) info |>
+    let str = PPP.to_string (get_graph_resp_ppp_json ()) progs_info |>
               PPP_prettify.prettify in
     Printf.printf "%s\n" str
   else if short then
@@ -385,7 +405,7 @@ let display_program_info json short info =
            ValStr (string_of_status prog.status) ;
            time_or_na prog.last_started ;
            time_or_na prog.last_stopped |]
-      ) info in
+      ) progs_info in
     print_table head lines
   else
     let open TermTable in
@@ -395,26 +415,28 @@ let display_program_info json short info =
                   "pid" ; "signature" |] in
     let lines =
       List.fold_left (fun lines prog ->
+        let ops = Hashtbl.find_all ops_info prog.SL.name in
         List.fold_left (fun lines func ->
           let open Info.Func in
-          [| ValStr prog.Info.Program.name ;
+          let stats = Option.get func.stats in
+          [| ValStr prog.name ;
              ValStr func.name ;
-             int_or_na func.stats.in_tuple_count ;
-             int_or_na func.stats.selected_tuple_count ;
-             int_or_na func.stats.out_tuple_count ;
-             int_or_na func.stats.group_count ;
-             ValFlt func.stats.cpu_time ;
-             flt_or_na func.stats.in_sleep ;
-             flt_or_na func.stats.out_sleep ;
-             ValInt func.stats.ram_usage ;
-             flt_or_na func.stats.in_bytes ;
-             flt_or_na func.stats.out_bytes ;
+             int_or_na stats.in_tuple_count ;
+             int_or_na stats.selected_tuple_count ;
+             int_or_na stats.out_tuple_count ;
+             int_or_na stats.group_count ;
+             ValFlt stats.cpu_time ;
+             flt_or_na stats.in_sleep ;
+             flt_or_na stats.out_sleep ;
+             ValInt stats.ram_usage ;
+             flt_or_na stats.in_bytes ;
+             flt_or_na stats.out_bytes ;
              ValInt (List.length func.parents) ;
              ValInt (List.length func.children) ;
              int_or_na func.pid ;
              str_or_na func.signature |] :: lines
-        ) lines prog.operations
-      ) [] info in
+        ) lines ops
+      ) [] progs_info in
     print_table head lines
 
 let form_of_type =
@@ -431,25 +453,26 @@ let form_of_type =
 
 let display_operation_info json short func =
   if json then
-    let str = PPP.to_string (Info.Func.info_ppp_json ()) func |>
+    let str = PPP.to_string (SN.info_ppp_json ()) func |>
               PPP_prettify.prettify in
     Printf.printf "%s\n" str
   else
     let open Info.Func in
     let open TermTable in
+    let stats = Option.get func.stats in
     let form =
       [ "Name", ValStr func.name ;
-        "#in", int_or_na func.stats.in_tuple_count ;
-        "#selected", int_or_na func.stats.selected_tuple_count ;
-        "#out", int_or_na func.stats.out_tuple_count ;
-        "#group", int_or_na func.stats.group_count ;
-        "Event time", ValStr (string_of_time func.stats.time) ;
-        "CPU", ValFlt func.stats.cpu_time ;
-        "Wait-in", flt_or_na func.stats.in_sleep ;
-        "Wait-out", flt_or_na func.stats.out_sleep ;
-        "RAM", ValInt func.stats.ram_usage ;
-        "Read", flt_or_na func.stats.in_bytes ;
-        "Written", flt_or_na func.stats.out_bytes ;
+        "#in", int_or_na stats.in_tuple_count ;
+        "#selected", int_or_na stats.selected_tuple_count ;
+        "#out", int_or_na stats.out_tuple_count ;
+        "#group", int_or_na stats.group_count ;
+        "Event time", ValStr (string_of_time stats.time) ;
+        "CPU", ValFlt stats.cpu_time ;
+        "Wait-in", flt_or_na stats.in_sleep ;
+        "Wait-out", flt_or_na stats.out_sleep ;
+        "RAM", ValInt stats.ram_usage ;
+        "Read", flt_or_na stats.in_bytes ;
+        "Written", flt_or_na stats.out_bytes ;
         "Parents", abbrev_str_list func.parents ;
         "Children", abbrev_str_list func.children ;
         "PID", int_or_na func.pid ;
@@ -457,12 +480,31 @@ let display_operation_info json short func =
         "Last Exit Status", ValStr func.last_exit ] in
     print_form form ;
     if not short then (
+      let code = Option.get func.code in
       Printf.printf "\nInput:\n" ;
-      print_form (form_of_type func.input_type) ;
+      print_form (form_of_type code.input_type) ;
       Printf.printf "\nOperation:\n%s\n"
-        (PPP_prettify.prettify func.operation) ;
+        (PPP_prettify.prettify code.operation) ;
       Printf.printf "\nOutput:\n" ;
-      print_form (form_of_type func.output_type))
+      print_form (form_of_type code.output_type))
+
+let get_funcs_info ?with_stats ?with_code conf copts progs_info remote =
+  let ops_info = Hashtbl.create 11 in
+  let%lwt () =
+    Lwt_list.iter_s (* iter_p? *) (fun prog ->
+      Lwt_list.iter_s (* iter_p? *) (fun op_name ->
+        match%lwt get_func_info ?with_stats ?with_code
+                    conf copts prog.SL.name op_name remote with
+        (* Ignore missing nodes as caller had no lock. FIXME: still in the case
+         * where this prog/func name has been specified on the command line then
+         * an error should be raised. *)
+        | exception (Not_found | Failure _) -> return_unit
+        | op_info ->
+            Hashtbl.add ops_info prog.SL.name op_info ;
+            return_unit
+      ) prog.operations
+    ) progs_info in
+  return ops_info
 
 (* TODO: options to get a dot/mermaid instead *)
 let info copts json short name_opt remote () =
@@ -480,22 +522,25 @@ let info copts json short name_opt remote () =
          * try again with only the `dirname` and print only that operation *)
         (match String.rsplit (name_opt |? "") ~by:"/" with
         | exception Not_found -> fail e
-        | program, func ->
-            (match%lwt get_program_info conf copts (Some program) remote with
-            | [ program_info ] -> (* Since we ask for a single program *)
-                (match List.find (fun n ->
-                         n.Info.Func.name = func
-                       ) program_info.Info.Program.operations with
-                | exception Not_found ->
-                    fail_with ("Unknown object '"^ func ^"/"^ program ^"'")
+        | program_name, func_name ->
+            (match%lwt get_program_info conf copts (Some program_name) remote with
+            | [ prog_info ] -> (* Since we ask for a single program *)
+                (match%lwt get_func_info
+                             ~with_stats:true ~with_code:(not short)
+                             conf copts program_name func_name remote with
+                | exception (Not_found | Failure _) ->
+                    fail_with ("Unknown object '"^ func_name ^"/"^ program_name ^"'")
                 | func_info ->
                     display_operation_info json short func_info ;
                     return_unit)
             | lst ->
                 fail_with (Printf.sprintf "Received %d results"
                              (List.length lst))))
-    | info ->
-        display_program_info json short info ;
+    | progs_info ->
+        let%lwt ops_info =
+          get_funcs_info ~with_stats:true ~with_code:(not short)
+            conf copts progs_info remote in
+        display_program_info json short progs_info ops_info ;
         return_unit)
 
 let test copts conf_file tests () =
