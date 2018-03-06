@@ -1473,6 +1473,6 @@ let () =
   reload_for_current_page true ;
   Html.window##setInterval (Js.wrap_callback
       (fun () -> reload_for_current_page false)
-    ) 3_137. |>
+    ) 7_137. |>
   ignore ;
   start dom
