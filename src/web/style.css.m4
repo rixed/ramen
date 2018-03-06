@@ -13,7 +13,7 @@ button:focus { outline: 0; }
   background-color: transparent;
   cursor: default;
   animation: rotation 0.3s linear infinite;
-  font-weight: 2000;
+  font-weight: bolder;
 }
 .spinning:hover { background-color: transparent; }
 button.icon { width: 3em; height: 3em; }
@@ -21,7 +21,7 @@ button.xxl { width: 5em; }
 
 table { border-collapse: collapse; border-spacing: 10; }
 td, th { padding: 0 1em 0 1em; }
-tfoot td, th { font-weight: 700; }
+tfoot td, th { font-weight: bold; }
 span.null { font-style: italic; color: #888; font-size: 80%; }
 .spacer { flex-grow: 10; }
 .wide { width: 100%; overflow-x: auto; }
@@ -55,11 +55,11 @@ html { background-color: #ddd; }
   position: fixed ; top: 3em; left: 0;
   display: block; width: 100%;
   border-bottom: 1px solid #888;
-  font-weight: 700; font-size: 100%;
+  font-weight: bold; font-size: 100%;
   color: #000; }
 #messages p { padding: 1em 0 1em 1em; }
 #messages p.error { background: rgba(240, 30, 20, 0.9); }
-#messages span.err-times { font-weight: 1000; margin-left: 1em; }
+#messages span.err-times { font-weight: bolder; margin-left: 1em; }
 #messages p.ok { background: rgba(20, 210, 30, 0.9); }
 
 #top { width: 100%; }
@@ -74,7 +74,7 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #programs div.overwrite2 { position: absolute; top: 0.75em; left:1em; width: 0; height: 0; overflow: visible; }
 #programs div.overwrite2 * { visibility: visible; }
 #programs div.overwrite2 p { white-space: nowrap; }
-#programs p.yes-or-no { margin: auto; padding-top: 1em; font-weight: 700; }
+#programs p.yes-or-no { margin: auto; padding-top: 1em; font-weight: bold; }
 #programs .yes { color: #700; cursor: pointer; padding-left: 3em; padding-right: 1em; }
 #programs .no { color: #080; cursor: pointer; padding-left: 1em; }
 #programs div.program div.title { display: flex; flex-direction: row; justify-content: space-between; }
@@ -82,7 +82,7 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #programs .name, #programs .info p { padding-left: 6px; padding-right: 4px; }
 #programs .name { padding-top: 4px; }
 #programs .info:last-of-type { padding-bottom: 4px; }
-#programs button.new-program { float: none; padding: 0.5em; font-weight: 700; clear: left; }
+#programs button.new-program { float: none; padding: 0.5em; font-weight: bold; clear: left; }
 
 #funcs thead th { border: 1px solid #ccc; }
 #funcs tbody td { white-space: nowrap; padding: 0.3em 1em 0.3em 1em; border-bottom: 1px solid #ccc; }
@@ -96,7 +96,7 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #editor textarea { resize: none; }
 #editor div.input { margin-bottom: 0.3em; }
 #editor input[[type="text"]] { margin-left: 1em; }
-#editor button { padding: 0.5em 1em 0.5em 1em; font-weight:700; font-size:100%; text-align: center; margin-right: 1em; margin-bottom: 2em; }
+#editor button { padding: 0.5em 1em 0.5em 1em; font-weight:bold; font-size:100%; text-align: center; margin-right: 1em; margin-bottom: 2em; }
 
 #in-out li {
   float: left;
@@ -121,7 +121,7 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
   margin-right: auto; }
 #timechart>p {
   padding-left: 2em;
-  font-weight: 700; font-size: 100%; }
+  font-weight: bold; font-size: 100%; }
 
 #timechart .chart-buttons {
   display: inline-block;
@@ -130,7 +130,7 @@ h1 { font-size: 110%; padding: 1.5em 0 0.5em 1em; }
 #timechart svg.chart { display: block; }
 
 #programs p.error { background: rgb(240, 30, 20); }
-span.label { margin-right: 0.2em; color: #222; font-size: 80%; font-weight: 700; }
+span.label { margin-right: 0.2em; color: #222; font-size: 80%; font-weight: bold; }
 span.value { margin-right: 1em; color: #003; font-size: 85%; }
 
 div.tabs {
@@ -142,13 +142,13 @@ div.tabs {
   align-items: baseline;
 }
 
-div.tab { padding: 0.5em 1em 0.5em 1em; font-weight: 700; font-size: 100%; }
+div.tab { padding: 0.5em 1em 0.5em 1em; font-weight: bold; font-size: 100%; }
 th p { margin: 0px; }
 th p.type { font-size: 60%; font-style: italic; }
 td.number, td.float, td.u8, td.u16, td.u32, td.u64, td.u128, td.i8,
 td.i16, td.i32, td.i64, td.i128 { text-align: right; font-family: monospace; }
 
-p.nodata { font-weight: 600; font-style: italic; margin: 1em; }
+p.nodata { font-weight: bold; font-style: italic; margin: 1em; }
 
 div.tab div { float: left; min-height: 1em; height: 1em; display: flex; padding: 0 1em 0 1em; }
 div.tab div { background-color: #fff; color: #aaa; }
