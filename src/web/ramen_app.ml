@@ -143,7 +143,7 @@ struct
 
       mutable last_stats : worker_stats ;
       stats : worker_stats ;
-      code : code option ;
+      mutable code : code option ;
 
       pid : int option ;
       last_exit : string ;
@@ -234,7 +234,6 @@ let zero_sums = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
  * current values. *)
 let funcs_sum = make_param "funcs sum" zero_sums
 
-(* FIXME: have a single param for all the funcs *)
 let update_func func =
   let p =
     try
@@ -243,6 +242,8 @@ let update_func func =
         func.last_stats <- p.value.stats
       else
         func.last_stats <- p.value.last_stats ;
+      if func.code = None && p.value.code <> None then
+        func.code <- p.value.code ;
       set p func ;
       p
     with Not_found ->
@@ -667,8 +668,8 @@ let reload_graph =
           if single then reloading := false)
         (fun g ->
           update_graph (program_name = None) g ;
-          reload_funcs ~single () ;
           option_may set_sel_program redirect_to_program ;
+          if program_name = None then reload_funcs ~single () ;
           resync ()))
 
 (* Panel pending deletion, if any. There is only one, so selecting another
