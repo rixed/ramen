@@ -529,18 +529,20 @@ let save_file_of_program persist_dir p =
 
 let non_persisted_programs = ref (Hashtbl.create 11)
 
-let load_program conf p : Program.t =
-  let save_file = save_file_of_program conf.persist_dir p in
-  !logger.debug "Loading program from %s" save_file ;
-  File.with_file_in save_file Marshal.input
-
 let load_programs conf =
   let save_dir = save_dir_of_programs conf.persist_dir in
   if conf.do_persist then
     try
       let h = Hashtbl.create 11 in
       dir_subtree_iter ~on_dir:(fun p ->
-        Hashtbl.add h p (load_program conf p)
+        let save_file = save_file_of_program conf.persist_dir p in
+        (* Not all subdirs are a program: *)
+        if file_exists ~maybe_empty:false save_file then (
+          !logger.debug "Loading program from %s" save_file ;
+          let prog : Program.t =
+            File.with_file_in save_file Marshal.input in
+          Hashtbl.add h p prog
+        )
       ) save_dir ;
       h
     with
