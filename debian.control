@@ -3,4 +3,5 @@ Version: 1.2.2
 Architecture: amd64
 Maintainer: rixed-github@happyleptic.org
 Depends: gcc, openssl, libblas-dev, liblapack-dev, libsqlite3-0
+Conflicts: libopenblas-base
 Description: Event processor tailored for small-scale monitoring
