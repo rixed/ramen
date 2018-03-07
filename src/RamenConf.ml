@@ -234,7 +234,7 @@ struct
   let is_typed program =
     match program.status with
     | Edition _ | Compiling -> false
-    | Compiled | Running -> true
+    | Compiled | Running | Stopping -> true
 
   (* Program edition: only when stopped *)
   let set_editable program reason =
@@ -250,7 +250,7 @@ struct
       raise (InvalidCommand "Graph is compiling")
     | Compiled ->
       set_status program (Edition reason) ;
-    | Running ->
+    | Running | Stopping ->
       raise (InvalidCommand "Graph is running")
 
   let fold_dependencies program init f =

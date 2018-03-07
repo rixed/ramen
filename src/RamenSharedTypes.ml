@@ -138,6 +138,7 @@ struct
       | Compiling -> "Compiling"
       | Compiled -> "Compiled"
       | Running -> "Running"
+      | Stopping -> "Stopping"
 
     type info =
       { name : string ;

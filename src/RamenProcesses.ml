@@ -49,6 +49,7 @@ let input_spec conf parent func =
 (* Takes a locked conf.
  * FIXME: a phantom type for this *)
 let rec run_func conf programs program func =
+  if func.N.pid <> None then fail AlreadyRunning else
   let command = C.exec_of_func conf.C.persist_dir func
   and output_ringbufs =
     (* Start to output to funcs of this program. They have all been
@@ -139,16 +140,13 @@ let rec run_func conf programs program func =
               return_unit
           | program, func ->
               let restart () =
-                if program.status = Running &&
-                   not !quit then (
-                  !logger.info "Restarting func %s which is supposed to \
-                                be running."
-                    (N.fq_name func) ;
-                  let%lwt () = Lwt_unix.sleep (Random.float 2.) in
-                  (* Note: run_func will start another waiter for that
-                   * other worker so our job is done. *)
-                  run_func conf programs program func
-                ) else return_unit in
+                !logger.info "Restarting func %s which is supposed to \
+                              be running."
+                  (N.fq_name func) ;
+                let%lwt () = Lwt_unix.sleep (Random.float 2.) in
+                (* Note: run_func will start another waiter for that
+                 * other worker so our job is done. *)
+                run_func conf programs program func in
               (* Check this is still the same program: *)
               if func.pid <> Some pid then (
                 !logger.error "Operation %s (pid %d) %s is in \
@@ -159,16 +157,31 @@ let rec run_func conf programs program func =
               ) else (
                 func.pid <- None ;
                 func.last_exit <- status_str ;
-                (* We leave the program.status as it is since we have no
-                 * idea what;s happening to other operations. *)
-                (* Now we might want to restart it: *)
-                match status with
-                | Unix.WSIGNALED signal
-                  when signal <> Sys.sigterm &&
-                       signal <> Sys.sigkill &&
-                       signal <> Sys.sigint -> restart ()
-                | Unix.WEXITED code when code <> 0 -> restart ()
-                | _ -> return_unit))
+                (* The rest of the operation depends on the program status: *)
+                match program.status with
+                | Stopping ->
+                    (* If there are no more processes funning for this program,
+                     * demote it to Compiled: *)
+                    if Hashtbl.values program.L.funcs |>
+                       Enum.for_all (fun func -> func.N.pid = None) then (
+                      !logger.info "All workers for %s have terminated" program.name ;
+                      L.set_status program Compiled
+                    ) ;
+                    return_unit
+                | Running when !quit ->
+                    (* If this does not look intentional, restart the worker: *)
+                    (match status with
+                    | Unix.WSIGNALED signal
+                      when signal <> Sys.sigterm &&
+                           signal <> Sys.sigkill &&
+                           signal <> Sys.sigint -> restart ()
+                    | Unix.WEXITED code when code <> 0 -> restart ()
+                    | _ -> return_unit)
+
+                | _ ->
+                    (* We leave the program.status as it is since we have no
+                     * idea what's happening to other operations. *)
+                     return_unit))
     in
     wait_child ()) ;
   (* Update the parents out_ringbuf_ref if it's in another program (otherwise
@@ -222,26 +235,31 @@ let kill_worker conf timeout _programs func pid =
          * within 2 seconds with the same pid. In a world where this
          * assumption wouldn't hold we would have to increment a counter
          * in the func for instance... *)
-        if func.N.pid = Some pid then (
+        if func.N.pid = None then (
+          (* The waiter cleaned the pid, all is good. *)
+        ) else if func.N.pid = Some pid then (
           !logger.warning "Killing worker %s (pid %d) with bigger guns"
             (N.fq_name func) pid ;
           try_kill pid Sys.sigkill ;
+        ) else (
+          (* Another child is running already. Meaning that it has first been
+           * cleared by the waiter, and then restarted. All is good. *)
         ) ;
         return_unit))
 
 let stop conf programs program =
   match program.L.status with
-  | Edition _ | Compiled -> return_unit
+  | Edition _ | Compiled | Stopping -> return_unit
   | Compiling ->
     (* FIXME: do as for Running and make sure run() check the status hasn't
      * changed before launching workers. *)
     return_unit
   | Running ->
-    !logger.info "Stopping program %s" program.L.name ;
     let now = Unix.gettimeofday () in
     let program_funcs =
       Hashtbl.values program.L.funcs |> List.of_enum in
     let timeout = 1. +. float_of_int (List.length program_funcs) *. 0.02 in
+    !logger.info "Stopping program %s (timeout %gs)" program.L.name timeout ;
     let%lwt () = Lwt_list.iter_p (fun func ->
         if program.test_id <> "" &&
            not (RamenOperation.run_in_tests func.N.operation)
@@ -253,8 +271,9 @@ let stop conf programs program =
         ) else (
           let%lwt () = RamenExport.stop conf func in
           (* Start by removing this worker ringbuf from all its parent
-           * output references *)
+           * output references: *)
           let this_in = C.in_ringbuf_name conf func in
+          (* Remove this operation from all its parents output: *)
           let%lwt () = Lwt_list.iter_p (fun (parent_program, parent_name) ->
               match C.find_func programs parent_program parent_name with
               | exception Not_found -> return_unit
@@ -262,6 +281,7 @@ let stop conf programs program =
                 let out_ref = C.out_ringbuf_names_ref conf parent in
                 RamenOutRef.remove out_ref this_in
             ) func.N.parents in
+          (* Now kill that pid: *)
           (match func.N.pid with
           | None ->
             !logger.warning "Function %s stopped already (INTerrupted?)"
@@ -273,7 +293,7 @@ let stop conf programs program =
           return_unit
         )
       ) program_funcs in
-    L.set_status program Compiled ;
+    L.set_status program Stopping ;
     program.L.last_stopped <- Some now ;
     return_unit
 
@@ -281,7 +301,7 @@ let run conf programs program =
   let open L in
   match program.status with
   | Edition _ -> fail NotYetCompiled
-  | Running -> fail AlreadyRunning
+  | Running | Stopping -> fail AlreadyRunning
   | Compiling -> fail StillCompiling
   | Compiled ->
     !logger.info "Starting program %s" program.L.name ;

@@ -1,6 +1,6 @@
 type program_status = Edition of string (* last error *)
-                  | Compiling | Compiled | Running
-                  [@@ppp PPP_JSON] [@@ppp PPP_OCaml]
+                    | Compiling | Compiled | Running | Stopping
+                    [@@ppp PPP_JSON] [@@ppp PPP_OCaml]
 
 (* TNum is not an actual type used by any value, but it's used as a default
  * type for numeric operands that can be "promoted" to any other numerical

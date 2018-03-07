@@ -78,6 +78,7 @@ struct
     | "Compiling" -> Compiling
     | "Compiled" -> Compiled
     | "Running" -> Running
+    | "Stopping" -> Stopping
     | x -> fail ("Unknown program status "^x)),
     status_str
 
@@ -791,6 +792,9 @@ let icon_of_program ?(suppress_action=false) program =
       "||", "/stop/"^ enc program.Program.name,
       "stop", Some ("Stopped "^ program.Program.name),
       "stopping..."
+    | Stopping ->
+      "☐", "/graph/"^ enc program.Program.name,
+      "reload", None, "stopping..."
   in
   let js_name = Js.string program.name in
   let action =
