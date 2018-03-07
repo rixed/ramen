@@ -440,6 +440,15 @@ let del_program programs program =
         raise (InvalidCommand "Program is running") ;
       Hashtbl.remove programs program.name
 
+let lwt_fold_programs programs init f =
+  Hashtbl.values programs |> List.of_enum |>
+  Lwt_list.fold_left_s f init
+
+let lwt_fold_funcs programs init f =
+  lwt_fold_programs programs init (fun prev program ->
+    Hashtbl.values program.Program.funcs |> List.of_enum |>
+    Lwt_list.fold_left_s (fun prev func -> f prev program func) prev)
+
 let fold_programs programs init f =
   Hashtbl.fold (fun _ program prev ->
     f prev program

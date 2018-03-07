@@ -1077,14 +1077,13 @@ let compile conf parents program =
   assert (program.L.status = Compiling) ;
   (* Check that parents are typed *)
   let%lwt () =
-    Hashtbl.fold (fun _ funcs thds ->
-      List.fold_left (fun thds func ->
-        if func.N.program = program.L.name ||
-           C.tuple_is_typed func.N.out_type
-        then thds
-        else fail (MissingDependency func)
-      ) thds funcs
-    ) parents return_unit in
+    Hashtbl.values parents |> List.of_enum |> List.flatten |>
+    Lwt_list.iter_s (fun func ->
+      if func.N.program = program.L.name ||
+         C.tuple_is_typed func.N.out_type
+      then return_unit
+      else fail (MissingDependency func)
+    ) in
   !logger.debug "Trying to compile program %s" program.L.name ;
   let%lwt () = wrap (fun () ->
     set_all_types parents program ;
@@ -1119,36 +1118,38 @@ let compile conf parents program =
         func.N.signature <- N.signature func
       ) program.L.funcs) in
   (* Compile *)
-  let _, thds =
-    Hashtbl.fold (fun _ func (doing, thds) ->
-        (* Avoid compiling twice the same thing (TODO: a lockfile) *)
-        if Set.mem func.N.signature doing then doing, thds else (
-          Set.add func.N.signature doing,
-          compile_func conf func :: thds)
-      ) program.L.funcs (Set.empty, []) in
-  join thds
+  let%lwt _ =
+    Hashtbl.values program.L.funcs |> List.of_enum |>
+    Lwt_list.fold_left_s (fun doing func ->
+      (* Avoid compiling twice the same thing (TODO: a lockfile so several
+       * programs can compile together without stepping on each others toes) *)
+      if Set.mem func.N.signature doing then
+        return doing
+      else (
+        let%lwt () = compile_func conf func in
+        return (Set.add func.N.signature doing))
+    ) Set.empty in
+  return_unit
 
 let stop_all_dependents conf programs program =
   let open Lwt in
   (* Since we really recompiled that program, all programs depending on it
    * must return to edition mode as they must be typed again. *)
   !logger.info "Stopping all programs depending on %s" program.L.name ;
-  let thds, to_restart, _ =
-    C.fold_funcs programs ([], [], Set.singleton program.L.name)
-      (fun (_, _, visited as prev) program' func ->
+  let%lwt to_restart, _ =
+    C.lwt_fold_funcs programs ([], Set.singleton program.L.name)
+      (fun (_, visited as prev) program' func ->
         if Set.mem func.program visited ||
-           program'.L.status <> Running then prev else
-        List.fold_left (fun (thds, to_restart, visited as prev)
-                            (parent_program, _) ->
+           program'.L.status <> Running then return prev else
+        Lwt_list.fold_left_s (fun (to_restart, visited as prev)
+                                  (parent_program, _) ->
           if parent_program = program.L.name then (
-            (let%lwt () =
+            let%lwt () =
               RamenProcesses.stop conf programs program' in
             L.set_editable program' ("Stopped since depends on "^
                                      program.L.name) ;
-            return_unit) :: thds,
-            program'.L.name :: to_restart,
-            Set.add func.program visited
-          ) else prev
+            return (program'.L.name :: to_restart,
+                    Set.add func.program visited)
+          ) else return prev
         ) prev func.N.parents) in
-  let%lwt () = join thds in
   return to_restart
