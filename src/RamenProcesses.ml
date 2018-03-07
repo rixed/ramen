@@ -244,7 +244,7 @@ let stop conf programs program =
     let timeout = 1. +. float_of_int (List.length program_funcs) *. 0.02 in
     let%lwt () = Lwt_list.iter_p (fun func ->
         if program.test_id <> "" &&
-           RamenOperation.run_in_tests func.N.operation
+           not (RamenOperation.run_in_tests func.N.operation)
         then (
           if func.N.pid <> None then
             !logger.error "Node %s should not be running during a test!"
