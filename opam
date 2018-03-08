@@ -22,7 +22,7 @@ depends: [
   "lacaml" {= "10.0.2"}
   "sqlite3" {= "4.3.2"}
   "num"
-  "ppp" {build & >= "2.0"}
+  "ppp" {build & >= "2.1"}
   "js_of_ocaml" {build & = "3.0.2"}
   "js_of_ocaml-ppx" {build}
   "cmdliner" {build & = "1.0.2"}
