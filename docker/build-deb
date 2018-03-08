@@ -33,7 +33,7 @@ while true ; do
       rm -f ramen.*.deb
 
       # Also, make bundle will work only if the opam version is up to date:
-      opam install --yes ramen || opam upgrade --yes ramen
+      opam install --verbose --yes ramen || opam upgrade --verbose --yes ramen
       # Now we can build the deb:
       make deb
 
