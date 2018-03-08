@@ -1,6 +1,6 @@
 # Configuration
 
-VERSION = 1.2.2
+VERSION = 1.2.3
 
 OCAMLC     = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamlc
 OCAMLOPT   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamlopt

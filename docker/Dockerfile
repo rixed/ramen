@@ -22,10 +22,10 @@ RUN echo 'APT::Install-Recommends "0";' > \
       /etc/apt/apt.conf.d/no_recommends
 
 # Rebuild a new image from here
-RUN echo "version 1.2.2~0"
+RUN echo "version 1.2.3~0"
 
 # Install ramen
-COPY ramen.1.2.2.deb /tmp
+COPY ramen.1.2.3.deb /tmp
 RUN dpkg -i /tmp/*.deb && rm /tmp/*.deb
 
 # Environment
