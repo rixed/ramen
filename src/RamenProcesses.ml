@@ -36,6 +36,9 @@ let run_background cmd args env =
     execve cmd args env
   | pid -> pid
 
+let wrap_in_valgrind command args =
+  "/usr/bin/valgrind", Array.concat [ [| "--tool=massif" ; command |] ; args ]
+
 exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
@@ -109,8 +112,9 @@ let rec run_func conf programs program func =
         "log_dir="^ conf.C.persist_dir ^"/workers/log/"
                   ^ (N.fq_name func)
       | None -> "no_log_dir=") |] in
+  let command, args = command, [||] in
   let%lwt pid =
-    wrap (fun () -> run_background command [||] env) in
+    wrap (fun () -> run_background command args env) in
   func.N.pid <- Some pid ;
   (* Monitor this worker, wait for its termination, restart...: *)
   async (fun () ->
