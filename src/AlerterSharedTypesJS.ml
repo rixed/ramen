@@ -67,7 +67,7 @@ struct
     | Duplicate | Inhibited | STFU | StartEscalation
     [@@ppp PPP_JSON]
 
-  type stop_source = Notification | Manual of string [@@ppp PPP_JSON]
+  type stop_source = Notification | Manual of string | Timeout [@@ppp PPP_JSON]
 
   type event =
     | NewNotification of notification_outcome
@@ -89,6 +89,7 @@ struct
     | Ack -> "Acknowledged"
     | Stop Notification -> "Notified to stop"
     | Stop (Manual reason) -> "Manual stop: "^ reason
+    | Stop Timeout -> "Timed out"
 
   type log =
     { current_time : float ;

@@ -53,11 +53,17 @@ let copts =
                            (will use a random one if unset)"
                      [ "seed"; "rand-seed" ] in
     Arg.(value (opt (some int) None i))
+  and max_incidents_per_team =
+    let env = Term.env_info "RAMEN_MAX_INCIDENTS_PER_TEAM" in
+    let i = Arg.info ~doc:"max number of ongoing incidents per team (after \
+                           which older are timed out)"
+                     ~env ["max-incidents" ] in
+    Arg.(value (opt int 30 i))
   in
   Term.(const ApiCmd.make_copts
     $ debug $ server_url $ persist_dir $ max_history_archives
     $ use_embedded_compiler $ bundle_dir $ max_simult_compilations
-    $ rand_seed)
+    $ rand_seed $ max_incidents_per_team)
 
 (*
  * Start the event processor

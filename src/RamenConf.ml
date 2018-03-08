@@ -384,6 +384,7 @@ type conf =
     alerts_lock : RWLock.t ; (* Protects the above alerts *)
     (* TODO: a file *)
     mutable archived_incidents : Incident.t list ;
+    max_incidents_per_team : int ;
     debug : bool ;
     ramen_url : string ;
     persist_dir : string ;
@@ -610,10 +611,10 @@ let find_func programs program name =
 
 let make_conf do_persist ramen_url debug persist_dir
               max_simult_compilations max_history_archives
-              use_embedded_compiler bundle_dir =
+              use_embedded_compiler bundle_dir max_incidents_per_team =
   { graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
     alerts = Alerter.get_state do_persist persist_dir ;
-    archived_incidents = [] ;
+    archived_incidents = [] ; max_incidents_per_team ;
     do_persist ; ramen_url ; debug ; persist_dir ;
     max_simult_compilations = ref max_simult_compilations ;
     max_history_archives ; use_embedded_compiler ; bundle_dir }

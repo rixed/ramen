@@ -50,20 +50,95 @@ let is_inhibited state name team now =
 
 exception Not_implemented
 
+module AlertOps =
+struct
+  open Alert (* type of an alert is shared with JS but not the ops *)
+
+  let make state name team importance title text started_firing now =
+    let id = state.CA.next_alert_id in
+    state.CA.next_alert_id <- state.CA.next_alert_id + 1 ;
+    { id ; name ; team ; importance ; title ; text ; started_firing ;
+      stopped_firing = None ; received = now ; escalation = None ;
+      log = [] }
+
+  let log alert event_time event =
+    let current_time = Unix.gettimeofday () in
+    !logger.info "event@%s: Alert %s: %s"
+      (string_of_time event_time)
+      alert.name
+      (PPP.to_string Alert.event_ppp_json event) ;
+    alert.log <- { current_time ; event_time ; event } :: alert.log
+
+  let stop conf i a source time =
+    a.stopped_firing <- Some time ;
+    a.escalation <- None ;
+    log a time (Stop source)
+end
+
 module IncidentOps =
 struct
   open Incident (* type of an incident is shared with JS but not the ops *)
 
-  let make state alert =
+  let is_for_team t i = team_of i = t
+
+  let find state i =
+    Hashtbl.find state.CA.ongoing_incidents i
+
+  let remove state i =
+    Hashtbl.remove state.CA.ongoing_incidents i
+
+  (* Move i1 alerts into i2 *)
+  let merge_into state i1 i2 =
+    let inc1, inc2 = find state i1, find state i2 in
+    inc2.alerts <- List.rev_append inc1.alerts inc2.alerts ;
+    remove state i1
+
+  let archive conf i =
+    remove conf.C.alerts i.id ;
+    conf.C.archived_incidents <- i :: conf.C.archived_incidents
+
+  let maybe_archive conf i =
+    (* If no more alerts are firing, archive the incident *)
+    let stopped_firing a = a.Alert.stopped_firing <> None in
+    if List.for_all stopped_firing i.Incident.alerts then
+      archive conf i
+
+  (* Limits the number of ongoing incidents for that team to the given number,
+   * evicting the oldest one above that: *)
+  let rec limit_incidents_for_team conf team =
+    let state = conf.C.alerts in
+    let nb_incidents, oldest, _ =
+      Hashtbl.fold (fun id i (nb_i, oldest, oldest_date as prev) ->
+        if is_for_team team i then (
+          let st = Incident.started i in
+          if nb_i = 0 || st < oldest_date then
+            nb_i + 1, Some i, st
+          else
+            nb_i + 1, oldest, oldest_date
+        ) else prev
+      ) state.CA.ongoing_incidents (0, None, 0.) in
+    if nb_incidents > conf.C.max_incidents_per_team && oldest <> None then (
+      let i = Option.get oldest in
+      !logger.warning "Timing out incident %d" i.id ;
+      let time = Unix.gettimeofday () in
+      List.iter (fun a ->
+        AlertOps.stop state i a Timeout time
+      ) i.alerts ;
+      archive conf i ;
+      if nb_incidents > conf.C.max_incidents_per_team + 1 then
+        limit_incidents_for_team conf team
+    )
+
+  let make conf alert =
+    let state = conf.C.alerts in
     !logger.debug "Creating an incident for alert %s"
       (PPP.to_string Alert.t_ppp_json alert) ;
     let i = { id = state.CA.next_incident_id ;
               alerts = [ alert ] } in
     state.CA.next_incident_id <- state.CA.next_incident_id + 1 ;
     Hashtbl.add state.CA.ongoing_incidents i.id i ;
+    limit_incidents_for_team conf alert.team ;
     i
-
-  let is_for_team t i = team_of i = t
 
   let stopped_after ts i =
     match stopped i with
@@ -92,9 +167,9 @@ struct
 
   (* Let's be conservative and create a new incident for each new alerts.
    * User could still manually merge incidents later on. *)
-  let get_or_create state alert =
-    match find_open_alert state alert.Alert.name alert.team alert.title with
-    | exception Not_found -> make state alert, None
+  let get_or_create conf alert =
+    match find_open_alert conf.C.alerts alert.Alert.name alert.team alert.title with
+    | exception Not_found -> make conf alert, None
     | i, a -> i, Some a
 
   let fold_archived conf init f =
@@ -107,51 +182,6 @@ struct
   let fold conf init f =
     let init' = fold_ongoing conf.C.alerts init f in
     fold_archived conf init' f
-
-  let find state i =
-    Hashtbl.find state.CA.ongoing_incidents i
-
-  let remove state i =
-    Hashtbl.remove state.CA.ongoing_incidents i
-
-  (* Move i1 alerts into i2 *)
-  let merge_into state i1 i2 =
-    let inc1, inc2 = find state i1, find state i2 in
-    inc2.alerts <- List.rev_append inc1.alerts inc2.alerts ;
-    remove state i1
-
-  let archive conf i =
-    remove conf.C.alerts i.id ;
-    conf.C.archived_incidents <- i :: conf.C.archived_incidents
-end
-
-module AlertOps =
-struct
-  open Alert (* type of an alert is shared with JS but not the ops *)
-
-  let make state name team importance title text started_firing now =
-    let id = state.CA.next_alert_id in
-    state.CA.next_alert_id <- state.CA.next_alert_id + 1 ;
-    { id ; name ; team ; importance ; title ; text ; started_firing ;
-      stopped_firing = None ; received = now ; escalation = None ;
-      log = [] }
-
-  let log alert event_time event =
-    let current_time = Unix.gettimeofday () in
-    !logger.info "event@%s: Alert %s: %s"
-      (string_of_time event_time)
-      alert.name
-      (PPP.to_string Alert.event_ppp_json event) ;
-    alert.log <- { current_time ; event_time ; event } :: alert.log
-
-  let stop conf i a source time =
-    a.stopped_firing <- Some time ;
-    a.escalation <- None ;
-    log a time (Stop source) ;
-    (* If no more alerts are firing, archive the incident *)
-    let stopped_firing a = a.Alert.stopped_firing <> None in
-    if List.for_all stopped_firing i.Incident.alerts then
-      IncidentOps.archive conf i
 end
 
 module OnCallerOps =
@@ -490,7 +520,7 @@ let alert conf ~name ~team ~importance ~title ~text ~firing ~time ~now =
     let alert =
       AlertOps.make conf.C.alerts name team importance title text time now in
     (* Create one incident per unique alert name + team + title *)
-    match IncidentOps.get_or_create conf.C.alerts alert with
+    match IncidentOps.get_or_create conf alert with
     | _i, Some orig_alert ->
       AlertOps.log orig_alert time (NewNotification Duplicate) ;
       return_unit
@@ -514,7 +544,8 @@ let alert conf ~name ~team ~importance ~title ~text ~firing ~time ~now =
       !logger.info "Unknown alert %s for team %s titled %S stopped firing."
         name team title
     | i, a ->
-      AlertOps.stop conf i a Notification time) ;
+      AlertOps.stop conf i a Notification time ;
+      IncidentOps.maybe_archive conf i) ;
     return_unit
   )
 
@@ -712,6 +743,7 @@ struct
       let%lwt i, a = alert_of_id conf.C.alerts id in
       let now = Unix.gettimeofday () in
       AlertOps.stop conf i a (Manual reason) now ;
+      IncidentOps.maybe_archive conf i ;
       return_unit) >>=
     respond_ok
 
@@ -873,4 +905,13 @@ let start ?initial_json conf =
       check_static_conf static ;
       conf.C.alerts.static <- static
     ) initial_json ;
+  (* In case we had too many alerts in the saved conf, clean it: *)
+  Hashtbl.values conf.C.alerts.ongoing_incidents |>
+  Enum.fold (fun teams i ->
+    Set.add (Incident.team_of i) teams
+  ) Set.empty |>
+  Set.iter (fun team ->
+    IncidentOps.limit_incidents_for_team conf team
+  ) ;
+  (* Now process ongoing escalations: *)
   async (fun () -> restart_on_failure check_escalations_loop conf)

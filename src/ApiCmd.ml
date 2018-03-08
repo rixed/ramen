@@ -19,16 +19,18 @@ let () =
 type copts =
   { debug : bool ; server_url : string ; persist_dir : string ;
     max_history_archives : int ; use_embedded_compiler : bool ;
-    bundle_dir : string ; max_simult_compilations : int }
+    bundle_dir : string ; max_simult_compilations : int ;
+    max_incidents_per_team : int }
 
 let make_copts debug server_url persist_dir max_history_archives
                use_embedded_compiler bundle_dir max_simult_compilations
-               rand_seed =
+               rand_seed max_incidents_per_team =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed -> Random.init seed) ;
   { debug ; server_url ; persist_dir ; max_history_archives ;
-    use_embedded_compiler ; bundle_dir ; max_simult_compilations }
+    use_embedded_compiler ; bundle_dir ; max_simult_compilations ;
+    max_incidents_per_team }
 
 let enc = Uri.pct_encode
 
@@ -47,7 +49,8 @@ let add copts name program ok_if_running start remote () =
       let conf =
         C.make_conf true copts.server_url copts.debug copts.persist_dir
                     copts.max_simult_compilations copts.max_history_archives
-                    copts.use_embedded_compiler copts.bundle_dir in
+                    copts.use_embedded_compiler copts.bundle_dir
+                    copts.max_incidents_per_team in
       let%lwt _program_name =
         RamenOps.set_program ~ok_if_running ~start conf name program in
       return_unit)
@@ -85,7 +88,8 @@ let start copts daemonize no_demo to_stderr www_dir
   let conf =
     C.make_conf true copts.server_url copts.debug copts.persist_dir
                 copts.max_simult_compilations copts.max_history_archives
-                copts.use_embedded_compiler copts.bundle_dir in
+                copts.use_embedded_compiler copts.bundle_dir
+                copts.max_incidents_per_team in
   if daemonize then do_daemonize () ;
   (* Prepare ringbuffers for reports and notifications: *)
   let rb_name = C.report_ringbuf conf in
@@ -514,7 +518,8 @@ let info copts json short name_opt remote () =
   let conf =
     C.make_conf true copts.server_url copts.debug copts.persist_dir
                 copts.max_simult_compilations copts.max_history_archives
-                copts.use_embedded_compiler copts.bundle_dir in
+                copts.use_embedded_compiler copts.bundle_dir
+                copts.max_incidents_per_team in
   Lwt_main.run (
     match%lwt get_program_info conf ~err_ok:true copts name_opt remote with
     | exception (Failure _ as e) ->
@@ -548,6 +553,7 @@ let test copts conf_file tests () =
   let conf =
     C.make_conf true copts.server_url copts.debug copts.persist_dir
                 copts.max_simult_compilations copts.max_history_archives
-                copts.use_embedded_compiler copts.bundle_dir in
+                copts.use_embedded_compiler copts.bundle_dir
+                copts.max_incidents_per_team in
   Lwt_main.run (
     RamenTests.run conf copts.server_url conf_file tests)
