@@ -45,7 +45,7 @@ RUN echo "~0" && opam update
 RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
     cd ramen && \
-    git checkout v1.2.2 && \
+    git checkout v1.2.3 && \
     opam pin --no-action add ramen /root/ramen && \
     opam install --deps-only ramen
 
