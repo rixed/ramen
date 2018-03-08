@@ -467,12 +467,9 @@ ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 	@chmod a+x -R debtmp/usr
 	@sudo chown root: -R debtmp/usr
 	@dpkg --build debtmp
-	@mv debtmp.deb ramen.$(VERSION).deb
+	@mv debtmp.deb $@
 
 # Docker image
-
-docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
-	@cp -fl $< $@
 
 docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo "Building docker image for testing DEB version"
