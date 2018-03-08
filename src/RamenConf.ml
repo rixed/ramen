@@ -380,7 +380,6 @@ end
 type conf =
   { graph_lock : RWLock.t ; (* Protects the persisted programs (all at once) *)
     alerts : Alerter.t ;
-    (* TODO: use the RWLock and forget about that dirty flag: *)
     alerts_lock : RWLock.t ; (* Protects the above alerts *)
     (* TODO: a file *)
     mutable archived_incidents : Incident.t list ;
@@ -524,6 +523,30 @@ let make_program ?(test_id="") ?(timeout=0.) programs name program funcs_lst =
   Hashtbl.add programs name p ;
   p
 
+(* Cannot be in Helpers since it depends on PPP and CodeGen depends on
+ * Helpers: *)
+let ppp_of_file fname ppp =
+  let openflags = [ Open_rdonly; Open_text ] in
+  match Pervasives.open_in_gen openflags 0o644 fname with
+  | exception e ->
+      !logger.warning "Cannot open %S for reading: %s" fname (Printexc.to_string e) ;
+      raise e
+  | ic ->
+      finally
+        (fun () -> Pervasives.close_in ic)
+        (PPP.of_in_channel_exc ppp) ic
+
+let ppp_to_file fname ppp v =
+  let openflags = [ Open_wronly; Open_creat; Open_trunc; Open_text ] in
+  match Pervasives.open_out_gen openflags 0o644 fname with
+  | exception e ->
+      !logger.warning "Cannot open %S for writing: %s" fname (Printexc.to_string e) ;
+      raise e
+  | oc ->
+      finally
+        (fun () -> Pervasives.close_out oc)
+        (PPP.to_out_channel ppp oc) v
+
 let save_dir_of_programs persist_dir =
   (* Later we might have several files (so that we have partial locks) *)
   persist_dir ^"/configuration/"
@@ -614,7 +637,7 @@ let make_conf do_persist ramen_url debug persist_dir
               use_embedded_compiler bundle_dir max_incidents_per_team =
   { graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
     alerts = Alerter.get_state do_persist persist_dir ;
-    archived_incidents = [] ; max_incidents_per_team ;
+    archived_incidents = [ (* TODO *) ] ; max_incidents_per_team ;
     do_persist ; ramen_url ; debug ; persist_dir ;
     max_simult_compilations = ref max_simult_compilations ;
     max_history_archives ; use_embedded_compiler ; bundle_dir }

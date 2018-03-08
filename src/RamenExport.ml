@@ -244,8 +244,8 @@ let make_export importer history fqn rb_name out_rb_ref force_export =
   { importer ; history ; fqn ; rb_name ; out_rb_ref ; force_export ;
     last_used = Unix.gettimeofday () }
 (* Key can be obtained from history_key *)
-let exports : (string (* FQN *) * string (* out sign *), export) Hashtbl.t =
-  Hashtbl.create 31
+let exports : (string (* FQN *) * string (* out signature *), export)
+                Hashtbl.t = Hashtbl.create 31
 (* To protect the above exports hashtbl: *)
 let exports_mutex = Lwt_mutex.create ()
 

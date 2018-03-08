@@ -61,6 +61,7 @@ struct
       mutable last_sent : float } [@@ppp PPP_JSON]
 end
 
+(* TODO: Should probably be a Notification *)
 module Alert =
 struct
   type notification_outcome =

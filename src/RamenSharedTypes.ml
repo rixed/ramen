@@ -185,7 +185,7 @@ let empty_export_req =
 type export_resp =
   { first: int ;
     columns : (string * bool array option * export_column) list }
-    [@@ppp PPP_JSON]
+  [@@ppp PPP_JSON]
 
 (* Autocompletion of names: *)
 

@@ -91,8 +91,6 @@ type stateless_fun2 =
 (* FIXME: when we end prototyping use objects to make it easier to add
  * operations *)
 type t =
-  (* TODO: classify by type and number of operands to simplify adding
-   * functions *)
   | Const of typ * scalar_value
   | Field of typ * tuple_prefix ref * string (* field name *)
   | StateField of typ * string (* Name of the state field - met only late in the game *)
