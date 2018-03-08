@@ -428,7 +428,24 @@ let add_notif ?(is_error=false) message =
 
 let add_error = add_notif ~is_error:true
 
-let ajax action path ?content ?what ?finally ?on_err on_ok =
+(* Some asynchronous actions we want to perform only one at a time,
+ * such as fetching the configuration: *)
+let ongoing_actions = Jstable.create ()
+let already_doing = function
+  | None -> false
+  | Some k ->
+      let k = Js.string k in
+      let res = Jstable.find ongoing_actions k |> Js.Optdef.test in
+      if not res then
+        Jstable.add ongoing_actions k () ;
+      res
+let stop_doing = function
+  | None -> ()
+  | Some k ->
+      Jstable.remove ongoing_actions (Js.string k)
+
+let ajax action path ?one_at_a_time ?content ?what ?finally ?on_err on_ok =
+  if already_doing one_at_a_time then () else (
   let req = XmlHttpRequest.create () in
   req##.onreadystatechange := Js.wrap_callback (fun () ->
     if req##.readyState = XmlHttpRequest.DONE then (
@@ -447,6 +464,7 @@ let ajax action path ?content ?what ?finally ?on_err on_ok =
         option_may apply on_err ;
         add_error Js.(err##toString |> to_string)) ;
       option_may apply finally ;
+      stop_doing one_at_a_time ;
       resync ())) ;
   req##_open (Js.string action)
              (Js.string ("$RAMEN_PATH_PREFIX$" ^ path))
@@ -458,16 +476,16 @@ let ajax action path ?content ?what ?finally ?on_err on_ok =
     | Some js ->
       req##setRequestHeader (Js.string "Content-type") ct ;
       Js.some (Js._JSON##stringify js) in
-  req##send content
+  req##send content)
 
-let http_get path ?what ?finally ?on_err on_ok =
-  ajax "GET" path ?what ?finally ?on_err on_ok
-let http_post path content ?what ?finally ?on_err on_ok =
-  ajax "POST" path ~content ?what ?finally ?on_err on_ok
-let http_put path content ?what ?finally ?on_err on_ok =
-  ajax "PUT" path ~content ?what ?finally ?on_err on_ok
-let http_del path ?what ?finally ?on_err on_ok =
-  ajax "DELETE" path ?what ?finally ?on_err on_ok
+let http_get path ?one_at_a_time ?what ?finally ?on_err on_ok =
+  ajax "GET" path ?one_at_a_time ?what ?finally ?on_err on_ok
+let http_post path content ?one_at_a_time ?what ?finally ?on_err on_ok =
+  ajax "POST" path ~content ?one_at_a_time ?what ?finally ?on_err on_ok
+let http_put path content ?one_at_a_time ?what ?finally ?on_err on_ok =
+  ajax "PUT" path ~content ?one_at_a_time ?what ?finally ?on_err on_ok
+let http_del path ?one_at_a_time ?what ?finally ?on_err on_ok =
+  ajax "DELETE" path ?one_at_a_time ?what ?finally ?on_err on_ok
 
 (* Dom library *)
 

@@ -589,7 +589,6 @@ let update_all_funcs fs =
 (* Reload info (id + stats) for all known operations *)
 (* [single] option means: do it only if one is not running already *)
 let reload_funcs =
-  (* TODO: a combinator [single] *)
   let reloading = ref false in
   fun ?(single=false) () ->
     if not single || not !reloading then (
@@ -703,8 +702,8 @@ let reload_for_current_page init =
       if sel_func.value <> "" then (
         reload_tail ~single:true () ;
         reload_chart ~single:true ())
-    | PageLive -> Alerter_app.reload_ongoing ()
-    | PageHistory -> Alerter_app.reload_history ()
+    | PageLive -> Alerter_app.reload_ongoing ~single:true
+    | PageHistory -> Alerter_app.reload_history ~single:true
     | PageTeam -> if init then Alerter_app.reload_teams () else ())
 
 (* DOM *)

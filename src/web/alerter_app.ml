@@ -346,12 +346,14 @@ let histo_relto = make_param "history rel.to" true
  * Reload
  *)
 
-let reload_ongoing () =
+let reload_ongoing ~single =
   let url =
     match sel_team.value with
     | AllTeams -> "/ongoing"
     | SingleTeam t -> "/ongoing/"^ enc t in
-  http_get url (fun resp ->
+  let one_at_a_time =
+    if single then Some "ongoing alerts" else None in
+  http_get ?one_at_a_time url (fun resp ->
     let incidents = list_of_js incident_of_js resp in
     set_known_incidents incidents ;
     List.iter update_event_time_from_incident incidents ;
@@ -378,7 +380,7 @@ let reload_teams () =
     set teams ;
     resync ())
 
-let reload_history () =
+let reload_history ~single =
   let url = match sel_team.value with
     | AllTeams -> "/history"
     | SingleTeam t -> "/history/"^ enc t in
@@ -390,7 +392,9 @@ let reload_history () =
     ) else
       "last="^ enc (string_of_float histo_duration.value) in
   let url = url ^"?"^ date_range in
-  http_get url (fun resp ->
+  let one_at_a_time =
+    if single then Some "alerts history" else None in
+  http_get ?one_at_a_time url (fun resp ->
     let incidents = list_of_js incident_of_js resp in
     List.iter update_event_time_from_incident incidents ;
     set_known_incidents incidents)
@@ -420,7 +424,7 @@ let confirm_stop id lst =
               val alert_id_ = id
               val reason = Js.string reason
              end)
-            (fun _ -> reload_ongoing ()) ;
+            (fun _ -> reload_ongoing ~single:false) ;
           stage := Stopping ;
           lst
         | Stopping -> lst
@@ -454,7 +458,7 @@ let live_incidents =
               let with_action_cols = tsel = SingleTeam a.Alert.team in
               let ack _ =
                 http_get ("/ack/"^ string_of_int a.id) (fun _ ->
-                  reload_ongoing ()) in
+                  reload_ongoing ~single:false) in
               let need_ack = a.escalation <> None in
               let row =
                 tr ~action:(fun _ ->
@@ -1160,7 +1164,7 @@ let page_history =
   with_param known_incidents (fun incidents ->
     div []
       [ h2 [] [ text "Chronology" ] ;
-        time_selector ~action:reload_history histo_duration histo_relto ;
+        time_selector ~action:(fun () -> reload_history ~single:false) histo_duration histo_relto ;
         with_param histo_duration (fun dur ->
           with_param histo_relto (fun relto_event ->
             chronology incidents dur relto_event)) ])
