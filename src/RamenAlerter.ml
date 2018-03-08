@@ -175,12 +175,13 @@ struct
   let fold_archived conf init f =
     List.fold_left f init conf.C.archived_incidents
 
-  let fold_ongoing state init f =
+  let fold_ongoing conf init f =
     Hashtbl.fold (fun _id i prev ->
-      f prev i) state.CA.ongoing_incidents init
+      f prev i
+    ) conf.C.alerts.CA.ongoing_incidents init
 
   let fold conf init f =
-    let init' = fold_ongoing conf.C.alerts init f in
+    let init' = fold_ongoing conf init f in
     fold_archived conf init' f
 end
 
@@ -448,13 +449,13 @@ struct
     | Some exn -> fail exn
 
   (* Same as above, but escalate until delivery *)
-  let outcry state alert esc now =
+  let outcry conf alert esc now =
     let rec loop () =
       let step = get_cap esc.steps esc.attempt in
       esc.attempt <- esc.attempt + 1 ;
       AlertOps.log alert now (Alert.Escalate step) ;
       (try%lwt
-        let%lwt () = outcry_once state alert step esc.attempt now in
+        let%lwt () = outcry_once conf.C.alerts alert step esc.attempt now in
         esc.last_sent <- now ;
         return_unit
       with exn ->
@@ -467,8 +468,8 @@ struct
           return_unit)) in
     loop ()
 
-  let fold_ongoing state init f =
-    IncidentOps.fold_ongoing state init (fun prev i ->
+  let fold_ongoing conf init f =
+    IncidentOps.fold_ongoing conf init (fun prev i ->
       List.fold_left (fun prev a ->
         match a.Alert.escalation with
         | Some esc ->
@@ -477,8 +478,8 @@ struct
         | None -> prev) prev i.alerts)
 end
 
-let check_escalations state now =
-  EscalationOps.fold_ongoing state [] (fun prev alert esc ->
+let check_escalations conf now =
+  EscalationOps.fold_ongoing conf [] (fun prev alert esc ->
       let timeout =
         (* If we have not tried yet there is no possible timeout,
          * but we still want to wait a bit to protect the victims
@@ -492,7 +493,7 @@ let check_escalations state now =
           let step_timeout = max 3. step.timeout in
           esc.last_sent +. step_timeout in
       if now >= timeout then (
-        EscalationOps.outcry state alert esc now :: prev
+        EscalationOps.outcry conf alert esc now :: prev
       ) else prev
     ) |>
   join
@@ -890,7 +891,7 @@ let rec check_escalations_loop conf =
   let now = Unix.gettimeofday () in
   let%lwt () =
     try%lwt
-      check_escalations conf.C.alerts now
+      check_escalations conf now
     with e ->
       print_exception e ;
       return_unit in
@@ -906,12 +907,20 @@ let start ?initial_json conf =
       conf.C.alerts.static <- static
     ) initial_json ;
   (* In case we had too many alerts in the saved conf, clean it: *)
-  Hashtbl.values conf.C.alerts.ongoing_incidents |>
-  Enum.fold (fun teams i ->
-    Set.add (Incident.team_of i) teams
-  ) Set.empty |>
-  Set.iter (fun team ->
-    IncidentOps.limit_incidents_for_team conf team
-  ) ;
+  let%lwt () = with_wlock conf (fun () ->
+    Hashtbl.values conf.C.alerts.ongoing_incidents |>
+    Enum.fold (fun teams i ->
+      Set.add (Incident.team_of i) teams
+    ) Set.empty |>
+    Set.iter (fun team ->
+      IncidentOps.limit_incidents_for_team conf team
+    ) ;
+    return_unit) in
+  (* Temp debug: print archived incidents: *)
+  IncidentOps.fold_archived conf () (fun () i ->
+    !logger.info "Incident %d archived" i.Incident.id) ;
+  IncidentOps.fold_ongoing conf () (fun () i ->
+    !logger.info "Incident %d ongoing" i.Incident.id) ;
   (* Now process ongoing escalations: *)
-  async (fun () -> restart_on_failure check_escalations_loop conf)
+  async (fun () -> restart_on_failure check_escalations_loop conf) ;
+  return_unit

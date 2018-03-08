@@ -141,8 +141,8 @@ let start copts daemonize no_demo to_stderr www_dir
          restart_on_failure RamenProcesses.read_reports reports_rb) ;
        async (fun () ->
          restart_on_failure RamenProcesses.process_notifications notify_rb) ;
-       RamenAlerter.start ?initial_json:alert_conf_json conf ;
        return_unit) ;
+      RamenAlerter.start ?initial_json:alert_conf_json conf ;
       run_demo () ;
       restart_on_failure RamenProcesses.monitor_quit conf ;
       restart_on_failure (http_service port url_prefix ssl_cert ssl_key)
