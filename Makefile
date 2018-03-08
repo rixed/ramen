@@ -503,7 +503,8 @@ docker-push:
 
 clean:
 	@echo "Cleaning files used for build"
-	@$(RM) src/*.cm[o] src/*.s src/*.annot src/*.o
+	@$(RM) src/*.cmo src/*.s src/*.annot src/*.o
+	@$(RM) src/web/*.cmo src/web/*.annot src/web/*.byte
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
 	@$(RM) src/ringbuf/*.o src/colcomp/*.o src/colcomp/colcomp_test
 	@sudo rm -rf debtmp
@@ -511,6 +512,7 @@ clean:
 distclean: clean
 	@echo "Cleaning all build files"
 	@$(RM) src/*.cma src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
+	@$(RM) src/web/*.cmi src/web/*.js src/web/style.css
 	@$(RM) oUnit-anon.cache qtest.targets.log
 	@$(RM) .depend src/*.opt src/*.byte src/*.top
 	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
