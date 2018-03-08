@@ -11,7 +11,7 @@ module Expr = RamenExpr
 *)
 
 (* Direct field selection (not for group-bys) *)
-type selected_field = { expr : Expr.t ; alias : string } [@@ppp PPP_OCaml]
+type selected_field = { expr : Expr.t ; alias : string }
 
 let print_selected_field fmt f =
   let need_alias =
@@ -28,7 +28,7 @@ let print_selected_field fmt f =
 
 type flush_method = Reset | Slide of int
                   | KeepOnly of Expr.t | RemoveAll of Expr.t
-                  | Never [@@ppp PPP_OCaml]
+                  | Never
 
 let print_flush_method ?(prefix="") ?(suffix="") () oc = function
   | Reset ->
@@ -42,16 +42,16 @@ let print_flush_method ?(prefix="") ?(suffix="") () oc = function
   | RemoveAll e ->
     Printf.fprintf oc "%sREMOVE (%a)%s" prefix (Expr.print false) e suffix
 
-type event_start = string * float [@@ppp PPP_OCaml]
+type event_start = string * float
 type event_duration = DurationConst of float (* seconds *)
                     | DurationField of (string * float)
-                    | StopField of (string * float) [@@ppp PPP_OCaml]
-type event_time = (event_start * event_duration) [@@ppp PPP_OCaml]
+                    | StopField of (string * float)
+type event_time = (event_start * event_duration)
 
-type file_spec = { fname : string ; unlink : bool } [@@ppp PPP_OCaml]
-type download_spec = { url : string ; accept : string } [@@ppp PPP_OCaml]
+type file_spec = { fname : string ; unlink : bool }
+type download_spec = { url : string ; accept : string }
 type csv_specs =
-  { separator : string ; null : string ; fields : RamenTuple.typ } [@@ppp PPP_OCaml]
+  { separator : string ; null : string ; fields : RamenTuple.typ }
 
 (* ReadFile has the func reading files directly on disc.
  * DownloadFile is (supposed to be) ramen downloading the content into
@@ -61,7 +61,7 @@ type csv_specs =
  * are to be POSTed to $RAMEN_URL/upload/$url_suffix. *)
 type where_specs = ReadFile of file_spec
                  | ReceiveFile
-                 | DownloadFile of download_spec [@@ppp PPP_OCaml]
+                 | DownloadFile of download_spec
 
 type t =
   (* Generate values out of thin air. The difference with Select is that
@@ -102,7 +102,7 @@ type t =
       port : int ;
       proto : RamenProtocols.net_protocol ;
       event_time : event_time option ;
-      force_export : bool } [@@ppp PPP_OCaml]
+      force_export : bool }
 
 let print_event_time fmt (start_field, duration) =
   let string_of_scale f = "*"^ string_of_float f in

@@ -19,7 +19,6 @@ module Expr = RamenExpr
 type temp_tup_typ =
   { mutable finished_typing : bool ;
     mutable fields : (string * Expr.typ) list }
-  [@@ppp PPP_OCaml]
 
 let print_temp_tup_typ_fields fmt fs =
   List.print ~first:"{" ~last:"}" ~sep:", "
@@ -40,7 +39,6 @@ let temp_tup_typ_copy t =
 type tuple_type = UntypedTuple of temp_tup_typ
                 | TypedTuple of { user : field_typ list ;
                                   ser : field_typ list }
-                  [@@ppp PPP_OCaml]
 
 let tuple_is_typed = function
   | TypedTuple _ -> true
@@ -159,7 +157,6 @@ struct
       (* Worker info, only relevant if it is running: *)
       mutable pid : int option ;
       mutable last_exit : string }
-    [@@ppp PPP_OCaml]
 
   let fq_name func = func.program ^"/"^ func.name
 
@@ -209,7 +206,6 @@ struct
       mutable last_status_change : float ;
       mutable last_started : float option ;
       mutable last_stopped : float option }
-    [@@ppp PPP_OCaml]
 
   let print oc t =
     Printf.fprintf oc "status=%s"

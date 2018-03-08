@@ -8,7 +8,7 @@ let print_field_typ fmt field =
     RamenScalar.print_typ field.typ
     (if field.nullable then "" else "NOT ")
 
-type typ = field_typ list [@@ppp PPP_OCaml]
+type typ = field_typ list
 
 let print_typ fmt lst =
   (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) fmt lst

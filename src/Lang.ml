@@ -23,7 +23,6 @@ type tuple_prefix =
   | TupleOutPrevious
   | TupleOut
   (* TODO: TupleOthers? *)
-  [@@ppp PPP_OCaml]
 
 let string_of_prefix = function
   | TupleIn -> "in"

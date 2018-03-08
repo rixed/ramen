@@ -255,7 +255,7 @@ let test_one conf server_url conf_spec test =
         let%lwt resp_str =
           RamenHttpHelpers.http_get (server_url ^"/start/"^ enc new_name) in
         let%lwt resp =
-          wrap (fun () -> PPP.of_string_exc (put_program_resp_ppp_json ()) resp_str) in
+          wrap (fun () -> PPP.of_string_exc put_program_resp_ppp_json resp_str) in
         if not resp.success then
           fail_with "Cannot start test program"
         else return_unit)
@@ -363,12 +363,12 @@ let run conf server_url conf_file tests =
   let open RamenHttpHelpers in
   (* Parse the conf json file *)
   !logger.info "Parsing configuration in %S..." conf_file ;
-  let%lwt conf_spec = ppp_of_file (programs_spec_ppp_json ()) conf_file in
+  let%lwt conf_spec = ppp_of_file programs_spec_ppp_json conf_file in
   (* And tests so that we won't have to clean anything if they are bogus *)
   let%lwt test_specs =
     Lwt_list.map_s (fun fname ->
       !logger.info "Parsing test specification in %S..." fname ;
-      ppp_of_file (test_spec_ppp_json ()) fname
+      ppp_of_file test_spec_ppp_json fname
     ) tests in
   (* Run all tests: *)
   (* Note: The workers states must be cleaned in between 2 tests ; the
