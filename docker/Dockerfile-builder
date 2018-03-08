@@ -35,7 +35,7 @@ ENV CAML_LD_LIBRARY_PATH=/root/.opam/4.06.0+flambda/lib/stublibs \
 RUN opam update && \
     opam install depext && \
     opam depext --noninteractive \
-      conf-gsl conf-openblas conf-pkg-config sqlite3 && \
+      conf-gsl conf-blas conf-lapack conf-pkg-config sqlite3 && \
     opam repo add --priority=1 ocalme \
       git://github.com/rixed/ocalme-opam-repository.git
 
