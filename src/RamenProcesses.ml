@@ -110,8 +110,7 @@ let rec run_func conf programs program func =
     "ramen_url="^ conf.C.ramen_url ;
     (match !logger.logdir with
       | Some _ ->
-        "log_dir="^ conf.C.persist_dir ^"/workers/log/"
-                  ^ (N.fq_name func)
+        "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ (N.fq_name func)
       | None -> "no_log_dir=") |] in
   let command, args = command, [||] in
   let%lwt pid =
