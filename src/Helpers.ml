@@ -369,7 +369,7 @@ let run_coprocess ?(max_count=max_coprocesses)
   let prog, cmdline = cmd in
   !logger.debug "Executing: %s, %a" prog
     (Array.print String.print) cmdline ;
-  max_simult ~max_count:max_count (fun () ->
+  max_simult ~max_count (fun () ->
     let open Lwt in
     Lwt_process.with_process_full ?timeout cmd (fun process ->
       let write_stdin =

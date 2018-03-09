@@ -165,7 +165,7 @@ let rec run_func conf programs program func =
                 (* The rest of the operation depends on the program status: *)
                 match program.status with
                 | Stopping ->
-                    (* If there are no more processes funning for this program,
+                    (* If there are no more processes running for this program,
                      * demote it to Compiled: *)
                     if Hashtbl.values program.L.funcs |>
                        Enum.for_all (fun func -> func.N.pid = None) then (
