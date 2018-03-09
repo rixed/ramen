@@ -521,6 +521,8 @@ let make_func program_name func_name operation =
  * program. *)
 let make_program ?(test_id="") ?(timeout=0.) programs name program funcs_lst =
   assert (String.length name > 0) ;
+  if Hashtbl.mem programs name then
+    raise (InvalidCommand ("Program "^ name ^" already exists")) ;
   let now = Unix.gettimeofday () in
   let funcs = Hashtbl.create (List.length funcs_lst) in
   List.iter (fun def ->
@@ -568,46 +570,64 @@ let save_dir_of_programs persist_dir =
               ^ RamenVersions.graph_config
               ^"/"^ Config.version ^"/programs"
 
+let save_dir_of_program persist_dir p =
+  save_dir_of_programs persist_dir ^"/"^ p
+
 let save_file_of_program persist_dir p =
-  save_dir_of_programs persist_dir ^"/"^ p ^"/conf"
+  save_dir_of_program persist_dir p ^"/conf"
 
 let non_persisted_programs = ref (Hashtbl.create 11)
 
-let load_programs conf =
+let iter_saved_programs conf f =
   let save_dir = save_dir_of_programs conf.persist_dir in
+  dir_subtree_iter ~on_dir:(fun path ->
+    let save_file = save_file_of_program conf.persist_dir path in
+    (* Not all subdirs are a program: *)
+    if file_exists ~maybe_empty:false save_file then
+      f path save_file
+  ) save_dir
+
+let load_programs conf =
   if conf.do_persist then
     try
       let h = Hashtbl.create 11 in
-      dir_subtree_iter ~on_dir:(fun p ->
-        let save_file = save_file_of_program conf.persist_dir p in
-        (* Not all subdirs are a program: *)
-        if file_exists ~maybe_empty:false save_file then (
-          !logger.debug "Loading program from %s" save_file ;
-          let prog : Program.t =
-            File.with_file_in save_file Marshal.input in
-          Hashtbl.add h p prog
-        )
-      ) save_dir ;
+      iter_saved_programs conf (fun path save_file ->
+        let prog : Program.t =
+          File.with_file_in save_file Marshal.input in
+        Hashtbl.add h path prog) ;
       h
     with
     | e ->
-      !logger.error "Cannot read state from directory %s: %s. Starting anew."
-        save_dir (Printexc.to_string e) ;
+      !logger.error "Cannot read configuration: %s. Starting anew."
+        (Printexc.to_string e) ;
       Hashtbl.create 11
   else !non_persisted_programs
 
 let save_program conf p =
   let save_file = save_file_of_program conf.persist_dir p.Program.name in
-  !logger.debug "Saving program %s" save_file ;
   mkdir_all ~is_file:true save_file ;
+  !logger.debug "Saving program %s in %s" p.Program.name save_file ;
   File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
     Marshal.output oc p)
 
 let save_programs conf programs =
-  if conf.do_persist then
+  if conf.do_persist then (
+    (* Deletes everything that's not in the configuration any more: *)
+    iter_saved_programs conf (fun path save_file ->
+      if not (Hashtbl.mem programs path) then (
+        !logger.info "Deleting %s" save_file ;
+        let open Unix in
+        ignore_exceptions unlink save_file ;
+        let dir = save_dir_of_program conf.persist_dir path in
+        try rmdir dir
+        with Unix_error (ENOTEMPTY, _, _) ->
+          !logger.warning "Configuration directory %S not empty, \
+                           so not deleted" dir)) ;
+    (* Then save what's left *)
     Hashtbl.iter (fun _name p ->
       save_program conf p
     ) programs
+  )
 
 exception RetryLater of float
 

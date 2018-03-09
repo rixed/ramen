@@ -124,30 +124,33 @@ let dir_subtree_iter ?on_dir ?on_file root =
     let path =
       (* Avoid using "./" as we want path to correspond to program names: *)
       if path_from_root = "" then root else root ^"/"^ path_from_root in
-    let dh = opendir path in
-    let rec loop_files () =
-      match readdir dh with
-      | exception End_of_file -> ()
-      (* Ignore dotnames *)
-      | "." | ".." ->
-          loop_files ()
-      | fname_from_path ->
-          let fname = path ^"/"^ fname_from_path in
-          let fname_from_root =
-            if path_from_root = "" then fname_from_path
-            else path_from_root ^"/"^ fname_from_path in
-          if is_directory fname then (
-            Option.may (fun f -> f fname_from_root) on_dir ;
-            let path_from_root' =
+    match opendir path with
+    | exception Unix_error(ENOENT, _, _) ->
+        (* A callback must have deleted it, no worries. *) ()
+    | dh ->
+      let rec loop_files () =
+        match readdir dh with
+        | exception End_of_file -> ()
+        (* Ignore dotnames *)
+        | "." | ".." ->
+            loop_files ()
+        | fname_from_path ->
+            let fname = path ^"/"^ fname_from_path in
+            let fname_from_root =
               if path_from_root = "" then fname_from_path
               else path_from_root ^"/"^ fname_from_path in
-            loop_subtree path_from_root'
-          ) else
-            Option.may (fun f -> f fname_from_root) on_file ;
-          loop_files ()
-    in
-    loop_files () ;
-    closedir dh
+            if is_directory fname then (
+              Option.may (fun f -> f fname_from_root) on_dir ;
+              let path_from_root' =
+                if path_from_root = "" then fname_from_path
+                else path_from_root ^"/"^ fname_from_path in
+              loop_subtree path_from_root'
+            ) else
+              Option.may (fun f -> f fname_from_root) on_file ;
+            loop_files ()
+      in
+      loop_files () ;
+      closedir dh
   in
   loop_subtree ""
 
