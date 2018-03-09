@@ -1130,26 +1130,3 @@ let compile conf parents program =
         return (Set.add func.N.signature doing))
     ) Set.empty in
   return_unit
-
-let stop_all_dependents conf programs program =
-  let open Lwt in
-  (* Since we really recompiled that program, all programs depending on it
-   * must return to edition mode as they must be typed again. *)
-  !logger.info "Stopping all programs depending on %s" program.L.name ;
-  let%lwt to_restart, _ =
-    C.lwt_fold_funcs programs ([], Set.singleton program.L.name)
-      (fun (_, visited as prev) program' func ->
-        if Set.mem func.program visited ||
-           program'.L.status <> Running then return prev else
-        Lwt_list.fold_left_s (fun (to_restart, visited as prev)
-                                  (parent_program, _) ->
-          if parent_program = program.L.name then (
-            let%lwt () =
-              RamenProcesses.stop conf programs program' in
-            L.set_editable program' ("Stopped since depends on "^
-                                     program.L.name) ;
-            return (program'.L.name :: to_restart,
-                    Set.add func.program visited)
-          ) else return prev
-        ) prev func.N.parents) in
-  return to_restart

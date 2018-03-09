@@ -6,6 +6,7 @@ module C = RamenConf
 module N = RamenConf.Func
 module L = RamenConf.Program
 module SN = RamenSharedTypes.Info.Func
+module SL = RamenSharedTypes.Info.Program
 open RamenSharedTypesJS
 
 let quit = ref false
@@ -180,12 +181,16 @@ let rec run_func conf programs program func =
                            signal <> Sys.sigkill &&
                            signal <> Sys.sigint -> restart ()
                     | Unix.WEXITED code when code <> 0 -> restart ()
-                    | _ -> return_unit)
+                    | _ ->
+                        !logger.debug "Assuming death by natural causes" ;
+                        return_unit)
 
                 | _ ->
                     (* We leave the program.status as it is since we have no
                      * idea what's happening to other operations. *)
-                     return_unit))
+                    !logger.debug "Don't know what to do since program status is %s"
+                      (SL.string_of_status program.status) ;
+                    return_unit))
     in
     wait_child ()) ;
   (* Update the parents out_ringbuf_ref if it's in another program (otherwise

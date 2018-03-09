@@ -436,6 +436,18 @@ let del_program programs program =
         raise (InvalidCommand "Program is running") ;
       Hashtbl.remove programs program.name
 
+(* Tells if any function of [dependent] depends on any function of [dependee] *)
+let depends_on dependent dependee =
+  try
+    Hashtbl.iter (fun _ func ->
+      if List.exists (fun (parent_program, _) ->
+        parent_program = dependee) func.Func.parents
+      then raise Exit
+    ) dependent.Program.funcs ;
+    false
+  with Exit ->
+    true
+
 let lwt_fold_programs programs init f =
   Hashtbl.values programs |> List.of_enum |>
   Lwt_list.fold_left_s f init
