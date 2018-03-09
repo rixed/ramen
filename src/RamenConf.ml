@@ -538,7 +538,6 @@ let make_program ?(test_id="") ?(timeout=0.) programs name program funcs_lst =
       status = Edition "" ; last_status_change = now ;
       last_started = None ; last_stopped = None ; test_id } in
   Hashtbl.add programs name p ;
-  !logger.info "Created program %s" name ;
   p
 
 (* Cannot be in Helpers since it depends on PPP and CodeGen depends on
