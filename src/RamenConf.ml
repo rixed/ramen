@@ -296,8 +296,9 @@ struct
        Hashtbl.values program.funcs |> Enum.exists (fun n ->
          not (file_exists ~has_perms:0o100 (exec_of_func persist_dir n)))
     then set_status program (Edition "") ;
-    (* Also, we cannot be compiling anymore: *)
-    if program.status = Compiling then set_status program (Edition "") ;
+    (* Also, we cannot be compiling nor stopping anymore: *)
+    if program.status = Compiling || program.status = Stopping then
+      set_status program (Edition "restarted Ramen") ;
     (* Also clean the pid. Note: we must not do that in set_status as we
      * need the pid when supervising workers termination. *)
     Hashtbl.iter (fun _ f ->
@@ -432,9 +433,11 @@ let del_program programs program =
       !logger.info "Program %s does not exist" program.name
   | program ->
       !logger.info "Deleting program %S" program.name ;
-      if program.status = Running then
-        raise (InvalidCommand "Program is running") ;
-      Hashtbl.remove programs program.name
+      (match program.status with
+      | Running | Stopping ->
+        raise (InvalidCommand "Program is running")
+      | Compiled | Compiling | Edition _ ->
+        Hashtbl.remove programs program.name)
 
 (* Tells if any function of [dependent] depends on any function of [dependee] *)
 let depends_on dependent dependee =

@@ -116,6 +116,7 @@ let rec run_func conf programs program func =
   let command, args = command, [||] in
   let%lwt pid =
     wrap (fun () -> run_background command args env) in
+  !logger.debug "Function %s now runs under pid %d" (N.fq_name func) pid ;
   func.N.pid <- Some pid ;
   (* Monitor this worker, wait for its termination, restart...: *)
   async (fun () ->
@@ -237,24 +238,29 @@ let kill_worker conf timeout _programs func pid =
       !logger.debug "Checking that pid %d is not around any longer." pid ;
       (* Find that program again, and if it's still having the same pid
        * then shoot him down: *)
-      match C.find_func programs func.N.program func.N.name with
-      | exception Not_found -> return_unit (* that's fine *)
+      (match C.find_func programs func.N.program func.N.name with
+      | exception Not_found ->
+        !logger.warning "Worker %s (pid %d) is not in configuration anymore, \
+                         sending it sigkill just to be sure."
+          (N.fq_name func) pid ;
+        try_kill pid Sys.sigkill
       | program, func ->
         (* Here it is assumed that the program was not launched again
          * within 2 seconds with the same pid. In a world where this
          * assumption wouldn't hold we would have to increment a counter
          * in the func for instance... *)
-        if func.N.pid = None then (
-          (* The waiter cleaned the pid, all is good. *)
-        ) else if func.N.pid = Some pid then (
+        (match func.N.pid with
+        | None ->
+          !logger.debug "The waiter cleaned the pid, all is good."
+        | Some p when p = pid ->
           !logger.warning "Killing worker %s (pid %d) with bigger guns"
             (N.fq_name func) pid ;
           try_kill pid Sys.sigkill ;
-        ) else (
-          (* Another child is running already. Meaning that it has first been
-           * cleared by the waiter, and then restarted. All is good. *)
-        ) ;
-        return_unit))
+        | Some p ->
+          !logger.debug "Another child is running already (pid %d)" p ;
+          (* Meaning that it has first been cleared by the waiter, and then
+           * restarted. All is good. *))) ;
+      return_unit))
 
 let stop conf programs program =
   match program.L.status with

@@ -11,11 +11,38 @@ module SN = RamenSharedTypes.Info.Func
 
 (* High level operations (uses LWT) *)
 
-let del_program programs program =
-   if program.L.status = Running then
-    fail_with "Cannot delete a running program"
+(* Delete (and optionally also stops) a program, and returns if the
+ * program was actually running. *)
+let rec del_program_by_name ~ok_if_running conf program_name =
+  let had_stopped_it = ref false in
+  let%lwt finished =
+    C.with_wlock conf (fun programs ->
+      match Hashtbl.find programs program_name with
+      | exception e -> fail e
+      | program ->
+        (match program.L.status with
+        | Running ->
+          if ok_if_running then (
+            had_stopped_it := true ;
+            let%lwt () = RamenProcesses.stop conf programs program in
+            return_false
+          ) else
+            fail_with ("Cannot delete program "^ program_name ^
+                       " which is running")
+        | Stopping ->
+          !logger.info "Cannot delete stopping program %s right away"
+            program_name ;
+          return_false
+        | Compiled | Compiling | Edition _ ->
+          let%lwt () =
+            wrap (fun () -> C.del_program programs program) in
+          return_true)) in
+  if not finished then
+    let delay = 1. +. Random.float 2. in
+    let%lwt () = Lwt_unix.sleep delay in
+    del_program_by_name ~ok_if_running conf program_name
   else
-    wrap (fun () -> C.del_program programs program)
+    return !had_stopped_it
 
 let start_program_by_name conf to_run =
   C.with_wlock conf (fun programs ->
@@ -251,7 +278,7 @@ let set_program ?test_id ?(ok_if_running=false) ?(start=false)
   if name = "" then
     fail_with "Programs must have non-empty names" else
   if has_dotnames name then
-    fail_with "Program names cannot include directory dotnames" else (
+    fail_with "Program names cannot include directory dotnames" else
   let%lwt funcs = wrap (fun () -> C.parse_program program) in
   let name, funcs =
     match test_id with
@@ -261,36 +288,21 @@ let set_program ?test_id ?(ok_if_running=false) ?(start=false)
       new_name,
       List.map (reprogram_for_test name new_name) funcs in
   let%lwt must_restart =
+    try%lwt del_program_by_name ~ok_if_running conf name
+    with Not_found -> return_false in
+  (* Now create it, which would be OK as long as nobody is competing with us
+   * to create the same program under the same name: *)
+  let%lwt _program =
     C.with_wlock conf (fun programs ->
-      (* Delete the program if it already exists. No worries the conf won't be
-       * changed if there is any error. *)
-      let%lwt stopped_it =
-        match Hashtbl.find programs name with
-        | exception Not_found -> return_false
-        | program ->
-          if program.L.status = Running then (
-            if ok_if_running then (
-              let%lwt () = RamenProcesses.stop conf programs program in
-              let%lwt () = del_program programs program in
-              return_true
-            ) else (
-              fail_with ("Program "^ name ^" is running")
-            )
-          ) else (
-            let%lwt () = del_program programs program in
-            return_false
-          ) in
-      (* Create the program *)
-      let%lwt _program =
-        wrap (fun () -> C.make_program ?test_id programs name program funcs) in
-      return stopped_it) in
+      wrap (fun () ->
+        C.make_program ?test_id programs name program funcs)) in
   let%lwt () =
     if must_restart || start then (
       !logger.debug "Trying to (re)start program %s" name ;
       let%lwt () = compile_one conf name in
       start_program_by_name conf name
     ) else return_unit in
-  return name)
+  return name
 
 let func_info_of_func ~with_code ~with_stats programs func =
   let%lwt exporting = RamenExport.is_func_exporting func in

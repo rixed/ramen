@@ -165,19 +165,16 @@ let func_of_name programs program_name func_name =
   if func_name = "" then bad_request "Empty string is not a valid func name"
   else find_func_or_fail programs program_name func_name
 
-let del_program_ programs program =
-  try%lwt RamenOps.del_program programs program
-  with e -> bad_request (Printexc.to_string e)
-
 let del_program conf _headers program_name =
-  C.with_wlock conf (fun programs  ->
-    match Hashtbl.find programs program_name with
-    | exception Not_found ->
-      let e = "Program "^ program_name ^" does not exist" in
-      bad_request e
-    | program ->
-      del_program_ programs program) >>=
-  respond_ok
+  try%lwt
+    let%lwt _ =
+      RamenOps.del_program_by_name ~ok_if_running:false conf program_name in
+    respond_ok ()
+  with Not_found ->
+    let e = "Program "^ program_name ^" does not exist" in
+    bad_request e
+  | e ->
+    bad_request (Printexc.to_string e)
 
 (* Returns info about a given operation *)
 let op_info conf headers program_name func_name params =
