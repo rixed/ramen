@@ -1117,16 +1117,16 @@ let compile conf parents program =
         func.N.out_type <- typed_of_untyped_tuple ?cmp func.N.out_type ;
         func.N.signature <- N.signature func
       ) program.L.funcs) in
-  (* Compile *)
-  let%lwt _ =
+  (* Compile
+   * Start by computing the list of functions to compile, avoiding compiling
+   * several functions if they end up being the same binary (same signature):
+   * (TODO: a lockfile so several programs can compile together without
+   * stepping on each others toes) *)
+  let _, funcs =
     Hashtbl.values program.L.funcs |> List.of_enum |>
-    Lwt_list.fold_left_s (fun doing func ->
-      (* Avoid compiling twice the same thing (TODO: a lockfile so several
-       * programs can compile together without stepping on each others toes) *)
-      if Set.mem func.N.signature doing then
-        return doing
-      else (
-        let%lwt () = compile_func conf func in
-        return (Set.add func.N.signature doing))
-    ) Set.empty in
-  return_unit
+    List.fold_left (fun (signatures, lst as prev) func ->
+      if Set.mem func.N.signature signatures then prev
+      else (Set.add func.N.signature signatures, func::lst)
+    ) (Set.empty, []) in
+  (* Now compile all those funcs for real: *)
+  Lwt_list.iter_p (compile_func conf) funcs
