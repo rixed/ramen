@@ -24,7 +24,7 @@ FILE_NOTIFIER = src/RamenFileNotify_Inotify.ml
 endif
 
 PACKAGES = \
-	ppp ppp.unix lwt.ppx batteries cmdliner stdint parsercombinator \
+	ppp ppp.unix lwt_ppx batteries cmdliner stdint parsercombinator \
 	syslog sqlite3 \
 	cohttp-lwt-unix num inotify.lwt binocle unix lacaml net_codecs \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
