@@ -8,6 +8,7 @@ nb_tests_tot=0
 nb_tests_ok=0
 ret=1
 
+ramen_pids=""
 do_at_exit=""
 at_exit() {
   do_at_exit="$1; $do_at_exit"
@@ -19,7 +20,7 @@ nb_lines() {
 }
 
 add_temp_file() {
-  at_exit "rm -f '$temp_files'"
+  at_exit "rm -f '$1'"
 }
 
 kill_recurs() {
@@ -65,7 +66,13 @@ start() {
 
   # OCAMLPATH=$top_srcdir/  useless with embedded compiler
   $ramen start --no-demo -d --seed 1234 --use-embedded-compiler --bundle-dir=$top_srcdir/bundle &
-  add_temp_pid $!
+  pid=$!
+  add_temp_pid $pid
+  if test -z "$ramen_pids" ; then
+    ramen_pids="$pid"
+  else
+    ramen_pids="$ramen_pids,$pid"
+  fi
 }
 
 upload() {
@@ -161,10 +168,16 @@ stop() {
     ret=0
   fi
 
-  # Wait for ramen to actualy exit before deleting files (or it would
-  # recreate those dirs to save its configuration one last time)
-  # Note: This is > to the HttpSrv.monitor_quit loop sleep duration.
-  sleep 0.4
+  # Wait for ramen to actualy exit before deleting files, or it would
+  # recreate those dirs to save its configuration one last time or even
+  # would fail to kill some workers.
+  if test -n "$ramen_pids" ; then
+    # ps -p returns an error if none of the listed pids exists
+    while ps -p $ramen_pids > /dev/null 2>&1 ; do
+      echo "Waiting for ramen to exit..."
+      sleep 0.4
+    done
+  fi
 
   if test "$ret" -eq 0 ; then
     eval "rm -rf $ALL_RAMEN_PERSIST_DIRS"
