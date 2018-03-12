@@ -573,27 +573,32 @@ let save_dir_of_programs persist_dir =
 let save_dir_of_program persist_dir p =
   save_dir_of_programs persist_dir ^"/"^ p
 
-let save_file_of_program persist_dir p =
-  save_dir_of_program persist_dir p ^"/conf"
+let save_files_of_program persist_dir p =
+  let dir = save_dir_of_program persist_dir p in
+  dir ^"/cache", dir ^"/source"
 
 let non_persisted_programs = ref (Hashtbl.create 11)
 
 let iter_saved_programs conf f =
   let save_dir = save_dir_of_programs conf.persist_dir in
   dir_subtree_iter ~on_dir:(fun path ->
-    let save_file = save_file_of_program conf.persist_dir path in
+    let cache, source = save_files_of_program conf.persist_dir path in
     (* Not all subdirs are a program: *)
-    if file_exists ~maybe_empty:false save_file then
-      f path save_file
+    if file_exists ~maybe_empty:false cache &&
+       file_exists ~maybe_empty:false source
+    then f path cache source
   ) save_dir
 
 let load_programs conf =
   if conf.do_persist then
     try
       let h = Hashtbl.create 11 in
-      iter_saved_programs conf (fun path save_file ->
+      iter_saved_programs conf (fun path cache source ->
         let prog : Program.t =
-          File.with_file_in save_file Marshal.input in
+          File.with_file_in cache Marshal.input in
+        if prog.program <> "" then
+          !logger.error "cache file with non-empty program!?" ;
+        prog.program <- read_whole_file source ;
         Hashtbl.add h path prog) ;
       h
     with
@@ -604,20 +609,27 @@ let load_programs conf =
   else !non_persisted_programs
 
 let save_program conf p =
-  let save_file = save_file_of_program conf.persist_dir p.Program.name in
-  mkdir_all ~is_file:true save_file ;
-  !logger.debug "Saving program %s in %s" p.Program.name save_file ;
-  File.with_file_out ~mode:[`create; `trunc] save_file (fun oc ->
-    Marshal.output oc p)
+  let cache, source = save_files_of_program conf.persist_dir p.Program.name in
+  mkdir_all ~is_file:true cache ;
+  mkdir_all ~is_file:true source ;
+  !logger.debug "Saving program %s in %s" p.Program.name cache ;
+  File.with_file_out ~mode:[`create; `trunc] cache (fun oc ->
+    Marshal.output oc { p with program = "" }) ;
+  File.with_file_out ~mode:[`create; `trunc] source (fun oc ->
+    output_string oc p.program ;
+    (* A proper non-empty text file ends with a \n, this is not emacs: *)
+    if p.program <> "" && p.program.[String.length p.program - 1] <> '\n' then
+      output_char oc '\n')
 
 let save_programs conf programs =
   if conf.do_persist then (
     (* Deletes everything that's not in the configuration any more: *)
-    iter_saved_programs conf (fun path save_file ->
+    iter_saved_programs conf (fun path cache source ->
       if not (Hashtbl.mem programs path) then (
-        !logger.info "Deleting %s" save_file ;
+        !logger.info "Deleting %s and %s" cache source ;
         let open Unix in
-        ignore_exceptions unlink save_file ;
+        ignore_exceptions unlink cache ;
+        ignore_exceptions unlink source ;
         let dir = save_dir_of_program conf.persist_dir path in
         try rmdir dir
         with Unix_error (ENOTEMPTY, _, _) ->
