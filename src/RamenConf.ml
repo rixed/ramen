@@ -428,16 +428,12 @@ let parse_program program =
 
 let del_program programs program =
   let open Program in
-  match Hashtbl.find programs program.name with
-  | exception Not_found ->
-      !logger.info "Program %s does not exist" program.name
-  | program ->
-      !logger.info "Deleting program %S" program.name ;
-      (match program.status with
-      | Running | Stopping ->
-        raise (InvalidCommand "Program is running")
-      | Compiled | Compiling | Edition _ ->
-        Hashtbl.remove programs program.name)
+  !logger.info "Deleting program %S" program.name ;
+  (match program.status with
+  | Running | Stopping ->
+    raise (InvalidCommand "Program is running")
+  | Compiled | Compiling | Edition _ ->
+    Hashtbl.remove programs program.name)
 
 (* Tells if any function of [dependent] depends on any function of [dependee] *)
 let depends_on dependent dependee =
