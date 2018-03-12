@@ -374,12 +374,23 @@ let graph_info conf program_opt =
 let recompile_dirty_source conf program_name =
   let cache, source =
     C.save_files_of_program conf.C.persist_dir program_name in
-  let prog = C.load_program cache source in
-  let test_id =
-    if prog.test_id <> "" then Some prog.test_id else None in
-  let%lwt _name =
-    set_program ?test_id ~ok_if_running:true conf program_name prog.program in
-  return_unit
+  if C.has_source_file source then
+    let prog = C.load_program cache source in
+    let test_id =
+      if prog.test_id <> "" then Some prog.test_id else None in
+    let%lwt _name =
+      set_program ?test_id ~ok_if_running:true conf program_name prog.program in
+    return_unit
+  else
+    (* No more valid source -> delete the program *)
+    try
+      let%lwt _ = del_program_by_name ~ok_if_running:true conf program_name in
+      return_unit
+    with Not_found ->
+      (* del_program_by_name will load the config, which will set that program
+       * on the dirty_sources list again, so we will try to delete it again...
+       * That's fine (for now) *)
+      return_unit
 
 let recompile_dirty_sources conf =
   let rec loop () =
@@ -388,7 +399,7 @@ let recompile_dirty_sources conf =
         (* With only lightweight threads no need to protect this: *)
         let program_names = Set.to_list !C.dirty_sources in
         C.dirty_sources := Set.empty ;
-        !logger.info "Recompiling dirty programs %a..."
+        !logger.info "Dealing with dirty programs %a..."
           (List.print String.print) program_names ;
         Lwt_list.iter_s (recompile_dirty_source conf) program_names
       else return_unit in

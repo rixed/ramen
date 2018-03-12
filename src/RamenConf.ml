@@ -584,19 +584,24 @@ let iter_saved_programs conf f =
   dir_subtree_iter ~on_dir:(fun path ->
     let cache, source = save_files_of_program conf.persist_dir path in
     (* Not all subdirs are a program: *)
-    if file_exists ~maybe_empty:false cache &&
-       file_exists ~maybe_empty:false source
+    if file_exists ~maybe_empty:false cache
     then f path cache source
   ) save_dir
 
+(* List of programs to recompile or delete based on changes in their source
+ * files *)
 let dirty_sources = ref Set.empty
 
+let has_source_file = file_exists ~maybe_empty:false
+
 let load_program cache source =
+  !logger.debug "Loading program from %s" cache ;
   let prog : Program.t =
     File.with_file_in cache Marshal.input in
   if prog.program <> "" then
     !logger.error "cache file with non-empty program!?" ;
-  prog.program <- read_whole_file source ;
+  if has_source_file source then
+    prog.program <- read_whole_file source ;
   prog
 
 let load_programs conf =
@@ -604,13 +609,16 @@ let load_programs conf =
     try
       let h = Hashtbl.create 11 in
       iter_saved_programs conf (fun program_name cache source ->
-        (* If the source file is more recent than the cache file, assume the
-         * source changed (Note: we save the source file first). We cannot do
-         * this straight away as we are holding a R or W lock. Hopefully, there
-         * is no reason to do this at once - it's even better to wait a bit in
-         * order to cluster modifications together. Here we merely add that
-         * program to a set of programs to be recompiled asynchronously. *)
-        if mtime_of_file source > mtime_of_file cache then
+        (* If the source file has been deleted, or is more recent than the
+         * cache file, assume the source changed (Note: we save the source file
+         * first). We cannot do this straight away as we are holding a R or W
+         * lock. Hopefully, there is no reason to do this at once - it's even
+         * better to wait a bit in order to cluster modifications together.
+         * Here we merely add that program to a set of programs to be
+         * recompiled asynchronously. *)
+        if not (has_source_file source) ||
+           mtime_of_file source > mtime_of_file cache
+        then
           (* With only lightweight threads we do not need to protect this: *)
           dirty_sources := Set.add program_name !dirty_sources ;
         let prog = load_program cache source in
