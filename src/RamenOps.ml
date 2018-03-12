@@ -13,36 +13,40 @@ module SN = RamenSharedTypes.Info.Func
 
 (* Delete (and optionally also stops) a program, and returns if the
  * program was actually running. *)
-let rec del_program_by_name ~ok_if_running conf program_name =
+let del_program_by_name ~ok_if_running conf program_name =
   let had_stopped_it = ref false in
-  let%lwt finished =
-    C.with_wlock conf (fun programs ->
-      match Hashtbl.find programs program_name with
-      | exception e -> fail e
-      | program ->
-        (match program.L.status with
-        | Running ->
-          if ok_if_running then (
-            had_stopped_it := true ;
-            let%lwt () = RamenProcesses.stop conf programs program in
+  let rec loop () =
+    let%lwt finished =
+      C.with_wlock conf (fun programs ->
+        match Hashtbl.find programs program_name with
+        | exception e -> fail e
+        | program ->
+          (match program.L.status with
+          | Running ->
+            if ok_if_running then (
+              had_stopped_it := true ;
+              let%lwt () = RamenProcesses.stop conf programs program in
+              return_false
+            ) else
+              fail_with ("Cannot delete program "^ program_name ^
+                         " which is running")
+          | Stopping ->
+            !logger.info "Cannot delete stopping program %s right away"
+              program_name ;
             return_false
-          ) else
-            fail_with ("Cannot delete program "^ program_name ^
-                       " which is running")
-        | Stopping ->
-          !logger.info "Cannot delete stopping program %s right away"
-            program_name ;
-          return_false
-        | Compiled | Compiling | Edition _ ->
-          let%lwt () =
-            wrap (fun () -> C.del_program programs program) in
-          return_true)) in
-  if not finished then
-    let delay = 1. +. Random.float 2. in
-    let%lwt () = Lwt_unix.sleep delay in
-    del_program_by_name ~ok_if_running conf program_name
-  else
-    return !had_stopped_it
+          | Compiled | Compiling | Edition _ ->
+            let%lwt () =
+              wrap (fun () -> C.del_program programs program) in
+            return_true)) in
+    if not finished then
+      let delay = 1. +. Random.float 2. in
+      Lwt_unix.sleep delay >>=
+      loop
+    else
+      return_unit
+  in
+  let%lwt () = loop () in
+  return !had_stopped_it
 
 let start_program_by_name conf to_run =
   C.with_wlock conf (fun programs ->
