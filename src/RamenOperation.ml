@@ -36,7 +36,7 @@ let print_flush_method ?(prefix="") ?(suffix="") () oc = function
   | Never ->
     Printf.fprintf oc "%sKEEP ALL%s" prefix suffix
   | Slide n ->
-    Printf.fprintf oc "%sSIDE %d%s" prefix n suffix
+    Printf.fprintf oc "%sSLIDE %d%s" prefix n suffix
   | KeepOnly e ->
     Printf.fprintf oc "%sKEEP (%a)%s" prefix (Expr.print false) e suffix
   | RemoveAll e ->
