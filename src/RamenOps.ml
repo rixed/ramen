@@ -368,3 +368,30 @@ let graph_info conf program_opt =
     let%lwt programs' = RamenProcesses.graph_programs programs program_opt in
     let programs' = L.order programs' in
     Lwt_list.map_s (program_info_of_program programs) programs')
+
+(* Async thread that recompiles programs which source have been changed on
+ * disc *)
+let recompile_dirty_source conf program_name =
+  let cache, source =
+    C.save_files_of_program conf.C.persist_dir program_name in
+  let prog = C.load_program cache source in
+  let test_id =
+    if prog.test_id <> "" then Some prog.test_id else None in
+  let%lwt _name =
+    set_program ?test_id ~ok_if_running:true conf program_name prog.program in
+  return_unit
+
+let recompile_dirty_sources conf =
+  let rec loop () =
+    let%lwt () =
+      if not (Set.is_empty !C.dirty_sources) then
+        (* With only lightweight threads no need to protect this: *)
+        let program_names = Set.to_list !C.dirty_sources in
+        C.dirty_sources := Set.empty ;
+        !logger.info "Recompiling dirty programs %a..."
+          (List.print String.print) program_names ;
+        Lwt_list.iter_s (recompile_dirty_source conf) program_names
+      else return_unit in
+    Lwt_unix.sleep 5. >>= loop
+  in
+  loop ()

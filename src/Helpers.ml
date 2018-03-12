@@ -110,13 +110,17 @@ let file_exists ?(maybe_empty=true) ?(has_perms=0) fname =
     (maybe_empty || s.st_size > 0) &&
     s.st_perm land has_perms = has_perms
 
-let file_is_older_than age fname =
+let mtime_of_file fname =
   let open Unix in
-  match stat fname with
-  | exception  _ -> false
-  | s ->
-    let now = gettimeofday () in
-    s.st_mtime > now -. age
+  let s = stat fname in
+  s.st_mtime
+
+let file_is_older_than age fname =
+  try
+    let mtime = mtime_of_file fname in
+    let now = Unix.gettimeofday () in
+    mtime > now -. age
+  with _ -> false
 
 let dir_subtree_iter ?on_dir ?on_file root =
   let open Unix in
