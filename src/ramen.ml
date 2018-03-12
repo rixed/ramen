@@ -343,7 +343,7 @@ let timerange =
  *)
 
 let name_opt =
-  let i = Arg.info ~doc:"Program of operation unique name."
+  let i = Arg.info ~doc:"Program or operation unique name."
                    ~docv:"name" [] in
   Arg.(value (pos 0 (some string) None i))
 
