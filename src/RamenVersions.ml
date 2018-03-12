@@ -6,7 +6,7 @@
 let release_tag = "v1.2.4"
 
 (* Ramen graph configuration *)
-let graph_config = "v6"
+let graph_config = "v5"
 
 (* Code generation: sources, binaries... *)
 let codegen = "v4"
