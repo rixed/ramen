@@ -59,6 +59,53 @@ let start_program_by_name conf to_run =
         try%lwt RamenProcesses.run conf programs p
         with RamenProcesses.AlreadyRunning -> return_unit)
 
+let stop_all_dependent_programs conf program_name f =
+  let to_restart = ref Set.empty in
+  let rec wait_stop count =
+    if count > 60 then fail_with "Cannot stop dependent programs" else
+    let%lwt finished =
+      C.with_wlock conf (fun programs ->
+        let%lwt all_stopped =
+          C.lwt_fold_programs programs true (fun all_stopped program ->
+            if program.L.name <> program_name &&
+               C.depends_on program program_name
+            then (
+              match program.L.status with
+              | Stopping -> return_false (* Wait longer *)
+              | Compiled ->
+                  (* Demote it further to Editable since it needs to endure
+                   * typing again: *)
+                  L.set_editable program ("Depends on "^ program_name) ;
+                  return all_stopped
+              | Edition _ ->
+                  return all_stopped
+              | Running ->
+                  !logger.info
+                    "Program %s must be stopped as it depends on %s"
+                    program.L.name program_name ;
+                  to_restart := Set.add program.L.name !to_restart ;
+                  let%lwt () = RamenProcesses.stop conf programs program in
+                  return_false
+              | Compiling ->
+                  !logger.info
+                    "Program %s must be stopped as it depends on %s \
+                     but is compiling. Will wait for it."
+                    program.L.name program_name ;
+                  return_false
+            ) else return all_stopped) in
+        if all_stopped then (
+          let%lwt () = f programs in
+          return_true
+        ) else return_false) in
+    if not finished then
+      (* In case several clients are fighting to recompile many things it
+       * is important to wait for a long and random duration: *)
+      let delay = 1. +. Random.float (float_of_int (2 * count)) in
+      let%lwt () = Lwt_unix.sleep delay in
+      wait_stop (count + 1)
+    else return !to_restart in
+  wait_stop 0
+
 (* Compile one program and stop those that depended on it. *)
 let rec compile_one conf program_name =
   (* Compilation taking a long time, we do a multi-stage approach:
@@ -105,10 +152,10 @@ let rec compile_one conf program_name =
   | Some (to_compile, parents) ->
     (* Helper to retrieve to_compile: *)
     let with_compiled_program programs def f =
-      match Hashtbl.find programs to_compile.L.name with
+      match Hashtbl.find programs program_name with
       | exception Not_found ->
           !logger.error "Compiled program %s disappeared"
-            to_compile.L.name ;
+            program_name ;
           def
       | program ->
           if program.L.status <> Compiling then (
@@ -126,7 +173,7 @@ let rec compile_one conf program_name =
     match%lwt Compiler.compile conf parents to_compile with
     | exception exn ->
       !logger.error "Compilation of %s failed with %s"
-        to_compile.L.name (Printexc.to_string exn) ;
+        program_name (Printexc.to_string exn) ;
       !logger.debug "Compiling %s phase 3: Returning the erroneous program" program_name ;
       let%lwt () = C.with_wlock conf (fun programs ->
         with_compiled_program programs return_unit (fun program ->
@@ -139,61 +186,19 @@ let rec compile_one conf program_name =
        * again. Wait until we reach this state where, with the wlock, all
        * our dependent are in Edition. *)
       !logger.debug "Compiling %s phase 3: Stopping all dependent programs" program_name ;
-      let to_restart = ref Set.empty in
-      let rec wait_stop count =
-        if count > 60 then fail_with "Cannot stop dependent programs" else
-        let%lwt finished =
-          C.with_wlock conf (fun programs ->
-            let%lwt all_stopped =
-              C.lwt_fold_programs programs true (fun all_stopped program ->
-                if program.L.name <> program_name &&
-                   C.depends_on program program_name
-                then (
-                  match program.L.status with
-                  | Stopping -> return_false (* Wait longer *)
-                  | Compiled ->
-                      (* Demote it further to Editable since it needs to endure
-                       * typing again: *)
-                      L.set_editable program ("Depends on "^ to_compile.L.name) ;
-                      return all_stopped
-                  | Edition _ ->
-                      return all_stopped
-                  | Running ->
-                      !logger.info
-                        "Program %s must be stopped due to compilation of %s"
-                        program.L.name program_name ;
-                      to_restart := Set.add program.L.name !to_restart ;
-                      let%lwt () = RamenProcesses.stop conf programs program in
-                      return_false
-                  | Compiling ->
-                      !logger.info
-                        "Program %s must be stopped due to compilation of %s \
-                         but is compiling. Will wait for it."
-                        program.L.name program_name ;
-                      return_false
-                ) else return all_stopped) in
-            if all_stopped then (
-              !logger.debug "Compiling %s phase 4: Restarting the compiled program" program_name ;
-              with_compiled_program programs return_false (fun program ->
-                L.set_status program Compiled ;
-                program.funcs <- to_compile.funcs ;
-                return_true)
-            ) else return_false) in
-        if not finished then
-          (* In case several clients are fighting to recompile many things it
-           * is important to wait for a long and random duration: *)
-          let delay = 1. +. Random.float (float_of_int (2 * count)) in
-          let%lwt () = Lwt_unix.sleep delay in
-          wait_stop (count + 1)
-        else return_unit in
-      let%lwt () = wait_stop 0 in
+      let%lwt to_restart = stop_all_dependent_programs conf program_name (fun programs ->
+        !logger.debug "Compiling %s phase 4: Restarting the compiled program" program_name ;
+        with_compiled_program programs return_unit (fun program ->
+          L.set_status program Compiled ;
+          program.funcs <- to_compile.funcs ;
+          return_unit)) in
       (* The hard part is done. Now restart what we stopped, to be nice: *)
       !logger.debug "Compiling %s phase 5: Restarting the dependent programs" program_name ;
       (* Be lenient if some of those programs are not there anymore: *)
       let%lwt () = Lwt_list.iter_s (fun r ->
         let%lwt () = compile_one conf r in
         start_program_by_name conf r
-      ) (Set.to_list !to_restart) in
+      ) (Set.to_list to_restart) in
       !logger.debug "Compiling %s phase 6: Victory!" program_name ;
       return_unit
 
