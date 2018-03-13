@@ -15,5 +15,8 @@ else
   fi
 fi
 
+OCAMLRUNPARAM=b
+export OCAMLRUNPARAM
+
 ulimit -v 2000000
 exec nice ionice -c 2 ramen start $@
