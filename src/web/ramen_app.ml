@@ -158,6 +158,11 @@ struct
     prog_name ^"/"^ func_name
 end
 
+(* Jstable of spinning programs *)
+let spinners = make_param "spinners" (Jstable.create ())
+let spinner_icon = "❍" (*"°"*)
+let spinner = button [ clss "spinning" ] [ text spinner_icon ]
+
 (* Value is an association list from func id to func.
  * Note: in theory func names are optional, and would be supplied by the
  * server if missing, but we do not make use of this behavior here. *)
@@ -447,15 +452,6 @@ let reset_for_func_change () =
   set tail_rows [||] ;
   reload_tail ()
 
-let set_sel_program l =
-  if sel_program.value <> l then (
-    set sel_program l ;
-    if l <> NoProgram then
-      (* Try to keep edited content as long as possible: *)
-      let el = edited_program_of_program l in
-      if !(edited_program.value.program_name) <> !(el.program_name) then
-        set edited_program el)
-
 let worker_stats_of_js js =
   Func.{
     time = of_field js "time" Js.to_float ;
@@ -529,19 +525,6 @@ let reload_single_func prog_name func_name =
   let url = "/operation/"^ enc prog_name ^"/"^ enc func_name ^"?code=true" in
   http_get url (fun f -> func_of_js f |> update_func)
 
-let set_sel_func = function
-  | Some func ->
-    if func.Func.id <> sel_func.value then (
-      set sel_func func.id ;
-      let l = ExistingProgram func.program in
-      set_sel_program l ;
-      reload_single_func func.program func.name ;
-      reset_for_func_change ())
-  | None ->
-    if sel_func.value <> "" then (
-      set sel_func "" ;
-      reset_for_func_change ())
-
 (* Recompute the sums from the funcs *)
 let update_funcs_sum () =
   let sum =
@@ -564,27 +547,21 @@ let update_funcs_sum () =
       ) zero_sums funcs.value in
   set funcs_sum sum
 
-(* Jstable of spinning programs *)
-let spinners = make_param "spinners" (Jstable.create ())
-let spinner_icon = "❍" (*"°"*)
-
-let spinner = button [ clss "spinning" ] [ text spinner_icon ]
-
-let update_all_funcs fs =
-  let had_funcs = ref [] in
-  List.iter (fun f ->
-    let func = func_of_js f in
-    had_funcs := func.Func.id :: !had_funcs ;
-    update_func func
-  ) fs ;
-  update_funcs_sum () ;
+let update_all_funcs js =
+  let fs = list_of_js func_of_js js in
+  let had_funcs =
+    List.fold_left (fun prev f ->
+      update_func f ;
+      f.Func.id :: prev
+    ) [] fs in
   funcs.value <- List.filter (fun (id, _) ->
-    if List.mem id !had_funcs then (
+    if List.mem id had_funcs then (
       change funcs ; true
     ) else (
       print (Js.string ("Deleting operation "^ id)) ;
       false
-    )) funcs.value
+    )) funcs.value ;
+  update_funcs_sum ()
 
 (* Reload info (id + stats) for all known operations *)
 (* [single] option means: do it only if one is not running already *)
@@ -592,26 +569,36 @@ let reload_funcs =
   let reloading = ref false in
   fun ?(single=false) () ->
     if not single || not !reloading then (
-      let rec loop fs progs prog_name = function
-      | [] ->
-        (match progs with
-        | [] ->
-            if single then reloading := false ;
-            update_all_funcs fs
-        | (prog_name, prog_param) :: rest ->
-            loop fs rest prog_name prog_param.value.Program.func_names)
-      | func_name :: rest ->
-          let url =
-            "/operation/"^ enc prog_name ^"/"^ enc func_name ^"?code="^
-            string_of_bool (sel_func.value = Func.id_of prog_name func_name) in
-          http_get url ~on_err:(fun () -> loop fs progs prog_name rest)
-                   (fun f -> loop (f :: fs) progs prog_name rest)
-      in
-      match programs.value with
-      | [] -> ()
-      | (prog_name, prog_param) :: rest ->
-          if single then reloading := true ;
-          loop [] rest prog_name prog_param.value.Program.func_names)
+      if single then reloading := true ;
+      let url = "/list" ^ (match sel_program.value with
+                          | NoProgram | NewProgram -> ""
+                          | ExistingProgram p -> "/"^ p) in
+      http_get url (fun js ->
+        if single then reloading := false ;
+        update_all_funcs js))
+
+let set_sel_program l =
+  if sel_program.value <> l then (
+    set sel_program l ;
+    reload_funcs ~single:false () ;
+    if l <> NoProgram then
+      (* Try to keep edited content as long as possible: *)
+      let el = edited_program_of_program l in
+      if !(edited_program.value.program_name) <> !(el.program_name) then
+        set edited_program el)
+
+let set_sel_func = function
+  | Some func ->
+    if func.Func.id <> sel_func.value then (
+      set sel_func func.id ;
+      let l = ExistingProgram func.program in
+      set_sel_program l ;
+      reload_single_func func.program func.name ;
+      reset_for_func_change ())
+  | None ->
+    if sel_func.value <> "" then (
+      set sel_func "" ;
+      reset_for_func_change ())
 
 let update_graph total g =
   (* g is a JS array of programs *)

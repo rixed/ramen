@@ -193,6 +193,28 @@ let op_info conf headers program_name func_name params =
   let body = PPP.to_string SN.info_ppp_json info in
   respond_ok ~body ()
 
+let list_info conf headers program_opt =
+  let%lwt resp =
+    C.with_rlock conf (fun programs ->
+      let get_info =
+        RamenOps.func_info_of_func ~with_code:false ~with_stats:true programs in
+      match program_opt with
+      | None ->
+        C.lwt_fold_funcs programs [] (fun lst _prog func ->
+          let%lwt i = get_info func in
+          return (i :: lst))
+      | Some program_name ->
+        match Hashtbl.find programs program_name with
+        | exception Not_found ->
+          bad_request ("Program "^ program_name ^" does not exist")
+        | p ->
+          Hashtbl.values p.L.funcs |> List.of_enum |>
+          Lwt_list.fold_left_s (fun lst func ->
+            let%lwt i = get_info func in
+            return (i :: lst)
+          ) []) in
+  let body = PPP.to_string top_functions_resp_ppp_json resp in
+  respond_ok ~body ()
 
 (* FIXME: instead of stopping/starting for real we must build two sets of
  * programs to stop/start and perform with changing the processes only
@@ -650,9 +672,12 @@ let upload conf headers program func body =
 
 (* Start the HTTP server: *)
 let router conf www_dir url_prefix =
-  let lyr = function
-    | [] -> bad_request_exn "Program name missing from URL"
-    | lst -> String.concat "/" lst in
+  let lyr_opt = function
+    | [] -> None
+    | lst -> Some (String.concat "/" lst) in
+  let lyr lst = match lyr_opt lst with
+    | None -> bad_request_exn "Program name missing from URL"
+    | Some lst -> lst in
   let lyr_func_of path =
     let rec loop ls = function
       | [] -> bad_request_exn "func name missing from URL"
@@ -671,10 +696,8 @@ let router conf www_dir url_prefix =
   fun meth path params headers body ->
     match meth, path with
     (* Ramen API *)
-    | `GET, ["graph"] ->
-      get_graph conf headers None
     | `GET, ("graph" :: programs) ->
-      get_graph conf headers (Some (lyr programs))
+      get_graph conf headers (lyr_opt programs)
     | `PUT, ["graph"] ->
       put_program conf headers body
     | `DELETE, ("graph" :: programs) ->
@@ -682,18 +705,14 @@ let router conf www_dir url_prefix =
     | `GET, ("operation" :: path) ->
       let program, func = lyr_func_of path in
       op_info conf headers program func params
-    | `GET, ["compile"] ->
-      compile conf headers None
+    | `GET, ("list" :: programs) ->
+      list_info conf headers (lyr_opt programs)
     | `GET, ("compile" :: programs) ->
-      compile conf headers (Some (lyr programs))
-    | `GET, ["run" | "start"] ->
-      run conf headers None
+      compile conf headers (lyr_opt programs)
     | `GET, (("run" | "start") :: programs) ->
-      run conf headers (Some (lyr programs))
-    | `GET, ["stop"] ->
-      stop conf headers None
+      run conf headers (lyr_opt programs)
     | `GET, ("stop" :: programs) ->
-      stop conf headers (Some (lyr programs))
+      stop conf headers (lyr_opt programs)
     | `GET, ["shutdown"] ->
       shutdown conf headers
     | (`GET|`POST), ("export" :: path) ->

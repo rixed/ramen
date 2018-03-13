@@ -228,3 +228,7 @@ type timeserie_resp =
 type timeseries_resp = timeserie_resp list [@@ppp PPP_JSON]
 
 type time_range_resp = RamenSharedTypesJS.time_range [@@ppp PPP_JSON]
+
+(* Top functions statistics: *)
+
+type top_functions_resp = Info.Func.info list [@@ppp PPP_JSON]
