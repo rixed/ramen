@@ -543,7 +543,7 @@ let cleanup_old_files persist_dir =
     Lwt_unix.rename fname (fname ^".todel")
   in
   let open Str in
-  let cleanup_dir (dir, sub_re, current) =
+  let cleanup_dir (dir, sub_re, current_version) =
     let dir = persist_dir ^"/"^ dir in
     !logger.debug "Cleaning directory %s" dir ;
     (* Error in there will be delivered to the stream reader: *)
@@ -551,7 +551,7 @@ let cleanup_old_files persist_dir =
     try%lwt
       Lwt_stream.iter_s (fun fname ->
         let full_path = dir ^"/"^ fname in
-        if fname = current then (
+        if fname = current_version then (
           !logger.debug "Touching %s." full_path ;
           touch_file full_path
         ) else if string_match sub_re fname 0 &&

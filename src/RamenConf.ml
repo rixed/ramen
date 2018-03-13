@@ -251,8 +251,6 @@ struct
       raise (InvalidCommand "Graph is running")
 
   let fold_dependencies program init f =
-    (* One day we will have a lock on the configuration and we will be able to
-     * mark visited funcs *)
     Hashtbl.fold (fun _func_name func (init, called) ->
       List.fold_left (fun (init, called as prev)
                           (parent_program, _parent_func) ->
@@ -510,7 +508,7 @@ let make_func program_name func_name operation =
     out_type = UntypedTuple (make_temp_tup_typ ()) ;
     pid = None ; last_exit = "" ; succ_failures = 0 }
 
-(* Compile a program and add it to the configuration.
+(* Add a program to the configuration.
  * [timeout]: if not zero, the program will be destroyed automatically if
  * no client ask for its output for that long
  * [test_id]: if not nul, this program is just meant to be tested, so its
