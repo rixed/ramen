@@ -383,14 +383,15 @@ let time_or_na = function
   | None -> TermTable.ValStr "n/a"
   | Some f -> TermTable.ValStr (string_of_time f)
 
-let abbrev_str_list lst =
+let abbrev_str_list short lst =
   TermTable.ValStr (
     if lst = [] then "ø" else
     let s =
       List.fold_left (fun s n ->
         (if s = "" then s else s ^", ")^ n
       ) "" lst in
-    let s = RamenHtml.abbrev 17 s in
+    let s =
+      if short then RamenHtml.abbrev 17 s else s in
     s ^" ("^ string_of_int (List.length lst) ^")")
 
 let display_program_info json short progs_info ops_info =
@@ -477,8 +478,8 @@ let display_operation_info json short func =
         "RAM", ValInt stats.ram_usage ;
         "Read", flt_or_na stats.in_bytes ;
         "Written", flt_or_na stats.out_bytes ;
-        "Parents", abbrev_str_list func.parents ;
-        "Children", abbrev_str_list func.children ;
+        "Parents", abbrev_str_list short func.parents ;
+        "Children", abbrev_str_list short func.children ;
         "PID", int_or_na func.pid ;
         "Signature", str_or_na func.signature ;
         "Last Exit Status", ValStr func.last_exit ] in
