@@ -135,62 +135,81 @@ let rec run_func conf programs program func =
         (* First and foremost we want to set the error status and clean
          * the PID of this process (if only because another thread might
          * wait for the result of its own kill) *)
-        C.with_wlock conf (fun programs ->
-          (* Look again for that program by name: *)
-          match C.find_func programs func.N.program func.N.name with
-          | exception Not_found ->
-              !logger.error "Operation %s (pid %d) %s is not \
-                             in the configuration any more!"
-                (N.fq_name func) pid status_str ;
-              return_unit
-          | program, func ->
-              let restart () =
-                !logger.info "Restarting func %s which is supposed to \
-                              be running."
-                  (N.fq_name func) ;
-                let%lwt () = Lwt_unix.sleep (Random.float 2.) in
-                (* Note: run_func will start another waiter for that
-                 * other worker so our job is done. *)
-                run_func conf programs program func in
-              (* Check this is still the same program: *)
-              if func.pid <> Some pid then (
-                !logger.error "Operation %s (pid %d) %s is in \
-                               the configuration under pid %a!"
-                  (N.fq_name func) pid status_str
-                  (Option.print Int.print) func.pid ;
-                return_unit
-              ) else (
-                func.pid <- None ;
-                func.last_exit <- status_str ;
-                (* The rest of the operation depends on the program status: *)
-                match program.status with
-                | Stopping ->
-                    (* If there are no more processes running for this program,
-                     * demote it to Compiled: *)
-                    if Hashtbl.values program.L.funcs |>
-                       Enum.for_all (fun func -> func.N.pid = None) then (
-                      !logger.info "All workers for %s have terminated" program.name ;
-                      L.set_status program Compiled
-                    ) ;
-                    return_unit
-                | Running when not !quit ->
-                    (* If this does not look intentional, restart the worker: *)
-                    (match status with
-                    | Unix.WSIGNALED signal
-                      when signal <> Sys.sigterm &&
-                           signal <> Sys.sigkill &&
-                           signal <> Sys.sigint -> restart ()
-                    | Unix.WEXITED code when code <> 0 -> restart ()
+        let%lwt succ_failures =
+          C.with_wlock conf (fun programs ->
+            (* Look again for that program by name: *)
+            match C.find_func programs func.N.program func.N.name with
+            | exception Not_found ->
+                !logger.error "Operation %s (pid %d) %s is not \
+                               in the configuration any more!"
+                  (N.fq_name func) pid status_str ;
+                return 0
+            | program, func ->
+                let%lwt succ_failures =
+                  (* Check this is still the same program: *)
+                  if func.pid <> Some pid then (
+                    !logger.error "Operation %s (pid %d) %s is in \
+                                   the configuration under pid %a!"
+                      (N.fq_name func) pid status_str
+                      (Option.print Int.print) func.pid ;
+                    return 0
+                  ) else (
+                    func.pid <- None ;
+                    func.last_exit <- status_str ;
+                    (* The rest of the operation depends on the program status: *)
+                    match program.status with
+                    | Stopping ->
+                        (* If there are no more processes running for this program,
+                         * demote it to Compiled: *)
+                        if Hashtbl.values program.L.funcs |>
+                           Enum.for_all (fun func -> func.N.pid = None) then (
+                          !logger.info "All workers for %s have terminated" program.name ;
+                          L.set_status program Compiled
+                        ) ;
+                        return 0
+                    | Running when not !quit ->
+                        (* If this does not look intentional, restart the worker: *)
+                        (match status with
+                        | Unix.WSIGNALED signal
+                          when signal <> Sys.sigterm &&
+                               signal <> Sys.sigkill &&
+                               signal <> Sys.sigint ->
+                            return (func.succ_failures + 1)
+                        | Unix.WEXITED code when code <> 0 ->
+                            return (func.succ_failures + 1)
+                        | _ ->
+                            !logger.debug "Assuming death by natural causes" ;
+                            return 0)
                     | _ ->
-                        !logger.debug "Assuming death by natural causes" ;
-                        return_unit)
-
-                | _ ->
-                    (* We leave the program.status as it is since we have no
-                     * idea what's happening to other operations. *)
-                    !logger.debug "Don't know what to do since program status is %s"
-                      (SL.string_of_status program.status) ;
-                    return_unit))
+                        (* We leave the program.status as it is since we have no
+                         * idea what's happening to other operations. *)
+                        !logger.debug "Don't know what to do since program status is %s"
+                          (SL.string_of_status program.status) ;
+                        return 0) in
+                func.succ_failures <- succ_failures ;
+                return succ_failures) in
+        if succ_failures = 0 then return_unit
+        else (* restart that worker *)
+          let add_jitter ratio v =
+            (Random.float ratio -. (ratio *. 0.5) +. 1.) *. v in
+          let delay = float_of_int (succ_failures * 2 |> min 5) |>
+                      add_jitter 0.1 in
+          !logger.info "Restarting func %s which is supposed to \
+                        be running (failed %d times in a row, pause for %gs)."
+            (N.fq_name func) succ_failures delay ;
+          let%lwt () = Lwt_unix.sleep delay in
+          C.with_wlock conf (fun programs ->
+            (* Since we released the lock while waiting, check again that the
+             * situation is still the same: *)
+            match C.find_func programs func.N.program func.N.name with
+            | exception Not_found ->
+                return_unit
+            | program, func ->
+                if func.pid = None && not !quit then
+                  (* Note: run_func will start another waiter for that
+                   * other worker so our job is done. *)
+                  run_func conf programs program func
+                else return_unit)
     in
     wait_child ()) ;
   (* Update the parents out_ringbuf_ref if it's in another program (otherwise

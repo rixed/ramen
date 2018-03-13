@@ -156,7 +156,8 @@ struct
       parents : (string * string) list ;
       (* Worker info, only relevant if it is running: *)
       mutable pid : int option ;
-      mutable last_exit : string }
+      mutable last_exit : string ;
+      mutable succ_failures : int }
 
   let fq_name func = func.program ^"/"^ func.name
 
@@ -507,7 +508,7 @@ let make_func program_name func_name operation =
      * edited: *)
     in_type = UntypedTuple (make_temp_tup_typ ()) ;
     out_type = UntypedTuple (make_temp_tup_typ ()) ;
-    pid = None ; last_exit = "" }
+    pid = None ; last_exit = "" ; succ_failures = 0 }
 
 (* Compile a program and add it to the configuration.
  * [timeout]: if not zero, the program will be destroyed automatically if
