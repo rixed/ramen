@@ -173,7 +173,7 @@ let rec run_func conf programs program func =
                       L.set_status program Compiled
                     ) ;
                     return_unit
-                | Running when !quit ->
+                | Running when not !quit ->
                     (* If this does not look intentional, restart the worker: *)
                     (match status with
                     | Unix.WSIGNALED signal
