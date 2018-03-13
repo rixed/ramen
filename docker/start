@@ -15,4 +15,5 @@ else
   fi
 fi
 
-exec ramen start $@
+ulimit -v 2000000
+exec nice ionice -c 2 ramen start $@

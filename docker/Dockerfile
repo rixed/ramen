@@ -15,7 +15,9 @@ RUN apt-get --yes update && \
 				liblapack-dev \
         libsqlite3-0 \
         collectd \
-        fprobe
+        fprobe \
+        util-linux \
+        coreutils
 
 # Do not install recommends:
 RUN echo 'APT::Install-Recommends "0";' > \
