@@ -1163,7 +1163,19 @@ let program_of_bcns bcns dataset_name export =
     anom "RD" [ "rd_avg", "sum_rd_count_src > 10", false, [] ] ;
     anom "DTT" [ "dtt_avg", "sum_dtt_count_src > 10", false, [] ]
   in
-  List.iter conf_of_bcn bcns ;
+  let max_nb_zones = 20 in
+  List.filter (fun bcn ->
+    let open Conf_of_sqlite.BCN in
+    let skip =
+      List.length bcn.source > max_nb_zones ||
+      List.length bcn.dest > max_nb_zones in
+    if skip then (
+      !logger.error "Skipping BCN from %s to %s, which has more than %d zones"
+        bcn.source_name bcn.dest_name max_nb_zones ;
+      false
+    ) else true
+  ) bcns |>
+  List.iter conf_of_bcn ;
   RamenSharedTypes.{
     name = program_name ;
     ok_if_running = true ;
