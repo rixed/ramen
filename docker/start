@@ -2,11 +2,17 @@
 
 set -e
 
-if test -x /usr/sbin/collectd ; then
-  /usr/sbin/collectd -C /etc/collectd/collectd.conf
-fi
-if test -x /usr/sbin/fprobe ; then
-  /usr/sbin/fprobe 127.0.0.1:2055
+# Special argument to not load this stuff:
+
+if test "$1" = "only" ; then
+  shift
+else
+  if test -x /usr/sbin/collectd ; then
+    /usr/sbin/collectd -C /etc/collectd/collectd.conf
+  fi
+  if test -x /usr/sbin/fprobe ; then
+    /usr/sbin/fprobe 127.0.0.1:2055
+  fi
 fi
 
 exec ramen start $@
