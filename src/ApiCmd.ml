@@ -136,7 +136,7 @@ let start copts daemonize no_demo to_stderr www_dir
        async (fun () ->
          restart_on_failure RamenProcesses.timeout_programs_loop conf) ;
        async (fun () ->
-         restart_on_failure RamenProcesses.cleanup_old_files conf.C.persist_dir) ;
+         restart_on_failure RamenProcesses.cleanup_old_files conf) ;
        async (fun () ->
          restart_on_failure RamenProcesses.read_reports reports_rb) ;
        async (fun () ->

@@ -390,6 +390,7 @@ type conf =
     do_persist : bool ; (* false for tests *)
     max_simult_compilations : int ref ;
     max_history_archives : int ;
+    max_execs_age : int ;
     use_embedded_compiler : bool ;
     bundle_dir : string }
 
@@ -669,7 +670,8 @@ let make_conf do_persist ramen_url debug persist_dir
     archived_incidents = [ (* TODO *) ] ; max_incidents_per_team ;
     do_persist ; ramen_url ; debug ; persist_dir ;
     max_simult_compilations = ref max_simult_compilations ;
-    max_history_archives ; use_embedded_compiler ; bundle_dir }
+    max_history_archives ; max_execs_age = 900 ;
+    use_embedded_compiler ; bundle_dir }
 
 (* AutoCompletion of func/field names *)
 

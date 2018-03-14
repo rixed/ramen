@@ -528,7 +528,7 @@ let rec timeout_programs_loop conf =
   let%lwt () = Lwt_unix.sleep 7.1 in
   timeout_programs_loop conf
 
-let cleanup_old_files persist_dir =
+let cleanup_old_files conf =
   (* Have a list of directories and regexps and current version,
    * Iter through this list for file matching the regexp and that are also directories.
    * If this direntry matches the current version, touch it.
@@ -536,7 +536,7 @@ let cleanup_old_files persist_dir =
    * Then sleep for one day and restart. *)
   let get_log_file () =
     Unix.gettimeofday () |> Unix.localtime |> RamenLog.log_file
-  and touch_file fname =
+  and lwt_touch_file fname =
     let now = Unix.gettimeofday () in
     Lwt_unix.utimes fname now now
   and delete_directory fname = (* TODO: should really delete *)
@@ -544,7 +544,7 @@ let cleanup_old_files persist_dir =
   in
   let open Str in
   let cleanup_dir (dir, sub_re, current_version) =
-    let dir = persist_dir ^"/"^ dir in
+    let dir = conf.C.persist_dir ^"/"^ dir in
     !logger.debug "Cleaning directory %s" dir ;
     (* Error in there will be delivered to the stream reader: *)
     let files = Lwt_unix.files_of_directory dir in
@@ -553,7 +553,7 @@ let cleanup_old_files persist_dir =
         let full_path = dir ^"/"^ fname in
         if fname = current_version then (
           !logger.debug "Touching %s." full_path ;
-          touch_file full_path
+          lwt_touch_file full_path
         ) else if string_match sub_re fname 0 &&
            is_directory full_path &&
            file_is_older_than (1. *. 86400.) fname (* TODO: should be 10 days *)
@@ -587,6 +587,21 @@ let cleanup_old_files persist_dir =
     in
     !logger.info "Cleaning old unused files..." ;
     let%lwt () = Lwt_list.iter_s cleanup_dir to_clean in
-    Lwt_unix.sleep 86400. >>= loop
+    let bindir = conf.C.persist_dir ^"/workers/bin/"^ RamenVersions.codegen in
+    let%lwt used_bins =
+      C.with_rlock conf (fun programs ->
+        C.lwt_fold_funcs programs Set.empty (fun set _ func ->
+            return (Set.add (C.exec_of_func conf.C.persist_dir func) set))) in
+    let now = Unix.gettimeofday () in
+    let unlink_old_bin fname =
+      let bin = Filename.basename fname in
+      if String.starts_with bin "ramen_" then
+        if Set.mem bin used_bins then
+          Unix.utimes fname now now
+        else if now -. mtime_of_file fname > float_of_int conf.max_execs_age then (
+          !logger.info "Deleting old binary %s" bin ;
+          log_exceptions Unix.unlink bin) in
+    dir_subtree_iter ~on_file:unlink_old_bin bindir ;
+    Lwt_unix.sleep 3600. >>= loop
   in
   loop ()
