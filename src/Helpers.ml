@@ -170,6 +170,16 @@ let has_dotnames s =
   String.exists s "/./" ||
   String.exists s "/../"
 
+let ensure_trailing_slash dirname =
+  let len = String.length dirname in
+  if len > 0 && dirname.[len-1] <> '/' then
+    dirname ^"/" else dirname
+
+let ensure_no_trailing_slash dirname =
+  let len = String.length dirname in
+  if len > 0 && dirname.[len-1] = '/' then
+    String.rchop dirname else dirname
+
 let name_of_signal s =
   let open Sys in
   if s = sigabrt then "ABORT"
@@ -355,6 +365,8 @@ let random_string =
   fun len ->
     Bytes.init len random_char |>
     Bytes.to_string
+
+let string_starts_with sub s = String.starts_with s sub
 
 let max_simult ~max_count =
   let open Lwt in

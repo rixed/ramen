@@ -55,6 +55,69 @@ let add copts name program ok_if_running start remote () =
         RamenOps.set_program ~ok_if_running ~start conf name program in
       return_unit)
 
+let gather_all_fname root_dir =
+  let ret = ref Set.empty in
+  !logger.debug "Looking for source files into %s" root_dir ;
+  dir_subtree_iter ~on_dir:(fun fname rel_fname ->
+    let src_fname = fname ^"/source.ramen" in
+    !logger.debug "Considering %s" src_fname ;
+    if file_exists ~maybe_empty:false ~has_perms:0o400 src_fname then
+      ret := Set.add rel_fname !ret
+    else
+      !logger.debug "Skipping %s that has no source.ramen" rel_fname
+  ) root_dir ;
+  !ret
+
+let sync copts root_dir program_prefix and_start () =
+  logger := make_logger copts.debug ;
+  let program_prefix = ensure_no_trailing_slash program_prefix in
+  Lwt_main.run (
+    let conf =
+      C.make_conf true copts.server_url copts.debug copts.persist_dir
+                  copts.max_simult_compilations copts.max_history_archives
+                  copts.use_embedded_compiler copts.bundle_dir
+                  copts.max_incidents_per_team in
+    !logger.info "Reading local configuration..." ;
+    let disk_programs = gather_all_fname root_dir in
+    (* It is always possible to delete a program regardless of dependencies,
+     * so start with that: *)
+    let%lwt to_del = C.with_rlock conf (fun programs ->
+      let existing =
+        Hashtbl.keys programs // string_starts_with program_prefix |>
+        Set.of_enum in
+      Set.diff existing disk_programs |> return) in
+    if not (Set.is_empty to_del) then
+      !logger.info "Deleting extraneous programs %a..."
+        (Set.print String.print) to_del ;
+    let%lwt () =
+      Set.to_list to_del |>
+      Lwt_list.iter_p (fun p ->
+        let%lwt _ = RamenOps.del_program_by_name ~ok_if_running:true conf p in
+        return_unit) in
+    if not (Set.is_empty disk_programs) then
+      !logger.info "Adding programs %a..."
+        (Set.print String.print) disk_programs ;
+    let%lwt program_names =
+      Set.to_list disk_programs |>
+      Lwt_list.fold_left_s (fun lst fname ->
+        let%lwt source =
+          lwt_read_whole_file (root_dir ^"/"^ fname ^"/source.ramen") in
+        let program_name = program_prefix ^ fname in
+        let%lwt program_name' =
+          (* starting has to be done remotely: *)
+          RamenOps.set_program ~ok_if_running:true ~start:false
+            conf program_name source in
+        !logger.info "Created program %s" program_name' ;
+        return (program_name' :: lst)) [] in
+    if and_start then
+      Lwt_list.iter_p (fun program_name ->
+        let n = enc program_name in
+        let%lwt () =
+          http_get (copts.server_url ^"/compile/"^ n) >>= check_ok in
+        http_get (copts.server_url ^"/run/"^ n) >>= check_ok
+      ) program_names
+    else return_unit)
+
 let compile copts () =
   logger := make_logger copts.debug ;
   Lwt_main.run (

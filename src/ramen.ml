@@ -205,6 +205,30 @@ let add =
     info ~doc:"Define a new program or replace a previous one" "add")
 
 (*
+ * Sync local sources
+ *)
+
+let root_dir =
+  let i = Arg.info ~doc:"Root directory."
+                   ~docv:"directory" [] in
+  Arg.(required (pos 0 (some string) None i))
+
+let program_prefix =
+  let i = Arg.info ~doc:"Program prefix."
+                   ~docv:"program_prefix" [] in
+  Arg.(value (pos 1 string "" i))
+
+let sync =
+  Term.(
+    (const ApiCmd.sync
+      $ copts
+      $ root_dir
+      $ program_prefix
+      $ and_start),
+    info ~doc:"Synchronize a subtree of the configuration with source files \
+               from the file system." "sync")
+
+(*
  * Compile/Run/Stop Program
  *)
 
@@ -403,7 +427,7 @@ let default =
 let () =
   match Term.eval_choice default [
     server_start ; server_stop ;
-    dequeue ; summary ;
+    dequeue ; summary ; sync ;
     add ; compile ; run ; stop ;
     tail ; timeseries ; timerange ;
     get_info ; test
