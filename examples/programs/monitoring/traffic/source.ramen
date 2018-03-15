@@ -1,0 +1,45 @@
+-- vim: ft=sql expandtab
+-- Example program to monitor some hosts via collectd
+
+DEFINE netflow AS
+  LISTEN FOR NETFLOW;
+
+DEFINE inbound AS
+  SELECT source, first, last, bytes, packets, in_iface AS iface
+  FROM netflow;
+
+DEFINE outbound AS
+  SELECT source, first, last, bytes, packets, out_iface AS iface
+  FROM netflow;
+
+DEFINE total AS
+  FROM inbound, outbound
+  SELECT
+    source, iface,
+    min first AS first, max last AS last,
+    sum bytes / (out.last - out.first) AS bytes_per_secs,
+    sum packets / (out.last - out.first) AS packets_per_secs
+  GROUP BY source, iface, first // 300
+  COMMIT WHEN in.first > out.last + 100
+  EVENT STARTING AT first AND STOPPING AT last;
+
+DEFINE out_of_range_alert AS
+  FROM total
+  SELECT
+    source, iface,
+    (last - first) / 2 AS time,
+    bytes_per_secs,
+    5-ma locally (bytes_per_secs < 100 OR bytes_per_secs > 8e3) >= 4 AS firing
+  GROUP BY source, iface
+  COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
+  NOTIFY "$RAMEN_URL$/notify?firing=${firing}&title=Traffic%20on%20${source}%2F${iface}&time=${time}";
+
+DEFINE link_down_alert AS
+  FROM total
+  SELECT
+    source, iface,
+    max last,
+    age max_last > 300 AS firing
+  GROUP BY source, iface
+  COMMIT AND KEEP ALL WHEN COALESCE (out.firing != previous.firing, false)
+  NOTIFY "$RAMEN_URL$/notify?text=link%20${source}%2F${iface}%20is%20down";

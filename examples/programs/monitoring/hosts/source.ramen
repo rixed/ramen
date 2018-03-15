@@ -1,0 +1,33 @@
+-- vim: ft=sql expandtab
+-- Example program to monitor some hosts via collectd
+
+DEFINE collectd AS
+  LISTEN FOR COLLECTD;
+
+DEFINE memory AS
+  SELECT
+    MIN time AS time,
+    host,
+    COALESCE (type_instance, "unknown") AS _type,
+    AVG (IF _type = "free" THEN value ELSE 0) AS free,
+    AVG (IF _type = "used" THEN value ELSE 0) AS used,
+    AVG (IF _type = "cached" THEN value ELSE 0) AS cached,
+    AVG (IF _type = "buffered" THEN value ELSE 0) AS buffered,
+    AVG (IF _type LIKE "slab%" THEN value ELSE 0) AS slab
+  FROM collectd
+  WHERE COALESCE (plugin = "memory", false)
+  GROUP BY host, time // 30
+  COMMIT WHEN in.time > out.time + 30
+  EVENT STARTING AT time WITH DURATION 30;
+
+DEFINE memory_alert AS
+  FROM memory
+  SELECT
+    time, host,
+    free + used + cached + buffered + slab AS total,
+    free * 100 / total AS used_ratio,
+    used_ratio > 50 AS firing
+  GROUP BY host
+  COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
+  NOTIFY "$RAMEN_URL$/notify?title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25"
+  EVENT STARTING AT time WITH DURATION 30;
