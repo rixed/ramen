@@ -189,15 +189,15 @@ the operation name. Then for the operation, enter:
 [source,sql]
 ----
 SELECT * FROM demo/collectd WHERE plugin = "memory"
-EXPORT EVENT STARTING AT time
+EVENT STARTING AT time
 ----
 
 Without going too deep into ramen syntax, the intended meaning of this simple
 operation should be clear: we want to filter the tuples according to their
 +plugin+ field and keep only those originating from the "memory" plugin.  The
-+EXPORT EVENT ...+ part is required to make the resulting tuples visible in
-the GUI (otherwise, for performance reasons, tuples would not be accessible
-from the web server).
++EVENT ...+ part is required to extract a timeserie from the tuples, which is
+the first step toward plotting the tuples (that's where ramen learns the event
+time from).
 
 [NOTE]
 The +STARTING AT ...+ bit means that, when we plot the output then the
@@ -246,7 +246,7 @@ So, click on the "tutorial" program panel again and modify the text of the
 [source,sql]
 ----
 SELECT * FROM demo/collectd WHERE COALESCE(plugin = "memory", false)
-EXPORT EVENT STARTING AT time
+EVENT STARTING AT time
 ----
 
 Save it and you should now be able to compile and run it by clicking on
@@ -266,7 +266,7 @@ the running operation (by clicking on the double-bar icon) before you can edit i
 SELECT time, host, type_instance, value
 FROM demo/collectd
 WHERE COALESCE(plugin = "memory", false)
-EXPORT EVENT STARTING AT time
+EVENT STARTING AT time
 ----
 
 The output is now easier to read; it should look something like this:
@@ -319,8 +319,8 @@ SELECT
 FROM demo/collectd
 WHERE COALESCE (plugin = "memory", false)
 GROUP BY host, time // 30
-COMMIT WHEN in.time > previous.time + 30
-EXPORT EVENT STARTING AT time WITH DURATION 30
+COMMIT WHEN in.time > out.time + 30
+EVENT STARTING AT time WITH DURATION 30
 ----
 
 There are *a lot* of new things here. Let's see them one at a time.
@@ -372,13 +372,13 @@ In ramen, the control over the windowing is very fine grained, but the above
 +COMMIT WHEN ...some condition...+ is basically just that: when the
 condition is met, the current aggregation emits a result and the accumulated
 data is reset. Still, you should be intrigued by the condition itself:
-+in.time > previous.time + 30+. For the first time, we see that field names
++in.time > out.time + 30+. For the first time, we see that field names
 can be prefixed with a _tuple name_.
 
 Indeed, here we are comparing the field "time" of the incoming tuples
 ("in.time") with the field "time" that is being computed by the aggregation
-(+MIN time AS time+). "in" is the name of an input tuple, while "previous" is
-the name of the previous tuple computed by a group (the tuple that would be
+(+MIN time AS time+). "in" is the name of an input tuple, while "out" is
+the name of the tuple computed by a group (the tuple that would be
 emitted shall the condition yield true). It is thus interesting to notice
 that those two tuples have different types: "in" has fields "time",
 "type_instance", "value", etc, while the output tuples have fields "time",
@@ -386,13 +386,13 @@ that those two tuples have different types: "in" has fields "time",
 with the tuple name to disambiguate the expression.
 
 Here is an illustration of the above operation that may help understand
-better where those "in" and "previous" tuples come from, as well as see what
+better where those "in" and "out" tuples come from, as well as see what
 other tuples are available:
 
 image::tutorial_group_by.svg[]
 
 There are many different tuples that you can address in the various clauses of
-an expression beside the "in" and the "previous" tuple so that rich behavior
+an expression beside the "in" and the "out" tuple so that rich behavior
 can be obtained, but let's not dive into this for now. The overall meaning of
 this +COMMIT+ expression should be clear enough: we want to aggregate the
 tuples until we receive a tuple which time is greater than the min time we had
@@ -499,7 +499,7 @@ SELECT
 GROUP BY host
 COMMIT WHEN used_ratio > 50
 NOTIFY "http://localhost:29382/notify?title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25"
-EXPORT EVENT STARTING AT time WITH DURATION 30
+EVENT STARTING AT time WITH DURATION 30
 ----
 
 If you though about using a where clause you might be surprised to see a
@@ -537,7 +537,7 @@ private fields. Turn the memory operation into:
 SELECT
   MIN time AS time,
   host,
-  COALESCE(type_instance, "") AS _type,
+  COALESCE (type_instance, "") AS _type,
   AVG (IF _type = "free" THEN value ELSE 0) AS free,
   AVG (IF _type = "used" THEN value ELSE 0) AS used,
   AVG (IF _type = "cached" THEN value ELSE 0) AS cached,
@@ -546,8 +546,8 @@ SELECT
 FROM demo/collectd
 WHERE COALESCE (plugin = "memory", false)
 GROUP BY host, time // 30
-COMMIT WHEN in.time > previous.time + 30
-EXPORT EVENT STARTING AT time WITH DURATION 30
+COMMIT WHEN in.time > out.time + 30
+EVENT STARTING AT time WITH DURATION 30
 ----
 
 and then everything should compile and run.
@@ -578,25 +578,20 @@ SELECT
   free * 100 / total AS used_ratio,
   used_ratio > 50 AS firing
 GROUP BY host
-COMMIT AND KEEP ALL WHEN firing <> previous.firing
+COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
 NOTIFY "http://localhost:29382/notify?firing=${firing}&title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25"
-EXPORT EVENT STARTING AT time WITH DURATION 30
+EVENT STARTING AT time WITH DURATION 30
 ----
 
-There should be little surprise, but for one thing: the +COMMIT AND KEEP
-ALL+. What this does it instruct ramen not to delete the group when the tuple
-is output (which is the default behavior). +KEEP ALL+ means that the group
-should stay untouched, as if we haven't output anything. Otherwise we would
-loose the memory of what was the last output tuple for this group (and
-+previous.firing+ would be unreliable). In contrast, +KEEP ALL+ will never
-delete the groups, so we will have as many groups as we have hosts to save
-their firing state, which is reasonable.
-
-NOTE: for such cases it would be much easier if WHERE could simply access the
-output tuple and the previously output tuple, so that we could naturally
-write +WHERE firing <> out.previous.firing+ or something similar, without
-having to worry about groups. Nothing prevents that and it's indeed on the
-todo list.
+There should be little surprise, but for one thing: the +COMMIT AND KEEP ALL+.
+What this does it instruct ramen not to delete the group when the tuple is
+output (the default behavior is to discard the group once it's beenoutput).
++KEEP ALL+ means that the group should stay untouched, as if it hasn't been
+output at all. Otherwise we would loose the memory of what was the last output
+tuple for this host (next time we hear about that host, a new group would be
+created and +previous.firing+ would be NULL). In contrast, +KEEP ALL+ will
+never delete the groups, so we will have as many groups as we have hosts to
+save their last firing state, which is reasonable.
 
 == Monitoring Netflows
 
@@ -670,12 +665,12 @@ SELECT
   sum bytes AS bytes, sum packets AS packets
 GROUP BY source, iface
 COMMIT WHEN out.last - out.first > 300
-EXPORT EVENT STARTING AT first AND STOPPING AT last
+EVENT STARTING AT first AND STOPPING AT last
 ----
 
 It might be the first time you see a FROM clause with more that one operation.
 You are allowed to read from several operations as long as all these operations output
-the exact same format.
+(at least) all the fields that your operation needs (with the same type).
 
 You could plot the "bytes" or "packets" field of this operation to get the total
 traffic reaching any interface.
@@ -693,7 +688,7 @@ SELECT
   sum packets / (out.last - out.first) AS packets_per_secs
 GROUP BY source, iface
 COMMIT WHEN out.last - out.first > 300
-EXPORT EVENT STARTING AT first AND STOPPING AT last
+EVENT STARTING AT first AND STOPPING AT last
 ----
 
 Notice the prefix in +out.first+ and +out.last+ to identify the computed
@@ -717,8 +712,8 @@ SELECT
   bytes_per_secs,
   5-ma locally (bytes_per_secs < 100 OR bytes_per_secs > 8e3) >= 4 AS firing
 GROUP BY source, iface
-COMMIT AND KEEP ALL WHEN firing <> previous.firing
-NOTIFY "http://localhost:29382/notify?firing=${firing}&title=Traffic%20on%20${source}%2F${iface}&time=${time}"
+COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
+NOTIFY "$RAMEN_URL$/notify?firing=${firing}&title=Traffic%20on%20${source}%2F${iface}&time=${time}"
 ----
 
 Notice the definition of firing: instead of merely fire whenever the average
@@ -730,12 +725,16 @@ average of the last 5 values is above or equal to 4 that means at least 4 of
 the latests 5 values were true. Therefore, at the expense of a bit more
 latency, we can skip over a flapping metric.
 
-The last enigmatic bit is the "locally" keyword. This is a function modifier
+The next enigmatic bit is the "locally" keyword. This is a function modifier
 that means that instead of storing it's temporary state globally the "5-ma"
 function should have one such state per group ; in other words, instead of
 computing the average over the last 5 incoming tuples regardless of their key,
 it should compute the average over the last 5 tuples aggregated into the same
 group.
+
+Finally, notice that +$RAMEN_URL$ has replaced the usual
+"http://localhost:29380". Ramen will actually substitute this by its actual
+URL, so that you can change it without changing the configuration.
 
 === Alerting on link down
 
@@ -755,8 +754,8 @@ timestamp UNIX, returns its age:
 FROM traffic/total
 SELECT source, iface, MAX last AS max_last, age max_last > 300 AS firing
 GROUP BY source, iface
-COMMIT AND KEEP ALL WHEN firing != previous.firing
-NOTIFY "http://localhost:29382/notify?text=link%20${source}%2F${iface}%20is%20down"
+COMMIT AND KEEP ALL WHEN COALESCE (out.firing != previous.firing, false)
+NOTIFY "$RAMEN_URL$/notify?text=link%20${source}%2F${iface}%20is%20down"
 ----
 
 and you have it!
