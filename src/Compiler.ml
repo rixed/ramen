@@ -906,7 +906,7 @@ let check_operation parents func =
 let () =
   Printexc.register_printer (function
     | SyntaxErrorInFunc (n, e) ->
-      Some ("In func "^ n ^": "^ string_of_syntax_error e)
+      Some ("In function "^ n ^": "^ string_of_syntax_error e)
     | MissingDependency func ->
       Some ("Missing dependency: "^ N.fq_name func)
     | AlreadyCompiled -> Some "Already compiled"

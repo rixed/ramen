@@ -122,6 +122,8 @@ let file_is_older_than age fname =
     mtime > now -. age
   with _ -> false
 
+(* Will call on_dir and on_file with both the absolute file name and then the
+ * name from the given root. *)
 let dir_subtree_iter ?on_dir ?on_file root =
   let open Unix in
   let rec loop_subtree path_from_root =

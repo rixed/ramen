@@ -12,7 +12,10 @@ module SN = RamenSharedTypes.Info.Func
 (* High level operations (uses LWT) *)
 
 (* Delete (and optionally also stops) a program, and returns if the
- * program was actually running. *)
+ * program was actually running. Children are unaffected (beside,
+ * obviously, losing the input). If a program with the same name ever
+ * get recompiled then the children will be recompiled too, to account
+ * for a possible change in the output type. *)
 let del_program_by_name ~ok_if_running conf program_name =
   let had_stopped_it = ref false in
   let rec loop () =
@@ -278,9 +281,10 @@ let reprogram_for_test old_program_name new_program_name func =
           RamenOperation.Aggregate { r with from = List.map rename from ;
                                        force_export = true } }
 
-(* TODO: Alternative: let the tester reprogram the code, and add a flag
- * in the func to prevent it from being started *)
-(* Return the name of the program (not necessarily the same as input *)
+(* Return the name of the program (not necessarily the same as input) *)
+(* FIXME: do not systematically delete everything but rather keep going
+ * unaffected nodes and update the others, so they can legitimately reuse
+ * their saved state. *)
 let set_program ?test_id ?(ok_if_running=false) ?(start=false)
                 conf name program =
   (* Disallow anonymous programs for simplicity: *)

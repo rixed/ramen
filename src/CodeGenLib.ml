@@ -808,8 +808,8 @@ let aggregate
         let already_output a =
           Option.map_default ((==) a) false !already_output_aggr in
         (* Tells if the group must be committed/flushed: *)
-        let must cond aggr = (* TODO: pass selected_successive *)
-          cond
+        let must_commit aggr = (* TODO: pass selected_successive *)
+          commit_when
             in_count in_tuple last_in
             s.selected_count s.selected_successive last_selected
             s.unselected_count s.unselected_successive last_unselected
@@ -905,7 +905,7 @@ let aggregate
             if when_to_check_for_commit <> check_when then [] else
               Hashtbl.fold (fun k a l ->
                   if not (already_output a) &&
-                     must commit_when a then
+                     must_commit a then
                     (k, a, Some a.current_out)::l
                   else l
                 ) s.groups [] in
@@ -1137,7 +1137,7 @@ let aggregate
                * (and skip this aggr when doing ForAllSelected or ForAll)., so that we can
                * commit_before this group (for others that does not matter since we did not
                * change them). *)
-              if must commit_when aggr
+              if must_commit aggr
               then [
                 k, aggr,
                 if commit_before then aggr.previous_out
