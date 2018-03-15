@@ -97,26 +97,19 @@ let sync copts root_dir program_prefix and_start () =
     if not (Set.is_empty disk_programs) then
       !logger.info "Adding programs %a..."
         (Set.print String.print) disk_programs ;
-    let%lwt program_names =
-      Set.to_list disk_programs |>
-      Lwt_list.fold_left_s (fun lst fname ->
-        let%lwt source =
-          lwt_read_whole_file (root_dir ^"/"^ fname ^"/source.ramen") in
-        let program_name = program_prefix ^ fname in
-        let%lwt program_name' =
-          (* starting has to be done remotely: *)
-          RamenOps.set_program ~ok_if_running:true ~start:false
-            conf program_name source in
-        !logger.info "Created program %s" program_name' ;
-        return (program_name' :: lst)) [] in
-    if and_start then
-      Lwt_list.iter_p (fun program_name ->
-        let n = enc program_name in
-        let%lwt () =
-          http_get (copts.server_url ^"/compile/"^ n) >>= check_ok in
-        http_get (copts.server_url ^"/run/"^ n) >>= check_ok
-      ) program_names
-    else return_unit)
+    Set.to_list disk_programs |>
+    Lwt_list.iter_s (fun fname ->
+      let%lwt source =
+        lwt_read_whole_file (root_dir ^"/"^ fname ^"/source.ramen") in
+      let program_name = program_prefix ^ fname in
+      let req =
+        { name = program_name ;
+          ok_if_running = true ;
+          start = and_start ;
+          program = source } in
+      let url = copts.server_url ^"/graph" in
+      !logger.info "Creating program %s..." program_name ;
+      http_put_json url put_program_req_ppp_json req >>= check_ok))
 
 let compile copts () =
   logger := make_logger copts.debug ;
