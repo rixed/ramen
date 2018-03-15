@@ -1377,7 +1377,11 @@ let program_editor_panel =
             [ if spinning then
                 button [] [ text "Cancel" ]
               else
-                button ~action:(fun _ -> set_sel_program NoProgram)
+                button ~action:(fun _ ->
+                  (* When "Cancel" is clicked we close the editor and also
+                   * discard the changes in the edited buffer *)
+                  set edited_program (edited_program_of_program sel_program.value) ;
+                  set_sel_program NoProgram)
                   [ clss "actionable" ] [ text "Cancel" ] ;
               if spinning then
                 button [] [ text "Save" ]
