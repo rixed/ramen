@@ -156,7 +156,7 @@ let find_history_or_fail conf programs program_name func_name =
     find_func_or_fail programs program_name func_name in
   (* We need the output type to find the history *)
   if not (L.is_typed program) then
-    bad_request ("func "^ func_name ^" is not typed (yet)")
+    bad_request ("operation "^ func_name ^" is not typed (yet)")
   else (
     let%lwt history = RamenExport.get_or_start conf func in
     return (program, func, history))
@@ -421,7 +421,7 @@ let timeseries conf headers body =
      * formatting. We thus start by parsing and pretty-printing the operation: *)
     let%lwt parent_program, parent_name =
       try C.program_func_of_user_string from |> return
-      with Not_found -> bad_request ("func "^ from ^" does not exist") in
+      with Not_found -> bad_request ("operation "^ from ^" does not exist") in
     let%lwt _program, parent =
       func_of_name programs parent_program parent_name in
     (* FIXME: this should be a program directly, so that we could get rid of parse_operation *)
@@ -485,7 +485,7 @@ let timeseries conf headers body =
           | Predefined { operation ; data_field } ->
             let%lwt program, func =
               try C.program_func_of_user_string operation |> return
-              with Not_found -> bad_request ("func "^ operation ^" does not exist") in
+              with Not_found -> bad_request ("operation "^ operation ^" does not exist") in
             return (program, func, data_field)
           | NewTempFunc { select_x ; select_y ; from ; where } ->
             let%lwt (program_name, _func_name, _data_field as res) =
@@ -680,9 +680,9 @@ let router conf www_dir url_prefix =
     | Some lst -> lst in
   let lyr_func_of path =
     let rec loop ls = function
-      | [] -> bad_request_exn "func name missing from URL"
+      | [] -> bad_request_exn "operation name missing from URL"
       | [x] ->
-        if ls = [] then bad_request_exn "func name missing from URL"
+        if ls = [] then bad_request_exn "operation name missing from URL"
         else lyr (List.rev ls), x
       | l::rest ->
         loop (l :: ls) rest in

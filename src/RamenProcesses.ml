@@ -591,7 +591,7 @@ let cleanup_old_files conf =
     let%lwt used_bins =
       C.with_rlock conf (fun programs ->
         C.lwt_fold_funcs programs Set.empty (fun set _ func ->
-            return (Set.add (C.exec_of_func conf.C.persist_dir func) set))) in
+          return (Set.add (C.exec_of_func conf.C.persist_dir func) set))) in
     let now = Unix.gettimeofday () in
     let unlink_old_bin fname _rel_fname =
       let bin = Filename.basename fname in
