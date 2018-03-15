@@ -593,14 +593,14 @@ let cleanup_old_files conf =
         C.lwt_fold_funcs programs Set.empty (fun set _ func ->
             return (Set.add (C.exec_of_func conf.C.persist_dir func) set))) in
     let now = Unix.gettimeofday () in
-    let unlink_old_bin fname =
+    let unlink_old_bin fname _rel_fname =
       let bin = Filename.basename fname in
       if String.starts_with bin "ramen_" then
         if Set.mem bin used_bins then
           Unix.utimes fname now now
         else if now -. mtime_of_file fname > float_of_int conf.max_execs_age then (
           !logger.info "Deleting old binary %s" bin ;
-          log_exceptions Unix.unlink bin) in
+          log_exceptions Unix.unlink fname) in
     dir_subtree_iter ~on_file:unlink_old_bin bindir ;
     Lwt_unix.sleep 3600. >>= loop
   in

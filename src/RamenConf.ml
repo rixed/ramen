@@ -576,7 +576,7 @@ let non_persisted_programs = ref (Hashtbl.create 11)
 
 let iter_saved_programs conf f =
   let save_dir = save_dir_of_programs conf.persist_dir in
-  dir_subtree_iter ~on_dir:(fun path ->
+  dir_subtree_iter ~on_dir:(fun _fname path ->
     let save_file = save_file_of_program conf.persist_dir path in
     (* Not all subdirs are a program: *)
     if file_exists ~maybe_empty:false save_file

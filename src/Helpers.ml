@@ -143,14 +143,17 @@ let dir_subtree_iter ?on_dir ?on_file root =
             let fname_from_root =
               if path_from_root = "" then fname_from_path
               else path_from_root ^"/"^ fname_from_path in
+            let may_run = function
+              | None -> ()
+              | Some f -> log_exceptions (f fname) fname_from_root in
             if is_directory fname then (
-              Option.may (fun f -> f fname_from_root) on_dir ;
+              may_run on_dir ;
               let path_from_root' =
                 if path_from_root = "" then fname_from_path
                 else path_from_root ^"/"^ fname_from_path in
               loop_subtree path_from_root'
             ) else
-              Option.may (fun f -> f fname_from_root) on_file ;
+              may_run on_file ;
             loop_files ()
       in
       loop_files () ;
