@@ -720,10 +720,10 @@ struct
              that_string "=" ||| that_string "<>" ||| that_string "!=" |||
              that_string "in" ||| that_string "like"
     and reduce t1 op t2 = match op with
-      | ">" -> StatelessFun2 (make_bool_typ "comparison", Gt, t1, t2)
-      | "<" -> StatelessFun2 (make_bool_typ "comparison", Gt, t2, t1)
-      | ">=" -> StatelessFun2 (make_bool_typ "comparison", Ge, t1, t2)
-      | "<=" -> StatelessFun2 (make_bool_typ "comparison", Ge, t2, t1)
+      | ">" -> StatelessFun2 (make_bool_typ "comparison (>)", Gt, t1, t2)
+      | "<" -> StatelessFun2 (make_bool_typ "comparison (<)", Gt, t2, t1)
+      | ">=" -> StatelessFun2 (make_bool_typ "comparison (>=)", Ge, t1, t2)
+      | "<=" -> StatelessFun2 (make_bool_typ "comparison (<=)", Ge, t2, t1)
       | "=" -> StatelessFun2 (make_bool_typ "equality", Eq, t1, t2)
       | "!=" | "<>" ->
         StatelessFun1 (make_bool_typ "not", Not,

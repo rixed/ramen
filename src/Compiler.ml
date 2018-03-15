@@ -1006,12 +1006,12 @@ let set_all_types parents program =
        (test_check_expr "1+1")
 
      "(sum locally (1 [constant of type I16, not nullable]) [sum aggregation of type I16, not nullable]) > \\
-      (500 [constant of type I32, not nullable]) [comparison of type BOOL, not nullable]" \
+      (500 [constant of type I32, not nullable]) [comparison (>) of type BOOL, not nullable]" \
        (test_check_expr "sum 1i16 > 500")
 
      "(sum locally (cast(I16, 1 [constant of type I32, not nullable]) [cast to I16 of type I16, not nullable]) \\
           [sum aggregation of type I16, not nullable]) > \\
-      (500 [constant of type I32, not nullable]) [comparison of type BOOL, not nullable]" \
+      (500 [constant of type I32, not nullable]) [comparison (>) of type BOOL, not nullable]" \
        (test_check_expr "sum i16(1) > 500")
 
      "cast(I8, 1.5 [constant of type FLOAT, not nullable]) [cast to I8 of type I8, not nullable]" \
