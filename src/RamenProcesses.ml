@@ -596,7 +596,7 @@ let cleanup_old_files conf =
     let unlink_old_bin fname _rel_fname =
       let bin = Filename.basename fname in
       if String.starts_with bin "ramen_" then
-        if Set.mem bin used_bins then
+        if Set.mem fname used_bins then
           Unix.utimes fname now now
         else if now -. mtime_of_file fname > float_of_int conf.max_execs_age then (
           !logger.info "Deleting old binary %s" bin ;
