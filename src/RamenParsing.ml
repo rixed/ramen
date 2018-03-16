@@ -50,5 +50,11 @@ let func_identifier ~program_allowed =
    id_quote >>:
   fun s -> String.of_list s)
 
+let pos_integer what =
+  decimal_number >>: fun n ->
+    if Num.sign_num n < 0 then
+      raise (Reject (what ^" must be greater than zero"))
+    else Num.int_of_num n
+
 let number =
   floating_point ||| (decimal_number >>: Num.to_float)
