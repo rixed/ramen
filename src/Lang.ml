@@ -22,6 +22,10 @@ type tuple_prefix =
   (* last output tuple committed by any group *)
   | TupleOutPrevious
   | TupleOut
+  (* Tuple usable in sort expressions *)
+  | TupleSortFirst
+  | TupleSortSmallest
+  | TupleSortGreatest
   (* TODO: TupleOthers? *)
 
 let string_of_prefix = function
@@ -38,6 +42,9 @@ let string_of_prefix = function
   | TupleOutPrevious -> "out.previous"
   | TupleOut -> "out"
   | TupleUnknown -> "unknown"
+  | TupleSortFirst -> "sort.first"
+  | TupleSortSmallest -> "sort.smallest"
+  | TupleSortGreatest -> "sort.greatest"
 
 type syntax_error =
   | ParseError of { error : string ; text : string }
@@ -158,7 +165,12 @@ let parse_prefix ~def m =
     (prefix "group.previous" >>: fun () -> TupleGroupPrevious) |||
     (prefix "out.previous" >>: fun () -> TupleOutPrevious) |||
     (prefix "previous" >>: fun () -> TupleOutPrevious) |||
-    (prefix "out" >>: fun () -> TupleOut))
+    (prefix "out" >>: fun () -> TupleOut) |||
+    (prefix "sort.first" >>: fun () -> TupleSortFirst) |||
+    (prefix "sort.smallest" >>: fun () -> TupleSortSmallest) |||
+    (prefix "sort.greatest" >>: fun () -> TupleSortGreatest) |||
+    (prefix "smallest" >>: fun () -> TupleSortSmallest) |||
+    (prefix "greatest" >>: fun () -> TupleSortGreatest))
   ) m
 
 let tuple_has_count = function

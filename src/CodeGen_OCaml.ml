@@ -94,24 +94,24 @@ let id_of_typ typ =
 let emit_value_of_string typ oc var =
   Printf.fprintf oc "RamenTypeConverters.%s_of_string %s" (id_of_typ typ) var
 
-let emit_compute_nullmask_size oc ser_tuple_typ =
+let emit_compute_nullmask_size oc ser_typ =
   Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;
   Printf.fprintf oc "\t\tList.fold_left2 (fun s nullable keep ->\n" ;
   Printf.fprintf oc "\t\t\tif nullable && keep then s+1 else s) 0\n" ;
   Printf.fprintf oc "\t\t\t%a\n"
     (List.print (fun oc field -> Bool.print oc field.nullable))
-      ser_tuple_typ ;
+      ser_typ ;
   Printf.fprintf oc "\t\t\tskiplist_ |>\n" ;
   Printf.fprintf oc "\t\tRingBufLib.bytes_for_bits |>\n" ;
   Printf.fprintf oc "\t\tRingBufLib.round_up_to_rb_word in\n"
 
 let emit_sersize_of_tuple name oc tuple_typ =
   (* We want the sersize of the serialized version of course: *)
-  let ser_tuple_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
+  let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
   (* Like for serialize_tuple, we receive first the skiplist and then the
    * actual tuple, so we can compute the nullmask in advance: *)
   Printf.fprintf oc "let %s skiplist_ =\n" name ;
-  emit_compute_nullmask_size oc ser_tuple_typ ;
+  emit_compute_nullmask_size oc ser_typ ;
   (* Now for the code run for each tuple: *)
   Printf.fprintf oc "\tfun %a ->\n"
     (print_tuple_deconstruct TupleOut) tuple_typ ;
@@ -129,7 +129,7 @@ let emit_sersize_of_tuple name oc tuple_typ =
           (emit_sersize_of_field_var field.typ) id ;
       Printf.fprintf oc "\t\t) else 0 in\n" ;
       Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n" ;
-    ) ser_tuple_typ ;
+    ) ser_typ ;
   Printf.fprintf oc "\t\tignore skiplist_ ;\n" ;
   Printf.fprintf oc "\t\tsz_\n"
 
@@ -149,9 +149,9 @@ let emit_set_value tx_var offs_var field_var oc field_typ =
  * tuple. *)
 let emit_serialize_tuple name oc tuple_typ =
   (* Serialize in tuple_typ.typ_name order: *)
-  let ser_tuple_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
+  let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
   Printf.fprintf oc "let %s skiplist_ =\n" name ;
-  emit_compute_nullmask_size oc ser_tuple_typ ;
+  emit_compute_nullmask_size oc ser_typ ;
   Printf.fprintf oc "\tfun tx_ %a ->\n"
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   if verbose_serialization then
@@ -187,7 +187,7 @@ let emit_serialize_tuple name oc tuple_typ =
       ) ;
       Printf.fprintf oc "\t\t\t) else offs_, nulli_ in\n" ;
       Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n"
-    ) ser_tuple_typ ;
+    ) ser_typ ;
   Printf.fprintf oc "\t\tignore skiplist_ ;\n" ;
   Printf.fprintf oc "\t\toffs_\n"
 
@@ -261,22 +261,22 @@ let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
 
 (* tuple must be some kind of _input_ tuple *)
-let emit_in_tuple ?(tuple=TupleIn) mentioned and_all_others oc in_tuple_typ =
+let emit_in_tuple ?(tuple=TupleIn) mentioned and_all_others oc in_typ =
   print_tuple_deconstruct tuple oc (List.filter_map (fun field_typ ->
     if and_all_others || Set.mem field_typ.typ_name mentioned then
-      Some field_typ else None) in_tuple_typ)
+      Some field_typ else None) in_typ)
 
 (* We do not want to read the value from the RB each time it's used,
  * so extract a tuple from the ring buffer. As an optimisation, read
  * (and return) only the mentioned fields. *)
-let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
+let emit_read_tuple name mentioned and_all_others oc in_typ =
   (* Deserialize in in_tuple_typ.typ_name order: *)
-  let ser_tuple_typ = RingBufLib.ser_tuple_typ_of_tuple_typ in_tuple_typ in
+  let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ in_typ in
   Printf.fprintf oc "\
     let %s tx_ =\n\
     \tlet offs_ = %d in\n"
     name
-    (RingBufLib.nullmask_bytes_of_tuple_type ser_tuple_typ) ;
+    (RingBufLib.nullmask_bytes_of_tuple_type ser_typ) ;
   if verbose_serialization then
     Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"Deserializing a tuple\" ;\n" ;
   let _ = List.fold_left (fun nulli field ->
@@ -311,10 +311,10 @@ let emit_read_tuple name mentioned and_all_others oc in_tuple_typ =
           (emit_sersize_of_field_tx "tx_" "offs_" nulli) field
       ) ;
       nulli + (if field.nullable then 1 else 0)
-    ) 0 ser_tuple_typ in
+    ) 0 ser_typ in
   Printf.fprintf oc "\tignore offs_ ;\n" ; (* avoid a warning *)
   Printf.fprintf oc "\t%a\n"
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ
+    (emit_in_tuple mentioned and_all_others) in_typ
 
 (* Returns the set of all field names from the "in" tuple mentioned
  * anywhere in the given expression: *)
@@ -555,15 +555,15 @@ let rec conv_to ?state ~context to_typ fmt e =
  * with that optional tuple, which avoids propagating out_typ down to
  * emit_expr - but hopefully the compiler will inline this.
  * (TODO: have a context in a single place and inline it directly?) *)
-and emit_maybe_fields oc out_tuple_typ =
+and emit_maybe_fields oc out_typ =
   List.iter (fun ft ->
     Printf.fprintf oc "let maybe_%s_ = function\n" ft.typ_name ;
     Printf.fprintf oc "  | None -> None\n" ;
     Printf.fprintf oc "  | Some %a -> %s%s\n\n"
-      (emit_tuple TupleOut) out_tuple_typ
+      (emit_tuple TupleOut) out_typ
       (if ft.nullable then "" else "Some ")
       (id_of_field_name ~tuple:TupleOut ft.typ_name)
-  ) out_tuple_typ
+  ) out_typ
 
 (* state is just the name of the state that's "opened" in the local environment,
  * ie "global_" if we are initializing the global state or "local_" if we are
@@ -1018,7 +1018,7 @@ let emit_generator user_fun oc expr =
     (emit_expr ?state:None ~context:Finalize) expr ;
   List.iter (fun _ -> Printf.fprintf oc ")") generators
 
-let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_typ oc selected_fields =
+let emit_generate_tuples name in_typ mentioned and_all_others out_typ oc selected_fields =
   let has_generator =
     List.exists (fun sf ->
       RamenExpr.is_generator sf.RamenOperation.expr)
@@ -1028,8 +1028,8 @@ let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_ty
   else (
     Printf.fprintf oc "let %s f_ %a %a =\n"
       name
-      (emit_in_tuple mentioned and_all_others) in_tuple_typ
-      (print_tuple_deconstruct TupleOut) out_tuple_typ ;
+      (emit_in_tuple mentioned and_all_others) in_typ
+      (print_tuple_deconstruct TupleOut) out_typ ;
     (* Each generator is a functional receiving the continuation and calling it
      * as many times as there are values. *)
     let nb_gens =
@@ -1045,7 +1045,7 @@ let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_ty
             nb_gens + 1)
         ) 0 selected_fields in
     (* Now we have all the generated values, actually call f_ on the tuple.
-     * Note that the tuple must be in out_tuple_typ order: *)
+     * Note that the tuple must be in out_typ order: *)
     Printf.fprintf oc "%af_ (\n%a"
       emit_indent (1 + nb_gens)
       emit_indent (2 + nb_gens) ;
@@ -1068,7 +1068,7 @@ let emit_generate_tuples name in_tuple_typ mentioned and_all_others out_tuple_ty
           Printf.fprintf oc "%s"
             (id_of_field_name ~tuple:TupleOut ft.typ_name) ;
           gi
-        ) 0 out_tuple_typ in
+        ) 0 out_typ in
     for _ = 1 to nb_gens do Printf.fprintf oc ")" done ;
     Printf.fprintf oc ")\n"
   )
@@ -1106,20 +1106,20 @@ let emit_state_update_for_expr oc expr =
 
 let emit_where
       ?(with_group=false) ?(always_true=false)
-      name in_tuple_typ mentioned and_all_others oc expr =
+      name in_typ mentioned and_all_others oc expr =
   Printf.fprintf oc "let %s global_ virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a \
                        virtual_out_count_ out_previous_opt_ "
     name
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_tuple_typ
-    (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_tuple_typ
-    (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_tuple_typ ;
+    (emit_in_tuple mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ ;
   if with_group then
     Printf.fprintf oc "virtual_group_count_ virtual_group_successive_ group_ %a %a "
-      (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
-      (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
+      (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
+      (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ ;
   if always_true then
     Printf.fprintf oc "= true\n"
   else (
@@ -1133,22 +1133,22 @@ let emit_where
 let emit_field_selection
       ?(with_selected=false) (* and unselected *)
       ?(with_group=false) (* including previous, of type tuple_out option *)
-      name in_tuple_typ mentioned
-      and_all_others out_tuple_typ oc selected_fields =
+      name in_typ mentioned
+      and_all_others out_typ oc selected_fields =
   Printf.fprintf oc "let %s virtual_in_count_ %a %a "
     name
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_tuple_typ ;
+    (emit_in_tuple mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ ;
   if with_selected then
     Printf.fprintf oc "virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a "
-      (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_tuple_typ
-      (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_tuple_typ ;
+      (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
+      (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ ;
   if with_group then
     Printf.fprintf oc "virtual_out_count out_previous_opt_ group_previous_opt_ \
                        virtual_group_count_ virtual_group_successive_ group_ global_ %a %a "
-      (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
-      (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ ;
+      (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
+      (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ ;
   Printf.fprintf oc "=\n" ;
   List.iter (fun sf ->
       (* Update the states as required for this field, just before
@@ -1157,7 +1157,7 @@ let emit_field_selection
       emit_state_update_for_expr oc sf.RamenOperation.expr ;
       Printf.fprintf oc "\t(* Output field: *)\n" ;
       if RamenExpr.is_generator sf.RamenOperation.expr then
-        (* So that we have a single out_tuple_typ both before and after tuples generation *)
+        (* So that we have a single out_typ both before and after tuples generation *)
         Printf.fprintf oc "\tlet %s = () in\n"
           (id_of_field_name ~tuple:TupleOut sf.RamenOperation.alias)
       else
@@ -1176,16 +1176,16 @@ let emit_field_selection
       Printf.fprintf oc "%s%s"
         (if i > 0 then ",\n\t\t" else "")
         (id_of_field_name ~tuple ft.typ_name) ;
-    ) out_tuple_typ ;
+    ) out_typ ;
   Printf.fprintf oc "\n\t)\n"
 
 (* Similar to emit_field_selection but with less options, no concept of star and no
  * naming of the fields as the fields from out, since that's not the out tuple
  * we are constructing: *)
-let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
+let emit_key_of_input name in_typ mentioned and_all_others oc exprs =
   Printf.fprintf oc "let %s %a =\n\t("
     name
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
+    (emit_in_tuple mentioned and_all_others) in_typ ;
   List.iteri (fun i expr ->
       Printf.fprintf oc "%s\n\t\t%a"
         (if i > 0 then "," else "")
@@ -1193,7 +1193,7 @@ let emit_key_of_input name in_tuple_typ mentioned and_all_others oc exprs =
     ) exprs ;
   Printf.fprintf oc "\n\t)\n"
 
-let emit_top name in_tuple_typ mentioned and_all_others oc top =
+let emit_top name in_typ mentioned and_all_others oc top =
   Printf.fprintf oc "let %s =" name ;
   match top with
   | None -> Printf.fprintf oc " None\n"
@@ -1201,7 +1201,7 @@ let emit_top name in_tuple_typ mentioned and_all_others oc top =
     (* The function that updates top_state from in_tuple: *)
     (* FIXME: rename all those "group_" by "local_" *)
     Printf.fprintf oc "\n\tlet top_update_ global_ group_ %a =\n\t\t%a in\n"
-      (emit_in_tuple mentioned and_all_others) in_tuple_typ
+      (emit_in_tuple mentioned and_all_others) in_typ
       emit_state_update_for_expr by ;
     Printf.fprintf oc
       "\tSome (\n\
@@ -1217,7 +1217,7 @@ let emit_float_of_top name oc top_by =
     Printf.fprintf oc "\t%a\n"
       (conv_to ~context:Finalize (Some TFloat)) top_by
 
-let emit_yield oc in_tuple_typ out_tuple_typ = function
+let emit_yield oc in_typ out_typ = function
   | RamenOperation.Yield { fields ; every } as op ->
     let mentioned =
       let all_exprs = RamenOperation.fold_expr [] (fun l s -> s::l) op in
@@ -1226,9 +1226,9 @@ let emit_yield oc in_tuple_typ out_tuple_typ = function
       %a\n%a\n%a\n\
       let () =\n\
         \tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_ %f\n"
-      (emit_field_selection "select_" in_tuple_typ mentioned false out_tuple_typ) fields
-      (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
-      (emit_serialize_tuple "serialize_tuple_") out_tuple_typ
+      (emit_field_selection "select_" in_typ mentioned false out_typ) fields
+      (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
+      (emit_serialize_tuple "serialize_tuple_") out_typ
       every
   | _ -> assert false
 
@@ -1325,7 +1325,7 @@ let emit_state_init name state_lifespan other_state_vars
 
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
-let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
+let emit_when name in_typ mentioned and_all_others out_typ
               oc when_expr =
   Printf.fprintf oc "let %s virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
@@ -1335,24 +1335,24 @@ let emit_when name in_tuple_typ mentioned and_all_others out_tuple_typ
                        %a %a \
                        %a =\n"
     name
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_tuple_typ
-    (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_tuple_typ
-    (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_tuple_typ
-    (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_tuple_typ
-    (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_tuple_typ
-    (emit_tuple TupleOut) out_tuple_typ ;
+    (emit_in_tuple mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ
+    (emit_tuple TupleOut) out_typ ;
   (* Update the states used by this expression: *)
   emit_state_update_for_expr oc when_expr ;
   Printf.fprintf oc "\t%a\n"
     (emit_expr ?state:None ~context:Finalize) when_expr
 
-let emit_should_resubmit name in_tuple_typ mentioned and_all_others
+let emit_should_resubmit name in_typ mentioned and_all_others
                          oc flush_how =
   let open RamenOperation in
   Printf.fprintf oc "let %s group_ %a =\n"
     name
-    (emit_in_tuple mentioned and_all_others) in_tuple_typ ;
+    (emit_in_tuple mentioned and_all_others) in_typ ;
   match flush_how with
   | Reset | Never ->
     Printf.fprintf oc "\tfalse\n"
@@ -1389,10 +1389,23 @@ let when_to_check_group_for_expr expr =
   if need_selected then "CodeGenLib.ForAllSelected" else
   "CodeGenLib.ForInGroup"
 
-let emit_aggregate oc in_tuple_typ out_tuple_typ = function
-  | RamenOperation.Aggregate { fields ; and_all_others ; where ; key ; top ;
-                          commit_before ; commit_when ; flush_how ;
-                          notify_url ; _ } as op ->
+let emit_sort_expr name in_typ mentioned and_all_others oc e_opt =
+  Printf.fprintf oc "let %s sort_count_ %a %a %a %a =\n"
+    name
+    (emit_in_tuple ~tuple:TupleSortFirst mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleIn mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleSortSmallest mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleSortGreatest mentioned and_all_others) in_typ ;
+  match e_opt with
+  | None -> Printf.fprintf oc "\ttrue\n"
+  | Some e ->
+      Printf.fprintf oc "\t%a\n"
+        (emit_expr ?state:None ~context:Finalize) e
+
+let emit_aggregate oc in_typ out_typ = function
+  | RamenOperation.Aggregate
+      { fields ; and_all_others ; sort ; where ; key ; top ; commit_before ;
+        commit_when ; flush_how ; notify_url ; _ } as op ->
   let mentioned =
     let all_exprs = RamenOperation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
@@ -1410,37 +1423,41 @@ let emit_aggregate oc in_tuple_typ out_tuple_typ = function
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when ?top_by:None) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when ?top_by:None) fields
-    (emit_read_tuple "read_tuple_" mentioned and_all_others) in_tuple_typ
+    (emit_read_tuple "read_tuple_" mentioned and_all_others) in_typ
     (if where_need_group then
-      emit_where "where_fast_" ~always_true:true in_tuple_typ mentioned and_all_others
+      emit_where "where_fast_" ~always_true:true in_typ mentioned and_all_others
     else
-      emit_where "where_fast_" in_tuple_typ mentioned and_all_others) where
+      emit_where "where_fast_" in_typ mentioned and_all_others) where
     (if not where_need_group then
-      emit_where "where_slow_" ~with_group:true ~always_true:true in_tuple_typ mentioned and_all_others
+      emit_where "where_slow_" ~with_group:true ~always_true:true in_typ mentioned and_all_others
     else
-      emit_where "where_slow_" ~with_group:true in_tuple_typ mentioned and_all_others) where
-    (emit_key_of_input "key_of_input_" in_tuple_typ mentioned and_all_others) key
-    emit_maybe_fields out_tuple_typ
-    (emit_when "commit_when_" in_tuple_typ mentioned and_all_others out_tuple_typ) commit_when
-    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_tuple_typ mentioned and_all_others out_tuple_typ) fields
-    (emit_sersize_of_tuple "sersize_of_tuple_") out_tuple_typ
-    (emit_serialize_tuple "serialize_group_") out_tuple_typ
-    (emit_generate_tuples "generate_tuples_" in_tuple_typ mentioned and_all_others out_tuple_typ) fields
-    (emit_should_resubmit "should_resubmit_" in_tuple_typ mentioned and_all_others) flush_how
-    (emit_field_of_tuple "field_of_tuple_") out_tuple_typ
+      emit_where "where_slow_" ~with_group:true in_typ mentioned and_all_others) where
+    (emit_key_of_input "key_of_input_" in_typ mentioned and_all_others) key
+    emit_maybe_fields out_typ
+    (emit_when "commit_when_" in_typ mentioned and_all_others out_typ) commit_when
+    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_typ mentioned and_all_others out_typ) fields
+    (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
+    (emit_serialize_tuple "serialize_group_") out_typ
+    (emit_generate_tuples "generate_tuples_" in_typ mentioned and_all_others out_typ) fields
+    (emit_should_resubmit "should_resubmit_" in_typ mentioned and_all_others) flush_how
+    (emit_field_of_tuple "field_of_tuple_") out_typ
     (emit_state_init "top_init_" RamenExpr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
-    (emit_top "top_" in_tuple_typ mentioned and_all_others) top
-    (emit_float_of_top "float_of_top_state_") top_by ;
+    (emit_top "top_" in_typ mentioned and_all_others) top
+    (emit_float_of_top "float_of_top_state_") top_by
+    (emit_sort_expr "sort_until_" in_typ mentioned and_all_others) (Option.bind sort (fun (_, u_opt, _) -> u_opt))
+    (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (Option.map (fun (_, _, b) -> b) sort) ;
   Printf.fprintf oc "let () =\n\
       \tCodeGenLib.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
-      \t\ttuple_of_group_ where_fast_ where_slow_ key_of_input_ %b \n\
+      \t\ttuple_of_group_ %d sort_until_ sort_by_\n\
+      \t\twhere_fast_ where_slow_ key_of_input_ %b \n\
       \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_ field_of_tuple_ %S\n"
+    (match sort with None -> 0 | Some (n, _, _) -> n)
     (key = [])
     commit_before (flush_how <> Never) when_to_check_for_commit notify_url
   | _ -> assert false
@@ -1464,7 +1481,7 @@ let with_code_file_for exec_name conf f =
     File.with_file_out ~mode:[`create; `text] fname f ;
   fname
 
-let compile conf func_name exec_name in_tuple_typ out_tuple_typ op =
+let compile conf func_name exec_name in_typ out_typ op =
   let open RamenOperation in
   let src_file =
     with_code_file_for exec_name conf (fun oc ->
@@ -1473,7 +1490,7 @@ let compile conf func_name exec_name in_tuple_typ out_tuple_typ op =
         RamenOperation.print op ;
       (match op with
       | Yield _->
-        emit_yield oc in_tuple_typ out_tuple_typ op
+        emit_yield oc in_typ out_typ op
       | ReadCSVFile { where = ReadFile { fname ; unlink } ; preprocessor ;
                       what = { separator ; null ; fields } } ->
         emit_read_csv_file oc fname unlink separator null fields preprocessor
@@ -1482,6 +1499,6 @@ let compile conf func_name exec_name in_tuple_typ out_tuple_typ op =
       | ListenFor { net_addr ; port ; proto } ->
         emit_listen_on oc net_addr port proto
       | Aggregate _ ->
-        emit_aggregate oc in_tuple_typ out_tuple_typ op)) in
+        emit_aggregate oc in_typ out_typ op)) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   RamenOCamlCompiler.compile conf func_name src_file exec_name

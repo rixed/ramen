@@ -655,6 +655,20 @@ let print_weightmap fmt map =
     Printf.fprintf fmt "%d HH(s)" (List.length lst) in
   (WeightMap.print Float.print print_key) fmt map
 
+type 'tuple_in sort_until_fun =
+  Uint64.t (* sort.#count *) ->
+  'tuple_in (* sort.first *) ->
+  'tuple_in (* last in *) ->
+  'tuple_in (* sort.smaller *) ->
+  'tuple_in (* sort.greater *) -> bool
+
+type ('tuple_in, 'sort_by) sort_by_fun =
+  Uint64.t (* sort.#count *) ->
+  'tuple_in (* sort.first *) ->
+  'tuple_in (* last in *) ->
+  'tuple_in (* sort.smaller *) ->
+  'tuple_in (* sort.greater *) -> 'sort_by
+
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
@@ -669,6 +683,9 @@ let aggregate
         'global_state ->
         'tuple_in -> 'tuple_in -> (* first, last *)
         'generator_out)
+      (sort_last : int)
+      (sort_until : 'tuple_in sort_until_fun)
+      (sort_by : ('tuple_in, 'sort_by) sort_by_fun)
       (* Where_fast/slow: premature optimisation: if the where filter
        * uses the aggregate then we need where_slow (checked after
        * the aggregate look up) but if it uses only the incoming
