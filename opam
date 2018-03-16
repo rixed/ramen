@@ -19,18 +19,20 @@ depends: [
   "parsercombinator" {>= "0.2"}
   "cohttp-lwt-unix" {build & = "1.0.2"}
   "binocle" {>= "0.3"}
-  "lacaml" {= "10.0.2"}
+  "lacaml" {= "11.0.0"}
   "sqlite3" {= "4.3.2"}
   "num"
   "ppp" {build & >= "2.1"}
-  "js_of_ocaml" {build & = "3.0.2"}
+  "js_of_ocaml" {build & = "3.1.0"}
   "js_of_ocaml-ppx" {build}
   "cmdliner" {build & = "1.0.2"}
   "syslog" {= "1.5"}
   "net_codecs" {>= "0.3"}
   "qtest" {test}
   "ocaml-compiler-libs" {build & = "v0.10.0"}
-  "inotify" {= "2.3"}
+]
+depopts: [
+  "inotify"
 ]
 depexts: [
   [["debian"] ["libc-dev openssl m4"]]
