@@ -97,7 +97,8 @@ CODEGENLIB_SOURCES = \
 	src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RingBufLib.ml src/RingBuf.ml src/RamenBinocle.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
-	src/CodeGenLib_State.ml src/CodeGenLib.ml src/RamenTypeConverters.ml
+	src/CodeGenLib_State.ml src/RamenSortBuf.ml \
+	src/CodeGenLib.ml src/RamenTypeConverters.ml
 
 LIBRINGBUF_SOURCES = \
 	src/ringbuf/ringbuf.h src/ringbuf/ringbuf.c src/ringbuf/wrappers.c
@@ -352,7 +353,8 @@ TESTABLE_SOURCES = \
 	src/Lang.ml src/RamenScalar.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
 	src/Compiler.ml \
 	src/Helpers.ml src/RamenBloomFilter.ml src/Globs.ml src/CodeGen_OCaml.ml \
-	src/RamenHtml.ml
+	src/RamenHtml.ml \
+	src/RamenSortBuf.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
@@ -366,6 +368,7 @@ LINKED_FOR_TESTS = \
 	src/RingBuf.ml src/RamenConf.ml \
 	src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
+	src/RamenSortBuf.ml \
 	src/CodeGen_OCaml.ml src/RamenBinocle.ml src/RamenBitmask.ml \
 	src/RamenSerialization.ml src/RamenExport.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml \
