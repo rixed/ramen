@@ -903,10 +903,9 @@ functions can consume them.
 
 ==== Group By
 
-Group-By is the meat of Ramen's operation. It performs filtering,
-aggregation, windowing and projection. As each of those processes are
-optional let's see each of them separately before diving into the big
-picture.
+Group-By is the meat of Ramen's operation. It performs filtering, sorting,
+aggregation, windowing and projection. As each of those processes are optional
+let's visit each of them separately before looking at the big picture.
 
 ===== Filtering - the `where` clause
 
@@ -938,6 +937,38 @@ FROM source WHERE condition
 The condition can be any expression which type is a non-nullable boolean.
 
 NOTE: The default `where` clause is +WHERE true+.
+
+===== Sorting - the `sort` clause
+
+Contrary to SQL, in Ramen sorts the query input not its output. This is because
+in SQL +ORDER BY+ is mostly a way to present the data to the user, while in
+Ramen +SORT+ is used to enforce some ordering required by the aggregation
+operations or the windowing.  Also, on a persistent query you do not
+necessarily know what the output of an operation will be used for, but you know
+if and how the operation itself needs its input to be sorted.
+
+Of course, since the operations never end the sort cannot wait for all the
+inputs before sorting. The best we can do is to wait for some entries to
+arrive, and then take the smaller of those, then wait for the next one to
+arrive, and so on, thus sorting a sliding window.
+
+The maximum length of this sliding window must be specified with a constant
+integer: +SORT LAST 42+ for instance. It is also possible to specify a
+condition on that window (as an expression) that, if true, will process the
+next smallest tuple available, so that this sliding window is not necessarily
+of fixed length. For instance: +SORT LAST 42 OR UNTIL AGE(creation_time) > 60+
+would buffer at most 42 tuples, but would also process one after reception of a
+tuple which +creation_time+ is older than 60 seconds.
+
+Finally, it must also be specified according to what expression (or list of
+expressions) the tuples must be ordered: +SORT LAST 42 BY creation_time+.
+
+The complete sort clause is therefore:
+
+[source,sql]
+----
+SORT LAST n [ OR UNTIL expression1 ] BY expression2, expression3, ...
+----
 
 ===== Projection - the `select` clause
 
