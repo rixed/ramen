@@ -683,33 +683,32 @@ let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
     k tx_size in_tuple)
 
 let merge_rbs ?while_ ?delay_rec merge_on read_tuple rbs k =
-  let read_tup rb i =
+  let read_tup rb =
     let%lwt tx = RingBuf.dequeue_ringbuf_once ?while_ ?delay_rec rb in
     let in_tuple = read_tuple tx in
     let tx_size = RingBuf.tx_size tx in
     RingBuf.dequeue_commit tx ;
     let merge_key = merge_on in_tuple in
-    return (merge_key, rb, i, tx_size, in_tuple) in
-  let cmp_tuples (k1, _, _, _, _) (k2, _, _, _, _) = compare k1 k2 in
+    return (merge_key, rb, tx_size, in_tuple)
+  and cmp_tuples (k1, _, _, _) (k2, _, _, _) =
+    compare k1 k2 in
   let rec loop heap =
     (* Selects the smallest tuple, pass it to the continuation, and then
      * replace it: *)
-    (* TODO: in.#parent as an integer pointing at the FROM table the
-     * tuple is coming from? *)
-    let (_k, rb, rb_idx, tx_size, in_tuple), heap =
+    let (_k, rb, tx_size, in_tuple), heap =
       RamenHeap.pop_min cmp_tuples heap in
     let%lwt () = k tx_size in_tuple in
-    match%lwt read_tup rb rb_idx with
+    match%lwt read_tup rb with
     | exception Exit -> return_unit
     | tup -> loop (RamenHeap.add cmp_tuples tup heap)
   in
   match%lwt
-    Lwt_list.fold_left_s (fun (i, heap) rb ->
-      let%lwt tup = read_tup rb i in
-      return (i+1, RamenHeap.add cmp_tuples tup heap)
-    ) (0, RamenHeap.empty) rbs with
+    Lwt_list.fold_left_s (fun heap rb ->
+      let%lwt tup = read_tup rb in
+      return (RamenHeap.add cmp_tuples tup heap)
+    ) RamenHeap.empty rbs with
   | exception Exit -> return_unit
-  | _, heap -> loop heap
+  | heap -> loop heap
 
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
