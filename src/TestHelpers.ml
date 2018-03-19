@@ -47,7 +47,7 @@ let replace_typ_in_expr = function
 let replace_typ_in_operation =
   let open RamenOperation in
   function
-  | Aggregate { fields ; and_all_others ; sort ; where ; event_time ;
+  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
                 force_export ; notify_url ; key ; top ; commit_before ;
                 commit_when ; flush_how ; from } ->
     Aggregate {
@@ -55,6 +55,7 @@ let replace_typ_in_operation =
         List.map (fun sf ->
           { sf with expr = replace_typ sf.expr }) fields ;
       and_all_others ;
+      merge = List.map replace_typ merge ;
       sort =
         Option.map (fun (n, u, b) ->
           n, Option.map replace_typ u, List.map replace_typ b) sort ;
