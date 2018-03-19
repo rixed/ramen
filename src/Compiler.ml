@@ -390,9 +390,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
     ) else (
       (* All other tuples are already typed (virtual fields) *)
       if not (is_virtual_field field) then (
-        Printf.eprintf "Field %a.%s is not virtual!?\n%!"
-          tuple_prefix_print !tuple
-          field ;
+        !logger.error "Field %a.%s is not virtual!?"
+          tuple_prefix_print !tuple field ;
         assert false
       ) ;
       false

@@ -28,7 +28,9 @@ struct
               else makeT y b_l (merge cmp a b_r))
 
   let add cmp x a = merge cmp a (singleton x)
+
   let min = function E -> invalid_arg "min" | T (_, x, _, _) -> x
+
   let del_min cmp = function
     | E -> invalid_arg "delete_min"
     | T (_, _, l, r) -> merge cmp l r
@@ -57,7 +59,8 @@ let print p oc = function
 
 (* Comparison function used with heaps of ('a, 'b) LL.node_t, where 'a is
  * the key. Use generic compare with the keys: *)
-let cmp_nodes a b = compare (fst (LL.get a)) (fst (LL.get b))
+let cmp_nodes a b =
+  compare (fst (LL.get a)) (fst (LL.get b))
 
 let empty = None
 
@@ -68,11 +71,12 @@ let add k x = function
         heap = Heap.singleton llist ;
         llist ; length = 1 ; greatest = x }
   | Some t ->
+      (* Add this node as last position in the llist, ie just
+       * before head: : *)
       let x_node = LL.prepend t.llist (k, x) in
       Some {
         heap = Heap.add cmp_nodes x_node t.heap ;
-        (* Points on the first item of the FIFO: *)
-        llist = x_node |> LL.next ;
+        llist = t.llist ;
         length = t.length + 1 ;
         greatest = max x t.greatest }
 
@@ -110,7 +114,7 @@ let pop_min t =
         if x_node == t.llist then
           LL.next t.llist
         else t.llist in
-      (* Unlink x_node wherever it sits: *)
+      (* Unlink x_node wherever it is: *)
       LL.remove x_node ;
       snd (LL.get x_node),
       Some {
@@ -127,7 +131,7 @@ let pop_min t =
     (let m, sb = pop_min (add 42 42 (add 57 57 empty)) in m, to_list sb)
 
   (42, [57]) \
-    (let m, sb = pop_min (add 57 57  (add 42 42 empty)) in m, to_list sb)
+    (let m, sb = pop_min (add 57 57 (add 42 42 empty)) in m, to_list sb)
  *)
 
 let first = function
