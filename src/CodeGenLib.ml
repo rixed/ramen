@@ -1204,12 +1204,13 @@ let aggregate
           try f s.sort_buf with Invalid_argument _ -> in_tuple in
         let sort_key =
           sort_by (Uint64.of_int sort_n)
-            (or_in RamenSortBuf.first) (or_in RamenSortBuf.last)
+            (or_in RamenSortBuf.first) in_tuple
             (or_in RamenSortBuf.smallest) (or_in RamenSortBuf.greatest) in
         s.sort_buf <- RamenSortBuf.add sort_key in_tuple s.sort_buf ;
-        if RamenSortBuf.length s.sort_buf >= sort_last ||
+        let sort_n = sort_n + 1 in
+        if sort_n >= sort_last ||
            sort_until (Uint64.of_int sort_n)
-            (or_in RamenSortBuf.first) (or_in RamenSortBuf.last)
+            (or_in RamenSortBuf.first) in_tuple
             (or_in RamenSortBuf.smallest) (or_in RamenSortBuf.greatest)
         then
           let min_in, sb = RamenSortBuf.pop_min s.sort_buf in

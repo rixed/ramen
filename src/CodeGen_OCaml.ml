@@ -1400,7 +1400,10 @@ let emit_sort_expr name in_typ mentioned and_all_others oc e_opt =
     (emit_in_tuple ~tuple:TupleSortSmallest mentioned and_all_others) in_typ
     (emit_in_tuple ~tuple:TupleSortGreatest mentioned and_all_others) in_typ ;
   match e_opt with
-  | None -> Printf.fprintf oc "\ttrue\n"
+  | None ->
+      (* The default sort_until clause must be false.
+       * If there is no sort_by clause, any constant will do: *)
+      Printf.fprintf oc "\tfalse\n"
   | Some e ->
       Printf.fprintf oc "\t%a\n"
         (emit_expr ?state:None ~context:Finalize) e
