@@ -318,7 +318,7 @@ let check =
         check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD clause" sf.expr
       ) fields
     (* TODO: check unicity of aliases *)
-  | Aggregate { fields ; and_all_others ; sort ; where ; key ; top ;
+  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
                 commit_when ; flush_how ; event_time ;
                 from ; _ } as op ->
     (* Set of fields known to come from in (to help prefix_smart): *)
@@ -355,6 +355,7 @@ let check =
             pref := def
         | _ -> ()) in
     List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
+    List.iter (prefix_def TupleIn) merge ;
     Option.may (fun (_, u_opt, b) ->
       List.iter (prefix_def TupleIn) b ;
       Option.may (prefix_def TupleIn) u_opt) sort ;
