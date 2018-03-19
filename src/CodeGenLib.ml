@@ -1198,23 +1198,26 @@ let aggregate
         (* If we assume sort_last >= 2 then the sort buffer will never
          * be empty but for the very last tuple. In that case pretend
          * tuple_in is the first (sort.#count will still be 0). *)
-        (* TODO: shortcut for sort_last <= 1 *)
-        let sort_n = RamenSortBuf.length s.sort_buf in
-        let or_in f =
-          try f s.sort_buf with Invalid_argument _ -> in_tuple in
-        let sort_key =
-          sort_by (Uint64.of_int sort_n)
-            (or_in RamenSortBuf.first) in_tuple
-            (or_in RamenSortBuf.smallest) (or_in RamenSortBuf.greatest) in
-        s.sort_buf <- RamenSortBuf.add sort_key in_tuple s.sort_buf ;
-        let sort_n = sort_n + 1 in
-        if sort_n >= sort_last ||
-           sort_until (Uint64.of_int sort_n)
-            (or_in RamenSortBuf.first) in_tuple
-            (or_in RamenSortBuf.smallest) (or_in RamenSortBuf.greatest)
-        then
-          let min_in, sb = RamenSortBuf.pop_min s.sort_buf in
-          s.sort_buf <- sb ;
-          aggregate_one s min_in
+        (* Shortcut for sort_last <= 1 *)
+        if sort_last <= 1 then
+          aggregate_one s in_tuple
         else
-          return s)))
+          let sort_n = RamenSortBuf.length s.sort_buf in
+          let or_in f =
+            try f s.sort_buf with Invalid_argument _ -> in_tuple in
+          let sort_key =
+            sort_by (Uint64.of_int sort_n)
+              (or_in RamenSortBuf.first) in_tuple
+              (or_in RamenSortBuf.smallest) (or_in RamenSortBuf.greatest) in
+          s.sort_buf <- RamenSortBuf.add sort_key in_tuple s.sort_buf ;
+          let sort_n = sort_n + 1 in
+          if sort_n >= sort_last ||
+             sort_until (Uint64.of_int sort_n)
+              (or_in RamenSortBuf.first) in_tuple
+              (or_in RamenSortBuf.smallest) (or_in RamenSortBuf.greatest)
+          then
+            let min_in, sb = RamenSortBuf.pop_min s.sort_buf in
+            s.sort_buf <- sb ;
+            aggregate_one s min_in
+          else
+            return s)))
