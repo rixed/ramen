@@ -673,6 +673,8 @@ type ('tuple_in, 'sort_by) sort_by_fun =
   'tuple_in (* sort.smallest *) ->
   'tuple_in (* sort.greatest *) -> 'sort_by
 
+type ('tuple_in, 'merge_on) merge_on_fun = 'tuple_in (* last in *) -> 'merge_on
+
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
@@ -687,6 +689,7 @@ let aggregate
         'global_state ->
         'tuple_in -> 'tuple_in -> (* first, last *)
         'generator_out)
+      (merge_on : ('tuple_in, 'merge_on) merge_on_fun)
       (sort_last : int)
       (sort_until : 'tuple_in sort_until_fun)
       (sort_by : ('tuple_in, 'sort_by) sort_by_fun)

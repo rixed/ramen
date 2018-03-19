@@ -1409,10 +1409,17 @@ let emit_sort_expr name in_typ mentioned and_all_others oc es_opt =
         (List.print ~first:"(" ~last:")" ~sep:", "
            (emit_expr ?state:None ~context:Finalize)) es
 
+let emit_merge_on name in_typ mentioned and_all_others oc es =
+  Printf.fprintf oc "let %s %a =\n\t%a\n"
+    name
+    (emit_in_tuple mentioned and_all_others) in_typ
+    (List.print ~first:"(" ~last:")" ~sep:", "
+       (emit_expr ?state:None ~context:Finalize)) es
+
 let emit_aggregate oc in_typ out_typ = function
   | RamenOperation.Aggregate
-      { fields ; and_all_others ; sort ; where ; key ; top ; commit_before ;
-        commit_when ; flush_how ; notify_url ; _ } as op ->
+      { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
+        commit_before ; commit_when ; flush_how ; notify_url ; _ } as op ->
   let mentioned =
     let all_exprs = RamenOperation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
@@ -1430,7 +1437,7 @@ let emit_aggregate oc in_typ out_typ = function
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when ?top_by:None) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when ?top_by:None) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_typ
@@ -1454,12 +1461,13 @@ let emit_aggregate oc in_typ out_typ = function
     (emit_state_init "top_init_" RamenExpr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
     (emit_top "top_" in_typ mentioned and_all_others) top
     (emit_float_of_top "float_of_top_state_") top_by
+    (emit_merge_on "merge_on_" in_typ mentioned and_all_others) merge
     (emit_sort_expr "sort_until_" in_typ mentioned and_all_others) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
     (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (match sort with Some (_, _, b) -> b | None -> []) ;
   Printf.fprintf oc "let () =\n\
       \tCodeGenLib.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
-      \t\ttuple_of_group_ %d sort_until_ sort_by_\n\
+      \t\ttuple_of_group_ merge_on_ %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b \n\
       \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %s should_resubmit_\n\
