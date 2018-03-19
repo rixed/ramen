@@ -97,7 +97,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RingBufLib.ml src/RingBuf.ml src/RamenBinocle.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
-	src/CodeGenLib_State.ml src/RamenSortBuf.ml \
+	src/CodeGenLib_State.ml src/RamenHeap.ml src/RamenSortBuf.ml \
 	src/CodeGenLib.ml src/RamenTypeConverters.ml
 
 LIBRINGBUF_SOURCES = \
@@ -350,7 +350,8 @@ src/RamenGui.ml: src/web/ramen_script.js src/web/ramen_script.min.js src/web/sty
 
 TESTABLE_SOURCES = \
 	src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
-	src/Lang.ml src/RamenScalar.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
+	src/Lang.ml src/RamenScalar.ml src/RamenExpr.ml \
+	src/RamenOperation.ml src/RamenProgram.ml \
 	src/Compiler.ml \
 	src/Helpers.ml src/RamenBloomFilter.ml src/Globs.ml src/CodeGen_OCaml.ml \
 	src/RamenHtml.ml \
@@ -368,7 +369,7 @@ LINKED_FOR_TESTS = \
 	src/RingBuf.ml src/RamenConf.ml \
 	src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
-	src/RamenSortBuf.ml \
+	src/RamenHeap.ml src/RamenSortBuf.ml \
 	src/CodeGen_OCaml.ml src/RamenBinocle.ml src/RamenBitmask.ml \
 	src/RamenSerialization.ml src/RamenExport.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml \

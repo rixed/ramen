@@ -675,6 +675,39 @@ type ('tuple_in, 'sort_by) sort_by_fun =
 
 type ('tuple_in, 'merge_on) merge_on_fun = 'tuple_in (* last in *) -> 'merge_on
 
+let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
+  RingBuf.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->
+    CodeGenLib_IO.on_each_input_pre () ;
+    let in_tuple = read_tuple tx in
+    let tx_size = RingBuf.tx_size tx in
+    RingBuf.dequeue_commit tx ;
+    k tx_size in_tuple)
+
+let merge_rbs ?while_ ?delay_rec merge_on read_tuple rbs k =
+  let read_tuple rb =
+    let%lwt tx = RingBuf.dequeue_ringbuf_once ?while_ ?delay_rec rb in
+    CodeGenLib_IO.on_each_input_pre () ;
+    let in_tuple = read_tuple tx in
+    let tx_size = RingBuf.tx_size tx in
+    RingBuf.dequeue_commit tx ;
+    let merge_key = merge_on in_tuple in
+    return (merge_key, rb, tx_size, in_tuple) in
+  let cmp_tuples (k1, _, _, _) (k2, _, _, _) = compare k1 k2 in
+  let%lwt heap =
+    Lwt_list.fold_left_s (fun heap rb ->
+      let%lwt tup = read_tuple rb in
+      return (RamenHeap.add cmp_tuples tup heap)
+    ) RamenHeap.empty rbs in
+  let rec loop heap =
+    (* Selects the smallest tuple, pass it to the continuation, and then
+     * replace it: *)
+    let (_k, rb, tx_size, in_tuple), new_tuples =
+      RamenHeap.pop_min cmp_tuples heap in
+    let%lwt () = k tx_size in_tuple in
+    let%lwt tup = read_tuple rb in
+    loop (RamenHeap.add cmp_tuples tup heap) in
+  loop heap
+
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
@@ -1199,18 +1232,15 @@ let aggregate
       match rb_ins with
       | [] -> assert false
       | [rb_in] ->
-          RingBuf.read_ringbuf ~while_ ~delay_rec:sleep_in rb_in
+          read_single_rb ~while_ ~delay_rec:sleep_in read_tuple rb_in
       | rb_ins ->
-          RingBuf.merge_ringbuf ~while_ ~delay_rec:sleep_in merge_on rb_ins
+          merge_rbs ~while_ ~delay_rec:sleep_in merge_on read_tuple rb_ins
     in
-    tuple_reader (fun tx ->
-      CodeGenLib_IO.on_each_input_pre () ;
-      let in_tuple = read_tuple tx in
-      RingBuf.dequeue_commit tx ;
+    tuple_reader (fun tx_size in_tuple ->
       with_state (fun s ->
         (* Update per in-tuple stats *)
         IntCounter.add stats_in_tuple_count 1 ;
-        IntCounter.add stats_rb_read_bytes (RingBuf.tx_size tx) ;
+        IntCounter.add stats_rb_read_bytes tx_size ;
         (* Sort: add in_tupple into the heap of sorted tuples, update
          * smallest/greatest, and consider extracting the smallest. *)
         (* If we assume sort_last >= 2 then the sort buffer will never

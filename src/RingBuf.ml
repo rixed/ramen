@@ -108,18 +108,17 @@ let read_cidr6 tx offs =
 
 (* Have to be there rather than in RingBufLib because it depends on
  * RingBuf. *)
+let dequeue_ringbuf_once ?while_ ?delay_rec rb =
+  RingBufLib.retry_for_ringbuf ?while_ ?delay_rec dequeue_alloc rb
+
 let read_ringbuf ?while_ ?delay_rec rb f =
   let open Lwt in
   let rec read_next () =
-    match%lwt RingBufLib.retry_for_ringbuf
-                ?while_ ?delay_rec dequeue_alloc rb with
+    match%lwt dequeue_ringbuf_once ?while_ ?delay_rec rb with
     | exception Exit -> return_unit
     | tx -> f tx >>= read_next
   in
   read_next ()
-
-let merge_ringbuf ?while_ ?delay_rec merge_on rbs f =
-  Lwt.fail_with "TODO"
 
 let with_enqueue_tx rb sz f =
   let open Lwt in
