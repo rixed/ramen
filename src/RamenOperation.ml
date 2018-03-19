@@ -147,11 +147,20 @@ let print fmt =
       (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
       every ;
     print_export fmt event_time force_export ;
-  | Aggregate { fields ; and_all_others ; where ; event_time ;
+  | Aggregate { fields ; and_all_others ; sort ; where ; event_time ;
                 force_export ; notify_url ; key ; top ; commit_when ;
                 commit_before ; flush_how ; from } ->
-    Printf.fprintf fmt "FROM %a SELECT %a%s%s"
-      (List.print ~first:"" ~last:"" ~sep print_single_quoted) from
+    Printf.fprintf fmt "FROM %a"
+      (List.print ~first:"" ~last:"" ~sep print_single_quoted) from ;
+    Option.may (fun (n, u_opt, b) ->
+      Printf.fprintf fmt " SORT LAST %d" n ;
+      Option.may (fun u ->
+        Printf.fprintf fmt " OR UNTIL %a"
+          (Expr.print false) u) u_opt ;
+      Printf.fprintf fmt " BY %a"
+        (List.print ~first:"(" ~last:")" ~sep:", " (Expr.print false)) b
+    ) sort ;
+    Printf.fprintf fmt " SELECT %a%s%s"
       (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
       (if fields <> [] && and_all_others then sep else "")
       (if and_all_others then "*" else "") ;
