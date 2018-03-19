@@ -773,8 +773,8 @@ let all_finished funcs =
       tuple_type_is_finished func.N.out_type
     ) funcs
 
-let check_aggregate parents func fields and_all_others sort where key top
-                    commit_when flush_how =
+let check_aggregate parents func fields and_all_others merge sort where key
+                    top commit_when flush_how =
   let in_type = C.untyped_tuple_type func.N.in_type
   and out_type = C.untyped_tuple_type func.N.out_type in
   let open RamenOperation in
@@ -811,7 +811,12 @@ let check_aggregate parents func fields and_all_others sort where key top
       false
     )
   ) ||| (
-    (* Improve out_type using all expressions. Check we satisfy in_type. *)
+    (* Improve in and out_type using all expressions. Check we satisfy in_type. *)
+    List.fold_left (fun changed e ->
+      let exp_type = RamenExpr.typ_of e in
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type e || changed
+    ) false merge
+  ) ||| (
     match sort with
     | None -> false
     | Some (_, u_opt, b) ->
@@ -895,10 +900,10 @@ let check_operation parents func =
   match func.N.operation with
   | Yield { fields ; _ } ->
     check_yield func fields
-  | Aggregate { fields ; and_all_others ; sort ; where ; key ; top ;
+  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
                 commit_when ; flush_how ; _ } ->
-    check_aggregate parents func fields and_all_others sort where key top
-                    commit_when flush_how
+    check_aggregate parents func fields and_all_others merge sort where key
+                    top commit_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     if tuple_type_is_finished func.N.out_type then false else (
       let user = fields in
