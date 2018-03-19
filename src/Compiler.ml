@@ -816,9 +816,11 @@ let check_aggregate parents func fields and_all_others sort where key top
     match sort with
     | None -> false
     | Some (_, u_opt, b) ->
-        let exp_type = RamenExpr.typ_of b in
         let changed =
-          check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type b in
+          List.fold_left (fun changed e ->
+            let exp_type = RamenExpr.typ_of e in
+            check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type e || changed
+          ) false b in
         (match u_opt with
         | None -> changed
         | Some u ->

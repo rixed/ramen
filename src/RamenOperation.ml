@@ -77,7 +77,7 @@ type t =
       fields : selected_field list ;
       (* Pass all fields not used to build an aggregated field *)
       and_all_others : bool ;
-      sort : (int * Expr.t option (* until *) * Expr.t (* by *)) option ;
+      sort : (int * Expr.t option (* until *) * Expr.t list (* by *)) option ;
       (* Simple way to filter out incoming tuples: *)
       where : Expr.t ;
       event_time : event_time option ;
@@ -240,7 +240,9 @@ let fold_expr init f = function
             let x = match u_opt with
               | None -> x
               | Some u -> Expr.fold_by_depth f x u in
-            Expr.fold_by_depth f x b in
+            List.fold_left (fun prev e ->
+              Expr.fold_by_depth f prev e
+            ) x b in
       match flush_how with
       | Slide _ | Never | Reset -> x
       | RemoveAll e | KeepOnly e ->
@@ -334,7 +336,7 @@ let check =
         | _ -> ()) in
     List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
     Option.may (fun (_, u_opt, b) ->
-      prefix_def TupleIn b ;
+      List.iter (prefix_def TupleIn) b ;
       Option.may (prefix_def TupleIn) u_opt) sort ;
     prefix_smart where ;
     List.iter (prefix_def TupleIn) key ;
@@ -496,7 +498,7 @@ struct
       optional ~def:None (
         blanks -- strinG "or" -- blanks -- strinG "until" -- blanks -+
         some Expr.Parser.p) +- blanks +-
-      strinG "by" +- blanks ++ Expr.Parser.p) >>:
+      strinG "by" +- blanks ++ several ~sep:list_sep Expr.Parser.p) >>:
       fun ((l, u), b) -> l, u, b) m
 
   let where_clause m =
@@ -646,7 +648,7 @@ struct
 
   type select_clauses =
     | SelectClause of selected_field option list
-    | SortClause of (int * Expr.t option (* until *) * Expr.t (* by *))
+    | SortClause of (int * Expr.t option (* until *) * Expr.t list (* by *))
     | WhereClause of Expr.t
     | ExportClause of bool
     | EventTimeClause of event_time

@@ -1392,21 +1392,22 @@ let when_to_check_group_for_expr expr =
   if need_selected then "CodeGenLib.ForAllSelected" else
   "CodeGenLib.ForInGroup"
 
-let emit_sort_expr name in_typ mentioned and_all_others oc e_opt =
+let emit_sort_expr name in_typ mentioned and_all_others oc es_opt =
   Printf.fprintf oc "let %s sort_count_ %a %a %a %a =\n"
     name
     (emit_in_tuple ~tuple:TupleSortFirst mentioned and_all_others) in_typ
     (emit_in_tuple ~tuple:TupleIn mentioned and_all_others) in_typ
     (emit_in_tuple ~tuple:TupleSortSmallest mentioned and_all_others) in_typ
     (emit_in_tuple ~tuple:TupleSortGreatest mentioned and_all_others) in_typ ;
-  match e_opt with
-  | None ->
+  match es_opt with
+  | [] ->
       (* The default sort_until clause must be false.
        * If there is no sort_by clause, any constant will do: *)
       Printf.fprintf oc "\tfalse\n"
-  | Some e ->
+  | es ->
       Printf.fprintf oc "\t%a\n"
-        (emit_expr ?state:None ~context:Finalize) e
+        (List.print ~first:"(" ~last:")" ~sep:", "
+           (emit_expr ?state:None ~context:Finalize)) es
 
 let emit_aggregate oc in_typ out_typ = function
   | RamenOperation.Aggregate
@@ -1453,8 +1454,8 @@ let emit_aggregate oc in_typ out_typ = function
     (emit_state_init "top_init_" RamenExpr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
     (emit_top "top_" in_typ mentioned and_all_others) top
     (emit_float_of_top "float_of_top_state_") top_by
-    (emit_sort_expr "sort_until_" in_typ mentioned and_all_others) (Option.bind sort (fun (_, u_opt, _) -> u_opt))
-    (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (Option.map (fun (_, _, b) -> b) sort) ;
+    (emit_sort_expr "sort_until_" in_typ mentioned and_all_others) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
+    (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (match sort with Some (_, _, b) -> b | None -> []) ;
   Printf.fprintf oc "let () =\n\
       \tCodeGenLib.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\

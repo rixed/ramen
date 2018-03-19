@@ -57,7 +57,7 @@ let replace_typ_in_operation =
       and_all_others ;
       sort =
         Option.map (fun (n, u, b) ->
-          n, Option.map replace_typ u, replace_typ b) sort ;
+          n, Option.map replace_typ u, List.map replace_typ b) sort ;
       where = replace_typ where ;
       event_time ; force_export ; notify_url ; from ;
       key = List.map replace_typ key ;
