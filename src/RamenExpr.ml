@@ -869,7 +869,8 @@ struct
   and highest_prec_left_assoc m =
     ((afun1 "not" >>: fun e ->
         StatelessFun1 (make_bool_typ "not", Not, e)) |||
-     (strinG "-" -- opt_blanks -+ highestest_prec >>: fun e ->
+     (strinG "-" -- opt_blanks --
+      check (nay decimal_digit) -+ highestest_prec >>: fun e ->
         StatelessFun1 (make_num_typ "unary minus", Minus, e)) |||
      (highestest_prec ++
       optional ~def:None (
