@@ -417,6 +417,7 @@ long-check: src/ramen check
 	./src/tests/tuples
 	./src/tests/commit_before
 	./src/tests/from
+	./src/tests/sort
 
 check-long: long-check
 
