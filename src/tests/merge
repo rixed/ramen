@@ -1,0 +1,21 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/../.."
+. $top_srcdir/src/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_func s1 "YIELD sequence(1,2) AS n EVERY 0.01 SECONDS"
+add_func s2 "YIELD sequence(2,2) AS n EVERY 0.01 SECONDS"
+add_func m \
+"FROM test/s1, test/s2 MERGE ON n
+ SELECT n
+ WHERE in.#count < 5
+ EXPORT"
+run
+check_equal '1
+2
+3
+4' "$(tail_ 4 4 m)"

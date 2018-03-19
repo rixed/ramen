@@ -419,6 +419,7 @@ long-check: src/ramen check
 	./src/tests/commit_before
 	./src/tests/from
 	./src/tests/sort
+	./src/tests/merge
 
 check-long: long-check
 
