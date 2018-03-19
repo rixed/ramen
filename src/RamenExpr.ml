@@ -61,6 +61,7 @@ type stateless_fun1 =
   (* Unary Ops on scalars *)
   | Not
   | Abs
+  | Minus
   | Defined
   | Exp
   | Log
@@ -296,6 +297,8 @@ let rec print with_types fmt =
     Printf.fprintf fmt "NOT (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Abs, e) ->
     Printf.fprintf fmt "ABS (%a)" (print with_types) e ; add_types t
+  | StatelessFun1 (t, Minus, e) ->
+    Printf.fprintf fmt "-(%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Defined, e) ->
     Printf.fprintf fmt "(%a) IS NOT NULL" (print with_types) e ; add_types t
   | StatelessFun2 (t, Add, e1, e2) ->
@@ -866,6 +869,8 @@ struct
   and highest_prec_left_assoc m =
     ((afun1 "not" >>: fun e ->
         StatelessFun1 (make_bool_typ "not", Not, e)) |||
+     (strinG "-" -- opt_blanks -+ highestest_prec >>: fun e ->
+        StatelessFun1 (make_num_typ "unary minus", Minus, e)) |||
      (highestest_prec ++
       optional ~def:None (
         blanks -- strinG "is" -- blanks -+

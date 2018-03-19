@@ -535,7 +535,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
   | StatefulFun (op_typ, _, AggrFirst e) | StatefulFun (op_typ, _, AggrLast e) ->
     check_op op_typ List.hd [None, None, e]
   | StatefulFun (op_typ, _, AggrSum e) | StatelessFun1 (op_typ, Age, e)
-  | StatelessFun1 (op_typ, Abs, e) ->
+  | StatelessFun1 (op_typ, Abs, e)
+  | StatelessFun1 (op_typ, Minus, e) ->
     check_op op_typ List.hd [Some TFloat, None, e]
   | StatefulFun (op_typ, _, AggrAvg e) ->
     check_op op_typ return_float [Some TFloat, None, e]

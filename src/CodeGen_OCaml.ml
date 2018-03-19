@@ -661,6 +661,9 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatelessFun1 (_, Abs, e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".abs") [Some t] [e]
+  | Finalize, StatelessFun1 (_, Minus, e),
+    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ?state (omod_of_type t ^".neg") [Some t] [e]
   | Finalize, StatelessFun1 (_, Exp, e), Some TFloat ->
     emit_functionN oc ?state "exp" [Some TFloat] [e]
   | Finalize, StatelessFun1 (_, Log, e), Some TFloat ->
