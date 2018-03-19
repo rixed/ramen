@@ -895,7 +895,7 @@ Syntax:
 
 [source,sql]
 ----
-  YIELD expression1 AS name1, expression2 AS name2, expression3 AS name3...
+YIELD expression1 AS name1, expression2 AS name2, expression3 AS name3...
 ----
 
 Yield merely produces an infinite stream of tuples, as fast as the downstream
@@ -938,6 +938,28 @@ The condition can be any expression which type is a non-nullable boolean.
 
 NOTE: The default `where` clause is +WHERE true+.
 
+===== Joining sources - the `merge` clause
+
+When selecting from several operation (as in +FROM operation1, operation2,
+...+) the output of all those parent operations will be mixed together.  As
+parents will typically run simultaneously it is quite unpredictable how their
+output will mix.  Sometime, we'd like to synchronize those inputs though.
+
+It is easy and cheap to merge sort those outputs according to some fields, and
+the `merge` clause does exactly that. For instance:
+
+[source,sql]
+----
+SELECT * FROM source1, source2, source3 MERGE ON timestamp
+----
+
+The `merge` clause syntax is:
+
+[source,sql]
+----
+MERGE ON expression1, expression2, ...
+----
+
 ===== Sorting - the `sort` clause
 
 Contrary to SQL, in Ramen sorts the query input not its output. This is because
@@ -963,7 +985,7 @@ tuple which +creation_time+ is older than 60 seconds.
 Finally, it must also be specified according to what expression (or list of
 expressions) the tuples must be ordered: +SORT LAST 42 BY creation_time+.
 
-The complete sort clause is therefore:
+The complete `sort` clause is therefore:
 
 [source,sql]
 ----
