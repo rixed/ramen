@@ -210,6 +210,10 @@ let is_exporting = function
   | ReadCSVFile { force_export ; _ } ->
     force_export (* FIXME: this info should come from the func *)
 
+let is_merging = function
+  | Aggregate { merge ; _ } when merge <> [] -> true
+  | _ -> false
+
 let run_in_tests = function
   | Aggregate _ | Yield _ -> true
   | ReadCSVFile _ | ListenFor _ -> false

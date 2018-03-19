@@ -713,11 +713,25 @@ let complete_field_name programs name s =
  * and its input type, so that if we change the operation of a func we
  * don't risk reading old ringbuf with incompatible values. *)
 
-let in_ringbuf_name conf func =
+let in_ringbuf_name_base conf func =
   let sign = type_signature_hash func.Func.in_type in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf ^"/"
                    ^ Func.fq_name func ^"/"^ sign ^"/in"
+
+let in_ringbuf_name_single conf func =
+  in_ringbuf_name_base conf func ^".all"
+
+let in_ringbuf_name_merging conf func parent_index =
+  in_ringbuf_name_base conf func ^"."^ string_of_int parent_index
+
+let in_ringbuf_names conf func =
+  if RamenOperation.is_merging func.Func.operation then
+    List.mapi (fun i _ ->
+      in_ringbuf_name_merging conf func i
+    ) func.Func.parents
+  else
+    [ in_ringbuf_name_single conf func ]
 
 let temp_in_ringbuf_name conf identifier =
   conf.persist_dir ^"/tmp/ringbufs/"

@@ -118,6 +118,9 @@ let read_ringbuf ?while_ ?delay_rec rb f =
   in
   read_next ()
 
+let merge_ringbuf ?while_ ?delay_rec merge_on rbs f =
+  Lwt.fail_with "TODO"
+
 let with_enqueue_tx rb sz f =
   let open Lwt in
   let%lwt tx =

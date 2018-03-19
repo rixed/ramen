@@ -44,8 +44,21 @@ exception NotYetCompiled
 exception AlreadyRunning
 exception StillCompiling
 
+(* Return the name of func input ringbuf for the given parent (if func is
+ * merging, each parent uses a distinct one) *)
 let input_spec conf parent func =
-  C.in_ringbuf_name conf func,
+  (* In case of merge, ringbufs are numbered as the node parents: *)
+  (if RamenOperation.is_merging func.N.operation then
+    match List.findi (fun i (pprog, pname) ->
+             pprog = parent.N.program && pname = parent.N.name
+           ) func.N.parents with
+    | exception Not_found ->
+        !logger.error "Operation %S is not a child of %S"
+          func.N.name parent.N.name ;
+        invalid_arg "input_spec"
+    | i, _ ->
+        C.in_ringbuf_name_merging conf func i
+  else C.in_ringbuf_name_single conf func),
   let out_type = C.tuple_ser_type parent.N.out_type
   and in_type = C.tuple_ser_type func.N.in_type in
   RingBufLib.skip_list ~out_type ~in_type
@@ -83,7 +96,7 @@ let rec run_func conf programs program func =
       return_unit
     else return_unit in
   !logger.info "Start %s" func.N.name ;
-  let input_ringbuf = C.in_ringbuf_name conf func in
+  let input_ringbufs = C.in_ringbuf_names conf func in
   let notify_ringbuf =
     (* Where that worker must write its notifications. Normally toward a
      * ringbuffer that's read by Ramen, unless it's a test programs. Tests
@@ -96,7 +109,7 @@ let rec run_func conf programs program func =
     "OCAMLRUNPARAM="^ ocamlrunparam ;
     "debug="^ string_of_bool conf.C.debug ;
     "name="^ N.fq_name func ;
-    "input_ringbuf="^ input_ringbuf ;
+    "input_ringbufs="^ String.concat "," input_ringbufs ;
     "output_ringbufs_ref="^ out_ringbuf_ref ;
     "report_ringbuf="^ C.report_ringbuf conf ;
     "notify_ringbuf="^ notify_ringbuf ;
@@ -305,14 +318,15 @@ let stop conf programs program =
           let%lwt () = RamenExport.stop conf func in
           (* Start by removing this worker ringbuf from all its parent
            * output references: *)
-          let this_in = C.in_ringbuf_name conf func in
+          let this_ins = C.in_ringbuf_names conf func in
           (* Remove this operation from all its parents output: *)
           let%lwt () = Lwt_list.iter_p (fun (parent_program, parent_name) ->
               match C.find_func programs parent_program parent_name with
               | exception Not_found -> return_unit
               | _, parent ->
                 let out_ref = C.out_ringbuf_names_ref conf parent in
-                RamenOutRef.remove out_ref this_in
+                Lwt_list.iter_s (fun this_in ->
+                  RamenOutRef.remove out_ref this_in) this_ins
             ) func.N.parents in
           (* Now kill that pid: *)
           (match func.N.pid with
@@ -349,8 +363,9 @@ let run conf programs program =
        * because there is no good order in which to start them: *)
       let%lwt () = Lwt_list.iter_p (fun func ->
         wrap (fun () ->
-          let rb_name = C.in_ringbuf_name conf func in
-          RingBuf.create rb_name RingBufLib.rb_default_words
+          C.in_ringbuf_names conf func |>
+          List.iter (fun rb_name ->
+            RingBuf.create rb_name RingBufLib.rb_default_words)
         )) program_funcs in
       (* Now run everything in any order: *)
       !logger.debug "Launching generated programs..." ;

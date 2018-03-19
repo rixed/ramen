@@ -339,10 +339,16 @@ let test_one conf server_url conf_spec test =
           let rb =
             match Hashtbl.find worker_cache cache_key with
             | exception Not_found ->
-                let in_rb = C.in_ringbuf_name conf func in
-                let rb = RingBuf.load in_rb in
-                Hashtbl.add worker_cache cache_key rb ;
-                rb
+                if RamenOperation.is_merging func.N.operation then
+                  (* TODO: either specify a parent number or pick the first one? *)
+                  let err = "Writing to merging operations is not \
+                             supported yet!" in
+                  raise (Failure err)
+                else
+                  let in_rb = C.in_ringbuf_name_single conf func in
+                  let rb = RingBuf.load in_rb in
+                  Hashtbl.add worker_cache cache_key rb ;
+                  rb
             | rb -> rb in
           send_tuple conf func rb input.tuple
     ) test.inputs in

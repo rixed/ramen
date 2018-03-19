@@ -752,7 +752,10 @@ let aggregate
   worker_start worker_name get_binocle_tuple (fun conf ->
     let when_str = string_of_when_to_check_group when_to_check_for_commit in
     !logger.debug "We will commit/flush for... %s" when_str ;
-    let rb_in_fname = getenv ~def:"/tmp/ringbuf_in" "input_ringbuf"
+    let rb_in_fnames =
+      getenv ~def:"/tmp/ringbuf_in" "input_ringbufs" |>
+      String.split_on_char ',' |>
+      List.map String.trim
     and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify" "notify_ringbuf"
     and top_n, top_by = Option.default (0, fun _ _ _ -> ()) top in
@@ -809,10 +812,14 @@ let aggregate
         state := save ~save_every:1013 ~save_timeout:21. !state v ;
         return_unit
     in
-    !logger.debug "Will read ringbuffer %S" rb_in_fname ;
-    let%lwt rb_in =
-      retry ~on:(fun _ -> return_true) ~min_delay:1.0
-            (fun n -> return (RingBuf.load n)) rb_in_fname
+    !logger.debug "Will read ringbuffer %a"
+      (List.print String.print) rb_in_fnames ;
+    let%lwt rb_ins =
+      Lwt_list.map_p (fun fname ->
+        retry ~on:(fun _ -> return_true) ~min_delay:1.0
+              (fun n -> return (RingBuf.load n))
+              fname
+      ) rb_in_fnames
     in
     (* The big function that aggregate a single tuple *)
     let aggregate_one s in_tuple =
@@ -1188,7 +1195,15 @@ let aggregate
     in
     (* The event loop: *)
     let while_ () = if !quit then return_false else return_true in
-    RingBuf.read_ringbuf ~while_ ~delay_rec:sleep_in rb_in (fun tx ->
+    let tuple_reader =
+      match rb_ins with
+      | [] -> assert false
+      | [rb_in] ->
+          RingBuf.read_ringbuf ~while_ ~delay_rec:sleep_in rb_in
+      | rb_ins ->
+          RingBuf.merge_ringbuf ~while_ ~delay_rec:sleep_in merge_on rb_ins
+    in
+    tuple_reader (fun tx ->
       CodeGenLib_IO.on_each_input_pre () ;
       let in_tuple = read_tuple tx in
       RingBuf.dequeue_commit tx ;
