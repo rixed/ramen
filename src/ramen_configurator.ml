@@ -959,6 +959,7 @@ let program_of_bcns bcns dataset_name export =
     let op =
       Printf.sprintf {|
           FROM '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'
+          MERGE ON capture_begin TIMEOUT AFTER 2 SECONDS
           SELECT
             (capture_begin // %d) * %g AS start,
             min capture_begin, max capture_end,
@@ -1427,7 +1428,9 @@ let ddos_program dataset_name export =
   let avg_win = 60 and rem_win = 3600 in
   let op_new_peers =
     let avg_win_us = avg_win * 1_000_000 in
-    {|FROM $CSVS$ SELECT
+    {|FROM $CSVS$
+      MERGE ON capture_begin TIMEOUT AFTER 2 SECONDS
+      SELECT
        (capture_begin // $AVG_WIN_US$) * $AVG_WIN$ AS start,
        min capture_begin, max capture_end,
        -- Traffic (of any kind) we haven't seen in the last $REM_WIN$ secs
