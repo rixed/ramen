@@ -9,7 +9,7 @@ let release_tag = "v1.2.5"
 let graph_config = "v6"
 
 (* Code generation: sources, binaries... *)
-let codegen = "v4"
+let codegen = "v5"
 
 (* Alerting state *)
 let alerting_state = "v1"
