@@ -59,7 +59,7 @@ all: $(INSTALLED)
 
 %.cmx %.annot: %.ml
 	@echo "Compiling $@ (native code)"
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.top: %.cma
 	@echo "Building $@ top level"
