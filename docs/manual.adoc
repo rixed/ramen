@@ -230,6 +230,13 @@ In addition to the suffix, you can also use a cast, using the type name as a
 function: `u128(42)`. This is equivalent but more general as it can be used on
 other expression than simple literal integers, such as floats or booleans.
 
+==== Durations
+
+Not a datatype per se, but some clauses (namely `yield` and `merge`) can be
+given durations to set timeouts or periodic emission of tuples. Those duration
+have a simple syntax: a real number followed by a time unit: `hours`, `minutes`,
+`seconds`, `milliseconds` or `microseconds`.
+
 ==== Network addresses
 
 Ethernet addresses are accepted with the usual notation, such as:
@@ -887,19 +894,32 @@ RECEIVE SEPARATOR "\t" NULL "<NULL>" (
 ==== Yield
 
 If you just want a constant expression to supply data to its child functions
-you can use the yield expression. This is particularly useful in conjunction
-with the `now` and `sequence` functions, or for tests, but otherwise rather
-pointless.
+you can use the yield expression. This is useful in conjunction with the `now`
+and `sequence` functions, or to build a periodic clock, or for tests.
+
+Examples:
+
+[source,sql]
+----
+YIELD sequence % 10 AS count
+----
+
+[source,sql]
+----
+YIELD 1 AS tick EVERY 10 MILLISECONDS
+----
+
+Yield merely produces an infinite stream of tuples. If no `every` clause is
+specified, then it will do so as fast as the downstream functions can consume
+them. With an `every` clause, it will output one tuple at that pace (useful for
+clocks).
 
 Syntax:
 
 [source,sql]
 ----
-YIELD expression1 AS name1, expression2 AS name2, expression3 AS name3...
+YIELD expression1 AS name1, expression2 AS name2, expression3 AS name3... [ EVERY duration ]
 ----
-
-Yield merely produces an infinite stream of tuples, as fast as the downstream
-functions can consume them.
 
 ==== Group By
 
@@ -953,11 +973,29 @@ the `merge` clause does exactly that. For instance:
 SELECT * FROM source1, source2, source3 MERGE ON timestamp
 ----
 
+In case some parents are producing tuples at a much lower pace than the others,
+they might slow down the pipeline significantly. Indeed, after each tuple is
+merged in Ramen will have to wait for the next tuple of the slow source in
+order to select the smallest one.
+
+In that case, you might prefer not to wait longer than a specified timeout, and
+then exclude the slow parent from the merge sort until it starts emitting
+tuples again. You can to that with the +TIMEOUT+ clause:
+
+[source,sql]
+----
+SELECT * FROM parent1, parent2 MERGE ON field1, field2 TIMEOUT AFTER 3 SECONDS
+----
+
+Whenever the timed-out parent emits a tuple again it will be injected into the
+merge sort, with the consequence that in that case the produced tuples might
+not all be ordered according to the given fields.
+
 The `merge` clause syntax is:
 
 [source,sql]
 ----
-MERGE ON expression1, expression2, ...
+MERGE ON expression1, expression2, ... [ TIMEOUT AFTER duration ]
 ----
 
 ===== Sorting - the `sort` clause
