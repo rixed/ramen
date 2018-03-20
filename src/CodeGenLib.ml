@@ -719,6 +719,7 @@ let merge_rbs ?while_ ?delay_rec merge_on merge_timeout read_tuple rbs k =
       List.fold_left (fun heap tup ->
         RamenHeap.add cmp_tuples tup heap
       ) heap !no_longer_timed_out in
+    no_longer_timed_out := [] ;
     if RamenHeap.is_empty heap then
       let%lwt () = Lwt_unix.sleep (max 0.1 merge_timeout) in
       loop heap
