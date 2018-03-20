@@ -466,13 +466,22 @@ let worker_start worker_name get_binocle_tuple k =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     quit := true)) ;
-  Lwt_main.run (join [
-    (let%lwt () = return_unit in
-     async (fun () ->
-       restart_on_failure
-         (update_stats_rb report_period report_rb) get_binocle_tuple) ;
-     return_unit) ;
-    k conf ])
+  Lwt_main.run (
+    catch
+      (fun () ->
+        let%lwt () = join [
+          (let%lwt () = return_unit in
+           async (fun () ->
+             restart_on_failure
+               (update_stats_rb report_period report_rb) get_binocle_tuple) ;
+           return_unit) ;
+          k conf ] in
+        return 0)
+      (fun e ->
+        print_exception e ;
+        !logger.error "Exiting..." ;
+        return 1)) |>
+  exit
 
 (* Operations that funcs may run: *)
 
