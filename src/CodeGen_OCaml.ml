@@ -340,10 +340,7 @@ let add_all_mentioned_in_string mentioned _str =
 let emit_scalar oc =
   let open Stdint in
   function
-  | VFloat  f ->
-    if f = infinity then String.print oc "infinity"
-    else if f = neg_infinity then String.print oc "neg_infinity"
-    else Printf.fprintf oc "(%f)" f
+  | VFloat  f -> Printf.fprintf oc "%F" f
   | VString s -> Printf.fprintf oc "%S" s
   | VBool   b -> Printf.fprintf oc "%b" b
   | VU8     n -> Printf.fprintf oc "(Uint8.of_int (%d))" (Uint8.to_int n)
@@ -1228,7 +1225,7 @@ let emit_yield oc in_typ out_typ = function
     Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
       %a\n%a\n%a\n\
       let () =\n\
-        \tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_ %f\n"
+        \tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_ %F\n"
       (emit_field_selection "select_" in_typ mentioned false out_typ) fields
       (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
       (emit_serialize_tuple "serialize_tuple_") out_typ
