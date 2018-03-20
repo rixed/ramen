@@ -436,6 +436,9 @@ let () =
        | `Ok f -> (
           try f ()
           with Exit -> exit 0
+             | Helpers.Timeout ->
+                 Printf.eprintf "Timed out\n" ;
+                 exit 1
              | Failure msg ->
                  Printf.eprintf "%s\n" msg ;
                  exit 1)

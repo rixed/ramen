@@ -33,13 +33,13 @@ let nullmask_bytes_of_tuple_type tuple_typ =
   bytes_for_bits |>
   round_up_to_rb_word
 
-let retry_for_ringbuf ?while_ ?delay_rec f =
+let retry_for_ringbuf ?while_ ?delay_rec ?max_retry_time f =
   let on = function
     | NoMoreRoom | Empty -> Lwt.return_true
     | _ -> Lwt.return_false
   in
   retry ?while_ ~on ~first_delay:0.001 ~max_delay:0.1 ?delay_rec
-    (fun x -> Lwt.wrap (fun () -> f x))
+        ?max_retry_time (fun x -> Lwt.wrap (fun () -> f x))
 
 let sersize_of_string s =
   rb_word_bytes + round_up_to_rb_word (String.length s)

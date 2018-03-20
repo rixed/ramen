@@ -15,16 +15,24 @@ let get_cap a i =
 let round_to_int f =
   int_of_float (Float.round f)
 
+exception Timeout
+
 let retry
     ~on ?(first_delay=1.0) ?(min_delay=0.0001) ?(max_delay=10.0)
     ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.5) ?delay_rec
-    ?max_retry ?(while_ = fun () -> Lwt.return_true) f =
+    ?max_retry ?max_retry_time ?(while_ = fun () -> Lwt.return_true) f =
   let open Lwt in
   let next_delay = ref first_delay in
+  let started = Unix.gettimeofday () in
+  let can_wait_longer () =
+    match max_retry_time with
+    | None -> true
+    | Some d -> Unix.gettimeofday () -. started < d in
   let rec loop nb_try x =
     let%lwt keep_going = while_ () in
-    if keep_going then (
-      match%lwt f x with
+    if not keep_going then fail Exit
+    else if not (can_wait_longer ()) then fail Timeout
+    else match%lwt f x with
       | exception e ->
         let%lwt retry_on_this = on e in
         let should_retry =
@@ -46,9 +54,6 @@ let retry
       | r ->
         next_delay := !next_delay *. delay_adjust_ok ;
         return r
-    ) else (
-      fail Exit
-    )
   in
   loop 1
 

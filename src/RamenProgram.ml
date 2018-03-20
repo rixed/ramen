@@ -69,7 +69,7 @@ struct
             { expr = RamenExpr.Const (typ, VI32 42l) ;\
               alias = "the_answer" } ] ;\
           and_all_others = false ;\
-          merge = [] ;\
+          merge = [], 0. ;\
           sort = None ;\
           where = RamenExpr.Const (typ, VBool true) ;\
           notify_url = "" ;\

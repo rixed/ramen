@@ -55,7 +55,7 @@ let replace_typ_in_operation =
         List.map (fun sf ->
           { sf with expr = replace_typ sf.expr }) fields ;
       and_all_others ;
-      merge = List.map replace_typ merge ;
+      merge = List.map replace_typ (fst merge), snd merge ;
       sort =
         Option.map (fun (n, u, b) ->
           n, Option.map replace_typ u, List.map replace_typ b) sort ;

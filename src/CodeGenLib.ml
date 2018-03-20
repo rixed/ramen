@@ -682,30 +682,55 @@ let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
     RingBuf.dequeue_commit tx ;
     k tx_size in_tuple)
 
-let merge_rbs ?while_ ?delay_rec merge_on read_tuple rbs k =
-  let read_tup rb =
-    let%lwt tx = RingBuf.dequeue_ringbuf_once ?while_ ?delay_rec rb in
+let merge_rbs ?while_ ?delay_rec merge_on merge_timeout read_tuple rbs k =
+  let max_retry_time =
+    if merge_timeout > 0. then Some merge_timeout else None in
+  let read_tup ?max_retry_time rb =
+    let%lwt tx =
+      RingBuf.dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb in
     let in_tuple = read_tuple tx in
     let tx_size = RingBuf.tx_size tx in
     RingBuf.dequeue_commit tx ;
     let merge_key = merge_on in_tuple in
     return (merge_key, rb, tx_size, in_tuple)
   and cmp_tuples (k1, _, _, _) (k2, _, _, _) =
-    compare k1 k2 in
+    compare k1 k2
+  (* List of tuples for rbs that were timed out but now have data: *)
+  and no_longer_timed_out = ref [] in
+  let foreground_wait rb =
+    !logger.warning "Timed out a parent" ;
+    let%lwt tup = read_tup rb in (* no more max_retry_time *)
+    !logger.info "Timed out Parent is back" ;
+    no_longer_timed_out := tup :: !no_longer_timed_out ;
+    return_unit
+  in
   let rec loop heap =
+    (* First, reintegrate timed out ringbuffers, if any: *)
+    let heap =
+      List.fold_left (fun heap tup ->
+        RamenHeap.add cmp_tuples tup heap
+      ) heap !no_longer_timed_out in
     (* Selects the smallest tuple, pass it to the continuation, and then
      * replace it: *)
     let (_k, rb, tx_size, in_tuple), heap =
       RamenHeap.pop_min cmp_tuples heap in
     let%lwt () = k tx_size in_tuple in
-    match%lwt read_tup rb with
+    match%lwt read_tup ?max_retry_time rb with
     | exception Exit -> return_unit
-    | tup -> loop (RamenHeap.add cmp_tuples tup heap)
+    | exception Timeout ->
+        async (fun () -> foreground_wait rb) ;
+        loop heap
+    | tup ->
+        loop (RamenHeap.add cmp_tuples tup heap)
   in
   match%lwt
     Lwt_list.fold_left_s (fun heap rb ->
-      let%lwt tup = read_tup rb in
-      return (RamenHeap.add cmp_tuples tup heap)
+      match%lwt read_tup ?max_retry_time rb with
+      | exception Timeout ->
+          async (fun () -> foreground_wait rb) ;
+          return heap
+      | tup ->
+          return (RamenHeap.add cmp_tuples tup heap)
     ) RamenHeap.empty rbs with
   | exception Exit -> return_unit
   | heap -> loop heap
@@ -725,6 +750,7 @@ let aggregate
         'tuple_in -> 'tuple_in -> (* first, last *)
         'generator_out)
       (merge_on : ('tuple_in, 'merge_on) merge_on_fun)
+      (merge_timeout : float)
       (sort_last : int)
       (sort_until : 'tuple_in sort_until_fun)
       (sort_by : ('tuple_in, 'sort_by) sort_by_fun)
@@ -1236,7 +1262,7 @@ let aggregate
       | [rb_in] ->
           read_single_rb ~while_ ~delay_rec:sleep_in read_tuple rb_in
       | rb_ins ->
-          merge_rbs ~while_ ~delay_rec:sleep_in merge_on read_tuple rb_ins
+          merge_rbs ~while_ ~delay_rec:sleep_in merge_on merge_timeout read_tuple rb_ins
     in
     tuple_reader (fun tx_size in_tuple ->
       with_state (fun s ->

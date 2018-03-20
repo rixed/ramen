@@ -77,7 +77,7 @@ type t =
       fields : selected_field list ;
       (* Pass all fields not used to build an aggregated field *)
       and_all_others : bool ;
-      merge : Expr.t list ;
+      merge : Expr.t list * float (* timeout *) ;
       sort : (int * Expr.t option (* until *) * Expr.t list (* by *)) option ;
       (* Simple way to filter out incoming tuples: *)
       where : Expr.t ;
@@ -153,9 +153,11 @@ let print fmt =
                 commit_before ; flush_how ; from } ->
     Printf.fprintf fmt "FROM %a"
       (List.print ~first:"" ~last:"" ~sep print_single_quoted) from ;
-    if merge <> [] then
+    if fst merge <> [] then (
       Printf.fprintf fmt " MERGE ON %a"
-        (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) merge ;
+        (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) (fst merge) ;
+      if snd merge > 0. then
+        Printf.fprintf fmt " TIMEOUT AFTER %g SECONDS" (snd merge)) ;
     Option.may (fun (n, u_opt, b) ->
       Printf.fprintf fmt " SORT LAST %d" n ;
       Option.may (fun u ->
@@ -211,7 +213,7 @@ let is_exporting = function
     force_export (* FIXME: this info should come from the func *)
 
 let is_merging = function
-  | Aggregate { merge ; _ } when merge <> [] -> true
+  | Aggregate { merge ; _ } when fst merge <> [] -> true
   | _ -> false
 
 let run_in_tests = function
@@ -244,7 +246,7 @@ let fold_expr init f = function
           ) init fields in
       let x = List.fold_left (fun prev me ->
             Expr.fold_by_depth f prev me
-          ) x merge in
+          ) x (fst merge) in
       let x = Expr.fold_by_depth f x where in
       let x = List.fold_left (fun prev ke ->
             Expr.fold_by_depth f prev ke
@@ -355,7 +357,7 @@ let check =
             pref := def
         | _ -> ()) in
     List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
-    List.iter (prefix_def TupleIn) merge ;
+    List.iter (prefix_def TupleIn) (fst merge) ;
     Option.may (fun (_, u_opt, b) ->
       List.iter (prefix_def TupleIn) b ;
       Option.may (prefix_def TupleIn) u_opt) sort ;
@@ -498,12 +500,10 @@ struct
 
   let yield_every_clause m =
     let m = "every clause" :: m in
-    ((strinG "every" -- blanks -+ number +- blanks +-
-      (strinG "seconds" ||| strinG "second")) >>:
-      fun every ->
-        if every < 0. then
-          raise (Reject "sleep duration must be greater than 0") ;
-        every) m
+    (strinG "every" -- blanks -+ duration >>: fun every ->
+       if every < 0. then
+         raise (Reject "sleep duration must be greater than 0") ;
+       every) m
 
   let select_clause m =
     let m = "select clause" :: m in
@@ -515,7 +515,9 @@ struct
   let merge_clause m =
     let m = "merge clause" :: m in
     (strinG "merge" -- blanks -- strinG "on" -- blanks -+
-     several ~sep:list_sep Expr.Parser.p) m
+     several ~sep:list_sep Expr.Parser.p ++ optional ~def:0. (
+       blanks -- strinG "timeout" -- blanks -- strinG "after" -- blanks -+
+       duration)) m
 
   let sort_clause m =
     let m = "sort clause" :: m in
@@ -674,7 +676,7 @@ struct
 
   type select_clauses =
     | SelectClause of selected_field option list
-    | MergeClause of Expr.t list
+    | MergeClause of (Expr.t list * float)
     | SortClause of (int * Expr.t option (* until *) * Expr.t list (* by *))
     | WhereClause of Expr.t
     | ExportClause of bool
@@ -715,7 +717,7 @@ struct
       (* Used for its address: *)
       let default_select_fields = []
       and default_star = true
-      and default_merge = []
+      and default_merge = [], 0.
       and default_sort = None
       and default_where = Expr.expr_true
       and default_export = false
@@ -907,7 +909,7 @@ struct
           { expr = Expr.(Field (typ, ref TupleIn, "itf_srv")) ;\
             alias = "itf_dst" } ] ;\
         and_all_others = false ;\
-        merge = [] ;\
+        merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         notify_url = "" ;\
@@ -925,7 +927,7 @@ struct
       Aggregate {\
         fields = [] ;\
         and_all_others = true ;\
-        merge = [] ;\
+        merge = [], 0. ;\
         sort = None ;\
         where = Expr.(\
           StatelessFun2 (typ, Gt, \
@@ -947,7 +949,7 @@ struct
           { expr = Expr.(Field (typ, ref TupleIn, "value")) ;\
             alias = "value" } ] ;\
         and_all_others = false ;\
-        merge = [] ;\
+        merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = true ; event_time = Some (("t", 10.), DurationConst 60.) ;\
@@ -970,7 +972,7 @@ struct
           { expr = Expr.(Field (typ, ref TupleIn, "value")) ;\
             alias = "value" } ] ;\
         and_all_others = false ;\
-        merge = [] ;\
+        merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = true ; event_time = Some (("t1", 10.), StopField ("t2", 10.)) ;\
@@ -986,7 +988,7 @@ struct
       Aggregate {\
         fields = [] ;\
         and_all_others = true ;\
-        merge = [] ;\
+        merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ;\
@@ -1017,7 +1019,7 @@ struct
                 Param (typ, "avg_window"))) ;\
             alias = "packets_per_sec" } ] ;\
         and_all_others = false ;\
-        merge = [] ;\
+        merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ; \
@@ -1054,7 +1056,7 @@ struct
           { expr = Expr.Const (typ, VI32 (Int32.one)) ;\
             alias = "one" } ] ;\
         and_all_others = false ;\
-        merge = [] ;\
+        merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ; \
@@ -1081,7 +1083,7 @@ struct
               Expr.Field (typ, ref TupleIn, "n")))) ;\
             alias = "l" } ] ;\
         and_all_others = false ;\
-        merge = [] ;\
+        merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ; \

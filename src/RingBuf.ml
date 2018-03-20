@@ -1,4 +1,5 @@
 open Stdint
+open Helpers
 
 type t (* abstract, represents a ring buffer mmapped file *)
 
@@ -8,7 +9,7 @@ let prepend_rb_name f fname =
 
 external create_ : string -> int -> unit = "wrap_ringbuf_create"
 let create fname =
-  Helpers.mkdir_all ~is_file:true fname ;
+  mkdir_all ~is_file:true fname ;
   prepend_rb_name create_ fname
 
 type stats = {
@@ -108,14 +109,15 @@ let read_cidr6 tx offs =
 
 (* Have to be there rather than in RingBufLib because it depends on
  * RingBuf. *)
-let dequeue_ringbuf_once ?while_ ?delay_rec rb =
-  RingBufLib.retry_for_ringbuf ?while_ ?delay_rec dequeue_alloc rb
+let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =
+  RingBufLib.retry_for_ringbuf ?while_ ?delay_rec ?max_retry_time
+                               dequeue_alloc rb
 
 let read_ringbuf ?while_ ?delay_rec rb f =
   let open Lwt in
   let rec read_next () =
     match%lwt dequeue_ringbuf_once ?while_ ?delay_rec rb with
-    | exception Exit -> return_unit
+    | exception (Exit | Timeout) -> return_unit
     | tx -> f tx >>= read_next
   in
   read_next ()

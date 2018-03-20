@@ -902,8 +902,8 @@ let check_operation parents func =
     check_yield func fields
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
                 commit_when ; flush_how ; _ } ->
-    check_aggregate parents func fields and_all_others merge sort where key
-                    top commit_when flush_how
+    check_aggregate parents func fields and_all_others (fst merge) sort where
+                    key top commit_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     if tuple_type_is_finished func.N.out_type then false else (
       let user = fields in

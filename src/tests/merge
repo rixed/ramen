@@ -7,15 +7,19 @@ top_srcdir=$(dirname $0)"/../.."
 expected_tests=1
 
 start
-add_func s1 "YIELD sequence(1,2) AS n EVERY 0.01 SECONDS"
-add_func s2 "YIELD sequence(2,2) AS n EVERY 0.01 SECONDS"
+add_func s1 "YIELD sequence(1,3) AS n EVERY 0.01 SECONDS"
+add_func s2 "YIELD sequence(2,3) AS n EVERY 0.02 SECONDS"
+add_func s3 "YIELD sequence(3,3) AS n EVERY 9999 SECONDS"
 add_func m \
-"FROM test/s1, test/s2 MERGE ON n
+"FROM test/s1, test/s2, test/s3
+ MERGE ON n TIMEOUT AFTER 0.1 SECOND
  SELECT n
- WHERE in.#count < 5
+ WHERE in.#count < 7
  EXPORT"
 run
 check_equal '1
 2
 3
-4' "$(tail_ 4 4 m)"
+4
+5
+7' "$(tail_ 6 6 m)"

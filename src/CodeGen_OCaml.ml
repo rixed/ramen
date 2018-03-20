@@ -1458,17 +1458,18 @@ let emit_aggregate oc in_typ out_typ = function
     (emit_state_init "top_init_" RamenExpr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
     (emit_top "top_" in_typ mentioned and_all_others) top
     (emit_float_of_top "float_of_top_state_") top_by
-    (emit_merge_on "merge_on_" in_typ mentioned and_all_others) merge
+    (emit_merge_on "merge_on_" in_typ mentioned and_all_others) (fst merge)
     (emit_sort_expr "sort_until_" in_typ mentioned and_all_others) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
     (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (match sort with Some (_, _, b) -> b | None -> []) ;
   Printf.fprintf oc "let () =\n\
       \tCodeGenLib.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
-      \t\ttuple_of_group_ merge_on_ %d sort_until_ sort_by_\n\
+      \t\ttuple_of_group_ merge_on_ %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b \n\
       \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_ field_of_tuple_ %S\n"
+    (snd merge)
     (match sort with None -> 0 | Some (n, _, _) -> n)
     (key = [])
     commit_before (flush_how <> Never) when_to_check_for_commit notify_url
