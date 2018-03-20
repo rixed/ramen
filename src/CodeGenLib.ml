@@ -719,18 +719,22 @@ let merge_rbs ?while_ ?delay_rec merge_on merge_timeout read_tuple rbs k =
       List.fold_left (fun heap tup ->
         RamenHeap.add cmp_tuples tup heap
       ) heap !no_longer_timed_out in
-    (* Selects the smallest tuple, pass it to the continuation, and then
-     * replace it: *)
-    let (_k, rb, tx_size, in_tuple), heap =
-      RamenHeap.pop_min cmp_tuples heap in
-    let%lwt () = k tx_size in_tuple in
-    match%lwt read_tup ?max_retry_time rb with
-    | exception Exit -> return_unit
-    | exception Timeout ->
-        async (fun () -> foreground_wait rb) ;
-        loop heap
-    | tup ->
-        loop (RamenHeap.add cmp_tuples tup heap)
+    if RamenHeap.is_empty heap then
+      let%lwt () = Lwt_unix.sleep (max 0.1 merge_timeout) in
+      loop heap
+    else
+      (* Selects the smallest tuple, pass it to the continuation, and then
+       * replace it: *)
+      let (_k, rb, tx_size, in_tuple), heap =
+        RamenHeap.pop_min cmp_tuples heap in
+      let%lwt () = k tx_size in_tuple in
+      match%lwt read_tup ?max_retry_time rb with
+      | exception Exit -> return_unit
+      | exception Timeout ->
+          async (fun () -> foreground_wait rb) ;
+          loop heap
+      | tup ->
+          loop (RamenHeap.add cmp_tuples tup heap)
   in
   match%lwt
     Lwt_list.fold_left_s (fun heap rb ->

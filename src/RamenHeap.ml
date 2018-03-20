@@ -6,6 +6,7 @@
 type 'a t = E | T of (* rank *) int * 'a * 'a t * 'a t
 
 let empty = E
+let is_empty = function E -> true | _ -> false
 let singleton x = T (1, x, E, E)
 
 let rank = function
@@ -29,7 +30,7 @@ let add cmp x a = merge cmp a (singleton x)
 let min = function E -> invalid_arg "min" | T (_, x, _, _) -> x
 
 let del_min cmp = function
-  | E -> invalid_arg "delete_min"
+  | E -> invalid_arg "del_min"
   | T (_, _, l, r) -> merge cmp l r
 
 let pop_min cmp h = min h, del_min cmp h
