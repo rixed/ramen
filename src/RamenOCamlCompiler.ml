@@ -138,7 +138,7 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
     use_inlining_arguments_set ~round:0 o1_arguments
   ) ;
   compile_only := false ;
-  link_everything := true ;
+  link_everything := false ;
 
   output_name := Some bin_file ;
 
