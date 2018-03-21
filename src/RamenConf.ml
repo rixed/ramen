@@ -266,7 +266,8 @@ struct
     "PM="^ IO.to_string (List.print ~first:"" ~last:"" ~sep:","
                            RamenProgram.print_param) func.params ^
     (* Also, as the compiled code differ: *)
-    "FLG="^ (if conf.debug then "DBG" else "") |>
+    "FLG="^ (if conf.debug then "DBG" else "")
+          ^ (if conf.use_embedded_compiler then "EMB" else "") |>
     md5
 end
 
