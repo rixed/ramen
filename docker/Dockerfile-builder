@@ -47,6 +47,7 @@ RUN cd /root && \
     cd ramen && \
     git checkout v1.2.6 && \
     opam pin --no-action add ramen /root/ramen && \
+    opam install inotify && \
     opam install --deps-only ramen
 
 COPY build-deb /
