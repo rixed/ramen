@@ -139,6 +139,8 @@ struct
       (* Within a program, funcs are identified by a name that can be optionally
        * provided automatically if its not meant to be referenced. *)
       name : string ;
+      (* Parameters used by that function, with default values: *)
+      params : (string * scalar_value) list ;
       (* Parsed operation and its in/out types: *)
       operation : RamenOperation.t ;
       mutable in_type : tuple_type ;
@@ -169,6 +171,8 @@ struct
      * This is not enough to print the expression with types, as those do not
      * contain relevant info such as field rank. We therefore print without
      * types and encode input/output types explicitly below: *)
+    "PM="^ IO.to_string (List.print ~first:"" ~last:"" ~sep:","
+                           RamenProgram.print_param) func.params ^
     "OP="^ IO.to_string RamenOperation.print func.operation ^
     "IN="^ type_signature func.in_type ^
     "OUT="^ type_signature func.out_type |>
@@ -485,7 +489,7 @@ let program_func_of_user_string ?default_program s =
  * loops) *)
 (* FIXME: got bitten by the fact that func_name and program_name are 2 strings
  * so you can mix them up. Make specialized types for all those strings. *)
-let make_func program_name func_name operation =
+let make_func program_name func_name params operation =
   !logger.debug "Creating func %s/%s" program_name func_name ;
   (* New lines have to be forbidden because of the out_ref ringbuf files.
    * slashes have to be forbidden because we rsplit to get program names. *)
@@ -502,7 +506,7 @@ let make_func program_name func_name operation =
         raise (InvalidCommand ("Parent func "^ p ^" does not exist"))) in
   Func.{
     program = program_name ; name = func_name ;
-    operation ; signature = "" ; parents ;
+    params ; operation ; signature = "" ; parents ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = UntypedTuple (make_temp_tup_typ ()) ;
@@ -515,20 +519,20 @@ let make_func program_name func_name operation =
  * [test_id]: if not nul, this program is just meant to be tested, so its
  * program must be renamed and rewritten, and then flagged as a test
  * program. *)
-let make_program ?(test_id="") ?(timeout=0.) programs name program funcs_lst =
+let make_program ?(test_id="") ?(timeout=0.) programs name program defs =
   assert (String.length name > 0) ;
   if Hashtbl.mem programs name then
     raise (InvalidCommand ("Program "^ name ^" already exists")) ;
   let now = Unix.gettimeofday () in
-  let funcs = Hashtbl.create (List.length funcs_lst) in
+  let funcs = Hashtbl.create (List.length defs) in
   List.iter (fun def ->
     let func_name = def.RamenProgram.name in
     if Hashtbl.mem funcs func_name then
       raise (InvalidCommand (
          "Function "^ func_name ^" already exists in program "^ name)) ;
-    make_func name func_name def.RamenProgram.operation |>
+    make_func name func_name def.params def.RamenProgram.operation |>
     Hashtbl.add funcs def.name
-  ) funcs_lst ;
+  ) defs ;
   let p = Program.{
       name ; funcs ; program ; timeout ; last_used = now ;
       status = Edition "" ; last_status_change = now ;

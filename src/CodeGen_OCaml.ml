@@ -30,7 +30,9 @@ let id_of_prefix tuple =
 let id_of_field_name ?(tuple=TupleIn) = function
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
   | "#successive" -> "virtual_"^ id_of_prefix tuple ^"_successive_"
-  | field -> id_of_prefix tuple ^"_"^ field ^"_"
+  | field ->
+      let ret = id_of_prefix tuple ^"_"^ field ^"_" in
+      if tuple = TupleParam then "!"^ ret else ret
 
 let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.typ_name
@@ -1497,13 +1499,19 @@ let with_code_file_for exec_name conf f =
     File.with_file_out ~mode:[`create; `text] fname f ;
   fname
 
-let compile conf func_name exec_name in_typ out_typ op =
+let compile conf func_name exec_name in_typ out_typ params op =
   let open RamenOperation in
   let src_file =
     with_code_file_for exec_name conf (fun oc ->
       Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n"
         func_name
         RamenOperation.print op ;
+      (* Emit parameters: *)
+      Printf.fprintf oc "\n(* Parameters: *)\n" ;
+      List.iter (fun (n, v) ->
+        Printf.fprintf oc "let %s_%s_ = ref (%a)\n"
+          (id_of_prefix TupleParam) n emit_scalar v
+      ) params ;
       (match op with
       | Yield _->
         emit_yield oc in_typ out_typ op

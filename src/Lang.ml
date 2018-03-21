@@ -65,7 +65,7 @@ type syntax_error =
   | MissingClause of { clause : string }
   | CannotTypeField of { field : string ; typ : string ; tuple : tuple_prefix }
   | CannotTypeExpression of { what : string ; expected_type : string ;
-                              got : string ; got_type : string }
+                              got_type : string }
   | InvalidNullability of { what : string ; must_be_nullable : bool }
   | InvalidCoalesce of { what : string ; must_be_nullable : bool }
   | CannotCompleteTyping of string
@@ -112,9 +112,9 @@ let string_of_syntax_error =
   | CannotTypeField { field ; typ ; tuple } ->
     "Cannot find out the type of field "^ field ^" ("^ typ ^") \
      supposed to be a member of "^ string_of_prefix tuple ^" tuple"
-  | CannotTypeExpression { what ; expected_type ; got ; got_type } ->
+  | CannotTypeExpression { what ; expected_type ; got_type } ->
     what ^" must have type (compatible with) "^ expected_type ^
-    " but got "^ got ^" of type "^ got_type
+    " but got "^ got_type
   | InvalidNullability { what ; must_be_nullable } ->
     what ^" must"^ (if must_be_nullable then "" else " not") ^
     " be nullable"
