@@ -26,6 +26,8 @@ type tuple_prefix =
   | TupleSortFirst
   | TupleSortSmallest
   | TupleSortGreatest
+  (* Parameters *)
+  | TupleParam
   (* TODO: TupleOthers? *)
 
 let string_of_prefix = function
@@ -45,6 +47,7 @@ let string_of_prefix = function
   | TupleSortFirst -> "sort.first"
   | TupleSortSmallest -> "sort.smallest"
   | TupleSortGreatest -> "sort.greatest"
+  | TupleParam -> "param"
 
 type syntax_error =
   | ParseError of { error : string ; text : string }
@@ -170,7 +173,8 @@ let parse_prefix ~def m =
     (prefix "sort.smallest" >>: fun () -> TupleSortSmallest) |||
     (prefix "sort.greatest" >>: fun () -> TupleSortGreatest) |||
     (prefix "smallest" >>: fun () -> TupleSortSmallest) |||
-    (prefix "greatest" >>: fun () -> TupleSortGreatest))
+    (prefix "greatest" >>: fun () -> TupleSortGreatest) |||
+    (prefix "param" >>: fun () -> TupleParam))
   ) m
 
 let tuple_has_count = function
@@ -208,10 +212,10 @@ let keyword =
   (
     (* Some values that must not be parsed as field names: *)
     strinG "true" ||| strinG "false" ||| strinG "null" |||
-    strinG "all" |||
+    strinG "all" ||| strinG "as" |||
     (* Some functions with possibly no arguments that must not be
      * parsed as field names: *)
-    strinG "now" ||| strinG "sequence"
+    strinG "now" ||| strinG "sequence" ||| strinG "random"
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
   let open RamenParsing in

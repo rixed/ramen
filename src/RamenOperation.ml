@@ -276,8 +276,9 @@ let iter_expr f op =
 (* Check that the expression is valid, or return an error message.
  * Also perform some optimisation, numeric promotions, etc...
  * This is done after the parse rather than Rejecting the parsing
- * result for better error messages. *)
-let check =
+ * result for better error messages, and also because we need the
+ * list of available parameters. *)
+let check params =
   let pure_in clause = StatefulNotAllowed { clause }
   and no_group clause = GroupStateNotAllowed { clause }
   and fields_must_be_from tuple where allowed =
@@ -311,13 +312,24 @@ let check =
     | DurationConst _ -> ()
     | DurationField (f, _)
     | StopField (f, _) -> check_field_exists f
+  (* Unless it's a param, assume TupleUnknow belongs to def: *)
+  and prefix_def def =
+    Expr.iter (function
+      | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
+          if List.mem alias params then
+            pref := TupleParam
+          else
+            pref := def
+      | _ -> ())
   in
   function
   | Yield { fields ; _ } ->
     List.iter (fun sf ->
         let e = StatefulNotAllowed { clause = "YIELD" } in
         check_pure e sf.expr ;
-        check_fields_from [TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD clause" sf.expr
+        (* TODO: add an every clause to Aggregate and get rid of Yield *)
+        List.iter (fun sf -> prefix_def TupleIn sf.expr) fields ;
+        check_fields_from [TupleParam; TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD clause" sf.expr
       ) fields
     (* TODO: check unicity of aliases *)
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
@@ -335,13 +347,15 @@ let check =
       list_existsi (fun i' sf ->
         sf.alias = alias &&
         Option.map_default (fun i -> i' < i) true i) fields in
-    (* Resolve TupleUnknown into either TupleIn or TupleOut depending
-     * on the presence of this alias in selected_fields (optionally,
-     * only before position i) *)
+    (* Resolve TupleUnknown into either TupleParam (if the alias is in
+     * params), TupleIn or TupleOut (depending on the presence of this alias
+     * in selected_fields -- optionally, only before position i) *)
     let prefix_smart ?i =
       Expr.iter (function
         | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
-            if Set.mem alias !fields_from_in then
+            if List.mem alias params then
+              pref := TupleParam
+            else if Set.mem alias !fields_from_in then
               pref := TupleIn
             else if is_selected_fields ?i alias then
               pref := TupleOut
@@ -350,11 +364,6 @@ let check =
               fields_from_in := Set.add alias !fields_from_in) ;
             !logger.debug "Field %S thought to belong to %s"
               alias (string_of_prefix !pref)
-        | _ -> ())
-    and prefix_def def =
-      Expr.iter (function
-        | Field (_, ({ contents = TupleUnknown } as pref), _) ->
-            pref := def
         | _ -> ()) in
     List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
     List.iter (prefix_def TupleIn) (fst merge) ;
@@ -378,7 +387,7 @@ let check =
       | _ -> ()) op ;
     (* Now check what tuple prefix are used: *)
     List.fold_left (fun prev_aliases sf ->
-        check_fields_from [TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *); TupleGroupPrevious; TupleOutPrevious] "SELECT clause" sf.expr ;
+        check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *); TupleGroupPrevious; TupleOutPrevious] "SELECT clause" sf.expr ;
         (* Check unicity of aliases *)
         if List.mem sf.alias prev_aliases then
           raise (SyntaxError (AliasNotUnique sf.alias)) ;
@@ -387,24 +396,24 @@ let check =
     if not and_all_others then Option.may (check_event_time fields) event_time ;
     (* Disallow group state in WHERE because it makes no sense: *)
     check_no_group (no_group "WHERE") where ;
-    check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOutPrevious] "WHERE clause" where ;
+    check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOutPrevious] "WHERE clause" where ;
     List.iter (fun k ->
       check_pure pure_in_key k ;
-      check_fields_from [TupleIn] "Group-By KEY" k) key ;
+      check_fields_from [TupleParam; TupleIn] "Group-By KEY" k) key ;
     Option.may (fun (n, by) ->
       (* TODO: Check also that it's an unsigned integer: *)
       Expr.check_const "TOP size" n ;
-      check_fields_from [TupleIn] "TOP clause" by ;
+      check_fields_from [TupleParam; TupleIn] "TOP clause" by ;
       (* The only windowing mode supported is then `commit and flush`: *)
       if flush_how <> Reset then
         raise (SyntaxError OnlyTumblingWindowForTop)) top ;
-    check_fields_from [TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
+    check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
     (match flush_how with
     | Reset | Never | Slide _ -> ()
     | RemoveAll e | KeepOnly e ->
       let m = StatefulNotAllowed { clause = "KEEP/REMOVE" } in
       check_pure m e ;
-      check_fields_from [TupleGroup] "REMOVE clause" e) ;
+      check_fields_from [TupleParam; TupleGroup] "REMOVE clause" e) ;
     if from = [] then
       raise (SyntaxError (MissingClause { clause = "FROM" })) ;
     (* Check that we do not use any fields from out that is generated: *)
@@ -1016,7 +1025,7 @@ struct
               StatelessFun2 (typ, Div, \
                 StatefulFun (typ, LocalState, AggrSum (\
                   Field (typ, ref TupleIn, "packets"))),\
-                Param (typ, "avg_window"))) ;\
+                Field (typ, ref TupleParam, "avg_window"))) ;\
             alias = "packets_per_sec" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
@@ -1029,7 +1038,7 @@ struct
             Field (typ, ref TupleIn, "start"),\
             StatelessFun2 (typ, Mul, \
               Const (typ, VI32 1_000_000l),\
-              Param (typ, "avg_window")))) ] ;\
+              Field (typ, ref TupleParam, "avg_window")))) ] ;\
         top = None ;\
         commit_when = Expr.(\
           StatelessFun2 (typ, Gt, \
@@ -1041,12 +1050,12 @@ struct
         commit_before = false ;\
         flush_how = Reset ;\
         from = ["foo"] },\
-        (200, [])))\
+        (198, [])))\
         (test_op p "select min start as start, \\
                            max stop as max_stop, \\
-                           (sum packets)/$avg_window as packets_per_sec \\
+                           (sum packets)/avg_window as packets_per_sec \\
                    from foo \\
-                   group by start / (1_000_000 * $avg_window) \\
+                   group by start / (1_000_000 * avg_window) \\
                    commit when out.start < (max group.first.start) + 3600" |>\
          replace_typ_in_op)
 

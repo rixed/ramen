@@ -397,9 +397,6 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type =
       false
     )
   | StateField _ -> assert false
-  | Param (_op_typ, _pname) ->
-    (* TODO: one day we will know the type or value of params *)
-    false
   | Case (_op_typ, alts, else_) ->
     (* Rules:
      * - If a condition or a consequent is nullable then the case is;

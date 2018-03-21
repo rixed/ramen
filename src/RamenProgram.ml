@@ -6,7 +6,8 @@ open Lang
   open Lang
 *)
 
-type func = { name : string ; operation : RamenOperation.t }
+type func =
+  { name : string ; params : string list ; operation : RamenOperation.t }
 type t = func list
 
 let make_name =
@@ -15,14 +16,15 @@ let make_name =
     incr seq ;
     "f"^ string_of_int !seq
 
-let make_func ?name operation =
+let make_func ?name ?(params=[]) operation =
   { name = (match name with Some n -> n | None -> make_name ()) ;
-    operation }
+    params ; operation }
 
 let print_func oc n =
   (* TODO: keep the info that func was anonymous? *)
-  Printf.fprintf oc "DEFINE '%s' AS %a"
+  Printf.fprintf oc "DEFINE '%s' %aAS %a"
     n.name
+    (List.print ~first:"" ~last:" " ~sep:" " String.print) n.params
     RamenOperation.print n.operation
 
 let print oc p =
@@ -30,7 +32,7 @@ let print oc p =
 
 let check lst =
   List.fold_left (fun s n ->
-    RamenOperation.check n.operation ;
+    RamenOperation.check n.params n.operation ;
     if Set.mem n.name s then
       raise (SyntaxError (FuncNameNotUnique n.name)) ;
     Set.add n.name s
@@ -47,9 +49,11 @@ struct
 
   let named_func m =
     let m = "func" :: m in
-    (strinG "define" -- blanks -+ func_identifier ~program_allowed:false +-
+    (strinG "define" -- blanks -+ func_identifier ~program_allowed:false ++
+     repeat ~sep:none ~what:"function argument" (blanks -+ non_keyword) +-
      blanks +- strinG "as" +- blanks ++
-     RamenOperation.Parser.p >>: fun (name, op) -> make_func ~name op) m
+     RamenOperation.Parser.p >>: fun ((name, params), op) ->
+       make_func ~name ~params op) m
 
   let func m =
     let m = "func" :: m in
@@ -62,7 +66,7 @@ struct
 
   (*$= p & ~printer:(test_printer print)
    (Ok ([\
-    { name = "bar" ;\
+    { name = "bar" ; params = [] ;\
       operation = \
         Aggregate {\
           fields = [\
@@ -81,6 +85,22 @@ struct
           from = ["foo"] } } ],\
       (46, [])))\
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
+       replace_typ_in_program)
+
+   (Ok ([\
+    { name = "add" ; params = ["p1"; "p2"] ;\
+      operation = \
+        Yield {\
+          fields = [\
+            { expr = RamenExpr.(\
+                StatelessFun2 (typ, Add,\
+                  Field (typ, ref TupleParam, "p1"),\
+                  Field (typ, ref TupleParam, "p2"))) ;\
+              alias = "res" } ] ;\
+          every = 0. ; force_export = false ; event_time = None } } ],\
+      (40, [])))\
+      (test_p p "DEFINE add p1 p2 AS YIELD p1 + p2 AS res" |>\
+       (function Ok (ps, _) as x -> check ps ; x | x -> x) |>\
        replace_typ_in_program)
   *)
 

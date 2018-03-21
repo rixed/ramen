@@ -600,8 +600,6 @@ and emit_expr ?state ~context oc expr =
       Printf.fprintf oc "(maybe_%s_ out_previous_opt_)" field
     | _ ->
       String.print oc (id_of_field_name ~tuple:!tuple field))
-  | Finalize, Param _, _ ->
-    failwith "TODO: code gen for params"
   | Finalize, Case (_, alts, else_), t ->
     List.print ~first:"(" ~last:"" ~sep:" else "
       (fun oc alt ->

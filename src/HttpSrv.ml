@@ -462,7 +462,7 @@ let timeseries conf headers body =
          EXPORT EVENT STARTING AT time") in
     let op_text =
       if where = "" then op_text else op_text ^" WHERE "^ where in
-    let%lwt operation = wrap (fun () -> C.parse_operation op_text) in
+    let%lwt operation = wrap (fun () -> C.parse_operation [] op_text) in
     let reformatted_op = IO.to_string RamenOperation.print operation in
     let program_name = "temp/timeseries/"^ md5 reformatted_op
     and func_name = "operation" in

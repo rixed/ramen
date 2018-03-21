@@ -95,7 +95,6 @@ type t =
   | Const of typ * scalar_value
   | Field of typ * tuple_prefix ref * string (* field name *)
   | StateField of typ * string (* Name of the state field - met only late in the game *)
-  | Param of typ * string
   | Case of typ * case_alternative list * t option
   | Coalesce of typ * t list
   (* On functions, internal states, and aggregates:
@@ -253,8 +252,6 @@ let rec print with_types fmt =
     add_types t
   | StateField (t, s) ->
     String.print fmt s ; add_types t
-  | Param (t, p) ->
-    Printf.fprintf fmt "$%s" p ; add_types t
   | Case (t, alts, else_) ->
     let print_alt fmt alt =
       Printf.fprintf fmt "WHEN %a THEN %a"
@@ -418,7 +415,7 @@ let rec print with_types fmt =
     add_types t
 
 let typ_of = function
-  | Const (t, _) | Field (t, _, _) | Param (t, _) | StateField (t, _)
+  | Const (t, _) | Field (t, _, _) | StateField (t, _)
   | StatelessFun0 (t, _) | StatelessFun1 (t, _, _)
   | StatelessFun2 (t, _, _, _) | StatelessFunMisc (t, _)
   | StatefulFun (t, _, _) | GeneratorFun (t, _)
@@ -432,7 +429,7 @@ let is_nullable e =
 (* Propagate values up the tree only, depth first. *)
 let rec fold_by_depth f i expr =
   match expr with
-  | Const _ | Param _ | Field _ | StateField _
+  | Const _ | Field _ | StateField _
   | StatelessFun0 _ ->
     f i expr
 
@@ -509,7 +506,6 @@ let rec map_type ?(recurs=true) f = function
   | Const (t, a) -> Const (f t, a)
   | Field (t, a, b) -> Field (f t, a, b)
   | StateField _ as e -> e
-  | Param (t, a) -> Param (f t, a)
 
   | Case (t, alts, else_) ->
     Case (f t,
@@ -685,20 +681,14 @@ struct
   *)
 
   let param m =
-    let m = "param" :: m in
-    (char '$' -+ identifier >>: fun s ->
-     Param (make_typ ("parameter "^s), s)) m
+    let m = "parameter" :: m in
+    (non_keyword >>: fun p ->
+      Field (make_typ p, ref TupleParam, p)) m
   (*$= param & ~printer:(test_printer (print false))
     (Ok (\
-      Param (typ, "glop"),\
-      (5, [])))\
-      (test_p param "$glop" |> replace_typ_in_expr)
-
-    (Bad (\
-      NoSolution (\
-        Some { where = ParsersMisc.Item ((0,0), 'g');\
-               what = ["\"$\""; "param"] })))\
-    (test_p param "glop" |> replace_typ_in_expr)
+      Field (typ, ref TupleParam, "glop"),\
+      (4, [])))\
+      (test_p param "glop" |> replace_typ_in_expr)
   *)
 
   let state_lifespan m =
@@ -1047,7 +1037,7 @@ struct
          loop [] r) m
 
   and highestest_prec m =
-    (const ||| field ||| param ||| func ||| null |||
+    (const ||| field ||| func ||| null |||
      case ||| if_ ||| coalesce |||
      char '(' -- opt_blanks -+
        lowest_prec_left_assoc +-
@@ -1068,49 +1058,45 @@ struct
       (test_p p "zone_src IS NULL" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun2 (typ, Eq, Field (typ, ref TupleUnknown, "zone_src"), Param (typ, "z1")),\
-      (14, [])))\
-      (test_p p "zone_src = $z1" |> replace_typ_in_expr)
-
-    (Ok (\
       StatelessFun2 (typ, And, \
         StatelessFun2 (typ, Or, \
           StatelessFun1 (typ, Not, \
             StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, "zone_src"))),\
-          StatelessFun2 (typ, Eq, Field (typ, ref TupleUnknown, "zone_src"), Param (typ, "z1"))), \
+          StatelessFun2 (typ, Eq, Field (typ, ref TupleUnknown, "zone_src"),\
+                                  Field (typ, ref TupleUnknown, "z1"))), \
         StatelessFun2 (typ, Or, \
           StatelessFun1 (typ, Not, \
             StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, "zone_dst"))),\
           StatelessFun2 (typ, Eq, \
             Field (typ, ref TupleUnknown, "zone_dst"), \
-            Param (typ, "z2")))),\
-      (77, [])))\
-      (test_p p "(zone_src IS NULL or zone_src = $z1) and \\
-                 (zone_dst IS NULL or zone_dst = $z2)" |> replace_typ_in_expr)
+            Field (typ, ref TupleUnknown, "z2")))),\
+      (75, [])))\
+      (test_p p "(zone_src IS NULL or zone_src = z1) and \\
+                 (zone_dst IS NULL or zone_dst = z2)" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, Div, \
         StatefulFun (typ, LocalState, AggrSum (\
           Field (typ, ref TupleUnknown, "bytes"))),\
-        Param (typ, "avg_window")),\
-      (23, [])))\
-      (test_p p "(sum bytes)/$avg_window" |> replace_typ_in_expr)
+        Field (typ, ref TupleUnknown, "avg_window")),\
+      (22, [])))\
+      (test_p p "(sum bytes)/avg_window" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, IDiv, \
         Field (typ, ref TupleUnknown, "start"),\
         StatelessFun2 (typ, Mul, \
           Const (typ, VI32 1_000_000l),\
-          Param (typ, "avg_window"))),\
-      (34, [])))\
-      (test_p p "start // (1_000_000 * $avg_window)" |> replace_typ_in_expr)
+          Field (typ, ref TupleUnknown, "avg_window"))),\
+      (33, [])))\
+      (test_p p "start // (1_000_000 * avg_window)" |> replace_typ_in_expr)
 
     (Ok (\
       StatefulFun (typ, LocalState, AggrPercentile (\
-        Param (typ, "p"),\
+        Field (typ, ref TupleParam, "p"),\
         Field (typ, ref TupleUnknown, "bytes_per_sec"))),\
-      (27, [])))\
-      (test_p p "$p percentile bytes_per_sec" |> replace_typ_in_expr)
+      (26, [])))\
+      (test_p p "p percentile bytes_per_sec" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, Gt, \
@@ -1120,19 +1106,19 @@ struct
           Field (typ, ref TupleOut, "start"),\
           StatelessFun2 (typ, Mul, \
             StatelessFun2 (typ, Mul, \
-              Param (typ, "obs_window"),\
+              Field (typ, ref TupleUnknown, "obs_window"),\
               Const (typ, VFloat 1.15)),\
             Const (typ, VI32 1_000_000l)))),\
-      (70, [])))\
+      (69, [])))\
       (test_p p "max selected.last.start > \\
-                 out.start + ($obs_window * 1.15) * 1_000_000" |> replace_typ_in_expr)
+                 out.start + (obs_window * 1.15) * 1_000_000" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, Mod, \
-        Param (typ, "x"),\
-        Param (typ, "y")),\
-      (7, [])))\
-      (test_p p "$x % $y" |> replace_typ_in_expr)
+        Field (typ, ref TupleUnknown, "x"),\
+        Field (typ, ref TupleUnknown, "y")),\
+      (5, [])))\
+      (test_p p "x % y" |> replace_typ_in_expr)
 
     (Ok ( \
       StatelessFun1 (typ, Abs, \

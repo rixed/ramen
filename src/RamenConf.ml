@@ -394,7 +394,7 @@ type conf =
     use_embedded_compiler : bool ;
     bundle_dir : string }
 
-let parse_operation operation =
+let parse_operation params operation =
   let open RamenParsing in
   let p = Lang.(opt_blanks -+ RamenOperation.Parser.p +- opt_blanks +- eof) in
   (* TODO: enable error correction *)
@@ -407,7 +407,7 @@ let parse_operation operation =
     let open Lang in
     raise (SyntaxError (ParseError { error ; text = operation }))
   | Ok (op, _) -> (* Since we force EOF, no need to keep what's left to parse *)
-    RamenOperation.check op ;
+    RamenOperation.check params op ;
     op
 
 let parse_program program =
