@@ -613,16 +613,21 @@ let cleanup_old_files conf =
           Set.add (L.exec_of_program conf.C.persist_dir prog.L.name) |>
           return)) in
     let now = Unix.gettimeofday () in
-    let unlink_old_bin fname _rel_fname =
-      let bin = Filename.basename fname in
-      if String.starts_with bin "ramen_" then
+    let unlink_old_bin fname rel_fname =
+      let bname = Filename.basename fname in
+      if bname = "ramen_worker" then
         if Set.mem fname used_bins then
           Unix.utimes fname now now
         else if now -. mtime_of_file fname > float_of_int conf.max_execs_age then (
-          !logger.info "Deleting old binary %s" bin ;
+          !logger.info "Deleting unused binary %s" rel_fname ;
+          log_exceptions Unix.unlink fname)
+      else
+        let e = String.ends_with fname in
+        if (e ".cmx" || e ".cmi" || e ".o" || e ".ml") &&
+           now -. mtime_of_file fname > float_of_int conf.max_execs_age then (
+          !logger.info "Deleting old build artifact %s" rel_fname ;
           log_exceptions Unix.unlink fname) in
     dir_subtree_iter ~on_file:unlink_old_bin bindir ;
-    (* TODO: also unlink old files in src *)
     Lwt_unix.sleep 3600. >>= loop
   in
   loop ()
