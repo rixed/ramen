@@ -181,10 +181,13 @@ struct
     md5
 end
 
-let exec_of_func persist_dir func =
+let obj_of_func persist_dir func =
   persist_dir ^"/workers/bin/"
               ^ RamenVersions.codegen
-              ^"/ramen_"^ func.Func.signature
+              ^"/"^ func.Func.program
+              ^"/m"^ func.Func.signature ^".cmx"
+
+let entry_point_of_func _func = "start"
 
 let tmp_input_of_func persist_dir func =
   persist_dir ^"/workers/inputs/"^ Func.fq_name func ^"/"
@@ -291,6 +294,12 @@ struct
     in
     loop [] programs
 
+  let exec_of_program persist_dir program_name =
+    persist_dir ^"/workers/bin/"
+                ^ RamenVersions.codegen
+                ^"/"^ program_name
+                ^"/ramen_worker"
+
   let check_not_running ~persist_dir program =
     (* Demote the status to compiled since the workers can't be running
      * anymore. *)
@@ -298,8 +307,8 @@ struct
     (* Further demote to edition if the binaries are not there anymore
      * (which will be the case if codegen version changed): *)
     if program.status = Compiled &&
-       Hashtbl.values program.funcs |> Enum.exists (fun n ->
-         not (file_exists ~has_perms:0o100 (exec_of_func persist_dir n)))
+       not (file_exists ~has_perms:0o100 (
+              exec_of_program persist_dir program.name))
     then set_status program (Edition "") ;
     (* Also, we cannot be compiling nor stopping anymore: *)
     if program.status = Compiling || program.status = Stopping then

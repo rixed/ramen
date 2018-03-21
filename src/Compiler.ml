@@ -1062,13 +1062,12 @@ let set_all_types parents program =
        (test_check_expr "i8(9999)")
    *)
 
-let compile_func conf func =
+let compile_func conf func obj_name =
   let open Lwt in
-  let exec_name = C.exec_of_func conf.C.persist_dir func in
-  mkdir_all ~is_file:true exec_name ;
+  mkdir_all ~is_file:true obj_name ;
   (* Let's compile (or maybe not) *)
-  if file_exists ~maybe_empty:false ~has_perms:0o100 exec_name then (
-    !logger.debug "Reusing binary %S" exec_name ;
+  if file_exists ~maybe_empty:false ~has_perms:0o100 obj_name then (
+    !logger.debug "Reusing binary %S" obj_name ;
     return_unit
   ) else (
     let in_typ = C.tuple_user_type func.N.in_type
@@ -1091,8 +1090,9 @@ let compile_func conf func =
       | ReadCSVFile { where = DownloadFile _ ; _ } ->
         failwith "Not Implemented"
       | x -> x in
-    CodeGen_OCaml.compile conf func.N.name exec_name in_typ out_typ
-                          func.params operation)
+    let entry_point = C.entry_point_of_func func in
+    CodeGen_OCaml.compile conf entry_point func.N.name obj_name
+                          in_typ out_typ func.params operation)
 
 let typed_of_untyped_tuple ?cmp = function
   | C.TypedTuple _ as x -> x
@@ -1159,10 +1159,20 @@ let compile conf parents program =
         func.N.signature <- N.signature func
       ) program.L.funcs) in
   (* Compile
+   *
+   * We compile each functions (checking with the signature that we do not
+   * compile several times the same) into an object file with a single
+   * public symbol: the function name. We then generate the dynamic part of
+   * the ocaml casing (dynamic just because it needs to know the functions
+   * name - we could find the various symbols in the executable itself but
+   * doing this portably would be a lot of work). The casing will then pick
+   * a function to run according to some envvar. It will pass this function
+   * a few OCaml functions to call - but for now, given the functions are
+   * all implemented in OCaml, we just call them directly.
+   *
    * Start by computing the list of functions to compile, avoiding compiling
    * several functions if they end up being the same binary (same signature):
-   * (TODO: a lockfile so several programs can compile together without
-   * stepping on each others toes) *)
+   *)
   let _, funcs =
     Hashtbl.values program.L.funcs |> List.of_enum |>
     List.fold_left (fun (signatures, lst as prev) func ->
@@ -1170,4 +1180,26 @@ let compile conf parents program =
       else (Set.add func.N.signature signatures, func::lst)
     ) (Set.empty, []) in
   (* Now compile all those funcs for real: *)
-  Lwt_list.iter_p (compile_func conf) funcs
+  let%lwt objects =
+    Lwt_list.map_p (fun func ->
+      let obj_name = C.obj_of_func conf.C.persist_dir func in
+      let%lwt () = compile_func conf func obj_name in
+      return (func, obj_name)
+    ) funcs in
+  (* Produce the casing: *)
+  let src_file =
+    RamenOCamlCompiler.with_code_file_for "casing" conf (fun oc ->
+      Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
+        program.name ;
+      Printf.fprintf oc "let () = CodeGenLib.casing [\n" ;
+      List.iter (fun func ->
+        Printf.fprintf oc"\t%S, M%s.%s ;\n"
+          func.N.signature
+          func.N.signature
+          (C.entry_point_of_func func)
+      ) funcs ;
+      Printf.fprintf oc "]\n") in
+  (* Compile the casing and link it with everything: *)
+  let exec_file = L.exec_of_program conf.persist_dir program.name
+  and obj_files = List.map (fun (_, n) -> n) objects in
+  RamenOCamlCompiler.link conf program.name obj_files src_file exec_file

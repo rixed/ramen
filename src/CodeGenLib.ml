@@ -1313,3 +1313,18 @@ let aggregate
             aggregate_one s min_in
           else
             return s)))
+
+let casing lst =
+  (* Call a function from lst according to envvar "signature" *)
+  match Sys.getenv "signature" with
+  | exception Not_found ->
+      Printf.eprintf
+        "Cannot find envvar signature.\n\
+         Trying to run a Ramen program manually? Have good fun!\n" ;
+      exit 3
+  | signature ->
+      (match List.assoc signature lst with
+      | exception Not_found ->
+          Printf.eprintf "Unknown signature %S.\n" signature ;
+          exit 3
+      | f -> f ())

@@ -226,8 +226,8 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
   Printf.fprintf oc "\t)\n"
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
-let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ
-                       preprocessor =
+let emit_read_csv_file oc name csv_fname unlink csv_separator csv_null
+                       tuple_typ preprocessor =
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
    * Then we want to write this tuple in some ring buffer.
@@ -238,23 +238,25 @@ let emit_read_csv_file oc csv_fname unlink csv_separator csv_null tuple_typ
   Printf.fprintf oc
      "open Batteries\nopen Stdint\n\n\
      %a\n%a\n%a\n\
-     let () =\n\
+     let %s () =\n\
        \tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_ %S\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
+    name
     csv_fname unlink csv_separator preprocessor
 
-let emit_listen_on oc net_addr port proto =
+let emit_listen_on oc name net_addr port proto =
   let open RamenProtocols in
   let tuple_typ = tuple_typ_of_proto proto in
   let collector = collector_of_proto proto in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n\
-    let () =\n\
+    let %s () =\n\
       \tCodeGenLib.listen_on %s %S %d %S sersize_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
+    name
     collector
     (Unix.string_of_inet_addr net_addr) port
     (string_of_proto proto)
@@ -1222,18 +1224,19 @@ let emit_float_of_top name oc top_by =
     Printf.fprintf oc "\t%a\n"
       (conv_to ~context:Finalize (Some TFloat)) top_by
 
-let emit_yield oc in_typ out_typ = function
+let emit_yield oc name in_typ out_typ = function
   | RamenOperation.Yield { fields ; every } as op ->
     let mentioned =
       let all_exprs = RamenOperation.fold_expr [] (fun l s -> s::l) op in
       add_all_mentioned_in_expr all_exprs in
     Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
       %a\n%a\n%a\n\
-      let () =\n\
+      let %s () =\n\
         \tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_ %f\n"
       (emit_field_selection "select_" in_typ mentioned false out_typ) fields
       (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
       (emit_serialize_tuple "serialize_tuple_") out_typ
+      name
       every
   | _ -> assert false
 
@@ -1418,7 +1421,7 @@ let emit_merge_on name in_typ mentioned and_all_others oc es =
     (List.print ~first:"(" ~last:")" ~sep:", "
        (emit_expr ?state:None ~context:Finalize)) es
 
-let emit_aggregate oc in_typ out_typ = function
+let emit_aggregate oc name in_typ out_typ = function
   | RamenOperation.Aggregate
       { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
         commit_before ; commit_when ; flush_how ; notify_url ; _ } as op ->
@@ -1466,7 +1469,7 @@ let emit_aggregate oc in_typ out_typ = function
     (emit_merge_on "merge_on_" in_typ mentioned and_all_others) (fst merge)
     (emit_sort_expr "sort_until_" in_typ mentioned and_all_others) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
     (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (match sort with Some (_, _, b) -> b | None -> []) ;
-  Printf.fprintf oc "let () =\n\
+  Printf.fprintf oc "let %s () =\n\
       \tCodeGenLib.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
       \t\ttuple_of_group_ merge_on_ %F %d sort_until_ sort_by_\n\
@@ -1474,6 +1477,7 @@ let emit_aggregate oc in_typ out_typ = function
       \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_ field_of_tuple_ %S\n"
+    name
     (snd merge)
     (match sort with None -> 0 | Some (n, _, _) -> n)
     (key = [])
@@ -1487,22 +1491,10 @@ let sanitize_ocaml_fname s =
   (* Must start with a letter: *)
   "m"^ global_substitute re replace_by_underscore s
 
-let with_code_file_for exec_name conf f =
-  let fname =
-    conf.C.persist_dir ^"/workers/src/"
-                       ^ RamenVersions.codegen
-                       ^"/ocaml/m"^ (Filename.basename exec_name) ^".ml" in
-  mkdir_all ~is_file:true fname ;
-  if file_exists ~maybe_empty:false fname then
-    !logger.debug "Reusing source file %S" fname
-  else
-    File.with_file_out ~mode:[`create; `text] fname f ;
-  fname
-
-let compile conf func_name exec_name in_typ out_typ params op =
+let compile conf entry_point func_name obj_name in_typ out_typ params op =
   let open RamenOperation in
   let src_file =
-    with_code_file_for exec_name conf (fun oc ->
+    RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
       Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n"
         func_name
         RamenOperation.print op ;
@@ -1514,15 +1506,15 @@ let compile conf func_name exec_name in_typ out_typ params op =
       ) params ;
       (match op with
       | Yield _->
-        emit_yield oc in_typ out_typ op
+        emit_yield oc entry_point in_typ out_typ op
       | ReadCSVFile { where = ReadFile { fname ; unlink } ; preprocessor ;
                       what = { separator ; null ; fields } } ->
-        emit_read_csv_file oc fname unlink separator null fields preprocessor
+        emit_read_csv_file oc entry_point fname unlink separator null fields preprocessor
       | ReadCSVFile { where = (DownloadFile _ | ReceiveFile) ; _ } ->
         failwith "This never happens"
       | ListenFor { net_addr ; port ; proto } ->
-        emit_listen_on oc net_addr port proto
+        emit_listen_on oc entry_point net_addr port proto
       | Aggregate _ ->
-        emit_aggregate oc in_typ out_typ op)) in
+        emit_aggregate oc entry_point in_typ out_typ op)) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
-  RamenOCamlCompiler.compile conf func_name src_file exec_name
+  RamenOCamlCompiler.compile conf func_name src_file obj_name

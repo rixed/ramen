@@ -67,7 +67,7 @@ let input_spec conf parent func =
  * FIXME: a phantom type for this *)
 let rec run_func conf programs program func =
   if func.N.pid <> None then fail AlreadyRunning else
-  let command = C.exec_of_func conf.C.persist_dir func
+  let command = C.Program.exec_of_program conf.C.persist_dir func.program
   and output_ringbufs =
     (* Start to output to funcs of this program. They have all been
      * created above (in [run]), and we want to allow loops in a program. Avoids
@@ -109,6 +109,7 @@ let rec run_func conf programs program func =
     "OCAMLRUNPARAM="^ ocamlrunparam ;
     "debug="^ string_of_bool conf.C.debug ;
     "name="^ N.fq_name func ;
+    "signature="^ func.signature ;
     "input_ringbufs="^ String.concat "," input_ringbufs ;
     "output_ringbufs_ref="^ out_ringbuf_ref ;
     "report_ringbuf="^ C.report_ringbuf conf ;
@@ -125,7 +126,9 @@ let rec run_func conf programs program func =
       | Some _ ->
         "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ (N.fq_name func)
       | None -> "no_log_dir=") |] in
-  let command, args = command, [||] in
+  let command, args =
+    (* For convenience let's add the fun name as argument: *)
+    command, [| N.fq_name func |] in
   let%lwt pid =
     wrap (fun () -> run_background command args env) in
   !logger.debug "Function %s now runs under pid %d" (N.fq_name func) pid ;
@@ -605,8 +608,10 @@ let cleanup_old_files conf =
     let bindir = conf.C.persist_dir ^"/workers/bin/"^ RamenVersions.codegen in
     let%lwt used_bins =
       C.with_rlock conf (fun programs ->
-        C.lwt_fold_funcs programs Set.empty (fun set _ func ->
-          return (Set.add (C.exec_of_func conf.C.persist_dir func) set))) in
+        C.lwt_fold_funcs programs Set.empty (fun set prog func ->
+          Set.add (C.obj_of_func conf.C.persist_dir func) set |>
+          Set.add (L.exec_of_program conf.C.persist_dir prog.L.name) |>
+          return)) in
     let now = Unix.gettimeofday () in
     let unlink_old_bin fname _rel_fname =
       let bin = Filename.basename fname in

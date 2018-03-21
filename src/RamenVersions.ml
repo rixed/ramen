@@ -9,7 +9,7 @@ let release_tag = "v1.2.5"
 let graph_config = "v7" (* last incr: addition of parameters in Function.t *)
 
 (* Code generation: sources, binaries... *)
-let codegen = "v5"
+let codegen = "v6" (* last incr: single binary per program *)
 
 (* Alerting state *)
 let alerting_state = "v1"
