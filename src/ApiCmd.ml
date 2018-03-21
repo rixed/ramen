@@ -116,8 +116,19 @@ let compile copts () =
   Lwt_main.run (
     http_get (copts.server_url ^"/compile") >>= check_ok)
 
-let run copts () =
+let run params copts () =
   logger := make_logger copts.debug ;
+  (* For now we do not do anything with those, as it's unclear for now
+   * how to run several times the same program with different parameters.
+   * We need the compilation step to be distinct, and local only, so that
+   * ramen (the daemon) only have a "run" and a "stop" command, that
+   * would then take the binary, some metadata with input/output types
+   * and parent names (as string, possibly with parameters to be expanded),
+   * and parameters. *)
+  List.iter (fun (n, v) ->
+    !logger.info "Parameter %s <- %a"
+      n RamenScalar.print v
+  ) params ;
   Lwt_main.run (
     http_get (copts.server_url ^"/start") >>= check_ok)
 

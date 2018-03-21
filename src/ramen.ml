@@ -238,9 +238,43 @@ let compile =
       $ copts),
     info ~doc:"Compile one (or all) program(s)" "compile")
 
+let param =
+  let parse s =
+    match String.split s ~by:"=" with
+    | exception Not_found ->
+        Pervasives.Error (
+          `Msg "You must specify the parameter name, followed by an equal \
+                sign (=), followed by the parameter value.")
+    | pname, pval ->
+        let open RamenParsing in
+        let p = opt_blanks -+ RamenScalar.Parser.p +- opt_blanks +- eof in
+        let stream = stream_of_string pval in
+        let m = [ "parameter value from command line" ] in
+        (match p m  None Parsers.no_error_correction stream |>
+              to_result with
+        | Bad e ->
+            let err =
+              IO.to_string (print_bad_result RamenScalar.print) e in
+            Pervasives.Error (`Msg err)
+        | Ok (v, _) ->
+            Pervasives.Ok (pname, v))
+  and print fmt (pname, pval) =
+    Format.fprintf fmt "%s=%s" pname (RamenScalar.to_string pval)
+  in
+  Arg.conv ~docv:"PARAM=VALUE" (parse, print)
+
+(* Note: parameter with same name in different functions will all take
+ * their value from this. Easy to add a prefix with function name when
+ * it causes troubles. *)
+let params =
+  let i = Arg.info ~doc:"Override parameter's P default value with V"
+                   ~docv:"P=V"
+                   ["p"; "parameter"] in
+  Arg.(value (opt_all param [] i))
 let run =
   Term.(
     (const ApiCmd.run
+      $ params
       $ copts),
     info ~doc:"Run one (or all) program(s)" "run")
 
