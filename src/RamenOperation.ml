@@ -316,7 +316,7 @@ let check params =
   and prefix_def def =
     Expr.iter (function
       | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
-          if List.mem alias params then
+          if List.mem_assoc alias params then
             pref := TupleParam
           else
             pref := def
@@ -353,7 +353,7 @@ let check params =
     let prefix_smart ?i =
       Expr.iter (function
         | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
-            if List.mem alias params then
+            if List.mem_assoc alias params then
               pref := TupleParam
             else if Set.mem alias !fields_from_in then
               pref := TupleIn

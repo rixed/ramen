@@ -1,5 +1,6 @@
 open Batteries
 open Lang
+open RamenSharedTypes
 
 (*$inject
   open TestHelpers
@@ -7,7 +8,9 @@ open Lang
 *)
 
 type func =
-  { name : string ; params : string list ; operation : RamenOperation.t }
+  { name : string ;
+    params : (string * scalar_value) list ;
+    operation : RamenOperation.t }
 type t = func list
 
 let make_name =
@@ -20,11 +23,14 @@ let make_func ?name ?(params=[]) operation =
   { name = (match name with Some n -> n | None -> make_name ()) ;
     params ; operation }
 
+let print_param oc (n, v) =
+  Printf.fprintf oc "%s=%a" n RamenScalar.print v
+
 let print_func oc n =
   (* TODO: keep the info that func was anonymous? *)
   Printf.fprintf oc "DEFINE '%s' %aAS %a"
     n.name
-    (List.print ~first:"" ~last:" " ~sep:" " String.print) n.params
+    (List.print ~first:"" ~last:" " ~sep:" " print_param) n.params
     RamenOperation.print n.operation
 
 let print oc p =
@@ -47,10 +53,15 @@ struct
     let m = "anonymous func" :: m in
     (RamenOperation.Parser.p >>: make_func) m
 
+  let param m =
+    let m = "function parameter" :: m in
+    (non_keyword +- opt_blanks +- char '=' +- opt_blanks ++
+     RamenScalar.Parser.p) m
+
   let named_func m =
-    let m = "func" :: m in
+    let m = "function" :: m in
     (strinG "define" -- blanks -+ func_identifier ~program_allowed:false ++
-     repeat ~sep:none ~what:"function argument" (blanks -+ non_keyword) +-
+     repeat ~sep:none ~what:"function argument" (blanks -+ param) +-
      blanks +- strinG "as" +- blanks ++
      RamenOperation.Parser.p >>: fun ((name, params), op) ->
        make_func ~name ~params op) m
@@ -88,7 +99,7 @@ struct
        replace_typ_in_program)
 
    (Ok ([\
-    { name = "add" ; params = ["p1"; "p2"] ;\
+    { name = "add" ; params = ["p1", VI32 0l; "p2", VI32 0l] ;\
       operation = \
         Yield {\
           fields = [\
@@ -98,8 +109,8 @@ struct
                   Field (typ, ref TupleParam, "p2"))) ;\
               alias = "res" } ] ;\
           every = 0. ; force_export = false ; event_time = None } } ],\
-      (40, [])))\
-      (test_p p "DEFINE add p1 p2 AS YIELD p1 + p2 AS res" |>\
+      (44, [])))\
+      (test_p p "DEFINE add p1=0 p2=0 AS YIELD p1 + p2 AS res" |>\
        (function Ok (ps, _) as x -> check ps ; x | x -> x) |>\
        replace_typ_in_program)
   *)
