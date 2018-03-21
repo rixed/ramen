@@ -633,8 +633,8 @@ struct
         (* This is important here that the type name is the raw field name,
          * because we use the tuple field type name as their identifier (unless
          * it's a virtual field (starting with #) of course since those are
-         * computed on the fly and have no variable corresponding to them in
-         * the tuple) *)
+         * computed on the fly and have no corresponding variable in the
+         * tuple) *)
         Field (make_typ field, ref tuple, field)) |||
      (parse_prefix ~def:TupleIn ++ that_string "#count" >>:
       fun (tuple, field) ->

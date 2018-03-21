@@ -171,11 +171,13 @@ struct
      * This is not enough to print the expression with types, as those do not
      * contain relevant info such as field rank. We therefore print without
      * types and encode input/output types explicitly below: *)
-    "PM="^ IO.to_string (List.print ~first:"" ~last:"" ~sep:","
-                           RamenProgram.print_param) func.params ^
     "OP="^ IO.to_string RamenOperation.print func.operation ^
     "IN="^ type_signature func.in_type ^
-    "OUT="^ type_signature func.out_type |>
+    "OUT="^ type_signature func.out_type ^
+    (* As for parameters, only their default values are embedded in the
+     * signature: *)
+    "PM="^ IO.to_string (List.print ~first:"" ~last:"" ~sep:","
+                           RamenProgram.print_param) func.params |>
     md5
 end
 

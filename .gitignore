@@ -1,4 +1,5 @@
 .*history
+.*.swp
 *.gz
 oUnit-anon.cache
 *.log

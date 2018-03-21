@@ -170,7 +170,7 @@ let summary =
 
 let program_name =
   let i = Arg.info ~doc:"Program unique name."
-                   ~docv:"program" [] in
+                   ~docv:"name" [] in
   Arg.(required (pos 0 (some string) None i))
 
 let program =

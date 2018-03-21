@@ -41,11 +41,11 @@ let func_identifier ~program_allowed =
       letter ||| underscore in
   let any_char = first_char ||| decimal_digit in
   (first_char ++
-     repeat_greedy ~sep:none ~what:"func identifier" any_char >>:
+     repeat_greedy ~sep:none ~what:"function identifier" any_char >>:
    fun (c, s) -> String.of_list (c :: s)) |||
   (id_quote -+
-   repeat_greedy ~sep:none ~what:"func identifier" (
-     cond "quoted func identifier" (fun c ->
+   repeat_greedy ~sep:none ~what:"function identifier" (
+     cond "quoted function identifier" (fun c ->
        c <> '\'' && (program_allowed || c <> '/')) 'x') +-
    id_quote >>:
   fun s -> String.of_list s)
