@@ -1,5 +1,5 @@
 Package: ramen
-Version: 1.2.5
+Version: 1.2.6
 Architecture: amd64
 Maintainer: rixed-github@happyleptic.org
 Depends: gcc, openssl, libblas-dev, liblapack-dev, libsqlite3-0
