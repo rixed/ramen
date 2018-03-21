@@ -30,17 +30,19 @@ endif::[]
 
 7. `git add * && git commit -m 'Ramen v${new_version}'`
 
-8. `make docker-build-builder` to build the builder docker images
+8. Optionally, `docker pull debian:stretch` and docker pull debian:jessie`
 
-9. Using these builder, build the deb package:
-   `docker run -ti --name builder --rm rixed/ramen-builder:stretch`.
-   Then press 1 (build).
+9. `make docker-build-builder` to build the builder docker images
 
-10. *before* quitting the builder, extract the debian package and copy
+10. Using these builder, build the deb package:
+    `docker run -ti --name builder --rm rixed/ramen-builder:stretch`.
+    Then press 1 (build).
+
+11. *before* quitting the builder, extract the debian package and copy
     in into the docker directory:
     `docker cp builder:/root/ramen/ramen.${new_version}.deb docker/`
 
-11. build the final image: `make docker-build-image`
+12. build the final image: `make docker-build-image`
 
-12. Push all the images: `make docker-push`
+13. Push all the images: `make docker-push`
 
