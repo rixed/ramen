@@ -1156,7 +1156,7 @@ let compile conf parents program =
             fun f1 f2 ->
               compare (sf_index f1.typ_name) (sf_index f2.typ_name)) in
         func.N.out_type <- typed_of_untyped_tuple ?cmp func.N.out_type ;
-        func.N.signature <- N.signature func
+        func.N.signature <- N.signature conf func
       ) program.L.funcs) in
   (* Compile
    *
@@ -1182,7 +1182,7 @@ let compile conf parents program =
   (* Now compile all those funcs for real: *)
   let%lwt objects =
     Lwt_list.map_p (fun func ->
-      let obj_name = C.obj_of_func conf.C.persist_dir func in
+      let obj_name = C.obj_of_func conf func in
       let%lwt () = compile_func conf func obj_name in
       return (func, obj_name)
     ) funcs in
@@ -1200,6 +1200,6 @@ let compile conf parents program =
       ) funcs ;
       Printf.fprintf oc "]\n") in
   (* Compile the casing and link it with everything: *)
-  let exec_file = L.exec_of_program conf.persist_dir program.name
+  let exec_file = L.exec_of_program conf.C.persist_dir program.name
   and obj_files = List.map (fun (_, n) -> n) objects in
   RamenOCamlCompiler.link conf program.name obj_files src_file exec_file

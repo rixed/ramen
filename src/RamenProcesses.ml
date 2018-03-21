@@ -609,7 +609,7 @@ let cleanup_old_files conf =
     let%lwt used_bins =
       C.with_rlock conf (fun programs ->
         C.lwt_fold_funcs programs Set.empty (fun set prog func ->
-          Set.add (C.obj_of_func conf.C.persist_dir func) set |>
+          Set.add (C.obj_of_func conf func) set |>
           Set.add (L.exec_of_program conf.C.persist_dir prog.L.name) |>
           return)) in
     let now = Unix.gettimeofday () in
