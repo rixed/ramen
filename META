@@ -2,7 +2,7 @@ description = "Event processor tailored for small-scale monitoring"
 version = "1.2.5"
 archive(native) = "codegen.cmxa"
 # parsercombinator is used by string to IP conversion :(
-requires = "lwt.ppx batteries stdint parsercombinator
+requires = "lwt.unix lwt_ppx batteries stdint parsercombinator
             findlib inotify.lwt binocle lacaml"
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:

@@ -147,6 +147,8 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
     List.map (fun d -> conf.C.bundle_dir ^"/"^ d) RamenDepLibs.objfiles @
     obj_files @ [ cmx_file ] in
 
+  !logger.debug "objfiles = %a" (List.print String.print) objfiles ;
+
   let tm = Unix.(gettimeofday () |> localtime) in
   let ppf = BatFormat.formatter_of_output (RamenLog.output ?logdir:!logger.logdir tm)(*Format.err_formatter *) in
   Asmlink.reset () ;

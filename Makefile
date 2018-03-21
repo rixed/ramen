@@ -94,7 +94,7 @@ RAMEN_SOURCES = \
 CODEGENLIB_SOURCES = \
 	src/Consts.ml src/RamenLog.ml src/Helpers.ml src/Globs.ml src/RWLock.ml \
 	src/RamenOutRef.ml src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml \
-	src/Ipv6.ml src/RamenSharedTypesJS.ml src/RamenSharedTypes.ml \
+	src/Ipv6.ml \
 	src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RingBufLib.ml src/RingBuf.ml src/RamenBinocle.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
@@ -257,6 +257,8 @@ src/RamenDepLibs.ml:
 		echo $$d | cut -c $(OCAML_WHERE_LEN)- | \
 		sed -e 's,^\(.*\)$$,  "\1" ;,' >> $@ ;\
 	done ;
+# Equivalent to -threads:
+	@echo '  "ocaml/threads" ;' >> $@
 	@echo "]" >> $@
 	@echo "let objfiles = [" >> $@
 	@set -e ; for d in $$(ocamlfind query -recursive -predicates native -format '%+a' ramen | uniq | grep -v /findlib) ; do \
@@ -264,6 +266,8 @@ src/RamenDepLibs.ml:
 		sed -e 's,^\(.*\)$$,  "\1" ;,' >> $@ ;\
 	done ;
 	@echo "]" >> $@
+# Equivalent to -threads, must come right after unix.cmxa:
+	@sed -i -e '/ocaml\/unix.cmxa/a \ \ "ocaml/threads/threads.cmxa" ;' $@
 
 # At the contrary, this one has to be generated at every build:
 src/RamenCompilConfig.ml:

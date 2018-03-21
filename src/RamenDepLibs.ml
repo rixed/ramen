@@ -6,26 +6,29 @@ let incdirs = [
   "inotify" ;
   "lacaml" ;
   "lwt" ;
+  "lwt_ppx" ;
   "num" ;
   "ocaml" ;
   "parsercombinator" ;
   "ramen" ;
   "result" ;
   "stdint" ;
+  "ocaml/threads" ;
 ]
 let objfiles = [
+  "ocaml/unix.cmxa" ;
+  "ocaml/threads/threads.cmxa" ;
+  "ocaml/bigarray.cmxa" ;
   "result/result.cmxa" ;
   "lwt/lwt.cmxa" ;
-  "ocaml/unix.cmxa" ;
+  "lwt/lwt_log.cmxa" ;
+  "lwt/lwt_unix.cmxa" ;
   "ocaml/nums.cmxa" ;
-  "ocaml/bigarray.cmxa" ;
   "ocaml/str.cmxa" ;
   "batteries/batteries.cmxa" ;
   "stdint/stdint.cmxa" ;
   "parsercombinator/parsercombinator.cmxa" ;
   "inotify/inotify.cmxa" ;
-  "lwt/lwt_log.cmxa" ;
-  "lwt/lwt_unix.cmxa" ;
   "inotify/inotify-lwt.cmxa" ;
   "binocle/Binocle.cmxa" ;
   "lacaml/lacaml.cmxa" ;
