@@ -421,6 +421,7 @@ long-check: src/ramen check
 	./src/tests/from
 	./src/tests/sort
 	./src/tests/merge
+	./src/tests/params
 
 check-long: long-check
 

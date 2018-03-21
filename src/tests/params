@@ -1,0 +1,17 @@
+#!/bin/sh
+
+set -e
+top_srcdir=$(dirname $0)"/../.."
+. $top_srcdir/src/tests/funcs.sh
+
+expected_tests=1
+
+start
+add_earthquakes
+add_def \
+"DEFINE p sel_year=1976 AS
+   FROM test/earthquakes
+   SELECT n WHERE year = sel_year
+   EXPORT;"
+run
+check_equal 14 "$(tail_ 1 1 p)"

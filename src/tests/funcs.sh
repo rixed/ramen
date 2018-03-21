@@ -83,11 +83,16 @@ upload() {
        "$RAMEN_URL/upload/test/$func"
 }
 
+add_def() {
+  PROGRAM=$PROGRAM"
+$1
+"
+}
+
 add_func() {
   # Beware that $2 might end with a comment
-  PROGRAM=$PROGRAM"DEFINE '$1' AS $2
-;
-"
+	add_def "DEFINE '$1' AS $2
+;"
 }
 
 add_123() {
