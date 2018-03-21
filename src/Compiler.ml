@@ -1187,8 +1187,9 @@ let compile conf parents program =
       return (func, obj_name)
     ) funcs in
   (* Produce the casing: *)
+  let exec_file = L.exec_of_program conf.C.persist_dir program.name in
   let src_file =
-    RamenOCamlCompiler.with_code_file_for "casing" conf (fun oc ->
+    RamenOCamlCompiler.with_code_file_for exec_file conf (fun oc ->
       Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
         program.name ;
       Printf.fprintf oc "let () = CodeGenLib.casing [\n" ;
@@ -1200,6 +1201,5 @@ let compile conf parents program =
       ) funcs ;
       Printf.fprintf oc "]\n") in
   (* Compile the casing and link it with everything: *)
-  let exec_file = L.exec_of_program conf.C.persist_dir program.name
-  and obj_files = List.map (fun (_, n) -> n) objects in
+  let obj_files = List.map (fun (_, n) -> n) objects in
   RamenOCamlCompiler.link conf program.name obj_files src_file exec_file

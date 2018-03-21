@@ -622,6 +622,7 @@ let cleanup_old_files conf =
           !logger.info "Deleting old binary %s" bin ;
           log_exceptions Unix.unlink fname) in
     dir_subtree_iter ~on_file:unlink_old_bin bindir ;
+    (* TODO: also unlink old files in src *)
     Lwt_unix.sleep 3600. >>= loop
   in
   loop ()

@@ -223,10 +223,7 @@ let with_code_file_for obj_name conf f =
   let basename =
     if Char.is_letter basename.[0] then basename
     else "m"^ basename in
-  let fname =
-    conf.C.persist_dir ^"/workers/src/"
-                       ^ RamenVersions.codegen
-                       ^"/ocaml/"^ basename in
+  let fname = Filename.dirname obj_name ^"/"^ basename in
   mkdir_all ~is_file:true fname ;
   if file_exists ~maybe_empty:false fname then
     !logger.debug "Reusing source file %S" fname
