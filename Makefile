@@ -2,10 +2,11 @@
 
 VERSION = 1.2.5
 
-OCAMLC     = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamlc
-OCAMLOPT   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamlopt
-OCAMLDEP   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamldep
-OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= ocamlfind ocamlmktop
+DUPS_IN = $(shell ocamlfind ocamlc -where)/compiler-libs
+OCAMLC     = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlc
+OCAMLOPT   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
+OCAMLDEP   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
+OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlmktop
 QTEST      = qtest
 JSOO       = js_of_ocaml
 JS_MINIFY  = jsoo_minify
@@ -49,7 +50,7 @@ all: $(INSTALLED)
 # Generic rules
 
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .top .js .html .adoc
-.PHONY: clean distclean all check dep install uninstall reinstall \
+.PHONY: clean all check dep install uninstall reinstall \
         bundle doc deb \
         docker-latest docker-build-image docker-build-builder docker-push
 
@@ -505,15 +506,11 @@ docker-push:
 # Cleaning
 
 clean:
-	@echo "Cleaning files used for build"
+	@echo "Cleaning all build files"
 	@$(RM) src/*.cmo src/*.s src/*.annot src/*.o
 	@$(RM) src/web/*.cmo src/web/*.annot src/web/*.byte
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
 	@$(RM) src/ringbuf/*.o src/colcomp/*.o src/colcomp/colcomp_test
-	@sudo rm -rf debtmp
-
-distclean: clean
-	@echo "Cleaning all build files"
 	@$(RM) src/*.cma src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
 	@$(RM) src/web/*.cmi src/web/*.js src/web/style.css
 	@$(RM) oUnit-anon.cache qtest.targets.log
@@ -522,4 +519,5 @@ distclean: clean
 	@$(RM) src/ramen src/codegen.cmxa src/RamenFileNotify.ml src/libringbuf.a
 	@$(RM) src/libcolcomp.a src/libcollectd.a src/libnetflow.a
 	@$(RM) -r $(BUNDLE_DIR)
+	@sudo rm -rf debtmp
 	@$(RM) ramen.*.deb
