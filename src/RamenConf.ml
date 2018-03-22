@@ -210,7 +210,8 @@ type conf =
     max_history_archives : int ;
     max_execs_age : int ;
     use_embedded_compiler : bool ;
-    bundle_dir : string }
+    bundle_dir : string ;
+    keep_temp_files : bool }
 
 module Func =
 struct
@@ -707,16 +708,16 @@ let find_func programs program name =
   let program = Hashtbl.find programs program in
   program, Hashtbl.find program.Program.funcs name
 
-let make_conf do_persist ramen_url debug persist_dir
-              max_simult_compilations max_history_archives
-              use_embedded_compiler bundle_dir max_incidents_per_team =
+let make_conf do_persist ramen_url debug persist_dir max_simult_compilations
+              max_history_archives use_embedded_compiler bundle_dir
+              max_incidents_per_team keep_temp_files =
   { graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
     alerts = Alerter.get_state do_persist persist_dir ;
     archived_incidents = [ (* TODO *) ] ; max_incidents_per_team ;
     do_persist ; ramen_url ; debug ; persist_dir ;
     max_simult_compilations = ref max_simult_compilations ;
     max_history_archives ; max_execs_age = 900 ;
-    use_embedded_compiler ; bundle_dir }
+    use_embedded_compiler ; bundle_dir ; keep_temp_files }
 
 (* AutoCompletion of func/field names *)
 

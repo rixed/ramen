@@ -1059,7 +1059,7 @@ let set_all_types conf parents funcs =
         Hashtbl.add programs "test" p ;
         let conf =
           RamenConf.make_conf false "ramen_url" true "/tmp/glop"
-                              1 0 false "/tmp/bundle" 1 in
+                              1 0 false "/tmp/bundle" 1 false in
         set_all_types conf parents p.L.funcs ;
         "ok"
       with e ->

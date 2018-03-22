@@ -50,7 +50,7 @@ let add copts name program ok_if_running start remote () =
         C.make_conf true copts.server_url copts.debug copts.persist_dir
                     copts.max_simult_compilations copts.max_history_archives
                     copts.use_embedded_compiler copts.bundle_dir
-                    copts.max_incidents_per_team in
+                    copts.max_incidents_per_team false in
       let%lwt _program_name =
         RamenOps.set_program ~ok_if_running ~start conf name program in
       return_unit)
@@ -76,7 +76,7 @@ let sync copts root_dir program_prefix and_start () =
       C.make_conf true copts.server_url copts.debug copts.persist_dir
                   copts.max_simult_compilations copts.max_history_archives
                   copts.use_embedded_compiler copts.bundle_dir
-                  copts.max_incidents_per_team in
+                  copts.max_incidents_per_team false in
     !logger.info "Reading local configuration..." ;
     let disk_programs = gather_all_fname root_dir in
     (* It is always possible to delete a program regardless of dependencies,
@@ -156,7 +156,7 @@ let start copts daemonize no_demo to_stderr www_dir
     C.make_conf true copts.server_url copts.debug copts.persist_dir
                 copts.max_simult_compilations copts.max_history_archives
                 copts.use_embedded_compiler copts.bundle_dir
-                copts.max_incidents_per_team in
+                copts.max_incidents_per_team false in
   if daemonize then do_daemonize () ;
   (* Prepare ringbuffers for reports and notifications: *)
   let rb_name = C.report_ringbuf conf in
@@ -587,7 +587,7 @@ let info copts json short name_opt remote () =
     C.make_conf true copts.server_url copts.debug copts.persist_dir
                 copts.max_simult_compilations copts.max_history_archives
                 copts.use_embedded_compiler copts.bundle_dir
-                copts.max_incidents_per_team in
+                copts.max_incidents_per_team false in
   Lwt_main.run (
     match%lwt get_program_info conf ~err_ok:true copts name_opt remote with
     | exception (Failure _ as e) ->
@@ -622,17 +622,17 @@ let test copts conf_file tests () =
     C.make_conf true copts.server_url copts.debug copts.persist_dir
                 copts.max_simult_compilations copts.max_history_archives
                 copts.use_embedded_compiler copts.bundle_dir
-                copts.max_incidents_per_team in
+                copts.max_incidents_per_team false in
   Lwt_main.run (
     RamenTests.run conf copts.server_url conf_file tests)
 
-let comp copts root_path source_files () =
+let comp copts keep_temp_files root_path source_files () =
   logger := make_logger copts.debug ;
   let conf =
     C.make_conf true copts.server_url copts.debug copts.persist_dir
                 copts.max_simult_compilations copts.max_history_archives
                 copts.use_embedded_compiler copts.bundle_dir
-                copts.max_incidents_per_team in
+                copts.max_incidents_per_team keep_temp_files in
   let all_ok = ref true in
   let comp_file source_file =
     let program_name = Filename.remove_extension source_file |>

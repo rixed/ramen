@@ -288,10 +288,15 @@ let stop =
 (* New "offline" compilation: *)
 
 let root_path =
+  let env = Term.env_info "RAMEN_ROOT" in
   let i = Arg.info ~doc:"Path where to find other programs."
-                   ~docv:"RAMEN_ROOT"
-                   [ "root" ] in
+                   ~env [ "root" ] in
   Arg.(value (opt string "" i))
+
+let keep_temp_files =
+  let i = Arg.info ~doc:"Keep temporary files."
+                   [ "keep-temp-files" ] in
+  Arg.(value (flag i))
 
 let source_files =
   let i = Arg.info ~doc:"Source files to compile"
@@ -303,6 +308,7 @@ let comp =
   Term.(
     (const ApiCmd.comp
       $ copts
+      $ keep_temp_files
       $ root_path
       $ source_files),
     info ~doc:"Compile the given source file into an executable." "comp")

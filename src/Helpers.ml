@@ -187,6 +187,9 @@ let ensure_no_trailing_slash dirname =
   if len > 0 && dirname.[len-1] = '/' then
     String.rchop dirname else dirname
 
+let change_ext new_ext fname =
+  Filename.remove_extension fname ^ new_ext
+
 let name_of_signal s =
   let open Sys in
   if s = sigabrt then "ABORT"

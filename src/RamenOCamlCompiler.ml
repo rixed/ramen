@@ -44,7 +44,7 @@ let compile_internal conf func_name src_file obj_file =
   include_dirs :=
     List.map (fun d -> conf.C.bundle_dir ^"/"^ d) RamenDepLibs.incdirs ;
   dlcode := true ;
-  keep_asm_file := conf.C.debug ;
+  keep_asm_file := conf.C.keep_temp_files ;
   (* equivalent to -O2: *)
   if conf.C.debug then (
     default_simplify_rounds := 1 ;
@@ -80,11 +80,12 @@ let compile_external conf func_name src_file obj_file =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s \
+           ocamlfind ocamlopt%s%s \
                      -o %s -package ramen -c %s"
       (shell_quote path)
       (shell_quote ocamlpath)
-      (if conf.C.debug then " -S -g -annot" else "")
+      (if conf.C.debug then " -g -annot" else "")
+      (if conf.C.keep_temp_files then " -S" else "")
       (shell_quote obj_file)
       (shell_quote src_file) in
   (* TODO: return an array of arguments and get rid of the shell *)
@@ -127,7 +128,7 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
     List.map (fun d -> conf.C.bundle_dir ^"/"^ d) RamenDepLibs.incdirs @
     Set.to_list inc_dirs ;
   dlcode := true ;
-  keep_asm_file := conf.C.debug ;
+  keep_asm_file := conf.C.keep_temp_files ;
   (* equivalent to -O2: *)
   if conf.C.debug then (
     default_simplify_rounds := 1 ;
@@ -173,11 +174,12 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s %s \
+           ocamlfind ocamlopt%s%s %s \
                        -o %s -package ramen -linkpkg %s %s"
       (shell_quote path)
       (shell_quote ocamlpath)
-      (if conf.C.debug then " -S -g -annot" else "")
+      (if conf.C.debug then " -g -annot" else "")
+      (if conf.C.keep_temp_files then " -S" else "")
       (IO.to_string
         (Set.print ~first:"" ~last:"" ~sep:" " (fun oc f ->
           Printf.fprintf oc "-I %s" (shell_quote f))) inc_dirs)
