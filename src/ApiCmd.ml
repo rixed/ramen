@@ -625,3 +625,26 @@ let test copts conf_file tests () =
                 copts.max_incidents_per_team in
   Lwt_main.run (
     RamenTests.run conf copts.server_url conf_file tests)
+
+let comp copts root_path source_files () =
+  logger := make_logger copts.debug ;
+  let conf =
+    C.make_conf true copts.server_url copts.debug copts.persist_dir
+                copts.max_simult_compilations copts.max_history_archives
+                copts.use_embedded_compiler copts.bundle_dir
+                copts.max_incidents_per_team in
+  let all_ok = ref true in
+  let comp_file source_file =
+    let program_name = Filename.remove_extension source_file |>
+                       rel_path_from root_path
+    and program_code = read_whole_file source_file in
+    RamenOps.ext_compile conf root_path program_name program_code
+  in
+  List.iter (fun source_file ->
+    try
+      comp_file source_file
+    with e ->
+      print_exception e ;
+      all_ok := false
+  ) source_files ;
+  if not !all_ok then exit 1

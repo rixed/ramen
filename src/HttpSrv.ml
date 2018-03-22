@@ -655,7 +655,7 @@ let upload conf headers program func body =
   (* Look for the func handling this suffix: *)
   match func.N.operation with
   | ReadCSVFile { where = ReceiveFile ; _ } ->
-    let dir = C.upload_dir_of_func conf.C.persist_dir func in
+    let dir = C.upload_dir_of_func conf.C.persist_dir func.N.program func.N.name func.N.in_type in
     let ct = get_content_type headers |> String.lowercase in
     let content =
       if ct = Consts.urlencoded_content_type then Uri.pct_decode body

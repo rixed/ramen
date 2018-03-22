@@ -217,7 +217,7 @@ let link conf program_name obj_files src_file bin_file =
 
 (* Helpers: *)
 
-let with_code_file_for obj_name conf f =
+let with_code_file_for ?(allow_reuse=true) obj_name conf f =
   assert (obj_name <> "") ;
   let basename =
     Filename.(remove_extension (basename obj_name)) ^".ml" in
@@ -227,7 +227,7 @@ let with_code_file_for obj_name conf f =
     else "m"^ basename in
   let fname = Filename.dirname obj_name ^"/"^ basename in
   mkdir_all ~is_file:true fname ;
-  if file_exists ~maybe_empty:false fname then
+  if allow_reuse && file_exists ~maybe_empty:false fname then
     !logger.debug "Reusing source file %S" fname
   else
     File.with_file_out ~mode:[`create; `text] fname f ;

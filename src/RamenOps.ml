@@ -377,3 +377,160 @@ let graph_info conf program_opt =
     let%lwt programs' = RamenProcesses.graph_programs programs program_opt in
     let programs' = L.order programs' in
     Lwt_list.map_s (program_info_of_program programs) programs')
+
+(*
+ * Simpler, offline, lwt-free version of set_program followed by
+ * Compiler.compile, for `ramen comp`:
+ *)
+
+let exec_of_program root_path program_name =
+  (* Use an extension wo we can still use the plain program_name for a
+   * directory holding subprograms. Not using "exe" as it remind me of
+   * that operating system, but rather "x" as in the x bit: *)
+  root_path ^"/"^ program_name ^".x"
+
+let runconf_of_program root_path program_name : C.RunConf.Program.t =
+  let bin = exec_of_program root_path program_name in
+  !logger.debug "Reading config of %s..." program_name ;
+  let ic = Unix.open_process_in bin in
+  let close () =
+    match Unix.close_process_in ic with
+    | Unix.WEXITED o -> ()
+    | s ->
+        !logger.error "Process %s exited with %s"
+          bin
+          (string_of_process_status s) in
+  finally close Marshal.from_channel ic
+
+let func_of_fq_name root_path fq_name =
+  let program_name, func_name = C.program_func_of_user_string fq_name in
+  let rc = runconf_of_program root_path program_name in
+  List.find (fun func -> func.C.RunConf.Func.name = func_name) rc.functions
+
+let out_type_of_fq_name root_path fq_name =
+  let func = func_of_fq_name root_path fq_name in
+  func.out_type
+
+let ext_compile conf root_path program_name program_code =
+  (* Disallow anonymous programs for simplicity: *)
+  if program_name = "" then
+    failwith "Programs must have non-empty names" else
+  if has_dotnames program_name then
+    failwith "Program names cannot include directory dotnames" else
+  (* Get a list of RamenProgram.fun: *)
+  !logger.info "Parsing program %s" program_name ;
+  let funcs = C.parse_program program_code in
+  (* Typing *)
+  (* Note: before we get rid of the "inline" compiler we'll have to fake
+   * our knowledge of the program come from the inline configuration.
+   *
+   * So, the compiler needs parents to be a hash from child name to a list
+   * of func (the parents), and it takes the functions as a hash of names
+   * to C.Func.c. The resulting types will be stored in compiler_funcs: *)
+  !logger.info "Typing program %s" program_name ;
+  let compiler_funcs = Hashtbl.create 7 in
+  List.iter (fun func ->
+    let fq_name = program_name ^"/"^ func.RamenProgram.name in
+    let me_func =
+      C.make_func program_name func.RamenProgram.name func.RamenProgram.params func.RamenProgram.operation in
+    !logger.debug "Found function %s" fq_name ;
+    Hashtbl.add compiler_funcs fq_name me_func
+  ) funcs ;
+  let compiler_parents = Hashtbl.create 7 in
+  List.iter (fun func ->
+    let func_parents =
+      RamenOperation.parents_of_operation func.RamenProgram.operation in
+    let par_list =
+      List.map (fun parent_name ->
+        (* parent_name is the name as it appear in the source, can be FQ name
+         * or just a local name. We need to build a set of funcs where all
+         * involved funcs appear only once: *)
+        let parent_fq_name =
+          if String.contains parent_name '/' then parent_name
+          else program_name ^"/"^ parent_name in
+        match Hashtbl.find compiler_funcs parent_fq_name with
+        | exception Not_found ->
+            !logger.debug "Found external reference to function %s"
+              parent_fq_name ;
+            let pdef = func_of_fq_name root_path parent_fq_name in
+            (* Build a C.Func.t from this RunConf.Fun.t: *)
+            let program, name =
+              C.program_func_of_user_string parent_fq_name in
+            let operation = RamenOperation.Yield {
+              fields = [] ; every = 0. ; event_time = None ;
+              force_export = false } in
+            C.Func.{
+              program ; name ; params = pdef.C.RunConf.Func.params ;
+              operation ; signature = "" ; parents = [] ;
+              in_type = TypedTuple pdef.C.RunConf.Func.in_type ;
+              out_type = TypedTuple pdef.C.RunConf.Func.out_type ;
+              pid = None ; last_exit = "" ; succ_failures = 0 }
+        | f -> f
+      ) func_parents in
+    Hashtbl.add compiler_parents func.RamenProgram.name par_list ;
+  ) funcs ;
+  Compiler.set_all_types conf compiler_parents compiler_funcs ;
+  (* Now compile all those funcs for real.
+   *
+   * We compile each functions into an object file with a single
+   * entry point performing the operation. We then generate the dynamic part
+   * of the ocaml casing (dynamic just because it needs to know the functions
+   * name - we could find the various symbols in the executable itself but
+   * doing this portably would be a lot of work). The casing will then pick a
+   * function to run according to some envvar. It will pass this function a
+   * few OCaml functions to call - but for now, given the functions are all
+   * implemented in OCaml, we just call them directly.  *)
+  (* Compile all functions locally, in parallel: *)
+  !logger.info "Compiling program %s" program_name ;
+  let obj_files = Lwt_main.run (
+    Hashtbl.values compiler_funcs |> List.of_enum |>
+    Lwt_list.map_p (fun func ->
+      let obj_name =
+        root_path ^"/"^ program_name ^"/M"^ func.N.signature ^".cmx" in
+      let%lwt () =
+        Compiler.compile_func conf program_name func.N.name func.N.params func.N.operation func.N.in_type func.N.out_type obj_name in
+      return obj_name)) in
+  (* Produce the casing: *)
+  let exec_file = exec_of_program root_path program_name in
+  let src_file =
+    RamenOCamlCompiler.with_code_file_for ~allow_reuse:false exec_file conf
+      (fun oc ->
+      Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
+        program_name ;
+      (* Embed in the binary all info required for running it: the program
+       * name, the function names, their signature, input and output types,
+       * force export and merge flags, and parameters. *)
+      let runconf =
+        let open C.RunConf in
+        Program.{
+          name = program_name ;
+          functions =
+            Hashtbl.values compiler_funcs |>
+            Enum.map (fun func ->
+              Func.{
+                name = func.N.name ;
+                params = func.N.params ;
+                in_type = C.typed_tuple_type func.N.in_type ;
+                out_type = C.typed_tuple_type func.N.out_type ;
+                signature = func.N.signature ;
+                parents = func.N.parents ;
+                force_export = RamenOperation.is_exporting func.operation ;
+                merge_inputs = RamenOperation.is_merging func.operation }
+            ) |>
+            List.of_enum } in
+      Printf.fprintf oc "let rc_str_ = %S\n"
+        ((PPP.to_string C.RunConf.Program.t_ppp_ocaml runconf) |>
+         PPP_prettify.prettify) ;
+      Printf.fprintf oc "let rc_marsh_ = %S\n"
+        (Marshal.(to_string runconf [])) ;
+      (* Then call CodeGenLib.casing with all this: *)
+      Printf.fprintf oc
+        "let () = CodeGenLib.casing rc_str_ rc_marsh_ [\n" ;
+      Hashtbl.iter (fun _ func ->
+        Printf.fprintf oc"\t%S, M%s.%s ;\n"
+          func.N.name func.N.signature Compiler.entry_point_name
+      ) compiler_funcs ;
+      Printf.fprintf oc "]\n") in
+  (* Compile the casing and link it with everything: *)
+  Lwt_main.run (
+    RamenOCamlCompiler.link conf program_name obj_files src_file exec_file)

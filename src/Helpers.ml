@@ -339,6 +339,41 @@ let file_print oc fname =
   let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
   String.print oc content
 
+let rec simplified_path =
+  let res =
+    [ Str.regexp "/[^/]+/\\.\\./" ;
+      Str.regexp "/\\./" ;
+      Str.regexp "//" ] in
+  fun path ->
+    let s =
+      List.fold_left (fun s re ->
+        Str.global_replace re "/" s
+      ) path res in
+    if s = path then s else simplified_path s
+(*$= simplified_path & ~printer:identity
+  "/glop/glop" (simplified_path "/glop/glop")
+  "/glop/glop" (simplified_path "/glop/pas glop/../glop")
+  "/glop/glop" (simplified_path "/glop/./glop")
+  "/glop/glop" (simplified_path "/glop//glop")
+  "/glop/glop" (simplified_path "/glop/pas glop/..//pas glop/.././//glop")
+ *)
+
+let realpath_of path =
+  if path <> "" && path.[0] = '/' then path else
+  let path = Unix.getcwd () ^"/"^ path in
+  simplified_path path
+
+let rel_path_from root_path path =
+  (* If root path is null assume source file is already relative to root: *)
+  if root_path = "" then path else
+  let root = realpath_of root_path
+  and path = realpath_of path in
+  if String.starts_with path root then
+    let rl = String.length root in
+    String.sub path rl (String.length path - rl)
+  else
+    failwith ("Cannot locate "^ path ^" within "^ root_path)
+
 let getenv ?def n =
   try Sys.getenv n
   with Not_found ->

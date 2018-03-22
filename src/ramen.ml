@@ -285,6 +285,28 @@ let stop =
       $ program_name),
     info ~doc:"Stop one (or all) program(s)" "stop")
 
+(* New "offline" compilation: *)
+
+let root_path =
+  let i = Arg.info ~doc:"Path where to find other programs."
+                   ~docv:"RAMEN_ROOT"
+                   [ "root" ] in
+  Arg.(value (opt string "" i))
+
+let source_files =
+  let i = Arg.info ~doc:"Source files to compile"
+                   ~docv:"source.ramen" [] in
+  Arg.(non_empty (pos_all string [] i))
+
+(* TODO: rename as compile once inline compilation command is gone *)
+let comp =
+  Term.(
+    (const ApiCmd.comp
+      $ copts
+      $ root_path
+      $ source_files),
+    info ~doc:"Compile the given source file into an executable." "comp")
+
 (*
  * Export Tuples
  *)
@@ -464,7 +486,7 @@ let () =
     dequeue ; summary ; sync ;
     add ; compile ; run ; stop ;
     tail ; timeseries ; timerange ;
-    get_info ; test
+    get_info ; test ; comp
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

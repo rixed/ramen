@@ -963,18 +963,40 @@ let check_func_types parents func =
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
     raise (SyntaxErrorInFunc (func.N.name, e))
 
+let typed_of_untyped_tuple ?cmp = function
+  | C.TypedTuple _ as x -> x
+  | C.UntypedTuple temp_tup_typ ->
+      if not temp_tup_typ.C.finished_typing then (
+        let what = IO.to_string C.print_temp_tup_typ temp_tup_typ in
+        raise (SyntaxError (CannotCompleteTyping what))) ;
+      let user = C.tup_typ_of_temp_tup_type temp_tup_typ in
+      let user =
+        match cmp with None -> user
+        | Some cmp -> List.fast_sort cmp user in
+      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
+      TypedTuple { user ; ser }
+
+let get_selected_fields func =
+  match func.N.operation with
+  | Yield { fields ; _ } -> Some fields
+  | Aggregate { fields ; _ } -> Some fields
+  | _ -> None
+
 (* Since we can have loops within a program we can not propagate types
  * immediately. Also, the star selection prevent us from propagating
  * input from output types in one go.
  * We do it bit by bit but will still make sure to make parent
  * output >= children input eventually, and that fields are encoded in
  * the specified order. *)
-let set_all_types parents program =
+(* TODO: reduce those types: parents should be a hash from parent name to
+ * out type, and program should be just a list of funcs (first C.funcs, then
+ * RamenProgram.funcs...) *)
+let set_all_types conf parents funcs =
   let rec loop () =
     if Hashtbl.fold (fun _ func changed ->
           let parents = Hashtbl.find_default parents func.N.name [] in
           check_func_types parents func || changed
-        ) program.L.funcs false
+        ) funcs false
     then loop ()
   in
   loop () ;
@@ -992,8 +1014,38 @@ let set_all_types parents program =
         let what = IO.to_string (print true) e in
         raise (SyntaxErrorInFunc (func.N.name, CannotCompleteTyping what))
     ) func.N.operation
-  ) program.L.funcs
-  (* TODO: Move all typing in a separate module *)
+  ) funcs ;
+  (* Not quite home and dry yet: *)
+  Hashtbl.iter (fun _ func ->
+    !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
+      func.N.name
+      C.print_tuple_type func.N.in_type
+      C.print_tuple_type func.N.out_type ;
+    func.N.in_type <- typed_of_untyped_tuple func.N.in_type ;
+    (* So far order was not taken into account. Reorder output types
+     * to match selected fields (not strictly required but improves
+     * user experience in the GUI). Beware that the Expr.typ has a
+     * unique number so we cannot compare/copy them directly (although
+     * that unique number is required to be unique only for a func,
+     * better keep it unique globally in case we want to generate
+     * several funcs in a single binary, and to avoid needless
+     * confusion when debugging): *)
+    let cmp =
+      get_selected_fields func |>
+      Option.map (fun selected_fields ->
+        let sf_index name =
+          try List.findi (fun _ sf ->
+                sf.RamenOperation.alias = name) selected_fields |>
+              fst
+          with Not_found ->
+            (* star-imported fields - throw them all at the end in no
+             * specific order. TODO: in parent order? *)
+            max_int in
+        fun f1 f2 ->
+          compare (sf_index f1.typ_name) (sf_index f2.typ_name)) in
+    func.N.out_type <- typed_of_untyped_tuple ?cmp func.N.out_type ;
+    func.N.signature <- N.signature conf func
+  ) funcs
 
   (*$inject
     let test_type_single_func op_text =
@@ -1005,7 +1057,10 @@ let set_all_types parents program =
           RamenConf.make_program programs "test" txt funcs in
         let parents = BatHashtbl.of_list [ "test", [] ] in
         Hashtbl.add programs "test" p ;
-        set_all_types parents p ;
+        let conf =
+          RamenConf.make_conf false "ramen_url" true "/tmp/glop"
+                              1 0 false "/tmp/bundle" 1 in
+        set_all_types conf parents p.L.funcs ;
         "ok"
       with e ->
         Printf.sprintf "Exception when parsing/typing operation %S: %s\n%s"
@@ -1062,7 +1117,10 @@ let set_all_types parents program =
        (test_check_expr "i8(9999)")
    *)
 
-let compile_func conf func obj_name =
+let entry_point_name = "start"
+
+let compile_func conf program_name func_name params operation
+                 in_type out_type obj_name =
   let open Lwt in
   mkdir_all ~is_file:true obj_name ;
   (* Let's compile (or maybe not) *)
@@ -1070,17 +1128,17 @@ let compile_func conf func obj_name =
     !logger.debug "Reusing binary %S" obj_name ;
     return_unit
   ) else (
-    let in_typ = C.tuple_user_type func.N.in_type
-    and out_typ = C.tuple_user_type func.N.out_type in
+    let in_typ = C.tuple_user_type in_type
+    and out_typ = C.tuple_user_type out_type in
     (* In a few cases the worker sees a slightly different version of
      * the code and the ramen daemon will adapt: *)
     let operation =
       let open RamenOperation in
-      match func.N.operation with
+      match operation with
       | ReadCSVFile { where = ReceiveFile ; what ; preprocessor ;
                       force_export ; event_time } ->
-        let dir =
-          C.upload_dir_of_func conf.C.persist_dir func in
+        let dir = C.upload_dir_of_func conf.C.persist_dir program_name
+                                       func_name in_type in
         mkdir_all dir ;
         ReadCSVFile {
           (* The underscore is to restrict ourself to complete files that
@@ -1090,28 +1148,8 @@ let compile_func conf func obj_name =
       | ReadCSVFile { where = DownloadFile _ ; _ } ->
         failwith "Not Implemented"
       | x -> x in
-    let entry_point = C.entry_point_of_func func in
-    CodeGen_OCaml.compile conf entry_point func.N.name obj_name
-                          in_typ out_typ func.params operation)
-
-let typed_of_untyped_tuple ?cmp = function
-  | C.TypedTuple _ as x -> x
-  | C.UntypedTuple temp_tup_typ ->
-      if not temp_tup_typ.C.finished_typing then (
-        let what = IO.to_string C.print_temp_tup_typ temp_tup_typ in
-        raise (SyntaxError (CannotCompleteTyping what))) ;
-      let user = C.tup_typ_of_temp_tup_type temp_tup_typ in
-      let user =
-        match cmp with None -> user
-        | Some cmp -> List.fast_sort cmp user in
-      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
-      TypedTuple { user ; ser }
-
-let get_selected_fields func =
-  match func.N.operation with
-  | Yield { fields ; _ } -> Some fields
-  | Aggregate { fields ; _ } -> Some fields
-  | _ -> None
+    CodeGen_OCaml.compile conf entry_point_name func_name obj_name
+                          in_typ out_typ params operation)
 
 let compile conf parents program =
   let open Lwt in
@@ -1126,38 +1164,8 @@ let compile conf parents program =
       else fail (MissingDependency func)
     ) in
   !logger.debug "Trying to compile program %s" program.L.name ;
-  let%lwt () = wrap (fun () ->
-    set_all_types parents program ;
-    Hashtbl.iter (fun _ func ->
-        !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
-          func.N.name
-          C.print_tuple_type func.N.in_type
-          C.print_tuple_type func.N.out_type ;
-        func.N.in_type <- typed_of_untyped_tuple func.N.in_type ;
-        (* So far order was not taken into account. Reorder output types
-         * to match selected fields (not strictly required but improves
-         * user experience in the GUI). Beware that the Expr.typ has a
-         * unique number so we cannot compare/copy them directly (although
-         * that unique number is required to be unique only for a func,
-         * better keep it unique globally in case we want to generate
-         * several funcs in a single binary, and to avoid needless
-         * confusion when debugging): *)
-        let cmp =
-          get_selected_fields func |>
-          Option.map (fun selected_fields ->
-            let sf_index name =
-              try List.findi (fun _ sf ->
-                    sf.RamenOperation.alias = name) selected_fields |>
-                  fst
-              with Not_found ->
-                (* star-imported fields - throw them all at the end in no
-                 * specific order. TODO: in parent order? *)
-                max_int in
-            fun f1 f2 ->
-              compare (sf_index f1.typ_name) (sf_index f2.typ_name)) in
-        func.N.out_type <- typed_of_untyped_tuple ?cmp func.N.out_type ;
-        func.N.signature <- N.signature conf func
-      ) program.L.funcs) in
+  let%lwt () =
+    wrap (fun () -> set_all_types conf parents program.L.funcs) in
   (* Compile
    *
    * We compile each functions (checking with the signature that we do not
@@ -1183,13 +1191,17 @@ let compile conf parents program =
   let%lwt objects =
     Lwt_list.map_p (fun func ->
       let obj_name = C.obj_of_func conf func in
-      let%lwt () = compile_func conf func obj_name in
+      let%lwt () =
+        compile_func conf func.N.program func.N.name func.N.params
+                     func.N.operation func.N.in_type func.N.out_type
+                     obj_name in
       return (func, obj_name)
     ) funcs in
   (* Produce the casing: *)
   let exec_file = L.exec_of_program conf.C.persist_dir program.name in
   let src_file =
-    RamenOCamlCompiler.with_code_file_for exec_file conf (fun oc ->
+    RamenOCamlCompiler.with_code_file_for ~allow_reuse:false exec_file conf
+      (fun oc ->
       Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
         program.name ;
       (* Embed in the binary all info required for running it: the program
@@ -1217,15 +1229,15 @@ let compile conf parents program =
         ((PPP.to_string C.RunConf.Program.t_ppp_ocaml runconf) |>
          PPP_prettify.prettify) ;
       Printf.fprintf oc "let rc_marsh_ = %S\n"
-        (Marshal.(to_string runconf [No_sharing])) ;
+        (Marshal.(to_string runconf [])) ;
       (* Then call CodeGenLib.casing with all this: *)
       Printf.fprintf oc
         "let () = CodeGenLib.casing rc_str_ rc_marsh_ [\n" ;
       List.iter (fun func ->
         Printf.fprintf oc"\t%S, M%s.%s ;\n"
+          func.N.name
           func.N.signature
-          func.N.signature
-          (C.entry_point_of_func func)
+          entry_point_name
       ) funcs ;
       Printf.fprintf oc "]\n") in
   (* Compile the casing and link it with everything: *)

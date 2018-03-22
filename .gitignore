@@ -48,3 +48,5 @@ src/RamenCompilConfig.ml
 bundle
 *.deb
 debtmp/
+*.x
+examples/**/*.ml

@@ -281,14 +281,12 @@ let obj_of_func conf func =
                    ^"/"^ func.Func.program
                    ^"/m"^ func.Func.signature ^".cmx"
 
-let entry_point_of_func _func = "start"
+let tmp_input_of_func persist_dir program_name func_name in_type =
+  persist_dir ^"/workers/inputs/"^ program_name ^"/"^ func_name ^"/"
+              ^ type_signature in_type
 
-let tmp_input_of_func persist_dir func =
-  persist_dir ^"/workers/inputs/"^ Func.fq_name func ^"/"
-              ^ type_signature func.Func.in_type
-
-let upload_dir_of_func persist_dir func =
-  tmp_input_of_func persist_dir func ^"/uploads"
+let upload_dir_of_func persist_dir program_name func_name in_type =
+  tmp_input_of_func persist_dir program_name func_name in_type ^"/uploads"
 
 exception InvalidCommand of string
 

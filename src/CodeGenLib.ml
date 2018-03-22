@@ -487,7 +487,7 @@ let worker_start worker_name get_binocle_tuple k =
 
 let read_csv_file filename do_unlink separator sersize_of_tuple
                   serialize_tuple tuple_of_strings preprocessor =
-  let worker_name = getenv ~def:"?" "name" in
+  let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
   worker_start worker_name get_binocle_tuple (fun _conf ->
@@ -522,7 +522,7 @@ let listen_on (collector :
                 unit Lwt.t)
               addr_str port proto_name
               sersize_of_tuple serialize_tuple =
-  let worker_name = getenv ~def:"?" "name" in
+  let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
   worker_start worker_name get_binocle_tuple (fun _conf ->
@@ -537,7 +537,7 @@ let listen_on (collector :
     collector ~inet_addr ~port ~while_ outputer)
 
 let yield sersize_of_tuple serialize_tuple select every =
-  let worker_name = getenv ~def:"?" "name" in
+  let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
   worker_start worker_name get_binocle_tuple (fun _conf ->
@@ -815,7 +815,7 @@ let aggregate
     IntGauge.make Consts.group_count_metric
                   "Number of groups currently maintained." in
   IntGauge.set stats_group_count 0 ;
-  let worker_name = getenv ~def:"?" "name" in
+  let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     let si v = Some (Uint64.of_int v) in
     let i v = Option.map (fun r -> Uint64.of_int r) v in
@@ -1315,8 +1315,8 @@ let aggregate
             return s)))
 
 let casing rc_str rc_marsh lst =
-  (* Call a function from lst according to envvar "signature" *)
-  match Sys.getenv "signature" with
+  (* Call a function from lst according to envvar "name" *)
+  match Sys.getenv "name" with
   | exception Not_found ->
       if Array.length Sys.argv <= 1 then
         print_string rc_marsh
@@ -1327,12 +1327,12 @@ let casing rc_str rc_marsh lst =
            Runtime configuration:\n\n%s\n\n\
            Have a nice day!\n"
           rc_str
-  | signature ->
-      (match List.assoc signature lst with
+  | name ->
+      (match List.assoc name lst with
       | exception Not_found ->
         Printf.eprintf
-          "Unknown signature %S.\n\
+          "Unknown operation %S.\n\
            Trying to run a Ramen program manually? Have good fun!\n"
-          signature ;
+          name ;
           exit 3
       | f -> f ())
