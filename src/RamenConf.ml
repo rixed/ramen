@@ -15,7 +15,7 @@ module Expr = RamenExpr
  * The other tuple type, RamenTuple.typ, is used to describe tuples
  * outside of this context (for instance, when describing a CSV or other
  * serialization format). *)
-(* FIXME: rename this type *)
+(* FIXME: rename this type into untyped_tuple *)
 type temp_tup_typ =
   { mutable finished_typing : bool ;
     mutable fields : (string * Expr.typ) list }
@@ -36,9 +36,13 @@ let temp_tup_typ_copy t =
   { t with fields =
       List.map (fun (name, typ) -> name, Expr.copy_typ typ) t.fields }
 
+type typed_tuple =
+  { user : field_typ list ; (* All the fields as declared in the code *)
+    ser : field_typ list } (* Only public fields *)
+  [@@ppp PPP_OCaml]
+
 type tuple_type = UntypedTuple of temp_tup_typ
-                | TypedTuple of { user : field_typ list ;
-                                  ser : field_typ list }
+                | TypedTuple of typed_tuple
 
 let tuple_is_typed = function
   | TypedTuple _ -> true
@@ -52,7 +56,7 @@ let print_tuple_type fmt = function
 
 exception BadTupleTypedness of string
 let typed_tuple_type = function
-  | TypedTuple { user ; ser } -> user, ser
+  | TypedTuple t -> t
   | UntypedTuple _ ->
       raise (BadTupleTypedness "Function should be typed by now!")
 
@@ -61,8 +65,8 @@ let untyped_tuple_type = function
       raise (BadTupleTypedness "This func should not be typed!")
   | UntypedTuple temp_tup_typ -> temp_tup_typ
 
-let tuple_ser_type = snd % typed_tuple_type
-let tuple_user_type = fst % typed_tuple_type
+let tuple_ser_type t = (typed_tuple_type t).ser
+let tuple_user_type t = (typed_tuple_type t).user
 
 let type_signature tuple_type =
   let ser = tuple_ser_type tuple_type in
@@ -410,6 +414,31 @@ struct
     ) program.funcs ;
     (* FIXME: also, as a precaution, delete any temporary program (maybe we
      * crashed because of it? *)
+end
+
+(* Runtime configuration embedded in the workers: *)
+module RunConf =
+struct
+  module Func =
+  struct
+    type t =
+      { name : string ;
+        params : (string * scalar_value) list ;
+        in_type : typed_tuple ;
+        out_type : typed_tuple ;
+        signature : string ;
+        parents : (string * string) list ;
+        force_export : bool ;
+        merge_inputs : bool }
+      [@@ppp PPP_OCaml]
+  end
+  module Program =
+  struct
+    type t =
+      { name : string ;
+        functions : Func.t list }
+      [@@ppp PPP_OCaml]
+  end
 end
 
 let parse_operation params operation =

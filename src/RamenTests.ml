@@ -71,7 +71,7 @@ let write_scalar_value tx offs =
   | VNull -> assert false
 
 let send_tuple conf func rb tuple =
-  let _, ser = C.typed_tuple_type func.N.in_type in
+  let ser = C.tuple_ser_type func.N.in_type in
   let nullmask_sz, values = (* List of nullable * scalar *)
     List.fold_left (fun (null_i, lst) ftyp ->
       if ftyp.nullable then

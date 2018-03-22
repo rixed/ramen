@@ -18,6 +18,7 @@ type scalar_value =
   | VIpv4 of uint32 | VIpv6 of uint128
   | VCidrv4 of (uint32 * int) | VCidrv6 of (uint128 * int)
   [@@ppp PPP_JSON]
+  [@@ppp PPP_OCaml]
 
 let scalar_type_of = function
   | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
@@ -80,6 +81,7 @@ let column_length =
 type field_typ =
   { typ_name : string ; nullable : bool ; typ : scalar_typ }
   [@@ppp PPP_JSON]
+  [@@ppp PPP_OCaml]
 
 type field_typ_arr = field_typ array [@@ppp PPP_JSON]
 

@@ -1314,17 +1314,25 @@ let aggregate
           else
             return s)))
 
-let casing lst =
+let casing rc_str rc_marsh lst =
   (* Call a function from lst according to envvar "signature" *)
   match Sys.getenv "signature" with
   | exception Not_found ->
-      Printf.eprintf
-        "Cannot find envvar signature.\n\
-         Trying to run a Ramen program manually? Have good fun!\n" ;
-      exit 3
+      if Array.length Sys.argv <= 1 then
+        print_string rc_marsh
+      else
+        (* Display some help: *)
+        Printf.printf
+          "This program is a Ramen worker.\n\n\
+           Runtime configuration:\n\n%s\n\n\
+           Have a nice day!\n"
+          rc_str
   | signature ->
       (match List.assoc signature lst with
       | exception Not_found ->
-          Printf.eprintf "Unknown signature %S.\n" signature ;
+        Printf.eprintf
+          "Unknown signature %S.\n\
+           Trying to run a Ramen program manually? Have good fun!\n"
+          signature ;
           exit 3
       | f -> f ())

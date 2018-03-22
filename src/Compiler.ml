@@ -1192,7 +1192,35 @@ let compile conf parents program =
     RamenOCamlCompiler.with_code_file_for exec_file conf (fun oc ->
       Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
         program.name ;
-      Printf.fprintf oc "let () = CodeGenLib.casing [\n" ;
+      (* Embed in the binary all info required for running it: the program
+       * name, the function names, their signature, input and output types,
+       * force export and merge flags, and parameters. *)
+      let runconf =
+        let open C.RunConf in
+        Program.{
+          name = program.name ;
+          functions =
+            Hashtbl.values program.funcs |>
+            Enum.map (fun func ->
+              Func.{
+                name = func.N.name ;
+                params = func.N.params ;
+                in_type = C.typed_tuple_type func.N.in_type ;
+                out_type = C.typed_tuple_type func.N.out_type ;
+                signature = func.N.signature ;
+                parents = func.N.parents ;
+                force_export = RamenOperation.is_exporting func.operation ;
+                merge_inputs = RamenOperation.is_merging func.operation }
+            ) |>
+            List.of_enum } in
+      Printf.fprintf oc "let rc_str_ = %S\n"
+        ((PPP.to_string C.RunConf.Program.t_ppp_ocaml runconf) |>
+         PPP_prettify.prettify) ;
+      Printf.fprintf oc "let rc_marsh_ = %S\n"
+        (Marshal.(to_string runconf [No_sharing])) ;
+      (* Then call CodeGenLib.casing with all this: *)
+      Printf.fprintf oc
+        "let () = CodeGenLib.casing rc_str_ rc_marsh_ [\n" ;
       List.iter (fun func ->
         Printf.fprintf oc"\t%S, M%s.%s ;\n"
           func.N.signature
