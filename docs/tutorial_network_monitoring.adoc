@@ -638,6 +638,7 @@ could name respectively "traffic in" and "traffic out":
 ----
 SELECT source, first, last, bytes, packets, in_iface AS iface
 FROM demo/netflow
+EVENT STARTING AT first AND STOPPING AT last
 ----
 
 and
@@ -646,6 +647,7 @@ and
 ----
 SELECT source, first, last, bytes, packets, out_iface AS iface
 FROM demo/netflow
+EVENT STARTING AT first AND STOPPING AT last
 ----
 
 Both will read the netflows and output flows with a single +iface+ field for
