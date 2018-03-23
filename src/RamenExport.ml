@@ -207,7 +207,7 @@ let import_tuples conf history rb_name ser_tuple_typ =
   !logger.debug "Starting to import output from ringbuf %S, \
                  which outputs %a."
     rb_name RamenTuple.print_typ ser_tuple_typ ;
-  let%lwt rb = wrap (fun () -> RingBuf.load rb_name) in
+  let%lwt rb = wrap (fun () -> RingBuf.load ~rotate:true rb_name) in
   try%lwt
     let dequeue =
       RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in
@@ -277,10 +277,11 @@ let get_or_start conf func =
         let export = make_export importer history fqn rb_name out_rb_ref
                                  func.N.force_export in
         Hashtbl.add exports k export ;
-        let skip_none =
+        let all_fields =
           RingBufLib.skip_list ~out_type:typ ~in_type:typ in
         let%lwt () =
-          RamenOutRef.add out_rb_ref (rb_name, skip_none) in
+          RamenOutRef.(add out_rb_ref
+            (rb_name, { field_mask = all_fields ; timeout = 0. })) in
         return history
     | exp ->
         !logger.debug "Function %s is already exporting" fqn ;

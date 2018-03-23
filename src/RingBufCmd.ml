@@ -5,8 +5,10 @@ open RamenLog
 
 let dequeue copts file n () =
   logger := make_logger copts.ApiCmd.debug ;
+  if file = "" then invalid_arg "dequeue" ;
+  let rotate = file.[String.length file - 1] = 'r' in
   let open RingBuf in
-  let rb = load file in
+  let rb = load ~rotate file in
   let rec dequeue_loop n =
     if n > 0 then (
       (* TODO: same automatic retry-er as in CodeGenLib_IO *)
@@ -21,8 +23,10 @@ let dequeue copts file n () =
 
 let summary copts file () =
   logger := make_logger copts.ApiCmd.debug ;
+  if file = "" then invalid_arg "dequeue" ;
+  let rotate = file.[String.length file - 1] = 'r' in
   let open RingBuf in
-  let rb = load file in
+  let rb = load ~rotate file in
   let s = stats rb in
   Printf.printf "%s:\n\
                  %d/%d words used\n\

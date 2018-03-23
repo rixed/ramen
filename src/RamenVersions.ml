@@ -6,10 +6,10 @@
 let release_tag = "v1.2.6"
 
 (* Ramen graph configuration *)
-let graph_config = "v8" (* last incr: additions to Program.t and Func.t *)
+let graph_config = "v8" (* last: additions to Program.t and Func.t *)
 
 (* Code generation: sources, binaries... *)
-let codegen = "v6" (* last incr: single binary per program *)
+let codegen = "v6" (* last: single binary per program *)
 
 (* Alerting state *)
 let alerting_state = "v1"
@@ -24,10 +24,10 @@ let notify_tuple = "v1"
 let history = "v1"
 
 (* Ringbuf formats *)
-let ringbuf = "v1"
+let ringbuf = "v2" (* last: added .r/.b extension *)
 
-(* Ref ringbuf format *)
-let out_ref = "v1"
+(* Ref-ringbuf format *)
+let out_ref = "v2" (* last: added timeout *)
 
 (* Workers state format *)
 let worker_state = "v2"

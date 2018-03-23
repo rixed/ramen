@@ -790,13 +790,13 @@ let in_ringbuf_name_base conf func =
   let sign = type_signature_hash func.Func.in_type in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf ^"/"
-                   ^ Func.fq_name func ^"/"^ sign ^"/in"
+                   ^ Func.fq_name func ^"/"^ sign ^"/"
 
 let in_ringbuf_name_single conf func =
-  in_ringbuf_name_base conf func ^".all"
+  in_ringbuf_name_base conf func ^"all.r"
 
 let in_ringbuf_name_merging conf func parent_index =
-  in_ringbuf_name_base conf func ^"."^ string_of_int parent_index
+  in_ringbuf_name_base conf func ^ string_of_int parent_index ^".r"
 
 let in_ringbuf_names conf func =
   if func.Func.merge_inputs then
@@ -809,28 +809,28 @@ let in_ringbuf_names conf func =
 let temp_in_ringbuf_name conf identifier =
   conf.persist_dir ^"/tmp/ringbufs/"
                    ^ RamenVersions.ringbuf ^"/"
-                   ^ identifier ^"/in"
+                   ^ identifier ^"/in.r"
 
 let exp_ringbuf_name conf func =
   let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf ^"/"
-                   ^ Func.fq_name func ^"/"^ sign ^"/exp"
+                   ^ Func.fq_name func ^"/"^ sign ^"/exp.r"
 
 let out_ringbuf_names_ref conf func =
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref ^"/"
-                   ^ Func.fq_name func ^"/out_ref"
+                   ^ Func.fq_name func ^"/out_ref.r"
 
 let report_ringbuf conf =
   conf.persist_dir ^"/instrumentation_ringbuf/"
                    ^ RamenVersions.instrumentation_tuple ^"_"
                    ^ RamenVersions.ringbuf
-                   ^"/ringbuf"
+                   ^"/ringbuf.r"
 
 let notify_ringbuf ?(test_id = "") conf =
   conf.persist_dir ^"/notify_ringbuf/"
                    ^ RamenVersions.notify_tuple ^"_"
                    ^ RamenVersions.ringbuf
                    ^ (if test_id = "" then "" else "/"^ test_id)
-                   ^"/ringbuf"
+                   ^"/ringbuf.r"

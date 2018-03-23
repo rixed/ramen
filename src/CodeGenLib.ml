@@ -347,7 +347,7 @@ let send_stats rb tuple =
     RingBuf.enqueue_commit tx
 
 let update_stats_rb period rb_name get_tuple =
-  let rb = RingBuf.load rb_name in
+  let rb = RingBuf.load ~rotate:true rb_name in
   while%lwt true do
     update_stats () ;
     let tuple : RamenBinocle.tuple = get_tuple () in
@@ -357,6 +357,9 @@ let update_stats_rb period rb_name get_tuple =
 
 (* Helpers *)
 
+(* TODO: for non-ring buffers we will need to know the value for the time, and
+ * we will want to save the first/last tuple sequence number as well as the min
+ * and max of the times.*)
 let output rb serialize_tuple sersize_of_tuple tuple =
   let open RingBuf in
   let sersize = sersize_of_tuple tuple in
@@ -378,13 +381,15 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
   fun tuple ->
     IntCounter.add stats_out_tuple_count 1 ;
     let%lwt fnames = get_out_fnames () in
-    Option.may (fun out_spec ->
-      (if Map.is_empty out_spec then !logger.info else !logger.debug)
-        "Must now output to: %a"
-        RamenOutRef.print_out_specs out_spec ;
+    Option.may (fun out_specs ->
+      if Map.is_empty out_specs then
+        !logger.info "OutRef is now empty!"
+      else
+        !logger.debug "Must now output to: %a"
+          RamenOutRef.print_out_specs out_specs ;
       (* Change occurred, load/unload as required *)
       let current = Hashtbl.keys out_h |> Set.of_enum in
-      let next = Map.keys out_spec |> Set.of_enum in
+      let next = Map.keys out_specs |> Set.of_enum in
       let to_open = Set.diff next current
       and to_close = Set.diff current next in
       (* Close some: *)
@@ -400,19 +405,22 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
       (* Open some: *)
       Set.iter (fun fname ->
           !logger.debug "Mapping %S" fname ;
-          let skiplist = Map.find fname out_spec in
-          let rb = RingBuf.load fname in
-          let once = output rb (serialize_tuple skiplist)
-                               (sersize_of_tuple skiplist) in
-          let retry_count = ref 0 in
-          (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
-           * case the ringbuf disappear altogether because the child is
-           * terminated then we won't deadloop.  Also, if one child is full
-           * then we will not write to next children until we can eventually
-           * write to this one. This is actually desired to have proper message
-           * ordering along the stream and avoid ending up with many threads
-           * retrying to write to the same child. *)
-          Hashtbl.add out_h fname (rb,
+          let file_spec = Map.find fname out_specs in
+          assert (String.length fname > 0) ;
+          let rotate = fname.[String.length fname - 1] = 'r' in
+          let rb = RingBuf.load ~rotate fname in
+          let once = output rb (serialize_tuple file_spec.field_mask)
+                               (sersize_of_tuple file_spec.field_mask) in
+          let rb_writer =
+            if rotate then
+              let retry_count = ref 0 in
+              (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
+               * case the ringbuf disappear altogether because the child is
+               * terminated then we won't deadloop.  Also, if one child is full
+               * then we will not write to next children until we can eventually
+               * write to this one. This is actually desired to have proper message
+               * ordering along the stream and avoid ending up with many threads
+               * retrying to write to the same child. *)
               RingBufLib.retry_for_ringbuf
                 ~while_:(fun () ->
                   (* Also check from time to time we are still supposed to
@@ -421,7 +429,11 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
                   if !retry_count < 5 then return_true else (
                     retry_count := 0 ;
                     RamenOutRef.mem rb_ref_out_fname fname))
-                ~delay_rec:sleep_out once)
+                ~delay_rec:sleep_out once
+            else
+              (* No need to retry anything *)
+              fun x -> once x ; return_unit in
+          Hashtbl.add out_h fname (rb, rb_writer)
         ) to_open ;
       (* Update the current list of outputers: *)
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
@@ -835,7 +847,7 @@ let aggregate
     and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify" "notify_ringbuf"
     and top_n, top_by = Option.default (0, fun _ _ _ -> ()) top in
     assert (not commit_before || top_n = 0) ;
-    let notify_rb = RingBuf.load notify_rb_name in
+    let notify_rb = RingBuf.load ~rotate:true notify_rb_name in
     let tuple_outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
     let outputer =
@@ -892,7 +904,7 @@ let aggregate
     let%lwt rb_ins =
       Lwt_list.map_p (fun fname ->
         retry ~on:(fun _ -> return_true) ~min_delay:1.0
-              (fun n -> return (RingBuf.load n))
+              (fun n -> return (RingBuf.load ~rotate:true n))
               fname
       ) rb_in_fnames
     in

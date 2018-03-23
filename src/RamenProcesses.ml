@@ -63,7 +63,8 @@ let input_spec conf parent func =
   else C.in_ringbuf_name_single conf func),
   let out_type = C.tuple_ser_type parent.N.out_type
   and in_type = C.tuple_ser_type func.N.in_type in
-  RingBufLib.skip_list ~out_type ~in_type
+  let field_mask = RingBufLib.skip_list ~out_type ~in_type in
+  RamenOutRef.{ field_mask ; timeout = 0. }
 
 (* Takes a locked conf.
  * FIXME: a phantom type for this *)
@@ -85,8 +86,8 @@ let rec run_func conf programs program func =
          ) n.N.parents
       then (
         !logger.debug "%s will output to %s" (N.fq_name func) (N.fq_name n) ;
-        let k, v = input_spec conf func n in
-        Map.add k v outs
+        let k, file_spec = input_spec conf func n in
+        Map.add k file_spec outs
       ) else outs) in
   let out_ringbuf_ref = C.out_ringbuf_names_ref conf func in
   let%lwt () = RamenOutRef.set out_ringbuf_ref output_ringbufs in

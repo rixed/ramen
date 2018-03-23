@@ -106,11 +106,13 @@ CAMLprim value wrap_ringbuf_create(value fname_, value tot_words_)
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value wrap_ringbuf_load(value fname_)
+CAMLprim value wrap_ringbuf_load(value rotate_, value fname_)
 {
-  CAMLparam1(fname_);
+  CAMLparam2(rotate_, fname_);
   CAMLlocal1(res);
+  bool rotate = Bool_val(rotate_);
   char *fname = String_val(fname_);
+  if (! rotate) caml_failwith("Non-ring buffers are not yet implemented");
   struct ringbuf *rb = ringbuf_load(fname);
   if (! rb) caml_failwith("Cannot load ring buffer");
   //printf("%d: MMapped %s @ %p\n", (int)getpid(), fname, rb);

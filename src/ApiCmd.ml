@@ -142,10 +142,10 @@ let start copts daemonize no_demo to_stderr www_dir
   (* Prepare ringbuffers for reports and notifications: *)
   let rb_name = C.report_ringbuf conf in
   RingBuf.create rb_name RingBufLib.rb_default_words ;
-  let reports_rb = RingBuf.load rb_name in
+  let reports_rb = RingBuf.load ~rotate:true rb_name in
   let rb_name = C.notify_ringbuf conf in
   RingBuf.create rb_name RingBufLib.rb_default_words ;
-  let notify_rb = RingBuf.load rb_name in
+  let notify_rb = RingBuf.load ~rotate:true rb_name in
   (* When there is nothing to do, listen to collectd and netflow! *)
   let run_demo () =
     C.with_wlock conf (fun programs ->

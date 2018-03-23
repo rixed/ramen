@@ -7,10 +7,10 @@ let debug = false
 
 let () =
   if debug then Printf.printf "Mmapping ringbuf...\n%!" ;
-  let rb_fname = "/tmp/ringbuf_test" in
+  let rb_fname = "/tmp/ringbuf_test.r" in
   ignore_exceptions Unix.unlink rb_fname ;
   create rb_fname 100 ;
-  let rb = load rb_fname in
+  let rb = load ~rotate:true rb_fname in
   if debug then Printf.printf "Allocating bytes...\n%!" ;
   let tx = enqueue_alloc rb (4+4+4+16) in
   if debug then Printf.printf "Write u32...\n%!" ;

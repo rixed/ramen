@@ -1,6 +1,15 @@
 (* OutRef files are the files describing where a func should send its
- * output. It's basically a list of ringbuf files, but soon we will have
- * more info in there.
+ * output. It's basically a list of ringbuf files, with a bitmask of fields
+ * that must be written, and an optional timestamp  after which the export
+ * should stop (esp. useful for non-ring buffers).
+ * Ring and Non-ring buffers are distinguished with their filename
+ * extensions, which are either ".r" (ring) or ".b" (buffer).
+ * This has the nice consequence that you cannot have a single file name
+ * repurposed into a different kind of storage.
+ *
+ * In case of non-ring buffers, on completion the file is renamed with the
+ * min and max sequence numbers and timestamps (if known), and a new one is
+ * created.
  *
  * We want to lock those files, both internally (same process) and externally
  * (other processes), although we are fine with advisory locking.
@@ -36,20 +45,39 @@ struct
   let with_w_lock fname = with_lock RWLock.with_w_lock F_LOCK fname
 end
 
-type out_spec = string * bool list
+type file_spec =
+  { field_mask : bool list ; timeout : float (* 0 for no timeout *) }
 
-let string_of_out_spec (fname, keep) =
-  fname ^"|"^ String.of_list (List.map (fun keep ->
-    if keep then 'X' else '_') keep)
+let string_of_field_mask mask =
+  List.map (function true -> 'X' | false -> '_') mask |>
+  String.of_list
+
+let string_of_file_spec file_spec =
+  string_of_field_mask file_spec.field_mask ^"|"^
+  string_of_float file_spec.timeout
+
+let file_spec_print oc file_spec =
+  String.print oc (string_of_file_spec file_spec)
+
+type out_spec = string * file_spec
+
+let string_of_out_spec (fname, file_spec) =
+  fname ^"|"^ string_of_file_spec file_spec
 
 let out_spec_of_string str =
-  let fname, skiplist = String.split str ~by:"|" in
-  fname,
-  String.to_list skiplist |> List.map ((=) 'X')
+  let make fname mask timeout =
+    fname,
+    { field_mask = String.to_list mask |> List.map ((=) 'X') ; timeout }
+  in
+  match String.split_on_char '|' str with
+  | [ fname ; mask ; t ] -> make fname mask (float_of_string t)
+  | _ ->
+      !logger.error "Invalid line in out-ref: %S" str ;
+      invalid_arg "out_spec_of_string"
 
 (* For debug only: *)
 let print_out_specs oc outs =
-  Map.print ~sep:"; " String.print (List.print Bool.print) oc outs
+  Map.print ~sep:"; " String.print file_spec_print oc outs
 
 (* Used by ramen when starting a new worker to initialize (or reset) its
  * output: *)
@@ -61,8 +89,14 @@ let set fname outs =
     (*!logger.debug "Got write lock for set on %s" fname ;*)
     wrap (fun () -> set_ fname outs))
 
+let is_still_valid now file_spec =
+  file_spec.timeout <= 0. || file_spec.timeout > now
+
 let read_ fname =
-  File.lines_of fname /@ out_spec_of_string |> Map.of_enum
+  let now = Unix.gettimeofday () in
+  File.lines_of fname /@ out_spec_of_string //
+  (fun (_, file_spec) -> is_still_valid now file_spec) |>
+  Map.of_enum
 
 let read fname =
   Lock.with_r_lock fname (fun () ->
@@ -88,6 +122,9 @@ let add_ fname (out_fname, out_fields) =
     if prev_fields <> out_fields then rewrite ()
 
 let add fname out =
+  if String.length fname = 0 ||
+     (let c = fname.[String.length fname - 1] in c <> 'r' && c <> 'b')
+  then invalid_arg "RamenOutRef.add" ;
   Lock.with_w_lock fname (fun () ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
     wrap (fun () -> add_ fname out))

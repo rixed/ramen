@@ -19,8 +19,8 @@ type stats = {
   prod_head : int ;
   cons_head : int }
 
-external load_ : string -> t = "wrap_ringbuf_load"
-let load = prepend_rb_name load_
+external load_ : bool -> string -> t = "wrap_ringbuf_load"
+let load ~rotate = prepend_rb_name (load_ rotate)
 external unload : t -> unit = "wrap_ringbuf_unload"
 external stats : t -> stats = "wrap_ringbuf_stats"
 

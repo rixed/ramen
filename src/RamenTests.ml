@@ -173,10 +173,10 @@ let test_output ser_type in_rb output_spec =
         List.rev_append !tuples_to_not_find ;
       return_unit) in
   let success = !tuples_to_find = [] && !tuples_to_not_find = [] in
-  let field_spec_print oc (idx, value) =
+  let file_spec_print oc (idx, value) =
     Printf.fprintf oc "idx=%d, value=%S" idx value in
   let tuple_spec_print oc spec =
-    List.print field_spec_print oc spec in
+    List.print file_spec_print oc spec in
   let msg =
     if success then "" else
     (if !tuples_to_find = [] then "" else
@@ -294,7 +294,7 @@ let test_one conf server_url conf_spec test =
       let in_rb_name =
         C.temp_in_ringbuf_name conf ("tests/"^ test_id ^"/"^ user_fq_name) in
       RingBuf.create in_rb_name RingBufLib.rb_default_words ;
-      let in_rb = RingBuf.load in_rb_name in
+      let in_rb = RingBuf.load ~rotate:true in_rb_name in
       let%lwt tester_thread =
         match Hashtbl.find workers user_fq_name with
         | exception Not_found ->
@@ -303,9 +303,10 @@ let test_one conf server_url conf_spec test =
             let out_ref_fname = C.out_ringbuf_names_ref conf tested_func in
             let out_type = C.tuple_ser_type tested_func.out_type in
             let in_type = out_type in (* Just receive everything *)
-            let skip_list = RingBufLib.skip_list ~out_type ~in_type in
+            let field_mask = RingBufLib.skip_list ~out_type ~in_type in
             let%lwt () =
-              RamenOutRef.add out_ref_fname (in_rb_name, skip_list) in
+              RamenOutRef.(add out_ref_fname
+                (in_rb_name, { field_mask ; timeout = 0. })) in
             return
               (finalize
                 (fun () -> test_output in_type in_rb output_spec)
@@ -318,7 +319,7 @@ let test_one conf server_url conf_spec test =
       return (tester_thread :: thds)
     ) [] in
   (* Similarly, read all notifications: *)
-  let notify_rb = RingBuf.load notify_rb_name in
+  let notify_rb = RingBuf.load ~rotate:true notify_rb_name in
   let tester_threads =
     finalize
       (fun () -> test_notifications notify_rb test.notifications)
@@ -346,7 +347,7 @@ let test_one conf server_url conf_spec test =
                   raise (Failure err)
                 else
                   let in_rb = C.in_ringbuf_name_single conf func in
-                  let rb = RingBuf.load in_rb in
+                  let rb = RingBuf.load ~rotate:true in_rb in
                   Hashtbl.add worker_cache cache_key rb ;
                   rb
             | rb -> rb in
