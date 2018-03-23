@@ -109,7 +109,7 @@ let stop_all_dependent_programs conf program_name f =
     else return !to_restart in
   wait_stop 0
 
-(* Compile one program and stop those that depended on it. *)
+(* Compile one program and stop those depending on it. *)
 let rec compile_one conf program_name =
   (* Compilation taking a long time, we do a multi-stage approach:
    * First we take the wlock, read the programs and put their status
@@ -118,7 +118,7 @@ let rec compile_one conf program_name =
    * status is still compiling, and store the result of the
    * compilation.
    * Any dependent program will be stopped, returned to edition
-   * (with a indicative error message), then restarted. *)
+   * (with a indicative error message), then recompiled. *)
   !logger.debug "Compiling %s phase 1: copy the program info" program_name ;
   match%lwt
     C.with_wlock conf (fun programs ->
@@ -335,7 +335,7 @@ let func_info_of_func ~with_code ~with_stats programs func =
         output_type = C.info_of_tuple_type func.N.out_type })
     else None in
   return SN.{
-    program = func.N.program ;
+    program = func.N.program_name ;
     name = func.N.name ;
     exporting ;
     signature = if func.N.signature = "" then None else Some func.N.signature ;
@@ -345,7 +345,7 @@ let func_info_of_func ~with_code ~with_stats programs func =
     children =
       C.fold_funcs programs [] (fun children _l n ->
         if List.exists (fun (p, f) ->
-             p = func.program && f = func.name
+             p = func.program_name && f = func.name
            ) n.parents
         then N.fq_name n :: children
         else children) ;
@@ -394,27 +394,34 @@ exception CannotFindBinary of string
 let () =
   Printexc.register_printer (function
     | CannotFindBinary s ->
-        Some (Printf.sprintf "Cannot find executable for program %s" s)
+        Some (Printf.sprintf "Cannot find worker executable %s" s)
     | _ -> None)
 
-let runconf_of_program root_path program_name : C.RunConf.Program.t =
-  let bin = exec_of_program root_path program_name in
-  !logger.debug "Reading config of %s..." program_name ;
-  match Unix.open_process_in bin with
+let runconf_of_bin fname : C.RunConf.Program.t =
+  !logger.debug "Reading config from %s..." fname ;
+  match Unix.open_process_in fname with
   | exception Unix.Unix_error (ENOENT, _, _) ->
-      raise (CannotFindBinary program_name)
+      raise (CannotFindBinary fname)
   | ic ->
       let close () =
         match Unix.close_process_in ic with
         | Unix.WEXITED o -> ()
         | s ->
             !logger.error "Process %s exited with %s"
-              bin
+              fname
               (string_of_process_status s) in
       try
         finally close Marshal.from_channel ic
       with BatInnerIO.No_more_input ->
-        raise (CannotFindBinary program_name)
+        raise (CannotFindBinary fname)
+
+let runconf_of_program root_path program_name : C.RunConf.Program.t =
+  let bin = exec_of_program root_path program_name in
+  runconf_of_bin bin
+
+let fake_operation = RamenOperation.Yield {
+  fields = [] ; every = 0. ; event_time = None ;
+  force_export = false }
 
 let func_of_fq_name root_path fq_name =
   let program_name, func_name = C.program_func_of_user_string fq_name in
@@ -422,11 +429,7 @@ let func_of_fq_name root_path fq_name =
   List.find (fun func -> func.C.RunConf.Func.name = func_name) rc.functions
 
 let ext_compile conf root_path program_name program_code =
-  (* Disallow anonymous programs for simplicity: *)
-  if program_name = "" then
-    failwith "Programs must have non-empty names" else
-  if has_dotnames program_name then
-    failwith "Program names cannot include directory dotnames" else
+  let program_name = L.sanitize_name program_name in
   (* List of temp files created, that must be deleted at the end: *)
   let temp_files = ref [] in
   let add_temp_file f = temp_files := f :: !temp_files in
@@ -479,18 +482,16 @@ let ext_compile conf root_path program_name program_code =
               !logger.debug "Found external reference to function %s"
                 parent_fq_name ;
               let pdef = func_of_fq_name root_path parent_fq_name in
-              (* Build a C.Func.t from this RunConf.Fun.t: *)
-              let program, name =
+              (* Build a fake C.Func.t from this RunConf.Fun.t: *)
+              let program_name, name =
                 C.program_func_of_user_string parent_fq_name in
-              let operation = RamenOperation.Yield {
-                fields = [] ; every = 0. ; event_time = None ;
-                force_export = false } in
               C.Func.{
-                program ; name ; params = pdef.C.RunConf.Func.params ;
-                operation ; signature = "" ; parents = [] ;
+                program_name ; name ; params = pdef.C.RunConf.Func.params ;
+                operation = fake_operation ; signature = "" ; parents = [] ;
                 in_type = TypedTuple pdef.C.RunConf.Func.in_type ;
                 out_type = TypedTuple pdef.C.RunConf.Func.out_type ;
-                pid = None ; last_exit = "" ; succ_failures = 0 }
+                pid = None ; last_exit = "" ; succ_failures = 0 ;
+                force_export = false ; merge_inputs = false }
           | f -> f
         ) func_parents in
       Hashtbl.add compiler_parents func.RamenProgram.name par_list ;
@@ -562,3 +563,40 @@ let ext_compile conf root_path program_name program_code =
     (* Compile the casing and link it with everything: *)
     Lwt_main.run (
       RamenOCamlCompiler.link conf program_name obj_files src_file exec_file)) ()
+
+let ext_start conf program_name bin timeout =
+  (* Sanitize the user provided names: *)
+  let%lwt program_name = wrap (fun () -> L.sanitize_name program_name) in
+  let bin = simplified_path bin in
+  let module RCP = C.RunConf.Program in
+  let module RCF = C.RunConf.Func in
+  (* Read the RunConf from the binary: *)
+  let%lwt rc = wrap (fun () -> runconf_of_bin bin) in
+  C.with_wlock conf (fun programs ->
+    (* Add it into the running configuration: *)
+    (* We must not already have a program by that name: *)
+    if Hashtbl.mem programs program_name then
+      fail_with ("Program "^ program_name ^" already exists") else
+    (* Create the C.Program.t manually since make_program takes uncompiled
+     * source code: *)
+    let funcs = Hashtbl.create (List.length rc.RCP.functions) in
+    List.iter (fun rc_func ->
+      Hashtbl.add funcs rc_func.RCF.name N.{
+        program_name ; name = rc_func.RCF.name ;
+        params = rc_func.RCF.params ; operation = fake_operation ;
+        in_type = TypedTuple rc_func.RCF.in_type ;
+        out_type = TypedTuple rc_func.RCF.out_type ;
+        signature = rc_func.RCF.signature ; parents = rc_func.RCF.parents ;
+        force_export = rc_func.RCF.force_export ;
+        merge_inputs = rc_func.RCF.merge_inputs ;
+        pid = None ; last_exit = "" ; succ_failures = 0 }
+    ) rc.RCP.functions ;
+    let now = Unix.gettimeofday () in
+    let prog = L.{
+      name = program_name ; funcs ; timeout ;
+      program = bin ; program_is_path_to_bin = true ;
+      last_used = now ; status = Compiled ; last_status_change = now ;
+      last_started = None ; last_stopped = None ; test_id = "" } in
+    Hashtbl.add programs program_name prog ;
+    (* Now start it: *)
+    RamenProcesses.run conf programs prog)

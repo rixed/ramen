@@ -227,7 +227,7 @@ struct
        * each others.
        * Of course to compile a program, all programs it depends on must have been
        * compiled. *)
-      program : string ;
+      program_name : string ;
       (* Within a program, funcs are identified by a name that can be optionally
        * provided automatically if its not meant to be referenced. *)
       name : string ;
@@ -251,9 +251,11 @@ struct
       (* Worker info, only relevant if it is running: *)
       mutable pid : int option ;
       mutable last_exit : string ;
-      mutable succ_failures : int }
+      mutable succ_failures : int ;
+      force_export : bool ;
+      merge_inputs : bool }
 
-  let fq_name func = func.program ^"/"^ func.name
+  let fq_name func = func.program_name ^"/"^ func.name
 
   let signature conf func =
     (* We'd like to be formatting independent so that operation text can be
@@ -279,7 +281,7 @@ end
 let obj_of_func conf func =
   conf.persist_dir ^"/workers/bin/"
                    ^ RamenVersions.codegen
-                   ^"/"^ func.Func.program
+                   ^"/"^ func.Func.program_name
                    ^"/m"^ func.Func.signature ^".cmx"
 
 let tmp_input_of_func persist_dir program_name func_name in_type =
@@ -299,7 +301,8 @@ struct
       (* Also keep the string as defined by the client to preserve
        * formatting, comments, etc: *)
       mutable program : string ;
-      (* How long can this program can stays without dependent funcs before
+      program_is_path_to_bin : bool ;
+      (* How long can this program stay without dependent funcs before
        * it's reclaimed. Set to 0 for no timeout. *)
       timeout : float ;
       (* If this is for a test suite, which one: *)
@@ -309,6 +312,18 @@ struct
       mutable last_status_change : float ;
       mutable last_started : float option ;
       mutable last_stopped : float option }
+
+  let sanitize_name name =
+    let rec remove_heading_slashes s =
+      if String.length s > 0 && s.[0] = '/' then
+        remove_heading_slashes (String.lchop s)
+      else s in
+    let name = remove_heading_slashes name in
+    if name = "" then
+      failwith "Programs must have non-empty names" else
+    if has_dotnames name then
+      failwith "Program names cannot include directory dotnames" else
+    name
 
   let print oc t =
     Printf.fprintf oc "status=%s"
@@ -538,7 +553,7 @@ let make_func program_name func_name params operation =
   if func_name = "" ||
      String.fold_left (fun bad c ->
        bad || c = '\n' || c = '\r' || c = '/') false func_name then
-    invalid_arg "func name" ;
+    invalid_arg "function name" ;
   assert (func_name <> "") ;
   let parents =
     RamenOperation.parents_of_operation operation |>
@@ -547,13 +562,15 @@ let make_func program_name func_name params operation =
       with Not_found ->
         raise (InvalidCommand ("Parent func "^ p ^" does not exist"))) in
   Func.{
-    program = program_name ; name = func_name ;
+    program_name ; name = func_name ;
     params ; operation ; signature = "" ; parents ;
     (* Set once the whole graph is known and reset each time the graph is
      * edited: *)
     in_type = UntypedTuple (make_temp_tup_typ ()) ;
     out_type = UntypedTuple (make_temp_tup_typ ()) ;
-    pid = None ; last_exit = "" ; succ_failures = 0 }
+    pid = None ; last_exit = "" ; succ_failures = 0 ;
+    force_export = RamenOperation.is_exporting operation ;
+    merge_inputs = RamenOperation.is_merging operation }
 
 (* Add a program to the configuration.
  * [timeout]: if not zero, the program will be destroyed automatically if
@@ -576,9 +593,10 @@ let make_program ?(test_id="") ?(timeout=0.) programs name program defs =
     Hashtbl.add funcs def.name
   ) defs ;
   let p = Program.{
-      name ; funcs ; program ; timeout ; last_used = now ;
-      status = Edition "" ; last_status_change = now ;
-      last_started = None ; last_stopped = None ; test_id } in
+      name ; funcs ; program ; program_is_path_to_bin = false ;
+      timeout ; last_used = now ; status = Edition "" ;
+      last_status_change = now ; last_started = None ;
+      last_stopped = None ; test_id } in
   Hashtbl.add programs name p ;
   p
 
@@ -772,7 +790,7 @@ let in_ringbuf_name_merging conf func parent_index =
   in_ringbuf_name_base conf func ^"."^ string_of_int parent_index
 
 let in_ringbuf_names conf func =
-  if RamenOperation.is_merging func.Func.operation then
+  if func.Func.merge_inputs then
     List.mapi (fun i _ ->
       in_ringbuf_name_merging conf func i
     ) func.Func.parents

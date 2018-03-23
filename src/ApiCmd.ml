@@ -626,7 +626,7 @@ let test copts conf_file tests () =
   Lwt_main.run (
     RamenTests.run conf copts.server_url conf_file tests)
 
-let comp copts keep_temp_files root_path source_files () =
+let ext_compile copts keep_temp_files root_path source_files () =
   logger := make_logger copts.debug ;
   let conf =
     C.make_conf true copts.server_url copts.debug copts.persist_dir
@@ -647,4 +647,25 @@ let comp copts keep_temp_files root_path source_files () =
       print_exception e ;
       all_ok := false
   ) source_files ;
+  if not !all_ok then exit 1
+
+let ext_run copts params root_path bin_files () =
+  logger := make_logger copts.debug ;
+  let all_ok = ref true in
+  let run_file bin_path =
+    let program_name = Filename.remove_extension bin_path |>
+                       rel_path_from root_path in
+    let msg = { program_name ; bin_path ; timeout = 0. } in
+    let url = copts.server_url ^"/start" in
+    http_post_json url start_program_req_ppp_json msg >>= check_ok
+  in
+  Lwt_main.run (
+    Lwt_list.iter_s (fun bin_path ->
+      try%lwt
+        run_file bin_path
+      with e ->
+        print_exception e ;
+        all_ok := false ;
+        return_unit
+    ) bin_files) ;
   if not !all_ok then exit 1

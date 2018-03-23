@@ -33,6 +33,8 @@ let slash = char ~what:"slash" '/'
 
 let id_quote = char ~what:"quote" '\''
 
+(* program_allowed: if true, the function name can be prefixed with a program
+ * name. *)
 let func_identifier ~program_allowed =
   let first_char =
     if program_allowed then

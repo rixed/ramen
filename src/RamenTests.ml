@@ -335,11 +335,11 @@ let test_one conf server_url conf_spec test =
       | exception Not_found ->
           fail_with ("Unknown test operation: "^ input.operation)
       | func ->
-          let cache_key = func.program, func.name in
+          let cache_key = func.program_name, func.name in
           let rb =
             match Hashtbl.find worker_cache cache_key with
             | exception Not_found ->
-                if RamenOperation.is_merging func.N.operation then
+                if func.N.merge_inputs then
                   (* TODO: either specify a parent number or pick the first one? *)
                   let err = "Writing to merging operations is not \
                              supported yet!" in

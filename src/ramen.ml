@@ -271,6 +271,7 @@ let params =
                    ~docv:"P=V"
                    ["p"; "parameter"] in
   Arg.(value (opt_all param [] i))
+
 let run =
   Term.(
     (const ApiCmd.run
@@ -300,18 +301,32 @@ let keep_temp_files =
 
 let source_files =
   let i = Arg.info ~doc:"Source files to compile"
-                   ~docv:"source.ramen" [] in
+                   ~docv:"program.ramen" [] in
+  Arg.(non_empty (pos_all string [] i))
+
+let bin_files =
+  let i = Arg.info ~doc:"Binary files to run"
+                   ~docv:"program.x" [] in
   Arg.(non_empty (pos_all string [] i))
 
 (* TODO: rename as compile once inline compilation command is gone *)
-let comp =
+let ext_compile =
   Term.(
-    (const ApiCmd.comp
+    (const ApiCmd.ext_compile
       $ copts
       $ keep_temp_files
       $ root_path
       $ source_files),
-    info ~doc:"Compile the given source file into an executable." "comp")
+    info ~doc:"Compile each given source file into an executable." "comp")
+
+let ext_run =
+  Term.(
+    (const ApiCmd.ext_run
+      $ copts
+      $ params
+      $ root_path
+      $ bin_files),
+    info ~doc:"Run one (or all) compiled program(s)" "rrun")
 
 (*
  * Export Tuples
@@ -488,11 +503,9 @@ let default =
 
 let () =
   match Term.eval_choice default [
-    server_start ; server_stop ;
-    dequeue ; summary ; sync ;
-    add ; compile ; run ; stop ;
-    tail ; timeseries ; timerange ;
-    get_info ; test ; comp
+    server_start ; server_stop ; dequeue ; summary ; sync ;
+    add ; compile ; run ; stop ; tail ; timeseries ; timerange ;
+    get_info ; test ; ext_compile ; ext_run
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

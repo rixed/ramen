@@ -57,7 +57,7 @@ let dot_of_graph programs =
     Hashtbl.iter (fun _ func ->
         List.iter (fun (pl, pn) ->
             Printf.fprintf dot "\t%S -> %S\n"
-              (pl ^"/"^ pn) (func.N.program ^"/"^ func.N.name)
+              (pl ^"/"^ pn) (func.N.program_name ^"/"^ func.N.name)
           ) func.N.parents
       ) program.L.funcs
     ) programs ;
@@ -98,7 +98,7 @@ let mermaid_of_graph programs =
         List.iter (fun (pl, pn) ->
             Printf.fprintf txt "\t%s-->%s\n"
               (mermaid_id (pl ^"/"^ pn))
-              (mermaid_id (func.N.program ^"/"^ func.N.name))
+              (mermaid_id (func.N.program_name ^"/"^ func.N.name))
           ) func.N.parents
       ) program.L.funcs
     ) programs ;
@@ -292,6 +292,14 @@ let stop conf headers program_opt =
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with C.InvalidCommand e -> bad_request e
      | x -> fail x
+
+let ext_run conf headers body =
+  let%lwt msg =
+    of_json headers "Starting program" start_program_req_ppp_json body in
+  let%lwt () =
+    RamenOps.ext_start conf msg.program_name msg.bin_path msg.timeout in
+  switch_accepted headers [
+    Consts.json_content_type, (fun () -> respond_ok ()) ]
 
 let shutdown _conf _headers =
   (* TODO: also log client info *)
@@ -655,7 +663,7 @@ let upload conf headers program func body =
   (* Look for the func handling this suffix: *)
   match func.N.operation with
   | ReadCSVFile { where = ReceiveFile ; _ } ->
-    let dir = C.upload_dir_of_func conf.C.persist_dir func.N.program func.N.name func.N.in_type in
+    let dir = C.upload_dir_of_func conf.C.persist_dir func.N.program_name func.N.name func.N.in_type in
     let ct = get_content_type headers |> String.lowercase in
     let content =
       if ct = Consts.urlencoded_content_type then Uri.pct_decode body
@@ -711,6 +719,8 @@ let router conf www_dir url_prefix =
       compile conf headers (lyr_opt programs)
     | `GET, (("run" | "start") :: programs) ->
       run conf headers (lyr_opt programs)
+    | `POST, ["run" | "start"] -> (* Start from offline binary *)
+      ext_run conf headers body
     | `GET, ("stop" :: programs) ->
       stop conf headers (lyr_opt programs)
     | `GET, ["shutdown"] ->

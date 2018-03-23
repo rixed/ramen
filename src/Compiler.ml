@@ -1158,7 +1158,7 @@ let compile conf parents program =
   let%lwt () =
     Hashtbl.values parents |> List.of_enum |> List.flatten |>
     Lwt_list.iter_s (fun func ->
-      if func.N.program = program.L.name ||
+      if func.N.program_name = program.L.name ||
          C.tuple_is_typed func.N.out_type
       then return_unit
       else fail (MissingDependency func)
@@ -1192,7 +1192,7 @@ let compile conf parents program =
     Lwt_list.map_p (fun func ->
       let obj_name = C.obj_of_func conf func in
       let%lwt () =
-        compile_func conf func.N.program func.N.name func.N.params
+        compile_func conf func.N.program_name func.N.name func.N.params
                      func.N.operation func.N.in_type func.N.out_type
                      obj_name in
       return (func, obj_name)

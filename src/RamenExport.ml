@@ -274,9 +274,8 @@ let get_or_start conf func =
         RingBuf.create rb_name RingBufLib.rb_default_words ;
         let history = make_history conf func in
         let importer = import_tuples conf history rb_name typ in
-        let force_export = RamenOperation.is_exporting func.N.operation in
         let export = make_export importer history fqn rb_name out_rb_ref
-                                 force_export in
+                                 func.N.force_export in
         Hashtbl.add exports k export ;
         let skip_none =
           RingBufLib.skip_list ~out_type:typ ~in_type:typ in

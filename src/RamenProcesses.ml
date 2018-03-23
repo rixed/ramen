@@ -23,10 +23,12 @@ let run_background cmd args env =
   let args = Array.init (Array.length args + 1) (fun i ->
       if i = 0 then prog_name else args.(i-1))
   in
-  !logger.info "Running %s with args %a and env %a"
+  let quoted oc s = Printf.fprintf oc "%S" s in
+  !logger.info "Running %s as: /usr/bin/env %a %S %a"
     cmd
-    (Array.print String.print) args
-    (Array.print String.print) env ;
+    (Array.print ~first:"" ~last:"" ~sep:" " quoted) env
+    cmd
+    (Array.print ~first:"" ~last:"" ~sep:" " quoted) args ;
   flush_all () ;
   match fork () with
   | 0 ->
@@ -48,9 +50,9 @@ exception StillCompiling
  * merging, each parent uses a distinct one) *)
 let input_spec conf parent func =
   (* In case of merge, ringbufs are numbered as the node parents: *)
-  (if RamenOperation.is_merging func.N.operation then
+  (if func.N.merge_inputs then
     match List.findi (fun i (pprog, pname) ->
-             pprog = parent.N.program && pname = parent.N.name
+             pprog = parent.N.program_name && pname = parent.N.name
            ) func.N.parents with
     | exception Not_found ->
         !logger.error "Operation %S is not a child of %S"
@@ -67,7 +69,11 @@ let input_spec conf parent func =
  * FIXME: a phantom type for this *)
 let rec run_func conf programs program func =
   if func.N.pid <> None then fail AlreadyRunning else
-  let command = C.Program.exec_of_program conf.C.persist_dir func.program
+  let command =
+    if program.L.program_is_path_to_bin then
+      program.L.program
+    else
+      L.exec_of_program conf.C.persist_dir func.program_name
   and output_ringbufs =
     (* Start to output to funcs of this program. They have all been
      * created above (in [run]), and we want to allow loops in a program. Avoids
@@ -77,7 +83,7 @@ let rec run_func conf programs program func =
     C.fold_funcs programs Map.empty (fun outs l n ->
       (* Select all func's children that are either running or in the same
        * program *)
-      if (n.N.program = program.L.name || l.L.status = Running) &&
+      if (n.N.program_name = program.L.name || l.L.status = Running) &&
          List.exists (fun (pl, pn) ->
            pl = program.L.name && pn = func.N.name
          ) n.N.parents
@@ -91,7 +97,7 @@ let rec run_func conf programs program func =
   (* Now that the out_ref exists, but before we actually fork the worker,
    * we can start importing: *)
   let%lwt () =
-    if RamenOperation.is_exporting func.N.operation then
+    if func.N.force_export then
       let%lwt _ = RamenExport.get_or_start conf func in
       return_unit
     else return_unit in
@@ -128,8 +134,9 @@ let rec run_func conf programs program func =
         "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ (N.fq_name func)
       | None -> "no_log_dir=") |] in
   let command, args =
-    (* For convenience let's add the fun name as argument: *)
-    command, [| N.fq_name func |] in
+    (* For convenience let's add "ramen worker" and the fun name as
+     * arguments: *)
+    command, [| "(ramen worker)" ; N.fq_name func |] in
   let%lwt pid =
     wrap (fun () -> run_background command args env) in
   !logger.debug "Function %s now runs under pid %d" (N.fq_name func) pid ;
@@ -155,7 +162,7 @@ let rec run_func conf programs program func =
         let%lwt succ_failures =
           C.with_wlock conf (fun programs ->
             (* Look again for that program by name: *)
-            match C.find_func programs func.N.program func.N.name with
+            match C.find_func programs func.N.program_name func.N.name with
             | exception Not_found ->
                 !logger.error "Operation %s (pid %d) %s is not \
                                in the configuration any more!"
@@ -218,7 +225,7 @@ let rec run_func conf programs program func =
           C.with_wlock conf (fun programs ->
             (* Since we released the lock while waiting, check again that the
              * situation is still the same: *)
-            match C.find_func programs func.N.program func.N.name with
+            match C.find_func programs func.N.program_name func.N.name with
             | exception Not_found ->
                 return_unit
             | program, func ->
@@ -273,7 +280,7 @@ let kill_worker conf timeout _programs func pid =
       !logger.debug "Checking that pid %d is not around any longer." pid ;
       (* Find that program again, and if it's still having the same pid
        * then shoot him down: *)
-      (match C.find_func programs func.N.program func.N.name with
+      (match C.find_func programs func.N.program_name func.N.name with
       | exception Not_found ->
         !logger.warning "Worker %s (pid %d) is not in configuration anymore, \
                          sending it sigkill just to be sure."
@@ -372,7 +379,7 @@ let run conf programs program =
             RingBuf.create rb_name RingBufLib.rb_default_words)
         )) program_funcs in
       (* Now run everything in any order: *)
-      !logger.debug "Launching generated programs..." ;
+      !logger.debug "Launching workers..." ;
       let now = Unix.gettimeofday () in
       let%lwt () =
         Lwt_list.iter_p (fun func ->
@@ -456,8 +463,13 @@ let use_program now program =
   program.L.last_used <- now
 
 let use_program_by_name programs now program_name =
-  Hashtbl.find programs program_name |>
-  use_program now
+  match Hashtbl.find programs program_name with
+  | exception Not_found ->
+      !logger.error "Cannot find program %s, which was never ever supposed \
+                     to happen." program_name ;
+      !logger.error "Current programs: %a"
+        (Enum.print String.print) (Hashtbl.keys programs)
+  | program -> use_program now program
 
 let timeout_programs conf programs =
   (* Build the set of all defined and all used programs *)
@@ -476,17 +488,21 @@ let timeout_programs conf programs =
   let unused = Set.diff defined used |>
                Set.to_list in
   Lwt_list.iter_p (fun program_name ->
-      let program = Hashtbl.find programs program_name in
-      if program.L.timeout > 0. &&
-         now > program.L.last_used +. program.L.timeout
-      then (
-        !logger.info "Deleting unused program %s after a %gs timeout"
-          program_name program.L.timeout ;
-        (* Kill first, and only then forget about it. *)
-        let%lwt () = stop conf programs program in
-        Hashtbl.remove programs program_name ;
-        return_unit
-      ) else return_unit
+      match Hashtbl.find programs program_name with
+      | exception Not_found ->
+          !logger.error "Cannot find program %s!?" program_name ;
+          return_unit
+      | program ->
+          if program.L.timeout > 0. &&
+             now > program.L.last_used +. program.L.timeout
+          then (
+            !logger.info "Deleting unused program %s after a %gs timeout"
+              program_name program.L.timeout ;
+            (* Kill first, and only then forget about it. *)
+            let%lwt () = stop conf programs program in
+            Hashtbl.remove programs program_name ;
+            return_unit
+          ) else return_unit
     ) unused
 
 (* Instrumentation: Reading workers stats *)

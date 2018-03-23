@@ -234,3 +234,12 @@ type time_range_resp = RamenSharedTypesJS.time_range [@@ppp PPP_JSON]
 (* Top functions statistics: *)
 
 type top_functions_resp = Info.Func.info list [@@ppp PPP_JSON]
+
+(* Start a given binary: *)
+
+type start_program_req =
+  { program_name : string ;
+    bin_path : string ;
+    (* TODO: params! *)
+    timeout : float [@ppp_default 0.] }
+  [@@ppp PPP_JSON]
