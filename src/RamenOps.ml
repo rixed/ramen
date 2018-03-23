@@ -635,6 +635,23 @@ let ext_start conf program_name bin timeout =
                   child_function = func.N.name ;
                   child_in ; msg }))
       ) rc.RCP.functions) ;
+    (* Check all parents are running, or warn: *)
+    let already_warned = ref Set.empty in
+    List.iter (fun rc_func ->
+      List.iter (fun (pprog_name, pfunc) ->
+        match Hashtbl.find programs pprog_name with
+        | exception Not_found ->
+            !logger.warning "Parent %s/%s is not present" pprog_name pfunc
+        | pprog ->
+            if pprog.L.status <> Running &&
+               not (Set.mem pprog.L.name !already_warned)
+            then (
+              !logger.warning "Parent program %s is not running (%s)"
+                pprog.L.name
+                (SL.string_of_status pprog.L.status) ;
+              already_warned := Set.add pprog.L.name !already_warned)
+      ) rc_func.RCF.parents
+    ) rc.RCP.functions ;
     (* Add it into the running configuration: *)
     (* We must not already have a program by that name: *)
     if Hashtbl.mem programs program_name then
