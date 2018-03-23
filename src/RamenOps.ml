@@ -395,6 +395,9 @@ exception LinkingError of
               child_program : string ; child_function : string ;
               parent_out : C.typed_tuple ; child_in : C.typed_tuple ;
               msg : string }
+exception InvalidParameter of
+            { parameter_name : string ; supplied_value : scalar_value ;
+              expected_type : RamenSharedTypesJS.scalar_typ }
 
 let () =
   Printexc.register_printer (function
@@ -407,6 +410,13 @@ let () =
                 (IO.to_string C.print_typed_tuple parent_out)
                 child_program child_function
                 (IO.to_string C.print_typed_tuple child_in) msg)
+    | InvalidParameter { parameter_name ; supplied_value ; expected_type } ->
+        Some (Printf.sprintf "Invalid type for parameter %S: \
+                              value supplied (%s) of type %s \
+                              but expected a %s"
+                parameter_name (RamenScalar.to_string supplied_value)
+                (RamenScalar.string_of_typ (scalar_type_of supplied_value))
+                (RamenScalar.string_of_typ expected_type))
     | _ -> None)
 
 let runconf_of_bin fname : C.RunConf.Program.t =
@@ -594,47 +604,93 @@ let check_is_subtype t1 t2 =
           failwith ("Fields "^ f1.typ_name ^" differs with regard to NULLs")
   ) t1.C.ser
 
-let ext_start conf program_name bin timeout =
+let check_link_errors programs rc program_name =
+  let module RCP = C.RunConf.Program in
+  let module RCF = C.RunConf.Func in
+  (* Check parents and children for linking errors: *)
+  C.iter_funcs programs (fun prog func ->
+    List.iter (fun rc_func ->
+      if List.mem (prog.L.name, func.N.name) rc_func.RCF.parents then (
+        (* func is a parent of rc_func *)
+        match C.typed_tuple_type func.N.out_type with
+        | exception C.BadTupleTypedness _ -> ()
+        | parent_out ->
+            try check_is_subtype rc_func.RCF.in_type parent_out
+            with Failure msg ->
+              raise (LinkingError {
+                parent_program = prog.L.name ;
+                parent_function = func.N.name ;
+                parent_out ; msg ;
+                child_program = program_name ;
+                child_function = rc_func.RCF.name ;
+                child_in = rc_func.RCF.in_type })) ;
+      if List.mem (program_name, rc_func.RCF.name) func.N.parents then (
+        (* rc_func is a parent of func *)
+        match C.typed_tuple_type func.N.in_type with
+        | exception C.BadTupleTypedness _ -> ()
+        | child_in ->
+            try check_is_subtype child_in rc_func.RCF.out_type
+            with Failure msg ->
+              raise (LinkingError {
+                parent_program = program_name ;
+                parent_function = rc_func.RCF.name ;
+                parent_out = rc_func.RCF.out_type ;
+                child_program = prog.L.name ;
+                child_function = func.N.name ;
+                child_in ; msg }))
+    ) rc.RCP.functions)
+
+let create_program_from_rc programs rc program_name usr_params bin timeout =
+  let module RCP = C.RunConf.Program in
+  let module RCF = C.RunConf.Func in
+  let funcs = Hashtbl.create (List.length rc.RCP.functions) in
+  List.iter (fun rc_func ->
+    (* Override the default params we have from rc_func with the ones
+     * provided by the user, checking the types do match: *)
+    let params =
+      List.map (fun (par_name, default_val as default_param) ->
+        match List.assoc par_name usr_params with
+        | exception Not_found -> default_param
+        | usr_val ->
+            (* TODO: we should try to enlarge numeric types at least *)
+            if scalar_type_of usr_val = scalar_type_of default_val then
+              par_name, usr_val
+            else
+              raise (InvalidParameter {
+                  parameter_name = par_name ; supplied_value = usr_val ;
+                  expected_type = scalar_type_of default_val })
+      ) rc_func.RCF.params in
+    Hashtbl.add funcs rc_func.RCF.name N.{
+      program_name ; name = rc_func.RCF.name ;
+      params ; operation = fake_operation ;
+      in_type = TypedTuple rc_func.RCF.in_type ;
+      out_type = TypedTuple rc_func.RCF.out_type ;
+      signature = rc_func.RCF.signature ; parents = rc_func.RCF.parents ;
+      force_export = rc_func.RCF.force_export ;
+      merge_inputs = rc_func.RCF.merge_inputs ;
+      event_time = rc_func.RCF.event_time ;
+      pid = None ; last_exit = "" ; succ_failures = 0 }
+  ) rc.RCP.functions ;
+  let now = Unix.gettimeofday () in
+  let prog = L.{
+    name = program_name ; funcs ; timeout ;
+    program = bin ; program_is_path_to_bin = true ;
+    last_used = now ; status = Compiled ; last_status_change = now ;
+    last_started = None ; last_stopped = None ; test_id = "" } in
+  Hashtbl.add programs program_name prog ;
+  prog
+
+let ext_start conf program_name bin usr_params timeout =
+  let module RCP = C.RunConf.Program in
+  let module RCF = C.RunConf.Func in
   (* Sanitize the user provided names: *)
   let%lwt program_name = wrap (fun () -> L.sanitize_name program_name) in
   let bin = simplified_path bin in
-  let module RCP = C.RunConf.Program in
-  let module RCF = C.RunConf.Func in
   (* Read the RunConf from the binary: *)
   let%lwt rc = wrap (fun () -> runconf_of_bin bin) in
   C.with_wlock conf (fun programs ->
-    (* Check parents and children for linking errors: *)
-    C.iter_funcs programs (fun prog func ->
-      List.iter (fun rc_func ->
-        if List.mem (prog.L.name, func.N.name) rc_func.RCF.parents then (
-          (* func is a parent of rc_func *)
-          match C.typed_tuple_type func.N.out_type with
-          | exception C.BadTupleTypedness _ -> ()
-          | parent_out ->
-              try check_is_subtype rc_func.RCF.in_type parent_out
-              with Failure msg ->
-                raise (LinkingError {
-                  parent_program = prog.L.name ;
-                  parent_function = func.N.name ;
-                  parent_out ; msg ;
-                  child_program = program_name ;
-                  child_function = rc_func.RCF.name ;
-                  child_in = rc_func.RCF.in_type })) ;
-        if List.mem (program_name, rc_func.RCF.name) func.N.parents then (
-          (* rc_func is a parent of func *)
-          match C.typed_tuple_type func.N.in_type with
-          | exception C.BadTupleTypedness _ -> ()
-          | child_in ->
-              try check_is_subtype child_in rc_func.RCF.out_type
-              with Failure msg ->
-                raise (LinkingError {
-                  parent_program = program_name ;
-                  parent_function = rc_func.RCF.name ;
-                  parent_out = rc_func.RCF.out_type ;
-                  child_program = prog.L.name ;
-                  child_function = func.N.name ;
-                  child_in ; msg }))
-      ) rc.RCP.functions) ;
+    let%lwt () = wrap (fun () ->
+      check_link_errors programs rc program_name) in
     (* Check all parents are running, or warn: *)
     let already_warned = ref Set.empty in
     List.iter (fun rc_func ->
@@ -658,25 +714,8 @@ let ext_start conf program_name bin timeout =
       fail_with ("Program "^ program_name ^" already exists") else
     (* Create the C.Program.t manually since make_program takes uncompiled
      * source code: *)
-    let funcs = Hashtbl.create (List.length rc.RCP.functions) in
-    List.iter (fun rc_func ->
-      Hashtbl.add funcs rc_func.RCF.name N.{
-        program_name ; name = rc_func.RCF.name ;
-        params = rc_func.RCF.params ; operation = fake_operation ;
-        in_type = TypedTuple rc_func.RCF.in_type ;
-        out_type = TypedTuple rc_func.RCF.out_type ;
-        signature = rc_func.RCF.signature ; parents = rc_func.RCF.parents ;
-        force_export = rc_func.RCF.force_export ;
-        merge_inputs = rc_func.RCF.merge_inputs ;
-        event_time = rc_func.RCF.event_time ;
-        pid = None ; last_exit = "" ; succ_failures = 0 }
-    ) rc.RCP.functions ;
-    let now = Unix.gettimeofday () in
-    let prog = L.{
-      name = program_name ; funcs ; timeout ;
-      program = bin ; program_is_path_to_bin = true ;
-      last_used = now ; status = Compiled ; last_status_change = now ;
-      last_started = None ; last_stopped = None ; test_id = "" } in
-    Hashtbl.add programs program_name prog ;
+    let%lwt prog = wrap (fun () ->
+      create_program_from_rc programs rc program_name usr_params bin
+                             timeout) in
     (* Now start it: *)
     RamenProcesses.run conf programs prog)

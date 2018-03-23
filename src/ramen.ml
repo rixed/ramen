@@ -275,7 +275,6 @@ let params =
 let run =
   Term.(
     (const ApiCmd.run
-      $ params
       $ copts),
     info ~doc:"Run one (or all) program(s)" "run")
 

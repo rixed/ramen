@@ -118,19 +118,8 @@ let compile copts () =
   Lwt_main.run (
     http_get (copts.server_url ^"/compile") >>= check_ok)
 
-let run params copts () =
+let run copts () =
   logger := make_logger copts.debug ;
-  (* For now we do not do anything with those, as it's unclear for now
-   * how to run several times the same program with different parameters.
-   * We need the compilation step to be distinct, and local only, so that
-   * ramen (the daemon) only have a "run" and a "stop" command, that
-   * would then take the binary, some metadata with input/output types
-   * and parent names (as string, possibly with parameters to be expanded),
-   * and parameters. *)
-  List.iter (fun (n, v) ->
-    !logger.info "Parameter %s <- %a"
-      n RamenScalar.print v
-  ) params ;
   Lwt_main.run (
     http_get (copts.server_url ^"/start") >>= check_ok)
 
@@ -657,13 +646,13 @@ let ext_compile copts keep_temp_files root_path source_files () =
   ) source_files ;
   if not !all_ok then exit 1
 
-let ext_run copts params root_path bin_files () =
+let ext_run copts parameters root_path bin_files () =
   logger := make_logger copts.debug ;
   let all_ok = ref true in
   let run_file bin_path =
     let program_name = Filename.remove_extension bin_path |>
                        rel_path_from root_path in
-    let msg = { program_name ; bin_path ; timeout = 0. } in
+    let msg = { program_name ; bin_path ; timeout = 0. ; parameters } in
     let url = copts.server_url ^"/start" in
     http_post_json url start_program_req_ppp_json msg >>= check_ok
   in

@@ -294,8 +294,8 @@ let stop conf headers program_opt =
 let ext_run conf headers body =
   let%lwt msg =
     of_json headers "Starting program" start_program_req_ppp_json body in
-  let%lwt () =
-    RamenOps.ext_start conf msg.program_name msg.bin_path msg.timeout in
+  let%lwt () = RamenOps.ext_start conf msg.program_name msg.bin_path
+                                  msg.parameters msg.timeout in
   switch_accepted headers [
     Consts.json_content_type, (fun () -> respond_ok ()) ]
 
