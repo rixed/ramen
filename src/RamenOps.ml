@@ -503,7 +503,8 @@ let ext_compile conf root_path program_name program_code =
                 in_type = TypedTuple pdef.C.RunConf.Func.in_type ;
                 out_type = TypedTuple pdef.C.RunConf.Func.out_type ;
                 pid = None ; last_exit = "" ; succ_failures = 0 ;
-                force_export = false ; merge_inputs = false }
+                force_export = false ; merge_inputs = false ;
+                event_time = None }
           | f -> f
         ) func_parents in
       Hashtbl.add compiler_parents func.RamenProgram.name par_list ;
@@ -555,7 +556,9 @@ let ext_compile conf root_path program_name program_code =
                   signature = func.N.signature ;
                   parents = func.N.parents ;
                   force_export = RamenOperation.is_exporting func.operation ;
-                  merge_inputs = RamenOperation.is_merging func.operation }
+                  merge_inputs = RamenOperation.is_merging func.operation ;
+                  event_time =
+                    RamenOperation.event_time_of_operation func.operation }
               ) |>
               List.of_enum } in
         Printf.fprintf oc "let rc_str_ = %S\n"
@@ -648,6 +651,7 @@ let ext_start conf program_name bin timeout =
         signature = rc_func.RCF.signature ; parents = rc_func.RCF.parents ;
         force_export = rc_func.RCF.force_export ;
         merge_inputs = rc_func.RCF.merge_inputs ;
+        event_time = rc_func.RCF.event_time ;
         pid = None ; last_exit = "" ; succ_failures = 0 }
     ) rc.RCP.functions ;
     let now = Unix.gettimeofday () in

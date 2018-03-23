@@ -1222,7 +1222,9 @@ let compile conf parents program =
                 signature = func.N.signature ;
                 parents = func.N.parents ;
                 force_export = RamenOperation.is_exporting func.operation ;
-                merge_inputs = RamenOperation.is_merging func.operation }
+                merge_inputs = RamenOperation.is_merging func.operation ;
+                event_time =
+                  RamenOperation.event_time_of_operation func.operation }
             ) |>
             List.of_enum } in
       Printf.fprintf oc "let rc_str_ = %S\n"

@@ -256,7 +256,8 @@ struct
       mutable last_exit : string ;
       mutable succ_failures : int ;
       force_export : bool ;
-      merge_inputs : bool }
+      merge_inputs : bool ;
+      event_time : RamenOperation.event_time option }
 
   let fq_name func = func.program_name ^"/"^ func.name
 
@@ -449,7 +450,8 @@ struct
         signature : string ;
         parents : (string * string) list ;
         force_export : bool ;
-        merge_inputs : bool }
+        merge_inputs : bool ;
+        event_time : RamenOperation.event_time option }
       [@@ppp PPP_OCaml]
   end
   module Program =
@@ -576,7 +578,8 @@ let make_func program_name func_name params operation =
     out_type = UntypedTuple (make_temp_tup_typ ()) ;
     pid = None ; last_exit = "" ; succ_failures = 0 ;
     force_export = RamenOperation.is_exporting operation ;
-    merge_inputs = RamenOperation.is_merging operation }
+    merge_inputs = RamenOperation.is_merging operation ;
+    event_time = RamenOperation.event_time_of_operation operation }
 
 (* Add a program to the configuration.
  * [timeout]: if not zero, the program will be destroyed automatically if

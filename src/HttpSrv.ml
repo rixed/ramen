@@ -281,13 +281,9 @@ let run conf headers program_opt =
        bad_request (Printexc.to_string e)
      | x -> fail x
 
-let stop_programs conf program_opt =
-  C.with_wlock conf (fun programs  ->
-    RamenProcesses.stop_programs conf programs program_opt)
-
 let stop conf headers program_opt =
   try%lwt
-    let%lwt () = stop_programs conf program_opt in
+    let%lwt () = RamenOps.stop_programs conf program_opt in
     switch_accepted headers [
       Consts.json_content_type, (fun () -> respond_ok ()) ]
   with C.InvalidCommand e -> bad_request e

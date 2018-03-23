@@ -6,7 +6,7 @@
 let release_tag = "v1.2.6"
 
 (* Ramen graph configuration *)
-let graph_config = "v8" (* last incr: addition of Program.program_is_path_to_bin and renamed Func.program to Func.progran_name *)
+let graph_config = "v8" (* last incr: additions to Program.t and Func.t *)
 
 (* Code generation: sources, binaries... *)
 let codegen = "v6" (* last incr: single binary per program *)

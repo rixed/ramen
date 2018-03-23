@@ -42,11 +42,11 @@ let print_flush_method ?(prefix="") ?(suffix="") () oc = function
   | RemoveAll e ->
     Printf.fprintf oc "%sREMOVE (%a)%s" prefix (Expr.print false) e suffix
 
-type event_start = string * float
+type event_start = string * float [@@ppp PPP_OCaml]
 type event_duration = DurationConst of float (* seconds *)
                     | DurationField of (string * float)
-                    | StopField of (string * float)
-type event_time = (event_start * event_duration)
+                    | StopField of (string * float) [@@ppp PPP_OCaml]
+type event_time = (event_start * event_duration) [@@ppp PPP_OCaml]
 
 type file_spec = { fname : string ; unlink : bool }
 type download_spec = { url : string ; accept : string }

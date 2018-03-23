@@ -565,7 +565,7 @@ let fold_tuples_and_update_ts_cache
       ?min_filenum ?max_filenum ?max_res
       func history init f =
   let open RamenOperation in
-  match event_time_of_operation func.N.operation with
+  match func.N.event_time with
   | None -> raise (FuncHasNoEventTimeInfo func.N.name)
   | Some ((start_field, start_scale), duration_info) ->
     let ti = find_ser_field func.N.out_type start_field in
