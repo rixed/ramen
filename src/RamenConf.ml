@@ -402,11 +402,14 @@ struct
     in
     loop [] programs
 
-  let exec_of_program persist_dir program_name =
-    persist_dir ^"/workers/bin/"
-                ^ RamenVersions.codegen
-                ^"/"^ program_name
-                ^"/ramen_worker"
+  let exec_of_program persist_dir program =
+    if program.program_is_path_to_bin then
+      program.program
+    else
+      persist_dir ^"/workers/bin/"
+                  ^ RamenVersions.codegen
+                  ^"/"^ program.name
+                  ^"/ramen_worker"
 
   let check_not_running ~persist_dir program =
     (* Demote the status to compiled since the workers can't be running
@@ -416,7 +419,7 @@ struct
      * (which will be the case if codegen version changed): *)
     if program.status = Compiled &&
        not (file_exists ~has_perms:0o100 (
-              exec_of_program persist_dir program.name))
+              exec_of_program persist_dir program))
     then set_status program (Edition "") ;
     (* Also, we cannot be compiling nor stopping anymore: *)
     if program.status = Compiling || program.status = Stopping then

@@ -7,6 +7,8 @@ open RamenSharedTypes
 open Helpers
 open RamenHttpHelpers
 module C = RamenConf
+module N = RamenConf.Func
+module L = RamenConf.Program
 module SN = RamenSharedTypes.Info.Func
 module SL = RamenSharedTypes.Info.Program
 
@@ -132,16 +134,6 @@ let run params copts () =
   Lwt_main.run (
     http_get (copts.server_url ^"/start") >>= check_ok)
 
-(* When starting the program supervisor, no program should be running
-   already. Check that the conf reflects this. *)
-let check_not_running conf =
-  !logger.info "Cleaning workers status..." ;
-  C.with_wlock conf (fun programs ->
-    Hashtbl.iter (fun _name program ->
-      C.Program.check_not_running ~persist_dir:conf.persist_dir program
-    ) programs ;
-    return_unit)
-
 (* This both starts the HTTP server and the process monitor. TODO: split *)
 let start copts daemonize no_demo to_stderr www_dir
           ssl_cert ssl_key alert_conf_json () =
@@ -195,7 +187,23 @@ let start copts daemonize no_demo to_stderr www_dir
       | _ -> 80) in
   let url_prefix = Uri.path uri in
   Lwt_main.run (
-    let%lwt () = check_not_running conf in
+    (* When starting the program supervisor, no program should be running
+       already. Check that the conf reflects this. *)
+    let%lwt () =
+      !logger.info "Cleaning workers status..." ;
+      C.with_wlock conf (fun programs ->
+        Hashtbl.iter (fun _name program ->
+          L.check_not_running ~persist_dir:conf.persist_dir program
+        ) programs ;
+        (* TODO: Remove externally compiled programs that have changed
+        Hashtbl.filter_inplace ... *)
+        (* Restart externally compiled programs that must always be running: *)
+        Hashtbl.fold (fun _name program lst ->
+          if program.L.status = Compiled &&
+             program.L.program_is_path_to_bin
+          then program::lst else lst
+        ) programs [] |>
+        Lwt_list.iter_s (RamenProcesses.run conf programs)) in
     join [
       (* TIL the hard way that although you can use async outside of
        * Lwt_main.run, the result will be totally unpredictable. *)

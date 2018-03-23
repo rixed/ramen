@@ -1198,7 +1198,7 @@ let compile conf parents program =
       return (func, obj_name)
     ) funcs in
   (* Produce the casing: *)
-  let exec_file = L.exec_of_program conf.C.persist_dir program.name in
+  let exec_file = L.exec_of_program conf.C.persist_dir program in
   let src_file =
     RamenOCamlCompiler.with_code_file_for ~allow_reuse:false exec_file conf
       (fun oc ->

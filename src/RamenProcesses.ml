@@ -69,11 +69,7 @@ let input_spec conf parent func =
  * FIXME: a phantom type for this *)
 let rec run_func conf programs program func =
   if func.N.pid <> None then fail AlreadyRunning else
-  let command =
-    if program.L.program_is_path_to_bin then
-      program.L.program
-    else
-      L.exec_of_program conf.C.persist_dir func.program_name
+  let command = L.exec_of_program conf.C.persist_dir program
   and output_ringbufs =
     (* Start to output to funcs of this program. They have all been
      * created above (in [run]), and we want to allow loops in a program. Avoids
@@ -191,8 +187,10 @@ let rec run_func conf programs program func =
                           L.set_status program Compiled ;
                           (* If it was a binary, remove it from the
                            * configuration entirely, for future simplification
-                           * of the states: *)
-                          if program.L.program_is_path_to_bin then
+                           * of the states, unless we are quitting in which
+                           * case we keep the configuration as it is in order
+                           * to restart after the break: *)
+                          if not !quit && program.L.program_is_path_to_bin then
                             C.del_program programs program
                         ) ;
                         return 0
@@ -632,7 +630,7 @@ let cleanup_old_files conf =
       C.with_rlock conf (fun programs ->
         C.lwt_fold_funcs programs Set.empty (fun set prog func ->
           Set.add (C.obj_of_func conf func) set |>
-          Set.add (L.exec_of_program conf.C.persist_dir prog.L.name) |>
+          Set.add (L.exec_of_program conf.C.persist_dir prog) |>
           return)) in
     let now = Unix.gettimeofday () in
     let unlink_old_bin fname rel_fname =
