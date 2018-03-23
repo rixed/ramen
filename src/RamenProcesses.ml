@@ -188,7 +188,12 @@ let rec run_func conf programs program func =
                         if Hashtbl.values program.L.funcs |>
                            Enum.for_all (fun func -> func.N.pid = None) then (
                           !logger.info "All workers for %s have terminated" program.name ;
-                          L.set_status program Compiled
+                          L.set_status program Compiled ;
+                          (* If it was a binary, remove it from the
+                           * configuration entirely, for future simplification
+                           * of the states: *)
+                          if program.L.program_is_path_to_bin then
+                            C.del_program programs program
                         ) ;
                         return 0
                     | Running when not !quit ->
