@@ -48,11 +48,14 @@ let tuple_is_typed = function
   | TypedTuple _ -> true
   | UntypedTuple _ -> false
 
+let print_typed_tuple fmt t =
+  RamenTuple.print_typ fmt t.ser
+
 let print_tuple_type fmt = function
   | UntypedTuple temp_tup_typ ->
       print_temp_tup_typ fmt temp_tup_typ
-  | TypedTuple { user ; _ } ->
-      RamenTuple.print_typ fmt user
+  | TypedTuple t ->
+      print_typed_tuple fmt t
 
 exception BadTupleTypedness of string
 let typed_tuple_type = function

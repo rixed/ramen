@@ -390,11 +390,23 @@ let exec_of_program root_path program_name =
   root_path ^"/"^ program_name ^".x"
 
 exception CannotFindBinary of string
+exception LinkingError of
+            { parent_program : string ; parent_function : string ;
+              child_program : string ; child_function : string ;
+              parent_out : C.typed_tuple ; child_in : C.typed_tuple ;
+              msg : string }
 
 let () =
   Printexc.register_printer (function
     | CannotFindBinary s ->
         Some (Printf.sprintf "Cannot find worker executable %s" s)
+    | LinkingError { parent_program ; parent_function ; parent_out ;
+                     child_program ; child_function ; child_in ; msg } ->
+        Some (Printf.sprintf "Linking error from %s/%s (%s) to %s/%s (%s): %s"
+                parent_program parent_function
+                (IO.to_string C.print_typed_tuple parent_out)
+                child_program child_function
+                (IO.to_string C.print_typed_tuple child_in) msg)
     | _ -> None)
 
 let runconf_of_bin fname : C.RunConf.Program.t =
@@ -564,6 +576,21 @@ let ext_compile conf root_path program_name program_code =
     Lwt_main.run (
       RamenOCamlCompiler.link conf program_name obj_files src_file exec_file)) ()
 
+let check_is_subtype t1 t2 =
+  (* For t1 to be a subtype of t2, all fields of t1 must be present and
+   * public in t2. And since there is no more extension from scalar types at
+   * this stage, those fields must have the exact same types. *)
+  List.iter (fun f1 ->
+    match List.find (fun f2 -> f1.typ_name = f2.typ_name) t2.C.ser with
+    | exception Not_found ->
+        failwith ("Field "^ f1.typ_name ^" is missing")
+    | f2 ->
+        if f1.typ <> f2.typ then
+          failwith ("Fields "^ f1.typ_name ^" have not the same type") ;
+        if f1.nullable <> f2.nullable then
+          failwith ("Fields "^ f1.typ_name ^" differs with regard to NULLs")
+  ) t1.C.ser
+
 let ext_start conf program_name bin timeout =
   (* Sanitize the user provided names: *)
   let%lwt program_name = wrap (fun () -> L.sanitize_name program_name) in
@@ -573,6 +600,38 @@ let ext_start conf program_name bin timeout =
   (* Read the RunConf from the binary: *)
   let%lwt rc = wrap (fun () -> runconf_of_bin bin) in
   C.with_wlock conf (fun programs ->
+    (* Check parents and children for linking errors: *)
+    C.iter_funcs programs (fun prog func ->
+      List.iter (fun rc_func ->
+        if List.mem (prog.L.name, func.N.name) rc_func.RCF.parents then (
+          (* func is a parent of rc_func *)
+          match C.typed_tuple_type func.N.out_type with
+          | exception C.BadTupleTypedness _ -> ()
+          | parent_out ->
+              try check_is_subtype rc_func.RCF.in_type parent_out
+              with Failure msg ->
+                raise (LinkingError {
+                  parent_program = prog.L.name ;
+                  parent_function = func.N.name ;
+                  parent_out ; msg ;
+                  child_program = program_name ;
+                  child_function = rc_func.RCF.name ;
+                  child_in = rc_func.RCF.in_type })) ;
+        if List.mem (program_name, rc_func.RCF.name) func.N.parents then (
+          (* rc_func is a parent of func *)
+          match C.typed_tuple_type func.N.in_type with
+          | exception C.BadTupleTypedness _ -> ()
+          | child_in ->
+              try check_is_subtype child_in rc_func.RCF.out_type
+              with Failure msg ->
+                raise (LinkingError {
+                  parent_program = program_name ;
+                  parent_function = rc_func.RCF.name ;
+                  parent_out = rc_func.RCF.out_type ;
+                  child_program = prog.L.name ;
+                  child_function = func.N.name ;
+                  child_in ; msg }))
+      ) rc.RCP.functions) ;
     (* Add it into the running configuration: *)
     (* We must not already have a program by that name: *)
     if Hashtbl.mem programs program_name then
