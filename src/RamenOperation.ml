@@ -42,12 +42,6 @@ let print_flush_method ?(prefix="") ?(suffix="") () oc = function
   | RemoveAll e ->
     Printf.fprintf oc "%sREMOVE (%a)%s" prefix (Expr.print false) e suffix
 
-type event_start = string * float [@@ppp PPP_OCaml]
-type event_duration = DurationConst of float (* seconds *)
-                    | DurationField of (string * float)
-                    | StopField of (string * float) [@@ppp PPP_OCaml]
-type event_time = (event_start * event_duration) [@@ppp PPP_OCaml]
-
 type file_spec = { fname : string ; unlink : bool }
 type download_spec = { url : string ; accept : string }
 type csv_specs =
@@ -882,7 +876,8 @@ struct
       and not_listen = listen = None
       and not_csv =
         ext_data = None && preprocessor == default_preprocessor &&
-        csv_specs = None in
+        csv_specs = None
+      and not_event_time = event_time = default_event_time in
       if not_yield && not_listen && not_csv then
         Aggregate { fields = select_fields ; and_all_others ; merge ; sort ;
                     where ; force_export ; event_time ; notify_url ; key ; top
@@ -891,9 +886,10 @@ struct
               yield_fields != default_yield_fields then
         Yield { fields = yield_fields ; every = yield_every ;
                 force_export ; event_time }
-      else if not_aggregate && not_yield && not_csv &&
+      else if not_aggregate && not_yield && not_csv && not_event_time &&
               listen <> None then
         let net_addr, port, proto = Option.get listen in
+        let event_time = RamenProtocols.event_time_of_proto proto in
         ListenFor { net_addr ; port ; proto ; force_export ; event_time }
       else if not_aggregate && not_yield && not_listen &&
               ext_data <> None && csv_specs <> None then

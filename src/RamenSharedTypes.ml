@@ -90,6 +90,14 @@ type expr_type_info =
     nullable_info : bool option ;
     typ_info : scalar_typ option } [@@ppp PPP_JSON]
 
+(* Event time info *)
+
+type event_start = string * float [@@ppp PPP_OCaml]
+type event_duration = DurationConst of float (* seconds *)
+                    | DurationField of (string * float)
+                    | StopField of (string * float) [@@ppp PPP_OCaml]
+type event_time = (event_start * event_duration) [@@ppp PPP_OCaml]
+
 (* Funcs  / Programs / Graphs *)
 
 module Info =

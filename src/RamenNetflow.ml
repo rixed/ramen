@@ -4,6 +4,7 @@ open RamenLog
 open Lwt
 open Helpers
 open Stdint
+open RamenSharedTypes
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_netflow_decode in wrap_netflow.c and tuple_typ below! *)
@@ -15,7 +16,6 @@ type netflow_metric =
   Uint8.t * Uint16.t * Uint16.t * Uint8.t * Uint8.t
   
 let tuple_typ =
-  let open RamenSharedTypes in
   [ { typ_name = "source" ; nullable = false ; typ = TString } ;
     { typ_name = "first" ; nullable = false ; typ = TFloat } ;
     { typ_name = "last" ; nullable = false ; typ = TFloat } ;
@@ -40,6 +40,8 @@ let tuple_typ =
     { typ_name = "dst_as" ; nullable = false ; typ = TU16 } ;
     { typ_name = "src_mask" ; nullable = false ; typ = TU8 } ;
     { typ_name = "dst_mask" ; nullable = false ; typ = TU8 } ]
+
+let event_time = Some (("first", 1.), StopField ("last", 1.))
 
 external decode :
   Bytes.t -> int -> string -> netflow_metric array =

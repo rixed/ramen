@@ -14,6 +14,7 @@ open Batteries
 open RamenLog
 open Lwt
 open Helpers
+open RamenSharedTypes
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
@@ -26,7 +27,6 @@ type collectd_metric =
   float * float option * float option * float option * float option
 
 let tuple_typ =
-  let open RamenSharedTypes in
   [ { typ_name = "host" ; nullable = false ; typ = TString } ;
     { typ_name = "time" ; nullable = false ; typ = TFloat } ;
     { typ_name = "plugin" ; nullable = true ; typ = TString } ;
@@ -38,6 +38,8 @@ let tuple_typ =
     { typ_name = "value3" ; nullable = true ; typ = TFloat } ;
     { typ_name = "value4" ; nullable = true ; typ = TFloat } ;
     { typ_name = "value5" ; nullable = true ; typ = TFloat } ]
+
+let event_time = Some (("time", 1.), DurationConst 0.)
 
 external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
 

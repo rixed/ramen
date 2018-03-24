@@ -12,3 +12,7 @@ let tuple_typ_of_proto = function
 let collector_of_proto = function
   | Collectd -> "RamenCollectd.collector"
   | NetflowV5 -> "RamenNetflow.collector"
+
+let event_time_of_proto = function
+  | Collectd -> RamenCollectd.event_time
+  | NetflowV5 -> RamenNetflow.event_time

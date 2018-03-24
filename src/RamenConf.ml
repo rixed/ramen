@@ -257,7 +257,7 @@ struct
       mutable succ_failures : int ;
       force_export : bool ;
       merge_inputs : bool ;
-      event_time : RamenOperation.event_time option }
+      event_time : event_time option }
 
   let fq_name func = func.program_name ^"/"^ func.name
 
@@ -451,7 +451,7 @@ struct
         parents : (string * string) list ;
         force_export : bool ;
         merge_inputs : bool ;
-        event_time : RamenOperation.event_time option }
+        event_time : event_time option }
       [@@ppp PPP_OCaml]
   end
   module Program =
