@@ -103,7 +103,9 @@ let send_tuple conf func rb tuple =
     List.fold_left (fun offs (null_i, v) ->
       Option.may (RingBuf.set_bit tx) null_i ;
       offs + write_scalar_value tx offs v
-    ) nullmask_sz values)
+    ) nullmask_sz values |> ignore ;
+    (* For tests we won't archive the ringbufs so no need for time info: *)
+    0., 0.)
 
 (* Return a random unique test identifier *)
 let get_id () =

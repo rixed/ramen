@@ -29,7 +29,10 @@ let summary copts file () =
   let rb = load ~rotate file in
   let s = stats rb in
   Printf.printf "%s:\n\
+                 %d objects\n\
+                 time range: %f..%f\n\
                  %d/%d words used\n\
                  mmapped bytes: %d\n\
                  prod/cons heads: %d/%d\n"
-    file s.nb_entries s.capacity s.mem_size s.prod_head s.cons_head
+    file s.alloced_objects s.t_min s.t_max
+    s.alloced_words s.capacity s.mem_size s.prod_head s.cons_head

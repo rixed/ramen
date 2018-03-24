@@ -136,12 +136,15 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
   struct ringbuf *rb = Ringbuf_val(rb_);
   CAMLlocal1(ret);
   // See type stats in RingBuf.ml
-  ret = caml_alloc_tuple(5);
+  ret = caml_alloc_tuple(8);
   Field(ret, 0) = Val_long(rb->nb_words);
   Field(ret, 1) = Val_long(ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head));
-  Field(ret, 2) = Val_long(rb->mmapped_size);
-  Field(ret, 3) = Val_long(rb->prod_head);
-  Field(ret, 4) = Val_long(rb->cons_head);
+  Field(ret, 2) = Val_long(rb->nb_allocs);
+  Field(ret, 3) = caml_copy_double(rb->tmin);
+  Field(ret, 4) = caml_copy_double(rb->tmax);
+  Field(ret, 5) = Val_long(rb->mmapped_size);
+  Field(ret, 6) = Val_long(rb->prod_head);
+  Field(ret, 7) = Val_long(rb->cons_head);
   CAMLreturn(ret);
 }
 
@@ -157,18 +160,20 @@ static void check_size(int size)
   }
 }
 
-CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_)
+CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_, value tmin_, value tmax_)
 {
-  CAMLparam3(rb_, bytes_, size_);
+  CAMLparam5(rb_, bytes_, size_, tmin_, tmax_);
   struct ringbuf *rb = Ringbuf_val(rb_);
   int size = Long_val(size_);
   check_size(size);
   if (size < (int)caml_string_length(bytes_)) {
     caml_invalid_argument("enqueue: size must be less than the string length");
   }
+  double tmin = Double_val(tmin_);
+  double tmax = Double_val(tmax_);
   uint32_t nb_words = size / sizeof(uint32_t);
   uint32_t *bytes = (uint32_t *)String_val(bytes_);
-  if (0 != ringbuf_enqueue(rb, bytes, nb_words)) {
+  if (0 != ringbuf_enqueue(rb, bytes, nb_words, tmin, tmax)) {
     assert(exception_inited);
     caml_raise_constant(exn_NoMoreRoom);
   }
@@ -226,11 +231,13 @@ CAMLprim value wrap_ringbuf_tx_size(value tx)
   CAMLreturn(Val_long((long)wrtx->alloced));
 }
 
-CAMLprim value wrap_ringbuf_enqueue_commit(value tx)
+CAMLprim value wrap_ringbuf_enqueue_commit(value tx, value tmin_, value tmax_)
 {
-  CAMLparam1(tx);
+  CAMLparam3(tx, tmin_, tmax_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
-  ringbuf_enqueue_commit(wrtx->rb, &wrtx->tx);
+  double tmin = Double_val(tmin_);
+  double tmax = Double_val(tmax_);
+  ringbuf_enqueue_commit(wrtx->rb, &wrtx->tx, tmin, tmax);
   CAMLreturn(Val_unit);
 }
 

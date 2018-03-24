@@ -15,8 +15,8 @@ extern inline uint32_t ringbuf_nb_entries(struct ringbuf const *rb, uint32_t, ui
 extern inline uint32_t ringbuf_nb_free(struct ringbuf const *rb, uint32_t, uint32_t);
 
 extern inline int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t nb_words);
-extern inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx);
-extern inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words);
+extern inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop);
+extern inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words, double t_start, double t_stop);
 
 extern inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx);
@@ -48,6 +48,7 @@ extern int ringbuf_create(char const *fname, uint32_t tot_words)
   rb.nb_words = tot_words;
   rb.prod_head = rb.prod_tail = 0;
   rb.cons_head = rb.cons_tail = 0;
+  rb.nb_allocs = 0;
   ssize_t w = write(fd, &rb, sizeof(rb));
   if (w < 0) {
     fprintf(stderr, "Cannot write ring buffer header in file '%s': %s\n",

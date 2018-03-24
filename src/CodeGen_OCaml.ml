@@ -135,6 +135,40 @@ let emit_sersize_of_tuple name oc tuple_typ =
   Printf.fprintf oc "\t\tignore skiplist_ ;\n" ;
   Printf.fprintf oc "\t\tsz_\n"
 
+let emit_float oc f =
+  (* printf "%F" would not work for infinity:
+   * https://caml.inria.fr/mantis/view.php?id=7685 *)
+  if f = infinity then String.print oc "infinity"
+  else if f = neg_infinity then String.print oc "neg_infinity"
+  else Printf.fprintf oc "(%f)" f
+
+let emit_time_of_tuple name event_time oc tuple_typ =
+  Printf.fprintf oc "let %s %a =\n"
+    name
+    (print_tuple_deconstruct TupleOut) tuple_typ ;
+  match event_time with
+  | None ->
+      Printf.fprintf oc "\t0., 0. (* No event time info *)\n"
+  | Some ((sta_field, sta_scale), dur) ->
+      Printf.fprintf oc "\tlet start_ = %s *. %a\n"
+        (id_of_field_name ~tuple:TupleOut sta_field)
+        emit_float sta_scale ;
+      (match dur with
+      | DurationConst d ->
+          Printf.fprintf oc "\tand dur_ = %a in\n\
+                             \tstart_, start_ +. dur_\n"
+            emit_float d
+      | DurationField (dur_field, dur_scale) ->
+          Printf.fprintf oc "\tand dur_ = %s *. %a in\n\
+                             \tstart_, start_ +. dur_\n"
+            (id_of_field_name ~tuple:TupleOut dur_field)
+            emit_float dur_scale ;
+      | StopField (sto_field, sto_scale) ->
+          Printf.fprintf oc "\tand stop_ = %s *. %a in\n\
+                             \tstart_, stop_\n"
+            (id_of_field_name ~tuple:TupleOut sto_field)
+            emit_float sto_scale)
+
 let emit_set_value tx_var offs_var field_var oc field_typ =
   Printf.fprintf oc "RingBuf.write_%s %s %s %s"
     (id_of_typ field_typ) tx_var offs_var field_var
@@ -227,7 +261,7 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
 let emit_read_csv_file oc name csv_fname unlink csv_separator csv_null
-                       tuple_typ preprocessor =
+                       tuple_typ preprocessor event_time =
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
    * Then we want to write this tuple in some ring buffer.
@@ -237,24 +271,26 @@ let emit_read_csv_file oc name csv_fname unlink csv_separator csv_null
    * - given a pointer toward the ring buffer, serialize the tuple *)
   Printf.fprintf oc
      "open Batteries\nopen Stdint\n\n\
-     %a\n%a\n%a\n\
+     %a\n%a\n%a\n%a\n\
      let %s () =\n\
-       \tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ serialize_tuple_ tuple_of_strings_ %S\n"
+       \tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_ tuple_of_strings_ %S\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
+    (emit_time_of_tuple "time_of_tuple_" event_time) tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
     name
     csv_fname unlink csv_separator preprocessor
 
-let emit_listen_on oc name net_addr port proto =
+let emit_listen_on oc name net_addr port proto event_time =
   let open RamenProtocols in
   let tuple_typ = tuple_typ_of_proto proto in
   let collector = collector_of_proto proto in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n\
+    %a\n%a\n%a\n\
     let %s () =\n\
-      \tCodeGenLib.listen_on %s %S %d %S sersize_of_tuple_ serialize_tuple_\n"
+      \tCodeGenLib.listen_on %s %S %d %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
+    (emit_time_of_tuple "time_of_tuple_" event_time) tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     name
     collector
@@ -344,12 +380,7 @@ let add_all_mentioned_in_string mentioned _str =
 let emit_scalar oc =
   let open Stdint in
   function
-  | VFloat  f ->
-    (* printf "%F" would not work for infinity:
-     * https://caml.inria.fr/mantis/view.php?id=7685 *)
-    if f = infinity then String.print oc "infinity"
-    else if f = neg_infinity then String.print oc "neg_infinity"
-    else Printf.fprintf oc "(%f)" f
+  | VFloat  f -> emit_float oc f
   | VString s -> Printf.fprintf oc "%S" s
   | VBool   b -> Printf.fprintf oc "%b" b
   | VU8     n -> Printf.fprintf oc "(Uint8.of_int (%d))" (Uint8.to_int n)
@@ -1225,16 +1256,17 @@ let emit_float_of_top name oc top_by =
       (conv_to ~context:Finalize (Some TFloat)) top_by
 
 let emit_yield oc name in_typ out_typ = function
-  | RamenOperation.Yield { fields ; every } as op ->
+  | RamenOperation.Yield { fields ; every ; event_time } as op ->
     let mentioned =
       let all_exprs = RamenOperation.fold_expr [] (fun l s -> s::l) op in
       add_all_mentioned_in_expr all_exprs in
     Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-      %a\n%a\n%a\n\
+      %a\n%a\n%a\n%a\n\
       let %s () =\n\
-        \tCodeGenLib.yield sersize_of_tuple_ serialize_tuple_ select_ %f\n"
+        \tCodeGenLib.yield sersize_of_tuple_ time_of_tuple_ serialize_tuple_ select_ %f\n"
       (emit_field_selection "select_" in_typ mentioned false out_typ) fields
       (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
+      (emit_time_of_tuple "time_of_tuple_" event_time) out_typ
       (emit_serialize_tuple "serialize_tuple_") out_typ
       name
       every
@@ -1424,7 +1456,8 @@ let emit_merge_on name in_typ mentioned and_all_others oc es =
 let emit_aggregate oc name in_typ out_typ = function
   | RamenOperation.Aggregate
       { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
-        commit_before ; commit_when ; flush_how ; notify_url ; _ } as op ->
+        commit_before ; commit_when ; flush_how ; notify_url ; event_time ;
+        _ } as op ->
   let mentioned =
     let all_exprs = RamenOperation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
@@ -1442,7 +1475,7 @@ let emit_aggregate oc name in_typ out_typ = function
       ) false where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when ?top_by:None) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when ?top_by:None) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_typ
@@ -1459,6 +1492,7 @@ let emit_aggregate oc name in_typ out_typ = function
     (emit_when "commit_when_" in_typ mentioned and_all_others out_typ) commit_when
     (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_typ mentioned and_all_others out_typ) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
+    (emit_time_of_tuple "time_of_tuple_" event_time) out_typ
     (emit_serialize_tuple "serialize_group_") out_typ
     (emit_generate_tuples "generate_tuples_" in_typ mentioned and_all_others out_typ) fields
     (emit_should_resubmit "should_resubmit_" in_typ mentioned and_all_others) flush_how
@@ -1471,7 +1505,8 @@ let emit_aggregate oc name in_typ out_typ = function
     (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (match sort with Some (_, _, b) -> b | None -> []) ;
   Printf.fprintf oc "let %s () =\n\
       \tCodeGenLib.aggregate\n\
-      \t\tread_tuple_ sersize_of_tuple_ serialize_group_  generate_tuples_\n\
+      \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
+      \t\tgenerate_tuples_\n\
       \t\ttuple_of_group_ merge_on_ %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b \n\
       \t\ttop_ top_init_ float_of_top_state_\n\
@@ -1505,15 +1540,16 @@ let compile conf entry_point func_name obj_name in_typ out_typ params op =
           (id_of_prefix TupleParam) n emit_scalar v
       ) params ;
       (match op with
-      | Yield _->
+      | Yield _ ->
         emit_yield oc entry_point in_typ out_typ op
       | ReadCSVFile { where = ReadFile { fname ; unlink } ; preprocessor ;
-                      what = { separator ; null ; fields } } ->
-        emit_read_csv_file oc entry_point fname unlink separator null fields preprocessor
+                      what = { separator ; null ; fields } ; event_time } ->
+        emit_read_csv_file oc entry_point fname unlink separator null
+                           fields preprocessor event_time
       | ReadCSVFile { where = (DownloadFile _ | ReceiveFile) ; _ } ->
         failwith "This never happens"
-      | ListenFor { net_addr ; port ; proto } ->
-        emit_listen_on oc entry_point net_addr port proto
+      | ListenFor { net_addr ; port ; proto ; event_time } ->
+        emit_listen_on oc entry_point net_addr port proto event_time
       | Aggregate _ ->
         emit_aggregate oc entry_point in_typ out_typ op)) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)

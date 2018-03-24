@@ -337,14 +337,14 @@ let get_binocle_tuple worker ic sc gc : RamenBinocle.tuple =
 (* Contrary to the http version above, here we sent only known, selected
  * fields in a well defined tuple, rather than sending everything we have
  * in a serialized map. *)
-let send_stats rb tuple =
+let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let sersize = RamenBinocle.max_sersize_of_tuple tuple in
   match RingBuf.enqueue_alloc rb sersize with
   | exception RingBufLib.NoMoreRoom -> () (* Just skip *)
   | tx ->
     let offs = RamenBinocle.serialize tx tuple in
     assert (offs <= sersize) ;
-    RingBuf.enqueue_commit tx
+    RingBuf.enqueue_commit tx time time
 
 let update_stats_rb period rb_name get_tuple =
   let rb = RingBuf.load ~rotate:true rb_name in
@@ -360,8 +360,9 @@ let update_stats_rb period rb_name get_tuple =
 (* TODO: for non-ring buffers we will need to know the value for the time, and
  * we will want to save the first/last tuple sequence number as well as the min
  * and max of the times.*)
-let output rb serialize_tuple sersize_of_tuple tuple =
+let output rb serialize_tuple sersize_of_tuple time_of_tuple tuple =
   let open RingBuf in
+  let tmin, tmax = time_of_tuple tuple in
   let sersize = sersize_of_tuple tuple in
   IntCounter.add stats_rb_write_bytes sersize ;
   if IntCounter.get stats_rb_write_bytes < 0 then
@@ -369,12 +370,13 @@ let output rb serialize_tuple sersize_of_tuple tuple =
       sersize (IntCounter.get stats_rb_write_bytes) ;
   let tx = enqueue_alloc rb sersize in
   let offs = serialize_tuple tx tuple in
-  enqueue_commit tx ;
+  enqueue_commit tx tmin tmax ;
   assert (offs = sersize)
 
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
-let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
+let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
+                serialize_tuple =
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
   and out_l = ref []  (* list of outputers *) in
   let get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
@@ -410,7 +412,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple =
           let rotate = fname.[String.length fname - 1] = 'r' in
           let rb = RingBuf.load ~rotate fname in
           let once = output rb (serialize_tuple file_spec.field_mask)
-                               (sersize_of_tuple file_spec.field_mask) in
+                               (sersize_of_tuple file_spec.field_mask)
+                               time_of_tuple in
           let rb_writer =
             if rotate then
               let retry_count = ref 0 in
@@ -498,7 +501,7 @@ let worker_start worker_name get_binocle_tuple k =
 (* Operations that funcs may run: *)
 
 let read_csv_file filename do_unlink separator sersize_of_tuple
-                  serialize_tuple tuple_of_strings preprocessor =
+                  time_of_tuple serialize_tuple tuple_of_strings preprocessor =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -515,7 +518,8 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
       tuple_of_strings (Array.of_list strings)
     in
     let outputer =
-      outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
+      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
+                  serialize_tuple in
     let while_ () = not !quit in
     CodeGenLib_IO.read_glob_lines ~while_ ~do_unlink filename preprocessor (fun line ->
       match of_string line with
@@ -533,7 +537,7 @@ let listen_on (collector :
                 ('a -> unit Lwt.t) ->
                 unit Lwt.t)
               addr_str port proto_name
-              sersize_of_tuple serialize_tuple =
+              sersize_of_tuple time_of_tuple serialize_tuple =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -544,11 +548,12 @@ let listen_on (collector :
     !logger.debug "Will listen to port %d for incoming %s messages"
                   port proto_name ;
     let outputer =
-      outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
+      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
+                  serialize_tuple in
     let while_ () = not !quit in
     collector ~inet_addr ~port ~while_ outputer)
 
-let yield sersize_of_tuple serialize_tuple select every =
+let yield sersize_of_tuple time_of_tuple serialize_tuple select every =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -556,7 +561,8 @@ let yield sersize_of_tuple serialize_tuple select every =
     let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     in
     let outputer =
-      outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
+      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
+                  serialize_tuple in
     let rec loop () =
       if !quit then return_unit else (
         let start = Unix.gettimeofday () in
@@ -581,7 +587,8 @@ let send_notif rb worker url =
     RingBuf.write_string tx 0 worker ;
     let offs = RingBufLib.sersize_of_string worker in
     RingBuf.write_string tx offs url ;
-    RingBuf.enqueue_commit tx) ()
+    (* Note: Surely there should be some time info for notifs. *)
+    RingBuf.enqueue_commit tx 0. 0.) ()
 
 let notify conf rb worker url field_of_tuple tuple =
   let expand_fields =
@@ -764,6 +771,7 @@ let merge_rbs ?while_ ?delay_rec merge_on merge_timeout read_tuple rbs k =
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
+      (time_of_tuple : 'tuple_out -> float * float)
       (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> 'tuple_out -> int)
       (generate_tuples : ('tuple_out -> unit Lwt.t) -> 'tuple_in -> 'generator_out -> unit Lwt.t)
       (tuple_of_aggr :
@@ -849,7 +857,8 @@ let aggregate
     assert (not commit_before || top_n = 0) ;
     let notify_rb = RingBuf.load ~rotate:true notify_rb_name in
     let tuple_outputer =
-      outputer_of rb_ref_out_fname sersize_of_tuple serialize_tuple in
+      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
+                  serialize_tuple in
     let outputer =
       let do_out tuple =
         let%lwt () =

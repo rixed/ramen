@@ -14,7 +14,10 @@ let create fname =
 
 type stats = {
   capacity : int ; (* in words *)
-  nb_entries : int ; (* in words *)
+  alloced_words : int ; (* in words *)
+  alloced_objects : int ;
+  t_min : float ;
+  t_max : float ;
   mem_size : int ; (* the number of bytes that were mapped *)
   prod_head : int ;
   cons_head : int }
@@ -28,8 +31,8 @@ type tx (* abstract, represents an ongoing (de)queueing operation *)
 
 external tx_size : tx -> int = "wrap_ringbuf_tx_size"
 external enqueue_alloc : t -> int -> tx = "wrap_ringbuf_enqueue_alloc"
-external enqueue_commit : tx -> unit = "wrap_ringbuf_enqueue_commit"
-external enqueue : t -> bytes -> int -> unit = "wrap_ringbuf_enqueue"
+external enqueue_commit : tx -> float -> float -> unit = "wrap_ringbuf_enqueue_commit"
+external enqueue : t -> bytes -> int -> float -> float -> unit = "wrap_ringbuf_enqueue"
 external dequeue_alloc : t -> tx = "wrap_ringbuf_dequeue_alloc"
 external dequeue_commit : tx -> unit = "wrap_ringbuf_dequeue_commit"
 external dequeue : t -> bytes = "wrap_ringbuf_dequeue"
@@ -127,8 +130,8 @@ let with_enqueue_tx rb sz f =
   let%lwt tx =
     RingBufLib.retry_for_ringbuf (enqueue_alloc rb) sz in
   try
-    f tx ;
-    enqueue_commit tx ;
+    let tmin, tmax = f tx in
+    enqueue_commit tx tmin tmax ;
     return_unit
   with exn ->
     (* There is no such thing as enqueue_rollback. We cannot make the rb

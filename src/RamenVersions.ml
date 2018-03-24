@@ -24,7 +24,7 @@ let notify_tuple = "v1"
 let history = "v1"
 
 (* Ringbuf formats *)
-let ringbuf = "v2" (* last: added .r/.b extension *)
+let ringbuf = "v2" (* last: added .r/.b extension and changed header *)
 
 (* Ref-ringbuf format *)
 let out_ref = "v2" (* last: added timeout *)

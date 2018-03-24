@@ -30,25 +30,6 @@
 #include <sched.h>
 #include <limits.h>
 
-/* All tuple fields must be ordered so that we do not have to specify this
- * ordering from the code of the operations.
- * We choose to order them according to field name. */
-enum tuple_type_float {
-  TUPLE_FLOAT,  // Standard 64bits floats
-  TUPLE_STRING, // The only variable length data type. Prefixed with length
-  TUPLE_U32,
-  TUPLE_U64,
-  TUPLE_U128,
-  TUPLE_I32,
-  TUPLE_I64,
-  TUPLE_I128,
-};
-
-struct tuple_field {
-  enum tuple_type_float type;
-  char field_name[];  // varsized, nul terminated.
-};
-
 struct ringbuf {
   // Fixed length of the ring buffer. mmapped file must be >= this.
   uint32_t nb_words;
@@ -58,27 +39,30 @@ struct ringbuf {
   /* Bytes that are being added by producers lie between prod_tail and
    * prod_head. prod_head points to the next word to be allocated. */
   volatile uint32_t _Atomic prod_head;
-  volatile uint32_t prod_tail;
+  volatile uint32_t _Atomic prod_tail;
   /* Bytes that are being read by consumers are between cons_tail and
    * cons_head. cons_head points to the next word to be read.
    * The ring buffer is empty when prod_tail == cons_head and full whenever
    * prod_head == cons_tail - 1. */
   volatile uint32_t _Atomic cons_head;
   volatile uint32_t cons_tail;
-  /* Now this file is made of tuples which format is declared here: first
-   * the number of fields in our tuple, then for each fields its type: */
-  unsigned tuple_nb_fields;
-  uint8_t tuple_field_types[256]; // Undefined after tuple_nb_fields.
+  /* We count the number of tuples (actually, of allocations), and keep
+   * the range of some observed "t" values: */
+  volatile uint32_t _Atomic nb_allocs;
+  volatile double _Atomic tmin;
+  volatile double _Atomic tmax;
   /* The actual tuples start here: */
   uint32_t data[];
 };
 
+// Return the number of words currently stored in  the ring-buffer:
 inline uint32_t ringbuf_nb_entries(struct ringbuf const *rb, uint32_t prod_tail, uint32_t cons_head)
 {
   if (prod_tail >= cons_head) return prod_tail - cons_head;
   return (prod_tail + rb->nb_words) - cons_head;
 }
 
+// Conversely, returns the number of words free:
 inline uint32_t ringbuf_nb_free(struct ringbuf const *rb, uint32_t cons_tail, uint32_t prod_head)
 {
   if (cons_tail > prod_head) return cons_tail - prod_head - 1;
@@ -91,6 +75,15 @@ struct ringbuf_tx {
     uint32_t next;
 };
 
+inline void print_rb(struct ringbuf *rb)
+{
+  printf("rb@%p: cons=[%"PRIu32";%"PRIu32"] -- (%u words of data) -- prod=[%"PRIu32";%"PRIu32"]\n",
+         rb,
+         rb->cons_tail, rb->cons_head,
+         ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head),
+         rb->prod_tail, rb->prod_head);
+}
+
 /* ringbuf will have:
  *  word n: nb_words
  *  word n+1..n+nb_words: allocated.
@@ -98,8 +91,6 @@ struct ringbuf_tx {
 inline int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t nb_words)
 {
   uint32_t cons_tail;
-  bool cas_ok;
-
   uint32_t need_eof = 0;  // 0 never needs an EOF
 
   do {
@@ -128,8 +119,7 @@ inline int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint
       return -1;
     }
 
-    cas_ok = atomic_compare_exchange_strong(&rb->prod_head, &tx->seen, tx->next);
-  } while (! cas_ok);
+  } while (!  atomic_compare_exchange_strong(&rb->prod_head, &tx->seen, tx->next));
 
   if (need_eof) rb->data[need_eof] = UINT32_MAX;
   rb->data[tx->record_start ++] = nb_words;
@@ -137,27 +127,35 @@ inline int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint
   return 0;
 }
 
-inline void print_rb(struct ringbuf *rb)
+inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop)
 {
-  printf("rb@%p: cons=[%"PRIu32";%"PRIu32"] -- (%u words of data) -- prod=[%"PRIu32";%"PRIu32"]\n",
-         rb,
-         rb->cons_tail, rb->cons_head,
-         ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head),
-         rb->prod_tail, rb->prod_head);
-}
+  if (t_start > t_stop) {
+    double tmp = t_start;
+    t_start = t_stop;
+    t_stop = tmp;
+  }
 
-inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
-{
   // Update the prod_tail to match the new prod_head.
-  while (rb->prod_tail != tx->seen) sched_yield();
+  while (atomic_load_explicit(&rb->prod_tail, memory_order_acquire) != tx->seen)
+    sched_yield();
+
   //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rb->cons_head);
   assert(ringbuf_nb_entries(rb, tx->next, rb->cons_head) > 0);
-  rb->prod_tail = tx->next;
+  // All we need is for the following prod_tail change to always
+  // be visible after the changes to nb_allocs and min/max observed t:
+  uint32_t prev_nb_allocs = atomic_fetch_add_explicit(&rb->nb_allocs, 1, memory_order_relaxed);
+  double tmin = atomic_load_explicit(&rb->tmin, memory_order_relaxed);
+  double tmax = atomic_load_explicit(&rb->tmax, memory_order_relaxed);
+  if (0 == prev_nb_allocs || t_start < tmin)
+      atomic_store_explicit(&rb->tmin, t_start, memory_order_relaxed);
+  if (0 == prev_nb_allocs || t_stop > tmax)
+      atomic_store_explicit(&rb->tmax, t_stop, memory_order_relaxed);
+  atomic_store_explicit(&rb->prod_tail, tx->next, memory_order_release);
   //print_rb(rb);
 }
 
 // Combine all of the above:
-inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words)
+inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words, double t_start, double t_stop)
 {
   struct ringbuf_tx tx;
   int const err = ringbuf_enqueue_alloc(rb, &tx, nb_words);
@@ -165,7 +163,7 @@ inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb
 
   memcpy(rb->data + tx.seen + 1, data, nb_words*sizeof(*data));
 
-  ringbuf_enqueue_commit(rb, &tx);
+  ringbuf_enqueue_commit(rb, &tx, t_start, t_stop);
 
   return 0;
 }
@@ -173,12 +171,11 @@ inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb
 inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 {
   uint32_t seen_prod_tail, nb_words;
-  bool cas_ok;
 
   /* Try to "reserve" the next record after cons_head by moving rb->cons_head
    * after it */
   do {
-    tx->seen = rb->cons_head;
+    tx->seen = atomic_load(&rb->cons_head);
     seen_prod_tail = rb->prod_tail;
     tx->record_start = tx->seen;
 
@@ -203,8 +200,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 
     tx->next = (tx->record_start + nb_words) % rb->nb_words;
 
-    cas_ok = atomic_compare_exchange_strong(&rb->cons_head, &tx->seen, tx->next);
-  } while (! cas_ok);
+  } while (! atomic_compare_exchange_strong(&rb->cons_head, &tx->seen, tx->next));
 
   /* If the CAS succeeded it means nobody altered the indexes while we were
    * reading, therefore nobody wrote something silly in place of the number

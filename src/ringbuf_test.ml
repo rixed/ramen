@@ -22,7 +22,7 @@ let () =
   if debug then Printf.printf "Write i128...\n%!" ;
   write_i128 tx 12 (Int128.of_string "22690724232397191156128999734549562180") ;
   if debug then Printf.printf "Commit...\n%!" ;
-  enqueue_commit tx ;
+  enqueue_commit tx 0. 0. ;
   let str = "glopi" in
   let tx = enqueue_alloc rb (
             round_up_to_rb_word(String.length str)
@@ -30,4 +30,4 @@ let () =
           + round_up_to_rb_word(1)) in
   if debug then Printf.printf "Write %S...\n%!" str ;
   write_string tx 0 str ;
-  enqueue_commit tx
+  enqueue_commit tx 0. 0.
