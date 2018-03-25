@@ -367,14 +367,27 @@ let tail =
       $ continuous),
     info ~doc:"Display the last outputs of an operation" "tail")
 
+let csv_separator =
+  let env = Term.env_info "RAMEN_CSV_SEPARATOR" in
+  let i = Arg.info ~doc:"Field separator."
+                   ~env [ "separator" ] in
+  Arg.(value (opt string "," i))
+
+let csv_null =
+  let env = Term.env_info "RAMEN_CSV_NULL" in
+  let i = Arg.info ~doc:"Representation of NULL values."
+                   ~env [ "null" ] in
+  Arg.(value (opt string "<NULL>" i))
+
 (* TODO: from/until timestamps *)
 let ext_tail =
   Term.(
     (const ApiCmd.ext_tail
       $ copts
       $ func_name 0
-      $ as_csv
       $ with_header
+      $ csv_separator
+      $ csv_null
       $ last
       $continuous),
     info ~doc:"Display the last outputs of an operation" "xtail")

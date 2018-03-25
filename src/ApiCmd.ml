@@ -363,7 +363,7 @@ let tail copts func_name as_csv with_header last continuous () =
  * on purpose, with a specific timeout. The idea is that all clients will
  * use the same name so that they can share reading this file sequence,
  * benefiting from older values: *)
-let ext_tail copts func_name as_csv with_header last continuous () =
+let ext_tail copts func_name with_header separator null last continuous () =
   logger := make_logger copts.debug ;
   let conf =
     C.make_conf true copts.server_url copts.debug copts.persist_dir
@@ -378,7 +378,7 @@ let ext_tail copts func_name as_csv with_header last continuous () =
       exit 1
   | program_name, func_name ->
       Lwt_main.run (
-        let%lwt bname = C.with_rlock conf (fun programs ->
+        let%lwt bname, typ = C.with_rlock conf (fun programs ->
           match C.find_func programs program_name func_name with
           | exception Not_found ->
               fail_with ("Function "^ program_name ^"/"^ func_name ^
@@ -388,24 +388,35 @@ let ext_tail copts func_name as_csv with_header last continuous () =
               RingBuf.create ~wrap:false bname RingBufLib.rb_default_words ;
               (* 2. Add that name to the function out-ref *)
               let out_ref = C.out_ringbuf_names_ref conf func in
+              let%lwt typ =
+                wrap (fun () -> C.tuple_ser_type func.N.out_type) in
               let%lwt file_spec =
-                let%lwt typ =
-                  wrap (fun () -> C.tuple_ser_type func.N.out_type) in
                 return RamenOutRef.{
                   field_mask =
                     RingBufLib.skip_list ~out_type:typ ~in_type:typ ;
                   timeout =
                     Unix.gettimeofday () +. 3600. (* FIXME *) } in
               let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
-              return bname) in
+              return (bname, typ)) in
         (* 3. Then, scan all present ringbufs in the requested range (either
          *    the last N tuples or, TBD, since ts1 [until ts2]) and display
          *    them *)
+        let nullmask_size =
+          RingBufLib.nullmask_bytes_of_tuple_type typ in
+        !logger.debug "nullmask size: %d" nullmask_size ;
+        if with_header then
+          List.print ~first:"#" ~last:"\n" ~sep:separator
+            (fun fmt ft -> String.print fmt ft.typ_name)
+            stdout typ ;
+          BatIO.flush stdout ;
         let rb = RingBuf.load bname in
         let%lwt () =
           RingBuf.read_buf rb (fun tx ->
-            ignore tx ;
-            !logger.info "Got one tuple" ;
+            let tuple =
+              RamenSerialization.read_tuple typ nullmask_size tx in
+            Array.print ~first:"" ~last:"\n" ~sep:separator
+              (RamenScalar.print_custom ~null) stdout tuple ;
+            BatIO.flush stdout ;
             return_unit) in
         (* 4. Notice that if we tail for a long time in continuous mode, we
          *    might need to refresh the out-ref timeout from time to

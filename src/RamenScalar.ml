@@ -85,7 +85,7 @@ let my_float_to_string v =
   assert (String.length s > 0) ;
   if s.[String.length s - 1] <> '.' then s else String.rchop s
 
-let to_string = function
+let to_string ?(null="NULL") = function
   | VFloat f  -> my_float_to_string f
   | VString s -> Printf.sprintf "%S" s
   | VBool b   -> Bool.to_string b
@@ -99,14 +99,15 @@ let to_string = function
   | VI32 i    -> Int32.to_string i
   | VI64 i    -> Int64.to_string i
   | VI128 i   -> Int128.to_string i
-  | VNull     -> "NULL"
+  | VNull     -> null
   | VEth i    -> EthAddr.to_string i
   | VIpv4 i   -> Ipv4.to_string i
   | VIpv6 i   -> Ipv6.to_string i
   | VCidrv4 i -> Ipv4.Cidr.to_string i
   | VCidrv6 i -> Ipv6.Cidr.to_string i
 
-let print fmt v = String.print fmt (to_string v)
+let print_custom ?null fmt v = String.print fmt (to_string ?null v)
+let print fmt v = print_custom fmt v
 
 let is_round_integer = function
   | VFloat f  -> fst(modf f) = 0.
