@@ -885,7 +885,7 @@ struct
      (afun1 "lower" >>: fun e -> StatelessFun1 (make_string_typ "lower", Lower, e)) |||
      (afun1 "upper" >>: fun e -> StatelessFun1 (make_string_typ "upper", Upper, e)) |||
      (strinG "now" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "now", Now)) |||
-     (strinG "rand" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "rand", Random)) |||
+     (strinG "random" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "random", Random)) |||
      (afun1 "exp" >>: fun e -> StatelessFun1 (make_num_typ "exponential", Exp, e)) |||
      (afun1 "log" >>: fun e -> StatelessFun1 (make_num_typ "logarithm", Log, e)) |||
      (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_num_typ "square root", Sqrt, e)) |||
