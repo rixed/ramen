@@ -692,6 +692,11 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatelessFun2 (_, Pow, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".( ** )") [Some t; Some t] [e1; e2]
+  | Finalize, StatelessFun2 (_, Mod, e1, e2),
+    Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN oc ?state (omod_of_type t ^".rem") [Some t; Some t] [e1; e2]
+  | Finalize, StatelessFun2 (_, Mod, e1, e2), Some (TFloat as t) ->
+    emit_functionN oc ?state (omod_of_type t ^".modulo") [Some t; Some t] [e1; e2]
 
   | Finalize, StatelessFun1 (_, Abs, e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
