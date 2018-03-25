@@ -317,14 +317,15 @@ let check params =
       | _ -> ())
   in
   function
-  | Yield { fields ; _ } ->
+  | Yield { fields ; event_time } ->
     List.iter (fun sf ->
         let e = StatefulNotAllowed { clause = "YIELD" } in
         check_pure e sf.expr ;
         (* TODO: add an every clause to Aggregate and get rid of Yield *)
         List.iter (fun sf -> prefix_def TupleIn sf.expr) fields ;
         check_fields_from [TupleParam; TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD clause" sf.expr
-      ) fields
+      ) fields ;
+    Option.may (check_event_time fields) event_time ;
     (* TODO: check unicity of aliases *)
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
                 commit_when ; flush_how ; event_time ;
@@ -425,7 +426,8 @@ let check params =
 
     (* TODO: url_notify: check field names from text templates *)
 
-  | ReadCSVFile _ | ListenFor _ -> ()
+  | ReadCSVFile _ -> () (* TODO: check_event_time! *)
+  | ListenFor _ -> ()
 
 module Parser =
 struct
