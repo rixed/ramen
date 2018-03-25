@@ -34,6 +34,7 @@ struct ringbuf {
   // Fixed length of the ring buffer. mmapped file must be >= this.
   uint32_t nb_words;
   size_t mmapped_size;  // The size that was mmapped (for ringbuf_unload)
+  uint32_t wrap:1;  // Does the ring buffer act as a ring?
   /* Pointers to entries. We use uint32 indexes so that we do not have
    * to worry too much about modulos. */
   /* Bytes that are being added by producers lie between prod_tail and
@@ -70,9 +71,11 @@ inline uint32_t ringbuf_nb_free(struct ringbuf const *rb, uint32_t cons_tail, ui
 }
 
 struct ringbuf_tx {
+    // Where the record starts (point right after the record length:
     uint32_t record_start;
-    uint32_t seen;
+    // Where the record ends (points to the next record size):
     uint32_t next;
+    uint32_t seen;
 };
 
 inline void print_rb(struct ringbuf *rb)
@@ -235,8 +238,38 @@ inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_si
   return sz;
 }
 
+// Initialize the given TX to point at the first record and return its size
+// Returns -1 if the file is empty, -2 on error
+inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx)
+{
+  tx->seen = 0; // unused
+  tx->record_start = 0;
+  uint32_t nb_words = rb->data[tx->record_start ++];
+  if (nb_words == 0) return -1;
+  tx->next = tx->record_start + nb_words;
+  printf("read_first: nb_words=%"PRIu32", record_start=%"PRIu32", next=%"PRIu32"\n",
+         nb_words, tx->record_start, tx->next);
+  if (nb_words == UINT32_MAX) return -2; // We start with an EOF?
+  return nb_words*sizeof(uint32_t);
+}
+
+// Advance the given TX to the next record and return its size,
+// or -1 if we've reached the end of what's been written, and 0 on EOF
+inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
+{
+  assert(tx->record_start < tx->next); // Or we have read the whole of it already
+  uint32_t nb_words = rb->data[tx->next];
+  if (nb_words == 0) return -1;
+  if (nb_words == UINT32_MAX) return 0;
+  tx->record_start = tx->next + 1;
+  tx->next = tx->record_start + nb_words;
+  printf("read_next: record_start=%"PRIu32", next=%"PRIu32"\n",
+         tx->record_start, tx->next);
+  return nb_words*sizeof(uint32_t);
+}
+
 /* Create a new ring buffer of the specified size. */
-extern int ringbuf_create(char const *fname, uint32_t tot_words);
+extern int ringbuf_create(bool wrap, char const *fname, uint32_t tot_words);
 
 /* Mmap the ring buffer present in that file. Fails if the file does not exist
  * already. Returns NULL on error. */

@@ -367,6 +367,18 @@ let tail =
       $ continuous),
     info ~doc:"Display the last outputs of an operation" "tail")
 
+(* TODO: from/until timestamps *)
+let ext_tail =
+  Term.(
+    (const ApiCmd.ext_tail
+      $ copts
+      $ func_name 0
+      $ as_csv
+      $ with_header
+      $ last
+      $continuous),
+    info ~doc:"Display the last outputs of an operation" "xtail")
+
 let max_results =
   let i = Arg.info ~doc:"output only the first N tuples"
                    [ "max" ] in
@@ -504,7 +516,7 @@ let () =
   match Term.eval_choice default [
     server_start ; server_stop ; dequeue ; summary ; sync ;
     add ; compile ; run ; stop ; tail ; timeseries ; timerange ;
-    get_info ; test ; ext_compile ; ext_run
+    get_info ; test ; ext_compile ; ext_run ; ext_tail
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

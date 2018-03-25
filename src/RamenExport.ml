@@ -207,7 +207,7 @@ let import_tuples conf history rb_name ser_tuple_typ =
   !logger.debug "Starting to import output from ringbuf %S, \
                  which outputs %a."
     rb_name RamenTuple.print_typ ser_tuple_typ ;
-  let%lwt rb = wrap (fun () -> RingBuf.load ~rotate:true rb_name) in
+  let%lwt rb = wrap (fun () -> RingBuf.load rb_name) in
   try%lwt
     let dequeue =
       RingBufLib.retry_for_ringbuf RingBuf.dequeue_alloc in

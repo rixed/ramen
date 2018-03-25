@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <sched.h>
 
 #include "ringbuf.h"
 
@@ -21,43 +22,79 @@ extern inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint
 extern inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx);
 extern inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size);
+extern inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx);
+extern inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx);
 
-extern int ringbuf_create(char const *fname, uint32_t tot_words)
+// Read the amount of bytes requested
+int really_read(int fd, void *dest, size_t sz)
+{
+  while (sz > 0) {
+    ssize_t r = read(fd, dest, sz);
+    if (r < 0) return -1;
+    else if (r == 0) sched_yield();
+    else {
+      sz -= r;
+      dest = (char *)dest + r;
+    }
+  }
+  return 0;
+}
+
+// Keep existing files as much as possible:
+extern int ringbuf_create(bool wrap, char const *fname, uint32_t tot_words)
 {
   int ret = -1;
   struct ringbuf rb;
 
-  if (unlink(fname) < 0 && errno != ENOENT) {
-    fprintf(stderr, "Cannot unlink ring-buffer in file '%s': %s\n", fname, strerror(errno));
-    // Good luck!
-  }
+  // First try to create the file:
+  int fd = open(fname, O_WRONLY|O_CREAT|O_EXCL, S_IRUSR|S_IWUSR);
+  if (fd >= 0) {
+    // We are the creator. Other processes are waiting for that file
+    // to have a non-zero size and an nb_words greater than 0:
+    printf("Creating ringbuffer '%s'\n", fname);
 
-  int fd = open(fname, O_RDWR|O_CREAT|O_EXCL, S_IRUSR|S_IWUSR);
-  if (fd < 0) {
-    fprintf(stderr, "Cannot create ring-buffer in file '%s': %s\n", fname, strerror(errno));
+    size_t file_length = sizeof(rb) + tot_words*sizeof(uint32_t);
+    if (ftruncate(fd, file_length) < 0) {
+err2:
+      fprintf(stderr, "Cannot ftruncate file '%s': %s\n", fname, strerror(errno));
+      if (unlink(fname) < 0) {
+        fprintf(stderr, "Cannot erase not-created ringbuf '%s': %s\n"
+                        "Oh dear!\n", fname, strerror(errno));
+      }
+      goto err1;
+    }
+
+    rb.nb_words = tot_words;
+    rb.prod_head = rb.prod_tail = 0;
+    rb.cons_head = rb.cons_tail = 0;
+    rb.nb_allocs = 0;
+    rb.wrap = wrap;
+    ssize_t w = write(fd, &rb, sizeof(rb));
+    if (w < 0) {
+      fprintf(stderr, "Cannot write ring buffer header in '%s': %s\n",
+              fname, strerror(errno));
+      goto err2;
+    } else if ((size_t)w < sizeof(rb)) {
+      fprintf(stderr, "Cannot write the whole ring buffer header in '%s'",
+              fname);
+      goto err2;
+    }
+  } else if (fd < 0 && errno == EEXIST) {
+    printf("Opening existing ringbuffer '%s'\n", fname);
+
+    // Wait for the file to have a size > 0 and nb_words > 0
+    fd = open(fname, O_RDONLY);
+    if (fd < 0) {
+      fprintf(stderr, "Cannot open ring-buffer '%s': %s\n", fname, strerror(errno));
+      goto err0;
+    }
+    if (0 != really_read(fd, &rb, sizeof(rb))) {
+      fprintf(stderr, "Cannot read ring-buffer '%s': %s\n", fname, strerror(errno));
+      goto err1;
+    }
+  } else {
+    fprintf(stderr, "Cannot open ring-buffer '%s': %s\n", fname, strerror(errno));
     goto err0;
-  }
-
-  size_t file_length = sizeof(rb) + tot_words*sizeof(uint32_t);
-
-  if (ftruncate(fd, file_length) < 0) {
-    fprintf(stderr, "Cannot ftruncate file '%s': %s\n", fname, strerror(errno));
-    goto err1;
-  }
-
-  rb.nb_words = tot_words;
-  rb.prod_head = rb.prod_tail = 0;
-  rb.cons_head = rb.cons_tail = 0;
-  rb.nb_allocs = 0;
-  ssize_t w = write(fd, &rb, sizeof(rb));
-  if (w < 0) {
-    fprintf(stderr, "Cannot write ring buffer header in file '%s': %s\n",
-            fname, strerror(errno));
-    goto err1;
-  } else if ((size_t)w < sizeof(rb)) {
-    fprintf(stderr, "Cannot write the whole ring buffer header in file '%s'",
-            fname);
-    goto err1;
   }
 
   ret = 0;

@@ -142,10 +142,10 @@ let start copts daemonize no_demo to_stderr www_dir
   (* Prepare ringbuffers for reports and notifications: *)
   let rb_name = C.report_ringbuf conf in
   RingBuf.create rb_name RingBufLib.rb_default_words ;
-  let reports_rb = RingBuf.load ~rotate:true rb_name in
+  let reports_rb = RingBuf.load rb_name in
   let rb_name = C.notify_ringbuf conf in
   RingBuf.create rb_name RingBufLib.rb_default_words ;
-  let notify_rb = RingBuf.load ~rotate:true rb_name in
+  let notify_rb = RingBuf.load rb_name in
   (* When there is nothing to do, listen to collectd and netflow! *)
   let run_demo () =
     C.with_wlock conf (fun programs ->
@@ -358,6 +358,59 @@ let tail copts func_name as_csv with_header last continuous () =
     if continuous then None else Some last
   and since = ~- last in
   Lwt_main.run (exporter ?max_results ~since ())
+
+(* Tail by asking the function to write in a non-ring buffer we've created
+ * on purpose, with a specific timeout. The idea is that all clients will
+ * use the same name so that they can share reading this file sequence,
+ * benefiting from older values: *)
+let ext_tail copts func_name as_csv with_header last continuous () =
+  logger := make_logger copts.debug ;
+  let conf =
+    C.make_conf true copts.server_url copts.debug copts.persist_dir
+                copts.max_simult_compilations copts.max_history_archives
+                copts.use_embedded_compiler copts.bundle_dir
+                copts.max_incidents_per_team false in
+  (* 1. create the non-wrapping RingBuf (under a standard name given
+   *    by RamenConf *)
+  match C.program_func_of_user_string func_name with
+  | exception Not_found ->
+      !logger.error "Cannot find function %S" func_name ;
+      exit 1
+  | program_name, func_name ->
+      Lwt_main.run (
+        let%lwt bname = C.with_rlock conf (fun programs ->
+          match C.find_func programs program_name func_name with
+          | exception Not_found ->
+              fail_with ("Function "^ program_name ^"/"^ func_name ^
+                         " does not exist")
+          | _program, func ->
+              let bname = C.archive_buf_name conf func in
+              RingBuf.create ~wrap:false bname RingBufLib.rb_default_words ;
+              (* 2. Add that name to the function out-ref *)
+              let out_ref = C.out_ringbuf_names_ref conf func in
+              let%lwt file_spec =
+                let%lwt typ =
+                  wrap (fun () -> C.tuple_ser_type func.N.out_type) in
+                return RamenOutRef.{
+                  field_mask =
+                    RingBufLib.skip_list ~out_type:typ ~in_type:typ ;
+                  timeout =
+                    Unix.gettimeofday () +. 3600. (* FIXME *) } in
+              let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
+              return bname) in
+        (* 3. Then, scan all present ringbufs in the requested range (either
+         *    the last N tuples or, TBD, since ts1 [until ts2]) and display
+         *    them *)
+        let rb = RingBuf.load bname in
+        let%lwt () =
+          RingBuf.read_buf rb (fun tx ->
+            ignore tx ;
+            !logger.info "Got one tuple" ;
+            return_unit) in
+        (* 4. Notice that if we tail for a long time in continuous mode, we
+         *    might need to refresh the out-ref timeout from time to
+         *    time... *)
+        fail_with "TODO")
 
 (* TODO: separator and null placeholder for csv *)
 let export copts func_name as_csv with_header max_results continuous () =

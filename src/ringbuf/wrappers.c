@@ -96,23 +96,22 @@ static value alloc_tx(void)
   CAMLreturn(res);
 }
 
-CAMLprim value wrap_ringbuf_create(value fname_, value tot_words_)
+CAMLprim value wrap_ringbuf_create(value wrap_, value fname_, value tot_words_)
 {
-  CAMLparam2(fname_, tot_words_);
+  CAMLparam3(wrap_, fname_, tot_words_);
+  bool wrap = Bool_val(wrap_);
   char *fname = String_val(fname_);
   unsigned tot_words = Long_val(tot_words_);
-  int res = ringbuf_create(fname, tot_words);
+  int res = ringbuf_create(wrap, fname, tot_words);
   if (res < 0) caml_failwith("Cannot create ring buffer");
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value wrap_ringbuf_load(value rotate_, value fname_)
+CAMLprim value wrap_ringbuf_load(value fname_)
 {
-  CAMLparam2(rotate_, fname_);
+  CAMLparam1(fname_);
   CAMLlocal1(res);
-  bool rotate = Bool_val(rotate_);
   char *fname = String_val(fname_);
-  if (! rotate) caml_failwith("Non-ring buffers are not yet implemented");
   struct ringbuf *rb = ringbuf_load(fname);
   if (! rb) caml_failwith("Cannot load ring buffer");
   //printf("%d: MMapped %s @ %p\n", (int)getpid(), fname, rb);
@@ -136,15 +135,16 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
   struct ringbuf *rb = Ringbuf_val(rb_);
   CAMLlocal1(ret);
   // See type stats in RingBuf.ml
-  ret = caml_alloc_tuple(8);
+  ret = caml_alloc_tuple(9);
   Field(ret, 0) = Val_long(rb->nb_words);
-  Field(ret, 1) = Val_long(ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head));
-  Field(ret, 2) = Val_long(rb->nb_allocs);
-  Field(ret, 3) = caml_copy_double(rb->tmin);
-  Field(ret, 4) = caml_copy_double(rb->tmax);
-  Field(ret, 5) = Val_long(rb->mmapped_size);
-  Field(ret, 6) = Val_long(rb->prod_head);
-  Field(ret, 7) = Val_long(rb->cons_head);
+  Field(ret, 1) = Val_bool(rb->wrap);
+  Field(ret, 2) = Val_long(ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head));
+  Field(ret, 3) = Val_long(rb->nb_allocs);
+  Field(ret, 4) = caml_copy_double(rb->tmin);
+  Field(ret, 5) = caml_copy_double(rb->tmax);
+  Field(ret, 6) = Val_long(rb->mmapped_size);
+  Field(ret, 7) = Val_long(rb->prod_head);
+  Field(ret, 8) = Val_long(rb->cons_head);
   CAMLreturn(ret);
 }
 
@@ -199,6 +199,50 @@ CAMLprim value wrap_ringbuf_dequeue(value rb_)
   ringbuf_dequeue_commit(rb, &tx);
 
   CAMLreturn(bytes_);
+}
+
+// Same as wrap_ringbuf_dequeue_alloc but does not change the reader pointer
+// in ringbuffer header:
+CAMLprim value wrap_ringbuf_read_first(value rb_)
+{
+  CAMLparam1(rb_);
+  struct ringbuf *rb = Ringbuf_val(rb_);
+  CAMLlocal1(tx);
+  tx = alloc_tx();
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  wrtx->rb = rb;
+  ssize_t size = ringbuf_read_first(rb, &wrtx->tx);
+  if (size == -2) {
+    // Error:
+    caml_failwith("Invalid buffer file");
+  } else if (size == -1) {
+    // Have to wait for content:
+    assert(exception_inited);
+    caml_raise_constant(exn_Empty);
+  } else {
+    wrtx->alloced = (size_t)size;
+    CAMLreturn(tx);
+  }
+}
+
+// Same as wrap_ringbuf_dequeue_alloc but does not change the reader pointer
+// in ringbuffer header:
+CAMLprim value wrap_ringbuf_read_next(value tx)
+{
+  CAMLparam1(tx);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+
+  ssize_t size = ringbuf_read_next(wrtx->rb, &wrtx->tx);
+  if (size == 0) {
+    caml_raise_end_of_file();
+  } else if (size == -1) {
+    // Have to wait for content:
+    assert(exception_inited);
+    caml_raise_constant(exn_Empty);
+  } else {
+    wrtx->alloced = (size_t)size;
+    CAMLreturn(tx);
+  }
 }
 
 /* Lower level API */

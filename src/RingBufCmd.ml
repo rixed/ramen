@@ -6,9 +6,8 @@ open RamenLog
 let dequeue copts file n () =
   logger := make_logger copts.ApiCmd.debug ;
   if file = "" then invalid_arg "dequeue" ;
-  let rotate = file.[String.length file - 1] = 'r' in
   let open RingBuf in
-  let rb = load ~rotate file in
+  let rb = load file in
   let rec dequeue_loop n =
     if n > 0 then (
       (* TODO: same automatic retry-er as in CodeGenLib_IO *)
@@ -24,15 +23,15 @@ let dequeue copts file n () =
 let summary copts file () =
   logger := make_logger copts.ApiCmd.debug ;
   if file = "" then invalid_arg "dequeue" ;
-  let rotate = file.[String.length file - 1] = 'r' in
   let open RingBuf in
-  let rb = load ~rotate file in
+  let rb = load file in
   let s = stats rb in
   Printf.printf "%s:\n\
+                 Flags:%s\n\
                  %d objects\n\
                  time range: %f..%f\n\
                  %d/%d words used\n\
                  mmapped bytes: %d\n\
                  prod/cons heads: %d/%d\n"
-    file s.alloced_objects s.t_min s.t_max
+    file (if s.wrap then " Wrap" else "") s.alloced_objects s.t_min s.t_max
     s.alloced_words s.capacity s.mem_size s.prod_head s.cons_head

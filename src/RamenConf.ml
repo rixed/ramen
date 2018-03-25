@@ -817,6 +817,14 @@ let exp_ringbuf_name conf func =
                    ^ RamenVersions.ringbuf ^"/"
                    ^ Func.fq_name func ^"/"^ sign ^"/exp.r"
 
+(* archive.b is the current buffer, which will be renamed into
+ * archive.seq1-seq2.t1-t2.b upon completion *)
+let archive_buf_name conf func =
+  let sign = type_signature_hash func.Func.out_type in
+  conf.persist_dir ^"/workers/ringbufs/"
+                   ^ RamenVersions.ringbuf ^"/"
+                   ^ Func.fq_name func ^"/"^ sign ^"/archive.b"
+
 let out_ringbuf_names_ref conf func =
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref ^"/"

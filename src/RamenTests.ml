@@ -296,7 +296,7 @@ let test_one conf server_url conf_spec test =
       let in_rb_name =
         C.temp_in_ringbuf_name conf ("tests/"^ test_id ^"/"^ user_fq_name) in
       RingBuf.create in_rb_name RingBufLib.rb_default_words ;
-      let in_rb = RingBuf.load ~rotate:true in_rb_name in
+      let in_rb = RingBuf.load in_rb_name in
       let%lwt tester_thread =
         match Hashtbl.find workers user_fq_name with
         | exception Not_found ->
@@ -321,7 +321,7 @@ let test_one conf server_url conf_spec test =
       return (tester_thread :: thds)
     ) [] in
   (* Similarly, read all notifications: *)
-  let notify_rb = RingBuf.load ~rotate:true notify_rb_name in
+  let notify_rb = RingBuf.load notify_rb_name in
   let tester_threads =
     finalize
       (fun () -> test_notifications notify_rb test.notifications)
@@ -349,7 +349,7 @@ let test_one conf server_url conf_spec test =
                   raise (Failure err)
                 else
                   let in_rb = C.in_ringbuf_name_single conf func in
-                  let rb = RingBuf.load ~rotate:true in_rb in
+                  let rb = RingBuf.load in_rb in
                   Hashtbl.add worker_cache cache_key rb ;
                   rb
             | rb -> rb in

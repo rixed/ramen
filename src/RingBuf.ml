@@ -7,13 +7,14 @@ let prepend_rb_name f fname =
   try f fname
   with Failure msg -> failwith (fname ^": "^ msg)
 
-external create_ : string -> int -> unit = "wrap_ringbuf_create"
-let create fname =
+external create_ : bool -> string -> int -> unit = "wrap_ringbuf_create"
+let create ?(wrap=true) fname =
   mkdir_all ~is_file:true fname ;
-  prepend_rb_name create_ fname
+  prepend_rb_name (create_ wrap) fname
 
 type stats = {
   capacity : int ; (* in words *)
+  wrap : bool ;
   alloced_words : int ; (* in words *)
   alloced_objects : int ;
   t_min : float ;
@@ -22,8 +23,8 @@ type stats = {
   prod_head : int ;
   cons_head : int }
 
-external load_ : bool -> string -> t = "wrap_ringbuf_load"
-let load ~rotate = prepend_rb_name (load_ rotate)
+external load_ : string -> t = "wrap_ringbuf_load"
+let load = prepend_rb_name load_
 external unload : t -> unit = "wrap_ringbuf_unload"
 external stats : t -> stats = "wrap_ringbuf_stats"
 
@@ -36,6 +37,8 @@ external enqueue : t -> bytes -> int -> float -> float -> unit = "wrap_ringbuf_e
 external dequeue_alloc : t -> tx = "wrap_ringbuf_dequeue_alloc"
 external dequeue_commit : tx -> unit = "wrap_ringbuf_dequeue_commit"
 external dequeue : t -> bytes = "wrap_ringbuf_dequeue"
+external read_first : t -> tx = "wrap_ringbuf_read_first"
+external read_next : tx -> tx = "wrap_ringbuf_read_next"
 
 external write_float : tx -> int -> float -> unit = "write_float"
 external write_string : tx -> int -> string -> unit = "write_str"
@@ -118,12 +121,36 @@ let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =
 
 let read_ringbuf ?while_ ?delay_rec rb f =
   let open Lwt in
-  let rec read_next () =
+  let rec loop () =
     match%lwt dequeue_ringbuf_once ?while_ ?delay_rec rb with
     | exception (Exit | Timeout) -> return_unit
-    | tx -> f tx >>= read_next
-  in
-  read_next ()
+    | tx ->
+      (* f has to call dequeue_commit on the passed tx (as soon as
+       * possible): *)
+      f tx >>= loop in
+  loop ()
+
+let read_buf ?while_ ?delay_rec rb f =
+  (* Read tuples by hoping from one to the next using tx_next.
+   * Note that we may reach the end of the written content, and will
+   * have to wait unless we reached the EOF mark (special value
+   * returned by tx_next). *)
+  let open Lwt in
+  let rec loop tx =
+    (* Contrary to the wrapping case, f must not call dequeue_commit.
+     * Caller must know in which case it is: *)
+    let%lwt () = f tx in
+    match%lwt RingBufLib.retry_for_ringbuf ?while_ ?delay_rec
+                read_next tx with
+    | exception (Exit | Timeout) -> return_unit
+    | exception End_of_file ->
+      (* We reached the EOF marker, ie we are done with this file *)
+      fail_with "here soon: opening the next file!"
+    | tx -> loop tx in
+  match%lwt RingBufLib.retry_for_ringbuf ?while_ ?delay_rec
+              read_first rb with
+  | exception (Exit | Timeout) -> return_unit
+  | tx -> loop tx
 
 let with_enqueue_tx rb sz f =
   let open Lwt in
