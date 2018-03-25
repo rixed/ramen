@@ -247,8 +247,8 @@ inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx)
   uint32_t nb_words = rb->data[tx->record_start ++];
   if (nb_words == 0) return -1;
   tx->next = tx->record_start + nb_words;
-  printf("read_first: nb_words=%"PRIu32", record_start=%"PRIu32", next=%"PRIu32"\n",
-         nb_words, tx->record_start, tx->next);
+  /*printf("read_first: nb_words=%"PRIu32", record_start=%"PRIu32", next=%"PRIu32"\n",
+         nb_words, tx->record_start, tx->next);*/
   if (nb_words == UINT32_MAX) return -2; // We start with an EOF?
   return nb_words*sizeof(uint32_t);
 }
@@ -263,8 +263,8 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
   if (nb_words == UINT32_MAX) return 0;
   tx->record_start = tx->next + 1;
   tx->next = tx->record_start + nb_words;
-  printf("read_next: record_start=%"PRIu32", next=%"PRIu32"\n",
-         tx->record_start, tx->next);
+  /*printf("read_next: record_start=%"PRIu32", next=%"PRIu32"\n",
+         tx->record_start, tx->next);*/
   return nb_words*sizeof(uint32_t);
 }
 

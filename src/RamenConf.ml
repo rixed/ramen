@@ -427,7 +427,7 @@ struct
     then set_status program (Edition "") ;
     (* Also, we cannot be compiling nor stopping anymore: *)
     if program.status = Compiling || program.status = Stopping then
-      set_status program (Edition "restarted Ramen") ;
+      set_status program (Edition "Restarted Ramen") ;
     (* Also clean the pid. Note: we must not do that in set_status as we
      * need the pid when supervising workers termination. *)
     Hashtbl.iter (fun _ f ->

@@ -316,7 +316,7 @@ let ext_compile =
       $ keep_temp_files
       $ root_path
       $ source_files),
-    info ~doc:"Compile each given source file into an executable." "comp")
+    info ~doc:"Compile each given source file into an executable." "xcompile")
 
 let ext_run =
   Term.(
@@ -325,7 +325,7 @@ let ext_run =
       $ params
       $ root_path
       $ bin_files),
-    info ~doc:"Run one (or all) compiled program(s)" "rrun")
+    info ~doc:"Run one (or all) compiled program(s)" "xrun")
 
 (*
  * Export Tuples
