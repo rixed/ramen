@@ -180,20 +180,6 @@ let rec run_func conf programs program func =
                     (* The rest of the operation depends on the program status: *)
                     match program.status with
                     | Stopping ->
-                        (* If there are no more processes running for this program,
-                         * demote it to Compiled: *)
-                        if Hashtbl.values program.L.funcs |>
-                           Enum.for_all (fun func -> func.N.pid = None) then (
-                          !logger.info "All workers for %s have terminated" program.name ;
-                          L.set_status program Compiled ;
-                          (* If it was a binary, remove it from the
-                           * configuration entirely, for future simplification
-                           * of the states, unless we are quitting in which
-                           * case we keep the configuration as it is in order
-                           * to restart after the break: *)
-                          if not !quit && program.L.program_is_path_to_bin then
-                            C.del_program programs program
-                        ) ;
                         return 0
                     | Running when not !quit ->
                         (* If this does not look intentional, restart the worker: *)
@@ -208,6 +194,9 @@ let rec run_func conf programs program func =
                         | _ ->
                             !logger.debug "Assuming death by natural causes" ;
                             return 0)
+                    | Running when !quit ->
+                        !logger.debug "We are quitting so let it be" ;
+                        return 0
                     | _ ->
                         (* We leave the program.status as it is since we have no
                          * idea what's happening to other operations. *)
@@ -216,8 +205,24 @@ let rec run_func conf programs program func =
                         return 0) in
                 func.succ_failures <- succ_failures ;
                 return succ_failures) in
-        if succ_failures = 0 then return_unit
-        else (* restart that worker *)
+        if succ_failures = 0 then (
+          (* If there are no more processes running for this program,
+           * demote it to Compiled: *)
+          if Hashtbl.values program.L.funcs |>
+             Enum.for_all (fun func -> func.N.pid = None)
+          then (
+            !logger.info "All workers for %s have terminated" program.name ;
+            L.set_status program Compiled ;
+            (* If it was a binary, remove it from the
+             * configuration entirely, for future simplification
+             * of the states, unless we are quitting in which
+             * case we keep the configuration as it is in order
+             * to restart after the break: *)
+            if not !quit && program.L.program_is_path_to_bin then
+              C.del_program programs program
+          ) ;
+          return_unit ;
+        ) else (* restart that worker *)
           let add_jitter ratio v =
             (Random.float ratio -. (ratio *. 0.5) +. 1.) *. v in
           let delay = float_of_int (succ_failures * 2 |> min 5) |>
