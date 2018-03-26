@@ -29,7 +29,6 @@ depends: [
   "syslog" {= "1.5"}
   "net_codecs" {>= "0.3"}
   "qtest" {test}
-  "ocaml-compiler-libs" {build & = "v0.10.0"}
 ]
 depopts: [
   "inotify"
