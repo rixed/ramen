@@ -34,14 +34,13 @@ static void retrieve_exceptions(void)
 
 /* type t for struct ringbuf */
 
-#define Ringbuf_val(v) (*((struct ringbuf **)Data_custom_val(v)))
+#define Ringbuf_val(v) ((struct ringbuf *)Data_custom_val(v))
 
 static void finalize_ringbuf(value rb_)
 {
   struct ringbuf *rb = Ringbuf_val(rb_);
-  if (! rb) return;  // might have been unloaded already
+  if (! rb->rbf) return;  // might have been unloaded already
   (void)ringbuf_unload(rb); // There is not we can do at this point.
-  //printf("%d: Unmmapped @ %p from finalizer\n", (int)getpid(), rb);
 }
 
 static struct custom_operations ringbuf_ops = {
@@ -54,14 +53,13 @@ static struct custom_operations ringbuf_ops = {
   custom_compare_ext_default
 };
 
-static value alloc_ringbuf(struct ringbuf *rb)
+static value alloc_ringbuf(void)
 {
   CAMLparam0();
   CAMLlocal1(res);
   retrieve_exceptions();
 
-  res = caml_alloc_custom(&ringbuf_ops, sizeof rb, 0, 1);
-  Ringbuf_val(res) = rb;
+  res = caml_alloc_custom(&ringbuf_ops, sizeof(struct ringbuf), 0, 1);
   CAMLreturn(res);
 }
 
@@ -111,11 +109,10 @@ CAMLprim value wrap_ringbuf_load(value fname_)
 {
   CAMLparam1(fname_);
   CAMLlocal1(res);
+  res = alloc_ringbuf();
   char *fname = String_val(fname_);
-  struct ringbuf *rb = ringbuf_load(fname);
-  if (! rb) caml_failwith("Cannot load ring buffer");
-  //printf("%d: MMapped %s @ %p\n", (int)getpid(), fname, rb);
-  res = alloc_ringbuf(rb);
+  if (0 != ringbuf_load(Ringbuf_val(res), fname))
+    caml_failwith("Cannot load ring buffer");
   CAMLreturn(res);
 }
 
@@ -124,7 +121,6 @@ CAMLprim value wrap_ringbuf_unload(value rb_)
   CAMLparam1(rb_);
   struct ringbuf *rb = Ringbuf_val(rb_);
   if (0 != ringbuf_unload(rb)) caml_failwith("Cannot unload ring buffer");
-  Ringbuf_val(rb_) = NULL;
   //printf("%d: Unmmapped @ %p\n", (int)getpid(), rb);
   CAMLreturn(Val_unit);
 }
@@ -133,18 +129,20 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
 {
   CAMLparam1(rb_);
   struct ringbuf *rb = Ringbuf_val(rb_);
+  struct ringbuf_file *rbf = rb->rbf;
   CAMLlocal1(ret);
   // See type stats in RingBuf.ml
-  ret = caml_alloc_tuple(9);
-  Field(ret, 0) = Val_long(rb->nb_words);
-  Field(ret, 1) = Val_bool(rb->wrap);
-  Field(ret, 2) = Val_long(ringbuf_nb_entries(rb, rb->prod_tail, rb->cons_head));
-  Field(ret, 3) = Val_long(rb->nb_allocs);
-  Field(ret, 4) = caml_copy_double(rb->tmin);
-  Field(ret, 5) = caml_copy_double(rb->tmax);
+  ret = caml_alloc_tuple(10);
+  Field(ret, 0) = Val_long(rbf->nb_words);
+  Field(ret, 1) = Val_bool(rbf->wrap);
+  Field(ret, 2) = Val_long(ringbuf_file_nb_entries(rbf, rbf->prod_tail, rbf->cons_head));
+  Field(ret, 3) = Val_long(rbf->nb_allocs);
+  Field(ret, 4) = caml_copy_double(rbf->tmin);
+  Field(ret, 5) = caml_copy_double(rbf->tmax);
   Field(ret, 6) = Val_long(rb->mmapped_size);
-  Field(ret, 7) = Val_long(rb->prod_head);
-  Field(ret, 8) = Val_long(rb->cons_head);
+  Field(ret, 7) = Val_long(rbf->prod_head);
+  Field(ret, 8) = Val_long(rbf->cons_head);
+  Field(ret, 9) = Val_long(rbf->first_seq);
   CAMLreturn(ret);
 }
 
@@ -194,7 +192,7 @@ CAMLprim value wrap_ringbuf_dequeue(value rb_)
 
   bytes_ = caml_alloc_string(size);
   if (! bytes_) caml_failwith("Cannot malloc dequeued bytes");
-  memcpy(String_val(bytes_), rb->data + tx.record_start, size);
+  memcpy(String_val(bytes_), rb->rbf->data + tx.record_start, size);
 
   ringbuf_dequeue_commit(rb, &tx);
 
@@ -316,7 +314,7 @@ CAMLprim value wrap_ringbuf_dequeue_commit(value tx)
 
 static void *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
 {
-  return wrtx->rb->data /* Where the mmapped data starts */
+  return wrtx->rb->rbf->data /* Where the mmapped data starts */
        + wrtx->tx.record_start /* The offset of the record within that data */
        + offs/sizeof(uint32_t);
 }

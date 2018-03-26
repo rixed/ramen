@@ -29,9 +29,11 @@ let summary copts file () =
   Printf.printf "%s:\n\
                  Flags:%s\n\
                  %d objects\n\
+                 first seq: %d\n\
                  time range: %f..%f\n\
                  %d/%d words used\n\
                  mmapped bytes: %d\n\
                  prod/cons heads: %d/%d\n"
-    file (if s.wrap then " Wrap" else "") s.alloced_objects s.t_min s.t_max
+    file (if s.wrap then " Wrap" else "") s.alloced_objects
+    s.first_seq s.t_min s.t_max
     s.alloced_words s.capacity s.mem_size s.prod_head s.cons_head

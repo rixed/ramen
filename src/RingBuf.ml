@@ -1,3 +1,4 @@
+open Batteries
 open Stdint
 open Helpers
 
@@ -21,7 +22,8 @@ type stats = {
   t_max : float ;
   mem_size : int ; (* the number of bytes that were mapped *)
   prod_head : int ;
-  cons_head : int }
+  cons_head : int ;
+  first_seq : int (* taken from per_seq/max file *) }
 
 external load_ : string -> t = "wrap_ringbuf_load"
 let load = prepend_rb_name load_
@@ -130,27 +132,29 @@ let read_ringbuf ?while_ ?delay_rec rb f =
       f tx >>= loop in
   loop ()
 
-let read_buf ?while_ ?delay_rec rb f =
+let read_buf ?while_ ?delay_rec rb init f =
   (* Read tuples by hoping from one to the next using tx_next.
    * Note that we may reach the end of the written content, and will
    * have to wait unless we reached the EOF mark (special value
    * returned by tx_next). *)
   let open Lwt in
-  let rec loop tx =
+  let rec loop usr seq tx =
     (* Contrary to the wrapping case, f must not call dequeue_commit.
      * Caller must know in which case it is: *)
-    let%lwt () = f tx in
-    match%lwt RingBufLib.retry_for_ringbuf ?while_ ?delay_rec
-                read_next tx with
-    | exception (Exit | Timeout) -> return_unit
-    | exception End_of_file ->
-      (* We reached the EOF marker, ie we are done with this file *)
-      fail_with "here soon: opening the next file!"
-    | tx -> loop tx in
+    let%lwt usr, more_to_come = f usr seq tx in
+    if more_to_come then
+      match%lwt RingBufLib.retry_for_ringbuf ?while_ ?delay_rec
+                  read_next tx with
+      | exception (Exit | Timeout) -> return usr
+      | exception End_of_file -> return usr
+      | tx -> loop usr (seq + 1) tx
+    else
+      return usr
+  in
   match%lwt RingBufLib.retry_for_ringbuf ?while_ ?delay_rec
               read_first rb with
-  | exception (Exit | Timeout) -> return_unit
-  | tx -> loop tx
+  | exception (Exit | Timeout) -> return init
+  | tx -> loop init 0 tx
 
 let with_enqueue_tx rb sz f =
   let open Lwt in
@@ -165,3 +169,65 @@ let with_enqueue_tx rb sz f =
      * pointer go backward (or... can we?) but we could have a 1 bit header
      * indicating if an entry is valid or not. *)
     fail exn
+
+let seq_dir_of_bname fname = fname ^".per_seq/"
+
+let int_of_hex s = int_of_string ("0x"^ s)
+
+let seq_files_of dir =
+  (try Sys.files_of dir
+  with Sys_error _ -> Enum.empty ()) //@
+  (fun fname ->
+    try
+      let mi, rest = String.split ~by:"-" fname in
+      let ma, _rest = String.split ~by:"." rest in
+      Some (int_of_hex mi, int_of_hex ma, dir ^"/"^ fname)
+    with Not_found | Failure _ ->
+      None)
+
+let seq_range bname =
+  (* Returns the first and last available seqnums.
+   * Takes first from the per.seq subdir names and last from same subdir +
+   * rb->stats. *)
+  let seq_dir = seq_dir_of_bname bname in
+  let mi_ma =
+    seq_files_of seq_dir |>
+    Enum.fold (fun mi_ma (from, to_, _fname) ->
+      match mi_ma with
+      | None -> Some (from, to_)
+      | Some (mi, ma) -> Some (min mi from, max ma to_)
+    ) None in
+  let rb = load bname in
+  let s = finally (fun () -> unload rb) stats rb in
+  match mi_ma with
+  | None -> s.first_seq, s.alloced_objects
+  | Some (mi, ma) -> mi, s.first_seq + s.alloced_objects
+
+let fold_seq_range bname mi ma init f =
+  let seq_dir = seq_dir_of_bname bname in
+  let entries =
+    seq_files_of seq_dir //
+    (fun (from, to_, _fname) -> from < ma && to_ >= mi) |>
+    Array.of_enum in
+  let cmp_entries (f1, _, _) (f2, _, _) = Int.compare f1 f2 in
+  Array.fast_sort cmp_entries entries ;
+  let fold_rb from rb usr =
+    read_buf rb usr (fun usr i tx ->
+      let seq = from + i in
+      if seq < mi then Lwt.return (usr, true) else
+      let%lwt usr = f usr tx in
+      Lwt.return (usr, seq < ma-1)) in
+  let%lwt usr =
+    Array.to_list entries |> (* FIXME *)
+    Lwt_list.fold_left_s (fun usr (from, to_, fname) ->
+      let rb = load fname in
+      Lwt.finalize (fun () -> fold_rb from rb usr)
+                   (fun () -> unload rb ; Lwt.return_unit)
+    ) init in
+  (* finish with the current rb: *)
+  let rb = load bname in
+  Lwt.finalize
+    (fun () ->
+      let%lwt s = Lwt.wrap (fun () -> stats rb) in
+      fold_rb s.first_seq rb usr)
+    (fun () -> unload rb ; Lwt.return_unit)

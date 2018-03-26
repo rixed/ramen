@@ -403,25 +403,36 @@ let ext_tail copts func_name with_header separator null last continuous () =
          *    them *)
         let nullmask_size =
           RingBufLib.nullmask_bytes_of_tuple_type typ in
-        !logger.debug "nullmask size: %d" nullmask_size ;
         if with_header then
           List.print ~first:"#" ~last:"\n" ~sep:separator
             (fun fmt ft -> String.print fmt ft.typ_name)
             stdout typ ;
           BatIO.flush stdout ;
-        let rb = RingBuf.load bname in
-        let%lwt () =
-          RingBuf.read_buf rb (fun tx ->
-            let tuple =
-              RamenSerialization.read_tuple typ nullmask_size tx in
-            Array.print ~first:"" ~last:"\n" ~sep:separator
-              (RamenScalar.print_custom ~null) stdout tuple ;
-            BatIO.flush stdout ;
-            return_unit) in
-        (* 4. Notice that if we tail for a long time in continuous mode, we
-         *    might need to refresh the out-ref timeout from time to
-         *    time... *)
-        fail_with "TODO")
+        let rec loop last last_seq =
+          if last <= 0 then return_unit else
+          let mi, ma = RingBuf.seq_range bname in
+          (* Select only the last N *)
+          let last_seq = last_seq |? max mi (ma - last) in
+          let%lwt count =
+            RingBuf.fold_seq_range bname last_seq (last_seq + last) 0 (fun i tx ->
+              let tuple =
+                RamenSerialization.read_tuple typ nullmask_size tx in
+              Array.print ~first:"" ~last:"\n" ~sep:separator
+                (RamenScalar.print_custom ~null) stdout tuple ;
+              BatIO.flush stdout ;
+              return (i+1)) in
+          let last = last - count in
+          if last > 0 then (
+            (* TODO: If we tail for a long time in continuous mode, we might
+             * need to refresh the out-ref timeout from time to time. *)
+            let delay = 1. +. Random.float 1. in
+            let%lwt () = Lwt_unix.sleep delay in
+            loop last (Some (last_seq + count))
+          ) else (
+            assert (last = 0) ;
+            return_unit)
+        in
+        loop last None)
 
 (* TODO: separator and null placeholder for csv *)
 let export copts func_name as_csv with_header max_results continuous () =
