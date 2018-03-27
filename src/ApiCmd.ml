@@ -363,8 +363,11 @@ let tail copts func_name as_csv with_header last continuous () =
  * on purpose, with a specific timeout. The idea is that all clients will
  * use the same name so that they can share reading this file sequence,
  * benefiting from older values: *)
-let ext_tail copts func_name with_header separator null last continuous () =
+let ext_tail copts func_name with_header separator null
+             last min_seq max_seq with_seqnums () =
   logger := make_logger copts.debug ;
+  Option.may (fun last ->
+    if last < 0 then failwith "--last must not be negative") last ;
   let conf =
     C.make_conf true copts.server_url copts.debug copts.persist_dir
                 copts.max_simult_compilations copts.max_history_archives
@@ -398,41 +401,47 @@ let ext_tail copts func_name with_header separator null last continuous () =
                     Unix.gettimeofday () +. 3600. (* FIXME *) } in
               let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
               return (bname, typ)) in
+        (* Find out which seqnums we want to scan: *)
+        let mi, ma = RingBuf.seq_range bname in
+        let mi = match min_seq with None -> mi | Some m -> max mi m in
+        let ma = match max_seq with None -> ma | Some m -> m in
+        let mi, ma = match last with
+          | Some l ->
+              let mi = max mi (ma - l) in
+              let ma = mi + l in
+              mi, ma
+          | None -> mi, ma in
         (* 3. Then, scan all present ringbufs in the requested range (either
          *    the last N tuples or, TBD, since ts1 [until ts2]) and display
          *    them *)
         let nullmask_size =
           RingBufLib.nullmask_bytes_of_tuple_type typ in
-        if with_header then
-          List.print ~first:"#" ~last:"\n" ~sep:separator
+        if with_header then (
+          let first = if with_seqnums then "#Seq"^ separator else "#" in
+          List.print ~first ~last:"\n" ~sep:separator
             (fun fmt ft -> String.print fmt ft.typ_name)
             stdout typ ;
-          BatIO.flush stdout ;
-        let rec loop last last_seq =
-          if last <= 0 then return_unit else
-          let mi, ma = RingBuf.seq_range bname in
-          (* Select only the last N *)
-          let last_seq = last_seq |? max mi (ma - last) in
-          let%lwt count =
-            RingBuf.fold_seq_range bname last_seq (last_seq + last) 0 (fun i tx ->
+          BatIO.flush stdout) ;
+        let rec loop m =
+          if m >= ma then return_unit else
+          let%lwt m =
+            RingBuf.fold_seq_range bname m ma m (fun m tx ->
               let tuple =
                 RamenSerialization.read_tuple typ nullmask_size tx in
+              if with_seqnums then (
+                Int.print stdout m ; String.print stdout separator) ;
               Array.print ~first:"" ~last:"\n" ~sep:separator
                 (RamenScalar.print_custom ~null) stdout tuple ;
               BatIO.flush stdout ;
-              return (i+1)) in
-          let last = last - count in
-          if last > 0 then (
+              return (m + 1)) in
+          if m >= ma then return_unit else
             (* TODO: If we tail for a long time in continuous mode, we might
              * need to refresh the out-ref timeout from time to time. *)
             let delay = 1. +. Random.float 1. in
             let%lwt () = Lwt_unix.sleep delay in
-            loop last (Some (last_seq + count))
-          ) else (
-            assert (last = 0) ;
-            return_unit)
+            loop m
         in
-        loop last None)
+        loop mi)
 
 (* TODO: separator and null placeholder for csv *)
 let export copts func_name as_csv with_header max_results continuous () =

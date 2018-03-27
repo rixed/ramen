@@ -379,6 +379,26 @@ let csv_null =
                    ~env [ "null" ] in
   Arg.(value (opt string "<NULL>" i))
 
+let xlast =
+  let i = Arg.info ~doc:"output only the last N tuples."
+                   [ "last" ] in
+  Arg.(value (opt (some int) None i))
+
+let min_seq =
+  let i = Arg.info ~doc:"output only tuples with greater sequence number."
+                   ["min-seqnum"] in
+  Arg.(value (opt (some int) None i))
+
+let max_seq =
+  let i = Arg.info ~doc:"output only tuples with smaller sequence number."
+                   ["max-seqnum"] in
+  Arg.(value (opt (some int) None i))
+
+let print_seqnums =
+  let i = Arg.info ~doc:"Prepend tuples with their sequence number."
+                   ["with-seqnums"] in
+  Arg.(value (flag i))
+
 (* TODO: from/until timestamps *)
 let ext_tail =
   Term.(
@@ -388,8 +408,10 @@ let ext_tail =
       $ with_header
       $ csv_separator
       $ csv_null
-      $ last
-      $continuous),
+      $ xlast
+      $ min_seq
+      $ max_seq
+      $ print_seqnums),
     info ~doc:"Display the last outputs of an operation" "xtail")
 
 let max_results =
