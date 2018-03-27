@@ -34,13 +34,14 @@ static void retrieve_exceptions(void)
 
 /* type t for struct ringbuf */
 
-#define Ringbuf_val(v) ((struct ringbuf *)Data_custom_val(v))
+#define Ringbuf_val(v) (*((struct ringbuf **)Data_custom_val(v)))
 
 static void finalize_ringbuf(value rb_)
 {
   struct ringbuf *rb = Ringbuf_val(rb_);
-  if (! rb->rbf) return;  // might have been unloaded already
+  if (! rb) return;  // might have been unloaded already
   (void)ringbuf_unload(rb); // There is not we can do at this point.
+  free(rb);
 }
 
 static struct custom_operations ringbuf_ops = {
@@ -59,7 +60,11 @@ static value alloc_ringbuf(void)
   CAMLlocal1(res);
   retrieve_exceptions();
 
-  res = caml_alloc_custom(&ringbuf_ops, sizeof(struct ringbuf), 0, 1);
+  struct ringbuf *rb = malloc(sizeof(*rb));
+  if (! rb) caml_failwith("Cannot malloc struct ringbuf");
+
+  res = caml_alloc_custom(&ringbuf_ops, sizeof rb, 0, 1);
+  Ringbuf_val(res) = rb;
   CAMLreturn(res);
 }
 
@@ -121,6 +126,8 @@ CAMLprim value wrap_ringbuf_unload(value rb_)
   CAMLparam1(rb_);
   struct ringbuf *rb = Ringbuf_val(rb_);
   if (0 != ringbuf_unload(rb)) caml_failwith("Cannot unload ring buffer");
+  free(rb);
+  Ringbuf_val(rb_) = NULL;
   //printf("%d: Unmmapped @ %p\n", (int)getpid(), rb);
   CAMLreturn(Val_unit);
 }
