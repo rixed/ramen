@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/file.h>
@@ -40,7 +41,45 @@ static int really_read(int fd, void *dest, size_t sz)
   return 0;
 }
 
-static int first_seqnum(char const *bname, uint64_t *first_seq)
+// Create the directories required to create that file:
+static int mkdir_for_file(char *fname)
+{
+  int ret = -1;
+
+  size_t len = strlen(fname);
+  ssize_t last_slash;
+  for (last_slash = len - 1; last_slash >= 0 && fname[last_slash] != '/'; last_slash--) ;
+
+  if (last_slash <= 0) return 0; // no dir to create (or root)
+
+  fname[last_slash] = '\0';
+  if (0 != mkdir(fname, S_IRUSR|S_IWUSR|S_IXUSR)) {
+    int ret = -1;
+    if (ENOENT == errno) {
+      if (mkdir_for_file(fname) < 0) goto err1;
+      ret = mkdir(fname, S_IRUSR|S_IWUSR|S_IXUSR);
+    }
+    if (ret != 0) {
+      fprintf(stderr, "Cannot create directory '%s': %s\n", fname, strerror(errno));
+      goto err1;
+    }
+  }
+
+  ret = 0;
+err1:
+  fname[last_slash] = '/';
+  return ret;
+}
+
+static void rand_printable_chars(char *dst, size_t len)
+{
+  static char chrs[] = "abcdefghijklmnopqrstuvwxyz"
+                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                       "0123456789-_"; // 64 chars
+  while (len--) dst[len] = chrs[rand() % (sizeof(chrs)-1)];
+}
+
+static int read_max_seqnum(char const *bname, uint64_t *first_seq)
 {
   int ret = -1;
 
@@ -83,6 +122,49 @@ err0:
   return ret;
 }
 
+static int write_max_seqnum(char const *bname, uint64_t seqnum)
+{
+  int ret = -1;
+
+  char fname[PATH_MAX];
+  // Save the new sequence number:
+  if ((size_t)snprintf(fname, PATH_MAX, "%s.per_seq/max", bname) >= PATH_MAX) {
+    fprintf(stderr, "Archive max seq file name truncated: '%s'\n", fname);
+    goto err0;
+  }
+
+  int fd = open(fname, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR);
+  if (fd < 0) {
+    if (ENOENT == errno) {
+      if (0 != mkdir_for_file(fname)) return -1;
+      fd = open(fname, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR); // retry
+    }
+    if (fd < 0) {
+      fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
+      goto err0;
+    }
+  }
+
+  ssize_t ss = write(fd, &seqnum, sizeof(seqnum));
+  if (ss < 0) {
+    fprintf(stderr, "Cannot write '%s': %s\n", fname, strerror(errno));
+    goto err1;
+  } else if (ss != sizeof(seqnum)) {
+    assert(false);
+  }
+
+  ret = 0;
+
+err1:
+  if (0 != close(fd)) {
+    fprintf(stderr, "Cannot close sequence file '%s': %s\n",
+            fname, strerror(errno));
+    ret = -1;
+  }
+err0:
+  return ret;
+}
+
 // Keep existing files as much as possible:
 extern int ringbuf_create(bool wrap, char const *fname, uint32_t nb_words)
 {
@@ -107,7 +189,7 @@ err2:
       goto err1;
     }
 
-    if (0 != first_seqnum(fname, &rbf.first_seq)) goto err1;
+    if (0 != read_max_seqnum(fname, &rbf.first_seq)) goto err1;
 
     rbf.nb_words = nb_words;
     rbf.prod_head = rbf.prod_tail = 0;
@@ -252,36 +334,6 @@ int ringbuf_unload(struct ringbuf *rb)
   return 0;
 }
 
-// Create the directories required to create that file:
-static int mkdir_for_file(char *fname)
-{
-  int ret = -1;
-
-  size_t len = strlen(fname);
-  ssize_t last_slash;
-  for (last_slash = len - 1; last_slash >= 0 && fname[last_slash] != '/'; last_slash--) ;
-
-  if (last_slash <= 0) return 0; // no dir to create (or root)
-
-  fname[last_slash] = '\0';
-  if (0 != mkdir(fname, S_IRUSR|S_IWUSR|S_IXUSR)) {
-    int ret = -1;
-    if (ENOENT == errno) {
-      if (mkdir_for_file(fname) < 0) goto err1;
-      ret = mkdir(fname, S_IRUSR|S_IWUSR|S_IXUSR);
-    }
-    if (ret != 0) {
-      fprintf(stderr, "Cannot create directory '%s': %s\n", fname, strerror(errno));
-      goto err1;
-    }
-  }
-
-  ret = 0;
-err1:
-  fname[last_slash] = '/';
-  return ret;
-}
-
 static int lock(struct ringbuf *rb)
 {
   char fname[PATH_MAX];
@@ -297,55 +349,6 @@ static int lock(struct ringbuf *rb)
   }
 
   return fd;
-}
-
-static int arc_fname_init(char *fname, struct ringbuf const *rb)
-{
-  int ret = -1;
-
-  // Save the new sequence number:
-  if ((size_t)snprintf(fname, PATH_MAX, "%s.per_seq/max", rb->fname) >= PATH_MAX) {
-    fprintf(stderr, "Archive max seq file name truncated: '%s'\n", fname);
-    goto err0;
-  }
-
-  int fd = open(fname, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR);
-  if (fd < 0) {
-    if (ENOENT == errno) {
-      if (0 != mkdir_for_file(fname)) return -1;
-      fd = open(fname, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR); // retry
-    }
-    if (fd < 0) {
-      fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
-      goto err0;
-    }
-  }
-
-  uint64_t last_seq = rb->rbf->first_seq + rb->rbf->nb_allocs;
-  ssize_t ss = write(fd, &last_seq, sizeof(last_seq));
-  if (ss < 0) {
-    fprintf(stderr, "Cannot write '%s': %s\n", fname, strerror(errno));
-    goto err1;
-  } else if (ss != sizeof(last_seq)) {
-    assert(false);
-  }
-
-  if ((size_t)snprintf(fname, PATH_MAX, "%s.per_seq/%016"PRIx64"-%016"PRIx64".b",
-                       rb->fname, rb->rbf->first_seq, last_seq) >= PATH_MAX) {
-    fprintf(stderr, "Archive file name truncated: '%s'\n", fname);
-    goto err1;
-  }
-
-  ret = 0;
-
-err1:
-  if (0 != close(fd)) {
-    fprintf(stderr, "Cannot close sequence file '%s': %s\n",
-            fname, strerror(errno));
-    ret = -1;
-  }
-err0:
-  return ret;
 }
 
 static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
@@ -369,8 +372,18 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
   int lock_fd = lock(rb);
   if (lock_fd < 0) goto err0;
 
+  uint64_t last_seq = rb->rbf->first_seq + rb->rbf->nb_allocs;
+  if (0 != write_max_seqnum(rb->fname, last_seq)) goto unlock;
+
+  // Note: let's use different subdirs per_seq/per_time etc for different
+  // indexes so that directories are smaller when searching:
   char arc_fname[PATH_MAX];
-  if (0 != arc_fname_init(arc_fname, rb)) goto unlock;
+  if ((size_t)snprintf(arc_fname, PATH_MAX, "%s.per_seq/%016"PRIx64"-%016"PRIx64".b",
+                       rb->fname, rb->rbf->first_seq, last_seq) >= PATH_MAX) {
+    fprintf(stderr, "Archive file name truncated: '%s'\n", arc_fname);
+    goto unlock;
+  }
+
   // Rename the current rb into the archival name.
   printf("Rename the current rb (%s) into the archive (%s)\n",
          rb->fname, arc_fname);
@@ -379,7 +392,32 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
             rb->fname, arc_fname, strerror(errno));
     goto unlock;
   }
-  // TODO: Also link time indexed file to the archive. NOTE: that there can be several files with same time range so use %f-%f.$random for the fname
+
+  // Also link time indexed file to the archive.
+  // NOTE: that there can be several files with same time range so suffix
+  // with a random string
+  char rstr[8+1];
+  rand_printable_chars(rstr, sizeof(rstr)-1);
+  rstr[sizeof(rstr)-1] = '\0';
+  char arc2_fname[PATH_MAX];
+  if ((size_t)snprintf(arc2_fname, PATH_MAX, "%s.per_time/%a-%a.%s.b",
+                       rb->fname, rb->rbf->tmin, rb->rbf->tmax, rstr) >= PATH_MAX) {
+    fprintf(stderr, "Archive file name truncated: '%s'\n", arc2_fname);
+    goto unlock;
+  }
+  printf("Link to time archive (%s)\n", arc2_fname);
+  if (0 != link(arc_fname, arc2_fname)) {
+    int ret = -1;
+    if (ENOENT == errno) {
+      if (0 != mkdir_for_file(arc2_fname)) goto unlock;
+      ret = link(arc_fname, arc2_fname); // retry
+    }
+    if (ret < 0) {
+      fprintf(stderr, "Cannot create '%s': %s\n", arc2_fname, strerror(errno));
+      goto unlock;
+    }
+  }
+
   // Create a new buffer file under the same old name:
   printf("Create a new buffer file under the same old name\n");
   if (0 != ringbuf_create(rb->rbf->wrap, rb->fname, rb->rbf->nb_words))
@@ -402,7 +440,6 @@ unlock:
 err0:
   return ret;
 }
-
 
 /* ringbuf will have:
  *  word n: nb_words

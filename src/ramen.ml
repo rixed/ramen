@@ -394,6 +394,16 @@ let max_seq =
                    ["max-seqnum"] in
   Arg.(value (opt (some int) None i))
 
+let min_ts =
+  let i = Arg.info ~doc:"output only tuples with greater timestamp."
+                   ["min-timestamp"] in
+  Arg.(value (opt (some float) None i))
+
+let max_ts =
+  let i = Arg.info ~doc:"output only tuples with smaller timestamp."
+                   ["max-timestamp"] in
+  Arg.(value (opt (some float) None i))
+
 let print_seqnums =
   let i = Arg.info ~doc:"Prepend tuples with their sequence number."
                    ["with-seqnums"] in
@@ -459,7 +469,7 @@ let consolidation =
   let cons_func =
     let p x = x, x in
     [ p "min" ; p "max" ; p "avg" ] in
-  Arg.(value (opt (some (enum cons_func)) None i))
+  Arg.(value (opt (enum cons_func) "avg" i))
 
 let timeseries =
   Term.(
@@ -472,6 +482,20 @@ let timeseries =
       $ data_field 1
       $ consolidation),
     info ~doc:"Extract a timeseries from an operation" "timeseries")
+
+let xtimeseries =
+  Term.(
+    (const ApiCmd.ext_timeseries
+      $ copts
+      $ since
+      $ until
+      $ max_data_points
+      $ csv_separator
+      $ csv_null
+      $ func_name 0
+      $ data_field 1
+      $ consolidation),
+    info ~doc:"Extract a timeseries from an operation" "xtimeseries")
 
 (*
  * Time Ranges
@@ -551,7 +575,7 @@ let () =
   match Term.eval_choice default [
     server_start ; server_stop ; dequeue ; summary ; sync ;
     add ; compile ; run ; stop ; tail ; timeseries ; timerange ;
-    get_info ; test ; ext_compile ; ext_run ; ext_tail
+    get_info ; test ; ext_compile ; ext_run ; ext_tail ; xtimeseries
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

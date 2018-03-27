@@ -138,23 +138,23 @@ let read_buf ?while_ ?delay_rec rb init f =
    * have to wait unless we reached the EOF mark (special value
    * returned by tx_next). *)
   let open Lwt in
-  let rec loop usr seq tx =
+  let rec loop usr tx =
     (* Contrary to the wrapping case, f must not call dequeue_commit.
      * Caller must know in which case it is: *)
-    let%lwt usr, more_to_come = f usr seq tx in
+    let%lwt usr, more_to_come = f usr tx in
     if more_to_come then
       match%lwt RingBufLib.retry_for_ringbuf ?while_ ?delay_rec
                   read_next tx with
       | exception (Exit | Timeout) -> return usr
       | exception End_of_file -> return usr
-      | tx -> loop usr (seq + 1) tx
+      | tx -> loop usr tx
     else
       return usr
   in
   match%lwt RingBufLib.retry_for_ringbuf ?while_ ?delay_rec
               read_first rb with
   | exception (Exit | Timeout) -> return init
-  | tx -> loop init 0 tx
+  | tx -> loop init tx
 
 let with_enqueue_tx rb sz f =
   let open Lwt in
@@ -171,6 +171,7 @@ let with_enqueue_tx rb sz f =
     fail exn
 
 let seq_dir_of_bname fname = fname ^".per_seq/"
+let time_dir_of_bname fname = fname ^".per_time/"
 
 let int_of_hex s = int_of_string ("0x"^ s)
 
@@ -185,13 +186,26 @@ let seq_files_of dir =
     with Not_found | Failure _ ->
       None)
 
+external strtod : string -> float = "wrap_strtod"
+
+let time_files_of dir =
+  (try Sys.files_of dir
+  with Sys_error _ -> Enum.empty ()) //@
+  (fun fname ->
+    try
+      let t1, rest = String.split ~by:"-" fname in
+      let t2, _rest = String.split ~by:"." rest in
+      Some (strtod t1, strtod t2, dir ^"/"^ fname)
+    with Not_found | Failure _ ->
+      None)
+
 let seq_range bname =
   (* Returns the first and last available seqnums.
    * Takes first from the per.seq subdir names and last from same subdir +
    * rb->stats. *)
-  let seq_dir = seq_dir_of_bname bname in
+  let dir = seq_dir_of_bname bname in
   let mi_ma =
-    seq_files_of seq_dir |>
+    seq_files_of dir |>
     Enum.fold (fun mi_ma (from, to_, _fname) ->
       match mi_ma with
       | None -> Some (from, to_)
@@ -204,19 +218,21 @@ let seq_range bname =
   | Some (mi, ma) -> mi, s.first_seq + s.alloced_objects
 
 let fold_seq_range bname mi ma init f =
-  let seq_dir = seq_dir_of_bname bname in
+  let dir = seq_dir_of_bname bname in
   let entries =
-    seq_files_of seq_dir //
+    seq_files_of dir //
     (fun (from, to_, _fname) -> from < ma && to_ >= mi) |>
     Array.of_enum in
   let cmp_entries (f1, _, _) (f2, _, _) = Int.compare f1 f2 in
   Array.fast_sort cmp_entries entries ;
   let fold_rb from rb usr =
-    read_buf rb usr (fun usr i tx ->
-      let seq = from + i in
-      if seq < mi then Lwt.return (usr, true) else
-      let%lwt usr = f usr tx in
-      Lwt.return (usr, seq < ma-1)) in
+    let%lwt _, usr =
+      read_buf rb (usr, 0) (fun (usr, i) tx ->
+        let seq = from + i in
+        if seq < mi then Lwt.return ((usr, i+1), true) else
+        let%lwt usr = f usr tx in
+        Lwt.return ((usr, i+1), seq < ma-1)) in
+    Lwt.return usr in
   let%lwt usr =
     Array.to_list entries |> (* FIXME *)
     Lwt_list.fold_left_s (fun usr (from, to_, fname) ->
@@ -231,3 +247,24 @@ let fold_seq_range bname mi ma init f =
       let%lwt s = Lwt.wrap (fun () -> stats rb) in
       fold_rb s.first_seq rb usr)
     (fun () -> unload rb ; Lwt.return_unit)
+
+let fold_time_range bname since until init f =
+  let dir = time_dir_of_bname bname in
+  let entries =
+    time_files_of dir //
+    (fun (t1, t2, _fname) -> since < t2 && until >= t1) in
+  let loop usr =
+    match Enum.get_exn entries with
+    | exception Enum.No_more_elements -> Lwt.return usr
+    | _t1, _t2, fname ->
+        let rb = load fname in
+        Lwt.finalize (fun () -> read_buf rb usr f)
+                     (fun () -> unload rb ; Lwt.return_unit)
+  in
+  let%lwt usr = loop init in
+  (* finish with the current rb: *)
+  let rb = load bname in
+  let%lwt usr = Lwt.finalize
+    (fun () -> read_buf rb usr f)
+    (fun () -> unload rb ; Lwt.return_unit) in
+  Lwt.return usr

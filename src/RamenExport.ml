@@ -529,12 +529,18 @@ type timeserie_bucket =
   { mutable count : int ; mutable sum : float ;
     mutable min : float ; mutable max : float }
 
+let make_buckets n =
+  Array.init n (fun _ ->
+    { count = 0 ; sum = 0. ; min = max_float ; max = min_float })
+
 let add_into_bucket b i v =
   if i >= 0 && i < Array.length b then (
     b.(i).count <- succ b.(i).count ;
     b.(i).min <- min b.(i).min v ;
     b.(i).max <- max b.(i).max v ;
     b.(i).sum <- b.(i).sum +. v)
+
+let bucket_of_time since dt t = int_of_float ((t -. since) /. dt)
 
 let bucket_avg b =
   if b.count = 0 then None else Some (b.sum /. float_of_int b.count)
@@ -618,9 +624,8 @@ let build_timeseries func history data_field max_data_points
                      since until consolidation =
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let dt = (until -. since) /. float_of_int max_data_points in
-  let buckets = Array.init max_data_points (fun _ ->
-    { count = 0 ; sum = 0. ; min = max_float ; max = min_float }) in
-  let bucket_of_time t = int_of_float ((t -. since) /. dt) in
+  let buckets = make_buckets max_data_points in
+  let bucket_of_time = bucket_of_time since dt in
   let f_opt f x y = match x, y with
     | None, y -> Some y
     | Some x, y -> Some (f x y) in
@@ -640,8 +645,8 @@ let build_timeseries func history data_field max_data_points
   fold_tuples_and_update_ts_cache
     ?min_filenum ?max_filenum ~max_res:max_int func history ()
     (fun () t1 t2 tup ->
-      let v = float_of_scalar_value tup.(vi) in
       if t1 < until && t2 >= since then (
+        let v = float_of_scalar_value tup.(vi) in
         let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
         for bi = bi1 to bi2 do
           add_into_bucket buckets bi v

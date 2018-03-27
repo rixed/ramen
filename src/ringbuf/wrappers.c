@@ -558,3 +558,15 @@ CAMLprim value read_str(value tx, value off_)
   read_words(wrtx, offs + sizeof size, String_val(v), size);
   CAMLreturn(v);
 }
+
+CAMLprim value wrap_strtod(value str_)
+{
+  CAMLparam1(str_);
+  CAMLlocal1(ret);
+  char const *str = String_val(str_);
+  char *end;
+  double d = strtod(str, &end);
+  if (*end != '\0') caml_failwith("Cannot convert to double");
+  ret = caml_copy_double(d);
+  CAMLreturn(ret);
+}

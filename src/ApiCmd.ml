@@ -359,6 +359,34 @@ let tail copts func_name as_csv with_header last continuous () =
   and since = ~- last in
   Lwt_main.run (exporter ?max_results ~since ())
 
+(* Returns the func, the buffer name and the type: *)
+let make_temp_export conf func_name =
+  match C.program_func_of_user_string func_name with
+  | exception Not_found ->
+      !logger.error "Cannot find function %S" func_name ;
+      fail Not_found
+  | program_name, func_name ->
+      C.with_rlock conf (fun programs ->
+        match C.find_func programs program_name func_name with
+        | exception Not_found ->
+            fail_with ("Function "^ program_name ^"/"^ func_name ^
+                       " does not exist")
+        | _program, func ->
+            let bname = C.archive_buf_name conf func in
+            RingBuf.create ~wrap:false bname RingBufLib.rb_default_words ;
+            (* Add that name to the function out-ref *)
+            let out_ref = C.out_ringbuf_names_ref conf func in
+            let%lwt typ =
+              wrap (fun () -> C.tuple_ser_type func.N.out_type) in
+            let%lwt file_spec =
+              return RamenOutRef.{
+                field_mask =
+                  RingBufLib.skip_list ~out_type:typ ~in_type:typ ;
+                timeout =
+                  Unix.gettimeofday () +. 3600. (* FIXME *) } in
+            let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
+            return (func, bname, typ))
+
 (* Tail by asking the function to write in a non-ring buffer we've created
  * on purpose, with a specific timeout. The idea is that all clients will
  * use the same name so that they can share reading this file sequence,
@@ -373,75 +401,51 @@ let ext_tail copts func_name with_header separator null
                 copts.max_simult_compilations copts.max_history_archives
                 copts.use_embedded_compiler copts.bundle_dir
                 copts.max_incidents_per_team false in
-  (* 1. create the non-wrapping RingBuf (under a standard name given
-   *    by RamenConf *)
-  match C.program_func_of_user_string func_name with
-  | exception Not_found ->
-      !logger.error "Cannot find function %S" func_name ;
-      exit 1
-  | program_name, func_name ->
-      Lwt_main.run (
-        let%lwt bname, typ = C.with_rlock conf (fun programs ->
-          match C.find_func programs program_name func_name with
-          | exception Not_found ->
-              fail_with ("Function "^ program_name ^"/"^ func_name ^
-                         " does not exist")
-          | _program, func ->
-              let bname = C.archive_buf_name conf func in
-              RingBuf.create ~wrap:false bname RingBufLib.rb_default_words ;
-              (* 2. Add that name to the function out-ref *)
-              let out_ref = C.out_ringbuf_names_ref conf func in
-              let%lwt typ =
-                wrap (fun () -> C.tuple_ser_type func.N.out_type) in
-              let%lwt file_spec =
-                return RamenOutRef.{
-                  field_mask =
-                    RingBufLib.skip_list ~out_type:typ ~in_type:typ ;
-                  timeout =
-                    Unix.gettimeofday () +. 3600. (* FIXME *) } in
-              let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
-              return (bname, typ)) in
-        (* Find out which seqnums we want to scan: *)
-        let mi, ma = RingBuf.seq_range bname in
-        let mi = match min_seq with None -> mi | Some m -> max mi m in
-        let ma = match max_seq with None -> ma | Some m -> m in
-        let mi, ma = match last with
-          | Some l ->
-              let mi = max mi (ma - l) in
-              let ma = mi + l in
-              mi, ma
-          | None -> mi, ma in
-        (* 3. Then, scan all present ringbufs in the requested range (either
-         *    the last N tuples or, TBD, since ts1 [until ts2]) and display
-         *    them *)
-        let nullmask_size =
-          RingBufLib.nullmask_bytes_of_tuple_type typ in
-        if with_header then (
-          let first = if with_seqnums then "#Seq"^ separator else "#" in
-          List.print ~first ~last:"\n" ~sep:separator
-            (fun fmt ft -> String.print fmt ft.typ_name)
-            stdout typ ;
-          BatIO.flush stdout) ;
-        let rec loop m =
-          if m >= ma then return_unit else
-          let%lwt m =
-            RingBuf.fold_seq_range bname m ma m (fun m tx ->
-              let tuple =
-                RamenSerialization.read_tuple typ nullmask_size tx in
-              if with_seqnums then (
-                Int.print stdout m ; String.print stdout separator) ;
-              Array.print ~first:"" ~last:"\n" ~sep:separator
-                (RamenScalar.print_custom ~null) stdout tuple ;
-              BatIO.flush stdout ;
-              return (m + 1)) in
-          if m >= ma then return_unit else
-            (* TODO: If we tail for a long time in continuous mode, we might
-             * need to refresh the out-ref timeout from time to time. *)
-            let delay = 1. +. Random.float 1. in
-            let%lwt () = Lwt_unix.sleep delay in
-            loop m
-        in
-        loop mi)
+  (* Create the non-wrapping RingBuf (under a standard name given
+   * by RamenConf *)
+  Lwt_main.run (
+    let%lwt _, bname, typ = make_temp_export conf func_name in
+    (* Find out which seqnums we want to scan: *)
+    let mi, ma = RingBuf.seq_range bname in
+    let mi = match min_seq with None -> mi | Some m -> max mi m in
+    let ma = match max_seq with None -> ma | Some m -> m + 1 (* max_seqnum is in *) in
+    let mi, ma = match last with
+      | Some l ->
+          let mi = max mi (ma - l) in
+          let ma = mi + l in
+          mi, ma
+      | None -> mi, ma in
+    (* Then, scan all present ringbufs in the requested range (either
+     * the last N tuples or, TBD, since ts1 [until ts2]) and display
+     * them *)
+    let nullmask_size =
+      RingBufLib.nullmask_bytes_of_tuple_type typ in
+    if with_header then (
+      let first = if with_seqnums then "#Seq"^ separator else "#" in
+      List.print ~first ~last:"\n" ~sep:separator
+        (fun fmt ft -> String.print fmt ft.typ_name)
+        stdout typ ;
+      BatIO.flush stdout) ;
+    let rec loop m =
+      if m >= ma then return_unit else
+      let%lwt m =
+        RingBuf.fold_seq_range bname m ma m (fun m tx ->
+          let tuple =
+            RamenSerialization.read_tuple typ nullmask_size tx in
+          if with_seqnums then (
+            Int.print stdout m ; String.print stdout separator) ;
+          Array.print ~first:"" ~last:"\n" ~sep:separator
+            (RamenScalar.print_custom ~null) stdout tuple ;
+          BatIO.flush stdout ;
+          return (m + 1)) in
+      if m >= ma then return_unit else
+        (* TODO: If we tail for a long time in continuous mode, we might
+         * need to refresh the out-ref timeout from time to time. *)
+        let delay = 1. +. Random.float 1. in
+        let%lwt () = Lwt_unix.sleep delay in
+        loop m
+    in
+    loop mi)
 
 (* TODO: separator and null placeholder for csv *)
 let export copts func_name as_csv with_header max_results continuous () =
@@ -456,14 +460,80 @@ let timeseries copts since until max_data_points
   and msg =
     { since ; until ; max_data_points ;
       timeseries = [
-        { id = "cmdline" ;
-          consolidation = consolidation |? "avg" ;
+        { id = "cmdline" ; consolidation ;
           spec = Predefined { operation ; data_field } } ] } in
   let th =
     let%lwt body = http_post_json url timeseries_req_ppp_json msg in
     Printf.printf "%s\n%!" body (* TODO *) ;
     return_unit in
   Lwt_main.run th
+
+let ext_timeseries copts since until max_data_points separator null
+                   func_name data_field consolidation () =
+  logger := make_logger copts.debug ;
+  if max_data_points < 1 then failwith "invalid max_data_points" ;
+  if since >= until then failwith "since must come strictly before until" ;
+  let conf =
+    C.make_conf true copts.server_url copts.debug copts.persist_dir
+                copts.max_simult_compilations copts.max_history_archives
+                copts.use_embedded_compiler copts.bundle_dir
+                copts.max_incidents_per_team false in
+  let dt = (until -. since) /. float_of_int max_data_points in
+  let open RamenExport in
+  let buckets = make_buckets max_data_points in
+  let bucket_of_time = bucket_of_time since dt in
+  let consolidation =
+    match String.lowercase consolidation with
+    | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
+  Lwt_main.run (
+    let%lwt func, bname, typ = make_temp_export conf func_name in
+    let find_field_index n =
+      match List.findi (fun _i f -> f.typ_name = n) typ with
+      | exception Not_found -> failwith ("field "^ n ^" does not exist")
+      | i, _ -> i in
+    let%lwt vi = wrap (fun () -> find_field_index data_field) in
+    let%lwt event_time_of_tuple =
+      match func.N.event_time with
+      | None ->
+          fail_with ("Function "^ func_name ^" has no time information")
+      | Some ((start_field, start_scale), duration_info) ->
+          let t1i = find_field_index start_field in
+          let t2i = match duration_info with
+            | DurationConst _ -> 0 (* won't be used *)
+            | DurationField (f, _) -> find_field_index f
+            | StopField (f, _) -> find_field_index f in
+          return (fun tup ->
+            let t1 = float_of_scalar_value tup.(t1i) *. start_scale in
+            let t2 = match duration_info with
+              | DurationConst k -> t1 +. k
+              | DurationField (_, s) -> t1 +. float_of_scalar_value tup.(t2i) *. s
+              | StopField (_, s) -> float_of_scalar_value tup.(t2i) *. s in
+            (* Allow duration to be < 0 *)
+            if t2 >= t1 then t1, t2 else t2, t1) in
+    let nullmask_size =
+      RingBufLib.nullmask_bytes_of_tuple_type typ in
+    RingBuf.fold_time_range bname since until () (fun () tx ->
+      let tuple =
+        RamenSerialization.read_tuple typ nullmask_size tx in
+      (* Get the times from tuple: *)
+      let t1, t2 = event_time_of_tuple tuple in
+      if t1 >= until then return ((), false) else (
+        if t2 >= since then (
+          let v = float_of_scalar_value tuple.(vi) in
+          let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
+          for bi = bi1 to bi2 do add_into_bucket buckets bi v done) ;
+        return ((), true)))) ;
+  (* Display results: *)
+  for i = 0 to Array.length buckets - 1 do
+    let t = since +. dt *. (float_of_int i +. 0.5)
+    and v = consolidation buckets.(i) in
+    (* TODO: csv separator, null... *)
+    Float.print stdout t ;
+    String.print stdout separator ;
+    (match v with None -> String.print stdout null
+                | Some v -> Float.print stdout v) ;
+    String.print stdout "\n"
+  done
 
 let timerange copts func_name () =
   logger := make_logger copts.debug ;
