@@ -36,27 +36,6 @@ let make_copts debug server_url persist_dir max_history_archives
 
 let enc = Uri.pct_encode
 
-let add copts name program ok_if_running start remote () =
-  logger := make_logger copts.debug ;
-  if not remote && ok_if_running then
-    failwith "Option --ok-if-running is only supported if --remote." ;
-  if not remote && start then
-    failwith "Option --start is only supported if --remote." ;
-  Lwt_main.run (
-    if remote then
-      let msg = { name ; ok_if_running ; start ; program } in
-      http_put_json (copts.server_url ^"/graph") put_program_req_ppp_json msg >>=
-      check_ok
-    else
-      let conf =
-        C.make_conf true copts.server_url copts.debug copts.persist_dir
-                    copts.max_simult_compilations copts.max_history_archives
-                    copts.use_embedded_compiler copts.bundle_dir
-                    copts.max_incidents_per_team false in
-      let%lwt _program_name =
-        RamenOps.set_program ~ok_if_running ~start conf name program in
-      return_unit)
-
 let gather_all_fname root_dir =
   let ret = ref Set.empty in
   !logger.debug "Looking for source files into %s" root_dir ;
@@ -112,11 +91,6 @@ let sync copts root_dir program_prefix and_start () =
       let url = copts.server_url ^"/graph" in
       !logger.info "Creating program %s..." program_name ;
       http_put_json url put_program_req_ppp_json req >>= check_ok))
-
-let compile copts () =
-  logger := make_logger copts.debug ;
-  Lwt_main.run (
-    http_get (copts.server_url ^"/compile") >>= check_ok)
 
 let run copts () =
   logger := make_logger copts.debug ;
@@ -739,17 +713,7 @@ let info copts json short name_opt remote () =
         display_program_info json short progs_info ops_info ;
         return_unit)
 
-let test copts conf_file tests () =
-  logger := make_logger copts.debug ;
-  let conf =
-    C.make_conf true copts.server_url copts.debug copts.persist_dir
-                copts.max_simult_compilations copts.max_history_archives
-                copts.use_embedded_compiler copts.bundle_dir
-                copts.max_incidents_per_team false in
-  Lwt_main.run (
-    RamenTests.run conf copts.server_url conf_file tests)
-
-let ext_compile copts keep_temp_files root_path source_files () =
+let compile copts keep_temp_files root_path source_files () =
   logger := make_logger copts.debug ;
   let conf =
     C.make_conf true copts.server_url copts.debug copts.persist_dir

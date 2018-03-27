@@ -76,7 +76,7 @@ RAMEN_SOURCES = \
 	src/CodeGen_OCaml.ml src/Compiler.ml src/RamenHtml.ml src/RamenColor.ml \
 	src/RamenFormats.ml src/RamenChart.ml \
 	src/SqliteHelpers.ml src/RamenAlerter.ml \
-	src/RamenOps.ml src/RamenTests.ml \
+	src/RamenOps.ml \
 	src/HttpSrv.ml src/TermTable.ml src/ApiCmd.ml \
 	src/RingBufCmd.ml src/RamenCompletion.ml src/ramen.ml
 

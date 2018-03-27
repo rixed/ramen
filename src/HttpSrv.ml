@@ -73,22 +73,8 @@ let del_program conf _headers program_name =
     bad_request (Printexc.to_string e)
 
 (*
-    Whole graph operations: compile/run/stop
+    Whole graph operations: run/stop
 *)
-
-let compile conf headers program_opt =
-  let%lwt program_names =
-    C.with_rlock conf (fun programs ->
-      let%lwt programs = RamenProcesses.graph_programs programs program_opt in
-      List.map (fun p -> p.L.name) programs |>
-      return) in
-  let%lwt failures = RamenOps.compile_programs conf program_names in
-  if failures = [] then
-    switch_accepted headers [
-      Consts.json_content_type, (fun () -> respond_ok ()) ]
-  else
-    let first_e, _ = List.hd failures in
-    bad_request (Printexc.to_string first_e)
 
 let run conf headers program_opt =
   try%lwt
@@ -191,8 +177,6 @@ let router conf www_dir url_prefix =
   fun meth path params headers body ->
     match meth, path with
     (* Ramen API *)
-    | `GET, ("compile" :: programs) ->
-      compile conf headers (lyr_opt programs)
     | `GET, (("run" | "start") :: programs) ->
       run conf headers (lyr_opt programs)
     | `POST, ["run" | "start"] -> (* Start from offline binary *)

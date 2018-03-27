@@ -172,36 +172,14 @@ let program_name =
                    ~docv:"name" [] in
   Arg.(required (pos 0 (some string) None i))
 
-let program =
-  let i = Arg.info ~doc:"New program (such as 'DEFINE xyz AS SELECT...')"
-                   ~docv:"program" [] in
-  Arg.(required (pos 1 (some string) None i))
-
 let and_start =
   let i = Arg.info ~doc:"Also start that new program"
                    [ "start" ] in
   Arg.(value (flag i))
 
-let ok_if_running =
-  let i = Arg.info ~doc:"If a program exist by that name and is running, \
-                         stop it and replace it."
-                   [ "ok-if-running" ] in
-  Arg.(value (flag i))
-
 let remote =
   let i = Arg.info ~doc:"Use the remote access API" ["remote"] in
   Arg.(value (flag i))
-
-let add =
-  Term.(
-    (const ApiCmd.add
-      $ copts
-      $ program_name
-      $ program
-      $ ok_if_running
-      $ and_start
-      $ remote),
-    info ~doc:"Define a new program or replace a previous one" "add")
 
 (*
  * Sync local sources
@@ -228,14 +206,8 @@ let sync =
                from the file system." "sync")
 
 (*
- * Compile/Run/Stop Program
+ * Run/Stop Program
  *)
-
-let compile =
-  Term.(
-    (const ApiCmd.compile
-      $ copts),
-    info ~doc:"Compile one (or all) program(s)" "compile")
 
 let param =
   let parse s =
@@ -307,10 +279,9 @@ let bin_files =
                    ~docv:"program.x" [] in
   Arg.(non_empty (pos_all string [] i))
 
-(* TODO: rename as compile once inline compilation command is gone *)
-let ext_compile =
+let compile =
   Term.(
-    (const ApiCmd.ext_compile
+    (const ApiCmd.compile
       $ copts
       $ keep_temp_files
       $ root_path
@@ -538,28 +509,6 @@ let get_info =
     info ~doc:"Get info about a program or an operation" "info")
 
 (*
- * Tests
- *)
-
-let conf_file =
-  let i = Arg.info ~doc:"Configuration file to be tested."
-                   ~docv:"conf.json" [] in
-  Arg.(required (pos 0 (some string) None i))
-
-let test_files =
-  let i = Arg.info ~doc:"Definition of a test to run."
-                   ~docv:"test.json" [] in
-  Arg.(non_empty (pos_right 0 string [] i))
-
-let test =
-  Term.(
-    (const ApiCmd.test
-      $ copts
-      $ conf_file
-      $ test_files),
-    info ~doc:"Test a configuration against a test suite" "test")
-
-(*
  * Autocompletion
  *)
 
@@ -588,8 +537,8 @@ let default =
 let () =
   match Term.eval_choice default [
     server_start ; server_stop ; dequeue ; summary ; sync ;
-    add ; compile ; run ; stop ; tail ; timeseries ; timerange ;
-    get_info ; test ; ext_compile ; ext_run ; ext_tail ; xtimeseries ;
+    compile ; run ; stop ; tail ; timeseries ; timerange ;
+    get_info ; ext_run ; ext_tail ; xtimeseries ;
     autocomplete
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
