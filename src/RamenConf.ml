@@ -2,7 +2,6 @@ open Batteries
 open RamenLog
 open Helpers
 open RamenSharedTypes
-open AlerterSharedTypesJS
 module Expr = RamenExpr
 
 (* Used to type the input/output of funcs. Of course a compiled/
@@ -127,84 +126,10 @@ let tup_typ_of_temp_tup_type ttt =
 let archive_file dir (block_start, block_stop) =
   dir ^"/"^ string_of_int block_start ^"-"^ string_of_int block_stop
 
-module Alerter =
-struct
-  (* The part of the internal state that we persist on disk: *)
-  type t =
-    { (* Ongoing incidents stays there until they are manually closed (with
-        * comment, reason, etc...) *)
-      ongoing_incidents : (int, Incident.t) Hashtbl.t ;
-
-      (* Used to assign an id to any escalation so that we can ack them. *)
-      mutable next_alert_id : int ;
-
-      (* Same for incidents: *)
-      mutable next_incident_id : int ;
-
-      (* And inhibitions: *)
-      mutable next_inhibition_id : int ;
-
-      mutable static : StaticConf.t }
-
-  let save_file persist_dir =
-    persist_dir ^"/alerting/"
-                ^ RamenVersions.alerting_state
-                ^"/"^ Config.version ^"/state"
-
-  (* TODO: write using Lwt *)
-  let save_state persist_dir state =
-    let fname = save_file persist_dir in
-    mkdir_all ~is_file:true fname ;
-    !logger.debug "Saving state in file %S." fname ;
-    File.with_file_out ~mode:[`create; `trunc] fname (fun oc ->
-      Marshal.output oc state)
-
-  let get_state do_persist persist_dir =
-    let get_new () =
-      { ongoing_incidents = Hashtbl.create 5 ;
-        next_alert_id = 0 ;
-        next_incident_id = 0 ;
-        next_inhibition_id = 0 ;
-        static =
-          { oncallers = [ OnCaller.{ name = "John Doe" ;
-                                     contacts = [| Contact.Console |] } ] ;
-            teams = [
-              Team.{ name = "firefighters" ;
-                     members = [ "John Doe" ] ;
-                     escalations = [
-                       { importance = 0 ;
-                         steps = Escalation.[
-                           { victims = [| 0 |] ; timeout = 350. } ;
-                           { victims = [| 0; 1 |] ; timeout = 350. } ] } ] ;
-                     inhibitions = [] } ] ;
-            default_team = "firefighters" ;
-            schedule =
-              [ { rank = 0 ; from = 0. ; oncaller = "John Doe" } ] } }
-    in
-    if do_persist then (
-      let fname = save_file persist_dir in
-      mkdir_all ~is_file:true fname ;
-      try
-        File.with_file_in fname (fun ic -> Marshal.input ic)
-      with Sys_error err ->
-        !logger.debug "Cannot read state from file %S: %s. Starting anew."
-            fname err ;
-        get_new ()
-      | BatInnerIO.No_more_input ->
-        !logger.debug "Cannot read state from file %S: not enough input. Starting anew."
-           fname ;
-        get_new ()
-    ) else get_new ()
-end
-
 type conf =
   { (* Protects the persisted programs (all at once) against other threads *)
     graph_lock : RWLock.t ;
-    alerts : Alerter.t ;
-    alerts_lock : RWLock.t ; (* Protects the above alerts *)
     (* TODO: a file *)
-    mutable archived_incidents : Incident.t list ;
-    max_incidents_per_team : int ;
     debug : bool ;
     ramen_url : string ;
     persist_dir : string ;
@@ -738,9 +663,7 @@ let find_func programs program name =
 let make_conf do_persist ramen_url debug persist_dir max_simult_compilations
               max_archives use_embedded_compiler bundle_dir
               max_incidents_per_team keep_temp_files =
-  { graph_lock = RWLock.make () ; alerts_lock = RWLock.make () ;
-    alerts = Alerter.get_state do_persist persist_dir ;
-    archived_incidents = [ (* TODO *) ] ; max_incidents_per_team ;
+  { graph_lock = RWLock.make () ;
     do_persist ; ramen_url ; debug ; persist_dir ;
     max_simult_compilations = ref max_simult_compilations ;
     max_archives ; max_execs_age = 900 ;

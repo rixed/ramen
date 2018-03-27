@@ -64,7 +64,6 @@ all: $(INSTALLED)
 RAMEN_SOURCES = \
 	src/RamenVersions.ml src/Consts.ml src/RamenLog.ml src/Helpers.ml \
 	src/RamenBitmask.ml src/RWLock.ml src/RamenOutRef.ml \
-	src/AlerterSharedTypesJS.ml \
 	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
 	src/RamenSharedTypes.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RingBufLib.ml src/RamenTypeConverters.ml \
@@ -75,7 +74,7 @@ RAMEN_SOURCES = \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/Compiler.ml src/RamenHtml.ml src/RamenColor.ml \
 	src/RamenFormats.ml src/RamenChart.ml \
-	src/SqliteHelpers.ml src/RamenAlerter.ml \
+	src/SqliteHelpers.ml \
 	src/RamenOps.ml \
 	src/HttpSrv.ml src/TermTable.ml src/ApiCmd.ml \
 	src/RingBufCmd.ml src/RamenCompletion.ml src/ramen.ml
@@ -267,7 +266,7 @@ TESTABLE_SOURCES = \
 LINKED_FOR_TESTS = \
 	src/RamenVersions.ml src/RamenLog.ml src/Consts.ml src/Helpers.ml \
 	src/RWLock.ml src/RamenOutRef.ml \
-	src/RamenSharedTypes.ml src/AlerterSharedTypesJS.ml src/RingBufLib.ml \
+	src/RamenSharedTypes.ml src/RingBufLib.ml \
 	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
 	src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \

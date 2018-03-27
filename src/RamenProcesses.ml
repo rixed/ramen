@@ -574,7 +574,6 @@ let cleanup_old_files conf =
     let to_clean =
       [ "log", date_regexp, get_log_file () ;
         "log/workers", v_regexp, get_log_file () ;
-        "alerting", v_regexp, RamenVersions.alerting_state ;
         "configuration", v_regexp, RamenVersions.graph_config ;
         "instrumentation_ringbuf", v1v2_regexp, (RamenVersions.instrumentation_tuple ^"_"^ RamenVersions.ringbuf) ;
         "workers/bin", v_regexp, RamenVersions.codegen ;

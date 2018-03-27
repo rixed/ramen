@@ -75,12 +75,6 @@ let daemonize =
                    ~env [ "daemon"; "daemonize"] in
   Arg.(value (flag i))
 
-let no_demo =
-  let env = Term.env_info "RAMEN_NO_DEMO" in
-  let i = Arg.info ~doc:"do not load demo operations"
-                   ~env [ "no-demo" ] in
-  Arg.(value (flag i))
-
 let to_stderr =
   let env = Term.env_info "RAMEN_LOG_TO_STDERR" in
   let i = Arg.info ~doc:"log onto stderr"
@@ -119,7 +113,6 @@ let server_start =
     (const ApiCmd.start
       $ copts
       $ daemonize
-      $ no_demo
       $ to_stderr
       $ www_dir
       $ ssl_cert

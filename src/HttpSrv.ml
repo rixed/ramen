@@ -168,11 +168,6 @@ let router conf www_dir url_prefix =
       | l::rest ->
         loop (l :: ls) rest in
     loop [] path in
-  let alert_id_of_string s =
-    match int_of_string s with
-    | exception Failure _ ->
-        bad_request "alert id must be numeric"
-    | id -> return id in
   (* The function called for each HTTP request: *)
   fun meth path params headers body ->
     match meth, path with
@@ -189,57 +184,6 @@ let router conf www_dir url_prefix =
     | (`POST|`PUT), ("upload" :: path) ->
       let program, func = lyr_func_of path in
       upload conf headers program func body
-    (* Alerter API *)
-    | `GET, ["notify"] ->
-      RamenAlerter.Api.notify conf params
-    | `GET, ["teams"] ->
-      RamenAlerter.Api.get_teams conf
-    | `PUT, ["team"; name] ->
-      RamenAlerter.Api.new_team conf headers name
-    | `DELETE, ["team"; name] ->
-      RamenAlerter.Api.del_team conf headers name
-    | `GET, ["oncaller"; name] ->
-      RamenAlerter.Api.get_oncaller conf headers name
-    | `GET, ["ongoing"] ->
-      RamenAlerter.Api.get_ongoing conf None
-    | `GET, ["ongoing"; team] ->
-      RamenAlerter.Api.get_ongoing conf (Some team)
-    | (`POST|`PUT), ["history"] ->
-      RamenAlerter.Api.get_history_post conf headers body
-    | `GET, ("history" :: team) ->
-      let team = if team = [] then None else Some (List.hd team) in
-      RamenAlerter.Api.get_history_get conf headers team params
-    | `GET, ["ack" ; id] ->
-      let%lwt id = alert_id_of_string id in
-      RamenAlerter.Api.get_ack conf id
-    | `GET, ["extinguish" ; id] ->
-      let%lwt id = alert_id_of_string id in
-      (* TODO: a parameter for reason *)
-      RamenAlerter.Api.get_stop conf id
-    | `POST, ["extinguish"] ->
-      RamenAlerter.Api.post_stop conf headers body
-    | `POST, ["inhibit"; "add"; team] ->
-      RamenAlerter.Api.add_inhibit conf headers team body
-    | `POST, ["inhibit"; "edit" ; team] ->
-      RamenAlerter.Api.edit_inhibit conf headers team body
-    | `GET, ["stfu" ; team] ->
-      RamenAlerter.Api.stfu conf headers team
-    | `POST, ["oncaller"; name] ->
-      RamenAlerter.Api.edit_oncaller conf headers name body
-    | `POST, ["members"; name] ->
-      RamenAlerter.Api.edit_members conf headers name body
-    | `GET, ["set_default_team"; name] ->
-      RamenAlerter.Api.set_default_team conf headers name
-    | `GET, ["alerting"; "configuration"] ->
-      RamenAlerter.Api.export_static_conf conf
-    | `PUT, ["alerting"; "configuration"] ->
-      RamenAlerter.Api.put_static_conf conf headers body
-      (* Same as above, but for multipart form-data: *)
-    | `POST, ["alerting"; "configuration"] ->
-      let%lwt () =
-        RamenAlerter.Api.upload_static_conf conf headers body in
-      switch_accepted headers [
-        Consts.json_content_type, (fun () -> respond_ok ()) ]
     (* Errors *)
     | `PUT, p | `GET, p | `DELETE, p ->
       let path = String.join "/" p in
