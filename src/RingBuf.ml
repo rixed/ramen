@@ -186,6 +186,9 @@ let seq_files_of dir =
     with Not_found | Failure _ ->
       None)
 
+let seq_file_compare (f1, _, _) (f2, _, _) =
+  Int.compare f1 f2
+
 external strtod : string -> float = "wrap_strtod"
 
 let time_files_of dir =
@@ -223,8 +226,7 @@ let fold_seq_range bname mi ma init f =
     seq_files_of dir //
     (fun (from, to_, _fname) -> from < ma && to_ >= mi) |>
     Array.of_enum in
-  let cmp_entries (f1, _, _) (f2, _, _) = Int.compare f1 f2 in
-  Array.fast_sort cmp_entries entries ;
+  Array.fast_sort seq_file_compare entries ;
   let fold_rb from rb usr =
     let%lwt _, usr =
       read_buf rb (usr, 0) (fun (usr, i) tx ->

@@ -632,6 +632,7 @@ let cleanup_old_files conf =
     in
     !logger.info "Cleaning old unused files..." ;
     let%lwt () = Lwt_list.iter_s cleanup_dir to_clean in
+    (* Clean old binaries *)
     let bindir = conf.C.persist_dir ^"/workers/bin/"^ RamenVersions.codegen in
     let%lwt used_bins =
       C.with_rlock conf (fun programs ->
@@ -655,6 +656,38 @@ let cleanup_old_files conf =
           !logger.info "Deleting old build artifact %s" rel_fname ;
           log_exceptions Unix.unlink fname) in
     dir_subtree_iter ~on_file:unlink_old_bin bindir ;
+    (* Clean old archives *)
+    let arcdir =
+      conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf in
+    let clean_seq_archives dir =
+      (* Delete all files matching %d-%d.r but the last ones: *)
+      let files = RingBuf.seq_files_of dir |> Array.of_enum in
+      Array.fast_sort RingBuf.seq_file_compare files ;
+      for i = 0 to Array.length files - conf.max_history_archives do
+        let _, _, f = files.(i) in
+        let fname = dir ^"/"^ f in
+        !logger.info "Deleting old archive %s" fname ;
+        log_exceptions Unix.unlink fname
+      done
+    and clean_time_archives dir =
+      (* Delete all time link with a link ref count at 1 *)
+      RingBuf.time_files_of dir //@
+      (fun (_, _, f) ->
+        let fname = dir ^"/"^ f in
+        let s = Unix.stat fname in
+        if s.Unix.st_nlink = 1 then Some fname else None) |>
+      Enum.iter (fun fname ->
+        !logger.info "Deleting old time index %s" fname ;
+        log_exceptions Unix.unlink fname)
+    in
+    let on_dir fname rel_fname =
+      let basename = Filename.basename rel_fname in
+      if basename = "per_time" then
+        clean_time_archives fname
+      else if basename = "per_seq" then
+        clean_seq_archives fname
+    in
+    dir_subtree_iter ~on_dir arcdir ;
     Lwt_unix.sleep 3600. >>= loop
   in
   loop ()
