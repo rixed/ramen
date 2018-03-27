@@ -576,38 +576,12 @@ let cleanup_old_files conf =
         "log/workers", v_regexp, get_log_file () ;
         "configuration", v_regexp, RamenVersions.graph_config ;
         "instrumentation_ringbuf", v1v2_regexp, (RamenVersions.instrumentation_tuple ^"_"^ RamenVersions.ringbuf) ;
-        "workers/bin", v_regexp, RamenVersions.codegen ;
         "workers/ringbufs", v_regexp, RamenVersions.ringbuf ;
         "workers/out_ref", v_regexp, RamenVersions.out_ref ;
-        "workers/src", v_regexp, RamenVersions.codegen ;
         "workers/states", v_regexp, RamenVersions.worker_state ]
     in
     !logger.info "Cleaning old unused files..." ;
     let%lwt () = Lwt_list.iter_s cleanup_dir to_clean in
-    (* Clean old binaries *)
-    let bindir = conf.C.persist_dir ^"/workers/bin/"^ RamenVersions.codegen in
-    let%lwt used_bins =
-      C.with_rlock conf (fun programs ->
-        C.lwt_fold_funcs programs Set.empty (fun set prog func ->
-          Set.add (C.obj_of_func conf func) set |>
-          Set.add (L.exec_of_program conf.C.persist_dir prog) |>
-          return)) in
-    let now = Unix.gettimeofday () in
-    let unlink_old_bin fname rel_fname =
-      let bname = Filename.basename fname in
-      if bname = "ramen_worker" then
-        if Set.mem fname used_bins then
-          Unix.utimes fname now now
-        else if now -. mtime_of_file fname > float_of_int conf.max_execs_age then (
-          !logger.info "Deleting unused binary %s" rel_fname ;
-          log_exceptions Unix.unlink fname)
-      else
-        let e = String.ends_with fname in
-        if (e ".cmx" || e ".cmi" || e ".o" || e ".ml") &&
-           now -. mtime_of_file fname > float_of_int conf.max_execs_age then (
-          !logger.info "Deleting old build artifact %s" rel_fname ;
-          log_exceptions Unix.unlink fname) in
-    dir_subtree_iter ~on_file:unlink_old_bin bindir ;
     (* Clean old archives *)
     let arcdir =
       conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf in
