@@ -23,7 +23,6 @@ endif
 
 PACKAGES = \
 	ppp ppp.unix lwt_ppx batteries cmdliner stdint parsercombinator \
-	syslog sqlite3 \
 	cohttp-lwt-unix num inotify.lwt binocle unix lacaml net_codecs \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp
@@ -74,7 +73,6 @@ RAMEN_SOURCES = \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/Compiler.ml src/RamenHtml.ml src/RamenColor.ml \
 	src/RamenFormats.ml src/RamenChart.ml \
-	src/SqliteHelpers.ml \
 	src/RamenOps.ml \
 	src/HttpSrv.ml src/TermTable.ml src/ApiCmd.ml \
 	src/RingBufCmd.ml src/RamenCompletion.ml src/ramen.ml
@@ -101,11 +99,6 @@ LIBCOLLECTD_SOURCES = \
 
 LIBNETFLOW_SOURCES = \
 	src/netflow/v5.c
-
-CONFIGURATOR_SOURCES = \
-	src/Consts.ml src/RamenLog.ml src/Helpers.ml \
-	src/RamenSharedTypes.ml src/SqliteHelpers.ml src/Conf_of_sqlite.ml \
-	src/ramen_configurator.ml
 
 TESTONLY_SOURCES = \
 	src/TestHelpers.ml
@@ -174,20 +167,6 @@ src/ramen: $(RAMEN_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a src/libn
 src/codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a src/libnetflow.a
 	@echo "Linking runtime library (native code) $@"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
-
-# configurator/alerter specific sources with more packages
-
-src/SqliteHelpers.cmx: src/SqliteHelpers.ml
-	@echo "Compiling $@ (native code)"
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
-
-src/Conf_of_sqlite.cmx: src/Conf_of_sqlite.ml
-	@echo "Compiling $@ (native code)"
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES) sqlite3" -c $<
-
-src/ramen_configurator: $(CONFIGURATOR_SOURCES:.ml=.cmx)
-	@echo "Linking $@"
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES) sqlite3" $(filter %.cmx, $^) -o $@
 
 # embedded compiler version: build a bundle of all libraries
 OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))

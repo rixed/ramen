@@ -20,11 +20,9 @@ depends: [
   "cohttp-lwt-unix" {build & = "1.0.2"}
   "binocle" {>= "0.3"}
   "lacaml" {= "11.0.0"}
-  "sqlite3" {= "4.3.2"}
   "num"
   "ppp" {build & >= "2.1"}
   "cmdliner" {build & = "1.0.2"}
-  "syslog" {= "1.5"}
   "net_codecs" {>= "0.3"}
   "qtest" {test}
 ]
