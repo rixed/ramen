@@ -615,7 +615,7 @@ let cleanup_old_files conf =
       (* Delete all files matching %d-%d.r but the last ones: *)
       let files = RingBuf.seq_files_of dir |> Array.of_enum in
       Array.fast_sort RingBuf.seq_file_compare files ;
-      for i = 0 to Array.length files - conf.max_history_archives do
+      for i = 0 to Array.length files - conf.max_archives do
         let _, _, f = files.(i) in
         let fname = dir ^"/"^ f in
         !logger.info "Deleting old archive %s" fname ;
