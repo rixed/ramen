@@ -317,8 +317,8 @@ let set_program ?test_id ?(ok_if_running=false) ?(start=false)
     ) else return_unit in
   return name
 
-let func_info_of_func ~with_code ~with_stats programs func =
-  let%lwt exporting = RamenExport.is_func_exporting func in
+let func_info_of_func conf ~with_code ~with_stats programs func =
+  let%lwt exporting = RamenExport.is_func_exporting conf func in
   let operation =
     IO.to_string RamenOperation.print func.N.operation |>
     PPP_prettify.prettify in
@@ -352,12 +352,12 @@ let func_info_of_func ~with_code ~with_stats programs func =
     code ;
     stats }
 
-let func_info ?(with_code=true) ?(with_stats=true) conf program_name func_name =
+let func_info conf ?(with_code=true) ?(with_stats=true) program_name func_name =
   C.with_rlock conf (fun programs ->
     let%lwt func = wrap (fun () ->
       let prog = Hashtbl.find programs program_name in
       Hashtbl.find prog.L.funcs func_name) in
-    func_info_of_func ~with_code ~with_stats programs func)
+    func_info_of_func conf ~with_code ~with_stats programs func)
 
 let program_info_of_program programs program =
   let operations =

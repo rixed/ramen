@@ -198,8 +198,6 @@ let start copts daemonize no_demo to_stderr www_dir
        * Lwt_main.run, the result will be totally unpredictable. *)
       (let%lwt () = Lwt_unix.sleep 1. in
        async (fun () ->
-         restart_on_failure RamenProcesses.timeout_programs_loop conf) ;
-       async (fun () ->
          restart_on_failure RamenProcesses.cleanup_old_files conf) ;
        async (fun () ->
          restart_on_failure RamenProcesses.read_reports reports_rb) ;

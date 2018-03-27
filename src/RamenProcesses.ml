@@ -94,8 +94,7 @@ let rec run_func conf programs program func =
    * we can start importing: *)
   let%lwt () =
     if func.N.force_export then
-      let%lwt _ = RamenExport.get_or_start conf func in (* old style *)
-      let%lwt _ = RamenExport.make_temp_export conf func in (* new style *)
+      let%lwt _ = RamenExport.make_temp_export conf func in
       return_unit
     else return_unit in
   !logger.info "Start %s" func.N.name ;
@@ -335,7 +334,6 @@ let stop conf programs program =
               (N.fq_name func) ;
           return_unit
         ) else (
-          let%lwt () = RamenExport.stop conf func in
           (* Start by removing this worker ringbuf from all its parent
            * output references: *)
           let this_ins = C.in_ringbuf_names conf func in
@@ -480,40 +478,6 @@ let use_program_by_name programs now program_name =
         (Enum.print String.print) (Hashtbl.keys programs)
   | program -> use_program now program
 
-let timeout_programs conf programs =
-  (* Build the set of all defined and all used programs *)
-  let defined, used =
-    Hashtbl.fold (fun program_name program (defined, used) ->
-      Set.add program_name defined,
-      Hashtbl.fold (fun _func_name func used ->
-          List.fold_left (fun used (parent_program, _parent_func) ->
-              if parent_program = program_name then used
-              else Set.add parent_program used
-            ) used func.N.parents
-        ) program.L.funcs used
-    ) programs (Set.empty, Set.empty) in
-  let now = Unix.gettimeofday () in
-  Set.iter (use_program_by_name programs now) used ;
-  let unused = Set.diff defined used |>
-               Set.to_list in
-  Lwt_list.iter_p (fun program_name ->
-      match Hashtbl.find programs program_name with
-      | exception Not_found ->
-          !logger.error "Cannot find program %s!?" program_name ;
-          return_unit
-      | program ->
-          if program.L.timeout > 0. &&
-             now > program.L.last_used +. program.L.timeout
-          then (
-            !logger.info "Deleting unused program %s after a %gs timeout"
-              program_name program.L.timeout ;
-            (* Kill first, and only then forget about it. *)
-            let%lwt () = stop conf programs program in
-            Hashtbl.remove programs program_name ;
-            return_unit
-          ) else return_unit
-    ) unused
-
 (* Instrumentation: Reading workers stats *)
 
 open Stdint
@@ -562,15 +526,6 @@ let process_notifications rb =
     !logger.info "Received notify instruction from %s to %s"
       worker url ;
     RamenHttpHelpers.http_notify url)
-
-(* A thread that hunt for unused programs / imports *)
-let rec timeout_programs_loop conf =
-  let%lwt () = C.with_wlock conf (fun programs ->
-    timeout_programs conf programs) in
-  (* No need for a lock on conf for that one: *)
-  let%lwt () = RamenExport.timeout_exports conf in
-  let%lwt () = Lwt_unix.sleep 7.1 in
-  timeout_programs_loop conf
 
 let cleanup_old_files conf =
   (* Have a list of directories and regexps and current version,
@@ -623,7 +578,6 @@ let cleanup_old_files conf =
         "configuration", v_regexp, RamenVersions.graph_config ;
         "instrumentation_ringbuf", v1v2_regexp, (RamenVersions.instrumentation_tuple ^"_"^ RamenVersions.ringbuf) ;
         "workers/bin", v_regexp, RamenVersions.codegen ;
-        "workers/history", v_regexp, RamenVersions.history ;
         "workers/ringbufs", v_regexp, RamenVersions.ringbuf ;
         "workers/out_ref", v_regexp, RamenVersions.out_ref ;
         "workers/src", v_regexp, RamenVersions.codegen ;
