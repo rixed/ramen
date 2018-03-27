@@ -359,34 +359,6 @@ let tail copts func_name as_csv with_header last continuous () =
   and since = ~- last in
   Lwt_main.run (exporter ?max_results ~since ())
 
-(* Returns the func, the buffer name and the type: *)
-let make_temp_export conf func_name =
-  match C.program_func_of_user_string func_name with
-  | exception Not_found ->
-      !logger.error "Cannot find function %S" func_name ;
-      fail Not_found
-  | program_name, func_name ->
-      C.with_rlock conf (fun programs ->
-        match C.find_func programs program_name func_name with
-        | exception Not_found ->
-            fail_with ("Function "^ program_name ^"/"^ func_name ^
-                       " does not exist")
-        | _program, func ->
-            let bname = C.archive_buf_name conf func in
-            RingBuf.create ~wrap:false bname RingBufLib.rb_default_words ;
-            (* Add that name to the function out-ref *)
-            let out_ref = C.out_ringbuf_names_ref conf func in
-            let%lwt typ =
-              wrap (fun () -> C.tuple_ser_type func.N.out_type) in
-            let%lwt file_spec =
-              return RamenOutRef.{
-                field_mask =
-                  RingBufLib.skip_list ~out_type:typ ~in_type:typ ;
-                timeout =
-                  Unix.gettimeofday () +. 3600. (* FIXME *) } in
-            let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
-            return (func, bname, typ))
-
 (* Tail by asking the function to write in a non-ring buffer we've created
  * on purpose, with a specific timeout. The idea is that all clients will
  * use the same name so that they can share reading this file sequence,
@@ -404,7 +376,8 @@ let ext_tail copts func_name with_header separator null
   (* Create the non-wrapping RingBuf (under a standard name given
    * by RamenConf *)
   Lwt_main.run (
-    let%lwt _, bname, typ = make_temp_export conf func_name in
+    let%lwt _, bname, typ =
+      RamenExport.make_temp_export_by_name conf ~duration:3600. func_name in
     (* Find out which seqnums we want to scan: *)
     let mi, ma = RingBuf.seq_range bname in
     let mi = match min_seq with None -> mi | Some m -> max mi m in
@@ -486,7 +459,8 @@ let ext_timeseries copts since until max_data_points separator null
     match String.lowercase consolidation with
     | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
   Lwt_main.run (
-    let%lwt func, bname, typ = make_temp_export conf func_name in
+    let%lwt func, bname, typ =
+      RamenExport.make_temp_export_by_name conf ~duration:3600. func_name in
     let find_field_index n =
       match List.findi (fun _i f -> f.typ_name = n) typ with
       | exception Not_found -> failwith ("field "^ n ^" does not exist")

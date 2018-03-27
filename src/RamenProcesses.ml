@@ -95,7 +95,8 @@ let rec run_func conf programs program func =
    * we can start importing: *)
   let%lwt () =
     if func.N.force_export then
-      let%lwt _ = RamenExport.get_or_start conf func in
+      let%lwt _ = RamenExport.get_or_start conf func in (* old style *)
+      let%lwt _ = RamenExport.make_temp_export conf func in (* new style *)
       return_unit
     else return_unit in
   !logger.info "Start %s" func.N.name ;

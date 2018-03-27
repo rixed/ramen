@@ -667,3 +667,36 @@ let timerange_of_filenum func history filenum =
     (* hist_min_max goes out of his way to never return an empty
      * filenum. Maybe we have an empty storage file? *)
     Option.get
+
+(* Returns the func, the buffer name and the type: *)
+let make_temp_export conf ?duration func =
+  let bname = C.archive_buf_name conf func in
+  RingBuf.create ~wrap:false bname RingBufLib.rb_default_words ;
+  (* Add that name to the function out-ref *)
+  let out_ref = C.out_ringbuf_names_ref conf func in
+  let%lwt typ =
+    wrap (fun () -> C.tuple_ser_type func.N.out_type) in
+  let%lwt file_spec =
+    return RamenOutRef.{
+      field_mask =
+        RingBufLib.skip_list ~out_type:typ ~in_type:typ ;
+      timeout = match duration with
+                | None -> 0.
+                | Some d -> Unix.gettimeofday () +. d } in
+  let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
+  return (func, bname, typ)
+
+(* Returns the func, the buffer name and the type: *)
+let make_temp_export_by_name conf ?duration func_name =
+  match C.program_func_of_user_string func_name with
+  | exception Not_found ->
+      !logger.error "Cannot find function %S" func_name ;
+      fail Not_found
+  | program_name, func_name ->
+      C.with_rlock conf (fun programs ->
+        match C.find_func programs program_name func_name with
+        | exception Not_found ->
+            fail_with ("Function "^ program_name ^"/"^ func_name ^
+                       " does not exist")
+        | _program, func ->
+            make_temp_export conf ?duration func)
