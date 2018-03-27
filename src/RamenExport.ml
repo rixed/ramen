@@ -1,7 +1,6 @@
 open Batteries
 open RamenLog
 open RamenSharedTypes
-open RamenSharedTypesJS
 module C = RamenConf
 module N = RamenConf.Func
 open Helpers

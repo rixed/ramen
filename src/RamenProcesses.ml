@@ -7,7 +7,6 @@ module N = RamenConf.Func
 module L = RamenConf.Program
 module SN = RamenSharedTypes.Info.Func
 module SL = RamenSharedTypes.Info.Program
-open RamenSharedTypesJS
 
 let quit = ref false
 

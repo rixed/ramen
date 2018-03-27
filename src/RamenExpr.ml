@@ -2,7 +2,6 @@ open Batteries
 open Stdint
 open Lang
 open RamenSharedTypes
-open RamenSharedTypesJS
 
 (*$inject
   open TestHelpers

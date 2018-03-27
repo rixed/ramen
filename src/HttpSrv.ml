@@ -236,19 +236,6 @@ let put_program conf headers body =
     bad_request (Printexc.to_string exn)
 
 (*
-    Serving normal files
-*)
-
-let serve_file_with_replacements ramen_url url_prefix _headers path file =
-  serve_file path file (replace_placeholders ramen_url url_prefix)
-
-let get_index www_dir ramen_url url_prefix headers =
-  if www_dir = "" then
-    serve_string ramen_url url_prefix headers RamenGui.without_link
-  else
-    serve_string ramen_url url_prefix headers RamenGui.with_links
-
-(*
     Whole graph operations: compile/run/stop
 *)
 
@@ -511,7 +498,6 @@ let timeseries conf headers body =
      | e -> fail e
 
 let timerange_of_func func history =
-  let open RamenSharedTypesJS in
   match RamenExport.hist_min_max history with
   | None -> NoData
   | Some (sta, sto) ->
@@ -593,8 +579,8 @@ let plot conf _headers program_name func_name params =
       match timerange_of_func func history with
       | exception (RamenExport.FuncHasNoEventTimeInfo _ as e) ->
         bad_request (Printexc.to_string e)
-      | RamenSharedTypesJS.NoData -> return now
-      | RamenSharedTypesJS.TimeRange (_oldest, latest) -> return latest
+      | NoData -> return now
+      | TimeRange (_oldest, latest) -> return latest
     else return now in
   let since = until -. duration in
   let pen_of_field field_name =
@@ -804,15 +790,7 @@ let router conf www_dir url_prefix =
       let%lwt () =
         RamenAlerter.Api.upload_static_conf conf headers body in
       switch_accepted headers [
-        Consts.html_content_type, (fun () ->
-          get_index www_dir conf.C.ramen_url url_prefix headers) ;
         Consts.json_content_type, (fun () -> respond_ok ()) ]
-    (* Web UI *)
-    | `GET, ([]|["index.html"]) ->
-      get_index www_dir conf.C.ramen_url url_prefix headers
-    | `GET, [ "style.css" | "ramen_script.js" as file ] ->
-      serve_file_with_replacements conf.C.ramen_url url_prefix
-                                   headers www_dir file
     (* Errors *)
     | `PUT, p | `GET, p | `DELETE, p ->
       let path = String.join "/" p in

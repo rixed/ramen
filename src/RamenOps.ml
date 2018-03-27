@@ -397,7 +397,7 @@ exception LinkingError of
               msg : string }
 exception InvalidParameter of
             { parameter_name : string ; supplied_value : scalar_value ;
-              expected_type : RamenSharedTypesJS.scalar_typ }
+              expected_type : scalar_typ }
 
 let () =
   Printexc.register_printer (function

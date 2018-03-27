@@ -1,7 +1,6 @@
 open Batteries
 open Stdint
 open RamenSharedTypes
-open RamenSharedTypesJS
 open Lang
 
 (*$inject

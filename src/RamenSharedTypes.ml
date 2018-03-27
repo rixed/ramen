@@ -1,7 +1,27 @@
 (* For types used by RPCs, so that clients that wish to use them don't have
  * to link with HttpSrv. *)
-open RamenSharedTypesJS
 open Stdint
+
+type program_status = Edition of string (* last error *)
+                    | Compiling | Compiled | Running | Stopping
+                    [@@ppp PPP_JSON]
+
+(* TNum is not an actual type used by any value, but it's used as a default
+ * type for numeric operands that can be "promoted" to any other numerical
+ * type. TAny is means to be replaced by an actual type during compilation:
+ * all TAny types in an expression will be changed to a specific type that's
+ * large enought to accommodate all the values at hand. *)
+type scalar_typ =
+  | TNull | TFloat | TString | TBool | TNum | TAny
+  | TU8 | TU16 | TU32 | TU64 | TU128
+  | TI8 | TI16 | TI32 | TI64 | TI128
+  | TEth (* 48bits unsigned integers with funny notation *)
+  | TIpv4 | TIpv6 | TCidrv4 | TCidrv6
+  [@@ppp PPP_JSON]
+  [@@ppp PPP_OCaml]
+
+type time_range =
+  NoData | TimeRange of float * float [@@ppp PPP_JSON]
 
 (* Scalar types *)
 
@@ -141,7 +161,7 @@ struct
 
   module Program =
   struct
-    type status = RamenSharedTypesJS.program_status [@@ppp PPP_JSON]
+    type status = program_status [@@ppp PPP_JSON]
 
     let string_of_status = function
       | Edition reason -> "Edition ("^ reason ^")"
@@ -155,7 +175,7 @@ struct
         program : string ;
         operations : string list ;
         test_id : string [@ppp_default ""] ;
-        status : status [@ppp_default (RamenSharedTypesJS.Edition "")] ;
+        status : status [@ppp_default (Edition "")] ;
         last_started : float option ;
         last_stopped : float option } [@@ppp PPP_JSON]
   end
@@ -237,7 +257,7 @@ type timeserie_resp =
 
 type timeseries_resp = timeserie_resp list [@@ppp PPP_JSON]
 
-type time_range_resp = RamenSharedTypesJS.time_range [@@ppp PPP_JSON]
+type time_range_resp = time_range [@@ppp PPP_JSON]
 
 (* Top functions statistics: *)
 

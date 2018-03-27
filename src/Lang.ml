@@ -1,6 +1,5 @@
 (* AST for the stream processor graph *)
 open Batteries
-open RamenSharedTypesJS
 open RamenSharedTypes
 open Stdint
 open Helpers

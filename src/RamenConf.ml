@@ -2,7 +2,6 @@ open Batteries
 open RamenLog
 open Helpers
 open RamenSharedTypes
-open RamenSharedTypesJS
 open AlerterSharedTypesJS
 module Expr = RamenExpr
 

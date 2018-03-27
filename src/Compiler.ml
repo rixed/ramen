@@ -20,7 +20,6 @@ module C = RamenConf
 module N = RamenConf.Func
 module L = RamenConf.Program
 open RamenSharedTypes
-open RamenSharedTypesJS
 open Lang
 
 exception SyntaxErrorInFunc of string * syntax_error

@@ -1,6 +1,5 @@
 open Batteries
 open RingBuf
-open RamenSharedTypesJS
 open RamenSharedTypes
 open RamenLog
 open Helpers
