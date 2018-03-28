@@ -20,30 +20,7 @@ open Batteries
 open Lwt
 open Helpers
 open RamenLog
-
-module Lock =
-struct
-  open Lwt_unix
-
-  (* For simplicity we use a single RW lock for all out_ref, here it is: *)
-  let internal_lock = RWLock.make ()
-
-  let with_lock with_int_lock op fname f =
-    mkdir_all ~is_file:true fname ;
-    (* Of course we lock ourself before locking other processes. *)
-    let%lwt fd = openfile fname [O_RDWR; O_CREAT] 0o640 in
-    with_int_lock internal_lock (fun () ->
-      (*!logger.debug "Got internal lock" ;*)
-      (* Just grab the first "byte", probably simpler than the whole file *)
-      let%lwt () = lockf fd op 1 in
-      (*!logger.debug "Got lockf on %s" fname ;*)
-      finalize f (fun () ->
-        let%lwt () = lockf fd F_ULOCK 1 in
-        close fd))
-
-  let with_r_lock fname = with_lock RWLock.with_r_lock F_RLOCK fname
-  let with_w_lock fname = with_lock RWLock.with_w_lock F_LOCK fname
-end
+module Lock = RamenAdvLock
 
 type file_spec =
   { field_mask : bool list ; timeout : float (* 0 for no timeout *) }

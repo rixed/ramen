@@ -62,7 +62,7 @@ all: $(INSTALLED)
 
 RAMEN_SOURCES = \
 	src/RamenVersions.ml src/Consts.ml src/RamenLog.ml src/Helpers.ml \
-	src/RamenBitmask.ml src/RWLock.ml src/RamenOutRef.ml \
+	src/RamenBitmask.ml src/RWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
 	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
 	src/RamenSharedTypes.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RingBufLib.ml src/RamenTypeConverters.ml \
@@ -78,7 +78,8 @@ RAMEN_SOURCES = \
 	src/RingBufCmd.ml src/RamenCompletion.ml src/ramen.ml
 
 CODEGENLIB_SOURCES = \
-	src/Consts.ml src/RamenLog.ml src/Helpers.ml src/Globs.ml src/RWLock.ml \
+	src/Consts.ml src/RamenLog.ml src/Helpers.ml src/Globs.ml \
+	src/RWLock.ml src/RamenAdvLock.ml \
 	src/RamenOutRef.ml src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml \
 	src/Ipv6.ml \
 	src/RamenCollectd.ml src/RamenNetflow.ml \
@@ -244,7 +245,7 @@ TESTABLE_SOURCES = \
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
 	src/RamenVersions.ml src/RamenLog.ml src/Consts.ml src/Helpers.ml \
-	src/RWLock.ml src/RamenOutRef.ml \
+	src/RWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
 	src/RamenSharedTypes.ml src/RingBufLib.ml \
 	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
 	src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
@@ -268,7 +269,7 @@ all_tests.opt: src/libringbuf.a src/libcollectd.a src/libnetflow.a $(LINKED_FOR_
 	@echo "Building unit tests into $@"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
 
-ringbuf_test.opt: src/RamenLog.cmx src/Consts.cmx src/Helpers.cmx src/RamenSharedTypes.cmx src/RWLock.cmx src/RamenOutRef.cmx src/RingBufLib.cmx src/RingBuf.cmx src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
+ringbuf_test.opt: src/RamenLog.cmx src/Consts.cmx src/Helpers.cmx src/RamenSharedTypes.cmx src/RWLock.cmx src/RamenAdvLock.cmx src/RamenOutRef.cmx src/RingBufLib.cmx src/RingBuf.cmx src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
 	@echo "Building ringbuf tests into $@"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
