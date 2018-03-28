@@ -89,7 +89,7 @@ RAMEN_SOURCES = \
 	src/SqliteHelpers.ml src/RamenAlerter.ml \
 	src/RamenOps.ml src/RamenTests.ml \
 	src/HttpSrv.ml src/TermTable.ml src/ApiCmd.ml \
-	src/RingBufCmd.ml src/ramen.ml
+	src/RingBufCmd.ml src/RamenCompletion.ml src/ramen.ml
 
 CODEGENLIB_SOURCES = \
 	src/Consts.ml src/RamenLog.ml src/Helpers.ml src/Globs.ml src/RWLock.ml \

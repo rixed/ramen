@@ -199,7 +199,8 @@ struct
 end
 
 type conf =
-  { graph_lock : RWLock.t ; (* Protects the persisted programs (all at once) *)
+  { (* Protects the persisted programs (all at once) against other threads *)
+    graph_lock : RWLock.t ;
     alerts : Alerter.t ;
     alerts_lock : RWLock.t ; (* Protects the above alerts *)
     (* TODO: a file *)

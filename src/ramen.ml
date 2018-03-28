@@ -21,7 +21,7 @@ let copts =
     let env = Term.env_info "RAMEN_PERSIST_DIR" in
     let i = Arg.info ~doc:"directory where are stored data persisted on disc"
                      ~env [ "persist-dir" ] in
-    Arg.(value (opt string "/tmp/ramen" i))
+    Arg.(value (opt string Consts.default_persist_dir i))
   and max_history_archives =
     let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
     let i = Arg.info ~doc:"max number of archive files to keep per history ; \
@@ -84,8 +84,7 @@ let no_demo =
 let to_stderr =
   let env = Term.env_info "RAMEN_LOG_TO_STDERR" in
   let i = Arg.info ~doc:"log onto stderr"
-                   ~env [ "log-onto-stderr"; "log-to-stderr"; "to-stderr";
-                          "stderr" ] in
+                   ~env [ "log-to-stderr"; "to-stderr"; "stderr" ] in
   Arg.(value (flag i))
 
 let ssl_cert =
@@ -126,7 +125,7 @@ let server_start =
       $ ssl_cert
       $ ssl_key
       $ alert_conf_json),
-    info ~doc:"Start the processes orchestrator" "start")
+    info ~doc:Consts.start_info "start")
 
 (*
  * Shutdown the event processor
@@ -136,7 +135,7 @@ let server_stop =
   Term.(
     (const ApiCmd.shutdown
       $ copts),
-    info ~doc:"Stop all processes" "shutdown")
+    info ~doc:Consts.shutdown_info "shutdown")
 
 (* TODO: check that this is actually the name of a ringbuffer file *)
 let rb_file =
@@ -316,7 +315,7 @@ let ext_compile =
       $ keep_temp_files
       $ root_path
       $ source_files),
-    info ~doc:"Compile each given source file into an executable." "xcompile")
+    info ~doc:Consts.compile_info "xcompile")
 
 let ext_run =
   Term.(
@@ -325,7 +324,7 @@ let ext_run =
       $ params
       $ root_path
       $ bin_files),
-    info ~doc:"Run one (or all) compiled program(s)" "xrun")
+    info ~doc:Consts.run_info "xrun")
 
 (*
  * Export Tuples
@@ -422,7 +421,7 @@ let ext_tail =
       $ min_seq
       $ max_seq
       $ print_seqnums),
-    info ~doc:"Display the last outputs of an operation" "xtail")
+    info ~doc:Consts.tail_info "xtail")
 
 let max_results =
   let i = Arg.info ~doc:"output only the first N tuples"
@@ -495,7 +494,7 @@ let xtimeseries =
       $ func_name 0
       $ data_field 1
       $ consolidation),
-    info ~doc:"Extract a timeseries from an operation" "xtimeseries")
+    info ~doc:Consts.timeseries_info "xtimeseries")
 
 (*
  * Time Ranges
@@ -561,6 +560,21 @@ let test =
     info ~doc:"Test a configuration against a test suite" "test")
 
 (*
+ * Autocompletion
+ *)
+
+let command =
+  let i = Arg.info ~doc:"Ramen command line to be completed."
+                   ~docv:"command-line" [] in
+  Arg.(value (pos 0 string "" i))
+
+let autocomplete =
+  Term.(
+    (const RamenCompletion.complete
+      $ command),
+    info ~doc:"Autocomplete the given command" "_completion")
+
+(*
  * Command line evaluation
  *)
 
@@ -575,7 +589,8 @@ let () =
   match Term.eval_choice default [
     server_start ; server_stop ; dequeue ; summary ; sync ;
     add ; compile ; run ; stop ; tail ; timeseries ; timerange ;
-    get_info ; test ; ext_compile ; ext_run ; ext_tail ; xtimeseries
+    get_info ; test ; ext_compile ; ext_run ; ext_tail ; xtimeseries ;
+    autocomplete
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (
