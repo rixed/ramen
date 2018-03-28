@@ -142,8 +142,8 @@ let dir_subtree_iter ?on_dir ?on_file root =
       let rec loop_files () =
         match readdir dh with
         | exception End_of_file -> ()
-        (* Ignore dotnames *)
-        | "." | ".." ->
+        (* Ignore dotnames and any "hidden" dir or files: *)
+        | s when s.[0] = '.' ->
             loop_files ()
         | fname_from_path ->
             let fname = path ^"/"^ fname_from_path in
