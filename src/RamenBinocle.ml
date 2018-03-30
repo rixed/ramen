@@ -12,15 +12,13 @@ open RamenLog
 open RamenTuple
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
- * tuple_typ below! *)
+ * tuple_typ below and `ramen ps` implementation! *)
 type tuple =
   string * float *
   Uint64.t option * Uint64.t option * Uint64.t option * Uint64.t option *
   float * Uint64.t * float option * float option * Uint64.t option *
   Uint64.t option
 
-(* Will be needed the day we want to turn ramen instrumentation into an
- * internal data source: *)
 let tuple_typ =
   [ { typ_name = "worker" ;         nullable = false ;  typ = TString } ;
     { typ_name = "time" ;           nullable = false ;  typ = TFloat } ;

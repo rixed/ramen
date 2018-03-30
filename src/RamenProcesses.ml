@@ -46,26 +46,6 @@ let run_background cmd args env =
   | pid -> pid
 
 (*
- * Instrumentation: Reading workers stats
- *)
-
-open Stdint
-
-type worker_stats =
-  { time : float ;
-    in_tuple_count : int option ;
-    selected_tuple_count : int option ;
-    out_tuple_count : int option ;
-    group_count : int option ;
-    cpu_time : float ;
-    ram_usage : int ;
-    in_sleep : float option ;
-    out_sleep : float option ;
-    in_bytes : float option ; (* 31bit integers would be too small *)
-    out_bytes : float option }
-  [@@ppp PPP_OCaml]
-
-(*
  * Notifications:
  * To alleviate workers from the hassle to send HTTP notifications, those are
  * sent to Ramen via a ringbuffer. Advantages are many:

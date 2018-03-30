@@ -2,6 +2,7 @@
  * further to more specialized modules. *)
 open Batteries
 open Lwt
+open Stdint
 open RamenLog
 open RamenHelpers
 module C = RamenConf
@@ -133,9 +134,71 @@ let kill conf prog_name () =
  * Display information about running programs and quit.
  *)
 
+let no_stats = None, None, None, None, 0., Uint64.zero, None, None, None, None
+
+let add_stats (in_count', selected_count', out_count', group_count', cpu',
+              ram', wait_in', wait_out', bytes_in', bytes_out')
+              (in_count, selected_count, out_count, group_count, cpu,
+               ram, wait_in, wait_out, bytes_in, bytes_out) =
+  let combine_opt f a b =
+    match a, b with None, b -> b | a, None -> a
+    | Some a, Some b -> Some (f a b) in
+  let add_nu64 = combine_opt Uint64.add
+  and add_nfloat = combine_opt (+.)
+  in
+  add_nu64 in_count' in_count,
+  add_nu64 selected_count' selected_count,
+  add_nu64 out_count' out_count,
+  add_nu64 group_count' group_count,
+  cpu' +. cpu,
+  Uint64.add ram' ram,
+  add_nfloat wait_in' wait_in,
+  add_nfloat wait_out' wait_out,
+  add_nu64 bytes_in' bytes_in,
+  add_nu64 bytes_out' bytes_out
+
+let read_stats conf =
+  let h = Hashtbl.create 57 in
+  let open RamenScalar in
+  let bname = C.report_ringbuf conf in
+  let typ = RamenBinocle.tuple_typ in
+  let event_time = RamenBinocle.event_time in
+  let now = Unix.gettimeofday () in
+  let until = now -. 10. in
+  let since = until -. 60. in
+  let get_string = function VString s -> s
+  and get_u64 = function VU64 n -> n
+  and get_nu64 = function VNull -> None | VU64 n -> Some n
+  and get_float = function VFloat f -> f
+  and get_nfloat = function VNull -> None | VFloat f -> Some f
+  in
+  Lwt_main.run (
+    RamenSerialization.fold_time_range bname typ event_time since until ()  (fun () tuple t1 t2 ->
+    let worker = get_string tuple.(0)
+    and time = get_float tuple.(1)
+    and in_count = get_nu64 tuple.(2)
+    and selected_count = get_nu64 tuple.(3)
+    and out_count = get_nu64 tuple.(4)
+    and group_count = get_nu64 tuple.(5)
+    and cpu = get_float tuple.(6)
+    and ram = get_u64 tuple.(7)
+    and wait_in = get_nfloat tuple.(8)
+    and wait_out = get_nfloat tuple.(9)
+    and bytes_in = get_nu64 tuple.(10)
+    and bytes_out = get_nu64 tuple.(11)
+    in
+    let stats = in_count, selected_count, out_count, group_count, cpu,
+                ram, wait_in, wait_out, bytes_in, bytes_out in
+    Hashtbl.modify_opt worker (function
+      | None -> Some (time, stats)
+      | Some (time', stats') as prev ->
+          if time' > time then prev else Some (time, stats)
+    ) h)) ;
+  h [@@ocaml.warning "-8"]
+
 let int_or_na = function
   | None -> TermTable.ValStr "n/a"
-  | Some i -> TermTable.ValInt i
+  | Some i -> TermTable.ValInt (Uint64.to_int i)
 
 let flt_or_na = function
   | None -> TermTable.ValStr "n/a"
@@ -149,52 +212,67 @@ let time_or_na = function
   | None -> TermTable.ValStr "n/a"
   | Some f -> TermTable.ValStr (string_of_time f)
 
-(* TODO: The supervisor should save the last report somewhere in a file in
- * persist_dir *)
 let ps conf short () =
   logger := make_logger conf.C.debug ;
+  (* Start by reading the last minute of instrumentation data: *)
+  let stats = read_stats conf in
+  (* Now iter over all workers and display those stats: *)
   let open TermTable in
   let head, lines =
-    Lwt_main.run (
-      C.with_rlock conf (fun programs ->
-        return (
-          if short then
-            [| "name" ; "#ops" ; "status" ; "started" ; "stopped" ; "executable" |],
-            Hashtbl.fold (fun program_name get_rc lst ->
-              let bin, rc = get_rc () in
-              [| ValStr program_name ;
-                 ValInt (List.length rc) ;
-                 ValStr "TODO" ;
-                 time_or_na None ;
-                 time_or_na None ;
-                 ValStr bin |] :: lst
-            ) programs []
-          else
-            [| "operation" ; "#in" ; "#selected" ; "#out" ;
-               "#groups" ; "CPU" ; "wait in" ; "wait out" ; "heap" ;
+    if short then
+      (* For --short, we sum everything by program: *)
+      let h = Hashtbl.create 17 in
+      Hashtbl.iter (fun worker (time, stats) ->
+        let program, _ = C.program_func_of_user_string worker in
+        Hashtbl.modify_opt program (function
+          | None -> Some (time, stats)
+          | Some (time', stats') -> Some (time, add_stats stats' stats)
+        ) h
+      ) stats ;
+      [| "program" ; "#in" ; "#selected" ; "#out" ; "#groups" ; "CPU" ;
+         "wait in" ; "wait out" ; "heap" ; "volume in" ; "volume out" |],
+      Hashtbl.fold (fun program_name
+                        (_, (in_count, selected_count, out_count, group_count,
+                        cpu, ram, wait_in, wait_out, bytes_in, bytes_out))
+                        lines ->
+        [| ValStr program_name ;
+           int_or_na in_count ;
+           int_or_na selected_count ;
+           int_or_na out_count ;
+           int_or_na group_count ;
+           ValFlt cpu ;
+           flt_or_na wait_in ;
+           flt_or_na wait_out ;
+           ValInt (Uint64.to_int ram) ;
+           flt_or_na (Option.map Uint64.to_float bytes_in) ;
+           flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
+      ) h []
+    else
+      (* Otherwise we want to display all we can about individual workers *)
+      Lwt_main.run (
+        C.with_rlock conf (fun programs ->
+          return (
+            [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
+               "CPU" ; "wait in" ; "wait out" ; "heap" ;
                "volume in" ; "volume out" ; "#parents" ; "signature" |],
             Hashtbl.fold (fun program_name get_rc lines ->
               let bin, rc = get_rc () in
               List.fold_left (fun lines func ->
-                let stats =
-                  (* Fake it: *)
-                  RamenProcesses.{
-                    time = 0. ; in_tuple_count = None ;
-                    selected_tuple_count = None ; out_tuple_count = None ;
-                    group_count = None ; cpu_time = 0. ; ram_usage = 0 ;
-                    in_sleep = None ; out_sleep = None ; in_bytes = None ;
-                    out_bytes = None } in
-                [| ValStr (program_name ^"/"^ func.F.name) ;
-                   int_or_na stats.in_tuple_count ;
-                   int_or_na stats.selected_tuple_count ;
-                   int_or_na stats.out_tuple_count ;
-                   int_or_na stats.group_count ;
-                   ValFlt stats.cpu_time ;
-                   flt_or_na stats.in_sleep ;
-                   flt_or_na stats.out_sleep ;
-                   ValInt stats.ram_usage ;
-                   flt_or_na stats.in_bytes ;
-                   flt_or_na stats.out_bytes ;
+                let fq_name = program_name ^"/"^ func.F.name in
+                let _, (in_count, selected_count, out_count, group_count,
+                        cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
+                  Hashtbl.find_default stats fq_name (0., no_stats) in
+                [| ValStr fq_name ;
+                   int_or_na in_count ;
+                   int_or_na selected_count ;
+                   int_or_na out_count ;
+                   int_or_na group_count ;
+                   ValFlt cpu ;
+                   flt_or_na wait_in ;
+                   flt_or_na wait_out ;
+                   ValInt (Uint64.to_int ram) ;
+                   flt_or_na (Option.map Uint64.to_float bytes_in) ;
+                   flt_or_na (Option.map Uint64.to_float bytes_out) ;
                    ValInt (List.length func.F.parents) ;
                    ValStr func.signature |] :: lines
               ) lines rc
@@ -342,12 +420,10 @@ let timeseries conf since until max_data_points separator null
     let%lwt vi =
       wrap (fun () -> find_field_index typ data_field) in
     fold_time_range bname typ event_time since until () (fun () tuple t1 t2 ->
-      if t1 >= until then (), false else (
-        if filter tuple && t2 >= since then (
-          let v = float_of_scalar_value tuple.(vi) in
-          let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
-          for bi = bi1 to bi2 do add_into_bucket buckets bi v done) ;
-        (), true))) ;
+      if filter tuple then (
+        let v = float_of_scalar_value tuple.(vi) in
+        let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
+        for bi = bi1 to bi2 do add_into_bucket buckets bi v done))) ;
   (* Display results: *)
   for i = 0 to Array.length buckets - 1 do
     let t = since +. dt *. (float_of_int i +. 0.5)

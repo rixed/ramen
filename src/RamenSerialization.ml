@@ -200,6 +200,10 @@ let fold_time_range bname typ event_time since until init f =
   let entries =
     time_files_of dir //
     (fun (t1, t2, _fname) -> since < t2 && until >= t1) in
+  let f usr tuple t1 t2 =
+    if t1 >= until then usr, false else
+    if t2 < since then usr, true else
+    f usr tuple t1 t2, true in
   let loop usr =
     match Enum.get_exn entries with
     | exception Enum.No_more_elements -> Lwt.return usr
