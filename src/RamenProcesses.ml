@@ -65,40 +65,6 @@ type worker_stats =
     out_bytes : float option }
   [@@ppp PPP_OCaml]
 
-(* TODO: Nope, workers should write their instrumentation in non-wrap buffers
- * instead. See https://github.com/rixed/ramen/issues/191 *)
-let reports_lock = RamenRWLock.make ()
-let last_reports = Hashtbl.create 31
-
-let read_reports rb =
-  RingBuf.read_ringbuf rb (fun tx ->
-    let worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo =
-      RamenBinocle.unserialize tx in
-    RingBuf.dequeue_commit tx ;
-    RamenRWLock.with_w_lock reports_lock (fun () ->
-      Hashtbl.replace last_reports worker {
-        time ;
-        in_tuple_count = Option.map Uint64.to_int ic ;
-        selected_tuple_count = Option.map Uint64.to_int sc ;
-        out_tuple_count = Option.map Uint64.to_int oc ;
-        group_count = Option.map Uint64.to_int gc ;
-        cpu_time = cpu ; ram_usage = Uint64.to_int ram ;
-        in_sleep = wi ; out_sleep = wo ;
-        in_bytes = Option.map Uint64.to_float bi ;
-        out_bytes = Option.map Uint64.to_float bo } ;
-      return_unit))
-
-let last_report fq_name =
-  RamenRWLock.with_r_lock reports_lock (fun () ->
-    Hashtbl.find_option last_reports fq_name |?
-    { time = 0. ;
-      in_tuple_count = None ; selected_tuple_count = None ;
-      out_tuple_count = None ; group_count = None ;
-      cpu_time = 0. ; ram_usage = 0 ;
-      in_sleep = None ; out_sleep = None ;
-      in_bytes = None ; out_bytes = None } |>
-    return)
-
 (*
  * Notifications:
  * To alleviate workers from the hassle to send HTTP notifications, those are

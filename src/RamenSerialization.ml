@@ -140,7 +140,9 @@ let fold_buffer bname init f =
     (fun () -> unload rb ; Lwt.return_unit) in
   Lwt.return usr
 
-let fold_buffer_with_time bname typ event_time init f =
+(* As tuples are not necessarily ordered by time we want the possibility
+ * to override the more_to_come decision. *)
+let fold_buffer_with_time ?(early_stop=true) bname typ event_time init f =
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type typ in
   let%lwt event_time_of_tuple =
@@ -166,7 +168,10 @@ let fold_buffer_with_time bname typ event_time init f =
       read_tuple typ nullmask_size tx in
     (* Get the times from tuple: *)
     let t1, t2 = event_time_of_tuple tuple in
-    f usr tuple t1 t2
+    Lwt.return (
+      let usr, more_to_come as res = f usr tuple t1 t2 in
+      if early_stop then res
+      else usr, true)
   in
   fold_buffer bname init f
 
@@ -183,7 +188,7 @@ let time_range bname typ event_time =
     ) None in
   (* Also look into the current rb: *)
   fold_buffer_with_time bname typ event_time mi_ma (fun mi_ma _tup t1 t2 ->
-    Lwt.return (max_range mi_ma t1 t2, true))
+    max_range mi_ma t1 t2, true)
 
 let fold_time_range bname typ event_time since until init f =
   let dir = time_dir_of_bname bname in
@@ -194,7 +199,7 @@ let fold_time_range bname typ event_time since until init f =
     match Enum.get_exn entries with
     | exception Enum.No_more_elements -> Lwt.return usr
     | _t1, _t2, fname ->
-        fold_buffer_with_time bname typ event_time usr f
+        fold_buffer_with_time ~early_stop:false bname typ event_time usr f
   in
   let%lwt usr = loop init in
   (* finish with the current rb: *)

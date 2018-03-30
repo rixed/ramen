@@ -42,8 +42,7 @@ let start conf daemonize to_stderr () =
   if daemonize then do_daemonize () ;
   (* Prepare ringbuffers for reports and notifications: *)
   let rb_name = C.report_ringbuf conf in
-  RingBuf.create rb_name RingBufLib.rb_default_words ;
-  let reports_rb = RingBuf.load rb_name in
+  RingBuf.create ~wrap:false rb_name RingBufLib.rb_default_words ;
   let rb_name = C.notify_ringbuf conf in
   RingBuf.create rb_name RingBufLib.rb_default_words ;
   let notify_rb = RingBuf.load rb_name in
@@ -57,8 +56,6 @@ let start conf daemonize to_stderr () =
        (* TODO: Also a separate command to do the cleaning? *)
        async (fun () ->
          restart_on_failure RamenProcesses.cleanup_old_files conf) ;
-       async (fun () ->
-         restart_on_failure RamenProcesses.read_reports reports_rb) ;
        async (fun () ->
          restart_on_failure RamenProcesses.process_notifications notify_rb) ;
        return_unit) ;
@@ -215,6 +212,8 @@ let ps conf short () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
+let always_true _ = true
+
 let tail conf func_name with_header separator null
          last min_seq max_seq with_seqnums duration () =
   logger := make_logger conf.C.debug ;
@@ -222,39 +221,54 @@ let tail conf func_name with_header separator null
   let last =
     if last = None && min_seq = None && max_seq = None then Some min_int
     else last in
-  (* Create the non-wrapping RingBuf (under a standard name given
-   * by RamenConf *)
+  let bname, filter, typ =
+    (* Read directly from the instrumentation ringbuf when func_name ends
+     * with "#stats" *)
+    if func_name = "stats" || String.ends_with func_name "#stats" then
+      let typ = RamenBinocle.tuple_typ in
+      let wi = RamenSerialization.find_field_index typ "worker" in
+      let filter =
+        if func_name = "stats" then always_true else
+        let func_name, _ = String.rsplit func_name ~by:"#" in
+        fun tuple -> tuple.(wi) = RamenScalar.VString func_name in
+      let bname = C.report_ringbuf conf in
+      bname, filter, typ
+    else
+      (* Create the non-wrapping RingBuf (under a standard name given
+       * by RamenConf *)
+      Lwt_main.run (
+        let%lwt _, bname, typ =
+          RamenExport.make_temp_export_by_name conf ~duration func_name in
+        return (bname, always_true, typ))
+  in
+  (* Find out which seqnums we want to scan: *)
+  let mi, ma = RingBuf.seq_range bname in
+  let mi = match min_seq with None -> mi | Some m -> max mi m in
+  let ma = match max_seq with None -> ma | Some m -> m + 1 (* max_seqnum is in *) in
+  let mi, ma = match last with
+    | Some l when l >= 0 ->
+        let mi = max mi (cap_add ma ~-l) in
+        let ma = mi + l in
+        mi, ma
+    | Some l ->
+        assert (l < 0) ;
+        let mi = ma
+        and ma = cap_add ma (cap_neg l) in
+        mi, ma
+    | None -> mi, ma in
+  !logger.debug "Will display tuples from %d to %d" mi ma ;
+  (* Then, scan all present ringbufs in the requested range (either
+   * the last N tuples or, TBD, since ts1 [until ts2]) and display
+   * them *)
+  let nullmask_size =
+    RingBufLib.nullmask_bytes_of_tuple_type typ in
+  if with_header then (
+    let first = if with_seqnums then "#Seq"^ separator else "#" in
+    List.print ~first ~last:"\n" ~sep:separator
+      (fun fmt ft -> String.print fmt ft.RamenTuple.typ_name)
+      stdout typ ;
+    BatIO.flush stdout) ;
   Lwt_main.run (
-    let open RamenExport in
-    let%lwt _, bname, typ =
-      make_temp_export_by_name conf ~duration func_name in
-    (* Find out which seqnums we want to scan: *)
-    let mi, ma = RingBuf.seq_range bname in
-    let mi = match min_seq with None -> mi | Some m -> max mi m in
-    let ma = match max_seq with None -> ma | Some m -> m + 1 (* max_seqnum is in *) in
-    let mi, ma = match last with
-      | Some l when l >= 0 ->
-          let mi = max mi (cap_add ma ~-l) in
-          let ma = mi + l in
-          mi, ma
-      | Some l ->
-          assert (l < 0) ;
-          let mi = ma
-          and ma = cap_add ma (cap_neg l) in
-          mi, ma
-      | None -> mi, ma in
-    !logger.debug "Will display tuples from %d to %d" mi ma ;
-    (* Then, scan all present ringbufs in the requested range (either
-     * the last N tuples or, TBD, since ts1 [until ts2]) and display
-     * them *)
-    let nullmask_size =
-      RingBufLib.nullmask_bytes_of_tuple_type typ in
-    if with_header then (
-      let first = if with_seqnums then "#Seq"^ separator else "#" in
-      List.print ~first ~last:"\n" ~sep:separator
-        (fun fmt ft -> String.print fmt ft.RamenTuple.typ_name)
-        stdout typ ;
-      BatIO.flush stdout) ;
     let rec loop m =
       if m >= ma then return_unit else
       let%lwt m =
@@ -262,12 +276,14 @@ let tail conf func_name with_header separator null
         fold_seq_range bname m ma m (fun m tx ->
           let tuple =
             read_tuple typ nullmask_size tx in
-          if with_seqnums then (
-            Int.print stdout m ; String.print stdout separator) ;
-          Array.print ~first:"" ~last:"\n" ~sep:separator
-            (RamenScalar.print_custom ~null) stdout tuple ;
-          BatIO.flush stdout ;
-          return (m + 1)) in
+          if filter tuple then (
+            if with_seqnums then (
+              Int.print stdout m ; String.print stdout separator) ;
+            Array.print ~first:"" ~last:"\n" ~sep:separator
+              (RamenScalar.print_custom ~null) stdout tuple ;
+            BatIO.flush stdout ;
+            return (m + 1)
+          ) else return m) in
       if m >= ma then return_unit else
         (* TODO: If we tail for a long time in continuous mode, we might
          * need to refresh the out-ref timeout from time to time. *)
@@ -289,7 +305,7 @@ let tail conf func_name with_header separator null
  *)
 
 let timeseries conf since until max_data_points separator null
-               func_name data_field consolidation () =
+               func_name data_field consolidation duration () =
   logger := make_logger conf.C.debug ;
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let since = since |? until -. 600. in
@@ -301,19 +317,37 @@ let timeseries conf since until max_data_points separator null
   let consolidation =
     match String.lowercase consolidation with
     | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
+  let bname, filter, typ, event_time =
+    (* Read directly from the instrumentation ringbuf when func_name ends
+     * with "#stats" *)
+    if func_name = "stats" || String.ends_with func_name "#stats" then
+      let typ = RamenBinocle.tuple_typ in
+      let wi = RamenSerialization.find_field_index typ "worker" in
+      let filter =
+        if func_name = "stats" then always_true else
+        let func_name, _ = String.rsplit func_name ~by:"#" in
+        fun tuple -> tuple.(wi) = RamenScalar.VString func_name in
+      let bname = C.report_ringbuf conf in
+      bname, filter, typ, RamenBinocle.event_time
+    else
+      (* Create the non-wrapping RingBuf (under a standard name given
+       * by RamenConf *)
+      Lwt_main.run (
+        let%lwt func, bname, typ =
+          make_temp_export_by_name conf ~duration func_name in
+        return (bname, always_true, typ, func.F.event_time))
+  in
   Lwt_main.run (
-    let%lwt func, bname, typ =
-      make_temp_export_by_name conf ~duration:3600. func_name in
     let open RamenSerialization in
     let%lwt vi =
       wrap (fun () -> find_field_index typ data_field) in
-    fold_time_range bname typ func.F.event_time since until () (fun () tuple t1 t2 ->
-      if t1 >= until then return ((), false) else (
-        if t2 >= since then (
+    fold_time_range bname typ event_time since until () (fun () tuple t1 t2 ->
+      if t1 >= until then (), false else (
+        if filter tuple && t2 >= since then (
           let v = float_of_scalar_value tuple.(vi) in
           let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
           for bi = bi1 to bi2 do add_into_bucket buckets bi v done) ;
-        return ((), true)))) ;
+        (), true))) ;
   (* Display results: *)
   for i = 0 to Array.length buckets - 1 do
     let t = since +. dt *. (float_of_int i +. 0.5)

@@ -168,6 +168,7 @@ let complete str () =
           ("--persist-dir", "") ::
           ("--with-header", "") ::
           ("--with-seqnums", "") ::
+          ("stats", "") ::
           (complete_running_function persist_dir last_tok)
       | "timeseries" ->
           let persist_dir = persist_dir toks in
@@ -179,6 +180,7 @@ let complete str () =
           ("--consolidation=", "") ::
           ("--separator=", "") ::
           ("--null=", "") ::
+          ("stats", "") ::
           (complete_running_function persist_dir last_tok)
       | "timerange" ->
           let persist_dir = persist_dir toks in

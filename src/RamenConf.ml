@@ -314,7 +314,7 @@ let report_ringbuf conf =
   conf.persist_dir ^"/instrumentation_ringbuf/"
                    ^ RamenVersions.instrumentation_tuple ^"_"
                    ^ RamenVersions.ringbuf
-                   ^"/ringbuf.r"
+                   ^"/ringbuf.b"
 
 let notify_ringbuf ?(test_id = "") conf =
   conf.persist_dir ^"/notify_ringbuf/"

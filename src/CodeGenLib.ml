@@ -467,7 +467,7 @@ let worker_start worker_name get_binocle_tuple k =
   logger := make_logger ?logdir ~prefix debug ;
   !logger.debug "Starting %s process..." worker_name ;
   let report_period =
-    getenv ~def:"5.3" "report_period" |> float_of_string in
+    getenv ~def:"10" "report_period" |> float_of_string in
   let report_rb =
     getenv ~def:"/tmp/ringbuf_in_report" "report_ringbuf" in
   (* Must call this once before get_binocle_tuple because cpu/ram gauges

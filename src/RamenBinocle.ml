@@ -35,6 +35,8 @@ let tuple_typ =
     { typ_name = "bytes_in" ;       nullable = true ;   typ = TU64 } ;
     { typ_name = "bytes_out" ;      nullable = true ;   typ = TU64 } ]
 
+let event_time = Some (("time", 1.), RamenEventTime.DurationConst 0.)
+
 let nb_nullables =
   List.fold_left (fun c t ->
       if t.RamenTuple.nullable then c+1 else c
