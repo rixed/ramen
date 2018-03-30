@@ -9,6 +9,7 @@
  * related functions. *)
 open Stdint
 open RamenLog
+open RamenTuple
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * tuple_typ below! *)
@@ -21,7 +22,6 @@ type tuple =
 (* Will be needed the day we want to turn ramen instrumentation into an
  * internal data source: *)
 let tuple_typ =
-  let open RamenSharedTypes in
   [ { typ_name = "worker" ;         nullable = false ;  typ = TString } ;
     { typ_name = "time" ;           nullable = false ;  typ = TFloat } ;
     { typ_name = "in_count" ;       nullable = true ;   typ = TU64 } ;
@@ -37,14 +37,14 @@ let tuple_typ =
 
 let nb_nullables =
   List.fold_left (fun c t ->
-      if t.RamenSharedTypes.nullable then c+1 else c
+      if t.RamenTuple.nullable then c+1 else c
     ) 0 tuple_typ
 
 let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type tuple_typ
 
 let fix_sz =
   List.fold_left (fun c t ->
-    if t.RamenSharedTypes.typ = TString then c else
+    if t.RamenTuple.typ = TString then c else
     c + RingBufLib.sersize_of_fixsz_typ t.typ) 0 tuple_typ
 
 (* We will actually allocate that much on the RB since we know most of the

@@ -3,7 +3,7 @@ open Batteries
 open Stdint
 open RamenLog
 open Lwt
-open Helpers
+open RamenHelpers
 
 let () =
   async_exception_hook := (fun exn ->
@@ -233,10 +233,10 @@ struct
         y +. ym.{i+1, 1} *. x) 0. cur_preds
 end
 
-let begin_of_range_cidr4 (n, l) = Ipv4.Cidr.and_to_len l n
-let end_of_range_cidr4 (n, l) = Ipv4.Cidr.or_to_len l n
-let begin_of_range_cidr6 (n, l) = Ipv6.Cidr.and_to_len l n
-let end_of_range_cidr6 (n, l) = Ipv6.Cidr.or_to_len l n
+let begin_of_range_cidr4 (n, l) = RamenIpv4.Cidr.and_to_len l n
+let end_of_range_cidr4 (n, l) = RamenIpv4.Cidr.or_to_len l n
+let begin_of_range_cidr6 (n, l) = RamenIpv6.Cidr.and_to_len l n
+let end_of_range_cidr6 (n, l) = RamenIpv6.Cidr.or_to_len l n
 
 (* Health and Stats
  *
@@ -258,43 +258,43 @@ let end_of_range_cidr6 (n, l) = Ipv6.Cidr.or_to_len l n
 open Binocle
 
 let stats_in_tuple_count =
-  IntCounter.make Consts.in_tuple_count_metric
+  IntCounter.make RamenConsts.in_tuple_count_metric
     "Number of received tuples that have been processed since the \
      func started."
 
 let make_stats_selected_tuple_count () =
-  IntCounter.make Consts.selected_tuple_count_metric
+  IntCounter.make RamenConsts.selected_tuple_count_metric
     "Number of tuples that have passed the WHERE filter, since the \
      func started."
 
 let stats_out_tuple_count =
-  IntCounter.make Consts.out_tuple_count_metric
+  IntCounter.make RamenConsts.out_tuple_count_metric
     "Number of emitted tuples to each child of this func since it started."
 
 let stats_cpu =
-  FloatCounter.make Consts.cpu_time_metric
+  FloatCounter.make RamenConsts.cpu_time_metric
     "Total CPU time, in seconds, spent in this func (this process and any \
      subprocesses)."
 
 let stats_ram =
-  IntGauge.make Consts.ram_usage_metric
+  IntGauge.make RamenConsts.ram_usage_metric
     "Total RAM size used by the GC, in bytes (does not take into account \
      other heap allocations nor fragmentation)."
 
 let stats_rb_read_bytes =
-  IntCounter.make Consts.rb_read_bytes_metric
+  IntCounter.make RamenConsts.rb_read_bytes_metric
     "Number of bytes read from the input ring buffer."
 
 let stats_rb_write_bytes =
-  IntCounter.make Consts.rb_write_bytes_metric
+  IntCounter.make RamenConsts.rb_write_bytes_metric
     "Number of bytes written in output ring buffers."
 
 let stats_rb_read_sleep_time =
-  FloatCounter.make Consts.rb_wait_read_metric
+  FloatCounter.make RamenConsts.rb_wait_read_metric
     "Total number of seconds spent waiting for input."
 
 let stats_rb_write_sleep_time =
-  FloatCounter.make Consts.rb_wait_write_metric
+  FloatCounter.make RamenConsts.rb_wait_write_metric
     "Total number of seconds spent waiting for output."
 
 let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
@@ -828,7 +828,7 @@ let aggregate
       (notify_url : string) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =
-    IntGauge.make Consts.group_count_metric
+    IntGauge.make RamenConsts.group_count_metric
                   "Number of groups currently maintained." in
   IntGauge.set stats_group_count 0 ;
   let worker_name = getenv ~def:"?" "fq_name" in
@@ -1349,7 +1349,7 @@ let casing rc_str rc_marsh lst =
       | exception Not_found ->
         Printf.eprintf
           "Unknown operation %S.\n\
-           Trying to run a Ramen program manually? Have good fun!\n"
-          name ;
+           Trying to run a Ramen program? Try `ramen start %s`\n"
+          name Sys.executable_name ;
           exit 3
       | f -> f ())

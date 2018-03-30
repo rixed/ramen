@@ -1,4 +1,4 @@
-(* Depends on RamenSharedTypes and Ipv4, Ipv6 and friends.
+(* Depends on Ipv4, Ipv6 and friends.
  * Used by CodeGenLib and Ramen. *)
 open Stdint
 
@@ -20,8 +20,8 @@ let i32_of_string = Int32.of_string
 let i64_of_string = Int64.of_string
 let i128_of_string = Int128.of_string
 let null_of_string = ()
-let eth_of_string s = Uint48.of_string ("0x"^ Helpers.string_remove ':' s)
-let ip4_of_string = Ipv4.of_string
-let ip6_of_string = Ipv6.of_string
-let cidr4_of_string = Ipv4.Cidr.of_string
-let cidr6_of_string = Ipv6.Cidr.of_string
+let eth_of_string s = Uint48.of_string ("0x"^ RamenHelpers.string_remove ':' s)
+let ip4_of_string = RamenIpv4.of_string
+let ip6_of_string = RamenIpv6.of_string
+let cidr4_of_string = RamenIpv4.Cidr.of_string
+let cidr6_of_string = RamenIpv6.Cidr.of_string

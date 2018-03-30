@@ -1,5 +1,4 @@
 open Batteries
-open RamenSharedTypes
 open RamenParsing
 
 let test_printer res_printer = function
@@ -30,7 +29,7 @@ let test_p p s =
 let test_op p s =
   match test_p p s with
   | Ok (res, _) as ok_res ->
-    RamenOperation.check ["avg_window", VI32 10l] res ; ok_res
+    RamenOperation.check ["avg_window", RamenScalar.VI32 10l] res ; ok_res
   | x -> x
 
 let typ = RamenExpr.make_typ "replaced for tests"

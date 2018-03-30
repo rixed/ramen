@@ -33,9 +33,7 @@ src/ramen_configurator
 stream_in
 0_9_traffic.csv
 *.html
-src/corr.*
 src/*.csv
-src/colcomp/colcomp_test
 src/RamenFileNotify.ml
 src/RamenCompilConfig.ml
 bundle

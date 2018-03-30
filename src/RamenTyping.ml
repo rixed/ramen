@@ -1,6 +1,4 @@
 (*
- * Compilation of a graph
- *
  * We must first check all input/output tuple types.  For this we have two
  * temp_tuple_typ per func, one for input tuple and one for output tuple.  Each
  * check operation takes those as input and returns true if they completed any
@@ -10,21 +8,174 @@
  * Once the fixed point is reached we check if we have all the fields we should
  * have.
  *
- * Types propagate to parents output to func input, then from operations to
+ * Types propagate from parents output to func input, then from operations to
  * func output, via the expected_type of each expression.
  *)
 open Batteries
 open RamenLog
-open Helpers
+open RamenHelpers
 module C = RamenConf
-module N = RamenConf.Func
-module L = RamenConf.Program
-open RamenSharedTypes
-open Lang
+module Expr = RamenExpr
+open RamenLang
+open RamenScalar
 
-exception SyntaxErrorInFunc of string * syntax_error
-exception MissingDependency of N.t (* The one we depend on *)
-exception AlreadyCompiled
+(* Used to type the input/output of funcs. Of course a compiled/
+ * running func must have finished_typing to true and all optional
+ * values set, but we keep that type even for typed funcs so that
+ * the typing code, which has to use both typed and untyped funcs,
+ * has to deal with only one case. We will sometime Option.get those
+ * values when we know the func is typed.
+ * The other tuple type, RamenTuple.typ, is used to describe tuples
+ * outside of this context (for instance, when describing a CSV or other
+ * serialization format). *)
+type untyped_tuple =
+  { mutable finished_typing : bool ;
+    mutable fields : (string * Expr.typ) list }
+
+let print_untyped_tuple_fields fmt fs =
+  List.print ~first:"{" ~last:"}" ~sep:", "
+    (fun fmt (name, expr_typ) ->
+      Printf.fprintf fmt "%s: %a"
+        name
+        Expr.print_typ expr_typ) fmt fs
+
+let print_untyped_tuple fmt t =
+  Printf.fprintf fmt "%a (%s)"
+    print_untyped_tuple_fields t.fields
+    (if t.finished_typing then "finished typing" else "to be typed")
+
+let untyped_tuple_copy t =
+  { t with fields =
+      List.map (fun (name, typ) -> name, Expr.copy_typ typ) t.fields }
+
+type tuple_type = UntypedTuple of untyped_tuple
+                | TypedTuple of RamenTuple.typed_tuple
+
+let tuple_is_typed = function
+  | TypedTuple _ -> true
+  | UntypedTuple _ -> false
+
+let print_tuple_type fmt = function
+  | UntypedTuple untyped_tuple ->
+      print_untyped_tuple fmt untyped_tuple
+  | TypedTuple t ->
+      RamenTuple.(print_typ fmt t.user)
+
+exception BadTupleTypedness of string
+let typed_tuple_type = function
+  | TypedTuple t -> t
+  | UntypedTuple _ ->
+      raise (BadTupleTypedness "Function should be typed by now!")
+
+let untyped_tuple_type = function
+  | TypedTuple _ ->
+      raise (BadTupleTypedness "This func should not be typed!")
+  | UntypedTuple untyped_tuple -> untyped_tuple
+
+let tuple_ser_type t = (typed_tuple_type t).ser
+let tuple_user_type t = (typed_tuple_type t).user
+
+let make_untyped_tuple () =
+  { finished_typing = false ; fields = [] }
+
+let finish_typing t =
+  t.finished_typing <- true
+
+let untyped_tuple_of_tup_typ tup_typ =
+  let t = make_untyped_tuple () in
+  List.iter (fun f ->
+      let expr_typ =
+        Expr.make_typ ~nullable:f.RamenTuple.nullable
+                           ~typ:f.typ f.typ_name in
+      t.fields <- t.fields @ [f.typ_name, expr_typ]
+    ) tup_typ ;
+  finish_typing t ;
+  t
+
+let untyped_tuple_of_tuple_type = function
+  | UntypedTuple untyped_tuple -> untyped_tuple
+  | TypedTuple { ser ; _ } -> untyped_tuple_of_tup_typ ser
+
+let tup_typ_of_untyped_tuplee ttt =
+  assert ttt.finished_typing ;
+  List.map (fun (name, typ) ->
+    RamenTuple.{
+      typ_name = name ;
+      nullable = Option.get typ.Expr.nullable ;
+      typ = Option.get typ.Expr.scalar_typ }) ttt.fields
+
+module Func =
+struct
+  type t =
+    { program_name : string ;
+      (* Within a program, funcs are identified by a name that can be optionally
+       * provided automatically if its not meant to be referenced. *)
+      name : string ;
+      (* Parameters used by that function, with default values: *)
+      params : (string * RamenScalar.value) list ;
+      (* Parsed operation (for untyped funs) and its in/out types: *)
+      operation : RamenOperation.t option ;
+      mutable in_type : tuple_type ;
+      mutable out_type : tuple_type ;
+      parents : (string * string) list ;
+      (* The signature with default params, used to name compiled modules *)
+      mutable signature : string }
+
+  let signature conf func =
+    (* We'd like to be formatting independent so that operation text can be
+     * reformatted without ramen recompiling it. For this it is not OK to
+     * strip redundant white spaces as some of those might be part of literal
+     * string values. So we print it, trusting the printer to be exhaustive.
+     * This is not enough to print the expression with types, as those do not
+     * contain relevant info such as field rank. We therefore print without
+     * types and encode input/output types explicitly below: *)
+    "OP="^ IO.to_string RamenOperation.print (Option.get func.operation) ^
+    "IN="^ RamenTuple.type_signature (typed_tuple_type func.in_type) ^
+    "OUT="^ RamenTuple.type_signature (typed_tuple_type func.out_type) ^
+    (* As for parameters, only their default values are embedded in the
+     * signature: *)
+    "PM="^ IO.to_string (List.print ~first:"" ~last:"" ~sep:","
+                           RamenTuple.print_param) func.params ^
+    (* Also, as the compiled code differ: *)
+    "FLG="^ (if conf.C.debug then "DBG" else "")
+          ^ (if conf.C.use_embedded_compiler then "EMB" else "") |>
+    md5
+end
+module Program =
+struct
+  type t =
+    { name : string ;
+      mutable funcs : (string, Func.t) Hashtbl.t }
+end
+
+
+(* FIXME: got bitten by the fact that func_name and program_name are 2 strings
+ * so you can mix them up. Make specialized types for all those strings. *)
+let make_untyped_func program_name func_name params operation =
+  !logger.debug "Creating func %s/%s" program_name func_name ;
+  C.Func.sanitize_name func_name ;
+  assert (func_name <> "") ;
+  let parents =
+    RamenOperation.parents_of_operation operation |>
+    List.map (fun p ->
+      try C.program_func_of_user_string ~default_program:program_name p
+      with Not_found ->
+        raise (C.InvalidCommand ("Parent func "^ p ^" does not exist"))) in
+  Func.{
+    program_name ; name = func_name ; signature = "" ;
+    params ; operation = Some operation ; parents ;
+    in_type = UntypedTuple (make_untyped_tuple ()) ;
+    out_type = UntypedTuple (make_untyped_tuple ()) }
+
+(* Same as the above, for when a function has already been compiled: *)
+let make_typed_func program_name rcf =
+  Func.{
+    program_name ; name = rcf.C.Func.name ;
+    signature = rcf.C.Func.signature ;
+    params = rcf.C.Func.params ;
+    operation = None ; parents = [] ;
+    in_type = TypedTuple rcf.C.Func.in_type ;
+    out_type = TypedTuple rcf.C.Func.out_type }
 
 (* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =
@@ -44,8 +195,8 @@ let check_finished_tuple_type tuple_prefix tuple_type =
         typ = IO.to_string print_typ typ ;
         tuple = tuple_prefix } in
       raise (SyntaxError e))
-  ) tuple_type.C.fields ;
-  C.finish_typing tuple_type
+  ) tuple_type.fields ;
+  finish_typing tuple_type
 
 let can_enlarge ~from_scalar_type ~to_scalar_type =
   (* On TBool and Integer conversions:
@@ -154,15 +305,15 @@ let type_of_parent_field parent tuple_of_field field =
    * also detects when we have stopped making progress, or
    * easier: use a constraint solver. *)
   let find_field () =
-    match parent.N.out_type with
-    | C.UntypedTuple temp_tup_typ ->
-      if not temp_tup_typ.C.finished_typing then
+    match parent.Func.out_type with
+    | UntypedTuple untyped_tuple ->
+      if not untyped_tuple.finished_typing then
         raise ParentIsUntyped ;
-      List.assoc field temp_tup_typ.C.fields
-    | C.TypedTuple { user ; _ } ->
+      List.assoc field untyped_tuple.fields
+    | TypedTuple { user ; _ } ->
       List.find_map (fun f ->
-        if f.typ_name = field then Some (
-          (* Mimick a temp_tup_typ which uniq_num will never be used *)
+        if f.RamenTuple.typ_name = field then Some (
+          (* Mimick a untyped_tuple which uniq_num will never be used *)
           RamenExpr.{ expr_name = f.typ_name ;
                  uniq_num = 0 ;
                  nullable = Some f.nullable ;
@@ -175,7 +326,7 @@ let type_of_parent_field parent tuple_of_field field =
     let e = FieldNotInTuple {
       field ; tuple = tuple_of_field ;
       tuple_type =
-        IO.to_string C.print_tuple_type parent.out_type } in
+        IO.to_string print_tuple_type parent.out_type } in
     raise (SyntaxError e)
 
 (* Same as the above, but return the type common to all parents,
@@ -321,13 +472,13 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     if tuple_has_type_input !tuple then (
       (* Check that this field is, or could be, in in_type *)
       if is_virtual_field field then false else
-      match List.assoc field in_type.C.fields with
+      match List.assoc field in_type.fields with
       | exception Not_found ->
         !logger.debug "%sCannot find field in in-tuple" indent ;
-        if in_type.C.finished_typing then (
+        if in_type.finished_typing then (
           let e = FieldNotInTuple {
             field ; tuple = !tuple ;
-            tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
+            tuple_type = IO.to_string print_untyped_tuple in_type } in
           raise (SyntaxError e)
         ) else (
           (* If all our parents have this field let's bring it in! *)
@@ -340,10 +491,10 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
               let m = InvalidPrivateField { field } in
               raise (SyntaxError m)) ;
             let copy = RamenExpr.copy_typ ptyp in
-            in_type.C.fields <- (field, copy) :: in_type.C.fields ;
+            in_type.fields <- (field, copy) :: in_type.fields ;
             true)
       | from ->
-        if in_type.C.finished_typing then ( (* Save the type *)
+        if in_type.finished_typing then ( (* Save the type *)
           op_typ.nullable <- from.nullable ;
           op_typ.scalar_typ <- from.scalar_typ
         ) ;
@@ -370,18 +521,18 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         (* If we already have this field in out then check it's compatible (or
          * enlarge out or exp). If we don't have it then add it. *)
         if is_virtual_field field then false else
-        match List.assoc field out_type.C.fields with
+        match List.assoc field out_type.fields with
         | exception Not_found ->
           !logger.debug "%sCannot find field %s in out-tuple" indent field ;
-          if out_type.C.finished_typing then (
+          if out_type.finished_typing then (
             let e = FieldNotInTuple {
               field ; tuple = !tuple ;
-              tuple_type = IO.to_string C.print_temp_tup_typ in_type } in
+              tuple_type = IO.to_string print_untyped_tuple in_type } in
             raise (SyntaxError e)) ;
-          out_type.C.fields <- (field, exp_type) :: out_type.C.fields ;
+          out_type.fields <- (field, exp_type) :: out_type.fields ;
           true
         | out ->
-          if out_type.C.finished_typing then ( (* Save the type *)
+          if out_type.finished_typing then ( (* Save the type *)
             op_typ.nullable <-
               (* Regardless of the actual type of the output tuple, fields from
                * group.previous must always be considered nullable as the whole
@@ -400,7 +551,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           FieldNotInTuple { field ; tuple = !tuple ; tuple_type = "" } in
         raise (SyntaxError e)
       | default_value ->
-        let typ = scalar_type_of default_value in
+        let typ = RamenScalar.type_of default_value in
         !logger.debug "%sParameter %s of type %a"
           indent field RamenScalar.print_typ typ ;
         set_nullable ~indent op_typ false |||
@@ -570,7 +721,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | StatefulFun (op_typ, _, AggrPercentile (e1, e2)) ->
     check_op op_typ List.last [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, (Add|Sub|Mul), e1, e2) ->
-    check_op op_typ RamenScalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
+    check_op op_typ largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, Concat, e1, e2) ->
     check_op op_typ return_string [Some TString, None, e1 ; Some TString, None, e2]
   | StatelessFunMisc (op_typ, Like (e, _)) ->
@@ -581,9 +732,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* Same as above but always return a float *)
     check_op op_typ return_float [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, IDiv, e1, e2) ->
-    check_op op_typ RamenScalar.largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
+    check_op op_typ largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, Mod, e1, e2) ->
-    check_op op_typ RamenScalar.largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
+    check_op op_typ largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun2 (op_typ, Sequence, e1, e2) ->
     check_op op_typ return_i128 [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun1 (op_typ, Length, e) ->
@@ -608,7 +759,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (try check_op op_typ (fun _ -> TIpv4) [Some TCidrv4, None, e]
     with _ -> check_op op_typ (fun _ -> TIpv6) [Some TCidrv6, None, e])
   | StatelessFunMisc (op_typ, (Min es | Max es)) ->
-    check_op op_typ RamenScalar.largest_type
+    check_op op_typ largest_type
       (List.map (fun e -> Some TFloat, None, e) es)
 
   | StatefulFun (op_typ, _, Lag (e1, e2)) ->
@@ -676,9 +827,9 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
    * that they are compatible. Improve child type using parent type. *)
   let changed =
     List.fold_left (fun changed (child_name, child_field) ->
-        match List.assoc child_name from_tuple.C.fields with
+        match List.assoc child_name from_tuple.fields with
         | exception Not_found ->
-          if is_subset && from_tuple.C.finished_typing then (
+          if is_subset && from_tuple.finished_typing then (
             let e = FieldNotInTuple {
               field = child_name ;
               tuple = from_prefix ;
@@ -688,27 +839,27 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
         | parent_field ->
           check_expr_type ~indent:"  " ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field ||
           changed
-      ) false to_tuple.C.fields in
+      ) false to_tuple.fields in
   (* Add new fields into children. *)
   let changed =
     List.fold_left (fun changed (parent_name, parent_field) ->
-        match List.assoc parent_name to_tuple.C.fields with
+        match List.assoc parent_name to_tuple.fields with
         | exception Not_found ->
-          if to_tuple.C.finished_typing then (
+          if to_tuple.finished_typing then (
             let e = FieldNotInTuple {
               field = parent_name ;
               tuple = to_prefix ;
               tuple_type = "" (* TODO *) } in
             raise (SyntaxError e)) ;
           let copy = RamenExpr.copy_typ parent_field in
-          to_tuple.C.fields <- (parent_name, copy) :: to_tuple.C.fields ;
+          to_tuple.fields <- (parent_name, copy) :: to_tuple.fields ;
           true
         | _ ->
           changed (* We already checked those types above. All is good. *)
-      ) changed from_tuple.C.fields in
+      ) changed from_tuple.fields in
   (* If typing of from_tuple is finished then so is to_tuple *)
   let changed =
-    if including_complete && from_tuple.C.finished_typing && not to_tuple.C.finished_typing then (
+    if including_complete && from_tuple.finished_typing && not to_tuple.finished_typing then (
       !logger.debug "Completing to_tuple from check_inherit_tuple" ;
       check_finished_tuple_type to_prefix to_tuple ;
       true
@@ -720,7 +871,7 @@ let check_selected_fields ~parents ~in_type ~out_type params fields =
       let name = sf.RamenOperation.alias in
       !logger.debug "Type-check field %s" name ;
       let exp_type =
-        match List.assoc name out_type.C.fields with
+        match List.assoc name out_type.fields with
         | exception Not_found ->
           (* Start from the type we already know from the expression
            * because it is already set in some cases (virtual fields -
@@ -739,7 +890,7 @@ let check_selected_fields ~parents ~in_type ~out_type params fields =
               typ
           in
           !logger.debug "Adding out-field %s (operation: %s)" name typ.RamenExpr.expr_name ;
-          out_type.C.fields <- (name, typ) :: out_type.C.fields ;
+          out_type.fields <- (name, typ) :: out_type.fields ;
           typ
         | typ ->
           !logger.debug "... already in out, current type is %a" RamenExpr.print_typ typ ;
@@ -748,13 +899,13 @@ let check_selected_fields ~parents ~in_type ~out_type params fields =
     ) false fields
 
 let tuple_type_is_finished = function
-  | C.TypedTuple _ -> true
-  | C.UntypedTuple temp_tup_typ -> temp_tup_typ.finished_typing
+  | TypedTuple _ -> true
+  | UntypedTuple untyped_tuple -> untyped_tuple.finished_typing
 
 let check_input_finished ~parents ~in_type =
-  if not in_type.C.finished_typing &&
+  if not in_type.finished_typing &&
      List.for_all (fun par ->
-       tuple_type_is_finished par.N.out_type) parents
+       tuple_type_is_finished par.Func.out_type) parents
   then (
     !logger.debug "Completing in_type because none of our parent output will change any more." ;
     check_finished_tuple_type TupleIn in_type ;
@@ -762,15 +913,15 @@ let check_input_finished ~parents ~in_type =
   ) else false
 
 let check_yield func fields =
-  let in_type = C.untyped_tuple_type func.N.in_type
-  and out_type = C.untyped_tuple_type func.N.out_type in
+  let in_type = untyped_tuple_type func.Func.in_type
+  and out_type = untyped_tuple_type func.Func.out_type in
   (
     check_selected_fields ~parents:[] ~in_type ~out_type func.params fields
   ) || (
     check_input_finished ~parents:[] ~in_type
   ) || (
     (* If nothing changed so far then we are done *)
-    if not out_type.C.finished_typing then (
+    if not out_type.finished_typing then (
       !logger.debug "Completing out_type because it won't change any more." ;
       check_finished_tuple_type TupleOut out_type ;
       true
@@ -778,24 +929,24 @@ let check_yield func fields =
   )
 
 let set_of_fields = function
-  | C.TypedTuple { ser ; _ } ->
+  | TypedTuple { ser ; _ } ->
       List.fold_left (fun s t ->
-          Set.add t.typ_name s
+          Set.add t.RamenTuple.typ_name s
         ) Set.empty ser
-  | C.UntypedTuple ttt ->
+  | UntypedTuple ttt ->
       List.fold_left (fun s (name, _) ->
           Set.add name s
         ) Set.empty ttt.fields
 
 let all_finished funcs =
   List.for_all (fun func ->
-      tuple_type_is_finished func.N.out_type
+      tuple_type_is_finished func.Func.out_type
     ) funcs
 
 let check_aggregate parents func fields and_all_others merge sort where key
                     top commit_when flush_how =
-  let in_type = C.untyped_tuple_type func.N.in_type
-  and out_type = C.untyped_tuple_type func.N.out_type
+  let in_type = untyped_tuple_type func.Func.in_type
+  and out_type = untyped_tuple_type func.Func.out_type
   and params = func.params in
   let open RamenOperation in
   (
@@ -808,7 +959,7 @@ let check_aggregate parents func fields and_all_others merge sort where key
        * and ignore the fields that are not present everywhere. *)
       let inter_parents =
         List.fold_left (fun inter parent ->
-            Set.intersect inter (set_of_fields parent.N.out_type)
+            Set.intersect inter (set_of_fields parent.Func.out_type)
           ) (set_of_fields (List.hd parents).out_type) (List.tl parents) in
       (* Remove those that have different types: *)
       let inter_ptyps =
@@ -817,7 +968,7 @@ let check_aggregate parents func fields and_all_others merge sort where key
             | exception SyntaxError _ -> ptyps
             | ptyp -> (field, ptyp) :: ptyps) inter_parents [] in
       !logger.debug "Adding * fields: %a"
-        C.print_temp_tup_typ_fields inter_ptyps ;
+        print_untyped_tuple_fields inter_ptyps ;
       let from_tuple = C.{ finished_typing = true ;
                            fields = inter_ptyps } in
       (* This is supposed to propagate parent completeness into in-tuple. *)
@@ -901,8 +1052,8 @@ let check_aggregate parents func fields and_all_others merge sort where key
     check_input_finished ~parents ~in_type
   ) || (
     (* If nothing changed so far and our input is finished_typing, then our output is. *)
-    if in_type.C.finished_typing &&
-       not out_type.C.finished_typing
+    if in_type.finished_typing &&
+       not out_type.finished_typing
     then (
       !logger.debug "Completing out_type because it won't change any more." ;
       check_finished_tuple_type TupleOut out_type ;
@@ -914,10 +1065,10 @@ let check_aggregate parents func fields and_all_others merge sort where key
  * Improve out_type using in_type and this func operation.
  * in_type is a given, don't modify it!
  *)
-let check_operation parents func =
-  !logger.debug "-- Typing operation %a" RamenOperation.print func.N.operation ;
+let check_operation operation parents func =
+  !logger.debug "-- Typing operation %a" RamenOperation.print operation ;
   let open RamenOperation in
-  match func.N.operation with
+  match operation with
   | Yield { fields ; _ } ->
     check_yield func fields
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
@@ -925,30 +1076,35 @@ let check_operation parents func =
     check_aggregate parents func fields and_all_others (fst merge) sort where
                     key top commit_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-    if tuple_type_is_finished func.N.out_type then false else (
+    if tuple_type_is_finished func.Func.out_type then false else (
       let user = fields in
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
-      func.N.out_type <- C.TypedTuple { user ; ser } ;
-      func.N.in_type <- C.TypedTuple { user = [] ; ser = [] } ;
+      func.Func.out_type <- TypedTuple { user ; ser } ;
+      func.Func.in_type <- TypedTuple { user = [] ; ser = [] } ;
       true)
   | ListenFor { proto ; _ } ->
-    if tuple_type_is_finished func.N.out_type then false else (
+    if tuple_type_is_finished func.Func.out_type then false else (
       let user = RamenProtocols.tuple_typ_of_proto proto in
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
-      func.N.out_type <- C.TypedTuple { user ; ser } ;
-      func.N.in_type <- C.TypedTuple { user = [] ; ser = [] } ;
+      func.Func.out_type <- TypedTuple { user ; ser } ;
+      func.Func.in_type <- TypedTuple { user = [] ; ser = [] } ;
       true)
 
 (*
  * Type inference for the graph
  *)
 
+exception AlreadyCompiled
+exception SyntaxErrorInFunc of string * syntax_error
+exception MissingDependency of Func.t (* The one we depend on *)
+
 let () =
   Printexc.register_printer (function
     | SyntaxErrorInFunc (n, e) ->
       Some ("In function "^ n ^": "^ string_of_syntax_error e)
     | MissingDependency func ->
-      Some ("Missing dependency: "^ N.fq_name func)
+      Some ("Missing dependency: "^
+            func.Func.program_name ^"/"^ func.Func.name)
     | AlreadyCompiled -> Some "Already compiled"
     | _ -> None)
 
@@ -956,19 +1112,21 @@ let check_func_types parents func =
   try ( (* Prepend the func name to any SyntaxError *)
     (* Try to improve out_type and the AST types using the in_type and the
      * operation: *)
-    check_operation parents func
+    match func.Func.operation with
+    | None -> false
+    | Some operation -> check_operation operation parents func
   ) with SyntaxError e ->
     !logger.debug "Compilation error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
-    raise (SyntaxErrorInFunc (func.N.name, e))
+    raise (SyntaxErrorInFunc (func.Func.name, e))
 
 let typed_of_untyped_tuple ?cmp = function
-  | C.TypedTuple _ as x -> x
-  | C.UntypedTuple temp_tup_typ ->
-      if not temp_tup_typ.C.finished_typing then (
-        let what = IO.to_string C.print_temp_tup_typ temp_tup_typ in
+  | TypedTuple _ as x -> x
+  | UntypedTuple untyped_tuple ->
+      if not untyped_tuple.finished_typing then (
+        let what = IO.to_string print_untyped_tuple untyped_tuple in
         raise (SyntaxError (CannotCompleteTyping what))) ;
-      let user = C.tup_typ_of_temp_tup_type temp_tup_typ in
+      let user = tup_typ_of_untyped_tuplee untyped_tuple in
       let user =
         match cmp with None -> user
         | Some cmp -> List.fast_sort cmp user in
@@ -976,9 +1134,9 @@ let typed_of_untyped_tuple ?cmp = function
       TypedTuple { user ; ser }
 
 let get_selected_fields func =
-  match func.N.operation with
-  | Yield { fields ; _ } -> Some fields
-  | Aggregate { fields ; _ } -> Some fields
+  match func.Func.operation with
+  | Some (Yield { fields ; _ }) -> Some fields
+  | Some (Aggregate { fields ; _ }) -> Some fields
   | _ -> None
 
 (* Since we can have loops within a program we can not propagate types
@@ -987,13 +1145,11 @@ let get_selected_fields func =
  * We do it bit by bit but will still make sure to make parent
  * output >= children input eventually, and that fields are encoded in
  * the specified order. *)
-(* TODO: reduce those types: parents should be a hash from parent name to
- * out type, and program should be just a list of funcs (first C.funcs, then
- * RamenProgram.funcs...) *)
+(* TODO: parents should be a hash from parent name to out type. *)
 let set_all_types conf parents funcs =
   let rec loop () =
     if Hashtbl.fold (fun _ func changed ->
-          let parents = Hashtbl.find_default parents func.N.name [] in
+          let parents = Hashtbl.find_default parents func.Func.name [] in
           check_func_types parents func || changed
         ) funcs false
     then loop ()
@@ -1003,24 +1159,24 @@ let set_all_types conf parents funcs =
    * We still have a few things to check: *)
   Hashtbl.iter (fun _ func ->
     (* Check that input type no parents => no input *)
-    let in_type = (C.temp_tup_typ_of_tuple_type func.N.in_type).fields in
-    assert (func.N.parents <> [] || in_type = []) ;
+    let in_type = (untyped_tuple_of_tuple_type func.Func.in_type).fields in
+    assert (func.Func.parents <> [] || in_type = []) ;
     (* Check that all expressions have indeed be typed: *)
     RamenOperation.iter_expr (fun e ->
       let open RamenExpr in
       let typ = typ_of e in
       if typ.nullable = None || typ.scalar_typ = None then
         let what = IO.to_string (print true) e in
-        raise (SyntaxErrorInFunc (func.N.name, CannotCompleteTyping what))
-    ) func.N.operation
+        raise (SyntaxErrorInFunc (func.Func.name, CannotCompleteTyping what))
+    ) (Option.get func.Func.operation)
   ) funcs ;
   (* Not quite home and dry yet: *)
   Hashtbl.iter (fun _ func ->
     !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
-      func.N.name
-      C.print_tuple_type func.N.in_type
-      C.print_tuple_type func.N.out_type ;
-    func.N.in_type <- typed_of_untyped_tuple func.N.in_type ;
+      func.Func.name
+      print_tuple_type func.Func.in_type
+      print_tuple_type func.Func.out_type ;
+    func.Func.in_type <- typed_of_untyped_tuple func.Func.in_type ;
     (* So far order was not taken into account. Reorder output types
      * to match selected fields (not strictly required but improves
      * user experience in the GUI). Beware that the Expr.typ has a
@@ -1041,25 +1197,24 @@ let set_all_types conf parents funcs =
              * specific order. TODO: in parent order? *)
             max_int in
         fun f1 f2 ->
-          compare (sf_index f1.typ_name) (sf_index f2.typ_name)) in
-    func.N.out_type <- typed_of_untyped_tuple ?cmp func.N.out_type ;
-    func.N.signature <- N.signature conf func
+          compare (sf_index f1.RamenTuple.typ_name) (sf_index f2.RamenTuple.typ_name)) in
+    func.Func.out_type <- typed_of_untyped_tuple ?cmp func.Func.out_type ;
+    func.Func.signature <- Func.signature conf func
   ) funcs
 
   (*$inject
     let test_type_single_func op_text =
       try
-        let programs = Hashtbl.create 3 in
+        let funcs = Hashtbl.create 3 in
         let txt = "DEFINE foo AS "^ op_text in
-        let funcs = RamenConf.parse_program txt in
-        let p =
-          RamenConf.make_program programs "test" txt funcs in
+        let defs = RamenProgram.parse txt in
+        let operation = (List.nth defs 0).RamenProgram.operation in
+        Hashtbl.add funcs "test"
+          (make_untyped_func "test" "foo" [] operation) ;
         let parents = BatHashtbl.of_list [ "test", [] ] in
-        Hashtbl.add programs "test" p ;
         let conf =
-          RamenConf.make_conf false "ramen_url" true "/tmp/glop"
-                              1 0 false "/tmp/bundle" 1 false in
-        set_all_types conf parents p.L.funcs ;
+          RamenConf.make_conf ~do_persist:false "/tmp/glop" in
+        set_all_types conf parents funcs ;
         "ok"
       with e ->
         Printf.sprintf "Exception when parsing/typing operation %S: %s\n%s"
@@ -1069,10 +1224,10 @@ let set_all_types conf parents funcs =
 
     let test_check_expr ?nullable ?typ expr_text =
       let exp_type = RamenExpr.make_typ ?nullable ?typ "test" in
-      let in_type = RamenConf.make_temp_tup_typ ()
-      and out_type = RamenConf.make_temp_tup_typ ()
+      let in_type = make_untyped_tuple ()
+      and out_type = make_untyped_tuple ()
       and parents = [] in
-      RamenConf.finish_typing in_type ;
+      finish_typing in_type ;
       let open RamenParsing in
       let p = RamenExpr.Parser.(p +- eof) in
       let exp =
@@ -1115,132 +1270,3 @@ let set_all_types conf parents funcs =
      "cast(I8, 9999 [constant of type I32, not nullable]) [cast to I8 of type I8, not nullable]" \
        (test_check_expr "i8(9999)")
    *)
-
-let entry_point_name = "start"
-
-let compile_func conf program_name func_name params operation
-                 in_type out_type obj_name =
-  let open Lwt in
-  mkdir_all ~is_file:true obj_name ;
-  (* Let's compile (or maybe not) *)
-  if file_exists ~maybe_empty:false ~has_perms:0o100 obj_name then (
-    !logger.debug "Reusing binary %S" obj_name ;
-    return_unit
-  ) else (
-    let in_typ = C.tuple_user_type in_type
-    and out_typ = C.tuple_user_type out_type in
-    (* In a few cases the worker sees a slightly different version of
-     * the code and the ramen daemon will adapt: *)
-    let operation =
-      let open RamenOperation in
-      match operation with
-      | ReadCSVFile { where = ReceiveFile ; what ; preprocessor ;
-                      force_export ; event_time } ->
-        let dir = C.upload_dir_of_func conf.C.persist_dir program_name
-                                       func_name in_type in
-        mkdir_all dir ;
-        ReadCSVFile {
-          (* The underscore is to restrict ourself to complete files that
-           * will appear atomically *)
-          where = ReadFile { fname = dir ^"/_*" ; unlink = true } ;
-          what ; preprocessor ; force_export ; event_time  }
-      | ReadCSVFile { where = DownloadFile _ ; _ } ->
-        failwith "Not Implemented"
-      | x -> x in
-    CodeGen_OCaml.compile conf entry_point_name func_name obj_name
-                          in_typ out_typ params operation)
-
-let compile conf parents program =
-  let open Lwt in
-  assert (program.L.status = Compiling) ;
-  (* Check that parents are typed *)
-  let%lwt () =
-    Hashtbl.values parents |> List.of_enum |> List.flatten |>
-    Lwt_list.iter_s (fun func ->
-      if func.N.program_name = program.L.name ||
-         C.tuple_is_typed func.N.out_type
-      then return_unit
-      else fail (MissingDependency func)
-    ) in
-  !logger.debug "Trying to compile program %s" program.L.name ;
-  let%lwt () =
-    wrap (fun () -> set_all_types conf parents program.L.funcs) in
-  (* Compile
-   *
-   * We compile each functions (checking with the signature that we do not
-   * compile several times the same) into an object file with a single
-   * public symbol: the function name. We then generate the dynamic part of
-   * the ocaml casing (dynamic just because it needs to know the functions
-   * name - we could find the various symbols in the executable itself but
-   * doing this portably would be a lot of work). The casing will then pick
-   * a function to run according to some envvar. It will pass this function
-   * a few OCaml functions to call - but for now, given the functions are
-   * all implemented in OCaml, we just call them directly.
-   *
-   * Start by computing the list of functions to compile, avoiding compiling
-   * several functions if they end up being the same binary (same signature):
-   *)
-  let _, funcs =
-    Hashtbl.values program.L.funcs |> List.of_enum |>
-    List.fold_left (fun (signatures, lst as prev) func ->
-      if Set.mem func.N.signature signatures then prev
-      else (Set.add func.N.signature signatures, func::lst)
-    ) (Set.empty, []) in
-  (* Now compile all those funcs for real: *)
-  let%lwt objects =
-    Lwt_list.map_p (fun func ->
-      let obj_name = C.obj_of_func conf func in
-      let%lwt () =
-        compile_func conf func.N.program_name func.N.name func.N.params
-                     func.N.operation func.N.in_type func.N.out_type
-                     obj_name in
-      return (func, obj_name)
-    ) funcs in
-  (* Produce the casing: *)
-  let exec_file = L.exec_of_program conf.C.persist_dir program in
-  let src_file =
-    RamenOCamlCompiler.with_code_file_for ~allow_reuse:false exec_file conf
-      (fun oc ->
-      Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
-        program.name ;
-      (* Embed in the binary all info required for running it: the program
-       * name, the function names, their signature, input and output types,
-       * force export and merge flags, and parameters. *)
-      let runconf =
-        let open C.RunConf in
-        Program.{
-          name = program.name ;
-          functions =
-            Hashtbl.values program.funcs |>
-            Enum.map (fun func ->
-              Func.{
-                name = func.N.name ;
-                params = func.N.params ;
-                in_type = C.typed_tuple_type func.N.in_type ;
-                out_type = C.typed_tuple_type func.N.out_type ;
-                signature = func.N.signature ;
-                parents = func.N.parents ;
-                force_export = RamenOperation.is_exporting func.operation ;
-                merge_inputs = RamenOperation.is_merging func.operation ;
-                event_time =
-                  RamenOperation.event_time_of_operation func.operation }
-            ) |>
-            List.of_enum } in
-      Printf.fprintf oc "let rc_str_ = %S\n"
-        ((PPP.to_string C.RunConf.Program.t_ppp_ocaml runconf) |>
-         PPP_prettify.prettify) ;
-      Printf.fprintf oc "let rc_marsh_ = %S\n"
-        (Marshal.(to_string runconf [])) ;
-      (* Then call CodeGenLib.casing with all this: *)
-      Printf.fprintf oc
-        "let () = CodeGenLib.casing rc_str_ rc_marsh_ [\n" ;
-      List.iter (fun func ->
-        Printf.fprintf oc"\t%S, M%s.%s ;\n"
-          func.N.name
-          func.N.signature
-          entry_point_name
-      ) funcs ;
-      Printf.fprintf oc "]\n") in
-  (* Compile the casing and link it with everything: *)
-  let obj_files = List.map (fun (_, n) -> n) objects in
-  RamenOCamlCompiler.link conf program.name obj_files src_file exec_file

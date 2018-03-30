@@ -1,8 +1,7 @@
 (* AST for the stream processor graph *)
 open Batteries
-open RamenSharedTypes
 open Stdint
-open Helpers
+open RamenHelpers
 open RamenLog
 
 type tuple_prefix =
@@ -76,6 +75,7 @@ type syntax_error =
   | NoAccessToGeneratedFields of { alias : string }
   | UnsolvableDependencyLoop of { program : string }
 
+(* TODO: Move all errors related to compilation into Compiler *)
 exception SyntaxError of syntax_error
 
 let tuple_prefix_print oc p =
@@ -201,7 +201,6 @@ let tuple_need_state = function
 
 (*$inject
   open Batteries
-  open RamenSharedTypes
   open RamenParsing
   open TestHelpers
  *)

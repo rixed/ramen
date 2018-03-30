@@ -2,9 +2,9 @@
 open Batteries
 open RamenLog
 open Lwt
-open Helpers
+open RamenHelpers
 open Stdint
-open RamenSharedTypes
+open RamenTuple
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_netflow_decode in wrap_netflow.c and tuple_typ below! *)
@@ -41,7 +41,7 @@ let tuple_typ =
     { typ_name = "src_mask" ; nullable = false ; typ = TU8 } ;
     { typ_name = "dst_mask" ; nullable = false ; typ = TU8 } ]
 
-let event_time = Some (("first", 1.), StopField ("last", 1.))
+let event_time = Some (("first", 1.), RamenEventTime.StopField ("last", 1.))
 
 external decode :
   Bytes.t -> int -> string -> netflow_metric array =

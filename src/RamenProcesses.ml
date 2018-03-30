@@ -1,14 +1,21 @@
+(* Process supervisor which task is to start and stop workers, make sure they
+ * keep working, collect their stats and write them somewhere for anybody
+ * to see, send their notifications, delete old unused files...
+ *)
 open Batteries
 open Lwt
 open RamenLog
-open Helpers
+open RamenHelpers
 module C = RamenConf
-module N = RamenConf.Func
-module L = RamenConf.Program
-module SN = RamenSharedTypes.Info.Func
-module SL = RamenSharedTypes.Info.Program
+module F = RamenConf.Func
+
+(* Global quit flag, set when the term signal is received: *)
 
 let quit = ref false
+
+(*
+ * Machinery to spawn other programs.
+ *)
 
 let fd_of_int : int -> Unix.file_descr = Obj.magic
 
@@ -38,451 +45,29 @@ let run_background cmd args env =
     execve cmd args env
   | pid -> pid
 
-let wrap_in_valgrind command args =
-  "/usr/bin/valgrind", Array.concat [ [| "--tool=massif" ; command |] ; args ]
-
-exception NotYetCompiled
-exception AlreadyRunning
-exception StillCompiling
-
-(* Return the name of func input ringbuf for the given parent (if func is
- * merging, each parent uses a distinct one) *)
-let input_spec conf parent func =
-  (* In case of merge, ringbufs are numbered as the node parents: *)
-  (if func.N.merge_inputs then
-    match List.findi (fun i (pprog, pname) ->
-             pprog = parent.N.program_name && pname = parent.N.name
-           ) func.N.parents with
-    | exception Not_found ->
-        !logger.error "Operation %S is not a child of %S"
-          func.N.name parent.N.name ;
-        invalid_arg "input_spec"
-    | i, _ ->
-        C.in_ringbuf_name_merging conf func i
-  else C.in_ringbuf_name_single conf func),
-  let out_type = C.tuple_ser_type parent.N.out_type
-  and in_type = C.tuple_ser_type func.N.in_type in
-  let field_mask = RingBufLib.skip_list ~out_type ~in_type in
-  RamenOutRef.{ field_mask ; timeout = 0. }
-
-(* Takes a locked conf.
- * FIXME: a phantom type for this *)
-let rec run_func conf programs program func =
-  if func.N.pid <> None then fail AlreadyRunning else
-  let command = L.exec_of_program conf.C.persist_dir program
-  and output_ringbufs =
-    (* Start to output to funcs of this program. They have all been
-     * created above (in [run]), and we want to allow loops in a program. Avoids
-     * outputting to other programs, unless they are already running (in
-     * which case their ring-buffer exists already), otherwise we would
-     * hang. *)
-    C.fold_funcs programs Map.empty (fun outs l n ->
-      (* Select all func's children that are either running or in the same
-       * program *)
-      if (n.N.program_name = program.L.name || l.L.status = Running) &&
-         List.exists (fun (pl, pn) ->
-           pl = program.L.name && pn = func.N.name
-         ) n.N.parents
-      then (
-        !logger.debug "%s will output to %s" (N.fq_name func) (N.fq_name n) ;
-        let k, file_spec = input_spec conf func n in
-        Map.add k file_spec outs
-      ) else outs) in
-  let out_ringbuf_ref = C.out_ringbuf_names_ref conf func in
-  let%lwt () = RamenOutRef.set out_ringbuf_ref output_ringbufs in
-  (* Now that the out_ref exists, but before we actually fork the worker,
-   * we can start importing: *)
-  let%lwt () =
-    if func.N.force_export then
-      let%lwt _ = RamenExport.make_temp_export conf func in
-      return_unit
-    else return_unit in
-  !logger.info "Start %s" func.N.name ;
-  let input_ringbufs = C.in_ringbuf_names conf func in
-  let notify_ringbuf =
-    (* Where that worker must write its notifications. Normally toward a
-     * ringbuffer that's read by Ramen, unless it's a test programs. Tests
-     * must not send their notifications to Ramen with real ones, but instead
-     * to a ringbuffer specific to the test_id. *)
-    C.notify_ringbuf ~test_id:program.test_id conf in
-  let ocamlrunparam =
-    getenv ~def:(if conf.C.debug then "b" else "") "OCAMLRUNPARAM" in
-  let env = [|
-    "OCAMLRUNPARAM="^ ocamlrunparam ;
-    "debug="^ string_of_bool conf.C.debug ;
-    "name="^ func.N.name ; (* Used to choose the function to perform *)
-    "fq_name="^ N.fq_name func ; (* Used for monitoring *)
-    "signature="^ func.signature ;
-    "input_ringbufs="^ String.concat "," input_ringbufs ;
-    "output_ringbufs_ref="^ out_ringbuf_ref ;
-    "report_ringbuf="^ C.report_ringbuf conf ;
-    "notify_ringbuf="^ notify_ringbuf ;
-    (* We need to change this dir whenever the func signature change
-     * to prevent it to reload an incompatible state: *)
-    "persist_dir="^ conf.C.persist_dir ^"/workers/states/"
-                  ^ RamenVersions.worker_state
-                  ^"/"^ Config.version
-                  ^"/"^ (N.fq_name func)
-                  ^"/"^ func.N.signature ;
-    "ramen_url="^ conf.C.ramen_url ;
-    (match !logger.logdir with
-      | Some _ ->
-        "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ (N.fq_name func)
-      | None -> "no_log_dir=") |] in
-  let command, args =
-    (* For convenience let's add "ramen worker" and the fun name as
-     * arguments: *)
-    command, [| "(ramen worker)" ; N.fq_name func |] in
-  let%lwt pid =
-    wrap (fun () -> run_background command args env) in
-  !logger.debug "Function %s now runs under pid %d" (N.fq_name func) pid ;
-  func.N.pid <- Some pid ;
-  (* Monitor this worker, wait for its termination, restart...: *)
-  async (fun () ->
-    let rec wait_child () =
-      match%lwt Lwt_unix.waitpid [] pid with
-      | exception Unix.Unix_error (Unix.EINTR, _, _) -> wait_child ()
-      | exception exn ->
-        (* This should not be used *)
-        (* TODO: save this error on the func record *)
-        !logger.error "Cannot wait for pid %d: %s"
-          pid (Printexc.to_string exn) ;
-        return_unit
-      | _, status ->
-        let status_str = string_of_process_status status in
-        !logger.info "Operation %s (pid %d) %s."
-          (N.fq_name func) pid status_str ;
-        (* First and foremost we want to set the error status and clean
-         * the PID of this process (if only because another thread might
-         * wait for the result of its own kill) *)
-        let%lwt succ_failures =
-          C.with_wlock conf (fun programs ->
-            (* Look again for that program by name: *)
-            match C.find_func programs func.N.program_name func.N.name with
-            | exception Not_found ->
-                !logger.error "Operation %s (pid %d) %s is not \
-                               in the configuration any more!"
-                  (N.fq_name func) pid status_str ;
-                return 0
-            | program, func ->
-                let%lwt succ_failures =
-                  (* Check this is still the same program: *)
-                  if func.pid <> Some pid then (
-                    !logger.error "Operation %s (pid %d) %s is in \
-                                   the configuration under pid %a!"
-                      (N.fq_name func) pid status_str
-                      (Option.print Int.print) func.pid ;
-                    return 0
-                  ) else (
-                    func.pid <- None ;
-                    func.last_exit <- status_str ;
-                    (* The rest of the operation depends on the program status: *)
-                    match program.status with
-                    | Stopping ->
-                        return 0
-                    | Running when not !quit ->
-                        (* If this does not look intentional, restart the worker: *)
-                        (match status with
-                        | Unix.WSIGNALED signal
-                          when signal <> Sys.sigterm &&
-                               signal <> Sys.sigkill &&
-                               signal <> Sys.sigint ->
-                            return (func.succ_failures + 1)
-                        | Unix.WEXITED code when code <> 0 ->
-                            return (func.succ_failures + 1)
-                        | _ ->
-                            !logger.debug "Assuming death by natural causes" ;
-                            return 0)
-                    | Running when !quit ->
-                        !logger.debug "We are quitting so let it be" ;
-                        return 0
-                    | _ ->
-                        (* We leave the program.status as it is since we have no
-                         * idea what's happening to other operations. *)
-                        !logger.debug "Don't know what to do since program status is %s"
-                          (SL.string_of_status program.status) ;
-                        return 0) in
-                func.succ_failures <- succ_failures ;
-                return succ_failures) in
-        if succ_failures = 0 then (
-          (* If there are no more processes running for this program,
-           * demote it to Compiled: *)
-          if Hashtbl.values program.L.funcs |>
-             Enum.for_all (fun func -> func.N.pid = None)
-          then (
-            !logger.info "All workers for %s have terminated" program.name ;
-            L.set_status program Compiled ;
-            (* If it was a binary, remove it from the
-             * configuration entirely, for future simplification
-             * of the states, unless we are quitting in which
-             * case we keep the configuration as it is in order
-             * to restart after the break: *)
-            if not !quit && program.L.program_is_path_to_bin then
-              C.del_program programs program
-          ) ;
-          return_unit ;
-        ) else (* restart that worker *)
-          let add_jitter ratio v =
-            (Random.float ratio -. (ratio *. 0.5) +. 1.) *. v in
-          let delay = float_of_int (succ_failures * 2 |> min 5) |>
-                      add_jitter 0.1 in
-          !logger.info "Restarting func %s which is supposed to \
-                        be running (failed %d times in a row, pause for %gs)."
-            (N.fq_name func) succ_failures delay ;
-          let%lwt () = Lwt_unix.sleep delay in
-          C.with_wlock conf (fun programs ->
-            (* Since we released the lock while waiting, check again that the
-             * situation is still the same: *)
-            match C.find_func programs func.N.program_name func.N.name with
-            | exception Not_found ->
-                return_unit
-            | program, func ->
-                if func.pid = None && not !quit then
-                  (* Note: run_func will start another waiter for that
-                   * other worker so our job is done. *)
-                  run_func conf programs program func
-                else return_unit)
-    in
-    wait_child ()) ;
-  (* Update the parents out_ringbuf_ref if it's in another program (otherwise
-   * we have set the correct out_ringbuf_ref just above already) *)
-  Lwt_list.iter_p (fun (parent_program, parent_name) ->
-      if parent_program = program.name then
-        return_unit
-      else
-        match C.find_func programs parent_program parent_name with
-        | exception Not_found ->
-          !logger.warning "Starting func %s which parent %s/%s does not \
-                           exist yet"
-            (N.fq_name func)
-            parent_program parent_name ;
-          return_unit
-        | _, parent ->
-          let out_ref =
-            C.out_ringbuf_names_ref conf parent in
-          (* The parent ringbuf might not exist yet if it has never been
-           * started. If the parent is not running then it will overwrite
-           * it when it starts, with whatever running children it will
-           * have at that time (including us, if we are still running).  *)
-          RamenOutRef.add out_ref (input_spec conf parent func)
-    ) func.N.parents
-
-(* We take _programs as a sign that we have the lock *)
-let kill_worker conf timeout _programs func pid =
-  let try_kill pid signal =
-    try Unix.kill pid signal
-    with Unix.Unix_error _ as e ->
-      !logger.error "Cannot kill pid %d: %s" pid (Printexc.to_string e)
-  in
-  (* First ask politely: *)
-  !logger.info "Killing worker %s (pid %d)" (N.fq_name func) pid ;
-  try_kill pid Sys.sigterm ;
-  (* Now the worker is supposed to tidy up everything and terminate.
-   * Then we have a thread that is waiting for him, perform a quick
-   * autopsy and clear the pid ; as soon as he get a chance because
-   * we are currently holding the conf.
-   * We want to check in a few seconds that this had happened: *)
-  async (fun () ->
-    let%lwt () = Lwt_unix.sleep (timeout +. Random.float 1.) in
-    C.with_rlock conf (fun programs ->
-      !logger.debug "Checking that pid %d is not around any longer." pid ;
-      (* Find that program again, and if it's still having the same pid
-       * then shoot him down: *)
-      (match C.find_func programs func.N.program_name func.N.name with
-      | exception Not_found ->
-        !logger.warning "Worker %s (pid %d) is not in configuration anymore, \
-                         sending it sigkill just to be sure."
-          (N.fq_name func) pid ;
-        try_kill pid Sys.sigkill
-      | program, func ->
-        (* Here it is assumed that the program was not launched again
-         * within 2 seconds with the same pid. In a world where this
-         * assumption wouldn't hold we would have to increment a counter
-         * in the func for instance... *)
-        (match func.N.pid with
-        | None ->
-          !logger.debug "The waiter cleaned the pid, all is good."
-        | Some p when p = pid ->
-          !logger.warning "Killing worker %s (pid %d) with bigger guns"
-            (N.fq_name func) pid ;
-          try_kill pid Sys.sigkill ;
-        | Some p ->
-          !logger.debug "Another child is running already (pid %d)" p ;
-          (* Meaning that it has first been cleared by the waiter, and then
-           * restarted. All is good. *))) ;
-      return_unit))
-
-let stop conf programs program =
-  match program.L.status with
-  | Edition _ | Compiled | Stopping -> return_unit
-  | Compiling ->
-    (* FIXME: do as for Running and make sure run() check the status hasn't
-     * changed before launching workers. *)
-    return_unit
-  | Running ->
-    let now = Unix.gettimeofday () in
-    let program_funcs =
-      Hashtbl.values program.L.funcs |> List.of_enum in
-    let timeout = 1. +. float_of_int (List.length program_funcs) *. 0.02 in
-    !logger.info "Stopping program %s (timeout %gs)" program.L.name timeout ;
-    let%lwt () = Lwt_list.iter_p (fun func ->
-        if program.test_id <> "" &&
-           not (RamenOperation.run_in_tests func.N.operation)
-        then (
-          if func.N.pid <> None then
-            !logger.error "Node %s should not be running during a test!"
-              (N.fq_name func) ;
-          return_unit
-        ) else (
-          (* Start by removing this worker ringbuf from all its parent
-           * output references: *)
-          let this_ins = C.in_ringbuf_names conf func in
-          (* Remove this operation from all its parents output: *)
-          let%lwt () = Lwt_list.iter_p (fun (parent_program, parent_name) ->
-              match C.find_func programs parent_program parent_name with
-              | exception Not_found -> return_unit
-              | _, parent ->
-                let out_ref = C.out_ringbuf_names_ref conf parent in
-                Lwt_list.iter_s (fun this_in ->
-                  RamenOutRef.remove out_ref this_in) this_ins
-            ) func.N.parents in
-          (* Now kill that pid: *)
-          (match func.N.pid with
-          | None ->
-            !logger.warning "Function %s stopped already (INTerrupted?)"
-              func.N.name
-          | Some pid ->
-            !logger.debug "Stopping func %s, pid %d" func.N.name pid ;
-            (* Get rid of the worker *)
-            kill_worker conf timeout programs func pid) ;
-          return_unit
-        )
-      ) program_funcs in
-    L.set_status program Stopping ;
-    program.L.last_stopped <- Some now ;
-    return_unit
-
-let run conf programs program =
-  let open L in
-  match program.status with
-  | Edition _ -> fail NotYetCompiled
-  | Running | Stopping -> fail AlreadyRunning
-  | Compiling -> fail StillCompiling
-  | Compiled ->
-    !logger.info "Starting program %s" program.L.name ;
-    (* First prepare all the required ringbuffers *)
-    !logger.debug "Creating ringbuffers..." ;
-    let program_funcs =
-      Hashtbl.values program.funcs |> List.of_enum in
-    (* Be sure to cancel everything (threads/execs) we started in case of
-     * failure: *)
-    try%lwt
-      (* We must create all the ringbuffers before starting any worker
-       * because there is no good order in which to start them: *)
-      let%lwt () = Lwt_list.iter_p (fun func ->
-        wrap (fun () ->
-          C.in_ringbuf_names conf func |>
-          List.iter (fun rb_name ->
-            RingBuf.create rb_name RingBufLib.rb_default_words)
-        )) program_funcs in
-      (* Now run everything in any order: *)
-      !logger.debug "Launching workers..." ;
-      let now = Unix.gettimeofday () in
-      let%lwt () =
-        Lwt_list.iter_p (fun func ->
-          if program.test_id <> "" &&
-             not (RamenOperation.run_in_tests func.N.operation)
-          then (
-            !logger.info "Skipping %s in tests" (N.fq_name func) ;
-            return_unit
-          ) else
-            run_func conf programs program func
-        ) program_funcs in
-      L.set_status program Running ;
-      program.L.last_started <- Some now ;
-      return_unit
-    with exn ->
-      let%lwt () = stop conf programs program in
-      fail exn
-
 (*
- * Thread that stops programs at termination (!quit)
+ * Instrumentation: Reading workers stats
  *)
-
-(* Return either one or all programs *)
-let graph_programs programs = function
-  | None ->
-    Hashtbl.values programs |>
-    List.of_enum |>
-    return
-  | Some l ->
-    try Hashtbl.find programs l |>
-        List.singleton |>
-        return
-    with Not_found -> fail_with ("Unknown program "^l)
-
-let stop_programs conf programs program_opt =
-  let%lwt to_stop = graph_programs programs program_opt in
-  Lwt_list.iter_p (stop conf programs) to_stop
-
-let rec monitor_quit conf =
-  let%lwt () = Lwt_unix.sleep 0.3 in
-  if !quit then (
-    !logger.debug "Waiting for the wlock for quitting..." ;
-    let%lwt () =
-      C.with_wlock conf (fun programs ->
-        !logger.info "Stopping HTTP server(s)..." ;
-        List.iter (fun condvar ->
-          Lwt_condition.signal condvar ()
-        ) !RamenHttpHelpers.http_server_done ;
-        !logger.info "Stopping all workers..." ;
-        let%lwt () = stop_programs conf programs None in
-        return_unit) in
-    !logger.info "Waiting for all workers to terminate..." ;
-    let last_nb_running = ref 0 in
-    let rec loop () =
-      let%lwt still_running =
-        C.with_rlock conf (fun programs ->
-          let nb_running =
-            C.fold_funcs programs 0 (fun c program func ->
-              if func.C.Func.pid = None then c else c + 1) in
-          if nb_running > 0 then (
-            if nb_running != !last_nb_running then (
-              !logger.info "%d workers are still working..." nb_running ;
-              last_nb_running := nb_running
-            ) ;
-            return_true
-          ) else return_false) in
-      if still_running then (
-        Lwt_unix.sleep 0.1 >>= loop
-      ) else return_unit in
-    let%lwt () = loop () in
-    !logger.info "Quitting monitor_quit..." ;
-    return_unit
-  ) else monitor_quit conf
-
-
-(* Timeout unused programs.
- * By unused, we mean either: no program depends on it, or no one cares for
- * what it exports. *)
-
-let use_program now program =
-  program.L.last_used <- now
-
-let use_program_by_name programs now program_name =
-  match Hashtbl.find programs program_name with
-  | exception Not_found ->
-      !logger.error "Cannot find program %s, which was never ever supposed \
-                     to happen." program_name ;
-      !logger.error "Current programs: %a"
-        (Enum.print String.print) (Hashtbl.keys programs)
-  | program -> use_program now program
-
-(* Instrumentation: Reading workers stats *)
 
 open Stdint
 
-let reports_lock = RWLock.make ()
+type worker_stats =
+  { time : float ;
+    in_tuple_count : int option ;
+    selected_tuple_count : int option ;
+    out_tuple_count : int option ;
+    group_count : int option ;
+    cpu_time : float ;
+    ram_usage : int ;
+    in_sleep : float option ;
+    out_sleep : float option ;
+    in_bytes : float option ; (* 31bit integers would be too small *)
+    out_bytes : float option }
+  [@@ppp PPP_OCaml]
+
+(* TODO: Nope, workers should write their instrumentation in non-wrap buffers
+ * instead. See https://github.com/rixed/ramen/issues/191 *)
+let reports_lock = RamenRWLock.make ()
 let last_reports = Hashtbl.create 31
 
 let read_reports rb =
@@ -490,8 +75,8 @@ let read_reports rb =
     let worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo =
       RamenBinocle.unserialize tx in
     RingBuf.dequeue_commit tx ;
-    RWLock.with_w_lock reports_lock (fun () ->
-      Hashtbl.replace last_reports worker SN.{
+    RamenRWLock.with_w_lock reports_lock (fun () ->
+      Hashtbl.replace last_reports worker {
         time ;
         in_tuple_count = Option.map Uint64.to_int ic ;
         selected_tuple_count = Option.map Uint64.to_int sc ;
@@ -504,7 +89,7 @@ let read_reports rb =
       return_unit))
 
 let last_report fq_name =
-  RWLock.with_r_lock reports_lock (fun () ->
+  RamenRWLock.with_r_lock reports_lock (fun () ->
     Hashtbl.find_option last_reports fq_name |?
     { time = 0. ;
       in_tuple_count = None ; selected_tuple_count = None ;
@@ -514,12 +99,14 @@ let last_report fq_name =
       in_bytes = None ; out_bytes = None } |>
     return)
 
-(* Notifications:
+(*
+ * Notifications:
  * To alleviate workers from the hassle to send HTTP notifications, those are
  * sent to Ramen via a ringbuffer. Advantages are many:
  * Workers do not need an HTTP client and are therefore smaller, faster to
- * link, and easier to port to another language.
- * Also, they might as well be easier to link with the libraries bundle. *)
+ * link, and easier to port to another language. Also, other notification
+ * mechanisms are easier to implement in a single location.
+ *)
 
 let process_notifications rb =
   RamenSerialization.read_notifs rb (fun (worker, url) ->
@@ -534,7 +121,7 @@ let cleanup_old_files conf =
    * If not, and if it hasn't been touched for X days, assume that's an old one and delete it.
    * Then sleep for one day and restart. *)
   let get_log_file () =
-    Unix.gettimeofday () |> Unix.localtime |> RamenLog.log_file
+    Unix.gettimeofday () |> Unix.localtime |> log_file
   and lwt_touch_file fname =
     let now = Unix.gettimeofday () in
     Lwt_unix.utimes fname now now
@@ -617,3 +204,309 @@ let cleanup_old_files conf =
     Lwt_unix.sleep 3600. >>= loop
   in
   loop ()
+
+(* New style process supervisor: start and stop according to a mere file.
+ * Also monitor quit. *)
+type running_process =
+  { program_name : string ;
+    bin : string ;
+    func : C.Func.t ;
+    mutable pid : int option ;
+    mutable last_killed : float (* 0 for never *) ;
+    (* purely for reporting: *)
+    mutable last_exit : float ;
+    mutable last_exit_status : string ;
+    mutable succ_failures : int }
+
+let print_running_process oc proc =
+  Printf.fprintf oc "%s/%s (params=%a, parents=%a)"
+    proc.program_name proc.func.F.name
+    (List.print RamenTuple.print_param) proc.func.params
+    (List.print F.print_parent) proc.func.parents
+
+let make_running_process program_name bin func =
+  { program_name ; bin ; pid = None ; last_killed = 0. ; func ;
+    last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 }
+
+(* Return the name of func input ringbuf for the given parent (if func is
+ * merging, each parent uses a distinct one) *)
+let input_spec conf parent child =
+  (* In case of merge, ringbufs are numbered as the node parents: *)
+  (if child.func.F.merge_inputs then
+    match List.findi (fun i (pprog, pname) ->
+             pprog = parent.program_name && pname = parent.func.name
+           ) child.func.F.parents with
+    | exception Not_found ->
+        !logger.error "Operation %S is not a child of %S"
+          child.func.F.name parent.func.name ;
+        invalid_arg "input_spec"
+    | i, _ ->
+        C.in_ringbuf_name_merging conf child.func i
+  else C.in_ringbuf_name_single conf child.func),
+  let out_type = parent.func.out_type.ser
+  and in_type = child.func.F.in_type.ser in
+  let field_mask = RingBufLib.skip_list ~out_type ~in_type in
+  RamenOutRef.{ field_mask ; timeout = 0. }
+
+let check_is_subtype t1 t2 =
+  (* For t1 to be a subtype of t2, all fields of t1 must be present and
+   * public in t2. And since there is no more extension from scalar types at
+   * this stage, those fields must have the exact same types. *)
+  List.iter (fun f1 ->
+    match List.find (fun f2 -> f1.RamenTuple.typ_name = f2.RamenTuple.typ_name) t2 with
+    | exception Not_found ->
+        failwith ("Field "^ f1.typ_name ^" is missing")
+    | f2 ->
+        if f1.typ <> f2.typ then
+          failwith ("Fields "^ f1.typ_name ^" have not the same type") ;
+        if f1.nullable <> f2.nullable then
+          failwith ("Fields "^ f1.typ_name ^" differs with regard to NULLs")
+  ) t1
+
+(* Need running so that types can be checked before linking with parents
+ * and children. *)
+let try_start conf running proc =
+  !logger.info "Starting operation %a"
+    print_running_process proc ;
+  assert (proc.pid = None) ;
+  let ps, cs =
+    Hashtbl.fold (fun _sign proc' (ps, cs) ->
+      let is_parent_of proc proc' =
+        List.mem (proc'.program_name, proc'.func.name) proc.func.parents in
+      (if is_parent_of proc proc' then proc'::ps else ps),
+      (if is_parent_of proc' proc then proc'::cs else cs)
+    ) running ([], []) in
+  (* We must not start if a parent is missing: *)
+  let parents_ok =
+    List.fold_left (fun ok (p_prog, p_func) ->
+      if List.exists (fun proc' ->
+           proc'.program_name = p_prog && proc'.func.name = p_func
+         ) ps then ok
+      else (
+        !logger.error "Parent of %s/%s is missing: %s/%s"
+          proc.program_name proc.func.name
+          p_prog p_func ;
+        false)
+    ) true proc.func.parents in
+  let check_linkage p c =
+    try check_is_subtype c.func.in_type.RamenTuple.ser p.func.out_type.ser ;
+        true
+    with Failure msg ->
+      !logger.error "Input type of %s/%s (%a) is not compatible with \
+                     output type of %s/%s (%a): %s"
+        c.program_name c.func.name RamenTuple.print_typ c.func.in_type.ser
+        p.program_name p.func.name RamenTuple.print_typ p.func.out_type.ser
+        msg ;
+      false in
+  let linkage_ok =
+    List.fold_left (fun ok p -> check_linkage p proc && ok) true ps in
+  let linkage_ok =
+    List.fold_left (fun ok c -> check_linkage proc c && ok) linkage_ok cs in
+  if parents_ok && linkage_ok then (
+    (* Create the input ringbufs.
+     * We now start the workers one by one in no
+     * particular order. The input and out-ref ingbufs are created when the
+     * worker start, and the out-ref is filled with the running (or should
+     * be running) children. Therefore, if a children fails to run the
+     * parents might block. Also, if a child has not been started yet its
+     * inbound ringbuf will not exist yet, again implying this worker will
+     * block.
+     * Each time a new worker is started or stopped the parents outrefs
+     * are updated. *)
+    !logger.debug "Creating in buffers..." ;
+    let input_ringbufs = C.in_ringbuf_names conf proc.func in
+    List.iter (fun rb_name ->
+      RingBuf.create rb_name RingBufLib.rb_default_words
+    ) input_ringbufs ;
+    (* And the pre-filled out_ref: *)
+    !logger.debug "Creating out-ref buffers..." ;
+    let output_ringbufs =
+      List.fold_left (fun outs c ->
+        let k, file_spec = input_spec conf proc c in
+        Map.add k file_spec outs
+      ) Map.empty cs in
+    let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
+    let%lwt () = RamenOutRef.set out_ringbuf_ref output_ringbufs in
+    (* Now that the out_ref exists, but before we actually fork the worker,
+     * we can start importing: *)
+    let%lwt () =
+      if proc.func.F.force_export then
+        let%lwt _ = RamenExport.make_temp_export conf proc.func in
+        return_unit
+      else return_unit in
+    (* Now actually start the binary *)
+    !logger.info "Start %s" proc.func.F.name ;
+    let notify_ringbuf =
+      (* Where that worker must write its notifications. Normally toward a
+       * ringbuffer that's read by Ramen, unless it's a test programs.
+       * Tests must not send their notifications to Ramen with real ones,
+       * but instead to a ringbuffer specific to the test_id. *)
+      C.notify_ringbuf (* TODO ~test_id:program.test_id *) conf in
+    let ocamlrunparam =
+      getenv ~def:(if conf.C.debug then "b" else "") "OCAMLRUNPARAM" in
+    let fq_name = proc.program_name ^"/"^ proc.func.name in
+    let env = [|
+      "OCAMLRUNPARAM="^ ocamlrunparam ;
+      "debug="^ string_of_bool conf.C.debug ;
+      "name="^ proc.func.F.name ; (* Used to choose the function to perform *)
+      "fq_name="^ fq_name ; (* Used for monitoring *)
+      "signature="^ proc.func.signature ;
+      "input_ringbufs="^ String.concat "," input_ringbufs ;
+      "output_ringbufs_ref="^ out_ringbuf_ref ;
+      "report_ringbuf="^ C.report_ringbuf conf ;
+      "notify_ringbuf="^ notify_ringbuf ;
+      (* We need to change this dir whenever the func signature change
+       * to prevent it to reload an incompatible state: *)
+      "persist_dir="^ conf.C.persist_dir ^"/workers/states/"
+                    ^ RamenVersions.worker_state
+                    ^"/"^ Config.version
+                    ^"/"^ fq_name
+                    ^"/"^ proc.func.F.signature ;
+      (match !logger.logdir with
+        | Some _ ->
+          "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
+        | None -> "no_log_dir=") |] in
+    let args =
+      (* For convenience let's add "ramen worker" and the fun name as
+       * arguments: *)
+      [| "(ramen worker)" ; fq_name |] in
+    let%lwt pid =
+      wrap (fun () -> run_background proc.bin args env) in
+    !logger.debug "Function %s now runs under pid %d" fq_name pid ;
+    proc.pid <- Some pid ;
+    (* Monitor this worker, wait for its termination, restart...: *)
+    async (fun () ->
+      let rec wait_child () =
+        match%lwt Lwt_unix.waitpid [] pid with
+        | exception Unix.Unix_error (Unix.EINTR, _, _) -> wait_child ()
+        | exception exn ->
+          (* This should not be used *)
+          !logger.error "Cannot wait for pid %d: %s"
+            pid (Printexc.to_string exn) ;
+          return_unit
+        | _, status ->
+          let status_str = string_of_process_status status in
+          !logger.info "Operation %s/%s (pid %d) %s."
+            proc.program_name proc.func.name pid status_str ;
+          proc.last_exit <- Unix.gettimeofday () ;
+          proc.last_exit_status <- status_str ;
+          proc.succ_failures <- proc.succ_failures + 1 ;
+          proc.pid <- None ;
+          (* We must also remove this proc from all its parent out-ref. *)
+          Lwt_list.iter_p (fun p ->
+            let parent_out_ref =
+              C.out_ringbuf_names_ref conf p.func in
+            Lwt_list.iter_s (fun this_in ->
+              RamenOutRef.remove parent_out_ref this_in) input_ringbufs
+          ) ps
+      in
+      wait_child ()) ;
+    (* Update the parents out_ringbuf_ref: *)
+    Lwt_list.iter_p (fun p ->
+      if p.pid = None then
+        (* parent is not started yet: it will add this worker when
+         * it's his turn to be started. *)
+        return_unit
+      else
+        let out_ref =
+          C.out_ringbuf_names_ref conf p.func in
+        RamenOutRef.add out_ref (input_spec conf p proc)
+    ) ps
+  ) else return_unit
+
+let try_kill proc =
+  let pid = Option.get proc.pid in
+  (* Start with a TERM (if last_killed = 0.) and then after 5s send a
+   * KILL if the worker is still running. *)
+  let now = Unix.gettimeofday () in
+  if proc.last_killed = 0. then (
+    (* Ask politely: *)
+    !logger.info "Terminating worker %s/%s (pid %d)"
+      proc.program_name proc.func.name pid ;
+    log_exceptions ~what:"Terminating worker"
+      (Unix.kill pid) Sys.sigterm
+  ) else if now -. proc.last_killed > 5. then (
+    !logger.warning "Killing worker %s/%s (pid %d) with bigger guns"
+      proc.program_name proc.func.name pid ;
+    log_exceptions ~what:"Killing worker"
+      (Unix.kill pid) Sys.sigkill
+  ) ;
+  proc.last_killed <- now ;
+  return_unit
+
+let synchronize_running conf =
+  let rc_file = C.running_config_file conf in
+  (* Start/Stop processes so that [running] corresponds to [must_run].
+   * [must_run] is a hash from the signature to
+   * its binary path, the program name and Func.
+   * [running] is a hash from the signature to its running_process
+   * (mutable pid, cleared asynchronously when the worker terminates). *)
+  let synchronize must_run running =
+    (* First, remove from running all terminated processes that must not run
+     * any longer. Send a kill to those that are still running. *)
+    let to_kill = ref [] and to_start = ref []
+    and (+=) r x = r := x :: !r in
+    Hashtbl.filteri_inplace (fun sign proc ->
+      if Hashtbl.mem must_run sign then true else
+      if proc.pid <> None then (to_kill += proc ; true) else
+      false
+    ) running ;
+    (* Then, add/restart all those that must run. *)
+    Hashtbl.iter (fun sign (bin, program_name, func) ->
+      match Hashtbl.find running sign with
+      | exception Not_found ->
+          let proc = make_running_process program_name bin func in
+          Hashtbl.add running sign proc ;
+          to_start += proc
+      | proc ->
+          (* If it's dead, restart it: *)
+          if proc.pid = None then to_start += proc else
+          (* If we were killing it, it's safer to keep killing it until it's
+           * dead and then restart it. *)
+          if proc.last_killed <> 0. then to_kill += proc
+    ) must_run ;
+    join [
+      Lwt_list.iter_p try_kill !to_kill ;
+      Lwt_list.iter_p (try_start conf running) !to_start ]
+  in
+  let empty_must_run = Hashtbl.create 0 in
+  let rec loop last_read must_run running =
+    if !quit && Hashtbl.length running = 0 then (
+      !logger.info "All processes stopped, quitting." ;
+      return_unit
+    ) else (
+      let%lwt must_run, last_read =
+        if !quit then (
+          !logger.info "Still %d processes running"
+            (Hashtbl.length running) ;
+          return (empty_must_run, last_read)
+        ) else (
+          let last_mod =
+            try mtime_of_file rc_file
+            with Unix.(Unix_error (ENOENT, _, _)) -> max_float in
+          if last_mod <= last_read ||
+             (* To prevent missing the last writes when the file is updated
+              * several times a second (the possible resolution of mtime),
+              * refuse to refresh the file unless last_mod is old enough. *)
+             age last_mod <= 1.
+          then return (must_run, last_read)
+          else
+            (* Reread the content of that file *)
+            let%lwt must_run_programs = C.with_rlock conf return in
+            (* The run file gives us the programs (and how to run them), but we
+             * want [must_run] to be a hash of functions. Also, we want the
+             * workers identified by their signature so that if the type of a
+             * worker change but not its name we see a different worker. *)
+            let must_run = Hashtbl.create 11 in
+            Hashtbl.iter (fun program_name get_rc ->
+              let bin, prog = get_rc () in
+              List.iter (fun f ->
+                Hashtbl.add must_run f.F.signature (bin, program_name, f)
+              ) prog
+            ) must_run_programs ;
+            return (must_run, last_mod)) in
+      let%lwt () = synchronize must_run running in
+      let%lwt () = Lwt_unix.sleep 1. in
+      loop last_read must_run running)
+  in
+  loop 0. empty_must_run (Hashtbl.create 0)

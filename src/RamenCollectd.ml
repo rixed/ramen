@@ -13,8 +13,9 @@
 open Batteries
 open RamenLog
 open Lwt
-open Helpers
-open RamenSharedTypes
+open RamenHelpers
+open RamenScalar
+open RamenTuple
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
@@ -39,7 +40,7 @@ let tuple_typ =
     { typ_name = "value4" ; nullable = true ; typ = TFloat } ;
     { typ_name = "value5" ; nullable = true ; typ = TFloat } ]
 
-let event_time = Some (("time", 1.), DurationConst 0.)
+let event_time = Some (("time", 1.), RamenEventTime.DurationConst 0.)
 
 external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
 

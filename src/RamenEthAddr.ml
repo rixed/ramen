@@ -1,7 +1,7 @@
 (* Functions related to eth addresses handling *)
 open Batteries
 open Stdint
-open Helpers
+open RamenHelpers
 
 let to_string =
   let ff = Uint48.of_int 0xff in

@@ -14,9 +14,10 @@
 
 open Batteries
 open RamenLog
-open RamenSharedTypes
-open Lang
-open Helpers
+open RamenLang
+open RamenHelpers
+open RamenScalar
+open RamenTuple
 module C = RamenConf
 
 (* If true, the generated code will log details about serialization *)
@@ -34,7 +35,7 @@ let id_of_field_name ?(tuple=TupleIn) = function
       if tuple = TupleParam then "!"^ ret else ret
 
 let id_of_field_typ ?tuple field_typ =
-  id_of_field_name ?tuple field_typ.typ_name
+  id_of_field_name ?tuple field_typ.RamenTuple.typ_name
 
 let list_print_as_tuple = List.print ~first:"(" ~last:")" ~sep:", "
 
@@ -153,16 +154,16 @@ let emit_time_of_tuple name event_time oc tuple_typ =
         (id_of_field_name ~tuple:TupleOut sta_field)
         emit_float sta_scale ;
       (match dur with
-      | DurationConst d ->
+      | RamenEventTime.DurationConst d ->
           Printf.fprintf oc "\tand dur_ = %a in\n\
                              \tstart_, start_ +. dur_\n"
             emit_float d
-      | DurationField (dur_field, dur_scale) ->
+      | RamenEventTime.DurationField (dur_field, dur_scale) ->
           Printf.fprintf oc "\tand dur_ = %s *. %a in\n\
                              \tstart_, start_ +. dur_\n"
             (id_of_field_name ~tuple:TupleOut dur_field)
             emit_float dur_scale ;
-      | StopField (sto_field, sto_scale) ->
+      | RamenEventTime.StopField (sto_field, sto_scale) ->
           Printf.fprintf oc "\tand stop_ = %s *. %a in\n\
                              \tstart_, stop_\n"
             (id_of_field_name ~tuple:TupleOut sto_field)
@@ -449,11 +450,11 @@ let omod_of_type = function
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
     String.capitalize (otype_of_type t)
-  | TEth -> "EthAddr"
-  | TIpv4 -> "Ipv4"
-  | TIpv6 -> "Ipv6"
-  | TCidrv4 -> "Ipv4.Cidr"
-  | TCidrv6 -> "Ipv6.Cidr"
+  | TEth -> "RamenEthAddr"
+  | TIpv4 -> "RamenIpv4"
+  | TIpv6 -> "RamenIpv6"
+  | TCidrv4 -> "RamenIpv4.Cidr"
+  | TCidrv6 -> "RamenIpv6.Cidr"
   | TNull -> assert false (* Never used on NULLs *)
   | TNum | TAny -> assert false
 
@@ -946,8 +947,7 @@ and add_missing_types arg_typs es =
 (*$inject
   open Batteries
   open Stdint
-  open RamenSharedTypes
-  let const typ v = Lang.(RamenExpr.(Const (make_typ ~typ "test", v)))
+  let const typ v = RamenLang.(RamenExpr.(Const (make_typ ~typ "test", v)))
  *)
 (*$= add_missing_types & ~printer:(IO.to_string (List.print (Option.print (RamenScalar.print_typ))))
   [Some TFloat] \

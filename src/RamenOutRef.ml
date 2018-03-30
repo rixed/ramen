@@ -18,7 +18,7 @@
  *)
 open Batteries
 open Lwt
-open Helpers
+open RamenHelpers
 open RamenLog
 module Lock = RamenAdvLock
 
@@ -81,7 +81,7 @@ let read fname =
     wrap (fun () -> read_ fname))
 
 (* Used by ramen when starting a new worker to add it to its parents outref: *)
-let add_ fname (out_fname, out_fields) =
+let add_ fname (out_fname, file_spec) =
   let lines =
     try read_ fname
     with Sys_error _ ->
@@ -89,14 +89,14 @@ let add_ fname (out_fname, out_fields) =
       Map.empty
     in
   let rewrite () =
-    let outs = Map.add out_fname out_fields lines in
+    let outs = Map.add out_fname file_spec lines in
     set_ fname outs ;
     !logger.debug "Adding %s into %s, now outputting to %a"
       out_fname fname print_out_specs outs in
   match Map.find out_fname lines with
   | exception Not_found -> rewrite ()
-  | prev_fields ->
-    if prev_fields <> out_fields then rewrite ()
+  | prev_spec  ->
+    if prev_spec <> file_spec then rewrite ()
 
 let add fname out =
   if String.length fname = 0 ||

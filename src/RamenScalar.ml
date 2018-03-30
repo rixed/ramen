@@ -1,14 +1,26 @@
+(* This module parses scalar types and values.
+ *)
 open Batteries
 open Stdint
-open RamenSharedTypes
-open Lang
+open RamenLang
 
 (*$inject
   open TestHelpers
-  open Lang
+  open RamenLang
 *)
 
-type typ = scalar_typ
+(* TNum is not an actual type used by any value, but it's used as a default
+ * type for numeric operands that can be "promoted" to any other numerical
+ * type. TAny is means to be replaced by an actual type during compilation:
+ * all TAny types in an expression will be changed to a specific type that's
+ * large enought to accommodate all the values at hand. *)
+type typ =
+  | TNull | TFloat | TString | TBool | TNum | TAny
+  | TU8 | TU16 | TU32 | TU64 | TU128
+  | TI8 | TI16 | TI32 | TI64 | TI128
+  | TEth (* 48bits unsigned integers with funny notation *)
+  | TIpv4 | TIpv6 | TCidrv4 | TCidrv6
+  [@@ppp PPP_OCaml]
 
 let string_of_typ = function
   | TNull   -> "NULL"
@@ -77,6 +89,28 @@ let largest_type = function
       larger_type (l, t)) fst rest
   | _ -> invalid_arg "largest_type"
 
+(* stdint types are implemented as custom blocks, therefore are slower than
+ * ints.  But we do not care as we merely represents code here, we do not run
+ * the operators. *)
+type value =
+  | VFloat of float | VString of string | VBool of bool
+  | VU8 of uint8 | VU16 of uint16 | VU32 of uint32
+  | VU64 of uint64 | VU128 of uint128
+  | VI8 of int8 | VI16 of int16 | VI32 of int32
+  | VI64 of int64 | VI128 of int128 | VNull
+  | VEth of uint48
+  | VIpv4 of uint32 | VIpv6 of uint128
+  | VCidrv4 of (uint32 * int) | VCidrv6 of (uint128 * int)
+  [@@ppp PPP_OCaml]
+
+let type_of = function
+  | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
+  | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
+  | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
+  | VI64 _ -> TI64 | VI128 _ -> TI128 | VNull -> TNull
+  | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6
+  | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6
+
 (* The original Float.to_string adds a useless dot at the end of
  * round numbers: *)
 let my_float_to_string v =
@@ -99,11 +133,11 @@ let to_string ?(null="NULL") = function
   | VI64 i    -> Int64.to_string i
   | VI128 i   -> Int128.to_string i
   | VNull     -> null
-  | VEth i    -> EthAddr.to_string i
-  | VIpv4 i   -> Ipv4.to_string i
-  | VIpv6 i   -> Ipv6.to_string i
-  | VCidrv4 i -> Ipv4.Cidr.to_string i
-  | VCidrv6 i -> Ipv6.Cidr.to_string i
+  | VEth i    -> RamenEthAddr.to_string i
+  | VIpv4 i   -> RamenIpv4.to_string i
+  | VIpv6 i   -> RamenIpv6.to_string i
+  | VCidrv4 i -> RamenIpv4.Cidr.to_string i
+  | VCidrv6 i -> RamenIpv6.Cidr.to_string i
 
 let print_custom ?null fmt v = String.print fmt (to_string ?null v)
 let print fmt v = print_custom fmt v
@@ -204,11 +238,11 @@ struct
     (strinG "false" >>: fun _ -> VBool false) |||
     (strinG "true" >>: fun _ -> VBool true) |||
     (quoted_string >>: fun s -> VString s) |||
-    (EthAddr.Parser.p >>: fun v -> VEth v) |||
-    (Ipv4.Parser.p >>: fun v -> VIpv4 v) |||
-    (Ipv6.Parser.p >>: fun v -> VIpv6 v) |||
-    (Ipv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |||
-    (Ipv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
+    (RamenEthAddr.Parser.p >>: fun v -> VEth v) |||
+    (RamenIpv4.Parser.p >>: fun v -> VIpv4 v) |||
+    (RamenIpv6.Parser.p >>: fun v -> VIpv6 v) |||
+    (RamenIpv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |||
+    (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
 
   (*$= p & ~printer:(test_printer print)
     (Ok (VI32 (Int32.of_int 31000), (5,[])))   (test_p p "31000")

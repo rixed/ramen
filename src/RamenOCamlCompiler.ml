@@ -1,7 +1,7 @@
 open Batteries
 open Lwt
 open RamenLog
-open Helpers
+open RamenHelpers
 module C = RamenConf
 
 (* Mostly copied from ocaml source code driver/optmain.ml *)
@@ -68,10 +68,10 @@ let compile_internal conf func_name src_file obj_file =
     return_unit
   with exn ->
     Location.report_exception ppf exn ;
-    let e = Lang.CannotGenerateCode {
+    let e = RamenLang.CannotGenerateCode {
       func = func_name ; cmd = "embedded compiler" ;
       status = Printexc.to_string exn } in
-    fail (Lang.SyntaxError e)
+    fail (RamenLang.SyntaxError e)
 
 let compile_external conf func_name src_file obj_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
@@ -99,10 +99,10 @@ let compile_external conf func_name src_file obj_file =
   ) else (
     (* As this might well be an installation problem, makes this error
      * report to the GUI: *)
-    let e = Lang.CannotGenerateCode {
+    let e = RamenLang.CannotGenerateCode {
       func = func_name ; cmd = comp_cmd ;
       status = string_of_process_status status } in
-    fail (Lang.SyntaxError e)
+    fail (RamenLang.SyntaxError e)
   )
 
 let compile conf func_name src_file obj_file =
@@ -162,10 +162,10 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
     return_unit
   with exn ->
     Location.report_exception ppf exn ;
-    let e = Lang.CannotGenerateCode {
+    let e = RamenLang.CannotGenerateCode {
       func = program_name ; cmd = "embedded compiler" ;
       status = Printexc.to_string exn } in
-    fail (Lang.SyntaxError e)
+    fail (RamenLang.SyntaxError e)
 
 let link_external conf program_name inc_dirs obj_files src_file bin_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
@@ -199,10 +199,10 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
   ) else (
     (* As this might well be an installation problem, makes this error
      * report to the GUI: *)
-    let e = Lang.CannotGenerateCode {
+    let e = RamenLang.CannotGenerateCode {
       func = program_name ; cmd = comp_cmd ;
       status = string_of_process_status status } in
-    fail (Lang.SyntaxError e)
+    fail (RamenLang.SyntaxError e)
   )
 
 let link conf program_name obj_files src_file bin_file =
@@ -219,7 +219,7 @@ let link conf program_name obj_files src_file bin_file =
 
 (* Helpers: *)
 
-let with_code_file_for ?(allow_reuse=true) obj_name conf f =
+let with_code_file_for obj_name conf f =
   assert (obj_name <> "") ;
   let basename =
     Filename.(remove_extension (basename obj_name)) ^".ml" in
@@ -229,8 +229,5 @@ let with_code_file_for ?(allow_reuse=true) obj_name conf f =
     else "m"^ basename in
   let fname = Filename.dirname obj_name ^"/"^ basename in
   mkdir_all ~is_file:true fname ;
-  if allow_reuse && file_exists ~maybe_empty:false fname then
-    !logger.debug "Reusing source file %S" fname
-  else
-    File.with_file_out ~mode:[`create; `text] fname f ;
+  File.with_file_out ~mode:[`create; `text; `trunc] fname f ;
   fname

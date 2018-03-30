@@ -35,7 +35,7 @@ open Batteries
 let create_or_read persist_dir id v =
   let open Unix in
   let fname = persist_dir ^"/"^ id in
-  Helpers.mkdir_all ~is_file:true fname ;
+  RamenHelpers.mkdir_all ~is_file:true fname ;
   let init_restore () =
     let fd = openfile fname [O_RDWR] 0o640 in
     fd, do_restore fd
@@ -44,7 +44,7 @@ let create_or_read persist_dir id v =
     do_save fd v ;
     fd, v
   in
-  if Helpers.file_exists ~maybe_empty:false ~has_perms:0o400 fname then
+  if RamenHelpers.file_exists ~maybe_empty:false ~has_perms:0o400 fname then
     try init_restore () with _ -> init_create ()
   else
     init_create ()

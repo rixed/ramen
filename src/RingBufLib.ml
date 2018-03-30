@@ -1,9 +1,10 @@
 (* Have this outside of RingBuf so that we can easily link this with the
  * tests without bringing in the whole ringbuf libs *)
 open Batteries
-open RamenSharedTypes
 open RamenLog
-open Helpers
+open RamenHelpers
+open RamenTuple
+open RamenScalar
 
 exception NoMoreRoom
 exception Empty

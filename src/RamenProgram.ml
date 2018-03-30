@@ -1,15 +1,18 @@
+(* This module deals with parsing programs.
+ * A program is a set of named operations.
+ * It makes use of RamenOperation, which parses operation.
+ *)
 open Batteries
-open Lang
-open RamenSharedTypes
+open RamenLang
 
 (*$inject
   open TestHelpers
-  open Lang
+  open RamenLang
 *)
 
 type func =
   { name : string ;
-    params : (string * scalar_value) list ;
+    params : RamenTuple.params ;
     operation : RamenOperation.t }
 type t = func list
 
@@ -23,14 +26,11 @@ let make_func ?name ?(params=[]) operation =
   { name = (match name with Some n -> n | None -> make_name ()) ;
     params ; operation }
 
-let print_param oc (n, v) =
-  Printf.fprintf oc "%s=%a" n RamenScalar.print v
-
 let print_func oc n =
   (* TODO: keep the info that func was anonymous? *)
   Printf.fprintf oc "DEFINE '%s' %aAS %a"
     n.name
-    (List.print ~first:"" ~last:" " ~sep:" " print_param) n.params
+    (List.print ~first:"" ~last:" " ~sep:" " RamenTuple.print_param) n.params
     RamenOperation.print n.operation
 
 let print oc p =
@@ -117,3 +117,23 @@ struct
 
   (*$>*)
 end
+
+(*
+ * Friendlier version of the parser.
+ * Allows for extra spaces and reports errors.
+ *)
+
+let parse program =
+  let p =
+    RamenParsing.(opt_blanks -+ Parser.p +- opt_blanks +- eof) in
+  let stream = RamenParsing.stream_of_string program in
+  (* TODO: enable error correction *)
+  match p ["program"] None Parsers.no_error_correction stream |>
+        RamenParsing.to_result with
+  | Bad e ->
+    let error =
+      IO.to_string (RamenParsing.print_bad_result print) e in
+    raise (SyntaxError (ParseError { error ; text = program }))
+  | Ok (funcs, _) ->
+    check funcs ;
+    funcs

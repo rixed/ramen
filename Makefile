@@ -23,11 +23,11 @@ endif
 
 PACKAGES = \
 	ppp ppp.unix lwt_ppx batteries cmdliner stdint parsercombinator \
-	cohttp-lwt-unix num inotify.lwt binocle unix lacaml net_codecs \
+	cohttp-lwt-unix num inotify.lwt binocle unix lacaml \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp
 
-INSTALLED_BIN = src/ramen src/ramen_configurator
+INSTALLED_BIN = src/ramen
 INSTALLED_LIB = \
   META src/codegen.cmxa src/codegen.a \
   $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
@@ -61,28 +61,27 @@ all: $(INSTALLED)
 # Dependencies
 
 RAMEN_SOURCES = \
-	src/RamenVersions.ml src/Consts.ml src/RamenLog.ml src/Helpers.ml \
-	src/RamenBitmask.ml src/RWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
-	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
-	src/RamenSharedTypes.ml src/RamenCollectd.ml src/RamenNetflow.ml \
+	src/RamenVersions.ml src/RamenConsts.ml src/RamenLog.ml src/RamenHelpers.ml \
+	src/RamenBitmask.ml src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
+	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
+	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RingBufLib.ml src/RamenTypeConverters.ml \
-	src/Lang.ml src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
+	src/RamenLang.ml src/RamenScalar.ml \
+	src/RamenTuple.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
 	src/RingBuf.ml src/RamenSerialization.ml \
 	src/RamenConf.ml src/RamenBinocle.ml src/RamenExport.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
-	src/CodeGen_OCaml.ml src/Compiler.ml src/RamenHtml.ml src/RamenColor.ml \
-	src/RamenFormats.ml src/RamenChart.ml \
-	src/RamenOps.ml \
-	src/HttpSrv.ml src/TermTable.ml src/ApiCmd.ml \
+	src/CodeGen_OCaml.ml src/RamenTyping.ml \
+	src/RamenCompiler.ml src/TermTable.ml src/RamenCliCmd.ml \
 	src/RingBufCmd.ml src/RamenCompletion.ml src/ramen.ml
 
 CODEGENLIB_SOURCES = \
-	src/Consts.ml src/RamenLog.ml src/Helpers.ml src/Globs.ml \
-	src/RWLock.ml src/RamenAdvLock.ml \
-	src/RamenOutRef.ml src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml \
-	src/Ipv6.ml \
-	src/RamenCollectd.ml src/RamenNetflow.ml \
+	src/RamenConsts.ml src/RamenLog.ml src/RamenHelpers.ml src/Globs.ml \
+	src/RamenRWLock.ml src/RamenAdvLock.ml \
+	src/RamenOutRef.ml src/RamenParsing.ml \
+	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
+	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RingBufLib.ml src/RingBuf.ml src/RamenBinocle.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml src/RamenHeap.ml src/RamenSortBuf.ml \
@@ -90,10 +89,6 @@ CODEGENLIB_SOURCES = \
 
 LIBRINGBUF_SOURCES = \
 	src/ringbuf/ringbuf.h src/ringbuf/ringbuf.c src/ringbuf/wrappers.c
-
-LIBCOLCOMP_SOURCES = \
-	src/colcomp/growblock.h src/colcomp/growblock.c src/colcomp/colcomp.h \
-	src/colcomp/colcomp.c
 
 LIBCOLLECTD_SOURCES = \
 	src/collectd/collectd.h src/collectd/collectd.c src/collectd/wrappers.c
@@ -108,8 +103,8 @@ SOURCES = \
 	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 	$(LIBCOLLECTD_SOURCES) $(LIBNETFLOW_SOURCES) \
-	$(CONFIGURATOR_SOURCES) $(TESTONLY_SOURCES) \
-	src/ringbuf_test.ml src/colcomp/colcomp_test.c
+	$(TESTONLY_SOURCES) \
+	src/ringbuf_test.ml
 
 dep:
 	@$(RM) .depend
@@ -132,11 +127,6 @@ src/RamenFileNotify.ml: $(FILE_NOTIFIER)
 
 src/libringbuf.a: src/ringbuf/ringbuf.o src/ringbuf/wrappers.o
 	@echo "Building ringbuf library"
-	@sleep 1 # ar truncate mtime !?
-	@$(AR) rs $@ $^ >/dev/null
-
-src/libcolcomp.a: src/colcomp/growblock.o src/colcomp/colcomp.o
-	@echo "Building colcomp library"
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
@@ -234,23 +224,23 @@ src/RamenCompilConfig.ml:
 # Tests
 
 TESTABLE_SOURCES = \
-	src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
-	src/Lang.ml src/RamenScalar.ml src/RamenExpr.ml \
+	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
+	src/RamenLang.ml src/RamenScalar.ml src/RamenExpr.ml \
 	src/RamenOperation.ml src/RamenProgram.ml \
-	src/Compiler.ml \
-	src/Helpers.ml src/RamenBloomFilter.ml src/Globs.ml src/CodeGen_OCaml.ml \
-	src/RamenHtml.ml \
+	src/RamenTyping.ml \
+	src/RamenHelpers.ml src/RamenBloomFilter.ml src/Globs.ml src/CodeGen_OCaml.ml \
 	src/RamenSortBuf.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
-	src/RamenVersions.ml src/RamenLog.ml src/Consts.ml src/Helpers.ml \
-	src/RWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
-	src/RamenSharedTypes.ml src/RingBufLib.ml \
-	src/RamenParsing.ml src/EthAddr.ml src/Ipv4.ml src/Ipv6.ml \
-	src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
+	src/RamenVersions.ml src/RamenLog.ml src/RamenConsts.ml src/RamenHelpers.ml \
+	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
+	src/RingBufLib.ml \
+	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
+	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
-	src/Lang.ml src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
+	src/RamenLang.ml src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml \
+	src/RamenOperation.ml src/RamenProgram.ml \
 	src/RingBuf.ml src/RamenConf.ml \
 	src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
@@ -258,7 +248,7 @@ LINKED_FOR_TESTS = \
 	src/CodeGen_OCaml.ml src/RamenBinocle.ml src/RamenBitmask.ml \
 	src/RamenSerialization.ml src/RamenExport.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml \
-	src/Compiler.ml src/RamenBloomFilter.ml src/RamenHtml.ml \
+	src/RamenTyping.ml src/RamenBloomFilter.ml \
 	src/TestHelpers.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
@@ -269,13 +259,9 @@ all_tests.opt: src/libringbuf.a src/libcollectd.a src/libnetflow.a $(LINKED_FOR_
 	@echo "Building unit tests into $@"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
 
-ringbuf_test.opt: src/RamenLog.cmx src/Consts.cmx src/Helpers.cmx src/RamenSharedTypes.cmx src/RWLock.cmx src/RamenAdvLock.cmx src/RamenOutRef.cmx src/RingBufLib.cmx src/RingBuf.cmx src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
+ringbuf_test.opt: src/RamenLog.cmx src/RamenConsts.cmx src/RamenHelpers.cmx src/RamenRWLock.cmx src/RamenAdvLock.cmx src/RamenOutRef.cmx src/RingBufLib.cmx src/RingBuf.cmx src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
 	@echo "Building ringbuf tests into $@"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
-
-colcomp/colcomp_test: colcomp/colcomp_test.o libcolcomp.a
-	@echo "Building colcomp tests into $@"
-	@$(CC) $(LDFLAGS) $(LOADLIBES) $(LDLIBS) $^ -o $@
 
 check: all_tests.opt ringbuf_test.opt
 	@echo "Running unit tests..."
@@ -336,7 +322,7 @@ install-bundle: bundle
 uninstall:
 	@ocamlfind remove ramen
 	@echo "Uninstalling binaries and libraries bundle"
-	@$(RM) $(prefix)$(bin_dir)/ramen $(prefix)$(bin_dir)/ramen_configurator
+	@$(RM) $(prefix)$(bin_dir)/ramen
 
 uninstall-bundle:
 	@echo "Uninstalling libraries bundle"
@@ -394,13 +380,13 @@ clean:
 	@echo "Cleaning all build files"
 	@$(RM) src/*.s src/*.annot src/*.o
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
-	@$(RM) src/ringbuf/*.o src/colcomp/*.o src/colcomp/colcomp_test
+	@$(RM) src/ringbuf/*.o
 	@$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
-	@$(RM) oUnit-anon.cache qtest.targets.log
+	@$(RM) src/oUnit-anon.cache src/qtest.targets.log
 	@$(RM) .depend src/*.opt src/*.byte
 	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
 	@$(RM) src/ramen src/codegen.cmxa src/RamenFileNotify.ml src/libringbuf.a
-	@$(RM) src/libcolcomp.a src/libcollectd.a src/libnetflow.a
+	@$(RM) src/libcollectd.a src/libnetflow.a
 	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp
 	@$(RM) ramen.*.deb

@@ -1,30 +1,7 @@
-(* Same HTML func definitions that are used in the back-end (for
- * server rendered charts for instance) than in the front-end (for virtual
- * DOM tree diffing). *)
-
 (* First some helping functions: *)
 
 let rec string_times n s =
   if n = 0 then "" else s ^ string_times (n - 1) s
-
-let abbrev len s =
-  if String.length s <= len then s else
-  String.sub s 0 (len-3) ^"..."
-
-let rec short_string_of_float f =
-  if f = 0. then "0" else  (* take good care of ~-.0. *)
-  if f < 0. then "-"^ short_string_of_float (~-.f) else
-  (* SVG don't like digits ending with a dot *)
-  let s = Printf.sprintf "%.5f" f in (* limit number of significant digits to reduce page size *)
-  (* chop trailing zeros and trailing dot *)
-  let rec chop last l =
-    let c = s.[l] in
-    if last || l < 1 || c <> '0' && c <> '.' then (
-      if l = String.length s - 1 then s else
-      String.sub s 0 (l + 1)
-    ) else
-      chop (c = '.') (l - 1) in
-  chop false (String.length s - 1)
 
 let log_base base n = log n /. log base
 

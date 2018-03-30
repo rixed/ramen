@@ -7,5 +7,5 @@ requires = "lwt.unix lwt_ppx batteries stdint parsercombinator
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num ppp.unix js_of_ocaml js_of_ocaml-ppx cmdliner
-#   net_codecs cohttp-lwt-unix compiler-libs compiler-libs.common
+#   cohttp-lwt-unix compiler-libs compiler-libs.common
 #   compiler-libs.bytecomp compiler-libs.optcomp

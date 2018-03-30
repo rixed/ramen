@@ -1,10 +1,11 @@
 open Batteries
 open RamenLog
+module C = RamenConf
 
 (* Dequeue command *)
 
-let dequeue copts file n () =
-  logger := make_logger copts.ApiCmd.debug ;
+let dequeue conf file n () =
+  logger := make_logger conf.C.debug ;
   if file = "" then invalid_arg "dequeue" ;
   let open RingBuf in
   let rb = load file in
@@ -20,8 +21,8 @@ let dequeue copts file n () =
 
 (* Summary command *)
 
-let summary copts file () =
-  logger := make_logger copts.ApiCmd.debug ;
+let summary conf file () =
+  logger := make_logger conf.C.debug ;
   if file = "" then invalid_arg "dequeue" ;
   let open RingBuf in
   let rb = load file in

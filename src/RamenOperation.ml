@@ -1,13 +1,20 @@
+(* This module parses operations (and offer a few utilities related to
+ * operations).
+ * An operation is what will result in running workers later.
+ * The main operation is the `SELECT / GROUP BY` operation, but there a
+ * few others of lesser importance.
+ *
+ * Operations are made of expressions, parsed in RamenExpr.
+ *)
 open Batteries
-open Lang
-open Helpers
+open RamenLang
+open RamenHelpers
 open RamenLog
-open RamenSharedTypes
 module Expr = RamenExpr
 
 (*$inject
   open TestHelpers
-  open Lang
+  open RamenLang
 *)
 
 (* Direct field selection (not for group-bys) *)
@@ -56,6 +63,7 @@ type csv_specs =
 type where_specs = ReadFile of file_spec
                  | ReceiveFile
                  | DownloadFile of download_spec
+(* Type of an operation: *)
 
 type t =
   (* Generate values out of thin air. The difference with Select is that
@@ -63,7 +71,7 @@ type t =
   | Yield of {
       fields : selected_field list ;
       every : float ;
-      event_time : event_time option ;
+      event_time : RamenEventTime.t option ;
       force_export : bool }
   (* Aggregation of several tuples into one based on some key. Superficially looks like
    * a select but much more involved. *)
@@ -75,7 +83,7 @@ type t =
       sort : (int * Expr.t option (* until *) * Expr.t list (* by *)) option ;
       (* Simple way to filter out incoming tuples: *)
       where : Expr.t ;
-      event_time : event_time option ;
+      event_time : RamenEventTime.t option ;
       force_export : bool ;
       (* If not empty, will notify this URL with a HTTP GET: *)
       notify_url : string ;
@@ -91,24 +99,14 @@ type t =
       where : where_specs ;
       what : csv_specs ;
       preprocessor : string ;
-      event_time : event_time option ;
+      event_time : RamenEventTime.t option ;
       force_export : bool }
   | ListenFor of {
       net_addr : Unix.inet_addr ;
       port : int ;
       proto : RamenProtocols.net_protocol ;
-      event_time : event_time option ;
+      event_time : RamenEventTime.t option ;
       force_export : bool }
-
-let print_event_time fmt (start_field, duration) =
-  let string_of_scale f = "*"^ string_of_float f in
-  Printf.fprintf fmt "EVENT STARTING AT %s%s AND %s"
-    (fst start_field)
-    (string_of_scale (snd start_field))
-    (match duration with
-     | DurationConst f -> "DURATION "^ string_of_float f
-     | DurationField (n, s) -> "DURATION "^ n ^ string_of_scale s
-     | StopField (n, s) -> "STOPPING AT "^ n ^ string_of_scale s)
 
 let print_csv_specs fmt specs =
   Printf.fprintf fmt "SEPARATOR %S NULL %S %a"
@@ -133,7 +131,7 @@ let print fmt =
   let print_single_quoted oc s = Printf.fprintf oc "'%s'" s in
   let print_export fmt event_time force_export =
     Option.may (fun e ->
-      Printf.fprintf fmt " %a" print_event_time e
+      Printf.fprintf fmt " %a" RamenEventTime.print e
     ) event_time ;
     if force_export then Printf.fprintf fmt " EXPORT" in
   function
@@ -217,9 +215,9 @@ let run_in_tests = function
 let event_time_of_operation = function
   | Aggregate { event_time ; _ } -> event_time
   | ListenFor { proto = RamenProtocols.Collectd ; _ } ->
-    Some (("time", 1.), DurationConst 0.)
+    Some (("time", 1.), RamenEventTime.DurationConst 0.)
   | ListenFor { proto = RamenProtocols.NetflowV5 ; _ } ->
-    Some (("first", 1.), StopField ("last", 1.))
+    Some (("first", 1.), RamenEventTime.StopField ("last", 1.))
   | _ -> None
 
 let parents_of_operation = function
@@ -303,9 +301,9 @@ let check params =
     in
     check_field_exists start_field ;
     match duration with
-    | DurationConst _ -> ()
-    | DurationField (f, _)
-    | StopField (f, _) -> check_field_exists f
+    | RamenEventTime.DurationConst _ -> ()
+    | RamenEventTime.DurationField (f, _)
+    | RamenEventTime.StopField (f, _) -> check_field_exists f
   (* Unless it's a param, assume TupleUnknow belongs to def: *)
   and prefix_def def =
     Expr.iter (function
@@ -484,15 +482,15 @@ struct
     in (
       strinG "event" -- blanks -- strinG "starting" -- blanks --
       strinG "at" -- blanks -+ non_keyword ++ scale ++
-      optional ~def:(DurationConst 0.) (
+      optional ~def:(RamenEventTime.DurationConst 0.) (
         (blanks -- optional ~def:() ((strinG "and" ||| strinG "with") -- blanks) --
          strinG "duration" -- blanks -+ (
-           (non_keyword ++ scale >>: fun n -> DurationField n) |||
-           (number >>: fun n -> DurationConst n)) |||
+           (non_keyword ++ scale >>: fun n -> RamenEventTime.DurationField n) |||
+           (number >>: fun n -> RamenEventTime.DurationConst n)) |||
          blanks -- strinG "and" -- blanks --
          (strinG "stopping" ||| strinG "ending") -- blanks --
          strinG "at" -- blanks -+
-           (non_keyword ++ scale >>: fun n -> StopField n)))) m
+           (non_keyword ++ scale >>: fun n -> RamenEventTime.StopField n)))) m
 
   let notify_clause m =
     let m = "notify clause" :: m in
@@ -661,7 +659,7 @@ struct
         optional ~def:true (
           blanks -+ (strinG "not" >>: fun () -> false)) +-
         blanks +- strinG "null") >>:
-      fun ((typ_name, typ), nullable) -> { typ_name ; typ ; nullable }
+      fun ((typ_name, typ), nullable) -> RamenTuple.{ typ_name ; typ ; nullable }
     in
     (optional ~def:"," (
        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
@@ -685,7 +683,7 @@ struct
     | SortClause of (int * Expr.t option (* until *) * Expr.t list (* by *))
     | WhereClause of Expr.t
     | ExportClause of bool
-    | EventTimeClause of event_time
+    | EventTimeClause of RamenEventTime.t
     | NotifyClause of string
     | GroupByClause of Expr.t list
     | TopByClause of ((Expr.t (* N *) * Expr.t (* by *)) * Expr.t (* when *))
@@ -959,7 +957,7 @@ struct
         merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
-        force_export = true ; event_time = Some (("t", 10.), DurationConst 60.) ;\
+        force_export = true ; event_time = Some (("t", 10.), RamenEventTime.DurationConst 60.) ;\
         notify_url = "" ;\
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
@@ -982,7 +980,7 @@ struct
         merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
-        force_export = true ; event_time = Some (("t1", 10.), StopField ("t2", 10.)) ;\
+        force_export = true ; event_time = Some (("t1", 10.), RamenEventTime.StopField ("t2", 10.)) ;\
         notify_url = "" ; key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\

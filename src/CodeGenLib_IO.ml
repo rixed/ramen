@@ -20,7 +20,7 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
         return Lwt_io.(of_fd ~mode:Input fd)
     ) else (
       fun () ->
-        let f = Helpers.shell_quote filename in
+        let f = RamenHelpers.shell_quote filename in
         let s =
           if String.exists preprocessor "%s" then
             String.nreplace preprocessor "%s" f

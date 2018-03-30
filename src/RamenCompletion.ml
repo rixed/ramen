@@ -1,9 +1,8 @@
 open Batteries
 open RamenLog
-open Helpers
+open RamenHelpers
 module C = RamenConf
-module N = C.Func
-module L = C.Program
+module F = C.Func
 
 let propose (l, h) =
   String.print stdout l ;
@@ -18,12 +17,12 @@ let complete lst s =
 
 let complete_commands s =
   let commands =
-    [ "start", Consts.start_info ;
-      "shutdown", Consts.shutdown_info ;
-      "compile", Consts.compile_info ;
-      "run", Consts.run_info ;
-      "tail", Consts.tail_info ;
-      "timeseries", Consts.timeseries_info ] in
+    [ "start", RamenConsts.start_info ;
+      "shutdown", RamenConsts.shutdown_info ;
+      "compile", RamenConsts.compile_info ;
+      "run", RamenConsts.run_info ;
+      "tail", RamenConsts.tail_info ;
+      "timeseries", RamenConsts.timeseries_info ] in
   complete commands s
 
 let complete_global_options s =
@@ -56,7 +55,9 @@ let root toks =
 
 let persist_dir toks =
   try find_opt "--persist-dir" toks
-  with Not_found -> Consts.default_persist_dir
+  with Not_found ->
+    try Sys.getenv "RAMEN_PERSIST_DIR"
+    with Not_found -> RamenConsts.default_persist_dir
 
 let complete_file select root str =
   let res = ref [] in
@@ -76,13 +77,26 @@ let extension_is ext fname =
 let complete_program_files root str =
   complete_file (extension_is ".ramen") root str
 
-let complete_binary_files root str =
-  complete_file (extension_is ".x") root str
+let complete_binary_files str =
+  complete_file (extension_is ".x") "" str
+
+let empty_help s = s, ""
 
 let complete_running_function persist_dir str =
-  (* TODO: have a single file of "must be running" programs,
-   * and an advisory lock to protect this. *)
-  failwith "TODO"
+  let conf = C.make_conf persist_dir in
+  (
+    (Lwt_main.run (C.with_rlock conf Lwt.return) |> Hashtbl.values) /@
+    (fun get_rc -> snd (get_rc ())) /@
+    (fun rc -> Enum.map (fun func -> func.F.program_name ^"/"^ func.F.name) (List.enum rc)) |>
+    Enum.flatten
+  ) /@
+  empty_help |>
+  List.of_enum
+
+let complete_running_program persist_dir str =
+  let conf = C.make_conf persist_dir in
+  (Lwt_main.run (C.with_rlock conf Lwt.return) |> Hashtbl.keys) /@
+  empty_help |> List.of_enum
 
 let complete str () =
   (* Tokenize str, find where we are: *)
@@ -135,13 +149,14 @@ let complete str () =
           ("--embedded-compiler", "") ::
           (complete_program_files root last_tok)
       | "run" ->
-          let root = root toks in
           ("--help", "") ::
           ("--persist-dir=", "") ::
-          ("--seed=", "") ::
           ("--parameter=", "") ::
-          ("--root=", "") ::
-          (complete_binary_files root last_tok)
+          (complete_binary_files last_tok)
+      | "kill" ->
+          let persist_dir = persist_dir toks in
+          ("--help", "") ::
+          (complete_running_program persist_dir last_tok)
       | "tail" ->
           let persist_dir = persist_dir toks in
           ("--help", "") ::
@@ -150,14 +165,26 @@ let complete str () =
           ("--min-seqnum=", "") ::
           ("--null=", "") ::
           ("--separator=", "") ::
-          ("--seed=", "") ::
           ("--persist-dir", "") ::
           ("--with-header", "") ::
           ("--with-seqnums", "") ::
           (complete_running_function persist_dir last_tok)
-      | "shutdown"
-      | "timeseries"
+      | "timeseries" ->
+          let persist_dir = persist_dir toks in
+          ("--help", "") ::
+          ("--since=", "") ::
+          ("--until=", "") ::
+          ("--nb-points=", "") ::
+          ("--data=", "") ::
+          ("--consolidation=", "") ::
+          ("--separator=", "") ::
+          ("--null=", "") ::
+          (complete_running_function persist_dir last_tok)
+      | "timerange" ->
+          let persist_dir = persist_dir toks in
+          ("--help", "") ::
+          (complete_running_function persist_dir last_tok)
+      | "ps" ->
+          [ "--help", "" ; "--short", "" ]
       | _ -> []) in
-    complete completions (if last_tok_is_complete then "" else last_tok)) ;
-
-  Printf.printf "GOT\t%S\n" str
+    complete completions (if last_tok_is_complete then "" else last_tok))

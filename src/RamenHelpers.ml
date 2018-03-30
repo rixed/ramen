@@ -68,14 +68,14 @@ let list_existsi f l =
   | exception Not_found -> false
   | _ -> true
 
-let print_exception e =
-  !logger.error "Exception: %s\n%s"
+let print_exception ?(what="Exception:") e =
+  !logger.error "%s: %s\n%s" what
     (Printexc.to_string e)
     (Printexc.get_backtrace ())
 
-let log_exceptions f x =
+let log_exceptions ?what f x =
   try f x
-  with e -> print_exception e
+  with e -> print_exception ?what e
 
 let looks_like_true s =
   s = "1" || (
@@ -114,6 +114,12 @@ let file_exists ?(maybe_empty=true) ?(has_perms=0) fname =
   | s ->
     (maybe_empty || s.st_size > 0) &&
     s.st_perm land has_perms = has_perms
+
+let ensure_file_exists fname =
+  mkdir_all ~is_file:true fname ;
+  if not (file_exists fname) then (
+    !logger.debug "Creating file fname" ;
+    Unix.(openfile fname [O_CREAT] 0o644 |> close))
 
 let mtime_of_file fname =
   let open Unix in
@@ -361,16 +367,16 @@ let rec simplified_path =
   "/glop/glop" (simplified_path "/glop/pas glop/..//pas glop/.././//glop")
  *)
 
-let realpath_of path =
-  if path <> "" && path.[0] = '/' then path else
-  let path = Unix.getcwd () ^"/"^ path in
-  simplified_path path
+let absolute_path_of path =
+  (if path <> "" && path.[0] = '/' then path else
+   Unix.getcwd () ^"/"^ path) |>
+  simplified_path
 
 let rel_path_from root_path path =
   (* If root path is null assume source file is already relative to root: *)
   if root_path = "" then path else
-  let root = realpath_of root_path
-  and path = realpath_of path in
+  let root = absolute_path_of root_path
+  and path = absolute_path_of path in
   if String.starts_with path root then
     let rl = String.length root in
     String.sub path rl (String.length path - rl)
@@ -577,3 +583,43 @@ let hash_fold_s h f i =
     let%lwt prev = thd in
     f k v prev
   ) h (Lwt.return i)
+
+let age t = Unix.gettimeofday () -. t
+
+let memoize f =
+  let cached = ref None in
+  fun () ->
+    match !cached with
+    | Some r -> r
+    | None ->
+        let r = f () in
+        cached := Some r ;
+        r
+
+let abbrev len s =
+  if String.length s <= len then s else
+  String.sub s 0 (len-3) ^"..."
+
+(* Addition capped to min_int/max_int *)
+let cap_add a b =
+  !logger.debug "cap_add %d %d" a b ;
+  if a > 0 && b > 0 then
+    if max_int - b >= a then a + b else max_int
+  else if a < 0 && b < 0 then
+    if min_int - b <= a then a + b else min_int
+  else a + b
+
+(*$= cap_add & ~printer:string_of_int
+  42 (cap_add 31 11)
+  42 (cap_add 57 ~-15)
+  42 (cap_add ~-17 59)
+  max_int (cap_add (max_int - 3) 3)
+  max_int (cap_add (max_int - 3) 4)
+  max_int (cap_add (max_int - 3) 9)
+  min_int (cap_add (min_int + 3) ~-3)
+  min_int (cap_add (min_int + 3) ~-4)
+  min_int (cap_add (min_int + 3) ~-9)
+ *)
+
+(* min_int cannot be negated without overflow *)
+let cap_neg a = if a = min_int then max_int else ~-a

@@ -1,11 +1,16 @@
+(* This module deals with expressions.
+ * Expressions are the flesh of ramen programs.
+ * Every expression is typed and all types are scalar.
+ *
+ * Scalars are parsed in RamenScalar.
+ *)
 open Batteries
 open Stdint
-open Lang
-open RamenSharedTypes
+open RamenLang
 
 (*$inject
   open TestHelpers
-  open Lang
+  open RamenLang
 *)
 
 (* Each expression come with a type attached. Starting at None types are
@@ -14,7 +19,7 @@ type typ =
   { mutable expr_name : string ;
     uniq_num : int ; (* to build var names or record field names *)
     mutable nullable : bool option ;
-    mutable scalar_typ : scalar_typ option }
+    mutable scalar_typ : RamenScalar.typ option }
 
 let print_typ fmt typ =
   Printf.fprintf fmt "%s of %s%s"
@@ -91,7 +96,7 @@ type stateless_fun2 =
 (* FIXME: when we end prototyping use objects to make it easier to add
  * operations *)
 type t =
-  | Const of typ * scalar_value
+  | Const of typ * RamenScalar.value
   | Field of typ * tuple_prefix ref * string (* field name *)
   | StateField of typ * string (* Name of the state field - met only late in the game *)
   | Case of typ * case_alternative list * t option
@@ -609,7 +614,7 @@ struct
      optional ~def:false (
        char ~case_sensitive:false 'n' >>: fun _ -> true) >>:
      fun (c, nullable) ->
-       Const (make_typ ~nullable ~typ:(scalar_type_of c) "constant", c)) m
+       Const (make_typ ~nullable ~typ:(RamenScalar.type_of c) "constant", c)) m
   (*$= const & ~printer:(test_printer (print false))
     (Ok (Const (typ, VBool true), (4, [])))\
       (test_p const "true" |> replace_typ_in_expr)
@@ -988,7 +993,7 @@ struct
      (strinG "-moveavg" ||| strinG "-ma") ++
      optional ~def:GlobalState (blanks -+ state_lifespan) +-
      sep ++ highestest_prec >>: fun ((k, g), e) ->
-       let k = Const (make_typ ~nullable:false ~typ:(scalar_type_of k)
+       let k = Const (make_typ ~nullable:false ~typ:(RamenScalar.type_of k)
                                "moving average order", k) in
        StatefulFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
 

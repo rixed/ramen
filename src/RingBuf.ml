@@ -1,6 +1,6 @@
 open Batteries
 open Stdint
-open Helpers
+open RamenHelpers
 
 type t (* abstract, represents a ring buffer mmapped file *)
 
@@ -219,54 +219,3 @@ let seq_range bname =
   match mi_ma with
   | None -> s.first_seq, s.alloced_objects
   | Some (mi, ma) -> mi, s.first_seq + s.alloced_objects
-
-let fold_seq_range bname mi ma init f =
-  let dir = seq_dir_of_bname bname in
-  let entries =
-    seq_files_of dir //
-    (fun (from, to_, _fname) -> from < ma && to_ >= mi) |>
-    Array.of_enum in
-  Array.fast_sort seq_file_compare entries ;
-  let fold_rb from rb usr =
-    let%lwt _, usr =
-      read_buf rb (usr, 0) (fun (usr, i) tx ->
-        let seq = from + i in
-        if seq < mi then Lwt.return ((usr, i+1), true) else
-        let%lwt usr = f usr tx in
-        Lwt.return ((usr, i+1), seq < ma-1)) in
-    Lwt.return usr in
-  let%lwt usr =
-    Array.to_list entries |> (* FIXME *)
-    Lwt_list.fold_left_s (fun usr (from, to_, fname) ->
-      let rb = load fname in
-      Lwt.finalize (fun () -> fold_rb from rb usr)
-                   (fun () -> unload rb ; Lwt.return_unit)
-    ) init in
-  (* finish with the current rb: *)
-  let rb = load bname in
-  Lwt.finalize
-    (fun () ->
-      let%lwt s = Lwt.wrap (fun () -> stats rb) in
-      fold_rb s.first_seq rb usr)
-    (fun () -> unload rb ; Lwt.return_unit)
-
-let fold_time_range bname since until init f =
-  let dir = time_dir_of_bname bname in
-  let entries =
-    time_files_of dir //
-    (fun (t1, t2, _fname) -> since < t2 && until >= t1) in
-  let loop usr =
-    match Enum.get_exn entries with
-    | exception Enum.No_more_elements -> Lwt.return usr
-    | _t1, _t2, fname ->
-        let rb = load fname in
-        Lwt.finalize (fun () -> read_buf rb usr f)
-                     (fun () -> unload rb ; Lwt.return_unit)
-  in
-  let%lwt usr = loop init in
-  (* finish with the current rb: *)
-  let rb = load bname in
-  let%lwt usr = Lwt.finalize
-    (fun () -> read_buf rb usr f)
-    (fun () -> unload rb ; Lwt.return_unit) in
-  Lwt.return usr
