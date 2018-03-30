@@ -370,14 +370,15 @@ let try_kill proc =
     !logger.info "Terminating worker %s/%s (pid %d)"
       proc.program_name proc.func.name pid ;
     log_exceptions ~what:"Terminating worker"
-      (Unix.kill pid) Sys.sigterm
+      (Unix.kill pid) Sys.sigterm ;
+    proc.last_killed <- now ;
   ) else if now -. proc.last_killed > 5. then (
     !logger.warning "Killing worker %s/%s (pid %d) with bigger guns"
       proc.program_name proc.func.name pid ;
     log_exceptions ~what:"Killing worker"
-      (Unix.kill pid) Sys.sigkill
+      (Unix.kill pid) Sys.sigkill ;
+    proc.last_killed <- now ;
   ) ;
-  proc.last_killed <- now ;
   return_unit
 
 let synchronize_running conf =
