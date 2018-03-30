@@ -334,9 +334,6 @@ let get_binocle_tuple worker ic sc gc : RamenBinocle.tuple =
   IntCounter.get stats_rb_read_bytes |> si,
   IntCounter.get stats_rb_write_bytes |> si
 
-(* Contrary to the http version above, here we sent only known, selected
- * fields in a well defined tuple, rather than sending everything we have
- * in a serialized map. *)
 let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let sersize = RamenBinocle.max_sersize_of_tuple tuple in
   match RingBuf.enqueue_alloc rb sersize with

@@ -23,10 +23,12 @@ let rb_write_bytes_metric = "out_bytes"
 
 (* Command line strings *)
 let start_info = "Start the processes orchestrator."
-let shutdown_info = "Stop all processes."
 let compile_info = "Compile each given source file into an executable."
 let run_info = "Run one (or several) compiled program(s)."
 let kill_info = "Stop a program."
 let tail_info = "Display the last outputs of an operation."
 let timeseries_info = "Extract a timeseries from an operation."
+let timerange_info =
+  "Retrieve the available time range of an operation output."
+let ps_info = "Display info about running programs."
 let default_persist_dir = "/tmp/ramen"

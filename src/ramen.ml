@@ -163,7 +163,7 @@ let params =
 
 let program_name =
   let i = Arg.info ~doc:"Program unique name."
-                   ~docv:"NAME" [] in
+                   ~docv:"PROGRAM" [] in
   Arg.(required (pos 0 (some string) None i))
 
 let root_path =
@@ -200,7 +200,7 @@ let run =
 
 let prog_name p =
   let i = Arg.info ~doc:"Program name."
-                   ~docv:"NAME" [] in
+                   ~docv:"PROGRAM" [] in
   Arg.(required (pos p (some string) None i))
 
 let kill =
@@ -256,10 +256,10 @@ let print_seqnums =
  * calls to C.program_func_of_user_string *)
 let func_name p =
   let i = Arg.info ~doc:"Operation unique name."
-                   ~docv:"NAME" [] in
+                   ~docv:"OPERATION" [] in
   Arg.(required (pos p (some string) None i))
 
-let tail_duration =
+let duration =
   let i = Arg.info ~doc:"Operation will stop archiving its output after \
                          that duration if nobody ask for it."
                    ["timeout"] in
@@ -278,7 +278,7 @@ let tail =
       $ min_seq
       $ max_seq
       $ print_seqnums
-      $ tail_duration),
+      $ duration),
     info ~doc:RamenConsts.tail_info "tail")
 
 (*
@@ -302,7 +302,7 @@ let max_data_points =
 
 let data_field p =
   let i = Arg.info ~doc:"Field to retrieve values from."
-                   ~docv:"NAME" [] in
+                   ~docv:"FIELD" [] in
   Arg.(required (pos p (some string) None i))
 
 let consolidation =
@@ -324,7 +324,8 @@ let timeseries =
       $ csv_null
       $ func_name 0
       $ data_field 1
-      $ consolidation),
+      $ consolidation
+      $ duration),
     info ~doc:RamenConsts.timeseries_info "timeseries")
 
 (*
@@ -336,8 +337,7 @@ let timerange =
     (const RamenCliCmd.timerange
       $ copts
       $ func_name 0),
-    info ~doc:"Retrieve the available time range of an operation output."
-         "timerange")
+    info ~doc:RamenConsts.timerange_info "timerange")
 
 (*
  * Info
@@ -353,7 +353,7 @@ let ps =
     (const RamenCliCmd.ps
       $ copts
       $ short),
-    info ~doc:"Display info about running programs." "ps")
+    info ~doc:RamenConsts.ps_info "ps")
 
 (*
  * Autocompletion

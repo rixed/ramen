@@ -100,7 +100,12 @@ let float_of_scalar_value =
 
 let find_field_index typ n =
   match List.findi (fun _i f -> f.RamenTuple.typ_name = n) typ with
-  | exception Not_found -> failwith ("field "^ n ^" does not exist")
+  | exception Not_found ->
+      let err_msg =
+        Printf.sprintf2 "Field %s does not exist (possible fields are: %a)" n
+          (List.print ~first:"" ~last:"" ~sep:", "
+             (fun oc f -> String.print oc f.RamenTuple.typ_name)) typ in
+      failwith err_msg
   | i, _ -> i
 
 let fold_seq_range bname mi ma init f =

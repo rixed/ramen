@@ -18,11 +18,13 @@ let complete lst s =
 let complete_commands s =
   let commands =
     [ "start", RamenConsts.start_info ;
-      "shutdown", RamenConsts.shutdown_info ;
       "compile", RamenConsts.compile_info ;
       "run", RamenConsts.run_info ;
+      "kill", RamenConsts.kill_info ;
       "tail", RamenConsts.tail_info ;
-      "timeseries", RamenConsts.timeseries_info ] in
+      "timeseries", RamenConsts.timeseries_info ;
+      "timerange", RamenConsts.timerange_info ;
+      "ps", RamenConsts.ps_info ] in
   complete commands s
 
 let complete_global_options s =
