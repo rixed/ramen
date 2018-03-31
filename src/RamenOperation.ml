@@ -50,19 +50,9 @@ let print_flush_method ?(prefix="") ?(suffix="") () oc = function
     Printf.fprintf oc "%sREMOVE (%a)%s" prefix (Expr.print false) e suffix
 
 type file_spec = { fname : string ; unlink : bool }
-type download_spec = { url : string ; accept : string }
 type csv_specs =
   { separator : string ; null : string ; fields : RamenTuple.typ }
 
-(* ReadFile has the func reading files directly on disc.
- * DownloadFile is (supposed to be) ramen downloading the content into
- * a temporary directory and spawning a worker that also perform a ReadFile.
- * ReceiveFile is similar: the file is actually received by ramen which
- * write it in a temporary directory for its ReadFile worker. Those files
- * are to be POSTed to $RAMEN_URL/upload/$url_suffix. *)
-type where_specs = ReadFile of file_spec
-                 | ReceiveFile
-                 | DownloadFile of download_spec
 (* Type of an operation: *)
 
 type t =
@@ -96,7 +86,7 @@ type t =
       (* List of funcs that are our parents *)
       from : string list }
   | ReadCSVFile of {
-      where : where_specs ;
+      where : file_spec ;
       what : csv_specs ;
       preprocessor : string ;
       event_time : RamenEventTime.t option ;
@@ -112,19 +102,9 @@ let print_csv_specs fmt specs =
   Printf.fprintf fmt "SEPARATOR %S NULL %S %a"
     specs.separator specs.null
     RamenTuple.print_typ specs.fields
-let print_file_specs fmt specs =
+let print_file_spec fmt specs =
   Printf.fprintf fmt "READ%s FILES %S"
     (if specs.unlink then " AND DELETE" else "") specs.fname
-let print_download_specs fmt specs =
-  Printf.fprintf fmt "DOWNLOAD FROM %S%s" specs.url
-    (if specs.accept = "" then "" else
-      Printf.sprintf " Accept: %S" specs.accept)
-let print_upload_specs fmt =
-  Printf.fprintf fmt "RECEIVE"
-let print_where_specs fmt = function
-  | ReadFile specs -> print_file_specs fmt specs
-  | DownloadFile specs -> print_download_specs fmt specs
-  | ReceiveFile -> print_upload_specs fmt
 
 let print fmt =
   let sep = ", " in
@@ -181,11 +161,11 @@ let print fmt =
         (print_flush_method ~prefix:"AND " ~suffix:" " ()) flush_how
         (if commit_before then "BEFORE" else "AFTER")
         (Expr.print false) commit_when
-  | ReadCSVFile { where = where_specs ;
+  | ReadCSVFile { where = file_spec ;
                   what = csv_specs ; preprocessor ; event_time ;
                   force_export } ->
     Printf.fprintf fmt "%a %s %a"
-      print_where_specs where_specs
+      print_file_spec file_spec
       (if preprocessor = "" then ""
         else Printf.sprintf "PREPROCESS WITH %S" preprocessor)
       print_csv_specs csv_specs ;
@@ -627,29 +607,7 @@ struct
          fun () -> true) +-
      (strinG "file" ||| strinG "files") +- blanks ++
      quoted_string >>: fun (unlink, fname) ->
-       ReadFile { unlink ; fname }) m
-
-  let download_file_specs m =
-    let m = "download operation" :: m in
-    (strinG "download" -- blanks --
-     optional ~def:() (strinG "from" -- blanks) -+
-     quoted_string ++
-     repeat ~what:"download headers" ~sep:none (
-       blanks -- strinG "accept" -- opt_blanks -- char ':' --
-       opt_blanks -+ quoted_string) >>:
-     function url, [accept] ->
-       DownloadFile { url ; accept }
-     | url, [] ->
-       DownloadFile { url ; accept = "" }
-     | _ ->
-       raise (Reject "Only one header field can be set: Accept.")) m
-
-  let upload_file_specs m =
-    let m = "upload operation" :: m in
-    (strinG "receive" >>: fun () -> ReceiveFile) m
-
-  let external_data_clause =
-    read_file_specs ||| download_file_specs ||| upload_file_specs
+       { unlink ; fname }) m
 
   let csv_specs  m =
     let m = "CSV format" :: m in
@@ -692,7 +650,7 @@ struct
     | YieldClause of selected_field list
     | EveryClause of float
     | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
-    | ExternalDataClause of where_specs
+    | ExternalDataClause of file_spec
     | PreprocessorClause of string
     | CsvSpecsClause of csv_specs
 
@@ -713,7 +671,7 @@ struct
       (yield_clause >>: fun c -> YieldClause c) |||
       (yield_every_clause >>: fun c -> EveryClause c) |||
       (listen_clause >>: fun c -> ListenClause c) |||
-      (external_data_clause >>: fun c -> ExternalDataClause c) |||
+      (read_file_specs >>: fun c -> ExternalDataClause c) |||
       (preprocessor_clause >>: fun c -> PreprocessorClause c) |||
       (csv_specs >>: fun c -> CsvSpecsClause c) in
     (several ~sep:blanks part >>: fun clauses ->
@@ -1102,7 +1060,7 @@ struct
          replace_typ_in_op)
 
     (Ok (\
-      ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = false } ; \
+      ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = false } ; \
                     preprocessor = "" ; force_export = false ; event_time = None ; \
                     what = { \
                       separator = "," ; null = "" ; \
@@ -1113,7 +1071,7 @@ struct
       (test_op p "read file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
     (Ok (\
-      ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = true } ; \
+      ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = true } ; \
                     preprocessor = "" ; force_export = false ; event_time = None ; \
                     what = { \
                       separator = "," ; null = "" ; \
@@ -1124,7 +1082,7 @@ struct
       (test_op p "read and delete file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
 
     (Ok (\
-      ReadCSVFile { where = ReadFile { fname = "/tmp/toto.csv" ; unlink = false } ; \
+      ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = false } ; \
                     preprocessor = "" ; force_export = false ; event_time = None ; \
                     what = { \
                       separator = "\t" ; null = "<NULL>" ; \

@@ -1546,12 +1546,10 @@ let compile conf entry_point func_name obj_name in_typ out_typ params op =
       (match op with
       | Yield _ ->
         emit_yield oc entry_point in_typ out_typ op
-      | ReadCSVFile { where = ReadFile { fname ; unlink } ; preprocessor ;
+      | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                       what = { separator ; null ; fields } ; event_time } ->
         emit_read_csv_file oc entry_point fname unlink separator null
                            fields preprocessor event_time
-      | ReadCSVFile { where = (DownloadFile _ | ReceiveFile) ; _ } ->
-        failwith "This never happens"
       | ListenFor { net_addr ; port ; proto ; event_time } ->
         emit_listen_on oc entry_point net_addr port proto event_time
       | Aggregate _ ->

@@ -45,42 +45,7 @@ let () =
                 (RamenScalar.string_of_typ expected_type))
     | _ -> None)
 
-(*
- * This function wraps CodeGen_OCaml.compile that write the code and then
- * compile it.
- * It doesnot do much, beside adapting one operation slightly.
- *)
-
 let entry_point_name = "start"
-
-let generate_and_compile conf func obj_name =
-  let open Lwt in
-  let open RamenTyping in
-  mkdir_all ~is_file:true obj_name ;
-  let in_typ = tuple_user_type func.Func.in_type
-  and out_typ = tuple_user_type func.Func.out_type in
-  (* In a few cases the worker sees a slightly different version of
-   * the code and the ramen daemon will adapt: *)
-  let operation =
-    let open RamenOperation in
-    match func.Func.operation with
-    | Some (ReadCSVFile { where = ReceiveFile ; what ; preprocessor ;
-                          force_export ; event_time }) ->
-      let dir =
-        C.upload_dir_of_func conf.C.persist_dir func.Func.program_name
-           func.Func.name (typed_tuple_type func.Func.in_type) in
-      mkdir_all dir ;
-      ReadCSVFile {
-        (* The underscore is to restrict ourself to complete files that
-         * will appear atomically *)
-        where = ReadFile { fname = dir ^"/_*" ; unlink = true } ;
-        what ; preprocessor ; force_export ; event_time  }
-    | Some (ReadCSVFile { where = DownloadFile _ ; _ }) ->
-      failwith "Not Implemented"
-    | None -> failwith "generate code of an already compiled function"
-    | Some op -> op in
-  CodeGen_OCaml.compile conf entry_point_name func.Func.name obj_name
-                        in_typ out_typ func.Func.params operation
 
 let compile conf root_path program_name program_code =
   let program_name = P.sanitize_name program_name in
@@ -191,8 +156,16 @@ let compile conf root_path program_name program_code =
         let obj_name =
           root_path ^"/"^ program_name ^
           "/M"^ func.RamenTyping.Func.signature ^".cmx" in
+        mkdir_all ~is_file:true obj_name ;
         let%lwt () =
-          generate_and_compile conf func obj_name in
+          let open RamenTyping in
+          let in_typ = tuple_user_type func.Func.in_type
+          and out_typ = tuple_user_type func.Func.out_type
+          and operation = Option.get func.Func.operation in
+          CodeGen_OCaml.compile
+            conf entry_point_name func.Func.name obj_name
+            in_typ out_typ func.Func.params operation
+        in
         add_temp_file obj_name ;
         return obj_name)) in
     (*
