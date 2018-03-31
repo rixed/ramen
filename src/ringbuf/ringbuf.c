@@ -351,29 +351,15 @@ static int lock(struct ringbuf *rb)
   return fd;
 }
 
-static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
+static int rotate_file(struct ringbuf *rb)
 {
-  if (rb->rbf->wrap) return 0;
-  // The case rb->rbf->prod_head + 1 + nb_words == rbf->nb_words
-  // would *not* work because the RB would be considered full
-  // (although there would be enough room for the record)
-  if (rb->rbf->prod_head + 1 + nb_words < rb->rbf->nb_words)
-    return 0;
-
   // Signal the EOF
   rb->rbf->data[rb->rbf->prod_head] = UINT32_MAX;
 
-  printf("Rotating buffer '%s'!\n", rb->fname);
-
   int ret = -1;
 
-  // We have filled the non-wrapping buffer: rotate the file!
-  // We need a lock to ensure no other writers is rotating at the same time
-  int lock_fd = lock(rb);
-  if (lock_fd < 0) goto err0;
-
   uint64_t last_seq = rb->rbf->first_seq + rb->rbf->nb_allocs;
-  if (0 != write_max_seqnum(rb->fname, last_seq)) goto unlock;
+  if (0 != write_max_seqnum(rb->fname, last_seq)) goto err0;
 
   // Note: let's use different subdirs per_seq/per_time etc for different
   // indexes so that directories are smaller when searching:
@@ -381,7 +367,7 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
   if ((size_t)snprintf(arc_fname, PATH_MAX, "%s.per_seq/%016"PRIx64"-%016"PRIx64".b",
                        rb->fname, rb->rbf->first_seq, last_seq) >= PATH_MAX) {
     fprintf(stderr, "Archive file name truncated: '%s'\n", arc_fname);
-    goto unlock;
+    goto err0;
   }
 
   // Rename the current rb into the archival name.
@@ -390,7 +376,7 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
   if (0 != rename(rb->fname, arc_fname)) {
     fprintf(stderr, "Cannot rename full buffer '%s' into '%s': %s\n",
             rb->fname, arc_fname, strerror(errno));
-    goto unlock;
+    goto err0;
   }
 
   // Also link time indexed file to the archive.
@@ -403,28 +389,61 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
   if ((size_t)snprintf(arc2_fname, PATH_MAX, "%s.per_time/%a-%a.%s.b",
                        rb->fname, rb->rbf->tmin, rb->rbf->tmax, rstr) >= PATH_MAX) {
     fprintf(stderr, "Archive file name truncated: '%s'\n", arc2_fname);
-    goto unlock;
+    goto err0;
   }
   printf("Link to time archive (%s)\n", arc2_fname);
   if (0 != link(arc_fname, arc2_fname)) {
     int ret = -1;
     if (ENOENT == errno) {
-      if (0 != mkdir_for_file(arc2_fname)) goto unlock;
+      if (0 != mkdir_for_file(arc2_fname)) goto err0;
       ret = link(arc_fname, arc2_fname); // retry
     }
     if (ret < 0) {
       fprintf(stderr, "Cannot create '%s': %s\n", arc2_fname, strerror(errno));
-      goto unlock;
+      goto err0;
     }
   }
 
   // Create a new buffer file under the same old name:
   printf("Create a new buffer file under the same old name\n");
   if (0 != ringbuf_create(rb->rbf->wrap, rb->fname, rb->rbf->nb_words))
-    goto unlock;
-  // Nmap rb
+    goto err0;
+
+  ret = 0;
+err0:
+  return ret;
+}
+
+static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
+{
+  if (rb->rbf->wrap) return 0;
+  // The case rb->rbf->prod_head + 1 + nb_words == rbf->nb_words
+  // would *not* work because the RB would be considered full
+  // (although there would be enough room for the record)
+  if (rb->rbf->prod_head + 1 + nb_words < rb->rbf->nb_words)
+    return 0;
+
+  printf("Rotating buffer '%s'!\n", rb->fname);
+
+  int ret = -1;
+
+  // We have filled the non-wrapping buffer: rotate the file!
+  // We need a lock to ensure no other writers is rotating at the same time
+  int lock_fd = lock(rb);
+  if (lock_fd < 0) goto err0;
+
+  // Wait, maybe some other process rotated the file already while we were
+  // waiting for that lock? In that case it would have written the EOF:
+  if (rb->rbf->data[rb->rbf->prod_head] != UINT32_MAX) {
+    if (0 != rotate_file(rb)) goto unlock;
+  } else {
+    printf("...actually not, someone did already.\n");
+  }
+
+  // Unmap rb
   printf("Unmap rb\n");
   if (0 != ringbuf_unload(rb)) goto unlock;
+
   // Mmap the new file and update rbf.
   printf("Mmap the new file and update rbr and rb\n");
   if (0 != mmap_rb(rb)) goto unlock;
