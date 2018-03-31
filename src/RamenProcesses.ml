@@ -262,7 +262,7 @@ let try_start conf running proc =
     !logger.debug "Creating in buffers..." ;
     let input_ringbufs = C.in_ringbuf_names conf proc.func in
     List.iter (fun rb_name ->
-      RingBuf.create rb_name RingBufLib.rb_default_words
+      RingBuf.create rb_name RingBufLib.rb_words
     ) input_ringbufs ;
     (* And the pre-filled out_ref: *)
     !logger.debug "Creating out-ref buffers..." ;

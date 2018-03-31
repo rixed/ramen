@@ -43,9 +43,9 @@ let start conf daemonize to_stderr () =
   if daemonize then do_daemonize () ;
   (* Prepare ringbuffers for reports and notifications: *)
   let rb_name = C.report_ringbuf conf in
-  RingBuf.create ~wrap:false rb_name RingBufLib.rb_default_words ;
+  RingBuf.create ~wrap:false rb_name RingBufLib.rb_words ;
   let rb_name = C.notify_ringbuf conf in
-  RingBuf.create rb_name RingBufLib.rb_default_words ;
+  RingBuf.create rb_name RingBufLib.rb_words ;
   let notify_rb = RingBuf.load rb_name in
   (* Install signal handlers *)
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->

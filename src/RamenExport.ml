@@ -43,7 +43,7 @@ let () =
 (* Returns the func, the buffer name and the type: *)
 let make_temp_export conf ?duration func =
   let bname = C.archive_buf_name conf func in
-  RingBuf.create ~wrap:false bname RingBufLib.rb_default_words ;
+  RingBuf.create ~wrap:false bname RingBufLib.rb_words ;
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
   let typ = func.C.Func.out_type.ser in
