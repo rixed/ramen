@@ -189,6 +189,9 @@ let complete str () =
           ("--help", "") ::
           (complete_running_function persist_dir last_tok)
       | "ps" ->
-          [ "--help", "" ; "--short", "" ]
+          [ "--help", "" ;
+            "--short", "" ;
+            "--sort", "" ;
+            "--top", "" ]
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

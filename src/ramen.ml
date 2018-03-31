@@ -345,14 +345,28 @@ let timerange =
 
 let short =
   let i = Arg.info ~doc:"Display only a short summary."
-                   [ "short" ] in
+                   [ "short" ; "p" ] in
   Arg.(value (flag i))
+
+let sort_col =
+  let i = Arg.info ~doc:"Sort the operation list according to this column \
+                         (first column -name- is 1, then #in is 2...)."
+                   ~docv:"COL" [ "sort" ; "s" ] in
+  Arg.(value (opt int 1 i))
+
+let top =
+  let i = Arg.info ~doc:"Truncate the list of operations after the first N \
+                         entries."
+                   ~docv:"N" [ "top" ; "t" ] in
+  Arg.(value (opt (some int) None i))
 
 let ps =
   Term.(
     (const RamenCliCmd.ps
       $ copts
-      $ short),
+      $ short
+      $ sort_col
+      $ top),
     info ~doc:RamenConsts.ps_info "ps")
 
 (*
