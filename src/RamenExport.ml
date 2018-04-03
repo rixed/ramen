@@ -55,7 +55,7 @@ let make_temp_export conf ?duration func =
                 | None -> 0.
                 | Some d -> Unix.gettimeofday () +. d } in
   let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
-  return (func, bname, typ)
+  return (func, bname, func.C.Func.out_type)
 
 (* Returns the func, the buffer name and the type: *)
 let make_temp_export_by_name conf ?duration func_name =

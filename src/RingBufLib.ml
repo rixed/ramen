@@ -3,7 +3,6 @@
 open Batteries
 open RamenLog
 open RamenHelpers
-open RamenTuple
 open RamenScalar
 
 exception NoMoreRoom
@@ -28,7 +27,7 @@ let round_up_to_rb_word bytes =
 
 let nullmask_bytes_of_tuple_type tuple_typ =
   List.fold_left (fun s field_typ ->
-    if not (is_private_field field_typ.typ_name) && field_typ.nullable
+    if not RamenTuple.(is_private_field field_typ.typ_name) && field_typ.nullable
     then s+1 else s) 0 tuple_typ |>
   bytes_for_bits |>
   round_up_to_rb_word
@@ -130,11 +129,11 @@ let out_ringbuf_names outbuf_ref_fname =
  * a skip list in the out_ref (to makes serialization easier not out_ref
  * smaller) we serialize all fields in the same order: *)
 let ser_tuple_field_cmp t1 t2 =
-  String.compare t1.typ_name t2.typ_name
+  String.compare t1.RamenTuple.typ_name t2.RamenTuple.typ_name
 
 let ser_tuple_typ_of_tuple_typ tuple_typ =
   tuple_typ |>
-  List.filter (fun t -> not (is_private_field t.typ_name)) |>
+  List.filter (fun t -> not RamenTuple.(is_private_field t.typ_name)) |>
   List.fast_sort ser_tuple_field_cmp
 
 let skip_list ~out_type ~in_type =

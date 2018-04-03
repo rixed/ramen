@@ -303,8 +303,9 @@ let tail conf func_name with_header separator null
     (* Read directly from the instrumentation ringbuf when func_name ends
      * with "#stats" *)
     if func_name = "stats" || String.ends_with func_name "#stats" then
-      let typ = RamenBinocle.tuple_typ in
-      let wi = RamenSerialization.find_field_index typ "worker" in
+      let typ = RamenTuple.{ user = RamenBinocle.tuple_typ ;
+                             ser = RamenBinocle.tuple_typ } in
+      let wi = RamenSerialization.find_field_index typ.ser "worker" in
       let filter =
         if func_name = "stats" then always_true else
         let func_name, _ = String.rsplit func_name ~by:"#" in
@@ -339,12 +340,16 @@ let tail conf func_name with_header separator null
    * the last N tuples or, TBD, since ts1 [until ts2]) and display
    * them *)
   let nullmask_size =
-    RingBufLib.nullmask_bytes_of_tuple_type typ in
+    RingBufLib.nullmask_bytes_of_tuple_type typ.ser in
+  (* I failed the polymorphism dance on that one: *)
+  let reorder_column1 = RamenTuple.reorder_tuple_to_user typ in
+  let reorder_column2 = RamenTuple.reorder_tuple_to_user typ in
   if with_header then (
+    let header = typ.ser |> Array.of_list |> reorder_column1 in
     let first = if with_seqnums then "#Seq"^ separator else "#" in
-    List.print ~first ~last:"\n" ~sep:separator
+    Array.print ~first ~last:"\n" ~sep:separator
       (fun fmt ft -> String.print fmt ft.RamenTuple.typ_name)
-      stdout typ ;
+      stdout header ;
     BatIO.flush stdout) ;
   Lwt_main.run (
     let rec loop m =
@@ -353,12 +358,13 @@ let tail conf func_name with_header separator null
         let open RamenSerialization in
         fold_seq_range bname m ma m (fun m tx ->
           let tuple =
-            read_tuple typ nullmask_size tx in
+            read_tuple typ.ser nullmask_size tx in
           if filter tuple then (
             if with_seqnums then (
               Int.print stdout m ; String.print stdout separator) ;
+            reorder_column2 tuple |>
             Array.print ~first:"" ~last:"\n" ~sep:separator
-              (RamenScalar.print_custom ~null) stdout tuple ;
+              (RamenScalar.print_custom ~null) stdout ;
             BatIO.flush stdout ;
             return (m + 1)
           ) else return m) in
@@ -399,8 +405,9 @@ let timeseries conf since until max_data_points separator null
     (* Read directly from the instrumentation ringbuf when func_name ends
      * with "#stats" *)
     if func_name = "stats" || String.ends_with func_name "#stats" then
-      let typ = RamenBinocle.tuple_typ in
-      let wi = RamenSerialization.find_field_index typ "worker" in
+      let typ = RamenTuple.{ user = RamenBinocle.tuple_typ ;
+                             ser = RamenBinocle.tuple_typ } in
+      let wi = RamenSerialization.find_field_index typ.ser "worker" in
       let filter =
         if func_name = "stats" then always_true else
         let func_name, _ = String.rsplit func_name ~by:"#" in
@@ -418,8 +425,8 @@ let timeseries conf since until max_data_points separator null
   Lwt_main.run (
     let open RamenSerialization in
     let%lwt vi =
-      wrap (fun () -> find_field_index typ data_field) in
-    fold_time_range bname typ event_time since until () (fun () tuple t1 t2 ->
+      wrap (fun () -> find_field_index typ.ser data_field) in
+    fold_time_range bname typ.ser event_time since until () (fun () tuple t1 t2 ->
       if filter tuple then (
         let v = float_of_scalar_value tuple.(vi) in
         let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in

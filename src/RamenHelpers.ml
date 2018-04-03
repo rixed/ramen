@@ -462,13 +462,6 @@ let run_coprocess ?(max_count=max_coprocesses)
                read_lines process#stderr ] in
       process#status))
 
-let start_with c f =
-  String.length f > 0 && f.[0] = c
-
-let is_virtual_field = start_with '#'
-
-let is_private_field = start_with '_'
-
 let string_of_time ts =
   let open Unix in
   match localtime ts with

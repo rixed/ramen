@@ -65,9 +65,10 @@ RAMEN_SOURCES = \
 	src/RamenBitmask.ml src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
 	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
-	src/RamenProtocols.ml src/RingBufLib.ml src/RamenTypeConverters.ml \
+	src/RamenProtocols.ml src/RamenTypeConverters.ml \
 	src/RamenLang.ml src/RamenScalar.ml \
 	src/RamenTuple.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
+	src/RingBufLib.ml \
 	src/RingBuf.ml src/RamenSerialization.ml \
 	src/RamenConf.ml src/RamenBinocle.ml src/RamenExport.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
@@ -151,7 +152,9 @@ MOREFLAGS = \
 	-cclib -lcollectd \
 	-cclib -lnetflow
 
-src/ramen: $(RAMEN_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a src/libnetflow.a
+src/ramen: \
+	$(RAMEN_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a \
+	src/libnetflow.a
 	@echo "Linking $@"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -235,12 +238,12 @@ TESTABLE_SOURCES = \
 LINKED_FOR_TESTS = \
 	src/RamenVersions.ml src/RamenLog.ml src/RamenConsts.ml src/RamenHelpers.ml \
 	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
-	src/RingBufLib.ml \
 	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenLang.ml src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml \
 	src/RamenOperation.ml src/RamenProgram.ml \
+	src/RingBufLib.ml \
 	src/RingBuf.ml src/RamenConf.ml \
 	src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
@@ -255,11 +258,19 @@ src/all_tests.ml: $(TESTABLE_SOURCES)
 	@echo "Generating unit tests into $@"
 	@$(QTEST) --shuffle -o $@ extract $^
 
-all_tests.opt: src/libringbuf.a src/libcollectd.a src/libnetflow.a $(LINKED_FOR_TESTS:.ml=.cmx) src/all_tests.ml
+all_tests.opt: \
+	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
+	$(LINKED_FOR_TESTS:.ml=.cmx) src/all_tests.ml
 	@echo "Building unit tests into $@"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
 
-ringbuf_test.opt: src/RamenLog.cmx src/RamenConsts.cmx src/RamenHelpers.cmx src/RamenRWLock.cmx src/RamenAdvLock.cmx src/RamenOutRef.cmx src/RingBufLib.cmx src/RingBuf.cmx src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
+ringbuf_test.opt: \
+	src/RamenLog.cmx src/RamenConsts.cmx src/RamenHelpers.cmx \
+	src/RamenRWLock.cmx src/RamenAdvLock.cmx src/RamenOutRef.cmx \
+	src/RamenParsing.cmx src/RamenEthAddr.cmx src/RamenIpv4.cmx \
+	src/RamenIpv6.cmx src/RamenTypeConverters.cmx src/RamenScalar.cmx \
+	src/RamenTuple.cmx src/RingBufLib.cmx src/RingBuf.cmx \
+	src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
 	@echo "Building ringbuf tests into $@"
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -301,7 +312,8 @@ doc: \
 	docs/tutorial_network_monitoring.html docs/tutorial_counting_words.html \
 	docs/manual.html docs/roadmap.html docs/alerter.html
 
-docs/tutorial_network_monitoring.html: docs/tutorial_group_by.svg docs/sample_chart1.svg
+docs/tutorial_network_monitoring.html: \
+	docs/tutorial_group_by.svg docs/sample_chart1.svg
 
 # Installation
 

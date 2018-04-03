@@ -472,7 +472,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | Field (op_typ, tuple, field) ->
     if tuple_has_type_input !tuple then (
       (* Check that this field is, or could be, in in_type *)
-      if is_virtual_field field then false else
+      if RamenTuple.is_virtual_field field then false else
       match List.assoc field in_type.fields with
       | exception Not_found ->
         !logger.debug "%sCannot find field in in-tuple" indent ;
@@ -488,7 +488,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           | ptyp ->
             !logger.debug "%sCopying field %s from parents, with type %a" indent
               field RamenExpr.print_typ ptyp ;
-            if is_private_field field then (
+            if RamenTuple.is_private_field field then (
               let m = InvalidPrivateField { field } in
               raise (SyntaxError m)) ;
             let copy = RamenExpr.copy_typ ptyp in
@@ -521,7 +521,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       ) ||| (
         (* If we already have this field in out then check it's compatible (or
          * enlarge out or exp). If we don't have it then add it. *)
-        if is_virtual_field field then false else
+        if RamenTuple.is_virtual_field field then false else
         match List.assoc field out_type.fields with
         | exception Not_found ->
           !logger.debug "%sCannot find field %s in out-tuple" indent field ;
@@ -563,7 +563,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
                         ~from:op_typ ~to_:exp_type
     ) else (
       (* All other tuples are already typed (virtual fields) *)
-      if not (is_virtual_field field) then (
+      if not (RamenTuple.is_virtual_field field) then (
         !logger.error "Field %a.%s is not virtual!?"
           tuple_prefix_print !tuple field ;
         assert false

@@ -18,6 +18,32 @@ type typed_tuple =
     ser : field_typ list } (* Only public fields *)
   [@@ppp PPP_OCaml]
 
+let starts_with c f =
+  String.length f > 0 && f.[0] = c
+
+let is_virtual_field = starts_with '#'
+
+let is_private_field = starts_with '_'
+
+(* Given a typed tuple type, return a function that reorder a ser tuple (as
+ * an array) into the same column order as in the user version: *)
+let reorder_tuple_to_user typed_tuple =
+  (* Start by building the array of indices in the ser tuple of fields of
+   * the user (minus private) tuple. *)
+  let indices =
+    List.filter_map (fun f ->
+      if is_private_field f.typ_name then None
+      else
+        Some (List.findi (fun _ f' ->
+          f'.typ_name = f.typ_name
+        ) typed_tuple.ser |> fst)
+    ) typed_tuple.user |>
+    Array.of_list in
+  (* Now reorder a list of scalar values in ser order into user order: *)
+  (* TODO: an inplace version *)
+  fun vs ->
+    Array.map (fun idx -> vs.(idx)) indices
+
 let print_field_typ fmt field =
   (* TODO: check that name is a valid identifier *)
   Printf.fprintf fmt "%s %a %sNULL"

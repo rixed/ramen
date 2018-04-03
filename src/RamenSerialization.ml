@@ -43,7 +43,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
   let tuple = Array.make tuple_len VNull in
   let _ =
     List.fold_lefti (fun (offs, b) i typ ->
-        assert (not (is_private_field typ.RamenTuple.typ_name)) ;
+        assert (not (RamenTuple.is_private_field typ.RamenTuple.typ_name)) ;
         let value, offs', b' =
           if typ.nullable && not (RingBuf.get_bit tx b) then (
             None, offs, b+1
