@@ -466,7 +466,7 @@ let worker_start worker_name get_binocle_tuple k =
   let report_period =
     getenv ~def:"10" "report_period" |> float_of_string in
   let report_rb =
-    getenv ~def:"/tmp/ringbuf_in_report" "report_ringbuf" in
+    getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf" in
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   update_stats () ;
@@ -872,11 +872,11 @@ let aggregate
     let when_str = string_of_when_to_check_group when_to_check_for_commit in
     !logger.debug "We will commit/flush for... %s" when_str ;
     let rb_in_fnames =
-      getenv ~def:"/tmp/ringbuf_in" "input_ringbufs" |>
+      getenv ~def:"/tmp/ringbuf_in.r" "input_ringbufs" |>
       String.split_on_char ',' |>
       List.map String.trim
     and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-    and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify" "notify_ringbuf"
+    and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf"
     and top_n, top_by = Option.default (0, fun _ _ _ -> ()) top in
     assert (not commit_before || top_n = 0) ;
     let notify_rb = RingBuf.load notify_rb_name in

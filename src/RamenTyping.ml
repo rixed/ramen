@@ -15,6 +15,7 @@ open Batteries
 open RamenLog
 open RamenHelpers
 module C = RamenConf
+module F = C.Func
 module Expr = RamenExpr
 open RamenLang
 open RamenScalar
@@ -153,7 +154,7 @@ end
  * so you can mix them up. Make specialized types for all those strings. *)
 let make_untyped_func program_name func_name params operation =
   !logger.debug "Creating func %s/%s" program_name func_name ;
-  C.Func.sanitize_name func_name ;
+  F.sanitize_name func_name ;
   assert (func_name <> "") ;
   let parents =
     RamenOperation.parents_of_operation operation |>
@@ -170,12 +171,12 @@ let make_untyped_func program_name func_name params operation =
 (* Same as the above, for when a function has already been compiled: *)
 let make_typed_func program_name rcf =
   Func.{
-    program_name ; name = rcf.C.Func.name ;
-    signature = rcf.C.Func.signature ;
-    params = rcf.C.Func.params ;
+    program_name ; name = rcf.F.name ;
+    signature = rcf.F.signature ;
+    params = rcf.F.params ;
     operation = None ; parents = [] ;
-    in_type = TypedTuple rcf.C.Func.in_type ;
-    out_type = TypedTuple rcf.C.Func.out_type }
+    in_type = TypedTuple rcf.F.in_type ;
+    out_type = TypedTuple rcf.F.out_type }
 
 (* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =

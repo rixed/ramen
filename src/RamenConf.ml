@@ -66,7 +66,7 @@ struct
     if name = "" ||
        String.fold_left (fun bad c ->
          bad || c = '\n' || c = '\r' || c = '/') false name then
-      invalid_arg "function name"
+      invalid_arg "operation name"
 end
 
 module Program =

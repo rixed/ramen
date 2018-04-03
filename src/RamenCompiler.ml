@@ -99,7 +99,7 @@ let compile conf root_path program_name program_code =
     (* Now we have two types of parents: those from this program, that
      * have been created in compiler_funcs above, and those of already
      * compiled programs that have to be present on disk in the same
-     * $RAMEN_ROOT. Note that we do not look at the running cofiguration,
+     * $RAMEN_ROOT. Note that we do not look at the running configuration,
      * as we want to compile a program against a RAMEN_ROOT not against a
      * currently running instance.
      * This forces the user to compile programs in a given order. *)
@@ -138,7 +138,7 @@ let compile conf root_path program_name program_code =
      *
      * Each functions is compiled into an object file (an OCaml  module) with a
      * single entry point performing the operation. Functions are processed in
-     * parallel (but the number of simultaneous compilation is limited, Cf.
+     * parallel (but the number of simultaneous compilations is limited, Cf.
      * RamenOCamlCompiler).
      *
      * The dynamic part of the OCaml "casing" is then generated (dynamic just
