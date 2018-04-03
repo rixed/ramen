@@ -124,7 +124,7 @@ let kill conf prog_name () =
         Hashtbl.filteri_inplace (fun name _mre ->
           name <> prog_name
         ) running_programs ;
-        return (Hashtbl.length running_programs - before))) in
+        return (before - Hashtbl.length running_programs))) in
   Printf.printf "Killed %d program%s\n"
     nb_kills (if nb_kills > 1 then "s" else "")
 
