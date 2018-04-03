@@ -546,6 +546,37 @@ let listen_on (collector :
     let while_ () = not !quit in
     collector ~inet_addr ~port ~while_ outputer)
 
+let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
+  let worker_name = getenv ~def:"?" "fq_name" in
+  let get_binocle_tuple () =
+    get_binocle_tuple worker_name None None None in
+  worker_start worker_name get_binocle_tuple (fun conf ->
+    let bname =
+      getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf" in
+    let rb = RingBuf.load bname in
+    let rb_ref_out_fname =
+      getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
+    in
+    let outputer =
+      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
+                  serialize_tuple in
+    let globs = List.map Globs.compile from in
+    let match_from worker =
+      from = [] ||
+      List.exists (fun g -> Globs.matches g worker) globs
+    in
+    let start = Unix.gettimeofday () in
+    let while_ () = Lwt.return (not !quit) in
+    RingBuf.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
+      let worker, time, _, _, _, _, _, _, _, _, _, _ as tuple =
+        RamenBinocle.unserialize tx in
+      (* Filter by time and worker *)
+      if time >= start && match_from worker then
+        let%lwt () = outputer tuple in
+        Lwt.return ((), true)
+      else
+        Lwt.return ((), true)))
+
 let yield sersize_of_tuple time_of_tuple serialize_tuple select every =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =

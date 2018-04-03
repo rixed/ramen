@@ -20,18 +20,18 @@ type tuple =
   Uint64.t option
 
 let tuple_typ =
-  [ { typ_name = "worker" ;         nullable = false ;  typ = TString } ;
-    { typ_name = "time" ;           nullable = false ;  typ = TFloat } ;
-    { typ_name = "in_count" ;       nullable = true ;   typ = TU64 } ;
-    { typ_name = "selected_count" ; nullable = true ;   typ = TU64 } ;
-    { typ_name = "out_count" ;      nullable = true ;   typ = TU64 } ;
-    { typ_name = "group_count" ;    nullable = true ;   typ = TU64 } ;
-    { typ_name = "cpu" ;            nullable = false ;  typ = TFloat } ;
-    { typ_name = "ram" ;            nullable = false ;  typ = TU64 } ;
-    { typ_name = "wait_in" ;        nullable = true ;   typ = TFloat } ;
-    { typ_name = "wait_out" ;       nullable = true ;   typ = TFloat } ;
-    { typ_name = "bytes_in" ;       nullable = true ;   typ = TU64 } ;
-    { typ_name = "bytes_out" ;      nullable = true ;   typ = TU64 } ]
+  [ { typ_name = "worker" ;          nullable = false ;  typ = TString } ;
+    { typ_name = "time" ;            nullable = false ;  typ = TFloat } ;
+    { typ_name = "tuples_in" ;       nullable = true ;   typ = TU64 } ;
+    { typ_name = "tuples_selected" ; nullable = true ;   typ = TU64 } ;
+    { typ_name = "tuples_out" ;      nullable = true ;   typ = TU64 } ;
+    { typ_name = "groups" ;          nullable = true ;   typ = TU64 } ;
+    { typ_name = "cpu" ;             nullable = false ;  typ = TFloat } ;
+    { typ_name = "ram" ;             nullable = false ;  typ = TU64 } ;
+    { typ_name = "wait_in" ;         nullable = true ;   typ = TFloat } ;
+    { typ_name = "wait_out" ;        nullable = true ;   typ = TFloat } ;
+    { typ_name = "bytes_in" ;        nullable = true ;   typ = TU64 } ;
+    { typ_name = "bytes_out" ;       nullable = true ;   typ = TU64 } ]
 
 let event_time = Some (("time", 1.), RamenEventTime.DurationConst 0.)
 

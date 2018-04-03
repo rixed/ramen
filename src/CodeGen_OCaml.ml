@@ -281,10 +281,11 @@ let emit_read_csv_file oc name csv_fname unlink csv_separator csv_null
     name
     csv_fname unlink csv_separator preprocessor
 
-let emit_listen_on oc name net_addr port proto event_time =
+let emit_listen_on oc name net_addr port proto =
   let open RamenProtocols in
   let tuple_typ = tuple_typ_of_proto proto in
   let collector = collector_of_proto proto in
+  let event_time = event_time_of_proto proto in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n%a\n\
     let %s () =\n\
@@ -296,6 +297,20 @@ let emit_listen_on oc name net_addr port proto event_time =
     collector
     (Unix.string_of_inet_addr net_addr) port
     (string_of_proto proto)
+
+let emit_instrumentation oc name from =
+  let open RamenProtocols in
+  let tuple_typ = RamenBinocle.tuple_typ in
+  let event_time = RamenBinocle.event_time in
+  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
+    %a\n%a\n%a\n\
+    let %s () =\n\
+      \tCodeGenLib.instrumentation %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
+    (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
+    (emit_time_of_tuple "time_of_tuple_" event_time) tuple_typ
+    (emit_serialize_tuple "serialize_tuple_") tuple_typ
+    name
+    (List.print (fun oc s -> Printf.fprintf oc "%S" s)) from
 
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
@@ -1550,8 +1565,10 @@ let compile conf entry_point func_name obj_name in_typ out_typ params op =
                       what = { separator ; null ; fields } ; event_time } ->
         emit_read_csv_file oc entry_point fname unlink separator null
                            fields preprocessor event_time
-      | ListenFor { net_addr ; port ; proto ; event_time } ->
-        emit_listen_on oc entry_point net_addr port proto event_time
+      | ListenFor { net_addr ; port ; proto } ->
+        emit_listen_on oc entry_point net_addr port proto
+      | Instrumentation { from } ->
+        emit_instrumentation oc entry_point from
       | Aggregate _ ->
         emit_aggregate oc entry_point in_typ out_typ op)) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)

@@ -30,17 +30,20 @@ let opt_blanks =
   optional_greedy ~def:() blanks
 
 let slash = char ~what:"slash" '/'
+let star = char ~what:"star" '*'
 
 let id_quote = char ~what:"quote" '\''
 
 (* program_allowed: if true, the function name can be prefixed with a program
  * name. *)
-let func_identifier ~program_allowed =
+let func_identifier ?(globs_allowed=false) ~program_allowed =
+  let first_char = letter ||| underscore in
   let first_char =
-    if program_allowed then
-      letter ||| underscore ||| slash
-    else
-      letter ||| underscore in
+    if program_allowed then first_char ||| slash
+    else first_char in
+  let first_char =
+    if globs_allowed then first_char ||| star
+    else first_char in
   let any_char = first_char ||| decimal_digit in
   (first_char ++
      repeat_greedy ~sep:none ~what:"function identifier" any_char >>:

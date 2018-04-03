@@ -1067,6 +1067,14 @@ let check_aggregate parents func fields and_all_others merge sort where key
  *)
 let check_operation operation parents func =
   !logger.debug "-- Typing operation %a" RamenOperation.print operation ;
+  let set_well_known_out_type typ =
+    if tuple_type_is_finished func.Func.out_type then false else (
+      let user = typ in
+      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
+      func.Func.out_type <- TypedTuple { user ; ser } ;
+      func.Func.in_type <- TypedTuple { user = [] ; ser = [] } ;
+      true)
+  in
   let open RamenOperation in
   match operation with
   | Yield { fields ; _ } ->
@@ -1083,12 +1091,9 @@ let check_operation operation parents func =
       func.Func.in_type <- TypedTuple { user = [] ; ser = [] } ;
       true)
   | ListenFor { proto ; _ } ->
-    if tuple_type_is_finished func.Func.out_type then false else (
-      let user = RamenProtocols.tuple_typ_of_proto proto in
-      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
-      func.Func.out_type <- TypedTuple { user ; ser } ;
-      func.Func.in_type <- TypedTuple { user = [] ; ser = [] } ;
-      true)
+    set_well_known_out_type (RamenProtocols.tuple_typ_of_proto proto)
+  | Instrumentation _ ->
+    set_well_known_out_type RamenBinocle.tuple_typ
 
 (*
  * Type inference for the graph

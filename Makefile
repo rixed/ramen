@@ -244,7 +244,7 @@ LINKED_FOR_TESTS = \
 	src/RingBuf.ml src/RamenConf.ml \
 	src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
-	src/RamenHeap.ml src/RamenSortBuf.ml \
+	src/RamenHeap.ml src/RamenSortBuf.ml src/RamenBinocle.ml \
 	src/CodeGen_OCaml.ml src/RamenBinocle.ml src/RamenBitmask.ml \
 	src/RamenSerialization.ml src/RamenExport.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml \

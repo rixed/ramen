@@ -1,0 +1,45 @@
+-- vim: ft=sql expandtab
+-- Benchmark light on operations but with many small functions passing data
+-- around.
+
+DEFINE producer1 AS
+  YIELD sequence AS s, random AS r; -- at full speed
+
+DEFINE producer2 AS
+  YIELD sequence + 100 AS s, random AS r;
+
+DEFINE producer3 AS
+  YIELD sequence + 1000 AS s, random AS r;
+
+DEFINE consumer1 AS
+  FROM producer1, producer2, producer3
+  SELECT sequence AS _my_s, "c1" AS me, min s, max s, min r, max r
+  COMMIT WHEN _my_s % 10 = 0;
+
+DEFINE consumer2 AS
+  FROM producer1, producer2, producer3 MERGE ON s
+  SELECT sequence AS _my_s, "c2" AS me, min s, max s, min r, max r
+  COMMIT WHEN _my_s % 10 = 0;
+
+DEFINE sink AS
+  FROM consumer1, consumer2
+  SELECT me AS parent, max_r - min_r AS r_range;
+
+-- And then: select from all monitoring the total cpu, ram and output tuples,
+-- group by function name, and report every 10s:
+
+DEFINE metamon AS
+  LISTEN FOR INSTRUMENTATION FROM *;
+
+DEFINE benchmark AS
+  FROM metamon
+  SELECT min time AS _min_time, max time AS time,
+         out.time - _min_time AS _dt,
+         max tuples_out - min tuples_out AS outs,
+         out.outs / _dt AS avg_tuples_per_secs,
+         (max cpu - min cpu) / out.outs AS avg_cpu_per_tuple,
+         max ram
+         -- TODO: time spent waiting
+  GROUP BY worker
+  COMMIT BEFORE _dt > 30;
+
