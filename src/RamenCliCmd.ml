@@ -173,7 +173,9 @@ let read_stats conf =
   and get_nfloat = function VNull -> None | VFloat f -> Some f
   in
   Lwt_main.run (
-    RamenSerialization.fold_time_range bname typ event_time since until ()  (fun () tuple t1 t2 ->
+    let while_ () = (* Do not wait more than 1s: *)
+      return (Unix.gettimeofday () -. now < 1.) in
+    RamenSerialization.fold_time_range ~while_ bname typ event_time since until ()  (fun () tuple t1 t2 ->
     let worker = get_string tuple.(0)
     and time = get_float tuple.(1)
     and in_count = get_nu64 tuple.(2)

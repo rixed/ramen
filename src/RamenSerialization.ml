@@ -108,7 +108,7 @@ let find_field_index typ n =
       failwith err_msg
   | i, _ -> i
 
-let fold_seq_range bname mi ma init f =
+let fold_seq_range ?while_ bname mi ma init f =
   let dir = seq_dir_of_bname bname in
   let entries =
     seq_files_of dir //
@@ -117,7 +117,7 @@ let fold_seq_range bname mi ma init f =
   Array.fast_sort seq_file_compare entries ;
   let fold_rb from rb usr =
     let%lwt _, usr =
-      read_buf rb (usr, 0) (fun (usr, i) tx ->
+      read_buf ?while_ rb (usr, 0) (fun (usr, i) tx ->
         let seq = from + i in
         if seq < mi then Lwt.return ((usr, i+1), true) else
         let%lwt usr = f usr tx in
@@ -138,16 +138,16 @@ let fold_seq_range bname mi ma init f =
       fold_rb s.first_seq rb usr)
     (fun () -> unload rb ; Lwt.return_unit)
 
-let fold_buffer bname init f =
+let fold_buffer ?while_ bname init f =
   let rb = load bname in
   let%lwt usr = Lwt.finalize
-    (fun () -> read_buf rb init f)
+    (fun () -> read_buf ?while_ rb init f)
     (fun () -> unload rb ; Lwt.return_unit) in
   Lwt.return usr
 
 (* As tuples are not necessarily ordered by time we want the possibility
  * to override the more_to_come decision. *)
-let fold_buffer_with_time ?(early_stop=true) bname typ event_time init f =
+let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f =
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type typ in
   let%lwt event_time_of_tuple =
@@ -178,9 +178,9 @@ let fold_buffer_with_time ?(early_stop=true) bname typ event_time init f =
       if early_stop then res
       else usr, true)
   in
-  fold_buffer bname init f
+  fold_buffer ?while_ bname init f
 
-let time_range bname typ event_time =
+let time_range ?while_ bname typ event_time =
   let dir = time_dir_of_bname bname in
   let max_range mi_ma t1 t2 =
     match mi_ma with
@@ -192,10 +192,10 @@ let time_range bname typ event_time =
       max_range mi_ma t1 t2
     ) None in
   (* Also look into the current rb: *)
-  fold_buffer_with_time bname typ event_time mi_ma (fun mi_ma _tup t1 t2 ->
+  fold_buffer_with_time ?while_ bname typ event_time mi_ma (fun mi_ma _tup t1 t2 ->
     max_range mi_ma t1 t2, true)
 
-let fold_time_range bname typ event_time since until init f =
+let fold_time_range ?while_ bname typ event_time since until init f =
   let dir = time_dir_of_bname bname in
   let entries =
     time_files_of dir //
@@ -208,8 +208,8 @@ let fold_time_range bname typ event_time since until init f =
     match Enum.get_exn entries with
     | exception Enum.No_more_elements -> Lwt.return usr
     | _t1, _t2, fname ->
-        fold_buffer_with_time ~early_stop:false bname typ event_time usr f
+        fold_buffer_with_time ?while_ ~early_stop:false bname typ event_time usr f
   in
   let%lwt usr = loop init in
   (* finish with the current rb: *)
-  fold_buffer_with_time bname typ event_time usr f
+  fold_buffer_with_time ?while_ bname typ event_time usr f
