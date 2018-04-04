@@ -458,7 +458,8 @@ let synchronize_running conf =
             ) must_run_programs ;
             return (must_run, last_mod)) in
       let%lwt () = synchronize must_run running in
-      let%lwt () = Lwt_unix.sleep 1. in
+      let delay = if !quit then 0.1 else 1. in
+      let%lwt () = Lwt_unix.sleep delay in
       loop last_read must_run running)
   in
   loop 0. empty_must_run (Hashtbl.create 0)
