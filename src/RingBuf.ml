@@ -17,12 +17,14 @@ type stats = {
   capacity : int ; (* in words *)
   wrap : bool ;
   alloced_words : int ; (* in words *)
-  alloced_objects : int ;
+  alloc_count : int ;
   t_min : float ;
   t_max : float ;
   mem_size : int ; (* the number of bytes that were mapped *)
   prod_head : int ;
+  prod_tail : int ;
   cons_head : int ;
+  cons_tail : int ;
   first_seq : int (* taken from per_seq/max file *) }
 
 external load_ : string -> t = "wrap_ringbuf_load"
@@ -217,5 +219,5 @@ let seq_range bname =
   let rb = load bname in
   let s = finally (fun () -> unload rb) stats rb in
   match mi_ma with
-  | None -> s.first_seq, s.alloced_objects
-  | Some (mi, ma) -> mi, s.first_seq + s.alloced_objects
+  | None -> s.first_seq, s.alloc_count
+  | Some (mi, ma) -> mi, s.first_seq + s.alloc_count

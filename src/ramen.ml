@@ -111,11 +111,16 @@ let dequeue =
       $ nb_tuples),
     info ~doc:"Dequeue a message from a ringbuffer." "dequeue")
 
+let rb_files =
+  let i = Arg.info ~doc:"The ring buffers to display information about.."
+                   ~docv:"FILE" [] in
+  Arg.(non_empty (pos_all string [] i))
+
 let summary =
   Term.(
     (const RingBufCmd.summary
       $ copts
-      $ rb_file),
+      $ rb_files),
     info ~doc:"Dump info about a ring-buffer." "ringbuf-summary")
 
 (*
