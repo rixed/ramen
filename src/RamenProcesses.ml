@@ -22,7 +22,7 @@ let fd_of_int : int -> Unix.file_descr = Obj.magic
 let close_fd i =
   Unix.close (fd_of_int i)
 
-let run_background cmd args env =
+let run_background ?cwd cmd args env =
   let open Unix in
   (* prog name should be first arg *)
   let prog_name = Filename.basename cmd in
@@ -38,6 +38,7 @@ let run_background cmd args env =
   flush_all () ;
   match fork () with
   | 0 ->
+    Option.may chdir cwd ;
     close_fd 0 ;
     for i = 3 to 255 do
       try close_fd i with Unix.Unix_error (Unix.EBADF, _, _) -> ()
@@ -319,8 +320,12 @@ let try_start conf running proc =
       (* For convenience let's add "ramen worker" and the fun name as
        * arguments: *)
       [| "(ramen worker)" ; fq_name |] in
+    (* Better have the workers CWD where the binary is, so that any file name
+     * mentioned in the program is relative to the program. *)
+    let cwd = Filename.dirname proc.bin in
+    let cmd = Filename.basename proc.bin in
     let%lwt pid =
-      wrap (fun () -> run_background proc.bin args env) in
+      wrap (fun () -> run_background ~cwd cmd args env) in
     !logger.debug "Function %s now runs under pid %d" fq_name pid ;
     proc.pid <- Some pid ;
     (* Monitor this worker, wait for its termination, restart...: *)
