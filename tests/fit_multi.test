@@ -1,0 +1,8 @@
+{
+  programs = [
+    ("fit_multi.x", []);
+    ("fixtures/cars.x", []) ];
+  outputs = {
+    "tests/fit_multi/f" => {
+      present = [ { "h_pred" => "281.898168902" } ]}}
+}

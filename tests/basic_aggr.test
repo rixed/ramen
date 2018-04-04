@@ -1,0 +1,24 @@
+{
+  programs = [
+    ("basic_aggr.x", []);
+    ("fixtures/n123.x", []);
+    ("fixtures/cars.x", []) ];
+  outputs = {
+    "tests/basic_aggr/f1" => {
+      present = [
+        { "min_horsepower" => "1";
+          "max_horsepower" => "946";
+          "sum_horsepower" => "1262598";
+          "avg_horsepower" => "278.16655651";
+          "first_horsepower" => "552";
+          "last_horsepower" => "313";
+          "horsepower_10th" => "140";
+          "horsepower_95th" => "553" } ]};
+    "tests/basic_aggr/a1" => { present = [{ "and_b" => "true"}] };
+    "tests/basic_aggr/a2" => { present = [{ "and_b" => "true"}] };
+    "tests/basic_aggr/a3" => { present = [{ "and_b" => "false"}] };
+    "tests/basic_aggr/o1" => { present = [{ "not_b" => "false"}] };
+    "tests/basic_aggr/o2" => { present = [{ "not_b" => "false"}] };
+    "tests/basic_aggr/o3" => { present = [{ "not_b" => "true"}] };
+    "tests/basic_aggr/f2" => { present = [{ "n" => "3" }] }}
+}

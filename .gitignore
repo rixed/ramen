@@ -41,3 +41,5 @@ bundle
 debtmp/
 *.x
 examples/**/*.ml
+tests/**/*.ml
+tests/*.success

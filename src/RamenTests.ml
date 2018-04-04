@@ -72,7 +72,7 @@ let test_output func bname output_spec =
    * For now the rule is simple:
    * for as long as we have not yet received some tuples that
    * must be present and the time did not ran out. *)
-  let timeout = 5. in (* TODO: a parameter in the test spec *)
+  let timeout = 10. in (* TODO: a parameter in the test spec *)
   let while_ () =
     return (
       !tuples_to_find <> [] &&
@@ -87,7 +87,12 @@ let test_output func bname output_spec =
       tuples_to_find :=
         List.filter (fun spec ->
           List.for_all (fun (idx, value) ->
-            RamenScalar.to_string tuple.(idx) = value) spec |> not
+            (* FIXME: ionstead of comparing in string we should try to parse
+             * the expected value (once and for all -> faster) so that we
+             * also check its type. *)
+            let s = RamenScalar.to_string tuple.(idx) in
+            if s <> value then !logger.debug "found %S instead of %S" s value ;
+            s = value) spec |> not
         ) !tuples_to_find ;
       tuples_to_not_find :=
         List.filter (fun spec ->

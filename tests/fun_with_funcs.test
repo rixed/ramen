@@ -1,0 +1,13 @@
+{
+  programs = [
+    ("fun_with_funcs.x", []);
+    ("fixtures/cars.x", []) ];
+  outputs = {
+    "tests/fun_with_funcs/f" => {
+      present = [
+        { "first_1" => "552";
+          "first_2" => "552";
+          "first_3" => "552";
+          "co2_per_hp_90th" => "1.77402298851";
+          "co2_per_hp_99th" => "2.71705617978" } ]}}
+}

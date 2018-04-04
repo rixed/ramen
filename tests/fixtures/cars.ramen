@@ -1,0 +1,10 @@
+-- vim: ft=sql expandtab
+
+DEFINE csv AS
+  READ FILE "cars.csv" (
+    year u16 not null,
+    manufacturer string not null,
+    model string not null,
+    horsepower u16 not null,
+    CO float,
+    CO2 float);

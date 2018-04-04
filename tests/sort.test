@@ -1,0 +1,13 @@
+{
+  programs = [
+    ("sort.x", []);
+    ("fixtures/earthquakes.x", []) ];
+  outputs = {
+    "tests/sort/f" => {
+      present = [
+        { "year" => "2010" };
+        { "year" => "1968" };
+        { "year" => "1938" };
+        { "year" => "1957" };
+        { "year" => "1971" } ]}}
+}

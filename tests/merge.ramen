@@ -1,0 +1,12 @@
+-- vim: ft=sql expandtab
+
+DEFINE s1 AS YIELD sequence(1,3) AS n EVERY 0.01 SECONDS;
+DEFINE s2 AS YIELD sequence(2,3) AS n EVERY 0.02 SECONDS;
+DEFINE s3 AS YIELD sequence(3,3) AS n EVERY 9999 SECONDS;
+
+DEFINE m AS
+  FROM s1, s2, s3
+  MERGE ON n TIMEOUT AFTER 0.1 SECOND
+  SELECT n
+  WHERE in.#count < 7
+  EXPORT;

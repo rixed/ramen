@@ -1,0 +1,28 @@
+-- vim: ft=sql expandtab
+-- Test generators (split)
+
+DEFINE bla1 AS YIELD "pas glop" AS s;
+DEFINE f1 AS
+  FROM bla1 SELECT split(" ", s) AS s1, "glop" AS s2
+  EXPORT;
+
+DEFINE bla2 AS YIELD "foo bar" AS s1, "pas glop" AS s2;
+DEFINE f2 AS
+  FROM bla2 SELECT split(" ", s1) AS s1, split(" ", s2) AS s2
+  EXPORT;
+
+-- Now with some surrounding functions:
+
+DEFINE f3 AS
+  FROM bla1
+  SELECT split(" ", s) || " glop" AS s1,
+         "pas " || split(" ", s) AS s2
+  EXPORT;
+
+-- Now with embedded functions:
+
+DEFINE bla4 AS YIELD "glop" AS s;
+DEFINE f4 AS
+  FROM bla4
+  SELECT "pas " || split(" ", s || " glop") AS s1
+  EXPORT;

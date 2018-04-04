@@ -45,17 +45,17 @@ all: $(INSTALLED)
 
 # Generic rules
 
-.SUFFIXES: .ml .mli .cmi .cmx .cmxs .annot .top .html .adoc
-.PHONY: clean all check dep install uninstall reinstall \
+.SUFFIXES: .ml .mli .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
+.PHONY: clean all check func-check dep install uninstall reinstall \
         bundle doc deb \
         docker-latest docker-build-image docker-build-builder docker-push
 
 %.cmx %.annot: %.ml
-	@echo "Compiling $@ (native code)"
+	@echo 'Compiling $@ (native code)'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.html: %.adoc
-	@echo "Building documentation $@"
+	@echo 'Building documentation $@'
 	@asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o $@ $<
 
 # Dependencies
@@ -122,22 +122,22 @@ include .depend
 # Compile Ramen
 
 src/RamenFileNotify.ml: $(FILE_NOTIFIER)
-	@echo "Using implementation $(FILE_NOTIFIER) for new file notifications"
+	@echo 'Using implementation $(FILE_NOTIFIER) for new file notifications'
 	@ln -sf $(notdir $<) $@
 	@touch $@
 
 src/libringbuf.a: src/ringbuf/ringbuf.o src/ringbuf/wrappers.o
-	@echo "Building ringbuf library"
+	@echo 'Building ringbuf library'
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
 src/libcollectd.a: src/collectd/collectd.o src/collectd/wrappers.o
-	@echo "Building collectd library"
+	@echo 'Building collectd library'
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
 src/libnetflow.a: src/netflow/v5.o
-	@echo "Building netflow library"
+	@echo 'Building netflow library'
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
@@ -155,11 +155,11 @@ MOREFLAGS = \
 src/ramen: \
 	$(RAMEN_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a \
 	src/libnetflow.a
-	@echo "Linking $@"
+	@echo 'Linking $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 src/codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a src/libnetflow.a
-	@echo "Linking runtime library (native code) $@"
+	@echo 'Linking runtime library (native code) $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 # embedded compiler version: build a bundle of all libraries
@@ -172,7 +172,7 @@ BUNDLE_DIR = bundle
 bundle: bundle/date
 
 bundle/date: src/codegen.cmxa
-	@echo "Bundling libs together into $(BUNDLE_DIR)"
+	@echo 'Bundling libs together into $(BUNDLE_DIR)'
 	@$(RM) -r '$(BUNDLE_DIR)'
 	@mkdir -p '$(BUNDLE_DIR)'
 	@set -e ; for d in $$(ocamlfind query -recursive -predicates native -format '%d' ramen | sort -u | grep -v /findlib) ; do \
@@ -209,13 +209,13 @@ src/RamenDepLibs.ml:
 	done ;
 # Equivalent to -threads:
 	@echo '  "ocaml/threads" ;' >> $@
-	@echo "]" >> $@
-	@echo "let objfiles = [" >> $@
+	@echo ']' >> $@
+	@echo 'let objfiles = [' >> $@
 	@set -e ; for d in $$(ocamlfind query -recursive -predicates native -format '%+a' ramen | uniq | grep -v /findlib) ; do \
 		echo $$d | cut -c $(OCAML_WHERE_LEN)- | \
 		sed -e 's,^\(.*\)$$,  "\1" ;,' >> $@ ;\
 	done ;
-	@echo "]" >> $@
+	@echo ']' >> $@
 # Equivalent to -threads, must come right after unix.cmxa:
 	@sed -i -e '/ocaml\/unix.cmxa/a \ \ "ocaml/threads/threads.cmxa" ;' $@
 
@@ -255,13 +255,13 @@ LINKED_FOR_TESTS = \
 	src/TestHelpers.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
-	@echo "Generating unit tests into $@"
+	@echo 'Generating unit tests into $@'
 	@$(QTEST) --shuffle -o $@ extract $^
 
 all_tests.opt: \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
 	$(LINKED_FOR_TESTS:.ml=.cmx) src/all_tests.ml
-	@echo "Building unit tests into $@"
+	@echo 'Building unit tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
 
 ringbuf_test.opt: \
@@ -271,40 +271,63 @@ ringbuf_test.opt: \
 	src/RamenIpv6.cmx src/RamenTypeConverters.cmx src/RamenScalar.cmx \
 	src/RamenTuple.cmx src/RingBufLib.cmx src/RingBuf.cmx \
 	src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
-	@echo "Building ringbuf tests into $@"
+	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-check: all_tests.opt ringbuf_test.opt
-	@echo "Running unit tests..."
-	@./ringbuf_test.opt || echo "FAILURE (ringbuf_test)"
-	@OCAMLRUNPARAM=b ./all_tests.opt -bt || echo "FAILURE"
+check: all_tests.opt ringbuf_test.opt func-check
+	@echo 'Running unit tests...'
+	@./ringbuf_test.opt || echo 'FAILURE (ringbuf_test)'
+	@OCAMLRUNPARAM=b ./all_tests.opt -bt || echo FAILURE
 
-long-check: src/ramen check
-	@echo "Running all tests..."
-	@if test -e /tmp/ramen_tests ; then \
-		echo "Warning: /tmp/ramen_tests exists already!" ;\
-		echo "If subdirs are reused result of tests should not be relied upon." ;\
-	fi
-	./src/tests/tops
-	./src/tests/basic_aggr
-	./src/tests/count_lines
-	./src/tests/sliding_window
-	./src/tests/fun_with_funcs
-	./src/tests/lag
-	./src/tests/word_split
-	./src/tests/case
-	./src/tests/season
-	./src/tests/fit_multi
-	./src/tests/upload
-	./src/tests/word_count
-	./src/tests/tuples
-	./src/tests/commit_before
-	./src/tests/from
-	./src/tests/sort
-	./src/tests/merge
-	./src/tests/params
+RAMEN_TESTS = $(wildcard tests/*.test)
 
-check-long: long-check
+RAMEN_TESTS_SOURCES = \
+	$(RAMEN_TESTS:.test=.ramen) \
+	tests/fixtures/n123.ramen
+
+%.x: %.ramen src/ramen
+	@echo 'Compiling ramen program $@'
+	@src/ramen compile --keep-temp-files --root=./ $<
+
+%.success: %.test src/ramen
+	@echo 'Running test $(basename $< .test)'
+	@$(RM) $@
+	@src/ramen test --root=./ $< && touch $@
+
+# One day we will have `ramen makedep`:
+tests/lag.x: tests/fixtures/n123.x
+tests/count_lines.x: tests/fixtures/n123.x
+tests/params.x: tests/fixtures/earthquakes.x
+tests/sort.x: tests/fixtures/earthquakes.x
+tests/fit_multi.x: tests/fixtures/cars.x
+tests/tops.x: tests/fixtures/accounts.x
+tests/season.x: tests/fixtures/earthquakes.x
+tests/previous_and_null.x: tests/fixtures/n123.x
+tests/fun_with_funcs.x: tests/fixtures/cars.x
+tests/case.x: tests/fixtures/n123.x
+tests/commit_before.x: tests/fixtures/n123.x tests/fixtures/cars.x
+tests/basic_aggr.x: tests/fixtures/n123.x tests/fixtures/cars.x
+tests/tuples.x: tests/fixtures/n123.x
+tests/lag.success: tests/lag.x tests/fixtures/n123.x
+tests/count_lines.success: tests/count_lines.x tests/fixtures/n123.x
+tests/params.success: tests/params.x tests/fixtures/earthquakes.x
+tests/sort.success: tests/sort.x tests/fixtures/earthquakes.x
+tests/fit_multi.success: tests/fit_multi.x tests/fixtures/cars.x
+tests/tops.success: tests/tops.x tests/fixtures/accounts.x
+tests/season.success: tests/season.x tests/fixtures/earthquakes.x
+tests/merge.success: tests/merge.x
+tests/from.success: tests/from.x
+tests/previous_and_null.success: tests/previous_and_null.x tests/fixtures/n123.x
+tests/fun_with_funcs.success: tests/fun_with_funcs.x tests/fixtures/cars.x
+tests/sliding_window.success: tests/sliding_window.x
+tests/case.success: tests/case.x tests/fixtures/n123.x
+tests/commit_before.success: tests/commit_before.x tests/fixtures/n123.x tests/fixtures/cars.x
+tests/word_count.success: tests/word_count.x
+tests/word_split.success: tests/word_split.x
+tests/basic_aggr.success: tests/basic_aggr.x tests/fixtures/n123.x tests/fixtures/cars.x
+tests/tuples.success: tests/tuples.x tests/fixtures/n123.x
+
+func-check: $(RAMEN_TESTS:.test=.success)
 
 # Documentation
 
@@ -319,7 +342,7 @@ docs/tutorial_network_monitoring.html: \
 
 install: $(INSTALLED)
 	@ocamlfind install ramen $(INSTALLED_LIB)
-	@echo "Installing binaries into $(prefix)$(bin_dir)"
+	@echo 'Installing binaries into $(prefix)$(bin_dir)'
 	@install -d $(prefix)$(bin_dir)
 	@install $(INSTALLED_BIN) $(prefix)$(bin_dir)/
 
@@ -327,17 +350,17 @@ install: $(INSTALLED)
 # Therefore we simply build it as a separate, optional step (that's only
 # required if you intend to use the embedded compiler).
 install-bundle: bundle
-	@echo "Installing libraries bundle into $(DESTDIR)$(lib_dir)"
+	@echo 'Installing libraries bundle into $(DESTDIR)$(lib_dir)'
 	@install -d $(DESTDIR)$(lib_dir)
 	@cp -r $(BUNDLE_DIR) $(DESTDIR)$(lib_dir)/
 
 uninstall:
 	@ocamlfind remove ramen
-	@echo "Uninstalling binaries and libraries bundle"
+	@echo 'Uninstalling binaries and libraries bundle'
 	@$(RM) $(prefix)$(bin_dir)/ramen
 
 uninstall-bundle:
-	@echo "Uninstalling libraries bundle"
+	@echo 'Uninstalling libraries bundle'
 	@$(RM) -r $(DESTDIR)$(lib_dir)/$(BUNDLE_DIR)
 
 reinstall: uninstall install
@@ -347,7 +370,7 @@ reinstall: uninstall install
 deb: ramen.$(VERSION).deb
 
 ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
-	@echo "Building debian package $@"
+	@echo 'Building debian package $@'
 	@sudo rm -rf debtmp
 	@install -d debtmp/usr/bin debtmp/$(lib_dir)
 	@install $(INSTALLED_BIN) debtmp/usr/bin
@@ -362,12 +385,12 @@ ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 # Docker image
 
 docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
-	@echo "Building docker image for testing DEB version"
+	@echo 'Building docker image for testing DEB version'
 	@docker build -t rixed/ramen:latest --squash -f $< docker/
 
 docker-build-builder: docker/Dockerfile-builder
 	@for distrib in jessie stretch ; do \
-		echo "Building docker image for building the DEB packages for $$distrib" ;\
+		echo 'Building docker image for building the DEB packages for $$distrib" ;\
 		echo 'FROM debian:'$$distrib > docker/Dockerfile-builder.$$distrib ;\
 		cat docker/Dockerfile-builder >> docker/Dockerfile-builder.$$distrib ;\
 		docker build -t rixed/ramen-builder:$$distrib \
@@ -376,11 +399,11 @@ docker-build-builder: docker/Dockerfile-builder
 	done
 
 docker-build-image: docker-latest
-	@echo "Tagging latest docker image to v$(VERSION)"
+	@echo 'Tagging latest docker image to v$(VERSION)'
 	@docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
 
 docker-push:
-	@echo "Uploading docker images"
+	@echo 'Uploading docker images'
 	@docker push rixed/ramen:latest
 	@docker push rixed/ramen:v$(VERSION)
 	@docker push rixed/ramen-builder:jessie
@@ -389,7 +412,7 @@ docker-push:
 # Cleaning
 
 clean:
-	@echo "Cleaning all build files"
+	@echo 'Cleaning all build files'
 	@$(RM) src/*.s src/*.annot src/*.o
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
 	@$(RM) src/ringbuf/*.o
@@ -399,6 +422,7 @@ clean:
 	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
 	@$(RM) src/ramen src/codegen.cmxa src/RamenFileNotify.ml src/libringbuf.a
 	@$(RM) src/libcollectd.a src/libnetflow.a
+	@$(RM) tests/*.success
 	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp
 	@$(RM) ramen.*.deb

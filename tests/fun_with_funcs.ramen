@@ -1,0 +1,15 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  FROM tests/fixtures/cars/csv
+  SELECT
+    first horsepower as first_1,
+    max(min horsepower) as first_2,
+    min(max horsepower) as first_3,
+    -- Private field:
+    COALESCE(CO2, 300) / horsepower as _co2_per_hp,
+    -- We can use out fields in stateful functions:
+    90th percentile _co2_per_hp,
+    99th percentile globally _co2_per_hp
+  EXPORT
+  COMMIT WHEN group.#count >= 4539;

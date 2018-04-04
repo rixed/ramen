@@ -1,0 +1,6 @@
+-- vim: ft=sql expandtab
+
+DEFINE p sel_year=1976 AS
+  FROM tests/fixtures/earthquakes/csv
+  SELECT n WHERE year = sel_year
+  EXPORT;

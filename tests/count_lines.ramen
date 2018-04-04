@@ -1,0 +1,9 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  FROM tests/fixtures/n123/csv
+  SELECT
+    10*n AS ten_n,
+    in.#count AS count
+  WHERE n=3
+  EXPORT;

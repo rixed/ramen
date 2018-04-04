@@ -1,0 +1,40 @@
+{
+  programs = [
+    ("commit_before.x", []);
+    ("fixtures/n123.x", []);
+    ("fixtures/cars.x", []) ];
+  outputs = {
+    "tests/commit_before/f" => {
+      present = [ { "sum_n" => "3" } ]};
+    "tests/commit_before/count_cars" => {
+      present = [
+        { "manufacturer" => "\"aston martin\""; "nb_models" => "8" };
+				{ "manufacturer" => "\"Audi\""; "nb_models" => "51" };
+				{ "manufacturer" => "\"Bentley\""; "nb_models" => "8" };
+				{ "manufacturer" => "\"BMW\""; "nb_models" => "667" };
+				{ "manufacturer" => "\"FCA Italy\""; "nb_models" => "5" };
+				{ "manufacturer" => "\"FCA US LLC\""; "nb_models" => "250" };
+				{ "manufacturer" => "\"Ferrari\""; "nb_models" => "48" };
+				{ "manufacturer" => "\"FOMOCO\""; "nb_models" => "402" };
+				{ "manufacturer" => "\"GM\""; "nb_models" => "417" };
+				{ "manufacturer" => "\"Honda\""; "nb_models" => "371" };
+				{ "manufacturer" => "\"Hyundai\""; "nb_models" => "145" };
+				{ "manufacturer" => "\"Jaguar Land Rover L\""; "nb_models" => "76" };
+				{ "manufacturer" => "\"Kia\""; "nb_models" => "172" };
+				{ "manufacturer" => "\"Lamborghini\""; "nb_models" => "8" };
+				{ "manufacturer" => "\"Lotus\""; "nb_models" => "10" };
+				{ "manufacturer" => "\"Maserati\""; "nb_models" => "28" };
+				{ "manufacturer" => "\"MAZDA\""; "nb_models" => "88" };
+				{ "manufacturer" => "\"McLaren Automotive \""; "nb_models" => "5" };
+				{ "manufacturer" => "\"Mercedes-Benz\""; "nb_models" => "224" };
+				{ "manufacturer" => "\"Mitsubishi Motors Co\""; "nb_models" => "39" };
+				{ "manufacturer" => "\"Nissan\""; "nb_models" => "416" };
+				{ "manufacturer" => "\"Porsche\""; "nb_models" => "102" };
+				{ "manufacturer" => "\"Rolls-Royce\""; "nb_models" => "13" };
+				{ "manufacturer" => "\"Roush\""; "nb_models" => "12" };
+				{ "manufacturer" => "\"Subaru\""; "nb_models" => "82" };
+				{ "manufacturer" => "\"Tesla\""; "nb_models" => "22" };
+				{ "manufacturer" => "\"Toyota\""; "nb_models" => "503" };
+				{ "manufacturer" => "\"Volkswagen\""; "nb_models" => "32" };
+				{ "manufacturer" => "\"Volkswagen Group of\""; "nb_models" => "284" } ]}}
+}

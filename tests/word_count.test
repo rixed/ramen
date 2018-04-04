@@ -1,0 +1,15 @@
+{
+  programs = [ ("word_count.x", []) ];
+  outputs = {
+    "tests/word_count/counter1" => {
+      present = [ { "count" => "15"; "word" => "\"nous\"" } ]};
+    "tests/word_count/counter2" => {
+      present = [
+        { "count" => "15"; "word" => "\"nous\"" };
+				{ "count" => "8"; "word" => "\"de\"" };
+				{ "count" => "5"; "word" => "\"ne\"" };
+				{ "count" => "4"; "word" => "\"mais\"" };
+				{ "count" => "4"; "word" => "\"la\"" };
+				{ "count" => "4"; "word" => "\"et\"" };
+				{ "count" => "3"; "word" => "\"vueille\"" }]}}
+}

@@ -1,0 +1,9 @@
+{
+  programs = [
+    ("previous_and_null.x", []);
+    ("fixtures/n123.x", []) ];
+  outputs = {
+    "tests/previous_and_null/f" => {
+      present = [
+        { "sum_name" => "\"one+two+three\""; "x" => "6" } ]}}
+}

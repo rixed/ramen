@@ -1,0 +1,11 @@
+{
+  programs = [
+    ("lag.x", []);
+    ("fixtures/n123.x", []) ];
+  outputs = {
+    "tests/lag/f" => {
+      present = [
+        { "n" => "1"; "lag1" => "1"; "lag2" => "1" };
+        { "n" => "2"; "lag1" => "1"; "lag2" => "1" };
+        { "n" => "3"; "lag1" => "2"; "lag2" => "1" } ]}}
+}

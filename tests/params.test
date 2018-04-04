@@ -1,0 +1,8 @@
+{
+  programs = [
+    ("params.x", []) ;
+    ("fixtures/earthquakes.x", []) ];
+  outputs = {
+    "tests/params/p" => {
+      present = [ { "n" => "14" } ]}}
+}

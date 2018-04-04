@@ -1,0 +1,9 @@
+{
+  programs = [
+    ("count_lines.x", []);
+    ("fixtures/n123.x", []) ];
+  outputs = {
+    "tests/count_lines/f" => {
+      present = [
+        { "ten_n" => "30"; "count" => "3" } ]}}
+}
