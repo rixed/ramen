@@ -39,6 +39,10 @@ type test_spec =
 (* Read a tuple described by the given type, and return a hash of fields
  * to string values *)
 
+let fail_and_quit msg =
+  RamenProcesses.quit := true ;
+  fail_with msg
+
 let test_output func bname output_spec =
   let ser_type = func.F.out_type.ser in
   let nullmask_sz =
@@ -50,6 +54,7 @@ let test_output func bname output_spec =
     | exception Not_found ->
         let msg = Printf.sprintf "Unknown field %s in %s" field
                     (IO.to_string RamenTuple.print_typ ser_type) in
+        RamenProcesses.quit := true ;
         failwith msg
     | idx, _ -> idx in
   let field_indices_of_tuples =
@@ -72,6 +77,7 @@ let test_output func bname output_spec =
     return (
       !tuples_to_find <> [] &&
       !tuples_to_not_find = [] &&
+      not !RamenProcesses.quit &&
       Unix.gettimeofday () -. start < timeout) in
   let unserialize = RamenSerialization.read_tuple ser_type nullmask_sz in
   let%lwt () =
@@ -171,34 +177,38 @@ let test_one conf root_path notify_rb dirname test =
   let process_synchroniser =
     restart_on_failure RamenProcesses.synchronize_running conf
   and worker_feeder =
+    let feed_input input =
+      match Hashtbl.find workers input.Input.operation with
+      | exception Not_found ->
+          let msg =
+            Printf.sprintf2 "Unknown operation: %S (must be one of: %a)"
+              input.operation
+              (Enum.print String.print) (Hashtbl.keys workers) in
+          fail_and_quit msg
+      | func, _, rbr ->
+          let%lwt () =
+            if !rbr = None then (
+              if func.F.merge_inputs then
+                (* TODO: either specify a parent number or pick the first one? *)
+                let err = "Writing to merging operations is not \
+                           supported yet!" in
+                fail_and_quit err
+              else (
+                let in_rb = C.in_ringbuf_name_single conf func in
+                (* It might not exist already. Instead of waiting for the
+                 * worker to start, create it: *)
+                RingBuf.create in_rb RingBufLib.rb_words ;
+                let rb = RingBuf.load in_rb in
+                rbr := Some rb ;
+                return_unit)
+            ) else return_unit in
+          let rb = Option.get !rbr in
+          RamenSerialization.write_tuple conf func.F.in_type.ser rb input.tuple
+    in
     let%lwt () =
       Lwt_list.iter_s (fun input ->
-        match Hashtbl.find workers input.Input.operation with
-        | exception Not_found ->
-            let msg =
-              Printf.sprintf2 "Unknown operation: %S (must be one of: %a)"
-                input.operation
-                (Enum.print String.print) (Hashtbl.keys workers) in
-            fail_with msg
-        | func, _, rbr ->
-            let%lwt () =
-              if !rbr = None then (
-                if func.F.merge_inputs then
-                  (* TODO: either specify a parent number or pick the first one? *)
-                  let err = "Writing to merging operations is not \
-                             supported yet!" in
-                  fail_with err
-                else (
-                  let in_rb = C.in_ringbuf_name_single conf func in
-                  (* It might not exist already. Instead of waiting for the
-                   * worker to start, create it: *)
-                  RingBuf.create in_rb RingBufLib.rb_words ;
-                  let rb = RingBuf.load in_rb in
-                  rbr := Some rb ;
-                  return_unit)
-              ) else return_unit in
-            let rb = Option.get !rbr in
-            RamenSerialization.write_tuple conf func.F.in_type.ser rb input.tuple
+        if !RamenProcesses.quit then return_unit
+        else feed_input input
       ) test.inputs in
     Hashtbl.iter (fun _ (_, _, rbr) ->
       Option.may RingBuf.unload !rbr
@@ -210,7 +220,7 @@ let test_one conf root_path notify_rb dirname test =
       let tester_thread =
         match Hashtbl.find workers user_fq_name with
         | exception Not_found ->
-            fail_with ("Unknown operation "^ user_fq_name)
+            fail_and_quit ("Unknown operation "^ user_fq_name)
         | tested_func, bname, _rbr ->
             test_output tested_func bname output_spec in
       return (tester_thread :: thds)
