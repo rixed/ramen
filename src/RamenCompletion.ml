@@ -61,15 +61,15 @@ let persist_dir toks =
     try Sys.getenv "RAMEN_PERSIST_DIR"
     with Not_found -> RamenConsts.default_persist_dir
 
-let complete_file select root str =
+let complete_file select root what str =
   let res = ref [] in
   let on_file fname rel_fname =
     if select fname then
       res :=
         (* If we had no root then we are relative to current directory,
          * therefore it's nicer to omit the root entirely: *)
-        ((if root = "" then rel_fname else fname),
-         "ramen program ") :: !res in
+        (simplified_path (if root = "" then rel_fname else fname),
+         what) :: !res in
   dir_subtree_iter ~on_file (if root = "" then Sys.getcwd () else root) ;
   !res
 
@@ -77,10 +77,10 @@ let extension_is ext fname =
   String.ends_with fname ext
 
 let complete_program_files root str =
-  complete_file (extension_is ".ramen") root str
+  complete_file (extension_is ".ramen") root "ramen program" str
 
 let complete_binary_files str =
-  complete_file (extension_is ".x") "" str
+  complete_file (extension_is ".x") "" "ramen binary" str
 
 let empty_help s = s, ""
 
