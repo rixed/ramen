@@ -15,13 +15,11 @@ let () =
       (Printexc.to_string exn)
       (Printexc.get_backtrace ()))
 
-let make_copts debug persist_dir max_archives use_embedded_compiler
-               bundle_dir max_simult_compilations rand_seed keep_temp_files =
+let make_copts debug persist_dir rand_seed keep_temp_files =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed -> Random.init seed) ;
-  C.make_conf ~debug ~max_simult_compilations ~max_archives
-              ~use_embedded_compiler ~bundle_dir ~keep_temp_files persist_dir
+  C.make_conf ~debug ~keep_temp_files persist_dir
 
 (*
  * `ramen start`
@@ -33,7 +31,7 @@ let make_copts debug persist_dir max_archives use_embedded_compiler
  * The actual work is done in module RamenProcesses.
  *)
 
-let start conf daemonize to_stderr () =
+let start conf daemonize to_stderr max_archives () =
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   let logdir =
@@ -41,19 +39,20 @@ let start conf daemonize to_stderr () =
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir conf.C.debug ;
   if daemonize then do_daemonize () ;
-  let notify_rb = RamenProcesses.prepare_start conf in
+  let open RamenProcesses in
+  let notify_rb = prepare_start conf in
   Lwt_main.run (
     join [
       (let%lwt () = Lwt_unix.sleep 1. in
        (* TODO: Also a separate command to do the cleaning? *)
        async (fun () ->
-         restart_on_failure RamenProcesses.cleanup_old_files conf) ;
+         restart_on_failure (cleanup_old_files max_archives) conf) ;
        async (fun () ->
-         restart_on_failure RamenProcesses.process_notifications notify_rb) ;
+         restart_on_failure process_notifications notify_rb) ;
        return_unit) ;
       (* The main job of this process is to make what's actually running
        * in accordance to the running program list: *)
-      restart_on_failure RamenProcesses.synchronize_running conf ])
+      restart_on_failure synchronize_running conf ])
 
 (*
  * `ramen compile`
@@ -62,8 +61,14 @@ let start conf daemonize to_stderr () =
  * Actual work happens in RamenCompiler.
  *)
 
-let compile conf root_path source_files () =
+let compile conf root_path use_embedded_compiler bundle_dir
+            max_simult_compils source_files () =
   logger := make_logger conf.C.debug ;
+  (* There is a long way to calling the compiler so we configure it from
+   * here: *)
+  RamenOCamlCompiler.use_embedded_compiler := use_embedded_compiler ;
+  RamenOCamlCompiler.bundle_dir := bundle_dir ;
+  RamenOCamlCompiler.max_simult_compilations := max_simult_compils ;
   let all_ok = ref true in
   let comp_file source_file =
     let program_name = Filename.remove_extension source_file |>

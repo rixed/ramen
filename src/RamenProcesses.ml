@@ -61,7 +61,7 @@ let process_notifications rb =
       worker url ;
     RamenHttpHelpers.http_notify url)
 
-let cleanup_old_files conf =
+let cleanup_old_files max_archives conf =
   (* Have a list of directories and regexps and current version,
    * Iter through this list for file matching the regexp and that are also directories.
    * If this direntry matches the current version, touch it.
@@ -123,7 +123,7 @@ let cleanup_old_files conf =
       (* Delete all files matching %d-%d.r but the last ones: *)
       let files = RingBuf.seq_files_of dir |> Array.of_enum in
       Array.fast_sort RingBuf.seq_file_compare files ;
-      for i = 0 to Array.length files - conf.max_archives do
+      for i = 0 to Array.length files - max_archives do
         let _, _, f = files.(i) in
         let fname = dir ^"/"^ f in
         !logger.info "Deleting old archive %s" fname ;

@@ -138,8 +138,7 @@ struct
     "PM="^ IO.to_string (List.print ~first:"" ~last:"" ~sep:","
                            RamenTuple.print_param) func.params ^
     (* Also, as the compiled code differ: *)
-    "FLG="^ (if conf.C.debug then "DBG" else "")
-          ^ (if conf.C.use_embedded_compiler then "EMB" else "") |>
+    "FLG="^ (if conf.C.debug then "DBG" else "") |>
     md5
 end
 module Program =

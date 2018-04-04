@@ -10,10 +10,6 @@ type conf =
   { debug : bool ;
     persist_dir : string ;
     do_persist : bool ; (* false for tests *)
-    max_simult_compilations : int ref ;
-    max_archives : int ;
-    use_embedded_compiler : bool ;
-    bundle_dir : string ;
     keep_temp_files : bool }
 
 let tmp_input_of_func persist_dir program_name func_name in_type =
@@ -237,12 +233,9 @@ let find_func programs program_name func_name =
   let _bin, rc = Hashtbl.find programs program_name () in
   List.find (fun f -> f.Func.name = func_name) rc
 
-let make_conf ?(do_persist=true) ?(debug=false) ?(max_simult_compilations=4)
-              ?(max_archives=10) ?(use_embedded_compiler=false)
-              ?(bundle_dir="") ?(keep_temp_files=false) persist_dir =
-  { do_persist ; debug ; persist_dir ;
-    max_simult_compilations = ref max_simult_compilations ;
-    max_archives ; use_embedded_compiler ; bundle_dir ; keep_temp_files }
+let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
+              persist_dir =
+  { do_persist ; debug ; persist_dir ; keep_temp_files }
 
 (* Various directory names: *)
 

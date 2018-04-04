@@ -21,33 +21,6 @@ let copts =
     let i = Arg.info ~doc:"Directory where are stored data persisted on disc."
                      ~docs ~env [ "persist-dir" ] in
     Arg.(value (opt string RamenConsts.default_persist_dir i))
-  and max_history_archives =
-    let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
-    let i = Arg.info ~doc:"Max number of archive files to keep per history ; \
-                           0 would disable archiving altogether."
-                     ~docs ~env ["max-history-archives" ; "max-history-files" ] in
-    Arg.(value (opt int 200 i))
-  (* Make it an enum option so that it's easier to change the default *)
-  and use_embedded_compiler =
-    let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
-    let i = Arg.info ~doc:"Use embedded compiler rather than calling system one."
-                     ~docs ~env
-                     [ "use-embedded-compiler"; "use-internal-compiler";
-                       "embedded-compiler"; "internal-compiler" ] in
-    Arg.(value (flag i))
-  and bundle_dir =
-    let env = Term.env_info "RAMEN_BUNDLE_DIR" in
-    let i = Arg.info ~doc:"Directory where to find libraries for the embedded \
-                           compiler."
-                     ~docs ~env [ "bundle-dir" ] in
-    Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))
-  and max_simult_compilations =
-    let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
-    let i = Arg.info ~doc:"Max number of compilations to perform \
-                           simultaneously."
-                     ~docs ~env
-                     ["max-simult-compil" ; "max-simultaneous-compilations" ] in
-    Arg.(value (opt int 4 i))
   and rand_seed =
     let env = Term.env_info "RAMEN_RANDOM_SEED" in
     let i = Arg.info ~doc:"Seed to initialize the random generator with. \
@@ -55,14 +28,16 @@ let copts =
                      ~docs ~env [ "seed"; "rand-seed" ] in
     Arg.(value (opt (some int) None i))
   and keep_temp_files =
+    let env = Term.env_info "RAMEN_KEEP_TEMP_FILES" in
     let i = Arg.info ~doc:"Keep temporary files."
-                     ~docs [ "keep-temp-files" ] in
+                     ~docs ~env [ "keep-temp-files" ] in
     Arg.(value (flag i))
   in
   Term.(const RamenCliCmd.make_copts
-    $ debug $ persist_dir $ max_history_archives
-    $ use_embedded_compiler $ bundle_dir $ max_simult_compilations
-    $ rand_seed $ keep_temp_files)
+    $ debug
+    $ persist_dir
+    $ rand_seed
+    $ keep_temp_files)
 
 (*
  * Start the event processor
@@ -80,12 +55,20 @@ let to_stderr =
                    ~env [ "log-to-stderr"; "to-stderr"; "stderr" ] in
   Arg.(value (flag i))
 
+let max_archives =
+  let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
+  let i = Arg.info ~doc:"Max number of archive files to keep per operation; \
+                         0 would disable archiving altogether."
+                   ~env ["max-archives"] in
+  Arg.(value (opt int 20 i))
+
 let start =
   Term.(
     (const RamenCliCmd.start
       $ copts
       $ daemonize
-      $ to_stderr),
+      $ to_stderr
+      $ max_archives),
     info ~doc:RamenConsts.start_info "start")
 
 (*
@@ -126,6 +109,28 @@ let summary =
 (*
  * Compiling/Running/Stopping
  *)
+
+let use_embedded_compiler =
+  let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
+  let i = Arg.info ~doc:"Use embedded compiler rather than calling system one."
+                   ~env [ "use-embedded-compiler"; "use-internal-compiler";
+                          "embedded-compiler"; "internal-compiler" ] in
+  Arg.(value (flag i))
+
+let bundle_dir =
+  let env = Term.env_info "RAMEN_BUNDLE_DIR" in
+  let i = Arg.info ~doc:"Directory where to find libraries for the embedded \
+                         compiler."
+                   ~env [ "bundle-dir" ] in
+  Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))
+
+let max_simult_compilations =
+  let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
+  let i = Arg.info ~doc:"Max number of compilations to perform \
+                         simultaneously."
+                   ~env [ "max-simult-compilations" ;
+                          "max-simultaneous-compilations" ] in
+  Arg.(value (opt int 4 i))
 
 let param =
   let parse s =
@@ -187,6 +192,9 @@ let compile =
     (const RamenCliCmd.compile
       $ copts
       $ root_path
+      $ use_embedded_compiler
+      $ bundle_dir
+      $ max_simult_compilations
       $ source_files),
     info ~doc:RamenConsts.compile_info "compile")
 

@@ -4,6 +4,10 @@ open RamenLog
 open RamenHelpers
 module C = RamenConf
 
+let max_simult_compilations = ref 4
+let use_embedded_compiler = ref false
+let bundle_dir = ref ""
+
 (* Mostly copied from ocaml source code driver/optmain.ml *)
 
 module Backend = struct
@@ -40,9 +44,9 @@ let compile_internal conf func_name src_file obj_file =
   debug := conf.C.debug ;
   verbose := conf.C.debug ;
   no_std_include := true ;
-  !logger.debug "Use bundled libraries from %S" conf.C.bundle_dir ;
+  !logger.debug "Use bundled libraries from %S" !bundle_dir ;
   include_dirs :=
-    List.map (fun d -> conf.C.bundle_dir ^"/"^ d) RamenDepLibs.incdirs ;
+    List.map (fun d -> !bundle_dir ^"/"^ d) RamenDepLibs.incdirs ;
   dlcode := true ;
   keep_asm_file := conf.C.keep_temp_files ;
   (* equivalent to -O2: *)
@@ -92,7 +96,7 @@ let compile_external conf func_name src_file obj_file =
   let cmd = Lwt_process.shell comp_cmd in
   let cmd_name = "Compilation of "^ func_name in
   let%lwt status =
-    run_coprocess ~max_count:conf.max_simult_compilations cmd_name cmd in
+    run_coprocess ~max_count:max_simult_compilations cmd_name cmd in
   if status = Unix.WEXITED 0 then (
     !logger.debug "Compiled %s with: %s" func_name comp_cmd ;
     return_unit
@@ -107,7 +111,7 @@ let compile_external conf func_name src_file obj_file =
 
 let compile conf func_name src_file obj_file =
   mkdir_all ~is_file:true obj_file ;
-  (if conf.C.use_embedded_compiler then compile_internal else compile_external)
+  (if !use_embedded_compiler then compile_internal else compile_external)
     conf func_name src_file obj_file
 
 (* Function to take some object files, a source file, and produce an
@@ -123,9 +127,9 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   debug := conf.C.debug ;
   verbose := conf.C.debug ;
   no_std_include := true ;
-  !logger.debug "Use bundled libraries from %S" conf.C.bundle_dir ;
+  !logger.debug "Use bundled libraries from %S" !bundle_dir ;
   include_dirs :=
-    List.map (fun d -> conf.C.bundle_dir ^"/"^ d) RamenDepLibs.incdirs @
+    List.map (fun d -> !bundle_dir ^"/"^ d) RamenDepLibs.incdirs @
     Set.to_list inc_dirs ;
   dlcode := true ;
   keep_asm_file := conf.C.keep_temp_files ;
@@ -145,7 +149,7 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
 
   let cmx_file = Filename.remove_extension src_file ^ ".cmx" in
   let objfiles =
-    List.map (fun d -> conf.C.bundle_dir ^"/"^ d) RamenDepLibs.objfiles @
+    List.map (fun d -> !bundle_dir ^"/"^ d) RamenDepLibs.objfiles @
     obj_files @ [ cmx_file ] in
 
   !logger.debug "objfiles = %a" (List.print String.print) objfiles ;
@@ -192,7 +196,7 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
   let cmd = Lwt_process.shell comp_cmd in
   let cmd_name = "Compilation+Link of "^ program_name in
   let%lwt status =
-    run_coprocess ~max_count:conf.max_simult_compilations cmd_name cmd in
+    run_coprocess ~max_count:max_simult_compilations cmd_name cmd in
   if status = Unix.WEXITED 0 then (
     !logger.debug "Compiled %s with: %s" program_name comp_cmd ;
     return_unit
@@ -213,7 +217,7 @@ let link conf program_name obj_files src_file bin_file =
       Set.add (Filename.dirname cmx) s,
       Filename.basename cmx :: l
     ) (Set.empty, []) obj_files in
-  (if conf.C.use_embedded_compiler then link_internal else link_external)
+  (if !use_embedded_compiler then link_internal else link_external)
     conf program_name inc_dirs obj_files src_file bin_file
 
 
