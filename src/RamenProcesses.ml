@@ -400,6 +400,7 @@ let synchronize_running conf =
   let synchronize must_run running =
     (* First, remove from running all terminated processes that must not run
      * any longer. Send a kill to those that are still running. *)
+    let prev_nb_running = Hashtbl.length running in
     let to_kill = ref [] and to_start = ref []
     and (+=) r x = r := x :: !r in
     Hashtbl.filteri_inplace (fun sign proc ->
@@ -421,6 +422,10 @@ let synchronize_running conf =
            * dead and then restart it. *)
           if proc.last_killed <> 0. then to_kill += proc
     ) must_run ;
+    let nb_running = Hashtbl.length running in
+    if !quit && nb_running > 0 && nb_running <> prev_nb_running then
+      !logger.info "Still %d processes running"
+        (Hashtbl.length running) ;
     join [
       Lwt_list.iter_p try_kill !to_kill ;
       Lwt_list.iter_p (try_start conf running) !to_start ]
@@ -433,8 +438,6 @@ let synchronize_running conf =
     ) else (
       let%lwt must_run, last_read =
         if !quit then (
-          !logger.info "Still %d processes running"
-            (Hashtbl.length running) ;
           return (empty_must_run, last_read)
         ) else (
           let last_mod =
