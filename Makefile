@@ -75,7 +75,7 @@ RAMEN_SOURCES = \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/RamenTyping.ml \
 	src/RamenCompiler.ml src/TermTable.ml src/RamenCliCmd.ml \
-	src/RingBufCmd.ml src/RamenCompletion.ml src/ramen.ml
+	src/RingBufCmd.ml src/RamenCompletion.ml src/RamenTests.ml src/ramen.ml
 
 CODEGENLIB_SOURCES = \
 	src/RamenConsts.ml src/RamenLog.ml src/RamenHelpers.ml src/Globs.ml \

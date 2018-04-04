@@ -24,7 +24,8 @@ let complete_commands s =
       "tail", RamenConsts.tail_info ;
       "timeseries", RamenConsts.timeseries_info ;
       "timerange", RamenConsts.timerange_info ;
-      "ps", RamenConsts.ps_info ] in
+      "ps", RamenConsts.ps_info ;
+      "test", RamenConsts.test_info ] in
   complete commands s
 
 let complete_global_options s =
@@ -81,6 +82,9 @@ let complete_program_files root str =
 
 let complete_binary_files str =
   complete_file (extension_is ".x") "" "ramen binary" str
+
+let complete_test_files str =
+  complete_file (extension_is ".test") "" "ramen test" str
 
 let empty_help s = s, ""
 
@@ -193,5 +197,9 @@ let complete str () =
             "--short", "" ;
             "--sort", "" ;
             "--top", "" ]
+      | "test" ->
+          ("--help", "") ::
+          ("--root=", "") ::
+          (complete_test_files last_tok)
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

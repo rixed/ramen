@@ -29,6 +29,9 @@ let blanks =
 let opt_blanks =
   optional_greedy ~def:() blanks
 
+let allow_surrounding_blanks ppp =
+  opt_blanks -+ ppp +- opt_blanks +- eof
+
 let slash = char ~what:"slash" '/'
 let star = char ~what:"star" '*'
 

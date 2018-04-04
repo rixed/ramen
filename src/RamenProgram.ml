@@ -124,8 +124,7 @@ end
  *)
 
 let parse program =
-  let p =
-    RamenParsing.(opt_blanks -+ Parser.p +- opt_blanks +- eof) in
+  let p = RamenParsing.allow_surrounding_blanks Parser.p in
   let stream = RamenParsing.stream_of_string program in
   (* TODO: enable error correction *)
   match p ["program"] None Parsers.no_error_correction stream |>

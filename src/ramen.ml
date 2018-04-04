@@ -127,11 +127,6 @@ let summary =
  * Compiling/Running/Stopping
  *)
 
-let root_dir =
-  let i = Arg.info ~doc:"Root directory."
-                   ~docv:"DIR" [] in
-  Arg.(required (pos 0 (some string) None i))
-
 let param =
   let parse s =
     match String.split s ~by:"=" with
@@ -141,7 +136,7 @@ let param =
                 sign (=), followed by the parameter value.")
     | pname, pval ->
         let open RamenParsing in
-        let p = opt_blanks -+ RamenScalar.Parser.p +- opt_blanks +- eof in
+        let p = allow_surrounding_blanks RamenScalar.Parser.p in
         let stream = stream_of_string pval in
         let m = [ "parameter value from command line" ] in
         (match p m  None Parsers.no_error_correction stream |>
@@ -390,6 +385,23 @@ let autocomplete =
     info ~doc:"Autocomplete the given command." "_completion")
 
 (*
+ * Tests
+ *)
+
+let test_files =
+  let i = Arg.info ~doc:"Definition of a test to run."
+                   ~docv:"file.test" [] in
+  Arg.(non_empty (pos_all string [] i))
+
+let test =
+  Term.(
+    (const RamenTests.run
+      $ copts
+      $ root_path
+      $ test_files),
+    info ~doc:RamenConsts.test_info "test")
+
+(*
  * Command line evaluation
  *)
 
@@ -403,7 +415,7 @@ let default =
 let () =
   match Term.eval_choice default [
     start ; compile ; run ; kill ; tail ; timeseries ; timerange ;
-    ps ; dequeue ; summary ; autocomplete
+    ps ; dequeue ; summary ; autocomplete ; test
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

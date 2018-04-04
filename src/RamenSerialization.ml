@@ -43,7 +43,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
   let tuple = Array.make tuple_len VNull in
   let _ =
     List.fold_lefti (fun (offs, b) i typ ->
-        assert (not (RamenTuple.is_private_field typ.RamenTuple.typ_name)) ;
+        assert (not (is_private_field typ.RamenTuple.typ_name)) ;
         let value, offs', b' =
           if typ.nullable && not (RingBuf.get_bit tx b) then (
             None, offs, b+1
@@ -77,6 +77,66 @@ let read_notifs ?while_ rb f =
   in
   read_tuples ?while_ unserialize rb f
 
+let write_tuple conf ser_in_type rb tuple =
+  let write_scalar_value tx offs =
+    let open RingBuf in
+    let open RingBufLib in
+    function
+    | VFloat f -> write_float tx offs f ; sersize_of_float
+    | VString s -> write_string tx offs s ; sersize_of_string s
+    | VBool b -> write_bool tx offs b ; sersize_of_bool
+    | VU8 i -> write_u8 tx offs i ; sersize_of_u8
+    | VU16 i -> write_u16 tx offs i ; sersize_of_u16
+    | VU32 i -> write_u32 tx offs i ; sersize_of_u32
+    | VU64 i -> write_u64 tx offs i ; sersize_of_u64
+    | VU128 i -> write_u128 tx offs i ; sersize_of_u128
+    | VI8 i -> write_i8 tx offs i ; sersize_of_i8
+    | VI16 i -> write_i16 tx offs i ; sersize_of_i16
+    | VI32 i -> write_i32 tx offs i ; sersize_of_i32
+    | VI64 i -> write_i64 tx offs i ; sersize_of_i64
+    | VI128 i -> write_i128 tx offs i ; sersize_of_i128
+    | VEth e -> write_eth tx offs e ; sersize_of_eth
+    | VIpv4 i -> write_ip4 tx offs i ; sersize_of_ipv4
+    | VIpv6 i -> write_ip6 tx offs i ; sersize_of_ipv6
+    | VCidrv4 c -> write_cidr4 tx offs c ; sersize_of_cidrv4
+    | VCidrv6 c -> write_cidr6 tx offs c ; sersize_of_cidrv6
+    | VNull -> assert false
+  in
+  let nullmask_sz, values = (* List of nullable * scalar *)
+    List.fold_left (fun (null_i, lst) ftyp ->
+      if ftyp.RamenTuple.nullable then
+        match Hashtbl.find tuple ftyp.typ_name with
+        | exception Not_found ->
+            (* Unspecified nullable fields are just null. *)
+            null_i + 1, lst
+        | s ->
+            null_i + 1,
+            (Some null_i, RamenScalar.value_of_string ftyp.typ s) :: lst
+      else
+        match Hashtbl.find tuple ftyp.typ_name with
+        | exception Not_found ->
+            null_i, (None, RamenScalar.any_value_of_type ftyp.typ) :: lst
+        | s ->
+            null_i, (None, RamenScalar.value_of_string ftyp.typ s) :: lst
+    ) (0, []) ser_in_type |>
+    fun (null_i, lst) ->
+      RingBufLib.(round_up_to_rb_word (bytes_for_bits null_i)),
+      List.rev lst in
+  let sz =
+    List.fold_left (fun sz (_, v) ->
+      sz + RingBufLib.sersize_of_value v
+    ) nullmask_sz values in
+  !logger.debug "Sending an input tuple of %d bytes" sz ;
+  RingBuf.with_enqueue_tx rb sz (fun tx ->
+    RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
+    (* Loop over all values: *)
+    List.fold_left (fun offs (null_i, v) ->
+      Option.may (RingBuf.set_bit tx) null_i ;
+      offs + write_scalar_value tx offs v
+    ) nullmask_sz values |> ignore ;
+    (* For tests we won't archive the ringbufs so no need for time info: *)
+    0., 0.)
+
 (* Garbage in / garbage out *)
 let float_of_scalar_value =
   let open Stdint in
@@ -108,20 +168,23 @@ let find_field_index typ n =
       failwith err_msg
   | i, _ -> i
 
-let fold_seq_range ?while_ bname mi ma init f =
+let fold_seq_range ?while_ ?(mi=0) ?ma bname init f =
   let dir = seq_dir_of_bname bname in
   let entries =
     seq_files_of dir //
-    (fun (from, to_, _fname) -> from < ma && to_ >= mi) |>
+    (fun (from, to_, _fname) ->
+      to_ >= mi && Option.map_default (fun ma -> from < ma) true ma) |>
     Array.of_enum in
   Array.fast_sort seq_file_compare entries ;
   let fold_rb from rb usr =
-    let%lwt _, usr =
-      read_buf ?while_ rb (usr, 0) (fun (usr, i) tx ->
-        let seq = from + i in
-        if seq < mi then Lwt.return ((usr, i+1), true) else
+    let%lwt usr, _ =
+      read_buf ?while_ rb (usr, from) (fun (usr, seq) tx ->
+        !logger.debug "read_buf seq=%d" seq ;
+        if seq < mi then Lwt.return ((usr, seq + 1), true) else
         let%lwt usr = f usr tx in
-        Lwt.return ((usr, i+1), seq < ma-1)) in
+        Lwt.return (
+          (usr, seq + 1),
+          Option.map_default (fun ma -> seq < ma - 1) true ma)) in
     Lwt.return usr in
   let%lwt usr =
     Array.to_list entries |> (* FIXME *)

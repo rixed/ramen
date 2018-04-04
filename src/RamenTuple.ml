@@ -6,6 +6,7 @@
  * That's because all tuple values appear only in generated code.
  *)
 open Batteries
+open RamenHelpers
 
 type field_typ =
   { typ_name : string ; nullable : bool ; typ : RamenScalar.typ }
@@ -17,13 +18,6 @@ type typed_tuple =
   { user : field_typ list ; (* All the fields as declared in the code *)
     ser : field_typ list } (* Only public fields *)
   [@@ppp PPP_OCaml]
-
-let starts_with c f =
-  String.length f > 0 && f.[0] = c
-
-let is_virtual_field = starts_with '#'
-
-let is_private_field = starts_with '_'
 
 (* Given a typed tuple type, return a function that reorder a ser tuple (as
  * an array) into the same column order as in the user version: *)
@@ -75,7 +69,8 @@ let param_compare (a1, _) (b1, _) =
 
 let param_signature ps =
   List.fast_sort param_compare ps |>
-  IO.to_string (List.print print_param)
+  IO.to_string (List.print print_param) |>
+  md5
 
 (* Override ps1 with values from ps2, ignoring the values of ps2 that are
  * not in ps1: *)

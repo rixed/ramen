@@ -27,7 +27,8 @@ let round_up_to_rb_word bytes =
 
 let nullmask_bytes_of_tuple_type tuple_typ =
   List.fold_left (fun s field_typ ->
-    if not RamenTuple.(is_private_field field_typ.typ_name) && field_typ.nullable
+    if not (is_private_field field_typ.RamenTuple.typ_name) &&
+       field_typ.RamenTuple.nullable
     then s+1 else s) 0 tuple_typ |>
   bytes_for_bits |>
   round_up_to_rb_word
@@ -133,7 +134,7 @@ let ser_tuple_field_cmp t1 t2 =
 
 let ser_tuple_typ_of_tuple_typ tuple_typ =
   tuple_typ |>
-  List.filter (fun t -> not RamenTuple.(is_private_field t.typ_name)) |>
+  List.filter (fun t -> not (is_private_field t.RamenTuple.typ_name)) |>
   List.fast_sort ser_tuple_field_cmp
 
 let skip_list ~out_type ~in_type =

@@ -50,7 +50,7 @@ struct
        * or any other files where tuples are stored, so that those files
        * change when the code change, without a need to also change the
        * name of the operation. *)
-      mutable signature : string ;
+      signature : string ;
       parents : (string * string) list ;
       force_export : bool ;
       merge_inputs : bool ;
@@ -186,7 +186,6 @@ let program_of_running_entry mre =
   let prog = Program.of_bin mre.bin in
   List.iter (fun func ->
     func.Func.params <- RamenTuple.overwrite_params func.Func.params mre.parameters ;
-    func.signature <- func.signature ^"."^ (RamenTuple.param_signature func.params |> md5)
   ) prog ;
   prog
 
@@ -299,13 +298,12 @@ let archive_buf_name conf func =
 
 (* Operations are told where to write their output (and which selection of
  * fields) by another file, the "out-ref" file, which is a kind of symbolic
- * link with several destinations (plus a format, plus an expiry date).
- * The out-ref of an operation has to change whenever that operation change,
- * so it's named after its full signature: *)
+ * link with several destinations (plus a format, plus an expiry date). *)
 let out_ringbuf_names_ref conf func =
   conf.persist_dir ^"/workers/out_ref/"
-                   ^ RamenVersions.out_ref ^"/"
-                   ^ func.Func.signature ^"/out_ref.r"
+                   ^ RamenVersions.out_ref
+                   ^"/"^ func.Func.name
+                   ^"/out_ref"
 
 (* Finally, operations have two additional output streams: one for
  * instrumentation statistics, and one for notifications. Both are

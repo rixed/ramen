@@ -360,7 +360,7 @@ let check params =
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (function
       | Field (_, { contents = TupleGroup }, alias) ->
-        if not (RamenTuple.is_virtual_field alias) then
+        if not (is_virtual_field alias) then
           raise (SyntaxError (TupleHasOnlyVirtuals { tuple = TupleGroup ;
                                                      alias }))
       | _ -> ()) op ;
@@ -426,7 +426,7 @@ struct
       else String.lchop field in
     function
     | Field (_, _, field)
-        when not (RamenTuple.is_virtual_field field) -> field
+        when not (is_virtual_field field) -> field
     (* Provide some default name for common aggregate functions: *)
     | StatefulFun (_, _, AggrMin (Field (_, _, field))) -> "min_"^ force_public field
     | StatefulFun (_, _, AggrMax (Field (_, _, field))) -> "max_"^ force_public field

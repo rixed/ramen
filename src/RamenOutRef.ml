@@ -56,15 +56,8 @@ let out_spec_of_string str =
 let print_out_specs oc outs =
   Map.print ~sep:"; " String.print file_spec_print oc outs
 
-(* Used by ramen when starting a new worker to initialize (or reset) its
- * output: *)
 let set_ fname outs =
   File.write_lines fname (Map.enum outs /@ string_of_out_spec)
-
-let set fname outs =
-  Lock.with_w_lock fname (fun () ->
-    (*!logger.debug "Got write lock for set on %s" fname ;*)
-    wrap (fun () -> set_ fname outs))
 
 let is_still_valid now file_spec =
   file_spec.timeout <= 0. || file_spec.timeout > now
@@ -99,9 +92,6 @@ let add_ fname (out_fname, file_spec) =
     if prev_spec <> file_spec then rewrite ()
 
 let add fname out =
-  if String.length fname = 0 ||
-     (let c = fname.[String.length fname - 1] in c <> 'r' && c <> 'b')
-  then invalid_arg "RamenOutRef.add" ;
   Lock.with_w_lock fname (fun () ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
     wrap (fun () -> add_ fname out))

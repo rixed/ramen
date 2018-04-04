@@ -40,24 +40,24 @@ let () =
       Printf.sprintf "Function %S has no event-time information" n)
     | _ -> None)
 
-(* Returns the func, the buffer name and the type: *)
-let make_temp_export conf ?duration func =
+(* Returns the buffer name: *)
+let make_temp_export ?duration conf func =
   let bname = C.archive_buf_name conf func in
   RingBuf.create ~wrap:false bname RingBufLib.rb_words ;
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
   let typ = func.C.Func.out_type.ser in
-  let%lwt file_spec =
-    return RamenOutRef.{
+  let file_spec =
+    RamenOutRef.{
       field_mask =
         RingBufLib.skip_list ~out_type:typ ~in_type:typ ;
       timeout = match duration with
                 | None -> 0.
                 | Some d -> Unix.gettimeofday () +. d } in
   let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
-  return (func, bname, func.C.Func.out_type)
+  return bname
 
-(* Returns the func, the buffer name and the type: *)
+(* Returns the func, and the buffer name: *)
 let make_temp_export_by_name conf ?duration func_name =
   match C.program_func_of_user_string func_name with
   | exception Not_found ->
@@ -70,4 +70,5 @@ let make_temp_export_by_name conf ?duration func_name =
             fail_with ("Function "^ program_name ^"/"^ func_name ^
                        " does not exist")
         | func ->
-            make_temp_export conf ?duration func)
+            let%lwt bname = make_temp_export conf ?duration func in
+            return (func, bname))

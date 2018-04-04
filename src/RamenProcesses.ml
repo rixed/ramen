@@ -265,14 +265,16 @@ let try_start conf running proc =
       RingBuf.create rb_name RingBufLib.rb_words
     ) input_ringbufs ;
     (* And the pre-filled out_ref: *)
-    !logger.debug "Creating out-ref buffers..." ;
-    let output_ringbufs =
-      List.fold_left (fun outs c ->
-        let k, file_spec = input_spec conf proc c in
-        Map.add k file_spec outs
-      ) Map.empty cs in
+    !logger.debug "Updating out-ref buffers..." ;
     let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
-    let%lwt () = RamenOutRef.set out_ringbuf_ref output_ringbufs in
+    let%lwt () =
+      Lwt_list.iter_s (fun c ->
+        let fname, specs as out = input_spec conf proc c in
+        (* The destination ringbuffer must exist before it's referenced in an
+         * out-ref, or the worker might err and throw away the tuples: *)
+        RingBuf.create fname RingBufLib.rb_words ;
+        RamenOutRef.add out_ringbuf_ref out
+      ) cs in
     (* Now that the out_ref exists, but before we actually fork the worker,
      * we can start importing: *)
     let%lwt () =
@@ -301,13 +303,14 @@ let try_start conf running proc =
       "output_ringbufs_ref="^ out_ringbuf_ref ;
       "report_ringbuf="^ C.report_ringbuf conf ;
       "notify_ringbuf="^ notify_ringbuf ;
-      (* We need to change this dir whenever the func signature change
-       * to prevent it to reload an incompatible state: *)
+      (* We need to change this dir whenever the func signature or params
+       * change to prevent it to reload an incompatible state: *)
       "persist_dir="^ conf.C.persist_dir ^"/workers/states/"
                     ^ RamenVersions.worker_state
                     ^"/"^ Config.version
                     ^"/"^ fq_name
-                    ^"/"^ proc.func.F.signature ;
+                    ^"/"^ proc.func.F.signature
+                    ^"/"^ RamenTuple.param_signature proc.func.F.params ;
       (match !logger.logdir with
         | Some _ ->
           "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
@@ -384,10 +387,11 @@ let try_kill proc =
 let synchronize_running conf =
   let rc_file = C.running_config_file conf in
   (* Start/Stop processes so that [running] corresponds to [must_run].
-   * [must_run] is a hash from the signature to
+   * [must_run] is a hash from the signature (function * params) to
    * its binary path, the program name and Func.
-   * [running] is a hash from the signature to its running_process
-   * (mutable pid, cleared asynchronously when the worker terminates). *)
+   * [running] is a hash from the signature (function * params) to its
+   * running_process (mutable pid, cleared asynchronously when the worker
+   * terminates). *)
   let synchronize must_run running =
     (* First, remove from running all terminated processes that must not run
      * any longer. Send a kill to those that are still running. *)
@@ -448,7 +452,8 @@ let synchronize_running conf =
             Hashtbl.iter (fun program_name get_rc ->
               let bin, prog = get_rc () in
               List.iter (fun f ->
-                Hashtbl.add must_run f.F.signature (bin, program_name, f)
+                let k = f.F.signature, RamenTuple.param_signature f.F.params in
+                Hashtbl.add must_run k (bin, program_name, f)
               ) prog
             ) must_run_programs ;
             return (must_run, last_mod)) in
@@ -457,3 +462,17 @@ let synchronize_running conf =
       loop last_read must_run running)
   in
   loop 0. empty_must_run (Hashtbl.create 0)
+
+(* To be called before synchronize_running *)
+let prepare_start conf =
+  (* Prepare ringbuffers for reports and notifications: *)
+  let rb_name = C.report_ringbuf conf in
+  RingBuf.create ~wrap:false rb_name RingBufLib.rb_words ;
+  let rb_name = C.notify_ringbuf conf in
+  RingBuf.create rb_name RingBufLib.rb_words ;
+  let notify_rb = RingBuf.load rb_name in
+  (* Install signal handlers *)
+  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
+    !logger.info "Received signal %s" (name_of_signal s) ;
+    quit := true)) ;
+  notify_rb

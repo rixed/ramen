@@ -31,4 +31,6 @@ let timeseries_info = "Extract a timeseries from an operation."
 let timerange_info =
   "Retrieve the available time range of an operation output."
 let ps_info = "Display info about running programs."
+let test_info = "Test a configuration against one or several tests"
+
 let default_persist_dir = "/tmp/ramen"

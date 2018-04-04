@@ -41,16 +41,7 @@ let start conf daemonize to_stderr () =
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir conf.C.debug ;
   if daemonize then do_daemonize () ;
-  (* Prepare ringbuffers for reports and notifications: *)
-  let rb_name = C.report_ringbuf conf in
-  RingBuf.create ~wrap:false rb_name RingBufLib.rb_words ;
-  let rb_name = C.notify_ringbuf conf in
-  RingBuf.create rb_name RingBufLib.rb_words ;
-  let notify_rb = RingBuf.load rb_name in
-  (* Install signal handlers *)
-  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    !logger.info "Received signal %s" (name_of_signal s) ;
-    RamenProcesses.quit := true)) ;
+  let notify_rb = RamenProcesses.prepare_start conf in
   Lwt_main.run (
     join [
       (let%lwt () = Lwt_unix.sleep 1. in
@@ -318,9 +309,9 @@ let tail conf func_name with_header separator null
       (* Create the non-wrapping RingBuf (under a standard name given
        * by RamenConf *)
       Lwt_main.run (
-        let%lwt _, bname, typ =
+        let%lwt func, bname =
           RamenExport.make_temp_export_by_name conf ~duration func_name in
-        return (bname, always_true, typ))
+        return (bname, always_true, func.F.out_type))
   in
   (* Find out which seqnums we want to scan: *)
   let mi, ma = RingBuf.seq_range bname in
@@ -358,7 +349,7 @@ let tail conf func_name with_header separator null
       if m >= ma then return_unit else
       let%lwt m =
         let open RamenSerialization in
-        fold_seq_range bname m ma m (fun m tx ->
+        fold_seq_range bname ~mi:m ~ma m (fun m tx ->
           let tuple =
             read_tuple typ.ser nullmask_size tx in
           if filter tuple then (
@@ -420,9 +411,9 @@ let timeseries conf since until max_data_points separator null
       (* Create the non-wrapping RingBuf (under a standard name given
        * by RamenConf *)
       Lwt_main.run (
-        let%lwt func, bname, typ =
+        let%lwt func, bname =
           make_temp_export_by_name conf ~duration func_name in
-        return (bname, always_true, typ, func.F.event_time))
+        return (bname, always_true, func.F.out_type, func.F.event_time))
   in
   Lwt_main.run (
     let open RamenSerialization in

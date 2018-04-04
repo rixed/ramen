@@ -121,6 +121,13 @@ let ensure_file_exists fname =
     !logger.debug "Creating file fname" ;
     Unix.(openfile fname [O_CREAT] 0o644 |> close))
 
+let uniquify_filename fname =
+  let rec loop n =
+    let fname = fname ^"."^ string_of_int n in
+    if file_exists fname then loop (n + 1) else fname
+  in
+  if file_exists fname then loop 0 else fname
+
 let mtime_of_file fname =
   let open Unix in
   let s = stat fname in
@@ -195,6 +202,13 @@ let ensure_no_trailing_slash dirname =
 
 let change_ext new_ext fname =
   Filename.remove_extension fname ^ new_ext
+
+let starts_with c f =
+  String.length f > 0 && f.[0] = c
+
+let is_virtual_field = starts_with '#'
+
+let is_private_field = starts_with '_'
 
 let name_of_signal s =
   let open Sys in
@@ -367,9 +381,9 @@ let rec simplified_path =
   "/glop/glop" (simplified_path "/glop/pas glop/..//pas glop/.././//glop")
  *)
 
-let absolute_path_of path =
+let absolute_path_of ?rel_to path =
   (if path <> "" && path.[0] = '/' then path else
-   Unix.getcwd () ^"/"^ path) |>
+   (rel_to |? Unix.getcwd ()) ^"/"^ path) |>
   simplified_path
 
 let rel_path_from root_path path =
