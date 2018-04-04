@@ -223,13 +223,15 @@ let link conf program_name obj_files src_file bin_file =
 
 (* Helpers: *)
 
+(* obj name must not conflict with any external module. *)
 let with_code_file_for obj_name conf f =
   assert (obj_name <> "") ;
   let basename =
     Filename.(remove_extension (basename obj_name)) ^".ml" in
-  (* Make sure this will result in a valid module name, starting
-   * with a letter and not conflicting with any installed modules: *)
-  let basename = "ramen_"^ basename in
+  (* Make sure this will result in a valid module name: *)
+  let basename =
+    if Char.is_letter basename.[0] then basename
+    else "m"^ basename in
   let fname = Filename.dirname obj_name ^"/"^ basename in
   mkdir_all ~is_file:true fname ;
   File.with_file_out ~mode:[`create; `text; `trunc] fname f ;

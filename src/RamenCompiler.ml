@@ -177,8 +177,9 @@ let compile conf root_path program_name program_code =
      * above).
      *)
     let exec_file = C.Program.bin_of_program_name root_path program_name in
+    let obj_name = root_path ^"/"^ program_name ^"_casing.cmx" in
     let src_file =
-      RamenOCamlCompiler.with_code_file_for exec_file conf (fun oc ->
+      RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
           program_name ;
         (* Embed in the binary all info required for running it: the program
