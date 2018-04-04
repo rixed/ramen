@@ -342,9 +342,18 @@ static int lock(struct ringbuf *rb)
     return -1;
   }
 
-  int fd = open(fname, O_CREAT|O_EXLOCK, S_IRUSR|S_IWUSR);
+  int fd = open(fname, O_CREAT, S_IRUSR|S_IWUSR);
   if (fd < 0) {
+    fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
+    return -1;
+  }
+
+  if (0 != flock(fd, LOCK_EX)) {
     fprintf(stderr, "Cannot lock '%s': %s\n", fname, strerror(errno));
+    if (close(fd) < 0) {
+      fprintf(stderr, "Cannot close lockfile '%s': %s\n", fname, strerror(errno));
+      // so be it
+    }
     return -1;
   }
 
