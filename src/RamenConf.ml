@@ -302,6 +302,7 @@ let archive_buf_name conf func =
 let out_ringbuf_names_ref conf func =
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref
+                   ^"/"^ func.Func.program_name
                    ^"/"^ func.Func.name
                    ^"/out_ref"
 
