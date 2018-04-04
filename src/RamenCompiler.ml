@@ -155,7 +155,7 @@ let compile conf root_path program_name program_code =
       Lwt_list.map_p (fun func ->
         let obj_name =
           root_path ^"/"^ program_name ^
-          "/M"^ func.RamenTyping.Func.signature ^".cmx" in
+          "_"^ func.RamenTyping.Func.signature ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
         let%lwt () =
           let open RamenTyping in
@@ -210,8 +210,10 @@ let compile conf root_path program_name program_code =
         Printf.fprintf oc
           "let () = CodeGenLib.casing rc_str_ rc_marsh_ [\n" ;
         Hashtbl.iter (fun _ func ->
-          Printf.fprintf oc"\t%S, M%s.%s ;\n"
+          assert (program_name.[String.length program_name-1] <> '/') ;
+          Printf.fprintf oc"\t%S, %s_%s.%s ;\n"
             func.RamenTyping.Func.name
+            (String.capitalize_ascii (Filename.basename program_name))
             func.RamenTyping.Func.signature
             entry_point_name
         ) compiler_funcs ;
