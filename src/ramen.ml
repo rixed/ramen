@@ -314,7 +314,7 @@ let data_field p =
 
 let consolidation =
   let i = Arg.info ~doc:"Consolidation function."
-                   ~docv:"min|max|avg" ["consolidation"] in
+                   ~docv:"min|max|avg|sum" ["consolidation"] in
   let cons_func =
     let p x = x, x in
     [ p "min" ; p "max" ; p "avg" ] in

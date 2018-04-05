@@ -26,6 +26,8 @@ let add_into_bucket b i v =
 
 let bucket_of_time since dt t = int_of_float ((t -. since) /. dt)
 
+let bucket_sum b =
+  if b.count = 0 then None else Some b.sum
 let bucket_avg b =
   if b.count = 0 then None else Some (b.sum /. float_of_int b.count)
 let bucket_min b =

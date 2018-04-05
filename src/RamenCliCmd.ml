@@ -398,7 +398,8 @@ let timeseries conf since until max_data_points separator null
   let bucket_of_time = bucket_of_time since dt in
   let consolidation =
     match String.lowercase consolidation with
-    | "min" -> bucket_min | "max" -> bucket_max | _ -> bucket_avg in
+    | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
+    | _ -> bucket_avg in
   let bname, filter, typ, event_time =
     (* Read directly from the instrumentation ringbuf when func_name ends
      * with "#stats" *)
