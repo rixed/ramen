@@ -440,7 +440,6 @@ let synchronize_running conf =
       Lwt_list.iter_p try_kill !to_kill ;
       Lwt_list.iter_p (try_start conf running) !to_start ]
   in
-  let empty_must_run = Hashtbl.create 0 in
   let rec loop last_read must_run running =
     if !quit && Hashtbl.length running = 0 then (
       !logger.info "All processes stopped, quitting." ;
@@ -448,7 +447,7 @@ let synchronize_running conf =
     ) else (
       let%lwt must_run, last_read =
         if !quit then (
-          return (empty_must_run, last_read)
+          return (Hashtbl.create 0, last_read)
         ) else (
           let last_mod =
             try mtime_of_file rc_file
@@ -480,7 +479,7 @@ let synchronize_running conf =
       let%lwt () = Lwt_unix.sleep delay in
       loop last_read must_run running)
   in
-  loop 0. empty_must_run (Hashtbl.create 0)
+  loop 0. (Hashtbl.create 0) (Hashtbl.create 0)
 
 (* To be called before synchronize_running *)
 let prepare_start conf =
