@@ -111,7 +111,7 @@ let out_ringbuf_names outbuf_ref_fname =
     let open Lwt_unix in
     match%lwt stat fname with
     | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
-        !logger.warning "last_touched: file %S is missing" fname ;
+        !logger.debug "last_touched: file %S is missing" fname ;
         return 0.
     | s ->
         return s.st_mtime in
