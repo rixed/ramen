@@ -304,7 +304,7 @@ let until =
 
 let max_data_points =
   let i = Arg.info ~doc:"Max number of points returned."
-                   ~docv:"POINTS" ["nb-points"] in
+                   ~docv:"POINTS" ["n"; "nb-points"] in
   Arg.(value (opt int 100 i))
 
 let data_field p =
