@@ -316,6 +316,16 @@ let try_start conf running proc =
         | Some _ ->
           "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
         | None -> "no_log_dir=") |] in
+    (* Pass each individual parameter as a separate envvar; envvars are just
+     * non interpreted strings (but for the first '=' sign that will be
+     * interpreted by the OCaml runtime) so it should work regardless of the
+     * actual param name or value, and make it easier to see what's going
+     * on fro the shell: *)
+    let params =
+      List.enum proc.func.params /@
+      (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenScalar.print v) |>
+      Array.of_enum in
+    let env = Array.append env params in
     let args =
       (* For convenience let's add "ramen worker" and the fun name as
        * arguments: *)

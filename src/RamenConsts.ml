@@ -41,4 +41,10 @@ struct
   let test = "Test a configuration against one or several tests"
 end
 
+module ExitCodes =
+struct
+  let lwt_uncaught_exception = 2
+  let cannot_parse_param = 3
+end
+
 let default_persist_dir = "/tmp/ramen"

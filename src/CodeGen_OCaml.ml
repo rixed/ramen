@@ -30,9 +30,7 @@ let id_of_prefix tuple =
 let id_of_field_name ?(tuple=TupleIn) = function
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
   | "#successive" -> "virtual_"^ id_of_prefix tuple ^"_successive_"
-  | field ->
-      let ret = id_of_prefix tuple ^"_"^ field ^"_" in
-      if tuple = TupleParam then "!"^ ret else ret
+  | field -> id_of_prefix tuple ^"_"^ field ^"_"
 
 let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.RamenTuple.typ_name
@@ -1555,8 +1553,14 @@ let compile conf entry_point func_name obj_name in_typ out_typ params op =
       (* Emit parameters: *)
       Printf.fprintf oc "\n(* Parameters: *)\n" ;
       List.iter (fun (n, v) ->
-        Printf.fprintf oc "let %s_%s_ = ref (%a)\n"
-          (id_of_prefix TupleParam) n emit_scalar v
+        Printf.fprintf oc
+          "let %s_%s_ =\n\
+           \tlet parser_ = RamenTypeConverters.%s_of_string in\n\
+           \tCodeGenLib.parameter_value ~def:(%a) parser_ %S\n"
+          (id_of_prefix TupleParam) n
+          (id_of_typ (RamenScalar.type_of v))
+          emit_scalar v
+          n
       ) params ;
       (match op with
       | Yield _ ->

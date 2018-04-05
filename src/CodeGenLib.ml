@@ -11,6 +11,20 @@ let () =
       (Printexc.to_string exn)
       (Printexc.get_backtrace ()))
 
+(* Get parameters from the environment.
+ * This function is called at module initialization time to get the (constant)
+ * value of a parameter (with default value in [def]): *)
+let parameter_value ~def scalar_parser name =
+  let envvar = "param_"^ name in
+  !logger.info "Looking for evvar %S" envvar ;
+  match Sys.getenv envvar with
+  | exception Not_found -> def
+  | s ->
+      try scalar_parser s
+      with e ->
+        print_exception ~what:("Cannot parse parameter "^ name) e ;
+        exit RamenConsts.ExitCodes.cannot_parse_param
+
 (* Functions *)
 
 (* We are not allowed to have any state specific to this function.

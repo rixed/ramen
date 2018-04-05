@@ -1,6 +1,6 @@
 {
   programs = [
-    ("params.x", []) ;
+    ("params.x", [("sel_year", VI32 1976)]) ;
     ("fixtures/earthquakes.x", []) ];
   outputs = {
     "tests/params/p" => {
