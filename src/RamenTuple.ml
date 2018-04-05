@@ -67,10 +67,12 @@ let print_param oc (n, v) =
 let param_compare (a1, _) (b1, _) =
   String.compare a1 b1
 
-let param_signature ps =
+let string_of_params ps =
   List.fast_sort param_compare ps |>
-  IO.to_string (List.print print_param) |>
-  md5
+  IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param)
+
+let param_signature ps =
+  string_of_params ps |> md5
 
 (* Override ps1 with values from ps2, ignoring the values of ps2 that are
  * not in ps1: *)

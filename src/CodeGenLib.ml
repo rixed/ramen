@@ -258,43 +258,44 @@ let end_of_range_cidr6 (n, l) = RamenIpv6.Cidr.or_to_len l n
 open Binocle
 
 let stats_in_tuple_count =
-  IntCounter.make RamenConsts.in_tuple_count_metric
+  IntCounter.make RamenConsts.MetricNames.in_tuple_count
     "Number of received tuples that have been processed since the \
-     func started."
+     operation started."
 
 let make_stats_selected_tuple_count () =
-  IntCounter.make RamenConsts.selected_tuple_count_metric
+  IntCounter.make RamenConsts.MetricNames.selected_tuple_count
     "Number of tuples that have passed the WHERE filter, since the \
-     func started."
+     operation started."
 
 let stats_out_tuple_count =
-  IntCounter.make RamenConsts.out_tuple_count_metric
-    "Number of emitted tuples to each child of this func since it started."
+  IntCounter.make RamenConsts.MetricNames.out_tuple_count
+    "Number of emitted tuples to each child of this operation since it \
+     started."
 
 let stats_cpu =
-  FloatCounter.make RamenConsts.cpu_time_metric
-    "Total CPU time, in seconds, spent in this func (this process and any \
-     subprocesses)."
+  FloatCounter.make RamenConsts.MetricNames.cpu_time
+    "Total CPU time, in seconds, spent in this operation (this process and \
+     any subprocesses)."
 
 let stats_ram =
-  IntGauge.make RamenConsts.ram_usage_metric
+  IntGauge.make RamenConsts.MetricNames.ram_usage
     "Total RAM size used by the GC, in bytes (does not take into account \
      other heap allocations nor fragmentation)."
 
 let stats_rb_read_bytes =
-  IntCounter.make RamenConsts.rb_read_bytes_metric
+  IntCounter.make RamenConsts.MetricNames.rb_read_bytes
     "Number of bytes read from the input ring buffer."
 
 let stats_rb_write_bytes =
-  IntCounter.make RamenConsts.rb_write_bytes_metric
+  IntCounter.make RamenConsts.MetricNames.rb_write_bytes
     "Number of bytes written in output ring buffers."
 
 let stats_rb_read_sleep_time =
-  FloatCounter.make RamenConsts.rb_wait_read_metric
+  FloatCounter.make RamenConsts.MetricNames.rb_wait_read
     "Total number of seconds spent waiting for input."
 
 let stats_rb_write_sleep_time =
-  FloatCounter.make RamenConsts.rb_wait_write_metric
+  FloatCounter.make RamenConsts.MetricNames.rb_wait_write
     "Total number of seconds spent waiting for output."
 
 let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
@@ -856,7 +857,7 @@ let aggregate
       (notify_url : string) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =
-    IntGauge.make RamenConsts.group_count_metric
+    IntGauge.make RamenConsts.MetricNames.group_count
                   "Number of groups currently maintained." in
   IntGauge.set stats_group_count 0 ;
   let worker_name = getenv ~def:"?" "fq_name" in

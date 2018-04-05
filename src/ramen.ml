@@ -69,7 +69,7 @@ let start =
       $ daemonize
       $ to_stderr
       $ max_archives),
-    info ~doc:RamenConsts.start_info "start")
+    info ~doc:RamenConsts.CliInfo.start "start")
 
 (*
  * Examine the ringbuffers
@@ -196,7 +196,7 @@ let compile =
       $ bundle_dir
       $ max_simult_compilations
       $ source_files),
-    info ~doc:RamenConsts.compile_info "compile")
+    info ~doc:RamenConsts.CliInfo.compile "compile")
 
 let run =
   Term.(
@@ -204,7 +204,7 @@ let run =
       $ copts
       $ params
       $ bin_files),
-    info ~doc:RamenConsts.run_info "run")
+    info ~doc:RamenConsts.CliInfo.run "run")
 
 let prog_name p =
   let i = Arg.info ~doc:"Program name."
@@ -216,7 +216,7 @@ let kill =
     (const RamenCliCmd.kill
       $ copts
       $ prog_name 0),
-    info ~doc:RamenConsts.kill_info "kill")
+    info ~doc:RamenConsts.CliInfo.kill "kill")
 
 (*
  * Display the timeseries
@@ -287,7 +287,7 @@ let tail =
       $ max_seq
       $ print_seqnums
       $ duration),
-    info ~doc:RamenConsts.tail_info "tail")
+    info ~doc:RamenConsts.CliInfo.tail "tail")
 
 (*
  * Timeseries
@@ -334,7 +334,7 @@ let timeseries =
       $ data_field 1
       $ consolidation
       $ duration),
-    info ~doc:RamenConsts.timeseries_info "timeseries")
+    info ~doc:RamenConsts.CliInfo.timeseries "timeseries")
 
 (*
  * Time Ranges
@@ -345,7 +345,7 @@ let timerange =
     (const RamenCliCmd.timerange
       $ copts
       $ func_name 0),
-    info ~doc:RamenConsts.timerange_info "timerange")
+    info ~doc:RamenConsts.CliInfo.timerange "timerange")
 
 (*
  * Info
@@ -375,7 +375,7 @@ let ps =
       $ short
       $ sort_col
       $ top),
-    info ~doc:RamenConsts.ps_info "ps")
+    info ~doc:RamenConsts.CliInfo.ps "ps")
 
 (*
  * Autocompletion
@@ -407,7 +407,7 @@ let test =
       $ copts
       $ root_path
       $ test_files),
-    info ~doc:RamenConsts.test_info "test")
+    info ~doc:RamenConsts.CliInfo.test "test")
 
 (*
  * Command line evaluation

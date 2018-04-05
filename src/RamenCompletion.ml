@@ -17,15 +17,15 @@ let complete lst s =
 
 let complete_commands s =
   let commands =
-    [ "start", RamenConsts.start_info ;
-      "compile", RamenConsts.compile_info ;
-      "run", RamenConsts.run_info ;
-      "kill", RamenConsts.kill_info ;
-      "tail", RamenConsts.tail_info ;
-      "timeseries", RamenConsts.timeseries_info ;
-      "timerange", RamenConsts.timerange_info ;
-      "ps", RamenConsts.ps_info ;
-      "test", RamenConsts.test_info ] in
+    [ "start", RamenConsts.CliInfo.start ;
+      "compile", RamenConsts.CliInfo.compile ;
+      "run", RamenConsts.CliInfo.run ;
+      "kill", RamenConsts.CliInfo.kill ;
+      "tail", RamenConsts.CliInfo.tail ;
+      "timeseries", RamenConsts.CliInfo.timeseries ;
+      "timerange", RamenConsts.CliInfo.timerange ;
+      "ps", RamenConsts.CliInfo.ps ;
+      "test", RamenConsts.CliInfo.test ] in
   complete commands s
 
 let complete_global_options s =

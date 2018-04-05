@@ -10,9 +10,9 @@ RUN apt-get --yes update && \
     DEBIAN_FRONTEND=noninteractive \
       apt-get --yes install \
         gcc \
-				openssl \
-				libblas-dev \
-				liblapack-dev \
+        openssl \
+        libblas-dev \
+        liblapack-dev \
         libsqlite3-0 \
         collectd \
         fprobe \

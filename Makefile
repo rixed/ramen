@@ -422,7 +422,11 @@ clean:
 	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
 	@$(RM) src/ramen src/codegen.cmxa src/RamenFileNotify.ml src/libringbuf.a
 	@$(RM) src/libcollectd.a src/libnetflow.a
-	@$(RM) tests/*.success
+	@find tests -name '*.success' -delete
+	@for d in tests examples ; do\
+	   find $$d -\( -name '*.ml' -o -name '*.cmx' -o -name '*.o' \
+	             -o -name '*.x'  -o -name '*.s' -o -name '*.cmi' -\) -delete ;\
+	 done
 	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp
 	@$(RM) ramen.*.deb

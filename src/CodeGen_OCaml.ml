@@ -177,7 +177,7 @@ let emit_set_value tx_var offs_var field_var oc field_typ =
  * addresses. The first argument is a bitmask of the fields that we must
  * actually output (true = output, false = skip) in serialization order.
  * CodeGenLib will first call the function with this single parameter, leaving
- * us the oportunity to specialize the actual outputer according to this
+ * us the opportunity to specialize the actual outputer according to this
  * skiplist (here we merely compute the nullmask size).
  * Everything else (allocating on the RB and writing the record size) is
  * independent of the tuple type and is handled in the library.
