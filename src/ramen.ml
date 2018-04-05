@@ -110,11 +110,10 @@ let summary =
  * Compiling/Running/Stopping
  *)
 
-let use_embedded_compiler =
+let use_external_compiler =
   let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
   let i = Arg.info ~doc:"Use embedded compiler rather than calling system one."
-                   ~env [ "use-embedded-compiler"; "use-internal-compiler";
-                          "embedded-compiler"; "internal-compiler" ] in
+                   ~env [ "use-external-compiler"; "external-compiler" ] in
   Arg.(value (flag i))
 
 let bundle_dir =
@@ -192,7 +191,7 @@ let compile =
     (const RamenCliCmd.compile
       $ copts
       $ root_path
-      $ use_embedded_compiler
+      $ use_external_compiler
       $ bundle_dir
       $ max_simult_compilations
       $ source_files),

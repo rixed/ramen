@@ -287,7 +287,7 @@ RAMEN_TESTS_SOURCES = \
 
 %.x: %.ramen src/ramen
 	@echo 'Compiling ramen program $@'
-	@src/ramen compile --keep-temp-files --root=./ $<
+	@src/ramen compile --keep-temp-files --bundle=bundle --root=./ $<
 
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'

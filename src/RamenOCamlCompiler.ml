@@ -5,7 +5,7 @@ open RamenHelpers
 module C = RamenConf
 
 let max_simult_compilations = ref 4
-let use_embedded_compiler = ref false
+let use_external_compiler = ref false
 let bundle_dir = ref ""
 
 (* Mostly copied from ocaml source code driver/optmain.ml *)
@@ -111,7 +111,7 @@ let compile_external conf func_name src_file obj_file =
 
 let compile conf func_name src_file obj_file =
   mkdir_all ~is_file:true obj_file ;
-  (if !use_embedded_compiler then compile_internal else compile_external)
+  (if !use_external_compiler then compile_external else compile_internal)
     conf func_name src_file obj_file
 
 (* Function to take some object files, a source file, and produce an
@@ -217,7 +217,7 @@ let link conf program_name obj_files src_file bin_file =
       Set.add (Filename.dirname cmx) s,
       Filename.basename cmx :: l
     ) (Set.empty, []) obj_files in
-  (if !use_embedded_compiler then link_internal else link_external)
+  (if !use_external_compiler then link_external else link_internal)
     conf program_name inc_dirs obj_files src_file bin_file
 
 

@@ -61,12 +61,12 @@ let start conf daemonize to_stderr max_archives () =
  * Actual work happens in RamenCompiler.
  *)
 
-let compile conf root_path use_embedded_compiler bundle_dir
+let compile conf root_path use_external_compiler bundle_dir
             max_simult_compils source_files () =
   logger := make_logger conf.C.debug ;
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
-  RamenOCamlCompiler.use_embedded_compiler := use_embedded_compiler ;
+  RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   RamenOCamlCompiler.bundle_dir := bundle_dir ;
   RamenOCamlCompiler.max_simult_compilations := max_simult_compils ;
   let all_ok = ref true in
