@@ -7,7 +7,7 @@ ifdef::env-github[]
 :warning-caption: :warning:
 endif::[]
 
-= From monitoring to alerting with Ramen
+= Introduction to Ramen
 :toc:
 :icons:
 :lang: en
@@ -17,28 +17,41 @@ endif::[]
 
 === Using the Docker image
 
+This tutorial will assume that you've created the directory +$HOME/ramen_root+
+to store the programs that are going to be written and share them with the
+docker image:
+
+[source,shell]
+----
+mkdir -p $HOME/ramen_root
+----
+
 The docker image is about 81MiB compressed. Run it with:
 
 [source,shell]
 ----
-docker run -p 29380:29380 -p 29382:29382 -p 25826:25826/udp -p 2055:2055/udp \
-           rixed/ramen:demo --to-stderr
+$ docker run --name=ramen-test \
+    -v $HOME/ramen_root:/ramen/root \
+    -p 25826:25826/udp -p 2055:2055/udp \
+    rixed/ramen:demo
 ----
 
-+--to-stderr+ is to log on stderr instead of files so that you will see what's
-happening in the console (add an extra +--debug+ if you are curious).
+This will mount your (currently empty) +ramen_root+ directory into the docker
+image, redirect _collectd_ and _netflow_ UDP ports into the docker image, and
+start Ramen process supervisor in a docker container, logging to stderr.
+Leave it there and continue this tutorial from another terminal.
 
-The port +29380+ is ramen's own port where it listens to HTTP queries, while
-port +29382+ is served by the alerter. The UDP ports +25826+ and +2055+ are
-respectively for the _collectd_ and _netflow_ network protocols. By default,
-ramen listens for incoming collectd and netflow messages. The docker image
-comes with https://collectd.org/[collectd] and
-http://fprobe.sourceforge.net/[fprobe] daemons that will monitor the container
-itself, but you could also points external collectd and netflow sources to this
-port (thus the port redirections on the command line above), as explained
-hereafter.
+Redirecting the ports is optional: The docker image comes with
+https://collectd.org/[collectd] and http://fprobe.sourceforge.net/[fprobe]
+daemons that will monitor the container itself, but you could also points
+external collectd and netflow sources to this port.
 
-=== Installing collectd
+=== Installing mode probes
+
+Skip that section if you are happy with using only internally generated metrics
+for the duration of this tutorial.
+
+==== Installing collectd
 
 Aptitude install collectd
 
@@ -61,7 +74,7 @@ Then you can restart collectd (+systemctl restart collectd.service+ or
 +/usr/local/sbin/collectd -f -C /usr/local/etc/collectd.conf+ or whatever works
 for you).
 
-=== Sending more netflow to ramen
+==== Sending more netflow to Ramen
 
 The docker image comes with an internal netflow source that will send flow
 information to ramen about the traffic taking place inside the container.
@@ -70,22 +83,175 @@ This is of course of little use for monitoring but is enough to get some data.
 If you already have access to a switch that can emit netflow statistics then
 you could direct them to the container port 2055 for more interesting data.
 
-== The GUI
+== Getting some data in
 
-Ramen serves over HTTP both an API and a basic GUI to let you see what's taking
-place.  Have a look http://localhost:29380/[over here].
+For Ramen to do anything useful you need to write some programs for it.
+As a first program we are going to collect netflow statistics and turn it into
+a small network traffic dashboard.
 
-There are at first only two things you should see: a list of _programs_,
-initially composed of only one program named "demo", and a list of
-_operations_, with one called "collectd" and one "netflow".
+Let's create a ramen source file named +demo.ramen+ in that
++$HOME/ramen_root+ directory with this content:
 
-Programs are sets of operations. An operation is just an individual operation, which can be
-of several types: listening to some network port for some known protocol (such
-as collectd or netflow) is one of them. In general though, operations will
-consist of SQL-like operations on tuples ("SELECT foo, bar FROM another_operation
-WHERE foo = 42...").  _Tuples_ are like a row in SQL: a collection of named
-fields and values. Values can have various types (integers, strings,
-booleans...) as in SQL. For instance, here is a tuple:
+[source,sql]
+----
+-- Ingest some data from the outseide world:
+DEFINE netflow AS listen for netflow;
+DEFINE collectd AS listen for collectd;
+----
+
+Note that comments are introduced with +--+ as in SQL, and also like SQL
+ramen language is mostly case insensitive (but for field and operation
+names though).
+
+You can then compile this file with:
+
+[source,shell]
+----
+$ docker exec ramen-test ramen compile --root=root root/demo.ramen
+----
+
+and if all goes well you should get see something along those lines:
+
+[source,shell]
+----
+10h35m34: Parsing program demo
+10h35m34: Typing program demo
+10h35m34: Compiling for program demo
+10h35m34: Compiling "root/network_9cecc492bd21247f054b8f85f8335637.ml"
+10h35m34: Linking "root/network_casing.ml"
+----
+
+instructing you that your program has been successfully parsed, typed,
+compiled and linked. You should now have a +demo.x+ executable file
+in your +ramen_root+ directory. You could try to run it but that would
+not give anything useful at the moment:
+
+[source,shell]
+----
+$ ~/ramen_root/demo.x
+(... binary vomit redacted ...)
+----
+
+What was that? Is it broken already?
+The binary string that's output by that executable has very little to do
+with gathering netflow protocol packets. Instead, it was just the worker
+dumping its configuration at you as if you were the ramen supervisor.
+
+NOTE: If you are interested, run it again with +--Im-a-human+ for a
+human friendlier version of the same configuration.
+
+Workers are not supposed to be run like that. Instead, you must ask
+ramen to run it:
+
+[source,shell]
+----
+$ docker exec ramen-test ramen run root/demo.x
+----
+
+NOTE: here we give the path to the binary inside the container so that ramen
+will find it.
+
+A quick look at `ramen ps` confirms that it's indeed running:
+
+[source,shell]
+----
+$ docker exec ramen-test ramen ps | less -x 16 -S
+----
+
+Of course good old plain `ps` would also confirm it once you know where
+to look but `ramen ps` also gives you statistics about the number of
+received and emitted tuples and so on.
+
+== Getting data out
+
+Let's see those netflow tuples:
+
+[source,shell]
+----
+$ docker exec ramen-test ramen tail --with-header demo/netflow
+----
+
+...and then wait a bit and tuples should arrive. Stop by sending the INT
+signal (control-C).
+
+Let's now extract a timeseries for the +bytes+ field. Assuming you are using
+GNU date and a Bourne-like shell, you could type:
+
+[source,shell]
+----
+$ docker exec ramen-test ramen timeseries \
+    --since $(date -d '10 minutes ago' '+%s') \
+    --until $(date -d '5 minutes ago' '+%s') \
+    --nb-points 30 --consolidation sum \
+    demo/netflow bytes
+----
+
+NOTE: The reason why we specify an `until` date that far in the past is
+because the netflow protocol would send us information about events that are
+already past. If you omit the +--until+ option ramen will assume you want
+data up to now, and will wait for the last received event to have a starting
+time greater than now. Depending on your switch configuration you would
+therefore have to wait from tens of seconds to several minutes.
+
+The +consolidation+ option specify how to fit events into the time buckets,
+and possible values are +min+, +max+, +avg+ (the default) and +sum+. Here
+we are accumulating traffic volumes from different sources so the only
+meaningful way to combine those volumes is to sum them (averaging would yield
+the average number of bytes per netflow for each time bucket, which is of
+little significance).
+
+That timeseries of course could be piped into any dashboarding program,
+such as the venerable +gnuplot+:
+
+[source,shell]
+----
+$ while sleep 10; do \
+    docker exec ramen-test ramen timeseries \
+      --since $(date -d '10 minutes ago' '+%s') \
+      --until $(date -d '5 minutes ago' '+%s') \
+      --nb-points 30 --separator ' ' --consolidation sum \
+      demo/netflow bytes | \
+    gnuplot -p -e "set timefmt '%s'; set xdata time; set format x '%H:%M'; \
+      set terminal dumb $COLUMNS,$LINES; \
+      plot '< cat -' using 1:2 with lines title 'Bytes'";
+  done
+
+  18000 +-+--+-+-+*+--+-+-+-+--+-+-+-+--+-+-+--+-+-+-+--+-+-+-+--+-+-+-+--+-+
+        +      +  *   +     +      +      +      +      +     +      +      +
+        |        * *                                          Bytes ******* |
+  16000 +-+      * *                                                      +-+
+        |        *  *                                                       |
+        |*       *  *                                                       |
+  14000 +-*  *  *   *                                                     +-+
+        | * * * *   *                                                       |
+        |  ** * *    *                           *                          |
+  12000 +-+*   *     *                *          **                       +-+
+        |      *     *               **          * *                        |
+  10000 +-+          *               * *        *   ***                   +-+
+        |            *         *    *  *        *     *          *    *     |
+        |             *  *     **   *  *        *      *        * *  * *  * |
+   8000 +-+           ****    *  * *    * ****  *      *      **   * * * *+-+
+        |             *   *   *  * *    **   *  *       *   **      *   *   |
+        |                 *  *    *           * *       ****                |
+   6000 +-+                **                 **                          +-+
+        |                  *                   *                            |
+        +      +      +     +      +      +    * +      +     +      +      +
+   4000 +-+--+-+-+-+--+-+-+-+--+-+-+-+--+-+-+--+-+-+-+--+-+-+-+--+-+-+-+--+-+
+      12:53  12:53  12:54 12:54  12:55  12:55  12:56  12:56 12:57  12:57  12:58
+----
+
+Ok, now that we are confident we know how to get some data in and out, let's
+have a look at what we can do with the data in between.
+
+== Ramen Programs and Operations
+
+Programs are sets of operations. An operation can be of several types:
+listening to some network port for some known protocol (such as collectd or
+netflow above) is one of them. In general though, operations will consist of
+SQL-like operations on tuples ("SELECT foo, bar FROM another_operation WHERE
+foo = 42...").  _Tuples_ are like a row in SQL: a collection of named fields
+and values. Values can have various types (integers, strings, booleans...) as
+in SQL. For instance, here is a tuple:
 
 [width="50%",cols="<,<,<,<,<",options="header"]
 |=====================
@@ -97,7 +263,7 @@ It is frequent to refer to tuples as _events_ and we might use one or the other
 term.
 
 In a stream processor, operations are chained together and run forever (in
-theory). In ramen, operations have _parents_ and _children_. An operation sends the tuple
+theory). In Ramen, operations have _parents_ and _children_. An operation sends the tuple
 it produces to each of its children.
 
 Programs are the granularity at which operations can be created, started and stopped.
@@ -115,60 +281,20 @@ For instance, "base/per_hosts/hourly_traffic" is the fully qualified name of
 the operation "hourly_traffic" in the program named "base/per_hosts". Notice that the
 slash ("/") in the program name is just a convention with no particular meaning.
 
-=== Running The Operation
-
 For now we have a single program named "demo" containing only two operations.
 
-The program panel says that the "demo" program has never been started.  Indeed,
-ramen creates it by default but does not compile nor start it. Before we remedy
-to that, let's have a look at what these operations are doing exactly.  If you click
-on the program panel the "source code" of all its operations will be revealed.  In
-this case it is disappointingly simple. The "collectd" operation does only:
+== Computing Memory Consumption
 
-[source,sql]
-----
-LISTEN FOR COLLECTD
-----
+Monitoring usually involves three phases:
 
-and similarly for the "netflow" operation:
+1. Collect all possible data. That's what we have just done above.
 
-[source,sql]
-----
-LISTEN FOR NETFLOW
-----
+2. Turn that data into meaningful information;
 
-Let's compile that. On the program panel you should notice a gear (⚙) icon.
-Click on it to compile the program. A couple of seconds later, that icon should
-turn into a triangle (▷), meaning it has been successfully compiled and is
-ready to run. Now let's run it by clicking on that icon, which should now turn
-into a pause sign (||) that, if clicked, would stop the execution of this
-program.
+3. Finally alert on that information.
 
-As collectd and netflow messages are received by ramen the statistics in the
-operation table should start to show signs of life. If you click on a row in the
-operation list then the last tuples produced by this operation will be displayed below.
-
-Let's look at the collectd statistics for now.
-
-== Meet A Tuple
-
-In the "Raw output" table we can see the last 8 tuples emitted by that
-operation. Notice the format of the collectd tuple: it has the hostname, the
-timestamp, various names identifying the collectd plugin that generated the
-event, and a set of values (up to five but usually just one).
-
-Pay attention to the field type written below the column names: `string`,
-`float`, `string or null`, and so on.  Ramen knows of many scalar types, such
-as float, string, boolean, network addresses and a large collection of integer
-types, signed or unsigned, denoted "u8", "u16", ...  "u128" for the unsigned
-ones and "i8" etc for the signed ones. Beside its name, each tuple field has a
-type and a flag indicating if the value can be null.
-
-== Create Your Own Operations
-
-Monitoring usually involves three phases: first, collect all possible data,
-then turn that data into meaningful information, and finally alert on that
-information. We are going to do just that, using collectd as an example.
+We are now going to see how we could turn our netflows and collectd messages
+into something useful.
 
 Collectd events are very fine grained and one may want to build a more
 synthetic view of the state of some subsystem. Let's start with memory:
@@ -177,25 +303,20 @@ many subsystems, let's try to build a stream representing, at a given time,
 how memory is allocated for various usage.
 
 So to begin with, let's filter the events generated by collectd memory probes.
-We will do all our experiments in a new program that we will call "hosts", for
-we will monitor hosts health in it.
-
-Click the +new program+ button that's at the bottom of the program list, and you
-should see a rudimentary form to create a new program (with as many operations as you
-want in there, but we will start with just one). So enter "hosts" instead
-of "unnamed program" as the program name and "memory" in place of "new operation 1" as
-the operation name. Then for the operation, enter:
+We will do all our experiments in a new program that we will call
+"hosts.ramen", for we will monitor hosts health in it.
 
 [source,sql]
 ----
-SELECT * FROM demo/collectd WHERE plugin = "memory"
-EVENT STARTING AT time
+DEFINE memory AS
+  SELECT * FROM demo/collectd WHERE plugin = "memory"
+  EVENT STARTING AT time
 ----
 
-Without going too deep into ramen syntax, the intended meaning of this simple
+Without going too deep into Ramen syntax, the intended meaning of this simple
 operation should be clear: we want to filter the tuples according to their
 +plugin+ field and keep only those originating from the "memory" plugin.  The
-+EVENT ...+ part is required to extract a timeserie from the tuples, which is
++EVENT ...+ part is required to extract a timeseries from the tuples, which is
 the first step toward plotting the tuples (that's where ramen learns the event
 time from).
 
@@ -205,54 +326,73 @@ timestamp for these tuples are to be taken in the field called +time+.  In
 many stream processors time is a hardcoded field of a specific format. In some
 others, event time is even assumed to be current time (ie. the time the event
 has been generated is assumed to be the time it as been received by the stream
-processor). With ramen time is not mandatory and can have any format which
+processor). With Ramen time is not mandatory and can have any format which
 float your boat. You can even have both a starting time and an ending time for
 each tuple. The price to pay for this flexibility is that, should you intend
 to plot the tuples or use any function that requires the time, then you have
-to instruct ramen how to get the time from the event.
+to instruct Ramen how to get the time from the event.
 
-Press the +Save+ button and if all goes well you should now be able to proceed
-with the compilation of this new program by clicking on the gear icon as you did
-earlier for the "demo" program. This time though, you should get an error
+If you try to compile the above program though, you should get an error
 message that, if you are used to SQL, may surprise you:
 
+[source,shell]
 ----
-In operation memory: where clause must not be nullable
+$ docker exec ramen-test ramen compile --root=root root/hosts.ramen
+15h39m57: Parsing program hosts
+15h39m57: Typing program hosts
+15h39m57: Exception:: In function memory: equality must not be nullable
 ----
 
-Correct typing is an important design goal of ramen so that it can be reliably
-used to deliver alerts (its primary intended purpose).  In particular, it is
-impossible to draw a NULL value (the SQL traditional equivalent of the dreadful
-NULL pointer of C) whenever it makes no sense.
+What is this equality and why must not it be nullable? What does that even
+mean to be nullable?
 
-The +WHERE+ clause of a +SELECT+ operation must be a non-null boolean, for
-there is no good decision to be made when the expression is indeterminate. But
-the +plugin+ field of collectd output tuples can be NULL (as stated by its type
-displayed in the Raw Output table header). Therefore the expression +plugin =
-"memory"+ can also be NULL.
+A value is _nullable_ if it can be _null_. Null is the SQL traditional
+equivalent of the dreadful NULL pointer of C. The NULL value (which really
+should be called "UNKNOWN" rather than "NULL" is a value that contaminate
+all other values combined with it. For instance, +NULL + 1+ is NULL, and
+so is +NULL = 1+. So, consider the expression +a = b+: if either of +a+ or
++b+ can be NULL, so can +a = b+. So the type of +a = b+ can be either a
+boolean or a _nullable_ boolean, depending on +a+ and +b+.
 
-We will consider that an information that's lacking a plugin information is
-not originating form the memory plugin, and therefore we can use the
-+COALESCE+ operator to get rid of the nullability. As in SQL, "coalesce" takes
-a list of expressions and returns the first one that is not null.  In ramen
-there are additional constraints though: this list of expressions cannot be
-empty, the last expression is not allowed to be nullable, while every others
-must be ; so that it is guaranteed that the result of a coalesce is never
-null.
+In the above operation there is only one equality operator: +plugin =
+"memory"+. Of course the constant string +"memory"+ cannot be NULL (the only
+nullable constant is +NULL+ itself, which is not only nullable but, of course,
+actually always NULL). So +plugin+ might be nullable? Indeed, despite the
+plugin of a collectd message is rarely unset (as you can see on the above
+output from `ramen tail`), the fact is the collectd protocol does _not_
+mandate this value to be defined. As a consequences, ramen reserve the
+possibility to set it to NULL in case it ever receive a message from collectd
+with an unset plugin value.
 
-So, click on the "tutorial" program panel again and modify the text of the
-"memory" operation to look like this:
+Now, why isn't this equality allowed to be nullable?  Because it is the
+`where` clause. What should Ramen do, if the filter condition ever returns
+NULL? There is no good decision to be made, and that is why Ramen enforces
+every `where` clauses to be non-nullable booleans.  Correct typing is an
+important design goal of Ramen so that it can be reliably used to deliver
+alerts (its primary intended purpose).  In particular, it is impossible to
+draw a NULL value whenever it makes no sense.  Better working around this
+restriction now than to encounter a NULL there later in production.
+
+So, what shall we do when +plugin+ is null? It seems reasonable to assume that
+an information that's lacking a plugin information is not originating form the
+memory plugin, and thus can be filtered out. To this end, we must use the
++COALESCE+ operator, which is (currently) the only way to get rid of
+nullability. As in SQL, "coalesce" takes a list of expressions and returns the
+first one that is not null.  In Ramen there are additional constraints though:
+this list of expressions cannot be empty, the last expression is not allowed
+to be nullable, while every others must be ; so that it is guaranteed that the
+result of a coalesce is never null.
+
+So, edit the memory operation to look like this:
 
 [source,sql]
 ----
-SELECT * FROM demo/collectd WHERE COALESCE(plugin = "memory", false)
-EVENT STARTING AT time
+DEFINE memory AS
+  SELECT * FROM demo/collectd WHERE COALESCE(plugin = "memory", false)
+  EVENT STARTING AT time;
 ----
 
-Save it and you should now be able to compile and run it by clicking on
-the gear icon and then the triangle icon.
-If you select this operation in the list you should now see only collectd events
-originating from the memory plugin.
+Save it and you should now be able to compile and run it.
 
 You might notice that this plugin only sets one value and also that the
 +type_instance+ field contains the type of memory this value refers to.  Apart
@@ -263,36 +403,36 @@ the running operation (by clicking on the double-bar icon) before you can edit i
 
 [source,sql]
 ----
-SELECT time, host, type_instance, value
-FROM demo/collectd
-WHERE COALESCE(plugin = "memory", false)
-EVENT STARTING AT time
+DEFINE memory AS
+  SELECT time, host, type_instance, value
+  FROM demo/collectd
+  WHERE COALESCE(plugin = "memory", false)
+  EVENT STARTING AT time
 ----
 
 The output is now easier to read; it should look something like this:
 
-[width="50%",cols=">,<,<,>",options="header"]
-|=====================
-|time +
-float
-|host +
-string
-|type_instance +
-string (or null)
-| value +
-float
-|1507295705.54 |rxdmac |free |749998080
-|1507295715.54 |rxdmac |used |1821294592
-|1507295715.54 |rxdmac |cached |3061694464
-|1507295715.54 |rxdmac |buffered |1897586688
-|1507295715.54 |rxdmac |free |783855616
-|1507295725.54 |rxdmac |used |1816403968
-|1507295725.54 |rxdmac |slab_recl |3054088192
-|1507295725.54 |rxdmac |buffered |1897594880
-|=====================
+[source,shell]
+----
+$ docker exec ramen-test ramen tail hosts/memory --with-header
+#time,host,type_instance,value
+1522945763.3,"poum","used",4902309888
+1522945763.3,"poum","cached",17255350272
+1522945763.3,"poum","buffered",2819915776
+1522945763.3,"poum","free",763043840
+1522945763.3,"poum","slab_unrecl",97742848
+1522945763.3,"poum","slab_recl",7081136128
+1522945773.3,"poum","used",4902801408
+1522945773.3,"poum","cached",17255350272
+1522945773.3,"poum","buffered",2819915776
+1522945773.3,"poum","slab_recl",7081103360
+1522945773.3,"poum","slab_unrecl",97460224
+1522945773.3,"poum","free",762867712
+...
+----
 
-On your system other "type instances" might appear; please adapt accordingly
-as you read along.
+On your own system, other "type instances" might appear; please adapt
+accordingly as you read along.
 
 There is still a major annoyance though: we'd prefer to have the values for
 each possible "type instances" (here: the strings "free", "used", "cached" and
@@ -308,19 +448,20 @@ clause. Try this:
 
 [source,sql]
 ----
-SELECT
-  MIN time AS time,
-  host,
-  AVG (IF type_instance = "free" THEN value ELSE 0) AS free,
-  AVG (IF type_instance = "used" THEN value ELSE 0) AS used,
-  AVG (IF type_instance = "cached" THEN value ELSE 0) AS cached,
-  AVG (IF type_instance = "buffered" THEN value ELSE 0) AS buffered,
-  AVG (IF type_instance LIKE "slab%" THEN value ELSE 0) AS slab
-FROM demo/collectd
-WHERE COALESCE (plugin = "memory", false)
-GROUP BY host, time // 30
-COMMIT WHEN in.time > out.time + 30
-EVENT STARTING AT time WITH DURATION 30
+DEFINE memory AS
+  SELECT
+    MIN time AS time,
+    host,
+    AVG (IF type_instance = "free" THEN value ELSE 0) AS free,
+    AVG (IF type_instance = "used" THEN value ELSE 0) AS used,
+    AVG (IF type_instance = "cached" THEN value ELSE 0) AS cached,
+    AVG (IF type_instance = "buffered" THEN value ELSE 0) AS buffered,
+    AVG (IF type_instance LIKE "slab%" THEN value ELSE 0) AS slab
+  FROM demo/collectd
+  WHERE COALESCE (plugin = "memory", false)
+  GROUP BY host, time // 30
+  COMMIT WHEN in.time > out.time + 30
+  EVENT STARTING AT time WITH DURATION 30
 ----
 
 There are *a lot* of new things here. Let's see them one at a time.
@@ -328,11 +469,11 @@ There are *a lot* of new things here. Let's see them one at a time.
 === Naming Fields
 
 Notice that we have explicitly named most of the field with the +AS+ keyword.
-Each field must have a name and unless ramen can reuse an incoming field name
+Each field must have a name and unless Ramen can reuse an incoming field name
 you will have to supply the name yourself.
 
 [NOTE]
-In simple cases ramen might come up with a name of its own making but it's
+In simple cases Ramen might come up with a name of its own making but it's
 not always what you want. For instance in this example the first field which
 value is +MIN time+ would have been named "min_time", but I think "time" is
 more appropriate therefore I provided the name myself.
@@ -368,7 +509,7 @@ by "closing" a window is: the finalization of the ongoing aggregation, the
 emission of a result and the emptying of the window to restart the cycle with
 new inputs.
 
-In ramen, the control over the windowing is very fine grained, but the above
+In Ramen, the control over the windowing is very fine grained, but the above
 +COMMIT WHEN ...some condition...+ is basically just that: when the
 condition is met, the current aggregation emits a result and the accumulated
 data is reset. Still, you should be intrigued by the condition itself:
@@ -415,98 +556,37 @@ or as a function argument, as we did here.
 === Event Duration
 
 Notice that we also added +WITH DURATION 30+ to the description of the output
-event. This instruct ramen that each tuple represents a time segment that
+event. This instruct Ramen that each tuple represents a time segment that
 starts at the timestamp taken from the field "time" and that represents a time
 slice of 30s.  This will be useful in a bit, when we visualize the tuples as
 timeseries.
 
-== Visualization
-
-Now our memory operation returns a much better looking result:
-
-[width="50%",cols=">,<,>,>,>,>,>",options="header"]
-|=====================
-|time +
-float
-|host +
-string
-|free +
-float (or null)
-|used +
-float (or null)
-|cached +
-float (or null)
-|buffered +
-float (or null)
-|slab +
-float (or null)
-|1507342021.17 |rxdmac |777793536 |503689216 |636694869.333 |79526912 |40728576
-|1507342051.17 |rxdmac |777340586.667 |503691946.667 |637033472 |79526912 |40699221.333
-|1507342081.17 |rxdmac |777027242.667 |503635626.667 |637074773.333 |79526912 |40688753.777
-|1507342111.17 |rxdmac |776763733.333 |503665664 |637330432 |79526912 |40719473.777
-|1507342141.17 |rxdmac |776679765.333 |503691605.333 |637312000 |79544661.333 |40770901.333
-|1507342171.17 |rxdmac |776135338.667 |503693994.667 |637735936 |79580160 |40784554.666
-|1507342201.17 |rxdmac |776304981.333 |503693653.333 |637580629.333 |79575722.666 |40712192
-|1507342231.17 |rxdmac |775898453.333 |503668736 |638010368 |79581525.333 |40771584
-|=====================
-
-Still, staring at a table of numbers is not very satisfying.
-Instead, what we would like is to plot the data.
-
-You can plot some values evolution with time by selecting some numerical
-columns in the raw output panel (by clicking on the column header).
-
-If you select all memory sections and select a stacked graph you should see how
-memory is distributed by your operating system:
-
-// http://poum.happyleptic.org:29380/plot/hosts/memory?fields=free,used,cached,slab,buffered&stacked=yes&duration=3600
-image::sample_chart1.svg[]
-
-WARNING: If you collect statistics from several hosts then the graph will not
-be that pretty. You'd want to add a where clause to filter a single host.
-Unfortunately the graph widget cannot do that for you (yet?).
-
-Although it is best to use a fully fledged monitoring dashboard such as
-http://grafana.net[Grafana] to visualize your metrics, it is nonetheless handy
-to have a small embedded visualizer when you are building your configuration.
-
-NOTE: See https://github.com/rixed/ramen-grafana-datasource-plugin[this grafana
-plugin] for more details about using ramen as a data source for Grafana.
-
-== Alerting
+== Alerting On Low Memory
 
 Ramen only ways to notify the external world of some condition is the +NOTIFY+
 clause that takes an HTTP URL as a parameter and that will get (as in +HTTP
-GET+) that URL each time the operation commits a tuple. Ramen comes with an alert
-manager that can perform the last mile of alert delivery (as well as a few
-other things) that we are going to use here but you could as well direct those
-URL to any other alerting service of your liking.
+GET+) that URL each time the operation commits a tuple.
 
 As a simple example, let's say we want to be alerted whenever the "used" memory
 grows beyond 50% of the total.
 
-We can use the +NOTIFY+ keyword to instruct Ramen to contact some external
-system in addition to emitting a tuple. Let's add to the hosts program an operation
-named "memory alert" and defined like this:
+We can use the +NOTIFY+ keyword to reach out to some imaginary alerting
+service. Let's add to +hosts.ramen+ an operation named "memory alert" and
+defined like this:
 
 [source,sql]
 ----
-FROM hosts/memory
-SELECT
-  time, host,
-  free + used + cached + buffered + slab AS total,
-  free * 100 / total AS used_ratio
-GROUP BY host
-COMMIT WHEN used_ratio > 50
-NOTIFY "http://localhost:29382/notify?title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25"
-EVENT STARTING AT time WITH DURATION 30
+DEFINE memory_alert AS
+  FROM memory
+  SELECT
+    time, host,
+    free + used + cached + buffered + slab AS total,
+    free * 100 / total AS used_ratio
+  GROUP BY host
+  COMMIT WHEN used_ratio > 50
+  NOTIFY "http://imaginary-alerting.com/notify?title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25"
+  EVENT STARTING AT time WITH DURATION 30
 ----
-
-If you though about using a where clause you might be surprised to see a
-commit-when clause used instead.  That is because the where filter operates on
-the input tuples, before the group is retrieved and output tuple constructed
-("total" and "used_ratio" are fields of the output tuple). This is actually not
-exactly true but close enough for now.
 
 Notice that we can reuse the field "total" after it has been defined in
 the select clause, which comes rather handy when building complex values as it
@@ -518,11 +598,11 @@ corollary, any field which name starts with an underscore will not appear in
 the output. Those fields are called "private fields".
 
 Notice the +NOTIFY+ clause: it just needs an URL within which actual field
-values can be inserted. This actual URL is the one of the alerter bundled in
-the docker image.
+values can be inserted.
 
-Let's compile our new program.
-Wait, what? Now the compiler is complaining that used_ratio can be NULL?
+Let's compile that new program.
+
+Wait, what? Now the compiler is complaining that +used_ratio+ can be NULL?
 Had you noticed that all of out memory values could be NULL? That's typically
 the kind of surprise Ramen type system is meant to avoid.
 
@@ -534,58 +614,52 @@ private fields. Turn the memory operation into:
 
 [source,sql]
 ----
-SELECT
-  MIN time AS time,
-  host,
-  COALESCE (type_instance, "") AS _type,
-  AVG (IF _type = "free" THEN value ELSE 0) AS free,
-  AVG (IF _type = "used" THEN value ELSE 0) AS used,
-  AVG (IF _type = "cached" THEN value ELSE 0) AS cached,
-  AVG (IF _type = "buffered" THEN value ELSE 0) AS buffered,
-  AVG (IF _type LIKE "slab%" THEN value ELSE 0) AS slab
-FROM demo/collectd
-WHERE COALESCE (plugin = "memory", false)
-GROUP BY host, time // 30
-COMMIT WHEN in.time > out.time + 30
-EVENT STARTING AT time WITH DURATION 30
+DEFINE memory AS
+  SELECT
+    MIN time AS time,
+    host,
+    COALESCE (type_instance, "") AS _type,
+    AVG (IF _type = "free" THEN value ELSE 0) AS free,
+    AVG (IF _type = "used" THEN value ELSE 0) AS used,
+    AVG (IF _type = "cached" THEN value ELSE 0) AS cached,
+    AVG (IF _type = "buffered" THEN value ELSE 0) AS buffered,
+    AVG (IF _type LIKE "slab%" THEN value ELSE 0) AS slab
+  FROM demo/collectd
+  WHERE COALESCE (plugin = "memory", false)
+  GROUP BY host, time // 30
+  COMMIT WHEN in.time > out.time + 30
+  EVENT STARTING AT time WITH DURATION 30
 ----
 
 and then everything should compile and run.
 
 What will happen whenever the memory usage ratio hit the threshold is that the
-alerted will receive a notification from ramen.  The default configuration for
-the alerted is to log, which is not very useful but good enough for this
-tutorial.
-
-To see the list of active alerts you can visit http://localhost:29382[the
-alerter home page].
-
-Of course you can also create any alert you like by hitting the /notify page
-(either with your browser or with curl/wget).
+imaginary alerting system will receive a notification from Ramen.
 
 It is also possible to notify the alerter that a particular alert have stopped
 firing, thanks to the "firing" parameter that can be 0 (non-firing) or 1
-(firing). When absent, as above, the alerter assumes that the alert is firing.
+(firing).
 
 Let's try to do that.  Edit the "memory alert" operation into this:
 
 [source,sql]
 ----
-FROM hosts/memory
-SELECT
-  time, host,
-  free + used + cached + buffered + slab AS total,
-  free * 100 / total AS used_ratio,
-  used_ratio > 50 AS firing
-GROUP BY host
-COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
-NOTIFY "http://localhost:29382/notify?firing=${firing}&title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25"
-EVENT STARTING AT time WITH DURATION 30
+DEFINE memory_alert AS
+  FROM hosts/memory
+  SELECT
+    time, host,
+    free + used + cached + buffered + slab AS total,
+    free * 100 / total AS used_ratio,
+    used_ratio > 50 AS firing
+  GROUP BY host
+  COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
+  NOTIFY "http://imaginary-alerting.com/notify?firing=${firing}&title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25"
+  EVENT STARTING AT time WITH DURATION 30
 ----
 
 There should be little surprise, but for one thing: the +COMMIT AND KEEP ALL+.
-What this does it instruct ramen not to delete the group when the tuple is
-output (the default behavior is to discard the group once it's beenoutput).
+What this does it instruct Ramen not to delete the group when the tuple is
+output (the default behavior is to discard the group once it's been output).
 +KEEP ALL+ means that the group should stay untouched, as if it hasn't been
 output at all. Otherwise we would loose the memory of what was the last output
 tuple for this host (next time we hear about that host, a new group would be
@@ -597,16 +671,17 @@ save their last firing state, which is reasonable.
 
 Let's now turn into netflow.
 
-If you click on the netflow operation you will see that it outputs almost without
+If you look at +demo/netflow+ output, you will see that it outputs almost without
 interpretation a stream of netflow records ; fields meaning should be obvious
 if you are already familiar with
 https://www.cisco.com/c/en/us/td/docs/net_mgmt/netflow_collection_engine/3-6/user/guide/format.html#wp1006186[netflow].
 
 If not, then you just have to know that netflows are bytes, packets and flag
-counts for each "flow" defined roughly as a switch interface, and the IP
-socket pair (ip protocol, addresses and ports). Switch will send those records
-regularly every few minutes so that we know the volume of the traffic per
-socket, that we can aggregate per subnets or per switch interfaces, and so on.
+counts for each "flow" defined roughly as the IP socket pair (ip protocol,
+addresses and ports), and a "route" inside the switch from the inbound to
+outbound interface. Switches will send those records regularly every few
+minutes so that we know the volume of the traffic per socket, that we can
+aggregate per subnets or per switch interfaces, and so on.
 
 What we are ultimately interested in, for monitoring purpose, will typically be:
 
@@ -616,7 +691,7 @@ What we are ultimately interested in, for monitoring purpose, will typically be:
 - Are there any traffic from a given subnet to another given subnet for
   a given port (for instance, from internal to external port 25)?
 
-We will see how to compute each of those out of netflows.
+We will see how to compute some of those.
 
 === Per interface traffic
 
@@ -624,30 +699,30 @@ Let's start by aggregating all traffic per switch interfaces.
 
 Netflow has 3 fields of interest: "source", which is the IP address of the
 netflow emitter (say, a switch), and "in_iface" and "out_iface", which
-identifies the interfaces of this switch that received and emitted this flow.
+identifies the interfaces from which the flow entered and exited the switch.
 
 To build a per interface aggregate view we therefore have to split each flow
 in two, saying that the traffic that have been received on interface X and
 emitted on interface Y count as traffic for interface X and traffic for
 interface Y, counting indifferently incoming and outgoing traffic.
 
-Let's therefore create a new program named "traffic", with two operations that we
-could name respectively "traffic in" and "traffic out":
+Let's therefore create a new program file named "traffic.ramen", with two operations that we
+could name respectively "inbound" and "outbound":
 
 [source,sql]
 ----
-SELECT source, first, last, bytes, packets, in_iface AS iface
-FROM demo/netflow
-EVENT STARTING AT first AND STOPPING AT last
+DEFINE inbound AS
+  SELECT source, first, last, bytes, packets, in_iface AS iface
+  FROM demo/netflow;
 ----
 
 and
 
 [source,sql]
 ----
-SELECT source, first, last, bytes, packets, out_iface AS iface
-FROM demo/netflow
-EVENT STARTING AT first AND STOPPING AT last
+DEFINE outbound AS
+  SELECT source, first, last, bytes, packets, out_iface AS iface
+  FROM demo/netflow;
 ----
 
 Both will read the netflows and output flows with a single +iface+ field for
@@ -660,14 +735,15 @@ until enough time has passed (300 seconds in this example):
 
 [source,sql]
 ----
-FROM 'traffic in', 'traffic out'
-SELECT
-  source, iface,
-  min first AS first, max last AS last,
-  sum bytes AS bytes, sum packets AS packets
-GROUP BY source, iface
-COMMIT WHEN out.last - out.first > 300
-EVENT STARTING AT first AND STOPPING AT last
+DEFINE total AS
+  FROM inbound, outbound
+  SELECT
+    source, iface,
+    min first AS first, max last AS last,
+    sum bytes AS bytes, sum packets AS packets
+  GROUP BY source, iface
+  COMMIT WHEN out.last - out.first > 300
+  EVENT STARTING AT first AND STOPPING AT last;
 ----
 
 It might be the first time you see a FROM clause with more that one operation.
@@ -682,15 +758,16 @@ seconds_ instead:
 
 [source,sql]
 ----
-FROM 'traffic in', 'traffic out'
-SELECT
-  source, iface,
-  min first AS first, max last AS last,
-  sum bytes / (out.last - out.first) AS bytes_per_secs,
-  sum packets / (out.last - out.first) AS packets_per_secs
-GROUP BY source, iface
-COMMIT WHEN out.last - out.first > 300
-EVENT STARTING AT first AND STOPPING AT last
+DEFINE total AS
+  FROM inbound, outbound
+  SELECT
+    source, iface,
+    min first AS first, max last AS last,
+    sum bytes / (out.last - out.first) AS bytes_per_secs,
+    sum packets / (out.last - out.first) AS packets_per_secs
+  GROUP BY source, iface
+  COMMIT WHEN out.last - out.first > 300
+  EVENT STARTING AT first AND STOPPING AT last;
 ----
 
 Notice the prefix in +out.first+ and +out.last+ to identify the computed
@@ -699,7 +776,7 @@ used the +first+ and +last+ fields from the input tuple instead of the result
 of the +min+/+max+ aggregation functions, as the input tuple (+in+) is the
 default when the same field can have several origins.
 
-Now that we have the realtime bandwidth per interface every 5 minutes, it is
+Now that we have the bandwidth per interface every 5 minutes, it is
 easy to signal when the traffic is outside the expected bounds for too long.
 
 From there, it's easy to alert when the traffic is outside a range, but we
@@ -707,15 +784,16 @@ can do better:
 
 [source,sql]
 ----
-FROM total
-SELECT
-  source, iface,
-  (last - first) / 2 AS time,
-  bytes_per_secs,
-  5-ma locally (bytes_per_secs < 100 OR bytes_per_secs > 8e3) >= 4 AS firing
-GROUP BY source, iface
-COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
-NOTIFY "$RAMEN_URL$/notify?firing=${firing}&title=Traffic%20on%20${source}%2F${iface}&time=${time}"
+DEFINE traffic_alert AS
+  FROM total
+  SELECT
+    source, iface,
+    (last - first) / 2 AS time,
+    bytes_per_secs,
+    5-ma locally (bytes_per_secs < 100 OR bytes_per_secs > 8e3) >= 4 AS firing
+  GROUP BY source, iface
+  COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
+  NOTIFY "http://imaginary-alerting.com/notify?firing=${firing}&title=Traffic%20on%20${source}%2F${iface}&time=${time}"
 ----
 
 Notice the definition of firing: instead of merely fire whenever the average
@@ -732,18 +810,15 @@ that means that instead of storing it's temporary state globally the "5-ma"
 function should have one such state per group ; in other words, instead of
 computing the average over the last 5 incoming tuples regardless of their key,
 it should compute the average over the last 5 tuples aggregated into the same
-group.
-
-Finally, notice that +$RAMEN_URL$ has replaced the usual
-"http://localhost:29380". Ramen will actually substitute this by its actual
-URL, so that you can change it without changing the configuration.
+group.  Some functions default to having a global context while some default
+to have a local context. If unsure, specify +locally+ or +globally+.
 
 === Alerting on link down
 
 Alerting on link down might seems easy - isn't it a special case of the above,
 when we test for +bytes_per_secs = 0+ ?  This won't work for a very interesting
 reason: When there is no traffic at all on an interface, switches will not send
-a netflow message with zero valued counters. Instead, they will not send
+a netflow message with zero valued counters. Instead they will not send
 anything at all, thus stalling the stream processor. To detect link down,
 therefore, we need some timeout.
 
@@ -753,15 +828,15 @@ timestamp UNIX, returns its age:
 
 [source,sql]
 ----
-FROM traffic/total
-SELECT source, iface, MAX last AS max_last, age max_last > 300 AS firing
-GROUP BY source, iface
-COMMIT AND KEEP ALL WHEN COALESCE (out.firing != previous.firing, false)
-NOTIFY "$RAMEN_URL$/notify?text=link%20${source}%2F${iface}%20is%20down"
+DEFINE link_down_alert AS
+  FROM traffic/total
+  SELECT source, iface, MAX last AS max_last, age max_last > 300 AS firing
+  GROUP BY source, iface
+  COMMIT AND KEEP ALL WHEN COALESCE (out.firing != previous.firing, false)
+  NOTIFY "http://imaginary-alerting.com/notify?text=link%20${source}%2F${iface}%20is%20down"
 ----
 
 and you have it!
-
 
 You should now be able to survive given only the
 https://github.com/rixed/ramen/blob/master/docs/manual.adoc[reference

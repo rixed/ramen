@@ -332,10 +332,9 @@ func-check: $(RAMEN_TESTS:.test=.success)
 # Documentation
 
 doc: \
-	docs/tutorial_network_monitoring.html docs/tutorial_counting_words.html \
-	docs/manual.html docs/roadmap.html docs/alerter.html
+	docs/tutorial.html docs/manual.html docs/roadmap.html
 
-docs/tutorial_network_monitoring.html: \
+docs/tutorial.html: \
 	docs/tutorial_group_by.svg docs/sample_chart1.svg
 
 # Installation

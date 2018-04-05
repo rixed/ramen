@@ -1586,7 +1586,7 @@ See `ramen ps --help` for more.
 === Seeing a worker output
 
 `ramen tail` followed by the xref:FQName[fully qualified name] of an operation
-will display the last output tuples of that operation.
+will display the last output tuples by that operation.
 
 If this is the first time in a while that this worker has been asked for its
 output then it may take some time to start receiving data as old tuples may

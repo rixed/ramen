@@ -22,7 +22,7 @@ DEFINE total AS
     sum bytes / (out.last - out.first) AS bytes_per_secs,
     sum packets / (out.last - out.first) AS packets_per_secs
   GROUP BY source, iface, first // 300
-  COMMIT WHEN in.first > out.first + 100
+  COMMIT WHEN in.first > out.last + 100
   EVENT STARTING AT first AND STOPPING AT last;
 
 DEFINE out_of_range_alert AS
