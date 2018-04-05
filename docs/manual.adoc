@@ -22,18 +22,33 @@ toward network monitoring.
 Unlike other stream processors that are designed to scale to many servers,
 Ramen is designed to be efficient on a single (or very few) servers.
 
-It is composed of a central daemon that serves an API allowing clients to edit
-the configuration. This configuration consists of a graph of operations, each
-of which is given using a specialized high level language inspired by SQL.
-These operations are then compiled by the central server down to machine code
-into individual executables, the xref:Worker[workers], for parallel execution.
+It is mainly composed of a compiler that turns queries like these:
 
-Each worker accepts input of a given type and produces output of a given type,
-not unlike SQL rows being consumed by a SQL query that produces other rows used
-as input to a sub query. As in SQL, each row is a xref:Tuple[tuple] made of
-primitive types.  This stream of tuples flows directly from one worker to the
-next using efficient memory-mapped ring buffers.  All those tuples are
-statically typed at compile time to avoid runtime failures and improve speed.
+[source,sql]
+----
+FROM 'traffic in', 'traffic out'
+SELECT
+  source, iface,
+  min first AS first, max last AS last,
+  sum bytes / (out.last - out.first) AS bytes_per_secs,
+  sum packets / (out.last - out.first) AS packets_per_secs
+GROUP BY source, iface
+COMMIT WHEN out.last - out.first > 300
+----
+
+...into a machine code program, and of a process supervisor that runs those
+in parallel and connects them so that data flows between them efficiently.
+
+Processed events are tuples made of arbitrary fields which actual types are
+statically inferred at compile time to avoid runtime failures and improve
+speed.
+
+The stream of tuples flows directly from one worker to the next using
+efficient memory-mapped xref:RingBuffer[ring buffers].
+
+Other tools to feed data into Ramen from external systems or to extract data
+from Ramen into external systems will be released separately with their own
+documentation.
 
 == Glossary
 
@@ -51,19 +66,15 @@ statically typed at compile time to avoid runtime failures and improve speed.
   When several incoming xref:Tuple[tuples] are aggregated into a single
   xref:Group[group], a condition must be specified that, when met, will trigger
   the output of the aggregated value. This is called to _commit_ the group.
-  What happens to the group after the result tuple has been output depends on
-  the configuration but oftentimes it will merely be reset (tumbling windows),
+  What happens to that group after the result tuple has been output depends on
+  the flush clause; By default it will merely be reset (tumbling windows),
   but it is also possible to resume the aggregation from where it was or to
-  expels oldest events (sliding window) or really any other behavior.
-
-[[ConfGraph]]Configuration Graph::
-  The directed graph of the defined operations. The functions of this graph
-  represent the operations while the edges represents the flow of tuples.
-  This graph can be cyclic, with some limitations (see xref:Program[]).
+  expels oldest events (sliding window) or any other behavior.
 
 [[Event]]Event::
   An individual message to be processed. In Ramen events are
-  xref:Tuples[tuples].
+  xref:Tuples[tuples]. `Event`, `message` and `tuple` are used
+  interchangeably.
 
 [[FQName]]Fully Qualified Name::
   The fully qualified name of an xref:Operation[operation] is the name of the
@@ -73,39 +84,31 @@ statically typed at compile time to avoid runtime failures and improve speed.
 [[Group]]Group::
   Within the context of an operation, a `group` refers to an aggregation group,
   ie. the set of tuples sharing the same key and aggregated together. This
-  group live until it is committed, when it can be deleted or downsized
+  group lives until it is committed, when it can be deleted or downsized
   before resuming the operation. Aggregation groups are therefore closely
   related to the concept of xref:Windowing[windows].
-
-[[Program]]Program::
-  A subgraph of the xref:ConfGraph[Configuration Graph]. Containing one or
-  several xref:Operation[operations]. This is the smallest subset of the
-  configuration that can be edited/compiled/started/stopped. Inside a program
-  functions are allowed to form cycles, but the programs themselves must form a
-  tree.  In addition to a set of operations, a program also has a name. Those
-  names must be globally unique.
 
 [[Nullable]]Nullable::
   Said of a tuple field that can hold the NULL value. Most fields should not be
   nullable as it implies expensive runtime checks.
 
 [[Operation]]Operation::
-  Vertices of the xref:ConfGraph[Configuration Graph]. An operation is composed
-  of a name and the description, in the SQL-inspired specific language, of how
-  to produce the output from the inputs. Operation names must be unique within
-  a xref:Program[program].  Every operation has an input and an output type,
-  which is the types of the tuples they consume and produce. These types may
-  only be known after the program is compiled, though. Operations can receive
-  tuples from any other operations of the same program, or from any operations
-  of any program already defined.
+  An operation is a statement in the SQL-inspired specific language,
+  describing how to produce some output from some inputs. Operation have names
+  that must be unique within a xref:Program[program].  Every operation has an
+  input and an output type, which is the types of the tuples they consume and
+  produce. Operations can receive tuples from any other operations of the same
+  program or from any operations of any other program already compiled.
+
+[[Program]]Program::
+  Containing one or several xref:Operation[operations]. This is the smallest
+  subset of the configuration that can be edited/compiled/started/stopped.
+  Inside a program functions are allowed to form cycles.  In addition to a set
+  of operations, a program also has a name. Those names must be globally
+  unique.
 
 [[RingBuffer]]Ring-Buffer::
   Fixed sized FIFO buffer used by workers to exchange tuples.
-
-[[RotatingBloomFilters]]Rotating Bloom Filters::
-  Array of https://en.wikipedia.org/wiki/Bloom_filter[bloom filters], each
-  entry coding for a particular slice of time, and rotated as time passes, in
-  order to make (approximate) deletion possible.
 
 [[StatefulFunction]]Stateful function::
   A function that requires an internal state in order to output a result.
@@ -121,11 +124,19 @@ statically typed at compile time to avoid runtime failures and improve speed.
   theoretically infinite stream of data.
   See: https://en.wikipedia.org/wiki/Data_stream_management_system.
 
+[[Timeseries]]Timeseries::
+  A time series is a series of values indexed by time. Timeseries can be
+  extracted from Ramen if additional information about event times are
+  provided.
+  See: https://en.wikipedia.org/wiki/Time_series.
+
 [[Tuple]]Tuple::
-  What is consumed and produced by functions.  A set of values, each of its own
-  type. Those values are called "fields" and beside its type a field also has a
-  name that must be unique in the tuple.  Tuples are the only constructed data
-  type, and must itself be composed only of primitive types.
+  What is consumed and produced by functions.  A set of values, each of its
+  own type. Those values are called "fields" and beside its type a field also
+  has a name that must be unique in the tuple.  Tuples are the only
+  constructed data type, and must itself be composed only of primitive types.
+  For instance, +{ "name": "John Dae"; "age": 42; "is_male": true }+ is an
+  example of a tuple with 3 fields, represented in JSON.
 
 [[Windowing]]Windowing::
   In a xref:StreamProcessor[stream processor], _windowing_ refers to how
@@ -134,21 +145,21 @@ statically typed at compile time to avoid runtime failures and improve speed.
   https://i.stack.imgur.com/mm06A.jpg[this picture]). Ramen is rather unique
   in this regard that it has no notion of a window, especially not one bound
   to time, since it has no preconception of time. Instead, Ramen has explicit
-  conditions for when to stop a aggregation (to xref:Commit[commit] the
+  conditions for when to stop an aggregation (to xref:Commit[commit] the
   group), and what to keep from one aggregation to the next. This makes it
-  possible to configure any conceivable windows, including tumbling or sliding
+  possible to configure any conceivable windows, including tumbling, sliding
   or non sequential "windows".
 
 [[Worker]]Worker::
   One of the possibly many executables generated and run by Ramen to carry out
   some operation on the data stream.
 
-== The Configuration Language Reference
+== The Language Reference
 
 We describe first values, then expressions, then operations, and finally
 programs.  All these concepts reference each others so there is no reading
 order that would save you from jumping around. First reading may not be clear
-but everything should eventually fall into place.
+but everything should fall into place eventually.
 
 === Basic Syntax
 
@@ -179,14 +190,12 @@ value can be NULL and spare the NULL checks unless necessary.
 
 Users can check if a nullable value is indeed NULL using the +IS NULL+ or +IS
 NOT NULL+ operators, which turn a nullable value into a (non-nullable)
-boolean. This is very useful in `where` clauses, since the result of a `where`
-clause is not allowed to be nullable.
+boolean.
 
 +NULL+ is both a type and a value. The +NULL+ value is the only possible value
 of the +NULL+ type. It is also a possible value for any nullable type.
 
-To write a literal +NULL+ value (of the +NULL+ type, for what it's worth),
-enter `NULL`.
+To write a literal +NULL+ value enter `NULL`.
 
 ==== Booleans
 
@@ -195,10 +204,11 @@ Boolean true and false are spelled `true` and `false`.
 
 ==== Strings
 
-The type for character strings is called `string`.  A literal string is double
-quoted (with +"+). To include a double-quote, backslash it.  Other characters
-can be backslashed: single quote (+"\'"+), newlines (+"\n"+ and +"\r"+),
-horizontal tab (+"\t"+), backspace (+"\b"+) and the backslash itself (+"\\"+).
+The type for character strings is called `string`.  A literal string is
+double quoted (with +"+). To include a double-quote within a string,
+backslash it.  Other characters can be backslashed: single quote (+"\'"+),
+newlines (+"\n"+ and +"\r"+), horizontal tab (+"\t"+), backspace (+"\b"+) and
+the backslash itself (+"\\"+).
 
 Some functions consider strings as UTF-8 encoded, some consider strings as mere
 sequence of bytes.
@@ -240,7 +250,7 @@ have a simple syntax: a real number followed by a time unit: `hours`, `minutes`,
 ==== Network addresses
 
 Ethernet addresses are accepted with the usual notation, such as:
-`18:d6:c7:28:71:f5` (without quotes, those are not strings!) They are
+`18:d6:c7:28:71:f5` (without quotes; those are not strings). They are
 internally stored as 48bits unsigned integers and can be cast from/to other
 integer types.
 
@@ -250,7 +260,7 @@ CIDR addresses are also accepted; for instance `192.168.10.0/24` (there is no
 ambiguity with integer division since arithmetic operators do not apply to IP
 addresses).
 
-Some functions will check that an IP belongs to a CIDR.
+NOTE: the `in` operator can check whether an IP belongs to a CIDR.
 
 === Expressions
 
@@ -263,7 +273,7 @@ Any literal value (as described in the previous section) is a valid expression.
 In addition to literal values one can refer to a tuple field. Which tuples are
 available depends on the xref:Clause[clause] but the general syntax is:
 `tuple_name.field_name`. The prefix (before the dot) can be omitted in most
-cases and then the field is understood to refer to the "in" tuple (the input
+cases; if so, the field is understood to refer to the "in" tuple (the input
 tuple).
 
 Here is a list of all possible tuples, in order of appearance in the data flow:
@@ -420,12 +430,24 @@ Usage example:
 To transform a succession of `key, signal` with possibly many times the same
 signal value into a stream of `key, signal` omitting the repetitions.
 
+[[param-tuple]]
+===== Parameters
+
+In addition to the tuples read from parent operations, an operation also
+receive some constant parameters that can be used to customize the behavior
+of a compiled xref:Program[program]. See the xref:ref-programs[section about
+defining programs] below.
+
+Such parameters can be accessed unambiguously by prefixing them with the
+tuple name `param`.
+
+There is no restriction as to where this "tuple" can be used.
+
 [[virtual-fields]]
 ===== Virtual fields
 
-In addition to the normal fields of the tuples, some special tuples have
-'virtual' fields, that are fields which values are computed internally rather
-than explicitly in the operation code.  To distinguish them from normal
+In addition to a tuple fields, some tuples have 'virtual' fields, that are
+fields which values are computed internally.  To distinguish them from normal
 fields their name starts with a dash ('#').  Here is a list of all available
 virtual fields and which tuple they apply to:
 
@@ -599,6 +621,8 @@ CIDR must correspond to it.
 
 `hash`, prefix, +any → int64+, turn anything into a 64 bits integer.
 
+`random` returns a random float between 0 and 1.
+
 ==== Aggregate functions
 
 Aggregate functions are stateful functions that combines the current value
@@ -694,14 +718,15 @@ factor of 0.5.
 `remember`, prefix, +float ⨉ float ⨉ float ⨉ any → bool+, tells if a value
 have been seen before.
 
-This uses rotating bloom filters. First parameter is the false positive rate
-that should be aimed at, second is how to compute the event time, third is
-the duration, in seconds, that the function should remember values, and
-finally the last argument is the value to remember. The function will return
-true if it remember that value (and it will memorize it for next calls).
-There can be false positives (`remember` returning true while in fact that
-very value has never been seen) but no false negative (`remember` returning
-false while this value had in fact been seen earlier).
+This uses rotating https://en.wikipedia.org/wiki/Bloom_filter[bloom filters].
+First parameter is the false positive rate that should be aimed at, second is
+how to compute the event time, third is the duration, in seconds, that the
+function should remember values, and finally the last argument is the value to
+remember. The function will return true if it remember that value (and it will
+memorize it for next calls).  There can be false positives (`remember`
+returning true while in fact that very value has never been seen) but no false
+negative (`remember` returning false while this value had in fact been seen
+earlier).
 
 Notes:
 
@@ -810,7 +835,7 @@ From higher precedence to lower precedence:
 
 The simplest way to get tuples may be to read them from CSV files. The +READ+
 operation does just that, reading a set of files and then waiting for more
-files to appear in the specified path.
+files to appear.
 
 Its syntax is:
 
@@ -825,8 +850,8 @@ Its syntax is:
   )
 ----
 
-If +AND DELETE+ is specified then files will be deleted as soon they are
-opened (or as soon as they are fully read, when a preprocessor is used).
+If +AND DELETE+ is specified then files will be deleted as soon they have
+been read.
 
 The +file_pattern+, which must be quoted, is a file name that can use the
 star character ("*") as a wildcard matching any possible substring. This
@@ -850,9 +875,8 @@ default) then the value will be assumed to be NULL.
 
 Field names must be valid identifiers (aka string made of letters,
 underscores and digits but as the first character), field types must be one
-of `bool`, `string`, `float`, `u8`, `i8`, `u16`, etc...  and nullable, if
-set, must be either `null` or `not null` to specify whether this field can be
-NULL or not (default to `null`).
+of `bool`, `string`, `float`, `u8`, `i8`, `u16`, etc...  and `null` or `not
+null` will specify whether that field can be NULL or not (default to `null`).
 
 Examples:
 
@@ -872,30 +896,11 @@ READ FILES "/tmp/test/*.csv.gz" PREPROCESSOR "zcat" (
   last_name string)
 ----
 
-==== Receive
-
-A variation of the above: Instead of +READ FILE "pattern"+ just enter +RECEIVE+
-and Ramen will accept CSV file POSTed at +/upload/function_fully_qualified_name/+
-and will process them as they were CSV files taken from the file system.
-
-Notice that in that case the CSV file will not be kept in the file system and
-will therefore not be read again after restart, as if +AND DELETE+ was
-provided in a +READ FILE+ operation.
-
-Example:
-
-[source,sql]
-----
-RECEIVE SEPARATOR "\t" NULL "<NULL>" (
-  first_name string NOT NULL,
-  last_name string)
-----
-
 ==== Yield
 
 If you just want a constant expression to supply data to its child functions
 you can use the yield expression. This is useful in conjunction with the `now`
-and `sequence` functions, or to build a periodic clock, or for tests.
+and `sequence` functions, to build a periodic clock, or for tests.
 
 Examples:
 
@@ -1320,54 +1325,54 @@ This works because the default `select` clause is +SELECT *+ and the default
 
 The result of the GET is discarded.
 
-If you plan to use the internal alert manager present in ramen, then the URL
-should be:
+===== Outputting: Storing Tuples For Posterity
 
-----
-$RAMEN_URL$/notify?name=...&firing=...&time=...&title=...&text=...
-----
-
-+$RAMEN_URL$+ will be replaced with the value of the value of the
-+--ramen-url+ command line parameter.
-
-See the alerter manual for more information.
-
-===== Outputting: Exporting Tuples For Posterity
-
-Storing output tuples can be useful, but doing so for every operation would be
-wasteful.
+Storing output tuples can be useful, but doing so for every operation forever
+would be wasteful.
 
 You can select which operations output is to be stored on disc with the `export`
 clause.
 
 Just marking a +Group By+ operation with the +EXPORT+ keyword alone is enough
-for all produced tuples to be stored. Stored tuples can later be retrieved
-using the `export` API.
+for all produced tuples to be stored.
 
-When later retrieval of tuples is important, it is even better to tell Ramen
-how to compute the tuple-time, so that accurate timeseries can be retrieved
-using the `timeseries` API. That is what the rest of the `export` clause is
-for.
+Regardless of the `export` keyword, though, any operation can be asked to
+temporarily store its output.
+
+All stored tuples are archived in files that have the very same structure
+as the ring-buffers, although they are never emptied and so new files are
+created when the buffer gets full. Older files will be deleted according
+to the +--max-archives+ command line parameter.
+
+===== Outputting: Timeseries and Event Times
+
+In order to retrieve xref:Timeseries[timeseries] from output tuples it
+is necessary to provide information about what time should be associated with
+each tuple.
+
+This is why the +Group By+, +Yield+ and +Read+ operations can be accompanied
+with an `event-time` clause, instructing Ramen how to compute the event times
+from the tuples.
 
 [source,sql]
 ----
-EXPORT [ EVENT STARTING AT identifier [ * scale ]
-             [ WITH DURATION [ identifier [ * scale ] | constant ] |
-               AND STOPPING AT identifier [ * scale ] ] ]
+EVENT STARTING AT identifier [ * scale ]
+    [ ( WITH DURATION ( identifier [ * scale ] | constant ) |
+        AND STOPPING AT identifier [ * scale ] ) ]
 ----
 
 Contrary to most stream processing tools, events have not only a time but a
 duration, that can be specified either as an actual length or as an ending
 time.
 
-In the above, +identifier+ represent the name of an input field where the
+In the above, +identifier+ represent the name of an output field where the
 event time (or duration) is to be found. +scale+ must be a number and the
-field it applies to must be multiplied by this number to obtain seconds
+field it applies to will be multiplied by this number to obtain seconds
 (either to build a time as a UNIX timestamp or to obtain a duration).
 +constant+ is a constant number of seconds representing the duration of the
 event, if it's known and constant.
 
-With all these information, the `timeseries` API call will be able to produce
+With all these information, the `timeseries` command will be able to produce
 accurate results.
 
 In the future these might also be used to obtain default time for functions
@@ -1379,7 +1384,7 @@ For instance if we had minutely metric collection from sensors with a field
 [source,sql]
 ----
 SELECT whatever FROM sensors WHERE some_condition
-EXPORT EVENT STARTING AT time * 0.001 WITH DURATION 30
+EVENT STARTING AT time * 0.001 WITH DURATION 30
 ----
 
 ===== Outputting: Limiting The Output
@@ -1431,16 +1436,18 @@ operation:
 
 [source,sql]
 ----
-SELECT expression1 AS name1, expression2 AS name2, ...
-WHERE condition
+[ SELECT expression1 AS name1, expression2 AS name2, ... ]
+[ WHERE condition ]
 FROM source
-GROUP BY expression1, expression2, ...
-TOP number BY expression WHEN condition
-COMMIT [ AND ( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) ] WHEN condition
-( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) WHEN condition
-EXPORT [ EVENT STARTING AT identifier [ * scale ]
-             [ WITH DURATION [ identifier [ * scale ] | constant ] |
-               AND STOPPING AT identifier [ * scale ] ] ]
+[ GROUP BY expression1, expression2, ... ]
+[ TOP number BY expression WHEN condition ]
+[ COMMIT [ AND ( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) ]
+  WHEN condition ]
+[ ( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) WHEN condition ]
+[EXPORT]
+[ EVENT STARTING AT identifier [ * scale ]
+   [ ( WITH DURATION ( identifier [ * scale ] | constant ) |
+       AND STOPPING AT identifier [ * scale ] ) ] ]
 ----
 
 Each of those clauses can be specified in any order and can be omitted but for
@@ -1471,21 +1478,24 @@ A picture might help:
 
 image::RamenOperations.png[]
 
+[[ref-programs]]
 === Programs
 
 A program is a set of operations. The order of definitions does not matter.
-The semi-colon is used as a separator (although a final semi-colon is
-allowed). The syntax is simple and can be grasped with a single example:
+The semi-colon is used as a separator (although omitting the final semi-colon
+is allowed). The syntax is simple and can be grasped with a single example:
 
 [source,sql]
 ----
-  DEFINE foo AS SELECT * FROM other_program/operation WHERE bar > 0;
-  DEFINE foobar AS SELECT foo, bar FROM bazibar WHERE foo >= 42;
-----
+  DEFINE foo AS
+    SELECT * FROM other_program/operation WHERE bar > 0;
 
-You can also have anonymous operations (without the +DEFINE xxx AS+ part),
-but then of course their output could not be +SELECT+ed from another
-operation.
+  DEFINE bar AS YIELD 1 EVERY 1 SECOND;
+
+  DEFINE foobar AS
+    SELECT glop, pas_glop FROM bazibar
+    WHERE glop >= 42;
+----
 
 === Examples
 
@@ -1498,276 +1508,113 @@ operation.
 ==== Hysteresis
 
 
-== The API
+== The Command Line Interface
 
-=== Create/Modify/Delete Programs
+Ramen consists of a single executable that can act as the supervisor daemon,
+the compiler, a data extractor, and so on.
 
-=== Export/Import the Whole Graph
+It is self-documented so only a very rough summary of the main commands
+is given hereafter.
 
-You can get the whole configuration by GETting this URL: `/graph`.  Conversely,
-a whole new graph can be uploaded and made to replace the current one with a
-PUT at the same location.
+=== Starting the Workers Supervisor
 
-=== Compile/Start/Stop
++ramen start+ will start a daemon that will essentially merely check that
+the workers specified in the running-configuration are indeed working.
+When starting new worker it will first check that types are compatible with
+the other workers (or report an error), create the ring buffers and "connect"
+the workers properly.
 
-Once your configuration is ready you can compile it by GETting `/compile`.
-This will check all the operations and types in details, and generate the
-executable implementing each operation, or return any encountered error.
+See +ramen start --help+ for more.
 
-If all went well, you can then GET `/start` for Ramen to start all those
-executables, and then `/stop` to kill them all.
+To stop the supervisor, merely sends it a TERM or INT signal. It will then
+stops all workers and exit. Workers themselves will save their state so that
+little is lost by stopping and restarting ramen.
 
-[[export-API]]
-=== Receive Exported Tuples
+=== Compiling a Programs
 
-Some operations export some tuples.
-Those tuples can then be obtained from Ramen at `/export/NODE_NAME`.
-To limit the output, a body can be sent with two optional integer fields:
-`since`, to ask for all tuples _after_ that one, and `max_results` to ask for
-no more than that many tuples.
+Programs are stored on mere text files which extension should be ".ramen".  To
+compile one, use the `ramen compile` command. This will parse, type and then
+generate the executable binary (which extension will be ".x").
 
-[[timeseries-API]]
-=== Receive Values According to Time
+During typing, it is likely that the compiler will need to know the output
+types of referenced operations from other programs. It will then look for
+those programs in the path provided by wither the +RAMEN_ROOT+ environment
+variable or the +--root+ command line option. Those referenced programs must
+have been compiled already, which forces a given order when compiling multiple
+programs.
 
-[[upload-API]]
-=== Upload data
+As an example, suppose this program:
 
-+RECEIVE+ operations expect that the data be sent to Ramen, as a CSV, via an HTTP
-POST to +/upload/NODE_NAME/+.
-
-== Tests
-
-Two things need to be tested:
-
-1. That given some inputs, Ramen outputs will match some expected pattern,
-   including that the expected notifications will be send; In other words,
-   that Ramen computes what we think it does.
-
-2. That given some notifications, the expected pages will be sent and will
-   be properly escalated in all possible situations; in other words, that
-   the alerter configuration behave and escalate pages as we think it does.
-
-The first set of tests depends on what we measure while the second one
-depends on the oncaller team workflow.
-
-Both are equally important. Ramen is designed in such a way that tests are
-as easy, convenient and reliable as possible. Tests are integrated directly
-in the design.
-
-=== Testing Ramen Configuration
-
-In order to test a configuration you must first write that configuration.
-It can be the current configuration, a modified version or a totally new one.
-
-So suppose Ramen is running some configuration and you have a modified
-version of the configuration that you would like to test, in +to_test.json+.
-Then you must write the test suite, as a series of JSON files each specifying
-a test. A test supply some input tuples to any operation you want, and
-describe some expected output tuples/notifications. The exact format of those
-file will be given later.
-
-You then run:
-
-[source,shell]
+[source,sql]
 ----
-ramen test <config.json> <test1.json> <test2.json> ...
+SELECT hostname, last uptime
+FROM monitoring/hosts
+GROUP BY hostname
+COMMIT WHEN in.time > group.first.time + 30
 ----
 
-Ramen will then create the configuration described in +config.json+ but
-isolated from the running configuration, in a temporary namespace (merely
-prefixing all program names with "test/<some_unique_number>" in their
-definition and any references to them. Any operation listening from the
-network or reading files on disk will be disabled, but every other will be
-run in this temporary namespace. Then each test will be run one by one.
-For each of them, Ramen will fill the input ringbuffer of the nodes with
-the specified input, while collecting the output from the operations which
-output have been specified. Then it will compare those with the specification
-and output a report. Then it will destroy the temporary namespace with all
-the programs under test. During the test, the clock value will be faked so that
-we can simulate time lapses.
+to know the types of +hostname+, +uptime+ and +time+ ramen must look at the
+monitoring/hosts operation output type. It will then look for the executable
+file +$RAMEN_ROOT/monitoring/hosts.x+ which will then provide this type (as
+each executable worker can display its types and other informations about
+itself). Thus this program must have been compiled previously.
 
-Since listening from the network and reading from disc is disabled to not
-interfere with the production configuration, a test cannot specify those
-operation inputs. Rather it must specify their output. Indeed, it is
-actually possible to inject tuples in either input or output of any operation.
-For Ramen it's all the same anyway: it will just write the given tuple in some
-ringbuffers.
+See `ramen compile --help` for details.
 
-Now that we have covered the basics, let's see how to specify the inputs and
-the expected outputs.
+=== Running a Program
 
-.Alternative Considered
-****
-Instead of  reusing the same Ramen instance and the same supervisor daemon,
-why not run the tests with a specific supervisor, saving the configuration
-in a temporary, random $RAMEN_PERSIST_DIR and $RAMEN_URL of its own? Thus,
-rewriting the configuration would not be necessary, and there would be no risk
-of interfering with the production instance.
+To start a program use the `ramen run` command.  This command does not in
+itself start anything, though. Instead, it merely adds that program to the
+list of programs that the supervisor must keep running. Therefore the actual
+workers won't start until the process supervisor itself is running.
 
-Several reasons:
+See `ramen run --help` for details.
 
-1. The tested configuration can read some tuples from some production programs;
+=== Stopping a Program
 
-2. We keep the cache of compiled programs (but we could of course have a common
-directory to hold that cache);
+Similarly, `ramen kill` will remove a program from the running configuration
+of the supervisor.
 
-3. We'd still need to disable LISTENs and READs;
+See `ramen kill --help` for more.
 
-4. If the user wants to use any other tool to query the test then it is
-inconvenient to have to use a random directory and port;
+=== Listing running configuration
 
-5. If you need the extra isolation you can still run the tests on a separate
-instance, picking random $RAMEN_PERSIST_DIR and $RAMEN_URL yourself.
-****
+`ramen ps` will list the running programs and display some runtime statistics which makes it a `ps` as well as a `top` equivalent.
 
+See `ramen ps --help` for more.
 
-==== Specifying the Inputs
+=== Seeing a worker output
 
-Few things make specifying inputs for test suites complicated:
+`ramen tail` followed by the xref:FQName[fully qualified name] of an operation
+will display the last output tuples of that operation.
 
-- We don't want to specify everything: not every inputs and not every fields;
-- We need a way to specify also the time relation between the inputs to various
-  nodes;
-- We need a way to specify time lapses.
+If this is the first time in a while that this worker has been asked for its
+output then it may take some time to start receiving data as old tuples may
+not be archived (so `ramen tail` will wait for new tuples instead).
 
-Regarding the later concern, the easier is to specify the inputs in the order
-they are supposed to happen, keeping in mind that there is no other
-synchronisation mechanism between different operations than the ones required
-by their own relationship.
+Refer to `ramen tail --help` for more information.
 
-So we specify all inputs to all nodes in a single sequence.
+Similarly, `ramen timeseries` will extract a single field from an operation,
+indexed by time. Time points will be evenly spaced and events will be
+"bucketed" into the requested time scale.
 
-NOTE: Later we might also instruct Ramen to introduce some amount of disorder.
+See `ramen timeseries --help` for more details.
 
-Regarding the first concern: just name the fields you want to specify and leave
-the others uninitialized. Arbitrary values will be provided.
+=== Testing configuration Changes
 
-So each input specification follows this pattern:
+As Ramen is designed to connect to alerting systems, reliability has been an
+important design consideration. The main source of errors in production systems
+being configuration changes, it is therefore important to test any change in the
+configuration.
 
-.Specification of a single input
-[source,json]
-----
-{ "operation": "fully qualified name",
-  "tuple": { "field1": "value1", "field2": "value2", ... } }
-----
+The `ramen test` command takes text files each describing a test and,
+independently of any already running instance of ramen, will run all specified
+programs, provide them with the test input, and check the output matches the
+ones described in the test file.
 
-It is important that the field values are _strings_, whatever the actual
-datatype is (although JSON is not picky about types, Ramen is. Soon Ramen
-will be able to take specifications in a better language than JSON).
+See for instance
+https://github.com/rixed/ramen/blob/master/tests/basic_aggr.test[this test]
+from ramen own test suite for an example of a test specification.
 
-Before a tuple is sent it is possible to introduce a time laps, in seconds,
-by adding a "pause" fields.:
+Refer to `ramen test --help` for details.
 
-.Specification of a time gap
-[source,json]
-----
-  "pause": 123.456
-----
-
-And the full input specifications is therefore nothing but an array of those,
-named "inputs":
-
-.Specifications of a test inputs
-[source,json]
-----
-"inputs": [
-  { "operation": ..., "tuple": ... },
-  { "operation": ..., "tuple": ... },
-  { "pause": ..., "operation": ..., "tuple": ... },
-  ...
-]
-----
-
-==== Specifying the Expected Outputs
-
-Then we want to instruct Ramen that by the time the tests are over, some
-outputs/notifications must have been issued and some other must not.
-
-To specify that some tuples must have been output from some operation:
-
-.Specifications of expected output tuples
-[source,json]
-----
-"operation FQ name": {
-  "present" : [
-    { "field1": "value1", "field2": "value2", ... },
-    ... ],
-----
-
-Where of course you need only specify the fields you care about.
-
-Occasionally, one want to make sure that a tuple is _not_ emitted. The
-"absent" field serves this purpose:
-
-.Specifications of forbidden output tuples
-[source,json]
-----
-  "absent": [
-    { "field1": "value1", "field2", "value2", ... },
-    ... ]
-}
-----
-
-All those expectations are given in a single JSON array named "outputs".
-
-Notifications are specified using regular expressions, which syntax must (for
-now) follow http://caml.inria.fr/pub/docs/manual-ocaml/libref/Str.html[OCaml
-regular expressions].
-
-.Specifications of expected notifications
-[source,json]
-----
-"notifications": {
-  "present" : [
-    "^http://my_alerting_system.com/alert?id=123&",
-    ... ],
-  "absent" : [ ... ],
-}
-----
-
-==== Wrapping everything together in a single test specification
-
-Complete example:
-
-.Test specification example
-[source,json]
-----
-{
-  "inputs": [
-    { "operation": "FQ name1",
-      "tuple": { "field1": "value1", "field2": "value2", ... } },
-    { "operation": "FQ name2",
-      "tuple": { "field1": "value1", "field2": "value2", ... } },
-    { "pause": 123.456,
-      "operation": "FQ name3",
-      "tuple": { "field1": "value1", "field2": "value2", ... } },
-    ...
-  ],
-  "outputs": {
-    "FQ name1": {
-      "present" : [
-        { "field1": "value1", "field2": "value2", ... },
-        { "field1": "value1", "field2": "value2", ... },
-        ...
-      ],
-      "absent" : [ ... ]
-    },
-    "FQ name2": {
-      "present": [ ... ],
-      "absent": [ ... ],
-    }, ...
-  }
-  "notifications": {
-    "present" : [
-      "^http://my_alerting_system.com/alert?id=123&",
-      "^http://my_alerting_system.com/alert?id=456&",
-      ...
-    ],
-    "absent" : [ ... ]
-  }
-}
-----
-
-=== Testing Alerter Configuration
-
-TODO
