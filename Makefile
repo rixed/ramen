@@ -285,7 +285,7 @@ RAMEN_TESTS_SOURCES = \
 	$(RAMEN_TESTS:.test=.ramen) \
 	tests/fixtures/n123.ramen
 
-%.x: %.ramen src/ramen
+%.x: %.ramen src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
 	@src/ramen compile --keep-temp-files --bundle=bundle --root=./ $<
 
