@@ -62,13 +62,21 @@ let max_archives =
                    ~env ["max-archives"] in
   Arg.(value (opt int 20 i))
 
+let autoreload =
+  let env = Term.env_info "RAMEN_AUTORELOAD" in
+  let i = Arg.info ~doc:"Should workers be automatically reloaded when the \
+                         binary changes? And if so, how frequently to check."
+                   ~env ["autoreload"] in
+  Arg.(value (opt ~vopt:5. float 0. i))
+
 let start =
   Term.(
     (const RamenCliCmd.start
       $ copts
       $ daemonize
       $ to_stderr
-      $ max_archives),
+      $ max_archives
+      $ autoreload),
     info ~doc:RamenConsts.CliInfo.start "start")
 
 (*

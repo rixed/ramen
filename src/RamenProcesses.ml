@@ -152,8 +152,15 @@ let cleanup_old_files max_archives conf =
   in
   loop ()
 
-(* New style process supervisor: start and stop according to a mere file.
- * Also monitor quit. *)
+(*
+ * Process Supervisor: Start and stop according to a mere file listing which
+ * programs to run.
+ *
+ * Also monitor quit.
+ *)
+
+(* Description of a running worker.
+ * Non persisted on disk. *)
 type running_process =
   { program_name : string ;
     bin : string ;
@@ -175,23 +182,23 @@ let make_running_process program_name bin func =
   { program_name ; bin ; pid = None ; last_killed = 0. ; func ;
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 }
 
-(* Return the name of func input ringbuf for the given parent (if func is
- * merging, each parent uses a distinct one) *)
+(* Returns the name of func input ringbuf for the given parent (if func is
+ * merging, each parent uses a distinct one) and the file_spec. *)
 let input_spec conf parent child =
   (* In case of merge, ringbufs are numbered as the node parents: *)
-  (if child.func.F.merge_inputs then
+  (if child.F.merge_inputs then
     match List.findi (fun i (pprog, pname) ->
-             pprog = parent.program_name && pname = parent.func.name
-           ) child.func.F.parents with
+             pprog = parent.F.program_name && pname = parent.name
+           ) child.parents with
     | exception Not_found ->
         !logger.error "Operation %S is not a child of %S"
-          child.func.F.name parent.func.name ;
+          child.name parent.name ;
         invalid_arg "input_spec"
     | i, _ ->
-        C.in_ringbuf_name_merging conf child.func i
-  else C.in_ringbuf_name_single conf child.func),
-  let out_type = parent.func.out_type.ser
-  and in_type = child.func.F.in_type.ser in
+        C.in_ringbuf_name_merging conf child i
+  else C.in_ringbuf_name_single conf child),
+  let out_type = parent.out_type.ser
+  and in_type = child.in_type.ser in
   let field_mask = RingBufLib.skip_list ~out_type ~in_type in
   RamenOutRef.{ field_mask ; timeout = 0. }
 
@@ -210,24 +217,31 @@ let check_is_subtype t1 t2 =
           failwith ("Fields "^ f1.typ_name ^" differs with regard to NULLs")
   ) t1
 
-(* Need running so that types can be checked before linking with parents
- * and children. *)
-let try_start conf running proc =
+(* Returns the running parents and children of a func: *)
+let relatives f must_run =
+  Hashtbl.fold (fun _sign (_bin, _program_name, func) (ps, cs) ->
+    let is_parent_of func func' =
+      List.mem (func'.F.program_name, func'.F.name) func.F.parents in
+    (if is_parent_of f func then func::ps else ps),
+    (if is_parent_of func f then func::cs else cs)
+  ) must_run ([], [])
+
+(* Try to start the given proc.
+ * Check links (ie.: do parents and children the have the proper types?)
+ *
+ * Need [must_run] so that types can be checked before linking with parents
+ * and children.
+ *)
+let try_start conf must_run proc =
   !logger.info "Starting operation %a"
     print_running_process proc ;
   assert (proc.pid = None) ;
-  let ps, cs =
-    Hashtbl.fold (fun _sign proc' (ps, cs) ->
-      let is_parent_of proc proc' =
-        List.mem (proc'.program_name, proc'.func.name) proc.func.parents in
-      (if is_parent_of proc proc' then proc'::ps else ps),
-      (if is_parent_of proc' proc then proc'::cs else cs)
-    ) running ([], []) in
+  let ps, cs = relatives proc.func must_run in
   (* We must not start if a parent is missing: *)
   let parents_ok =
     List.fold_left (fun ok (p_prog, p_func) ->
-      if List.exists (fun proc' ->
-           proc'.program_name = p_prog && proc'.func.name = p_func
+      if List.exists (fun func ->
+           func.F.program_name = p_prog && func.F.name = p_func
          ) ps then ok
       else (
         !logger.error "Parent of %s/%s is missing: %s/%s"
@@ -236,19 +250,21 @@ let try_start conf running proc =
         false)
     ) true proc.func.parents in
   let check_linkage p c =
-    try check_is_subtype c.func.in_type.RamenTuple.ser p.func.out_type.ser ;
+    try check_is_subtype c.F.in_type.RamenTuple.ser p.F.out_type.ser ;
         true
     with Failure msg ->
       !logger.error "Input type of %s/%s (%a) is not compatible with \
                      output type of %s/%s (%a): %s"
-        c.program_name c.func.name RamenTuple.print_typ c.func.in_type.ser
-        p.program_name p.func.name RamenTuple.print_typ p.func.out_type.ser
+        c.program_name c.name RamenTuple.print_typ c.in_type.ser
+        p.program_name p.name RamenTuple.print_typ p.out_type.ser
         msg ;
       false in
   let linkage_ok =
-    List.fold_left (fun ok p -> check_linkage p proc && ok) true ps in
+    List.fold_left (fun ok p ->
+      check_linkage p proc.func && ok) true ps in
   let linkage_ok =
-    List.fold_left (fun ok c -> check_linkage proc c && ok) linkage_ok cs in
+    List.fold_left (fun ok c ->
+      check_linkage proc.func c && ok) linkage_ok cs in
   if parents_ok && linkage_ok then (
     (* Create the input ringbufs.
      * We now start the workers one by one in no
@@ -270,7 +286,7 @@ let try_start conf running proc =
     let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
     let%lwt () =
       Lwt_list.iter_s (fun c ->
-        let fname, specs as out = input_spec conf proc c in
+        let fname, specs as out = input_spec conf proc.func c in
         (* The destination ringbuffer must exist before it's referenced in an
          * out-ref, or the worker might err and throw away the tuples: *)
         RingBuf.create fname RingBufLib.rb_words ;
@@ -356,30 +372,33 @@ let try_start conf running proc =
           proc.last_exit_status <- status_str ;
           proc.succ_failures <- proc.succ_failures + 1 ;
           proc.pid <- None ;
-          (* We must also remove this proc from all its parent out-ref. *)
-          Lwt_list.iter_p (fun p ->
-            let parent_out_ref =
-              C.out_ringbuf_names_ref conf p.func in
-            Lwt_list.iter_s (fun this_in ->
-              RamenOutRef.remove parent_out_ref this_in) input_ringbufs
-          ) ps
+          return_unit
       in
       wait_child ()) ;
     (* Update the parents out_ringbuf_ref: *)
     Lwt_list.iter_p (fun p ->
-      if p.pid = None then
-        (* parent is not started yet: it will add this worker when
-         * it's his turn to be started. *)
-        return_unit
-      else
-        let out_ref =
-          C.out_ringbuf_names_ref conf p.func in
-        RamenOutRef.add out_ref (input_spec conf p proc)
+      let out_ref =
+        C.out_ringbuf_names_ref conf p in
+      RamenOutRef.add out_ref (input_spec conf p proc.func)
     ) ps
   ) else return_unit
 
-let try_kill proc =
+let try_kill conf must_run proc =
   let pid = Option.get proc.pid in
+  (* There is no reason to wait before we remove this worker from its
+   * parent out-ref: if it's not replaced then the last unprocessed
+   * tuples are lost. If it's indeed a replacement then the new version
+   * will have a chance to process the left overs. *)
+  let ps, _cs = relatives proc.func must_run in
+  (* We must also remove this proc from all its parent out-ref. *)
+  let input_ringbufs = C.in_ringbuf_names conf proc.func in
+  let%lwt () =
+    Lwt_list.iter_p (fun p ->
+      let parent_out_ref =
+        C.out_ringbuf_names_ref conf p in
+      Lwt_list.iter_s (fun this_in ->
+        RamenOutRef.remove parent_out_ref this_in) input_ringbufs
+    ) ps in
   (* Start with a TERM (if last_killed = 0.) and then after 5s send a
    * KILL if the worker is still running. *)
   let now = Unix.gettimeofday () in
@@ -399,11 +418,36 @@ let try_kill proc =
   ) ;
   return_unit
 
-let synchronize_running conf =
+(*
+ * Synchronisation of the rc file of programs we want to run and the
+ * actually running workers.
+ *
+ * [autoreload_delay]: even if the rc file hasn't changed, we want to re-read
+ * it from time to time and refresh the [must_run] hash with new signatures
+ * from the binaries that might have changed.  If some operations from a
+ * program indeed has a new signature, then the former one will disappear from
+ * [must_run] and the new one will enter it, and the new one will replace it.
+ * We do not have to wait until the previous worker dies before starting the
+ * new version: If they have the same input type they will share the same
+ * input ringbuf and steal some work from each others, which is still better
+ * than having only the former worker doing all the work.  And if they have
+ * different input type then the tuples will switch toward the new instance
+ * as the parent out-ref gets updated.  * Similarly, they use different state
+ * files.  They might both be present in a parent out_ref though, so some
+ * duplication of tuple is possible (or conversely: some input tuples might
+ * be missing if we kill the previous before starting the new one).
+ * If they do share the same input ringbuf though, it is important that we
+ * remove the former one before we add the new one (or the parent out-ref
+ * will end-up empty). This is why we first do all the kills, then all the
+ * starts (Note that even if a worker does not terminate immediately on
+ * kill, its parent out-ref is cleaned immediately).
+ *)
+let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
   (* Start/Stop processes so that [running] corresponds to [must_run].
    * [must_run] is a hash from the signature (function * params) to
    * its binary path, the program name and Func.
+   * FIXME: do we need the program_name since it's now also in func?
    * [running] is a hash from the signature (function * params) to its
    * running_process (mutable pid, cleared asynchronously when the worker
    * terminates). *)
@@ -437,8 +481,8 @@ let synchronize_running conf =
       !logger.info "Still %d processes running"
         (Hashtbl.length running) ;
     join [
-      Lwt_list.iter_p try_kill !to_kill ;
-      Lwt_list.iter_p (try_start conf running) !to_start ]
+      Lwt_list.iter_p (try_kill conf must_run) !to_kill ;
+      Lwt_list.iter_p (try_start conf must_run) !to_start ]
   in
   let rec loop last_read must_run running =
     if !quit && Hashtbl.length running = 0 then (
@@ -452,13 +496,17 @@ let synchronize_running conf =
           let last_mod =
             try mtime_of_file rc_file
             with Unix.(Unix_error (ENOENT, _, _)) -> max_float in
-          if last_mod <= last_read ||
+          let now = Unix.gettimeofday () in
+          let must_autoreload =
+              autoreload_delay > 0. &&
+              now -. last_read >= autoreload_delay
+          and must_reread =
+             last_mod > last_read &&
              (* To prevent missing the last writes when the file is updated
               * several times a second (the possible resolution of mtime),
               * refuse to refresh the file unless last_mod is old enough. *)
-             age last_mod <= 1.
-          then return (must_run, last_read)
-          else
+             now -. last_mod > 1. in
+          if must_autoreload || must_reread then (
             (* Reread the content of that file *)
             let%lwt must_run_programs = C.with_rlock conf return in
             (* The run file gives us the programs (and how to run them), but we
@@ -473,7 +521,8 @@ let synchronize_running conf =
                 Hashtbl.add must_run k (bin, program_name, f)
               ) prog
             ) must_run_programs ;
-            return (must_run, last_mod)) in
+            return (must_run, last_mod)
+          ) else return (must_run, last_read)) in
       let%lwt () = synchronize must_run running in
       let delay = if !quit then 0.1 else 1. in
       let%lwt () = Lwt_unix.sleep delay in

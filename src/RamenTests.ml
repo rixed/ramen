@@ -180,7 +180,7 @@ let test_one conf root_path notify_rb dirname test =
         ) rc ;
       ) test.programs) in
   let process_synchroniser =
-    restart_on_failure RamenProcesses.synchronize_running conf
+    restart_on_failure (RamenProcesses.synchronize_running conf) 0.
   and worker_feeder =
     let feed_input input =
       match Hashtbl.find workers input.Input.operation with

@@ -31,7 +31,7 @@ let make_copts debug persist_dir rand_seed keep_temp_files =
  * The actual work is done in module RamenProcesses.
  *)
 
-let start conf daemonize to_stderr max_archives () =
+let start conf daemonize to_stderr max_archives autoreload () =
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   let logdir =
@@ -52,7 +52,7 @@ let start conf daemonize to_stderr max_archives () =
        return_unit) ;
       (* The main job of this process is to make what's actually running
        * in accordance to the running program list: *)
-      restart_on_failure synchronize_running conf ])
+      restart_on_failure (synchronize_running conf) autoreload ])
 
 (*
  * `ramen compile`

@@ -144,7 +144,8 @@ let complete str () =
             "--help", "" ;
             "--persist-dir=", "" ;
             "--seed=", "" ;
-            "--log-to-stderr", "" ]
+            "--log-to-stderr", "" ;
+            "--autoreload=", "" ]
       | "compile" ->
           let root = root toks in
           ("--bundle-dir=", "") ::
