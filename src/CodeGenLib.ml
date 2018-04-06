@@ -398,9 +398,11 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
     Option.may (fun out_specs ->
       if Map.is_empty out_specs then
         !logger.info "OutRef is now empty!"
-      else
+      else (
+        if Hashtbl.is_empty out_h then
+          !logger.info "OutRef is no more empty!" ;
         !logger.debug "Must now output to: %a"
-          RamenOutRef.print_out_specs out_specs ;
+          RamenOutRef.print_out_specs out_specs) ;
       (* Change occurred, load/unload as required *)
       let current = Hashtbl.keys out_h |> Set.of_enum in
       let next = Map.keys out_specs |> Set.of_enum in
