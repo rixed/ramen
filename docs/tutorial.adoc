@@ -26,7 +26,7 @@ docker image:
 $ mkdir -p $HOME/ramen_root
 ----
 
-The docker image is about 81MiB compressed. Run it with:
+The docker image is about 150MiB compressed. Run it with:
 
 [source,shell]
 ----
