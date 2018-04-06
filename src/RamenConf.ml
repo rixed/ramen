@@ -291,13 +291,16 @@ let archive_buf_name conf func =
 
 (* Operations are told where to write their output (and which selection of
  * fields) by another file, the "out-ref" file, which is a kind of symbolic
- * link with several destinations (plus a format, plus an expiry date). *)
+ * link with several destinations (plus a format, plus an expiry date).
+ * like the above archive file, the out_ref files must be identified by the
+ * operation name and its output type: *)
 let out_ringbuf_names_ref conf func =
+  let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref
                    ^"/"^ func.Func.program_name
                    ^"/"^ func.Func.name
-                   ^"/out_ref"
+                   ^"/"^ sign ^"/out_ref"
 
 (* Finally, operations have two additional output streams: one for
  * instrumentation statistics, and one for notifications. Both are
