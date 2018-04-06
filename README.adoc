@@ -1,7 +1,54 @@
-= Ramen
+= What?
 
-Non-distributed, high throughput stream processor tailored for network monitoring.
+A stream processing language and compiler for small-scale infrastructure monitoring
+
+= Why?
+
+Those last years, thanks to such large companies as Google, Facebook, Linkedin
+and Netflix, the culture and practice of modern infrastructure monitoring have
+vastly improved and many good and free tools have been released publicly. Those
+tools understandably focus on large distributed infrastructure.
+
+For smaller use cases though, tools have been left to where they were in the
+90s, with the notable exception of http://riemann.io/[Riemann]. But Riemann is
+only for monitoring hosts and uses Clojure as a configuration language. Which
+in turns requires a resource hungry JVM.
+
+If you need an all-purpose stream processor to manipulate timeseries in order
+to turn inputs from sensors or network probes into alerts but do not want to
+deploy Kubernetes in your three racks of hardware or have only a couple of GiB
+left of RAM for monitoring, then you might want to consider Ramen.
+
+= How?
+
+This is how operations look like:
+
+[source,sql]
+----
+DEFINE memory_alert AS
+  FROM memory
+  SELECT
+    time, host,
+    free + used + cached + buffered + slab AS total,
+    free * 100 / total AS used_ratio,
+    used_ratio > 50 AS firing
+  GROUP BY host
+  COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
+  NOTIFY "http://192.168.1.1/notify?title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25";
+----
+
+Currently the stream processing programs are compiled into a language with
+automatic memory management (OCaml), so performance is not optimal. The plan
+is to compile down to C (or such) in a future step.
+
+Also, imports/exports are limited: Ramen currently accepts timeseries from CSV
+files, and understands collectd and netflow (v5) protocols. As output, it
+merely reach out to alerting systems via HTTP requests.
+
+Other than that it is possible to “tail” the output of operations from the CLI.
+More protocols for both input and output need obviously to be added.
 
 - https://github.com/rixed/ramen/blob/master/docs/tutorial.adoc[tutorial]
 - https://github.com/rixed/ramen/blob/master/docs/manual.adoc[manual]
-- https://github.com/rixed/ramen/blob/master/docs/dev.adoc[dev environment]
+- Docker image: rixed/ramen:demo on https://hub.docker.com
+- https://github.com/rixed/ramen/blob/master/docs/roadmap.adoc[roadmap]
