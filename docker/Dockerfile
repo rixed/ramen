@@ -43,16 +43,8 @@ WORKDIR /ramen
 ENTRYPOINT ["/start"]
 
 # Default arguments if not provided on `docker run` command line:
-CMD ["--use-embedded-compiler", "--to-stderr"]
+CMD ["--to-stderr"]
 
-# TODO: where to store stuff
-# CMD ["--directories etc"]
-
-# TODO: better healthcheck
-HEALTHCHECK CMD wget -O /dev/null http://localhost:29380/graph
-
-# HTTP API:
-EXPOSE 29380/TCP
 # Collectd:
 EXPOSE 25826/UDP
 # Fprobe:
