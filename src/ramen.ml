@@ -317,7 +317,7 @@ let consolidation =
                    ~docv:"min|max|avg|sum" ["consolidation"] in
   let cons_func =
     let p x = x, x in
-    [ p "min" ; p "max" ; p "avg" ] in
+    [ p "min" ; p "max" ; p "avg" ; p "sum" ] in
   Arg.(value (opt (enum cons_func) "avg" i))
 
 let timeseries =
