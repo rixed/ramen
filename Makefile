@@ -273,10 +273,12 @@ ringbuf_test.opt: \
 	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-check: all_tests.opt ringbuf_test.opt func-check
+check: unit-check func-check
+
+unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
-	@./ringbuf_test.opt || echo 'FAILURE (ringbuf_test)'
 	@OCAMLRUNPARAM=b ./all_tests.opt -bt || echo FAILURE
+	@./ringbuf_test.opt || echo 'FAILURE (ringbuf_test)'
 
 RAMEN_TESTS = $(wildcard tests/*.test)
 
