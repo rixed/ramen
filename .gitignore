@@ -7,6 +7,7 @@ oUnit-anon.cache
 *.cma
 *.cmx
 *.cmi
+*.cmt
 *.cmxa
 *.cmxs
 *.a

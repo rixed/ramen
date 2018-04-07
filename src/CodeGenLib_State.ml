@@ -10,6 +10,7 @@
  *
  * This library makes state management a bit more abstract to offer transparent
  * save/restore across runs and offloading on disc. *)
+open RamenLog
 
 (* The "state" is a value of some type known only to the function. The module
  * used to save/restore has to be chosen depending on the knowledge the user
@@ -28,6 +29,7 @@ let do_save fd v =
 let do_restore fd =
   let open Unix in
   lseek fd 0 SEEK_SET |> ignore ;
+  !logger.debug "Restoring state" ;
   Marshal.from_channel (in_channel_of_descr fd)
 
 open Batteries
@@ -37,6 +39,7 @@ let create_or_read persist_dir id v =
   let fname = persist_dir ^"/"^ id in
   RamenHelpers.mkdir_all ~is_file:true fname ;
   let init_restore () =
+    !logger.info "Will have my state in file %s" fname ;
     let fd = openfile fname [O_RDWR] 0o640 in
     fd, do_restore fd
   and init_create () =
