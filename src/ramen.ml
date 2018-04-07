@@ -51,8 +51,9 @@ let daemonize =
 
 let to_stderr =
   let env = Term.env_info "RAMEN_LOG_TO_STDERR" in
-  let i = Arg.info ~doc:"Log onto stderr."
-                   ~env [ "log-to-stderr"; "to-stderr"; "stderr" ] in
+  let i = Arg.info ~doc:"Log onto stdout/stderr instead of a file."
+                   ~env [ "to-stderr"; "stderr" ;
+                          "to-stdout"; "stdout" ] in
   Arg.(value (flag i))
 
 let max_archives =

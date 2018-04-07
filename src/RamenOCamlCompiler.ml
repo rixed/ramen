@@ -64,7 +64,8 @@ let compile_internal conf func_name src_file obj_file =
   output_name := Some obj_file ;
 
   let tm = Unix.(gettimeofday () |> localtime) in
-  let ppf = BatFormat.formatter_of_output (RamenLog.output ?logdir:!logger.logdir tm) in
+  let ppf = BatFormat.formatter_of_output (
+              RamenLog.output ?logdir:!logger.logdir tm true) in
   Asmlink.reset () ;
   try
     Optcompile.implementation ~backend ppf src_file
@@ -155,7 +156,8 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   !logger.debug "objfiles = %a" (List.print String.print) objfiles ;
 
   let tm = Unix.(gettimeofday () |> localtime) in
-  let ppf = BatFormat.formatter_of_output (RamenLog.output ?logdir:!logger.logdir tm)(*Format.err_formatter *) in
+  let ppf = BatFormat.formatter_of_output (
+              RamenLog.output ?logdir:!logger.logdir tm true) in
   Asmlink.reset () ;
   try
     Optcompile.implementation ~backend ppf src_file

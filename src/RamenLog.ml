@@ -23,7 +23,7 @@ let log_file tm =
 
 let output =
   let fd = ref None and fname = ref "" in
-  fun ?logdir tm ->
+  fun ?logdir tm is_err ->
     match logdir with
     | Some logdir ->
       let fname' = log_file tm in
@@ -34,24 +34,24 @@ let output =
         fd := Some (File.open_out ~mode:[`append;`create;`text] path)
       ) ;
       Option.get !fd
-    | None -> IO.stderr
+    | None -> if is_err then IO.stderr else IO.stdout
 
 let make_logger ?logdir ?(prefix="") dbg =
   let prefix = colored "1;34" prefix in
-  let do_log col fmt =
+  let do_log is_err col fmt =
     let open Unix in
     let tm = gettimeofday () |> localtime in
     let time_pref =
       Printf.sprintf "%02dh%02dm%02d: "
         tm.tm_hour tm.tm_min tm.tm_sec in
-    let oc = output ?logdir tm in
+    let oc = output ?logdir tm is_err in
     Printf.fprintf oc ("%s%s" ^^ fmt ^^ "\n%!") (col time_pref) prefix
   in
-  let error fmt = do_log red fmt
-  and warning fmt = do_log yellow fmt
-  and info fmt = do_log green fmt
+  let error fmt = do_log true red fmt
+  and warning fmt = do_log true yellow fmt
+  and info fmt = do_log false green fmt
   and debug fmt =
-    if dbg then do_log identity fmt
+    if dbg then do_log false identity fmt
     else Printf.ifprintf stderr fmt
   in
   { error ; warning ; info ; debug ; logdir }

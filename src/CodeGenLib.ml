@@ -16,7 +16,7 @@ let () =
  * value of a parameter (with default value in [def]): *)
 let parameter_value ~def scalar_parser name =
   let envvar = "param_"^ name in
-  !logger.info "Looking for evvar %S" envvar ;
+  !logger.debug "Looking for envvar %S" envvar ;
   match Sys.getenv envvar with
   | exception Not_found -> def
   | s ->
