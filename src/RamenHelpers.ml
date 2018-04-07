@@ -364,21 +364,26 @@ let file_print oc fname =
 
 let rec simplified_path =
   let res =
-    [ Str.regexp "/[^/]+/\\.\\./" ;
-      Str.regexp "/\\./" ;
-      Str.regexp "//" ] in
+    [ Str.regexp "/[^/]+/\\.\\./", "/" ;
+      Str.regexp "\\(/\\./\\|^\\.\\|/\\.$\\)", "/" ;
+      Str.regexp "//", "/" ;
+      Str.regexp "/$", "" ] in
   fun path ->
     let s =
-      List.fold_left (fun s re ->
-        Str.global_replace re "/" s
+      List.fold_left (fun s (re, repl) ->
+        Str.global_replace re repl s
       ) path res in
     if s = path then s else simplified_path s
 (*$= simplified_path & ~printer:identity
+  "/glop/glop" (simplified_path "/glop/glop/")
   "/glop/glop" (simplified_path "/glop/glop")
   "/glop/glop" (simplified_path "/glop/pas glop/../glop")
   "/glop/glop" (simplified_path "/glop/./glop")
+  "glop"       (simplified_path "glop/.")
+  "glop"       (simplified_path "glop/./")
+  "/glop"      (simplified_path "/./glop")
   "/glop/glop" (simplified_path "/glop//glop")
-  "/glop/glop" (simplified_path "/glop/pas glop/..//pas glop/.././//glop")
+  "/glop/glop" (simplified_path "/glop/pas glop/..//pas glop/.././//glop//")
  *)
 
 let absolute_path_of ?rel_to path =

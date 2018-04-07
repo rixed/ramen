@@ -69,8 +69,9 @@ let compile conf root_path use_external_compiler bundle_dir
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   RamenOCamlCompiler.bundle_dir := bundle_dir ;
   RamenOCamlCompiler.max_simult_compilations := max_simult_compils ;
+  let root_path = absolute_path_of root_path in
   let all_ok = ref true in
-  let comp_file source_file =
+  let compile_file source_file =
     let program_name = Filename.remove_extension source_file |>
                        rel_path_from root_path
     and program_code = read_whole_file source_file in
@@ -78,7 +79,7 @@ let compile conf root_path use_external_compiler bundle_dir
   in
   List.iter (fun source_file ->
     try
-      comp_file source_file
+      compile_file source_file
     with e ->
       print_exception e ;
       all_ok := false

@@ -183,7 +183,7 @@ let root_path =
   let env = Term.env_info "RAMEN_ROOT" in
   let i = Arg.info ~doc:"Path where to find other programs."
                    ~env [ "root" ] in
-  Arg.(value (opt string "" i))
+  Arg.(value (opt string "." i))
 
 let source_files =
   let i = Arg.info ~doc:"Source files to compile."
