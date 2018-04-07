@@ -146,7 +146,6 @@ src/libnetflow.a: src/netflow/v5.o
 # symbols we need as we are the only users.
 MOREFLAGS = \
 	-package "$(PACKAGES)" \
-	-cclib -Lsrc \
 	-cclib -lstdint_stubs \
 	-cclib -lringbuf \
 	-cclib -lcollectd \
