@@ -467,8 +467,8 @@ struct
          optional ~def:() blanks -+ number ))
       ) m
     in (
-      strinG "event" -- blanks -- strinG "starting" -- blanks --
-      strinG "at" -- blanks -+ non_keyword ++ scale ++
+      strinG "event" -- blanks -- (strinG "starting" ||| strinG "starts") --
+      blanks -- strinG "at" -- blanks -+ non_keyword ++ scale ++
       optional ~def:(RamenEventTime.DurationConst 0.) (
         (blanks -- optional ~def:() ((strinG "and" ||| strinG "with") -- blanks) --
          strinG "duration" -- blanks -+ (
