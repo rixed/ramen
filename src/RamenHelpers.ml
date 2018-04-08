@@ -539,13 +539,13 @@ let hex_of =
     if n < 10 then Char.chr (zero + n)
     else Char.chr (ten + n)
 
-let rec restart_on_failure f x =
+let rec restart_on_failure what f x =
   try%lwt f x
   with e -> (
     print_exception e ;
-    !logger.error "Will restart..." ;
+    !logger.error "Will restart %s..." what ;
     let%lwt () = Lwt_unix.sleep (0.5 +. Random.float 0.5) in
-    restart_on_failure f x)
+    restart_on_failure what f x)
 
 let md5 str = Digest.(string str |> to_hex)
 

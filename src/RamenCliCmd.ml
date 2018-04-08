@@ -46,13 +46,16 @@ let start conf daemonize to_stderr max_archives autoreload () =
       (let%lwt () = Lwt_unix.sleep 1. in
        (* TODO: Also a separate command to do the cleaning? *)
        async (fun () ->
-         restart_on_failure (cleanup_old_files max_archives) conf) ;
+         restart_on_failure "cleanup_old_files"
+           (cleanup_old_files max_archives) conf) ;
        async (fun () ->
-         restart_on_failure process_notifications notify_rb) ;
+         restart_on_failure "process_notifications"
+           process_notifications notify_rb) ;
        return_unit) ;
       (* The main job of this process is to make what's actually running
        * in accordance to the running program list: *)
-      restart_on_failure (synchronize_running conf) autoreload ])
+      restart_on_failure "synchronize_running"
+        (synchronize_running conf) autoreload ])
 
 (*
  * `ramen compile`

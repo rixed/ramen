@@ -484,49 +484,61 @@ let synchronize_running conf autoreload_delay =
       Lwt_list.iter_p (try_kill conf must_run) !to_kill ;
       Lwt_list.iter_p (try_start conf must_run) !to_start ]
   in
+  (* Once we have forked some workers we must not allow an exception to
+   * terminate this function or we'd leave unsupervised workers behind: *)
+  let rec none_shall_pass f =
+    try%lwt f ()
+    with exn ->
+      print_exception exn ;
+      !logger.error "Crashed while supervising children, keep trying!" ;
+      let%lwt () = Lwt_unix.sleep 1. in
+      none_shall_pass f
+  in
   let rec loop last_read must_run running =
-    if !quit && Hashtbl.length running = 0 then (
-      !logger.info "All processes stopped, quitting." ;
-      return_unit
-    ) else (
-      let%lwt must_run, last_read =
-        if !quit then (
-          return (Hashtbl.create 0, last_read)
-        ) else (
-          let last_mod =
-            try mtime_of_file rc_file
-            with Unix.(Unix_error (ENOENT, _, _)) -> max_float in
-          let now = Unix.gettimeofday () in
-          let must_autoreload =
-              autoreload_delay > 0. &&
-              now -. last_read >= autoreload_delay
-          and must_reread =
-             last_mod > last_read &&
-             (* To prevent missing the last writes when the file is updated
-              * several times a second (the possible resolution of mtime),
-              * refuse to refresh the file unless last_mod is old enough. *)
-             now -. last_mod > 1. in
-          if must_autoreload || must_reread then (
-            (* Reread the content of that file *)
-            let%lwt must_run_programs = C.with_rlock conf return in
-            (* The run file gives us the programs (and how to run them), but we
-             * want [must_run] to be a hash of functions. Also, we want the
-             * workers identified by their signature so that if the type of a
-             * worker change but not its name we see a different worker. *)
-            let must_run = Hashtbl.create 11 in
-            Hashtbl.iter (fun program_name get_rc ->
-              let bin, prog = get_rc () in
-              List.iter (fun f ->
-                let k = f.F.signature, RamenTuple.param_signature f.F.params in
-                Hashtbl.add must_run k (bin, program_name, f)
-              ) prog
-            ) must_run_programs ;
-            return (must_run, last_mod)
-          ) else return (must_run, last_read)) in
-      let%lwt () = synchronize must_run running in
-      let delay = if !quit then 0.1 else 1. in
-      let%lwt () = Lwt_unix.sleep delay in
-      loop last_read must_run running)
+    none_shall_pass (fun () ->
+      if !quit && Hashtbl.length running = 0 then (
+        !logger.info "All processes stopped, quitting." ;
+        return_unit
+      ) else (
+        let%lwt must_run, last_read =
+          if !quit then (
+            return (Hashtbl.create 0, last_read)
+          ) else (
+            let last_mod =
+              try mtime_of_file rc_file
+              with Unix.(Unix_error (ENOENT, _, _)) -> max_float in
+            let now = Unix.gettimeofday () in
+            let must_autoreload =
+                autoreload_delay > 0. &&
+                now -. last_read >= autoreload_delay
+            and must_reread =
+               last_mod > last_read &&
+               (* To prevent missing the last writes when the file is updated
+                * several times a second (the possible resolution of mtime),
+                * refuse to refresh the file unless last_mod is old enough. *)
+               now -. last_mod > 1. in
+            if must_autoreload || must_reread then (
+              (* Reread the content of that file *)
+              let%lwt must_run_programs = C.with_rlock conf return in
+              (* The run file gives us the programs (and how to run them), but we
+               * want [must_run] to be a hash of functions. Also, we want the
+               * workers identified by their signature so that if the type of a
+               * worker change but not its name we see a different worker. *)
+              let must_run = Hashtbl.create 11 in
+              let%lwt () = wrap (fun () ->
+                Hashtbl.iter (fun program_name get_rc ->
+                  let bin, prog = get_rc () in
+                  List.iter (fun f ->
+                    let k = f.F.signature, RamenTuple.param_signature f.F.params in
+                    Hashtbl.add must_run k (bin, program_name, f)
+                  ) prog
+                ) must_run_programs) in
+              return (must_run, last_mod)
+            ) else return (must_run, last_read)) in
+        let%lwt () = synchronize must_run running in
+        let delay = if !quit then 0.1 else 1. in
+        let%lwt () = Lwt_unix.sleep delay in
+        loop last_read must_run running))
   in
   loop 0. (Hashtbl.create 0) (Hashtbl.create 0)
 

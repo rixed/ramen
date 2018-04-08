@@ -497,7 +497,7 @@ let worker_start worker_name get_binocle_tuple k =
         let%lwt () = join [
           (let%lwt () = return_unit in
            async (fun () ->
-             restart_on_failure
+             restart_on_failure "update_stats_rb"
                (update_stats_rb report_period report_rb) get_binocle_tuple) ;
            return_unit) ;
           k conf ] in
