@@ -25,7 +25,8 @@ let complete_commands s =
       "timeseries", RamenConsts.CliInfo.timeseries ;
       "timerange", RamenConsts.CliInfo.timerange ;
       "ps", RamenConsts.CliInfo.ps ;
-      "test", RamenConsts.CliInfo.test ] in
+      "test", RamenConsts.CliInfo.test ;
+      "graphite", RamenConsts.CliInfo.graphite] in
   complete commands s
 
 let complete_global_options s =
@@ -141,7 +142,7 @@ let complete str () =
             "--help", "" ;
             "--persist-dir=", "" ;
             "--seed=", "" ;
-            "--log-to-stderr", "" ;
+            "--to-stdout", "" ;
             "--autoreload=", "" ]
       | "compile" ->
           ("--bundle-dir=", "") ::
@@ -198,5 +199,10 @@ let complete str () =
           ("--help", "") ::
           ("--root=", "") ::
           (complete_test_files last_tok)
+      | "graphite" ->
+          [ "--help", "" ;
+            "--daemonize", "" ;
+            "--to-stdout", "" ;
+            "--port=", "" ]
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

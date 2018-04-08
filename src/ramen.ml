@@ -40,7 +40,7 @@ let copts =
     $ keep_temp_files)
 
 (*
- * Start the event processor
+ * Start the processor supervisor
  *)
 
 let daemonize =
@@ -386,19 +386,25 @@ let ps =
     info ~doc:RamenConsts.CliInfo.ps "ps")
 
 (*
- * Autocompletion
+ * Start the HTTP server
+ *
+ * FIXME: should be dedicated to mimic graphite, if it works!
  *)
 
-let command =
-  let i = Arg.info ~doc:"Ramen command line to be completed."
-                   ~docv:"STRING" [] in
-  Arg.(value (pos 0 string "" i))
+let port =
+  let i = Arg.info ~doc:"Port number where to listen to incoming HTTP \
+                         connections."
+                   ~docv:"N" [ "port" ; "p" ] in
+  Arg.(value (opt int 80 i))
 
-let autocomplete =
+let graphite =
   Term.(
-    (const RamenCompletion.complete
-      $ command),
-    info ~doc:"Autocomplete the given command." "_completion")
+    (const RamenCliCmd.graphite
+      $ copts
+      $ daemonize
+      $ to_stderr
+      $ port),
+    info ~doc:RamenConsts.CliInfo.graphite "graphite")
 
 (*
  * Tests
@@ -418,6 +424,21 @@ let test =
     info ~doc:RamenConsts.CliInfo.test "test")
 
 (*
+ * Autocompletion
+ *)
+
+let command =
+  let i = Arg.info ~doc:"Ramen command line to be completed."
+                   ~docv:"STRING" [] in
+  Arg.(value (pos 0 string "" i))
+
+let autocomplete =
+  Term.(
+    (const RamenCompletion.complete
+      $ command),
+    info ~doc:"Autocomplete the given command." "_completion")
+
+(*
  * Command line evaluation
  *)
 
@@ -431,7 +452,7 @@ let default =
 let () =
   match Term.eval_choice default [
     start ; compile ; run ; kill ; tail ; timeseries ; timerange ;
-    ps ; dequeue ; summary ; autocomplete ; test
+    ps ; dequeue ; summary ; graphite ; test ; autocomplete
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

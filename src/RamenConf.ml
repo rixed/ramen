@@ -81,6 +81,7 @@ struct
       failwith "Program names cannot include directory dotnames" else
     simplified_path name
 
+  (* TODO: cache if binary hasn't changed or asked very recently *)
   let of_bin fname : t =
     !logger.debug "Reading config from %s..." fname ;
     match Unix.open_process_in fname with
@@ -199,6 +200,7 @@ let with_rlock conf f =
       RamenAdvLock.with_r_lock rc_file (fun () ->
         !logger.debug "Took graph lock (read)" ;
         let programs =
+          (* TODO: cache reading the rc file *)
           read_rc_file conf.do_persist rc_file |>
           Hashtbl.map (fun _ mre ->
             memoize (fun () -> mre.bin, program_of_running_entry mre)) in

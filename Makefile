@@ -25,7 +25,7 @@ PACKAGES = \
 	ppp ppp.unix lwt_ppx batteries cmdliner stdint parsercombinator \
 	cohttp-lwt-unix num inotify.lwt binocle unix lacaml \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
-	compiler-libs.optcomp
+	compiler-libs.optcomp net_codecs
 
 INSTALLED_BIN = src/ramen
 INSTALLED_LIB = \
@@ -61,20 +61,21 @@ all: $(INSTALLED)
 # Dependencies
 
 RAMEN_SOURCES = \
-	src/RamenVersions.ml src/RamenConsts.ml src/RamenLog.ml src/RamenHelpers.ml \
-	src/RamenBitmask.ml src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
+	src/RamenVersions.ml src/RamenConsts.ml src/RamenLog.ml \
+	src/RamenHelpers.ml src/RamenBitmask.ml \
+	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
 	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
-	src/RamenLang.ml src/RamenScalar.ml \
-	src/RamenTuple.ml src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
-	src/RingBufLib.ml \
-	src/RingBuf.ml src/RamenSerialization.ml \
-	src/RamenConf.ml src/RamenBinocle.ml src/RamenExport.ml \
+	src/RamenLang.ml src/RamenScalar.ml src/RamenTuple.ml \
+	src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
+	src/RingBufLib.ml src/RingBuf.ml src/RamenSerialization.ml \
+	src/RamenConf.ml src/RamenBinocle.ml \
+	src/RamenExport.ml src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
-	src/CodeGen_OCaml.ml src/RamenTyping.ml \
-	src/RamenCompiler.ml src/TermTable.ml src/RamenCliCmd.ml \
+	src/CodeGen_OCaml.ml src/RamenTyping.ml src/RamenCompiler.ml \
+	src/RamenGraphite.ml src/TermTable.ml src/RamenCliCmd.ml \
 	src/RingBufCmd.ml src/RamenCompletion.ml src/RamenTests.ml src/ramen.ml
 
 CODEGENLIB_SOURCES = \
@@ -231,7 +232,8 @@ TESTABLE_SOURCES = \
 	src/RamenOperation.ml src/RamenProgram.ml \
 	src/RamenTyping.ml \
 	src/RamenHelpers.ml src/RamenBloomFilter.ml src/Globs.ml src/CodeGen_OCaml.ml \
-	src/RamenSortBuf.ml
+	src/RamenSortBuf.ml \
+	src/RamenGraphite.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
@@ -248,10 +250,10 @@ LINKED_FOR_TESTS = \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/RamenHeap.ml src/RamenSortBuf.ml src/RamenBinocle.ml \
 	src/CodeGen_OCaml.ml src/RamenBinocle.ml src/RamenBitmask.ml \
-	src/RamenSerialization.ml src/RamenExport.ml \
+	src/RamenSerialization.ml src/RamenExport.ml src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml \
 	src/RamenTyping.ml src/RamenBloomFilter.ml \
-	src/TestHelpers.ml
+	src/RamenGraphite.ml src/TestHelpers.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
 	@echo 'Generating unit tests into $@'

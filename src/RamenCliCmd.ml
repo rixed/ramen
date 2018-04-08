@@ -292,11 +292,10 @@ let ps conf short sort_col top () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
-let always_true _ = true
-
 let tail conf func_name with_header separator null
          last min_seq max_seq with_seqnums duration () =
   logger := make_logger conf.C.debug ;
+  let always_true _ = true in
   (* Do something useful by default: tail forever *)
   let last =
     if last = None && min_seq = None && max_seq = None then Some min_int
@@ -396,54 +395,17 @@ let timeseries conf since until max_data_points separator null
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let since = since |? until -. 600. in
   if since >= until then failwith "since must come strictly before until" ;
-  let dt = (until -. since) /. float_of_int max_data_points in
-  let open RamenExport in
-  let buckets = make_buckets max_data_points in
-  let bucket_of_time = bucket_of_time since dt in
-  let consolidation =
-    match String.lowercase consolidation with
-    | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
-    | _ -> bucket_avg in
-  let bname, filter, typ, event_time =
-    (* Read directly from the instrumentation ringbuf when func_name ends
-     * with "#stats" *)
-    if func_name = "stats" || String.ends_with func_name "#stats" then
-      let typ = RamenTuple.{ user = RamenBinocle.tuple_typ ;
-                             ser = RamenBinocle.tuple_typ } in
-      let wi = RamenSerialization.find_field_index typ.ser "worker" in
-      let filter =
-        if func_name = "stats" then always_true else
-        let func_name, _ = String.rsplit func_name ~by:"#" in
-        fun tuple -> tuple.(wi) = RamenScalar.VString func_name in
-      let bname = C.report_ringbuf conf in
-      bname, filter, typ, RamenBinocle.event_time
-    else
-      (* Create the non-wrapping RingBuf (under a standard name given
-       * by RamenConf *)
-      Lwt_main.run (
-        let%lwt func, bname =
-          make_temp_export_by_name conf ~duration func_name in
-        return (bname, always_true, func.F.out_type, func.F.event_time))
-  in
+  (* Obtain the data: *)
   Lwt_main.run (
-    let open RamenSerialization in
-    let%lwt vi =
-      wrap (fun () -> find_field_index typ.ser data_field) in
-    fold_time_range bname typ.ser event_time since until () (fun () tuple t1 t2 ->
-      if filter tuple then (
-        let v = float_of_scalar_value tuple.(vi) in
-        let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
-        for bi = bi1 to bi2 do add_into_bucket buckets bi v done))) ;
+    RamenTimeseries.get conf ~duration max_data_points since until
+                        ~consolidation func_name data_field) |>
   (* Display results: *)
-  for i = 0 to Array.length buckets - 1 do
-    let t = since +. dt *. (float_of_int i +. 0.5)
-    and v = consolidation buckets.(i) in
+  Enum.iter (fun (t, v) ->
     Float.print stdout t ;
     String.print stdout separator ;
     (match v with None -> String.print stdout null
                 | Some v -> Float.print stdout v) ;
-    String.print stdout "\n"
-  done
+    String.print stdout "\n")
 
 (*
  * `ramen timerange`
@@ -470,3 +432,23 @@ let timerange conf func_name () =
       match mi_ma with
         | None -> Printf.printf "No time info or no output yet.\n"
         | Some (mi, ma) -> Printf.printf "%f %f\n" mi ma
+
+(*
+ * `ramen graphite`
+ *
+ * Starts an HTTP daemon that will serve (and maybe one day also accept)
+ * timeseries, impersonating Graphite (https://graphiteapp.org/).
+ *)
+
+let graphite conf daemonize to_stderr port () =
+  if to_stderr && daemonize then
+    failwith "Options --daemonize and --to-stderr are incompatible." ;
+  let logdir =
+    if to_stderr then None else Some (conf.C.persist_dir ^"/log") in
+  Option.may mkdir_all logdir ;
+  logger := make_logger ?logdir conf.C.debug ;
+  if daemonize then do_daemonize () ;
+  let router = RamenGraphite.router conf in
+  Lwt_main.run (
+    restart_on_failure "graphite impersonator"
+      (RamenHttpHelpers.http_service port) router)

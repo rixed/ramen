@@ -1,4 +1,4 @@
-module HttpContentTypes =
+module ContentTypes =
 struct
   let json = "application/json"
   let dot = "text/vnd.graphviz"
@@ -29,7 +29,8 @@ end
 
 module CliInfo =
 struct
-  let start = "Start the processes orchestrator."
+  let start = "Start the processes supervisor."
+  let graphite = "Start a Graphite impersonator."
   let compile = "Compile each given source file into an executable."
   let run = "Run one (or several) compiled program(s)."
   let kill = "Stop a program."
