@@ -62,29 +62,26 @@ let persist_dir toks =
     try Sys.getenv "RAMEN_PERSIST_DIR"
     with Not_found -> RamenConsts.default_persist_dir
 
-let complete_file select root what str =
+let complete_file select what str =
   let res = ref [] in
   let on_file fname rel_fname =
     if select fname then
       res :=
-        (* If we had no root then we are relative to current directory,
-         * therefore it's nicer to omit the root entirely: *)
-        (simplified_path (if root = "" then rel_fname else fname),
-         what) :: !res in
-  dir_subtree_iter ~on_file (if root = "" then Sys.getcwd () else root) ;
+        (simplified_path rel_fname, what) :: !res in
+  dir_subtree_iter ~on_file "." ;
   !res
 
 let extension_is ext fname =
   String.ends_with fname ext
 
-let complete_program_files root str =
-  complete_file (extension_is ".ramen") root "ramen program" str
+let complete_program_files str =
+  complete_file (extension_is ".ramen") "ramen program" str
 
 let complete_binary_files str =
-  complete_file (extension_is ".x") "" "ramen binary" str
+  complete_file (extension_is ".x") "ramen binary" str
 
 let complete_test_files str =
-  complete_file (extension_is ".test") "" "ramen test" str
+  complete_file (extension_is ".test") "ramen test" str
 
 let empty_help s = s, ""
 
@@ -147,14 +144,13 @@ let complete str () =
             "--log-to-stderr", "" ;
             "--autoreload=", "" ]
       | "compile" ->
-          let root = root toks in
           ("--bundle-dir=", "") ::
           ("--keep-temp-files", "") ::
           ("--help", "") ::
           ("--persist-dir=", "") ::
           ("--root=", "") ::
           ("--embedded-compiler", "") ::
-          (complete_program_files root last_tok)
+          (complete_program_files last_tok)
       | "run" ->
           ("--help", "") ::
           ("--persist-dir=", "") ::
