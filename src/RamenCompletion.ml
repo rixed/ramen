@@ -176,6 +176,8 @@ let complete str () =
           (complete_running_function persist_dir last_tok)
       | "timeseries" ->
           let persist_dir = persist_dir toks in
+          (* TODO: get the function name from toks and autocomplete
+           * field names! *)
           ("--help", "") ::
           ("--since=", "") ::
           ("--until=", "") ::

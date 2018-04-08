@@ -45,7 +45,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
     List.fold_lefti (fun (offs, b) i typ ->
         assert (not (is_private_field typ.RamenTuple.typ_name)) ;
         let value, offs', b' =
-          if typ.nullable && not (RingBuf.get_bit tx b) then (
+          if typ.nullable && not (get_bit tx b) then (
             None, offs, b+1
           ) else (
             let value = read_single_value offs typ.typ in
@@ -62,24 +62,23 @@ let read_tuple ser_tuple_typ nullmask_size tx =
   tuple
 
 let read_tuples ?while_ unserialize rb f =
-  RingBuf.read_ringbuf ?while_ rb (fun tx ->
+  read_ringbuf ?while_ rb (fun tx ->
     let tuple = unserialize tx in
-    RingBuf.dequeue_commit tx ;
+    dequeue_commit tx ;
     f tuple)
 
 let read_notifs ?while_ rb f =
   let unserialize tx =
     let offs = 0 in (* Nothing can be null in this tuple *)
-    let worker = RingBuf.read_string tx offs in
+    let worker = read_string tx offs in
     let offs = offs + RingBufLib.sersize_of_string worker in
-    let url = RingBuf.read_string tx offs in
+    let url = read_string tx offs in
     worker, url
   in
   read_tuples ?while_ unserialize rb f
 
 let write_tuple conf ser_in_type rb tuple =
   let write_scalar_value tx offs =
-    let open RingBuf in
     let open RingBufLib in
     function
     | VFloat f -> write_float tx offs f ; sersize_of_float
@@ -127,11 +126,11 @@ let write_tuple conf ser_in_type rb tuple =
       sz + RingBufLib.sersize_of_value v
     ) nullmask_sz values in
   !logger.debug "Sending an input tuple of %d bytes" sz ;
-  RingBuf.with_enqueue_tx rb sz (fun tx ->
-    RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
+  with_enqueue_tx rb sz (fun tx ->
+    zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
     (* Loop over all values: *)
     List.fold_left (fun offs (null_i, v) ->
-      Option.may (RingBuf.set_bit tx) null_i ;
+      Option.may (set_bit tx) null_i ;
       offs + write_scalar_value tx offs v
     ) nullmask_sz values |> ignore ;
     (* For tests we won't archive the ringbufs so no need for time info: *)
@@ -219,6 +218,7 @@ let fold_buffer ?wait_for_more ?while_ bname init f =
  * wait for data and must return as soon as we've reached the end of what's
  * available. *)
 let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f =
+  !logger.debug "Going to fold over %s for timeseries" bname ;
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type typ in
   let%lwt event_time_of_tuple =
