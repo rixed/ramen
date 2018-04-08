@@ -134,29 +134,32 @@ let read_ringbuf ?while_ ?delay_rec rb f =
       f tx >>= loop in
   loop ()
 
-let read_buf ?while_ ?delay_rec rb init f =
+let read_buf ?wait_for_more ?while_ ?delay_rec rb init f =
   (* Read tuples by hoping from one to the next using tx_next.
    * Note that we may reach the end of the written content, and will
    * have to wait unless we reached the EOF mark (special value
    * returned by tx_next). *)
   let open Lwt in
-  let rec loop usr tx =
-    (* Contrary to the wrapping case, f must not call dequeue_commit.
-     * Caller must know in which case it is: *)
-    let%lwt usr, more_to_come = f usr tx in
-    if more_to_come then
-      match%lwt RingBufLib.retry_for_ringbuf ?while_ ?delay_rec
-                  read_next tx with
-      | exception (Exit | Timeout) -> return usr
-      | exception End_of_file -> return usr
-      | tx -> loop usr tx
-    else
-      return usr
+  let rec loop usr tx_ =
+    match%lwt tx_ with
+    | exception (Exit | Timeout | End_of_file) -> return usr
+    | exception RingBufLib.Empty ->
+        assert (wait_for_more <> Some true) ;
+        return usr
+    | tx ->
+        (* Contrary to the wrapping case, f must not call dequeue_commit.
+         * Caller must know in which case it is: *)
+        let%lwt usr, more_to_come = f usr tx in
+        if more_to_come then
+          let tx_ = RingBufLib.retry_for_ringbuf ?while_ ?wait_for_more
+                                                 ?delay_rec read_next tx in
+          loop usr tx_
+        else
+          return usr
   in
-  match%lwt RingBufLib.retry_for_ringbuf ?while_ ?delay_rec
-              read_first rb with
-  | exception (Exit | Timeout) -> return init
-  | tx -> loop init tx
+  let tx_ = RingBufLib.retry_for_ringbuf ?while_ ?wait_for_more ?delay_rec
+                                         read_first rb in
+  loop init tx_
 
 let with_enqueue_tx rb sz f =
   let open Lwt in

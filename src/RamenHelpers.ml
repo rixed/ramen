@@ -47,7 +47,7 @@ let retry
           let%lwt () = Lwt_unix.sleep delay in
           loop (nb_try + 1) x
         ) else (
-          !logger.error "Non-retryable error: %s after %d attempt%s"
+          !logger.debug "Non-retryable error: %s after %d attempt%s"
             (Printexc.to_string e) nb_try (if nb_try > 1 then "s" else "") ;
           fail e
         )

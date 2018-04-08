@@ -33,9 +33,11 @@ let nullmask_bytes_of_tuple_type tuple_typ =
   bytes_for_bits |>
   round_up_to_rb_word
 
-let retry_for_ringbuf ?while_ ?delay_rec ?max_retry_time f =
+(* Unless wait_for_more, this will raise Empty when out of data *)
+let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =
   let on = function
-    | NoMoreRoom | Empty -> Lwt.return_true
+    | NoMoreRoom -> Lwt.return_true
+    | Empty -> Lwt.return wait_for_more
     | _ -> Lwt.return_false
   in
   retry ?while_ ~on ~first_delay:0.001 ~max_delay:0.1 ?delay_rec

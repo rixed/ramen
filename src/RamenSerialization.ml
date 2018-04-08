@@ -201,15 +201,23 @@ let fold_seq_range ?while_ ?(mi=0) ?ma bname init f =
       fold_rb s.first_seq rb usr)
     (fun () -> unload rb ; Lwt.return_unit)
 
-let fold_buffer ?while_ bname init f =
-  let rb = load bname in
-  let%lwt usr = Lwt.finalize
-    (fun () -> read_buf ?while_ rb init f)
-    (fun () -> unload rb ; Lwt.return_unit) in
-  Lwt.return usr
+let fold_buffer ?wait_for_more ?while_ bname init f =
+  match load bname with
+  | exception Failure msg ->
+      !logger.debug "Cannot fold_buffer: %s" msg ;
+      (* Therefore there is nothing to fold: *)
+      Lwt.return init
+  | rb ->
+      let%lwt usr = Lwt.finalize
+        (fun () -> read_buf ?wait_for_more ?while_ rb init f)
+        (fun () -> unload rb ; Lwt.return_unit) in
+      Lwt.return usr
 
 (* As tuples are not necessarily ordered by time we want the possibility
- * to override the more_to_come decision. *)
+ * to override the more_to_come decision.
+ * Notice that contrary to `ramen tail`, `ramen timeseries` must never
+ * wait for data and must return as soon as we've reached the end of what's
+ * available. *)
 let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f =
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type typ in
@@ -241,7 +249,7 @@ let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f
       if early_stop then res
       else usr, true)
   in
-  fold_buffer ?while_ bname init f
+  fold_buffer ~wait_for_more:false ?while_ bname init f
 
 let time_range ?while_ bname typ event_time =
   let dir = time_dir_of_bname bname in
