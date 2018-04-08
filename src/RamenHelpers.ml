@@ -75,7 +75,8 @@ let print_exception ?(what="Exception:") e =
 
 let log_exceptions ?what f x =
   try f x
-  with e -> print_exception ?what e
+  with Exit -> ()
+     | e -> print_exception ?what e
 
 let looks_like_true s =
   s = "1" || (
@@ -365,9 +366,10 @@ let file_print oc fname =
 let rec simplified_path =
   let res =
     [ Str.regexp "/[^/]+/\\.\\./", "/" ;
-      Str.regexp "\\(/\\./\\|^\\.\\|/\\.$\\)", "/" ;
+      Str.regexp "/\\./", "/" ;
       Str.regexp "//", "/" ;
-      Str.regexp "/$", "" ] in
+      Str.regexp "/\\.?$", "" ;
+      Str.regexp "^\\./", "" ] in
   fun path ->
     let s =
       List.fold_left (fun s (re, repl) ->
@@ -377,6 +379,8 @@ let rec simplified_path =
 (*$= simplified_path & ~printer:identity
   "/glop/glop" (simplified_path "/glop/glop/")
   "/glop/glop" (simplified_path "/glop/glop")
+  "glop/glop"  (simplified_path "./glop/glop/")
+  "glop/glop"  (simplified_path "glop/glop/.")
   "/glop/glop" (simplified_path "/glop/pas glop/../glop")
   "/glop/glop" (simplified_path "/glop/./glop")
   "glop"       (simplified_path "glop/.")

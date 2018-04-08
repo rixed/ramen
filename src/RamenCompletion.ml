@@ -31,8 +31,8 @@ let complete_commands s =
 
 let complete_global_options s =
   let options =
-    [ "--help", "" ;
-      "--version", "" ] in
+    [ "--help", RamenConsts.CliInfo.help ;
+      "--version", RamenConsts.CliInfo.version ] in
   complete options s
 
 let find_opt o =
@@ -51,38 +51,44 @@ let find_opt o =
       with Not_found -> loop rest in
   fun lst -> loop lst
 
-let root toks =
-  try find_opt "--root" toks
-  with Not_found ->
-    try Sys.getenv "RAMEN_ROOT"
-    with Not_found -> ""
-
 let persist_dir toks =
   try find_opt "--persist-dir" toks
   with Not_found ->
     try Sys.getenv "RAMEN_PERSIST_DIR"
     with Not_found -> RamenConsts.default_persist_dir
 
-let complete_file select what str =
+let complete_file select str =
+  let count = ref 0 in
   let res = ref [] in
+  let root, pref =
+    if str = "" then ".", ""
+    else if str.[String.length str - 1] = '/' then str, str
+    else let d = Filename.dirname str in d, if d = "." && str.[0] <> '.' then "" else d^"/" in
+  let start =
+    (* [basename ""] would be ".", and [basename "toto/"] would be toto ?! *)
+    if str = "" || str.[String.length str - 1] = '/' then ""
+    else Filename.basename str in
   let on_file fname rel_fname =
-    if select fname then
-      res :=
-        (simplified_path rel_fname, what) :: !res in
-  dir_subtree_iter ~on_file "." ;
-  !res
+    if select fname && String.starts_with rel_fname start then (
+      incr count ;
+      if !count > 500 then raise Exit ;
+      res := (pref ^ rel_fname, "") :: !res) in
+  if str <> "" && str.[0] = '-' then [] else (
+    (try dir_subtree_iter ~on_file root
+    with Exit -> ()) ;
+    !res)
 
 let extension_is ext fname =
   String.ends_with fname ext
 
 let complete_program_files str =
-  complete_file (extension_is ".ramen") "ramen program" str
+  complete_file (extension_is ".ramen") str
 
 let complete_binary_files str =
-  complete_file (extension_is ".x") "ramen binary" str
+  complete_file (extension_is ".x") str
 
 let complete_test_files str =
-  complete_file (extension_is ".test") "ramen test" str
+  complete_file (extension_is ".test") str
 
 let empty_help s = s, ""
 
@@ -94,8 +100,7 @@ let complete_running_function persist_dir str =
     (fun rc -> Enum.map (fun func -> func.F.program_name ^"/"^ func.F.name) (List.enum rc)) |>
     Enum.flatten
   ) /@
-  empty_help |>
-  List.of_enum
+  empty_help |> List.of_enum
 
 let complete_running_program persist_dir str =
   let conf = C.make_conf persist_dir in
@@ -138,73 +143,73 @@ let complete str () =
     let completions =
       (match command with
       | "start" ->
-          [ "--daemonize", "" ;
-            "--help", "" ;
-            "--persist-dir=", "" ;
-            "--seed=", "" ;
-            "--to-stdout", "" ;
-            "--autoreload=", "" ]
+          [ "--daemonize", RamenConsts.CliInfo.daemonize ;
+            "--help", RamenConsts.CliInfo.help ;
+            "--persist-dir=", RamenConsts.CliInfo.persist_dir ;
+            "--rand-seed=", RamenConsts.CliInfo.rand_seed ;
+            "--to-stdout", RamenConsts.CliInfo.to_stdout ;
+            "--autoreload=", RamenConsts.CliInfo.autoreload ]
       | "compile" ->
-          ("--bundle-dir=", "") ::
-          ("--keep-temp-files", "") ::
-          ("--help", "") ::
-          ("--persist-dir=", "") ::
-          ("--root=", "") ::
-          ("--embedded-compiler", "") ::
+          ("--bundle-dir=", RamenConsts.CliInfo.bundle_dir) ::
+          ("--keep-temp-files", RamenConsts.CliInfo.keep_temp_files) ::
+          ("--help", RamenConsts.CliInfo.help) ::
+          ("--persist-dir=", RamenConsts.CliInfo.persist_dir) ::
+          ("--root-path=", RamenConsts.CliInfo.root_path) ::
+          ("--external-compiler", RamenConsts.CliInfo.external_compiler) ::
           (complete_program_files last_tok)
       | "run" ->
-          ("--help", "") ::
-          ("--persist-dir=", "") ::
-          ("--parameter=", "") ::
+          ("--help", RamenConsts.CliInfo.help) ::
+          ("--persist-dir=", RamenConsts.CliInfo.persist_dir) ::
+          ("--parameter=", RamenConsts.CliInfo.param) ::
           (complete_binary_files last_tok)
       | "kill" ->
           let persist_dir = persist_dir toks in
-          ("--help", "") ::
+          ("--help", RamenConsts.CliInfo.help) ::
           (complete_running_program persist_dir last_tok)
       | "tail" ->
           let persist_dir = persist_dir toks in
-          ("--help", "") ::
-          ("--last=", "") ::
-          ("--max-seqnum=", "") ::
-          ("--min-seqnum=", "") ::
-          ("--null=", "") ::
-          ("--separator=", "") ::
-          ("--persist-dir", "") ::
-          ("--with-header", "") ::
-          ("--with-seqnums", "") ::
+          ("--help", RamenConsts.CliInfo.help) ::
+          ("--last=", RamenConsts.CliInfo.last) ::
+          ("--max-seqnum=", RamenConsts.CliInfo.max_seq) ::
+          ("--min-seqnum=", RamenConsts.CliInfo.min_seq) ::
+          ("--null=", RamenConsts.CliInfo.csv_null) ::
+          ("--separator=", RamenConsts.CliInfo.csv_separator) ::
+          ("--persist-dir", RamenConsts.CliInfo.persist_dir) ::
+          ("--with-header", RamenConsts.CliInfo.with_header) ::
+          ("--with-seqnums", RamenConsts.CliInfo.with_seqnums) ::
           ("stats", "") ::
           (complete_running_function persist_dir last_tok)
       | "timeseries" ->
           let persist_dir = persist_dir toks in
           (* TODO: get the function name from toks and autocomplete
            * field names! *)
-          ("--help", "") ::
-          ("--since=", "") ::
-          ("--until=", "") ::
-          ("--nb-points=", "") ::
-          ("--data=", "") ::
-          ("--consolidation=", "") ::
-          ("--separator=", "") ::
-          ("--null=", "") ::
+          ("--help", RamenConsts.CliInfo.help) ::
+          ("--since=", RamenConsts.CliInfo.since) ::
+          ("--until=", RamenConsts.CliInfo.until) ::
+          ("--max-nb-points=", RamenConsts.CliInfo.max_nb_points) ::
+          ("--data-field=", RamenConsts.CliInfo.data_field) ::
+          ("--consolidation=", RamenConsts.CliInfo.consolidation) ::
+          ("--separator=", RamenConsts.CliInfo.csv_separator) ::
+          ("--null=", RamenConsts.CliInfo.csv_null) ::
           ("stats", "") ::
           (complete_running_function persist_dir last_tok)
       | "timerange" ->
           let persist_dir = persist_dir toks in
-          ("--help", "") ::
+          ("--help", RamenConsts.CliInfo.help) ::
           (complete_running_function persist_dir last_tok)
       | "ps" ->
-          [ "--help", "" ;
-            "--short", "" ;
-            "--sort", "" ;
-            "--top", "" ]
+          [ "--help", RamenConsts.CliInfo.help ;
+            "--short", RamenConsts.CliInfo.short ;
+            "--sort", RamenConsts.CliInfo.sort_col ;
+            "--top", RamenConsts.CliInfo.top ]
       | "test" ->
-          ("--help", "") ::
-          ("--root=", "") ::
+          ("--help", RamenConsts.CliInfo.help) ::
+          ("--root-path=", RamenConsts.CliInfo.root_path) ::
           (complete_test_files last_tok)
       | "graphite" ->
-          [ "--help", "" ;
-            "--daemonize", "" ;
-            "--to-stdout", "" ;
-            "--port=", "" ]
+          [ "--help", RamenConsts.CliInfo.help ;
+            "--daemonize", RamenConsts.CliInfo.daemonize ;
+            "--to-stdout", RamenConsts.CliInfo.to_stdout ;
+            "--port=", RamenConsts.CliInfo.port ]
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

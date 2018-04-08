@@ -18,18 +18,17 @@ let copts =
     Arg.(value (flag i))
   and persist_dir =
     let env = Term.env_info "RAMEN_PERSIST_DIR" in
-    let i = Arg.info ~doc:"Directory where are stored data persisted on disc."
+    let i = Arg.info ~doc:RamenConsts.CliInfo.persist_dir
                      ~docs ~env [ "persist-dir" ] in
     Arg.(value (opt string RamenConsts.default_persist_dir i))
   and rand_seed =
     let env = Term.env_info "RAMEN_RANDOM_SEED" in
-    let i = Arg.info ~doc:"Seed to initialize the random generator with. \
-                           (will use a random one if unset)."
+    let i = Arg.info ~doc:RamenConsts.CliInfo.rand_seed
                      ~docs ~env [ "seed"; "rand-seed" ] in
     Arg.(value (opt (some int) None i))
   and keep_temp_files =
     let env = Term.env_info "RAMEN_KEEP_TEMP_FILES" in
-    let i = Arg.info ~doc:"Keep temporary files."
+    let i = Arg.info ~doc:RamenConsts.CliInfo.keep_temp_files
                      ~docs ~env [ "keep-temp-files" ] in
     Arg.(value (flag i))
   in
@@ -45,28 +44,26 @@ let copts =
 
 let daemonize =
   let env = Term.env_info "RAMEN_DAEMONIZE" in
-  let i = Arg.info ~doc:"Daemonize."
-                   ~env [ "daemon"; "daemonize"] in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.daemonize
+                   ~env ["daemonize"] in
   Arg.(value (flag i))
 
-let to_stderr =
+let to_stdout =
   let env = Term.env_info "RAMEN_LOG_TO_STDERR" in
-  let i = Arg.info ~doc:"Log onto stdout/stderr instead of a file."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.to_stdout
                    ~env [ "to-stderr"; "stderr" ;
                           "to-stdout"; "stdout" ] in
   Arg.(value (flag i))
 
 let max_archives =
   let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
-  let i = Arg.info ~doc:"Max number of archive files to keep per operation; \
-                         0 would disable archiving altogether."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.max_archives
                    ~env ["max-archives"] in
   Arg.(value (opt int 20 i))
 
 let autoreload =
   let env = Term.env_info "RAMEN_AUTORELOAD" in
-  let i = Arg.info ~doc:"Should workers be automatically reloaded when the \
-                         binary changes? And if so, how frequently to check."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.autoreload
                    ~env ["autoreload"] in
   Arg.(value (opt ~vopt:5. float 0. i))
 
@@ -75,7 +72,7 @@ let start =
     (const RamenCliCmd.start
       $ copts
       $ daemonize
-      $ to_stderr
+      $ to_stdout
       $ max_archives
       $ autoreload),
     info ~doc:RamenConsts.CliInfo.start "start")
@@ -86,12 +83,12 @@ let start =
 
 (* TODO: check that this is actually the name of a ringbuffer file *)
 let rb_file =
-  let i = Arg.info ~doc:"File with the ring buffer."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.rb_file
                    ~docv:"FILE" [] in
   Arg.(required (pos 0 (some string) None i))
 
 let nb_tuples =
-  let i = Arg.info ~doc:"How many entries to dequeue."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.nb_tuples
                    [ "n"; "nb-entries" ] in
   Arg.(value (opt int 1 i))
 
@@ -101,10 +98,10 @@ let dequeue =
       $ copts
       $ rb_file
       $ nb_tuples),
-    info ~doc:"Dequeue a message from a ringbuffer." "dequeue")
+    info ~doc:RamenConsts.CliInfo.dequeue "dequeue")
 
 let rb_files =
-  let i = Arg.info ~doc:"The ring buffers to display information about.."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.rb_files
                    ~docv:"FILE" [] in
   Arg.(non_empty (pos_all string [] i))
 
@@ -113,29 +110,27 @@ let summary =
     (const RingBufCmd.summary
       $ copts
       $ rb_files),
-    info ~doc:"Dump info about a ring-buffer." "ringbuf-summary")
+    info ~doc:RamenConsts.CliInfo.summary "ringbuf-summary")
 
 (*
  * Compiling/Running/Stopping
  *)
 
-let use_external_compiler =
+let external_compiler =
   let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
-  let i = Arg.info ~doc:"Use embedded compiler rather than calling system one."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.external_compiler
                    ~env [ "use-external-compiler"; "external-compiler" ] in
   Arg.(value (flag i))
 
 let bundle_dir =
   let env = Term.env_info "RAMEN_BUNDLE_DIR" in
-  let i = Arg.info ~doc:"Directory where to find libraries for the embedded \
-                         compiler."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.bundle_dir
                    ~env [ "bundle-dir" ] in
   Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))
 
 let max_simult_compilations =
   let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
-  let i = Arg.info ~doc:"Max number of compilations to perform \
-                         simultaneously."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.max_simult_compilations
                    ~env [ "max-simult-compilations" ;
                           "max-simultaneous-compilations" ] in
   Arg.(value (opt int 4 i))
@@ -169,29 +164,29 @@ let param =
  * their value from this. Easy to add a prefix with function name when
  * it causes troubles. *)
 let params =
-  let i = Arg.info ~doc:"Override parameter's P default value with V."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.param
                    ~docv:"P=V"
                    ["p"; "parameter"] in
   Arg.(value (opt_all param [] i))
 
 let program_name =
-  let i = Arg.info ~doc:"Program unique name."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.program_name
                    ~docv:"PROGRAM" [] in
   Arg.(required (pos 0 (some string) None i))
 
 let root_path =
   let env = Term.env_info "RAMEN_ROOT" in
-  let i = Arg.info ~doc:"Path where to find other programs."
-                   ~env [ "root" ] in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.root_path
+                   ~env [ "root-path" ] in
   Arg.(value (opt string "." i))
 
 let source_files =
-  let i = Arg.info ~doc:"Source files to compile."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.source_files
                    ~docv:"FILE" [] in
   Arg.(non_empty (pos_all string [] i))
 
 let bin_files =
-  let i = Arg.info ~doc:"Binary files to run."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.bin_files
                    ~docv:"FILE" [] in
   Arg.(non_empty (pos_all string [] i))
 
@@ -200,7 +195,7 @@ let compile =
     (const RamenCliCmd.compile
       $ copts
       $ root_path
-      $ use_external_compiler
+      $ external_compiler
       $ bundle_dir
       $ max_simult_compilations
       $ source_files),
@@ -214,16 +209,11 @@ let run =
       $ bin_files),
     info ~doc:RamenConsts.CliInfo.run "run")
 
-let prog_name p =
-  let i = Arg.info ~doc:"Program name."
-                   ~docv:"PROGRAM" [] in
-  Arg.(required (pos p (some string) None i))
-
 let kill =
   Term.(
     (const RamenCliCmd.kill
       $ copts
-      $ prog_name 0),
+      $ program_name),
     info ~doc:RamenConsts.CliInfo.kill "kill")
 
 (*
@@ -231,57 +221,54 @@ let kill =
  *)
 
 let with_header =
-  let i = Arg.info ~doc:"Output the header line in CSV."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.with_header
                    [ "with-header"; "header" ] in
   Arg.(value (flag i))
 
 let csv_separator =
   let env = Term.env_info "RAMEN_CSV_SEPARATOR" in
-  let i = Arg.info ~doc:"Field separator."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.csv_separator
                    ~env [ "separator" ] in
   Arg.(value (opt string "," i))
 
 let csv_null =
   let env = Term.env_info "RAMEN_CSV_NULL" in
-  let i = Arg.info ~doc:"Representation of NULL values."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.csv_null
                    ~env [ "null" ] in
   Arg.(value (opt string "<NULL>" i))
 
 let last =
-  let i = Arg.info ~doc:"Output only the last N tuples (or only the \
-                         next -N, if N is negative)."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.last
                    [ "last" ] in
   Arg.(value (opt (some int) None i))
 
 let min_seq =
-  let i = Arg.info ~doc:"Output only tuples with greater sequence number."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.min_seq
                    ["min-seqnum"] in
   Arg.(value (opt (some int) None i))
 
 let max_seq =
-  let i = Arg.info ~doc:"Output only tuples with smaller sequence number."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.max_seq
                    ["max-seqnum"] in
   Arg.(value (opt (some int) None i))
 
-let print_seqnums =
-  let i = Arg.info ~doc:"Prepend tuples with their sequence number."
+let with_seqnums =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.with_seqnums
                    ["with-seqnums"] in
   Arg.(value (flag i))
 
 (* TODO: returns directly the program and function names to spare some
  * calls to C.program_func_of_user_string *)
 let func_name p =
-  let i = Arg.info ~doc:"Operation unique name."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.func_name
                    ~docv:"OPERATION" [] in
   Arg.(required (pos p (some string) None i))
 
 let duration =
-  let i = Arg.info ~doc:"Operation will stop archiving its output after \
-                         that duration if nobody ask for it."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.duration
                    ["timeout"] in
   Arg.(value (opt float 3600. i))
 
-(* TODO: from/until timestamps *)
 let tail =
   Term.(
     (const RamenCliCmd.tail
@@ -293,7 +280,7 @@ let tail =
       $ last
       $ min_seq
       $ max_seq
-      $ print_seqnums
+      $ with_seqnums
       $ duration),
     info ~doc:RamenConsts.CliInfo.tail "tail")
 
@@ -302,27 +289,27 @@ let tail =
  *)
 
 let since =
-  let i = Arg.info ~doc:"Timestamp of the first point."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.since
                    ~docv:"SINCE" ["since"] in
   Arg.(value (opt (some float) None i))
 
 let until =
-  let i = Arg.info ~doc:"Timestamp of the last point."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.until
                    ~docv:"UNTIL" ["until"] in
   Arg.(value (opt float (Unix.gettimeofday ()) i))
 
-let max_data_points =
-  let i = Arg.info ~doc:"Max number of points returned."
-                   ~docv:"POINTS" ["n"; "nb-points"] in
+let max_nb_points =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.max_nb_points
+                   ~docv:"POINTS" ["n"; "nb-points"; "max-nb-points"] in
   Arg.(value (opt int 100 i))
 
 let data_field p =
-  let i = Arg.info ~doc:"Field to retrieve values from."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.data_field
                    ~docv:"FIELD" [] in
   Arg.(required (pos p (some string) None i))
 
 let consolidation =
-  let i = Arg.info ~doc:"Consolidation function."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.consolidation
                    ~docv:"min|max|avg|sum" ["consolidation"] in
   let cons_func =
     let p x = x, x in
@@ -335,7 +322,7 @@ let timeseries =
       $ copts
       $ since
       $ until
-      $ max_data_points
+      $ max_nb_points
       $ csv_separator
       $ csv_null
       $ func_name 0
@@ -360,19 +347,17 @@ let timerange =
  *)
 
 let short =
-  let i = Arg.info ~doc:"Display only a short summary."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.short
                    [ "short" ; "p" ] in
   Arg.(value (flag i))
 
 let sort_col =
-  let i = Arg.info ~doc:"Sort the operation list according to this column \
-                         (first column -name- is 1, then #in is 2...)."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.sort_col
                    ~docv:"COL" [ "sort" ; "s" ] in
   Arg.(value (opt int 1 i))
 
 let top =
-  let i = Arg.info ~doc:"Truncate the list of operations after the first N \
-                         entries."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.top
                    ~docv:"N" [ "top" ; "t" ] in
   Arg.(value (opt (some int) None i))
 
@@ -386,14 +371,11 @@ let ps =
     info ~doc:RamenConsts.CliInfo.ps "ps")
 
 (*
- * Start the HTTP server
- *
- * FIXME: should be dedicated to mimic graphite, if it works!
+ * Start the Graphite impersonator
  *)
 
 let port =
-  let i = Arg.info ~doc:"Port number where to listen to incoming HTTP \
-                         connections."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.port
                    ~docv:"N" [ "port" ; "p" ] in
   Arg.(value (opt int 80 i))
 
@@ -402,7 +384,7 @@ let graphite =
     (const RamenCliCmd.graphite
       $ copts
       $ daemonize
-      $ to_stderr
+      $ to_stdout
       $ port),
     info ~doc:RamenConsts.CliInfo.graphite "graphite")
 
@@ -411,7 +393,7 @@ let graphite =
  *)
 
 let test_files =
-  let i = Arg.info ~doc:"Definition of a test to run."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.test_files
                    ~docv:"file.test" [] in
   Arg.(non_empty (pos_all string [] i))
 
@@ -428,7 +410,7 @@ let test =
  *)
 
 let command =
-  let i = Arg.info ~doc:"Ramen command line to be completed."
+  let i = Arg.info ~doc:RamenConsts.CliInfo.command
                    ~docv:"STRING" [] in
   Arg.(value (pos 0 string "" i))
 
@@ -436,7 +418,7 @@ let autocomplete =
   Term.(
     (const RamenCompletion.complete
       $ command),
-    info ~doc:"Autocomplete the given command." "_completion")
+    info ~doc:RamenConsts.CliInfo.autocomplete "_completion")
 
 (*
  * Command line evaluation
