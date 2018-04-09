@@ -289,52 +289,53 @@ let ps conf short with_header sort_col top () =
       ) stats ;
       [| "program" ; "#in" ; "#selected" ; "#out" ; "#groups" ; "CPU" ;
          "wait in" ; "wait out" ; "heap" ; "volume in" ; "volume out" |],
-      Hashtbl.fold (fun program_name
-                        (_, (in_count, selected_count, out_count, group_count,
-                        cpu, ram, wait_in, wait_out, bytes_in, bytes_out))
-                        lines ->
-        [| ValStr program_name ;
-           int_or_na in_count ;
-           int_or_na selected_count ;
-           int_or_na out_count ;
-           int_or_na group_count ;
-           ValFlt cpu ;
-           flt_or_na wait_in ;
-           flt_or_na wait_out ;
-           ValInt (Uint64.to_int ram) ;
-           flt_or_na (Option.map Uint64.to_float bytes_in) ;
-           flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
-      ) h []
-    else
-      (* Otherwise we want to display all we can about individual workers *)
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
-          return (
-            [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
-               "CPU" ; "wait in" ; "wait out" ; "heap" ;
-               "volume in" ; "volume out" ; "#parents" ; "signature" |],
-            Hashtbl.fold (fun program_name get_rc lines ->
-              let bin, rc = get_rc () in
-              List.fold_left (fun lines func ->
-                let fq_name = program_name ^"/"^ func.F.name in
-                let _, (in_count, selected_count, out_count, group_count,
-                        cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
-                  Hashtbl.find_default stats fq_name (0., no_stats) in
-                [| ValStr fq_name ;
-                   int_or_na in_count ;
-                   int_or_na selected_count ;
-                   int_or_na out_count ;
-                   int_or_na group_count ;
-                   ValFlt cpu ;
-                   flt_or_na wait_in ;
-                   flt_or_na wait_out ;
-                   ValInt (Uint64.to_int ram) ;
-                   flt_or_na (Option.map Uint64.to_float bytes_in) ;
-                   flt_or_na (Option.map Uint64.to_float bytes_out) ;
-                   ValInt (List.length func.F.parents) ;
-                   ValStr func.signature |] :: lines
-              ) lines rc
-            ) programs []))) in
+          Hashtbl.fold (fun program_name _get_rc lines ->
+            let _, (in_count, selected_count, out_count, group_count,
+                    cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
+              Hashtbl.find_default h program_name (0., no_stats) in
+            [| ValStr program_name ;
+               int_or_na in_count ;
+               int_or_na selected_count ;
+               int_or_na out_count ;
+               int_or_na group_count ;
+               ValFlt cpu ;
+               flt_or_na wait_in ;
+               flt_or_na wait_out ;
+               ValInt (Uint64.to_int ram) ;
+               flt_or_na (Option.map Uint64.to_float bytes_in) ;
+               flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
+          ) programs [] |> return))
+    else
+      (* Otherwise we want to display all we can about individual workers *)
+      [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
+         "CPU" ; "wait in" ; "wait out" ; "heap" ;
+         "volume in" ; "volume out" ; "#parents" ; "signature" |],
+      Lwt_main.run (
+        C.with_rlock conf (fun programs ->
+          Hashtbl.fold (fun program_name get_rc lines ->
+            let bin, rc = get_rc () in
+            List.fold_left (fun lines func ->
+              let fq_name = program_name ^"/"^ func.F.name in
+              let _, (in_count, selected_count, out_count, group_count,
+                      cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
+                Hashtbl.find_default stats fq_name (0., no_stats) in
+              [| ValStr fq_name ;
+                 int_or_na in_count ;
+                 int_or_na selected_count ;
+                 int_or_na out_count ;
+                 int_or_na group_count ;
+                 ValFlt cpu ;
+                 flt_or_na wait_in ;
+                 flt_or_na wait_out ;
+                 ValInt (Uint64.to_int ram) ;
+                 flt_or_na (Option.map Uint64.to_float bytes_in) ;
+                 flt_or_na (Option.map Uint64.to_float bytes_out) ;
+                 ValInt (List.length func.F.parents) ;
+                 ValStr func.signature |] :: lines
+            ) lines rc
+          ) programs [] |> return)) in
   print_table ~sort_col ~with_header ?top head lines
 
 (*
