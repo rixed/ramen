@@ -25,7 +25,7 @@ let sort ~sort_col lines =
   List.fast_sort cmp lines
 
 (* Note: sort_col starts at 1 *)
-let print_table ?sort_col ?top head lines =
+let print_table ?sort_col ?(with_header=true) ?top head lines =
   let lines =
     match sort_col with
     | None -> lines
@@ -35,9 +35,9 @@ let print_table ?sort_col ?top head lines =
     | None -> lines
     | Some n -> List.take n lines
   in
-  Array.iter (fun h ->
-    Printf.printf "%s\t" h) head ;
-  Printf.printf "\n" ;
+  if with_header then (
+    Array.iter (fun h -> Printf.printf "%s\t" h) head ;
+    Printf.printf "\n") ;
   List.iter (fun line ->
     Array.iter (fun v ->
       Printf.printf "%s\t" (string_of_val v)

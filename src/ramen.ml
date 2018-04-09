@@ -222,7 +222,7 @@ let kill =
 
 let with_header =
   let i = Arg.info ~doc:RamenConsts.CliInfo.with_header
-                   [ "with-header"; "header" ] in
+                   [ "h"; "with-header"; "header" ] in
   Arg.(value (flag i))
 
 let csv_separator =
@@ -366,6 +366,7 @@ let ps =
     (const RamenCliCmd.ps
       $ copts
       $ short
+      $ with_header
       $ sort_col
       $ top),
     info ~doc:RamenConsts.CliInfo.ps "ps")

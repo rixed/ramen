@@ -214,7 +214,7 @@ let time_or_na = function
   | None -> TermTable.ValStr "n/a"
   | Some f -> TermTable.ValStr (string_of_time f)
 
-let ps conf short sort_col top () =
+let ps conf short with_header sort_col top () =
   logger := make_logger conf.C.debug ;
   (* Start by reading the last minute of instrumentation data: *)
   let stats = read_stats conf in
@@ -279,7 +279,7 @@ let ps conf short sort_col top () =
                    ValStr func.signature |] :: lines
               ) lines rc
             ) programs []))) in
-  print_table ~sort_col ?top head lines
+  print_table ~sort_col ~with_header ?top head lines
 
 (*
  * `ramen tail`

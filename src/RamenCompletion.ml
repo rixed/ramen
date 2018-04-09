@@ -200,6 +200,7 @@ let complete str () =
       | "ps" ->
           [ "--help", RamenConsts.CliInfo.help ;
             "--short", RamenConsts.CliInfo.short ;
+            "--with-header", RamenConsts.CliInfo.with_header ;
             "--sort", RamenConsts.CliInfo.sort_col ;
             "--top", RamenConsts.CliInfo.top ]
       | "test" ->
