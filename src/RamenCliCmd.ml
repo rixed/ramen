@@ -18,7 +18,9 @@ let () =
 let make_copts debug persist_dir rand_seed keep_temp_files =
   (match rand_seed with
   | None -> Random.self_init ()
-  | Some seed -> Random.init seed) ;
+  | Some seed ->
+      RamenProcesses.rand_seed := Some seed ;
+      Random.init seed) ;
   C.make_conf ~debug ~keep_temp_files persist_dir
 
 (*

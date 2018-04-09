@@ -1378,6 +1378,11 @@ let aggregate
             return s)))
 
 let casing rc_str rc_marsh lst =
+  (* Init the random number generator *)
+  (match Sys.getenv "rand_seed" with
+  | exception Not_found -> Random.self_init ()
+  | "" -> Random.self_init ()
+  | s -> Random.init (int_of_string s)) ;
   (* Call a function from lst according to envvar "name" *)
   match Sys.getenv "name" with
   | exception Not_found ->
