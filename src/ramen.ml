@@ -13,7 +13,7 @@ let copts =
   let docs = Manpage.s_common_options in
   let debug =
     let env = Term.env_info "RAMEN_DEBUG" in
-    let i = Arg.info ~doc:"Increase verbosity."
+    let i = Arg.info ~doc:RamenConsts.CliInfo.debug
                      ~docs ~env [ "d"; "debug" ] in
     Arg.(value (flag i))
   and persist_dir =

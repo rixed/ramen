@@ -140,50 +140,49 @@ let complete str () =
     complete_commands last_tok
   | _ -> (* "ramen ... command ...? <TAB>" *)
     let toks = List.drop (command_idx+1) toks in
+    let copts =
+      [ "--help", RamenConsts.CliInfo.help ;
+        "--debug", RamenConsts.CliInfo.debug ;
+        "--rand-seed", RamenConsts.CliInfo.rand_seed ;
+        "--persist-dir=", RamenConsts.CliInfo.persist_dir ] in
     let completions =
       (match command with
       | "start" ->
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
-            "--help", RamenConsts.CliInfo.help ;
-            "--persist-dir=", RamenConsts.CliInfo.persist_dir ;
-            "--rand-seed=", RamenConsts.CliInfo.rand_seed ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
-            "--autoreload=", RamenConsts.CliInfo.autoreload ]
+            "--autoreload=", RamenConsts.CliInfo.autoreload ] @
+          copts
       | "compile" ->
           ("--bundle-dir=", RamenConsts.CliInfo.bundle_dir) ::
           ("--keep-temp-files", RamenConsts.CliInfo.keep_temp_files) ::
-          ("--help", RamenConsts.CliInfo.help) ::
-          ("--persist-dir=", RamenConsts.CliInfo.persist_dir) ::
           ("--root-path=", RamenConsts.CliInfo.root_path) ::
           ("--external-compiler", RamenConsts.CliInfo.external_compiler) ::
+          copts @
           (complete_program_files last_tok)
       | "run" ->
-          ("--help", RamenConsts.CliInfo.help) ::
-          ("--persist-dir=", RamenConsts.CliInfo.persist_dir) ::
           ("--parameter=", RamenConsts.CliInfo.param) ::
+          copts @
           (complete_binary_files last_tok)
       | "kill" ->
           let persist_dir = persist_dir toks in
-          ("--help", RamenConsts.CliInfo.help) ::
+          copts @
           (complete_running_program persist_dir last_tok)
       | "tail" ->
           let persist_dir = persist_dir toks in
-          ("--help", RamenConsts.CliInfo.help) ::
           ("--last=", RamenConsts.CliInfo.last) ::
           ("--max-seqnum=", RamenConsts.CliInfo.max_seq) ::
           ("--min-seqnum=", RamenConsts.CliInfo.min_seq) ::
           ("--null=", RamenConsts.CliInfo.csv_null) ::
           ("--separator=", RamenConsts.CliInfo.csv_separator) ::
-          ("--persist-dir", RamenConsts.CliInfo.persist_dir) ::
           ("--with-header", RamenConsts.CliInfo.with_header) ::
           ("--with-seqnums", RamenConsts.CliInfo.with_seqnums) ::
-          ("stats", "") ::
-          (complete_running_function persist_dir last_tok)
+          copts @
+          (("stats", "Internal instrumentation") ::
+           (complete_running_function persist_dir last_tok))
       | "timeseries" ->
           let persist_dir = persist_dir toks in
           (* TODO: get the function name from toks and autocomplete
            * field names! *)
-          ("--help", RamenConsts.CliInfo.help) ::
           ("--since=", RamenConsts.CliInfo.since) ::
           ("--until=", RamenConsts.CliInfo.until) ::
           ("--max-nb-points=", RamenConsts.CliInfo.max_nb_points) ::
@@ -191,26 +190,28 @@ let complete str () =
           ("--consolidation=", RamenConsts.CliInfo.consolidation) ::
           ("--separator=", RamenConsts.CliInfo.csv_separator) ::
           ("--null=", RamenConsts.CliInfo.csv_null) ::
-          ("stats", "") ::
-          (complete_running_function persist_dir last_tok)
+          copts @
+          (("stats", "Internal instrumentation") ::
+           (complete_running_function persist_dir last_tok))
       | "timerange" ->
           let persist_dir = persist_dir toks in
-          ("--help", RamenConsts.CliInfo.help) ::
+          copts @
           (complete_running_function persist_dir last_tok)
       | "ps" ->
-          [ "--help", RamenConsts.CliInfo.help ;
-            "--short", RamenConsts.CliInfo.short ;
+          [ "--short", RamenConsts.CliInfo.short ;
             "--with-header", RamenConsts.CliInfo.with_header ;
             "--sort", RamenConsts.CliInfo.sort_col ;
-            "--top", RamenConsts.CliInfo.top ]
+            "--top", RamenConsts.CliInfo.top ] @
+          copts
       | "test" ->
           ("--help", RamenConsts.CliInfo.help) ::
           ("--root-path=", RamenConsts.CliInfo.root_path) ::
+          copts @
           (complete_test_files last_tok)
       | "graphite" ->
-          [ "--help", RamenConsts.CliInfo.help ;
-            "--daemonize", RamenConsts.CliInfo.daemonize ;
+          [ "--daemonize", RamenConsts.CliInfo.daemonize ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
-            "--port=", RamenConsts.CliInfo.port ]
+            "--port=", RamenConsts.CliInfo.port ] @
+          copts
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))
