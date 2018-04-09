@@ -20,6 +20,23 @@ DEFINE memory AS
   COMMIT WHEN in.time > out.time + 30
   EVENT STARTING AT time WITH DURATION 30;
 
+DEFINE cpu AS
+  SELECT
+    MIN time AS time,
+    host,
+    -- regexp extract the integer from the quotes, then cast to int:
+    instance AS cpu_num,
+    COALESCE (type_instance, "unknown") AS _type,
+    AVG (IF _type = "user" THEN value ELSE 0) AS user,
+    AVG (IF _type = "system" THEN value ELSE 0) AS system,
+    AVG (IF _type = "nice" THEN value ELSE 0) AS nice,
+    AVG (IF _type = "idle" THEN value ELSE 0) AS idle
+  FROM collectd
+  WHERE COALESCE (plugin = "cpu", false) AND COALESCE (type_name = "cpu", false)
+  GROUP BY host, time // 30, instance
+  COMMIT WHEN in.time > out.time + 30
+  EVENT STARTING AT time WITH DURATION 30;
+
 DEFINE memory_alert AS
   FROM memory
   SELECT
