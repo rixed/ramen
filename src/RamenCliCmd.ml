@@ -165,14 +165,29 @@ let run conf parameters bin_files () =
  *
  * Remove that program from the list of running programs.
  * This time the program is identified by its name not its executable file.
- * TODO: warn if this orphans some children.
  *)
+
+let check_orphans conf program_name running_programs =
+  (* We want to warn if a child is stalled. *)
+  Hashtbl.iter (fun prog_name mre ->
+    if prog_name <> program_name then
+      let funcs = P.of_bin mre.C.bin in
+      List.iter (fun func ->
+        if func.F.parents <> [] &&
+           List.for_all (fun (par_prog, _) ->
+             par_prog = program_name
+           ) func.F.parents then
+          !logger.warning "Operation %s/%s, will be left without parents"
+            func.F.program_name func.F.name
+      ) funcs
+  ) running_programs
 
 let kill conf prog_name () =
   logger := make_logger conf.C.debug ;
   let nb_kills =
     Lwt_main.run (
       C.with_wlock conf (fun running_programs ->
+        check_orphans conf prog_name running_programs ;
         let before = Hashtbl.length running_programs in
         Hashtbl.filteri_inplace (fun name _mre ->
           name <> prog_name
