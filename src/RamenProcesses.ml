@@ -12,6 +12,7 @@ module F = RamenConf.Func
 (* Global quit flag, set when the term signal is received: *)
 
 let quit = ref false
+let report_period = ref RamenConsts.default_report_period
 
 (*
  * Machinery to spawn other programs.
@@ -319,6 +320,7 @@ let try_start conf must_run proc =
       "input_ringbufs="^ String.concat "," input_ringbufs ;
       "output_ringbufs_ref="^ out_ringbuf_ref ;
       "report_ringbuf="^ C.report_ringbuf conf ;
+      "report_period="^ string_of_float !report_period ;
       "notify_ringbuf="^ notify_ringbuf ;
       (* We need to change this dir whenever the func signature or params
        * change to prevent it to reload an incompatible state: *)

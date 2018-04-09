@@ -31,12 +31,13 @@ let make_copts debug persist_dir rand_seed keep_temp_files =
  * The actual work is done in module RamenProcesses.
  *)
 
-let start conf daemonize to_stderr max_archives autoreload () =
+let start conf daemonize to_stderr max_archives autoreload report_period () =
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   let logdir =
     if to_stderr then None else Some (conf.C.persist_dir ^"/log") in
   Option.may mkdir_all logdir ;
+  RamenProcesses.report_period := report_period ;
   logger := make_logger ?logdir conf.C.debug ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
@@ -164,8 +165,11 @@ let read_stats conf =
   let typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
   let now = Unix.gettimeofday () in
-  let until = now -. 10. in
-  let since = until -. 60. in
+  let until = now in
+  (* FIXME: Not OK because we don't know if report-period has been
+   * overridden on `ramen start` command line. Maybe at least make
+   * `ramen ps` accept that option too? *)
+  let since = until -. 2. *. !RamenProcesses.report_period in
   let get_string = function VString s -> s
   and get_u64 = function VU64 n -> n
   and get_nu64 = function VNull -> None | VU64 n -> Some n

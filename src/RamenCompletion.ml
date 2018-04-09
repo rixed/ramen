@@ -150,7 +150,8 @@ let complete str () =
       | "start" ->
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
-            "--autoreload=", RamenConsts.CliInfo.autoreload ] @
+            "--autoreload=", RamenConsts.CliInfo.autoreload ;
+            "--report-period=", RamenConsts.CliInfo.report_period ] @
           copts
       | "compile" ->
           ("--bundle-dir=", RamenConsts.CliInfo.bundle_dir) ::

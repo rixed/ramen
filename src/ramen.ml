@@ -67,6 +67,12 @@ let autoreload =
                    ~env ["autoreload"] in
   Arg.(value (opt ~vopt:5. float 0. i))
 
+let report_period =
+  let env = Term.env_info "RAMEN_REPORT_PERIOD" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.report_period
+                   ~env ["report-period"] in
+  Arg.(value (opt float RamenConsts.default_report_period i))
+
 let start =
   Term.(
     (const RamenCliCmd.start
@@ -74,7 +80,8 @@ let start =
       $ daemonize
       $ to_stdout
       $ max_archives
-      $ autoreload),
+      $ autoreload
+      $ report_period),
     info ~doc:RamenConsts.CliInfo.start "start")
 
 (*

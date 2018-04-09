@@ -62,6 +62,8 @@ struct
   let autoreload =
     "Should workers be automatically reloaded when the \
      binary changes? And if so, how frequently to check"
+  let report_period =
+    "Number of seconds between two stats report from each worker"
   let rb_file = "File with the ring buffer"
   let nb_tuples = "How many entries to dequeue"
   let rb_files = "The ring buffers to display information about"
@@ -111,3 +113,4 @@ struct
 end
 
 let default_persist_dir = "/tmp/ramen"
+let default_report_period = 30.
