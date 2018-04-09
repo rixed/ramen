@@ -231,7 +231,8 @@ let read_stats conf =
   Lwt_main.run (
     let while_ () = (* Do not wait more than 1s: *)
       return (Unix.gettimeofday () -. now < 1.) in
-    RamenSerialization.fold_time_range ~while_ bname typ event_time since until ()  (fun () tuple t1 t2 ->
+    RamenSerialization.fold_time_range ~while_ bname typ event_time
+                         since until ()  (fun () tuple t1 t2 ->
     let worker = get_string tuple.(0)
     and time = get_float tuple.(1)
     and in_count = get_nu64 tuple.(2)

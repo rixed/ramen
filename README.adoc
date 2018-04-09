@@ -5,7 +5,7 @@ A stream processing language and compiler for small-scale infrastructure monitor
 = Why?
 
 Those last years, thanks to such large companies as Google, Facebook, Linkedin
-and Netflix, the culture and practice of modern infrastructure monitoring have
+and Netflix, the culture and practice of modern infrastructure monitoring has
 vastly improved and many good and free tools have been released publicly. Those
 tools understandably focus on large distributed infrastructure.
 

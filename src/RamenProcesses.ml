@@ -228,7 +228,7 @@ let relatives f must_run =
   ) must_run ([], [])
 
 (* Try to start the given proc.
- * Check links (ie.: do parents and children the have the proper types?)
+ * Check links (ie.: do parents and children have the proper types?)
  *
  * Need [must_run] so that types can be checked before linking with parents
  * and children.
