@@ -158,6 +158,12 @@ type must_run_entry =
 (* The must_run file gives us the unique names of the programs. *)
 type must_run_file = (string, must_run_entry) Hashtbl.t [@@ppp PPP_OCaml]
 
+let print_must_run_entry oc mre =
+  Printf.fprintf oc "{ bin: %S; parameters: %S }"
+    mre.bin (RamenTuple.string_of_params mre.parameters)
+let print_running_programs oc =
+  Hashtbl.print String.print print_must_run_entry oc
+
 (* For tests we don't store the rc_file on disk but in there: *)
 let non_persisted_programs = ref (Hashtbl.create 11)
 

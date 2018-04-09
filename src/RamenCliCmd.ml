@@ -96,6 +96,57 @@ let compile conf root_path use_external_compiler bundle_dir
  * Ask the ramen daemon to start a compiled program.
  *)
 
+let check_links ?(force=false) program_name rc running_programs =
+  !logger.debug "checking links" ;
+  List.iter (fun func ->
+    (* Check linkage:
+     * We want to warn if a parent is missing. The synchronizer will
+     * start the worker but it will be blocked. *)
+    List.iter (fun (par_prog, par_func) ->
+      match Hashtbl.find running_programs par_prog with
+      | exception Not_found ->
+        !logger.warning "Operation %s depends on program %s, \
+                         which is not running."
+          func.F.name par_prog ;
+      | mre ->
+        let pprog = P.of_bin mre.C.bin in
+        (match List.find (fun p -> p.F.name = par_func) pprog with
+        | exception Not_found ->
+          !logger.error "Operation %s depends on operation %s/%s, \
+                         which is not part of the running program %s."
+            func.F.name par_prog par_func par_prog ;
+        | par ->
+          (* We want to err if a parent is incompatible (unless --force). *)
+          try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
+                                              par.F.out_type.ser
+          with Failure m when force -> (* or let it fail *)
+            !logger.error "%s" m)
+    ) func.parents
+  ) rc ;
+  (* We want to err if a child is incompatible (unless --force).
+   * In case we force the insertion, the bad workers will *not* be
+   * run by the process supervisor anyway, unless the incompatible
+   * relatives are stopped/restarted, in which case these new workers
+   * could be run at the expense of the old ones. *)
+  Hashtbl.iter (fun prog_name mre ->
+    let funcs = P.of_bin mre.C.bin in
+    List.iter (fun func ->
+      List.iter (fun (par_prog, par_func) ->
+        if par_prog = program_name then
+          match List.find (fun f -> f.F.name = par_func) rc with
+          | exception Not_found ->
+            !logger.warning "Operation %s/%s, currently stalled, will still \
+                             be missing its parent %s/%s"
+              func.F.program_name func.F.name par_prog par_func
+          | f -> (* so func is depending on f, let's see: *)
+            try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
+                                                f.F.out_type.ser
+            with Failure m when force -> (* or let it fail *)
+              !logger.error "%s" m
+      ) func.F.parents
+    ) funcs
+  ) running_programs
+
 let run conf parameters bin_files () =
   logger := make_logger conf.C.debug ;
   Lwt_main.run (
@@ -104,6 +155,7 @@ let run conf parameters bin_files () =
         let bin = absolute_path_of bin in
         let rc = P.of_bin bin in
         let program_name = (List.hd rc).F.program_name in
+        check_links program_name rc running_programs ;
         Hashtbl.add running_programs program_name C.{ bin ; parameters }
       ) bin_files ;
       return_unit))
