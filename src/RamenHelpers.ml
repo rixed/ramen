@@ -259,6 +259,31 @@ let () = Printexc.register_printer (function
   | RunFailure st -> Some ("RunFailure "^ string_of_process_status st)
   | _ -> None)
 
+exception CannotExecCommand of string
+
+let with_subprocess cmd k =
+  (* Got some Unix_error(EBADF, "close_process_in", "") suggesting the
+   * fd is closed several times so limit the magic: *)
+  let open Legacy in
+  let env = Unix.environment () in
+  match Unix.open_process_full cmd env with
+  | exception Unix.Unix_error (ENOENT, _, _) ->
+      raise (CannotExecCommand cmd)
+  | ics ->
+      let close () =
+        match Unix.close_process_full ics with
+        | Unix.WEXITED o -> ()
+        | s ->
+            !logger.error "Command %S exited with %s"
+              cmd (string_of_process_status s) in
+      try
+        finally close k ics
+      with End_of_file | Failure _ ->
+        raise (CannotExecCommand cmd)
+
+let with_stdout_from_command cmd k =
+  with_subprocess cmd (fun (ic, _oc, _ec) -> k ic)
+
 (* Low level stuff: run jobs and return lines: *)
 let run ?timeout ?(to_stdin="") cmd =
   let open Lwt in
@@ -268,47 +293,44 @@ let run ?timeout ?(to_stdin="") cmd =
       ) "" a in
   if Array.length cmd < 1 then invalid_arg "cmd" ;
   !logger.debug "Running command %s" (string_of_array cmd) ;
-  let%lwt lines =
-    Lwt_process.with_process_full ?timeout (cmd.(0), cmd) (fun process ->
-      (* What we write to stdin: *)
-      let write_stdin =
-        let%lwt () =
-          try%lwt Lwt_io.write process#stdin to_stdin
-          with (Unix.Unix_error (Unix.EPIPE, _, _)) -> return_unit in
-        Lwt_io.close process#stdin in
-      (* We need to read both stdout and stderr simultaneously or risk
-       * interlocking: *)
-      let lines = ref [] in
-      let read_lines =
-        match%lwt Lwt_io.read_lines process#stdout |>
-                  Lwt_stream.to_list with
-        | exception exn ->
-          (* when this happens for some reason we are left with (null) *)
-          let msg = Printexc.to_string exn in
-          !logger.error "%s exception: %s"
-            (string_of_array cmd) msg ;
-          return_unit
-        | l -> lines := l ; return_unit in
-      let monitor_stderr =
-        try%lwt
-          Lwt_io.read_lines process#stderr |>
-          Lwt_stream.iter (fun l ->
-              !logger.error "%s stderr: %s" (string_of_array cmd) l)
-        with exn ->
-          !logger.error "Error while running %s: %s"
-            (string_of_array cmd) (Printexc.to_string exn) ;
-          return_unit in
-      let%lwt () = join [ write_stdin ; read_lines ; monitor_stderr ] in
-      match%lwt process#status with
-      | Unix.WEXITED 0 ->
-        return !lines
-      | x ->
-        !logger.error "Command '%s' %s"
-          (string_of_array cmd)
-          (string_of_process_status x) ;
-        fail (RunFailure x)
-    ) in
-  return (String.concat "\n" lines)
+  Lwt_process.with_process_full ?timeout (cmd.(0), cmd) (fun process ->
+    (* What we write to stdin: *)
+    let write_stdin =
+      let%lwt () =
+        try%lwt Lwt_io.write process#stdin to_stdin
+        with (Unix.Unix_error (Unix.EPIPE, _, _)) -> return_unit in
+      Lwt_io.close process#stdin in
+    (* We need to read both stdout and stderr simultaneously or risk
+     * interlocking: *)
+    let stdout = ref [] and stderr = ref [] in
+    let read_lines c k =
+      try%lwt
+        Lwt_io.read_lines c |>
+        Lwt_stream.iter k
+      with exn ->
+        !logger.error "Error while running %s: %s"
+          (string_of_array cmd) (Printexc.to_string exn) ;
+        return_unit in
+    let read_stdout = read_lines process#stdout (fun l ->
+      stdout := l :: !stdout)
+    and read_stderr = read_lines process#stderr (fun l ->
+      stderr := l :: !stderr) in
+    let%lwt () =
+      join [ write_stdin ; read_stdout ; read_stderr ] in
+    match%lwt process#status with
+    | Unix.WEXITED 0 ->
+      let to_str lst =
+        String.concat "\n" (List.rev lst) in
+      return (to_str !stdout, to_str !stderr)
+    | x ->
+      !logger.error "Command '%s' %s"
+        (string_of_array cmd)
+        (string_of_process_status x) ;
+      fail (RunFailure x))
+(*$= run & ~printer:(fun (out,err) -> Printf.sprintf "out=%s, err=%s" out err)
+  ("glop", "")     (Lwt_main.run (run [|"/bin/sh";"-c";"echo glop"|]))
+  ("", "pas glop") (Lwt_main.run (run [|"/bin/sh";"-c";"echo pas glop 1>&2"|]))
+ *)
 
 let quote_at_start s =
   String.length s > 0 && s.[0] = '"'

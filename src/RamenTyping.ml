@@ -148,6 +148,7 @@ struct
       mutable funcs : (string, Func.t) Hashtbl.t }
 end
 
+exception InvalidCommand of string
 
 (* FIXME: got bitten by the fact that func_name and program_name are 2 strings
  * so you can mix them up. Make specialized types for all those strings. *)
@@ -160,7 +161,7 @@ let make_untyped_func program_name func_name params operation =
     List.map (fun p ->
       try C.program_func_of_user_string ~default_program:program_name p
       with Not_found ->
-        raise (C.InvalidCommand ("Parent func "^ p ^" does not exist"))) in
+        raise (InvalidCommand ("Parent func "^ p ^" does not exist"))) in
   Func.{
     program_name ; name = func_name ; signature = "" ;
     params ; operation = Some operation ; parents ;

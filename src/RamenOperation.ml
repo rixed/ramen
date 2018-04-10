@@ -516,7 +516,7 @@ struct
 
   let notify_clause m =
     let m = "notify clause" :: m in
-    (strinG "notify" -- blanks -+ quoted_string >>:
+    ((strinG "notify" ||| strinG "execute") -- blanks -+ quoted_string >>:
      fun s -> NotifySpec s) m
 
   let flush m =

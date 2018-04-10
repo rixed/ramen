@@ -19,16 +19,6 @@ let tmp_input_of_func persist_dir program_name func_name in_type =
 let upload_dir_of_func persist_dir program_name func_name in_type =
   tmp_input_of_func persist_dir program_name func_name in_type ^"/uploads"
 
-exception InvalidCommand of string
-exception CannotExecCommand of string
-let () =
-  Printexc.register_printer (function
-    | CannotExecCommand s ->
-        Some (Printf.sprintf "Cannot execute command %s" s)
-    | InvalidCommand s ->
-        Some (Printf.sprintf "Invalid command: %s" s)
-    | _ -> None)
-
 (* Runtime configuration (also embedded in the workers): *)
 module Func =
 struct
@@ -81,30 +71,12 @@ struct
       failwith "Program names cannot include directory dotnames" else
     simplified_path name
 
-  let with_output_from_command cmd k =
-    (* Got some Unix_error(EBADF, "close_process_in", "") suggesting the
-     * fd is closed several times so limit the magic: *)
-    match Legacy.Unix.open_process_in cmd with
-    | exception Legacy.Unix.Unix_error (ENOENT, _, _) ->
-        raise (CannotExecCommand cmd)
-    | ic ->
-        let close () =
-          match Legacy.Unix.close_process_in ic with
-          | Legacy.Unix.WEXITED o -> ()
-          | s ->
-              !logger.error "Command %S exited with %s"
-                cmd (string_of_process_status s) in
-        try
-          finally close k ic
-        with End_of_file | Failure _ ->
-          raise (CannotExecCommand cmd)
-
   (* TODO: cache if binary hasn't changed or asked very recently *)
   let of_bin fname : t =
     !logger.debug "Reading config from %s..." fname ;
-    let v = with_output_from_command (fname ^" version") Legacy.input_line in
+    let v = with_stdout_from_command (fname ^" version") Legacy.input_line in
     if v = RamenVersions.codegen then
-      with_output_from_command (fname ^" 1nf0") Legacy.Marshal.from_channel
+      with_stdout_from_command (fname ^" 1nf0") Legacy.Marshal.from_channel
     else (
       !logger.error "Executable %s is for version %s (I'm version %s)"
         fname v RamenVersions.codegen ;

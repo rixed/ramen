@@ -53,13 +53,24 @@ let run_background ?cwd cmd args env =
  * Workers do not need an HTTP client and are therefore smaller, faster to
  * link, and easier to port to another language. Also, other notification
  * mechanisms are easier to implement in a single location.
+ *
+ * TODO: quarantine workers when command fails?
  *)
 
 let process_notifications rb =
-  RamenSerialization.read_notifs rb (fun (worker, url) ->
-    !logger.info "Received notify instruction from %s to %s"
-      worker url ;
-    RamenHttpHelpers.http_notify url)
+  RamenSerialization.read_notifs rb (fun (worker, cmd) ->
+    !logger.info "Received execute instruction from %s: %s"
+      worker cmd ;
+    match%lwt run ~timeout:5. [| "/bin/sh"; "-c"; cmd |] with
+    | exception e ->
+        !logger.error "While executing command %S from %s: %s"
+          cmd worker
+          (Printexc.to_string e) ;
+        return_unit
+    | stdout, stderr ->
+        if stdout <> "" then !logger.debug "cmd: %s" stdout ;
+        if stderr <> "" then !logger.error "cmd: %s" stderr ;
+        return_unit)
 
 let cleanup_old_files max_archives conf =
   (* Have a list of directories and regexps and current version,

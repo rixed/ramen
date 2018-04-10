@@ -46,5 +46,5 @@ DEFINE memory_alert AS
     used_ratio > 50 AS firing
   GROUP BY host
   COMMIT AND KEEP ALL AFTER COALESCE (out.firing <> previous.firing, false)
-  NOTIFY "$RAMEN_URL$/notify?title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25"
+  EXECUTE "echo 'FIRING:${firing}: RAM is low on ${host} at ${time}: ${used_ratio}% full'"
   EVENT STARTING AT time WITH DURATION 30;

@@ -35,7 +35,7 @@ DEFINE out_of_range_alert AS
   GROUP BY source, iface
   COMMIT AND KEEP ALL AFTER COALESCE (out.firing <> previous.firing, false)
   EVENT STARTING AT time
-  NOTIFY "$RAMEN_URL$/notify?firing=${firing}&title=Traffic%20on%20${source}%2F${iface}&time=${time}";
+  EXECUTE "echo 'FIRING:${firing}: Traffic on ${source}:${iface} at time ${time}: ${bytes_per_secs}'";
 
 DEFINE link_down_alert AS
   FROM total
@@ -46,4 +46,4 @@ DEFINE link_down_alert AS
   GROUP BY source, iface
   EVENT STARTING AT max_last
   COMMIT AND KEEP ALL AFTER COALESCE (out.firing != previous.firing, false)
-  NOTIFY "$RAMEN_URL$/notify?firing=${firing}&title=link%20${source}%2F${iface}%20is%20down&time=${max_last}";
+  EXECUTE "echo 'FIRING:${firing}: ${source}:${iface} is down at time:${max_last}'";
