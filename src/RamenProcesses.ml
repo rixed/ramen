@@ -74,7 +74,8 @@ let process_notifications rb =
 
 let cleanup_old_files max_archives conf =
   (* Have a list of directories and regexps and current version,
-   * Iter through this list for file matching the regexp and that are also directories.
+   * Iter through this list for file matching the regexp and that are also
+   * directories.
    * If this direntry matches the current version, touch it.
    * If not, and if it hasn't been touched for X days, assume that's an old one and delete it.
    * Then sleep for one day and restart. *)
@@ -237,6 +238,55 @@ let relatives f must_run =
     (if is_parent_of func f then func::cs else cs)
   ) must_run ([], [])
 
+(* waitpid is made non-blocking by Lwt (as there are no good way to select
+ * on that. And having one waitpid per individual worker takes way too much
+ * CPU wo what we do instead is to have a single waitpid collecting all
+ * terminations in a loop, and storing them on this list, to be later examined
+ * by the main thread: *)
+let terminated_pids = ref []
+
+let rec wait_all_pids_loop () =
+  match%lwt Lwt_unix.waitpid [Unix.WNOHANG] 0 with
+  | exception Unix.Unix_error (Unix.EINTR, _, _) ->
+    wait_all_pids_loop ()
+  | exception exn ->
+    (* This should not be used *)
+    !logger.error "waitpid: %s" (Printexc.to_string exn) ;
+    Lwt_unix.sleep (Random.float 2.) >>= wait_all_pids_loop
+  | 0, _  ->
+    (* Nothing, sleep and loop. *)
+    Lwt_unix.sleep 1. >>= wait_all_pids_loop
+  | pid, status ->
+    let now = Unix.gettimeofday () in
+    terminated_pids := (pid, status, now) :: !terminated_pids ;
+    wait_all_pids_loop ()
+
+(* Then this function is cleaning the running hash: *)
+let process_terminations running =
+  if !terminated_pids <> [] then
+    (* Thanks to light-weight threads, this is atomic: *)
+    let terms = !terminated_pids in
+    terminated_pids := [] ;
+    (* Now we can process those at ease: *)
+    List.iter (fun (pid, status, now) ->
+      (* Find the proc which pid is this: *)
+      try
+        let status_str = string_of_process_status status in
+        Hashtbl.iter (fun _ proc ->
+          if proc.pid = Some pid then (
+            !logger.info "Operation %s/%s (pid %d) %s."
+              proc.program_name proc.func.name pid status_str ;
+            proc.last_exit <- now ;
+            proc.last_exit_status <- status_str ;
+            proc.succ_failures <- proc.succ_failures + 1 ;
+            proc.pid <- None ;
+            raise Exit)
+        ) running ;
+        !logger.warning "Pid %d %s but I cannot find what worker is that."
+          pid status_str
+      with Exit -> ()
+    ) terms
+
 (* Try to start the given proc.
  * Check links (ie.: do parents and children have the proper types?)
  *
@@ -368,27 +418,6 @@ let try_start conf must_run proc =
       wrap (fun () -> run_background ~cwd cmd args env) in
     !logger.debug "Function %s now runs under pid %d" fq_name pid ;
     proc.pid <- Some pid ;
-    (* Monitor this worker, wait for its termination, restart...: *)
-    async (fun () ->
-      let rec wait_child () =
-        match%lwt Lwt_unix.waitpid [] pid with
-        | exception Unix.Unix_error (Unix.EINTR, _, _) -> wait_child ()
-        | exception exn ->
-          (* This should not be used *)
-          !logger.error "Cannot wait for pid %d: %s"
-            pid (Printexc.to_string exn) ;
-          return_unit
-        | _, status ->
-          let status_str = string_of_process_status status in
-          !logger.info "Operation %s/%s (pid %d) %s."
-            proc.program_name proc.func.name pid status_str ;
-          proc.last_exit <- Unix.gettimeofday () ;
-          proc.last_exit_status <- status_str ;
-          proc.succ_failures <- proc.succ_failures + 1 ;
-          proc.pid <- None ;
-          return_unit
-      in
-      wait_child ()) ;
     (* Update the parents out_ringbuf_ref: *)
     Lwt_list.iter_p (fun p ->
       let out_ref =
@@ -457,6 +486,8 @@ let try_kill conf must_run proc =
  * kill, its parent out-ref is cleaned immediately).
  *)
 let synchronize_running conf autoreload_delay =
+  async (fun () ->
+    restart_on_failure "wait_all_pids_loop" wait_all_pids_loop ()) ;
   let rc_file = C.running_config_file conf in
   (* Start/Stop processes so that [running] corresponds to [must_run].
    * [must_run] is a hash from the signature (function * params) to
@@ -510,6 +541,7 @@ let synchronize_running conf autoreload_delay =
   in
   let rec loop last_read must_run running =
     none_shall_pass (fun () ->
+      process_terminations running ;
       if !quit && Hashtbl.length running = 0 then (
         !logger.info "All processes stopped, quitting." ;
         return_unit
