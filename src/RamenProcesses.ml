@@ -583,7 +583,7 @@ let synchronize_running conf autoreload_delay =
                     Hashtbl.add must_run k (bin, program_name, f)
                   ) prog
                 ) must_run_programs) in
-              return (must_run, Option.get last_mod)
+              return (must_run, now)
             ) else return (must_run, last_read)) in
         let%lwt () = synchronize must_run running in
         let delay = if !quit then 0.1 else 1. in

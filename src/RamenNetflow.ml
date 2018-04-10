@@ -14,7 +14,7 @@ type netflow_metric =
   Uint32.t * Uint32.t * Uint32.t * Uint16.t * Uint16.t *
   Uint16.t * Uint16.t * Uint32.t * Uint32.t * Uint8.t * Uint8.t *
   Uint8.t * Uint16.t * Uint16.t * Uint8.t * Uint8.t
-  
+
 let tuple_typ =
   [ { typ_name = "source" ; nullable = false ; typ = TString } ;
     { typ_name = "first" ; nullable = false ; typ = TFloat } ;
