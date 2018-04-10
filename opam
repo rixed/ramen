@@ -23,7 +23,7 @@ depends: [
   "num"
   "ppp" {build & >= "2.2"}
   "cmdliner" {build & = "1.0.2"}
-  "net_codecs" {>= "0.3"}
+  "net_codecs" {>= "1.0"}
   "qtest" {test}
 ]
 depopts: [
