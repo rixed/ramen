@@ -519,19 +519,23 @@ let synchronize_running conf autoreload_delay =
             return (Hashtbl.create 0, last_read)
           ) else (
             let last_mod =
-              try mtime_of_file rc_file
-              with Unix.(Unix_error (ENOENT, _, _)) -> max_float in
+              try Some (mtime_of_file rc_file)
+              with Unix.(Unix_error (ENOENT, _, _)) -> None in
             let now = Unix.gettimeofday () in
             let must_autoreload =
-                autoreload_delay > 0. &&
-                now -. last_read >= autoreload_delay
+              autoreload_delay > 0. &&
+              now -. last_read >= autoreload_delay
             and must_reread =
-               last_mod > last_read &&
-               (* To prevent missing the last writes when the file is updated
-                * several times a second (the possible resolution of mtime),
-                * refuse to refresh the file unless last_mod is old enough. *)
-               now -. last_mod > 1. in
-            if must_autoreload || must_reread then (
+              match last_mod with
+              | None -> false
+              | Some lm ->
+                  lm > last_read &&
+                  (* To prevent missing the last writes when the file is
+                   * updated several times a second (the possible resolution
+                   * of mtime), refuse to refresh the file unless last mod
+                   * time is old enough: *)
+                  now -. lm > 1. in
+            if last_mod <> None && (must_autoreload || must_reread) then (
               (* Reread the content of that file *)
               let%lwt must_run_programs = C.with_rlock conf return in
               (* The run file gives us the programs (and how to run them), but we
@@ -547,7 +551,7 @@ let synchronize_running conf autoreload_delay =
                     Hashtbl.add must_run k (bin, program_name, f)
                   ) prog
                 ) must_run_programs) in
-              return (must_run, last_mod)
+              return (must_run, Option.get last_mod)
             ) else return (must_run, last_read)) in
         let%lwt () = synchronize must_run running in
         let delay = if !quit then 0.1 else 1. in
