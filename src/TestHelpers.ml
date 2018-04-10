@@ -14,8 +14,10 @@ let test_printer res_printer = function
     Printf.sprintf "%d solutions: %s"
       (List.length lst)
       (IO.to_string
-        (List.print (fun fmt (res,_c,_s) ->
-          res_printer fmt res)) lst)
+        (List.print (fun oc (res, _corr, (_stream, lin, col)) ->
+          Printf.fprintf oc "res=%a, pos=%d,%d"
+            res_printer res
+            lin col)) lst)
 
 let strip_linecol = function
   | Ok (res, (x, _line, _col)) -> Ok (res, x)

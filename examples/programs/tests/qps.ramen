@@ -15,7 +15,7 @@ DEFINE qps AS
   SELECT MIN time AS time, SUM 1 AS qps
   FROM read
   GROUP BY host, u64(time)
-  COMMIT WHEN in.time > out.time + 2;
+  COMMIT AFTER in.time > out.time + 2;
 
 DEFINE alert AS
   FROM qps WHERE qps <= 1 OR qps >= 10

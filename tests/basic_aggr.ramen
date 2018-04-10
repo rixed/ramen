@@ -12,14 +12,14 @@ DEFINE f1 AS
     10th percentile horsepower,
     95th percentile horsepower
   EXPORT
-  COMMIT WHEN group.#count >= 4539;
+  COMMIT AFTER group.#count >= 4539;
 
-DEFINE a1 AS FROM tests/fixtures/n123/csv SELECT AND b EXPORT COMMIT WHEN selected.#count = 1;
-DEFINE a2 AS FROM tests/fixtures/n123/csv SELECT AND b EXPORT COMMIT WHEN selected.#count = 2;
-DEFINE a3 AS FROM tests/fixtures/n123/csv SELECT AND b EXPORT COMMIT WHEN selected.#count = 3;
-DEFINE o1 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b EXPORT COMMIT WHEN selected.#count = 1;
-DEFINE o2 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b EXPORT COMMIT WHEN selected.#count = 2;
-DEFINE o3 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b EXPORT COMMIT WHEN selected.#count = 3;
+DEFINE a1 AS FROM tests/fixtures/n123/csv SELECT AND b EXPORT COMMIT AFTER selected.#count = 1;
+DEFINE a2 AS FROM tests/fixtures/n123/csv SELECT AND b EXPORT COMMIT AFTER selected.#count = 2;
+DEFINE a3 AS FROM tests/fixtures/n123/csv SELECT AND b EXPORT COMMIT AFTER selected.#count = 3;
+DEFINE o1 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b EXPORT COMMIT AFTER selected.#count = 1;
+DEFINE o2 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b EXPORT COMMIT AFTER selected.#count = 2;
+DEFINE o3 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b EXPORT COMMIT AFTER selected.#count = 3;
 
 -- Check stateful functions in where clauses
 

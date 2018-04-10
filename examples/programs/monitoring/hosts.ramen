@@ -17,7 +17,7 @@ DEFINE memory AS
   FROM collectd
   WHERE COALESCE (plugin = "memory", false)
   GROUP BY host, time // 30
-  COMMIT WHEN in.time > out.time + 30
+  COMMIT AFTER in.time > out.time + 30
   EVENT STARTING AT time WITH DURATION 30;
 
 DEFINE cpu AS
@@ -34,7 +34,7 @@ DEFINE cpu AS
   FROM collectd
   WHERE COALESCE (plugin = "cpu", false) AND COALESCE (type_name = "cpu", false)
   GROUP BY host, time // 30, instance
-  COMMIT WHEN in.time > out.time + 30
+  COMMIT AFTER in.time > out.time + 30
   EVENT STARTING AT time WITH DURATION 30;
 
 DEFINE memory_alert AS
@@ -45,6 +45,6 @@ DEFINE memory_alert AS
     free * 100 / total AS used_ratio,
     used_ratio > 50 AS firing
   GROUP BY host
-  COMMIT AND KEEP ALL WHEN COALESCE (out.firing <> previous.firing, false)
+  COMMIT AND KEEP ALL AFTER COALESCE (out.firing <> previous.firing, false)
   NOTIFY "$RAMEN_URL$/notify?title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25"
   EVENT STARTING AT time WITH DURATION 30;

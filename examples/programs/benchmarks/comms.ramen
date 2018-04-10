@@ -14,12 +14,12 @@ DEFINE producer3 AS
 DEFINE consumer1 AS
   FROM producer1, producer2, producer3
   SELECT sequence AS _my_s, "c1" AS me, min s, max s, min r, max r
-  COMMIT WHEN _my_s % 10 = 0;
+  COMMIT AFTER _my_s % 10 = 0;
 
 DEFINE consumer2 AS
   FROM producer1, producer2, producer3 MERGE ON s
   SELECT sequence AS _my_s, "c2" AS me, min s, max s, min r, max r
-  COMMIT WHEN _my_s % 10 = 0;
+  COMMIT AFTER _my_s % 10 = 0;
 
 DEFINE sink AS
   FROM consumer1, consumer2

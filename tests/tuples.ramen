@@ -5,14 +5,14 @@ DEFINE f1 AS
   FROM tests/fixtures/n123/csv
   SELECT max n, max_n+1 AS max_n_p1
   EXPORT
-  COMMIT WHEN group.#count = 3;
+  COMMIT AFTER group.#count = 3;
 
 -- We also can do an aggregate function within another one:
 DEFINE f2 AS
   FROM tests/fixtures/n123/csv
   SELECT max (1 + max n) as max_np1
   EXPORT
-  COMMIT WHEN group.#count = 3;
+  COMMIT AFTER group.#count = 3;
 
 -- Here max(np1) is not correct because we cannot init a stateful function with
 -- member of out tuple, even when declared earlier.  In theory, we'd like init
@@ -30,4 +30,4 @@ DEFINE f2 AS
 --  FROM tests/fixtures/n123/csv
 --  SELECT n+1 as np1, max np1
 --  EXPORT
---  COMMIT WHEN max np1 > 2;
+--  COMMIT AFTER max np1 > 2;

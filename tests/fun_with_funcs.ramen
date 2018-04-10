@@ -12,4 +12,4 @@ DEFINE f AS
     90th percentile _co2_per_hp,
     99th percentile globally _co2_per_hp
   EXPORT
-  COMMIT WHEN group.#count >= 4539;
+  COMMIT AFTER group.#count >= 4539;
