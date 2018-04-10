@@ -209,7 +209,8 @@ let compile conf root_path program_name program_code =
           (Marshal.(to_string runconf [])) ;
         (* Then call CodeGenLib.casing with all this: *)
         Printf.fprintf oc
-          "let () = CodeGenLib.casing rc_str_ rc_marsh_ [\n" ;
+          "let () = CodeGenLib.casing %S rc_str_ rc_marsh_ [\n"
+            RamenVersions.codegen ;
         Hashtbl.iter (fun _ func ->
           assert (program_name.[String.length program_name-1] <> '/') ;
           Printf.fprintf oc"\t%S, %s_%s.%s ;\n"

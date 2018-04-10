@@ -1373,30 +1373,42 @@ let aggregate
           else
             return s)))
 
-let casing rc_str rc_marsh lst =
+let casing codegen_version rc_str rc_marsh lst =
   (* Init the random number generator *)
   (match Sys.getenv "rand_seed" with
   | exception Not_found -> Random.self_init ()
   | "" -> Random.self_init ()
   | s -> Random.init (int_of_string s)) ;
-  (* Call a function from lst according to envvar "name" *)
-  match Sys.getenv "name" with
-  | exception Not_found ->
-      if Array.length Sys.argv <= 1 then
-        print_string rc_marsh
-      else
-        (* Display some help: *)
-        Printf.printf
-          "This program is a Ramen worker.\n\n\
-           Runtime configuration:\n\n%s\n\n\
-           Have a nice day!\n"
-          rc_str
-  | name ->
-      (match List.assoc name lst with
-      | exception Not_found ->
-        Printf.eprintf
-          "Unknown operation %S.\n\
-           Trying to run a Ramen program? Try `ramen start %s`\n"
-          name Sys.executable_name ;
-          exit 3
-      | f -> f ())
+  let help () =
+    Printf.printf
+      "This program is a Ramen worker (codegen %s).\n\n\
+       Runtime configuration:\n\n%s\n\n\
+       argv0 was %S\n\
+       Have a nice day!\n"
+      codegen_version rc_str Sys.argv.(0) in
+  let run_worker () =
+    (* Call a function from lst according to envvar "name" *)
+    match Sys.getenv "name" with
+    | exception Not_found ->
+        Printf.eprintf "Missing name envvar\n"
+    | name ->
+        (match List.assoc name lst with
+        | exception Not_found ->
+          Printf.eprintf
+            "Unknown operation %S.\n\
+             Trying to run a Ramen program? Try `ramen start %s`\n"
+            name Sys.executable_name ;
+            exit 3
+        | f -> f ()) in
+  (* If we are called "(ramen worker)" then we must run: *)
+  if Sys.argv.(0) = RamenConsts.worker_argv0 then
+    run_worker ()
+  else match Sys.argv.(1) with
+  | exception Invalid_argument _ -> help ()
+  | "1nf0" -> print_string rc_marsh
+  | "version" ->
+      (* Allow to override the reported version; useful for tests and also
+       * maybe as a last-resort production hack: *)
+      let v = getenv ~def:codegen_version "pretend_codegen_version" in
+      Printf.printf "%s\n" v
+  | _ -> help ()

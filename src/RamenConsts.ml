@@ -114,3 +114,4 @@ end
 
 let default_persist_dir = "/tmp/ramen"
 let default_report_period = 30.
+let worker_argv0 = "ramen worker:"

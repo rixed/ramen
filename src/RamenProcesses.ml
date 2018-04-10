@@ -29,11 +29,6 @@ let close_fd i =
 
 let run_background ?cwd cmd args env =
   let open Unix in
-  (* prog name should be first arg *)
-  let prog_name = Filename.basename cmd in
-  let args = Array.init (Array.length args + 1) (fun i ->
-      if i = 0 then prog_name else args.(i-1))
-  in
   let quoted oc s = Printf.fprintf oc "%S" s in
   !logger.info "Running %s as: /usr/bin/env %a %S %a"
     cmd
@@ -353,7 +348,7 @@ let try_start conf must_run proc =
     let args =
       (* For convenience let's add "ramen worker" and the fun name as
        * arguments: *)
-      [| "(ramen worker)" ; fq_name |] in
+      [| RamenConsts.worker_argv0 ; fq_name |] in
     (* Better have the workers CWD where the binary is, so that any file name
      * mentioned in the program is relative to the program. *)
     let cwd = Filename.dirname proc.bin in
