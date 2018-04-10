@@ -92,7 +92,12 @@ let http_service port router =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     stop_http_servers ())) ;
-  let dec = Uri.pct_decode in
+  let dec s =
+    (* As the name suggest, pct_decode only decode percent encoded values.
+     * + signs are left untouched. As we are decoding the query part of the
+     * URL we need to decode them: *)
+    let s = Uri.pct_decode s in
+    String.map (fun c -> if c = '+' then ' ' else c) s in
   let callback _conn req body =
     let path = Uri.path (Request.uri req) in
     !logger.debug "Requested %S" req.Request.resource ;
