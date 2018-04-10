@@ -33,9 +33,10 @@ DEFINE out_of_range_alert AS
     bytes_per_secs,
     5-ma locally (bytes_per_secs < 100 OR bytes_per_secs > 8e3) >= 4 AS firing
   GROUP BY source, iface
-  COMMIT AND KEEP ALL AFTER COALESCE (out.firing <> previous.firing, false)
-  EVENT STARTING AT time
-  EXECUTE "echo 'FIRING:${firing}: Traffic on ${source}:${iface} at time ${time}: ${bytes_per_secs}'";
+  COMMIT, KEEP ALL AND EXECUTE
+    "echo 'FIRING:${firing}: Traffic on ${source}:${iface} at time ${time}: ${bytes_per_secs}'"
+  AFTER COALESCE (out.firing <> previous.firing, false)
+  EVENT STARTING AT time;
 
 DEFINE link_down_alert AS
   FROM total
@@ -45,5 +46,6 @@ DEFINE link_down_alert AS
     age max_last > 300 AS firing
   GROUP BY source, iface
   EVENT STARTING AT max_last
-  COMMIT AND KEEP ALL AFTER COALESCE (out.firing != previous.firing, false)
-  EXECUTE "echo 'FIRING:${firing}: ${source}:${iface} is down at time:${max_last}'";
+  COMMIT, KEEP ALL AND EXECUTE
+    "echo 'FIRING:${firing}: ${source}:${iface} is down at time:${max_last}'"
+  AFTER COALESCE (out.firing != previous.firing, false);

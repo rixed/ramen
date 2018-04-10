@@ -535,13 +535,15 @@ struct
   let dummy_commit m =
     (strinG "commit" >>: fun () -> CommitSpec) m
 
+  let default_commit_when = Expr.expr_true
+
   let commit_clause m =
     let m = "commit clause" :: m in
     let sep = (blanks -- strinG "and" -- blanks) |||
               (opt_blanks -- char ',' -- opt_blanks) in
     (several ~sep ~what:"commit clauses"
        (dummy_commit ||| notify_clause ||| flush) ++
-     optional ~def:(false, Expr.expr_true)
+     optional ~def:(false, default_commit_when)
       (blanks -+
        ((strinG "after" >>: fun _ -> false) |||
         (strinG "before" >>: fun _ -> true)) +- blanks ++
@@ -688,9 +690,7 @@ struct
       and default_event_time = None
       and default_key = []
       and default_top = None
-      and default_commit_before = false
-      and default_commit_when = Expr.expr_true
-      and default_commit_specs = []
+      and default_commit = ([], (false, default_commit_when))
       and default_from = []
       and default_every = 0.
       and default_listen = None
@@ -700,20 +700,17 @@ struct
       and default_csv_specs = None in
       let default_clauses =
         default_select_fields, default_star, default_merge, default_sort,
-        default_where, default_export, default_event_time,
-        default_key, default_top, default_commit_before, default_commit_when,
-        default_commit_specs, default_from, default_every, default_listen,
-        default_instrumentation, default_ext_data, default_preprocessor,
-        default_csv_specs in
+        default_where, default_export, default_event_time, default_key,
+        default_top, default_commit, default_from, default_every,
+        default_listen, default_instrumentation, default_ext_data,
+        default_preprocessor, default_csv_specs in
       let select_fields, and_all_others, merge, sort, where, force_export,
-          event_time, key, top, commit_before, commit_when,
-          commit_specs, from, every, listen, instrumentation, ext_data,
-          preprocessor, csv_specs =
+          event_time, key, top, commit, from, every, listen, instrumentation,
+          ext_data, preprocessor, csv_specs =
         List.fold_left (
           fun (select_fields, and_all_others, merge, sort, where, export,
-               event_time, key, top, commit_before, commit_when,
-               commit_specs, from, every, listen, instrumentation, ext_data,
-               preprocessor, csv_specs) ->
+               event_time, key, top, commit, from, every, listen,
+               instrumentation, ext_data, preprocessor, csv_specs) ->
             function
             | SelectClause fields_or_stars ->
               let fields, and_all_others =
@@ -724,88 +721,91 @@ struct
                   ) ([], false) fields_or_stars in
               (* The above fold_left inverted the field order. *)
               let select_fields = List.rev fields in
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | MergeClause merge ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | SortClause sort ->
-              select_fields, and_all_others, merge, Some sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, Some sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | WhereClause where ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | ExportClause export ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | EventTimeClause event_time ->
-              select_fields, and_all_others, merge, sort, where, export, Some event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              Some event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | GroupByClause key ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
-            | CommitClause (commit_specs, (commit_before, commit_when)) ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
+            | CommitClause commit' ->
+              if commit != default_commit then
+                raise (Reject "Cannot have several commit clauses") ;
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit', from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | TopByClause top ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, Some top, commit_before, commit_when,
-              commit_specs, from, every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, Some top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | FromClause from' ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              (List.rev_append from' from), every, listen, instrumentation,
-              ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, (List.rev_append from' from),
+              every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | EveryClause every ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | ListenClause l ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, Some l, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, Some l,
+              instrumentation, ext_data, preprocessor, csv_specs
             | InstrumentationClause ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, true, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen, true,
+              ext_data, preprocessor, csv_specs
             | ExternalDataClause c ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, Some c, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, Some c, preprocessor, csv_specs
             | PreprocessorClause preprocessor ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, csv_specs
             | CsvSpecsClause c ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              key, top, commit_before, commit_when, commit_specs,
-              from, every, listen, instrumentation, ext_data, preprocessor, Some c
+              select_fields, and_all_others, merge, sort, where, export,
+              event_time, key, top, commit, from, every, listen,
+              instrumentation, ext_data, preprocessor, Some c
           ) default_clauses clauses in
-      let commit_when, top =
-        match top with
-        | None -> commit_when, None
-        | Some (top, top_when) ->
-          if commit_when != default_commit_when ||
-             commit_specs != default_commit_specs then
-            raise (Reject "COMMIT and FLUSH clauses are incompatible \
-                           with TOP") ;
-          top_when, Some top in
+      let commit_specs, commit_before, commit_when, top =
+        match commit, top with
+        | (commit_specs, (commit_before, commit_when)),
+          Some (top, top_when) ->
+            if commit_when != default_commit_when ||
+               List.exists (function FlushSpec _ -> true
+                                   | _ -> false) commit_specs
+            then
+              raise (Reject "COMMIT and FLUSH clauses are incompatible \
+                             with TOP") ;
+            commit_specs, commit_before, top_when, Some top
+        | (commit_specs, (commit_before, commit_when)), None ->
+            commit_specs, commit_before, commit_when, None
+      in
       (* Distinguish between Aggregate, Read, ListenFor...: *)
       let not_aggregate =
         select_fields == default_select_fields && sort == default_sort &&
         where == default_where && key == default_key && top == default_top &&
-        commit_before == default_commit_before &&
-        commit_when == default_commit_when &&
-        commit_specs == default_commit_specs
+        commit == default_commit
       and not_listen = listen = None || from <> default_from || every <> 0.
       and not_instrumentation = instrumentation = false
       and not_csv =
