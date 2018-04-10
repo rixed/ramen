@@ -105,24 +105,25 @@ let check_links ?(force=false) program_name rc running_programs =
      * We want to warn if a parent is missing. The synchronizer will
      * start the worker but it will be blocked. *)
     List.iter (fun (par_prog, par_func) ->
-      match Hashtbl.find running_programs par_prog with
-      | exception Not_found ->
-        !logger.warning "Operation %s depends on program %s, \
-                         which is not running."
-          func.F.name par_prog ;
-      | mre ->
-        let pprog = P.of_bin mre.C.bin in
-        (match List.find (fun p -> p.F.name = par_func) pprog with
+      if par_prog <> program_name then
+        match Hashtbl.find running_programs par_prog with
         | exception Not_found ->
-          !logger.error "Operation %s depends on operation %s/%s, \
-                         which is not part of the running program %s."
-            func.F.name par_prog par_func par_prog ;
-        | par ->
-          (* We want to err if a parent is incompatible (unless --force). *)
-          try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
-                                              par.F.out_type.ser
-          with Failure m when force -> (* or let it fail *)
-            !logger.error "%s" m)
+          !logger.warning "Operation %s depends on program %s, \
+                           which is not running."
+            func.F.name par_prog ;
+        | mre ->
+          let pprog = P.of_bin mre.C.bin in
+          (match List.find (fun p -> p.F.name = par_func) pprog with
+          | exception Not_found ->
+            !logger.error "Operation %s depends on operation %s/%s, \
+                           which is not part of the running program %s."
+              func.F.name par_prog par_func par_prog ;
+          | par ->
+            (* We want to err if a parent is incompatible (unless --force). *)
+            try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
+                                                par.F.out_type.ser
+            with Failure m when force -> (* or let it fail *)
+              !logger.error "%s" m)
     ) func.parents
   ) rc ;
   (* We want to err if a child is incompatible (unless --force).
