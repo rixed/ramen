@@ -912,22 +912,6 @@ let check_input_finished ~parents ~in_type =
     true
   ) else false
 
-let check_yield func fields =
-  let in_type = untyped_tuple_type func.Func.in_type
-  and out_type = untyped_tuple_type func.Func.out_type in
-  (
-    check_selected_fields ~parents:[] ~in_type ~out_type func.params fields
-  ) || (
-    check_input_finished ~parents:[] ~in_type
-  ) || (
-    (* If nothing changed so far then we are done *)
-    if not out_type.finished_typing then (
-      !logger.debug "Completing out_type because it won't change any more." ;
-      check_finished_tuple_type TupleOut out_type ;
-      true
-    ) else false
-  )
-
 let set_of_fields = function
   | TypedTuple { ser ; _ } ->
       List.fold_left (fun s t ->
@@ -1077,8 +1061,6 @@ let check_operation operation parents func =
   in
   let open RamenOperation in
   match operation with
-  | Yield { fields ; _ } ->
-    check_yield func fields
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
                 commit_when ; flush_how ; _ } ->
     check_aggregate parents func fields and_all_others (fst merge) sort where
@@ -1140,7 +1122,6 @@ let typed_of_untyped_tuple ?cmp = function
 
 let get_selected_fields func =
   match func.Func.operation with
-  | Some (Yield { fields ; _ }) -> Some fields
   | Some (Aggregate { fields ; _ }) -> Some fields
   | _ -> None
 

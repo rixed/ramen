@@ -1279,23 +1279,6 @@ let emit_float_of_top name oc top_by =
     Printf.fprintf oc "\t%a\n"
       (conv_to ~context:Finalize (Some TFloat)) top_by
 
-let emit_yield oc name in_typ out_typ = function
-  | RamenOperation.Yield { fields ; every ; event_time } as op ->
-    let mentioned =
-      let all_exprs = RamenOperation.fold_expr [] (fun l s -> s::l) op in
-      add_all_mentioned_in_expr all_exprs in
-    Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-      %a\n%a\n%a\n%a\n\
-      let %s () =\n\
-        \tCodeGenLib.yield sersize_of_tuple_ time_of_tuple_ serialize_tuple_ select_ %f\n"
-      (emit_field_selection "select_" in_typ mentioned false out_typ) fields
-      (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
-      (emit_time_of_tuple "time_of_tuple_" event_time) out_typ
-      (emit_serialize_tuple "serialize_tuple_") out_typ
-      name
-      every
-  | _ -> assert false
-
 let for_each_unpure_fun selected_fields
                         ?where ?commit_when ?top_by f =
   List.iter (fun sf ->
@@ -1481,7 +1464,7 @@ let emit_aggregate oc name in_typ out_typ = function
   | RamenOperation.Aggregate
       { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
         commit_before ; commit_when ; flush_how ; notify_url ; event_time ;
-        _ } as op ->
+        every ; _ } as op ->
   let mentioned =
     let all_exprs = RamenOperation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
@@ -1535,12 +1518,13 @@ let emit_aggregate oc name in_typ out_typ = function
       \t\twhere_fast_ where_slow_ key_of_input_ %b \n\
       \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %s should_resubmit_\n\
-      \t\tglobal_init_ group_init_ field_of_tuple_ %S\n"
+      \t\tglobal_init_ group_init_ field_of_tuple_ %S %f\n"
     name
     (snd merge)
     (match sort with None -> 0 | Some (n, _, _) -> n)
     (key = [])
-    commit_before (flush_how <> Never) when_to_check_for_commit notify_url
+    commit_before (flush_how <> Never) when_to_check_for_commit
+    notify_url every
   | _ -> assert false
 
 let sanitize_ocaml_fname s =
@@ -1570,8 +1554,6 @@ let compile conf entry_point func_name obj_name in_typ out_typ params op =
           n
       ) params ;
       (match op with
-      | Yield _ ->
-        emit_yield oc entry_point in_typ out_typ op
       | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                       what = { separator ; null ; fields } ; event_time } ->
         emit_read_csv_file oc entry_point fname unlink separator null

@@ -93,7 +93,7 @@ struct
           commit_before = false ;\
           flush_how = Reset ;\
           force_export = false ; event_time = None ;\
-          from = ["foo"] } } ],\
+          from = ["foo"] ; every = 0. } } ],\
       (46, [])))\
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
@@ -101,14 +101,19 @@ struct
    (Ok ([\
     { name = "add" ; params = ["p1", VI32 0l; "p2", VI32 0l] ;\
       operation = \
-        Yield {\
+        Aggregate {\
           fields = [\
             { expr = RamenExpr.(\
                 StatelessFun2 (typ, Add,\
                   Field (typ, ref TupleParam, "p1"),\
                   Field (typ, ref TupleParam, "p2"))) ;\
               alias = "res" } ] ;\
-          every = 0. ; force_export = false ; event_time = None } } ],\
+          every = 0. ; force_export = false ; event_time = None ;\
+          and_all_others = false ; merge = [], 0. ; sort = None ;\
+          where = RamenExpr.Const (typ, VBool true) ;\
+          notify_url = "" ; key = [] ; top = None ;\
+          commit_when = RamenExpr.Const (typ, VBool true) ;\
+          commit_before = false ; flush_how = Reset ; from = [] } } ],\
       (44, [])))\
       (test_p p "DEFINE add p1=0 p2=0 AS YIELD p1 + p2 AS res" |>\
        (function Ok (ps, _) as x -> check ps ; x | x -> x) |>\

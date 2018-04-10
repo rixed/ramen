@@ -56,13 +56,6 @@ type csv_specs =
 (* Type of an operation: *)
 
 type t =
-  (* Generate values out of thin air. The difference with Select is that
-   * Yield does not wait for some input. *)
-  | Yield of {
-      fields : selected_field list ;
-      every : float ;
-      event_time : RamenEventTime.t option ;
-      force_export : bool }
   (* Aggregation of several tuples into one based on some key. Superficially looks like
    * a select but much more involved. *)
   | Aggregate of {
@@ -84,7 +77,8 @@ type t =
       (* How to flush: reset or slide values *)
       flush_how : flush_method ;
       (* List of funcs that are our parents *)
-      from : string list }
+      from : string list ;
+      every : float }
   | ReadCSVFile of {
       where : file_spec ;
       what : csv_specs ;
@@ -117,14 +111,9 @@ let print fmt =
     ) event_time ;
     if force_export then Printf.fprintf fmt " EXPORT" in
   function
-  | Yield { fields ; every ; event_time ; force_export } ->
-    Printf.fprintf fmt "YIELD %a EVERY %g SECONDS"
-      (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
-      every ;
-    print_export fmt event_time force_export ;
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
                 force_export ; notify_url ; key ; top ; commit_when ;
-                commit_before ; flush_how ; from } ->
+                commit_before ; flush_how ; from ; every } ->
     Printf.fprintf fmt "FROM %a"
       (List.print ~first:"" ~last:"" ~sep print_single_quoted) from ;
     if fst merge <> [] then (
@@ -144,6 +133,8 @@ let print fmt =
       (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
       (if fields <> [] && and_all_others then sep else "")
       (if and_all_others then "*" else "") ;
+    if every > 0. then
+      Printf.fprintf fmt " EVERY %g SECONDS" every ;
     if not (Expr.is_true where) then
       Printf.fprintf fmt " WHERE %a"
         (Expr.print false) where ;
@@ -186,7 +177,6 @@ let print fmt =
 
 let is_exporting = function
   | Aggregate { force_export ; _ }
-  | Yield { force_export ; _ }
   | ListenFor { force_export ; _ }
   | ReadCSVFile { force_export ; _ }
   | Instrumentation { force_export ; _ } ->
@@ -205,17 +195,13 @@ let event_time_of_operation = function
   | _ -> None
 
 let parents_of_operation = function
-  | ListenFor _ | ReadCSVFile _ | Yield _
+  | ListenFor _ | ReadCSVFile _
   (* Note that instrumentation has a from clause but no actual parents: *)
   | Instrumentation _ -> []
   | Aggregate { from ; _ } -> from
 
 let fold_expr init f = function
   | ListenFor _ | ReadCSVFile _ | Instrumentation _ -> init
-  | Yield { fields ; _ } ->
-      List.fold_left (fun prev sf ->
-          Expr.fold_by_depth f prev sf.expr
-        ) init fields
   | Aggregate { fields ; merge ; sort ; where ; key ; top ; commit_when ;
                 flush_how ; _ } ->
       let x =
@@ -301,19 +287,9 @@ let check params =
       | _ -> ())
   in
   function
-  | Yield { fields ; event_time } ->
-    List.iter (fun sf ->
-        let e = StatefulNotAllowed { clause = "YIELD" } in
-        check_pure e sf.expr ;
-        (* TODO: add an every clause to Aggregate and get rid of Yield *)
-        List.iter (fun sf -> prefix_def TupleIn sf.expr) fields ;
-        check_fields_from [TupleParam; TupleLastIn; TupleOut (* FIXME: only if defined earlier *)] "YIELD clause" sf.expr
-      ) fields ;
-    Option.may (check_event_time fields) event_time ;
-    (* TODO: check unicity of aliases *)
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
                 commit_when ; flush_how ; event_time ;
-                from ; _ } as op ->
+                from ; every ; _ } as op ->
     (* Set of fields known to come from in (to help prefix_smart): *)
     let fields_from_in = ref Set.empty in
     iter_expr (function
@@ -393,8 +369,8 @@ let check params =
       let m = StatefulNotAllowed { clause = "KEEP/REMOVE" } in
       check_pure m e ;
       check_fields_from [TupleParam; TupleGroup] "REMOVE clause" e) ;
-    if from = [] then
-      raise (SyntaxError (MissingClause { clause = "FROM" })) ;
+    if every > 0. && from <> [] then
+      raise (SyntaxError (EveryWithFrom)) ;
     (* Check that we do not use any fields from out that is generated: *)
     let generators = List.filter_map (fun sf ->
         if Expr.is_generator sf.expr then Some sf.alias else None
@@ -483,12 +459,7 @@ struct
     let m = "notify clause" :: m in
     (strinG "notify" -- blanks -+ quoted_string) m
 
-  let yield_clause m =
-    let m = "yield clause" :: m in
-    (strinG "yield" -- blanks -+
-     several ~sep:list_sep selected_field) m
-
-  let yield_every_clause m =
+  let every_clause m =
     let m = "every clause" :: m in
     (strinG "every" -- blanks -+ duration >>: fun every ->
        if every < 0. then
@@ -497,7 +468,7 @@ struct
 
   let select_clause m =
     let m = "select clause" :: m in
-    (strinG "select" -- blanks -+
+    ((strinG "select" ||| strinG "yield") -- blanks -+
      several ~sep:list_sep
              ((star >>: fun _ -> None) |||
               some selected_field)) m
@@ -660,7 +631,6 @@ struct
     | TopByClause of ((Expr.t (* N *) * Expr.t (* by *)) * Expr.t (* when *))
     | CommitClause of ((flush_method option * bool) * Expr.t)
     | FromClause of string list
-    | YieldClause of selected_field list
     | EveryClause of float
     | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
     | InstrumentationClause
@@ -682,8 +652,7 @@ struct
       (top_clause >>: fun c -> TopByClause c) |||
       (commit_when >>: fun c -> CommitClause c) |||
       (from_clause >>: fun c -> FromClause c) |||
-      (yield_clause >>: fun c -> YieldClause c) |||
-      (yield_every_clause >>: fun c -> EveryClause c) |||
+      (every_clause >>: fun c -> EveryClause c) |||
       (listen_clause >>: fun c -> ListenClause c) |||
       (instrumentation_clause >>: fun () -> InstrumentationClause) |||
       (read_file_specs >>: fun c -> ExternalDataClause c) |||
@@ -705,8 +674,7 @@ struct
       and default_commit_when = Expr.expr_true
       and default_flush_how = Reset
       and default_from = []
-      and default_yield_fields = []
-      and default_yield_every = 0.
+      and default_every = 0.
       and default_listen = None
       and default_instrumentation = false
       and default_ext_data = None
@@ -716,18 +684,18 @@ struct
         default_select_fields, default_star, default_merge, default_sort,
         default_where, default_export, default_event_time, default_notify,
         default_key, default_top, default_commit_before, default_commit_when,
-        default_flush_how, default_from, default_yield_fields,
-        default_yield_every, default_listen, default_instrumentation,
-        default_ext_data, default_preprocessor, default_csv_specs in
+        default_flush_how, default_from, default_every, default_listen,
+        default_instrumentation, default_ext_data, default_preprocessor,
+        default_csv_specs in
       let select_fields, and_all_others, merge, sort, where, force_export,
           event_time, notify_url, key, top, commit_before, commit_when,
-          flush_how, from, yield_fields, yield_every, listen, instrumentation,
-          ext_data, preprocessor, csv_specs =
+          flush_how, from, every, listen, instrumentation, ext_data,
+          preprocessor, csv_specs =
         List.fold_left (
           fun (select_fields, and_all_others, merge, sort, where, export,
                event_time, notify_url, key, top, commit_before, commit_when,
-               flush_how, from, yield_fields, yield_every, listen,
-               instrumentation, ext_data, preprocessor, csv_specs) ->
+               flush_how, from, every, listen, instrumentation, ext_data,
+               preprocessor, csv_specs) ->
             function
             | SelectClause fields_or_stars ->
               let fields, and_all_others =
@@ -740,98 +708,77 @@ struct
               let select_fields = List.rev fields in
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | MergeClause merge ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | SortClause sort ->
               select_fields, and_all_others, merge, Some sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | WhereClause where ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | ExportClause export ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | EventTimeClause event_time ->
               select_fields, and_all_others, merge, sort, where, export, Some event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | NotifyClause notify_url ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | GroupByClause key ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | CommitClause ((Some flush_how, commit_before), commit_when) ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | CommitClause ((None, commit_before), commit_when) ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | TopByClause top ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, Some top, commit_before, commit_when,
-              flush_how, from, yield_fields, yield_every, listen, instrumentation,
-              ext_data, preprocessor, csv_specs
+              flush_how, from, every, listen, instrumentation, ext_data,
+              preprocessor, csv_specs
             | FromClause from' ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              (List.rev_append from' from), yield_fields, yield_every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs
-            | YieldClause fields ->
+              (List.rev_append from' from), every, listen, instrumentation,
+              ext_data, preprocessor, csv_specs
+            | EveryClause every ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
-            | EveryClause yield_every ->
-              select_fields, and_all_others, merge, sort, where, export, event_time,
-              notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | ListenClause l ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, Some l, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, Some l, instrumentation, ext_data, preprocessor, csv_specs
             | InstrumentationClause ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, true, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, true, ext_data, preprocessor, csv_specs
             | ExternalDataClause c ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, Some c,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, Some c, preprocessor, csv_specs
             | PreprocessorClause preprocessor ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, csv_specs
+              from, every, listen, instrumentation, ext_data, preprocessor, csv_specs
             | CsvSpecsClause c ->
               select_fields, and_all_others, merge, sort, where, export, event_time,
               notify_url, key, top, commit_before, commit_when, flush_how,
-              from, yield_fields, yield_every, listen, instrumentation, ext_data,
-              preprocessor, Some c
+              from, every, listen, instrumentation, ext_data, preprocessor, Some c
           ) default_clauses clauses in
       let commit_when, top =
         match top with
@@ -842,42 +789,36 @@ struct
             raise (Reject "COMMIT and FLUSH clauses are incompatible \
                            with TOP") ;
           top_when, Some top in
-      (* Distinguish between Aggregate, Yield ans ListenFor: *)
+      (* Distinguish between Aggregate, Read, ListenFor...: *)
       let not_aggregate =
         select_fields == default_select_fields && sort == default_sort &&
         where == default_where && key == default_key && top == default_top &&
         commit_before == default_commit_before &&
         commit_when == default_commit_when &&
         flush_how == default_flush_how
-      and not_yield =
-        yield_fields == default_yield_fields &&
-        yield_every == default_yield_every || from <> default_from
-      and not_listen = listen = None || from <> default_from
+      and not_listen = listen = None || from <> default_from || every <> 0.
       and not_instrumentation = instrumentation = false
       and not_csv =
         ext_data = None && preprocessor == default_preprocessor &&
-        csv_specs = None || from <> default_from
+        csv_specs = None || from <> default_from || every <> 0.
       and not_event_time = event_time = default_event_time in
-      if not_yield && not_listen && not_csv && not_instrumentation then
+      if not_listen && not_csv && not_instrumentation then
         Aggregate { fields = select_fields ; and_all_others ; merge ; sort ;
-                    where ; force_export ; event_time ; notify_url ; key ; top
-                    ; commit_before ; commit_when ; flush_how ; from }
-      else if not_aggregate && not_listen && not_csv && not_instrumentation &&
-              yield_fields != default_yield_fields then
-        Yield { fields = yield_fields ; every = yield_every ;
-                force_export ; event_time }
-      else if not_aggregate && not_yield && not_csv && not_event_time &&
+                    where ; force_export ; event_time ; notify_url ; key ;
+                    top ; commit_before ; commit_when ; flush_how ; from ;
+                    every }
+      else if not_aggregate && not_csv && not_event_time &&
               not_instrumentation && listen <> None then
         let net_addr, port, proto = Option.get listen in
         ListenFor { net_addr ; port ; proto ; force_export }
-      else if not_aggregate && not_yield && not_listen &&
+      else if not_aggregate && not_listen &&
               not_instrumentation &&
               ext_data <> None && csv_specs <> None then
         ReadCSVFile { where = Option.get ext_data ;
                       what = Option.get csv_specs ;
                       preprocessor ;
                       force_export ; event_time }
-      else if not_aggregate && not_yield && not_listen && not_csv && not_listen
+      else if not_aggregate && not_listen && not_csv && not_listen
       then
         Instrumentation { force_export ; from }
       else
@@ -906,7 +847,7 @@ struct
         commit_before = false ;\
         flush_how = Reset ;\
         force_export = false ; event_time = None ;\
-        from = ["foo"] },\
+        from = ["foo"] ; every = 0. },\
       (67, [])))\
       (test_op p "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
        replace_typ_in_op)
@@ -925,7 +866,7 @@ struct
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = ["foo"] },\
+        flush_how = Reset ; from = ["foo"] ; every = 0. },\
       (26, [])))\
       (test_op p "from foo where packets > 0" |> replace_typ_in_op)
 
@@ -945,7 +886,7 @@ struct
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = ["foo"] },\
+        flush_how = Reset ; from = ["foo"] ; every = 0. },\
       (71, [])))\
       (test_op p "from foo select t, value export event starting at t*10 with duration 60" |>\
        replace_typ_in_op)
@@ -967,7 +908,7 @@ struct
         notify_url = "" ; key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = ["foo"] },\
+        flush_how = Reset ; from = ["foo"] ; every = 0. },\
       (82, [])))\
       (test_op p "from foo select t1, t2, value export event starting at t1*10 and stopping at t2*10" |>\
        replace_typ_in_op)
@@ -984,7 +925,7 @@ struct
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = ["foo"] },\
+        flush_how = Reset ; from = ["foo"] ; every = 0. },\
       (50, [])))\
       (test_op p "from foo NOTIFY \"http://firebrigade.com/alert.php\"" |>\
        replace_typ_in_op)
@@ -1028,7 +969,7 @@ struct
             Field (typ, ref TupleOut, "start"))) ; \
         commit_before = false ;\
         flush_how = Reset ;\
-        from = ["foo"] },\
+        from = ["foo"] ; every = 0. },\
         (198, [])))\
         (test_op p "select min start as start, \\
                            max stop as max_stop, \\
@@ -1056,7 +997,7 @@ struct
               Const (typ, VI32 (Int32.one)))),\
             Const (typ, VI32 (Int32.of_int 5)))) ;\
         commit_before = true ;\
-        flush_how = Reset ; from = ["foo"] },\
+        flush_how = Reset ; from = ["foo"] ; every = 0. },\
         (49, [])))\
         (test_op p "select 1 as one from foo commit before sum 1 >= 5" |>\
          replace_typ_in_op)
@@ -1079,7 +1020,7 @@ struct
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = ["foo/bar"] },\
+        flush_how = Reset ; from = ["foo/bar"] ; every = 0. },\
         (37, [])))\
         (test_op p "SELECT n, lag(2, n) AS l FROM foo/bar" |>\
          replace_typ_in_op)
@@ -1120,9 +1061,14 @@ struct
                       (f1 bool, f2 i32 not null)")
 
     (Ok (\
-      Yield {\
+      Aggregate {\
         fields = [ { expr = Expr.Const (typ, VI32 1l) ; alias = "one" } ] ;\
-        every = 1. ; force_export = true ; event_time = None },\
+        every = 1. ; force_export = true ; event_time = None ;\
+        and_all_others = false ; merge = [], 0. ; sort = None ;\
+        where = Expr.Const (typ, VBool true) ;\
+        notify_url = "" ; key = [] ; top = None ;\
+        commit_when = replace_typ Expr.expr_true ;\
+        commit_before = false ; flush_how = Reset ; from = [] },\
         (36, [])))\
         (test_op p "YIELD 1 AS one EVERY 1 SECOND EXPORT" |>\
          replace_typ_in_op)

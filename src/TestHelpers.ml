@@ -48,7 +48,7 @@ let replace_typ_in_operation =
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
                 force_export ; notify_url ; key ; top ; commit_before ;
-                commit_when ; flush_how ; from } ->
+                commit_when ; flush_how ; from ; every } ->
     Aggregate {
       fields =
         List.map (fun sf ->
@@ -67,10 +67,8 @@ let replace_typ_in_operation =
       flush_how = (match flush_how with
         | Reset | Never | Slide _ -> flush_how
         | RemoveAll e -> RemoveAll (replace_typ e)
-        | KeepOnly e -> KeepOnly (replace_typ e)) }
-  | Yield { fields ; every ; force_export ; event_time } ->
-    Yield { fields = List.map (fun sf -> { sf with expr = replace_typ sf.expr }) fields ;
-            every ; force_export ; event_time }
+        | KeepOnly e -> KeepOnly (replace_typ e)) ;
+      every }
   | x -> x
 
 let replace_typ_in_op = function

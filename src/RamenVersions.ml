@@ -9,7 +9,7 @@ let release_tag = "v2.0.0"
 let graph_config = "v9" (* last: stripped down version *)
 
 (* Code generation: sources, binaries... *)
-let codegen = "v6" (* last: single binary per program *)
+let codegen = "v7" (* last: no more dedicated yield *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v1"

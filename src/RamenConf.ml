@@ -279,7 +279,8 @@ let in_ringbuf_name_merging conf func parent_index =
     string_of_int parent_index ^".r"
 
 let in_ringbuf_names conf func =
-  if func.Func.merge_inputs then
+  if func.Func.parents = [] then []
+  else if func.Func.merge_inputs then
     List.mapi (fun i _ ->
       in_ringbuf_name_merging conf func i
     ) func.Func.parents

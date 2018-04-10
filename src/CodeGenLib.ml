@@ -595,28 +595,6 @@ let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
       else
         Lwt.return ((), true)))
 
-let yield sersize_of_tuple time_of_tuple serialize_tuple select every =
-  let worker_name = getenv ~def:"?" "fq_name" in
-  let get_binocle_tuple () =
-    get_binocle_tuple worker_name None None None in
-  worker_start worker_name get_binocle_tuple (fun _conf ->
-    let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-    in
-    let outputer =
-      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                  serialize_tuple in
-    let rec loop () =
-      if !quit then return_unit else (
-        let start = Unix.gettimeofday () in
-        CodeGenLib_IO.on_each_input_pre () ;
-        let%lwt () = outputer (select Uint64.zero () ()) in
-        let sleep_time = every -. Unix.gettimeofday () +. start in
-        if sleep_time > 0. then
-          Lwt_unix.sleep sleep_time >>= loop
-        else loop ()
-      ) in
-    loop ())
-
 (*
  * Aggregate operation
  *)
@@ -810,6 +788,22 @@ let merge_rbs ?while_ ?delay_rec merge_on merge_timeout read_tuple rbs k =
   | exception Exit -> return_unit
   | heap -> loop heap
 
+let yield_every ~while_ read_tuple every k =
+  !logger.debug "YIELD operation"  ;
+  let tx = RingBuf.empty_tx () in
+  let rec loop () =
+    if !quit then return_unit else (
+      let start = Unix.gettimeofday () in
+      let in_tuple = read_tuple tx in
+      let%lwt () = k 0 in_tuple in
+      let sleep_time = every -. Unix.gettimeofday () +. start in
+      if sleep_time > 0. then (
+        !logger.debug "Sleeping for %f seconds" sleep_time ;
+        Lwt_unix.sleep sleep_time >>= loop
+      ) else loop ()
+    ) in
+  loop ()
+
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
@@ -871,7 +865,8 @@ let aggregate
       (global_state : 'global_state)
       (group_init : 'global_state -> 'aggr)
       (field_of_tuple : 'tuple_out -> string -> string)
-      (notify_url : string) =
+      (notify_url : string)
+      (every : float) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =
     IntGauge.make RamenConsts.MetricNames.group_count
@@ -1335,7 +1330,8 @@ let aggregate
     let while_ () = if !quit then return_false else return_true in
     let tuple_reader =
       match rb_ins with
-      | [] -> assert false
+      | [] -> (* yield expression *)
+          yield_every ~while_ read_tuple every
       | [rb_in] ->
           read_single_rb ~while_ ~delay_rec:sleep_in read_tuple rb_in
       | rb_ins ->

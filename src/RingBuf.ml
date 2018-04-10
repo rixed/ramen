@@ -43,6 +43,7 @@ external dequeue_commit : tx -> unit = "wrap_ringbuf_dequeue_commit"
 external dequeue : t -> bytes = "wrap_ringbuf_dequeue"
 external read_first : t -> tx = "wrap_ringbuf_read_first"
 external read_next : tx -> tx = "wrap_ringbuf_read_next"
+external empty_tx : unit -> tx = "wrap_empty_tx"
 
 external write_float : tx -> int -> float -> unit = "write_float"
 external write_string : tx -> int -> string -> unit = "write_str"

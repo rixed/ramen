@@ -252,6 +252,18 @@ CAMLprim value wrap_ringbuf_read_next(value tx)
   }
 }
 
+// Return an empty TX, unusable for anything but looking legit to the
+// compiler.
+CAMLprim value wrap_empty_tx(void)
+{
+  CAMLparam0();
+  CAMLlocal1(tx);
+  tx = alloc_tx();
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  memset(wrtx, 0, sizeof(*wrtx));
+  CAMLreturn(tx);
+}
+
 /* Lower level API */
 
 CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)

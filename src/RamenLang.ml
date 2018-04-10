@@ -74,6 +74,7 @@ type syntax_error =
   | UnknownFunc of string
   | NoAccessToGeneratedFields of { alias : string }
   | UnsolvableDependencyLoop of { program : string }
+  | EveryWithFrom
 
 (* TODO: Move all errors related to compilation into Compiler *)
 exception SyntaxError of syntax_error
@@ -142,6 +143,8 @@ let string_of_syntax_error =
     "Cannot access output field "^ alias ^" as it is the result of a generator"
   | UnsolvableDependencyLoop { program } ->
     "Unsolvable dependency loop prevent the compilation of "^ program
+  | EveryWithFrom ->
+    "Cannot use an every clause in conjunction with a from clause"
 
 let () =
   Printexc.register_printer (function
