@@ -68,7 +68,7 @@ let list_existsi f l =
   | exception Not_found -> false
   | _ -> true
 
-let print_exception ?(what="Exception:") e =
+let print_exception ?(what="Exception") e =
   !logger.error "%s: %s\n%s" what
     (Printexc.to_string e)
     (Printexc.get_backtrace ())

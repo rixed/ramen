@@ -348,7 +348,7 @@ message which, if you are used to SQL, might surprise you:
 $ ramen compile --root=root root/hosts.ramen
 15h39m57: Parsing program hosts
 15h39m57: Typing program hosts
-15h39m57: Exception:: In function memory: equality must not be nullable
+15h39m57: Exception: In function memory: equality must not be nullable
 ----
 
 What is this equality and why must not it be nullable? What does that even

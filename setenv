@@ -1,0 +1,4 @@
+#!/bin/sh
+
+echo "set -x RAMEN_ROOT_DIR $PWD/examples/programs"
+echo "set -x RAMEN_BUNDLE_DIR $PWD/bundle"
