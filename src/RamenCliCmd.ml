@@ -520,7 +520,7 @@ let graphite conf daemonize to_stderr port () =
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   let logdir =
-    if to_stderr then None else Some (conf.C.persist_dir ^"/log") in
+    if to_stderr then None else Some (conf.C.persist_dir ^"/log/graphite") in
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir conf.C.debug ;
   if daemonize then do_daemonize () ;
