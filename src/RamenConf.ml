@@ -84,20 +84,22 @@ struct
   (* TODO: cache if binary hasn't changed or asked very recently *)
   let of_bin fname : t =
     !logger.debug "Reading config from %s..." fname ;
-    match Unix.open_process_in fname with
-    | exception Unix.Unix_error (ENOENT, _, _) ->
+    (* Got some Unix_error(EBADF, "close_process_in", "") suggesting the
+     * fd is closed several times so limit the magic: *)
+    match Legacy.Unix.open_process_in fname with
+    | exception Legacy.Unix.Unix_error (ENOENT, _, _) ->
         raise (CannotFindBinary fname)
     | ic ->
         let close () =
-          match Unix.close_process_in ic with
-          | Unix.WEXITED o -> ()
+          match Legacy.Unix.close_process_in ic with
+          | Legacy.Unix.WEXITED o -> ()
           | s ->
               !logger.error "Process %s exited with %s"
                 fname
                 (string_of_process_status s) in
         try
-          finally close Marshal.from_channel ic
-        with BatInnerIO.No_more_input ->
+          finally close Legacy.Marshal.from_channel ic
+        with End_of_file | Failure _ ->
           raise (CannotFindBinary fname)
 
   let bin_of_program_name root_path program_name =
