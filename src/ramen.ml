@@ -73,16 +73,16 @@ let report_period =
                    ~env ["report-period"] in
   Arg.(value (opt float RamenConsts.default_report_period i))
 
-let start =
+let supervisor =
   Term.(
-    (const RamenCliCmd.start
+    (const RamenCliCmd.supervisor
       $ copts
       $ daemonize
       $ to_stdout
       $ max_archives
       $ autoreload
       $ report_period),
-    info ~doc:RamenConsts.CliInfo.start "start")
+    info ~doc:RamenConsts.CliInfo.supervisor "supervisor")
 
 (*
  * Examine the ringbuffers
@@ -448,7 +448,7 @@ let default =
 
 let () =
   match Term.eval_choice default [
-    start ; compile ; run ; kill ; tail ; timeseries ; timerange ;
+    supervisor ; compile ; run ; kill ; tail ; timeseries ; timerange ;
     ps ; dequeue ; summary ; repair ; graphite ; test ; autocomplete
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0

@@ -24,7 +24,7 @@ let make_copts debug persist_dir rand_seed keep_temp_files =
   C.make_conf ~debug ~keep_temp_files persist_dir
 
 (*
- * `ramen start`
+ * `ramen supervisor`
  *
  * Start the process supervisor, which will keep running the programs
  * present in the configuration/rc file (and kill the others).
@@ -33,7 +33,8 @@ let make_copts debug persist_dir rand_seed keep_temp_files =
  * The actual work is done in module RamenProcesses.
  *)
 
-let start conf daemonize to_stderr max_archives autoreload report_period () =
+let supervisor conf daemonize to_stderr max_archives autoreload report_period
+               () =
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   let logdir =

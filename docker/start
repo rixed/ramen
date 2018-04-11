@@ -19,4 +19,4 @@ OCAMLRUNPARAM=b
 export OCAMLRUNPARAM
 
 ulimit -v 2000000
-exec nice ionice -c 2 ramen start $@
+exec nice ionice -c 2 ramen supervisor $@

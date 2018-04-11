@@ -30,7 +30,7 @@ end
 module CliInfo =
 struct
   (* Commands *)
-  let start = "Start the processes supervisor"
+  let supervisor = "Start the processes supervisor"
   let graphite = "Start a Graphite impersonator"
   let compile = "Compile each given source file into an executable"
   let run = "Run one (or several) compiled program(s)"

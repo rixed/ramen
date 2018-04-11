@@ -1518,13 +1518,13 @@ is given hereafter.
 
 === Starting the Workers Supervisor
 
-+ramen start+ will start a daemon that will essentially merely check that
++ramen supervisor+ will start a daemon that will essentially merely check that
 the workers specified in the running-configuration are indeed working.
 When starting new worker it will first check that types are compatible with
 the other workers (or report an error), create the ring buffers and "connect"
 the workers properly.
 
-See +ramen start --help+ for more.
+See +ramen supervisor --help+ for more.
 
 To stop the supervisor, merely sends it a TERM or INT signal. It will then
 stops all workers and exit. Workers themselves will save their state so that

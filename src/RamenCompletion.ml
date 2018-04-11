@@ -17,7 +17,7 @@ let complete lst s =
 
 let complete_commands s =
   let commands =
-    [ "start", RamenConsts.CliInfo.start ;
+    [ "supervisor", RamenConsts.CliInfo.supervisor ;
       "compile", RamenConsts.CliInfo.compile ;
       "run", RamenConsts.CliInfo.run ;
       "kill", RamenConsts.CliInfo.kill ;
@@ -147,7 +147,7 @@ let complete str () =
         "--persist-dir=", RamenConsts.CliInfo.persist_dir ] in
     let completions =
       (match command with
-      | "start" ->
+      | "supervisor" ->
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
             "--autoreload=", RamenConsts.CliInfo.autoreload ;

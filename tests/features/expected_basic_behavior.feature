@@ -26,7 +26,7 @@ Feature: The Ramen cli behaves according to common expectations.
 
     Examples:
       | subcommand |
-      | start      |
+      | supervisor |
       | compile    |
       | run        |
       | kill       |

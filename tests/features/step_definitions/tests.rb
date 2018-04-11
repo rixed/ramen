@@ -136,11 +136,11 @@ Given /(.*\.ramen) is compiled( as (.*))?/ do |source, opt_bin|
   end
 end
 
-Given "ramen is started" do
+Given "ramen supervisor is started" do
   if $ramen_pid.nil?
     step "the environment variable RAMEN_PERSIST_DIR is set"
     # Cannot daemonize or we won't know the actual pid:
-    $ramen_pid = Process.spawn('ramen start')
+    $ramen_pid = Process.spawn('ramen supervisor')
   end
 end
 

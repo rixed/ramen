@@ -30,7 +30,7 @@ Feature: We can run and kill any program in any order
       """
       define yi as yield 1 as v every 1 second;
       """
-    And ramen is started
+    And ramen supervisor is started
 
   Scenario: I can run a worker that depends on nobody.
     Given tests/nodep.ramen is compiled

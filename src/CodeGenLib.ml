@@ -1397,7 +1397,7 @@ let casing codegen_version rc_str rc_marsh lst =
         | exception Not_found ->
           Printf.eprintf
             "Unknown operation %S.\n\
-             Trying to run a Ramen program? Try `ramen start %s`\n"
+             Trying to run a Ramen program? Try `ramen run %s`\n"
             name Sys.executable_name ;
             exit 3
         | f -> f ()) in
