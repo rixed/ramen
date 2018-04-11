@@ -13,17 +13,27 @@ open Lwt
 open RamenLog
 open RamenHelpers
 
+let http_get _worker cmd =
+  RamenHttpHelpers.http_notify cmd
+
+let execute_cmd worker cmd =
+  match%lwt run ~timeout:5. [| "/bin/sh"; "-c"; cmd |] with
+  | exception e ->
+      !logger.error "While executing command %S from %s: %s"
+        cmd worker
+        (Printexc.to_string e) ;
+      return_unit
+  | stdout, stderr ->
+      if stdout <> "" then !logger.debug "cmd: %s" stdout ;
+      if stderr <> "" then !logger.error "cmd: %s" stderr ;
+      return_unit
+
+let looks_like_http s =
+  String.starts_with s "http://"
+
 let start conf rb =
   RamenSerialization.read_notifs rb (fun (worker, cmd) ->
     !logger.info "Received execute instruction from %s: %s"
       worker cmd ;
-    match%lwt run ~timeout:5. [| "/bin/sh"; "-c"; cmd |] with
-    | exception e ->
-        !logger.error "While executing command %S from %s: %s"
-          cmd worker
-          (Printexc.to_string e) ;
-        return_unit
-    | stdout, stderr ->
-        if stdout <> "" then !logger.debug "cmd: %s" stdout ;
-        if stderr <> "" then !logger.error "cmd: %s" stderr ;
-        return_unit)
+    (if looks_like_http cmd then http_get
+     else execute_cmd) worker cmd)
