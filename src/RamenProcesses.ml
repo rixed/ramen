@@ -251,6 +251,9 @@ let rec wait_all_pids_loop () =
   match%lwt Lwt_unix.waitpid [Unix.WNOHANG] 0 with
   | exception Unix.Unix_error (Unix.EINTR, _, _) ->
     wait_all_pids_loop ()
+  | exception Unix.Unix_error (Unix.ECHILD, _, _) ->
+    (* Will happen if we have no children yet *)
+    Lwt_unix.sleep 1. >>= wait_all_pids_loop
   | exception exn ->
     (* This should not be used *)
     !logger.error "waitpid: %s" (Printexc.to_string exn) ;
