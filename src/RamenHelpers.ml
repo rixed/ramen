@@ -645,6 +645,42 @@ let memoize f =
         cached := Some r ;
         r
 
+let cache_clean_after = 1200.
+let cached reread time =
+  (* Cache is a hash from some key to last access time, last data time,
+   * and data. *)
+  let cache = Hashtbl.create 31 in
+  let next_clean = ref (Unix.time () +. Random.float cache_clean_after) in
+  fun k ->
+    let ret = ref None in
+    let now = Unix.time () in
+    Hashtbl.modify_opt k (function
+      | None ->
+          let t, v as a_t_v = time k, reread k in
+          ret := Some v ;
+          Some (ref now, t, v)
+      | Some (a, t, v) as prev ->
+          let t' = time k in
+          if t' <= t then (
+            ret := Some v ;
+            a := now ;
+            prev
+          ) else (
+            let v = reread k in
+            ret := Some v ;
+            Some (ref now, t', v)
+          )
+    ) cache ;
+    (* Clean the cache every now and then *)
+    if now > !next_clean then (
+      Hashtbl.filter_inplace (fun (a, _, _) ->
+        now -. !a  < cache_clean_after
+      ) cache ;
+      next_clean := now +. Random.float cache_clean_after ;
+      !logger.debug "Cache size is now %d" (Hashtbl.length cache)
+    ) ;
+    Option.get !ret
+
 let abbrev len s =
   if String.length s <= len then s else
   String.sub s 0 (len-3) ^"..."
