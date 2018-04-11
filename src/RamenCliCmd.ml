@@ -38,12 +38,23 @@ let start conf daemonize to_stderr max_archives autoreload report_period () =
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   let logdir =
     if to_stderr then None else Some (conf.C.persist_dir ^"/log") in
+  let repair_and_warn what rb =
+    if RingBuf.repair rb then
+      !logger.warning "Ringbuf for %s was damaged." what in
   Option.may mkdir_all logdir ;
   RamenProcesses.report_period := report_period ;
   logger := make_logger ?logdir conf.C.debug ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
   let notify_rb = prepare_start conf in
+  repair_and_warn "notifications" notify_rb ;
+  (* Also attempt to repair the report ringbuf. This is OK because there can
+   * be no writer right now, and since that's non-wrapping buffers reader part
+   * cannot be damaged: *)
+  let bname = C.report_ringbuf conf in
+  let report_rb = RingBuf.load bname in
+  finally (fun () -> RingBuf.unload report_rb)
+    (repair_and_warn "instrumentation") report_rb ;
   Lwt_main.run (
     join [
       (let%lwt () = Lwt_unix.sleep 1. in
