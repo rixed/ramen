@@ -23,6 +23,7 @@ extern inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint
 extern inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx);
 extern inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size);
+extern inline bool ringbuf_repair(struct ringbuf *rb);
 extern inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx);
 

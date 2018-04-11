@@ -119,6 +119,13 @@ let summary =
       $ rb_files),
     info ~doc:RamenConsts.CliInfo.summary "ringbuf-summary")
 
+let repair =
+  Term.(
+    (const RingBufCmd.repair
+      $ copts
+      $ rb_files),
+    info ~doc:RamenConsts.CliInfo.repair "repair-ringbuf")
+
 (*
  * Compiling/Running/Stopping
  *)
@@ -442,7 +449,7 @@ let default =
 let () =
   match Term.eval_choice default [
     start ; compile ; run ; kill ; tail ; timeseries ; timerange ;
-    ps ; dequeue ; summary ; graphite ; test ; autocomplete
+    ps ; dequeue ; summary ; repair ; graphite ; test ; autocomplete
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

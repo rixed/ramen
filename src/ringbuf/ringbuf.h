@@ -213,6 +213,31 @@ inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_si
   return sz;
 }
 
+/* When one stops/crash with an allocated tx then the ringbuffer will remains
+ * unusable (since the next process that tries to commit will wait forever
+ * until the cons catch up with the observed head. So whenever it is certain
+ * there are no readers and no writers the ringbuffer should be "repaired".
+ * In here, it is assumed that what has not been committed was totally lost.
+ * Returns true of a fix was indeed necessary. */
+inline bool ringbuf_repair(struct ringbuf *rb)
+{
+  struct ringbuf_file *rbf = rb->rbf;
+  bool needed = false;
+
+  // Avoid writing in this mmaped page for no good reason:
+  if (rbf->prod_head != rbf->prod_tail) {
+    rbf->prod_head = rbf->prod_tail;
+    needed = true;
+  }
+
+  if (rbf->cons_head != rbf->cons_tail) {
+    rbf->cons_head = rbf->cons_tail;
+    needed = true;
+  }
+
+  return needed;
+}
+
 // Initialize the given TX to point at the first record and return its size
 // Returns -1 if the file is empty, -2 on error
 inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx)

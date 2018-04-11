@@ -155,6 +155,15 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
   CAMLreturn(ret);
 }
 
+CAMLprim value wrap_ringbuf_repair(value rb_)
+{
+  CAMLparam1(rb_);
+  CAMLlocal1(ret);
+  struct ringbuf *rb = Ringbuf_val(rb_);
+  ret = Val_bool(ringbuf_repair(rb));
+  CAMLreturn(ret);
+}
+
 #define MAX_RINGBUF_MSG_SIZE 8096
 
 static void check_size(int size)

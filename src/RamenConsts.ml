@@ -43,6 +43,7 @@ struct
   let test = "Test a configuration against one or several tests"
   let dequeue = "Dequeue a message from a ringbuffer"
   let summary = "Dump info about a ring-buffer"
+  let repair = "Repair a ringbuf header, assuming no readers/writers"
   let autocomplete = "Autocomplete the given command"
 
   (* Options *)

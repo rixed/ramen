@@ -31,6 +31,7 @@ external load_ : string -> t = "wrap_ringbuf_load"
 let load = prepend_rb_name load_
 external unload : t -> unit = "wrap_ringbuf_unload"
 external stats : t -> stats = "wrap_ringbuf_stats"
+external repair : t -> bool = "wrap_ringbuf_repair"
 
 type tx (* abstract, represents an ongoing (de)queueing operation *)
 
