@@ -182,7 +182,8 @@ type running_process =
     (* purely for reporting: *)
     mutable last_exit : float ;
     mutable last_exit_status : string ;
-    mutable succ_failures : int }
+    mutable succ_failures : int ;
+    mutable quarantine_until : float }
 
 let print_running_process oc proc =
   Printf.fprintf oc "%s/%s (params=%a, parents=%a)"
@@ -192,7 +193,8 @@ let print_running_process oc proc =
 
 let make_running_process program_name bin func =
   { program_name ; bin ; pid = None ; last_killed = 0. ; func ;
-    last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 }
+    last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
+    quarantine_until = 0. }
 
 (* Returns the name of func input ringbuf for the given parent (if func is
  * merging, each parent uses a distinct one) and the file_spec. *)
@@ -279,6 +281,9 @@ let process_terminations running =
             proc.last_exit <- now ;
             proc.last_exit_status <- status_str ;
             proc.succ_failures <- proc.succ_failures + 1 ;
+            (* Wait before attempting to restart a failing worker: *)
+            proc.quarantine_until <-
+              now +. Random.float (min 5. (float_of_int proc.succ_failures)) ;
             proc.pid <- None ;
             raise Exit)
         ) running ;
@@ -293,17 +298,116 @@ let process_terminations running =
  * Need [must_run] so that types can be checked before linking with parents
  * and children.
  *)
-let try_start conf must_run proc =
+let really_start conf must_run proc parents children =
+  (* Create the input ringbufs.
+   * We now start the workers one by one in no
+   * particular order. The input and out-ref ingbufs are created when the
+   * worker start, and the out-ref is filled with the running (or should
+   * be running) children. Therefore, if a children fails to run the
+   * parents might block. Also, if a child has not been started yet its
+   * inbound ringbuf will not exist yet, again implying this worker will
+   * block.
+   * Each time a new worker is started or stopped the parents outrefs
+   * are updated. *)
+  !logger.debug "Creating in buffers..." ;
+  let input_ringbufs = C.in_ringbuf_names conf proc.func in
+  List.iter (fun rb_name ->
+    RingBuf.create rb_name RingBufLib.rb_words
+  ) input_ringbufs ;
+  (* And the pre-filled out_ref: *)
+  !logger.debug "Updating out-ref buffers..." ;
+  let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
+  let%lwt () =
+    Lwt_list.iter_s (fun c ->
+      let fname, specs as out = input_spec conf proc.func c in
+      (* The destination ringbuffer must exist before it's referenced in an
+       * out-ref, or the worker might err and throw away the tuples: *)
+      RingBuf.create fname RingBufLib.rb_words ;
+      RamenOutRef.add out_ringbuf_ref out
+    ) children in
+  (* Now that the out_ref exists, but before we actually fork the worker,
+   * we can start importing: *)
+  let%lwt () =
+    if proc.func.F.force_export then
+      let%lwt _ = RamenExport.make_temp_export conf proc.func in
+      return_unit
+    else return_unit in
+  (* Now actually start the binary *)
+  !logger.info "Start %s" proc.func.F.name ;
+  let notify_ringbuf =
+    (* Where that worker must write its notifications. Normally toward a
+     * ringbuffer that's read by Ramen, unless it's a test programs.
+     * Tests must not send their notifications to Ramen with real ones,
+     * but instead to a ringbuffer specific to the test_id. *)
+    C.notify_ringbuf conf in
+  let ocamlrunparam =
+    getenv ~def:(if conf.C.debug then "b" else "") "OCAMLRUNPARAM" in
+  let fq_name = proc.program_name ^"/"^ proc.func.name in
+  let env = [|
+    "OCAMLRUNPARAM="^ ocamlrunparam ;
+    "debug="^ string_of_bool conf.C.debug ;
+    "name="^ proc.func.F.name ; (* Used to choose the function to perform *)
+    "fq_name="^ fq_name ; (* Used for monitoring *)
+    "signature="^ proc.func.signature ;
+    "input_ringbufs="^ String.concat "," input_ringbufs ;
+    "output_ringbufs_ref="^ out_ringbuf_ref ;
+    "report_ringbuf="^ C.report_ringbuf conf ;
+    "report_period="^ string_of_float !report_period ;
+    "notify_ringbuf="^ notify_ringbuf ;
+    "rand_seed="^ (match !rand_seed with None -> ""
+                  | Some s -> string_of_int s) ;
+    (* We need to change this dir whenever the func signature or params
+     * change to prevent it to reload an incompatible state: *)
+    "persist_dir="^ conf.C.persist_dir ^"/workers/states/"
+                  ^ RamenVersions.worker_state
+                  ^"/"^ Config.version
+                  ^"/"^ fq_name
+                  ^"/"^ proc.func.F.signature
+                  ^"/"^ RamenTuple.param_signature proc.func.F.params ;
+    (match !logger.logdir with
+      | Some _ ->
+        "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
+      | None -> "no_log_dir=") |] in
+  (* Pass each individual parameter as a separate envvar; envvars are just
+   * non interpreted strings (but for the first '=' sign that will be
+   * interpreted by the OCaml runtime) so it should work regardless of the
+   * actual param name or value, and make it easier to see what's going
+   * on fro the shell: *)
+  let params =
+    List.enum proc.func.params /@
+    (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenScalar.print v) |>
+    Array.of_enum in
+  let env = Array.append env params in
+  let args =
+    (* For convenience let's add "ramen worker" and the fun name as
+     * arguments: *)
+    [| RamenConsts.worker_argv0 ; fq_name |] in
+  (* Better have the workers CWD where the binary is, so that any file name
+   * mentioned in the program is relative to the program. *)
+  let cwd = Filename.dirname proc.bin in
+  let cmd = Filename.basename proc.bin in
+  let%lwt pid =
+    wrap (fun () -> run_background ~cwd cmd args env) in
+  !logger.debug "Function %s now runs under pid %d" fq_name pid ;
+  proc.pid <- Some pid ;
+  (* Update the parents out_ringbuf_ref: *)
+  Lwt_list.iter_p (fun p ->
+    let out_ref =
+      C.out_ringbuf_names_ref conf p in
+    RamenOutRef.add out_ref (input_spec conf p proc.func)
+  ) parents
+
+let really_try_start conf must_run proc =
   !logger.info "Starting operation %a"
     print_running_process proc ;
   assert (proc.pid = None) ;
-  let ps, cs = relatives proc.func must_run in
+  let parents, children = relatives proc.func must_run in
   (* We must not start if a parent is missing: *)
   let parents_ok =
     List.fold_left (fun ok (p_prog, p_func) ->
       if List.exists (fun func ->
            func.F.program_name = p_prog && func.F.name = p_func
-         ) ps then ok
+         ) parents then ok
       else (
         !logger.error "Parent of %s/%s is missing: %s/%s"
           proc.program_name proc.func.name
@@ -322,109 +426,23 @@ let try_start conf must_run proc =
       false in
   let linkage_ok =
     List.fold_left (fun ok p ->
-      check_linkage p proc.func && ok) true ps in
+      check_linkage p proc.func && ok) true parents in
   let linkage_ok =
     List.fold_left (fun ok c ->
-      check_linkage proc.func c && ok) linkage_ok cs in
-  if parents_ok && linkage_ok then (
-    (* Create the input ringbufs.
-     * We now start the workers one by one in no
-     * particular order. The input and out-ref ingbufs are created when the
-     * worker start, and the out-ref is filled with the running (or should
-     * be running) children. Therefore, if a children fails to run the
-     * parents might block. Also, if a child has not been started yet its
-     * inbound ringbuf will not exist yet, again implying this worker will
-     * block.
-     * Each time a new worker is started or stopped the parents outrefs
-     * are updated. *)
-    !logger.debug "Creating in buffers..." ;
-    let input_ringbufs = C.in_ringbuf_names conf proc.func in
-    List.iter (fun rb_name ->
-      RingBuf.create rb_name RingBufLib.rb_words
-    ) input_ringbufs ;
-    (* And the pre-filled out_ref: *)
-    !logger.debug "Updating out-ref buffers..." ;
-    let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
-    let%lwt () =
-      Lwt_list.iter_s (fun c ->
-        let fname, specs as out = input_spec conf proc.func c in
-        (* The destination ringbuffer must exist before it's referenced in an
-         * out-ref, or the worker might err and throw away the tuples: *)
-        RingBuf.create fname RingBufLib.rb_words ;
-        RamenOutRef.add out_ringbuf_ref out
-      ) cs in
-    (* Now that the out_ref exists, but before we actually fork the worker,
-     * we can start importing: *)
-    let%lwt () =
-      if proc.func.F.force_export then
-        let%lwt _ = RamenExport.make_temp_export conf proc.func in
-        return_unit
-      else return_unit in
-    (* Now actually start the binary *)
-    !logger.info "Start %s" proc.func.F.name ;
-    let notify_ringbuf =
-      (* Where that worker must write its notifications. Normally toward a
-       * ringbuffer that's read by Ramen, unless it's a test programs.
-       * Tests must not send their notifications to Ramen with real ones,
-       * but instead to a ringbuffer specific to the test_id. *)
-      C.notify_ringbuf (* TODO ~test_id:program.test_id *) conf in
-    let ocamlrunparam =
-      getenv ~def:(if conf.C.debug then "b" else "") "OCAMLRUNPARAM" in
-    let fq_name = proc.program_name ^"/"^ proc.func.name in
-    let env = [|
-      "OCAMLRUNPARAM="^ ocamlrunparam ;
-      "debug="^ string_of_bool conf.C.debug ;
-      "name="^ proc.func.F.name ; (* Used to choose the function to perform *)
-      "fq_name="^ fq_name ; (* Used for monitoring *)
-      "signature="^ proc.func.signature ;
-      "input_ringbufs="^ String.concat "," input_ringbufs ;
-      "output_ringbufs_ref="^ out_ringbuf_ref ;
-      "report_ringbuf="^ C.report_ringbuf conf ;
-      "report_period="^ string_of_float !report_period ;
-      "notify_ringbuf="^ notify_ringbuf ;
-      "rand_seed="^ (match !rand_seed with None -> ""
-                    | Some s -> string_of_int s) ;
-      (* We need to change this dir whenever the func signature or params
-       * change to prevent it to reload an incompatible state: *)
-      "persist_dir="^ conf.C.persist_dir ^"/workers/states/"
-                    ^ RamenVersions.worker_state
-                    ^"/"^ Config.version
-                    ^"/"^ fq_name
-                    ^"/"^ proc.func.F.signature
-                    ^"/"^ RamenTuple.param_signature proc.func.F.params ;
-      (match !logger.logdir with
-        | Some _ ->
-          "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
-        | None -> "no_log_dir=") |] in
-    (* Pass each individual parameter as a separate envvar; envvars are just
-     * non interpreted strings (but for the first '=' sign that will be
-     * interpreted by the OCaml runtime) so it should work regardless of the
-     * actual param name or value, and make it easier to see what's going
-     * on fro the shell: *)
-    let params =
-      List.enum proc.func.params /@
-      (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenScalar.print v) |>
-      Array.of_enum in
-    let env = Array.append env params in
-    let args =
-      (* For convenience let's add "ramen worker" and the fun name as
-       * arguments: *)
-      [| RamenConsts.worker_argv0 ; fq_name |] in
-    (* Better have the workers CWD where the binary is, so that any file name
-     * mentioned in the program is relative to the program. *)
-    let cwd = Filename.dirname proc.bin in
-    let cmd = Filename.basename proc.bin in
-    let%lwt pid =
-      wrap (fun () -> run_background ~cwd cmd args env) in
-    !logger.debug "Function %s now runs under pid %d" fq_name pid ;
-    proc.pid <- Some pid ;
-    (* Update the parents out_ringbuf_ref: *)
-    Lwt_list.iter_p (fun p ->
-      let out_ref =
-        C.out_ringbuf_names_ref conf p in
-      RamenOutRef.add out_ref (input_spec conf p proc.func)
-    ) ps
-  ) else return_unit
+      check_linkage proc.func c && ok) linkage_ok children in
+  if parents_ok && linkage_ok then
+    really_start conf must_run proc parents children
+  else return_unit
+
+let try_start conf must_run proc =
+  let now = Unix.gettimeofday () in
+  if proc.quarantine_until > now then (
+    !logger.debug "Operation %a still in quarantine"
+      print_running_process proc ;
+    return_unit
+  ) else (
+    really_try_start conf must_run proc
+  )
 
 let try_kill conf must_run proc =
   let pid = Option.get proc.pid in
@@ -432,7 +450,7 @@ let try_kill conf must_run proc =
    * parent out-ref: if it's not replaced then the last unprocessed
    * tuples are lost. If it's indeed a replacement then the new version
    * will have a chance to process the left overs. *)
-  let ps, _cs = relatives proc.func must_run in
+  let parents, _children = relatives proc.func must_run in
   (* We must also remove this proc from all its parent out-ref. *)
   let input_ringbufs = C.in_ringbuf_names conf proc.func in
   let%lwt () =
@@ -441,7 +459,7 @@ let try_kill conf must_run proc =
         C.out_ringbuf_names_ref conf p in
       Lwt_list.iter_s (fun this_in ->
         RamenOutRef.remove parent_out_ref this_in) input_ringbufs
-    ) ps in
+    ) parents in
   (* Start with a TERM (if last_killed = 0.) and then after 5s send a
    * KILL if the worker is still running. *)
   let now = Unix.gettimeofday () in
