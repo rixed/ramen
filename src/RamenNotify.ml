@@ -54,7 +54,8 @@ let execute_cmd worker cmd =
       return_unit
 
 let start conf rb =
-  RamenSerialization.read_notifs rb (fun (worker, notif) ->
+  let while_ () = if !RamenProcesses.quit then return_false else return_true in
+  RamenSerialization.read_notifs ~while_ rb (fun (worker, notif) ->
     !logger.info "Received execute instruction from %s: %s"
       worker notif ;
     match PPP.of_string_exc RamenOperation.notification_ppp_ocaml notif with

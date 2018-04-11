@@ -43,6 +43,4 @@ debtmp/
 *.x
 examples/**/*.ml
 tests/**/*.ml
-tests/*.ml
 tests/*.success
-examples/prometheus-alertmanager.yml
