@@ -866,7 +866,7 @@ let aggregate
       (global_state : 'global_state)
       (group_init : 'global_state -> 'aggr)
       (field_of_tuple : 'tuple_out -> string -> string)
-      (notify_url : string)
+      (notifications : string list)
       (every : float) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =
@@ -900,9 +900,9 @@ let aggregate
     let outputer =
       let do_out tuple =
         let%lwt () =
-          if notify_url <> "" then
-            notify conf notify_rb worker_name notify_url field_of_tuple tuple
-          else return_unit in
+          Lwt_list.iter_s (fun notif ->
+            notify conf notify_rb worker_name notif field_of_tuple tuple
+          ) notifications in
         tuple_outputer tuple
       in
       generate_tuples do_out in

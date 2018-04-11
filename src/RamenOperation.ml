@@ -53,6 +53,41 @@ type file_spec = { fname : string ; unlink : bool }
 type csv_specs =
   { separator : string ; null : string ; fields : RamenTuple.typ }
 
+(* Type of notifications. As those are transmitted in a single text field we
+ * convert them using PPP. We could as well use Marshal but PPP is friendlier
+ * to `ramen tail`. We could also use the ramen language syntax but parsing
+ * it again from the notifier looks wasteful. *)
+
+type http_cmd_method = HttpCmdGet | HttpCmdPost
+  [@@ppp PPP_OCaml]
+
+type http_cmd =
+  { method_ : http_cmd_method
+      [@ppp_rename "method"] [@ppp_default HttpCmdGet] ;
+    url : string ;
+    headers : (string * string) list
+      [@ppp_default []] ;
+    body : string [@ppp_default ""] }
+  [@@ppp PPP_OCaml]
+
+type notification =
+  | ExecuteCmd of string
+  | HttpCmd of http_cmd
+  [@@ppp PPP_OCaml]
+
+let print_notification oc = function
+  | ExecuteCmd cmd ->
+      Printf.fprintf oc "EXECUTE %S" cmd
+  | HttpCmd http ->
+      Printf.fprintf oc "HTTP%s TO %S"
+        (match http.method_ with HttpCmdGet -> "" | HttpCmdPost -> " POST")
+        http.url ;
+      if http.headers <> [] then
+        List.print ~first:" WITH HEADERS " ~last:"" ~sep:", "
+          (fun oc (n, v) -> Printf.fprintf oc "%S:%S" n v) oc http.headers ;
+      if http.body <> "" then
+        Printf.fprintf oc " WITH BODY %S" http.body
+
 (* Type of an operation: *)
 
 type t =
@@ -69,7 +104,7 @@ type t =
       event_time : RamenEventTime.t option ;
       force_export : bool ;
       (* If not empty, will notify this URL with a HTTP GET: *)
-      notify_url : string ;
+      notifications : notification list ;
       key : Expr.t list ;
       top : (Expr.t (* N *) * Expr.t (* by *)) option ;
       commit_when : Expr.t ;
@@ -112,7 +147,7 @@ let print fmt =
     if force_export then Printf.fprintf fmt " EXPORT" in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
-                force_export ; notify_url ; key ; top ; commit_when ;
+                force_export ; notifications ; key ; top ; commit_when ;
                 commit_before ; flush_how ; from ; every } ->
     Printf.fprintf fmt "FROM %a"
       (List.print ~first:"" ~last:"" ~sep print_single_quoted) from ;
@@ -129,10 +164,11 @@ let print fmt =
       Printf.fprintf fmt " BY %a"
         (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) b
     ) sort ;
-    Printf.fprintf fmt " SELECT %a%s%s"
-      (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
-      (if fields <> [] && and_all_others then sep else "")
-      (if and_all_others then "*" else "") ;
+    if fields <> [] || not and_all_others then
+      Printf.fprintf fmt " SELECT %a%s%s"
+        (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
+        (if fields <> [] && and_all_others then sep else "")
+        (if and_all_others then "*" else "") ;
     if every > 0. then
       Printf.fprintf fmt " EVERY %g SECONDS" every ;
     if not (Expr.is_true where) then
@@ -148,15 +184,16 @@ let print fmt =
         (Expr.print false) by) top ;
     if not (Expr.is_true commit_when) ||
        flush_how <> Reset ||
-       notify_url <> "" then (
-      let sep = ref "" in
-      if flush_how = Reset && notify_url = "" then (
-        Printf.fprintf fmt " COMMIT" ; sep := ", ") ;
+       notifications <> [] then (
+      let sep = ref " " in
+      if flush_how = Reset && notifications = [] then (
+        Printf.fprintf fmt "%sCOMMIT" !sep ; sep := ", ") ;
       if flush_how <> Reset then (
         Printf.fprintf fmt "%s%a" !sep print_flush_method flush_how ;
         sep := ", ") ;
-      if notify_url <> "" then (
-        Printf.fprintf fmt "%sNOTIFY %S" !sep notify_url ;
+      if notifications <> [] then (
+        List.print ~first:!sep ~last:"" ~sep:!sep print_notification
+          fmt notifications ;
         sep := ", ") ;
       if not (Expr.is_true commit_when) then
         Printf.fprintf fmt "%s %a"
@@ -392,7 +429,7 @@ let check params =
               raise (SyntaxError e)
         | _ -> ()) op
 
-    (* TODO: url_notify: check field names from text templates *)
+    (* TODO: notifications: check field names from text templates *)
 
   | ReadCSVFile _ -> () (* TODO: check_event_time! *)
   | ListenFor _ -> ()
@@ -510,14 +547,42 @@ struct
      strinG "when" +- blanks ++ Expr.Parser.p) m
 
   type commit_spec =
-    | NotifySpec of string
+    | NotifySpec of notification
     | FlushSpec of flush_method
     | CommitSpec (* we would commit anyway, just a placeholder *)
 
-  let notify_clause m =
-    let m = "notify clause" :: m in
-    ((strinG "notify" ||| strinG "execute") -- blanks -+ quoted_string >>:
-     fun s -> NotifySpec s) m
+  let list_sep_and =
+    (blanks -- strinG "and" -- blanks) |||
+    (opt_blanks -- char ',' -- opt_blanks)
+
+  let notification_clause m =
+    let execute m =
+      let m = "execute clause" :: m in
+      (strinG "execute" -- blanks -+ quoted_string >>:
+       fun s -> ExecuteCmd s) m in
+    let header m =
+      let m = "http header" :: m in
+      (quoted_string +- opt_blanks +- char ':' +- opt_blanks ++
+       quoted_string) m in
+    let http_cmd m =
+      let m = "http notification" :: m in
+      (strinG "http" -+
+       optional ~def:HttpCmdGet
+         (blanks -+
+          (strinG "get" >>: fun () -> HttpCmdGet) |||
+          (strinG "post" >>: fun () -> HttpCmdPost)) +-
+       blanks ++ quoted_string ++
+       optional ~def:[]
+         (blanks -- strinG "with" -- blanks -- (strinG "header" ||| strinG "headers") -+
+          several ~sep:list_sep_and header) ++
+       optional ~def:""
+         (blanks -- strinG "with" -- blanks -- strinG "body" -- blanks -+
+          quoted_string) >>:
+       fun (((method_, url), headers), body) ->
+        HttpCmd { method_ ; url ; headers ; body }) m
+    in
+    let m = "notification clause" :: m in
+    ((execute ||| http_cmd) >>: fun s -> NotifySpec s) m
 
   let flush m =
     let m = "flush clause" :: m in
@@ -539,10 +604,8 @@ struct
 
   let commit_clause m =
     let m = "commit clause" :: m in
-    let sep = (blanks -- strinG "and" -- blanks) |||
-              (opt_blanks -- char ',' -- opt_blanks) in
-    (several ~sep ~what:"commit clauses"
-       (dummy_commit ||| notify_clause ||| flush) ++
+    (several ~sep:list_sep_and ~what:"commit clauses"
+       (dummy_commit ||| notification_clause ||| flush) ++
      optional ~def:(false, default_commit_when)
       (blanks -+
        ((strinG "after" >>: fun _ -> false) |||
@@ -552,7 +615,7 @@ struct
   let from_clause m =
     let m = "from clause" :: m in
     (strinG "from" -- blanks -+
-     several ~sep:list_sep (func_identifier ~globs_allowed:true ~program_allowed:true)) m
+     several ~sep:list_sep_and (func_identifier ~globs_allowed:true ~program_allowed:true)) m
 
   let default_port_of_protocol = function
     | RamenProtocols.Collectd -> 25826
@@ -813,17 +876,17 @@ struct
         csv_specs = None || from <> default_from || every <> 0.
       and not_event_time = event_time = default_event_time in
       if not_listen && not_csv && not_instrumentation then
-        let flush_how, notify_url =
+        let flush_how, notifications =
           List.fold_left (fun (f, n) -> function
             | CommitSpec -> f, n
-            | NotifySpec n' -> (f, n') (* TODO: allow several notify *)
+            | NotifySpec n' -> (f, n'::n)
             | FlushSpec f' ->
                 if f = None then (Some f', n)
                 else raise (Reject "Several flush clauses")
-          ) (None, "") commit_specs in
+          ) (None, []) commit_specs in
         let flush_how = flush_how |? Reset in
         Aggregate { fields = select_fields ; and_all_others ; merge ; sort ;
-                    where ; force_export ; event_time ; notify_url ; key ;
+                    where ; force_export ; event_time ; notifications ; key ;
                     top ; commit_before ; commit_when ; flush_how ; from ;
                     every }
       else if not_aggregate && not_csv && not_event_time &&
@@ -860,7 +923,7 @@ struct
         merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
-        notify_url = "" ;\
+        notifications = [] ;\
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
@@ -881,7 +944,7 @@ struct
           StatelessFun2 (typ, Gt, \
             Field (typ, ref TupleIn, "packets"),\
             Const (typ, VI32 (Int32.of_int 0)))) ;\
-        force_export = false ; event_time = None ; notify_url = "" ;\
+        force_export = false ; event_time = None ; notifications = [] ;\
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
@@ -901,7 +964,7 @@ struct
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = true ; event_time = Some (("t", 10.), RamenEventTime.DurationConst 60.) ;\
-        notify_url = "" ;\
+        notifications = [] ;\
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
@@ -924,7 +987,7 @@ struct
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = true ; event_time = Some (("t1", 10.), RamenEventTime.StopField ("t2", 10.)) ;\
-        notify_url = "" ; key = [] ; top = None ;\
+        notifications = [] ; key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = ["foo"] ; every = 0. },\
@@ -940,13 +1003,15 @@ struct
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ;\
-        notify_url = "http://firebrigade.com/alert.php" ;\
+        notifications = [ \
+          HttpCmd { method_ = HttpCmdGet ; headers = [] ; body = "" ;\
+                    url = "http://firebrigade.com/alert.php" } ];\
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = ["foo"] ; every = 0. },\
-      (50, [])))\
-      (test_op p "from foo NOTIFY \"http://firebrigade.com/alert.php\"" |>\
+      (48, [])))\
+      (test_op p "from foo HTTP \"http://firebrigade.com/alert.php\"" |>\
        replace_typ_in_op)
 
     (Ok (\
@@ -971,7 +1036,7 @@ struct
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ; \
-        notify_url = "" ;\
+        notifications = [] ;\
         key = [ Expr.(\
           StatelessFun2 (typ, Div, \
             Field (typ, ref TupleIn, "start"),\
@@ -1008,7 +1073,7 @@ struct
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ; \
-        notify_url = "" ;\
+        notifications = [] ;\
         key = [] ; top = None ;\
         commit_when = Expr.(\
           StatelessFun2 (typ, Ge, \
@@ -1035,7 +1100,7 @@ struct
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ; \
-        notify_url = "" ;\
+        notifications = [] ;\
         key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
@@ -1085,7 +1150,7 @@ struct
         every = 1. ; force_export = true ; event_time = None ;\
         and_all_others = false ; merge = [], 0. ; sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
-        notify_url = "" ; key = [] ; top = None ;\
+        notifications = [] ; key = [] ; top = None ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ; flush_how = Reset ; from = [] },\
         (36, [])))\

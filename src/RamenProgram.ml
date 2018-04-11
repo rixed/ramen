@@ -87,7 +87,7 @@ struct
           merge = [], 0. ;\
           sort = None ;\
           where = RamenExpr.Const (typ, VBool true) ;\
-          notify_url = "" ;\
+          notifications = [] ;\
           key = [] ; top = None ;\
           commit_when = RamenExpr.Const (typ, VBool true) ;\
           commit_before = false ;\
@@ -111,7 +111,7 @@ struct
           every = 0. ; force_export = false ; event_time = None ;\
           and_all_others = false ; merge = [], 0. ; sort = None ;\
           where = RamenExpr.Const (typ, VBool true) ;\
-          notify_url = "" ; key = [] ; top = None ;\
+          notifications = [] ; key = [] ; top = None ;\
           commit_when = RamenExpr.Const (typ, VBool true) ;\
           commit_before = false ; flush_how = Reset ; from = [] } } ],\
       (44, [])))\

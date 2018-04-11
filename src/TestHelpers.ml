@@ -49,7 +49,7 @@ let replace_typ_in_operation =
   let open RamenOperation in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
-                force_export ; notify_url ; key ; top ; commit_before ;
+                force_export ; notifications ; key ; top ; commit_before ;
                 commit_when ; flush_how ; from ; every } ->
     Aggregate {
       fields =
@@ -61,7 +61,7 @@ let replace_typ_in_operation =
         Option.map (fun (n, u, b) ->
           n, Option.map replace_typ u, List.map replace_typ b) sort ;
       where = replace_typ where ;
-      event_time ; force_export ; notify_url ; from ;
+      event_time ; force_export ; notifications ; from ;
       key = List.map replace_typ key ;
       top = Option.map (fun (n, e) -> replace_typ n, replace_typ e) top ;
       commit_when = replace_typ commit_when ;

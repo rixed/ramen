@@ -13,8 +13,33 @@ open Lwt
 open RamenLog
 open RamenHelpers
 
-let http_get _worker cmd =
-  RamenHttpHelpers.http_notify cmd
+let http_notify worker http =
+  let open Cohttp in
+  let open Cohttp_lwt_unix in
+  let open RamenOperation in
+  let headers =
+    List.fold_left (fun h (n, v) ->
+      Header.add h n v
+    ) (Header.init_with "Connection" "close") http.headers in
+  let url = Uri.of_string http.url in
+  let thd =
+    match http.method_ with
+    | HttpCmdGet ->
+      Client.get ~headers url
+    | HttpCmdPost ->
+      let headers = Header.add headers "Content-type"
+                               RamenConsts.ContentTypes.urlencoded in
+      let body = Uri.pct_encode http.body |> Cohttp_lwt.Body.of_string in
+      Client.post ~headers ~body url
+  in
+  let%lwt resp, body = thd in
+  let code = resp |> Response.status |> Code.code_of_status in
+  if code <> 200 then (
+    let%lwt body = Cohttp_lwt.Body.to_string body in
+    !logger.error "Received code %d from %S (%S)" code http.url body ;
+    return_unit
+  ) else
+    Cohttp_lwt.Body.drain_body body
 
 let execute_cmd worker cmd =
   match%lwt run ~timeout:5. [| "/bin/sh"; "-c"; cmd |] with
@@ -28,12 +53,10 @@ let execute_cmd worker cmd =
       if stderr <> "" then !logger.error "cmd: %s" stderr ;
       return_unit
 
-let looks_like_http s =
-  String.starts_with s "http://"
-
 let start conf rb =
-  RamenSerialization.read_notifs rb (fun (worker, cmd) ->
+  RamenSerialization.read_notifs rb (fun (worker, notif) ->
     !logger.info "Received execute instruction from %s: %s"
-      worker cmd ;
-    (if looks_like_http cmd then http_get
-     else execute_cmd) worker cmd)
+      worker notif ;
+    match PPP.of_string_exc RamenOperation.notification_ppp_ocaml notif with
+    | ExecuteCmd cmd -> execute_cmd worker cmd
+    | HttpCmd http -> http_notify worker http)

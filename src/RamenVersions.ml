@@ -15,7 +15,7 @@ let codegen = "v7" (* last: no more dedicated yield *)
 let instrumentation_tuple = "v1"
 
 (* Notifications sent from workers to Ramen *)
-let notify_tuple = "v1"
+let notify_tuple = "v2" (* last: new notification type *)
 
 (* Ringbuf formats *)
 let ringbuf = "v2" (* last: non-wrapping ringbufs *)

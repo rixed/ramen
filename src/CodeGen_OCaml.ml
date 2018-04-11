@@ -1463,7 +1463,7 @@ let emit_merge_on name in_typ mentioned and_all_others oc es =
 let emit_aggregate oc name in_typ out_typ = function
   | RamenOperation.Aggregate
       { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
-        commit_before ; commit_when ; flush_how ; notify_url ; event_time ;
+        commit_before ; commit_when ; flush_how ; notifications ; event_time ;
         every ; _ } as op ->
   let mentioned =
     let all_exprs = RamenOperation.fold_expr [] (fun l s -> s :: l) op in
@@ -1518,13 +1518,16 @@ let emit_aggregate oc name in_typ out_typ = function
       \t\twhere_fast_ where_slow_ key_of_input_ %b \n\
       \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %s should_resubmit_\n\
-      \t\tglobal_init_ group_init_ field_of_tuple_ %S %f\n"
+      \t\tglobal_init_ group_init_ field_of_tuple_ %a %f\n"
     name
     (snd merge)
     (match sort with None -> 0 | Some (n, _, _) -> n)
     (key = [])
     commit_before (flush_how <> Never) when_to_check_for_commit
-    notify_url every
+    (List.print (fun oc n ->
+      let s = PPP.to_string RamenOperation.notification_ppp_ocaml n in
+      Printf.fprintf oc "%S" s)) notifications
+    every
   | _ -> assert false
 
 let sanitize_ocaml_fname s =
