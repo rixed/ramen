@@ -40,7 +40,7 @@ let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f
     | Empty -> Lwt.return wait_for_more
     | _ -> Lwt.return_false
   in
-  retry ?while_ ~on ~first_delay:0.001 ~max_delay:0.1 ?delay_rec
+  retry ?while_ ~on ~first_delay:0.001 ~max_delay:1. ?delay_rec
         ?max_retry_time (fun x -> Lwt.wrap (fun () -> f x))
 
 let sersize_of_string s =

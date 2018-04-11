@@ -429,7 +429,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                                (sersize_of_tuple file_spec.field_mask)
                                time_of_tuple in
           let rb_writer =
-            let retry_count = ref 0 in
+            let last_retry = ref 0. in
             (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
              * case the ringbuf disappear altogether because the child is
              * terminated then we won't deadloop.  Also, if one child is full
@@ -439,12 +439,12 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
              * retrying to write to the same child. *)
             RingBufLib.retry_for_ringbuf
               ~while_:(fun () ->
-                (* Also check from time to time we are still supposed to
+                (* Also check from time to time that we are still supposed to
                  * write in there: *)
-                incr retry_count ;
-                if !retry_count < 5 then return_true else (
-                  retry_count := 0 ;
-                  RamenOutRef.mem rb_ref_out_fname fname))
+                if !CodeGenLib_IO.now > !last_retry +. 3. then (
+                  last_retry := !CodeGenLib_IO.now ;
+                  RamenOutRef.mem rb_ref_out_fname fname
+                ) else return_true)
               ~delay_rec:sleep_out once
           in
           Hashtbl.add out_h fname (rb, rb_writer)
