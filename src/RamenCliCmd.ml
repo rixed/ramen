@@ -235,7 +235,16 @@ let read_stats conf =
   let typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
   let now = Unix.gettimeofday () in
-  let until = now in
+  let%lwt until =
+    match%lwt RamenSerialization.time_range bname typ event_time with
+    | None ->
+        !logger.warning "No time range information for instrumentation" ;
+        return now
+    | Some (_, ma) ->
+        if ma < now -. 120. then
+          !logger.warning "Instrumentation info is %ds old"
+            (int_of_float (now -. ma)) ;
+        return ma in
   (* FIXME: Not OK because we don't know if report-period has been
    * overridden on `ramen start` command line. Maybe at least make
    * `ramen ps` accept that option too? *)
@@ -271,7 +280,7 @@ let read_stats conf =
       | Some (time', stats') as prev ->
           if time' > time then prev else Some (time, stats)
     ) h)) ;
-  h [@@ocaml.warning "-8"]
+  return h [@@ocaml.warning "-8"]
 
 let int_or_na = function
   | None -> TermTable.ValStr "n/a"
@@ -292,7 +301,7 @@ let time_or_na = function
 let ps conf short with_header sort_col top () =
   logger := make_logger conf.C.debug ;
   (* Start by reading the last minute of instrumentation data: *)
-  let stats = read_stats conf in
+  let stats = Lwt_main.run (read_stats conf) in
   (* Now iter over all workers and display those stats: *)
   let open TermTable in
   let head, lines =
