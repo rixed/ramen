@@ -65,7 +65,7 @@ start() {
   rm -f /tmp/ringbuf_*
 
   # OCAMLPATH=$top_srcdir/  useless with embedded compiler
-  $ramen start --no-demo -d --seed 1234 --use-embedded-compiler --bundle-dir=$top_srcdir/bundle &
+  $ramen supervisor --no-demo -d --seed 1234 --use-embedded-compiler --bundle-dir=$top_srcdir/bundle &
   pid=$!
   add_temp_pid $pid
   if test -z "$ramen_pids" ; then

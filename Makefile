@@ -275,12 +275,16 @@ ringbuf_test.opt: \
 	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-check: unit-check func-check
+check: unit-check cli-check func-check
 
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
 	@OCAMLRUNPARAM=b ./all_tests.opt -bt || echo FAILURE
 	@./ringbuf_test.opt || echo 'FAILURE (ringbuf_test)'
+
+cli-check:
+	@echo 'Running CLI tests...'
+	@cd tests && cucumber
 
 RAMEN_TESTS = $(wildcard tests/*.test)
 

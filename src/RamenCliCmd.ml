@@ -257,7 +257,7 @@ let read_stats conf =
             (int_of_float (now -. ma)) ;
         return ma in
   (* FIXME: Not OK because we don't know if report-period has been
-   * overridden on `ramen start` command line. Maybe at least make
+   * overridden on `ramen supervisor` command line. Maybe at least make
    * `ramen ps` accept that option too? *)
   let since = until -. 2. *. !RamenProcesses.report_period in
   let get_string = function VString s -> s
