@@ -309,10 +309,21 @@ let really_start conf must_run proc parents children =
    * block.
    * Each time a new worker is started or stopped the parents outrefs
    * are updated. *)
+  let fq_name = proc.program_name ^"/"^ proc.func.name in
   !logger.debug "Creating in buffers..." ;
   let input_ringbufs = C.in_ringbuf_names conf proc.func in
   List.iter (fun rb_name ->
-    RingBuf.create rb_name RingBufLib.rb_words
+    RingBuf.create rb_name RingBufLib.rb_words ;
+    (* FIXME: if a worker started to write and we repair while it hasn't
+     * committed, that message will be lost. Better address this in repair
+     * itself by spinning a bit: if we can't see tail=head on a few tries
+     * then only assume it's broken. *)
+    let rb = RingBuf.load rb_name in
+    finally (fun () -> RingBuf.unload rb)
+      (fun () ->
+        if RingBuf.repair rb then
+          (* TODO: a binocle counter for that *)
+          !logger.warning "Ringbuf for %s was damaged" fq_name) ()
   ) input_ringbufs ;
   (* And the pre-filled out_ref: *)
   !logger.debug "Updating out-ref buffers..." ;
@@ -342,7 +353,6 @@ let really_start conf must_run proc parents children =
     C.notify_ringbuf conf in
   let ocamlrunparam =
     getenv ~def:(if conf.C.debug then "b" else "") "OCAMLRUNPARAM" in
-  let fq_name = proc.program_name ^"/"^ proc.func.name in
   let env = [|
     "OCAMLRUNPARAM="^ ocamlrunparam ;
     "debug="^ string_of_bool conf.C.debug ;
