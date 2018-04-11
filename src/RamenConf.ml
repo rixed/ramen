@@ -74,9 +74,11 @@ struct
   (* TODO: cache if binary hasn't changed or asked very recently *)
   let of_bin fname : t =
     !logger.debug "Reading config from %s..." fname ;
-    let v = with_stdout_from_command (fname ^" version") Legacy.input_line in
+    let v = with_stdout_from_command
+              fname [| fname ; "version" |] Legacy.input_line in
     if v = RamenVersions.codegen then
-      with_stdout_from_command (fname ^" 1nf0") Legacy.Marshal.from_channel
+      with_stdout_from_command
+        fname [| fname ; "1nf0" |] Legacy.Marshal.from_channel
     else (
       !logger.error "Executable %s is for version %s (I'm version %s)"
         fname v RamenVersions.codegen ;

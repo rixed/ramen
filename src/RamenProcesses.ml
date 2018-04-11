@@ -264,7 +264,7 @@ let process_terminations running =
             proc.pid <- None ;
             raise Exit)
         ) running ;
-        !logger.warning "Pid %d %s but I cannot find what worker is that."
+        !logger.debug "Pid %d %s but I cannot find what worker is that."
           pid status_str
       with Exit -> ()
     ) terms

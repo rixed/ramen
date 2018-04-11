@@ -259,30 +259,44 @@ let () = Printexc.register_printer (function
   | RunFailure st -> Some ("RunFailure "^ string_of_process_status st)
   | _ -> None)
 
-exception CannotExecCommand of string
+(* Trick from LWT: how to exit without executing the at_exit hooks: *)
+external sys_exit : int -> 'a = "caml_sys_exit"
 
-let with_subprocess cmd k =
+let with_subprocess cmd args k =
   (* Got some Unix_error(EBADF, "close_process_in", "") suggesting the
    * fd is closed several times so limit the magic: *)
-  let open Legacy in
-  let env = Unix.environment () in
-  match Unix.open_process_full cmd env with
-  | exception Unix.Unix_error (ENOENT, _, _) ->
-      raise (CannotExecCommand cmd)
-  | ics ->
-      let close () =
-        match Unix.close_process_full ics with
-        | Unix.WEXITED o -> ()
-        | s ->
-            !logger.error "Command %S exited with %s"
-              cmd (string_of_process_status s) in
-      try
-        finally close k ics
-      with End_of_file | Failure _ ->
-        raise (CannotExecCommand cmd)
+  let open Legacy.Unix in
+  !logger.debug "Going to exec %s %a" cmd (Array.print String.print) args ;
+  let env = environment () in
+  let his_in, my_in = pipe ~cloexec:false ()
+  and my_out, his_out = pipe ~cloexec:false ()
+  and my_err, his_err = pipe ~cloexec:false () in
+  match Unix.fork () with
+  | 0 -> (* Child *)
+    (try
+      (* Move the fd in pos 0, 1 and 2: *)
+      let move_fd s d =
+        dup2 ~cloexec:false s d ;
+        close s in
+      move_fd his_in stdin ;
+      move_fd his_out stdout ;
+      move_fd his_err stderr ;
+      execve cmd args env
+    with e ->
+      Printf.eprintf "Cannot execve: %s" (Printexc.to_string e) ;
+      sys_exit 127)
+  | pid -> (* Parent *)
+    close his_in ; close his_out ; close his_err ;
+    let close_all () =
+      close my_in ;
+      close my_out ;
+      close my_err in
+    finally close_all k (out_channel_of_descr my_in,
+                         in_channel_of_descr my_out,
+                         in_channel_of_descr my_err)
 
-let with_stdout_from_command cmd k =
-  with_subprocess cmd (fun (ic, _oc, _ec) -> k ic)
+let with_stdout_from_command cmd args k =
+  with_subprocess cmd args (fun (_ic, oc, _ec) -> k oc)
 
 (* Low level stuff: run jobs and return lines: *)
 let run ?timeout ?(to_stdin="") cmd =
@@ -436,9 +450,6 @@ let getenv ?def n =
     | None ->
       Printf.sprintf "Cannot find envvar %s" n |>
       failwith
-
-(* Trick from LWT: how to exit without executing the at_exit hooks: *)
-external sys_exit : int -> 'a = "caml_sys_exit"
 
 let do_daemonize () =
   let open Unix in
