@@ -46,32 +46,6 @@ let run_background ?cwd cmd args env =
     execve cmd args env
   | pid -> pid
 
-(*
- * Notifications:
- * To alleviate workers from the hassle to send HTTP notifications, those are
- * sent to Ramen via a ringbuffer. Advantages are many:
- * Workers do not need an HTTP client and are therefore smaller, faster to
- * link, and easier to port to another language. Also, other notification
- * mechanisms are easier to implement in a single location.
- *
- * TODO: quarantine workers when command fails?
- *)
-
-let process_notifications rb =
-  RamenSerialization.read_notifs rb (fun (worker, cmd) ->
-    !logger.info "Received execute instruction from %s: %s"
-      worker cmd ;
-    match%lwt run ~timeout:5. [| "/bin/sh"; "-c"; cmd |] with
-    | exception e ->
-        !logger.error "While executing command %S from %s: %s"
-          cmd worker
-          (Printexc.to_string e) ;
-        return_unit
-    | stdout, stderr ->
-        if stdout <> "" then !logger.debug "cmd: %s" stdout ;
-        if stderr <> "" then !logger.error "cmd: %s" stderr ;
-        return_unit)
-
 let cleanup_old_files max_archives conf =
   (* Have a list of directories and regexps and current version,
    * Iter through this list for file matching the regexp and that are also
@@ -624,15 +598,28 @@ let synchronize_running conf autoreload_delay =
   loop 0. (Hashtbl.create 0) (Hashtbl.create 0)
 
 (* To be called before synchronize_running *)
-let prepare_start conf =
-  (* Prepare ringbuffers for reports and notifications: *)
-  let rb_name = C.report_ringbuf conf in
-  RingBuf.create ~wrap:false rb_name RingBufLib.rb_words ;
+let repair_and_warn what rb =
+  if RingBuf.repair rb then
+    !logger.warning "Ringbuf for %s was damaged." what
+
+(* Prepare ringbuffer for notifications *)
+let prepare_notifs conf =
   let rb_name = C.notify_ringbuf conf in
   RingBuf.create rb_name RingBufLib.rb_words ;
   let notify_rb = RingBuf.load rb_name in
-  (* Install signal handlers *)
+  repair_and_warn "notifications" notify_rb ;
+  notify_rb
+
+(* Prepare ringbuffer for reports. *)
+let prepare_reports conf =
+  let rb_name = C.report_ringbuf conf in
+  RingBuf.create ~wrap:false rb_name RingBufLib.rb_words ;
+  let report_rb = RingBuf.load rb_name in
+  repair_and_warn "instrumentation" report_rb ;
+  report_rb
+
+(* Install signal handlers *)
+let prepare_signal_handlers () =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
-    quit := true)) ;
-  notify_rb
+    quit := true))

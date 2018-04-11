@@ -38,24 +38,22 @@ let supervisor conf daemonize to_stderr max_archives autoreload report_period
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   let logdir =
-    if to_stderr then None else Some (conf.C.persist_dir ^"/log") in
-  let repair_and_warn what rb =
-    if RingBuf.repair rb then
-      !logger.warning "Ringbuf for %s was damaged." what in
+    if to_stderr then None else Some (conf.C.persist_dir ^"/log/supervisor") in
   Option.may mkdir_all logdir ;
   RamenProcesses.report_period := report_period ;
   logger := make_logger ?logdir conf.C.debug ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
-  let notify_rb = prepare_start conf in
-  repair_and_warn "notifications" notify_rb ;
-  (* Also attempt to repair the report ringbuf. This is OK because there can
-   * be no writer right now, and since that's non-wrapping buffers reader part
-   * cannot be damaged: *)
-  let bname = C.report_ringbuf conf in
-  let report_rb = RingBuf.load bname in
-  finally (fun () -> RingBuf.unload report_rb)
-    (repair_and_warn "instrumentation") report_rb ;
+  (* Also attempt to repair the report/notifs ringbufs.
+   * This is OK because there can be no writer right now, and the report
+   * ringbuf being a non-wrapping buffer then reader part cannot be damaged
+   * any way. For notifications we could have the notifier reading though,
+   * so FIXME: smarter ringbuf_repair that spins before repairing. *)
+  prepare_signal_handlers () ;
+  let reports_rb = prepare_reports conf in
+  RingBuf.unload reports_rb ;
+  let notify_rb = prepare_notifs conf in
+  RingBuf.unload notify_rb ;
   Lwt_main.run (
     join [
       (let%lwt () = Lwt_unix.sleep 1. in
@@ -63,14 +61,35 @@ let supervisor conf daemonize to_stderr max_archives autoreload report_period
        async (fun () ->
          restart_on_failure "cleanup_old_files"
            (cleanup_old_files max_archives) conf) ;
-       async (fun () ->
-         restart_on_failure "process_notifications"
-           process_notifications notify_rb) ;
        return_unit) ;
       (* The main job of this process is to make what's actually running
        * in accordance to the running program list: *)
       restart_on_failure "synchronize_running"
         (synchronize_running conf) autoreload ])
+
+(*
+ * `ramen notifier`
+ *
+ * Start the notifier process, which will read the notifications ringbuf
+ * and perform whatever action it takes, most likely reaching out to
+ * external systems.
+ *
+ * The actual work is done in module RamenNotify.
+ *)
+
+let notifier conf daemonize to_stderr () =
+  if to_stderr && daemonize then
+    failwith "Options --daemonize and --to-stderr are incompatible." ;
+  let logdir =
+    if to_stderr then None else Some (conf.C.persist_dir ^"/log/notifier") in
+  Option.may mkdir_all logdir ;
+  logger := make_logger ?logdir conf.C.debug ;
+  if daemonize then do_daemonize () ;
+  RamenProcesses.prepare_signal_handlers () ;
+  let notify_rb = RamenProcesses.prepare_notifs conf in
+  Lwt_main.run (
+    restart_on_failure "process_notifications"
+      (RamenNotify.start conf) notify_rb)
 
 (*
  * `ramen compile`

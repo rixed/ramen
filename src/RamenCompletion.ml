@@ -18,6 +18,7 @@ let complete lst s =
 let complete_commands s =
   let commands =
     [ "supervisor", RamenConsts.CliInfo.supervisor ;
+      "notifier", RamenConsts.CliInfo.notifier ;
       "compile", RamenConsts.CliInfo.compile ;
       "run", RamenConsts.CliInfo.run ;
       "kill", RamenConsts.CliInfo.kill ;
@@ -152,6 +153,10 @@ let complete str () =
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
             "--autoreload=", RamenConsts.CliInfo.autoreload ;
             "--report-period=", RamenConsts.CliInfo.report_period ] @
+          copts
+       | "notifier" ->
+          [ "--daemonize", RamenConsts.CliInfo.daemonize ;
+            "--to-stdout", RamenConsts.CliInfo.to_stdout ] @
           copts
       | "compile" ->
           ("--bundle-dir=", RamenConsts.CliInfo.bundle_dir) ::

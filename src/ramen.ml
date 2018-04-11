@@ -39,7 +39,7 @@ let copts =
     $ keep_temp_files)
 
 (*
- * Start the processor supervisor
+ * Start the process supervisor
  *)
 
 let daemonize =
@@ -83,6 +83,18 @@ let supervisor =
       $ autoreload
       $ report_period),
     info ~doc:RamenConsts.CliInfo.supervisor "supervisor")
+
+(*
+ * Start the notifier
+ *)
+
+let notifier =
+  Term.(
+    (const RamenCliCmd.notifier
+      $ copts
+      $ daemonize
+      $ to_stdout),
+    info ~doc:RamenConsts.CliInfo.notifier "notifier")
 
 (*
  * Examine the ringbuffers
@@ -448,8 +460,10 @@ let default =
 
 let () =
   match Term.eval_choice default [
-    supervisor ; compile ; run ; kill ; tail ; timeseries ; timerange ;
-    ps ; dequeue ; summary ; repair ; graphite ; test ; autocomplete
+    supervisor ; graphite ; notifier ;
+    compile ; run ; kill ;
+    tail ; timeseries ; timerange ; ps ;
+    test ; dequeue ; summary ; repair ; autocomplete
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

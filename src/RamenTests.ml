@@ -276,7 +276,10 @@ let run conf root_path tests () =
   (* Start Ramen *)
   !logger.info "Starting ramen, using temp dir %s" conf.persist_dir ;
   mkdir_all conf.persist_dir ;
-  let notify_rb = RamenProcesses.prepare_start conf in
+  RamenProcesses.prepare_signal_handlers () ;
+  let notify_rb = RamenProcesses.prepare_notifs conf in
+  let report_rb = RamenProcesses.prepare_reports conf in
+  RingBuf.unload report_rb ;
   (* Run all tests: *)
   (* Note: The workers states must be cleaned in between 2 tests ; the
    * simpler is to draw a new test_id. *)
