@@ -75,17 +75,31 @@ struct
     (* Cache of path to date of last read and program *)
     let reread_data fname : t =
       !logger.debug "Reading config from %s..." fname ;
-      let v = with_stdout_from_command
-                fname [| fname ; "version" |] Legacy.input_line in
-      if v = RamenVersions.codegen then
-        with_stdout_from_command
-          fname [| fname ; "1nf0" |] Legacy.Marshal.from_channel
-      else (
+      match with_stdout_from_command
+              fname [| fname ; "version" |] Legacy.input_line with
+      | exception e ->
+          !logger.error "Cannot get version from %s: %s"
+            fname (Printexc.to_string e) ;
+          []
+      | v when v = RamenVersions.codegen ->
+          (try with_stdout_from_command
+                 fname [| fname ; "1nf0" |] Legacy.Marshal.from_channel
+           with e ->
+             !logger.error "Cannot get 1nf0 from %s: %s"
+               fname (Printexc.to_string e) ;
+             [])
+      | v ->
         !logger.error "Executable %s is for version %s (I'm version %s)"
           fname v RamenVersions.codegen ;
         []
-      ) in
-    cached reread_data mtime_of_file
+    and age_of_data fname =
+      try mtime_of_file fname
+      with e ->
+        !logger.error "Cannot get mtime of %s: %s"
+          fname (Printexc.to_string e) ;
+        0.
+    in
+    cached reread_data age_of_data
 
   let bin_of_program_name root_path program_name =
     (* Use an extension so we can still use the plain program_name for a

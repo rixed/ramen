@@ -283,7 +283,7 @@ let with_subprocess cmd args k =
       move_fd his_err stderr ;
       execve cmd args env
     with e ->
-      Printf.eprintf "Cannot execve: %s" (Printexc.to_string e) ;
+      Printf.eprintf "Cannot execve: %s\n%!" (Printexc.to_string e) ;
       sys_exit 127)
   | pid -> (* Parent *)
     close his_in ; close his_out ; close his_err ;
@@ -297,6 +297,10 @@ let with_subprocess cmd args k =
 
 let with_stdout_from_command cmd args k =
   with_subprocess cmd args (fun (_ic, oc, _ec) -> k oc)
+(*$= with_stdout_from_command & ~printer:identity
+  "glop" (with_stdout_from_command "/bin/echo" [|"/bin/echo";"glop"|] \
+          Legacy.input_line)
+ *)
 
 (* Low level stuff: run jobs and return lines: *)
 let run ?timeout ?(to_stdin="") cmd =
