@@ -4,6 +4,7 @@
     ("fixtures/cars.x", []) ];
   outputs = {
     "tests/fun_with_funcs/f" => {
+      timeout = 10;
       present = [
         { "first_1" => "552";
           "first_2" => "552";
