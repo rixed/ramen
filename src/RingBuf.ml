@@ -213,6 +213,9 @@ let seq_range bname =
   (* Returns the first and last available seqnums.
    * Takes first from the per.seq subdir names and last from same subdir +
    * rb->stats. *)
+  (* Note: in theory we should take that ringbuf lock for reading while
+   * enumerating the seq files to prevent rotation to happen, but we
+   * consider this operation a best-effort. *)
   let dir = seq_dir_of_bname bname in
   let mi_ma =
     seq_files_of dir |>
@@ -225,4 +228,4 @@ let seq_range bname =
   let s = finally (fun () -> unload rb) stats rb in
   match mi_ma with
   | None -> s.first_seq, s.alloc_count
-  | Some (mi, ma) -> mi, s.first_seq + s.alloc_count
+  | Some (mi, _ma) -> mi, s.first_seq + s.alloc_count

@@ -49,6 +49,7 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
         Lwt_unix.unlink filename else return_unit in
     let rec read_next_line () =
       let on_eof () =
+        !logger.debug "Finished reading %S" filename ;
         let%lwt () = Lwt_io.close chan in
         if do_unlink && preprocessor <> "" then
           Lwt_unix.unlink filename else return_unit in

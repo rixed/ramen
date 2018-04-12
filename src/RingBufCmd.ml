@@ -29,15 +29,15 @@ let summary conf files () =
     let s = stats rb in
     Printf.printf "%s:\n\
                    Flags:%s\n\
-                   allocation count: %d\n\
-                   first seq: %d\n\
-                   time range: %f..%f\n\
+                   seq range: %d..%d (%d)\n\
+                   time range: %f..%f (%.1fs)\n\
                    %d/%d words used (%3.1f%%)\n\
                    mmapped bytes: %d\n\
                    producers range: %d..%d\n\
                    consumers range: %d..%d\n"
-      file (if s.wrap then " Wrap" else "") s.alloc_count
-      s.first_seq s.t_min s.t_max
+      file (if s.wrap then " Wrap" else "")
+      s.first_seq (s.first_seq + s.alloc_count - 1) s.alloc_count
+      s.t_min s.t_max (s.t_max -. s.t_min)
       s.alloced_words s.capacity
       (float_of_int s.alloced_words *. 100. /. (float_of_int s.capacity))
       s.mem_size s.prod_tail s.prod_head s.cons_tail s.cons_head ;

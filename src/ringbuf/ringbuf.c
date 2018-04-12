@@ -390,8 +390,8 @@ static int rotate_file(struct ringbuf *rb)
   }
 
   // Also link time indexed file to the archive.
-  // NOTE: that there can be several files with same time range so suffix
-  // with a random string
+  // NOTE: There can be several files with same time range so suffix
+  //       with a random string.
   char rstr[8+1];
   rand_printable_chars(rstr, sizeof(rstr)-1);
   rstr[sizeof(rstr)-1] = '\0';
