@@ -18,13 +18,15 @@ end
 module Output = struct
   type spec =
     { present : tuple_spec list [@ppp_default []] ;
-      absent : tuple_spec list [@ppp_default []] } [@@ppp PPP_OCaml]
+      absent : tuple_spec list [@ppp_default []] ;
+      timeout : float [@ppp_default 10.] } [@@ppp PPP_OCaml]
 end
 
 module Notifs = struct
   type spec =
     { present : string list [@ppp_default []] ;
-      absent : string list [@ppp_default []] } [@@ppp PPP_OCaml]
+      absent : string list [@ppp_default []] ;
+      timeout : float [@ppp_default 10.] } [@@ppp PPP_OCaml]
 end
 
 type test_spec =
@@ -33,7 +35,7 @@ type test_spec =
     outputs : (string, Output.spec) Hashtbl.t
       [@ppp_default Hashtbl.create 0] ;
     notifications : Notifs.spec
-      [@ppp_default Notifs.{ present=[]; absent=[] }] }
+      [@ppp_default Notifs.{ present=[]; absent=[]; timeout=0. }] }
     [@@ppp PPP_OCaml]
 
 (* Read a tuple described by the given type, and return a hash of fields
@@ -72,13 +74,12 @@ let test_output func bname output_spec =
    * For now the rule is simple:
    * for as long as we have not yet received some tuples that
    * must be present and the time did not ran out. *)
-  let timeout = 10. in (* TODO: a parameter in the test spec *)
   let while_ () =
     return (
       !tuples_to_find <> [] &&
       !tuples_to_not_find = [] &&
       not !RamenProcesses.quit &&
-      Unix.gettimeofday () -. start < timeout) in
+      Unix.gettimeofday () -. start < output_spec.timeout) in
   let unserialize = RamenSerialization.read_tuple ser_type nullmask_sz in
   let%lwt () =
     RamenSerialization.fold_seq_range ~while_ bname () (fun () tx ->
@@ -123,12 +124,11 @@ let test_notifications notify_rb notif_spec =
   let notifs_must_be_absent = List.map to_regexp notif_spec.Notifs.absent
   and notifs_to_find = ref (List.map to_regexp notif_spec.Notifs.present)
   and notifs_to_not_find = ref []
-  and timeout = 5. (* TODO: a parameter in the test spec *)
   and start = Unix.gettimeofday () in
   let while_ () =
     if !notifs_to_find <> [] &&
        !notifs_to_not_find = [] &&
-       Unix.gettimeofday () -. start < timeout
+       Unix.gettimeofday () -. start < notif_spec.timeout
     then return_true else return_false in
   let%lwt () =
     RamenSerialization.read_notifs ~while_ notify_rb (fun (worker, url) ->
