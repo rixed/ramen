@@ -409,13 +409,13 @@ err0:
 
 int ringbuf_unload(struct ringbuf *rb)
 {
-  assert(rb->rbf);
-  if (0 != munmap(rb->rbf, rb->mmapped_size)) {
-    fprintf(stderr, "Cannot munmap: %s\n", strerror(errno));
-    return -1;
+  if (rb->rbf) {
+    if (0 != munmap(rb->rbf, rb->mmapped_size)) {
+      fprintf(stderr, "Cannot munmap: %s\n", strerror(errno));
+      return -1;
+    }
+    rb->rbf = NULL;
   }
-
-  rb->rbf = NULL;
   rb->mmapped_size = 0;
   return 0;
 }
