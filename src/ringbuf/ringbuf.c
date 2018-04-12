@@ -57,6 +57,42 @@ err1:
   return ret;
 }
 
+static ssize_t really_read(int fd, void *d, size_t sz, char const *fname /* printed */)
+{
+  size_t rs = 0;
+  while (rs < sz) {
+    ssize_t ss = read(fd, d + rs, sz - rs);
+    if (ss < 0) {
+      if (errno != EINTR) {
+        fprintf(stderr, "Cannot read '%s': %s\n", fname, strerror(errno));
+        return -1;
+      }
+    } else if (ss == 0) {
+      break;
+    } else {
+      rs += ss;
+    }
+  };
+  return rs;
+}
+
+static int really_write(int fd, void const *s, size_t sz, char const *fname /* printed */)
+{
+  size_t ws = 0;
+  while (ws < sz) {
+    ssize_t ss = write(fd, s + ws, sz - ws);
+    if (ss < 0) {
+      if (errno != EINTR) {
+        fprintf(stderr, "Cannot write '%s': %s\n", fname, strerror(errno));
+        return -1;
+      }
+    } else {
+      ws += ss;
+    }
+  }
+  return 0;
+}
+
 static void rand_printable_chars(char *dst, size_t len)
 {
   static char chrs[] = "abcdefghijklmnopqrstuvwxyz"
@@ -86,14 +122,14 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
       goto err1;
     }
   } else {
-    ssize_t rs = read(fd, first_seq, sizeof(*first_seq));
+    ssize_t rs = really_read(fd, first_seq, sizeof(*first_seq), fname);
     if (rs < 0) {
-      fprintf(stderr, "Cannot read '%s': %s\n", fname, strerror(errno));
       goto err1;
     } else if (rs == 0) {
       *first_seq = 0;
     } else if ((size_t)rs < sizeof(first_seq)) {
-      assert(false);
+      fprintf(stderr, "Too short a file for seqnum: %s\n", fname);
+      goto err1;
     }
   }
 
@@ -106,19 +142,6 @@ err1:
   }
 err0:
   return ret;
-}
-
-static int really_write(int fd, void const *s, size_t sz, char const *fname /* printed */)
-{
-  while (sz > 0) {
-    ssize_t ss = write(fd, s, sz);
-    if (ss < 0) {
-      fprintf(stderr, "Cannot write '%s': %s\n", fname, strerror(errno));
-      return -1;
-    }
-    sz -= (size_t)ss;
-  }
-  return 0;
 }
 
 static int write_max_seqnum(char const *bname, uint64_t seqnum)
