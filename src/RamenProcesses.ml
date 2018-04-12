@@ -251,16 +251,19 @@ let process_terminations running =
       (* Find the proc which pid is this: *)
       try
         let status_str = string_of_process_status status in
+        let is_err = status <> Unix.WEXITED 0 in
         Hashtbl.iter (fun _ proc ->
           if proc.pid = Some pid then (
-            !logger.info "Operation %s/%s (pid %d) %s."
+            (if is_err then !logger.error else !logger.info)
+              "Operation %s/%s (pid %d) %s."
               proc.program_name proc.func.name pid status_str ;
             proc.last_exit <- now ;
             proc.last_exit_status <- status_str ;
-            proc.succ_failures <- proc.succ_failures + 1 ;
+            if is_err then
+              proc.succ_failures <- proc.succ_failures + 1 ;
             (* Wait before attempting to restart a failing worker: *)
             proc.quarantine_until <-
-              now +. Random.float (min 5. (float_of_int proc.succ_failures)) ;
+              now +. Random.float (min 90. (float_of_int proc.succ_failures)) ;
             proc.pid <- None ;
             raise Exit)
         ) running ;
