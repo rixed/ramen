@@ -51,7 +51,7 @@ let test_output func bname output_spec =
     RingBufLib.nullmask_bytes_of_tuple_type ser_type in
   (* Change the hashtable of field to value into a list of field index
    * and value: *)
-  let field_index field =
+  let field_index_of_name field =
     match List.findi (fun _ ftyp -> ftyp.RamenTuple.typ_name = field) ser_type with
     | exception Not_found ->
         let msg = Printf.sprintf "Unknown field %s in %s" field
@@ -59,10 +59,13 @@ let test_output func bname output_spec =
         RamenProcesses.quit := true ;
         failwith msg
     | idx, _ -> idx in
+  (* The other way around to print the results: *)
+  let field_name_of_index idx =
+    (List.nth ser_type idx).RamenTuple.typ_name in
   let field_indices_of_tuples =
     List.map (fun spec ->
       Hashtbl.enum spec /@
-      (fun (field, value) -> field_index field, value) |>
+      (fun (field, value) -> field_index_of_name field, value) |>
       List.of_enum) in
   let%lwt tuples_to_find = wrap (fun () -> ref (
     field_indices_of_tuples output_spec.Output.present)) in
@@ -81,14 +84,15 @@ let test_output func bname output_spec =
       not !RamenProcesses.quit &&
       Unix.gettimeofday () -. start < output_spec.timeout) in
   let unserialize = RamenSerialization.read_tuple ser_type nullmask_sz in
-  let%lwt () =
-    RamenSerialization.fold_seq_range ~while_ bname () (fun () tx ->
+  !logger.debug "Enumerating tuples from %s" bname ;
+  let%lwt nb_tuples =
+    RamenSerialization.fold_seq_range ~while_ bname 0 (fun count tx ->
       let tuple = unserialize tx in
       !logger.debug "Read a tuple out of operation %S" func.F.name ;
       tuples_to_find :=
         List.filter (fun spec ->
           List.for_all (fun (idx, value) ->
-            (* FIXME: ionstead of comparing in string we should try to parse
+            (* FIXME: instead of comparing in string we should try to parse
              * the expected value (once and for all -> faster) so that we
              * also check its type. *)
             let s = RamenScalar.to_string tuple.(idx) in
@@ -101,19 +105,25 @@ let test_output func bname output_spec =
             RamenScalar.to_string tuple.(idx) = value) spec
         ) tuples_must_be_absent |>
         List.rev_append !tuples_to_not_find ;
-      return_unit) in
+      return (count + 1)) in
   let success = !tuples_to_find = [] && !tuples_to_not_find = [] in
   let file_spec_print oc (idx, value) =
-    Printf.fprintf oc "idx=%d, value=%S" idx value in
+    (* Retrieve actual field name: *)
+    let n = field_name_of_index idx in
+    Printf.fprintf oc "%s(%d)=%s" n idx value in
   let tuple_spec_print oc spec =
-    List.print file_spec_print oc spec in
+    List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
+    List.print file_spec_print oc in
   let msg =
     if success then "" else
+    (Printf.sprintf "Enumerated %d tuple%s from %s/%s"
+      nb_tuples (if nb_tuples > 0 then "s" else "")
+      func.F.program_name func.F.name)^
     (if !tuples_to_find = [] then "" else
-      "Could not find these tuples: "^
+      " but could not find these tuples: "^
         IO.to_string (List.print tuple_spec_print) !tuples_to_find) ^
     (if !tuples_to_not_find = [] then "" else
-      "Found these tuples: "^
+      " and found these tuples: "^
         IO.to_string (List.print tuple_spec_print) !tuples_to_not_find)
   in
   return (success, msg)
