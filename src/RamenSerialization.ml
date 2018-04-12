@@ -167,38 +167,53 @@ let find_field_index typ n =
       failwith err_msg
   | i, _ -> i
 
-let fold_seq_range ?while_ ?(mi=0) ?ma bname init f =
-  let dir = seq_dir_of_bname bname in
-  let entries =
-    seq_files_of dir //
-    (fun (from, to_, _fname) ->
-      to_ >= mi && Option.map_default (fun ma -> from < ma) true ma) |>
-    Array.of_enum in
-  Array.fast_sort seq_file_compare entries ;
-  let fold_rb from rb usr =
-    let%lwt usr, _ =
+let rec fold_seq_range ?while_ ?(mi=0) ?ma bname init f =
+  let%lwt keep_going =
+    match while_ with Some w -> w () | _ -> Lwt.return_true in
+  if not keep_going then Lwt.return init else (
+    let dir = seq_dir_of_bname bname in
+    let entries =
+      seq_files_of dir //
+      (fun (from, to_, _fname) ->
+        to_ >= mi && Option.map_default (fun ma -> from < ma) true ma) |>
+      Array.of_enum in
+    Array.fast_sort seq_file_compare entries ;
+    let fold_rb from rb usr =
       read_buf ?while_ rb (usr, from) (fun (usr, seq) tx ->
-        !logger.debug "read_buf seq=%d" seq ;
+        !logger.debug "fold_seq_range: read_buf seq=%d" seq ;
         if seq < mi then Lwt.return ((usr, seq + 1), true) else
         let%lwt usr = f usr tx in
         Lwt.return (
           (usr, seq + 1),
           Option.map_default (fun ma -> seq < ma - 1) true ma)) in
-    Lwt.return usr in
-  let%lwt usr =
-    Array.to_list entries |> (* FIXME *)
-    Lwt_list.fold_left_s (fun usr (from, to_, fname) ->
-      let rb = load fname in
-      Lwt.finalize (fun () -> fold_rb from rb usr)
-                   (fun () -> unload rb ; Lwt.return_unit)
-    ) init in
-  (* finish with the current rb: *)
-  let rb = load bname in
-  Lwt.finalize
-    (fun () ->
-      let%lwt s = Lwt.wrap (fun () -> stats rb) in
-      fold_rb s.first_seq rb usr)
-    (fun () -> unload rb ; Lwt.return_unit)
+    let%lwt usr, next_seq =
+      Array.to_list entries |> (* FIXME *)
+      Lwt_list.fold_left_s (fun (usr, _) (from, to_, fname) ->
+        let rb = load fname in
+        Lwt.finalize (fun () -> fold_rb from rb usr)
+                     (fun () -> unload rb ; Lwt.return_unit)
+      ) (init, 0 (* unused if there are some entries *)) in
+    (* Of course by the time we reach here, new archives might have been
+     * created. We will know after opening the current rb, if its starting
+     * seqnum is > then max_seq then we should recurse into the archive ... *)
+    (* Finish with the current rb: *)
+    let rb = load bname in
+    let%lwt s = Lwt.wrap (fun () -> stats rb) in
+    if next_seq > 0 && s.first_seq > next_seq then (
+      !logger.debug "fold_seq_range: current starts at %d > %d, \
+                     going through the archive again"
+        s.first_seq next_seq ;
+      unload rb ;
+      fold_seq_range ?while_ ~mi:next_seq ?ma bname usr f
+    ) else (
+      !logger.debug "fold_seq_range: current starts at %d, lgtm"
+        s.first_seq ;
+      let%lwt usr, next_seq =
+        Lwt.finalize (fun () -> fold_rb s.first_seq rb usr)
+                     (fun () -> unload rb ; Lwt.return_unit) in
+      (* And of course, by the time we reach this point this ringbuf might
+       * have been archived already. *)
+      fold_seq_range ?while_ ~mi:next_seq ?ma bname usr f))
 
 let fold_buffer ?wait_for_more ?while_ bname init f =
   match load bname with
