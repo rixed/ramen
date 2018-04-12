@@ -27,21 +27,6 @@ extern inline bool ringbuf_repair(struct ringbuf *rb);
 extern inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx);
 
-// Read the amount of bytes requested
-static int really_read(int fd, void *dest, size_t sz)
-{
-  while (sz > 0) {
-    ssize_t r = read(fd, dest, sz);
-    if (r < 0) return -1;
-    else if (r == 0) sched_yield();
-    else {
-      sz -= r;
-      dest = (char *)dest + r;
-    }
-  }
-  return 0;
-}
-
 // Create the directories required to create that file:
 static int mkdir_for_file(char *fname)
 {
@@ -123,6 +108,19 @@ err0:
   return ret;
 }
 
+static int really_write(int fd, void const *s, size_t sz, char const *fname /* printed */)
+{
+  while (sz > 0) {
+    ssize_t ss = write(fd, s, sz);
+    if (ss < 0) {
+      fprintf(stderr, "Cannot write '%s': %s\n", fname, strerror(errno));
+      return -1;
+    }
+    sz -= (size_t)ss;
+  }
+  return 0;
+}
+
 static int write_max_seqnum(char const *bname, uint64_t seqnum)
 {
   int ret = -1;
@@ -146,12 +144,8 @@ static int write_max_seqnum(char const *bname, uint64_t seqnum)
     }
   }
 
-  ssize_t ss = write(fd, &seqnum, sizeof(seqnum));
-  if (ss < 0) {
-    fprintf(stderr, "Cannot write '%s': %s\n", fname, strerror(errno));
+  if (0 != really_write(fd, &seqnum, sizeof(seqnum), fname)) {
     goto err1;
-  } else if (ss != sizeof(seqnum)) {
-    assert(false);
   }
 
   ret = 0;
@@ -166,8 +160,55 @@ err0:
   return ret;
 }
 
+// WARNING: If only_if_exist and the lock does not exist, this returns 0.
+static int lock(char const *rb_fname, int operation /* LOCK_SH|LOCK_EX */, bool only_if_exist)
+{
+  char fname[PATH_MAX];
+  if ((size_t)snprintf(fname, sizeof(fname), "%s.lock", rb_fname) >= sizeof(fname)) {
+    fprintf(stderr, "Archive lockfile name truncated: '%s'\n", fname);
+    return -1;
+  }
+
+  int fd = open(fname, only_if_exist ? 0 : O_CREAT, S_IRUSR|S_IWUSR);
+  if (fd < 0) {
+    if (errno == ENOENT && only_if_exist) return 0;
+    fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
+    return -1;
+  }
+
+  int err = -1;
+  do {
+    err = flock(fd, operation);
+  } while (err < 0 && EINTR == errno);
+
+  if (err < 0) {
+    fprintf(stderr, "Cannot lock '%s': %s\n", fname, strerror(errno));
+    if (close(fd) < 0) {
+      fprintf(stderr, "Cannot close lockfile '%s': %s\n", fname, strerror(errno));
+      // so be it
+    }
+    return -1;
+  }
+
+  return fd;
+}
+
+static int unlock(int lock_fd)
+{
+  if (0 == lock_fd) {
+    // Assuming lock didn't exist rather than locking stdin:
+    return 0;
+  }
+
+  if (0 != close(lock_fd)) {
+    fprintf(stderr, "Cannot unlock fd %d: %s\n", lock_fd, strerror(errno));
+    return -1;
+  }
+  return 0;
+}
+
 // Keep existing files as much as possible:
-extern int ringbuf_create(bool wrap, char const *fname, uint32_t nb_words)
+extern int ringbuf_create_locked(bool wrap, char const *fname, uint32_t nb_words)
 {
   int ret = -1;
   struct ringbuf_file rbf;
@@ -175,22 +216,16 @@ extern int ringbuf_create(bool wrap, char const *fname, uint32_t nb_words)
   // First try to create the file:
   int fd = open(fname, O_WRONLY|O_CREAT|O_EXCL, S_IRUSR|S_IWUSR);
   if (fd >= 0) {
-    // We are the creator. Other processes are waiting for that file
-    // to have a non-zero size and an nb_words greater than 0:
+    // We are the creator. Other creators are waiting for the lock.
     //printf("Creating ringbuffer '%s'\n", fname);
 
     size_t file_length = sizeof(rbf) + nb_words*sizeof(uint32_t);
     if (ftruncate(fd, file_length) < 0) {
-err2:
       fprintf(stderr, "Cannot ftruncate file '%s': %s\n", fname, strerror(errno));
-      if (unlink(fname) < 0) {
-        fprintf(stderr, "Cannot erase not-created ringbuf '%s': %s\n"
-                        "Oh dear!\n", fname, strerror(errno));
-      }
-      goto err1;
+      goto err3;
     }
 
-    if (0 != read_max_seqnum(fname, &rbf.first_seq)) goto err1;
+    if (0 != read_max_seqnum(fname, &rbf.first_seq)) goto err3;
 
     rbf.nb_words = nb_words;
     rbf.prod_head = rbf.prod_tail = 0;
@@ -198,41 +233,51 @@ err2:
     rbf.nb_allocs = 0;
     rbf.wrap = wrap;
 
-    ssize_t w = write(fd, &rbf, sizeof(rbf));
-    if (w < 0) {
-      fprintf(stderr, "Cannot write ring buffer header in '%s': %s\n",
-              fname, strerror(errno));
-      goto err2;
-    } else if ((size_t)w < sizeof(rbf)) {
-      fprintf(stderr, "Cannot write the whole ring buffer header in '%s'",
-              fname);
-      goto err2;
-    }
-  } else if (fd < 0 && errno == EEXIST) {
-    //printf("Opening existing ringbuffer '%s'\n", fname);
-
-    // Wait for the file to have a size > 0 and nb_words > 0
-    fd = open(fname, O_RDONLY);
-    if (fd < 0) {
-      fprintf(stderr, "Cannot open ring-buffer '%s': %s\n", fname, strerror(errno));
-      goto err0;
-    }
-    if (0 != really_read(fd, &rbf, sizeof(rbf))) {
-      fprintf(stderr, "Cannot read ring-buffer '%s': %s\n", fname, strerror(errno));
-      goto err1;
+    if (0 != really_write(fd, &rbf, sizeof(rbf), fname)) {
+      goto err3;
     }
   } else {
-    fprintf(stderr, "Cannot open ring-buffer '%s': %s\n", fname, strerror(errno));
+    if (errno == EEXIST) {
+      ret = 0;
+    } else {
+      fprintf(stderr, "Cannot open ring-buffer '%s': %s\n", fname, strerror(errno));
+    }
     goto err0;
   }
 
   ret = 0;
-err1:
+
+err3:
+  if (ret != 0 && unlink(fname) < 0) {
+    fprintf(stderr, "Cannot erase not-created ringbuf '%s': %s\n"
+                    "Oh dear!\n", fname, strerror(errno));
+  }
+//err2:
   if (close(fd) < 0) {
-    fprintf(stderr, "Cannot close ring-buffer '%s': %s\n", fname, strerror(errno));
+    fprintf(stderr, "Cannot close ring-buffer(1) '%s': %s\n", fname, strerror(errno));
     // so be it
   }
+err0:
+  return ret;
+}
 
+extern int ringbuf_create(bool wrap, char const *fname, uint32_t nb_words)
+{
+  int ret = -1;
+
+  // We must not try to create a RB while another process is rotating or
+  // creating it:
+  int lock_fd = lock(fname, LOCK_EX, false);
+  if (lock_fd < 0) goto err0;
+
+  if (0 != ringbuf_create_locked(wrap, fname, nb_words)) {
+    goto err1;
+  }
+
+  ret = 0;
+
+err1:
+  if (0 != unlock(lock_fd)) ret = -1;
 err0:
   return ret;
 }
@@ -300,26 +345,43 @@ static int mmap_rb(struct ringbuf *rb)
 
 err1:
   if (close(fd) < 0) {
-    fprintf(stderr, "Cannot close ring-buffer '%s': %s\n", rb->fname, strerror(errno));
+    fprintf(stderr, "Cannot close ring-buffer(2) '%s': %s\n", rb->fname, strerror(errno));
     // so be it
   }
-
 err0:
   return ret;
 }
 
 extern int ringbuf_load(struct ringbuf *rb, char const *fname)
 {
+  int ret = -1;
+
   size_t fname_len = strlen(fname);
   if (fname_len + 1 > sizeof(rb->fname)) {
     fprintf(stderr, "Cannot load ring-buffer: Filename too long: %s\n", fname);
-    return -1;
+    goto err0;
   }
   memcpy(rb->fname, fname, fname_len + 1);
   rb->rbf = NULL;
   rb->mmapped_size = 0;
 
-  return mmap_rb(rb);
+  // Although we probably just ringbuf_created that file, some other processes
+  // might be rotating it already. Note that archived files do not have a lock
+  // file, nor do they need one:
+  int lock_fd = lock(rb->fname, LOCK_SH, true);
+  if (lock_fd < 0) goto err0;
+
+  if (0 != mmap_rb(rb)) {
+    ret = -1;
+    goto err1;
+  }
+
+  ret = 0;
+
+err1:
+  if (0 != unlock(lock_fd)) ret = -1;
+err0:
+  return ret;
 }
 
 int ringbuf_unload(struct ringbuf *rb)
@@ -335,32 +397,7 @@ int ringbuf_unload(struct ringbuf *rb)
   return 0;
 }
 
-static int lock(struct ringbuf *rb)
-{
-  char fname[PATH_MAX];
-  if ((size_t)snprintf(fname, sizeof(fname), "%s.lock", rb->fname) >= sizeof(fname)) {
-    fprintf(stderr, "Archive lockfile name truncated: '%s'\n", fname);
-    return -1;
-  }
-
-  int fd = open(fname, O_CREAT, S_IRUSR|S_IWUSR);
-  if (fd < 0) {
-    fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
-    return -1;
-  }
-
-  if (0 != flock(fd, LOCK_EX)) {
-    fprintf(stderr, "Cannot lock '%s': %s\n", fname, strerror(errno));
-    if (close(fd) < 0) {
-      fprintf(stderr, "Cannot close lockfile '%s': %s\n", fname, strerror(errno));
-      // so be it
-    }
-    return -1;
-  }
-
-  return fd;
-}
-
+// Called with the lock
 static int rotate_file(struct ringbuf *rb)
 {
   // Signal the EOF
@@ -415,9 +452,10 @@ static int rotate_file(struct ringbuf *rb)
   }
 
   // Create a new buffer file under the same old name:
-  printf("Create a new buffer file under the same old name\n");
-  if (0 != ringbuf_create(rb->rbf->wrap, rb->fname, rb->rbf->nb_words))
+  printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
+  if (0 != ringbuf_create_locked(rb->rbf->wrap, rb->fname, rb->rbf->nb_words)) {
     goto err0;
+  }
 
   ret = 0;
 err0:
@@ -426,11 +464,11 @@ err0:
 
 static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
 {
-  if (rb->rbf->wrap) return 0;
-  // The case rb->rbf->prod_head + 1 + nb_words == rbf->nb_words
-  // would *not* work because the RB would be considered full
-  // (although there would be enough room for the record)
-  if (rb->rbf->prod_head + 1 + nb_words < rb->rbf->nb_words)
+  struct ringbuf_file *rbf = rb->rbf;
+  if (rbf->wrap) return 0;
+
+  uint32_t const needed = 1 /* msg size */ + nb_words + 1 /* EOF */;
+  if (ringbuf_file_nb_free(rbf, rbf->cons_tail, rbf->prod_head) >= needed)
     return 0;
 
   printf("Rotating buffer '%s'!\n", rb->fname);
@@ -439,32 +477,29 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
 
   // We have filled the non-wrapping buffer: rotate the file!
   // We need a lock to ensure no other writers is rotating at the same time
-  int lock_fd = lock(rb);
+  int lock_fd = lock(rb->fname, LOCK_EX, false);
   if (lock_fd < 0) goto err0;
 
   // Wait, maybe some other process rotated the file already while we were
   // waiting for that lock? In that case it would have written the EOF:
   if (rb->rbf->data[rb->rbf->prod_head] != UINT32_MAX) {
-    if (0 != rotate_file(rb)) goto unlock;
+    if (0 != rotate_file(rb)) goto err1;
   } else {
     printf("...actually not, someone did already.\n");
   }
 
   // Unmap rb
   printf("Unmap rb\n");
-  if (0 != ringbuf_unload(rb)) goto unlock;
+  if (0 != ringbuf_unload(rb)) goto err1;
 
   // Mmap the new file and update rbf.
   printf("Mmap the new file and update rbr and rb\n");
-  if (0 != mmap_rb(rb)) goto unlock;
+  if (0 != mmap_rb(rb)) goto err1;
 
   ret = 0;
 
-unlock:
-  if (0 != close(lock_fd)) {
-    fprintf(stderr, "Cannot unlock fd %d: %s\n", lock_fd, strerror(errno));
-    ret = -1;
-  }
+err1:
+  if (0 != unlock(lock_fd)) ret = -1;
   // Too bad we cannot unlink that lockfile without a race condition
 err0:
   return ret;
