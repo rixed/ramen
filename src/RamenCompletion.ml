@@ -193,6 +193,7 @@ let complete str () =
            * field names! *)
           ("--since=", RamenConsts.CliInfo.since) ::
           ("--until=", RamenConsts.CliInfo.until) ::
+          ("--where=", RamenConsts.CliInfo.where) ::
           ("--max-nb-points=", RamenConsts.CliInfo.max_nb_points) ::
           ("--data-field=", RamenConsts.CliInfo.data_field) ::
           ("--consolidation=", RamenConsts.CliInfo.consolidation) ::

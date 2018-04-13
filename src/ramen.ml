@@ -362,6 +362,7 @@ let timeseries =
       $ copts
       $ since
       $ until
+      $ where
       $ max_nb_points
       $ csv_separator
       $ csv_null

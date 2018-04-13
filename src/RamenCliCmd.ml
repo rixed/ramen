@@ -503,7 +503,7 @@ let tail conf func_name with_header separator null
  * same output archive files as the `ramen tail` command does.
  *)
 
-let timeseries conf since until max_data_points separator null
+let timeseries conf since until where max_data_points separator null
                func_name data_field consolidation duration () =
   logger := make_logger conf.C.debug ;
   if max_data_points < 1 then failwith "invalid max_data_points" ;
@@ -511,7 +511,7 @@ let timeseries conf since until max_data_points separator null
   if since >= until then failwith "since must come strictly before until" ;
   (* Obtain the data: *)
   Lwt_main.run (
-    RamenTimeseries.get conf ~duration max_data_points since until
+    RamenTimeseries.get conf ~duration max_data_points since until where
                         ~consolidation func_name data_field) |>
   (* Display results: *)
   Enum.iter (fun (t, v) ->

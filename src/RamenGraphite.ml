@@ -274,6 +274,7 @@ let render_graphite conf headers body =
               time_of_graphite_time |? now -. 86400.
   and until = Hashtbl.find_option params "until" |> Option.map v |>>
               time_of_graphite_time |? now
+  and where = [] (* TODO when we also have factors *)
   and max_data_points = Hashtbl.find_option params "maxDataPoints" |>
                         Option.map (int_of_string % v) |? 300
   and format = Hashtbl.find_option params "format" |>
@@ -296,7 +297,7 @@ let render_graphite conf headers body =
       | func, field ->
           return (String.nreplace ~str:func ~sub:"." ~by:"/", field) in
     let%lwt datapoints =
-      RamenTimeseries.get conf max_data_points since until
+      RamenTimeseries.get conf max_data_points since until where
                           func_name data_field in
     let datapoints = Enum.map (fun (t, v) -> v, int_of_float t) datapoints |>
                      Array.of_enum in

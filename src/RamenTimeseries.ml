@@ -39,9 +39,8 @@ let bucket_max b =
 
 
 (* Enumerates all the time*values *)
-let get conf ?duration max_data_points since until
+let get conf ?duration max_data_points since until where
         ?(consolidation="avg") func_name data_field =
-  let always_true _ = true in
   let dt = (until -. since) /. float_of_int max_data_points in
   let buckets = make_buckets max_data_points in
   let bucket_of_time = bucket_of_time since dt in
@@ -55,11 +54,14 @@ let get conf ?duration max_data_points since until
     if func_name = "stats" || String.ends_with func_name "#stats" then
       let typ = RamenTuple.{ user = RamenBinocle.tuple_typ ;
                              ser = RamenBinocle.tuple_typ } in
+      let where_filter = RamenSerialization.filter_tuple_by typ.ser where in
       let wi = RamenSerialization.find_field_index typ.ser "worker" in
       let filter =
-        if func_name = "stats" then always_true else
+        if func_name = "stats" then where_filter else
         let func_name, _ = String.rsplit func_name ~by:"#" in
-        fun tuple -> tuple.(wi) = RamenScalar.VString func_name in
+        fun tuple ->
+          tuple.(wi) = RamenScalar.VString func_name &&
+          where_filter tuple in
       let bname = C.report_ringbuf conf in
       return (bname, filter, typ, RamenBinocle.event_time)
     else
@@ -67,7 +69,9 @@ let get conf ?duration max_data_points since until
        * by RamenConf *)
       let%lwt func, bname =
         RamenExport.make_temp_export_by_name conf ?duration func_name in
-      return (bname, always_true, func.F.out_type, func.F.event_time)
+      let typ = func.F.out_type in
+      let filter = RamenSerialization.filter_tuple_by typ.ser where in
+      return (bname, filter, typ, func.F.event_time)
   in
   let open RamenSerialization in
   let%lwt vi =
