@@ -409,9 +409,8 @@ let ps conf short with_header sort_col top () =
  *)
 
 let tail conf func_name with_header separator null
-         last min_seq max_seq with_seqnums duration () =
+         last min_seq max_seq where with_seqnums duration () =
   logger := make_logger conf.C.debug ;
-  let always_true _ = true in
   (* Do something useful by default: tail forever *)
   let last =
     if last = None && min_seq = None && max_seq = None then Some min_int
@@ -422,11 +421,14 @@ let tail conf func_name with_header separator null
     if func_name = "stats" || String.ends_with func_name "#stats" then
       let typ = RamenTuple.{ user = RamenBinocle.tuple_typ ;
                              ser = RamenBinocle.tuple_typ } in
+      let where_filter = RamenSerialization.filter_tuple_by typ.ser where in
       let wi = RamenSerialization.find_field_index typ.ser "worker" in
       let filter =
-        if func_name = "stats" then always_true else
+        if func_name = "stats" then where_filter else
         let func_name, _ = String.rsplit func_name ~by:"#" in
-        fun tuple -> tuple.(wi) = RamenScalar.VString func_name in
+        fun tuple ->
+          tuple.(wi) = RamenScalar.VString func_name &&
+          where_filter tuple in
       let bname = C.report_ringbuf conf in
       bname, filter, typ
     else
@@ -435,7 +437,9 @@ let tail conf func_name with_header separator null
       Lwt_main.run (
         let%lwt func, bname =
           RamenExport.make_temp_export_by_name conf ~duration func_name in
-        return (bname, always_true, func.F.out_type))
+        let typ = func.F.out_type in
+        let filter = RamenSerialization.filter_tuple_by typ.ser where in
+        return (bname, filter, typ))
   in
   (* Find out which seqnums we want to scan: *)
   let mi, ma = RingBuf.seq_range bname in

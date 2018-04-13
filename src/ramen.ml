@@ -161,18 +161,18 @@ let max_simult_compilations =
                           "max-simultaneous-compilations" ] in
   Arg.(value (opt int 4 i))
 
-let param =
+let assignment =
   let parse s =
     match String.split s ~by:"=" with
     | exception Not_found ->
         Pervasives.Error (
-          `Msg "You must specify the parameter name, followed by an equal \
-                sign (=), followed by the parameter value.")
+          `Msg "You must specify the identifier, followed by an equal \
+                sign (=), followed by the value.")
     | pname, pval ->
         let open RamenParsing in
         let p = allow_surrounding_blanks RamenScalar.Parser.p in
         let stream = stream_of_string pval in
-        let m = [ "parameter value from command line" ] in
+        let m = [ "value from command line" ] in
         (match p m  None Parsers.no_error_correction stream |>
               to_result with
         | Bad e ->
@@ -184,16 +184,15 @@ let param =
   and print fmt (pname, pval) =
     Format.fprintf fmt "%s=%s" pname (RamenScalar.to_string pval)
   in
-  Arg.conv ~docv:"PARAM=VALUE" (parse, print)
+  Arg.conv ~docv:"IDENTIFIER=VALUE" (parse, print)
 
 (* Note: parameter with same name in different functions will all take
  * their value from this. Easy to add a prefix with function name when
  * it causes troubles. *)
 let params =
   let i = Arg.info ~doc:RamenConsts.CliInfo.param
-                   ~docv:"P=V"
-                   ["p"; "parameter"] in
-  Arg.(value (opt_all param [] i))
+                   ~docv:"PARAM=VALUE" ["p"; "parameter"] in
+  Arg.(value (opt_all assignment [] i))
 
 let program_name =
   let i = Arg.info ~doc:RamenConsts.CliInfo.program_name
@@ -243,7 +242,7 @@ let kill =
     info ~doc:RamenConsts.CliInfo.kill "kill")
 
 (*
- * Display the timeseries
+ * Display the output of any operation
  *)
 
 let with_header =
@@ -278,6 +277,14 @@ let max_seq =
                    ["max-seqnum"] in
   Arg.(value (opt (some int) None i))
 
+let where =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.where
+                   ~docv:"FIELD=VALUE" ["w"; "where"] in
+  (* NOTE: we reuse assignment (introduced for parameters) but one day
+   * we may want to allow arbitrary expressions or at least other
+   * generic operator such as comparisons *)
+  Arg.(value (opt_all assignment [] i))
+
 let with_seqnums =
   let i = Arg.info ~doc:RamenConsts.CliInfo.with_seqnums
                    ["with-seqnums"] in
@@ -306,6 +313,7 @@ let tail =
       $ last
       $ min_seq
       $ max_seq
+      $ where
       $ with_seqnums
       $ duration),
     info ~doc:RamenConsts.CliInfo.tail "tail")

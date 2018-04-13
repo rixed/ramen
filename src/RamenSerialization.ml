@@ -167,6 +167,19 @@ let find_field_index typ n =
       failwith err_msg
   | i, _ -> i
 
+(* Build a filter function for tuples of the given type: *)
+let filter_tuple_by typ where =
+  (* Find the indices of all the involved fields, and parse the values: *)
+  let where =
+    List.map (fun (n, v) ->
+      let idx = find_field_index typ n in
+      idx, v
+    ) where in
+  fun tuple ->
+    List.for_all (fun (idx, v) ->
+      tuple.(idx) = v
+    ) where
+
 let rec fold_seq_range ?while_ ?(mi=0) ?ma bname init f =
   let%lwt keep_going =
     match while_ with Some w -> w () | _ -> Lwt.return_true in

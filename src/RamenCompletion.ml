@@ -178,6 +178,7 @@ let complete str () =
           ("--last=", RamenConsts.CliInfo.last) ::
           ("--max-seqnum=", RamenConsts.CliInfo.max_seq) ::
           ("--min-seqnum=", RamenConsts.CliInfo.min_seq) ::
+          ("--where=", RamenConsts.CliInfo.where) ::
           ("--null=", RamenConsts.CliInfo.csv_null) ::
           ("--separator=", RamenConsts.CliInfo.csv_separator) ::
           ("--with-header", RamenConsts.CliInfo.with_header) ::
