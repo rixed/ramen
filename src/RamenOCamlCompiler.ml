@@ -40,7 +40,7 @@ let compile_internal conf func_name src_file obj_file =
   !logger.info "Compiling %S" src_file ;
   reset () ;
   native_code := true ;
-  binary_annotations := conf.C.debug ;
+  annotations := conf.C.debug ;
   debug := conf.C.debug ;
   verbose := conf.C.debug ;
   no_std_include := true ;
@@ -124,7 +124,7 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   !logger.info "Linking %S" src_file ;
   reset () ;
   native_code := true ;
-  binary_annotations := conf.C.debug ;
+  annotations := conf.C.debug ;
   debug := conf.C.debug ;
   verbose := conf.C.debug ;
   no_std_include := true ;
