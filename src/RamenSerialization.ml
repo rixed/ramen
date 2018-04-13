@@ -180,9 +180,24 @@ let filter_tuple_by typ where =
       tuple.(idx) = v
     ) where
 
-(* This loops until we reach either of ma or the end of data.
+(* By default, this loops until we reach ma and while_ yields true.
+ * Set ~wait_for_more to false if you want to stop once the end of data
+ * is reached.
  * Note: mi is inclusive, ma exclusive *)
-let rec fold_seq_range ?while_ ?(mi=0) ?ma bname init f =
+let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
+  let fold_rb from rb usr =
+    !logger.debug "fold_rb: from=%d, mi=%d" from mi ;
+    read_buf ?while_ ?wait_for_more rb (usr, from) (fun (usr, seq) tx ->
+      !logger.debug "fold_seq_range: read_buf seq=%d" seq ;
+      if seq < mi then Lwt.return ((usr, seq + 1), true) else
+      match ma with Some m when seq >= m ->
+        Lwt.return ((usr, seq + 1), false)
+      | _ ->
+        let%lwt usr = f usr seq tx in
+        (* Try to save the last sleep: *)
+        let more_to_come =
+          match ma with None -> true | Some m -> seq < m - 1 in
+        Lwt.return ((usr, seq + 1), more_to_come)) in
   !logger.debug "fold_seq_range: mi=%d, ma=%a" mi (Option.print Int.print) ma ;
   match ma with Some m when mi >= m -> Lwt.return init
   | _ -> (
@@ -196,16 +211,6 @@ let rec fold_seq_range ?while_ ?(mi=0) ?ma bname init f =
           to_ >= mi && Option.map_default (fun ma -> from < ma) true ma) |>
         Array.of_enum in
       Array.fast_sort seq_file_compare entries ;
-      let fold_rb from rb usr =
-        !logger.debug "fold_rb: from=%d, mi=%d" from mi ;
-        read_buf ?while_ rb (usr, from) (fun (usr, seq) tx ->
-          !logger.debug "fold_seq_range: read_buf seq=%d" seq ;
-          if seq < mi then Lwt.return ((usr, seq + 1), true) else
-          match ma with Some m when seq >= m ->
-            Lwt.return ((usr, seq + 1), false)
-          | _ ->
-            let%lwt usr = f usr seq tx in
-            Lwt.return ((usr, seq + 1), true)) in
       let%lwt usr, next_seq =
         Array.to_list entries |> (* FIXME *)
         Lwt_list.fold_left_s (fun (usr, _) (from, to_, fname) ->
@@ -225,7 +230,7 @@ let rec fold_seq_range ?while_ ?(mi=0) ?ma bname init f =
                        going through the archive again"
           s.first_seq next_seq ;
         unload rb ;
-        fold_seq_range ?while_ ~mi:next_seq ?ma bname usr f
+        fold_seq_range ?while_ ?wait_for_more ~mi:next_seq ?ma bname usr f
       ) else (
         !logger.debug "fold_seq_range: current starts at %d, lgtm"
           s.first_seq ;
@@ -235,8 +240,7 @@ let rec fold_seq_range ?while_ ?(mi=0) ?ma bname init f =
         !logger.debug "After current, next_seq is %d" next_seq ;
         (* And of course, by the time we reach this point this ringbuf might
          * have been archived already. *)
-         !logger.debug "recurse with mi=%d" next_seq ;
-        fold_seq_range ?while_ ~mi:next_seq ?ma bname usr f)))
+        fold_seq_range ?while_ ?wait_for_more ~mi:next_seq ?ma bname usr f)))
 
 let fold_buffer ?wait_for_more ?while_ bname init f =
   match load bname with

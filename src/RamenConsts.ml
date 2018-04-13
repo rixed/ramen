@@ -87,6 +87,7 @@ struct
     "Output only the last N tuples (or only the next -N, if N is negative)"
   let min_seq = "Output only tuples with greater sequence number"
   let max_seq = "Output only tuples with smaller sequence number"
+  let continuous = "Wait for more when end of file is reached"
   let where = "Output only tuples which given field match the given value"
   let with_seqnums = "Prepend tuples with their sequence number"
   let func_name = "Operation unique name"

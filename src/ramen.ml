@@ -264,8 +264,13 @@ let csv_null =
 
 let last =
   let i = Arg.info ~doc:RamenConsts.CliInfo.last
-                   [ "last" ] in
+                   [ "n"; "last" ] in
   Arg.(value (opt (some int) None i))
+
+let continuous =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.continuous
+                   [ "f"; "continuous" ] in
+  Arg.(value (flag i))
 
 let min_seq =
   let i = Arg.info ~doc:RamenConsts.CliInfo.min_seq
@@ -313,6 +318,7 @@ let tail =
       $ last
       $ min_seq
       $ max_seq
+      $ continuous
       $ where
       $ with_seqnums
       $ duration),

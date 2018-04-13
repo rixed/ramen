@@ -409,11 +409,17 @@ let ps conf short with_header sort_col top () =
  *)
 
 let tail conf func_name with_header separator null
-         last min_seq max_seq where with_seqnums duration () =
+         last min_seq max_seq continuous where with_seqnums duration () =
   logger := make_logger conf.C.debug ;
-  (* Do something useful by default: tail forever *)
+  if last <> None && (min_seq <> None || max_seq <> None) then
+    failwith "Options --last  and --{min,max}-seq are incompatible." ;
+  if continuous && (min_seq <> None || max_seq <> None) then
+    failwith "Options --continuous and --{min,max}-seq are incompatible." ;
+  if continuous && Option.map_default (fun l -> l < 0) false last then
+    failwith "Option --last must be >0 if used with --continuous." ;
+  (* Do something useful by default: display the 10 last lines *)
   let last =
-    if last = None && min_seq = None && max_seq = None then Some min_int
+    if last = None && min_seq = None && max_seq = None then Some 10
     else last in
   let bname, filter, typ =
     (* Read directly from the instrumentation ringbuf when func_name ends
@@ -442,21 +448,21 @@ let tail conf func_name with_header separator null
         return (bname, filter, typ))
   in
   (* Find out which seqnums we want to scan: *)
-  let mi, ma = RingBuf.seq_range bname in
-  let mi = match min_seq with None -> mi | Some m -> max mi m in
-  let ma = match max_seq with None -> ma | Some m -> m + 1 (* max_seqnum is in *) in
   let mi, ma = match last with
+    | None ->
+        min_seq,
+        Option.map succ max_seq (* max_seqnum is in *)
     | Some l when l >= 0 ->
-        let mi = max mi (cap_add ma ~-l) in
-        let ma = mi + l in
-        mi, ma
+        let mi, ma = RingBuf.seq_range bname in
+        Some (cap_add ma ~-l),
+        Some (if continuous then max_int else ma)
     | Some l ->
         assert (l < 0) ;
-        let mi = ma
-        and ma = cap_add ma (cap_neg l) in
-        mi, ma
-    | None -> mi, ma in
-  !logger.debug "Will display tuples from %d (incl) to %d (excl)" mi ma ;
+        let mi, ma = RingBuf.seq_range bname in
+        Some ma, Some (cap_add ma (cap_neg l)) in
+  !logger.debug "Will display tuples from %a (incl) to %a (excl)"
+    (Option.print Int.print) mi
+    (Option.print Int.print) ma ;
   (* Then, scan all present ringbufs in the requested range (either
    * the last N tuples or, TBD, since ts1 [until ts2]) and display
    * them *)
@@ -473,29 +479,18 @@ let tail conf func_name with_header separator null
       stdout header ;
     BatIO.flush stdout) ;
   Lwt_main.run (
-    let rec loop m =
-      if m >= ma then return_unit else
-      let%lwt m =
-        let open RamenSerialization in
-        fold_seq_range bname ~mi:m ~ma m (fun _ m tx ->
-          let tuple =
-            read_tuple typ.ser nullmask_size tx in
-          if filter tuple then (
-            if with_seqnums then (
-              Int.print stdout m ; String.print stdout separator) ;
-            reorder_column2 tuple |>
-            Array.print ~first:"" ~last:"\n" ~sep:separator
-              (RamenScalar.print_custom ~null) stdout ;
-            BatIO.flush stdout) ;
-          return (m + 1)) in
-      if m >= ma then return_unit else
-        (* TODO: If we tail for a long time in continuous mode, we might
-         * need to refresh the out-ref timeout from time to time. *)
-        let delay = 1. +. Random.float 1. in
-        let%lwt () = Lwt_unix.sleep delay in
-        loop m
-    in
-    loop mi)
+    let open RamenSerialization in
+    fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
+      let tuple =
+        read_tuple typ.ser nullmask_size tx in
+      if filter tuple then (
+        if with_seqnums then (
+          Int.print stdout m ; String.print stdout separator) ;
+        reorder_column2 tuple |>
+        Array.print ~first:"" ~last:"\n" ~sep:separator
+          (RamenScalar.print_custom ~null) stdout ;
+        BatIO.flush stdout) ;
+      return_unit))
 
 (*
  * `ramen timeseries`
