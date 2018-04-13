@@ -190,6 +190,18 @@ let check_finished_tuple_type tuple_prefix tuple_type =
       !logger.debug "Field %s has no constraint on nullability. \
                      Let's make it non-null." field_name ;
       typ.nullable <- Some false) ;
+    (* Similarly, we could have an expression which type is left undecided to
+     * either TNum or TAny. For TAny, better err out, but for TNum we might
+     * pick a numerical type that suits us. For instance, if we write:
+     * `SELECT 0.1 + previous x AS x` then x will have type TNum, as + can
+     * accommodate any two TNums. Ideally we'd like x to be TFloat here, in
+     * order to limit the number of conversions and also probably to better
+     * match user expectations, but this information is lost by now :(. *)
+    if typ.scalar_typ = Some TNum then (
+      !logger.debug "Numeric field %s has no constraint on type. \
+                     Let's make it an TI32." field_name ;
+      typ.scalar_typ <- Some TI32
+    ) ;
     if typ.nullable = None || typ.scalar_typ = None then (
       let e = CannotTypeField {
         field = field_name ;
@@ -1155,7 +1167,9 @@ let set_all_types conf parents funcs =
     RamenOperation.iter_expr (fun e ->
       let open RamenExpr in
       let typ = typ_of e in
-      if typ.nullable = None || typ.scalar_typ = None then
+      if typ.nullable = None || typ.scalar_typ = None ||
+         typ.scalar_typ = Some TNum ||
+         typ.scalar_typ = Some TAny then
         let what = IO.to_string (print true) e in
         raise (SyntaxErrorInFunc (func.Func.name, CannotCompleteTyping what))
     ) (Option.get func.Func.operation)

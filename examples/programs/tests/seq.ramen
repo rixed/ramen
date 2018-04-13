@@ -1,0 +1,2 @@
+DEFINE gen AS
+  SELECT 1 + COALESCE(previous.x, 0) AS x EVERY 1 SECOND;
