@@ -104,7 +104,7 @@ do |opt_file_type, files|
   end
 end
 
-Then /(.*) must produce( executables?)? files? (.*)/ \
+Then /^([^ ]*) must produce( executables?)? files? (.*)/ \
 do |executable, opt_file_type, files|
   step "#{executable} must print a few lines on stdout"
   step "#{executable} must print no line on stderr"
@@ -114,12 +114,12 @@ do |executable, opt_file_type, files|
   end
 end
 
-Then /(.*) must fail gracefully/ do |executable|
+Then /^([^ ]*) must fail gracefully/ do |executable|
   step "#{executable} must exit with status not 0"
   step "#{executable} must print a few lines on stderr"
 end
 
-Then /(.*) must (?:exit|terminate) gracefully/ do |executable|
+Then /^([^ ]*) must (?:exit|terminate) gracefully/ do |executable|
   step "#{executable} must exit with status 0"
   step "#{executable} must print no line on stderr"
 end
@@ -136,7 +136,7 @@ Given /(.*\.ramen) is compiled( as (.*))?/ do |source, opt_bin|
   end
 end
 
-Given "ramen supervisor is started" do
+Given /^ramen supervisor is started$/ do
   if $ramen_pid.nil?
     step "the environment variable RAMEN_PERSIST_DIR is set"
     # Cannot daemonize or we won't know the actual pid:
@@ -144,11 +144,11 @@ Given "ramen supervisor is started" do
   end
 end
 
-Given "no worker must be running" do
+Given /^no worker must be running$/ do
   `ramen ps`.lines.length == 0
 end
 
-Given /(?:the )?workers? (.*) must( not)? be running/ do |workers, not_run|
+Given /^(?:the )?workers? (.*) must( not)? be running/ do |workers, not_run|
   re = Regexp.union(workers.list_split.map{|w| /^#{w}\t/})
   l = `ramen ps`.lines.select{|e| e =~ re}.length
   if not_run
@@ -158,7 +158,7 @@ Given /(?:the )?workers? (.*) must( not)? be running/ do |workers, not_run|
   end
 end
 
-Given /(?:the )?programs? (.*) must( not)? be running/ do |programs, not_run|
+Given /^(?:the )?programs? (.*) must( not)? be running/ do |programs, not_run|
   re = Regexp.union(programs.list_split.map{|w| /^#{w}\t/})
   l = `ramen ps --short`.lines.select{|e| e =~ re}.length
   if not_run
@@ -195,7 +195,12 @@ Given /(?:the )?programs? (.*) (?:is|are) running/ do |programs|
   end
 end
 
-Then /^after max (\d+) seconds (.+)$/ do |max_delay, what|
+Then /^after max (\d+) seconds? (.+)$/ do |max_delay, what|
   # TODO: catch failures and retry
   step what
+end
+
+Then /^([^ ]*) must mention (.*) on (std(?:out|err))/ \
+do |executable, what, out|
+  expect(@output[executable][out]).to match(/\b#{what}\b/)
 end

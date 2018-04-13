@@ -456,7 +456,7 @@ let tail conf func_name with_header separator null
         and ma = cap_add ma (cap_neg l) in
         mi, ma
     | None -> mi, ma in
-  !logger.debug "Will display tuples from %d to %d" mi ma ;
+  !logger.debug "Will display tuples from %d (incl) to %d (excl)" mi ma ;
   (* Then, scan all present ringbufs in the requested range (either
    * the last N tuples or, TBD, since ts1 [until ts2]) and display
    * them *)
@@ -477,7 +477,7 @@ let tail conf func_name with_header separator null
       if m >= ma then return_unit else
       let%lwt m =
         let open RamenSerialization in
-        fold_seq_range bname ~mi:m ~ma m (fun m tx ->
+        fold_seq_range bname ~mi:m ~ma m (fun _ m tx ->
           let tuple =
             read_tuple typ.ser nullmask_size tx in
           if filter tuple then (
@@ -486,9 +486,8 @@ let tail conf func_name with_header separator null
             reorder_column2 tuple |>
             Array.print ~first:"" ~last:"\n" ~sep:separator
               (RamenScalar.print_custom ~null) stdout ;
-            BatIO.flush stdout ;
-            return (m + 1)
-          ) else return m) in
+            BatIO.flush stdout) ;
+          return (m + 1)) in
       if m >= ma then return_unit else
         (* TODO: If we tail for a long time in continuous mode, we might
          * need to refresh the out-ref timeout from time to time. *)

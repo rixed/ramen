@@ -86,7 +86,7 @@ let test_output func bname output_spec =
   let unserialize = RamenSerialization.read_tuple ser_type nullmask_sz in
   !logger.debug "Enumerating tuples from %s" bname ;
   let%lwt nb_tuples =
-    RamenSerialization.fold_seq_range ~while_ bname 0 (fun count tx ->
+    RamenSerialization.fold_seq_range ~while_ bname 0 (fun count _seq tx ->
       let tuple = unserialize tx in
       !logger.debug "Read a tuple out of operation %S" func.F.name ;
       tuples_to_find :=

@@ -26,10 +26,16 @@ at_exit do
 end
 
 Before do |scenario|
+  # If we do this globally then cucumber fails to find the features, so we
+  # cheat by doing this in this hook:
   Dir.chdir $tmp_dir
 end
+
 After do |scenario|
   kill_ramens()
+  # To simplify reasoning about each individual cases that frequently reuse
+  # the same programs, we clean the programs memory between two scenarii:
+  FileUtils.rm_rf($tmp_dir + '/ramen_persist_dir/workers')
 end
 
 # Let's make human lists as string easily splittable:
