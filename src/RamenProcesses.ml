@@ -128,9 +128,9 @@ let cleanup_old_files max_archives conf =
     in
     let on_dir fname rel_fname =
       let basename = Filename.basename rel_fname in
-      if basename = "per_time" then
+      if String.ends_with basename ".per_time" then
         clean_time_archives fname
-      else if basename = "per_seq" then
+      else if String.ends_with basename ".per_seq" then
         clean_seq_archives fname
     in
     dir_subtree_iter ~on_dir arcdir ;
