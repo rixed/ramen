@@ -149,8 +149,8 @@ let print fmt =
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
                 force_export ; notifications ; key ; top ; commit_when ;
                 commit_before ; flush_how ; from ; every } ->
-    Printf.fprintf fmt "FROM %a"
-      (List.print ~first:"" ~last:"" ~sep print_single_quoted) from ;
+    if from <> [] then
+      List.print ~first:"FROM " ~last:"" ~sep print_single_quoted fmt from ;
     if fst merge <> [] then (
       Printf.fprintf fmt " MERGE ON %a"
         (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) (fst merge) ;

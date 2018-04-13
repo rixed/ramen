@@ -285,8 +285,8 @@ let check_expr_type ~indent ~ok_if_larger ~set_null ~from ~to_ =
   let changed =
     match from.RamenExpr.scalar_typ with
     | Some scalar_typ ->
-      set_scalar_type ~ok_if_larger ~expr_name:to_.RamenExpr.expr_name
-                      to_ scalar_typ
+      set_scalar_type ~indent ~ok_if_larger
+                      ~expr_name:to_.RamenExpr.expr_name to_ scalar_typ
     | _ -> false in
   if set_null then
     match from.RamenExpr.nullable with
@@ -428,8 +428,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         ) (false, true, Some [], []) args in
     (* If we have typed all the operands, find out the type of the
      * operator. *)
+    !logger.debug "%soperands types: %a, all typed=%b" indent
+      (Option.print (List.print (RamenScalar.print_typ))) types all_typed ;
     match types with
     | Some lst when all_typed ->
+      !logger.debug "%sall operands typed, propagating to operator" indent ;
       (* List.fold inverted lst and nullables lists, which would confuse
        * make_op_typ: *)
       let lst = List.rev lst and nullables = List.rev nullables in

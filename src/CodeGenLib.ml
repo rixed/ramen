@@ -1384,9 +1384,8 @@ let casing codegen_version rc_str rc_marsh lst =
     Printf.printf
       "This program is a Ramen worker (codegen %s).\n\n\
        Runtime configuration:\n\n%s\n\n\
-       argv0 was %S\n\
        Have a nice day!\n"
-      codegen_version rc_str Sys.argv.(0) in
+      codegen_version rc_str in
   let run_worker () =
     (* Call a function from lst according to envvar "name" *)
     match Sys.getenv "name" with
