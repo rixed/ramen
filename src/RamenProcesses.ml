@@ -118,8 +118,7 @@ let cleanup_old_files max_archives conf =
     and clean_time_archives dir =
       (* Delete all time link with a link ref count at 1 *)
       RingBuf.time_files_of dir //@
-      (fun (_, _, f) ->
-        let fname = dir ^"/"^ f in
+      (fun (_, _, fname) ->
         let s = Unix.stat fname in
         if s.Unix.st_nlink = 1 then Some fname else None) |>
       Enum.iter (fun fname ->
