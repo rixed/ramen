@@ -105,8 +105,8 @@ CAMLprim value wrap_ringbuf_create(value wrap_, value fname_, value tot_words_)
   bool wrap = Bool_val(wrap_);
   char *fname = String_val(fname_);
   unsigned tot_words = Long_val(tot_words_);
-  int res = ringbuf_create(wrap, fname, tot_words);
-  if (res < 0) caml_failwith("Cannot create ring buffer");
+  enum ringbuf_error err = ringbuf_create(wrap, fname, tot_words);
+  if (RB_OK != err) caml_failwith("Cannot create ring buffer");
   CAMLreturn(Val_unit);
 }
 
@@ -116,7 +116,7 @@ CAMLprim value wrap_ringbuf_load(value fname_)
   CAMLlocal1(res);
   res = alloc_ringbuf();
   char *fname = String_val(fname_);
-  if (0 != ringbuf_load(Ringbuf_val(res), fname))
+  if (RB_OK != ringbuf_load(Ringbuf_val(res), fname))
     caml_failwith("Cannot load ring buffer");
   CAMLreturn(res);
 }
@@ -125,7 +125,8 @@ CAMLprim value wrap_ringbuf_unload(value rb_)
 {
   CAMLparam1(rb_);
   struct ringbuf *rb = Ringbuf_val(rb_);
-  if (0 != ringbuf_unload(rb)) caml_failwith("Cannot unload ring buffer");
+  if (RB_OK != ringbuf_unload(rb))
+    caml_failwith("Cannot unload ring buffer");
   free(rb);
   Ringbuf_val(rb_) = NULL;
   //printf("%d: Unmmapped @ %p\n", (int)getpid(), rb);
@@ -189,9 +190,16 @@ CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_, value 
   double tmax = Double_val(tmax_);
   uint32_t nb_words = size / sizeof(uint32_t);
   uint32_t *bytes = (uint32_t *)String_val(bytes_);
-  if (0 != ringbuf_enqueue(rb, bytes, nb_words, tmin, tmax)) {
-    assert(exception_inited);
-    caml_raise_constant(exn_NoMoreRoom);
+  switch (ringbuf_enqueue(rb, bytes, nb_words, tmin, tmax)) {
+    case RB_ERR_NO_MORE_ROOM:
+      assert(exception_inited);
+      caml_raise_constant(exn_NoMoreRoom);
+      break;
+    case RB_ERR_FAILURE:
+      caml_failwith("Cannot ringbuf_enqueue");
+      break;
+    case RB_OK:
+      break;
   }
   CAMLreturn(Val_unit);
 }
@@ -287,9 +295,16 @@ CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   wrtx->rb = rb;
   wrtx->alloced = size;
-  if (0 != ringbuf_enqueue_alloc(rb, &wrtx->tx, nb_words)) {
-    assert(exception_inited);
-    caml_raise_constant(exn_NoMoreRoom);
+  switch (ringbuf_enqueue_alloc(rb, &wrtx->tx, nb_words)) {
+    case RB_ERR_FAILURE:
+      caml_failwith("Cannot ringbuf_enqueue_alloc");
+      break;
+    case RB_ERR_NO_MORE_ROOM:
+      assert(exception_inited);
+      caml_raise_constant(exn_NoMoreRoom);
+      break;
+    case RB_OK:
+      break;
   }
   /*printf("Allocated %d bytes for enqueuing at offset %"PRIu32" (in words)\n",
          size, wrtx->tx.record_start);*/

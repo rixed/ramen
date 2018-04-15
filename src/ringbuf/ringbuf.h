@@ -62,6 +62,13 @@ struct ringbuf {
   size_t mmapped_size;  // The size that was mmapped (for ringbuf_unload)
 };
 
+// Error codes
+enum ringbuf_error {
+  RB_OK = 0,
+  RB_ERR_NO_MORE_ROOM,
+  RB_ERR_FAILURE
+};
+
 // Return the number of words currently stored in  the ring-buffer:
 inline uint32_t ringbuf_file_nb_entries(struct ringbuf_file const *rbf, uint32_t prod_tail, uint32_t cons_head)
 {
@@ -93,7 +100,8 @@ inline void print_rbf(struct ringbuf_file *rbf)
          rbf->prod_tail, rbf->prod_head);
 }
 
-extern int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t nb_words);
+extern enum ringbuf_error ringbuf_enqueue_alloc(
+  struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t nb_words);
 
 inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop)
 {
@@ -125,10 +133,12 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
 }
 
 // Combine all of the above:
-inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words, double t_start, double t_stop)
+inline enum ringbuf_error ringbuf_enqueue(
+      struct ringbuf *rb, uint32_t const *data, uint32_t nb_words,
+      double t_start, double t_stop)
 {
   struct ringbuf_tx tx;
-  int const err = ringbuf_enqueue_alloc(rb, &tx, nb_words);
+  enum ringbuf_error const err = ringbuf_enqueue_alloc(rb, &tx, nb_words);
   if (err) return err;
 
   struct ringbuf_file *rbf = rb->rbf;
@@ -275,13 +285,13 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
 }
 
 /* Create a new ring buffer of the specified size. */
-extern int ringbuf_create(bool wrap, char const *fname, uint32_t tot_words);
+extern enum ringbuf_error ringbuf_create(bool wrap, char const *fname, uint32_t tot_words);
 
 /* Mmap the ring buffer present in that file. Fails if the file does not exist
  * already. Returns NULL on error. */
-extern int ringbuf_load(struct ringbuf *rb, char const *fname);
+extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, char const *fname);
 
 /* Unmap the ringbuffer. */
-extern int ringbuf_unload(struct ringbuf *);
+extern enum ringbuf_error ringbuf_unload(struct ringbuf *);
 
 #endif

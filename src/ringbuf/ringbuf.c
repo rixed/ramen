@@ -18,7 +18,7 @@ extern inline uint32_t ringbuf_file_nb_entries(struct ringbuf_file const *rb, ui
 extern inline uint32_t ringbuf_file_nb_free(struct ringbuf_file const *rb, uint32_t, uint32_t);
 
 extern inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop);
-extern inline int ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words, double t_start, double t_stop);
+extern inline enum ringbuf_error ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words, double t_start, double t_stop);
 
 extern inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx);
@@ -223,9 +223,11 @@ static int unlock(int lock_fd)
     return 0;
   }
 
-  if (0 != close(lock_fd)) {
-    fprintf(stderr, "Cannot unlock fd %d: %s\n", lock_fd, strerror(errno));
-    return -1;
+  while (0 != close(lock_fd)) {
+    if (errno != EINTR) {
+      fprintf(stderr, "Cannot unlock fd %d: %s\n", lock_fd, strerror(errno));
+      return -1;
+    }
   }
   return 0;
 }
@@ -284,9 +286,9 @@ err0:
   return ret;
 }
 
-extern int ringbuf_create(bool wrap, char const *fname, uint32_t nb_words)
+extern enum ringbuf_error ringbuf_create(bool wrap, char const *fname, uint32_t nb_words)
 {
-  int ret = -1;
+  enum ringbuf_error err = RB_ERR_FAILURE;
 
   // We must not try to create a RB while another process is rotating or
   // creating it:
@@ -297,12 +299,12 @@ extern int ringbuf_create(bool wrap, char const *fname, uint32_t nb_words)
     goto err1;
   }
 
-  ret = 0;
+  err = RB_OK;
 
 err1:
-  if (0 != unlock(lock_fd)) ret = -1;
+  if (0 != unlock(lock_fd)) err = RB_ERR_FAILURE;
 err0:
-  return ret;
+  return err;
 }
 
 static bool check_header_eq(char const *fname, char const *what, unsigned expected, unsigned actual)
@@ -375,9 +377,9 @@ err0:
   return ret;
 }
 
-extern int ringbuf_load(struct ringbuf *rb, char const *fname)
+extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, char const *fname)
 {
-  int ret = -1;
+  enum ringbuf_error err = RB_ERR_FAILURE;
 
   size_t fname_len = strlen(fname);
   if (fname_len + 1 > sizeof(rb->fname)) {
@@ -395,29 +397,28 @@ extern int ringbuf_load(struct ringbuf *rb, char const *fname)
   if (lock_fd < 0) goto err0;
 
   if (0 != mmap_rb(rb)) {
-    ret = -1;
     goto err1;
   }
 
-  ret = 0;
+  err = RB_OK;
 
 err1:
-  if (0 != unlock(lock_fd)) ret = -1;
+  if (0 != unlock(lock_fd)) err = RB_ERR_FAILURE;
 err0:
-  return ret;
+  return err;
 }
 
-int ringbuf_unload(struct ringbuf *rb)
+enum ringbuf_error ringbuf_unload(struct ringbuf *rb)
 {
   if (rb->rbf) {
     if (0 != munmap(rb->rbf, rb->mmapped_size)) {
       fprintf(stderr, "Cannot munmap: %s\n", strerror(errno));
-      return -1;
+      return RB_ERR_FAILURE;
     }
     rb->rbf = NULL;
   }
   rb->mmapped_size = 0;
-  return 0;
+  return RB_OK;
 }
 
 // Called with the lock
@@ -491,8 +492,15 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
   if (rbf->wrap) return 0;
 
   uint32_t const needed = 1 /* msg size */ + nb_words + 1 /* EOF */;
-  if (ringbuf_file_nb_free(rbf, rbf->cons_tail, rbf->prod_head) >= needed)
-    return 0;
+  uint32_t const free = ringbuf_file_nb_free(rbf, rbf->cons_tail, rbf->prod_head);
+  if (free >= needed) {
+    if (rbf->data[rbf->prod_head] == UINT32_MAX) {
+      printf("Enough place for a new record (%"PRIu32" words, "
+             "and %"PRIu32" free) but EOF mark is set\n", needed, free);
+    } else {
+      return 0;
+    }
+  }
 
   printf("Rotating buffer '%s'!\n", rb->fname);
 
@@ -505,7 +513,7 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
 
   // Wait, maybe some other process rotated the file already while we were
   // waiting for that lock? In that case it would have written the EOF:
-  if (rb->rbf->data[rb->rbf->prod_head] != UINT32_MAX) {
+  if (rbf->data[rbf->prod_head] != UINT32_MAX) {
     if (0 != rotate_file(rb)) goto err1;
   } else {
     printf("...actually not, someone did already.\n");
@@ -525,6 +533,8 @@ err1:
   if (0 != unlock(lock_fd)) ret = -1;
   // Too bad we cannot unlink that lockfile without a race condition
 err0:
+  fflush(stdout);
+  fflush(stderr);
   return ret;
 }
 
@@ -532,12 +542,12 @@ err0:
  *  word n: nb_words
  *  word n+1..n+nb_words: allocated.
  *  tx->record_start will point at word n+1 above. */
-extern int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t nb_words)
+extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t nb_words)
 {
   uint32_t cons_tail;
   uint32_t need_eof = 0;  // 0 never needs an EOF
 
-  if (may_rotate(rb, nb_words) < 0) return -1;
+  if (may_rotate(rb, nb_words) < 0) return RB_ERR_FAILURE;
 
   struct ringbuf_file *rbf = rb->rbf;
 
@@ -557,7 +567,7 @@ extern int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint
       tx->next = 1 + nb_words;
       assert(tx->next < rbf->nb_words);
     } else if (tx->next == rbf->nb_words) {
-      printf("tx->next == rbf->nb_words\n");
+      //printf("tx->next == rbf->nb_words\n");
       tx->next = 0;
     }
 
@@ -565,7 +575,7 @@ extern int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint
     if (ringbuf_file_nb_free(rbf, cons_tail, tx->seen) <= alloced) {
       /*printf("Ringbuf is full, cannot alloc for enqueue %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", nb_free=%"PRIu32"\n",
              alloced, rbf->nb_words, tx->seen, cons_tail, ringbuf_file_nb_free(rbf, cons_tail, tx->seen));*/
-      return -1;
+      return RB_ERR_NO_MORE_ROOM;
     }
 
   } while (!  atomic_compare_exchange_strong(&rbf->prod_head, &tx->seen, tx->next));
@@ -573,5 +583,5 @@ extern int ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint
   if (need_eof) rbf->data[need_eof] = UINT32_MAX;
   rbf->data[tx->record_start ++] = nb_words;
 
-  return 0;
+  return RB_OK;
 }
