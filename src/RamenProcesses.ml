@@ -104,7 +104,9 @@ let cleanup_old_files max_archives conf =
     let%lwt () = Lwt_list.iter_s cleanup_dir to_clean in
     (* Clean old archives *)
     let arcdir =
-      conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf in
+      conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf
+    and reportdir =
+      Filename.basename (RamenConf.report_ringbuf conf) in
     let clean_seq_archives dir =
       (* Delete all files matching %d-%d.r but the last ones: *)
       let files = RingBuf.seq_files_of dir |> Array.of_enum in
@@ -133,6 +135,7 @@ let cleanup_old_files max_archives conf =
         clean_seq_archives fname
     in
     dir_subtree_iter ~on_dir arcdir ;
+    dir_subtree_iter ~on_dir reportdir ;
     Lwt_unix.sleep 3600. >>= loop
   in
   loop ()
