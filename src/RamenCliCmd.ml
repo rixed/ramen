@@ -503,23 +503,34 @@ let tail conf func_name with_header separator null
  * same output archive files as the `ramen tail` command does.
  *)
 
-let timeseries conf since until where max_data_points separator null
+let timeseries conf since until where factors max_data_points separator null
                func_name data_field consolidation duration () =
   logger := make_logger conf.C.debug ;
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let since = since |? until -. 600. in
   if since >= until then failwith "since must come strictly before until" ;
   (* Obtain the data: *)
-  Lwt_main.run (
-    RamenTimeseries.get conf ~duration max_data_points since until where
-                        ~consolidation func_name data_field) |>
+  let columns, timeseries =
+    Lwt_main.run (
+      RamenTimeseries.get conf ~duration max_data_points since until where
+                          factors ~consolidation func_name data_field) in
   (* Display results: *)
-  Enum.iter (fun (t, v) ->
+  (* Header: *)
+  let column_names =
+    Array.map (fun sc ->
+      List.map RamenScalar.to_string sc |>
+      String.concat "."
+    ) columns in
+  Array.print ~first:("#Time"^ separator) ~last:"\n" ~sep:separator
+              String.print stdout column_names ;
+  Enum.iter (fun (t, vs) ->
     Float.print stdout t ;
     String.print stdout separator ;
-    (match v with None -> String.print stdout null
-                | Some v -> Float.print stdout v) ;
-    String.print stdout "\n")
+    Array.print ~first:"" ~last:"\n" ~sep:separator
+      (fun oc v ->
+        (match v with None -> String.print oc null
+                    | Some v -> Float.print oc v)) stdout vs
+  ) timeseries
 
 (*
  * `ramen timerange`

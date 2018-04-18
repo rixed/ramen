@@ -296,11 +296,13 @@ let render_graphite conf headers body =
           bad_request "bad target name"
       | func, field ->
           return (String.nreplace ~str:func ~sub:"." ~by:"/", field) in
-    let%lwt datapoints =
-      RamenTimeseries.get conf max_data_points since until where
+    let%lwt columns, datapoints =
+      RamenTimeseries.get conf max_data_points since until where []
                           func_name data_field in
-    let datapoints = Enum.map (fun (t, v) -> v, int_of_float t) datapoints |>
-                     Array.of_enum in
+    let datapoints =
+      (* TODO: return all factor value combinations *)
+      Enum.map (fun (t, v) -> v.(0), int_of_float t) datapoints |>
+      Array.of_enum in
     return { target ; datapoints }
   in
   let%lwt resp = Lwt_list.map_p metric_of_target targets in

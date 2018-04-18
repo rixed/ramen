@@ -356,6 +356,11 @@ let consolidation =
     [ p "min" ; p "max" ; p "avg" ; p "sum" ] in
   Arg.(value (opt (enum cons_func) "avg" i))
 
+let factors =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.factors
+                   ~docv:"FIELD" ["f"; "factor"] in
+  Arg.(value (opt_all string [] i))
+
 let timeseries =
   Term.(
     (const RamenCliCmd.timeseries
@@ -363,6 +368,7 @@ let timeseries =
       $ since
       $ until
       $ where
+      $ factors
       $ max_nb_points
       $ csv_separator
       $ csv_null

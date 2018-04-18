@@ -89,6 +89,8 @@ struct
   let max_seq = "Output only tuples with smaller sequence number"
   let continuous = "Wait for more when end of file is reached"
   let where = "Output only tuples which given field match the given value"
+  let factors =
+    "specify which fields to use as factors/categorical variables"
   let with_seqnums = "Prepend tuples with their sequence number"
   let func_name = "Operation unique name"
   let duration =

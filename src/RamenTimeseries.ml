@@ -39,15 +39,8 @@ let bucket_max b =
 
 
 (* Enumerates all the time*values *)
-let get conf ?duration max_data_points since until where
+let get conf ?duration max_data_points since until where factors
         ?(consolidation="avg") func_name data_field =
-  let dt = (until -. since) /. float_of_int max_data_points in
-  let buckets = make_buckets max_data_points in
-  let bucket_of_time = bucket_of_time since dt in
-  let consolidation =
-    match String.lowercase consolidation with
-    | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
-    | _ -> bucket_avg in
   let%lwt bname, filter, typ, event_time =
     (* Read directly from the instrumentation ringbuf when func_name ends
      * with "#stats" *)
@@ -74,18 +67,48 @@ let get conf ?duration max_data_points since until where
       return (bname, filter, typ, func.F.event_time)
   in
   let open RamenSerialization in
+  let fis =
+    List.map (find_field_index typ.ser) factors in
+  let key_of_factors tuple =
+    List.fold_left (fun k fi -> tuple.(fi) :: k) [] fis in
   let%lwt vi =
     Lwt.wrap (fun () -> find_field_index typ.ser data_field) in
+  let dt = (until -. since) /. float_of_int max_data_points in
+  let per_factor_buckets = Hashtbl.create 11 in
+  let bucket_of_time = bucket_of_time since dt in
+  let consolidation =
+    match String.lowercase consolidation with
+    | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
+    | _ -> bucket_avg in
   let%lwt () =
     fold_time_range bname typ.ser event_time since until () (fun () tuple t1 t2 ->
       if filter tuple then (
         let v = float_of_scalar_value tuple.(vi) in
+        let k = key_of_factors tuple in
+        let buckets =
+          try Hashtbl.find per_factor_buckets k
+          with Not_found ->
+            let buckets = make_buckets max_data_points in
+            Hashtbl.add per_factor_buckets k buckets ;
+            buckets in
         let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
         for bi = bi1 to bi2 do add_into_bucket buckets bi v done)) in
-  (* Extract the results as an Enum *)
+  (* Extract the results as an Enum, one value per key *)
+  let indices = Enum.range 0 ~until:(max_data_points - 1) in
+  (* Assume keys and values will enumerate keys in the same orders: *)
+  let columns =
+    Hashtbl.keys per_factor_buckets |>
+    Array.of_enum in
+  let ts =
+    Hashtbl.values per_factor_buckets |>
+    Array.of_enum in
   return (
-    Array.range buckets /@
+    columns,
+    indices /@
     (fun i ->
       let t = since +. dt *. (float_of_int i +. 0.5)
-      and v = consolidation buckets.(i) in
+      and v =
+        Array.map (fun buckets ->
+          consolidation buckets.(i)
+        ) ts in
       t, v))

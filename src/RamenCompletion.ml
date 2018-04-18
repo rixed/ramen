@@ -194,6 +194,7 @@ let complete str () =
           ("--since=", RamenConsts.CliInfo.since) ::
           ("--until=", RamenConsts.CliInfo.until) ::
           ("--where=", RamenConsts.CliInfo.where) ::
+          ("--factor=", RamenConsts.CliInfo.factors) ::
           ("--max-nb-points=", RamenConsts.CliInfo.max_nb_points) ::
           ("--data-field=", RamenConsts.CliInfo.data_field) ::
           ("--consolidation=", RamenConsts.CliInfo.consolidation) ::
