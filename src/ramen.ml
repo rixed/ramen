@@ -367,6 +367,7 @@ let timeseries =
       $ copts
       $ since
       $ until
+      $ with_header
       $ where
       $ factors
       $ max_nb_points
