@@ -316,20 +316,21 @@ let check params =
           raise (SyntaxError m)
         )
       | _ -> ())
-  and check_event_time fields ((start_field, _), duration) =
-    let check_field_exists f =
-      if not (List.exists (fun sf -> sf.alias = f) fields) then
-        let m =
-          let print_alias oc sf = String.print oc sf.alias in
-          let tuple_type = IO.to_string (List.print print_alias) fields in
-          FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
-        raise (SyntaxError m)
-    in
-    check_field_exists start_field ;
+  and check_field_exists fields f =
+    if not (List.exists (fun sf -> sf.alias = f) fields) then
+      let m =
+        let print_alias oc sf = String.print oc sf.alias in
+        let tuple_type = IO.to_string (List.print print_alias) fields in
+        FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
+      raise (SyntaxError m)
+  in
+  let check_event_time fields ((start_field, _), duration) =
+    check_field_exists fields start_field ;
     match duration with
     | RamenEventTime.DurationConst _ -> ()
     | RamenEventTime.DurationField (f, _)
-    | RamenEventTime.StopField (f, _) -> check_field_exists f
+    | RamenEventTime.StopField (f, _) -> check_field_exists fields f
+  and check_factors fields = List.iter (check_field_exists fields)
   (* Unless it's a param, assume TupleUnknow belongs to def: *)
   and prefix_def def =
     Expr.iter (function
@@ -343,7 +344,7 @@ let check params =
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
                 commit_when ; flush_how ; event_time ;
-                from ; every ; _ } as op ->
+                from ; every ; factors } as op ->
     (* Set of fields known to come from in (to help prefix_smart): *)
     let fields_from_in = ref Set.empty in
     iter_expr (function
@@ -402,7 +403,10 @@ let check params =
           raise (SyntaxError (AliasNotUnique sf.alias)) ;
         sf.alias :: prev_aliases
       ) [] fields |> ignore;
-    if not and_all_others then Option.may (check_event_time fields) event_time ;
+    if not and_all_others then (
+      Option.may (check_event_time fields) event_time ;
+      check_factors fields factors
+    ) ;
     (* Disallow group state in WHERE because it makes no sense: *)
     check_no_group (no_group "WHERE") where ;
     check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOutPrevious] "WHERE clause" where ;
@@ -440,7 +444,7 @@ let check params =
 
     (* TODO: notifications: check field names from text templates *)
 
-  | ReadCSVFile _ -> () (* TODO: check_event_time! *)
+  | ReadCSVFile _ -> () (* TODO: check_event_time, check_factors!*)
   | ListenFor _ -> ()
   | Instrumentation _ -> ()
 
