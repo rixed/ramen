@@ -50,7 +50,7 @@ let replace_typ_in_operation =
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
                 force_export ; notifications ; key ; top ; commit_before ;
-                commit_when ; flush_how ; from ; every } ->
+                commit_when ; flush_how ; from ; every ; factors } ->
     Aggregate {
       fields =
         List.map (fun sf ->
@@ -70,7 +70,7 @@ let replace_typ_in_operation =
         | Reset | Never | Slide _ -> flush_how
         | RemoveAll e -> RemoveAll (replace_typ e)
         | KeepOnly e -> KeepOnly (replace_typ e)) ;
-      every }
+      every ; factors }
   | x -> x
 
 let replace_typ_in_op = function

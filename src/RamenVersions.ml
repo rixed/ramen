@@ -5,11 +5,11 @@
  * anything. *)
 let release_tag = "v2.0.0"
 
-(* Ramen graph configuration *)
+(* Format of the list of running programs: *)
 let graph_config = "v9" (* last: stripped down version *)
 
 (* Code generation: sources, binaries... *)
-let codegen = "v7" (* last: no more dedicated yield *)
+let codegen = "v8" (* last: addition of factors *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v1"

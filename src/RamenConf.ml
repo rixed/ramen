@@ -40,7 +40,8 @@ struct
       parents : (string * string) list ;
       force_export : bool ;
       merge_inputs : bool ;
-      event_time : RamenEventTime.t option }
+      event_time : RamenEventTime.t option ;
+      factors : string list }
     [@@ppp PPP_OCaml]
 
   let print_parent oc (p, f) = Printf.fprintf oc "%s/%s" p f

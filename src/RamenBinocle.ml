@@ -35,6 +35,8 @@ let tuple_typ =
 
 let event_time = Some (("time", 1.), RamenEventTime.DurationConst 0.)
 
+let factors = [ "worker" ]
+
 let nb_nullables =
   List.fold_left (fun c t ->
       if t.RamenTuple.nullable then c+1 else c

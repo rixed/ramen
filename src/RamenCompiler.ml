@@ -199,7 +199,8 @@ let compile conf root_path program_name program_code =
                 force_export = RamenOperation.is_exporting operation ;
                 merge_inputs = RamenOperation.is_merging operation ;
                 event_time =
-                  RamenOperation.event_time_of_operation operation }
+                  RamenOperation.event_time_of_operation operation ;
+                factors = RamenOperation.factors_of_operation operation }
           ) |>
           List.of_enum in
         Printf.fprintf oc "let rc_str_ = %S\n"
