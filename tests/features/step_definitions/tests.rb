@@ -149,22 +149,24 @@ Given /^no worker must be running$/ do
 end
 
 Given /^(?:the )?workers? (.*) must( not)? be running/ do |workers, not_run|
-  re = Regexp.union(workers.list_split.map{|w| /^#{w}\t/})
+  workers = workers.list_split
+  re = Regexp.union(workers.map{|w| /^#{Regexp.escape(w)}\t/})
   l = `ramen ps`.lines.select{|e| e =~ re}.length
   if not_run
     expect(l).to be == 0
   else
-    expect(l).to be > 0
+    expect(l).to be == workers.length
   end
 end
 
 Given /^(?:the )?programs? (.*) must( not)? be running/ do |programs, not_run|
-  re = Regexp.union(programs.list_split.map{|w| /^#{w}\t/})
+  programs = programs.list_split
+  re = Regexp.union(programs.map{|w| /^#{Regexp.escape(w)}\t/})
   l = `ramen ps --short`.lines.select{|e| e =~ re}.length
   if not_run
     expect(l).to be == 0
   else
-    expect(l).to be > 0
+    expect(l).to be == programs.length
   end
 end
 
@@ -176,7 +178,7 @@ Given /no (?:program|worker)s? (?:is|are) running/ do
 end
 
 Given /(?:the )?programs? (.*) (?:is|are) not running/ do |programs|
-  re = Regexp.union(programs.list_split.map{|w| /^(#{w})\t/})
+  re = Regexp.union(programs.list_split.map{|w| /^(#{Regexp.escape(w)})\t/})
   l = `ramen ps --short`.lines.select{|e| e =~ re}.each do |e|
     prog = $1
     `ramen kill "#{prog}"`
@@ -190,7 +192,7 @@ Given /(?:the )?programs? (.*) (?:is|are) running/ do |programs|
   end
   programs.list_split.each do |prog|
     if not running.include? prog
-      `ramen run "#{prog}.x" 2>/dev/null`
+      expect(system("ramen run '#{prog}.x'")).to eq true
     end
   end
 end

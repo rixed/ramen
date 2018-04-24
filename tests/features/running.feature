@@ -24,7 +24,10 @@ Feature: We can run and kill any program in any order
       """
       define n as select v from tests/nodep/yi;
       """
+    # Ordering of the following two steps is important as dep.x will be
+    # moved to xdep.x:
     And tests/dep.ramen is compiled as tests/xdep.x
+    And tests/dep.ramen is compiled
     # Now the real content
     And a file tests/nodep.ramen with content
       """
