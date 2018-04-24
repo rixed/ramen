@@ -254,15 +254,27 @@ let fold_buffer ?wait_for_more ?while_ bname init f =
         (fun () -> unload rb ; Lwt.return_unit) in
       Lwt.return usr
 
+(* Like fold_buffer but call f with the tuple rather than the tx: *)
+let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
+  !logger.debug "Going to fold over %s" bname ;
+  let nullmask_size =
+    RingBufLib.nullmask_bytes_of_tuple_type typ in
+  let f usr tx =
+    let tuple =
+      read_tuple typ nullmask_size tx in
+    Lwt.return (
+      let usr, more_to_come as res = f usr tuple in
+      if early_stop then res
+      else (usr, true))
+  in
+  fold_buffer ~wait_for_more:false ?while_ bname init f
+
 (* As tuples are not necessarily ordered by time we want the possibility
  * to override the more_to_come decision.
  * Notice that contrary to `ramen tail`, `ramen timeseries` must never
  * wait for data and must return as soon as we've reached the end of what's
  * available. *)
 let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f =
-  !logger.debug "Going to fold over %s for timeseries" bname ;
-  let nullmask_size =
-    RingBufLib.nullmask_bytes_of_tuple_type typ in
   let%lwt event_time_of_tuple =
     match event_time with
     | None ->
@@ -281,17 +293,12 @@ let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f
             | RamenEventTime.StopField (_, s) -> float_of_scalar_value tup.(t2i) *. s in
           (* Allow duration to be < 0 *)
           if t2 >= t1 then t1, t2 else t2, t1) in
-  let f usr tx =
-    let tuple =
-      read_tuple typ nullmask_size tx in
+  let f usr tuple =
     (* Get the times from tuple: *)
     let t1, t2 = event_time_of_tuple tuple in
-    Lwt.return (
-      let usr, more_to_come as res = f usr tuple t1 t2 in
-      if early_stop then res
-      else usr, true)
+    f usr tuple t1 t2
   in
-  fold_buffer ~wait_for_more:false ?while_ bname init f
+  fold_buffer_tuple ?while_ bname typ init f
 
 let time_range ?while_ bname typ event_time =
   let dir = time_dir_of_bname bname in

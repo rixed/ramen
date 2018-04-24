@@ -25,6 +25,7 @@ open RamenHelpers
 open RamenHttpHelpers
 module C = RamenConf
 module F = C.Func
+module P = C.Program
 
 (*
  * Answer graphite queries for /metrics/find, documented in
@@ -97,19 +98,105 @@ let find_components query all_comps =
     (find_components "*p*" (List.enum test_comps) |> List.of_enum)
  *)
 
+(* This ugly E is there to make the type non cyclic: *)
+type 'a tree_enum = E of ('a * 'a tree_enum) Enum.t
+let get (E x) = x
+
+(* Given a tree enumerator and a list of filters, return a tree enumerator
+ * of the entries matching the filter: *)
+let rec filter_tree te = function
+  | [] -> te
+  | flt :: flts ->
+      E (Enum.filter_map (fun (a, te') ->
+        if flt a then Some (a, filter_tree te' flts)
+        else None) (get te))
+
+(* Given a func, returns the tree_enum of fields that are not factors *)
+let tree_enum_of_fields func =
+  E (List.enum func.F.out_type.ser //@
+     (fun ft ->
+       let n = ft.RamenTuple.typ_name in
+       if List.mem n func.F.factors then None
+       else Some (n, E (Enum.empty ()))))
+
+(* Given a functions and a list of factors (any part of func.F.factors),
+ * return the tree_enum of the factors: *)
+let rec tree_enum_of_factors func = function
+  | [] -> tree_enum_of_fields func
+  | factor :: factors' ->
+      E (RamenTimeseries.possible_values func factor /@
+         (fun pv -> pv, tree_enum_of_factors func factors'))
+
+(* Given a program, returns the tree_enum of its functions: *)
+let tree_enum_of_program (program_name, get_rc) =
+  let _bin, funcs = get_rc () in
+  E (List.enum funcs /@
+     (fun func ->
+       func.F.name, tree_enum_of_factors func func.F.factors))
+
+(* Given the programs hashtable, return a tree_enum of the
+ * path components and programs. Merely build a hashtbl of hashtbls. *)
+type program_tree_item = Prog of (string * (unit -> string * P.t))
+                       | Hash of (string, program_tree_item) Hashtbl.t
+let tree_enum_of_programs programs =
+  let programs =
+    Hashtbl.enum programs |>
+    Array.of_enum in
+  Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) programs ;
+  let rec hash_for_prefix pref =
+    let h = Hashtbl.create 11 in
+    let pl = String.length pref in
+    Array.iter (fun (program_name, get_rc as p) ->
+      if String.starts_with program_name pref then
+        let suf = String.lchop ~n:pl program_name in
+        (* Get the next prefix *)
+        match String.split suf ~by:"/" with
+        | exception Not_found ->
+            Hashtbl.add h suf (Prog p)
+        | suf, rest ->
+            (* If we've done it already, continue: *)
+            if not (Hashtbl.mem h suf) then
+              let pref' = pref ^ suf ^"/" in
+              Hashtbl.add h suf (Hash (hash_for_prefix pref'))
+      (* TODO: exit when we stop matching as the array is ordered *)
+    ) programs ;
+    h in
+  let h = hash_for_prefix "" in
+  let rec tree_enum_of_h h =
+    E (Hashtbl.enum h /@
+       (function name, Prog p -> name, tree_enum_of_program p
+               | name, Hash h -> name, tree_enum_of_h h)) in
+  tree_enum_of_h h
+
+let filters_of_query query =
+  List.map (fun q ->
+    let glob = Globs.compile q in
+    Globs.matches glob) query
+
+let expand_query_ng conf query =
+  !logger.debug "Getting programs..." ;
+  let%lwt programs = C.with_rlock conf Lwt.return in
+  !logger.debug "Caching factors possible values..." ;
+  let%lwt () = RamenTimeseries.cache_possible_values conf programs in
+  !logger.debug "Building tree..." ;
+  let te = tree_enum_of_programs programs in
+  let query = String.nsplit ~by:"." query in
+  let filters = filters_of_query query in
+  return (filter_tree te filters)
+
 (* Given the list of running programs, return the broken down list of
- * path components à la graphite: *)
+ * path components à la graphite, with program name (split by "/", then
+ * operation name, then factors and finally a (non-factor) field name: *)
 let comps_of_programs programs =
   let comps_of = String.nsplit ~by:"/" in
-  (* ((string, unit -> string * C.Program.t) Batteries.Hashtbl.t *)
   let programs =
     Hashtbl.enum programs |>
     Array.of_enum in
   Array.fast_sort (fun (k1, _) (k2,_) -> String.compare k1 k2) programs ;
   Array.enum programs /@
   (fun (program_name, get_rc) ->
-    let _bin, program = get_rc () in
-    List.enum program /@
+    let _bin, funcs = get_rc () in
+    List.enum funcs /@
     (fun func ->
       let fq_name = program_name ^"/"^ func.F.name in
       List.enum func.out_type.ser /@
@@ -123,10 +210,10 @@ let comps_of_programs programs =
  * several components separated by a dots. Each non last components
  * can be either a plain word or a star. The last component can also
  * be "*word*".
- * The answer must have the completed last component in name and
- * the query with the last component completed in id.
- * The idea is that id will then identify the timeseries we want to
- * display (once expanded) *)
+ * The answer is a list of graphite_metric which name field must be the
+ * completed last component and which id field the query with the last
+ * component completed. The idea is that id will then identify the timeseries
+ * we want to display (once expanded) *)
 
 (* Enumerate the (id, leaf, text, target) matching a query. Where:
  * id is the query with only the last part completed (used for autocompletion)

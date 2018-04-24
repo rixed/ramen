@@ -125,12 +125,12 @@ let program_func_of_user_string ?default_program s =
 
 (* Cannot be in RamenHelpers since it depends on PPP and CodeGen depends on
  * RamenHelpers: *)
-let ppp_of_file fname ppp =
+let ppp_of_file ?(error_ok=false) fname ppp =
   let openflags = [ Open_rdonly; Open_text ] in
   match Pervasives.open_in_gen openflags 0o644 fname with
   | exception e ->
-      !logger.warning "Cannot open %S for reading: %s"
-        fname (Printexc.to_string e) ;
+      (if error_ok then !logger.debug else !logger.warning)
+        "Cannot open %S for reading: %s" fname (Printexc.to_string e) ;
       raise e
   | ic ->
       finally
@@ -138,6 +138,7 @@ let ppp_of_file fname ppp =
         (PPP.of_in_channel_exc ppp) ic
 
 let ppp_to_file fname ppp v =
+  mkdir_all ~is_file:true fname ;
   let openflags = [ Open_wronly; Open_creat; Open_trunc; Open_text ] in
   match Pervasives.open_out_gen openflags 0o644 fname with
   | exception e ->
@@ -299,6 +300,11 @@ let archive_buf_name conf func =
                    ^"/"^ func.Func.program_name
                    ^"/"^ func.Func.name
                    ^"/"^ sign ^"/archive.b"
+
+(* Each individual ringbuf may have a file storing all possible values for
+ * special fields identified as factors: *)
+let factors_of_ringbuf fname factor =
+  Filename.remove_extension fname ^".factors."^ factor
 
 (* Operations are told where to write their output (and which selection of
  * fields) by another file, the "out-ref" file, which is a kind of symbolic

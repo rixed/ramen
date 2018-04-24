@@ -437,6 +437,18 @@ let graphite =
       $ port),
     info ~doc:RamenConsts.CliInfo.graphite "graphite")
 
+let query =
+  let i = Arg.info ~doc:"test graphite query expansion"
+                   ~docv:"QUERY" [] in
+  Arg.(value (pos 0 string "" i))
+
+let expand =
+  Term.(
+    (const RamenCliCmd.graphite_expand
+      $ copts
+      $ query),
+    info ~doc:"test graphite query expansion" "_expand")
+
 (*
  * Tests
  *)
@@ -485,7 +497,8 @@ let () =
     supervisor ; graphite ; notifier ;
     compile ; run ; kill ;
     tail ; timeseries ; timerange ; ps ;
-    test ; dequeue ; summary ; repair ; autocomplete
+    test ; dequeue ; summary ; repair ;
+    autocomplete ; expand
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

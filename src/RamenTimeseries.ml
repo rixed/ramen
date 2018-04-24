@@ -5,6 +5,7 @@
  *)
 open Lwt
 open Batteries
+open RamenLog
 module C = RamenConf
 module F = C.Func
 
@@ -112,3 +113,111 @@ let get conf ?duration max_data_points since until where factors
           consolidation buckets.(i)
         ) ts in
       t, v))
+
+(*
+ * Factors.
+ *
+ * For now let's compute the possible values cache lazily, so we can afford
+ * to lose/delete them in case of need. In the future we'd like to compute
+ * the caches on the fly though.
+ *)
+
+(* Scan the given file for all possible values for each of the factors *)
+let scan_possible_values factors bname typ =
+  let ser = typ.RamenTuple.ser in
+  let fis =
+    List.map (RamenSerialization.find_field_index ser) factors in
+  let possible_values =
+    Array.init (List.length fis) (fun _ -> Set.empty) in
+  let%lwt () =
+    RamenSerialization.fold_buffer_tuple bname ser () (fun () tuple ->
+      List.iteri (fun i fidx ->
+        let v = tuple.(fidx) in
+        possible_values.(i) <- Set.add v possible_values.(i)
+      ) fis ;
+      ((), true)) in
+  return possible_values
+
+let all_seq_bnames conf func =
+  let bname = C.archive_buf_name conf func in
+  Enum.append
+    (RingBuf.(seq_dir_of_bname bname |> seq_files_of) /@
+     (fun (_, _, fname) -> fname))
+    (Enum.singleton bname)
+
+(* What we save in factors cache files: *)
+type cached_factors = RamenScalar.value list [@@ppp PPP_OCaml]
+
+let factors_of_file fname =
+  let lst = C.ppp_of_file ~error_ok:true fname cached_factors_ppp_ocaml in
+  Set.of_list lst
+
+let factors_to_file fname factors =
+  let lst = Set.to_list factors in
+  C.ppp_to_file fname cached_factors_ppp_ocaml lst
+
+(* Scan all stored values for this operation and return the set of all
+ * possible values for that factor (if we need to actually scan a file,
+ * all factors will be refreshed). *)
+(* TODO: a version with since/until that scans only the relevant buffers,
+ * but we need to hae a way to retrieve the cached factors files from
+ * the time hard links. *)
+let get_possible_values conf func factor =
+  if not (List.mem factor func.F.factors) then
+    fail_invalid_arg "get_possible_values: not a factor"
+  else
+    let typ = func.F.out_type in
+    let bnames = all_seq_bnames conf func |>
+                 List.of_enum (* FIXME *) in
+    Lwt_list.fold_left_s (fun set bname ->
+      let%lwt pvs =
+        try
+          let cache = C.factors_of_ringbuf bname factor in
+          (* TODO: if fname is newer than cache and cache is older than X
+           * seconds then raise *)
+          let factors = factors_of_file cache in
+          !logger.debug "Got factors from cache %s" cache ;
+          return factors
+        with e ->
+          !logger.debug "Cannot read cached factors for %s because of %s, \
+                         scanning..." bname (Printexc.to_string e) ;
+          let%lwt all_pvs = scan_possible_values func.F.factors bname typ in
+          let res = ref Set.empty in
+          (* Save them all: *)
+          List.iteri (fun i factor' ->
+            if factor' = factor then (* The one that was asked for *)
+              res := all_pvs.(i) ;
+            let cache = C.factors_of_ringbuf bname factor' in
+            factors_to_file cache all_pvs.(i)
+          ) func.F.factors ;
+          return !res
+      in
+      return (Set.union pvs set)
+    ) Set.empty bnames
+
+(* Possible values per factor are precalculated to cut down on promises: *)
+(* FIXME: change the tree type to make the children enumerator a promise :-( *)
+let possible_values_cache = Hashtbl.create 31
+
+let cache_possible_values conf programs =
+  Hashtbl.values programs |>
+  List.of_enum |> (* FIXME *)
+  Lwt_list.iter_p (fun get_rc ->
+    let _bin, funcs = get_rc () in
+    Lwt_list.iter_p (fun func ->
+      let h = Hashtbl.create (List.length func.F.factors) in
+      let%lwt () =
+        Lwt_list.iter_p (fun factor ->
+          let%lwt pvs = get_possible_values conf func factor in
+          Hashtbl.add h factor pvs ;
+          return_unit
+        ) func.F.factors in
+      Hashtbl.replace possible_values_cache func.F.name h ;
+      return_unit
+    ) funcs)
+
+(* Enumerate the possible values of a factor: *)
+let possible_values func factor =
+  let h = Hashtbl.find possible_values_cache func.F.name in
+  Set.enum (Hashtbl.find h factor) /@
+  RamenScalar.to_string

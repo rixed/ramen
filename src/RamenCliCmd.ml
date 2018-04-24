@@ -577,3 +577,32 @@ let graphite conf daemonize to_stderr port () =
   Lwt_main.run (
     restart_on_failure "graphite impersonator"
       (RamenHttpHelpers.http_service port) router)
+
+let graphite_expand conf query () =
+  logger := make_logger conf.C.debug ;
+  let te = Lwt_main.run (
+    RamenGraphite.expand_query_ng conf query) in
+  let rec display indent te =
+    let e = RamenGraphite.get te in
+    Enum.iteri (fun i (n, c) ->
+      let first = i = 0
+      and last = Enum.peek e = None in
+      let prefix =
+        if first then
+          if indent = "" then "" else
+          if last then "-" else "┬"
+        else
+          if last then "└" else "├" in
+      Printf.printf "%s%s%s"
+        (if first then "" else "\n"^indent)
+        prefix n ;
+      let indent' =
+        indent
+          ^ (if prefix <> "" then
+              if last then " " else "│"
+            else "")
+          ^ String.make (String.length n) ' '
+      in
+      display indent' c) e
+  in
+  display "" te
