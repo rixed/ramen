@@ -188,7 +188,8 @@ let seq_files_of dir =
   (fun fname ->
     try
       let mi, rest = String.split ~by:"-" fname in
-      let ma, _rest = String.split ~by:"." rest in
+      let ma, rest = String.split ~by:"." rest in
+      if rest <> "b" then failwith "not a seq file" ;
       Some (int_of_hex mi, int_of_hex ma, dir ^"/"^ fname)
     with Not_found | Failure _ ->
       None)

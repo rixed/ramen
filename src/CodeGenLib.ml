@@ -370,9 +370,9 @@ let update_stats_rb period rb_name get_tuple =
 
 (* Helpers *)
 
-(* TODO: for non-ring buffers we will need to know the value for the time, and
- * we will want to save the first/last tuple sequence number as well as the min
- * and max of the times.*)
+(* For non-wrapping buffers we need to know the value for the time, as
+ * the min/max times per slice are saved, along the first/last tuple
+ * sequence number. *)
 let output rb serialize_tuple sersize_of_tuple time_of_tuple tuple =
   let open RingBuf in
   let tmin, tmax = time_of_tuple tuple in

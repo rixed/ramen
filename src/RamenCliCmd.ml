@@ -580,8 +580,9 @@ let graphite conf daemonize to_stderr port () =
 
 let graphite_expand conf query () =
   logger := make_logger conf.C.debug ;
+  let query = String.nsplit ~by:"." query in
   let te = Lwt_main.run (
-    RamenGraphite.expand_query_ng conf query) in
+    RamenGraphite.enum_tree_of_query conf query) in
   let rec display indent te =
     let e = RamenGraphite.get te in
     Enum.iteri (fun i (n, c) ->

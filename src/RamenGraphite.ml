@@ -71,36 +71,18 @@ let comp_matches globs comps =
   in
   loop [] [] "" globs comps
 
-let find_components query all_comps =
-  (* Break the query into components, and make each of them a glob: *)
-  let query = String.nsplit ~by:"." query in
-  let globs = List.map (fun q -> q, Globs.compile q) query in
-  (all_comps //@ comp_matches globs)
-
-(*$inject
-  open Batteries
-  let test_comps =
-    [ [ "prog1"; "prog2"; "prog3"; "w1" ] ;
-      [ "prog1"; "prog2"; "w5" ] ;
-      [ "prog1"; "prog4"; "w6" ] ;
-      [ "prog2"; "w8" ] ]
- *)
-(*$= find_components & ~printer:dump
-  [ "prog1.*.prog3", false,  "prog3", "prog1.prog2.prog3" ; \
-    "prog1.*.w5",    true,   "w5",    "prog1.prog2.w5" ; \
-    "prog1.*.w6",    true,   "w6",    "prog1.prog4.w6" ] \
-    (find_components "prog1.*.*" (List.enum test_comps) |> List.of_enum)
-
-  [ "prog1", false, "prog1", "prog1" ; \
-    "prog1", false, "prog1", "prog1" ; \
-    "prog1", false, "prog1", "prog1" ; \
-    "prog2", false, "prog2", "prog2" ] \
-    (find_components "*p*" (List.enum test_comps) |> List.of_enum)
- *)
-
 (* This ugly E is there to make the type non cyclic: *)
 type 'a tree_enum = E of ('a * 'a tree_enum) Enum.t
 let get (E x) = x
+
+(* Fold over the tree. [node_init] will be carried from node to node while
+ * [stack_init] will be popped when the iterator go forward in the tree.
+ * Only return the value that's carried from node to node. *)
+let rec tree_enum_fold f node_init stack_init te =
+  Enum.fold (fun usr (n, te') ->
+    let is_leaf = Enum.is_empty (get te') in
+    let usr', stack' = f usr stack_init n is_leaf in
+    tree_enum_fold f usr' stack' te') node_init (get te)
 
 (* Given a tree enumerator and a list of filters, return a tree enumerator
  * of the entries matching the filter: *)
@@ -173,38 +155,30 @@ let filters_of_query query =
     let glob = Globs.compile q in
     Globs.matches glob) query
 
-let expand_query_ng conf query =
+let enum_tree_of_query conf query =
   !logger.debug "Getting programs..." ;
   let%lwt programs = C.with_rlock conf Lwt.return in
   !logger.debug "Caching factors possible values..." ;
   let%lwt () = RamenTimeseries.cache_possible_values conf programs in
   !logger.debug "Building tree..." ;
   let te = tree_enum_of_programs programs in
-  let query = String.nsplit ~by:"." query in
   let filters = filters_of_query query in
   return (filter_tree te filters)
 
-(* Given the list of running programs, return the broken down list of
- * path components à la graphite, with program name (split by "/", then
- * operation name, then factors and finally a (non-factor) field name: *)
-let comps_of_programs programs =
-  let comps_of = String.nsplit ~by:"/" in
-  let programs =
-    Hashtbl.enum programs |>
-    Array.of_enum in
-  Array.fast_sort (fun (k1, _) (k2,_) -> String.compare k1 k2) programs ;
-  Array.enum programs /@
-  (fun (program_name, get_rc) ->
-    let _bin, funcs = get_rc () in
-    List.enum funcs /@
-    (fun func ->
-      let fq_name = program_name ^"/"^ func.F.name in
-      List.enum func.out_type.ser /@
-      (fun ft ->
-        comps_of (fq_name ^"/"^ ft.RamenTuple.typ_name))) |>
-    Enum.flatten) |>
-  Enum.flatten |>
-  return
+let rec find_quote_from s i =
+  if i >= String.length s then raise Not_found ;
+  if s.[i] = '\\' then find_quote_from s (i + 2)
+  else if s.[i] = '"' then i
+  else find_quote_from s (i + 1)
+(*$= find_quote_from & ~printer:string_of_int
+  4 (find_quote_from "glop\"gl\\\"op\"" 0)
+  4 (find_quote_from "glop\"gl\\\"op\"" 4)
+  11 (find_quote_from "glop\"gl\\\"op\"" 5)
+ *)
+
+let rec find_dot_from s i =
+  if i >= String.length s then raise Not_found ;
+  if s.[i] = '.' then i else find_dot_from s (i + 1)
 
 (* query is composed of:
  * several components separated by a dots. Each non last components
@@ -213,17 +187,58 @@ let comps_of_programs programs =
  * The answer is a list of graphite_metric which name field must be the
  * completed last component and which id field the query with the last
  * component completed. The idea is that id will then identify the timeseries
- * we want to display (once expanded) *)
+ * we want to display (once expanded).
+ * Extracting factors value from this string requires caution as "." can
+ * legitimately appear in a string or float value. We assume all strings
+ * and floats will be double-quoted (TODO for floats). *)
+let split_query s =
+  let rec extract_next prev i =
+    if i >= String.length s then List.rev prev else
+    if s.[i] = '"' then (
+      (* value extends to last unescaped double quote *)
+      match find_quote_from s (i+1) with
+      | exception Not_found -> invalid_arg "split_query: bad quotes"
+      | i' ->
+          if i' < String.length s - 1 && s.[i' + 1] <> '.' then
+            invalid_arg "split_query: bad quotes(2)" ;
+          let prev' = String.sub s i (1 + i' - i) :: prev in
+          extract_next prev' (i' + 2)
+    ) else (
+      (* value extends to last dot or end *)
+      let i' = try find_dot_from s i with Not_found -> String.length s in
+      let prev' = String.sub s i (i' - i) :: prev in
+      extract_next prev' (i' + 1)
+    )
+  in
+  extract_next [] 0
+(*$inject open Batteries *)
+(*$= split_query & ~printer:(IO.to_string (List.print String.print))
+ [ "monitoring"; "traffic"; "inbound"; "\"127.0.0.1:56687\""; "0"; "bytes" ] \
+    (split_query "monitoring.traffic.inbound.\"127.0.0.1:56687\".0.bytes")
+ *)
 
 (* Enumerate the (id, leaf, text, target) matching a query. Where:
  * id is the query with only the last part completed (used for autocompletion)
  * leaf is a flag set if that completed component has no further descendant,
  * text is the completed last component (same as id ending) and targets
- * is the list of fully expanded targets matching id. *)
+ * is the list of fully expanded targets (as a query string) matching id. *)
 let expand_query conf query =
-  let%lwt all_comps =
-    C.with_rlock conf comps_of_programs in
-  find_components query all_comps |>
+  let query = String.nsplit ~by:"." query in
+  let%lwt filtered = enum_tree_of_query conf query in
+  let nb_filters = List.length query in
+  let prefix = (List.take (nb_filters - 1) query |>
+                String.concat ".") ^ "." in
+  tree_enum_fold (fun node_res (depth, target) n is_leaf ->
+    (* depth starts at 0 *)
+    let target' =
+      if target = "" then n else target ^"."^ n in
+    (if depth = nb_filters - 1 then
+      (prefix ^ n, is_leaf, n, target') :: node_res
+    else
+      node_res),
+    (depth + 1, target')
+  ) [] (0, "") filtered |>
+  List.enum |>
   return
 
 let complete_graphite_find conf headers params =
@@ -346,6 +361,21 @@ let time_of_graphite_time s =
   else if s.[0] = '-' then time_of_reltime s
   else time_of_abstime s
 
+(* Return both the where and the factors clauses of a
+ * RamenTimeseries.get: *)
+let filters_of_factors func fvals =
+  (* FIXME: what about null fvals? *)
+  List.fold_left2 (fun (where, factors) factor fval ->
+    if fval = "*" then where, factor::factors else
+    let ft =
+      List.find (fun ft ->
+        ft.RamenTuple.typ_name = factor
+      ) func.F.out_type.ser in
+    (factor,
+     RamenScalar.value_of_string ft.RamenTuple.typ fval) :: where,
+    factors
+  ) ([], []) func.F.factors fvals
+
 let render_graphite conf headers body =
   let content_type = get_content_type headers in
   let open CodecMultipartFormData in
@@ -361,7 +391,6 @@ let render_graphite conf headers body =
               time_of_graphite_time |? now -. 86400.
   and until = Hashtbl.find_option params "until" |> Option.map v |>>
               time_of_graphite_time |? now
-  and where = [] (* TODO when we also have factors *)
   and max_data_points = Hashtbl.find_option params "maxDataPoints" |>
                         Option.map (int_of_string % v) |? 300
   and format = Hashtbl.find_option params "format" |>
@@ -374,21 +403,58 @@ let render_graphite conf headers body =
     (fun (_, _, _, target) -> target) |>
     List.of_enum in
   let metric_of_target target =
-    (* Target is actually the program + function name + field name, all
-     * separated by dots. We need the fully qualified name of the function
-     * and the field name: *)
-    let%lwt func_name, data_field =
-      match String.rsplit ~by:"." target with
-      | exception Not_found ->
-          bad_request "bad target name"
-      | func, field ->
-          return (String.nreplace ~str:func ~sub:"." ~by:"/", field) in
+    (* Target is actually the program + function name + factors values +
+     * field name, all separated by dots. We need the fully qualified name
+     * of the function, the factor values (if not '*'), and the field name: *)
+    let%lwt func, func_name, factors, data_field =
+      (* FIXME: handle "#stats" and "stats" *)
+      C.with_rlock conf (fun programs ->
+        let rec search_func pref = function
+          | [] | [_] -> bad_request ("bad target: "^ target)
+          | pn :: (fn :: fields as rest) ->
+              let prog_name =
+                if pref = "" then pn else pref ^"/"^ pn in
+              (* Beware that first program is not necessarily the
+               * intended one! *)
+              match Hashtbl.find programs prog_name with
+              | exception Not_found -> search_func prog_name rest
+              | get_rc ->
+                  let _bin, funcs = get_rc () in
+                  (match List.find (fun f -> f.F.name = fn) funcs with
+                  | exception Not_found -> search_func prog_name rest
+                  | func ->
+                      let nb_fields = List.length fields in
+                      let nb_factors = List.length func.factors in
+                      if nb_fields = nb_factors + 1 then (
+                        let factors, data_field =
+                          List.split_at (nb_fields - 1) fields in
+                        let data_field = List.hd data_field in
+                        let full_name = prog_name ^"/"^ fn in
+                        return (func, full_name, factors, data_field)
+                      ) else (
+                        !logger.debug "bad number of fields for %s/%s: \
+                                       fields=%a but have %d factors"
+                          prog_name fn
+                          (List.print String.print) fields nb_factors ;
+                        search_func prog_name rest
+                      ))
+        in
+        search_func "" (split_query target))
+    in
+    let where, factors = filters_of_factors func factors in
+    !logger.debug "where filter: %a, factors: %a"
+      (List.print (fun oc (factor, value) ->
+        Printf.fprintf oc "%s=%a" factor RamenScalar.print value)) where
+      (List.print String.print) factors ;
     let%lwt columns, datapoints =
-      RamenTimeseries.get conf max_data_points since until where []
+      RamenTimeseries.get conf max_data_points since until where factors
                           func_name data_field in
     let datapoints =
       (* TODO: return all factor value combinations *)
-      Enum.map (fun (t, v) -> v.(0), int_of_float t) datapoints |>
+      Enum.map (fun (t, v) ->
+        (if Array.length v > 0 then v.(0) else None),
+        int_of_float t
+      ) datapoints |>
       Array.of_enum in
     return { target ; datapoints }
   in
