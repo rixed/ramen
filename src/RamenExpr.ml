@@ -675,7 +675,7 @@ struct
 
     (Bad (\
       NoSolution (\
-        Some { where = ParsersMisc.Item ((0,7), '.');\
+        Some { where = ParsersMisc.Item ((1,8), '.');\
                what=["eof"]})))\
       (test_p field "pasglop.bytes" |> replace_typ_in_expr)
 
@@ -686,7 +686,7 @@ struct
 
     (Bad (\
       NoSolution (\
-        Some { where = ParsersMisc.Item ((0,7), 'c') ;\
+        Some { where = ParsersMisc.Item ((1,8), 'c') ;\
                what = ["\"#successive\"";"field"]})))\
       (test_p field "first.#count" |> replace_typ_in_expr)
   *)
