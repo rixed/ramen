@@ -768,6 +768,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       check_op op_typ return_bool [Some TFloat, None, e1 ; Some TFloat, None, e2])
   | StatelessFun2 (op_typ, (And|Or), e1, e2) ->
     check_op op_typ return_bool [Some TBool, None, e1 ; Some TBool, None, e2]
+  | StatelessFun2 (op_typ, (BitAnd|BitOr|BitXor), e1, e2) ->
+    check_op op_typ largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun1 (op_typ, (BeginOfRange|EndOfRange), e) ->
     (* Not really bullet-proof in theory since check_op may update the
      * types of the operand, but in this case there is no modification

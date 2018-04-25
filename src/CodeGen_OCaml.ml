@@ -490,6 +490,11 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "(&&)" [Some TBool; Some TBool] [e1; e2]
   | Finalize, StatelessFun2 (_, Or, e1,e2), Some TBool ->
     emit_functionN oc ?state "(||)" [Some TBool; Some TBool] [e1; e2]
+  | Finalize, StatelessFun2 (_, (BitAnd|BitOr|BitXor as op), e1, e2),
+    Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    let n = match op with BitAnd -> "logand" | BitOr -> "logor"
+                        | _ -> "logxor" in
+    emit_functionN oc ?state (omod_of_type t ^"."^ n) [Some t; Some t] [e1; e2]
   | Finalize, StatelessFun1 (_, Not, e), Some TBool ->
     emit_functionN oc ?state "not" [Some TBool] [e]
   | Finalize, StatelessFun1 (_, Defined, e), Some TBool ->

@@ -41,6 +41,7 @@ let make_float_typ ?nullable name = make_typ ?nullable ~typ:TFloat name
 let make_string_typ ?nullable name = make_typ ?nullable ~typ:TString name
 let make_num_typ ?nullable name =
   make_typ ?nullable ~typ:TNum name (* will be enlarged as required *)
+let make_int_typ ?nullable name = make_typ ?nullable ~typ:TI8 name
 let copy_typ ?name typ =
   let expr_name = name |? typ.expr_name in
   incr uniq_num_seq ;
@@ -92,6 +93,9 @@ type stateless_fun2 =
   | Gt
   | Eq
   | Concat
+  | BitAnd
+  | BitOr
+  | BitXor
 
 (* FIXME: when we end prototyping use objects to make it easier to add
  * operations *)
@@ -345,6 +349,9 @@ let rec print with_types fmt =
   | StatelessFun2 (t, Gt, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Eq, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Concat, e1, e2) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, BitAnd, e1, e2) -> Printf.fprintf fmt "(%a) & (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, BitOr, e1, e2) -> Printf.fprintf fmt "(%a) | (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, BitXor, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFunMisc (t, Like (e, p)) -> Printf.fprintf fmt "(%a) LIKE %S" (print with_types) e p ; add_types t
   | StatelessFunMisc (t, Max es) ->
     Printf.fprintf fmt "GREATEST (%a)" (List.print (print with_types)) es ;
@@ -762,6 +769,16 @@ struct
       | "//" -> StatelessFun2 (make_num_typ "integer-division", IDiv, t1, t2)
       | "%" -> StatelessFun2 (make_num_typ "modulo", Mod, t1, t2)
       | _ -> assert false in
+    binary_ops_reducer ~op ~term:higher_prec_left_assoc ~sep:opt_blanks ~reduce m
+
+  and higher_prec_left_assoc m =
+    let m = "bitwise logical operator" :: m in
+    let op = that_string "&" ||| that_string "|" ||| that_string "^"
+    and reduce t1 op t2 = match op with
+      | "&" -> StatelessFun2 (make_int_typ "bitwise and", BitAnd, t1, t2)
+      | "|" -> StatelessFun2 (make_int_typ "bitwise or", BitOr, t1, t2)
+      | "^" -> StatelessFun2 (make_int_typ "bitwise xor", BitXor, t1, t2)
+      | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks ~reduce m
 
   and higher_prec_right_assoc m =
@@ -1141,6 +1158,15 @@ struct
         Const (typ, VI32 (Int32.of_int 1000)))),\
       (28, [])))\
       (test_p p "hysteresis(value, 900, 1000)" |> replace_typ_in_expr)
+
+    (Ok ( \
+      StatelessFun2 (typ, Mul, \
+        StatelessFun2 (typ, BitAnd, \
+          Const (typ, VI32 (Int32.of_int 4)), \
+          Const (typ, VI32 (Int32.of_int 4))), \
+        Const (typ, VI32 (Int32.of_int 2))), \
+      (9, []))) \
+      (test_p p "4 & 4 * 2" |> replace_typ_in_expr)
   *)
 
   (*$>*)
