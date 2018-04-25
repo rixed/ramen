@@ -121,3 +121,7 @@ end
 let default_persist_dir = "/tmp/ramen"
 let default_report_period = 30.
 let worker_argv0 = "ramen worker:"
+
+(* Number of seconds we keep cached factors after new tuples have been
+ * produced (seconds): *)
+let cache_factors_ttl = 30.

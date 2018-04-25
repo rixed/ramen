@@ -134,6 +134,10 @@ let mtime_of_file fname =
   let s = stat fname in
   s.st_mtime
 
+let mtime_of_file_def default fname =
+  try mtime_of_file fname
+  with Unix.Unix_error (Unix.ENOENT, _, _) -> default
+
 let file_is_older_than age fname =
   try
     let mtime = mtime_of_file fname in

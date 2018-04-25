@@ -6,6 +6,7 @@
 open Lwt
 open Batteries
 open RamenLog
+open RamenHelpers
 module C = RamenConf
 module F = C.Func
 
@@ -173,14 +174,20 @@ let get_possible_values conf func factor =
       let%lwt pvs =
         try
           let cache = C.factors_of_ringbuf bname factor in
-          (* TODO: if fname is newer than cache and cache is older than X
-           * seconds then raise *)
+          (* If fname is newer than cache and cache is older than X seconds
+           * then raise *)
+          let b_mtime = mtime_of_file_def 0. bname
+          and c_mtime = mtime_of_file cache in
+          if b_mtime >= c_mtime &&
+             c_mtime < Unix.time () -. RamenConsts.cache_factors_ttl then
+              raise Exit ;
           let factors = factors_of_file cache in
           !logger.debug "Got factors from cache %s" cache ;
           return factors
         with e ->
-          !logger.debug "Cannot read cached factors for %s because of %s, \
-                         scanning..." bname (Printexc.to_string e) ;
+          if e <> Exit then
+            !logger.debug "Cannot read cached factor for %s.%s: %s, \
+                           scanning." bname factor (Printexc.to_string e) ;
           let%lwt all_pvs = scan_possible_values func.F.factors bname typ in
           let res = ref Set.empty in
           (* Save them all: *)
