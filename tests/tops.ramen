@@ -3,6 +3,6 @@
 DEFINE f AS
   FROM tests/fixtures/accounts/csv
   SELECT name, sum amount
-  TOP 3 BY sum amount WHEN in.#count >= 18
+  TOP 3 BY out.sum_amount WHEN in.#count >= 18
   GROUP BY name
   EXPORT;

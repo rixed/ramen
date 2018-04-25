@@ -416,10 +416,11 @@ let check params =
     Option.may (fun (n, by) ->
       (* TODO: Check also that it's an unsigned integer: *)
       Expr.check_const "TOP size" n ;
-      check_fields_from [TupleParam; TupleIn] "TOP clause" by ;
+      check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut; TupleGroupPrevious; TupleOutPrevious] "TOP clause" by ;
       (* The only windowing mode supported is then `commit and flush`: *)
       if flush_how <> Reset then
-        raise (SyntaxError OnlyTumblingWindowForTop)) top ;
+        raise (SyntaxError OnlyTumblingWindowForTop)
+    ) top ;
     check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
     (match flush_how with
     | Reset | Never | Slide _ -> ()

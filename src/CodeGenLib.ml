@@ -690,8 +690,20 @@ type ('key, 'aggr, 'tuple_in, 'generator_out, 'global_state, 'top_state, 'sort_k
     (* Input sort buffer and related tuples: *)
     mutable sort_buf : ('sort_key, 'tuple_in) RamenSortBuf.t }
 
-let tot_weight float_of_top_state aggr =
-  float_of_top_state aggr.sure_weight_state +. aggr.unsure_weight
+let tot_weight float_of_top_state aggr s in_count in_tuple last_in last_selected last_unselected =
+  let f =
+    float_of_top_state
+      in_count in_tuple last_in
+      s.selected_count s.selected_successive last_selected
+      s.unselected_count s.unselected_successive last_unselected
+      s.out_count s.last_out_tuple aggr.previous_out
+      (Uint64.of_int aggr.nb_entries)
+      (Uint64.of_int aggr.nb_successive)
+      aggr.sure_weight_state s.global_state
+      aggr.first_in aggr.last_in
+      aggr.current_out
+  in
+  f +. aggr.unsure_weight
 
 (* TODO: instead of a single point, have 3 conditions for committing
  * (and 3 more for flushing) the groups; So that we could maybe split a
@@ -847,9 +859,25 @@ let aggregate
         bool)
       (key_of_input : 'tuple_in -> 'key)
       (is_single_key : bool)
-      (top : (int * ('global_state -> 'top_state -> 'tuple_in -> unit)) option)
+      (top : (int *
+        (Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+         Uint64.t -> 'generator_out option -> 'generator_out option -> (* out.#count, last_out, group_previous *)
+         Uint64.t -> Uint64.t -> (* group.#count, #successive *)
+         'top_state -> 'global_state ->
+         'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current *)
+         unit)) option)
       (top_init : 'global_state -> 'top_state)
-      (float_of_top_state : 'top_state -> float)
+      (float_of_top_state :
+        (Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
+         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
+         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
+         Uint64.t -> 'generator_out option -> 'generator_out option -> (* out.#count, last_out, group_previous *)
+         Uint64.t -> Uint64.t -> (* group.#count, #successive *)
+         'top_state -> 'global_state ->
+         'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current *)
+         float))
       (commit_when :
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
@@ -891,7 +919,8 @@ let aggregate
       List.map String.trim
     and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf"
-    and top_n, top_by = Option.default (0, fun _ _ _ -> ()) top in
+    and top_n, top_update =
+      Option.default (0, fun _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ -> ()) top in
     assert (not commit_before || top_n = 0) ;
     let notify_rb = RingBuf.load notify_rb_name in
     let tuple_outputer =
@@ -1099,7 +1128,16 @@ let aggregate
             aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
           if prev_last_key = this_key then
             aggr.nb_successive <- aggr.nb_successive + 1 ;
-          top_by s.global_state aggr.sure_weight_state in_tuple
+          top_update
+            in_count in_tuple last_in
+            s.selected_count s.selected_successive last_selected
+            s.unselected_count s.unselected_successive last_unselected
+            s.out_count s.last_out_tuple aggr.previous_out
+            (Uint64.of_int aggr.nb_entries)
+            (Uint64.of_int aggr.nb_successive)
+            aggr.sure_weight_state s.global_state
+            aggr.first_in aggr.last_in
+            aggr.current_out
         in
         (* Update/create the group if it passes where_slow (or None) *)
         let aggr_opt =
@@ -1149,11 +1187,21 @@ let aggregate
                 fields ;
                 sure_weight_state = top_init s.global_state ;
                 unsure_weight = s.unknown_weights.(kh) } in
-              top_by s.global_state aggr.sure_weight_state in_tuple ;
+              top_update
+                in_count in_tuple last_in
+                s.selected_count s.selected_successive last_selected
+                s.unselected_count s.unselected_successive last_unselected
+                s.out_count s.last_out_tuple aggr.previous_out
+                (Uint64.of_int aggr.nb_entries)
+                (Uint64.of_int aggr.nb_successive)
+                aggr.sure_weight_state
+                s.global_state
+                aggr.first_in aggr.last_in
+                aggr.current_out ;
               (* Adding this group and updating the TOP *)
               let add_entry () =
                 Hashtbl.add s.groups k aggr ;
-                let wk = tot_weight float_of_top_state aggr in
+                let wk = tot_weight float_of_top_state aggr s in_count in_tuple last_in last_selected last_unselected in
                 if top_n <> 0 then
                   s.weightmap <-
                     WeightMap.modify_def [] wk (List.cons k) s.weightmap ;
@@ -1173,7 +1221,7 @@ let aggregate
                   !logger.error "Weightmap entry with no map key" ;
                   assert false
                 | wk, (min_k::min_ks) ->
-                  if wk < tot_weight float_of_top_state aggr then (
+                  if wk < tot_weight float_of_top_state aggr s in_count in_tuple last_in last_selected last_unselected then (
                     (* Remove previous entry *)
                     (match Hashtbl.find s.groups min_k with
                     | exception Not_found ->
@@ -1184,8 +1232,19 @@ let aggregate
                       let kh' = Hashtbl.hash min_k mod Array.length s.unknown_weights in
                       (* Note: the unsure_weight we took it from unknown_weights.(kh')
                        * already and it's still there *)
+                      let rem_w =
+                        float_of_top_state
+                          in_count in_tuple last_in
+                          s.selected_count s.selected_successive last_selected
+                          s.unselected_count s.unselected_successive last_unselected
+                          s.out_count s.last_out_tuple removed.previous_out
+                          (Uint64.of_int removed.nb_entries)
+                          (Uint64.of_int removed.nb_successive)
+                          removed.sure_weight_state s.global_state
+                          removed.first_in removed.last_in
+                          removed.current_out in
                       s.unknown_weights.(kh') <-
-                        s.unknown_weights.(kh') +. float_of_top_state removed.sure_weight_state) ;
+                        s.unknown_weights.(kh') +. rem_w) ;
                     s.weightmap <- snd (WeightMap.pop_min_binding s.weightmap) ;
                     if min_ks <> [] then
                       s.weightmap <- WeightMap.add wk min_ks s.weightmap ;
@@ -1210,14 +1269,24 @@ let aggregate
                         others_aggr.fields
                         s.global_state
                         others_aggr.first_in in_tuple |> ignore ;
-                        accumulate_into others_aggr None ;
-                        (* Those two are not updated by accumulate_into to allow clauses
-                         * code to see their previous values *)
-                        others_aggr.current_out <- out_generator ;
-                        aggr.last_in <- in_tuple) ;
+                      accumulate_into others_aggr None ;
+                      (* Those two are not updated by accumulate_into to allow clauses
+                       * code to see their previous values *)
+                      others_aggr.current_out <- out_generator ;
+                      aggr.last_in <- in_tuple) ;
                     s.last_key <- None ;
-                    s.unknown_weights.(kh) <-
-                      s.unknown_weights.(kh) +. float_of_top_state aggr.sure_weight_state ;
+                    let w =
+                      float_of_top_state
+                        in_count in_tuple last_in
+                        s.selected_count s.selected_successive last_selected
+                        s.unselected_count s.unselected_successive last_unselected
+                        s.out_count s.last_out_tuple aggr.previous_out
+                        (Uint64.of_int aggr.nb_entries)
+                        (Uint64.of_int aggr.nb_successive)
+                        aggr.sure_weight_state s.global_state
+                        aggr.first_in aggr.last_in
+                        aggr.current_out in
+                    s.unknown_weights.(kh) <- s.unknown_weights.(kh) +. w ;
                     None)
               )
             ) else None (* in-tuple does not pass where_slow *)
@@ -1235,7 +1304,7 @@ let aggregate
                  aggr.first_in aggr.last_in
             then (
               IntCounter.add stats_selected_tuple_count 1 ;
-              let prev_wk = tot_weight float_of_top_state aggr in
+              let prev_wk = tot_weight float_of_top_state aggr s in_count in_tuple last_in last_selected last_unselected in
               (* Compute the new out_tuple and update the group *)
               accumulate_into aggr (Some k) ;
               (* current_out and last_in are better updated only after we called the
@@ -1252,7 +1321,7 @@ let aggregate
                   aggr.first_in aggr.last_in ;
               aggr.last_in <- in_tuple ;
               if top_n <> 0 then (
-                let new_wk = tot_weight float_of_top_state aggr in
+                let new_wk = tot_weight float_of_top_state aggr s in_count in_tuple last_in last_selected last_unselected in
                 (* No need to update the weightmap if the weight haven't changed.
                  * If it seldom happen when using a TOP clause, it does happen
                  * all the time when _not_ using one! *)

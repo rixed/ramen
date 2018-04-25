@@ -1260,15 +1260,28 @@ let emit_key_of_input name in_typ mentioned and_all_others oc exprs =
     ) exprs ;
   Printf.fprintf oc "\n\t)\n"
 
-let emit_top name in_typ mentioned and_all_others oc top =
+let emit_top name in_typ mentioned and_all_others out_typ oc top =
   Printf.fprintf oc "let %s =" name ;
   match top with
   | None -> Printf.fprintf oc " None\n"
   | Some (n, by) ->
     (* The function that updates top_state from in_tuple: *)
-    (* FIXME: rename all those "group_" by "local_" *)
-    Printf.fprintf oc "\n\tlet top_update_ global_ group_ %a =\n\t\t%a in\n"
+    (* FIXME: rename all those "group_" into "local_" *)
+    Printf.fprintf oc
+      "\n\tlet top_update_ virtual_in_count_ %a %a \
+             virtual_selected_count_ virtual_selected_successive_ %a \
+             virtual_unselected_count_ virtual_unselected_successive_ %a \
+             virtual_out_count out_previous_opt_ group_previous_opt_ \
+             virtual_group_count_ virtual_group_successive_ group_ \
+             global_ %a %a %a =\n\
+             \t\t(%a) (* parentheses to make it legit if empty *) in\n"
       (emit_in_tuple mentioned and_all_others) in_typ
+      (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ
+      (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
+      (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ
+      (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
+      (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ
+      (emit_tuple TupleOut) out_typ
       emit_state_update_for_expr by ;
     Printf.fprintf oc
       "\tSome (\n\
@@ -1276,8 +1289,22 @@ let emit_top name in_typ mentioned and_all_others oc top =
        \t\ttop_update_)\n"
       (conv_to ~context:Finalize (Some TU32)) n
 
-let emit_float_of_top name oc top_by =
-  Printf.fprintf oc "let %s group_ = " name ;
+let emit_float_of_top name in_typ mentioned and_all_others out_typ oc top_by =
+  Printf.fprintf oc
+    "let %s virtual_in_count_ %a %a \
+         virtual_selected_count_ virtual_selected_successive_ %a \
+         virtual_unselected_count_ virtual_unselected_successive_ %a \
+         virtual_out_count out_previous_opt_ group_previous_opt_ \
+         virtual_group_count_ virtual_group_successive_ group_ \
+         global_ %a %a %a =\n"
+    name
+    (emit_in_tuple mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
+    (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ
+    (emit_tuple TupleOut) out_typ ;
   match top_by with
   | None -> String.print oc "0."
   | Some top_by ->
@@ -1510,8 +1537,8 @@ let emit_aggregate oc name in_typ out_typ = function
     (emit_should_resubmit "should_resubmit_" in_typ mentioned and_all_others) flush_how
     (emit_field_of_tuple "field_of_tuple_") out_typ
     (emit_state_init "top_init_" RamenExpr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
-    (emit_top "top_" in_typ mentioned and_all_others) top
-    (emit_float_of_top "float_of_top_state_") top_by
+    (emit_top "top_" in_typ mentioned and_all_others out_typ) top
+    (emit_float_of_top "float_of_top_state_" in_typ mentioned and_all_others out_typ) top_by
     (emit_merge_on "merge_on_" in_typ mentioned and_all_others) (fst merge)
     (emit_sort_expr "sort_until_" in_typ mentioned and_all_others) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
     (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (match sort with Some (_, _, b) -> b | None -> []) ;
