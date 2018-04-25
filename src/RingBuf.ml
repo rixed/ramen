@@ -177,8 +177,8 @@ let with_enqueue_tx rb sz f =
      * indicating if an entry is valid or not. *)
     fail exn
 
-let seq_dir_of_bname fname = fname ^".per_seq/"
-let time_dir_of_bname fname = fname ^".per_time/"
+let seq_dir_of_bname fname = fname ^".per_seq"
+let time_dir_of_bname fname = fname ^".per_time"
 
 let int_of_hex s = int_of_string ("0x"^ s)
 

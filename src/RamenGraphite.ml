@@ -120,6 +120,7 @@ let tree_enum_of_program (program_name, get_rc) =
  * path components and programs. Merely build a hashtbl of hashtbls. *)
 type program_tree_item = Prog of (string * (unit -> string * P.t))
                        | Hash of (string, program_tree_item) Hashtbl.t
+
 let tree_enum_of_programs programs =
   let programs =
     Hashtbl.enum programs |>

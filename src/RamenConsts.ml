@@ -118,8 +118,14 @@ struct
   let cannot_parse_param = 3
 end
 
+(* Where to store all of daemons+workers state and logs: *)
 let default_persist_dir = "/tmp/ramen"
+
+(* How frequently shall workers emit their instrumentation (seconds): *)
 let default_report_period = 30.
+
+(* What we use as workers argv.(0) to make it easier to read ps/top
+ * output: *)
 let worker_argv0 = "ramen worker:"
 
 (* Number of seconds we keep cached factors after new tuples have been

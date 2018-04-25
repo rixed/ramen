@@ -181,23 +181,23 @@ let get_possible_values conf func factor =
           if b_mtime >= c_mtime &&
              c_mtime < Unix.time () -. RamenConsts.cache_factors_ttl then
               raise Exit ;
-          let factors = factors_of_file cache in
+          let pvs = factors_of_file cache in
           !logger.debug "Got factors from cache %s" cache ;
-          return factors
+          return pvs
         with e ->
           if e <> Exit then
             !logger.debug "Cannot read cached factor for %s.%s: %s, \
                            scanning." bname factor (Printexc.to_string e) ;
           let%lwt all_pvs = scan_possible_values func.F.factors bname typ in
-          let res = ref Set.empty in
+          let pvs = ref Set.empty in
           (* Save them all: *)
           List.iteri (fun i factor' ->
             if factor' = factor then (* The one that was asked for *)
-              res := all_pvs.(i) ;
+              pvs := all_pvs.(i) ;
             let cache = C.factors_of_ringbuf bname factor' in
             factors_to_file cache all_pvs.(i)
           ) func.F.factors ;
-          return !res
+          return !pvs
       in
       return (Set.union pvs set)
     ) Set.empty bnames
