@@ -54,6 +54,8 @@ static int mkdir_for_file(char *fname)
   ret = 0;
 err1:
   fname[last_slash] = '/';
+  fflush(stdout);
+  fflush(stderr);
   return ret;
 }
 
@@ -65,6 +67,7 @@ static ssize_t really_read(int fd, void *d, size_t sz, char const *fname /* prin
     if (ss < 0) {
       if (errno != EINTR) {
         fprintf(stderr, "Cannot read '%s': %s\n", fname, strerror(errno));
+        fflush(stderr);
         return -1;
       }
     } else if (ss == 0) {
@@ -84,6 +87,7 @@ static int really_write(int fd, void const *s, size_t sz, char const *fname /* p
     if (ss < 0) {
       if (errno != EINTR) {
         fprintf(stderr, "Cannot write '%s': %s\n", fname, strerror(errno));
+        fflush(stderr);
         return -1;
       }
     } else {
@@ -133,6 +137,7 @@ err1:
     ret = -1;
   }
 err0:
+  fflush(stderr);
   return ret;
 }
 
@@ -172,6 +177,7 @@ err1:
     ret = -1;
   }
 err0:
+  fflush(stderr);
   return ret;
 }
 
@@ -181,14 +187,14 @@ static int lock(char const *rb_fname, int operation /* LOCK_SH|LOCK_EX */, bool 
   char fname[PATH_MAX];
   if ((size_t)snprintf(fname, sizeof(fname), "%s.lock", rb_fname) >= sizeof(fname)) {
     fprintf(stderr, "Archive lockfile name truncated: '%s'\n", fname);
-    return -1;
+    goto err;
   }
 
   int fd = open(fname, only_if_exist ? 0 : O_CREAT, S_IRUSR|S_IWUSR);
   if (fd < 0) {
     if (errno == ENOENT && only_if_exist) return 0;
     fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
-    return -1;
+    goto err;
   }
 
   int err = -1;
@@ -202,10 +208,13 @@ static int lock(char const *rb_fname, int operation /* LOCK_SH|LOCK_EX */, bool 
       fprintf(stderr, "Cannot close lockfile '%s': %s\n", fname, strerror(errno));
       // so be it
     }
-    return -1;
+    goto err;
   }
 
   return fd;
+err:
+  fflush(stderr);
+  return -1;
 }
 
 static int unlock(int lock_fd)
@@ -218,6 +227,7 @@ static int unlock(int lock_fd)
   while (0 != close(lock_fd)) {
     if (errno != EINTR) {
       fprintf(stderr, "Cannot unlock fd %d: %s\n", lock_fd, strerror(errno));
+      fflush(stderr);
       return -1;
     }
   }
@@ -275,6 +285,7 @@ err3:
     // so be it
   }
 err0:
+  fflush(stderr);
   return ret;
 }
 
@@ -305,6 +316,7 @@ static bool check_header_eq(char const *fname, char const *what, unsigned expect
 
   fprintf(stderr, "Invalid ring buffer file '%s': %s should be %u but is %u\n",
           fname, what, expected, actual);
+  fflush(stderr);
   return false;
 }
 
@@ -314,6 +326,7 @@ static bool check_header_max(char const *fname, char const *what, unsigned max, 
 
   fprintf(stderr, "Invalid ring buffer file '%s': %s (%u) should be < %u\n",
           fname, what, actual, max);
+  fflush(stderr);
   return false;
 }
 
@@ -366,6 +379,7 @@ err1:
     // so be it
   }
 err0:
+  fflush(stderr);
   return ret;
 }
 
@@ -397,6 +411,7 @@ extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, char const *fname)
 err1:
   if (0 != unlock(lock_fd)) err = RB_ERR_FAILURE;
 err0:
+  fflush(stderr);
   return err;
 }
 
@@ -405,6 +420,7 @@ enum ringbuf_error ringbuf_unload(struct ringbuf *rb)
   if (rb->rbf) {
     if (0 != munmap(rb->rbf, rb->mmapped_size)) {
       fprintf(stderr, "Cannot munmap: %s\n", strerror(errno));
+      fflush(stderr);
       return RB_ERR_FAILURE;
     }
     rb->rbf = NULL;
@@ -414,7 +430,7 @@ enum ringbuf_error ringbuf_unload(struct ringbuf *rb)
 }
 
 // Called with the lock
-static int rotate_file(struct ringbuf *rb)
+static int rotate_file_locked(struct ringbuf *rb)
 {
   // Signal the EOF
   rb->rbf->data[rb->rbf->prod_head] = UINT32_MAX;
@@ -450,7 +466,7 @@ static int rotate_file(struct ringbuf *rb)
     if ((size_t)snprintf(arc2_fname, PATH_MAX, "%s.per_time/%a-%a.%d.b",
                          rb->fname, rb->rbf->tmin, rb->rbf->tmax, file_seq) >= PATH_MAX) {
       fprintf(stderr, "Archive file name truncated: '%s'\n", arc2_fname);
-      goto err0;
+      goto err1;
     }
     printf("Link to time archive (%s)\n", arc2_fname);
     if (0 == link(arc_fname, arc2_fname)) {
@@ -479,6 +495,8 @@ err1:
   }
 
 err0:
+  fflush(stdout);
+  fflush(stderr);
   return ret;
 }
 
@@ -510,17 +528,17 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
   // Wait, maybe some other process rotated the file already while we were
   // waiting for that lock? In that case it would have written the EOF:
   if (rbf->data[rbf->prod_head] != UINT32_MAX) {
-    if (0 != rotate_file(rb)) goto err1;
+    if (0 != rotate_file_locked(rb)) goto err1;
   } else {
     printf("...actually not, someone did already.\n");
   }
 
   // Unmap rb
   printf("Unmap rb\n");
-  if (0 != ringbuf_unload(rb)) goto err1;
+  if (RB_OK != ringbuf_unload(rb)) goto err1;
 
   // Mmap the new file and update rbf.
-  printf("Mmap the new file and update rbr and rb\n");
+  printf("Mmap the new file and update rbf\n");
   if (0 != mmap_rb(rb)) goto err1;
 
   ret = 0;
