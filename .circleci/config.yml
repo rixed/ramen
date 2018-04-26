@@ -1,0 +1,31 @@
+# vim: ft=yaml expandtab
+version: 2
+jobs:
+  build:
+    docker:
+# An image with opam and all ramen dependencies, but no ramen sources.
+# So that the build time is minimal.
+      - image: rixed/ramen-circleci
+    steps:
+      - checkout
+      - run:
+          name: Refresh deps from git opam file
+          command: opam pin add -n ramen $PWD && opam install --yes --deps-only ramen
+      - run:
+          name: Compile
+          command: make dep && make
+      - run:
+          name: Unit tests
+          command: make unit-check
+      - run:
+          name: Install
+          command: make install
+      - run:
+          name: Build lib bundle
+          command: make bundle
+      - run:
+          name: Behavioral tests
+          command: make cli-check
+      - run:
+          name: Functional tests
+          command: make func-check

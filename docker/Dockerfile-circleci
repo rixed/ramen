@@ -1,0 +1,55 @@
+# vim: ft=dockerfile
+FROM debian:stable-slim
+
+# Do not install recommends
+RUN echo 'APT::Install-Recommends "0";' > \
+      /etc/apt/apt.conf.d/no_recommends
+
+# Install a few things
+RUN apt-get --yes update && \
+    DEBIAN_FRONTEND=noninteractive \
+    apt-get --yes install \
+      aspcud \
+      bzip2 \
+      ca-certificates \
+      coreutils \
+      git \
+      m4 \
+      make \
+      ocaml-nox \
+      patch \
+      rsync \
+      ruby \
+      ssh \
+      sudo \
+      unzip \
+      wget
+
+RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh -O - | \
+    sh -s /usr/local/bin
+
+RUN /usr/local/bin/opam init --comp 4.06.1+flambda --no-setup
+
+# Environment
+ENV CAML_LD_LIBRARY_PATH=/root/.opam/4.06.1+flambda/lib/stublibs \
+    PATH=/root/.opam/4.06.1+flambda/bin:/root/.gem/ruby/2.3.0/bin/:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin \
+    RAMEN_BUNDLE_DIR=/root/project/bundle \
+    TERM=dumb
+
+RUN opam update && \
+    opam install depext && \
+    opam depext --noninteractive \
+      conf-gsl conf-blas conf-lapack conf-pkg-config sqlite3 && \
+    opam repo add --priority=1 ocalme \
+      git://github.com/rixed/ocalme-opam-repository.git
+
+# Install all ramen dependencies using opam
+RUN opam install inotify qtest && \
+    opam install --deps-only ramen
+
+# Install Cucumber
+RUN gem install --user-install cucumber rspec
+
+LABEL maintainer="rixed-docker@happyleptic.org"
+
+ENTRYPOINT ["/bin/bash"]
