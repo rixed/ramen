@@ -458,23 +458,26 @@ static int rotate_file(struct ringbuf *rb)
     } else {
       int ret = -1;
       if (ENOENT == errno) {
-        if (0 != mkdir_for_file(arc2_fname)) goto err0;
+        if (0 != mkdir_for_file(arc2_fname)) goto err1;
         ret = link(arc_fname, arc2_fname); // retry
       }
       if (0 == ret) break;
       fprintf(stderr, "Cannot create '%s': %s\n", arc2_fname, strerror(errno));
-      if (EEXIST != errno) goto err0;
+      if (EEXIST != errno) goto err1;
       // Will try with a bigger file_seq
     }
   }
 
-  // Create a new buffer file under the same old name:
+  ret = 0;
+
+err1:
+  // Regardless of how this rotation went, we must not release the lock without
+  // having created a new archive file:
   printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
   if (0 != ringbuf_create_locked(rb->rbf->wrap, rb->fname, rb->rbf->nb_words)) {
-    goto err0;
+    ret = -1;
   }
 
-  ret = 0;
 err0:
   return ret;
 }
