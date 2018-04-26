@@ -12,17 +12,19 @@ endif::[]
 :lang: en
 :encoding: utf-8
 
-== Next Stops
+== Next Steps
 
-- Timeseries server + grafana/freeboard/csview integration;
+- Improve graphite/grafana interactions;
 
 - Performance Improvements (requires code generated for non-memory managed language);
 
-- DBs I/O;
+- More I/Os (netCDF, hive, kafka, clickhouse...?);
 
 - Ringbuffers over the network;
 
-- Alerter as a separate service.
+- Alerter as a separate service, or better integration with a good-enough FOSS alerter;
+
+- Default configuration for junkie.
 
 == Annoyances To Be Addressed
 
