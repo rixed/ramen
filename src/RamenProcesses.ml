@@ -535,9 +535,10 @@ let synchronize_running conf autoreload_delay =
     if !quit && nb_running > 0 && nb_running <> prev_nb_running then
       !logger.info "Still %d processes running"
         (Hashtbl.length running) ;
-    join [
-      Lwt_list.iter_p (try_kill conf must_run) !to_kill ;
-      Lwt_list.iter_p (try_start conf must_run) !to_start ]
+    (* See preamble discussion about autoreload for why workers must be started
+     * only after all the kills: *)
+    let%lwt () = Lwt_list.iter_p (try_kill conf must_run) !to_kill in
+    Lwt_list.iter_p (try_start conf must_run) !to_start
   in
   (* Once we have forked some workers we must not allow an exception to
    * terminate this function or we'd leave unsupervised workers behind: *)
