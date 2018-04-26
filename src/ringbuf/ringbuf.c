@@ -93,14 +93,6 @@ static int really_write(int fd, void const *s, size_t sz, char const *fname /* p
   return 0;
 }
 
-static void rand_printable_chars(char *dst, size_t len)
-{
-  static char chrs[] = "abcdefghijklmnopqrstuvwxyz"
-                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                       "0123456789-_"; // 64 chars
-  while (len--) dst[len] = chrs[rand() % (sizeof(chrs)-1)];
-}
-
 static int read_max_seqnum(char const *bname, uint64_t *first_seq)
 {
   int ret = -1;
@@ -452,26 +444,27 @@ static int rotate_file(struct ringbuf *rb)
 
   // Also link time indexed file to the archive.
   // NOTE: There can be several files with same time range so suffix
-  //       with a random string.
-  char rstr[8+1];
-  rand_printable_chars(rstr, sizeof(rstr)-1);
-  rstr[sizeof(rstr)-1] = '\0';
-  char arc2_fname[PATH_MAX];
-  if ((size_t)snprintf(arc2_fname, PATH_MAX, "%s.per_time/%a-%a.%s.b",
-                       rb->fname, rb->rbf->tmin, rb->rbf->tmax, rstr) >= PATH_MAX) {
-    fprintf(stderr, "Archive file name truncated: '%s'\n", arc2_fname);
-    goto err0;
-  }
-  printf("Link to time archive (%s)\n", arc2_fname);
-  if (0 != link(arc_fname, arc2_fname)) {
-    int ret = -1;
-    if (ENOENT == errno) {
-      if (0 != mkdir_for_file(arc2_fname)) goto err0;
-      ret = link(arc_fname, arc2_fname); // retry
-    }
-    if (ret < 0) {
-      fprintf(stderr, "Cannot create '%s': %s\n", arc2_fname, strerror(errno));
+  //       with an increasing number (file_seq).
+  for (unsigned file_seq = 0; ; file_seq ++) {
+    char arc2_fname[PATH_MAX];
+    if ((size_t)snprintf(arc2_fname, PATH_MAX, "%s.per_time/%a-%a.%d.b",
+                         rb->fname, rb->rbf->tmin, rb->rbf->tmax, file_seq) >= PATH_MAX) {
+      fprintf(stderr, "Archive file name truncated: '%s'\n", arc2_fname);
       goto err0;
+    }
+    printf("Link to time archive (%s)\n", arc2_fname);
+    if (0 == link(arc_fname, arc2_fname)) {
+      break;
+    } else {
+      int ret = -1;
+      if (ENOENT == errno) {
+        if (0 != mkdir_for_file(arc2_fname)) goto err0;
+        ret = link(arc_fname, arc2_fname); // retry
+      }
+      if (0 == ret) break;
+      fprintf(stderr, "Cannot create '%s': %s\n", arc2_fname, strerror(errno));
+      if (EEXIST != errno) goto err0;
+      // Will try with a bigger file_seq
     }
   }
 
