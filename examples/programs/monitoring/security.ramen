@@ -1,0 +1,60 @@
+-- vim: ft=sql expandtab
+-- Example program to detect DDoS and various scans from netflow data
+
+-- Compute the number of new connections per seconds every minutes
+DEFINE DDoS_detector AS
+  FROM monitoring/traffic/netflow
+  GROUP BY first // 60 -- Accumulate for one minute
+  COMMIT AFTER in.first > out.first + 120
+  SELECT
+    -- Start time of each time slices:
+    (first // 60) * 60 AS first,
+    -- Count the number of new client/server pairs
+    sum (
+      1.1 * -- To save RAM we ask (below) for ~10% of false positives so we
+            -- increase the estimate of _not_ remembered entries by 10%.
+      -- The remember function will return true or false, so here we count the
+      -- number of new connections.
+      -- FIXME: sampling_type and sampling_rate should be taken into account.
+      float (not remember (
+        0.1, -- 10% of false positives
+        first, -- time of the event to remember
+        3600, -- remember events for 1 hour
+        -- value to remember: a hash of src/dst IPs:
+        hash src + hash dst))) / 60 AS new_cnxs_per_secs,
+    -- Count only the number of new clients
+    sum (0.9 * float (not remember (0.1, first, 3600, hash src))) / 60
+      AS new_clients_per_secs
+  EVENT STARTING AT first WITH DURATION 60;
+
+-- Output the top 10 TCP DDoS targets every 10 minutes.
+DEFINE DDoS_targets AS
+  FROM monitoring/traffic/netflow
+  -- We want to count how many distinct src are connecting
+  -- to the same dst*dst_port*ip_proto. Ramen's erzatz of
+  -- count distinct is to rely on the remember function:
+  WHEN ip_proto = 6 AND tcp_flags & 2 <> 0 AND
+       not remember globally (0.1, first, 600,
+             hash src + hash dst + hash dst_port)
+  GROUP BY dst, dst_port
+  SELECT dst, dst_port, sum 1 as count
+  TOP 10 BY out.count WHEN age (min first) > 600;
+
+-- Output the top 10 port scanners every hour (scans can be slow)
+DEFINE port_scan_detector AS
+  FROM monitoring/traffic/netflow
+  WHEN not remember globally (0.1, first, 3600,
+             hash src + hash dst + hash dst_port + hash ip_proto)
+  GROUP BY src, dst
+  SELECT src, dst, sum 1 AS count
+  TOP 10 BY out.count WHEN age (min first) > 3600;
+
+-- Output the top 10 IP scanners every hour
+DEFINE ip_scan_detector AS
+  FROM monitoring/traffic/netflow
+  -- An IP scanner could use varying proto/port to detect host
+  -- presence so we just care about src and dst here:
+  WHEN not remember globally (0.1, first, 3600, hash src + hash dst)
+  GROUP BY src
+  SELECT src, sum 1 AS count
+  TOP 10 BY out.count WHEN age (min first) > 3600;
