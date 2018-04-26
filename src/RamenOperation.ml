@@ -200,7 +200,7 @@ let print fmt =
           fmt notifications ;
         sep := ", ") ;
       if not (Expr.is_true commit_when) then
-        Printf.fprintf fmt "%s %a"
+        Printf.fprintf fmt " %s %a"
           (if commit_before then "BEFORE" else "AFTER")
           (Expr.print false) commit_when)
   | ReadCSVFile { where = file_spec ;

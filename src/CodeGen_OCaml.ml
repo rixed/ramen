@@ -1091,7 +1091,7 @@ let emit_generate_tuples name in_typ mentioned and_all_others out_typ oc selecte
       RamenExpr.is_generator sf.RamenOperation.expr)
       selected_fields in
   if not has_generator then
-    Printf.fprintf oc "let %s f_ _it_ ot_ = f_ ot_ \n" name
+    Printf.fprintf oc "let %s f_ _it_ ot_ = f_ ot_\n" name
   else (
     Printf.fprintf oc "let %s f_ %a %a =\n"
       name
@@ -1547,7 +1547,7 @@ let emit_aggregate oc name in_typ out_typ = function
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
       \t\tgenerate_tuples_\n\
       \t\ttuple_of_group_ merge_on_ %F %d sort_until_ sort_by_\n\
-      \t\twhere_fast_ where_slow_ key_of_input_ %b \n\
+      \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
       \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_ field_of_tuple_ %a %f\n"

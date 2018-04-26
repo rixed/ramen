@@ -380,7 +380,7 @@ let really_start conf must_run proc parents children =
   let cmd = Filename.basename proc.bin in
   let%lwt pid =
     wrap (fun () -> run_background ~cwd cmd args env) in
-  !logger.debug "Function %s now runs under pid %d" fq_name pid ;
+  !logger.info "Function %s now runs under pid %d" fq_name pid ;
   proc.pid <- Some pid ;
   (* Update the parents out_ringbuf_ref: *)
   Lwt_list.iter_p (fun p ->
@@ -484,8 +484,8 @@ let try_kill conf must_run proc =
  * new version: If they have the same input type they will share the same
  * input ringbuf and steal some work from each others, which is still better
  * than having only the former worker doing all the work.  And if they have
- * different input type then the tuples will switch toward the new instance
- * as the parent out-ref gets updated.  * Similarly, they use different state
+ * different input types then the tuples will switch toward the new instance
+ * as the parent out-ref gets updated. Similarly, they use different state
  * files.  They might both be present in a parent out_ref though, so some
  * duplication of tuple is possible (or conversely: some input tuples might
  * be missing if we kill the previous before starting the new one).
@@ -499,7 +499,7 @@ let synchronize_running conf autoreload_delay =
   async (fun () ->
     restart_on_failure "wait_all_pids_loop" wait_all_pids_loop ()) ;
   let rc_file = C.running_config_file conf in
-  (* Start/Stop processes so that [running] corresponds to [must_run].
+  (* Stop/Start processes so that [running] corresponds to [must_run].
    * [must_run] is a hash from the signature (function * params) to
    * its binary path, the program name and Func.
    * FIXME: do we need the program_name since it's now also in func?
