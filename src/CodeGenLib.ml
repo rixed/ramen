@@ -38,7 +38,7 @@ let sequence start inc =
   Int128.(start +
     (of_uint64 (Uint64.pred !CodeGenLib_IO.tuple_count)) * inc)
 
-let age_float x = x -. !CodeGenLib_IO.now
+let age_float x = !CodeGenLib_IO.now -. x
 let age_u8 = Uint8.of_float % age_float
 let age_u16 = Uint16.of_float % age_float
 let age_u32 = Uint32.of_float % age_float
