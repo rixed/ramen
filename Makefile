@@ -281,8 +281,8 @@ check: unit-check cli-check func-check
 
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
-	@OCAMLRUNPARAM=b ./all_tests.opt -bt || echo FAILURE
-	@./ringbuf_test.opt || echo 'FAILURE (ringbuf_test)'
+	@OCAMLRUNPARAM=b ./all_tests.opt -bt
+	@./ringbuf_test.opt
 
 cli-check:
 	@echo 'Running CLI tests...'
