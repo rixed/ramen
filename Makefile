@@ -48,7 +48,7 @@ all: $(INSTALLED)
 .SUFFIXES: .ml .mli .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
 .PHONY: clean all check func-check dep install uninstall reinstall \
         bundle doc deb \
-        docker-latest docker-build-image docker-build-builder docker-push
+        docker-latest docker-build-image docker-build-builder docker-circleci docker-push
 
 %.cmx %.annot: %.ml
 	@echo 'Compiling $@ (native code)'
@@ -410,12 +410,17 @@ docker-build-image: docker-latest
 	@echo 'Tagging latest docker image to v$(VERSION)'
 	@docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
 
+docker-circleci: docker/Dockerfile-circleci
+	@echo 'Building docker image for CircleCi'
+	@docker build -t rixed/ramen-circleci -f $< docker/
+
 docker-push:
 	@echo 'Uploading docker images'
 	@docker push rixed/ramen:latest
 	@docker push rixed/ramen:v$(VERSION)
 	@docker push rixed/ramen-builder:jessie
 	@docker push rixed/ramen-builder:stretch
+	@docker push rixed/ramen-circleci
 
 # Cleaning
 
