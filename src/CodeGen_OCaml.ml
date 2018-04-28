@@ -35,7 +35,8 @@ let id_of_field_name ?(tuple=TupleIn) = function
 let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.RamenTuple.typ_name
 
-let list_print_as_tuple = List.print ~first:"(" ~last:")" ~sep:", "
+let list_print_as_tuple p = List.print ~first:"(" ~last:")" ~sep:", " p
+let list_print_as_product p = List.print ~first:"(" ~last:")" ~sep:" * " p
 
 let print_tuple_deconstruct tuple =
   let print_field fmt field_typ =
@@ -213,7 +214,7 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
   | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
       (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
   | TString, (TFloat|TBool) ->
-    Printf.fprintf fmt "(%s%s.of_%s %a)"
+    Printf.fprintf fmt "(%s%s.of_%s (%a))"
       (if nullable then "Option.map " else "")
       (omod_of_type to_typ)
       (otype_of_type from_typ)
@@ -221,13 +222,13 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
   | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
       (TFloat|TString)
   | (TFloat|TBool), (TString|TFloat) ->
-    Printf.fprintf fmt "(%s%s.to_%s %a)"
+    Printf.fprintf fmt "(%s%s.to_%s (%a))"
       (if nullable then "Option.map " else "")
       (omod_of_type from_typ)
       (otype_of_type to_typ)
       p e
   | TBool, (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
-    Printf.fprintf fmt "(%s(%s.of_int %% Bool.to_int) %a)"
+    Printf.fprintf fmt "(%s(%s.of_int %% Bool.to_int) (%a))"
       (if nullable then "Option.map " else "")
       (omod_of_type to_typ)
       p e
@@ -313,6 +314,12 @@ let any_constant_of_type t =
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
 
+(* In some case we want emit_function to pass arguments as an array
+ * (variadic functions...) or as a tuple (functions taking a tuple).
+ * In both cases the int refers to how many normal args should we pass
+ * before starting the array/tuple.*)
+type args_as = Arg | Array of int | Tuple of int
+
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
@@ -359,6 +366,12 @@ and emit_maybe_fields oc out_typ =
 and emit_expr ?state ~context oc expr =
   let open RamenExpr in
   let out_typ = typ_of expr in
+  let true_or_nul nullable =
+    Const (make_bool_typ ~nullable "true", VBool true)
+  and false_or_nul nullable =
+    Const (make_bool_typ ~nullable "false", VBool false)
+  and zero_or_nul nullable =
+    Const (make_typ ~typ:TU8 ~nullable "zero", VU8 (Stdint.Uint8.of_int 0)) in
   let my_state lifespan =
     let state_name =
       match lifespan with LocalState -> "group_"
@@ -400,6 +413,8 @@ and emit_expr ?state ~context oc expr =
       oc alts ;
     (match else_ with
     | None ->
+      (* If there is no ELSE clause then the expr is nullable: *)
+      assert (is_nullable expr) ;
       Printf.fprintf oc " else None)"
     | Some else_ ->
       Printf.fprintf oc " else %s(%a))"
@@ -521,15 +536,15 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatelessFun2 (_, Sequence, e1, e2), Some TI128 ->
     emit_functionN oc ?state "CodeGenLib.sequence" [Some TI128; Some TI128] [e1; e2]
   | Finalize, StatelessFunMisc (_, Max es), t ->
-    emit_functionN ~as_array:true oc ?state "Array.max" (List.map (fun _ -> t) es) es
+    emit_functionN ~args_as:(Array 0) oc ?state "Array.max" (List.map (fun _ -> t) es) es
   | Finalize, StatelessFunMisc (_, Min es), t ->
-    emit_functionN ~as_array:true oc ?state "Array.min" (List.map (fun _ -> t) es) es
+    emit_functionN ~args_as:(Array 0) oc ?state "Array.min" (List.map (fun _ -> t) es) es
 
   (* Stateful functions *)
   | InitState, StatefulFun (_, _, AggrAnd _), (Some TBool as t) ->
-    conv_to ?state ~context t oc expr_true
+    conv_to ?state ~context t oc (true_or_nul (is_nullable expr))
   | InitState, StatefulFun (_, _, AggrOr _), (Some TBool as t) ->
-    conv_to ?state ~context t oc expr_false
+    conv_to ?state ~context t oc (false_or_nul (is_nullable expr))
   | Finalize, StatefulFun (_, g, (AggrAnd _|AggrOr _)), Some TBool ->
     emit_functionN oc ?state "identity" [None] [my_state g]
   | UpdateState, StatefulFun (_, g, AggrAnd (e)), _ ->
@@ -539,7 +554,7 @@ and emit_expr ?state ~context oc expr =
 
   | InitState, StatefulFun (_, _, AggrSum _),
     (Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) as t) ->
-    conv_to ?state ~context t oc expr_zero
+    conv_to ?state ~context t oc (zero_or_nul (is_nullable expr))
   | UpdateState, StatefulFun (_, g, AggrSum e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN oc ?state (omod_of_type t ^".add") [None; Some t] [my_state g; e]
@@ -598,8 +613,9 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "CodeGenLib.percentile_finalize" [Some TFloat; None] [p; my_state g]
 
   | InitState, StatefulFun (_, _, Lag (k,e)), _ ->
-    let n = expr_one in
-    emit_functionN oc ?state "CodeGenLib.Seasonal.init" [Some TU32; Some TU32; None] [k; n; any_constant_of_type (typ_of e)]
+    emit_functionN oc ?state "CodeGenLib.Seasonal.init"
+      [Some TU32; Some TU32; None]
+      [k; expr_one; any_constant_of_type (typ_of e)]
   | UpdateState, StatefulFun (_, g, Lag (_k,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.Seasonal.add" [None; None] [my_state g; e]
   | Finalize, StatefulFun (_, g, Lag _), _ ->
@@ -618,12 +634,15 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "CodeGenLib.Seasonal.multi_linreg" [Some TU32; Some TU32; None] [p; n; my_state g]
 
   | InitState, StatefulFun (_, _, MultiLinReg (p,n,_,es)), Some TFloat ->
-    emit_functionNv oc ?state "CodeGenLib.Seasonal.init_multi_linreg" [Some TU32; Some TU32; Some TFloat] [p; n; expr_zero] (Some TFloat) (List.map (fun _ -> expr_zero) es)
+    emit_functionNv oc ?state "CodeGenLib.Seasonal.init_multi_linreg"
+      [Some TU32; Some TU32; Some TFloat]
+      [p; n; expr_zero]
+      (Some TFloat) (List.map (fun _ -> expr_zero) es)
   | UpdateState, StatefulFun (_, g, MultiLinReg (_p,_n,e,es)), _ ->
     emit_functionNv oc ?state "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state g; e] (Some TFloat) es
 
   | InitState, StatefulFun (_, _, ExpSmooth (_a,_)), (Some TFloat as t) ->
-    conv_to ?state ~context t oc expr_zero
+    conv_to ?state ~context t oc (zero_or_nul (is_nullable expr))
   | UpdateState, StatefulFun (_, g, ExpSmooth (a,e)), _ ->
     emit_functionN oc ?state "CodeGenLib.smooth" [None; Some TFloat; Some TFloat] [my_state g; a; e]
   | Finalize, StatefulFun (_, g, ExpSmooth _), Some TFloat ->
@@ -636,8 +655,16 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefulFun (_, g, Remember _), Some TBool ->
     emit_functionN oc ?state "CodeGenLib.remember_finalize" [None] [my_state g]
 
+  | InitState, StatefulFun (_, _, Distinct _es), _ ->
+    Printf.fprintf oc "%s(CodeGenLib.distinct_init ())"
+      (if is_nullable expr then "Some " else "")
+  | UpdateState, StatefulFun (_, g, Distinct es), _ ->
+    emit_functionN oc ?state ~args_as:(Tuple 1) "CodeGenLib.distinct_add" (None :: List.map (fun e -> None) es) (my_state g :: es)
+  | Finalize, StatefulFun (_, g, Distinct es), Some TBool ->
+    emit_functionN oc ?state "CodeGenLib.distinct_finalize" [None] [my_state g]
+
   | InitState, StatefulFun (_, _, Hysteresis _), t ->
-    conv_to ?state ~context t oc expr_true (* initially within bounds *)
+    conv_to ?state ~context t oc (true_or_nul (is_nullable expr)) (* initially within bounds *)
   | UpdateState, StatefulFun (_, g, Hysteresis (meas, accept, max)), Some TBool ->
     let t = (typ_of meas).scalar_typ in (* TODO: shouldn't we promote everything to the most accurate of those types? *)
     emit_functionN oc ?state "CodeGenLib.hysteresis_update" [None; t; t; t] [my_state g; meas; accept; max]
@@ -735,7 +762,7 @@ and add_missing_types arg_typs es =
  * evaluate them in order until one is found to be nullable and null, or until
  * we evaluated them all, and then only we call the function.
  * TODO: ideally we'd like to evaluate the nullable arguments first. *)
-and emit_function ?(as_array=false) oc ?state impl arg_typs es vt_specs_opt =
+and emit_function ?(args_as=Arg) oc ?state impl arg_typs es vt_specs_opt =
   let open RamenExpr in
   let arg_typs = add_missing_types arg_typs es in
   let len, has_nullable =
@@ -754,12 +781,17 @@ and emit_function ?(as_array=false) oc ?state impl arg_typs es vt_specs_opt =
       ) (0, false) es arg_typs
   in
   Printf.fprintf oc "%s(%s" (if has_nullable then "Some " else "") impl ;
-  if as_array then Printf.fprintf oc " [|" ;
   for i = 0 to len-1 do
-    Printf.fprintf oc " x%d_" i ;
-    if as_array then Printf.fprintf oc ";"
+    Printf.fprintf oc "%s"
+      (match args_as with Array n when i = n -> "[| "
+                        | Array n when i > n -> ";"
+                        | Tuple n when i = n -> "("
+                        | Tuple n when i > n -> ", "
+                        | _ -> "") ;
+    Printf.fprintf oc " x%d_" i
   done ;
-  if as_array then Printf.fprintf oc " |]" ;
+  Printf.fprintf oc "%s"
+    (match args_as with Arg -> "" | Array _ -> " |]" | Tuple _ -> ")") ;
   (* variadic arguments [ves] are passed as a last argument to impl, as an array *)
   Option.may (fun (vt, ves) ->
       (* TODO: handle NULLability *)
@@ -768,8 +800,8 @@ and emit_function ?(as_array=false) oc ?state impl arg_typs es vt_specs_opt =
     vt_specs_opt ;
   for _i = 0 to len do Printf.fprintf oc ")" done
 
-and emit_functionN ?as_array oc ?state impl arg_typs es =
-  emit_function ?as_array oc ?state impl arg_typs es None
+and emit_functionN ?args_as oc ?state impl arg_typs es =
+  emit_function ?args_as oc ?state impl arg_typs es None
 
 and emit_functionNv oc ?state impl arg_typs es vt ves =
   emit_function oc ?state impl arg_typs es (Some (vt, ves))
@@ -1348,6 +1380,14 @@ let otype_of_state e =
       "("^ t ^" * float array) CodeGenLib.Seasonal.t"
     | StatefulFun (_, _, Remember _) ->
       "CodeGenLib.remember_state"
+    | StatefulFun (_, _, Distinct es) ->
+      let print_expr_typ oc e =
+        let typ = typ_of e in
+        Option.get typ.scalar_typ |>
+        otype_of_type |>
+        String.print oc in
+      Printf.sprintf2 "%a CodeGenLib.distinct_state"
+        (list_print_as_product print_expr_typ) es
     | StatefulFun (_, _, AggrAvg _) -> "(int * float)"
     | _ -> t in
   if Option.get typ.nullable then t ^" option" else t

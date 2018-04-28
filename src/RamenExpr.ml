@@ -204,6 +204,10 @@ and stateful_fun =
    * positive rate and account for it in the surrounding calculations than
    * to aim for a low false positive rate. *)
   | Remember of t * t * t * t
+  (* Accurate version of the above, remembering all instances of the given
+   * tuple and returning a boolean. Only for when number of expected values
+   * is small, obviously: *)
+  | Distinct of t list
   (* Simple exponential smoothing *)
   | ExpSmooth of t * t (* coef between 0 and 1 and expression *)
   (* Hysteresis *)
@@ -408,6 +412,11 @@ let rec print with_types fmt =
       (print with_types) dur
       (print with_types) e ;
     add_types t
+  | StatefulFun (t, g, Distinct es) ->
+    Printf.fprintf fmt "distinct%s(%a)"
+      (sl g)
+      (List.print ~first:"(" ~last:")" ~sep:", "
+        (print with_types)) es
   | StatefulFun (t, g, ExpSmooth (e1, e2)) ->
     Printf.fprintf fmt "smooth%s(%a, %a)"
       (sl g)  (print with_types) e1 (print with_types) e2 ;
@@ -496,6 +505,8 @@ let rec fold_by_depth f i expr =
     let i''=
       Option.map_default (fold_by_depth f i') i' else_ in
     f i'' expr
+
+  | StatefulFun (_, _, Distinct es)
   | Coalesce (_, es)
   | StatelessFunMisc (_, (Max es|Min es)) ->
     let i' = List.fold_left (fold_by_depth f) i es in
@@ -575,6 +586,9 @@ let rec map_type ?(recurs=true) f = function
         (if recurs then map_type ~recurs f tim else tim),
         (if recurs then map_type ~recurs f dur else dur),
         (if recurs then map_type ~recurs f e else e)))
+  | StatefulFun (t, g, Distinct es) ->
+    StatefulFun (f t, g, Distinct
+        (if recurs then List.map (map_type ~recurs f) es else es))
   | StatefulFun (t, g, ExpSmooth (a, b)) ->
     StatefulFun (f t, g, ExpSmooth (
         (if recurs then map_type ~recurs f a else a),
@@ -818,6 +832,16 @@ struct
   and afun2_sf ?def_state n =
     afun_sf ?def_state 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
 
+  and afun0v_sf ?(def_state=GlobalState) n =
+    (* afunv_sf takes parentheses but it's nicer to also accept non
+     * parenthesized highestest_prec, but then there would be 2 ways to
+     * parse "distinct (x)" as highestest_prec also accept parenthesized
+     * lower precedence expressions. Thus the "highestest_prec_no_parent": *)
+    (strinG n -+ optional ~def:def_state (blanks -+ state_lifespan) +-
+     blanks ++ highestest_prec_no_parent >>: fun (f, e) -> f, [e]) |||
+    (afunv_sf ~def_state 0 n >>:
+     function (g, ([], r)) -> g, r | _ -> assert false)
+
   and afun2v_sf ?def_state n =
     afunv_sf ?def_state 2 n >>: function (g, ([a;b], r)) -> g, a, b, r | _ -> assert false
 
@@ -962,6 +986,8 @@ struct
      (afun4_sf "remember" >>: fun (g, fpr, tim, dir, e) ->
         StatefulFun (make_bool_typ "remember", g,
                      Remember (fpr, tim, dir, e))) |||
+     (afun0v_sf ~def_state:LocalState "distinct" >>: fun (g, es) ->
+         StatefulFun (make_bool_typ "distinct", g, Distinct es)) |||
      (afun3_sf "hysteresis" >>: fun (g, value, accept, max) ->
         StatefulFun (make_bool_typ ~nullable:false "hysteresis", g,
                      Hysteresis (value, accept, max))) |||
@@ -1057,9 +1083,12 @@ struct
          in
          loop [] r) m
 
-  and highestest_prec m =
+  and highestest_prec_no_parent m =
     (const ||| field ||| func ||| null |||
-     case ||| if_ ||| coalesce |||
+     case ||| if_ ||| coalesce) m
+
+  and highestest_prec m =
+    (highestest_prec_no_parent |||
      char '(' -- opt_blanks -+
        lowest_prec_left_assoc +-
      opt_blanks +- char ')'

@@ -832,6 +832,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        Some TFloat, None, tim ;
        Some TFloat, None, dur ;
        None, None, e]
+  | StatefulFun (op_typ, _, Distinct es) ->
+    (* the es can be anything *)
+    check_op op_typ return_bool (List.map (fun e -> None, None, e) es)
   | StatefulFun (op_typ, _, Hysteresis (meas, accept, max)) ->
     check_op op_typ return_bool
       [Some TFloat, None, meas ;

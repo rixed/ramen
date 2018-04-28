@@ -121,7 +121,8 @@ let compile conf root_path program_name program_code =
           let parent_program_name, parent_name =
             C.program_func_of_user_string parent_fq_name in
           (* Or the parent must have been in compiler_funcs: *)
-          assert (parent_program_name <> program_name) ;
+          if parent_program_name = program_name then
+            raise (RamenLang.SyntaxError (UnknownFunc parent_fq_name)) ;
           let parent_func =
             let par_rc =
               C.Program.of_program_name root_path parent_program_name in

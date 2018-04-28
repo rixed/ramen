@@ -119,6 +119,22 @@ let remember_add st tim e =
 
 let remember_finalize st = st.last_remembered
 
+(* Distinct op values *)
+type 'a distinct_state =
+  { distinct_values : ('a, unit) Hashtbl.t ;
+    mutable last_was_distinct : bool }
+
+let distinct_init () =
+  { distinct_values = Hashtbl.create 31 ; last_was_distinct = false }
+
+let distinct_add st x =
+  (* TODO: a Hashtbl.modify which callback also returns the return value *)
+  st.last_was_distinct <- not (Hashtbl.mem st.distinct_values x) ;
+  Hashtbl.add st.distinct_values x () ;
+  st
+
+let distinct_finalize st = st.last_was_distinct
+
 let hash x = Hashtbl.hash x |> Int64.of_int
 
 let hysteresis_update was_ok v accept max =

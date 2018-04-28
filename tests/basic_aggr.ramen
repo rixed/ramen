@@ -10,7 +10,8 @@ DEFINE f1 AS
     first ((horsepower)),
     last horsepower,
     10th percentile horsepower,
-    95th percentile horsepower
+    95th percentile horsepower,
+    sum u16(distinct manufacturer) as manufacturers
   EXPORT
   COMMIT AFTER group.#count >= 4539;
 
