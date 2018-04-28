@@ -513,8 +513,7 @@ let worker_start worker_name get_binocle_tuple k =
     catch
       (fun () ->
         let%lwt () = join [
-          (let%lwt () = return_unit in
-           async (fun () ->
+          (async (fun () ->
              restart_on_failure "update_stats_rb"
                (update_stats_rb report_period report_rb) get_binocle_tuple) ;
            return_unit) ;
@@ -1485,7 +1484,7 @@ let casing codegen_version rc_str rc_marsh lst =
             name Sys.executable_name ;
             exit 3
         | f -> f ()) in
-  (* If we are called "(ramen worker)" then we must run: *)
+  (* If we are called "ramen worker:" then we must run: *)
   if Sys.argv.(0) = RamenConsts.worker_argv0 then
     run_worker ()
   else match Sys.argv.(1) with
