@@ -36,17 +36,9 @@ static void retrieve_exceptions(void)
 
 #define Ringbuf_val(v) (*((struct ringbuf **)Data_custom_val(v)))
 
-static void finalize_ringbuf(value rb_)
-{
-  struct ringbuf *rb = Ringbuf_val(rb_);
-  if (! rb) return;  // might have been unloaded already
-  (void)ringbuf_unload(rb); // There is not we can do at this point.
-  free(rb);
-}
-
 static struct custom_operations ringbuf_ops = {
   "org.happyleptic.ramen.ringbuf",
-  finalize_ringbuf,
+  custom_finalize_default,
   custom_compare_default,
   custom_hash_default,
   custom_serialize_default,
