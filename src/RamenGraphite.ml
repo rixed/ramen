@@ -350,9 +350,11 @@ let time_of_abstime s =
   (* TODO *)
   None
 
+(* mktime tm struct "is interpreted in the local time zone". Work around this
+ * by dividing by 24h. *)
 (*$= time_of_abstime & ~printer:(function None -> "None" | Some f -> string_of_float f)
- (Some 191631600.) (time_of_abstime "28.01.1976")
- (Some 191631600.) (time_of_abstime "01/28/1976")
+ (Some 2218.) (BatOption.map (fun ts -> ceil (ts /. 86400.)) (time_of_abstime "28.01.1976"))
+ (time_of_abstime "28.01.1976") (time_of_abstime "01/28/1976")
  (Some 1523052000.) (time_of_abstime "1523052000")
  *)
 
