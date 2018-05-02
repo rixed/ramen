@@ -196,13 +196,13 @@ let split_query s =
   let rec extract_next prev i =
     if i >= String.length s then List.rev prev else
     if s.[i] = '"' then (
-      (* value extends to last unescaped double quote *)
+      (* value extends to last non-escaped double quote *)
       match find_quote_from s (i+1) with
       | exception Not_found -> invalid_arg "split_query: bad quotes"
       | i' ->
           if i' < String.length s - 1 && s.[i' + 1] <> '.' then
             invalid_arg "split_query: bad quotes(2)" ;
-          let prev' = String.sub s i (1 + i' - i) :: prev in
+          let prev' = String.sub s (i + 1) (i' - i - 1) :: prev in
           extract_next prev' (i' + 2)
     ) else (
       (* value extends to last dot or end *)
@@ -214,7 +214,7 @@ let split_query s =
   extract_next [] 0
 (*$inject open Batteries *)
 (*$= split_query & ~printer:(IO.to_string (List.print String.print))
- [ "monitoring"; "traffic"; "inbound"; "\"127.0.0.1:56687\""; "0"; "bytes" ] \
+ [ "monitoring"; "traffic"; "inbound"; "127.0.0.1:56687"; "0"; "bytes" ] \
     (split_query "monitoring.traffic.inbound.\"127.0.0.1:56687\".0.bytes")
  *)
 
