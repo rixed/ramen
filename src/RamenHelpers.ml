@@ -685,7 +685,7 @@ let cached reread time =
         now -. !a  < cache_clean_after
       ) cache ;
       next_clean := now +. Random.float cache_clean_after ;
-      !logger.debug "Cache size is now %d" (Hashtbl.length cache)
+      !logger.info "Cache size is now %d" (Hashtbl.length cache)
     ) ;
     Option.get !ret
 

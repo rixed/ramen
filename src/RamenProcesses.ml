@@ -74,8 +74,9 @@ let cleanup_old_files max_archives conf =
           !logger.debug "Touching %s." full_path ;
           lwt_touch_file full_path
         ) else if string_match sub_re fname 0 &&
-           is_directory full_path &&
-           file_is_older_than (1. *. 86400.) fname (* TODO: should be 10 days *)
+                  is_directory full_path &&
+                  (* TODO: should be a few days *)
+                  file_is_older_than (1. *. 86400.) fname
         then (
           !logger.info "Deleting old version %s." fname ;
           delete_directory full_path
