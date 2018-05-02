@@ -106,14 +106,13 @@ let cleanup_old_files max_archives conf =
     let arcdir =
       conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf
     and reportdir =
-      Filename.basename (RamenConf.report_ringbuf conf) in
+      Filename.dirname (RamenConf.report_ringbuf conf) in
     let clean_seq_archives dir =
       (* Delete all files matching %d-%d.r but the last ones: *)
       let files = RingBuf.seq_files_of dir |> Array.of_enum in
       Array.fast_sort RingBuf.seq_file_compare files ;
       for i = 0 to Array.length files - max_archives do
-        let _, _, f = files.(i) in
-        let fname = dir ^"/"^ f in
+        let _, _, fname = files.(i) in
         !logger.info "Deleting old archive %s" fname ;
         log_exceptions Unix.unlink fname
       done
