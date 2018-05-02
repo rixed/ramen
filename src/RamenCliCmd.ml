@@ -606,4 +606,5 @@ let graphite_expand conf query () =
       in
       display indent' c) e
   in
-  display "" te
+  display "" te ;
+  Printf.printf "\n"
