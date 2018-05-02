@@ -223,23 +223,25 @@ let relatives f must_run =
 let terminated_pids = ref []
 
 let rec wait_all_pids_loop () =
-  match%lwt Lwt_unix.waitpid [Unix.WNOHANG] 0 with
-  | exception Unix.Unix_error (Unix.EINTR, _, _) ->
-    wait_all_pids_loop ()
-  | exception Unix.Unix_error (Unix.ECHILD, _, _) ->
-    (* Will happen if we have no children yet *)
-    Lwt_unix.sleep 1. >>= wait_all_pids_loop
-  | exception exn ->
-    (* This should not be used *)
-    !logger.error "waitpid: %s" (Printexc.to_string exn) ;
-    Lwt_unix.sleep (Random.float 2.) >>= wait_all_pids_loop
-  | 0, _  ->
-    (* Nothing, sleep and loop. *)
-    Lwt_unix.sleep 1. >>= wait_all_pids_loop
-  | pid, status ->
-    let now = Unix.gettimeofday () in
-    terminated_pids := (pid, status, now) :: !terminated_pids ;
-    wait_all_pids_loop ()
+  let%lwt () =
+    match%lwt Lwt_unix.waitpid [Unix.WNOHANG] 0 with
+    | exception Unix.Unix_error (Unix.EINTR, _, _) ->
+      return_unit
+    | exception Unix.Unix_error (Unix.ECHILD, _, _) ->
+      (* Will happen if we have no children yet *)
+      Lwt_unix.sleep 1.
+    | exception exn ->
+      (* This should not be used *)
+      !logger.error "waitpid: %s" (Printexc.to_string exn) ;
+      Lwt_unix.sleep (Random.float 2.)
+    | 0, _  ->
+      (* Nothing, sleep and loop. *)
+      Lwt_unix.sleep 1.
+    | pid, status ->
+      let now = Unix.gettimeofday () in
+      terminated_pids := (pid, status, now) :: !terminated_pids ;
+      return_unit in
+  wait_all_pids_loop ()
 
 (* Then this function is cleaning the running hash: *)
 let process_terminations running =
@@ -597,6 +599,7 @@ let synchronize_running conf autoreload_delay =
             ) else return (must_run, last_read)) in
         let%lwt () = synchronize must_run running in
         let delay = if !quit then 0.1 else 1. in
+        Gc.full_major () ;
         let%lwt () = Lwt_unix.sleep delay in
         loop last_read must_run running))
   in
