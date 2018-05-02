@@ -737,6 +737,18 @@ Notes:
   positive rate and account for it in the surrounding calculations, as
   opposed to aim for a low false positive rate.
 
+`distinct`, prefix, +any ⨉ ... → bool+, tells if a value have been seen before.
+
+This is similar to the above `remember` but actually remember every values
+rather than relying on a bloom filter. So, to be used only when the number of
+possible distinct values is small.
+
+The other difference is that it has no use for time: it merely remembers
+everything for the duration of its state, which is local (ie. bound to the
+group) by default.
+
+Finally, it can take any number of values of any type instead of just one.
+
 `hysteresis`, prefix, +float ⨉ float ⨉ float → bool+, tells if a measured value
 is within some permitted range, with an hysteresis once it has ventured
 outside.
