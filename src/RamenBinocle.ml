@@ -56,13 +56,6 @@ let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _) =
   let open RingBufLib in
   nullmask_sz + fix_sz + sersize_of_string worker
 
-(* TODO: for now those are being (un)serialized "by hand" so field
- * ordering does not matter. But when later we'll want to have an
- * internal datasource with this stream then we will have to rethink this.
- * Will we want to read for a specific func or all of them? Will we want
- * each func to output to each consumer, or will we want ramen itself to
- * copy this stream to consumers? *)
-
 let check_tuple (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo, lo) =
   let too_voluminous =
     let max_vol = Stdint.Uint64.of_string "1000000000000" in
