@@ -12,7 +12,7 @@ let graph_config = "v9" (* last: stripped down version *)
 let codegen = "v8" (* last: addition of factors *)
 
 (* Instrumentation data sent from workers to Ramen *)
-let instrumentation_tuple = "v1"
+let instrumentation_tuple = "v2" (* last: addition of last_out *)
 
 (* Notifications sent from workers to Ramen *)
 let notify_tuple = "v2" (* last: new notification type *)

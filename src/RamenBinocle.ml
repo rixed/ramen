@@ -17,7 +17,7 @@ type tuple =
   string * float *
   Uint64.t option * Uint64.t option * Uint64.t option * Uint64.t option *
   float * Uint64.t * float option * float option * Uint64.t option *
-  Uint64.t option
+  Uint64.t option * float option
 
 let tuple_typ =
   [ { typ_name = "worker" ;          nullable = false ;  typ = TString } ;
@@ -31,7 +31,8 @@ let tuple_typ =
     { typ_name = "wait_in" ;         nullable = true ;   typ = TFloat } ;
     { typ_name = "wait_out" ;        nullable = true ;   typ = TFloat } ;
     { typ_name = "bytes_in" ;        nullable = true ;   typ = TU64 } ;
-    { typ_name = "bytes_out" ;       nullable = true ;   typ = TU64 } ]
+    { typ_name = "bytes_out" ;       nullable = true ;   typ = TU64 } ;
+    { typ_name = "last_out" ;        nullable = true ;   typ = TFloat } ]
 
 let event_time = Some (("time", 1.), RamenEventTime.DurationConst 0.)
 
@@ -51,7 +52,7 @@ let fix_sz =
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
-let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _) =
+let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _) =
   let open RingBufLib in
   nullmask_sz + fix_sz + sersize_of_string worker
 
@@ -62,7 +63,7 @@ let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _) =
  * each func to output to each consumer, or will we want ramen itself to
  * copy this stream to consumers? *)
 
-let check_tuple (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =
+let check_tuple (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo, lo) =
   let too_voluminous =
     let max_vol = Stdint.Uint64.of_string "1000000000000" in
     function
@@ -78,7 +79,8 @@ let check_tuple (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo) =
       (o bi) (o bo)
   )
 
-let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo as t) =
+let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo,
+                  lo as t) =
   check_tuple t ;
   RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
@@ -115,6 +117,7 @@ let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo as t) =
   let offs = write_nullable_float offs 5 wo in
   let offs = write_nullable_u64 offs 6 bi in
   let offs = write_nullable_u64 offs 7 bo in
+  let offs = write_nullable_float offs 8 lo in
   offs
 
 let unserialize tx =
@@ -146,7 +149,8 @@ let unserialize tx =
   let wo, offs = read_nullable_float tx 5 offs in
   let bi, offs = read_nullable_u64 tx 6 offs in
   let bo, offs = read_nullable_u64 tx 7 offs in
-  let t = worker, time, ic, sc , oc, gc, cpu, ram, wi, wo, bi, bo in
+  let lo, offs = read_nullable_float tx 8 offs in
+  let t = worker, time, ic, sc , oc, gc, cpu, ram, wi, wo, bi, bo, lo in
   assert (offs <= max_sersize_of_tuple t) ;
   check_tuple t ;
   t

@@ -329,6 +329,10 @@ let stats_rb_write_sleep_time =
   FloatCounter.make RamenConsts.MetricNames.rb_wait_write
     "Total number of seconds spent waiting for output."
 
+let stats_last_out =
+  FloatGauge.make RamenConsts.MetricNames.last_out
+    "When was the last output emitted."
+
 let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
 let sleep_out d = FloatCounter.add stats_rb_write_sleep_time d
 
@@ -364,9 +368,10 @@ let get_binocle_tuple worker ic sc gc : RamenBinocle.tuple =
   FloatCounter.get stats_rb_read_sleep_time |> s,
   FloatCounter.get stats_rb_write_sleep_time |> s,
   IntCounter.get stats_rb_read_bytes |> si,
-  IntCounter.get stats_rb_write_bytes |> si
+  IntCounter.get stats_rb_write_bytes |> si,
+  FloatGauge.get stats_last_out
 
-let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _ as tuple) =
+let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let sersize = RamenBinocle.max_sersize_of_tuple tuple in
   match RingBuf.enqueue_alloc rb sersize with
   | exception RingBufLib.NoMoreRoom -> () (* Just skip *)
@@ -411,6 +416,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
   let get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
   fun tuple ->
     IntCounter.add stats_out_tuple_count 1 ;
+    FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
     let%lwt fnames = get_out_fnames () in
     Option.may (fun out_specs ->
       if Map.is_empty out_specs then
@@ -610,7 +616,7 @@ let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
         !logger.info "Reading buffer..." ;
         let%lwt () =
           RingBuf.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
-            let worker, time, _, _, _, _, _, _, _, _, _, _ as tuple =
+            let worker, time, _, _, _, _, _, _, _, _, _, _, _ as tuple =
               RamenBinocle.unserialize tx in
             (* Filter by time and worker *)
             if time >= start && match_from worker then

@@ -25,6 +25,7 @@ struct
   let rb_wait_write = "out_sleep"
   let rb_read_bytes = "in_bytes"
   let rb_write_bytes = "out_bytes"
+  let last_out = "last_out"
 end
 
 module CliInfo =
