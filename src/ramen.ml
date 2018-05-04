@@ -343,10 +343,10 @@ let max_nb_points =
                    ~docv:"POINTS" ["n"; "nb-points"; "max-nb-points"] in
   Arg.(value (opt int 100 i))
 
-let data_field p =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.data_field
+let data_fields p =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.data_fields
                    ~docv:"FIELD" [] in
-  Arg.(required (pos p (some string) None i))
+  Arg.(non_empty (pos_right (p-1) string [] i))
 
 let consolidation =
   let i = Arg.info ~doc:RamenConsts.CliInfo.consolidation
@@ -374,7 +374,7 @@ let timeseries =
       $ csv_separator
       $ csv_null
       $ func_name 0
-      $ data_field 1
+      $ data_fields 1
       $ consolidation
       $ duration),
     info ~doc:RamenConsts.CliInfo.timeseries "timeseries")

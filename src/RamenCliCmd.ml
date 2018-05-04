@@ -504,7 +504,8 @@ let tail conf func_name with_header separator null
  *)
 
 let timeseries conf since until with_header where factors max_data_points
-               separator null func_name data_field consolidation duration () =
+               sep null func_name data_fields consolidation duration
+               () =
   logger := make_logger conf.C.debug ;
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let since = since |? until -. 600. in
@@ -513,23 +514,30 @@ let timeseries conf since until with_header where factors max_data_points
   let columns, timeseries =
     Lwt_main.run (
       RamenTimeseries.get conf ~duration max_data_points since until where
-                          factors ~consolidation func_name data_field) in
+                          factors ~consolidation func_name data_fields) in
   (* Display results: *)
+  let single_data_field = List.length data_fields = 1 in
   if with_header then (
     let column_names =
-      Array.map (fun sc ->
-        List.map RamenScalar.to_string sc |>
-        String.concat "."
-      ) columns in
-    Array.print ~first:("#Time"^ separator) ~last:"\n" ~sep:separator
+      Array.fold_left (fun res sc ->
+        let v =
+          List.map RamenScalar.to_string sc |>
+          String.concat "." in
+        if single_data_field then
+          (if v = "" then List.hd data_fields else v) :: res
+        else List.fold_left (fun res df ->
+          (df ^(if v = "" then "" else "("^ v ^")")) :: res) res data_fields
+      ) [] columns |> List.rev in
+    List.print ~first:("#Time"^ sep) ~last:"\n" ~sep
                 String.print stdout column_names) ;
   Enum.iter (fun (t, vs) ->
-    Float.print stdout t ;
-    String.print stdout separator ;
-    Array.print ~first:"" ~last:"\n" ~sep:separator
-      (fun oc v ->
-        (match v with None -> String.print oc null
-                    | Some v -> Float.print oc v)) stdout vs
+    Printf.printf "%f%s%a"
+      t sep
+      (Array.print ~first:"" ~last:"\n" ~sep
+        (Array.print ~first:"" ~last:"" ~sep
+          (fun oc -> function
+            | None -> String.print oc null
+            | Some v -> Float.print oc v))) vs
   ) timeseries
 
 (*

@@ -196,7 +196,6 @@ let complete str () =
           ("--where=", RamenConsts.CliInfo.where) ::
           ("--factor=", RamenConsts.CliInfo.factors) ::
           ("--max-nb-points=", RamenConsts.CliInfo.max_nb_points) ::
-          ("--data-field=", RamenConsts.CliInfo.data_field) ::
           ("--consolidation=", RamenConsts.CliInfo.consolidation) ::
           ("--separator=", RamenConsts.CliInfo.csv_separator) ::
           ("--null=", RamenConsts.CliInfo.csv_null) ::

@@ -100,7 +100,7 @@ struct
   let since = "Timestamp of the first point"
   let until = "Timestamp of the last point"
   let max_nb_points = "Max number of points returned"
-  let data_field = "Field to retrieve values from"
+  let data_fields = "Fields to retrieve values from"
   let consolidation = "Consolidation function"
   let short = "Display only a short summary"
   let sort_col =

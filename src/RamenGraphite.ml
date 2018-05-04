@@ -224,7 +224,7 @@ let split_query s =
  * text is the completed last component (same as id ending) and targets
  * is the list of fully expanded targets (as a query string) matching id. *)
 let expand_query conf query =
-  let query = String.nsplit ~by:"." query in
+  let query = split_query query in
   let%lwt filtered = enum_tree_of_query conf query in
   let nb_filters = List.length query in
   let prefix = (List.take (nb_filters - 1) query |>
@@ -364,20 +364,29 @@ let time_of_graphite_time s =
   else if s.[0] = '-' then time_of_reltime s
   else time_of_abstime s
 
-(* Return both the where and the factors clauses of a
- * RamenTimeseries.get: *)
-let filters_of_factors func fvals =
-  (* FIXME: what about null fvals? *)
-  List.fold_left2 (fun (where, factors) factor fval ->
-    if fval = "*" then where, factor::factors else
-    let ft =
-      List.find (fun ft ->
-        ft.RamenTuple.typ_name = factor
-      ) func.F.out_type.ser in
-    (factor,
-     RamenScalar.value_of_string ft.RamenTuple.typ fval) :: where,
-    factors
-  ) ([], []) func.F.factors fvals
+(* Return the target name of that function, given the where filter and
+ * used factors. [fvals] are the scalar values to use for the factored
+ * fields (fields present in [factors], in same order): *)
+let target_name_of func where factors fvals data_field =
+  (* Return the name of field for the [i]th factor of the function,
+   * ie the fvals if this field has been used as factor, or the
+   * value from the where filter otherwise: *)
+  let print_factor oc factor =
+    (match List.findi (fun i f -> factor = f) factors with
+    | exception Not_found -> (* take the value from the where filter *)
+        List.assoc factor where
+    | i, _ -> (* take the [i]th value *)
+        List.nth fvals i) |>
+    RamenScalar.print oc
+  in
+  Printf.sprintf2 "%s%s%s%s%a%s"
+    (String.nreplace ~str:func.F.program_name ~sub:"/" ~by:".")
+    (if func.program_name <> "" then "." else "")
+    func.name
+    (if func.factors = [] then "" else ".")
+    (List.print ~first:"" ~last:"." ~sep:"." print_factor) func.factors
+    data_field
+(* TODO: tests *)
 
 let render_graphite conf headers body =
   let content_type = get_content_type headers in
@@ -399,19 +408,27 @@ let render_graphite conf headers body =
   and format = Hashtbl.find_option params "format" |>
                Option.map v |? "json" in
   assert (format = "json") ; (* FIXME *)
+  (* We start by expanding the query so that we have also an expansion
+   * for field/function names with matches. *)
   let%lwt targets =
     Lwt_list.map_s (expand_query conf) targets in
+  (* Targets is now a list of enumerations of expanded program + function name
+   * + factors values + field name, all separated by dots. Regardless of how
+   * many original query were sent, the expected answer is a flat array of
+   * target name + timeseries.  We can therefore flatten all the expanded
+   * targets and regroup by operation + where filter, then scan data for each
+   * of those groups asking for all possible factors. *)
   let targets =
     (List.enum targets |> Enum.flatten) /@
     (fun (_, _, _, target) -> target) |>
     List.of_enum in
-  let metric_of_target target =
-    (* Target is actually the program + function name + factors values +
-     * field name, all separated by dots. We need the fully qualified name
-     * of the function, the factor values (if not '*'), and the field name: *)
-    let%lwt func, func_name, factors, data_field =
-      (* FIXME: handle "#stats" and "stats" *)
-      C.with_rlock conf (fun programs ->
+  !logger.debug "targets = %a" (List.print String.print) targets ;
+  (* Instead of those strings we'd like to have the target decomposed into a
+   * func, function FQ name, the factors values, and the data field: *)
+  let%lwt targets =
+    C.with_rlock conf (fun programs ->
+      Lwt_list.map_s (fun target ->
+        (* FIXME: handle "#stats" and "stats" *)
         let rec search_func pref = function
           | [] | [_] -> bad_request ("bad target: "^ target)
           | pn :: (fn :: fields as rest) ->
@@ -442,27 +459,84 @@ let render_graphite conf headers body =
                         search_func prog_name rest
                       ))
         in
-        search_func "" (split_query target))
-    in
-    let where, factors = filters_of_factors func factors in
-    !logger.debug "where filter: %a, factors: %a"
-      (List.print (fun oc (factor, value) ->
-        Printf.fprintf oc "%s=%a" factor RamenScalar.print value)) where
-      (List.print String.print) factors ;
+        search_func "" (split_query target)
+      ) targets) in
+  (* Now we need to decide, for each factor value, if we want it in a where
+   * filter (it's the only value we want for this factor) or if we want to
+   * get a timeseries for all possible values (in a single scan). For this
+   * we merely count how many distinct values we are asking for: *)
+  let factor_values = Hashtbl.create 9 in
+  let count_factor_values (func, func_name, factors, data_field) =
+    (* Target is actually the program + function name + factors values +
+     * field name, all separated by dots. We need the fully qualified name
+     * of the function, the factor values and the field name: *)
+    List.iteri (fun i fval ->
+      Hashtbl.add factor_values (func_name, i) fval
+    ) factors ;
+    return_unit in
+  let%lwt () = Lwt_list.iter_s count_factor_values targets in
+  (* Now we can decide on which scans to perform *)
+  let scans = Hashtbl.create 9 in
+  let add_scans (func, func_name, fvals, data_field) =
+    let where, factors, _ =
+      List.fold_left2 (fun (where, factors, i) factor fval ->
+        if Hashtbl.find_all factor_values (func_name, i) |> List.length > 1
+        then
+          (* We want several values for that factor, so we will take it as a
+           * factor: *)
+          where, Set.add factor factors, i + 1
+        else
+          (* If we are interested in only one value, do not ask for this factor
+           * but add a where filter: *)
+          (* FIXME: we should have kept the scalar value in factors instead of
+           * a string *)
+          let ft =
+            List.find (fun ft ->
+              ft.RamenTuple.typ_name = factor
+            ) func.F.out_type.ser in
+          (factor,
+           RamenScalar.value_of_string ft.RamenTuple.typ fval) :: where,
+          factors, i + 1
+      ) ([], Set.empty, 0) func.F.factors fvals in
+    Hashtbl.modify_opt (func_name, where) (function
+      | None ->
+          Some (Set.singleton data_field, factors, func)
+      | Some (d, f, func) ->
+          Some (Set.add data_field d, Set.union factors f, func)
+    ) scans ;
+    return_unit in
+  let%lwt () = Lwt_list.iter_s add_scans targets in
+  (* Now actually run the scans, one for each function/where pair, and start
+   * building the result. For each columns we want one timeseries per data
+   * field. *)
+  let metrics_of_scan (func_name, where) (data_fields, factors, func) res_th =
+    (* [columns] will be an array of the factors. [datapoints] is an
+     * enumeration of arrays with one entry per factor, the entry being an
+     * array of one timeseries per data_fields. *)
+    let data_fields = Set.to_list data_fields
+    and factors = Set.to_list factors in
     let%lwt columns, datapoints =
       RamenTimeseries.get conf max_data_points since until where factors
-                          func_name data_field in
-    let datapoints =
-      (* TODO: return all factor value combinations *)
-      Enum.map (fun (t, v) ->
-        (if Array.length v > 0 then v.(0) else None),
-        int_of_float t
-      ) datapoints |>
-      Array.of_enum in
-    return { target ; datapoints }
+                          func_name data_fields in
+    let datapoints = Array.of_enum datapoints in
+    let%lwt res = res_th in
+    (* datapoints.(time).(factor).(data_field) *)
+    Array.fold_lefti (fun res colnum column ->
+      List.fold_lefti (fun res fieldnum data_field ->
+        let datapoints =
+          Array.map (fun (t, v) ->
+            (if Array.length v > 0 then v.(colnum).(fieldnum) else None),
+            int_of_float t
+          ) datapoints
+        (* TODO: rebuild the target name from the list of values in column *)
+        and target = target_name_of func where factors column data_field in
+        { target ; datapoints } :: res
+      ) res data_fields
+    ) res columns |> return
   in
-  let%lwt resp = Lwt_list.map_p metric_of_target targets in
+  let%lwt resp = Hashtbl.fold metrics_of_scan scans return_nil in
   let body = PPP.to_string graphite_render_resp_ppp_json resp in
+  !logger.debug "%d metrics from %d scans" (List.length resp) (Hashtbl.length scans) ;
   respond_ok ~body ()
 
 let version _conf _headers _params =
