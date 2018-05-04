@@ -552,16 +552,20 @@ let synchronize_running conf autoreload_delay =
       let%lwt () = Lwt_unix.sleep 1. in
       none_shall_pass f
   in
-  let rec loop last_read must_run running =
+  (* The has of programs that must be running, updated by [loop]: *)
+  let must_run = Hashtbl.create 307
+  and running = Hashtbl.create 307 in
+  let rec loop last_read =
     none_shall_pass (fun () ->
       process_terminations running ;
       if !quit && Hashtbl.length running = 0 then (
         !logger.info "All processes stopped, quitting." ;
         return_unit
       ) else (
-        let%lwt must_run, last_read =
+        let%lwt last_read =
           if !quit then (
-            return (Hashtbl.create 0, last_read)
+            Hashtbl.clear must_run ;
+            return last_read
           ) else (
             let last_mod =
               try Some (mtime_of_file rc_file)
@@ -587,7 +591,7 @@ let synchronize_running conf autoreload_delay =
                * want [must_run] to be a hash of functions. Also, we want the
                * workers identified by their signature so that if the type of a
                * worker change but not its name we see a different worker. *)
-              let must_run = Hashtbl.create 11 in
+              Hashtbl.clear must_run ;
               let%lwt () = wrap (fun () ->
                 Hashtbl.iter (fun program_name get_rc ->
                   let bin, prog = get_rc () in
@@ -596,15 +600,15 @@ let synchronize_running conf autoreload_delay =
                     Hashtbl.add must_run k (bin, program_name, f)
                   ) prog
                 ) must_run_programs) in
-              return (must_run, now)
-            ) else return (must_run, last_read)) in
+              return now
+            ) else return last_read) in
         let%lwt () = synchronize must_run running in
         let delay = if !quit then 0.1 else 1. in
         Gc.full_major () ;
         let%lwt () = Lwt_unix.sleep delay in
-        loop last_read must_run running))
+        loop last_read))
   in
-  loop 0. (Hashtbl.create 0) (Hashtbl.create 0)
+  loop 0.
 
 (* To be called before synchronize_running *)
 let repair_and_warn what rb =
