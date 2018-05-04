@@ -408,7 +408,7 @@ let ps conf short with_header sort_col top () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
-let tail conf func_name with_header separator null
+let tail conf func_name with_header sep null
          last min_seq max_seq continuous where with_seqnums duration () =
   logger := make_logger conf.C.debug ;
   if last <> None && (min_seq <> None || max_seq <> None) then
@@ -473,8 +473,8 @@ let tail conf func_name with_header separator null
   let reorder_column2 = RamenTuple.reorder_tuple_to_user typ in
   if with_header then (
     let header = typ.ser |> Array.of_list |> reorder_column1 in
-    let first = if with_seqnums then "#Seq"^ separator else "#" in
-    Array.print ~first ~last:"\n" ~sep:separator
+    let first = if with_seqnums then "#Seq"^ sep else "#" in
+    Array.print ~first ~last:"\n" ~sep
       (fun fmt ft -> String.print fmt ft.RamenTuple.typ_name)
       stdout header ;
     BatIO.flush stdout) ;
@@ -485,9 +485,9 @@ let tail conf func_name with_header separator null
         read_tuple typ.ser nullmask_size tx in
       if filter tuple then (
         if with_seqnums then (
-          Int.print stdout m ; String.print stdout separator) ;
+          Int.print stdout m ; String.print stdout sep) ;
         reorder_column2 tuple |>
-        Array.print ~first:"" ~last:"\n" ~sep:separator
+        Array.print ~first:"" ~last:"\n" ~sep
           (RamenScalar.print_custom ~null) stdout ;
         BatIO.flush stdout) ;
       return_unit))
