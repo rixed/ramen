@@ -190,8 +190,8 @@ let rec find_dot_from s i =
  * component completed. The idea is that id will then identify the timeseries
  * we want to display (once expanded).
  * Extracting factors value from this string requires caution as "." can
- * legitimately appear in a string or float value. We assume all strings
- * and floats will be double-quoted (TODO for floats). *)
+ * legitimately appear in a string or float value. We assume all such
+ * problematic strings and floats will be double-quoted. *)
 let split_query s =
   let rec extract_next prev i =
     if i >= String.length s then List.rev prev else
@@ -364,29 +364,59 @@ let time_of_graphite_time s =
   else if s.[0] = '-' then time_of_reltime s
   else time_of_abstime s
 
+(* When building target names we may use scalar values in place of factor
+ * fields. When those values are strings they are always quoted. But we'd
+ * like to unquote them when possible. Also, some other values may be left
+ * unquoted by RamenScalar.print but we do need to quote them if they
+ * contain a ".": *)
+let fix_quote s =
+  let try_quote s =
+    if s.[0] = '"' then s else "\""^ s ^"\""
+  and try_unquote s =
+    let l = String.length s in
+    if s.[0] = '"' && s.[l - 1] = '"' then String.sub s 1 (l - 2) else s
+  in
+  if s = "" then "\"\"" else
+  if String.contains s '.' then try_quote s
+  else try_unquote s
+(*$= fix_quote & ~printer:identity
+  "\"\"" (fix_quote "")
+  "glop" (fix_quote "glop")
+  "glop" (fix_quote "\"glop\"")
+  "\"pas.glop\"" (fix_quote "pas.glop")
+  "\"pas.glop\"" (fix_quote "\"pas.glop\"")
+ *)
+
 (* Return the target name of that function, given the where filter and
  * used factors. [fvals] are the scalar values to use for the factored
  * fields (fields present in [factors], in same order): *)
-let target_name_of func where factors fvals data_field =
+let target_name_of func_name func_factors where used_factors fvals data_field =
   (* Return the name of field for the [i]th factor of the function,
    * ie the fvals if this field has been used as factor, or the
    * value from the where filter otherwise: *)
   let print_factor oc factor =
-    (match List.findi (fun i f -> factor = f) factors with
+    (match List.findi (fun i f -> factor = f) used_factors with
     | exception Not_found -> (* take the value from the where filter *)
         List.assoc factor where
     | i, _ -> (* take the [i]th value *)
         List.nth fvals i) |>
-    RamenScalar.print oc
+    RamenScalar.to_string |> fix_quote |> String.print oc
   in
-  Printf.sprintf2 "%s%s%s%s%a%s"
-    (String.nreplace ~str:func.F.program_name ~sub:"/" ~by:".")
-    (if func.program_name <> "" then "." else "")
-    func.name
-    (if func.factors = [] then "" else ".")
-    (List.print ~first:"" ~last:"." ~sep:"." print_factor) func.factors
+  Printf.sprintf2 "%s%s%a%s"
+    (String.nreplace ~str:func_name ~sub:"/" ~by:".")
+    (if func_factors = [] then "" else ".")
+    (List.print ~first:"" ~last:"." ~sep:"." print_factor) func_factors
     data_field
-(* TODO: tests *)
+(*$= target_name_of & ~printer:identity
+  "a.df" (target_name_of "a" [] [] [] [] "df")
+  "a.b.df" (target_name_of "a/b" [] [] [] [] "df")
+  "a.b.v1.df" (target_name_of "a/b" ["f1"] ["f1", VString "v1"] [] [] "df")
+  "a.b.v1.v2.df" \
+    (target_name_of "a/b" ["f1";"f2"] ["f1", VString "v1"] \
+                    ["f2"] [VString "v2"] "df")
+  "a.\"3.14\".df" \
+    (target_name_of "a" ["f1"] ["f1", VFloat 3.14] [] [] "df")
+ *)
 
 let render_graphite conf headers body =
   let content_type = get_content_type headers in
@@ -529,7 +559,8 @@ let render_graphite conf headers body =
             int_of_float t
           ) datapoints
         (* TODO: rebuild the target name from the list of values in column *)
-        and target = target_name_of func where factors column data_field in
+        and target = target_name_of func_name func.F.factors where factors
+                                    column data_field in
         { target ; datapoints } :: res
       ) res data_fields
     ) res columns |> return
