@@ -716,3 +716,15 @@ let cap_add a b =
 
 (* min_int cannot be negated without overflow *)
 let cap_neg a = if a = min_int then max_int else ~-a
+
+let uniquify () =
+  let past = ref Set.empty in
+  fun x ->
+    if Set.mem x !past then false
+    else (
+      past := Set.add x !past ;
+      true
+    )
+(*$= uniquify & ~printer:(IO.to_string (List.print Int.print))
+  [1;2;3] (List.enum [1;1;2;3;3;2;1] // uniquify () |> List.of_enum)
+ *)

@@ -246,8 +246,9 @@ let complete_graphite_find conf headers params =
   let%lwt expanded =
     Hashtbl.find_default params "query" "*" |>
     expand_query conf in
-  let resp = (expanded |> Enum.uniq) /@
-             metric_of_worker_path |>
+  let resp = expanded /@
+             metric_of_worker_path //
+             uniquify () |>
              List.of_enum in
   let body = PPP.to_string graphite_metrics_ppp_json resp in
   respond_ok ~body ()
