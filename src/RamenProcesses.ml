@@ -28,7 +28,7 @@ let close_fd i =
   Unix.close (fd_of_int i)
 
 let run_background ?cwd cmd args env =
-  let open Unix in
+  let open Lwt_unix in
   let quoted oc s = Printf.fprintf oc "%S" s in
   !logger.info "Running %s as: /usr/bin/env %a %S %a"
     cmd
@@ -38,6 +38,7 @@ let run_background ?cwd cmd args env =
   flush_all () ;
   match fork () with
   | 0 ->
+    let open Unix in
     Option.may chdir cwd ;
     close_fd 0 ;
     for i = 3 to 255 do

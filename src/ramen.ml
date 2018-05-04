@@ -493,6 +493,7 @@ let default =
         info "Ramen" ~version ~doc ~sdocs)
 
 let () =
+  Lwt_unix.set_pool_size 1 ;
   match Term.eval_choice default [
     supervisor ; graphite ; notifier ;
     compile ; run ; kill ;

@@ -515,6 +515,7 @@ let worker_start worker_name get_binocle_tuple k =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     quit := true)) ;
+  Lwt_unix.set_pool_size 1 ;
   Lwt_main.run (
     catch
       (fun () ->
