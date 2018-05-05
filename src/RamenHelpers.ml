@@ -45,7 +45,7 @@ let retry
           next_delay := !next_delay *. delay_adjust_nok ;
           Option.may (fun f -> f delay) delay_rec ;
           let%lwt () = Lwt_unix.sleep delay in
-          loop (nb_try + 1) x
+          (loop [@tailcall]) (nb_try + 1) x
         ) else (
           !logger.debug "Non-retryable error: %s after %d attempt%s"
             (Printexc.to_string e) nb_try (if nb_try > 1 then "s" else "") ;
@@ -571,8 +571,8 @@ let udp_server ?(buffer_size=2000) ~inet_addr ~port
         | ADDR_INET (addr, port) ->
           Printf.sprintf "%s:%d" (Unix.string_of_inet_addr addr) port
         | _ -> "??" in
-      k sender buffer recv_len >>=
-      forever
+      let%lwt () = k sender buffer recv_len in
+      (forever [@tailcall]) ()
     else return_unit
   in
   forever ()
@@ -590,7 +590,7 @@ let rec restart_on_failure what f x =
     print_exception e ;
     !logger.error "Will restart %s..." what ;
     let%lwt () = Lwt_unix.sleep (0.5 +. Random.float 0.5) in
-    restart_on_failure what f x)
+    (restart_on_failure [@tailcall]) what f x)
 
 let md5 str = Digest.(string str |> to_hex)
 

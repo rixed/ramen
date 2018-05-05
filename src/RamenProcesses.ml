@@ -446,7 +446,7 @@ let try_kill conf must_run proc =
    * tuples are lost. If it's indeed a replacement then the new version
    * will have a chance to process the left overs. *)
   let parents, _children = relatives proc.func must_run in
-  (* We must also remove this proc from all its parent out-ref. *)
+  (* Let's remove this proc from all its parent out-ref. *)
   let input_ringbufs = C.in_ringbuf_names conf proc.func in
   let%lwt () =
     Lwt_list.iter_p (fun p ->
@@ -540,7 +540,10 @@ let synchronize_running conf autoreload_delay =
         (Hashtbl.length running) ;
     (* See preamble discussion about autoreload for why workers must be started
      * only after all the kills: *)
+    let possible_reload = !to_kill <> [] && !to_start <> [] in
+    if possible_reload then !logger.debug "Starting the kills" ;
     let%lwt () = Lwt_list.iter_p (try_kill conf must_run) !to_kill in
+    if possible_reload then !logger.debug "Starting the starts" ;
     Lwt_list.iter_p (try_start conf must_run) !to_start
   in
   (* Once we have forked some workers we must not allow an exception to

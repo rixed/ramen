@@ -202,8 +202,9 @@ let get_possible_values conf func factor =
           return pvs
         with e ->
           if e <> Exit then
-            !logger.debug "Cannot read cached factor for %s.%s: %s, \
+            !logger.debug "Cannot read cached factor values for %s.%s: %s, \
                            scanning." bname factor (Printexc.to_string e) ;
+          !logger.debug "Have to recompute factor values cache." ;
           let%lwt all_pvs = scan_possible_values func.F.factors bname typ in
           let pvs = ref Set.empty in
           (* Save them all: *)
