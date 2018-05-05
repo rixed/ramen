@@ -260,8 +260,48 @@ let complete_graphite_find conf headers params =
 
 type graphite_render_metric =
   { target : string ;
-    datapoints : (float option * int) array } [@@ppp PPP_JSON]
+    datapoints : (float option * int) array ;
+    (* weight is only used when computing the top: *)
+    mutable weight : float [@ppp_ignore 0.] } [@@ppp PPP_JSON]
 type graphite_render_resp = graphite_render_metric list [@@ppp PPP_JSON]
+
+(* Reduce the size of a graphite_render_resp by aggregating smaller
+ * contributions: *)
+let reduce_render_resp max_ts resp =
+  let nb_ts = List.length resp in
+  if nb_ts <= max_ts then resp else (
+    (* Compute the total contribution (weight): *)
+    List.iter (fun m ->
+      m.weight <-
+        Array.fold_left (fun w -> function
+          | None, _ -> w
+          | Some v, _ -> w +. abs_float v
+        ) 0. m.datapoints
+    ) resp ;
+    (* Sort with smallest weight first: *)
+    let resp =
+      List.fast_sort (fun m1 m2 -> Float.compare m1.weight m2.weight) resp in
+    (* Aggregate the smallest together: *)
+    let nb_aggr = (nb_ts - max_ts) + 1 in
+    let acc =
+      { target = string_of_int nb_aggr ^" others" ;
+        datapoints = (List.hd resp).datapoints |>
+                     Array.map (fun (vo, t) -> None, t) ;
+        weight = 0. } in
+    let rec loop n rest =
+      if n <= 0 then acc :: rest else
+      match rest with
+      | [] -> acc :: rest
+      | m :: rest ->
+          Array.iter2i (fun i ad md ->
+            match ad, md with
+            | (Some v1, t1), (Some v2, t2) ->
+                assert (t1 = t2) ;
+                acc.datapoints.(i) <- Some (v1 +. v2), t1
+            | _ -> ()
+          ) acc.datapoints m.datapoints ;
+          loop (n - 1) rest in
+    loop nb_aggr resp)
 
 (* All the time conversion functions below are taken from (my understanding of)
  * http://graphite-api.readthedocs.io/en/latest/api.html#from-until *)
@@ -436,6 +476,8 @@ let render_graphite conf headers body =
               time_of_graphite_time |? now
   and max_data_points = Hashtbl.find_option params "maxDataPoints" |>
                         Option.map (int_of_string % v) |? 300
+  and max_timeseries = Hashtbl.find_option params "maxTimeseries" |>
+                       Option.map (int_of_string % v) |? 30
   and format = Hashtbl.find_option params "format" |>
                Option.map v |? "json" in
   assert (format = "json") ; (* FIXME *)
@@ -562,11 +604,12 @@ let render_graphite conf headers body =
         (* TODO: rebuild the target name from the list of values in column *)
         and target = target_name_of func_name func.F.factors where factors
                                     column data_field in
-        { target ; datapoints } :: res
+        { target ; datapoints ; weight = 0. } :: res
       ) res data_fields
     ) res columns |> return
   in
   let%lwt resp = Hashtbl.fold metrics_of_scan scans return_nil in
+  let resp = reduce_render_resp max_timeseries resp in
   let body = PPP.to_string graphite_render_resp_ppp_json resp in
   !logger.debug "%d metrics from %d scans" (List.length resp) (Hashtbl.length scans) ;
   respond_ok ~body ()
