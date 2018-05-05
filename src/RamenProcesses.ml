@@ -550,7 +550,7 @@ let synchronize_running conf autoreload_delay =
     with exn ->
       print_exception exn ;
       !logger.error "Crashed while supervising children, keep trying!" ;
-      let%lwt () = Lwt_unix.sleep 1. in
+      let%lwt () = Lwt_unix.sleep (1. +. Random.float 1.) in
       none_shall_pass f
   in
   (* The has of programs that must be running, updated by [loop]: *)
@@ -605,7 +605,7 @@ let synchronize_running conf autoreload_delay =
             ) else return last_read) in
         let%lwt () = synchronize must_run running in
         let delay = if !quit then 0.1 else 1. in
-        Gc.full_major () ;
+        Gc.minor () ;
         let%lwt () = Lwt_unix.sleep delay in
         loop last_read))
   in
