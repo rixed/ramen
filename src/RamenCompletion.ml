@@ -207,11 +207,13 @@ let complete str () =
           copts @
           (complete_running_function persist_dir last_tok)
       | "ps" ->
-          [ "--short", RamenConsts.CliInfo.short ;
-            "--with-header", RamenConsts.CliInfo.with_header ;
-            "--sort", RamenConsts.CliInfo.sort_col ;
-            "--top", RamenConsts.CliInfo.top ] @
-          copts
+          let persist_dir = persist_dir toks in
+          ("--short", RamenConsts.CliInfo.short) ::
+          ("--with-header", RamenConsts.CliInfo.with_header) ::
+          ("--sort", RamenConsts.CliInfo.sort_col) ::
+          ("--top", RamenConsts.CliInfo.top) ::
+          copts @
+          (complete_running_function persist_dir last_tok)
       | "test" ->
           ("--help", RamenConsts.CliInfo.help) ::
           ("--root-path=", RamenConsts.CliInfo.root_path) ::

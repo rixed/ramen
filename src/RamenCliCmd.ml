@@ -259,7 +259,7 @@ let add_stats (in_count', selected_count', out_count', group_count', cpu',
   add_nu64 bytes_in' bytes_in,
   add_nu64 bytes_out' bytes_out
 
-let read_stats conf =
+let read_stats conf prefix =
   let h = Hashtbl.create 57 in
   let open RamenScalar in
   let bname = C.report_ringbuf conf in
@@ -291,26 +291,27 @@ let read_stats conf =
       return (Unix.gettimeofday () -. now < 1.) in
     RamenSerialization.fold_time_range ~while_ bname typ event_time
                          since until ()  (fun () tuple t1 t2 ->
-    let worker = get_string tuple.(0)
-    and time = get_float tuple.(1)
-    and in_count = get_nu64 tuple.(2)
-    and selected_count = get_nu64 tuple.(3)
-    and out_count = get_nu64 tuple.(4)
-    and group_count = get_nu64 tuple.(5)
-    and cpu = get_float tuple.(6)
-    and ram = get_u64 tuple.(7)
-    and wait_in = get_nfloat tuple.(8)
-    and wait_out = get_nfloat tuple.(9)
-    and bytes_in = get_nu64 tuple.(10)
-    and bytes_out = get_nu64 tuple.(11)
-    in
-    let stats = in_count, selected_count, out_count, group_count, cpu,
-                ram, wait_in, wait_out, bytes_in, bytes_out in
-    Hashtbl.modify_opt worker (function
-      | None -> Some (time, stats)
-      | Some (time', stats') as prev ->
-          if time' > time then prev else Some (time, stats)
-    ) h)) ;
+    let worker = get_string tuple.(0) in
+    if String.starts_with worker prefix then
+      let time = get_float tuple.(1)
+      and in_count = get_nu64 tuple.(2)
+      and selected_count = get_nu64 tuple.(3)
+      and out_count = get_nu64 tuple.(4)
+      and group_count = get_nu64 tuple.(5)
+      and cpu = get_float tuple.(6)
+      and ram = get_u64 tuple.(7)
+      and wait_in = get_nfloat tuple.(8)
+      and wait_out = get_nfloat tuple.(9)
+      and bytes_in = get_nu64 tuple.(10)
+      and bytes_out = get_nu64 tuple.(11)
+      in
+      let stats = in_count, selected_count, out_count, group_count, cpu,
+                  ram, wait_in, wait_out, bytes_in, bytes_out in
+      Hashtbl.modify_opt worker (function
+        | None -> Some (time, stats)
+        | Some (time', stats') as prev ->
+            if time' > time then prev else Some (time, stats)
+      ) h)) ;
   return h [@@ocaml.warning "-8"]
 
 let int_or_na = function
@@ -329,10 +330,10 @@ let time_or_na = function
   | None -> TermTable.ValStr "n/a"
   | Some f -> TermTable.ValStr (string_of_time f)
 
-let ps conf short with_header sort_col top () =
+let ps conf short with_header sort_col top prefix () =
   logger := make_logger conf.C.debug ;
   (* Start by reading the last minute of instrumentation data: *)
-  let stats = Lwt_main.run (read_stats conf) in
+  let stats = Lwt_main.run (read_stats conf prefix) in
   (* Now iter over all workers and display those stats: *)
   let open TermTable in
   let head, lines =
@@ -351,20 +352,22 @@ let ps conf short with_header sort_col top () =
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
           Hashtbl.fold (fun program_name _get_rc lines ->
-            let _, (in_count, selected_count, out_count, group_count,
-                    cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
-              Hashtbl.find_default h program_name (0., no_stats) in
-            [| ValStr program_name ;
-               int_or_na in_count ;
-               int_or_na selected_count ;
-               int_or_na out_count ;
-               int_or_na group_count ;
-               ValFlt cpu ;
-               flt_or_na wait_in ;
-               flt_or_na wait_out ;
-               ValInt (Uint64.to_int ram) ;
-               flt_or_na (Option.map Uint64.to_float bytes_in) ;
-               flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
+            if String.starts_with program_name prefix then
+              let _, (in_count, selected_count, out_count, group_count,
+                      cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
+                Hashtbl.find_default h program_name (0., no_stats) in
+              [| ValStr program_name ;
+                 int_or_na in_count ;
+                 int_or_na selected_count ;
+                 int_or_na out_count ;
+                 int_or_na group_count ;
+                 ValFlt cpu ;
+                 flt_or_na wait_in ;
+                 flt_or_na wait_out ;
+                 ValInt (Uint64.to_int ram) ;
+                 flt_or_na (Option.map Uint64.to_float bytes_in) ;
+                 flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
+            else lines
           ) programs [] |> return))
     else
       (* Otherwise we want to display all we can about individual workers *)
@@ -377,22 +380,24 @@ let ps conf short with_header sort_col top () =
             let bin, rc = get_rc () in
             List.fold_left (fun lines func ->
               let fq_name = program_name ^"/"^ func.F.name in
-              let _, (in_count, selected_count, out_count, group_count,
-                      cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
-                Hashtbl.find_default stats fq_name (0., no_stats) in
-              [| ValStr fq_name ;
-                 int_or_na in_count ;
-                 int_or_na selected_count ;
-                 int_or_na out_count ;
-                 int_or_na group_count ;
-                 ValFlt cpu ;
-                 flt_or_na wait_in ;
-                 flt_or_na wait_out ;
-                 ValInt (Uint64.to_int ram) ;
-                 flt_or_na (Option.map Uint64.to_float bytes_in) ;
-                 flt_or_na (Option.map Uint64.to_float bytes_out) ;
-                 ValInt (List.length func.F.parents) ;
-                 ValStr func.signature |] :: lines
+              if String.starts_with fq_name prefix then
+                let _, (in_count, selected_count, out_count, group_count,
+                        cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
+                  Hashtbl.find_default stats fq_name (0., no_stats) in
+                [| ValStr fq_name ;
+                   int_or_na in_count ;
+                   int_or_na selected_count ;
+                   int_or_na out_count ;
+                   int_or_na group_count ;
+                   ValFlt cpu ;
+                   flt_or_na wait_in ;
+                   flt_or_na wait_out ;
+                   ValInt (Uint64.to_int ram) ;
+                   flt_or_na (Option.map Uint64.to_float bytes_in) ;
+                   flt_or_na (Option.map Uint64.to_float bytes_out) ;
+                   ValInt (List.length func.F.parents) ;
+                   ValStr func.signature |] :: lines
+              else lines
             ) lines rc
           ) programs [] |> return)) in
   print_table ~sort_col ~with_header ?top head lines

@@ -409,6 +409,11 @@ let top =
                    ~docv:"N" [ "top" ; "t" ] in
   Arg.(value (opt (some int) None i))
 
+let prefix =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.prefix
+                   ~docv:"PREFIX" [] in
+  Arg.(value (pos 0 string "" i))
+
 let ps =
   Term.(
     (const RamenCliCmd.ps
@@ -416,7 +421,8 @@ let ps =
       $ short
       $ with_header
       $ sort_col
-      $ top),
+      $ top
+      $ prefix),
     info ~doc:RamenConsts.CliInfo.ps "ps")
 
 (*
