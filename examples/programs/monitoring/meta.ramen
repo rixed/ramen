@@ -1,0 +1,100 @@
+-- vim: ft=sql expandtab
+-- Meta-Monitoring
+
+DEFINE stats AS
+  LISTEN FOR INSTRUMENTATION;
+  -- WHERE worker not start with "monitoring/meta/";
+
+-- Checks the global number of output tuples and running/active programs
+-- per minute
+DEFINE per_minute AS
+  FROM stats
+  SELECT
+    worker,
+    min time AS time,
+    max time AS _max_time,
+    _max_time - out.time AS _dt,
+
+    max tuples_in AS tuples_in,
+    IF _dt > 0 THEN
+      (out.tuples_in - min tuples_in) / _dt
+    ELSE 0 AS in_per_secs,
+
+    max tuples_selected AS tuples_selected,
+    IF _dt > 0 THEN
+      (out.tuples_selected - min tuples_selected) / _dt
+    ELSE 0 AS selected_per_secs,
+
+    max tuples_out AS tuples_out,
+    IF _dt > 0 THEN
+      (out.tuples_out - min tuples_out) / _dt
+    ELSE 0 AS out_per_secs,
+
+    max groups AS groups,
+    IF _dt > 0 THEN
+      (out.groups - min groups) / _dt
+    ELSE 0 AS groups_per_secs,
+
+    max cpu AS cpu,
+    IF _dt > 0 THEN
+      (out.cpu - min cpu) / _dt
+    ELSE 0 AS cpu_per_secs,
+
+    max ram AS ram,
+
+    max wait_in AS wait_in,
+    IF _dt > 0 THEN
+      (out.wait_in - min wait_in) / _dt
+    ELSE 0 AS wait_in_per_secs,
+
+    max wait_out AS wait_out,
+    IF _dt > 0 THEN
+      (out.wait_out - min wait_out) / _dt
+    ELSE 0 AS wait_out_per_secs,
+
+    max bytes_in AS bytes_in,
+    IF _dt > 0 THEN
+      (out.bytes_in - min bytes_in) / _dt
+    ELSE 0 AS bytes_in_per_secs,
+
+    max bytes_out AS bytes_out,
+    IF _dt > 0 THEN
+      (out.bytes_out - min bytes_out) / _dt
+    ELSE 0 AS bytes_out_per_secs,
+
+    min age last_out AS last_out_age
+  GROUP BY worker
+  COMMIT BEFORE _max_time >= out.time + 60
+  EVENT STARTING AT time WITH DURATION 60
+  FACTOR worker;
+
+DEFINE tot_per_minute AS
+  FROM per_minute
+  SELECT
+    (time // 60) * 60 as time,
+    sum 1 AS running,
+    sum u32(coalesce(last_out_age <= 60, false)) AS active,
+    sum COALESCE(out_per_secs, 0) AS tot_out_per_secs
+  GROUP BY time // 60
+  COMMIT AFTER in.time >= out.time + 60 + 30
+  EVENT STARTING AT time WITH DURATION 60;
+
+-- Alerts: many of the above are supposed to stay mostly constant. Therefore,
+-- notify when the last value is off compared to the moving average:
+
+DEFINE alert_output AS
+  FROM tot_per_minute
+  SELECT
+    *,
+    moveavg(10, tot_out_per_secs) AS avg_tot_out_per_secs,
+    moveavg(10, running) AS avg_running,
+    moveavg(10, active) AS avg_active,
+    abs (avg_tot_out_per_secs - tot_out_per_secs) / avg_tot_out_per_secs
+      AS diff_out_per_secs,
+    abs (avg_running - running) / avg_running AS diff_running,
+    abs (avg_active - active) / avg_active AS diff_active
+  EVENT STARTING AT time WITH DURATION 60
+  -- TODO: a generic notify method which actual implementation is lest to
+  -- `ramen notifier` configuration.
+  EXECUTE "logger 'alert'"
+    AFTER diff_out_per_secs + diff_running + diff_active > 0.75;
