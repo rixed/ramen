@@ -1,0 +1,12 @@
+-- vim: ft=sql expandtab
+-- Example program to detect DDoS and various scans from netflow data
+
+-- Output the top 10 port scanners every hour (scans can be slow)
+DEFINE detect AS
+  FROM tests/fixtures/port_scan/csv
+  WHEN not remember globally (0.1, first, 3600,
+             hash src + hash dst + hash dst_port + hash ip_proto)
+  GROUP BY src, dst
+  SELECT src, dst, sum 1 AS count
+  -- Forcibly output the top when we reach the last line of the CSV:
+  TOP 2 BY out.count WHEN sum globally 1 >= 29;

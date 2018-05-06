@@ -317,6 +317,7 @@ tests/case.x: tests/fixtures/n123.x
 tests/commit_before.x: tests/fixtures/n123.x tests/fixtures/cars.x
 tests/basic_aggr.x: tests/fixtures/n123.x tests/fixtures/cars.x
 tests/tuples.x: tests/fixtures/n123.x
+tests/port_scan.x: tests/fixtures/port_scan.x
 tests/lag.success: tests/lag.x tests/fixtures/n123.x
 tests/count_lines.success: tests/count_lines.x tests/fixtures/n123.x
 tests/params.success: tests/params.x tests/fixtures/earthquakes.x
@@ -335,6 +336,7 @@ tests/word_count.success: tests/word_count.x
 tests/word_split.success: tests/word_split.x
 tests/basic_aggr.success: tests/basic_aggr.x tests/fixtures/n123.x tests/fixtures/cars.x
 tests/tuples.success: tests/tuples.x tests/fixtures/n123.x
+tests/port_scan.success: tests/port_scan.x tests/fixtures/port_scan.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

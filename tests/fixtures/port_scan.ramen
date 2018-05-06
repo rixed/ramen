@@ -1,0 +1,29 @@
+-- vim: ft=sql expandtab
+
+DEFINE csv AS
+  READ FILE "port_scan.csv" (
+    source string not null,
+    first float not null,
+    last float not null,
+    seqnum u32 not null,
+    engine_type u8 not null,
+    engine_id u8 not null,
+    sampling_type u8 not null,
+    sampling_rate u16 not null,
+    src ip4 not null,
+    dst ip4 not null,
+    next_hop ip4 not null,
+    src_port u16 not null,
+    dst_port u16 not null,
+    in_iface u16 not null,
+    out_iface u16 not null,
+    packets u32 not null,
+    bytes u32 not null,
+    tcp_flags u8 not null,
+    ip_proto u8 not null,
+    ip_tos u8 not null,
+    src_as u16 not null,
+    dst_as u16 not null,
+    src_mask u8 not null,
+    dst_mask u8 not null)
+  EVENT STARTS AT first AND STOPS AT last;
