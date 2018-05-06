@@ -77,7 +77,7 @@ struct
   let max_simult_compilations =
     "Max number of compilations to perform simultaneously"
   let param = "Override parameter's P default value with V"
-  let program_name = "Program unique name"
+  let program_names = "Program unique names"
   let root_path = "Path where to find other programs"
   let source_files = "Source files to compile"
   let bin_files = "Binary files to run"

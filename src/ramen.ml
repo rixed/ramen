@@ -194,10 +194,10 @@ let params =
                    ~docv:"PARAM=VALUE" ["p"; "parameter"] in
   Arg.(value (opt_all assignment [] i))
 
-let program_name =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.program_name
+let program_names =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.program_names
                    ~docv:"PROGRAM" [] in
-  Arg.(required (pos 0 (some string) None i))
+  Arg.(non_empty (pos_all string [] i))
 
 let root_path =
   let env = Term.env_info "RAMEN_ROOT" in
@@ -238,7 +238,7 @@ let kill =
   Term.(
     (const RamenCliCmd.kill
       $ copts
-      $ program_name),
+      $ program_names),
     info ~doc:RamenConsts.CliInfo.kill "kill")
 
 (*

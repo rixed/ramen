@@ -201,30 +201,31 @@ let run conf parameters bin_files () =
  * This time the program is identified by its name not its executable file.
  *)
 
-let check_orphans conf program_name running_programs =
+let check_orphans conf program_names running_programs =
   (* We want to warn if a child is stalled. *)
   Hashtbl.iter (fun prog_name mre ->
-    if prog_name <> program_name then
+    if not (List.mem prog_name program_names) then
       let funcs = P.of_bin mre.C.bin in
       List.iter (fun func ->
         if func.F.parents <> [] &&
            List.for_all (fun (par_prog, _) ->
-             par_prog = program_name
-           ) func.F.parents then
+             List.mem par_prog program_names
+           ) func.F.parents
+        then
           !logger.warning "Operation %s/%s, will be left without parents"
             func.F.program_name func.F.name
       ) funcs
   ) running_programs
 
-let kill conf prog_name () =
+let kill conf prog_names () =
   logger := make_logger conf.C.debug ;
   let nb_kills =
     Lwt_main.run (
       C.with_wlock conf (fun running_programs ->
-        check_orphans conf prog_name running_programs ;
+        check_orphans conf prog_names running_programs ;
         let before = Hashtbl.length running_programs in
         Hashtbl.filteri_inplace (fun name _mre ->
-          name <> prog_name
+          not (List.mem name prog_names)
         ) running_programs ;
         return (before - Hashtbl.length running_programs))) in
   Printf.printf "Killed %d program%s\n"
