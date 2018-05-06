@@ -106,7 +106,15 @@ let tree_enum_of_fields func =
 let rec tree_enum_of_factors func = function
   | [] -> tree_enum_of_fields func
   | factor :: factors' ->
-      E (RamenTimeseries.possible_values func factor /@
+      (* If there is no possible value, output an empty string that will
+       * allow us to keep iterating and have a chance to see the fields.
+       * Grafana will skip that value and offer only the "*", which is all
+       * good. *)
+      let fact_values = RamenTimeseries.possible_values func factor in
+      let fact_values =
+        if Enum.is_empty fact_values then Enum.singleton ""
+        else fact_values in
+      E (fact_values /@
          (fun pv -> pv, tree_enum_of_factors func factors'))
 
 (* Given a program, returns the tree_enum of its functions: *)
