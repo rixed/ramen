@@ -510,7 +510,8 @@ struct
            (non_keyword ++ scale >>: fun n -> RamenEventTime.DurationField n) |||
            (number >>: fun n -> RamenEventTime.DurationConst n)) |||
          blanks -- strinG "and" -- blanks --
-         (strinG "stopping" ||| strinG "ending") -- blanks --
+         (strinG "stops" ||| strinG "stopping" |||
+          strinG "ends" ||| strinG "ending") -- blanks --
          strinG "at" -- blanks -+
            (non_keyword ++ scale >>: fun n -> RamenEventTime.StopField n)))) m
 
