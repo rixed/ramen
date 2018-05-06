@@ -298,6 +298,9 @@ let reduce_render_resp max_ts resp =
             | (Some v1, t1), (Some v2, t2) ->
                 assert (t1 = t2) ;
                 acc.datapoints.(i) <- Some (v1 +. v2), t1
+            | (None, t1), (Some v, t2) | (Some v, t1), (None, t2) ->
+                assert (t1 = t2) ;
+                acc.datapoints.(i) <- Some v, t1
             | _ -> ()
           ) acc.datapoints m.datapoints ;
           loop (n - 1) rest in
