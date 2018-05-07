@@ -3,6 +3,7 @@ open RingBuf
 open RamenLog
 open RamenHelpers
 open RamenScalar
+open Lwt
 
 let verbose_serialization = false
 
@@ -189,21 +190,21 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
     !logger.debug "fold_rb: from=%d, mi=%d" from mi ;
     read_buf ?while_ ?wait_for_more rb (usr, from) (fun (usr, seq) tx ->
       !logger.debug "fold_seq_range: read_buf seq=%d" seq ;
-      if seq < mi then Lwt.return ((usr, seq + 1), true) else
+      if seq < mi then return ((usr, seq + 1), true) else
       match ma with Some m when seq >= m ->
-        Lwt.return ((usr, seq + 1), false)
+        return ((usr, seq + 1), false)
       | _ ->
         let%lwt usr = f usr seq tx in
         (* Try to save the last sleep: *)
         let more_to_come =
           match ma with None -> true | Some m -> seq < m - 1 in
-        Lwt.return ((usr, seq + 1), more_to_come)) in
+        return ((usr, seq + 1), more_to_come)) in
   !logger.debug "fold_seq_range: mi=%d, ma=%a" mi (Option.print Int.print) ma ;
-  match ma with Some m when mi >= m -> Lwt.return init
+  match ma with Some m when mi >= m -> return init
   | _ -> (
     let%lwt keep_going =
-      match while_ with Some w -> w () | _ -> Lwt.return_true in
-    if not keep_going then Lwt.return init else (
+      match while_ with Some w -> w () | _ -> return_true in
+    if not keep_going then return init else (
       let dir = seq_dir_of_bname bname in
       let entries =
         seq_files_of dir //
@@ -215,8 +216,8 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
         Array.to_list entries |> (* FIXME *)
         Lwt_list.fold_left_s (fun (usr, _) (from, to_, fname) ->
           let rb = load fname in
-          Lwt.finalize (fun () -> fold_rb from rb usr)
-                       (fun () -> unload rb ; Lwt.return_unit)
+          finalize (fun () -> fold_rb from rb usr)
+                   (fun () -> unload rb ; return_unit)
         ) (init, 0 (* unused if there are some entries *)) in
       !logger.debug "After archives, next_seq is %d" next_seq ;
       (* Of course by the time we reach here, new archives might have been
@@ -224,7 +225,7 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
        * seqnum is > then max_seq then we should recurse into the archive ... *)
       (* Finish with the current rb: *)
       let rb = load bname in
-      let%lwt s = Lwt.wrap (fun () -> stats rb) in
+      let%lwt s = wrap (fun () -> stats rb) in
       if next_seq > 0 && s.first_seq > next_seq && s.first_seq > mi then (
         !logger.debug "fold_seq_range: current starts at %d > %d, \
                        going through the archive again"
@@ -235,8 +236,8 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
         !logger.debug "fold_seq_range: current starts at %d, lgtm"
           s.first_seq ;
         let%lwt usr, next_seq =
-          Lwt.finalize (fun () -> fold_rb s.first_seq rb usr)
-                       (fun () -> unload rb ; Lwt.return_unit) in
+          finalize (fun () -> fold_rb s.first_seq rb usr)
+                   (fun () -> unload rb ; return_unit) in
         !logger.debug "After current, next_seq is %d" next_seq ;
         (* And of course, by the time we reach this point this ringbuf might
          * have been archived already. *)
@@ -247,12 +248,12 @@ let fold_buffer ?wait_for_more ?while_ bname init f =
   | exception Failure msg ->
       !logger.debug "Cannot fold_buffer: %s" msg ;
       (* Therefore there is nothing to fold: *)
-      Lwt.return init
+      return init
   | rb ->
-      let%lwt usr = Lwt.finalize
+      let%lwt usr = finalize
         (fun () -> read_buf ?wait_for_more ?while_ rb init f)
-        (fun () -> unload rb ; Lwt.return_unit) in
-      Lwt.return usr
+        (fun () -> unload rb ; return_unit) in
+      return usr
 
 (* Like fold_buffer but call f with the tuple rather than the tx: *)
 let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
@@ -262,7 +263,7 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
   let f usr tx =
     let tuple =
       read_tuple typ nullmask_size tx in
-    Lwt.return (
+    return (
       let usr, more_to_come as res = f usr tuple in
       if early_stop then res
       else (usr, true))
@@ -275,17 +276,18 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
  * wait for data and must return as soon as we've reached the end of what's
  * available. *)
 let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f =
+  !logger.debug "Folding over %s" bname ;
   let%lwt event_time_of_tuple =
     match event_time with
     | None ->
-        Lwt.fail_with "Function has no time information"
+        fail_with "Function has no time information"
     | Some ((start_field, start_scale), duration_info) ->
         let t1i = find_field_index typ start_field in
         let t2i = match duration_info with
           | RamenEventTime.DurationConst _ -> 0 (* won't be used *)
           | RamenEventTime.DurationField (f, _) -> find_field_index typ f
           | RamenEventTime.StopField (f, _) -> find_field_index typ f in
-        Lwt.return (fun tup ->
+        return (fun tup ->
           let t1 = float_of_scalar_value tup.(t1i) *. start_scale in
           let t2 = match duration_info with
             | RamenEventTime.DurationConst k -> t1 +. k
@@ -322,11 +324,13 @@ let fold_time_range ?while_ bname typ event_time since until init f =
     (fun (t1, t2, fname) -> since < t2 && until >= t1) in
   let f usr tuple t1 t2 =
     (if t1 >= until || t2 < since then usr else f usr tuple t1 t2), true in
-  let loop usr =
+  let rec loop usr =
     match Enum.get_exn entries with
-    | exception Enum.No_more_elements -> Lwt.return usr
+    | exception Enum.No_more_elements -> return usr
     | _t1, _t2, fname ->
-        fold_buffer_with_time ?while_ ~early_stop:false bname typ event_time usr f
+        fold_buffer_with_time ?while_ ~early_stop:false
+                              fname typ event_time usr f >>=
+        loop
   in
   let%lwt usr = loop init in
   (* finish with the current rb: *)
