@@ -265,7 +265,7 @@ all_tests.opt: \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
 	$(LINKED_FOR_TESTS:.ml=.cmx) src/all_tests.ml
 	@echo 'Building unit tests into $@'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.ml, $^) -o $@
+	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.a, $^) $(filter %.ml, $^) -o $@
 
 ringbuf_test.opt: \
 	src/RamenLog.cmx src/RamenConsts.cmx src/RamenHelpers.cmx \
