@@ -1075,8 +1075,14 @@ let emit_read_tuple name mentioned and_all_others oc in_typ =
       nulli + (if field.nullable then 1 else 0)
     ) 0 ser_typ in
   Printf.fprintf oc "\tignore offs_ ;\n" ; (* avoid a warning *)
+  (* We want to output the tuple with fields ordered according to the
+   * select clause specified order, not according to serialization order: *)
+  let in_typ_only_ser =
+    List.filter (fun t ->
+      not (is_private_field t.RamenTuple.typ_name)
+    ) in_typ in
   Printf.fprintf oc "\t%a\n"
-    (emit_in_tuple mentioned and_all_others) in_typ
+    (emit_in_tuple mentioned and_all_others) in_typ_only_ser
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,

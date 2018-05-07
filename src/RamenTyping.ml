@@ -933,14 +933,16 @@ let check_input_finished ~parents ~in_type =
     true
   ) else false
 
-let set_of_fields = function
+(* Return, as a set, all public fields of an operation output type: *)
+let public_fields = function
   | TypedTuple { ser ; _ } ->
       List.fold_left (fun s t ->
           Set.add t.RamenTuple.typ_name s
         ) Set.empty ser
   | UntypedTuple ttt ->
       List.fold_left (fun s (name, _) ->
-          Set.add name s
+          if is_private_field name then s
+          else Set.add name s
         ) Set.empty ttt.fields
 
 let all_finished funcs =
@@ -960,12 +962,12 @@ let check_aggregate parents func fields and_all_others merge sort where key
     (* TODO: find a way to do this only once, since once all_finished
      * returns true there is no use for another try. *)
     if and_all_others && parents <> [] && all_finished parents then (
-      (* Add all the fields present (same name and same type) in all the parents,
-       * and ignore the fields that are not present everywhere. *)
+      (* Add all the public fields present (same name and same type) in all the
+       * parents, and ignore the fields that are not present everywhere. *)
       let inter_parents =
         List.fold_left (fun inter parent ->
-            Set.intersect inter (set_of_fields parent.Func.out_type)
-          ) (set_of_fields (List.hd parents).out_type) (List.tl parents) in
+            Set.intersect inter (public_fields parent.Func.out_type)
+          ) (public_fields (List.hd parents).out_type) (List.tl parents) in
       (* Remove those that have different types: *)
       let inter_ptyps =
         Set.fold (fun field ptyps ->
