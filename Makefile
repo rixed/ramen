@@ -235,7 +235,8 @@ TESTABLE_SOURCES = \
 	src/RamenTyping.ml \
 	src/RamenHelpers.ml src/RamenBloomFilter.ml src/Globs.ml src/CodeGen_OCaml.ml \
 	src/RamenSortBuf.ml \
-	src/RamenGraphite.ml
+	src/RamenGraphite.ml \
+	src/RingBufLib.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \

@@ -307,7 +307,7 @@ let time_range ?while_ bname typ event_time =
     | None -> Some (t1, t2)
     | Some (mi, ma) -> Some (Float.min mi t1, Float.max ma t2) in
   let mi_ma =
-    time_files_of dir |>
+    RingBufLib.time_files_of dir |>
     Enum.fold (fun mi_ma (t1, t2, _fname) ->
       max_range mi_ma t1 t2
     ) None in
@@ -318,8 +318,8 @@ let time_range ?while_ bname typ event_time =
 let fold_time_range ?while_ bname typ event_time since until init f =
   let dir = time_dir_of_bname bname in
   let entries =
-    time_files_of dir //
-    (fun (t1, t2, _fname) -> since < t2 && until >= t1) in
+    RingBufLib.time_files_of dir //
+    (fun (t1, t2, fname) -> since < t2 && until >= t1) in
   let f usr tuple t1 t2 =
     (if t1 >= until || t2 < since then usr else f usr tuple t1 t2), true in
   let loop usr =

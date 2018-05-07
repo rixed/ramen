@@ -197,19 +197,6 @@ let seq_files_of dir =
 let seq_file_compare (f1, _, _) (f2, _, _) =
   Int.compare f1 f2
 
-external strtod : string -> float = "wrap_strtod"
-
-let time_files_of dir =
-  (try Sys.files_of dir
-  with Sys_error _ -> Enum.empty ()) //@
-  (fun fname ->
-    try
-      let t1, rest = String.split ~by:"-" fname in
-      let t2, _rest = String.split ~by:"." rest in
-      Some (strtod t1, strtod t2, dir ^"/"^ fname)
-    with Not_found | Failure _ ->
-      None)
-
 let seq_range bname =
   (* Returns the first and last available seqnums.
    * Takes first from the per.seq subdir names and last from same subdir +

@@ -463,7 +463,7 @@ static int rotate_file_locked(struct ringbuf *rb)
   //       with an increasing number (file_seq).
   for (unsigned file_seq = 0; ; file_seq ++) {
     char arc2_fname[PATH_MAX];
-    if ((size_t)snprintf(arc2_fname, PATH_MAX, "%s.per_time/%a-%a.%d.b",
+    if ((size_t)snprintf(arc2_fname, PATH_MAX, "%s.per_time/%a_%a_%d.b",
                          rb->fname, rb->rbf->tmin, rb->rbf->tmax, file_seq) >= PATH_MAX) {
       fprintf(stderr, "Archive file name truncated: '%s'\n", arc2_fname);
       goto err1;

@@ -157,3 +157,23 @@ let skip_list ~out_type ~in_type =
       assert false
   in
   loop [] (ser_out, ser_in)
+
+external strtod : string -> float = "wrap_strtod"
+
+let scan_time_file_name fname =
+  let t1, rest = String.split ~by:"_" fname in
+  let t2, _rest = String.split ~by:"_" rest in
+  strtod t1, strtod t2
+
+(*$= scan_time_file_name & ~printer:BatPervasives.dump
+  (0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30) \
+    (scan_time_file_name "0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30_0.b")
+ *)
+
+let time_files_of dir =
+  (try Sys.files_of dir
+  with Sys_error _ -> Enum.empty ()) //@
+  (fun fname ->
+    match scan_time_file_name fname with
+    | exception (Not_found | Failure _) -> None
+    | t1, t2 -> Some (t1, t2, dir ^"/"^ fname))
