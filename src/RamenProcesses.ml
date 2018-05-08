@@ -474,6 +474,36 @@ let try_kill conf must_run proc =
   ) ;
   return_unit
 
+let check_out_ref =
+  let do_check_out_ref conf must_run =
+    !logger.debug "Checking out_refs..." ;
+    (* Build the set of all wrappin g ringbuf that are being read: *)
+    let rbs =
+      Hashtbl.fold (fun _sign (_bin, _program_name, func) s ->
+        C.in_ringbuf_names conf func |>
+        List.fold_left (fun s rb_name -> Set.add rb_name s) s
+      ) must_run (Set.singleton (C.notify_ringbuf conf)) in
+    (* Iter over all functions and check they do not output to a ringbuf not
+     * in this set: *)
+    Hashtbl.values must_run |> List.of_enum |> (* FIXME *)
+    Lwt_list.iter_p (fun (_bin, _program_name, func) ->
+      let out_ref = C.out_ringbuf_names_ref conf func in
+      let%lwt outs = RamenOutRef.read out_ref in
+      Map.iter (fun fname _spec ->
+        if String.ends_with fname ".r" && not (Set.mem fname rbs) then
+          !logger.error "Operation %s outputs to %s, which is not read"
+            (F.fq_name func) fname
+      ) outs ;
+      return_unit
+    )
+  and last_checked_out_ref = ref 0. in
+  fun conf must_run ->
+    let now = Unix.time () in
+    if now -. !last_checked_out_ref > 5. then (
+      last_checked_out_ref := now ;
+      do_check_out_ref conf must_run
+    ) else return_unit
+
 (*
  * Synchronisation of the rc file of programs we want to run and the
  * actually running workers.
@@ -544,7 +574,11 @@ let synchronize_running conf autoreload_delay =
     if possible_reload then !logger.debug "Starting the kills" ;
     let%lwt () = Lwt_list.iter_p (try_kill conf must_run) !to_kill in
     if possible_reload then !logger.debug "Starting the starts" ;
-    Lwt_list.iter_p (try_start conf must_run) !to_start
+    let%lwt () = Lwt_list.iter_p (try_start conf must_run) !to_start in
+    (* Try to fix any issue with out_refs: *)
+    if !to_start = [] && !to_kill = [] then
+      check_out_ref conf must_run
+    else return_unit
   in
   (* Once we have forked some workers we must not allow an exception to
    * terminate this function or we'd leave unsupervised workers behind: *)

@@ -46,6 +46,8 @@ struct
 
   let print_parent oc (p, f) = Printf.fprintf oc "%s/%s" p f
 
+  let fq_name f = f.program_name ^"/"^ f.name
+
   let sanitize_name name =
     (* New lines have to be forbidden because of the out_ref ringbuf files.
      * slashes have to be forbidden because we rsplit to get program names.
