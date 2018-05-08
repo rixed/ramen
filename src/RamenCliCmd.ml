@@ -485,6 +485,15 @@ let tail conf func_name with_header sep null
       stdout header ;
     BatIO.flush stdout) ;
   Lwt_main.run (
+    let rec reset_export_timeout () =
+      (* Start by sleeping as we've just set the temp export above: *)
+      let%lwt () = Lwt_unix.sleep (max 1. (duration -. 1.)) in
+      let%lwt _ =
+        RamenExport.make_temp_export_by_name conf ~duration func_name in
+      reset_export_timeout () in
+    async (fun () ->
+      restart_on_failure "reset_export_timeout"
+        reset_export_timeout ()) ;
     let open RamenSerialization in
     fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
       let tuple =
