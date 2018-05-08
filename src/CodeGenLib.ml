@@ -450,30 +450,34 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
           !logger.debug "Mapping %S" fname ;
           let file_spec = Map.find fname out_specs in
           assert (String.length fname > 0) ;
-          let rb = RingBuf.load fname in
-          let once = output rb (serialize_tuple file_spec.field_mask)
-                               (sersize_of_tuple file_spec.field_mask)
-                               time_of_tuple in
-          let rb_writer =
-            let last_retry = ref 0. in
-            (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
-             * case the ringbuf disappear altogether because the child is
-             * terminated then we won't deadloop.  Also, if one child is full
-             * then we will not write to next children until we can eventually
-             * write to this one. This is actually desired to have proper message
-             * ordering along the stream and avoid ending up with many threads
-             * retrying to write to the same child. *)
-            RingBufLib.retry_for_ringbuf
-              ~while_:(fun () ->
-                (* Also check from time to time that we are still supposed to
-                 * write in there: *)
-                if !CodeGenLib_IO.now > !last_retry +. 3. then (
-                  last_retry := !CodeGenLib_IO.now ;
-                  RamenOutRef.mem rb_ref_out_fname fname
-                ) else return_true)
-              ~delay_rec:sleep_out once
-          in
-          Hashtbl.add out_h fname (rb, rb_writer)
+          match RingBuf.load fname with
+          | exception e ->
+            !logger.error "Cannot open ringbuf %s: %s"
+              fname (Printexc.to_string e) ;
+          | rb ->
+            let once = output rb (serialize_tuple file_spec.field_mask)
+                                 (sersize_of_tuple file_spec.field_mask)
+                                 time_of_tuple in
+            let rb_writer =
+              let last_retry = ref 0. in
+              (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
+               * case the ringbuf disappear altogether because the child is
+               * terminated then we won't deadloop.  Also, if one child is full
+               * then we will not write to next children until we can eventually
+               * write to this one. This is actually desired to have proper message
+               * ordering along the stream and avoid ending up with many threads
+               * retrying to write to the same child. *)
+              RingBufLib.retry_for_ringbuf
+                ~while_:(fun () ->
+                  (* Also check from time to time that we are still supposed to
+                   * write in there: *)
+                  if !CodeGenLib_IO.now > !last_retry +. 3. then (
+                    last_retry := !CodeGenLib_IO.now ;
+                    RamenOutRef.mem rb_ref_out_fname fname
+                  ) else return_true)
+                ~delay_rec:sleep_out once
+            in
+            Hashtbl.add out_h fname (rb, rb_writer)
         ) to_open ;
       (* Update the current list of outputers: *)
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
