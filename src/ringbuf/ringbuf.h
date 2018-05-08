@@ -103,6 +103,18 @@ inline void print_rbf(struct ringbuf_file *rbf)
 extern enum ringbuf_error ringbuf_enqueue_alloc(
   struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t nb_words);
 
+#ifdef NEED_DATA_CACHE_FLUSH
+inline void my_cacheflush(void const *p_, size_t sz)
+{
+  unsigned char const *p = p_;
+# define CACHE_LINE 64
+  for (size_t i = 0; i < sz; i += CACHE_LINE) {
+    asm volatile("clflush (%0)\n\t" : : "r"(p+i) : "memory");
+  }
+  asm volatile("sfence\n\t" : : : "memory");
+}
+#endif
+
 inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop)
 {
   struct ringbuf_file *rbf = rb->rbf;
@@ -130,6 +142,10 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
       atomic_store_explicit(&rbf->tmax, t_stop, memory_order_relaxed);
   atomic_store_explicit(&rbf->prod_tail, tx->next, memory_order_release);
   //print_rbf(rbf);
+
+# ifdef NEED_DATA_CACHE_FLUSH
+  my_cacheflush(rbf->data + tx->record_start, (tx->next - tx->record_start) * sizeof(rbf->data[0]));
+# endif
 }
 
 // Combine all of the above:
@@ -274,13 +290,15 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
 
   assert(tx->record_start < tx->next); // Or we have read the whole of it already
   if (tx->next == rbf->nb_words) return 0; // Same as EOF
+  if (tx->next >= rbf->prod_tail) return -1; // Have to wait
   uint32_t nb_words = rbf->data[tx->next];
-  if (nb_words == 0) return -1;
-  if (nb_words == UINT32_MAX) return 0;
+  if (nb_words == 0) return -1; // new file past the prod cursor
+  if (nb_words == UINT32_MAX) return 0; // EOF
   tx->record_start = tx->next + 1;
   tx->next = tx->record_start + nb_words;
   /*printf("read_next: record_start=%"PRIu32", next=%"PRIu32"\n",
-         tx->record_start, tx->next);*/
+         tx->record_start, tx->next);
+  fflush(stdout);*/
   return nb_words*sizeof(uint32_t);
 }
 

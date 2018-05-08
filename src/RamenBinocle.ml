@@ -90,12 +90,16 @@ let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo,
     let sz = RingBufLib.sersize_of_fixsz_typ TFloat in
     write_nullable_thing RingBuf.write_float sz in
   let offs = nullmask_sz in
+  if worker = "" then
+    !logger.error "empty worker while serializing binocle tuple" ;
   let offs =
     RingBuf.write_string tx offs worker ;
     offs + RingBufLib.sersize_of_string worker in
   let offs =
     RingBuf.write_float tx offs time ;
     offs + RingBufLib.sersize_of_fixsz_typ TFloat in
+  if time > 2000000000. then
+    !logger.error "wrong time (%f) while serializing binocle tuple" time ;
   let offs = write_nullable_u64 offs 0 ic in
   let offs = write_nullable_u64 offs 1 sc in
   let offs = write_nullable_u64 offs 2 oc in
@@ -127,8 +131,12 @@ let unserialize tx =
     read_nullable_thing RingBuf.read_float sz in
   let offs = nullmask_sz in
   let worker = RingBuf.read_string tx offs in
+  if worker = "" then
+    !logger.error "empty worker while deserializing binocle tuple" ;
   let offs = offs + RingBufLib.sersize_of_string worker in
   let time = RingBuf.read_float tx offs in
+  if time > 2000000000. then
+    !logger.error "wrong time (%f) while deserializing binocle tuple" time ;
   let offs = offs + RingBufLib.sersize_of_fixsz_typ TFloat in
   let ic, offs = read_nullable_u64 tx 0 offs in
   let sc, offs = read_nullable_u64 tx 1 offs in

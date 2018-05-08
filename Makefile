@@ -10,8 +10,8 @@ QTEST    = qtest
 WARNS    = -w -40
 override OCAMLOPTFLAGS += -I src $(WARNS) -g -annot -O2 -S
 override OCAMLFLAGS    += -I src $(WARNS) -g -annot
-override CFLAGS        += --std=c11 -g -O2 -Wall -W -Wno-parentheses -fPIC
-override CPPFLAGS      += --std=c11 -D_GNU_SOURCE \
+override CFLAGS        += --std=gnu11 -g -O2 -Wall -W -Wno-parentheses -fPIC
+override CPPFLAGS      += --std=gnu11 -D_GNU_SOURCE \
                           -I $(shell ocamlfind ocamlc -where) \
                           -DHAVE_INT128 -I $(shell ocamlfind query stdint)
 

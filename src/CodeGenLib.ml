@@ -404,6 +404,10 @@ let output rb serialize_tuple sersize_of_tuple time_of_tuple tuple =
       sersize (IntCounter.get stats_rb_write_bytes) ;
   let tx = enqueue_alloc rb sersize in
   let offs = serialize_tuple tx tuple in
+  if tmin > 2000000000. then
+    !logger.error "wrong tmin (%f) while enqueueing commit" tmin ;
+  if tmax > 2000000000. then
+    !logger.error "wrong tmax (%f) while enqueueing commit" tmax ;
   enqueue_commit tx tmin tmax ;
   assert (offs = sersize)
 
