@@ -1,9 +1,9 @@
-(* Have this outside of RingBuf so that we can easily link this with the
- * tests without bringing in the whole ringbuf libs *)
 open Batteries
 open RamenLog
 open RamenHelpers
 open RamenScalar
+open Stdint
+open RingBuf
 
 exception NoMoreRoom
 exception Empty
@@ -24,6 +24,24 @@ let bytes_for_bits n =
 let round_up_to_rb_word bytes =
   let low = bytes land (rb_word_bytes-1) in
   if low = 0 then bytes else bytes - low + rb_word_bytes
+
+let write_cidr4 tx offs (n, l) =
+  write_u32 tx offs n ;
+  write_u8 tx (offs + round_up_to_rb_word 4) (Uint8.of_int l)
+
+let write_cidr6 tx offs (n, l) =
+  write_u128 tx offs n ;
+  write_u16 tx (offs + round_up_to_rb_word 16) (Uint16.of_int l)
+
+let read_cidr4 tx offs =
+  let addr = read_u32 tx offs in
+  let len = read_u8 tx (offs + round_up_to_rb_word 4) in
+  addr, Uint8.to_int len
+
+let read_cidr6 tx offs =
+  let addr = read_u128 tx offs in
+  let len = read_u16 tx (offs + round_up_to_rb_word 16) in
+  addr, Uint16.to_int len
 
 let nullmask_bytes_of_tuple_type tuple_typ =
   List.fold_left (fun s field_typ ->
@@ -177,3 +195,113 @@ let time_files_of dir =
     match scan_time_file_name fname with
     | exception (Not_found | Failure _) -> None
     | t1, t2 -> Some (t1, t2, dir ^"/"^ fname))
+
+let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =
+  retry_for_ringbuf ?while_ ?delay_rec ?max_retry_time
+                    dequeue_alloc rb
+
+let read_ringbuf ?while_ ?delay_rec rb f =
+  let open Lwt in
+  let rec loop () =
+    match%lwt dequeue_ringbuf_once ?while_ ?delay_rec rb with
+    | exception (Exit | Timeout) -> return_unit
+    | tx ->
+      (* f has to call dequeue_commit on the passed tx (as soon as
+       * possible): *)
+      f tx >>= loop in
+  loop ()
+
+let read_buf ?wait_for_more ?while_ ?delay_rec rb init f =
+  (* Read tuples by hoping from one to the next using tx_next.
+   * Note that we may reach the end of the written content, and will
+   * have to wait unless we reached the EOF mark (special value
+   * returned by tx_next). *)
+  let open Lwt in
+  let rec loop usr tx_ =
+    match%lwt tx_ with
+    | exception (Exit | Timeout | End_of_file) -> return usr
+    | exception Empty ->
+        assert (wait_for_more <> Some true) ;
+        return usr
+    | tx ->
+        (* Contrary to the wrapping case, f must not call dequeue_commit.
+         * Caller must know in which case it is: *)
+        let%lwt usr, more_to_come = f usr tx in
+        if more_to_come then
+          let tx_ = retry_for_ringbuf ?while_ ?wait_for_more
+                                      ?delay_rec read_next tx in
+          loop usr tx_
+        else
+          return usr
+  in
+  let tx_ = retry_for_ringbuf ?while_ ?wait_for_more ?delay_rec
+                              read_first rb in
+  loop init tx_
+
+let with_enqueue_tx rb sz f =
+  let open Lwt in
+  let%lwt tx =
+    retry_for_ringbuf (enqueue_alloc rb) sz in
+  try
+    let tmin, tmax = f tx in
+    enqueue_commit tx tmin tmax ;
+    return_unit
+  with exn ->
+    (* There is no such thing as enqueue_rollback. We cannot make the rb
+     * pointer go backward (or... can we?) but we could have a 1 bit header
+     * indicating if an entry is valid or not. *)
+    fail exn
+
+let seq_dir_of_bname fname = fname ^".per_seq"
+let time_dir_of_bname fname = fname ^".per_time"
+
+let int_of_hex s = int_of_string ("0x"^ s)
+
+let seq_files_of dir =
+  (try Sys.files_of dir
+  with Sys_error _ -> Enum.empty ()) //@
+  (fun fname ->
+    try
+      let mi, rest = String.split ~by:"-" fname in
+      let ma, rest = String.split ~by:"." rest in
+      if rest <> "b" then failwith "not a seq file" ;
+      Some (int_of_hex mi, int_of_hex ma, dir ^"/"^ fname)
+    with Not_found | Failure _ ->
+      None)
+
+let seq_file_compare (f1, _, _) (f2, _, _) =
+  Int.compare f1 f2
+
+let seq_range bname =
+  (* Returns the first and last available seqnums.
+   * Takes first from the per.seq subdir names and last from same subdir +
+   * rb->stats. *)
+  (* Note: in theory we should take that ringbuf lock for reading while
+   * enumerating the seq files to prevent rotation to happen, but we
+   * consider this operation a best-effort. *)
+  let dir = seq_dir_of_bname bname in
+  let mi_ma =
+    seq_files_of dir |>
+    Enum.fold (fun mi_ma (from, to_, _fname) ->
+      match mi_ma with
+      | None -> Some (from, to_)
+      | Some (mi, ma) -> Some (min mi from, max ma to_)
+    ) None in
+  let rb = load bname in
+  let s = finally (fun () -> unload rb) stats rb in
+  match mi_ma with
+  | None -> s.first_seq, s.alloc_count
+  | Some (mi, _ma) -> mi, s.first_seq + s.alloc_count
+(* Here rather than in RamenSerialization since it has to be included by
+ * workers as well, and RamenSerialization depends on too many modules for
+ * the workers. *)
+let write_notif ?delay_rec rb worker notif =
+  retry_for_ringbuf ?delay_rec (fun () ->
+    let sersize = sersize_of_string worker +
+                  sersize_of_string notif in
+    let tx = enqueue_alloc rb sersize in
+    write_string tx 0 worker ;
+    let offs = sersize_of_string worker in
+    write_string tx offs notif ;
+    (* Note: Surely there should be some time info for notifs. *)
+    enqueue_commit tx 0. 0.) ()

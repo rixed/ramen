@@ -68,7 +68,7 @@ RAMEN_SOURCES = \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
 	src/RamenLang.ml src/RamenScalar.ml src/RamenTuple.ml \
-	src/RingBufLib.ml src/RingBuf.ml src/RamenBinocle.ml \
+	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
 	src/RamenSerialization.ml \
 	src/RamenConf.ml \
@@ -86,7 +86,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenOutRef.ml src/RamenParsing.ml \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
-	src/RingBufLib.ml src/RingBuf.ml src/RamenBinocle.ml \
+	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml src/RamenHeap.ml src/RamenSortBuf.ml \
 	src/CodeGenLib.ml src/RamenTypeConverters.ml
@@ -246,7 +246,7 @@ LINKED_FOR_TESTS = \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenLang.ml src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml \
-	src/RingBufLib.ml src/RingBuf.ml src/RamenBinocle.ml \
+	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenOperation.ml src/RamenProgram.ml \
 	src/RamenConf.ml \
 	src/Globs.ml \
@@ -273,7 +273,7 @@ ringbuf_test.opt: \
 	src/RamenRWLock.cmx src/RamenAdvLock.cmx src/RamenOutRef.cmx \
 	src/RamenParsing.cmx src/RamenEthAddr.cmx src/RamenIpv4.cmx \
 	src/RamenIpv6.cmx src/RamenTypeConverters.cmx src/RamenScalar.cmx \
-	src/RamenTuple.cmx src/RingBufLib.cmx src/RingBuf.cmx \
+	src/RamenTuple.cmx src/RingBuf.cmx src/RingBufLib.cmx \
 	src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
 	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@

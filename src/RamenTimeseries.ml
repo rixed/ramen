@@ -158,7 +158,7 @@ let scan_possible_values factors bname typ =
 let all_seq_bnames conf func =
   let bname = C.archive_buf_name conf func in
   Enum.append
-    (RingBuf.(seq_dir_of_bname bname |> seq_files_of) /@
+    (RingBufLib.(seq_dir_of_bname bname |> seq_files_of) /@
      (fun (_, _, fname) -> fname))
     (Enum.singleton bname)
 

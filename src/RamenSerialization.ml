@@ -1,5 +1,6 @@
 open Batteries
 open RingBuf
+open RingBufLib
 open RamenLog
 open RamenHelpers
 open RamenScalar

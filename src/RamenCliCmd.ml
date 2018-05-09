@@ -38,7 +38,8 @@ let supervisor conf daemonize to_stderr max_archives autoreload report_period
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   let logdir =
-    if to_stderr then None else Some (conf.C.persist_dir ^"/log/supervisor") in
+    if to_stderr then None
+    else Some (conf.C.persist_dir ^"/log/supervisor") in
   Option.may mkdir_all logdir ;
   RamenProcesses.report_period := report_period ;
   logger := make_logger ?logdir conf.C.debug ;
@@ -77,11 +78,19 @@ let supervisor conf daemonize to_stderr max_archives autoreload report_period
  * The actual work is done in module RamenNotify.
  *)
 
-let notifier conf daemonize to_stderr () =
+let notifier conf notif_conf_file daemonize to_stderr () =
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
+  let notif_conf =
+    match notif_conf_file with
+    | None -> RamenNotify.default_notify_conf
+    | Some n ->
+        C.ppp_of_file n RamenNotify.notify_config_ppp_ocaml in
+  (* Check the config is ok: *)
+  RamenNotify.check_conf_is_valid notif_conf ;
   let logdir =
-    if to_stderr then None else Some (conf.C.persist_dir ^"/log/notifier") in
+    if to_stderr then None
+    else Some (conf.C.persist_dir ^"/log/notifier") in
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir conf.C.debug ;
   if daemonize then do_daemonize () ;
@@ -89,7 +98,17 @@ let notifier conf daemonize to_stderr () =
   let notify_rb = RamenProcesses.prepare_notifs conf in
   Lwt_main.run (
     restart_on_failure "process_notifications"
-      (RamenNotify.start conf) notify_rb)
+      (RamenNotify.start notif_conf) notify_rb)
+
+let notify conf name text () =
+  let text = String.join " " text in
+  logger := make_logger conf.C.debug ;
+  let rb = RamenProcesses.prepare_notifs conf in
+  let notif = RamenOperation.(
+    NotifyCmd { name ; text ; severity = Urgent }) in
+  let notif = PPP.to_string RamenOperation.notification_ppp_ocaml notif in
+  Lwt_main.run (
+    RingBufLib.write_notif rb "cli" notif)
 
 (*
  * `ramen compile`
@@ -459,12 +478,12 @@ let tail conf func_name with_header sep null
         min_seq,
         Option.map succ max_seq (* max_seqnum is in *)
     | Some l when l >= 0 ->
-        let mi, ma = RingBuf.seq_range bname in
+        let mi, ma = RingBufLib.seq_range bname in
         Some (cap_add ma ~-l),
         Some (if continuous then max_int else ma)
     | Some l ->
         assert (l < 0) ;
-        let mi, ma = RingBuf.seq_range bname in
+        let mi, ma = RingBufLib.seq_range bname in
         Some ma, Some (cap_add ma (cap_neg l)) in
   !logger.debug "Will display tuples from %a (incl) to %a (excl)"
     (Option.print Int.print) mi
@@ -592,7 +611,8 @@ let graphite conf daemonize to_stderr port () =
   if to_stderr && daemonize then
     failwith "Options --daemonize and --to-stderr are incompatible." ;
   let logdir =
-    if to_stderr then None else Some (conf.C.persist_dir ^"/log/graphite") in
+    if to_stderr then None
+    else Some (conf.C.persist_dir ^"/log/graphite") in
   Option.may mkdir_all logdir ;
   logger := make_logger ?logdir conf.C.debug ;
   if daemonize then do_daemonize () ;

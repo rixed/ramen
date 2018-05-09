@@ -108,6 +108,4 @@ DEFINE alert_output AS
 
 DEFINE alert_output_do_notif AS
   FROM alert_output
-  -- TODO: a generic notify method which actual implementation is lest to
-  -- `ramen notifier` configuration.
-  EXECUTE "logger 'alert'" AFTER tot_diff > 0.75;
+  NOTIFY "output changed" AFTER tot_diff > 0.75;

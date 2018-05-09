@@ -13,7 +13,7 @@ open Lwt
 open RamenLog
 open RamenHelpers
 
-let http_notify worker http =
+let http_send worker http =
   let open Cohttp in
   let open Cohttp_lwt_unix in
   let open RamenOperation in
@@ -53,11 +53,79 @@ let execute_cmd worker cmd =
       if stderr <> "" then !logger.error "cmd: %s" stderr ;
       return_unit
 
+(* Generic notification configuration.
+ * The actual behavior in case of a NOTIFY is taken from the command line.
+ * From the notification name the team is retrieved. Then depending on the
+ * severity one of two contact is chosen. *)
+module Contact = struct
+  type t =
+    | ViaHttp of RamenOperation.http_cmd
+    | ViaExec of string
+    [@@ppp PPP_OCaml]
+end
+
+module Team = struct
+  type t =
+    { (* Team name is really nothing but a prefix for notification names: *)
+      name : string ;
+      deferrable_contact : Contact.t ;
+      urgent_contact : Contact.t }
+    [@@ppp PPP_OCaml]
+
+  let find_in_charge teams name =
+    try Array.find (fun t -> String.starts_with name t.name) teams
+    with Not_found ->
+      !logger.warning "No team name found in notification %S, \
+                       assigning to first team." name ;
+      teams.(0)
+end
+
+type notify_config =
+  { teams : Team.t array }
+  [@@ppp PPP_OCaml]
+
+let default_notify_conf =
+  let send_to_prometheus =
+    Contact.ViaHttp RamenOperation.{
+      method_ = HttpCmdPost ;
+      url = "http://localhost:9093/api/v1/alerts" ;
+      headers = [ "Content-Type", "application/json" ] ;
+      body =
+        {|[{"labels":{"alertname":"${title}","summary":"${text}","severity":"critical"}}]|} }
+  in
+  { teams =
+      Team.[|
+        { name = "" ;
+          deferrable_contact =
+            Contact.ViaExec "logger 'deferrable: ${title}-${text}'" ;
+          urgent_contact = send_to_prometheus } |] }
+
+let contact_via worker = function
+  | Contact.ViaHttp http -> http_send worker http
+  | Contact.ViaExec cmd -> execute_cmd worker cmd
+
+let generic_notify conf worker notif =
+  (* Find the team in charge of that alert name: *)
+  let open RamenOperation in
+  let team = Team.find_in_charge conf.teams notif.name in
+  let contact =
+    match notif.severity with
+    | Deferrable -> team.Team.deferrable_contact
+    | Urgent -> team.Team.urgent_contact in
+  contact_via worker contact
+
 let start conf rb =
-  let while_ () = if !RamenProcesses.quit then return_false else return_true in
+  !logger.info "Starting notifier" ;
+  let while_ () =
+    if !RamenProcesses.quit then return_false else return_true in
   RamenSerialization.read_notifs ~while_ rb (fun (worker, notif) ->
     !logger.info "Received execute instruction from %s: %s"
       worker notif ;
     match PPP.of_string_exc RamenOperation.notification_ppp_ocaml notif with
     | ExecuteCmd cmd -> execute_cmd worker cmd
-    | HttpCmd http -> http_notify worker http)
+    | HttpCmd http -> http_send worker http
+    | NotifyCmd notif -> generic_notify conf worker notif)
+
+let check_conf_is_valid conf =
+  if Array.length conf.teams = 0 then
+    failwith "Notification configuration must have at least one team."

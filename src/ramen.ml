@@ -85,16 +85,39 @@ let supervisor =
     info ~doc:RamenConsts.CliInfo.supervisor "supervisor")
 
 (*
- * Start the notifier
+ * Notifications: Start the notifier and send test ones
  *)
+
+let conf_file ?env ?(opt_names=["config"; "c"]) ~doc () =
+  let env = Option.map Term.env_info env in
+  let i = Arg.info ~doc ?env opt_names in
+  Arg.(value (opt (some string) None i))
 
 let notifier =
   Term.(
     (const RamenCliCmd.notifier
       $ copts
+      $ conf_file ~env:"NOTIFIER_CONFIG"
+                  ~doc:RamenConsts.CliInfo.conffile ()
       $ daemonize
       $ to_stdout),
     info ~doc:RamenConsts.CliInfo.notifier "notifier")
+
+let text_pos ~doc ~docv p =
+  let i = Arg.info ~doc ~docv [] in
+  Arg.(required (pos p (some string) None i))
+
+let text_all ~doc ~docv p =
+  let i = Arg.info ~doc ~docv [] in
+  Arg.(value (pos_right (p-1) string [] i))
+
+let notify =
+  Term.(
+    (const RamenCliCmd.notify
+      $ copts
+      $ text_pos ~doc:"notification name" ~docv:"NAME" 0
+      $ text_all ~doc:"notification text" ~docv:"TEXT" 1),
+    info ~doc:RamenConsts.CliInfo.notify "notify")
 
 (*
  * Examine the ringbuffers
@@ -502,7 +525,7 @@ let () =
   Lwt_unix.set_pool_size 1 ;
   match Term.eval_choice default [
     supervisor ; graphite ; notifier ;
-    compile ; run ; kill ;
+    notify ; compile ; run ; kill ;
     tail ; timeseries ; timerange ; ps ;
     test ; dequeue ; summary ; repair ;
     autocomplete ; expand

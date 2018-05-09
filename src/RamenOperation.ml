@@ -70,9 +70,20 @@ type http_cmd =
     body : string [@ppp_default ""] }
   [@@ppp PPP_OCaml]
 
+type severity = Urgent | Deferrable
+  [@@ppp PPP_OCaml]
+
+type notify_cmd =
+  { name : string ;
+    text : string ;
+    severity : severity
+      [@ppp_default Urgent] }
+  [@@ppp PPP_OCaml]
+
 type notification =
   | ExecuteCmd of string
   | HttpCmd of http_cmd
+  | NotifyCmd of notify_cmd
   [@@ppp PPP_OCaml]
 
 let print_notification oc = function
@@ -87,6 +98,12 @@ let print_notification oc = function
           (fun oc (n, v) -> Printf.fprintf oc "%S:%S" n v) oc http.headers ;
       if http.body <> "" then
         Printf.fprintf oc " WITH BODY %S" http.body
+  | NotifyCmd notif ->
+      Printf.fprintf oc "NOTIFY %S TEXT %S %s"
+        notif.name notif.text
+        (match notif.severity with
+         | Urgent -> "URGENT"
+         | Deferrable -> "DEFERRABLE")
 
 (* Type of an operation: *)
 
@@ -103,7 +120,7 @@ type t =
       where : Expr.t ;
       event_time : RamenEventTime.t option ;
       force_export : bool ;
-      (* If not empty, will notify this URL with a HTTP GET: *)
+      (* Will send these notification commands to the notifier: *)
       notifications : notification list ;
       key : Expr.t list ;
       top : (Expr.t (* N *) * Expr.t (* by *)) option ;
@@ -594,10 +611,21 @@ struct
          (blanks -- strinG "with" -- blanks -- strinG "body" -- blanks -+
           quoted_string) >>:
        fun (((method_, url), headers), body) ->
-        HttpCmd { method_ ; url ; headers ; body }) m
+        HttpCmd { method_ ; url ; headers ; body }) m in
+    let notify_cmd m =
+      let severity m =
+        let m = "notification severity" :: m in
+        ((strinG "urgent" >>: fun () -> Urgent) |||
+         (strinG "deferrable" >>: fun () -> Deferrable)) m in
+      let m = "notification" :: m in
+      (strinG "notify" -- blanks -+ quoted_string ++
+       (optional ~def:"" (
+          blanks -- strinG "text" -- blanks -+ quoted_string)) ++
+       (optional ~def:Urgent (blanks -+ severity)) >>:
+      fun ((name, text), severity) -> NotifyCmd { name ; text ; severity }) m
     in
     let m = "notification clause" :: m in
-    ((execute ||| http_cmd) >>: fun s -> NotifySpec s) m
+    ((execute ||| http_cmd ||| notify_cmd) >>: fun s -> NotifySpec s) m
 
   let flush m =
     let m = "flush clause" :: m in

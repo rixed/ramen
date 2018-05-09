@@ -624,7 +624,7 @@ let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
       ) else (
         !logger.info "Reading buffer..." ;
         let%lwt () =
-          RingBuf.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
+          RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
             let worker, time, _, _, _, _, _, _, _, _, _, _, _ as tuple =
               RamenBinocle.unserialize tx in
             (* Filter by time and worker *)
@@ -643,35 +643,22 @@ let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
  * Aggregate operation
  *)
 
-let send_notif rb worker url =
-  RingBufLib.retry_for_ringbuf ~delay_rec:sleep_out (fun () ->
-    let sersize = RingBufLib.sersize_of_string worker +
-                  RingBufLib.sersize_of_string url in
-    let tx = RingBuf.enqueue_alloc rb sersize in
-    RingBuf.write_string tx 0 worker ;
-    let offs = RingBufLib.sersize_of_string worker in
-    RingBuf.write_string tx offs url ;
-    (* Note: Surely there should be some time info for notifs. *)
-    RingBuf.enqueue_commit tx 0. 0.) ()
-
-let notify conf rb worker url field_of_tuple tuple =
+let notify conf rb worker notif field_of_tuple tuple =
   let expand_fields =
     let open Str in
     let re = regexp "\\${\\(out\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
     fun text tuple ->
       global_substitute re (fun s ->
           let field_name = matched_group 2 s in
-          try field_of_tuple tuple field_name |> CodeGenLib_IO.url_encode
+          try field_of_tuple tuple field_name
           with Not_found ->
             !logger.error "Field %S used in text substitution is not \
                            present in the input!" field_name ;
             "??"^ field_name ^"??"
         ) text
   in
-  let rep sub by str = String.nreplace ~str ~sub ~by in
-  let url = rep "$RAMEN_URL$" conf.ramen_url url in
-  let url = expand_fields url tuple in
-  send_notif rb worker url
+  let notif = expand_fields notif tuple in
+  RingBufLib.write_notif ~delay_rec:sleep_out rb worker notif
 
 type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
   { (* used to compute the actual selected field when outputing the
@@ -780,7 +767,7 @@ type ('tuple_in, 'sort_by) sort_by_fun =
 type ('tuple_in, 'merge_on) merge_on_fun = 'tuple_in (* last in *) -> 'merge_on
 
 let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
-  RingBuf.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->
+  RingBufLib.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->
     let in_tuple = read_tuple tx in
     let tx_size = RingBuf.tx_size tx in
     RingBuf.dequeue_commit tx ;
@@ -791,7 +778,7 @@ let merge_rbs ?while_ ?delay_rec merge_on merge_timeout read_tuple rbs k =
     if merge_timeout > 0. then Some merge_timeout else None in
   let read_tup ?max_retry_time rb =
     let%lwt tx =
-      RingBuf.dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb in
+      RingBufLib.dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb in
     let in_tuple = read_tuple tx in
     let tx_size = RingBuf.tx_size tx in
     RingBuf.dequeue_commit tx ;

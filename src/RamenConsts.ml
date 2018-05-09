@@ -34,6 +34,7 @@ struct
   let supervisor = "Start the processes supervisor"
   let graphite = "Start a Graphite impersonator"
   let notifier = "Start the notifier"
+  let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"
   let run = "Run one (or several) compiled program(s)"
   let kill = "Stop a program"
@@ -112,6 +113,7 @@ struct
   let port = "Port number where to listen to incoming HTTP connections"
   let test_files = "Definition of a test to run"
   let command = "Ramen command line to be completed"
+  let conffile = "configuration file"
 end
 
 module ExitCodes =
