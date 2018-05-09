@@ -73,7 +73,10 @@ DEFINE tot_per_minute AS
   SELECT
     (time // 60) * 60 as time,
     sum 1 AS running,
-    sum u32(coalesce(last_out_age <= 60, false)) AS active,
+    -- Given data arrive only every minute in the test lab (and some datasets
+    -- are frequently missed), let's call "active" any operation that had
+    -- output anything for the last *3* minutes:
+    sum u32(coalesce(last_out_age <= 180, false)) AS active,
     sum COALESCE(out_per_secs, 0) AS tot_out_per_secs
   GROUP BY time // 60
   COMMIT AFTER in.time >= out.time + 60 + 30
@@ -86,15 +89,25 @@ DEFINE alert_output AS
   FROM tot_per_minute
   SELECT
     *,
+
     moveavg(10, tot_out_per_secs) AS avg_tot_out_per_secs,
-    moveavg(10, running) AS avg_running,
-    moveavg(10, active) AS avg_active,
-    abs (avg_tot_out_per_secs - tot_out_per_secs) / avg_tot_out_per_secs
+    abs (avg_tot_out_per_secs - tot_out_per_secs) AS _d_out,
+    min (_d_out, avg_tot_out_per_secs) / max (_d_out, avg_tot_out_per_secs)
       AS diff_out_per_secs,
-    abs (avg_running - running) / avg_running AS diff_running,
-    abs (avg_active - active) / avg_active AS diff_active
-  EVENT STARTING AT time WITH DURATION 60
+
+    moveavg(10, running) AS avg_running,
+    abs (avg_running - running) AS _d_running,
+    min (_d_running, avg_running) / max (_d_running, avg_running) AS diff_running,
+
+    moveavg(10, active) AS avg_active,
+    abs (avg_active - active) AS _d_active,
+    min (_d_active, avg_active) / max (_d_active, avg_active) AS diff_active,
+
+    diff_out_per_secs + diff_running + diff_active AS tot_diff
+  EVENT STARTING AT time WITH DURATION 60;
+
+DEFINE alert_output_do_notif AS
+  FROM alert_output
   -- TODO: a generic notify method which actual implementation is lest to
   -- `ramen notifier` configuration.
-  EXECUTE "logger 'alert'"
-    AFTER diff_out_per_secs + diff_running + diff_active > 0.75;
+  EXECUTE "logger 'alert'" AFTER tot_diff > 0.75;
