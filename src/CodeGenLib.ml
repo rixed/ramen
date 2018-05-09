@@ -1170,7 +1170,7 @@ let aggregate
             aggr.current_out
         in
         (* Update/create the group if it passes where_slow (or None) *)
-        let aggr_opt =
+        let aggr_opt, was_selected =
           match Hashtbl.find s.groups k with
           | exception Not_found ->
             (*
@@ -1240,7 +1240,7 @@ let aggregate
               in
               if top_n = 0 || Hashtbl.length s.groups < top_n then (
                 add_entry () ;
-                Some aggr
+                Some aggr, true
               ) else (
                 (* H is crowded already, maybe dispose of the less heavy hitter? *)
                 match WeightMap.min_binding s.weightmap with
@@ -1280,7 +1280,7 @@ let aggregate
                       s.weightmap <- WeightMap.add wk min_ks s.weightmap ;
                     (* Add new one *)
                     add_entry () ;
-                    Some aggr
+                    Some aggr, true
                   ) else (
                     (* Do not track; aggregate with "others" *)
                     (match s.others with
@@ -1317,9 +1317,9 @@ let aggregate
                         aggr.first_in aggr.last_in
                         aggr.current_out in
                     s.unknown_weights.(kh) <- s.unknown_weights.(kh) +. w ;
-                    None)
+                    None, true)
               )
-            ) else None (* in-tuple does not pass where_slow *)
+            ) else None, false (* in-tuple does not pass where_slow *)
           | aggr ->
             (*
              * The group already exist.
@@ -1373,52 +1373,62 @@ let aggregate
                     | None -> Some [k]
                     | Some lst as prev ->
                       if List.mem k lst then prev else Some (k::lst)) s.weightmap)) ;
-              Some aggr
-            ) else None (* in-tuple does not pass where_slow *) in
-        (match aggr_opt with
-        | None ->
-          s.selected_successive <- Uint64.zero ;
-          s.unselected_tuple <- Some in_tuple ;
-          s.unselected_count <- Uint64.succ s.unselected_count ;
-          s.unselected_successive <- Uint64.succ s.unselected_successive ;
-          return_unit
-        | Some aggr ->
+              Some aggr, true
+            ) else None, false (* in-tuple does not pass where_slow *) in
+        if was_selected then (
           (* Here we passed the where filter and the selected_tuple (and
            * selected_count) must be updated. *)
           s.unselected_successive <- Uint64.zero ;
           s.selected_tuple <- Some in_tuple ;
           s.selected_count <- Uint64.succ s.selected_count ;
           s.selected_successive <- Uint64.succ s.selected_successive ;
-          (* Committing / Flushing *)
-          let to_commit, to_flush =
-            (* FIXME: we should do the check that early for all when_to_check_for_commit
-             * (and skip this aggr when doing ForAllSelected or ForAll)., so that we can
-             * commit_before this group (for others that does not matter since we did not
-             * change them). *)
-            if must_commit aggr
-            then [
-              k, aggr,
-              if commit_before then aggr.previous_out
-                               else Some aggr.current_out
-            ], [ k, aggr ] else [], [] in
-          if commit_before then
-            List.iter (fun (_k, a) ->
-              match a.to_resubmit with
-              | hd::_ when hd == in_tuple -> ()
-              | _ -> a.to_resubmit <- in_tuple :: a.to_resubmit) to_flush ;
-          let%lwt () = commit_and_flush_list to_commit in
-          (* Maybe any other groups. Notice that there is no risk to commit
-           * or flush this aggr twice since when_to_check_for_commit force
-           * either one or the other (or none at all) of these chunks of
-           * code to be run. *)
-          already_output_aggr := Some aggr ;
-          let%lwt () = commit_and_flush_all_if ForAllSelected in
-          aggr.previous_out <- Some aggr.current_out ;
-          return_unit)
-      ) else
+          (* Committing / Flushing, if we have a group (we might have subsumed
+           * the input tuple into the aggregate of "others", in which case we
+           * have no group and nothing to commit. Also, this also shows why
+           * commit_when should not alter the global state when a TOP is on). *)
+          match aggr_opt with
+          | None -> return_unit
+          | Some aggr ->
+            let to_commit, to_flush =
+              (* FIXME: we should do the check that early for all when_to_check_for_commit
+               * (and skip this aggr when doing ForAllSelected or ForAll)., so that we can
+               * commit_before this group (for others that does not matter since we did not
+               * change them). *)
+              if must_commit aggr
+              then [
+                k, aggr,
+                if commit_before then aggr.previous_out
+                                 else Some aggr.current_out
+              ], [ k, aggr ] else [], [] in
+            if commit_before then
+              List.iter (fun (_k, a) ->
+                match a.to_resubmit with
+                | hd::_ when hd == in_tuple -> ()
+                | _ -> a.to_resubmit <- in_tuple :: a.to_resubmit) to_flush ;
+            let%lwt () = commit_and_flush_list to_commit in
+            (* Maybe any other groups. Notice that there is no risk to commit
+             * or flush this aggr twice since when_to_check_for_commit force
+             * either one or the other (or none at all) of these chunks of
+             * code to be run. *)
+            already_output_aggr := Some aggr ;
+            let%lwt () = commit_and_flush_all_if ForAllSelected in
+            aggr.previous_out <- Some aggr.current_out ;
+            return_unit
+        ) else ( (* in_tuple failed where_slow *)
+          s.selected_successive <- Uint64.zero ;
+          s.unselected_tuple <- Some in_tuple ;
+          s.unselected_count <- Uint64.succ s.unselected_count ;
+          s.unselected_successive <- Uint64.succ s.unselected_successive ;
+          return_unit
+        )
+      ) else (
         (* in_tuple failed where_fast *)
+        s.selected_successive <- Uint64.zero ;
+        s.unselected_tuple <- Some in_tuple ;
+        s.unselected_count <- Uint64.succ s.unselected_count ;
+        s.unselected_successive <- Uint64.succ s.unselected_successive ;
         return_unit
-      ) >>= fun () ->
+      )) >>= fun () ->
       (* Save last_in: *)
       s.last_in_tuple <- Some in_tuple ;
       (* Now there is also the possibility that we need to commit or flush
