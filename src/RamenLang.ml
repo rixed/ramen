@@ -53,7 +53,7 @@ type syntax_error =
   | TupleNotAllowed of { tuple : tuple_prefix ; where : string ;
                          allowed : tuple_prefix list }
   | StatefulNotAllowed of { clause : string }
-  | GroupStateNotAllowed of { clause : string }
+  | StateNotAllowed of { state : string ; clause : string }
   | FieldNotInTuple of { field : string ; tuple : tuple_prefix ;
                          tuple_type : string }
   | FieldNotSameTypeInAllParents of { field : string }
@@ -96,8 +96,8 @@ let string_of_syntax_error =
         allowed)
   | StatefulNotAllowed { clause } ->
     "Stateful function not allowed in "^ clause ^" clause"
-  | GroupStateNotAllowed { clause } ->
-    "Group context not allowed in "^ clause ^" clause"
+  | StateNotAllowed { state ; clause } ->
+    String.capitalize state ^" context not allowed in "^ clause ^" clause"
   | FieldNotInTuple { field ; tuple ; tuple_type } ->
     "Field "^ field ^" is not in the "^ string_of_prefix tuple ^" tuple"^
     (if tuple_type <> "" then " (which is "^ tuple_type ^")" else "")

@@ -315,15 +315,16 @@ let iter_expr f op =
  * list of available parameters. *)
 let check params =
   let pure_in clause = StatefulNotAllowed { clause }
-  and no_group clause = GroupStateNotAllowed { clause }
+  and no_group clause = StateNotAllowed { state = "local" ; clause }
+  and no_global clause = StateNotAllowed { state = "global" ; clause }
   and fields_must_be_from tuple where allowed =
     TupleNotAllowed { tuple ; where ; allowed } in
   let pure_in_key = pure_in "GROUP-BY"
   and check_pure e =
     Expr.unpure_iter (fun _ -> raise (SyntaxError e))
-  and check_no_group e =
+  and check_no_state state e =
     Expr.unpure_iter (function
-      | StatefulFun (_, LocalState, _) -> raise (SyntaxError e)
+      | StatefulFun (_, s, _) when s = state -> raise (SyntaxError e)
       | _ -> ())
   and check_fields_from lst where =
     Expr.iter (function
@@ -339,7 +340,9 @@ let check params =
         let print_alias oc sf = String.print oc sf.alias in
         let tuple_type = IO.to_string (List.print print_alias) fields in
         FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
-      raise (SyntaxError m)
+      raise (SyntaxError m) in
+  let check_no_group = check_no_state LocalState
+  and check_no_global = check_no_state GlobalState
   in
   let check_event_time fields ((start_field, _), duration) =
     check_field_exists fields start_field ;
@@ -433,6 +436,12 @@ let check params =
     Option.may (fun (n, by) ->
       (* TODO: Check also that it's an unsigned integer: *)
       Expr.check_const "TOP size" n ;
+      (* Also check that the top-by expression does not update the global
+       * state: *)
+      check_no_global (no_global "TOP-BY") by ;
+      (* Also check that if there is a top then commit_when does not alter
+       * global state: *)
+      check_no_global (no_global "COMMIT-WHEN (with TOP)") commit_when ;
       check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut; TupleGroupPrevious; TupleOutPrevious] "TOP clause" by ;
       (* The only windowing mode supported is then `commit and flush`: *)
       if flush_how <> Reset then
