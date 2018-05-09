@@ -236,5 +236,11 @@ let with_code_file_for obj_name conf f =
     else "m"^ basename in
   let fname = Filename.dirname obj_name ^"/"^ basename in
   mkdir_all ~is_file:true fname ;
-  File.with_file_out ~mode:[`create; `text; `trunc] fname f ;
+  (* If keep-temp-file is set, reuse preexisting source code : *)
+  if conf.C.keep_temp_files &&
+     file_exists ~maybe_empty:false ~has_perms:0o400 fname
+  then
+    !logger.info "Reusing source file %S" fname
+  else
+    File.with_file_out ~mode:[`create; `text; `trunc] fname f ;
   fname
