@@ -330,9 +330,8 @@ let report_ringbuf conf =
                    ^ RamenVersions.ringbuf
                    ^"/ringbuf.b"
 
-let notify_ringbuf ?(test_id = "") conf =
+let notify_ringbuf conf =
   conf.persist_dir ^"/notify_ringbuf/"
                    ^ RamenVersions.notify_tuple ^"_"
                    ^ RamenVersions.ringbuf
-                   ^ (if test_id = "" then "" else "/"^ test_id)
                    ^"/ringbuf.r"

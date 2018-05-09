@@ -88,6 +88,7 @@ struct ringbuf_tx {
     uint32_t record_start;
     // Where the record ends (points to the next record size):
     uint32_t next;
+    // The observed prod_head / cons_head
     uint32_t seen;
 };
 

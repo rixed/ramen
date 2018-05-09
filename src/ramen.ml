@@ -292,7 +292,7 @@ let where =
 
 let with_seqnums =
   let i = Arg.info ~doc:RamenConsts.CliInfo.with_seqnums
-                   ["with-seqnums"] in
+                   ["with-seqnums"; "seq"; "s"] in
   Arg.(value (flag i))
 
 (* TODO: returns directly the program and function names to spare some

@@ -328,9 +328,9 @@ let type_of_parent_field parent tuple_of_field field =
         if f.RamenTuple.typ_name = field then Some (
           (* Mimick a untyped_tuple which uniq_num will never be used *)
           RamenExpr.{ expr_name = f.typ_name ;
-                 uniq_num = 0 ;
-                 nullable = Some f.nullable ;
-                 scalar_typ = Some f.typ }
+                      uniq_num = 0 ;
+                      nullable = Some f.nullable ;
+                      scalar_typ = Some f.typ }
         ) else None) user in
   try find_field ()
   with Not_found ->
