@@ -290,10 +290,11 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
 
   assert(tx->record_start < tx->next); // Or we have read the whole of it already
   if (tx->next == rbf->nb_words) return 0; // Same as EOF
-  if (tx->next >= rbf->prod_tail) return -1; // Have to wait
   uint32_t nb_words = rbf->data[tx->next];
   if (nb_words == 0) return -1; // new file past the prod cursor
   if (nb_words == UINT32_MAX) return 0; // EOF
+  // Has to be tested *after* EOF:
+  if (tx->next >= rbf->prod_tail) return -1; // Have to wait
   tx->record_start = tx->next + 1;
   tx->next = tx->record_start + nb_words;
   /*printf("read_next: record_start=%"PRIu32", next=%"PRIu32"\n",
