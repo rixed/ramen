@@ -124,15 +124,11 @@ Then /^([^ ]*) must (?:exit|terminate) gracefully/ do |executable|
   step "#{executable} must print no line on stderr"
 end
 
-Given /(.*\.ramen) is compiled( as (.*))?/ do |source, opt_bin|
-  default_bin = source[0..-(File.extname(source).length + 1)] + '.x'
-  bin =
-    if opt_bin.nil? then default_bin else opt_bin end
-  if not File.exist? bin then
+Given /(.*\.ramen) is compiled( as (.*))?$/ do |source, prog_name|
+  if prog_name then
+    `ramen compile #{source} -o #{prog_name}`
+  else
     `ramen compile #{source}`
-    if bin != default_bin then
-      `mv #{default_bin} #{bin}`
-    end
   end
 end
 

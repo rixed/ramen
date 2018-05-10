@@ -114,6 +114,7 @@ struct
   let test_files = "Definition of a test to run"
   let command = "Ramen command line to be completed"
   let conffile = "configuration file"
+  let program_name = "resulting program name"
 end
 
 module ExitCodes =

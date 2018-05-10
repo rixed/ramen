@@ -238,6 +238,11 @@ let bin_files =
                    ~docv:"FILE" [] in
   Arg.(non_empty (pos_all string [] i))
 
+let program_name =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.program_name ~docv:"NAME"
+                   [ "program-name" ; "o" ; "as-program" ] in
+  Arg.(value (opt (some string) None i))
+
 let compile =
   Term.(
     (const RamenCliCmd.compile
@@ -246,7 +251,8 @@ let compile =
       $ external_compiler
       $ bundle_dir
       $ max_simult_compilations
-      $ source_files),
+      $ source_files
+      $ program_name),
     info ~doc:RamenConsts.CliInfo.compile "compile")
 
 let run =

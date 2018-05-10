@@ -118,7 +118,7 @@ let notify conf name text () =
  *)
 
 let compile conf root_path use_external_compiler bundle_dir
-            max_simult_compils source_files () =
+            max_simult_compils source_files program_name_opt () =
   logger := make_logger conf.C.debug ;
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
@@ -128,8 +128,10 @@ let compile conf root_path use_external_compiler bundle_dir
   let root_path = absolute_path_of root_path in
   let all_ok = ref true in
   let compile_file source_file =
-    let program_name = Filename.remove_extension source_file |>
-                       rel_path_from root_path
+    let program_name =
+      program_name_opt |?
+      Filename.remove_extension source_file |>
+      rel_path_from root_path
     and program_code = read_whole_file source_file in
     RamenCompiler.compile conf root_path program_name program_code
   in
