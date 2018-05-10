@@ -8,4 +8,4 @@ requires = "lwt.unix lwt_ppx batteries stdint parsercombinator
 # To build ramen you will also need:
 #   unix num ppp.unix js_of_ocaml js_of_ocaml-ppx cmdliner
 #   cohttp-lwt-unix compiler-libs compiler-libs.common
-#   compiler-libs.bytecomp compiler-libs.optcomp
+#   syslog compiler-libs.bytecomp compiler-libs.optcomp

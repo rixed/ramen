@@ -23,7 +23,7 @@ endif
 
 PACKAGES = \
 	ppp ppp.unix lwt_ppx batteries cmdliner stdint parsercombinator \
-	cohttp-lwt-unix num inotify.lwt binocle unix lacaml \
+	syslog cohttp-lwt-unix num inotify.lwt binocle unix lacaml \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs
 

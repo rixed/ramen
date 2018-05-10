@@ -53,6 +53,18 @@ let execute_cmd worker cmd =
       if stderr <> "" then !logger.error "cmd: %s" stderr ;
       return_unit
 
+let syslog =
+  try Some (Syslog.openlog "ramen")
+  with _ -> None
+
+let log_str worker str =
+  let level = `LOG_ALERT in
+  match syslog with
+  | None ->
+    fail_with "No syslog on this host"
+  | Some slog ->
+    wrap (fun () -> Syslog.syslog slog level str)
+
 (* Generic notification configuration.
  * The actual behavior in case of a NOTIFY is taken from the command line.
  * From the notification name the team is retrieved. Then depending on the
@@ -124,6 +136,7 @@ let start conf rb =
     match PPP.of_string_exc RamenOperation.notification_ppp_ocaml notif with
     | ExecuteCmd cmd -> execute_cmd worker cmd
     | HttpCmd http -> http_send worker http
+    | SysLog str -> log_str worker str
     | NotifyCmd notif -> generic_notify conf worker notif)
 
 let check_conf_is_valid conf =

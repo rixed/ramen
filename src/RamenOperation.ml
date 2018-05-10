@@ -83,6 +83,7 @@ type notify_cmd =
 type notification =
   | ExecuteCmd of string
   | HttpCmd of http_cmd
+  | SysLog of string
   | NotifyCmd of notify_cmd
   [@@ppp PPP_OCaml]
 
@@ -98,6 +99,8 @@ let print_notification oc = function
           (fun oc (n, v) -> Printf.fprintf oc "%S:%S" n v) oc http.headers ;
       if http.body <> "" then
         Printf.fprintf oc " WITH BODY %S" http.body
+  | SysLog str ->
+      Printf.fprintf oc "LOGGER %S" str
   | NotifyCmd notif ->
       Printf.fprintf oc "NOTIFY %S TEXT %S %s"
         notif.name notif.text
@@ -614,6 +617,10 @@ struct
       let m = "http header" :: m in
       (quoted_string +- opt_blanks +- char ':' +- opt_blanks ++
        quoted_string) m in
+    let logger m =
+      let m = "logger clause" :: m in
+      (strinG "logger" -- blanks -+ quoted_string >>:
+       fun s -> SysLog s) m in
     let http_cmd m =
       let m = "http notification" :: m in
       (strinG "http" -+
@@ -643,7 +650,8 @@ struct
       fun ((name, text), severity) -> NotifyCmd { name ; text ; severity }) m
     in
     let m = "notification clause" :: m in
-    ((execute ||| http_cmd ||| notify_cmd) >>: fun s -> NotifySpec s) m
+    ((execute ||| http_cmd ||| logger ||| notify_cmd) >>:
+     fun s -> NotifySpec s) m
 
   let flush m =
     let m = "flush clause" :: m in
