@@ -489,13 +489,13 @@ let check_out_ref =
     Lwt_list.iter_p (fun (_bin, _program_name, func) ->
       let out_ref = C.out_ringbuf_names_ref conf func in
       let%lwt outs = RamenOutRef.read out_ref in
-      Map.iter (fun fname _spec ->
-        if String.ends_with fname ".r" && not (Set.mem fname rbs) then
+      Map.keys outs |> List.of_enum |>
+      Lwt_list.iter_s (fun fname ->
+        if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
           !logger.error "Operation %s outputs to %s, which is not read"
-            (F.fq_name func) fname
-      ) outs ;
-      return_unit
-    )
+            (F.fq_name func) fname ;
+          RamenOutRef.remove out_ref fname
+        ) else return_unit))
   and last_checked_out_ref = ref 0. in
   fun conf must_run ->
     let now = Unix.time () in
