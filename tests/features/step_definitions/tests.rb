@@ -50,13 +50,13 @@ When /I run (.*) with arguments? (.*)/ do |executable, args|
   #puts @output[executable]['stderr']
 end
 
-Then /(.*) must print (.*) lines? on (std(?:out|err))/ \
+Then /^([^ ]*) must print (.*) lines? on (std(?:out|err))/ \
 do |executable, quantity, out|
   filter = Filter.new(quantity)
   filter.check(@output[executable][out].lines.count)
 end
 
-Then /(.*) must exit with status (.*)(\d)/ do |executable, cmp, status|
+Then /^([^ ]*) must exit with status (.*)(\d)/ do |executable, cmp, status|
   exp = status.to_i
   got = @output[executable]['status']
   case cmp
@@ -132,11 +132,18 @@ Given /(.*\.ramen) is compiled( as (.*))?$/ do |source, prog_name|
   end
 end
 
-Given /^ramen supervisor is started$/ do
+Given /^(.*) are compiled/ do |programs|
+  programs = programs.list_split
+  programs.each do |p|
+    step "#{p} is compiled"
+  end
+end
+
+Given /^ramen (.*) is started$/ do |args|
   if $ramen_pid.nil?
     step "the environment variable RAMEN_PERSIST_DIR is set"
     # Cannot daemonize or we won't know the actual pid:
-    $ramen_pid = Process.spawn('ramen supervisor')
+    $ramen_pid = Process.spawn("ramen #{args}")
   end
 end
 
@@ -194,11 +201,27 @@ Given /(?:the )?programs? (.*) (?:is|are) running/ do |programs|
 end
 
 Then /^after max (\d+) seconds? (.+)$/ do |max_delay, what|
-  # TODO: catch failures and retry
-  step what
+  done = false # work around the bact we cannot return from a step
+  for again in 1..max_delay do
+    begin
+      step what
+      done = true
+    rescue Exception => e
+      puts "got exception #{e}, retrying"
+      sleep 1
+    end
+  end
+  # One last time with no safety net:
+  if not done then
+    step what
+  end
 end
 
 Then /^([^ ]*) must mention (.*) on (std(?:out|err))/ \
 do |executable, what, out|
   expect(@output[executable][out]).to match(/\b#{what}\b/)
+end
+
+When /I wait (\d+) seconds?/ do |n|
+  sleep n
 end
