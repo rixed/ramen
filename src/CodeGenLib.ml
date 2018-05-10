@@ -1118,6 +1118,10 @@ let aggregate
       let commit_and_flush_all_if check_when =
         let to_commit =
           if when_to_check_for_commit <> check_when then [] else
+            (* FIXME: What if commit-when update the global state? We are
+             * going to update it several times here. We should prevent this
+             * clause to access the global state whenever
+             * when_to_check_for_commit != ForAllSelected *)
             Hashtbl.fold (fun k a l ->
                 if not (already_output a) &&
                    must_commit a then
@@ -1233,7 +1237,9 @@ let aggregate
               (* Adding this group and updating the TOP *)
               let add_entry () =
                 Hashtbl.add s.groups k aggr ;
-                let wk = tot_weight float_of_top_state aggr s in_count in_tuple last_in last_selected last_unselected in
+                let wk =
+                  tot_weight float_of_top_state aggr s in_count in_tuple
+                             last_in last_selected last_unselected in
                 if top_n <> 0 then
                   s.weightmap <-
                     WeightMap.modify_def [] wk (List.cons k) s.weightmap ;
@@ -1244,7 +1250,7 @@ let aggregate
                 add_entry () ;
                 Some (true, aggr)
               ) else (
-                (* H is crowded already, maybe dispose of the less heavy hitter? *)
+                (* H is crowded; maybe dispose of the less heavy hitter? *)
                 match WeightMap.min_binding s.weightmap with
                 | exception Not_found ->
                   !logger.error "Empty weightmap but full hashtbl?" ;
@@ -1253,7 +1259,10 @@ let aggregate
                   !logger.error "Weightmap entry with no map key" ;
                   assert false
                 | wk, (min_k::min_ks) ->
-                  if wk < tot_weight float_of_top_state aggr s in_count in_tuple last_in last_selected last_unselected then (
+                  if wk < tot_weight float_of_top_state aggr s in_count
+                                     in_tuple last_in last_selected
+                                     last_unselected
+                  then (
                     (* Remove previous entry *)
                     (match Hashtbl.find s.groups min_k with
                     | exception Not_found ->
@@ -1301,6 +1310,8 @@ let aggregate
                         others_aggr.fields
                         s.global_state
                         others_aggr.first_in in_tuple |> ignore ;
+                      (* FIXME? we are going to call update_top again for another group,
+                       * but what about global state updates? *)
                       accumulate_into others_aggr None ;
                       (* Those two are not updated by accumulate_into to allow clauses
                        * code to see their previous values *)
@@ -1470,7 +1481,6 @@ let aggregate
         (* If we assume sort_last >= 2 then the sort buffer will never
          * be empty but for the very last tuple. In that case pretend
          * tuple_in is the first (sort.#count will still be 0). *)
-        (* Shortcut for sort_last <= 1 *)
         if sort_last <= 1 then
           aggregate_one s in_tuple
         else

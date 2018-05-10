@@ -46,8 +46,8 @@ all: $(INSTALLED)
 # Generic rules
 
 .SUFFIXES: .ml .mli .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
-.PHONY: clean all check func-check dep install uninstall reinstall \
-        bundle doc deb \
+.PHONY: clean clean-temp all check func-check unit-check cli-check \
+        dep install uninstall reinstall bundle doc deb \
         docker-latest docker-build-image docker-build-builder docker-circleci docker-push
 
 %.cmx %.annot: %.ml
@@ -427,7 +427,14 @@ docker-push:
 
 # Cleaning
 
-clean:
+clean-temp:
+	@echo 'Cleaning ramen compiler temp files'
+	@for d in tests examples ; do\
+	   find $$d -\( -name '*.ml' -o -name '*.cmx' -o -name '*.o' \
+	             -o -name '*.x'  -o -name '*.s' -o -name '*.cmi' -\) -delete ;\
+	 done
+
+clean: clean-temp
 	@echo 'Cleaning all build files'
 	@$(RM) src/*.s src/*.annot src/*.o
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
@@ -439,10 +446,6 @@ clean:
 	@$(RM) src/ramen src/codegen.cmxa src/RamenFileNotify.ml src/libringbuf.a
 	@$(RM) src/libcollectd.a src/libnetflow.a
 	@find tests -name '*.success' -delete
-	@for d in tests examples ; do\
-	   find $$d -\( -name '*.ml' -o -name '*.cmx' -o -name '*.o' \
-	             -o -name '*.x'  -o -name '*.s' -o -name '*.cmi' -\) -delete ;\
-	 done
 	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp
 	@$(RM) ramen.*.deb

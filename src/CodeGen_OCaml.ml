@@ -837,7 +837,7 @@ let emit_sersize_of_tuple name oc tuple_typ =
           id
           (emit_sersize_of_field_var field.typ) "x_"
       else
-        Printf.fprintf oc "\t\t\t%a"
+        Printf.fprintf oc "\t\t\t%a\n"
           (emit_sersize_of_field_var field.typ) id ;
       Printf.fprintf oc "\t\t) else 0 in\n" ;
       Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n" ;
