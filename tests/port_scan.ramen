@@ -9,4 +9,4 @@ DEFINE detect AS
   GROUP BY src, dst
   SELECT src, dst, sum 1 AS count
   -- Forcibly output the top when we reach the last line of the CSV:
-  TOP 2 BY out.count WHEN sum globally 1 >= 29;
+  TOP 2 BY out.count WHEN source = "END";
