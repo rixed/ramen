@@ -326,6 +326,12 @@ let check params =
     Expr.unpure_iter (function
       | StatefulFun (_, s, _) when s = state -> raise (SyntaxError e)
       | _ -> ())
+  and check_no_both_states e x =
+    Expr.unpure_fold None (fun prev -> function
+      | StatefulFun (_, s, _) ->
+          if prev = Some s then raise (SyntaxError e) ;
+          Some s
+      | _ -> prev) x |> ignore
   and check_fields_from lst where =
     Expr.iter (function
       | Expr.Field (_, tuple, _) ->
@@ -439,9 +445,12 @@ let check params =
       (* Also check that the top-by expression does not update the global
        * state: *)
       check_no_global (no_global "TOP-BY") by ;
-      (* Also check that if there is a top then commit_when does not alter
-       * global state: *)
-      check_no_global (no_global "COMMIT-WHEN (with TOP)") commit_when ;
+      (* Also check that commit_when does not use both the group and global
+       * state, as we won't be able to update the global state when in
+       * tuple ends up in "others" if commit-when needs the group: *)
+      let e = StateNotAllowed {
+        state = "global and local" ; clause = "COMMIT-WHEN (with TOP)" } in
+      check_no_both_states e commit_when ;
       check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut; TupleGroupPrevious; TupleOutPrevious] "TOP clause" by ;
       (* The only windowing mode supported is then `commit and flush`: *)
       if flush_how <> Reset then

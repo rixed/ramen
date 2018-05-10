@@ -1538,6 +1538,15 @@ let emit_merge_on name in_typ mentioned and_all_others oc es =
     (List.print ~first:"(" ~last:")" ~sep:", "
        (emit_expr ?state:None ~context:Finalize)) es
 
+let expr_needs_group e =
+  let open RamenExpr in
+  fold_by_depth (fun need expr ->
+    need || match expr with
+      | Field (_, tuple, _) -> tuple_need_state !tuple
+      | StatefulFun (_, LocalState, _) -> true
+      | _ -> false
+  ) false e
+
 let emit_aggregate oc name in_typ out_typ = function
   | RamenOperation.Aggregate
       { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
@@ -1547,17 +1556,12 @@ let emit_aggregate oc name in_typ out_typ = function
     let all_exprs = RamenOperation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
   and top_by = Option.map snd top
-  and where_need_group =
-    (* Tells whether we need the group to check the where clause (because it
-     * uses the group tuple or build a group-wise aggregation on its own,
-     * despite this is forbidden in RamenOperation.check): *)
-    let open RamenExpr in
-    fold_by_depth (fun need expr ->
-      need || match expr with
-        | Field (_, tuple, _) -> tuple_need_state !tuple
-        | StatefulFun (_, LocalState, _) -> true
-        | _ -> false
-      ) false where
+  (* Tells whether we need the group to check the where clause (because it
+   * uses the group tuple or build a group-wise aggregation on its own,
+   * despite this is forbidden in RamenOperation.check): *)
+  and where_need_group = expr_needs_group where
+  (* Good to know when performing a TOP: *)
+  and commit_when_needs_group = expr_needs_group commit_when
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
@@ -1595,13 +1599,16 @@ let emit_aggregate oc name in_typ out_typ = function
       \t\ttuple_of_group_ merge_on_ %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
       \t\ttop_ top_init_ float_of_top_state_\n\
-      \t\tcommit_when_ %b %b %s should_resubmit_\n\
+      \t\tcommit_when_ %b %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_ field_of_tuple_ %a %f\n"
     name
     (snd merge)
     (match sort with None -> 0 | Some (n, _, _) -> n)
     (key = [])
-    commit_before (flush_how <> Never) when_to_check_for_commit
+    commit_when_needs_group
+    commit_before
+    (flush_how <> Never)
+    when_to_check_for_commit
     (List.print (fun oc n ->
       let s = PPP.to_string RamenOperation.notification_ppp_ocaml n in
       Printf.fprintf oc "%S" s)) notifications

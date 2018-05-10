@@ -519,6 +519,11 @@ let unpure_iter f e =
     | StatefulFun _ as e -> f e
     | _ -> ()) () e |> ignore
 
+let unpure_fold u f e =
+  fold_by_depth (fun u -> function
+    | StatefulFun _ as e -> f u e
+    | _ -> u) u e
+
 (* Any expression that uses a generator is a generator: *)
 let is_generator =
   fold_by_depth (fun is e ->
