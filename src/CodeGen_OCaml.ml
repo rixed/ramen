@@ -1129,9 +1129,9 @@ let emit_generate_tuples name in_typ mentioned and_all_others out_typ oc selecte
       RamenExpr.is_generator sf.RamenOperation.expr)
       selected_fields in
   if not has_generator then
-    Printf.fprintf oc "let %s f_ _it_ ot_ = f_ ot_\n" name
+    Printf.fprintf oc "let %s f_ it_ ot_ = f_ it_ ot_\n" name
   else (
-    Printf.fprintf oc "let %s f_ %a %a =\n"
+    Printf.fprintf oc "let %s f_ (%a as it_) %a =\n"
       name
       (emit_in_tuple mentioned and_all_others) in_typ
       (print_tuple_deconstruct TupleOut) out_typ ;
@@ -1151,7 +1151,7 @@ let emit_generate_tuples name in_typ mentioned and_all_others out_typ oc selecte
         ) 0 selected_fields in
     (* Now we have all the generated values, actually call f_ on the tuple.
      * Note that the tuple must be in out_typ order: *)
-    Printf.fprintf oc "%af_ (\n%a"
+    Printf.fprintf oc "%af_ it_ (\n%a"
       emit_indent (1 + nb_gens)
       emit_indent (2 + nb_gens) ;
     let expr_of_field name =
@@ -1564,7 +1564,7 @@ let emit_aggregate oc name in_typ out_typ = function
   and commit_when_needs_group = expr_needs_group commit_when
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when ?top_by:None) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when ?top_by:None) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_typ
@@ -1585,7 +1585,8 @@ let emit_aggregate oc name in_typ out_typ = function
     (emit_serialize_tuple "serialize_group_") out_typ
     (emit_generate_tuples "generate_tuples_" in_typ mentioned and_all_others out_typ) fields
     (emit_should_resubmit "should_resubmit_" in_typ mentioned and_all_others) flush_how
-    (emit_field_of_tuple "field_of_tuple_") out_typ
+    (emit_field_of_tuple "field_of_tuple_in_") in_typ
+    (emit_field_of_tuple "field_of_tuple_out_") out_typ
     (emit_state_init "top_init_" RamenExpr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
     (emit_top "top_" in_typ mentioned and_all_others out_typ) top
     (emit_float_of_top "float_of_top_state_" in_typ mentioned and_all_others out_typ) top_by
@@ -1600,7 +1601,8 @@ let emit_aggregate oc name in_typ out_typ = function
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
       \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %b %s should_resubmit_\n\
-      \t\tglobal_init_ group_init_ field_of_tuple_ %a %f\n"
+      \t\tglobal_init_ group_init_\n\
+      \t\tfield_of_tuple_in_ field_of_tuple_out_ %a %f\n"
     name
     (snd merge)
     (match sort with None -> 0 | Some (n, _, _) -> n)

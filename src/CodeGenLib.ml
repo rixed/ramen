@@ -643,21 +643,36 @@ let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
  * Aggregate operation
  *)
 
-let notify conf rb worker notif field_of_tuple tuple =
-  let expand_fields =
-    let open Str in
-    let re = regexp "\\${\\(out\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
-    fun text tuple ->
-      global_substitute re (fun s ->
-          let field_name = matched_group 2 s in
-          try field_of_tuple tuple field_name
-          with Not_found ->
-            !logger.error "Field %S used in text substitution is not \
-                           present in the input!" field_name ;
-            "??"^ field_name ^"??"
-        ) text
-  in
-  let notif = expand_fields notif tuple in
+let subst_tuple_fields =
+  let open Str in
+  let re =
+    regexp "\\${\\(\\([_a-zA-Z0-9.]+\\)\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
+  fun text tuples ->
+    global_substitute re (fun s ->
+      let tuple_name = try matched_group 2 s with Not_found -> "" in
+      let field_name = matched_group 3 s in
+      match List.find (fun (names, _finder) ->
+              List.mem tuple_name names
+            ) tuples with
+      | exception Not_found ->
+        !logger.error "Unknown tuple %S used in text substitution!"
+          tuple_name ;
+        "??"^ tuple_name ^"."^ field_name ^"??"
+      | _, finder ->
+        try finder field_name
+        with Not_found ->
+          !logger.error "Field \"%s.%s\" used in text substitution is not \
+                         present in that tuple!" tuple_name field_name ;
+          "??"^ tuple_name ^"."^ field_name ^"??"
+    ) text
+
+let notify conf rb worker notif
+           field_of_tuple_in tuple_in
+           field_of_tuple_out tuple_out =
+  let tuples =
+    [ [ ""; "out" ], field_of_tuple_out tuple_out ;
+      [ "in" ], field_of_tuple_in tuple_in ] in
+  let notif = subst_tuple_fields notif tuples in
   RingBufLib.write_notif ~delay_rec:sleep_out rb worker notif
 
 type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =
@@ -852,7 +867,7 @@ let aggregate
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> float * float)
       (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> 'tuple_out -> int)
-      (generate_tuples : ('tuple_out -> unit Lwt.t) -> 'tuple_in -> 'generator_out -> unit Lwt.t)
+      (generate_tuples : ('tuple_in -> 'tuple_out -> unit Lwt.t) -> 'tuple_in -> 'generator_out -> unit Lwt.t)
       (tuple_of_aggr :
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
@@ -924,7 +939,8 @@ let aggregate
       (should_resubmit : ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value -> 'tuple_in -> bool)
       (global_state : 'global_state)
       (group_init : 'global_state -> 'aggr)
-      (field_of_tuple : 'tuple_out -> string -> string)
+      (field_of_tuple_in : 'tuple_in -> string -> string)
+      (field_of_tuple_out : 'tuple_out -> string -> string)
       (notifications : string list)
       (every : float) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
@@ -958,16 +974,18 @@ let aggregate
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                   serialize_tuple in
     let outputer =
-      let do_out tuple =
+      let do_out tuple_in tuple_out =
         let%lwt () =
           Lwt_list.iter_s (fun notif ->
-            notify conf notify_rb worker_name notif field_of_tuple tuple
+            notify conf notify_rb worker_name notif
+                   field_of_tuple_in tuple_in
+                   field_of_tuple_out tuple_out
           ) notifications in
-        tuple_outputer tuple
+        tuple_outputer tuple_out
       in
       generate_tuples do_out in
     let commit s in_tuple out_tuple =
-      (* in_tuple here is useful for generators *)
+      (* in_tuple here is useful for generators and text expansion *)
       s.out_count <- Uint64.succ s.out_count ;
       s.last_out_tuple <- Some out_tuple ;
       outputer in_tuple out_tuple
