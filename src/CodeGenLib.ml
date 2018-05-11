@@ -545,6 +545,7 @@ let subst_tuple_fields =
   let re =
     regexp "\\${\\(\\([_a-zA-Z0-9.]+\\)\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
   fun tuples text ->
+    let tuples = ([ "env" ], Sys.getenv) :: tuples in
     global_substitute re (fun s ->
       let tuple_name = try matched_group 2 s with Not_found -> "" in
       let field_name = matched_group 3 s in
