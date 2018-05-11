@@ -9,7 +9,7 @@ let release_tag = "v2.0.0"
 let graph_config = "v9" (* last: stripped down version *)
 
 (* Code generation: sources, binaries... *)
-let codegen = "v8" (* last: addition of factors *)
+let codegen = "v9" (* last: fixes in top operations *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)
