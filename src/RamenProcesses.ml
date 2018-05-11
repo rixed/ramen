@@ -211,6 +211,7 @@ let check_is_subtype t1 t2 =
 (* Returns the running parents and children of a func: *)
 let relatives f must_run =
   Hashtbl.fold (fun _sign (_bin, _program_name, func) (ps, cs) ->
+    (* Tells if [func'] is a parent of [func]: *)
     let is_parent_of func func' =
       List.mem (func'.F.program_name, func'.F.name) func.F.parents in
     (if is_parent_of f func then func::ps else ps),

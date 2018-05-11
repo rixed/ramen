@@ -695,7 +695,6 @@ let abbrev len s =
 
 (* Addition capped to min_int/max_int *)
 let cap_add a b =
-  !logger.debug "cap_add %d %d" a b ;
   if a > 0 && b > 0 then
     if max_int - b >= a then a + b else max_int
   else if a < 0 && b < 0 then

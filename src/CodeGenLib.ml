@@ -540,6 +540,7 @@ let worker_start worker_name get_binocle_tuple k =
         return 1)) |>
   exit
 
+(* Replace ${tuple.field} bu the actual value the passed string: *)
 let subst_tuple_fields =
   let open Str in
   let re =

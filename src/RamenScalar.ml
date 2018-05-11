@@ -118,6 +118,9 @@ let my_float_to_string v =
   assert (String.length s > 0) ;
   if s.[String.length s - 1] <> '.' then s else String.rchop s
 
+(* Used for debug, value expansion within strings, output values in tail
+ * and timeseries commands, test immediate values.., but not for code
+ * generation. *)
 let to_string ?(null="NULL") = function
   | VFloat f  -> my_float_to_string f
   | VString s -> Printf.sprintf "%S" s
