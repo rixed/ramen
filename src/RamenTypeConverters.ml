@@ -4,11 +4,21 @@ open Stdint
 
 (* Converters from string to values *)
 
-let float_of_string = Pervasives.float_of_string
-let string_of_string x = x
+let string_of_string s =
+  (* When we convert a string to a string we quote it, so now we must
+   * unquote. But this is also used when we read CSV, where we try to
+   * unquote every fields, and for command line parameters, etc. Be
+   * lenient in what you receive... So here we also accept unquoted values: *)
+  if String.length s < 2 || s.[0] <> '"' || s.[String.length s - 1] <> '"' then
+    s
+  else
+    String.sub s 1 (String.length s - 2)
+
 let bool_of_string = function
   | "true" | "TRUE" | "t" | "T" | "y" | "Y" | "on" | "ON" | "#t" | "1" -> true
   | _ -> false
+
+let float_of_string = Pervasives.float_of_string
 let u8_of_string = Uint8.of_string
 let u16_of_string = Uint16.of_string
 let u32_of_string = Uint32.of_string
