@@ -257,10 +257,10 @@ let is_merging = function
 
 let event_time_of_operation = function
   | Aggregate { event_time ; _ } -> event_time
+  | ReadCSVFile { event_time ; _ } -> event_time
   | ListenFor { proto ; _ } ->
     RamenProtocols.event_time_of_proto proto
   | Instrumentation _ -> RamenBinocle.event_time
-  | _ -> None
 
 let parents_of_operation = function
   | ListenFor _ | ReadCSVFile _
