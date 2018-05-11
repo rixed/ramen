@@ -1602,7 +1602,7 @@ let emit_aggregate oc name in_typ out_typ = function
       \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_\n\
-      \t\tfield_of_tuple_in_ field_of_tuple_out_ %a %f\n"
+      \t\tfield_of_tuple_in_ field_of_tuple_out_ field_of_params_ %a %f\n"
     name
     (snd merge)
     (match sort with None -> 0 | Some (n, _, _) -> n)
@@ -1643,6 +1643,17 @@ let compile conf entry_point func_name obj_name in_typ out_typ params op =
           emit_scalar v
           n
       ) params ;
+      (* Also a function that takes a parameter name (string) and return its
+       * value (as a string) - useful for text replacements within strings *)
+      Printf.fprintf oc "let field_of_params_ = function\n%a\
+                         \t| _ -> raise Not_found\n\n"
+        (List.print ~first:"" ~last:"" ~sep:"" (fun oc (n, v) ->
+          let glob_name =
+            Printf.sprintf "%s_%s_" (id_of_prefix TupleParam) n in
+          Printf.fprintf oc "\t| %S -> %a\n"
+            n
+            (conv_from_to (RamenScalar.type_of v) ~nullable:false
+                          TString String.print) glob_name)) params ;
       (match op with
       | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                       what = { separator ; null ; fields } ; event_time } ->

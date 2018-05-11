@@ -668,10 +668,12 @@ let subst_tuple_fields =
 
 let notify conf rb worker notif
            field_of_tuple_in tuple_in
-           field_of_tuple_out tuple_out =
+           field_of_tuple_out tuple_out
+           field_of_params =
   let tuples =
     [ [ ""; "out" ], field_of_tuple_out tuple_out ;
-      [ "in" ], field_of_tuple_in tuple_in ] in
+      [ "in" ], field_of_tuple_in tuple_in ;
+      [ "param" ], field_of_params ] in
   let notif = subst_tuple_fields notif tuples in
   RingBufLib.write_notif ~delay_rec:sleep_out rb worker notif
 
@@ -941,6 +943,7 @@ let aggregate
       (group_init : 'global_state -> 'aggr)
       (field_of_tuple_in : 'tuple_in -> string -> string)
       (field_of_tuple_out : 'tuple_out -> string -> string)
+      (field_of_params : string -> string)
       (notifications : string list)
       (every : float) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
@@ -980,6 +983,7 @@ let aggregate
             notify conf notify_rb worker_name notif
                    field_of_tuple_in tuple_in
                    field_of_tuple_out tuple_out
+                   field_of_params
           ) notifications in
         tuple_outputer tuple_out
       in
