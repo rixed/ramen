@@ -540,10 +540,34 @@ let worker_start worker_name get_binocle_tuple k =
         return 1)) |>
   exit
 
+let subst_tuple_fields =
+  let open Str in
+  let re =
+    regexp "\\${\\(\\([_a-zA-Z0-9.]+\\)\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
+  fun tuples text ->
+    global_substitute re (fun s ->
+      let tuple_name = try matched_group 2 s with Not_found -> "" in
+      let field_name = matched_group 3 s in
+      match List.find (fun (names, _finder) ->
+              List.mem tuple_name names
+            ) tuples with
+      | exception Not_found ->
+        !logger.error "Unknown tuple %S used in text substitution!"
+          tuple_name ;
+        "??"^ tuple_name ^"."^ field_name ^"??"
+      | _, finder ->
+        try finder field_name
+        with Not_found ->
+          !logger.error "Field \"%s.%s\" used in text substitution is not \
+                         present in that tuple!" tuple_name field_name ;
+          "??"^ tuple_name ^"."^ field_name ^"??"
+    ) text
+
 (* Operations that funcs may run: *)
 
 let read_csv_file filename do_unlink separator sersize_of_tuple
-                  time_of_tuple serialize_tuple tuple_of_strings preprocessor =
+                  time_of_tuple serialize_tuple tuple_of_strings preprocessor
+                  field_of_params =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -551,7 +575,10 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
     let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     (* For tests, allow to overwrite what's specified in the operation: *)
     and filename = getenv ~def:filename "csv_filename"
-    and separator = getenv ~def:separator "csv_separator"
+    and separator = getenv ~def:separator "csv_separator" in
+    let tuples = [ [ "param" ], field_of_params ] in
+    let filename = subst_tuple_fields tuples filename
+    and separator = subst_tuple_fields tuples separator
     in
     !logger.debug "Will read CSV file %S using separator %S"
                   filename separator ;
@@ -643,29 +670,6 @@ let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
  * Aggregate operation
  *)
 
-let subst_tuple_fields =
-  let open Str in
-  let re =
-    regexp "\\${\\(\\([_a-zA-Z0-9.]+\\)\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
-  fun text tuples ->
-    global_substitute re (fun s ->
-      let tuple_name = try matched_group 2 s with Not_found -> "" in
-      let field_name = matched_group 3 s in
-      match List.find (fun (names, _finder) ->
-              List.mem tuple_name names
-            ) tuples with
-      | exception Not_found ->
-        !logger.error "Unknown tuple %S used in text substitution!"
-          tuple_name ;
-        "??"^ tuple_name ^"."^ field_name ^"??"
-      | _, finder ->
-        try finder field_name
-        with Not_found ->
-          !logger.error "Field \"%s.%s\" used in text substitution is not \
-                         present in that tuple!" tuple_name field_name ;
-          "??"^ tuple_name ^"."^ field_name ^"??"
-    ) text
-
 let notify conf rb worker notif
            field_of_tuple_in tuple_in
            field_of_tuple_out tuple_out
@@ -674,7 +678,7 @@ let notify conf rb worker notif
     [ [ ""; "out" ], field_of_tuple_out tuple_out ;
       [ "in" ], field_of_tuple_in tuple_in ;
       [ "param" ], field_of_params ] in
-  let notif = subst_tuple_fields notif tuples in
+  let notif = subst_tuple_fields tuples notif in
   RingBufLib.write_notif ~delay_rec:sleep_out rb worker notif
 
 type ('aggr, 'tuple_in, 'generator_out, 'top_state) aggr_value =

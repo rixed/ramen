@@ -983,7 +983,9 @@ let emit_read_csv_file oc name csv_fname unlink csv_separator csv_null
      "open Batteries\nopen Stdint\n\n\
      %a\n%a\n%a\n%a\n\
      let %s () =\n\
-       \tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_ tuple_of_strings_ %S\n"
+       \tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_\n\
+       \t\ttime_of_tuple_ serialize_tuple_ tuple_of_strings_ %S\n\
+       \t\tfield_of_params_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_time_of_tuple "time_of_tuple_" event_time) tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
