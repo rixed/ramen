@@ -209,14 +209,12 @@ let with_rlock conf f =
   let rec loop () =
     try%lwt
       RamenAdvLock.with_r_lock rc_file (fun () ->
-        !logger.debug "Took graph lock (read)" ;
         let programs =
           (* TODO: cache reading the rc file *)
           read_rc_file conf.do_persist rc_file |>
           Hashtbl.map (fun _ mre ->
             memoize (fun () -> mre.bin, program_of_running_entry mre)) in
         let%lwt x = f programs in
-        !logger.debug "Release graph lock (read)" ;
         return x)
     with RetryLater s ->
       Lwt_unix.sleep s >>= loop
@@ -230,12 +228,10 @@ let with_wlock conf f =
   let rec loop () =
     try%lwt
       RamenAdvLock.with_w_lock rc_file (fun () ->
-        !logger.debug "Took graph lock (write)" ;
         let programs = read_rc_file conf.do_persist rc_file in
         let%lwt ret = f programs in
         (* Save the config only if f did not fail: *)
         save_rc_file conf.do_persist rc_file programs ;
-        !logger.debug "Release graph lock (write)" ;
         return ret)
     with RetryLater s ->
       Lwt_unix.sleep s >>= loop
