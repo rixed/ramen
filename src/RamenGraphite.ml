@@ -109,6 +109,29 @@ let tree_enum_of_fields func =
        if List.mem n func.F.factors then None
        else Some ((n, DataField), E (Enum.empty ()))))
 
+(* When building target names we may use scalar values in place of factor
+ * fields. When those values are strings they are always quoted. But we'd
+ * like to unquote them when possible. Also, some other values may be left
+ * unquoted by RamenScalar.print but we do need to quote them if they
+ * contain a ".": *)
+let fix_quote s =
+  let try_quote s =
+    if s.[0] = '"' then s else "\""^ s ^"\""
+  and try_unquote s =
+    let l = String.length s in
+    if s.[0] = '"' && s.[l - 1] = '"' then String.sub s 1 (l - 2) else s
+  in
+  if s = "" then "\"\"" else
+  if String.contains s '.' then try_quote s
+  else try_unquote s
+(*$= fix_quote & ~printer:identity
+  "\"\"" (fix_quote "")
+  "glop" (fix_quote "glop")
+  "glop" (fix_quote "\"glop\"")
+  "\"pas.glop\"" (fix_quote "pas.glop")
+  "\"pas.glop\"" (fix_quote "\"pas.glop\"")
+ *)
+
 (* Given a functions and a list of factors (any part of func.F.factors),
  * return the tree_enum of the factors: *)
 let rec tree_enum_of_factors func = function
@@ -122,7 +145,7 @@ let rec tree_enum_of_factors func = function
       let fact_values =
         if Set.is_empty fact_values then Enum.singleton ("", FactorField None)
         else Set.enum fact_values /@
-             (fun v -> RamenScalar.to_string v (* TODO: unquote already? *),
+             (fun v -> RamenScalar.to_string v |> fix_quote,
                        FactorField (Some v)) in
       E (fact_values /@
          (fun pv -> pv, tree_enum_of_factors func factors'))
@@ -241,7 +264,7 @@ let split_query s =
  * leaf is a flag set if that completed component has no further descendant,
  * text is the completed last component (same as id ending) and target
  * is the fully expanded query string matching id. *)
-let expand_query conf query =
+let expand_query_text conf query =
   let query = split_query query in
   let%lwt filtered = enum_tree_of_query conf query in
   let nb_filters = List.length query in
@@ -260,10 +283,32 @@ let expand_query conf query =
   List.enum |>
   return
 
+let expand_query_values conf query =
+  let query = split_query query in
+  let%lwt filtered = enum_tree_of_query conf query in
+  let depth0 = "", "", [], "" in
+  tree_enum_fold (fun node_res
+                      (prog_name, func_name, factors, data_field)
+                      (n, section) is_leaf ->
+    match section with
+    | ProgPath ->
+        let prog_name = if prog_name = "" then n else prog_name ^"/"^ n in
+        node_res, (prog_name, func_name, factors, data_field)
+    | OpName ->
+        node_res, (prog_name, n, factors, data_field)
+    | FactorField v_opt ->
+        node_res, (prog_name, func_name, (n, v_opt) :: factors, data_field)
+    | DataField ->
+        assert is_leaf ;
+        (prog_name, func_name, List.rev factors, n) :: node_res, depth0
+  ) [] depth0 filtered |>
+  List.enum |>
+  return
+
 let complete_graphite_find conf headers params =
   let%lwt expanded =
     Hashtbl.find_default params "query" "*" |>
-    expand_query conf in
+    expand_query_text conf in
   let resp = expanded /@
              metric_of_worker_path //
              uniquify () |>
@@ -426,29 +471,6 @@ let time_of_graphite_time s =
   else if s.[0] = '-' then time_of_reltime s
   else time_of_abstime s
 
-(* When building target names we may use scalar values in place of factor
- * fields. When those values are strings they are always quoted. But we'd
- * like to unquote them when possible. Also, some other values may be left
- * unquoted by RamenScalar.print but we do need to quote them if they
- * contain a ".": *)
-let fix_quote s =
-  let try_quote s =
-    if s.[0] = '"' then s else "\""^ s ^"\""
-  and try_unquote s =
-    let l = String.length s in
-    if s.[0] = '"' && s.[l - 1] = '"' then String.sub s 1 (l - 2) else s
-  in
-  if s = "" then "\"\"" else
-  if String.contains s '.' then try_quote s
-  else try_unquote s
-(*$= fix_quote & ~printer:identity
-  "\"\"" (fix_quote "")
-  "glop" (fix_quote "glop")
-  "glop" (fix_quote "\"glop\"")
-  "\"pas.glop\"" (fix_quote "pas.glop")
-  "\"pas.glop\"" (fix_quote "\"pas.glop\"")
- *)
-
 (* Return the target name of that function, given the where filter and
  * used factors. [fvals] are the scalar values to use for the factored
  * fields (fields present in [factors], in same order): *)
@@ -505,68 +527,64 @@ let render_graphite conf headers body =
   (* We start by expanding the query so that we have also an expansion
    * for field/function names with matches. *)
   let%lwt targets =
-    Lwt_list.map_s (expand_query conf) targets in
-  (* Targets is now a list of enumerations of expanded program + function name
-   * + factors values + field name, all separated by dots. Regardless of how
-   * many original query were sent, the expected answer is a flat array of
-   * target name + timeseries.  We can therefore flatten all the expanded
-   * targets and regroup by operation + where filter, then scan data for each
-   * of those groups asking for all possible factors. *)
+    Lwt_list.map_s (expand_query_values conf) targets in
+  (* Targets is now a list of enumerations of program + function name + factors
+   * values + field name. Regardless of how many original query were sent, the
+   * expected answer is a flat array of target name + timeseries.  We can
+   * therefore flatten all the expanded targets and regroup by operation +
+   * where filter, then scan data for each of those groups asking for all
+   * possible factors. *)
   let targets =
-    (List.enum targets |> Enum.flatten) /@
-    (fun (_, _, _, target) -> target) |>
+    (List.enum targets |> Enum.flatten) |>
     List.of_enum in
-  !logger.debug "targets = %a" (List.print String.print) targets ;
-  (* Instead of those strings we'd like to have the target decomposed into a
-   * func, function FQ name, the factors values, and the data field: *)
+  (* In addition to the prog and func names we'd like to have the func: *)
   let%lwt targets =
     C.with_rlock conf (fun programs ->
-      Lwt_list.map_s (fun target ->
-        (* FIXME: handle "#stats" and "stats" *)
-        let rec search_func pref = function
-          | [] | [_] -> bad_request ("bad target: "^ target)
-          | pn :: (fn :: fields as rest) ->
-              let prog_name =
-                if pref = "" then pn else pref ^"/"^ pn in
-              (* Beware that first program is not necessarily the
-               * intended one! *)
-              match Hashtbl.find programs prog_name with
-              | exception Not_found -> search_func prog_name rest
-              | get_rc ->
-                  let _bin, funcs = get_rc () in
-                  (match List.find (fun f -> f.F.name = fn) funcs with
-                  | exception Not_found -> search_func prog_name rest
-                  | func ->
-                      let nb_fields = List.length fields in
-                      let nb_factors = List.length func.factors in
-                      if nb_fields = nb_factors + 1 then (
-                        let factors, data_field =
-                          List.split_at (nb_fields - 1) fields in
-                        let data_field = List.hd data_field in
-                        let full_name = prog_name ^"/"^ fn in
-                        return (func, full_name, factors, data_field)
-                      ) else (
-                        !logger.debug "bad number of fields for %s/%s: \
-                                       fields=%a but have %d factors"
-                          prog_name fn
-                          (List.print String.print) fields nb_factors ;
-                        search_func prog_name rest
-                      ))
-        in
-        search_func "" (split_query target)
+      Lwt_list.filter_map_s (fun (prog_name, func_name, fvals, data_field) ->
+        match Hashtbl.find programs prog_name with
+        | exception Not_found ->
+            !logger.error "Program %s just disappeared?" prog_name ;
+            return_none
+        | get_rc ->
+            let _bin, funcs = get_rc () in
+            (match List.find (fun f -> f.F.name = func_name) funcs with
+            | exception Not_found ->
+                !logger.error "Function %s/%s just disappeared?"
+                  prog_name func_name ;
+                return_none
+            | func ->
+                if List.length fvals <> List.length func.factors then (
+                  !logger.error "Function %s/%s just changed factors?"
+                    prog_name func_name ;
+                  return_none
+                ) else if List.mem data_field func.factors then (
+                  !logger.error "Function %s/%s just got %s as factor?"
+                    prog_name func_name data_field ;
+                  return_none
+                ) else if not (List.exists (fun ft ->
+                               ft.RamenTuple.typ_name = data_field
+                             ) func.out_type.ser) then (
+                  !logger.error "Function %s/%s just lost field %s?"
+                    prog_name func_name data_field ;
+                  return_none
+                ) else (
+                  let full_name = prog_name ^"/"^ func_name in
+                  return (Some (func, full_name, List.map snd fvals, data_field))
+                ))
       ) targets) in
   (* Now we need to decide, for each factor value, if we want it in a where
    * filter (it's the only value we want for this factor) or if we want to
    * get a timeseries for all possible values (in a single scan). For this
    * we merely count how many distinct values we are asking for: *)
   let factor_values = Hashtbl.create 9 in
-  let count_factor_values (func, func_name, factors, data_field) =
-    (* Target is actually the program + function name + factors values +
-     * field name, all separated by dots. We need the fully qualified name
-     * of the function, the factor values and the field name: *)
-    List.iteri (fun i fval ->
-      Hashtbl.add factor_values (func_name, i) fval
-    ) factors ;
+  let count_factor_values (func, func_name, fvals, data_field) =
+    !logger.debug "target = op:%s, fvals:%a, data:%s"
+      func_name (List.print (Option.print RamenScalar.print)) fvals data_field ;
+    List.iteri (fun i fval_opt ->
+      match fval_opt with
+      | None -> ()
+      | Some fval -> Hashtbl.add factor_values (func_name, i) fval
+    ) fvals ;
     return_unit in
   let%lwt () = Lwt_list.iter_s count_factor_values targets in
   (* Now we can decide on which scans to perform *)
@@ -574,23 +592,21 @@ let render_graphite conf headers body =
   let add_scans (func, func_name, fvals, data_field) =
     let where, factors, _ =
       List.fold_left2 (fun (where, factors, i) factor fval ->
-        if Hashtbl.find_all factor_values (func_name, i) |> List.length > 1
-        then
+        let wanted = Hashtbl.find_all factor_values (func_name, i) in
+        !logger.debug "wanted values for factor %d (%s): %a" i factor
+          (List.print RamenScalar.print) wanted ;
+        match wanted with
+        | [] -> (* Can happen if there are no possible values. *)
+            where, factors, i + 1
+        | [ single_val ] ->
+          (* If we are interested in only one value, do not ask for this factor
+           * but add a where filter: *)
+          (factor, single_val) :: where,
+          factors, i + 1
+        | _several_vals ->
           (* We want several values for that factor, so we will take it as a
            * factor: *)
           where, Set.add factor factors, i + 1
-        else
-          (* If we are interested in only one value, do not ask for this factor
-           * but add a where filter: *)
-          (* FIXME: we should have kept the scalar value in factors instead of
-           * a string *)
-          let ft =
-            List.find (fun ft ->
-              ft.RamenTuple.typ_name = factor
-            ) func.F.out_type.ser in
-          (factor,
-           RamenScalar.value_of_string ft.RamenTuple.typ fval) :: where,
-          factors, i + 1
       ) ([], Set.empty, 0) func.F.factors fvals in
     Hashtbl.modify_opt (func_name, where) (function
       | None ->
