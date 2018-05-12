@@ -243,5 +243,4 @@ let cache_possible_values conf programs =
 (* Enumerate the possible values of a factor: *)
 let possible_values func factor =
   let h = Hashtbl.find possible_values_cache func.F.name in
-  Set.enum (Hashtbl.find h factor) /@
-  RamenScalar.to_string
+  Hashtbl.find h factor

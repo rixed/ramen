@@ -93,13 +93,21 @@ let rec filter_tree te = function
         if flt a then Some (a, filter_tree te' flts)
         else None) (get te))
 
+(* We are going to build mostly a string tree_enum, with the addition that we
+ * also want to know in which part of the tree we are and also to keep any
+ * scalar value we might have for a factor.  So we actually build a tree_enum
+ * of: *)
+type tree_enum_section =
+  ProgPath | OpName | FactorField of RamenScalar.value option | DataField
+type string_with_scalar = string * tree_enum_section
+
 (* Given a func, returns the tree_enum of fields that are not factors *)
 let tree_enum_of_fields func =
   E (List.enum func.F.out_type.ser //@
      (fun ft ->
        let n = ft.RamenTuple.typ_name in
        if List.mem n func.F.factors then None
-       else Some (n, E (Enum.empty ()))))
+       else Some ((n, DataField), E (Enum.empty ()))))
 
 (* Given a functions and a list of factors (any part of func.F.factors),
  * return the tree_enum of the factors: *)
@@ -112,8 +120,10 @@ let rec tree_enum_of_factors func = function
        * good. *)
       let fact_values = RamenTimeseries.possible_values func factor in
       let fact_values =
-        if Enum.is_empty fact_values then Enum.singleton ""
-        else fact_values in
+        if Set.is_empty fact_values then Enum.singleton ("", FactorField None)
+        else Set.enum fact_values /@
+             (fun v -> RamenScalar.to_string v (* TODO: unquote already? *),
+                       FactorField (Some v)) in
       E (fact_values /@
          (fun pv -> pv, tree_enum_of_factors func factors'))
 
@@ -122,7 +132,7 @@ let tree_enum_of_program (program_name, get_rc) =
   let _bin, funcs = get_rc () in
   E (List.enum funcs /@
      (fun func ->
-       func.F.name, tree_enum_of_factors func func.F.factors))
+       (func.F.name, OpName), tree_enum_of_factors func func.F.factors))
 
 (* Given the programs hashtable, return a tree_enum of the
  * path components and programs. Merely build a hashtbl of hashtbls. *)
@@ -155,14 +165,14 @@ let tree_enum_of_programs programs =
   let h = hash_for_prefix "" in
   let rec tree_enum_of_h h =
     E (Hashtbl.enum h /@
-       (function name, Prog p -> name, tree_enum_of_program p
-               | name, Hash h -> name, tree_enum_of_h h)) in
+       (function name, Prog p -> (name, ProgPath), tree_enum_of_program p
+               | name, Hash h -> (name, ProgPath), tree_enum_of_h h)) in
   tree_enum_of_h h
 
 let filters_of_query query =
   List.map (fun q ->
     let glob = Globs.compile q in
-    Globs.matches glob) query
+    Globs.matches glob % fst) query
 
 let enum_tree_of_query conf query =
   !logger.debug "Getting programs..." ;
@@ -229,15 +239,15 @@ let split_query s =
 (* Enumerate the (id, leaf, text, target) matching a query. Where:
  * id is the query with only the last part completed (used for autocompletion)
  * leaf is a flag set if that completed component has no further descendant,
- * text is the completed last component (same as id ending) and targets
- * is the list of fully expanded targets (as a query string) matching id. *)
+ * text is the completed last component (same as id ending) and target
+ * is the fully expanded query string matching id. *)
 let expand_query conf query =
   let query = split_query query in
   let%lwt filtered = enum_tree_of_query conf query in
   let nb_filters = List.length query in
   let prefix = (List.take (nb_filters - 1) query |>
                 String.concat ".") ^ "." in
-  tree_enum_fold (fun node_res (depth, target) n is_leaf ->
+  tree_enum_fold (fun node_res (depth, target) (n, section) is_leaf ->
     (* depth starts at 0 *)
     let target' =
       if target = "" then n else target ^"."^ n in

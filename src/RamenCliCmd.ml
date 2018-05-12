@@ -630,7 +630,7 @@ let graphite_expand conf query () =
     RamenGraphite.enum_tree_of_query conf query) in
   let rec display indent te =
     let e = RamenGraphite.get te in
-    Enum.iteri (fun i (n, c) ->
+    Enum.iteri (fun i ((n, _), c) ->
       let first = i = 0
       and last = Enum.peek e = None in
       let prefix =
