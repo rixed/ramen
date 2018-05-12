@@ -158,8 +158,8 @@ let scan_possible_values factors bname typ =
 let all_seq_bnames conf func =
   let bname = C.archive_buf_name conf func in
   Enum.append
-    (RingBufLib.(seq_dir_of_bname bname |> seq_files_of) /@
-     (fun (_, _, fname) -> fname))
+    (RingBufLib.(arc_dir_of_bname bname |> arc_files_of) /@
+     (fun (_, _, _, _, fname) -> fname))
     (Enum.singleton bname)
 
 (* What we save in factors cache files: *)
@@ -177,7 +177,7 @@ let factors_to_file fname factors =
  * possible values for that factor (if we need to actually scan a file,
  * all factors will be refreshed). *)
 (* TODO: a version with since/until that scans only the relevant buffers,
- * but we need to hae a way to retrieve the cached factors files from
+ * but we need to have a way to retrieve the cached factors files from
  * the time hard links. *)
 let get_possible_values conf func factor =
   if not (List.mem factor func.F.factors) then

@@ -110,29 +110,18 @@ let cleanup_old_files max_archives conf =
     and reportdir =
       Filename.dirname (RamenConf.report_ringbuf conf) in
     let clean_seq_archives dir =
-      (* Delete all files matching %d-%d.r but the last ones: *)
-      let files = RingBufLib.seq_files_of dir |> Array.of_enum in
-      Array.fast_sort RingBufLib.seq_file_compare files ;
+      (* Delete all files matching %d_%d_%a_%a.r but the last ones: *)
+      let files = RingBufLib.arc_files_of dir |> Array.of_enum in
+      Array.fast_sort RingBufLib.arc_file_compare files ;
       for i = 0 to Array.length files - max_archives do
-        let _, _, fname = files.(i) in
+        let _, _, _, _, fname = files.(i) in
         !logger.info "Deleting old archive %s" fname ;
         log_exceptions Unix.unlink fname
       done
-    and clean_time_archives dir =
-      (* Delete all time link with a link ref count at 1 *)
-      RingBufLib.time_files_of dir //@
-      (fun (_, _, fname) ->
-        let s = Unix.stat fname in
-        if s.Unix.st_nlink = 1 then Some fname else None) |>
-      Enum.iter (fun fname ->
-        !logger.info "Deleting old time index %s" fname ;
-        log_exceptions Unix.unlink fname)
     in
     let on_dir fname rel_fname =
       let basename = Filename.basename rel_fname in
-      if String.ends_with basename ".per_time" then
-        clean_time_archives fname
-      else if String.ends_with basename ".per_seq" then
+      if String.ends_with basename ".arc" then
         clean_seq_archives fname
     in
     dir_subtree_iter ~on_dir arcdir ;

@@ -18,7 +18,7 @@ let instrumentation_tuple = "v2" (* last: addition of last_out *)
 let notify_tuple = "v2" (* last: new notification type *)
 
 (* Ringbuf formats *)
-let ringbuf = "v2" (* last: non-wrapping ringbufs *)
+let ringbuf = "v3" (* last: merge seq and time archives *)
 
 (* Ref-ringbuf format *)
 let out_ref = "v2" (* last: added timeout *)

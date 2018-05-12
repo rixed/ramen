@@ -176,26 +176,6 @@ let skip_list ~out_type ~in_type =
   in
   loop [] (ser_out, ser_in)
 
-external strtod : string -> float = "wrap_strtod"
-
-let scan_time_file_name fname =
-  let t1, rest = String.split ~by:"_" fname in
-  let t2, _rest = String.split ~by:"_" rest in
-  strtod t1, strtod t2
-
-(*$= scan_time_file_name & ~printer:BatPervasives.dump
-  (0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30) \
-    (scan_time_file_name "0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30_0.b")
- *)
-
-let time_files_of dir =
-  (try Sys.files_of dir
-  with Sys_error _ -> Enum.empty ()) //@
-  (fun fname ->
-    match scan_time_file_name fname with
-    | exception (Not_found | Failure _) -> None
-    | t1, t2 -> Some (t1, t2, dir ^"/"^ fname))
-
 let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =
   retry_for_ringbuf ?while_ ?delay_rec ?max_retry_time
                     dequeue_alloc rb
@@ -252,37 +232,48 @@ let with_enqueue_tx rb sz f =
      * indicating if an entry is valid or not. *)
     fail exn
 
-let seq_dir_of_bname fname = fname ^".per_seq"
-let time_dir_of_bname fname = fname ^".per_time"
+let arc_dir_of_bname fname = fname ^".arc"
 
 let int_of_hex s = int_of_string ("0x"^ s)
 
-let seq_files_of dir =
+external strtod : string -> float = "wrap_strtod"
+
+let parse_archive_file_name fname =
+  let mi, rest = String.split ~by:"_" fname in
+  let ma, rest = String.split ~by:"_" rest in
+  let tmi, rest = String.split ~by:"_" rest in
+  let tma, rest = String.rsplit ~by:"." rest in
+  if rest <> "b" then failwith ("not an archive file ("^ rest ^")") ;
+  int_of_hex mi, int_of_hex ma,
+  strtod tmi, strtod tma
+(*$= parse_archive_file_name & ~printer:BatPervasives.dump
+  (10, 16, 0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30) \
+    (parse_archive_file_name \
+      "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.b")
+ *)
+
+let arc_files_of dir =
   (try Sys.files_of dir
   with Sys_error _ -> Enum.empty ()) //@
   (fun fname ->
-    try
-      let mi, rest = String.split ~by:"-" fname in
-      let ma, rest = String.split ~by:"." rest in
-      if rest <> "b" then failwith "not a seq file" ;
-      Some (int_of_hex mi, int_of_hex ma, dir ^"/"^ fname)
-    with Not_found | Failure _ ->
-      None)
+    match parse_archive_file_name fname with
+    | exception (Not_found | Failure _) -> None
+    | mi, ma, t1, t2 -> Some (mi, ma, t1, t2, dir ^"/"^ fname))
 
-let seq_file_compare (f1, _, _) (f2, _, _) =
-  Int.compare f1 f2
+let arc_file_compare (s1, _, _, _, _) (s2, _, _, _, _) =
+  Int.compare s1 s2
 
 let seq_range bname =
   (* Returns the first and last available seqnums.
    * Takes first from the per.seq subdir names and last from same subdir +
    * rb->stats. *)
   (* Note: in theory we should take that ringbuf lock for reading while
-   * enumerating the seq files to prevent rotation to happen, but we
+   * enumerating the arc files to prevent rotation to happen, but we
    * consider this operation a best-effort. *)
-  let dir = seq_dir_of_bname bname in
+  let dir = arc_dir_of_bname bname in
   let mi_ma =
-    seq_files_of dir |>
-    Enum.fold (fun mi_ma (from, to_, _fname) ->
+    arc_files_of dir |>
+    Enum.fold (fun mi_ma (from, to_, _t1, _t2, _fname) ->
       match mi_ma with
       | None -> Some (from, to_)
       | Some (mi, ma) -> Some (min mi from, max ma to_)

@@ -25,7 +25,7 @@ type stats = {
   prod_tail : int ;
   cons_head : int ;
   cons_tail : int ;
-  first_seq : int (* taken from per_seq/max file *) }
+  first_seq : int (* taken from arc/max file *) }
 
 external load_ : string -> t = "wrap_ringbuf_load"
 let load = prepend_rb_name load_

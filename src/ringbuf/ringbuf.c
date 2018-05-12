@@ -102,7 +102,7 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
   int ret = -1;
 
   char fname[PATH_MAX];
-  if ((size_t)snprintf(fname, PATH_MAX, "%s.per_seq/max", bname) >= PATH_MAX) {
+  if ((size_t)snprintf(fname, PATH_MAX, "%s.arc/max", bname) >= PATH_MAX) {
     fprintf(stderr, "Archive max seq file name truncated: '%s'\n", fname);
     goto err0;
   }
@@ -147,7 +147,7 @@ static int write_max_seqnum(char const *bname, uint64_t seqnum)
 
   char fname[PATH_MAX];
   // Save the new sequence number:
-  if ((size_t)snprintf(fname, PATH_MAX, "%s.per_seq/max", bname) >= PATH_MAX) {
+  if ((size_t)snprintf(fname, PATH_MAX, "%s.arc/max", bname) >= PATH_MAX) {
     fprintf(stderr, "Archive max seq file name truncated: '%s'\n", fname);
     goto err0;
   }
@@ -440,11 +440,13 @@ static int rotate_file_locked(struct ringbuf *rb)
   uint64_t last_seq = rb->rbf->first_seq + rb->rbf->nb_allocs;
   if (0 != write_max_seqnum(rb->fname, last_seq)) goto err0;
 
-  // Note: let's use different subdirs per_seq/per_time etc for different
-  // indexes so that directories are smaller when searching:
+  // Name the archive according to tuple seqnum included and also with the
+  // time range (will be only 0 if no time info is available):
   char arc_fname[PATH_MAX];
-  if ((size_t)snprintf(arc_fname, PATH_MAX, "%s.per_seq/%016"PRIx64"-%016"PRIx64".b",
-                       rb->fname, rb->rbf->first_seq, last_seq) >= PATH_MAX) {
+  if ((size_t)snprintf(arc_fname, PATH_MAX,
+                       "%s.arc/%016"PRIx64"_%016"PRIx64"_%a_%a.b",
+                       rb->fname, rb->rbf->first_seq, last_seq,
+                       rb->rbf->tmin, rb->rbf->tmax) >= PATH_MAX) {
     fprintf(stderr, "Archive file name truncated: '%s'\n", arc_fname);
     goto err0;
   }
@@ -458,41 +460,14 @@ static int rotate_file_locked(struct ringbuf *rb)
     goto err0;
   }
 
-  // Also link time indexed file to the archive.
-  // NOTE: There can be several files with same time range so suffix
-  //       with an increasing number (file_seq).
-  for (unsigned file_seq = 0; ; file_seq ++) {
-    char arc2_fname[PATH_MAX];
-    if ((size_t)snprintf(arc2_fname, PATH_MAX, "%s.per_time/%a_%a_%d.b",
-                         rb->fname, rb->rbf->tmin, rb->rbf->tmax, file_seq) >= PATH_MAX) {
-      fprintf(stderr, "Archive file name truncated: '%s'\n", arc2_fname);
-      goto err1;
-    }
-    printf("Link to time archive (%s)\n", arc2_fname);
-    if (0 == link(arc_fname, arc2_fname)) {
-      break;
-    } else {
-      int ret = -1;
-      if (ENOENT == errno) {
-        if (0 != mkdir_for_file(arc2_fname)) goto err1;
-        ret = link(arc_fname, arc2_fname); // retry
-      }
-      if (0 == ret) break;
-      fprintf(stderr, "Cannot create '%s': %s\n", arc2_fname, strerror(errno));
-      if (EEXIST != errno) goto err1;
-      // Will try with a bigger file_seq
-    }
-  }
-
-  ret = 0;
-
-err1:
   // Regardless of how this rotation went, we must not release the lock without
   // having created a new archive file:
   printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
   if (0 != ringbuf_create_locked(rb->rbf->wrap, rb->fname, rb->rbf->nb_words)) {
-    ret = -1;
+    goto err0;
   }
+
+  ret = 0;
 
 err0:
   fflush(stdout);

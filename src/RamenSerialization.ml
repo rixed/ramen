@@ -206,16 +206,17 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
     let%lwt keep_going =
       match while_ with Some w -> w () | _ -> return_true in
     if not keep_going then return init else (
-      let dir = seq_dir_of_bname bname in
+      let dir = arc_dir_of_bname bname in
       let entries =
-        seq_files_of dir //
-        (fun (from, to_, _fname) -> (* in file names, to_ is inclusive *)
+        arc_files_of dir //
+        (fun (from, to_, _t1, _t2, _fname) ->
+          (* in file names, to_ is inclusive *)
           to_ >= mi && Option.map_default (fun ma -> from < ma) true ma) |>
         Array.of_enum in
-      Array.fast_sort seq_file_compare entries ;
+      Array.fast_sort arc_file_compare entries ;
       let%lwt usr, next_seq =
         Array.to_list entries |> (* FIXME *)
-        Lwt_list.fold_left_s (fun (usr, _) (from, to_, fname) ->
+        Lwt_list.fold_left_s (fun (usr, _) (from, to_, _t1, _t2, fname) ->
           let rb = load fname in
           finalize (fun () -> fold_rb from rb usr)
                    (fun () -> unload rb ; return_unit)
@@ -304,14 +305,14 @@ let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f
   fold_buffer_tuple ?while_ bname typ init f
 
 let time_range ?while_ bname typ event_time =
-  let dir = time_dir_of_bname bname in
+  let dir = arc_dir_of_bname bname in
   let max_range mi_ma t1 t2 =
     match mi_ma with
     | None -> Some (t1, t2)
     | Some (mi, ma) -> Some (Float.min mi t1, Float.max ma t2) in
   let mi_ma =
-    RingBufLib.time_files_of dir |>
-    Enum.fold (fun mi_ma (t1, t2, _fname) ->
+    RingBufLib.arc_files_of dir |>
+    Enum.fold (fun mi_ma (_s1, _s2, t1, t2, _fname) ->
       max_range mi_ma t1 t2
     ) None in
   (* Also look into the current rb: *)
@@ -319,16 +320,16 @@ let time_range ?while_ bname typ event_time =
     max_range mi_ma t1 t2, true)
 
 let fold_time_range ?while_ bname typ event_time since until init f =
-  let dir = time_dir_of_bname bname in
+  let dir = arc_dir_of_bname bname in
   let entries =
-    RingBufLib.time_files_of dir //
-    (fun (t1, t2, fname) -> since < t2 && until >= t1) in
+    RingBufLib.arc_files_of dir //
+    (fun (_s1, _s2, t1, t2, fname) -> since < t2 && until >= t1) in
   let f usr tuple t1 t2 =
     (if t1 >= until || t2 < since then usr else f usr tuple t1 t2), true in
   let rec loop usr =
     match Enum.get_exn entries with
     | exception Enum.No_more_elements -> return usr
-    | _t1, _t2, fname ->
+    | _s1, _s2, _t1, _t2, fname ->
         fold_buffer_with_time ?while_ ~early_stop:false
                               fname typ event_time usr f >>=
         loop
