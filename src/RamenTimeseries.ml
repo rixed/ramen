@@ -155,11 +155,14 @@ let scan_possible_values factors bname typ =
       ((), true)) in
   return possible_values
 
-let all_seq_bnames conf func =
+let all_seq_bnames conf ?since ?until func =
   let bname = C.archive_buf_name conf func in
   Enum.append
-    (RingBufLib.(arc_dir_of_bname bname |> arc_files_of) /@
-     (fun (_, _, _, _, fname) -> fname))
+    (RingBufLib.(arc_dir_of_bname bname |> arc_files_of) //@
+     (fun (_, _, t1, t2, fname) ->
+       if Option.map_default (fun t -> t <= t2) true since &&
+          Option.map_default (fun t -> t >= t1) true until
+       then Some fname else None))
     (Enum.singleton bname)
 
 (* What we save in factors cache files: *)
@@ -176,15 +179,12 @@ let factors_to_file fname factors =
 (* Scan all stored values for this operation and return the set of all
  * possible values for that factor (if we need to actually scan a file,
  * all factors will be refreshed). *)
-(* TODO: a version with since/until that scans only the relevant buffers,
- * but we need to have a way to retrieve the cached factors files from
- * the time hard links. *)
-let get_possible_values conf func factor =
+let get_possible_values conf ?since ?until func factor =
   if not (List.mem factor func.F.factors) then
     fail_invalid_arg "get_possible_values: not a factor"
   else
     let typ = func.F.out_type in
-    let bnames = all_seq_bnames conf func |>
+    let bnames = all_seq_bnames conf ?since ?until func |>
                  List.of_enum (* FIXME *) in
     Lwt_list.fold_left_s (fun set bname ->
       let%lwt pvs =
