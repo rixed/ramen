@@ -31,12 +31,18 @@ let copts =
     let i = Arg.info ~doc:RamenConsts.CliInfo.keep_temp_files
                      ~docs ~env [ "keep-temp-files" ] in
     Arg.(value (flag i))
+  and forced_variants =
+    let env = Term.env_info "RAMEN_VARIANTS" in
+    let i = Arg.info ~doc:RamenConsts.CliInfo.variant
+                     ~docs ~env [ "variant" ] in
+    Arg.(value (opt_all string [] i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
     $ persist_dir
     $ rand_seed
-    $ keep_temp_files)
+    $ keep_temp_files
+    $ forced_variants)
 
 (*
  * Start the process supervisor

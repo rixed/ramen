@@ -15,13 +15,13 @@ let () =
       (Printexc.to_string exn)
       (Printexc.get_backtrace ()))
 
-let make_copts debug persist_dir rand_seed keep_temp_files =
+let make_copts debug persist_dir rand_seed keep_temp_files forced_variants =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
       RamenProcesses.rand_seed := Some seed ;
       Random.init seed) ;
-  C.make_conf ~debug ~keep_temp_files persist_dir
+  C.make_conf ~debug ~keep_temp_files ~forced_variants persist_dir
 
 (*
  * `ramen supervisor`
@@ -66,7 +66,9 @@ let supervisor conf daemonize to_stderr max_archives autoreload report_period
       (* The main job of this process is to make what's actually running
        * in accordance to the running program list: *)
       restart_on_failure "synchronize_running"
-        (synchronize_running conf) autoreload ])
+        RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
+          (fun () -> let years = 315360000. in Lwt_unix.sleep years) ;
+          (fun () -> synchronize_running conf autoreload) |] ])
 
 (*
  * `ramen notifier`

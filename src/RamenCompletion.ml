@@ -165,6 +165,7 @@ let complete str () =
       | "compile" ->
           ("--bundle-dir=", RamenConsts.CliInfo.bundle_dir) ::
           ("--keep-temp-files", RamenConsts.CliInfo.keep_temp_files) ::
+          ("--variant", RamenConsts.CliInfo.variant) ::
           ("--root-path=", RamenConsts.CliInfo.root_path) ::
           ("--external-compiler", RamenConsts.CliInfo.external_compiler) ::
           ("--as-program", RamenConsts.CliInfo.program_name) ::

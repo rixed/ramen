@@ -58,6 +58,7 @@ struct
     "Seed to initialize the random generator with. \
      (will use a random one if unset)"
   let keep_temp_files = "Keep temporary files"
+  let variant = "Force variants"
   let daemonize = "Daemonize"
   let to_stdout = "Log onto stdout/stderr instead of a file"
   let max_archives =

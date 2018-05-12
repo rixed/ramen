@@ -243,7 +243,8 @@ let find_func programs program_name func_name =
   List.find (fun f -> f.Func.name = func_name) rc
 
 let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
-              persist_dir =
+              ?(forced_variants=[]) persist_dir =
+  RamenExperiments.set_variants persist_dir forced_variants ;
   { do_persist ; debug ; persist_dir ; keep_temp_files }
 
 (* Various directory names: *)

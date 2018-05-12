@@ -5,6 +5,8 @@ require 'tmpdir'
 
 # Clear this or we might have long, unexpected backtraces on stderr:
 ENV['OCAMLRUNPARAM'] = nil
+# Also, by default we want a specific setting for experiments:
+ENV['RAMEN_VARIANTS'] = 'TheBigOne=on'
 
 def kill_ramens ()
   if not $ramen_pid.nil? then

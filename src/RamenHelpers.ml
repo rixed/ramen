@@ -645,11 +645,11 @@ let age t = Unix.gettimeofday () -. t
 
 let memoize f =
   let cached = ref None in
-  fun () ->
+  fun x -> (* beware that [x] will be used only during the first call! *)
     match !cached with
     | Some r -> r
     | None ->
-        let r = f () in
+        let r = f x in
         cached := Some r ;
         r
 
@@ -688,6 +688,15 @@ let cached reread time =
       !logger.debug "Cache size is now %d" (Hashtbl.length cache)
     ) ;
     Option.get !ret
+
+let save_in_file ~compute ~serialize ~deserialize fname =
+  try read_whole_file fname |> deserialize
+  with _ ->
+    mkdir_all ~is_file:true fname ;
+    File.with_file_out ~mode:[`create;`trunc;`text] fname (fun oc ->
+      let v = compute () in
+      String.print oc (serialize v) ;
+      v)
 
 let abbrev len s =
   if String.length s <= len then s else

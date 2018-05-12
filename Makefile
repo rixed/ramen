@@ -62,7 +62,7 @@ all: $(INSTALLED)
 
 RAMEN_SOURCES = \
 	src/RamenVersions.ml src/RamenConsts.ml src/RamenLog.ml \
-	src/RamenHelpers.ml src/RamenBitmask.ml \
+	src/RamenHelpers.ml src/RamenExperiments.ml src/RamenBitmask.ml \
 	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
 	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
@@ -241,7 +241,7 @@ TESTABLE_SOURCES = \
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
 	src/RamenVersions.ml src/RamenLog.ml src/RamenConsts.ml src/RamenHelpers.ml \
-	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
+	src/RamenExperiments.ml src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
 	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
