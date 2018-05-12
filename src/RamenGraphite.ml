@@ -124,6 +124,7 @@ let fix_quote s =
   if s = "" then "\"\"" else
   if String.contains s '.' then try_quote s
   else try_unquote s
+(*$inject open Batteries *)
 (*$= fix_quote & ~printer:identity
   "\"\"" (fix_quote "")
   "glop" (fix_quote "glop")
@@ -253,7 +254,6 @@ let split_query s =
     )
   in
   extract_next [] 0
-(*$inject open Batteries *)
 (*$= split_query & ~printer:(IO.to_string (List.print String.print))
  [ "monitoring"; "traffic"; "inbound"; "127.0.0.1:56687"; "0"; "bytes" ] \
     (split_query "monitoring.traffic.inbound.\"127.0.0.1:56687\".0.bytes")
