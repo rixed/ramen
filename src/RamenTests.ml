@@ -12,21 +12,24 @@ module Input = struct
   type spec =
     { pause : float [@ppp_default 0.] ;
       operation : string ;
-      tuple : tuple_spec } [@@ppp PPP_OCaml]
+      tuple : tuple_spec }
+    [@@ppp PPP_OCaml]
 end
 
 module Output = struct
   type spec =
     { present : tuple_spec list [@ppp_default []] ;
       absent : tuple_spec list [@ppp_default []] ;
-      timeout : float [@ppp_default 5.] } [@@ppp PPP_OCaml]
+      timeout : float [@ppp_default 5.] }
+    [@@ppp PPP_OCaml]
 end
 
 module Notifs = struct
   type spec =
     { present : string list [@ppp_default []] ;
       absent : string list [@ppp_default []] ;
-      timeout : float [@ppp_default 5.] } [@@ppp PPP_OCaml]
+      timeout : float [@ppp_default 5.] }
+    [@@ppp PPP_OCaml]
 end
 
 type test_spec =
@@ -56,7 +59,9 @@ let test_output func bname output_spec =
   (* Change the hashtable of field to value into a list of field index
    * and value: *)
   let field_index_of_name field =
-    match List.findi (fun _ ftyp -> ftyp.RamenTuple.typ_name = field) ser_type with
+    match List.findi (fun _ ftyp ->
+            ftyp.RamenTuple.typ_name = field
+          ) ser_type with
     | exception Not_found ->
         let msg = Printf.sprintf "Unknown field %s in %s" field
                     (IO.to_string RamenTuple.print_typ ser_type) in
@@ -69,7 +74,8 @@ let test_output func bname output_spec =
   let field_indices_of_tuples =
     List.map (fun spec ->
       Hashtbl.enum spec /@
-      (fun (field, value) -> field_index_of_name field, value) |>
+      (fun (field, value) ->
+        field_index_of_name field, value) |>
       List.of_enum, ref []) in
   let%lwt tuples_to_find = wrap (fun () -> ref (
     field_indices_of_tuples output_spec.Output.present)) in

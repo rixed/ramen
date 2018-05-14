@@ -861,9 +861,9 @@ struct
     (* afunv_sf takes parentheses but it's nicer to also accept non
      * parenthesized highestest_prec, but then there would be 2 ways to
      * parse "distinct (x)" as highestest_prec also accept parenthesized
-     * lower precedence expressions. Thus the "highestest_prec_no_parent": *)
+     * lower precedence expressions. Thus the "highestest_prec_no_parenthesis": *)
     (strinG n -+ optional ~def:def_state (blanks -+ state_lifespan) +-
-     blanks ++ highestest_prec_no_parent >>: fun (f, e) -> f, [e]) |||
+     blanks ++ highestest_prec_no_parenthesis >>: fun (f, e) -> f, [e]) |||
     (afunv_sf ~def_state 0 n >>:
      function (g, ([], r)) -> g, r | _ -> assert false)
 
@@ -1130,12 +1130,12 @@ struct
          in
          loop [] r) m
 
-  and highestest_prec_no_parent m =
+  and highestest_prec_no_parenthesis m =
     (const ||| field ||| func ||| null |||
      case ||| if_ ||| coalesce) m
 
   and highestest_prec m =
-    (highestest_prec_no_parent |||
+    (highestest_prec_no_parenthesis |||
      char '(' -- opt_blanks -+
        lowest_prec_left_assoc +-
      opt_blanks +- char ')'

@@ -67,6 +67,7 @@ let pos_integer what =
 let number =
   floating_point ||| (decimal_number >>: Num.to_float)
 
+(* TODO: "duration and duration" -> add the durations *)
 let duration m =
   let m = "duration" :: m in
   let strinGs s = strinG s ||| strinG (s ^"s") in

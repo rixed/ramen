@@ -8,12 +8,18 @@ OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUP
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
 WARNS    = -w -40
-override OCAMLOPTFLAGS += -I src $(WARNS) -g -annot -O2 -S
+override OCAMLOPTFLAGS += -I src $(WARNS) -g -annot -S
 override OCAMLFLAGS    += -I src $(WARNS) -g -annot
 override CFLAGS        += --std=gnu11 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += --std=gnu11 -D_GNU_SOURCE \
                           -I $(shell ocamlfind ocamlc -where) \
                           -DHAVE_INT128 -I $(shell ocamlfind query stdint)
+
+ifdef NDEBUG
+OCAMLOPTFLAGS += -noassert -O2
+OCAMLFLAGS += -noassert
+CPPFLAGS += -DNDEBUG -O2
+endif
 
 ifeq ($(shell uname),Darwin)
 FILE_NOTIFIER = src/RamenFileNotify_Poller.ml
@@ -242,20 +248,17 @@ LINKED_FOR_TESTS = \
 	src/RamenHelpers.ml src/HeavyHitters.ml src/RamenExperiments.ml \
 	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
 	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
-	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
-	src/RamenTypeConverters.ml \
-	src/RamenLang.ml src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml \
+	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
+	src/RamenProtocols.ml src/RamenTypeConverters.ml src/RamenLang.ml \
+	src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
-	src/RamenOperation.ml src/RamenProgram.ml \
-	src/RamenConf.ml \
-	src/Globs.ml \
-	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
-	src/RamenHeap.ml src/RamenSortBuf.ml \
-	src/CodeGen_OCaml.ml src/RamenBitmask.ml \
-	src/RamenSerialization.ml src/RamenExport.ml src/RamenTimeseries.ml \
-	src/RamenHttpHelpers.ml src/RamenProcesses.ml \
-	src/RamenTyping.ml src/RamenBloomFilter.ml \
-	src/RamenGraphite.ml src/TestHelpers.ml
+	src/RamenOperation.ml src/RamenProgram.ml src/RamenConf.ml \
+	src/Globs.ml src/RamenCompilConfig.ml src/RamenDepLibs.ml \
+	src/RamenOCamlCompiler.ml src/RamenHeap.ml src/RamenSortBuf.ml \
+	src/CodeGen_OCaml.ml src/RamenBitmask.ml src/RamenSerialization.ml \
+	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
+	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/RamenTyping.ml \
+	src/RamenBloomFilter.ml src/RamenGraphite.ml src/TestHelpers.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
 	@echo 'Generating unit tests into $@'
@@ -296,7 +299,7 @@ RAMEN_TESTS_SOURCES = \
 
 %.x: %.ramen src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	@src/ramen compile --keep-temp-files --bundle=bundle --root=./ $<
+	@src/ramen compile --bundle=bundle --root=./ $<
 
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'

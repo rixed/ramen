@@ -546,6 +546,7 @@ struct
         (blanks -- optional ~def:() ((strinG "and" ||| strinG "with") -- blanks) --
          strinG "duration" -- blanks -+ (
            (non_keyword ++ scale >>: fun n -> RamenEventTime.DurationField n) |||
+           (* FIXME: use RamenParsing.duration *)
            (number >>: fun n -> RamenEventTime.DurationConst n)) |||
          blanks -- strinG "and" -- blanks --
          (strinG "stops" ||| strinG "stopping" |||

@@ -16,6 +16,7 @@ let print fmt (start_field, duration) =
     (fst start_field)
     (string_of_scale (snd start_field))
     (match duration with
+     (* FIXME: uses RamenExpr.print_duration: *)
      | DurationConst f -> "DURATION "^ string_of_float f
      | DurationField (n, s) -> "DURATION "^ n ^ string_of_scale s
      | StopField (n, s) -> "STOPPING AT "^ n ^ string_of_scale s)
