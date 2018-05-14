@@ -45,6 +45,10 @@ let fail_and_quit msg =
   RamenProcesses.quit := true ;
   fail_with msg
 
+let compare_miss bad1 bad2 =
+  (* TODO: also look at the values *)
+  Int.compare (List.length bad1) (List.length bad2)
+
 let test_output func bname output_spec =
   let ser_type = func.F.out_type.ser in
   let nullmask_sz =
@@ -66,7 +70,7 @@ let test_output func bname output_spec =
     List.map (fun spec ->
       Hashtbl.enum spec /@
       (fun (field, value) -> field_index_of_name field, value) |>
-      List.of_enum) in
+      List.of_enum, ref []) in
   let%lwt tuples_to_find = wrap (fun () -> ref (
     field_indices_of_tuples output_spec.Output.present)) in
   let%lwt tuples_must_be_absent = wrap (fun () ->
@@ -90,30 +94,44 @@ let test_output func bname output_spec =
       let tuple = unserialize tx in
       !logger.debug "Read a tuple out of operation %S" func.F.name ;
       tuples_to_find :=
-        List.filter (fun spec ->
-          List.for_all (fun (idx, value) ->
-            (* FIXME: instead of comparing in string we should try to parse
-             * the expected value (once and for all -> faster) so that we
-             * also check its type. *)
-            let s = RamenScalar.to_string tuple.(idx) in
-            if s <> value then !logger.debug "found %S instead of %S" s value ;
-            s = value) spec |> not
+        List.filter (fun (spec, best_miss) ->
+          let miss =
+            List.fold_left (fun miss (idx, value) ->
+              (* FIXME: instead of comparing in string we should try to parse
+               * the expected value (once and for all -> faster) so that we
+               * also check its type. *)
+              let s = RamenScalar.to_string tuple.(idx) in
+              let ok = s = value in
+              if ok then miss else (
+                !logger.debug "found %S instead of %S" s value ;
+                (idx, s)::miss)
+            ) [] spec in
+          if miss = [] then false
+          else (
+            if !best_miss = [] || compare_miss miss !best_miss < 0 then
+              best_miss := miss ;
+            true
+          )
         ) !tuples_to_find ;
       tuples_to_not_find :=
-        List.filter (fun spec ->
+        List.filter (fun (spec, _) ->
           List.for_all (fun (idx, value) ->
             RamenScalar.to_string tuple.(idx) = value) spec
         ) tuples_must_be_absent |>
         List.rev_append !tuples_to_not_find ;
       return (count + 1)) in
   let success = !tuples_to_find = [] && !tuples_to_not_find = [] in
-  let file_spec_print oc (idx, value) =
+  let file_spec_print best_miss oc (idx, value) =
     (* Retrieve actual field name: *)
     let n = field_name_of_index idx in
-    Printf.fprintf oc "%s(%d)=%s" n idx value in
-  let tuple_spec_print oc spec =
+    Printf.fprintf oc "%s(%d)=%s" n idx value ;
+    match List.find (fun (idx', s) -> idx = idx') best_miss with
+    | exception Not_found -> ()
+    | _idx, s -> Printf.fprintf oc " (had %S)" s
+  in
+  let tuple_spec_print oc (spec, best_miss) =
     List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
-    List.print file_spec_print oc in
+    List.print (file_spec_print !best_miss) oc in
   let msg =
     if success then "" else
     (Printf.sprintf "Enumerated %d tuple%s from %s/%s"
