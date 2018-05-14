@@ -212,6 +212,9 @@ and stateful_fun =
   | ExpSmooth of t * t (* coef between 0 and 1 and expression *)
   (* Hysteresis *)
   | Hysteresis of t * t * t (* measured value, acceptable, maximum *)
+  (* Top-k operation *)
+  | Top of { want_rank : bool ; n : int ; what : t ; by : t ;
+             duration : float }
 
 and generator_fun =
   (* First function returning more than once (Generator). Here the typ is
@@ -248,6 +251,9 @@ let get_string_const = function
 let check_const what = function
   | Const _ -> ()
   | _ -> raise (SyntaxError (NotConstant what))
+
+let print_duration oc d =
+  Printf.fprintf oc "%f seconds" d
 
 let rec print with_types fmt =
   let add_types t =
@@ -428,6 +434,15 @@ let rec print with_types fmt =
       (print with_types) accept
       (print with_types) max ;
     add_types t
+  | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; duration }) ->
+    let print_duration_opt oc duration =
+      if duration > 0. then print_duration oc duration in
+    Printf.fprintf fmt "%s in top %d %a by %a%a"
+      (if want_rank then "rank" else "is")
+      n
+      (print with_types) what
+      (print with_types) by
+      print_duration_opt duration
 
   | GeneratorFun (t, Split (e1, e2)) ->
     Printf.fprintf fmt "split(%a, %a)"
@@ -464,6 +479,7 @@ let rec fold_by_depth f i expr =
   | StatelessFun2 (_, _, e1, e2)
   | StatefulFun (_, _, Lag (e1, e2))
   | StatefulFun (_, _, ExpSmooth (e1, e2))
+  | StatefulFun (_, _, Top { what = e1 ; by = e2 ; _ })
   | GeneratorFun (_, Split (e1, e2)) ->
     let i' = fold_by_depth f i e1 in
     let i''= fold_by_depth f i' e2 in
@@ -603,6 +619,10 @@ let rec map_type ?(recurs=true) f = function
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c)))
+  | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; duration }) ->
+    StatefulFun (f t, g, Top { want_rank ; n ; duration ;
+      what = (if recurs then map_type ~recurs f what else what) ;
+      by = (if recurs then map_type ~recurs f by else by) })
 
   | StatelessFun0 (t, cst) ->
     StatelessFun0 (f t, cst)
@@ -1007,7 +1027,7 @@ struct
         StatelessFunMisc (make_num_typ "min", Min (e1 :: e2 :: e3s))) |||
      (afun1v "least" >>: fun (e, es) ->
         StatelessFunMisc (make_num_typ "min", Min (e :: es))) |||
-     k_moveavg ||| sequence ||| cast) m
+     k_moveavg ||| sequence ||| cast ||| top_expr) m
 
   and sequence =
     let seq = "sequence"
@@ -1044,6 +1064,28 @@ struct
        let k = Const (make_typ ~nullable:false ~typ:(RamenScalar.type_of k)
                                "moving average order", k) in
        StatefulFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
+
+  and top_expr m =
+    let m = "top expression" :: m in
+    (((strinG "rank" -- blanks -- strinG "of" >>: fun () -> true) |||
+      (strinG "is" >>: fun () -> false)) +- blanks ++
+     (* We can allow lowest precedence expressions here because of the
+      * keywords that follow: *)
+     lowest_prec_left_assoc +- blanks +-
+     strinG "in" +- blanks +- strinG "top" +- blanks ++
+     pos_integer "top size" ++
+     optional ~def:GlobalState (blanks -+ state_lifespan) ++
+     optional ~def:expr_one (
+       blanks -- strinG "by" -- blanks -+ highestest_prec) ++
+     optional ~def:0. (
+       blanks -- strinG "in" -- blanks -- strinG "the" -- blanks --
+       strinG "last" -- blanks -+ duration) >>:
+     fun (((((want_rank, what), n), g), by), duration) ->
+       StatefulFun (
+         (if want_rank then make_int_typ ~nullable:true "rank in top"
+                       else make_bool_typ "is in top" (* same nullability as what+by *)),
+         g,
+         Top { want_rank ; n ; what ; by ; duration })) m
 
   and case m =
     let m = "case" :: m in

@@ -72,7 +72,7 @@ RAMEN_SOURCES = \
 	src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
 	src/RamenSerialization.ml \
 	src/RamenConf.ml \
-	src/RamenExport.ml src/RamenTimeseries.ml \
+	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/RamenTyping.ml src/RamenCompiler.ml \
@@ -89,7 +89,7 @@ CODEGENLIB_SOURCES = \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml src/RamenHeap.ml src/RamenSortBuf.ml \
-	src/CodeGenLib.ml src/RamenTypeConverters.ml
+	src/HeavyHitters.ml src/CodeGenLib.ml src/RamenTypeConverters.ml
 
 LIBRINGBUF_SOURCES = \
 	src/ringbuf/ringbuf.h src/ringbuf/ringbuf.c src/ringbuf/wrappers.c
@@ -231,17 +231,16 @@ src/RamenCompilConfig.ml:
 TESTABLE_SOURCES = \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
 	src/RamenLang.ml src/RamenScalar.ml src/RamenExpr.ml \
-	src/RamenOperation.ml src/RamenProgram.ml \
-	src/RamenTyping.ml \
-	src/RamenHelpers.ml src/RamenBloomFilter.ml src/Globs.ml src/CodeGen_OCaml.ml \
-	src/RamenSortBuf.ml \
-	src/RamenGraphite.ml \
-	src/RingBufLib.ml
+	src/RamenOperation.ml src/RamenProgram.ml src/RamenTyping.ml \
+	src/HeavyHitters.ml src/RamenHelpers.ml src/RamenBloomFilter.ml \
+	src/Globs.ml src/CodeGen_OCaml.ml src/RamenSortBuf.ml \
+	src/RamenGraphite.ml src/RingBufLib.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
-	src/RamenVersions.ml src/RamenLog.ml src/RamenConsts.ml src/RamenHelpers.ml \
-	src/RamenExperiments.ml src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
+	src/RamenVersions.ml src/RamenLog.ml src/RamenConsts.ml \
+	src/RamenHelpers.ml src/HeavyHitters.ml src/RamenExperiments.ml \
+	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
 	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
@@ -311,6 +310,7 @@ tests/params.x: tests/fixtures/earthquakes.x
 tests/sort.x: tests/fixtures/earthquakes.x
 tests/fit_multi.x: tests/fixtures/cars.x
 tests/tops.x: tests/fixtures/accounts.x
+tests/top_expr.x: tests/fixtures/cars.x
 tests/season.x: tests/fixtures/earthquakes.x
 tests/previous_and_null.x: tests/fixtures/n123.x
 tests/fun_with_funcs.x: tests/fixtures/cars.x
@@ -325,6 +325,7 @@ tests/params.success: tests/params.x tests/fixtures/earthquakes.x
 tests/sort.success: tests/sort.x tests/fixtures/earthquakes.x
 tests/fit_multi.success: tests/fit_multi.x tests/fixtures/cars.x
 tests/tops.success: tests/tops.x tests/fixtures/accounts.x
+tests/top_expr.success: tests/top_expr.x tests/fixtures/cars.x
 tests/season.success: tests/season.x tests/fixtures/earthquakes.x
 tests/merge.success: tests/merge.x
 tests/from.success: tests/from.x

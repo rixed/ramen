@@ -215,6 +215,8 @@ let keyword =
     (* Some values that must not be parsed as field names: *)
     strinG "true" ||| strinG "false" ||| strinG "null" |||
     strinG "all" ||| strinG "as" |||
+    (* Or "X in top" could also be parsed as an independent expression: *)
+    strinG "top" |||
     (* Some functions with possibly no arguments that must not be
      * parsed as field names: *)
     strinG "now" ||| strinG "sequence" ||| strinG "random"

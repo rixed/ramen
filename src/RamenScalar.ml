@@ -223,6 +223,9 @@ struct
       if Num.le_num zero i && Num.le_num i max_u128  then VU128 (Uint128.of_string s) else
       assert false
 
+  let narrowest_typ_for_int n =
+    narrowest_int_scalar (Num.of_int n) |> type_of
+
   (* TODO: Here and elsewhere, we want the location (start+length) of the
    * thing in addition to the thing *)
   let p =

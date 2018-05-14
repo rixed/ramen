@@ -1,0 +1,11 @@
+{
+  programs = [
+    ("top_expr.x", []);
+    ("fixtures/cars.x", []) ];
+  outputs = {
+    "tests/top_expr/f" => {
+      present = [
+        { "approx_manufacturer" => "\"BMW\"" };
+        { "approx_manufacturer" => "\"Toyota\"" };
+        { "approx_manufacturer" => "\"other\"" } ]}}
+}

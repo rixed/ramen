@@ -86,3 +86,26 @@ let replace_typ_in_program =
       ) prog,
       rest)
   | x -> x
+
+(* Given an alphabet of size [n], a zipf coefficient [s] (positive float, 0
+ * being uniform and >1 being highly skewed), output an infinite text in
+ * which characters appear at random with their zipfian frequency (numbers
+ * from [0] to [n-1] are actually output, 0 being the most frequent one and
+ * so on: *)
+let zipf_distrib n s =
+  let z k = 1. /. (float_of_int k)**s in
+  let eta =
+    let rec loop m eta =
+      if m >= n then eta else loop (m + 1) (eta +. z m) in
+    loop 1 0. in
+  let f = Array.init n (fun i -> let k = i + 1 in z k /. eta) in
+  (* Check than the sum of freqs is close to 1: *)
+  let sum = Array.fold_left (+.) 0. f in
+  assert (abs_float (sum -. 1.) < 0.01) ;
+  let rand () =
+    let rec lookup r i =
+      if i >= Array.length f - 1 || r < f.(i) then i
+      else lookup (r -. f.(i)) (i + 1) in
+    lookup (Random.float 1.) 0
+  in
+  Enum.from rand

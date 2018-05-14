@@ -135,6 +135,25 @@ let distinct_add st x =
 
 let distinct_finalize st = st.last_was_distinct
 
+(* Heavy Hitters wrappers: *)
+
+let heavy_hitters_init n duration =
+  let max_size = 10 * n in (* TODO? *)
+  (* TODO: compute the actual decay parameter corresponding to duration: *)
+  let decay = 0. in
+  HeavyHitters.make ~max_size ~decay
+
+let heavy_hitters_add s x w =
+  let time = 0. in (* TODO *)
+  HeavyHitters.add s time w x ;
+  s
+
+let heavy_hitters_rank ~n s x =
+  HeavyHitters.rank n x s
+
+let heavy_hitters_is_in_top ~n s x =
+  HeavyHitters.is_in_top n x s
+
 let hash x = Hashtbl.hash x |> Int64.of_int
 
 let hysteresis_update was_ok v accept max =

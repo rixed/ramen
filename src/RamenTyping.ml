@@ -840,6 +840,15 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       [Some TFloat, None, meas ;
        Some TFloat, Some false, accept ;
        Some TFloat, Some false, max]
+  | StatefulFun (op_typ, _, Top { want_rank ; what ; by ; n ; _ }) ->
+    (* We already know the type returned by the top operation, but maybe
+     * for the nullability. But we want to ensure the top-by expression
+     * can be cast to a float: *)
+    let ret_type =
+      if want_rank then
+        (fun _ -> RamenScalar.Parser.narrowest_typ_for_int n)
+      else return_bool in
+    check_op op_typ ret_type [ None, None, what ; Some TFloat, None, by ]
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible. *)

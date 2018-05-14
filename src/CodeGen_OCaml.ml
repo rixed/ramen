@@ -671,6 +671,22 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefulFun (_, g, Hysteresis _), Some TBool ->
     emit_functionN oc ?state "CodeGenLib.hysteresis_finalize" [None] [my_state g]
 
+  | InitState, StatefulFun (_, _, Top { n ; duration ; _ }), _ ->
+    Printf.fprintf oc "CodeGenLib.heavy_hitters_init %d %s" n
+      (Legacy.Printf.sprintf "%h" duration)
+  | UpdateState, StatefulFun (_, g, Top { what ; by ; _ }), _ ->
+    emit_functionN oc ?state
+      "CodeGenLib.heavy_hitters_add"
+      [None; None; Some TFloat] [my_state g; what; by]
+  | Finalize, StatefulFun (_, g, Top { want_rank = true ; n ; what ; _ }), _ ->
+    emit_functionN oc ?state
+      ("CodeGenLib.heavy_hitters_rank ~n:"^ string_of_int n)
+      [None; None] [my_state g; what]
+  | Finalize, StatefulFun (_, g, Top { want_rank = false ; n ; what ; _ }), _ ->
+    emit_functionN oc ~impl_return_nullable:true ?state
+      ("CodeGenLib.heavy_hitters_is_in_top ~n:"^ string_of_int n)
+      [None; None] [my_state g; what]
+
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name t).
    * In normal expressions we merely refer to that free variable. *)
@@ -762,7 +778,11 @@ and add_missing_types arg_typs es =
  * evaluate them in order until one is found to be nullable and null, or until
  * we evaluated them all, and then only we call the function.
  * TODO: ideally we'd like to evaluate the nullable arguments first. *)
-and emit_function ?(args_as=Arg) oc ?state impl arg_typs es vt_specs_opt =
+and emit_function
+      (* Set to true if [impl] already returns an optional type for a
+       * nullable value: *)
+      ?(impl_return_nullable=false)
+      ?(args_as=Arg) oc ?state impl arg_typs es vt_specs_opt =
   let open RamenExpr in
   let arg_typs = add_missing_types arg_typs es in
   let len, has_nullable =
@@ -780,7 +800,9 @@ and emit_function ?(args_as=Arg) oc ?state impl arg_typs es vt_specs_opt =
         )
       ) (0, false) es arg_typs
   in
-  Printf.fprintf oc "%s(%s" (if has_nullable then "Some " else "") impl ;
+  Printf.fprintf oc "%s(%s"
+    (if has_nullable && not impl_return_nullable then "Some " else "")
+    impl ;
   for i = 0 to len-1 do
     Printf.fprintf oc "%s"
       (match args_as with Array n when i = n -> "[| "
@@ -800,11 +822,15 @@ and emit_function ?(args_as=Arg) oc ?state impl arg_typs es vt_specs_opt =
     vt_specs_opt ;
   for _i = 0 to len do Printf.fprintf oc ")" done
 
-and emit_functionN ?args_as oc ?state impl arg_typs es =
-  emit_function ?args_as oc ?state impl arg_typs es None
+and emit_functionN ?args_as oc ?impl_return_nullable ?state
+                   impl arg_typs es =
+  emit_function ?args_as oc ?impl_return_nullable ?state
+                impl arg_typs es None
 
-and emit_functionNv oc ?state impl arg_typs es vt ves =
-  emit_function oc ?state impl arg_typs es (Some (vt, ves))
+and emit_functionNv oc ?impl_return_nullable ?state
+                    impl arg_typs es vt ves =
+  emit_function oc ?impl_return_nullable ?state
+                impl arg_typs es (Some (vt, ves))
 
 let emit_compute_nullmask_size oc ser_typ =
   Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;
@@ -1376,6 +1402,11 @@ let otype_of_state e =
   let t = Option.get typ.scalar_typ |>
           otype_of_type in
   let t =
+    let print_expr_typ oc e =
+      let typ = typ_of e in
+      Option.get typ.scalar_typ |> (* nullable taken care of below *)
+      otype_of_type |>
+      String.print oc in
     match e with
     | StatefulFun (_, _, AggrPercentile _) -> t ^" list"
     (* previous tuples and count ; Note: we could get rid of this count if we
@@ -1389,14 +1420,12 @@ let otype_of_state e =
     | StatefulFun (_, _, Remember _) ->
       "CodeGenLib.remember_state"
     | StatefulFun (_, _, Distinct es) ->
-      let print_expr_typ oc e =
-        let typ = typ_of e in
-        Option.get typ.scalar_typ |>
-        otype_of_type |>
-        String.print oc in
       Printf.sprintf2 "%a CodeGenLib.distinct_state"
         (list_print_as_product print_expr_typ) es
     | StatefulFun (_, _, AggrAvg _) -> "(int * float)"
+    | StatefulFun (_, _, Top { what ; _ }) ->
+      Printf.sprintf2 "%a HeavyHitters.t"
+        print_expr_typ what
     | _ -> t in
   if Option.get typ.nullable then t ^" option" else t
 
