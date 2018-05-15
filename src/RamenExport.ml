@@ -16,7 +16,7 @@ let () =
 (* Returns the buffer name: *)
 let make_temp_export ?duration conf func =
   let bname = C.archive_buf_name conf func in
-  RingBuf.create ~wrap:false bname RingBufLib.rb_words ;
+  RingBuf.create ~wrap:false bname ;
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
   let typ = func.C.Func.out_type.ser in

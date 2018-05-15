@@ -21,7 +21,7 @@ depends: [
   "binocle" {>= "0.3"}
   "lacaml" {= "11.0.0"}
   "num"
-  "ppp" {build & >= "2.2"}
+  "ppp" {>= "2.2"}
   "cmdliner" {build & = "1.0.2"}
   "syslog" {= "1.5"}
   "net_codecs" {>= "1.0"}

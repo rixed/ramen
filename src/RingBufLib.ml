@@ -11,38 +11,6 @@ let () =
   Callback.register_exception "ringbuf full exception" NoMoreRoom ;
   Callback.register_exception "ringbuf empty exception" Empty
 
-(* Compromise between size and efficient reading of data, TBD: *)
-let rb_word_bytes = 4
-let rb_word_bits = rb_word_bytes * 8
-let rb_word_mask = (1 lsl rb_word_bits) - 1
-
-let rb_words = 1_000_000
-
-let bytes_for_bits n =
-  n / 8 + (if n land 7 = 0 then 0 else 1)
-
-let round_up_to_rb_word bytes =
-  let low = bytes land (rb_word_bytes-1) in
-  if low = 0 then bytes else bytes - low + rb_word_bytes
-
-let write_cidr4 tx offs (n, l) =
-  write_u32 tx offs n ;
-  write_u8 tx (offs + round_up_to_rb_word 4) (Uint8.of_int l)
-
-let write_cidr6 tx offs (n, l) =
-  write_u128 tx offs n ;
-  write_u16 tx (offs + round_up_to_rb_word 16) (Uint16.of_int l)
-
-let read_cidr4 tx offs =
-  let addr = read_u32 tx offs in
-  let len = read_u8 tx (offs + round_up_to_rb_word 4) in
-  addr, Uint8.to_int len
-
-let read_cidr6 tx offs =
-  let addr = read_u128 tx offs in
-  let len = read_u16 tx (offs + round_up_to_rb_word 16) in
-  addr, Uint16.to_int len
-
 let nullmask_bytes_of_tuple_type tuple_typ =
   List.fold_left (fun s field_typ ->
     if not (is_private_field field_typ.RamenTuple.typ_name) &&
@@ -83,6 +51,14 @@ let sersize_of_eth = round_up_to_rb_word 6
 let sersize_of_cidrv4 = sersize_of_ipv4 + sersize_of_u8
 let sersize_of_cidrv6 = sersize_of_ipv6 + sersize_of_u16
 
+let sersize_of_ip = function
+  | RamenIp.V4 _ -> rb_word_bytes + sersize_of_ipv4
+  | RamenIp.V6 _ -> rb_word_bytes + sersize_of_ipv6
+
+let sersize_of_cidr = function
+  | RamenIp.Cidr.V4 _ -> rb_word_bytes + sersize_of_cidrv4
+  | RamenIp.Cidr.V6 _ -> rb_word_bytes + sersize_of_cidrv6
+
 let rec sersize_of_fixsz_typ = function
   | TFloat -> sersize_of_float
   | TBool -> sersize_of_bool
@@ -102,7 +78,7 @@ let rec sersize_of_fixsz_typ = function
   | TEth -> sersize_of_eth
   | TCidrv4 -> sersize_of_cidrv4
   | TCidrv6 -> sersize_of_cidrv6
-  | TString | TNum | TAny -> assert false
+  | TString | TIp | TCidr | TNum | TAny -> assert false
 
 let sersize_of_value = function
   | VString s -> sersize_of_string s
@@ -120,10 +96,12 @@ let sersize_of_value = function
   | VU128 _ -> sersize_of_u128
   | VI128 _ -> sersize_of_i128
   | VIpv6 _ -> sersize_of_ipv6
+  | VIp x -> sersize_of_ip x
   | VNull -> sersize_of_null
   | VEth _ -> sersize_of_eth
   | VCidrv4 _ -> sersize_of_cidrv4
   | VCidrv6 _ -> sersize_of_cidrv6
+  | VCidr x -> sersize_of_cidr x
 
 let out_ringbuf_names outbuf_ref_fname =
   let open Lwt in

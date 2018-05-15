@@ -70,7 +70,8 @@ RAMEN_SOURCES = \
 	src/RamenVersions.ml src/RamenConsts.ml src/RamenLog.ml \
 	src/RamenHelpers.ml src/RamenExperiments.ml src/RamenBitmask.ml \
 	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
-	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
+	src/RamenParsing.ml \
+	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
 	src/RamenLang.ml src/RamenScalar.ml src/RamenTuple.ml \
@@ -90,7 +91,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenConsts.ml src/RamenLog.ml src/RamenHelpers.ml src/Globs.ml \
 	src/RamenRWLock.ml src/RamenAdvLock.ml \
 	src/RamenOutRef.ml src/RamenParsing.ml \
-	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
+	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
@@ -235,7 +236,7 @@ src/RamenCompilConfig.ml:
 # Tests
 
 TESTABLE_SOURCES = \
-	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
+	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenLang.ml src/RamenScalar.ml src/RamenExpr.ml \
 	src/RamenOperation.ml src/RamenProgram.ml src/RamenTyping.ml \
 	src/HeavyHitters.ml src/RamenHelpers.ml src/RamenBloomFilter.ml \
@@ -247,7 +248,8 @@ LINKED_FOR_TESTS = \
 	src/RamenVersions.ml src/RamenLog.ml src/RamenConsts.ml \
 	src/RamenHelpers.ml src/HeavyHitters.ml src/RamenExperiments.ml \
 	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
-	src/RamenParsing.ml src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml \
+	src/RamenParsing.ml \
+	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml src/RamenLang.ml \
 	src/RamenScalar.ml src/RamenTuple.ml src/RamenExpr.ml \
@@ -273,8 +275,9 @@ all_tests.opt: \
 ringbuf_test.opt: \
 	src/RamenLog.cmx src/RamenConsts.cmx src/RamenHelpers.cmx \
 	src/RamenRWLock.cmx src/RamenAdvLock.cmx src/RamenOutRef.cmx \
-	src/RamenParsing.cmx src/RamenEthAddr.cmx src/RamenIpv4.cmx \
-	src/RamenIpv6.cmx src/RamenTypeConverters.cmx src/RamenScalar.cmx \
+	src/RamenParsing.cmx \
+	src/RamenEthAddr.cmx src/RamenIpv4.cmx src/RamenIpv6.cmx src/RamenIp.cmx \
+	src/RamenTypeConverters.cmx src/RamenScalar.cmx \
 	src/RamenTuple.cmx src/RingBuf.cmx src/RingBufLib.cmx \
 	src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
 	@echo 'Building ringbuf tests into $@'
@@ -322,6 +325,7 @@ tests/commit_before.x: tests/fixtures/n123.x tests/fixtures/cars.x
 tests/basic_aggr.x: tests/fixtures/n123.x tests/fixtures/cars.x
 tests/tuples.x: tests/fixtures/n123.x
 tests/port_scan.x: tests/fixtures/port_scan.x
+tests/ip.x: tests/fixtures/mixture.x
 tests/lag.success: tests/lag.x tests/fixtures/n123.x
 tests/count_lines.success: tests/count_lines.x tests/fixtures/n123.x
 tests/params.success: tests/params.x tests/fixtures/earthquakes.x
@@ -342,6 +346,7 @@ tests/word_split.success: tests/word_split.x
 tests/basic_aggr.success: tests/basic_aggr.x tests/fixtures/n123.x tests/fixtures/cars.x
 tests/tuples.success: tests/tuples.x tests/fixtures/n123.x
 tests/port_scan.success: tests/port_scan.x tests/fixtures/port_scan.x
+tests/ip.success: tests/ip.x tests/fixtures/mixture.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

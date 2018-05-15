@@ -237,6 +237,11 @@ let can_enlarge ~from_scalar_type ~to_scalar_type =
     | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
     | TI128 -> [ TI128 ; TFloat ; TNum ]
     | TBool -> [ TBool ; TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
+    (* Any specific type can be turned into its generic variant: *)
+    | TIpv4 -> [ TIpv4 ; TIp ]
+    | TIpv6 -> [ TIpv6 ; TIp ]
+    | TCidrv4 -> [ TCidrv4 ; TCidr ]
+    | TCidrv6 -> [ TCidrv6 ; TCidr ]
     | x -> [ x ] in
   List.mem to_scalar_type compatible_types
 
@@ -759,13 +764,32 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     check_op op_typ return_string [Some TString, None, e]
   | StatelessFun1 (op_typ, Upper, e) ->
     check_op op_typ return_string [Some TString, None, e]
-  | StatelessFun2 (op_typ, (Ge|Gt|Eq), e1, e2) ->
-    (try check_op op_typ return_bool [Some TString, None, e1 ; Some TString, None, e2]
-    with SyntaxError (CannotTypeExpression _) as e ->
-      (* We do not retry for other errors to keep a better error message. *)
-      !logger.debug "%sEquality operator between strings failed with %S, \
-                     retrying with numbers" indent (Printexc.to_string e) ;
-      check_op op_typ return_bool [Some TFloat, None, e1 ; Some TFloat, None, e2])
+  | StatelessFun2 (op_typ, (Ge|Gt|Eq as op), e1, e2) ->
+    (* Ge and Gt works for many types and Eq for even more, as long as
+     * both operands have the same type: *)
+    let ret = ref false in
+    (try
+      [| (* type, also ge/gt *)
+         TString, true ;
+         TFloat, true ;
+         TIp, true ;
+         TCidr, false |] |>
+      Array.filter (fun (_, also_g) -> also_g || op = Eq) |>
+      Array.iter (fun (typ, _) ->
+        try
+          ret := check_op op_typ return_bool
+                   [Some typ, None, e1 ; Some typ, None, e2] ;
+          raise Exit
+        with SyntaxError _ as e ->
+          !logger.debug "%sComparison between %s failed with %S"
+            indent (RamenScalar.string_of_typ typ) (Printexc.to_string e)) ;
+      (* The last error we got was not super useful: one operand failed to be
+       * a CIDR. Instead the real error is that both operands do not agree
+       * on types: *)
+      let e = CannotCompareTypes {
+        what = IO.to_string (RamenExpr.print true) expr } in
+      raise (SyntaxError e)
+    with Exit -> !ret)
   | StatelessFun2 (op_typ, (And|Or), e1, e2) ->
     check_op op_typ return_bool [Some TBool, None, e1 ; Some TBool, None, e2]
   | StatelessFun2 (op_typ, (BitAnd|BitOr|BitXor), e1, e2) ->
@@ -775,7 +799,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * types of the operand, but in this case there is no modification
      * possible if it's either TCidrv4 or TCidrv6, so we should be good.  *)
     (try check_op op_typ (fun _ -> TIpv4) [Some TCidrv4, None, e]
-    with _ -> check_op op_typ (fun _ -> TIpv6) [Some TCidrv6, None, e])
+    with _ ->
+      try check_op op_typ (fun _ -> TIpv6) [Some TCidrv6, None, e]
+      with _ -> check_op op_typ (fun _ -> TIp) [Some TCidr, None, e])
   | StatelessFunMisc (op_typ, (Min es | Max es)) ->
     check_op op_typ largest_type
       (List.map (fun e -> Some TFloat, None, e) es)

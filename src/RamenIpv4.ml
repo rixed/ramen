@@ -59,7 +59,7 @@ let of_string = RamenParsing.of_string_exn Parser.p
 module Cidr =
 struct
   (*$< Cidr *)
-  type t = Uint32.t * int
+  type t = uint32 * int [@@ppp PPP_OCaml]
 
   let netmask_of_len len =
     let shf = 32 - len in
@@ -71,6 +71,9 @@ struct
   let or_to_len len net =
     let shf = 32 - len in
     Uint32.(logor net ((shift_left one shf) - one))
+
+  let first (net, len) = and_to_len len net
+  let last (net, len) = or_to_len len net
 
   module Parser =
   struct

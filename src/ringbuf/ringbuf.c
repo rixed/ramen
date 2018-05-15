@@ -289,7 +289,7 @@ err0:
   return ret;
 }
 
-extern enum ringbuf_error ringbuf_create(bool wrap, char const *fname, uint32_t nb_words)
+extern enum ringbuf_error ringbuf_create(bool wrap, uint32_t nb_words, char const *fname)
 {
   enum ringbuf_error err = RB_ERR_FAILURE;
 

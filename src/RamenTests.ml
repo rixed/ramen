@@ -237,7 +237,7 @@ let test_one conf root_path notify_rb dirname test =
                 let in_rb = C.in_ringbuf_name_single conf func in
                 (* It might not exist already. Instead of waiting for the
                  * worker to start, create it: *)
-                RingBuf.create in_rb RingBufLib.rb_words ;
+                RingBuf.create in_rb ;
                 let rb = RingBuf.load in_rb in
                 rbr := Some rb ;
                 return_unit)

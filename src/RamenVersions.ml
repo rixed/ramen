@@ -8,8 +8,8 @@ let release_tag = "v2.0.0"
 (* Format of the list of running programs: *)
 let graph_config = "v9" (* last: stripped down version *)
 
-(* Code generation: sources, binaries... *)
-let codegen = "v11" (* last: expansion of params in CSV filenames *)
+(* Code generation: sources, binaries, marshaled types... *)
+let codegen = "v12" (* last: addition of generic IP types *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)

@@ -54,6 +54,10 @@ let emit_sersize_of_field_var typ oc var =
   match typ with
   | TString ->
     Printf.fprintf oc "(RingBufLib.sersize_of_string %s)" var
+  | TIp ->
+    Printf.fprintf oc "(RingBufLib.sersize_of_ip %s)" var
+  | TCidr ->
+    Printf.fprintf oc "(RingBufLib.sersize_of_cidr %s)" var
   | _ -> emit_sersize_of_fixsz_typ oc typ
 
 (* Emit the code to retrieve the sersize of some serialized value *)
@@ -65,8 +69,8 @@ let rec emit_sersize_of_field_tx tx_var offs_var nulli oc field =
   ) else match field.typ with
     | TString ->
       Printf.fprintf oc "\
-        %d + RingBufLib.round_up_to_rb_word(RingBuf.read_word %s %s)"
-        RingBufLib.rb_word_bytes tx_var offs_var
+        %d + RingBuf.round_up_to_rb_word(RingBuf.read_word %s %s)"
+        RingBuf.rb_word_bytes tx_var offs_var
     | _ -> emit_sersize_of_fixsz_typ oc field.typ
 
 let id_of_typ typ =
@@ -88,8 +92,10 @@ let id_of_typ typ =
   | TEth    -> "eth"
   | TIpv4   -> "ip4"
   | TIpv6   -> "ip6"
+  | TIp     -> "ip"
   | TCidrv4 -> "cidr4"
   | TCidrv6 -> "cidr6"
+  | TCidr   -> "cidr"
   | TNum | TAny -> assert false
 
 let emit_value_of_string typ oc var =
@@ -123,7 +129,7 @@ let emit_float oc f =
   else if f = neg_infinity then String.print oc "neg_infinity"
   else Printf.fprintf oc "(%f)" f
 
-let emit_scalar oc =
+let rec emit_scalar oc =
   let open Stdint in
   function
   | VFloat  f -> emit_float oc f
@@ -142,10 +148,14 @@ let emit_scalar oc =
   | VEth    n -> Printf.fprintf oc "(Uint40.of_int64 (%LdL))" (Uint48.to_int64 n)
   | VIpv4   n -> Printf.fprintf oc "(Uint32.of_string %S)" (Uint32.to_string n)
   | VIpv6   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
+  | VIp (RamenIp.V4 n) -> emit_scalar oc (VIpv4 n)
+  | VIp (RamenIp.V6 n) -> emit_scalar oc (VIpv6 n)
   | VCidrv4 (n,l) ->
                  Printf.fprintf oc "(Uint32.of_string %S, %d)" (Uint32.to_string n) l
   | VCidrv6 (n,l) ->
                  Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
+  | VCidr (RamenIp.Cidr.V4 n) -> emit_scalar oc (VCidrv4 n)
+  | VCidr (RamenIp.Cidr.V6 n) -> emit_scalar oc (VCidrv6 n)
   | VNull     -> Printf.fprintf oc "None"
 
 (* Given a function name and an output type, return the actual function
@@ -185,8 +195,10 @@ let otype_of_type = function
   | TEth -> "uint48"
   | TIpv4 -> "uint32"
   | TIpv6 -> "uint128"
+  | TIp -> "RamenIp.t"
   | TCidrv4 -> "(uint32 * int)"
   | TCidrv6 -> "(uint128 * int)"
+  | TCidr -> "RamenIp.Cidr.t"
   | TNum | TAny -> assert false
 
 let omod_of_type = function
@@ -199,8 +211,10 @@ let omod_of_type = function
   | TEth -> "RamenEthAddr"
   | TIpv4 -> "RamenIpv4"
   | TIpv6 -> "RamenIpv6"
+  | TIp -> "RamenIp"
   | TCidrv4 -> "RamenIpv4.Cidr"
   | TCidrv6 -> "RamenIpv6.Cidr"
+  | TCidr -> "RamenIp.Cidr"
   | TNull -> assert false (* Never used on NULLs *)
   | TNum | TAny -> assert false
 
@@ -236,9 +250,13 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
     (* We could as well just print "()" but this is easier for debugging,
      * and hopefully the compiler will make it the same: *)
     Printf.fprintf fmt "(ignore %a)" p e
-  | (TEth|TIpv4|TIpv6|TCidrv4|TCidrv6), TString ->
+  | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
     Printf.fprintf fmt "(%s.to_string %a)"
       (omod_of_type from_typ) p e
+  | TIpv4, TIp -> Printf.fprintf fmt "(RamenIp.V4 %a)" p e
+  | TIpv6, TIp -> Printf.fprintf fmt "(RamenIp.V6 %a)" p e
+  | TCidrv4, TIp -> Printf.fprintf fmt "(RamenIp.Cidr.V4 %a)" p e
+  | TCidrv6, TIp -> Printf.fprintf fmt "(RamenIp.Cidr.V6 %a)" p e
   | _ ->
     failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
                 (IO.to_string RamenScalar.print_typ from_typ)
@@ -475,6 +493,18 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "sqrt" [Some TFloat] [e]
   | Finalize, StatelessFun1 (_, Hash, e), Some TI64 ->
     emit_functionN oc ?state "CodeGenLib.hash" [None] [e]
+  | Finalize, StatelessFun1 (_, BeginOfRange, e), Some TIpv4 ->
+    emit_functionN oc ?state "RamenIpv4.Cidr.first" [Some TCidrv4] [e]
+  | Finalize, StatelessFun1 (_, BeginOfRange, e), Some TIpv6 ->
+    emit_functionN oc ?state "RamenIpv6.Cidr.first" [Some TCidrv6] [e]
+  | Finalize, StatelessFun1 (_, BeginOfRange, e), Some TIp ->
+    emit_functionN oc ?state "RamenIp.first" [Some TCidr] [e]
+  | Finalize, StatelessFun1 (_, EndOfRange, e), Some TIpv4 ->
+    emit_functionN oc ?state "RamenIpv4.Cidr.last" [Some TCidrv4] [e]
+  | Finalize, StatelessFun1 (_, EndOfRange, e), Some TIpv6 ->
+    emit_functionN oc ?state "RamenIpv6.Cidr.last" [Some TCidrv6] [e]
+  | Finalize, StatelessFun1 (_, EndOfRange, e), Some TIp ->
+    emit_functionN oc ?state "RamenIp.last" [Some TCidr] [e]
 
   (* Other stateless functions *)
   | Finalize, StatelessFun2 (_, Ge, e1, e2), Some TBool ->
@@ -840,8 +870,8 @@ let emit_compute_nullmask_size oc ser_typ =
     (List.print (fun oc field -> Bool.print oc field.nullable))
       ser_typ ;
   Printf.fprintf oc "\t\t\tskiplist_ |>\n" ;
-  Printf.fprintf oc "\t\tRingBufLib.bytes_for_bits |>\n" ;
-  Printf.fprintf oc "\t\tRingBufLib.round_up_to_rb_word in\n"
+  Printf.fprintf oc "\t\tRingBuf.bytes_for_bits |>\n" ;
+  Printf.fprintf oc "\t\tRingBuf.round_up_to_rb_word in\n"
 
 let emit_sersize_of_tuple name oc tuple_typ =
   (* We want the sersize of the serialized version of course: *)

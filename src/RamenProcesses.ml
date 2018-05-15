@@ -36,7 +36,7 @@ let repair_and_warn what rb =
 (* Prepare ringbuffer for notifications *)
 let prepare_notifs conf =
   let rb_name = C.notify_ringbuf conf in
-  RingBuf.create rb_name RingBufLib.rb_words ;
+  RingBuf.create rb_name ;
   let notify_rb = RingBuf.load rb_name in
   repair_and_warn "notifications" notify_rb ;
   notify_rb
@@ -44,7 +44,7 @@ let prepare_notifs conf =
 (* Prepare ringbuffer for reports. *)
 let prepare_reports conf =
   let rb_name = C.report_ringbuf conf in
-  RingBuf.create ~wrap:false rb_name RingBufLib.rb_words ;
+  RingBuf.create ~wrap:false rb_name ;
   let report_rb = RingBuf.load rb_name in
   repair_and_warn "instrumentation" report_rb ;
   report_rb
@@ -325,7 +325,7 @@ let really_start conf must_run proc parents children =
   !logger.debug "Creating in buffers..." ;
   let input_ringbufs = C.in_ringbuf_names conf proc.func in
   List.iter (fun rb_name ->
-    RingBuf.create rb_name RingBufLib.rb_words ;
+    RingBuf.create rb_name ;
     (* FIXME: if a worker started to write and we repair while it hasn't
      * committed, that message will be lost. Better address this in repair
      * itself by spinning a bit: if we can't see tail=head on a few tries
@@ -345,7 +345,7 @@ let really_start conf must_run proc parents children =
       let fname, specs as out = input_spec conf proc.func c in
       (* The destination ringbuffer must exist before it's referenced in an
        * out-ref, or the worker might err and throw away the tuples: *)
-      RingBuf.create fname RingBufLib.rb_words ;
+      RingBuf.create fname ;
       RamenOutRef.add out_ringbuf_ref out
     ) children in
   (* Now that the out_ref exists, but before we actually fork the worker,

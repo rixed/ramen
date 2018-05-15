@@ -47,6 +47,16 @@ let copy_typ ?name typ =
   incr uniq_num_seq ;
   { typ with expr_name ; uniq_num = !uniq_num_seq }
 
+let is_an_ip t =
+  match t.scalar_typ with
+  | Some (TIpv4|TIpv6|TIp) -> true
+  | _ -> false
+
+let is_an_int t =
+  match t.scalar_typ with
+  | Some (TNum|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) -> true
+  | _ -> false
+
 type state_lifespan = LocalState | GlobalState
 
 (* Expressions on scalars (aka fields) *)
@@ -349,10 +359,15 @@ let rec print with_types fmt =
       StatelessFun2 (_, Ge, e1, StatelessFun1 (_, BeginOfRange, e2)),
       StatelessFun1 (_, Not,
         StatelessFun2 (_, Ge, e1', StatelessFun1 (_, EndOfRange, e2')))) ->
-    assert (e2 = e2') ;
-    assert (e1 = e1') ;
+    assert (e2 == e2') ;
+    assert (e1 == e1') ;
     Printf.fprintf fmt "(%a) IN (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
-  | StatelessFun1 (_, (BeginOfRange|EndOfRange), _) -> assert false
+  | StatelessFun1 (t, (BeginOfRange|EndOfRange as op), e) ->
+    (* The typer, for debug, might want to print this type... *)
+    Printf.fprintf fmt "%s of range (%a)"
+      (if op = BeginOfRange then "begin" else "end")
+      (print with_types) e ;
+    add_types t
   | StatelessFun2 (t, And, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Or, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Ge, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
@@ -750,9 +765,9 @@ struct
   let rec lowest_prec_left_assoc m =
     let m = "logical operator" :: m in
     let op = that_string "and" ||| that_string "or"
-    and reduce t1 op t2 = match op with
-      | "and" -> StatelessFun2 (make_bool_typ "and", And, t1, t2)
-      | "or" -> StatelessFun2 (make_bool_typ "or", Or, t1, t2)
+    and reduce e1 op e2 = match op with
+      | "and" -> StatelessFun2 (make_bool_typ "and", And, e1, e2)
+      | "or" -> StatelessFun2 (make_bool_typ "or", Or, e1, e2)
       | _ -> assert false in
     (* FIXME: we do not need a blanks if we had parentheses ("(x)AND(y)" is OK) *)
     binary_ops_reducer ~op ~term:low_prec_left_assoc ~sep:blanks ~reduce m
@@ -762,68 +777,74 @@ struct
     let op = that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
              that_string "=" ||| that_string "<>" ||| that_string "!=" |||
              that_string "in" ||| that_string "like"
-    and reduce t1 op t2 = match op with
-      | ">" -> StatelessFun2 (make_bool_typ "comparison (>)", Gt, t1, t2)
-      | "<" -> StatelessFun2 (make_bool_typ "comparison (<)", Gt, t2, t1)
-      | ">=" -> StatelessFun2 (make_bool_typ "comparison (>=)", Ge, t1, t2)
-      | "<=" -> StatelessFun2 (make_bool_typ "comparison (<=)", Ge, t2, t1)
-      | "=" -> StatelessFun2 (make_bool_typ "equality", Eq, t1, t2)
+    and reduce e1 op e2 = match op with
+      | ">" -> StatelessFun2 (make_bool_typ "comparison (>)", Gt, e1, e2)
+      | "<" -> StatelessFun2 (make_bool_typ "comparison (<)", Gt, e2, e1)
+      | ">=" -> StatelessFun2 (make_bool_typ "comparison (>=)", Ge, e1, e2)
+      | "<=" -> StatelessFun2 (make_bool_typ "comparison (<=)", Ge, e2, e1)
+      | "=" -> StatelessFun2 (make_bool_typ "equality", Eq, e1, e2)
       | "!=" | "<>" ->
         StatelessFun1 (make_bool_typ "not", Not,
-          StatelessFun2 (make_bool_typ "equality", Eq, t1, t2))
+          StatelessFun2 (make_bool_typ "equality", Eq, e1, e2))
       | "in" ->
         StatelessFun2 (make_bool_typ "and for range", And,
           StatelessFun2 (make_bool_typ "comparison operator for range", Ge,
-            t1,
-            StatelessFun1 (make_typ "begin of range", BeginOfRange, t2)),
+            e1,
+            StatelessFun1 (make_typ "begin of range", BeginOfRange, e2)),
           StatelessFun1 (make_bool_typ "not for range", Not,
             StatelessFun2 (make_bool_typ "comparison operator for range", Ge,
-              t1,
-              StatelessFun1 (make_typ "end of range", EndOfRange, t2))))
+              e1,
+              StatelessFun1 (make_typ "end of range", EndOfRange, e2))))
       | "like" ->
-        (match get_string_const t2 with
+        (match get_string_const e2 with
         | None -> raise (Reject "LIKE pattern must be a string constant")
         | Some p ->
-          StatelessFunMisc (make_bool_typ "like", Like (t1, p)))
+          StatelessFunMisc (make_bool_typ "like", Like (e1, p)))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
   and mid_prec_left_assoc m =
     let m = "arithmetic operator" :: m in
     let op = that_string "+" ||| that_string "-" ||| that_string "||"
-    and reduce t1 op t2 = match op with
-      | "+" -> StatelessFun2 (make_num_typ "addition", Add, t1, t2)
-      | "-" -> StatelessFun2 (make_num_typ "subtraction", Sub, t1, t2)
-      | "||" -> StatelessFun2 (make_string_typ "concatenation", Concat, t1, t2)
+    and reduce e1 op e2 = match op with
+      | "+" -> StatelessFun2 (make_num_typ "addition", Add, e1, e2)
+      | "-" -> StatelessFun2 (make_num_typ "subtraction", Sub, e1, e2)
+      | "||" -> StatelessFun2 (make_string_typ "concatenation", Concat, e1, e2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks ~reduce m
 
   and high_prec_left_assoc m =
     let m = "arithmetic operator" :: m in
     let op = that_string "*" ||| that_string "//" ||| that_string "/" ||| that_string "%"
-    and reduce t1 op t2 = match op with
-      | "*" -> StatelessFun2 (make_num_typ "multiplication", Mul, t1, t2)
+    and reduce e1 op e2 = match op with
+      | "*" -> StatelessFun2 (make_num_typ "multiplication", Mul, e1, e2)
       (* Note: We want the default division to output floats by default *)
-      | "/" -> StatelessFun2 (make_typ ~typ:TFloat "division", Div, t1, t2)
-      | "//" -> StatelessFun2 (make_num_typ "integer-division", IDiv, t1, t2)
-      | "%" -> StatelessFun2 (make_num_typ "modulo", Mod, t1, t2)
+      (* Note: We reject IP/INT because that's a CIDR *)
+      | "//" -> StatelessFun2 (make_num_typ "integer-division", IDiv, e1, e2)
+      | "%" -> StatelessFun2 (make_num_typ "modulo", Mod, e1, e2)
+      | "/" ->
+          (match e1, e2 with
+          | Const (t1, _), Const (t2, _) when is_an_ip t1 && is_an_int t2 ->
+              raise (Reject "That's a CIDR")
+          | _ ->
+              StatelessFun2 (make_typ ~typ:TFloat "division", Div, e1, e2))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_left_assoc ~sep:opt_blanks ~reduce m
 
   and higher_prec_left_assoc m =
     let m = "bitwise logical operator" :: m in
     let op = that_string "&" ||| that_string "|" ||| that_string "^"
-    and reduce t1 op t2 = match op with
-      | "&" -> StatelessFun2 (make_int_typ "bitwise and", BitAnd, t1, t2)
-      | "|" -> StatelessFun2 (make_int_typ "bitwise or", BitOr, t1, t2)
-      | "^" -> StatelessFun2 (make_int_typ "bitwise xor", BitXor, t1, t2)
+    and reduce e1 op e2 = match op with
+      | "&" -> StatelessFun2 (make_int_typ "bitwise and", BitAnd, e1, e2)
+      | "|" -> StatelessFun2 (make_int_typ "bitwise or", BitOr, e1, e2)
+      | "^" -> StatelessFun2 (make_int_typ "bitwise xor", BitXor, e1, e2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks ~reduce m
 
   and higher_prec_right_assoc m =
     let m = "arithmetic operator" :: m in
     let op = char '^'
-    and reduce t1 _ t2 = StatelessFun2 (make_num_typ "exponentiation", Pow, t1, t2) in
+    and reduce e1 _ e2 = StatelessFun2 (make_num_typ "exponentiation", Pow, e1, e2) in
     binary_ops_reducer ~op ~right_associative:true
                        ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 

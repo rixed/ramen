@@ -91,13 +91,13 @@ static value alloc_tx(void)
   CAMLreturn(res);
 }
 
-CAMLprim value wrap_ringbuf_create(value wrap_, value fname_, value tot_words_)
+CAMLprim value wrap_ringbuf_create(value wrap_, value tot_words_, value fname_)
 {
   CAMLparam3(wrap_, fname_, tot_words_);
   bool wrap = Bool_val(wrap_);
   char *fname = String_val(fname_);
   unsigned tot_words = Long_val(tot_words_);
-  enum ringbuf_error err = ringbuf_create(wrap, fname, tot_words);
+  enum ringbuf_error err = ringbuf_create(wrap, tot_words, fname);
   if (RB_OK != err) caml_failwith("Cannot create ring buffer");
   CAMLreturn(Val_unit);
 }
@@ -405,7 +405,7 @@ CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
 }
 
 #define WRITE_UNBOXED_INT(bits) \
-CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
+CAMLprim value write_unboxed_##bits(value tx, value off_, value v_) \
 { \
   CAMLparam3(tx, off_, v_); \
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
@@ -422,6 +422,25 @@ WRITE_BOXED(48);
 WRITE_BOXED(32);
 WRITE_UNBOXED_INT(16);
 WRITE_UNBOXED_INT(8);
+
+CAMLprim value write_ip(value tx, value off_, value v_) \
+{
+  CAMLparam3(tx, off_, v_);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t offs = Long_val(off_);
+  assert(Is_block(v_));
+  // Write the tag then the IP
+  uint32_t const tag = Tag_val(v_);
+  assert(tag == 0 || tag == 1);
+  write_words(wrtx, offs, (char const *)&tag, sizeof tag);
+  if (tag == 0) {
+    write_boxed_32(tx, Val_long(offs + sizeof tag), Field(v_, 0));
+  } else {
+    write_boxed_128(tx, Val_long(offs + sizeof tag), Field(v_, 0));
+  }
+  CAMLreturn(Val_unit);
+}
+
 
 extern struct custom_operations uint128_ops;
 extern struct custom_operations uint64_ops;
@@ -465,6 +484,24 @@ READ_BOXED(int, 64, caml_int64_ops);
 READ_BOXED(int, 32, caml_int32_ops);
 READ_UNBOXED_INT(int, 16);
 READ_UNBOXED_INT(int, 8);
+
+CAMLprim value read_ip(value tx, value off_)
+{
+  CAMLparam2(tx, off_);
+  CAMLlocal1(v);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t offs = Long_val(off_);
+  uint32_t tag;
+  read_words(wrtx, offs, (char *)&tag, sizeof tag);
+  v = caml_alloc(1, tag);
+  if (tag == 0) { // V4
+    Store_field(v, 0, read_uint32(tx, Val_long(offs + sizeof tag)));
+  } else {
+    assert(tag == 1);  // V6
+    Store_field(v, 0, read_uint128(tx, Val_long(offs + sizeof tag)));
+  }
+  CAMLreturn(v);
+}
 
 CAMLprim value write_str(value tx, value off_, value v_)
 {

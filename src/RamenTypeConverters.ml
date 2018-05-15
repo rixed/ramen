@@ -33,5 +33,7 @@ let null_of_string = ()
 let eth_of_string s = Uint48.of_string ("0x"^ RamenHelpers.string_remove ':' s)
 let ip4_of_string = RamenIpv4.of_string
 let ip6_of_string = RamenIpv6.of_string
+let ip_of_string = RamenIp.of_string
 let cidr4_of_string = RamenIpv4.Cidr.of_string
 let cidr6_of_string = RamenIpv6.Cidr.of_string
+let cidr_of_string = RamenIp.Cidr.of_string

@@ -10,6 +10,7 @@ let incdirs = [
   "num" ;
   "ocaml" ;
   "parsercombinator" ;
+  "ppp" ;
   "ramen" ;
   "result" ;
   "stdint" ;
@@ -32,5 +33,7 @@ let objfiles = [
   "inotify/inotify-lwt.cmxa" ;
   "binocle/Binocle.cmxa" ;
   "lacaml/lacaml.cmxa" ;
+  "ppp/PPP.cmxa" ;
+  "ppp/PPP-unix.cmxa" ;
   "ramen/codegen.cmxa" ;
 ]

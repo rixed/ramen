@@ -26,16 +26,12 @@ let read_tuple ser_tuple_typ nullmask_size tx =
     | TEth    -> VEth (read_eth tx offs)
     | TIpv4   -> VIpv4 (read_u32 tx offs)
     | TIpv6   -> VIpv6 (read_u128 tx offs)
+    | TIp     -> VIp (read_ip tx offs)
     | TCidrv4 -> VCidrv4 (read_cidr4 tx offs)
     | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
+    | TCidr   -> VCidr (read_cidr tx offs)
     | TNull   -> VNull
     | TNum | TAny -> assert false
-  and sersize_of =
-    function
-    | _, VString s ->
-      RingBufLib.(rb_word_bytes + round_up_to_rb_word(String.length s))
-    | typ, _ ->
-      RingBufLib.sersize_of_fixsz_typ typ
   in
   (* Read all fields one by one *)
   if verbose_serialization then
@@ -55,7 +51,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
               !logger.debug "Importing a single value for %a at offset %d: %a"
                 RamenTuple.print_field_typ typ
                 offs RamenScalar.print value ;
-            let offs' = offs + sersize_of (typ.typ, value) in
+            let offs' = offs + RingBufLib.sersize_of_value value in
             Some value, offs', if typ.nullable then b+1 else b
           ) in
         Option.may (Array.set tuple i) value ;
@@ -99,8 +95,10 @@ let write_tuple conf ser_in_type rb tuple =
     | VEth e -> write_eth tx offs e ; sersize_of_eth
     | VIpv4 i -> write_ip4 tx offs i ; sersize_of_ipv4
     | VIpv6 i -> write_ip6 tx offs i ; sersize_of_ipv6
+    | VIp i -> write_ip tx offs i ; sersize_of_ip i
     | VCidrv4 c -> write_cidr4 tx offs c ; sersize_of_cidrv4
     | VCidrv6 c -> write_cidr6 tx offs c ; sersize_of_cidrv6
+    | VCidr c -> write_cidr tx offs c ; sersize_of_cidr c
     | VNull -> assert false
   in
   let nullmask_sz, values = (* List of nullable * scalar *)
@@ -157,7 +155,9 @@ let float_of_scalar_value =
   | VEth x -> Uint48.to_float x
   | VIpv4 x -> Uint32.to_float x
   | VIpv6 x -> Uint128.to_float x
-  | VNull | VString _ | VCidrv4 _ | VCidrv6 _ -> 0.
+  | VIp (V4 x) -> Uint32.to_float x
+  | VIp (V6 x) -> Uint128.to_float x
+  | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _ -> 0.
 
 let find_field_index typ n =
   match List.findi (fun _i f -> f.RamenTuple.typ_name = n) typ with

@@ -118,13 +118,13 @@ struct
       in
       loop Uint128.zero 112 lst
     in
-    (repeat ~min:8 ~max:8 ~sep group >>: ipv6_of_list |||
+    (repeat ~min:8 ~max:8 ~sep group |||
      (repeat ~max:7 ~sep group +- string "::" ++
       repeat ~max:7 ~sep group >>: fun (bef, aft) ->
         let len = List.length bef + List.length aft in
         if len > 8 then
           raise (Reject "IPv6 address too large") ;
-        bef @ List.make (8 - len) 0 @ aft |> ipv6_of_list)
+        bef @ List.make (8 - len) 0 @ aft) >>: ipv6_of_list
     ) m
 end
 
@@ -137,7 +137,7 @@ let of_string = RamenParsing.of_string_exn Parser.p
 module Cidr =
 struct
   (*$< Cidr *)
-  type t = Uint128.t * int
+  type t = uint128 * int [@@ppp PPP_OCaml]
 
   let netmask_of_len len =
     let shf = 128 - len in
@@ -149,6 +149,9 @@ struct
   let or_to_len len net =
     let shf = 128 - len in
     Uint128.(logor net ((shift_left one shf) - one))
+
+  let first (net, len) = and_to_len len net
+  let last (net, len) = or_to_len len net
 
   let to_string (net, len) =
     let net = and_to_len len net in

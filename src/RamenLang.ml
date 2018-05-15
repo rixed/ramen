@@ -64,6 +64,7 @@ type syntax_error =
   | CannotTypeField of { field : string ; typ : string ; tuple : tuple_prefix }
   | CannotTypeExpression of { what : string ; expected_type : string ;
                               got_type : string }
+  | CannotCompareTypes of { what : string }
   | InvalidNullability of { what : string ; must_be_nullable : bool }
   | InvalidCoalesce of { what : string ; must_be_nullable : bool }
   | CannotCompleteTyping of string
@@ -116,6 +117,8 @@ let string_of_syntax_error =
   | CannotTypeExpression { what ; expected_type ; got_type } ->
     what ^" must have type (compatible with) "^ expected_type ^
     " but got "^ got_type
+  | CannotCompareTypes { what } ->
+    "Cannot compare operands of "^ what
   | InvalidNullability { what ; must_be_nullable } ->
     what ^" must"^ (if must_be_nullable then "" else " not") ^
     " be nullable"

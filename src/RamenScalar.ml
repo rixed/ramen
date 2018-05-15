@@ -19,7 +19,7 @@ type typ =
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
-  | TIpv4 | TIpv6 | TCidrv4 | TCidrv6
+  | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
   [@@ppp PPP_OCaml]
 
 let string_of_typ = function
@@ -42,8 +42,10 @@ let string_of_typ = function
   | TEth    -> "Eth"
   | TIpv4   -> "IPv4"
   | TIpv6   -> "IPv6"
+  | TIp     -> "IP"
   | TCidrv4 -> "CIDRv4"
   | TCidrv6 -> "CIDRv6"
+  | TCidr   -> "CIDR"
 
 let print_typ fmt typ =
   String.print fmt (string_of_typ typ)
@@ -54,6 +56,7 @@ let compare_typ typ1 typ2 =
     | TFloat  -> KNum, 200
     | TU128   -> KNum, 128
     | TIpv6   -> KNum, 128
+    | TIp     -> KNum, 128
     | TI128   -> KNum, 127
     | TNum    -> KNum, 0
     | TU64    -> KNum, 64
@@ -73,6 +76,7 @@ let compare_typ typ1 typ2 =
     | TNull   -> KNull, 0
     | TCidrv4 -> KCidrv4, 0
     | TCidrv6 -> KCidrv6, 0
+    | TCidr   -> KCidrv6, 0
     | TAny    -> assert false
   in
   let k1, r1 = rank_of_typ typ1
@@ -99,8 +103,9 @@ type value =
   | VI8 of int8 | VI16 of int16 | VI32 of int32
   | VI64 of int64 | VI128 of int128 | VNull
   | VEth of uint48
-  | VIpv4 of uint32 | VIpv6 of uint128
-  | VCidrv4 of (uint32 * int) | VCidrv6 of (uint128 * int)
+  | VIpv4 of uint32 | VIpv6 of uint128 | VIp of RamenIp.t
+  | VCidrv4 of RamenIpv4.Cidr.t | VCidrv6 of RamenIpv6.Cidr.t
+  | VCidr of RamenIp.Cidr.t
   [@@ppp PPP_OCaml]
 
 let type_of = function
@@ -108,8 +113,8 @@ let type_of = function
   | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
   | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
   | VI64 _ -> TI64 | VI128 _ -> TI128 | VNull -> TNull
-  | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6
-  | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6
+  | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6 | VIp _ -> TIp
+  | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6 | VCidr _ -> TCidr
 
 (* The original Float.to_string adds a useless dot at the end of
  * round numbers: *)
@@ -139,8 +144,10 @@ let to_string ?(null="NULL") = function
   | VEth i    -> RamenEthAddr.to_string i
   | VIpv4 i   -> RamenIpv4.to_string i
   | VIpv6 i   -> RamenIpv6.to_string i
+  | VIp i     -> RamenIp.to_string i
   | VCidrv4 i -> RamenIpv4.Cidr.to_string i
   | VCidrv6 i -> RamenIpv6.Cidr.to_string i
+  | VCidr i   -> RamenIp.Cidr.to_string i
 
 let print_custom ?null fmt v = String.print fmt (to_string ?null v)
 let print fmt v = print_custom fmt v
@@ -170,8 +177,10 @@ let value_of_string typ s =
   | TEth -> VEth (eth_of_string s)
   | TIpv4 -> VIpv4 (ip4_of_string s)
   | TIpv6 -> VIpv6 (ip6_of_string s)
+  | TIp -> VIp (ip_of_string s)
   | TCidrv4 -> VCidrv4 (cidr4_of_string s)
   | TCidrv6 -> VCidrv6 (cidr6_of_string s)
+  | TCidr -> VCidr (cidr_of_string s)
   | TNull -> VNull
   | TNum | TAny -> assert false
 
@@ -190,9 +199,9 @@ let any_value_of_type = function
   | TI64 -> VI64 Int64.zero
   | TI128 -> VI128 Int128.zero
   | TEth -> VEth Uint48.zero
-  | TIpv4 -> VIpv4 Uint32.zero
+  | TIpv4 | TIp -> VIpv4 Uint32.zero
   | TIpv6 -> VIpv6 Uint128.zero
-  | TCidrv4 -> VCidrv4 (Uint32.zero, 0)
+  | TCidrv4 | TCidr -> VCidrv4 (Uint32.zero, 0)
   | TCidrv6 -> VCidrv6 (Uint128.zero, 0)
   | TNull -> VNull
   | TNum | TAny -> assert false
@@ -249,6 +258,10 @@ struct
     (RamenIpv6.Parser.p >>: fun v -> VIpv6 v) |||
     (RamenIpv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |||
     (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
+    (* Note: we do not parse an IP or a CIDR as a generic RamenIP.t etc.
+     * Indeed, that would lead to an ambiguous grammar and also what's the
+     * point in losing typing accuracy? IPs will be cast to generic IPs
+     * as required. *)
 
   (*$= p & ~printer:(test_printer print)
     (Ok (VI32 (Int32.of_int 31000), (5,[])))   (test_p p "31000")
@@ -278,8 +291,10 @@ struct
     (strinG "eth" >>: fun () -> TEth) |||
     (strinG "ip4" >>: fun () -> TIpv4) |||
     (strinG "ip6" >>: fun () -> TIpv6) |||
+    (strinG "ip" >>: fun () -> TIp) |||
     (strinG "cidr4" >>: fun () -> TCidrv4) |||
-    (strinG "cidr6" >>: fun () -> TCidrv6)
+    (strinG "cidr6" >>: fun () -> TCidrv6) |||
+    (strinG "cidr" >>: fun () -> TCidr)
 
   (*$>*)
 end
