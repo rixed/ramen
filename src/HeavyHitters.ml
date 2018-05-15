@@ -53,8 +53,12 @@ let add s t w x =
             s.xs_of_w <-
               if Map.is_empty xs' then
                 WMap.remove victim_w' s.xs_of_w
-              else
-                WMap.update victim_w' victim_w' xs' s.xs_of_w ;
+              else (
+                (* Bugged in batteries <= v2.8.0:
+                WMap.update victim_w' victim_w' xs' s.xs_of_w  *)
+                WMap.remove victim_w' s.xs_of_w |>
+                WMap.add victim_w' xs'
+              )
           ) else s.cur_size <- s.cur_size + 1 ;
           let w = w +. !victim_w in
           s.xs_of_w <- add_in_xs_of_w x w !victim_w s.xs_of_w ;
