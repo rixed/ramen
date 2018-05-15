@@ -101,10 +101,13 @@ struct
     let m = "IPv6" :: m in
     let group =
       let max_num = Num.of_int 65535 in
-      non_decimal_integer 16 (return ()) hexadecimal_digit >>: fun n ->
-      if Num.gt_num n max_num then
-        raise (Reject "IPv6 group too large") ;
-      Num.to_int n in
+      fun m ->
+        let m = "IPv6 group" :: m in
+        (check hexadecimal_digit -+ (* to avoid empty strings *)
+         non_decimal_integer 16 (return ()) hexadecimal_digit >>: fun n ->
+          if Num.gt_num n max_num then
+            raise (Reject "IPv6 group too large") ;
+          Num.to_int n) m in
     let sep = char ':' in
     let ipv6_of_list lst =
       let rec loop n shf = function
