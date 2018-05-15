@@ -3,41 +3,92 @@ open Batteries
 open Stdint
 open RamenHelpers
 
+(* Used to compress 0s in IPv6: *)
+type word_type = Zeros of int | Word of int
+
+let string_of_words lst =
+  let s = Bytes.create (8*(4+1)) in
+  let rec loop i (* last index in bytes s *) need_sep = function
+    | [] -> i
+    | Word v :: lst ->
+        let i =
+          if need_sep then (
+            s.[i] <- ':' ; i + 1
+          ) else i in
+        let i =
+          if v < 0x1000 then i else (
+            s.[i] <- hex_of (v lsr 12) ; i + 1) in
+        let i =
+          if v < 0x100 then i else (
+            s.[i] <- hex_of ((v lsr 8) land 0xf) ; i + 1) in
+        let i =
+          if v < 0x10 then i else (
+            s.[i] <- hex_of ((v lsr 4) land 0xf) ; i + 1) in
+        let i =
+          s.[i] <- hex_of (v land 0xf) ; i + 1 in
+        loop i true lst
+    | Zeros z :: lst ->
+        s.[i] <- ':' ; s.[i+1] <- ':' ;
+        loop (i + 2) false lst
+  in
+  let len = loop 0 false lst in
+  Bytes.sub_string s 0 len
+(*$= string_of_words & ~printer:(fun x -> x)
+  "1" (string_of_words [ Word 1 ])
+  "1:2" (string_of_words [ Word 1 ; Word 2 ])
+  "1::2" (string_of_words [ Word 1 ; Zeros 42 ; Word 2 ])
+  "::2a" (string_of_words [ Zeros 32 ; Word 42 ])
+ *)
+
 let to_string =
   let mask = Uint128.of_int 65535 in
-  let digit n shf =
+  let word n shf =
     Uint128.(shift_right_logical n shf |>
              logand mask |>
              to_int) in
   fun n ->
-    (* TODO: longest sequence of 0 (but more than a single word)
-     * should be omitted *)
-    let s = Bytes.create (8*(4+1)) in
-    let rec loop d i =
-      if d = 8 then i else (
-        let i =
-          if i = 0 then i else (
-            s.[i] <- ':' ; i + 1) in
-          let v = digit n (112 - d*16) in
-          let i =
-            if v < 0x1000 then i else (
-              s.[i] <- hex_of (v lsr 12) ; i + 1) in
-          let i =
-            if v < 0x100 then i else (
-              s.[i] <- hex_of ((v lsr 8) land 0xf) ; i + 1) in
-          let i =
-            if v < 0x10 then i else (
-              s.[i] <- hex_of ((v lsr 4) land 0xf) ; i + 1) in
-          let i =
-            s.[i] <- hex_of (v land 0xf) ; i + 1 in
-          loop (d + 1) i) in
-    let len = loop 0 0 in
-    Bytes.sub_string s 0 len
+    let rec loop lst max_zeros zeros shf =
+      if shf < 0 then
+        let lst = if zeros > 0 then Zeros zeros :: lst else lst in
+        (* replace all Zeros by Word 0s but the first one with max_zeros: *)
+        let _, lst =
+          List.fold_left (fun (max_zeros, res) -> function
+            | Zeros z as zeros ->
+                if z = max_zeros then (* The chosen one *)
+                  max_int, zeros :: res
+                else
+                  let rec loop res z =
+                    if z <= 0 then res else
+                    loop (Word 0 :: res) (z - 1) in
+                  max_zeros, loop res z
+            | x -> max_zeros, x :: res
+          ) (max_zeros, []) lst in
+        string_of_words lst
+      else
+        let w = word n shf in
+        let shf = shf - 16 in
+        if w = 0 then
+          let zeros = zeros + 1 in
+          loop lst (max max_zeros zeros) zeros shf
+        else
+          let lst = if zeros > 0 then Zeros zeros :: lst else lst in
+          let lst = Word w :: lst in
+          loop lst max_zeros 0 shf
+    in
+    loop [] 0 0 112
 
 (*$= to_string & ~printer:(fun x -> x)
-  "2001:db8:0:0:0:ff00:42:8329" \
+  "2001:db8::ff00:42:8329" \
     (to_string (Stdint.Uint128.of_string \
       "0x20010DB8000000000000FF0000428329"))
+  "::2001" \
+    (to_string (Stdint.Uint128.of_string "0x2001"))
+  "2001::" \
+    (to_string (Stdint.Uint128.of_string \
+      "0x20010000000000000000000000000000"))
+  "1:23:456::7:0:8" \
+    (to_string (Stdint.Uint128.of_string \
+      "0x00010023045600000000000700000008"))
  *)
 
 let print fmt n = String.print fmt (to_string n)
@@ -100,7 +151,7 @@ struct
     let net = and_to_len len net in
     to_string net ^"/"^ string_of_int len
   (*$= to_string & ~printer:(fun x -> x)
-     "2001:db8:0:0:0:ff00:42:8300/120" \
+     "2001:db8::ff00:42:8300/120" \
        (to_string (Stdint.Uint128.of_string \
          "0x20010DB8000000000000FF0000428300", 120))
    *)
