@@ -583,7 +583,11 @@ let render_graphite conf headers body =
     List.iteri (fun i fval_opt ->
       match fval_opt with
       | None -> ()
-      | Some fval -> Hashtbl.add factor_values (func_name, i) fval
+      | Some fval ->
+          Hashtbl.modify_opt (func_name, i) (function
+            | None -> Some (Set.singleton fval)
+            | Some s -> Some (Set.add fval s)
+          ) factor_values
     ) fvals ;
     return_unit in
   let%lwt () = Lwt_list.iter_s count_factor_values targets in
@@ -592,18 +596,19 @@ let render_graphite conf headers body =
   let add_scans (func, func_name, fvals, data_field) =
     let where, factors, _ =
       List.fold_left2 (fun (where, factors, i) factor fval ->
-        let wanted = Hashtbl.find_all factor_values (func_name, i) in
+        let wanted =
+          Hashtbl.find_default factor_values (func_name, i) Set.empty in
         !logger.debug "wanted values for factor %d (%s): %a" i factor
-          (List.print RamenScalar.print) wanted ;
-        match wanted with
-        | [] -> (* Can happen if there are no possible values. *)
+          (Set.print RamenScalar.print) wanted ;
+        match Set.cardinal wanted with
+        | 0 -> (* Can happen if there are no possible values. *)
             where, factors, i + 1
-        | [ single_val ] ->
+        | 1 ->
           (* If we are interested in only one value, do not ask for this factor
            * but add a where filter: *)
-          (factor, single_val) :: where,
+          (factor, Set.min_elt wanted) :: where,
           factors, i + 1
-        | _several_vals ->
+        | _many ->
           (* We want several values for that factor, so we will take it as a
            * factor: *)
           where, Set.add factor factors, i + 1
