@@ -67,7 +67,8 @@ let supervisor conf daemonize to_stderr max_archives autoreload report_period
        * in accordance to the running program list: *)
       restart_on_failure "synchronize_running"
         RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
-          (fun () -> let years = 315360000. in Lwt_unix.sleep years) ;
+          (fun () -> !logger.info "Running in dummy mode" ;
+                     until_quit (fun () -> Lwt_unix.sleep 3.)) ;
           (fun () -> synchronize_running conf autoreload) |] ])
 
 (*

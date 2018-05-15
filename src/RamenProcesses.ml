@@ -19,6 +19,43 @@ let report_period = ref RamenConsts.default_report_period
 let rand_seed = ref None
 
 (*
+ * Helpers:
+ *)
+
+let until_quit f =
+  let rec loop () =
+    if !quit then return_unit
+    else f () >>= loop in
+  loop ()
+
+(* To be called before synchronize_running *)
+let repair_and_warn what rb =
+  if RingBuf.repair rb then
+    !logger.warning "Ringbuf for %s was damaged." what
+
+(* Prepare ringbuffer for notifications *)
+let prepare_notifs conf =
+  let rb_name = C.notify_ringbuf conf in
+  RingBuf.create rb_name RingBufLib.rb_words ;
+  let notify_rb = RingBuf.load rb_name in
+  repair_and_warn "notifications" notify_rb ;
+  notify_rb
+
+(* Prepare ringbuffer for reports. *)
+let prepare_reports conf =
+  let rb_name = C.report_ringbuf conf in
+  RingBuf.create ~wrap:false rb_name RingBufLib.rb_words ;
+  let report_rb = RingBuf.load rb_name in
+  repair_and_warn "instrumentation" report_rb ;
+  report_rb
+
+(* Install signal handlers *)
+let prepare_signal_handlers () =
+  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
+    !logger.info "Received signal %s" (name_of_signal s) ;
+    quit := true))
+
+(*
  * Machinery to spawn other programs.
  *)
 
@@ -637,30 +674,3 @@ let synchronize_running conf autoreload_delay =
         loop last_read))
   in
   loop 0.
-
-(* To be called before synchronize_running *)
-let repair_and_warn what rb =
-  if RingBuf.repair rb then
-    !logger.warning "Ringbuf for %s was damaged." what
-
-(* Prepare ringbuffer for notifications *)
-let prepare_notifs conf =
-  let rb_name = C.notify_ringbuf conf in
-  RingBuf.create rb_name RingBufLib.rb_words ;
-  let notify_rb = RingBuf.load rb_name in
-  repair_and_warn "notifications" notify_rb ;
-  notify_rb
-
-(* Prepare ringbuffer for reports. *)
-let prepare_reports conf =
-  let rb_name = C.report_ringbuf conf in
-  RingBuf.create ~wrap:false rb_name RingBufLib.rb_words ;
-  let report_rb = RingBuf.load rb_name in
-  repair_and_warn "instrumentation" report_rb ;
-  report_rb
-
-(* Install signal handlers *)
-let prepare_signal_handlers () =
-  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    !logger.info "Received signal %s" (name_of_signal s) ;
-    quit := true))
