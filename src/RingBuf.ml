@@ -68,7 +68,7 @@ external zero_bytes : tx -> int -> int -> unit = "zero_bytes"
 
 (* Integers of 8, 16 and 24 bits are stored as normal ocaml integers.
  * But signed int8, int16 and int24 are shifted to the left so that
- * ocaml see them with the proper sign so that arithmetic works.
+ * ocaml sees them with the proper sign so that arithmetic works.
  * When we encode them using write_u{8,16,24} we must therefore shift
  * them back, as those functions assume only the low bits are relevant.
  * For this, it is enough to call the to_int function, since that's what

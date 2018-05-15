@@ -212,6 +212,10 @@ let check_finished_tuple_type tuple_prefix tuple_type =
   finish_typing tuple_type
 
 let can_enlarge ~from_scalar_type ~to_scalar_type =
+  (* Beware: it looks backward but it's not. [from_scalar_type] is the current
+   * type of the expression and [to_scalar_type] is the type of its
+   * operands; and we want to know if we could change the type of the global
+   * expression into the type of its operands. *)
   (* On TBool and Integer conversions:
    * We want to convert easily from bool to int to ease the usage of
    * booleans in arithmetic operations (for instance, summing how many times
