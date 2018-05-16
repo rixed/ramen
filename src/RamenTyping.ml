@@ -807,8 +807,21 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       try check_op op_typ (fun _ -> TIpv6) [Some TCidrv6, None, e]
       with _ -> check_op op_typ (fun _ -> TIp) [Some TCidr, None, e])
   | StatelessFunMisc (op_typ, (Min es | Max es)) ->
-    check_op op_typ largest_type
-      (List.map (fun e -> Some TFloat, None, e) es)
+    let ret = ref false in
+    (try
+      [| TFloat ; TString ; TIp ; TCidr |] |>
+      Array.iter (fun typ ->
+        try
+          ret := check_op op_typ largest_type
+                   (List.map (fun e -> Some typ, None, e) es) ;
+          raise Exit
+        with SyntaxError _ as e ->
+          !logger.debug "%smin/max failed with %S"
+            indent (Printexc.to_string e)) ;
+      let e = CannotCompareTypes {
+        what = IO.to_string (RamenExpr.print true) expr } in
+      raise (SyntaxError e)
+    with Exit -> !ret)
 
   | StatefulFun (op_typ, _, Lag (e1, e2)) ->
     (* e1 must be an unsigned small constant integer. For now that mean user

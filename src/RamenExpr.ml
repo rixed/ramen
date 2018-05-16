@@ -982,9 +982,9 @@ struct
      (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_num_typ "square root", Sqrt, e)) |||
      (afun1 "hash" >>: fun e -> StatelessFun1 (make_typ ~typ:TI64 "hash", Hash, e)) |||
      (afun1_sf ~def_state:LocalState "min" >>: fun (g, e) ->
-        StatefulFun (make_num_typ "min aggregation", g, AggrMin e)) |||
+        StatefulFun (make_typ "min aggregation", g, AggrMin e)) |||
      (afun1_sf ~def_state:LocalState "max" >>: fun (g, e) ->
-        StatefulFun (make_num_typ "max aggregation", g, AggrMax e)) |||
+        StatefulFun (make_typ "max aggregation", g, AggrMax e)) |||
      (afun1_sf ~def_state:LocalState "sum" >>: fun (g, e) ->
         StatefulFun (make_num_typ "sum aggregation", g, AggrSum e)) |||
      (afun1_sf ~def_state:LocalState "avg" >>: fun (g, e) ->
@@ -1041,13 +1041,13 @@ struct
         GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
      (* At least 2 args to distinguish from the aggregate functions: *)
      (afun2v "max" >>: fun (e1, e2, e3s) ->
-        StatelessFunMisc (make_num_typ "max", Max (e1 :: e2 :: e3s))) |||
+        StatelessFunMisc (make_typ "max", Max (e1 :: e2 :: e3s))) |||
      (afun1v "greatest" >>: fun (e, es) ->
-        StatelessFunMisc (make_num_typ "max", Max (e :: es))) |||
+        StatelessFunMisc (make_typ "max", Max (e :: es))) |||
      (afun2v "min" >>: fun (e1, e2, e3s) ->
-        StatelessFunMisc (make_num_typ "min", Min (e1 :: e2 :: e3s))) |||
+        StatelessFunMisc (make_typ "min", Min (e1 :: e2 :: e3s))) |||
      (afun1v "least" >>: fun (e, es) ->
-        StatelessFunMisc (make_num_typ "min", Min (e :: es))) |||
+        StatelessFunMisc (make_typ "min", Min (e :: es))) |||
      k_moveavg ||| sequence ||| cast ||| top_expr) m
 
   and sequence =
