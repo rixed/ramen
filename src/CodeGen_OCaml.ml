@@ -252,6 +252,10 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
     (* We could as well just print "()" but this is easier for debugging,
      * and hopefully the compiler will make it the same: *)
     Printf.fprintf fmt "(ignore %a)" p e
+  | TNull, _ ->
+    (* To convert NULL into anything (nullable) is easy: *)
+    assert nullable ;
+    Printf.fprintf fmt "None"
   | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
     Printf.fprintf fmt "(%s.to_string %a)"
       (omod_of_type from_typ) p e
