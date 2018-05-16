@@ -266,56 +266,6 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
 
 let freevar_name t = "fv_"^ string_of_int t.RamenExpr.uniq_num ^"_"
 
-let min_of_num_scalar_type =
-  let open Stdint in
-  function
-  | TFloat -> VFloat neg_infinity
-  | TBool -> VBool false
-  | TU8 -> VU8 Uint8.zero
-  | TU16 -> VU16 Uint16.zero
-  | TU32 -> VU32 Uint32.zero
-  | TU64 -> VU64 Uint64.zero
-  | TU128 -> VU128 Uint128.zero
-  | TI8 -> VI8 Int8.min_int
-  | TI16 -> VI16 Int16.min_int
-  | TI32 -> VI32 Int32.min_int
-  | TI64 -> VI64 Int64.min_int
-  | TI128 -> VI128 Int128.min_int
-  | TEth -> VEth Uint48.zero
-  | TIpv4 -> VIpv4 Uint32.zero
-  | TIpv6 -> VIpv6 Uint128.zero
-  | _ -> assert false
-
-let max_of_num_scalar_type =
-  let open Stdint in
-  function
-  | TFloat -> VFloat infinity
-  | TBool -> VBool true
-  | TU8 -> VU8 Uint8.max_int
-  | TU16 -> VU16 Uint16.max_int
-  | TU32 -> VU32 Uint32.max_int
-  | TU64 -> VU64 Uint64.max_int
-  | TU128 -> VU128 Uint128.max_int
-  | TI8 -> VI8 Int8.max_int
-  | TI16 -> VI16 Int16.max_int
-  | TI32 -> VI32 Int32.max_int
-  | TI64 -> VI64 Int64.max_int
-  | TI128 -> VI128 Int128.max_int
-  | TEth -> VEth Uint48.max_int
-  | TIpv4 -> VIpv4 Uint32.max_int
-  | TIpv6 -> VIpv6 Uint128.max_int
-  | _ -> assert false
-
-let min_of_num_type t =
-  let open RamenExpr in
-  Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "min-init",
-         min_of_num_scalar_type (Option.get t.scalar_typ))
-
-let max_of_num_type t =
-  let open RamenExpr in
-  Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "max-init",
-         max_of_num_scalar_type (Option.get t.scalar_typ))
-
 let any_constant_of_type t =
   let open RamenExpr in
   let open Stdint in
@@ -327,9 +277,23 @@ let any_constant_of_type t =
   | TString -> VString ""
   | TNum -> assert false
   | TAny -> assert false
-  | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
+  | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
   | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
-  | s -> min_of_num_scalar_type s)
+  | TFloat -> VFloat neg_infinity
+  | TBool -> VBool false
+  | TU8 -> VU8 Uint8.zero
+  | TU16 -> VU16 Uint16.zero
+  | TU32 -> VU32 Uint32.zero
+  | TU64 -> VU64 Uint64.zero
+  | TU128 -> VU128 Uint128.zero
+  | TI8 -> VI8 Int8.zero
+  | TI16 -> VI16 Int16.zero
+  | TI32 -> VI32 Int32.zero
+  | TI64 -> VI64 Int64.zero
+  | TI128 -> VI128 Int128.zero
+  | TEth -> VEth Uint48.zero
+  | TIp | TIpv4 -> VIpv4 Uint32.zero
+  | TIpv6 -> VIpv6 Uint128.zero)
 
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
@@ -601,25 +565,26 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefulFun (_, g, AggrAvg _), _ ->
     emit_functionN oc ?state "CodeGenLib.avg_finalize" [None] [my_state g]
 
-  | InitState, StatefulFun (_, _, AggrMax e), t ->
-    conv_to ?state ~context t oc (min_of_num_type (typ_of e))
-  | InitState, StatefulFun (_, _, AggrMin e), t ->
-    conv_to ?state ~context t oc (max_of_num_type (typ_of e))
   | InitState, StatefulFun (_, _, (AggrFirst e|AggrLast e)), t ->
     conv_to ?state ~context t oc (any_constant_of_type (typ_of e))
 
-  | Finalize, StatefulFun (_, g, (AggrMax _|AggrMin _|AggrFirst _|AggrLast _)), _ ->
+  | InitState, StatefulFun (_, _, (AggrMax _|AggrMin _)), _ ->
+    Printf.fprintf oc "None"
+  | UpdateState, StatefulFun (_, g, AggrMax e), _ ->
+    emit_functionN oc ?state "CodeGenLib.aggr_max" [None; None] [e; my_state g]
+  | UpdateState, StatefulFun (_, g, AggrMin e), _ ->
+    emit_functionN oc ?state "CodeGenLib.aggr_min" [None; None] [e; my_state g]
+  | Finalize, StatefulFun (_, g, (AggrMax _|AggrMin _)), _ ->
+    emit_functionN oc ?state "Option.get" [None] [my_state g]
+
+  | Finalize, StatefulFun (_, g, (AggrFirst _|AggrLast _)), _ ->
     emit_functionN oc ?state "identity" [None] [my_state g]
-  | UpdateState, StatefulFun (_, g, AggrMax (e)), _ ->
-    emit_functionN oc ?state "max" [None; None] [my_state g; e]
-  | UpdateState, StatefulFun (_, g, AggrMin (e)), _ ->
-    emit_functionN oc ?state "min" [None; None] [my_state g; e]
-  | UpdateState, StatefulFun (_, g, AggrFirst (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrFirst e), _ ->
     (* This hack relies on the fact that UpdateState is always called in
      * a context where we have the group.#count available and that its
      * name is "virtual_group_count_". *)
     emit_functionN oc ?state "(fun x y -> if virtual_group_count_ = Uint64.one then y else x)" [None; None] [my_state g; e]
-  | UpdateState, StatefulFun (_, g, AggrLast (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrLast e), _ ->
     emit_functionN oc ?state "(fun _ x -> x)" [None; None] [my_state g; e]
 
   (* Note: for InitState it is probably useless to check out_type.
@@ -1455,6 +1420,7 @@ let otype_of_state e =
       Printf.sprintf2 "%a CodeGenLib.distinct_state"
         (list_print_as_product print_expr_typ) es
     | StatefulFun (_, _, AggrAvg _) -> "(int * float)"
+    | StatefulFun (_, _, (AggrMin _|AggrMax _)) -> t ^" option"
     | StatefulFun (_, _, Top { what ; _ }) ->
       Printf.sprintf2 "%a HeavyHitters.t"
         print_expr_typ what
