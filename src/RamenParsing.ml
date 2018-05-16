@@ -71,14 +71,17 @@ let number =
 let duration m =
   let m = "duration" :: m in
   let strinGs s = strinG s ||| strinG (s ^"s") in
-  (optional ~def:1. (number +- blanks) ++
-   ((strinGs "microsecond" >>: fun () -> 0.000_001) |||
-    (strinGs "millisecond" >>: fun () -> 0.001) |||
-    (strinGs "second" >>: fun () -> 1.) |||
-    (strinGs "minute" >>: fun () -> 60.) |||
-    (strinGs "hour" >>: fun () -> 3600.)) >>:
+  (
+    (number >>: fun n -> n, 1.) ||| (* unitless number are seconds *)
+    (optional ~def:1. (number +- blanks) ++
+     ((strinGs "microsecond" >>: fun () -> 0.000_001) |||
+      (strinGs "millisecond" >>: fun () -> 0.001) |||
+      (strinGs "second" >>: fun () -> 1.) |||
+      (strinGs "minute" >>: fun () -> 60.) |||
+      (strinGs "hour" >>: fun () -> 3600.))) >>:
    fun (dur, scale) ->
      let d = dur *. scale in
      if d < 0. then
        raise (Reject "durations must be greater than zero") ;
-     d) m
+     d
+  ) m
