@@ -211,44 +211,6 @@ let check_finished_tuple_type tuple_prefix tuple_type =
   ) tuple_type.fields ;
   finish_typing tuple_type
 
-let can_enlarge ~from_scalar_type ~to_scalar_type =
-  (* Beware: it looks backward but it's not. [from_scalar_type] is the current
-   * type of the expression and [to_scalar_type] is the type of its
-   * operands; and we want to know if we could change the type of the global
-   * expression into the type of its operands. *)
-  (* On TBool and Integer conversions:
-   * We want to convert easily from bool to int to ease the usage of
-   * booleans in arithmetic operations (for instance, summing how many times
-   * something is true). But we still want to disallow int to bool automatic
-   * conversions to keep conditionals clean of integers (use an IF to convert
-   * in this direction).
-   * If we merely allowed a TNum to be "enlarged" into a TBool then an
-   * expression using a boolean as an integer would have a boolean result,
-   * which is certainly not what we want. So we want to disallow such an
-   * automatic conversion. Instead, user must manually cast to some integer
-   * type. *)
-  let compatible_types =
-    match from_scalar_type with
-    | TNum -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
-    | TU8 -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
-    | TU16 -> [ TU16 ; TU32 ; TU64 ; TU128 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
-    | TU32 -> [ TU32 ; TU64 ; TU128 ; TI64 ; TI128 ; TFloat ; TNum ]
-    | TU64 -> [ TU64 ; TU128 ; TI128 ; TFloat ; TNum ]
-    | TU128 -> [ TU128 ; TFloat ; TNum ]
-    | TI8 -> [ TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TU16 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
-    | TI16 -> [ TI16 ; TI32 ; TI64 ; TI128 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
-    | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ; TNum ]
-    | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
-    | TI128 -> [ TI128 ; TFloat ; TNum ]
-    | TBool -> [ TBool ; TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
-    (* Any specific type can be turned into its generic variant: *)
-    | TIpv4 -> [ TIpv4 ; TIp ]
-    | TIpv6 -> [ TIpv6 ; TIp ]
-    | TCidrv4 -> [ TCidrv4 ; TCidr ]
-    | TCidrv6 -> [ TCidrv6 ; TCidr ]
-    | x -> [ x ] in
-  List.mem to_scalar_type compatible_types
-
 (* Improve to rank with from *)
 let check_rank ~from ~to_ =
   match !to_, !from with
@@ -285,7 +247,7 @@ let set_scalar_type ?(indent="") ~ok_if_larger ~expr_name typ scalar_typ =
     typ.RamenExpr.scalar_typ <- Some scalar_typ ;
     true
   | Some to_typ when to_typ <> scalar_typ ->
-    if can_enlarge ~from_scalar_type:to_typ ~to_scalar_type:scalar_typ
+    if RamenScalar.can_enlarge ~from:to_typ ~to_:scalar_typ
     then (
       !logger.debug "%sImproving %a from %a" indent
         RamenExpr.print_typ typ RamenScalar.print_typ scalar_typ ;
@@ -372,6 +334,26 @@ let type_of_parents_field parents tuple_of_field field =
     raise (SyntaxError e) ;
   | Some ptyp -> ptyp
 
+(* From the list of operand types, return the largest type able to accomodate
+ * all operands. Most of the time it will be the largest in term of "all
+ * others can be enlarged to that one", but for special cases where we want
+ * an even larger type; For instance, if we combine an i8 and an u8 then we
+ * want the result to be an i16, or if we combine an IPv4 and an IPv6 then
+ * we want the result to be an IP. *)
+let largest_type = function
+  | fst :: rest ->
+    let rec combine l t =
+      try larger_type l t
+      with Invalid_argument _ as e ->
+        (* Try to enlarge l a bit further *)
+        (match RamenScalar.enlarge_type l with
+        | exception _ -> raise e
+        | l -> combine l t)
+    in
+    List.fold_left combine fst rest
+  | _ -> invalid_arg "largest_type"
+
+
 (* Get rid of the short-cutting of or expressions: *)
 let (|||) a b = a || b
 
@@ -401,7 +383,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* Now we check this comply with the operator expectations about its operand : *)
     (match sub_typ.scalar_typ, exp_sub_typ with
     | Some actual_typ, Some exp_sub_typ ->
-      if not (can_enlarge ~from_scalar_type:actual_typ ~to_scalar_type:exp_sub_typ) then
+      if not (RamenScalar.can_enlarge ~from:actual_typ ~to_:exp_sub_typ) then
         let e = CannotTypeExpression {
           what = "Operand of "^ op_typ.expr_name ;
           expected_type = IO.to_string RamenScalar.print_typ exp_sub_typ ;
@@ -458,7 +440,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        * make_op_typ: *)
       let lst = List.rev lst and nullables = List.rev nullables in
       assert (lst = [] || nullables <> []) ;
-      let actual_op_typ = make_op_typ lst in
+      let actual_op_typ =
+        try make_op_typ lst
+        with _ ->
+          let e = CannotCombineTypes { what = op_typ.expr_name } in
+          raise (SyntaxError e) in
       let nullable = if propagate_null then
           if List.exists ((=) (Some true)) nullables then Some true
           else if List.for_all ((=) (Some false)) nullables then Some false

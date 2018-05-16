@@ -50,48 +50,61 @@ let string_of_typ = function
 let print_typ fmt typ =
   String.print fmt (string_of_typ typ)
 
-type type_class = KNum | KBool | KString | KNull | KCidrv4 | KCidrv6
-let compare_typ typ1 typ2 =
-  let rank_of_typ = function
-    | TFloat  -> KNum, 200
-    | TU128   -> KNum, 128
-    | TIpv6   -> KNum, 128
-    | TIp     -> KNum, 128
-    | TI128   -> KNum, 127
-    | TNum    -> KNum, 0
-    | TU64    -> KNum, 64
-    | TI64    -> KNum, 63
-    (* We consider Eth and IPs numbers so we can cast directly to/from ints
-     * and use comparison operators. *)
-    | TEth    -> KNum, 48
-    | TU32    -> KNum, 32
-    | TIpv4   -> KNum, 32
-    | TI32    -> KNum, 31
-    | TU16    -> KNum, 16
-    | TI16    -> KNum, 15
-    | TU8     -> KNum, 8
-    | TI8     -> KNum, 7
-    | TString -> KString, 1
-    | TBool   -> KBool, 1
-    | TNull   -> KNull, 0
-    | TCidrv4 -> KCidrv4, 0
-    | TCidrv6 -> KCidrv6, 0
-    | TCidr   -> KCidrv6, 0
-    | TAny    -> assert false
-  in
-  let k1, r1 = rank_of_typ typ1
-  and k2, r2 = rank_of_typ typ2 in
-  if k1 <> k2 then invalid_arg "types not comparable" ;
-  compare r1 r2
+let can_enlarge ~from ~to_ =
+  (* Beware: it looks backward but it's not. [from] is the current
+   * type of the expression and [to_] is the type of its
+   * operands; and we want to know if we could change the type of the global
+   * expression into the type of its operands. *)
+  (* On TBool and Integer conversions:
+   * We want to convert easily from bool to int to ease the usage of
+   * booleans in arithmetic operations (for instance, summing how many times
+   * something is true). But we still want to disallow int to bool automatic
+   * conversions to keep conditionals clean of integers (use an IF to convert
+   * in this direction).
+   * If we merely allowed a TNum to be "enlarged" into a TBool then an
+   * expression using a boolean as an integer would have a boolean result,
+   * which is certainly not what we want. So we want to disallow such an
+   * automatic conversion. Instead, user must manually cast to some integer
+   * type. *)
+  let compatible_types =
+    match from with
+    | TNum -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
+    | TU8 -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
+    | TU16 -> [ TU16 ; TU32 ; TU64 ; TU128 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
+    | TU32 -> [ TU32 ; TU64 ; TU128 ; TI64 ; TI128 ; TFloat ; TNum ]
+    | TU64 -> [ TU64 ; TU128 ; TI128 ; TFloat ; TNum ]
+    | TU128 -> [ TU128 ; TFloat ; TNum ]
+    | TI8 -> [ TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TU16 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
+    | TI16 -> [ TI16 ; TI32 ; TI64 ; TI128 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
+    | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ; TNum ]
+    | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
+    | TI128 -> [ TI128 ; TFloat ; TNum ]
+    | TBool -> [ TBool ; TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
+    (* Any specific type can be turned into its generic variant: *)
+    | TIpv4 -> [ TIpv4 ; TIp ]
+    | TIpv6 -> [ TIpv6 ; TIp ]
+    | TCidrv4 -> [ TCidrv4 ; TCidr ]
+    | TCidrv6 -> [ TCidrv6 ; TCidr ]
+    | x -> [ x ] in
+  List.mem to_ compatible_types
 
-let larger_type (t1, t2) =
-  if compare_typ t1 t2 >= 0 then t1 else t2
+let larger_type t1 t2 =
+  if can_enlarge ~from:t1 ~to_:t2 then t2 else
+  if can_enlarge ~from:t2 ~to_:t1 then t1 else
+  invalid_arg ("types "^ string_of_typ t1 ^" and "^ string_of_typ t2 ^
+               " are not comparable")
 
-let largest_type = function
-  | fst :: rest ->
-    List.fold_left (fun l t ->
-      larger_type (l, t)) fst rest
-  | _ -> invalid_arg "largest_type"
+(* Enlarge a type in search for a common ground for type combinations. *)
+let enlarge_type = function
+  | TU8  | TI8  -> TI16
+  | TU16 | TI16 -> TI32
+  | TU32 | TI32 -> TI64
+  | TU64 | TI64 -> TI128
+  | TIpv4   -> TIp
+  | TIpv6   -> TIp
+  | TCidrv4 -> TCidr
+  | TCidrv6 -> TCidr
+  | t -> invalid_arg ("Type "^ string_of_typ t ^" cannot be enlarged")
 
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run

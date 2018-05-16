@@ -218,8 +218,10 @@ let omod_of_type = function
   | TNull -> assert false (* Never used on NULLs *)
   | TNum | TAny -> assert false
 
-(* TODO: Why don't we have explicit casts in the AST so that we could stop
- * caring about those pesky conversions once and for all? *)
+(* Why don't we have explicit casts in the AST so that we could stop
+ * caring about those pesky conversions once and for all? Because the
+ * AST changes to types that we want to work, but do not (have to) know
+ * about what conversions are required to implement that in OCaml. *)
 (* Note: for field_of_tuple, we must be able to convert any value into a
  * string *)
 let conv_from_to from_typ ~nullable to_typ p fmt e =
@@ -748,7 +750,7 @@ and add_missing_types arg_typs es =
   let merge_types t1 t2 =
     match t1, t2 with
     | None, t | t, None -> t
-    | Some t1, Some t2 -> Some (RamenScalar.larger_type (t1, t2)) in
+    | Some t1, Some t2 -> Some (RamenScalar.larger_type t1 t2) in
   let rec loop ht rt any_type n = function
   | [], _ -> (* No more arguments *)
     (* Replace all None types by a common type large enough to accommodate

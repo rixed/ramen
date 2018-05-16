@@ -65,6 +65,7 @@ type syntax_error =
   | CannotTypeExpression of { what : string ; expected_type : string ;
                               got_type : string }
   | CannotCompareTypes of { what : string }
+  | CannotCombineTypes of { what : string }
   | InvalidNullability of { what : string ; must_be_nullable : bool }
   | InvalidCoalesce of { what : string ; must_be_nullable : bool }
   | CannotCompleteTyping of string
@@ -119,6 +120,8 @@ let string_of_syntax_error =
     " but got "^ got_type
   | CannotCompareTypes { what } ->
     "Cannot compare operands of "^ what
+  | CannotCombineTypes { what } ->
+    "Cannot find a type able to accommodate the operands of "^ what
   | InvalidNullability { what ; must_be_nullable } ->
     what ^" must"^ (if must_be_nullable then "" else " not") ^
     " be nullable"
