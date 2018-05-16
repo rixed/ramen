@@ -15,7 +15,7 @@ open RamenLang
  * all TAny types in an expression will be changed to a specific type that's
  * large enough to accommodate all the values at hand. *)
 type typ =
-  | TNull | TFloat | TString | TBool | TNum | TAny
+  | TFloat | TString | TBool | TNum | TAny
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
@@ -23,7 +23,6 @@ type typ =
   [@@ppp PPP_OCaml]
 
 let string_of_typ = function
-  | TNull   -> "NULL"
   | TFloat  -> "FLOAT"
   | TString -> "STRING"
   | TBool   -> "BOOL"
@@ -125,9 +124,10 @@ let type_of = function
   | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
   | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
   | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
-  | VI64 _ -> TI64 | VI128 _ -> TI128 | VNull -> TNull
+  | VI64 _ -> TI64 | VI128 _ -> TI128
   | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6 | VIp _ -> TIp
   | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6 | VCidr _ -> TCidr
+  | VNull -> assert false
 
 (* The original Float.to_string adds a useless dot at the end of
  * round numbers: *)
@@ -194,7 +194,6 @@ let value_of_string typ s =
   | TCidrv4 -> VCidrv4 (cidr4_of_string s)
   | TCidrv6 -> VCidrv6 (cidr6_of_string s)
   | TCidr -> VCidr (cidr_of_string s)
-  | TNull -> VNull
   | TNum | TAny -> assert false
 
 let any_value_of_type = function
@@ -216,7 +215,6 @@ let any_value_of_type = function
   | TIpv6 -> VIpv6 Uint128.zero
   | TCidrv4 | TCidr -> VCidrv4 (Uint32.zero, 0)
   | TCidrv6 -> VCidrv6 (Uint128.zero, 0)
-  | TNull -> VNull
   | TNum | TAny -> assert false
 
 module Parser =
@@ -300,7 +298,6 @@ struct
     (strinG "i32" >>: fun () -> TI32) |||
     (strinG "i64" >>: fun () -> TI64) |||
     (strinG "i128" >>: fun () -> TI128) |||
-    (strinG "null" >>: fun () -> TNull) |||
     (strinG "eth" >>: fun () -> TEth) |||
     (strinG "ip4" >>: fun () -> TIpv4) |||
     (strinG "ip6" >>: fun () -> TIpv6) |||

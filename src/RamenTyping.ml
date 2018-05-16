@@ -178,6 +178,25 @@ let make_typed_func program_name rcf =
     in_type = TypedTuple rcf.F.in_type ;
     out_type = TypedTuple rcf.F.out_type }
 
+let last_chance_to_type field_name typ =
+  let open RamenExpr in
+  (* Similarly, we could have an expression which type is left undecided to
+   * either TNum or TAny. For TAny, better err out, but for TNum we might
+   * pick a numerical type that suits us. For instance, if we write:
+   * `SELECT 0.1 + previous x AS x` then x will have type TNum, as + can
+   * accommodate any two TNums. Ideally we'd like x to be TFloat here, in
+   * order to limit the number of conversions and also probably to better
+   * match user expectations, but this information is lost by now :(. *)
+  if typ.scalar_typ = Some TNum then (
+    !logger.debug "Numeric field %s has no constraint on type. \
+                   Let's make it an TI32." field_name ;
+    typ.scalar_typ <- Some TI32) ;
+  (* Similarly, we can be left with a literal "NULL" that's still untyped.
+   * Any type will do: *)
+  if typ.scalar_typ = None && typ.nullable = Some true then (
+    !logger.debug "%S still untyped, make it a nullable boolean" field_name ;
+    typ.scalar_typ <- Some TBool)
+
 (* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =
   List.iter (fun (field_name, typ) ->
@@ -190,18 +209,7 @@ let check_finished_tuple_type tuple_prefix tuple_type =
       !logger.debug "Field %s has no constraint on nullability. \
                      Let's make it non-null." field_name ;
       typ.nullable <- Some false) ;
-    (* Similarly, we could have an expression which type is left undecided to
-     * either TNum or TAny. For TAny, better err out, but for TNum we might
-     * pick a numerical type that suits us. For instance, if we write:
-     * `SELECT 0.1 + previous x AS x` then x will have type TNum, as + can
-     * accommodate any two TNums. Ideally we'd like x to be TFloat here, in
-     * order to limit the number of conversions and also probably to better
-     * match user expectations, but this information is lost by now :(. *)
-    if typ.scalar_typ = Some TNum then (
-      !logger.debug "Numeric field %s has no constraint on type. \
-                     Let's make it an TI32." field_name ;
-      typ.scalar_typ <- Some TI32
-    ) ;
+    last_chance_to_type field_name typ ;
     if typ.nullable = None || typ.scalar_typ = None then (
       let e = CannotTypeField {
         field = field_name ;
@@ -1212,10 +1220,11 @@ let set_all_types conf parents funcs =
     RamenOperation.iter_expr (fun e ->
       let open RamenExpr in
       let typ = typ_of e in
+      let what = IO.to_string (print true) e in
+      last_chance_to_type what typ ;
       if typ.nullable = None || typ.scalar_typ = None ||
          typ.scalar_typ = Some TNum ||
          typ.scalar_typ = Some TAny then
-        let what = IO.to_string (print true) e in
         raise (SyntaxErrorInFunc (func.Func.name, CannotCompleteTyping what))
     ) (Option.get func.Func.operation)
   ) funcs ;

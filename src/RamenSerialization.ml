@@ -30,7 +30,6 @@ let read_tuple ser_tuple_typ nullmask_size tx =
     | TCidrv4 -> VCidrv4 (read_cidr4 tx offs)
     | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
     | TCidr   -> VCidr (read_cidr tx offs)
-    | TNull   -> VNull
     | TNum | TAny -> assert false
   in
   (* Read all fields one by one *)

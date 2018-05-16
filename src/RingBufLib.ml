@@ -74,7 +74,6 @@ let rec sersize_of_fixsz_typ = function
   | TU128 -> sersize_of_u128
   | TI128 -> sersize_of_i128
   | TIpv6 -> sersize_of_ipv6
-  | TNull -> sersize_of_null
   | TEth -> sersize_of_eth
   | TCidrv4 -> sersize_of_cidrv4
   | TCidrv6 -> sersize_of_cidrv6

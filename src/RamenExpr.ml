@@ -244,9 +244,6 @@ let expr_zero =
 let expr_one =
   Const (make_typ ~typ:TU8 ~nullable:false "one", VU8 (Uint8.of_int 1))
 
-let expr_null =
-  Const (make_typ ~nullable:true ~typ:TNull "NULL", VNull)
-
 let of_float v =
   Const (make_typ ~nullable:false (string_of_float v), VFloat v)
 
@@ -689,7 +686,10 @@ struct
 
   let null m =
     let m = "NULL" :: m in
-    (strinG "null" >>: fun () -> expr_null) m
+    (strinG "null" >>: fun () ->
+      (* Type of "NULL" is unknown yet *)
+      Const (make_typ ~nullable:true "NULL", VNull)
+    ) m
 
   let field m =
     let m = "field" :: m in
@@ -1139,17 +1139,13 @@ struct
 
   and coalesce m =
     let m = "coalesce" :: m in
-    (afun0v "coalesce" >>: function
-       | r ->
-         let rec loop es = function
-           | [] -> expr_null
-           | [e] ->
-             if es = [] then e else
-             Coalesce (make_typ ~nullable:false "coalesce", List.rev (e::es))
-           | e::rest ->
-             loop (e :: es) rest
-         in
-         loop [] r) m
+    (
+      afun0v "coalesce" >>: function
+      | [] -> raise (Reject "empty COALESCE")
+      | [_] -> raise (Reject "COALESCE must have at least 2 arguments")
+      | r ->
+          Coalesce (make_typ ~nullable:false "coalesce", r)
+    ) m
 
   and highestest_prec_no_parenthesis m =
     (const ||| field ||| func ||| null |||

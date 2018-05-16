@@ -348,6 +348,7 @@ tests/tuples.success: tests/tuples.x tests/fixtures/n123.x
 tests/port_scan.success: tests/port_scan.x tests/fixtures/port_scan.x
 tests/ip.success: tests/ip.x tests/fixtures/mixture.x
 tests/min_max.success: tests/min_max.x
+tests/nulls.success: tests/nulls.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

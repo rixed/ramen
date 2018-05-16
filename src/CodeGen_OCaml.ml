@@ -88,7 +88,6 @@ let id_of_typ typ =
   | TI32    -> "i32"
   | TI64    -> "i64"
   | TI128   -> "i128"
-  | TNull   -> "null"
   | TEth    -> "eth"
   | TIpv4   -> "ip4"
   | TIpv6   -> "ip6"
@@ -191,7 +190,6 @@ let otype_of_type = function
   | TFloat -> "float" | TString -> "string" | TBool -> "bool"
   | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
   | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
-  | TNull -> "unit"
   | TEth -> "uint48"
   | TIpv4 -> "uint32"
   | TIpv6 -> "uint128"
@@ -215,7 +213,6 @@ let omod_of_type = function
   | TCidrv4 -> "RamenIpv4.Cidr"
   | TCidrv6 -> "RamenIpv6.Cidr"
   | TCidr -> "RamenIp.Cidr"
-  | TNull -> assert false (* Never used on NULLs *)
   | TNum | TAny -> assert false
 
 (* Why don't we have explicit casts in the AST so that we could stop
@@ -248,14 +245,6 @@ let conv_from_to from_typ ~nullable to_typ p fmt e =
       (if nullable then "Option.map " else "")
       (omod_of_type to_typ)
       p e
-  | _, TNull ->
-    (* We could as well just print "()" but this is easier for debugging,
-     * and hopefully the compiler will make it the same: *)
-    Printf.fprintf fmt "(ignore %a)" p e
-  | TNull, _ ->
-    (* To convert NULL into anything (nullable) is easy: *)
-    assert nullable ;
-    Printf.fprintf fmt "None"
   | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
     Printf.fprintf fmt "(%s.to_string %a)"
       (omod_of_type from_typ) p e
@@ -277,7 +266,6 @@ let any_constant_of_type t =
     Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "init", v)
   in
   c (match Option.get t.scalar_typ with
-  | TNull -> VNull
   | TString -> VString ""
   | TNum -> assert false
   | TAny -> assert false
@@ -372,6 +360,9 @@ and emit_expr ?state ~context oc expr =
   (* Non-functions *)
   | Finalize, StateField (_, s), _ ->
     Printf.fprintf oc "%s" s
+  | _, Const (_, VNull), _ ->
+    assert (is_nullable expr) ;
+    Printf.fprintf oc "None"
   | _, Const (_, c), _ ->
     Printf.fprintf oc "%s%a"
       (if is_nullable expr then "Some " else "")

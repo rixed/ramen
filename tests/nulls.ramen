@@ -1,0 +1,7 @@
+-- vim: ft=sql expandtab
+
+DEFINE t1 AS SELECT NULL AS ouch;
+
+DEFINE t2 AS SELECT COALESCE(NULL, 1) AS ouch;
+
+DEFINE t3 AS SELECT COALESCE(NULL, NULL, "that") AS ouch;
