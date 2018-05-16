@@ -547,9 +547,9 @@ and emit_expr ?state ~context oc expr =
     conv_to ?state ~context t oc (false_or_nul (is_nullable expr))
   | Finalize, StatefulFun (_, g, (AggrAnd _|AggrOr _)), Some TBool ->
     emit_functionN oc ?state "identity" [None] [my_state g]
-  | UpdateState, StatefulFun (_, g, AggrAnd (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrAnd e), _ ->
     emit_functionN oc ?state "(&&)" [None; Some TBool] [my_state g; e]
-  | UpdateState, StatefulFun (_, g, AggrOr (e)), _ ->
+  | UpdateState, StatefulFun (_, g, AggrOr e), _ ->
     emit_functionN oc ?state "(||)" [None; Some TBool] [my_state g; e]
 
   | InitState, StatefulFun (_, _, AggrSum _),
@@ -1657,46 +1657,50 @@ let sanitize_ocaml_fname s =
   (* Must start with a letter: *)
   "m"^ global_substitute re replace_by_underscore s
 
+let emit_function name func_name in_typ out_typ params op oc =
+  Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n"
+    func_name
+    RamenOperation.print op ;
+  (* Emit parameters: *)
+  Printf.fprintf oc "\n(* Parameters: *)\n" ;
+  List.iter (fun (n, v) ->
+    Printf.fprintf oc
+      "let %s_%s_ =\n\
+       \tlet parser_ = RamenTypeConverters.%s_of_string in\n\
+       \tCodeGenLib.parameter_value ~def:(%a) parser_ %S\n"
+      (id_of_prefix TupleParam) n
+      (id_of_typ (RamenScalar.type_of v))
+      emit_scalar v
+      n
+  ) params ;
+  (* Also a function that takes a parameter name (string) and return its
+   * value (as a string) - useful for text replacements within strings *)
+  Printf.fprintf oc "let field_of_params_ = function\n%a\
+                     \t| _ -> raise Not_found\n\n"
+    (List.print ~first:"" ~last:"" ~sep:"" (fun oc (n, v) ->
+      let glob_name =
+        Printf.sprintf "%s_%s_" (id_of_prefix TupleParam) n in
+      Printf.fprintf oc "\t| %S -> %a\n"
+        n
+        (conv_from_to (RamenScalar.type_of v) ~nullable:false
+                      TString String.print) glob_name)) params ;
+  (match op with
+  | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
+                  what = { separator ; null ; fields } ; event_time } ->
+    emit_read_csv_file oc name fname unlink separator null
+                       fields preprocessor event_time
+  | ListenFor { net_addr ; port ; proto } ->
+    emit_listen_on oc name net_addr port proto
+  | Instrumentation { from } ->
+    emit_instrumentation oc name from
+  | Aggregate _ ->
+    emit_aggregate oc name in_typ out_typ op)
+
 let compile conf entry_point func_name obj_name in_typ out_typ params op =
   let open RamenOperation in
-  let src_file =
-    RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
-      Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n"
-        func_name
-        RamenOperation.print op ;
-      (* Emit parameters: *)
-      Printf.fprintf oc "\n(* Parameters: *)\n" ;
-      List.iter (fun (n, v) ->
-        Printf.fprintf oc
-          "let %s_%s_ =\n\
-           \tlet parser_ = RamenTypeConverters.%s_of_string in\n\
-           \tCodeGenLib.parameter_value ~def:(%a) parser_ %S\n"
-          (id_of_prefix TupleParam) n
-          (id_of_typ (RamenScalar.type_of v))
-          emit_scalar v
-          n
-      ) params ;
-      (* Also a function that takes a parameter name (string) and return its
-       * value (as a string) - useful for text replacements within strings *)
-      Printf.fprintf oc "let field_of_params_ = function\n%a\
-                         \t| _ -> raise Not_found\n\n"
-        (List.print ~first:"" ~last:"" ~sep:"" (fun oc (n, v) ->
-          let glob_name =
-            Printf.sprintf "%s_%s_" (id_of_prefix TupleParam) n in
-          Printf.fprintf oc "\t| %S -> %a\n"
-            n
-            (conv_from_to (RamenScalar.type_of v) ~nullable:false
-                          TString String.print) glob_name)) params ;
-      (match op with
-      | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
-                      what = { separator ; null ; fields } ; event_time } ->
-        emit_read_csv_file oc entry_point fname unlink separator null
-                           fields preprocessor event_time
-      | ListenFor { net_addr ; port ; proto } ->
-        emit_listen_on oc entry_point net_addr port proto
-      | Instrumentation { from } ->
-        emit_instrumentation oc entry_point from
-      | Aggregate _ ->
-        emit_aggregate oc entry_point in_typ out_typ op)) in
+  let%lwt src_file =
+    Lwt.wrap (fun () ->
+      RamenOCamlCompiler.with_code_file_for obj_name conf
+        (emit_function entry_point func_name in_typ out_typ params op)) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   RamenOCamlCompiler.compile conf func_name src_file obj_name

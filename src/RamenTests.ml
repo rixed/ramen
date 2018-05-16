@@ -130,7 +130,7 @@ let test_output func bname output_spec =
   let file_spec_print best_miss oc (idx, value) =
     (* Retrieve actual field name: *)
     let n = field_name_of_index idx in
-    Printf.fprintf oc "%s(%d)=%s" n idx value ;
+    Printf.fprintf oc "%s=%s" n value ;
     match List.find (fun (idx', s) -> idx = idx') best_miss with
     | exception Not_found -> ()
     | _idx, s -> Printf.fprintf oc " (had %S)" s
