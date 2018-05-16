@@ -1,0 +1,47 @@
+-- vim: ft=sql expandtab
+
+-- Test the various min/max functions wrt. types.
+
+DEFINE soup AS
+  YIELD
+    1 + COALESCE(previous.s, 0) AS s,
+    random AS r,
+    IF r > 0.5 THEN NULL ELSE r*2 AS nullable_float,
+    u8(r*10) AS small_int,
+    small_int & 1 = 1 AS bit,
+    "glop" AS glop,
+    "pas glop" AS pas_glop,
+    IF r > 0.5 THEN NULL ELSE "string" AS nullable_string
+  EVERY 0.1 SECOND;
+
+DEFINE aggr AS
+  FROM soup SELECT
+    -- Must be OK to do the aggr min/max of any of the above:
+    MIN s, MAX s,
+    MIN r, MAX r,
+    MIN nullable_float, MAX nullable_float,
+    MIN small_int, MAX small_int,
+    MIN bit, MAX bit,
+    MIN glop, MAX glop,
+    MIN nullable_string, MAX nullable_string
+  COMMIT AFTER
+    -- Works because random returns a float from 0 inclusive to 1 exclusive,
+    -- and because casting to u8 truncates:
+    min_small_int = 0 AND max_small_int = 9;
+  EXPORT;
+
+-- Here we merely check that it compiles:
+DEFINE non_aggr AS
+  FROM soup SELECT
+    -- Must be OK to compare any numeric types together:
+    MIN(s, r, small_int, bit) AS mi1,
+    MAX(s, r, small_int, bit) AS ma1,
+    -- Including if one is nullable:
+    MIN(s, r, small_int, bit, nullable_float) AS mi2,
+    MAX(s, r, small_int, bit, nullable_float) AS ma2,
+    -- Must be Ok to compare strings:
+    MIN(glop, pas_glop) AS mi3,
+    MAX(glop, pas_glop) AS ma3,
+    -- Including if one is nullable:
+    MIN(glop, pas_glop, nullable_string) AS mi4,
+    MAX(glop, pas_glop, nullable_string) AS ma4;
