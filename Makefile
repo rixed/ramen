@@ -441,7 +441,8 @@ clean-temp:
 	@echo 'Cleaning ramen compiler temp files'
 	@for d in tests examples ; do\
 	   find $$d -\( -name '*.ml' -o -name '*.cmx' -o -name '*.o' \
-	             -o -name '*.x'  -o -name '*.s' -o -name '*.cmi' -\) -delete ;\
+	                -o -name '*.annot' -o -name '*.x'  -o -name '*.s' \
+	                -o -name '*.cmi' -\) -delete ;\
 	 done
 
 clean: clean-temp

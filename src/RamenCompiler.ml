@@ -60,8 +60,7 @@ let compile conf root_path program_name program_code =
     add_temp_file (change_ext ".cmx" f) ;
     add_temp_file (change_ext ".cmi" f) ;
     add_temp_file (change_ext ".o" f) ;
-    if conf.C.debug then
-      add_temp_file (change_ext ".annot" f) in
+    add_temp_file (change_ext ".annot" f) in
   let del_temp_files () =
     if not conf.C.keep_temp_files then
       List.iter (fun fname ->

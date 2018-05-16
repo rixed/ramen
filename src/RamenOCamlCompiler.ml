@@ -40,7 +40,7 @@ let compile_internal conf func_name src_file obj_file =
   !logger.info "Compiling %S" src_file ;
   reset () ;
   native_code := true ;
-  annotations := conf.C.debug ;
+  annotations := true ;
   debug := conf.C.debug ;
   verbose := conf.C.debug ;
   no_std_include := true ;
@@ -85,11 +85,11 @@ let compile_external conf func_name src_file obj_file =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s%s \
+           ocamlfind ocamlopt%s%s -annot \
                      -o %s -package ramen -c %s"
       (shell_quote path)
       (shell_quote ocamlpath)
-      (if conf.C.debug then " -g -annot" else "")
+      (if conf.C.debug then " -g" else "")
       (if conf.C.keep_temp_files then " -S" else "")
       (shell_quote obj_file)
       (shell_quote src_file) in
@@ -124,7 +124,7 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   !logger.info "Linking %S" src_file ;
   reset () ;
   native_code := true ;
-  annotations := conf.C.debug ;
+  annotations := true ;
   debug := conf.C.debug ;
   verbose := conf.C.debug ;
   no_std_include := true ;
