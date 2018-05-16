@@ -179,7 +179,7 @@ let is_in_top n x s =
   let test_once k =
     let max_size = k * 10 and zc = 1. in
     let s = make ~max_size ~decay:0. in
-    zipf_distrib 10000 zc |> Enum.take 100_000 |> Enum.iter (add s 0. 1.) ;
+    zipf_distrib 1000 zc |> Enum.take 10_000 |> Enum.iter (add s 0. 1.) ;
     let s = top k s in
     assert_bool "Result size is limited" (List.length s <= k) ;
     (* All items from 0 to k-1 (included) are present most of the time: *)
