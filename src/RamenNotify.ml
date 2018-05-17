@@ -115,15 +115,15 @@ module Team = struct
     [@@ppp PPP_OCaml]
 
   let find_in_charge teams name =
-    try Array.find (fun t -> String.starts_with name t.name) teams
+    try List.find (fun t -> String.starts_with name t.name) teams
     with Not_found ->
       !logger.warning "No team name found in notification %S, \
                        assigning to first team." name ;
-      teams.(0)
+      List.hd teams
 end
 
 type notify_config =
-  { teams : Team.t array }
+  { teams : Team.t list }
   [@@ppp PPP_OCaml]
 
 let default_notify_conf =
@@ -136,11 +136,11 @@ let default_notify_conf =
         {|[{"labels":{"alertname":"${name}","summary":"${text}","severity":"critical"}}]|} }
   in
   { teams =
-      Team.[|
+      Team.[
         { name = "" ;
           deferrable_contact =
             Contact.ViaSysLog "${name}: ${text}" ;
-          urgent_contact = send_to_prometheus } |] }
+          urgent_contact = send_to_prometheus } ] }
 
 (* Function to replace a map of keys by their values in a string.
  * Keys are delimited in the string with "${" "}". *)
@@ -204,5 +204,5 @@ let start conf rb =
     | NotifyCmd notif -> generic_notify conf notif worker)
 
 let check_conf_is_valid conf =
-  if Array.length conf.teams = 0 then
+  if conf.teams = [] then
     failwith "Notification configuration must have at least one team."
