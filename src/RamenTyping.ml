@@ -125,7 +125,10 @@ struct
       mutable out_type : tuple_type ;
       parents : (string * string) list ;
       (* The signature with default params, used to name compiled modules *)
-      mutable signature : string }
+      mutable signature : string ;
+      (* Extracted from the operation or inferred from parents: *)
+      mutable event_time : RamenEventTime.t option ;
+      mutable factors : string list }
 
   let signature conf func =
     (* We'd like to be formatting independent so that operation text can be
@@ -171,7 +174,8 @@ let make_untyped_func program_name func_name params operation =
     program_name ; name = func_name ; signature = "" ;
     params ; operation = Some operation ; parents ;
     in_type = UntypedTuple (make_untyped_tuple ()) ;
-    out_type = UntypedTuple (make_untyped_tuple ()) }
+    out_type = UntypedTuple (make_untyped_tuple ()) ;
+    event_time = None ; factors = [] (* Set once typing is done *) }
 
 (* Same as the above, for when a function has already been compiled: *)
 let make_typed_func program_name rcf =
@@ -181,7 +185,9 @@ let make_typed_func program_name rcf =
     params = rcf.F.params ;
     operation = None ; parents = [] ;
     in_type = TypedTuple rcf.F.in_type ;
-    out_type = TypedTuple rcf.F.out_type }
+    out_type = TypedTuple rcf.F.out_type ;
+    event_time = rcf.F.event_time ;
+    factors = rcf.F.factors }
 
 (* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =
@@ -1284,13 +1290,41 @@ let get_selected_fields func =
   | Some (Aggregate { fields ; _ }) -> Some fields
   | _ -> None
 
+let forwarded_field func field =
+  get_selected_fields func |>
+  Option.map (
+    List.exists (fun sf ->
+      (* FIXME: make it work when the field is renamed and return the new
+       * name. *)
+      sf.RamenOperation.alias = field &&
+      match sf.expr with
+      | RamenExpr.Field (_, { contents = TupleIn }, fn) -> fn = field
+      | _ -> false)) |? false
+
+let infer_event_time func =
+  let open RamenEventTime in
+  function
+  | Some ((f1, _), duration) as eti ->
+      if forwarded_field func f1 &&
+         match duration with
+         | DurationConst _ -> true
+         | DurationField (f2, _)
+         | StopField (f2, _) ->
+            forwarded_field func f2
+      then eti
+      else None
+  | _ -> None
+
+let infer_factors func =
+  (* All fields that we take without modifications are also our factors *)
+  List.filter (forwarded_field func)
+
 (* Since we can have loops within a program we can not propagate types
  * immediately. Also, the star selection prevent us from propagating
  * input from output types in one go.
  * We do it bit by bit but will still make sure to make parent
  * output >= children input eventually, and that fields are encoded in
  * the specified order. *)
-(* TODO: parents should be a hash from parent name to out type. *)
 let set_all_types conf parents funcs =
   let fold_funcs f =
     Hashtbl.fold (fun _ func changed ->
@@ -1352,6 +1386,23 @@ let set_all_types conf parents funcs =
           compare (sf_index f1.RamenTuple.typ_name)
                   (sf_index f2.RamenTuple.typ_name)) in
     func.Func.out_type <- typed_of_untyped_tuple ?cmp func.Func.out_type ;
+    (* Finally, if no event time info or factors have been given then maybe
+     * we can infer them from the parents (we consider only the first parent
+     * here): *)
+    Option.may (fun operation ->
+      func.event_time <-
+        RamenOperation.event_time_of_operation operation ;
+      func.factors <-
+        RamenOperation.factors_of_operation operation ;
+      let parents = Hashtbl.find_default parents func.Func.name [] in
+      if parents <> [] && func.event_time = None then
+        func.event_time <-
+          infer_event_time func (List.hd parents).event_time ;
+      if parents <> [] && func.factors = [] then
+        func.factors <-
+          infer_factors func (List.hd parents).factors
+    ) func.operation ;
+    (* Seal everything: *)
     func.Func.signature <- Func.signature conf func
   ) funcs
 
