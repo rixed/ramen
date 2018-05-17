@@ -53,8 +53,8 @@ let compile conf root_path program_name program_code =
    * If all goes well, many temporary files are going to be created. Here
    * we collect all their name so we delete them at the end:
    *)
-  let temp_files = ref [] in
-  let add_temp_file f = temp_files := f :: !temp_files in
+  let temp_files = ref Set.empty in
+  let add_temp_file f = temp_files := Set.add f !temp_files in
   let add_temp_file f =
     add_temp_file (change_ext ".ml" f) ;
     add_temp_file (change_ext ".cmx" f) ;
@@ -63,7 +63,7 @@ let compile conf root_path program_name program_code =
     add_temp_file (change_ext ".annot" f) in
   let del_temp_files () =
     if not conf.C.keep_temp_files then
-      List.iter (fun fname ->
+      Set.iter (fun fname ->
         !logger.debug "Deleting temp file %s" fname ;
         log_exceptions Unix.unlink fname
       ) !temp_files
@@ -169,6 +169,10 @@ let compile conf root_path program_name program_code =
         in
         add_temp_file obj_name ;
         return obj_name)) in
+    (* It might happen that we have compiled twice the same thing, if two
+     * operations where identical. We must not ask the linker to include
+     * the same module twice, though: *)
+    let obj_files = List.sort_unique String.compare obj_files in
     (*
      * Produce the casing.
      *
