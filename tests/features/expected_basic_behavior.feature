@@ -28,6 +28,7 @@ Feature: The Ramen cli behaves according to common expectations.
       | subcommand |
       | supervisor |
       | notifier   |
+      | notify     |
       | compile    |
       | run        |
       | kill       |

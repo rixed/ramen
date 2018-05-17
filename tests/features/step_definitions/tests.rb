@@ -225,3 +225,9 @@ end
 When /I wait (\d+) seconds?/ do |n|
   sleep n
 end
+
+Then /^the query below against (.*) must return (.*)$/ \
+do |dbfile, answer, query|
+  out = `sqlite3 #{dbfile} '#{query}'`
+  expect(out).to match(/\b#{answer}\b/)
+end
