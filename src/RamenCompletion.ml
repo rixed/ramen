@@ -161,6 +161,7 @@ let complete str () =
             "--config", RamenConsts.CliInfo.conffile ] @
           copts
        | "notify" ->
+          ("--parameter=", RamenConsts.CliInfo.param) ::
           copts
       | "compile" ->
           ("--bundle-dir=", RamenConsts.CliInfo.bundle_dir) ::
