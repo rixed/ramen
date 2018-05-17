@@ -148,13 +148,13 @@ let subst_dict =
   let open Str in
   let re =
     regexp "\\${\\([_a-zA-Z][-_a-zA-Z0-9]+\\)}" in
-  fun dict ?(quote=identity) text ->
+  fun dict ?(quote=identity) ?null text ->
     global_substitute re (fun s ->
       let var_name = matched_group 1 s in
       try List.assoc var_name dict |> quote
       with Not_found ->
         !logger.error "Unknown parameter %S!" var_name ;
-        "??"^ var_name ^"??"
+        null |? "??"^ var_name ^"??"
     ) text
 
 let contact_via notif contact worker =
@@ -163,7 +163,7 @@ let contact_via notif contact worker =
     ("severity",
       PPP.to_string RamenOperation.severity_ppp_ocaml notif.severity) ::
     notif.parameters in
-  let exp ?q = subst_dict dict ?quote:q in
+  let exp ?q ?n = subst_dict dict ?quote:q ?null:n in
   let open Contact in
   match contact with
   | ViaHttp http ->
@@ -177,7 +177,8 @@ let contact_via notif contact worker =
   | ViaSysLog str -> log_str (exp str) worker
   | ViaSqlite { file ; insert ; create } ->
       wrap (fun () ->
-        sqllite_insert (exp file) (exp ~q:sql_quote insert) create worker)
+        let ins = exp ~q:sql_quote ~n:"NULL" insert in
+        sqllite_insert (exp file) ins create worker)
 
 let generic_notify conf notif worker =
   (* Find the team in charge of that alert name: *)
