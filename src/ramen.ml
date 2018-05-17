@@ -113,16 +113,29 @@ let text_pos ~doc ~docv p =
   let i = Arg.info ~doc ~docv [] in
   Arg.(required (pos p (some string) None i))
 
-let text_all ~doc ~docv p =
-  let i = Arg.info ~doc ~docv [] in
-  Arg.(value (pos_right (p-1) string [] i))
+let text_param =
+  let parse s =
+    try Pervasives.Ok (String.split s ~by:"=")
+    with Not_found ->
+      Pervasives.Error (
+        `Msg "You must specify the identifier, followed by an equal \
+              sign (=), followed by the value.")
+  and print fmt (pname, pval) =
+    Format.fprintf fmt "%s=%s" pname pval
+  in
+  Arg.conv ~docv:"IDENTIFIER=VALUE" (parse, print)
+
+let text_params =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.param
+                   ~docv:"PARAM=VALUE" ["p"; "parameter"] in
+  Arg.(value (opt_all text_param [] i))
 
 let notify =
   Term.(
     (const RamenCliCmd.notify
       $ copts
-      $ text_pos ~doc:"notification name" ~docv:"NAME" 0
-      $ text_all ~doc:"notification text" ~docv:"TEXT" 1),
+      $ text_params
+      $ text_pos ~doc:"notification name" ~docv:"NAME" 0),
     info ~doc:RamenConsts.CliInfo.notify "notify")
 
 (*
@@ -202,7 +215,7 @@ let assignment =
         let p = allow_surrounding_blanks RamenScalar.Parser.p in
         let stream = stream_of_string pval in
         let m = [ "value from command line" ] in
-        (match p m  None Parsers.no_error_correction stream |>
+        (match p m None Parsers.no_error_correction stream |>
               to_result with
         | Bad e ->
             let err =

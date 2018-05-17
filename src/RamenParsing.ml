@@ -12,6 +12,8 @@ let strinG = ParseUsual.string ~case_sensitive:false
 let that_string s =
   strinG s >>: fun () -> s (* because [string] returns () *)
 
+let strinGs s = strinG s ||| strinG (s ^"s")
+
 let blank = ParseUsual.blank >>: ignore
 let newline = ParseUsual.newline >>: ignore
 
@@ -70,7 +72,6 @@ let number =
 (* TODO: "duration and duration" -> add the durations *)
 let duration m =
   let m = "duration" :: m in
-  let strinGs s = strinG s ||| strinG (s ^"s") in
   (
     (number >>: fun n -> n, 1.) ||| (* unitless number are seconds *)
     (optional ~def:1. (number +- blanks) ++

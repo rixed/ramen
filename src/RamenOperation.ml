@@ -75,9 +75,10 @@ type severity = Urgent | Deferrable
 
 type notify_cmd =
   { name : string ;
-    text : string ;
     severity : severity
-      [@ppp_default Urgent] }
+      [@ppp_default Urgent] ;
+    parameters : (string * string) list
+      [@ppp_default []] }
   [@@ppp PPP_OCaml]
 
 type notification =
@@ -102,11 +103,15 @@ let print_notification oc = function
   | SysLog str ->
       Printf.fprintf oc "LOGGER %S" str
   | NotifyCmd notif ->
-      Printf.fprintf oc "NOTIFY %S TEXT %S %s"
-        notif.name notif.text
+      Printf.fprintf oc "NOTIFY %S %s"
+        notif.name
         (match notif.severity with
          | Urgent -> "URGENT"
-         | Deferrable -> "DEFERRABLE")
+         | Deferrable -> "DEFERRABLE") ;
+      if notif.parameters <> [] then
+        List.print ~first:" WITH PARAMETERS " ~last:"" ~sep:", "
+          (fun oc (n, v) -> Printf.fprintf oc "%S=%S" n v) oc
+          notif.parameters
 
 (* Type of an operation: *)
 
@@ -613,10 +618,11 @@ struct
       let m = "execute clause" :: m in
       (strinG "execute" -- blanks -+ quoted_string >>:
        fun s -> ExecuteCmd s) m in
-    let header m =
-      let m = "http header" :: m in
-      (quoted_string +- opt_blanks +- char ':' +- opt_blanks ++
-       quoted_string) m in
+    let kv_list m =
+      let m = "key-value list" :: m in
+      (quoted_string +- opt_blanks +- (char ':' ||| char '=') +-
+       opt_blanks ++ quoted_string) m in
+    let opt_with = optional ~def:() (blanks -- strinG "with") in
     let logger m =
       let m = "logger clause" :: m in
       (strinG "logger" -- blanks -+ quoted_string >>:
@@ -630,10 +636,10 @@ struct
           (strinG "post" >>: fun () -> HttpCmdPost)) +-
        blanks ++ quoted_string ++
        optional ~def:[]
-         (blanks -- strinG "with" -- blanks -- (strinG "header" ||| strinG "headers") -+
-          several ~sep:list_sep_and header) ++
+         (opt_with -- blanks -- strinGs "header" -- blanks -+
+          several ~sep:list_sep_and kv_list) ++
        optional ~def:""
-         (blanks -- strinG "with" -- blanks -- strinG "body" -- blanks -+
+         (opt_with -- blanks -- strinG "body" -- blanks -+
           quoted_string) >>:
        fun (((method_, url), headers), body) ->
         HttpCmd { method_ ; url ; headers ; body }) m in
@@ -644,10 +650,12 @@ struct
          (strinG "deferrable" >>: fun () -> Deferrable)) m in
       let m = "notification" :: m in
       (strinG "notify" -- blanks -+ quoted_string ++
-       (optional ~def:"" (
-          blanks -- strinG "text" -- blanks -+ quoted_string)) ++
-       (optional ~def:Urgent (blanks -+ severity)) >>:
-      fun ((name, text), severity) -> NotifyCmd { name ; text ; severity }) m
+       optional ~def:Urgent (blanks -+ severity) ++
+       optional ~def:[]
+         (opt_with -- blanks -- strinGs "parameter" -- blanks -+
+          several ~sep:list_sep_and kv_list) >>:
+      fun ((name, severity), parameters) ->
+        NotifyCmd { name ; severity ; parameters }) m
     in
     let m = "notification clause" :: m in
     ((execute ||| http_cmd ||| logger ||| notify_cmd) >>:

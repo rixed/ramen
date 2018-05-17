@@ -31,7 +31,7 @@ PACKAGES = \
 	ppp ppp.unix lwt_ppx batteries cmdliner stdint parsercombinator \
 	syslog cohttp-lwt-unix num inotify.lwt binocle unix lacaml \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
-	compiler-libs.optcomp net_codecs
+	compiler-libs.optcomp net_codecs sqlite3
 
 INSTALLED_BIN = src/ramen
 INSTALLED_LIB = \
@@ -83,7 +83,7 @@ RAMEN_SOURCES = \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/RamenTyping.ml src/RamenCompiler.ml \
-	src/RamenGraphite.ml src/RamenNotify.ml \
+	src/RamenGraphite.ml src/SqliteHelpers.ml src/RamenNotify.ml \
 	src/TermTable.ml src/RamenCliCmd.ml \
 	src/RingBufCmd.ml src/RamenCompletion.ml src/RamenTests.ml src/ramen.ml
 

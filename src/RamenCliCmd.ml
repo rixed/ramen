@@ -103,12 +103,11 @@ let notifier conf notif_conf_file daemonize to_stderr () =
     restart_on_failure "process_notifications"
       (RamenNotify.start notif_conf) notify_rb)
 
-let notify conf name text () =
-  let text = String.join " " text in
+let notify conf parameters name () =
   logger := make_logger conf.C.debug ;
   let rb = RamenProcesses.prepare_notifs conf in
   let notif = RamenOperation.(
-    NotifyCmd { name ; text ; severity = Urgent }) in
+    NotifyCmd { name ; severity = Urgent ; parameters }) in
   let notif = PPP.to_string RamenOperation.notification_ppp_ocaml notif in
   Lwt_main.run (
     RingBufLib.write_notif rb "cli" notif)
