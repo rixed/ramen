@@ -24,17 +24,18 @@ Feature: Notifications work according to the configuration.
       """
       { teams = [
           { name = "" ;
-            deferrable_contact = ViaSysLog "${name}: ${text} (${severity})" ;
-            urgent_contact = ViaSqlite {
-              file = "alerts.db" ;
-              create = "create table \"alerts\" (
-                  \"name\" text not null,
-                  \"text\" text not null
-                );" ;
-              insert = "insert into \"alerts\" (
-                  \"name\", \"text\"
-                ) values (${name}, ${text});" } } ]
-      }
+            deferrable_contacts =
+              [ ViaSysLog "${name}: ${text} (${severity})" ] ;
+            urgent_contacts = [
+              ViaSqlite {
+                file = "alerts.db" ;
+                create = "create table \"alerts\" (
+                    \"name\" text not null,
+                    \"text\" text not null
+                  );" ;
+                insert = "insert into \"alerts\" (
+                    \"name\", \"text\"
+                  ) values (${name}, ${text});" } ] } ] }
       """
     And ramen notifier -c sqlite.config is started
     When I run ramen with argument notify test -p text=ouch

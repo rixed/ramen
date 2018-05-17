@@ -110,8 +110,10 @@ module Team = struct
   type t =
     { (* Team name is really nothing but a prefix for notification names: *)
       name : string ;
-      deferrable_contact : Contact.t ;
-      urgent_contact : Contact.t }
+      deferrable_contacts : Contact.t list
+        [@ppp_default []] ;
+      urgent_contacts : Contact.t list
+        [@ppp_default []] }
     [@@ppp PPP_OCaml]
 
   let find_in_charge teams name =
@@ -138,9 +140,10 @@ let default_notify_conf =
   { teams =
       Team.[
         { name = "" ;
-          deferrable_contact =
-            Contact.ViaSysLog "${name}: ${text}" ;
-          urgent_contact = send_to_prometheus } ] }
+          deferrable_contacts =
+            [ Contact.ViaSysLog "${name}: ${text}" ] ;
+          urgent_contacts =
+            [ send_to_prometheus ] } ] }
 
 (* Function to replace a map of keys by their values in a string.
  * Keys are delimited in the string with "${" "}". *)
@@ -157,7 +160,7 @@ let subst_dict =
         null |? "??"^ var_name ^"??"
     ) text
 
-let contact_via notif contact worker =
+let contact_via notif worker contact =
   let dict =
     ("name", notif.RamenOperation.name) ::
     ("severity",
@@ -184,11 +187,11 @@ let generic_notify conf notif worker =
   (* Find the team in charge of that alert name: *)
   let open RamenOperation in
   let team = Team.find_in_charge conf.teams notif.name in
-  let contact =
+  let contacts =
     match notif.severity with
-    | Deferrable -> team.Team.deferrable_contact
-    | Urgent -> team.Team.urgent_contact in
-  contact_via notif contact worker
+    | Deferrable -> team.Team.deferrable_contacts
+    | Urgent -> team.Team.urgent_contacts in
+  Lwt_list.iter_p (contact_via notif worker) contacts
 
 let start conf rb =
   !logger.info "Starting notifier" ;
