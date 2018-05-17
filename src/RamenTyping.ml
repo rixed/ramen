@@ -113,8 +113,9 @@ module Func =
 struct
   type t =
     { program_name : string ;
-      (* Within a program, funcs are identified by a name that can be optionally
-       * provided automatically if its not meant to be referenced. *)
+      (* Within a program, funcs are identified by a name that can be
+       * optionally provided automatically if its not meant to be referenced.
+       *)
       name : string ;
       (* Parameters used by that function, with default values: *)
       params : RamenTuple.params ;
@@ -141,7 +142,7 @@ struct
      * signature: *)
     "PM="^ IO.to_string (List.print ~first:"" ~last:"" ~sep:","
                            RamenTuple.print_param) func.params ^
-    (* Also, as the compiled code differ: *)
+    (* Also, as the compiled code would differ: *)
     "FLG="^ (if conf.C.debug then "DBG" else "") |>
     md5
 end
@@ -211,6 +212,8 @@ let iter_fun_expr func f =
     f what typ
   ) (Option.get func.Func.operation)
 
+let cur_func_name = ref ""
+
 let last_chance_to_type_func func =
   let open RamenExpr in
   if not (typing_is_finished func.Func.out_type) then
@@ -272,10 +275,12 @@ let set_nullable ?(indent="") typ nullable =
   let open RamenExpr in
   match typ.nullable with
   | None ->
-    !logger.debug "%sSet %a to %snullable" indent
+    !logger.debug "%s%s: Set %a to %snullable" indent
+      !cur_func_name
       print_typ typ
       (if nullable then "" else "not ") ;
-    typ.nullable <- Some nullable ; true
+    typ.nullable <- Some nullable ;
+    true
   | Some n ->
     if n <> nullable then (
       let e = InvalidNullability {
@@ -287,15 +292,16 @@ let set_nullable ?(indent="") typ nullable =
 let set_scalar_type ?(indent="") ~ok_if_larger ~expr_name typ scalar_typ =
   match typ.RamenExpr.scalar_typ with
   | None ->
-    !logger.debug "%sImproving %s from %a" indent
-      expr_name RamenScalar.print_typ scalar_typ ;
+    !logger.debug "%s%s: Improving %s from %a" indent
+      !cur_func_name expr_name RamenScalar.print_typ scalar_typ ;
     typ.RamenExpr.scalar_typ <- Some scalar_typ ;
     true
   | Some to_typ when to_typ <> scalar_typ ->
     if RamenScalar.can_enlarge ~from:to_typ ~to_:scalar_typ
     then (
-      !logger.debug "%sImproving %a from %a" indent
-        RamenExpr.print_typ typ RamenScalar.print_typ scalar_typ ;
+      !logger.debug "%s%s: Improving %a from %a" indent
+        !cur_func_name RamenExpr.print_typ typ
+        RamenScalar.print_typ scalar_typ ;
       typ.scalar_typ <- Some scalar_typ ;
       true
     ) else if ok_if_larger then false
@@ -379,7 +385,7 @@ let type_of_parents_field parents tuple_of_field field =
     raise (SyntaxError e) ;
   | Some ptyp -> ptyp
 
-(* From the list of operand types, return the largest type able to accomodate
+(* From the list of operand types, return the largest type able to accommodate
  * all operands. Most of the time it will be the largest in term of "all
  * others can be enlarged to that one", but for special cases where we want
  * an even larger type; For instance, if we combine an i8 and an u8 then we
@@ -407,17 +413,18 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   let indent = String.make depth ' ' and depth = depth + 2 in
   let open RamenExpr in
   (* Check that the operand [sub_expr] is compatible with expectation (re. type
-   * and null) set by the caller (the operator). [op_typ] is used for printing only.
-   * Extends the type of sub_expr as required. *)
+   * and null) set by the caller (the operator). [op_typ] is used for printing
+   * only. Extends the type of sub_expr as required. *)
   let check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr =
     let sub_typ = typ_of sub_expr in
-    !logger.debug "%sChecking operand of (%a), of type (%a) (expected: %a)" indent
-      print_typ op_typ
-      print_typ sub_typ
+    !logger.debug "%sChecking operand of (%a), of type (%a) (expected: %a)"
+      indent print_typ op_typ print_typ sub_typ
       (Option.print RamenScalar.print_typ) exp_sub_typ ;
     (* Start by recursing into the sub-expression to know its real type: *)
-    let changed = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:sub_typ ~params sub_expr in
-    (* Now we check this comply with the operator expectations about its operand : *)
+    let changed = check_expr ~depth ~parents ~in_type ~out_type
+                             ~exp_type:sub_typ ~params sub_expr in
+    (* Now we check this comply with the operator expectations about its
+     * operand : *)
     (match sub_typ.scalar_typ, exp_sub_typ with
     | Some actual_typ, Some exp_sub_typ ->
       if not (RamenScalar.can_enlarge ~from:actual_typ ~to_:exp_sub_typ) then
@@ -445,8 +452,10 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       print_typ op_typ
       RamenScalar.print_typ actual_typ ;
     let from = make_typ ~typ:actual_typ op_typ.expr_name in
-    let changed = check_expr_type ~indent ~ok_if_larger:false ~set_null:false ~from ~to_:op_typ in
-    check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type || changed
+    let changed = check_expr_type ~indent ~ok_if_larger:false
+                                  ~set_null:false ~from ~to_:op_typ in
+    check_expr_type ~indent ~ok_if_larger:false ~set_null:true
+                    ~from:op_typ ~to_:exp_type || changed
   in
   let check_op op_typ make_op_typ ?(propagate_null=true) args =
     (* First we check the operands: do they comply with the expected types
@@ -493,7 +502,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       check_operator op_typ actual_op_typ || changed
     | _ -> changed
   in
-  let rec check_variadic op_typ ?(propagate_null=true) ?exp_sub_typ ?exp_sub_nullable = function
+  let rec check_variadic op_typ ?(propagate_null=true) ?exp_sub_typ
+                                ?exp_sub_nullable =
+    function
     | [] -> false
     | sub_expr :: rest ->
       let changed =
@@ -503,7 +514,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
          * each step to refine it. For now, no typing of the op from
          * the args. Especially, XXX no update of the nullability of
          * op! XXX *)
-      check_variadic op_typ ~propagate_null ?exp_sub_typ ?exp_sub_nullable rest || changed
+      check_variadic op_typ ~propagate_null ?exp_sub_typ ?exp_sub_nullable
+                     rest || changed
   in
   (* Useful helpers for make_op_typ above: *)
   let return_bool _ = TBool
@@ -514,11 +526,13 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   and return_string _ = TString
   in
   fun expr ->
-  !logger.debug "%s-- Typing expression %a" indent (RamenExpr.print true) expr ;
+  !logger.debug "%s-- Typing expression %a"
+    indent (RamenExpr.print true) expr ;
   match expr with
   | Const (op_typ, _) ->
     (* op_typ is already optimal. But is it compatible with exp_type? *)
-    check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
+    check_expr_type ~indent ~ok_if_larger:false ~set_null:true
+                    ~from:op_typ ~to_:exp_type
   | Field (op_typ, tuple, field) ->
     if tuple_has_type_input !tuple then (
       (* Check that this field is, or could be, in in_type *)
@@ -536,8 +550,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           match type_of_parents_field parents !tuple field with
           | exception ParentIsUntyped -> false
           | ptyp ->
-            !logger.debug "%sCopying field %s from parents, with type %a" indent
-              field RamenExpr.print_typ ptyp ;
+            !logger.debug "%sCopying field %s from parents, with type %a"
+              indent field RamenExpr.print_typ ptyp ;
             if is_private_field field then (
               let m = InvalidPrivateField { field } in
               raise (SyntaxError m)) ;
@@ -546,10 +560,15 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
             true)
       | from ->
         (if in_type.finished_typing then ( (* Save the type *)
-          Option.map_default (set_nullable ~indent op_typ) false from.nullable |||
-          Option.map_default (set_scalar_type ~indent ~ok_if_larger:true ~expr_name:from.expr_name op_typ) false from.scalar_typ
+          Option.map_default
+            (set_nullable ~indent op_typ) false from.nullable |||
+          Option.map_default
+            (set_scalar_type ~indent ~ok_if_larger:true
+                             ~expr_name:from.expr_name op_typ)
+            false from.scalar_typ
         ) else false) |||
-        check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from ~to_:exp_type
+        check_expr_type ~indent ~ok_if_larger:false ~set_null:true
+                        ~from ~to_:exp_type
     ) else if tuple_has_type_output !tuple then (
       (* Some tuples are passed to callback via an option type, and are None
        * each time they are undefined (beginning of worker or of group).
@@ -583,16 +602,21 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           out_type.fields <- (field, exp_type) :: out_type.fields ;
           true
         | out ->
-          !logger.debug "%sfield %s found in out type: %a" indent field print_typ out ;
+          !logger.debug "%sfield %s found in out type: %a"
+            indent field print_typ out ;
           (if out_type.finished_typing then ( (* Save the type *)
             Option.map_default (set_nullable ~indent op_typ) false (
               (* Regardless of the actual type of the output tuple, fields from
                * group.previous must always be considered nullable as the whole
                * tuple is optional: *)
               if tuple_is_optional then Some true else out.nullable) |||
-            Option.map_default (set_scalar_type ~indent ~ok_if_larger:true ~expr_name:out.expr_name op_typ) false out.scalar_typ
+            Option.map_default
+              (set_scalar_type ~indent ~ok_if_larger:true
+                               ~expr_name:out.expr_name op_typ)
+              false out.scalar_typ
           ) else false) |||
-          check_expr_type ~indent ~ok_if_larger:false ~set_null:(not tuple_is_optional) ~from:out ~to_:exp_type
+          check_expr_type ~indent ~ok_if_larger:false ~from:out ~to_:exp_type
+                          ~set_null:(not tuple_is_optional)
       )
     ) else if !tuple = TupleParam then (
       (* Copy the scalar type from the default value: *)
@@ -636,10 +660,13 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       List.exists (fun alt ->
           (* First typecheck the condition, then check it's a bool: *)
           let cond_typ = typ_of alt.case_cond in
-          let chg = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:cond_typ ~params alt.case_cond ||
-                    check_expr_type ~indent ~ok_if_larger:false ~set_null:false ~from:exp_cond_type ~to_:cond_typ in
-          !logger.debug "%sTyping CASE: condition type is now %a (changed: %b)" indent
-            print_typ (typ_of alt.case_cond) chg ;
+          let chg =
+            check_expr ~depth ~parents ~in_type ~out_type ~exp_type:cond_typ
+                       ~params alt.case_cond ||
+            check_expr_type ~indent ~ok_if_larger:false ~set_null:false
+                            ~from:exp_cond_type ~to_:cond_typ in
+          !logger.debug "%sTyping CASE: condition type is now %a (changed: %b)"
+            indent print_typ (typ_of alt.case_cond) chg ;
           chg
         ) alts
     ) || (
@@ -648,13 +675,17 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       | Some else_ ->
         (* First type the else_ then use the actual type to enlarge exp_type: *)
         let typ = typ_of else_ in
-        let chg = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ ~params else_ ||
-                  check_expr_type ~indent ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
-        !logger.debug "%sTyping CASE: CASE type is now %a (changed: %b)" indent
-          print_typ exp_type chg ;
+        let chg =
+          check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ
+                     ~params else_ ||
+          check_expr_type ~indent ~ok_if_larger:true ~set_null:false
+                          ~from:typ ~to_:exp_type in
+        !logger.debug "%sTyping CASE: CASE type is now %a (changed: %b)"
+          indent print_typ exp_type chg ;
         chg
       | None ->
-        !logger.debug "%sTyping CASE: No ELSE clause so CASE can be NULL" indent ;
+        !logger.debug "%sTyping CASE: No ELSE clause so CASE can be NULL"
+          indent ;
         set_nullable ~indent exp_type true
     ) || (
       (* Enlarge exp_type with the consequents: *)
@@ -662,17 +693,21 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       List.exists (fun alt ->
           (* First typecheck the consequent, then use it to enlarge exp_type: *)
           let typ = typ_of alt.case_cons in
-          let chg = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ ~params alt.case_cons ||
-                    check_expr_type ~indent ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
-          !logger.debug "%sTyping CASE: consequent type is %a, and CASE type is now %a (changed: %b)" indent
-            print_typ typ
-            print_typ exp_type chg ;
+          let chg =
+            check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ
+                       ~params alt.case_cons ||
+            check_expr_type ~indent ~ok_if_larger:true ~set_null:false
+                            ~from:typ ~to_:exp_type in
+          !logger.debug "%sTyping CASE: consequent type is %a, and CASE \
+                         type is now %a (changed: %b)" indent
+            print_typ typ print_typ exp_type chg ;
           chg
         ) alts
     ) || (
       (* So all consequents and conditions and the else clause should
        * have been fully typed now. Let's check: *)
-      !logger.debug "%sTyping CASE: all items should have been fully typed by now:" indent ;
+      !logger.debug "%sTyping CASE: all items should have been fully typed \
+                     by now:" indent ;
       List.iter (fun alt ->
         !logger.debug "%sTyping CASE: cond type: %a, cons type: %a" indent
           print_typ (typ_of alt.case_cond)
@@ -702,8 +737,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       in
       Option.map_default (fun nullable ->
           if exp_type.nullable <> Some nullable then (
-            !logger.debug "%sTyping CASE: Setting the CASE to %sNULLable" indent
-              (if nullable then "" else "not ") ;
+            !logger.debug "%sTyping CASE: Setting the CASE to %sNULLable"
+              indent (if nullable then "" else "not ") ;
             exp_type.nullable <- Some nullable ;
             true
           ) else false
@@ -716,7 +751,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * - the last element of the list must not be nullable. *)
     (* Enlarge exp_type with the consequent: *)
     assert (es <> []) ;
-    !logger.debug "%sTyping COALESCE: enlarging COALESCE from elements" indent ;
+    !logger.debug "%sTyping COALESCE: enlarging COALESCE from elements"
+      indent ;
     let changed, last_typ = List.fold_left (fun (changed, last_typ) e ->
         (* So last_typ (so far) is not allowed to be not nullable: *)
         Option.may (fun last_typ ->
@@ -729,11 +765,14 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
 
         let typ = typ_of e in
         (* First typecheck e, then use it to enlarge exp_type: *)
-        let chg = check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ ~params e ||
-                  check_expr_type ~indent ~ok_if_larger:true ~set_null:false ~from:typ ~to_:exp_type in
-        !logger.debug "%sTyping COALESCE: expr type is %a, and COALESCE type is now %a (changed: %b)" indent
-          print_typ typ
-          print_typ exp_type chg ;
+        let chg =
+          check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ
+                     ~params e ||
+          check_expr_type ~indent ~ok_if_larger:true ~set_null:false
+                          ~from:typ ~to_:exp_type in
+        !logger.debug "%sTyping COALESCE: expr type is %a, and COALESCE \
+                       type is now %a (changed: %b)" indent
+          print_typ typ print_typ exp_type chg ;
         changed || chg, Some typ
       ) (false, None) es in
     (match last_typ with
@@ -748,9 +787,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         raise (SyntaxError e)
       | None -> changed)
   | StatelessFun0 (op_typ, Now) ->
-    check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
+    check_expr_type ~indent ~ok_if_larger:false ~set_null:true
+                    ~from:op_typ ~to_:exp_type
   | StatelessFun0 (op_typ, Random) ->
-    check_expr_type ~indent ~ok_if_larger:false ~set_null:true ~from:op_typ ~to_:exp_type
+    check_expr_type ~indent ~ok_if_larger:false ~set_null:true
+                    ~from:op_typ ~to_:exp_type
   | StatefulFun (op_typ, _, AggrMin e) | StatefulFun (op_typ, _, AggrMax e)
   | StatefulFun (op_typ, _, AggrFirst e) | StatefulFun (op_typ, _, AggrLast e) ->
     check_op op_typ List.hd [None, None, e]
@@ -858,7 +899,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* ... and e2 can be anything and the type of lag will be the same,
      * nullable (since we might lag beyond the start of the window. *)
     check_op op_typ List.last [Some TU64, Some false, e1 ; None, None, e2]
-  | StatefulFun (op_typ, _, MovingAvg (e1, e2, e3)) | StatefulFun (op_typ, _, LinReg (e1, e2, e3)) ->
+  | StatefulFun (op_typ, _, MovingAvg (e1, e2, e3))
+  | StatefulFun (op_typ, _, LinReg (e1, e2, e3)) ->
     (* As above, but e3 must be numeric (therefore the result cannot be
      * null) *)
     (* FIXME: Check that the consts are > 0 *)
@@ -921,7 +963,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible. *)
-let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple ~to_prefix ~to_tuple =
+let check_inherit_tuple ~including_complete ~is_subset ~from_prefix
+                        ~from_tuple ~to_prefix ~to_tuple =
   (* Check that to_tuple is included in from_tuple (if is_subset) and if so
    * that they are compatible. Improve child type using parent type. *)
   let changed =
@@ -936,7 +979,8 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
             raise (SyntaxError e)) ;
           changed (* no-op *)
         | parent_field ->
-          check_expr_type ~indent:"  " ~ok_if_larger:false ~set_null:true ~from:parent_field ~to_:child_field ||
+          check_expr_type ~indent:"  " ~ok_if_larger:false ~set_null:true
+                          ~from:parent_field ~to_:child_field ||
           changed
       ) false to_tuple.fields in
   (* Add new fields into children. *)
@@ -958,7 +1002,10 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix ~from_tuple 
       ) changed from_tuple.fields in
   (* If typing of from_tuple is finished then so is to_tuple *)
   let changed =
-    if including_complete && from_tuple.finished_typing && not to_tuple.finished_typing then (
+    if including_complete &&
+       from_tuple.finished_typing &&
+       not to_tuple.finished_typing
+    then (
       !logger.debug "Completing to_tuple from check_inherit_tuple" ;
       check_finished_tuple_type to_prefix to_tuple ;
       true
@@ -988,13 +1035,16 @@ let check_selected_fields ~parents ~in_type ~out_type params fields =
             typ.expr_name <- name ;
             typ
         in
-        !logger.debug "Adding out-field %s (operation: %s)" name typ.RamenExpr.expr_name ;
+        !logger.debug "Adding out-field %s (operation: %s)"
+          name typ.RamenExpr.expr_name ;
         out_type.fields <- (name, typ) :: out_type.fields ;
         typ
       | typ ->
-        !logger.debug "... already in out, current type is %a" RamenExpr.print_typ typ ;
+        !logger.debug "... already in out, current type is %a"
+          RamenExpr.print_typ typ ;
         typ in
-    check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params sf.RamenOperation.expr || changed
+    check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params
+               sf.RamenOperation.expr || changed
   ) false fields
 
 let tuple_type_is_finished = function
@@ -1006,7 +1056,8 @@ let check_input_finished ~parents ~in_type =
      List.for_all (fun par ->
        tuple_type_is_finished par.Func.out_type) parents
   then (
-    !logger.debug "Completing in_type because none of our parent output will change any more." ;
+    !logger.debug "Completing in_type because none of our parent output \
+                   will change any more." ;
     check_finished_tuple_type TupleIn in_type ;
     true
   ) else false
@@ -1057,10 +1108,14 @@ let check_aggregate parents func fields and_all_others merge sort where key
       let from_tuple = C.{ finished_typing = true ;
                            fields = inter_ptyps } in
       (* This is supposed to propagate parent completeness into in-tuple. *)
-      check_inherit_tuple ~including_complete:true ~is_subset:true ~from_prefix:TupleOut ~from_tuple ~to_prefix:TupleIn ~to_tuple:in_type
+      check_inherit_tuple ~including_complete:true ~is_subset:true
+                          ~from_prefix:TupleOut ~from_tuple
+                          ~to_prefix:TupleIn ~to_tuple:in_type
       |||
       (* If all other fields are selected, add them *)
-      check_inherit_tuple ~including_complete:false ~is_subset:false ~from_prefix:TupleIn ~from_tuple:in_type ~to_prefix:TupleOut ~to_tuple:out_type
+      check_inherit_tuple ~including_complete:false ~is_subset:false
+                          ~from_prefix:TupleIn ~from_tuple:in_type
+                          ~to_prefix:TupleOut ~to_tuple:out_type
     ) else (
       (* If we do not select star then we will bring in fields from (all)
        * parents as they are needed. *)
@@ -1070,7 +1125,8 @@ let check_aggregate parents func fields and_all_others merge sort where key
     (* Improve in and out_type using all expressions. Check we satisfy in_type. *)
     List.fold_left (fun changed e ->
       let exp_type = RamenExpr.typ_of e in
-      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params e || changed
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params e ||
+      changed
     ) false merge
   ) ||| (
     match sort with
@@ -1079,19 +1135,23 @@ let check_aggregate parents func fields and_all_others merge sort where key
         let changed =
           List.fold_left (fun changed e ->
             let exp_type = RamenExpr.typ_of e in
-            check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params e || changed
+            check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type
+                       ~params e ||
+            changed
           ) false b in
         (match u_opt with
         | None -> changed
         | Some u ->
             let exp_type = RamenExpr.typ_of u in
-            check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params u ||
+            check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type
+                       ~params u ||
             changed)
   ) ||| (
     List.fold_left (fun changed k ->
         (* The key can be anything *)
         let exp_type = RamenExpr.typ_of k in
-        check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params k || changed
+        check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params k ||
+        changed
       ) false key
   ) ||| (
     match top with
@@ -1102,27 +1162,36 @@ let check_aggregate parents func fields and_all_others merge sort where key
       (* check_expr will try to improve exp_type. We don't care we just want
        * to check it does not raise an exception. Here exp_type is build at
        * every call so we wouldn't make progress anyway. *)
-      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type:(RamenExpr.make_num_typ "top size") ~params n |> ignore ;
-      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type:(RamenExpr.make_num_typ "top-by clause") ~params by |> ignore ;
+      ignore
+        (check_expr ~depth:1 ~parents ~in_type ~out_type
+                    ~exp_type:(RamenExpr.make_num_typ "top size") ~params n) ;
+      ignore
+        (check_expr ~depth:1 ~parents ~in_type ~out_type
+                    ~exp_type:(RamenExpr.make_num_typ "top-by clause")
+                    ~params by) ;
       false
   ) ||| (
     let exp_type = RamenExpr.typ_of commit_when in
     set_nullable exp_type false |||
-    set_scalar_type ~ok_if_larger:false ~expr_name:"commit-clause" exp_type TBool |||
-    check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params commit_when
+    set_scalar_type ~ok_if_larger:false ~expr_name:"commit-clause"
+                    exp_type TBool |||
+    check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params
+               commit_when
   ) ||| (
     match flush_how with
     | Reset | Never | Slide _ -> false
     | RemoveAll e | KeepOnly e ->
       let exp_type = RamenExpr.typ_of e in
       set_nullable exp_type false |||
-      set_scalar_type ~ok_if_larger:false ~expr_name:"flush-clause" exp_type TBool |||
+      set_scalar_type ~ok_if_larger:false ~expr_name:"flush-clause"
+                      exp_type TBool |||
       check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params e
   ) ||| (
     (* Check the expression, improving out_type and checking against in_type: *)
     let exp_type = RamenExpr.typ_of where in
     set_nullable exp_type false |||
-    set_scalar_type ~ok_if_larger:false ~expr_name:"where clause" exp_type TBool |||
+    set_scalar_type ~ok_if_larger:false ~expr_name:"where clause"
+                    exp_type TBool |||
     check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params where
   ) ||| (
     (* Also check other expression and make use of them to improve out_type.
@@ -1190,7 +1259,8 @@ let check_func_types parents func =
      * operation: *)
     match func.Func.operation with
     | None -> false
-    | Some operation -> check_operation operation parents func
+    | Some operation ->
+        check_operation operation parents func
   ) with SyntaxError e ->
     !logger.debug "Compilation error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
@@ -1224,6 +1294,7 @@ let get_selected_fields func =
 let set_all_types conf parents funcs =
   let fold_funcs f =
     Hashtbl.fold (fun _ func changed ->
+      cur_func_name := func.Func.name ;
       f func || changed
     ) funcs false in
   let rec loop () =
@@ -1278,7 +1349,8 @@ let set_all_types conf parents funcs =
              * specific order. TODO: in parent order? *)
             max_int in
         fun f1 f2 ->
-          compare (sf_index f1.RamenTuple.typ_name) (sf_index f2.RamenTuple.typ_name)) in
+          compare (sf_index f1.RamenTuple.typ_name)
+                  (sf_index f2.RamenTuple.typ_name)) in
     func.Func.out_type <- typed_of_untyped_tuple ?cmp func.Func.out_type ;
     func.Func.signature <- Func.signature conf func
   ) funcs
