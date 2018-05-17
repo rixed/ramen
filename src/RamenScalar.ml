@@ -105,6 +105,20 @@ let enlarge_type = function
   | TCidrv6 -> TCidr
   | t -> invalid_arg ("Type "^ string_of_typ t ^" cannot be enlarged")
 
+(* From the list of operand types, return the largest type able to accomodate
+ * all operands. Most of the time it will be the largest in term of "all
+ * others can be enlarged to that one" but for special cases where we want
+ * an even larger type; For instance, if we combine an i8 and an u8 then we
+ * want the result to be an i16, or if we combine an IPv4 and an IPv6 then
+ * we want the result to be an IP. *)
+let rec large_enough_for t1 t2 =
+  try larger_type t1 t2
+  with Invalid_argument _ as e ->
+    (* Try to enlarge t1 a bit further *)
+    (match enlarge_type t1 with
+    | exception _ -> raise e
+    | t1 -> large_enough_for t1 t2)
+
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run
  * the operators. *)

@@ -710,7 +710,7 @@ and add_missing_types arg_typs es =
   let merge_types t1 t2 =
     match t1, t2 with
     | None, t | t, None -> t
-    | Some t1, Some t2 -> Some (RamenScalar.larger_type t1 t2) in
+    | Some t1, Some t2 -> Some (RamenScalar.large_enough_for t1 t2) in
   let rec loop ht rt any_type n = function
   | [], _ -> (* No more arguments *)
     (* Replace all None types by a common type large enough to accommodate
