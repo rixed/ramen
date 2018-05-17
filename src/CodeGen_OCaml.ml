@@ -221,41 +221,45 @@ let omod_of_type = function
  * about what conversions are required to implement that in OCaml. *)
 (* Note: for field_of_tuple, we must be able to convert any value into a
  * string *)
-let conv_from_to from_typ ~nullable to_typ p fmt e =
-  match from_typ, to_typ with
-  | a, b when a = b -> p fmt e
-  | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
-      (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
-  | TString, (TFloat|TBool) ->
-    Printf.fprintf fmt "(%s%s.of_%s (%a))"
+let conv_from_to from_typ ~nullable to_typ p oc e =
+  let print_non_null oc (from_typ, to_typ as conv) =
+    match conv with
+    | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
+        (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
+    | TString, (TFloat|TBool) ->
+      Printf.fprintf oc "%s.of_%s (%a)"
+        (omod_of_type to_typ)
+        (otype_of_type from_typ)
+        p e
+    | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
+        (TFloat|TString)
+    | (TFloat|TBool), (TString|TFloat) ->
+      Printf.fprintf oc "%s.to_%s (%a)"
+        (omod_of_type from_typ)
+        (otype_of_type to_typ)
+        p e
+    | TBool, (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+      Printf.fprintf oc "(%s.of_int %% Bool.to_int) (%a)"
+        (omod_of_type to_typ)
+        p e
+    | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
+      Printf.fprintf oc "%s.to_string %a"
+        (omod_of_type from_typ) p e
+    | TIpv4, TIp -> Printf.fprintf oc "(RamenIp.V4 %a)" p e
+    | TIpv6, TIp -> Printf.fprintf oc "(RamenIp.V6 %a)" p e
+    | TCidrv4, TIp -> Printf.fprintf oc "(RamenIp.Cidr.V4 %a)" p e
+    | TCidrv6, TIp -> Printf.fprintf oc "(RamenIp.Cidr.V6 %a)" p e
+    | _ ->
+      failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
+                  (IO.to_string RamenScalar.print_typ from_typ)
+                  (IO.to_string RamenScalar.print_typ to_typ))
+  in
+  if from_typ = to_typ then
+    p oc e
+  else
+    Printf.fprintf oc "(%s%a)"
       (if nullable then "Option.map " else "")
-      (omod_of_type to_typ)
-      (otype_of_type from_typ)
-      p e
-  | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
-      (TFloat|TString)
-  | (TFloat|TBool), (TString|TFloat) ->
-    Printf.fprintf fmt "(%s%s.to_%s (%a))"
-      (if nullable then "Option.map " else "")
-      (omod_of_type from_typ)
-      (otype_of_type to_typ)
-      p e
-  | TBool, (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
-    Printf.fprintf fmt "(%s(%s.of_int %% Bool.to_int) (%a))"
-      (if nullable then "Option.map " else "")
-      (omod_of_type to_typ)
-      p e
-  | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
-    Printf.fprintf fmt "(%s.to_string %a)"
-      (omod_of_type from_typ) p e
-  | TIpv4, TIp -> Printf.fprintf fmt "(RamenIp.V4 %a)" p e
-  | TIpv6, TIp -> Printf.fprintf fmt "(RamenIp.V6 %a)" p e
-  | TCidrv4, TIp -> Printf.fprintf fmt "(RamenIp.Cidr.V4 %a)" p e
-  | TCidrv6, TIp -> Printf.fprintf fmt "(RamenIp.Cidr.V6 %a)" p e
-  | _ ->
-    failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
-                (IO.to_string RamenScalar.print_typ from_typ)
-                (IO.to_string RamenScalar.print_typ to_typ))
+      print_non_null (from_typ, to_typ)
 
 let freevar_name t = "fv_"^ string_of_int t.RamenExpr.uniq_num ^"_"
 
@@ -520,8 +524,12 @@ and emit_expr ?state ~context oc expr =
     String.print oc "!CodeGenLib_IO.now"
   | Finalize, StatelessFun0 (_, Random), Some TFloat ->
     String.print oc "(Random.float 1.)"
-  | Finalize, StatelessFun1 (_, Cast, e), t ->
-    emit_functionN oc ?state "identity" [t] [e]
+  | Finalize, StatelessFun1 (_, Cast, e), Some to_typ ->
+    let from = typ_of e in
+    let from_typ = Option.get from.scalar_typ
+    and nullable = Option.get from.nullable in
+    conv_from_to from_typ ~nullable to_typ (emit_expr ?state ~context) oc e
+
   (* Sequence build a sequence of as-large-as-convenient integers (signed or
    * not) *)
   | Finalize, StatelessFun2 (_, Sequence, e1, e2), Some TI128 ->
