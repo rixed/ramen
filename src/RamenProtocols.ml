@@ -16,3 +16,7 @@ let collector_of_proto = function
 let event_time_of_proto = function
   | Collectd -> RamenCollectd.event_time
   | NetflowV5 -> RamenNetflow.event_time
+
+let factors_of_proto = function
+  | Collectd -> RamenCollectd.factors
+  | NetflowV5 -> RamenNetflow.factors

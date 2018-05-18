@@ -2,8 +2,7 @@
 -- Example program to monitor some hosts via collectd
 
 DEFINE collectd AS
-  LISTEN FOR COLLECTD
-  FACTORS plugin, type_instance, instance;
+  LISTEN FOR COLLECTD;
 
 DEFINE memory AS
   SELECT

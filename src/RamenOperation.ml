@@ -274,9 +274,11 @@ let parents_of_operation = function
   | Aggregate { from ; _ } -> from
 
 let factors_of_operation = function
-  | ListenFor { factors ; _ }
   | ReadCSVFile { factors ; _ }
   | Aggregate { factors ; _ } -> factors
+  | ListenFor { factors ; proto ; _ } ->
+    if factors <> [] then factors
+    else RamenProtocols.factors_of_proto proto
   | Instrumentation _ -> RamenBinocle.factors
 
 let fold_expr init f = function

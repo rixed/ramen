@@ -42,6 +42,8 @@ let tuple_typ =
 
 let event_time = Some (("time", 1.), RamenEventTime.DurationConst 0.)
 
+let factors = [ "plugin" ; "type_instance" ; "instance" ]
+
 external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
 
 let collector ~inet_addr ~port ?while_ k =

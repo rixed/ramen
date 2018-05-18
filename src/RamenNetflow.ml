@@ -43,6 +43,8 @@ let tuple_typ =
 
 let event_time = Some (("first", 1.), RamenEventTime.StopField ("last", 1.))
 
+let factors = [ "source" ]
+
 external decode :
   Bytes.t -> int -> string -> netflow_metric array =
   "wrap_netflow_v5_decode"
