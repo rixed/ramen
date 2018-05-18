@@ -175,7 +175,8 @@ let make_untyped_func program_name func_name params operation =
     params ; operation = Some operation ; parents ;
     in_type = UntypedTuple (make_untyped_tuple ()) ;
     out_type = UntypedTuple (make_untyped_tuple ()) ;
-    event_time = None ; factors = [] (* Set once typing is done *) }
+    event_time = RamenOperation.event_time_of_operation operation ;
+    factors = RamenOperation.factors_of_operation operation  }
 
 (* Same as the above, for when a function has already been compiled: *)
 let make_typed_func program_name rcf =
@@ -1390,17 +1391,21 @@ let set_all_types conf parents funcs =
      * we can infer them from the parents (we consider only the first parent
      * here): *)
     Option.may (fun operation ->
-      func.event_time <-
-        RamenOperation.event_time_of_operation operation ;
-      func.factors <-
-        RamenOperation.factors_of_operation operation ;
       let parents = Hashtbl.find_default parents func.Func.name [] in
-      if parents <> [] && func.event_time = None then
+      if parents <> [] && func.event_time = None then (
         func.event_time <-
           infer_event_time func (List.hd parents).event_time ;
-      if parents <> [] && func.factors = [] then
+        if func.event_time <> None then
+          !logger.debug "Function %s can reuse event time from parents"
+            func.name
+      ) ;
+      if parents <> [] && func.factors = [] then (
         func.factors <-
-          infer_factors func (List.hd parents).factors
+          infer_factors func (List.hd parents).factors ;
+        if func.factors <> [] then
+          !logger.debug "Function %s can reuse factors %a from parents"
+            func.name (List.print String.print) func.factors
+      )
     ) func.operation ;
     (* Seal everything: *)
     func.Func.signature <- Func.signature conf func
