@@ -1292,33 +1292,40 @@ let get_selected_fields func =
   | _ -> None
 
 let forwarded_field func field =
-  get_selected_fields func |>
-  Option.map (
-    List.exists (fun sf ->
-      (* FIXME: make it work when the field is renamed and return the new
-       * name. *)
-      sf.RamenOperation.alias = field &&
-      match sf.expr with
-      | RamenExpr.Field (_, { contents = TupleIn }, fn) -> fn = field
-      | _ -> false)) |? false
+  match get_selected_fields func with
+  | None ->
+      raise Not_found
+  | Some fields ->
+      List.find_map (fun sf ->
+        match sf.RamenOperation.expr with
+        | RamenExpr.Field (_, { contents = TupleIn }, fn) when fn = field ->
+            Some sf.alias
+        | _ ->
+            None
+      ) fields
 
-let infer_event_time func =
+let infer_event_time func event_time_opt =
   let open RamenEventTime in
-  function
-  | Some ((f1, _), duration) as eti ->
-      if forwarded_field func f1 &&
-         match duration with
-         | DurationConst _ -> true
-         | DurationField (f2, _)
-         | StopField (f2, _) ->
-            forwarded_field func f2
-      then eti
-      else None
-  | _ -> None
+  try
+    Option.map (function ((f1, f1_scale), duration) ->
+      (forwarded_field func f1, f1_scale),
+      try
+        match duration with
+        | DurationConst _ -> duration
+        | DurationField (f2, f2_scale) ->
+            DurationField (forwarded_field func f2, f2_scale)
+        | StopField (f2, f2_scale) ->
+            StopField (forwarded_field func f2, f2_scale)
+      with Not_found ->
+        DurationConst 0.
+    ) event_time_opt
+  with Not_found -> None
 
 let infer_factors func =
   (* All fields that we take without modifications are also our factors *)
-  List.filter (forwarded_field func)
+  List.filter_map (fun factor ->
+    try Some (forwarded_field func factor)
+    with Not_found -> None)
 
 (* Since we can have loops within a program we can not propagate types
  * immediately. Also, the star selection prevent us from propagating

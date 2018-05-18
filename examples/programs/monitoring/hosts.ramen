@@ -48,5 +48,4 @@ DEFINE memory_alert AS
   GROUP BY host
   COMMIT, KEEP ALL AND EXECUTE
     "echo 'FIRING:${firing}: RAM is low on ${host} at ${time}: ${used_ratio}% full'"
-    AFTER COALESCE (out.firing <> previous.firing, false)
-  EVENT STARTING AT time WITH DURATION 30;
+    AFTER COALESCE (out.firing <> previous.firing, false);

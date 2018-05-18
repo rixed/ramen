@@ -7,13 +7,11 @@ DEFINE netflow AS
 DEFINE inbound AS
   SELECT source, first, last, bytes, packets, in_iface AS iface
   FROM netflow
-  EVENT STARTING AT first AND STOPPING AT last
   FACTORS source, iface;
 
 DEFINE outbound AS
   SELECT source, first, last, bytes, packets, out_iface AS iface
   FROM netflow
-  EVENT STARTING AT first AND STOPPING AT last
   FACTORS source, iface;
 
 DEFINE total AS
@@ -25,8 +23,7 @@ DEFINE total AS
     sum packets / (out.last - out.first) AS packets_per_secs
   GROUP BY source, iface, first // 300
   COMMIT AFTER in.first > out.last + 100
-  EVENT STARTING AT first AND STOPPING AT last
-  FACTORS source, iface;
+  EVENT STARTING AT first AND STOPPING AT last;
 
 DEFINE out_of_range_alert AS
   FROM total
@@ -39,8 +36,7 @@ DEFINE out_of_range_alert AS
   COMMIT, KEEP ALL AND EXECUTE
     "echo 'FIRING:${firing}: Traffic on ${source}:${iface} at time ${time}: ${bytes_per_secs}'"
   AFTER COALESCE (out.firing <> previous.firing, false)
-  EVENT STARTING AT time
-  FACTORS source, iface;
+  EVENT STARTING AT time;
 
 DEFINE link_down_alert AS
   FROM total
@@ -52,5 +48,4 @@ DEFINE link_down_alert AS
   EVENT STARTING AT max_last
   COMMIT, KEEP ALL AND EXECUTE
     "echo 'FIRING:${firing}: ${source}:${iface} is down at time:${max_last}'"
-  AFTER COALESCE (out.firing != previous.firing, false)
-  FACTORS source, iface;
+  AFTER COALESCE (out.firing != previous.firing, false);
