@@ -571,8 +571,9 @@ and emit_expr ?state ~context oc expr =
   | InitState, StatefulFun (_, _, (AggrFirst e|AggrLast e)), t ->
     conv_to ?state ~context t oc (any_constant_of_type (typ_of e))
 
-  | InitState, StatefulFun (_, _, (AggrMax _|AggrMin _)), _ ->
-    Printf.fprintf oc "None"
+  | InitState, StatefulFun (_, _, (AggrMax e|AggrMin e)), _ ->
+    Printf.fprintf oc "%sNone"
+      (if is_nullable e then "Some " else "")
   | UpdateState, StatefulFun (_, g, AggrMax e), _ ->
     emit_functionN oc ?state "CodeGenLib.aggr_max" [None; None] [e; my_state g]
   | UpdateState, StatefulFun (_, g, AggrMin e), _ ->
@@ -672,7 +673,9 @@ and emit_expr ?state ~context oc expr =
     emit_functionN oc ?state "CodeGenLib.hysteresis_finalize" [None] [my_state g]
 
   | InitState, StatefulFun (_, _, Top { n ; duration ; _ }), _ ->
-    Printf.fprintf oc "CodeGenLib.heavy_hitters_init %d %s" n
+    Printf.fprintf oc "%s(CodeGenLib.heavy_hitters_init %d %s)"
+      (if is_nullable expr then "Some " else "")
+      n
       (Legacy.Printf.sprintf "%h" duration)
   | UpdateState, StatefulFun (_, g, Top { what ; by ; _ }), _ ->
     emit_functionN oc ?state
