@@ -251,6 +251,16 @@ let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
 
 let type_signature_hash = md5 % RamenTuple.type_signature
 
+(* Each workers regularly snapshot its internal state in this file: *)
+let worker_state conf func =
+  conf.persist_dir ^"/workers/states/"
+                   ^ RamenVersions.worker_state
+                   ^"/"^ Config.version
+                   ^"/"^ Func.fq_name func
+                   ^"/"^ func.signature
+                   ^"/"^ RamenTuple.param_signature func.params
+                   ^"/snapshot"
+
 (* The "in" ring-buffers are used to store tuple received by an operation.
  * We want that file to be unique for a given operation name and to change
  * whenever the input type of this operation changes. On the other hand, we

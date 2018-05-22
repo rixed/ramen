@@ -521,7 +521,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
     ) !out_l
 
 type worker_conf =
-  { debug : bool ; persist_dir : string ; ramen_url : string }
+  { debug : bool ; state_file : string ; ramen_url : string }
 
 let quit = ref false
 
@@ -529,7 +529,7 @@ let worker_start worker_name get_binocle_tuple k =
   let debug = getenv ~def:"false" "debug" |> bool_of_string in
   let default_persist_dir =
     "/tmp/worker_"^ worker_name ^"_"^ string_of_int (Unix.getpid ()) in
-  let persist_dir = getenv ~def:default_persist_dir "persist_dir" in
+  let state_file = getenv ~def:default_persist_dir "state_file" in
   let ramen_url = getenv ~def:"http://localhost:29380" "ramen_url" in
   let logdir, prefix =
     match getenv "log_dir" with
@@ -546,7 +546,7 @@ let worker_start worker_name get_binocle_tuple k =
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   update_stats () ;
-  let conf = { debug ; persist_dir ; ramen_url } in
+  let conf = { debug ; state_file ; ramen_url } in
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     quit := true)) ;
@@ -1053,7 +1053,7 @@ let aggregate
           groups ;
           sort_buf = RamenSortBuf.empty } in
       let state =
-        ref (make conf.persist_dir "snapshot" init_state) in
+        ref (make conf.state_file init_state) in
       fun f ->
         let v = restore !state in
         (* We do _not_ want to save the value when f raises an exception: *)

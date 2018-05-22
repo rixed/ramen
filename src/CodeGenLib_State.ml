@@ -34,9 +34,8 @@ let do_restore fd =
 
 open Batteries
 
-let create_or_read persist_dir id v =
+let create_or_read fname v =
   let open Unix in
-  let fname = persist_dir ^"/"^ id in
   RamenHelpers.mkdir_all ~is_file:true fname ;
   let init_restore () =
     !logger.info "Will have my state in file %s" fname ;
@@ -68,10 +67,10 @@ struct
    * its own temp directory we just need a name that's unique to the operation.
    * Note that the initial value that's given is supposed to be used only for
    * ids that are new regardless of restarts. *)
-  let make persist_dir id v =
+  let make fname v =
     (* FIXME: if save_every>0 || save_timeout>0., register an at_exit call that
      * will backup the last value. *)
-    let fd, v = create_or_read persist_dir id v in
+    let fd, v = create_or_read fname v in
     { v ; fd ;
       last_saved = !CodeGenLib_IO.now ;
       calls_since_saved = 0 }
@@ -103,10 +102,10 @@ module File =
 struct
   type handle = Unix.file_descr
 
-  let make persist_dir id v =
+  let make fname v =
     (* FIXME: if save_every>0 || save_timeout>0., register an at_exit call that
      * will backup the last value. *)
-    let fd, _v = create_or_read persist_dir id v in fd
+    let fd, _v = create_or_read fname v in fd
 
   let restore = do_restore
 

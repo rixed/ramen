@@ -272,8 +272,21 @@ let rec wait_all_pids_loop () =
       return_unit in
   wait_all_pids_loop ()
 
+let rescue_worker conf func =
+  (* Maybe the state file is poisoned? At this stage it's probably safer to move
+   * it away: *)
+  let state_file = C.worker_state conf func in
+  let trash_file = state_file ^".bad?" in
+  !logger.info "Worker %s/%s is deadlooping. Deleting its state file."
+    func.F.program_name func.F.name ;
+  ignore_exceptions Unix.unlink trash_file ;
+  try Unix.rename state_file trash_file
+  with e ->
+    !logger.warning "Cannot remove state file: %s"
+      (Printexc.to_string e)
+
 (* Then this function is cleaning the running hash: *)
-let process_terminations running =
+let process_terminations conf running =
   if !terminated_pids <> [] then
     (* Thanks to light-weight threads, this is atomic: *)
     let terms = !terminated_pids in
@@ -291,8 +304,9 @@ let process_terminations running =
               proc.program_name proc.func.name pid status_str ;
             proc.last_exit <- now ;
             proc.last_exit_status <- status_str ;
-            if is_err then
+            if is_err then (
               proc.succ_failures <- proc.succ_failures + 1 ;
+              if proc.succ_failures = 5 then rescue_worker conf proc.func) ;
             (* Wait before attempting to restart a failing worker: *)
             proc.quarantine_until <-
               now +. Random.float (min 90. (float_of_int proc.succ_failures)) ;
@@ -380,12 +394,7 @@ let really_start conf must_run proc parents children =
                   | Some s -> string_of_int s) ;
     (* We need to change this dir whenever the func signature or params
      * change to prevent it to reload an incompatible state: *)
-    "persist_dir="^ conf.C.persist_dir ^"/workers/states/"
-                  ^ RamenVersions.worker_state
-                  ^"/"^ Config.version
-                  ^"/"^ fq_name
-                  ^"/"^ proc.func.F.signature
-                  ^"/"^ RamenTuple.param_signature proc.func.F.params ;
+    "state_file="^ C.worker_state conf proc.func ;
     (match !logger.logdir with
       | Some _ ->
         "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
@@ -622,7 +631,7 @@ let synchronize_running conf autoreload_delay =
   and running = Hashtbl.create 307 in
   let rec loop last_read =
     none_shall_pass (fun () ->
-      process_terminations running ;
+      process_terminations conf running ;
       if !quit && Hashtbl.length running = 0 then (
         !logger.info "All processes stopped, quitting." ;
         return_unit
