@@ -24,4 +24,4 @@ let ringbuf = "v3" (* last: merge seq and time archives *)
 let out_ref = "v2" (* last: added timeout *)
 
 (* Workers state format *)
-let worker_state = "v3" (* last: stripped down version *)
+let worker_state = "v4" (* last: changed min/max states *)
