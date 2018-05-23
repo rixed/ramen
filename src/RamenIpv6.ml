@@ -169,10 +169,7 @@ struct
     open RamenParsing
 
     let small_int =
-      unsigned_decimal_number >>: fun n ->
-      if Num.gt_num n (Num.of_int 128) then
-        raise (Reject "CIDRv6 width too large") ;
-      Num.to_int n
+      pos_integer_range ~max:127 "CIDRv6 mask"
 
     let p m =
       let m = "CIDRv6" :: m in

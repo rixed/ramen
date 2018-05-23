@@ -44,9 +44,10 @@ struct
 
   let p m =
     let m = "IPv4" :: m in
-    (repeat ~min:4 ~max:4 ~sep:(char '.') unsigned_decimal_number >>: fun lst ->
+    let small_uint = pos_integer_range ~max:255 "IPv4 component" in
+    (repeat ~min:4 ~max:4 ~sep:(char '.') small_uint >>: fun lst ->
        List.fold_left (fun (s, shf) n ->
-           Uint32.(add s (shift_left (of_int (Num.to_int n)) shf)),
+           Uint32.(add s (shift_left (of_int n) shf)),
            shf - 8
          ) (Uint32.zero, 24) lst |> fst) m
 end
@@ -54,6 +55,10 @@ end
 let of_string = RamenParsing.of_string_exn Parser.p
 (*$= of_string & ~printer:(BatIO.to_string print)
    (Stdint.Uint32.of_int32 0x01020304l) (of_string "1.2.3.4")
+ *)
+(*$T
+   try (ignore (of_string "1.2.3.400")) ; false \
+   with RamenParsing.P.ParseError _ -> true
  *)
 
 module Cidr =
@@ -79,15 +84,12 @@ struct
   struct
     open RamenParsing
 
-    let small_int =
-      unsigned_decimal_number >>: fun n ->
-      if Num.gt_num n (Num.of_int 32) then
-        raise (Reject "CIDRv4 width too large") ;
-      Num.to_int n
+    let mask =
+      pos_integer_range ~max:31 "CIDRv4 mask"
 
     let p m =
       let m = "CIDRv4" :: m in
-      (Parser.p +- char '/' ++ small_int >>: fun (net, len) ->
+      (Parser.p +- char '/' ++ mask >>: fun (net, len) ->
        and_to_len len net, len) m
   end
 

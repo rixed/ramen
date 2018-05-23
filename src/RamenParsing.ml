@@ -61,10 +61,22 @@ let func_identifier ?(globs_allowed=false) ~program_allowed =
   fun s -> String.of_list s)
 
 let pos_integer what =
-  decimal_number >>: fun n ->
-    if Num.sign_num n < 0 then
-      raise (Reject (what ^" must be greater than zero"))
-    else Num.int_of_num n
+  unsigned_decimal_number >>: Num.int_of_num
+
+let pos_integer_range ?min ?max what =
+  pos_integer what >>: fun n ->
+    if Option.map_default ((>=) n) true min &&
+       Option.map_default ((<=) n) true max
+    then n
+    else
+      let e =
+        what ^"must be "^ match min, max with
+        | None, None -> "all right, so what's the problem?"
+        | Some m, None -> "greater or equal to "^ string_of_int m
+        | None, Some m -> "less or equal to "^ string_of_int m
+        | Some mi, Some ma -> "between "^ string_of_int mi ^" and "^
+                              string_of_int ma ^" (inclusive)" in
+      raise (Reject e)
 
 let number =
   floating_point ||| (decimal_number >>: Num.to_float)
