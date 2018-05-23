@@ -251,7 +251,7 @@ let relatives f must_run =
  * by the main thread: *)
 let terminated_pids = ref []
 
-let rec wait_all_pids_loop () =
+let rec wait_all_pids_loop and_save =
   let%lwt () =
     match%lwt Lwt_unix.waitpid [Unix.WNOHANG] 0 with
     | exception Unix.Unix_error (Unix.EINTR, _, _) ->
@@ -268,9 +268,10 @@ let rec wait_all_pids_loop () =
       Lwt_unix.sleep 1.
     | pid, status ->
       let now = Unix.gettimeofday () in
-      terminated_pids := (pid, status, now) :: !terminated_pids ;
+      if and_save then
+        terminated_pids := (pid, status, now) :: !terminated_pids ;
       return_unit in
-  wait_all_pids_loop ()
+  wait_all_pids_loop and_save
 
 let rescue_worker conf func =
   (* Maybe the state file is poisoned? At this stage it's probably safer to move
@@ -286,7 +287,7 @@ let rescue_worker conf func =
       (Printexc.to_string e)
 
 (* Then this function is cleaning the running hash: *)
-let process_terminations conf running =
+let process_workers_terminations conf running =
   if !terminated_pids <> [] then
     (* Thanks to light-weight threads, this is atomic: *)
     let terms = !terminated_pids in
@@ -565,8 +566,6 @@ let check_out_ref =
  * kill, its parent out-ref is cleaned immediately).
  *)
 let synchronize_running conf autoreload_delay =
-  async (fun () ->
-    restart_on_failure "wait_all_pids_loop" wait_all_pids_loop ()) ;
   let rc_file = C.running_config_file conf in
   (* Stop/Start processes so that [running] corresponds to [must_run].
    * [must_run] is a hash from the signature (function * params) to
@@ -631,7 +630,7 @@ let synchronize_running conf autoreload_delay =
   and running = Hashtbl.create 307 in
   let rec loop last_read =
     none_shall_pass (fun () ->
-      process_terminations conf running ;
+      process_workers_terminations conf running ;
       if !quit && Hashtbl.length running = 0 then (
         !logger.info "All processes stopped, quitting." ;
         return_unit

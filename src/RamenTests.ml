@@ -319,6 +319,9 @@ let run conf root_path tests () =
    * simpler is to draw a new test_id. *)
   let nb_good, nb_tests =
     Lwt_main.run (
+      async (fun () ->
+        restart_on_failure "wait_all_pids_loop"
+          RamenProcesses.wait_all_pids_loop true) ;
       Lwt_list.fold_left_s (fun (nb_good, nb_tests) (dirname,test) ->
         let%lwt res = test_one conf root_path notify_rb dirname test in
         return ((nb_good + if res then 1 else 0), nb_tests + 1)

@@ -58,6 +58,9 @@ let supervisor conf daemonize to_stderr max_archives autoreload report_period
   Lwt_main.run (
     join [
       (let%lwt () = Lwt_unix.sleep 1. in
+       async (fun () ->
+         restart_on_failure "wait_all_pids_loop"
+           RamenProcesses.wait_all_pids_loop true) ;
        (* TODO: Also a separate command to do the cleaning? *)
        async (fun () ->
          restart_on_failure "cleanup_old_files"
@@ -100,6 +103,9 @@ let notifier conf notif_conf_file daemonize to_stderr () =
   RamenProcesses.prepare_signal_handlers () ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
   Lwt_main.run (
+    async (fun () ->
+      restart_on_failure "wait_all_pids_loop"
+        RamenProcesses.wait_all_pids_loop false) ;
     restart_on_failure "process_notifications"
       (RamenNotify.start notif_conf) notify_rb)
 
@@ -508,6 +514,9 @@ let tail conf func_name with_header sep null
       stdout header ;
     BatIO.flush stdout) ;
   Lwt_main.run (
+    async (fun () ->
+      restart_on_failure "wait_all_pids_loop"
+        RamenProcesses.wait_all_pids_loop false) ;
     let rec reset_export_timeout () =
       (* Start by sleeping as we've just set the temp export above: *)
       let%lwt () = Lwt_unix.sleep (max 1. (duration -. 1.)) in
@@ -622,6 +631,9 @@ let graphite conf daemonize to_stderr port () =
   if daemonize then do_daemonize () ;
   let router = RamenGraphite.router conf in
   Lwt_main.run (
+    async (fun () ->
+      restart_on_failure "wait_all_pids_loop"
+        RamenProcesses.wait_all_pids_loop false) ;
     restart_on_failure "graphite impersonator"
       (RamenHttpHelpers.http_service port) router)
 
