@@ -76,7 +76,7 @@ DEFINE tot_per_minute AS
     -- Given data arrive only every minute in the test lab (and some datasets
     -- are frequently missed), let's call "active" any operation that had
     -- output anything for the last *3* minutes:
-    sum u32(coalesce(last_out_age <= 180, false)) AS active,
+    sum u32(COALESCE(last_out_age <= 180, false)) AS active,
     sum COALESCE(out_per_secs, 0) AS tot_out_per_secs
   GROUP BY time // 60
   COMMIT AFTER in.time >= out.time + 60 + 30

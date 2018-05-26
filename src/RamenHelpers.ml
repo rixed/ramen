@@ -450,6 +450,35 @@ let rel_path_from root_path path =
   else
     failwith ("Cannot locate "^ path ^" within "^ root_path)
 
+let int_of_fd fd : int = Obj.magic fd
+
+let marshal_into_fd fd v =
+  let open BatUnix in
+  (* Leak memory for some reason / and do not write anything to the file
+   * if we Marshal.to_channel directly. :-/ *)
+  let bytes = Marshal.to_bytes v [] in
+  let len = Bytes.length bytes in
+  restart_on_EINTR (fun () ->
+    lseek fd 0 SEEK_SET |> ignore ;
+    write fd bytes 0 len) () |> ignore
+
+let marshal_into_file fname v =
+  mkdir_all ~is_file:true fname ;
+  let fd = Unix.openfile fname [O_RDWR; O_CREAT; O_TRUNC] 0o640 in
+  marshal_into_fd fd v
+
+let marshal_from_fd fd =
+  let open Unix in
+  lseek fd 0 SEEK_SET |> ignore ;
+  (* Useful log statement in case the GC crashes right away: *)
+  !logger.debug "Retrieving marshaled value from file" ;
+  Marshal.from_channel (in_channel_of_descr fd)
+
+let marshal_from_file fname =
+  mkdir_all ~is_file:true fname ;
+  let fd = Unix.openfile fname [O_RDWR] 0o640 in
+  marshal_from_fd fd
+
 let getenv ?def n =
   try Sys.getenv n
   with Not_found ->

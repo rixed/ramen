@@ -1646,6 +1646,7 @@ let emit_aggregate oc name in_typ out_typ = function
     commit_before
     (flush_how <> Never)
     when_to_check_for_commit
+    (* TODO: instead of passing a list of strings, pass a list of [RamenOperation.notification]s. *)
     (List.print (fun oc n ->
       let s = PPP.to_string RamenOperation.notification_ppp_ocaml n in
       Printf.fprintf oc "%S" s)) notifications

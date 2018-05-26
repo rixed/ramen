@@ -107,7 +107,7 @@ let compile conf root_path program_name program_code =
     List.iter (fun parsed_func ->
       RamenOperation.parents_of_operation parsed_func.RamenProgram.operation |>
       List.map (fun parent_name ->
-        (* parent_name is the name as it appears in the source, can FQed
+        (* parent_name is the name as it appears in the source, can be FQed
          * or just a local name. We need to build a set of funcs where all
          * involved func appears only once: *)
         let parent_fq_name =

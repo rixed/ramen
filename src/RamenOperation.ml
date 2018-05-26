@@ -74,7 +74,9 @@ type severity = Urgent | Deferrable
   [@@ppp PPP_OCaml]
 
 type notify_cmd =
-  { name : string ;
+  { (* Act as the alert identifier _and_ the selector for who it's aimed at.
+       So use names such as "team: service ${X} for ${Y} is on fire" *)
+    name : string ;
     severity : severity
       [@ppp_default Urgent] ;
     parameters : (string * string) list
@@ -88,18 +90,21 @@ type notification =
   | NotifyCmd of notify_cmd
   [@@ppp PPP_OCaml]
 
+let print_http_cmd oc http =
+  Printf.fprintf oc "HTTP%s TO %S"
+    (match http.method_ with HttpCmdGet -> "" | HttpCmdPost -> " POST")
+    http.url ;
+  if http.headers <> [] then
+    List.print ~first:" WITH HEADERS " ~last:"" ~sep:", "
+      (fun oc (n, v) -> Printf.fprintf oc "%S:%S" n v) oc http.headers ;
+  if http.body <> "" then
+    Printf.fprintf oc " WITH BODY %S" http.body
+
 let print_notification oc = function
   | ExecuteCmd cmd ->
       Printf.fprintf oc "EXECUTE %S" cmd
   | HttpCmd http ->
-      Printf.fprintf oc "HTTP%s TO %S"
-        (match http.method_ with HttpCmdGet -> "" | HttpCmdPost -> " POST")
-        http.url ;
-      if http.headers <> [] then
-        List.print ~first:" WITH HEADERS " ~last:"" ~sep:", "
-          (fun oc (n, v) -> Printf.fprintf oc "%S:%S" n v) oc http.headers ;
-      if http.body <> "" then
-        Printf.fprintf oc " WITH BODY %S" http.body
+      print_http_cmd oc http
   | SysLog str ->
       Printf.fprintf oc "LOGGER %S" str
   | NotifyCmd notif ->

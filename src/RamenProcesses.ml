@@ -244,9 +244,9 @@ let relatives f must_run =
     (if is_parent_of func f then func::cs else cs)
   ) must_run ([], [])
 
-(* waitpid is made non-blocking by Lwt (as there are no good way to select
- * on that. And having one waitpid per individual worker takes way too much
- * CPU wo what we do instead is to have a single waitpid collecting all
+(* waitpid is made non-blocking in a loop by Lwt (as there are no good way to
+ * select on that). And having one waitpid per individual worker takes way too
+ * much CPU so what we do instead is to have a single waitpid collecting all
  * terminations in a loop, and storing them on this list, to be later examined
  * by the main thread: *)
 let terminated_pids = ref []
@@ -273,21 +273,21 @@ let rec wait_all_pids_loop and_save =
       return_unit in
   wait_all_pids_loop and_save
 
-let rescue_worker conf func =
-  (* Maybe the state file is poisoned? At this stage it's probably safer to move
-   * it away: *)
-  let state_file = C.worker_state conf func in
-  let trash_file = state_file ^".bad?" in
-  !logger.info "Worker %s/%s is deadlooping. Deleting its state file."
-    func.F.program_name func.F.name ;
-  ignore_exceptions Unix.unlink trash_file ;
-  try Unix.rename state_file trash_file
-  with e ->
-    !logger.warning "Cannot remove state file: %s"
-      (Printexc.to_string e)
-
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
+  let rescue_worker func =
+    (* Maybe the state file is poisoned? At this stage it's probably safer to move
+     * it away: *)
+    let state_file = C.worker_state conf func in
+    let trash_file = state_file ^".bad?" in
+    !logger.info "Worker %s/%s is deadlooping. Deleting its state file."
+      func.F.program_name func.F.name ;
+    ignore_exceptions Unix.unlink trash_file ;
+    try Unix.rename state_file trash_file
+    with e ->
+      !logger.warning "Cannot remove state file: %s"
+        (Printexc.to_string e)
+  in
   if !terminated_pids <> [] then
     (* Thanks to light-weight threads, this is atomic: *)
     let terms = !terminated_pids in
@@ -307,7 +307,7 @@ let process_workers_terminations conf running =
             proc.last_exit_status <- status_str ;
             if is_err then (
               proc.succ_failures <- proc.succ_failures + 1 ;
-              if proc.succ_failures = 5 then rescue_worker conf proc.func) ;
+              if proc.succ_failures = 5 then rescue_worker proc.func) ;
             (* Wait before attempting to restart a failing worker: *)
             proc.quarantine_until <-
               now +. Random.float (min 90. (float_of_int proc.succ_failures)) ;

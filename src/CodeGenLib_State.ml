@@ -11,27 +11,11 @@
  * This library makes state management a bit more abstract to offer transparent
  * save/restore across runs and offloading on disc. *)
 open RamenLog
+open RamenHelpers
 
 (* The "state" is a value of some type known only to the function. The module
  * used to save/restore has to be chosen depending on the knowledge the user
  * has about the state size and volatility. *)
-let int_of_fd fd : int = Obj.magic fd
-
-let do_save fd v =
-  let open BatUnix in
-  lseek fd 0 SEEK_SET |> ignore ;
-  (* Leak memory for some reason / and do not write anything to the file
-   * if we Marshal.to_channel directly. :-/ *)
-  let bytes = Marshal.to_bytes v [] in
-  let len = Bytes.length bytes in
-  restart_on_EINTR (write fd bytes 0) len |> ignore
-
-let do_restore fd =
-  let open Unix in
-  lseek fd 0 SEEK_SET |> ignore ;
-  !logger.debug "Restoring state" ;
-  Marshal.from_channel (in_channel_of_descr fd)
-
 open Batteries
 
 let create_or_read fname v =
@@ -40,10 +24,10 @@ let create_or_read fname v =
   let init_restore () =
     !logger.info "Will have my state in file %s" fname ;
     let fd = openfile fname [O_RDWR] 0o640 in
-    fd, do_restore fd
+    fd, marshal_from_fd fd
   and init_create () =
     let fd = openfile fname [O_RDWR; O_CREAT; O_TRUNC] 0o640 in
-    do_save fd v ;
+    marshal_into_fd fd v ;
     fd, v
   in
   if RamenHelpers.file_exists ~maybe_empty:false ~has_perms:0o400 fname then
@@ -89,7 +73,7 @@ struct
       save_every > 0 && h.calls_since_saved >= save_every ||
       save_timeout > 0. && !CodeGenLib_IO.now >= h.last_saved +. save_timeout
     then (
-      do_save h.fd v ;
+      marshal_into_fd h.fd v ;
       { h with v ; last_saved = !CodeGenLib_IO.now ; calls_since_saved = 1 }
     ) else (
       { h with calls_since_saved = h.calls_since_saved + 1 }
@@ -107,9 +91,9 @@ struct
      * will backup the last value. *)
     let fd, _v = create_or_read fname v in fd
 
-  let restore = do_restore
+  let restore = marshal_from_fd
 
-  let save = do_save
+  let save = marshal_into_fd
 end
 
 (* TODO: variant of the above without keeping the file_descr but keeping the
