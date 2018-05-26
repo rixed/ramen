@@ -27,10 +27,10 @@ let rec merge cmp a b = match a with
 
 let add cmp x a = merge cmp a (singleton x)
 
-let min = function E -> invalid_arg "min" | T (_, x, _, _) -> x
+let min = function E -> raise Not_found | T (_, x, _, _) -> x
 
 let del_min cmp = function
-  | E -> invalid_arg "del_min"
+  | E -> raise Not_found
   | T (_, _, l, r) -> merge cmp l r
 
 let pop_min cmp h = min h, del_min cmp h

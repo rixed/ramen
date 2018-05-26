@@ -107,7 +107,7 @@ let notifier conf notif_conf_file daemonize to_stderr () =
       restart_on_failure "wait_all_pids_loop"
         RamenProcesses.wait_all_pids_loop false) ;
     restart_on_failure "process_notifications"
-      (RamenNotify.start notif_conf) notify_rb)
+      (RamenNotify.start conf notif_conf) notify_rb)
 
 let notify conf parameters name () =
   logger := make_logger conf.C.debug ;

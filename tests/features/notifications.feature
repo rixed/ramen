@@ -35,7 +35,8 @@ Feature: Notifications work according to the configuration.
                   );" ;
                 insert = "insert into \"alerts\" (
                     \"name\", \"text\"
-                  ) values (${name}, ${text});" } ] } ] }
+                  ) values (${name}, ${text});" } ] } ] ;
+        default_init_schedule_delay = 0 }
       """
     And ramen notifier -c sqlite.config is started
     When I run ramen with argument notify test -p text=ouch

@@ -342,3 +342,8 @@ let notify_ringbuf conf =
                    ^ RamenVersions.notify_tuple ^"_"
                    ^ RamenVersions.ringbuf
                    ^"/ringbuf.r"
+
+let pending_notifications_file conf =
+  conf.persist_dir ^"/pending_notifications_"
+                   ^ RamenVersions.pending_notify ^"_"
+                   ^ RamenVersions.notify_tuple

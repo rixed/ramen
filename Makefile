@@ -83,7 +83,8 @@ RAMEN_SOURCES = \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml src/RamenTyping.ml src/RamenCompiler.ml \
-	src/RamenGraphite.ml src/SqliteHelpers.ml src/RamenNotify.ml \
+	src/RamenGraphite.ml src/RamenHeap.ml \
+	src/SqliteHelpers.ml src/RamenNotify.ml \
 	src/TermTable.ml src/RamenCliCmd.ml \
 	src/RingBufCmd.ml src/RamenCompletion.ml src/RamenTests.ml src/ramen.ml
 

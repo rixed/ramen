@@ -765,3 +765,7 @@ let uniquify () =
 (*$= uniquify & ~printer:(IO.to_string (List.print Int.print))
   [1;2;3] (List.enum [1;1;2;3;3;2;1] // uniquify () |> List.of_enum)
  *)
+
+let jitter ?(amplitude=0.25) v =
+  let r = (Random.float amplitude) -. amplitude /. 2. in
+  v +. (v *. r)

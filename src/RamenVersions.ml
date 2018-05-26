@@ -17,6 +17,9 @@ let instrumentation_tuple = "v2" (* last: addition of last_out *)
 (* Notifications sent from workers to Ramen *)
 let notify_tuple = "v2" (* last: new notification type *)
 
+(* Pending notification format (marshalled on disc) *)
+let pending_notify = "v1"
+
 (* Ringbuf formats *)
 let ringbuf = "v3" (* last: merge seq and time archives *)
 

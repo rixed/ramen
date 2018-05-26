@@ -228,7 +228,8 @@ end
 
 Then /^the query below against (.*) must return (.*)$/ \
 do |dbfile, answer, query|
-  # Database might be locked by the notifier, thus the sleep:
-  out = `sleep 1 && sqlite3 #{dbfile} '#{query}'`
+  # Database might be locked by the notifier, thus the sleep. Anyway, we
+  # want to wait until the async notifier tried to notify:
+  out = `sleep 2 && sqlite3 #{dbfile} '#{query}'`
   expect(out).to match(/\b#{answer}\b/)
 end
