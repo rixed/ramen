@@ -16,6 +16,10 @@ open Lwt
 open RamenLog
 open RamenHelpers
 
+(* Used to know if we must use normal schedule delay or schedule delay
+ * after startup: *)
+let startup_time = ref (Unix.gettimeofday ())
+
 let http_send http worker =
   let open Cohttp in
   let open Cohttp_lwt_unix in
@@ -132,7 +136,8 @@ end
 
 type notify_config =
   { teams : Team.t list ;
-    default_init_schedule_delay : float [@ppp_default 90.] }
+    default_init_schedule_delay : float [@ppp_default 90.] ;
+    default_init_schedule_delay_after_startup : float [@ppp_default 120.] }
   [@@ppp PPP_OCaml]
 
 let default_notify_conf =
@@ -151,7 +156,8 @@ let default_notify_conf =
             [ Contact.ViaSysLog "${name}: ${text}" ] ;
           urgent_contacts =
             [ send_to_prometheus ] } ] ;
-    default_init_schedule_delay = 90. }
+    default_init_schedule_delay = 90. ;
+    default_init_schedule_delay_after_startup = 120. }
 
 (* Function to replace a map of keys by their values in a string.
  * Keys are delimited in the string with "${" "}". *)
@@ -291,8 +297,21 @@ let extinguish_pending name contact =
  * reschedule it, or create a new one. *)
 let put_alight notif_conf notif worker event_time rcvd_time contact =
   let new_pending =
+    (* schedule_delay_after_startup is the minimum time we should wait
+     * after startup to ever consider sending the notification. If we
+     * are still that close to startup, then we delay the scheduling of
+     * the send by at least what remains to be past startup.
+     * If we are already past startup then we schedule the send for
+     * init_schedule_delay: *)
+    let init_delay_after_startup = notif_conf.default_init_schedule_delay_after_startup
+    and init_delay = notif_conf.default_init_schedule_delay in
+    let until_end_of_statup =
+      init_delay_after_startup -. (rcvd_time -. !startup_time) in
+    let init_delay =
+      if until_end_of_statup > 0. then max until_end_of_statup init_delay
+      else init_delay in
     let schedule_time =
-      rcvd_time +. jitter notif_conf.default_init_schedule_delay in
+      rcvd_time +. jitter init_delay in
     { schedule_time ;
       send_time = schedule_time ;
       status = ToBeSent ;
