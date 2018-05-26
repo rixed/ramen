@@ -732,13 +732,15 @@ struct
        blanks --
        optional ~def:() (strinG "on" -- blanks) -+
        some (inet_addr ++
-             optional ~def:None (char ':' -+ some unsigned_decimal_number))) >>:
+             optional ~def:None (
+              char ':' -+
+              some (pos_integer_range ~max:65535 "port number")))) >>:
      fun (proto, addr_opt) ->
         let net_addr, port =
           match addr_opt with
           | None -> Unix.inet_addr_any, default_port_of_protocol proto
           | Some (addr, None) -> addr, default_port_of_protocol proto
-          | Some (addr, Some port) -> addr, Num.int_of_num port in
+          | Some (addr, Some port) -> addr, port in
         net_addr, port, proto) m
 
   let instrumentation_clause m =

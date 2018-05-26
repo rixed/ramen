@@ -60,8 +60,12 @@ let func_identifier ?(globs_allowed=false) ~program_allowed =
    id_quote >>:
   fun s -> String.of_list s)
 
-let pos_integer what =
-  unsigned_decimal_number >>: Num.int_of_num
+let pos_integer what m =
+  let m = what :: m in
+  (unsigned_decimal_number >>: fun n ->
+    try Num.int_of_num n
+    with Failure _ ->
+      raise (Reject "too big for an OCaml int")) m
 
 let pos_integer_range ?min ?max what =
   pos_integer what >>: fun n ->
