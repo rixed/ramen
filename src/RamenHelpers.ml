@@ -682,6 +682,16 @@ let memoize f =
         cached := Some r ;
         r
 
+let lwt_memoize f =
+  let cached = ref None in
+  fun x -> (* beware that [x] will be used only during the first call! *)
+    match !cached with
+    | Some r -> Lwt.return r
+    | None ->
+        let%lwt r = f x in
+        cached := Some r ;
+        Lwt.return r
+
 let cache_clean_after = 1200.
 let cached reread time =
   (* Cache is a hash from some key to last access time, last data time,

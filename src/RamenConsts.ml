@@ -47,6 +47,7 @@ struct
   let dequeue = "Dequeue a message from a ringbuffer"
   let summary = "Dump info about a ring-buffer"
   let repair = "Repair a ringbuf header, assuming no readers/writers"
+  let links = "List all in use ring buffers with some statistics"
   let autocomplete = "Autocomplete the given command"
 
   (* Options *)

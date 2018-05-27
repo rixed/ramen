@@ -27,6 +27,7 @@ let complete_commands s =
       "timeseries", RamenConsts.CliInfo.timeseries ;
       "timerange", RamenConsts.CliInfo.timerange ;
       "ps", RamenConsts.CliInfo.ps ;
+      "links", RamenConsts.CliInfo.links ;
       "test", RamenConsts.CliInfo.test ;
       "graphite", RamenConsts.CliInfo.graphite] in
   complete commands s
@@ -219,6 +220,10 @@ let complete str () =
           ("--with-header", RamenConsts.CliInfo.with_header) ::
           ("--sort", RamenConsts.CliInfo.sort_col) ::
           ("--top", RamenConsts.CliInfo.top) ::
+          copts @
+          (complete_running_function persist_dir last_tok)
+      | "links" ->
+          let persist_dir = persist_dir toks in
           copts @
           (complete_running_function persist_dir last_tok)
       | "test" ->

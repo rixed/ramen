@@ -180,6 +180,18 @@ let repair =
       $ rb_files),
     info ~doc:RamenConsts.CliInfo.repair "repair-ringbuf")
 
+let prefix =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.prefix
+                   ~docv:"PREFIX" [] in
+  Arg.(value (pos 0 string "" i))
+
+let links =
+  Term.(
+    (const RingBufCmd.links
+      $ copts
+      $ prefix),
+    info ~doc:RamenConsts.CliInfo.links "links")
+
 (*
  * Compiling/Running/Stopping
  *)
@@ -457,11 +469,6 @@ let top =
                    ~docv:"N" [ "top" ; "t" ] in
   Arg.(value (opt (some int) None i))
 
-let prefix =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.prefix
-                   ~docv:"PREFIX" [] in
-  Arg.(value (pos 0 string "" i))
-
 let ps =
   Term.(
     (const RamenCliCmd.ps
@@ -552,7 +559,7 @@ let () =
     supervisor ; graphite ; notifier ;
     notify ; compile ; run ; kill ;
     tail ; timeseries ; timerange ; ps ;
-    test ; dequeue ; summary ; repair ;
+    test ; dequeue ; summary ; repair ; links ;
     autocomplete ; expand
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
