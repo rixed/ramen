@@ -191,11 +191,29 @@ let no_abbrev =
                    ~env [ "no-abbreviation" ] in
   Arg.(value (flag i))
 
+let with_header =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.with_header
+                   [ "h"; "with-header"; "header" ] in
+  Arg.(value (flag i))
+
+let sort_col =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.sort_col
+                   ~docv:"COL" [ "sort" ; "s" ] in
+  Arg.(value (opt int 1 i))
+
+let top =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.top
+                   ~docv:"N" [ "top" ; "t" ] in
+  Arg.(value (opt (some int) None i))
+
 let links =
   Term.(
     (const RingBufCmd.links
       $ copts
       $ no_abbrev
+      $ with_header
+      $ sort_col
+      $ top
       $ prefix),
     info ~doc:RamenConsts.CliInfo.links "links")
 
@@ -311,11 +329,6 @@ let kill =
 (*
  * Display the output of any operation
  *)
-
-let with_header =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.with_header
-                   [ "h"; "with-header"; "header" ] in
-  Arg.(value (flag i))
 
 let csv_separator =
   let env = Term.env_info "RAMEN_CSV_SEPARATOR" in
@@ -465,16 +478,6 @@ let short =
   let i = Arg.info ~doc:RamenConsts.CliInfo.short
                    [ "short" ; "p" ] in
   Arg.(value (flag i))
-
-let sort_col =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.sort_col
-                   ~docv:"COL" [ "sort" ; "s" ] in
-  Arg.(value (opt int 1 i))
-
-let top =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.top
-                   ~docv:"N" [ "top" ; "t" ] in
-  Arg.(value (opt (some int) None i))
 
 let ps =
   Term.(

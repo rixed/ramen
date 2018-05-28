@@ -64,7 +64,7 @@ type func_status =
   | Running of F.t
   | NotRunning of string * string
 
-let links conf no_abbrev prefix () =
+let links conf no_abbrev with_header sort_col top prefix () =
   logger := make_logger conf.C.debug ;
   (* Memoizer to avoid reading the out_ref several times: *)
   let get_out_refs = lwt_memoize RamenOutRef.read in
@@ -158,4 +158,4 @@ let links conf no_abbrev prefix () =
             Lwt.return links
           ) links funcs
         ) [])) in
-  TermTable.print_table head links
+  TermTable.print_table ~sort_col ~with_header ?top head links

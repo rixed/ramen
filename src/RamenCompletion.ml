@@ -225,6 +225,9 @@ let complete str () =
       | "links" ->
           let persist_dir = persist_dir toks in
           ("--no-abbrev", RamenConsts.CliInfo.no_abbrev) ::
+          ("--with-header", RamenConsts.CliInfo.with_header) ::
+          ("--sort", RamenConsts.CliInfo.sort_col) ::
+          ("--top", RamenConsts.CliInfo.top) ::
           copts @
           (complete_running_function persist_dir last_tok)
       | "test" ->
