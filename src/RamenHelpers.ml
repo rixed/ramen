@@ -741,6 +741,38 @@ let abbrev len s =
   if String.length s <= len then s else
   String.sub s 0 (len-3) ^"..."
 
+let abbrev_path ?(max_length=20) ?(known_prefix="") path =
+  let known_prefix =
+    if String.length known_prefix > 0 &&
+       known_prefix.[String.length known_prefix - 1] <> '/'
+    then known_prefix ^"/"
+    else known_prefix in
+  let path =
+    if String.starts_with path known_prefix then
+      String.lchop ~n:(String.length known_prefix) path
+    else path in
+  let rec loop abb rest =
+    if String.length rest < 1 || rest.[0] = '.' ||
+       String.length abb + String.length rest <= max_length
+    then
+      abb ^ rest
+    else
+      if rest.[0] = '/' then loop (abb ^"/") (String.lchop rest)
+      else
+        match String.index rest '/' with
+        | exception Not_found ->
+            abb ^ rest
+        | n ->
+            loop (abb ^ String.of_char rest.[0]) (String.lchop ~n rest)
+  in loop "" path
+(*$= abbrev_path & ~printer:(fun x -> x)
+  "/a/b/c/glop" (abbrev_path "/a very long name/before another very long one/could be reduced to/glop")
+  "/a/b/c/glop" (abbrev_path ~known_prefix:"/tmp" "/a very long name/before another very long one/could be reduced to/glop")
+  "a/b/c/glop" (abbrev_path ~known_prefix:"/tmp" "/tmp/a very long name/before another very long one/could be reduced to/glop")
+  "a/b/c/glop" (abbrev_path ~known_prefix:"/tmp/" "/tmp/a very long name/before another very long one/could be reduced to/glop")
+  "a/b/c/glop" (abbrev_path "a very long name/before another very long one/could be reduced to/glop")
+ *)
+
 (* Addition capped to min_int/max_int *)
 let cap_add a b =
   if a > 0 && b > 0 then

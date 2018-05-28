@@ -117,6 +117,7 @@ struct
   let command = "Ramen command line to be completed"
   let conffile = "configuration file"
   let program_name = "resulting program name"
+  let no_abbrev = "do not abbreviate path names"
 end
 
 module ExitCodes =

@@ -64,7 +64,7 @@ type func_status =
   | Running of F.t
   | NotRunning of string * string
 
-let links conf prefix () =
+let links conf no_abbrev prefix () =
   logger := make_logger conf.C.debug ;
   (* Memoizer to avoid reading the out_ref several times: *)
   let get_out_refs = lwt_memoize RamenOutRef.read in
@@ -115,6 +115,11 @@ let links conf prefix () =
               | spec -> RamenOutRef.string_of_file_spec spec in
             Lwt.return (out_ref, spec)
       in
+      let ap s = if no_abbrev then s else abbrev_path s in
+      let parent = ap parent and child = ap child in
+      let ap s = if no_abbrev then s else
+                   abbrev_path ~known_prefix:conf.persist_dir s in
+      let out_ref = ap out_ref and ringbuf = ap ringbuf in
       Some TermTable.[|
         ValStr parent ; ValStr child ; ValStr out_ref ; ValStr spec ;
         ValStr ringbuf ; ValFlt fill_ratio ;

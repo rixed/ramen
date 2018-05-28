@@ -185,10 +185,17 @@ let prefix =
                    ~docv:"PREFIX" [] in
   Arg.(value (pos 0 string "" i))
 
+let no_abbrev =
+  let env = Term.env_info "RAMEN_NO_ABBREVIATION" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.no_abbrev
+                   ~env [ "no-abbreviation" ] in
+  Arg.(value (flag i))
+
 let links =
   Term.(
     (const RingBufCmd.links
       $ copts
+      $ no_abbrev
       $ prefix),
     info ~doc:RamenConsts.CliInfo.links "links")
 
