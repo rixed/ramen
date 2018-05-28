@@ -175,7 +175,8 @@ let subst_dict =
     ) text
 
 (* A thread that notifies the external world and wait for a successful
- * confirmation, or fails. *)
+ * confirmation, or fails.
+ * TODO: time this thread and add this to notifier instrumentation. *)
 let contact_via notif worker contact =
   let dict =
     ("name", notif.RamenOperation.name) ::
