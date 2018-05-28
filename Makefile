@@ -413,7 +413,7 @@ docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
 
 docker-build-builder: docker/Dockerfile-builder
 	@for distrib in jessie stretch ; do \
-		echo 'Building docker image for building the DEB packages for $$distrib" ;\
+		echo 'Building docker image for building the DEB packages for $$distrib' ;\
 		echo 'FROM debian:'$$distrib > docker/Dockerfile-builder.$$distrib ;\
 		cat docker/Dockerfile-builder >> docker/Dockerfile-builder.$$distrib ;\
 		docker build -t rixed/ramen-builder:$$distrib \
