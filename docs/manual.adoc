@@ -551,12 +551,6 @@ epoch and will return the difference between that timestamp and now.
 
 `now` returns the current timestamp as a float.
 
-`sequence` or `sequence(start)` or `sequence(start, step)`
-
-Will output a sequence increasing (of the given `step`, or `1` by default) at
-every read incoming tuple (or at every produced tuples, for +YIELD+
-operations).
-
 ===== Casts
 
 Any type name used as a function would convert its argument into that type.
@@ -911,14 +905,14 @@ READ FILES "/tmp/test/*.csv.gz" PREPROCESSOR "zcat" (
 ==== Yield
 
 If you just want a constant expression to supply data to its child functions
-you can use the yield expression. This is useful in conjunction with the `now`
-and `sequence` functions, to build a periodic clock, or for tests.
+you can use the yield expression. This is useful to build a periodic clock, or
+for tests.
 
 Examples:
 
 [source,sql]
 ----
-YIELD sequence % 10 AS count
+YIELD sum globally 1 % 10 AS count
 ----
 
 [source,sql]

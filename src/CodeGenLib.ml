@@ -27,17 +27,6 @@ let parameter_value ~def scalar_parser name =
 
 (* Functions *)
 
-(* We are not allowed to have any state specific to this function.
- * Consequently we must compute the sequence number from the start
- * and increment and the global tuple count. *)
-(* FIXME: that's fine but now we do have internal state for functions.
- * And we want sequence(start,step) to be reset at start at every
- * group (and maybe another, stateless, global sequence).
- * FIXME: do we need sequence at all now that we can `sum globally 1`? *)
-let sequence start inc =
-  Int128.(start +
-    (of_uint64 (Uint64.pred !CodeGenLib_IO.tuple_count)) * inc)
-
 let age_float x = !CodeGenLib_IO.now -. x
 let age_u8 = Uint8.of_float % age_float
 let age_u16 = Uint16.of_float % age_float

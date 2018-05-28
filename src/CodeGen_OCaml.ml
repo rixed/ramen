@@ -530,10 +530,6 @@ and emit_expr ?state ~context oc expr =
     and nullable = Option.get from.nullable in
     conv_from_to from_typ ~nullable to_typ (emit_expr ?state ~context) oc e
 
-  (* Sequence build a sequence of as-large-as-convenient integers (signed or
-   * not) *)
-  | Finalize, StatelessFun2 (_, Sequence, e1, e2), Some TI128 ->
-    emit_functionN oc ?state "CodeGenLib.sequence" [Some TI128; Some TI128] [e1; e2]
   | Finalize, StatelessFunMisc (_, Max es), t ->
     emit_functionN ~args_as:(Array 0) oc ?state "Array.max" (List.map (fun _ -> t) es) es
   | Finalize, StatelessFunMisc (_, Min es), t ->

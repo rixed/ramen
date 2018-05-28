@@ -3,22 +3,22 @@
 -- around.
 
 DEFINE producer1 AS
-  YIELD sequence AS s, random AS r; -- at full speed
+  YIELD sum globally 1 AS s, random AS r; -- at full speed
 
 DEFINE producer2 AS
-  YIELD sequence + 100 AS s, random AS r;
+  YIELD sum globally 1 + 100 AS s, random AS r;
 
 DEFINE producer3 AS
-  YIELD sequence + 1000 AS s, random AS r;
+  YIELD sum globally 1 + 1000 AS s, random AS r;
 
 DEFINE consumer1 AS
   FROM producer1, producer2, producer3
-  SELECT sequence AS _my_s, "c1" AS me, min s, max s, min r, max r
+  SELECT sum globally 1 AS _my_s, "c1" AS me, min s, max s, min r, max r
   COMMIT AFTER _my_s % 10 = 0;
 
 DEFINE consumer2 AS
   FROM producer1, producer2, producer3 MERGE ON s
-  SELECT sequence AS _my_s, "c2" AS me, min s, max s, min r, max r
+  SELECT sum globally 1 AS _my_s, "c2" AS me, min s, max s, min r, max r
   COMMIT AFTER _my_s % 10 = 0;
 
 DEFINE sink AS

@@ -87,8 +87,6 @@ type stateless_fun1 =
   | EndOfRange
 
 type stateless_fun2 =
-  (* FIXME: see note in CodeGenLib.ml *)
-  | Sequence (* start, step *)
   (* Binary Ops scalars *)
   | Add
   | Sub
@@ -301,10 +299,6 @@ let rec print with_types fmt =
     Printf.fprintf fmt "now" ; add_types t
   | StatelessFun0 (t, Random) ->
     Printf.fprintf fmt "random" ; add_types t
-  | StatelessFun2 (t, Sequence, e1, e2) ->
-    Printf.fprintf fmt "sequence(%a, %a)"
-      (print with_types) e1 (print with_types) e2 ;
-    add_types t
   | StatelessFun1 (t, Cast, e) ->
     Printf.fprintf fmt "cast(%a, %a)"
       RamenScalar.print_typ (Option.get t.scalar_typ) (print with_types) e ;
@@ -1048,24 +1042,7 @@ struct
         StatelessFunMisc (make_typ "min", Min (e1 :: e2 :: e3s))) |||
      (afun1v "least" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "min", Min (e :: es))) |||
-     k_moveavg ||| sequence ||| cast ||| top_expr) m
-
-  and sequence =
-    let seq = "sequence"
-    and seq_typ = make_typ ~nullable:false ~typ:TI128 "sequence function"
-    and seq_default_step = Const (make_typ ~nullable:false ~typ:TU8 "sequence step",
-                                  VU8 (Uint8.one))
-    and seq_default_start = Const (make_typ ~nullable:false ~typ:TU8 "sequence start",
-                                   VU8 (Uint8.zero)) in
-    fun m ->
-      let m = "sequence function" :: m in
-      ((afun2 seq >>: fun (e1, e2) ->
-          StatelessFun2 (seq_typ, Sequence, e1, e2)) |||
-       (afun1 seq >>: fun e1 ->
-          StatelessFun2 (seq_typ, Sequence, e1, seq_default_step)) |||
-       (strinG seq >>: fun () ->
-          StatelessFun2 (seq_typ, Sequence, seq_default_start, seq_default_step))
-      ) m
+     k_moveavg ||| cast ||| top_expr) m
 
   and cast m =
     let m = "cast" :: m in

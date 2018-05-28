@@ -225,7 +225,7 @@ let keyword =
     strinG "top" |||
     (* Some functions with possibly no arguments that must not be
      * parsed as field names: *)
-    strinG "now" ||| strinG "sequence" ||| strinG "random"
+    strinG "now" ||| strinG "random"
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
 let non_keyword =
   let open RamenParsing in

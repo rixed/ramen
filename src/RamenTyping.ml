@@ -527,7 +527,6 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   (* Useful helpers for make_op_typ above: *)
   let return_bool _ = TBool
   and return_float _ = TFloat
-  and return_i128 _ = TI128
   and return_i64 _ = TI64
   and return_u16 _ = TU16
   and return_string _ = TString
@@ -834,8 +833,6 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     check_op op_typ largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, Mod, e1, e2) ->
     check_op op_typ largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
-  | StatelessFun2 (op_typ, Sequence, e1, e2) ->
-    check_op op_typ return_i128 [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun1 (op_typ, Length, e) ->
     check_op op_typ return_u16 [Some TString, None, e]
   | StatelessFun1 (op_typ, Lower, e) ->
@@ -1463,8 +1460,6 @@ let set_all_types conf parents funcs =
      "ok" (test_type_single_func "SELECT 1-1 AS x FROM foo")
      "ok" (test_type_single_func "SELECT 1-200 AS x FROM foo")
      "ok" (test_type_single_func "SELECT 1-4000000000 AS x FROM foo")
-     "ok" (test_type_single_func "SELECT SEQUENCE AS x FROM foo")
-     "ok" (test_type_single_func "SELECT 0 AS zero, 1 AS one, SEQUENCE AS seq FROM foo")
    *)
 
   (*$= test_check_expr & ~printer:(fun x -> x)

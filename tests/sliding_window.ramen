@@ -2,11 +2,11 @@
 
 -- Tumbling windows:
 
-DEFINE sek AS YIELD sequence as seq;
+DEFINE sek AS YIELD sum globally 1 as seq;
 DEFINE tw AS
   SELECT first seq, last seq, group.#count as count, sum(1) as alt_count
   FROM sek
-  WHERE seq < 30
+  WHERE seq <= 30
   EXPORT
   COMMIT AFTER group.#count=10;
 
@@ -15,6 +15,6 @@ DEFINE tw AS
 DEFINE sw AS
   SELECT first seq, last seq, group.#count as count, sum(1) as alt_count
   FROM sek
-  WHERE seq < 14
+  WHERE seq <= 14
   EXPORT
   COMMIT AND SLIDE 1 AFTER group.#count=10;
