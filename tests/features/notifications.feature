@@ -40,10 +40,10 @@ Feature: Notifications work according to the configuration.
         default_init_schedule_delay = 0 ;
         default_init_schedule_delay_after_startup = 0 }
       """
-    And ramen notifier -c sqlite.config is started
+    And ramen notifier -c sqlite.config --debug is started
     When I run ramen with argument notify test -p text=ouch
     Then ramen must exit gracefully
-    And the query below against alerts.db must return 1|ouch
+    And the query below against alerts.db must return 1,ouch
       """
       SELECT "alert_id", "text" FROM "alerts" WHERE name="test"
       """

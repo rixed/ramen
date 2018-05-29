@@ -215,17 +215,34 @@ let contact_via notif worker contact alert_id =
         let ins = exp ~q:sql_quote ~n:"NULL" insert in
         sqllite_insert (exp file) ins create worker)
 
-(* Generic notification are also reliably sent, deduplicated and
- * non-flapping.
- * First, each notification has an identifier (here, the name),
- * a firing boolean (we merely look for a parameter named "firing"
- * and assume true if we can't find it), and an event time (that we
- * take equal to the reception time by default).
- * Then we are not going to send the notification right away, but
- * store it for later, to avoid flapping. We store this heap of
- * notifications to be delivered on disc.  *)
+(* Generic notifications are also reliably sent, de-duplicated,
+ * "de-flapped" and the ongoing incident is identified with an "alert-id"
+ * that's usable in the notification template.
+ *
+ * First, each notification has an identifier (here, the name), a firing
+ * boolean (we merely look for a parameter named "firing" and assume true if we
+ * can't find it), and an event time (that we take equal to the reception time
+ * by default). A notification might start or end an alert, which has an
+ * identifier (integer), a start and an end time.  We keep only a set of unique
+ * notifications (unique per notification name), until the ending notification
+ * is received.
+ *
+ * We send a message to the user for each new starting notification and each
+ * new ending notification.  But we do not send this message right away.
+ * Instead, it is stored for later, to avoid flapping. *)
 
-type pending_status = ToBeSent | Sent | SentThenCancelled | Cancelled
+type pending_status =
+  | StartToBeSent (* firing notification that is yet to be sent *)
+  | StartToBeSentThenStopped (* notification that stopped before being sent *)
+  | StartSent     (* firing notification that is yet to be acked *)
+  | StartAcked (* firing notification that has been acked *)
+  | StopToBeSent   (* non-firing notification that is yet to be sent *)
+  | StopSent       (* non-firing notification that is yet to be acked *)
+  | StopAcked
+  [@@ppp PPP_OCaml]
+
+let string_of_pending_status =
+  PPP.to_string pending_status_ppp_ocaml
 
 type pending_notification =
   { notif : RamenOperation.notify_cmd ;
@@ -234,7 +251,7 @@ type pending_notification =
     rcvd_time : float ;
     event_time : float option ;
     mutable attempts : int ;
-    alert_id : uint64 }
+    mutable alert_id : uint64 }
 
 type scheduled_item  =
   { (* When we planned to send this notif: *)
@@ -243,6 +260,8 @@ type scheduled_item  =
     mutable send_time : float ;
     (* The current delivery status: *)
     mutable status : pending_status ;
+    (* Will we receive an end of alert notification? *)
+    mutable wait_for_stop : bool ;
     (* The notification that's to be sent: *)
     mutable item : pending_notification }
 
@@ -257,8 +276,11 @@ end)
 type pendings =
   { (* We keep only one notif per alert id * contact *)
     mutable set : PendingSet.t ;
-    (* Delivery schedule is a heap ordered by schedule_time: *)
+    (* Delivery schedule is a heap ordered by schedule_time. All notifications
+     * that has to be sent or acked are in there: *)
     mutable heap : scheduled_item RamenHeap.t ;
+    (* Set of all known alert ids. Notifications are removed from this set as
+     * soon as the end of the alert is acked. *)
     mutable dirty : bool }
 
 let pendings =
@@ -287,7 +309,8 @@ let restore_pendings conf =
 let fake_pending_named name contact =
   { schedule_time = 0. ;
     send_time = 0. ;
-    status = Cancelled ;
+    status = StartToBeSent ;
+    wait_for_stop = false ;
     item =
       { rcvd_time = 0. ;
         event_time = None ;
@@ -298,25 +321,37 @@ let fake_pending_named name contact =
         notif = { name ; severity = Urgent ; parameters = [] } } }
 
 (* When we receive a notification that an alert is no more firing, we must
- * cancel pending delivery. If the alert has been sent already then we
- * flag it as extinguished, to avoid looking too deep in the heap when the
- * ack is eventually received, and to re-enable it should it fire again
- * soon.
+ * cancel pending delivery or send the end of alert notification.
  * Can raise Not_found. *)
-let extinguish_pending name contact =
-  let p = PendingSet.find (fake_pending_named name contact) pendings.set in
-  (match p.status with
-  | ToBeSent ->
-      p.status <- Cancelled ;
-      pendings.set <- PendingSet.remove p pendings.set
-  | Sent -> p.status <- SentThenCancelled
-  | _ -> ()) ;
-  pendings.dirty <- true
+let extinguish_pending notif_conf name now contact =
+  match PendingSet.find (fake_pending_named name contact) pendings.set with
+  | exception Not_found ->
+      !logger.warning "Cannot find pending notification %s to stop"
+        name ;
+  | p ->
+      (match p.status with
+      | StartToBeSent ->
+          p.status <- StartToBeSentThenStopped ;
+          pendings.dirty <- true
+      | StartSent (* don't care about the ack any more *)
+      | StartAcked ->
+          p.status <- StopToBeSent ;
+          p.item.attempts <- 0 ;
+          (* reschedule *)
+          p.send_time <-
+            now +. jitter notif_conf.default_init_schedule_delay ;
+          pendings.heap <-
+            RamenHeap.add heap_pending_cmp p pendings.heap ;
+          pendings.dirty <- true
+      | StopSent | StopToBeSent | StartToBeSentThenStopped -> ()
+      | StopAcked ->
+          !logger.error "StopAcked alert found in the pending set!")
 
 (* When we receive a notification that an alert is firing, we must first
  * check if we have a pending notification with same name already and
  * reschedule it, or create a new one. *)
-let put_alight conf notif_conf notif worker event_time rcvd_time contact =
+let set_alight conf notif_conf notif worker event_time rcvd_time
+               wait_for_stop contact =
   let new_pending =
     (* schedule_delay_after_startup is the minimum time we should wait
      * after startup to ever consider sending the notification. If we
@@ -335,40 +370,61 @@ let put_alight conf notif_conf notif worker event_time rcvd_time contact =
       rcvd_time +. jitter init_delay in
     { schedule_time ;
       send_time = schedule_time ;
-      status = ToBeSent ;
+      status = StartToBeSent ;
+      wait_for_stop ;
       item = {
         attempts = 0 ;
-        alert_id = next_alert_id conf ;
+        alert_id = Uint64.zero ;
         notif ; contact ; worker ; event_time ; rcvd_time } } in
   let queue_new_alert () =
+    new_pending.item.alert_id <- next_alert_id conf ;
     pendings.set <- PendingSet.add new_pending pendings.set ;
     pendings.heap <-
-      RamenHeap.add heap_pending_cmp new_pending pendings.heap in
-  (match PendingSet.find new_pending pendings.set with
-  | exception Not_found -> queue_new_alert ()
+      RamenHeap.add heap_pending_cmp new_pending pendings.heap ;
+    pendings.dirty <- true in
+  match PendingSet.find new_pending pendings.set with
+  | exception Not_found ->
+      queue_new_alert ()
   | p ->
       (match p.status with
-      | ToBeSent (* No change *)
-      | Sent (* Keep waiting for the ack then *) -> ()
-      | SentThenCancelled (* Cancel the cancellation *) -> p.status <- Sent
-      | Cancelled (* Those should not be in the set *) ->
-          !logger.error "Cancelled alert found in the pending set!" ;
-          queue_new_alert ())) ;
-  pendings.dirty <- true
+      | StartToBeSentThenStopped | StopSent ->
+          p.status <- StartToBeSent ;
+          p.wait_for_stop <- new_pending.wait_for_stop ;
+          p.item.attempts <- 0 ;
+          p.send_time <- new_pending.send_time ;
+          pendings.dirty <- true
+      | StopToBeSent ->
+          p.status <- StartAcked ;
+          pendings.dirty <- true
+      | StartAcked | StartToBeSent | StartSent -> ()
+      | StopAcked (* Those should not be in the set *) ->
+          !logger.error "StopAcked alert found in the pending set!" ;
+          queue_new_alert ())
 
 let ack name contact =
   let p = PendingSet.find (fake_pending_named name contact) pendings.set in
-  (match p.status with
-  | SentThenCancelled -> (* too bad *)
-      !logger.info "Successfully sent notification %s to %a, \
-                    which timed out" name Contact.print contact
-  | Sent ->
-      !logger.info "Successfully sent notification %s to %a"
-        name Contact.print contact ;
-      p.status <- Cancelled ;
-      pendings.set <- PendingSet.remove p pendings.set
-  | _ -> assert false) ;
-  pendings.dirty <- true
+  match p.status with
+  | StartSent ->
+      !logger.info "Successfully notified %a of alert %s starting"
+        Contact.print contact name ;
+      if p.wait_for_stop then
+        p.status <- StartAcked
+      else (
+        (* That's already the end of this story *)
+        p.status <- StopAcked ;
+        pendings.set <- PendingSet.remove p pendings.set
+      ) ;
+      pendings.dirty <- true
+  | StopSent ->
+      !logger.info "Successfully notified %a of alert %s ending"
+        Contact.print contact name ;
+      p.status <- StopAcked ; (* So that we know we can ignore it when its scheduled again *)
+      pendings.set <- PendingSet.remove p pendings.set ; (* So that we create a new one with a fresh alert_id if it fires again *)
+      pendings.dirty <- true
+  | s ->
+      (if s = StopAcked then !logger.debug else !logger.warning)
+        "Received an ACK for notification in status %s, ignoring"
+        (string_of_pending_status s)
 
 (* Returns the timeout, or 0,. if the is nothing to wait for *)
 let do_notify i =
@@ -377,12 +433,16 @@ let do_notify i =
                      giving up" i.notif.name i.attempts ;
     0.
   ) else (
+    let timeout = 5. (* TODO *) in
     i.attempts <- i.attempts + 1 ;
     async (fun () ->
       match%lwt contact_via i.notif i.worker i.contact i.alert_id with
       | exception e -> return_unit (* let it timeout *)
-      | () -> wrap (fun () -> ack i.notif.name i.contact)) ;
-    0. (* TODO *)
+      | () ->
+          if timeout > 0. then
+            wrap (fun () -> ack i.notif.name i.contact)
+          else return_unit) ;
+    timeout
   )
 
 (* Returns true if there may still be notifications to be sent: *)
@@ -401,38 +461,35 @@ let send_next now =
       if p.schedule_time > now then false
       else (
         (match p.status with
-        | ToBeSent ->
+        | StartToBeSent | StopToBeSent ->
             assert (p.send_time >= p.schedule_time) ;
             if p.send_time <= now then (
               let timeout = do_notify p.item in
+              p.status <-
+                if p.status = StartToBeSent then StartSent else StopSent ;
               if timeout > 0. then (
-                p.status <- Sent ;
                 reschedule_min (now +. timeout)
               ) else (
-                (* We are done with this notification *)
-                del_min p
-              )
+                ack p.item.notif.name p.item.contact ;
+                del_min p  (* Acked alerts need not be in the scheduling heap *)
+              ) ;
             ) else (
               reschedule_min p.send_time
             )
-        | Sent -> (* That's a timeout, reschedule *)
+        | StartToBeSentThenStopped | StartAcked | StopAcked ->
+            (* No need to reschedule this *)
+            del_min p
+        | StartSent | StopSent -> (* That's a timeout, resend *)
             assert (p.send_time <= p.schedule_time) ;
-            (* Reschedule a few times: *)
-            p.status <- ToBeSent ;
+            !logger.warning "Timing out sending a notification to %a for %s of alert %s"
+              Contact.print p.item.contact
+              (if p.status = StartSent then "starting" else "stopping")
+              p.item.notif.name ;
+            p.status <- (if p.status = StartSent then StartToBeSent else StopToBeSent) ;
             p.send_time <- now ;
             reschedule_min now
-        | SentThenCancelled ->
-            assert (p.send_time <= p.schedule_time) ;
-            (* Alert is flapping and the notification failed. Oh, well. *)
-            del_min p
-        | Cancelled ->
-            (* normal end of life *)
-            assert (p.send_time <= p.schedule_time) ;
-            (* TODO: a counter for those: *)
-            if p.item.attempts = 0 then
-              !logger.info "Cancelled flapping alert" ;
-            del_min p
       ) ;
+      pendings.dirty <- true ;
       true
     )
 
@@ -473,8 +530,17 @@ let start conf notif_conf rb =
           match notif.severity with
           | Deferrable -> team.Team.deferrable_contacts
           | Urgent -> team.Team.urgent_contacts in
-        List.iter (put_alight conf notif_conf notif worker event_time now)
-          contacts ;
+        let action =
+          (* TODO: a formal parameter, for now we get it from the list of template vars: *)
+          match List.find (fun (n, _) -> n = "firing") notif.parameters with
+          | exception Not_found ->
+              set_alight conf notif_conf notif worker event_time now false
+          | _, v ->
+              if looks_like_true v then
+                set_alight conf notif_conf notif worker event_time now true
+              else
+                extinguish_pending notif_conf notif.name now in
+        List.iter action contacts ;
         return_unit)
 
 let check_conf_is_valid notif_conf =
