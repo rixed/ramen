@@ -30,19 +30,20 @@ Feature: Notifications work according to the configuration.
               ViaSqlite {
                 file = "alerts.db" ;
                 create = "create table \"alerts\" (
+                    \"alert_id\" integer not null,
                     \"name\" text not null,
                     \"text\" text not null
                   );" ;
                 insert = "insert into \"alerts\" (
-                    \"name\", \"text\"
-                  ) values (${name}, ${text});" } ] } ] ;
+                    \"alert_id\", \"name\", \"text\"
+                  ) values (${alert_id}, ${name}, ${text});" } ] } ] ;
         default_init_schedule_delay = 0 ;
         default_init_schedule_delay_after_startup = 0 }
       """
     And ramen notifier -c sqlite.config is started
     When I run ramen with argument notify test -p text=ouch
     Then ramen must exit gracefully
-    And the query below against alerts.db must return ouch
+    And the query below against alerts.db must return 1|ouch
       """
-      SELECT "text" FROM "alerts" WHERE name="test"
+      SELECT "alert_id", "text" FROM "alerts" WHERE name="test"
       """

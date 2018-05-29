@@ -15,10 +15,23 @@ open Batteries
 open Lwt
 open RamenLog
 open RamenHelpers
+module C = RamenConf
+open Stdint
 
 (* Used to know if we must use normal schedule delay or schedule delay
  * after startup: *)
 let startup_time = ref (Unix.gettimeofday ())
+
+(* Used to build an id for each incident (aka sent alert) *)
+type alert_id = uint64 [@@ppp PPP_OCaml]
+let next_alert_id conf =
+  let fname = conf.C.persist_dir ^"/notifier_state" in
+  mkdir_all ~is_file:true fname ;
+  let v =
+    try C.ppp_of_file ~error_ok:true fname alert_id_ppp_ocaml
+    with Sys_error _ -> Uint64.of_int 0 in
+  C.ppp_to_file fname alert_id_ppp_ocaml (Uint64.succ v) ;
+  v
 
 let http_send http worker =
   let open Cohttp in
@@ -177,11 +190,13 @@ let subst_dict =
 (* A thread that notifies the external world and wait for a successful
  * confirmation, or fails.
  * TODO: time this thread and add this to notifier instrumentation. *)
-let contact_via notif worker contact =
+let contact_via notif worker contact alert_id =
   let dict =
     ("name", notif.RamenOperation.name) ::
     ("severity",
       PPP.to_string RamenOperation.severity_ppp_ocaml notif.severity) ::
+    ("alert_id", Uint64.to_string alert_id) ::
+    ("worker", worker) ::
     notif.parameters in
   let exp ?q ?n = subst_dict dict ?quote:q ?null:n in
   let open Contact in
@@ -218,7 +233,8 @@ type pending_notification =
     worker : string ;
     rcvd_time : float ;
     event_time : float option ;
-    mutable attempts : int }
+    mutable attempts : int ;
+    alert_id : uint64 }
 
 type scheduled_item  =
   { (* When we planned to send this notif: *)
@@ -254,11 +270,11 @@ let heap_pending_cmp i1 i2 =
   Float.compare i1.schedule_time i2.schedule_time
 
 let save_pendings conf =
-  let fname = RamenConf.pending_notifications_file conf in
+  let fname = C.pending_notifications_file conf in
   marshal_into_file fname pendings.set
 
 let restore_pendings conf =
-  let fname = RamenConf.pending_notifications_file conf in
+  let fname = C.pending_notifications_file conf in
   (try
     pendings.set <- marshal_from_file fname
   with Unix.(Unix_error (ENOENT, _, _)) -> ()) ;
@@ -276,6 +292,7 @@ let fake_pending_named name contact =
       { rcvd_time = 0. ;
         event_time = None ;
         attempts = 0 ;
+        alert_id = Uint64.zero ;
         worker = "" ;
         contact ;
         notif = { name ; severity = Urgent ; parameters = [] } } }
@@ -283,12 +300,15 @@ let fake_pending_named name contact =
 (* When we receive a notification that an alert is no more firing, we must
  * cancel pending delivery. If the alert has been sent already then we
  * flag it as extinguished, to avoid looking too deep in the heap when the
- * ack is eventually received.
+ * ack is eventually received, and to re-enable it should it fire again
+ * soon.
  * Can raise Not_found. *)
 let extinguish_pending name contact =
   let p = PendingSet.find (fake_pending_named name contact) pendings.set in
   (match p.status with
-  | ToBeSent -> p.status <- Cancelled
+  | ToBeSent ->
+      p.status <- Cancelled ;
+      pendings.set <- PendingSet.remove p pendings.set
   | Sent -> p.status <- SentThenCancelled
   | _ -> ()) ;
   pendings.dirty <- true
@@ -296,7 +316,7 @@ let extinguish_pending name contact =
 (* When we receive a notification that an alert is firing, we must first
  * check if we have a pending notification with same name already and
  * reschedule it, or create a new one. *)
-let put_alight notif_conf notif worker event_time rcvd_time contact =
+let put_alight conf notif_conf notif worker event_time rcvd_time contact =
   let new_pending =
     (* schedule_delay_after_startup is the minimum time we should wait
      * after startup to ever consider sending the notification. If we
@@ -318,21 +338,22 @@ let put_alight notif_conf notif worker event_time rcvd_time contact =
       status = ToBeSent ;
       item = {
         attempts = 0 ;
+        alert_id = next_alert_id conf ;
         notif ; contact ; worker ; event_time ; rcvd_time } } in
+  let queue_new_alert () =
+    pendings.set <- PendingSet.add new_pending pendings.set ;
+    pendings.heap <-
+      RamenHeap.add heap_pending_cmp new_pending pendings.heap in
   (match PendingSet.find new_pending pendings.set with
-  | exception Not_found ->
-      pendings.set <- PendingSet.add new_pending pendings.set ;
-      pendings.heap <-
-        RamenHeap.add heap_pending_cmp new_pending pendings.heap ;
+  | exception Not_found -> queue_new_alert ()
   | p ->
       (match p.status with
       | ToBeSent (* No change *)
       | Sent (* Keep waiting for the ack then *) -> ()
       | SentThenCancelled (* Cancel the cancellation *) -> p.status <- Sent
-      | Cancelled (* It's like it's not really there *) ->
-          p.status <- ToBeSent ;
-          p.send_time <- new_pending.send_time ;
-          p.item <- new_pending.item)) ;
+      | Cancelled (* Those should not be in the set *) ->
+          !logger.error "Cancelled alert found in the pending set!" ;
+          queue_new_alert ())) ;
   pendings.dirty <- true
 
 let ack name contact =
@@ -344,7 +365,8 @@ let ack name contact =
   | Sent ->
       !logger.info "Successfully sent notification %s to %a"
         name Contact.print contact ;
-      p.status <- Cancelled
+      p.status <- Cancelled ;
+      pendings.set <- PendingSet.remove p pendings.set
   | _ -> assert false) ;
   pendings.dirty <- true
 
@@ -357,7 +379,7 @@ let do_notify i =
   ) else (
     i.attempts <- i.attempts + 1 ;
     async (fun () ->
-      match%lwt contact_via i.notif i.worker i.contact with
+      match%lwt contact_via i.notif i.worker i.contact i.alert_id with
       | exception e -> return_unit (* let it timeout *)
       | () -> wrap (fun () -> ack i.notif.name i.contact)) ;
     0. (* TODO *)
@@ -369,8 +391,9 @@ let send_next now =
     let p, heap = RamenHeap.pop_min heap_pending_cmp pendings.heap in
     p.schedule_time <- time ;
     pendings.heap <- RamenHeap.add heap_pending_cmp p heap
-  and del_min () =
-    pendings.heap <- RamenHeap.del_min heap_pending_cmp pendings.heap
+  and del_min p =
+    pendings.heap <- RamenHeap.del_min heap_pending_cmp pendings.heap ;
+    pendings.set <- PendingSet.remove p pendings.set
   in
   match RamenHeap.min pendings.heap with
   | exception Not_found -> false
@@ -387,7 +410,7 @@ let send_next now =
                 reschedule_min (now +. timeout)
               ) else (
                 (* We are done with this notification *)
-                del_min ()
+                del_min p
               )
             ) else (
               reschedule_min p.send_time
@@ -401,14 +424,14 @@ let send_next now =
         | SentThenCancelled ->
             assert (p.send_time <= p.schedule_time) ;
             (* Alert is flapping and the notification failed. Oh, well. *)
-            del_min ()
+            del_min p
         | Cancelled ->
             (* normal end of life *)
             assert (p.send_time <= p.schedule_time) ;
             (* TODO: a counter for those: *)
             if p.item.attempts = 0 then
               !logger.info "Cancelled flapping alert" ;
-            del_min ()
+            del_min p
       ) ;
       true
     )
@@ -426,6 +449,8 @@ let send_notifications conf =
 let start conf notif_conf rb =
   !logger.info "Starting notifier" ;
   restore_pendings conf ;
+  (* Better check if we can draw a new alert_id before we need it: *)
+  let _alert_id = next_alert_id conf in
   async (fun () ->
     restart_on_failure "send_notifications" send_notifications conf) ;
   let while_ () =
@@ -448,7 +473,8 @@ let start conf notif_conf rb =
           match notif.severity with
           | Deferrable -> team.Team.deferrable_contacts
           | Urgent -> team.Team.urgent_contacts in
-        List.iter (put_alight notif_conf notif worker event_time now) contacts ;
+        List.iter (put_alight conf notif_conf notif worker event_time now)
+          contacts ;
         return_unit)
 
 let check_conf_is_valid notif_conf =
