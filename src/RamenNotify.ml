@@ -187,34 +187,6 @@ let subst_dict =
         null |? "??"^ var_name ^"??"
     ) text
 
-(* A thread that notifies the external world and wait for a successful
- * confirmation, or fails.
- * TODO: time this thread and add this to notifier instrumentation. *)
-let contact_via notif worker contact alert_id =
-  let dict =
-    ("name", notif.RamenOperation.name) ::
-    ("severity",
-      PPP.to_string RamenOperation.severity_ppp_ocaml notif.severity) ::
-    ("alert_id", Uint64.to_string alert_id) ::
-    ("worker", worker) ::
-    notif.parameters in
-  let exp ?q ?n = subst_dict dict ?quote:q ?null:n in
-  let open Contact in
-  match contact with
-  | ViaHttp http ->
-      http_send
-        { http with
-          body = exp http.body ;
-          url = exp ~q:Uri.pct_encode http.url ;
-          headers = List.map (fun (n, v) -> exp n, exp v) http.headers }
-        worker
-  | ViaExec cmd -> execute_cmd (exp ~q:shell_quote cmd) worker
-  | ViaSysLog str -> log_str (exp str) worker
-  | ViaSqlite { file ; insert ; create } ->
-      wrap (fun () ->
-        let ins = exp ~q:sql_quote ~n:"NULL" insert in
-        sqllite_insert (exp file) ins create worker)
-
 (* Generic notifications are also reliably sent, de-duplicated,
  * "de-flapped" and the ongoing incident is identified with an "alert-id"
  * that's usable in the notification template.
@@ -248,8 +220,10 @@ type pending_notification =
   { notif : RamenOperation.notify_cmd ;
     contact : Contact.t ;
     worker : string ;
-    rcvd_time : float ;
-    event_time : float option ;
+    rcvd_start : float ;
+    mutable rcvd_stop : float option ;
+    event_start : float option ;
+    mutable event_stop : float option ;
     mutable attempts : int ;
     mutable alert_id : uint64 }
 
@@ -312,8 +286,10 @@ let fake_pending_named name contact =
     status = StartToBeSent ;
     wait_for_stop = false ;
     item =
-      { rcvd_time = 0. ;
-        event_time = None ;
+      { rcvd_start = 0. ;
+        rcvd_stop = None ;
+        event_start = None ;
+        event_stop = None ;
         attempts = 0 ;
         alert_id = Uint64.zero ;
         worker = "" ;
@@ -323,7 +299,7 @@ let fake_pending_named name contact =
 (* When we receive a notification that an alert is no more firing, we must
  * cancel pending delivery or send the end of alert notification.
  * Can raise Not_found. *)
-let extinguish_pending notif_conf name now contact =
+let extinguish_pending notif_conf name event_stop now contact =
   match PendingSet.find (fake_pending_named name contact) pendings.set with
   | exception Not_found ->
       !logger.warning "Cannot find pending notification %s to stop"
@@ -332,10 +308,14 @@ let extinguish_pending notif_conf name now contact =
       (match p.status with
       | StartToBeSent ->
           p.status <- StartToBeSentThenStopped ;
+          p.item.event_stop <- event_stop ;
+          p.item.rcvd_stop <- Some now ;
           pendings.dirty <- true
       | StartSent (* don't care about the ack any more *)
       | StartAcked ->
           p.status <- StopToBeSent ;
+          p.item.event_stop <- event_stop ;
+          p.item.rcvd_stop <- Some now ;
           p.item.attempts <- 0 ;
           (* reschedule *)
           p.send_time <-
@@ -350,7 +330,7 @@ let extinguish_pending notif_conf name now contact =
 (* When we receive a notification that an alert is firing, we must first
  * check if we have a pending notification with same name already and
  * reschedule it, or create a new one. *)
-let set_alight conf notif_conf notif worker event_time rcvd_time
+let set_alight conf notif_conf notif worker event_start rcvd_start
                wait_for_stop contact =
   let new_pending =
     (* schedule_delay_after_startup is the minimum time we should wait
@@ -362,20 +342,21 @@ let set_alight conf notif_conf notif worker event_time rcvd_time
     let init_delay_after_startup = notif_conf.default_init_schedule_delay_after_startup
     and init_delay = notif_conf.default_init_schedule_delay in
     let until_end_of_statup =
-      init_delay_after_startup -. (rcvd_time -. !startup_time) in
+      init_delay_after_startup -. (rcvd_start -. !startup_time) in
     let init_delay =
       if until_end_of_statup > 0. then max until_end_of_statup init_delay
       else init_delay in
     let schedule_time =
-      rcvd_time +. jitter init_delay in
+      rcvd_start +. jitter init_delay in
     { schedule_time ;
       send_time = schedule_time ;
       status = StartToBeSent ;
       wait_for_stop ;
       item = {
-        attempts = 0 ;
-        alert_id = Uint64.zero ;
-        notif ; contact ; worker ; event_time ; rcvd_time } } in
+        attempts = 0 ; alert_id = Uint64.zero ;
+        notif ; contact ; worker ;
+        event_start ; event_stop = None ;
+        rcvd_start ; rcvd_stop = None } } in
   let queue_new_alert () =
     new_pending.item.alert_id <- next_alert_id conf ;
     pendings.set <- PendingSet.add new_pending pendings.set ;
@@ -426,6 +407,44 @@ let ack name contact =
         "Received an ACK for notification in status %s, ignoring"
         (string_of_pending_status s)
 
+(* A thread that notifies the external world and wait for a successful
+ * confirmation, or fails.
+ * TODO: time this thread and add this to notifier instrumentation. *)
+let contact_via item =
+  let dict =
+    [ "name", item.notif.RamenOperation.name ;
+      "severity",
+        PPP.to_string RamenOperation.severity_ppp_ocaml item.notif.severity ;
+      "alert_id", Uint64.to_string item.alert_id ;
+      "start", string_of_float (item.event_start |? item.rcvd_start) ;
+      "worker", item.worker ] in
+  (* Add "stop" if we have it (or les it be NULL) *)
+  let dict =
+    match item.event_stop with
+    | Some t -> ("stop", string_of_float t) :: dict
+    | None ->
+        (match item.rcvd_stop with
+        | Some t -> ("stop", string_of_float t) :: dict
+        | None -> dict) in
+  let dict = List.rev_append dict item.notif.parameters in
+  let dict = List.rev dict (* Allow parameters to overwrite builtins *) in
+  let exp ?q ?n = subst_dict dict ?quote:q ?null:n in
+  let open Contact in
+  match item.contact with
+  | ViaHttp http ->
+      http_send
+        { http with
+          body = exp http.body ;
+          url = exp ~q:Uri.pct_encode http.url ;
+          headers = List.map (fun (n, v) -> exp n, exp v) http.headers }
+        item.worker
+  | ViaExec cmd -> execute_cmd (exp ~q:shell_quote cmd) item.worker
+  | ViaSysLog str -> log_str (exp str) item.worker
+  | ViaSqlite { file ; insert ; create } ->
+      wrap (fun () ->
+        let ins = exp ~q:sql_quote ~n:"NULL" insert in
+        sqllite_insert (exp file) ins create item.worker)
+
 (* Returns the timeout, or 0,. if the is nothing to wait for *)
 let do_notify i =
   if i.attempts >= 3 then (
@@ -436,7 +455,7 @@ let do_notify i =
     let timeout = 5. (* TODO *) in
     i.attempts <- i.attempts + 1 ;
     async (fun () ->
-      match%lwt contact_via i.notif i.worker i.contact i.alert_id with
+      match%lwt contact_via i with
       | exception e -> return_unit (* let it timeout *)
       | () ->
           if timeout > 0. then
@@ -515,17 +534,22 @@ let start conf notif_conf rb =
   RamenSerialization.read_notifs ~while_ rb (fun (worker, notif) ->
     !logger.info "Received execute instruction from %s: %s"
       worker notif ;
-    let event_time = None (* TODO, see #273 *)
-    and now = Unix.gettimeofday () in
     match PPP.of_string_exc RamenOperation.notification_ppp_ocaml
                             notif with
     | ExecuteCmd cmd -> execute_cmd cmd worker
     | HttpCmd http -> http_send http worker
     | SysLog str -> log_str str worker
     | NotifyCmd notif ->
-        (* Find the team in charge of that alert name: *)
         let open RamenOperation in
-        let team = Team.find_in_charge notif_conf.teams notif.name in
+        let event_time =
+          (* TODO: a real field, see #273 *)
+          try
+            Some (List.find (fun (n, _) -> n = "time") notif.parameters |>
+                  snd |> float_of_string)
+          with Not_found | Failure _ -> None
+        and now = Unix.gettimeofday ()
+        (* Find the team in charge of that alert name: *)
+        and team = Team.find_in_charge notif_conf.teams notif.name in
         let contacts =
           match notif.severity with
           | Deferrable -> team.Team.deferrable_contacts
@@ -539,7 +563,7 @@ let start conf notif_conf rb =
               if looks_like_true v then
                 set_alight conf notif_conf notif worker event_time now true
               else
-                extinguish_pending notif_conf notif.name now in
+                extinguish_pending notif_conf notif.name event_time now in
         List.iter action contacts ;
         return_unit)
 
