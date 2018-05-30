@@ -213,10 +213,7 @@ let test_one conf root_path notify_rb dirname test =
           return_unit
         ) rc ;
       ) test.programs) in
-  let process_synchroniser =
-    restart_on_failure "synchronize_running"
-      (RamenProcesses.synchronize_running conf) 0.
-  and worker_feeder =
+  let worker_feeder =
     let feed_input input =
       match Hashtbl.find workers input.Input.operation with
       | exception Not_found ->
@@ -251,7 +248,8 @@ let test_one conf root_path notify_rb dirname test =
         else feed_input input
       ) test.inputs in
     Hashtbl.iter (fun _ (_, _, rbr) ->
-      Option.may RingBuf.unload !rbr
+      Option.may RingBuf.unload !rbr ;
+      rbr := None
     ) workers ;
     return_unit in
   (* One tester thread per operation *)
@@ -260,26 +258,22 @@ let test_one conf root_path notify_rb dirname test =
       let tester_thread =
         match Hashtbl.find workers user_fq_name with
         | exception Not_found ->
-            fail_and_quit ("Unknown operation "^ user_fq_name)
+            fun () ->fail_and_quit ("Unknown operation "^ user_fq_name)
         | tested_func, bname, _rbr ->
-            test_output tested_func bname output_spec in
+            fun () -> test_output tested_func bname output_spec in
       return (tester_thread :: thds)
     ) [] in
   (* Similarly, test the notifications: *)
   let tester_threads =
-    finalize
-      (fun () -> test_notifications notify_rb test.notifications)
-      (fun () ->
-        RingBuf.unload notify_rb ;
-        (* TODO: unlink *)
-        return_unit) :: tester_threads in
+    (fun () -> test_notifications notify_rb test.notifications) ::
+    tester_threads in
   (* Wrap the testers into threads that update this status and set
    * the quit flag: *)
   let all_good = ref true in
   let nb_tests_left = ref (List.length tester_threads) in
   let tester_threads =
     List.map (fun thd ->
-      let%lwt success, msg = thd in
+      let%lwt success, msg = thd () in
       if not success then (
         all_good := false ;
         !logger.error "Failure: %s\n" msg
@@ -287,11 +281,17 @@ let test_one conf root_path notify_rb dirname test =
       decr nb_tests_left ;
       if !nb_tests_left <= 0 then (
         !logger.info "Finished all tests" ;
-        RamenProcesses.quit := true
-      ) ;
-      return_unit) tester_threads in
+        (* Stop all workers *)
+        let%lwt () = C.with_wlock conf (fun running_programs ->
+          Hashtbl.clear running_programs ;
+          return_unit) in
+        (* TODO: wait for all workers to be gone. *)
+        !logger.info "Waiting for all workers to stop..." ;
+        Lwt_unix.sleep 5.
+      ) else return_unit
+    ) tester_threads in
   let%lwt () =
-    join (process_synchroniser :: worker_feeder :: tester_threads) in
+    join (worker_feeder :: tester_threads) in
   return !all_good
 
 let run conf root_path tests () =
@@ -305,6 +305,7 @@ let run conf root_path tests () =
     List.map (fun fname ->
       !logger.info "Parsing test specification in %S..." fname ;
       Filename.dirname fname,
+      Filename.(basename fname |> remove_extension),
       C.ppp_of_file fname test_spec_ppp_ocaml
     ) tests in
   (* Start Ramen *)
@@ -317,21 +318,29 @@ let run conf root_path tests () =
   (* Run all tests: *)
   (* Note: The workers states must be cleaned in between 2 tests ; the
    * simpler is to draw a new test_id. *)
-  let nb_good, nb_tests =
+  let failed =
     Lwt_main.run (
       async (fun () ->
         restart_on_failure "wait_all_pids_loop"
           RamenProcesses.wait_all_pids_loop true) ;
-      Lwt_list.fold_left_s (fun (nb_good, nb_tests) (dirname,test) ->
-        let%lwt res = test_one conf root_path notify_rb dirname test in
-        return ((nb_good + if res then 1 else 0), nb_tests + 1)
-      ) (0, 0) test_specs) in
-  if nb_good = nb_tests then (
-    !logger.info "All %d test%s succeeded."
-      nb_tests (if nb_tests > 1 then "s" else "")
-  ) else
-    let nb_fail = nb_tests - nb_good in
+      async (fun () ->
+        restart_on_failure "synchronize_running"
+          (RamenProcesses.synchronize_running conf) 0.) ;
+      (let%lwt failed =
+        Lwt_list.filter_map_s (fun (dirname, name, test) ->
+          set_prefix !logger name ;
+          let%lwt res = test_one conf root_path notify_rb dirname test in
+          if res then (
+            !logger.info "Success" ;
+            return_none
+          ) else return_some name
+        ) test_specs in
+      RamenProcesses.quit := true ;
+      (* TODO: wait for async threads exit. *)
+      return failed)) in
+  RingBuf.unload notify_rb ;
+  if failed <> [] then
     let msg =
-      Printf.sprintf "%d test%s failed."
-        nb_fail (if nb_fail > 1 then "s" else "") in
+      Printf.sprintf2 "Failed tests: %a."
+        (List.print ~first:"" ~last:"" ~sep:", " String.print) failed in
     failwith msg

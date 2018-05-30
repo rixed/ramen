@@ -8,7 +8,8 @@ type logger =
     warning : 'a. 'a printer ;
     info : 'a. 'a printer ;
     debug : 'a. 'a printer ;
-    logdir : string option }
+    logdir : string option ;
+    prefix : string ref }
 
 let colored ansi =
   Printf.sprintf "\027[%sm%s\027[0m" ansi
@@ -43,8 +44,11 @@ let output =
       Option.get !ocr
     | None -> if is_err then stderr else stdout
 
+let make_prefix s =
+  if s = "" then s else (colored "1;34" s) ^": "
+
 let make_logger ?logdir ?(prefix="") dbg =
-  let prefix = colored "1;34" prefix in
+  let prefix = ref (make_prefix prefix) in
   let do_log is_err col fmt =
     let open Unix in
     let tm = gettimeofday () |> localtime in
@@ -52,7 +56,7 @@ let make_logger ?logdir ?(prefix="") dbg =
       Printf.sprintf "%02dh%02dm%02d: "
         tm.tm_hour tm.tm_min tm.tm_sec in
     let oc = output ?logdir tm is_err in
-    Printf.fprintf oc ("%s%s" ^^ fmt ^^ "\n%!") (col time_pref) prefix
+    Printf.fprintf oc ("%s%s" ^^ fmt ^^ "\n%!") (col time_pref) !prefix
   in
   let error fmt = do_log true red fmt
   and warning fmt = do_log true yellow fmt
@@ -61,6 +65,9 @@ let make_logger ?logdir ?(prefix="") dbg =
     if dbg then do_log false identity fmt
     else Printf.ifprintf stderr fmt
   in
-  { error ; warning ; info ; debug ; logdir }
+  { error ; warning ; info ; debug ; logdir ; prefix }
+
+let set_prefix logger prefix =
+  logger.prefix := make_prefix prefix
 
 let logger = ref (make_logger false)
