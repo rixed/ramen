@@ -47,3 +47,4 @@ tests/*.ml
 tests/*.success
 examples/prometheus-alertmanager.yml
 wrap.sh
+*.tgz

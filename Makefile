@@ -1,6 +1,6 @@
 # Configuration
 
-VERSION = 2.1.0
+VERSION = 2.1.1
 
 DUPS_IN = $(shell ocamlfind ocamlc -where)/compiler-libs
 OCAMLC   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlc
@@ -53,7 +53,7 @@ all: $(INSTALLED)
 
 .SUFFIXES: .ml .mli .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
 .PHONY: clean clean-temp all check func-check unit-check cli-check \
-        dep install uninstall reinstall bundle doc deb \
+        dep install uninstall reinstall bundle doc deb tarball \
         docker-latest docker-build-image docker-build-builder docker-circleci docker-push
 
 %.cmx %.annot: %.ml
@@ -392,6 +392,8 @@ reinstall: uninstall install
 
 deb: ramen.$(VERSION).deb
 
+tarball: ramen.$(VERSION).tgz
+
 ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 	@echo 'Building debian package $@'
 	@sudo rm -rf debtmp
@@ -404,6 +406,15 @@ ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 	@sudo chown root: -R debtmp/usr
 	@dpkg --build debtmp
 	@mv debtmp.deb $@
+
+ramen.$(VERSION).tgz: $(INSTALLED_BIN) bundle/date
+	@echo 'Building tarball $@'
+	@$(RM) -r tmp/ramen
+	@install -d tmp/ramen
+	@install $(INSTALLED_BIN) tmp/ramen/
+	@chmod a+x -R tmp/ramen/*
+	@cp -r $(BUNDLE_DIR) tmp/ramen
+	@tar c -C tmp ramen | gzip > $@
 
 # Docker images
 
@@ -461,4 +472,5 @@ clean: clean-temp
 	@find tests -name '*.success' -delete
 	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp
-	@$(RM) ramen.*.deb
+	@$(RM) -r tmp
+	@$(RM) ramen.*.deb ramen.*.tgz
