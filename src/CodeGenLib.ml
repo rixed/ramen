@@ -443,7 +443,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
         !logger.info "OutRef is now empty!"
       else (
         if Hashtbl.is_empty out_h then
-          !logger.info "OutRef is no more empty!" ;
+          !logger.debug "OutRef is no more empty!" ;
         !logger.debug "Must now output to: %a"
           RamenOutRef.print_out_specs out_specs) ;
       (* Change occurred, load/unload as required *)
