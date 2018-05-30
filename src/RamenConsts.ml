@@ -113,7 +113,7 @@ struct
     "Truncate the list of operations after the first N entries"
   let prefix = "Show only workers which name start with this"
   let port = "Port number where to listen to incoming HTTP connections"
-  let test_files = "Definition of a test to run"
+  let test_file = "Definition of a test to run"
   let command = "Ramen command line to be completed"
   let conffile = "configuration file"
   let program_name = "resulting program name"

@@ -90,7 +90,7 @@ let complete_program_files str =
 let complete_binary_files str =
   complete_file (extension_is ".x") str
 
-let complete_test_files str =
+let complete_test_file str =
   complete_file (extension_is ".test") str
 
 let empty_help s = s, ""
@@ -234,7 +234,7 @@ let complete str () =
           ("--help", RamenConsts.CliInfo.help) ::
           ("--root-path=", RamenConsts.CliInfo.root_path) ::
           copts @
-          (complete_test_files last_tok)
+          (complete_test_file last_tok)
       | "graphite" ->
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;

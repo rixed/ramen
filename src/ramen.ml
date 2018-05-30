@@ -524,17 +524,17 @@ let expand =
  * Tests
  *)
 
-let test_files =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.test_files
+let test_file =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.test_file
                    ~docv:"file.test" [] in
-  Arg.(non_empty (pos_all string [] i))
+  Arg.(value (pos 0 string "" i))
 
 let test =
   Term.(
     (const RamenTests.run
       $ copts
       $ root_path
-      $ test_files),
+      $ test_file),
     info ~doc:RamenConsts.CliInfo.test "test")
 
 (*

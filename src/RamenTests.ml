@@ -282,32 +282,25 @@ let test_one conf root_path notify_rb dirname test =
       if !nb_tests_left <= 0 then (
         !logger.info "Finished all tests" ;
         (* Stop all workers *)
-        let%lwt () = C.with_wlock conf (fun running_programs ->
+        C.with_wlock conf (fun running_programs ->
           Hashtbl.clear running_programs ;
-          return_unit) in
-        (* TODO: wait for all workers to be gone. *)
-        !logger.info "Waiting for all workers to stop..." ;
-        Lwt_unix.sleep 5.
+          return_unit)
       ) else return_unit
     ) tester_threads in
   let%lwt () =
     join (worker_feeder :: tester_threads) in
   return !all_good
 
-let run conf root_path tests () =
+let run conf root_path test () =
   let conf = { conf with C.persist_dir =
     Filename.get_temp_dir_name ()
       ^"/ramen_test."^ string_of_int (Unix.getpid ()) |>
     uniquify_filename } in
   logger := make_logger conf.C.debug ;
-  (* Parse tests so that we won't have to clean anything if they are bogus *)
-  let test_specs =
-    List.map (fun fname ->
-      !logger.info "Parsing test specification in %S..." fname ;
-      Filename.dirname fname,
-      Filename.(basename fname |> remove_extension),
-      C.ppp_of_file fname test_spec_ppp_ocaml
-    ) tests in
+  (* Parse tests so that we won't have to clean anything if it's bogus *)
+  !logger.info "Parsing test specification in %S..." test ;
+  let test_spec = C.ppp_of_file test test_spec_ppp_ocaml in
+  let name = Filename.(basename test |> remove_extension) in
   (* Start Ramen *)
   !logger.info "Starting ramen, using temp dir %s" conf.persist_dir ;
   mkdir_all conf.persist_dir ;
@@ -318,29 +311,20 @@ let run conf root_path tests () =
   (* Run all tests: *)
   (* Note: The workers states must be cleaned in between 2 tests ; the
    * simpler is to draw a new test_id. *)
-  let failed =
-    Lwt_main.run (
-      async (fun () ->
-        restart_on_failure "wait_all_pids_loop"
-          RamenProcesses.wait_all_pids_loop true) ;
-      async (fun () ->
-        restart_on_failure "synchronize_running"
-          (RamenProcesses.synchronize_running conf) 0.) ;
-      (let%lwt failed =
-        Lwt_list.filter_map_s (fun (dirname, name, test) ->
-          set_prefix !logger name ;
-          let%lwt res = test_one conf root_path notify_rb dirname test in
-          if res then (
-            !logger.info "Success" ;
-            return_none
-          ) else return_some name
-        ) test_specs in
-      RamenProcesses.quit := true ;
-      (* TODO: wait for async threads exit. *)
-      return failed)) in
+  let res = ref false in
+  Lwt_main.run (
+    async (fun () ->
+      restart_on_failure "wait_all_pids_loop"
+        RamenProcesses.wait_all_pids_loop true) ;
+    join [
+      restart_on_failure "synchronize_running"
+        (RamenProcesses.synchronize_running conf) 0. ;
+      (
+        let%lwt r = test_one conf root_path notify_rb (Filename.dirname test) test_spec in
+        res := r ;
+        RamenProcesses.quit := true ;
+        return_unit
+      ) ]) ;
   RingBuf.unload notify_rb ;
-  if failed <> [] then
-    let msg =
-      Printf.sprintf2 "Failed tests: %a."
-        (List.print ~first:"" ~last:"" ~sep:", " String.print) failed in
-    failwith msg
+  if !res then !logger.info "Test %s: Success" name
+  else failwith ("Test "^ name ^": FAILURE")
