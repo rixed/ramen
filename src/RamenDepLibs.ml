@@ -9,10 +9,8 @@ let incdirs = [
   "lwt_ppx" ;
   "num" ;
   "ocaml" ;
-  "ocaml/compiler-libs" ;
   "parsercombinator" ;
   "ppp" ;
-  "ppx_tools" ;
   "ramen" ;
   "result" ;
   "stdint" ;
@@ -35,8 +33,6 @@ let objfiles = [
   "inotify/inotify-lwt.cmxa" ;
   "binocle/Binocle.cmxa" ;
   "lacaml/lacaml.cmxa" ;
-  "ocaml/compiler-libs/ocamlcommon.cmxa" ;
-  "ppx_tools/ppx_tools.cmxa" ;
   "ppp/PPP.cmxa" ;
   "ppp/PPP-unix.cmxa" ;
   "ramen/codegen.cmxa" ;
