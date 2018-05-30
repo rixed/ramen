@@ -1,5 +1,5 @@
 description = "Event processor tailored for small-scale monitoring"
-version = "2.1.0"
+version = "2.1.1"
 archive(native) = "codegen.cmxa"
 # parsercombinator is used by string to IP conversion :(
 # ppp.unix because of RamenIp :(
