@@ -73,10 +73,6 @@ let execute_cmd cmd worker =
       if stderr <> "" then !logger.error "cmd: %s" stderr ;
       return_unit
 
-let syslog =
-  try Some (Syslog.openlog "ramen")
-  with _ -> None
-
 let log_str str worker =
   let level = `LOG_ALERT in
   match syslog with

@@ -3,12 +3,14 @@ open Batteries
 type 'a printer =
   ('a, unit BatIO.output, unit) format -> 'a
 
+type log_output = Directory of string | Stdout | Syslog
+
 type logger =
   { error : 'a. 'a printer ;
     warning : 'a. 'a printer ;
     info : 'a. 'a printer ;
     debug : 'a. 'a printer ;
-    logdir : string option ;
+    output : log_output ;
     prefix : string ref }
 
 let colored ansi =
@@ -22,18 +24,19 @@ let log_file tm =
   Printf.sprintf "%04d-%02d-%02d"
     (tm.Unix.tm_year+1900) (tm.Unix.tm_mon+1) tm.Unix.tm_mday
 
-let output =
+let do_output =
   let ocr = ref None and fname = ref "" in
-  fun ?logdir tm is_err ->
-    match logdir with
-    | Some logdir ->
+  fun output tm is_err ->
+    match output with
+    | Directory logdir ->
       let fname' = log_file tm in
       if fname' <> !fname then (
         let open Legacy.Unix in
         fname := fname' ;
         Option.may (ignore_exceptions @@ close_out) !ocr ;
         let path = logdir ^"/"^ !fname in
-        let fd = BatUnix.openfile path [O_WRONLY; O_APPEND; O_CREAT; O_CLOEXEC] 0o644 in
+        let fd = BatUnix.openfile path
+                   [O_WRONLY; O_APPEND; O_CREAT; O_CLOEXEC] 0o644 in
         (* Make sure everything that gets written to stdout/err end up
          * logged in that file too: *)
         dup2 fd stderr ;
@@ -42,12 +45,14 @@ let output =
         ocr := Some oc
       ) ;
       Option.get !ocr
-    | None -> if is_err then stderr else stdout
+    | Stdout -> if is_err then stderr else stdout
+    | Syslog -> assert false
 
 let make_prefix s =
   if s = "" then s else (colored "1;34" s) ^": "
 
 let make_logger ?logdir ?(prefix="") dbg =
+  let output = match logdir with Some s -> Directory s | _ -> Stdout in
   let prefix = ref (make_prefix prefix) in
   let do_log is_err col fmt =
     let open Unix in
@@ -55,7 +60,7 @@ let make_logger ?logdir ?(prefix="") dbg =
     let time_pref =
       Printf.sprintf "%02dh%02dm%02d: "
         tm.tm_hour tm.tm_min tm.tm_sec in
-    let oc = output ?logdir tm is_err in
+    let oc = do_output output tm is_err in
     Printf.fprintf oc ("%s%s" ^^ fmt ^^ "\n%!") (col time_pref) !prefix
   in
   let error fmt = do_log true red fmt
@@ -65,7 +70,29 @@ let make_logger ?logdir ?(prefix="") dbg =
     if dbg then do_log false identity fmt
     else Printf.ifprintf stderr fmt
   in
-  { error ; warning ; info ; debug ; logdir ; prefix }
+  { error ; warning ; info ; debug ; output ; prefix }
+
+let syslog =
+  try Some (Syslog.openlog ~facility:`LOG_USER "ramen")
+  with _ -> None
+
+let make_syslog ?(prefix="") dbg =
+  let prefix = ref (make_prefix prefix) in
+  match syslog with
+  | None ->
+      failwith "No syslog facility on this host."
+  | Some slog ->
+      let do_log lvl fmt =
+        Printf.ksprintf2 (fun str ->
+          Syslog.syslog slog lvl str) fmt in
+      let error fmt = do_log `LOG_ERR fmt
+      and warning fmt = do_log `LOG_WARNING fmt
+      and info fmt = do_log `LOG_INFO fmt
+      and debug fmt =
+        if dbg then do_log `LOG_DEBUG fmt
+        else Printf.ifprintf stderr fmt
+      in
+      { error ; warning ; info ; debug ; output = Syslog ; prefix }
 
 let set_prefix logger prefix =
   logger.prefix := make_prefix prefix

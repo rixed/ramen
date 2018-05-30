@@ -153,12 +153,14 @@ let complete str () =
       | "supervisor" ->
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
+            "--syslog", RamenConsts.CliInfo.to_syslog ;
             "--autoreload=", RamenConsts.CliInfo.autoreload ;
             "--report-period=", RamenConsts.CliInfo.report_period ] @
           copts
        | "notifier" ->
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
+            "--syslog", RamenConsts.CliInfo.to_syslog ;
             "--config", RamenConsts.CliInfo.conffile ] @
           copts
        | "notify" ->
@@ -238,6 +240,7 @@ let complete str () =
       | "graphite" ->
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
+            "--syslog", RamenConsts.CliInfo.to_syslog ;
             "--port=", RamenConsts.CliInfo.port ] @
           copts
       | _ -> []) in

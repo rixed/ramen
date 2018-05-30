@@ -396,10 +396,11 @@ let really_start conf must_run proc parents children =
     (* We need to change this dir whenever the func signature or params
      * change to prevent it to reload an incompatible state: *)
     "state_file="^ C.worker_state conf proc.func ;
-    (match !logger.logdir with
-      | Some _ ->
-        "log_dir="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
-      | None -> "no_log_dir=") |] in
+    (match !logger.output with
+      | Directory _ ->
+        "log="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
+      | Stdout -> "no_log" (* aka stdout/err *)
+      | Syslog -> "log=syslog") |] in
   (* Pass each individual parameter as a separate envvar; envvars are just
    * non interpreted strings (but for the first '=' sign that will be
    * interpreted by the OCaml runtime) so it should work regardless of the

@@ -14,6 +14,7 @@ let incdirs = [
   "ramen" ;
   "result" ;
   "stdint" ;
+  "syslog" ;
   "ocaml/threads" ;
 ]
 let objfiles = [
@@ -35,5 +36,6 @@ let objfiles = [
   "lacaml/lacaml.cmxa" ;
   "ppp/PPP.cmxa" ;
   "ppp/PPP-unix.cmxa" ;
+  "syslog/syslog.cmxa" ;
   "ramen/codegen.cmxa" ;
 ]

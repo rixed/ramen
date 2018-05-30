@@ -32,6 +32,33 @@ let reset () =
   open_modules := [] ;
   dllpaths := []
 
+(* Return a formatter outputting in the logger *)
+let ppf () =
+  let oc =
+    match !logger.output with
+    | Syslog ->
+        (match RamenLog.syslog with
+        | None -> stdnull
+        | Some slog ->
+            let buf = Buffer.create 100 in
+            let write c =
+              if c = '\n' then (
+                Syslog.syslog slog `LOG_ERR (Buffer.contents buf);
+                Buffer.clear buf
+              ) else Buffer.add_char buf c in
+            let output b s l =
+              for i = 0 to l-1 do
+                write (Bytes.get b (s + i))
+              done ;
+              l
+            and flush () = ()
+            and close () = () in
+            BatIO.create_out ~write ~output ~flush ~close)
+    | output ->
+        let tm = Unix.(gettimeofday () |> localtime) in
+        RamenLog.do_output output tm true in
+  BatFormat.formatter_of_output oc
+
 (* Takes a source file and produce an object file: *)
 
 let compile_internal conf func_name src_file obj_file =
@@ -63,16 +90,13 @@ let compile_internal conf func_name src_file obj_file =
 
   output_name := Some obj_file ;
 
-  let tm = Unix.(gettimeofday () |> localtime) in
-  let ppf = BatFormat.formatter_of_output (
-              RamenLog.output ?logdir:!logger.logdir tm true) in
   Asmlink.reset () ;
   try
-    Optcompile.implementation ~backend ppf src_file
+    Optcompile.implementation ~backend (ppf ()) src_file
       (Filename.remove_extension src_file) ;
     return_unit
   with exn ->
-    Location.report_exception ppf exn ;
+    Location.report_exception (ppf ()) exn ;
     let e = RamenLang.CannotGenerateCode {
       func = func_name ; cmd = "embedded compiler" ;
       status = Printexc.to_string exn } in
@@ -155,19 +179,16 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
 
   !logger.debug "objfiles = %a" (List.print String.print) objfiles ;
 
-  let tm = Unix.(gettimeofday () |> localtime) in
-  let ppf = BatFormat.formatter_of_output (
-              RamenLog.output ?logdir:!logger.logdir tm true) in
   Asmlink.reset () ;
   try
-    Optcompile.implementation ~backend ppf src_file
+    Optcompile.implementation ~backend (ppf ()) src_file
       (Filename.remove_extension src_file) ;
     (* Now link *)
     Compmisc.init_path true ;
-    Asmlink.link ppf objfiles bin_file ;
+    Asmlink.link (ppf ()) objfiles bin_file ;
     return_unit
   with exn ->
-    Location.report_exception ppf exn ;
+    Location.report_exception (ppf ()) exn ;
     let e = RamenLang.CannotGenerateCode {
       func = program_name ; cmd = "embedded compiler" ;
       status = Printexc.to_string exn } in

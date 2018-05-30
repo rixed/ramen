@@ -62,6 +62,7 @@ struct
   let variant = "Force variants"
   let daemonize = "Daemonize"
   let to_stdout = "Log onto stdout/stderr instead of a file"
+  let to_syslog = "log using syslog"
   let max_archives =
     "Max number of archive files to keep per operation; \
      0 would disable archiving altogether"

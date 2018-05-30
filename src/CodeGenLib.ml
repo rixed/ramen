@@ -520,12 +520,16 @@ let worker_start worker_name get_binocle_tuple k =
     "/tmp/worker_"^ worker_name ^"_"^ string_of_int (Unix.getpid ()) in
   let state_file = getenv ~def:default_persist_dir "state_file" in
   let ramen_url = getenv ~def:"http://localhost:29380" "ramen_url" in
-  let logdir, prefix =
-    match getenv "log_dir" with
-    | exception _ -> None, worker_name ^": "
-    | ld -> Some ld, "" in
-  Option.may mkdir_all logdir ;
-  logger := make_logger ?logdir ~prefix debug ;
+  let prefix = worker_name ^": " in
+  (match getenv "log" with
+  | exception _ ->
+      logger := make_logger ~prefix debug
+  | logdir ->
+      if logdir = "syslog" then
+        logger := make_syslog ~prefix debug
+      else (
+        mkdir_all logdir ;
+        logger := make_logger ~logdir debug)) ;
   !logger.debug "Starting %s process..." worker_name ;
   let report_period =
     getenv ~def:(string_of_float RamenConsts.default_report_period)

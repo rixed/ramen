@@ -61,6 +61,12 @@ let to_stdout =
                           "to-stdout"; "stdout" ] in
   Arg.(value (flag i))
 
+let to_syslog =
+  let env = Term.env_info "RAMEN-LOG-SYSLOG" in
+     let i = Arg.info ~doc:RamenConsts.CliInfo.to_syslog
+                      ~env [ "to-syslog" ; "syslog" ] in
+  Arg.(value (flag i))
+
 let max_archives =
   let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
   let i = Arg.info ~doc:RamenConsts.CliInfo.max_archives
@@ -85,6 +91,7 @@ let supervisor =
       $ copts
       $ daemonize
       $ to_stdout
+      $ to_syslog
       $ max_archives
       $ autoreload
       $ report_period),
@@ -106,7 +113,8 @@ let notifier =
       $ conf_file ~env:"NOTIFIER_CONFIG"
                   ~doc:RamenConsts.CliInfo.conffile ()
       $ daemonize
-      $ to_stdout),
+      $ to_stdout
+      $ to_syslog),
     info ~doc:RamenConsts.CliInfo.notifier "notifier")
 
 let text_pos ~doc ~docv p =
@@ -505,6 +513,7 @@ let graphite =
       $ copts
       $ daemonize
       $ to_stdout
+      $ to_syslog
       $ port),
     info ~doc:RamenConsts.CliInfo.graphite "graphite")
 

@@ -33,16 +33,21 @@ let make_copts debug persist_dir rand_seed keep_temp_files forced_variants =
  * The actual work is done in module RamenProcesses.
  *)
 
-let supervisor conf daemonize to_stderr max_archives autoreload report_period
-               () =
-  if to_stderr && daemonize then
-    failwith "Options --daemonize and --to-stderr are incompatible." ;
-  let logdir =
-    if to_stderr then None
-    else Some (conf.C.persist_dir ^"/log/supervisor") in
-  Option.may mkdir_all logdir ;
+let supervisor conf daemonize to_stdout to_syslog max_archives autoreload
+               report_period () =
+  if to_stdout && daemonize then
+    failwith "Options --daemonize and --stdout are incompatible." ;
+  if to_stdout && to_syslog then
+    failwith "Options --syslog and --stdout are incompatible." ;
+  if to_syslog then
+    logger := make_syslog conf.C.debug
+  else (
+    let logdir =
+      if to_stdout then None
+      else Some (conf.C.persist_dir ^"/log/supervisor") in
+    Option.may mkdir_all logdir ;
+    logger := make_logger ?logdir conf.C.debug) ;
   RamenProcesses.report_period := report_period ;
-  logger := make_logger ?logdir conf.C.debug ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
   (* Also attempt to repair the report/notifs ringbufs.
@@ -84,9 +89,11 @@ let supervisor conf daemonize to_stderr max_archives autoreload report_period
  * The actual work is done in module RamenNotify.
  *)
 
-let notifier conf notif_conf_file daemonize to_stderr () =
-  if to_stderr && daemonize then
-    failwith "Options --daemonize and --to-stderr are incompatible." ;
+let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
+  if to_stdout && daemonize then
+    failwith "Options --daemonize and --stdout are incompatible." ;
+  if to_stdout && to_syslog then
+    failwith "Options --syslog and --stdout are incompatible." ;
   let notif_conf =
     match notif_conf_file with
     | None -> RamenNotify.default_notify_conf
@@ -94,11 +101,14 @@ let notifier conf notif_conf_file daemonize to_stderr () =
         C.ppp_of_file n RamenNotify.notify_config_ppp_ocaml in
   (* Check the config is ok: *)
   RamenNotify.check_conf_is_valid notif_conf ;
-  let logdir =
-    if to_stderr then None
-    else Some (conf.C.persist_dir ^"/log/notifier") in
-  Option.may mkdir_all logdir ;
-  logger := make_logger ?logdir conf.C.debug ;
+  if to_syslog then
+    logger := make_syslog conf.C.debug
+  else (
+    let logdir =
+      if to_stdout then None
+      else Some (conf.C.persist_dir ^"/log/notifier") in
+    Option.may mkdir_all logdir ;
+    logger := make_logger ?logdir conf.C.debug) ;
   if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers () ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
@@ -620,14 +630,19 @@ let timerange conf func_name () =
  * timeseries, impersonating Graphite (https://graphiteapp.org/).
  *)
 
-let graphite conf daemonize to_stderr port () =
-  if to_stderr && daemonize then
-    failwith "Options --daemonize and --to-stderr are incompatible." ;
-  let logdir =
-    if to_stderr then None
-    else Some (conf.C.persist_dir ^"/log/graphite") in
-  Option.may mkdir_all logdir ;
-  logger := make_logger ?logdir conf.C.debug ;
+let graphite conf daemonize to_stdout to_syslog port () =
+  if to_stdout && daemonize then
+    failwith "Options --daemonize and --stdout are incompatible." ;
+  if to_stdout && to_syslog then
+    failwith "Options --syslog and --stdout are incompatible." ;
+  if to_syslog then
+    logger := make_syslog conf.C.debug
+  else (
+    let logdir =
+      if to_stdout then None
+      else Some (conf.C.persist_dir ^"/log/graphite") in
+    Option.may mkdir_all logdir ;
+    logger := make_logger ?logdir conf.C.debug) ;
   if daemonize then do_daemonize () ;
   let router = RamenGraphite.router conf in
   Lwt_main.run (
