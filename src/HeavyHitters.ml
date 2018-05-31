@@ -2,6 +2,8 @@
  * important entries. *)
 open Batteries
 
+let debug = false
+
 (* Weight map: from weight to anything, ordered bigger weights first: *)
 module WMap = Map.Make (struct
   type t = float
@@ -24,6 +26,7 @@ let make ~max_size ~decay =
 
 let add s t w x =
   let add_in_xs_of_w x w o m =
+    if debug then Printf.printf "TOP: add entry %s of weight %f\n" (dump x) w ;
     WMap.modify_opt w (function
       | None -> Some (Map.singleton x o)
       | Some xs ->
@@ -84,12 +87,15 @@ let add s t w x =
  * of rank n+1; but we don't know which item that is unless we order them. *)
 (* FIXME: super slow, maintain the entries in increased max weight order. *)
 
-(* Iter the entries in max weight order.
+(* Iter the entries in decreasing weight order.
  * Note: BatMap iterates in increasing keys order despite de doc says it's
- * unspecified. *)
+ * unspecified, but since we reverse the comparison operator we fold from
+ * heaviest to lightest. *)
 let fold u f s =
   WMap.fold (fun w xs u ->
+    if debug then Printf.printf "TOP: folding over all entries of weight %f\n" w ;
     Map.foldi (fun x o u ->
+      if debug then Printf.printf "TOP:   ... %s\n" (dump x) ;
       f w x o u
     ) xs u
   ) s.xs_of_w u
@@ -97,30 +103,34 @@ let fold u f s =
 (* Iter over the top [n'] entries (<= [n] but close) in order of weight,
  * lightest first (so that it's easy to build the reverse list): *)
 let fold_top n u f s =
-  (* We need item at rank n+1 to find top-n *)
-  let n = min n (s.cur_size - 1) in
-  let res = ref u in
+  let res = ref []
+  and cutoff = ref None in
   (try
     let _ =
-      fold (1, []) (fun w x o (rank, firsts) ->
+      fold 1 (fun w x o rank ->
+        (* We need item at rank n+1 to find top-n *)
         if rank <= n then (
-          rank + 1,
-          (w, (w -. o), x) :: firsts (* will be filtered later *)
+          if debug then Printf.printf "TOP rank=%d<=%d is %s, weight %f\n" rank n (dump x) w ;
+          (* May be filtered once we know the cutoff: *)
+          res := (w, (w -. o), x) :: !res ; (* res is lightest to heaviest *)
+          rank + 1
         ) else (
           assert (rank = n + 1) ;
-          let cutoff = w in
-          (* first is now lightest to heaviest: *)
-          res :=
-            List.fold_left (fun u (w, min_w, x) ->
-              if min_w >= cutoff then f u x else u
-            ) u firsts ;
-          raise Exit)
+          if debug then Printf.printf "TOP rank=%d>%d is %s, weight %f\n" rank n (dump x) w ;
+          cutoff := Some w ;
+          raise Exit
+        )
       ) s in
-    (* We reach here only when we had no entries at all, in which case empty
-     * is the right answer *)
-    assert (s.cur_size = 0)
+    (* We reach here when we had less entries than n, in which case we do not
+     * need a cut-off since we know all the entries: *)
+    if debug then Printf.printf "TOP: Couldn't reach rank %d, cur_size=%d\n" n s.cur_size ;
   with Exit -> ()) ;
-  !res
+  (* Now filter the entries if we have a cutoff, and build the result: *)
+  List.fold_left (fun u (w, min_w, x) ->
+    match !cutoff with
+    | None -> f u x
+    | Some c -> if min_w >= c then f u x else u
+  ) u !res
 
 (* Returns the top as a list ordered by weight (heavier first) *)
 let top n s =
