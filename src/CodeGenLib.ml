@@ -619,6 +619,8 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
     let outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                   serialize_tuple in
+    (* Allow `ramen test` some time to run all other workers: *)
+    let%lwt () = Lwt_unix.sleep 1. in
     let while_ () = not !quit in
     CodeGenLib_IO.read_glob_lines ~while_ ~do_unlink filename preprocessor (fun line ->
       match of_string line with

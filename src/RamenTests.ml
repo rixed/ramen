@@ -20,7 +20,7 @@ module Output = struct
   type spec =
     { present : tuple_spec list [@ppp_default []] ;
       absent : tuple_spec list [@ppp_default []] ;
-      timeout : float [@ppp_default 5.] }
+      timeout : float [@ppp_default 7.] }
     [@@ppp PPP_OCaml]
 end
 
@@ -28,7 +28,7 @@ module Notifs = struct
   type spec =
     { present : string list [@ppp_default []] ;
       absent : string list [@ppp_default []] ;
-      timeout : float [@ppp_default 5.] }
+      timeout : float [@ppp_default 7.] }
     [@@ppp PPP_OCaml]
 end
 
