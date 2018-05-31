@@ -450,10 +450,10 @@ let rec print with_types fmt =
   | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; duration }) ->
     let print_duration_opt oc duration =
       if duration > 0. then print_duration oc duration in
-    Printf.fprintf fmt "%s in top %d %a by %a%a"
-      (if want_rank then "rank" else "is")
-      n
+    Printf.fprintf fmt "%s %a in top %d%sby %a in the last %a"
+      (if want_rank then "rank of" else "is")
       (print with_types) what
+      n (sl g)
       (print with_types) by
       print_duration_opt duration
 
