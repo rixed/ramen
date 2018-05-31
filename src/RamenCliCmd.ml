@@ -75,7 +75,7 @@ let supervisor conf daemonize to_stdout to_syslog max_archives autoreload
        * in accordance to the running program list: *)
       restart_on_failure "synchronize_running"
         RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
-          (fun () -> !logger.info "Running in dummy mode" ;
+          (fun () -> !logger.warning "Running in dummy mode" ;
                      until_quit (fun () -> Lwt_unix.sleep 3.)) ;
           (fun () -> synchronize_running conf autoreload) |] ])
 
