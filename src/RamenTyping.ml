@@ -963,11 +963,16 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* We already know the type returned by the top operation, but maybe
      * for the nullability. But we want to ensure the top-by expression
      * can be cast to a float: *)
-    let ret_type =
+    let ret_type, propagate_null =
       if want_rank then
-        (fun _ -> RamenScalar.Parser.narrowest_typ_for_int n)
-      else return_bool in
-    check_op op_typ ret_type [ None, None, what ; Some TFloat, None, by ]
+        (fun _ -> RamenScalar.Parser.narrowest_typ_for_int n),
+        false (* "RANK OF X" is always nullable *)
+      else
+        return_bool,
+        true (* "IS IN TOP" has same nullability than [what] or [by] *)
+    in
+    check_op op_typ ret_type ~propagate_null
+      [ None, None, what ; Some TFloat, None, by ]
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible. *)
