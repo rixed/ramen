@@ -153,6 +153,14 @@ let heavy_hitters_is_in_top ~n s x =
 
 let hash x = Hashtbl.hash x |> Int64.of_int
 
+(* An operator used only for debugging: prints the string and returns
+ * false. *)
+let print strs =
+  !logger.info "PRINT: %a"
+    (List.print ~first:"" ~last:"" ~sep:", "
+       (fun oc s -> String.print oc (s |? "<NULL>"))) strs ;
+  false
+
 let hysteresis_update was_ok v accept max =
   let extr =
     if was_ok then max else accept in

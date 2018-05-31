@@ -534,6 +534,13 @@ and emit_expr ?state ~context oc expr =
     emit_functionN ~args_as:(Array 0) oc ?state "Array.max" (List.map (fun _ -> t) es) es
   | Finalize, StatelessFunMisc (_, Min es), t ->
     emit_functionN ~args_as:(Array 0) oc ?state "Array.min" (List.map (fun _ -> t) es) es
+  | Finalize, StatelessFunMisc (_, Print es), Some TBool ->
+    (* We want to print nulls as well, so we make all parameters optional strings: *)
+    Printf.fprintf oc "CodeGenLib.print %a"
+      (List.print ~first:"[" ~last:"]" ~sep:";" (fun oc e ->
+         Printf.fprintf oc "%s(%a)"
+           (if is_nullable e then "" else "Some ")
+           (conv_to ?state ~context (Some TString)) e)) es
 
   (* Stateful functions *)
   | InitState, StatefulFun (_, _, AggrAnd _), (Some TBool as t) ->

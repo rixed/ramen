@@ -170,6 +170,8 @@ and stateless_fun_misc =
   (* Min/Max of the given values *)
   | Max of t list
   | Min of t list
+  (* For debug *)
+  | Print of t list
 
 and stateful_fun =
   (* TODO: Add stddev... *)
@@ -266,6 +268,8 @@ let rec print with_types fmt =
   and sl =
     (* TODO: do not display the default *)
     function LocalState -> " locally " | GlobalState -> " globally "
+  and print_args =
+    List.print ~first:"(" ~last:")" ~sep:", " (print with_types)
   in
   function
   | Const (t, c) ->
@@ -370,10 +374,13 @@ let rec print with_types fmt =
   | StatelessFun2 (t, BitXor, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFunMisc (t, Like (e, p)) -> Printf.fprintf fmt "(%a) LIKE %S" (print with_types) e p ; add_types t
   | StatelessFunMisc (t, Max es) ->
-    Printf.fprintf fmt "GREATEST (%a)" (List.print (print with_types)) es ;
+    Printf.fprintf fmt "GREATEST %a" print_args es ;
     add_types t
   | StatelessFunMisc (t, Min es) ->
-    Printf.fprintf fmt "LEAST (%a)" (List.print (print with_types)) es ;
+    Printf.fprintf fmt "LEAST %a" print_args es ;
+    add_types t
+  | StatelessFunMisc (t, Print es) ->
+    Printf.fprintf fmt "PRINT %a" print_args es ;
     add_types t
 
   | StatefulFun (t, g, AggrMin e) ->
@@ -530,7 +537,7 @@ let rec fold_by_depth f i expr =
 
   | StatefulFun (_, _, Distinct es)
   | Coalesce (_, es)
-  | StatelessFunMisc (_, (Max es|Min es)) ->
+  | StatelessFunMisc (_, (Max es|Min es|Print es)) ->
     let i' = List.fold_left (fold_by_depth f) i es in
     f i' expr
 
@@ -647,6 +654,9 @@ let rec map_type ?(recurs=true) f = function
       (if recurs then List.map (map_type ~recurs f) es else es))
   | StatelessFunMisc (t, Min es) ->
     StatelessFunMisc (f t, Min
+      (if recurs then List.map (map_type ~recurs f) es else es))
+  | StatelessFunMisc (t, Print es) ->
+    StatelessFunMisc (f t, Print
       (if recurs then List.map (map_type ~recurs f) es else es))
 
   | GeneratorFun (t, Split (a, b)) ->
@@ -1042,6 +1052,9 @@ struct
         StatelessFunMisc (make_typ "min", Min (e1 :: e2 :: e3s))) |||
      (afun1v "least" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "min", Min (e :: es))) |||
+     (* Outputs TBool as that's the smallest we have. Actually outputs false. *)
+     (afun1v "print" >>: fun (e, es) ->
+        StatelessFunMisc (make_typ ~typ:TBool ~nullable:false "print", Print (e :: es))) |||
      k_moveavg ||| cast ||| top_expr) m
 
   and cast m =
