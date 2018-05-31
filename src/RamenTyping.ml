@@ -1258,7 +1258,7 @@ let check_func_types parents func =
     | Some operation ->
         check_operation operation parents func
   ) with SyntaxError e ->
-    !logger.debug "Compilation error: %s\n%s"
+    !logger.debug "Typing error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
     raise (SyntaxErrorInFunc (func.Func.name, e))
 
