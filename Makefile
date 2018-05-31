@@ -316,7 +316,6 @@ tests/count_lines.x: tests/fixtures/n123.x
 tests/params.x: tests/fixtures/earthquakes.x
 tests/sort.x: tests/fixtures/earthquakes.x
 tests/fit_multi.x: tests/fixtures/cars.x
-tests/tops.x: tests/fixtures/accounts.x
 tests/top_expr.x: tests/fixtures/cars.x
 tests/season.x: tests/fixtures/earthquakes.x
 tests/previous_and_null.x: tests/fixtures/n123.x
@@ -332,7 +331,6 @@ tests/count_lines.success: tests/count_lines.x tests/fixtures/n123.x
 tests/params.success: tests/params.x tests/fixtures/earthquakes.x
 tests/sort.success: tests/sort.x tests/fixtures/earthquakes.x
 tests/fit_multi.success: tests/fit_multi.x tests/fixtures/cars.x
-tests/tops.success: tests/tops.x tests/fixtures/accounts.x
 tests/top_expr.success: tests/top_expr.x tests/fixtures/cars.x
 tests/season.success: tests/season.x tests/fixtures/earthquakes.x
 tests/merge.success: tests/merge.x

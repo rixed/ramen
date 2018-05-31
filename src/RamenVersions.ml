@@ -9,7 +9,7 @@ let release_tag = "v2.1.1"
 let graph_config = "v9" (* last: stripped down version *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v13" (* last: addition of Print operator *)
+let codegen = "v14" (* last: suppression of the TOP operator *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)
@@ -27,4 +27,4 @@ let ringbuf = "v3" (* last: merge seq and time archives *)
 let out_ref = "v2" (* last: added timeout *)
 
 (* Workers state format *)
-let worker_state = "v4" (* last: changed min/max states *)
+let worker_state = "v5" (* last: suppression of the TOP operator *)

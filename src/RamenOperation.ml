@@ -136,7 +136,6 @@ type t =
       (* Will send these notification commands to the notifier: *)
       notifications : notification list ;
       key : Expr.t list ;
-      top : (Expr.t (* N *) * Expr.t (* by *)) option ;
       commit_when : Expr.t ;
       commit_before : bool ; (* commit first and aggregate later *)
       (* How to flush: reset or slide values *)
@@ -181,7 +180,7 @@ let print fmt =
     if force_export then Printf.fprintf fmt " EXPORT" in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
-                force_export ; notifications ; key ; top ; commit_when ;
+                force_export ; notifications ; key ; commit_when ;
                 commit_before ; flush_how ; from ; every } ->
     if from <> [] then
       List.print ~first:"FROM " ~last:"" ~sep print_single_quoted fmt from ;
@@ -212,10 +211,6 @@ let print fmt =
     if key <> [] then
       Printf.fprintf fmt " GROUP BY %a"
         (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) key ;
-    Option.may (fun (n, by) ->
-      Printf.fprintf fmt " TOP %a BY %a"
-        (Expr.print false) n
-        (Expr.print false) by) top ;
     if not (Expr.is_true commit_when) ||
        flush_how <> Reset ||
        notifications <> [] then (
@@ -288,7 +283,7 @@ let factors_of_operation = function
 
 let fold_expr init f = function
   | ListenFor _ | ReadCSVFile _ | Instrumentation _ -> init
-  | Aggregate { fields ; merge ; sort ; where ; key ; top ; commit_when ;
+  | Aggregate { fields ; merge ; sort ; where ; key ; commit_when ;
                 flush_how ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
@@ -301,10 +296,6 @@ let fold_expr init f = function
       let x = List.fold_left (fun prev ke ->
             Expr.fold_by_depth f prev ke
           ) x key in
-      let x = Option.map_default (fun (n, by) ->
-          let x = Expr.fold_by_depth f x n in
-          Expr.fold_by_depth f x by
-        ) x top in
       let x = Expr.fold_by_depth f x commit_when in
       let x = match sort with
         | None -> x
@@ -331,7 +322,6 @@ let iter_expr f op =
 let check params =
   let pure_in clause = StatefulNotAllowed { clause }
   and no_group clause = StateNotAllowed { state = "local" ; clause }
-  and no_global clause = StateNotAllowed { state = "global" ; clause }
   and fields_must_be_from tuple where allowed =
     TupleNotAllowed { tuple ; where ; allowed } in
   let pure_in_key = pure_in "GROUP-BY"
@@ -341,12 +331,6 @@ let check params =
     Expr.unpure_iter (function
       | StatefulFun (_, s, _) when s = state -> raise (SyntaxError e)
       | _ -> ())
-  and check_no_both_states e x =
-    Expr.unpure_fold None (fun prev -> function
-      | StatefulFun (_, s, _) ->
-          if prev = Some s then raise (SyntaxError e) ;
-          Some s
-      | _ -> prev) x |> ignore
   and check_fields_from lst where =
     Expr.iter (function
       | Expr.Field (_, tuple, _) ->
@@ -362,9 +346,7 @@ let check params =
         let tuple_type = IO.to_string (List.print print_alias) fields in
         FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
       raise (SyntaxError m) in
-  let check_no_group = check_no_state LocalState
-  and check_no_global = check_no_state GlobalState
-  in
+  let check_no_group = check_no_state LocalState in
   let check_event_time fields ((start_field, _), duration) =
     check_field_exists fields start_field ;
     match duration with
@@ -383,7 +365,7 @@ let check params =
       | _ -> ())
   in
   function
-  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
+  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_when ; flush_how ; event_time ;
                 from ; every ; factors } as op ->
     (* Set of fields known to come from in (to help prefix_smart): *)
@@ -423,8 +405,6 @@ let check params =
       Option.may (prefix_def TupleIn) u_opt) sort ;
     prefix_smart where ;
     List.iter (prefix_def TupleIn) key ;
-    Option.may (fun (n, by) ->
-      prefix_smart n ; prefix_def TupleIn by) top ;
     prefix_smart commit_when ;
     (match flush_how with
     | KeepOnly e | RemoveAll e -> prefix_def TupleGroup e
@@ -454,23 +434,6 @@ let check params =
     List.iter (fun k ->
       check_pure pure_in_key k ;
       check_fields_from [TupleParam; TupleIn] "Group-By KEY" k) key ;
-    Option.may (fun (n, by) ->
-      (* TODO: Check also that it's an unsigned integer: *)
-      Expr.check_const "TOP size" n ;
-      (* Also check that the top-by expression does not update the global
-       * state: *)
-      check_no_global (no_global "TOP-BY") by ;
-      (* Also check that commit_when does not use both the group and global
-       * state, as we won't be able to update the global state when in
-       * tuple ends up in "others" if commit-when needs the group: *)
-      let e = StateNotAllowed {
-        state = "global and local" ; clause = "COMMIT-WHEN (with TOP)" } in
-      check_no_both_states e commit_when ;
-      check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut; TupleGroupPrevious; TupleOutPrevious] "TOP clause" by ;
-      (* The only windowing mode supported is then `commit and flush`: *)
-      if flush_how <> Reset then
-        raise (SyntaxError OnlyTumblingWindowForTop)
-    ) top ;
     check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
     (match flush_how with
     | Reset | Never | Slide _ -> ()
@@ -609,12 +572,6 @@ struct
     let m = "group-by clause" :: m in
     (strinG "group" -- blanks -- strinG "by" -- blanks -+
      several ~sep:list_sep Expr.Parser.p) m
-
-  let top_clause m =
-    let m ="top-by clause" :: m in
-    (strinG "top" -- blanks -+ Expr.Parser.p +- blanks +-
-     strinG "by" +- blanks ++ Expr.Parser.p +- blanks +-
-     strinG "when" +- blanks ++ Expr.Parser.p) m
 
   type commit_spec =
     | NotifySpec of notification
@@ -810,7 +767,6 @@ struct
     | EventTimeClause of RamenEventTime.t
     | FactorClause of string list
     | GroupByClause of Expr.t list
-    | TopByClause of ((Expr.t (* N *) * Expr.t (* by *)) * Expr.t (* when *))
     | CommitClause of (commit_spec list * (bool (* before *) * Expr.t))
     | FromClause of string list
     | EveryClause of float
@@ -830,7 +786,6 @@ struct
       (export_clause >>: fun c -> ExportClause c) |||
       (event_time_clause >>: fun c -> EventTimeClause c) |||
       (group_by >>: fun c -> GroupByClause c) |||
-      (top_clause >>: fun c -> TopByClause c) |||
       (commit_clause >>: fun c -> CommitClause c) |||
       (from_clause >>: fun c -> FromClause c) |||
       (every_clause >>: fun c -> EveryClause c) |||
@@ -850,7 +805,6 @@ struct
       and default_export = false
       and default_event_time = None
       and default_key = []
-      and default_top = None
       and default_commit = ([], (false, default_commit_when))
       and default_from = []
       and default_every = 0.
@@ -863,15 +817,15 @@ struct
       let default_clauses =
         default_select_fields, default_star, default_merge, default_sort,
         default_where, default_export, default_event_time, default_key,
-        default_top, default_commit, default_from, default_every,
+        default_commit, default_from, default_every,
         default_listen, default_instrumentation, default_ext_data,
         default_preprocessor, default_csv_specs, default_factors in
       let select_fields, and_all_others, merge, sort, where, force_export,
-          event_time, key, top, commit, from, every, listen, instrumentation,
+          event_time, key, commit, from, every, listen, instrumentation,
           ext_data, preprocessor, csv_specs, factors =
         List.fold_left (
           fun (select_fields, and_all_others, merge, sort, where, export,
-               event_time, key, top, commit, from, every, listen,
+               event_time, key, commit, from, every, listen,
                instrumentation, ext_data, preprocessor, csv_specs, factors) ->
             function
             | SelectClause fields_or_stars ->
@@ -884,94 +838,77 @@ struct
               (* The above fold_left inverted the field order. *)
               let select_fields = List.rev fields in
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | MergeClause merge ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | SortClause sort ->
               select_fields, and_all_others, merge, Some sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | WhereClause where ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | ExportClause export ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | EventTimeClause event_time ->
               select_fields, and_all_others, merge, sort, where, export,
-              Some event_time, key, top, commit, from, every, listen,
+              Some event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | GroupByClause key ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | CommitClause commit' ->
               if commit != default_commit then
                 raise (Reject "Cannot have several commit clauses") ;
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit', from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
-            | TopByClause top ->
-              select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, Some top, commit, from, every, listen,
+              event_time, key, commit', from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | FromClause from' ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, (List.rev_append from' from),
+              event_time, key, commit, (List.rev_append from' from),
               every, listen, instrumentation, ext_data, preprocessor,
               csv_specs, factors
             | EveryClause every ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | ListenClause l ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, Some l,
+              event_time, key, commit, from, every, Some l,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | InstrumentationClause ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen, true,
+              event_time, key, commit, from, every, listen, true,
               ext_data, preprocessor, csv_specs, factors
             | ExternalDataClause c ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, Some c, preprocessor, csv_specs, factors
             | PreprocessorClause preprocessor ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
             | CsvSpecsClause c ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, Some c, factors
             | FactorClause factors ->
               select_fields, and_all_others, merge, sort, where, export,
-              event_time, key, top, commit, from, every, listen,
+              event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
           ) default_clauses clauses in
-      let commit_specs, commit_before, commit_when, top =
-        match commit, top with
-        | (commit_specs, (commit_before, commit_when)),
-          Some (top, top_when) ->
-            if commit_when != default_commit_when ||
-               List.exists (function FlushSpec _ -> true
-                                   | _ -> false) commit_specs
-            then
-              raise (Reject "COMMIT and FLUSH clauses are incompatible \
-                             with TOP") ;
-            commit_specs, commit_before, top_when, Some top
-        | (commit_specs, (commit_before, commit_when)), None ->
-            commit_specs, commit_before, commit_when, None
-      in
+      let commit_specs, (commit_before, commit_when) = commit in
       (* Distinguish between Aggregate, Read, ListenFor...: *)
       let not_aggregate =
         select_fields == default_select_fields && sort == default_sort &&
-        where == default_where && key == default_key && top == default_top &&
+        where == default_where && key == default_key &&
         commit == default_commit
       and not_listen = listen = None || from <> default_from || every <> 0.
       and not_instrumentation = instrumentation = false
@@ -992,7 +929,7 @@ struct
         let flush_how = flush_how |? Reset in
         Aggregate { fields = select_fields ; and_all_others ; merge ; sort ;
                     where ; force_export ; event_time ; notifications ; key ;
-                    top ; commit_before ; commit_when ; flush_how ; from ;
+                    commit_before ; commit_when ; flush_how ; from ;
                     every ; factors }
       else if not_aggregate && not_csv && not_event_time &&
               not_instrumentation && listen <> None then
@@ -1030,7 +967,7 @@ struct
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         notifications = [] ;\
-        key = [] ; top = None ;\
+        key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ;\
@@ -1051,7 +988,7 @@ struct
             Field (typ, ref TupleIn, "packets"),\
             Const (typ, VI32 (Int32.of_int 0)))) ;\
         force_export = false ; event_time = None ; notifications = [] ;\
-        key = [] ; top = None ;\
+        key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = ["foo"] ; every = 0. ; factors = [] },\
@@ -1071,7 +1008,7 @@ struct
         where = Expr.Const (typ, VBool true) ;\
         force_export = true ; event_time = Some (("t", 10.), RamenEventTime.DurationConst 60.) ;\
         notifications = [] ;\
-        key = [] ; top = None ;\
+        key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = ["foo"] ; every = 0. ; factors = [] },\
@@ -1093,7 +1030,7 @@ struct
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
         force_export = true ; event_time = Some (("t1", 10.), RamenEventTime.StopField ("t2", 10.)) ;\
-        notifications = [] ; key = [] ; top = None ;\
+        notifications = [] ; key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = ["foo"] ; every = 0. ; factors = [] },\
@@ -1112,7 +1049,7 @@ struct
         notifications = [ \
           HttpCmd { method_ = HttpCmdGet ; headers = [] ; body = "" ;\
                     url = "http://firebrigade.com/alert.php" } ];\
-        key = [] ; top = None ;\
+        key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = ["foo"] ; every = 0. ; factors = [] },\
@@ -1149,7 +1086,6 @@ struct
             StatelessFun2 (typ, Mul, \
               Const (typ, VI32 1_000_000l),\
               Field (typ, ref TupleParam, "avg_window")))) ] ;\
-        top = None ;\
         commit_when = Expr.(\
           StatelessFun2 (typ, Gt, \
             StatelessFun2 (typ, Add, \
@@ -1180,7 +1116,7 @@ struct
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ; \
         notifications = [] ;\
-        key = [] ; top = None ;\
+        key = [] ;\
         commit_when = Expr.(\
           StatelessFun2 (typ, Ge, \
             StatefulFun (typ, LocalState, AggrSum (\
@@ -1207,7 +1143,7 @@ struct
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ; \
         notifications = [] ;\
-        key = [] ; top = None ;\
+        key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = ["foo/bar"] ; every = 0. ; factors = [] },\
@@ -1259,7 +1195,7 @@ struct
         every = 1. ; force_export = true ; event_time = None ;\
         and_all_others = false ; merge = [], 0. ; sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
-        notifications = [] ; key = [] ; top = None ;\
+        notifications = [] ; key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ; flush_how = Reset ; from = [] ;\
         factors = [] },\

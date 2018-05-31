@@ -1093,7 +1093,7 @@ let all_finished funcs =
     ) funcs
 
 let check_aggregate parents func fields and_all_others merge sort where key
-                    top commit_when flush_how =
+                    commit_when flush_how =
   let in_type = untyped_tuple_type func.Func.in_type
   and out_type = untyped_tuple_type func.Func.out_type
   and params = func.params in
@@ -1167,23 +1167,6 @@ let check_aggregate parents func fields and_all_others merge sort where key
         changed
       ) false key
   ) ||| (
-    match top with
-    | None -> false
-    | Some (n, by) ->
-      (* See the Lag operator for remarks about precomputing constants *)
-      RamenExpr.check_const "top size" n ;
-      (* check_expr will try to improve exp_type. We don't care we just want
-       * to check it does not raise an exception. Here exp_type is build at
-       * every call so we wouldn't make progress anyway. *)
-      ignore
-        (check_expr ~depth:1 ~parents ~in_type ~out_type
-                    ~exp_type:(RamenExpr.make_num_typ "top size") ~params n) ;
-      ignore
-        (check_expr ~depth:1 ~parents ~in_type ~out_type
-                    ~exp_type:(RamenExpr.make_num_typ "top-by clause")
-                    ~params by) ;
-      false
-  ) ||| (
     let exp_type = RamenExpr.typ_of commit_when in
     set_nullable exp_type false |||
     set_scalar_type ~ok_if_larger:false ~expr_name:"commit-clause"
@@ -1232,10 +1215,10 @@ let check_operation operation parents func =
   in
   let open RamenOperation in
   match operation with
-  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
+  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_when ; flush_how ; _ } ->
     check_aggregate parents func fields and_all_others (fst merge) sort where
-                    key top commit_when flush_how
+                    key commit_when flush_how
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     if tuple_type_is_finished func.Func.out_type then false else (
       let user = fields in

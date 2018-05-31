@@ -1337,71 +1337,19 @@ let emit_key_of_input name in_typ mentioned and_all_others oc exprs =
     ) exprs ;
   Printf.fprintf oc "\n\t)\n"
 
-let emit_top name in_typ mentioned and_all_others out_typ oc top =
-  Printf.fprintf oc "let %s =" name ;
-  match top with
-  | None -> Printf.fprintf oc " None\n"
-  | Some (n, by) ->
-    (* The function that updates top_state from in_tuple: *)
-    (* FIXME: rename all those "group_" into "local_" *)
-    Printf.fprintf oc
-      "\n\tlet top_update_ virtual_in_count_ %a %a \
-             virtual_selected_count_ virtual_selected_successive_ %a \
-             virtual_unselected_count_ virtual_unselected_successive_ %a \
-             virtual_out_count out_previous_opt_ group_previous_opt_ \
-             virtual_group_count_ virtual_group_successive_ group_ \
-             global_ %a %a %a =\n\
-             \t\t(%a) (* parentheses to make it legit if empty *) in\n"
-      (emit_in_tuple mentioned and_all_others) in_typ
-      (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ
-      (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
-      (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ
-      (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
-      (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ
-      (emit_tuple TupleOut) out_typ
-      emit_state_update_for_expr by ;
-    Printf.fprintf oc
-      "\tSome (\n\
-       \t\t(Uint32.to_int (%a)),\n\
-       \t\ttop_update_)\n"
-      (conv_to ~context:Finalize (Some TU32)) n
-
-let emit_float_of_top name in_typ mentioned and_all_others out_typ oc top_by =
-  Printf.fprintf oc
-    "let %s virtual_in_count_ %a %a \
-         virtual_selected_count_ virtual_selected_successive_ %a \
-         virtual_unselected_count_ virtual_unselected_successive_ %a \
-         virtual_out_count out_previous_opt_ group_previous_opt_ \
-         virtual_group_count_ virtual_group_successive_ group_ \
-         global_ %a %a %a =\n"
-    name
-    (emit_in_tuple mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ
-    (emit_tuple TupleOut) out_typ ;
-  match top_by with
-  | None -> String.print oc "0."
-  | Some top_by ->
-    Printf.fprintf oc "\t%a\n"
-      (conv_to ~context:Finalize (Some TFloat)) top_by
-
 let for_each_unpure_fun selected_fields
-                        ?where ?commit_when ?top_by f =
+                        ?where ?commit_when f =
   List.iter (fun sf ->
       RamenExpr.unpure_iter f sf.RamenOperation.expr
     ) selected_fields ;
   Option.may (RamenExpr.unpure_iter f) where ;
-  Option.may (RamenExpr.unpure_iter f) commit_when ;
-  Option.may (RamenExpr.unpure_iter f) top_by
+  Option.may (RamenExpr.unpure_iter f) commit_when
 
 let for_each_unpure_fun_my_lifespan lifespan selected_fields
-                                    ?where ?commit_when ?top_by f =
+                                    ?where ?commit_when f =
   let open RamenExpr in
   for_each_unpure_fun selected_fields
-                      ?where ?commit_when ?top_by
+                      ?where ?commit_when
     (function
     | StatefulFun (_, l, _) as e when l = lifespan ->
       f e
@@ -1442,14 +1390,14 @@ let otype_of_state e =
   if Option.get typ.nullable then t ^" option" else t
 
 let emit_state_init name state_lifespan other_state_vars
-      ?where ?commit_when ?top_by
+      ?where ?commit_when
       oc selected_fields =
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
    * states. *)
   let for_each_my_unpure_fun f =
     for_each_unpure_fun_my_lifespan
-      state_lifespan selected_fields ?where ?commit_when ?top_by f
+      state_lifespan selected_fields ?where ?commit_when f
   in
   (* In the special case where we do not have any state at all, though, we
    * end up with an empty record, which is illegal in OCaml so we need to
@@ -1592,13 +1540,12 @@ let expr_needs_group e =
 
 let emit_aggregate oc name in_typ out_typ = function
   | RamenOperation.Aggregate
-      { fields ; and_all_others ; merge ; sort ; where ; key ; top ;
+      { fields ; and_all_others ; merge ; sort ; where ; key ;
         commit_before ; commit_when ; flush_how ; notifications ; event_time ;
         every ; _ } as op ->
   let mentioned =
     let all_exprs = RamenOperation.fold_expr [] (fun l s -> s :: l) op in
     add_all_mentioned_in_expr all_exprs
-  and top_by = Option.map snd top
   (* Tells whether we need the group to check the where clause (because it
    * uses the group tuple or build a group-wise aggregation on its own,
    * despite this is forbidden in RamenOperation.check): *)
@@ -1607,9 +1554,9 @@ let emit_aggregate oc name in_typ out_typ = function
   and commit_when_needs_group = expr_needs_group commit_when
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when ?top_by:None) fields
-    (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when ?top_by:None) fields
+    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when) fields
+    (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_typ
     (if where_need_group then
       emit_where "where_fast_" ~always_true:true in_typ mentioned and_all_others
@@ -1630,9 +1577,6 @@ let emit_aggregate oc name in_typ out_typ = function
     (emit_should_resubmit "should_resubmit_" in_typ mentioned and_all_others) flush_how
     (emit_field_of_tuple "field_of_tuple_in_") in_typ
     (emit_field_of_tuple "field_of_tuple_out_") out_typ
-    (emit_state_init "top_init_" RamenExpr.LocalState ["global_"] ?where:None ?commit_when:None ?top_by) []
-    (emit_top "top_" in_typ mentioned and_all_others out_typ) top
-    (emit_float_of_top "float_of_top_state_" in_typ mentioned and_all_others out_typ) top_by
     (emit_merge_on "merge_on_" in_typ mentioned and_all_others) (fst merge)
     (emit_sort_expr "sort_until_" in_typ mentioned and_all_others) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
     (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (match sort with Some (_, _, b) -> b | None -> []) ;
@@ -1642,7 +1586,6 @@ let emit_aggregate oc name in_typ out_typ = function
       \t\tgenerate_tuples_\n\
       \t\ttuple_of_group_ merge_on_ %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
-      \t\ttop_ top_init_ float_of_top_state_\n\
       \t\tcommit_when_ %b %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_\n\
       \t\tfield_of_tuple_in_ field_of_tuple_out_ field_of_params_ %a %f\n"
