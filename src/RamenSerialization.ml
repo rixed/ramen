@@ -9,29 +9,6 @@ open Lwt
 let verbose_serialization = false
 
 let read_tuple ser_tuple_typ nullmask_size tx =
-  let read_single_value offs = function
-    | TFloat  -> VFloat (read_float tx offs)
-    | TString -> VString (read_string tx offs)
-    | TBool   -> VBool (read_bool tx offs)
-    | TU8     -> VU8 (read_u8 tx offs)
-    | TU16    -> VU16 (read_u16 tx offs)
-    | TU32    -> VU32 (read_u32 tx offs)
-    | TU64    -> VU64 (read_u64 tx offs)
-    | TU128   -> VU128 (read_u128 tx offs)
-    | TI8     -> VI8 (read_i8 tx offs)
-    | TI16    -> VI16 (read_i16 tx offs)
-    | TI32    -> VI32 (read_i32 tx offs)
-    | TI64    -> VI64 (read_i64 tx offs)
-    | TI128   -> VI128 (read_i128 tx offs)
-    | TEth    -> VEth (read_eth tx offs)
-    | TIpv4   -> VIpv4 (read_u32 tx offs)
-    | TIpv6   -> VIpv6 (read_u128 tx offs)
-    | TIp     -> VIp (read_ip tx offs)
-    | TCidrv4 -> VCidrv4 (read_cidr4 tx offs)
-    | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
-    | TCidr   -> VCidr (read_cidr tx offs)
-    | TNum | TAny -> assert false
-  in
   (* Read all fields one by one *)
   if verbose_serialization then
     !logger.debug "Importing the serialized tuple %a"
@@ -45,7 +22,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
           if typ.nullable && not (get_bit tx b) then (
             None, offs, b+1
           ) else (
-            let value = read_single_value offs typ.typ in
+            let value = RingBufLib.read_value tx offs typ.typ in
             if verbose_serialization then
               !logger.debug "Importing a single value for %a at offset %d: %a"
                 RamenTuple.print_field_typ typ
@@ -74,32 +51,59 @@ let read_notifs ?while_ rb f =
   in
   read_tuples ?while_ unserialize rb f
 
-let write_tuple conf ser_in_type rb tuple =
-  let write_scalar_value tx offs =
-    let open RingBufLib in
-    function
-    | VFloat f -> write_float tx offs f ; sersize_of_float
-    | VString s -> write_string tx offs s ; sersize_of_string s
-    | VBool b -> write_bool tx offs b ; sersize_of_bool
-    | VU8 i -> write_u8 tx offs i ; sersize_of_u8
-    | VU16 i -> write_u16 tx offs i ; sersize_of_u16
-    | VU32 i -> write_u32 tx offs i ; sersize_of_u32
-    | VU64 i -> write_u64 tx offs i ; sersize_of_u64
-    | VU128 i -> write_u128 tx offs i ; sersize_of_u128
-    | VI8 i -> write_i8 tx offs i ; sersize_of_i8
-    | VI16 i -> write_i16 tx offs i ; sersize_of_i16
-    | VI32 i -> write_i32 tx offs i ; sersize_of_i32
-    | VI64 i -> write_i64 tx offs i ; sersize_of_i64
-    | VI128 i -> write_i128 tx offs i ; sersize_of_i128
-    | VEth e -> write_eth tx offs e ; sersize_of_eth
-    | VIpv4 i -> write_ip4 tx offs i ; sersize_of_ipv4
-    | VIpv6 i -> write_ip6 tx offs i ; sersize_of_ipv6
-    | VIp i -> write_ip tx offs i ; sersize_of_ip i
-    | VCidrv4 c -> write_cidr4 tx offs c ; sersize_of_cidrv4
-    | VCidrv6 c -> write_cidr6 tx offs c ; sersize_of_cidrv6
-    | VCidr c -> write_cidr tx offs c ; sersize_of_cidr c
-    | VNull -> assert false
-  in
+let value_of_string typ s =
+  let open RamenParsing in
+  (* First parse the string as any immediate value: *)
+  let p = allow_surrounding_blanks
+            (RamenTypes.Parser.p ~only_narrowest:false) in
+  let stream = stream_of_string s in
+  match p ["value"] None Parsers.no_error_correction stream |>
+        to_result with
+  | Bad ((NoSolution _ | Approximation _) as e) ->
+      let msg =
+        Printf.sprintf2 "Cannot parse %S: %a"
+          s (print_bad_result print) e in
+      failwith msg
+  | Ok (v, _s (* no rest since we ends with eof *)) ->
+      let vt = type_of v in
+      if vt = typ then v else
+      let msg =
+        Printf.sprintf2 "%S has type %a instead of expected %a"
+          s RamenTypes.print_typ vt RamenTypes.print_typ typ in
+      failwith msg
+  | Bad (Ambiguous lst) ->
+      match List.filter (fun (v, _c, _s) ->
+              type_of v = typ
+            ) lst with
+      | [] ->
+          let msg =
+            Printf.sprintf2 "%S could have type %a but not the expected %a"
+              s
+              (List.print ~first:"" ~last:"" ~sep:" or "
+                (fun oc (v, _c, _s) ->
+                  RamenTypes.print_typ oc (type_of v))) lst
+              RamenTypes.print_typ typ in
+          failwith msg
+      | [v, _, _] -> v
+      | lst ->
+          let msg =
+            Printf.sprintf2 "%S is ambiguous: is it %a?"
+              s
+              (List.print ~first:"" ~last:"" ~sep:", or "
+                (fun oc (v, _, _) -> RamenTypes.print oc v)) lst in
+          failwith msg
+
+(*$inject open Stdint *)
+(*$= value_of_string & ~printer:(RamenTypes.to_string)
+  (VString "glop")             (value_of_string TString "\"glop\"")
+  (VString "glop")             (value_of_string TString " \"glop\"  ")
+  (VU16 (Uint16.of_int 15042)) (value_of_string TU16    "15042")
+  (VU32 (Uint32.of_int 15042)) (value_of_string TU32    "15042")
+  (VI64 (Int64.of_int  15042)) (value_of_string TI64    "15042")
+  (VFloat 15042.)              (value_of_string TFloat  "15042")
+ *)
+
+let write_record conf ser_in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
     List.fold_left (fun (null_i, lst) ftyp ->
       if ftyp.RamenTuple.nullable then
@@ -109,13 +113,13 @@ let write_tuple conf ser_in_type rb tuple =
             null_i + 1, lst
         | s ->
             null_i + 1,
-            (Some null_i, RamenTypes.value_of_string ftyp.typ s) :: lst
+            (Some null_i, value_of_string ftyp.typ s) :: lst
       else
         match Hashtbl.find tuple ftyp.typ_name with
         | exception Not_found ->
             null_i, (None, RamenTypes.any_value_of_type ftyp.typ) :: lst
         | s ->
-            null_i, (None, RamenTypes.value_of_string ftyp.typ s) :: lst
+            null_i, (None, value_of_string ftyp.typ s) :: lst
     ) (0, []) ser_in_type |>
     fun (null_i, lst) ->
       RingBufLib.(round_up_to_rb_word (bytes_for_bits null_i)),
@@ -130,7 +134,8 @@ let write_tuple conf ser_in_type rb tuple =
     (* Loop over all values: *)
     List.fold_left (fun offs (null_i, v) ->
       Option.may (set_bit tx) null_i ;
-      offs + write_scalar_value tx offs v
+      RingBufLib.write_value  tx offs v ;
+      offs + RingBufLib.sersize_of_value v
     ) nullmask_sz values |> ignore ;
     (* For tests we won't archive the ringbufs so no need for time info: *)
     0., 0.)
@@ -156,7 +161,7 @@ let float_of_scalar_value =
   | VIpv6 x -> Uint128.to_float x
   | VIp (V4 x) -> Uint32.to_float x
   | VIp (V6 x) -> Uint128.to_float x
-  | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _ -> 0.
+  | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _ | VTuple _ -> 0.
 
 let find_field_index typ n =
   match List.findi (fun _i f -> f.RamenTuple.typ_name = n) typ with

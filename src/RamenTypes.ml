@@ -3,6 +3,7 @@
 open Batteries
 open Stdint
 open RamenLang
+open RamenHelpers
 
 (*$inject
   open TestHelpers
@@ -20,34 +21,35 @@ type typ =
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
   | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
+  | TTuple of typ array
   [@@ppp PPP_OCaml]
 
-let string_of_typ = function
-  | TFloat  -> "FLOAT"
-  | TString -> "STRING"
-  | TBool   -> "BOOL"
-  | TNum    -> "ANY_NUM" (* This one not for consumption *)
-  | TAny    -> "ANY" (* same *)
-  | TU8     -> "U8"
-  | TU16    -> "U16"
-  | TU32    -> "U32"
-  | TU64    -> "U64"
-  | TU128   -> "U128"
-  | TI8     -> "I8"
-  | TI16    -> "I16"
-  | TI32    -> "I32"
-  | TI64    -> "I64"
-  | TI128   -> "I128"
-  | TEth    -> "Eth"
-  | TIpv4   -> "IPv4"
-  | TIpv6   -> "IPv6"
-  | TIp     -> "IP"
-  | TCidrv4 -> "CIDRv4"
-  | TCidrv6 -> "CIDRv6"
-  | TCidr   -> "CIDR"
+let rec print_typ oc = function
+  | TFloat  -> String.print oc "FLOAT"
+  | TString -> String.print oc "STRING"
+  | TBool   -> String.print oc "BOOL"
+  | TNum    -> String.print oc "ANY_NUM" (* This one not for consumption *)
+  | TAny    -> String.print oc "ANY" (* same *)
+  | TU8     -> String.print oc "U8"
+  | TU16    -> String.print oc "U16"
+  | TU32    -> String.print oc "U32"
+  | TU64    -> String.print oc "U64"
+  | TU128   -> String.print oc "U128"
+  | TI8     -> String.print oc "I8"
+  | TI16    -> String.print oc "I16"
+  | TI32    -> String.print oc "I32"
+  | TI64    -> String.print oc "I64"
+  | TI128   -> String.print oc "I128"
+  | TEth    -> String.print oc "Eth"
+  | TIpv4   -> String.print oc "IPv4"
+  | TIpv6   -> String.print oc "IPv6"
+  | TIp     -> String.print oc "IP"
+  | TCidrv4 -> String.print oc "CIDRv4"
+  | TCidrv6 -> String.print oc "CIDRv6"
+  | TCidr   -> String.print oc "CIDR"
+  | TTuple ts -> Array.print print_typ oc ts
 
-let print_typ fmt typ =
-  String.print fmt (string_of_typ typ)
+let rec string_of_typ t = IO.to_string print_typ t
 
 let can_enlarge ~from ~to_ =
   (* Beware: it looks backward but it's not. [from] is the current
@@ -132,15 +134,17 @@ type value =
   | VIpv4 of uint32 | VIpv6 of uint128 | VIp of RamenIp.t
   | VCidrv4 of RamenIpv4.Cidr.t | VCidrv6 of RamenIpv6.Cidr.t
   | VCidr of RamenIp.Cidr.t
+  | VTuple of value array
   [@@ppp PPP_OCaml]
 
-let type_of = function
+let rec type_of = function
   | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
   | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
   | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
   | VI64 _ -> TI64 | VI128 _ -> TI128
   | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6 | VIp _ -> TIp
   | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6 | VCidr _ -> TCidr
+  | VTuple vs -> TTuple (Array.map type_of vs)
   | VNull -> assert false
 
 (* The original Float.to_string adds a useless dot at the end of
@@ -153,64 +157,65 @@ let my_float_to_string v =
 (* Used for debug, value expansion within strings, output values in tail
  * and timeseries commands, test immediate values.., but not for code
  * generation. *)
-let to_string ?(null="NULL") = function
-  | VFloat f  -> my_float_to_string f
-  | VString s -> Printf.sprintf "%S" s
-  | VBool b   -> Bool.to_string b
-  | VU8 i     -> Uint8.to_string i
-  | VU16 i    -> Uint16.to_string i
-  | VU32 i    -> Uint32.to_string i
-  | VU64 i    -> Uint64.to_string i
-  | VU128 i   -> Uint128.to_string i
-  | VI8 i     -> Int8.to_string i
-  | VI16 i    -> Int16.to_string i
-  | VI32 i    -> Int32.to_string i
-  | VI64 i    -> Int64.to_string i
-  | VI128 i   -> Int128.to_string i
-  | VNull     -> null
-  | VEth i    -> RamenEthAddr.to_string i
-  | VIpv4 i   -> RamenIpv4.to_string i
-  | VIpv6 i   -> RamenIpv6.to_string i
-  | VIp i     -> RamenIp.to_string i
-  | VCidrv4 i -> RamenIpv4.Cidr.to_string i
-  | VCidrv6 i -> RamenIpv6.Cidr.to_string i
-  | VCidr i   -> RamenIp.Cidr.to_string i
+let rec print_custom ?(null="NULL") oc = function
+  | VFloat f  -> my_float_to_string f |> String.print oc
+  | VString s -> Printf.fprintf oc "%S" s
+  | VBool b   -> Bool.print oc b
+  | VU8 i     -> Uint8.to_string i |> String.print oc
+  | VU16 i    -> Uint16.to_string i |> String.print oc
+  | VU32 i    -> Uint32.to_string i |> String.print oc
+  | VU64 i    -> Uint64.to_string i |> String.print oc
+  | VU128 i   -> Uint128.to_string i |> String.print oc
+  | VI8 i     -> Int8.to_string i |> String.print oc
+  | VI16 i    -> Int16.to_string i |> String.print oc
+  | VI32 i    -> Int32.to_string i |> String.print oc
+  | VI64 i    -> Int64.to_string i |> String.print oc
+  | VI128 i   -> Int128.to_string i |> String.print oc
+  | VNull     -> String.print oc null
+  | VEth i    -> RamenEthAddr.to_string i |> String.print oc
+  | VIpv4 i   -> RamenIpv4.to_string i |> String.print oc
+  | VIpv6 i   -> RamenIpv6.to_string i |> String.print oc
+  | VIp i     -> RamenIp.to_string i |> String.print oc
+  | VCidrv4 i -> RamenIpv4.Cidr.to_string i |> String.print oc
+  | VCidrv6 i -> RamenIpv6.Cidr.to_string i |> String.print oc
+  | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
+  | VTuple vs -> Array.print (print_custom ~null) oc vs
 
-let print_custom ?null fmt v = String.print fmt (to_string ?null v)
-let print fmt v = print_custom fmt v
+let to_string ?null v = IO.to_string (print_custom ?null) v
+
+(* Allow to elude ~null while currying: *)
+let print oc v = print_custom oc v
+
+let rec any_constant_of_type = function
+  | TString -> VString ""
+  | TNum -> assert false
+  | TAny -> assert false
+  | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
+  | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
+  | TFloat -> VFloat neg_infinity
+  | TBool -> VBool false
+  | TU8 -> VU8 Uint8.zero
+  | TU16 -> VU16 Uint16.zero
+  | TU32 -> VU32 Uint32.zero
+  | TU64 -> VU64 Uint64.zero
+  | TU128 -> VU128 Uint128.zero
+  | TI8 -> VI8 Int8.zero
+  | TI16 -> VI16 Int16.zero
+  | TI32 -> VI32 Int32.zero
+  | TI64 -> VI64 Int64.zero
+  | TI128 -> VI128 Int128.zero
+  | TEth -> VEth Uint48.zero
+  | TIp | TIpv4 -> VIpv4 Uint32.zero
+  | TIpv6 -> VIpv6 Uint128.zero
+  | TTuple ts -> VTuple (Array.map any_constant_of_type ts)
 
 let is_round_integer = function
   | VFloat f  -> fst(modf f) = 0.
   | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _
-  | VCidrv4 _ | VCidrv6 _ -> false
+  | VCidrv4 _ | VCidrv6 _ | VTuple _ -> false
   | _ -> true
 
-let value_of_string typ s =
-  let open RamenTypeConverters in
-  match typ with
-  | TFloat -> VFloat (float_of_string s)
-  | TString -> VString (string_of_string s)
-  | TBool -> VBool (bool_of_string s)
-  | TU8 -> VU8 (u8_of_string s)
-  | TU16 -> VU16 (u16_of_string s)
-  | TU32 -> VU32 (u32_of_string s)
-  | TU64 -> VU64 (u64_of_string s)
-  | TU128 -> VU128 (u128_of_string s)
-  | TI8 -> VI8 (i8_of_string s)
-  | TI16 -> VI16 (i16_of_string s)
-  | TI32 -> VI32 (i32_of_string s)
-  | TI64 -> VI64 (i64_of_string s)
-  | TI128 -> VI128 (i128_of_string s)
-  | TEth -> VEth (eth_of_string s)
-  | TIpv4 -> VIpv4 (ip4_of_string s)
-  | TIpv6 -> VIpv6 (ip6_of_string s)
-  | TIp -> VIp (ip_of_string s)
-  | TCidrv4 -> VCidrv4 (cidr4_of_string s)
-  | TCidrv6 -> VCidrv6 (cidr6_of_string s)
-  | TCidr -> VCidr (cidr_of_string s)
-  | TNum | TAny -> assert false
-
-let any_value_of_type = function
+let rec any_value_of_type = function
   | TFloat -> VFloat 0.
   | TString -> VString "hello"
   | TBool -> VBool true
@@ -229,6 +234,7 @@ let any_value_of_type = function
   | TIpv6 -> VIpv6 Uint128.zero
   | TCidrv4 | TCidr -> VCidrv4 (Uint32.zero, 0)
   | TCidrv6 -> VCidrv6 (Uint128.zero, 0)
+  | TTuple ts -> VTuple (Array.map any_value_of_type ts)
   | TNum | TAny -> assert false
 
 module Parser =
@@ -262,18 +268,55 @@ struct
 
   (* TODO: Here and elsewhere, we want the location (start+length) of the
    * thing in addition to the thing *)
-  let p =
+  let narrowest_int =
     (integer >>: narrowest_int_scalar) |||
-    (integer +- strinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
-    (integer +- strinG "i16" >>: fun i -> VI16 (Int16.of_string (Num.to_string i))) |||
-    (integer +- strinG "i32" >>: fun i -> VI32 (Int32.of_string (Num.to_string i))) |||
-    (integer +- strinG "i64" >>: fun i -> VI64 (Int64.of_string (Num.to_string i))) |||
-    (integer +- strinG "i128" >>: fun i -> VI128 (Int128.of_string (Num.to_string i))) |||
-    (integer +- strinG "u8" >>: fun i -> VU8 (Uint8.of_string (Num.to_string i))) |||
-    (integer +- strinG "u16" >>: fun i -> VU16 (Uint16.of_string (Num.to_string i))) |||
-    (integer +- strinG "u32" >>: fun i -> VU32 (Uint32.of_string (Num.to_string i))) |||
-    (integer +- strinG "u64" >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
-    (integer +- strinG "u128" >>: fun i -> VU128 (Uint128.of_string (Num.to_string i))) |||
+    (integer_range ~min:(Num.of_int ~-128) ~max:(Num.of_int 127) +-
+      strinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
+    (integer_range ~min:(Num.of_int ~-32768) ~max:(Num.of_int 32767) +-
+      strinG "i16" >>: fun i -> VI16 (Int16.of_string (Num.to_string i))) |||
+    (integer_range ~min:(Num.of_int ~-2147483648) ~max:(Num.of_int 2147483647) +-
+      strinG "i32" >>: fun i -> VI32 (Int32.of_string (Num.to_string i))) |||
+    (integer_range ~min:(Num.of_string "-9223372036854775808") ~max:(Num.of_string "9223372036854775807") +-
+      strinG "i64" >>: fun i -> VI64 (Int64.of_string (Num.to_string i))) |||
+    (integer_range ~min:(Num.of_string "-170141183460469231731687303715884105728") ~max:(Num.of_string "170141183460469231731687303715884105728") +-
+      strinG "i128" >>: fun i -> VI128 (Int128.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_int 255) +-
+      strinG "u8" >>: fun i -> VU8 (Uint8.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_int 65535) +-
+      strinG "u16" >>: fun i -> VU16 (Uint16.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_string "4294967295") +-
+      strinG "u32" >>: fun i -> VU32 (Uint32.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_string "18446744073709551615") +-
+      strinG "u64" >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_string "340282366920938463463374607431768211455") +-
+      strinG "u128" >>: fun i -> VU128 (Uint128.of_string (Num.to_string i)))
+
+  let all_possible_ints =
+    (integer_range ~min:(Num.of_int ~-128) ~max:(Num.of_int 127) +-
+      optional ~def:() (strinG "i8") >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
+    (integer_range ~min:(Num.of_int ~-32768) ~max:(Num.of_int 32767) +-
+      optional ~def:() (strinG "i16") >>: fun i -> VI16 (Int16.of_string (Num.to_string i))) |||
+    (integer_range ~min:(Num.of_int ~-2147483648) ~max:(Num.of_int 2147483647) +-
+      optional ~def:() (strinG "i32") >>: fun i -> VI32 (Int32.of_string (Num.to_string i))) |||
+    (integer_range ~min:(Num.of_string "-9223372036854775808") ~max:(Num.of_string "9223372036854775807") +-
+      optional ~def:() (strinG "i64") >>: fun i -> VI64 (Int64.of_string (Num.to_string i))) |||
+    (integer_range ~min:(Num.of_string "-170141183460469231731687303715884105728") ~max:(Num.of_string "170141183460469231731687303715884105728") +-
+      optional ~def:() (strinG "i128") >>: fun i -> VI128 (Int128.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_int 255) +-
+      optional ~def:() (strinG "u8") >>: fun i -> VU8 (Uint8.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_int 65535) +-
+      optional ~def:() (strinG "u16") >>: fun i -> VU16 (Uint16.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_string "4294967295") +-
+      optional ~def:() (strinG "u32") >>: fun i -> VU32 (Uint32.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_string "18446744073709551615") +-
+      optional ~def:() (strinG "u64") >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:(Num.of_string "340282366920938463463374607431768211455") +-
+      optional ~def:() (strinG "u128") >>: fun i -> VU128 (Uint128.of_string (Num.to_string i))) |||
+    (* Also in "all_possible" mode, accept an integer as a float: *)
+    (decimal_number >>: fun i -> VFloat (Num.to_float i))
+
+  let p ?(only_narrowest=true) =
+    (if only_narrowest then narrowest_int else all_possible_ints) |||
     (floating_point >>: fun f -> VFloat f) |||
     (strinG "false" >>: fun _ -> VBool false) |||
     (strinG "true" >>: fun _ -> VBool true) |||
@@ -296,6 +339,7 @@ struct
     (Ok (VBool false, (5,[])))                 (test_p p "false")
     (Ok (VBool true, (4,[])))                  (test_p p "true")
     (Ok (VString "glop", (6,[])))              (test_p p "\"glop\"")
+    (Ok (VFloat 15042., (6,[])))               (test_p p "15042.")
   *)
 
   let typ =

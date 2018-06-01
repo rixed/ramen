@@ -1078,7 +1078,7 @@ struct
       * keywords that follow: *)
      several ~sep:(char ',' -- opt_blanks) lowest_prec_left_assoc +- blanks +-
      strinG "in" +- blanks +- strinG "top" +- blanks ++
-     pos_integer "top size" ++
+     pos_decimal_integer "top size" ++
      optional ~def:GlobalState (blanks -+ state_lifespan) ++
      optional ~def:expr_one (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++

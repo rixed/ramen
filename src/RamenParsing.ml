@@ -60,27 +60,43 @@ let func_identifier ?(globs_allowed=false) ~program_allowed =
    id_quote >>:
   fun s -> String.of_list s)
 
-let pos_integer what m =
-  let m = what :: m in
-  (unsigned_decimal_number >>: fun n ->
-    try Num.int_of_num n
-    with Failure _ ->
-      raise (Reject "too big for an OCaml int")) m
+let not_in_range what ?min ?max n =
+  let e =
+    what ^" must be "^ match min, max with
+    | None, None -> "all right, so what's the problem?"
+    | Some m, None -> "greater than or equal to "^ Num.to_string m
+    | None, Some m -> "less than or equal to "^ Num.to_string m
+    | Some mi, Some ma -> "between "^ Num.to_string mi ^" and "^
+                          Num.to_string ma ^" (inclusive)" in
+  raise (Reject e)
 
-let pos_integer_range ?min ?max what =
-  pos_integer what >>: fun n ->
+(* Accept any notation (decimal, hexa, etc) only in the given range. Returns
+ * a Num. *)
+let integer_range ?min ?max =
+  integer >>: fun n ->
+    if Option.map_default (Num.ge_num n) true min &&
+       Option.map_default (Num.le_num n) true max
+    then n
+    else not_in_range "integer" ?min ?max n
+
+(* Only accept decimal integers from min to max (inclusive). *)
+let decimal_integer_range ?min ?max what =
+  let decimal_integer what m =
+    let m = what :: m in
+    (decimal_number >>: fun n ->
+      try Num.int_of_num n
+      with Failure _ ->
+        raise (Reject "too big for an OCaml int")) m
+  in
+  decimal_integer what >>: fun n ->
     if Option.map_default ((>=) n) true min &&
        Option.map_default ((<=) n) true max
     then n
-    else
-      let e =
-        what ^"must be "^ match min, max with
-        | None, None -> "all right, so what's the problem?"
-        | Some m, None -> "greater or equal to "^ string_of_int m
-        | None, Some m -> "less or equal to "^ string_of_int m
-        | Some mi, Some ma -> "between "^ string_of_int mi ^" and "^
-                              string_of_int ma ^" (inclusive)" in
-      raise (Reject e)
+    else not_in_range what ?min:(Option.map Num.of_int min)
+                           ?max:(Option.map Num.of_int max) n
+
+let pos_decimal_integer what =
+  decimal_integer_range ~min:0 ?max:None what
 
 let number =
   floating_point ||| (decimal_number >>: Num.to_float)

@@ -156,6 +156,7 @@ let rec emit_type oc =
                  Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
   | VCidr (RamenIp.Cidr.V4 n) -> emit_type oc (VCidrv4 n)
   | VCidr (RamenIp.Cidr.V6 n) -> emit_type oc (VCidrv6 n)
+  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:", " emit_type oc vs
   | VNull     -> Printf.fprintf oc "None"
 
 (* Given a function name and an output type, return the actual function
@@ -187,17 +188,29 @@ let name_of_state =
     prefix ^ string_of_int t.uniq_num
   | _ -> assert false
 
-let otype_of_type = function
-  | TFloat -> "float" | TString -> "string" | TBool -> "bool"
-  | TU8 -> "uint8" | TU16 -> "uint16" | TU32 -> "uint32" | TU64 -> "uint64" | TU128 -> "uint128"
-  | TI8 -> "int8" | TI16 -> "int16" | TI32 -> "int32" | TI64 -> "int64" | TI128 -> "int128"
-  | TEth -> "uint48"
-  | TIpv4 -> "uint32"
-  | TIpv6 -> "uint128"
-  | TIp -> "RamenIp.t"
-  | TCidrv4 -> "(uint32 * int)"
-  | TCidrv6 -> "(uint128 * int)"
-  | TCidr -> "RamenIp.Cidr.t"
+let rec otype_of_type oc = function
+  | TFloat -> String.print oc "float"
+  | TString -> String.print oc "string"
+  | TBool -> String.print oc "bool"
+  | TU8 -> String.print oc "uint8"
+  | TU16 -> String.print oc "uint16"
+  | TU32 -> String.print oc "uint32"
+  | TU64 -> String.print oc "uint64"
+  | TU128 -> String.print oc "uint128"
+  | TI8 -> String.print oc "int8"
+  | TI16 -> String.print oc "int16"
+  | TI32 -> String.print oc "int32"
+  | TI64 -> String.print oc "int64"
+  | TI128 -> String.print oc "int128"
+  | TEth -> String.print oc "uint48"
+  | TIpv4 -> String.print oc "uint32"
+  | TIpv6 -> String.print oc "uint128"
+  | TIp -> String.print oc "RamenIp.t"
+  | TCidrv4 -> String.print oc "(uint32 * int)"
+  | TCidrv6 -> String.print oc "(uint128 * int)"
+  | TCidr -> String.print oc "RamenIp.Cidr.t"
+  | TTuple ts ->
+      Array.print ~first:"(" ~last:")" ~sep:" * " otype_of_type oc ts
   | TNum | TAny -> assert false
 
 let omod_of_type = function
@@ -206,7 +219,7 @@ let omod_of_type = function
   | TBool -> "Bool"
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
-    String.capitalize (otype_of_type t)
+    String.capitalize (IO.to_string otype_of_type t)
   | TEth -> "RamenEthAddr"
   | TIpv4 -> "RamenIpv4"
   | TIpv6 -> "RamenIpv6"
@@ -214,7 +227,7 @@ let omod_of_type = function
   | TCidrv4 -> "RamenIpv4.Cidr"
   | TCidrv6 -> "RamenIpv6.Cidr"
   | TCidr -> "RamenIp.Cidr"
-  | TNum | TAny -> assert false
+  | TTuple _ | TNum | TAny -> assert false
 
 (* Why don't we have explicit casts in the AST so that we could stop
  * caring about those pesky conversions once and for all? Because the
@@ -228,16 +241,16 @@ let conv_from_to from_typ ~nullable to_typ p oc e =
     | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
         (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
     | TString, (TFloat|TBool) ->
-      Printf.fprintf oc "%s.of_%s (%a)"
+      Printf.fprintf oc "%s.of_%a (%a)"
         (omod_of_type to_typ)
-        (otype_of_type from_typ)
+        otype_of_type from_typ
         p e
     | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
         (TFloat|TString)
     | (TFloat|TBool), (TString|TFloat) ->
-      Printf.fprintf oc "%s.to_%s (%a)"
+      Printf.fprintf oc "%s.to_%a (%a)"
         (omod_of_type from_typ)
-        (otype_of_type to_typ)
+        otype_of_type to_typ
         p e
     | TBool, (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
       Printf.fprintf oc "(%s.of_int %% Bool.to_int) (%a)"
@@ -264,33 +277,13 @@ let conv_from_to from_typ ~nullable to_typ p oc e =
 
 let freevar_name t = "fv_"^ string_of_int t.RamenExpr.uniq_num ^"_"
 
-let any_constant_of_type t =
+let rec any_constant_of_expr_type t =
   let open RamenExpr in
   let open Stdint in
   let c v =
     Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "init", v)
   in
-  c (match Option.get t.scalar_typ with
-  | TString -> VString ""
-  | TNum -> assert false
-  | TAny -> assert false
-  | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
-  | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
-  | TFloat -> VFloat neg_infinity
-  | TBool -> VBool false
-  | TU8 -> VU8 Uint8.zero
-  | TU16 -> VU16 Uint16.zero
-  | TU32 -> VU32 Uint32.zero
-  | TU64 -> VU64 Uint64.zero
-  | TU128 -> VU128 Uint128.zero
-  | TI8 -> VI8 Int8.zero
-  | TI16 -> VI16 Int16.zero
-  | TI32 -> VI32 Int32.zero
-  | TI64 -> VI64 Int64.zero
-  | TI128 -> VI128 Int128.zero
-  | TEth -> VEth Uint48.zero
-  | TIp | TIpv4 -> VIpv4 Uint32.zero
-  | TIpv6 -> VIpv6 Uint128.zero)
+  c (any_constant_of_type (Option.get t.scalar_typ))
 
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
@@ -573,7 +566,7 @@ and emit_expr ?state ~context oc expr =
     emit_functionN ?state "CodeGenLib.avg_finalize" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, (AggrFirst e|AggrLast e)), t ->
-    conv_to ?state ~context t oc (any_constant_of_type (typ_of e))
+    conv_to ?state ~context t oc (any_constant_of_expr_type (typ_of e))
 
   | InitState, StatefulFun (_, _, (AggrMax e|AggrMin e)), _ ->
     Printf.fprintf oc "%sNone"
@@ -620,7 +613,7 @@ and emit_expr ?state ~context oc expr =
   | InitState, StatefulFun (_, _, Lag (k,e)), _ ->
     emit_functionN ?state "CodeGenLib.Seasonal.init"
       [Some TU32; Some TU32; None] oc
-      [k; expr_one; any_constant_of_type (typ_of e)]
+      [k; expr_one; any_constant_of_expr_type (typ_of e)]
   | UpdateState, StatefulFun (_, g, Lag (_k,e)), _ ->
     emit_functionN ?state "CodeGenLib.Seasonal.add" [None; None] oc [my_state g; e]
   | Finalize, StatefulFun (_, g, Lag _), _ ->
@@ -1363,12 +1356,12 @@ let otype_of_state e =
   let open RamenExpr in
   let typ = typ_of e in
   let t = Option.get typ.scalar_typ |>
-          otype_of_type in
+          IO.to_string otype_of_type in
   let t =
     let print_expr_typ oc e =
       let typ = typ_of e in
       Option.get typ.scalar_typ |> (* nullable taken care of below *)
-      otype_of_type |>
+      IO.to_string otype_of_type |>
       String.print oc in
     match e with
     | StatefulFun (_, _, AggrPercentile _) -> t ^" list"

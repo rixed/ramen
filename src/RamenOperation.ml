@@ -557,7 +557,7 @@ struct
   let sort_clause m =
     let m = "sort clause" :: m in
     (strinG "sort" -- blanks -- strinG "last" -- blanks -+
-     pos_integer "Sort buffer size" ++
+     pos_decimal_integer "Sort buffer size" ++
      optional ~def:None (
        blanks -- strinG "or" -- blanks -- strinG "until" -- blanks -+
        some Expr.Parser.p) +- blanks +-
@@ -633,7 +633,7 @@ struct
   let flush m =
     let m = "flush clause" :: m in
     ((strinG "flush" >>: fun () -> Reset) |||
-     (strinG "slide" -- blanks -+ (pos_integer "Sliding amount" >>:
+     (strinG "slide" -- blanks -+ (pos_decimal_integer "Sliding amount" >>:
         fun n -> Slide n)) |||
      (strinG "keep" -- blanks -- strinG "all" >>: fun () ->
        Never) |||
@@ -701,7 +701,8 @@ struct
        some (inet_addr ++
              optional ~def:None (
               char ':' -+
-              some (pos_integer_range ~max:65535 "port number")))) >>:
+              some (decimal_integer_range ~min:0 ~max:65535
+                      "port number")))) >>:
      fun (proto, addr_opt) ->
         let net_addr, port =
           match addr_opt with

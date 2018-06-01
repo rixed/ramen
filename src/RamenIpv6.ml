@@ -169,7 +169,7 @@ struct
     open RamenParsing
 
     let small_int =
-      pos_integer_range ~max:127 "CIDRv6 mask"
+      decimal_integer_range ~min:0 ~max:127 "CIDRv6 mask"
 
     let p m =
       let m = "CIDRv6" :: m in

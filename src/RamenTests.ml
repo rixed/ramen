@@ -240,7 +240,7 @@ let test_one conf root_path notify_rb dirname test =
                 return_unit)
             ) else return_unit in
           let rb = Option.get !rbr in
-          RamenSerialization.write_tuple conf func.F.in_type.ser rb input.tuple
+          RamenSerialization.write_record conf func.F.in_type.ser rb input.tuple
     in
     let%lwt () =
       Lwt_list.iter_s (fun input ->

@@ -242,7 +242,7 @@ TESTABLE_SOURCES = \
 	src/RamenOperation.ml src/RamenProgram.ml src/RamenTyping.ml \
 	src/HeavyHitters.ml src/RamenHelpers.ml src/RamenBloomFilter.ml \
 	src/Globs.ml src/CodeGen_OCaml.ml src/RamenSortBuf.ml \
-	src/RamenGraphite.ml src/RingBufLib.ml
+	src/RamenGraphite.ml src/RingBufLib.ml src/RamenSerialization.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \

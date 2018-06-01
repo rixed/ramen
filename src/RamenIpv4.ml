@@ -44,7 +44,8 @@ struct
 
   let p m =
     let m = "IPv4" :: m in
-    let small_uint = pos_integer_range ~max:255 "IPv4 component" in
+    let small_uint =
+      decimal_integer_range ~min:0 ~max:255 "IPv4 component" in
     (repeat ~min:4 ~max:4 ~sep:(char '.') small_uint >>: fun lst ->
        List.fold_left (fun (s, shf) n ->
            Uint32.(add s (shift_left (of_int n) shf)),
@@ -85,7 +86,7 @@ struct
     open RamenParsing
 
     let mask =
-      pos_integer_range ~max:31 "CIDRv4 mask"
+      decimal_integer_range ~min:0 ~max:31 "CIDRv4 mask"
 
     let p m =
       let m = "CIDRv4" :: m in

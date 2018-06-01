@@ -19,16 +19,6 @@ let nullmask_bytes_of_tuple_type tuple_typ =
   bytes_for_bits |>
   round_up_to_rb_word
 
-(* Unless wait_for_more, this will raise Empty when out of data *)
-let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =
-  let on = function
-    | NoMoreRoom -> Lwt.return_true
-    | Empty -> Lwt.return wait_for_more
-    | _ -> Lwt.return_false
-  in
-  retry ?while_ ~on ~first_delay:0.001 ~max_delay:1. ?delay_rec
-        ?max_retry_time (fun x -> Lwt.wrap (fun () -> f x))
-
 let sersize_of_string s =
   rb_word_bytes + round_up_to_rb_word (String.length s)
 
@@ -77,9 +67,9 @@ let rec sersize_of_fixsz_typ = function
   | TEth -> sersize_of_eth
   | TCidrv4 -> sersize_of_cidrv4
   | TCidrv6 -> sersize_of_cidrv6
-  | TString | TIp | TCidr | TNum | TAny -> assert false
+  | TString | TIp | TCidr | TTuple _ | TNum | TAny -> assert false
 
-let sersize_of_value = function
+let rec sersize_of_value = function
   | VString s -> sersize_of_string s
   | VFloat _ -> sersize_of_float
   | VBool _ -> sersize_of_bool
@@ -101,6 +91,85 @@ let sersize_of_value = function
   | VCidrv4 _ -> sersize_of_cidrv4
   | VCidrv6 _ -> sersize_of_cidrv6
   | VCidr x -> sersize_of_cidr x
+  | VTuple vs -> sersize_of_tuple vs
+
+and sersize_of_tuple vs =
+  (* Tuples are serialized in field order, unserializer will know which
+   * fields are present so there is no need for meta-data: *)
+  Array.fold_left (fun s v -> s + sersize_of_value v) 0 vs
+
+let rec write_value tx offs = function
+  | VFloat f -> write_float tx offs f
+  | VString s -> write_string tx offs s
+  | VBool b -> write_bool tx offs b
+  | VU8 i -> write_u8 tx offs i
+  | VU16 i -> write_u16 tx offs i
+  | VU32 i -> write_u32 tx offs i
+  | VU64 i -> write_u64 tx offs i
+  | VU128 i -> write_u128 tx offs i
+  | VI8 i -> write_i8 tx offs i
+  | VI16 i -> write_i16 tx offs i
+  | VI32 i -> write_i32 tx offs i
+  | VI64 i -> write_i64 tx offs i
+  | VI128 i -> write_i128 tx offs i
+  | VEth e -> write_eth tx offs e
+  | VIpv4 i -> write_ip4 tx offs i
+  | VIpv6 i -> write_ip6 tx offs i
+  | VIp i -> write_ip tx offs i
+  | VCidrv4 c -> write_cidr4 tx offs c
+  | VCidrv6 c -> write_cidr6 tx offs c
+  | VCidr c -> write_cidr tx offs c
+  | VTuple vs -> write_tuple tx offs vs
+  | VNull -> assert false
+
+(* Tuples are serialized as the succession of the values. No meta data
+ * required. *)
+and write_tuple tx offs vs =
+  Array.fold_left (fun sz v ->
+    write_value tx (offs + sz) v ;
+    sz + sersize_of_value v
+  ) 0 vs |>
+  ignore
+
+let rec read_value tx offs = function
+  | TFloat  -> VFloat (read_float tx offs)
+  | TString -> VString (read_string tx offs)
+  | TBool   -> VBool (read_bool tx offs)
+  | TU8     -> VU8 (read_u8 tx offs)
+  | TU16    -> VU16 (read_u16 tx offs)
+  | TU32    -> VU32 (read_u32 tx offs)
+  | TU64    -> VU64 (read_u64 tx offs)
+  | TU128   -> VU128 (read_u128 tx offs)
+  | TI8     -> VI8 (read_i8 tx offs)
+  | TI16    -> VI16 (read_i16 tx offs)
+  | TI32    -> VI32 (read_i32 tx offs)
+  | TI64    -> VI64 (read_i64 tx offs)
+  | TI128   -> VI128 (read_i128 tx offs)
+  | TEth    -> VEth (read_eth tx offs)
+  | TIpv4   -> VIpv4 (read_u32 tx offs)
+  | TIpv6   -> VIpv6 (read_u128 tx offs)
+  | TIp     -> VIp (read_ip tx offs)
+  | TCidrv4 -> VCidrv4 (read_cidr4 tx offs)
+  | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
+  | TCidr   -> VCidr (read_cidr tx offs)
+  | TTuple ts -> read_tuple tx offs ts
+  | TNum | TAny -> assert false
+and read_tuple tx offs ts =
+  let offs = ref offs in
+  VTuple (Array.map (fun t ->
+    let v = read_value tx !offs t in
+    offs := !offs + sersize_of_value v ;
+    v) ts)
+
+(* Unless wait_for_more, this will raise Empty when out of data *)
+let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =
+  let on = function
+    | NoMoreRoom -> Lwt.return_true
+    | Empty -> Lwt.return wait_for_more
+    | _ -> Lwt.return_false
+  in
+  retry ?while_ ~on ~first_delay:0.001 ~max_delay:1. ?delay_rec
+        ?max_retry_time (fun x -> Lwt.wrap (fun () -> f x))
 
 let out_ringbuf_names outbuf_ref_fname =
   let open Lwt in
