@@ -683,22 +683,23 @@ and emit_expr ?state ~context oc expr =
       n
       (Legacy.Printf.sprintf "%h" duration)
   | UpdateState, StatefulFun (_, g, Top { what ; by ; _ }), _ ->
-    emit_functionN ?state
+    emit_functionN ?state ~args_as:(Tuple 2)
       "CodeGenLib.heavy_hitters_add"
-      [None; None; Some TFloat] oc [my_state g; what; by]
+      (None :: Some TFloat :: List.map (fun _ -> None) what)
+      oc (my_state g :: by :: what)
   | Finalize, StatefulFun (_, g, Top { want_rank = true ; n ; what ; _ }), Some t ->
     (* heavy_hitters_rank returns an optional int; we then have to convert
      * it to whatever integer size we are supposed to have: *)
     assert (is_nullable expr) ;
     Printf.fprintf oc "(Option.map %s.of_int %a)"
       (omod_of_type t)
-      (emit_functionN ~impl_return_nullable:true ?state
+      (emit_functionN ~impl_return_nullable:true ?state ~args_as:(Tuple 1)
          ("CodeGenLib.heavy_hitters_rank ~n:"^ string_of_int n)
-         [None; None]) [my_state g; what]
+         (None :: List.map (fun _ -> None) what)) (my_state g :: what)
   | Finalize, StatefulFun (_, g, Top { want_rank = false ; n ; what ; _ }), _ ->
-    emit_functionN ?state
+    emit_functionN ?state ~args_as:(Tuple 1)
       ("CodeGenLib.heavy_hitters_is_in_top ~n:"^ string_of_int n)
-      [None; None] oc [my_state g; what]
+      (None :: List.map (fun _ -> None) what) oc (my_state g :: what)
 
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name t).
@@ -1387,7 +1388,7 @@ let otype_of_state e =
     | StatefulFun (_, _, (AggrMin _|AggrMax _)) -> t ^" option"
     | StatefulFun (_, _, Top { what ; _ }) ->
       Printf.sprintf2 "%a HeavyHitters.t"
-        print_expr_typ what
+        (list_print_as_product print_expr_typ) what
     | _ -> t in
   if Option.get typ.nullable then t ^" option" else t
 

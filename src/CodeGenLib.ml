@@ -140,7 +140,7 @@ let heavy_hitters_init n duration =
   let decay = 0. in
   HeavyHitters.make ~max_size ~decay
 
-let heavy_hitters_add s x w =
+let heavy_hitters_add s w x =
   let time = 0. in (* TODO *)
   HeavyHitters.add s time w x ;
   s

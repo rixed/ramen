@@ -220,7 +220,7 @@ and stateful_fun =
   (* Hysteresis *)
   | Hysteresis of t * t * t (* measured value, acceptable, maximum *)
   (* Top-k operation *)
-  | Top of { want_rank : bool ; n : int ; what : t ; by : t ;
+  | Top of { want_rank : bool ; n : int ; what : t list ; by : t ;
              duration : float }
 
 and generator_fun =
@@ -446,7 +446,7 @@ let rec print with_types fmt =
       if duration > 0. then print_duration oc duration in
     Printf.fprintf fmt "%s %a in top %d%sby %a in the last %a"
       (if want_rank then "rank of" else "is")
-      (print with_types) what
+      (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) what
       n (sl g)
       (print with_types) by
       print_duration_opt duration
@@ -486,7 +486,6 @@ let rec fold_by_depth f i expr =
   | StatelessFun2 (_, _, e1, e2)
   | StatefulFun (_, _, Lag (e1, e2))
   | StatefulFun (_, _, ExpSmooth (e1, e2))
-  | StatefulFun (_, _, Top { what = e1 ; by = e2 ; _ })
   | GeneratorFun (_, Split (e1, e2)) ->
     let i' = fold_by_depth f i e1 in
     let i''= fold_by_depth f i' e2 in
@@ -506,6 +505,11 @@ let rec fold_by_depth f i expr =
     let i'''= fold_by_depth f i'' e3 in
     let i''''= List.fold_left (fold_by_depth f) i''' e4s in
     f i'''' expr
+
+  | StatefulFun (_, _, Top { what = e2s ; by = e1 ; _ }) ->
+    let i' = fold_by_depth f i e1 in
+    let i''= List.fold_left (fold_by_depth f) i' e2s in
+    f i'' expr
 
   | StatefulFun (_, _, Hysteresis (e1, e2, e3)) ->
     let i' = fold_by_depth f i e1 in
@@ -622,7 +626,7 @@ let rec map_type ?(recurs=true) f = function
         (if recurs then map_type ~recurs f c else c)))
   | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; duration }) ->
     StatefulFun (f t, g, Top { want_rank ; n ; duration ;
-      what = (if recurs then map_type ~recurs f what else what) ;
+      what = (if recurs then List.map (map_type ~recurs f) what else what) ;
       by = (if recurs then map_type ~recurs f by else by) })
 
   | StatelessFun0 (t, cst) ->
@@ -1072,7 +1076,7 @@ struct
       (strinG "is" >>: fun () -> false)) +- blanks ++
      (* We can allow lowest precedence expressions here because of the
       * keywords that follow: *)
-     lowest_prec_left_assoc +- blanks +-
+     several ~sep:(char ',' -- opt_blanks) lowest_prec_left_assoc +- blanks +-
      strinG "in" +- blanks +- strinG "top" +- blanks ++
      pos_integer "top size" ++
      optional ~def:GlobalState (blanks -+ state_lifespan) ++
@@ -1084,7 +1088,8 @@ struct
      fun (((((want_rank, what), n), g), by), duration) ->
        StatefulFun (
          (if want_rank then make_int_typ ~nullable:true "rank in top"
-                       else make_bool_typ "is in top" (* same nullability as what+by *)),
+                       (* same nullability as what+by: *)
+                       else make_bool_typ "is in top"),
          g,
          Top { want_rank ; n ; what ; by ; duration })) m
 

@@ -35,7 +35,7 @@ DEFINE DDoS_targets AS
   WHEN ip_proto = 6 AND tcp_flags & 2 <> 0 AND
        not remember globally (0.1, first, 600,
              src, dst, dst_port) AND
-       IS string(dst)||":"||string(dst_port) IN TOP 10
+       IS dst, dst_port IN TOP 10
   GROUP BY dst, dst_port
   SELECT dst, dst_port, sum 1 AS count
   COMMIT AFTER age (min first) > 600;
@@ -45,7 +45,7 @@ DEFINE port_scan_detector AS
   FROM monitoring/traffic/netflow
   WHEN not remember globally (0.1, first, 3600,
              src, dst, dst_port, ip_proto) AND
-       IS string(src)||"-"||string(dst) IN TOP 10
+       IS src, dst IN TOP 10
   GROUP BY src, dst
   SELECT src, dst, sum 1 AS count
   COMMIT AFTER age (min first) > 3600;

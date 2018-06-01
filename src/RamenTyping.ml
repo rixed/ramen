@@ -972,7 +972,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         true (* "IS IN TOP" has same nullability than [what] or [by] *)
     in
     check_op op_typ ret_type ~propagate_null
-      [ None, None, what ; Some TFloat, None, by ]
+      ((Some TFloat, None, by) :: List.map (fun e -> None, None, e) what)
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible. *)
