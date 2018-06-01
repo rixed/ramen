@@ -942,15 +942,15 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | GeneratorFun (op_typ, Split (e1, e2)) ->
     check_op op_typ return_string [Some TString, None, e1 ;
                                    Some TString, None, e2]
-  | StatefulFun (op_typ, _, Remember (fpr, tim, dur, e)) ->
+  | StatefulFun (op_typ, _, Remember (fpr, tim, dur, es)) ->
     (* e can be anything *)
     check_const "remember false positive rate" fpr ;
     check_const "remember duration" dur ;
     check_op op_typ return_bool
-      [Some TFloat, Some false, fpr ;
-       Some TFloat, None, tim ;
-       Some TFloat, None, dur ;
-       None, None, e]
+      ((Some TFloat, Some false, fpr) ::
+       (Some TFloat, None, tim) ::
+       (Some TFloat, None, dur) ::
+       List.map (fun e -> None, None, e) es)
   | StatefulFun (op_typ, _, Distinct es) ->
     (* the es can be anything *)
     check_op op_typ return_bool (List.map (fun e -> None, None, e) es)

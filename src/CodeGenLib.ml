@@ -106,12 +106,12 @@ let remember_really_init st tim =
   st.filter <- Some filter ;
   filter
 
-let remember_add st tim e =
+let remember_add st tim es =
   let filter =
     match st.filter with
     | None -> remember_really_init st tim
     | Some f -> f in
-  st.last_remembered <- RamenBloomFilter.remember filter tim e ;
+  st.last_remembered <- RamenBloomFilter.remember filter tim es ;
   st
 
 let remember_finalize st = st.last_remembered

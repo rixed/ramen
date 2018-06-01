@@ -652,10 +652,12 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefulFun (_, g, ExpSmooth _), Some TFloat ->
     emit_functionN ?state "identity" [None] oc [my_state g]
 
-  | InitState, StatefulFun (_, _, Remember (fpr,_tim,dur,_e)), Some TBool ->
+  | InitState, StatefulFun (_, _, Remember (fpr,_tim,dur,_es)), Some TBool ->
     emit_functionN ?state "CodeGenLib.remember_init" [Some TFloat; Some TFloat] oc [fpr; dur]
-  | UpdateState, StatefulFun (_, g, Remember (_fpr,tim,_dur,e)), _ ->
-    emit_functionN ?state "CodeGenLib.remember_add" [None; Some TFloat; None] oc [my_state g; tim; e]
+  | UpdateState, StatefulFun (_, g, Remember (_fpr,tim,_dur,es)), _ ->
+    emit_functionN ?state ~args_as:(Tuple 2) "CodeGenLib.remember_add"
+      (None :: Some TFloat :: List.map (fun _ -> None) es)
+      oc (my_state g :: tim :: es)
   | Finalize, StatefulFun (_, g, Remember _), Some TBool ->
     emit_functionN ?state "CodeGenLib.remember_finalize" [None] oc [my_state g]
 

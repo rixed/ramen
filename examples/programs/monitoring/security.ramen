@@ -20,10 +20,10 @@ DEFINE DDoS_detector AS
         0.1, -- 10% of false positives
         first, -- time of the event to remember
         3600, -- remember events for 1 hour
-        -- value to remember: a hash of src/dst IPs:
-        hash src + hash dst))) / 60 AS new_cnxs_per_secs,
+        -- value to remember: src IP + dst IP pair:
+        src, dst))) / 60 AS new_cnxs_per_secs,
     -- Count only the number of new clients
-    sum (0.9 * float (not remember (0.1, first, 3600, hash src))) / 60
+    sum (0.9 * float (not remember (0.1, first, 3600, src))) / 60
       AS new_clients_per_secs
   EVENT STARTING AT first WITH DURATION 60;
 
@@ -31,11 +31,10 @@ DEFINE DDoS_detector AS
 DEFINE DDoS_targets AS
   FROM monitoring/traffic/netflow
   -- We want to count how many distinct src are connecting
-  -- to the same dst*dst_port*ip_proto. Ramen's erzatz of
-  -- count distinct is to rely on the remember function:
+  -- to the same dst*dst_port*ip_proto.
   WHEN ip_proto = 6 AND tcp_flags & 2 <> 0 AND
        not remember globally (0.1, first, 600,
-             hash src + hash dst + hash dst_port)
+             src, dst, dst_port) AND
        IS string(dst)||":"||string(dst_port) IN TOP 10
   GROUP BY dst, dst_port
   SELECT dst, dst_port, sum 1 AS count
@@ -45,7 +44,7 @@ DEFINE DDoS_targets AS
 DEFINE port_scan_detector AS
   FROM monitoring/traffic/netflow
   WHEN not remember globally (0.1, first, 3600,
-             hash src + hash dst + hash dst_port + hash ip_proto)
+             src, dst, dst_port, ip_proto) AND
        IS string(src)||"-"||string(dst) IN TOP 10
   GROUP BY src, dst
   SELECT src, dst, sum 1 AS count
@@ -56,7 +55,7 @@ DEFINE ip_scan_detector AS
   FROM monitoring/traffic/netflow
   -- An IP scanner could use varying proto/port to detect host
   -- presence so we just care about src and dst here:
-  WHEN not remember globally (0.1, first, 3600, hash src + hash dst)
+  WHEN not remember globally (0.1, first, 3600, src, dst) AND
        IS src IN TOP 10
   GROUP BY src
   SELECT src, sum 1 AS count

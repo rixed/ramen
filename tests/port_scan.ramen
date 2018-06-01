@@ -5,8 +5,7 @@
 DEFINE new_cnxs AS
   FROM tests/fixtures/port_scan/csv
   WHEN not remember globally (0.1, first, 3600,
-             hash (string(src) ||"-"|| string(dst)) +
-             hash dst_port + hash ip_proto)
+             src, dst, dst_port, ip_proto)
   SELECT src, dst;
 
 DEFINE detect AS

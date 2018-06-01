@@ -203,17 +203,14 @@ and stateful_fun =
   | MultiLinReg of t * t * t * t list
   (* Rotating bloom filters. First parameter is the false positive rate we
    * aim at, second is an expression providing the "time", third a
-   * "duration", and finally an expression whose value to remember. The
-   * function will return true if it *thinks* that value has been seen the
-   * same value at a time not older than the given duration. This is based
-   * on bloom-filters so there can be false positives but not false
-   * negatives.
-   * Notes:
-   * - to remember several expressions just use the hash function.
-   * - if possible, it might save a lot of space to aim for a high false
-   * positive rate and account for it in the surrounding calculations than
-   * to aim for a low false positive rate. *)
-  | Remember of t * t * t * t
+   * "duration", and finally expressions whose values to remember. The function
+   * will return true if it *thinks* this combination of values has been seen
+   * the at a time not older than the given duration. This is based on
+   * bloom-filters so there can be false positives but not false negatives.
+   * Note: If possible, it might save a lot of space to aim for a high false
+   * positive rate and account for it in the surrounding calculations than to
+   * aim for a low false positive rate. *)
+  | Remember of t * t * t * t list
   (* Accurate version of the above, remembering all instances of the given
    * tuple and returning a boolean. Only for when number of expected values
    * is small, obviously: *)
@@ -293,9 +290,7 @@ let rec print with_types fmt =
     Printf.fprintf fmt "END" ;
     add_types t
   | Coalesce (t, es) ->
-    Printf.fprintf fmt "COALESCE %a"
-      (List.print ~first:"(" ~last:")" ~sep:", "
-        (print with_types)) es ;
+    Printf.fprintf fmt "COALESCE %a" print_args es ;
     add_types t
   | StatelessFun1 (t, Age, e) ->
     Printf.fprintf fmt "age (%a)" (print with_types) e ; add_types t
@@ -421,21 +416,20 @@ let rec print with_types fmt =
       (print with_types) e1
       (print with_types) e2
       (print with_types) e3
-      (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) e4s ;
+      print_args e4s ;
     add_types t
-  | StatefulFun (t, g, Remember (fpr, tim, dur, e)) ->
+  | StatefulFun (t, g, Remember (fpr, tim, dur, es)) ->
     Printf.fprintf fmt "remember%s(%a, %a, %a, %a)"
       (sl g)
       (print with_types) fpr
       (print with_types) tim
       (print with_types) dur
-      (print with_types) e ;
+      print_args es ;
     add_types t
   | StatefulFun (t, g, Distinct es) ->
     Printf.fprintf fmt "distinct%s(%a)"
       (sl g)
-      (List.print ~first:"(" ~last:")" ~sep:", "
-        (print with_types)) es
+      print_args es
   | StatefulFun (t, g, ExpSmooth (e1, e2)) ->
     Printf.fprintf fmt "smooth%s(%a, %a)"
       (sl g)  (print with_types) e1 (print with_types) e2 ;
@@ -505,13 +499,7 @@ let rec fold_by_depth f i expr =
     let i'''= fold_by_depth f i'' e3 in
     f i''' expr
 
-  | StatefulFun (_, _, Remember (e1, e2, e3, e4)) ->
-    let i' = fold_by_depth f i e1 in
-    let i''= fold_by_depth f i' e2 in
-    let i'''= fold_by_depth f i'' e3 in
-    let i''''= fold_by_depth f i''' e4 in
-    f i'''' expr
-
+  | StatefulFun (_, _, Remember (e1, e2, e3, e4s))
   | StatefulFun (_, _, MultiLinReg (e1, e2, e3, e4s)) ->
     let i' = fold_by_depth f i e1 in
     let i''= fold_by_depth f i' e2 in
@@ -614,12 +602,12 @@ let rec map_type ?(recurs=true) f = function
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c),
         (if recurs then List.map (map_type ~recurs f) d else d)))
-  | StatefulFun (t, g, Remember (fpr, tim, dur, e)) ->
+  | StatefulFun (t, g, Remember (fpr, tim, dur, es)) ->
     StatefulFun (f t, g, Remember (
         (if recurs then map_type ~recurs f fpr else fpr),
         (if recurs then map_type ~recurs f tim else tim),
         (if recurs then map_type ~recurs f dur else dur),
-        (if recurs then map_type ~recurs f e else e)))
+        (if recurs then List.map (map_type ~recurs f) es else es)))
   | StatefulFun (t, g, Distinct es) ->
     StatefulFun (f t, g, Distinct
         (if recurs then List.map (map_type ~recurs f) es else es))
@@ -1029,13 +1017,15 @@ struct
         let alpha =
           Const (make_typ ~typ:TFloat ~nullable:false "alpha", VFloat 0.5) in
         StatefulFun (make_float_typ "smooth", g, ExpSmooth (alpha, e))) |||
-     (afun3_sf "remember" >>: fun (g, tim, dir, e) ->
+     (afun3_sf "remember" >>: fun (g, tim, dur, e) ->
+        (* If we allowed a list of expressions here then it would be ambiguous
+         * with the following "3+v" signature: *)
         let fpr = of_float 0.015 in
         StatefulFun (make_bool_typ "remember", g,
-                     Remember (fpr, tim, dir, e))) |||
-     (afun4_sf "remember" >>: fun (g, fpr, tim, dir, e) ->
+                     Remember (fpr, tim, dur, [e]))) |||
+     (afun3v_sf "remember" >>: fun (g, fpr, tim, dur, es) ->
         StatefulFun (make_bool_typ "remember", g,
-                     Remember (fpr, tim, dir, e))) |||
+                     Remember (fpr, tim, dur, es))) |||
      (afun0v_sf ~def_state:LocalState "distinct" >>: fun (g, es) ->
          StatefulFun (make_bool_typ "distinct", g, Distinct es)) |||
      (afun3_sf "hysteresis" >>: fun (g, value, accept, max) ->

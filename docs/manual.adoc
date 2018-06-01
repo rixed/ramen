@@ -709,8 +709,8 @@ factor of 0.5.
 
 ==== Miscellaneous Stateful Functions
 
-`remember`, prefix, +float ⨉ float ⨉ float ⨉ any → bool+, tells if a value
-have been seen before.
+`remember`, prefix, +float ⨉ float ⨉ float ⨉ any ⨉ ... → bool+, tells if a
+value (or combination of) have been seen before.
 
 This uses rotating https://en.wikipedia.org/wiki/Bloom_filter[bloom filters].
 First parameter is the false positive rate that should be aimed at, second is
@@ -722,14 +722,10 @@ returning true while in fact that very value has never been seen) but no false
 negative (`remember` returning false while this value had in fact been seen
 earlier).
 
-Notes:
-
-- To remember a value made of several components you could use the `hash`
-  function.
-
-- When possible, it might save a lot of space to aim for a high false
-  positive rate and account for it in the surrounding calculations, as
-  opposed to aim for a low false positive rate.
+[NOTE]
+When possible, it might save a lot of space to aim for a high false
+positive rate and account for it in the surrounding calculations, as
+opposed to aim for a low false positive rate.
 
 `distinct`, prefix, +any ⨉ ... → bool+, tells if a value have been seen before.
 
