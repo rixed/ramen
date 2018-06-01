@@ -2,7 +2,7 @@
  * Expressions are the flesh of ramen programs.
  * Every expression is typed and all types are scalar.
  *
- * Scalars are parsed in RamenScalar.
+ * Scalars are parsed in RamenTypes.
  *)
 open Batteries
 open Stdint
@@ -19,14 +19,14 @@ type typ =
   { mutable expr_name : string ;
     uniq_num : int ; (* to build var names or record field names *)
     mutable nullable : bool option ;
-    mutable scalar_typ : RamenScalar.typ option }
+    mutable scalar_typ : RamenTypes.typ option }
 
 let print_typ fmt typ =
   Printf.fprintf fmt "%s of %s%s"
     typ.expr_name
     (match typ.scalar_typ with
     | None -> "unknown type"
-    | Some typ -> "type "^ IO.to_string RamenScalar.print_typ typ)
+    | Some typ -> "type "^ IO.to_string RamenTypes.print_typ typ)
     (match typ.nullable with
     | None -> ", maybe nullable"
     | Some true -> ", nullable"
@@ -108,7 +108,7 @@ type stateless_fun2 =
 (* FIXME: when we end prototyping use objects to make it easier to add
  * operations *)
 type t =
-  | Const of typ * RamenScalar.value
+  | Const of typ * RamenTypes.value
   | Field of typ * tuple_prefix ref * string (* field name *)
   | StateField of typ * string (* Name of the state field - met only late in the game *)
   | Case of typ * case_alternative list * t option
@@ -270,7 +270,7 @@ let rec print with_types fmt =
   in
   function
   | Const (t, c) ->
-    RamenScalar.print fmt c ; add_types t
+    RamenTypes.print fmt c ; add_types t
   | Field (t, tuple, field) ->
     Printf.fprintf fmt "%s.%s" (string_of_prefix !tuple) field ;
     add_types t
@@ -300,7 +300,7 @@ let rec print with_types fmt =
     Printf.fprintf fmt "random" ; add_types t
   | StatelessFun1 (t, Cast, e) ->
     Printf.fprintf fmt "cast(%a, %a)"
-      RamenScalar.print_typ (Option.get t.scalar_typ) (print with_types) e ;
+      RamenTypes.print_typ (Option.get t.scalar_typ) (print with_types) e ;
     add_types t
   | StatelessFun1 (t, Length, e) ->
     Printf.fprintf fmt "length (%a)" (print with_types) e ; add_types t
@@ -664,11 +664,11 @@ struct
   (* Single things *)
   let const m =
     let m = "constant" :: m in
-    (RamenScalar.Parser.p ++
+    (RamenTypes.Parser.p ++
      optional ~def:false (
        char ~case_sensitive:false 'n' >>: fun _ -> true) >>:
      fun (c, nullable) ->
-       Const (make_typ ~nullable ~typ:(RamenScalar.type_of c) "constant", c)) m
+       Const (make_typ ~nullable ~typ:(RamenTypes.type_of c) "constant", c)) m
   (*$= const & ~printer:(test_printer (print false))
     (Ok (Const (typ, VBool true), (4, [])))\
       (test_p const "true" |> replace_typ_in_expr)
@@ -1054,19 +1054,19 @@ struct
   and cast m =
     let m = "cast" :: m in
     let sep = check (char '(') ||| blanks in
-    (RamenScalar.Parser.typ +- sep ++
+    (RamenTypes.Parser.typ +- sep ++
      highestest_prec >>: fun (typ, e) ->
-       StatelessFun1 (make_typ ~typ ("cast to "^ IO.to_string RamenScalar.print_typ typ), Cast, e)
+       StatelessFun1 (make_typ ~typ ("cast to "^ IO.to_string RamenTypes.print_typ typ), Cast, e)
     ) m
 
   and k_moveavg m =
     let m = "k-moving average" :: m in
     let sep = check (char '(') ||| blanks in
-    ((unsigned_decimal_number >>: RamenScalar.Parser.narrowest_int_scalar) +-
+    ((unsigned_decimal_number >>: RamenTypes.Parser.narrowest_int_scalar) +-
      (strinG "-moveavg" ||| strinG "-ma") ++
      optional ~def:GlobalState (blanks -+ state_lifespan) +-
      sep ++ highestest_prec >>: fun ((k, g), e) ->
-       let k = Const (make_typ ~nullable:false ~typ:(RamenScalar.type_of k)
+       let k = Const (make_typ ~nullable:false ~typ:(RamenTypes.type_of k)
                                "moving average order", k) in
        StatefulFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
 

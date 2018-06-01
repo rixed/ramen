@@ -18,7 +18,7 @@ module C = RamenConf
 module F = C.Func
 module Expr = RamenExpr
 open RamenLang
-open RamenScalar
+open RamenTypes
 
 (* Used to type the input/output of funcs. Of course a compiled/
  * running func must have finished_typing to true and all optional
@@ -300,23 +300,23 @@ let set_scalar_type ?(indent="") ~ok_if_larger ~expr_name typ scalar_typ =
   match typ.RamenExpr.scalar_typ with
   | None ->
     !logger.debug "%s%s: Improving %s from %a" indent
-      !cur_func_name expr_name RamenScalar.print_typ scalar_typ ;
+      !cur_func_name expr_name RamenTypes.print_typ scalar_typ ;
     typ.RamenExpr.scalar_typ <- Some scalar_typ ;
     true
   | Some to_typ when to_typ <> scalar_typ ->
-    if RamenScalar.can_enlarge ~from:to_typ ~to_:scalar_typ
+    if RamenTypes.can_enlarge ~from:to_typ ~to_:scalar_typ
     then (
       !logger.debug "%s%s: Improving %a from %a" indent
         !cur_func_name RamenExpr.print_typ typ
-        RamenScalar.print_typ scalar_typ ;
+        RamenTypes.print_typ scalar_typ ;
       typ.scalar_typ <- Some scalar_typ ;
       true
     ) else if ok_if_larger then false
     else
       let e = CannotTypeExpression {
         what = expr_name ;
-        expected_type = IO.to_string RamenScalar.print_typ to_typ ;
-        got_type = IO.to_string RamenScalar.print_typ scalar_typ } in
+        expected_type = IO.to_string RamenTypes.print_typ to_typ ;
+        got_type = IO.to_string RamenTypes.print_typ scalar_typ } in
       raise (SyntaxError e)
   | _ -> false
 
@@ -426,7 +426,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     let sub_typ = typ_of sub_expr in
     !logger.debug "%sChecking operand of (%a), of type (%a) (expected: %a)"
       indent print_typ op_typ print_typ sub_typ
-      (Option.print RamenScalar.print_typ) exp_sub_typ ;
+      (Option.print RamenTypes.print_typ) exp_sub_typ ;
     (* Start by recursing into the sub-expression to know its real type: *)
     let changed = check_expr ~depth ~parents ~in_type ~out_type
                              ~exp_type:sub_typ ~params sub_expr in
@@ -434,11 +434,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * operand : *)
     (match sub_typ.scalar_typ, exp_sub_typ with
     | Some actual_typ, Some exp_sub_typ ->
-      if not (RamenScalar.can_enlarge ~from:actual_typ ~to_:exp_sub_typ) then
+      if not (RamenTypes.can_enlarge ~from:actual_typ ~to_:exp_sub_typ) then
         let e = CannotTypeExpression {
           what = "Operand of "^ op_typ.expr_name ;
-          expected_type = IO.to_string RamenScalar.print_typ exp_sub_typ ;
-          got_type = IO.to_string RamenScalar.print_typ actual_typ } in
+          expected_type = IO.to_string RamenTypes.print_typ exp_sub_typ ;
+          got_type = IO.to_string RamenTypes.print_typ actual_typ } in
         raise (SyntaxError e)
     | _ -> ()) ;
     (match exp_sub_nullable, sub_typ.nullable with
@@ -457,7 +457,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   let check_operator op_typ actual_typ =
     !logger.debug "%sChecking operator %a, of actual type %a" indent
       print_typ op_typ
-      RamenScalar.print_typ actual_typ ;
+      RamenTypes.print_typ actual_typ ;
     let from = make_typ ~typ:actual_typ op_typ.expr_name in
     let changed = check_expr_type ~indent ~ok_if_larger:false
                                   ~set_null:false ~from ~to_:op_typ in
@@ -495,7 +495,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* If we have typed all the operands, find out the type of the
      * operator. *)
     !logger.debug "%soperands types: %a, all typed=%b" indent
-      (Option.print (List.print (RamenScalar.print_typ))) types all_typed ;
+      (Option.print (List.print (RamenTypes.print_typ))) types all_typed ;
     match types with
     | Some lst when all_typed ->
       !logger.debug "%sall operands typed, propagating to operator" indent ;
@@ -632,9 +632,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           FieldNotInTuple { field ; tuple = !tuple ; tuple_type = "" } in
         raise (SyntaxError e)
       | default_value ->
-        let typ = RamenScalar.type_of default_value in
+        let typ = RamenTypes.type_of default_value in
         !logger.debug "%sParameter %s of type %a"
-          indent field RamenScalar.print_typ typ ;
+          indent field RamenTypes.print_typ typ ;
         set_nullable ~indent op_typ false |||
         set_scalar_type ~indent ~ok_if_larger:false ~expr_name:field
                         op_typ typ |||
@@ -857,7 +857,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           raise Exit
         with SyntaxError _ as e ->
           !logger.debug "%sComparison between %s failed with %S"
-            indent (RamenScalar.string_of_typ typ) (Printexc.to_string e)) ;
+            indent (RamenTypes.string_of_typ typ) (Printexc.to_string e)) ;
       (* The last error we got was not super useful: one operand failed to be
        * a CIDR. Instead the real error is that both operands do not agree
        * on types: *)
@@ -965,7 +965,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * can be cast to a float: *)
     let ret_type, propagate_null =
       if want_rank then
-        (fun _ -> RamenScalar.Parser.narrowest_typ_for_int n),
+        (fun _ -> RamenTypes.Parser.narrowest_typ_for_int n),
         false (* "RANK OF X" is always nullable *)
       else
         return_bool,

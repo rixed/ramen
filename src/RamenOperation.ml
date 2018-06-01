@@ -486,8 +486,8 @@ struct
     | StatefulFun (_, _, AggrFirst (Field (_, _, field))) -> "first_"^ force_public field
     | StatefulFun (_, _, AggrLast (Field (_, _, field))) -> "last_"^ force_public field
     | StatefulFun (_, _, AggrPercentile (Const (_, p), Field (_, _, field)))
-      when RamenScalar.is_round_integer p ->
-      Printf.sprintf "%s_%sth" (force_public field) (IO.to_string RamenScalar.print p)
+      when RamenTypes.is_round_integer p ->
+      Printf.sprintf "%s_%sth" (force_public field) (IO.to_string RamenTypes.print p)
     | StatelessFunMisc (_, Print _) ->
       (* Make print expression private unless told otherwise *)
       incr anonymous_printer_count ;
@@ -730,7 +730,7 @@ struct
   let csv_specs  m =
     let m = "CSV format" :: m in
     let field =
-      non_keyword +- blanks ++ RamenScalar.Parser.typ ++
+      non_keyword +- blanks ++ RamenTypes.Parser.typ ++
       optional ~def:true (
         optional ~def:true (
           blanks -+ (strinG "not" >>: fun () -> false)) +-

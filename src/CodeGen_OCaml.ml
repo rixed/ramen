@@ -16,7 +16,7 @@ open Batteries
 open RamenLog
 open RamenLang
 open RamenHelpers
-open RamenScalar
+open RamenTypes
 open RamenTuple
 module C = RamenConf
 
@@ -95,6 +95,7 @@ let id_of_typ typ =
   | TCidrv4 -> "cidr4"
   | TCidrv6 -> "cidr6"
   | TCidr   -> "cidr"
+  | TTuple _ -> "tuple"
   | TNum | TAny -> assert false
 
 let emit_value_of_string typ oc var =
@@ -128,7 +129,7 @@ let emit_float oc f =
   else if f = neg_infinity then String.print oc "neg_infinity"
   else Printf.fprintf oc "(%f)" f
 
-let rec emit_scalar oc =
+let rec emit_type oc =
   let open Stdint in
   function
   | VFloat  f -> emit_float oc f
@@ -147,14 +148,14 @@ let rec emit_scalar oc =
   | VEth    n -> Printf.fprintf oc "(Uint40.of_int64 (%LdL))" (Uint48.to_int64 n)
   | VIpv4   n -> Printf.fprintf oc "(Uint32.of_string %S)" (Uint32.to_string n)
   | VIpv6   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
-  | VIp (RamenIp.V4 n) -> emit_scalar oc (VIpv4 n)
-  | VIp (RamenIp.V6 n) -> emit_scalar oc (VIpv6 n)
+  | VIp (RamenIp.V4 n) -> emit_type oc (VIpv4 n)
+  | VIp (RamenIp.V6 n) -> emit_type oc (VIpv6 n)
   | VCidrv4 (n,l) ->
                  Printf.fprintf oc "(Uint32.of_string %S, %d)" (Uint32.to_string n) l
   | VCidrv6 (n,l) ->
                  Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
-  | VCidr (RamenIp.Cidr.V4 n) -> emit_scalar oc (VCidrv4 n)
-  | VCidr (RamenIp.Cidr.V6 n) -> emit_scalar oc (VCidrv6 n)
+  | VCidr (RamenIp.Cidr.V4 n) -> emit_type oc (VCidrv4 n)
+  | VCidr (RamenIp.Cidr.V6 n) -> emit_type oc (VCidrv6 n)
   | VNull     -> Printf.fprintf oc "None"
 
 (* Given a function name and an output type, return the actual function
@@ -251,8 +252,8 @@ let conv_from_to from_typ ~nullable to_typ p oc e =
     | TCidrv6, TIp -> Printf.fprintf oc "(RamenIp.Cidr.V6 %a)" p e
     | _ ->
       failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
-                  (IO.to_string RamenScalar.print_typ from_typ)
-                  (IO.to_string RamenScalar.print_typ to_typ))
+                  (IO.to_string RamenTypes.print_typ from_typ)
+                  (IO.to_string RamenTypes.print_typ to_typ))
   in
   if from_typ = to_typ then
     p oc e
@@ -309,7 +310,7 @@ let rec conv_to ?state ~context to_typ fmt e =
   if t.nullable = None then (
     !logger.error "Problem: Have to convert expression %a into %a"
       (print true) e
-      RamenScalar.print_typ (Option.get to_typ)
+      RamenTypes.print_typ (Option.get to_typ)
   ) ;
   let nullable = Option.get t.nullable in
   match t.scalar_typ, to_typ with
@@ -319,7 +320,7 @@ let rec conv_to ?state ~context to_typ fmt e =
     (emit_expr ~context ?state) fmt e (* No conversion required *)
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
-                (IO.to_string RamenScalar.print_typ b))
+                (IO.to_string RamenTypes.print_typ b))
 
 (* The vectors Tuple{Group,Out}Previous are optional: the commit when and
  * select clauses of aggregate operations either have it or not.
@@ -370,7 +371,7 @@ and emit_expr ?state ~context oc expr =
   | _, Const (_, c), _ ->
     Printf.fprintf oc "%s%a"
       (if is_nullable expr then "Some " else "")
-      emit_scalar c
+      emit_type c
   | Finalize, Field (_, tuple, field), _ ->
     (match !tuple with
     | TupleGroupPrevious ->
@@ -516,7 +517,7 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatelessFun1 (_, BeginOfRange, e),
     Some (TCidrv4 | TCidrv6 as to_typ) ->
     let in_type_name =
-      String.lowercase (IO.to_string RamenScalar.print_typ to_typ) in
+      String.lowercase (IO.to_string RamenTypes.print_typ to_typ) in
     let name = "CodeGenLib.age_"^ in_type_name in
     emit_functionN ?state name [Some to_typ] oc [e]
   (* TODO: Now() for Uint62? *)
@@ -732,7 +733,7 @@ and add_missing_types arg_typs es =
   let merge_types t1 t2 =
     match t1, t2 with
     | None, t | t, None -> t
-    | Some t1, Some t2 -> Some (RamenScalar.large_enough_for t1 t2) in
+    | Some t1, Some t2 -> Some (RamenTypes.large_enough_for t1 t2) in
   let rec loop ht rt any_type n = function
   | [], _ -> (* No more arguments *)
     (* Replace all None types by a common type large enough to accommodate
@@ -759,7 +760,7 @@ and add_missing_types arg_typs es =
   open Stdint
   let const typ v = RamenLang.(RamenExpr.(Const (make_typ ~typ "test", v)))
  *)
-(*$= add_missing_types & ~printer:(IO.to_string (List.print (Option.print (RamenScalar.print_typ))))
+(*$= add_missing_types & ~printer:(IO.to_string (List.print (Option.print (RamenTypes.print_typ))))
   [Some TFloat] \
     (add_missing_types [Some TFloat] [const TFloat (VFloat 1.)])
   [Some TFloat] \
@@ -1626,8 +1627,8 @@ let emit_function name func_name in_typ out_typ params op oc =
        \tlet parser_ = RamenTypeConverters.%s_of_string in\n\
        \tCodeGenLib.parameter_value ~def:(%a) parser_ %S\n"
       (id_of_prefix TupleParam) n
-      (id_of_typ (RamenScalar.type_of v))
-      emit_scalar v
+      (id_of_typ (RamenTypes.type_of v))
+      emit_type v
       n
   ) params ;
   (* Also a function that takes a parameter name (string) and return its
@@ -1639,7 +1640,7 @@ let emit_function name func_name in_typ out_typ params op oc =
         Printf.sprintf "%s_%s_" (id_of_prefix TupleParam) n in
       Printf.fprintf oc "\t| %S -> %a\n"
         n
-        (conv_from_to (RamenScalar.type_of v) ~nullable:false
+        (conv_from_to (RamenTypes.type_of v) ~nullable:false
                       TString String.print) glob_name)) params ;
   (match op with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;

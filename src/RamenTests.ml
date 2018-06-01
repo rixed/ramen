@@ -106,7 +106,7 @@ let test_output func bname output_spec =
               (* FIXME: instead of comparing in string we should try to parse
                * the expected value (once and for all -> faster) so that we
                * also check its type. *)
-              let s = RamenScalar.to_string tuple.(idx) in
+              let s = RamenTypes.to_string tuple.(idx) in
               let ok = s = value in
               if ok then miss else (
                 !logger.debug "found %S instead of %S" s value ;
@@ -122,7 +122,7 @@ let test_output func bname output_spec =
       tuples_to_not_find :=
         List.filter (fun (spec, _) ->
           List.for_all (fun (idx, value) ->
-            RamenScalar.to_string tuple.(idx) = value) spec
+            RamenTypes.to_string tuple.(idx) = value) spec
         ) tuples_must_be_absent |>
         List.rev_append !tuples_to_not_find ;
       return (count + 1)) in

@@ -56,7 +56,7 @@ struct
   let param m =
     let m = "function parameter" :: m in
     (non_keyword +- opt_blanks +- char '=' +- opt_blanks ++
-     RamenScalar.Parser.p) m
+     RamenTypes.Parser.p) m
 
   let named_func m =
     let m = "function" :: m in

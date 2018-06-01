@@ -1,7 +1,7 @@
 open Batteries
 open RamenLog
 open RamenHelpers
-open RamenScalar
+open RamenTypes
 open Stdint
 open RingBuf
 

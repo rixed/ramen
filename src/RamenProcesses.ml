@@ -408,7 +408,7 @@ let really_start conf must_run proc parents children =
    * on fro the shell: *)
   let params =
     List.enum proc.func.params /@
-    (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenScalar.print v) |>
+    (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenTypes.print v) |>
     Array.of_enum in
   let env = Array.append env params in
   let args =

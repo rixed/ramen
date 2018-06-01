@@ -14,7 +14,7 @@ open Batteries
 open RamenLog
 open Lwt
 open RamenHelpers
-open RamenScalar
+open RamenTypes
 open RamenTuple
 
 (* <blink>DO NOT ALTER</blink> this record without also updating

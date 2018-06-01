@@ -98,7 +98,7 @@ let rec filter_tree te = function
  * scalar value we might have for a factor.  So we actually build a tree_enum
  * of: *)
 type tree_enum_section =
-  ProgPath | OpName | FactorField of RamenScalar.value option | DataField
+  ProgPath | OpName | FactorField of RamenTypes.value option | DataField
 type string_with_scalar = string * tree_enum_section
 
 (* Given a func, returns the tree_enum of fields that are not factors *)
@@ -112,7 +112,7 @@ let tree_enum_of_fields func =
 (* When building target names we may use scalar values in place of factor
  * fields. When those values are strings they are always quoted. But we'd
  * like to unquote them when possible. Also, some other values may be left
- * unquoted by RamenScalar.print but we do need to quote them if they
+ * unquoted by RamenTypes.print but we do need to quote them if they
  * contain a ".": *)
 let fix_quote s =
   let try_quote s =
@@ -146,7 +146,7 @@ let rec tree_enum_of_factors func = function
       let fact_values =
         if Set.is_empty fact_values then Enum.singleton ("", FactorField None)
         else Set.enum fact_values /@
-             (fun v -> RamenScalar.to_string v |> fix_quote,
+             (fun v -> RamenTypes.to_string v |> fix_quote,
                        FactorField (Some v)) in
       E (fact_values /@
          (fun pv -> pv, tree_enum_of_factors func factors'))
@@ -484,7 +484,7 @@ let target_name_of func_name func_factors where used_factors fvals data_field =
         List.assoc factor where
     | i, _ -> (* take the [i]th value *)
         List.nth fvals i) |>
-    RamenScalar.to_string |> fix_quote |> String.print oc
+    RamenTypes.to_string |> fix_quote |> String.print oc
   in
   Printf.sprintf2 "%s%s%a%s"
     (String.nreplace ~str:func_name ~sub:"/" ~by:".")
@@ -579,7 +579,7 @@ let render_graphite conf headers body =
   let factor_values = Hashtbl.create 9 in
   let count_factor_values (func, func_name, fvals, data_field) =
     !logger.debug "target = op:%s, fvals:%a, data:%s"
-      func_name (List.print (Option.print RamenScalar.print)) fvals data_field ;
+      func_name (List.print (Option.print RamenTypes.print)) fvals data_field ;
     List.iteri (fun i fval_opt ->
       match fval_opt with
       | None -> ()
@@ -599,7 +599,7 @@ let render_graphite conf headers body =
         let wanted =
           Hashtbl.find_default factor_values (func_name, i) Set.empty in
         !logger.debug "wanted values for factor %d (%s): %a" i factor
-          (Set.print RamenScalar.print) wanted ;
+          (Set.print RamenTypes.print) wanted ;
         match Set.cardinal wanted with
         | 0 -> (* Can happen if there are no possible values. *)
             where, factors, i + 1

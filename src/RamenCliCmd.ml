@@ -301,7 +301,7 @@ let add_stats (in_count', selected_count', out_count', group_count', cpu',
 
 let read_stats conf prefix =
   let h = Hashtbl.create 57 in
-  let open RamenScalar in
+  let open RamenTypes in
   let bname = C.report_ringbuf conf in
   let typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
@@ -478,7 +478,7 @@ let tail conf func_name with_header sep null
         if func_name = "stats" then where_filter else
         let func_name, _ = String.rsplit func_name ~by:"#" in
         fun tuple ->
-          tuple.(wi) = RamenScalar.VString func_name &&
+          tuple.(wi) = RamenTypes.VString func_name &&
           where_filter tuple in
       let bname = C.report_ringbuf conf in
       bname, filter, typ
@@ -545,7 +545,7 @@ let tail conf func_name with_header sep null
           Int.print stdout m ; String.print stdout sep) ;
         reorder_column2 tuple |>
         Array.print ~first:"" ~last:"\n" ~sep
-          (RamenScalar.print_custom ~null) stdout ;
+          (RamenTypes.print_custom ~null) stdout ;
         BatIO.flush stdout) ;
       return_unit))
 
@@ -578,7 +578,7 @@ let timeseries conf since until with_header where factors max_data_points
     let column_names =
       Array.fold_left (fun res sc ->
         let v =
-          List.map RamenScalar.to_string sc |>
+          List.map RamenTypes.to_string sc |>
           String.concat "." in
         if single_data_field then
           (if v = "" then List.hd data_fields else v) :: res

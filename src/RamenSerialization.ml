@@ -3,7 +3,7 @@ open RingBuf
 open RingBufLib
 open RamenLog
 open RamenHelpers
-open RamenScalar
+open RamenTypes
 open Lwt
 
 let verbose_serialization = false
@@ -49,7 +49,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
             if verbose_serialization then
               !logger.debug "Importing a single value for %a at offset %d: %a"
                 RamenTuple.print_field_typ typ
-                offs RamenScalar.print value ;
+                offs RamenTypes.print value ;
             let offs' = offs + RingBufLib.sersize_of_value value in
             Some value, offs', if typ.nullable then b+1 else b
           ) in
@@ -109,13 +109,13 @@ let write_tuple conf ser_in_type rb tuple =
             null_i + 1, lst
         | s ->
             null_i + 1,
-            (Some null_i, RamenScalar.value_of_string ftyp.typ s) :: lst
+            (Some null_i, RamenTypes.value_of_string ftyp.typ s) :: lst
       else
         match Hashtbl.find tuple ftyp.typ_name with
         | exception Not_found ->
-            null_i, (None, RamenScalar.any_value_of_type ftyp.typ) :: lst
+            null_i, (None, RamenTypes.any_value_of_type ftyp.typ) :: lst
         | s ->
-            null_i, (None, RamenScalar.value_of_string ftyp.typ s) :: lst
+            null_i, (None, RamenTypes.value_of_string ftyp.typ s) :: lst
     ) (0, []) ser_in_type |>
     fun (null_i, lst) ->
       RingBufLib.(round_up_to_rb_word (bytes_for_bits null_i)),

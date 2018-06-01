@@ -257,19 +257,19 @@ let assignment =
                 sign (=), followed by the value.")
     | pname, pval ->
         let open RamenParsing in
-        let p = allow_surrounding_blanks RamenScalar.Parser.p in
+        let p = allow_surrounding_blanks RamenTypes.Parser.p in
         let stream = stream_of_string pval in
         let m = [ "value from command line" ] in
         (match p m None Parsers.no_error_correction stream |>
               to_result with
         | Bad e ->
             let err =
-              IO.to_string (print_bad_result RamenScalar.print) e in
+              IO.to_string (print_bad_result RamenTypes.print) e in
             Pervasives.Error (`Msg err)
         | Ok (v, _) ->
             Pervasives.Ok (pname, v))
   and print fmt (pname, pval) =
-    Format.fprintf fmt "%s=%s" pname (RamenScalar.to_string pval)
+    Format.fprintf fmt "%s=%s" pname (RamenTypes.to_string pval)
   in
   Arg.conv ~docv:"IDENTIFIER=VALUE" (parse, print)
 

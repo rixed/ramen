@@ -50,7 +50,7 @@ let get conf ?duration max_data_points since until where factors
     func_name
     (List.print String.print) data_fields
     (List.print (fun oc (factor, value) ->
-      Printf.fprintf oc "%s=%a" factor RamenScalar.print value)) where
+      Printf.fprintf oc "%s=%a" factor RamenTypes.print value)) where
     (List.print String.print) factors ;
   let nb_data_fields = List.length data_fields in
   let%lwt bname, filter, typ, event_time =
@@ -65,7 +65,7 @@ let get conf ?duration max_data_points since until where factors
         if func_name = "stats" then where_filter else
         let func_name, _ = String.rsplit func_name ~by:"#" in
         fun tuple ->
-          tuple.(wi) = RamenScalar.VString func_name &&
+          tuple.(wi) = RamenTypes.VString func_name &&
           where_filter tuple in
       let bname = C.report_ringbuf conf in
       return (bname, filter, typ, RamenBinocle.event_time)
@@ -102,7 +102,7 @@ let get conf ?duration max_data_points since until where factors
           try Hashtbl.find per_factor_buckets k
           with Not_found ->
             !logger.debug "New timeseries for column key %a"
-              (List.print RamenScalar.print) k ;
+              (List.print RamenTypes.print) k ;
             let buckets = make_buckets max_data_points nb_data_fields in
             Hashtbl.add per_factor_buckets k buckets ;
             buckets in
@@ -166,7 +166,7 @@ let all_seq_bnames conf ?since ?until func =
     (Enum.singleton bname)
 
 (* What we save in factors cache files: *)
-type cached_factors = RamenScalar.value list [@@ppp PPP_OCaml]
+type cached_factors = RamenTypes.value list [@@ppp PPP_OCaml]
 
 let factors_of_file fname =
   let lst = C.ppp_of_file ~error_ok:true fname cached_factors_ppp_ocaml in

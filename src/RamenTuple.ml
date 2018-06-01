@@ -9,7 +9,7 @@ open Batteries
 open RamenHelpers
 
 type field_typ =
-  { typ_name : string ; nullable : bool ; typ : RamenScalar.typ }
+  { typ_name : string ; nullable : bool ; typ : RamenTypes.typ }
   [@@ppp PPP_OCaml]
 
 type typ = field_typ list
@@ -42,7 +42,7 @@ let print_field_typ fmt field =
   (* TODO: check that name is a valid identifier *)
   Printf.fprintf fmt "%s %a %sNULL"
     field.typ_name
-    RamenScalar.print_typ field.typ
+    RamenTypes.print_typ field.typ
     (if field.nullable then "" else "NOT ")
 
 let print_typ fmt t =
@@ -52,16 +52,16 @@ let type_signature typed_tuple =
   List.fold_left (fun s field ->
       (if s = "" then "" else s ^ "_") ^
       field.typ_name ^ ":" ^
-      RamenScalar.string_of_typ field.typ ^
+      RamenTypes.string_of_typ field.typ ^
       if field.nullable then " null" else " notnull"
     ) "" typed_tuple.ser
 
 (* Special case of tuple: parameters *)
 
-type params = (string * RamenScalar.value) list [@@ppp PPP_OCaml]
+type params = (string * RamenTypes.value) list [@@ppp PPP_OCaml]
 
 let print_param oc (n, v) =
-  Printf.fprintf oc "%s=%a" n RamenScalar.print v
+  Printf.fprintf oc "%s=%a" n RamenTypes.print v
 
 (* FIXME: make those params a Map so names are unique *)
 let param_compare (a1, _) (b1, _) =
@@ -81,11 +81,11 @@ let overwrite_params ps1 ps2 =
     match List.find (fun (p2_nam, p2_val) -> p2_nam = p1_nam) ps2 with
     | exception Not_found -> p1
     | _, p2_val as p2 ->
-        if RamenScalar.type_of p2_val = RamenScalar.type_of p1_val then p2
+        if RamenTypes.type_of p2_val = RamenTypes.type_of p1_val then p2
         else
           let msg = Printf.sprintf2 "Parameter %s has wrong type, \
                                      %a instead of %a" p1_nam
-                      RamenScalar.print_typ (RamenScalar.type_of p2_val)
-                      RamenScalar.print_typ (RamenScalar.type_of p1_val) in
+                      RamenTypes.print_typ (RamenTypes.type_of p2_val)
+                      RamenTypes.print_typ (RamenTypes.type_of p1_val) in
           failwith msg
   ) ps1

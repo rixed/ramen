@@ -2,7 +2,7 @@
  * This goes through several phases:
  *
  * 1. The parsing, which is done in RamenProgram, RamenOperation, RamenExpr
- *    and RamenScalar modules;
+ *    and RamenTypes modules;
  * 2. The typing, happening in RamenTyping;
  * 3. The code generation, taking place in CodeGen_Ocaml;
  * 4. And finally generating an executable (takes place in RamenOCamlCompiler).
@@ -24,8 +24,8 @@ exception LinkingError of
               msg : string }
 exception InvalidParameter of
             { parameter_name : string ;
-              supplied_value : RamenScalar.value ;
-              expected_type : RamenScalar.typ }
+              supplied_value : RamenTypes.value ;
+              expected_type : RamenTypes.typ }
 
 let () =
   Printexc.register_printer (function
@@ -40,9 +40,9 @@ let () =
         Some (Printf.sprintf "Invalid type for parameter %S: \
                               value supplied (%s) of type %s \
                               but expected a %s"
-                parameter_name (RamenScalar.to_string supplied_value)
-                (RamenScalar.string_of_typ (RamenScalar.type_of supplied_value))
-                (RamenScalar.string_of_typ expected_type))
+                parameter_name (RamenTypes.to_string supplied_value)
+                (RamenTypes.string_of_typ (RamenTypes.type_of supplied_value))
+                (RamenTypes.string_of_typ expected_type))
     | _ -> None)
 
 let entry_point_name = "start"
