@@ -36,18 +36,20 @@ DEFINE DDoS_targets AS
   WHEN ip_proto = 6 AND tcp_flags & 2 <> 0 AND
        not remember globally (0.1, first, 600,
              hash src + hash dst + hash dst_port)
+       IS string(dst)||":"||string(dst_port) IN TOP 10
   GROUP BY dst, dst_port
   SELECT dst, dst_port, sum 1 AS count
-  TOP 10 BY out.count WHEN age (min first) > 600;
+  COMMIT AFTER age (min first) > 600;
 
 -- Output the top 10 port scanners every hour (scans can be slow)
 DEFINE port_scan_detector AS
   FROM monitoring/traffic/netflow
   WHEN not remember globally (0.1, first, 3600,
              hash src + hash dst + hash dst_port + hash ip_proto)
+       IS string(src)||"-"||string(dst) IN TOP 10
   GROUP BY src, dst
   SELECT src, dst, sum 1 AS count
-  TOP 10 BY out.count WHEN age (min first) > 3600;
+  COMMIT AFTER age (min first) > 3600;
 
 -- Output the top 10 IP scanners every hour
 DEFINE ip_scan_detector AS
@@ -55,6 +57,7 @@ DEFINE ip_scan_detector AS
   -- An IP scanner could use varying proto/port to detect host
   -- presence so we just care about src and dst here:
   WHEN not remember globally (0.1, first, 3600, hash src + hash dst)
+       IS src IN TOP 10
   GROUP BY src
   SELECT src, sum 1 AS count
-  TOP 10 BY out.count WHEN age (min first) > 3600;
+  COMMIT AFTER age (min first) > 3600;
