@@ -283,7 +283,7 @@ let rec any_constant_of_expr_type t =
   let c v =
     Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "init", v)
   in
-  c (any_constant_of_type (Option.get t.scalar_typ))
+  c (any_value_of_type (Option.get t.scalar_typ))
 
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ

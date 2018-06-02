@@ -179,20 +179,21 @@ let rec print_custom ?(null="NULL") oc = function
   | VCidrv4 i -> RamenIpv4.Cidr.to_string i |> String.print oc
   | VCidrv6 i -> RamenIpv6.Cidr.to_string i |> String.print oc
   | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
-  | VTuple vs -> Array.print (print_custom ~null) oc vs
+  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";" (print_custom ~null) oc vs
+  | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";" (print_custom ~null) oc vs
 
 let to_string ?null v = IO.to_string (print_custom ?null) v
 
 (* Allow to elude ~null while currying: *)
 let print oc v = print_custom oc v
 
-let rec any_constant_of_type = function
+let rec any_value_of_type = function
   | TString -> VString ""
   | TNum -> assert false
   | TAny -> assert false
   | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
   | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
-  | TFloat -> VFloat neg_infinity
+  | TFloat -> VFloat 0.
   | TBool -> VBool false
   | TU8 -> VU8 Uint8.zero
   | TU16 -> VU16 Uint16.zero
@@ -207,35 +208,13 @@ let rec any_constant_of_type = function
   | TEth -> VEth Uint48.zero
   | TIp | TIpv4 -> VIpv4 Uint32.zero
   | TIpv6 -> VIpv6 Uint128.zero
-  | TTuple ts -> VTuple (Array.map any_constant_of_type ts)
+  | TTuple ts -> VTuple (Array.map any_value_of_type ts)
 
 let is_round_integer = function
   | VFloat f  -> fst(modf f) = 0.
   | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _
   | VCidrv4 _ | VCidrv6 _ | VTuple _ -> false
   | _ -> true
-
-let rec any_value_of_type = function
-  | TFloat -> VFloat 0.
-  | TString -> VString "hello"
-  | TBool -> VBool true
-  | TU8 -> VU8 Uint8.zero
-  | TU16 -> VU16 Uint16.zero
-  | TU32 -> VU32 Uint32.zero
-  | TU64 -> VU64 Uint64.zero
-  | TU128 -> VU128 Uint128.zero
-  | TI8 -> VI8 Int8.zero
-  | TI16 -> VI16 Int16.zero
-  | TI32 -> VI32 Int32.zero
-  | TI64 -> VI64 Int64.zero
-  | TI128 -> VI128 Int128.zero
-  | TEth -> VEth Uint48.zero
-  | TIpv4 | TIp -> VIpv4 Uint32.zero
-  | TIpv6 -> VIpv6 Uint128.zero
-  | TCidrv4 | TCidr -> VCidrv4 (Uint32.zero, 0)
-  | TCidrv6 -> VCidrv6 (Uint128.zero, 0)
-  | TTuple ts -> VTuple (Array.map any_value_of_type ts)
-  | TNum | TAny -> assert false
 
 module Parser =
 struct
