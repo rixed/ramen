@@ -392,17 +392,6 @@ let type_of_parents_field parents tuple_of_field field =
     raise (SyntaxError e) ;
   | Some ptyp -> ptyp
 
-(* From the list of operand types, return the largest type able to accommodate
- * all operands. Most of the time it will be the largest in term of "all
- * others can be enlarged to that one", but for special cases where we want
- * an even larger type; For instance, if we combine an i8 and an u8 then we
- * want the result to be an i16, or if we combine an IPv4 and an IPv6 then
- * we want the result to be an IP. *)
-let largest_type = function
-  | fst :: rest ->
-    List.fold_left large_enough_for fst rest
-  | _ -> invalid_arg "largest_type"
-
 
 (* Get rid of the short-cutting of or expressions: *)
 let (|||) a b = a || b

@@ -1054,7 +1054,7 @@ struct
   and cast m =
     let m = "cast" :: m in
     let sep = check (char '(') ||| blanks in
-    (RamenTypes.Parser.typ +- sep ++
+    (RamenTypes.Parser.scalar_typ +- sep ++
      highestest_prec >>: fun (typ, e) ->
        StatelessFun1 (make_typ ~typ ("cast to "^ IO.to_string RamenTypes.print_typ typ), Cast, e)
     ) m

@@ -731,7 +731,7 @@ struct
   let csv_specs  m =
     let m = "CSV format" :: m in
     let field =
-      non_keyword +- blanks ++ RamenTypes.Parser.typ ++
+      non_keyword +- blanks ++ RamenTypes.Parser.scalar_typ ++
       optional ~def:true (
         optional ~def:true (
           blanks -+ (strinG "not" >>: fun () -> false)) +-

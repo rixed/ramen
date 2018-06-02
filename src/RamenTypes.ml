@@ -10,6 +10,10 @@ open RamenHelpers
   open RamenLang
 *)
 
+(*
+ * Types and Values
+ *)
+
 (* TNum is not an actual type used by any value, but it's used as a default
  * type for numeric operands that can be "promoted" to any other numerical
  * type. TAny is meant to be replaced by an actual type during compilation:
@@ -52,6 +56,84 @@ let rec print_typ oc = function
   | TVec (d, t) -> Printf.fprintf oc "VEC(%d, %a)" d print_typ t
 
 let rec string_of_typ t = IO.to_string print_typ t
+
+(* stdint types are implemented as custom blocks, therefore are slower than
+ * ints.  But we do not care as we merely represents code here, we do not run
+ * the operators. *)
+type value =
+  | VFloat of float | VString of string | VBool of bool
+  | VU8 of uint8 | VU16 of uint16 | VU32 of uint32
+  | VU64 of uint64 | VU128 of uint128
+  | VI8 of int8 | VI16 of int16 | VI32 of int32
+  | VI64 of int64 | VI128 of int128 | VNull
+  | VEth of uint48
+  | VIpv4 of uint32 | VIpv6 of uint128 | VIp of RamenIp.t
+  | VCidrv4 of RamenIpv4.Cidr.t | VCidrv6 of RamenIpv6.Cidr.t
+  | VCidr of RamenIp.Cidr.t
+  | VTuple of value array
+  | VVec of value array (* All values must have same type *)
+  [@@ppp PPP_OCaml]
+
+let rec type_of = function
+  | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
+  | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
+  | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
+  | VI64 _ -> TI64 | VI128 _ -> TI128
+  | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6 | VIp _ -> TIp
+  | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6 | VCidr _ -> TCidr
+  | VTuple vs -> TTuple (Array.map type_of vs)
+  | VVec vs ->
+      let d = Array.length vs in
+      TVec (d, if d > 0 then type_of vs.(0) else TAny)
+  | VNull -> assert false
+
+(*
+ * Printers
+ *)
+
+(* The original Float.to_string adds a useless dot at the end of
+ * round numbers: *)
+let my_float_to_string v =
+  let s = Float.to_string v in
+  assert (String.length s > 0) ;
+  if s.[String.length s - 1] <> '.' then s else String.rchop s
+
+(* Used for debug, value expansion within strings, output values in tail
+ * and timeseries commands, test immediate values.., but not for code
+ * generation. *)
+let rec print_custom ?(null="NULL") oc = function
+  | VFloat f  -> my_float_to_string f |> String.print oc
+  | VString s -> Printf.fprintf oc "%S" s
+  | VBool b   -> Bool.print oc b
+  | VU8 i     -> Uint8.to_string i |> String.print oc
+  | VU16 i    -> Uint16.to_string i |> String.print oc
+  | VU32 i    -> Uint32.to_string i |> String.print oc
+  | VU64 i    -> Uint64.to_string i |> String.print oc
+  | VU128 i   -> Uint128.to_string i |> String.print oc
+  | VI8 i     -> Int8.to_string i |> String.print oc
+  | VI16 i    -> Int16.to_string i |> String.print oc
+  | VI32 i    -> Int32.to_string i |> String.print oc
+  | VI64 i    -> Int64.to_string i |> String.print oc
+  | VI128 i   -> Int128.to_string i |> String.print oc
+  | VNull     -> String.print oc null
+  | VEth i    -> RamenEthAddr.to_string i |> String.print oc
+  | VIpv4 i   -> RamenIpv4.to_string i |> String.print oc
+  | VIpv6 i   -> RamenIpv6.to_string i |> String.print oc
+  | VIp i     -> RamenIp.to_string i |> String.print oc
+  | VCidrv4 i -> RamenIpv4.Cidr.to_string i |> String.print oc
+  | VCidrv6 i -> RamenIpv6.Cidr.to_string i |> String.print oc
+  | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
+  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";" (print_custom ~null) oc vs
+  | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";" (print_custom ~null) oc vs
+
+let to_string ?null v = IO.to_string (print_custom ?null) v
+
+(* Allow to elude ~null while currying: *)
+let print oc v = print_custom oc v
+
+(*
+ * Promotions
+ *)
 
 let can_enlarge ~from ~to_ =
   (* Beware: it looks backward but it's not. [from] is the current
@@ -103,11 +185,35 @@ let enlarge_type = function
   | TU16 | TI16 -> TI32
   | TU32 | TI32 -> TI64
   | TU64 | TI64 -> TI128
+  (* We also consider floats to be larger than 128 bits integers: *)
+  | TU128 | TI128 -> TFloat
   | TIpv4   -> TIp
   | TIpv6   -> TIp
   | TCidrv4 -> TCidr
   | TCidrv6 -> TCidr
   | t -> invalid_arg ("Type "^ string_of_typ t ^" cannot be enlarged")
+
+let rec enlarge_value t v =
+  let vt = type_of v in
+  if vt = t then v else
+  (match v with
+  | VU8 x -> VI16 (Int16.of_uint8 x)
+  | VI8 x -> VI16 (Int16.of_int8 x)
+  | VU16 x -> VI32 (Int32.of_uint16 x)
+  | VI16 x -> VI32 (Int32.of_int16 x)
+  | VU32 x -> VI64 (Int64.of_uint32 x)
+  | VI32 x -> VI64 (Int64.of_int32 x)
+  | VU64 x -> VI128 (Int128.of_uint64 x)
+  | VI64 x -> VI128 (Int128.of_int64 x)
+  | VU128 x -> VFloat (Uint128.to_float x)
+  | VI128 x -> VFloat (Int128.to_float x)
+  | VIpv4 x -> VIp RamenIp.(V4 x)
+  | VIpv6 x -> VIp RamenIp.(V6 x)
+  | VCidrv4 x -> VCidr RamenIp.Cidr.(V4 x)
+  | VCidrv6 x -> VCidr RamenIp.Cidr.(V6 x)
+  | v -> invalid_arg ("Value "^ to_string v ^" cannot be enlarged into a "^
+                      string_of_typ t)) |>
+  enlarge_value t
 
 (* From the list of operand types, return the largest type able to accomodate
  * all operands. Most of the time it will be the largest in term of "all
@@ -123,75 +229,20 @@ let rec large_enough_for t1 t2 =
     | exception _ -> raise e
     | t1 -> large_enough_for t1 t2)
 
-(* stdint types are implemented as custom blocks, therefore are slower than
- * ints.  But we do not care as we merely represents code here, we do not run
- * the operators. *)
-type value =
-  | VFloat of float | VString of string | VBool of bool
-  | VU8 of uint8 | VU16 of uint16 | VU32 of uint32
-  | VU64 of uint64 | VU128 of uint128
-  | VI8 of int8 | VI16 of int16 | VI32 of int32
-  | VI64 of int64 | VI128 of int128 | VNull
-  | VEth of uint48
-  | VIpv4 of uint32 | VIpv6 of uint128 | VIp of RamenIp.t
-  | VCidrv4 of RamenIpv4.Cidr.t | VCidrv6 of RamenIpv6.Cidr.t
-  | VCidr of RamenIp.Cidr.t
-  | VTuple of value array
-  | VVec of value array (* All values must have same type *)
-  [@@ppp PPP_OCaml]
+(* From the list of operand types, return the largest type able to accommodate
+ * all operands. Most of the time it will be the largest in term of "all
+ * others can be enlarged to that one", but for special cases where we want
+ * an even larger type; For instance, if we combine an i8 and an u8 then we
+ * want the result to be an i16, or if we combine an IPv4 and an IPv6 then
+ * we want the result to be an IP. *)
+let largest_type = function
+  | fst :: rest ->
+    List.fold_left large_enough_for fst rest
+  | _ -> invalid_arg "largest_type"
 
-let rec type_of = function
-  | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
-  | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
-  | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
-  | VI64 _ -> TI64 | VI128 _ -> TI128
-  | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6 | VIp _ -> TIp
-  | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6 | VCidr _ -> TCidr
-  | VTuple vs -> TTuple (Array.map type_of vs)
-  | VVec vs ->
-      let d = Array.length vs in
-      TVec (d, if d > 0 then type_of vs.(0) else TAny)
-  | VNull -> assert false
-
-(* The original Float.to_string adds a useless dot at the end of
- * round numbers: *)
-let my_float_to_string v =
-  let s = Float.to_string v in
-  assert (String.length s > 0) ;
-  if s.[String.length s - 1] <> '.' then s else String.rchop s
-
-(* Used for debug, value expansion within strings, output values in tail
- * and timeseries commands, test immediate values.., but not for code
- * generation. *)
-let rec print_custom ?(null="NULL") oc = function
-  | VFloat f  -> my_float_to_string f |> String.print oc
-  | VString s -> Printf.fprintf oc "%S" s
-  | VBool b   -> Bool.print oc b
-  | VU8 i     -> Uint8.to_string i |> String.print oc
-  | VU16 i    -> Uint16.to_string i |> String.print oc
-  | VU32 i    -> Uint32.to_string i |> String.print oc
-  | VU64 i    -> Uint64.to_string i |> String.print oc
-  | VU128 i   -> Uint128.to_string i |> String.print oc
-  | VI8 i     -> Int8.to_string i |> String.print oc
-  | VI16 i    -> Int16.to_string i |> String.print oc
-  | VI32 i    -> Int32.to_string i |> String.print oc
-  | VI64 i    -> Int64.to_string i |> String.print oc
-  | VI128 i   -> Int128.to_string i |> String.print oc
-  | VNull     -> String.print oc null
-  | VEth i    -> RamenEthAddr.to_string i |> String.print oc
-  | VIpv4 i   -> RamenIpv4.to_string i |> String.print oc
-  | VIpv6 i   -> RamenIpv6.to_string i |> String.print oc
-  | VIp i     -> RamenIp.to_string i |> String.print oc
-  | VCidrv4 i -> RamenIpv4.Cidr.to_string i |> String.print oc
-  | VCidrv6 i -> RamenIpv6.Cidr.to_string i |> String.print oc
-  | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
-  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";" (print_custom ~null) oc vs
-  | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";" (print_custom ~null) oc vs
-
-let to_string ?null v = IO.to_string (print_custom ?null) v
-
-(* Allow to elude ~null while currying: *)
-let print oc v = print_custom oc v
+(*
+ * Tools
+ *)
 
 let rec any_value_of_type = function
   | TString -> VString ""
@@ -222,6 +273,10 @@ let is_round_integer = function
   | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _
   | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ -> false
   | _ -> true
+
+(*
+ * Parsing
+ *)
 
 module Parser =
 struct
@@ -301,7 +356,9 @@ struct
     (* Also in "all_possible" mode, accept an integer as a float: *)
     (decimal_number >>: fun i -> VFloat (Num.to_float i))
 
-  let p ?(only_narrowest=true) =
+  let tup_sep = opt_blanks -- char ';' -- opt_blanks
+
+  let rec p ?(only_narrowest=true) =
     (if only_narrowest then narrowest_int else all_possible_ints) |||
     (floating_point >>: fun f -> VFloat f) |||
     (strinG "false" >>: fun _ -> VBool false) |||
@@ -311,11 +368,38 @@ struct
     (RamenIpv4.Parser.p >>: fun v -> VIpv4 v) |||
     (RamenIpv6.Parser.p >>: fun v -> VIpv6 v) |||
     (RamenIpv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |||
-    (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
+    (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v) |||
+    (tuple >>: fun vs -> VTuple vs) |||
+    (vector >>: fun vs -> VVec vs)
     (* Note: we do not parse an IP or a CIDR as a generic RamenIP.t etc.
      * Indeed, that would lead to an ambiguous grammar and also what's the
      * point in losing typing accuracy? IPs will be cast to generic IPs
      * as required. *)
+
+  (* Empty tuples and tuples of arity 1 are disallowed in order not to
+   * conflict with parentheses used as grouping symbols: *)
+  and tuple m =
+    let m = "tuple" :: m in
+    (
+      char '(' -- opt_blanks -+
+      (repeat ~min:2 ~sep:tup_sep p >>:
+       fun vs -> Array.of_list vs) +-
+      opt_blanks +- char ')'
+    ) m
+
+  (* Empty vectors are disallowed so we cannot not know the element type: *)
+  and vector m =
+    let m = "vector" :: m in
+    (
+      char '[' -- opt_blanks -+
+      (several ~sep:tup_sep p >>: fun vs ->
+         match largest_type (List.map type_of vs) with
+         | exception Invalid_argument _ ->
+            raise (Reject "Cannot find common type")
+         | t -> List.map (enlarge_value t) vs |>
+                Array.of_list) +-
+      opt_blanks +- char ']'
+    ) m
 
   (*$= p & ~printer:(test_printer print)
     (Ok (VI32 (Int32.of_int 31000), (5,[])))   (test_p p "31000")
@@ -326,9 +410,13 @@ struct
     (Ok (VBool true, (4,[])))                  (test_p p "true")
     (Ok (VString "glop", (6,[])))              (test_p p "\"glop\"")
     (Ok (VFloat 15042., (6,[])))               (test_p p "15042.")
+    (Ok (VTuple [| VFloat 3.14; VBool true |], (12,[]))) \
+                                               (test_p p "(3.14; true)")
+    (Ok (VVec [| VFloat 3.14; VFloat 1. |], (9,[]))) \
+                                               (test_p p "[3.14; 1]")
   *)
 
-  let typ =
+  let scalar_typ =
     (strinG "float" >>: fun () -> TFloat) |||
     (strinG "string" >>: fun () -> TString) |||
     ((strinG "bool" ||| strinG "boolean") >>: fun () -> TBool) |||
