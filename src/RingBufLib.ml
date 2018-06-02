@@ -67,7 +67,7 @@ let rec sersize_of_fixsz_typ = function
   | TEth -> sersize_of_eth
   | TCidrv4 -> sersize_of_cidrv4
   | TCidrv6 -> sersize_of_cidrv6
-  | TString | TIp | TCidr | TTuple _ | TNum | TAny -> assert false
+  | TString | TIp | TCidr | TTuple _ | TVec _ | TNum | TAny -> assert false
 
 let rec sersize_of_value = function
   | VString s -> sersize_of_string s
@@ -92,11 +92,15 @@ let rec sersize_of_value = function
   | VCidrv6 _ -> sersize_of_cidrv6
   | VCidr x -> sersize_of_cidr x
   | VTuple vs -> sersize_of_tuple vs
-
+  | VVec vs -> sersize_of_vector vs
 and sersize_of_tuple vs =
   (* Tuples are serialized in field order, unserializer will know which
    * fields are present so there is no need for meta-data: *)
   Array.fold_left (fun s v -> s + sersize_of_value v) 0 vs
+and sersize_of_vector vs =
+  (* Vectors are serialized in field order, unserializer will also know
+   * the size of the vector and the type of its elements: *)
+  sersize_of_tuple vs
 
 let rec write_value tx offs = function
   | VFloat f -> write_float tx offs f
@@ -120,8 +124,8 @@ let rec write_value tx offs = function
   | VCidrv6 c -> write_cidr6 tx offs c
   | VCidr c -> write_cidr tx offs c
   | VTuple vs -> write_tuple tx offs vs
+  | VVec vs -> write_vector tx offs vs
   | VNull -> assert false
-
 (* Tuples are serialized as the succession of the values. No meta data
  * required. *)
 and write_tuple tx offs vs =
@@ -130,6 +134,7 @@ and write_tuple tx offs vs =
     sz + sersize_of_value v
   ) 0 vs |>
   ignore
+and write_vector tx = write_tuple tx
 
 let rec read_value tx offs = function
   | TFloat  -> VFloat (read_float tx offs)
@@ -153,6 +158,7 @@ let rec read_value tx offs = function
   | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
   | TCidr   -> VCidr (read_cidr tx offs)
   | TTuple ts -> read_tuple tx offs ts
+  | TVec (d, t) -> read_vector tx offs d t
   | TNum | TAny -> assert false
 and read_tuple tx offs ts =
   let offs = ref offs in
@@ -160,6 +166,12 @@ and read_tuple tx offs ts =
     let v = read_value tx !offs t in
     offs := !offs + sersize_of_value v ;
     v) ts)
+and read_vector tx offs d t =
+  let offs = ref offs in
+  VVec (Array.init d (fun _ ->
+    let v = read_value tx !offs t in
+    offs := !offs + sersize_of_value v ;
+    v))
 
 (* Unless wait_for_more, this will raise Empty when out of data *)
 let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =

@@ -161,7 +161,8 @@ let float_of_scalar_value =
   | VIpv6 x -> Uint128.to_float x
   | VIp (V4 x) -> Uint32.to_float x
   | VIp (V6 x) -> Uint128.to_float x
-  | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _ | VTuple _ -> 0.
+  | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _
+  | VTuple _ | VVec _ -> 0.
 
 let find_field_index typ n =
   match List.findi (fun _i f -> f.RamenTuple.typ_name = n) typ with

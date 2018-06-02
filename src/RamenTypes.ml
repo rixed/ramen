@@ -22,6 +22,7 @@ type typ =
   | TEth (* 48bits unsigned integers with funny notation *)
   | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
   | TTuple of typ array
+  | TVec of int * typ
   [@@ppp PPP_OCaml]
 
 let rec print_typ oc = function
@@ -48,6 +49,7 @@ let rec print_typ oc = function
   | TCidrv6 -> String.print oc "CIDRv6"
   | TCidr   -> String.print oc "CIDR"
   | TTuple ts -> Array.print print_typ oc ts
+  | TVec (d, t) -> Printf.fprintf oc "VEC(%d, %a)" d print_typ t
 
 let rec string_of_typ t = IO.to_string print_typ t
 
@@ -135,6 +137,7 @@ type value =
   | VCidrv4 of RamenIpv4.Cidr.t | VCidrv6 of RamenIpv6.Cidr.t
   | VCidr of RamenIp.Cidr.t
   | VTuple of value array
+  | VVec of value array (* All values must have same type *)
   [@@ppp PPP_OCaml]
 
 let rec type_of = function
@@ -145,6 +148,9 @@ let rec type_of = function
   | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6 | VIp _ -> TIp
   | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6 | VCidr _ -> TCidr
   | VTuple vs -> TTuple (Array.map type_of vs)
+  | VVec vs ->
+      let d = Array.length vs in
+      TVec (d, if d > 0 then type_of vs.(0) else TAny)
   | VNull -> assert false
 
 (* The original Float.to_string adds a useless dot at the end of
@@ -209,11 +215,12 @@ let rec any_value_of_type = function
   | TIp | TIpv4 -> VIpv4 Uint32.zero
   | TIpv6 -> VIpv6 Uint128.zero
   | TTuple ts -> VTuple (Array.map any_value_of_type ts)
+  | TVec (d, t) -> VVec (Array.create d (any_value_of_type t))
 
 let is_round_integer = function
   | VFloat f  -> fst(modf f) = 0.
   | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _
-  | VCidrv4 _ | VCidrv6 _ | VTuple _ -> false
+  | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ -> false
   | _ -> true
 
 module Parser =

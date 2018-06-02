@@ -96,6 +96,7 @@ let id_of_typ typ =
   | TCidrv6 -> "cidr6"
   | TCidr   -> "cidr"
   | TTuple _ -> "tuple"
+  | TVec _  -> "vector"
   | TNum | TAny -> assert false
 
 let emit_value_of_string typ oc var =
@@ -157,6 +158,7 @@ let rec emit_type oc =
   | VCidr (RamenIp.Cidr.V4 n) -> emit_type oc (VCidrv4 n)
   | VCidr (RamenIp.Cidr.V6 n) -> emit_type oc (VCidrv6 n)
   | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:", " emit_type oc vs
+  | VVec vs   -> Array.print emit_type oc vs
   | VNull     -> Printf.fprintf oc "None"
 
 (* Given a function name and an output type, return the actual function
@@ -211,6 +213,7 @@ let rec otype_of_type oc = function
   | TCidr -> String.print oc "RamenIp.Cidr.t"
   | TTuple ts ->
       Array.print ~first:"(" ~last:")" ~sep:" * " otype_of_type oc ts
+  | TVec (_d, t) -> Printf.fprintf oc "%a array" otype_of_type t
   | TNum | TAny -> assert false
 
 let omod_of_type = function
@@ -227,7 +230,7 @@ let omod_of_type = function
   | TCidrv4 -> "RamenIpv4.Cidr"
   | TCidrv6 -> "RamenIpv6.Cidr"
   | TCidr -> "RamenIp.Cidr"
-  | TTuple _ | TNum | TAny -> assert false
+  | TTuple _ | TVec _ | TNum | TAny -> assert false
 
 (* Why don't we have explicit casts in the AST so that we could stop
  * caring about those pesky conversions once and for all? Because the
