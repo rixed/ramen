@@ -368,6 +368,9 @@ and emit_expr ?state ~context oc expr =
     Printf.fprintf oc "%s%a"
       (if is_nullable expr then "Some " else "")
       emit_type c
+  | Finalize, Tuple (_, es), _ ->
+    list_print_as_tuple (emit_expr ?state ~context) oc es
+
   | Finalize, Field (_, tuple, field), _ ->
     (match !tuple with
     | TupleGroupPrevious ->
@@ -467,6 +470,21 @@ and emit_expr ?state ~context oc expr =
     emit_functionN ?state "RamenIpv6.Cidr.last" [Some TCidrv6] oc [e]
   | Finalize, StatelessFun1 (_, EndOfRange, e), Some TIp ->
     emit_functionN ?state "RamenIp.last" [Some TCidr] oc [e]
+
+  (* Stateless functions manipulating constructed types: *)
+  | Finalize, StatelessFun1 (_, Nth n, es), t ->
+    (match (typ_of es).scalar_typ with
+    | Some (TTuple ts) ->
+        let nb_items = Array.length ts in
+        let rec loop_t str i =
+          if i >= nb_items then str else
+          let str = str ^ (if i > 0 then "," else "")
+                        ^ (if i = n then "x_" else "_") in
+          loop_t str (i + 1) in
+        let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
+        (* emit_funcN will take care of nullability of es: *)
+        emit_functionN ?state nth_func [None] oc [es]
+    | _ -> assert false)
 
   (* Other stateless functions *)
   | Finalize, StatelessFun2 (_, Ge, e1, e2), Some TBool ->

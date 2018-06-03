@@ -140,30 +140,6 @@ let write_record conf ser_in_type rb tuple =
     (* For tests we won't archive the ringbufs so no need for time info: *)
     0., 0.)
 
-(* Garbage in / garbage out *)
-let float_of_scalar_value =
-  let open Stdint in
-  function
-  | VFloat x -> x
-  | VBool x -> if x then 1. else 0.
-  | VU8 x -> Uint8.to_float x
-  | VU16 x -> Uint16.to_float x
-  | VU32 x -> Uint32.to_float x
-  | VU64 x -> Uint64.to_float x
-  | VU128 x -> Uint128.to_float x
-  | VI8 x -> Int8.to_float x
-  | VI16 x -> Int16.to_float x
-  | VI32 x -> Int32.to_float x
-  | VI64 x -> Int64.to_float x
-  | VI128 x -> Int128.to_float x
-  | VEth x -> Uint48.to_float x
-  | VIpv4 x -> Uint32.to_float x
-  | VIpv6 x -> Uint128.to_float x
-  | VIp (V4 x) -> Uint32.to_float x
-  | VIp (V6 x) -> Uint128.to_float x
-  | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _
-  | VTuple _ | VVec _ -> 0.
-
 let find_field_index typ n =
   match List.findi (fun _i f -> f.RamenTuple.typ_name = n) typ with
   | exception Not_found ->

@@ -2,12 +2,10 @@
  *)
 open Batteries
 open Stdint
-open RamenLang
 open RamenHelpers
 
 (*$inject
   open TestHelpers
-  open RamenLang
 *)
 
 (*
@@ -16,7 +14,7 @@ open RamenHelpers
 
 (* TNum is not an actual type used by any value, but it's used as a default
  * type for numeric operands that can be "promoted" to any other numerical
- * type. TAny is meant to be replaced by an actual type during compilation:
+ * type. TAny is meant to be replaced by an actual type during typing:
  * all TAny types in an expression will be changed to a specific type that's
  * large enough to accommodate all the values at hand. *)
 type typ =
@@ -52,7 +50,7 @@ let rec print_typ oc = function
   | TCidrv4 -> String.print oc "CIDRv4"
   | TCidrv6 -> String.print oc "CIDRv6"
   | TCidr   -> String.print oc "CIDR"
-  | TTuple ts -> Array.print print_typ oc ts
+  | TTuple ts -> Array.print ~first:"(" ~last:")" ~sep:";" print_typ oc ts
   | TVec (d, t) -> Printf.fprintf oc "VEC(%d, %a)" d print_typ t
 
 let rec string_of_typ t = IO.to_string print_typ t
@@ -170,6 +168,9 @@ let can_enlarge ~from ~to_ =
     | TIpv6 -> [ TIpv6 ; TIp ]
     | TCidrv4 -> [ TCidrv4 ; TCidr ]
     | TCidrv6 -> [ TCidrv6 ; TCidr ]
+    (* TTuple [||] means "any tuple", so we can "enlarge" any actual tuple
+     * into "any tuple": *)
+    | TTuple ts -> [ TTuple [||] ]
     | x -> [ x ] in
   List.mem to_ compatible_types
 
@@ -274,6 +275,33 @@ let is_round_integer = function
   | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ -> false
   | _ -> true
 
+(* Garbage in / garbage out *)
+let float_of_scalar_value =
+  let open Stdint in
+  function
+  | VFloat x -> x
+  | VBool x -> if x then 1. else 0.
+  | VU8 x -> Uint8.to_float x
+  | VU16 x -> Uint16.to_float x
+  | VU32 x -> Uint32.to_float x
+  | VU64 x -> Uint64.to_float x
+  | VU128 x -> Uint128.to_float x
+  | VI8 x -> Int8.to_float x
+  | VI16 x -> Int16.to_float x
+  | VI32 x -> Int32.to_float x
+  | VI64 x -> Int64.to_float x
+  | VI128 x -> Int128.to_float x
+  | VEth x -> Uint48.to_float x
+  | VIpv4 x -> Uint32.to_float x
+  | VIpv6 x -> Uint128.to_float x
+  | VIp (V4 x) -> Uint32.to_float x
+  | VIp (V6 x) -> Uint128.to_float x
+  | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _
+  | VTuple _ | VVec _ -> 0.
+
+let int_of_scalar_value =
+  int_of_float % float_of_scalar_value
+
 (*
  * Parsing
  *)
@@ -356,9 +384,10 @@ struct
     (* Also in "all_possible" mode, accept an integer as a float: *)
     (decimal_number >>: fun i -> VFloat (Num.to_float i))
 
-  let tup_sep = opt_blanks -- char ';' -- opt_blanks
-
-  let rec p ?(only_narrowest=true) =
+  (* when parsing expressions we'd rather keep literal tuples/vectors to be
+   * expressions, to disambiguate the syntax. So then we only look for
+   * scalars: *)
+  let scalar ?(only_narrowest=true) =
     (if only_narrowest then narrowest_int else all_possible_ints) |||
     (floating_point >>: fun f -> VFloat f) |||
     (strinG "false" >>: fun _ -> VBool false) |||
@@ -368,13 +397,21 @@ struct
     (RamenIpv4.Parser.p >>: fun v -> VIpv4 v) |||
     (RamenIpv6.Parser.p >>: fun v -> VIpv6 v) |||
     (RamenIpv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |||
-    (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v) |||
-    (tuple >>: fun vs -> VTuple vs) |||
-    (vector >>: fun vs -> VVec vs)
+    (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
     (* Note: we do not parse an IP or a CIDR as a generic RamenIP.t etc.
      * Indeed, that would lead to an ambiguous grammar and also what's the
      * point in losing typing accuracy? IPs will be cast to generic IPs
      * as required. *)
+
+  let tup_sep = opt_blanks -- char ';' -- opt_blanks (* TODO: consider functions as taking a single tuple *)
+
+  (* But in general when parsing user provided values (such as in parameters
+   * or test files), we want to allow any literal: *)
+  let rec p ?only_narrowest =
+    scalar ?only_narrowest |||
+    (* Also literals of constructed types: *)
+    (tuple >>: fun vs -> VTuple vs) |||
+    (vector >>: fun vs -> VVec vs)
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
    * conflict with parentheses used as grouping symbols: *)

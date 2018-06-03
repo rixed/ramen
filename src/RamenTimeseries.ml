@@ -108,7 +108,7 @@ let get conf ?duration max_data_points since until where factors
             buckets in
         let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
         List.iteri (fun i vi ->
-          let v = float_of_scalar_value tuple.(vi) in
+          let v = RamenTypes.float_of_scalar_value tuple.(vi) in
           for bi = bi1 to bi2 do add_into_bucket buckets bi i v done
         ) vis)) in
   (* Extract the results as an Enum, one value per key *)

@@ -85,6 +85,7 @@ type stateless_fun1 =
   (* For network address range checks: *)
   | BeginOfRange
   | EndOfRange
+  | Nth of int (* Where the int starts at 0 for the first item *)
 
 type stateless_fun2 =
   (* Binary Ops scalars *)
@@ -109,6 +110,7 @@ type stateless_fun2 =
  * operations *)
 type t =
   | Const of typ * RamenTypes.value
+  | Tuple of typ * t list
   | Field of typ * tuple_prefix ref * string (* field name *)
   | StateField of typ * string (* Name of the state field - met only late in the game *)
   | Case of typ * case_alternative list * t option
@@ -235,11 +237,13 @@ let expr_true =
 let expr_false =
   Const (make_bool_typ ~nullable:false "false", VBool false)
 
-let expr_zero =
-  Const (make_typ ~typ:TU8 ~nullable:false "zero", VU8 (Uint8.of_int 0))
+let expr_u8 name n =
+  Const (make_typ ~typ:TU8 ~nullable:false name, VU8 (Uint8.of_int n))
 
-let expr_one =
-  Const (make_typ ~typ:TU8 ~nullable:false "one", VU8 (Uint8.of_int 1))
+let expr_zero = expr_u8 "zero" 0
+let expr_one = expr_u8 "one" 1
+let expr_two = expr_u8 "two" 2
+let expr_three = expr_u8 "three" 3
 
 let of_float v =
   Const (make_typ ~nullable:false (string_of_float v), VFloat v)
@@ -271,6 +275,9 @@ let rec print with_types fmt =
   function
   | Const (t, c) ->
     RamenTypes.print fmt c ; add_types t
+  | Tuple (t, es) ->
+    List.print ~first:"(" ~last:")" ~sep:"; " (print with_types) fmt es ;
+    add_types t
   | Field (t, tuple, field) ->
     Printf.fprintf fmt "%s.%s" (string_of_prefix !tuple) field ;
     add_types t
@@ -358,6 +365,7 @@ let rec print with_types fmt =
       (if op = BeginOfRange then "begin" else "end")
       (print with_types) e ;
     add_types t
+  | StatelessFun1 (t, Nth n, es) -> Printf.fprintf fmt "nth(%d, %a)" n (print with_types) es ; add_types t
   | StatelessFun2 (t, And, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Or, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Ge, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
@@ -457,7 +465,7 @@ let rec print with_types fmt =
     add_types t
 
 let typ_of = function
-  | Const (t, _) | Field (t, _, _) | StateField (t, _)
+  | Const (t, _) | Tuple (t, _) | Field (t, _, _) | StateField (t, _)
   | StatelessFun0 (t, _) | StatelessFun1 (t, _, _)
   | StatelessFun2 (t, _, _, _) | StatelessFunMisc (t, _)
   | StatefulFun (t, _, _) | GeneratorFun (t, _)
@@ -527,6 +535,7 @@ let rec fold_by_depth f i expr =
       Option.map_default (fold_by_depth f i') i' else_ in
     f i'' expr
 
+  | Tuple (_, es)
   | StatefulFun (_, _, Distinct es)
   | Coalesce (_, es)
   | StatelessFunMisc (_, (Max es|Min es|Print es)) ->
@@ -552,6 +561,9 @@ let is_generator =
 
 let rec map_type ?(recurs=true) f = function
   | Const (t, a) -> Const (f t, a)
+  | Tuple (t, es) ->
+    Tuple (f t,
+           if recurs then List.map (map_type ~recurs f) es else es)
   | Field (t, a, b) -> Field (f t, a, b)
   | StateField _ as e -> e
 
@@ -658,13 +670,14 @@ let rec map_type ?(recurs=true) f = function
 
 module Parser =
 struct
+  type expr = t
   (*$< Parser *)
   open RamenParsing
 
   (* Single things *)
   let const m =
     let m = "constant" :: m in
-    (RamenTypes.Parser.p ++
+    (RamenTypes.Parser.scalar ++
      optional ~def:false (
        char ~case_sensitive:false 'n' >>: fun _ -> true) >>:
      fun (c, nullable) ->
@@ -679,6 +692,16 @@ struct
     (Ok (Const (typn, VI8 (Stdint.Int8.of_int 15)), (5, []))) \
       (test_p const "15i8n" |> replace_typ_in_expr)
   *)
+
+  let const_i32 ?(min=Num.of_string (Int32.(to_string min_int)))
+                ?(max=Num.of_string (Int32.(to_string max_int))) m =
+    let open RamenTypes in
+    let what = "constant integer" in
+    let m = what :: m in
+    (integer_range ~min ~max >>: fun n ->
+      Const (make_typ ~nullable:false ~typ:TI32 what,
+             VI32 (Int32.of_string (Num.to_string n)))
+    ) m
 
   let null m =
     let m = "NULL" :: m in
@@ -852,13 +875,11 @@ struct
      optional ~def:def_state (blanks -+ state_lifespan) +-
      opt_blanks +- char '(' +- opt_blanks ++
      (if a > 0 then
-       repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep
-         lowest_prec_left_assoc ++
-       optional ~def:[] (sep -+ repeat ~what:"variadic arguments" ~sep
-                                       lowest_prec_left_assoc)
+       repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep p ++
+       optional ~def:[] (sep -+ repeat ~what:"variadic arguments" ~sep p)
       else
        return [] ++
-       repeat ~what:"variadic arguments" ~sep lowest_prec_left_assoc) +-
+       repeat ~what:"variadic arguments" ~sep p) +-
      opt_blanks +- char ')') m
 
   and afun_sf ?def_state a n =
@@ -897,17 +918,15 @@ struct
     afun_sf ?def_state 4 n >>: function (g, [a;b;c;d]) -> g, a, b, c, d | _ -> assert false
 
   and afunv a n m =
-    let sep = opt_blanks -- char ',' -- opt_blanks in
     let m = n :: m in
+    let sep = opt_blanks -- char ',' -- opt_blanks in
     (strinG n -- opt_blanks -- char '(' -- opt_blanks -+
      (if a > 0 then
-       repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep
-         lowest_prec_left_assoc ++
-       optional ~def:[] (sep -+ repeat ~what:"variadic arguments" ~sep
-                                       lowest_prec_left_assoc)
+       repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep p ++
+       optional ~def:[] (sep -+ repeat ~what:"variadic arguments" ~sep p)
       else
        return [] ++
-       repeat ~what:"variadic arguments" ~sep lowest_prec_left_assoc) +-
+       repeat ~what:"variadic arguments" ~sep p) +-
      opt_blanks +- char ')') m
 
   and afun a n =
@@ -1049,7 +1068,7 @@ struct
      (* Outputs TBool as that's the smallest we have. Actually outputs false. *)
      (afun1v "print" >>: fun (e, es) ->
         StatelessFunMisc (make_typ ~typ:TBool ~nullable:false "print", Print (e :: es))) |||
-     k_moveavg ||| cast ||| top_expr) m
+     k_moveavg ||| cast ||| top_expr ||| nth) m
 
   and cast m =
     let m = "cast" :: m in
@@ -1076,7 +1095,7 @@ struct
       (strinG "is" >>: fun () -> false)) +- blanks ++
      (* We can allow lowest precedence expressions here because of the
       * keywords that follow: *)
-     several ~sep:(char ',' -- opt_blanks) lowest_prec_left_assoc +- blanks +-
+     several ~sep:(char ',' -- opt_blanks) p +- blanks +-
      strinG "in" +- blanks +- strinG "top" +- blanks ++
      pos_decimal_integer "top size" ++
      optional ~def:GlobalState (blanks -+ state_lifespan) ++
@@ -1093,28 +1112,46 @@ struct
          g,
          Top { want_rank ; n ; what ; by ; duration })) m
 
+  and nth m =
+    let m = "n-th" :: m in
+    let q =
+      pos_decimal_integer "nth" ++
+      (that_string "th" ||| that_string "st" ||| that_string "nd") >>:
+      fun (n, th) ->
+        if n = 0 then raise (Reject "tuple indices start at 1") ;
+        if match n mod 10 with
+           | 1 -> th = "st"
+           | 2 -> th = "nd"
+           | _ -> th = "th" then n
+        else
+          (* Pedantic but also helps disambiguating the syntax: *)
+          raise (Reject ("bad suffix "^ th ^" for "^ string_of_int n))
+    and sep = check (char '(') ||| blanks in
+    (q +- sep ++ highestest_prec >>: fun (n, es) ->
+      StatelessFun1 (make_typ "nth", Nth (n-1), es)) m
+
   and case m =
     let m = "case" :: m in
     let alt m =
       let m = "case alternative" :: m in
-      (strinG "when" -- blanks -+ lowest_prec_left_assoc +-
-       blanks +- strinG "then" +- blanks ++ lowest_prec_left_assoc >>:
+      (strinG "when" -- blanks -+ p +-
+       blanks +- strinG "then" +- blanks ++ p >>:
        fun (cd, cs) -> { case_cond = cd ; case_cons = cs }) m
     in
     (strinG "case" -- blanks -+
      several ~sep:blanks alt +- blanks ++
      optional ~def:None (
-       strinG "else" -- blanks -+ some lowest_prec_left_assoc +- blanks) +-
+       strinG "else" -- blanks -+ some p +- blanks) +-
      strinG "end" >>: fun (alts, else_) ->
        Case (make_typ "case", alts, else_)) m
 
   and if_ m =
     let m = "if" :: m in
-    ((strinG "if" -- blanks -+ lowest_prec_left_assoc +-
-      blanks +- strinG "then" +- blanks ++ lowest_prec_left_assoc ++
+    ((strinG "if" -- blanks -+ p +-
+      blanks +- strinG "then" +- blanks ++ p ++
       optional ~def:None (
         blanks -- strinG "else" -- blanks -+
-        some lowest_prec_left_assoc) >>:
+        some p) >>:
       fun ((case_cond, case_cons), else_) ->
         Case (make_typ "conditional", [ { case_cond ; case_cons } ], else_)) |||
      (afun2 "if" >>: fun (case_cond, case_cons) ->
@@ -1138,12 +1175,42 @@ struct
 
   and highestest_prec m =
     (highestest_prec_no_parenthesis |||
-     char '(' -- opt_blanks -+
-       lowest_prec_left_assoc +-
-     opt_blanks +- char ')'
+     char '(' -- opt_blanks -+ p +- opt_blanks +- char ')' |||
+     tuple (*||| vector*)
     ) m
 
-  let p = lowest_prec_left_assoc
+  (* Empty tuples and tuples of arity 1 are disallowed in order not to
+   * conflict with parentheses used as grouping symbols: *)
+  and tuple m =
+    let m = "tuple" :: m in
+    (
+      char '(' -- opt_blanks -+
+      repeat ~min:2 ~sep:RamenTypes.Parser.tup_sep p +-
+      opt_blanks +- char ')' >>: fun es ->
+        let nb_items = List.length es in
+        assert (nb_items >= 2) ;
+        let typ = RamenTypes.(TTuple (Array.create nb_items TAny)) in
+        (* Even if all the fields are null the tuple is not null.
+         * No immediate tuple can be null. *)
+        Tuple (make_typ ~nullable:false ~typ "tuple", es)
+    ) m
+(*
+  (* Empty vectors are disallowed so we cannot not know the element type: *)
+  and vector m =
+    let m = "vector" :: m in
+    (
+      char '[' -- opt_blanks -+
+      (several ~sep:RamenTypes.Parser.tup_sep p >>: fun vs ->
+         match largest_type (List.map type_of vs) with
+         | exception Invalid_argument _ ->
+            raise (Reject "Cannot find common type")
+         | t -> List.map (enlarge_value t) vs |>
+                Array.of_list) +-
+      opt_blanks +- char ']'
+    ) m
+*)
+
+  and p m = lowest_prec_left_assoc m
 
   (*$= p & ~printer:(test_printer (print false))
     (Ok (\

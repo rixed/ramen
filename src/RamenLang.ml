@@ -76,6 +76,9 @@ type syntax_error =
   | UnknownFunc of string
   | NoAccessToGeneratedFields of { alias : string }
   | UnsolvableDependencyLoop of { program : string }
+  | NotAnInteger of RamenTypes.value
+  | OutOfBounds of int * int
+  | IncompatibleTuples of string * string
   | EveryWithFrom
 
 (* TODO: Move all errors related to compilation into Compiler *)
@@ -152,6 +155,14 @@ let string_of_syntax_error =
     "Unsolvable dependency loop prevent the compilation of "^ program
   | EveryWithFrom ->
     "Cannot use an every clause in conjunction with a from clause"
+  | NotAnInteger v ->
+    Printf.sprintf2 "Value %a must be an integer"
+      RamenTypes.print v
+  | OutOfBounds (n, lim) ->
+    Printf.sprintf "Index value %d is outside the permitted bounds (0..%d)"
+      n lim
+  | IncompatibleTuples (t1, t2) ->
+    Printf.sprintf "Incompatible tuples: %s and %s" t1 t2
 
 let () =
   Printexc.register_printer (function
