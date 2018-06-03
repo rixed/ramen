@@ -811,3 +811,14 @@ let uniquify () =
 let jitter ?(amplitude=0.25) v =
   let r = (Random.float amplitude) -. amplitude /. 2. in
   v +. (v *. r)
+
+let todo msg = failwith ("not implemented: "^ msg)
+
+let ordinal_suffix n =
+  let tens = n mod 100 in
+  if tens >= 10 && tens < 20 then "th" else
+  match n mod 10 with
+  | 1 -> "st"
+  | 2 -> "nd"
+  | 3 -> "rd"
+  | _ -> "th"

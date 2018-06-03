@@ -7,3 +7,8 @@ DEFINE tuple_exercice AS
   FROM clock
   SELECT 1st ("one"; tick; sum tick) AS one,
          2nd(2nd (42; (1; 17); tick+1)) AS seventeen;
+
+DEFINE vector_exercice AS
+  FROM tuple_exercice
+  SELECT 1st [one; "two"; "three"] AS eins,
+         2nd [eins; string(5th [6;5;4;3;2]); "drei"] AS zwei;

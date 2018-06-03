@@ -7,6 +7,7 @@
 open Batteries
 open Stdint
 open RamenLang
+open RamenHelpers
 
 (*$inject
   open TestHelpers
@@ -111,6 +112,7 @@ type stateless_fun2 =
 type t =
   | Const of typ * RamenTypes.value
   | Tuple of typ * t list
+  | Vector of typ * t list
   | Field of typ * tuple_prefix ref * string (* field name *)
   | StateField of typ * string (* Name of the state field - met only late in the game *)
   | Case of typ * case_alternative list * t option
@@ -278,6 +280,9 @@ let rec print with_types fmt =
   | Tuple (t, es) ->
     List.print ~first:"(" ~last:")" ~sep:"; " (print with_types) fmt es ;
     add_types t
+  | Vector (t, es) ->
+    List.print ~first:"[" ~last:"]" ~sep:"; " (print with_types) fmt es ;
+    add_types t
   | Field (t, tuple, field) ->
     Printf.fprintf fmt "%s.%s" (string_of_prefix !tuple) field ;
     add_types t
@@ -365,7 +370,8 @@ let rec print with_types fmt =
       (if op = BeginOfRange then "begin" else "end")
       (print with_types) e ;
     add_types t
-  | StatelessFun1 (t, Nth n, es) -> Printf.fprintf fmt "nth(%d, %a)" n (print with_types) es ; add_types t
+  | StatelessFun1 (t, Nth n, es) ->
+    Printf.fprintf fmt "%d%s(%a)" n (ordinal_suffix n) (print with_types) es ; add_types t
   | StatelessFun2 (t, And, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Or, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Ge, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
@@ -465,7 +471,8 @@ let rec print with_types fmt =
     add_types t
 
 let typ_of = function
-  | Const (t, _) | Tuple (t, _) | Field (t, _, _) | StateField (t, _)
+  | Const (t, _) | Tuple (t, _) | Vector (t, _)
+  | Field (t, _, _) | StateField (t, _)
   | StatelessFun0 (t, _) | StatelessFun1 (t, _, _)
   | StatelessFun2 (t, _, _, _) | StatelessFunMisc (t, _)
   | StatefulFun (t, _, _) | GeneratorFun (t, _)
@@ -536,6 +543,7 @@ let rec fold_by_depth f i expr =
     f i'' expr
 
   | Tuple (_, es)
+  | Vector (_, es)
   | StatefulFun (_, _, Distinct es)
   | Coalesce (_, es)
   | StatelessFunMisc (_, (Max es|Min es|Print es)) ->
@@ -564,6 +572,9 @@ let rec map_type ?(recurs=true) f = function
   | Tuple (t, es) ->
     Tuple (f t,
            if recurs then List.map (map_type ~recurs f) es else es)
+  | Vector (t, es) ->
+    Vector (f t,
+            if recurs then List.map (map_type ~recurs f) es else es)
   | Field (t, a, b) -> Field (f t, a, b)
   | StateField _ as e -> e
 
@@ -1119,13 +1130,9 @@ struct
       (that_string "th" ||| that_string "st" ||| that_string "nd") >>:
       fun (n, th) ->
         if n = 0 then raise (Reject "tuple indices start at 1") ;
-        if match n mod 10 with
-           | 1 -> th = "st"
-           | 2 -> th = "nd"
-           | _ -> th = "th" then n
-        else
-          (* Pedantic but also helps disambiguating the syntax: *)
-          raise (Reject ("bad suffix "^ th ^" for "^ string_of_int n))
+        if ordinal_suffix n = th then n
+        (* Pedantic but also helps disambiguating the syntax: *)
+        else raise (Reject ("bad suffix "^ th ^" for "^ string_of_int n))
     and sep = check (char '(') ||| blanks in
     (q +- sep ++ highestest_prec >>: fun (n, es) ->
       StatelessFun1 (make_typ "nth", Nth (n-1), es)) m
@@ -1176,7 +1183,7 @@ struct
   and highestest_prec m =
     (highestest_prec_no_parenthesis |||
      char '(' -- opt_blanks -+ p +- opt_blanks +- char ')' |||
-     tuple (*||| vector*)
+     tuple ||| vector
     ) m
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
@@ -1194,21 +1201,19 @@ struct
          * No immediate tuple can be null. *)
         Tuple (make_typ ~nullable:false ~typ "tuple", es)
     ) m
-(*
-  (* Empty vectors are disallowed so we cannot not know the element type: *)
+
+  (* Empty vectors are disallowed so we cannot ignore the element type: *)
   and vector m =
     let m = "vector" :: m in
     (
       char '[' -- opt_blanks -+
-      (several ~sep:RamenTypes.Parser.tup_sep p >>: fun vs ->
-         match largest_type (List.map type_of vs) with
-         | exception Invalid_argument _ ->
-            raise (Reject "Cannot find common type")
-         | t -> List.map (enlarge_value t) vs |>
-                Array.of_list) +-
-      opt_blanks +- char ']'
+      several ~sep:RamenTypes.Parser.tup_sep p +-
+      opt_blanks +- char ']' >>: fun es ->
+        let nb_items = List.length es in
+        assert (nb_items >= 1) ;
+        let typ = RamenTypes.(TVec (nb_items, TAny)) in
+        Vector (make_typ ~nullable:false ~typ "vector", es)
     ) m
-*)
 
   and p m = lowest_prec_left_assoc m
 

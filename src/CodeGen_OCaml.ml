@@ -36,6 +36,7 @@ let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.RamenTuple.typ_name
 
 let list_print_as_tuple p = List.print ~first:"(" ~last:")" ~sep:", " p
+let list_print_as_vector p = List.print ~first:"[|" ~last:"|]" ~sep:"; " p
 let list_print_as_product p = List.print ~first:"(" ~last:")" ~sep:" * " p
 
 let print_tuple_deconstruct tuple =
@@ -370,6 +371,8 @@ and emit_expr ?state ~context oc expr =
       emit_type c
   | Finalize, Tuple (_, es), _ ->
     list_print_as_tuple (emit_expr ?state ~context) oc es
+  | Finalize, Vector (_, es), _ ->
+    list_print_as_vector (emit_expr ?state ~context) oc es
 
   | Finalize, Field (_, tuple, field), _ ->
     (match !tuple with
@@ -472,7 +475,7 @@ and emit_expr ?state ~context oc expr =
     emit_functionN ?state "RamenIp.last" [Some TCidr] oc [e]
 
   (* Stateless functions manipulating constructed types: *)
-  | Finalize, StatelessFun1 (_, Nth n, es), t ->
+  | Finalize, StatelessFun1 (_, Nth n, es), _ ->
     (match (typ_of es).scalar_typ with
     | Some (TTuple ts) ->
         let nb_items = Array.length ts in
@@ -483,6 +486,10 @@ and emit_expr ?state ~context oc expr =
           loop_t str (i + 1) in
         let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
         (* emit_funcN will take care of nullability of es: *)
+        emit_functionN ?state nth_func [None] oc [es]
+    | Some (TVec (dim, t)) ->
+        assert (n < dim) ;
+        let nth_func = "(fun a_ -> Array.get a_ "^ string_of_int n ^")" in
         emit_functionN ?state nth_func [None] oc [es]
     | _ -> assert false)
 

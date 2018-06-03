@@ -394,6 +394,11 @@ let type_of_parents_field parents tuple_of_field field =
     raise (SyntaxError e) ;
   | Some ptyp -> ptyp
 
+let rec is_fully_typed = function
+  | TTuple ts -> Array.for_all is_fully_typed ts
+  | TVec (_, t) -> is_fully_typed t
+  | TNum | TAny -> false
+  | _ -> true
 
 (* Get rid of the short-cutting of or expressions: *)
 let (|||) a b = a || b
@@ -470,6 +475,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           | _, None (* already failed *) | None, _ (* failing now *) ->
             changed, false, None, (typ.nullable :: prev_nullables)
           | Some scal, Some lst ->
+            let all_typed = all_typed && is_fully_typed scal in
             changed, all_typed && scalar_finished_typing scal,
             Some (scal :: lst), (typ.nullable :: prev_nullables)
         ) (false, true, Some [], []) args in
@@ -550,9 +556,10 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         if Array.length ts <> nb_items then (
           !logger.debug "%sTyping TUPLE: expecting %d items but got %d"
             indent (Array.length ts) nb_items ;
-          let e = IncompatibleTuples (
-            IO.to_string (Expr.print true) expr,
-            IO.to_string RamenTypes.print_typ exp_tuple) in
+          let e = CannotTypeExpression {
+            what = exp_type.expr_name ;
+            got_type = IO.to_string (Expr.print true) expr ;
+            expected_type = IO.to_string RamenTypes.print_typ exp_tuple } in
           raise (SyntaxError e)) ;
         let changed =
           List.fold_lefti (fun changed i e ->
@@ -564,27 +571,87 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
             !logger.debug "%sTyping TUPLE: item %d is %a (changed: %b)"
               indent i print_typ typ chg ;
             let chg =
-              Option.map_default
-                (set_nullable ~indent exp_type) false typ.nullable || chg in
-            let chg =
               Option.map_default (fun item_typ ->
-                  if item_typ = ts.(i) then false else
-                  if ts.(i) = TAny || can_enlarge ~from:ts.(i) ~to_:item_typ
-                  then (
-                    !logger.debug "%sTyping TUPLE: Improving item %d from %a"
-                      indent i RamenTypes.print_typ ts.(i) ;
-                    ts.(i) <- item_typ ;
-                    true
-                  ) else (
-                    let e = CannotTypeExpression {
-                      what = exp_type.expr_name ^" item "^ string_of_int i ;
-                      expected_type = IO.to_string RamenTypes.print_typ ts.(i) ;
-                      got_type = IO.to_string RamenTypes.print_typ item_typ } in
-                    raise (SyntaxError e)
-                  )
+                if item_typ = ts.(i) then false else
+                if ts.(i) = TAny || can_enlarge ~from:ts.(i) ~to_:item_typ
+                then (
+                  !logger.debug "%sTyping TUPLE: Improving item %d from %a"
+                    indent i RamenTypes.print_typ ts.(i) ;
+                  ts.(i) <- item_typ ;
+                  true
+                ) else (
+                  let e = CannotTypeExpression {
+                    what = exp_type.expr_name ^" item "^ string_of_int i ;
+                    expected_type = IO.to_string RamenTypes.print_typ ts.(i) ;
+                    got_type = IO.to_string RamenTypes.print_typ item_typ } in
+                  raise (SyntaxError e)
+                )
               ) false typ.scalar_typ || chg in
             changed || chg
           ) false es in
+        changed
+    | Some _ ->
+        assert false (* should not happen? *))
+
+  | Vector (_op_typ, es) ->
+    (* [es] is a list of expressions, which type must be all the same.
+     * The resulting type will be the sequence of those (exp_type is going
+     * to be enlarged as we progress). *)
+    !logger.debug "%sTyping VECTOR, expecting %a"
+      indent Expr.print_typ exp_type ;
+    let nb_items = List.length es in
+    (match exp_type.scalar_typ with
+    | None | Some (TVec (0, _)) ->
+        !logger.debug "%sTyping VECTOR: expecting a vector of dimension %d"
+          indent nb_items ;
+        let typ = TVec (nb_items, TAny) in
+        exp_type.scalar_typ <- Some typ ;
+        true
+    | Some (TVec (dim, t) as exp_vector) ->
+        let cannot_type = SyntaxError (CannotTypeExpression {
+          what = exp_type.expr_name ;
+          got_type = IO.to_string (Expr.print true) expr ;
+          expected_type = IO.to_string RamenTypes.print_typ exp_vector }) in
+        if dim <> nb_items then (
+          !logger.debug "%sTyping VECTOR: expecting %d items but got %d"
+            indent dim nb_items ;
+          raise cannot_type) ;
+        let changed, largest =
+          List.fold_lefti (fun (changed, largest) i e ->
+            let typ = typ_of e in
+            (* Typecheck e *)
+            let chg =
+              check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ
+                         ~params e in
+            !logger.debug "%sTyping VECTOR: item %d is %a (changed: %b)"
+              indent i print_typ typ chg ;
+            let largest =
+              match largest, typ.scalar_typ with
+              | Some TAny, fst_typ -> fst_typ
+              | Some largest, Some t2 ->
+                  (try Some (large_enough_for largest t2)
+                  with Invalid_argument _ -> raise cannot_type)
+              | _ -> None in
+            changed || chg, largest
+          ) (false, Some TAny) es in
+        (* Update expected type with largest: *)
+        let changed =
+          Option.map_default (fun largest ->
+            if t = largest then false else
+            if t = TAny || can_enlarge ~from:t ~to_:largest
+            then (
+              !logger.debug "%sTyping VECTOR: Improving vector type from %a"
+                indent RamenTypes.print_typ t ;
+              exp_type.scalar_typ <- Some (TVec (nb_items, largest)) ;
+              true
+            ) else (
+              let e = CannotTypeExpression {
+                what = exp_type.expr_name ;
+                expected_type = IO.to_string RamenTypes.print_typ t ;
+                got_type = IO.to_string RamenTypes.print_typ largest } in
+              raise (SyntaxError e)
+            )
+          ) false largest || changed in
         changed
     | Some _ ->
         assert false (* should not happen? *))
@@ -920,15 +987,28 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | StatelessFun2 (op_typ, (BitAnd|BitOr|BitXor), e1, e2) ->
     check_op op_typ largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun1 (op_typ, Nth n, es) ->
-      (* Try nth on a tuple: *)
-      check_op op_typ (function
+    (* Try nth first on a tuple: *)
+    (* TODO: allow n to be an expression, check that it's constant for tuples *)
+    (try check_op op_typ (function
         | [ TTuple ts ] ->
             if n < 0 || n >= Array.length ts then
               raise (SyntaxError (OutOfBounds (n, Array.length ts))) ;
             ts.(n)
         | _ -> assert false)
         [Some (TTuple [||]), None, es]
-      (* TODO: try on a vector *)
+     with SyntaxError _ as e ->
+      !logger.debug "%snth failed on tuple with %S"
+        indent (Printexc.to_string e) ;
+      (* Try then on a vector *)
+      check_op op_typ (function
+        | [ TVec (dim, t) ] ->
+            if n < 0 || n >= dim then
+              raise (SyntaxError (OutOfBounds (n, dim))) ;
+            !logger.debug "%sNth function will return an %a"
+              indent RamenTypes.print_typ t ;
+            t
+        | _ -> assert false)
+        [Some (TVec (0, TAny)), None, es])
 
   | StatelessFun1 (op_typ, (BeginOfRange|EndOfRange), e) ->
     (* Not really bullet-proof in theory since check_op may update the

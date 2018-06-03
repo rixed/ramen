@@ -170,7 +170,10 @@ let can_enlarge ~from ~to_ =
     | TCidrv6 -> [ TCidrv6 ; TCidr ]
     (* TTuple [||] means "any tuple", so we can "enlarge" any actual tuple
      * into "any tuple": *)
-    | TTuple ts -> [ TTuple [||] ]
+    | TTuple _ -> [ TTuple [||] ]
+    (* Similarly, TVec (0, TAny) means "any vector", so we can enlarge any actual
+     * vector into that: *)
+    | TVec _ -> [ TVec (0, TAny) ]
     | x -> [ x ] in
   List.mem to_ compatible_types
 

@@ -78,7 +78,6 @@ type syntax_error =
   | UnsolvableDependencyLoop of { program : string }
   | NotAnInteger of RamenTypes.value
   | OutOfBounds of int * int
-  | IncompatibleTuples of string * string
   | EveryWithFrom
 
 (* TODO: Move all errors related to compilation into Compiler *)
@@ -161,8 +160,6 @@ let string_of_syntax_error =
   | OutOfBounds (n, lim) ->
     Printf.sprintf "Index value %d is outside the permitted bounds (0..%d)"
       n lim
-  | IncompatibleTuples (t1, t2) ->
-    Printf.sprintf "Incompatible tuples: %s and %s" t1 t2
 
 let () =
   Printexc.register_printer (function
