@@ -136,8 +136,8 @@ let distinct_finalize st = st.last_was_distinct
 
 let heavy_hitters_init n duration =
   let max_size = 10 * n in (* TODO? *)
-  (* TODO: compute the actual decay parameter corresponding to duration: *)
-  let decay = 0. in
+  (* We want an entry weight to be halved after [duration]: *)
+  let decay = -. log 0.5 /. duration in
   HeavyHitters.make ~max_size ~decay
 
 let heavy_hitters_add s w x =
