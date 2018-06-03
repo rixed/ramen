@@ -3,13 +3,15 @@
 DEFINE clock AS
   SELECT sum 1 AS tick EVERY 1 SECOND;
 
-DEFINE tuple_exercice AS
+DEFINE tuple_exercise AS
   FROM clock
-  SELECT 1st ("one"; tick; sum tick) AS one,
-         2nd(2nd (42; (1; 17); tick+1)) AS seventeen;
+  SELECT ( 1st ("one"; tick; sum tick) ;
+           2nd(2nd (42; (1; 17); tick+1)) ) AS some_tup,
+         [ ("glop"; 42; "glop") ; ("pin"; 2; "pon") ] AS some_vec;
 
-DEFINE vector_exercice AS
-  FROM tuple_exercice
-  SELECT 1st [one; "two"; "three"] AS eins,
-         2nd [eins; string(5th [6;5;4;3;2]); "drei"] AS zwei,
+DEFINE vector_exercise AS
+  FROM tuple_exercise
+  SELECT 1st some_tup AS one,
+         1st [one; "two"; "three"] AS eins,
+         2nd [eins; string(5th [6;5;4;3; 2nd(2nd(some_vec)) ]); "drei"] AS zwei,
          get(u8(zwei), [eins; zwei; "drei"]) AS drei

@@ -1,9 +1,7 @@
 {
   programs = [ ("constructed_types.x", []) ];
   outputs = {
-    "tests/constructed_types/tuple_exercice" => {
-      present = [ { "one" => "\"one\""; "seventeen" => "17" } ] };
-    "tests/constructed_types/vector_exercice" => {
+    "tests/constructed_types/vector_exercise" => {
       present = [ { "eins" => "\"one\"";
                     "zwei" => "\"2\"";
                     "drei" => "\"drei\"" } ] }

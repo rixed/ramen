@@ -78,6 +78,8 @@ type syntax_error =
   | UnsolvableDependencyLoop of { program : string }
   | NotAnInteger of RamenTypes.value
   | OutOfBounds of int * int
+  | IncompatibleVecItems of { what : string ; indice : int ; typ : string ;
+                              largest : string }
   | EveryWithFrom
 
 (* TODO: Move all errors related to compilation into Compiler *)
@@ -160,6 +162,10 @@ let string_of_syntax_error =
   | OutOfBounds (n, lim) ->
     Printf.sprintf "Index value %d is outside the permitted bounds (0..%d)"
       n lim
+  | IncompatibleVecItems { what ; indice ; typ ; largest } ->
+    Printf.sprintf "In vector %s, element %d has type %s which is \
+                    incompatible with previous element type %s"
+      what indice typ largest
 
 let () =
   Printexc.register_printer (function

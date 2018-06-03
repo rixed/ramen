@@ -157,21 +157,21 @@ let rec read_value tx offs = function
   | TCidrv4 -> VCidrv4 (read_cidr4 tx offs)
   | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
   | TCidr   -> VCidr (read_cidr tx offs)
-  | TTuple ts -> read_tuple tx offs ts
-  | TVec (d, t) -> read_vector tx offs d t
+  | TTuple ts -> VTuple (read_tuple ts tx offs)
+  | TVec (d, t) -> VVec (read_vector d t tx offs)
   | TNum | TAny -> assert false
-and read_tuple tx offs ts =
+and read_tuple ts tx offs =
   let offs = ref offs in
-  VTuple (Array.map (fun t ->
+  Array.map (fun t ->
     let v = read_value tx !offs t in
     offs := !offs + sersize_of_value v ;
-    v) ts)
-and read_vector tx offs d t =
+    v) ts
+and read_vector d t tx offs =
   let offs = ref offs in
-  VVec (Array.init d (fun _ ->
+  Array.init d (fun _ ->
     let v = read_value tx !offs t in
     offs := !offs + sersize_of_value v ;
-    v))
+    v)
 
 (* Unless wait_for_more, this will raise Empty when out of data *)
 let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =

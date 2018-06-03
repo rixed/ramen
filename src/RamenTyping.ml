@@ -190,19 +190,27 @@ let make_typed_func program_name rcf =
     event_time = rcf.F.event_time ;
     factors = rcf.F.factors }
 
+let scalar_finished_typing = function
+  | TNum | TAny | TTuple [||] | TVec (0, _) -> false
+  | _ -> true
+
 (* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =
   List.iter (fun (field_name, typ) ->
     let open RamenExpr in
     (* If we couldn't determine nullability for an out field, it means
      * we can pick freely: *)
+    let type_is_known =
+      match typ.scalar_typ with
+      | None -> false
+      | Some t -> scalar_finished_typing t in
     if tuple_prefix = TupleOut &&
-       typ.scalar_typ <> None && typ.nullable = None
+       type_is_known && typ.nullable = None
     then (
       !logger.debug "Field %s has no constraint on nullability. \
                      Let's make it non-null." field_name ;
       typ.nullable <- Some false) ;
-    if typ.nullable = None || typ.scalar_typ = None then (
+    if typ.nullable = None || not type_is_known then (
       let e = CannotTypeField {
         field = field_name ;
         typ = IO.to_string print_typ typ ;
@@ -334,10 +342,6 @@ let check_expr_type ~indent ~ok_if_larger ~set_null ~from ~to_ =
     | None -> changed
     | Some from_null -> set_nullable ~indent to_ from_null || changed
   else changed
-
-let scalar_finished_typing = function
-  | TNum | TAny | TTuple [||] | TVec (0, _) -> false
-  | _ -> true
 
 exception ParentIsUntyped
 (* Can raise ParentIsUntyped if the parent is still untyped or
@@ -608,14 +612,15 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         exp_type.scalar_typ <- Some typ ;
         true
     | Some (TVec (dim, t) as exp_vector) ->
-        let cannot_type = SyntaxError (CannotTypeExpression {
-          what = exp_type.expr_name ;
-          got_type = IO.to_string (Expr.print true) expr ;
-          expected_type = IO.to_string RamenTypes.print_typ exp_vector }) in
         if dim <> nb_items then (
           !logger.debug "%sTyping VECTOR: expecting %d items but got %d"
             indent dim nb_items ;
-          raise cannot_type) ;
+          let e = CannotTypeExpression {
+            what = exp_type.expr_name ;
+            got_type = IO.to_string (Expr.print true) expr ;
+            expected_type = IO.to_string RamenTypes.print_typ exp_vector
+          } in
+          raise (SyntaxError e)) ;
         let changed, largest =
           List.fold_lefti (fun (changed, largest) i e ->
             let typ = typ_of e in
@@ -630,7 +635,14 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
               | Some TAny, fst_typ -> fst_typ
               | Some largest, Some t2 ->
                   (try Some (large_enough_for largest t2)
-                  with Invalid_argument _ -> raise cannot_type)
+                  with Invalid_argument _ ->
+                    let e = IncompatibleVecItems {
+                      what = exp_type.expr_name ;
+                      indice = i ;
+                      typ = IO.to_string RamenTypes.print_typ t2 ;
+                      largest = IO.to_string RamenTypes.print_typ largest
+                    } in
+                    raise (SyntaxError e))
               | _ -> None in
             changed || chg, largest
           ) (false, Some TAny) es in

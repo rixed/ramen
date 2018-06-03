@@ -23,6 +23,9 @@ type typ =
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
   | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
+  (* TODO: Support for tuples/vectors of nullable types?
+   *       But then, serialization is harder since we need several bits in
+   *       the nullmask for constructed types. *)
   | TTuple of typ array
   | TVec of int * typ
   [@@ppp PPP_OCaml]
@@ -133,7 +136,7 @@ let print oc v = print_custom oc v
  * Promotions
  *)
 
-let can_enlarge ~from ~to_ =
+let can_enlarge_scalar ~from ~to_ =
   (* Beware: it looks backward but it's not. [from] is the current
    * type of the expression and [to_] is the type of its
    * operands; and we want to know if we could change the type of the global
@@ -168,14 +171,31 @@ let can_enlarge ~from ~to_ =
     | TIpv6 -> [ TIpv6 ; TIp ]
     | TCidrv4 -> [ TCidrv4 ; TCidr ]
     | TCidrv6 -> [ TCidrv6 ; TCidr ]
-    (* TTuple [||] means "any tuple", so we can "enlarge" any actual tuple
-     * into "any tuple": *)
-    | TTuple _ -> [ TTuple [||] ]
-    (* Similarly, TVec (0, TAny) means "any vector", so we can enlarge any actual
-     * vector into that: *)
-    | TVec _ -> [ TVec (0, TAny) ]
     | x -> [ x ] in
   List.mem to_ compatible_types
+
+let rec can_enlarge ~from ~to_ =
+  match from, to_ with
+  | TTuple ts1, TTuple ts2 ->
+      (* TTuple [||] means "any tuple", so we can "enlarge" any actual tuple
+       * into "any tuple": *)
+      ts2 = [||] ||
+      (* Otherwise we must have the same size and each item must be
+       * enlargeable: *)
+      Array.length ts1 = Array.length ts2 &&
+      Array.for_all2 (fun from_item to_item ->
+        can_enlarge ~from:from_item ~to_:to_item
+      ) ts1 ts2
+  | TVec (d1, t1), TVec (d2, t2) ->
+      (* Similarly, TVec (0, _) means "any vector", so we can enlarge any
+       * actual vector into that: *)
+      d2 = 0 ||
+      (* Otherwise, vectors must have the same dimension and t1 must be
+       * enlargeable to t2: *)
+      d1 = d2 && can_enlarge ~from:t1 ~to_:t2
+  | TTuple _, _ | _, TTuple _ | TVec _, _ | _, TVec _ ->
+      false
+  | _ -> can_enlarge_scalar ~from ~to_
 
 let larger_type t1 t2 =
   if can_enlarge ~from:t1 ~to_:t2 then t2 else
