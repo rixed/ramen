@@ -1,19 +1,21 @@
 (* Simple implementation of a polymorphic set that keeps only the most
  * important entries. *)
 open Batteries
+open RamenLog
 
 let debug = false
 
 (* Weight map: from weight to anything, ordered bigger weights first: *)
 module WMap = Map.Make (struct
-  type t = float
-  let compare w1 w2 = Float.compare w2 w1
+  type t = float ref (* ref so we can downscale *)
+  let compare w1 w2 = Float.compare !w2 !w1
 end)
 
 type 'a t =
   { max_size : int ;
     mutable cur_size : int ;
-    decay : float ;
+    decay : float ; (* decay factor (0 for no decay) *)
+    mutable time_origin : float option ;
     (* value to weight and overestimation: *)
     mutable w_of_x : ('a, float * float) Map.t ;
     (* max weight to value to overestimation. Since we need iteration to go
@@ -21,20 +23,47 @@ type 'a t =
     mutable xs_of_w : (('a, float) Map.t) WMap.t }
 
 let make ~max_size ~decay =
-  { max_size ; decay ; cur_size = 0 ;
+  { max_size ; decay ; time_origin = None ; cur_size = 0 ;
     w_of_x = Map.empty ; xs_of_w = WMap.empty }
 
+(* downscale all stored weight by decr and reset time_origin: *)
+let downscale s t d =
+  !logger.debug "HeavyHitters: downscaling %d entries by %g"
+    s.cur_size d ;
+  s.w_of_x <-
+    Map.map (fun (w, o) -> w *. d, o *. d) s.w_of_x ;
+  WMap.iter (fun w xs -> w := !w *. d) s.xs_of_w ;
+  s.time_origin <- Some t
+
 let add s t w x =
+  (* Decaying old weights is the same as inflating new weights.
+   * But then after a while new inflated weights will become too big to
+   * be accurately tracked, so when this happen we _rescale_ the top,
+   * that is we actually decay the history and reset the origin of time
+   * so that new entries will only be inflated by exp(0), and so on. *)
+  (* Shall we downscale? *)
+  let inflation =
+    match s.time_origin with
+    | None -> s.time_origin <- Some t ; 1.
+    | Some t0 ->
+        let infl = exp((t -. t0) *. s.decay) in
+        (* Make this a parameter for trading off CPU vs accuracy? *)
+        let max_infl = 1e6 in
+        if infl < max_infl then infl else (
+          downscale s t infl ;
+          1.
+        ) in
+  let w = w *. inflation in
   let add_in_xs_of_w x w o m =
     if debug then Printf.printf "TOP: add entry %s of weight %f\n" (dump x) w ;
-    WMap.modify_opt w (function
+    WMap.modify_opt (ref w) (function
       | None -> Some (Map.singleton x o)
       | Some xs ->
           assert (not (Map.mem x xs)) ;
           Some (Map.add x o xs)
     ) m
   and rem_from_xs_of_w x w m =
-    WMap.modify_opt w (function
+    WMap.modify_opt (ref w) (function
       | None -> assert false
       | Some xs ->
           assert (Map.mem x xs) ;
@@ -51,7 +80,7 @@ let add s t w x =
             (* pick the victim and remove it from xs_of_w: *)
             let victim_w', xs = WMap.max_binding s.xs_of_w in
             let (victim_x', _victim_o), xs' = Map.pop xs in
-            victim_w := victim_w' ;
+            victim_w := !victim_w' ;
             victim_x := Some victim_x' ;
             s.xs_of_w <-
               if Map.is_empty xs' then
@@ -93,10 +122,10 @@ let add s t w x =
  * heaviest to lightest. *)
 let fold u f s =
   WMap.fold (fun w xs u ->
-    if debug then Printf.printf "TOP: folding over all entries of weight %f\n" w ;
+    if debug then Printf.printf "TOP: folding over all entries of weight %f\n" !w ;
     Map.foldi (fun x o u ->
       if debug then Printf.printf "TOP:   ... %s\n" (dump x) ;
-      f w x o u
+      f !w x o u
     ) xs u
   ) s.xs_of_w u
 
