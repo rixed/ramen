@@ -3,7 +3,9 @@
   outputs = {
     "tests/constructed_types/tuple_exercice" => {
       present = [ { "one" => "\"one\""; "seventeen" => "17" } ] };
-		"tests/constructed_types/vector_exercice" => {
-			present = [ { "eins" => "\"one\""; "zwei" => "\"2\"" } ] }
+    "tests/constructed_types/vector_exercice" => {
+      present = [ { "eins" => "\"one\"";
+                    "zwei" => "\"2\"";
+                    "drei" => "\"drei\"" } ] }
   }
 }

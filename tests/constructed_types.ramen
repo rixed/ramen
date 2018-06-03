@@ -11,4 +11,5 @@ DEFINE tuple_exercice AS
 DEFINE vector_exercice AS
   FROM tuple_exercice
   SELECT 1st [one; "two"; "three"] AS eins,
-         2nd [eins; string(5th [6;5;4;3;2]); "drei"] AS zwei;
+         2nd [eins; string(5th [6;5;4;3;2]); "drei"] AS zwei,
+         get(u8(zwei), [eins; zwei; "drei"]) AS drei

@@ -106,6 +106,9 @@ type stateless_fun2 =
   | BitAnd
   | BitOr
   | BitXor
+  (* Same as Nth but only for vectors (accepts non constant index, and
+   * indices start at 0) *)
+  | VecGet
 
 (* FIXME: when we end prototyping use objects to make it easier to add
  * operations *)
@@ -381,6 +384,7 @@ let rec print with_types fmt =
   | StatelessFun2 (t, BitAnd, e1, e2) -> Printf.fprintf fmt "(%a) & (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, BitOr, e1, e2) -> Printf.fprintf fmt "(%a) | (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, BitXor, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, VecGet, e1, e2) -> Printf.fprintf fmt "get(%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFunMisc (t, Like (e, p)) -> Printf.fprintf fmt "(%a) LIKE %S" (print with_types) e p ; add_types t
   | StatelessFunMisc (t, Max es) ->
     Printf.fprintf fmt "GREATEST %a" print_args es ;
@@ -1076,6 +1080,8 @@ struct
         StatelessFunMisc (make_typ "min", Min (e1 :: e2 :: e3s))) |||
      (afun1v "least" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "min", Min (e :: es))) |||
+     (afun2 "get" >>: fun (n, v) ->
+        StatelessFun2 (make_typ "get", VecGet, n, v)) |||
      (* Outputs TBool as that's the smallest we have. Actually outputs false. *)
      (afun1v "print" >>: fun (e, es) ->
         StatelessFunMisc (make_typ ~typ:TBool ~nullable:false "print", Print (e :: es))) |||

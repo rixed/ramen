@@ -988,7 +988,6 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     check_op op_typ largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun1 (op_typ, Nth n, es) ->
     (* Try nth first on a tuple: *)
-    (* TODO: allow n to be an expression, check that it's constant for tuples *)
     (try check_op op_typ (function
         | [ TTuple ts ] ->
             if n < 0 || n >= Array.length ts then
@@ -1004,11 +1003,14 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         | [ TVec (dim, t) ] ->
             if n < 0 || n >= dim then
               raise (SyntaxError (OutOfBounds (n, dim))) ;
-            !logger.debug "%sNth function will return an %a"
-              indent RamenTypes.print_typ t ;
             t
         | _ -> assert false)
         [Some (TVec (0, TAny)), None, es])
+  | StatelessFun2 (op_typ, VecGet, n, es) ->
+    check_op op_typ (function
+      | [ _; TVec (dim, t) ] -> t
+      | _ -> assert false)
+      [Some TI32, None, n; Some (TVec (0, TAny)), None, es]
 
   | StatelessFun1 (op_typ, (BeginOfRange|EndOfRange), e) ->
     (* Not really bullet-proof in theory since check_op may update the

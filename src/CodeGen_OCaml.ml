@@ -492,6 +492,9 @@ and emit_expr ?state ~context oc expr =
         let nth_func = "(fun a_ -> Array.get a_ "^ string_of_int n ^")" in
         emit_functionN ?state nth_func [None] oc [es]
     | _ -> assert false)
+  | Finalize, StatelessFun2 (_, VecGet, n, es), _ ->
+    let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
+    emit_functionN ?state func [None; Some TI32] oc [es; n]
 
   (* Other stateless functions *)
   | Finalize, StatelessFun2 (_, Ge, e1, e2), Some TBool ->
