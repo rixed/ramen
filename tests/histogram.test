@@ -1,0 +1,10 @@
+{
+  programs = [
+    ("fixtures/cars.x", []);
+    ("histogram.x", []) ];
+  outputs = {
+    "tests/histogram/t" => {
+      present = [ { "horsepower_histogram" => "[0;152;1448;1214;1015;360;176;126;40;0;8;0]" } ]
+    }
+  }
+}

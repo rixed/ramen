@@ -1,0 +1,17 @@
+-- vim: ft=sql expandtab
+
+DEFINE t AS
+  FROM tests/fixtures/cars/csv
+  SELECT HISTOGRAM(horsepower, 0, 1000, 10),
+         HISTOGRAM(COALESCE(CO, 0.), 0, 10, 10) AS CO_histogram,
+         -- keep this one nullable for tests:
+         HISTOGRAM(CO2, 0, 1000, 10)
+  COMMIT AFTER group.#count >= 4539;
+
+DEFINE t2 AS
+  FROM t
+  SELECT
+    PRINT(horsepower_histogram),
+    PRINT(sparkline(horsepower_histogram)) AS nice_sparkline1,
+    PRINT(CO_histogram),
+    PRINT(sparkline(CO_histogram)) AS nice_sparkline2;

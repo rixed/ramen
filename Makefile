@@ -326,6 +326,7 @@ tests/basic_aggr.x: tests/fixtures/n123.x tests/fixtures/cars.x
 tests/tuples.x: tests/fixtures/n123.x
 tests/port_scan.x: tests/fixtures/port_scan.x
 tests/ip.x: tests/fixtures/mixture.x
+tests/histogram.x: tests/fixtures/cars.x
 tests/lag.success: tests/lag.x tests/fixtures/n123.x
 tests/count_lines.success: tests/count_lines.x tests/fixtures/n123.x
 tests/params.success: tests/params.x tests/fixtures/earthquakes.x
@@ -349,6 +350,7 @@ tests/ip.success: tests/ip.x tests/fixtures/mixture.x
 tests/min_max.success: tests/min_max.x
 tests/nulls.success: tests/nulls.x
 tests/constructed_types.success: tests/constructed_types.x
+tests/histogram.success: tests/histogram.x tests/fixtures/cars.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 
