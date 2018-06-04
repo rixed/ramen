@@ -265,50 +265,65 @@ let omod_of_type = function
  * about what conversions are required to implement that in OCaml. *)
 (* Note: for field_of_tuple, we must be able to convert any value into a
  * string *)
-let conv_from_to from_typ ~nullable to_typ p oc e =
+(* This only returns the function name (or code) but does not emit the
+ * call to that function. *)
+let rec conv_from_to ~nullable oc (from_typ, to_typ) =
   (* Emitted code must be prefixable by "Option.map": *)
   let print_non_null oc (from_typ, to_typ as conv) =
     match conv with
     | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
         (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
     | TString, (TFloat|TBool) ->
-      Printf.fprintf oc "%s.of_%a (%a)"
+      Printf.fprintf oc "%s.of_%a"
         (omod_of_type to_typ)
         otype_of_type from_typ
-        p e
     | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
         (TFloat|TString)
     | (TFloat|TBool), (TString|TFloat) ->
-      Printf.fprintf oc "%s.to_%a (%a)"
+      Printf.fprintf oc "%s.to_%a"
         (omod_of_type from_typ)
         otype_of_type to_typ
-        p e
     | TBool, (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
-      Printf.fprintf oc "(%s.of_int %% Bool.to_int) (%a)"
+      Printf.fprintf oc "(%s.of_int %% Bool.to_int)"
         (omod_of_type to_typ)
-        p e
     | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
-      Printf.fprintf oc "%s.to_string %a"
-        (omod_of_type from_typ) p e
-    | TIpv4, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_) (%a)" p e
-    | TIpv6, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_) (%a)" p e
-    | TCidrv4, TIp ->
-      Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_) (%a)" p e
-    | TCidrv6, TIp ->
-      Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_) (%a)" p e
-    | (TTuple _|TVec _), TString ->
-      Printf.fprintf oc "(fun _ -> \"Stringification of tuples/vectors is \
-                                     not implemented\") (%a)" p e
-      (* Because "a recursive function cannot be used polymorphically in the
-       * body of its definition." *)
+      Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
+    | TIpv4, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
+    | TIpv6, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
+    | TCidrv4, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_)"
+    | TCidrv6, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
+    | TVec (d_from, t_from), TVec (d_to, t_to)
+      when d_from = d_to || d_to = 0 ->
+      (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
+      (* Note: vector items cannot be NULL: *)
+      Printf.fprintf oc "(fun v_ -> Array.map (%a) v_)"
+        (conv_from_to ~nullable:false) (t_from, t_to)
+
+    | TVec (d, t), TString ->
+      Printf.fprintf oc
+        "(fun v_ -> \
+           \"[\"^ (\
+            Array.enum v_ /@ (%a) |> \
+            Enum.reduce (fun s1_ s2_ -> s1_^\",\"^s2_)
+           ) ^\"]\")"
+        (conv_from_to ~nullable:false) (t, TString)
+
+    | TTuple ts, TString ->
+      let i = ref 0 in
+      Printf.fprintf oc
+        "(fun %a -> %a)"
+          (array_print_as_tuple_i (fun oc i _ -> Printf.fprintf oc "x%d_" i)) ts
+          (Array.print ~first:"" ~last:"" ~sep:"^" (fun oc t ->
+            Printf.fprintf oc "(%a) x%d_"
+              (conv_from_to ~nullable:false) (t, TString) !i ;
+            incr i)) ts
 
     | _ ->
       failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
                   (IO.to_string RamenTypes.print_typ from_typ)
                   (IO.to_string RamenTypes.print_typ to_typ))
   in
-  if from_typ = to_typ then
-    p oc e
+  if from_typ = to_typ then Printf.fprintf oc "identity"
   else
     Printf.fprintf oc "(%s%a)"
       (if nullable then "Option.map " else "")
@@ -347,7 +362,9 @@ let rec conv_to ?state ~context to_typ fmt e =
   let nullable = Option.get t.nullable in
   match t.scalar_typ, to_typ with
   | Some a, Some b ->
-    conv_from_to a ~nullable b (emit_expr ~context ?state) fmt e
+    Printf.fprintf fmt "(%a) (%a)"
+      (conv_from_to ~nullable) (a, b)
+      (emit_expr ~context ?state) e
   | _, None ->
     (emit_expr ~context ?state) fmt e (* No conversion required *)
   | None, Some b ->
@@ -590,7 +607,9 @@ and emit_expr ?state ~context oc expr =
     let from = typ_of e in
     let from_typ = Option.get from.scalar_typ
     and nullable = Option.get from.nullable in
-    conv_from_to from_typ ~nullable to_typ (emit_expr ?state ~context) oc e
+    Printf.fprintf oc "(%a) (%a)"
+      (conv_from_to ~nullable) (from_typ, to_typ)
+      (emit_expr ?state ~context) e
 
   | Finalize, StatelessFunMisc (_, Max es), t ->
     emit_functionN ~args_as:(Array 0) ?state "Array.max" (List.map (fun _ -> t) es) oc es
@@ -1133,9 +1152,9 @@ let emit_time_of_tuple name event_time oc tuple_typ =
       let field_value_to_float oc field_name =
         let f = List.find (fun t -> t.typ_name = field_name) tuple_typ in
         Printf.fprintf oc
-          (if f.nullable then "(%a |? 0.)" else "%a")
-          (conv_from_to f.typ ~nullable:f.nullable TFloat String.print)
-            (id_of_field_name ~tuple:TupleOut field_name)
+          (if f.nullable then "((%a) %s |? 0.)" else "(%a) %s")
+          (conv_from_to ~nullable:f.nullable) (f.typ, TFloat)
+          (id_of_field_name ~tuple:TupleOut field_name)
       in
       Printf.fprintf oc "\tlet start_ = %a *. %a\n"
         field_value_to_float sta_field
@@ -1404,12 +1423,13 @@ let emit_field_of_tuple name oc tuple_typ =
       Printf.fprintf oc "\t| %S -> " field_typ.typ_name ;
       let id = id_of_field_name ~tuple:TupleOut field_typ.typ_name in
       if field_typ.nullable then (
-        Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> %a)\n"
+        Printf.fprintf oc "(match %s with None -> \"?null?\" | Some v_ -> (%a) v_)\n"
           id
-          (conv_from_to field_typ.typ ~nullable:false TString String.print) "v_"
+          (conv_from_to ~nullable:false) (field_typ.typ, TString)
       ) else (
-        Printf.fprintf oc "%a\n"
-          (conv_from_to field_typ.typ ~nullable:false TString String.print) id
+        Printf.fprintf oc "(%a) %s\n"
+          (conv_from_to ~nullable:false) (field_typ.typ, TString)
+          id
       )
     ) tuple_typ ;
   Printf.fprintf oc "\t| _ -> raise Not_found\n"
@@ -1814,10 +1834,10 @@ let emit_function name func_name in_typ out_typ params op oc =
     (List.print ~first:"" ~last:"" ~sep:"" (fun oc (n, v) ->
       let glob_name =
         Printf.sprintf "%s_%s_" (id_of_prefix TupleParam) n in
-      Printf.fprintf oc "\t| %S -> %a\n"
+      Printf.fprintf oc "\t| %S -> (%a) %s\n"
         n
-        (conv_from_to (RamenTypes.type_of v) ~nullable:false
-                      TString String.print) glob_name)) params ;
+        (conv_from_to ~nullable:false) (RamenTypes.type_of v, TString)
+        glob_name)) params ;
   (match op with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                   what = { separator ; null ; fields } ; event_time } ->
