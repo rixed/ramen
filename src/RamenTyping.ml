@@ -1049,8 +1049,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       raise (SyntaxError e)
     with Exit -> !ret)
   | StatelessFunMisc (op_typ, Print es) ->
-    (* Accept anything, return a non-null bool: *)
-    check_op op_typ return_bool ~propagate_null:false
+    (* Accept anything, return the first parameter: *)
+    check_op op_typ List.hd ~propagate_null:true
       (List.map (fun e -> None, None, e) es)
 
   | StatefulFun (op_typ, _, Lag (e1, e2)) ->

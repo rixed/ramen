@@ -1088,7 +1088,7 @@ struct
         StatelessFun2 (make_typ "get", VecGet, n, v)) |||
      (* Outputs TBool as that's the smallest we have. Actually outputs false. *)
      (afun1v "print" >>: fun (e, es) ->
-        StatelessFunMisc (make_typ ~typ:TBool ~nullable:false "print", Print (e :: es))) |||
+        StatelessFunMisc (make_typ "print", Print (e :: es))) |||
      k_moveavg ||| cast ||| top_expr ||| nth) m
 
   and cast m =
