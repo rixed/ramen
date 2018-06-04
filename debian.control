@@ -2,6 +2,6 @@ Package: ramen
 Version: 2.1.1
 Architecture: amd64
 Maintainer: rixed-github@happyleptic.org
-Depends: gcc, openssl, libblas-dev, liblapack-dev, libsqlite3-0
+Depends: gcc, libblas-dev, liblapack-dev, libsqlite3-0
 Conflicts: libopenblas-base
 Description: Event processor tailored for small-scale monitoring

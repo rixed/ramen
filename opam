@@ -32,5 +32,5 @@ depopts: [
   "inotify"
 ]
 depexts: [
-  [["debian"] ["libc-dev openssl m4"]]
+  [["debian"] ["libc-dev m4"]]
 ]
