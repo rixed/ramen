@@ -489,6 +489,8 @@ and emit_expr ?state ~context oc expr =
     emit_functionN ?state "exp" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Log, e), Some TFloat ->
     emit_functionN ?state "log" [Some TFloat] oc [e]
+  | Finalize, StatelessFun1 (_, Log10, e), Some TFloat ->
+    emit_functionN ?state "log10" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Sqrt, e), Some TFloat ->
     emit_functionN ?state "sqrt" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Hash, e), Some TI64 ->
