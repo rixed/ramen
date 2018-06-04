@@ -650,7 +650,11 @@ let graphite conf daemonize to_stdout to_syslog port () =
       restart_on_failure "wait_all_pids_loop"
         RamenProcesses.wait_all_pids_loop false) ;
     restart_on_failure "graphite impersonator"
-      (RamenHttpHelpers.http_service port) router)
+      RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
+        (fun () -> !logger.warning "Running in dummy mode" ;
+                   RamenProcesses.until_quit
+                     (fun () -> Lwt_unix.sleep 3.)) ;
+        (fun () -> RamenHttpHelpers.http_service port router) |])
 
 let graphite_expand conf query () =
   logger := make_logger conf.C.debug ;
