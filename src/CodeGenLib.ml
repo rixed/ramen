@@ -907,7 +907,6 @@ let aggregate
         'global_state ->
         'tuple_in -> 'tuple_in -> 'generator_out -> (* first, last, current out *)
         bool)
-      commit_when_needs_group
       commit_before
       do_flush
       (when_to_check_for_commit : when_to_check_group)

@@ -1710,7 +1710,6 @@ let emit_aggregate oc name in_typ out_typ = function
    * despite this is forbidden in RamenOperation.check): *)
   and where_need_group = expr_needs_group where
   (* Good to know when performing a TOP: *)
-  and commit_when_needs_group = expr_needs_group commit_when
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
     %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
@@ -1745,14 +1744,13 @@ let emit_aggregate oc name in_typ out_typ = function
       \t\tgenerate_tuples_\n\
       \t\ttuple_of_group_ merge_on_ %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
-      \t\tcommit_when_ %b %b %b %s should_resubmit_\n\
+      \t\tcommit_when_ %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_\n\
       \t\tfield_of_tuple_in_ field_of_tuple_out_ field_of_params_ %a %f\n"
     name
     (snd merge)
     (match sort with None -> 0 | Some (n, _, _) -> n)
     (key = [])
-    commit_when_needs_group
     commit_before
     (flush_how <> Never)
     when_to_check_for_commit
