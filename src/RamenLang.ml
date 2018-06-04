@@ -73,7 +73,6 @@ type syntax_error =
   | CannotGenerateCode of { func : string ; cmd : string ; status : string }
   | AliasNotUnique of string
   | FuncNameNotUnique of string
-  | OnlyTumblingWindowForTop
   | UnknownFunc of string
   | NoAccessToGeneratedFields of { alias : string }
   | UnsolvableDependencyLoop of { program : string }
@@ -144,9 +143,6 @@ let string_of_syntax_error =
   | FuncNameNotUnique name ->
     "Function names must be unique within a program but '"^ name ^"' is defined \
      several times"
-  | OnlyTumblingWindowForTop ->
-    "When using TOP the only windowing mode supported is \
-     \"COMMIT AND FLUSH\""
   | TupleHasOnlyVirtuals { tuple ; alias } ->
     "Tuple "^ string_of_prefix tuple ^" has only virtual fields, so no \
      field named "^ alias

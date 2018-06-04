@@ -979,7 +979,7 @@ let emit_sersize_of_tuple name oc tuple_typ =
     | TVec (d, t) ->
         for i = 0 to d-1 do
           let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "(let %s = %s.(%d) in %a) + "
+          Printf.fprintf oc "\t\t\t(let %s = %s.(%d) in %a) + "
             item_var val_var i
             (emit_sersize_of_scalar item_var false) t
         done ;
@@ -998,7 +998,9 @@ let emit_sersize_of_tuple name oc tuple_typ =
       Printf.fprintf oc "\t\t(* %s *)\n" id ;
       Printf.fprintf oc "\t\tlet sz_ = sz_ + if List.hd skiplist_ then (\n" ;
       emit_sersize_of_scalar id field.nullable oc field.typ ;
-      Printf.fprintf oc "\n\t\t) else 0 in\n" ;
+      (* Note: disable warning 26 because emit_sersize_of_scalar might
+       * have generated tons of unused bindings: *)
+      Printf.fprintf oc "\n\t\t) else 0 [@@ocaml.warning \"-26\"] in\n" ;
       Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n" ;
     ) ser_typ ;
   Printf.fprintf oc "\t\tignore skiplist_ ;\n" ;
