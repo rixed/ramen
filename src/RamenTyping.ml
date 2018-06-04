@@ -1114,7 +1114,10 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       [Some TFloat, None, meas ;
        Some TFloat, Some false, accept ;
        Some TFloat, Some false, max]
-  | StatefulFun (op_typ, _, Top { want_rank ; what ; by ; n ; _ }) ->
+  | StatefulFun (op_typ, _, Top { want_rank ; what ; by ; n ; duration }) ->
+    if duration <= 0. then (
+      let e = BadConstant "TOP duration must be greater than zero" in
+      raise (SyntaxError e)) ;
     (* We already know the type returned by the top operation, but maybe
      * for the nullability. But we want to ensure the top-by expression
      * can be cast to a float: *)

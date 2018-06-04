@@ -135,6 +135,7 @@ let distinct_finalize st = st.last_was_distinct
 (* Heavy Hitters wrappers: *)
 
 let heavy_hitters_init n duration =
+  assert (duration > 0.) ;
   let max_size = 10 * n in (* TODO? *)
   (* We want an entry weight to be halved after [duration]: *)
   let decay = -. log 0.5 /. duration in

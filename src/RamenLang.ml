@@ -50,6 +50,7 @@ let string_of_prefix = function
 type syntax_error =
   | ParseError of { error : string ; text : string }
   | NotConstant of string
+  | BadConstant of string
   | TupleNotAllowed of { tuple : tuple_prefix ; where : string ;
                          allowed : tuple_prefix list }
   | StatefulNotAllowed of { clause : string }
@@ -94,6 +95,7 @@ let string_of_syntax_error =
     ParseError { error ; text } ->
     "Parse error: "^ error ^" while parsing: "^ text
   | NotConstant s -> h ^ s ^" is not constant"
+  | BadConstant s -> s
   | TupleNotAllowed { tuple ; where ; allowed } ->
     "Invalid tuple '"^ string_of_prefix tuple ^"'; in a "^ where ^
     ", all fields must come from " ^

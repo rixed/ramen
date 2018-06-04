@@ -1122,7 +1122,7 @@ struct
      optional ~def:GlobalState (blanks -+ state_lifespan) ++
      optional ~def:expr_one (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
-     optional ~def:0. (
+     optional ~def:3600. (
        blanks -- strinG "in" -- blanks -- strinG "the" -- blanks --
        strinG "last" -- blanks -+ duration) >>:
      fun (((((want_rank, what), n), g), by), duration) ->
