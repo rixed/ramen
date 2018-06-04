@@ -904,6 +904,11 @@ struct
               instrumentation, ext_data, preprocessor, csv_specs, factors
           ) default_clauses clauses in
       let commit_specs, (commit_before, commit_when) = commit in
+      (* Try to catch when we write "commit when" instead of "commit
+       * after/before": *)
+      if commit_specs = [ CommitSpec ] then
+        raise (Reject "Lone COMMIT makes no sense. \
+                       Do you mean COMMIT AFTER/BEFORE?") ;
       (* Distinguish between Aggregate, Read, ListenFor...: *)
       let not_aggregate =
         select_fields == default_select_fields && sort == default_sort &&
