@@ -266,6 +266,7 @@ let omod_of_type = function
 (* Note: for field_of_tuple, we must be able to convert any value into a
  * string *)
 let conv_from_to from_typ ~nullable to_typ p oc e =
+  (* Emitted code must be prefixable by "Option.map": *)
   let print_non_null oc (from_typ, to_typ as conv) =
     match conv with
     | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
@@ -289,13 +290,15 @@ let conv_from_to from_typ ~nullable to_typ p oc e =
     | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
       Printf.fprintf oc "%s.to_string %a"
         (omod_of_type from_typ) p e
-    | TIpv4, TIp -> Printf.fprintf oc "(RamenIp.V4 %a)" p e
-    | TIpv6, TIp -> Printf.fprintf oc "(RamenIp.V6 %a)" p e
-    | TCidrv4, TIp -> Printf.fprintf oc "(RamenIp.Cidr.V4 %a)" p e
-    | TCidrv6, TIp -> Printf.fprintf oc "(RamenIp.Cidr.V6 %a)" p e
+    | TIpv4, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_) (%a)" p e
+    | TIpv6, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_) (%a)" p e
+    | TCidrv4, TIp ->
+      Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_) (%a)" p e
+    | TCidrv6, TIp ->
+      Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_) (%a)" p e
     | (TTuple _|TVec _), TString ->
-      Printf.fprintf oc "\"Stringification of tuples/vectors is not \
-                           implemented\""
+      Printf.fprintf oc "(fun _ -> \"Stringification of tuples/vectors is \
+                                     not implemented\") (%a)" p e
       (* Because "a recursive function cannot be used polymorphically in the
        * body of its definition." *)
 
