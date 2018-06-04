@@ -229,7 +229,7 @@ and stateful_fun =
   | Hysteresis of t * t * t (* measured value, acceptable, maximum *)
   (* Top-k operation *)
   | Top of { want_rank : bool ; n : int ; what : t list ; by : t ;
-             duration : float }
+             time : t ; duration : float }
 
 and generator_fun =
   (* First function returning more than once (Generator). Here the typ is
@@ -462,15 +462,16 @@ let rec print with_types fmt =
       (print with_types) accept
       (print with_types) max ;
     add_types t
-  | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; duration }) ->
+  | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; time ; duration }) ->
     let print_duration_opt oc duration =
       if duration > 0. then print_duration oc duration in
-    Printf.fprintf fmt "%s %a in top %d%sby %a in the last %a"
+    Printf.fprintf fmt "%s %a in top %d%sby %a in the last %a at time %a"
       (if want_rank then "rank of" else "is")
       (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) what
       n (sl g)
       (print with_types) by
       print_duration_opt duration
+      (print with_types) time
 
   | GeneratorFun (t, Split (e1, e2)) ->
     Printf.fprintf fmt "split(%a, %a)"
@@ -528,10 +529,11 @@ let rec fold_by_depth f i expr =
     let i''''= List.fold_left (fold_by_depth f) i''' e4s in
     f i'''' expr
 
-  | StatefulFun (_, _, Top { what = e2s ; by = e1 ; _ }) ->
+  | StatefulFun (_, _, Top { what = e3s ; by = e1 ; time = e2 ; _ }) ->
     let i' = fold_by_depth f i e1 in
-    let i''= List.fold_left (fold_by_depth f) i' e2s in
-    f i'' expr
+    let i''= fold_by_depth f i' e2 in
+    let i'''= List.fold_left (fold_by_depth f) i'' e3s in
+    f i''' expr
 
   | StatefulFun (_, _, Hysteresis (e1, e2, e3)) ->
     let i' = fold_by_depth f i e1 in
@@ -654,10 +656,11 @@ let rec map_type ?(recurs=true) f = function
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c)))
-  | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; duration }) ->
+  | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; duration ; time }) ->
     StatefulFun (f t, g, Top { want_rank ; n ; duration ;
       what = (if recurs then List.map (map_type ~recurs f) what else what) ;
-      by = (if recurs then map_type ~recurs f by else by) })
+      by = (if recurs then map_type ~recurs f by else by) ;
+      time = (if recurs then map_type ~recurs f time else time) })
 
   | StatelessFun0 (t, cst) ->
     StatelessFun0 (f t, cst)
@@ -1124,14 +1127,16 @@ struct
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
      optional ~def:3600. (
        blanks -- strinG "in" -- blanks -- strinG "the" -- blanks --
-       strinG "last" -- blanks -+ duration) >>:
-     fun (((((want_rank, what), n), g), by), duration) ->
+       strinG "last" -- blanks -+ duration) ++
+     optional ~def:expr_zero (
+       blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
+     fun ((((((want_rank, what), n), g), by), duration), time) ->
        StatefulFun (
          (if want_rank then make_int_typ ~nullable:true "rank in top"
-                       (* same nullability as what+by: *)
+                       (* same nullability as what+by+time: *)
                        else make_bool_typ "is in top"),
          g,
-         Top { want_rank ; n ; what ; by ; duration })) m
+         Top { want_rank ; n ; what ; by ; duration ; time })) m
 
   and nth m =
     let m = "n-th" :: m in

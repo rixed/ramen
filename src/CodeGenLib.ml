@@ -141,9 +141,8 @@ let heavy_hitters_init n duration =
   let decay = -. log 0.5 /. duration in
   HeavyHitters.make ~max_size ~decay
 
-let heavy_hitters_add s w x =
-  let time = 0. in (* TODO *)
-  HeavyHitters.add s time w x ;
+let heavy_hitters_add s t w x =
+  HeavyHitters.add s t w x ;
   s
 
 let heavy_hitters_rank ~n s x =

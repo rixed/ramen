@@ -1114,7 +1114,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       [Some TFloat, None, meas ;
        Some TFloat, Some false, accept ;
        Some TFloat, Some false, max]
-  | StatefulFun (op_typ, _, Top { want_rank ; what ; by ; n ; duration }) ->
+  | StatefulFun (op_typ, _, Top { want_rank ; what ; by ; n ; duration ; time }) ->
     if duration <= 0. then (
       let e = BadConstant "TOP duration must be greater than zero" in
       raise (SyntaxError e)) ;
@@ -1130,7 +1130,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         true (* "IS IN TOP" has same nullability than [what] or [by] *)
     in
     check_op op_typ ret_type ~propagate_null
-      ((Some TFloat, None, by) :: List.map (fun e -> None, None, e) what)
+      ((Some TFloat, None, by) ::
+       (Some TFloat, None, time) ::
+       List.map (fun e -> None, None, e) what)
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible. *)

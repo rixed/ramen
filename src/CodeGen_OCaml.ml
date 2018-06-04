@@ -743,11 +743,11 @@ and emit_expr ?state ~context oc expr =
       (if is_nullable expr then "Some " else "")
       n
       (Legacy.Printf.sprintf "%h" duration)
-  | UpdateState, StatefulFun (_, g, Top { what ; by ; _ }), _ ->
-    emit_functionN ?state ~args_as:(Tuple 2)
+  | UpdateState, StatefulFun (_, g, Top { what ; by ; time ; _ }), _ ->
+    emit_functionN ?state ~args_as:(Tuple 3)
       "CodeGenLib.heavy_hitters_add"
-      (None :: Some TFloat :: List.map (fun _ -> None) what)
-      oc (my_state g :: by :: what)
+      (None :: Some TFloat :: Some TFloat :: List.map (fun _ -> None) what)
+      oc (my_state g :: time :: by :: what)
   | Finalize, StatefulFun (_, g, Top { want_rank = true ; n ; what ; _ }), Some t ->
     (* heavy_hitters_rank returns an optional int; we then have to convert
      * it to whatever integer size we are supposed to have: *)
