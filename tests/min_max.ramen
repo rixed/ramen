@@ -27,7 +27,7 @@ DEFINE aggr AS
   COMMIT AFTER
     -- Works because random returns a float from 0 inclusive to 1 exclusive,
     -- and because casting to u8 truncates:
-    min_small_int = 0 AND max_small_int = 9;
+    min_small_int = 0 AND max_small_int = 9
   EXPORT;
 
 -- Here we merely check that it compiles:
@@ -44,4 +44,5 @@ DEFINE non_aggr AS
     MAX(glop, pas_glop) AS ma3,
     -- Including if one is nullable:
     MIN(glop, pas_glop, nullable_string) AS mi4,
-    MAX(glop, pas_glop, nullable_string) AS ma4;
+    MAX(glop, pas_glop, nullable_string) AS ma4
+  EXPORT;
