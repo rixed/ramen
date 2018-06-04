@@ -467,8 +467,7 @@ struct
   (*$< Parser *)
   open RamenParsing
 
-  let default_alias =
-    let anonymous_printer_count = ref 0 in
+  let rec default_alias =
     let open Expr in
     let force_public field =
       if String.length field = 0 || field.[0] <> '_' then field
@@ -488,10 +487,8 @@ struct
     | StatefulFun (_, _, AggrPercentile (Const (_, p), Field (_, _, field)))
       when RamenTypes.is_round_integer p ->
       Printf.sprintf "%s_%sth" (force_public field) (IO.to_string RamenTypes.print p)
-    | StatelessFunMisc (_, Print _) ->
-      (* Make print expression private unless told otherwise *)
-      incr anonymous_printer_count ;
-      "_print_"^ string_of_int (!anonymous_printer_count)
+    | StatelessFunMisc (_, Print es) when es <> [] ->
+      default_alias (List.hd es)
     | _ -> raise (Reject "must set alias")
 
   let selected_field m =
