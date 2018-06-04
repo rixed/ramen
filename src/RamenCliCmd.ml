@@ -453,7 +453,7 @@ let ps conf short with_header sort_col top prefix () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
-let tail conf func_name with_header sep null
+let tail conf func_name with_header sep null raw
          last min_seq max_seq continuous where with_seqnums duration () =
   logger := make_logger conf.C.debug ;
   if last <> None && (min_seq <> None || max_seq <> None) then
@@ -545,7 +545,7 @@ let tail conf func_name with_header sep null
           Int.print stdout m ; String.print stdout sep) ;
         reorder_column2 tuple |>
         Array.print ~first:"" ~last:"\n" ~sep
-          (RamenTypes.print_custom ~null) stdout ;
+          (RamenTypes.print_custom ~null ~quoting:(not raw)) stdout ;
         BatIO.flush stdout) ;
       return_unit))
 

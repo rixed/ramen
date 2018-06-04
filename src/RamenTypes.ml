@@ -102,9 +102,9 @@ let my_float_to_string v =
 (* Used for debug, value expansion within strings, output values in tail
  * and timeseries commands, test immediate values.., but not for code
  * generation. *)
-let rec print_custom ?(null="NULL") oc = function
+let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VFloat f  -> my_float_to_string f |> String.print oc
-  | VString s -> Printf.fprintf oc "%S" s
+  | VString s -> Printf.fprintf oc (if quoting then "%S" else "%s") s
   | VBool b   -> Bool.print oc b
   | VU8 i     -> Uint8.to_string i |> String.print oc
   | VU16 i    -> Uint16.to_string i |> String.print oc
@@ -124,10 +124,11 @@ let rec print_custom ?(null="NULL") oc = function
   | VCidrv4 i -> RamenIpv4.Cidr.to_string i |> String.print oc
   | VCidrv6 i -> RamenIpv6.Cidr.to_string i |> String.print oc
   | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
-  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";" (print_custom ~null) oc vs
-  | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";" (print_custom ~null) oc vs
+  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";" (print_custom ~null ~quoting) oc vs
+  | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";" (print_custom ~null ~quoting) oc vs
 
-let to_string ?null v = IO.to_string (print_custom ?null) v
+let to_string ?null ?quoting v =
+  IO.to_string (print_custom ?null ?quoting) v
 
 (* Allow to elude ~null while currying: *)
 let print oc v = print_custom oc v

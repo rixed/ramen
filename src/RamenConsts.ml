@@ -88,6 +88,7 @@ struct
   let with_header = "Output the header line in CSV"
   let csv_separator = "Field separator"
   let csv_null = "Representation of NULL values"
+  let csv_raw = "Do not quote values"
   let last =
     "Output only the last N tuples (or only the next -N, if N is negative)"
   let min_seq = "Output only tuples with greater sequence number"

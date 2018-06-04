@@ -350,6 +350,11 @@ let csv_null =
                    ~env [ "null" ] in
   Arg.(value (opt string "<NULL>" i))
 
+let csv_raw =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.csv_raw
+                   [ "raw" ] in
+  Arg.(value (flag i))
+
 let last =
   let i = Arg.info ~doc:RamenConsts.CliInfo.last
                    [ "n"; "last" ] in
@@ -403,6 +408,7 @@ let tail =
       $ with_header
       $ csv_separator
       $ csv_null
+      $ csv_raw
       $ last
       $ min_seq
       $ max_seq
