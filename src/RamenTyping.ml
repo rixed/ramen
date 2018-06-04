@@ -1094,6 +1094,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     check_op op_typ return_float [Some TFloat, None, e]
   | StatelessFun1 (op_typ, Hash, e) ->
     check_op op_typ return_i64 [None, None, e]
+  | StatelessFun1 (op_typ, Sparkline, e) ->
+    check_op op_typ return_string [Some (TVec (0, TFloat)), None, e]
   | GeneratorFun (op_typ, Split (e1, e2)) ->
     check_op op_typ return_string [Some TString, None, e1 ;
                                    Some TString, None, e2]

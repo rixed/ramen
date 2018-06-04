@@ -822,3 +822,21 @@ let ordinal_suffix n =
   | 2 -> "nd"
   | 3 -> "rd"
   | _ -> "th"
+
+(* Given an array of floats, display an UTF-8 sparkline: *)
+let sparkline vec =
+  let stairs = [| "▁"; "▂"; "▃"; "▄"; "▅"; "▆"; "▇"; "█" |] in
+  let mi, ma =
+    Array.fold_left (fun (mi, ma) v ->
+      min v mi, max v ma
+    ) (infinity, neg_infinity) vec in
+  let ratio =
+    if ma > mi then
+      float_of_int (Array.length stairs - 1) /. (ma -. mi)
+    else 0. in
+  let res = Buffer.create (Array.length vec * 4) in
+  Array.iteri (fun i v ->
+    let c = int_of_float ((v -. mi) *. ratio) in
+    Buffer.add_string res stairs.(c)
+  ) vec ;
+  Buffer.contents res

@@ -88,6 +88,7 @@ type stateless_fun1 =
   | BeginOfRange
   | EndOfRange
   | Nth of int (* Where the int starts at 0 for the first item *)
+  | Sparkline
 
 type stateless_fun2 =
   (* Binary Ops scalars *)
@@ -373,6 +374,8 @@ let rec print with_types fmt =
     Printf.fprintf fmt "sqrt (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Hash, e) ->
     Printf.fprintf fmt "hash (%a)" (print with_types) e ; add_types t
+  | StatelessFun1 (t, Sparkline, e) ->
+    Printf.fprintf fmt "sparkline (%a)" (print with_types) e ; add_types t
   | StatelessFun2 (t, And,
       StatelessFun2 (_, Ge, e1, StatelessFun1 (_, BeginOfRange, e2)),
       StatelessFun1 (_, Not,
@@ -1036,6 +1039,7 @@ struct
      (afun1 "log10" >>: fun e -> StatelessFun1 (make_num_typ "common logarithm", Log10, e)) |||
      (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_num_typ "square root", Sqrt, e)) |||
      (afun1 "hash" >>: fun e -> StatelessFun1 (make_typ ~typ:TI64 "hash", Hash, e)) |||
+     (afun1 "sparkline" >>: fun e -> StatelessFun1 (make_typ ~typ:TString "sparkline", Sparkline, e)) |||
      (afun1_sf ~def_state:LocalState "min" >>: fun (g, e) ->
         StatefulFun (make_typ "min aggregation", g, AggrMin e)) |||
      (afun1_sf ~def_state:LocalState "max" >>: fun (g, e) ->

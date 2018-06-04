@@ -515,6 +515,8 @@ and emit_expr ?state ~context oc expr =
     emit_functionN ?state "sqrt" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Hash, e), Some TI64 ->
     emit_functionN ?state "CodeGenLib.hash" [None] oc [e]
+  | Finalize, StatelessFun1 (_, Sparkline, e), Some TString ->
+    emit_functionN ?state "RamenHelpers.sparkline" [Some (TVec (0, TFloat))] oc [e]
   | Finalize, StatelessFun1 (_, BeginOfRange, e), Some TIpv4 ->
     emit_functionN ?state "RamenIpv4.Cidr.first" [Some TCidrv4] oc [e]
   | Finalize, StatelessFun1 (_, BeginOfRange, e), Some TIpv6 ->
