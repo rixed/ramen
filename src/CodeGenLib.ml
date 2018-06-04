@@ -165,6 +165,29 @@ let hysteresis_update was_ok v accept max =
   if max >= accept then v <= extr else v >= extr
 let hysteresis_finalize is_ok = is_ok
 
+type histogram =
+  { min : float ; span : float ; sw : float ; nb_buckets : int ;
+    histo : Uint32.t array }
+
+let histogram_init min max nb_buckets =
+  let histo = Array.create (nb_buckets + 2) Uint32.zero in
+  let span = max -. min in
+  let sw = float_of_int nb_buckets /. span in
+  { min ; span ; sw ; nb_buckets ; histo }
+
+let histogram_add h x =
+  let x = x -. h.min in
+  let bucket =
+    if x < 0. then 0 else
+    if x >= h.span then h.nb_buckets + 1 else
+    let b = int_of_float (x *. h.sw) in
+    assert (b >= 0 && b < h.nb_buckets) ;
+    b + 1 in
+  h.histo.(bucket) <- Uint32.succ h.histo.(bucket) ;
+  h
+
+let histogram_finalize h = h.histo
+
 (* We often want functions that work on the last k elements, or the last k
  * periods of length p for seasonal data. So we often need a small sliding
  * window as a function internal state. If we could join between two different

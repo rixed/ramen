@@ -680,6 +680,21 @@ and emit_expr ?state ~context oc expr =
   | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     emit_functionN ?state "CodeGenLib.percentile_finalize" [Some TFloat; None] oc [p; my_state g]
 
+  (* Histograms: bucket each float into the array of nb_buckets + 2 and then
+   * count number of entries per buckets. The 2 extra buckets are for "<min"
+   * and ">max". *)
+  | InitState, StatefulFun (_, _, AggrHistogram (e, min, max, nb_buckets)), _ ->
+    Printf.fprintf oc "%s(CodeGenLib.histogram_init %s %s %d)"
+      (if is_nullable e then "Some " else "")
+      (Legacy.Printf.sprintf "%h" min)
+      (Legacy.Printf.sprintf "%h" max)
+      nb_buckets
+  | UpdateState, StatefulFun (_, g, AggrHistogram (e, min, max, nb_buckets)), _ ->
+    emit_functionN ?state "CodeGenLib.histogram_add"
+      [None; Some TFloat] oc [my_state g; e]
+  | Finalize, StatefulFun (_, g, AggrHistogram _), Some TVec (_, TU32) ->
+    emit_functionN ?state "CodeGenLib.histogram_finalize" [None] oc [my_state g]
+
   | InitState, StatefulFun (_, _, Lag (k,e)), _ ->
     emit_functionN ?state "CodeGenLib.Seasonal.init"
       [Some TU32; Some TU32; None] oc
@@ -1548,6 +1563,7 @@ let otype_of_state e =
     | StatefulFun (_, _, Top { what ; _ }) ->
       Printf.sprintf2 "%a HeavyHitters.t"
         (list_print_as_product print_expr_typ) what
+    | StatefulFun (_, _, AggrHistogram _) -> "CodeGenLib.histogram"
     | _ -> t in
   if Option.get typ.nullable then t ^" option" else t
 

@@ -193,6 +193,8 @@ and stateful_fun =
   | AggrLast of t
   (* TODO: several percentiles. Requires multi values returns. *)
   | AggrPercentile of t * t
+  | AggrHistogram of t * float * float * int
+
   (* value retarded by k steps. If we have had less than k past values
    * then return the first we've had. *)
   | Lag of t * t
@@ -258,8 +260,16 @@ let is_true = function
   | Const (_ , VBool true) -> true
   | _ -> false
 
-let get_string_const = function
+let string_of_const = function
   | Const (_ , VString s) -> Some s
+  | _ -> None
+
+let float_of_const = function
+  | Const (_, v) -> Some (RamenTypes.float_of_scalar v)
+  | _ -> None
+
+let int_of_const = function
+  | Const (_, v) -> Some (RamenTypes.int_of_scalar v)
   | _ -> None
 
 let check_const what = function
@@ -419,6 +429,10 @@ let rec print with_types fmt =
     Printf.fprintf fmt "%ath percentile%s(%a)"
       (print with_types) p (sl g) (print with_types) e ;
     add_types t
+  | StatefulFun (t, g, AggrHistogram (what, min, max, nb_buckets)) ->
+    Printf.fprintf fmt "histogram%s(%a, %g, %g, %d)"
+      (sl g) (print with_types) what min max nb_buckets ;
+    add_types t
   | StatefulFun (t, g, Lag (e1, e2)) ->
     Printf.fprintf fmt "lag%s(%a, %a)"
       (sl g) (print with_types) e1 (print with_types) e2 ;
@@ -502,7 +516,8 @@ let rec fold_by_depth f i expr =
   | StatefulFun (_, _, AggrSum e) | StatefulFun (_, _, AggrAvg e)
   | StatefulFun (_, _, AggrAnd e) | StatefulFun (_, _, AggrOr e)
   | StatefulFun (_, _, AggrFirst e) | StatefulFun (_, _, AggrLast e)
-  | StatelessFun1 (_, _, e) | StatelessFunMisc (_, Like (e, _)) ->
+  | StatelessFun1 (_, _, e) | StatelessFunMisc (_, Like (e, _))
+  | StatefulFun (_, _, AggrHistogram (e, _, _, _)) ->
     f (fold_by_depth f i e) expr
 
   | StatefulFun (_, _, AggrPercentile (e1, e2))
@@ -614,6 +629,9 @@ let rec map_type ?(recurs=true) f = function
     StatefulFun (f t, g, AggrFirst (if recurs then map_type ~recurs f a else a))
   | StatefulFun (t, g, AggrLast a) ->
     StatefulFun (f t, g, AggrLast (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, AggrHistogram (a, min, max, nb_buckets)) ->
+    StatefulFun (f t, g, AggrHistogram (
+        (if recurs then map_type ~recurs f a else a), min, max, nb_buckets))
   | StatefulFun (t, g, AggrPercentile (a, b)) ->
     StatefulFun (f t, g, AggrPercentile (
         (if recurs then map_type ~recurs f a else a),
@@ -836,7 +854,7 @@ struct
               e1,
               StatelessFun1 (make_typ "end of range", EndOfRange, e2))))
       | "like" ->
-        (match get_string_const e2 with
+        (match string_of_const e2 with
         | None -> raise (Reject "LIKE pattern must be a string constant")
         | Some p ->
           StatelessFunMisc (make_bool_typ "like", Like (e1, p)))
@@ -1076,6 +1094,18 @@ struct
      (afun3_sf "hysteresis" >>: fun (g, value, accept, max) ->
         StatefulFun (make_bool_typ ~nullable:false "hysteresis", g,
                      Hysteresis (value, accept, max))) |||
+     (afun4_sf ~def_state:LocalState "histogram" >>:
+      fun (g, what, min, max, nb_buckets) ->
+        match float_of_const min,
+              float_of_const max,
+              int_of_const nb_buckets with
+        | Some min, Some max, Some nb_buckets ->
+            if nb_buckets <= 0 then
+              raise (Reject "Histogram size must be positive") ;
+            let typ = RamenTypes.(TVec (nb_buckets+2, TU32)) in
+            StatefulFun (make_typ "histogram" ~typ,
+                         g, AggrHistogram (what, min, max, nb_buckets))
+        | _ -> raise (Reject "histogram dimensions must be constants")) |||
      (afun2 "split" >>: fun (e1, e2) ->
         GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
      (* At least 2 args to distinguish from the aggregate functions: *)

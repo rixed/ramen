@@ -271,11 +271,11 @@ let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f
           | RamenEventTime.DurationField (f, _) -> find_field_index typ f
           | RamenEventTime.StopField (f, _) -> find_field_index typ f in
         return (fun tup ->
-          let t1 = float_of_scalar_value tup.(t1i) *. start_scale in
+          let t1 = float_of_scalar tup.(t1i) *. start_scale in
           let t2 = match duration_info with
             | RamenEventTime.DurationConst k -> t1 +. k
-            | RamenEventTime.DurationField (_, s) -> t1 +. float_of_scalar_value tup.(t2i) *. s
-            | RamenEventTime.StopField (_, s) -> float_of_scalar_value tup.(t2i) *. s in
+            | RamenEventTime.DurationField (_, s) -> t1 +. float_of_scalar tup.(t2i) *. s
+            | RamenEventTime.StopField (_, s) -> float_of_scalar tup.(t2i) *. s in
           (* Allow duration to be < 0 *)
           if t2 >= t1 then t1, t2 else t2, t1) in
   let f usr tuple =

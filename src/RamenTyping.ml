@@ -1133,6 +1133,10 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       ((Some TFloat, None, by) ::
        (Some TFloat, None, time) ::
        List.map (fun e -> None, None, e) what)
+  | StatefulFun (op_typ, _, AggrHistogram (a, _, _, _)) ->
+    (* We already know the type since parsing: *)
+    check_op op_typ (fun _ -> Option.get op_typ.scalar_typ)
+      [ Some TFloat, None, a ]
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible. *)

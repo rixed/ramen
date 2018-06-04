@@ -299,7 +299,7 @@ let is_round_integer = function
   | _ -> true
 
 (* Garbage in / garbage out *)
-let float_of_scalar_value =
+let float_of_scalar =
   let open Stdint in
   function
   | VFloat x -> x
@@ -322,8 +322,8 @@ let float_of_scalar_value =
   | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _
   | VTuple _ | VVec _ -> 0.
 
-let int_of_scalar_value =
-  int_of_float % float_of_scalar_value
+let int_of_scalar =
+  int_of_float % float_of_scalar
 
 (*
  * Parsing
