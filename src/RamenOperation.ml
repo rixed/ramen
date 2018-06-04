@@ -906,7 +906,8 @@ struct
       let commit_specs, (commit_before, commit_when) = commit in
       (* Try to catch when we write "commit when" instead of "commit
        * after/before": *)
-      if commit_specs = [ CommitSpec ] then
+      if commit_specs = [ CommitSpec ] &&
+         commit_when = default_commit_when then
         raise (Reject "Lone COMMIT makes no sense. \
                        Do you mean COMMIT AFTER/BEFORE?") ;
       (* Distinguish between Aggregate, Read, ListenFor...: *)
