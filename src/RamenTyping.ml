@@ -1193,6 +1193,14 @@ let check_inherit_tuple ~including_complete ~is_subset ~from_prefix
     ) else changed in
   changed
 
+(* Check the expression, improving out_type and checking against in_type: *)
+let check_where ~parents ~in_type ~out_type ~params where =
+  let exp_type = Expr.typ_of where in
+  set_nullable exp_type false |||
+  set_scalar_type ~ok_if_larger:false ~expr_name:"where clause"
+                  exp_type TBool |||
+  check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params where
+
 let check_selected_fields ~parents ~in_type ~out_type params fields =
   List.fold_left (fun changed sf ->
     let name = sf.RamenOperation.alias in
@@ -1260,11 +1268,9 @@ let all_finished funcs =
       tuple_type_is_finished func.Func.out_type
     ) funcs
 
-let check_aggregate parents func fields and_all_others merge sort where key
+let check_aggregate ~parents ~in_type ~out_type ~params
+                    fields and_all_others merge sort where key
                     commit_when flush_how =
-  let in_type = untyped_tuple_type func.Func.in_type
-  and out_type = untyped_tuple_type func.Func.out_type
-  and params = func.params in
   let open RamenOperation in
   (
     (* Improve in_type using parent out_type and out_type using in_type if we
@@ -1351,12 +1357,7 @@ let check_aggregate parents func fields and_all_others merge sort where key
                       exp_type TBool |||
       check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params e
   ) ||| (
-    (* Check the expression, improving out_type and checking against in_type: *)
-    let exp_type = Expr.typ_of where in
-    set_nullable exp_type false |||
-    set_scalar_type ~ok_if_larger:false ~expr_name:"where clause"
-                    exp_type TBool |||
-    check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params where
+    check_where ~parents ~in_type ~out_type ~params where
   ) ||| (
     (* Also check other expression and make use of them to improve out_type.
      * Everything that's selected must be (added) in out_type. *)
@@ -1373,31 +1374,38 @@ let check_aggregate parents func fields and_all_others merge sort where key
  *)
 let check_operation operation parents func =
   !logger.debug "-- Typing operation %a" RamenOperation.print operation ;
-  let set_well_known_out_type typ =
-    if tuple_type_is_finished func.Func.out_type then false else (
-      let user = typ in
-      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
-      func.Func.out_type <- TypedTuple { user ; ser } ;
-      func.Func.in_type <- TypedTuple { user = [] ; ser = [] } ;
-      true)
+  let in_type = untyped_tuple_type func.Func.in_type
+  and out_type = untyped_tuple_type func.Func.out_type
+  and params = func.params in
+  let set_well_known_type typ =
+    let set_to t =
+      t.fields <-
+        List.map (fun ft ->
+          ft.RamenTuple.typ_name,
+          Expr.make_typ ~nullable:ft.nullable ~typ:ft.typ ft.typ_name
+        ) typ ;
+      t.finished_typing <- true in
+    set_to in_type ; set_to out_type
   in
   let open RamenOperation in
   match operation with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_when ; flush_how ; _ } ->
-    check_aggregate parents func fields and_all_others (fst merge) sort where
+    check_aggregate ~parents ~in_type ~out_type ~params
+                    fields and_all_others (fst merge) sort where
                     key commit_when flush_how
+
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-    if tuple_type_is_finished func.Func.out_type then false else (
-      let user = fields in
-      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ user in
-      func.Func.out_type <- TypedTuple { user ; ser } ;
-      func.Func.in_type <- TypedTuple { user = [] ; ser = [] } ;
-      true)
+    set_well_known_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields) ;
+    false
+
   | ListenFor { proto ; _ } ->
-    set_well_known_out_type (RamenProtocols.tuple_typ_of_proto proto)
+    set_well_known_type (RamenProtocols.tuple_typ_of_proto proto) ;
+    false
+
   | Instrumentation _ ->
-    set_well_known_out_type RamenBinocle.tuple_typ
+    set_well_known_type RamenBinocle.tuple_typ ;
+    false
 
 (*
  * Type inference for the graph
@@ -1511,9 +1519,12 @@ let set_all_types conf parents funcs =
   (* We reached the fixed point.
    * We still have a few things to check: *)
   Hashtbl.iter (fun _ func ->
-    (* Check that input type no parents => no input *)
-    let in_type = (untyped_tuple_of_tuple_type func.Func.in_type).fields in
-    assert (func.Func.parents <> [] || in_type = []) ;
+    (* Check that, for Aggregate functions, no parents => no input *)
+    (match func.Func.operation with
+    | Some RamenOperation.Aggregate _ ->
+      let in_type = (untyped_tuple_of_tuple_type func.in_type).fields in
+      assert (func.Func.parents <> [] || in_type = [])
+    | _ -> ()) ;
     (* Check that all expressions have indeed be typed: *)
     iter_fun_expr func (fun what typ ->
       if typ.nullable = None || typ.scalar_typ = None ||

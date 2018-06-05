@@ -339,21 +339,21 @@ let check params =
           raise (SyntaxError m)
         )
       | _ -> ())
-  and check_field_exists fields f =
-    if not (List.exists (fun sf -> sf.alias = f) fields) then
+  and check_field_exists field_names f =
+    if not (List.mem f field_names) then
       let m =
-        let print_alias oc sf = String.print oc sf.alias in
-        let tuple_type = IO.to_string (List.print print_alias) fields in
+        let tuple_type =
+          IO.to_string (List.print String.print) field_names in
         FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
       raise (SyntaxError m) in
-  let check_no_group = check_no_state LocalState in
-  let check_event_time fields ((start_field, _), duration) =
-    check_field_exists fields start_field ;
+  let check_event_time field_names ((start_field, _), duration) =
+    check_field_exists field_names start_field ;
     match duration with
     | RamenEventTime.DurationConst _ -> ()
     | RamenEventTime.DurationField (f, _)
-    | RamenEventTime.StopField (f, _) -> check_field_exists fields f
-  and check_factors fields = List.iter (check_field_exists fields)
+    | RamenEventTime.StopField (f, _) -> check_field_exists field_names f
+  and check_factors field_names =
+    List.iter (check_field_exists field_names)
   (* Unless it's a param, assume TupleUnknow belongs to def: *)
   and prefix_def def =
     Expr.iter (function
@@ -363,6 +363,7 @@ let check params =
           else
             pref := def
       | _ -> ())
+  and check_no_group = check_no_state LocalState
   in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
@@ -425,8 +426,9 @@ let check params =
         sf.alias :: prev_aliases
       ) [] fields |> ignore;
     if not and_all_others then (
-      Option.may (check_event_time fields) event_time ;
-      check_factors fields factors
+      let field_names = List.map (fun sf -> sf.alias) fields in
+      Option.may (check_event_time field_names) event_time ;
+      check_factors field_names factors
     ) ;
     (* Disallow group state in WHERE because it makes no sense: *)
     check_no_group (no_group "WHERE") where ;
@@ -458,8 +460,16 @@ let check params =
 
     (* TODO: notifications: check field names from text templates *)
 
-  | ReadCSVFile _ -> () (* TODO: check_event_time, check_factors!*)
-  | ListenFor _ -> ()
+  | ListenFor { proto ; factors ; _ } ->
+    let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
+    let field_names = List.map (fun t -> t.RamenTuple.typ_name) tup_typ in
+    check_factors field_names factors
+
+  | ReadCSVFile { what ; event_time ; factors ; _ } ->
+    let field_names = List.map (fun t -> t.RamenTuple.typ_name) what.fields in
+    Option.may (check_event_time field_names) event_time ;
+    check_factors field_names factors
+
   | Instrumentation _ -> ()
 
 module Parser =
