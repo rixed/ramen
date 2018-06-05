@@ -47,6 +47,9 @@ bin_dir ?= /usr/bin/
 # or RamenCompilConfig will be incompatible).
 lib_dir ?= /usr/lib/ramen
 
+# Where examples are installed
+sample_dir ?= /var/lib/ramen
+
 all: $(INSTALLED)
 
 # Generic rules
@@ -378,6 +381,14 @@ install-bundle: bundle
 	@install -d $(DESTDIR)$(lib_dir)
 	@cp -r $(BUNDLE_DIR) $(DESTDIR)$(lib_dir)/
 
+install-examples:
+	@echo 'Installing examples into $(DESTDIR)$(sample_dir)'
+	@install -d $(DESTDIR)$(lib_dir)
+	@cd examples/programs && \
+	 find . -type f -name '*.ramen' \
+	   -exec sh -c 'mkdir -p $(DESTDIR)$(sample_dir)/$$(dirname {})' \; \
+	   -exec sh -c 'cp {} $(DESTDIR)$(sample_dir)/$$(dirname {})' \;
+
 uninstall:
 	@ocamlfind remove ramen
 	@echo 'Uninstalling binaries and libraries bundle'
@@ -398,12 +409,13 @@ tarball: ramen.$(VERSION).tgz
 ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 	@echo 'Building debian package $@'
 	@sudo rm -rf debtmp
-	@install -d debtmp/usr/bin debtmp/$(lib_dir)
+	@install -d debtmp/usr/bin
 	@install $(INSTALLED_BIN) debtmp/usr/bin
-	@cp -r $(BUNDLE_DIR) debtmp/$(lib_dir)
+	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-examples
+	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-bundle
 	@mkdir -p debtmp/DEBIAN
 	@cp debian.control debtmp/DEBIAN/control
-	@chmod a+x -R debtmp/usr
+	@chmod -R a+x debtmp/usr
 	@sudo chown root: -R debtmp/usr
 	@dpkg --build debtmp
 	@mv debtmp.deb $@
@@ -413,8 +425,9 @@ ramen.$(VERSION).tgz: $(INSTALLED_BIN) bundle/date
 	@$(RM) -r tmp/ramen
 	@install -d tmp/ramen
 	@install $(INSTALLED_BIN) tmp/ramen/
-	@chmod a+x -R tmp/ramen/*
-	@cp -r $(BUNDLE_DIR) tmp/ramen
+	@chmod -R a+x tmp/ramen/*
+	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples install-examples
+	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples install-bundle
 	@tar c -C tmp ramen | gzip > $@
 
 # Docker images
