@@ -58,22 +58,10 @@ type csv_specs =
  * to `ramen tail`. We could also use the ramen language syntax but parsing
  * it again from the notifier looks wasteful. *)
 
-type http_cmd_method = HttpCmdGet | HttpCmdPost
-  [@@ppp PPP_OCaml]
-
-type http_cmd =
-  { method_ : http_cmd_method
-      [@ppp_rename "method"] [@ppp_default HttpCmdGet] ;
-    url : string ;
-    headers : (string * string) list
-      [@ppp_default []] ;
-    body : string [@ppp_default ""] }
-  [@@ppp PPP_OCaml]
-
 type severity = Urgent | Deferrable
   [@@ppp PPP_OCaml]
 
-type notify_cmd =
+type notification =
   { (* Act as the alert identifier _and_ the selector for who it's aimed at.
        So use names such as "team: service ${X} for ${Y} is on fire" *)
     name : string ;
@@ -83,40 +71,16 @@ type notify_cmd =
       [@ppp_default []] }
   [@@ppp PPP_OCaml]
 
-type notification =
-  | ExecuteCmd of string
-  | HttpCmd of http_cmd
-  | SysLog of string
-  | NotifyCmd of notify_cmd
-  [@@ppp PPP_OCaml]
-
-let print_http_cmd oc http =
-  Printf.fprintf oc "HTTP%s TO %S"
-    (match http.method_ with HttpCmdGet -> "" | HttpCmdPost -> " POST")
-    http.url ;
-  if http.headers <> [] then
-    List.print ~first:" WITH HEADERS " ~last:"" ~sep:", "
-      (fun oc (n, v) -> Printf.fprintf oc "%S:%S" n v) oc http.headers ;
-  if http.body <> "" then
-    Printf.fprintf oc " WITH BODY %S" http.body
-
-let print_notification oc = function
-  | ExecuteCmd cmd ->
-      Printf.fprintf oc "EXECUTE %S" cmd
-  | HttpCmd http ->
-      print_http_cmd oc http
-  | SysLog str ->
-      Printf.fprintf oc "LOGGER %S" str
-  | NotifyCmd notif ->
-      Printf.fprintf oc "NOTIFY %S %s"
-        notif.name
-        (match notif.severity with
-         | Urgent -> "URGENT"
-         | Deferrable -> "DEFERRABLE") ;
-      if notif.parameters <> [] then
-        List.print ~first:" WITH PARAMETERS " ~last:"" ~sep:", "
-          (fun oc (n, v) -> Printf.fprintf oc "%S=%S" n v) oc
-          notif.parameters
+let print_notification oc notif =
+  Printf.fprintf oc "NOTIFY %S %s"
+    notif.name
+    (match notif.severity with
+     | Urgent -> "URGENT"
+     | Deferrable -> "DEFERRABLE") ;
+  if notif.parameters <> [] then
+    List.print ~first:" WITH PARAMETERS " ~last:"" ~sep:", "
+      (fun oc (n, v) -> Printf.fprintf oc "%S=%S" n v) oc
+      notif.parameters
 
 (* Type of an operation: *)
 
@@ -591,35 +555,11 @@ struct
     (opt_blanks -- char ',' -- opt_blanks)
 
   let notification_clause m =
-    let execute m =
-      let m = "execute clause" :: m in
-      (strinG "execute" -- blanks -+ quoted_string >>:
-       fun s -> ExecuteCmd s) m in
     let kv_list m =
       let m = "key-value list" :: m in
       (quoted_string +- opt_blanks +- (char ':' ||| char '=') +-
        opt_blanks ++ quoted_string) m in
     let opt_with = optional ~def:() (blanks -- strinG "with") in
-    let logger m =
-      let m = "logger clause" :: m in
-      (strinG "logger" -- blanks -+ quoted_string >>:
-       fun s -> SysLog s) m in
-    let http_cmd m =
-      let m = "http notification" :: m in
-      (strinG "http" -+
-       optional ~def:HttpCmdGet
-         (blanks -+
-          (strinG "get" >>: fun () -> HttpCmdGet) |||
-          (strinG "post" >>: fun () -> HttpCmdPost)) +-
-       blanks ++ quoted_string ++
-       optional ~def:[]
-         (opt_with -- blanks -- strinGs "header" -- blanks -+
-          several ~sep:list_sep_and kv_list) ++
-       optional ~def:""
-         (opt_with -- blanks -- strinG "body" -- blanks -+
-          quoted_string) >>:
-       fun (((method_, url), headers), body) ->
-        HttpCmd { method_ ; url ; headers ; body }) m in
     let notify_cmd m =
       let severity m =
         let m = "notification severity" :: m in
@@ -632,11 +572,10 @@ struct
          (opt_with -- blanks -- strinGs "parameter" -- blanks -+
           several ~sep:list_sep_and kv_list) >>:
       fun ((name, severity), parameters) ->
-        NotifyCmd { name ; severity ; parameters }) m
+        { name ; severity ; parameters }) m
     in
     let m = "notification clause" :: m in
-    ((execute ||| http_cmd ||| logger ||| notify_cmd) >>:
-     fun s -> NotifySpec s) m
+    (notify_cmd >>: fun s -> NotifySpec s) m
 
   let flush m =
     let m = "flush clause" :: m in
@@ -1062,14 +1001,13 @@ struct
         where = Expr.Const (typ, VBool true) ;\
         force_export = false ; event_time = None ;\
         notifications = [ \
-          HttpCmd { method_ = HttpCmdGet ; headers = [] ; body = "" ;\
-                    url = "http://firebrigade.com/alert.php" } ];\
+          { name = "ouch" ; severity = Urgent ; parameters = [] } ] ;\
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = ["foo"] ; every = 0. ; factors = [] },\
-      (48, [])))\
-      (test_op p "from foo HTTP \"http://firebrigade.com/alert.php\"" |>\
+      (22, [])))\
+      (test_op p "from foo NOTIFY \"ouch\"" |>\
        replace_typ_in_op)
 
     (Ok (\

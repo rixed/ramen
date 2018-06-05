@@ -15,7 +15,7 @@ let codegen = "v17" (* last: removal of a useless argument in aggregate *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)
 
 (* Notifications sent from workers to Ramen *)
-let notify_tuple = "v2" (* last: new notification type *)
+let notify_tuple = "v3" (* last: removed non-generic notifications *)
 
 (* Pending notification format (marshalled on disc) *)
 let pending_notify = "v1"

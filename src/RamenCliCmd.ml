@@ -122,8 +122,8 @@ let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
 let notify conf parameters name () =
   logger := make_logger conf.C.debug ;
   let rb = RamenProcesses.prepare_notifs conf in
-  let notif = RamenOperation.(
-    NotifyCmd { name ; severity = Urgent ; parameters }) in
+  let notif =
+    RamenOperation.{ name ; severity = Urgent ; parameters } in
   let notif = PPP.to_string RamenOperation.notification_ppp_ocaml notif in
   Lwt_main.run (
     RingBufLib.write_notif rb "cli" notif)

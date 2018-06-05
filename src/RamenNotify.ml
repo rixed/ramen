@@ -33,30 +33,33 @@ let next_alert_id conf =
   C.ppp_to_file fname alert_id_ppp_ocaml (Uint64.succ v) ;
   v
 
-let http_send http worker =
+type http_cmd_method = HttpCmdGet | HttpCmdPost
+  [@@ppp PPP_OCaml]
+
+let http_send method_ url headers body worker =
   let open Cohttp in
   let open Cohttp_lwt_unix in
   let open RamenOperation in
   let headers =
     List.fold_left (fun h (n, v) ->
       Header.add h n v
-    ) (Header.init_with "Connection" "close") http.headers in
-  let url = Uri.of_string http.url in
+    ) (Header.init_with "Connection" "close") headers in
+  let url_ = Uri.of_string url in
   let thd =
-    match http.method_ with
+    match method_ with
     | HttpCmdGet ->
-      Client.get ~headers url
+      Client.get ~headers url_
     | HttpCmdPost ->
       let headers = Header.add headers "Content-type"
                                RamenConsts.ContentTypes.urlencoded in
-      let body = Uri.pct_encode http.body |> Cohttp_lwt.Body.of_string in
-      Client.post ~headers ~body url
+      let body = Uri.pct_encode body |> Cohttp_lwt.Body.of_string in
+      Client.post ~headers ~body url_
   in
   let%lwt resp, body = thd in
   let code = resp |> Response.status |> Code.code_of_status in
   if code <> 200 then (
     let%lwt body = Cohttp_lwt.Body.to_string body in
-    !logger.error "Received code %d from %S (%S)" code http.url body ;
+    !logger.error "Received code %d from %S (%S)" code url body ;
     return_unit
   ) else
     Cohttp_lwt.Body.drain_body body
@@ -109,7 +112,13 @@ let sqllite_insert file insert_q create_q worker =
  * severity one of two contact is chosen. *)
 module Contact = struct
   type t =
-    | ViaHttp of RamenOperation.http_cmd
+    | ViaHttp of
+        { method_ : http_cmd_method
+            [@ppp_rename "method"] [@ppp_default HttpCmdGet] ;
+          url : string ;
+          headers : (string * string) list
+            [@ppp_default []] ;
+          body : string [@ppp_default ""] }
     | ViaExec of string
     | ViaSysLog of string
     | ViaSqlite of
@@ -151,7 +160,7 @@ type notify_config =
 
 let default_notify_conf =
   let send_to_prometheus =
-    Contact.ViaHttp RamenOperation.{
+    Contact.ViaHttp {
       method_ = HttpCmdPost ;
       url = "http://localhost:9093/api/v1/alerts" ;
       headers = [ "Content-Type", "application/json" ] ;
@@ -213,7 +222,7 @@ let string_of_pending_status =
   PPP.to_string pending_status_ppp_ocaml
 
 type pending_notification =
-  { notif : RamenOperation.notify_cmd ;
+  { notif : RamenOperation.notification;
     contact : Contact.t ;
     worker : string ;
     rcvd_start : float ;
@@ -428,12 +437,11 @@ let contact_via item =
   let open Contact in
   match item.contact with
   | ViaHttp http ->
-      http_send
-        { http with
-          body = exp http.body ;
-          url = exp ~q:Uri.pct_encode http.url ;
-          headers = List.map (fun (n, v) -> exp n, exp v) http.headers }
-        item.worker
+      http_send http.method_
+                (exp ~q:Uri.pct_encode http.url)
+                (List.map (fun (n, v) -> exp n, exp v) http.headers)
+                (exp http.body)
+                item.worker
   | ViaExec cmd -> execute_cmd (exp ~q:shell_quote cmd) item.worker
   | ViaSysLog str -> log_str (exp str) item.worker
   | ViaSqlite { file ; insert ; create } ->
@@ -532,13 +540,11 @@ let start conf notif_conf rb =
   RamenSerialization.read_notifs ~while_ rb (fun (worker, notif) ->
     !logger.info "Received message from %s: %s"
       worker notif ;
-    match PPP.of_string_exc RamenOperation.notification_ppp_ocaml
-                            notif with
-    | ExecuteCmd cmd -> execute_cmd cmd worker
-    | HttpCmd http -> http_send http worker
-    | SysLog str -> log_str str worker
-    | NotifyCmd notif ->
-        let open RamenOperation in
+    match PPP.of_string_exc RamenOperation.notification_ppp_ocaml notif with
+    | exception _ ->
+        !logger.error "Cannot deserialize notification %S, skipping" notif ;
+        return_unit
+    | notif ->
         let event_time =
           (* TODO: a real field, see #273 *)
           try
