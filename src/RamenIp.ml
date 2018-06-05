@@ -40,3 +40,9 @@ let first = function
 let last = function
   | Cidr.V4 n -> V4 (RamenIpv4.Cidr.last n)
   | Cidr.V6 n -> V6 (RamenIpv6.Cidr.last n)
+
+let is_in ip cidr =
+  match ip, cidr with
+  | V4 ip, Cidr.V4 cidr -> RamenIpv4.Cidr.is_in ip cidr
+  | V6 ip, Cidr.V6 cidr -> RamenIpv6.Cidr.is_in ip cidr
+  | _ -> false

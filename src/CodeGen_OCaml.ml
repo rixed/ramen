@@ -630,6 +630,25 @@ and emit_expr ?state ~context oc expr =
            (if is_nullable e then "" else "Some ")
            (conv_to ?state ~context (Some TString)) e)) es
       (emit_expr ?state ~context) (List.hd es)
+  (* IN can have many meanings: *)
+  | Finalize, StatelessFun2 (_, In, e1, e2), Some TBool ->
+    (match (typ_of e1).scalar_typ |> Option.get,
+           (typ_of e2).scalar_typ |> Option.get with
+    | TIpv4, TCidrv4 ->
+      emit_functionN ?state "RamenIpv4.Cidr.is_in"
+        [Some TIpv4; Some TCidrv4] oc [e1; e2]
+    | TIpv6, TCidrv6 ->
+      emit_functionN ?state "RamenIpv6.Cidr.is_in"
+        [Some TIpv6; Some TCidrv6] oc [e1; e2]
+    | (TIpv4|TIpv6|TIp), (TCidrv4|TCidrv6|TCidr) ->
+      emit_functionN ?state "RamenIp.is_in"
+        [Some TIp; Some TCidr] oc [e1; e2]
+    | TString, TString ->
+      emit_functionN ?state "String.exists"
+        [Some TString; Some TString] oc [e2; e1]
+    | _t1, TVec (d, t) ->
+      todo "IN operator for vectors"
+    | _ -> assert false)
 
   (* Stateful functions *)
   | InitState, StatefulFun (_, _, AggrAnd _), (Some TBool as t) ->

@@ -152,6 +152,9 @@ struct
 
   let first (net, len) = and_to_len len net
   let last (net, len) = or_to_len len net
+  let is_in ip cidr =
+    Uint128.compare ip (first cidr) >= 0 &&
+    Uint128.compare ip (last cidr) <= 0
 
   let to_string (net, len) =
     let net = and_to_len len net in

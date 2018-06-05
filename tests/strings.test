@@ -1,0 +1,11 @@
+{
+  programs = [ ("strings.x", []) ];
+  outputs = {
+    "tests/strings/f1" => {
+      present = [ { "t1" => "true"; "t2" => "true"; "t3" => "true" } ];
+      absent = [
+        { "t1" => "false" }; { "t2" => "false" }; { "t3" => "false" };
+      ]
+    }
+  }
+}

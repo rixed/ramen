@@ -80,6 +80,9 @@ struct
 
   let first (net, len) = and_to_len len net
   let last (net, len) = or_to_len len net
+  let is_in ip cidr =
+    Uint32.compare ip (first cidr) >= 0 &&
+    Uint32.compare ip (last cidr) <= 0
 
   module Parser =
   struct

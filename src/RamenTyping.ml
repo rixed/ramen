@@ -1141,6 +1141,27 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* We already know the type since parsing: *)
     check_op op_typ (fun _ -> Option.get op_typ.scalar_typ)
       [ Some TFloat, None, a ]
+  | StatelessFun2 (op_typ, In, e1, e2) ->
+    (* FIXME: we really want to be able to backtrack those tries: *)
+    let last_exc = ref Exit and ret = ref false in
+    (try
+      [ TIpv4, TCidrv4 ;
+        TIpv6, TCidrv6 ;
+        TIp, TCidr ;
+        TString, TString ;
+        TAny, TVec (0, TAny) ] |>
+      List.iter (fun (t1, t2) ->
+        try
+          ret := check_op op_typ return_bool
+                   [ Some t1, None, e1; Some t2, None, e2] ;
+          raise Exit
+        with SyntaxError _ as e ->
+          !logger.debug "%sIN for %a failed with %s"
+            indent RamenTypes.print_typ t2 (Printexc.to_string e) ;
+          last_exc := e
+      ) ;
+      raise !last_exc
+    with Exit -> !ret)
 
 (* Given two tuple types, transfer all fields from the parent to the child,
  * while checking those already in the child are compatible. *)

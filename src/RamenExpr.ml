@@ -84,7 +84,7 @@ type stateless_fun1 =
   | Log10
   | Sqrt
   | Hash
-  (* For network address range checks: *)
+  (* Give the bounds of a CIDR: *)
   | BeginOfRange
   | EndOfRange
   | Nth of int (* Where the int starts at 0 for the first item *)
@@ -113,6 +113,10 @@ type stateless_fun2 =
   (* Same as Nth but only for vectors (accepts non constant index, and
    * indices start at 0) *)
   | VecGet
+  (* For network address range test membership, or for an efficient constant
+   * set membership test, or for a non-efficient sequence of OR kind of
+   * membership test if the set is not constant: *)
+  | In
 
 (* FIXME: when we end prototyping use objects to make it easier to add
  * operations *)
@@ -378,16 +382,10 @@ let rec print with_types fmt =
     Printf.fprintf fmt "hash (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Sparkline, e) ->
     Printf.fprintf fmt "sparkline (%a)" (print with_types) e ; add_types t
-  | StatelessFun2 (t, And,
-      StatelessFun2 (_, Ge, e1, StatelessFun1 (_, BeginOfRange, e2)),
-      StatelessFun1 (_, Not,
-        StatelessFun2 (_, Ge, e1', StatelessFun1 (_, EndOfRange, e2')))) ->
-    assert (e2 == e2') ;
-    assert (e1 == e1') ;
+  | StatelessFun2 (t, In, e1, e2) ->
     Printf.fprintf fmt "(%a) IN (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun1 (t, (BeginOfRange|EndOfRange as op), e) ->
-    (* The typer, for debug, might want to print this type... *)
-    Printf.fprintf fmt "%s of range (%a)"
+    Printf.fprintf fmt "%s of (%a)"
       (if op = BeginOfRange then "begin" else "end")
       (print with_types) e ;
     add_types t
@@ -852,15 +850,7 @@ struct
       | "!=" | "<>" ->
         StatelessFun1 (make_bool_typ "not", Not,
           StatelessFun2 (make_bool_typ "equality", Eq, e1, e2))
-      | "in" ->
-        StatelessFun2 (make_bool_typ "and for range", And,
-          StatelessFun2 (make_bool_typ "comparison operator for range", Ge,
-            e1,
-            StatelessFun1 (make_typ "begin of range", BeginOfRange, e2)),
-          StatelessFun1 (make_bool_typ "not for range", Not,
-            StatelessFun2 (make_bool_typ "comparison operator for range", Ge,
-              e1,
-              StatelessFun1 (make_typ "end of range", EndOfRange, e2))))
+      | "in" -> StatelessFun2 (make_bool_typ "in", In, e1, e2)
       | "like" ->
         (match string_of_const e2 with
         | None -> raise (Reject "LIKE pattern must be a string constant")
@@ -1012,23 +1002,28 @@ struct
     afunv 3 n >>: function ([a;b;c], r) -> a, b, c, r | _ -> assert false
 
   and highest_prec_left_assoc m =
-    ((afun1 "not" >>: fun e ->
+    (
+      (afun1 "not" >>: fun e ->
         StatelessFun1 (make_bool_typ "not", Not, e)) |||
-     (strinG "-" -- opt_blanks --
-      check (nay decimal_digit) -+ highestest_prec >>: fun e ->
-        StatelessFun1 (make_num_typ "unary minus", Minus, e)) |||
-     (highestest_prec ++
-      optional ~def:None (
-        blanks -- strinG "is" -- blanks -+
-        optional ~def:(Some false)
-                 (strinG "not" -- blanks >>: fun () -> Some true) +-
-        strinG "null") >>: function
-          | e, None -> e
-          | e, Some false ->
-            StatelessFun1 (make_bool_typ ~nullable:false "not", Not,
-              StatelessFun1 (make_bool_typ ~nullable:false "is_not_null", Defined, e))
-          | e, Some true ->
-            StatelessFun1 (make_bool_typ ~nullable:false "is_not_null", Defined, e))
+      (strinG "-" -- opt_blanks --
+        check (nay decimal_digit) -+ highestest_prec >>: fun e ->
+          StatelessFun1 (make_num_typ "unary minus", Minus, e)) |||
+      (highestest_prec ++
+        optional ~def:None (
+          blanks -- strinG "is" -- blanks -+
+          optional ~def:(Some false)
+                   (strinG "not" -- blanks >>: fun () -> Some true) +-
+          strinG "null") >>: function
+            | e, None -> e
+            | e, Some false ->
+              StatelessFun1 (make_bool_typ ~nullable:false "not", Not,
+                StatelessFun1 (make_bool_typ ~nullable:false "is_not_null", Defined, e))
+            | e, Some true ->
+              StatelessFun1 (make_bool_typ ~nullable:false "is_not_null", Defined, e)) |||
+      (strinG "begin" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
+        fun e -> StatelessFun1 (make_typ "begin of", BeginOfRange, e)) |||
+      (strinG "end" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
+        fun e -> StatelessFun1 (make_typ "end of", EndOfRange, e))
     ) m
 
   and func m =

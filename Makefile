@@ -354,6 +354,7 @@ tests/min_max.success: tests/min_max.x
 tests/nulls.success: tests/nulls.x
 tests/constructed_types.success: tests/constructed_types.x
 tests/histogram.success: tests/histogram.x tests/fixtures/cars.x
+tests/strings.success: tests/strings.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 
