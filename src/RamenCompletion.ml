@@ -147,7 +147,8 @@ let complete str () =
       [ "--help", RamenConsts.CliInfo.help ;
         "--debug", RamenConsts.CliInfo.debug ;
         "--rand-seed", RamenConsts.CliInfo.rand_seed ;
-        "--persist-dir=", RamenConsts.CliInfo.persist_dir ] in
+        "--persist-dir=", RamenConsts.CliInfo.persist_dir ;
+        "--variant", RamenConsts.CliInfo.variant ] in
     let completions =
       (match command with
       | "supervisor" ->
@@ -169,7 +170,6 @@ let complete str () =
       | "compile" ->
           ("--bundle-dir=", RamenConsts.CliInfo.bundle_dir) ::
           ("--keep-temp-files", RamenConsts.CliInfo.keep_temp_files) ::
-          ("--variant", RamenConsts.CliInfo.variant) ::
           ("--root-path=", RamenConsts.CliInfo.root_path) ::
           ("--external-compiler", RamenConsts.CliInfo.external_compiler) ::
           ("--as-program", RamenConsts.CliInfo.program_name) ::
