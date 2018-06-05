@@ -105,6 +105,8 @@ type stateless_fun2 =
   | Gt
   | Eq
   | Concat
+  | StartsWith
+  | EndsWith
   | BitAnd
   | BitOr
   | BitXor
@@ -397,6 +399,8 @@ let rec print with_types fmt =
   | StatelessFun2 (t, Gt, e1, e2) -> Printf.fprintf fmt "(%a) > (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Eq, e1, e2) -> Printf.fprintf fmt "(%a) = (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Concat, e1, e2) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, StartsWith, e1, e2) -> Printf.fprintf fmt "(%a) STARTS WITH (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, EndsWith, e1, e2) -> Printf.fprintf fmt "(%a) ENDS WITH (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, BitAnd, e1, e2) -> Printf.fprintf fmt "(%a) & (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, BitOr, e1, e2) -> Printf.fprintf fmt "(%a) | (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, BitXor, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
@@ -837,7 +841,8 @@ struct
     let m = "comparison operator" :: m in
     let op = that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
              that_string "=" ||| that_string "<>" ||| that_string "!=" |||
-             that_string "in" ||| that_string "like"
+             that_string "in" ||| that_string "like" |||
+             ((that_string "starts" ||| that_string "ends") +- blanks +- strinG "with")
     and reduce e1 op e2 = match op with
       | ">" -> StatelessFun2 (make_bool_typ "comparison (>)", Gt, e1, e2)
       | "<" -> StatelessFun2 (make_bool_typ "comparison (<)", Gt, e2, e1)
@@ -861,6 +866,8 @@ struct
         | None -> raise (Reject "LIKE pattern must be a string constant")
         | Some p ->
           StatelessFunMisc (make_bool_typ "like", Like (e1, p)))
+      | "starts" -> StatelessFun2 (make_bool_typ "starts with", StartsWith, e1, e2)
+      | "ends" -> StatelessFun2 (make_bool_typ "ends with", EndsWith, e1, e2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 

@@ -3,12 +3,12 @@
 
 DEFINE stats AS
   LISTEN FOR INSTRUMENTATION;
-  -- WHERE worker not start with "monitoring/meta/";
 
 -- Checks the global number of output tuples and running/active programs
 -- per minute
 DEFINE per_minute AS
   FROM stats
+  WHERE not (worker starts with "monitoring/meta/")
   SELECT
     worker,
     min time AS time,

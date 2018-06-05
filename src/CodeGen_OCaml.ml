@@ -561,6 +561,10 @@ and emit_expr ?state ~context oc expr =
     emit_functionN ?state "(=)" [Some TAny; Some TAny] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Concat, e1, e2), Some TString ->
     emit_functionN ?state "(^)" [Some TString; Some TString] oc [e1; e2]
+  | Finalize, StatelessFun2 (_, StartsWith, e1, e2), Some TBool ->
+    emit_functionN ?state "String.starts_with" [Some TString; Some TString] oc [e1; e2]
+  | Finalize, StatelessFun2 (_, EndsWith, e1, e2), Some TBool ->
+    emit_functionN ?state "String.ends_with" [Some TString; Some TString] oc [e1; e2]
   | Finalize, StatelessFunMisc (_, Like (e, p)), Some TBool ->
     let pattern = Globs.compile ~star:'%' ~escape:'\\' p in
     Printf.fprintf oc "(let pattern_ = \
