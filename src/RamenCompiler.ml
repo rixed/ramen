@@ -158,15 +158,18 @@ let compile conf root_path program_name program_code =
           "_"^ func.RamenTyping.Func.signature ^
           "_"^ RamenVersions.codegen ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
-        let%lwt () =
+        Lwt.catch (fun () ->
           let open RamenTyping in
           let in_typ = tuple_user_type func.Func.in_type
           and out_typ = tuple_user_type func.Func.out_type
           and operation = Option.get func.Func.operation in
           CodeGen_OCaml.compile
             conf entry_point_name func.Func.name obj_name
-            in_typ out_typ func.Func.params operation
-        in
+            in_typ out_typ func.Func.params operation)
+          (fun e ->
+            !logger.error "Cannot generate code for %s: %s"
+              func.name (Printexc.to_string e) ;
+            fail e) ;%lwt
         add_temp_file obj_name ;
         return obj_name)) in
     (* It might happen that we have compiled twice the same thing, if two

@@ -307,15 +307,16 @@ let set_nullable ?(indent="") typ nullable =
 let set_scalar_type ?(indent="") ~ok_if_larger ~expr_name typ scalar_typ =
   match typ.Expr.scalar_typ with
   | None ->
-    !logger.debug "%s%s: Improving %s from %a" indent
+    !logger.debug "%s%s: Improving %s from None to %a" indent
       !cur_func_name expr_name RamenTypes.print_typ scalar_typ ;
     typ.Expr.scalar_typ <- Some scalar_typ ;
     true
-  | Some to_typ when to_typ <> scalar_typ ->
-    if can_enlarge ~from:to_typ ~to_:scalar_typ
+  | Some from_typ when from_typ <> scalar_typ ->
+    if can_enlarge ~from:from_typ ~to_:scalar_typ
     then (
-      !logger.debug "%s%s: Improving %a from %a" indent
-        !cur_func_name Expr.print_typ typ
+      !logger.debug "%s%s: Improving %s from %a to %a" indent
+        !cur_func_name expr_name
+        RamenTypes.print_typ from_typ
         RamenTypes.print_typ scalar_typ ;
       typ.scalar_typ <- Some scalar_typ ;
       true
@@ -323,7 +324,7 @@ let set_scalar_type ?(indent="") ~ok_if_larger ~expr_name typ scalar_typ =
     else
       let e = CannotTypeExpression {
         what = expr_name ;
-        expected_type = IO.to_string RamenTypes.print_typ to_typ ;
+        expected_type = IO.to_string RamenTypes.print_typ from_typ ;
         got_type = IO.to_string RamenTypes.print_typ scalar_typ } in
       raise (SyntaxError e)
   | _ -> false

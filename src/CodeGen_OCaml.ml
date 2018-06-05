@@ -380,7 +380,7 @@ let rec conv_to ?state ~context to_typ fmt e =
 and emit_maybe_fields oc out_typ =
   List.iter (fun ft ->
     Printf.fprintf oc "let maybe_%s_ = function\n" ft.typ_name ;
-    Printf.fprintf oc "  | None -> None\n" ;
+    Printf.fprintf oc "  | None as n_ -> n_\n" ;
     Printf.fprintf oc "  | Some %a -> %s%s\n\n"
       (emit_tuple TupleOut) out_typ
       (if ft.nullable then "" else "Some ")
@@ -442,7 +442,7 @@ and emit_expr ?state ~context oc expr =
           * then adds a Some. *)
          Printf.fprintf oc
            (if is_nullable alt.case_cond then
-              "match %a with None -> None | Some cond_ -> if cond_ then %s(%a)"
+              "match %a with None as n_ -> n_ | Some cond_ -> if cond_ then %s(%a)"
             else
               "if %a then %s(%a)")
            (emit_expr ?state ~context) alt.case_cond
@@ -925,7 +925,7 @@ and emit_function
   let len, has_nullable =
     List.fold_left2 (fun (i, had_nullable) e arg_typ ->
         if is_nullable e then (
-          Printf.fprintf oc "(match %a with None -> None | Some x%d_ -> "
+          Printf.fprintf oc "(match %a with None as n_ -> n_ | Some x%d_ -> "
             (conv_to ?state ~context:Finalize arg_typ) e
             i ;
           i + 1, true
