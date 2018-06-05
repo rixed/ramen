@@ -290,8 +290,8 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
       Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
     | TIpv4, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
     | TIpv6, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
-    | TCidrv4, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_)"
-    | TCidrv6, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
+    | TCidrv4, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_)"
+    | TCidrv6, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
     | TVec (d_from, t_from), TVec (d_to, t_to)
       when d_from = d_to || d_to = 0 ->
       (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
