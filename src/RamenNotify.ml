@@ -179,7 +179,7 @@ let subst_dict =
       let var_name = matched_group 1 s in
       try List.assoc var_name dict |> quote
       with Not_found ->
-        !logger.error "Unknown parameter %S!" var_name ;
+        !logger.debug "Unknown parameter %S" var_name ;
         null |? "??"^ var_name ^"??"
     ) text
 
@@ -452,7 +452,9 @@ let do_notify i =
     i.attempts <- i.attempts + 1 ;
     async (fun () ->
       match%lwt contact_via i with
-      | exception e -> return_unit (* let it timeout *)
+      | exception e ->
+          !logger.error "Cannot notify: %s" (Printexc.to_string e) ;
+          return_unit (* let it timeout *)
       | () ->
           if timeout > 0. then
             wrap (fun () -> ack i.notif.name i.contact)
@@ -528,7 +530,7 @@ let start conf notif_conf rb =
   let while_ () =
     if !RamenProcesses.quit then return_false else return_true in
   RamenSerialization.read_notifs ~while_ rb (fun (worker, notif) ->
-    !logger.info "Received execute instruction from %s: %s"
+    !logger.info "Received message from %s: %s"
       worker notif ;
     match PPP.of_string_exc RamenOperation.notification_ppp_ocaml
                             notif with
