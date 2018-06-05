@@ -86,9 +86,9 @@ let sqllite_insert file insert_q create_q worker =
   let open SqliteHelpers in
   let handle = db_open file in
   let db_fail err q =
-    !logger.error "Cannot %S into sqlite DB %S: %s"
-      q file (Rc.to_string err) ;
-    exit 1 in
+    let e = Printf.sprintf "Cannot %S into sqlite DB %S: %s"
+              q file (Rc.to_string err) in
+    failwith e in
   let exec_or_fail q =
     match exec handle q with
     | Rc.OK -> ()
