@@ -1192,8 +1192,7 @@ let emit_read_csv_file oc name csv_fname unlink csv_separator csv_null
    * - given such a tuple, return its serialized size
    * - given a pointer toward the ring buffer, serialize the tuple *)
   Printf.fprintf oc
-     "open Batteries\nopen Stdint\n\n\
-     %a\n%a\n%a\n%a\n\
+     "%a\n%a\n%a\n%a\n\
      let %s () =\n\
        \tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_\n\
        \t\ttime_of_tuple_ serialize_tuple_ tuple_of_strings_ %S\n\
@@ -1210,8 +1209,7 @@ let emit_listen_on oc name net_addr port proto =
   let tuple_typ = tuple_typ_of_proto proto in
   let collector = collector_of_proto proto in
   let event_time = event_time_of_proto proto in
-  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n\
+  Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
       \tCodeGenLib.listen_on %s %S %d %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
@@ -1226,8 +1224,7 @@ let emit_instrumentation oc name from =
   let open RamenProtocols in
   let tuple_typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
-  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n\
+  Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
       \tCodeGenLib.instrumentation %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
@@ -1760,8 +1757,8 @@ let emit_aggregate oc name in_typ out_typ = function
   and where_need_group = expr_needs_group where
   (* Good to know when performing a TOP: *)
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
-  Printf.fprintf oc "open Batteries\nopen Stdint\n\n\
-    %a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+  Printf.fprintf oc
+    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_typ
@@ -1818,7 +1815,9 @@ let sanitize_ocaml_fname s =
   "m"^ global_substitute re replace_by_underscore s
 
 let emit_function name func_name in_typ out_typ params op oc =
-  Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n"
+  Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
+    open Batteries
+    open Stdint\n"
     func_name
     RamenOperation.print op ;
   (* Emit parameters: *)
