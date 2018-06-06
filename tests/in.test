@@ -4,15 +4,13 @@
     "tests/in/f1" => {
       present = [
         { "t1" => "true"; "t2" => "true"; "t3" => "true"; "t4" => "true";
-          "t5" => "true"; "t6" => "true" } ];
+          "t5" => "true"; "t6" => "true"; "t7" => "true"; "t8" => "true";
+          "t9" => "true"; "t10" => "true";"t11" => "true";
+          "t12" => "true"; } ];
       absent = [
         { "t1" => "false" }; { "t2" => "false" }; { "t3" => "false" };
-        { "t4" => "false" }; { "t5" => "false" }; { "t6" => "false" } ]};
-    "tests/in/f1" => {
-      present = [ { "t1" => "true" }; { "t2" => "true" } ];
-      absent = [ { "t1" => "false" }; { "t2" => "false" } ]};
-    "tests/in/f3" => {
-      present = [ { "t1" => "true" } ];
-      absent = [ { "t1" => "false" } ]};
+        { "t4" => "false" }; { "t5" => "false" }; { "t6" => "false" };
+        { "t7" => "false" }; { "t8" => "false" }; { "t9" => "false" };
+        { "t10" => "false" }; { "t11" => "false" }; { "t12" => "false" } ]};
   }
 }

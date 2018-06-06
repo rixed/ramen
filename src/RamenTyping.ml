@@ -536,11 +536,20 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   and return_string _ = TString
   in
   fun expr ->
-  !logger.debug "%s-- Typing expression %a"
-    indent (Expr.print true) expr ;
+  !logger.debug "%s-- Typing expression %a, expecting %a"
+    indent (Expr.print true) expr
+    Expr.print_typ exp_type ;
   match expr with
+  | Const (op_typ, VNull) ->
+    !logger.debug "%sTyping NULL..." indent ;
+    (* Literal NULL may be able to accommodate the caller expectations; so
+     * instead of enlarging the expectation we actually set or enlarge
+     * the type of NULL: *)
+    check_expr_type ~indent ~ok_if_larger:false ~set_null:false
+                    ~from:exp_type ~to_:op_typ
   | Const (op_typ, _) ->
-    (* op_typ is already optimal. But is it compatible with exp_type? *)
+    (* op_typ should have been make optimal; But is it compatible with
+     * exp_type? *)
     check_expr_type ~indent ~ok_if_larger:false ~set_null:true
                     ~from:op_typ ~to_:exp_type
   | Tuple (_op_typ, es) ->

@@ -1,29 +1,28 @@
 -- vim: ft=sql expandtab
 
--- Example involving only constant integers of same size:
--- Note: will be compiled into true,true,true,true by the compiler
 DEFINE f1 AS
   YIELD
+    -- Example involving only constant integers of same size:
+    -- Note: will be compiled into true,true,true,true by the compiler
     42 IN [ 1;2;42 ] AS t1,
     42 IN [ 1;42;3 ] AS t2,
     42 IN [ 42;2;3 ] AS t3,
     NOT (42 IN [ 1;2;3 ]) AS t4,
     "42" IN [ "1";"2";"42" ] AS t5,
-    "42" IN "1;42;3" AS t6
-  EVERY 1 SECOND
-  EXPORT;
-
--- Now let's test conversions:
-DEFINE f2 AS
-  YIELD
-    42 IN [ 1i8; 2u32; 42i128 ] AS t1,
-    42u128 IN [ 1i8;42u8;3i16 ] AS t2
-  EVERY 1 SECOND
-  EXPORT;
-
--- And NULLs:
-DEFINE f3 AS
-  YIELD
-    (NULL IN [ 1;2;3 ]) IS NULL AS t1
+    "42" IN "1;42;3" AS t6,
+    -- Now let's test conversions:
+    42 IN [ 1i8; 2u32; 42i128 ] AS t7,
+    42u128 IN [ 1i8;42u8;3i16 ] AS t8,
+    -- And NULLs:
+    (NULL IN [ 1;2;3 ]) IS NULL AS t9,
+    -- Without the cast to string typing would fail (NULL would be a bool
+    -- in the typer day dreams)
+    (string(NULL) IN "abcde") IS NULL as t10,
+    -- Long set of constants must be optimized into an
+    -- hashtable (check with --keep):
+    42 IN [ -1;2i64;3u8;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20;
+            21;22;23;24;25;26;27;28;29;30;31;32;33;34;35;36;37;38;39;
+            40;41;42;43;45;46;47;48;49;50;51;52;53;54;55;56;57;58;59 ] as t11,
+    (NULL IN [ "a";"b";"c";"d";"e";"f";"g";"h";"i";"j";"k";"l";"m";"n";"o";"p";"q" ]) IS NULL as t12
   EVERY 1 SECOND
   EXPORT;

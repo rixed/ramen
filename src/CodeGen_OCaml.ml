@@ -351,7 +351,7 @@ type args_as = Arg | Array of int | Tuple of int
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
-let rec conv_to ?state ~context to_typ fmt e =
+let rec conv_to ?state ~context ~consts to_typ fmt e =
   let open RamenExpr in
   let t = typ_of e in
   if t.nullable = None then (
@@ -364,9 +364,9 @@ let rec conv_to ?state ~context to_typ fmt e =
   | Some a, Some b ->
     Printf.fprintf fmt "(%a) (%a)"
       (conv_from_to ~nullable) (a, b)
-      (emit_expr ~context ?state) e
+      (emit_expr ~context ~consts ?state) e
   | _, None ->
-    (emit_expr ~context ?state) fmt e (* No conversion required *)
+    (emit_expr ~context ~consts ?state) fmt e (* No conversion required *)
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string RamenTypes.print_typ b))
@@ -393,7 +393,7 @@ and emit_maybe_fields oc out_typ =
  * anything and state fields must be accessed via the actual state record.
  * It is used by stateful functions when they need to access their state. *)
 (* FIXME: return a list of type * arg instead of two lists *)
-and emit_expr ?state ~context oc expr =
+and emit_expr ?state ~context ~consts oc expr =
   let open RamenExpr in
   let out_typ = typ_of expr in
   let true_or_nul nullable =
@@ -424,9 +424,9 @@ and emit_expr ?state ~context oc expr =
                                       Option.get t.scalar_typ)
       emit_type c
   | Finalize, Tuple (_, es), _ ->
-    list_print_as_tuple (emit_expr ?state ~context) oc es
+    list_print_as_tuple (emit_expr ?state ~context ~consts) oc es
   | Finalize, Vector (_, es), _ ->
-    list_print_as_vector (emit_expr ?state ~context) oc es
+    list_print_as_vector (emit_expr ?state ~context ~consts) oc es
 
   | Finalize, Field (_, tuple, field), _ ->
     (match !tuple with
@@ -447,9 +447,9 @@ and emit_expr ?state ~context oc expr =
               "match %a with None as n_ -> n_ | Some cond_ -> if cond_ then %s(%a)"
             else
               "if %a then %s(%a)")
-           (emit_expr ?state ~context) alt.case_cond
+           (emit_expr ?state ~context ~consts) alt.case_cond
            (if is_nullable expr && not (is_nullable alt.case_cons) then "Some " else "")
-           (conv_to ?state ~context t) alt.case_cons)
+           (conv_to ?state ~context ~consts t) alt.case_cons)
       oc alts ;
     (match else_ with
     | None ->
@@ -459,78 +459,78 @@ and emit_expr ?state ~context oc expr =
     | Some else_ ->
       Printf.fprintf oc " else %s(%a))"
         (if is_nullable expr && not (is_nullable else_) then "Some " else "")
-        (conv_to ?state ~context t) else_)
+        (conv_to ?state ~context ~consts t) else_)
   | Finalize, Coalesce (_, es), t ->
     let rec loop = function
       | [] -> ()
       | [last] ->
-        Printf.fprintf oc "(%a)" (conv_to ?state ~context t) last
+        Printf.fprintf oc "(%a)" (conv_to ?state ~context ~consts t) last
       | e :: rest ->
         Printf.fprintf oc "(Option.default_delayed (fun () -> " ;
         loop rest ;
-        Printf.fprintf oc ") (%a))" (conv_to ?state ~context t) e
+        Printf.fprintf oc ") (%a))" (conv_to ?state ~context ~consts t) e
     in
     loop es
   (* Stateless arithmetic functions which actual funcname depends on operand types: *)
   | Finalize, StatelessFun2 (_, Add, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state (omod_of_type t ^".add") [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~consts (omod_of_type t ^".add") [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Sub, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state (omod_of_type t ^".sub") [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~consts (omod_of_type t ^".sub") [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Mul, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state (omod_of_type t ^".mul") [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~consts (omod_of_type t ^".mul") [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun2 (_, IDiv, e1, e2),
     Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state (omod_of_type t ^".div") [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~consts (omod_of_type t ^".div") [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun2 (_, IDiv, e1, e2), Some (TFloat as t) ->
     (* Here we must convert everything to float first, then divide and
      * take the floor: *)
     Printf.fprintf oc "(let x_ = " ;
-    emit_functionN ?state (omod_of_type t ^".div") [Some t; Some t] oc [e1; e2] ;
+    emit_functionN ?state ~consts (omod_of_type t ^".div") [Some t; Some t] oc [e1; e2] ;
     Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_)"
   | Finalize, StatelessFun2 (_, Div, e1, e2), Some (TFloat as t) ->
-    emit_functionN ?state (omod_of_type t ^".div") [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~consts (omod_of_type t ^".div") [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Pow, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state (omod_of_type t ^".( ** )") [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~consts (omod_of_type t ^".( ** )") [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Mod, e1, e2),
     Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state (omod_of_type t ^".rem") [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~consts (omod_of_type t ^".rem") [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Mod, e1, e2), Some (TFloat as t) ->
-    emit_functionN ?state (omod_of_type t ^".modulo") [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~consts (omod_of_type t ^".modulo") [Some t; Some t] oc [e1; e2]
 
   | Finalize, StatelessFun1 (_, Abs, e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state (omod_of_type t ^".abs") [Some t] oc [e]
+    emit_functionN ?state ~consts (omod_of_type t ^".abs") [Some t] oc [e]
   | Finalize, StatelessFun1 (_, Minus, e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state (omod_of_type t ^".neg") [Some t] oc [e]
+    emit_functionN ?state ~consts (omod_of_type t ^".neg") [Some t] oc [e]
   | Finalize, StatelessFun1 (_, Exp, e), Some TFloat ->
-    emit_functionN ?state "exp" [Some TFloat] oc [e]
+    emit_functionN ?state ~consts "exp" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Log, e), Some TFloat ->
-    emit_functionN ?state "log" [Some TFloat] oc [e]
+    emit_functionN ?state ~consts "log" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Log10, e), Some TFloat ->
-    emit_functionN ?state "log10" [Some TFloat] oc [e]
+    emit_functionN ?state ~consts "log10" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Sqrt, e), Some TFloat ->
-    emit_functionN ?state "sqrt" [Some TFloat] oc [e]
+    emit_functionN ?state ~consts "sqrt" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Hash, e), Some TI64 ->
-    emit_functionN ?state "CodeGenLib.hash" [None] oc [e]
+    emit_functionN ?state ~consts "CodeGenLib.hash" [None] oc [e]
   | Finalize, StatelessFun1 (_, Sparkline, e), Some TString ->
-    emit_functionN ?state "RamenHelpers.sparkline" [Some (TVec (0, TFloat))] oc [e]
+    emit_functionN ?state ~consts "RamenHelpers.sparkline" [Some (TVec (0, TFloat))] oc [e]
   | Finalize, StatelessFun1 (_, BeginOfRange, e), Some TIpv4 ->
-    emit_functionN ?state "RamenIpv4.Cidr.first" [Some TCidrv4] oc [e]
+    emit_functionN ?state ~consts "RamenIpv4.Cidr.first" [Some TCidrv4] oc [e]
   | Finalize, StatelessFun1 (_, BeginOfRange, e), Some TIpv6 ->
-    emit_functionN ?state "RamenIpv6.Cidr.first" [Some TCidrv6] oc [e]
+    emit_functionN ?state ~consts "RamenIpv6.Cidr.first" [Some TCidrv6] oc [e]
   | Finalize, StatelessFun1 (_, BeginOfRange, e), Some TIp ->
-    emit_functionN ?state "RamenIp.first" [Some TCidr] oc [e]
+    emit_functionN ?state ~consts "RamenIp.first" [Some TCidr] oc [e]
   | Finalize, StatelessFun1 (_, EndOfRange, e), Some TIpv4 ->
-    emit_functionN ?state "RamenIpv4.Cidr.last" [Some TCidrv4] oc [e]
+    emit_functionN ?state ~consts "RamenIpv4.Cidr.last" [Some TCidrv4] oc [e]
   | Finalize, StatelessFun1 (_, EndOfRange, e), Some TIpv6 ->
-    emit_functionN ?state "RamenIpv6.Cidr.last" [Some TCidrv6] oc [e]
+    emit_functionN ?state ~consts "RamenIpv6.Cidr.last" [Some TCidrv6] oc [e]
   | Finalize, StatelessFun1 (_, EndOfRange, e), Some TIp ->
-    emit_functionN ?state "RamenIp.last" [Some TCidr] oc [e]
+    emit_functionN ?state ~consts "RamenIp.last" [Some TCidr] oc [e]
 
   (* Stateless functions manipulating constructed types: *)
   | Finalize, StatelessFun1 (_, Nth n, es), _ ->
@@ -544,60 +544,60 @@ and emit_expr ?state ~context oc expr =
           loop_t str (i + 1) in
         let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
         (* emit_funcN will take care of nullability of es: *)
-        emit_functionN ?state nth_func [None] oc [es]
+        emit_functionN ?state ~consts nth_func [None] oc [es]
     | Some (TVec (dim, t)) ->
         assert (n < dim) ;
         let nth_func = "(fun a_ -> Array.get a_ "^ string_of_int n ^")" in
-        emit_functionN ?state nth_func [None] oc [es]
+        emit_functionN ?state ~consts nth_func [None] oc [es]
     | _ -> assert false)
   | Finalize, StatelessFun2 (_, VecGet, n, es), _ ->
     let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
-    emit_functionN ?state func [None; Some TI32] oc [es; n]
+    emit_functionN ?state ~consts func [None; Some TI32] oc [es; n]
 
   (* Other stateless functions *)
   | Finalize, StatelessFun2 (_, Ge, e1, e2), Some TBool ->
-    emit_functionN ?state "(>=)" [Some TAny; Some TAny] oc [e1; e2]
+    emit_functionN ?state ~consts "(>=)" [Some TAny; Some TAny] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Gt, e1, e2), Some TBool ->
-    emit_functionN ?state "(>)" [Some TAny; Some TAny] oc [e1; e2]
+    emit_functionN ?state ~consts "(>)" [Some TAny; Some TAny] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Eq, e1, e2), Some TBool ->
-    emit_functionN ?state "(=)" [Some TAny; Some TAny] oc [e1; e2]
+    emit_functionN ?state ~consts "(=)" [Some TAny; Some TAny] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Concat, e1, e2), Some TString ->
-    emit_functionN ?state "(^)" [Some TString; Some TString] oc [e1; e2]
+    emit_functionN ?state ~consts "(^)" [Some TString; Some TString] oc [e1; e2]
   | Finalize, StatelessFun2 (_, StartsWith, e1, e2), Some TBool ->
-    emit_functionN ?state "String.starts_with" [Some TString; Some TString] oc [e1; e2]
+    emit_functionN ?state ~consts "String.starts_with" [Some TString; Some TString] oc [e1; e2]
   | Finalize, StatelessFun2 (_, EndsWith, e1, e2), Some TBool ->
-    emit_functionN ?state "String.ends_with" [Some TString; Some TString] oc [e1; e2]
+    emit_functionN ?state ~consts "String.ends_with" [Some TString; Some TString] oc [e1; e2]
   | Finalize, StatelessFunMisc (_, Like (e, p)), Some TBool ->
     let pattern = Globs.compile ~star:'%' ~escape:'\\' p in
     Printf.fprintf oc "(let pattern_ = \
       Globs.{ anchored_start = %b ; anchored_end = %b ; chunks = %a } in "
       pattern.anchored_start pattern.anchored_end
       (List.print (fun oc s -> Printf.fprintf oc "%S" s)) pattern.chunks ;
-    emit_functionN ?state "Globs.matches pattern_ " [Some TString] oc [e];
+    emit_functionN ?state ~consts "Globs.matches pattern_ " [Some TString] oc [e];
     Printf.fprintf oc ")"
   | Finalize, StatelessFun1 (_, Length, e), Some TU16 (* The only possible output type *) ->
-    emit_functionN ?state "String.length" [Some TString] oc [e]
+    emit_functionN ?state ~consts "String.length" [Some TString] oc [e]
   (* lowercase and uppercase assume latin1 and will gladly destroy UTF-8
    * encoded char, therefore we use the ascii variants: *)
   | Finalize, StatelessFun1 (_, Lower, e), Some TString ->
-    emit_functionN ?state "String.lowercase_ascii" [Some TString] oc [e]
+    emit_functionN ?state ~consts "String.lowercase_ascii" [Some TString] oc [e]
   | Finalize, StatelessFun1 (_, Upper, e), Some TString ->
-    emit_functionN ?state "String.uppercase_ascii" [Some TString] oc [e]
+    emit_functionN ?state ~consts "String.uppercase_ascii" [Some TString] oc [e]
   | Finalize, StatelessFun2 (_, And, e1, e2), Some TBool ->
-    emit_functionN ?state "(&&)" [Some TBool; Some TBool] oc [e1; e2]
+    emit_functionN ?state ~consts "(&&)" [Some TBool; Some TBool] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Or, e1,e2), Some TBool ->
-    emit_functionN ?state "(||)" [Some TBool; Some TBool] oc [e1; e2]
+    emit_functionN ?state ~consts "(||)" [Some TBool; Some TBool] oc [e1; e2]
   | Finalize, StatelessFun2 (_, (BitAnd|BitOr|BitXor as op), e1, e2),
     Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     let n = match op with BitAnd -> "logand" | BitOr -> "logor"
                         | _ -> "logxor" in
-    emit_functionN ?state (omod_of_type t ^"."^ n) [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~consts (omod_of_type t ^"."^ n) [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun1 (_, Not, e), Some TBool ->
-    emit_functionN ?state "not" [Some TBool] oc [e]
+    emit_functionN ?state ~consts "not" [Some TBool] oc [e]
   | Finalize, StatelessFun1 (_, Defined, e), Some TBool ->
     (* Do not call emit_functionN to avoid null propagation: *)
     Printf.fprintf oc "(match %a with None -> false | _ -> true)"
-      (emit_expr ?state ~context) e
+      (emit_expr ?state ~context ~consts) e
   | Finalize, StatelessFun1 (_, Age, e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ)
   | Finalize, StatelessFun1 (_, BeginOfRange, e),
@@ -605,7 +605,7 @@ and emit_expr ?state ~context oc expr =
     let in_type_name =
       String.lowercase (IO.to_string RamenTypes.print_typ to_typ) in
     let name = "CodeGenLib.age_"^ in_type_name in
-    emit_functionN ?state name [Some to_typ] oc [e]
+    emit_functionN ?state ~consts name [Some to_typ] oc [e]
   (* TODO: Now() for Uint62? *)
   | Finalize, StatelessFun0 (_, Now), Some TFloat ->
     String.print oc "!CodeGenLib_IO.now"
@@ -617,12 +617,12 @@ and emit_expr ?state ~context oc expr =
     and nullable = Option.get from.nullable in
     Printf.fprintf oc "(%a) (%a)"
       (conv_from_to ~nullable) (from_typ, to_typ)
-      (emit_expr ?state ~context) e
+      (emit_expr ?state ~context ~consts) e
 
   | Finalize, StatelessFunMisc (_, Max es), t ->
-    emit_functionN ~args_as:(Array 0) ?state "Array.max" (List.map (fun _ -> t) es) oc es
+    emit_functionN ~consts ~args_as:(Array 0) ?state "Array.max" (List.map (fun _ -> t) es) oc es
   | Finalize, StatelessFunMisc (_, Min es), t ->
-    emit_functionN ~args_as:(Array 0) ?state "Array.min" (List.map (fun _ -> t) es) oc es
+    emit_functionN ~consts ~args_as:(Array 0) ?state "Array.min" (List.map (fun _ -> t) es) oc es
   | Finalize, StatelessFunMisc (_, Print es), _ ->
     (* We want to print nulls as well, so we make all parameters optional strings: *)
     assert (es <> []) ;
@@ -630,69 +630,94 @@ and emit_expr ?state ~context oc expr =
       (List.print ~first:"[" ~last:"]" ~sep:";" (fun oc e ->
          Printf.fprintf oc "%s(%a)"
            (if is_nullable e then "" else "Some ")
-           (conv_to ?state ~context (Some TString)) e)) es
-      (emit_expr ?state ~context) (List.hd es)
+           (conv_to ?state ~context ~consts (Some TString)) e)) es
+      (emit_expr ?state ~context ~consts) (List.hd es)
   (* IN can have many meanings: *)
   | Finalize, StatelessFun2 (_, In, e1, e2), Some TBool ->
     (match (typ_of e1).scalar_typ |> Option.get,
            (typ_of e2).scalar_typ |> Option.get with
     | TIpv4, TCidrv4 ->
-      emit_functionN ?state "RamenIpv4.Cidr.is_in"
+      emit_functionN ?state ~consts "RamenIpv4.Cidr.is_in"
         [Some TIpv4; Some TCidrv4] oc [e1; e2]
     | TIpv6, TCidrv6 ->
-      emit_functionN ?state "RamenIpv6.Cidr.is_in"
+      emit_functionN ?state ~consts "RamenIpv6.Cidr.is_in"
         [Some TIpv6; Some TCidrv6] oc [e1; e2]
     | (TIpv4|TIpv6|TIp), (TCidrv4|TCidrv6|TCidr) ->
-      emit_functionN ?state "RamenIp.is_in"
+      emit_functionN ?state ~consts "RamenIp.is_in"
         [Some TIp; Some TCidr] oc [e1; e2]
     | TString, TString ->
-      emit_functionN ?state "String.exists"
+      emit_functionN ?state ~consts "String.exists"
         [Some TString; Some TString] oc [e2; e1]
     | t1, TVec (d, t) ->
       (match e2 with Vector (t', es) ->
-        let consts, non_consts = List.partition is_const es in
-        (* TODO: optimize the consts with a hash *)
-        let non_consts = consts @ non_consts in
-        (* Note re. nulls: we are going to emit code such as
-         * "A=x1 || A=x2" in lieu of "A IN [x1; x2]". Notice
-         * that nulls do not propagate in case A is found in the
-         * set, but do if it is not. *)
-        (* Typing only enforce that t1 < t or that t > t1 (so we can
-         * look for an u8 in a set of i32, or the other way around which
-         * both make sense). Here for simplicity all values will be
-         * converted to the largest ot t and t1: *)
-        let larger_t = RamenTypes.larger_type t t1 in
-        !logger.debug "LARGER TYPE from %a and %a is %a"
-          RamenTypes.print_typ t
-          RamenTypes.print_typ t1
-          RamenTypes.print_typ larger_t ;
+        (* We make a constant hash with the constants. Note that when e1 is
+         * also a constant the OCaml compiler could optimize the whole
+         * "x=a||x=b||x=b..." operation but only if not too many conversions
+         * are involved, so we take no risk and build the hash in any case. *)
+        let csts, non_csts =
+          (* TODO: leave the IFs when we know the compiler will optimize them
+           * away:
+          if is_const e1 then [], es else*)
+          List.partition is_const es in
+        let csts, non_csts =
+          if List.length csts < 6 (* guessed *) then [], csts @ non_csts
+          else csts, non_csts in
+        (* Typing only enforce that t1 < t or t > t1 (so we can look for an u8
+         * in a set of i32, or the other way around which both make sense).
+         * Here for simplicity all values will be converted to the largest of
+         * t and t1: *)
+        let larger_t = RamenTypes.large_enough_for t t1 in
+        (* Note re. nulls: we are going to emit code such as "A=x1||A=x2" in
+         * lieu of "A IN [x1; x2]". Notice that nulls do not propagate from
+         * the xs in case A is found in the set, but do if it is not. If A is
+         * NULL though, then the result is unless the set is empty: *)
         if is_nullable e1 then
           Printf.fprintf oc "(match %a with None -> %s | Some in0_ -> "
-            (conv_to ?state ~context (Some larger_t)) e1
+            (conv_to ?state ~context ~consts (Some larger_t)) e1
             (* Even if e1 is null, we can answer the operation if e2 is
              * empty: *)
-            (if non_consts = [] then "Some true" else "None")
+            (if es = [] then "Some true" else "None")
         else
           Printf.fprintf oc "(let in0_ = %a in "
-            (conv_to ?state ~context (Some larger_t)) e1 ;
+            (conv_to ?state ~context ~consts (Some larger_t)) e1 ;
         (* Now if we had some null the return value is either Some true or
          * None, while if we had no null the return value is either Some
          * true or Some false. *)
         Printf.fprintf oc "let _ret_ = ref (Some false) in\n" ;
+        (* First check the csts: *)
+        (* Note that none should be nullable ATM, and even if they were all
+         * nullable then we would store the option.get of the values (knowing
+         * that, if any of the const is NULL then we can shotcut all this and
+         * answer NULL directly) *)
+        if csts <> [] then (
+          let hash_id =
+            "const_in_"^ string_of_int (typ_of expr).uniq_num ^"_" in
+          Printf.fprintf consts
+            "let %s =\n\
+             \tlet h_ = Hashtbl.create %d in\n\
+             %a\
+             h_\n"
+            hash_id (List.length csts)
+            (List.print ~first:"" ~last:"" ~sep:"" (fun cc e ->
+              Printf.fprintf cc "\tHashtbl.replace h_ (%a) () ;\n"
+                (conv_to ?state ~context ~consts (Some larger_t)) e)) csts ;
+          Printf.fprintf oc "if Hashtbl.mem %s in0_ then %strue else "
+            hash_id (if is_nullable expr then "Some " else "")) ;
+        (* Then check each non-const in turn: *)
         let had_nullable =
           List.fold_left (fun had_nullable e ->
             if is_nullable e (* not possible ATM *) then (
               Printf.fprintf oc
                 "if (match %a with None -> _ret_ := None; false \
                  | Some in1_ -> in0_ = in1_) then true else "
-                (conv_to ?state ~context (Some larger_t)) e ;
+                (conv_to ?state ~context ~consts (Some larger_t)) e ;
               true
             ) else (
               Printf.fprintf oc "if in0_ = %a then %strue else "
-                (conv_to ?state ~context (Some larger_t)) e
+                (conv_to ?state ~context ~consts (Some larger_t)) e
                 (if is_nullable expr then "Some " else "") ;
               had_nullable)
-          ) false non_consts in
+          ) false non_csts in
         Printf.fprintf oc "%s)"
           (if had_nullable then "!_ret_" else
            if is_nullable expr then "Some false" else "false") ;
@@ -701,55 +726,55 @@ and emit_expr ?state ~context oc expr =
 
   (* Stateful functions *)
   | InitState, StatefulFun (_, _, AggrAnd _), (Some TBool as t) ->
-    conv_to ?state ~context t oc (true_or_nul (is_nullable expr))
+    conv_to ?state ~context ~consts t oc (true_or_nul (is_nullable expr))
   | InitState, StatefulFun (_, _, AggrOr _), (Some TBool as t) ->
-    conv_to ?state ~context t oc (false_or_nul (is_nullable expr))
+    conv_to ?state ~context ~consts t oc (false_or_nul (is_nullable expr))
   | Finalize, StatefulFun (_, g, (AggrAnd _|AggrOr _)), Some TBool ->
-    emit_functionN ?state "identity" [None] oc [my_state g]
+    emit_functionN ?state ~consts "identity" [None] oc [my_state g]
   | UpdateState, StatefulFun (_, g, AggrAnd e), _ ->
-    emit_functionN ?state "(&&)" [None; Some TBool] oc [my_state g; e]
+    emit_functionN ?state ~consts "(&&)" [None; Some TBool] oc [my_state g; e]
   | UpdateState, StatefulFun (_, g, AggrOr e), _ ->
-    emit_functionN ?state "(||)" [None; Some TBool] oc [my_state g; e]
+    emit_functionN ?state ~consts "(||)" [None; Some TBool] oc [my_state g; e]
 
   | InitState, StatefulFun (_, _, AggrSum _),
     (Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) as t) ->
-    conv_to ?state ~context t oc (zero_or_nul (is_nullable expr))
+    conv_to ?state ~context ~consts t oc (zero_or_nul (is_nullable expr))
   | UpdateState, StatefulFun (_, g, AggrSum e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state (omod_of_type t ^".add") [None; Some t] oc [my_state g; e]
+    emit_functionN ?state ~consts (omod_of_type t ^".add") [None; Some t] oc [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrSum _), _ ->
-    emit_functionN ?state "identity" [None] oc [my_state g]
+    emit_functionN ?state ~consts "identity" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, AggrAvg e), Some TFloat ->
     Printf.fprintf oc "%s(0, 0.)"
       (if is_nullable e then "Some " else "")
   | UpdateState, StatefulFun (_, g, AggrAvg e), Some (TFloat as t) ->
-    emit_functionN ?state "CodeGenLib.avg_add" [None; Some t] oc [my_state g; e]
+    emit_functionN ?state ~consts "CodeGenLib.avg_add" [None; Some t] oc [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrAvg _), _ ->
-    emit_functionN ?state "CodeGenLib.avg_finalize" [None] oc [my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.avg_finalize" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, (AggrFirst e|AggrLast e)), t ->
-    conv_to ?state ~context t oc (any_constant_of_expr_type (typ_of e))
+    conv_to ?state ~context ~consts t oc (any_constant_of_expr_type (typ_of e))
 
   | InitState, StatefulFun (_, _, (AggrMax e|AggrMin e)), _ ->
     Printf.fprintf oc "%sNone"
       (if is_nullable e then "Some " else "")
   | UpdateState, StatefulFun (_, g, AggrMax e), _ ->
-    emit_functionN ?state "CodeGenLib.aggr_max" [None; None] oc [e; my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.aggr_max" [None; None] oc [e; my_state g]
   | UpdateState, StatefulFun (_, g, AggrMin e), _ ->
-    emit_functionN ?state "CodeGenLib.aggr_min" [None; None] oc [e; my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.aggr_min" [None; None] oc [e; my_state g]
   | Finalize, StatefulFun (_, g, (AggrMax _|AggrMin _)), _ ->
-    emit_functionN ?state "Option.get" [None] oc [my_state g]
+    emit_functionN ?state ~consts "Option.get" [None] oc [my_state g]
 
   | Finalize, StatefulFun (_, g, (AggrFirst _|AggrLast _)), _ ->
-    emit_functionN ?state "identity" [None] oc [my_state g]
+    emit_functionN ?state ~consts "identity" [None] oc [my_state g]
   | UpdateState, StatefulFun (_, g, AggrFirst e), _ ->
     (* This hack relies on the fact that UpdateState is always called in
      * a context where we have the group.#count available and that its
      * name is "virtual_group_count_". *)
-    emit_functionN ?state "(fun x y -> if virtual_group_count_ = Uint64.one then y else x)" [None; None] oc [my_state g; e]
+    emit_functionN ?state ~consts "(fun x y -> if virtual_group_count_ = Uint64.one then y else x)" [None; None] oc [my_state g; e]
   | UpdateState, StatefulFun (_, g, AggrLast e), _ ->
-    emit_functionN ?state "(fun _ x -> x)" [None; None] oc [my_state g; e]
+    emit_functionN ?state ~consts "(fun _ x -> x)" [None; None] oc [my_state g; e]
 
   (* Note: for InitState it is probably useless to check out_type.
    * For Finalize it is useful only to extract the types to be checked by Compiler. *)
@@ -765,13 +790,13 @@ and emit_expr ?state ~context oc expr =
     Printf.fprintf oc "%s[]"
       (if is_nullable e then "Some " else "")
   | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), Some TFloat ->
-    emit_functionN ?state "CodeGenLib.float_percentile_add" [None; None] oc [my_state g; e]
+    emit_functionN ?state ~consts "CodeGenLib.float_percentile_add" [None; None] oc [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some TFloat ->
-    emit_functionN ?state "CodeGenLib.float_percentile_finalize" [Some TFloat; None] oc [p; my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.float_percentile_finalize" [Some TFloat; None] oc [p; my_state g]
   | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), _ ->
-    emit_functionN ?state "CodeGenLib.percentile_add" [None; None] oc [my_state g; e]
+    emit_functionN ?state ~consts "CodeGenLib.percentile_add" [None; None] oc [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
-    emit_functionN ?state "CodeGenLib.percentile_finalize" [Some TFloat; None] oc [p; my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.percentile_finalize" [Some TFloat; None] oc [p; my_state g]
 
   (* Histograms: bucket each float into the array of nb_buckets + 2 and then
    * count number of entries per buckets. The 2 extra buckets are for "<min"
@@ -783,71 +808,71 @@ and emit_expr ?state ~context oc expr =
       (Legacy.Printf.sprintf "%h" max)
       nb_buckets
   | UpdateState, StatefulFun (_, g, AggrHistogram (e, min, max, nb_buckets)), _ ->
-    emit_functionN ?state "CodeGenLib.histogram_add"
+    emit_functionN ?state ~consts "CodeGenLib.histogram_add"
       [None; Some TFloat] oc [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrHistogram _), Some TVec (_, TU32) ->
-    emit_functionN ?state "CodeGenLib.histogram_finalize" [None] oc [my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.histogram_finalize" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, Lag (k,e)), _ ->
-    emit_functionN ?state "CodeGenLib.Seasonal.init"
+    emit_functionN ?state ~consts "CodeGenLib.Seasonal.init"
       [Some TU32; Some TU32; None] oc
       [k; expr_one; any_constant_of_expr_type (typ_of e)]
   | UpdateState, StatefulFun (_, g, Lag (_k,e)), _ ->
-    emit_functionN ?state "CodeGenLib.Seasonal.add" [None; None] oc [my_state g; e]
+    emit_functionN ?state ~consts "CodeGenLib.Seasonal.add" [None; None] oc [my_state g; e]
   | Finalize, StatefulFun (_, g, Lag _), _ ->
-    emit_functionN ?state "CodeGenLib.Seasonal.lag" [None] oc [my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.Seasonal.lag" [None] oc [my_state g]
 
   (* We force the inputs to be float since we are going to return a float anyway. *)
   | InitState, StatefulFun (_, _, (MovingAvg(p,n,_)|LinReg(p,n,_))), Some TFloat ->
-    emit_functionN ?state "CodeGenLib.Seasonal.init" [Some TU32; Some TU32; Some TFloat] oc [p; n; expr_zero]
+    emit_functionN ?state ~consts "CodeGenLib.Seasonal.init" [Some TU32; Some TU32; Some TFloat] oc [p; n; expr_zero]
   | UpdateState, StatefulFun (_, g, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
-    emit_functionN ?state "CodeGenLib.Seasonal.add" [None; Some TFloat] oc [my_state g; e]
+    emit_functionN ?state ~consts "CodeGenLib.Seasonal.add" [None; Some TFloat] oc [my_state g; e]
   | Finalize, StatefulFun (_, g, MovingAvg (p,n,_)), Some TFloat ->
-    emit_functionN ?state "CodeGenLib.Seasonal.avg" [Some TU32; Some TU32; None] oc [p; n; my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.Seasonal.avg" [Some TU32; Some TU32; None] oc [p; n; my_state g]
   | Finalize, StatefulFun (_, g, LinReg (p,n,_)), Some TFloat ->
-    emit_functionN ?state "CodeGenLib.Seasonal.linreg" [Some TU32; Some TU32; None] oc [p; n; my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.Seasonal.linreg" [Some TU32; Some TU32; None] oc [p; n; my_state g]
   | Finalize, StatefulFun (_, g, MultiLinReg (p,n,_,_)), Some TFloat ->
-    emit_functionN ?state "CodeGenLib.Seasonal.multi_linreg" [Some TU32; Some TU32; None] oc [p; n; my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.Seasonal.multi_linreg" [Some TU32; Some TU32; None] oc [p; n; my_state g]
 
   | InitState, StatefulFun (_, _, MultiLinReg (p,n,_,es)), Some TFloat ->
-    emit_functionNv ?state "CodeGenLib.Seasonal.init_multi_linreg"
+    emit_functionNv ?state ~consts "CodeGenLib.Seasonal.init_multi_linreg"
       [Some TU32; Some TU32; Some TFloat]
       [p; n; expr_zero]
       (Some TFloat) oc (List.map (fun _ -> expr_zero) es)
   | UpdateState, StatefulFun (_, g, MultiLinReg (_p,_n,e,es)), _ ->
-    emit_functionNv ?state "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state g; e] (Some TFloat) oc es
+    emit_functionNv ?state ~consts "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state g; e] (Some TFloat) oc es
 
   | InitState, StatefulFun (_, _, ExpSmooth (_a,_)), (Some TFloat as t) ->
-    conv_to ?state ~context t oc (zero_or_nul (is_nullable expr))
+    conv_to ?state ~context ~consts t oc (zero_or_nul (is_nullable expr))
   | UpdateState, StatefulFun (_, g, ExpSmooth (a,e)), _ ->
-    emit_functionN ?state "CodeGenLib.smooth" [None; Some TFloat; Some TFloat] oc [my_state g; a; e]
+    emit_functionN ?state ~consts "CodeGenLib.smooth" [None; Some TFloat; Some TFloat] oc [my_state g; a; e]
   | Finalize, StatefulFun (_, g, ExpSmooth _), Some TFloat ->
-    emit_functionN ?state "identity" [None] oc [my_state g]
+    emit_functionN ?state ~consts "identity" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, Remember (fpr,_tim,dur,_es)), Some TBool ->
-    emit_functionN ?state "CodeGenLib.remember_init" [Some TFloat; Some TFloat] oc [fpr; dur]
+    emit_functionN ?state ~consts "CodeGenLib.remember_init" [Some TFloat; Some TFloat] oc [fpr; dur]
   | UpdateState, StatefulFun (_, g, Remember (_fpr,tim,_dur,es)), _ ->
-    emit_functionN ?state ~args_as:(Tuple 2) "CodeGenLib.remember_add"
+    emit_functionN ?state ~consts ~args_as:(Tuple 2) "CodeGenLib.remember_add"
       (None :: Some TFloat :: List.map (fun _ -> None) es)
       oc (my_state g :: tim :: es)
   | Finalize, StatefulFun (_, g, Remember _), Some TBool ->
-    emit_functionN ?state "CodeGenLib.remember_finalize" [None] oc [my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.remember_finalize" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, Distinct _es), _ ->
     Printf.fprintf oc "%s(CodeGenLib.distinct_init ())"
       (if is_nullable expr then "Some " else "")
   | UpdateState, StatefulFun (_, g, Distinct es), _ ->
-    emit_functionN ?state ~args_as:(Tuple 1) "CodeGenLib.distinct_add" (None :: List.map (fun e -> None) es) oc (my_state g :: es)
+    emit_functionN ?state ~consts ~args_as:(Tuple 1) "CodeGenLib.distinct_add" (None :: List.map (fun e -> None) es) oc (my_state g :: es)
   | Finalize, StatefulFun (_, g, Distinct es), Some TBool ->
-    emit_functionN ?state "CodeGenLib.distinct_finalize" [None] oc [my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.distinct_finalize" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, Hysteresis _), t ->
-    conv_to ?state ~context t oc (true_or_nul (is_nullable expr)) (* initially within bounds *)
+    conv_to ?state ~context ~consts t oc (true_or_nul (is_nullable expr)) (* initially within bounds *)
   | UpdateState, StatefulFun (_, g, Hysteresis (meas, accept, max)), Some TBool ->
     let t = (typ_of meas).scalar_typ in (* TODO: shouldn't we promote everything to the most accurate of those types? *)
-    emit_functionN ?state "CodeGenLib.hysteresis_update" [None; t; t; t] oc [my_state g; meas; accept; max]
+    emit_functionN ?state ~consts "CodeGenLib.hysteresis_update" [None; t; t; t] oc [my_state g; meas; accept; max]
   | Finalize, StatefulFun (_, g, Hysteresis _), Some TBool ->
-    emit_functionN ?state "CodeGenLib.hysteresis_finalize" [None] oc [my_state g]
+    emit_functionN ?state ~consts "CodeGenLib.hysteresis_finalize" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, Top { n ; duration ; _ }), _ ->
     Printf.fprintf oc "%s(CodeGenLib.heavy_hitters_init %d %s)"
@@ -855,7 +880,7 @@ and emit_expr ?state ~context oc expr =
       n
       (Legacy.Printf.sprintf "%h" duration)
   | UpdateState, StatefulFun (_, g, Top { what ; by ; time ; _ }), _ ->
-    emit_functionN ?state ~args_as:(Tuple 3)
+    emit_functionN ?state ~consts ~args_as:(Tuple 3)
       "CodeGenLib.heavy_hitters_add"
       (None :: Some TFloat :: Some TFloat :: List.map (fun _ -> None) what)
       oc (my_state g :: time :: by :: what)
@@ -865,11 +890,11 @@ and emit_expr ?state ~context oc expr =
     assert (is_nullable expr) ;
     Printf.fprintf oc "(Option.map %s.of_int %a)"
       (omod_of_type t)
-      (emit_functionN ~impl_return_nullable:true ?state ~args_as:(Tuple 1)
+      (emit_functionN ~impl_return_nullable:true ?state ~consts ~args_as:(Tuple 1)
          ("CodeGenLib.heavy_hitters_rank ~n:"^ string_of_int n)
          (None :: List.map (fun _ -> None) what)) (my_state g :: what)
   | Finalize, StatefulFun (_, g, Top { want_rank = false ; n ; what ; _ }), _ ->
-    emit_functionN ?state ~args_as:(Tuple 1)
+    emit_functionN ?state ~consts ~args_as:(Tuple 1)
       ("CodeGenLib.heavy_hitters_is_in_top ~n:"^ string_of_int n)
       (None :: List.map (fun _ -> None) what) oc (my_state g :: what)
 
@@ -877,7 +902,7 @@ and emit_expr ?state ~context oc expr =
    * it sends the output to its continuation as (freevar_name t).
    * In normal expressions we merely refer to that free variable. *)
   | Generator, GeneratorFun (_, Split (e1,e2)), Some TString ->
-    emit_functionN ?state "CodeGenLib.split" [Some TString; Some TString] oc [e1; e2]
+    emit_functionN ?state ~consts "CodeGenLib.split" [Some TString; Some TString] oc [e1; e2]
   | Finalize, GeneratorFun (t, Split (_e1,_e2)), Some TString -> (* Output it as a free variable *)
     String.print oc (freevar_name t)
 
@@ -968,20 +993,20 @@ and emit_function
       (* Set to true if [impl] already returns an optional type for a
        * nullable value: *)
       ?(impl_return_nullable=false)
-      ?(args_as=Arg) ?state impl arg_typs es oc vt_specs_opt =
+      ?(args_as=Arg) ?state ~consts impl arg_typs es oc vt_specs_opt =
   let open RamenExpr in
   let arg_typs = add_missing_types arg_typs es in
   let len, has_nullable =
     List.fold_left2 (fun (i, had_nullable) e arg_typ ->
         if is_nullable e then (
           Printf.fprintf oc "(match %a with None as n_ -> n_ | Some x%d_ -> "
-            (conv_to ?state ~context:Finalize arg_typ) e
+            (conv_to ?state ~context:Finalize ~consts arg_typ) e
             i ;
           i + 1, true
         ) else (
           Printf.fprintf oc "(let x%d_ =\n\t\t%a in "
             i
-            (conv_to ?state ~context:Finalize arg_typ) e ;
+            (conv_to ?state ~context:Finalize ~consts arg_typ) e ;
           i + 1, had_nullable
         )
       ) (0, false) es arg_typs
@@ -1004,18 +1029,18 @@ and emit_function
   Option.may (fun (vt, ves) ->
       (* TODO: handle NULLability *)
       List.print ~first:" [| " ~last:" |]" ~sep:"; "
-                 (conv_to ?state ~context:Finalize vt) oc ves)
+                 (conv_to ?state ~context:Finalize ~consts vt) oc ves)
     vt_specs_opt ;
   for _i = 0 to len do Printf.fprintf oc ")" done
 
-and emit_functionN ?args_as ?impl_return_nullable ?state
+and emit_functionN ?args_as ?impl_return_nullable ?state ~consts
                    impl arg_typs oc es =
-  emit_function ?args_as ?impl_return_nullable ?state
+  emit_function ?args_as ?impl_return_nullable ?state ~consts
                 impl arg_typs es oc None
 
-and emit_functionNv ?impl_return_nullable ?state
+and emit_functionNv ?impl_return_nullable ?state ~consts
                     impl arg_typs es vt oc ves =
-  emit_function ?impl_return_nullable ?state
+  emit_function ?impl_return_nullable ?state ~consts
                 impl arg_typs es oc (Some (vt, ves))
 
 let emit_compute_nullmask_size oc ser_typ =
@@ -1250,7 +1275,8 @@ let emit_time_of_tuple name event_time oc tuple_typ =
             emit_float sto_scale)
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
-let emit_read_csv_file oc name csv_fname unlink csv_separator csv_null
+let emit_read_csv_file consts oc name csv_fname unlink
+                       csv_separator csv_null
                        tuple_typ preprocessor event_time =
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
@@ -1272,7 +1298,7 @@ let emit_read_csv_file oc name csv_fname unlink csv_separator csv_null
     name
     csv_fname unlink csv_separator preprocessor
 
-let emit_listen_on oc name net_addr port proto =
+let emit_listen_on consts oc name net_addr port proto =
   let open RamenProtocols in
   let tuple_typ = tuple_typ_of_proto proto in
   let collector = collector_of_proto proto in
@@ -1288,7 +1314,7 @@ let emit_listen_on oc name net_addr port proto =
     (Unix.string_of_inet_addr net_addr) port
     (string_of_proto proto)
 
-let emit_instrumentation oc name from =
+let emit_instrumentation consts oc name from =
   let open RamenProtocols in
   let tuple_typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
@@ -1401,7 +1427,7 @@ let emit_read_tuple name mentioned and_all_others oc in_typ =
  * (fun k -> gen1 (fun fv1 -> gen2 (fun fv2 -> ... -> genN (fun fvN ->
  *    k (expr ...)))))
  *)
-let emit_generator user_fun oc expr =
+let emit_generator user_fun ~consts oc expr =
   let open RamenExpr in
 
   let generators = fold_by_depth (fun prev e ->
@@ -1417,7 +1443,7 @@ let emit_generator user_fun oc expr =
   let emit_gen_root oc = function
     | GeneratorFun (t, Split _) as expr ->
       Printf.fprintf oc "%a (fun %s -> "
-        (emit_expr ?state:None ~context:Generator) expr
+        (emit_expr ?state:None ~context:Generator ~consts) expr
         (freevar_name t)
     (* We have no other generators (yet) *)
     | _ -> assert false
@@ -1428,10 +1454,10 @@ let emit_generator user_fun oc expr =
    * be replaced by their free variable: *)
   Printf.fprintf oc "%s (%a)"
     user_fun
-    (emit_expr ?state:None ~context:Finalize) expr ;
+    (emit_expr ?state:None ~context:Finalize ~consts) expr ;
   List.iter (fun _ -> Printf.fprintf oc ")") generators
 
-let emit_generate_tuples name in_typ mentioned and_all_others out_typ oc selected_fields =
+let emit_generate_tuples name in_typ mentioned and_all_others out_typ ~consts oc selected_fields =
   let has_generator =
     List.exists (fun sf ->
       RamenExpr.is_generator sf.RamenOperation.expr)
@@ -1453,7 +1479,7 @@ let emit_generate_tuples name in_typ mentioned and_all_others out_typ oc selecte
             Printf.fprintf oc "%a(fun %s -> %a) (fun generated_%d_ ->\n"
               emit_indent (1 + nb_gens)
               ff_
-              (emit_generator ff_) sf.RamenOperation.expr
+              (emit_generator ff_ ~consts) sf.RamenOperation.expr
               nb_gens ;
             nb_gens + 1)
         ) 0 selected_fields in
@@ -1505,7 +1531,7 @@ let emit_field_of_tuple name oc tuple_typ =
     ) tuple_typ ;
   Printf.fprintf oc "\t| _ -> raise Not_found\n"
 
-let emit_state_update_for_expr oc expr =
+let emit_state_update_for_expr ~consts oc expr =
   RamenExpr.unpure_iter (function
       | RamenExpr.StatefulFun (_, lifespan, _) as e ->
         let state_var =
@@ -1514,13 +1540,13 @@ let emit_state_update_for_expr oc expr =
         Printf.fprintf oc "\t%s.%s <- (%a) ;\n"
           state_var
           (name_of_state e)
-          (emit_expr ?state:None ~context:UpdateState) e
+          (emit_expr ?state:None ~context:UpdateState ~consts) e
       | _ -> ()
     ) expr
 
 let emit_where
       ?(with_group=false) ?(always_true=false)
-      name in_typ mentioned and_all_others oc expr =
+      name in_typ mentioned and_all_others ~consts oc expr =
   Printf.fprintf oc "let %s global_ virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a \
@@ -1539,16 +1565,16 @@ let emit_where
   else (
     Printf.fprintf oc "=\n" ;
     (* Update the states used by this expression: *)
-    emit_state_update_for_expr oc expr ;
+    emit_state_update_for_expr ~consts oc expr ;
     Printf.fprintf oc "\t%a\n"
-      (emit_expr ?state:None ~context:Finalize) expr
+      (emit_expr ?state:None ~context:Finalize ~consts) expr
   )
 
 let emit_field_selection
       ?(with_selected=false) (* and unselected *)
       ?(with_group=false) (* including previous, of type tuple_out option *)
       name in_typ mentioned
-      and_all_others out_typ oc selected_fields =
+      and_all_others out_typ ~consts oc selected_fields =
   Printf.fprintf oc "let %s virtual_in_count_ %a %a "
     name
     (emit_in_tuple mentioned and_all_others) in_typ
@@ -1568,7 +1594,7 @@ let emit_field_selection
       (* Update the states as required for this field, just before
        * computing the field actual value. *)
       Printf.fprintf oc "\t(* State Updates: *)\n" ;
-      emit_state_update_for_expr oc sf.RamenOperation.expr ;
+      emit_state_update_for_expr ~consts oc sf.RamenOperation.expr ;
       Printf.fprintf oc "\t(* Output field: *)\n" ;
       if RamenExpr.is_generator sf.RamenOperation.expr then
         (* So that we have a single out_typ both before and after tuples generation *)
@@ -1577,7 +1603,7 @@ let emit_field_selection
       else
         Printf.fprintf oc "\tlet %s = %a in\n"
           (id_of_field_name ~tuple:TupleOut sf.RamenOperation.alias)
-          (emit_expr ?state:None ~context:Finalize) sf.RamenOperation.expr
+          (emit_expr ?state:None ~context:Finalize ~consts) sf.RamenOperation.expr
     ) selected_fields ;
   (* Here we must generate the tuple in the order specified by out_type,
    * not selected_fields: *)
@@ -1596,14 +1622,14 @@ let emit_field_selection
 (* Similar to emit_field_selection but with less options, no concept of star and no
  * naming of the fields as the fields from out, since that's not the out tuple
  * we are constructing: *)
-let emit_key_of_input name in_typ mentioned and_all_others oc exprs =
+let emit_key_of_input name in_typ mentioned and_all_others ~consts oc exprs =
   Printf.fprintf oc "let %s %a =\n\t("
     name
     (emit_in_tuple mentioned and_all_others) in_typ ;
   List.iteri (fun i expr ->
       Printf.fprintf oc "%s\n\t\t%a"
         (if i > 0 then "," else "")
-        (emit_expr ?state:None ~context:Finalize) expr ;
+        (emit_expr ?state:None ~context:Finalize ~consts) expr ;
     ) exprs ;
   Printf.fprintf oc "\n\t)\n"
 
@@ -1661,7 +1687,7 @@ let otype_of_state e =
   if Option.get typ.nullable then t ^" option" else t
 
 let emit_state_init name state_lifespan other_state_vars
-      ?where ?commit_when
+      ?where ?commit_when ~consts
       oc selected_fields =
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
@@ -1702,7 +1728,7 @@ let emit_state_init name state_lifespan other_state_vars
     for_each_my_unpure_fun (fun f ->
         Printf.fprintf oc "\tlet %s = %a in\n"
           (name_of_state f)
-          (emit_expr ~context:InitState ~state:state_lifespan) f) ;
+          (emit_expr ~context:InitState ~consts ~state:state_lifespan) f) ;
     (* And now build the state record from all those fields: *)
     Printf.fprintf oc "\t{" ;
     for_each_my_unpure_fun (fun f ->
@@ -1712,7 +1738,7 @@ let emit_state_init name state_lifespan other_state_vars
 
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
-let emit_when name in_typ mentioned and_all_others out_typ
+let emit_when name in_typ mentioned and_all_others out_typ ~consts
               oc when_expr =
   Printf.fprintf oc "let %s virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
@@ -1730,11 +1756,11 @@ let emit_when name in_typ mentioned and_all_others out_typ
     (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ
     (emit_tuple TupleOut) out_typ ;
   (* Update the states used by this expression: *)
-  emit_state_update_for_expr oc when_expr ;
+  emit_state_update_for_expr ~consts oc when_expr ;
   Printf.fprintf oc "\t%a\n"
-    (emit_expr ?state:None ~context:Finalize) when_expr
+    (emit_expr ?state:None ~context:Finalize ~consts) when_expr
 
-let emit_should_resubmit name in_typ mentioned and_all_others
+let emit_should_resubmit name in_typ mentioned and_all_others ~consts
                          oc flush_how =
   let open RamenOperation in
   Printf.fprintf oc "let %s group_ %a =\n"
@@ -1746,9 +1772,9 @@ let emit_should_resubmit name in_typ mentioned and_all_others
   | Slide n ->
     Printf.fprintf oc "\tgroup_.CodeGenLib.nb_entries > %d\n" n
   | KeepOnly e ->
-    Printf.fprintf oc "\t%a\n" (emit_expr ?state:None ~context:Finalize) e
+    Printf.fprintf oc "\t%a\n" (emit_expr ?state:None ~context:Finalize ~consts) e
   | RemoveAll e ->
-    Printf.fprintf oc "\tnot (%a)\n" (emit_expr ?state:None ~context:Finalize) e
+    Printf.fprintf oc "\tnot (%a)\n" (emit_expr ?state:None ~context:Finalize ~consts) e
 
 (* Depending on what uses a commit/flush condition, we might need to check
  * all groups after every single input tuple (very slow), or after every
@@ -1776,7 +1802,7 @@ let when_to_check_group_for_expr expr =
   if need_selected then "CodeGenLib.ForAllSelected" else
   "CodeGenLib.ForInGroup"
 
-let emit_sort_expr name in_typ mentioned and_all_others oc es_opt =
+let emit_sort_expr name in_typ mentioned and_all_others ~consts oc es_opt =
   Printf.fprintf oc "let %s sort_count_ %a %a %a %a =\n"
     name
     (emit_in_tuple ~tuple:TupleSortFirst mentioned and_all_others) in_typ
@@ -1791,14 +1817,14 @@ let emit_sort_expr name in_typ mentioned and_all_others oc es_opt =
   | es ->
       Printf.fprintf oc "\t%a\n"
         (List.print ~first:"(" ~last:")" ~sep:", "
-           (emit_expr ?state:None ~context:Finalize)) es
+           (emit_expr ?state:None ~context:Finalize ~consts)) es
 
-let emit_merge_on name in_typ mentioned and_all_others oc es =
+let emit_merge_on name in_typ mentioned and_all_others ~consts oc es =
   Printf.fprintf oc "let %s %a =\n\t%a\n"
     name
     (emit_in_tuple mentioned and_all_others) in_typ
     (List.print ~first:"(" ~last:")" ~sep:", "
-       (emit_expr ?state:None ~context:Finalize)) es
+       (emit_expr ?state:None ~context:Finalize ~consts)) es
 
 let expr_needs_group e =
   let open RamenExpr in
@@ -1809,7 +1835,7 @@ let expr_needs_group e =
       | _ -> false
   ) false e
 
-let emit_aggregate oc name in_typ out_typ = function
+let emit_aggregate consts oc name in_typ out_typ = function
   | RamenOperation.Aggregate
       { fields ; and_all_others ; merge ; sort ; where ; key ;
         commit_before ; commit_when ; flush_how ; notifications ; event_time ;
@@ -1827,31 +1853,31 @@ let emit_aggregate oc name in_typ out_typ = function
   and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
   Printf.fprintf oc
     "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when) fields
-    (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when) fields
+    (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when ~consts) fields
+    (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when ~consts) fields
     (emit_read_tuple "read_tuple_" mentioned and_all_others) in_typ
     (if where_need_group then
-      emit_where "where_fast_" ~always_true:true in_typ mentioned and_all_others
+      emit_where "where_fast_" ~always_true:true in_typ mentioned and_all_others ~consts
     else
-      emit_where "where_fast_" in_typ mentioned and_all_others) where
+      emit_where "where_fast_" in_typ mentioned and_all_others ~consts) where
     (if not where_need_group then
-      emit_where "where_slow_" ~with_group:true ~always_true:true in_typ mentioned and_all_others
+      emit_where "where_slow_" ~with_group:true ~always_true:true in_typ mentioned and_all_others ~consts
     else
-      emit_where "where_slow_" ~with_group:true in_typ mentioned and_all_others) where
-    (emit_key_of_input "key_of_input_" in_typ mentioned and_all_others) key
+      emit_where "where_slow_" ~with_group:true in_typ mentioned and_all_others ~consts) where
+    (emit_key_of_input "key_of_input_" in_typ mentioned and_all_others ~consts) key
     emit_maybe_fields out_typ
-    (emit_when "commit_when_" in_typ mentioned and_all_others out_typ) commit_when
-    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_typ mentioned and_all_others out_typ) fields
+    (emit_when "commit_when_" in_typ mentioned and_all_others out_typ ~consts) commit_when
+    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_typ mentioned and_all_others out_typ ~consts) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_" event_time) out_typ
     (emit_serialize_tuple "serialize_group_") out_typ
-    (emit_generate_tuples "generate_tuples_" in_typ mentioned and_all_others out_typ) fields
-    (emit_should_resubmit "should_resubmit_" in_typ mentioned and_all_others) flush_how
+    (emit_generate_tuples "generate_tuples_" in_typ mentioned and_all_others out_typ ~consts) fields
+    (emit_should_resubmit "should_resubmit_" in_typ mentioned and_all_others ~consts) flush_how
     (emit_field_of_tuple "field_of_tuple_in_") in_typ
     (emit_field_of_tuple "field_of_tuple_out_") out_typ
-    (emit_merge_on "merge_on_" in_typ mentioned and_all_others) (fst merge)
-    (emit_sort_expr "sort_until_" in_typ mentioned and_all_others) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
-    (emit_sort_expr "sort_by_" in_typ mentioned and_all_others) (match sort with Some (_, _, b) -> b | None -> []) ;
+    (emit_merge_on "merge_on_" in_typ mentioned and_all_others ~consts) (fst merge)
+    (emit_sort_expr "sort_until_" in_typ mentioned and_all_others ~consts) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
+    (emit_sort_expr "sort_by_" in_typ mentioned and_all_others ~consts) (match sort with Some (_, _, b) -> b | None -> []) ;
   Printf.fprintf oc "let %s () =\n\
       \tCodeGenLib.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
@@ -1882,9 +1908,9 @@ let sanitize_ocaml_fname s =
   (* Must start with a letter: *)
   "m"^ global_substitute re replace_by_underscore s
 
-let emit_function name func_name in_typ out_typ params op oc =
+let emit_operation  name func_name in_typ out_typ params op oc =
   Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
-    open Batteries
+    open Batteries\n\
     open Stdint\n"
     func_name
     RamenOperation.print op ;
@@ -1911,23 +1937,30 @@ let emit_function name func_name in_typ out_typ params op oc =
         n
         (conv_from_to ~nullable:false) (RamenTypes.type_of v, TString)
         glob_name)) params ;
+  (* Now the code, which might need some global constant parameters,
+   * thus the two strings that are assembled later: *)
+  let consts = IO.output_string () in
+  let code = IO.output_string () in
   (match op with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                   what = { separator ; null ; fields } ; event_time } ->
-    emit_read_csv_file oc name fname unlink separator null
+    emit_read_csv_file consts code name fname unlink separator null
                        fields preprocessor event_time
   | ListenFor { net_addr ; port ; proto } ->
-    emit_listen_on oc name net_addr port proto
+    emit_listen_on consts code name net_addr port proto
   | Instrumentation { from } ->
-    emit_instrumentation oc name from
+    emit_instrumentation consts code name from
   | Aggregate _ ->
-    emit_aggregate oc name in_typ out_typ op)
+    emit_aggregate consts code name in_typ out_typ op) ;
+  Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\
+                     \n(* Operation Implementation: *)\n\n%s\n"
+    (IO.close_out consts) (IO.close_out code)
 
 let compile conf entry_point func_name obj_name in_typ out_typ params op =
   let open RamenOperation in
   let%lwt src_file =
     Lwt.wrap (fun () ->
       RamenOCamlCompiler.with_code_file_for obj_name conf
-        (emit_function entry_point func_name in_typ out_typ params op)) in
+        (emit_operation entry_point func_name in_typ out_typ params op)) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   RamenOCamlCompiler.compile conf func_name src_file obj_name
