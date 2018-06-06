@@ -241,7 +241,7 @@ let complete str () =
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
             "--syslog", RamenConsts.CliInfo.to_syslog ;
-            "--port=", RamenConsts.CliInfo.port ] @
+            "--url=", RamenConsts.CliInfo.server_url ] @
           copts
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

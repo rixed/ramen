@@ -508,10 +508,11 @@ let ps =
  * Start the Graphite impersonator
  *)
 
-let port =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.port
-                   ~docv:"N" [ "port" ; "p" ] in
-  Arg.(value (opt int 80 i))
+let server_url =
+  let env = Term.env_info "RAMEN_URL" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.server_url
+                   ~env [ "url" ] in
+  Arg.(value (opt string "http://127.0.0.1:8080" i))
 
 let graphite =
   Term.(
@@ -520,7 +521,7 @@ let graphite =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ port),
+      $ server_url),
     info ~doc:RamenConsts.CliInfo.graphite "graphite")
 
 let query =

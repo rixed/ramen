@@ -88,7 +88,7 @@ let stop_http_servers () =
     Lwt_condition.signal condvar ()
   ) !http_server_done
 
-let http_service port router =
+let http_service port url_prefix router =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     stop_http_servers ())) ;
@@ -100,6 +100,16 @@ let http_service port router =
     String.map (fun c -> if c = '+' then ' ' else c) s in
   let callback _conn req body =
     let path = Uri.path (Request.uri req) in
+    (* Check path starts with url_prefix and chop off that prefix: *)
+    let path =
+      if String.starts_with path url_prefix then
+        String.lchop ~n:(String.length url_prefix) path
+      else (
+        !logger.error "URL %S does not start with expected prefix (%S)"
+          path url_prefix ;
+        (* Keep going and hope for the best *)
+        path
+      ) in
     !logger.debug "Requested %S" req.Request.resource ;
     (* Make "/path" equivalent to "path" *)
     let path =

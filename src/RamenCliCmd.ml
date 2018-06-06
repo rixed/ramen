@@ -636,7 +636,7 @@ let timerange conf func_name () =
  * timeseries, impersonating Graphite (https://graphiteapp.org/).
  *)
 
-let graphite conf daemonize to_stdout to_syslog port () =
+let graphite conf daemonize to_stdout to_syslog server_url () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
@@ -649,6 +649,19 @@ let graphite conf daemonize to_stdout to_syslog port () =
       else Some (conf.C.persist_dir ^"/log/graphite") in
     Option.may mkdir_all logdir ;
     logger := make_logger ?logdir conf.C.debug) ;
+  (* We take the port and URL prefix from the given URL but does not take
+   * into account the hostname or the scheme. *)
+  let uri = Uri.of_string server_url in
+  (* In a user-supplied URL string the default port should be as usual for
+   * HTTP scheme: *)
+  let port =
+    match Uri.port uri with
+    | Some p -> p
+    | None ->
+      (match Uri.scheme uri with
+      | Some "https" -> 443
+      | _ -> 80) in
+  let url_prefix = Uri.path uri in
   if daemonize then do_daemonize () ;
   let router = RamenGraphite.router conf in
   Lwt_main.run (
@@ -660,7 +673,7 @@ let graphite conf daemonize to_stdout to_syslog port () =
         (fun () -> !logger.warning "Running in dummy mode" ;
                    RamenProcesses.until_quit
                      (fun () -> Lwt_unix.sleep 3.)) ;
-        (fun () -> RamenHttpHelpers.http_service port router) |])
+        (fun () -> RamenHttpHelpers.http_service port url_prefix router) |])
 
 let graphite_expand conf query () =
   logger := make_logger conf.C.debug ;
