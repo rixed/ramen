@@ -1146,15 +1146,25 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* FIXME: we really want to be able to backtrack those tries: *)
     let last_exc = ref Exit and ret = ref false in
     (try
-      [ TIpv4, TCidrv4 ;
-        TIpv6, TCidrv6 ;
-        TIp, TCidr ;
-        TString, TString ;
-        TAny, TVec (0, TAny) ] |>
-      List.iter (fun (t1, t2) ->
+      let nop _ _ = false
+      and same_any e1 e2 = match (typ_of e2).scalar_typ |> Option.get with
+        | TVec (_, t) ->
+            (* t and e1's type must be compatible but can be nullable
+             * independently: *)
+            check_expr_type ~indent ~ok_if_larger:true ~set_null:false
+                            ~from:(make_typ ~typ:t ~nullable:false "fake")
+                            ~to_:(typ_of e1)
+        | _ -> assert false in
+      [ TIpv4, TCidrv4, nop ;
+        TIpv6, TCidrv6, nop ;
+        TIp, TCidr, nop ;
+        TString, TString, nop ;
+        TAny, TVec (0, TAny), same_any ] |>
+      List.iter (fun (t1, t2, further_check) ->
         try
           ret := check_op op_typ return_bool
                    [ Some t1, None, e1; Some t2, None, e2] ;
+          ret := !ret ||| further_check e1 e2 ;
           raise Exit
         with SyntaxError _ as e ->
           !logger.debug "%sIN for %a failed with %s"

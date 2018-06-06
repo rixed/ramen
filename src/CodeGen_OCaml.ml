@@ -417,9 +417,11 @@ and emit_expr ?state ~context oc expr =
   | _, Const (_, VNull), _ ->
     assert (is_nullable expr) ;
     Printf.fprintf oc "None"
-  | _, Const (_, c), _ ->
-    Printf.fprintf oc "%s%a"
+  | _, Const (t, c), _ ->
+    Printf.fprintf oc "%s(%a %a)"
       (if is_nullable expr then "Some " else "")
+      (conv_from_to ~nullable:false) (RamenTypes.type_of c,
+                                      Option.get t.scalar_typ)
       emit_type c
   | Finalize, Tuple (_, es), _ ->
     list_print_as_tuple (emit_expr ?state ~context) oc es
@@ -646,8 +648,55 @@ and emit_expr ?state ~context oc expr =
     | TString, TString ->
       emit_functionN ?state "String.exists"
         [Some TString; Some TString] oc [e2; e1]
-    | _t1, TVec (d, t) ->
-      todo "IN operator for vectors"
+    | t1, TVec (d, t) ->
+      (match e2 with Vector (t', es) ->
+        let consts, non_consts = List.partition is_const es in
+        (* TODO: optimize the consts with a hash *)
+        let non_consts = consts @ non_consts in
+        (* Note re. nulls: we are going to emit code such as
+         * "A=x1 || A=x2" in lieu of "A IN [x1; x2]". Notice
+         * that nulls do not propagate in case A is found in the
+         * set, but do if it is not. *)
+        (* Typing only enforce that t1 < t or that t > t1 (so we can
+         * look for an u8 in a set of i32, or the other way around which
+         * both make sense). Here for simplicity all values will be
+         * converted to the largest ot t and t1: *)
+        let larger_t = RamenTypes.larger_type t t1 in
+        !logger.debug "LARGER TYPE from %a and %a is %a"
+          RamenTypes.print_typ t
+          RamenTypes.print_typ t1
+          RamenTypes.print_typ larger_t ;
+        if is_nullable e1 then
+          Printf.fprintf oc "(match %a with None -> %s | Some in0_ -> "
+            (conv_to ?state ~context (Some larger_t)) e1
+            (* Even if e1 is null, we can answer the operation if e2 is
+             * empty: *)
+            (if non_consts = [] then "Some true" else "None")
+        else
+          Printf.fprintf oc "(let in0_ = %a in "
+            (conv_to ?state ~context (Some larger_t)) e1 ;
+        (* Now if we had some null the return value is either Some true or
+         * None, while if we had no null the return value is either Some
+         * true or Some false. *)
+        Printf.fprintf oc "let _ret_ = ref (Some false) in\n" ;
+        let had_nullable =
+          List.fold_left (fun had_nullable e ->
+            if is_nullable e (* not possible ATM *) then (
+              Printf.fprintf oc
+                "if (match %a with None -> _ret_ := None; false \
+                 | Some in1_ -> in0_ = in1_) then true else "
+                (conv_to ?state ~context (Some larger_t)) e ;
+              true
+            ) else (
+              Printf.fprintf oc "if in0_ = %a then %strue else "
+                (conv_to ?state ~context (Some larger_t)) e
+                (if is_nullable expr then "Some " else "") ;
+              had_nullable)
+          ) false non_consts in
+        Printf.fprintf oc "%s)"
+          (if had_nullable then "!_ret_" else
+           if is_nullable expr then "Some false" else "false") ;
+      | _ -> assert false)
     | _ -> assert false)
 
   (* Stateful functions *)

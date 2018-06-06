@@ -1,0 +1,29 @@
+-- vim: ft=sql expandtab
+
+-- Example involving only constant integers of same size:
+-- Note: will be compiled into true,true,true,true by the compiler
+DEFINE f1 AS
+  YIELD
+    42 IN [ 1;2;42 ] AS t1,
+    42 IN [ 1;42;3 ] AS t2,
+    42 IN [ 42;2;3 ] AS t3,
+    NOT (42 IN [ 1;2;3 ]) AS t4,
+    "42" IN [ "1";"2";"42" ] AS t5,
+    "42" IN "1;42;3" AS t6
+  EVERY 1 SECOND
+  EXPORT;
+
+-- Now let's test conversions:
+DEFINE f2 AS
+  YIELD
+    42 IN [ 1i8; 2u32; 42i128 ] AS t1,
+    42u128 IN [ 1i8;42u8;3i16 ] AS t2
+  EVERY 1 SECOND
+  EXPORT;
+
+-- And NULLs:
+DEFINE f3 AS
+  YIELD
+    (NULL IN [ 1;2;3 ]) IS NULL AS t1
+  EVERY 1 SECOND
+  EXPORT;

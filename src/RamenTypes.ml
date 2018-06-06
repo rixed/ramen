@@ -177,6 +177,7 @@ let can_enlarge_scalar ~from ~to_ =
 
 let rec can_enlarge ~from ~to_ =
   match from, to_ with
+  | _, TAny -> true
   | TTuple ts1, TTuple ts2 ->
       (* TTuple [||] means "any tuple", so we can "enlarge" any actual tuple
        * into "any tuple": *)

@@ -279,9 +279,12 @@ let int_of_const = function
   | Const (_, v) -> Some (RamenTypes.int_of_scalar v)
   | _ -> None
 
-let check_const what = function
-  | Const _ -> ()
-  | _ -> raise (SyntaxError (NotConstant what))
+let is_const = function
+  | Const _ -> true | _ -> false
+
+let check_const what e =
+  if not (is_const e) then
+    raise (SyntaxError (NotConstant what))
 
 let print_duration oc d =
   Printf.fprintf oc "%f seconds" d

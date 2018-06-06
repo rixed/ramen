@@ -1,0 +1,18 @@
+{
+  programs = [ ("in.x", []) ];
+  outputs = {
+    "tests/in/f1" => {
+      present = [
+        { "t1" => "true"; "t2" => "true"; "t3" => "true"; "t4" => "true";
+          "t5" => "true"; "t6" => "true" } ];
+      absent = [
+        { "t1" => "false" }; { "t2" => "false" }; { "t3" => "false" };
+        { "t4" => "false" }; { "t5" => "false" }; { "t6" => "false" } ]};
+    "tests/in/f1" => {
+      present = [ { "t1" => "true" }; { "t2" => "true" } ];
+      absent = [ { "t1" => "false" }; { "t2" => "false" } ]};
+    "tests/in/f3" => {
+      present = [ { "t1" => "true" } ];
+      absent = [ { "t1" => "false" } ]};
+  }
+}
