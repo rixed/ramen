@@ -147,9 +147,15 @@ let compile conf root_path use_external_compiler bundle_dir
   let all_ok = ref true in
   let compile_file source_file =
     let program_name =
-      program_name_opt |?
-      Filename.remove_extension source_file |>
-      rel_path_from root_path
+      Option.default_delayed (fun () ->
+        (try
+          rel_path_from root_path (Filename.remove_extension source_file)
+        with Failure s ->
+          !logger.error "%s" s ;
+          !logger.error "No program name given and cannot find out from the \
+                         file name, giving up!" ;
+          exit 1)
+      ) program_name_opt
     and program_code = read_whole_file source_file in
     RamenCompiler.compile conf root_path program_name program_code
   in
