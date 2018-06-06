@@ -1,10 +1,7 @@
 -- vim: ft=sql expandtab
 
-DEFINE clock AS
-  SELECT sum 1 AS tick EVERY 1 SECOND;
-
 DEFINE tuple_exercise AS
-  FROM clock
+  FROM (SELECT sum 1 AS tick EVERY 1 SECOND)
   SELECT ( 1st ("one"; tick; sum tick) ;
            2nd(2nd (42; (1; 17); tick+1)) ) AS some_tup,
          [ ("glop"; 42; "glop") ; ("pin"; 2; "pon") ] AS some_vec;

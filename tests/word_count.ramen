@@ -1,11 +1,10 @@
 -- vim: ft=sql expandtab
 
--- Note: "," must not be the CSV separator!
-DEFINE recv AS
-  READ FILE "fixtures/balade.txt" SEPARATOR "_" (line string not null);
-
 DEFINE splitter AS
-  FROM recv SELECT split(" ", line) AS word;
+  FROM (
+    -- Note: "," must not be the CSV separator!
+    READ FILE "fixtures/balade.txt" SEPARATOR "_" (line string not null)
+  ) SELECT split(" ", line) AS word;
 
 -- Method 1: send the new count each time it changes
 

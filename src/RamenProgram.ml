@@ -93,7 +93,7 @@ struct
           commit_before = false ;\
           flush_how = Reset ;\
           force_export = false ; event_time = None ;\
-          from = ["foo"] ; every = 0. ; factors = [] } } ],\
+          from = [NamedOperation "foo"] ; every = 0. ; factors = [] } } ],\
       (46, [])))\
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
@@ -124,9 +124,43 @@ struct
   (*$>*)
 end
 
+let reify_subquery =
+  let seqnum = ref 0 in
+  fun op ->
+    let name = "_"^ string_of_int !seqnum in
+    incr seqnum ;
+    make_func ~name op
+
+(* Returns a list of additional funcs and the list of parents that
+ * contains only NamedOperations: *)
+let expurgate from =
+  let open RamenOperation in
+  List.fold_left (fun (new_funcs, from) -> function
+    | SubQuery q ->
+        let new_func = reify_subquery q in
+        (new_func :: new_funcs), NamedOperation new_func.name :: from
+    | NamedOperation _ as f -> new_funcs, f :: from
+  ) ([], []) from
+
+let reify_subqueries funcs =
+  let open RamenOperation in
+  List.fold_left (fun fs func ->
+    match func.operation with
+    | Aggregate ({ from ; _ } as f) ->
+        let funcs, from = expurgate from in
+        { func with operation = Aggregate { f with from } } ::
+          funcs @ fs
+    | Instrumentation ({ from ; _ } as f) ->
+        let funcs, from = expurgate from in
+        { func with operation = Instrumentation { f with from } } ::
+          funcs @ fs
+    | _ -> func :: fs
+  ) [] funcs
+
 (*
  * Friendlier version of the parser.
  * Allows for extra spaces and reports errors.
+ * Also substitute real functions for subqueries.
  *)
 
 let parse program =
@@ -140,5 +174,6 @@ let parse program =
       IO.to_string (RamenParsing.print_bad_result print) e in
     raise (SyntaxError (ParseError { error ; text = program }))
   | Ok (funcs, _) ->
+    let funcs = reify_subqueries funcs in
     check funcs ;
     funcs

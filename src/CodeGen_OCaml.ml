@@ -1318,6 +1318,7 @@ let emit_instrumentation consts oc name from =
   let open RamenProtocols in
   let tuple_typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
+  let from = List.map RamenOperation.func_name_of_data_source from in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
       \tCodeGenLib.instrumentation %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
