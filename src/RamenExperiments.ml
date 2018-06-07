@@ -66,11 +66,20 @@ let experimenter_id =
     (* The host id must never change. That's why we save it in a file and we
      * try to reproduce the same value should that file disappear: *)
     let compute () =
-      try
-        let id = run ~timeout:2. [| "hostname" |] |> Hashtbl.hash in
-        !logger.debug "Experimenter id: %d" id ;
-        id
-      with _ -> 0 in
+      match Unix.run_and_read "hostname" with
+      | exception e ->
+          !logger.error "Cannot execute hostname: %s"
+            (Printexc.to_string e) ;
+          0
+      | WEXITED 0, hostname ->
+          let id = Hashtbl.hash hostname in
+          !logger.debug "Experimenter id: %d (from hostname %S)"
+            id hostname ;
+          id
+      | st, _ ->
+          !logger.error "Cannot execute hostname: %s"
+            (string_of_process_status st) ;
+          0 in
     let fname = persist_dir ^"/.experimenter_id" in
     try save_in_file ~compute ~serialize:string_of_int
                      ~deserialize:int_of_string fname

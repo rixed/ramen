@@ -20,9 +20,9 @@ let with_lock with_int_lock op fname f =
       let l = RamenRWLock.make () in
       Hashtbl.add internal_locks fname l ;
       l in
+  (* Of course we lock ourself before locking other processes. *)
   with_int_lock internal_lock (fun () ->
     mkdir_all ~is_file:true fname ;
-    (* Of course we lock ourself before locking other processes. *)
     let%lwt fd = openfile fname [O_RDWR; O_CREAT] 0o640 in
     (*!logger.debug "Got internal lock" ;*)
     (* Just grab the first "byte", probably simpler than the whole file *)

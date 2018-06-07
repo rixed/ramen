@@ -492,7 +492,7 @@ let do_daemonize () =
   let open Unix in
   if fork () > 0 then sys_exit 0 ;
   setsid () |> ignore ;
-  (* Close all fds, ignoring errors in case they have been closed already: *)
+  (* Close in/out, ignoring errors in case they have been closed already: *)
   let null = openfile "/dev/null" [O_RDONLY] 0 in
   dup2 null stdin ;
   close null ;
