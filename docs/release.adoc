@@ -30,7 +30,7 @@ endif::[]
 
 7. `git add * && git commit -m 'Ramen v${new_version}'`
 
-8. Optionally, `docker pull debian:stretch` and docker pull debian:jessie`
+8. Optionally, `docker pull debian:stretch` and docker pull `debian:jessie`
 
 9. `make docker-build-builder` to build the builder docker images
 
