@@ -4,10 +4,11 @@
  * notifications are sent to Ramen notifier process via a ringbuffer.
  * Advantages are many:
  *
- * - Workers do not need so many libraries and are therefore smaller and easier
- * to port to another language;
+ * - Workers do not need so many libraries and are therefore smaller and
+ *   easier to port to another language;
  *
- * - New notification mechanisms are easier to implement in a single location;
+ * - New notification mechanisms are easier to implement in a single
+ *   location;
  *
  * - Workers are easier to distribute.
  *)

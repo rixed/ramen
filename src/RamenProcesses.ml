@@ -306,8 +306,8 @@ let stats_worker_sigkills =
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
   let rescue_worker func =
-    (* Maybe the state file is poisoned? At this stage it's probably safer to move
-     * it away: *)
+    (* Maybe the state file is poisoned? At this stage it's probably safer
+     * to move it away: *)
     let state_file = C.worker_state conf func in
     let trash_file = state_file ^".bad?" in
     !logger.info "Worker %s/%s is deadlooping. Deleting its state file."
