@@ -91,6 +91,7 @@ type stateless_fun1 =
   | EndOfRange
   | Nth of int (* Where the int starts at 0 for the first item *)
   | Sparkline
+  | Strptime
 
 type stateless_fun2 =
   (* Binary Ops scalars *)
@@ -402,6 +403,8 @@ let rec print with_types fmt =
     add_types t
   | StatelessFun1 (t, Nth n, es) ->
     Printf.fprintf fmt "%d%s(%a)" n (ordinal_suffix n) (print with_types) es ; add_types t
+  | StatelessFun1 (t, Strptime, e) ->
+    Printf.fprintf fmt "parse_time (%a)" (print with_types) e ; add_types t
   | StatelessFun2 (t, And, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Or, e1, e2) -> Printf.fprintf fmt "(%a) OR (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, Ge, e1, e2) -> Printf.fprintf fmt "(%a) >= (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
@@ -1130,6 +1133,8 @@ struct
         GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
      (afun2 "format_time" >>: fun (e1, e2) ->
         StatelessFun2 (make_typ ~typ:TString "format_time", Strftime, e1, e2)) |||
+     (afun1 "parse_time" >>: fun e ->
+        StatelessFun1 (make_float_typ ~nullable:true "parse_time", Strptime, e)) |||
      (* At least 2 args to distinguish from the aggregate functions: *)
      (afun2v "max" >>: fun (e1, e2, e3s) ->
         StatelessFunMisc (make_typ "max", Max (e1 :: e2 :: e3s))) |||

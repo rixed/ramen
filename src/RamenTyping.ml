@@ -966,6 +966,10 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | StatelessFun2 (op_typ, Strftime, e1, e2) ->
     check_op op_typ return_string
       [Some TString, None, e1 ; Some TFloat, None, e2]
+  | StatelessFun1 (op_typ, Strptime, e) ->
+    (* Strptime is nullable even when the argument is not: *)
+    check_op op_typ return_float ~propagate_null:false
+      [Some TString, None, e]
   | StatelessFunMisc (op_typ, Like (e, _)) ->
     check_op op_typ return_bool [Some TString, None, e]
   | StatelessFun2 (op_typ, Pow, e1, e2) ->

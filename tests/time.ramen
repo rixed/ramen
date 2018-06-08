@@ -1,0 +1,7 @@
+-- vim: ft=sql expandtab
+
+DEFINE t AS
+  YIELD format_time("%Y-%m-%d %H:%M:%S",
+                    parse_time("28.01.1976")) AS t
+  EVERY 10 second
+  EXPORT;

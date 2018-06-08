@@ -840,3 +840,100 @@ let sparkline vec =
     Buffer.add_string res stairs.(c)
   ) vec ;
   Buffer.contents res
+
+(* All the time conversion functions below are taken from (my understanding of)
+ * http://graphite-api.readthedocs.io/en/latest/api.html#from-until *)
+
+let time_of_reltime s =
+  let scale d s =
+    try
+      Some (
+        Unix.gettimeofday () +. d *.
+          (match s with
+          | "s" -> 1.
+          | "min" -> 60.
+          | "h" -> 3600.
+          | "d" -> 86400.
+          | "w" -> 7. *. 86400.
+          | "mon" -> 30. *. 86400.
+          | "y" -> 365. *. 86400.
+          | _ -> raise Exit))
+    with Exit ->
+      None
+  in
+  Scanf.sscanf s "%f%s%!" scale
+
+(* String interpreted in the local time zone: *)
+let time_of_abstime s =
+  let s = String.lowercase s in
+  let scan fmt recv =
+    try Some (Scanf.sscanf s fmt recv)
+    with Scanf.Scan_failure _ -> None
+  and eq str recv =
+    if s = str then Some (recv ()) else None
+  and (|||) o1 o2 =
+    if o1 <> None then o1 else o2 in
+  let open Unix in
+  let is_past h m tm =
+    h < tm.tm_hour || h = tm.tm_hour && m < tm.tm_min in
+  let time_of_hh_mm h m am_pm =
+    let h = match String.lowercase am_pm with
+      | "am" | "" -> h
+      | "pm" -> h + 12
+      | _ -> raise (Scanf.Scan_failure ("Invalid AM/PM: "^ am_pm)) in
+    let now = time () in
+    let tm = localtime now in
+    (* "If that time is already past, the next day is assumed" *)
+    if is_past h m tm then now +. 86400. else now in
+  let time_of_dd_mm_yyyy d m y =
+    let y = if y < 100 then y + 2000 (* ? *) else y in
+    let tm =
+      { tm_sec = 0 ; tm_min = 0 ; tm_hour = 0 ;
+        tm_mday = d ; tm_mon = m - 1 ; tm_year = y - 1900 ;
+        (* ignored: *) tm_wday = 0 ; tm_yday = 0 ; tm_isdst = false } in
+    mktime tm |> fst
+  in
+  (* Extracts are from `man 1 at`:
+   *
+   * "It accepts times of the form HHMM or HH:MM to run a job at a specific
+   * time of day.  (If that time is already past, the next day is assumed.)
+   * (...) and time-of-day may be suffixed with AM or PM for running in the
+   * morning or the evening." *)
+  (scan "%2d%2d%s%!" time_of_hh_mm) |||
+  (scan "%2d:%2d%s%!" time_of_hh_mm) |||
+  (scan "%2d:%2d%s%!" time_of_hh_mm) |||
+  (* "As an alternative, the following keywords may be specified: midnight,
+   * noon, or teatime (4pm) (...)." *)
+  (eq "midnight" (fun () -> time_of_hh_mm 0 0 "")) |||
+  (eq "noon" (fun () -> time_of_hh_mm 12 00 "")) |||
+  (eq "teatime" (* fuck you! *) (fun () -> time_of_hh_mm 16 00 "")) |||
+  (* Not specified but that's actually the first Grafana will send: *)
+  (eq "now" time) |||
+  (* Also not specified but mere unix timestamps are actually frequent: *)
+  (scan "%f%!" (fun f ->
+    if f > 946681200. && f < 2208985200. then f
+    else raise (Scanf.Scan_failure "Doesn't look like a timestamp"))) |||
+  (* "The day on which the job is to be run may also be specified by giving a
+   * date in the form month-name day with an optional year," *)
+  (* TODO *)
+  (* "or giving a date of the forms DD.MM.YYYY, DD.MM.YY, MM/DD/YYYY, MM/DD/YY,
+   * MMDDYYYY, or MMDDYY." *)
+  (scan "%2d.%2d.%4d%!" time_of_dd_mm_yyyy) |||
+  (scan "%2d/%2d/%4d%!" (fun m d y -> time_of_dd_mm_yyyy d m y)) |||
+  (scan "%2d%2d%4d%!" (fun m d y -> time_of_dd_mm_yyyy d m y)) |||
+  (* "The specification of a date must follow the specification of the time of
+   * day.  Time can also be specified as: [now] + count time-units, where the
+   * time-units can be minutes, hours, days, weeks, months or years and at may
+   * be told to run the job today by suffixing the time with today and to run
+   * the job tomorrow by suffixing the time with tomorrow.  The shortcut next
+   * can be used instead of + 1." *)
+  (* TODO *)
+  None
+
+(* mktime tm struct "is interpreted in the local time zone". Work around this
+ * by dividing by 24h. *)
+(*$= time_of_abstime & ~printer:(function None -> "None" | Some f -> string_of_float f)
+ (Some 2218.) (BatOption.map (fun ts -> ceil (ts /. 86400.)) (time_of_abstime "28.01.1976"))
+ (time_of_abstime "28.01.1976") (time_of_abstime "01/28/1976")
+ (Some 1523052000.) (time_of_abstime "1523052000")
+ *)

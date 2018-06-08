@@ -356,6 +356,7 @@ tests/constructed_types.success: tests/constructed_types.x
 tests/histogram.success: tests/histogram.x tests/fixtures/cars.x
 tests/strings.success: tests/strings.x
 tests/in.success: tests/in.x
+tests/time.success: tests/time.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

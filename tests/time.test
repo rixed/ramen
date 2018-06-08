@@ -1,0 +1,8 @@
+{
+  programs = [ ("time.x", []) ];
+  outputs = {
+    "tests/time/t" => {
+      present = [ { "t" => "\"1976-01-28 00:00:00.00\"" } ]
+    }
+  }
+}
