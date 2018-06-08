@@ -188,6 +188,25 @@ let histogram_add h x =
 
 let histogram_finalize h = h.histo
 
+let strftime ?(gmt=false) str tim =
+  let open Unix in
+  let tm = (if gmt then gmtime else localtime) tim in
+  let replacements =
+    [ "%Y", string_of_int (tm.tm_year + 1900) ;
+      "%d", Printf.sprintf "%02d" tm.tm_mday ;
+      "%H", Printf.sprintf "%02d" tm.tm_hour ;
+      "%j", string_of_int tm.tm_yday ;
+      "%M", Printf.sprintf "%02d" tm.tm_min ;
+      "%m", Printf.sprintf "%02d" (tm.tm_mon + 1) ;
+      "%n", "\n" ; "%t", "\t" ;
+      "%S", Printf.sprintf "%05.2f"
+              (float_of_int tm.tm_sec +. mod_float tim 1.) ;
+      "%s", string_of_float tim ;
+      "%u", string_of_int tm.tm_wday ] in
+  List.fold_left (fun str (sub, by) ->
+    String.nreplace ~str ~sub ~by
+  ) str replacements
+
 (* We often want functions that work on the last k elements, or the last k
  * periods of length p for seasonal data. So we often need a small sliding
  * window as a function internal state. If we could join between two different

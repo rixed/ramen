@@ -500,6 +500,9 @@ and emit_expr ?state ~context ~consts oc expr =
     emit_functionN ?state ~consts (omod_of_type t ^".rem") [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Mod, e1, e2), Some (TFloat as t) ->
     emit_functionN ?state ~consts (omod_of_type t ^".modulo") [Some t; Some t] oc [e1; e2]
+  | Finalize, StatelessFun2 (_, Strftime, e1, e2), Some TString ->
+    emit_functionN ?state ~consts "CodeGenLib.strftime"
+      [Some TString; Some TFloat] oc [e1; e2]
 
   | Finalize, StatelessFun1 (_, Abs, e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->

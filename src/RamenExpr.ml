@@ -119,6 +119,8 @@ type stateless_fun2 =
    * set membership test, or for a non-efficient sequence of OR kind of
    * membership test if the set is not constant: *)
   | In
+  (* Takes format then time: *)
+  | Strftime
 
 (* FIXME: when we end prototyping use objects to make it easier to add
  * operations *)
@@ -408,6 +410,7 @@ let rec print with_types fmt =
   | StatelessFun2 (t, Concat, e1, e2) -> Printf.fprintf fmt "(%a) || (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, StartsWith, e1, e2) -> Printf.fprintf fmt "(%a) STARTS WITH (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, EndsWith, e1, e2) -> Printf.fprintf fmt "(%a) ENDS WITH (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
+  | StatelessFun2 (t, Strftime, e1, e2) -> Printf.fprintf fmt "format_time (%a, %a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, BitAnd, e1, e2) -> Printf.fprintf fmt "(%a) & (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, BitOr, e1, e2) -> Printf.fprintf fmt "(%a) | (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun2 (t, BitXor, e1, e2) -> Printf.fprintf fmt "(%a) ^ (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
@@ -1125,6 +1128,8 @@ struct
         | _ -> raise (Reject "histogram dimensions must be constants")) |||
      (afun2 "split" >>: fun (e1, e2) ->
         GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
+     (afun2 "format_time" >>: fun (e1, e2) ->
+        StatelessFun2 (make_typ ~typ:TString "format_time", Strftime, e1, e2)) |||
      (* At least 2 args to distinguish from the aggregate functions: *)
      (afun2v "max" >>: fun (e1, e2, e3s) ->
         StatelessFunMisc (make_typ "max", Max (e1 :: e2 :: e3s))) |||
