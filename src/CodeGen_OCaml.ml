@@ -515,6 +515,10 @@ and emit_expr ?state ~context ~consts oc expr =
     emit_functionN ?state ~consts "log10" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Sqrt, e), Some TFloat ->
     emit_functionN ?state ~consts "sqrt" [Some TFloat] oc [e]
+  | Finalize, StatelessFun1 (_, Ceil, e), Some TFloat ->
+    emit_functionN ?state ~consts "ceil" [Some TFloat] oc [e]
+  | Finalize, StatelessFun1 (_, Floor, e), Some TFloat ->
+    emit_functionN ?state ~consts "floor" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Hash, e), Some TI64 ->
     emit_functionN ?state ~consts "CodeGenLib.hash" [None] oc [e]
   | Finalize, StatelessFun1 (_, Sparkline, e), Some TString ->

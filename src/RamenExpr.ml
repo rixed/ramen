@@ -83,6 +83,8 @@ type stateless_fun1 =
   | Log
   | Log10
   | Sqrt
+  | Ceil
+  | Floor
   | Hash
   (* Give the bounds of a CIDR: *)
   | BeginOfRange
@@ -381,6 +383,10 @@ let rec print with_types fmt =
     Printf.fprintf fmt "log10 (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Sqrt, e) ->
     Printf.fprintf fmt "sqrt (%a)" (print with_types) e ; add_types t
+  | StatelessFun1 (t, Ceil, e) ->
+    Printf.fprintf fmt "ceil (%a)" (print with_types) e ; add_types t
+  | StatelessFun1 (t, Floor, e) ->
+    Printf.fprintf fmt "floor (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Hash, e) ->
     Printf.fprintf fmt "hash (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Sparkline, e) ->
@@ -1043,6 +1049,8 @@ struct
      (afun1 "log" >>: fun e -> StatelessFun1 (make_num_typ "natural logarithm", Log, e)) |||
      (afun1 "log10" >>: fun e -> StatelessFun1 (make_num_typ "common logarithm", Log10, e)) |||
      (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_num_typ "square root", Sqrt, e)) |||
+     (afun1 "ceil" >>: fun e -> StatelessFun1 (make_num_typ "ceil", Ceil, e)) |||
+     (afun1 "floor" >>: fun e -> StatelessFun1 (make_num_typ "floor", Floor, e)) |||
      (afun1 "hash" >>: fun e -> StatelessFun1 (make_typ ~typ:TI64 "hash", Hash, e)) |||
      (afun1 "sparkline" >>: fun e -> StatelessFun1 (make_typ ~typ:TString "sparkline", Sparkline, e)) |||
      (afun1_sf ~def_state:LocalState "min" >>: fun (g, e) ->
