@@ -273,6 +273,36 @@ let rec wait_all_pids_loop and_save =
       return_unit in
   wait_all_pids_loop and_save
 
+open Binocle
+
+let stats_worker_crashes =
+  IntCounter.make RamenConsts.MetricNames.worker_crashes
+    "Number of workers that have crashed (or exited with non 0 status)."
+
+let stats_worker_deadloopings =
+  IntCounter.make RamenConsts.MetricNames.worker_deadloopings
+    "Number of time a worker has been found to deadloop."
+
+let stats_worker_count =
+  IntGauge.make RamenConsts.MetricNames.worker_count
+    "Number of workers configured to run."
+
+let stats_worker_running =
+  IntGauge.make RamenConsts.MetricNames.worker_running
+    "Number of workers actually running."
+
+let stats_ringbuf_repairs =
+  IntCounter.make RamenConsts.MetricNames.ringbuf_repairs
+    "Number of times a worker ringbuf had to be repaired."
+
+let stats_outref_repairs =
+  IntCounter.make RamenConsts.MetricNames.outref_repairs
+    "Number of times a worker outref had to be repaired."
+
+let stats_worker_sigkills =
+  IntCounter.make RamenConsts.MetricNames.worker_sigkills
+    "Number of times a worker had to be sigkilled instead of sigtermed."
+
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
   let rescue_worker func =
@@ -307,7 +337,10 @@ let process_workers_terminations conf running =
             proc.last_exit_status <- status_str ;
             if is_err then (
               proc.succ_failures <- proc.succ_failures + 1 ;
-              if proc.succ_failures = 5 then rescue_worker proc.func) ;
+              IntCounter.add stats_worker_crashes 1 ;
+              if proc.succ_failures = 5 then (
+                IntCounter.add stats_worker_deadloopings 1 ;
+                rescue_worker proc.func)) ;
             (* Wait before attempting to restart a failing worker: *)
             proc.quarantine_until <-
               now +. Random.float (min 90. (float_of_int proc.succ_failures)) ;
@@ -348,9 +381,9 @@ let really_start conf must_run proc parents children =
     let rb = RingBuf.load rb_name in
     finally (fun () -> RingBuf.unload rb)
       (fun () ->
-        if RingBuf.repair rb then
-          (* TODO: a binocle counter for that *)
-          !logger.warning "Ringbuf for %s was damaged" fq_name) ()
+        if RingBuf.repair rb then (
+          IntCounter.add stats_ringbuf_repairs 1 ;
+          !logger.warning "Ringbuf for %s was damaged" fq_name)) ()
   ) input_ringbufs ;
   (* And the pre-filled out_ref: *)
   !logger.debug "Updating out-ref buffers..." ;
@@ -420,7 +453,7 @@ let really_start conf must_run proc parents children =
   let cwd = Filename.dirname proc.bin in
   let cmd = Filename.basename proc.bin in
   let%lwt pid =
-    wrap (fun () -> run_background ~cwd cmd args env) in
+    Lwt.wrap (fun () -> run_background ~cwd cmd args env) in
   !logger.info "Function %s now runs under pid %d" fq_name pid ;
   proc.pid <- Some pid ;
   (* Update the parents out_ringbuf_ref: *)
@@ -509,13 +542,14 @@ let try_kill conf must_run proc =
     log_exceptions ~what:"Killing worker"
       (Unix.kill pid) Sys.sigkill ;
     proc.last_killed <- now ;
+    IntCounter.add stats_worker_sigkills 1
   ) ;
   return_unit
 
 let check_out_ref =
   let do_check_out_ref conf must_run =
     !logger.debug "Checking out_refs..." ;
-    (* Build the set of all wrappin g ringbuf that are being read: *)
+    (* Build the set of all wrapping ringbuf that are being read: *)
     let rbs =
       Hashtbl.fold (fun _sign (_bin, _program_name, func) s ->
         C.in_ringbuf_names conf func |>
@@ -532,6 +566,7 @@ let check_out_ref =
         if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
           !logger.error "Operation %s outputs to %s, which is not read"
             (F.fq_name func) fname ;
+          IntCounter.add stats_outref_repairs 1 ;
           RamenOutRef.remove out_ref fname
         ) else return_unit))
   and last_checked_out_ref = ref 0. in
@@ -579,6 +614,8 @@ let synchronize_running conf autoreload_delay =
     (* First, remove from running all terminated processes that must not run
      * any longer. Send a kill to those that are still running. *)
     let prev_nb_running = Hashtbl.length running in
+    IntGauge.set stats_worker_count (Hashtbl.length must_run) ;
+    IntGauge.set stats_worker_running prev_nb_running ;
     let to_kill = ref [] and to_start = ref []
     and (+=) r x = r := x :: !r in
     Hashtbl.filteri_inplace (fun sign proc ->
@@ -626,7 +663,7 @@ let synchronize_running conf autoreload_delay =
       let%lwt () = Lwt_unix.sleep (1. +. Random.float 1.) in
       none_shall_pass f
   in
-  (* The has of programs that must be running, updated by [loop]: *)
+  (* The hash of programs that must be running, updated by [loop]: *)
   let must_run = Hashtbl.create 307
   and running = Hashtbl.create 307 in
   let rec loop last_read =
@@ -666,7 +703,7 @@ let synchronize_running conf autoreload_delay =
                * workers identified by their signature so that if the type of a
                * worker change but not its name we see a different worker. *)
               Hashtbl.clear must_run ;
-              let%lwt () = wrap (fun () ->
+              let%lwt () = Lwt.wrap (fun () ->
                 Hashtbl.iter (fun program_name get_rc ->
                   let bin, prog = get_rc () in
                   List.iter (fun f ->

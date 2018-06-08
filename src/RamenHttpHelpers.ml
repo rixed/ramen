@@ -88,6 +88,12 @@ let stop_http_servers () =
     Lwt_condition.signal condvar ()
   ) !http_server_done
 
+open Binocle
+
+let stats_count =
+  IntCounter.make RamenConsts.MetricNames.requests_count
+    "Number of HTTP requests, per response status"
+
 let http_service port url_prefix router =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
@@ -143,6 +149,7 @@ let http_service port url_prefix router =
       with exn -> fail exn
     with HttpError (code, msg) as exn ->
            print_exception exn ;
+           IntCounter.add ~labels:["status", string_of_int code] stats_count 1 ;
            let status = Code.status_of_code code in
            let headers =
              Header.init_with "Access-Control-Allow-Origin" "*" in
@@ -153,9 +160,12 @@ let http_service port url_prefix router =
            Server.respond_string ~headers ~status ~body ()
        | exn ->
            print_exception exn ;
+           let code = 500 in
+           IntCounter.add ~labels:["status", string_of_int code] stats_count 1 ;
+           let status = Code.status_of_code code in
            let body = Printexc.to_string exn ^ "\n" in
            let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
-           Server.respond_error ~headers ~body ()
+           Server.respond_error ~headers ~status ~body ()
   in
   let entry_point = Server.make ~callback () in
   let tcp_mode = `TCP (`Port port) in

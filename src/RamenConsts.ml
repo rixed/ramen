@@ -15,6 +15,7 @@ end
 
 module MetricNames =
 struct
+  (* Metrics reported by workers: *)
   let in_tuple_count = "in_tuple_count"
   let selected_tuple_count = "selected_tuple_count"
   let out_tuple_count = "out_tuple_count"
@@ -26,6 +27,24 @@ struct
   let rb_read_bytes = "in_bytes"
   let rb_write_bytes = "out_bytes"
   let last_out = "last_out"
+
+  (* Metrics reported by the supervisor: *)
+  let worker_crashes = "workers_crashes"
+  let worker_deadloopings = "workers_deadloopings"
+  let worker_count = "workers_count"
+  let worker_running = "workers_running"
+  let worker_sigkills = "workers_sigkills"
+  let ringbuf_repairs = "workers_ringbuf_repairs"
+  let outref_repairs = "workers_outref_repairs"
+
+  (* Metrics reported by the notifier: *)
+  let notifs_count = "notifs_count"
+  let notifs_send_fails = "notifs_send_failures"
+  let notifs_rcv_fails = "notifs_receive_failures"
+  let team_fallbacks = "notifs_team_fallbacks"
+
+  (* Metrics reported by the HTTP server: *)
+  let requests_count = "http_requests_count"
 end
 
 module CliInfo =

@@ -33,6 +33,27 @@ let next_alert_id conf =
   C.ppp_to_file fname alert_id_ppp_ocaml (Uint64.succ v) ;
   v
 
+open Binocle
+
+(* Number of notifications of each types: *)
+
+let stats_count =
+  IntCounter.make RamenConsts.MetricNames.notifs_count
+    "Number of notifications sent, per channel."
+
+let stats_send_fails =
+  IntCounter.make RamenConsts.MetricNames.notifs_send_fails
+    "Number of messages that could not be sent due to error."
+
+let stats_rcv_errors =
+  IntCounter.make RamenConsts.MetricNames.notifs_rcv_fails
+    "Number of notifications that the notifier failed to read."
+
+let stats_team_fallbacks =
+  IntCounter.make RamenConsts.MetricNames.team_fallbacks
+    "Number of times the default time was selected because the \
+    configuration was not specific enough"
+
 type http_cmd_method = HttpCmdGet | HttpCmdPost
   [@@ppp PPP_OCaml]
 
@@ -40,6 +61,7 @@ let http_send method_ url headers body worker =
   let open Cohttp in
   let open Cohttp_lwt_unix in
   let open RamenOperation in
+  IntCounter.add ~labels:["via", "http"] stats_count 1 ;
   let headers =
     List.fold_left (fun h (n, v) ->
       Header.add h n v
@@ -60,16 +82,19 @@ let http_send method_ url headers body worker =
   if code <> 200 then (
     let%lwt body = Cohttp_lwt.Body.to_string body in
     !logger.error "Received code %d from %S (%S)" code url body ;
+    IntCounter.add stats_send_fails 1 ;
     return_unit
   ) else
     Cohttp_lwt.Body.drain_body body
 
 let execute_cmd cmd worker =
+  IntCounter.add ~labels:["via", "execute"] stats_count 1 ;
   match%lwt run ~timeout:5. [| "/bin/sh"; "-c"; cmd |] with
   | exception e ->
       !logger.error "While executing command %S from %s: %s"
         cmd worker
         (Printexc.to_string e) ;
+      IntCounter.add stats_send_fails 1 ;
       return_unit
   | stdout, stderr ->
       if stdout <> "" then !logger.debug "cmd: %s" stdout ;
@@ -77,20 +102,24 @@ let execute_cmd cmd worker =
       return_unit
 
 let log_str str worker =
+  IntCounter.add ~labels:["via", "syslog"] stats_count 1 ;
   let level = `LOG_ALERT in
   match syslog with
   | None ->
+    IntCounter.add stats_send_fails 1 ;
     fail_with "No syslog on this host"
   | Some slog ->
-    wrap (fun () -> Syslog.syslog slog level str)
+    Lwt.wrap (fun () -> Syslog.syslog slog level str)
 
 let sqllite_insert file insert_q create_q worker =
+  IntCounter.add ~labels:["via", "sqlite"] stats_count 1 ;
   let open Sqlite3 in
   let open SqliteHelpers in
   let handle = db_open file in
   let db_fail err q =
     let e = Printf.sprintf "Cannot %S into sqlite DB %S: %s"
               q file (Rc.to_string err) in
+    IntCounter.add stats_send_fails 1 ;
     failwith e in
   let exec_or_fail q =
     match exec handle q with
@@ -149,6 +178,7 @@ module Team = struct
     with Not_found ->
       !logger.warning "No team name found in notification %S, \
                        assigning to first team." name ;
+      IntCounter.add stats_team_fallbacks 1 ;
       List.hd teams
 end
 
@@ -445,7 +475,7 @@ let contact_via item =
   | ViaExec cmd -> execute_cmd (exp ~q:shell_quote cmd) item.worker
   | ViaSysLog str -> log_str (exp str) item.worker
   | ViaSqlite { file ; insert ; create } ->
-      wrap (fun () ->
+      Lwt.wrap (fun () ->
         let ins = exp ~q:sql_quote ~n:"NULL" insert in
         sqllite_insert (exp file) ins create item.worker)
 
@@ -465,7 +495,7 @@ let do_notify i =
           return_unit (* let it timeout *)
       | () ->
           if timeout > 0. then
-            wrap (fun () -> ack i.notif.name i.contact)
+            Lwt.wrap (fun () -> ack i.notif.name i.contact)
           else return_unit) ;
     timeout
   )
@@ -543,6 +573,7 @@ let start conf notif_conf rb =
     match PPP.of_string_exc RamenOperation.notification_ppp_ocaml notif with
     | exception _ ->
         !logger.error "Cannot deserialize notification %S, skipping" notif ;
+        IntCounter.add stats_rcv_errors 1 ;
         return_unit
     | notif ->
         let event_time =
