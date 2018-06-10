@@ -75,8 +75,10 @@ struct
   let debug = "Increase verbosity"
   let version = "Show version number"
   let persist_dir = "Directory where are stored data persisted on disc"
+  let initial_export_duration = "How long to export a node output after \
+    startup before a client asks for it"
   let rand_seed =
-    "Seed to initialize the random generator with. \
+    "Seed to initialize the random generator with \
      (will use a random one if unset)"
   let keep_temp_files = "Keep temporary files"
   let variant = "Force variants"

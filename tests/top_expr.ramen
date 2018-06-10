@@ -19,5 +19,4 @@ DEFINE f AS
   -- the TOP 2, but by the end we should have most BMW and Toyota cars
   -- counted independently.
   GROUP BY approx_manufacturer
-  COMMIT AFTER in.#count >= 4539
-  EXPORT;
+  COMMIT AFTER in.#count >= 4539;

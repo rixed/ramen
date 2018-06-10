@@ -3,12 +3,10 @@
 DEFINE f AS
   FROM tests/fixtures/n123/csv
   SELECT SUM n
-  COMMIT BEFORE sum_n > 4
-  EXPORT;
+  COMMIT BEFORE sum_n > 4;
 
 -- Note: we won't have "Volvo" at the end since it will never be commited:
 DEFINE count_cars AS
   FROM tests/fixtures/cars/csv
   SELECT manufacturer, SUM 1 as nb_models
-  COMMIT BEFORE COALESCE(out.manufacturer != group.previous.manufacturer, false)
-  EXPORT;
+  COMMIT BEFORE COALESCE(out.manufacturer != group.previous.manufacturer, false);

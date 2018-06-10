@@ -12,16 +12,15 @@ DEFINE f1 AS
     10th percentile horsepower,
     95th percentile horsepower,
     sum u16(distinct manufacturer) as manufacturers
-  EXPORT
   COMMIT AFTER group.#count >= 4539;
 
-DEFINE a1 AS FROM tests/fixtures/n123/csv SELECT AND b EXPORT COMMIT AFTER selected.#count = 1;
-DEFINE a2 AS FROM tests/fixtures/n123/csv SELECT AND b EXPORT COMMIT AFTER selected.#count = 2;
-DEFINE a3 AS FROM tests/fixtures/n123/csv SELECT AND b EXPORT COMMIT AFTER selected.#count = 3;
-DEFINE o1 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b EXPORT COMMIT AFTER selected.#count = 1;
-DEFINE o2 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b EXPORT COMMIT AFTER selected.#count = 2;
-DEFINE o3 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b EXPORT COMMIT AFTER selected.#count = 3;
+DEFINE a1 AS FROM tests/fixtures/n123/csv SELECT AND b COMMIT AFTER selected.#count = 1;
+DEFINE a2 AS FROM tests/fixtures/n123/csv SELECT AND b COMMIT AFTER selected.#count = 2;
+DEFINE a3 AS FROM tests/fixtures/n123/csv SELECT AND b COMMIT AFTER selected.#count = 3;
+DEFINE o1 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b COMMIT AFTER selected.#count = 1;
+DEFINE o2 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b COMMIT AFTER selected.#count = 2;
+DEFINE o3 AS FROM tests/fixtures/n123/csv SELECT OR (not b) AS not_b COMMIT AFTER selected.#count = 3;
 
 -- Check stateful functions in where clauses
 
-DEFINE f2 AS SELECT n FROM tests/fixtures/n123/csv WHERE lag n = 2 EXPORT;
+DEFINE f2 AS SELECT n FROM tests/fixtures/n123/csv WHERE lag n = 2;

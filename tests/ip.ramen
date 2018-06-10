@@ -2,58 +2,48 @@
 
 DEFINE f1 AS
   FROM tests/fixtures/mixture/csv
-  SELECT cidr WHERE ip = 192.168.1.1
-  EXPORT;
+  SELECT cidr WHERE ip = 192.168.1.1;
 
 DEFINE f2 AS
   FROM tests/fixtures/mixture/csv
-  SELECT cidr WHERE ip = 2001:41d0:8:e8ad::1
-  EXPORT;
+  SELECT cidr WHERE ip = 2001:41d0:8:e8ad::1;
 
 DEFINE f3 AS
   FROM tests/fixtures/mixture/csv
   SELECT SUM 1 AS count WHERE ip IN 192.168.1.0/24
-  COMMIT AFTER in.#count >= 2
-  EXPORT;
+  COMMIT AFTER in.#count >= 2;
 
 DEFINE f4 AS
   FROM tests/fixtures/mixture/csv
   SELECT SUM 1 AS count WHERE ip IN 2000::/8
-  COMMIT AFTER in.#count >= 2
-  EXPORT;
+  COMMIT AFTER in.#count >= 2;
 
 DEFINE f5 AS
   FROM tests/fixtures/mixture/csv
   SELECT SUM u32(DISTINCT ip) AS count WHERE ip IN cidr
-  COMMIT AFTER in.#count >= 2
-  EXPORT;
+  COMMIT AFTER in.#count >= 2;
 
 -- Same, with nullable fields:
 
 DEFINE f1n AS
   FROM tests/fixtures/mixture/csv_null
-  SELECT cidr WHERE COALESCE(ip = 192.168.1.1, false)
-  EXPORT;
+  SELECT cidr WHERE COALESCE(ip = 192.168.1.1, false);
 
 DEFINE f2n AS
   FROM tests/fixtures/mixture/csv_null
-  SELECT cidr WHERE COALESCE(ip = 2001:41d0:8:e8ad::1, false)
-  EXPORT;
+  SELECT cidr WHERE COALESCE(ip = 2001:41d0:8:e8ad::1, false);
 
 DEFINE f3n AS
   FROM tests/fixtures/mixture/csv_null
   SELECT SUM 1 AS count WHERE COALESCE(ip IN 192.168.1.0/24,false)
-  COMMIT AFTER in.#count >= 2
-  EXPORT;
+  COMMIT AFTER in.#count >= 2;
 
 DEFINE f4n AS
   FROM tests/fixtures/mixture/csv_null
   SELECT SUM 1 AS count WHERE COALESCE(ip IN 2000::/8, false)
-  COMMIT AFTER in.#count >= 2
-  EXPORT;
+  COMMIT AFTER in.#count >= 2;
 
 DEFINE f5n AS
   FROM tests/fixtures/mixture/csv_null
   SELECT SUM u32(DISTINCT ip) AS count WHERE COALESCE(ip IN cidr, false)
-  COMMIT AFTER in.#count >= 2
-  EXPORT;
+  COMMIT AFTER in.#count >= 2;

@@ -15,13 +15,15 @@ let () =
       (Printexc.to_string exn)
       (Printexc.get_backtrace ()))
 
-let make_copts debug persist_dir rand_seed keep_temp_files forced_variants =
+let make_copts debug persist_dir rand_seed keep_temp_files forced_variants
+               initial_export_duration =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
       RamenProcesses.rand_seed := Some seed ;
       Random.init seed) ;
-  C.make_conf ~debug ~keep_temp_files ~forced_variants persist_dir
+  C.make_conf ~debug ~keep_temp_files ~forced_variants
+              ~initial_export_duration persist_dir
 
 (*
  * `ramen supervisor`

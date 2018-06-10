@@ -10,5 +10,4 @@ DEFINE new_cnxs AS
 
 DEFINE detect AS
   SELECT * FROM new_cnxs
-  WHERE IS src, dst IN TOP 2
-  EXPORT;
+  WHERE IS src, dst IN TOP 2;

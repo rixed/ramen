@@ -9,5 +9,4 @@ DEFINE f AS
       COALESCE(name, "three") AS sum_name,
     n + COALESCE(group.previous.x, 0) AS x
   GROUP BY true
-  COMMIT AFTER group.#count >= 3
-  EXPORT;
+  COMMIT AFTER group.#count >= 3;

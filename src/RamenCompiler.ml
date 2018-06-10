@@ -205,7 +205,6 @@ let compile conf root_path program_name program_code =
                 out_type = RamenTyping.typed_tuple_type func.out_type ;
                 signature = func.signature ;
                 parents = func.parents ;
-                force_export = RamenOperation.is_exporting operation ;
                 merge_inputs = RamenOperation.is_merging operation ;
                 event_time = func.event_time ;
                 factors = func.factors }

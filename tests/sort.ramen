@@ -6,5 +6,4 @@
 DEFINE f AS
   FROM tests/fixtures/earthquakes/csv
   SORT LAST 96 BY -n, year
-  SELECT year
-  EXPORT;
+  SELECT year;

@@ -2,5 +2,4 @@
 
 DEFINE f AS
   FROM tests/fixtures/n123/csv
-  SELECT n, lag n AS lag1, lag (2, n) AS lag2
-  EXPORT;
+  SELECT n, lag n AS lag1, lag (2, n) AS lag2;

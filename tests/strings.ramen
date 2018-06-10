@@ -5,5 +5,4 @@ DEFINE f1 AS
     "glop" IN "pas glop!" AS t1,
     "pas glop" ends with "glop" as t2,
     not ("pas glop" starts with "glop") as t3
-  EVERY 1 SECOND
-  EXPORT;
+  EVERY 1 SECOND;

@@ -398,11 +398,10 @@ let really_start conf must_run proc parents children =
     ) children in
   (* Now that the out_ref exists, but before we actually fork the worker,
    * we can start importing: *)
-  let%lwt () =
-    if proc.func.F.force_export then
-      let%lwt _ = RamenExport.make_temp_export conf proc.func in
-      return_unit
-    else return_unit in
+  (* Always export for a little while at the beginning *)
+  let%lwt _ =
+    RamenExport.make_temp_export ~duration:conf.initial_export_duration
+      conf proc.func in
   (* Now actually start the binary *)
   !logger.info "Start %s" proc.func.F.name ;
   let notify_ringbuf =

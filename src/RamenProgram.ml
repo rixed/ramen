@@ -92,7 +92,7 @@ struct
           commit_when = RamenExpr.Const (typ, VBool true) ;\
           commit_before = false ;\
           flush_how = Reset ;\
-          force_export = false ; event_time = None ;\
+          event_time = None ;\
           from = [NamedOperation "foo"] ; every = 0. ; factors = [] } } ],\
       (46, [])))\
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
@@ -108,7 +108,7 @@ struct
                   Field (typ, ref TupleParam, "p1"),\
                   Field (typ, ref TupleParam, "p2"))) ;\
               alias = "res" } ] ;\
-          every = 0. ; force_export = false ; event_time = None ;\
+          every = 0. ; event_time = None ;\
           and_all_others = false ; merge = [], 0. ; sort = None ;\
           where = RamenExpr.Const (typ, VBool true) ;\
           notifications = [] ; key = [] ;\
@@ -150,9 +150,9 @@ let reify_subqueries funcs =
         let funcs, from = expurgate from in
         { func with operation = Aggregate { f with from } } ::
           funcs @ fs
-    | Instrumentation ({ from ; _ } as f) ->
+    | Instrumentation ({ from ; _ }) ->
         let funcs, from = expurgate from in
-        { func with operation = Instrumentation { f with from } } ::
+        { func with operation = Instrumentation { from } } ::
           funcs @ fs
     | _ -> func :: fs
   ) [] funcs

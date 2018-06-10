@@ -6,4 +6,4 @@ DEFINE f AS
     -- Create two funcs outputing same subset of fields in different orders
     (YIELD 1 as one, 2 as two, 3 as three, 42 as foo EVERY 0.1 SECONDS),
     (YIELD 17 as bar, 2 as two, 1 as one, 4 as four EVERY 0.1 SECONDS)
-  SELECT two, * EXPORT;
+  SELECT two, *;

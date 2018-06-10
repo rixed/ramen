@@ -21,7 +21,7 @@ Feature: hot reloading of ramen workers
             else "bigger"
           end as n;
 
-      define o2 as select n from o1 export;
+      define o2 as select n from o1;
       """
     And p1.ramen and p2.ramen are compiled
     And ramen supervisor --autoreload=1 is started

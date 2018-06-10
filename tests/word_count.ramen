@@ -12,8 +12,7 @@ DEFINE counter1 AS
   FROM splitter WHERE word <> ""
   SELECT group.#count AS count, lower(word) AS word
   GROUP BY word
-  COMMIT AND KEEP ALL AFTER true
-	EXPORT;
+  COMMIT AND KEEP ALL AFTER true;
 
 -- Method 2: send all counts only when the word "END" is seen
 
@@ -21,5 +20,4 @@ DEFINE counter2 AS
   FROM splitter WHERE word <> ""
   SELECT group.#count AS count, lower(word) AS word
   GROUP BY word
-  COMMIT AFTER in.word = "END"
-  EXPORT;
+  COMMIT AFTER in.word = "END";

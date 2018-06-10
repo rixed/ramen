@@ -8,5 +8,4 @@ DEFINE f AS
     season_moveavg (3, 5, n) as a5,
     fit (1, n) as f1,
     fit (2, n) as f2,
-    fit (3, n) as f3
- EXPORT;
+    fit (3, n) as f3;

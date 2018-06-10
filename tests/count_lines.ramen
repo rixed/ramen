@@ -5,5 +5,4 @@ DEFINE f AS
   SELECT
     10*n AS ten_n,
     in.#count AS count
-  WHERE n=3
-  EXPORT;
+  WHERE n=3;

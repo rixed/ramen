@@ -36,13 +36,19 @@ let copts =
     let i = Arg.info ~doc:RamenConsts.CliInfo.variant
                      ~docs ~env [ "variant" ] in
     Arg.(value (opt_all string [] i))
+  and initial_export_duration =
+    let env = Term.env_info "RAMEN_INITIAL_EXPORT" in
+    let i = Arg.info ~doc:RamenConsts.CliInfo.initial_export_duration
+                     ~docs ~env [ "initial-export-duration" ] in
+    Arg.(value (opt float 900. i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
     $ persist_dir
     $ rand_seed
     $ keep_temp_files
-    $ forced_variants)
+    $ forced_variants
+    $ initial_export_duration)
 
 (*
  * Start the process supervisor

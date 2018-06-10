@@ -10,7 +10,8 @@ type conf =
   { debug : bool ;
     persist_dir : string ;
     do_persist : bool ; (* false for tests *)
-    keep_temp_files : bool }
+    keep_temp_files : bool ;
+    initial_export_duration : float }
 
 let tmp_input_of_func persist_dir program_name func_name in_type =
   persist_dir ^"/workers/inputs/"^ program_name ^"/"^ func_name ^"/"
@@ -38,7 +39,6 @@ struct
        * name of the operation. *)
       signature : string ;
       parents : (string * string) list ;
-      force_export : bool ;
       merge_inputs : bool ;
       event_time : RamenEventTime.t option ;
       factors : string list }
@@ -243,9 +243,11 @@ let find_func programs program_name func_name =
   List.find (fun f -> f.Func.name = func_name) rc
 
 let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
-              ?(forced_variants=[]) persist_dir =
+              ?(forced_variants=[]) ?(initial_export_duration=900.)
+              persist_dir =
   RamenExperiments.set_variants persist_dir forced_variants ;
-  { do_persist ; debug ; persist_dir ; keep_temp_files }
+  { do_persist ; debug ; persist_dir ; keep_temp_files ;
+    initial_export_duration }
 
 (* Various directory names: *)
 

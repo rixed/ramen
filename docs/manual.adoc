@@ -1330,16 +1330,9 @@ The result of the GET is discarded.
 ===== Outputting: Storing Tuples For Posterity
 
 Storing output tuples can be useful, but doing so for every operation forever
-would be wasteful.
-
-You can select which operations output is to be stored on disc with the `export`
-clause.
-
-Just marking a +Group By+ operation with the +EXPORT+ keyword alone is enough
-for all produced tuples to be stored.
-
-Regardless of the `export` keyword, though, any operation can be asked to
-temporarily store its output.
+would be wasteful. Thus, despite every operation output will be initially
+stored for some time, any output that is not requested by a client (via `ramen
+tail` or `ramen timeseries`) for some time will stop being written to disc.
 
 All stored tuples are archived in files that have the very same structure
 as the ring-buffers, although they are never emptied and so new files are
@@ -1446,7 +1439,6 @@ FROM source
 [ COMMIT [ AND ( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) ]
   WHEN condition ]
 [ ( FLUSH | SLIDE n | REMOVE condition | KEEP condition ) WHEN condition ]
-[EXPORT]
 [ EVENT STARTING AT identifier [ * scale ]
    [ ( WITH DURATION ( identifier [ * scale ] | constant ) |
        AND STOPPING AT identifier [ * scale ] ) ] ]
@@ -1468,13 +1460,13 @@ limit the number of kept groups to the top N contributors according to the
 given metric.  Compute the current output-tuple.
 
 With all this, evaluates the `commit` clause (or the top condition): if it is
-true then send the output tuple to all children, and if the export keyword is
-present also store it on disc. Should this input tuple be replayed when
-flushing this aggregate, store it with as part of the group. If the output
-tuple has been committed, then lush this aggregate -- either by deleting the
-aggregate altogether or by replacing it with an aggregate build from replaying
-some of the stored input tuple. If this was a top operation, though, all
-groups will be committed and flushed.
+true then send the output tuple to all children, and also maybe store it on
+disc for later retrieval via `ramen tail` or `ramen timeseries`. Should this
+input tuple be replayed when flushing this aggregate, store it with as part of
+the group. If the output tuple has been committed, then lush this aggregate --
+either by deleting the aggregate altogether or by replacing it with an
+aggregate build from replaying some of the stored input tuple. If this was a
+top operation, though, all groups will be committed and flushed.
 
 A picture might help:
 

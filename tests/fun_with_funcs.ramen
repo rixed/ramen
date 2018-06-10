@@ -11,5 +11,4 @@ DEFINE f AS
     -- We can use out fields in stateful functions:
     90th percentile _co2_per_hp,
     99th percentile globally _co2_per_hp
-  EXPORT
   COMMIT AFTER group.#count >= 4539;
