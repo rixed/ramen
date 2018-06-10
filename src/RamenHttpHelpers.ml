@@ -24,6 +24,18 @@ let not_implemented msg = fail (HttpError (501, msg))
 let bad_request msg = fail (HttpError (400, msg))
 let not_found msg = fail (HttpError (404, msg))
 
+exception BadPrefix
+
+let list_of_prefix pfx =
+  String.split_on_char '/' pfx |>
+  List.filter ((<>) "")
+
+let rec chop_prefix pfx path =
+  match pfx, path with
+  | [], path' -> path'
+  | p1::pfx', p2::path' when p1 = p2 -> chop_prefix pfx' path'
+  | _ -> raise BadPrefix
+
 (* Case is significant for multipart boundaries *)
 let get_content_type headers =
   Header.get headers "Content-Type" |? RamenConsts.ContentTypes.json

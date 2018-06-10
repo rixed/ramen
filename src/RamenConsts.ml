@@ -51,7 +51,8 @@ module CliInfo =
 struct
   (* Commands *)
   let supervisor = "Start the processes supervisor"
-  let graphite = "Start a Graphite impersonator"
+  let httpd = "Start an HTTP server"
+  let graphite = "Impersonate graphite for Grafana"
   let notifier = "Start the notifier"
   let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"

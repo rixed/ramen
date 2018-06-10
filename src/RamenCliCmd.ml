@@ -630,13 +630,14 @@ let timerange conf func_name () =
         | Some (mi, ma) -> Printf.printf "%f %f\n" mi ma
 
 (*
- * `ramen graphite`
+ * `ramen httpd`
  *
  * Starts an HTTP daemon that will serve (and maybe one day also accept)
- * timeseries, impersonating Graphite (https://graphiteapp.org/).
+ * timeseries, either impersonating Graphite API (https://graphiteapp.org/)
+ * or any other API of our own.
  *)
 
-let graphite conf daemonize to_stdout to_syslog server_url () =
+let httpd conf daemonize to_stdout to_syslog server_url graphite () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
@@ -645,8 +646,10 @@ let graphite conf daemonize to_stdout to_syslog server_url () =
     logger := make_syslog conf.C.debug
   else (
     let logdir =
+      (* In case we serve several API from several daemon we will need an
+       * additional option to set a different logdir for each. *)
       if to_stdout then None
-      else Some (conf.C.persist_dir ^"/log/graphite") in
+      else Some (conf.C.persist_dir ^"/log/httpd") in
     Option.may mkdir_all logdir ;
     logger := make_logger ?logdir conf.C.debug) ;
   (* We take the port and URL prefix from the given URL but does not take
@@ -663,12 +666,23 @@ let graphite conf daemonize to_stdout to_syslog server_url () =
       | _ -> 80) in
   let url_prefix = Uri.path uri in
   if daemonize then do_daemonize () ;
-  let router = RamenGraphite.router conf in
+  let (++) rout1 rout2 =
+    fun meth path params headers body ->
+      try%lwt rout1 meth path params headers body
+      with RamenHttpHelpers.BadPrefix ->
+        rout2 meth path params headers body in
+  let router _ _ _ _ _ =
+    RamenHttpHelpers.not_found "todo default API" in
+  let router =
+    match graphite with
+    | None -> router
+    | Some prefix ->
+        router ++ RamenGraphite.router conf prefix in
   Lwt_main.run (
     async (fun () ->
       restart_on_failure "wait_all_pids_loop"
         RamenProcesses.wait_all_pids_loop false) ;
-    restart_on_failure "graphite impersonator"
+    restart_on_failure "http server"
       RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
         (fun () -> !logger.warning "Running in dummy mode" ;
                    RamenProcesses.until_quit

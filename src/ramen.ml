@@ -515,14 +515,20 @@ let server_url =
   Arg.(value (opt string "http://127.0.0.1:8080" i))
 
 let graphite =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.graphite
+                   [ "graphite" ] in
+  Arg.(value (opt ~vopt:(Some "") (some string) None i))
+
+let httpd =
   Term.(
-    (const RamenCliCmd.graphite
+    (const RamenCliCmd.httpd
       $ copts
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ server_url),
-    info ~doc:RamenConsts.CliInfo.graphite "graphite")
+      $ server_url
+      $ graphite),
+    info ~doc:RamenConsts.CliInfo.httpd "httpd")
 
 let query =
   let i = Arg.info ~doc:"test graphite query expansion"
@@ -582,7 +588,7 @@ let default =
 let () =
   Lwt_unix.set_pool_size 1 ;
   match Term.eval_choice default [
-    supervisor ; graphite ; notifier ;
+    supervisor ; httpd ; notifier ;
     notify ; compile ; run ; kill ;
     tail ; timeseries ; timerange ; ps ;
     test ; dequeue ; summary ; repair ; links ;

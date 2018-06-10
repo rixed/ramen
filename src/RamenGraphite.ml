@@ -200,7 +200,7 @@ let filters_of_query query =
 
 let enum_tree_of_query conf query =
   !logger.debug "Getting programs..." ;
-  let%lwt programs = C.with_rlock conf Lwt.return in
+  let%lwt programs = C.with_rlock conf return in
   !logger.debug "Caching factors possible values..." ;
   let%lwt () = RamenTimeseries.cache_possible_values conf programs in
   !logger.debug "Building tree..." ;
@@ -563,9 +563,12 @@ let render_graphite conf headers body =
 let version _conf _headers _params =
   respond_ok ~body:"1.1.3" ()
 
-let router conf =
+let router conf prefix =
   (* The function called for each HTTP request: *)
   fun meth path params headers body ->
+    let%lwt prefix =
+      wrap (fun () -> RamenHttpHelpers.list_of_prefix prefix) in
+    let path = RamenHttpHelpers.chop_prefix prefix path in
     match meth, path with
     (* Mimic Graphite for Grafana datasource *)
     | `GET, ["metrics"; "find"] ->

@@ -29,7 +29,7 @@ let complete_commands s =
       "ps", RamenConsts.CliInfo.ps ;
       "links", RamenConsts.CliInfo.links ;
       "test", RamenConsts.CliInfo.test ;
-      "graphite", RamenConsts.CliInfo.graphite] in
+      "httpd", RamenConsts.CliInfo.httpd ] in
   complete commands s
 
 let complete_global_options s =
@@ -237,7 +237,7 @@ let complete str () =
           ("--root-path=", RamenConsts.CliInfo.root_path) ::
           copts @
           (complete_test_file last_tok)
-      | "graphite" ->
+      | "httpd" ->
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
             "--syslog", RamenConsts.CliInfo.to_syslog ;
