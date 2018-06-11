@@ -604,7 +604,8 @@ let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
   (* Stop/Start processes so that [running] corresponds to [must_run].
    * [must_run] is a hash from the signature (function * params) to
-   * its binary path, the program name and Func.
+   * its binary path, the program name and Func (which params have been
+   * overridden with the ones from the running conf already).
    * FIXME: do we need the program_name since it's now also in func?
    * [running] is a hash from the signature (function * params) to its
    * running_process (mutable pid, cleared asynchronously when the worker

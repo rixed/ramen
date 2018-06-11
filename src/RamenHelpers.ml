@@ -937,3 +937,28 @@ let time_of_abstime s =
  (time_of_abstime "28.01.1976") (time_of_abstime "01/28/1976")
  (Some 1523052000.) (time_of_abstime "1523052000")
  *)
+
+(* Replace ${tuple.field} by the actual value the passed string: *)
+let subst_tuple_fields =
+  let open Str in
+  let re =
+    regexp "\\${\\(\\([_a-zA-Z0-9.]+\\)\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
+  fun tuples text ->
+    let tuples = ([ "env" ], Sys.getenv) :: tuples in
+    global_substitute re (fun s ->
+      let tuple_name = try matched_group 2 s with Not_found -> "" in
+      let field_name = matched_group 3 s in
+      match List.find (fun (names, _finder) ->
+              List.mem tuple_name names
+            ) tuples with
+      | exception Not_found ->
+        !logger.error "Unknown tuple %S used in text substitution!"
+          tuple_name ;
+        "??"^ tuple_name ^"."^ field_name ^"??"
+      | _, finder ->
+        try finder field_name
+        with Not_found ->
+          !logger.error "Field \"%s.%s\" used in text substitution is not \
+                         present in that tuple!" tuple_name field_name ;
+          "??"^ tuple_name ^"."^ field_name ^"??"
+    ) text

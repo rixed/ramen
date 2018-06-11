@@ -608,36 +608,11 @@ let worker_start worker_name get_binocle_tuple k =
         return 1)) |>
   exit
 
-(* Replace ${tuple.field} bu the actual value the passed string: *)
-let subst_tuple_fields =
-  let open Str in
-  let re =
-    regexp "\\${\\(\\([_a-zA-Z0-9.]+\\)\\.\\)?\\([_a-zA-Z0-9]+\\)}" in
-  fun tuples text ->
-    let tuples = ([ "env" ], Sys.getenv) :: tuples in
-    global_substitute re (fun s ->
-      let tuple_name = try matched_group 2 s with Not_found -> "" in
-      let field_name = matched_group 3 s in
-      match List.find (fun (names, _finder) ->
-              List.mem tuple_name names
-            ) tuples with
-      | exception Not_found ->
-        !logger.error "Unknown tuple %S used in text substitution!"
-          tuple_name ;
-        "??"^ tuple_name ^"."^ field_name ^"??"
-      | _, finder ->
-        try finder field_name
-        with Not_found ->
-          !logger.error "Field \"%s.%s\" used in text substitution is not \
-                         present in that tuple!" tuple_name field_name ;
-          "??"^ tuple_name ^"."^ field_name ^"??"
-    ) text
-
 (* Operations that funcs may run: *)
 
 let read_csv_file filename do_unlink separator sersize_of_tuple
-                  time_of_tuple serialize_tuple tuple_of_strings preprocessor
-                  field_of_params =
+                  time_of_tuple serialize_tuple tuple_of_strings
+                  preprocessor field_of_params =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -1354,7 +1329,8 @@ let casing codegen_version rc_str rc_marsh lst =
        Runtime configuration:\n\n%s\n\n\
        Have a nice day!\n"
       codegen_version rc_str in
-  let run_worker () =
+  (* If we are called "ramen worker:" then we must run: *)
+  if Sys.argv.(0) = RamenConsts.worker_argv0 then
     (* Call a function from lst according to envvar "name" *)
     match Sys.getenv "name" with
     | exception Not_found ->
@@ -1367,10 +1343,7 @@ let casing codegen_version rc_str rc_marsh lst =
              Trying to run a Ramen program? Try `ramen run %s`\n"
             name Sys.executable_name ;
             exit 3
-        | f -> f ()) in
-  (* If we are called "ramen worker:" then we must run: *)
-  if Sys.argv.(0) = RamenConsts.worker_argv0 then
-    run_worker ()
+        | f -> f ())
   else match Sys.argv.(1) with
   | exception Invalid_argument _ -> help ()
   | "1nf0" -> print_string rc_marsh

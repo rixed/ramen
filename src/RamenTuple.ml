@@ -67,8 +67,10 @@ let print_param oc (n, v) =
 let param_compare (a1, _) (b1, _) =
   String.compare a1 b1
 
+let params_sort = List.fast_sort param_compare
+
 let string_of_params ps =
-  List.fast_sort param_compare ps |>
+  params_sort ps |>
   IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param)
 
 let param_signature ps =
