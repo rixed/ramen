@@ -39,27 +39,6 @@ let star = char ~what:"star" '*'
 
 let id_quote = char ~what:"quote" '\''
 
-(* program_allowed: if true, the function name can be prefixed with a program
- * name. *)
-let func_identifier ?(globs_allowed=false) ~program_allowed =
-  let first_char = letter ||| underscore in
-  let first_char =
-    if program_allowed then first_char ||| slash
-    else first_char in
-  let first_char =
-    if globs_allowed then first_char ||| star
-    else first_char in
-  let any_char = first_char ||| decimal_digit in
-  (first_char ++
-     repeat_greedy ~sep:none ~what:"function identifier" any_char >>:
-   fun (c, s) -> String.of_list (c :: s)) |||
-  (id_quote -+
-   repeat_greedy ~sep:none ~what:"function identifier" (
-     cond "quoted function identifier" (fun c ->
-       c <> '\'' && (program_allowed || c <> '/')) 'x') +-
-   id_quote >>:
-  fun s -> String.of_list s)
-
 let not_in_range what ?min ?max n =
   let e =
     what ^" must be "^ match min, max with

@@ -221,14 +221,9 @@ let tuple_need_state = function
   | TupleGroup | TupleGroupFirst | TupleGroupLast | TupleGroupPrevious -> true
   | _ -> false
 
-(*$inject
-  open Batteries
-  open RamenParsing
-  open TestHelpers
- *)
+open RamenParsing
 
 let keyword =
-  let open RamenParsing in
   (
     (* Some values that must not be parsed as field names: *)
     strinG "true" ||| strinG "false" ||| strinG "null" |||
@@ -239,9 +234,92 @@ let keyword =
      * parsed as field names: *)
     strinG "now" ||| strinG "random"
   ) -- check (nay (letter ||| underscore ||| decimal_digit))
+
 let non_keyword =
-  let open RamenParsing in
   (check ~what:"no quoted identifier" (nay id_quote) -+
    check ~what:"no keyword" (nay keyword) -+
    identifier) |||
   (id_quote -+ identifier +- id_quote)
+
+(* Defined here as both RamenProgram and RamenOperation need to parse/print
+ * function and program names: *)
+
+type program_id = string * RamenTuple.params
+type function_id = program_id option * string
+
+let print_expansed_program oc (name, params) =
+  String.print oc name ;
+  if params <> [] then
+    List.print ~first:"{" ~last:"}" ~sep:"," (fun oc (n, v) ->
+      Printf.fprintf oc "%s:%a" n RamenTypes.print v) oc params
+
+let string_of_program_id pp =
+  IO.to_string print_expansed_program pp
+
+let print_expansed_function oc (prog_opt, func) =
+  Option.may (fun p ->
+    Printf.fprintf oc "%a/" print_expansed_program p
+  ) prog_opt ;
+  Printf.fprintf oc "%s" func
+
+let string_of_func_id pn =
+  IO.to_string print_expansed_function pn
+
+let not_quote =
+  cond "quoted identifier" ((<>) '\'') 'x'
+
+let program_name ?(quoted=false) m =
+  let what = "program name" in
+  let m = what :: m in
+  let first_char = if quoted then not_quote
+                   else letter ||| underscore ||| char '/' in
+  let any_char = if quoted then not_quote
+                 else first_char ||| decimal_digit in
+  (
+    first_char ++ repeat ~sep:none ~what any_char >>:
+    fun (c, s) -> String.of_list (c :: s)
+  ) m
+
+let expansed_program_name ?(quoted=false) m =
+  let m = "program name" :: m in
+  let expansed_param =
+    non_keyword +- opt_blanks +- char ':' +- opt_blanks ++
+    RamenTypes.Parser.p in
+  let expansed_params m =
+    let m = "parameter expansion" :: m in
+    (char '{' -- opt_blanks -+
+     repeat_greedy ~sep:list_sep expansed_param +-
+     opt_blanks +- char '}' >>: RamenTuple.params_sort) m
+  in
+  (
+    program_name ~quoted ++
+    optional ~def:[] expansed_params
+  ) m
+
+let function_name ?(quoted=false) m =
+  let what = "function name" in
+  let m = what :: m in
+  let first_char = if quoted then not_quote
+                   else letter ||| underscore in
+  let any_char = if quoted then not_quote
+                 else first_char ||| decimal_digit in
+  (
+    first_char ++ repeat_greedy ~sep:none ~what any_char >>:
+    fun (c, s) -> String.of_list (c :: s)
+  ) m
+
+(* program_allowed: if true, the function name can be prefixed with a program
+ * name. *)
+let func_identifier m =
+  let m = "function identifier" :: m in
+  let unquoted =
+    optional ~def:None
+      (some expansed_program_name +- char '/') ++
+    function_name
+  and quoted =
+    id_quote -+
+    optional ~def:None
+       (some (expansed_program_name ~quoted:true) +- char '/') ++
+    function_name ~quoted:true +-
+    id_quote
+  in (quoted ||| unquoted) m

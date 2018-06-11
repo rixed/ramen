@@ -1328,7 +1328,6 @@ let emit_instrumentation consts oc name from =
   let open RamenProtocols in
   let tuple_typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
-  let from = List.map RamenOperation.func_name_of_data_source from in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
       \tCodeGenLib.instrumentation %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
@@ -1336,7 +1335,11 @@ let emit_instrumentation consts oc name from =
     (emit_time_of_tuple "time_of_tuple_" event_time) tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     name
-    (List.print (fun oc s -> Printf.fprintf oc "%S" s)) from
+    (List.print (fun oc from ->
+      Printf.fprintf oc "%S" RamenOperation.(match from with
+        | GlobPattern s -> s
+        | NamedOperation id -> string_of_func_id id
+        | SubQuery _ -> assert false))) from
 
 (* tuple must be some kind of _input_ tuple *)
 let emit_in_tuple ?(tuple=TupleIn) mentioned and_all_others oc in_typ =

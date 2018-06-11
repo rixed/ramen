@@ -120,11 +120,9 @@ struct
 
   (* Used only by RamenCompiler to get the output type of the parents of
    * compiled functions. Therefore we do not care about the actual
-   * parameters of the actual parents (which can not affect types). But
-   * we could also get actual parameters from the program_name once we have
-   * expansed program names: *)
-  let of_program_name root_path program_name : t =
-    bin_of_program_name root_path program_name |> of_bin []
+   * parameters of the actual parents (which can not affect types). *)
+  let of_program_id root_path (program_name, params) =
+    bin_of_program_name root_path program_name |> of_bin params
 end
 
 let program_func_of_user_string ?default_program s =

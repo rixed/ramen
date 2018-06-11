@@ -13,6 +13,7 @@ open RamenLang
 type func =
   { name : string ;
     operation : RamenOperation.t }
+
 type t = func list
 
 let make_name =
@@ -31,8 +32,9 @@ let print_param oc (n, v) =
 
 let print_func oc n =
   (* TODO: keep the info that func was anonymous? *)
-  Printf.fprintf oc "DEFINE '%s' AS %a;"
-    n.name RamenOperation.print n.operation
+  Printf.fprintf oc "DEFINE %S AS %a;"
+    n.name
+    RamenOperation.print n.operation
 
 let print oc (params, funcs) =
   List.print ~sep:"\n" print_param oc params ;
@@ -72,7 +74,7 @@ struct
   let named_func m =
     let m = "function" :: m in
     (
-      strinG "define" -- blanks -+ func_identifier ~program_allowed:false +-
+      strinG "define" -- blanks -+ function_name +-
       blanks +- strinG "as" +- blanks ++
       RamenOperation.Parser.p >>: fun (name, op) -> make_func ~name op
     ) m
@@ -117,7 +119,7 @@ struct
           commit_before = false ;\
           flush_how = Reset ;\
           event_time = None ;\
-          from = [NamedOperation "foo"] ; every = 0. ; factors = [] } } ]),\
+          from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] } } ]),\
       (46, [])))\
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
@@ -156,14 +158,14 @@ let reify_subquery =
     make_func ~name op
 
 (* Returns a list of additional funcs and the list of parents that
- * contains only NamedOperations: *)
+ * contains only NamedOperations and GlobPattern: *)
 let expurgate from =
   let open RamenOperation in
   List.fold_left (fun (new_funcs, from) -> function
     | SubQuery q ->
         let new_func = reify_subquery q in
-        (new_func :: new_funcs), NamedOperation new_func.name :: from
-    | NamedOperation _ as f -> new_funcs, f :: from
+        (new_func :: new_funcs), NamedOperation (None, new_func.name) :: from
+    | (GlobPattern _ | NamedOperation _) as f -> new_funcs, f :: from
   ) ([], []) from
 
 let reify_subqueries funcs =

@@ -77,7 +77,7 @@ RAMEN_SOURCES = \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
-	src/RamenTypes.ml src/RamenLang.ml src/RamenTuple.ml \
+	src/RamenTypes.ml src/RamenTuple.ml src/RamenLang.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
 	src/RamenSerialization.ml \
@@ -241,7 +241,7 @@ src/RamenCompilConfig.ml:
 
 TESTABLE_SOURCES = \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
-	src/RamenTypes.ml src/RamenLang.ml src/RamenExpr.ml \
+	src/RamenTypes.ml src/RamenExpr.ml \
 	src/RamenOperation.ml src/RamenProgram.ml src/RamenTyping.ml \
 	src/HeavyHitters.ml src/RamenHelpers.ml src/RamenBloomFilter.ml \
 	src/Globs.ml src/CodeGen_OCaml.ml src/RamenSortBuf.ml \
@@ -256,7 +256,7 @@ LINKED_FOR_TESTS = \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
-	src/RamenTypes.ml src/RamenLang.ml src/RamenTuple.ml src/RamenExpr.ml \
+	src/RamenTypes.ml src/RamenTuple.ml src/RamenLang.ml src/RamenExpr.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenOperation.ml src/RamenProgram.ml src/RamenConf.ml \
 	src/Globs.ml src/RamenCompilConfig.ml src/RamenDepLibs.ml \

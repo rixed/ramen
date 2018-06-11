@@ -88,9 +88,11 @@ let compile conf root_path program_name program_code =
     let compiler_funcs = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
       let fq_name = program_name ^"/"^ parsed_func.RamenProgram.name in
+      (* During compilation we do not care about actual values of params: *)
+      let params = [] in
       let me_func =
         RamenTyping.make_untyped_func program_name
-          parsed_func.name parsed_func.operation in
+          parsed_func.name params parsed_func.operation in
       !logger.debug "Found function %s" fq_name ;
       Hashtbl.add compiler_funcs fq_name me_func
     ) parsed_funcs ;
@@ -105,13 +107,15 @@ let compile conf root_path program_name program_code =
     let compiler_parents = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
       RamenOperation.parents_of_operation parsed_func.RamenProgram.operation |>
-      List.map (fun parent_name ->
-        (* parent_name is the name as it appears in the source, can be FQed
+      List.map (fun parent_id ->
+        (* parent_id is the name as it appears in the source, can be FQed
          * or just a local name. We need to build a set of funcs where all
          * involved func appears only once: *)
+        let parent_id = match parent_id with
+          | None, func_name -> Some (program_name, []), func_name
+          | pn -> pn in
         let parent_fq_name =
-          if String.contains parent_name '/' then parent_name
-          else program_name ^"/"^ parent_name in
+          RamenLang.string_of_func_id parent_id in
         try Hashtbl.find compiler_funcs parent_fq_name
         with Not_found ->
           !logger.debug "Found external reference to function %s"
@@ -123,7 +127,7 @@ let compile conf root_path program_name program_code =
             raise (RamenLang.SyntaxError (UnknownFunc parent_fq_name)) ;
           let parent_func =
             let par_rc =
-              P.of_program_name root_path parent_program_name in
+              P.of_program_id root_path (Option.get (fst parent_id)) in
             List.find (fun f -> f.F.name = parent_name) par_rc.P.funcs in
           (* Build a typed F.t from this Fun.t: *)
           RamenTyping.make_typed_func parent_program_name parent_func

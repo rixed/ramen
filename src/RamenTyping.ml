@@ -154,16 +154,17 @@ exception InvalidCommand of string
 
 (* FIXME: got bitten by the fact that func_name and program_name are 2 strings
  * so you can mix them up. Make specialized types for all those strings. *)
-let make_untyped_func program_name func_name operation =
+let make_untyped_func program_name func_name params operation =
   !logger.debug "Creating func %s/%s" program_name func_name ;
   F.sanitize_name func_name ;
   assert (func_name <> "") ;
   let parents =
     RamenOperation.parents_of_operation operation |>
-    List.map (fun p ->
-      try C.program_func_of_user_string ~default_program:program_name p
-      with Not_found ->
-        raise (InvalidCommand ("Parent func "^ p ^" does not exist"))) in
+    List.map (fun (prog_opt, func_name) ->
+      (match prog_opt with
+      | None -> string_of_program_id (program_name, params)
+      | Some id -> string_of_program_id id),
+      func_name) in
   Func.{
     program_name ; name = func_name ; signature = "" ;
     operation = Some operation ; parents ;
@@ -1634,7 +1635,7 @@ let set_all_types conf parents funcs params =
         let operation = (List.hd funcs).RamenProgram.operation in
         let funcs = Hashtbl.create 3 in
         Hashtbl.add funcs "test"
-          (make_untyped_func "test" "foo" operation) ;
+          (make_untyped_func "test" "foo" [] operation) ;
         let parents = BatHashtbl.of_list [ "test", [] ] in
         let conf =
           RamenConf.make_conf ~do_persist:false "/tmp/glop" in

@@ -123,8 +123,9 @@ type t =
       (* factors are hardcoded *) }
 
 and data_source =
-  NamedOperation of string | SubQuery of t
-
+  | NamedOperation of ((string * RamenTuple.params) option * string)
+  | SubQuery of t
+  | GlobPattern of string
 
 let print_csv_specs fmt specs =
   Printf.fprintf fmt "SEPARATOR %S NULL %S %a"
@@ -200,19 +201,23 @@ let rec print fmt =
   | Instrumentation { from } ->
     Printf.fprintf fmt "LISTEN FOR INSTRUMENTATION%a"
       (List.print ~first:" FROM " ~last:"" ~sep:", "
-         print_data_source) from
+        print_data_source) from ;
 
 and print_data_source oc = function
-  | NamedOperation s ->
-      Printf.fprintf oc "'%s'" s
+  | NamedOperation id ->
+      print_expansed_function oc id
   | SubQuery q ->
       Printf.fprintf oc "(%a)" print q
+  | GlobPattern s ->
+      String.print oc s
 
-let func_name_of_data_source = function
-  | NamedOperation s -> s
-  | SubQuery _ ->
+let func_id_of_data_source = function
+  | NamedOperation id -> id
+  | SubQuery _
       (* Should have been replaced by a hidden function
        * by the time this is called *)
+  | GlobPattern _ ->
+      (* Should not be called on instrumentation operation *)
       assert false
 
 let is_merging = function
@@ -231,7 +236,7 @@ let parents_of_operation = function
   (* Note that instrumentation has a from clause but no actual parents: *)
   | Instrumentation _ -> []
   | Aggregate { from ; _ } ->
-      List.map func_name_of_data_source from
+      List.map func_id_of_data_source from
 
 let factors_of_operation = function
   | ReadCSVFile { factors ; _ }
@@ -702,15 +707,37 @@ struct
     | PreprocessorClause of string
     | CsvSpecsClause of csv_specs
 
+  (* A special from clause that accept globs, used to match workers in
+   * instrumentation operations. *)
+  let from_pattern m =
+    let what = "pattern" in
+    let m = what :: m in
+    let first_char = letter ||| underscore ||| char '/' ||| star in
+    let any_char = first_char ||| decimal_digit in
+    (* It must have a star, or it will be parsed as a func_identifier
+     * instead: *)
+    let checked s =
+      if String.contains s '*' then s else
+        raise (Reject "Not a glob") in
+    let unquoted =
+      first_char ++ repeat_greedy ~sep:none ~what any_char >>: fun (c, s) ->
+        checked (String.of_list (c :: s))
+    and quoted =
+      id_quote -+ repeat_greedy ~sep:none ~what (
+        cond "quoted program identifier" ((<>) '\'') 'x') +-
+      id_quote >>: fun s ->
+      checked (String.of_list s) in
+    (unquoted ||| quoted) m
+
   let rec from_clause m =
     let m = "from clause" :: m in
     (
       strinG "from" -- blanks -+
       several ~sep:list_sep_and (
-        (func_identifier ~globs_allowed:true ~program_allowed:true >>:
-          fun s -> NamedOperation s) |||
+        (func_identifier >>: fun id -> NamedOperation id) |||
         (char '(' -- opt_blanks -+ p +- opt_blanks +- char ')' >>:
-          fun t -> SubQuery t))
+          fun t -> SubQuery t) |||
+        (from_pattern >>: fun t -> GlobPattern t))
     ) m
 
   and p m =
@@ -909,7 +936,7 @@ struct
         commit_before = false ;\
         flush_how = Reset ;\
         event_time = None ;\
-        from = [NamedOperation "foo"] ; every = 0. ; factors = [] },\
+        from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
       (67, [])))\
       (test_op p "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
        replace_typ_in_op)
@@ -928,7 +955,7 @@ struct
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = [NamedOperation "foo"] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
       (26, [])))\
       (test_op p "from foo where packets > 0" |> replace_typ_in_op)
 
@@ -948,7 +975,7 @@ struct
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = [NamedOperation "foo"] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
       (64, [])))\
       (test_op p "from foo select t, value event starting at t*10 with duration 60" |>\
        replace_typ_in_op)
@@ -970,7 +997,7 @@ struct
         notifications = [] ; key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = [NamedOperation "foo"] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
       (75, [])))\
       (test_op p "from foo select t1, t2, value event starting at t1*10 and stopping at t2*10" |>\
        replace_typ_in_op)
@@ -988,7 +1015,7 @@ struct
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = [NamedOperation "foo"] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
       (22, [])))\
       (test_op p "from foo NOTIFY \"ouch\"" |>\
        replace_typ_in_op)
@@ -1031,7 +1058,7 @@ struct
             Field (typ, ref TupleOut, "start"))) ; \
         commit_before = false ;\
         flush_how = Reset ;\
-        from = [NamedOperation "foo"] ; every = 0. ; factors = [] },\
+        from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
         (199, [])))\
         (test_op p "select min start as start, \\
                            max stop as max_stop, \\
@@ -1059,7 +1086,7 @@ struct
               Const (typ, VI32 (Int32.one)))),\
             Const (typ, VI32 (Int32.of_int 5)))) ;\
         commit_before = true ;\
-        flush_how = Reset ; from = [NamedOperation "foo"] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
         (49, [])))\
         (test_op p "select 1 as one from foo commit before sum 1 >= 5" |>\
          replace_typ_in_op)
@@ -1082,7 +1109,8 @@ struct
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = [NamedOperation "foo/bar"] ; every = 0. ; factors = [] },\
+        from = [NamedOperation (Some ("foo", []), "bar")] ;\
+        flush_how = Reset ; every = 0. ; factors = [] },\
         (37, [])))\
         (test_op p "SELECT n, lag(2, n) AS l FROM foo/bar" |>\
          replace_typ_in_op)
