@@ -153,8 +153,8 @@ let rec tree_enum_of_factors func = function
 
 (* Given a program, returns the tree_enum of its functions: *)
 let tree_enum_of_program (program_name, get_rc) =
-  let _bin, funcs = get_rc () in
-  E (List.enum funcs /@
+  let _bin, prog = get_rc () in
+  E (List.enum prog.P.funcs /@
      (fun func ->
        (func.F.name, OpName), tree_enum_of_factors func func.F.factors))
 
@@ -450,8 +450,8 @@ let render_graphite conf headers body =
             !logger.error "Program %s just disappeared?" prog_name ;
             return_none
         | get_rc ->
-            let _bin, funcs = get_rc () in
-            (match List.find (fun f -> f.F.name = func_name) funcs with
+            let _bin, prog = get_rc () in
+            (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
             | exception Not_found ->
                 !logger.error "Function %s/%s just disappeared?"
                   prog_name func_name ;

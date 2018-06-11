@@ -26,7 +26,6 @@ struct
   type t =
     { program_name : string ;
       name : string ; (* TODO: name must be allowed to contain params *)
-      mutable params : RamenTuple.params ;
       in_type : RamenTuple.typed_tuple ;
       out_type : RamenTuple.typed_tuple ;
       (* The binary provides a signature with default parameters.
@@ -60,7 +59,10 @@ end
 
 module Program =
 struct
-  type t = Func.t list [@@ppp PPP_OCaml]
+  type t =
+    { funcs : Func.t list ;
+      mutable params : RamenTuple.params [@ppp_default []] }
+      [@@ppp PPP_OCaml]
 
   let sanitize_name name =
     let rec remove_heading_slashes s =
@@ -78,23 +80,24 @@ struct
     (* Cache of path to date of last read and program *)
     let reread_data fname : t =
       !logger.debug "Reading config from %s..." fname ;
+      let empty_program = { funcs = []; params = [] } in
       match with_stdout_from_command
               fname [| fname ; "version" |] Legacy.input_line with
       | exception e ->
           !logger.error "Cannot get version from %s: %s"
             fname (Printexc.to_string e) ;
-          []
+          empty_program
       | v when v = RamenVersions.codegen ->
           (try with_stdout_from_command
                  fname [| fname ; "1nf0" |] Legacy.Marshal.from_channel
            with e ->
              !logger.error "Cannot get 1nf0 from %s: %s"
                fname (Printexc.to_string e) ;
-             [])
+             empty_program)
       | v ->
         !logger.error "Executable %s is for version %s (I'm version %s)"
           fname v RamenVersions.codegen ;
-        []
+        empty_program
     and age_of_data fname =
       try mtime_of_file fname
       with e ->
@@ -102,7 +105,12 @@ struct
           fname (Printexc.to_string e) ;
         0.
     in
-    cached reread_data age_of_data
+    let get_prog = cached reread_data age_of_data in
+    fun params fname ->
+      let p = get_prog fname in
+      p.params <-
+        RamenTuple.overwrite_params p.params params ;
+      p
 
   let bin_of_program_name root_path program_name =
     (* Use an extension so we can still use the plain program_name for a
@@ -110,8 +118,13 @@ struct
      * that operating system, but rather "x" as in the x bit: *)
     root_path ^"/"^ program_name ^".x"
 
+  (* Used only by RamenCompiler to get the output type of the parents of
+   * compiled functions. Therefore we do not care about the actual
+   * parameters of the actual parents (which can not affect types). But
+   * we could also get actual parameters from the program_name once we have
+   * expansed program names: *)
   let of_program_name root_path program_name : t =
-    bin_of_program_name root_path program_name |> of_bin
+    bin_of_program_name root_path program_name |> of_bin []
 end
 
 let program_func_of_user_string ?default_program s =
@@ -158,16 +171,10 @@ let running_config_file conf =
  * to their binaries, and parameters: *)
 type must_run_entry =
   { bin : string ;
-    parameters : RamenTuple.params [@ppp_default []] }
+    params : RamenTuple.params [@ppp_default []] }
   [@@ppp PPP_OCaml]
 (* The must_run file gives us the unique names of the programs. *)
 type must_run_file = (string, must_run_entry) Hashtbl.t [@@ppp PPP_OCaml]
-
-let print_must_run_entry oc mre =
-  Printf.fprintf oc "{ bin: %S; parameters: %S }"
-    mre.bin (RamenTuple.string_of_params mre.parameters)
-let print_running_programs oc =
-  Hashtbl.print String.print print_must_run_entry oc
 
 (* For tests we don't store the rc_file on disk but in there: *)
 let non_persisted_programs = ref (Hashtbl.create 11)
@@ -189,13 +196,9 @@ let save_rc_file do_persist rc_file rc =
 
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
- * the Func.t list, with the actual params in the functions. *)
+ * the Program.t (with the actual params). *)
 let program_of_running_entry mre =
-  let prog = Program.of_bin mre.bin in
-  List.iter (fun func ->
-    func.Func.params <- RamenTuple.overwrite_params func.Func.params mre.parameters ;
-  ) prog ;
-  prog
+  Program.of_bin mre.params mre.bin
 
 exception RetryLater of float
 
@@ -240,7 +243,7 @@ let with_wlock conf f =
 
 let find_func programs program_name func_name =
   let _bin, rc = Hashtbl.find programs program_name () in
-  List.find (fun f -> f.Func.name = func_name) rc
+  List.find (fun f -> f.Func.name = func_name) rc.Program.funcs
 
 let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
               ?(forced_variants=[]) ?(initial_export_duration=900.)
@@ -254,13 +257,13 @@ let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
 let type_signature_hash = md5 % RamenTuple.type_signature
 
 (* Each workers regularly snapshot its internal state in this file: *)
-let worker_state conf func =
+let worker_state conf func params =
   conf.persist_dir ^"/workers/states/"
                    ^ RamenVersions.worker_state
                    ^"/"^ Config.version
                    ^"/"^ Func.fq_name func
                    ^"/"^ func.signature
-                   ^"/"^ RamenTuple.param_signature func.params
+                   ^"/"^ RamenTuple.param_signature params
                    ^"/snapshot"
 
 (* The "in" ring-buffers are used to store tuple received by an operation.

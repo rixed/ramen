@@ -3,6 +3,7 @@ open RamenLog
 open RamenHelpers
 module C = RamenConf
 module F = C.Func
+module P = C.Program
 
 (* Dequeue command *)
 
@@ -135,7 +136,7 @@ let links conf no_abbrev with_header sort_col top prefix () =
         (* Get rid of Lwt in AdvLock and RamenOutRef! *)
         Hashtbl.enum programs |> List.of_enum |>
         Lwt_list.fold_left_s (fun links (program_name, get_rc) ->
-          let bin, funcs = get_rc () in
+          let bin, prog = get_rc () in
           Lwt_list.fold_left_s (fun links func ->
             let%lwt _, links =
               Lwt_list.fold_left_s (fun (i, links) (par_prog_name, par_func_name) ->
@@ -144,10 +145,10 @@ let links conf no_abbrev with_header sort_col top prefix () =
                   | exception Not_found ->
                       NotRunning (par_prog_name, par_func_name)
                   | get_rc ->
-                      let _bin, par_prog = get_rc () in
+                      let _bin, pprog = get_rc () in
                       (match List.find (fun f ->
                                f.F.name = par_func_name
-                             ) par_prog with
+                             ) pprog.P.funcs with
                       | exception Not_found ->
                           NotRunning (par_prog_name, par_func_name)
                       | par_func -> Running par_func) in
@@ -156,6 +157,6 @@ let links conf no_abbrev with_header sort_col top prefix () =
                 | None -> Lwt.return (i + 1, links)
               ) (0, links) func.parents in
             Lwt.return links
-          ) links funcs
+          ) links prog.P.funcs
         ) [])) in
   TermTable.print_table ~sort_col ~with_header ?top head links

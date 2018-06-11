@@ -6,8 +6,8 @@ open Stdint
 open RamenLog
 open RamenHelpers
 module C = RamenConf
-module F = RamenConf.Func
-module P = RamenConf.Program
+module F = C.Func
+module P = C.Program
 
 let () =
   async_exception_hook := (fun exn ->
@@ -176,7 +176,7 @@ let compile conf root_path use_external_compiler bundle_dir
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let check_links ?(force=false) program_name rc running_programs =
+let check_links ?(force=false) program_name prog running_programs =
   !logger.debug "checking links" ;
   List.iter (fun func ->
     (* Check linkage:
@@ -190,8 +190,8 @@ let check_links ?(force=false) program_name rc running_programs =
                            which is not running."
             func.F.name par_prog ;
         | mre ->
-          let pprog = P.of_bin mre.C.bin in
-          (match List.find (fun p -> p.F.name = par_func) pprog with
+          let pprog = P.of_bin mre.C.params mre.C.bin in
+          (match List.find (fun p -> p.F.name = par_func) pprog.P.funcs with
           | exception Not_found ->
             !logger.error "Operation %s depends on operation %s/%s, \
                            which is not part of the running program %s."
@@ -203,18 +203,18 @@ let check_links ?(force=false) program_name rc running_programs =
             with Failure m when force -> (* or let it fail *)
               !logger.error "%s" m)
     ) func.parents
-  ) rc ;
+  ) prog.P.funcs ;
   (* We want to err if a child is incompatible (unless --force).
    * In case we force the insertion, the bad workers will *not* be
    * run by the process supervisor anyway, unless the incompatible
    * relatives are stopped/restarted, in which case these new workers
    * could be run at the expense of the old ones. *)
   Hashtbl.iter (fun prog_name mre ->
-    let funcs = P.of_bin mre.C.bin in
+    let prog = P.of_bin mre.C.params mre.C.bin in
     List.iter (fun func ->
       List.iter (fun (par_prog, par_func) ->
         if par_prog = program_name then
-          match List.find (fun f -> f.F.name = par_func) rc with
+          match List.find (fun f -> f.F.name = par_func) prog.P.funcs with
           | exception Not_found ->
             !logger.warning "Operation %s/%s, currently stalled, will still \
                              be missing its parent %s/%s"
@@ -225,19 +225,19 @@ let check_links ?(force=false) program_name rc running_programs =
             with Failure m when force -> (* or let it fail *)
               !logger.error "%s" m
       ) func.F.parents
-    ) funcs
+    ) prog.P.funcs
   ) running_programs
 
-let run conf parameters bin_files () =
+let run conf params bin_files () =
   logger := make_logger conf.C.debug ;
   Lwt_main.run (
-    C.with_wlock conf (fun running_programs ->
+    C.with_wlock conf (fun programs ->
       List.iter (fun bin ->
         let bin = absolute_path_of bin in
-        let rc = P.of_bin bin in
-        let program_name = (List.hd rc).F.program_name in
-        check_links program_name rc running_programs ;
-        Hashtbl.add running_programs program_name C.{ bin ; parameters }
+        let prog = P.of_bin params bin in
+        let program_name = (List.hd prog.P.funcs).F.program_name in
+        check_links program_name prog programs ;
+        Hashtbl.add programs program_name C.{ bin ; params }
       ) bin_files ;
       return_unit))
 
@@ -252,7 +252,7 @@ let check_orphans conf program_names running_programs =
   (* We want to warn if a child is stalled. *)
   Hashtbl.iter (fun prog_name mre ->
     if not (List.mem prog_name program_names) then
-      let funcs = P.of_bin mre.C.bin in
+      let prog = P.of_bin mre.C.params mre.C.bin in
       List.iter (fun func ->
         if func.F.parents <> [] &&
            List.for_all (fun (par_prog, _) ->
@@ -261,7 +261,7 @@ let check_orphans conf program_names running_programs =
         then
           !logger.warning "Operation %s/%s, will be left without parents"
             func.F.program_name func.F.name
-      ) funcs
+      ) prog.P.funcs
   ) running_programs
 
 let kill conf prog_names () =
@@ -425,7 +425,7 @@ let ps conf short with_header sort_col top prefix () =
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
           Hashtbl.fold (fun program_name get_rc lines ->
-            let bin, rc = get_rc () in
+            let bin, prog = get_rc () in
             List.fold_left (fun lines func ->
               let fq_name = program_name ^"/"^ func.F.name in
               if String.starts_with fq_name prefix then
@@ -446,7 +446,7 @@ let ps conf short with_header sort_col top prefix () =
                    ValInt (List.length func.F.parents) ;
                    ValStr func.signature |] :: lines
               else lines
-            ) lines rc
+            ) lines prog.P.funcs
           ) programs [] |> return)) in
   print_table ~sort_col ~with_header ?top head lines
 

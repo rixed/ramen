@@ -1,5 +1,7 @@
 -- vim: ft=sql expandtab
 
-DEFINE p sel_year=0 AS
+PARAMETER sel_year DEFAULTS TO 0;
+
+DEFINE p AS
   FROM tests/fixtures/earthquakes/csv
   SELECT n WHERE year = sel_year;

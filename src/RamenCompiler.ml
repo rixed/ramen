@@ -74,8 +74,7 @@ let compile conf root_path program_name program_code =
      * turning the program_code into a list of RamenProgram.fun:
      *)
     !logger.info "Parsing program %s" program_name ;
-    let parsed_funcs : RamenProgram.func list =
-      RamenProgram.parse program_code in
+    let parsed_params, parsed_funcs = RamenProgram.parse program_code in
     (*
      * Now we have to type all of these.
      * Here we mainly construct the data required by the typer: it needs
@@ -91,7 +90,7 @@ let compile conf root_path program_name program_code =
       let fq_name = program_name ^"/"^ parsed_func.RamenProgram.name in
       let me_func =
         RamenTyping.make_untyped_func program_name
-          parsed_func.name parsed_func.params parsed_func.operation in
+          parsed_func.name parsed_func.operation in
       !logger.debug "Found function %s" fq_name ;
       Hashtbl.add compiler_funcs fq_name me_func
     ) parsed_funcs ;
@@ -124,15 +123,16 @@ let compile conf root_path program_name program_code =
             raise (RamenLang.SyntaxError (UnknownFunc parent_fq_name)) ;
           let parent_func =
             let par_rc =
-              C.Program.of_program_name root_path parent_program_name in
-            List.find (fun f -> f.F.name = parent_name) par_rc in
+              P.of_program_name root_path parent_program_name in
+            List.find (fun f -> f.F.name = parent_name) par_rc.P.funcs in
           (* Build a typed F.t from this Fun.t: *)
           RamenTyping.make_typed_func parent_program_name parent_func
       ) |>
       Hashtbl.add compiler_parents parsed_func.RamenProgram.name
     ) parsed_funcs ;
     (* Finally, call the typer: *)
-    RamenTyping.set_all_types conf compiler_parents compiler_funcs ;
+    RamenTyping.set_all_types
+      conf compiler_parents compiler_funcs parsed_params ;
     (*
      * Now the (OCaml) code can be generated and compiled.
      *
@@ -165,7 +165,7 @@ let compile conf root_path program_name program_code =
           and operation = Option.get func.Func.operation in
           CodeGen_OCaml.compile
             conf entry_point_name func.Func.name obj_name
-            in_typ out_typ func.Func.params operation)
+            in_typ out_typ parsed_params operation)
           (fun e ->
             !logger.error "Cannot generate code for %s: %s"
               func.name (Printexc.to_string e) ;
@@ -184,7 +184,7 @@ let compile conf root_path program_name program_code =
      * run the worker of the designated operation (which has been compiled
      * above).
      *)
-    let exec_file = C.Program.bin_of_program_name root_path program_name in
+    let exec_file = P.bin_of_program_name root_path program_name in
     let obj_name = root_path ^"/"^ program_name ^"_casing_"^
                    RamenVersions.codegen ^".cmx" in
     let src_file =
@@ -193,14 +193,13 @@ let compile conf root_path program_name program_code =
           program_name ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
-         * force export and merge flags, and parameters. *)
-        let runconf =
+         * force export and merge flags, and parameters default values. *)
+        let funcs =
           Hashtbl.values compiler_funcs |>
           Enum.map (fun func ->
             let operation = Option.get func.RamenTyping.Func.operation in
             F.{ program_name ;
                 name = func.name ;
-                params = func.params ;
                 in_type = RamenTyping.typed_tuple_type func.in_type ;
                 out_type = RamenTyping.typed_tuple_type func.out_type ;
                 signature = func.signature ;
@@ -209,9 +208,11 @@ let compile conf root_path program_name program_code =
                 event_time = func.event_time ;
                 factors = func.factors }
           ) |>
-          List.of_enum in
+          List.of_enum
+        and params = parsed_params in
+        let runconf = P.{ funcs ; params } in
         Printf.fprintf oc "let rc_str_ = %S\n"
-          ((PPP.to_string C.Program.t_ppp_ocaml runconf) |>
+          ((PPP.to_string P.t_ppp_ocaml runconf) |>
            PPP_prettify.prettify) ;
         Printf.fprintf oc "let rc_marsh_ = %S\n"
           (Marshal.(to_string runconf [])) ;

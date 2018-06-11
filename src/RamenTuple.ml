@@ -58,14 +58,14 @@ let type_signature typed_tuple =
 
 (* Special case of tuple: parameters *)
 
+(* Ordered according to params_sort: *)
 type params = (string * RamenTypes.value) list [@@ppp PPP_OCaml]
 
 let print_param oc (n, v) =
   Printf.fprintf oc "%s=%a" n RamenTypes.print v
 
 (* FIXME: make those params a Map so names are unique *)
-let param_compare (a1, _) (b1, _) =
-  String.compare a1 b1
+let param_compare (a, _) (b, _) = String.compare a b
 
 let params_sort = List.fast_sort param_compare
 

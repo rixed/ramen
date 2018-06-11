@@ -8,6 +8,7 @@ open RamenLog
 open RamenHelpers
 module C = RamenConf
 module F = RamenConf.Func
+module P = RamenConf.Program
 
 (* Global quit flag, set when the term signal is received: *)
 let quit = ref false
@@ -178,6 +179,7 @@ let cleanup_old_files max_archives conf =
  * Non persisted on disk. *)
 type running_process =
   { program_name : string ;
+    params : RamenTuple.params ;
     bin : string ;
     func : C.Func.t ;
     mutable pid : int option ;
@@ -191,11 +193,11 @@ type running_process =
 let print_running_process oc proc =
   Printf.fprintf oc "%s/%s (params=%a, parents=%a)"
     proc.program_name proc.func.F.name
-    (List.print RamenTuple.print_param) proc.func.params
+    (List.print RamenTuple.print_param) proc.params
     (List.print F.print_parent) proc.func.parents
 
-let make_running_process program_name bin func =
-  { program_name ; bin ; pid = None ; last_killed = 0. ; func ;
+let make_running_process program_name bin params func =
+  { program_name ; bin ; params ; pid = None ; last_killed = 0. ; func ;
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
     quarantine_until = 0. }
 
@@ -236,7 +238,7 @@ let check_is_subtype t1 t2 =
 
 (* Returns the running parents and children of a func: *)
 let relatives f must_run =
-  Hashtbl.fold (fun _sign (_bin, _program_name, func) (ps, cs) ->
+  Hashtbl.fold (fun _sign (_bin, _params, _program_name, func) (ps, cs) ->
     (* Tells if [func'] is a parent of [func]: *)
     let is_parent_of func func' =
       List.mem (func'.F.program_name, func'.F.name) func.F.parents in
@@ -305,10 +307,10 @@ let stats_worker_sigkills =
 
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
-  let rescue_worker func =
+  let rescue_worker func params =
     (* Maybe the state file is poisoned? At this stage it's probably safer
      * to move it away: *)
-    let state_file = C.worker_state conf func in
+    let state_file = C.worker_state conf func params in
     let trash_file = state_file ^".bad?" in
     !logger.info "Worker %s/%s is deadlooping. Deleting its state file."
       func.F.program_name func.F.name ;
@@ -340,7 +342,7 @@ let process_workers_terminations conf running =
               IntCounter.add stats_worker_crashes 1 ;
               if proc.succ_failures = 5 then (
                 IntCounter.add stats_worker_deadloopings 1 ;
-                rescue_worker proc.func)) ;
+                rescue_worker proc.func proc.params)) ;
             (* Wait before attempting to restart a failing worker: *)
             proc.quarantine_until <-
               now +. Random.float (min 90. (float_of_int proc.succ_failures)) ;
@@ -427,7 +429,7 @@ let really_start conf must_run proc parents children =
                   | Some s -> string_of_int s) ;
     (* We need to change this dir whenever the func signature or params
      * change to prevent it to reload an incompatible state: *)
-    "state_file="^ C.worker_state conf proc.func ;
+    "state_file="^ C.worker_state conf proc.func proc.params ;
     (match !logger.output with
       | Directory _ ->
         "log="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
@@ -439,7 +441,7 @@ let really_start conf must_run proc parents children =
    * actual param name or value, and make it easier to see what's going
    * on fro the shell: *)
   let params =
-    List.enum proc.func.params /@
+    List.enum proc.params /@
     (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenTypes.print v) |>
     Array.of_enum in
   let env = Array.append env params in
@@ -550,14 +552,14 @@ let check_out_ref =
     !logger.debug "Checking out_refs..." ;
     (* Build the set of all wrapping ringbuf that are being read: *)
     let rbs =
-      Hashtbl.fold (fun _sign (_bin, _program_name, func) s ->
+      Hashtbl.fold (fun _sign (_bin, _params, _program_name, func) s ->
         C.in_ringbuf_names conf func |>
         List.fold_left (fun s rb_name -> Set.add rb_name s) s
       ) must_run (Set.singleton (C.notify_ringbuf conf)) in
     (* Iter over all functions and check they do not output to a ringbuf not
      * in this set: *)
     Hashtbl.values must_run |> List.of_enum |> (* FIXME *)
-    Lwt_list.iter_p (fun (_bin, _program_name, func) ->
+    Lwt_list.iter_p (fun (_bin, _params, _program_name, func) ->
       let out_ref = C.out_ringbuf_names_ref conf func in
       let%lwt outs = RamenOutRef.read out_ref in
       Map.keys outs |> List.of_enum |>
@@ -624,10 +626,10 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun sign (bin, program_name, func) ->
+    Hashtbl.iter (fun sign (bin, params, program_name, func) ->
       match Hashtbl.find running sign with
       | exception Not_found ->
-          let proc = make_running_process program_name bin func in
+          let proc = make_running_process program_name bin params func in
           Hashtbl.add running sign proc ;
           to_start += proc
       | proc ->
@@ -706,10 +708,12 @@ let synchronize_running conf autoreload_delay =
               let%lwt () = Lwt.wrap (fun () ->
                 Hashtbl.iter (fun program_name get_rc ->
                   let bin, prog = get_rc () in
+                  let params = prog.P.params in
                   List.iter (fun f ->
-                    let k = f.F.signature, RamenTuple.param_signature f.F.params in
-                    Hashtbl.add must_run k (bin, program_name, f)
-                  ) prog
+                    let k = f.F.signature,
+                            RamenTuple.param_signature params in
+                    Hashtbl.add must_run k (bin, params, program_name, f)
+                  ) prog.P.funcs
                 ) must_run_programs) in
               return now
             ) else return last_read) in

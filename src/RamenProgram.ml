@@ -12,7 +12,6 @@ open RamenLang
 
 type func =
   { name : string ;
-    params : RamenTuple.params ;
     operation : RamenOperation.t }
 type t = func list
 
@@ -22,27 +21,35 @@ let make_name =
     incr seq ;
     "f"^ string_of_int !seq
 
-let make_func ?name ?(params=[]) operation =
+let make_func ?name operation =
   { name = (match name with Some n -> n | None -> make_name ()) ;
-    params ; operation }
+    operation }
+
+let print_param oc (n, v) =
+  Printf.fprintf oc "PARAMETER %s DEFAULTS TO %a;"
+    n RamenTypes.print v
 
 let print_func oc n =
   (* TODO: keep the info that func was anonymous? *)
-  Printf.fprintf oc "DEFINE '%s' %aAS %a"
-    n.name
-    (List.print ~first:"" ~last:" " ~sep:" " RamenTuple.print_param) n.params
-    RamenOperation.print n.operation
+  Printf.fprintf oc "DEFINE '%s' AS %a;"
+    n.name RamenOperation.print n.operation
 
-let print oc p =
-  List.print ~sep:"\n" print_func oc p
+let print oc (params, funcs) =
+  List.print ~sep:"\n" print_param oc params ;
+  List.print ~sep:"\n" print_func oc funcs
 
-let check lst =
+let check params funcs =
+  List.fold_left (fun s (n, v) ->
+    if Set.mem n s then
+      raise (SyntaxError (NameNotUnique n)) ;
+    Set.add n s
+  ) Set.empty params |> ignore ;
   List.fold_left (fun s n ->
-    RamenOperation.check n.params n.operation ;
+    RamenOperation.check params n.operation ;
     if Set.mem n.name s then
-      raise (SyntaxError (FuncNameNotUnique n.name)) ;
+      raise (SyntaxError (NameNotUnique n.name)) ;
     Set.add n.name s
-  ) Set.empty lst |> ignore
+  ) Set.empty funcs |> ignore
 
 module Parser =
 struct
@@ -53,31 +60,48 @@ struct
     let m = "anonymous func" :: m in
     (RamenOperation.Parser.p >>: make_func) m
 
-  let param m =
-    let m = "function parameter" :: m in
-    (non_keyword +- opt_blanks +- char '=' +- opt_blanks ++
-     RamenTypes.Parser.p) m
+  let params m =
+    let m = "parameter" :: m in
+    (
+      strinGs "parameter" -- blanks -+
+        several ~sep:list_sep_and (
+          non_keyword +- blanks +- strinGs "default" +- blanks +-
+          strinG "to" +- blanks ++ RamenTypes.Parser.p)
+    ) m
 
   let named_func m =
     let m = "function" :: m in
-    (strinG "define" -- blanks -+ func_identifier ~program_allowed:false ++
-     repeat ~sep:none ~what:"function argument" (blanks -+ param) +-
-     blanks +- strinG "as" +- blanks ++
-     RamenOperation.Parser.p >>: fun ((name, params), op) ->
-       make_func ~name ~params op) m
+    (
+      strinG "define" -- blanks -+ func_identifier ~program_allowed:false +-
+      blanks +- strinG "as" +- blanks ++
+      RamenOperation.Parser.p >>: fun (name, op) -> make_func ~name op
+    ) m
 
   let func m =
     let m = "func" :: m in
     (anonymous_func ||| named_func) m
 
+  type definition =
+    DefFunc of func | DefParams of (string * RamenTypes.value) list
+
   let p m =
     let m = "program" :: m in
     let sep = opt_blanks -- char ';' -- opt_blanks in
-    (several ~sep func +- optional ~def:() (opt_blanks -- char ';')) m
+    (
+      several ~sep ((func >>: fun f -> DefFunc f) |||
+                    (params >>: fun lst -> DefParams lst)) +-
+      optional ~def:() (opt_blanks -- char ';') >>: fun defs ->
+        let params, funcs =
+          List.fold_left (fun (params, funcs) -> function
+            | DefFunc func -> params, func::funcs
+            | DefParams lst -> List.rev_append lst params, funcs
+          ) ([], []) defs in
+        RamenTuple.params_sort params, funcs
+    ) m
 
   (*$= p & ~printer:(test_printer print)
-   (Ok ([\
-    { name = "bar" ; params = [] ;\
+   (Ok (([], [\
+    { name = "bar" ;\
       operation = \
         Aggregate {\
           fields = [\
@@ -93,13 +117,13 @@ struct
           commit_before = false ;\
           flush_how = Reset ;\
           event_time = None ;\
-          from = [NamedOperation "foo"] ; every = 0. ; factors = [] } } ],\
+          from = [NamedOperation "foo"] ; every = 0. ; factors = [] } } ]),\
       (46, [])))\
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
 
-   (Ok ([\
-    { name = "add" ; params = ["p1", VI32 0l; "p2", VI32 0l] ;\
+   (Ok ((["p1", VI32 0l; "p2", VI32 0l], [\
+    { name = "add" ;\
       operation = \
         Aggregate {\
           fields = [\
@@ -114,10 +138,10 @@ struct
           notifications = [] ; key = [] ;\
           commit_when = RamenExpr.Const (typ, VBool true) ;\
           commit_before = false ; flush_how = Reset ; from = [] ;\
-          factors = [] } } ],\
-      (44, [])))\
-      (test_p p "DEFINE add p1=0 p2=0 AS YIELD p1 + p2 AS res" |>\
-       (function Ok (ps, _) as x -> check ps ; x | x -> x) |>\
+          factors = [] } } ]),\
+      (84, [])))\
+      (test_p p "PARAMETERS p1 DEFAULTS TO 0 AND p2 DEFAULTS TO 0; DEFINE add AS YIELD p1 + p2 AS res" |>\
+       (function Ok ((ps, fs), _) as x -> check ps fs ; x | x -> x) |>\
        replace_typ_in_program)
   *)
 
@@ -173,7 +197,7 @@ let parse program =
     let error =
       IO.to_string (RamenParsing.print_bad_result print) e in
     raise (SyntaxError (ParseError { error ; text = program }))
-  | Ok (funcs, _) ->
+  | Ok ((params, funcs), _) ->
     let funcs = reify_subqueries funcs in
-    check funcs ;
-    funcs
+    check params funcs ;
+    params, funcs

@@ -9,6 +9,7 @@ open RamenLog
 open RamenHelpers
 module C = RamenConf
 module F = C.Func
+module P = C.Program
 
 (* Building timeseries with points at regular times *)
 
@@ -227,7 +228,7 @@ let cache_possible_values conf programs =
   Hashtbl.values programs |>
   List.of_enum |> (* FIXME *)
   Lwt_list.iter_p (fun get_rc ->
-    let _bin, funcs = get_rc () in
+    let _bin, prog = get_rc () in
     Lwt_list.iter_p (fun func ->
       let h = Hashtbl.create (List.length func.F.factors) in
       let%lwt () =
@@ -238,7 +239,7 @@ let cache_possible_values conf programs =
         ) func.F.factors in
       Hashtbl.replace possible_values_cache func.F.name h ;
       return_unit
-    ) funcs)
+    ) prog.P.funcs)
 
 (* Enumerate the possible values of a factor: *)
 let possible_values func factor =

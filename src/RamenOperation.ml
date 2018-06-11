@@ -471,10 +471,6 @@ struct
         Option.default_delayed (fun () -> default_alias expr) alias in
       { expr ; alias }) m
 
-  let list_sep m =
-    let m = "list separator" :: m in
-    (opt_blanks -- char ',' -- opt_blanks) m
-
   let event_time_clause m =
     let m = "event time clause" :: m in
     let scale m =
@@ -541,10 +537,6 @@ struct
     | NotifySpec of notification
     | FlushSpec of flush_method
     | CommitSpec (* we would commit anyway, just a placeholder *)
-
-  let list_sep_and =
-    (blanks -- strinG "and" -- blanks) |||
-    (opt_blanks -- char ',' -- opt_blanks)
 
   let notification_clause m =
     let kv_list m =

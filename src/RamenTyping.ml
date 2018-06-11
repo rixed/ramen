@@ -117,8 +117,6 @@ struct
        * optionally provided automatically if its not meant to be referenced.
        *)
       name : string ;
-      (* Parameters used by that function, with default values: *)
-      params : RamenTuple.params ;
       (* Parsed operation (for untyped funs) and its in/out types: *)
       operation : RamenOperation.t option ;
       mutable in_type : tuple_type ;
@@ -141,10 +139,6 @@ struct
     "OP="^ IO.to_string RamenOperation.print (Option.get func.operation) ^
     "IN="^ RamenTuple.type_signature (typed_tuple_type func.in_type) ^
     "OUT="^ RamenTuple.type_signature (typed_tuple_type func.out_type) ^
-    (* As for parameters, only their default values are embedded in the
-     * signature: *)
-    "PM="^ IO.to_string (List.print ~first:"" ~last:"" ~sep:","
-                           RamenTuple.print_param) func.params ^
     (* Also, as the compiled code would differ: *)
     "FLG="^ (if conf.C.debug then "DBG" else "") |>
     md5
@@ -160,7 +154,7 @@ exception InvalidCommand of string
 
 (* FIXME: got bitten by the fact that func_name and program_name are 2 strings
  * so you can mix them up. Make specialized types for all those strings. *)
-let make_untyped_func program_name func_name params operation =
+let make_untyped_func program_name func_name operation =
   !logger.debug "Creating func %s/%s" program_name func_name ;
   F.sanitize_name func_name ;
   assert (func_name <> "") ;
@@ -172,7 +166,7 @@ let make_untyped_func program_name func_name params operation =
         raise (InvalidCommand ("Parent func "^ p ^" does not exist"))) in
   Func.{
     program_name ; name = func_name ; signature = "" ;
-    params ; operation = Some operation ; parents ;
+    operation = Some operation ; parents ;
     in_type = UntypedTuple (make_untyped_tuple ()) ;
     out_type = UntypedTuple (make_untyped_tuple ()) ;
     event_time = RamenOperation.event_time_of_operation operation ;
@@ -183,7 +177,6 @@ let make_typed_func program_name rcf =
   Func.{
     program_name ; name = rcf.F.name ;
     signature = rcf.F.signature ;
-    params = rcf.F.params ;
     operation = None ; parents = [] ;
     in_type = TypedTuple rcf.F.in_type ;
     out_type = TypedTuple rcf.F.out_type ;
@@ -1420,11 +1413,10 @@ let check_aggregate ~parents ~in_type ~out_type ~params
  * Improve out_type using in_type and this func operation.
  * in_type is a given, don't modify it!
  *)
-let check_operation operation parents func =
+let check_operation operation parents func params =
   !logger.debug "-- Typing operation %a" RamenOperation.print operation ;
   let in_type = untyped_tuple_type func.Func.in_type
-  and out_type = untyped_tuple_type func.Func.out_type
-  and params = func.params in
+  and out_type = untyped_tuple_type func.Func.out_type in
   let set_well_known_type typ =
     let set_to t =
       t.fields <-
@@ -1473,14 +1465,14 @@ let () =
     | AlreadyCompiled -> Some "Already compiled"
     | _ -> None)
 
-let check_func_types parents func =
+let check_func_types parents func params =
   try ( (* Prepend the func name to any SyntaxError *)
     (* Try to improve out_type and the AST types using the in_type and the
      * operation: *)
     match func.Func.operation with
     | None -> false
     | Some operation ->
-        check_operation operation parents func
+        check_operation operation parents func params
   ) with SyntaxError e ->
     !logger.debug "Typing error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
@@ -1546,7 +1538,7 @@ let infer_factors func =
  * We do it bit by bit but will still make sure to make parent
  * output >= children input eventually, and that fields are encoded in
  * the specified order. *)
-let set_all_types conf parents funcs =
+let set_all_types conf parents funcs params =
   let fold_funcs f =
     Hashtbl.fold (fun _ func changed ->
       cur_func_name := func.Func.name ;
@@ -1556,7 +1548,7 @@ let set_all_types conf parents funcs =
     let changed =
       fold_funcs (fun func ->
         let parents = Hashtbl.find_default parents func.Func.name [] in
-        check_func_types parents func
+        check_func_types parents func params
       ) ||
       fold_funcs try_finish_out_type ||
       fold_funcs last_chance_to_type_func
@@ -1637,16 +1629,16 @@ let set_all_types conf parents funcs =
   (*$inject
     let test_type_single_func op_text =
       try
-        let funcs = Hashtbl.create 3 in
         let txt = "DEFINE foo AS "^ op_text in
-        let defs = RamenProgram.parse txt in
-        let operation = (List.nth defs 0).RamenProgram.operation in
+        let _params, funcs = RamenProgram.parse txt in
+        let operation = (List.hd funcs).RamenProgram.operation in
+        let funcs = Hashtbl.create 3 in
         Hashtbl.add funcs "test"
-          (make_untyped_func "test" "foo" [] operation) ;
+          (make_untyped_func "test" "foo" operation) ;
         let parents = BatHashtbl.of_list [ "test", [] ] in
         let conf =
           RamenConf.make_conf ~do_persist:false "/tmp/glop" in
-        set_all_types conf parents funcs ;
+        set_all_types conf parents funcs [] ;
         "ok"
       with e ->
         Printf.sprintf "Exception when parsing/typing operation %S: %s\n%s"

@@ -72,7 +72,7 @@ type syntax_error =
   | CannotCompleteTyping of string
   | CannotGenerateCode of { func : string ; cmd : string ; status : string }
   | AliasNotUnique of string
-  | FuncNameNotUnique of string
+  | NameNotUnique of string
   | UnknownFunc of string
   | NoAccessToGeneratedFields of { alias : string }
   | UnsolvableDependencyLoop of { program : string }
@@ -140,8 +140,8 @@ let string_of_syntax_error =
       func cmd status
   | AliasNotUnique name ->
     "Alias is not unique: "^ name
-  | FuncNameNotUnique name ->
-    "Function names must be unique within a program but '"^ name ^"' is defined \
+  | NameNotUnique name ->
+    "Names must be unique within a program but '"^ name ^"' is defined \
      several times"
   | TupleHasOnlyVirtuals { tuple ; alias } ->
     "Tuple "^ string_of_prefix tuple ^" has only virtual fields, so no \

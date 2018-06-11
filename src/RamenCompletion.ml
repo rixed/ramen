@@ -3,6 +3,7 @@ open RamenLog
 open RamenHelpers
 module C = RamenConf
 module F = C.Func
+module P = C.Program
 
 let propose (l, h) =
   String.print stdout l ;
@@ -100,7 +101,9 @@ let complete_running_function persist_dir str =
   (
     (Lwt_main.run (C.with_rlock conf Lwt.return) |> Hashtbl.values) /@
     (fun get_rc -> snd (get_rc ())) /@
-    (fun rc -> Enum.map (fun func -> func.F.program_name ^"/"^ func.F.name) (List.enum rc)) |>
+    (fun prog ->
+      List.enum prog.P.funcs |>
+      Enum.map (fun func -> func.F.program_name ^"/"^ func.F.name)) |>
     Enum.flatten
   ) /@
   empty_help |> List.of_enum

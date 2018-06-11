@@ -3,8 +3,8 @@ open Lwt
 open RamenHelpers
 open RamenLog
 module C = RamenConf
-module F = RamenConf.Func
-module P = RamenConf.Program
+module F = C.Func
+module P = C.Program
 
 type tuple_spec = (string, string) Hashtbl.t [@@ppp PPP_OCaml]
 
@@ -197,21 +197,21 @@ let test_one conf root_path notify_rb dirname test =
   (* First, write the list of programs that must run and fill workers
    * hash-table: *)
   let%lwt () =
-    C.with_wlock conf (fun running_programs ->
-      Hashtbl.clear running_programs ;
-      Lwt_list.iter_p (fun (bin, parameters) ->
+    C.with_wlock conf (fun programs ->
+      Hashtbl.clear programs ;
+      Lwt_list.iter_p (fun (bin, params) ->
         (* The path to the binary is relative to the test file: *)
         let bin = absolute_path_of ~rel_to:dirname bin in
-        let rc = P.of_bin bin in
-        let program_name = (List.hd rc).F.program_name in
-        Hashtbl.add running_programs program_name C.{ bin ; parameters } ;
+        let prog = P.of_bin params bin in
+        let program_name = (List.hd prog.P.funcs).F.program_name in
+        Hashtbl.add programs program_name C.{ bin ; params } ;
         Lwt_list.iter_s (fun func ->
           (* Each function will archive its output: *)
           let%lwt bname = RamenExport.make_temp_export conf func in
           let fq_name = program_name ^"/"^ func.name in
           Hashtbl.add workers fq_name (func, bname, ref None) ;
           return_unit
-        ) rc ;
+        ) prog.P.funcs ;
       ) test.programs) in
   let worker_feeder =
     let feed_input input =

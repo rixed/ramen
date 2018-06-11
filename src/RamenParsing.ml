@@ -118,3 +118,14 @@ let duration m =
        raise (Reject "durations must be greater than zero") ;
      d
   ) m
+
+let list_sep m =
+  let m = "list separator" :: m in
+  (opt_blanks -- char ',' -- opt_blanks) m
+
+let list_sep_and m =
+  let m = "list separator" :: m in
+  (
+    (blanks -- strinG "and" -- blanks) |||
+    (opt_blanks -- char ',' -- opt_blanks)
+  ) m

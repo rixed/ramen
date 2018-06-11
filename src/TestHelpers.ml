@@ -78,11 +78,14 @@ let replace_typ_in_op = function
 
 let replace_typ_in_program =
   function
-  | Ok (prog, rest) ->
-    Ok (
+  | Ok ((params, prog), rest) ->
+    Ok ((
+      params,
       List.map (fun func ->
-        RamenProgram.{ func with operation = replace_typ_in_operation func.RamenProgram.operation }
-      ) prog,
+        RamenProgram.{
+          func with operation =
+            replace_typ_in_operation func.RamenProgram.operation }
+      ) prog),
       rest)
   | x -> x
 
