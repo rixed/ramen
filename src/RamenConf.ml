@@ -37,7 +37,9 @@ struct
       parents : (string (* expansed program name *) * string) list ;
       merge_inputs : bool ;
       event_time : RamenEventTime.t option ;
-      factors : string list }
+      factors : string list ;
+      (* List of envvar used in that function: *)
+      envvars : string list }
     [@@ppp PPP_OCaml]
 
   let print_parent oc (p, f) = Printf.fprintf oc "%s/%s" p f

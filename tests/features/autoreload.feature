@@ -24,7 +24,7 @@ Feature: hot reloading of ramen workers
       define o2 as select n from o1;
       """
     And p1.ramen and p2.ramen are compiled
-    And ramen supervisor --autoreload=1 is started
+    And ramen supervisor --autoreload=1 --debug is started
     And programs p1 and p2 are running.
 
   Scenario: Without any more command some output must be visible.

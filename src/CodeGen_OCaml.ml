@@ -434,6 +434,8 @@ and emit_expr ?state ~context ~consts oc expr =
       Printf.fprintf oc "(maybe_%s_ group_previous_opt_)" field
     | TupleOutPrevious ->
       Printf.fprintf oc "(maybe_%s_ out_previous_opt_)" field
+    | TupleEnv ->
+      Printf.fprintf oc "(Sys.getenv_opt %S)" field
     | _ ->
       String.print oc (id_of_field_name ~tuple:!tuple field))
   | Finalize, Case (_, alts, else_), t ->

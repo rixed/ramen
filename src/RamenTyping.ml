@@ -126,7 +126,8 @@ struct
       mutable signature : string ;
       (* Extracted from the operation or inferred from parents: *)
       mutable event_time : RamenEventTime.t option ;
-      mutable factors : string list }
+      mutable factors : string list ;
+      mutable envvars : string list }
 
   let signature conf func =
     (* We'd like to be formatting independent so that operation text can be
@@ -171,7 +172,8 @@ let make_untyped_func program_name func_name params operation =
     in_type = UntypedTuple (make_untyped_tuple ()) ;
     out_type = UntypedTuple (make_untyped_tuple ()) ;
     event_time = RamenOperation.event_time_of_operation operation ;
-    factors = RamenOperation.factors_of_operation operation  }
+    factors = RamenOperation.factors_of_operation operation ;
+    envvars = RamenOperation.envvars_of_operation operation }
 
 (* Same as the above, for when a function has already been compiled: *)
 let make_typed_func program_name rcf =
@@ -182,7 +184,8 @@ let make_typed_func program_name rcf =
     in_type = TypedTuple rcf.F.in_type ;
     out_type = TypedTuple rcf.F.out_type ;
     event_time = rcf.F.event_time ;
-    factors = rcf.F.factors }
+    factors = rcf.F.factors ;
+    envvars = rcf.F.envvars }
 
 let scalar_finished_typing = function
   | TNum | TAny | TTuple [||] | TVec (0, _) -> false
@@ -774,6 +777,10 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         (* Then propagate upward: *)
         check_expr_type ~indent ~ok_if_larger:false ~set_null:true
                         ~from:op_typ ~to_:exp_type
+    ) else if !tuple = TupleEnv then (
+      set_nullable ~indent op_typ true |||
+      set_scalar_type ~indent ~ok_if_larger:false
+                      ~expr_name:field op_typ TString
     ) else (
       (* All other tuples are already typed (virtual fields) *)
       if not (is_virtual_field field) then (

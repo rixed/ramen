@@ -217,7 +217,8 @@ let compile conf root_path program_name program_code =
                 parents = func.parents ;
                 merge_inputs = RamenOperation.is_merging operation ;
                 event_time = func.event_time ;
-                factors = func.factors }
+                factors = func.factors ;
+                envvars = func.envvars }
           ) |>
           List.of_enum
         and params = parsed_params in

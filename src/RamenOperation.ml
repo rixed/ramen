@@ -279,6 +279,11 @@ let fold_expr init f = function
 let iter_expr f op =
   fold_expr () (fun () e -> f e) op
 
+let envvars_of_operation =
+  fold_expr [] (fun lst -> function
+    | Field (_, { contents = TupleEnv }, n) -> n :: lst
+    | _ -> lst)
+
 (* Check that the expression is valid, or return an error message.
  * Also perform some optimisation, numeric promotions, etc...
  * This is done after the parse rather than Rejecting the parsing
@@ -384,7 +389,7 @@ let check params =
       | _ -> ()) op ;
     (* Now check what tuple prefix are used: *)
     List.fold_left (fun prev_aliases sf ->
-        check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *); TupleGroupPrevious; TupleOutPrevious] "SELECT clause" sf.expr ;
+        check_fields_from [TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *); TupleGroupPrevious; TupleOutPrevious] "SELECT clause" sf.expr ;
         (* Check unicity of aliases *)
         if List.mem sf.alias prev_aliases then
           raise (SyntaxError (AliasNotUnique sf.alias)) ;
@@ -397,17 +402,17 @@ let check params =
     ) ;
     (* Disallow group state in WHERE because it makes no sense: *)
     check_no_group (no_group "WHERE") where ;
-    check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOutPrevious] "WHERE clause" where ;
+    check_fields_from [TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOutPrevious] "WHERE clause" where ;
     List.iter (fun k ->
       check_pure pure_in_key k ;
-      check_fields_from [TupleParam; TupleIn] "Group-By KEY" k) key ;
-    check_fields_from [TupleParam; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
+      check_fields_from [TupleParam; TupleEnv; TupleIn] "Group-By KEY" k) key ;
+    check_fields_from [TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
     (match flush_how with
     | Reset | Never | Slide _ -> ()
     | RemoveAll e | KeepOnly e ->
       let m = StatefulNotAllowed { clause = "KEEP/REMOVE" } in
       check_pure m e ;
-      check_fields_from [TupleParam; TupleGroup] "REMOVE clause" e) ;
+      check_fields_from [TupleParam; TupleEnv; TupleGroup] "REMOVE clause" e) ;
     if every > 0. && from <> [] then
       raise (SyntaxError (EveryWithFrom)) ;
     (* Check that we do not use any fields from out that is generated: *)

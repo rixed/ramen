@@ -440,12 +440,16 @@ let really_start conf must_run proc parents children =
    * non interpreted strings (but for the first '=' sign that will be
    * interpreted by the OCaml runtime) so it should work regardless of the
    * actual param name or value, and make it easier to see what's going
-   * on fro the shell: *)
-  let params =
+   * on from the shell: *)
+  let more_env =
     List.enum proc.params /@
-    (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenTypes.print v) |>
-    Array.of_enum in
-  let env = Array.append env params in
+    (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenTypes.print v) in
+  (* Also add all envvars that are defined and used in the operation: *)
+  let more_env =
+    List.enum proc.func.envvars //@
+    (fun n -> try Some (n ^"="^ Sys.getenv n) with Not_found -> None) |>
+    Enum.append more_env in
+  let env = Array.append env (Array.of_enum more_env) in
   let args =
     (* For convenience let's add "ramen worker" and the fun name as
      * arguments: *)
@@ -644,8 +648,8 @@ let synchronize_running conf autoreload_delay =
     if !quit && nb_running > 0 && nb_running <> prev_nb_running then
       !logger.info "Still %d processes running"
         (Hashtbl.length running) ;
-    (* See preamble discussion about autoreload for why workers must be started
-     * only after all the kills: *)
+    (* See preamble discussion about autoreload for why workers must be
+     * started only after all the kills: *)
     let possible_reload = !to_kill <> [] && !to_start <> [] in
     if possible_reload then !logger.debug "Starting the kills" ;
     let%lwt () = Lwt_list.iter_p (try_kill conf must_run) !to_kill in

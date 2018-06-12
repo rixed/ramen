@@ -26,6 +26,8 @@ type tuple_prefix =
   | TupleSortGreatest
   (* Parameters *)
   | TupleParam
+  (* Environments for nullable string only parameters: *)
+  | TupleEnv
   (* TODO: TupleOthers? *)
 
 let string_of_prefix = function
@@ -46,6 +48,7 @@ let string_of_prefix = function
   | TupleSortSmallest -> "sort.smallest"
   | TupleSortGreatest -> "sort.greatest"
   | TupleParam -> "param"
+  | TupleEnv -> "env"
 
 type syntax_error =
   | ParseError of { error : string ; text : string }
@@ -195,7 +198,8 @@ let parse_prefix ~def m =
     (prefix "sort.greatest" >>: fun () -> TupleSortGreatest) |||
     (prefix "smallest" >>: fun () -> TupleSortSmallest) |||
     (prefix "greatest" >>: fun () -> TupleSortGreatest) |||
-    (prefix "param" >>: fun () -> TupleParam))
+    (prefix "param" >>: fun () -> TupleParam) |||
+    (prefix "env" >>: fun () -> TupleEnv))
   ) m
 
 let tuple_has_count = function
