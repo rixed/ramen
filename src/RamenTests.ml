@@ -142,7 +142,7 @@ let test_output func bname output_spec =
     if success then "" else
     (Printf.sprintf "Enumerated %d tuple%s from %s/%s"
       nb_tuples (if nb_tuples > 0 then "s" else "")
-      func.F.program_name func.F.name)^
+      func.F.exp_program_name func.F.name)^
     (if !tuples_to_find = [] then "" else
       " but could not find these tuples: "^
         IO.to_string (List.print tuple_spec_print) !tuples_to_find) ^
@@ -203,13 +203,12 @@ let test_one conf root_path notify_rb dirname test =
         (* The path to the binary is relative to the test file: *)
         let bin = absolute_path_of ~rel_to:dirname bin in
         let prog = P.of_bin params bin in
-        let program_name = (List.hd prog.P.funcs).F.program_name in
-        Hashtbl.add programs program_name C.{ bin ; params } ;
+        let exp_program_name = (List.hd prog.P.funcs).F.exp_program_name in
+        Hashtbl.add programs exp_program_name C.{ bin ; params } ;
         Lwt_list.iter_s (fun func ->
           (* Each function will archive its output: *)
           let%lwt bname = RamenExport.make_temp_export conf func in
-          let fq_name = program_name ^"/"^ func.name in
-          Hashtbl.add workers fq_name (func, bname, ref None) ;
+          Hashtbl.add workers (F.fq_name func) (func, bname, ref None) ;
           return_unit
         ) prog.P.funcs ;
       ) test.programs) in

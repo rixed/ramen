@@ -251,7 +251,7 @@ let print_expansed_program oc (name, params) =
   String.print oc name ;
   if params <> [] then
     List.print ~first:"{" ~last:"}" ~sep:"," (fun oc (n, v) ->
-      Printf.fprintf oc "%s:%a" n RamenTypes.print v) oc params
+      Printf.fprintf oc "%s=%a" n RamenTypes.print v) oc params
 
 let string_of_program_id pp =
   IO.to_string print_expansed_program pp

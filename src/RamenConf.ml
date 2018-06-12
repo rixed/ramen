@@ -24,20 +24,17 @@ let upload_dir_of_func persist_dir program_name func_name in_type =
 module Func =
 struct
   type t =
-    { program_name : string ;
+    { mutable exp_program_name : string ; (* expansed name *)
       name : string ; (* TODO: name must be allowed to contain params *)
       in_type : RamenTuple.typed_tuple ;
       out_type : RamenTuple.typed_tuple ;
-      (* The binary provides a signature with default parameters.
-       * As soon as the actual parameters are known, a new signature
-       * is computed so that two running programs using the same binary
-       * but different params have a different signature.
+      (* The signature identifies the code but not the actual parameters.
        * Those signatures are used to distinguish sets of ringbufs
        * or any other files where tuples are stored, so that those files
        * change when the code change, without a need to also change the
        * name of the operation. *)
       signature : string ;
-      parents : (string * string) list ;
+      parents : (string (* expansed program name *) * string) list ;
       merge_inputs : bool ;
       event_time : RamenEventTime.t option ;
       factors : string list }
@@ -45,7 +42,7 @@ struct
 
   let print_parent oc (p, f) = Printf.fprintf oc "%s/%s" p f
 
-  let fq_name f = f.program_name ^"/"^ f.name
+  let fq_name f = f.exp_program_name ^"/"^ f.name
 
   let sanitize_name name =
     (* New lines have to be forbidden because of the out_ref ringbuf files.
@@ -60,8 +57,9 @@ end
 module Program =
 struct
   type t =
-    { funcs : Func.t list ;
-      mutable params : RamenTuple.params [@ppp_default []] }
+    { name : string ;
+      mutable params : RamenTuple.params [@ppp_default []] ;
+      funcs : Func.t list }
       [@@ppp PPP_OCaml]
 
   let sanitize_name name =
@@ -76,11 +74,14 @@ struct
       failwith "Program names cannot include directory dotnames" else
     simplified_path name
 
+  let expansed_name t =
+    RamenLang.string_of_program_id (t.name, t.params)
+
   let of_bin =
     (* Cache of path to date of last read and program *)
     let reread_data fname : t =
       !logger.debug "Reading config from %s..." fname ;
-      let empty_program = { funcs = []; params = [] } in
+      let empty_program = { name = ""; funcs = []; params = [] } in
       match with_stdout_from_command
               fname [| fname ; "version" |] Legacy.input_line with
       | exception e ->
@@ -108,8 +109,14 @@ struct
     let get_prog = cached reread_data age_of_data in
     fun params fname ->
       let p = get_prog fname in
+      (* Patch actual parameters: *)
       p.params <-
         RamenTuple.overwrite_params p.params params ;
+      let exp_program_name =
+        RamenLang.string_of_program_id (p.name, params) in
+      List.iter (fun f ->
+        f.Func.exp_program_name <- exp_program_name
+      ) p.funcs ;
       p
 
   let bin_of_program_name root_path program_name =
@@ -239,8 +246,8 @@ let with_wlock conf f =
   in
   loop ()
 
-let find_func programs program_name func_name =
-  let _bin, rc = Hashtbl.find programs program_name () in
+let find_func programs exp_program_name func_name =
+  let _bin, rc = Hashtbl.find programs exp_program_name () in
   List.find (fun f -> f.Func.name = func_name) rc.Program.funcs
 
 let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
@@ -280,8 +287,7 @@ let in_ringbuf_name_base conf func =
   let sign = type_signature_hash func.Func.in_type in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
-                   ^"/"^ func.Func.program_name
-                   ^"/"^ func.Func.name
+                   ^"/"^ Func.fq_name func
                    ^"/"^ sign ^"/"
 
 let in_ringbuf_name_single conf func =
@@ -309,8 +315,7 @@ let archive_buf_name conf func =
   let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
-                   ^"/"^ func.Func.program_name
-                   ^"/"^ func.Func.name
+                   ^"/"^ Func.fq_name func
                    ^"/"^ sign ^"/archive.b"
 
 (* Each individual ringbuf may have a file storing all possible values for
@@ -327,8 +332,7 @@ let out_ringbuf_names_ref conf func =
   let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref
-                   ^"/"^ func.Func.program_name
-                   ^"/"^ func.Func.name
+                   ^"/"^ Func.fq_name func
                    ^"/"^ sign ^"/out_ref"
 
 (* Finally, operations have two additional output streams: one for

@@ -122,7 +122,7 @@ struct
       mutable in_type : tuple_type ;
       mutable out_type : tuple_type ;
       parents : (string * string) list ;
-      (* The signature with default params, used to name compiled modules *)
+      (* The signature used to name compiled modules *)
       mutable signature : string ;
       (* Extracted from the operation or inferred from parents: *)
       mutable event_time : RamenEventTime.t option ;

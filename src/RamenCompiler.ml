@@ -106,7 +106,8 @@ let compile conf root_path program_name program_code =
     (* Has from function name to RamenTyping.Func.t list of parents: *)
     let compiler_parents = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
-      RamenOperation.parents_of_operation parsed_func.RamenProgram.operation |>
+      RamenOperation.parents_of_operation
+        parsed_func.RamenProgram.operation |>
       List.map (fun parent_id ->
         (* parent_id is the name as it appears in the source, can be FQed
          * or just a local name. We need to build a set of funcs where all
@@ -114,23 +115,28 @@ let compile conf root_path program_name program_code =
         let parent_id = match parent_id with
           | None, func_name -> Some (program_name, []), func_name
           | pn -> pn in
-        let parent_fq_name =
-          RamenLang.string_of_func_id parent_id in
-        try Hashtbl.find compiler_funcs parent_fq_name
+        let parent_prog_name, _parent_prog_params =
+          Option.get (fst parent_id)
+        and parent_func_name = snd parent_id in
+        (* For compiling, we want the 'virtual' parents with no
+         * parameters as we are interested only in their output
+         * type: *)
+        let parent_name = parent_prog_name ^"/"^ parent_func_name in
+        try Hashtbl.find compiler_funcs parent_name
         with Not_found ->
-          !logger.debug "Found external reference to function %s"
-            parent_fq_name ;
-          let parent_program_name, parent_name =
-            C.program_func_of_user_string parent_fq_name in
+          !logger.debug "Found external reference to function %a"
+            RamenLang.print_expansed_function parent_id ;
           (* Or the parent must have been in compiler_funcs: *)
-          if parent_program_name = program_name then
-            raise (RamenLang.SyntaxError (UnknownFunc parent_fq_name)) ;
+          if parent_prog_name = program_name then
+            raise (RamenLang.SyntaxError (UnknownFunc parent_name)) ;
           let parent_func =
             let par_rc =
               P.of_program_id root_path (Option.get (fst parent_id)) in
-            List.find (fun f -> f.F.name = parent_name) par_rc.P.funcs in
+            List.find (fun f ->
+              f.F.name = parent_func_name
+            ) par_rc.P.funcs in
           (* Build a typed F.t from this Fun.t: *)
-          RamenTyping.make_typed_func parent_program_name parent_func
+          RamenTyping.make_typed_func parent_prog_name parent_func
       ) |>
       Hashtbl.add compiler_parents parsed_func.RamenProgram.name
     ) parsed_funcs ;
@@ -202,7 +208,8 @@ let compile conf root_path program_name program_code =
           Hashtbl.values compiler_funcs |>
           Enum.map (fun func ->
             let operation = Option.get func.RamenTyping.Func.operation in
-            F.{ program_name ;
+            F.{ (* exp_program_name will be overwritten at load time: *)
+                exp_program_name = program_name ;
                 name = func.name ;
                 in_type = RamenTyping.typed_tuple_type func.in_type ;
                 out_type = RamenTyping.typed_tuple_type func.out_type ;
@@ -214,7 +221,7 @@ let compile conf root_path program_name program_code =
           ) |>
           List.of_enum
         and params = parsed_params in
-        let runconf = P.{ funcs ; params } in
+        let runconf = P.{ name = program_name ; funcs ; params } in
         Printf.fprintf oc "let rc_str_ = %S\n"
           ((PPP.to_string P.t_ppp_ocaml runconf) |>
            PPP_prettify.prettify) ;

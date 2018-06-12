@@ -7,8 +7,8 @@ open Lwt
 open RamenLog
 open RamenHelpers
 module C = RamenConf
-module F = RamenConf.Func
-module P = RamenConf.Program
+module F = C.Func
+module P = C.Program
 
 (* Global quit flag, set when the term signal is received: *)
 let quit = ref false
@@ -206,9 +206,9 @@ let make_running_process program_name bin params func =
 let input_spec conf parent child =
   (* In case of merge, ringbufs are numbered as the node parents: *)
   (if child.F.merge_inputs then
-    match List.findi (fun i (pprog, pname) ->
-             pprog = parent.F.program_name && pname = parent.name
-           ) child.parents with
+    match List.findi (fun i (exp_pprog, pname) ->
+            exp_pprog = parent.F.exp_program_name && pname = parent.name
+          ) child.parents with
     | exception Not_found ->
         !logger.error "Operation %S is not a child of %S"
           child.name parent.name ;
@@ -238,10 +238,10 @@ let check_is_subtype t1 t2 =
 
 (* Returns the running parents and children of a func: *)
 let relatives f must_run =
-  Hashtbl.fold (fun _sign (_bin, _params, _program_name, func) (ps, cs) ->
+  Hashtbl.fold (fun _k (_bin, _params, _program_name, func) (ps, cs) ->
     (* Tells if [func'] is a parent of [func]: *)
     let is_parent_of func func' =
-      List.mem (func'.F.program_name, func'.F.name) func.F.parents in
+      List.mem (func'.F.exp_program_name, func'.F.name) func.F.parents in
     (if is_parent_of f func then func::ps else ps),
     (if is_parent_of func f then func::cs else cs)
   ) must_run ([], [])
@@ -312,8 +312,8 @@ let process_workers_terminations conf running =
      * to move it away: *)
     let state_file = C.worker_state conf func params in
     let trash_file = state_file ^".bad?" in
-    !logger.info "Worker %s/%s is deadlooping. Deleting its state file."
-      func.F.program_name func.F.name ;
+    !logger.info "Worker %s is deadlooping. Deleting its state file."
+      (F.fq_name func) ;
     ignore_exceptions Unix.unlink trash_file ;
     try Unix.rename state_file trash_file
     with e ->
@@ -344,8 +344,9 @@ let process_workers_terminations conf running =
                 IntCounter.add stats_worker_deadloopings 1 ;
                 rescue_worker proc.func proc.params)) ;
             (* Wait before attempting to restart a failing worker: *)
+            let max_delay = float_of_int proc.succ_failures in
             proc.quarantine_until <-
-              now +. Random.float (min 90. (float_of_int proc.succ_failures)) ;
+              now +. Random.float (min 90. max_delay) ;
             proc.pid <- None ;
             raise Exit)
         ) running ;
@@ -471,14 +472,15 @@ let really_try_start conf must_run proc =
   let parents, children = relatives proc.func must_run in
   (* We must not start if a parent is missing: *)
   let parents_ok =
-    List.fold_left (fun ok (p_prog, p_func) ->
+    List.fold_left (fun ok (p_exp_prog, p_func) ->
       if List.exists (fun func ->
-           func.F.program_name = p_prog && func.F.name = p_func
+           func.F.exp_program_name = p_exp_prog && func.F.name = p_func
          ) parents then ok
       else (
-        !logger.error "Parent of %s/%s is missing: %s/%s"
-          proc.program_name proc.func.name
-          p_prog p_func ;
+        !logger.error "Parent of %a/%s is missing: %s/%s"
+          RamenLang.print_expansed_program (proc.program_name, proc.params)
+          proc.func.name
+          p_exp_prog p_func ;
         false)
     ) true proc.func.parents in
   let check_linkage p c =
@@ -487,8 +489,8 @@ let really_try_start conf must_run proc =
     with Failure msg ->
       !logger.error "Input type of %s/%s (%a) is not compatible with \
                      output type of %s/%s (%a): %s"
-        c.program_name c.name RamenTuple.print_typ c.in_type.ser
-        p.program_name p.name RamenTuple.print_typ p.out_type.ser
+        c.exp_program_name c.name RamenTuple.print_typ c.in_type.ser
+        p.exp_program_name p.name RamenTuple.print_typ p.out_type.ser
         msg ;
       false in
   let linkage_ok =
@@ -552,7 +554,7 @@ let check_out_ref =
     !logger.debug "Checking out_refs..." ;
     (* Build the set of all wrapping ringbuf that are being read: *)
     let rbs =
-      Hashtbl.fold (fun _sign (_bin, _params, _program_name, func) s ->
+      Hashtbl.fold (fun _k (_bin, _params, _program_name, func) s ->
         C.in_ringbuf_names conf func |>
         List.fold_left (fun s rb_name -> Set.add rb_name s) s
       ) must_run (Set.singleton (C.notify_ringbuf conf)) in
@@ -605,9 +607,8 @@ let check_out_ref =
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
   (* Stop/Start processes so that [running] corresponds to [must_run].
-   * [must_run] is a hash from the signature (function * params) to
-   * its binary path, the program name and Func (which params have been
-   * overridden with the ones from the running conf already).
+   * [must_run] is a hash from the function expansed identifier to
+   * its binary path, the actual parameters, the program name and Func.
    * FIXME: do we need the program_name since it's now also in func?
    * [running] is a hash from the signature (function * params) to its
    * running_process (mutable pid, cleared asynchronously when the worker
@@ -620,17 +621,17 @@ let synchronize_running conf autoreload_delay =
     IntGauge.set stats_worker_running prev_nb_running ;
     let to_kill = ref [] and to_start = ref []
     and (+=) r x = r := x :: !r in
-    Hashtbl.filteri_inplace (fun sign proc ->
-      if Hashtbl.mem must_run sign then true else
+    Hashtbl.filteri_inplace (fun k proc ->
+      if Hashtbl.mem must_run k then true else
       if proc.pid <> None then (to_kill += proc ; true) else
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun sign (bin, params, program_name, func) ->
-      match Hashtbl.find running sign with
+    Hashtbl.iter (fun k (bin, params, program_name, func) ->
+      match Hashtbl.find running k with
       | exception Not_found ->
           let proc = make_running_process program_name bin params func in
-          Hashtbl.add running sign proc ;
+          Hashtbl.add running k proc ;
           to_start += proc
       | proc ->
           (* If it's dead, restart it: *)
@@ -710,8 +711,8 @@ let synchronize_running conf autoreload_delay =
                   let bin, prog = get_rc () in
                   let params = prog.P.params in
                   List.iter (fun f ->
-                    let k = f.F.signature,
-                            RamenTuple.param_signature params in
+                    (* Use the signature + params as the key: *)
+                    let k = f.F.signature, RamenTuple.param_signature params in
                     Hashtbl.add must_run k (bin, params, program_name, f)
                   ) prog.P.funcs
                 ) must_run_programs) in

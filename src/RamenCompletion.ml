@@ -103,7 +103,7 @@ let complete_running_function persist_dir str =
     (fun get_rc -> snd (get_rc ())) /@
     (fun prog ->
       List.enum prog.P.funcs |>
-      Enum.map (fun func -> func.F.program_name ^"/"^ func.F.name)) |>
+      Enum.map (fun func -> func.F.exp_program_name ^"/"^ func.F.name)) |>
     Enum.flatten
   ) /@
   empty_help |> List.of_enum

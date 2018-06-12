@@ -6,10 +6,10 @@
 let release_tag = "v2.1.2"
 
 (* Format of the list of running programs: *)
-let graph_config = "v9" (* last: stripped down version *)
+let graph_config = "v10" (* last: params in RC key *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v20" (* last: removal of export keyword *)
+let codegen = "v21" (* last: exp_program_name, envvars... *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)

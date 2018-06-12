@@ -218,7 +218,7 @@ let check_links ?(force=false) program_name prog running_programs =
           | exception Not_found ->
             !logger.warning "Operation %s/%s, currently stalled, will still \
                              be missing its parent %s/%s"
-              func.F.program_name func.F.name par_prog par_func
+              func.F.exp_program_name func.F.name par_prog par_func
           | f -> (* so func is depending on f, let's see: *)
             try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
                                                 f.F.out_type.ser
@@ -235,9 +235,9 @@ let run conf params bin_files () =
       List.iter (fun bin ->
         let bin = absolute_path_of bin in
         let prog = P.of_bin params bin in
-        let program_name = (List.hd prog.P.funcs).F.program_name in
-        check_links program_name prog programs ;
-        Hashtbl.add programs program_name C.{ bin ; params }
+        let exp_program_name = (List.hd prog.P.funcs).F.exp_program_name in
+        check_links exp_program_name prog programs ;
+        Hashtbl.add programs exp_program_name C.{ bin ; params }
       ) bin_files ;
       return_unit))
 
@@ -260,7 +260,7 @@ let check_orphans conf program_names running_programs =
            ) func.F.parents
         then
           !logger.warning "Operation %s/%s, will be left without parents"
-            func.F.program_name func.F.name
+            func.F.exp_program_name func.F.name
       ) prog.P.funcs
   ) running_programs
 
