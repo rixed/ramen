@@ -10,18 +10,34 @@ Feature: Programs ca  be parameterized
     And the environment variable RAMEN_BUNDLE_DIR is set
     And the environment variable RAMEN_ROOT is not defined
     And the environment variable LAST_NAME is set to Smith
-    And ramen supervisor is started
-
-  Scenario: A program behavior can depends on parameter and environment.
-    Given a file test.ramen with content
+    And a file test.ramen with content
       """
       parameter first_name defaults to "Adelaide";
       define f as yield param.first_name ||" "|| env.LAST_NAME AS greeting
         every 1 second;
       """
     And test.ramen is compiled
-    And I run ramen with arguments run -p 'first_name="Leontine"' test.x
+    And ramen supervisor is started
+
+  Scenario: A program behavior can depends on parameter and environment.
+    Given I run ramen with arguments run -p 'first_name="Leontine"' test.x
     When I run ramen with arguments ps
     Then ramen must print "test{first_name="Leontine"}/f"
     When I run ramen with arguments tail --last=-1 'test{first_name="Leontine"}/f' --raw
     Then ramen must print "Leontine Smith".
+
+  Scenario: We can run two instances of a program with different parameters.
+    Given I run ramen with arguments run -p 'first_name="Romuald"' test.x
+    And I run ramen with arguments run -p 'first_name="Raphael"' test.x
+    When I run ramen with arguments ps
+    Then ramen must mention "test{first_name="Romuald"}/f"
+    And ramen must mention "test{first_name="Raphael"}/f".
+    When I run ramen with arguments _expand
+    Then ramen must mention "Romuald"
+    And ramen must mention "Raphael".
+
+  Scenario: But only one with the same parameters.
+    Given I run ramen with arguments run -p 'first_name="Joephine"' test.x
+    And I run ramen with arguments run -p 'first_name="Joephine"' test.x
+    When I run ramen with arguments ps
+    Then ramen must print 1 line on stdout.

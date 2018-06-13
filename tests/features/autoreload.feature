@@ -31,7 +31,7 @@ Feature: hot reloading of ramen workers
     # Use min/max-seq instead of -n cause min/max-seq will wait for those
     # tuples while -n would just exit early.
     When I run ramen with arguments tail --max-seq=0 p2/o2
-    Then ramen must mention one on stdout.
+    Then ramen must mention "one" on stdout.
 
   Scenario: A program can be changed and, as types permit, will be reconnected
     to its relatives.
@@ -42,4 +42,4 @@ Feature: hot reloading of ramen workers
     And p1_2.ramen is compiled as p1
     And I wait 3 seconds
     When I run ramen with arguments tail -n 1 p2/o2
-    Then ramen must mention two on stdout.
+    Then ramen must mention "two" on stdout.

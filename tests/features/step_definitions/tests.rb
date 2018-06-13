@@ -50,15 +50,16 @@ When /I run (.*) with arguments? (.*)/ do |executable, args|
   #puts @output[executable]['stderr']
 end
 
-Then /^([^ ]*) must print (.*) lines? on (std(?:out|err))/ \
+Then /^([^ ]*) must print (.*) lines?(?: on (std(?:out|err)))?\.?/ \
 do |executable, quantity, out|
+  out = 'stdout' if out.nil?
   filter = Filter.new(quantity)
   filter.check(@output[executable][out].lines.count)
 end
 
-Then /^([^ ]*) must print "(.*)"(?: on (std(?:out|err)))?/ \
+Then /^([^ ]*) must print "(.*)"(?: on (std(?:out|err)))?\.?/ \
 do |executable, output, out|
-  out = "stdout" if out.nil?
+  out = 'stdout' if out.nil?
   expect(@output[executable][out]).to match(/\b#{output}\b/)
 end
 
@@ -120,12 +121,12 @@ do |executable, opt_file_type, files|
   end
 end
 
-Then /^([^ ]*) must fail gracefully/ do |executable|
+Then /^([^ ]*) must fail gracefully\.?$/ do |executable|
   step "#{executable} must exit with status not 0"
   step "#{executable} must print a few lines on stderr"
 end
 
-Then /^([^ ]*) must (?:exit|terminate) gracefully/ do |executable|
+Then /^([^ ]*) must (?:exit|terminate) gracefully\.?$/ do |executable|
   step "#{executable} must exit with status 0"
   step "#{executable} must print no line on stderr"
 end
@@ -223,8 +224,9 @@ Then /^after max (\d+) seconds? (.+)$/ do |max_delay, what|
   end
 end
 
-Then /^([^ ]*) must mention (.*) on (std(?:out|err))/ \
+Then /^([^ ]*) must mention "(.*)"(?: on (std(?:out|err)))?\.?/ \
 do |executable, what, out|
+  out = 'stdout' if out.nil?
   expect(@output[executable][out]).to match(/\b#{what}\b/)
 end
 

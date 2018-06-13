@@ -32,7 +32,7 @@ Feature: test ramen tail
     Given program test is running
     When I run ramen with arguments tail --where z=0 --max-seq 1 test/gen
     Then ramen must fail gracefully
-    And ramen must mention z on stderr.
+    And ramen must mention "z" on stderr.
 
   Scenario: Min and max-seqnum options are ANDed with a where expression.
     Given program test is running
