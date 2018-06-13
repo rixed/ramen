@@ -19,4 +19,4 @@ DEFINE qps AS
 
 DEFINE alert AS
   FROM qps WHERE qps <= 1 OR qps >= 10
-  HTTP GET "http://1.2.3.4:567/alert?qps=${qps}";
+  NOTIFY "ALERT!";

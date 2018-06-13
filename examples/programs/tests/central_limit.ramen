@@ -3,7 +3,9 @@
 DEFINE noise AS
   YIELD random AS rand;
 
-DEFINE averaged_noise n=6 AS
+PARAMETER n DEFAULTS TO 6;
+
+DEFINE averaged_noise AS
   SELECT avg rand FROM noise
   COMMIT AFTER group.#count >= n;
 
