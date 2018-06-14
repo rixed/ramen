@@ -22,9 +22,9 @@ Feature: Programs ca  be parameterized
   Scenario: A program behavior can depends on parameter and environment.
     Given I run ramen with arguments run -p 'first_name="Leontine"' test.x
     When I run ramen with arguments ps
-    Then ramen must print "test{first_name="Leontine"}/f"
+    Then ramen must mention "test{first_name="Leontine"}/f"
     When I run ramen with arguments tail --last=-1 'test{first_name="Leontine"}/f' --raw
-    Then ramen must print "Leontine Smith".
+    Then ramen must mention "Leontine Smith".
 
   Scenario: We can run two instances of a program with different parameters.
     Given I run ramen with arguments run -p 'first_name="Romuald"' test.x

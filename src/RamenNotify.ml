@@ -224,7 +224,7 @@ let subst_dict =
     ) text
 
 (* Generic notifications are also reliably sent, de-duplicated,
- * "de-flapped" and the ongoing incident is identified with an "alert-id"
+ * de-bounced and the ongoing incident is identified with an "alert-id"
  * that's usable in the notification template.
  *
  * First, each notification has an identifier (here, the name), a firing

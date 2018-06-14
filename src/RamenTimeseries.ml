@@ -42,7 +42,22 @@ let bucket_max b =
   if b.count = 0 then None else Some b.max
 
 
-(* Enumerates all the time*values *)
+(* Enumerates all the time*values.
+ * Returns the array of factor-column and the Enum.t of data.
+ *
+ * Each factor-column is the list of values for each given factor (for
+ * instance, if you ask factoring by ["ip"; "port"] then for each column
+ * you will have ["ip_value"; "port_value"] for that column. If you
+ * ask for no factor then you have only one column which values is the empty
+ * list [].
+ *
+ * The enumeration of data is composed of one entry per time value in
+ * increasing order, each entry being composed of the time and an array
+ * of data-columns.
+ *
+ * A data-column is itself an array with one optional float per selected
+ * field (each factor-column thus has one data-column per selected field).
+ *)
 (* TODO: (consolidation * data_field) list instead of a single consolidation
  * for all fields *)
 let get conf ?duration max_data_points since until where factors

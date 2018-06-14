@@ -521,8 +521,7 @@ let server_url =
   Arg.(value (opt string "http://127.0.0.1:8080" i))
 
 let graphite =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.graphite
-                   [ "graphite" ] in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.graphite [ "graphite" ] in
   Arg.(value (opt ~vopt:(Some "") (some string) None i))
 
 let api =

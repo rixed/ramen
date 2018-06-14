@@ -57,12 +57,6 @@ do |executable, quantity, out|
   filter.check(@output[executable][out].lines.count)
 end
 
-Then /^([^ ]*) must print "(.*)"(?: on (std(?:out|err)))?\.?/ \
-do |executable, output, out|
-  out = 'stdout' if out.nil?
-  expect(@output[executable][out]).to match(/\b#{output}\b/)
-end
-
 Then /^([^ ]*) must exit with status (.*)(\d)/ do |executable, cmp, status|
   exp = status.to_i
   got = @output[executable]['status']
