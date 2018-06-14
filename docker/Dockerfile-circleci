@@ -13,6 +13,7 @@ RUN apt-get --yes update && \
       bzip2 \
       ca-certificates \
       coreutils \
+      curl \
       git \
       m4 \
       make \
