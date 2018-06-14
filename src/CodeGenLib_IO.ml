@@ -12,7 +12,7 @@ let on_each_input_pre () =
   tuple_count := Uint64.succ !tuple_count
 
 let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
-                    filename preprocessor k =
+                    filename preprocessor watchdog k =
   let open_file =
     if preprocessor = "" then (
       fun () ->
@@ -49,6 +49,7 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
         Lwt_unix.unlink filename else return_unit in
     let rec read_next_line () =
       let on_eof () =
+        RamenWatchdog.disable watchdog ;
         !logger.debug "Finished reading %S" filename ;
         let%lwt () = Lwt_io.close chan in
         if do_unlink && preprocessor <> "" then
@@ -59,9 +60,11 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
         | line ->
           on_each_input_pre () ;
           let%lwt () = k line in
+          RamenWatchdog.reset watchdog ;
           read_next_line ()
       ) else on_eof ()
     in
+    RamenWatchdog.enable watchdog ;
     read_next_line ()
 
 let check_file_exists kind kind_name path =
@@ -77,14 +80,18 @@ let check_file_exists kind kind_name path =
 
 let check_dir_exists = check_file_exists Lwt_unix.S_DIR "directory"
 
-let read_glob_lines ?while_ ?do_unlink path preprocessor k =
+let read_glob_lines ?while_ ?do_unlink path preprocessor quit_flag k =
   let dirname = Filename.dirname path
   and glob = Filename.basename path in
   let glob = Globs.compile glob in
+  let watchdog = RamenWatchdog.make "read file" quit_flag in
+  RamenWatchdog.disable watchdog ;
+  RamenWatchdog.run watchdog ;
   let import_file_if_match filename =
     if Globs.matches glob filename then
       try%lwt
-        read_file_lines ?while_ ?do_unlink (dirname ^"/"^ filename) preprocessor k
+        read_file_lines ?while_ ?do_unlink (dirname ^"/"^ filename)
+                        preprocessor watchdog k
       with exn ->
         !logger.error "Exception while reading file %s: %s\n%s"
           filename

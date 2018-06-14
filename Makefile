@@ -80,8 +80,7 @@ RAMEN_SOURCES = \
 	src/RamenTypes.ml src/RamenTuple.ml src/RamenLang.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
-	src/RamenSerialization.ml \
-	src/RamenConf.ml \
+	src/RamenSerialization.ml src/RamenConf.ml src/RamenWatchdog.ml \
 	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
@@ -93,7 +92,7 @@ RAMEN_SOURCES = \
 
 CODEGENLIB_SOURCES = \
 	src/RamenConsts.ml src/RamenLog.ml src/RamenHelpers.ml src/Globs.ml \
-	src/RamenRWLock.ml src/RamenAdvLock.ml \
+	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenWatchdog.ml \
 	src/RamenOutRef.ml src/RamenParsing.ml \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
@@ -257,7 +256,7 @@ LINKED_FOR_TESTS = \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
 	src/RamenTypes.ml src/RamenTuple.ml src/RamenLang.ml src/RamenExpr.ml \
-	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
+	src/RamenWatchdog.ml src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenOperation.ml src/RamenProgram.ml src/RamenConf.ml \
 	src/Globs.ml src/RamenCompilConfig.ml src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml src/RamenHeap.ml src/RamenSortBuf.ml \

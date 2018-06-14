@@ -85,7 +85,7 @@ let run_background ?cwd cmd args env =
     execve cmd args env
   | pid -> pid
 
-let cleanup_old_files max_archives conf =
+let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
   (* Have a list of directories and regexps and current version,
    * Iter through this list for file matching the regexp and that are also
    * directories.
@@ -129,7 +129,10 @@ let cleanup_old_files max_archives conf =
   in
   let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
   and v_regexp = regexp "v[0-9]+"
-  and v1v2_regexp = regexp "v[0-9]+_v[0-9]+" in
+  and v1v2_regexp = regexp "v[0-9]+_v[0-9]+"
+  and watchdog =
+    RamenWatchdog.make ~timeout:(sleep_time *. 2.) "GC files" quit
+  in
   let rec loop () =
     let to_clean =
       [ "log", date_regexp, get_log_file () ;
@@ -164,8 +167,10 @@ let cleanup_old_files max_archives conf =
     in
     dir_subtree_iter ~on_dir arcdir ;
     dir_subtree_iter ~on_dir reportdir ;
-    Lwt_unix.sleep 3600. >>= loop
+    RamenWatchdog.reset watchdog ;
+    Lwt_unix.sleep sleep_time >>= loop
   in
+  RamenWatchdog.run watchdog ;
   loop ()
 
 (*
@@ -672,7 +677,8 @@ let synchronize_running conf autoreload_delay =
   in
   (* The hash of programs that must be running, updated by [loop]: *)
   let must_run = Hashtbl.create 307
-  and running = Hashtbl.create 307 in
+  and running = Hashtbl.create 307
+  and watchdog = RamenWatchdog.make "supervisor" quit in
   let rec loop last_read =
     none_shall_pass (fun () ->
       process_workers_terminations conf running ;
@@ -726,6 +732,8 @@ let synchronize_running conf autoreload_delay =
         let delay = if !quit then 0.1 else 1. in
         Gc.minor () ;
         let%lwt () = Lwt_unix.sleep delay in
+        RamenWatchdog.reset watchdog ;
         loop last_read))
   in
+  RamenWatchdog.run watchdog ;
   loop 0.

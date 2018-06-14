@@ -637,7 +637,8 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
     (* Allow `ramen test` some time to run all other workers: *)
     let%lwt () = Lwt_unix.sleep 1. in
     let while_ () = not !quit in
-    CodeGenLib_IO.read_glob_lines ~while_ ~do_unlink filename preprocessor (fun line ->
+    CodeGenLib_IO.read_glob_lines
+      ~while_ ~do_unlink filename preprocessor quit (fun line ->
       match of_string line with
       | exception e ->
         !logger.error "Cannot parse line %S: %s"

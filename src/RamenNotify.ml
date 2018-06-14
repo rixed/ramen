@@ -550,13 +550,16 @@ let send_next now =
     )
 
 let send_notifications conf =
+  let watchdog = RamenWatchdog.make "notifier" RamenProcesses.quit in
   let rec loop () =
     let now = Unix.gettimeofday () in
     while send_next now do () done ;
     if pendings.dirty then (
       save_pendings conf ;
       pendings.dirty <- false) ;
+    RamenWatchdog.reset watchdog ;
     Lwt_unix.sleep 1. >>= loop in
+  RamenWatchdog.run watchdog ;
   loop ()
 
 let start conf notif_conf rb =
