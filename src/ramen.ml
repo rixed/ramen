@@ -525,6 +525,10 @@ let graphite =
                    [ "graphite" ] in
   Arg.(value (opt ~vopt:(Some "") (some string) None i))
 
+let api =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.api [ "api-v1" ] in
+  Arg.(value (opt ~vopt:(Some "") (some string) None i))
+
 let httpd =
   Term.(
     (const RamenCliCmd.httpd
@@ -533,6 +537,7 @@ let httpd =
       $ to_stdout
       $ to_syslog
       $ server_url
+      $ api
       $ graphite),
     info ~doc:RamenConsts.CliInfo.httpd "httpd")
 

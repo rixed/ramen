@@ -8,12 +8,14 @@ ENV['OCAMLRUNPARAM'] = nil
 # Also, by default we want a specific setting for experiments:
 ENV['RAMEN_VARIANTS'] = 'TheBigOne=on'
 
+$daemon_pids = {}
+
 def kill_ramens ()
-  if not $ramen_pid.nil? then
-    Process.kill('INT', $ramen_pid)
-    Process.waitpid $ramen_pid
-    $ramen_pid = nil
+  $daemon_pids.each do |cmd, pid|
+    Process.kill('INT', pid)
+    Process.waitpid pid
   end
+  $daemon_pids = {}
 end
 
 at_exit do

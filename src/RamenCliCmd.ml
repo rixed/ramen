@@ -614,9 +614,7 @@ let timeseries conf since until with_header where factors max_data_points
 let timerange conf func_name () =
   logger := make_logger conf.C.debug ;
   match C.program_func_of_user_string func_name with
-  | exception Not_found ->
-      !logger.error "Cannot find function %S" func_name ;
-      exit 1
+  | exception _ -> exit 1
   | program_name, func_name ->
       let mi_ma =
         Lwt_main.run (
@@ -639,7 +637,7 @@ let timerange conf func_name () =
  * or any other API of our own.
  *)
 
-let httpd conf daemonize to_stdout to_syslog server_url graphite () =
+let httpd conf daemonize to_stdout to_syslog server_url api graphite () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
@@ -673,13 +671,16 @@ let httpd conf daemonize to_stdout to_syslog server_url graphite () =
       try%lwt rout1 meth path params headers body
       with RamenHttpHelpers.BadPrefix ->
         rout2 meth path params headers body in
-  let router _ _ _ _ _ =
-    RamenHttpHelpers.not_found "todo default API" in
-  let router =
-    match graphite with
-    | None -> router
-    | Some prefix ->
-        router ++ RamenGraphite.router conf prefix in
+  let router _ path _ _ _ =
+    let path = String.join "/" path in
+    RamenHttpHelpers.not_found (Printf.sprintf "Unknown resource %S" path)
+  in
+  let router = Option.map_default (fun prefix ->
+    !logger.info "Starting Graphite impersonator on %S" prefix ;
+    RamenGraphite.router conf prefix) router graphite ++ router in
+  let router = Option.map_default (fun prefix ->
+    !logger.info "Serving custom API on %S" prefix ;
+    RamenApi.router conf prefix) router api ++ router in
   Lwt_main.run (
     async (fun () ->
       restart_on_failure "wait_all_pids_loop"

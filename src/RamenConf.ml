@@ -142,8 +142,9 @@ let program_func_of_user_string ?default_program s =
     match default_program with
     | Some l -> l, s
     | None ->
-        !logger.error "Cannot find function %S" s ;
-        raise Not_found
+        let e = Printf.sprintf "Cannot find function %S" s in
+        !logger.error "%s" e ;
+        failwith e
 
 (* Cannot be in RamenHelpers since it depends on PPP and CodeGen depends on
  * RamenHelpers: *)

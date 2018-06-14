@@ -53,6 +53,7 @@ struct
   let supervisor = "Start the processes supervisor"
   let httpd = "Start an HTTP server"
   let graphite = "Impersonate graphite for Grafana"
+  let api = "Implement ramen API over http"
   let notifier = "Start the notifier"
   let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"

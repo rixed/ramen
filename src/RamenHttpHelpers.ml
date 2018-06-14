@@ -167,9 +167,7 @@ let http_service port url_prefix router =
              Header.init_with "Access-Control-Allow-Origin" "*" in
            let headers =
              Header.add headers "Content-Type" RamenConsts.ContentTypes.json in
-           let body =
-             Printf.sprintf "{\"success\": false, \"error\": %S}\n" msg in
-           Server.respond_string ~headers ~status ~body ()
+           Server.respond_string ~headers ~status ~body:msg ()
        | exn ->
            print_exception exn ;
            let code = 500 in
@@ -195,7 +193,7 @@ let http_service port url_prefix router =
   let stop = http_stop_thread () in
   Server.create ~on_exn ~stop ~mode:tcp_mode entry_point
 
-let respond_ok ~body ?(ct=RamenConsts.ContentTypes.json) () =
+let respond_ok ?(ct=RamenConsts.ContentTypes.json) body =
   let status = `Code 200 in
   let headers = Header.init_with "Content-Type" ct in
   let headers = Header.add headers "Access-Control-Allow-Origin" "*" in

@@ -140,15 +140,16 @@ let write_record conf ser_in_type rb tuple =
     (* For tests we won't archive the ringbufs so no need for time info: *)
     0., 0.)
 
-let find_field_index typ n =
-  match List.findi (fun _i f -> f.RamenTuple.typ_name = n) typ with
-  | exception Not_found ->
-      let err_msg =
-        Printf.sprintf2 "Field %s does not exist (possible fields are: %a)" n
-          (List.print ~first:"" ~last:"" ~sep:", "
-             (fun oc f -> String.print oc f.RamenTuple.typ_name)) typ in
-      failwith err_msg
-  | i, _ -> i
+let find_field typ n =
+  try List.findi (fun _i f -> f.RamenTuple.typ_name = n) typ
+  with Not_found ->
+    let err_msg =
+      Printf.sprintf2 "Field %s does not exist (possible fields are: %a)" n
+        (List.print ~first:"" ~last:"" ~sep:", "
+           (fun oc f -> String.print oc f.RamenTuple.typ_name)) typ in
+    failwith err_msg
+
+let find_field_index typ n = find_field typ n |> fst
 
 (* Build a filter function for tuples of the given type: *)
 let filter_tuple_by typ where =

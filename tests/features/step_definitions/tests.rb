@@ -146,11 +146,11 @@ Given /^(.*) are compiled/ do |programs|
   end
 end
 
-Given /^ramen (.*) is started$/ do |args|
-  if $ramen_pid.nil?
+Given /^(ramen .*) is started$/ do |cmd|
+  if $daemon_pids[cmd].nil?
     step "the environment variable RAMEN_PERSIST_DIR is set"
     # Cannot daemonize or we won't know the actual pid:
-    $ramen_pid = Process.spawn("ramen #{args}")
+    $daemon_pids[cmd] = Process.spawn(cmd)
   end
 end
 
@@ -227,7 +227,7 @@ end
 Then /^([^ ]*) must mention "(.*)"(?: on (std(?:out|err)))?\.?/ \
 do |executable, what, out|
   out = 'stdout' if out.nil?
-  expect(@output[executable][out]).to match(/\b#{what}\b/)
+  expect(@output[executable][out]).to match(/#{what}/)
 end
 
 When /I wait (\d+) seconds?/ do |n|

@@ -15,8 +15,6 @@
  * There seems to be a call to get the list of supported functions, maybe
  * investigate that?
  *)
-open Cohttp
-open Cohttp_lwt_unix
 open Batteries
 open BatOption.Infix
 open Lwt
@@ -314,7 +312,7 @@ let complete_graphite_find conf headers params =
              uniquify () |>
              List.of_enum in
   let body = PPP.to_string graphite_metrics_ppp_json resp in
-  respond_ok ~body ()
+  respond_ok body
 
 (*
  * Render a selected metric (in JSON only, no actual picture is
@@ -558,10 +556,10 @@ let render_graphite conf headers body =
   let resp = reduce_render_resp max_timeseries resp in
   let body = PPP.to_string graphite_render_resp_ppp_json resp in
   !logger.debug "%d metrics from %d scans" (List.length resp) (Hashtbl.length scans) ;
-  respond_ok ~body ()
+  respond_ok body
 
 let version _conf _headers _params =
-  respond_ok ~body:"1.1.3" ()
+  respond_ok "1.1.3"
 
 let router conf prefix =
   (* The function called for each HTTP request: *)
@@ -578,15 +576,15 @@ let router conf prefix =
     | `GET, ["version"] ->
       version conf headers params
     | `OPTIONS, _ ->
-      let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+      let headers = Cohttp.Header.init_with "Access-Control-Allow-Origin" "*" in
       let headers =
-        Header.add headers "Access-Control-Allow-Methods" "POST" in
+        Cohttp.Header.add headers "Access-Control-Allow-Methods" "POST" in
       let headers =
-        Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
-      Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
+        Cohttp.Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
+      Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
     (* Errors *)
     | `PUT, p | `GET, p | `DELETE, p ->
       let path = String.join "/" p in
-      not_found ("Unknown resource "^ path)
+      not_found (Printf.sprintf "Unknown resource %S" path)
     | _ ->
       fail (HttpError (501, "Method not implemented"))

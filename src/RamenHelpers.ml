@@ -962,3 +962,17 @@ let subst_tuple_fields =
                          present in that tuple!" tuple_name field_name ;
           "??"^ tuple_name ^"."^ field_name ^"??"
     ) text
+
+(* [string_compare_from i s1 s2] is equivalent to
+ * [compare (sub s1 i (length s2) s2], but without allocating a temporary
+ * string. *)
+let string_compare_from i s1 s2 =
+  let l = String.length s2 in
+  if String.length s1 > l then invalid_arg "string_compare_from" else
+  let rec loop i1 i2 =
+    if i2 >= l then 0 else
+    match Char.compare s1.[i1] s2.[i1] with
+    | 0 -> loop (i1+1) (i2+1)
+    | c -> c
+  in
+  loop i 0
