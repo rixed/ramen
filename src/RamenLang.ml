@@ -94,8 +94,7 @@ let tuple_prefix_print oc p =
 let string_of_syntax_error =
   let h = "Syntax Error: " in
   function
-    ParseError { error ; text } ->
-    "Parse error: "^ error ^" while parsing: "^ text
+  | ParseError { error } -> "Parse error: "^ error
   | NotConstant s -> h ^ s ^" is not constant"
   | BadConstant s -> s
   | TupleNotAllowed { tuple ; where ; allowed } ->
@@ -269,10 +268,9 @@ let print_expansed_function oc (prog_opt, func) =
 let string_of_func_id pn =
   IO.to_string print_expansed_function pn
 
-let not_quote =
-  cond "quoted identifier" ((<>) '\'') 'x'
-
 let program_name ?(quoted=false) m =
+  let not_quote =
+    cond "quoted identifier" ((<>) '\'') 'x' in
   let what = "program name" in
   let m = what :: m in
   let first_char = if quoted then not_quote
@@ -300,9 +298,11 @@ let expansed_program_name ?(quoted=false) m =
     optional ~def:[] expansed_params
   ) m
 
-let function_name ?(quoted=false) m =
+let func_name ?(quoted=false) m =
   let what = "function name" in
   let m = what :: m in
+  let not_quote =
+    cond "quoted identifier" (fun c -> c <> '\'' && c <> '/') 'x' in
   let first_char = if quoted then not_quote
                    else letter ||| underscore in
   let any_char = if quoted then not_quote
@@ -312,18 +312,22 @@ let function_name ?(quoted=false) m =
     fun (c, s) -> String.of_list (c :: s)
   ) m
 
-(* program_allowed: if true, the function name can be prefixed with a program
- * name. *)
+let function_name =
+  let unquoted = func_name
+  and quoted =
+    id_quote -+ func_name ~quoted:true +- id_quote in
+  (quoted ||| unquoted)
+
 let func_identifier m =
   let m = "function identifier" :: m in
   let unquoted =
     optional ~def:None
       (some expansed_program_name +- char '/') ++
-    function_name
+    func_name
   and quoted =
     id_quote -+
     optional ~def:None
        (some (expansed_program_name ~quoted:true) +- char '/') ++
-    function_name ~quoted:true +-
+    func_name ~quoted:true +-
     id_quote
   in (quoted ||| unquoted) m
