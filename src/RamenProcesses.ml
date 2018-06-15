@@ -212,7 +212,8 @@ let input_spec conf parent child =
   (* In case of merge, ringbufs are numbered as the node parents: *)
   (if child.F.merge_inputs then
     match List.findi (fun i (exp_pprog, pname) ->
-            exp_pprog = parent.F.exp_program_name && pname = parent.name
+            let pprog_exp_name = exp_pprog |? child.F.exp_program_name in
+            pprog_exp_name = parent.F.exp_program_name && pname = parent.name
           ) child.parents with
     | exception Not_found ->
         !logger.error "Operation %S is not a child of %S"
@@ -246,7 +247,17 @@ let relatives f must_run =
   Hashtbl.fold (fun _k (_bin, _params, _program_name, func) (ps, cs) ->
     (* Tells if [func'] is a parent of [func]: *)
     let is_parent_of func func' =
-      List.mem (func'.F.exp_program_name, func'.F.name) func.F.parents in
+      List.exists (function
+        | None, par_func ->
+            func'.F.name = par_func &&
+            (* No parent program specified: func' must be in the same
+             * instance of the same program: *)
+            func'.F.exp_program_name = func.F.exp_program_name
+        | Some par_prog, par_func ->
+            func'.F.name = par_func &&
+            (* Parent specified: func' must run in that very instance: *)
+            func'.F.exp_program_name = par_prog
+      ) func.F.parents in
     (if is_parent_of f func then func::ps else ps),
     (if is_parent_of func f then func::cs else cs)
   ) must_run ([], [])
@@ -481,15 +492,20 @@ let really_try_start conf must_run proc =
   let parents, children = relatives proc.func must_run in
   (* We must not start if a parent is missing: *)
   let parents_ok =
-    List.fold_left (fun ok (p_exp_prog, p_func) ->
-      if List.exists (fun func ->
-           func.F.exp_program_name = p_exp_prog && func.F.name = p_func
-         ) parents then ok
+    List.fold_left (fun ok parent ->
+      if match parent with
+         | None, _ ->
+            true (* Parent runs in the very program we want to start *)
+         | Some p_exp_prog, p_func ->
+            List.exists (fun func ->
+              func.F.exp_program_name = p_exp_prog && func.F.name = p_func
+            ) parents
+      then ok
       else (
-        !logger.error "Parent of %a/%s is missing: %s/%s"
+        !logger.error "Parent of %a/%s is missing: %a"
           RamenLang.print_expansed_program (proc.program_name, proc.params)
           proc.func.name
-          p_exp_prog p_func ;
+          F.print_parent parent ;
         false)
     ) true proc.func.parents in
   let check_linkage p c =

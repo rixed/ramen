@@ -139,19 +139,20 @@ let links conf no_abbrev with_header sort_col top prefix () =
           let bin, prog = get_rc () in
           Lwt_list.fold_left_s (fun links func ->
             let%lwt _, links =
-              Lwt_list.fold_left_s (fun (i, links) (par_prog_name, par_func_name) ->
+              Lwt_list.fold_left_s (fun (i, links) (par_prog, par_func) ->
+                let par_prog = par_prog |? func.F.exp_program_name in
                 let parent =
-                  match Hashtbl.find programs par_prog_name with
+                  match Hashtbl.find programs par_prog with
                   | exception Not_found ->
-                      NotRunning (par_prog_name, par_func_name)
+                      NotRunning (par_prog, par_func)
                   | get_rc ->
                       let _bin, pprog = get_rc () in
                       (match List.find (fun f ->
-                               f.F.name = par_func_name
+                               f.F.name = par_func
                              ) pprog.P.funcs with
                       | exception Not_found ->
-                          NotRunning (par_prog_name, par_func_name)
-                      | par_func -> Running par_func) in
+                          NotRunning (par_prog, par_func)
+                      | pfunc -> Running pfunc) in
                 match%lwt line_of_link i parent (Running func) with
                 | Some line -> Lwt.return (i + 1, line :: links)
                 | None -> Lwt.return (i + 1, links)

@@ -121,7 +121,7 @@ struct
       operation : RamenOperation.t option ;
       mutable in_type : tuple_type ;
       mutable out_type : tuple_type ;
-      parents : (string * string) list ;
+      parents : (string option * string) list ;
       (* The signature used to name compiled modules *)
       mutable signature : string ;
       (* Extracted from the operation or inferred from parents: *)
@@ -162,10 +162,7 @@ let make_untyped_func program_name func_name params operation =
   let parents =
     RamenOperation.parents_of_operation operation |>
     List.map (fun (prog_opt, func_name) ->
-      (match prog_opt with
-      | None -> string_of_program_id (program_name, params)
-      | Some id -> string_of_program_id id),
-      func_name) in
+      Option.map string_of_program_id prog_opt, func_name) in
   Func.{
     program_name ; name = func_name ; signature = "" ;
     operation = Some operation ; parents ;

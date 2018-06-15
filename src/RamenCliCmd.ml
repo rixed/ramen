@@ -176,15 +176,16 @@ let compile conf root_path use_external_compiler bundle_dir
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let check_links ?(force=false) program_name prog running_programs =
+let check_links ?(force=false) exp_program_name prog running_programs =
   !logger.debug "checking links" ;
   List.iter (fun func ->
     (* Check linkage:
      * We want to warn if a parent is missing. The synchronizer will
      * start the worker but it will be blocked. *)
-    List.iter (fun (par_prog, par_func) ->
-      if par_prog <> program_name then
-        match Hashtbl.find running_programs par_prog with
+    List.iter (function
+      | None, _ -> ()
+      | Some par_prog, par_func ->
+        (match Hashtbl.find running_programs par_prog with
         | exception Not_found ->
           !logger.warning "Operation %s depends on program %s, \
                            which is not running."
@@ -201,7 +202,7 @@ let check_links ?(force=false) program_name prog running_programs =
             try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
                                                 par.F.out_type.ser
             with Failure m when force -> (* or let it fail *)
-              !logger.error "%s" m)
+              !logger.error "%s" m))
     ) func.parents
   ) prog.P.funcs ;
   (* We want to err if a child is incompatible (unless --force).
@@ -212,13 +213,13 @@ let check_links ?(force=false) program_name prog running_programs =
   Hashtbl.iter (fun prog_name mre ->
     let prog = P.of_bin mre.C.params mre.C.bin in
     List.iter (fun func ->
-      List.iter (fun (par_prog, par_func) ->
-        if par_prog = program_name then
+      List.iter (fun (par_prog, par_func as parent) ->
+        if par_prog = Some exp_program_name then
           match List.find (fun f -> f.F.name = par_func) prog.P.funcs with
           | exception Not_found ->
             !logger.warning "Operation %s/%s, currently stalled, will still \
-                             be missing its parent %s/%s"
-              func.F.exp_program_name func.F.name par_prog par_func
+                             be missing its parent %a"
+              func.F.exp_program_name func.F.name F.print_parent parent
           | f -> (* so func is depending on f, let's see: *)
             try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
                                                 f.F.out_type.ser
@@ -248,15 +249,20 @@ let run conf params bin_files () =
  * This time the program is identified by its name not its executable file.
  *)
 
-let check_orphans conf program_names running_programs =
+let check_orphans conf killed_prog_names running_programs =
   (* We want to warn if a child is stalled. *)
   Hashtbl.iter (fun prog_name mre ->
-    if not (List.mem prog_name program_names) then
+    if List.mem prog_name killed_prog_names then
+      () (* This program is being killed, skip it *)
+    else
       let prog = P.of_bin mre.C.params mre.C.bin in
       List.iter (fun func ->
+        (* If this func has parents, all of which are now missing, then
+         * complain: *)
         if func.F.parents <> [] &&
-           List.for_all (fun (par_prog, _) ->
-             List.mem par_prog program_names
+           List.for_all (function
+             | None, _ -> false (* does not depend in a killed program *)
+             | Some par_prog, _ -> List.mem par_prog killed_prog_names
            ) func.F.parents
         then
           !logger.warning "Operation %s/%s, will be left without parents"
@@ -264,15 +270,15 @@ let check_orphans conf program_names running_programs =
       ) prog.P.funcs
   ) running_programs
 
-let kill conf prog_names () =
+let kill conf killed_prog_names () =
   logger := make_logger conf.C.debug ;
   let nb_kills =
     Lwt_main.run (
       C.with_wlock conf (fun running_programs ->
-        check_orphans conf prog_names running_programs ;
+        check_orphans conf killed_prog_names running_programs ;
         let before = Hashtbl.length running_programs in
         Hashtbl.filteri_inplace (fun name _mre ->
-          not (List.mem name prog_names)
+          not (List.mem name killed_prog_names)
         ) running_programs ;
         return (before - Hashtbl.length running_programs))) in
   Printf.printf "Killed %d program%s\n"

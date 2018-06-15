@@ -34,7 +34,9 @@ struct
        * change when the code change, without a need to also change the
        * name of the operation. *)
       signature : string ;
-      parents : (string (* expansed program name *) * string) list ;
+      parents : (string option (* expansed program name or None if this
+                                  program *) *
+                 string (* function name within that program *)) list ;
       merge_inputs : bool ;
       event_time : RamenEventTime.t option ;
       factors : string list ;
@@ -42,7 +44,9 @@ struct
       envvars : string list }
     [@@ppp PPP_OCaml]
 
-  let print_parent oc (p, f) = Printf.fprintf oc "%s/%s" p f
+  let print_parent oc = function
+    | None, f -> String.print oc f
+    | Some p, f -> Printf.fprintf oc "%s/%s" p f
 
   let fq_name f = f.exp_program_name ^"/"^ f.name
 
