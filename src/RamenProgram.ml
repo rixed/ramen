@@ -32,7 +32,7 @@ let print_param oc (n, v) =
 
 let print_func oc n =
   (* TODO: keep the info that func was anonymous? *)
-  Printf.fprintf oc "DEFINE %S AS %a;"
+  Printf.fprintf oc "DEFINE '%s' AS %a;"
     n.name
     RamenOperation.print n.operation
 
