@@ -4,19 +4,31 @@ open Batteries
 
 (* Event time info *)
 
-type event_start = string * float [@@ppp PPP_OCaml]
-type event_duration = DurationConst of float (* seconds *)
-                    | DurationField of (string * float)
-                    | StopField of (string * float) [@@ppp PPP_OCaml]
+(* The fields used in event time description can either come from the output
+ * tuple or from parameters: *)
+type field_source = OutputField | Parameter [@@ppp PPP_OCaml]
+
+type field = string * field_source ref * float [@@ppp PPP_OCaml]
+
+let string_of_field (n, _, s) =
+  let string_of_scale f = "*"^ string_of_float f in
+  n ^ string_of_scale s
+
+type event_start = field [@@ppp PPP_OCaml]
+
+type event_duration =
+  | DurationConst of float (* seconds *)
+  | DurationField of field
+  | StopField of field
+  [@@ppp PPP_OCaml]
+
 type t = (event_start * event_duration) [@@ppp PPP_OCaml]
 
 let print fmt (start_field, duration) =
-  let string_of_scale f = "*"^ string_of_float f in
-  Printf.fprintf fmt "EVENT STARTING AT %s%s AND %s"
-    (fst start_field)
-    (string_of_scale (snd start_field))
+  Printf.fprintf fmt "EVENT STARTING AT %s AND %s"
+    (string_of_field start_field)
     (match duration with
      (* FIXME: uses RamenExpr.print_duration: *)
      | DurationConst f -> "DURATION "^ string_of_float f
-     | DurationField (n, s) -> "DURATION "^ n ^ string_of_scale s
-     | StopField (n, s) -> "STOPPING AT "^ n ^ string_of_scale s)
+     | DurationField f -> "DURATION "^ string_of_field f
+     | StopField f -> "STOPPING AT "^ string_of_field f)

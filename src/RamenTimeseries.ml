@@ -69,7 +69,7 @@ let get conf ?duration max_data_points since until where factors
       Printf.fprintf oc "%s=%a" field RamenTypes.print value)) where
     (List.print String.print) factors ;
   let nb_data_fields = List.length data_fields in
-  let%lwt bname, filter, typ, event_time =
+  let%lwt bname, filter, typ, params, event_time =
     (* Read directly from the instrumentation ringbuf when func_name ends
      * with "#stats" *)
     if func_name = "stats" || String.ends_with func_name "#stats" then
@@ -84,15 +84,15 @@ let get conf ?duration max_data_points since until where factors
           tuple.(wi) = RamenTypes.VString func_name &&
           where_filter tuple in
       let bname = C.report_ringbuf conf in
-      return (bname, filter, typ, RamenBinocle.event_time)
+      return (bname, filter, typ, [], RamenBinocle.event_time)
     else
       (* Create the non-wrapping RingBuf (under a standard name given
        * by RamenConf *)
-      let%lwt func, bname =
+      let%lwt prog, func, bname =
         RamenExport.make_temp_export_by_name conf ?duration func_name in
       let typ = func.F.out_type in
       let filter = RamenSerialization.filter_tuple_by typ.ser where in
-      return (bname, filter, typ, func.F.event_time)
+      return (bname, filter, typ, prog.P.params, func.F.event_time)
   in
   let open RamenSerialization in
   let fis =
@@ -111,7 +111,8 @@ let get conf ?duration max_data_points since until where factors
     | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
     | _ -> bucket_avg in
   let%lwt () =
-    fold_time_range bname typ.ser event_time since until () (fun () tuple t1 t2 ->
+    fold_time_range bname typ.ser params event_time since until ()
+      (fun () tuple t1 t2 ->
       if filter tuple then (
         let k = key_of_factors tuple in
         let buckets =

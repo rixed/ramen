@@ -41,7 +41,10 @@ let tuple_typ =
     { typ_name = "src_mask" ; nullable = false ; typ = TU8 } ;
     { typ_name = "dst_mask" ; nullable = false ; typ = TU8 } ]
 
-let event_time = Some (("first", 1.), RamenEventTime.StopField ("last", 1.))
+let event_time =
+  let open RamenEventTime in
+  Some (("first", ref OutputField, 1.),
+        StopField ("last", ref OutputField, 1.))
 
 let factors = [ "source" ]
 

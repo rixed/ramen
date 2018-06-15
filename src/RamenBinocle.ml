@@ -34,7 +34,9 @@ let tuple_typ =
     { typ_name = "bytes_out" ;       nullable = true ;   typ = TU64 } ;
     { typ_name = "last_out" ;        nullable = true ;   typ = TFloat } ]
 
-let event_time = Some (("time", 1.), RamenEventTime.DurationConst 0.)
+let event_time =
+  let open RamenEventTime in
+  Some (("time", ref OutputField, 1.), DurationConst 0.)
 
 let factors = [ "worker" ]
 

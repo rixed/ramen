@@ -1517,21 +1517,31 @@ let forwarded_field func field =
             None
       ) fields
 
-let infer_event_time func event_time_opt =
+let forwarded_field_or_param parent func field = function
+  | RamenEventTime.Parameter ->
+      (* The scope of any given parameter is the program.
+       * It must be assumed that parameters with same name have different
+       * values in different programs. *)
+      if func.Func.program_name = parent.Func.program_name then field
+      else raise Not_found
+  | RamenEventTime.OutputField ->
+      forwarded_field func field
+
+let infer_event_time func parent =
   let open RamenEventTime in
   try
-    Option.map (function ((f1, f1_scale), duration) ->
-      (forwarded_field func f1, f1_scale),
+    Option.map (function ((f1, f1_src, f1_scale), duration) ->
+      (forwarded_field_or_param parent func f1 !f1_src, f1_src, f1_scale),
       try
         match duration with
         | DurationConst _ -> duration
-        | DurationField (f2, f2_scale) ->
-            DurationField (forwarded_field func f2, f2_scale)
-        | StopField (f2, f2_scale) ->
-            StopField (forwarded_field func f2, f2_scale)
+        | DurationField (f2, f2_src, f2_scale) ->
+            DurationField (forwarded_field_or_param parent func f2 !f2_src, f2_src, f2_scale)
+        | StopField (f2, f2_src, f2_scale) ->
+            StopField (forwarded_field_or_param parent func f2 !f2_src, f2_src, f2_scale)
       with Not_found ->
         DurationConst 0.
-    ) event_time_opt
+    ) parent.event_time
   with Not_found -> None
 
 let infer_factors func =
@@ -1612,12 +1622,13 @@ let set_all_types conf parents funcs params =
     func.Func.out_type <- typed_of_untyped_tuple ?cmp func.Func.out_type ;
     (* Finally, if no event time info or factors have been given then maybe
      * we can infer them from the parents (we consider only the first parent
-     * here): *)
+     * here) (TODO: consider all of them until event time can be inferred
+     * from one): *)
     Option.may (fun operation ->
       let parents = Hashtbl.find_default parents func.Func.name [] in
       if parents <> [] && func.event_time = None then (
         func.event_time <-
-          infer_event_time func (List.hd parents).event_time ;
+          infer_event_time func (List.hd parents) ;
         if func.event_time <> None then
           !logger.debug "Function %s can reuse event time from parents"
             func.name

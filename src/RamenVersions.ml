@@ -9,7 +9,7 @@ let release_tag = "v2.1.2"
 let graph_config = "v10" (* last: params in RC key *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v21" (* last: exp_program_name, envvars... *)
+let codegen = "v22" (* last: add params in event time *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)

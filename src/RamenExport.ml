@@ -38,6 +38,6 @@ let make_temp_export_by_name conf ?duration func_name =
     | exception Not_found ->
         fail_with ("Function "^ program_name ^"/"^ func_name ^
                    " does not exist")
-    | func ->
+    | prog, func ->
         let%lwt bname = make_temp_export conf ?duration func in
-        return (func, bname))
+        return (prog, func, bname))

@@ -1252,42 +1252,51 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
   ) tuple_typ ;
   Printf.fprintf oc "\t)\n"
 
-let emit_time_of_tuple name event_time oc tuple_typ =
+let emit_time_of_tuple name params event_time oc tuple_typ =
+  let open RamenEventTime in
   Printf.fprintf oc "let %s %a =\n"
     name
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   match event_time with
   | None ->
       Printf.fprintf oc "\t0., 0. (* No event time info *)\n"
-  | Some ((sta_field, sta_scale), dur) ->
-      let field_value_to_float oc field_name =
-        let f = List.find (fun t -> t.typ_name = field_name) tuple_typ in
-        Printf.fprintf oc
-          (if f.nullable then "((%a) %s |? 0.)" else "(%a) %s")
-          (conv_from_to ~nullable:f.nullable) (f.typ, TFloat)
-          (id_of_field_name ~tuple:TupleOut field_name)
+  | Some ((sta_field, sta_src, sta_scale), dur) ->
+      let field_value_to_float src oc field_name =
+        match src with
+        | OutputField ->
+            let f = List.find (fun t -> t.typ_name = field_name) tuple_typ in
+            Printf.fprintf oc
+              (if f.nullable then "((%a) %s |? 0.)" else "(%a) %s")
+              (conv_from_to ~nullable:f.nullable) (f.typ, TFloat)
+              (id_of_field_name ~tuple:TupleOut field_name)
+        | Parameter ->
+            let p_typ = List.assoc field_name params |>
+                        RamenTypes.type_of in
+            Printf.fprintf oc "(%a %s_%s_)"
+              (conv_from_to ~nullable:false) (p_typ, TFloat)
+              (id_of_prefix TupleParam) field_name
       in
       Printf.fprintf oc "\tlet start_ = %a *. %a\n"
-        field_value_to_float sta_field
+        (field_value_to_float !sta_src) sta_field
         emit_float sta_scale ;
       (match dur with
-      | RamenEventTime.DurationConst d ->
+      | DurationConst d ->
           Printf.fprintf oc "\tand dur_ = %a in\n\
                              \tstart_, start_ +. dur_\n"
             emit_float d
-      | RamenEventTime.DurationField (dur_field, dur_scale) ->
+      | DurationField (dur_field, dur_src, dur_scale) ->
           Printf.fprintf oc "\tand dur_ = %a *. %a in\n\
                              \tstart_, start_ +. dur_\n"
-            field_value_to_float dur_field
+            (field_value_to_float !dur_src) dur_field
             emit_float dur_scale ;
-      | RamenEventTime.StopField (sto_field, sto_scale) ->
+      | StopField (sto_field, sto_src, sto_scale) ->
           Printf.fprintf oc "\tand stop_ = %a *. %a in\n\
                              \tstart_, stop_\n"
-            field_value_to_float sto_field
+            (field_value_to_float !sto_src) sto_field
             emit_float sto_scale)
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
-let emit_read_csv_file consts oc name csv_fname unlink
+let emit_read_csv_file consts params oc name csv_fname unlink
                        csv_separator csv_null
                        tuple_typ preprocessor event_time =
   (* The dynamic part comes from the unpredictable field list.
@@ -1304,13 +1313,13 @@ let emit_read_csv_file consts oc name csv_fname unlink
        \t\ttime_of_tuple_ serialize_tuple_ tuple_of_strings_ %S\n\
        \t\tfield_of_params_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
-    (emit_time_of_tuple "time_of_tuple_" event_time) tuple_typ
+    (emit_time_of_tuple "time_of_tuple_" params event_time) tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) tuple_typ
     name
     csv_fname unlink csv_separator preprocessor
 
-let emit_listen_on consts oc name net_addr port proto =
+let emit_listen_on consts params oc name net_addr port proto =
   let open RamenProtocols in
   let tuple_typ = tuple_typ_of_proto proto in
   let collector = collector_of_proto proto in
@@ -1319,14 +1328,14 @@ let emit_listen_on consts oc name net_addr port proto =
     let %s () =\n\
       \tCodeGenLib.listen_on %s %S %d %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
-    (emit_time_of_tuple "time_of_tuple_" event_time) tuple_typ
+    (emit_time_of_tuple "time_of_tuple_" params event_time) tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     name
     collector
     (Unix.string_of_inet_addr net_addr) port
     (string_of_proto proto)
 
-let emit_instrumentation consts oc name from =
+let emit_instrumentation consts params oc name from =
   let open RamenProtocols in
   let tuple_typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
@@ -1334,7 +1343,7 @@ let emit_instrumentation consts oc name from =
     let %s () =\n\
       \tCodeGenLib.instrumentation %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
-    (emit_time_of_tuple "time_of_tuple_" event_time) tuple_typ
+    (emit_time_of_tuple "time_of_tuple_" params event_time) tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     name
     (List.print (fun oc from ->
@@ -1851,7 +1860,7 @@ let expr_needs_group e =
       | _ -> false
   ) false e
 
-let emit_aggregate consts oc name in_typ out_typ = function
+let emit_aggregate consts params oc name in_typ out_typ = function
   | RamenOperation.Aggregate
       { fields ; and_all_others ; merge ; sort ; where ; key ;
         commit_before ; commit_when ; flush_how ; notifications ; event_time ;
@@ -1885,7 +1894,7 @@ let emit_aggregate consts oc name in_typ out_typ = function
     (emit_when "commit_when_" in_typ mentioned and_all_others out_typ ~consts) commit_when
     (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_typ mentioned and_all_others out_typ ~consts) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
-    (emit_time_of_tuple "time_of_tuple_" event_time) out_typ
+    (emit_time_of_tuple "time_of_tuple_" params event_time) out_typ
     (emit_serialize_tuple "serialize_group_") out_typ
     (emit_generate_tuples "generate_tuples_" in_typ mentioned and_all_others out_typ ~consts) fields
     (emit_should_resubmit "should_resubmit_" in_typ mentioned and_all_others ~consts) flush_how
@@ -1924,7 +1933,7 @@ let sanitize_ocaml_fname s =
   (* Must start with a letter: *)
   "m"^ global_substitute re replace_by_underscore s
 
-let emit_operation  name func_name in_typ out_typ params op oc =
+let emit_operation name func_name in_typ out_typ params op oc =
   Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
     open Batteries\n\
     open Stdint\n"
@@ -1960,14 +1969,14 @@ let emit_operation  name func_name in_typ out_typ params op oc =
   (match op with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                   what = { separator ; null ; fields } ; event_time } ->
-    emit_read_csv_file consts code name fname unlink separator null
+    emit_read_csv_file consts params code name fname unlink separator null
                        fields preprocessor event_time
   | ListenFor { net_addr ; port ; proto } ->
-    emit_listen_on consts code name net_addr port proto
+    emit_listen_on consts params code name net_addr port proto
   | Instrumentation { from } ->
-    emit_instrumentation consts code name from
+    emit_instrumentation consts params code name from
   | Aggregate _ ->
-    emit_aggregate consts code name in_typ out_typ op) ;
+    emit_aggregate consts params code name in_typ out_typ op) ;
   Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\
                      \n(* Operation Implementation: *)\n\n%s\n"
     (IO.close_out consts) (IO.close_out code)

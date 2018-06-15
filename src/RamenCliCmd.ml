@@ -315,7 +315,7 @@ let read_stats conf prefix =
   let event_time = RamenBinocle.event_time in
   let now = Unix.gettimeofday () in
   let%lwt until =
-    match%lwt RamenSerialization.time_range bname typ event_time with
+    match%lwt RamenSerialization.time_range bname typ [] event_time with
     | None ->
         !logger.warning "No time range information for instrumentation" ;
         return now
@@ -337,7 +337,7 @@ let read_stats conf prefix =
   Lwt_main.run (
     let while_ () = (* Do not wait more than 1s: *)
       return (Unix.gettimeofday () -. now < 1.) in
-    RamenSerialization.fold_time_range ~while_ bname typ event_time
+    RamenSerialization.fold_time_range ~while_ bname typ [] event_time
                          since until ()  (fun () tuple t1 t2 ->
     let worker = get_string tuple.(0) in
     if String.starts_with worker prefix then
@@ -494,7 +494,7 @@ let tail conf func_name with_header sep null raw
       (* Create the non-wrapping RingBuf (under a standard name given
        * by RamenConf *)
       Lwt_main.run (
-        let%lwt func, bname =
+        let%lwt _prog, func, bname =
           RamenExport.make_temp_export_by_name conf ~duration func_name in
         let typ = func.F.out_type in
         let filter = RamenSerialization.filter_tuple_by typ.ser where in
@@ -620,10 +620,11 @@ let timerange conf func_name () =
         Lwt_main.run (
           C.with_rlock conf (fun programs ->
             (* We need the func to know its buffer location *)
-            let func = C.find_func programs program_name func_name in
+            let prog, func = C.find_func programs program_name func_name in
             let bname = C.archive_buf_name conf func in
             let typ = func.F.out_type.ser in
-            RamenSerialization.time_range bname typ func.F.event_time))
+            let params = prog.P.params in
+            RamenSerialization.time_range bname typ params func.F.event_time))
       in
       match mi_ma with
         | None -> Printf.printf "No time info or no output yet.\n"

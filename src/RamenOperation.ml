@@ -228,8 +228,9 @@ let event_time_of_operation = function
   | Aggregate { event_time ; _ } -> event_time
   | ReadCSVFile { event_time ; _ } -> event_time
   | ListenFor { proto ; _ } ->
-    RamenProtocols.event_time_of_proto proto
-  | Instrumentation _ -> RamenBinocle.event_time
+      RamenProtocols.event_time_of_proto proto
+  | Instrumentation _ ->
+      RamenBinocle.event_time
 
 let parents_of_operation = function
   | ListenFor _ | ReadCSVFile _
@@ -242,8 +243,8 @@ let factors_of_operation = function
   | ReadCSVFile { factors ; _ }
   | Aggregate { factors ; _ } -> factors
   | ListenFor { factors ; proto ; _ } ->
-    if factors <> [] then factors
-    else RamenProtocols.factors_of_proto proto
+      if factors <> [] then factors
+      else RamenProtocols.factors_of_proto proto
   | Instrumentation _ -> RamenBinocle.factors
 
 let fold_expr init f = function
@@ -316,12 +317,18 @@ let check params =
           IO.to_string (List.print String.print) field_names in
         FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
       raise (SyntaxError m) in
-  let check_event_time field_names ((start_field, _), duration) =
-    check_field_exists field_names start_field ;
+  let check_event_time field_names (start_field, duration) =
+    let check_field (f, src, _scale) =
+      if List.mem_assoc f params then
+        src := RamenEventTime.Parameter
+      else
+        check_field_exists field_names f
+    in
+    check_field start_field ;
     match duration with
     | RamenEventTime.DurationConst _ -> ()
-    | RamenEventTime.DurationField (f, _)
-    | RamenEventTime.StopField (f, _) -> check_field_exists field_names f
+    | RamenEventTime.DurationField f
+    | RamenEventTime.StopField f -> check_field f
   and check_factors field_names =
     List.iter (check_field_exists field_names)
   (* Unless it's a param, assume TupleUnknow belongs to def: *)
@@ -490,18 +497,23 @@ struct
          optional ~def:() blanks -+ number ))
       ) m
     in (
+      let open RamenEventTime in
       strinG "event" -- blanks -- (strinG "starting" ||| strinG "starts") --
       blanks -- strinG "at" -- blanks -+ non_keyword ++ scale ++
-      optional ~def:(RamenEventTime.DurationConst 0.) (
+      optional ~def:(DurationConst 0.) (
         (blanks -- optional ~def:() ((strinG "and" ||| strinG "with") -- blanks) --
          strinG "duration" -- blanks -+ (
-           (non_keyword ++ scale >>: fun n -> RamenEventTime.DurationField n) |||
-           (duration >>: fun n -> RamenEventTime.DurationConst n)) |||
+           (non_keyword ++ scale >>: fun (n, s) ->
+              DurationField (n, ref OutputField, s)) |||
+           (duration >>: fun n -> DurationConst n)) |||
          blanks -- strinG "and" -- blanks --
          (strinG "stops" ||| strinG "stopping" |||
           strinG "ends" ||| strinG "ending") -- blanks --
          strinG "at" -- blanks -+
-           (non_keyword ++ scale >>: fun n -> RamenEventTime.StopField n)))) m
+           (non_keyword ++ scale >>: fun (n, s) ->
+              StopField (n, ref OutputField, s)))) >>:
+      fun ((sta, sca), dur) -> (sta, ref OutputField, sca), dur
+    ) m
 
   let every_clause m =
     let m = "every clause" :: m in
@@ -975,7 +987,7 @@ struct
         merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
-        event_time = Some (("t", 10.), RamenEventTime.DurationConst 60.) ;\
+        event_time = Some (("t", ref RamenEventTime.OutputField, 10.), DurationConst 60.) ;\
         notifications = [] ;\
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
@@ -998,7 +1010,8 @@ struct
         merge = [], 0. ;\
         sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
-        event_time = Some (("t1", 10.), RamenEventTime.StopField ("t2", 10.)) ;\
+        event_time = Some (("t1", ref RamenEventTime.OutputField, 10.), \
+                           StopField ("t2", ref RamenEventTime.OutputField, 10.)) ;\
         notifications = [] ; key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\

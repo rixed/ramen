@@ -151,6 +151,15 @@ let find_field typ n =
 
 let find_field_index typ n = find_field typ n |> fst
 
+let find_param params n =
+  try List.assoc n params
+  with Not_found ->
+    let err_msg =
+      Printf.sprintf2 "Field %s is not a parameter (parameters are: %a)" n
+        (List.print ~first:"" ~last:"" ~sep:", "
+          (fun oc (pn, _pv) -> String.print oc pn)) params in
+    failwith err_msg
+
 (* Build a filter function for tuples of the given type: *)
 let filter_tuple_by typ where =
   (* Find the indices of all the involved fields, and parse the values: *)
@@ -259,24 +268,45 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
  * Notice that contrary to `ramen tail`, `ramen timeseries` must never
  * wait for data and must return as soon as we've reached the end of what's
  * available. *)
-let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f =
+let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ params
+                          event_time init f =
   !logger.debug "Folding over %s" bname ;
   let%lwt event_time_of_tuple =
     match event_time with
     | None ->
         fail_with "Function has no time information"
-    | Some ((start_field, start_scale), duration_info) ->
-        let t1i = find_field_index typ start_field in
-        let t2i = match duration_info with
-          | RamenEventTime.DurationConst _ -> 0 (* won't be used *)
-          | RamenEventTime.DurationField (f, _) -> find_field_index typ f
-          | RamenEventTime.StopField (f, _) -> find_field_index typ f in
+    | Some ((start_field, start_field_src, start_scale), duration_info) ->
+        let open RamenEventTime in
+        let float_of_field i s tup = float_of_scalar tup.(i) *. s
+        and float_of_param n =
+          let pv = find_param params n in
+          float_of_scalar pv in
+        let get_t1 = match !start_field_src with
+          | OutputField ->
+              let i = find_field_index typ start_field in
+              float_of_field i start_scale
+          | Parameter ->
+              let c = float_of_param start_field in
+              fun _tup -> c in
+        let get_t2 = match duration_info with
+          | DurationConst k ->
+              fun _tup t1 -> t1 +. k
+          | DurationField (n, { contents = OutputField }, s) ->
+              let i = find_field_index typ n in
+              fun tup t1 -> t1 +. float_of_field i s tup
+          | StopField (n, { contents = OutputField }, s) ->
+              let i = find_field_index typ n in
+              fun tup _t1 -> float_of_field i s tup
+          | DurationField (n, { contents = Parameter }, s) ->
+              let c = float_of_param n in
+              fun tup t1 -> t1 +. c
+          | StopField (n, { contents = Parameter }, s) ->
+              let c = float_of_param n in
+              fun _tup _t1 -> c
+        in
         return (fun tup ->
-          let t1 = float_of_scalar tup.(t1i) *. start_scale in
-          let t2 = match duration_info with
-            | RamenEventTime.DurationConst k -> t1 +. k
-            | RamenEventTime.DurationField (_, s) -> t1 +. float_of_scalar tup.(t2i) *. s
-            | RamenEventTime.StopField (_, s) -> float_of_scalar tup.(t2i) *. s in
+          let t1 = get_t1 tup in
+          let t2 = get_t2 tup t1 in
           (* Allow duration to be < 0 *)
           if t2 >= t1 then t1, t2 else t2, t1) in
   let f usr tuple =
@@ -286,7 +316,7 @@ let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ event_time init f
   in
   fold_buffer_tuple ?while_ bname typ init f
 
-let time_range ?while_ bname typ event_time =
+let time_range ?while_ bname typ params event_time =
   let dir = arc_dir_of_bname bname in
   let max_range mi_ma t1 t2 =
     match mi_ma with
@@ -298,10 +328,10 @@ let time_range ?while_ bname typ event_time =
       max_range mi_ma t1 t2
     ) None in
   (* Also look into the current rb: *)
-  fold_buffer_with_time ?while_ bname typ event_time mi_ma (fun mi_ma _tup t1 t2 ->
+  fold_buffer_with_time ?while_ bname typ params event_time mi_ma (fun mi_ma _tup t1 t2 ->
     max_range mi_ma t1 t2, true)
 
-let fold_time_range ?while_ bname typ event_time since until init f =
+let fold_time_range ?while_ bname typ params event_time since until init f =
   let dir = arc_dir_of_bname bname in
   let entries =
     RingBufLib.arc_files_of dir //
@@ -313,9 +343,9 @@ let fold_time_range ?while_ bname typ event_time since until init f =
     | exception Enum.No_more_elements -> return usr
     | _s1, _s2, _t1, _t2, fname ->
         fold_buffer_with_time ?while_ ~early_stop:false
-                              fname typ event_time usr f >>=
+                              fname typ params event_time usr f >>=
         loop
   in
   let%lwt usr = loop init in
   (* finish with the current rb: *)
-  fold_buffer_with_time ?while_ bname typ event_time usr f
+  fold_buffer_with_time ?while_ bname typ params event_time usr f

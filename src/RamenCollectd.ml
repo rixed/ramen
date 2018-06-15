@@ -40,7 +40,9 @@ let tuple_typ =
     { typ_name = "value4" ; nullable = true ; typ = TFloat } ;
     { typ_name = "value5" ; nullable = true ; typ = TFloat } ]
 
-let event_time = Some (("time", 1.), RamenEventTime.DurationConst 0.)
+let event_time =
+  let open RamenEventTime in
+  Some (("time", ref OutputField, 1.), DurationConst 0.)
 
 let factors = [ "plugin" ; "type_instance" ; "instance" ]
 

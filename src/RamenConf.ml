@@ -250,8 +250,8 @@ let with_wlock conf f =
   loop ()
 
 let find_func programs exp_program_name func_name =
-  let _bin, rc = Hashtbl.find programs exp_program_name () in
-  List.find (fun f -> f.Func.name = func_name) rc.Program.funcs
+  let _bin, prog = Hashtbl.find programs exp_program_name () in
+  prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
 
 let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
               ?(forced_variants=[]) ?(initial_export_duration=900.)
