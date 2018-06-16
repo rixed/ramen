@@ -419,9 +419,12 @@ let set_alight conf notif_conf notif worker event_start rcvd_start
           queue_new_alert ())
 
 let ack name contact =
-  let p = PendingSet.find (fake_pending_named name contact) pendings.set in
-  match p.status with
-  | StartSent ->
+  match PendingSet.find (fake_pending_named name contact) pendings.set with
+  | exception Not_found ->
+      !logger.warning "Received an Ack for unknown notification %s via %a, \
+                       ignoring."
+        name Contact.print contact
+  | { status = StartSent ; _ } as p ->
       !logger.info "Successfully notified %a of alert %s starting"
         Contact.print contact name ;
       if p.wait_for_stop then
@@ -432,16 +435,16 @@ let ack name contact =
         pendings.set <- PendingSet.remove p pendings.set
       ) ;
       pendings.dirty <- true
-  | StopSent ->
+  | { status = StopSent ; _ } as p ->
       !logger.info "Successfully notified %a of alert %s ending"
         Contact.print contact name ;
       p.status <- StopAcked ; (* So that we know we can ignore it when its scheduled again *)
       pendings.set <- PendingSet.remove p pendings.set ; (* So that we create a new one with a fresh alert_id if it fires again *)
       pendings.dirty <- true
-  | s ->
-      (if s = StopAcked then !logger.debug else !logger.warning)
+  | p ->
+      (if p.status = StopAcked then !logger.debug else !logger.warning)
         "Received an ACK for notification in status %s, ignoring"
-        (string_of_pending_status s)
+        (string_of_pending_status p.status)
 
 (* A thread that notifies the external world and wait for a successful
  * confirmation, or fails.
