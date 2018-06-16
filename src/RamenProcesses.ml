@@ -86,6 +86,9 @@ let run_background ?cwd cmd args env =
     execve cmd args env
   | pid -> pid
 
+(* Have a single watchdog for cleanup_old_files whatever happen: *)
+let clean_watchdog = ref None
+
 let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
   (* Have a list of directories and regexps and current version,
    * Iter through this list for file matching the regexp and that are also
@@ -93,6 +96,10 @@ let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
    * If this direntry matches the current version, touch it.
    * If not, and if it hasn't been touched for X days, assume that's an old one and delete it.
    * Then sleep for one day and restart. *)
+  if !clean_watchdog = None then
+    clean_watchdog :=
+      Some (RamenWatchdog.make ~timeout:(sleep_time *. 2.) "GC files" quit) ;
+  let clean_watchdog = Option.get !clean_watchdog in
   let get_log_file () =
     Unix.gettimeofday () |> Unix.localtime |> log_file
   and lwt_touch_file fname =
@@ -131,8 +138,6 @@ let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
   let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
   and v_regexp = regexp "v[0-9]+"
   and v1v2_regexp = regexp "v[0-9]+_v[0-9]+"
-  and watchdog =
-    RamenWatchdog.make ~timeout:(sleep_time *. 2.) "GC files" quit
   in
   let rec loop () =
     let to_clean =
@@ -168,10 +173,10 @@ let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
     in
     dir_subtree_iter ~on_dir arcdir ;
     dir_subtree_iter ~on_dir reportdir ;
-    RamenWatchdog.reset watchdog ;
+    RamenWatchdog.reset clean_watchdog ;
     Lwt_unix.sleep sleep_time >>= loop
   in
-  RamenWatchdog.run watchdog ;
+  RamenWatchdog.run clean_watchdog ;
   loop ()
 
 (*
@@ -610,6 +615,8 @@ let check_out_ref =
       do_check_out_ref conf must_run
     ) else return_unit
 
+let watchdog = RamenWatchdog.make ~timeout:30. "supervisor" quit
+
 (*
  * Synchronisation of the rc file of programs we want to run and the
  * actually running workers.
@@ -698,8 +705,7 @@ let synchronize_running conf autoreload_delay =
   in
   (* The hash of programs that must be running, updated by [loop]: *)
   let must_run = Hashtbl.create 307
-  and running = Hashtbl.create 307
-  and watchdog = RamenWatchdog.make ~timeout:30. "supervisor" quit in
+  and running = Hashtbl.create 307 in
   let rec loop last_read =
     none_shall_pass (fun () ->
       process_workers_terminations conf running ;

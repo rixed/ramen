@@ -9,6 +9,9 @@ open RamenLog
 
 type t =
   { name : string ;
+    (* A flag to avoid having several threads monitoring the same watchdog
+     * in case it is started several times: *)
+    mutable is_running : bool ;
     (* So that a watchdog can be disabled when we have to block for an
      * undetermined amount of time. Watchdogs start enabled though. *)
     mutable enabled : bool ;
@@ -30,7 +33,8 @@ type t =
     quit_timeout : float }
 
 let make ?(grace_period=10.) ?(timeout=10.) ?(quit_timeout=5.) name quit_flag =
-  { name ; quit_flag ; last_reset = 0. ; quitting_since = None ;
+  { name ; is_running = false ;
+    quit_flag ; last_reset = 0. ; quitting_since = None ;
     enabled = true ; grace_period ; timeout ; quit_timeout }
 
 let reset t =
@@ -63,6 +67,10 @@ let run t =
         t.quit_flag := Some RamenConsts.ExitCodes.watchdog) ;
       Lwt_unix.sleep (t.timeout /. 4.)
     ) >>= loop in
-  !logger.info "Starting watchdog %S" t.name ;
-  t.last_reset <- Unix.gettimeofday () ;
-  async loop
+  if t.is_running then
+    !logger.warning "Ignoring request to run %S again" t.name
+  else (
+    !logger.info "Starting watchdog %S" t.name ;
+    t.is_running <- true ;
+    t.last_reset <- Unix.gettimeofday () ;
+    async loop)

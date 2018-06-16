@@ -80,11 +80,16 @@ let check_file_exists kind kind_name path =
 
 let check_dir_exists = check_file_exists Lwt_unix.S_DIR "directory"
 
+(* Try hard not to create several instances of the same watchdog: *)
+let watchdog = ref None
+
 let read_glob_lines ?while_ ?do_unlink path preprocessor quit_flag k =
   let dirname = Filename.dirname path
   and glob = Filename.basename path in
   let glob = Globs.compile glob in
-  let watchdog = RamenWatchdog.make "read lines" quit_flag in
+  if !watchdog = None then
+    watchdog := Some (RamenWatchdog.make "read lines" quit_flag) ;
+  let watchdog = Option.get !watchdog in
   RamenWatchdog.disable watchdog ;
   RamenWatchdog.run watchdog ;
   let import_file_if_match filename =

@@ -548,8 +548,11 @@ let send_next now =
       true
     )
 
+(* Avoid creating several instances of watchdogs even when thread crashes
+ * and is restarted: *)
+let watchdog = RamenWatchdog.make "notifier" RamenProcesses.quit
+
 let send_notifications conf =
-  let watchdog = RamenWatchdog.make "notifier" RamenProcesses.quit in
   let rec loop () =
     let now = Unix.gettimeofday () in
     while send_next now do () done ;
