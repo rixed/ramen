@@ -518,7 +518,6 @@ let send_next now =
       else (
         (match p.status with
         | StartToBeSent | StopToBeSent ->
-            assert (p.send_time >= p.schedule_time) ;
             if p.send_time <= now then (
               let timeout = do_notify p.item in
               p.status <-
