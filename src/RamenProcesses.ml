@@ -437,7 +437,6 @@ let really_start conf must_run proc parents children =
     "name="^ proc.func.F.name ; (* Used to choose the function to perform *)
     "fq_name="^ fq_name ; (* Used for monitoring *)
     "signature="^ proc.func.signature ;
-    "input_ringbufs="^ String.concat "," input_ringbufs ;
     "output_ringbufs_ref="^ out_ringbuf_ref ;
     "report_ringbuf="^ C.report_ringbuf conf ;
     "report_period="^ string_of_float !report_period ;
@@ -452,6 +451,10 @@ let really_start conf must_run proc parents children =
         "log="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
       | Stdout -> "no_log" (* aka stdout/err *)
       | Syslog -> "log=syslog") |] in
+  (* Pass each input ringbuffer in a sequence of envvars: *)
+  let more_env =
+    List.enum input_ringbufs |>
+    Enum.mapi (fun i n -> "input_ringbuf_"^ string_of_int i ^"="^ n) in
   (* Pass each individual parameter as a separate envvar; envvars are just
    * non interpreted strings (but for the first '=' sign that will be
    * interpreted by the OCaml runtime) so it should work regardless of the
@@ -459,7 +462,8 @@ let really_start conf must_run proc parents children =
    * on from the shell: *)
   let more_env =
     List.enum proc.params /@
-    (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenTypes.print v) in
+    (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenTypes.print v) |>
+    Enum.append more_env in
   (* Also add all envvars that are defined and used in the operation: *)
   let more_env =
     List.enum proc.func.envvars //@

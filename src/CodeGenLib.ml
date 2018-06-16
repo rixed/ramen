@@ -952,9 +952,11 @@ let aggregate
     let when_str = string_of_when_to_check_group when_to_check_for_commit in
     !logger.debug "We will commit/flush for... %s" when_str ;
     let rb_in_fnames =
-      getenv ~def:"/tmp/ringbuf_in.r" "input_ringbufs" |>
-      String.split_on_char ',' |>
-      List.map String.trim
+      let rec loop lst i =
+        match Sys.getenv ("input_ringbuf_"^ string_of_int i) with
+        | exception Not_found -> lst
+        | n -> loop (n :: lst) (i + 1) in
+      loop [] 0
     and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf" in
     let notify_rb = RingBuf.load notify_rb_name in
