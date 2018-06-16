@@ -32,7 +32,8 @@ type t =
      * set: *)
     quit_timeout : float }
 
-let make ?(grace_period=10.) ?(timeout=10.) ?(quit_timeout=5.) name quit_flag =
+let make ?(grace_period=30.) ?(timeout=30.) ?(quit_timeout=15.)
+         name quit_flag =
   { name ; is_running = false ;
     quit_flag ; last_reset = 0. ; quitting_since = None ;
     enabled = true ; grace_period ; timeout ; quit_timeout }
