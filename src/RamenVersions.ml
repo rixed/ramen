@@ -9,7 +9,7 @@ let release_tag = "v2.2.1"
 let graph_config = "v10" (* last: params in RC key *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v23" (* last: changed parent field type in Func *)
+let codegen = "v24" (* last: changed input_ringbuf transmission *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)
@@ -27,4 +27,4 @@ let ringbuf = "v3" (* last: merge seq and time archives *)
 let out_ref = "v2" (* last: added timeout *)
 
 (* Workers state format *)
-let worker_state = "v5" (* last: suppression of the TOP operator *)
+let worker_state = "v6" (* last: not sure why *)
