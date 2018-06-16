@@ -595,18 +595,17 @@ let worker_start worker_name get_binocle_tuple k =
   Lwt_main.run (
     catch
       (fun () ->
-        let%lwt () = join [
+        join [
           (async (fun () ->
              restart_on_failure "update_stats_rb"
                (update_stats_rb report_period report_rb) get_binocle_tuple) ;
            return_unit) ;
-          k conf ] in
-        return 0)
+          k conf ])
       (fun e ->
         print_exception e ;
         !logger.error "Exiting..." ;
-        return 1)) |>
-  exit
+        return_unit)) ;
+  exit (!quit |? 1)
 
 (* Operations that funcs may run: *)
 
@@ -1345,7 +1344,7 @@ let casing codegen_version rc_str rc_marsh lst =
             "Unknown operation %S.\n\
              Trying to run a Ramen program? Try `ramen run %s`\n"
             name Sys.executable_name ;
-            exit 3
+            exit 1
         | f -> f ())
   else match Sys.argv.(1) with
   | exception Invalid_argument _ -> help ()
