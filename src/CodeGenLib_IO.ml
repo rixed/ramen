@@ -5,7 +5,7 @@ open Stdint
 open Batteries
 
 let tuple_count = ref Uint64.zero
-let now = ref 0.
+let now = ref (Unix.gettimeofday ())
 
 let on_each_input_pre () =
   now := Unix.gettimeofday ();

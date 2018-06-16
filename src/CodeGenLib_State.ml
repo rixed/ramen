@@ -74,7 +74,9 @@ struct
       save_every > 0 && h.calls_since_saved >= save_every ||
       save_timeout > 0. && !CodeGenLib_IO.now >= h.last_saved +. save_timeout
     then (
-      !logger.debug "Save state into fd %d" (int_of_fd h.fd) ;
+      !logger.debug "Save state into fd %d (after %d calls, now=%f while \
+                     last_saved=%f)"
+        (int_of_fd h.fd) h.calls_since_saved !CodeGenLib_IO.now h.last_saved ;
       marshal_into_fd h.fd v ;
       { h with v ; last_saved = !CodeGenLib_IO.now ; calls_since_saved = 1 }
     ) else (
