@@ -12,12 +12,16 @@ type t =
     (* So that a watchdog can be disabled when we have to block for an
      * undetermined amount of time. Watchdogs start enabled though. *)
     mutable enabled : bool ;
-    quit_flag : bool ref ;
+    quit_flag : int option ref ;
     (* Time of last reset: *)
     mutable last_reset : float ;
     (* Set to the time when we have witnessed the quit flag was on for
      * the first time: *)
     mutable quitting_since : float option ;
+    (* Loops can be legitimately slower at the beginning, so allow for
+     * a longer timeout initially (this adds to the normal timeout the
+     * first time): *)
+    mutable grace_period : float ;
     (* The duration after which we begin the termination if the watchdog
      * has not been reset: *)
     timeout : float ;
@@ -25,13 +29,14 @@ type t =
      * set: *)
     quit_timeout : float }
 
-let make ?(timeout=10.) ?(quit_timeout=5.) name quit_flag =
+let make ?(grace_period=10.) ?(timeout=10.) ?(quit_timeout=5.) name quit_flag =
   { name ; quit_flag ; last_reset = 0. ; quitting_since = None ;
-    enabled = true ; timeout ; quit_timeout }
+    enabled = true ; grace_period ; timeout ; quit_timeout }
 
 let reset t =
   !logger.debug "Reset watchdog %S" t.name ;
-  t.last_reset <- Unix.time ()
+  t.last_reset <- Unix.gettimeofday () ;
+  t.grace_period <- 0.
 
 let disable t =
   !logger.debug "Disabling watchdog %S" t.name ;
@@ -44,20 +49,20 @@ let enable t =
 let run t =
   let rec loop () =
     let now = Unix.time () in
-    if !(t.quit_flag) then (
+    if !(t.quit_flag) <> None then (
       (match t.quitting_since with
       | None -> t.quitting_since <- Some now
       | Some start_quit ->
           if now -. start_quit > t.quit_timeout then (
-            !logger.error "Forced exit from watchdog!" ;
-            exit 5)) ;
+            !logger.error "Forced exit from watchdog %S!" t.name ;
+            exit RamenConsts.ExitCodes.watchdog)) ;
       Lwt_unix.sleep (t.quit_timeout /. 4.)
     ) else (
-      if t.enabled && now -. t.last_reset > t.timeout then (
-        !logger.error "Forced quit from watchdog!" ;
-        t.quit_flag := true) ;
+      if t.enabled && now -. t.last_reset > t.timeout +. t.grace_period then (
+        !logger.error "Forced quit from watchdog %S!" t.name ;
+        t.quit_flag := Some RamenConsts.ExitCodes.watchdog) ;
       Lwt_unix.sleep (t.timeout /. 4.)
     ) >>= loop in
   !logger.info "Starting watchdog %S" t.name ;
-  reset t ;
+  t.last_reset <- Unix.gettimeofday () ;
   async loop

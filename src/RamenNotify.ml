@@ -569,7 +569,7 @@ let start conf notif_conf rb =
   async (fun () ->
     restart_on_failure "send_notifications" send_notifications conf) ;
   let while_ () =
-    if !RamenProcesses.quit then return_false else return_true in
+    if !RamenProcesses.quit <> None then return_false else return_true in
   RamenSerialization.read_notifs ~while_ rb (fun (worker, notif) ->
     !logger.info "Received message from %s: %s"
       worker notif ;

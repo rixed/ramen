@@ -79,7 +79,8 @@ let supervisor conf daemonize to_stdout to_syslog max_archives autoreload
         RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
           (fun () -> !logger.warning "Running in dummy mode" ;
                      until_quit (fun () -> Lwt_unix.sleep 3.)) ;
-          (fun () -> synchronize_running conf autoreload) |] ])
+          (fun () -> synchronize_running conf autoreload) |] ]) ;
+  Option.may exit !RamenProcesses.quit
 
 (*
  * `ramen notifier`
@@ -119,7 +120,8 @@ let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
       restart_on_failure "wait_all_pids_loop"
         RamenProcesses.wait_all_pids_loop false) ;
     restart_on_failure "process_notifications"
-      (RamenNotify.start conf notif_conf) notify_rb)
+      (RamenNotify.start conf notif_conf) notify_rb) ;
+  Option.may exit !RamenProcesses.quit
 
 let notify conf parameters name () =
   logger := make_logger conf.C.debug ;
@@ -697,7 +699,8 @@ let httpd conf daemonize to_stdout to_syslog server_url api graphite () =
         (fun () -> !logger.warning "Running in dummy mode" ;
                    RamenProcesses.until_quit
                      (fun () -> Lwt_unix.sleep 3.)) ;
-        (fun () -> RamenHttpHelpers.http_service port url_prefix router) |])
+        (fun () -> RamenHttpHelpers.http_service port url_prefix router) |]) ;
+  Option.may exit !RamenProcesses.quit
 
 let graphite_expand conf query () =
   logger := make_logger conf.C.debug ;

@@ -10,8 +10,9 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 
-(* Global quit flag, set when the term signal is received: *)
-let quit = ref false
+(* Global quit flag, set (to some RamenConsts.ExitCodes) when the term signal
+ * is received or some other bad condition happen: *)
+let quit = ref None
 
 (* How frequently hall each worker write a new activity report: *)
 let report_period = ref RamenConsts.default_report_period
@@ -25,7 +26,7 @@ let rand_seed = ref None
 
 let until_quit f =
   let rec loop () =
-    if !quit then return_unit
+    if !quit <> None then return_unit
     else f () >>= loop in
   loop ()
 
@@ -54,7 +55,7 @@ let prepare_reports conf =
 let prepare_signal_handlers () =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
-    quit := true))
+    quit := Some RamenConsts.ExitCodes.terminated))
 
 (*
  * Machinery to spawn other programs.
@@ -670,7 +671,7 @@ let synchronize_running conf autoreload_delay =
           if proc.last_killed <> 0. then to_kill += proc
     ) must_run ;
     let nb_running = Hashtbl.length running in
-    if !quit && nb_running > 0 && nb_running <> prev_nb_running then
+    if !quit <> None && nb_running > 0 && nb_running <> prev_nb_running then
       !logger.info "Still %d processes running"
         (Hashtbl.length running) ;
     (* See preamble discussion about autoreload for why workers must be
@@ -698,16 +699,16 @@ let synchronize_running conf autoreload_delay =
   (* The hash of programs that must be running, updated by [loop]: *)
   let must_run = Hashtbl.create 307
   and running = Hashtbl.create 307
-  and watchdog = RamenWatchdog.make "supervisor" quit in
+  and watchdog = RamenWatchdog.make ~timeout:30. "supervisor" quit in
   let rec loop last_read =
     none_shall_pass (fun () ->
       process_workers_terminations conf running ;
-      if !quit && Hashtbl.length running = 0 then (
+      if !quit <> None && Hashtbl.length running = 0 then (
         !logger.info "All processes stopped, quitting." ;
         return_unit
       ) else (
         let%lwt last_read =
-          if !quit then (
+          if !quit <> None then (
             Hashtbl.clear must_run ;
             return last_read
           ) else (
@@ -749,7 +750,7 @@ let synchronize_running conf autoreload_delay =
               return now
             ) else return last_read) in
         let%lwt () = synchronize must_run running in
-        let delay = if !quit then 0.1 else 1. in
+        let delay = if !quit <> None then 0.1 else 1. in
         Gc.minor () ;
         let%lwt () = Lwt_unix.sleep delay in
         RamenWatchdog.reset watchdog ;

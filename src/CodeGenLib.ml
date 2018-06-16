@@ -560,7 +560,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
 type worker_conf =
   { debug : bool ; state_file : string ; ramen_url : string }
 
-let quit = ref false
+let quit = ref None
 
 let worker_start worker_name get_binocle_tuple k =
   let debug = getenv ~def:"false" "debug" |> bool_of_string in
@@ -590,7 +590,7 @@ let worker_start worker_name get_binocle_tuple k =
   let conf = { debug ; state_file ; ramen_url } in
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
-    quit := true)) ;
+    quit := Some RamenConsts.ExitCodes.terminated)) ;
   Lwt_unix.set_pool_size 1 ;
   Lwt_main.run (
     catch
@@ -636,7 +636,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
                   serialize_tuple in
     (* Allow `ramen test` some time to run all other workers: *)
     let%lwt () = Lwt_unix.sleep 1. in
-    let while_ () = not !quit in
+    let while_ () = !quit = None in
     CodeGenLib_IO.read_glob_lines
       ~while_ ~do_unlink filename preprocessor quit (fun line ->
       match of_string line with
@@ -667,7 +667,7 @@ let listen_on (collector :
     let outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                   serialize_tuple in
-    let while_ () = not !quit in
+    let while_ () = !quit = None in
     collector ~inet_addr ~port ~while_ outputer)
 
 let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
@@ -689,7 +689,7 @@ let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
       List.exists (fun g -> Globs.matches g worker) globs
     in
     let start = Unix.gettimeofday () in
-    let while_ () = Lwt.return (not !quit) in
+    let while_ () = Lwt.return (!quit = None) in
     let rec loop last_seq =
       let rb = RingBuf.load bname in
       let st = RingBuf.stats rb in
@@ -860,7 +860,7 @@ let yield_every ~while_ read_tuple every k =
   !logger.debug "YIELD operation"  ;
   let tx = RingBuf.empty_tx () in
   let rec loop () =
-    if !quit then return_unit else (
+    if !quit <> None then return_unit else (
       let start = Unix.gettimeofday () in
       let in_tuple = read_tuple tx in
       let%lwt () = k 0 in_tuple in
@@ -1275,7 +1275,7 @@ let aggregate
       return s
     in
     (* The event loop: *)
-    let while_ () = if !quit then return_false else return_true in
+    let while_ () = if !quit <> None then return_false else return_true in
     let tuple_reader =
       match rb_ins with
       | [] -> (* yield expression *)

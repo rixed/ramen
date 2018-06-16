@@ -45,8 +45,11 @@ type test_spec =
  * to string values *)
 
 let fail_and_quit msg =
-  RamenProcesses.quit := true ;
-  fail_with msg
+  RamenProcesses.quit := Some 1 ;
+  failwith msg
+
+let lwt_fail_and_quit msg =
+  wrap (fun () -> fail_and_quit msg)
 
 let compare_miss bad1 bad2 =
   (* TODO: also look at the values *)
@@ -65,8 +68,7 @@ let test_output func bname output_spec =
     | exception Not_found ->
         let msg = Printf.sprintf "Unknown field %s in %s" field
                     (IO.to_string RamenTuple.print_typ ser_type) in
-        RamenProcesses.quit := true ;
-        failwith msg
+        fail_and_quit msg
     | idx, _ -> idx in
   (* The other way around to print the results: *)
   let field_name_of_index idx =
@@ -91,7 +93,7 @@ let test_output func bname output_spec =
     return (
       !tuples_to_find <> [] &&
       !tuples_to_not_find = [] &&
-      not !RamenProcesses.quit &&
+      !RamenProcesses.quit = None &&
       Unix.gettimeofday () -. start < output_spec.timeout) in
   let unserialize = RamenSerialization.read_tuple ser_type nullmask_sz in
   !logger.debug "Enumerating tuples from %s" bname ;
@@ -220,7 +222,7 @@ let test_one conf root_path notify_rb dirname test =
             Printf.sprintf2 "Unknown operation: %S (must be one of: %a)"
               input.operation
               (Enum.print String.print) (Hashtbl.keys workers) in
-          fail_and_quit msg
+          lwt_fail_and_quit msg
       | func, _, rbr ->
           let%lwt () =
             if !rbr = None then (
@@ -228,7 +230,7 @@ let test_one conf root_path notify_rb dirname test =
                 (* TODO: either specify a parent number or pick the first one? *)
                 let err = "Writing to merging operations is not \
                            supported yet!" in
-                fail_and_quit err
+                lwt_fail_and_quit err
               else (
                 let in_rb = C.in_ringbuf_name_single conf func in
                 (* It might not exist already. Instead of waiting for the
@@ -243,7 +245,7 @@ let test_one conf root_path notify_rb dirname test =
     in
     let%lwt () =
       Lwt_list.iter_s (fun input ->
-        if !RamenProcesses.quit then return_unit
+        if !RamenProcesses.quit <> None then return_unit
         else feed_input input
       ) test.inputs in
     Hashtbl.iter (fun _ (_, _, rbr) ->
@@ -257,7 +259,7 @@ let test_one conf root_path notify_rb dirname test =
       let tester_thread =
         match Hashtbl.find workers user_fq_name with
         | exception Not_found ->
-            fun () ->fail_and_quit ("Unknown operation "^ user_fq_name)
+            fun () ->lwt_fail_and_quit ("Unknown operation "^ user_fq_name)
         | tested_func, bname, _rbr ->
             fun () -> test_output tested_func bname output_spec in
       return (tester_thread :: thds)
@@ -321,7 +323,7 @@ let run conf root_path test () =
       (
         let%lwt r = test_one conf root_path notify_rb (Filename.dirname test) test_spec in
         res := r ;
-        RamenProcesses.quit := true ;
+        RamenProcesses.quit := Some 0 ;
         return_unit
       ) ]) ;
   RingBuf.unload notify_rb ;

@@ -84,7 +84,7 @@ let read_glob_lines ?while_ ?do_unlink path preprocessor quit_flag k =
   let dirname = Filename.dirname path
   and glob = Filename.basename path in
   let glob = Globs.compile glob in
-  let watchdog = RamenWatchdog.make "read file" quit_flag in
+  let watchdog = RamenWatchdog.make "read lines" quit_flag in
   RamenWatchdog.disable watchdog ;
   RamenWatchdog.run watchdog ;
   let import_file_if_match filename =

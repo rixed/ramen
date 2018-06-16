@@ -147,8 +147,10 @@ end
 
 module ExitCodes =
 struct
+  let terminated = 0
   let lwt_uncaught_exception = 2
   let cannot_parse_param = 3
+  let watchdog = 4
 end
 
 (* Where to store all of daemons+workers state and logs: *)
