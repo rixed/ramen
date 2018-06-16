@@ -49,6 +49,7 @@ let disable t =
 
 let enable t =
   !logger.debug "Enabling watchdog %S" t.name ;
+  t.last_reset <- Unix.gettimeofday () ;
   t.enabled <- true
 
 let run t =
