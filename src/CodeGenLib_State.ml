@@ -55,6 +55,7 @@ struct
     (* FIXME: if save_every>0 || save_timeout>0., register an at_exit call that
      * will backup the last value. *)
     let fd, v = create_or_read fname v in
+    !logger.debug "Will save/restore state from fd %d" (int_of_fd fd) ;
     { v ; fd ;
       last_saved = !CodeGenLib_IO.now ;
       calls_since_saved = 0 }
@@ -73,6 +74,7 @@ struct
       save_every > 0 && h.calls_since_saved >= save_every ||
       save_timeout > 0. && !CodeGenLib_IO.now >= h.last_saved +. save_timeout
     then (
+      !logger.debug "Save state into fd %d" (int_of_fd h.fd) ;
       marshal_into_fd h.fd v ;
       { h with v ; last_saved = !CodeGenLib_IO.now ; calls_since_saved = 1 }
     ) else (
