@@ -488,6 +488,7 @@ let really_start conf must_run proc parents children =
     Lwt.wrap (fun () -> run_background ~cwd cmd args env) in
   !logger.info "Function %s now runs under pid %d" fq_name pid ;
   proc.pid <- Some pid ;
+  proc.last_killed <- 0. ;
   (* Update the parents out_ringbuf_ref: *)
   Lwt_list.iter_p (fun p ->
     let out_ref =
