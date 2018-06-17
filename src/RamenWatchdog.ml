@@ -60,12 +60,16 @@ let run t =
       | None -> t.quitting_since <- Some now
       | Some start_quit ->
           if now -. start_quit > t.quit_timeout then (
-            !logger.error "Forced exit from watchdog %S!" t.name ;
+            !logger.error "Forced exit from watchdog %S \
+                           (trying to quit for %fs)!"
+              t.name (now -. start_quit) ;
             exit RamenConsts.ExitCodes.watchdog)) ;
       Lwt_unix.sleep (t.quit_timeout /. 4.)
     ) else (
       if t.enabled && now -. t.last_reset > t.timeout +. t.grace_period then (
-        !logger.error "Forced quit from watchdog %S!" t.name ;
+        !logger.error "Forced quit from watchdog %S \
+                       (last reset was %fs ago)!"
+          t.name (now -. t.last_reset) ;
         t.quit_flag := Some RamenConsts.ExitCodes.watchdog) ;
       Lwt_unix.sleep (t.timeout /. 4.)
     ) >>= loop in
