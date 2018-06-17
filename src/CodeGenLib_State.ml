@@ -18,6 +18,12 @@ open RamenHelpers
  * has about the state size and volatility. *)
 open Batteries
 
+let marshal_into_fd fd v =
+  try marshal_into_fd fd v
+  with e ->
+    !logger.error "Cannot marshal_into_fd %d: %s, skipping"
+      (int_of_fd fd) (Printexc.to_string e)
+
 let create_or_read fname v =
   let open Unix in
   RamenHelpers.mkdir_all ~is_file:true fname ;
