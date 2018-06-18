@@ -452,6 +452,26 @@ let rel_path_from root_path path =
 
 let int_of_fd fd : int = Obj.magic fd
 
+let really_read_fd fd size =
+  let open Unix in
+  let buf = Bytes.create size in
+  let rec loop i =
+    if i >= size then buf else
+    let r = BatUnix.restart_on_EINTR (read fd buf i) (size - i) in
+    if r > 0 then loop (i + r) else
+      let e = Printf.sprintf "File smaller then %d bytes (EOF at %d)"
+                size i in
+      failwith e
+  in
+  loop 0
+
+let read_whole_fd fd =
+  let open Unix in
+  let s = fstat fd in
+  let size = s.st_size in
+  lseek fd 0 SEEK_SET |> ignore ;
+  really_read_fd fd size
+
 let marshal_into_fd fd v =
   let open BatUnix in
   (* Leak memory for some reason / and do not write anything to the file
@@ -465,14 +485,16 @@ let marshal_into_fd fd v =
 let marshal_into_file fname v =
   mkdir_all ~is_file:true fname ;
   let fd = Unix.openfile fname [O_RDWR; O_CREAT; O_TRUNC] 0o640 in
+  (* Same as above, must avoid Marshal.from_input (autoclose might
+   * eventually close fd at some point - FIXME) *)
   marshal_into_fd fd v
 
 let marshal_from_fd fd =
   let open Unix in
-  lseek fd 0 SEEK_SET |> ignore ;
   (* Useful log statement in case the GC crashes right away: *)
   !logger.debug "Retrieving marshaled value from file" ;
-  Marshal.from_channel (in_channel_of_descr fd)
+  let bytes = read_whole_fd fd in
+  Marshal.from_bytes bytes 0
 
 let marshal_from_file fname =
   mkdir_all ~is_file:true fname ;
