@@ -112,16 +112,16 @@ let tup_typ_of_untyped_tuplee ttt =
 module Func =
 struct
   type t =
-    { program_name : string ;
+    { program_name : RamenName.program ;
       (* Within a program, funcs are identified by a name that can be
        * optionally provided automatically if its not meant to be referenced.
        *)
-      name : string ;
+      name : RamenName.func ;
       (* Parsed operation (for untyped funs) and its in/out types: *)
       operation : RamenOperation.t option ;
       mutable in_type : tuple_type ;
       mutable out_type : tuple_type ;
-      parents : (string option * string) list ;
+      parents : (RamenName.program_exp option * RamenName.func) list ;
       (* The signature used to name compiled modules *)
       mutable signature : string ;
       (* Extracted from the operation or inferred from parents: *)
@@ -156,13 +156,13 @@ exception InvalidCommand of string
 (* FIXME: got bitten by the fact that func_name and program_name are 2 strings
  * so you can mix them up. Make specialized types for all those strings. *)
 let make_untyped_func program_name func_name params operation =
-  !logger.debug "Creating func %s/%s" program_name func_name ;
-  F.sanitize_name func_name ;
-  assert (func_name <> "") ;
+  !logger.debug "Creating func %s/%s"
+    (RamenName.string_of_program program_name)
+    (RamenName.string_of_func func_name) ;
   let parents =
     RamenOperation.parents_of_operation operation |>
     List.map (fun (prog_opt, func_name) ->
-      Option.map string_of_program_id prog_opt, func_name) in
+      Option.map exp_program_of_id prog_opt, func_name) in
   Func.{
     program_name ; name = func_name ; signature = "" ;
     operation = Some operation ; parents ;
@@ -365,7 +365,7 @@ let type_of_parent_field parent tuple_of_field field =
   try find_field ()
   with Not_found ->
     !logger.debug "Cannot find field %s in parent %s"
-      field parent.name ;
+      field (RamenName.string_of_func parent.name) ;
     let e = FieldNotInTuple {
       field ; tuple = tuple_of_field ;
       tuple_type =
@@ -1466,7 +1466,8 @@ let () =
       Some ("In function "^ n ^": "^ string_of_syntax_error e)
     | MissingDependency func ->
       Some ("Missing dependency: "^
-            func.Func.program_name ^"/"^ func.Func.name)
+            RamenName.string_of_program func.Func.program_name ^"/"^
+            RamenName.string_of_func func.Func.name)
     | AlreadyCompiled -> Some "Already compiled"
     | _ -> None)
 
@@ -1481,7 +1482,7 @@ let check_func_types parents func params =
   ) with SyntaxError e ->
     !logger.debug "Typing error: %s\n%s"
       (string_of_syntax_error e) (Printexc.get_backtrace ()) ;
-    raise (SyntaxErrorInFunc (func.Func.name, e))
+    raise (SyntaxErrorInFunc (RamenName.string_of_func func.Func.name, e))
 
 let typed_of_untyped_tuple ?cmp = function
   | TypedTuple _ as x -> x
@@ -1556,7 +1557,7 @@ let infer_factors func =
 let set_all_types conf parents funcs params =
   let fold_funcs f =
     Hashtbl.fold (fun _ func changed ->
-      cur_func_name := func.Func.name ;
+      cur_func_name := RamenName.string_of_func func.Func.name ;
       f func || changed
     ) funcs false in
   let rec loop () =
@@ -1585,12 +1586,12 @@ let set_all_types conf parents funcs params =
       if typ.nullable = None || typ.scalar_typ = None ||
          typ.scalar_typ = Some TNum || typ.scalar_typ = Some TAny then
         let e = CannotCompleteTyping what in
-        raise (SyntaxErrorInFunc (func.Func.name, e)))
+        raise (SyntaxErrorInFunc (RamenName.string_of_func func.Func.name, e)))
   ) funcs ;
   (* Not quite home and dry yet: *)
   Hashtbl.iter (fun _ func ->
     !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
-      func.Func.name
+      (RamenName.string_of_func func.Func.name)
       print_tuple_type func.Func.in_type
       print_tuple_type func.Func.out_type ;
     func.Func.in_type <- typed_of_untyped_tuple func.Func.in_type ;
@@ -1628,14 +1629,15 @@ let set_all_types conf parents funcs params =
           infer_event_time func (List.hd parents) ;
         if func.event_time <> None then
           !logger.debug "Function %s can reuse event time from parents"
-            func.name
+            (RamenName.string_of_func func.name)
       ) ;
       if parents <> [] && func.factors = [] then (
         func.factors <-
           infer_factors func (List.hd parents).factors ;
         if func.factors <> [] then
           !logger.debug "Function %s can reuse factors %a from parents"
-            func.name (List.print String.print) func.factors
+            (RamenName.string_of_func func.name)
+            (List.print String.print) func.factors
       )
     ) func.operation ;
     (* Seal everything: *)
@@ -1650,8 +1652,9 @@ let set_all_types conf parents funcs params =
         let operation = (List.hd funcs).RamenProgram.operation in
         let funcs = Hashtbl.create 3 in
         Hashtbl.add funcs "test"
-          (make_untyped_func "test" "foo" [] operation) ;
-        let parents = BatHashtbl.of_list [ "test", [] ] in
+          (make_untyped_func (RamenName.program_of_string "test")
+          (RamenName.func_of_string "foo") [] operation) ;
+        let parents = BatHashtbl.of_list [ RamenName.func_of_string "test", [] ] in
         let conf =
           RamenConf.make_conf ~do_persist:false "/tmp/glop" in
         set_all_types conf parents funcs [] ;

@@ -187,10 +187,9 @@ let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
  *)
 
 (* Description of a running worker.
- * Non persisted on disk. *)
+ * Not persisted on disk. *)
 type running_process =
-  { program_name : string ;
-    params : RamenTuple.params ;
+  { params : RamenName.params ;
     bin : string ;
     func : C.Func.t ;
     mutable pid : int option ;
@@ -202,13 +201,14 @@ type running_process =
     mutable quarantine_until : float }
 
 let print_running_process oc proc =
-  Printf.fprintf oc "%s/%s (params=%a, parents=%a)"
-    proc.program_name proc.func.F.name
-    (List.print RamenTuple.print_param) proc.params
+  Printf.fprintf oc "%s/%s (params=%s, parents=%a)"
+    (RamenName.string_of_program_exp proc.func.F.exp_program_name)
+    (RamenName.string_of_func proc.func.F.name)
+    (RamenName.string_of_params proc.params)
     (List.print F.print_parent) proc.func.parents
 
-let make_running_process program_name bin params func =
-  { program_name ; bin ; params ; pid = None ; last_killed = 0. ; func ;
+let make_running_process bin params func =
+  { bin ; params ; pid = None ; last_killed = 0. ; func ;
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
     quarantine_until = 0. }
 
@@ -223,7 +223,8 @@ let input_spec conf parent child =
           ) child.parents with
     | exception Not_found ->
         !logger.error "Operation %S is not a child of %S"
-          child.name parent.name ;
+          (RamenName.string_of_func child.name)
+          (RamenName.string_of_func parent.name) ;
         invalid_arg "input_spec"
     | i, _ ->
         C.in_ringbuf_name_merging conf child i
@@ -250,7 +251,7 @@ let check_is_subtype t1 t2 =
 
 (* Returns the running parents and children of a func: *)
 let relatives f must_run =
-  Hashtbl.fold (fun _k (_bin, _params, _program_name, func) (ps, cs) ->
+  Hashtbl.fold (fun _k (_bin, _params, func) (ps, cs) ->
     (* Tells if [func'] is a parent of [func]: *)
     let is_parent_of func func' =
       List.exists (function
@@ -335,7 +336,7 @@ let process_workers_terminations conf running =
     let state_file = C.worker_state conf func params in
     let trash_file = state_file ^".bad?" in
     !logger.info "Worker %s is deadlooping. Deleting its state file."
-      (F.fq_name func) ;
+      (RamenName.string_of_fq (F.fq_name func)) ;
     ignore_exceptions Unix.unlink trash_file ;
     try Unix.rename state_file trash_file
     with e ->
@@ -356,7 +357,9 @@ let process_workers_terminations conf running =
           if proc.pid = Some pid then (
             (if is_err then !logger.error else !logger.info)
               "Operation %s/%s (pid %d) %s."
-              proc.program_name proc.func.name pid status_str ;
+              (RamenName.string_of_program_exp proc.func.F.exp_program_name)
+              (RamenName.string_of_func proc.func.name)
+              pid status_str ;
             proc.last_exit <- now ;
             proc.last_exit_status <- status_str ;
             if is_err then (
@@ -386,7 +389,7 @@ let process_workers_terminations conf running =
 let really_start conf must_run proc parents children =
   (* Create the input ringbufs.
    * We now start the workers one by one in no
-   * particular order. The input and out-ref ingbufs are created when the
+   * particular order. The input and out-ref ringbufs are created when the
    * worker start, and the out-ref is filled with the running (or should
    * be running) children. Therefore, if a children fails to run the
    * parents might block. Also, if a child has not been started yet its
@@ -394,7 +397,7 @@ let really_start conf must_run proc parents children =
    * block.
    * Each time a new worker is started or stopped the parents outrefs
    * are updated. *)
-  let fq_name = proc.program_name ^"/"^ proc.func.name in
+  let fq_str = RamenName.string_of_fq (F.fq_name proc.func) in
   !logger.debug "Creating in buffers..." ;
   let input_ringbufs = C.in_ringbuf_names conf proc.func in
   List.iter (fun rb_name ->
@@ -408,7 +411,7 @@ let really_start conf must_run proc parents children =
       (fun () ->
         if RingBuf.repair rb then (
           IntCounter.add stats_ringbuf_repairs 1 ;
-          !logger.warning "Ringbuf for %s was damaged" fq_name)) ()
+          !logger.warning "Ringbuf for %s was damaged" fq_str)) ()
   ) input_ringbufs ;
   (* And the pre-filled out_ref: *)
   !logger.debug "Updating out-ref buffers..." ;
@@ -428,7 +431,7 @@ let really_start conf must_run proc parents children =
     RamenExport.make_temp_export ~duration:conf.initial_export_duration
       conf proc.func in
   (* Now actually start the binary *)
-  !logger.info "Start %s" proc.func.F.name ;
+  !logger.info "Start %s" fq_str ;
   let notify_ringbuf =
     (* Where that worker must write its notifications. Normally toward a
      * ringbuffer that's read by Ramen, unless it's a test programs.
@@ -440,8 +443,9 @@ let really_start conf must_run proc parents children =
   let env = [|
     "OCAMLRUNPARAM="^ ocamlrunparam ;
     "debug="^ string_of_bool conf.C.debug ;
-    "name="^ proc.func.F.name ; (* Used to choose the function to perform *)
-    "fq_name="^ fq_name ; (* Used for monitoring *)
+    (* Used to choose the function to perform: *)
+    "name="^ RamenName.string_of_func (proc.func.F.name) ;
+    "fq_name="^ fq_str ; (* Used for monitoring *)
     "signature="^ proc.func.signature ;
     "output_ringbufs_ref="^ out_ringbuf_ref ;
     "report_ringbuf="^ C.report_ringbuf conf ;
@@ -454,7 +458,7 @@ let really_start conf must_run proc parents children =
     "state_file="^ C.worker_state conf proc.func proc.params ;
     (match !logger.output with
       | Directory _ ->
-        "log="^ conf.C.persist_dir ^"/log/workers/" ^ fq_name
+        "log="^ conf.C.persist_dir ^"/log/workers/" ^ F.path proc.func
       | Stdout -> "no_log" (* aka stdout/err *)
       | Syslog -> "log=syslog") |] in
   (* Pass each input ringbuffer in a sequence of envvars: *)
@@ -479,14 +483,14 @@ let really_start conf must_run proc parents children =
   let args =
     (* For convenience let's add "ramen worker" and the fun name as
      * arguments: *)
-    [| RamenConsts.worker_argv0 ; fq_name |] in
+    [| RamenConsts.worker_argv0 ; fq_str |] in
   (* Better have the workers CWD where the binary is, so that any file name
    * mentioned in the program is relative to the program. *)
   let cwd = Filename.dirname proc.bin in
   let cmd = Filename.basename proc.bin in
   let%lwt pid =
     Lwt.wrap (fun () -> run_background ~cwd cmd args env) in
-  !logger.info "Function %s now runs under pid %d" fq_name pid ;
+  !logger.info "Function %s now runs under pid %d" fq_str pid ;
   proc.pid <- Some pid ;
   proc.last_killed <- 0. ;
   (* Update the parents out_ringbuf_ref: *)
@@ -513,9 +517,8 @@ let really_try_start conf must_run proc =
             ) parents
       then ok
       else (
-        !logger.error "Parent of %a/%s is missing: %a"
-          RamenLang.print_expansed_program (proc.program_name, proc.params)
-          proc.func.name
+        !logger.error "Parent of %s is missing: %a"
+          (RamenName.string_of_fq (F.fq_name proc.func))
           F.print_parent parent ;
         false)
     ) true proc.func.parents in
@@ -523,10 +526,12 @@ let really_try_start conf must_run proc =
     try check_is_subtype c.F.in_type.RamenTuple.ser p.F.out_type.ser ;
         true
     with Failure msg ->
-      !logger.error "Input type of %s/%s (%a) is not compatible with \
-                     output type of %s/%s (%a): %s"
-        c.exp_program_name c.name RamenTuple.print_typ c.in_type.ser
-        p.exp_program_name p.name RamenTuple.print_typ p.out_type.ser
+      !logger.error "Input type of %s (%a) is not compatible with \
+                     output type of %s (%a): %s"
+        (RamenName.string_of_fq (F.fq_name c))
+        RamenTuple.print_typ c.in_type.ser
+        (RamenName.string_of_fq (F.fq_name p))
+        RamenTuple.print_typ p.out_type.ser
         msg ;
       false in
   let linkage_ok =
@@ -570,14 +575,14 @@ let try_kill conf must_run proc =
   let now = Unix.gettimeofday () in
   if proc.last_killed = 0. then (
     (* Ask politely: *)
-    !logger.info "Terminating worker %s/%s (pid %d)"
-      proc.program_name proc.func.name pid ;
+    !logger.info "Terminating worker %s (pid %d)"
+      (RamenName.string_of_fq (F.fq_name proc.func)) pid ;
     log_exceptions ~what:"Terminating worker"
       (Unix.kill pid) Sys.sigterm ;
     proc.last_killed <- now ;
   ) else if now -. proc.last_killed > 5. then (
-    !logger.warning "Killing worker %s/%s (pid %d) with bigger guns"
-      proc.program_name proc.func.name pid ;
+    !logger.warning "Killing worker %s (pid %d) with bigger guns"
+      (RamenName.string_of_fq (F.fq_name proc.func)) pid ;
     log_exceptions ~what:"Killing worker"
       (Unix.kill pid) Sys.sigkill ;
     proc.last_killed <- now ;
@@ -590,21 +595,21 @@ let check_out_ref =
     !logger.debug "Checking out_refs..." ;
     (* Build the set of all wrapping ringbuf that are being read: *)
     let rbs =
-      Hashtbl.fold (fun _k (_bin, _params, _program_name, func) s ->
+      Hashtbl.fold (fun _k (_bin, _params, func) s ->
         C.in_ringbuf_names conf func |>
         List.fold_left (fun s rb_name -> Set.add rb_name s) s
       ) must_run (Set.singleton (C.notify_ringbuf conf)) in
     (* Iter over all functions and check they do not output to a ringbuf not
      * in this set: *)
     Hashtbl.values must_run |> List.of_enum |> (* FIXME *)
-    Lwt_list.iter_p (fun (_bin, _params, _program_name, func) ->
+    Lwt_list.iter_p (fun (_bin, _params, func) ->
       let out_ref = C.out_ringbuf_names_ref conf func in
       let%lwt outs = RamenOutRef.read out_ref in
       Map.keys outs |> List.of_enum |>
       Lwt_list.iter_s (fun fname ->
         if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
           !logger.error "Operation %s outputs to %s, which is not read"
-            (F.fq_name func) fname ;
+            (RamenName.string_of_fq (F.fq_name func)) fname ;
           IntCounter.add stats_outref_repairs 1 ;
           RamenOutRef.remove out_ref fname
         ) else return_unit))
@@ -665,10 +670,10 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun k (bin, params, program_name, func) ->
+    Hashtbl.iter (fun k (bin, params, func) ->
       match Hashtbl.find running k with
       | exception Not_found ->
-          let proc = make_running_process program_name bin params func in
+          let proc = make_running_process bin params func in
           Hashtbl.add running k proc ;
           to_start += proc
       | proc ->
@@ -750,8 +755,9 @@ let synchronize_running conf autoreload_delay =
                   let params = prog.P.params in
                   List.iter (fun f ->
                     (* Use the signature + params as the key: *)
-                    let k = f.F.signature, RamenTuple.param_signature params in
-                    Hashtbl.add must_run k (bin, params, program_name, f)
+                    let k =
+                      f.F.signature, RamenName.params_signature params in
+                    Hashtbl.add must_run k (bin, params, f)
                   ) prog.P.funcs
                 ) must_run_programs) in
               return now

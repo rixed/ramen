@@ -56,26 +56,6 @@ let type_signature typed_tuple =
       if field.nullable then " null" else " notnull"
     ) "" typed_tuple.ser
 
-(* Special case of tuple: parameters *)
-
-(* Ordered according to params_sort: *)
-type params = (string * RamenTypes.value) list [@@ppp PPP_OCaml]
-
-let print_param oc (n, v) =
-  Printf.fprintf oc "%s=%a" n RamenTypes.print v
-
-(* FIXME: make those params a Map so names are unique *)
-let param_compare (a, _) (b, _) = String.compare a b
-
-let params_sort = List.fast_sort param_compare
-
-let string_of_params ps =
-  params_sort ps |>
-  IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param)
-
-let param_signature ps =
-  string_of_params ps |> md5
-
 (* Override ps1 with values from ps2, ignoring the values of ps2 that are
  * not in ps1: *)
 let overwrite_params ps1 ps2 =

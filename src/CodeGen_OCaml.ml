@@ -1937,7 +1937,7 @@ let emit_operation name func_name in_typ out_typ params op oc =
   Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
     open Batteries\n\
     open Stdint\n"
-    func_name
+    (RamenName.string_of_func func_name)
     RamenOperation.print op ;
   (* Emit parameters: *)
   Printf.fprintf oc "\n(* Parameters: *)\n" ;

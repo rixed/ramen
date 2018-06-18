@@ -59,6 +59,10 @@ all: $(INSTALLED)
         dep install uninstall reinstall bundle doc deb tarball \
         docker-latest docker-build-image docker-build-builder docker-circleci docker-push
 
+%.cmi: %.mli
+	@echo 'Compiling $@ (interface)'
+	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+
 %.cmx %.annot: %.ml
 	@echo 'Compiling $@ (native code)'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
@@ -77,7 +81,8 @@ RAMEN_SOURCES = \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
-	src/RamenTypes.ml src/RamenTuple.ml src/RamenLang.ml \
+	src/RamenTypes.ml src/RamenName.mli src/RamenName.ml \
+	src/RamenTuple.ml src/RamenLang.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
 	src/RamenSerialization.ml src/RamenConf.ml src/RamenWatchdog.ml \
@@ -125,7 +130,7 @@ dep:
 	@$(MAKE) .depend
 
 .depend: $(SOURCES)
-	@$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
+	@$(OCAMLDEP) -native -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
 	@for f in $(filter %.c, $(SOURCES)); do \
 		$(CC) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> $@; \
 	done
@@ -165,7 +170,9 @@ MOREFLAGS = \
 	-cclib -lnetflow
 
 src/ramen: \
-	$(RAMEN_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a \
+	$(patsubst %.mli,%.cmi,$(filter %.mli, $(RAMEN_SOURCES))) \
+	$(patsubst %.ml,%.cmx,$(filter %.ml, $(RAMEN_SOURCES))) \
+	src/libringbuf.a src/libcollectd.a \
 	src/libnetflow.a
 	@echo 'Linking $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
@@ -255,7 +262,8 @@ LINKED_FOR_TESTS = \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
-	src/RamenTypes.ml src/RamenTuple.ml src/RamenLang.ml src/RamenExpr.ml \
+	src/RamenTypes.ml src/RamenName.mli src/RamenName.ml \
+	src/RamenTuple.ml src/RamenLang.ml src/RamenExpr.ml \
 	src/RamenWatchdog.ml src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenOperation.ml src/RamenProgram.ml src/RamenConf.ml \
 	src/Globs.ml src/RamenCompilConfig.ml src/RamenDepLibs.ml \
@@ -484,7 +492,7 @@ clean: clean-temp
 	@$(RM) .depend src/*.opt src/*.byte
 	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
 	@$(RM) src/ramen src/codegen.cmxa src/RamenFileNotify.ml src/libringbuf.a
-	@$(RM) src/libcollectd.a src/libnetflow.a
+	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
 	@find tests -name '*.success' -delete
 	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp

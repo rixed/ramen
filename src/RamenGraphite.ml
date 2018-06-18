@@ -154,7 +154,8 @@ let tree_enum_of_program (program_name, get_rc) =
   let _bin, prog = get_rc () in
   E (List.enum prog.P.funcs /@
      (fun func ->
-       (func.F.name, OpName), tree_enum_of_factors func func.F.factors))
+       (RamenName.string_of_func func.F.name, OpName),
+       tree_enum_of_factors func func.F.factors))
 
 (* Given the programs hashtable, return a tree_enum of the
  * path components and programs. Merely build a hashtbl of hashtbls. *)
@@ -163,7 +164,8 @@ type program_tree_item = Prog of (string * (unit -> string * P.t))
 
 let tree_enum_of_programs programs =
   let programs =
-    Hashtbl.enum programs |>
+    Hashtbl.enum programs /@
+    (fun (k, v) -> RamenName.string_of_program_exp k, v) |>
     Array.of_enum in
   Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) programs ;
   let rec hash_for_prefix pref =
@@ -298,7 +300,9 @@ let expand_query_values conf query =
         node_res, (prog_name, func_name, (n, v_opt) :: factors, data_field)
     | DataField ->
         assert is_leaf ;
-        (prog_name, func_name, List.rev factors, n) :: node_res, depth0
+        (RamenName.program_exp_of_string prog_name,
+         RamenName.func_of_string func_name,
+         List.rev factors, n) :: node_res, depth0
   ) [] depth0 filtered |>
   List.enum |>
   return
@@ -443,35 +447,35 @@ let render_graphite conf headers body =
   let%lwt targets =
     C.with_rlock conf (fun programs ->
       Lwt_list.filter_map_s (fun (prog_name, func_name, fvals, data_field) ->
+        let fq = RamenName.string_of_program_exp prog_name ^"/"^
+                 RamenName.string_of_func func_name in
         match Hashtbl.find programs prog_name with
         | exception Not_found ->
-            !logger.error "Program %s just disappeared?" prog_name ;
+            !logger.error "Program %s just disappeared?"
+              (RamenName.string_of_program_exp prog_name) ;
             return_none
         | get_rc ->
             let _bin, prog = get_rc () in
             (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
             | exception Not_found ->
-                !logger.error "Function %s/%s just disappeared?"
-                  prog_name func_name ;
+                !logger.error "Function %s just disappeared?" fq ;
                 return_none
             | func ->
                 if List.length fvals <> List.length func.factors then (
-                  !logger.error "Function %s/%s just changed factors?"
-                    prog_name func_name ;
+                  !logger.error "Function %s just changed factors?" fq ;
                   return_none
                 ) else if List.mem data_field func.factors then (
-                  !logger.error "Function %s/%s just got %s as factor?"
-                    prog_name func_name data_field ;
+                  !logger.error "Function %s just got %s as factor?"
+                    fq data_field ;
                   return_none
                 ) else if not (List.exists (fun ft ->
                                ft.RamenTuple.typ_name = data_field
                              ) func.out_type.ser) then (
-                  !logger.error "Function %s/%s just lost field %s?"
-                    prog_name func_name data_field ;
+                  !logger.error "Function %s just lost field %s?"
+                    fq data_field ;
                   return_none
                 ) else (
-                  let full_name = prog_name ^"/"^ func_name in
-                  return (Some (func, full_name, List.map snd fvals, data_field))
+                  return (Some (func, fq, List.map snd fvals, data_field))
                 ))
       ) targets) in
   (* Now we need to decide, for each factor value, if we want it in a where

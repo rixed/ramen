@@ -32,12 +32,14 @@ let make_temp_export ?duration conf func =
 
 (* Returns the func, and the buffer name: *)
 let make_temp_export_by_name conf ?duration func_name =
-  let program_name, func_name = C.program_func_of_user_string func_name in
+  let exp_program_name, func_name =
+    C.program_func_of_user_string func_name in
   C.with_rlock conf (fun programs ->
-    match C.find_func programs program_name func_name with
+    match C.find_func programs exp_program_name func_name with
     | exception Not_found ->
-        fail_with ("Function "^ program_name ^"/"^ func_name ^
-                   " does not exist")
+        fail_with ("Function "^
+                   RamenName.string_of_program_exp exp_program_name ^"/"^
+                   RamenName.string_of_func func_name ^" does not exist")
     | prog, func ->
         let%lwt bname = make_temp_export conf ?duration func in
         return (prog, func, bname))

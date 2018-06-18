@@ -63,11 +63,11 @@ let repair conf files () =
 
 type func_status =
   | Running of F.t
-  | NotRunning of string * string
+  | NotRunning of RamenName.program_exp * RamenName.func
 
 let links conf no_abbrev with_header sort_col top prefix () =
   logger := make_logger conf.C.debug ;
-  (* Memoizer to avoid reading the out_ref several times: *)
+  (* Memoize to avoid reading the out_ref several times: *)
   let get_out_refs = lwt_memoize RamenOutRef.read in
   let get_stats = memoize (fun fname ->
     match RingBuf.load fname with
@@ -77,8 +77,9 @@ let links conf no_abbrev with_header sort_col top prefix () =
         RingBuf.unload rb ;
         Some s) in
   let fq_name = function
-    | NotRunning (pn, fn) -> pn ^"/"^ fn
-    | Running func -> F.fq_name func in
+    | NotRunning (pn, fn) ->
+        RamenName.string_of_program_exp pn ^"/"^ RamenName.string_of_func fn
+    | Running func -> RamenName.string_of_fq (F.fq_name func) in
   let head =
     [| "parent" ; "child" ; "out_ref" ; "spec" ; "ringbuf" ;
        "fill ratio" ; "next seqs" |] in

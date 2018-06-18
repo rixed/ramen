@@ -63,6 +63,30 @@ let shell_quote s =
 let sql_quote s =
   "'"^ String.nreplace s "'" "''" ^"'"
 
+let path_quote s =
+  let s = String.nreplace s "%" "%%" in
+  String.nreplace s "/" "%2F"
+
+let path_unquote s =
+  let len = String.length s in
+  let b = Buffer.create len in
+  let rec loop i =
+    if i >= len then Buffer.contents b
+    else if s.[i] = '%' then (
+      if i < len - 2 && s.[i+1] = '%' then (
+        Buffer.add_char b '%' ;
+        loop (i + 2)
+      ) else if i < len - 3 && s.[i+1] = '2' && s.[i+2] = 'F' then (
+        Buffer.add_char b '/' ;
+        loop (i + 3)
+      ) else invalid_arg s
+    ) else if s.[i] = '/' then invalid_arg s else (
+      Buffer.add_char b s.[i] ;
+      loop (i + 1)
+    )
+  in
+  loop 0
+
 let list_existsi f l =
   match List.findi (fun i v -> f i v) l with
   | exception Not_found -> false

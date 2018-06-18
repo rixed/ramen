@@ -24,8 +24,8 @@ let upload_dir_of_func persist_dir program_name func_name in_type =
 module Func =
 struct
   type t =
-    { mutable exp_program_name : string ; (* expansed name *)
-      name : string ; (* TODO: name must be allowed to contain params *)
+    { mutable exp_program_name : RamenName.program_exp ; (* expansed name *)
+      name : RamenName.func ;
       in_type : RamenTuple.typed_tuple ;
       out_type : RamenTuple.typed_tuple ;
       (* The signature identifies the code but not the actual parameters.
@@ -34,9 +34,7 @@ struct
        * change when the code change, without a need to also change the
        * name of the operation. *)
       signature : string ;
-      parents : (string option (* expansed program name or None if this
-                                  program *) *
-                 string (* function name within that program *)) list ;
+      parents : (RamenName.program_exp option * RamenName.func) list ;
       merge_inputs : bool ;
       event_time : RamenEventTime.t option ;
       factors : string list ;
@@ -45,49 +43,36 @@ struct
     [@@ppp PPP_OCaml]
 
   let print_parent oc = function
-    | None, f -> String.print oc f
-    | Some p, f -> Printf.fprintf oc "%s/%s" p f
+    | None, f ->
+        String.print oc (RamenName.string_of_func f)
+    | Some p, f ->
+        Printf.fprintf oc "%s/%s"
+          (RamenName.string_of_program_exp p)
+          (RamenName.string_of_func f)
 
-  let fq_name f = f.exp_program_name ^"/"^ f.name
+  (* Only for debug or keys, not for paths! *)
+  let fq_name f = RamenName.fq f.exp_program_name f.name
 
-  let sanitize_name name =
-    (* New lines have to be forbidden because of the out_ref ringbuf files.
-     * slashes have to be forbidden because we rsplit to get program names.
-     *)
-    if name = "" ||
-       String.fold_left (fun bad c ->
-         bad || c = '\n' || c = '\r' || c = '/') false name then
-      invalid_arg "operation name"
+  let path f =
+    RamenName.path_of_program_exp f.exp_program_name
+    ^"/"^ RamenName.string_of_func f.name
 end
 
 module Program =
 struct
   type t =
-    { name : string ;
-      mutable params : RamenTuple.params [@ppp_default []] ;
+    { name : RamenName.program ;
+      mutable params : RamenName.params [@ppp_default []] ;
       funcs : Func.t list }
       [@@ppp PPP_OCaml]
-
-  let sanitize_name name =
-    let rec remove_heading_slashes s =
-      if String.length s > 0 && s.[0] = '/' then
-        remove_heading_slashes (String.lchop s)
-      else s in
-    let name = remove_heading_slashes name in
-    if name = "" then
-      failwith "Programs must have non-empty names" else
-    if has_dotnames name then
-      failwith "Program names cannot include directory dotnames" else
-    simplified_path name
-
-  let expansed_name t =
-    RamenLang.string_of_program_id (t.name, t.params)
 
   let of_bin =
     (* Cache of path to date of last read and program *)
     let reread_data fname : t =
       !logger.debug "Reading config from %s..." fname ;
-      let empty_program = { name = ""; funcs = []; params = [] } in
+      let empty_program =
+        { name = RamenName.program_of_string "fake";
+          funcs = []; params = [] } in
       match with_stdout_from_command
               fname [| fname ; "version" |] Legacy.input_line with
       | exception e ->
@@ -119,7 +104,7 @@ struct
       p.params <-
         RamenTuple.overwrite_params p.params params ;
       let exp_program_name =
-        RamenLang.string_of_program_id (p.name, params) in
+        RamenLang.exp_program_of_id (p.name, params) in
       List.iter (fun f ->
         f.Func.exp_program_name <- exp_program_name
       ) p.funcs ;
@@ -129,26 +114,21 @@ struct
     (* Use an extension so we can still use the plain program_name for a
      * directory holding subprograms. Not using "exe" as it remind me of
      * that operating system, but rather "x" as in the x bit: *)
-    root_path ^"/"^ program_name ^".x"
-
-  (* Used only by RamenCompiler to get the output type of the parents of
-   * compiled functions. Therefore we do not care about the actual
-   * parameters of the actual parents (which can not affect types). *)
-  let of_program_id root_path (program_name, params) =
-    bin_of_program_name root_path program_name |> of_bin params
+    root_path ^"/"^ (RamenName.string_of_program program_name) ^".x"
 end
 
 let program_func_of_user_string ?default_program s =
   let s = String.trim s in
-  (* rsplit because we might want to have '/'s in the program name. *)
-  try String.rsplit ~by:"/" s
-  with Not_found ->
-    match default_program with
-    | Some l -> l, s
-    | None ->
-        let e = Printf.sprintf "Cannot find function %S" s in
-        !logger.error "%s" e ;
-        failwith e
+  (* rsplit because we might have '/'s in the program name. *)
+  match String.rsplit ~by:"/" s with
+  | exception Not_found ->
+      (match default_program with
+      | Some l -> l, RamenName.func_of_string s
+      | None ->
+          let e = Printf.sprintf "Cannot find function %S" s in
+          !logger.error "%s" e ;
+          failwith e)
+  | p, f -> RamenName.(program_exp_of_string p, func_of_string f)
 
 (* Cannot be in RamenHelpers since it depends on PPP and CodeGen depends on
  * RamenHelpers: *)
@@ -183,10 +163,11 @@ let running_config_file conf =
  * to their binaries, and parameters: *)
 type must_run_entry =
   { bin : string ;
-    params : RamenTuple.params [@ppp_default []] }
+    params : RamenName.params [@ppp_default []] }
   [@@ppp PPP_OCaml]
 (* The must_run file gives us the unique names of the programs. *)
-type must_run_file = (string, must_run_entry) Hashtbl.t [@@ppp PPP_OCaml]
+type must_run_file = (RamenName.program_exp, must_run_entry) Hashtbl.t
+  [@@ppp PPP_OCaml]
 
 (* For tests we don't store the rc_file on disk but in there: *)
 let non_persisted_programs = ref (Hashtbl.create 11)
@@ -254,7 +235,8 @@ let with_wlock conf f =
   loop ()
 
 let find_func programs exp_program_name func_name =
-  let _bin, prog = Hashtbl.find programs exp_program_name () in
+  let _bin, prog =
+    Hashtbl.find programs exp_program_name () in
   prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
 
 let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
@@ -273,9 +255,9 @@ let worker_state conf func params =
   conf.persist_dir ^"/workers/states/"
                    ^ RamenVersions.worker_state
                    ^"/"^ Config.version
-                   ^"/"^ Func.fq_name func
+                   ^"/"^ Func.path func
                    ^"/"^ func.signature
-                   ^"/"^ RamenTuple.param_signature params
+                   ^"/"^ RamenName.params_signature params
                    ^"/snapshot"
 
 (* The "in" ring-buffers are used to store tuple received by an operation.
@@ -294,7 +276,7 @@ let in_ringbuf_name_base conf func =
   let sign = type_signature_hash func.Func.in_type in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
-                   ^"/"^ Func.fq_name func
+                   ^"/"^ Func.path func
                    ^"/"^ sign ^"/"
 
 let in_ringbuf_name_single conf func =
@@ -322,7 +304,7 @@ let archive_buf_name conf func =
   let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
-                   ^"/"^ Func.fq_name func
+                   ^"/"^ Func.path func
                    ^"/"^ sign ^"/archive.b"
 
 (* Each individual ringbuf may have a file storing all possible values for
@@ -339,7 +321,7 @@ let out_ringbuf_names_ref conf func =
   let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref
-                   ^"/"^ Func.fq_name func
+                   ^"/"^ Func.path func
                    ^"/"^ sign ^"/out_ref"
 
 (* Finally, operations have two additional output streams: one for

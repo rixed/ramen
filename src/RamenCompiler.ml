@@ -48,7 +48,6 @@ let () =
 let entry_point_name = "start"
 
 let compile conf root_path program_name program_code =
-  let program_name = P.sanitize_name program_name in
   (*
    * If all goes well, many temporary files are going to be created. Here
    * we collect all their name so we delete them at the end:
@@ -73,7 +72,8 @@ let compile conf root_path program_name program_code =
      * Now that we've set up the stage, we have to parse that program,
      * turning the program_code into a list of RamenProgram.fun:
      *)
-    !logger.info "Parsing program %s" program_name ;
+    !logger.info "Parsing program %s"
+      (RamenName.string_of_program program_name) ;
     let parsed_params, parsed_funcs = RamenProgram.parse program_code in
     (*
      * Now we have to type all of these.
@@ -84,10 +84,12 @@ let compile conf root_path program_name program_code =
      *
      * The resulting types will be stored in compiler_funcs.
      *)
-    !logger.info "Typing program %s" program_name ;
+    !logger.info "Typing program %s"
+      (RamenName.string_of_program program_name) ;
     let compiler_funcs = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
-      let fq_name = program_name ^"/"^ parsed_func.RamenProgram.name in
+      let fq_name = RamenName.string_of_program program_name ^"/"^
+                    RamenName.string_of_func parsed_func.RamenProgram.name in
       (* During compilation we do not care about actual values of params: *)
       let params = [] in
       let me_func =
@@ -121,7 +123,8 @@ let compile conf root_path program_name program_code =
         (* For compiling, we want the 'virtual' parents with no
          * parameters as we are interested only in their output
          * type: *)
-        let parent_name = parent_prog_name ^"/"^ parent_func_name in
+        let parent_name = RamenName.string_of_program parent_prog_name ^"/"^
+                          RamenName.string_of_func parent_func_name in
         try Hashtbl.find compiler_funcs parent_name
         with Not_found ->
           !logger.debug "Found external reference to function %a"
@@ -131,7 +134,8 @@ let compile conf root_path program_name program_code =
             raise (RamenLang.SyntaxError (UnknownFunc parent_name)) ;
           let parent_func =
             let par_rc =
-              P.of_program_id root_path (Option.get (fst parent_id)) in
+              P.bin_of_program_name root_path (fst (Option.get (fst parent_id))) |>
+              P.of_bin [] in
             List.find (fun f ->
               f.F.name = parent_func_name
             ) par_rc.P.funcs in
@@ -159,12 +163,13 @@ let compile conf root_path program_name program_code =
      * language then the OCaml casing would have to pass them a few helper
      * functions.
      *)
-    !logger.info "Compiling for program %s" program_name ;
+    !logger.info "Compiling for program %s"
+      (RamenName.string_of_program program_name) ;
     let obj_files = Lwt_main.run (
       Hashtbl.values compiler_funcs |> List.of_enum |>
       Lwt_list.map_p (fun func ->
         let obj_name =
-          root_path ^"/"^ program_name ^
+          root_path ^"/"^ RamenName.string_of_program program_name ^
           "_"^ func.RamenTyping.Func.signature ^
           "_"^ RamenVersions.codegen ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
@@ -178,7 +183,8 @@ let compile conf root_path program_name program_code =
             in_typ out_typ parsed_params operation)
           (fun e ->
             !logger.error "Cannot generate code for %s: %s"
-              func.name (Printexc.to_string e) ;
+              (RamenName.string_of_func func.name)
+              (Printexc.to_string e) ;
             fail e) ;%lwt
         add_temp_file obj_name ;
         return obj_name)) in
@@ -194,13 +200,14 @@ let compile conf root_path program_name program_code =
      * run the worker of the designated operation (which has been compiled
      * above).
      *)
-    let exec_file = P.bin_of_program_name root_path program_name in
-    let obj_name = root_path ^"/"^ program_name ^"_casing_"^
-                   RamenVersions.codegen ^".cmx" in
+    let exec_file = P.bin_of_program_name root_path program_name
+    and pname = RamenName.string_of_program program_name in
+    let obj_name = root_path ^"/"^ RamenName.string_of_program program_name
+                   ^"_casing_"^ RamenVersions.codegen ^".cmx" in
     let src_file =
       RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
-          program_name ;
+          (RamenName.string_of_program program_name) ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. *)
@@ -209,7 +216,8 @@ let compile conf root_path program_name program_code =
           Enum.map (fun func ->
             let operation = Option.get func.RamenTyping.Func.operation in
             F.{ (* exp_program_name will be overwritten at load time: *)
-                exp_program_name = program_name ;
+                exp_program_name =
+                  RamenName.program_exp_of_program program_name ;
                 name = func.name ;
                 in_type = RamenTyping.typed_tuple_type func.in_type ;
                 out_type = RamenTyping.typed_tuple_type func.out_type ;
@@ -233,10 +241,10 @@ let compile conf root_path program_name program_code =
           "let () = CodeGenLib.casing %S rc_str_ rc_marsh_ [\n"
             RamenVersions.codegen ;
         Hashtbl.iter (fun _ func ->
-          assert (program_name.[String.length program_name-1] <> '/') ;
+          assert (pname.[String.length pname-1] <> '/') ;
           Printf.fprintf oc"\t%S, %s_%s_%s.%s ;\n"
-            func.RamenTyping.Func.name
-            (String.capitalize_ascii (Filename.basename program_name))
+            (RamenName.string_of_func func.RamenTyping.Func.name)
+            (String.capitalize_ascii (Filename.basename pname))
             func.RamenTyping.Func.signature
             RamenVersions.codegen
             entry_point_name

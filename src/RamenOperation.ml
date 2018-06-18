@@ -123,7 +123,8 @@ type t =
       (* factors are hardcoded *) }
 
 and data_source =
-  | NamedOperation of ((string * RamenTuple.params) option * string)
+  | NamedOperation of (([`Program] RamenName.t * RamenName.params) option *
+                       [`Function] RamenName.t)
   | SubQuery of t
   | GlobPattern of string
 
@@ -953,7 +954,7 @@ struct
         commit_before = false ;\
         flush_how = Reset ;\
         event_time = None ;\
-        from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
+        from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (67, [])))\
       (test_op p "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst" |>\
        replace_typ_in_op)
@@ -972,7 +973,7 @@ struct
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (26, [])))\
       (test_op p "from foo where packets > 0" |> replace_typ_in_op)
 
@@ -992,7 +993,7 @@ struct
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (64, [])))\
       (test_op p "from foo select t, value event starting at t*10 with duration 60" |>\
        replace_typ_in_op)
@@ -1015,7 +1016,7 @@ struct
         notifications = [] ; key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (75, [])))\
       (test_op p "from foo select t1, t2, value event starting at t1*10 and stopping at t2*10" |>\
        replace_typ_in_op)
@@ -1033,7 +1034,7 @@ struct
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (22, [])))\
       (test_op p "from foo NOTIFY \"ouch\"" |>\
        replace_typ_in_op)
@@ -1076,7 +1077,7 @@ struct
             Field (typ, ref TupleOut, "start"))) ; \
         commit_before = false ;\
         flush_how = Reset ;\
-        from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
+        from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
         (199, [])))\
         (test_op p "select min start as start, \\
                            max stop as max_stop, \\
@@ -1104,7 +1105,7 @@ struct
               Const (typ, VI32 (Int32.one)))),\
             Const (typ, VI32 (Int32.of_int 5)))) ;\
         commit_before = true ;\
-        flush_how = Reset ; from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] },\
+        flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
         (49, [])))\
         (test_op p "select 1 as one from foo commit before sum 1 >= 5" |>\
          replace_typ_in_op)
@@ -1127,7 +1128,7 @@ struct
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
-        from = [NamedOperation (Some ("foo", []), "bar")] ;\
+        from = [NamedOperation (Some (RamenName.program_of_string "foo", []), RamenName.func_of_string "bar")] ;\
         flush_how = Reset ; every = 0. ; factors = [] },\
         (37, [])))\
         (test_op p "SELECT n, lag(2, n) AS l FROM foo/bar" |>\

@@ -247,23 +247,23 @@ let non_keyword =
 (* Defined here as both RamenProgram and RamenOperation need to parse/print
  * function and program names: *)
 
-type program_id = string * RamenTuple.params
-type function_id = program_id option * string
+type program_id = RamenName.program * RamenName.params
+type function_id = program_id option * RamenName.func
 
 let print_expansed_program oc (name, params) =
-  String.print oc name ;
+  String.print oc (RamenName.string_of_program name) ;
   if params <> [] then
     List.print ~first:"{" ~last:"}" ~sep:"," (fun oc (n, v) ->
       Printf.fprintf oc "%s=%a" n RamenTypes.print v) oc params
 
-let string_of_program_id pp =
-  IO.to_string print_expansed_program pp
+let exp_program_of_id pp =
+  RamenName.program_exp_of_string (IO.to_string print_expansed_program pp)
 
 let print_expansed_function oc (prog_opt, func) =
   Option.may (fun p ->
     Printf.fprintf oc "%a/" print_expansed_program p
   ) prog_opt ;
-  Printf.fprintf oc "%s" func
+  String.print oc (RamenName.string_of_func func)
 
 let string_of_func_id pn =
   IO.to_string print_expansed_function pn
@@ -279,7 +279,7 @@ let program_name ?(quoted=false) m =
                  else first_char ||| decimal_digit in
   (
     first_char ++ repeat ~sep:none ~what any_char >>:
-    fun (c, s) -> String.of_list (c :: s)
+    fun (c, s) -> RamenName.program_of_string (String.of_list (c :: s))
   ) m
 
 let expansed_program_name ?(quoted=false) m =
@@ -291,7 +291,7 @@ let expansed_program_name ?(quoted=false) m =
     let m = "parameter expansion" :: m in
     (char '{' -- opt_blanks -+
      repeat_greedy ~sep:list_sep expansed_param +-
-     opt_blanks +- char '}' >>: RamenTuple.params_sort) m
+     opt_blanks +- char '}' >>: RamenName.params_sort) m
   in
   (
     program_name ~quoted ++
@@ -309,7 +309,7 @@ let func_name ?(quoted=false) m =
                  else first_char ||| decimal_digit in
   (
     first_char ++ repeat_greedy ~sep:none ~what any_char >>:
-    fun (c, s) -> String.of_list (c :: s)
+    fun (c, s) -> RamenName.func_of_string (String.of_list (c :: s))
   ) m
 
 let function_name =

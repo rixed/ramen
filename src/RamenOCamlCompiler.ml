@@ -98,7 +98,7 @@ let compile_internal conf func_name src_file obj_file =
   with exn ->
     Location.report_exception (ppf ()) exn ;
     let e = RamenLang.CannotGenerateCode {
-      func = func_name ; cmd = "embedded compiler" ;
+      func = RamenName.string_of_func func_name ; cmd = "embedded compiler" ;
       status = Printexc.to_string exn } in
     fail (RamenLang.SyntaxError e)
 
@@ -119,17 +119,18 @@ let compile_external conf func_name src_file obj_file =
       (shell_quote src_file) in
   (* TODO: return an array of arguments and get rid of the shell *)
   let cmd = Lwt_process.shell comp_cmd in
-  let cmd_name = "Compilation of "^ func_name in
+  let cmd_name = "Compilation of "^ RamenName.string_of_func func_name in
   let%lwt status =
     run_coprocess ~max_count:max_simult_compilations cmd_name cmd in
   if status = Unix.WEXITED 0 then (
-    !logger.debug "Compiled %s with: %s" func_name comp_cmd ;
+    !logger.debug "Compiled %s with: %s"
+      (RamenName.string_of_func func_name) comp_cmd ;
     return_unit
   ) else (
     (* As this might well be an installation problem, makes this error
      * report to the GUI: *)
     let e = RamenLang.CannotGenerateCode {
-      func = func_name ; cmd = comp_cmd ;
+      func = RamenName.string_of_func func_name ; cmd = comp_cmd ;
       status = string_of_process_status status } in
     fail (RamenLang.SyntaxError e)
   )
@@ -190,7 +191,8 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   with exn ->
     Location.report_exception (ppf ()) exn ;
     let e = RamenLang.CannotGenerateCode {
-      func = program_name ; cmd = "embedded compiler" ;
+      func = RamenName.string_of_program program_name ;
+      cmd = "embedded compiler" ;
       status = Printexc.to_string exn } in
     fail (RamenLang.SyntaxError e)
 
@@ -217,17 +219,20 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
       (shell_quote src_file) in
   (* TODO: return an array of arguments and get rid of the shell *)
   let cmd = Lwt_process.shell comp_cmd in
-  let cmd_name = "Compilation+Link of "^ program_name in
+  let cmd_name =
+    "Compilation+Link of "^ RamenName.string_of_program program_name in
   let%lwt status =
     run_coprocess ~max_count:max_simult_compilations cmd_name cmd in
   if status = Unix.WEXITED 0 then (
-    !logger.debug "Compiled %s with: %s" program_name comp_cmd ;
+    !logger.debug "Compiled %s with: %s"
+      (RamenName.string_of_program program_name) comp_cmd ;
     return_unit
   ) else (
     (* As this might well be an installation problem, makes this error
      * report to the GUI: *)
     let e = RamenLang.CannotGenerateCode {
-      func = program_name ; cmd = comp_cmd ;
+      func = RamenName.string_of_program program_name ;
+      cmd = comp_cmd ;
       status = string_of_process_status status } in
     fail (RamenLang.SyntaxError e)
   )

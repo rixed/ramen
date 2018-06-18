@@ -262,11 +262,14 @@ let cache_possible_values conf programs =
 let possible_values func factor =
   match Hashtbl.find possible_values_cache (F.fq_name func) with
   | exception Not_found ->
-      !logger.error "%S posible values are not cached?!" func.F.name ;
+      !logger.error "%S poxsible values are not cached?!"
+        (RamenName.string_of_func func.F.name) ;
       raise Not_found
   | h ->
     (match Hashtbl.find h factor with
     | exception Not_found ->
-        !logger.error "%S is not a factor of %S" factor func.F.name ;
+        !logger.error "%S is not a factor of %S"
+          factor
+          (RamenName.string_of_func func.F.name) ;
         raise Not_found
     | x -> x)

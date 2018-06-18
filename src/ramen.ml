@@ -287,10 +287,17 @@ let params =
                    ~docv:"PARAM=VALUE" ["p"; "parameter"] in
   Arg.(value (opt_all assignment [] i))
 
+let program_exp =
+  let parse s = Pervasives.Ok (RamenName.program_exp_of_string s)
+  and print fmt p =
+    Format.fprintf fmt "%s" (RamenName.string_of_program_exp p)
+  in
+  Arg.conv ~docv:"PROGRAM" (parse, print)
+
 let program_names =
   let i = Arg.info ~doc:RamenConsts.CliInfo.program_names
                    ~docv:"PROGRAM" [] in
-  Arg.(non_empty (pos_all string [] i))
+  Arg.(non_empty (pos_all program_exp [] i))
 
 let root_path =
   let env = Term.env_info "RAMEN_ROOT" in
@@ -308,10 +315,17 @@ let bin_files =
                    ~docv:"FILE" [] in
   Arg.(non_empty (pos_all string [] i))
 
+let program =
+  let parse s = Pervasives.Ok (RamenName.program_of_string s)
+  and print fmt p =
+    Format.fprintf fmt "%s" (RamenName.string_of_program p)
+  in
+  Arg.conv ~docv:"PROGRAM" (parse, print)
+
 let program_name =
   let i = Arg.info ~doc:RamenConsts.CliInfo.program_name ~docv:"NAME"
                    [ "program-name" ; "o" ; "as-program" ] in
-  Arg.(value (opt (some string) None i))
+  Arg.(value (opt (some program) None i))
 
 let compile =
   Term.(

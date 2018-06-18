@@ -153,7 +153,8 @@ let compile conf root_path use_external_compiler bundle_dir
     let program_name =
       Option.default_delayed (fun () ->
         (try
-          rel_path_from root_path (Filename.remove_extension source_file)
+          rel_path_from root_path (Filename.remove_extension source_file) |>
+          RamenName.program_of_string
         with Failure s ->
           !logger.error "%s" s ;
           !logger.error "No program name given and cannot find out from the \
@@ -191,14 +192,18 @@ let check_links ?(force=false) exp_program_name prog running_programs =
         | exception Not_found ->
           !logger.warning "Operation %s depends on program %s, \
                            which is not running."
-            func.F.name par_prog ;
+            (RamenName.string_of_func func.F.name)
+            (RamenName.string_of_program_exp par_prog) ;
         | mre ->
           let pprog = P.of_bin mre.C.params mre.C.bin in
           (match List.find (fun p -> p.F.name = par_func) pprog.P.funcs with
           | exception Not_found ->
             !logger.error "Operation %s depends on operation %s/%s, \
                            which is not part of the running program %s."
-              func.F.name par_prog par_func par_prog ;
+              (RamenName.string_of_func func.F.name)
+              (RamenName.string_of_program_exp par_prog)
+              (RamenName.string_of_func par_func)
+              (RamenName.string_of_program_exp par_prog) ;
           | par ->
             (* We want to err if a parent is incompatible (unless --force). *)
             try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
@@ -219,9 +224,9 @@ let check_links ?(force=false) exp_program_name prog running_programs =
         if par_prog = Some exp_program_name then
           match List.find (fun f -> f.F.name = par_func) prog.P.funcs with
           | exception Not_found ->
-            !logger.warning "Operation %s/%s, currently stalled, will still \
+            !logger.warning "Operation %s, currently stalled, will still \
                              be missing its parent %a"
-              func.F.exp_program_name func.F.name F.print_parent parent
+              (RamenName.string_of_fq (F.fq_name func)) F.print_parent parent
           | f -> (* so func is depending on f, let's see: *)
             try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
                                                 f.F.out_type.ser
@@ -267,8 +272,8 @@ let check_orphans conf killed_prog_names running_programs =
              | Some par_prog, _ -> List.mem par_prog killed_prog_names
            ) func.F.parents
         then
-          !logger.warning "Operation %s/%s, will be left without parents"
-            func.F.exp_program_name func.F.name
+          !logger.warning "Operation %s, will be left without parents"
+            (RamenName.string_of_fq (F.fq_name func))
       ) prog.P.funcs
   ) running_programs
 
@@ -408,11 +413,12 @@ let ps conf short with_header sort_col top prefix () =
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
           Hashtbl.fold (fun program_name _get_rc lines ->
-            if String.starts_with program_name prefix then
+            if String.starts_with
+                 (RamenName.string_of_program_exp program_name) prefix then
               let _, (in_count, selected_count, out_count, group_count,
                       cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
                 Hashtbl.find_default h program_name (0., no_stats) in
-              [| ValStr program_name ;
+              [| ValStr (RamenName.string_of_program_exp program_name) ;
                  int_or_na in_count ;
                  int_or_na selected_count ;
                  int_or_na out_count ;
@@ -435,7 +441,8 @@ let ps conf short with_header sort_col top prefix () =
           Hashtbl.fold (fun program_name get_rc lines ->
             let bin, prog = get_rc () in
             List.fold_left (fun lines func ->
-              let fq_name = program_name ^"/"^ func.F.name in
+              let fq_name = RamenName.string_of_program_exp program_name
+                            ^"/"^ RamenName.string_of_func func.F.name in
               if String.starts_with fq_name prefix then
                 let _, (in_count, selected_count, out_count, group_count,
                         cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =

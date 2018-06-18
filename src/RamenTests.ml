@@ -11,7 +11,7 @@ type tuple_spec = (string, string) Hashtbl.t [@@ppp PPP_OCaml]
 module Input = struct
   type spec =
     { pause : float [@ppp_default 0.] ;
-      operation : string ;
+      operation : RamenName.fq ;
       tuple : tuple_spec }
     [@@ppp PPP_OCaml]
 end
@@ -33,9 +33,9 @@ module Notifs = struct
 end
 
 type test_spec =
-  { programs : (string * RamenTuple.params) list ;
+  { programs : (string * RamenName.params) list ;
     inputs : Input.spec list [@ppp_default []] ;
-    outputs : (string, Output.spec) Hashtbl.t
+    outputs : (RamenName.fq, Output.spec) Hashtbl.t
       [@ppp_default Hashtbl.create 0] ;
     notifications : Notifs.spec
       [@ppp_default Notifs.{ present=[]; absent=[]; timeout=0. }] }
@@ -100,7 +100,8 @@ let test_output func bname output_spec =
   let%lwt nb_tuples =
     RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
       let tuple = unserialize tx in
-      !logger.debug "Read a tuple out of operation %S" func.F.name ;
+      !logger.debug "Read a tuple out of operation %S"
+        (RamenName.string_of_func func.F.name) ;
       tuples_to_find :=
         List.filter (fun (spec, best_miss) ->
           let miss =
@@ -142,9 +143,9 @@ let test_output func bname output_spec =
     List.print (file_spec_print !best_miss) oc in
   let msg =
     if success then "" else
-    (Printf.sprintf "Enumerated %d tuple%s from %s/%s"
+    (Printf.sprintf "Enumerated %d tuple%s from %s"
       nb_tuples (if nb_tuples > 0 then "s" else "")
-      func.F.exp_program_name func.F.name)^
+      (RamenName.string_of_fq (F.fq_name func)))^
     (if !tuples_to_find = [] then "" else
       " but could not find these tuples: "^
         IO.to_string (List.print tuple_spec_print) !tuples_to_find) ^
@@ -220,8 +221,8 @@ let test_one conf root_path notify_rb dirname test =
       | exception Not_found ->
           let msg =
             Printf.sprintf2 "Unknown operation: %S (must be one of: %a)"
-              input.operation
-              (Enum.print String.print) (Hashtbl.keys workers) in
+              (RamenName.string_of_fq input.operation)
+              (Enum.print RamenName.fq_print) (Hashtbl.keys workers) in
           lwt_fail_and_quit msg
       | func, _, rbr ->
           let%lwt () =
@@ -259,7 +260,9 @@ let test_one conf root_path notify_rb dirname test =
       let tester_thread =
         match Hashtbl.find workers user_fq_name with
         | exception Not_found ->
-            fun () ->lwt_fail_and_quit ("Unknown operation "^ user_fq_name)
+            fun () ->
+              lwt_fail_and_quit
+                ("Unknown operation "^ RamenName.string_of_fq user_fq_name)
         | tested_func, bname, _rbr ->
             fun () -> test_output tested_func bname output_spec in
       return (tester_thread :: thds)

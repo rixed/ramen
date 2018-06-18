@@ -11,7 +11,7 @@ open RamenLang
 *)
 
 type func =
-  { name : string ;
+  { name : [`Function] RamenName.t ;
     operation : RamenOperation.t }
 
 type t = func list
@@ -20,7 +20,7 @@ let make_name =
   let seq = ref ~-1 in
   fun () ->
     incr seq ;
-    "f"^ string_of_int !seq
+    RamenName.func_of_string ("f"^ string_of_int !seq)
 
 let make_func ?name operation =
   { name = (match name with Some n -> n | None -> make_name ()) ;
@@ -33,7 +33,7 @@ let print_param oc (n, v) =
 let print_func oc n =
   (* TODO: keep the info that func was anonymous? *)
   Printf.fprintf oc "DEFINE '%s' AS %a;"
-    n.name
+    (RamenName.string_of_func n.name)
     RamenOperation.print n.operation
 
 let print oc (params, funcs) =
@@ -49,7 +49,7 @@ let check params funcs =
   List.fold_left (fun s n ->
     RamenOperation.check params n.operation ;
     if Set.mem n.name s then
-      raise (SyntaxError (NameNotUnique n.name)) ;
+      raise (SyntaxError (NameNotUnique (RamenName.string_of_func n.name))) ;
     Set.add n.name s
   ) Set.empty funcs |> ignore
 
@@ -98,12 +98,12 @@ struct
             | DefFunc func -> params, func::funcs
             | DefParams lst -> List.rev_append lst params, funcs
           ) ([], []) defs in
-        RamenTuple.params_sort params, funcs
+        RamenName.params_sort params, funcs
     ) m
 
   (*$= p & ~printer:(test_printer print)
    (Ok (([], [\
-    { name = "bar" ;\
+    { name = RamenName.func_of_string "bar" ;\
       operation = \
         Aggregate {\
           fields = [\
@@ -119,13 +119,13 @@ struct
           commit_before = false ;\
           flush_how = Reset ;\
           event_time = None ;\
-          from = [NamedOperation (None, "foo")] ; every = 0. ; factors = [] } } ]),\
+          from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] } } ]),\
       (46, [])))\
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
 
    (Ok ((["p1", VI32 0l; "p2", VI32 0l], [\
-    { name = "add" ;\
+    { name = RamenName.func_of_string "add" ;\
       operation = \
         Aggregate {\
           fields = [\
@@ -153,7 +153,7 @@ end
 let reify_subquery =
   let seqnum = ref 0 in
   fun op ->
-    let name = "_"^ string_of_int !seqnum in
+    let name = RamenName.func_of_string ("_"^ string_of_int !seqnum) in
     incr seqnum ;
     make_func ~name op
 

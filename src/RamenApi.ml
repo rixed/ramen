@@ -84,7 +84,7 @@ let get_tables conf msg =
       Hashtbl.fold (fun _prog_name get_rc lst ->
         let _bin, prog = get_rc () in
         List.fold_left (fun lst f ->
-          let fqn = F.fq_name f in
+          let fqn = RamenName.string_of_fq (F.fq_name f) in
           if f.F.event_time <> None && String.starts_with fqn req.prefix
           then fqn :: lst
           else lst
