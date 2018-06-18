@@ -236,7 +236,8 @@ let get_possible_values conf ?since ?until func factor =
       return (Set.union pvs set)
     ) Set.empty bnames
 
-(* Possible values per factor are precalculated to cut down on promises: *)
+(* Possible values per factor are precalculated to cut down on promises.
+ * Indexed by FQ names, then factor name: *)
 (* FIXME: change the tree type to make the children enumerator a promise :-( *)
 let possible_values_cache = Hashtbl.create 31
 
@@ -253,11 +254,19 @@ let cache_possible_values conf programs =
           Hashtbl.add h factor pvs ;
           return_unit
         ) func.F.factors in
-      Hashtbl.replace possible_values_cache func.F.name h ;
+      Hashtbl.replace possible_values_cache (F.fq_name func) h ;
       return_unit
     ) prog.P.funcs)
 
 (* Enumerate the possible values of a factor: *)
 let possible_values func factor =
-  let h = Hashtbl.find possible_values_cache func.F.name in
-  Hashtbl.find h factor
+  match Hashtbl.find possible_values_cache (F.fq_name func) with
+  | exception Not_found ->
+      !logger.error "%S posible values are not cached?!" func.F.name ;
+      raise Not_found
+  | h ->
+    (match Hashtbl.find h factor with
+    | exception Not_found ->
+        !logger.error "%S is not a factor of %S" factor func.F.name ;
+        raise Not_found
+    | x -> x)
