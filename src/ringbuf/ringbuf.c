@@ -115,7 +115,7 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
       goto err0;
     } else {
       fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
-      goto err1;
+      goto err0;
     }
   } else {
     ssize_t rs = really_read(fd, first_seq, sizeof(*first_seq), fname);
