@@ -23,12 +23,11 @@ let make_buckets nt nc =
     Array.init nc (fun _ ->
       { count = 0 ; sum = 0. ; min = max_float ; max = min_float }))
 
-let add_into_bucket b bi ci v =
-  if bi >= 0 && bi < Array.length b then (
-    b.(bi).(ci).count <- succ b.(bi).(ci).count ;
-    b.(bi).(ci).min <- min b.(bi).(ci).min v ;
-    b.(bi).(ci).max <- max b.(bi).(ci).max v ;
-    b.(bi).(ci).sum <- b.(bi).(ci).sum +. v)
+let pour_into_bucket b bi ci v =
+  b.(bi).(ci).count <- succ b.(bi).(ci).count ;
+  b.(bi).(ci).min <- min b.(bi).(ci).min v ;
+  b.(bi).(ci).max <- max b.(bi).(ci).max v ;
+  b.(bi).(ci).sum <- b.(bi).(ci).sum +. v
 
 let bucket_of_time since dt t = int_of_float ((t -. since) /. dt)
 
@@ -126,7 +125,8 @@ let get conf ?duration max_data_points since until where factors
         let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
         List.iteri (fun i vi ->
           let v = RamenTypes.float_of_scalar tuple.(vi) in
-          for bi = bi1 to bi2 do add_into_bucket buckets bi i v done
+          for bi = max bi1 0 to min bi2 (Array.length buckets - 1) do
+            pour_into_bucket buckets bi i v done
         ) vis)) in
   (* Extract the results as an Enum, one value per key *)
   let indices = Enum.range 0 ~until:(max_data_points - 1) in
