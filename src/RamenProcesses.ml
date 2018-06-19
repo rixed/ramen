@@ -778,7 +778,7 @@ let synchronize_running conf autoreload_delay =
               return now
             ) else return last_read) in
         let%lwt () = synchronize must_run running in
-        let delay = if !quit <> None then 0.1 else 1. in
+        let delay = if !quit = None then 1. else 0.1 in
         Gc.minor () ;
         let%lwt () = Lwt_unix.sleep delay in
         RamenWatchdog.reset watchdog ;

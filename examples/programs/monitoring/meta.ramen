@@ -63,8 +63,8 @@ DEFINE per_minute AS
     ELSE 0 AS bytes_out_per_secs,
 
     min age last_out AS last_out_age
-  GROUP BY worker
-  COMMIT BEFORE _max_time >= out.time + 60
+  GROUP BY worker, time // 60
+  COMMIT AFTER in.time - out.time > 90
   EVENT STARTING AT time WITH DURATION 60
   FACTOR worker;
 
