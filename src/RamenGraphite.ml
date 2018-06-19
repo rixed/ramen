@@ -157,10 +157,12 @@ let tree_enum_of_program (program_name, get_rc) =
        (RamenName.string_of_func func.F.name, OpName),
        tree_enum_of_factors func func.F.factors))
 
-(* Given the programs hashtable, return a tree_enum of the
- * path components and programs. Merely build a hashtbl of hashtbls. *)
+(* Given the programs hashtable, return a tree_enum of the path components and
+ * programs. Merely build a hashtbl of hashtbls.
+ * The hash has a boolean alongside the prefix, indicating if the value is a
+ * Prog or a Hash, so that we can have both under the same name. *)
 type program_tree_item = Prog of (string * (unit -> string * P.t))
-                       | Hash of (string, program_tree_item) Hashtbl.t
+                       | Hash of ((bool * string), program_tree_item) Hashtbl.t
 
 let tree_enum_of_programs programs =
   let programs =
@@ -177,20 +179,20 @@ let tree_enum_of_programs programs =
         (* Get the next prefix *)
         match String.split suf ~by:"/" with
         | exception Not_found ->
-            Hashtbl.add h suf (Prog p)
+            Hashtbl.add h (false, suf) (Prog p)
         | suf, rest ->
             (* If we've done it already, continue: *)
-            if not (Hashtbl.mem h suf) then
+            if not (Hashtbl.mem h (true, suf)) then
               let pref' = pref ^ suf ^"/" in
-              Hashtbl.add h suf (Hash (hash_for_prefix pref'))
+              Hashtbl.add h (true, suf) (Hash (hash_for_prefix pref'))
       (* TODO: exit when we stop matching as the array is ordered *)
     ) programs ;
     h in
   let h = hash_for_prefix "" in
   let rec tree_enum_of_h h =
     E (Hashtbl.enum h /@
-       (function name, Prog p -> (name, ProgPath), tree_enum_of_program p
-               | name, Hash h -> (name, ProgPath), tree_enum_of_h h)) in
+       (function (_, name), Prog p -> (name, ProgPath), tree_enum_of_program p
+               | (_, name), Hash h -> (name, ProgPath), tree_enum_of_h h)) in
   tree_enum_of_h h
 
 let filters_of_query query =
