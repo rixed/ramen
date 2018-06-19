@@ -462,7 +462,7 @@ static int rotate_file_locked(struct ringbuf *rb)
 
   // Regardless of how this rotation went, we must not release the lock without
   // having created a new archive file:
-  printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
+  //printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
   if (0 != ringbuf_create_locked(rb->rbf->wrap, rb->fname, rb->rbf->nb_words)) {
     goto err0;
   }
@@ -484,14 +484,15 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
   uint32_t const free = ringbuf_file_nb_free(rbf, rbf->cons_tail, rbf->prod_head);
   if (free >= needed) {
     if (rbf->data[rbf->prod_head] == UINT32_MAX) {
-      printf("Enough place for a new record (%"PRIu32" words, "
-             "and %"PRIu32" free) but EOF mark is set\n", needed, free);
+      fprintf(stderr,
+              "Enough place for a new record (%"PRIu32" words, "
+              "and %"PRIu32" free) but EOF mark is set\n", needed, free);
     } else {
       return 0;
     }
   }
 
-  printf("Rotating buffer '%s'!\n", rb->fname);
+  //printf("Rotating buffer '%s'!\n", rb->fname);
 
   int ret = -1;
 
@@ -505,15 +506,15 @@ static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
   if (rbf->data[rbf->prod_head] != UINT32_MAX) {
     if (0 != rotate_file_locked(rb)) goto err1;
   } else {
-    printf("...actually not, someone did already.\n");
+    //printf("...actually not, someone did already.\n");
   }
 
   // Unmap rb
-  printf("Unmap rb\n");
+  //printf("Unmap rb\n");
   if (RB_OK != ringbuf_unload(rb)) goto err1;
 
   // Mmap the new file and update rbf.
-  printf("Mmap the new file and update rbf\n");
+  //printf("Mmap the new file and update rbf\n");
   if (0 != mmap_rb(rb)) goto err1;
 
   ret = 0;
