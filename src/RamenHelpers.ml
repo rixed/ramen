@@ -66,6 +66,13 @@ let sql_quote s =
 let path_quote s =
   let s = String.nreplace s "%" "%%" in
   String.nreplace s "/" "%2F"
+(*$= path_quote & ~printer:(fun x -> x)
+  "" (path_quote "")
+  "glop" (path_quote "glop")
+  "pas%2Fglop" (path_quote "pas/glop")
+  "%%%2Fglop%2Fpas%%pas%2Fglop%2F%%" (path_quote "%/glop/pas%pas/glop/%")
+  "%2F%%glop%2Fpas%%pas%2Fglop%%%2F" (path_quote "/%glop/pas%pas/glop%/")
+ *)
 
 let path_unquote s =
   let len = String.length s in
@@ -73,10 +80,10 @@ let path_unquote s =
   let rec loop i =
     if i >= len then Buffer.contents b
     else if s.[i] = '%' then (
-      if i < len - 2 && s.[i+1] = '%' then (
+      if i < len - 1 && s.[i+1] = '%' then (
         Buffer.add_char b '%' ;
         loop (i + 2)
-      ) else if i < len - 3 && s.[i+1] = '2' && s.[i+2] = 'F' then (
+      ) else if i < len - 2 && s.[i+1] = '2' && s.[i+2] = 'F' then (
         Buffer.add_char b '/' ;
         loop (i + 3)
       ) else invalid_arg s
@@ -86,6 +93,22 @@ let path_unquote s =
     )
   in
   loop 0
+(*$= path_unquote & ~printer:(fun x -> x)
+  "" (path_unquote "")
+  "glop" (path_unquote "glop")
+  "pas/glop" (path_unquote "pas%2Fglop")
+  "%/glop/pas%pas/glop/%" (path_unquote "%%%2Fglop%2Fpas%%pas%2Fglop%2F%%")
+  "/%glop/pas%pas/glop%/" (path_unquote "%2F%%glop%2Fpas%%pas%2Fglop%%%2F")
+ *)
+(*$T path_unquote
+  try ignore (path_unquote "%") ; false with Invalid_argument _ -> true
+  try ignore (path_unquote "%%%") ; false with Invalid_argument _ -> true
+  try ignore (path_unquote "%2") ; false with Invalid_argument _ -> true
+  try ignore (path_unquote "%2f") ; false with Invalid_argument _ -> true
+  try ignore (path_unquote "%2z") ; false with Invalid_argument _ -> true
+  try ignore (path_unquote "%3F") ; false with Invalid_argument _ -> true
+ *)
+
 
 let list_existsi f l =
   match List.findi (fun i v -> f i v) l with
@@ -556,8 +579,6 @@ let random_string =
     Bytes.init len random_char |>
     Bytes.to_string
 
-let string_starts_with sub s = String.starts_with s sub
-
 let max_simult ~max_count =
   let open Lwt in
   fun f ->
@@ -1009,17 +1030,3 @@ let subst_tuple_fields =
                          present in that tuple!" tuple_name field_name ;
           "??"^ tuple_name ^"."^ field_name ^"??"
     ) text
-
-(* [string_compare_from i s1 s2] is equivalent to
- * [compare (sub s1 i (length s2) s2], but without allocating a temporary
- * string. *)
-let string_compare_from i s1 s2 =
-  let l = String.length s2 in
-  if String.length s1 > l then invalid_arg "string_compare_from" else
-  let rec loop i1 i2 =
-    if i2 >= l then 0 else
-    match Char.compare s1.[i1] s2.[i1] with
-    | 0 -> loop (i1+1) (i2+1)
-    | c -> c
-  in
-  loop i 0
