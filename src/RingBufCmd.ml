@@ -80,7 +80,8 @@ let links conf no_abbrev with_header sort_col top prefix () =
         Some s) ignore in
   let fq_name = function
     | NotRunning (pn, fn) ->
-        RamenName.string_of_program_exp pn ^"/"^ RamenName.string_of_func fn
+        red (RamenName.string_of_program_exp pn ^"/"^
+             RamenName.string_of_func fn)
     | Running func -> RamenName.string_of_fq (F.fq_name func) in
   let head =
     [| "parent" ; "child" ; "out_ref" ; "spec" ; "ringbuf" ;
@@ -109,13 +110,13 @@ let links conf no_abbrev with_header sort_col top prefix () =
       in
       let%lwt out_ref, spec =
         match p with
-        | NotRunning (pn, fn) -> Lwt.return ("", "")
+        | NotRunning (pn, fn) -> Lwt.return ("", red "NOT RUNNING")
         | Running p ->
             let out_ref = C.out_ringbuf_names_ref conf p in
             let%lwt outs = get_out_refs out_ref in
             let spec =
               match Map.find ringbuf outs with
-              | exception Not_found -> ""
+              | exception Not_found -> red "MISSING"
               | spec -> RamenOutRef.string_of_file_spec spec in
             Lwt.return (out_ref, spec)
       in
@@ -143,6 +144,7 @@ let links conf no_abbrev with_header sort_col top prefix () =
           Lwt_list.fold_left_s (fun links func ->
             let%lwt _, links =
               Lwt_list.fold_left_s (fun (i, links) (par_prog, par_func) ->
+                (* i is the index in the list of parents for a given child *)
                 let par_prog = par_prog |? func.F.exp_program_name in
                 let parent =
                   match Hashtbl.find programs par_prog with
