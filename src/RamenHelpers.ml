@@ -741,26 +741,16 @@ let age t = Unix.gettimeofday () -. t
 
 let memoize f =
   let cached = ref None in
-  fun x -> (* beware that [x] will be used only during the first call! *)
+  fun () ->
     match !cached with
     | Some r -> r
     | None ->
-        let r = f x in
+        let r = f () in
         cached := Some r ;
         r
 
-let lwt_memoize f =
-  let cached = ref None in
-  fun x -> (* beware that [x] will be used only during the first call! *)
-    match !cached with
-    | Some r -> Lwt.return r
-    | None ->
-        let%lwt r = f x in
-        cached := Some r ;
-        Lwt.return r
-
 let cache_clean_after = 1200.
-let cached reread time =
+let cached2 reread time =
   (* Cache is a hash from some key to last access time, last data time,
    * and data. *)
   let cache = Hashtbl.create 31 in
@@ -795,6 +785,11 @@ let cached reread time =
       !logger.debug "Cache size is now %d" (Hashtbl.length cache)
     ) ;
     Option.get !ret
+
+(* Same as above without the additional user parameter: *)
+let cached reread time =
+  let c = cached2 (fun k () -> reread k) (fun k () -> time k) in
+  fun k -> c k ()
 
 let save_in_file ~compute ~serialize ~deserialize fname =
   try read_whole_file fname |> deserialize

@@ -67,15 +67,17 @@ type func_status =
 
 let links conf no_abbrev with_header sort_col top prefix () =
   logger := make_logger conf.C.debug ;
-  (* Memoize to avoid reading the out_ref several times: *)
-  let get_out_refs = lwt_memoize RamenOutRef.read in
-  let get_stats = memoize (fun fname ->
+  (* Cache to avoid reading the out_ref several times: *)
+  let get_out_refs = cached RamenOutRef.read mtime_of_file in
+  (* Same to get the ringbuffer stats, but we never reread the stats (not
+   * needed, and mtime wouldn't really work on those mmapped files *)
+  let get_rb_stats = cached (fun fname ->
     match RingBuf.load fname with
     | exception Failure _ -> None
     | rb ->
         let s = RingBuf.stats rb in
         RingBuf.unload rb ;
-        Some s) in
+        Some s) ignore in
   let fq_name = function
     | NotRunning (pn, fn) ->
         RamenName.string_of_program_exp pn ^"/"^ RamenName.string_of_func fn
@@ -98,7 +100,7 @@ let links conf no_abbrev with_header sort_col top prefix () =
               else
                 C.in_ringbuf_name_single conf c in
             let fill_ratio, next_seqs =
-              match get_stats ringbuf with
+              match get_rb_stats ringbuf with
               | None -> 0., ""
               | Some s ->
                   float_of_int s.alloced_words /. float_of_int s.capacity,

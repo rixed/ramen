@@ -61,37 +61,39 @@ let all_experiments = [ the_big_one ]
  * Helpers
  *)
 
-let experimenter_id =
-  memoize (fun persist_dir ->
-    (* The host id must never change. That's why we save it in a file and we
-     * try to reproduce the same value should that file disappear: *)
-    let compute () =
-      match Unix.run_and_read "hostname" with
-      | exception e ->
-          !logger.error "Cannot execute hostname: %s"
-            (Printexc.to_string e) ;
-          0
-      | WEXITED 0, hostname ->
-          let id = Hashtbl.hash hostname in
-          !logger.debug "Experimenter id: %d (from hostname %S)"
-            id hostname ;
-          id
-      | st, _ ->
-          !logger.error "Cannot execute hostname: %s"
-            (string_of_process_status st) ;
-          0 in
-    let fname = persist_dir ^"/.experimenter_id" in
-    try save_in_file ~compute ~serialize:string_of_int
-                     ~deserialize:int_of_string fname
-    with _ -> 0)
-
 let specialize persist_dir e branches =
   assert (Array.length branches = Array.length e.variants) ;
   branches.(e.variant) ()
 
 let set_variants persist_dir forced_variants =
-  let eid = experimenter_id persist_dir in
-  (* First, set the forced variants *)
+  (*
+   * Find out the experimenter id
+   * It must never change. That's why we save it in a file and we try to
+   * reproduce the same value should that file disappear:
+   *)
+  let fname = persist_dir ^"/.experimenter_id" in
+  let compute () =
+    match Unix.run_and_read "hostname" with
+    | exception e ->
+        !logger.error "Cannot execute hostname: %s"
+          (Printexc.to_string e) ;
+        0
+    | WEXITED 0, hostname ->
+        let id = Hashtbl.hash hostname in
+        !logger.debug "Experimenter id: %d (from hostname %S)"
+          id hostname ;
+        id
+    | st, _ ->
+        !logger.error "Cannot execute hostname: %s"
+          (string_of_process_status st) ;
+        0 in
+  let eid =
+    try save_in_file ~compute ~serialize:string_of_int
+                     ~deserialize:int_of_string fname
+    with _ -> 0 in
+  (*
+   * Set all the forced variants:
+   *)
   List.iter (fun variant_name ->
     match String.split ~by:"=" variant_name with
     | exception Not_found ->
@@ -107,7 +109,9 @@ let set_variants persist_dir forced_variants =
             | i ->
                 e.variant <- i))
   ) forced_variants ;
-  (* Then set the variants that are still unset: *)
+  (*
+   * Then set the variants that are still unset:
+   *)
   List.iter (fun e ->
     let forced = e.variant >= 0 in
     if not forced then (
