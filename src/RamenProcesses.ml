@@ -599,20 +599,35 @@ let check_out_ref =
         C.in_ringbuf_names conf func |>
         List.fold_left (fun s rb_name -> Set.add rb_name s) s
       ) must_run (Set.singleton (C.notify_ringbuf conf)) in
-    (* Iter over all functions and check they do not output to a ringbuf not
-     * in this set: *)
     Hashtbl.values must_run |> List.of_enum |> (* FIXME *)
     Lwt_list.iter_p (fun (_bin, _params, func) ->
+      (* Iter over all functions and check they do not output to a ringbuf not
+       * in this set: *)
       let out_ref = C.out_ringbuf_names_ref conf func in
       let%lwt outs = RamenOutRef.read out_ref in
       Map.keys outs |> List.of_enum |>
       Lwt_list.iter_s (fun fname ->
         if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
-          !logger.error "Operation %s outputs to %s, which is not read"
+          !logger.error "Operation %s outputs to %s, which is not read, fixing"
             (RamenName.string_of_fq (F.fq_name func)) fname ;
           IntCounter.add stats_outref_repairs 1 ;
           RamenOutRef.remove out_ref fname
-        ) else return_unit))
+        ) else return_unit) ;%lwt
+      (* Conversely, check that all children are in the out_ref of their
+       * parent: *)
+      let par_funcs, _c = relatives func must_run in
+      let in_rbs = C.in_ringbuf_names conf func |> Set.of_list in
+      Lwt_list.iter_p (fun par_func ->
+        let out_ref = C.out_ringbuf_names_ref conf par_func in
+        let%lwt outs = RamenOutRef.read out_ref in
+        let outs = Map.keys outs |> Set.of_enum in
+        if Set.disjoint in_rbs outs then (
+          !logger.error "Operation %s must output to %s but does not, fixing"
+            (RamenName.string_of_fq (F.fq_name par_func))
+            (RamenName.string_of_fq (F.fq_name func)) ;
+          RamenOutRef.add out_ref (input_spec conf par_func func)
+        ) else return_unit
+      ) par_funcs)
   and last_checked_out_ref = ref 0. in
   fun conf must_run ->
     let now = Unix.time () in
