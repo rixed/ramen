@@ -106,6 +106,10 @@ let stats_count =
   IntCounter.make RamenConsts.MetricNames.requests_count
     "Number of HTTP requests, per response status"
 
+let stats_resp_time =
+  Histogram.make RamenConsts.MetricNames.http_resp_time
+    "HTTP response time per URL" Histogram.powers_of_two
+
 let http_service port url_prefix router =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
@@ -141,7 +145,7 @@ let http_service port url_prefix router =
       let rec loop s =
         if String.ends_with s "/" then loop (String.rchop s) else s in
       loop path in
-    let path =
+    let path_lst =
       String.nsplit path "/" |>
       List.map dec in
     let params = Hashtbl.create 7 in
@@ -154,14 +158,27 @@ let http_service port url_prefix router =
         | exception Not_found -> ()
         | pn, pv -> Hashtbl.add params (dec pn) (dec pv))) ;
     let headers = Request.headers req in
-    let%lwt body = Cohttp_lwt.Body.to_string body
-    in
+    let%lwt body = Cohttp_lwt.Body.to_string body in
+    let start_time = Unix.gettimeofday () in
+    let method_ = Request.meth req in
+    let labels = [ "method", Code.string_of_method method_ ;
+                   "path", path] in
     try%lwt
-      try router (Request.meth req) path params headers body
-      with exn -> fail exn
+      try (
+        let%lwt resp, body = router method_ path_lst params headers body in
+        let resp_time = Unix.gettimeofday () -. start_time in
+        let labels =
+          ("status", string_of_int (Code.code_of_status resp.Response.status)) :: labels in
+        !logger.debug "Response time to %a: %f"
+          (List.print (fun oc (n,v) -> Printf.fprintf oc "%s=%s" n v))
+            labels resp_time ;
+        Histogram.add stats_resp_time ~labels resp_time ;
+        return (resp, body)
+      ) with exn -> fail exn
     with HttpError (code, msg) as exn ->
            print_exception exn ;
-           IntCounter.add ~labels:["status", string_of_int code] stats_count 1 ;
+           let labels = ("status", string_of_int code) :: labels in
+           IntCounter.add ~labels stats_count 1 ;
            let status = Code.status_of_code code in
            let headers =
              Header.init_with "Access-Control-Allow-Origin" "*" in
@@ -171,7 +188,8 @@ let http_service port url_prefix router =
        | exn ->
            print_exception exn ;
            let code = 500 in
-           IntCounter.add ~labels:["status", string_of_int code] stats_count 1 ;
+           let labels = ("status", string_of_int code) :: labels in
+           IntCounter.add ~labels stats_count 1 ;
            let status = Code.status_of_code code in
            let body = Printexc.to_string exn ^ "\n" in
            let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
