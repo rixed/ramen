@@ -580,7 +580,7 @@ let try_kill conf must_run proc =
     log_exceptions ~what:"Terminating worker"
       (Unix.kill pid) Sys.sigterm ;
     proc.last_killed <- now ;
-  ) else if now -. proc.last_killed > 5. then (
+  ) else if now -. proc.last_killed > 10. then (
     !logger.warning "Killing worker %s (pid %d) with bigger guns"
       (RamenName.string_of_fq (F.fq_name proc.func)) pid ;
     log_exceptions ~what:"Killing worker"
