@@ -62,8 +62,9 @@ let params_sort = List.fast_sort param_compare
 let print_param oc (n, v) =
   Printf.fprintf oc "%s=%a" n RamenTypes.print v
 
-let string_of_params s =
-  IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param) s
+let string_of_params params =
+  params_sort params |>
+  IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param)
 
 let params_signature = md5 % string_of_params
 
@@ -76,9 +77,7 @@ external string_of_params_exp : params_exp -> string = "%identity"
 
 let params_exp_of_params = function
   | [] -> ""
-  | params ->
-      IO.to_string
-        (List.print ~first:"{" ~last:"}" ~sep:"," print_param) params
+  | params -> "{"^ string_of_params params ^"}"
 
 
 (* Program name - expansed *)
