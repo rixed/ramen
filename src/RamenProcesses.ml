@@ -710,7 +710,7 @@ let synchronize_running conf autoreload_delay =
     if possible_reload then !logger.debug "Starting the starts" ;
     let%lwt () = Lwt_list.iter_p (try_start conf must_run) !to_start in
     (* Try to fix any issue with out_refs: *)
-    if !to_start = [] && !to_kill = [] then
+    if !to_start = [] && !to_kill = [] && !quit = None then
       check_out_ref conf must_run
     else return_unit
   in
