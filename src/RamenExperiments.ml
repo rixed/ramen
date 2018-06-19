@@ -38,7 +38,7 @@ let make name variants =
           v.share <- s ;
           rem_s -. s, rem_n - 1
       | _ -> rem
-    ) (sum, nb_unset) variants in
+    ) (1. -. sum, nb_unset) variants in
   { name ; variant = -1 ; forced = false ; variants }
 
 (*
