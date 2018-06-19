@@ -72,6 +72,7 @@ type params_exp = [`Params] t
 let params_exp_ppp_ocaml = t_ppp_ocaml
 
 external params_exp_of_string : string -> params_exp = "%identity"
+external string_of_params_exp : params_exp -> string = "%identity"
 
 let params_exp_of_params = function
   | [] -> ""
@@ -90,15 +91,18 @@ external string_of_program_exp : program_exp -> string = "%identity"
 
 external program_exp_of_string : string -> program_exp = "%identity"
 
+let split_program_exp s =
+  match String.index s '{' with
+  | exception Not_found -> s, ""
+  | i -> String.sub s 0 i, String.sub s i (String.length s - i)
+
 let path_of_program_exp s =
-  match String.split s ~by:"{" with
-  | exception Not_found -> s
-  | prog, params -> prog ^"{"^ path_quote params
+  let prog, params = split_program_exp s in
+  prog ^ path_quote params
 
 let program_exp_of_path s =
-  match String.split s ~by:"{" with
-  | exception Not_found -> s
-  | prog, params -> prog ^"{"^ path_unquote params
+  let prog, params = split_program_exp s in
+  prog ^ path_unquote params
 
 external program_exp_of_program : program -> program_exp = "%identity"
 
