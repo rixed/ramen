@@ -11,7 +11,7 @@ build-test: [make "check"]
 install: [make "bin_dir=%{bin}%" "install"]
 remove: [make "bin_dir=%{bin}%" "uninstall"]
 depends: [
-  "ocamlfind" {= "1.7.3-1"}
+  "ocamlfind" {= "1.8.0"}
   "lwt" {= "3.3.0"}
   "lwt_ppx" {= "1.1.0"}
   "batteries" {= "2.8.0"}
@@ -19,9 +19,9 @@ depends: [
   "parsercombinator" {>= "0.4"}
   "cohttp-lwt-unix" {build & = "1.0.2"}
   "binocle" {>= "0.3"}
-  "lacaml" {= "11.0.0"}
+  "lacaml" {= "11.0.1"}
   "num"
-  "ppp" {>= "2.2"}
+  "ppp" {>= "2.3"}
   "cmdliner" {build & = "1.0.2"}
   "syslog" {= "1.5"}
   "sqlite3" {build}

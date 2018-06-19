@@ -2,7 +2,7 @@
 
 VERSION = 2.2.3
 
-DUPS_IN = $(shell ocamlfind ocamlc -where)/compiler-libs
+DUPS_IN  = $(shell ocamlfind query compiler-libs):$(shell ocamlfind query lwt_ppx)
 OCAMLC   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlc
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
