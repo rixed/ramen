@@ -744,22 +744,23 @@ let cached reread time =
    * and data. *)
   let cache = Hashtbl.create 31 in
   let next_clean = ref (Unix.time () +. Random.float cache_clean_after) in
-  fun k ->
+  fun k u ->
     let ret = ref None in
     let now = Unix.time () in
     Hashtbl.modify_opt k (function
       | None ->
-          let t, v as a_t_v = time k, reread k in
+          let t = time k u
+          and v = reread k u in
           ret := Some v ;
           Some (ref now, t, v)
       | Some (a, t, v) as prev ->
-          let t' = time k in
+          let t' = time k u in
           if t' <= t then (
             ret := Some v ;
             a := now ;
             prev
           ) else (
-            let v = reread k in
+            let v = reread k u in
             ret := Some v ;
             Some (ref now, t', v)
           )
@@ -851,7 +852,7 @@ let uniquify () =
       true
     )
 (*$= uniquify & ~printer:(IO.to_string (List.print Int.print))
-  [1;2;3] (List.enum [1;1;2;3;3;2;1] // uniquify () |> List.of_enum)
+  [1;2;3] (List.filter (uniquify ()) [1;1;2;3;3;2;1])
  *)
 
 let jitter ?(amplitude=0.25) v =

@@ -68,7 +68,7 @@ struct
 
   let of_bin =
     (* Cache of path to date of last read and program *)
-    let reread_data fname : t =
+    let reread_data fname () : t =
       !logger.debug "Reading config from %s..." fname ;
       let empty_program =
         { name = RamenName.program_of_string "fake";
@@ -90,7 +90,7 @@ struct
         !logger.error "Executable %s is for version %s (I'm version %s)"
           fname v RamenVersions.codegen ;
         empty_program
-    and age_of_data fname =
+    and age_of_data fname () =
       try mtime_of_file fname
       with e ->
         !logger.error "Cannot get mtime of %s: %s"
@@ -99,7 +99,7 @@ struct
     in
     let get_prog = cached reread_data age_of_data in
     fun params fname ->
-      let p = get_prog fname in
+      let p = get_prog fname () in
       (* Patch actual parameters: *)
       p.params <-
         RamenTuple.overwrite_params p.params params ;
@@ -233,6 +233,9 @@ let with_wlock conf f =
       Lwt_unix.sleep s >>= loop
   in
   loop ()
+
+let last_conf_mtime conf =
+  running_config_file conf |> mtime_of_file_def 0.
 
 let find_func programs exp_program_name func_name =
   let _bin, prog =

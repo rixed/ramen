@@ -716,9 +716,10 @@ let graphite_expand conf query () =
     RamenGraphite.enum_tree_of_query conf query) in
   let rec display indent te =
     let e = RamenGraphite.get te in
-    Enum.iteri (fun i ((n, _), c) ->
+    let len = List.length e in
+    List.iteri (fun i ((n, _), c) ->
       let first = i = 0
-      and last = Enum.peek e = None in
+      and last = i = len - 1 in
       let prefix =
         if first then
           if indent = "" then "" else
@@ -735,7 +736,8 @@ let graphite_expand conf query () =
             else "")
           ^ String.make (String.length n) ' '
       in
-      display indent' c) e
+      display indent' c
+    ) e
   in
   display "" te ;
   Printf.printf "\n"

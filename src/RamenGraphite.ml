@@ -70,15 +70,15 @@ let comp_matches globs comps =
   loop [] [] "" globs comps
 
 (* This ugly E is there to make the type non cyclic: *)
-type 'a tree_enum = E of ('a * 'a tree_enum) Enum.t
+type 'a tree_enum = E of ('a * 'a tree_enum) List.t
 let get (E x) = x
 
 (* Fold over the tree. [node_init] will be carried from node to node while
  * [stack_init] will be popped when the iterator go forward in the tree.
  * Only return the value that's carried from node to node. *)
 let rec tree_enum_fold f node_init stack_init te =
-  Enum.fold (fun usr (n, te') ->
-    let is_leaf = Enum.is_empty (get te') in
+  List.fold_left (fun usr (n, te') ->
+    let is_leaf = List.is_empty (get te') in
     let usr', stack' = f usr stack_init n is_leaf in
     tree_enum_fold f usr' stack' te') node_init (get te)
 
@@ -87,7 +87,7 @@ let rec tree_enum_fold f node_init stack_init te =
 let rec filter_tree te = function
   | [] -> te
   | flt :: flts ->
-      E (Enum.filter_map (fun (a, te') ->
+      E (List.filter_map (fun (a, te') ->
         if flt a then Some (a, filter_tree te' flts)
         else None) (get te))
 
@@ -101,11 +101,11 @@ type string_with_scalar = string * tree_enum_section
 
 (* Given a func, returns the tree_enum of fields that are not factors *)
 let tree_enum_of_fields func =
-  E (List.enum func.F.out_type.ser //@
-     (fun ft ->
+  E (List.filter_map (fun ft ->
        let n = ft.RamenTuple.typ_name in
        if List.mem n func.F.factors then None
-       else Some ((n, DataField), E (Enum.empty ()))))
+       else Some ((n, DataField), E [])
+     ) func.F.out_type.ser)
 
 (* When building target names we may use scalar values in place of factor
  * fields. When those values are strings they are always quoted. But we'd
@@ -142,20 +142,24 @@ let rec tree_enum_of_factors func = function
        * good. *)
       let fact_values = RamenTimeseries.possible_values func factor in
       let fact_values =
-        if Set.is_empty fact_values then Enum.singleton ("", FactorField None)
-        else Set.enum fact_values /@
-             (fun v -> RamenTypes.to_string v |> fix_quote,
-                       FactorField (Some v)) in
-      E (fact_values /@
-         (fun pv -> pv, tree_enum_of_factors func factors'))
+        if Set.is_empty fact_values then [ "", FactorField None ]
+        else
+          Set.map (fun v ->
+            RamenTypes.to_string v |> fix_quote,
+            FactorField (Some v)
+          ) fact_values |>
+          Set.to_list in
+      E (List.map (fun pv ->
+           pv, tree_enum_of_factors func factors'
+         ) fact_values)
 
 (* Given a program, returns the tree_enum of its functions: *)
 let tree_enum_of_program (program_name, get_rc) =
   let _bin, prog = get_rc () in
-  E (List.enum prog.P.funcs /@
-     (fun func ->
+  E (List.map (fun func ->
        (RamenName.string_of_func func.F.name, OpName),
-       tree_enum_of_factors func func.F.factors))
+       tree_enum_of_factors func func.F.factors
+     ) prog.P.funcs)
 
 (* Given the programs hashtable, return a tree_enum of the path components and
  * programs. Merely build a hashtbl of hashtbls.
@@ -200,7 +204,8 @@ let tree_enum_of_programs programs =
   let rec tree_enum_of_h h =
     E (Hashtbl.enum h /@
        (function (_, name), Prog p -> (name, ProgPath), tree_enum_of_program p
-               | (_, name), Hash h -> (name, ProgPath), tree_enum_of_h h)) in
+               | (_, name), Hash h -> (name, ProgPath), tree_enum_of_h h) |>
+       List.of_enum) in
   tree_enum_of_h h
 
 let filters_of_query query =
@@ -208,17 +213,24 @@ let filters_of_query query =
     let glob = Globs.compile q in
     Globs.matches glob % fst) query
 
-let enum_tree_of_query conf query =
-  !logger.debug "Expanding query %a..."
-    (List.print String.print) query ;
-  let%lwt programs = C.with_rlock conf return in
-  !logger.debug "Caching factors possible values..." ;
-  let%lwt () = RamenTimeseries.cache_possible_values conf programs in
-  !logger.debug "Building tree..." ;
-  (* FIXME: cache this: *)
-  let te = tree_enum_of_programs programs in
-  let filters = filters_of_query query in
-  return (filter_tree te filters)
+let enum_tree_of_query =
+  let reread () conf =
+    !logger.debug "Recomputing enum_tree for query expansion" ;
+    let%lwt programs = C.with_rlock conf return in
+    !logger.debug "Caching factors possible values..." ;
+    let%lwt () = RamenTimeseries.cache_possible_values conf programs in
+    !logger.debug "Building tree..." ;
+    return (tree_enum_of_programs programs)
+  and time () conf =
+    C.last_conf_mtime conf
+  in
+  let get_tree = cached reread time in
+  fun conf query ->
+    !logger.debug "Expanding query %a..."
+      (List.print String.print) query ;
+    let%lwt te = get_tree () conf in
+    let filters = filters_of_query query in
+    return (filter_tree te filters)
 
 let rec find_quote_from s i =
   if i >= String.length s then raise Not_found ;
@@ -292,7 +304,6 @@ let expand_query_text conf query =
       node_res),
     (depth + 1, target')
   ) [] (0, "") filtered |>
-  List.enum |>
   return
 
 let expand_query_values conf query =
@@ -316,17 +327,18 @@ let expand_query_values conf query =
          RamenName.func_of_string func_name,
          List.rev factors, n) :: node_res, depth0
   ) [] depth0 filtered |>
-  List.enum |>
   return
 
 let complete_graphite_find conf headers params =
   let%lwt expanded =
     Hashtbl.find_default params "query" "*" |>
     expand_query_text conf in
-  let resp = expanded /@
-             metric_of_worker_path //
-             uniquify () |>
-             List.of_enum in
+  let uniq = uniquify () in
+  let resp =
+    List.filter_map (fun r ->
+      let r = metric_of_worker_path r in
+      if uniq r then Some r else None
+    ) expanded in
   let body = PPP.to_string graphite_metrics_ppp_json resp in
   respond_ok body
 
@@ -452,9 +464,7 @@ let render_graphite conf headers body =
    * therefore flatten all the expanded targets and regroup by operation +
    * where filter, then scan data for each of those groups asking for all
    * possible factors. *)
-  let targets =
-    (List.enum targets |> Enum.flatten) |>
-    List.of_enum in
+  let targets = List.flatten targets in
   (* In addition to the prog and func names we'd like to have the func: *)
   let%lwt targets =
     C.with_rlock conf (fun programs ->
