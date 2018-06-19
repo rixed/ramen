@@ -209,11 +209,13 @@ let filters_of_query query =
     Globs.matches glob % fst) query
 
 let enum_tree_of_query conf query =
-  !logger.debug "Getting programs..." ;
+  !logger.debug "Expanding query %a..."
+    (List.print String.print) query ;
   let%lwt programs = C.with_rlock conf return in
   !logger.debug "Caching factors possible values..." ;
   let%lwt () = RamenTimeseries.cache_possible_values conf programs in
   !logger.debug "Building tree..." ;
+  (* FIXME: cache this: *)
   let te = tree_enum_of_programs programs in
   let filters = filters_of_query query in
   return (filter_tree te filters)
@@ -514,8 +516,6 @@ let render_graphite conf headers body =
       List.fold_left2 (fun (where, factors, i) factor fval ->
         let wanted =
           Hashtbl.find_default factor_values (func_name, i) Set.empty in
-        !logger.debug "wanted values for factor %d (%s): %a" i factor
-          (Set.print RamenTypes.print) wanted ;
         match Set.cardinal wanted with
         | 0 -> (* Can happen if there are no possible values. *)
             where, factors, i + 1
