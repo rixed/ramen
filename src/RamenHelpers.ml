@@ -15,6 +15,13 @@ let get_cap a i =
 let round_to_int f =
   int_of_float (Float.round f)
 
+(* The original Float.to_string adds a useless dot at the end of
+ * round numbers: *)
+let nice_string_of_float v =
+  let s = Float.to_string v in
+  assert (String.length s > 0) ;
+  if s.[String.length s - 1] <> '.' then s else String.rchop s
+
 exception Timeout
 
 let retry
@@ -1025,3 +1032,6 @@ let subst_tuple_fields =
                          present in that tuple!" tuple_name field_name ;
           "??"^ tuple_name ^"."^ field_name ^"??"
     ) text
+
+let reindent indent s =
+  indent ^ String.nreplace (String.trim s) "\n" ("\n"^indent)

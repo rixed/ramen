@@ -18,6 +18,7 @@ end
 type t =
   { name : string ;
     mutable variant : int ;
+    mutable forced : bool ;
     variants : Variant.t array }
 
 let make name variants =
@@ -38,7 +39,7 @@ let make name variants =
           rem_s -. s, rem_n - 1
       | _ -> rem
     ) (sum, nb_unset) variants in
-  { name ; variant = -1 ; variants }
+  { name ; variant = -1 ; forced = false ; variants }
 
 (*
  * Now the actual experiments:
@@ -65,12 +66,10 @@ let specialize persist_dir e branches =
   assert (Array.length branches = Array.length e.variants) ;
   branches.(e.variant) ()
 
-let set_variants persist_dir forced_variants =
-  (*
-   * Find out the experimenter id
-   * It must never change. That's why we save it in a file and we try to
-   * reproduce the same value should that file disappear:
-   *)
+(* Find out the experimenter id
+ * It must never change. That's why we save it in a file and we try to
+ * reproduce the same value should that file disappear. *)
+let get_experimenter_id persist_dir =
   let fname = persist_dir ^"/.experimenter_id" in
   let compute () =
     match Unix.run_and_read "hostname" with
@@ -87,10 +86,12 @@ let set_variants persist_dir forced_variants =
         !logger.error "Cannot execute hostname: %s"
           (string_of_process_status st) ;
         0 in
-  let eid =
-    try save_in_file ~compute ~serialize:string_of_int
-                     ~deserialize:int_of_string fname
-    with _ -> 0 in
+  try save_in_file ~compute ~serialize:string_of_int
+                   ~deserialize:int_of_string fname
+  with _ -> 0
+
+let set_variants persist_dir forced_variants =
+  let eid = get_experimenter_id persist_dir in
   (*
    * Set all the forced variants:
    *)
@@ -107,7 +108,7 @@ let set_variants persist_dir forced_variants =
             | exception Not_found ->
                 invalid_arg ("unknown variant: "^ vn) (* TODO: list them *)
             | i ->
-                e.variant <- i))
+                e.variant <- i ; e.forced <- true))
   ) forced_variants ;
   (*
    * Then set the variants that are still unset:

@@ -30,7 +30,8 @@ let complete_commands s =
       "ps", RamenConsts.CliInfo.ps ;
       "links", RamenConsts.CliInfo.links ;
       "test", RamenConsts.CliInfo.test ;
-      "httpd", RamenConsts.CliInfo.httpd ] in
+      "httpd", RamenConsts.CliInfo.httpd ;
+      "variants", RamenConsts.CliInfo.variants ] in
   complete commands s
 
 let complete_global_options s =
@@ -250,6 +251,8 @@ let complete str () =
             "--url=", RamenConsts.CliInfo.server_url ;
             "--api", RamenConsts.CliInfo.api ;
             "--graphite", RamenConsts.CliInfo.graphite ] @
+          copts
+      | "variants" ->
           copts
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

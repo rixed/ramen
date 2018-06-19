@@ -584,6 +584,15 @@ let test =
     info ~doc:RamenConsts.CliInfo.test "test")
 
 (*
+ * Experiments
+ *)
+
+let variants =
+  Term.(
+    (const RamenCliCmd.variants $ copts),
+    info ~doc:RamenConsts.CliInfo.variants "variants")
+
+(*
  * Autocompletion
  *)
 
@@ -616,7 +625,7 @@ let () =
     notify ; compile ; run ; kill ;
     tail ; timeseries ; timerange ; ps ;
     test ; dequeue ; summary ; repair ; links ;
-    autocomplete ; expand
+    variants ; autocomplete ; expand
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (

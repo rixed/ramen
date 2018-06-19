@@ -92,18 +92,11 @@ let rec type_of = function
  * Printers
  *)
 
-(* The original Float.to_string adds a useless dot at the end of
- * round numbers: *)
-let my_float_to_string v =
-  let s = Float.to_string v in
-  assert (String.length s > 0) ;
-  if s.[String.length s - 1] <> '.' then s else String.rchop s
-
 (* Used for debug, value expansion within strings, output values in tail
  * and timeseries commands, test immediate values.., but not for code
  * generation. *)
 let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
-  | VFloat f  -> my_float_to_string f |> String.print oc
+  | VFloat f  -> nice_string_of_float f |> String.print oc
   | VString s -> Printf.fprintf oc (if quoting then "%S" else "%s") s
   | VBool b   -> Bool.print oc b
   | VU8 i     -> Uint8.to_string i |> String.print oc

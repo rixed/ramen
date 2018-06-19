@@ -70,6 +70,7 @@ struct
   let summary = "Dump info about a ring-buffer"
   let repair = "Repair a ringbuf header, assuming no readers/writers"
   let links = "List all in use ring buffers with some statistics"
+  let variants = "Display the experimenter identifier and variants"
   let autocomplete = "Autocomplete the given command"
 
   (* Options *)
