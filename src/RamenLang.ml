@@ -267,7 +267,7 @@ let program_name ?(quoted=false) m =
 let expansed_program_name ?(quoted=false) m =
   let m = "program name" :: m in
   let expansed_param =
-    non_keyword +- opt_blanks +- char ':' +- opt_blanks ++
+    non_keyword +- opt_blanks +- char '=' +- opt_blanks ++
     RamenTypes.Parser.p in
   let expansed_params m =
     let m = "parameter expansion" :: m in
