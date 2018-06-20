@@ -449,6 +449,7 @@ let check params =
     let field_names = List.map (fun t -> t.RamenTuple.typ_name) what.fields in
     Option.may (check_event_time field_names) event_time ;
     check_factors field_names factors
+    (* FIXME: check the field type declarations use only scalar types *)
 
   | Instrumentation _ -> ()
 
