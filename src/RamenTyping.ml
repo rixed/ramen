@@ -1107,7 +1107,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     check_op op_typ return_float
       [Some TFloat, Some false, e1 ;
        Some TFloat, None, e2]
-  | StatelessFun1 (op_typ, (Exp|Log|Log10|Sqrt|Floor|Ceil), e) ->
+  | StatelessFun1 (op_typ, (Exp|Log|Log10|Sqrt|Floor|Ceil|Round), e) ->
     check_op op_typ return_float [Some TFloat, None, e]
   | StatelessFun1 (op_typ, Hash, e) ->
     check_op op_typ return_i64 [None, None, e]

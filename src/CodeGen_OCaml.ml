@@ -527,6 +527,8 @@ and emit_expr ?state ~context ~consts oc expr =
     emit_functionN ?state ~consts "ceil" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Floor, e), Some TFloat ->
     emit_functionN ?state ~consts "floor" [Some TFloat] oc [e]
+  | Finalize, StatelessFun1 (_, Round, e), Some TFloat ->
+    emit_functionN ?state ~consts "Float.round" [Some TFloat] oc [e]
   | Finalize, StatelessFun1 (_, Hash, e), Some TI64 ->
     emit_functionN ?state ~consts "CodeGenLib.hash" [None] oc [e]
   | Finalize, StatelessFun1 (_, Sparkline, e), Some TString ->
