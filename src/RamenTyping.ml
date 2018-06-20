@@ -129,7 +129,7 @@ struct
       mutable factors : string list ;
       mutable envvars : string list }
 
-  let signature conf func =
+  let signature conf func params =
     (* We'd like to be formatting independent so that operation text can be
      * reformatted without ramen recompiling it. For this it is not OK to
      * strip redundant white spaces as some of those might be part of literal
@@ -138,8 +138,10 @@ struct
      * contain relevant info such as field rank. We therefore print without
      * types and encode input/output types explicitly below: *)
     "OP="^ IO.to_string RamenOperation.print (Option.get func.operation) ^
-    "IN="^ RamenTuple.type_signature (typed_tuple_type func.in_type) ^
-    "OUT="^ RamenTuple.type_signature (typed_tuple_type func.out_type) ^
+    "IN="^ RamenTuple.type_signature (typed_tuple_type func.in_type).ser ^
+    "OUT="^ RamenTuple.type_signature (typed_tuple_type func.out_type).ser ^
+    (* Similarly to input type, also depends on the parameters type: *)
+    "PRM="^ RamenTuple.param_types_signature params ^
     (* Also, as the compiled code would differ: *)
     "FLG="^ (if conf.C.debug then "DBG" else "") |>
     md5
@@ -759,13 +761,13 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       )
     ) else if !tuple = TupleParam then (
       (* Copy the scalar type from the default value: *)
-      match List.assoc field params with
+      match RamenTuple.params_find field params with
       | exception Not_found ->
         let e =
           FieldNotInTuple { field ; tuple = !tuple ; tuple_type = "" } in
         raise (SyntaxError e)
-      | default_value ->
-        let typ = type_of default_value in
+      | param ->
+        let typ = type_of param.RamenTuple.value in
         !logger.debug "%sParameter %s of type %a"
           indent field RamenTypes.print_typ typ ;
         set_nullable ~indent op_typ false |||
@@ -1142,7 +1144,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * can be cast to a float: *)
     let ret_type, propagate_null =
       if want_rank then
-        (fun _ -> RamenTypes.Parser.narrowest_typ_for_int n),
+        (fun _ -> RamenTypes.Parser.narrowest_typ_for_int ~min_int_width:0 n),
         false (* "RANK OF X" is always nullable *)
       else
         return_bool,
@@ -1641,7 +1643,7 @@ let set_all_types conf parents funcs params =
       )
     ) func.operation ;
     (* Seal everything: *)
-    func.Func.signature <- Func.signature conf func
+    func.Func.signature <- Func.signature conf func params
   ) funcs
 
   (*$inject

@@ -216,16 +216,21 @@ let rec enlarge_value t v =
   let vt = type_of v in
   if vt = t then v else
   (match v with
-  | VU8 x -> VI16 (Int16.of_uint8 x)
+  | VI8 x when Int8.(compare x zero) >= 0 -> VU8 (Uint8.of_int8 x)
   | VI8 x -> VI16 (Int16.of_int8 x)
-  | VU16 x -> VI32 (Int32.of_uint16 x)
+  | VU8 x -> VI16 (Int16.of_uint8 x)
+  | VI16 x when Int16.(compare x zero) >= 0 -> VU16 (Uint16.of_int16 x)
   | VI16 x -> VI32 (Int32.of_int16 x)
-  | VU32 x -> VI64 (Int64.of_uint32 x)
+  | VU16 x -> VI32 (Int32.of_uint16 x)
+  | VI32 x when Int32.(compare x zero) >= 0 -> VU32 (Uint32.of_int32 x)
   | VI32 x -> VI64 (Int64.of_int32 x)
-  | VU64 x -> VI128 (Int128.of_uint64 x)
+  | VU32 x -> VI64 (Int64.of_uint32 x)
+  | VI64 x when Int64.(compare x zero) >= 0 -> VU64 (Uint64.of_int64 x)
   | VI64 x -> VI128 (Int128.of_int64 x)
-  | VU128 x -> VFloat (Uint128.to_float x)
+  | VU64 x -> VI128 (Int128.of_uint64 x)
+  | VI128 x when Int128.(compare x zero) >= 0 -> VU128 (Uint128.of_int128 x)
   | VI128 x -> VFloat (Int128.to_float x)
+  | VU128 x -> VFloat (Uint128.to_float x)
   | VIpv4 x -> VIp RamenIp.(V4 x)
   | VIpv6 x -> VIp RamenIp.(V6 x)
   | VCidrv4 x -> VCidr RamenIp.Cidr.(V4 x)
@@ -330,7 +335,13 @@ struct
   open RamenParsing
 
   let narrowest_int_scalar =
-    let min_i32 = Num.of_string "-2147483648"
+    let min_i8 = Num.of_string "-128"
+    and max_i8 = Num.of_string "127"
+    and max_u8 = Num.of_string "255"
+    and min_i16 = Num.of_string "-32766"
+    and max_i16 = Num.of_string "32767"
+    and max_u16 = Num.of_string "65535"
+    and min_i32 = Num.of_string "-2147483648"
     and max_i32 = Num.of_string "2147483647"
     and max_u32 = Num.of_string "4294967295"
     and min_i64 = Num.of_string "-9223372036854775808"
@@ -340,23 +351,27 @@ struct
     and max_i128 = Num.of_string "170141183460469231731687303715884105727"
     and max_u128 = Num.of_string "340282366920938463463374607431768211455"
     and zero = Num.zero
-    in fun i ->
+    in fun ?(min_int_width=32) i ->
       let s = Num.to_string i in
-      if Num.le_num min_i32 i && Num.le_num i max_i32  then VI32 (Int32.of_string s) else
-      if Num.le_num zero i && Num.le_num i max_u32  then VU32 (Uint32.of_string s) else
-      if Num.le_num min_i64 i && Num.le_num i max_i64  then VI64 (Int64.of_string s) else
-      if Num.le_num zero i && Num.le_num i max_u64  then VU64 (Uint64.of_string s) else
-      if Num.le_num min_i128 i && Num.le_num i max_i128  then VI128 (Int128.of_string s) else
-      if Num.le_num zero i && Num.le_num i max_u128  then VU128 (Uint128.of_string s) else
+      if min_int_width <= 8 && Num.le_num min_i8 i && Num.le_num i max_i8 then VI8 (Int8.of_string s) else
+      if min_int_width <= 8 && Num.le_num zero i && Num.le_num i max_u8 then VU8 (Uint8.of_string s) else
+      if min_int_width <= 16 && Num.le_num min_i16 i && Num.le_num i max_i16 then VI16 (Int16.of_string s) else
+      if min_int_width <= 16 && Num.le_num zero i && Num.le_num i max_u16 then VU16 (Uint16.of_string s) else
+      if min_int_width <= 32 && Num.le_num min_i32 i && Num.le_num i max_i32 then VI32 (Int32.of_string s) else
+      if min_int_width <= 32 && Num.le_num zero i && Num.le_num i max_u32 then VU32 (Uint32.of_string s) else
+      if min_int_width <= 64 && Num.le_num min_i64 i && Num.le_num i max_i64 then VI64 (Int64.of_string s) else
+      if min_int_width <= 64 && Num.le_num zero i && Num.le_num i max_u64 then VU64 (Uint64.of_string s) else
+      if min_int_width <= 128 && Num.le_num min_i128 i && Num.le_num i max_i128 then VI128 (Int128.of_string s) else
+      if min_int_width <= 128 && Num.le_num zero i && Num.le_num i max_u128 then VU128 (Uint128.of_string s) else
       assert false
 
-  let narrowest_typ_for_int n =
-    narrowest_int_scalar (Num.of_int n) |> type_of
+  let narrowest_typ_for_int ?min_int_width n =
+    narrowest_int_scalar ?min_int_width (Num.of_int n) |> type_of
 
   (* TODO: Here and elsewhere, we want the location (start+length) of the
    * thing in addition to the thing *)
-  let narrowest_int =
-    (integer >>: narrowest_int_scalar) |||
+  let narrowest_int ?min_int_width =
+    (integer >>: narrowest_int_scalar ?min_int_width) |||
     (integer_range ~min:(Num.of_int ~-128) ~max:(Num.of_int 127) +-
       strinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
     (integer_range ~min:(Num.of_int ~-32768) ~max:(Num.of_int 32767) +-
@@ -405,8 +420,9 @@ struct
   (* when parsing expressions we'd rather keep literal tuples/vectors to be
    * expressions, to disambiguate the syntax. So then we only look for
    * scalars: *)
-  let scalar ?(only_narrowest=true) =
-    (if only_narrowest then narrowest_int else all_possible_ints) |||
+  let scalar ?min_int_width =
+    (if min_int_width <> None then narrowest_int ?min_int_width
+     else all_possible_ints) |||
     (floating_point >>: fun f -> VFloat f) |||
     (strinG "false" >>: fun _ -> VBool false) |||
     (strinG "true" >>: fun _ -> VBool true) |||
@@ -425,11 +441,17 @@ struct
 
   (* But in general when parsing user provided values (such as in parameters
    * or test files), we want to allow any literal: *)
-  let rec p ?only_narrowest =
-    scalar ?only_narrowest |||
+  (* [p_] returns all possible interpretation of a literal (ie. for an
+   * integer, all it's possible sizes); while [p_ ~min_int_width] returns
+   * only the smaller (that have at least the specified width). *)
+  let rec p_ ?min_int_width =
+    scalar ?min_int_width |||
     (* Also literals of constructed types: *)
     (tuple >>: fun vs -> VTuple vs) |||
     (vector >>: fun vs -> VVec vs)
+
+  (* By default, we want only one value of at least 32 bits: *)
+  and p m = p_ ~min_int_width:32 m
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
    * conflict with parentheses used as grouping symbols: *)

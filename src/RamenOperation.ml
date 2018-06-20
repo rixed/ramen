@@ -320,7 +320,8 @@ let check params =
       raise (SyntaxError m) in
   let check_event_time field_names (start_field, duration) =
     let check_field (f, src, _scale) =
-      if List.mem_assoc f params then
+      if RamenTuple.params_mem f params then
+        (* FIXME: check that the type is compatible with TFloat! *)
         src := RamenEventTime.Parameter
       else
         check_field_exists field_names f
@@ -336,7 +337,7 @@ let check params =
   and prefix_def def =
     Expr.iter (function
       | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
-          if List.mem_assoc alias params then
+          if RamenTuple.params_mem alias params then
             pref := TupleParam
           else
             pref := def
@@ -365,7 +366,7 @@ let check params =
     let prefix_smart ?i =
       Expr.iter (function
         | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
-            if List.mem_assoc alias params then
+            if RamenTuple.params_mem alias params then
               pref := TupleParam
             else if Set.mem alias !fields_from_in then
               pref := TupleIn
@@ -677,22 +678,15 @@ struct
      quoted_string >>: fun (unlink, fname) ->
        { unlink ; fname }) m
 
-  let csv_specs  m =
+  let csv_specs m =
     let m = "CSV format" :: m in
-    let field =
-      non_keyword +- blanks ++ RamenTypes.Parser.scalar_typ ++
-      optional ~def:true (
-        optional ~def:true (
-          blanks -+ (strinG "not" >>: fun () -> false)) +-
-        blanks +- strinG "null") >>:
-      fun ((typ_name, typ), nullable) -> RamenTuple.{ typ_name ; typ ; nullable }
-    in
     (optional ~def:"," (
        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
      optional ~def:"" (
        strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) +-
      char '(' +- opt_blanks ++
-     several ~sep:list_sep field +- opt_blanks +- char ')' >>:
+       several ~sep:list_sep RamenTuple.Parser.field +-
+     opt_blanks +- char ')' >>:
      fun ((separator, null), fields) ->
        if separator = null || separator = "" then
          raise (Reject "Invalid CSV separator") ;

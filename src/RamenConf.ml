@@ -15,7 +15,7 @@ type conf =
 
 let tmp_input_of_func persist_dir program_name func_name in_type =
   persist_dir ^"/workers/inputs/"^ program_name ^"/"^ func_name ^"/"
-              ^ RamenTuple.type_signature in_type
+              ^ RamenTuple.type_signature in_type.RamenTuple.ser
 
 let upload_dir_of_func persist_dir program_name func_name in_type =
   tmp_input_of_func persist_dir program_name func_name in_type ^"/uploads"
@@ -62,7 +62,7 @@ module Program =
 struct
   type t =
     { name : RamenName.program ;
-      mutable params : RamenName.params [@ppp_default []] ;
+      mutable params : RamenTuple.params [@ppp_default []] ;
       funcs : Func.t list }
       [@@ppp PPP_OCaml]
 
@@ -260,7 +260,7 @@ let worker_state conf func params =
                    ^"/"^ Config.version
                    ^"/"^ Func.path func
                    ^"/"^ func.signature
-                   ^"/"^ RamenName.params_signature params
+                   ^"/"^ RamenTuple.param_values_signature params
                    ^"/snapshot"
 
 (* The "in" ring-buffers are used to store tuple received by an operation.
@@ -276,7 +276,7 @@ let worker_state conf func params =
  * FROM clause): *)
 
 let in_ringbuf_name_base conf func =
-  let sign = type_signature_hash func.Func.in_type in
+  let sign = type_signature_hash func.Func.in_type.RamenTuple.ser in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
                    ^"/"^ Func.path func
@@ -304,7 +304,7 @@ let in_ringbuf_names conf func =
  * We want those files to be identified by the name of the operation and
  * the output type of the operation. *)
 let archive_buf_name conf func =
-  let sign = type_signature_hash func.Func.out_type in
+  let sign = type_signature_hash func.Func.out_type.RamenTuple.ser in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
                    ^"/"^ Func.path func
@@ -321,7 +321,7 @@ let factors_of_ringbuf fname factor =
  * like the above archive file, the out_ref files must be identified by the
  * operation name and its output type: *)
 let out_ringbuf_names_ref conf func =
-  let sign = type_signature_hash func.Func.out_type in
+  let sign = type_signature_hash func.Func.out_type.ser in
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref
                    ^"/"^ Func.path func

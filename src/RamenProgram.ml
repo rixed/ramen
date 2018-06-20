@@ -4,6 +4,7 @@
  *)
 open Batteries
 open RamenLang
+open RamenLog
 
 (*$inject
   open TestHelpers
@@ -14,7 +15,7 @@ type func =
   { name : [`Function] RamenName.t ;
     operation : RamenOperation.t }
 
-type t = func list
+type t = RamenTuple.param list * func list
 
 let make_name =
   let seq = ref ~-1 in
@@ -26,9 +27,9 @@ let make_func ?name operation =
   { name = (match name with Some n -> n | None -> make_name ()) ;
     operation }
 
-let print_param oc (n, v) =
-  Printf.fprintf oc "PARAMETER %s DEFAULTS TO %a;"
-    n RamenTypes.print v
+let print_param oc p =
+  Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;"
+    RamenTuple.print_field_typ p.RamenTuple.ptyp RamenTypes.print p.value
 
 let print_func oc n =
   (* TODO: keep the info that func was anonymous? *)
@@ -40,11 +41,11 @@ let print oc (params, funcs) =
   List.print ~sep:"\n" print_param oc params ;
   List.print ~sep:"\n" print_func oc funcs
 
-let check params funcs =
-  List.fold_left (fun s (n, v) ->
-    if Set.mem n s then
-      raise (SyntaxError (NameNotUnique n)) ;
-    Set.add n s
+let check (params, funcs) =
+  List.fold_left (fun s p ->
+    if Set.mem p.RamenTuple.ptyp.typ_name s then
+      raise (SyntaxError (NameNotUnique p.ptyp.typ_name)) ;
+    Set.add p.ptyp.typ_name s
   ) Set.empty params |> ignore ;
   List.fold_left (fun s n ->
     RamenOperation.check params n.operation ;
@@ -67,8 +68,46 @@ struct
     (
       strinGs "parameter" -- blanks -+
         several ~sep:list_sep_and (
-          non_keyword +- blanks +- strinGs "default" +- blanks +-
-          strinG "to" +- blanks ++ RamenTypes.Parser.p)
+          non_keyword +- blanks ++
+          optional ~def:None (
+            some RamenTuple.Parser.type_decl +- blanks) ++
+          optional ~def:RamenTypes.VNull (
+            strinGs "default" -- blanks -- strinG "to" -- blanks -+
+            RamenTypes.Parser.p_ ~min_int_width:0) >>:
+          fun ((typ_name, typ_decl), value) ->
+            let typ, nullable, value =
+              let open RamenTypes in
+              match typ_decl with
+              | None ->
+                  if value = VNull then
+                    let e =
+                      Printf.sprintf
+                        "Declaration of parameter %S must either specify \
+                         the type or a non-null default value" typ_name in
+                    raise (Reject e)
+                  else
+                    (* As usual, promote integers to I32 by default: *)
+                    let vtyp = type_of value in
+                    if can_enlarge ~from:vtyp ~to_:TI32 then
+                      TI32, false, enlarge_value TI32 value
+                    else
+                      vtyp, false, value
+              | Some (dtyp, nullable) ->
+                  if value = VNull then dtyp, nullable, value else
+                  (* Expand the parsed value type up to the declaration: *)
+                  let vtyp = type_of value in
+                  if can_enlarge ~from:vtyp ~to_:dtyp then
+                    dtyp, nullable, enlarge_value dtyp value
+                  else
+                    let e =
+                      Printf.sprintf2
+                        "In declaration of parameter %S, type is \
+                         incompatible with value %a"
+                        typ_name print value in
+                    raise (Reject e)
+            in
+            RamenTuple.{ ptyp = { typ_name ; nullable ; typ } ; value }
+        )
     ) m
 
   let named_func m =
@@ -84,7 +123,8 @@ struct
     (anonymous_func ||| named_func) m
 
   type definition =
-    DefFunc of func | DefParams of (string * RamenTypes.value) list
+    | DefFunc of func
+    | DefParams of RamenTuple.params
 
   let p m =
     let m = "program" :: m in
@@ -98,7 +138,7 @@ struct
             | DefFunc func -> params, func::funcs
             | DefParams lst -> List.rev_append lst params, funcs
           ) ([], []) defs in
-        RamenName.params_sort params, funcs
+        RamenTuple.params_sort params, funcs
     ) m
 
   (*$= p & ~printer:(test_printer print)
@@ -124,7 +164,10 @@ struct
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
 
-   (Ok ((["p1", VI32 0l; "p2", VI32 0l], [\
+   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; nullable = false ; typ = TI32 } ;\
+                        value = VI32 0l } ;\
+           RamenTuple.{ ptyp = { typ_name = "p2" ; nullable = false ; typ = TI32 } ;\
+                        value = VI32 0l } ], [\
     { name = RamenName.func_of_string "add" ;\
       operation = \
         Aggregate {\
@@ -143,7 +186,7 @@ struct
           factors = [] } } ]),\
       (84, [])))\
       (test_p p "PARAMETERS p1 DEFAULTS TO 0 AND p2 DEFAULTS TO 0; DEFINE add AS YIELD p1 + p2 AS res" |>\
-       (function Ok ((ps, fs), _) as x -> check ps fs ; x | x -> x) |>\
+       (function Ok ((ps, fs), _) as x -> check (ps, fs) ; x | x -> x) |>\
        replace_typ_in_program)
   *)
 
@@ -201,5 +244,5 @@ let parse program =
     raise (SyntaxError (ParseError { error ; text = program }))
   | Ok ((params, funcs), _) ->
     let funcs = reify_subqueries funcs in
-    check params funcs ;
-    params, funcs
+    let t = params, funcs in
+    check t ; t

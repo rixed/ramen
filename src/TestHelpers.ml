@@ -31,7 +31,12 @@ let test_p p s =
 let test_op p s =
   match test_p p s with
   | Ok (res, _) as ok_res ->
-    RamenOperation.check ["avg_window", RamenTypes.VI32 10l] res ; ok_res
+    let params =
+      [ RamenTuple.{
+          ptyp = { typ_name = "avg_window" ; nullable = false ;
+                   typ = RamenTypes.TI32 } ;
+          value = RamenTypes.VI32 10l }] in
+    RamenOperation.check params res ; ok_res
   | x -> x
 
 let typ = RamenExpr.make_typ "replaced for tests"

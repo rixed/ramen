@@ -1,6 +1,6 @@
 {
   programs = [
-    ("params.x", [("sel_year", VI32 1976)]) ;
+    ("params.x", [("sel_year", VU16 1976)]) ;
     ("fixtures/earthquakes.x", []) ];
   outputs = {
     "tests/params{sel_year=1976}/p" => {

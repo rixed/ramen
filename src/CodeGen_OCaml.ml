@@ -1272,10 +1272,9 @@ let emit_time_of_tuple name params event_time oc tuple_typ =
               (conv_from_to ~nullable:f.nullable) (f.typ, TFloat)
               (id_of_field_name ~tuple:TupleOut field_name)
         | Parameter ->
-            let p_typ = List.assoc field_name params |>
-                        RamenTypes.type_of in
+            let param = RamenTuple.params_find field_name params in
             Printf.fprintf oc "(%a %s_%s_)"
-              (conv_from_to ~nullable:false) (p_typ, TFloat)
+              (conv_from_to ~nullable:false) (param.ptyp.typ, TFloat)
               (id_of_prefix TupleParam) field_name
       in
       Printf.fprintf oc "\tlet start_ = %a *. %a\n"
@@ -1943,26 +1942,29 @@ let emit_operation name func_name in_typ out_typ params op oc =
     RamenOperation.print op ;
   (* Emit parameters: *)
   Printf.fprintf oc "\n(* Parameters: *)\n" ;
-  List.iter (fun (n, v) ->
+  List.iter (fun p ->
+    (* FIXME: nullable parameters *)
     Printf.fprintf oc
       "let %s_%s_ =\n\
        \tlet parser_ = RamenTypeConverters.%s_of_string in\n\
        \tCodeGenLib.parameter_value ~def:(%a) parser_ %S\n"
-      (id_of_prefix TupleParam) n
-      (id_of_typ (RamenTypes.type_of v))
-      emit_type v
-      n
+      (id_of_prefix TupleParam) p.ptyp.typ_name
+      (id_of_typ p.ptyp.typ)
+      emit_type p.value
+      p.ptyp.typ_name
   ) params ;
   (* Also a function that takes a parameter name (string) and return its
    * value (as a string) - useful for text replacements within strings *)
   Printf.fprintf oc "let field_of_params_ = function\n%a\
                      \t| _ -> raise Not_found\n\n"
-    (List.print ~first:"" ~last:"" ~sep:"" (fun oc (n, v) ->
+    (List.print ~first:"" ~last:"" ~sep:"" (fun oc p ->
       let glob_name =
-        Printf.sprintf "%s_%s_" (id_of_prefix TupleParam) n in
+        Printf.sprintf "%s_%s_"
+          (id_of_prefix TupleParam)
+          p.ptyp.typ_name in
       Printf.fprintf oc "\t| %S -> (%a) %s\n"
-        n
-        (conv_from_to ~nullable:false) (RamenTypes.type_of v, TString)
+        p.ptyp.typ_name
+        (conv_from_to ~nullable:p.ptyp.nullable) (p.ptyp.typ, TString)
         glob_name)) params ;
   (* Now the code, which might need some global constant parameters,
    * thus the two strings that are assembled later: *)

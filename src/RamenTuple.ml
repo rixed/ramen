@@ -19,6 +19,19 @@ type typed_tuple =
     ser : field_typ list } (* Only public fields *)
   [@@ppp PPP_OCaml]
 
+type param =
+  { ptyp : field_typ ; value : RamenTypes.value } [@@ppp PPP_OCaml]
+
+type params = param list [@@ppp PPP_OCaml]
+
+let params_sort params =
+  let param_compare p1 p2 =
+    String.compare p1.ptyp.typ_name p2.ptyp.typ_name in
+  List.fast_sort param_compare params
+
+let params_find n = List.find (fun p -> p.ptyp.typ_name = n)
+let params_mem n = List.exists (fun p -> p.ptyp.typ_name = n)
+
 (* Given a typed tuple type, return a function that reorder a ser tuple (as
  * an array) into the same column order as in the user version: *)
 let reorder_tuple_to_user typed_tuple =
@@ -48,26 +61,61 @@ let print_field_typ fmt field =
 let print_typ fmt t =
   (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) fmt t
 
-let type_signature typed_tuple =
+let type_signature =
   List.fold_left (fun s field ->
       (if s = "" then "" else s ^ "_") ^
       field.typ_name ^ ":" ^
       RamenTypes.string_of_typ field.typ ^
       if field.nullable then " null" else " notnull"
-    ) "" typed_tuple.ser
+    ) ""
+
+(* Different signature for different instances of the same program: *)
+let param_values_signature params =
+  params_sort params |>
+  IO.to_string (List.print (fun oc p ->
+    Printf.fprintf oc "%s=%a" p.ptyp.typ_name RamenTypes.print p.value)) |>
+  md5
+
+(* Same signature for different instances of the same program but changes
+ * whenever the type of parameters change: *)
+let param_types_signature =
+  type_signature % List.map (fun p -> p.ptyp) % params_sort
 
 (* Override ps1 with values from ps2, ignoring the values of ps2 that are
  * not in ps1: *)
 let overwrite_params ps1 ps2 =
-  List.map (fun (p1_nam, p1_val as p1) ->
-    match List.find (fun (p2_nam, p2_val) -> p2_nam = p1_nam) ps2 with
+  List.map (fun p1 ->
+    match List.find (fun (p2_nam, _) -> p2_nam = p1.ptyp.typ_name) ps2 with
     | exception Not_found -> p1
-    | _, p2_val as p2 ->
-        if RamenTypes.type_of p2_val = RamenTypes.type_of p1_val then p2
+    | _, p2_val ->
+        if RamenTypes.type_of p2_val = p1.ptyp.typ then
+          { p1 with value = p2_val }
         else
           let msg = Printf.sprintf2 "Parameter %s has wrong type, \
-                                     %a instead of %a" p1_nam
+                                     %a instead of %a" p1.ptyp.typ_name
                       RamenTypes.print_typ (RamenTypes.type_of p2_val)
-                      RamenTypes.print_typ (RamenTypes.type_of p1_val) in
+                      RamenTypes.print_typ (RamenTypes.type_of p1.value) in
           failwith msg
   ) ps1
+
+module Parser =
+struct
+  open RamenParsing
+
+  let type_decl m =
+    let m = "type declaration" :: m in
+    (
+      RamenTypes.Parser.scalar_typ ++
+      optional ~def:true (
+        optional ~def:true (
+          blanks -+ (strinG "not" >>: fun () -> false)) +-
+        blanks +- strinG "null")
+    ) m
+
+  let field m =
+    let m = "field declaration" :: m in
+    (
+      non_keyword +- blanks ++ type_decl >>:
+      fun (typ_name, (typ, nullable)) -> { typ_name ; typ ; nullable }
+    ) m
+end

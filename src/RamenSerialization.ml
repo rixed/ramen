@@ -54,8 +54,7 @@ let read_notifs ?while_ rb f =
 let value_of_string typ s =
   let open RamenParsing in
   (* First parse the string as any immediate value: *)
-  let p = allow_surrounding_blanks
-            (RamenTypes.Parser.p ~only_narrowest:false) in
+  let p = allow_surrounding_blanks RamenTypes.Parser.p_ in
   let stream = stream_of_string s in
   match p ["value"] None Parsers.no_error_correction stream |>
         to_result with
@@ -152,12 +151,13 @@ let find_field typ n =
 let find_field_index typ n = find_field typ n |> fst
 
 let find_param params n =
-  try List.assoc n params
+  let open RamenTuple in
+  try (params_find n params).value
   with Not_found ->
     let err_msg =
       Printf.sprintf2 "Field %s is not a parameter (parameters are: %a)" n
         (List.print ~first:"" ~last:"" ~sep:", "
-          (fun oc (pn, _pv) -> String.print oc pn)) params in
+          (fun oc p -> String.print oc p.ptyp.typ_name)) params in
     failwith err_msg
 
 (* Build a filter function for tuples of the given type: *)

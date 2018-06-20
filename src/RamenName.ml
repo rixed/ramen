@@ -66,8 +66,6 @@ let string_of_params params =
   params_sort params |>
   IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param)
 
-let params_signature = md5 % string_of_params
-
 type params_exp = [`Params] t
 
 let params_exp_ppp_ocaml = t_ppp_ocaml

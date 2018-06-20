@@ -189,7 +189,7 @@ let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
 (* Description of a running worker.
  * Not persisted on disk. *)
 type running_process =
-  { params : RamenName.params ;
+  { params : RamenTuple.params ;
     bin : string ;
     func : C.Func.t ;
     mutable pid : int option ;
@@ -201,10 +201,9 @@ type running_process =
     mutable quarantine_until : float }
 
 let print_running_process oc proc =
-  Printf.fprintf oc "%s/%s (params=%s, parents=%a)"
+  Printf.fprintf oc "%s/%s (parents=%a)"
     (RamenName.string_of_program_exp proc.func.F.exp_program_name)
     (RamenName.string_of_func proc.func.F.name)
-    (RamenName.string_of_params proc.params)
     (List.print F.print_parent) proc.func.parents
 
 let make_running_process bin params func =
@@ -472,7 +471,10 @@ let really_start conf must_run proc parents children =
    * on from the shell: *)
   let more_env =
     List.enum proc.params /@
-    (fun (n, v) -> Printf.sprintf2 "param_%s=%a" n RamenTypes.print v) |>
+    (fun p ->
+      Printf.sprintf2 "param_%s=%a"
+        p.ptyp.typ_name
+        RamenTypes.print p.value) |>
     Enum.append more_env in
   (* Also add all envvars that are defined and used in the operation: *)
   let more_env =
@@ -771,7 +773,8 @@ let synchronize_running conf autoreload_delay =
                   List.iter (fun f ->
                     (* Use the signature + params as the key: *)
                     let k =
-                      f.F.signature, RamenName.params_signature params in
+                      f.F.signature,
+                      RamenTuple.param_values_signature params in
                     Hashtbl.add must_run k (bin, params, f)
                   ) prog.P.funcs
                 ) must_run_programs) in

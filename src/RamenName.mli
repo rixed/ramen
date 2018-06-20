@@ -20,11 +20,12 @@ val string_of_program : program -> string
  * gives us and what we use to identify an instance of a program: *)
 type param = string * RamenTypes.value
 val param_ppp_ocaml : param PPP.t
+
 type params = param list
 val params_ppp_ocaml : params PPP.t
 val params_sort : params -> params
 val string_of_params : params -> string
-val params_signature : params -> string
+
 (* A string formatted like "{name1=val1,name2=val,...}": *)
 type params_exp = [`Params] t
 val params_exp_ppp_ocaml : params_exp PPP.t

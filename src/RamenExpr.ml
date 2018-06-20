@@ -739,7 +739,7 @@ struct
   (* Single things *)
   let const m =
     let m = "constant" :: m in
-    (RamenTypes.Parser.scalar ++
+    (RamenTypes.Parser.scalar ~min_int_width:32 ++
      optional ~def:false (
        char ~case_sensitive:false 'n' >>: fun _ -> true) >>:
      fun (c, nullable) ->

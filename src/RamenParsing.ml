@@ -108,3 +108,21 @@ let list_sep_and m =
     (blanks -- strinG "and" -- blanks) |||
     (opt_blanks -- char ',' -- opt_blanks)
   ) m
+
+let keyword =
+  (
+    (* Some values that must not be parsed as field names: *)
+    strinG "true" ||| strinG "false" ||| strinG "null" |||
+    strinG "all" ||| strinG "as" |||
+    (* Or "X in top" could also be parsed as an independent expression: *)
+    strinG "top" |||
+    (* Some functions with possibly no arguments that must not be
+     * parsed as field names: *)
+    strinG "now" ||| strinG "random"
+  ) -- check (nay (letter ||| underscore ||| decimal_digit))
+
+let non_keyword =
+  (check ~what:"no quoted identifier" (nay id_quote) -+
+   check ~what:"no keyword" (nay keyword) -+
+   identifier) |||
+  (id_quote -+ identifier +- id_quote)
