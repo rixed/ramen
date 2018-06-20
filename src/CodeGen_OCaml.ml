@@ -126,8 +126,29 @@ let id_of_typ = function
   | TVec _  -> "vector"
   | TNum | TAny -> assert false
 
-let emit_value_of_string typ oc var =
-  Printf.fprintf oc "RamenTypeConverters.%s_of_string %s" (id_of_typ typ) var
+let rec emit_value_of_string typ oc var =
+  match typ with
+  | TVec (d, t) ->
+      Printf.fprintf oc
+        "RamenHelpers.split_string ~sep:';' ~opn:'[' ~cls:']' %s |>\n\
+         Array.map (fun x_ -> %a)"
+        var
+        (emit_value_of_string t) "x_"
+  | TTuple ts ->
+      (* FIXME: same as above re. [split_on_char]: *)
+      Printf.fprintf oc
+        "let s_ =\n\
+           RamenHelpers.split_string ~sep:';' ~opn:'(' ~cls:')' %s in\n\
+         if Array.length s_ <> %d then failwith (\
+           Printf.sprintf \"Bad arity for tuple %%s, expected %d items\" \
+             %s) ;\n\
+         %a"
+         var (Array.length ts) (Array.length ts) var
+         (array_print_as_tuple_i (fun oc i t ->
+           emit_value_of_string t oc ("s_.("^ string_of_int i ^")"))) ts
+  | typ ->
+      Printf.fprintf oc "RamenTypeConverters.%s_of_string %s"
+        (id_of_typ typ) var
 
 (* Returns the set of all field names from the "in" tuple mentioned
  * anywhere in the given expression: *)
@@ -735,6 +756,15 @@ and emit_expr ?state ~context ~consts oc expr =
         Printf.fprintf oc "%s)"
           (if had_nullable then "!_ret_" else
            if is_nullable expr then "Some false" else "false") ;
+      | Field ({ scalar_typ = Some (TVec (d, telem)) ; _ } as t, _, _) ->
+          (* Merely turn that list of scalar immediate values into
+           * constant expressions and pretend we have a Vector: *)
+          let const_expr i =
+            StatelessFun2 (make_typ ~nullable:false ~typ:telem "fake get",
+                           VecGet, expr_i32 "get index" i, e2) in
+          let e2 = Vector (t, List.init d const_expr) in
+          let e = StatelessFun2 (out_typ, In, e1, e2) in
+          emit_expr ?state ~context ~consts oc e
       | _ -> assert false)
     | _ -> assert false)
 
@@ -1946,12 +1976,12 @@ let emit_operation name func_name in_typ out_typ params op oc =
     (* FIXME: nullable parameters *)
     Printf.fprintf oc
       "let %s_%s_ =\n\
-       \tlet parser_ x_ = %s(RamenTypeConverters.%s_of_string x_) in\n\
+       \tlet parser_ x_ = %s(%a) in\n\
        \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
       (id_of_prefix TupleParam) p.ptyp.typ_name
       (if p.ptyp.nullable then
         "if RamenHelpers.looks_like_null x_ then None else Some "
-       else "") (id_of_typ p.ptyp.typ)
+       else "") (emit_value_of_string p.ptyp.typ) "x_"
       (if p.ptyp.nullable && p.value <> VNull then "Some " else "")
       emit_type p.value p.ptyp.typ_name
   ) params ;

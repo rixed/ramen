@@ -261,6 +261,9 @@ let expr_false =
 let expr_u8 name n =
   Const (make_typ ~typ:TU8 ~nullable:false name, VU8 (Uint8.of_int n))
 
+let expr_i32 name n =
+  Const (make_typ ~typ:TI32 ~nullable:false name, VI32 (Int32.of_int n))
+
 let expr_zero = expr_u8 "zero" 0
 let expr_one = expr_u8 "one" 1
 let expr_two = expr_u8 "two" 2

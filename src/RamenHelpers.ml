@@ -1038,3 +1038,22 @@ let subst_tuple_fields =
 
 let reindent indent s =
   indent ^ String.nreplace (String.trim s) "\n" ("\n"^indent)
+
+(* FIXME: this won't work but for the simplest types: *)
+let split_string ~sep ~opn ~cls s =
+  let open String in
+  let s = trim s in
+  if s.[0] <> opn || s.[length s - 1] <> cls then
+    failwith (Printf.sprintf "Value must be delimited with %c and %c"
+                opn cls) ;
+  let s = sub s 1 (length s - 2) in
+  split_on_char sep s |> List.map trim |> Array.of_list
+
+(*$= split_string & ~printer:(IO.to_string (Array.print String.print))
+  [| "glop" |] (split_string ~sep:';' ~opn:'(' ~cls:')' "(glop)")
+  [| "glop" |] (split_string ~sep:';' ~opn:'(' ~cls:')' "  ( glop  )  ")
+  [| "pas"; "glop" |] \
+    (split_string ~sep:';' ~opn:'(' ~cls:')' "(pas;glop)")
+  [| "pas"; "glop" |] \
+    (split_string ~sep:';' ~opn:'(' ~cls:')' "(  pas ;  glop)  ")
+*)

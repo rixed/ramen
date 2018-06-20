@@ -105,7 +105,7 @@ struct
   let type_decl m =
     let m = "type declaration" :: m in
     (
-      RamenTypes.Parser.scalar_typ ++
+      RamenTypes.Parser.typ ++
       optional ~def:true (
         optional ~def:true (
           blanks -+ (strinG "not" >>: fun () -> false)) +-

@@ -3,10 +3,12 @@
 PARAMETER sel_year  U16 NOT NULL DEFAULTS TO 0;
 PARAMETER sel_year2 U16 NULL DEFAULTS TO 0;
 PARAMETER sel_year3 I8 NULL;
+PARAMETER sel_years I8[3] NOT NULL DEFAULTS TO [0; 1; 2];
 
 DEFINE p AS
   FROM tests/fixtures/earthquakes/csv
   SELECT n WHERE
     year = sel_year OR
     year = COALESCE(sel_year2, 0) OR
-    year = COALESCE(sel_year3, 0);
+    year = COALESCE(sel_year3, 0) OR
+    year IN sel_years;

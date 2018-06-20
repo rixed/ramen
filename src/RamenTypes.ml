@@ -54,7 +54,7 @@ let rec print_typ oc = function
   | TCidrv6 -> String.print oc "CIDRv6"
   | TCidr   -> String.print oc "CIDR"
   | TTuple ts -> Array.print ~first:"(" ~last:")" ~sep:";" print_typ oc ts
-  | TVec (d, t) -> Printf.fprintf oc "VEC(%d, %a)" d print_typ t
+  | TVec (d, t) -> Printf.fprintf oc "%a[%d]" print_typ t d
 
 let rec string_of_typ t = IO.to_string print_typ t
 
@@ -447,29 +447,29 @@ struct
   let rec p_ ?min_int_width =
     scalar ?min_int_width |||
     (* Also literals of constructed types: *)
-    (tuple >>: fun vs -> VTuple vs) |||
-    (vector >>: fun vs -> VVec vs)
+    (tuple ?min_int_width >>: fun vs -> VTuple vs) |||
+    (vector ?min_int_width >>: fun vs -> VVec vs)
 
   (* By default, we want only one value of at least 32 bits: *)
   and p m = p_ ~min_int_width:32 m
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
    * conflict with parentheses used as grouping symbols: *)
-  and tuple m =
+  and tuple ?min_int_width m =
     let m = "tuple" :: m in
     (
       char '(' -- opt_blanks -+
-      (repeat ~min:2 ~sep:tup_sep p >>:
+      (repeat ~min:2 ~sep:tup_sep (p_ ?min_int_width) >>:
        fun vs -> Array.of_list vs) +-
       opt_blanks +- char ')'
     ) m
 
   (* Empty vectors are disallowed so we cannot not know the element type: *)
-  and vector m =
+  and vector ?min_int_width m =
     let m = "vector" :: m in
     (
       char '[' -- opt_blanks -+
-      (several ~sep:tup_sep p >>: fun vs ->
+      (several ~sep:tup_sep (p_ ?min_int_width) >>: fun vs ->
          match largest_type (List.map type_of vs) with
          | exception Invalid_argument _ ->
             raise (Reject "Cannot find common type")
@@ -493,27 +493,50 @@ struct
                                                (test_p p "[3.14; 1]")
   *)
 
-  let scalar_typ =
-    (strinG "float" >>: fun () -> TFloat) |||
-    (strinG "string" >>: fun () -> TString) |||
-    ((strinG "bool" ||| strinG "boolean") >>: fun () -> TBool) |||
-    (strinG "u8" >>: fun () -> TU8) |||
-    (strinG "u16" >>: fun () -> TU16) |||
-    (strinG "u32" >>: fun () -> TU32) |||
-    (strinG "u64" >>: fun () -> TU64) |||
-    (strinG "u128" >>: fun () -> TU128) |||
-    (strinG "i8" >>: fun () -> TI8) |||
-    (strinG "i16" >>: fun () -> TI16) |||
-    (strinG "i32" >>: fun () -> TI32) |||
-    (strinG "i64" >>: fun () -> TI64) |||
-    (strinG "i128" >>: fun () -> TI128) |||
-    (strinG "eth" >>: fun () -> TEth) |||
-    (strinG "ip4" >>: fun () -> TIpv4) |||
-    (strinG "ip6" >>: fun () -> TIpv6) |||
-    (strinG "ip" >>: fun () -> TIp) |||
-    (strinG "cidr4" >>: fun () -> TCidrv4) |||
-    (strinG "cidr6" >>: fun () -> TCidrv6) |||
-    (strinG "cidr" >>: fun () -> TCidr)
+  let rec typ m =
+    let m = "type" :: m in
+    (scalar_typ ||| tuple_typ ||| vector_typ) m
+
+  and scalar_typ m =
+    let m = "scalar type" :: m in
+    (
+      (strinG "float" >>: fun () -> TFloat) |||
+      (strinG "string" >>: fun () -> TString) |||
+      ((strinG "bool" ||| strinG "boolean") >>: fun () -> TBool) |||
+      (strinG "u8" >>: fun () -> TU8) |||
+      (strinG "u16" >>: fun () -> TU16) |||
+      (strinG "u32" >>: fun () -> TU32) |||
+      (strinG "u64" >>: fun () -> TU64) |||
+      (strinG "u128" >>: fun () -> TU128) |||
+      (strinG "i8" >>: fun () -> TI8) |||
+      (strinG "i16" >>: fun () -> TI16) |||
+      (strinG "i32" >>: fun () -> TI32) |||
+      (strinG "i64" >>: fun () -> TI64) |||
+      (strinG "i128" >>: fun () -> TI128) |||
+      (strinG "eth" >>: fun () -> TEth) |||
+      (strinG "ip4" >>: fun () -> TIpv4) |||
+      (strinG "ip6" >>: fun () -> TIpv6) |||
+      (strinG "ip" >>: fun () -> TIp) |||
+      (strinG "cidr4" >>: fun () -> TCidrv4) |||
+      (strinG "cidr6" >>: fun () -> TCidrv6) |||
+      (strinG "cidr" >>: fun () -> TCidr)
+    ) m
+
+  and tuple_typ m =
+    let m = "tuple type" :: m in
+    (
+      char '(' -- opt_blanks -+
+        several ~sep:tup_sep typ
+      +- opt_blanks +- char ')' >>: fun ts -> TTuple (Array.of_list ts)
+    ) m
+
+  and vector_typ m =
+    let m = "vector type" :: m in
+    (
+      scalar_typ +- opt_blanks +- char '[' +- opt_blanks ++
+      pos_decimal_integer "vector dimensions" +- opt_blanks +- char ']' >>:
+      fun (t, d) -> TVec (d, t)
+    ) m
 
   (*$>*)
 end
