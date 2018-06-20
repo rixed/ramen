@@ -321,7 +321,8 @@ let check params =
   let check_event_time field_names (start_field, duration) =
     let check_field (f, src, _scale) =
       if RamenTuple.params_mem f params then
-        (* FIXME: check that the type is compatible with TFloat! *)
+        (* FIXME: check that the type is compatible with TFloat!
+         *        And not nullable! *)
         src := RamenEventTime.Parameter
       else
         check_field_exists field_names f

@@ -1,7 +1,12 @@
 -- vim: ft=sql expandtab
 
-PARAMETER sel_year U16 NOT NULL DEFAULTS TO 0;
+PARAMETER sel_year  U16 NOT NULL DEFAULTS TO 0;
+PARAMETER sel_year2 U16 NULL DEFAULTS TO 0;
+PARAMETER sel_year3 I8 NULL;
 
 DEFINE p AS
   FROM tests/fixtures/earthquakes/csv
-  SELECT n WHERE year = sel_year;
+  SELECT n WHERE
+    year = sel_year OR
+    year = COALESCE(sel_year2, 0) OR
+    year = COALESCE(sel_year3, 0);

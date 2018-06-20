@@ -1946,12 +1946,14 @@ let emit_operation name func_name in_typ out_typ params op oc =
     (* FIXME: nullable parameters *)
     Printf.fprintf oc
       "let %s_%s_ =\n\
-       \tlet parser_ = RamenTypeConverters.%s_of_string in\n\
-       \tCodeGenLib.parameter_value ~def:(%a) parser_ %S\n"
+       \tlet parser_ x_ = %s(RamenTypeConverters.%s_of_string x_) in\n\
+       \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
       (id_of_prefix TupleParam) p.ptyp.typ_name
-      (id_of_typ p.ptyp.typ)
-      emit_type p.value
-      p.ptyp.typ_name
+      (if p.ptyp.nullable then
+        "if RamenHelpers.looks_like_null x_ then None else Some "
+       else "") (id_of_typ p.ptyp.typ)
+      (if p.ptyp.nullable && p.value <> VNull then "Some " else "")
+      emit_type p.value p.ptyp.typ_name
   ) params ;
   (* Also a function that takes a parameter name (string) and return its
    * value (as a string) - useful for text replacements within strings *)
@@ -1962,10 +1964,12 @@ let emit_operation name func_name in_typ out_typ params op oc =
         Printf.sprintf "%s_%s_"
           (id_of_prefix TupleParam)
           p.ptyp.typ_name in
-      Printf.fprintf oc "\t| %S -> (%a) %s\n"
+      Printf.fprintf oc "\t| %S -> (%a) %s%s\n"
         p.ptyp.typ_name
         (conv_from_to ~nullable:p.ptyp.nullable) (p.ptyp.typ, TString)
-        glob_name)) params ;
+        glob_name
+        (if p.ptyp.nullable then " |> Option.default \"?null?\""
+         else ""))) params ;
   (* Now the code, which might need some global constant parameters,
    * thus the two strings that are assembled later: *)
   let consts = IO.output_string () in

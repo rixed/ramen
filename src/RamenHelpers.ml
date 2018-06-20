@@ -137,6 +137,9 @@ let looks_like_true s =
     String.length s > 1 &&
     let lc = Char.lowercase s.[0] in lc = 'y' || lc = 't')
 
+let looks_like_null s =
+  String.lowercase_ascii s = "null"
+
 let time what f =
   let start = Unix.gettimeofday () in
   let res = f () in

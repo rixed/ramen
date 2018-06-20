@@ -767,12 +767,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           FieldNotInTuple { field ; tuple = !tuple ; tuple_type = "" } in
         raise (SyntaxError e)
       | param ->
-        let typ = type_of param.RamenTuple.value in
         !logger.debug "%sParameter %s of type %a"
-          indent field RamenTypes.print_typ typ ;
-        set_nullable ~indent op_typ false |||
+          indent field RamenTypes.print_typ param.ptyp.typ ;
+        set_nullable ~indent op_typ param.ptyp.nullable |||
         set_scalar_type ~indent ~ok_if_larger:false ~expr_name:field
-                        op_typ typ |||
+                        op_typ param.ptyp.typ |||
         (* Then propagate upward: *)
         check_expr_type ~indent ~ok_if_larger:false ~set_null:true
                         ~from:op_typ ~to_:exp_type

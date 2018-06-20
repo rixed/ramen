@@ -68,11 +68,11 @@ struct
     (
       strinGs "parameter" -- blanks -+
         several ~sep:list_sep_and (
-          non_keyword +- blanks ++
+          non_keyword ++
           optional ~def:None (
-            some RamenTuple.Parser.type_decl +- blanks) ++
+            blanks -+ some RamenTuple.Parser.type_decl) ++
           optional ~def:RamenTypes.VNull (
-            strinGs "default" -- blanks -- strinG "to" -- blanks -+
+            blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
             RamenTypes.Parser.p_ ~min_int_width:0) >>:
           fun ((typ_name, typ_decl), value) ->
             let typ, nullable, value =

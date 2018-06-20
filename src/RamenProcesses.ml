@@ -468,7 +468,8 @@ let really_start conf must_run proc parents children =
    * non interpreted strings (but for the first '=' sign that will be
    * interpreted by the OCaml runtime) so it should work regardless of the
    * actual param name or value, and make it easier to see what's going
-   * on from the shell: *)
+   * on from the shell. Notice that we pass all the parameters including
+   * those omitted by the user. *)
   let more_env =
     List.enum proc.params /@
     (fun p ->
