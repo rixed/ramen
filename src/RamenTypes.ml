@@ -437,6 +437,11 @@ struct
      * point in losing typing accuracy? IPs will be cast to generic IPs
      * as required. *)
 
+  (* We do not allow to add explicit NULL values as immediate values in an
+   * expression, but in some places this could be used: *)
+  let null =
+    strinG "null" >>: fun () -> VNull
+
   let tup_sep = opt_blanks -- char ';' -- opt_blanks (* TODO: consider functions as taking a single tuple *)
 
   (* But in general when parsing user provided values (such as in parameters

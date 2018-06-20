@@ -73,7 +73,7 @@ struct
             blanks -+ some RamenTuple.Parser.type_decl) ++
           optional ~def:RamenTypes.VNull (
             blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
-            RamenTypes.Parser.p_ ~min_int_width:0) >>:
+            RamenTypes.Parser.(p_ ~min_int_width:0 ||| null)) >>:
           fun ((typ_name, typ_decl), value) ->
             let typ, nullable, value =
               let open RamenTypes in
