@@ -15,6 +15,11 @@ let () =
       (Printexc.to_string exn)
       (Printexc.get_backtrace ()))
 
+let () =
+  Printexc.register_printer (function
+    | Failure msg -> Some msg
+    | _ -> None)
+
 let make_copts debug persist_dir rand_seed keep_temp_files forced_variants
                initial_export_duration =
   (match rand_seed with
@@ -439,29 +444,35 @@ let ps conf short with_header sort_col top prefix () =
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
           Hashtbl.fold (fun program_name get_rc lines ->
-            let bin, prog = get_rc () in
-            List.fold_left (fun lines func ->
-              let fq_name = RamenName.string_of_program_exp program_name
-                            ^"/"^ RamenName.string_of_func func.F.name in
-              if String.starts_with fq_name prefix then
-                let _, (in_count, selected_count, out_count, group_count,
-                        cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
-                  Hashtbl.find_default stats fq_name (0., no_stats) in
-                [| ValStr fq_name ;
-                   int_or_na in_count ;
-                   int_or_na selected_count ;
-                   int_or_na out_count ;
-                   int_or_na group_count ;
-                   ValFlt cpu ;
-                   flt_or_na wait_in ;
-                   flt_or_na wait_out ;
-                   ValInt (Uint64.to_int ram) ;
-                   flt_or_na (Option.map Uint64.to_float bytes_in) ;
-                   flt_or_na (Option.map Uint64.to_float bytes_out) ;
-                   ValInt (List.length func.F.parents) ;
-                   ValStr func.signature |] :: lines
-              else lines
-            ) lines prog.P.funcs
+            match get_rc () with
+            | exception e ->
+              let fq_name =
+                red (RamenName.string_of_program_exp program_name ^"/*") in
+              [| ValStr fq_name ; ValStr (Printexc.to_string e) |] :: lines
+            | bin, prog ->
+              List.fold_left (fun lines func ->
+                let fq_name = RamenName.string_of_program_exp program_name
+                              ^"/"^ RamenName.string_of_func func.F.name in
+                if String.starts_with fq_name prefix then
+                  let _, (in_count, selected_count, out_count, group_count,
+                          cpu, ram, wait_in, wait_out, bytes_in,
+                          bytes_out) =
+                    Hashtbl.find_default stats fq_name (0., no_stats) in
+                  [| ValStr fq_name ;
+                     int_or_na in_count ;
+                     int_or_na selected_count ;
+                     int_or_na out_count ;
+                     int_or_na group_count ;
+                     ValFlt cpu ;
+                     flt_or_na wait_in ;
+                     flt_or_na wait_out ;
+                     ValInt (Uint64.to_int ram) ;
+                     flt_or_na (Option.map Uint64.to_float bytes_in) ;
+                     flt_or_na (Option.map Uint64.to_float bytes_out) ;
+                     ValInt (List.length func.F.parents) ;
+                     ValStr func.signature |] :: lines
+                else lines
+              ) lines prog.P.funcs
           ) programs [] |> return)) in
   print_table ~sort_col ~with_header ?top head lines
 

@@ -70,26 +70,27 @@ struct
     (* Cache of path to date of last read and program *)
     let reread_data fname : t =
       !logger.debug "Reading config from %s..." fname ;
-      let empty_program =
-        { name = RamenName.program_of_string "fake";
-          funcs = []; params = [] } in
       match with_stdout_from_command
               fname [| fname ; "version" |] Legacy.input_line with
       | exception e ->
-          !logger.error "Cannot get version from %s: %s"
-            fname (Printexc.to_string e) ;
-          empty_program
+          let err = Printf.sprintf "Cannot get version from %s: %s"
+                      fname (Printexc.to_string e) in
+          !logger.error "%s" err ;
+          failwith err
       | v when v = RamenVersions.codegen ->
           (try with_stdout_from_command
                  fname [| fname ; "1nf0" |] Legacy.Marshal.from_channel
            with e ->
-             !logger.error "Cannot get 1nf0 from %s: %s"
-               fname (Printexc.to_string e) ;
-             empty_program)
+             let err = Printf.sprintf "Cannot get 1nf0 from %s: %s"
+                         fname (Printexc.to_string e) in
+             !logger.error "%s" err ;
+             failwith err)
       | v ->
-        !logger.error "Executable %s is for version %s (I'm version %s)"
-          fname v RamenVersions.codegen ;
-        empty_program
+        let err = Printf.sprintf "Executable %s is for version %s \
+                                  (I'm version %s)"
+                    fname v RamenVersions.codegen in
+        !logger.error "%s" err ;
+        failwith err
     and age_of_data fname =
       try mtime_of_file fname
       with e ->

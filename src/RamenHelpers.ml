@@ -328,6 +328,10 @@ let with_subprocess cmd args k =
    * fd is closed several times so limit the magic: *)
   let open Legacy.Unix in
   !logger.debug "Going to exec %s %a" cmd (Array.print String.print) args ;
+  (* Check that the file is present before forking; as we are not going to
+   * check the child exit status it will give us a better error message. *)
+  if not (file_exists cmd) then
+    failwith (Printf.sprintf "File %s does not exist" cmd) ;
   let env = environment () in
   let his_in, my_in = pipe ~cloexec:false ()
   and my_out, his_out = pipe ~cloexec:false ()
