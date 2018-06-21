@@ -1132,8 +1132,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | StatefulFun (op_typ, _, Hysteresis (meas, accept, max)) ->
     check_op op_typ return_bool
       [Some TFloat, None, meas ;
-       Some TFloat, Some false, accept ;
-       Some TFloat, Some false, max]
+       Some TFloat, None, accept ;
+       Some TFloat, None, max]
   | StatefulFun (op_typ, _, Top { want_rank ; what ; by ; n ; duration ; time }) ->
     if duration <= 0. then (
       let e = BadConstant "TOP duration must be greater than zero" in

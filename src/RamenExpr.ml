@@ -1122,7 +1122,7 @@ struct
      (afun0v_sf ~def_state:LocalState "distinct" >>: fun (g, es) ->
          StatefulFun (make_bool_typ "distinct", g, Distinct es)) |||
      (afun3_sf "hysteresis" >>: fun (g, value, accept, max) ->
-        StatefulFun (make_bool_typ ~nullable:false "hysteresis", g,
+        StatefulFun (make_bool_typ "hysteresis", g,
                      Hysteresis (value, accept, max))) |||
      (afun4_sf ~def_state:LocalState "histogram" >>:
       fun (g, what, min, max, nb_buckets) ->
