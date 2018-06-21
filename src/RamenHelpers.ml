@@ -173,11 +173,16 @@ let file_exists ?(maybe_empty=true) ?(has_perms=0) fname =
     (maybe_empty || s.st_size > 0) &&
     s.st_perm land has_perms = has_perms
 
-let ensure_file_exists fname =
+let ensure_file_exists ?contents fname =
   mkdir_all ~is_file:true fname ;
   if not (file_exists fname) then (
     !logger.debug "Creating file fname" ;
-    Unix.(openfile fname [O_CREAT] 0o644 |> close))
+    let open Unix in
+    let fd = openfile fname [O_CREAT;O_WRONLY] 0o644 in
+    Option.may (fun s ->
+      single_write fd s 0 (String.length s) |> ignore
+    ) contents ;
+    close fd)
 
 let uniquify_filename fname =
   let rec loop n =

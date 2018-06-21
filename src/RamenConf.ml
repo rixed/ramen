@@ -175,13 +175,7 @@ let non_persisted_programs = ref (Hashtbl.create 11)
 
 let read_rc_file do_persist rc_file =
   if do_persist then
-    try
-      ppp_of_file rc_file must_run_file_ppp_ocaml
-    with
-    | e ->
-      !logger.debug "Cannot read configuration: %s. Starting anew."
-        (Printexc.to_string e) ;
-      Hashtbl.create 1
+    ppp_of_file rc_file must_run_file_ppp_ocaml
   else !non_persisted_programs
 
 let save_rc_file do_persist rc_file rc =
@@ -201,7 +195,7 @@ exception RetryLater of float
 let with_rlock conf f =
   let open Lwt in
   let rc_file = running_config_file conf in
-  ensure_file_exists rc_file ;
+  ensure_file_exists ~contents:"{}" rc_file ;
   mkdir_all ~is_file:true rc_file ;
   let rec loop () =
     try%lwt
@@ -221,7 +215,7 @@ let with_rlock conf f =
 let with_wlock conf f =
   let open Lwt in
   let rc_file = running_config_file conf in
-  ensure_file_exists rc_file ;
+  ensure_file_exists ~contents:"{}" rc_file ;
   let rec loop () =
     try%lwt
       RamenAdvLock.with_w_lock rc_file (fun () ->
