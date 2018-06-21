@@ -180,7 +180,7 @@ let ensure_file_exists ?contents fname =
     let open Unix in
     let fd = openfile fname [O_CREAT;O_WRONLY] 0o644 in
     Option.may (fun s ->
-      single_write fd s 0 (String.length s) |> ignore
+      single_write_substring fd s 0 (String.length s) |> ignore
     ) contents ;
     close fd)
 
