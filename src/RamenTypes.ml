@@ -54,6 +54,7 @@ let rec print_typ oc = function
   | TCidrv6 -> String.print oc "CIDRv6"
   | TCidr   -> String.print oc "CIDR"
   | TTuple ts -> Array.print ~first:"(" ~last:")" ~sep:";" print_typ oc ts
+  | TVec (0, t) -> Printf.fprintf oc "%a[]" print_typ t
   | TVec (d, t) -> Printf.fprintf oc "%a[%d]" print_typ t d
 
 let rec string_of_typ t = IO.to_string print_typ t
@@ -215,29 +216,54 @@ let enlarge_type = function
 let rec enlarge_value t v =
   let vt = type_of v in
   if vt = t then v else
-  (match v with
-  | VI8 x when Int8.(compare x zero) >= 0 -> VU8 (Uint8.of_int8 x)
-  | VI8 x -> VI16 (Int16.of_int8 x)
-  | VU8 x -> VI16 (Int16.of_uint8 x)
-  | VI16 x when Int16.(compare x zero) >= 0 -> VU16 (Uint16.of_int16 x)
-  | VI16 x -> VI32 (Int32.of_int16 x)
-  | VU16 x -> VI32 (Int32.of_uint16 x)
-  | VI32 x when Int32.(compare x zero) >= 0 -> VU32 (Uint32.of_int32 x)
-  | VI32 x -> VI64 (Int64.of_int32 x)
-  | VU32 x -> VI64 (Int64.of_uint32 x)
-  | VI64 x when Int64.(compare x zero) >= 0 -> VU64 (Uint64.of_int64 x)
-  | VI64 x -> VI128 (Int128.of_int64 x)
-  | VU64 x -> VI128 (Int128.of_uint64 x)
-  | VI128 x when Int128.(compare x zero) >= 0 -> VU128 (Uint128.of_int128 x)
-  | VI128 x -> VFloat (Int128.to_float x)
-  | VU128 x -> VFloat (Uint128.to_float x)
-  | VIpv4 x -> VIp RamenIp.(V4 x)
-  | VIpv6 x -> VIp RamenIp.(V6 x)
-  | VCidrv4 x -> VCidr RamenIp.Cidr.(V4 x)
-  | VCidrv6 x -> VCidr RamenIp.Cidr.(V6 x)
-  | v -> invalid_arg ("Value "^ to_string v ^" cannot be enlarged into a "^
-                      string_of_typ t)) |>
-  enlarge_value t
+  match v, t with
+  | VI8 x, _ when Int8.(compare x zero) >= 0 ->
+      enlarge_value t (VU8 (Uint8.of_int8 x))
+  | VI8 x, _ ->
+      enlarge_value t (VI16 (Int16.of_int8 x))
+  | VU8 x, _ ->
+      enlarge_value t (VI16 (Int16.of_uint8 x))
+  | VI16 x, _ when Int16.(compare x zero) >= 0 ->
+      enlarge_value t (VU16 (Uint16.of_int16 x))
+  | VI16 x, _ ->
+      enlarge_value t (VI32 (Int32.of_int16 x))
+  | VU16 x, _ ->
+      enlarge_value t (VI32 (Int32.of_uint16 x))
+  | VI32 x, _ when Int32.(compare x zero) >= 0 ->
+      enlarge_value t (VU32 (Uint32.of_int32 x))
+  | VI32 x, _ ->
+      enlarge_value t (VI64 (Int64.of_int32 x))
+  | VU32 x, _ ->
+      enlarge_value t (VI64 (Int64.of_uint32 x))
+  | VI64 x, _ when Int64.(compare x zero) >= 0 ->
+      enlarge_value t (VU64 (Uint64.of_int64 x))
+  | VI64 x, _ ->
+      enlarge_value t (VI128 (Int128.of_int64 x))
+  | VU64 x, _ ->
+      enlarge_value t (VI128 (Int128.of_uint64 x))
+  | VI128 x, _ when Int128.(compare x zero) >= 0 ->
+      enlarge_value t (VU128 (Uint128.of_int128 x))
+  | VI128 x, _ ->
+      enlarge_value t (VFloat (Int128.to_float x))
+  | VU128 x, _ ->
+      enlarge_value t (VFloat (Uint128.to_float x))
+  | VIpv4 x, _ ->
+      enlarge_value t (VIp RamenIp.(V4 x))
+  | VIpv6 x, _ ->
+      enlarge_value t (VIp RamenIp.(V6 x))
+  | VCidrv4 x, _ ->
+      enlarge_value t (VCidr RamenIp.Cidr.(V4 x))
+  | VCidrv6 x, _ ->
+      enlarge_value t (VCidr RamenIp.Cidr.(V6 x))
+  | VTuple vs, TTuple [||] ->
+      v (* Nothing to do *)
+  | VTuple vs, TTuple ts when Array.length ts = Array.length vs ->
+      VTuple (Array.map2 enlarge_value ts vs)
+  | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
+      VVec (Array.map (enlarge_value t) vs)
+  | _ ->
+      invalid_arg ("Value "^ to_string v ^" cannot be enlarged into a "^
+                   string_of_typ t)
 
 (* From the list of operand types, return the largest type able to accomodate
  * all operands. Most of the time it will be the largest in term of "all
@@ -539,7 +565,8 @@ struct
     let m = "vector type" :: m in
     (
       scalar_typ +- opt_blanks +- char '[' +- opt_blanks ++
-      pos_decimal_integer "vector dimensions" +- opt_blanks +- char ']' >>:
+      optional ~def:0 (pos_decimal_integer "vector dimensions") +-
+      opt_blanks +- char ']' >>:
       fun (t, d) -> TVec (d, t)
     ) m
 

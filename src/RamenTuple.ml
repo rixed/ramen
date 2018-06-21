@@ -88,14 +88,22 @@ let overwrite_params ps1 ps2 =
     match List.find (fun (p2_nam, _) -> p2_nam = p1.ptyp.typ_name) ps2 with
     | exception Not_found -> p1
     | _, p2_val ->
-        if RamenTypes.type_of p2_val = p1.ptyp.typ then
-          { p1 with value = p2_val }
-        else
-          let msg = Printf.sprintf2 "Parameter %s has wrong type, \
-                                     %a instead of %a" p1.ptyp.typ_name
-                      RamenTypes.print_typ (RamenTypes.type_of p2_val)
-                      RamenTypes.print_typ (RamenTypes.type_of p1.value) in
-          failwith msg
+        let open RamenTypes in
+        if p2_val = VNull then
+          if not p1.ptyp.nullable then
+            Printf.sprintf2 "Parameter %s is not nullable so cannot \
+                             be set to NULL" p1.ptyp.typ_name |>
+            failwith
+          else
+            { p1 with value = VNull }
+        else match enlarge_value p1.ptyp.typ p2_val with
+          | exception Invalid_argument _ ->
+              Printf.sprintf2 "Parameter %s of type %a can not be \
+                               promoted into a %a" p1.ptyp.typ_name
+                print_typ (type_of p2_val)
+                print_typ p1.ptyp.typ |>
+              failwith
+          | value -> { p1 with value }
   ) ps1
 
 module Parser =

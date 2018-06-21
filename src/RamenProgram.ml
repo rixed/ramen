@@ -93,18 +93,27 @@ struct
                     else
                       vtyp, false, value
               | Some (dtyp, nullable) ->
-                  if value = VNull then dtyp, nullable, value else
-                  (* Expand the parsed value type up to the declaration: *)
-                  let vtyp = type_of value in
-                  if can_enlarge ~from:vtyp ~to_:dtyp then
-                    dtyp, nullable, enlarge_value dtyp value
+                  if value = VNull then
+                    if nullable then
+                      dtyp, nullable, value
+                    else
+                      let e =
+                        Printf.sprintf2
+                          "Parameter %S is not nullable, therefore it must have \
+                           a default value"
+                          typ_name in
+                      raise (Reject e)
                   else
-                    let e =
-                      Printf.sprintf2
-                        "In declaration of parameter %S, type is \
-                         incompatible with value %a"
-                        typ_name print value in
-                    raise (Reject e)
+                    (* Scale the parsed type up to the declaration: *)
+                    match enlarge_value dtyp value with
+                    | exception Invalid_argument _ ->
+                        let e =
+                          Printf.sprintf2
+                            "In declaration of parameter %S, type is \
+                             incompatible with value %a"
+                            typ_name print value in
+                        raise (Reject e)
+                    | value -> dtyp, nullable, value
             in
             RamenTuple.{ ptyp = { typ_name ; nullable ; typ } ; value }
         )

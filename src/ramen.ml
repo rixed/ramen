@@ -263,9 +263,12 @@ let assignment =
                 sign (=), followed by the value.")
     | pname, pval ->
         let open RamenParsing in
-        let p = allow_surrounding_blanks RamenTypes.Parser.p in
+        let p = allow_surrounding_blanks RamenTypes.Parser.(
+                  (* Parse the command line as narrowly as possible, values
+                   * will be enlarged later as required: *)
+                  p_ ~min_int_width:0 ||| null) in
         let stream = stream_of_string pval in
-        let m = [ "value from command line" ] in
+        let m = [ "value of command line parameter "^ pname ] in
         (match p m None Parsers.no_error_correction stream |>
               to_result with
         | Bad e ->
