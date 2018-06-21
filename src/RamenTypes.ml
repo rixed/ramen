@@ -169,6 +169,8 @@ let can_enlarge_scalar ~from ~to_ =
     | x -> [ x ] in
   List.mem to_ compatible_types
 
+(* Note: This is based on type only. If you have the actual value, see
+ * enlarge_value below. *)
 let rec can_enlarge ~from ~to_ =
   match from, to_ with
   | _, TAny -> true
@@ -213,6 +215,9 @@ let enlarge_type = function
   | TCidrv6 -> TCidr
   | t -> invalid_arg ("Type "^ string_of_typ t ^" cannot be enlarged")
 
+(* Important note: Sometime a value can be enlarged from one type to
+ * another, while can_enlarge would have denied the promotion. That's
+ * because can_enlarge base its decision on types only. *)
 let rec enlarge_value t v =
   let vt = type_of v in
   if vt = t then v else

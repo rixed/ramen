@@ -165,6 +165,7 @@ let hysteresis_update was_ok v accept max =
   let extr =
     if was_ok then max else accept in
   if max >= accept then v <= extr else v >= extr
+
 let hysteresis_finalize is_ok = is_ok
 
 type histogram =

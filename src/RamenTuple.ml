@@ -82,7 +82,7 @@ let param_types_signature =
   type_signature % List.map (fun p -> p.ptyp) % params_sort
 
 (* Override ps1 with values from ps2, ignoring the values of ps2 that are
- * not in ps1: *)
+ * not in ps1. Enlarge the values of ps2 as necessary: *)
 let overwrite_params ps1 ps2 =
   List.map (fun p1 ->
     match List.find (fun (p2_nam, _) -> p2_nam = p1.ptyp.typ_name) ps2 with

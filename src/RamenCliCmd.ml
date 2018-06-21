@@ -287,6 +287,8 @@ let kill conf killed_prog_names () =
   let nb_kills =
     Lwt_main.run (
       C.with_wlock conf (fun running_programs ->
+        (* TODO: consider killed_prog_names is a list of globs, and
+         * build the actual killed_prog_names list from it. *)
         check_orphans conf killed_prog_names running_programs ;
         let before = Hashtbl.length running_programs in
         Hashtbl.filteri_inplace (fun name _mre ->
