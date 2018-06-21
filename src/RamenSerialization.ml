@@ -165,7 +165,10 @@ let filter_tuple_by typ where =
   (* Find the indices of all the involved fields, and parse the values: *)
   let where =
     List.map (fun (n, v) ->
-      let idx = find_field_index typ n in
+      let idx, t = find_field typ n in
+      let v =
+        if v = VNull then VNull else
+        RamenTypes.enlarge_value t.typ v in
       idx, v
     ) where in
   fun tuple ->
