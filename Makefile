@@ -3,13 +3,11 @@
 VERSION = 2.2.3
 
 DUPS_IN  = $(shell ocamlfind query compiler-libs):$(shell ocamlfind query lwt_ppx)
-OCAMLC   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlc
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
 WARNS    = -w -40
-override OCAMLOPTFLAGS += -I src $(WARNS) -g -annot -S
-override OCAMLFLAGS    += -I src $(WARNS) -g -annot
+override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -annot -S
 override CFLAGS        += --std=gnu11 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += --std=gnu11 -D_GNU_SOURCE \
                           -I $(shell ocamlfind ocamlc -where) \
@@ -17,7 +15,6 @@ override CPPFLAGS      += --std=gnu11 -D_GNU_SOURCE \
 
 ifdef NDEBUG
 OCAMLOPTFLAGS += -noassert -O2
-OCAMLFLAGS += -noassert
 CPPFLAGS += -DNDEBUG -O2
 endif
 
@@ -64,7 +61,7 @@ all: $(INSTALLED)
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.cmx %.annot: %.ml
-	@echo 'Compiling $@ (native code)'
+	@echo 'Compiling $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.html: %.adoc
@@ -76,8 +73,8 @@ all: $(INSTALLED)
 RAMEN_SOURCES = \
 	src/RamenVersions.ml src/RamenConsts.ml src/RamenLog.ml \
 	src/RamenHelpers.ml src/RamenExperiments.ml src/RamenBitmask.ml \
-	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
-	src/RamenParsing.ml \
+	src/RamenRWLock.ml src/RamenAdvLock.ml \
+	src/RamenOutRef.ml src/RamenParsing.ml \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
@@ -178,7 +175,7 @@ src/ramen: \
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 src/codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a src/libnetflow.a
-	@echo 'Linking runtime library (native code) $@'
+	@echo 'Linking runtime library $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 # embedded compiler version: build a bundle of all libraries
@@ -257,8 +254,8 @@ TESTABLE_SOURCES = \
 LINKED_FOR_TESTS = \
 	src/RamenVersions.ml src/RamenLog.ml src/RamenConsts.ml \
 	src/RamenHelpers.ml src/HeavyHitters.ml src/RamenExperiments.ml \
-	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenOutRef.ml \
-	src/RamenParsing.ml \
+	src/RamenRWLock.ml src/RamenAdvLock.ml \
+	src/RamenOutRef.ml src/RamenParsing.ml \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
@@ -285,8 +282,8 @@ all_tests.opt: \
 
 ringbuf_test.opt: \
 	src/RamenLog.cmx src/RamenConsts.cmx src/RamenHelpers.cmx \
-	src/RamenRWLock.cmx src/RamenAdvLock.cmx src/RamenOutRef.cmx \
-	src/RamenParsing.cmx \
+	src/RamenRWLock.cmx src/RamenAdvLock.cmx \
+	src/RamenOutRef.cmx src/RamenParsing.cmx \
 	src/RamenEthAddr.cmx src/RamenIpv4.cmx src/RamenIpv6.cmx src/RamenIp.cmx \
 	src/RamenTypeConverters.cmx src/RamenTypes.cmx \
 	src/RamenTuple.cmx src/RingBuf.cmx src/RingBufLib.cmx \
