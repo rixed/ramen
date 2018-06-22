@@ -282,11 +282,20 @@ let check_orphans conf killed_prog_names running_programs =
       ) prog.P.funcs
   ) running_programs
 
-let kill conf killed_prog_names () =
+let kill conf program_names () =
   logger := make_logger conf.C.debug ;
+  let program_names =
+    List.map Globs.compile program_names in
   let nb_kills =
     Lwt_main.run (
       C.with_wlock conf (fun running_programs ->
+        let killed_prog_names =
+          Hashtbl.keys running_programs //
+          (fun n ->
+            List.exists (fun p ->
+              Globs.matches p (RamenName.string_of_program_exp n)
+            ) program_names) |>
+          List.of_enum in
         (* TODO: consider killed_prog_names is a list of globs, and
          * build the actual killed_prog_names list from it. *)
         check_orphans conf killed_prog_names running_programs ;
