@@ -95,7 +95,14 @@ let split_program_exp s =
 
 let path_of_program_exp s =
   let prog, params = split_program_exp s in
-  prog ^ path_quote params
+  (* Abbreviate parameter expansion in path when the resulting length would be
+   * greater than [max_dir_len]: *)
+  let exp = path_quote params in
+  let max_dir_len = 255 in
+  let exp =
+    if String.length prog + String.length exp <= max_dir_len then exp
+    else "{"^ md5 exp ^"}" in
+  prog ^ exp
 
 let program_exp_of_path s =
   let prog, params = split_program_exp s in
