@@ -67,11 +67,9 @@ type func_status =
 
 let links conf no_abbrev with_header sort_col top prefix () =
   logger := make_logger conf.C.debug ;
-  (* Cache to avoid reading the out_ref several times: *)
-  let get_out_refs = cached RamenOutRef.read mtime_of_file in
   (* Same to get the ringbuffer stats, but we never reread the stats (not
    * needed, and mtime wouldn't really work on those mmapped files *)
-  let get_rb_stats = cached (fun fname ->
+  let get_rb_stats = cached "links" (fun fname ->
     match RingBuf.load fname with
     | exception Failure _ -> None
     | rb ->
@@ -113,11 +111,10 @@ let links conf no_abbrev with_header sort_col top prefix () =
         | NotRunning (pn, fn) -> Lwt.return ("", red "NOT RUNNING")
         | Running p ->
             let out_ref = C.out_ringbuf_names_ref conf p in
-            let%lwt outs = get_out_refs out_ref in
+            let%lwt outs = RamenOutRef.read out_ref in
             let spec =
-              match Map.find ringbuf outs with
-              | exception Not_found -> red "MISSING"
-              | spec -> RamenOutRef.string_of_file_spec spec in
+              if Hashtbl.mem outs ringbuf then ringbuf
+              else red "MISSING" in
             Lwt.return (out_ref, spec)
       in
       let ap s = if no_abbrev then s else abbrev_path s in

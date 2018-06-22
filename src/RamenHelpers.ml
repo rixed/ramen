@@ -173,9 +173,17 @@ let file_exists ?(maybe_empty=true) ?(has_perms=0) fname =
     (maybe_empty || s.st_size > 0) &&
     s.st_perm land has_perms = has_perms
 
+let is_empty_file fname =
+  let open Unix in
+  let s = stat fname in
+  s.st_size = 0
+
 let ensure_file_exists ?contents fname =
   mkdir_all ~is_file:true fname ;
-  if not (file_exists fname) then (
+  (* FIXME: race condition *)
+  if not (file_exists fname) ||
+    (* Check the file has the minimum contents: *)
+    contents <> None && is_empty_file fname then (
     !logger.debug "Creating file fname" ;
     let open Unix in
     let fd = openfile fname [O_CREAT;O_WRONLY] 0o644 in
@@ -769,9 +777,10 @@ let memoize f =
         r
 
 let cache_clean_after = 1200.
-let cached2 reread time =
+let cached2 cache_name reread time =
   (* Cache is a hash from some key to last access time, last data time,
    * and data. *)
+  !logger.debug "Create a new cache for %s" cache_name ;
   let cache = Hashtbl.create 31 in
   let next_clean = ref (Unix.time () +. Random.float cache_clean_after) in
   fun k u ->
@@ -806,8 +815,8 @@ let cached2 reread time =
     Option.get !ret
 
 (* Same as above without the additional user parameter: *)
-let cached reread time =
-  let c = cached2 (fun k () -> reread k) (fun k () -> time k) in
+let cached cache_name reread time =
+  let c = cached2 cache_name (fun k () -> reread k) (fun k () -> time k) in
   fun k -> c k ()
 
 let save_in_file ~compute ~serialize ~deserialize fname =
@@ -1066,3 +1075,30 @@ let split_string ~sep ~opn ~cls s =
   [| "pas"; "glop" |] \
     (split_string ~sep:';' ~opn:'(' ~cls:')' "(  pas ;  glop)  ")
 *)
+
+let ppp_of_file ?(error_ok=false) ppp =
+  let reread fname =
+    let openflags = [ Open_rdonly; Open_text ] in
+    match Pervasives.open_in_gen openflags 0o644 fname with
+    | exception e ->
+        (if error_ok then !logger.debug else !logger.warning)
+          "Cannot open %S for reading: %s" fname (Printexc.to_string e) ;
+        raise e
+    | ic ->
+        finally
+          (fun () -> Pervasives.close_in ic)
+          (PPP.of_in_channel_exc ppp) ic in
+  let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
+  cached cache_name reread mtime_of_file
+
+let ppp_to_file fname ppp v =
+  mkdir_all ~is_file:true fname ;
+  let openflags = [ Open_wronly; Open_creat; Open_trunc; Open_text ] in
+  match Pervasives.open_out_gen openflags 0o644 fname with
+  | exception e ->
+      !logger.warning "Cannot open %S for writing: %s" fname (Printexc.to_string e) ;
+      raise e
+  | oc ->
+      finally
+        (fun () -> Pervasives.close_out oc)
+        (PPP.to_out_channel ppp oc) v

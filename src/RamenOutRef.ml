@@ -22,88 +22,77 @@ open RamenHelpers
 open RamenLog
 module Lock = RamenAdvLock
 
+(* How are data represented on disk: *)
+type out_ref_conf =
+  (string (* dest file *), file_spec_conf) Hashtbl.t [@@ppp PPP_OCaml]
+and file_spec_conf =
+  string (* field mask *) * float (* timeout *) [@@ppp PPP_OCaml]
+
+(* ...and internally, where the field mask is a proper list of booleans: *)
 type file_spec =
   { field_mask : bool list ; timeout : float (* 0 for no timeout *) }
+
+let print_out_specs oc =
+  Hashtbl.print String.print (fun _oc _s -> ()) oc
 
 let string_of_field_mask mask =
   List.map (function true -> 'X' | false -> '_') mask |>
   String.of_list
 
-let string_of_file_spec file_spec =
-  string_of_field_mask file_spec.field_mask ^"|"^
-  string_of_float file_spec.timeout
+let write_ fname c =
+  ppp_to_file fname out_ref_conf_ppp_ocaml c
 
-let file_spec_print oc file_spec =
-  String.print oc (string_of_file_spec file_spec)
-
-type out_spec = string * file_spec
-
-let string_of_out_spec (fname, file_spec) =
-  fname ^"|"^ string_of_file_spec file_spec
-
-let out_spec_of_string str =
-  let make fname mask timeout =
-    fname,
-    { field_mask = String.to_list mask |> List.map ((=) 'X') ; timeout }
-  in
-  match String.split_on_char '|' str with
-  | [ fname ; mask ; t ] -> make fname mask (float_of_string t)
-  | _ ->
-      !logger.error "Invalid line in out-ref: %S" str ;
-      invalid_arg "out_spec_of_string"
-
-(* For debug only: *)
-let print_out_specs oc outs =
-  Map.print ~sep:"; " String.print file_spec_print oc outs
-
-let set_ fname outs =
-  File.write_lines fname (Map.enum outs /@ string_of_out_spec)
-
-let is_still_valid now file_spec =
-  file_spec.timeout <= 0. || file_spec.timeout > now
-
-let read_ fname =
-  let now = Unix.gettimeofday () in
-  File.lines_of fname /@ out_spec_of_string //
-  (fun (_, file_spec) -> is_still_valid now file_spec) |>
-  Map.of_enum
+let read_ =
+  let get = ppp_of_file out_ref_conf_ppp_ocaml in
+  fun fname ->
+    ensure_file_exists ~contents:"{}" fname ;
+    get fname
 
 let read fname =
   Lock.with_r_lock fname (fun () ->
     (*!logger.debug "Got read lock for read on %s" fname ;*)
-    wrap (fun () -> read_ fname))
+    wrap (fun () ->
+      let now = Unix.gettimeofday () in
+      let field_mask_of_string s =
+        String.to_list s |> List.map ((=) 'X') in
+      let still_valid timeout = timeout <= 0. || timeout > now in
+      read_ fname |>
+      Hashtbl.filter_map (fun p (mask_str, timeout) ->
+        if still_valid timeout then
+          Some { field_mask = field_mask_of_string mask_str ;
+                 timeout }
+        else None)))
 
-(* Used by ramen when starting a new worker to add it to its parents outref: *)
-let add_ fname (out_fname, file_spec) =
-  let lines =
+let add_ fname out_fname file_spec =
+  let file_spec =
+    string_of_field_mask file_spec.field_mask,
+    file_spec.timeout in
+  let h =
     try read_ fname
     with Sys_error _ ->
-      set_ fname Map.empty ;
-      Map.empty
+      Hashtbl.create 1
     in
   let rewrite () =
-    let outs = Map.add out_fname file_spec lines in
-    set_ fname outs ;
-    !logger.debug "Adding %s into %s, now outputting to %a"
-      out_fname fname print_out_specs outs in
-  match Map.find out_fname lines with
+    Hashtbl.replace h out_fname file_spec ;
+    write_ fname h ;
+    !logger.debug "Adding %s into %s" out_fname fname in
+  match Hashtbl.find h out_fname with
   | exception Not_found -> rewrite ()
-  | prev_spec  ->
+  | prev_spec ->
     if prev_spec <> file_spec then rewrite ()
 
-let add fname out =
+let add fname (out_fname, file_spec) =
   Lock.with_w_lock fname (fun () ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
-    wrap (fun () -> add_ fname out))
+    wrap (fun () -> add_ fname out_fname file_spec))
 
-(* Used by ramen when stopping a func to remove its input from its parents
- * out_ref: *)
 let remove_ fname out_fname =
-  let out_files = read_ fname in
-  let out_files' = Map.remove out_fname out_files in
-  set_ fname out_files' ;
-  !logger.debug "Removed %s from %s, now output only to: %a"
-    out_fname fname print_out_specs out_files'
+  let h = read_ fname in
+  if Hashtbl.mem h out_fname then (
+    Hashtbl.remove h out_fname ;
+    write_ fname h ;
+    !logger.debug "Removed %s from %s"
+      out_fname fname)
 
 let remove fname out_fname =
   Lock.with_w_lock fname (fun () ->
@@ -112,7 +101,8 @@ let remove fname out_fname =
 
 (* Check that fname is listed in outbuf_ref_fname: *)
 let mem_ fname out_fname =
-  read_ fname |> Map.mem out_fname
+  let c = read_ fname in
+  Hashtbl.mem c out_fname
 
 let mem fname out_fname =
   Lock.with_r_lock fname (fun () ->

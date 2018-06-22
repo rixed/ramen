@@ -303,7 +303,7 @@ let run conf root_path test () =
   logger := make_logger conf.C.debug ;
   (* Parse tests so that we won't have to clean anything if it's bogus *)
   !logger.info "Parsing test specification in %S..." test ;
-  let test_spec = C.ppp_of_file test test_spec_ppp_ocaml in
+  let test_spec = ppp_of_file test_spec_ppp_ocaml test in
   let name = Filename.(basename test |> remove_extension) in
   (* Start Ramen *)
   !logger.info "Starting ramen, using temp dir %s" conf.persist_dir ;

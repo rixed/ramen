@@ -103,10 +103,9 @@ let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
   let notif_conf =
-    match notif_conf_file with
-    | None -> RamenNotify.default_notify_conf
-    | Some n ->
-        C.ppp_of_file n RamenNotify.notify_config_ppp_ocaml in
+    Option.map_default
+      (ppp_of_file RamenNotify.notify_config_ppp_ocaml)
+      RamenNotify.default_notify_conf notif_conf_file in
   (* Check the config is ok: *)
   RamenNotify.check_conf_is_valid notif_conf ;
   if to_syslog then

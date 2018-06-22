@@ -224,7 +224,7 @@ let enum_tree_of_query =
   and time () conf =
     C.last_conf_mtime conf
   in
-  let get_tree = cached2 reread time in
+  let get_tree = cached2 "enum_tree" reread time in
   fun conf query ->
     !logger.debug "Expanding query %a..."
       (List.print String.print) query ;

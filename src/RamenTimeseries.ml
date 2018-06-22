@@ -185,13 +185,14 @@ let all_seq_bnames conf ?since ?until func =
 (* What we save in factors cache files: *)
 type cached_factors = RamenTypes.value list [@@ppp PPP_OCaml]
 
-let factors_of_file fname =
-  let lst = C.ppp_of_file ~error_ok:true fname cached_factors_ppp_ocaml in
-  Set.of_list lst
+let factors_of_file =
+  let get = ppp_of_file ~error_ok:true cached_factors_ppp_ocaml in
+  fun fname ->
+    get fname |> Set.of_list
 
 let factors_to_file fname factors =
   let lst = Set.to_list factors in
-  C.ppp_to_file fname cached_factors_ppp_ocaml lst
+  ppp_to_file fname cached_factors_ppp_ocaml lst
 
 (* Scan all stored values for this operation and return the set of all
  * possible values for that factor (if we need to actually scan a file,

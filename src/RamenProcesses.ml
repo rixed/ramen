@@ -608,7 +608,7 @@ let check_out_ref =
        * in this set: *)
       let out_ref = C.out_ringbuf_names_ref conf func in
       let%lwt outs = RamenOutRef.read out_ref in
-      Map.keys outs |> List.of_enum |>
+      Hashtbl.keys outs |> List.of_enum |>
       Lwt_list.iter_s (fun fname ->
         if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
           !logger.error "Operation %s outputs to %s, which is not read, fixing"
@@ -623,7 +623,7 @@ let check_out_ref =
       Lwt_list.iter_p (fun par_func ->
         let out_ref = C.out_ringbuf_names_ref conf par_func in
         let%lwt outs = RamenOutRef.read out_ref in
-        let outs = Map.keys outs |> Set.of_enum in
+        let outs = Hashtbl.keys outs |> Set.of_enum in
         if Set.disjoint in_rbs outs then (
           !logger.error "Operation %s must output to %s but does not, fixing"
             (RamenName.string_of_fq (F.fq_name par_func))

@@ -24,7 +24,7 @@ let pending_notify = "v1"
 let ringbuf = "v3" (* last: merge seq and time archives *)
 
 (* Ref-ringbuf format *)
-let out_ref = "v2" (* last: added timeout *)
+let out_ref = "v3" (* last: use PPP *)
 
 (* Workers state format *)
 let worker_state = "v6" (* last: not sure why *)

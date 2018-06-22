@@ -98,7 +98,7 @@ struct
           fname (Printexc.to_string e) ;
         0.
     in
-    let get_prog = cached reread_data age_of_data in
+    let get_prog = cached "of_bin" reread_data age_of_data in
     fun params fname ->
       let p = get_prog fname in
       (* Patch actual parameters: *)
@@ -131,32 +131,6 @@ let program_func_of_user_string ?default_program s =
           failwith e)
   | p, f -> RamenName.(program_exp_of_string p, func_of_string f)
 
-(* Cannot be in RamenHelpers since it depends on PPP and CodeGen depends on
- * RamenHelpers: *)
-let ppp_of_file ?(error_ok=false) fname ppp =
-  let openflags = [ Open_rdonly; Open_text ] in
-  match Pervasives.open_in_gen openflags 0o644 fname with
-  | exception e ->
-      (if error_ok then !logger.debug else !logger.warning)
-        "Cannot open %S for reading: %s" fname (Printexc.to_string e) ;
-      raise e
-  | ic ->
-      finally
-        (fun () -> Pervasives.close_in ic)
-        (PPP.of_in_channel_exc ppp) ic
-
-let ppp_to_file fname ppp v =
-  mkdir_all ~is_file:true fname ;
-  let openflags = [ Open_wronly; Open_creat; Open_trunc; Open_text ] in
-  match Pervasives.open_out_gen openflags 0o644 fname with
-  | exception e ->
-      !logger.warning "Cannot open %S for writing: %s" fname (Printexc.to_string e) ;
-      raise e
-  | oc ->
-      finally
-        (fun () -> Pervasives.close_out oc)
-        (PPP.to_out_channel ppp oc) v
-
 let running_config_file conf =
   conf.persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/rc"
 
@@ -173,10 +147,11 @@ type must_run_file = (RamenName.program_exp, must_run_entry) Hashtbl.t
 (* For tests we don't store the rc_file on disk but in there: *)
 let non_persisted_programs = ref (Hashtbl.create 11)
 
-let read_rc_file do_persist rc_file =
-  if do_persist then
-    ppp_of_file rc_file must_run_file_ppp_ocaml
-  else !non_persisted_programs
+let read_rc_file do_persist =
+  let get = ppp_of_file must_run_file_ppp_ocaml in
+  fun fname ->
+    if do_persist then get fname
+    else !non_persisted_programs
 
 let save_rc_file do_persist rc_file rc =
   if do_persist then

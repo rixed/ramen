@@ -25,14 +25,15 @@ let startup_time = ref (Unix.gettimeofday ())
 
 (* Used to build an id for each incident (aka sent alert) *)
 type alert_id = uint64 [@@ppp PPP_OCaml]
+
 let next_alert_id conf =
   let fname = conf.C.persist_dir ^"/notifier_state" in
-  mkdir_all ~is_file:true fname ;
-  let v =
-    try C.ppp_of_file ~error_ok:true fname alert_id_ppp_ocaml
-    with Sys_error _ -> Uint64.of_int 0 in
-  C.ppp_to_file fname alert_id_ppp_ocaml (Uint64.succ v) ;
-  v
+  ensure_file_exists ~contents:"0" fname ;
+  let get = ppp_of_file ~error_ok:true alert_id_ppp_ocaml in
+  fun () ->
+    let v = get fname in
+    ppp_to_file fname alert_id_ppp_ocaml (Uint64.succ v) ;
+    v
 
 open Binocle
 
@@ -394,7 +395,7 @@ let set_alight conf notif_conf notif worker event_start rcvd_start
         event_start ; event_stop = None ;
         rcvd_start ; rcvd_stop = None } } in
   let queue_new_alert () =
-    new_pending.item.alert_id <- next_alert_id conf ;
+    new_pending.item.alert_id <- next_alert_id conf () ;
     pendings.set <- PendingSet.add new_pending pendings.set ;
     pendings.heap <-
       RamenHeap.add heap_pending_cmp new_pending pendings.heap ;
@@ -571,7 +572,7 @@ let start conf notif_conf rb =
   !logger.info "Starting notifier" ;
   restore_pendings conf ;
   (* Better check if we can draw a new alert_id before we need it: *)
-  let _alert_id = next_alert_id conf in
+  let _alert_id = next_alert_id conf () in
   async (fun () ->
     restart_on_failure "send_notifications" send_notifications conf) ;
   let while_ () =

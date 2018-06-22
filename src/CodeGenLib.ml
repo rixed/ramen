@@ -490,7 +490,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
     FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
     let%lwt fnames = get_out_fnames () in
     Option.may (fun out_specs ->
-      if Map.is_empty out_specs then
+      if Hashtbl.is_empty out_specs then
         !logger.info "OutRef is now empty!"
       else (
         if Hashtbl.is_empty out_h then
@@ -499,7 +499,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
           RamenOutRef.print_out_specs out_specs) ;
       (* Change occurred, load/unload as required *)
       let current = Hashtbl.keys out_h |> Set.of_enum in
-      let next = Map.keys out_specs |> Set.of_enum in
+      let next = Hashtbl.keys out_specs |> Set.of_enum in
       let to_open = Set.diff next current
       and to_close = Set.diff current next in
       (* Close some: *)
@@ -515,16 +515,17 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
       (* Open some: *)
       Set.iter (fun fname ->
           !logger.debug "Mapping %S" fname ;
-          let file_spec = Map.find fname out_specs in
+          let file_spec = Hashtbl.find out_specs fname in
           assert (String.length fname > 0) ;
           match RingBuf.load fname with
           | exception e ->
             !logger.error "Cannot open ringbuf %s: %s"
               fname (Printexc.to_string e) ;
           | rb ->
-            let once = output rb (serialize_tuple file_spec.field_mask)
-                                 (sersize_of_tuple file_spec.field_mask)
-                                 time_of_tuple in
+            let once =
+              output rb (serialize_tuple file_spec.RamenOutRef.field_mask)
+                        (sersize_of_tuple file_spec.RamenOutRef.field_mask)
+                        time_of_tuple in
             let rb_writer =
               let last_retry = ref 0. in
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
