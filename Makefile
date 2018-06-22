@@ -81,8 +81,8 @@ RAMEN_SOURCES = \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RamenProtocols.ml src/RamenTypeConverters.ml \
-	src/RamenTypes.ml src/RamenName.mli src/RamenName.ml \
-	src/RamenTuple.ml src/RamenLang.ml \
+	src/RamenTypes.ml src/RamenTuple.ml src/RamenName.mli src/RamenName.ml \
+	src/RamenLang.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
 	src/RamenSerialization.ml src/RamenConf.ml src/RamenWatchdog.ml \
