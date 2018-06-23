@@ -62,7 +62,8 @@ DEFINE per_minute AS
       (out.bytes_out - min bytes_out) / _dt
     ELSE 0 AS bytes_out_per_secs,
 
-    min age last_out AS last_out_age
+    min age last_out AS last_out_age,
+    PRINT(in.time - out.time) as _debug
   GROUP BY worker, time // 60
   COMMIT AFTER in.time - out.time > 90
   EVENT STARTING AT time WITH DURATION 60

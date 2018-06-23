@@ -1078,15 +1078,16 @@ let split_string ~sep ~opn ~cls s =
 
 let ppp_of_file ?(error_ok=false) ppp =
   let reread fname =
+    !logger.debug "Have to reread %S" fname ;
     let openflags = [ Open_rdonly; Open_text ] in
-    match Pervasives.open_in_gen openflags 0o644 fname with
+    match Legacy.open_in_gen openflags 0o644 fname with
     | exception e ->
         (if error_ok then !logger.debug else !logger.warning)
           "Cannot open %S for reading: %s" fname (Printexc.to_string e) ;
         raise e
     | ic ->
         finally
-          (fun () -> Pervasives.close_in ic)
+          (fun () -> Legacy.close_in ic)
           (PPP.of_in_channel_exc ppp) ic in
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
   cached cache_name reread mtime_of_file

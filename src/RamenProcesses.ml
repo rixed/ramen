@@ -603,7 +603,7 @@ let check_out_ref =
         List.fold_left (fun s rb_name -> Set.add rb_name s) s
       ) must_run (Set.singleton (C.notify_ringbuf conf)) in
     Hashtbl.values must_run |> List.of_enum |> (* FIXME *)
-    Lwt_list.iter_p (fun (_bin, _params, func) ->
+    Lwt_list.iter_s (fun (_bin, _params, func) ->
       (* Iter over all functions and check they do not output to a ringbuf not
        * in this set: *)
       let out_ref = C.out_ringbuf_names_ref conf func in
@@ -620,7 +620,7 @@ let check_out_ref =
        * parent: *)
       let par_funcs, _c = relatives func must_run in
       let in_rbs = C.in_ringbuf_names conf func |> Set.of_list in
-      Lwt_list.iter_p (fun par_func ->
+      Lwt_list.iter_s (fun par_func ->
         let out_ref = C.out_ringbuf_names_ref conf par_func in
         let%lwt outs = RamenOutRef.read out_ref in
         let outs = Hashtbl.keys outs |> Set.of_enum in

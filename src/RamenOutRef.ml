@@ -43,7 +43,7 @@ let write_ fname c =
   ppp_to_file fname out_ref_conf_ppp_ocaml c
 
 let read_ =
-  let get = ppp_of_file out_ref_conf_ppp_ocaml in
+  let get = ppp_of_file ~error_ok:false out_ref_conf_ppp_ocaml in
   fun fname ->
     ensure_file_exists ~contents:"{}" fname ;
     get fname
