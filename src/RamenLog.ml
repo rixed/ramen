@@ -49,7 +49,7 @@ let do_output =
     | Syslog -> assert false
 
 let make_prefix s =
-  if s = "" then s else (colored "1;34" s) ^": "
+  if s = "" then s else (colored "1;34" (" "^s)) ^":"
 
 let make_logger ?logdir ?(prefix="") dbg =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
@@ -58,10 +58,10 @@ let make_logger ?logdir ?(prefix="") dbg =
     let open Unix in
     let tm = gettimeofday () |> localtime in
     let time_pref =
-      Printf.sprintf "%02dh%02dm%02d: "
+      Printf.sprintf "%02dh%02dm%02d:"
         tm.tm_hour tm.tm_min tm.tm_sec in
     let oc = do_output output tm is_err in
-    Printf.fprintf oc ("%s%s" ^^ fmt ^^ "\n%!") (col time_pref) !prefix
+    Printf.fprintf oc ("%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix
   in
   let error fmt = do_log true red fmt
   and warning fmt = do_log true yellow fmt

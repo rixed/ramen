@@ -707,10 +707,9 @@ let synchronize_running conf autoreload_delay =
         (Hashtbl.length running) ;
     (* See preamble discussion about autoreload for why workers must be
      * started only after all the kills: *)
-    let possible_reload = !to_kill <> [] && !to_start <> [] in
-    if possible_reload then !logger.debug "Starting the kills" ;
+    if !to_kill <> [] then !logger.debug "Starting the kills" ;
     let%lwt () = Lwt_list.iter_p (try_kill conf must_run) !to_kill in
-    if possible_reload then !logger.debug "Starting the starts" ;
+    if !to_start <> [] then !logger.debug "Starting the starts" ;
     let%lwt () = Lwt_list.iter_p (try_start conf must_run) !to_start in
     (* Try to fix any issue with out_refs: *)
     if !to_start = [] && !to_kill = [] && !quit = None then

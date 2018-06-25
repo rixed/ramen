@@ -163,7 +163,7 @@ let compile conf root_path program_name program_code =
      * language then the OCaml casing would have to pass them a few helper
      * functions.
      *)
-    !logger.info "Compiling for program %s"
+    !logger.info "Compiling program %s"
       (RamenName.string_of_program program_name) ;
     let obj_files = Lwt_main.run (
       Hashtbl.values compiler_funcs |> List.of_enum |>
