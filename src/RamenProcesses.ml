@@ -250,7 +250,7 @@ let check_is_subtype t1 t2 =
 
 (* Returns the running parents and children of a func: *)
 let relatives f must_run =
-  Hashtbl.fold (fun _k (_bin, _params, func) (ps, cs) ->
+  Hashtbl.fold (fun _k (_bin, func) (ps, cs) ->
     (* Tells if [func'] is a parent of [func]: *)
     let is_parent_of func func' =
       List.exists (function
@@ -598,12 +598,12 @@ let check_out_ref =
     !logger.debug "Checking out_refs..." ;
     (* Build the set of all wrapping ringbuf that are being read: *)
     let rbs =
-      Hashtbl.fold (fun _k (_bin, _params, func) s ->
+      Hashtbl.fold (fun _k (_bin, func) s ->
         C.in_ringbuf_names conf func |>
         List.fold_left (fun s rb_name -> Set.add rb_name s) s
       ) must_run (Set.singleton (C.notify_ringbuf conf)) in
     Hashtbl.values must_run |> List.of_enum |> (* FIXME *)
-    Lwt_list.iter_s (fun (_bin, _params, func) ->
+    Lwt_list.iter_s (fun (_bin, func) ->
       (* Iter over all functions and check they do not output to a ringbuf not
        * in this set: *)
       let out_ref = C.out_ringbuf_names_ref conf func in
@@ -668,10 +668,9 @@ let watchdog = RamenWatchdog.make ~timeout:30. "supervisor" quit
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
   (* Stop/Start processes so that [running] corresponds to [must_run].
-   * [must_run] is a hash from the function expansed identifier to
-   * its binary path, the actual parameters, the program name and Func.
-   * FIXME: do we need the program_name since it's now also in func?
-   * [running] is a hash from the signature (function * params) to its
+   * [must_run] is a hash from the function signature and parameters to
+   * the binary and Func.
+   * [running] is a hash from the function signature and parameters to its
    * running_process (mutable pid, cleared asynchronously when the worker
    * terminates). *)
   let synchronize must_run running =
@@ -688,7 +687,7 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun k (bin, params, func) ->
+    Hashtbl.iter (fun (_, params as k) (bin, func) ->
       match Hashtbl.find running k with
       | exception Not_found ->
           let proc = make_running_process bin params func in
@@ -773,9 +772,8 @@ let synchronize_running conf autoreload_delay =
                   List.iter (fun f ->
                     (* Use the signature + params as the key: *)
                     let k =
-                      f.F.signature,
-                      RamenTuple.param_values_signature params in
-                    Hashtbl.add must_run k (bin, params, f)
+                      f.F.signature, params in
+                    Hashtbl.add must_run k (bin, f)
                   ) prog.P.funcs
                 ) must_run_programs) in
               return now
