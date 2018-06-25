@@ -3,7 +3,7 @@
 PARAMETER sel_year  U16 NOT NULL DEFAULTS TO 0;
 PARAMETER sel_year2 U16 NULL DEFAULTS TO 0;
 PARAMETER sel_year3 I8 NULL;
-PARAMETER sel_years I8[3] NOT NULL DEFAULTS TO [0; 1; 2];
+PARAMETER sel_years U16[] NOT NULL DEFAULTS TO [0; 1; 2];
 
 DEFINE p AS
   FROM tests/fixtures/earthquakes/csv

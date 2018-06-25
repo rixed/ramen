@@ -684,20 +684,12 @@ and emit_expr ?state ~context ~consts oc expr =
       emit_functionN ?state ~consts "String.exists"
         [Some TString; Some TString] oc [e2; e1]
     | t1, TVec (d, t) ->
-      (match e2 with Vector (t', es) ->
+      let emit_in csts_len csts_hash_init non_csts =
         (* We make a constant hash with the constants. Note that when e1 is
          * also a constant the OCaml compiler could optimize the whole
          * "x=a||x=b||x=b..." operation but only if not too many conversions
-         * are involved, so we take no risk and build the hash in any case. *)
-        let csts, non_csts =
-          (* TODO: leave the IFs when we know the compiler will optimize them
-           * away:
-          if is_const e1 then [], es else*)
-          List.partition is_const es in
-        let csts, non_csts =
-          if List.length csts < 6 (* guessed *) then [], csts @ non_csts
-          else csts, non_csts in
-        (* Typing only enforce that t1 < t or t > t1 (so we can look for an u8
+         * are involved, so we take no risk and build the hash in any case.
+         * Typing only enforce that t1 < t or t > t1 (so we can look for an u8
          * in a set of i32, or the other way around which both make sense).
          * Here for simplicity all values will be converted to the largest of
          * t and t1: *)
@@ -707,35 +699,34 @@ and emit_expr ?state ~context ~consts oc expr =
          * the xs in case A is found in the set, but do if it is not. If A is
          * NULL though, then the result is unless the set is empty: *)
         if is_nullable e1 then
-          Printf.fprintf oc "(match %a with None -> %s | Some in0_ -> "
+          (* Even if e1 is null, we can answer the operation if e2 is
+           * empty: *)
+          Printf.fprintf oc "(match %a with None -> \
+                                if %s = 0 && %s then Some true else None \
+                             | Some in0_ -> "
             (conv_to ?state ~context ~consts (Some larger_t)) e1
-            (* Even if e1 is null, we can answer the operation if e2 is
-             * empty: *)
-            (if es = [] then "Some true" else "None")
+            csts_len (string_of_bool (non_csts = []))
         else
           Printf.fprintf oc "(let in0_ = %a in "
             (conv_to ?state ~context ~consts (Some larger_t)) e1 ;
-        (* Now if we had some null the return value is either Some true or
-         * None, while if we had no null the return value is either Some
-         * true or Some false. *)
+        (* Now if we have some null in es then the return value is either
+         * Some true or None, while if we had no null the return value is
+         * either Some true or Some false. *)
         Printf.fprintf oc "let _ret_ = ref (Some false) in\n" ;
         (* First check the csts: *)
         (* Note that none should be nullable ATM, and even if they were all
          * nullable then we would store the option.get of the values (knowing
          * that, if any of the const is NULL then we can shotcut all this and
          * answer NULL directly) *)
-        if csts <> [] then (
+        if csts_len <> "0" then (
           let hash_id =
             "const_in_"^ string_of_int (typ_of expr).uniq_num ^"_" in
           Printf.fprintf consts
             "let %s =\n\
-             \tlet h_ = Hashtbl.create %d in\n\
-             %a\
-             h_\n"
-            hash_id (List.length csts)
-            (List.print ~first:"" ~last:"" ~sep:"" (fun cc e ->
-              Printf.fprintf cc "\tHashtbl.replace h_ (%a) () ;\n"
-                (conv_to ?state ~context ~consts (Some larger_t)) e)) csts ;
+             \tlet h_ = Hashtbl.create (%s) in\n\
+             \t%s ;\n\
+             \th_\n"
+            hash_id csts_len (csts_hash_init larger_t) ;
           Printf.fprintf oc "if Hashtbl.mem %s in0_ then %strue else "
             hash_id (if is_nullable expr then "Some " else "")) ;
         (* Then check each non-const in turn: *)
@@ -755,16 +746,33 @@ and emit_expr ?state ~context ~consts oc expr =
           ) false non_csts in
         Printf.fprintf oc "%s)"
           (if had_nullable then "!_ret_" else
-           if is_nullable expr then "Some false" else "false") ;
-      | Field ({ scalar_typ = Some (TVec (d, telem)) ; _ } as t, _, _) ->
-          (* Merely turn that list of scalar immediate values into
-           * constant expressions and pretend we have a Vector: *)
-          let const_expr i =
-            StatelessFun2 (make_typ ~nullable:false ~typ:telem "fake get",
-                           VecGet, expr_i32 "get index" i, e2) in
-          let e2 = Vector (t, List.init d const_expr) in
-          let e = StatelessFun2 (out_typ, In, e1, e2) in
-          emit_expr ?state ~context ~consts oc e
+           if is_nullable expr then "Some false" else "false")
+      in
+      (match e2 with Vector (_, es) ->
+        let csts, non_csts =
+          (* TODO: leave the IFs when we know the compiler will optimize them
+           * away:
+          if is_const e1 then [], es else*)
+          List.partition is_const es in
+        let csts, non_csts =
+          if List.length csts >= 6 (* guessed *) then csts, non_csts
+          else [], csts @ non_csts in
+        let csts_len = List.length csts |> string_of_int
+        and csts_hash_init larger_t =
+          IO.to_string (List.print ~first:"" ~last:"" ~sep:" ;\n\t" (fun cc e ->
+            Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
+              (conv_to ?state ~context ~consts (Some larger_t)) e)) csts in
+        emit_in csts_len csts_hash_init non_csts
+      | Field ({ scalar_typ = Some (TVec (_, telem)) ; _ }, _, _) ->
+        let csts_len =
+          Printf.sprintf2 "Array.length (%a)"
+            (emit_expr ?state ~context ~consts) e2
+        and csts_hash_init larger_t =
+          Printf.sprintf2
+            "Array.iter (fun e_ -> Hashtbl.replace h_ ((%a) e_) ()) (%a)"
+            (conv_from_to ~nullable:false (*?*)) (telem, larger_t)
+            (emit_expr ?state ~context ~consts) e2 in
+        emit_in csts_len csts_hash_init []
       | _ -> assert false)
     | _ -> assert false)
 
