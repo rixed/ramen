@@ -48,7 +48,6 @@ let program_of_string s =
 
 external string_of_program : program -> string = "%identity"
 
-
 (* Program name - expansed *)
 
 type param = string * RamenTypes.value [@@ppp PPP_OCaml]
@@ -95,14 +94,28 @@ let split_program_exp s =
 
 let path_of_program_exp s =
   let prog, params = split_program_exp s in
-  (* Abbreviate parameter expansion in path when the resulting length would be
-   * greater than [max_dir_len]: *)
-  let exp = path_quote params in
+  let dirs = String.split_on_char '/' prog in
   let max_dir_len = 255 in
-  let exp =
-    if String.length prog + String.length exp <= max_dir_len then exp
-    else "{"^ md5 exp ^"}" in
-  prog ^ exp
+  (* Make sure all components are shorter that max_dir_len: *)
+  let rec loop path = function
+    | [] -> path
+    | [ last ] ->
+        let exp = path_quote params in
+        let exp =
+          if String.length last + String.length exp <= max_dir_len then exp
+          else "{"^ md5 exp ^"}" in
+        let comp = last ^ exp in
+        let comp =
+          if String.length last + String.length exp <= max_dir_len then comp
+          else md5 comp in
+        loop (path ^"/"^ comp) []
+    | comp :: rest ->
+        let comp =
+          if String.length comp <= max_dir_len then comp
+          else md5 comp in
+        loop (path ^"/"^ comp) rest
+  in
+  loop "" dirs
 
 let program_exp_of_path s =
   let prog, params = split_program_exp s in
