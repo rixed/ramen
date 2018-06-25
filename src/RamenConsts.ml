@@ -145,6 +145,7 @@ struct
   let conffile = "configuration file"
   let program_name = "resulting program name"
   let no_abbrev = "do not abbreviate path names"
+  let only_errors = "display only links with errors"
 end
 
 module ExitCodes =

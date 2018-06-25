@@ -205,6 +205,12 @@ let no_abbrev =
                    ~env [ "no-abbreviation" ] in
   Arg.(value (flag i))
 
+let only_errors =
+  let env = Term.env_info "RAMEN_SHOW_ONLY_ERRORS" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.only_errors
+                   ~env [ "only-errors" ; "errors" ] in
+  Arg.(value (flag i))
+
 let with_header =
   let i = Arg.info ~doc:RamenConsts.CliInfo.with_header
                    [ "h"; "with-header"; "header" ] in
@@ -225,6 +231,7 @@ let links =
     (const RingBufCmd.links
       $ copts
       $ no_abbrev
+      $ only_errors
       $ with_header
       $ sort_col
       $ top

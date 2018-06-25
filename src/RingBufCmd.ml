@@ -65,7 +65,7 @@ type func_status =
   | Running of F.t
   | NotRunning of RamenName.program_exp * RamenName.func
 
-let links conf no_abbrev with_header sort_col top prefix () =
+let links conf no_abbrev only_errors with_header sort_col top prefix () =
   logger := make_logger conf.C.debug ;
   (* Same to get the ringbuffer stats, but we never reread the stats (not
    * needed, and mtime wouldn't really work on those mmapped files *)
@@ -106,26 +106,28 @@ let links conf no_abbrev with_header sort_col top prefix () =
                   string_of_int s.cons_tail ^".."^ string_of_int s.cons_head in
             ringbuf, fill_ratio, next_seqs
       in
-      let%lwt out_ref, spec =
+      let%lwt out_ref, spec, is_err =
         match p with
-        | NotRunning (pn, fn) -> Lwt.return ("", red "NOT RUNNING")
+        | NotRunning (pn, fn) ->
+            Lwt.return ("", red "NOT RUNNING", true)
         | Running p ->
             let out_ref = C.out_ringbuf_names_ref conf p in
             let%lwt outs = RamenOutRef.read out_ref in
-            let spec =
-              if Hashtbl.mem outs ringbuf then ringbuf
-              else red "MISSING" in
-            Lwt.return (out_ref, spec)
+            let spec, is_err =
+              if Hashtbl.mem outs ringbuf then ringbuf, false
+              else red "MISSING", true in
+            Lwt.return (out_ref, spec, is_err)
       in
       let ap s = if no_abbrev then s else abbrev_path s in
       let parent = ap parent and child = ap child in
       let ap s = if no_abbrev then s else
                    abbrev_path ~known_prefix:conf.persist_dir s in
       let out_ref = ap out_ref and ringbuf = ap ringbuf in
-      Some TermTable.[|
-        ValStr parent ; ValStr child ; ValStr out_ref ; ValStr spec ;
-        ValStr ringbuf ; ValFlt fill_ratio ;
-        ValStr next_seqs |] |> Lwt.return
+      if only_errors && not is_err then Lwt.return_none else
+        Some TermTable.[|
+          ValStr parent ; ValStr child ; ValStr out_ref ; ValStr spec ;
+          ValStr ringbuf ; ValFlt fill_ratio ;
+          ValStr next_seqs |] |> Lwt.return
     else
       Lwt.return_none
   in
