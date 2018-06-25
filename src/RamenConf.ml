@@ -24,7 +24,7 @@ let upload_dir_of_func persist_dir program_name func_name in_type =
 module Func =
 struct
   type t =
-    { mutable exp_program_name : RamenName.program_exp ; (* expansed name *)
+    { exp_program_name : RamenName.program_exp ; (* expansed name *)
       name : RamenName.func ;
       in_type : RamenTuple.typed_tuple ;
       out_type : RamenTuple.typed_tuple ;
@@ -62,7 +62,7 @@ module Program =
 struct
   type t =
     { name : RamenName.program ;
-      mutable params : RamenTuple.params [@ppp_default []] ;
+      params : RamenTuple.params [@ppp_default []] ;
       funcs : Func.t list }
       [@@ppp PPP_OCaml]
 
@@ -101,15 +101,12 @@ struct
     let get_prog = cached "of_bin" reread_data age_of_data in
     fun params fname ->
       let p = get_prog fname in
-      (* Patch actual parameters: *)
-      p.params <-
-        RamenTuple.overwrite_params p.params params ;
       let exp_program_name =
         RamenLang.exp_program_of_id (p.name, params) in
-      List.iter (fun f ->
-        f.Func.exp_program_name <- exp_program_name
-      ) p.funcs ;
-      p
+      (* Patch actual parameters (in a _new_ prog not the cached one!): *)
+      { p with
+        params = RamenTuple.overwrite_params p.params params ;
+        funcs = List.map (fun f -> Func.{ f with exp_program_name }) p.funcs }
 
   let bin_of_program_name root_path program_name =
     (* Use an extension so we can still use the plain program_name for a
