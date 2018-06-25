@@ -147,9 +147,9 @@ type must_run_file = (RamenName.program_exp, must_run_entry) Hashtbl.t
 (* For tests we don't store the rc_file on disk but in there: *)
 let non_persisted_programs = ref (Hashtbl.create 11)
 
-let read_rc_file do_persist =
+let read_rc_file =
   let get = ppp_of_file must_run_file_ppp_ocaml in
-  fun fname ->
+  fun do_persist fname ->
     if do_persist then get fname
     else !non_persisted_programs
 
