@@ -1085,15 +1085,15 @@ and emit_function
     impl ;
   for i = 0 to len-1 do
     Printf.fprintf oc "%s"
-      (match args_as with Array n when i = n -> "[| "
+      (match args_as with Array n when i = n -> " [| "
                         | Array n when i > n -> ";"
-                        | Tuple n when i = n -> "("
+                        | Tuple n when i = n -> " ("
                         | Tuple n when i > n -> ", "
-                        | _ -> "") ;
-    Printf.fprintf oc " x%d_" i
+                        | _ -> " ") ;
+    Printf.fprintf oc "x%d_" i
   done ;
   Printf.fprintf oc "%s"
-    (match args_as with Arg -> "" | Array _ -> " |]" | Tuple _ -> ")") ;
+    (match args_as with Arg -> "" | Array _ -> " |] " | Tuple _ -> ") ") ;
   (* variadic arguments [ves] are passed as a last argument to impl, as an array *)
   Option.may (fun (vt, ves) ->
       (* TODO: handle NULLability *)

@@ -2,7 +2,9 @@
  * We need a heap that works on universal types (since we will store
  * tuples in there and don't bother monomorphize either BatHeap or
  * any of Pfds.heaps), but we want to provide a custom comparison
- * function. *)
+ * function.
+ * This does not collapse duplicate entries (= entries for which the
+ * comparison function returns 0) *)
 type 'a t = E | T of (* rank *) int * 'a * 'a t * 'a t
 
 let empty = E

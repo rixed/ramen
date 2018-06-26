@@ -635,8 +635,8 @@ let () =
           try f ()
           with Exit -> exit 0
              | RamenHelpers.Timeout ->
-                 Printf.eprintf "Timed out\n" ;
+                 Printf.eprintf "%s\n" (RamenLog.red "Timed out") ;
                  exit 1
              | Failure msg ->
-                 Printf.eprintf "%s\n" msg ;
+                 Printf.eprintf "%s\n" (RamenLog.red msg) ;
                  exit 1)

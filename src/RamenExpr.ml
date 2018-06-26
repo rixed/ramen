@@ -953,7 +953,7 @@ struct
 
   (* "sf" stands for "stateful" *)
   and afunv_sf ?(def_state=GlobalState) a n m =
-    let sep = opt_blanks -- char ',' -- opt_blanks in
+    let sep = list_sep in
     let m = n :: m in
     (strinG n -+
      optional ~def:def_state (blanks -+ state_lifespan) +-
@@ -1003,7 +1003,7 @@ struct
 
   and afunv a n m =
     let m = n :: m in
-    let sep = opt_blanks -- char ',' -- opt_blanks in
+    let sep = list_sep in
     (strinG n -- opt_blanks -- char '(' -- opt_blanks -+
      (if a > 0 then
        repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep p ++
@@ -1206,7 +1206,7 @@ struct
       (strinG "is" >>: fun () -> false)) +- blanks ++
      (* We can allow lowest precedence expressions here because of the
       * keywords that follow: *)
-     several ~sep:(char ',' -- opt_blanks) p +- blanks +-
+     several ~sep:list_sep p +- blanks +-
      strinG "in" +- blanks +- strinG "top" +- blanks ++
      pos_decimal_integer "top size" ++
      optional ~def:GlobalState (blanks -+ state_lifespan) ++

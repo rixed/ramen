@@ -18,10 +18,6 @@ RUN apt-get --yes update && \
         util-linux \
         coreutils
 
-# Do not install recommends:
-RUN echo 'APT::Install-Recommends "0";' > \
-      /etc/apt/apt.conf.d/no_recommends
-
 # Rebuild a new image from here
 RUN echo "version 2.2.4~0"
 
