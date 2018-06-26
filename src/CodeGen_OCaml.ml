@@ -1781,7 +1781,7 @@ let otype_of_state e =
         print_expr_typ (List.hd es)
     (* Not optional as null is handled by last_finalize directly *)
   | StatefulFun (_, _, AggrHistogram _) -> "CodeGenLib.histogram"^ optional
-  | _ -> t
+  | _ -> t ^ optional
 
 let emit_state_init name state_lifespan other_state_vars
       ?where ?commit_when ~consts
