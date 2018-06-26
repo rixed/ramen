@@ -1092,6 +1092,12 @@ and emit_function
                         | _ -> " ") ;
     Printf.fprintf oc "x%d_" i
   done ;
+  (* If the list of args do not extends up to the specified Array/Tuple start
+   * we must call with an empty array/tuple: *)
+  (match args_as with
+  | Array n when n >= len -> Printf.fprintf oc " [| "
+  | Tuple n when n >= len -> Printf.fprintf oc " ("
+  | _ -> ()) ;
   Printf.fprintf oc "%s"
     (match args_as with Arg -> "" | Array _ -> " |] " | Tuple _ -> ") ") ;
   (* variadic arguments [ves] are passed as a last argument to impl, as an array *)
