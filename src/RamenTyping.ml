@@ -1153,6 +1153,22 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       ((Some TFloat, None, by) ::
        (Some TFloat, None, time) ::
        List.map (fun e -> None, None, e) what)
+  | StatefulFun (op_typ, _, Last (n, e, es)) ->
+    if n <= 0 then (
+      let e = "LAST number of elements must be greater than zero" in
+      raise (SyntaxError (BadConstant e))) ;
+    let ret_typ lst =
+      let typ_e = List.hd lst in
+      TVec (n, typ_e) in
+    (* In theory, 'Last n e1 by es` should be nullable iff any of the es
+     * is nullable, and become and stays null forever as soon as one es
+     * is actually NULL. This is kind of useless, so we just disallow
+     * ordering by a nullable field. *)
+    check_op op_typ ret_typ ~propagate_null:false
+      (* No support for nullable values, see
+       * https://github.com/rixed/ramen/issues/305 *)
+      ((None, Some false, e) ::
+       List.map (fun e -> None, Some false, e) es)
   | StatefulFun (op_typ, _, AggrHistogram (a, _, _, _)) ->
     (* We already know the type since parsing: *)
     check_op op_typ (fun _ -> Option.get op_typ.scalar_typ)

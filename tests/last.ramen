@@ -1,0 +1,21 @@
+-- vim: ft=sql expandtab
+
+DEFINE win1 AS
+  FROM tests/fixtures/earthquakes/csv
+  WHERE year < 2000
+  SELECT
+    LAST 2 n AS _vec,
+    GET(0, _vec) AS last_but_one,
+    GET(1, _vec) AS last_one;
+
+-- With null values
+DEFINE win2 AS
+  FROM tests/fixtures/cars/csv
+  WHERE model starts with "A3"
+  SELECT
+    -- LAST does not work with nullable values:
+    LAST 3 COALESCE(CO, 0) AS _vec,
+    -- GET(10, _vec) AS should_not_compile
+    GET(0, _vec) AS third_to_last,
+    GET(1, _vec) AS second_to_last,
+    GET(2, _vec) AS last_one;

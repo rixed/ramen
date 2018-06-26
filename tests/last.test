@@ -1,0 +1,16 @@
+{
+  programs = [
+    ("fixtures/earthquakes.x", []);
+    ("fixtures/cars.x", []);
+    ("last.x", []) ];
+  outputs = {
+    "tests/last/win1" => {
+      present = [
+        { "last_but_one" => "12" ; "last_one" => "18" } ] };
+    "tests/last/win2" => {
+      present = [
+        { "third_to_last" => "0" ;
+          "second_to_last" => "0.1149516" ;
+          "last_one" => "0.2192802" } ] };
+  }
+}

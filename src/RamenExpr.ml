@@ -245,6 +245,10 @@ and stateful_fun =
   (* Top-k operation *)
   | Top of { want_rank : bool ; n : int ; what : t list ; by : t ;
              time : t ; duration : float }
+  (* Last N e1 [BY e2, e3...] - or by arrival.
+   * Note: BY followed by more than one expression will require to parentheses
+   * the whole expression to avoid ambiguous parsing. *)
+  | Last of int * t * t list
 
 and generator_fun =
   (* First function returning more than once (Generator). Here the typ is
@@ -511,7 +515,18 @@ let rec print with_types fmt =
       n (sl g)
       (print with_types) by
       print_duration_opt duration
-      (print with_types) time
+      (print with_types) time ;
+    add_types t
+  |StatefulFun (t, g, Last (n, e, es) ) ->
+    let print_by oc es =
+      if es <> [] then
+        Printf.fprintf oc " BY %a"
+          (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) es in
+    Printf.fprintf fmt "LAST %d %s%a%a"
+      n (sl g)
+      (print with_types) e
+      print_by es ;
+    add_types t
 
   | GeneratorFun (t, Split (e1, e2)) ->
     Printf.fprintf fmt "split(%a, %a)"
@@ -575,6 +590,11 @@ let rec fold_by_depth f i expr =
     let i''= fold_by_depth f i' e2 in
     let i'''= List.fold_left (fold_by_depth f) i'' e3s in
     f i''' expr
+
+  | StatefulFun (_, _, Last (n, e, es)) ->
+    let i' = fold_by_depth f i e in
+    let i''= List.fold_left (fold_by_depth f) i' es in
+    f i'' expr
 
   | StatefulFun (_, _, Hysteresis (e1, e2, e3)) ->
     let i' = fold_by_depth f i e1 in
@@ -705,6 +725,10 @@ let rec map_type ?(recurs=true) f = function
       what = (if recurs then List.map (map_type ~recurs f) what else what) ;
       by = (if recurs then map_type ~recurs f by else by) ;
       time = (if recurs then map_type ~recurs f time else time) })
+  | StatefulFun (t, g, Last (n, e, es)) ->
+    StatefulFun (f t, g, Last (n,
+      (if recurs then map_type ~recurs f e else e),
+      (if recurs then List.map (map_type ~recurs f) es else es)))
 
   | StatelessFun0 (t, cst) ->
     StatelessFun0 (f t, cst)
@@ -1155,7 +1179,7 @@ struct
         StatelessFun2 (make_typ "get", VecGet, n, v)) |||
      (afun1v "print" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "print", Print (e :: es))) |||
-     k_moveavg ||| cast ||| top_expr ||| nth) m
+     k_moveavg ||| cast ||| top_expr ||| nth ||| last) m
 
   and cast m =
     let m = "cast" :: m in
@@ -1200,6 +1224,23 @@ struct
                        else make_bool_typ "is in top"),
          g,
          Top { want_rank ; n ; what ; by ; duration ; time })) m
+
+  and in_count_field =
+    (* Have a single one of them to increase the field id by only one: *)
+    Field (make_typ ~nullable:false ~typ:TU64 "#count", ref TupleIn, "#count")
+
+  and last m =
+    let m = "last expression" :: m in
+    (
+      strinG "last" -- blanks -+
+      pos_decimal_integer "how many last elements" +- blanks ++
+      optional ~def:GlobalState (state_lifespan +- blanks) ++ p ++
+      optional ~def:[ in_count_field ] (
+        blanks -- strinG "by" -- blanks -+
+        several ~sep:list_sep p) >>: fun (((n, g), e), es) ->
+      (* The result is null when the number of input is less than n: *)
+      StatefulFun (make_typ ~nullable:true "last", g, Last (n, e, es))
+    ) m
 
   and nth m =
     let m = "n-th" :: m in

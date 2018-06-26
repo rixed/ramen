@@ -191,6 +191,39 @@ let histogram_add h x =
 
 let histogram_finalize h = h.histo
 
+type ('a, 'b) last_state =
+  { (* Ordered according to some generic value, smaller first, and we
+       will keep only the N bigger values: *)
+    values : ('a * 'b) RamenHeap.t ;
+    max_length : int (* The number of values we want to return *) ;
+    length : int (* how many values are there already *) }
+
+let last_init n =
+  { values = RamenHeap.empty ; max_length = n ; length = 0 }
+
+let last_cmp (_, by1) (_, by2) = compare by1 by2
+
+let last_add state x by =
+  let values = RamenHeap.add last_cmp (x, by) state.values in
+  assert (state.length <= state.max_length) ;
+  if state.length < state.max_length then
+    { state with values ; length = state.length + 1 }
+  else
+    { state with values = RamenHeap.del_min last_cmp values }
+
+(* Must return an optional vector of max_length values: *)
+let last_finalize state =
+  if state.length < state.max_length then None
+  else
+    (* FIXME: faster conversion from heap to array: *)
+    let values =
+      RamenHeap.fold_left last_cmp (fun lst (x, _) ->
+        x :: lst
+      ) [] state.values |>
+      List.rev |>
+      Array.of_list in
+    Some values
+
 let strftime ?(gmt=false) str tim =
   let open Unix in
   let tm = (if gmt then gmtime else localtime) tim in

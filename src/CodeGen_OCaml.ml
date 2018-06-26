@@ -423,11 +423,16 @@ and emit_expr ?state ~context ~consts oc expr =
     Const (make_bool_typ ~nullable "false", VBool false)
   and zero_or_nul nullable =
     Const (make_typ ~typ:TU8 ~nullable "zero", VU8 (Stdint.Uint8.of_int 0)) in
-  let my_state lifespan =
+  (* my_state will represent the state of a stateful function with a special
+   * field (StateField), which type will match that of the finalized value.
+   * With this additional awful hack that we sometime want a different
+   * nullability, for when the stateful function handles nulls itself: *)
+  let my_state ?nullable lifespan =
     let state_name =
       match lifespan with LocalState -> "group_"
                         | GlobalState -> "global_" in
-    StateField (out_typ,
+    StateField ((match nullable with None -> out_typ
+                | Some n -> { out_typ with nullable }),
                (if state = Some lifespan then "" else state_name ^".") ^
                name_of_state expr)
   in
@@ -949,6 +954,18 @@ and emit_expr ?state ~context ~consts oc expr =
     emit_functionN ?state ~consts ~args_as:(Tuple 1)
       ("CodeGenLib.heavy_hitters_is_in_top ~n:"^ string_of_int n)
       (None :: List.map (fun _ -> None) what) oc (my_state g :: what)
+
+  | InitState, StatefulFun (_, _, Last (n, e, _)), _ ->
+    assert (is_nullable expr) ;
+    Printf.fprintf oc "CodeGenLib.last_init %d" n
+  | UpdateState, StatefulFun (_, g, Last (n, e, es)), _ ->
+    emit_functionN ?state ~consts ~args_as:(Tuple 2)
+      "CodeGenLib.last_add"
+      (None :: None :: List.map (fun _ -> None) es)
+      oc (my_state ~nullable:false g :: e :: es)
+  | Finalize, StatefulFun (_, g, Last (_, _, _)), _ ->
+    emit_functionN ~impl_return_nullable:true ?state ~consts
+      "CodeGenLib.last_finalize" [None] oc [my_state ~nullable:false g]
 
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name t).
@@ -1720,35 +1737,45 @@ let otype_of_state e =
   let typ = typ_of e in
   let t = Option.get typ.scalar_typ |>
           IO.to_string otype_of_type in
-  let t =
-    let print_expr_typ oc e =
-      let typ = typ_of e in
-      Option.get typ.scalar_typ |> (* nullable taken care of below *)
-      IO.to_string otype_of_type |>
-      String.print oc in
-    match e with
-    | StatefulFun (_, _, AggrPercentile _) -> t ^" list"
-    (* previous tuples and count ; Note: we could get rid of this count if we
-     * provided some context to those functions, such as the event count in
-     * current window, for instance (ie. pass the full aggr record not just
-     * the fields) *)
-    | StatefulFun (_, _, (Lag _ | MovingAvg _ | LinReg _)) ->
-      t ^" CodeGenLib.Seasonal.t"
-    | StatefulFun (_, _, MultiLinReg _) ->
-      "("^ t ^" * float array) CodeGenLib.Seasonal.t"
-    | StatefulFun (_, _, Remember _) ->
-      "CodeGenLib.remember_state"
-    | StatefulFun (_, _, Distinct es) ->
-      Printf.sprintf2 "%a CodeGenLib.distinct_state"
-        (list_print_as_product print_expr_typ) es
-    | StatefulFun (_, _, AggrAvg _) -> "(int * float)"
-    | StatefulFun (_, _, (AggrMin _|AggrMax _)) -> t ^" option"
-    | StatefulFun (_, _, Top { what ; _ }) ->
-      Printf.sprintf2 "%a HeavyHitters.t"
-        (list_print_as_product print_expr_typ) what
-    | StatefulFun (_, _, AggrHistogram _) -> "CodeGenLib.histogram"
-    | _ -> t in
-  if Option.get typ.nullable then t ^" option" else t
+  let print_expr_typ oc e =
+    let typ = typ_of e in
+    Option.get typ.scalar_typ |> (* nullable taken care of below *)
+    IO.to_string otype_of_type |>
+    String.print oc in
+  let optional = if Option.get typ.nullable then " option" else "" in
+  match e with
+  | StatefulFun (_, _, AggrPercentile _) -> t ^" list"^ optional
+  (* previous tuples and count ; Note: we could get rid of this count if we
+   * provided some context to those functions, such as the event count in
+   * current window, for instance (ie. pass the full aggr record not just
+   * the fields) *)
+  | StatefulFun (_, _, (Lag _ | MovingAvg _ | LinReg _)) ->
+    t ^" CodeGenLib.Seasonal.t"^ optional
+  | StatefulFun (_, _, MultiLinReg _) ->
+    "("^ t ^" * float array) CodeGenLib.Seasonal.t"^ optional
+  | StatefulFun (_, _, Remember _) ->
+    "CodeGenLib.remember_state"^ optional
+  | StatefulFun (_, _, Distinct es) ->
+    Printf.sprintf2 "%a CodeGenLib.distinct_state%s"
+      (list_print_as_product print_expr_typ) es
+      optional
+  | StatefulFun (_, _, AggrAvg _) -> "(int * float)"^ optional
+  | StatefulFun (_, _, (AggrMin _|AggrMax _)) -> t ^" option"^ optional
+  | StatefulFun (_, _, Top { what ; _ }) ->
+    Printf.sprintf2 "%a HeavyHitters.t%s"
+      (list_print_as_product print_expr_typ) what
+      optional
+  | StatefulFun (_, _, Last (_, e, es)) ->
+    if es = [] then
+      Printf.sprintf2 "(%a, unit) CodeGenLib.last_state"
+        print_expr_typ e
+    else
+      Printf.sprintf2 "(%a, %a) CodeGenLib.last_state"
+        print_expr_typ e
+        print_expr_typ (List.hd es)
+    (* Not optional as null is handled by last_finalize directly *)
+  | StatefulFun (_, _, AggrHistogram _) -> "CodeGenLib.histogram"^ optional
+  | _ -> t
 
 let emit_state_init name state_lifespan other_state_vars
       ?where ?commit_when ~consts
