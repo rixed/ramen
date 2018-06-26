@@ -65,8 +65,9 @@ type func_status =
   | Running of F.t
   | NotRunning of RamenName.program_exp * RamenName.func
 
-let links conf no_abbrev only_errors with_header sort_col top prefix () =
+let links conf no_abbrev only_errors with_header sort_col top pattern () =
   logger := make_logger conf.C.debug ;
+  let pattern = Globs.compile pattern in
   (* Same to get the ringbuffer stats, but we never reread the stats (not
    * needed, and mtime wouldn't really work on those mmapped files *)
   let get_rb_stats = cached "links" (fun fname ->
@@ -86,8 +87,8 @@ let links conf no_abbrev only_errors with_header sort_col top prefix () =
        "fill ratio" ; "next seqs" |] in
   let line_of_link i p c =
     let parent = fq_name p and child = fq_name c in
-    if String.starts_with parent prefix ||
-       String.starts_with child prefix
+    if Globs.matches pattern parent ||
+       Globs.matches pattern child
     then
       let ringbuf, fill_ratio, next_seqs =
         match c with

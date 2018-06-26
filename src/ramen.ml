@@ -194,10 +194,10 @@ let repair =
       $ rb_files),
     info ~doc:RamenConsts.CliInfo.repair "repair-ringbuf")
 
-let prefix =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.prefix
-                   ~docv:"PREFIX" [] in
-  Arg.(value (pos 0 string "" i))
+let pattern =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.pattern
+                   ~docv:"PATTERN" [] in
+  Arg.(value (pos 0 string "*" i))
 
 let no_abbrev =
   let env = Term.env_info "RAMEN_NO_ABBREVIATION" in
@@ -235,7 +235,7 @@ let links =
       $ with_header
       $ sort_col
       $ top
-      $ prefix),
+      $ pattern),
     info ~doc:RamenConsts.CliInfo.links "links")
 
 (*
@@ -524,7 +524,7 @@ let ps =
       $ with_header
       $ sort_col
       $ top
-      $ prefix),
+      $ pattern),
     info ~doc:RamenConsts.CliInfo.ps "ps")
 
 (*

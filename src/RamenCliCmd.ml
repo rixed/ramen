@@ -335,7 +335,7 @@ let add_stats (in_count', selected_count', out_count', group_count', cpu',
   add_nu64 bytes_in' bytes_in,
   add_nu64 bytes_out' bytes_out
 
-let read_stats conf prefix =
+let read_stats conf pattern =
   let h = Hashtbl.create 57 in
   let open RamenTypes in
   let bname = C.report_ringbuf conf in
@@ -368,7 +368,7 @@ let read_stats conf prefix =
     RamenSerialization.fold_time_range ~while_ bname typ [] event_time
                          since until ()  (fun () tuple t1 t2 ->
     let worker = get_string tuple.(0) in
-    if String.starts_with worker prefix then
+    if Globs.matches pattern worker then
       let time = get_float tuple.(1)
       and in_count = get_nu64 tuple.(2)
       and selected_count = get_nu64 tuple.(3)
@@ -406,10 +406,11 @@ let time_or_na = function
   | None -> TermTable.ValStr "n/a"
   | Some f -> TermTable.ValStr (string_of_time f)
 
-let ps conf short with_header sort_col top prefix () =
+let ps conf short with_header sort_col top pattern () =
   logger := make_logger conf.C.debug ;
+  let pattern = Globs.compile pattern in
   (* Start by reading the last minute of instrumentation data: *)
-  let stats = Lwt_main.run (read_stats conf prefix) in
+  let stats = Lwt_main.run (read_stats conf pattern) in
   (* Now iter over all workers and display those stats: *)
   let open TermTable in
   let head, lines =
@@ -428,8 +429,8 @@ let ps conf short with_header sort_col top prefix () =
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
           Hashtbl.fold (fun program_name _get_rc lines ->
-            if String.starts_with
-                 (RamenName.string_of_program_exp program_name) prefix then
+            if Globs.matches pattern
+                 (RamenName.string_of_program_exp program_name) then
               let _, (in_count, selected_count, out_count, group_count,
                       cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
                 Hashtbl.find_default h program_name (0., no_stats) in
@@ -463,7 +464,7 @@ let ps conf short with_header sort_col top prefix () =
               List.fold_left (fun lines func ->
                 let fq_name = RamenName.string_of_program_exp program_name
                               ^"/"^ RamenName.string_of_func func.F.name in
-                if String.starts_with fq_name prefix then
+                if Globs.matches pattern fq_name then
                   let _, (in_count, selected_count, out_count, group_count,
                           cpu, ram, wait_in, wait_out, bytes_in,
                           bytes_out) =

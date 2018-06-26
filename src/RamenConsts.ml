@@ -138,7 +138,7 @@ struct
      (first column -name- is 1, then #in is 2...)"
   let top =
     "Truncate the list of operations after the first N entries"
-  let prefix = "Show only workers which name start with this"
+  let pattern = "Display only those workers"
   let server_url = "URL to reach the HTTP service"
   let test_file = "Definition of a test to run"
   let command = "Ramen command line to be completed"
