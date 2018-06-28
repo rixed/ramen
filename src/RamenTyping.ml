@@ -186,8 +186,10 @@ let make_typed_func program_name rcf =
     factors = rcf.F.factors ;
     envvars = rcf.F.envvars }
 
+(* FIXME: what's the difference with is_fully_typed? *)
 let scalar_finished_typing = function
-  | TNum | TAny | TTuple [||] | TVec (0, _) -> false
+  | TNum | TAny | TTuple [||] | TVec (0, _) (* Why not TVec (0, TAny) *)
+  | TList TAny -> false
   | _ -> true
 
 (* Check that we have typed all that need to be typed, and set finished_typing *)
@@ -398,6 +400,7 @@ let type_of_parents_field parents tuple_of_field field =
 let rec is_fully_typed = function
   | TTuple ts -> Array.for_all is_fully_typed ts
   | TVec (_, t) -> is_fully_typed t
+  | TList t -> is_fully_typed t
   | TNum | TAny -> false
   | _ -> true
 
@@ -605,7 +608,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
 
   | Vector (_op_typ, es) ->
     (* [es] is a list of expressions, which type must be all the same.
-     * The resulting type will be the sequence of those (exp_type is going
+     * The resulting type will be a vector of those (exp_type is going
      * to be enlarged as we progress). *)
     !logger.debug "%sTyping VECTOR, expecting %a"
       indent Expr.print_typ exp_type ;
@@ -617,6 +620,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         let typ = TVec (nb_items, TAny) in
         exp_type.scalar_typ <- Some typ ;
         true
+    (* TODO: Almost the same process if the exp_type.scalar_typ is
+     * Some (TList t) *)
     | Some (TVec (dim, t) as exp_vector) ->
         if dim <> nb_items then (
           !logger.debug "%sTyping VECTOR: expecting %d items but got %d"
@@ -1018,6 +1023,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     check_op op_typ largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun1 (op_typ, Nth n, es) ->
     (* Try nth first on a tuple: *)
+    (* FIXME: also on lists *)
     (try check_op op_typ (function
         | [ TTuple ts ] ->
             if n < 0 || n >= Array.length ts then
@@ -1157,6 +1163,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     if n <= 0 then (
       let e = "LAST number of elements must be greater than zero" in
       raise (SyntaxError (BadConstant e))) ;
+    (* TODO: should be a list *)
     let ret_typ lst =
       let typ_e = List.hd lst in
       TVec (n, typ_e) in
@@ -1175,6 +1182,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       [ Some TFloat, None, a ]
   | StatelessFun2 (op_typ, In, e1, e2) ->
     (* FIXME: we really want to be able to backtrack those tries: *)
+    (* TODO: Also for lists *)
     let last_exc = ref Exit and ret = ref false in
     (try
       let nop _ _ = false

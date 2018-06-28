@@ -18,7 +18,7 @@ open RamenHelpers
  * progressively set at compilation. *)
 type typ =
   { mutable expr_name : string ;
-    uniq_num : int ; (* to build var names or record field names *)
+    uniq_num : int ; (* to build var names, record field names or identify SAT variables *)
     mutable nullable : bool option ;
     mutable scalar_typ : RamenTypes.typ option }
 

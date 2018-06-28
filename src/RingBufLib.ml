@@ -67,7 +67,9 @@ let rec sersize_of_fixsz_typ = function
   | TEth -> sersize_of_eth
   | TCidrv4 -> sersize_of_cidrv4
   | TCidrv6 -> sersize_of_cidrv6
-  | TString | TIp | TCidr | TTuple _ | TVec _ | TNum | TAny -> assert false
+  (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
+  | TString | TIp | TCidr | TTuple _ | TVec _ | TList _
+  | TNum | TAny -> assert false
 
 let rec sersize_of_value = function
   | VString s -> sersize_of_string s
@@ -93,14 +95,21 @@ let rec sersize_of_value = function
   | VCidr x -> sersize_of_cidr x
   | VTuple vs -> sersize_of_tuple vs
   | VVec vs -> sersize_of_vector vs
+  | VList vs -> sersize_of_list vs
+
 and sersize_of_tuple vs =
   (* Tuples are serialized in field order, unserializer will know which
    * fields are present so there is no need for meta-data: *)
   Array.fold_left (fun s v -> s + sersize_of_value v) 0 vs
+
 and sersize_of_vector vs =
   (* Vectors are serialized in field order, unserializer will also know
    * the size of the vector and the type of its elements: *)
   sersize_of_tuple vs
+
+and sersize_of_list vs =
+  (* Lists are prefixed with their number of elements *)
+  sersize_of_u32 + sersize_of_tuple vs
 
 let rec write_value tx offs = function
   | VFloat f -> write_float tx offs f
@@ -125,7 +134,9 @@ let rec write_value tx offs = function
   | VCidr c -> write_cidr tx offs c
   | VTuple vs -> write_tuple tx offs vs
   | VVec vs -> write_vector tx offs vs
+  | VList vs -> write_list tx offs vs
   | VNull -> assert false
+
 (* Tuples are serialized as the succession of the values. No meta data
  * required. *)
 and write_tuple tx offs vs =
@@ -134,7 +145,12 @@ and write_tuple tx offs vs =
     sz + sersize_of_value v
   ) 0 vs |>
   ignore
+
 and write_vector tx = write_tuple tx
+
+and write_list tx offs vs =
+  write_u32 tx offs (Array.length vs |> Uint32.of_int) ;
+  write_vector tx (offs + sersize_of_u32) vs
 
 let rec read_value tx offs = function
   | TFloat  -> VFloat (read_float tx offs)
@@ -159,19 +175,26 @@ let rec read_value tx offs = function
   | TCidr   -> VCidr (read_cidr tx offs)
   | TTuple ts -> VTuple (read_tuple ts tx offs)
   | TVec (d, t) -> VVec (read_vector d t tx offs)
+  | TList t -> VList (read_list t tx offs)
   | TNum | TAny -> assert false
+
 and read_tuple ts tx offs =
   let offs = ref offs in
   Array.map (fun t ->
     let v = read_value tx !offs t in
     offs := !offs + sersize_of_value v ;
     v) ts
+
 and read_vector d t tx offs =
   let offs = ref offs in
   Array.init d (fun _ ->
     let v = read_value tx !offs t in
     offs := !offs + sersize_of_value v ;
     v)
+
+and read_list t tx offs =
+  let d = read_u32 tx offs |> Uint32.to_int in
+  read_vector d t tx (offs + sersize_of_u32)
 
 (* Unless wait_for_more, this will raise Empty when out of data *)
 let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =

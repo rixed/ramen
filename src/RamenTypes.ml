@@ -27,7 +27,8 @@ type typ =
    *       But then, serialization is harder since we need several bits in
    *       the nullmask for constructed types. *)
   | TTuple of typ array
-  | TVec of int * typ
+  | TVec of int * typ (* Fixed length arrays *)
+  | TList of typ (* Variable length arrays, aka lists *)
   [@@ppp PPP_OCaml]
 
 let rec print_typ oc = function
@@ -54,8 +55,8 @@ let rec print_typ oc = function
   | TCidrv6 -> String.print oc "CIDRv6"
   | TCidr   -> String.print oc "CIDR"
   | TTuple ts -> Array.print ~first:"(" ~last:")" ~sep:";" print_typ oc ts
-  | TVec (0, t) -> Printf.fprintf oc "%a[]" print_typ t
   | TVec (d, t) -> Printf.fprintf oc "%a[%d]" print_typ t d
+  | TList t -> Printf.fprintf oc "%a[]" print_typ t
 
 let rec string_of_typ t = IO.to_string print_typ t
 
@@ -73,7 +74,8 @@ type value =
   | VCidrv4 of RamenIpv4.Cidr.t | VCidrv6 of RamenIpv6.Cidr.t
   | VCidr of RamenIp.Cidr.t
   | VTuple of value array
-  | VVec of value array (* All values must have same type *)
+  | VVec of value array (* All values must have the same type *)
+  | VList of value array (* All values must have the same type *)
   [@@ppp PPP_OCaml]
 
 let rec type_of = function
@@ -84,9 +86,21 @@ let rec type_of = function
   | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6 | VIp _ -> TIp
   | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6 | VCidr _ -> TCidr
   | VTuple vs -> TTuple (Array.map type_of vs)
+  (* Note regarding type of zero length arrays:
+   * Vec of size 0 are not super interesting, and can be of any type,
+   * ideally all the time (ie if a parent exports a value of type 0-length
+   * array of t1, we should be able to use it in a context requiring a
+   * 0-length array of t2<>t1). *)
   | VVec vs ->
       let d = Array.length vs in
       TVec (d, if d > 0 then type_of vs.(0) else TAny)
+  (* Note regarding empty lists:
+   * If we receive from a parent a value from a
+   * list of t1 that happens to be empty, we cannot use it in another context
+   * where another list is expected of course. But empty list literal can still
+   * be assigned any type. *)
+  | VList vs ->
+      TList (if Array.length vs > 0 then type_of vs.(0) else TAny)
   | VNull -> assert false
 
 (*
@@ -120,6 +134,9 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
   | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";" (print_custom ~null ~quoting) oc vs
   | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";" (print_custom ~null ~quoting) oc vs
+  (* It is more user friendly to write lists as arrays and blur the line
+   * between those for the user: *)
+  | VList vs  -> Array.print ~first:"[" ~last:"]" ~sep:";" (print_custom ~null ~quoting) oc vs
 
 let to_string ?null ?quoting v =
   IO.to_string (print_custom ?null ?quoting) v
@@ -191,7 +208,11 @@ let rec can_enlarge ~from ~to_ =
       (* Otherwise, vectors must have the same dimension and t1 must be
        * enlargeable to t2: *)
       d1 = d2 && can_enlarge ~from:t1 ~to_:t2
-  | TTuple _, _ | _, TTuple _ | TVec _, _ | _, TVec _ ->
+  | TList t1, TList t2 ->
+      can_enlarge ~from:t1 ~to_:t2
+  | TTuple _, _ | _, TTuple _
+  | TVec _, _ | _, TVec _
+  | TList _, _ | _, TList _ ->
       false
   | _ -> can_enlarge_scalar ~from ~to_
 
@@ -266,6 +287,8 @@ let rec enlarge_value t v =
       VTuple (Array.map2 enlarge_value ts vs)
   | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
       VVec (Array.map (enlarge_value t) vs)
+  | VList vs, TList t ->
+      VList (Array.map (enlarge_value t) vs)
   | _ ->
       invalid_arg ("Value "^ to_string v ^" cannot be enlarged into a "^
                    string_of_typ t)
@@ -322,11 +345,13 @@ let rec any_value_of_type = function
   | TIpv6 -> VIpv6 Uint128.zero
   | TTuple ts -> VTuple (Array.map any_value_of_type ts)
   | TVec (d, t) -> VVec (Array.create d (any_value_of_type t))
+  (* Avoid loosing type info by returning an empty list: *)
+  | TList t -> VList [| any_value_of_type t |]
 
 let is_round_integer = function
   | VFloat f  -> fst(modf f) = 0.
   | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _
-  | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ -> false
+  | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ | VList _ -> false
   | _ -> true
 
 (* Garbage in / garbage out *)
@@ -351,7 +376,7 @@ let float_of_scalar =
   | VIp (V4 x) -> Uint32.to_float x
   | VIp (V6 x) -> Uint128.to_float x
   | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _
-  | VTuple _ | VVec _ -> 0.
+  | VTuple _ | VVec _ | VList _ -> 0.
 
 let int_of_scalar =
   int_of_float % float_of_scalar
@@ -485,6 +510,12 @@ struct
     (* Also literals of constructed types: *)
     (tuple ?min_int_width >>: fun vs -> VTuple vs) |||
     (vector ?min_int_width >>: fun vs -> VVec vs)
+    (* Note: there is no way to enter a litteral list, as it's the same
+     * representation than an array. And, given the functions that work
+     * on arrays would also work on list, and that arrays are more efficient
+     * (because there is no additional NULL check), there is no reason to
+     * do that but to test lists. For that, we could use a conversion
+     * function from arrays to lists. *)
 
   (* By default, we want only one value of at least 32 bits: *)
   and p m = p_ ~min_int_width:32 m
