@@ -6,7 +6,7 @@ require 'tmpdir'
 # Clear this or we might have long, unexpected backtraces on stderr:
 ENV['OCAMLRUNPARAM'] = nil
 # Also, by default we want a specific setting for experiments:
-ENV['RAMEN_VARIANTS'] = 'TheBigOne=on'
+ENV['RAMEN_VARIANTS'] = 'TheBigOne=on,Typer=internal'
 
 $daemon_pids = {}
 

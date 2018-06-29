@@ -248,6 +248,31 @@ let factors_of_operation = function
       else RamenProtocols.factors_of_proto proto
   | Instrumentation _ -> RamenBinocle.factors
 
+let map_expr f = function
+  | (ListenFor _ | ReadCSVFile _ | Instrumentation _ as op) -> op
+  | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_when ;
+                 flush_how ; _ } as aggr) ->
+      Aggregate { aggr with
+        fields =
+          List.map (fun sf ->
+            { sf with expr = Expr.map_expr f sf.expr }
+          ) fields ;
+        merge = List.map (Expr.map_expr f) (fst merge), snd merge ;
+        where = Expr.map_expr f where ;
+        key = List.map (Expr.map_expr f) key ;
+        commit_when = Expr.map_expr f commit_when ;
+        sort =
+          Option.map (fun (n, u_opt, b) ->
+            n,
+            Option.map (Expr.map_expr f) u_opt,
+            List.map (Expr.map_expr f) b
+          ) sort ;
+        flush_how =
+          match flush_how with
+          | Slide _ | Never | Reset -> flush_how
+          | RemoveAll e -> RemoveAll (Expr.map_expr f e)
+          | KeepOnly e -> KeepOnly (Expr.map_expr f e) }
+
 let fold_expr init f = function
   | ListenFor _ | ReadCSVFile _ | Instrumentation _ -> init
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_when ;

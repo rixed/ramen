@@ -259,7 +259,13 @@ let max_simult_compilations =
   let i = Arg.info ~doc:RamenConsts.CliInfo.max_simult_compilations
                    ~env [ "max-simult-compilations" ;
                           "max-simultaneous-compilations" ] in
-  Arg.(value (opt int 4 i))
+  Arg.(value (opt int !RamenOCamlCompiler.max_simult_compilations i))
+
+let smt_solver =
+  let env = Term.env_info "RAMEN_SMT_SOLVER" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.smt_solver
+                   ~env [ "smt-solver" ; "solver" ] in
+  Arg.(value (opt string !RamenSmtTyping.smt_solver i))
 
 let assignment =
   let parse s =
@@ -338,6 +344,7 @@ let compile =
       $ external_compiler
       $ bundle_dir
       $ max_simult_compilations
+      $ smt_solver
       $ source_files
       $ program_name),
     info ~doc:RamenConsts.CliInfo.compile "compile")

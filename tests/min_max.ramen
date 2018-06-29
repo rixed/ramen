@@ -33,11 +33,11 @@ DEFINE aggr AS
 DEFINE non_aggr AS
   FROM soup SELECT
     -- Must be OK to compare any numeric types together:
-    MIN(s, r, small_int, bit) AS mi1,
-    MAX(s, r, small_int, bit) AS ma1,
+    MIN(s, r, small_int, u8(bit)) AS mi1,
+    MAX(s, r, small_int, u8(bit)) AS ma1,
     -- Including if one is nullable:
-    MIN(s, r, small_int, bit, nullable_float) AS mi2,
-    MAX(s, r, small_int, bit, nullable_float) AS ma2,
+    MIN(s, r, small_int, u8(bit), nullable_float) AS mi2,
+    MAX(s, r, small_int, u8(bit), nullable_float) AS ma2,
     -- Must be Ok to compare strings:
     MIN(glop, pas_glop) AS mi3,
     MAX(glop, pas_glop) AS ma3,

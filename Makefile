@@ -88,6 +88,7 @@ RAMEN_SOURCES = \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenTypingHelpers.ml \
+	src/RamenSmtParser.ml src/RamenSmtTyping.ml \
 	src/RamenTyping.ml \
 	src/RamenCompiler.ml \
 	src/RamenGraphite.ml src/RamenApi.ml src/RamenHeap.ml \
@@ -253,7 +254,8 @@ TESTABLE_SOURCES = \
 	src/RamenTyping.ml \
 	src/HeavyHitters.ml src/RamenHelpers.ml src/RamenBloomFilter.ml \
 	src/Globs.ml src/CodeGen_OCaml.ml src/RamenSortBuf.ml \
-	src/RamenGraphite.ml src/RingBufLib.ml src/RamenSerialization.ml
+	src/RamenGraphite.ml src/RingBufLib.ml src/RamenSerialization.ml \
+	src/RamenSmtParser.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
@@ -275,7 +277,8 @@ LINKED_FOR_TESTS = \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenTyping.ml \
-	src/RamenBloomFilter.ml src/RamenGraphite.ml src/TestHelpers.ml
+	src/RamenBloomFilter.ml src/RamenGraphite.ml src/TestHelpers.ml \
+	src/RamenSmtParser.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
 	@echo 'Generating unit tests into $@'

@@ -150,13 +150,14 @@ let notify conf parameters name () =
  *)
 
 let compile conf root_path use_external_compiler bundle_dir
-            max_simult_compils source_files program_name_opt () =
+            max_simult_compils smt_solver source_files program_name_opt () =
   logger := make_logger conf.C.debug ;
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   RamenOCamlCompiler.bundle_dir := bundle_dir ;
   RamenOCamlCompiler.max_simult_compilations := max_simult_compils ;
+  RamenSmtTyping.smt_solver := smt_solver ;
   let root_path = absolute_path_of root_path in
   let all_ok = ref true in
   let compile_file source_file =

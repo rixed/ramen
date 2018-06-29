@@ -145,8 +145,30 @@ let compile conf root_path program_name program_code =
       Hashtbl.add compiler_parents parsed_func.RamenProgram.name
     ) parsed_funcs ;
     (* Finally, call the typer: *)
-    RamenTyping.set_all_types
-      conf compiler_parents compiler_funcs parsed_params ;
+    RamenExperiments.(specialize conf.persist_dir typer_choice [|
+      (fun () ->
+        (* Type with the handcrafted typer: *)
+        RamenTyping.set_all_types
+          conf compiler_parents compiler_funcs parsed_params) ;
+      (fun () ->
+        (* TEST: try the SMT-based typer and compare with handcrafted one: *)
+        (try
+          let copy_funcs =
+            Hashtbl.values compiler_funcs /@
+            RamenTypingHelpers.Func.copy |> List.of_enum in
+          RamenSmtTyping.set_all_types
+            conf compiler_parents copy_funcs parsed_params
+        with exn ->
+          !logger.error "Cannot test the external typer: %s\n%s"
+            (Printexc.to_string exn)
+            (Printexc.get_backtrace ())) ;
+        RamenTyping.set_all_types
+          conf compiler_parents compiler_funcs parsed_params) ;
+      (fun () ->
+        (* Type using the external solver: *)
+        let funcs = Hashtbl.values compiler_funcs |> List.of_enum in
+        RamenSmtTyping.set_all_types
+          conf compiler_parents funcs parsed_params) |]) ;
     (*
      * Now the (OCaml) code can be generated and compiled.
      *

@@ -477,6 +477,19 @@ let lwt_read_whole_file fname =
 let read_whole_file fname =
   File.with_file_in ~mode:[`text] fname IO.read_all
 
+let read_whole_channel ic =
+  let open Legacy in
+  let read_chunk = 1000 in
+  let rec loop buf o =
+    if Bytes.length buf - o < read_chunk then
+      loop (Bytes.extend buf 0 (5 * read_chunk)) o
+    else
+      let ret = input ic buf o read_chunk in
+      if ret = 0 then Bytes.(sub buf 0 o |> to_string)
+      else loop buf (o + ret)
+  in
+  loop (Bytes.create (5 * read_chunk)) 0
+
 let file_print oc fname =
   let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
   String.print oc content

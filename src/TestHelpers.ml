@@ -28,6 +28,15 @@ let test_p p s =
   to_result |>
   strip_linecol
 
+let test_exn p s =
+  match test_p p s with
+  | Ok (r, _) -> r
+  | Bad (Approximation _) -> failwith "approximation"
+  | Bad (NoSolution e) ->
+      failwith ("No solution ("^ IO.to_string print_error e ^")")
+  | Bad (Ambiguous lst) ->
+      failwith ("Ambiguous: "^ string_of_int (List.length lst) ^" results")
+
 let test_op p s =
   match test_p p s with
   | Ok (res, _) as ok_res ->

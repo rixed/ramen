@@ -624,6 +624,82 @@ let rec fold_by_depth f i expr =
 
 let iter f = fold_by_depth (fun () e -> f e) ()
 
+(* FIXME: a bit annoying to have to have both fold and map...
+ * Hopefully that's just for the duration of the Typer experiment.
+ * Otherwise, summon some GADT. *)
+let rec map_expr f expr =
+  match expr with
+  | Const _ | Field _ | StateField _ | StatelessFun0 _ ->
+    f expr
+  | StatefulFun (t, g, AggrMin e) ->
+    f (StatefulFun (t, g, AggrMin (map_expr f e)))
+  | StatefulFun (t, g, AggrMax e) ->
+    f (StatefulFun (t, g, AggrMax (map_expr f e)))
+  | StatefulFun (t, g, AggrSum e) ->
+    f (StatefulFun (t, g, AggrSum (map_expr f e)))
+  | StatefulFun (t, g, AggrAvg e) ->
+    f (StatefulFun (t, g, AggrAvg (map_expr f e)))
+  | StatefulFun (t, g, AggrAnd e) ->
+    f (StatefulFun (t, g, AggrAnd (map_expr f e)))
+  | StatefulFun (t, g, AggrOr e) ->
+    f (StatefulFun (t, g, AggrOr (map_expr f e)))
+  | StatefulFun (t, g, AggrFirst e) ->
+    f (StatefulFun (t, g, AggrFirst (map_expr f e)))
+  | StatefulFun (t, g, AggrLast e) ->
+    f (StatefulFun (t, g, AggrLast (map_expr f e)))
+  | StatefulFun (t, g, AggrHistogram (e, mi, ma, n)) ->
+    f (StatefulFun (t, g, AggrHistogram (map_expr f e, mi, ma, n)))
+  | StatefulFun (t, g, AggrPercentile (e1, e2)) ->
+    f (StatefulFun (t, g, AggrPercentile (map_expr f e1, map_expr f e2)))
+  | StatefulFun (t, g, Lag (e1, e2)) ->
+    f (StatefulFun (t, g, Lag (map_expr f e1, map_expr f e2)))
+  | StatefulFun (t, g, ExpSmooth (e1, e2)) ->
+    f (StatefulFun (t, g, ExpSmooth (map_expr f e1, map_expr f e2)))
+  | StatefulFun (t, g, MovingAvg (e1, e2, e3)) ->
+    f (StatefulFun (t, g, MovingAvg (map_expr f e1, map_expr f e2, map_expr f e3)))
+  | StatefulFun (t, g, LinReg (e1, e2, e3)) ->
+    f (StatefulFun (t, g, LinReg (map_expr f e1, map_expr f e2, map_expr f e3)))
+  | StatefulFun (t, g, Remember (e1, e2, e3, e4s)) ->
+    f (StatefulFun (t, g, Remember (map_expr f e1, map_expr f e2, map_expr f e3, List.map (map_expr f) e4s)))
+  | StatefulFun (t, g, MultiLinReg (e1, e2, e3, e4s)) ->
+    f (StatefulFun (t, g, MultiLinReg (map_expr f e1, map_expr f e2, map_expr f e3, List.map (map_expr f) e4s)))
+  | StatefulFun (t, g, Top ({ what = e3s ; by = e1 ; time = e2 ; _ } as top)) ->
+    f (StatefulFun (t, g, Top ({ top with what = List.map (map_expr f) e3s ; by = map_expr f e1 ; time = map_expr f e2 })))
+  | StatefulFun (t, g, Last (n, e, es)) ->
+    f (StatefulFun (t, g, Last (n, map_expr f e, List.map (map_expr f) es)))
+  | StatefulFun (t, g, Hysteresis (e1, e2, e3)) ->
+    f (StatefulFun (t, g, Hysteresis (map_expr f e1, map_expr f e2, map_expr f e3)))
+  | StatefulFun (t, g, Distinct es) ->
+    f (StatefulFun (t, g, Distinct (List.map (map_expr f) es)))
+  | StatelessFun1 (t, g, e) ->
+    f (StatelessFun1 (t, g, (map_expr f e)))
+  | StatelessFun2 (t, op, e1, e2) ->
+    f (StatelessFun2 (t, op, map_expr f e1, map_expr f e2))
+  | GeneratorFun (t, Split (e1, e2)) ->
+    f (GeneratorFun (t, Split (map_expr f e1, map_expr f e2)))
+  | StatelessFunMisc (t, Like (e, p)) ->
+    f (StatelessFunMisc (t, Like (map_expr f e, p)))
+  | StatelessFunMisc (t, Max es) ->
+    f (StatelessFunMisc (t, Max (List.map (map_expr f) es)))
+  | StatelessFunMisc (t, Min es) ->
+    f (StatelessFunMisc (t, Min (List.map (map_expr f) es)))
+  | StatelessFunMisc (t, Print es) ->
+    f (StatelessFunMisc (t, Print (List.map (map_expr f) es)))
+  | Case (t, alts, else_) ->
+    let alts =
+      List.map (fun a ->
+        { case_cond = map_expr f a.case_cond ;
+          case_cons = map_expr f a.case_cons }
+      ) alts
+    and else_ = Option.map (map_expr f) else_ in
+    f (Case (t, alts, else_))
+  | Tuple (t, es) ->
+    f (Tuple (t, List.map (map_expr f) es))
+  | Vector (t, es) ->
+    f (Vector (t, List.map (map_expr f) es))
+  | Coalesce (t, es) ->
+    f (Coalesce (t, List.map (map_expr f) es))
+
 let unpure_iter f e =
   fold_by_depth (fun () -> function
     | StatefulFun _ as e -> f e

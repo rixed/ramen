@@ -17,10 +17,10 @@ let strinGs s = strinG s ||| strinG (s ^"s")
 let blank = ParseUsual.blank >>: ignore
 let newline = ParseUsual.newline >>: ignore
 
+let all_but_newline =
+  cond "anything until newline" (fun c -> c <> '\n' && c <> '\r') 'x'
+
 let comment =
-  let all_but_newline =
-    cond "anything until newline" (fun c -> c <> '\n' && c <> '\r') 'x'
-  in
   char '-' -- char '-' --
   repeat_greedy ~sep:none ~what:"comment" all_but_newline
 

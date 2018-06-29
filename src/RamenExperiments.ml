@@ -56,7 +56,17 @@ let the_big_one =
        - ...?\n" ;
     Variant.make "on" "Run ramen normally." |]
 
-let all_experiments = [ the_big_one ]
+let typer_choice =
+  make "Typer" [|
+    Variant.make ~share:0. "internal"
+      "Use the baked-in typer when compiling ramen programs." ;
+    Variant.make ~share:0.9 "internal first"
+      "Use the internal typer but also run the external typer and \
+       compare the results." ;
+    Variant.make "external"
+      "Use an external SMT solver to type ramen programs." |]
+
+let all_experiments = [ the_big_one ; typer_choice ]
 
 (*
  * Helpers
