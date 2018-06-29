@@ -517,7 +517,7 @@ let rec print with_types fmt =
       print_duration_opt duration
       (print with_types) time ;
     add_types t
-  |StatefulFun (t, g, Last (n, e, es) ) ->
+  | StatefulFun (t, g, Last (n, e, es) ) ->
     let print_by oc es =
       if es <> [] then
         Printf.fprintf oc " BY %a"
@@ -930,7 +930,7 @@ struct
           | Const (t1, _), Const (t2, _) when is_an_ip t1 && is_an_int t2 ->
               raise (Reject "That's a CIDR")
           | _ ->
-              StatelessFun2 (make_typ ~typ:TFloat "division", Div, e1, e2))
+              StatelessFun2 (make_float_typ "division", Div, e1, e2))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -1132,7 +1132,7 @@ struct
         StatefulFun (make_float_typ "smooth", g, ExpSmooth (e1, e2))) |||
      (afun1_sf "smooth" >>: fun (g, e) ->
         let alpha =
-          Const (make_typ ~typ:TFloat ~nullable:false "alpha", VFloat 0.5) in
+          Const (make_float_typ ~nullable:false "alpha", VFloat 0.5) in
         StatefulFun (make_float_typ "smooth", g, ExpSmooth (alpha, e))) |||
      (afun3_sf "remember" >>: fun (g, tim, dur, e) ->
         (* If we allowed a list of expressions here then it would be ambiguous
@@ -1176,6 +1176,10 @@ struct
      (afun1v "least" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "min", Min (e :: es))) |||
      (afun2 "get" >>: fun (n, v) ->
+        Option.may (fun n ->
+          if n < 0 then
+            raise (Reject "GET index must be positive")
+        ) (int_of_const n) ;
         StatelessFun2 (make_typ "get", VecGet, n, v)) |||
      (afun1v "print" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "print", Print (e :: es))) |||
@@ -1218,6 +1222,8 @@ struct
      optional ~def:expr_zero (
        blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
      fun ((((((want_rank, what), n), g), by), duration), time) ->
+       if duration <= 0. then
+         raise (Reject "TOP duration must be greater than zero") ;
        StatefulFun (
          (if want_rank then make_int_typ ~nullable:true "rank in top"
                        (* same nullability as what+by+time: *)
@@ -1238,6 +1244,8 @@ struct
       optional ~def:[ in_count_field ] (
         blanks -- strinG "by" -- blanks -+
         several ~sep:list_sep p) >>: fun (((n, g), e), es) ->
+      if n < 0 then
+        raise (Reject "LAST number of elements must be greater than zero") ;
       (* The result is null when the number of input is less than n: *)
       StatefulFun (make_typ ~nullable:true "last", g, Last (n, e, es))
     ) m
