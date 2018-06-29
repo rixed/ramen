@@ -86,7 +86,10 @@ RAMEN_SOURCES = \
 	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
-	src/CodeGen_OCaml.ml src/RamenTyping.ml src/RamenCompiler.ml \
+	src/CodeGen_OCaml.ml \
+	src/RamenTypingHelpers.ml \
+	src/RamenTyping.ml \
+	src/RamenCompiler.ml \
 	src/RamenGraphite.ml src/RamenApi.ml src/RamenHeap.ml \
 	src/SqliteHelpers.ml src/RamenNotify.ml \
 	src/TermTable.ml src/RamenCliCmd.ml \
@@ -245,7 +248,9 @@ src/RamenCompilConfig.ml:
 TESTABLE_SOURCES = \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenTypes.ml src/RamenExpr.ml \
-	src/RamenOperation.ml src/RamenProgram.ml src/RamenTyping.ml \
+	src/RamenOperation.ml src/RamenProgram.ml \
+	src/RamenTypingHelpers.ml \
+	src/RamenTyping.ml \
 	src/HeavyHitters.ml src/RamenHelpers.ml src/RamenBloomFilter.ml \
 	src/Globs.ml src/CodeGen_OCaml.ml src/RamenSortBuf.ml \
 	src/RamenGraphite.ml src/RingBufLib.ml src/RamenSerialization.ml
@@ -267,7 +272,9 @@ LINKED_FOR_TESTS = \
 	src/RamenOCamlCompiler.ml src/RamenHeap.ml src/RamenSortBuf.ml \
 	src/CodeGen_OCaml.ml src/RamenBitmask.ml src/RamenSerialization.ml \
 	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
-	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/RamenTyping.ml \
+	src/RamenHttpHelpers.ml src/RamenProcesses.ml \
+	src/RamenTypingHelpers.ml \
+	src/RamenTyping.ml \
 	src/RamenBloomFilter.ml src/RamenGraphite.ml src/TestHelpers.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)

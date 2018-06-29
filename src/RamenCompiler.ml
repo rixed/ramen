@@ -93,7 +93,7 @@ let compile conf root_path program_name program_code =
       (* During compilation we do not care about actual values of params: *)
       let params = [] in
       let me_func =
-        RamenTyping.make_untyped_func program_name
+        RamenTypingHelpers.make_untyped_func program_name
           parsed_func.name params parsed_func.operation in
       !logger.debug "Found function %s" fq_name ;
       Hashtbl.add compiler_funcs fq_name me_func
@@ -140,7 +140,7 @@ let compile conf root_path program_name program_code =
               f.F.name = parent_func_name
             ) par_rc.P.funcs in
           (* Build a typed F.t from this Fun.t: *)
-          RamenTyping.make_typed_func parent_prog_name parent_func
+          RamenTypingHelpers.make_typed_func parent_prog_name parent_func
       ) |>
       Hashtbl.add compiler_parents parsed_func.RamenProgram.name
     ) parsed_funcs ;
@@ -174,7 +174,7 @@ let compile conf root_path program_name program_code =
           "_"^ RamenVersions.codegen ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
         Lwt.catch (fun () ->
-          let open RamenTyping in
+          let open RamenTypingHelpers in
           let in_typ = tuple_user_type func.Func.in_type
           and out_typ = tuple_user_type func.Func.out_type
           and operation = Option.get func.Func.operation in
@@ -214,13 +214,14 @@ let compile conf root_path program_name program_code =
         let funcs =
           Hashtbl.values compiler_funcs |>
           Enum.map (fun func ->
-            let operation = Option.get func.RamenTyping.Func.operation in
+            let operation =
+              Option.get func.RamenTypingHelpers.Func.operation in
             F.{ (* exp_program_name will be overwritten at load time: *)
                 exp_program_name =
                   RamenName.program_exp_of_program program_name ;
                 name = func.name ;
-                in_type = RamenTyping.typed_tuple_type func.in_type ;
-                out_type = RamenTyping.typed_tuple_type func.out_type ;
+                in_type = RamenTypingHelpers.typed_tuple_type func.in_type ;
+                out_type = RamenTypingHelpers.typed_tuple_type func.out_type ;
                 signature = func.signature ;
                 parents = func.parents ;
                 merge_inputs = RamenOperation.is_merging operation ;
@@ -243,9 +244,9 @@ let compile conf root_path program_name program_code =
         Hashtbl.iter (fun _ func ->
           assert (pname.[String.length pname-1] <> '/') ;
           Printf.fprintf oc"\t%S, %s_%s_%s.%s ;\n"
-            (RamenName.string_of_func func.RamenTyping.Func.name)
+            (RamenName.string_of_func func.RamenTypingHelpers.Func.name)
             (String.capitalize_ascii (Filename.basename pname))
-            func.RamenTyping.Func.signature
+            func.RamenTypingHelpers.Func.signature
             RamenVersions.codegen
             entry_point_name
         ) compiler_funcs ;
