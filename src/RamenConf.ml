@@ -112,7 +112,7 @@ struct
     (* Use an extension so we can still use the plain program_name for a
      * directory holding subprograms. Not using "exe" as it remind me of
      * that operating system, but rather "x" as in the x bit: *)
-    root_path ^"/"^ (RamenName.string_of_program program_name) ^".x"
+    root_path ^"/"^ (RamenName.path_of_program program_name) ^".x"
 end
 
 let program_func_of_user_string ?default_program s =

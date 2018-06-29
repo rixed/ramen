@@ -32,6 +32,7 @@ val params_exp_ppp_ocaml : params_exp PPP.t
 val params_exp_of_string : string -> params_exp
 val string_of_params_exp : params_exp -> string
 val params_exp_of_params : params -> params_exp
+val path_of_program : program -> string
 
 type program_exp = [`ProgramExp] t
 val program_exp_ppp_ocaml : program_exp PPP.t
@@ -41,6 +42,7 @@ val path_of_program_exp : program_exp -> string
 val program_exp_of_path : string -> program_exp
 val program_exp_of_program : program -> program_exp
 val split_program_exp : program_exp -> program * params_exp
+val program_of_program_exp : program_exp -> program
 
 (* For logs, not paths! *)
 type fq = [`FQ] t

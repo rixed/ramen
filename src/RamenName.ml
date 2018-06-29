@@ -48,6 +48,16 @@ let program_of_string s =
 
 external string_of_program : program -> string = "%identity"
 
+(* Make sure a path component is shorter that max_dir_len: *)
+let max_dir_len = 255
+let abbrev_fname s =
+  if String.length s <= max_dir_len then s else md5 s
+
+let path_of_program prog =
+  String.split_on_char '/' prog |>
+  List.map abbrev_fname |>
+  String.join "/"
+
 (* Program name - expansed *)
 
 type param = string * RamenTypes.value [@@ppp PPP_OCaml]
@@ -92,11 +102,11 @@ let split_program_exp s =
   | exception Not_found -> s, ""
   | i -> String.sub s 0 i, String.sub s i (String.length s - i)
 
+let program_of_program_exp = fst % split_program_exp
+
 let path_of_program_exp s =
   let prog, params = split_program_exp s in
   let dirs = String.split_on_char '/' prog in
-  let max_dir_len = 255 in
-  (* Make sure all components are shorter that max_dir_len: *)
   let rec loop path = function
     | [] -> path
     | [ last ] ->
@@ -104,16 +114,10 @@ let path_of_program_exp s =
         let exp =
           if String.length last + String.length exp <= max_dir_len then exp
           else "{"^ md5 exp ^"}" in
-        let comp = last ^ exp in
-        let comp =
-          if String.length last + String.length exp <= max_dir_len then comp
-          else md5 comp in
+        let comp = abbrev_fname (last ^ exp) in
         loop (path ^"/"^ comp) []
     | comp :: rest ->
-        let comp =
-          if String.length comp <= max_dir_len then comp
-          else md5 comp in
-        loop (path ^"/"^ comp) rest
+        loop (path ^"/"^ abbrev_fname comp) rest
   in
   loop "" dirs
 

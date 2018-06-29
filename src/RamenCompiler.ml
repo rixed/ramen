@@ -169,8 +169,8 @@ let compile conf root_path program_name program_code =
       Hashtbl.values compiler_funcs |> List.of_enum |>
       Lwt_list.map_p (fun func ->
         let obj_name =
-          root_path ^"/"^ RamenName.string_of_program program_name ^
-          "_"^ func.RamenTyping.Func.signature ^
+          root_path ^"/"^ RamenName.path_of_program program_name ^
+          "_"^ func.RamenTypingHelpers.Func.signature ^
           "_"^ RamenVersions.codegen ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
         Lwt.catch (fun () ->
@@ -202,7 +202,7 @@ let compile conf root_path program_name program_code =
      *)
     let exec_file = P.bin_of_program_name root_path program_name
     and pname = RamenName.string_of_program program_name in
-    let obj_name = root_path ^"/"^ RamenName.string_of_program program_name
+    let obj_name = root_path ^"/"^ RamenName.path_of_program program_name
                    ^"_casing_"^ RamenVersions.codegen ^".cmx" in
     let src_file =
       RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
