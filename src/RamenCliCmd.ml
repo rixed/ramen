@@ -27,6 +27,12 @@ let make_copts debug persist_dir rand_seed keep_temp_files forced_variants
   | Some seed ->
       RamenProcesses.rand_seed := Some seed ;
       Random.init seed) ;
+  (* As the RAMEN_VARIANTS envar can only take a list as a single string,
+   * let's consider each value can be a list: *)
+  let forced_variants =
+    List.fold_left (fun lst s ->
+      List.rev_append (String.split_on_char ',' s) lst
+    ) [] forced_variants in
   C.make_conf ~debug ~keep_temp_files ~forced_variants
               ~initial_export_duration persist_dir
 
