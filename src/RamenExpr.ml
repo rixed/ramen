@@ -411,8 +411,10 @@ let rec print with_types fmt =
       (if op = BeginOfRange then "begin" else "end")
       (print with_types) e ;
     add_types t
-  | StatelessFun1 (t, Nth n, es) ->
-    Printf.fprintf fmt "%d%s(%a)" n (ordinal_suffix n) (print with_types) es ; add_types t
+  | StatelessFun1 (t, Nth n, e) ->
+    let n = n + 1 in
+    Printf.fprintf fmt "%d%s%a" n (ordinal_suffix n) (print with_types) e ;
+    add_types t
   | StatelessFun1 (t, Strptime, e) ->
     Printf.fprintf fmt "parse_time (%a)" (print with_types) e ; add_types t
   | StatelessFun2 (t, And, e1, e2) -> Printf.fprintf fmt "(%a) AND (%a)" (print with_types) e1 (print with_types) e2 ; add_types t
