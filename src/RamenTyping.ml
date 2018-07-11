@@ -839,6 +839,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       !logger.debug "%snth failed on tuple with %S"
         indent (Printexc.to_string e) ;
       (* Try then on a vector *)
+      (* FIXME: for SMT typer, we must not allow Nth on vectors/lists but
+       * only on tuples: *)
       check_op op_typ (function
         | [ TVec (dim, t) ] ->
             if n < 0 || n >= dim then

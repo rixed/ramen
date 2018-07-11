@@ -564,4 +564,18 @@ let print_response oc = function
         "unsat\n\
          ()\n\
          (error \"line 418 column 10: model is not available\")")
+
+  (Solved [\
+    ("e294", [], NonParametricSort (Identifier "Type"), \
+     QualIdentifier ((Identifier "string", None), [])), false ;\
+    ("e298", [], NonParametricSort (Identifier "Type"), \
+     QualIdentifier ((Identifier "string", None), [])), false ]) \
+      (test_exn response \
+        "sat\n\
+         (error \"line 304 column 15: unsat core is not available\")\n\
+         (model\n\
+           (define-fun e294 () Type\n\
+              string)\n\
+           (define-fun e298 () Type\n\
+              string))")
 *)

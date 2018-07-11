@@ -9,6 +9,6 @@ DEFINE tuple_exercise AS
 DEFINE vector_exercise AS
   FROM tuple_exercise
   SELECT 1st some_tup AS one,
-         1st [one; "two"; "three"] AS eins,
-         2nd [eins; string(5th [6;5;4;3; 2nd(2nd(some_vec)) ]); "drei"] AS zwei,
+         get(0, [one; "two"; "three"]) AS eins,
+         get(1, [eins; string( get(4, [6;5;4;3; 2nd(get(1, some_vec)) ]) ); "drei"]) AS zwei,
          get(u8(zwei), [eins; zwei; "drei"]) AS drei

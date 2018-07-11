@@ -114,7 +114,7 @@ type stateless_fun2 =
   | BitAnd
   | BitOr
   | BitXor
-  (* Same as Nth but only for vectors (accepts non constant index, and
+  (* Same as Nth but only for vectors/lists (accepts non constant index, and
    * indices start at 0) *)
   | VecGet
   (* For network address range test membership, or for an efficient constant
