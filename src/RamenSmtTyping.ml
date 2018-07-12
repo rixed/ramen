@@ -88,20 +88,40 @@ let rec emit_id_eq_typ declare id oc = function
       Printf.fprintf oc "(and ((_ is list) %s) %a)"
         id (emit_id_eq_typ declare id') t.structure
 
-let emit_assert_id_eq_typ declare id oc t =
-  Printf.fprintf oc "(assert %a)\n" (emit_id_eq_typ declare id) t
+let emit_assert ?name oc p =
+  match name with
+  | None ->
+      Printf.fprintf oc "(assert %t)\n" p
+  | Some name ->
+      Printf.fprintf oc "(assert (! %t :named %s))\n"
+        p name
 
-let emit_assert_id_eq_smt2 id oc smt2 =
-  Printf.fprintf oc "(assert (= %s %s))\n" id smt2
+let emit_assert_id_eq_typ ?name declare id oc t =
+  emit_assert ?name oc (fun oc -> emit_id_eq_typ declare id oc t)
+
+let emit_assert_id_eq_smt2 ?name id oc smt2 =
+  emit_assert ?name oc (fun oc -> Printf.fprintf oc "(= %s %s)" id smt2)
 
 let emit_assert_id_eq_id = emit_assert_id_eq_smt2
 
-let emit_assert_id_eq_any_of_typ declare id oc lst =
-  Printf.fprintf oc "(assert (or %a))\n"
-    (List.print ~first:"" ~last:"" ~sep:" " (emit_id_eq_typ declare id)) lst
+let emit_assert_id_eq_any_of_typ ?name declare id oc lst =
+  emit_assert ?name oc (fun oc ->
+    Printf.fprintf oc "(or %a)"
+      (List.print ~first:"" ~last:"" ~sep:" " (emit_id_eq_typ declare id)) lst)
 
-let emit_assert_id_eq_integer declare oc id =
-  emit_assert_id_eq_any_of_typ declare id oc [ TU8 ; TI8 ]
+let emit_assert_id_eq_integer ?name declare oc id =
+  emit_assert_id_eq_any_of_typ ?name declare id oc [ TU8 ; TI8 ]
+
+(* When annotating an assertion we must always use a unique name, even if we
+ * annotate several times the very same expression. It is important to
+ * name all those expression though, as otherwise there is no guaranty the
+ * solver would choose to fail at the annotated one. Thus this sequence that
+ * we use to uniquify annotations: *)
+let make_name =
+  let seq = ref 0 in
+  fun e tag ->
+    incr seq ;
+    Printf.sprintf "E%d_%s_%d" (typ_of e).uniq_num tag !seq
 
 (* Assuming all input/output/constants have been declared already, emit the
  * constraints connecting the parameter to the result: *)
@@ -109,7 +129,10 @@ let emit_typing_constraints declare out_fields oc e =
   let id = id_of_expr e in
   declare id (Some e) ;
   (* We may already know the type of this expression from typing: *)
-  Option.may (emit_assert_id_eq_typ declare id oc) (typ_of e).scalar_typ ;
+  Option.may (fun t ->
+    let name = make_name e "KNOWNTYPE" in
+    emit_assert_id_eq_typ ~name declare id oc t
+  ) (typ_of e).scalar_typ ;
   (* This will just output the constraint we know from parsing. Those
    * are hard constraints and are not named: *)
   (* But then we also have specific rules according to the operation at hand:
@@ -137,32 +160,41 @@ let emit_typing_constraints declare out_fields oc e =
        * - the resulting type is a vector of that size and type;
        * - if the vector is of length 0, it can have any type *)
       let d = List.length es in
-      Printf.fprintf oc "(assert (= %d (vector-dim %s)))\n" d id ;
+      emit_assert oc (fun oc ->
+        Printf.fprintf oc "(= %d (vector-dim %s))" d id) ;
       (match es with
       | [] -> ()
       | fst :: rest ->
           Printf.fprintf oc "(assert (= %s (vector-type %s)))\n"
             (id_of_expr fst) id ;
-          List.iter (fun e ->
-            emit_assert_id_eq_id (id_of_expr fst) oc (id_of_expr e)
-          ) rest)
+          if rest <> [] then
+            let smt2 =
+              List.fold_left (fun s e ->
+                s ^ " (= "^ id_of_expr fst ^" "^ id_of_expr e ^")"
+              ) "(and" rest ^ ")"
+            and name = make_name e "VECSAMETYPES" in
+            emit_assert_id_eq_smt2 ~name (id_of_expr fst) oc smt2)
   | Case (_, cases, else_) ->
       (* Typing rules:
        * - all conditions must have type bool;
        * - all consequents must have the same type (that of the case);
        * - if present, the else must also have that type. *)
-      List.iter (fun { case_cond = cond ; case_cons = cons } ->
-        emit_assert_id_eq_typ declare (id_of_expr cond) oc TBool ;
-        emit_assert_id_eq_id (id_of_expr cons) oc id
+      List.iteri (fun i { case_cond = cond ; case_cons = cons } ->
+        let name = make_name e ("CASE_COND_"^ string_of_int i ^"_BOOL") in
+        emit_assert_id_eq_typ ~name declare (id_of_expr cond) oc TBool ;
+        let name = make_name e ("CASE_CONS_"^ string_of_int i) in
+        emit_assert_id_eq_id ~name (id_of_expr cons) oc id
       ) cases ;
       Option.may (fun else_ ->
-        emit_assert_id_eq_id (id_of_expr else_) oc id
+        let name = make_name e "CASE_ELSE" in
+        emit_assert_id_eq_id ~name (id_of_expr else_) oc id
       ) else_
   | Coalesce (_, es) ->
       (* Typing rules:
        * - Every alternative must have the same type (that of the case); *)
-      List.iter (fun e ->
-        emit_assert_id_eq_id (id_of_expr e) oc id
+      List.iteri (fun i e ->
+        let name = make_name e ("COALESCE_ALTERNATIVE_"^ string_of_int i) in
+        emit_assert_id_eq_id ~name (id_of_expr e) oc id
       ) es
 
   | StatelessFun0 (_, (Now|Random))
@@ -173,11 +205,13 @@ let emit_typing_constraints declare out_fields oc e =
   | StatefulFun (_, _, (AggrSum e| AggrAvg e))
   | StatelessFun1 (_, (Age|Abs|Minus), e) ->
       (* The only argument must be numeric: *)
-      emit_assert_id_eq_typ declare (id_of_expr e) oc TNum
+      let name = make_name e "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e) oc TNum
   | StatefulFun (_, _, (AggrAnd e | AggrOr e))
   | StatelessFun1 (_, Not, e) ->
       (* The only argument must be boolean: *)
-      emit_assert_id_eq_typ declare (id_of_expr e) oc TBool
+      let name = make_name e "BOOL" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e) oc TBool
   | StatelessFun1 (_, Cast, e) ->
       (* No type restriction on the operand: we might want to forbid some
        * types at some point, for instance strings... Some cast are
@@ -186,45 +220,61 @@ let emit_typing_constraints declare out_fields oc e =
   | StatefulFun (_, _, AggrPercentile (e1, e2))
   | StatelessFun2 (_, (Add|Sub|Mul|Div|IDiv|Pow), e1, e2) ->
       (* e1 and e2 must be numeric: *)
-      emit_assert_id_eq_typ declare (id_of_expr e1) oc TNum ;
-      emit_assert_id_eq_typ declare (id_of_expr e2) oc TNum
+      let name = make_name e1 "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e1) oc TNum ;
+      let name = make_name e2 "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e2) oc TNum
   | StatelessFun2 (_, (Concat|StartsWith|EndsWith), e1, e2)
   | GeneratorFun (_, Split (e1, e2)) ->
       (* e1 and e2 must be strings: *)
-      emit_assert_id_eq_typ declare (id_of_expr e1) oc TString ;
-      emit_assert_id_eq_typ declare (id_of_expr e2) oc TString
+      let name = make_name e1 "STRING" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e1) oc TString ;
+      let name = make_name e2 "STRING" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e2) oc TString
   | StatelessFun2 (_, Strftime, e1, e2) ->
       (* e1 must be a string and e2 a float (ideally, a time): *)
-      emit_assert_id_eq_typ declare (id_of_expr e1) oc TString ;
-      emit_assert_id_eq_typ declare (id_of_expr e2) oc TFloat
+      let name = make_name e1 "STRING" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e1) oc TString ;
+      let name = make_name e2 "FLOAT" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e2) oc TFloat
   | StatelessFun1 (_, (Strptime|Length|Lower|Upper), e)
   | StatelessFunMisc (_, Like (e, _)) ->
       (* e must be a string: *)
-      emit_assert_id_eq_typ declare (id_of_expr e) oc TString
+      let name = make_name e "STRING" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e) oc TString
   | StatelessFun2 (_, Mod, e1, e2)
   | StatelessFun2 (_, (BitAnd|BitOr|BitXor), e1, e2) ->
       (* e1 and e2 must be any integer: *)
-      emit_assert_id_eq_integer declare oc (id_of_expr e1) ;
-      emit_assert_id_eq_integer declare oc (id_of_expr e2)
+      let name = make_name e1 "INTEGER" in
+      emit_assert_id_eq_integer ~name declare oc (id_of_expr e1) ;
+      let name = make_name e2 "INTEGER" in
+      emit_assert_id_eq_integer ~name declare oc (id_of_expr e2)
   | StatelessFun2 (_, (Ge|Gt), e1, e2) ->
       (* e1 and e2 must have the same type, and be either strings, numeric,
        * IP or CIDR: *)
-      emit_assert_id_eq_id (id_of_expr e1) oc (id_of_expr e2) ;
-      emit_assert_id_eq_any_of_typ declare (id_of_expr e1) oc
+      let name = make_name e "SAME" in
+      emit_assert_id_eq_id ~name (id_of_expr e1) oc (id_of_expr e2) ;
+      let name = make_name e "COMPARABLE" in
+      emit_assert_id_eq_any_of_typ ~name declare (id_of_expr e1) oc
         [ TString ; TNum ; TIp ; TCidr ]
   | StatelessFun2 (_, Eq, e1, e2) ->
       (* e1 and e2 must have the same type *)
-      emit_assert_id_eq_id (id_of_expr e1) oc (id_of_expr e2)
+      let name = make_name e "SAME" in
+      emit_assert_id_eq_id ~name (id_of_expr e1) oc (id_of_expr e2)
   | StatelessFun2 (_, (And|Or), e1, e2) ->
       (* e1 and e2 must be booleans. *)
-      emit_assert_id_eq_typ declare (id_of_expr e1) oc TBool ;
-      emit_assert_id_eq_typ declare (id_of_expr e2) oc TBool
+      let name = make_name e1 "BOOL" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e1) oc TBool ;
+      let name = make_name e2 "BOOL" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e2) oc TBool
   | StatelessFun1 (_, Nth n, e) ->
       (* Nth is only for tuples *)
       let id' = id_of_expr e ^"_"^ string_of_int n in
       declare id' None ;
-      Printf.fprintf oc "(assert (= %s %s))\n" id' id ;
-      Printf.fprintf oc "(assert ((_ is tuple) %s))\n" (id_of_expr e) ;
+      emit_assert_id_eq_id id' oc id ;
+      let name = make_name e "TUPLE" in
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc "((_ is tuple) %s" (id_of_expr e)) ;
       (* Is it guaranteed that then tuple-dim chosen by the solver is the
        * smallest possible? And even so, what to do with that info? *)
       Printf.fprintf oc "(assert (> (tuple-dim %s) %d))\n" (id_of_expr e) n
@@ -236,26 +286,31 @@ let emit_typing_constraints declare out_fields oc e =
        * - if e is a vector and n is a constant, then n must
        *   be less than its length;
        * - the resulting type is the same as the selected type. *)
-      emit_assert_id_eq_typ declare (id_of_expr n) oc TU32 ;
+      let name = make_name n "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr n) oc TU32 ;
+      let name = make_name e "GETTABLE" in
       (match int_of_const n with
       | None ->
-          Printf.fprintf oc "(assert (let ((tmp %s)) \
-                               (or (and ((_ is vector) tmp) \
-                                        (= (vector-type tmp) %s))\n\
-                                   (and ((_ is list) tmp) \
-                                        (= (list-type tmp) %s)))))\n"
-            (id_of_expr e) id id
+          emit_assert ~name oc (fun oc ->
+            Printf.fprintf oc "(let ((tmp %s)) \
+                                 (or (and ((_ is vector) tmp) \
+                                          (= (vector-type tmp) %s))\n\
+                                     (and ((_ is list) tmp) \
+                                          (= (list-type tmp) %s))))"
+              (id_of_expr e) id id)
       | Some n ->
-          Printf.fprintf oc "(assert (let ((tmp %s)) \
-                               (or (and ((_ is vector) tmp) \
-                                        (> (vector-dim tmp) %d)
-                                        (= (vector-type tmp) %s))
-                                   (and ((_ is list) tmp) \
-                                        (= (list-type tmp) %s)))))\n"
-            (id_of_expr e) n id id)
+          emit_assert ~name oc (fun oc ->
+            Printf.fprintf oc "(let ((tmp %s)) \
+                                 (or (and ((_ is vector) tmp) \
+                                          (> (vector-dim tmp) %d)
+                                          (= (vector-type tmp) %s))
+                                     (and ((_ is list) tmp) \
+                                          (= (list-type tmp) %s))))"
+              (id_of_expr e) n id id))
   | StatelessFun1 (_, (BeginOfRange|EndOfRange), e) ->
       (* e is any kind of cidr *)
-      emit_assert_id_eq_typ declare (id_of_expr e) oc TCidr
+      let name = make_name e "CIDR" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e) oc TCidr
   | StatelessFunMisc (_, (Min es | Max es)) ->
       (* Typing rules:
        * - es must be list of expressions of the same type (that of the
@@ -265,7 +320,9 @@ let emit_typing_constraints declare out_fields oc e =
       List.iter (fun e ->
         emit_assert_id_eq_id (id_of_expr e) oc id
       ) es ;
-      emit_assert_id_eq_any_of_typ declare id oc [ TFloat ; TString ; TIp ; TCidr ]
+      let name = make_name e "COMPARABLE" in
+      emit_assert_id_eq_any_of_typ ~name declare id oc
+        [ TFloat ; TString ; TIp ; TCidr ]
   | StatelessFunMisc (_, Print es) ->
       (* The result must have the same type as the first parameter *)
       emit_assert_id_eq_id (id_of_expr (List.hd es)) oc id
@@ -273,7 +330,8 @@ let emit_typing_constraints declare out_fields oc e =
       (* Typing rules:
        * - e1 must be an unsigned;
        * - e2 has same type as the result. *)
-      emit_assert_id_eq_typ declare (id_of_expr e1) oc TU32 ;
+      let name = make_name e1 "INTEGER" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e1) oc TU32 ;
       emit_assert_id_eq_id (id_of_expr e2) oc id
   | StatefulFun (_, _, MovingAvg (e1, e2, e3))
   | StatefulFun (_, _, LinReg (e1, e2, e3)) ->
@@ -281,17 +339,24 @@ let emit_typing_constraints declare out_fields oc e =
        * - e1 must be an unsigned (the period);
        * - e2 must also be an unsigned (the number of values to average);
        * - e3 must be numeric. *)
-      emit_assert_id_eq_typ declare (id_of_expr e1) oc TU32 ;
-      emit_assert_id_eq_typ declare (id_of_expr e2) oc TU32 ;
-      emit_assert_id_eq_typ declare (id_of_expr e3) oc TNum
+      let name = make_name e1 "INTEGER" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e1) oc TU32 ;
+      let name = make_name e2 "INTEGER" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e2) oc TU32 ;
+      let name = make_name e3 "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e3) oc TNum
   | StatefulFun (_, _, MultiLinReg (e1, e2, e3, e4s)) ->
-      (* As above, with the addition of predictors that must also be numeric.
-       *)
-      emit_assert_id_eq_typ declare (id_of_expr e1) oc TU32 ;
-      emit_assert_id_eq_typ declare (id_of_expr e2) oc TU32 ;
-      emit_assert_id_eq_typ declare (id_of_expr e3) oc TNum ;
+      (* As above, with the addition of predictors that must also be
+       * numeric. *)
+      let name = make_name e1 "INTEGER" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e1) oc TU32 ;
+      let name = make_name e2 "INTEGER" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e2) oc TU32 ;
+      let name = make_name e3 "INTEGER" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e3) oc TNum ;
       List.iter (fun e ->
-        emit_assert_id_eq_typ declare (id_of_expr e) oc TNum
+        let name = make_name e "NUMERIC" in
+        emit_assert_id_eq_typ ~name declare (id_of_expr e) oc TNum
       ) e4s
   | StatefulFun (_, _, ExpSmooth (e1, e2)) ->
       (* Typing rules:
@@ -299,16 +364,21 @@ let emit_typing_constraints declare out_fields oc e =
        *   for a numeric in order to also accept immediate values parsed as
        *   integers, and integer fields;
        * - e2 must be numeric *)
-      emit_assert_id_eq_typ declare (id_of_expr e1) oc TNum ;
-      emit_assert_id_eq_typ declare (id_of_expr e2) oc TNum
+      let name = make_name e1 "FLOAT" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e1) oc TNum ;
+      let name = make_name e2 "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e2) oc TNum
   | StatelessFun1 (_, (Exp|Log|Log10|Sqrt|Floor|Ceil|Round), e) ->
       (* e must be numeric *)
-      emit_assert_id_eq_typ declare (id_of_expr e) oc TNum
+      let name = make_name e "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e) oc TNum
   | StatelessFun1 (_, Hash, e) ->
-      (* e can be absolutely anything *) ()
+      (* e can be anything *) ()
   | StatelessFun1 (_, Sparkline, e) ->
       (* e must be a vector of numerics *)
-      emit_assert_id_eq_typ declare (id_of_expr e) oc (TVec (0, { structure = TNum ; nullable = Some false }))
+      let name = make_name e "NUMERIC_VEC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e) oc
+        (TVec (0, { structure = TNum ; nullable = Some false }))
   | StatefulFun (_, _, Remember (fpr, tim, dur, _es)) ->
       (* Typing rules:
        * - fpr must be a (positive) float, so we take any numeric for now;
@@ -316,30 +386,39 @@ let emit_typing_constraints declare out_fields oc e =
        *   integer (so that a int field is OK);
        * - dur must be a duration, so a numeric again;
        * - expressions in es can be anything at all. *)
-      emit_assert_id_eq_typ declare (id_of_expr fpr) oc TNum ;
-      emit_assert_id_eq_typ declare (id_of_expr tim) oc TNum ;
-      emit_assert_id_eq_typ declare (id_of_expr dur) oc TNum
+      let name = make_name fpr "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr fpr) oc TNum ;
+      let name = make_name tim "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr tim) oc TNum ;
+      let name = make_name dur "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr dur) oc TNum
   | StatefulFun (_, _, Distinct _es) ->
       (* the es can be anything *) ()
   | StatefulFun (_, _, Hysteresis (meas, accept, max)) ->
       (* meas, accept and max must be numeric. *)
-      emit_assert_id_eq_typ declare (id_of_expr meas) oc TNum ;
-      emit_assert_id_eq_typ declare (id_of_expr accept) oc TNum ;
-      emit_assert_id_eq_typ declare (id_of_expr max) oc TNum
+      let name = make_name meas "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr meas) oc TNum ;
+      let name = make_name accept "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr accept) oc TNum ;
+      let name = make_name max "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr max) oc TNum
   | StatefulFun (_, _, Top { want_rank ; what ; by ; n ; duration ; time }) ->
       (* Typing rules:
        * - what can be anything;
        * - by must be numeric;
        * - time must be a time (numeric). *)
-      emit_assert_id_eq_typ declare (id_of_expr by) oc TNum ;
-      emit_assert_id_eq_typ declare (id_of_expr time) oc TNum
+      let name = make_name by "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr by) oc TNum ;
+      let name = make_name time "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr time) oc TNum
   | StatefulFun (_, _, Last (n, e, es)) ->
       (* The type of the return is a list of the type of e. *)
       let smt2 = Printf.sprintf "(list %s)" (id_of_expr e) in
       emit_assert_id_eq_smt2 id oc smt2
   | StatefulFun (_, _, AggrHistogram (e, _, _, _)) ->
       (* e must be numeric *)
-      emit_assert_id_eq_typ declare (id_of_expr e) oc TNum
+      let name = make_name e "NUMERIC" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr e) oc TNum
   | StatelessFun2 (_, In, e1, e2) ->
       (* Typing rule:
        * - e2 can be a string, a cidr, a list or a vector;
@@ -347,17 +426,19 @@ let emit_typing_constraints declare out_fields oc e =
        * - if e2 is a cidr, then e1 must be an ip;
        * - if e2 is either a list of a vector, then e1 must have the type
        *   of the elements of this list or vector. *)
-      Printf.fprintf oc
-        "(assert (or (and (= string %s) (= string %s)) \
-                     (and (= cidr %s) (= ip %s)) \
-                     (and ((_ is list) %s) (= (list-type %s) %s)) \
-                     (and ((_ is vector) %s) (= (vector-type %s) %s))))"
+      let name = make_name e2 "IN" in
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc
+        "(or (and (= string %s) (= string %s)) \
+             (and (= cidr %s) (= ip %s)) \
+             (and ((_ is list) %s) (= (list-type %s) %s)) \
+             (and ((_ is vector) %s) (= (vector-type %s) %s)))"
           (id_of_expr e2) (id_of_expr e1)
           (id_of_expr e2) (id_of_expr e1)
           (id_of_expr e2) (id_of_expr e2) (id_of_expr e1)
-          (id_of_expr e2) (id_of_expr e2) (id_of_expr e1)
+          (id_of_expr e2) (id_of_expr e2) (id_of_expr e1))
 
-let emit_operation declare oc func =
+let emit_operation declare fi oc func =
   let open RamenOperation in
   (* Sometime we just know the types (CSV, Instrumentation, Protocols...): *)
   let op = Option.get func.Func.operation in
@@ -386,12 +467,15 @@ let emit_operation declare oc func =
        * - where must be a bool;
        * - commit-when must also be a bool;
        * - flush_how conditions must also be bools. *)
-      emit_assert_id_eq_typ declare (id_of_expr where) oc TBool ;
-      emit_assert_id_eq_typ declare (id_of_expr commit_when) oc TBool ;
+      let name = "F"^ string_of_int fi ^"_WHERE" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr where) oc TBool ;
+      let name = "F"^ string_of_int fi ^"_COMMIT" in
+      emit_assert_id_eq_typ ~name declare (id_of_expr commit_when) oc TBool ;
       (match flush_how with
       | Reset | Never | Slide _ -> ()
       | RemoveAll e | KeepOnly e ->
-          emit_assert_id_eq_typ declare (id_of_expr e) oc TBool)
+          let name = "F"^ string_of_int fi ^"_FLUSH" in
+          emit_assert_id_eq_typ ~name declare (id_of_expr e) oc TBool)
 
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     set_well_known_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields)
@@ -404,10 +488,10 @@ let emit_operation declare oc func =
 
 let emit_program declare oc funcs =
   (* Output all the constraints for all the operations: *)
-  List.iter (fun func ->
+  List.iteri (fun i func ->
     Printf.fprintf oc "\n; Constraints for function %s\n"
       (RamenName.string_of_func func.Func.name) ;
-    emit_operation declare oc func
+    emit_operation declare i oc func
   ) funcs
 
 type id_or_type = Id of string | FieldType of RamenTuple.field_typ
@@ -617,6 +701,7 @@ let set_all_types conf parents funcs params =
                             RamenSmtParser.print_response) e |>
             failwith
         | Ok (RamenSmtParser.Unsolved syms, _) ->
+            !logger.error "Solver output:\n%s" output ;
             (* TODO: a better error message *)
             Printf.sprintf2 "Cannot solve typing constraints %a"
               (List.print String.print) syms |>
