@@ -16,6 +16,18 @@ module C = RamenConf
 module F = RamenConf.Func
 module P = RamenConf.Program
 
+open Binocle
+
+(* TODO: Binocle should allow to persist the metrics on disk somewhere,
+ * with a tool to display them. *)
+let stats_typing_time =
+  Histogram.make RamenConsts.MetricNames.compiler_typing_time
+    "Time spent timing ramen programs, per typer" Histogram.powers_of_two
+
+let stats_typing_count =
+  IntCounter.make RamenConsts.MetricNames.compiler_typing_count
+    "How many times a typer have failed"
+
 let entry_point_name = "start"
 
 let compile conf root_path program_name program_code =
@@ -116,30 +128,44 @@ let compile conf root_path program_name program_code =
       Hashtbl.add compiler_parents parsed_func.RamenProgram.name
     ) parsed_funcs ;
     (* Finally, call the typer: *)
+    let call_typer typer_name typer =
+      measure_time (fun () ->
+        try typer () ;
+            IntCounter.add ~labels:["typer", typer_name ;
+                                    "status", "ok"] stats_typing_count 1
+        with exn ->
+          IntCounter.add ~labels:["typer", typer_name ;
+                                  "status", "ko"] stats_typing_count 1 ;
+          raise exn) () |>
+      Histogram.add stats_typing_time ~labels:["typer", typer_name] in
     RamenExperiments.(specialize conf.persist_dir typer_choice [|
       (fun () ->
         (* Type with the handcrafted typer: *)
-        RamenTyping.set_all_types
-          conf compiler_parents compiler_funcs parsed_params) ;
+        call_typer "handcrafted" (fun () ->
+          RamenTyping.set_all_types conf compiler_parents
+                                    compiler_funcs parsed_params)) ;
       (fun () ->
         (* TEST: try the SMT-based typer and compare with handcrafted one: *)
         (try
           let copy_funcs =
             Hashtbl.values compiler_funcs /@
             RamenTypingHelpers.Func.copy |> List.of_enum in
-          RamenSmtTyping.set_all_types
-            conf compiler_parents copy_funcs parsed_params
+          call_typer "smt" (fun () ->
+            RamenSmtTyping.set_all_types conf compiler_parents copy_funcs
+                                         parsed_params)
         with exn ->
           !logger.error "Cannot test the external typer: %s\n%s"
             (Printexc.to_string exn)
             (Printexc.get_backtrace ())) ;
-        RamenTyping.set_all_types
-          conf compiler_parents compiler_funcs parsed_params) ;
+        call_typer "handcrafted" (fun () ->
+          RamenTyping.set_all_types conf compiler_parents
+                                    compiler_funcs parsed_params)) ;
       (fun () ->
         (* Type using the external solver: *)
         let funcs = Hashtbl.values compiler_funcs |> List.of_enum in
-        RamenSmtTyping.set_all_types
-          conf compiler_parents funcs parsed_params) |]) ;
+        call_typer "smt" (fun () ->
+          RamenSmtTyping.set_all_types conf compiler_parents funcs
+                                       parsed_params)) |]) ;
     (*
      * Now the (OCaml) code can be generated and compiled.
      *

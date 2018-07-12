@@ -46,6 +46,10 @@ struct
   (* Metrics reported by the HTTP server: *)
   let requests_count = "http_requests_count"
   let http_resp_time = "http_resp_time"
+
+  (* Metrics reported by the compiler: *)
+  let compiler_typing_time = "compiler_typing_time"
+  let compiler_typing_count = "compiler_typing_count"
 end
 
 module CliInfo =
