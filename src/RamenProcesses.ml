@@ -243,9 +243,7 @@ let check_is_subtype t1 t2 =
         failwith ("Field "^ f1.typ_name ^" is missing")
     | f2 ->
         if f1.typ <> f2.typ then
-          failwith ("Fields "^ f1.typ_name ^" have not the same type") ;
-        if f1.nullable <> f2.nullable then
-          failwith ("Fields "^ f1.typ_name ^" differs with regard to NULLs")
+          failwith ("Fields "^ f1.typ_name ^" have not the same type")
   ) t1
 
 (* Returns the running parents and children of a func: *)

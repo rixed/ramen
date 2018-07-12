@@ -74,19 +74,19 @@ let rec emit_id_eq_typ declare id oc = function
           let id' = id ^"_"^ string_of_int i in
           declare id' None ;
           Printf.fprintf oc " " ;
-          emit_id_eq_typ declare id' oc ts.(i)
+          emit_id_eq_typ declare id' oc ts.(i).structure
         done ;
         Printf.fprintf oc ")")
   | TVec (d, t) ->
       let id' = Printf.sprintf "(vector-type %s)" id in
       Printf.fprintf oc "(and ((_ is vector) %s) %a"
-        id (emit_id_eq_typ declare id') t ;
+        id (emit_id_eq_typ declare id') t.structure ;
       if d <> 0 then Printf.fprintf oc " (= %d (vector-dim %s))" d id ;
       Printf.fprintf oc ")"
   | TList t ->
       let id' = Printf.sprintf "(list-type %s)" id in
       Printf.fprintf oc "(and ((_ is list) %s) %a)"
-        id (emit_id_eq_typ declare id') t
+        id (emit_id_eq_typ declare id') t.structure
 
 let emit_assert_id_eq_typ declare id oc t =
   Printf.fprintf oc "(assert %a)\n" (emit_id_eq_typ declare id) t
@@ -308,7 +308,7 @@ let emit_typing_constraints declare out_fields oc e =
       (* e can be absolutely anything *) ()
   | StatelessFun1 (_, Sparkline, e) ->
       (* e must be a vector of numerics *)
-      emit_assert_id_eq_typ declare (id_of_expr e) oc (TVec (0, TNum))
+      emit_assert_id_eq_typ declare (id_of_expr e) oc (TVec (0, { structure = TNum ; nullable = Some false }))
   | StatefulFun (_, _, Remember (fpr, tim, dur, _es)) ->
       (* Typing rules:
        * - fpr must be a (positive) float, so we take any numeric for now;
@@ -372,7 +372,7 @@ let emit_operation declare oc func =
       t.RamenTypingHelpers.fields <-
         List.map (fun ft ->
           ft.RamenTuple.typ_name,
-          make_typ ~nullable:ft.nullable ~typ:ft.typ ft.typ_name
+          make_typ ?nullable:ft.typ.nullable ~typ:ft.typ.structure ft.typ_name
         ) typ ;
       t.finished_typing <- true in
     set_to in_type ; set_to out_type
@@ -442,8 +442,8 @@ let type_input_fields conf oc parents params funcs =
                   (RamenName.string_of_func func.Func.name) field_name |>
                 failwith
             | param ->
-                field_typ.nullable <- Some param.ptyp.nullable ;
-                field_typ.scalar_typ <- Some param.ptyp.typ
+                field_typ.nullable <- param.ptyp.typ.nullable ;
+                field_typ.scalar_typ <- Some param.ptyp.typ.structure
           ) else if !tupref = TupleEnv then (
             field_typ.nullable <- Some true ;
             field_typ.scalar_typ <- Some TString
@@ -498,8 +498,8 @@ let type_input_fields conf oc parents params funcs =
                     field_name |>
                   failwith
             | Some t ->
-                field_typ.nullable <- Some t.RamenTuple.nullable ;
-                field_typ.scalar_typ <- Some t.RamenTuple.typ) ;
+                field_typ.nullable <- t.RamenTuple.typ.nullable ;
+                field_typ.scalar_typ <- Some t.RamenTuple.typ.structure) ;
             List.iter (emit_assert_id_eq_id (id_of_expr expr) oc) same_as_ids
           )
       | _ -> ()
@@ -518,7 +518,7 @@ let set_all_types conf parents funcs params =
    * types are compatible, op by op (here, we would check that "f" is either
    * a unsigned or a signed or a float and 1 either a float or unsigned or
    * signed, or f is a list of some type compatible with... This definition
-   * is recursive, which is rather annoying for the solver.
+   * is recursive, which is rather annoying for the solver).
    *
    * As a first pass, we could merely check the structure of the types
    * (numeric, bools, strings, lists, tuples and vectors).

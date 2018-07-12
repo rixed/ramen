@@ -1161,11 +1161,11 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
-                        { typ_name = "f2" ; nullable = false ; typ = TI32 } ] } ;\
+                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = Some true } } ;\
+                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } } ] } ;\
                     factors = [] },\
-      (52, [])))\
-      (test_op p "read file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
+      (44, [])))\
+      (test_op p "read file \"/tmp/toto.csv\" (f1 bool?, f2 i32)")
 
     (Ok (\
       ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = true } ; \
@@ -1173,11 +1173,11 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
-                        { typ_name = "f2" ; nullable = false ; typ = TI32 } ] } ;\
+                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = Some true } } ;\
+                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } } ] } ;\
                     factors = [] },\
-      (63, [])))\
-      (test_op p "read and delete file \"/tmp/toto.csv\" (f1 bool, f2 i32 not null)")
+      (55, [])))\
+      (test_op p "read and delete file \"/tmp/toto.csv\" (f1 bool?, f2 i32)")
 
     (Ok (\
       ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = false } ; \
@@ -1185,13 +1185,13 @@ struct
                     what = { \
                       separator = "\t" ; null = "<NULL>" ; \
                       fields = [ \
-                        { typ_name = "f1" ; nullable = true ; typ = TBool } ;\
-                        { typ_name = "f2" ; nullable = false ; typ = TI32 } ] } ;\
+                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = Some true } } ;\
+                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } } ] } ;\
                     factors = [] },\
-      (81, [])))\
+      (73, [])))\
       (test_op p "read file \"/tmp/toto.csv\" \\
                       separator \"\\t\" null \"<NULL>\" \\
-                      (f1 bool, f2 i32 not null)")
+                      (f1 bool?, f2 i32)")
 
     (Ok (\
       Aggregate {\

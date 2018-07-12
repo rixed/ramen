@@ -20,14 +20,15 @@ type typ =
   { mutable expr_name : string ;
     uniq_num : int ; (* to build var names, record field names or identify SAT variables *)
     mutable nullable : bool option ;
-    mutable scalar_typ : RamenTypes.typ option }
+    (* TODO: rename scalar_typ to structure: *)
+    mutable scalar_typ : RamenTypes.structure option }
 
 let print_typ fmt typ =
   Printf.fprintf fmt "%s of %s%s"
     typ.expr_name
     (match typ.scalar_typ with
     | None -> "unknown type"
-    | Some typ -> "type "^ IO.to_string RamenTypes.print_typ typ)
+    | Some s -> "type "^ IO.to_string RamenTypes.print_structure s)
     (match typ.nullable with
     | None -> ", maybe nullable"
     | Some true -> ", nullable"
@@ -349,7 +350,7 @@ let rec print with_types fmt =
     Printf.fprintf fmt "random" ; add_types t
   | StatelessFun1 (t, Cast, e) ->
     Printf.fprintf fmt "cast(%a, %a)"
-      RamenTypes.print_typ (Option.get t.scalar_typ) (print with_types) e ;
+      RamenTypes.print_structure (Option.get t.scalar_typ) (print with_types) e ;
     add_types t
   | StatelessFun1 (t, Length, e) ->
     Printf.fprintf fmt "length (%a)" (print with_types) e ; add_types t
@@ -844,11 +845,14 @@ struct
   (* Single things *)
   let const m =
     let m = "constant" :: m in
-    (RamenTypes.Parser.scalar ~min_int_width:32 ++
-     optional ~def:false (
-       char ~case_sensitive:false 'n' >>: fun _ -> true) >>:
-     fun (c, nullable) ->
-       Const (make_typ ~nullable ~typ:(RamenTypes.type_of c) "constant", c)) m
+    (
+      RamenTypes.Parser.scalar ~min_int_width:32 ++
+       optional ~def:false (
+         char ~case_sensitive:false 'n' >>: fun _ -> true) >>:
+       fun (c, nullable) ->
+         Const (make_typ ~nullable ~typ:(RamenTypes.structure_of c)
+          "constant", c)
+    ) m
   (*$= const & ~printer:(test_printer (print false))
     (Ok (Const (typ, VBool true), (4, [])))\
       (test_p const "true" |> replace_typ_in_expr)
@@ -871,10 +875,9 @@ struct
     ) m
 
   let null m =
-    let m = "NULL" :: m in
-    (strinG "null" >>: fun () ->
+    (RamenTypes.Parser.null >>: fun v ->
       (* Type of "NULL" is unknown yet *)
-      Const (make_typ ~nullable:true "NULL", VNull)
+      Const (make_typ ~nullable:true "NULL", v)
     ) m
 
   let field m =
@@ -1234,7 +1237,12 @@ struct
         | Some min, Some max, Some nb_buckets ->
             if nb_buckets <= 0 then
               raise (Reject "Histogram size must be positive") ;
-            let typ = RamenTypes.(TVec (nb_buckets+2, TU32)) in
+            let typ =
+              (* If a value is null, the whole histogram will be null. If we
+               * have an histogram at all then each bucket is a non-null
+               * u32: *)
+              RamenTypes.(TVec (nb_buckets+2, { structure = TU32 ;
+                                                nullable = Some false })) in
             StatefulFun (make_typ "histogram" ~typ,
                          g, AggrHistogram (what, min, max, nb_buckets))
         | _ -> raise (Reject "histogram dimensions must be constants")) |||
@@ -1267,8 +1275,9 @@ struct
     let m = "cast" :: m in
     let sep = check (char '(') ||| blanks in
     (RamenTypes.Parser.scalar_typ +- sep ++
-     highestest_prec >>: fun (typ, e) ->
-       StatelessFun1 (make_typ ~typ ("cast to "^ IO.to_string RamenTypes.print_typ typ), Cast, e)
+     highestest_prec >>: fun (t, e) ->
+       StatelessFun1 (make_typ ~typ:t.structure ?nullable:t.nullable
+        ("cast to "^ IO.to_string RamenTypes.print_typ t), Cast, e)
     ) m
 
   and k_moveavg m =
@@ -1278,7 +1287,9 @@ struct
      (strinG "-moveavg" ||| strinG "-ma") ++
      optional ~def:GlobalState (blanks -+ state_lifespan) +-
      sep ++ highestest_prec >>: fun ((k, g), e) ->
-       let k = Const (make_typ ~nullable:false ~typ:(RamenTypes.type_of k)
+       if k = VNull then raise (Reject "Cannot use NULL here") ;
+       let k = Const (make_typ ~nullable:false
+                               ~typ:(RamenTypes.structure_of k)
                                "moving average order", k) in
        StatefulFun (make_float_typ "moveavg", g, MovingAvg (expr_one, k, e))) m
 
@@ -1401,7 +1412,9 @@ struct
       opt_blanks +- char ')' >>: fun es ->
         let nb_items = List.length es in
         assert (nb_items >= 2) ;
-        let typ = RamenTypes.(TTuple (Array.create nb_items TAny)) in
+        let typ =
+          RamenTypes.(TTuple (Array.init nb_items (fun i ->
+            { structure = TAny ; nullable = None }))) in
         (* Even if all the fields are null the tuple is not null.
          * No immediate tuple can be null. *)
         Tuple (make_typ ~nullable:false ~typ "tuple", es)
@@ -1416,7 +1429,9 @@ struct
       opt_blanks +- char ']' >>: fun es ->
         let nb_items = List.length es in
         assert (nb_items >= 1) ;
-        let typ = RamenTypes.(TVec (nb_items, TAny)) in
+        let typ =
+          RamenTypes.(TVec (nb_items, { structure = TAny ;
+                                        nullable = None })) in
         Vector (make_typ ~nullable:false ~typ "vector", es)
     ) m
 

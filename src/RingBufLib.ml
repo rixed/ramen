@@ -11,13 +11,32 @@ let () =
   Callback.register_exception "ringbuf full exception" NoMoreRoom ;
   Callback.register_exception "ringbuf empty exception" Empty
 
+(* Note regarding nullmask and constructed types:
+ * For list, we cannot know in advance the number of values so the nullmask
+ * size can not be known in advance.
+ * For Vec and Tuples, when given only the value we cannot retrieve the
+ * type in depth, so we cannot serialize a value without being given the
+ * full type.
+ * For all these reasons, structured types will be serialized with their
+ * own nullmask as a prefix. And we will consider all values are nullable
+ * so we do not have to pass the types in practice. That's not a big waste
+ * of space considering how rare it is that we want to serialize a
+ * constructed type. Maybe we should do the same for the whole output
+ * tuple BTW. *)
+
 let nullmask_bytes_of_tuple_type tuple_typ =
   List.fold_left (fun s field_typ ->
-    if not (is_private_field field_typ.RamenTuple.typ_name) &&
-       field_typ.RamenTuple.nullable
-    then s+1 else s) 0 tuple_typ |>
+    if is_private_field field_typ.RamenTuple.typ_name then s
+    else s + (if (Option.get field_typ.RamenTuple.typ.nullable) then 1 else 0)
+  ) 0 tuple_typ |>
   bytes_for_bits |>
   round_up_to_rb_word
+
+let nullmask_sz_of_tuple ts =
+  Array.length ts |> bytes_for_bits |> round_up_to_rb_word
+
+let nullmask_sz_of_vector d =
+  bytes_for_bits d |> round_up_to_rb_word
 
 let sersize_of_string s =
   rb_word_bytes + round_up_to_rb_word (String.length s)
@@ -100,7 +119,10 @@ let rec sersize_of_value = function
 and sersize_of_tuple vs =
   (* Tuples are serialized in field order, unserializer will know which
    * fields are present so there is no need for meta-data: *)
-  Array.fold_left (fun s v -> s + sersize_of_value v) 0 vs
+  (* The bitmask for the null values is stored first (remember that all
+   * values are considered nullable). *)
+  let nullmask_sz = nullmask_sz_of_tuple vs in
+  Array.fold_left (fun s v -> s + sersize_of_value v) nullmask_sz vs
 
 and sersize_of_vector vs =
   (* Vectors are serialized in field order, unserializer will also know
@@ -108,7 +130,8 @@ and sersize_of_vector vs =
   sersize_of_tuple vs
 
 and sersize_of_list vs =
-  (* Lists are prefixed with their number of elements *)
+  (* Lists are prefixed with their number of elements (before the
+   * nullmask): *)
   sersize_of_u32 + sersize_of_tuple vs
 
 let rec write_value tx offs = function
@@ -137,13 +160,19 @@ let rec write_value tx offs = function
   | VList vs -> write_list tx offs vs
   | VNull -> assert false
 
-(* Tuples are serialized as the succession of the values. No meta data
- * required. *)
+(* Tuples are serialized as the succession of the values, after the local
+ * nullmask. *)
 and write_tuple tx offs vs =
-  Array.fold_left (fun sz v ->
-    write_value tx (offs + sz) v ;
-    sz + sersize_of_value v
-  ) 0 vs |>
+  let nullmask_sz = nullmask_sz_of_tuple vs in
+  zero_bytes tx offs nullmask_sz ;
+  let bi = offs * 8 in
+  Array.fold_lefti (fun o i v ->
+    if v = VNull then offs else (
+      set_bit tx (bi + i) ;
+      write_value tx o v ;
+      o + sersize_of_value v
+    )
+  ) (offs + nullmask_sz) vs |>
   ignore
 
 and write_vector tx = write_tuple tx
@@ -152,7 +181,8 @@ and write_list tx offs vs =
   write_u32 tx offs (Array.length vs |> Uint32.of_int) ;
   write_vector tx (offs + sersize_of_u32) vs
 
-let rec read_value tx offs = function
+let rec read_value tx offs structure =
+  match structure with
   | TFloat  -> VFloat (read_float tx offs)
   | TString -> VString (read_string tx offs)
   | TBool   -> VBool (read_bool tx offs)
@@ -178,23 +208,36 @@ let rec read_value tx offs = function
   | TList t -> VList (read_list t tx offs)
   | TNum | TAny -> assert false
 
+and read_constructed_value tx t o bi =
+  let v =
+    if Option.get t.nullable && not (get_bit tx bi) then VNull
+    else read_value tx !o t.structure in
+  o := !o + sersize_of_value v ;
+  v
+
 and read_tuple ts tx offs =
-  let offs = ref offs in
-  Array.map (fun t ->
-    let v = read_value tx !offs t in
-    offs := !offs + sersize_of_value v ;
-    v) ts
+  let nullmask_sz = nullmask_sz_of_tuple ts in
+  let o = ref (offs + nullmask_sz) in
+  let bi = offs * 8 in
+  Array.mapi (fun i t ->
+    read_constructed_value tx t o (bi + i)
+  ) ts
 
 and read_vector d t tx offs =
-  let offs = ref offs in
-  Array.init d (fun _ ->
-    let v = read_value tx !offs t in
-    offs := !offs + sersize_of_value v ;
-    v)
+  let nullmask_sz = nullmask_sz_of_vector d in
+  let bi = offs * 8 in
+  let o = ref (offs + nullmask_sz) in
+  Array.init d (fun i ->
+    read_constructed_value tx t o (bi + i))
 
+(* Lists come with a separate nullmask as a prefix: *)
 and read_list t tx offs =
   let d = read_u32 tx offs |> Uint32.to_int in
-  read_vector d t tx (offs + sersize_of_u32)
+  let bi = (offs + sersize_of_u32) * 8 in
+  let nullmask_sz = nullmask_sz_of_vector d in
+  let o = ref (offs + sersize_of_u32 + nullmask_sz) in
+  Array.init d (fun i ->
+    read_constructed_value tx t o (bi + i))
 
 (* Unless wait_for_more, this will raise Empty when out of data *)
 let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =

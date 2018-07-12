@@ -5,10 +5,10 @@
 -- from another function (`DEFINE t2 AS SELECT f+1 FROM t1`). We do
 -- assign arbitraty types to lone NULL left in the AST so that we can
 -- generate code, but those are garanteed to be unused anyway.
-DEFINE t1 AS SELECT string(NULL) AS ouch;
+DEFINE t1 AS SELECT string?(NULL) AS ouch;
 
 DEFINE t2 AS SELECT COALESCE(NULL, 1) AS ouch;
 
 DEFINE t3 AS SELECT COALESCE(NULL, NULL, "glop") AS ouch;
 
-DEFINE t4 AS SELECT COALESCE(string(NULL), "glop") AS ouch;
+DEFINE t4 AS SELECT COALESCE(string?(NULL), "glop") AS ouch;

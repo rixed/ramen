@@ -2,8 +2,8 @@
 
 DEFINE csv AS
   READ FILE "mixture.csv" (
-    ip ip not null, cidr cidr not null);
+    ip ip, cidr cidr);
 
 DEFINE csv_null AS
   READ FILE "mixture.csv" (
-    ip ip null, cidr cidr null);
+    ip ip?, cidr cidr?);

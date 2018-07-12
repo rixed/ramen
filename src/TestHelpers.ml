@@ -42,8 +42,9 @@ let test_op p s =
   | Ok (res, _) as ok_res ->
     let params =
       [ RamenTuple.{
-          ptyp = { typ_name = "avg_window" ; nullable = false ;
-                   typ = RamenTypes.TI32 } ;
+          ptyp = { typ_name = "avg_window" ;
+                   typ = { structure = RamenTypes.TI32 ;
+                           nullable = Some false } } ;
           value = RamenTypes.VI32 10l }] in
     RamenOperation.check params res ; ok_res
   | x -> x

@@ -110,7 +110,7 @@ let set_scalar_type ?(indent="") ~ok_if_larger ~expr_name typ scalar_typ =
   match typ.Expr.scalar_typ with
   | None ->
     !logger.debug "%s%s: Improving %s from None to %a" indent
-      !cur_func_name expr_name RamenTypes.print_typ scalar_typ ;
+      !cur_func_name expr_name RamenTypes.print_structure scalar_typ ;
     typ.Expr.scalar_typ <- Some scalar_typ ;
     true
   | Some from_typ when from_typ <> scalar_typ ->
@@ -118,16 +118,16 @@ let set_scalar_type ?(indent="") ~ok_if_larger ~expr_name typ scalar_typ =
     then (
       !logger.debug "%s%s: Improving %s from %a to %a" indent
         !cur_func_name expr_name
-        RamenTypes.print_typ from_typ
-        RamenTypes.print_typ scalar_typ ;
+        RamenTypes.print_structure from_typ
+        RamenTypes.print_structure scalar_typ ;
       typ.scalar_typ <- Some scalar_typ ;
       true
     ) else if ok_if_larger then false
     else
       let e = CannotTypeExpression {
         what = expr_name ;
-        expected_type = IO.to_string RamenTypes.print_typ from_typ ;
-        got_type = IO.to_string RamenTypes.print_typ scalar_typ } in
+        expected_type = IO.to_string RamenTypes.print_structure from_typ ;
+        got_type = IO.to_string RamenTypes.print_structure scalar_typ } in
       raise (SyntaxError e)
   | _ -> false
 
@@ -167,8 +167,8 @@ let type_of_parent_field parent tuple_of_field field =
           (* Mimick a untyped_tuple which uniq_num will never be used *)
           Expr.{ expr_name = f.typ_name ;
                  uniq_num = 0 ;
-                 nullable = Some f.nullable ;
-                 scalar_typ = Some f.typ }
+                 nullable = f.typ.nullable ;
+                 scalar_typ = Some f.typ.structure }
         ) else None) user in
   try find_field ()
   with Not_found ->
@@ -201,13 +201,6 @@ let type_of_parents_field parents tuple_of_field field =
     raise (SyntaxError e) ;
   | Some ptyp -> ptyp
 
-let rec is_fully_typed = function
-  | TTuple ts -> Array.for_all is_fully_typed ts
-  | TVec (_, t) -> is_fully_typed t
-  | TList t -> is_fully_typed t
-  | TNum | TAny -> false
-  | _ -> true
-
 (* Get rid of the short-cutting of or expressions: *)
 let (|||) a b = a || b
 
@@ -230,7 +223,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     let sub_typ = typ_of sub_expr in
     !logger.debug "%sChecking operand of (%a), of type (%a) (expected: %a)"
       indent print_typ op_typ print_typ sub_typ
-      (Option.print RamenTypes.print_typ) exp_sub_typ ;
+      (Option.print RamenTypes.print_structure) exp_sub_typ ;
     (* Start by recursing into the sub-expression to know its real type: *)
     let changed = check_expr ~depth ~parents ~in_type ~out_type
                              ~exp_type:sub_typ ~params sub_expr in
@@ -241,8 +234,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       if not (can_enlarge ~from:actual_typ ~to_:exp_sub_typ) then
         let e = CannotTypeExpression {
           what = "Operand of "^ op_typ.expr_name ;
-          expected_type = IO.to_string RamenTypes.print_typ exp_sub_typ ;
-          got_type = IO.to_string RamenTypes.print_typ actual_typ } in
+          expected_type = IO.to_string RamenTypes.print_structure exp_sub_typ ;
+          got_type = IO.to_string RamenTypes.print_structure actual_typ } in
         raise (SyntaxError e)
     | _ -> ()) ;
     (match exp_sub_nullable, sub_typ.nullable with
@@ -261,7 +254,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   let check_operator op_typ actual_typ =
     !logger.debug "%sChecking operator %a, of actual type %a" indent
       print_typ op_typ
-      RamenTypes.print_typ actual_typ ;
+      RamenTypes.print_structure actual_typ ;
     let from = make_typ ~typ:actual_typ op_typ.expr_name in
     let changed = check_expr_type ~indent ~ok_if_larger:false
                                   ~set_null:false ~from ~to_:op_typ in
@@ -283,8 +276,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           | _, None (* already failed *) | None, _ (* failing now *) ->
             changed, false, None, (typ.nullable :: prev_nullables)
           | Some scal, Some lst ->
-            let all_typed = all_typed && is_fully_typed scal in
-            changed, all_typed && scalar_finished_typing scal,
+            let all_typed = all_typed && structure_finished_typing scal in
+            changed, all_typed,
             Some (scal :: lst), (typ.nullable :: prev_nullables)
         ) (false, true, Some [], []) args in
     (* If we have any nullable operands we may want to make the operator
@@ -300,12 +293,14 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* If we have typed all the operands, find out the type of the
      * operator. *)
     !logger.debug "%soperands types: %a, all typed=%b" indent
-      (Option.print (List.print (RamenTypes.print_typ))) types all_typed ;
+      (Option.print (List.print (RamenTypes.print_structure))) types all_typed ;
     match types with
     | Some lst when all_typed ->
       !logger.debug "%sall operands typed, propagating to operator" indent ;
       (* List.fold inverted lst, which would confuse make_op_typ: *)
       let lst = List.rev lst in
+      (* FIXME: make_op_typ should also return nullability, and propagate
+       * itself, instead of all the options to control this propagation. *)
       let actual_op_typ =
         try make_op_typ lst
         with exn ->
@@ -366,7 +361,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     | None | Some (TTuple [||]) ->
         !logger.debug "%sTyping TUPLE: expecting a tuple of %d items"
           indent nb_items ;
-        let typ = TTuple (Array.create nb_items TAny) in
+        let typ =
+          TTuple (Array.init nb_items (fun _ ->
+            { structure = TAny ; nullable = None })) in
         exp_type.scalar_typ <- Some typ ;
         true
     | Some (TTuple ts as exp_tuple) ->
@@ -376,7 +373,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           let e = CannotTypeExpression {
             what = exp_type.expr_name ;
             got_type = IO.to_string (Expr.print true) expr ;
-            expected_type = IO.to_string RamenTypes.print_typ exp_tuple } in
+            expected_type = IO.to_string RamenTypes.print_structure exp_tuple } in
           raise (SyntaxError e)) ;
         let changed =
           List.fold_lefti (fun changed i e ->
@@ -389,21 +386,37 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
               indent i print_typ typ chg ;
             let chg =
               Option.map_default (fun item_typ ->
-                if item_typ = ts.(i) then false else
-                if ts.(i) = TAny || can_enlarge ~from:ts.(i) ~to_:item_typ
+                if item_typ = ts.(i).structure then false else
+                if ts.(i).structure = TAny || can_enlarge ~from:ts.(i).structure ~to_:item_typ
                 then (
                   !logger.debug "%sTyping TUPLE: Improving item %d from %a"
-                    indent i RamenTypes.print_typ ts.(i) ;
-                  ts.(i) <- item_typ ;
+                    indent i RamenTypes.print_structure ts.(i).structure ;
+                  ts.(i) <- { ts.(i) with structure = item_typ } ;
                   true
                 ) else (
                   let e = CannotTypeExpression {
                     what = exp_type.expr_name ^" item "^ string_of_int i ;
-                    expected_type = IO.to_string RamenTypes.print_typ ts.(i) ;
-                    got_type = IO.to_string RamenTypes.print_typ item_typ } in
+                    expected_type = IO.to_string RamenTypes.print_structure ts.(i).structure  ;
+                    got_type = IO.to_string RamenTypes.print_structure item_typ } in
                   raise (SyntaxError e)
                 )
               ) false typ.scalar_typ || chg in
+            let chg =
+              Option.map_default (fun nullable ->
+                match ts.(i).nullable with
+                | None ->
+                    !logger.debug "%sTyping TUPLE: Set item %d to %snullable"
+                      indent i (if nullable then "" else "not ") ;
+                    ts.(i) <- { ts.(i) with nullable = Some nullable } ;
+                    true
+                | Some n ->
+                    if n = nullable then false else
+                    let e = CannotTypeExpression {
+                      what = exp_type.expr_name ^" item "^ string_of_int i ;
+                      expected_type = (if nullable then "" else "not") ^" nullable" ;
+                      got_type = (if n then "" else "not") ^" nullable" } in
+                    raise (SyntaxError e)
+              ) false typ.nullable || chg in
             changed || chg
           ) false es in
         changed
@@ -421,7 +434,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     | None | Some (TVec (0, _)) ->
         !logger.debug "%sTyping VECTOR: expecting a vector of dimension %d"
           indent nb_items ;
-        let typ = TVec (nb_items, TAny) in
+        let typ = TVec (nb_items, { structure = TAny ; nullable = None }) in
         exp_type.scalar_typ <- Some typ ;
         true
     (* TODO: Almost the same process if the exp_type.scalar_typ is
@@ -433,11 +446,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           let e = CannotTypeExpression {
             what = exp_type.expr_name ;
             got_type = IO.to_string (Expr.print true) expr ;
-            expected_type = IO.to_string RamenTypes.print_typ exp_vector
+            expected_type = IO.to_string RamenTypes.print_structure exp_vector
           } in
           raise (SyntaxError e)) ;
-        let changed, largest =
-          List.fold_lefti (fun (changed, largest) i e ->
+        let changed, largest, nullable =
+          List.fold_lefti (fun (changed, largest, nullable) i e ->
             let typ = typ_of e in
             (* Typecheck e *)
             let chg =
@@ -454,31 +467,59 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
                     let e = IncompatibleVecItems {
                       what = exp_type.expr_name ;
                       indice = i ;
-                      typ = IO.to_string RamenTypes.print_typ t2 ;
-                      largest = IO.to_string RamenTypes.print_typ largest
+                      typ = IO.to_string RamenTypes.print_structure t2 ;
+                      largest = IO.to_string RamenTypes.print_structure largest
                     } in
                     raise (SyntaxError e))
               | _ -> None in
-            changed || chg, largest
-          ) (false, Some TAny) es in
+            let nullable =
+              match nullable, typ.nullable with
+              | None, n -> n
+              | n, None -> n
+              | Some n1, Some n2 ->
+                  if n1 = n2 then nullable else
+                  let e = IncompatibleVecItems {
+                    what = exp_type.expr_name ;
+                    indice = i ;
+                    typ = (if n2 then "" else "not") ^" nullable" ;
+                    largest = (if n1 then "" else "not") ^" nullable" } in
+                  raise (SyntaxError e) in
+            changed || chg, largest, nullable
+          ) (false, Some TAny, None) es in
         (* Update expected type with largest: *)
         let changed =
           Option.map_default (fun largest ->
-            if t = largest then false else
-            if t = TAny || can_enlarge ~from:t ~to_:largest
+            if t.structure = largest then false else
+            if t.structure = TAny || can_enlarge ~from:t.structure ~to_:largest
             then (
               !logger.debug "%sTyping VECTOR: Improving vector type from %a"
                 indent RamenTypes.print_typ t ;
-              exp_type.scalar_typ <- Some (TVec (nb_items, largest)) ;
+              exp_type.scalar_typ <- Some (TVec (nb_items, { t with structure = largest })) ;
               true
             ) else (
               let e = CannotTypeExpression {
                 what = exp_type.expr_name ;
                 expected_type = IO.to_string RamenTypes.print_typ t ;
-                got_type = IO.to_string RamenTypes.print_typ largest } in
+                got_type = IO.to_string RamenTypes.print_structure largest } in
               raise (SyntaxError e)
             )
           ) false largest || changed in
+        let changed =
+          Option.map_default (fun nullable ->
+            if t.nullable = Some nullable then false else
+            if t.nullable = None then (
+              !logger.debug "%sTyping VECTOR: Set vector to %snullable"
+                indent (if nullable then "" else "not ") ;
+              exp_type.scalar_typ <- Some (TVec (nb_items, { t with nullable = Some nullable })) ;
+              true
+            ) else (
+              let e = CannotTypeExpression {
+                what = exp_type.expr_name ;
+                expected_type = (if nullable then "" else "not") ^" nullable" ;
+                got_type = (if nullable then "not " else "") ^" nullable" } in
+              raise (SyntaxError e)
+            )
+          ) false nullable || changed in
         changed
     | Some _ ->
         assert false (* should not happen? *))
@@ -578,9 +619,11 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       | param ->
         !logger.debug "%sParameter %s of type %a"
           indent field RamenTypes.print_typ param.ptyp.typ ;
-        set_nullable ~indent op_typ param.ptyp.nullable |||
+        (* We should know the type of the parameter already *)
+        Option.map_default (set_nullable ~indent op_typ) false
+                           param.ptyp.typ.nullable |||
         set_scalar_type ~indent ~ok_if_larger:false ~expr_name:field
-                        op_typ param.ptyp.typ |||
+                        op_typ param.ptyp.typ.structure |||
         (* Then propagate upward: *)
         check_expr_type ~indent ~ok_if_larger:false ~set_null:true
                         ~from:op_typ ~to_:exp_type
@@ -766,7 +809,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | StatefulFun (op_typ, _, AggrPercentile (e1, e2)) ->
     check_op op_typ List.last [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, (Add|Sub|Mul), e1, e2) ->
-    check_op op_typ largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
+    check_op op_typ largest_structure [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, Concat, e1, e2) ->
     check_op op_typ return_string [Some TString, None, e1 ; Some TString, None, e2]
   | StatelessFun2 (op_typ, (StartsWith|EndsWith), e1, e2) ->
@@ -786,9 +829,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* Same as above but always return a float *)
     check_op op_typ return_float [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, IDiv, e1, e2) ->
-    check_op op_typ largest_type [Some TFloat, None, e1 ; Some TFloat, None, e2]
+    check_op op_typ largest_structure [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, Mod, e1, e2) ->
-    check_op op_typ largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
+    check_op op_typ largest_structure [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun1 (op_typ, Length, e) ->
     check_op op_typ return_u16 [Some TString, None, e]
   | StatelessFun1 (op_typ, Lower, e) ->
@@ -813,7 +856,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           raise Exit
         with SyntaxError _ as e ->
           !logger.debug "%sComparison between %s failed with %S"
-            indent (RamenTypes.string_of_typ typ) (Printexc.to_string e)) ;
+            indent (RamenTypes.string_of_structure typ)
+            (Printexc.to_string e)) ;
       (* The last error we got was not super useful: one operand failed to be
        * a CIDR. Instead the real error is that both operands do not agree
        * on types: *)
@@ -824,35 +868,40 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | StatelessFun2 (op_typ, (And|Or), e1, e2) ->
     check_op op_typ return_bool [Some TBool, None, e1 ; Some TBool, None, e2]
   | StatelessFun2 (op_typ, (BitAnd|BitOr|BitXor), e1, e2) ->
-    check_op op_typ largest_type [Some TI128, None, e1 ; Some TI128, None, e2]
+    check_op op_typ largest_structure [Some TI128, None, e1 ; Some TI128, None, e2]
   | StatelessFun1 (op_typ, Nth n, es) ->
     (* Try nth first on a tuple: *)
     (* FIXME: also on lists *)
-    (try check_op op_typ (function
-        | [ TTuple ts ] ->
-            if n < 0 || n >= Array.length ts then
-              raise (SyntaxError (OutOfBounds (n, Array.length ts))) ;
-            ts.(n)
-        | _ -> assert false)
-        [Some (TTuple [||]), None, es]
+    (try check_op op_typ
+        (function
+          | [ TTuple ts ] ->
+              if n < 0 || n >= Array.length ts then
+                raise (SyntaxError (OutOfBounds (n, Array.length ts))) ;
+              ts.(n).structure
+          | _ -> assert false)
+        [ Some (TTuple [||]), None, es ]
      with SyntaxError _ as e ->
       !logger.debug "%snth failed on tuple with %S"
         indent (Printexc.to_string e) ;
       (* Try then on a vector *)
       (* FIXME: for SMT typer, we must not allow Nth on vectors/lists but
        * only on tuples: *)
-      check_op op_typ (function
-        | [ TVec (dim, t) ] ->
-            if n < 0 || n >= dim then
-              raise (SyntaxError (OutOfBounds (n, dim))) ;
-            t
-        | _ -> assert false)
-        [Some (TVec (0, TAny)), None, es])
+      check_op op_typ
+        (function
+          | [ TVec (dim, t) ] ->
+              if n < 0 || n >= dim then
+                raise (SyntaxError (OutOfBounds (n, dim))) ;
+              t.structure
+          | _ -> assert false)
+        [ Some (TVec (0, { structure = TAny ; nullable = None })),
+          None, es ])
   | StatelessFun2 (op_typ, VecGet, n, es) ->
-    check_op op_typ (function
-      | [ _; TVec (dim, t) ] -> t
-      | _ -> assert false)
-      [Some TI32, None, n; Some (TVec (0, TAny)), None, es]
+    check_op op_typ
+      (function
+        | [ _; TVec (dim, t) ] -> t.structure
+        | _ -> assert false)
+      [ Some TI32, None, n ;
+        Some (TVec (0, { structure = TAny ; nullable = None })), None, es ]
 
   | StatelessFun1 (op_typ, (BeginOfRange|EndOfRange), e) ->
     (* Not really bullet-proof in theory since check_op may update the
@@ -868,7 +917,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       [| TFloat ; TString ; TIp ; TCidr |] |>
       Array.iter (fun typ ->
         try
-          ret := check_op op_typ largest_type
+          ret := check_op op_typ largest_structure
                    (List.map (fun e -> Some typ, None, e) es) ;
           raise Exit
         with SyntaxError _ as e ->
@@ -925,7 +974,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | StatelessFun1 (op_typ, Hash, e) ->
     check_op op_typ return_i64 [None, None, e]
   | StatelessFun1 (op_typ, Sparkline, e) ->
-    check_op op_typ return_string [Some (TVec (0, TFloat)), None, e]
+    check_op op_typ return_string
+      [Some (TVec (0, { structure = TFloat ; nullable = Some false })), None, e]
   | GeneratorFun (op_typ, Split (e1, e2)) ->
     check_op op_typ return_string [Some TString, None, e1 ;
                                    Some TString, None, e2]
@@ -972,13 +1022,17 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* TODO: should be a list *)
     let ret_typ lst =
       let typ_e = List.hd lst in
-      TVec (n, typ_e) in
+      (* FIXME: no support for nullable values. Ideally, the type as same
+       * nullability as e. Which we don't know because check_op does not
+       * tell us. TODO: change check_op so that it gives us full type and
+       * we return also the full type. *)
+      TVec (n, { structure = typ_e ; nullable = Some false }) in
     (* In theory, 'Last n e1 by es` should be nullable iff any of the es
      * is nullable, and become and stays null forever as soon as one es
      * is actually NULL. This is kind of useless, so we just disallow
      * ordering by a nullable field. *)
     check_op op_typ ret_typ ~propagate_null:false
-      (* No support for nullable values, see
+      (* FIXME: No support for nullable values, see
        * https://github.com/rixed/ramen/issues/305 *)
       ((None, Some false, e) ::
        List.map (fun e -> None, Some false, e) es)
@@ -992,19 +1046,21 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     let last_exc = ref Exit and ret = ref false in
     (try
       let nop _ _ = false
-      and same_any e1 e2 = match (typ_of e2).scalar_typ |> Option.get with
+      and same_any e1 e2 =
+        match (typ_of e2).scalar_typ |> Option.get with
         | TVec (_, t) ->
             (* t and e1's type must be compatible but can be nullable
              * independently: *)
+            if t.structure = TAny then false (* wait *) else
             check_expr_type ~indent ~ok_if_larger:true ~set_null:false
-                            ~from:(make_typ ~typ:t ~nullable:false "fake")
+                            ~from:(make_typ ~typ:t.structure "fake")
                             ~to_:(typ_of e1)
         | _ -> assert false in
       [ TIpv4, TCidrv4, nop ;
         TIpv6, TCidrv6, nop ;
         TIp, TCidr, nop ;
         TString, TString, nop ;
-        TAny, TVec (0, TAny), same_any ] |>
+        TAny, TVec (0, { structure = TAny ; nullable = None }), same_any ] |>
       List.iter (fun (t1, t2, further_check) ->
         try
           ret := check_op op_typ return_bool
@@ -1013,7 +1069,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           raise Exit
         with SyntaxError _ as e ->
           !logger.debug "%sIN for %a failed with %s"
-            indent RamenTypes.print_typ t2 (Printexc.to_string e) ;
+            indent RamenTypes.print_structure t2 (Printexc.to_string e) ;
           last_exc := e
       ) ;
       raise !last_exc
@@ -1258,9 +1314,10 @@ let check_operation operation parents func params =
       t.fields <-
         List.map (fun ft ->
           ft.RamenTuple.typ_name,
-          Expr.make_typ ~nullable:ft.nullable ~typ:ft.typ ft.typ_name
+          Expr.make_typ ?nullable:ft.typ.nullable ~typ:ft.typ.structure
+                        ft.typ_name
         ) typ ;
-      t.finished_typing <- true in
+      finish_typing t in
     set_to in_type ; set_to out_type
   in
   let open RamenOperation in

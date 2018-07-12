@@ -2,6 +2,6 @@
 
 DEFINE csv AS
   READ FILE "123.csv" (
-    n u8 not null,  -- will be 1, 2, 3
-    b bool not null,  -- true, true, false
-    name string null); -- \"one\", \"two\" and NULL!"
+    n u8,  -- will be 1, 2, 3
+    b bool,  -- true, true, false
+    name string?); -- \"one\", \"two\" and NULL!"

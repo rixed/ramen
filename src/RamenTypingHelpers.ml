@@ -81,8 +81,8 @@ let untyped_tuple_of_tup_typ tup_typ =
   let t = make_untyped_tuple () in
   List.iter (fun f ->
       let expr_typ =
-        Expr.make_typ ~nullable:f.RamenTuple.nullable
-                           ~typ:f.typ f.typ_name in
+        Expr.make_typ ?nullable:f.RamenTuple.typ.nullable
+                           ~typ:f.typ.structure f.typ_name in
       t.fields <- t.fields @ [f.typ_name, expr_typ]
     ) tup_typ ;
   finish_typing t ;
@@ -95,10 +95,12 @@ let untyped_tuple_of_tuple_type = function
 let tup_typ_of_untyped_tuple ttt =
   assert ttt.finished_typing ;
   List.map (fun (name, typ) ->
+    assert (typ.Expr.nullable <> None) ;
     RamenTuple.{
       typ_name = name ;
-      nullable = Option.get typ.Expr.nullable ;
-      typ = Option.get typ.Expr.scalar_typ }) ttt.fields
+      typ = { structure = Option.get typ.Expr.scalar_typ ;
+              nullable = typ.Expr.nullable } }
+  ) ttt.fields
 
 module Func =
 struct
@@ -177,11 +179,18 @@ let make_typed_func program_name rcf =
     factors = rcf.F.factors ;
     envvars = rcf.F.envvars }
 
-(* FIXME: what's the difference with is_fully_typed? *)
-let scalar_finished_typing = function
-  | TNum | TAny | TTuple [||] | TVec (0, _) (* Why not TVec (0, TAny) *)
-  | TList TAny -> false
-  | _ -> true
+let rec structure_finished_typing = function
+  | TNum | TAny | TTuple [||] | TVec (0, _) ->
+      false
+  | TTuple ts ->
+      Array.for_all typ_finished_typing ts
+  | TVec (_, t) | TList t ->
+      typ_finished_typing t
+  | _ ->
+      true
+
+and typ_finished_typing t =
+  t.nullable <> None && structure_finished_typing t.structure
 
 (* Check that we have typed all that need to be typed, and set finished_typing *)
 let check_finished_tuple_type tuple_prefix tuple_type =
@@ -192,7 +201,7 @@ let check_finished_tuple_type tuple_prefix tuple_type =
     let type_is_known =
       match typ.scalar_typ with
       | None -> false
-      | Some t -> scalar_finished_typing t in
+      | Some t -> structure_finished_typing t in
     if tuple_prefix = TupleOut &&
        type_is_known && typ.nullable = None
     then (

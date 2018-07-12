@@ -19,16 +19,16 @@ let read_tuple ser_tuple_typ nullmask_size tx =
     List.fold_lefti (fun (offs, b) i typ ->
         assert (not (is_private_field typ.RamenTuple.typ_name)) ;
         let value, offs', b' =
-          if typ.nullable && not (get_bit tx b) then (
+          if Option.get typ.typ.nullable && not (get_bit tx b) then (
             None, offs, b+1
           ) else (
-            let value = RingBufLib.read_value tx offs typ.typ in
+            let value = RingBufLib.read_value tx offs typ.typ.structure in
             if verbose_serialization then
               !logger.debug "Importing a single value for %a at offset %d: %a"
                 RamenTuple.print_field_typ typ
                 offs RamenTypes.print value ;
             let offs' = offs + RingBufLib.sersize_of_value value in
-            Some value, offs', if typ.nullable then b+1 else b
+            Some value, offs', if Option.get typ.typ.nullable then b+1 else b
           ) in
         Option.may (Array.set tuple i) value ;
         offs', b'
@@ -51,10 +51,10 @@ let read_notifs ?while_ rb f =
   in
   read_tuples ?while_ unserialize rb f
 
-let value_of_string typ s =
+let value_of_string t s =
   let open RamenParsing in
   (* First parse the string as any immediate value: *)
-  let p = allow_surrounding_blanks RamenTypes.Parser.p_ in
+  let p = allow_surrounding_blanks RamenTypes.Parser.(p_ ||| null) in
   let stream = stream_of_string s in
   match p ["value"] None Parsers.no_error_correction stream |>
         to_result with
@@ -64,15 +64,16 @@ let value_of_string typ s =
           s (print_bad_result print) e in
       failwith msg
   | Ok (v, _s (* no rest since we ends with eof *)) ->
-      let vt = type_of v in
-      if vt = typ then v else
+      if v = VNull && Option.get t.nullable then v else
+      let vt = structure_of v in
+      if vt = t.structure then v else
       let msg =
         Printf.sprintf2 "%S has type %a instead of expected %a"
-          s RamenTypes.print_typ vt RamenTypes.print_typ typ in
+          s RamenTypes.print_structure vt RamenTypes.print_structure t.structure in
       failwith msg
   | Bad (Ambiguous lst) ->
       match List.filter (fun (v, _c, _s) ->
-              type_of v = typ
+              structure_of v = t.structure
             ) lst with
       | [] ->
           let msg =
@@ -80,8 +81,8 @@ let value_of_string typ s =
               s
               (List.print ~first:"" ~last:"" ~sep:" or "
                 (fun oc (v, _c, _s) ->
-                  RamenTypes.print_typ oc (type_of v))) lst
-              RamenTypes.print_typ typ in
+                  RamenTypes.print_structure oc (structure_of v))) lst
+              RamenTypes.print_typ t in
           failwith msg
       | [v, _, _] -> v
       | lst ->
@@ -94,18 +95,26 @@ let value_of_string typ s =
 
 (*$inject open Stdint *)
 (*$= value_of_string & ~printer:(RamenTypes.to_string)
-  (VString "glop")             (value_of_string TString "\"glop\"")
-  (VString "glop")             (value_of_string TString " \"glop\"  ")
-  (VU16 (Uint16.of_int 15042)) (value_of_string TU16    "15042")
-  (VU32 (Uint32.of_int 15042)) (value_of_string TU32    "15042")
-  (VI64 (Int64.of_int  15042)) (value_of_string TI64    "15042")
-  (VFloat 15042.)              (value_of_string TFloat  "15042")
+  (VString "glop") \
+    (value_of_string { structure = TString ; nullable = Some false } "\"glop\"")
+  (VString "glop") \
+    (value_of_string { structure = TString ; nullable = Some false } " \"glop\"  ")
+  (VU16 (Uint16.of_int 15042)) \
+    (value_of_string { structure = TU16 ; nullable = Some false }    "15042")
+  (VU32 (Uint32.of_int 15042)) \
+    (value_of_string { structure = TU32 ; nullable = Some false }    "15042")
+  (VI64 (Int64.of_int  15042)) \
+    (value_of_string { structure = TI64 ; nullable = Some false }    "15042")
+  (VFloat 15042.) \
+    (value_of_string { structure = TFloat ; nullable = Some false }  "15042")
+  VNull \
+    (value_of_string { structure = TFloat ; nullable = Some true }   "null")
  *)
 
 let write_record conf ser_in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
     List.fold_left (fun (null_i, lst) ftyp ->
-      if ftyp.RamenTuple.nullable then
+      if Option.get ftyp.RamenTuple.typ.nullable then
         match Hashtbl.find tuple ftyp.typ_name with
         | exception Not_found ->
             (* Unspecified nullable fields are just null. *)
@@ -116,9 +125,11 @@ let write_record conf ser_in_type rb tuple =
       else
         match Hashtbl.find tuple ftyp.typ_name with
         | exception Not_found ->
-            null_i, (None, RamenTypes.any_value_of_type ftyp.typ) :: lst
+            null_i,
+            (None, RamenTypes.any_value_of_type ftyp.typ.structure) :: lst
         | s ->
-            null_i, (None, value_of_string ftyp.typ s) :: lst
+            null_i,
+            (None, value_of_string ftyp.typ s) :: lst
     ) (0, []) ser_in_type |>
     fun (null_i, lst) ->
       RingBufLib.(round_up_to_rb_word (bytes_for_bits null_i)),
@@ -168,7 +179,7 @@ let filter_tuple_by typ where =
       let idx, t = find_field typ n in
       let v =
         if v = VNull then VNull else
-        RamenTypes.enlarge_value t.typ v in
+        RamenTypes.enlarge_value t.typ.structure v in
       idx, v
     ) where in
   fun tuple ->

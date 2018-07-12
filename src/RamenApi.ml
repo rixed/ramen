@@ -140,7 +140,7 @@ let string_of_ext_type = function
 let columns_of_func func =
   let h = Hashtbl.create 11 in
   List.iter (fun ft ->
-    let type_ = ext_type_of_typ ft.RamenTuple.typ in
+    let type_ = ext_type_of_typ ft.RamenTuple.typ.structure in
     if type_ <> Other then
       let type_ = string_of_ext_type type_
       and factor = List.mem ft.typ_name func.F.factors

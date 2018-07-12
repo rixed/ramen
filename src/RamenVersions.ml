@@ -9,7 +9,7 @@ let release_tag = "v2.2.4"
 let graph_config = "v10" (* last: params in RC key *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v26" (* last: addition of TList *)
+let codegen = "v27" (* last: nullable in RamenTypes.t *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)
@@ -21,7 +21,7 @@ let notify_tuple = "v3" (* last: removed non-generic notifications *)
 let pending_notify = "v1"
 
 (* Ringbuf formats *)
-let ringbuf = "v3" (* last: merge seq and time archives *)
+let ringbuf = "v4" (* last: nullable in RamenTypes.t *)
 
 (* Ref-ringbuf format *)
 let out_ref = "v3" (* last: use PPP *)

@@ -28,17 +28,17 @@ type collectd_metric =
   float * float option * float option * float option * float option
 
 let tuple_typ =
-  [ { typ_name = "host" ; nullable = false ; typ = TString } ;
-    { typ_name = "time" ; nullable = false ; typ = TFloat } ;
-    { typ_name = "plugin" ; nullable = true ; typ = TString } ;
-    { typ_name = "instance" ; nullable = true ; typ = TString } ;
-    { typ_name = "type_name" ; nullable = true ; typ = TString } ;
-    { typ_name = "type_instance" ; nullable = true ; typ = TString } ;
-    { typ_name = "value" ; nullable = false ; typ = TFloat } ;
-    { typ_name = "value2" ; nullable = true ; typ = TFloat } ;
-    { typ_name = "value3" ; nullable = true ; typ = TFloat } ;
-    { typ_name = "value4" ; nullable = true ; typ = TFloat } ;
-    { typ_name = "value5" ; nullable = true ; typ = TFloat } ]
+  [ { typ_name = "host" ; typ = { structure = TString ; nullable = Some false }} ;
+    { typ_name = "time" ; typ = { structure = TFloat ; nullable = Some false }} ;
+    { typ_name = "plugin" ; typ = { structure = TString ; nullable = Some true }} ;
+    { typ_name = "instance" ; typ = { structure = TString ; nullable = Some true }} ;
+    { typ_name = "type_name" ; typ = { structure = TString ; nullable = Some true }} ;
+    { typ_name = "type_instance" ; typ = { structure = TString ; nullable = Some true }} ;
+    { typ_name = "value" ; typ = { structure = TFloat ; nullable = Some false }} ;
+    { typ_name = "value2" ; typ = { structure = TFloat ; nullable = Some true }} ;
+    { typ_name = "value3" ; typ = { structure = TFloat ; nullable = Some true }} ;
+    { typ_name = "value4" ; typ = { structure = TFloat ; nullable = Some true }} ;
+    { typ_name = "value5" ; typ = { structure = TFloat ; nullable = Some true }} ]
 
 let event_time =
   let open RamenEventTime in

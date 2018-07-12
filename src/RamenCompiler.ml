@@ -16,35 +16,6 @@ module C = RamenConf
 module F = RamenConf.Func
 module P = RamenConf.Program
 
-exception LinkingError of
-            { parent_program : string ; parent_function : string ;
-              child_program : string ; child_function : string ;
-              parent_out : RamenTuple.typed_tuple ;
-              child_in : RamenTuple.typed_tuple ;
-              msg : string }
-exception InvalidParameter of
-            { parameter_name : string ;
-              supplied_value : RamenTypes.value ;
-              expected_type : RamenTypes.typ }
-
-let () =
-  Printexc.register_printer (function
-    | LinkingError { parent_program ; parent_function ; parent_out ;
-                     child_program ; child_function ; child_in ; msg } ->
-        Some (Printf.sprintf "Linking error from %s/%s (%s) to %s/%s (%s): %s"
-                parent_program parent_function
-                (IO.to_string RamenTuple.print_typ parent_out.ser)
-                child_program child_function
-                (IO.to_string RamenTuple.print_typ child_in.ser) msg)
-    | InvalidParameter { parameter_name ; supplied_value ; expected_type } ->
-        Some (Printf.sprintf "Invalid type for parameter %S: \
-                              value supplied (%s) of type %s \
-                              but expected a %s"
-                parameter_name (RamenTypes.to_string supplied_value)
-                (RamenTypes.string_of_typ (RamenTypes.type_of supplied_value))
-                (RamenTypes.string_of_typ expected_type))
-    | _ -> None)
-
 let entry_point_name = "start"
 
 let compile conf root_path program_name program_code =

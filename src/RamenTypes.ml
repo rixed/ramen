@@ -16,26 +16,26 @@ open RamenHelpers
  * type for numeric operands that can be "promoted" to any other numerical
  * type. TAny is meant to be replaced by an actual type during typing:
  * all TAny types in an expression will be changed to a specific type that's
- * large enough to accommodate all the values at hand. *)
-type typ =
+ * large enough to accommodate all the values at hand *)
+type t =
+  { structure : structure ;
+    nullable : bool option } [@@ppp PPP_OCaml]
+and structure =
   | TFloat | TString | TBool | TNum | TAny
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
   | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
-  (* TODO: Support for tuples/vectors of nullable types?
-   *       But then, serialization is harder since we need several bits in
-   *       the nullmask for constructed types. *)
-  | TTuple of typ array
-  | TVec of int * typ (* Fixed length arrays *)
-  | TList of typ (* Variable length arrays, aka lists *)
+  | TTuple of t array
+  | TVec of int * t (* Fixed length arrays *)
+  | TList of t (* Variable length arrays, aka lists *)
   [@@ppp PPP_OCaml]
 
-let rec print_typ oc = function
+let rec print_structure oc = function
   | TFloat  -> String.print oc "FLOAT"
   | TString -> String.print oc "STRING"
   | TBool   -> String.print oc "BOOL"
-  | TNum    -> String.print oc "ANY_NUM" (* This one not for consumption *)
+  | TNum    -> String.print oc "ANY_NUM" (* Not for consumption! *)
   | TAny    -> String.print oc "ANY" (* same *)
   | TU8     -> String.print oc "U8"
   | TU16    -> String.print oc "U16"
@@ -54,54 +54,106 @@ let rec print_typ oc = function
   | TCidrv4 -> String.print oc "CIDRv4"
   | TCidrv6 -> String.print oc "CIDRv6"
   | TCidr   -> String.print oc "CIDR"
-  | TTuple ts -> Array.print ~first:"(" ~last:")" ~sep:";" print_typ oc ts
+  | TTuple ts -> Array.print ~first:"(" ~last:")" ~sep:";"
+                   print_typ oc ts
   | TVec (d, t) -> Printf.fprintf oc "%a[%d]" print_typ t d
   | TList t -> Printf.fprintf oc "%a[]" print_typ t
 
-let rec string_of_typ t = IO.to_string print_typ t
+and print_typ oc t =
+  print_structure oc t.structure ;
+  match t.nullable with
+  | Some true -> Char.print oc '?'
+  | Some false -> ()
+  | None -> String.print oc "??"
+
+let string_of_typ t = IO.to_string print_typ t
+let string_of_structure t = IO.to_string print_structure t
 
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run
- * the operators. *)
+ * the operators.
+ * For NULL values we are doomed to loose the type information, at least for
+ * constructed types, unless we always keep the type alongside the value,
+ * which we do not want to (we want to erase types in serialization etc). So
+ * if we are given only a NULL tuple there is no way to know its type.
+ * Tough life. *)
 type value =
-  | VFloat of float | VString of string | VBool of bool
-  | VU8 of uint8 | VU16 of uint16 | VU32 of uint32
-  | VU64 of uint64 | VU128 of uint128
-  | VI8 of int8 | VI16 of int16 | VI32 of int32
-  | VI64 of int64 | VI128 of int128 | VNull
+  | VFloat of float
+  | VString of string
+  | VBool of bool
+  | VU8 of uint8
+  | VU16 of uint16
+  | VU32 of uint32
+  | VU64 of uint64
+  | VU128 of uint128
+  | VI8 of int8
+  | VI16 of int16
+  | VI32 of int32
+  | VI64 of int64
+  | VI128 of int128
   | VEth of uint48
-  | VIpv4 of uint32 | VIpv6 of uint128 | VIp of RamenIp.t
-  | VCidrv4 of RamenIpv4.Cidr.t | VCidrv6 of RamenIpv6.Cidr.t
+  | VIpv4 of uint32
+  | VIpv6 of uint128
+  | VIp of RamenIp.t
+  | VCidrv4 of RamenIpv4.Cidr.t
+  | VCidrv6 of RamenIpv6.Cidr.t
   | VCidr of RamenIp.Cidr.t
+  | VNull
   | VTuple of value array
   | VVec of value array (* All values must have the same type *)
   | VList of value array (* All values must have the same type *)
   [@@ppp PPP_OCaml]
 
-let rec type_of = function
-  | VFloat _ -> TFloat | VString _ -> TString | VBool _ -> TBool
-  | VU8 _ -> TU8 | VU16 _ -> TU16 | VU32 _ -> TU32 | VU64 _ -> TU64
-  | VU128 _ -> TU128 | VI8 _ -> TI8 | VI16 _ -> TI16 | VI32 _ -> TI32
-  | VI64 _ -> TI64 | VI128 _ -> TI128
-  | VEth _ -> TEth | VIpv4 _ -> TIpv4 | VIpv6 _ -> TIpv6 | VIp _ -> TIp
-  | VCidrv4 _ -> TCidrv4 | VCidrv6 _ -> TCidrv6 | VCidr _ -> TCidr
-  | VTuple vs -> TTuple (Array.map type_of vs)
+let rec structure_of =
+  let sub_types_of_array vs =
+    (if Array.length vs > 0 then structure_of vs.(0) else TAny),
+    Array.fold_left (fun sub_nullable v ->
+      if v = VNull then true else sub_nullable
+    ) false vs in
+  function
+  | VFloat v  -> TFloat
+  | VString v -> TString
+  | VBool v   -> TBool
+  | VU8 v     -> TU8
+  | VU16 v    -> TU16
+  | VU32 v    -> TU32
+  | VU64 v    -> TU64
+  | VU128 v   -> TU128
+  | VI8 v     -> TI8
+  | VI16 v    -> TI16
+  | VI32 v    -> TI32
+  | VI64 v    -> TI64
+  | VI128 v   -> TI128
+  | VEth v    -> TEth
+  | VIpv4 v   -> TIpv4
+  | VIpv6 v   -> TIpv6
+  | VIp v     -> TIp
+  | VCidrv4 v -> TCidrv4
+  | VCidrv6 v -> TCidrv6
+  | VCidr v   -> TCidr
+  | VNull     -> TAny
+  (* Note regarding NULL and constructed types: We aim for non nullable
+   * values, unless one of the value is actually null. *)
+  | VTuple vs ->
+      TTuple (Array.map (fun v ->
+        { structure = structure_of v ; nullable = Some (v = VNull) }) vs)
   (* Note regarding type of zero length arrays:
    * Vec of size 0 are not super interesting, and can be of any type,
    * ideally all the time (ie if a parent exports a value of type 0-length
    * array of t1, we should be able to use it in a context requiring a
    * 0-length array of t2<>t1). *)
   | VVec vs ->
-      let d = Array.length vs in
-      TVec (d, if d > 0 then type_of vs.(0) else TAny)
+      let sub_structure, sub_nullable = sub_types_of_array vs in
+      TVec (Array.length vs, { structure = sub_structure ;
+                               nullable = Some sub_nullable })
   (* Note regarding empty lists:
    * If we receive from a parent a value from a
    * list of t1 that happens to be empty, we cannot use it in another context
    * where another list is expected of course. But empty list literal can still
    * be assigned any type. *)
   | VList vs ->
-      TList (if Array.length vs > 0 then type_of vs.(0) else TAny)
-  | VNull -> assert false
+      let sub_structure, sub_nullable = sub_types_of_array vs in
+      TList { structure = sub_structure ; nullable = Some sub_nullable }
 
 (*
  * Printers
@@ -124,7 +176,6 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VI32 i    -> Int32.to_string i |> String.print oc
   | VI64 i    -> Int64.to_string i |> String.print oc
   | VI128 i   -> Int128.to_string i |> String.print oc
-  | VNull     -> String.print oc null
   | VEth i    -> RamenEthAddr.to_string i |> String.print oc
   | VIpv4 i   -> RamenIpv4.to_string i |> String.print oc
   | VIpv6 i   -> RamenIpv6.to_string i |> String.print oc
@@ -132,11 +183,15 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VCidrv4 i -> RamenIpv4.Cidr.to_string i |> String.print oc
   | VCidrv6 i -> RamenIpv6.Cidr.to_string i |> String.print oc
   | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
-  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";" (print_custom ~null ~quoting) oc vs
-  | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";" (print_custom ~null ~quoting) oc vs
+  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";"
+                   (print_custom ~null ~quoting) oc vs
+  | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";"
+                   (print_custom ~null ~quoting) oc vs
   (* It is more user friendly to write lists as arrays and blur the line
    * between those for the user: *)
-  | VList vs  -> Array.print ~first:"[" ~last:"]" ~sep:";" (print_custom ~null ~quoting) oc vs
+  | VList vs  -> Array.print ~first:"[" ~last:"]" ~sep:";"
+                   (print_custom ~null ~quoting) oc vs
+  | VNull     -> String.print oc null
 
 let to_string ?null ?quoting v =
   IO.to_string (print_custom ?null ?quoting) v
@@ -199,7 +254,7 @@ let rec can_enlarge ~from ~to_ =
        * enlargeable: *)
       Array.length ts1 = Array.length ts2 &&
       Array.for_all2 (fun from_item to_item ->
-        can_enlarge ~from:from_item ~to_:to_item
+        can_enlarge ~from:from_item.structure ~to_:to_item.structure
       ) ts1 ts2
   | TVec (d1, t1), TVec (d2, t2) ->
       (* Similarly, TVec (0, _) means "any vector", so we can enlarge any
@@ -207,23 +262,25 @@ let rec can_enlarge ~from ~to_ =
       d2 = 0 ||
       (* Otherwise, vectors must have the same dimension and t1 must be
        * enlargeable to t2: *)
-      d1 = d2 && can_enlarge ~from:t1 ~to_:t2
+      d1 = d2 &&
+      can_enlarge ~from:t1.structure ~to_:t2.structure
   | TList t1, TList t2 ->
-      can_enlarge ~from:t1 ~to_:t2
+      can_enlarge ~from:t1.structure ~to_:t2.structure
   | TTuple _, _ | _, TTuple _
   | TVec _, _ | _, TVec _
   | TList _, _ | _, TList _ ->
       false
   | _ -> can_enlarge_scalar ~from ~to_
 
-let larger_type t1 t2 =
-  if can_enlarge ~from:t1 ~to_:t2 then t2 else
-  if can_enlarge ~from:t2 ~to_:t1 then t1 else
-  invalid_arg ("types "^ string_of_typ t1 ^" and "^ string_of_typ t2 ^
+let larger_structure s1 s2 =
+  if can_enlarge ~from:s1 ~to_:s2 then s2 else
+  if can_enlarge ~from:s2 ~to_:s1 then s1 else
+  invalid_arg ("types "^ string_of_structure s1 ^
+               " and "^ string_of_structure s2 ^
                " are not comparable")
 
 (* Enlarge a type in search for a common ground for type combinations. *)
-let enlarge_type = function
+let enlarge_structure = function
   | TU8  | TI8  -> TI16
   | TU16 | TI16 -> TI32
   | TU32 | TI32 -> TI64
@@ -234,13 +291,16 @@ let enlarge_type = function
   | TIpv6   -> TIp
   | TCidrv4 -> TCidr
   | TCidrv6 -> TCidr
-  | t -> invalid_arg ("Type "^ string_of_typ t ^" cannot be enlarged")
+  | s -> invalid_arg ("Type "^ string_of_structure s ^" cannot be enlarged")
 
-(* Important note: Sometime a value can be enlarged from one type to
+let enlarge_type t =
+  { t with structure = enlarge_structure t.structure }
+
+(* Important note: Sometime a _value_ can be enlarged from one type to
  * another, while can_enlarge would have denied the promotion. That's
  * because can_enlarge bases its decision on types only. *)
 let rec enlarge_value t v =
-  let vt = type_of v in
+  let vt = structure_of v in
   if vt = t then v else
   match v, t with
   | VI8 x, _ when Int8.(compare x zero) >= 0 ->
@@ -284,14 +344,16 @@ let rec enlarge_value t v =
   | VTuple vs, TTuple [||] ->
       v (* Nothing to do *)
   | VTuple vs, TTuple ts when Array.length ts = Array.length vs ->
+      (* Assume we won't try to enlarge to an unknown type: *)
+      let ts = Array.map (fun t -> t.structure) ts in
       VTuple (Array.map2 enlarge_value ts vs)
   | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
-      VVec (Array.map (enlarge_value t) vs)
+      VVec (Array.map (enlarge_value t.structure) vs)
   | VList vs, TList t ->
-      VList (Array.map (enlarge_value t) vs)
+      VList (Array.map (enlarge_value t.structure) vs)
   | _ ->
       invalid_arg ("Value "^ to_string v ^" cannot be enlarged into a "^
-                   string_of_typ t)
+                   string_of_structure t)
 
 (* From the list of operand types, return the largest type able to accomodate
  * all operands. Most of the time it will be the largest in term of "all
@@ -299,13 +361,13 @@ let rec enlarge_value t v =
  * an even larger type; For instance, if we combine an i8 and an u8 then we
  * want the result to be an i16, or if we combine an IPv4 and an IPv6 then
  * we want the result to be an IP. *)
-let rec large_enough_for t1 t2 =
-  try larger_type t1 t2
+let rec large_enough_for s1 s2 =
+  try larger_structure s1 s2
   with Invalid_argument _ as e ->
     (* Try to enlarge t1 a bit further *)
-    (match enlarge_type t1 with
+    (match enlarge_structure s1 with
     | exception _ -> raise e
-    | t1 -> large_enough_for t1 t2)
+    | s1 -> large_enough_for s1 s2)
 
 (* From the list of operand types, return the largest type able to accommodate
  * all operands. Most of the time it will be the largest in term of "all
@@ -313,10 +375,10 @@ let rec large_enough_for t1 t2 =
  * an even larger type; For instance, if we combine an i8 and an u8 then we
  * want the result to be an i16, or if we combine an IPv4 and an IPv6 then
  * we want the result to be an IP. *)
-let largest_type = function
+let largest_structure = function
   | fst :: rest ->
     List.fold_left large_enough_for fst rest
-  | _ -> invalid_arg "largest_type"
+  | _ -> invalid_arg "largest_structure"
 
 (*
  * Tools
@@ -343,18 +405,24 @@ let rec any_value_of_type = function
   | TEth -> VEth Uint48.zero
   | TIp | TIpv4 -> VIpv4 Uint32.zero
   | TIpv6 -> VIpv6 Uint128.zero
-  | TTuple ts -> VTuple (Array.map any_value_of_type ts)
-  | TVec (d, t) -> VVec (Array.create d (any_value_of_type t))
-  (* Avoid loosing type info by returning an empty list: *)
-  | TList t -> VList [| any_value_of_type t |]
+  | TTuple ts ->
+      let ts = Array.map (fun t -> t.structure) ts in
+      VTuple (Array.map any_value_of_type ts)
+  | TVec (d, t) ->
+      VVec (Array.create d (any_value_of_type t.structure))
+  (* Avoid loosing type info by returning a non-empty list: *)
+  | TList t ->
+      VList [| any_value_of_type t.structure |]
 
 let is_round_integer = function
-  | VFloat f  -> fst(modf f) = 0.
+  | VFloat f ->
+      fst (modf f) = 0.
   | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _
-  | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ | VList _ -> false
-  | _ -> true
+  | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ | VList _ ->
+      false
+  | _ ->
+      true
 
-(* Garbage in / garbage out *)
 let float_of_scalar =
   let open Stdint in
   function
@@ -375,8 +443,8 @@ let float_of_scalar =
   | VIpv6 x -> Uint128.to_float x
   | VIp (V4 x) -> Uint32.to_float x
   | VIp (V6 x) -> Uint128.to_float x
-  | VNull | VString _ | VCidrv4 _ | VCidrv6 _ | VCidr _
-  | VTuple _ | VVec _ | VList _ -> 0.
+  (* Garbage in / garbage out: *)
+  | _ -> 0.
 
 let int_of_scalar =
   int_of_float % float_of_scalar
@@ -432,7 +500,7 @@ struct
       assert false
 
   let narrowest_typ_for_int ?min_int_width n =
-    narrowest_int_scalar ?min_int_width (Num.of_int n) |> type_of
+    narrowest_int_scalar ?min_int_width (Num.of_int n) |> structure_of
 
   (* TODO: Here and elsewhere, we want the location (start+length) of the
    * thing in addition to the thing *)
@@ -491,10 +559,13 @@ struct
 
   (* We do not allow to add explicit NULL values as immediate values in an
    * expression, but in some places this could be used: *)
-  let null =
-    strinG "null" >>: fun () -> VNull
+  let null m =
+    let m = "NULL" :: m in
+    (strinG "null" >>: fun () -> VNull) m
 
-  let tup_sep = opt_blanks -- char ';' -- opt_blanks (* TODO: consider functions as taking a single tuple *)
+  (* TODO: consider functions as taking a single tuple *)
+  let tup_sep =
+    opt_blanks -- char ';' -- opt_blanks
 
   (* But in general when parsing user provided values (such as in parameters
    * or test files), we want to allow any literal: *)
@@ -533,10 +604,10 @@ struct
     (
       char '[' -- opt_blanks -+
       (several ~sep:tup_sep (p_ ?min_int_width) >>: fun vs ->
-         match largest_type (List.map type_of vs) with
+         match largest_structure (List.map structure_of vs) with
          | exception Invalid_argument _ ->
             raise (Reject "Cannot find common type")
-         | t -> List.map (enlarge_value t) vs |>
+         | s -> List.map (enlarge_value s) vs |>
                 Array.of_list) +-
       opt_blanks +- char ']'
     ) m
@@ -562,44 +633,60 @@ struct
 
   and scalar_typ m =
     let m = "scalar type" :: m in
+    let st n structure =
+      (strinG (n ^"?") >>: fun () ->
+        { structure ; nullable = Some true }) |||
+      (strinG n >>: fun () ->
+        { structure ; nullable = Some false })
+    in
     (
-      (strinG "float" >>: fun () -> TFloat) |||
-      (strinG "string" >>: fun () -> TString) |||
-      ((strinG "bool" ||| strinG "boolean") >>: fun () -> TBool) |||
-      (strinG "u8" >>: fun () -> TU8) |||
-      (strinG "u16" >>: fun () -> TU16) |||
-      (strinG "u32" >>: fun () -> TU32) |||
-      (strinG "u64" >>: fun () -> TU64) |||
-      (strinG "u128" >>: fun () -> TU128) |||
-      (strinG "i8" >>: fun () -> TI8) |||
-      (strinG "i16" >>: fun () -> TI16) |||
-      (strinG "i32" >>: fun () -> TI32) |||
-      (strinG "i64" >>: fun () -> TI64) |||
-      (strinG "i128" >>: fun () -> TI128) |||
-      (strinG "eth" >>: fun () -> TEth) |||
-      (strinG "ip4" >>: fun () -> TIpv4) |||
-      (strinG "ip6" >>: fun () -> TIpv6) |||
-      (strinG "ip" >>: fun () -> TIp) |||
-      (strinG "cidr4" >>: fun () -> TCidrv4) |||
-      (strinG "cidr6" >>: fun () -> TCidrv6) |||
-      (strinG "cidr" >>: fun () -> TCidr)
+      (st "float" TFloat) |||
+      (st "string" TString) |||
+      (st "bool" TBool) |||
+      (st "boolean" TBool) |||
+      (st "u8" TU8) |||
+      (st "u16" TU16) |||
+      (st "u32" TU32) |||
+      (st "u64" TU64) |||
+      (st "u128" TU128) |||
+      (st "i8" TI8) |||
+      (st "i16" TI16) |||
+      (st "i32" TI32) |||
+      (st "i64" TI64) |||
+      (st "i128" TI128) |||
+      (st "eth" TEth) |||
+      (st "ip4" TIpv4) |||
+      (st "ip6" TIpv6) |||
+      (st "ip" TIp) |||
+      (st "cidr4" TCidrv4) |||
+      (st "cidr6" TCidrv6) |||
+      (st "cidr" TCidr)
     ) m
+
+  and opt_question_mark =
+    optional ~def:false (char '?' >>: fun _ -> true)
 
   and tuple_typ m =
     let m = "tuple type" :: m in
     (
       char '(' -- opt_blanks -+
         several ~sep:tup_sep typ
-      +- opt_blanks +- char ')' >>: fun ts -> TTuple (Array.of_list ts)
+      +- opt_blanks +- char ')' ++
+      opt_question_mark >>: fun (ts, n) ->
+        { structure = TTuple (Array.of_list ts) ; nullable = Some n }
     ) m
 
   and vector_typ m =
     let m = "vector type" :: m in
     (
+      (* FIXME: we can't do vectors of constructed types with this.
+       * We need to start with the repetition count so that we can
+       * then use [typ] without deadlooping. *)
       scalar_typ +- opt_blanks +- char '[' +- opt_blanks ++
       optional ~def:0 (pos_decimal_integer "vector dimensions") +-
-      opt_blanks +- char ']' >>:
-      fun (t, d) -> TVec (d, t)
+      opt_blanks +- char ']' ++
+      opt_question_mark >>: fun ((t, d), n) ->
+        { structure = TVec (d, t) ; nullable = Some n }
     ) m
 
   (*$>*)

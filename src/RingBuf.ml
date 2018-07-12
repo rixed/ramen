@@ -64,7 +64,8 @@ external write_ip : tx -> int -> RamenIp.t -> unit = "write_ip"
 (* Everything passed as an int and which occupancy is <= word *)
 external write_bool : tx -> int -> bool -> unit = "write_word"
 (* Special to zero the nullmask *)
-external zero_bytes : tx -> int -> int -> unit = "zero_bytes"
+external zero_bytes : tx -> int (* offs *) -> int (* size *) -> unit =
+  "zero_bytes"
 
 (* Integers of 8, 16 and 24 bits are stored as normal ocaml integers.
  * But signed int8, int16 and int24 are shifted to the left so that

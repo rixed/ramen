@@ -70,12 +70,12 @@ struct
         several ~sep:list_sep_and (
           non_keyword ++
           optional ~def:None (
-            blanks -+ some RamenTuple.Parser.type_decl) ++
+            blanks -+ some RamenTypes.Parser.typ) ++
           optional ~def:RamenTypes.VNull (
             blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
             RamenTypes.Parser.(p_ ~min_int_width:0 ||| null)) >>:
           fun ((typ_name, typ_decl), value) ->
-            let typ, nullable, value =
+            let typ, value =
               let open RamenTypes in
               match typ_decl with
               | None ->
@@ -87,15 +87,18 @@ struct
                     raise (Reject e)
                   else
                     (* As usual, promote integers to I32 by default: *)
-                    let vtyp = type_of value in
-                    if can_enlarge ~from:vtyp ~to_:TI32 then
-                      TI32, false, enlarge_value TI32 value
+                    let structure = structure_of value in
+                    if can_enlarge ~from:structure ~to_:TI32 then
+                      (* Note: assume not nullable when no type is given: *)
+                      { structure = TI32 ; nullable = Some false },
+                      enlarge_value TI32 value
                     else
-                      vtyp, false, value
-              | Some (dtyp, nullable) ->
+                      { structure ; nullable = Some false },
+                      value
+              | Some typ ->
                   if value = VNull then
-                    if nullable then
-                      dtyp, nullable, value
+                    if Option.get typ.nullable then
+                      typ, value
                     else
                       let e =
                         Printf.sprintf2
@@ -105,7 +108,7 @@ struct
                       raise (Reject e)
                   else
                     (* Scale the parsed type up to the declaration: *)
-                    match enlarge_value dtyp value with
+                    match enlarge_value typ.structure value with
                     | exception Invalid_argument _ ->
                         let e =
                           Printf.sprintf2
@@ -113,9 +116,9 @@ struct
                              incompatible with value %a"
                             typ_name print value in
                         raise (Reject e)
-                    | value -> dtyp, nullable, value
+                    | value -> typ, value
             in
-            RamenTuple.{ ptyp = { typ_name ; nullable ; typ } ; value }
+            RamenTuple.{ ptyp = { typ_name ; typ } ; value }
         )
     ) m
 
@@ -173,9 +176,9 @@ struct
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
 
-   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; nullable = false ; typ = TI32 } ;\
+   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; typ = { structure = TI32 ; nullable = Some false } } ;\
                         value = VI32 0l } ;\
-           RamenTuple.{ ptyp = { typ_name = "p2" ; nullable = false ; typ = TI32 } ;\
+           RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TI32 ; nullable = Some false } } ;\
                         value = VI32 0l } ], [\
     { name = RamenName.func_of_string "add" ;\
       operation = \

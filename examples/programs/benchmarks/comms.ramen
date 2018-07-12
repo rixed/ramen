@@ -45,4 +45,3 @@ DEFINE benchmark AS
     max ram
   GROUP BY worker
   COMMIT BEFORE _dt > 30;
-

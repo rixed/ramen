@@ -4,11 +4,11 @@
 DEFINE read AS
   -- There is no such file, the test suite will specify qps inputs
   READ FILES "/tmp/bidon.csv" (
-    host STRING NOT NULL,
-    time FLOAT NOT NULL,
-    ip_client IP4 NOT NULL,
-    query STRING NOT NULL,
-    response_time FLOAT NULL
+    host STRING,
+    time FLOAT,
+    ip_client IP4,
+    query STRING,
+    response_time FLOAT?
   );
 
 DEFINE qps AS

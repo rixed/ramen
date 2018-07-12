@@ -9,7 +9,7 @@ open Batteries
 open RamenHelpers
 
 type field_typ =
-  { typ_name : string ; nullable : bool ; typ : RamenTypes.typ }
+  { typ_name : string ; typ : RamenTypes.t }
   [@@ppp PPP_OCaml]
 
 type typ = field_typ list
@@ -53,21 +53,19 @@ let reorder_tuple_to_user typed_tuple =
 
 let print_field_typ fmt field =
   (* TODO: check that name is a valid identifier *)
-  Printf.fprintf fmt "%s %a %sNULL"
+  Printf.fprintf fmt "%s %a"
     field.typ_name
     RamenTypes.print_typ field.typ
-    (if field.nullable then "" else "NOT ")
 
 let print_typ fmt t =
   (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) fmt t
 
 let type_signature =
   List.fold_left (fun s field ->
-      (if s = "" then "" else s ^ "_") ^
-      field.typ_name ^ ":" ^
-      RamenTypes.string_of_typ field.typ ^
-      if field.nullable then " null" else " notnull"
-    ) ""
+    (if s = "" then "" else s ^ "_") ^
+    field.typ_name ^ ":" ^
+    RamenTypes.string_of_typ field.typ
+  ) ""
 
 (* Different signature for different instances of the same program: *)
 let param_values_signature params =
@@ -90,17 +88,17 @@ let overwrite_params ps1 ps2 =
     | _, p2_val ->
         let open RamenTypes in
         if p2_val = VNull then
-          if not p1.ptyp.nullable then
+          if not (Option.get p1.ptyp.typ.nullable) then
             Printf.sprintf2 "Parameter %s is not nullable so cannot \
                              be set to NULL" p1.ptyp.typ_name |>
             failwith
           else
             { p1 with value = VNull }
-        else match enlarge_value p1.ptyp.typ p2_val with
+        else match enlarge_value p1.ptyp.typ.structure p2_val with
           | exception Invalid_argument _ ->
               Printf.sprintf2 "Parameter %s of type %a can not be \
                                promoted into a %a" p1.ptyp.typ_name
-                print_typ (type_of p2_val)
+                print_structure (structure_of p2_val)
                 print_typ p1.ptyp.typ |>
               failwith
           | value -> { p1 with value }
@@ -110,20 +108,10 @@ module Parser =
 struct
   open RamenParsing
 
-  let type_decl m =
-    let m = "type declaration" :: m in
-    (
-      RamenTypes.Parser.typ ++
-      optional ~def:true (
-        optional ~def:true (
-          blanks -+ (strinG "not" >>: fun () -> false)) +-
-        blanks +- strinG "null")
-    ) m
-
   let field m =
     let m = "field declaration" :: m in
     (
-      non_keyword +- blanks ++ type_decl >>:
-      fun (typ_name, (typ, nullable)) -> { typ_name ; typ ; nullable }
+      non_keyword +- blanks ++ RamenTypes.Parser.typ >>:
+      fun (typ_name, typ) -> { typ_name ; typ }
     ) m
 end

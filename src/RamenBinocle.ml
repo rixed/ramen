@@ -7,6 +7,7 @@
  *
  * Here we define the tuple type used to store these statistics and various
  * related functions. *)
+open Batteries
 open Stdint
 open RamenLog
 open RamenTuple
@@ -20,19 +21,19 @@ type tuple =
   Uint64.t option * float option
 
 let tuple_typ =
-  [ { typ_name = "worker" ;          nullable = false ;  typ = TString } ;
-    { typ_name = "time" ;            nullable = false ;  typ = TFloat } ;
-    { typ_name = "tuples_in" ;       nullable = true ;   typ = TU64 } ;
-    { typ_name = "tuples_selected" ; nullable = true ;   typ = TU64 } ;
-    { typ_name = "tuples_out" ;      nullable = true ;   typ = TU64 } ;
-    { typ_name = "groups" ;          nullable = true ;   typ = TU64 } ;
-    { typ_name = "cpu" ;             nullable = false ;  typ = TFloat } ;
-    { typ_name = "ram" ;             nullable = false ;  typ = TU64 } ;
-    { typ_name = "wait_in" ;         nullable = true ;   typ = TFloat } ;
-    { typ_name = "wait_out" ;        nullable = true ;   typ = TFloat } ;
-    { typ_name = "bytes_in" ;        nullable = true ;   typ = TU64 } ;
-    { typ_name = "bytes_out" ;       nullable = true ;   typ = TU64 } ;
-    { typ_name = "last_out" ;        nullable = true ;   typ = TFloat } ]
+  [ { typ_name = "worker" ; typ = { structure = TString ; nullable = Some false }} ;
+    { typ_name = "time" ; typ = { structure = TFloat ; nullable = Some false }} ;
+    { typ_name = "tuples_in" ; typ = { structure = TU64 ; nullable = Some true }} ;
+    { typ_name = "tuples_selected" ; typ = { structure = TU64 ; nullable = Some true }} ;
+    { typ_name = "tuples_out" ; typ = { structure = TU64 ; nullable = Some true }} ;
+    { typ_name = "groups" ; typ = { structure = TU64 ; nullable = Some true }} ;
+    { typ_name = "cpu" ; typ = { structure = TFloat ; nullable = Some false }} ;
+    { typ_name = "ram" ; typ = { structure = TU64 ; nullable = Some false }} ;
+    { typ_name = "wait_in" ; typ = { structure = TFloat ; nullable = Some true }} ;
+    { typ_name = "wait_out" ; typ = { structure = TFloat ; nullable = Some true }} ;
+    { typ_name = "bytes_in" ; typ = { structure = TU64 ; nullable = Some true }} ;
+    { typ_name = "bytes_out" ; typ = { structure = TU64 ; nullable = Some true }} ;
+    { typ_name = "last_out" ; typ = { structure = TFloat ; nullable = Some true }} ]
 
 let event_time =
   let open RamenEventTime in
@@ -42,15 +43,17 @@ let factors = [ "worker" ]
 
 let nb_nullables =
   List.fold_left (fun c t ->
-      if t.RamenTuple.nullable then c+1 else c
+      if Option.get t.typ.nullable then c+1 else c
     ) 0 tuple_typ
 
 let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type tuple_typ
 
 let fix_sz =
   List.fold_left (fun c t ->
-    if t.RamenTuple.typ = TString then c else
-    c + RingBufLib.sersize_of_fixsz_typ t.typ) 0 tuple_typ
+    let open RamenTypes in
+    if t.typ.structure = TString then c else
+    c + RingBufLib.sersize_of_fixsz_typ t.typ.structure
+  ) 0 tuple_typ
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
