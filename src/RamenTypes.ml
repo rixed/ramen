@@ -238,7 +238,7 @@ let enlarge_type = function
 
 (* Important note: Sometime a value can be enlarged from one type to
  * another, while can_enlarge would have denied the promotion. That's
- * because can_enlarge base its decision on types only. *)
+ * because can_enlarge bases its decision on types only. *)
 let rec enlarge_value t v =
   let vt = type_of v in
   if vt = t then v else
@@ -409,16 +409,26 @@ struct
     and zero = Num.zero
     in fun ?(min_int_width=32) i ->
       let s = Num.to_string i in
-      if min_int_width <= 8 && Num.le_num min_i8 i && Num.le_num i max_i8 then VI8 (Int8.of_string s) else
-      if min_int_width <= 8 && Num.le_num zero i && Num.le_num i max_u8 then VU8 (Uint8.of_string s) else
-      if min_int_width <= 16 && Num.le_num min_i16 i && Num.le_num i max_i16 then VI16 (Int16.of_string s) else
-      if min_int_width <= 16 && Num.le_num zero i && Num.le_num i max_u16 then VU16 (Uint16.of_string s) else
-      if min_int_width <= 32 && Num.le_num min_i32 i && Num.le_num i max_i32 then VI32 (Int32.of_string s) else
-      if min_int_width <= 32 && Num.le_num zero i && Num.le_num i max_u32 then VU32 (Uint32.of_string s) else
-      if min_int_width <= 64 && Num.le_num min_i64 i && Num.le_num i max_i64 then VI64 (Int64.of_string s) else
-      if min_int_width <= 64 && Num.le_num zero i && Num.le_num i max_u64 then VU64 (Uint64.of_string s) else
-      if min_int_width <= 128 && Num.le_num min_i128 i && Num.le_num i max_i128 then VI128 (Int128.of_string s) else
-      if min_int_width <= 128 && Num.le_num zero i && Num.le_num i max_u128 then VU128 (Uint128.of_string s) else
+      if min_int_width <= 8 && Num.le_num min_i8 i && Num.le_num i max_i8
+      then VI8 (Int8.of_string s) else
+      if min_int_width <= 8 && Num.le_num zero i && Num.le_num i max_u8
+      then VU8 (Uint8.of_string s) else
+      if min_int_width <= 16 && Num.le_num min_i16 i && Num.le_num i max_i16
+      then VI16 (Int16.of_string s) else
+      if min_int_width <= 16 && Num.le_num zero i && Num.le_num i max_u16
+      then VU16 (Uint16.of_string s) else
+      if min_int_width <= 32 && Num.le_num min_i32 i && Num.le_num i max_i32
+      then VI32 (Int32.of_string s) else
+      if min_int_width <= 32 && Num.le_num zero i && Num.le_num i max_u32
+      then VU32 (Uint32.of_string s) else
+      if min_int_width <= 64 && Num.le_num min_i64 i && Num.le_num i max_i64
+      then VI64 (Int64.of_string s) else
+      if min_int_width <= 64 && Num.le_num zero i && Num.le_num i max_u64
+      then VU64 (Uint64.of_string s) else
+      if min_int_width <= 128 && Num.le_num min_i128 i && Num.le_num i max_i128
+      then VI128 (Int128.of_string s) else
+      if min_int_width <= 128 && Num.le_num zero i && Num.le_num i max_u128
+      then VU128 (Uint128.of_string s) else
       assert false
 
   let narrowest_typ_for_int ?min_int_width n =
@@ -426,58 +436,44 @@ struct
 
   (* TODO: Here and elsewhere, we want the location (start+length) of the
    * thing in addition to the thing *)
-  let narrowest_int ?min_int_width =
-    (integer >>: narrowest_int_scalar ?min_int_width) |||
+  let narrowest_int ?min_int_width ?(all_possible=false) () =
+    let ostrinG s =
+      if all_possible then optional ~def:() (strinG s)
+      else strinG s in
+    (if all_possible then
+      (* Also in "all_possible" mode, accept an integer as a float: *)
+      (decimal_number >>: fun i -> VFloat (Num.to_float i))
+     else
+      (integer >>: narrowest_int_scalar ?min_int_width)) |||
     (integer_range ~min:(Num.of_int ~-128) ~max:(Num.of_int 127) +-
-      strinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
+      ostrinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
     (integer_range ~min:(Num.of_int ~-32768) ~max:(Num.of_int 32767) +-
-      strinG "i16" >>: fun i -> VI16 (Int16.of_string (Num.to_string i))) |||
+      ostrinG "i16" >>: fun i -> VI16 (Int16.of_string (Num.to_string i))) |||
     (integer_range ~min:(Num.of_int ~-2147483648) ~max:(Num.of_int 2147483647) +-
-      strinG "i32" >>: fun i -> VI32 (Int32.of_string (Num.to_string i))) |||
+      ostrinG "i32" >>: fun i -> VI32 (Int32.of_string (Num.to_string i))) |||
     (integer_range ~min:(Num.of_string "-9223372036854775808") ~max:(Num.of_string "9223372036854775807") +-
-      strinG "i64" >>: fun i -> VI64 (Int64.of_string (Num.to_string i))) |||
+      ostrinG "i64" >>: fun i -> VI64 (Int64.of_string (Num.to_string i))) |||
     (integer_range ~min:(Num.of_string "-170141183460469231731687303715884105728") ~max:(Num.of_string "170141183460469231731687303715884105728") +-
-      strinG "i128" >>: fun i -> VI128 (Int128.of_string (Num.to_string i))) |||
+      ostrinG "i128" >>: fun i -> VI128 (Int128.of_string (Num.to_string i))) |||
     (integer_range ~min:Num.zero ~max:(Num.of_int 255) +-
-      strinG "u8" >>: fun i -> VU8 (Uint8.of_string (Num.to_string i))) |||
+      ostrinG "u8" >>: fun i -> VU8 (Uint8.of_string (Num.to_string i))) |||
     (integer_range ~min:Num.zero ~max:(Num.of_int 65535) +-
-      strinG "u16" >>: fun i -> VU16 (Uint16.of_string (Num.to_string i))) |||
+      ostrinG "u16" >>: fun i -> VU16 (Uint16.of_string (Num.to_string i))) |||
     (integer_range ~min:Num.zero ~max:(Num.of_string "4294967295") +-
-      strinG "u32" >>: fun i -> VU32 (Uint32.of_string (Num.to_string i))) |||
+      ostrinG "u32" >>: fun i -> VU32 (Uint32.of_string (Num.to_string i))) |||
     (integer_range ~min:Num.zero ~max:(Num.of_string "18446744073709551615") +-
-      strinG "u64" >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
+      ostrinG "u64" >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
     (integer_range ~min:Num.zero ~max:(Num.of_string "340282366920938463463374607431768211455") +-
-      strinG "u128" >>: fun i -> VU128 (Uint128.of_string (Num.to_string i)))
+      ostrinG "u128" >>: fun i -> VU128 (Uint128.of_string (Num.to_string i)))
 
   let all_possible_ints =
-    (integer_range ~min:(Num.of_int ~-128) ~max:(Num.of_int 127) +-
-      optional ~def:() (strinG "i8") >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
-    (integer_range ~min:(Num.of_int ~-32768) ~max:(Num.of_int 32767) +-
-      optional ~def:() (strinG "i16") >>: fun i -> VI16 (Int16.of_string (Num.to_string i))) |||
-    (integer_range ~min:(Num.of_int ~-2147483648) ~max:(Num.of_int 2147483647) +-
-      optional ~def:() (strinG "i32") >>: fun i -> VI32 (Int32.of_string (Num.to_string i))) |||
-    (integer_range ~min:(Num.of_string "-9223372036854775808") ~max:(Num.of_string "9223372036854775807") +-
-      optional ~def:() (strinG "i64") >>: fun i -> VI64 (Int64.of_string (Num.to_string i))) |||
-    (integer_range ~min:(Num.of_string "-170141183460469231731687303715884105728") ~max:(Num.of_string "170141183460469231731687303715884105728") +-
-      optional ~def:() (strinG "i128") >>: fun i -> VI128 (Int128.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_int 255) +-
-      optional ~def:() (strinG "u8") >>: fun i -> VU8 (Uint8.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_int 65535) +-
-      optional ~def:() (strinG "u16") >>: fun i -> VU16 (Uint16.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_string "4294967295") +-
-      optional ~def:() (strinG "u32") >>: fun i -> VU32 (Uint32.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_string "18446744073709551615") +-
-      optional ~def:() (strinG "u64") >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_string "340282366920938463463374607431768211455") +-
-      optional ~def:() (strinG "u128") >>: fun i -> VU128 (Uint128.of_string (Num.to_string i))) |||
-    (* Also in "all_possible" mode, accept an integer as a float: *)
-    (decimal_number >>: fun i -> VFloat (Num.to_float i))
+    narrowest_int ~all_possible:true ()
 
   (* when parsing expressions we'd rather keep literal tuples/vectors to be
    * expressions, to disambiguate the syntax. So then we only look for
    * scalars: *)
   let scalar ?min_int_width =
-    (if min_int_width <> None then narrowest_int ?min_int_width
+    (if min_int_width <> None then narrowest_int ?min_int_width ()
      else all_possible_ints) |||
     (floating_point >>: fun f -> VFloat f) |||
     (strinG "false" >>: fun _ -> VBool false) |||
