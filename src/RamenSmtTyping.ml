@@ -622,6 +622,9 @@ let rec structure_of_term =
       let sub_structure = structure_of_term sub_term in
       let n = int_of_constant c in
       TVec (n, { structure = sub_structure ; nullable = None (* TODO *)})
+  | QualIdentifier ((Identifier "list", None), [ sub_term ]) ->
+      let sub_structure = structure_of_term sub_term in
+      TList { structure = sub_structure ; nullable = None (* TODO *)}
   | QualIdentifier ((Identifier id, None), sub_terms)
     when String.starts_with id "tuple" ->
       (try Scanf.sscanf id "tuple%d%!" (fun sz ->
