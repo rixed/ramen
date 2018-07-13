@@ -956,8 +956,9 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * expressions into constant values. *)
     (* FIXME: Check that the const is > 0 *)
     check_const "lag" e1 ;
-    (* ... and e2 can be anything and the type of lag will be the same,
-     * nullable (since we might lag beyond the start of the window. *)
+    (* ... and e2 can be anything and the type of lag will be the same.
+     * nullable only by propagation. If the lag goes beyond the start of the
+     * window lag merely returns the oldest entry. *)
     check_op op_typ List.last [Some TU64, Some false, e1 ; None, None, e2]
   | StatefulFun (op_typ, _, MovingAvg (e1, e2, e3))
   | StatefulFun (op_typ, _, LinReg (e1, e2, e3)) ->
@@ -1630,6 +1631,6 @@ let get_types conf parents funcs params =
     RamenOperation.iter_expr (fun e ->
       let open RamenExpr in
       let t = typ_of e in
-      Hashtbl.add h t.uniq_num (Option.get t.scalar_typ,
-                                Option.get t.nullable))) ;
+      Hashtbl.replace h t.uniq_num (Option.get t.scalar_typ,
+                                    Option.get t.nullable))) ;
   h

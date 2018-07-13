@@ -47,15 +47,17 @@ open RamenLog
 
 let smt_solver = ref "z3 -smt2 %s" (* also "cvc4"... *)
 
-let e_of_typ t =
-  Printf.sprintf "e%d" t.uniq_num
+let e_of_num num =
+  Printf.sprintf "e%d" num
 
-let e_of_expr = e_of_typ % typ_of
+let e_of_expr e =
+  e_of_num ((typ_of e).uniq_num)
 
-let n_of_typ t =
-  Printf.sprintf "n%d" t.uniq_num
+let n_of_num num =
+  Printf.sprintf "n%d" num
 
-let n_of_expr = n_of_typ % typ_of
+let n_of_expr e =
+  n_of_num((typ_of e).uniq_num)
 
 let emit_is_true id oc =
   Printf.fprintf oc "%s" id
@@ -154,7 +156,7 @@ let emit_constraints tuple_sizes out_fields oc e =
     emit_assert_id_eq_typ ~name tuple_sizes eid oc t
   ) (typ_of e).scalar_typ ;
   Option.may (fun n ->
-    let name = make_name e "KNOWNTYPE" in
+    let name = make_name e "KNOWNNULL" in
     emit_assert_id_is_bool ~name nid oc n
   ) (typ_of e).nullable ;
   (* This will just output the constraint we know from parsing. Those
@@ -177,7 +179,18 @@ let emit_constraints tuple_sizes out_fields oc e =
             failwith
         | { expr ; _ } ->
             emit_assert_id_eq_id eid oc (e_of_expr expr) ;
-            emit_assert_id_eq_id nid oc (n_of_expr expr))
+            (* Some tuples are passed to callback via an option type, and
+             * are None each time they are undefined (beginning of worker
+             * or of group). Workers access those fields via a special
+             * functions, and all fields are forced nullable during typing.
+             *)
+            if !tupref = TupleGroupPrevious ||
+               !tupref = TupleOutPrevious
+            then
+              let name = make_name e "PREVNULL" in
+              emit_assert_is_true ~name oc nid
+            else
+              emit_assert_id_eq_id nid oc (n_of_expr expr))
 
   | Const (_, _) | StateField _ -> ()
 
@@ -255,14 +268,14 @@ let emit_constraints tuple_sizes out_fields oc e =
       if cases <> [] then (
         let name = make_name e "CASE_NULL_PROPAGATION" in
         emit_assert_id_eq_smt2 ~name nid oc
-          (Printf.sprintf2 "(and %a %s)"
+          (Printf.sprintf2 "(or %a %s)"
             (List.print ~first:"" ~last:"" ~sep:" " (fun oc case ->
-              Printf.fprintf oc "(not %s) (not %s)"
+              Printf.fprintf oc "%s %s"
                 (n_of_expr case.case_cond)
                 (n_of_expr case.case_cons))) cases
             (match else_ with
-            | None -> "false"
-            | Some e -> Printf.sprintf "(not %s)" (n_of_expr e))))
+            | None -> "true"
+            | Some e -> n_of_expr e)))
 
   | Coalesce (_, es) ->
       (* Typing rules:
@@ -335,12 +348,18 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun1 (_, (Strptime|Length|Lower|Upper), e)
+  | StatelessFun1 (_, (Length|Lower|Upper), e)
   | StatelessFunMisc (_, Like (e, _)) ->
       (* e must be a string: *)
       let name = make_name e "STRING" in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TString ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
+
+  | StatelessFun1 (_, Strptime, e) ->
+      (* - e must be a string;
+       * - Result is always nullable (known from the parse). *)
+      let name = make_name e "STRING" in
+      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TString
 
   | StatelessFun2 (_, Mod, e1, e2)
   | StatelessFun2 (_, (BitAnd|BitOr|BitXor), e1, e2) ->
@@ -384,7 +403,6 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - e must be a tuple of at least n elements;
        * - the resulting type is that if the n-th element. *)
       let eid' = e_of_expr e in
-      let nid' = n_of_expr e in
       let name = make_name e "TUPLE" in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc "(or %a)"
@@ -395,7 +413,7 @@ let emit_constraints tuple_sizes out_fields oc e =
                                       (= (tuple%d-n%d %s) %s))"
                 (emit_is_tuple eid') sz
                 sz n eid' eid
-                sz n nid' nid))
+                sz n eid' nid))
             tuple_sizes)
 
   | StatelessFun2 (_, VecGet, n, e) ->
@@ -464,13 +482,13 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* Typing rules:
        * - e1 must be an unsigned;
        * - e2 has same type as the result;
-       * - The result is always nullable as we may lag beyond the start
-       *   of the window. *)
+       * - The result is only nullable by propagation - if the lag goes
+       *   beyond the start of the window then lag merely returns the oldest
+       *   value. *)
       let name = make_name e1 "INTEGER" in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e1) oc TU32 ;
       emit_assert_id_eq_id (e_of_expr e2) oc eid ;
-      let name = make_name e "NULL" in
-      emit_assert_is_true ~name oc nid
+      emit_assert_id_eq_id (n_of_expr e2) oc nid
 
   | StatefulFun (_, _, MovingAvg (e1, e2, e3))
   | StatefulFun (_, _, LinReg (e1, e2, e3)) ->
@@ -608,7 +626,7 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatefulFun (_, _, Last (n, e, es)) ->
       (* - The type of the return is a vector of the specified length,
-       *   with items of the type of e;
+       *   with items of the type of e, and is nullable;
        * - In theory, 'Last n e1 by es` should be nullable iff any of the es
        *   is nullable, and become and stays null forever as soon as one es
        *   is actually NULL. This is kind of useless, so we just disallow
@@ -616,7 +634,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The Last itself is null whenever the number of received item is
        *   less than n. *)
       emit_assert_id_eq_smt2 eid oc
-        (Printf.sprintf "(vector %d %s)" n (e_of_expr e)) ;
+        (Printf.sprintf "(vector %d %s true)" n (e_of_expr e)) ;
       List.iter (fun e ->
         let name = make_name e "NOTNULL" in
         emit_assert_is_false ~name oc (n_of_expr e)
@@ -716,14 +734,14 @@ let emit_program declare tuple_sizes oc funcs =
     emit_operation declare tuple_sizes i oc func
   ) funcs
 
-type id_or_type = Id of string | FieldType of RamenTuple.field_typ
+type id_or_type = Id of int | FieldType of RamenTuple.field_typ
 let id_or_type_of_field op name =
   let open RamenOperation in
   let find_field_type = List.find (fun ft -> ft.RamenTuple.typ_name = name) in
   match op with
   | Aggregate { fields ; _ } ->
       let sf = List.find (fun sf -> sf.alias = name) fields in
-      Id (e_of_expr sf.expr)
+      Id (typ_of sf.expr).uniq_num
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
       FieldType (find_field_type fields)
   | ListenFor { proto ; _ } ->
@@ -806,7 +824,10 @@ let type_input_fields conf oc parents params funcs =
             | Some t ->
                 field_typ.nullable <- t.RamenTuple.typ.nullable ;
                 field_typ.scalar_typ <- Some t.RamenTuple.typ.structure) ;
-            List.iter (emit_assert_id_eq_id (e_of_expr expr) oc) same_as_ids
+            List.iter (fun id ->
+              emit_assert_id_eq_id (e_of_expr expr) oc (e_of_num id) ;
+              emit_assert_id_eq_id (n_of_expr expr) oc (n_of_num id) ;
+            ) same_as_ids
           )
       | _ -> ()
     ) (Option.get func.Func.operation)
@@ -971,7 +992,7 @@ let get_types conf parents funcs params =
           Printf.fprintf oc "(tuple%d" sz ;
           for i = 0 to sz-1 do
             Printf.fprintf oc " (tuple%d-e%d Type)" sz i ;
-            Printf.fprintf oc " (tuple%d-n%d Type)" sz i
+            Printf.fprintf oc " (tuple%d-n%d Bool)" sz i
           done ;
           Printf.fprintf oc ")")) tuple_sizes
         (IO.close_out decls)
