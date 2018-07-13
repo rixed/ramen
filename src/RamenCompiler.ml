@@ -129,43 +129,51 @@ let compile conf root_path program_name program_code =
     ) parsed_funcs ;
     (* Finally, call the typer: *)
     let call_typer typer_name typer =
-      measure_time (fun () ->
-        try typer () ;
+      with_time (fun () ->
+        try let res = typer () in
             IntCounter.add ~labels:["typer", typer_name ;
-                                    "status", "ok"] stats_typing_count 1
+                                    "status", "ok"] stats_typing_count 1 ;
+            res
         with exn ->
+          print_exception ~what:"Error while typing" exn ;
           IntCounter.add ~labels:["typer", typer_name ;
                                   "status", "ko"] stats_typing_count 1 ;
-          raise exn) () |>
-      Histogram.add stats_typing_time ~labels:["typer", typer_name] in
+          raise exn)
+        (Histogram.add stats_typing_time ~labels:["typer", typer_name]) in
     RamenExperiments.(specialize conf.persist_dir typer_choice [|
       (fun () ->
         (* Type with the handcrafted typer: *)
         call_typer "handcrafted" (fun () ->
-          RamenTyping.set_all_types conf compiler_parents
-                                    compiler_funcs parsed_params)) ;
+          RamenTyping.get_types conf compiler_parents
+                                compiler_funcs parsed_params) |> ignore) ;
       (fun () ->
         (* TEST: try the SMT-based typer and compare with handcrafted one: *)
-        (try
-          let copy_funcs =
-            Hashtbl.values compiler_funcs /@
-            RamenTypingHelpers.Func.copy |> List.of_enum in
-          call_typer "smt" (fun () ->
-            RamenSmtTyping.set_all_types conf compiler_parents copy_funcs
-                                         parsed_params)
-        with exn ->
-          !logger.error "Cannot test the external typer: %s\n%s"
-            (Printexc.to_string exn)
-            (Printexc.get_backtrace ())) ;
-        call_typer "handcrafted" (fun () ->
-          RamenTyping.set_all_types conf compiler_parents
-                                    compiler_funcs parsed_params)) ;
+        let copy_funcs =
+          Hashtbl.values compiler_funcs /@
+          RamenTypingHelpers.Func.copy |> List.of_enum in
+        let res_smt =
+          try
+            call_typer "smt" (fun () ->
+              RamenSmtTyping.get_types conf compiler_parents copy_funcs
+                                       parsed_params)
+          with exn ->
+            !logger.error "Cannot test the external typer: %s\n%s"
+              (Printexc.to_string exn)
+              (Printexc.get_backtrace ()) ;
+            Hashtbl.create 0 in
+        let res =
+          call_typer "handcrafted" (fun () ->
+            RamenTyping.get_types conf compiler_parents
+                                  compiler_funcs parsed_params) in
+        (* Compare results: *)
+        RamenTypingHelpers.compare_typers copy_funcs res res_smt
+      ) ;
       (fun () ->
         (* Type using the external solver: *)
         let funcs = Hashtbl.values compiler_funcs |> List.of_enum in
         call_typer "smt" (fun () ->
-          RamenSmtTyping.set_all_types conf compiler_parents funcs
-                                       parsed_params)) |]) ;
+          RamenSmtTyping.get_types conf compiler_parents funcs
+                                   parsed_params) |> ignore) |]) ;
     (*
      * Now the (OCaml) code can be generated and compiled.
      *

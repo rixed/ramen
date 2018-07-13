@@ -216,3 +216,40 @@ let check_finished_tuple_type tuple_prefix tuple_type =
       raise (SyntaxError e))
   ) tuple_type.fields ;
   finish_typing tuple_type
+
+let compare_typers funcs res res_smt =
+  let expr_of_id id =
+    List.find_map (fun func ->
+      let res = ref None in (* I wish we had an exception Return of 'a *)
+      (try RamenOperation.iter_expr (fun e ->
+        if RamenExpr.(typ_of e).uniq_num = id then (
+          res := Some e ; raise Exit)
+        ) (Option.get func.Func.operation)
+      with Exit -> ()) ;
+      !res
+    ) funcs in
+  let expr_is_null id =
+    let e = expr_of_id id in
+    RamenExpr.(typ_of e).expr_name = "NULL"
+  in
+  Hashtbl.iter (fun id (structure, nullable) ->
+    match Hashtbl.find res_smt id with
+    | exception Not_found ->
+        (* If it's a literal "null", SMT is actually right: *)
+        if not (expr_is_null id) then
+          !logger.warning
+            "SMT have no solution for expression %d (%a)"
+            id (RamenExpr.print true) (expr_of_id id)
+    | structure_smt ->
+        let open RamenTypes in
+        if not (can_enlarge ~from:structure ~to_:structure_smt) &&
+            (* Once again, for NULL the handcrafted parser pick a type at
+             * random, while the SMT is more clever: *)
+           not (expr_is_null id)
+        then
+          !logger.warning "SMT resolve expression %d into a %a \
+                           instead of a %a"
+            id
+            print_structure structure_smt
+            print_structure structure
+  ) res

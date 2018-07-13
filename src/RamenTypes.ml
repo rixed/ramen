@@ -32,6 +32,16 @@ and structure =
   | TList of t (* Variable length arrays, aka lists *)
   [@@ppp PPP_OCaml]
 
+let is_an_int = function
+  | TNum|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 -> true
+  | _ -> false
+
+let is_a_num x = is_an_int x || x = TFloat
+
+let is_an_ip = function
+  | TIpv4|TIpv6|TIp -> true
+  | _ -> false
+
 let rec print_structure oc = function
   | TEmpty  -> String.print oc "INVALID"
   | TFloat  -> String.print oc "FLOAT"

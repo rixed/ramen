@@ -140,11 +140,12 @@ let looks_like_true s =
 let looks_like_null s =
   String.lowercase_ascii s = "null"
 
-let measure_time f x =
+let with_time f k =
   let start = Unix.gettimeofday () in
-  f x ;
+  let res = f () in
   let dt = Unix.gettimeofday () -. start in
-  dt
+  k dt ;
+  res
 
 let time what f =
   let start = Unix.gettimeofday () in

@@ -600,7 +600,32 @@ let type_input_fields conf oc parents params funcs =
     ) (Option.get func.Func.operation)
   ) funcs
 
-let set_all_types conf parents funcs params =
+let structure_of_sort_identifier = function
+  | "bool" -> TBool
+  | "number" -> TNum
+  | "string" -> TString
+  | "ip" -> TIp
+  | "cidr" -> TCidr
+  | "eth" -> TEth
+  | unk ->
+      !logger.error "Unknown sort identifier %S" unk ;
+      TEmpty
+
+let rec structure_of_term =
+  let open RamenSmtParser in
+  function
+  | QualIdentifier ((Identifier typ, None), []) ->
+      structure_of_sort_identifier typ
+  | QualIdentifier ((Identifier "vector", None),
+                    [ ConstantTerm c ; sub_term ]) ->
+      let sub_structure = structure_of_term sub_term in
+      let n = int_of_constant c in
+      TVec (n, { structure = sub_structure ; nullable = None (* TODO *)})
+  | _ ->
+      !logger.warning "TODO: exploit define-fun with funny term" ;
+      TEmpty
+
+let get_types conf parents funcs params =
   (* Re. signed/unsigned: currently the parser build constants of the
    * tightest possible type. But those constants could as well, if positive,
    * work for unsigned types as well, or floats. And the other way around too,
@@ -636,6 +661,7 @@ let set_all_types conf parents funcs params =
         ) (Option.get func.Func.operation)) in
       { func with operation }
     ) funcs in*)
+  let h = Hashtbl.create 71 in
   if funcs <> [] then (
     (* We have to start the SMT2 file with declarations before we can
      * produce any assertion: *)
@@ -717,7 +743,23 @@ let set_all_types conf parents funcs params =
               (List.print String.print) syms |>
             failwith)
     in
-    (* Set the types of those ids according to the solution: *)
-    ignore ids ;
-    ignore solution
-  )
+    (* Output a hash of structure*nullability per expression id: *)
+    let open RamenSmtParser in
+    List.iter (fun ((sym, vars, sort, term), _recurs) ->
+      try Scanf.sscanf sym "e%d%!" (fun id ->
+        match vars, sort with
+        | [], NonParametricSort (Identifier "Type") ->
+            Hashtbl.add h id (structure_of_term term)
+        | [], NonParametricSort (Identifier sort) ->
+            !logger.error "Result not about sort Type but %S?!" sort
+        | _, NonParametricSort (IndexedIdentifier _) ->
+          !logger.warning "TODO: exploit define-fun with indexed identifier"
+        | _, ParametricSort _ ->
+          !logger.warning "TODO: exploit define-fun of parametric sort"
+        | _::_, _ ->
+          !logger.warning "TODO: exploit define-fun with parameters")
+      with Scanf.Scan_failure _ | End_of_file | Failure _ -> ()
+    ) solution ;
+    ignore ids
+  ) ;
+  h

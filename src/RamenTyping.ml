@@ -1600,3 +1600,18 @@ let set_all_types conf parents funcs params =
      "cast(I8, 9999 [constant of type I32, not nullable]) [cast to I8 of type I8, not nullable]" \
        (test_check_expr "i8(9999)")
    *)
+
+(* Returns a hash of expression unique number to their structure and
+ * nullability. *)
+let get_types conf parents funcs params =
+  set_all_types conf parents funcs params ;
+  let h = Hashtbl.create 71 in
+  Hashtbl.values funcs |>
+  Enum.iter (fun func ->
+    Option.get func.Func.operation |>
+    RamenOperation.iter_expr (fun e ->
+      let open RamenExpr in
+      let t = typ_of e in
+      Hashtbl.add h t.uniq_num (Option.get t.scalar_typ,
+                                Option.get t.nullable))) ;
+  h

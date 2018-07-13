@@ -51,12 +51,12 @@ let copy_typ ?name typ =
 
 let is_an_ip t =
   match t.scalar_typ with
-  | Some (TIpv4|TIpv6|TIp) -> true
+  | Some x -> RamenTypes.is_an_ip x
   | _ -> false
 
 let is_an_int t =
   match t.scalar_typ with
-  | Some (TNum|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) -> true
+  | Some x -> RamenTypes.is_an_int x
   | _ -> false
 
 type state_lifespan = LocalState | GlobalState

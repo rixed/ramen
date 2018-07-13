@@ -190,6 +190,10 @@ type spec_constant =
   | Numeral of int | Decimal of float | Hexadecimal of int | Binary of int
   | String of string
 
+let int_of_constant = function
+  | Numeral n | Hexadecimal n | Binary n -> n
+  | _ -> invalid_arg "int_of_constant"
+
 let spec_constant m =
   let m = "spec constant" :: m in
   (
@@ -359,7 +363,7 @@ let pattern m =
     (par (repeat ~min:2 ~sep symbol))
   ) m
 
-type qual_identifier = identifier * sort option
+type qual_identifier = identifier * (* as... *) sort option
 
 let qual_identifier m =
   let m = "qual-identifier" :: m in
