@@ -476,7 +476,11 @@ let model_resp m =
           (sym, vars, sort, term), true
         ) decs terms
       with Invalid_argument _ ->
-        raise (Reject "Must have as many declarations than terms"))
+        raise (Reject "Must have as many declarations than terms")) |||
+    (* This is not valid smtlib2.6 but some solvers (cvc4...) like to
+     * also output datatypes: *)
+    (par (string "declare-datatypes" -- blanks -- several ~sep s_expr) >>:
+      fun () -> [])
   ) m
 
 let get_model_resp m =
@@ -491,6 +495,8 @@ let get_model_resp m =
 
 (*$= get_model_resp & ~printer:dump
   [] (test_exn get_model_resp "(model \n)")
+  [] (test_exn get_model_resp \
+    "(model (declare-datatypes ((Type 0)) (((bool) (vector (vector-dim Int) (vector-type Type)) ))))")
 *)
 
 let get_unsat_core_resp m =
