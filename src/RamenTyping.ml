@@ -1038,7 +1038,6 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     if n <= 0 then (
       let e = "LAST number of elements must be greater than zero" in
       raise (SyntaxError (BadConstant e))) ;
-    (* TODO: should be a list *)
     let ret_typ lst =
       let typ_e = List.hd lst in
       (* FIXME: no support for nullable values. Ideally, the type as same

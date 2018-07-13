@@ -150,7 +150,8 @@ let make_name =
  * constraints connecting the parameter to the result: *)
 let emit_constraints tuple_sizes out_fields oc e =
   let eid = e_of_expr e and nid = n_of_expr e in
-  (* We may already know the type of this expression from typing: *)
+  (* We may already know the type of this expression from parsing.
+   * Those are hard constraints and are not named: *)
   Option.may (fun t ->
     let name = make_name e "KNOWNTYPE" in
     emit_assert_id_eq_typ ~name tuple_sizes eid oc t
@@ -159,10 +160,7 @@ let emit_constraints tuple_sizes out_fields oc e =
     let name = make_name e "KNOWNNULL" in
     emit_assert_id_is_bool ~name nid oc n
   ) (typ_of e).nullable ;
-  (* This will just output the constraint we know from parsing. Those
-   * are hard constraints and are not named: *)
-  (* But then we also have specific rules according to the operation at hand:
-   *)
+  (* Then we also have specific rules according to the operation at hand: *)
   match e with
   | Field (_, tupref, field_name) ->
       (* The type of an output field is taken from the out types.
@@ -966,6 +964,7 @@ let get_types conf parents funcs params =
       Printf.sprintf "/tmp/%s.smt2"
         (RamenName.path_of_program program_name) in
     mkdir_all ~is_file:true smt2_file ;
+    !logger.debug "Writing SMT2 program into %S" smt2_file ;
     File.with_file_out ~mode:[`create; `text; `trunc] smt2_file (fun oc ->
       Printf.fprintf oc
         "(set-option :print-success false)\n\
@@ -1004,6 +1003,7 @@ let get_types conf parents funcs params =
         String.nreplace ~sub:"%s" ~by:smt2_file ~str:!smt_solver
       else
         !smt_solver ^" "^ shell_quote smt2_file in
+    !logger.debug "Running the solver as %S" cmd ;
     (* Lazy way to split the arguments: *)
     let shell = "/bin/sh" in
     let args = [| shell ; "-c" ; cmd |] in

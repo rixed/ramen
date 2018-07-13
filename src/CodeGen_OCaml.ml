@@ -337,7 +337,6 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
       (* Note: vector items cannot be NULL: *)
       Printf.fprintf oc "(fun v_ -> Array.map (%a) v_)"
         (conv_from_to ~nullable:(Option.get t_from.nullable)) (t_from.structure, t_to.structure)
-
     | TVec (d, t_from), TList t_to ->
       print_non_null oc (from_typ, TVec (d, t_to))
     | (TVec (_, t) | TList t), TString ->
@@ -348,7 +347,6 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
             Enum.reduce (fun s1_ s2_ -> s1_^\";\"^s2_)
            ) ^\"]\")"
         (conv_from_to ~nullable:(Option.get t.nullable)) (t.structure, TString)
-
     | TTuple ts, TString ->
       let i = ref 0 in
       Printf.fprintf oc
@@ -359,7 +357,6 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
             Printf.fprintf oc "(%a) x%d_"
               (conv_from_to ~nullable:(Option.get t.nullable)) (t.structure, TString) !i ;
             incr i)) ts
-
     | _ ->
       failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
                   (IO.to_string print_structure from_typ)
