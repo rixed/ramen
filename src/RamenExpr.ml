@@ -414,7 +414,7 @@ let rec print with_types fmt =
     add_types t
   | StatelessFun1 (t, Nth n, e) ->
     let n = n + 1 in
-    Printf.fprintf fmt "%d%s%a" n (ordinal_suffix n) (print with_types) e ;
+    Printf.fprintf fmt "%d%s %a" n (ordinal_suffix n) (print with_types) e ;
     add_types t
   | StatelessFun1 (t, Strptime, e) ->
     Printf.fprintf fmt "parse_time (%a)" (print with_types) e ; add_types t
