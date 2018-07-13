@@ -468,7 +468,7 @@ let model_resp m =
       fun d -> [ d, false ]) |||
     (par (string "define-fun-rec" -- blanks -+ function_def) >>:
       fun d -> [ d, true ]) |||
-    (par (string "define-funs-rec" -- opt_blanks -+
+    (par (string "define-funs-rec" -- blanks -+
           par (several ~sep function_dec) +- opt_blanks ++
           par (several ~sep term)) >>: fun (decs, terms) ->
       try
