@@ -362,7 +362,7 @@ let rec enlarge_value t v =
       VTuple (Array.map2 enlarge_value ts vs)
   | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
       VVec (Array.map (enlarge_value t.structure) vs)
-  | VList vs, TList t ->
+  | (VVec vs | VList vs), TList t ->
       VList (Array.map (enlarge_value t.structure) vs)
   | _ ->
       invalid_arg ("Value "^ to_string v ^" cannot be enlarged into a "^
@@ -637,11 +637,13 @@ struct
                                                (test_p p "(3.14; true)")
     (Ok (VVec [| VFloat 3.14; VFloat 1. |], (9,[]))) \
                                                (test_p p "[3.14; 1]")
+    (Ok (VVec [| VI32 0l; VI32 1l; VI32 2l |], (9,[]))) \
+                                               (test_p p "[0; 1; 2]")
   *)
 
   let rec typ m =
     let m = "type" :: m in
-    (scalar_typ ||| tuple_typ ||| vector_typ) m
+    (scalar_typ ||| tuple_typ ||| vector_typ ||| list_typ) m
 
   and scalar_typ m =
     let m = "scalar type" :: m in
@@ -695,10 +697,22 @@ struct
        * We need to start with the repetition count so that we can
        * then use [typ] without deadlooping. *)
       scalar_typ +- opt_blanks +- char '[' +- opt_blanks ++
-      optional ~def:0 (pos_decimal_integer "vector dimensions") +-
+      pos_decimal_integer "vector dimensions" +-
       opt_blanks +- char ']' ++
       opt_question_mark >>: fun ((t, d), n) ->
+        if d <= 0 then raise (Reject "Vector must have dimension > 0") ;
         { structure = TVec (d, t) ; nullable = Some n }
+    ) m
+
+  and list_typ m =
+    let m = "vector type" :: m in
+    (
+      (* FIXME: we can't do vectors of constructed types with this.
+       * We need to start with the repetition count so that we can
+       * then use [typ] without deadlooping. *)
+      scalar_typ +- opt_blanks +- char '[' +- opt_blanks +- char ']' ++
+      opt_question_mark >>: fun (t, n) ->
+        { structure = TList t ; nullable = Some n }
     ) m
 
   (*$>*)

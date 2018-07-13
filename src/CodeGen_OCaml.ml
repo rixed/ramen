@@ -136,7 +136,7 @@ let id_of_typ = function
 
 let rec emit_value_of_string typ oc var =
   match typ with
-  | TVec (d, t) ->
+  | TVec (_, t) | TList t ->
       Printf.fprintf oc
         "RamenHelpers.split_string ~sep:';' ~opn:'[' ~cls:']' %s |>\n\
          Array.map (fun x_ -> %a)"
@@ -306,7 +306,7 @@ let omod_of_type = function
  * call to that function. *)
 let rec conv_from_to ~nullable oc (from_typ, to_typ) =
   (* Emitted code must be prefixable by "Option.map": *)
-  let print_non_null oc (from_typ, to_typ as conv) =
+  let rec print_non_null oc (from_typ, to_typ as conv) =
     match conv with
     | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
         (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
@@ -338,7 +338,9 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
       Printf.fprintf oc "(fun v_ -> Array.map (%a) v_)"
         (conv_from_to ~nullable:(Option.get t_from.nullable)) (t_from.structure, t_to.structure)
 
-    | TVec (d, t), TString ->
+    | TVec (d, t_from), TList t_to ->
+      print_non_null oc (from_typ, TVec (d, t_to))
+    | (TVec (_, t) | TList t), TString ->
       Printf.fprintf oc
         "(fun v_ -> \
            \"[\"^ (\
@@ -708,7 +710,7 @@ and emit_expr ?state ~context ~consts oc expr =
     | TString, TString ->
       emit_functionN ?state ~consts "String.exists"
         [Some TString; Some TString] oc [e2; e1]
-    | t1, TVec (d, t) ->
+    | t1, (TVec (_, t) | TList t) ->
       let emit_in csts_len csts_hash_init non_csts =
         (* We make a constant hash with the constants. Note that when e1 is
          * also a constant the OCaml compiler could optimize the whole
@@ -773,7 +775,8 @@ and emit_expr ?state ~context ~consts oc expr =
           (if had_nullable then "!_ret_" else
            if is_nullable expr then "Some false" else "false")
       in
-      (match e2 with Vector (_, es) ->
+      (match e2 with
+      | Vector (_, es) ->
         let csts, non_csts =
           (* TODO: leave the IFs when we know the compiler will optimize them
            * away:
@@ -788,7 +791,7 @@ and emit_expr ?state ~context ~consts oc expr =
             Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
               (conv_to ?state ~context ~consts (Some larger_t)) e)) csts in
         emit_in csts_len csts_hash_init non_csts
-      | Field ({ scalar_typ = Some (TVec (_, telem)) ; _ }, _, _) ->
+      | Field ({ scalar_typ = Some ((TVec (_, telem) | TList telem)) ; _ }, _, _) ->
         let csts_len =
           Printf.sprintf2 "Array.length (%a)"
             (emit_expr ?state ~context ~consts) e2
@@ -1151,16 +1154,53 @@ let emit_compute_nullmask_size oc ser_typ =
   Printf.fprintf oc "\t\tRingBuf.bytes_for_bits |>\n" ;
   Printf.fprintf oc "\t\tRingBuf.round_up_to_rb_word in\n"
 
-(* Emit the code computing the sersize of some variable *)
-let emit_sersize_of_field_var typ oc var =
-  match typ with
+let rec emit_sersize_of_var typ nullable oc var =
+  if nullable then (
+    Printf.fprintf oc
+      "\t\t\t(match %s with None -> 0 | Some %s ->\n\
+       \t%a)"
+      var var
+      (emit_sersize_of_var typ false) var
+  ) else match typ with
+  | TTuple ts ->
+      let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
+      Printf.fprintf oc "\t\t\t(let %a = %s in\n"
+        (array_print_as_tuple_i (fun oc i _ ->
+          let item_var = var ^"_"^ string_of_int i in
+          String.print oc item_var)) ts
+        var ;
+      Array.iteri (fun i t ->
+        let item_var = var ^"_"^ string_of_int i in
+        Printf.fprintf oc "%a + "
+          (emit_sersize_of_var t.structure (Option.get t.nullable)) item_var
+      ) ts ;
+      Printf.fprintf oc "%d)" nullmask_sz
+  | TVec (d, t) ->
+      let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
+      for i = 0 to d-1 do
+        let item_var = var ^"_"^ string_of_int i in
+        Printf.fprintf oc "\t\t\t(let %s = %s.(%d) in %a) + "
+          item_var var i
+          (emit_sersize_of_var t.structure (Option.get t.nullable)) item_var
+      done ;
+      Int.print oc nullmask_sz
   | TString ->
-    Printf.fprintf oc "(RingBufLib.sersize_of_string %s)" var
+    Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_string %s)" var
   | TIp ->
-    Printf.fprintf oc "(RingBufLib.sersize_of_ip %s)" var
+    Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_ip %s)" var
   | TCidr ->
-    Printf.fprintf oc "(RingBufLib.sersize_of_cidr %s)" var
-  | TTuple _ | TVec _ | TList _ -> assert false
+    Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_cidr %s)" var
+  | TList t ->
+    (* So var is the name of an array of some values of type t, which can
+     * be a constructed type which sersize can't be known statically.
+     * So at first sight we have to generate code that will iter through
+     * the values and for each, know or compute its size, etc. This is
+     * what we do here, but in cases where t has a well known sersize we
+     * could generate much faster code of course: *)
+    Printf.fprintf oc "(Array.fold_left (fun s_ v_ -> \
+      s_ + %a) 0 %s)"
+      (emit_sersize_of_var t.structure (Option.get t.nullable)) "v_"
+      var
   | _ -> emit_sersize_of_fixsz_typ oc typ
 
 let emit_sersize_of_tuple name oc tuple_typ =
@@ -1170,44 +1210,6 @@ let emit_sersize_of_tuple name oc tuple_typ =
    * actual tuple, so we can compute the nullmask in advance: *)
   Printf.fprintf oc "let %s skiplist_ =\n" name ;
   emit_compute_nullmask_size oc ser_typ ;
-  (* Returns the size: *)
-  let rec emit_sersize_of_scalar val_var nullable oc typ =
-    if nullable then (
-      Printf.fprintf oc
-        "\t\t\t(match %s with None -> 0 | Some %s ->\n\
-         \t%a)"
-        val_var val_var
-        (emit_sersize_of_scalar val_var false) typ
-    ) else (match typ with
-    | TTuple ts ->
-        let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
-        Printf.fprintf oc "\t\t\t(let %a = %s in\n"
-          (array_print_as_tuple_i (fun oc i _ ->
-            let item_var = val_var ^"_"^ string_of_int i in
-            String.print oc item_var)) ts
-          val_var ;
-        Array.iteri (fun i t ->
-          let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "%a + "
-            (emit_sersize_of_scalar item_var (Option.get t.nullable)) t.structure
-        ) ts ;
-        Printf.fprintf oc "%d)" nullmask_sz
-    | TVec (d, t) ->
-        let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
-        for i = 0 to d-1 do
-          let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\t\t(let %s = %s.(%d) in %a) + "
-            item_var val_var i
-            (emit_sersize_of_scalar item_var (Option.get t.nullable)) t.structure
-        done ;
-        Int.print oc nullmask_sz
-    | TList t -> todo "list"
-    | t ->
-        Printf.fprintf oc "\t\t\t%a"
-          (emit_sersize_of_field_var typ) val_var
-    )
-  in
-  (* Now for the code run for each tuple: *)
   Printf.fprintf oc "\tfun %a ->\n"
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   Printf.fprintf oc "\t\tlet sz_ = nullmask_bytes_ in\n" ;
@@ -1215,8 +1217,8 @@ let emit_sersize_of_tuple name oc tuple_typ =
       let id = id_of_field_typ ~tuple:TupleOut field in
       Printf.fprintf oc "\t\t(* %s *)\n" id ;
       Printf.fprintf oc "\t\tlet sz_ = sz_ + if List.hd skiplist_ then (\n" ;
-      emit_sersize_of_scalar id (Option.get field.typ.nullable) oc field.typ.structure ;
-      (* Note: disable warning 26 because emit_sersize_of_scalar might
+      emit_sersize_of_var field.typ.structure (Option.get field.typ.nullable) oc id ;
+      (* Note: disable warning 26 because emit_sersize_of_var might
        * have generated tons of unused bindings: *)
       Printf.fprintf oc "\n\t\t) else 0 [@@ocaml.warning \"-26\"] in\n" ;
       Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n" ;
@@ -1297,7 +1299,7 @@ let emit_serialize_tuple name oc tuple_typ =
         Printf.fprintf oc "\t\t\t\tRingBuf.write_%s %s %s %s ;\n"
           (id_of_typ t) tx_var offs_var val_var ;
         Printf.fprintf oc "\t\t\t\t%s + %a, %s"
-          offs_var (emit_sersize_of_field_var t) val_var nulli_var ;
+          offs_var (emit_sersize_of_var t false) val_var nulli_var ;
         if verbose_serialization then
           Printf.fprintf oc "\t\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) %s ;\n" val_var val_var offs_var
     )

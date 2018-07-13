@@ -216,6 +216,42 @@ let (|||) a b = a || b
 let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   let indent = String.make depth ' ' and depth = depth + 2 in
   let open RamenExpr in
+  let get_common_type es =
+    List.fold_lefti (fun (changed, largest, nullable) i e ->
+      let typ = typ_of e in
+      (* Typecheck e *)
+      let chg =
+        check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ
+                   ~params e in
+      let largest =
+        match largest, typ.scalar_typ with
+        | Some TAny, fst_typ -> fst_typ
+        | Some largest, Some t2 ->
+            (try Some (large_enough_for largest t2)
+            with Invalid_argument _ ->
+              let e = IncompatibleVecItems {
+                what = exp_type.expr_name ;
+                indice = i ;
+                typ = IO.to_string RamenTypes.print_structure t2 ;
+                largest = IO.to_string RamenTypes.print_structure largest
+              } in
+              raise (SyntaxError e))
+        | _ -> None in
+      let nullable =
+        match nullable, typ.nullable with
+        | None, n -> n
+        | n, None -> n
+        | Some n1, Some n2 ->
+            if n1 = n2 then nullable else
+            let e = IncompatibleVecItems {
+              what = exp_type.expr_name ;
+              indice = i ;
+              typ = (if n2 then "" else "not") ^" nullable" ;
+              largest = (if n1 then "" else "not") ^" nullable" } in
+            raise (SyntaxError e) in
+      changed || chg, largest, nullable
+    ) (false, Some TAny, None) es
+  in
   (* Check that the operand [sub_expr] is compatible with expectation (re. type
    * and null) set by the caller (the operator). [op_typ] is used for printing
    * only. Extends the type of sub_expr as required. *)
@@ -430,6 +466,13 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     !logger.debug "%sTyping VECTOR, expecting %a"
       indent Expr.print_typ exp_type ;
     let nb_items = List.length es in
+    let cannot_type t structure nullable =
+      let e = CannotTypeExpression {
+        what = exp_type.expr_name ;
+        expected_type = IO.to_string RamenTypes.print_typ t ;
+        got_type = IO.to_string RamenTypes.print_typ { structure ; nullable }} in
+      raise (SyntaxError e)
+    in
     (match exp_type.scalar_typ with
     | None | Some (TVec (0, _)) ->
         !logger.debug "%sTyping VECTOR: expecting a vector of dimension %d"
@@ -437,8 +480,6 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         let typ = TVec (nb_items, { structure = TAny ; nullable = None }) in
         exp_type.scalar_typ <- Some typ ;
         true
-    (* TODO: Almost the same process if the exp_type.scalar_typ is
-     * Some (TList t) *)
     | Some (TVec (dim, t) as exp_vector) ->
         if dim <> nb_items then (
           !logger.debug "%sTyping VECTOR: expecting %d items but got %d"
@@ -449,76 +490,53 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
             expected_type = IO.to_string RamenTypes.print_structure exp_vector
           } in
           raise (SyntaxError e)) ;
-        let changed, largest, nullable =
-          List.fold_lefti (fun (changed, largest, nullable) i e ->
-            let typ = typ_of e in
-            (* Typecheck e *)
-            let chg =
-              check_expr ~depth ~parents ~in_type ~out_type ~exp_type:typ
-                         ~params e in
-            !logger.debug "%sTyping VECTOR: item %d is %a (changed: %b)"
-              indent i print_typ typ chg ;
-            let largest =
-              match largest, typ.scalar_typ with
-              | Some TAny, fst_typ -> fst_typ
-              | Some largest, Some t2 ->
-                  (try Some (large_enough_for largest t2)
-                  with Invalid_argument _ ->
-                    let e = IncompatibleVecItems {
-                      what = exp_type.expr_name ;
-                      indice = i ;
-                      typ = IO.to_string RamenTypes.print_structure t2 ;
-                      largest = IO.to_string RamenTypes.print_structure largest
-                    } in
-                    raise (SyntaxError e))
-              | _ -> None in
-            let nullable =
-              match nullable, typ.nullable with
-              | None, n -> n
-              | n, None -> n
-              | Some n1, Some n2 ->
-                  if n1 = n2 then nullable else
-                  let e = IncompatibleVecItems {
-                    what = exp_type.expr_name ;
-                    indice = i ;
-                    typ = (if n2 then "" else "not") ^" nullable" ;
-                    largest = (if n1 then "" else "not") ^" nullable" } in
-                  raise (SyntaxError e) in
-            changed || chg, largest, nullable
-          ) (false, Some TAny, None) es in
+        let changed, largest, nullable = get_common_type es in
         (* Update expected type with largest: *)
         let changed =
           Option.map_default (fun largest ->
             if t.structure = largest then false else
             if t.structure = TAny || can_enlarge ~from:t.structure ~to_:largest
             then (
-              !logger.debug "%sTyping VECTOR: Improving vector type from %a"
+              !logger.debug "%sTyping VECTOR: Improving type from %a"
                 indent RamenTypes.print_typ t ;
               exp_type.scalar_typ <- Some (TVec (nb_items, { t with structure = largest })) ;
               true
-            ) else (
-              let e = CannotTypeExpression {
-                what = exp_type.expr_name ;
-                expected_type = IO.to_string RamenTypes.print_typ t ;
-                got_type = IO.to_string RamenTypes.print_structure largest } in
-              raise (SyntaxError e)
-            )
+            ) else cannot_type t largest nullable
           ) false largest || changed in
         let changed =
           Option.map_default (fun nullable ->
             if t.nullable = Some nullable then false else
             if t.nullable = None then (
-              !logger.debug "%sTyping VECTOR: Set vector to %snullable"
+              !logger.debug "%sTyping VECTOR: Set %snullable"
                 indent (if nullable then "" else "not ") ;
               exp_type.scalar_typ <- Some (TVec (nb_items, { t with nullable = Some nullable })) ;
               true
-            ) else (
-              let e = CannotTypeExpression {
-                what = exp_type.expr_name ;
-                expected_type = (if nullable then "" else "not") ^" nullable" ;
-                got_type = (if nullable then "not " else "") ^" nullable" } in
-              raise (SyntaxError e)
-            )
+            ) else cannot_type t (largest |? TAny) (Some nullable)
+          ) false nullable || changed in
+        changed
+    | Some (TList t) ->
+        let changed, largest, nullable = get_common_type es in
+        (* Update expected type with largest: *)
+        let changed =
+          Option.map_default (fun largest ->
+            if t.structure = largest then false else
+            if t.structure = TAny || can_enlarge ~from:t.structure ~to_:largest
+            then (
+              !logger.debug "%sTyping LIST: Improving type from %a"
+                indent RamenTypes.print_typ t ;
+              exp_type.scalar_typ <- Some (TList { t with structure = largest }) ;
+              true
+            ) else cannot_type t largest nullable
+          ) false largest || changed in
+        let changed =
+          Option.map_default (fun nullable ->
+            if t.nullable = Some nullable then false else
+            if t.nullable = None then (
+              !logger.debug "%sTyping LIST: Set %snullable"
+                indent (if nullable then "" else "not ") ;
+              exp_type.scalar_typ <- Some (TList { t with nullable = Some nullable }) ;
+              true
+            ) else cannot_type t (largest |? TAny) (Some nullable)
           ) false nullable || changed in
         changed
     | Some _ ->
@@ -1042,13 +1060,12 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       [ Some TFloat, None, a ]
   | StatelessFun2 (op_typ, In, e1, e2) ->
     (* FIXME: we really want to be able to backtrack those tries: *)
-    (* TODO: Also for lists *)
     let last_exc = ref Exit and ret = ref false in
     (try
       let nop _ _ = false
       and same_any e1 e2 =
         match (typ_of e2).scalar_typ |> Option.get with
-        | TVec (_, t) ->
+        | TVec (_, t) | TList t ->
             (* t and e1's type must be compatible but can be nullable
              * independently: *)
             if t.structure = TAny then false (* wait *) else
@@ -1060,7 +1077,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         TIpv6, TCidrv6, nop ;
         TIp, TCidr, nop ;
         TString, TString, nop ;
-        TAny, TVec (0, { structure = TAny ; nullable = None }), same_any ] |>
+        TAny, TVec (0, { structure = TAny ; nullable = None }), same_any ;
+        TAny, TList { structure = TAny ; nullable = None }, same_any ] |>
       List.iter (fun (t1, t2, further_check) ->
         try
           ret := check_op op_typ return_bool
