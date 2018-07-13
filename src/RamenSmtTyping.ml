@@ -42,7 +42,7 @@ open RamenExpr
 open RamenTypes
 open RamenLog
 
-let smt_solver = ref "z3 -smt2 %s"
+let smt_solver = ref "z3 -smt2 %s" (* also "cvc4"... *)
 
 let id_of_typ t =
   Printf.sprintf "e%d" t.uniq_num
@@ -744,7 +744,11 @@ let get_types conf parents funcs params =
         (IO.close_out expr_types)
         (IO.close_out parent_types)) ;
     (* Run the solver *)
-    let cmd = String.nreplace ~sub:"%s" ~by:smt2_file ~str:!smt_solver in
+    let cmd =
+      if String.exists !smt_solver "%s" then
+        String.nreplace ~sub:"%s" ~by:smt2_file ~str:!smt_solver
+      else
+        !smt_solver ^" "^ shell_quote smt2_file in
     (* Lazy way to split the arguments: *)
     let shell = "/bin/sh" in
     let args = [| shell ; "-c" ; cmd |] in

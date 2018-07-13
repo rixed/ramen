@@ -110,7 +110,7 @@ struct
   let max_simult_compilations =
     "Max number of compilations to perform simultaneously"
   let smt_solver =
-    "Command to run the SMT solver (with %s n place of the SMT2 file name)"
+    "Command to run the SMT solver (with %s in place of the SMT2 file name)"
   let param = "Override parameter's P default value with V"
   let program_globs = "Program names"
   let root_path = "Path where to find other programs"
