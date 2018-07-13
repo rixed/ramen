@@ -609,8 +609,7 @@ let rec fold_by_depth f i expr =
     let i' =
       List.fold_left (fun i alt ->
         let i' = fold_by_depth f i alt.case_cond in
-        let i''= fold_by_depth f i' alt.case_cons in
-        f i'' expr) i alts in
+        fold_by_depth f i' alt.case_cons) i alts in
     let i''=
       Option.map_default (fold_by_depth f i') i' else_ in
     f i'' expr
