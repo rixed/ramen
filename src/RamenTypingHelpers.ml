@@ -240,16 +240,25 @@ let compare_typers funcs res res_smt =
           !logger.warning
             "SMT have no solution for expression %d (%a)"
             id (RamenExpr.print true) (expr_of_id id)
-    | structure_smt ->
+    | smt ->
         let open RamenTypes in
-        if not (can_enlarge ~from:structure ~to_:structure_smt) &&
+        if not (can_enlarge ~from:structure ~to_:smt.structure) &&
             (* Once again, for NULL the handcrafted parser pick a type at
              * random, while the SMT is more clever: *)
            not (expr_is_null id)
         then
-          !logger.warning "SMT resolve expression %d into a %a \
-                           instead of a %a"
+          !logger.warning "SMT resolves expression %d into a %a \
+                           instead of a %a!"
             id
-            print_structure structure_smt
-            print_structure structure
+            print_structure smt.structure
+            print_structure structure ;
+        match smt.nullable with
+        | None ->
+            !logger.warning "SMT cannot find out the nullability of \
+                             expression %d!" id
+        | Some n when n <> nullable ->
+            !logger.warning "SMT wrongfully thinks expression %d is \
+                             %snullable!"
+              id (if n then "" else "not ")
+        | _ -> ()
   ) res
