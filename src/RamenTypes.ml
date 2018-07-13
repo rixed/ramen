@@ -21,6 +21,7 @@ type t =
   { structure : structure ;
     nullable : bool option } [@@ppp PPP_OCaml]
 and structure =
+  | TEmpty (* There is no value of this type. Used to denote bad types. *)
   | TFloat | TString | TBool | TNum | TAny
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
@@ -32,6 +33,7 @@ and structure =
   [@@ppp PPP_OCaml]
 
 let rec print_structure oc = function
+  | TEmpty  -> String.print oc "INVALID"
   | TFloat  -> String.print oc "FLOAT"
   | TString -> String.print oc "STRING"
   | TBool   -> String.print oc "BOOL"
@@ -245,7 +247,7 @@ let can_enlarge_scalar ~from ~to_ =
  * enlarge_value below. *)
 let rec can_enlarge ~from ~to_ =
   match from, to_ with
-  | _, TAny -> true
+  | x, TAny when x <> TEmpty -> true
   | TTuple ts1, TTuple ts2 ->
       (* TTuple [||] means "any tuple", so we can "enlarge" any actual tuple
        * into "any tuple": *)
@@ -385,9 +387,8 @@ let largest_structure = function
  *)
 
 let rec any_value_of_type = function
+  | TNum | TAny | TEmpty -> assert false
   | TString -> VString ""
-  | TNum -> assert false
-  | TAny -> assert false
   | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
   | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
   | TFloat -> VFloat 0.

@@ -9,7 +9,7 @@ let release_tag = "v2.2.4"
 let graph_config = "v10" (* last: params in RC key *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v27" (* last: nullable in RamenTypes.t *)
+let codegen = "v28" (* last: new type TEmpty *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)

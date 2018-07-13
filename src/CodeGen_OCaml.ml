@@ -132,7 +132,7 @@ let id_of_typ = function
   | TTuple _ -> "tuple"
   | TVec _  -> "vector"
   | TList _ -> "list"
-  | TNum | TAny -> assert false
+  | TNum | TAny | TEmpty -> assert false
 
 let rec emit_value_of_string typ oc var =
   match typ with
@@ -278,7 +278,7 @@ let rec otype_of_type oc = function
   | TVec (_, t) | TList t ->
       (* TODO: take into account t.nullable *)
       Printf.fprintf oc "%a array" otype_of_type t.structure
-  | TNum | TAny -> assert false
+  | TNum | TAny | TEmpty -> assert false
 
 let omod_of_type = function
   | TFloat -> "Float"
@@ -294,7 +294,7 @@ let omod_of_type = function
   | TCidrv4 -> "RamenIpv4.Cidr"
   | TCidrv6 -> "RamenIpv6.Cidr"
   | TCidr -> "RamenIp.Cidr"
-  | TTuple _ | TVec _ | TList _ | TNum | TAny -> assert false
+  | TTuple _ | TVec _ | TList _ | TNum | TAny | TEmpty -> assert false
 
 (* Why don't we have explicit casts in the AST so that we could stop
  * caring about those pesky conversions once and for all? Because the

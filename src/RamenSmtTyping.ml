@@ -50,6 +50,7 @@ let id_of_typ t =
 let id_of_expr = id_of_typ % typ_of
 
 let rec emit_id_eq_typ declare id oc = function
+  | TEmpty -> assert false
   | TString -> Printf.fprintf oc "(= string %s)" id
   | TBool -> Printf.fprintf oc "(= bool %s)" id
   | TAny -> Printf.fprintf oc "true"
