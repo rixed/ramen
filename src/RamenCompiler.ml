@@ -143,7 +143,7 @@ let compile conf root_path program_name program_code =
     RamenExperiments.(specialize conf.persist_dir typer_choice [|
       (fun () ->
         (* Type with the handcrafted typer: *)
-        call_typer "handcrafted" (fun () ->
+        call_typer "internal" (fun () ->
           RamenTyping.get_types conf compiler_parents
                                 compiler_funcs parsed_params) |> ignore) ;
       (fun () ->
@@ -153,7 +153,7 @@ let compile conf root_path program_name program_code =
           RamenTypingHelpers.Func.copy |> List.of_enum in
         let res_smt =
           try
-            call_typer "smt" (fun () ->
+            call_typer !RamenSmtTyping.smt_solver (fun () ->
               RamenSmtTyping.get_types conf compiler_parents copy_funcs
                                        parsed_params)
           with exn ->
@@ -162,7 +162,7 @@ let compile conf root_path program_name program_code =
               (Printexc.get_backtrace ()) ;
             Hashtbl.create 0 in
         let res =
-          call_typer "handcrafted" (fun () ->
+          call_typer "internal" (fun () ->
             RamenTyping.get_types conf compiler_parents
                                   compiler_funcs parsed_params) in
         (* Compare results: *)
@@ -171,7 +171,7 @@ let compile conf root_path program_name program_code =
       (fun () ->
         (* Type using the external solver: *)
         let funcs = Hashtbl.values compiler_funcs |> List.of_enum in
-        call_typer "smt" (fun () ->
+        call_typer !RamenSmtTyping.smt_solver (fun () ->
           RamenSmtTyping.get_types conf compiler_parents funcs
                                    parsed_params) |> ignore) |]) ;
     (*
