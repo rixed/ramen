@@ -143,7 +143,7 @@ let emit_typing_constraints declare out_fields oc e =
       (* The type of an output field is taken from the out types.
        * The type of a field originating from input/params/env/virtual
        * fields has been set previously. *)
-      if !tupref = RamenLang.TupleOut then (
+      if RamenLang.tuple_has_type_output !tupref then (
         let open RamenOperation in
         match List.find (fun sf -> sf.alias = field_name) out_fields with
         | exception Not_found ->
@@ -154,7 +154,14 @@ let emit_typing_constraints declare out_fields oc e =
             failwith
         | { expr ; _ } ->
             emit_assert_id_eq_id id oc (id_of_expr expr))
-  | Const (_, _) | StateField _ | Tuple _ -> ()
+  | Const (_, _) | StateField _ -> ()
+  | Tuple (_, es) ->
+      (* Identify each element to identifier used for it: *)
+      List.iteri (fun i e ->
+        let id' = id ^"_"^ string_of_int i in
+        declare id' None ;
+        emit_assert_id_eq_id id' oc (id_of_expr e)
+      ) es
   | Vector (_, es) ->
       (* Typing rules:
        * - every element in es must have the same type;
@@ -169,12 +176,13 @@ let emit_typing_constraints declare out_fields oc e =
           Printf.fprintf oc "(assert (= %s (vector-type %s)))\n"
             (id_of_expr fst) id ;
           if rest <> [] then
-            let smt2 =
-              List.fold_left (fun s e ->
-                s ^ " (= "^ id_of_expr fst ^" "^ id_of_expr e ^")"
-              ) "(and" rest ^ ")"
-            and name = make_name e "VECSAMETYPES" in
-            emit_assert_id_eq_smt2 ~name (id_of_expr fst) oc smt2)
+            let name = make_name e "VECSAMETYPES" in
+            emit_assert ~name oc (fun oc ->
+              List.print ~first:"(and " ~sep:" " ~last:")"
+                (fun oc e ->
+                  Printf.fprintf oc "(= %s %s)"
+                    (id_of_expr fst) (id_of_expr e))
+                oc rest))
   | Case (_, cases, else_) ->
       (* Typing rules:
        * - all conditions must have type bool;
@@ -275,7 +283,7 @@ let emit_typing_constraints declare out_fields oc e =
       emit_assert_id_eq_id id' oc id ;
       let name = make_name e "TUPLE" in
       emit_assert ~name oc (fun oc ->
-        Printf.fprintf oc "((_ is tuple) %s" (id_of_expr e)) ;
+        Printf.fprintf oc "((_ is tuple) %s)" (id_of_expr e)) ;
       (* Is it guaranteed that then tuple-dim chosen by the solver is the
        * smallest possible? And even so, what to do with that info? *)
       Printf.fprintf oc "(assert (> (tuple-dim %s) %d))\n" (id_of_expr e) n
@@ -413,8 +421,9 @@ let emit_typing_constraints declare out_fields oc e =
       let name = make_name time "NUMERIC" in
       emit_assert_id_eq_typ ~name declare (id_of_expr time) oc TNum
   | StatefulFun (_, _, Last (n, e, es)) ->
-      (* The type of the return is a list of the type of e. *)
-      let smt2 = Printf.sprintf "(list %s)" (id_of_expr e) in
+      (* The type of the return is a vector of the specified length,
+       * with items of the type of e. *)
+      let smt2 = Printf.sprintf "(vector %d %s)" n (id_of_expr e) in
       emit_assert_id_eq_smt2 id oc smt2
   | StatefulFun (_, _, AggrHistogram (e, _, _, _)) ->
       (* e must be numeric *)

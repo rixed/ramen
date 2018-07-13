@@ -234,6 +234,7 @@ let can_enlarge_scalar ~from ~to_ =
     | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ; TNum ]
     | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
     | TI128 -> [ TI128 ; TFloat ; TNum ]
+    | TFloat -> [ TFloat ; TNum ]
     | TBool -> [ TBool ; TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
     (* Any specific type can be turned into its generic variant: *)
     | TIpv4 -> [ TIpv4 ; TIp ]
