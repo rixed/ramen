@@ -35,15 +35,26 @@ let print_typ fmt typ =
     | Some false -> ", not nullable")
 
 let uniq_num_seq = ref 0
+
 let make_typ ?nullable ?typ expr_name =
   incr uniq_num_seq ;
   { expr_name ; nullable ; scalar_typ = typ ; uniq_num = !uniq_num_seq }
-let make_bool_typ ?nullable name = make_typ ?nullable ~typ:TBool name
-let make_float_typ ?nullable name = make_typ ?nullable ~typ:TFloat name
-let make_string_typ ?nullable name = make_typ ?nullable ~typ:TString name
+
+let make_bool_typ ?nullable name =
+  make_typ ?nullable ~typ:TBool name
+
+let make_float_typ ?nullable name =
+  make_typ ?nullable ~typ:TFloat name
+
+let make_string_typ ?nullable name =
+  make_typ ?nullable ~typ:TString name
+
 let make_num_typ ?nullable name =
   make_typ ?nullable ~typ:TNum name (* will be enlarged as required *)
-let make_int_typ ?nullable name = make_typ ?nullable ~typ:TI8 name
+
+let make_int_typ ?nullable name =
+  make_typ ?nullable ~typ:TI8 name (* may also be enlarged later *)
+
 let copy_typ ?name typ =
   let expr_name = name |? typ.expr_name in
   incr uniq_num_seq ;

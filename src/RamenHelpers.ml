@@ -1124,3 +1124,11 @@ let ppp_to_file fname ppp v =
       finally
         (fun () -> Pervasives.close_out oc)
         (PPP.to_out_channel ppp oc) v
+
+let rec reach_fixed_point ?max_try f =
+  match max_try with Some n when n <= 0 -> false
+  | _ ->
+    if f () then (
+      !logger.debug "Looping to reach fixed point" ;
+      reach_fixed_point ?max_try:(Option.map pred max_try) f
+    ) else true
