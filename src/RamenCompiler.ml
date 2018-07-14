@@ -191,6 +191,13 @@ let compile conf root_path program_name program_code =
           ) (Option.get func.Func.operation)
         ) funcs) |]) ;
     (*
+     * Now finalize the types and insert casts.
+     * See RamenCasting for details.
+     * Note: This should be a NOP with the internal type-checker.
+     *)
+    if not (RamenCasting.finalize_types compiler_funcs) then
+      failwith "Cannot reach fixed point while finalizing types" ;
+    (*
      * Now the (OCaml) code can be generated and compiled.
      *
      * Each functions is compiled into an object file (an OCaml  module) with a

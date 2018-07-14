@@ -168,7 +168,8 @@ let type_of_parent_field parent tuple_of_field field =
           Expr.{ expr_name = f.typ_name ;
                  uniq_num = 0 ;
                  nullable = f.typ.nullable ;
-                 scalar_typ = Some f.typ.structure }
+                 scalar_typ = Some f.typ.structure ;
+                 final = false }
         ) else None) user in
   try find_field ()
   with Not_found ->

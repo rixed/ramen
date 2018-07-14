@@ -974,7 +974,8 @@ let get_types conf parents funcs params =
          ; Define a sort for types:\n\
          (declare-datatypes\n\
            ( (Type 0) )\n\
-           ( ((bool) (number) (string) (ip) (cidr) (eth)\n\
+           ( ((bool) (string) (ip) (cidr) (eth)\n\
+              (number)\n\
               (list (list-type Type) (list-nullable Bool))\n\
               (vector (vector-dim Int) (vector-type Type) (vector-nullable Bool))\n\
               %a) ))\n\

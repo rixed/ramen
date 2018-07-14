@@ -21,7 +21,10 @@ type typ =
     uniq_num : int ; (* to build var names, record field names or identify SAT variables *)
     mutable nullable : bool option ;
     (* TODO: rename scalar_typ to structure: *)
-    mutable scalar_typ : RamenTypes.structure option }
+    mutable scalar_typ : RamenTypes.structure option ;
+    (* Tells whether this type assignment is final (ie not subject to
+     * further enlargement) *)
+    mutable final : bool }
 
 let print_typ fmt typ =
   Printf.fprintf fmt "%s of %s%s"
@@ -38,7 +41,8 @@ let uniq_num_seq = ref 0
 
 let make_typ ?nullable ?typ expr_name =
   incr uniq_num_seq ;
-  { expr_name ; nullable ; scalar_typ = typ ; uniq_num = !uniq_num_seq }
+  { expr_name ; nullable ; scalar_typ = typ ; uniq_num = !uniq_num_seq ;
+    final = false }
 
 let make_bool_typ ?nullable name =
   make_typ ?nullable ~typ:TBool name
