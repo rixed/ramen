@@ -172,9 +172,24 @@ let compile conf root_path program_name program_code =
       (fun () ->
         (* Type using the external solver: *)
         let funcs = Hashtbl.values compiler_funcs |> List.of_enum in
-        call_typer !RamenSmtTyping.smt_solver (fun () ->
-          RamenSmtTyping.get_types conf compiler_parents funcs
-                                   parsed_params) |> ignore) |]) ;
+        let types =
+          call_typer !RamenSmtTyping.smt_solver (fun () ->
+            RamenSmtTyping.get_types conf compiler_parents funcs
+                                     parsed_params) in
+        (* Apply the types: *)
+        List.iter (fun func ->
+          RamenOperation.iter_expr (fun e ->
+            let open RamenExpr in
+            let t = typ_of e in
+            match Hashtbl.find types t.uniq_num with
+            | exception Not_found ->
+                !logger.warning "No type for expression %a"
+                  (print true) e
+            | typ ->
+                t.scalar_typ <- Some typ.structure ;
+                t.nullable <- typ.nullable
+          ) (Option.get func.Func.operation)
+        ) funcs) |]) ;
     (*
      * Now the (OCaml) code can be generated and compiled.
      *
