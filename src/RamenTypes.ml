@@ -368,12 +368,8 @@ let rec enlarge_value t v =
       invalid_arg ("Value "^ to_string v ^" cannot be enlarged into a "^
                    string_of_structure t)
 
-(* From the list of operand types, return the largest type able to accomodate
- * all operands. Most of the time it will be the largest in term of "all
- * others can be enlarged to that one" but for special cases where we want
- * an even larger type; For instance, if we combine an i8 and an u8 then we
- * want the result to be an i16, or if we combine an IPv4 and an IPv6 then
- * we want the result to be an IP. *)
+(* Return a type that is large enough for both s1 and s2, assuming
+ * s1 could be made larger itself. *)
 let rec large_enough_for s1 s2 =
   try larger_structure s1 s2
   with Invalid_argument _ as e ->

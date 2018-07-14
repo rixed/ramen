@@ -1117,7 +1117,8 @@ let ppp_to_file fname ppp v =
   let openflags = [ Open_wronly; Open_creat; Open_trunc; Open_text ] in
   match Pervasives.open_out_gen openflags 0o644 fname with
   | exception e ->
-      !logger.warning "Cannot open %S for writing: %s" fname (Printexc.to_string e) ;
+      !logger.warning "Cannot open %S for writing: %s"
+        fname (Printexc.to_string e) ;
       raise e
   | oc ->
       finally

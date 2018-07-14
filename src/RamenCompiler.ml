@@ -15,6 +15,7 @@ open RamenLog
 module C = RamenConf
 module F = RamenConf.Func
 module P = RamenConf.Program
+open RamenTypingHelpers
 
 open Binocle
 
@@ -76,7 +77,7 @@ let compile conf root_path program_name program_code =
       (* During compilation we do not care about actual values of params: *)
       let params = [] in
       let me_func =
-        RamenTypingHelpers.make_untyped_func program_name
+        make_untyped_func program_name
           parsed_func.name params parsed_func.operation in
       !logger.debug "Found function %s" fq_name ;
       Hashtbl.add compiler_funcs fq_name me_func
@@ -123,7 +124,7 @@ let compile conf root_path program_name program_code =
               f.F.name = parent_func_name
             ) par_rc.P.funcs in
           (* Build a typed F.t from this Fun.t: *)
-          RamenTypingHelpers.make_typed_func parent_prog_name parent_func
+          make_typed_func parent_prog_name parent_func
       ) |>
       Hashtbl.add compiler_parents parsed_func.RamenProgram.name
     ) parsed_funcs ;
@@ -150,7 +151,7 @@ let compile conf root_path program_name program_code =
         (* TEST: try the SMT-based typer and compare with handcrafted one: *)
         let copy_funcs =
           Hashtbl.values compiler_funcs /@
-          RamenTypingHelpers.Func.copy |> List.of_enum in
+          Func.copy |> List.of_enum in
         let res_smt =
           try
             call_typer !RamenSmtTyping.smt_solver (fun () ->
@@ -166,7 +167,7 @@ let compile conf root_path program_name program_code =
             RamenTyping.get_types conf compiler_parents
                                   compiler_funcs parsed_params) in
         (* Compare results: *)
-        RamenTypingHelpers.compare_typers copy_funcs res res_smt
+        compare_typers copy_funcs res res_smt
       ) ;
       (fun () ->
         (* Type using the external solver: *)
@@ -197,11 +198,10 @@ let compile conf root_path program_name program_code =
       Lwt_list.map_p (fun func ->
         let obj_name =
           root_path ^"/"^ RamenName.path_of_program program_name ^
-          "_"^ func.RamenTypingHelpers.Func.signature ^
+          "_"^ func.Func.signature ^
           "_"^ RamenVersions.codegen ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
         Lwt.catch (fun () ->
-          let open RamenTypingHelpers in
           let in_typ = tuple_user_type func.Func.in_type
           and out_typ = tuple_user_type func.Func.out_type
           and operation = Option.get func.Func.operation in
@@ -242,13 +242,13 @@ let compile conf root_path program_name program_code =
           Hashtbl.values compiler_funcs |>
           Enum.map (fun func ->
             let operation =
-              Option.get func.RamenTypingHelpers.Func.operation in
+              Option.get func.Func.operation in
             F.{ (* exp_program_name will be overwritten at load time: *)
                 exp_program_name =
                   RamenName.program_exp_of_program program_name ;
                 name = func.name ;
-                in_type = RamenTypingHelpers.typed_tuple_type func.in_type ;
-                out_type = RamenTypingHelpers.typed_tuple_type func.out_type ;
+                in_type = typed_tuple_type func.in_type ;
+                out_type = typed_tuple_type func.out_type ;
                 signature = func.signature ;
                 parents = func.parents ;
                 merge_inputs = RamenOperation.is_merging operation ;
@@ -271,9 +271,9 @@ let compile conf root_path program_name program_code =
         Hashtbl.iter (fun _ func ->
           assert (pname.[String.length pname-1] <> '/') ;
           Printf.fprintf oc"\t%S, %s_%s_%s.%s ;\n"
-            (RamenName.string_of_func func.RamenTypingHelpers.Func.name)
+            (RamenName.string_of_func func.Func.name)
             (String.capitalize_ascii (Filename.basename pname))
-            func.RamenTypingHelpers.Func.signature
+            func.Func.signature
             RamenVersions.codegen
             entry_point_name
         ) compiler_funcs ;

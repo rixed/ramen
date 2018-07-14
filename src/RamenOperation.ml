@@ -273,35 +273,38 @@ let map_expr f = function
           | RemoveAll e -> RemoveAll (Expr.map_expr f e)
           | KeepOnly e -> KeepOnly (Expr.map_expr f e) }
 
-let fold_expr init f = function
+let fold_top_level_expr init f = function
   | ListenFor _ | ReadCSVFile _ | Instrumentation _ -> init
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_when ;
                 flush_how ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
-            Expr.fold_by_depth f prev sf.expr
+            f prev sf.expr
           ) init fields in
       let x = List.fold_left (fun prev me ->
-            Expr.fold_by_depth f prev me
+            f prev me
           ) x (fst merge) in
-      let x = Expr.fold_by_depth f x where in
+      let x = f x where in
       let x = List.fold_left (fun prev ke ->
-            Expr.fold_by_depth f prev ke
+            f prev ke
           ) x key in
-      let x = Expr.fold_by_depth f x commit_when in
+      let x = f x commit_when in
       let x = match sort with
         | None -> x
         | Some (_, u_opt, b) ->
             let x = match u_opt with
               | None -> x
-              | Some u -> Expr.fold_by_depth f x u in
+              | Some u -> f x u in
             List.fold_left (fun prev e ->
-              Expr.fold_by_depth f prev e
+              f prev e
             ) x b in
       match flush_how with
       | Slide _ | Never | Reset -> x
       | RemoveAll e | KeepOnly e ->
-        Expr.fold_by_depth f x e
+        f x e
+
+let fold_expr init f =
+  fold_top_level_expr init (Expr.fold_by_depth f)
 
 let iter_expr f op =
   fold_expr () (fun () e -> f e) op

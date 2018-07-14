@@ -550,11 +550,11 @@ let is_nullable e =
   t.nullable = Some true
 
 (* Propagate values up the tree only, depth first. *)
-let rec fold_by_depth f i expr =
+let fold_subexpressions f i expr =
   match expr with
   | Const _ | Field _ | StateField _
   | StatelessFun0 _ ->
-    f i expr
+      i
 
   | StatefulFun (_, _, AggrMin e) | StatefulFun (_, _, AggrMax e)
   | StatefulFun (_, _, AggrSum e) | StatefulFun (_, _, AggrAvg e)
@@ -562,65 +562,48 @@ let rec fold_by_depth f i expr =
   | StatefulFun (_, _, AggrFirst e) | StatefulFun (_, _, AggrLast e)
   | StatelessFun1 (_, _, e) | StatelessFunMisc (_, Like (e, _))
   | StatefulFun (_, _, AggrHistogram (e, _, _, _)) ->
-    f (fold_by_depth f i e) expr
+      f i e
 
   | StatefulFun (_, _, AggrPercentile (e1, e2))
   | StatelessFun2 (_, _, e1, e2)
   | StatefulFun (_, _, Lag (e1, e2))
   | StatefulFun (_, _, ExpSmooth (e1, e2))
   | GeneratorFun (_, Split (e1, e2)) ->
-    let i' = fold_by_depth f i e1 in
-    let i''= fold_by_depth f i' e2 in
-    f i'' expr
+      f (f i e1) e2
 
   | StatefulFun (_, _, MovingAvg (e1, e2, e3))
-  | StatefulFun (_, _, LinReg (e1, e2, e3)) ->
-    let i' = fold_by_depth f i e1 in
-    let i''= fold_by_depth f i' e2 in
-    let i'''= fold_by_depth f i'' e3 in
-    f i''' expr
+  | StatefulFun (_, _, LinReg (e1, e2, e3))
+  | StatefulFun (_, _, Hysteresis (e1, e2, e3)) ->
+      f (f (f i e1) e2) e3
 
   | StatefulFun (_, _, Remember (e1, e2, e3, e4s))
   | StatefulFun (_, _, MultiLinReg (e1, e2, e3, e4s)) ->
-    let i' = fold_by_depth f i e1 in
-    let i''= fold_by_depth f i' e2 in
-    let i'''= fold_by_depth f i'' e3 in
-    let i''''= List.fold_left (fold_by_depth f) i''' e4s in
-    f i'''' expr
+      List.fold_left f i (e1::e2::e3::e4s)
 
   | StatefulFun (_, _, Top { what = e3s ; by = e1 ; time = e2 ; _ }) ->
-    let i' = fold_by_depth f i e1 in
-    let i''= fold_by_depth f i' e2 in
-    let i'''= List.fold_left (fold_by_depth f) i'' e3s in
-    f i''' expr
+      List.fold_left f i (e1::e2::e3s)
 
-  | StatefulFun (_, _, Last (n, e, es)) ->
-    let i' = fold_by_depth f i e in
-    let i''= List.fold_left (fold_by_depth f) i' es in
-    f i'' expr
-
-  | StatefulFun (_, _, Hysteresis (e1, e2, e3)) ->
-    let i' = fold_by_depth f i e1 in
-    let i''= fold_by_depth f i' e2 in
-    let i'''= fold_by_depth f i'' e3 in
-    f i''' expr
+  | StatefulFun (_, _, Last (_, e, es)) ->
+      List.fold_left f i (e::es)
 
   | Case (_, alts, else_) ->
-    let i' =
-      List.fold_left (fun i alt ->
-        let i' = fold_by_depth f i alt.case_cond in
-        fold_by_depth f i' alt.case_cons) i alts in
-    let i''=
-      Option.map_default (fold_by_depth f i') i' else_ in
-    f i'' expr
+      let i =
+        List.fold_left (fun i a ->
+          f (f i a.case_cond) a.case_cons
+        ) i alts in
+      Option.map_default (f i) i else_
 
   | Tuple (_, es)
   | Vector (_, es)
   | StatefulFun (_, _, Distinct es)
   | Coalesce (_, es)
   | StatelessFunMisc (_, (Max es|Min es|Print es)) ->
-    let i' = List.fold_left (fold_by_depth f) i es in
-    f i' expr
+      List.fold_left f i es
+
+let rec fold_by_depth f i expr =
+    f (
+      fold_subexpressions (fold_by_depth f) i expr
+    ) expr
 
 let iter f = fold_by_depth (fun () e -> f e) ()
 
