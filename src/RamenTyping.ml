@@ -255,10 +255,10 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   (* Check that the operand [sub_expr] is compatible with expectation (re. type
    * and null) set by the caller (the operator). [op_typ] is used for printing
    * only. Extends the type of sub_expr as required. *)
-  let check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr =
+  let check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr i =
     let sub_typ = typ_of sub_expr in
-    !logger.debug "%sChecking operand of (%a), of type (%a) (expected: %a)"
-      indent print_typ op_typ print_typ sub_typ
+    !logger.debug "%sChecking operand %d of (%a), of type (%a) (expected: %a)"
+      indent i print_typ op_typ print_typ sub_typ
       (Option.print RamenTypes.print_structure) exp_sub_typ ;
     (* Start by recursing into the sub-expression to know its real type: *)
     let changed = check_expr ~depth ~parents ~in_type ~out_type
@@ -269,7 +269,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     | Some actual_typ, Some exp_sub_typ ->
       if not (can_enlarge ~from:actual_typ ~to_:exp_sub_typ) then
         let e = CannotTypeExpression {
-          what = "Operand of "^ op_typ.expr_name ;
+          what = Printf.sprintf "Operand #%d of %s" i op_typ.expr_name ;
           expected_type = IO.to_string RamenTypes.print_structure exp_sub_typ ;
           got_type = IO.to_string RamenTypes.print_structure actual_typ } in
         raise (SyntaxError e)
@@ -277,7 +277,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (match exp_sub_nullable, sub_typ.nullable with
     | Some n1, Some n2 when n1 <> n2 ->
       let e = InvalidNullability {
-        what = "Operand of "^ op_typ.expr_name ;
+        what = Printf.sprintf "Operand #%d of %s" i op_typ.expr_name ;
         must_be_nullable = n1 } in
       raise (SyntaxError e)
     | _ -> ()) ;
@@ -301,11 +301,12 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (* First we check the operands: do they comply with the expected types
      * (enlarging them if necessary)? *)
     let changed, all_typed, types, nullables =
-      List.fold_left (fun (changed, all_typed,
-                           prev_sub_types, prev_nullables)
-                          (exp_sub_typ, exp_sub_nullable, sub_expr) ->
+      List.fold_lefti (fun (changed, all_typed,
+                            prev_sub_types, prev_nullables)
+                           i
+                           (exp_sub_typ, exp_sub_nullable, sub_expr) ->
           let changed =
-            check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr ||
+            check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr i ||
             changed in
           let typ = typ_of sub_expr in
           match typ.scalar_typ, prev_sub_types with
@@ -347,20 +348,20 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       check_operator op_typ actual_op_typ || changed
     | _ -> changed
   in
-  let rec check_variadic op_typ ?(propagate_null=true) ?exp_sub_typ
+  let rec check_variadic op_typ ?(i=0) ?(propagate_null=true) ?exp_sub_typ
                                 ?exp_sub_nullable =
     function
     | [] -> false
     | sub_expr :: rest ->
       let changed =
-        check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr in
+        check_operand op_typ ?exp_sub_typ ?exp_sub_nullable sub_expr i in
         (* TODO: a function to type with a list of arguments and
          * exp types etc, iteratively. Ie. make_op_typ called at
          * each step to refine it. For now, no typing of the op from
          * the args. Especially, XXX no update of the nullability of
          * op! XXX *)
-      check_variadic op_typ ~propagate_null ?exp_sub_typ ?exp_sub_nullable
-                     rest || changed
+      check_variadic op_typ ~i:(i+1) ~propagate_null
+                     ?exp_sub_typ ?exp_sub_nullable rest || changed
   in
   (* Useful helpers for make_op_typ above: *)
   let return_bool _ = TBool
