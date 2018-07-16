@@ -499,9 +499,20 @@ let get_model_resp m =
     "(model (declare-datatypes ((Type 0)) (((bool) (vector (vector-dim Int) (vector-type Type)) ))))")
 *)
 
+let error_resp m =
+  let m = "error response" :: m in
+  (par (string "error" -- blanks -+ string_literal)) m
+
 let get_unsat_core_resp m =
   let m = "get-unsat-core response" :: m in
-  (list symbol) m
+  (
+    list symbol |||
+    (error_resp >>: fun msg ->
+      if String.exists msg "optimization" then []
+      (* Do not accept this as a valid response if the error is not about
+       * optimization: *)
+      else raise (Reject "Error is not about optimization"))
+  ) m
 
 type check_sat_resp = Sat | Unsat | Unknown
 
@@ -512,10 +523,6 @@ let check_sat_resp m =
     (string "unsat" >>: fun () -> Unsat) |||
     (string "unknown" >>: fun () -> Unknown)
   ) m
-
-let error_resp m =
-  let m = "error response" :: m in
-  (par (string "error" -- blanks -+ string_literal)) m
 
 type response = Solved of model
               | Unsolved of symbol list

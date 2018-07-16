@@ -149,13 +149,10 @@ let compile conf root_path program_name program_code =
                                 compiler_funcs parsed_params) |> ignore) ;
       (fun () ->
         (* TEST: try the SMT-based typer and compare with handcrafted one: *)
-        let copy_funcs =
-          Hashtbl.values compiler_funcs /@
-          Func.copy |> List.of_enum in
         let res_smt =
           try
             call_typer !RamenSmtTyping.smt_solver (fun () ->
-              RamenSmtTyping.get_types conf compiler_parents copy_funcs
+              RamenSmtTyping.get_types conf compiler_parents compiler_funcs
                                        parsed_params)
           with exn ->
             !logger.error "Cannot test the external typer: %s\n%s"
@@ -167,29 +164,20 @@ let compile conf root_path program_name program_code =
             RamenTyping.get_types conf compiler_parents
                                   compiler_funcs parsed_params) in
         (* Compare results: *)
-        compare_typers copy_funcs res res_smt
+        compare_typers compiler_funcs res res_smt
       ) ;
       (fun () ->
         (* Type using the external solver: *)
-        let funcs = Hashtbl.values compiler_funcs |> List.of_enum in
+        let open RamenSmtTyping in
         let types =
           call_typer !RamenSmtTyping.smt_solver (fun () ->
-            RamenSmtTyping.get_types conf compiler_parents funcs
+            get_types conf compiler_parents compiler_funcs
                                      parsed_params) in
-        (* Apply the types: *)
-        List.iter (fun func ->
-          RamenOperation.iter_expr (fun e ->
-            let open RamenExpr in
-            let t = typ_of e in
-            match Hashtbl.find types t.uniq_num with
-            | exception Not_found ->
-                !logger.warning "No type for expression %a"
-                  (print true) e
-            | typ ->
-                t.scalar_typ <- Some typ.structure ;
-                t.nullable <- typ.nullable
-          ) (Option.get func.Func.operation)
-        ) funcs) |]) ;
+        apply_types compiler_parents compiler_funcs types) |]) ;
+    Hashtbl.iter (fun _ func ->
+      RamenTypingHelpers.finalize_func conf compiler_parents parsed_params func
+    ) compiler_funcs ;
+
     (*
      * Now the (OCaml) code can be generated and compiled.
      *

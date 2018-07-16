@@ -53,7 +53,7 @@ let make_num_typ ?nullable name =
   make_typ ?nullable ~typ:TNum name (* will be enlarged as required *)
 
 let make_int_typ ?nullable name =
-  make_typ ?nullable ~typ:TI8 name (* may also be enlarged later *)
+  make_typ ?nullable ~typ:TNum name (* TODO: we should have a TInt *)
 
 let copy_typ ?name typ =
   let expr_name = name |? typ.expr_name in
@@ -1171,7 +1171,7 @@ struct
      (afun1_sf ~def_state:LocalState "sum" >>: fun (g, e) ->
         StatefulFun (make_num_typ "sum aggregation", g, AggrSum e)) |||
      (afun1_sf ~def_state:LocalState "avg" >>: fun (g, e) ->
-        StatefulFun (make_num_typ "sum aggregation", g, AggrAvg e)) |||
+        StatefulFun (make_float_typ "average", g, AggrAvg e)) |||
      (afun1_sf ~def_state:LocalState "and" >>: fun (g, e) ->
         StatefulFun (make_bool_typ "and aggregation", g, AggrAnd e)) |||
      (afun1_sf ~def_state:LocalState "or" >>: fun (g, e) ->
