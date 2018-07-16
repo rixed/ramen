@@ -9,6 +9,7 @@ open RamenLog
 (*$inject
   open TestHelpers
   open RamenLang
+  open Stdint
 *)
 
 type func =
@@ -86,15 +87,17 @@ struct
                          the type or a non-null default value" typ_name in
                     raise (Reject e)
                   else
-                    (* As usual, promote integers to I32 by default: *)
-                    let structure = structure_of value in
-                    if can_enlarge ~from:structure ~to_:TI32 then
-                      (* Note: assume not nullable when no type is given: *)
-                      { structure = TI32 ; nullable = Some false },
-                      enlarge_value TI32 value
-                    else
-                      { structure ; nullable = Some false },
-                      value
+                    (* As usual, promote integers to 32 bits, preferably non
+                     * signed, by default: *)
+                    (try { structure = TU32 ; nullable = Some false },
+                        enlarge_value TU32 value
+                    with Invalid_argument _ ->
+                      try { structure = TI32 ; nullable = Some false },
+                          enlarge_value TI32 value
+                      with Invalid_argument _ ->
+                        { structure = structure_of value ;
+                          nullable = Some false },
+                        value)
               | Some typ ->
                   if value = VNull then
                     if Option.get typ.nullable then
@@ -159,7 +162,7 @@ struct
       operation = \
         Aggregate {\
           fields = [\
-            { expr = RamenExpr.Const (typ, VI32 42l) ;\
+            { expr = RamenExpr.Const (typ, VU32 (Uint32.of_int 42)) ;\
               alias = "the_answer" } ] ;\
           and_all_others = false ;\
           merge = [], 0. ;\
@@ -176,10 +179,10 @@ struct
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
 
-   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; typ = { structure = TI32 ; nullable = Some false } } ;\
-                        value = VI32 0l } ;\
-           RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TI32 ; nullable = Some false } } ;\
-                        value = VI32 0l } ], [\
+   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; typ = { structure = TU32 ; nullable = Some false } } ;\
+                        value = VU32 Uint32.zero } ;\
+           RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TU32 ; nullable = Some false } } ;\
+                        value = VU32 Uint32.zero } ], [\
     { name = RamenName.func_of_string "add" ;\
       operation = \
         Aggregate {\

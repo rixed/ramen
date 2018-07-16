@@ -38,8 +38,8 @@ let last_chance_to_type_func func =
        * match user expectations, but this information is lost by now. *)
       if typ.scalar_typ = Some TNum then (
         !logger.debug "%s: Numeric field %s has no constraint on type. \
-                       Let's make it a TI32." !cur_func_name field_name ;
-        typ.scalar_typ <- Some TI32 ;
+                       Let's make it a TU32." !cur_func_name field_name ;
+        typ.scalar_typ <- Some TU32 ;
         true
       ) else changed
     ) false out_type.fields
@@ -911,7 +911,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       (function
         | [ _; TVec (dim, t) ] -> t.structure
         | _ -> assert false)
-      [ Some TI32, None, n ;
+      [ Some TU32, None, n ;
         Some (TVec (0, { structure = TAny ; nullable = None })), None, es ]
 
   | StatelessFun1 (op_typ, (BeginOfRange|EndOfRange), e) ->
@@ -1458,22 +1458,22 @@ let set_all_types conf parents funcs params =
    *)
 
   (*$= test_check_expr & ~printer:(fun x -> x)
-     "(1 [constant of type I32, not nullable]) + (1 [constant of type I32, not nullable]) [addition of type I32, not nullable]" \
+     "(1 [constant of type U32, not nullable]) + (1 [constant of type U32, not nullable]) [addition of type U32, not nullable]" \
        (test_check_expr "1+1")
 
      "(sum locally (1 [constant of type I16, not nullable]) [sum aggregation of type I16, not nullable]) > \\
-      (500 [constant of type I32, not nullable]) [comparison (>) of type BOOL, not nullable]" \
+      (500 [constant of type U32, not nullable]) [comparison (>) of type BOOL, not nullable]" \
        (test_check_expr "sum 1i16 > 500")
 
-     "(sum locally (cast(I16, 1 [constant of type I32, not nullable]) [cast to I16 of type I16, not nullable]) \\
+     "(sum locally (cast(I16, 1 [constant of type U32, not nullable]) [cast to I16 of type I16, not nullable]) \\
           [sum aggregation of type I16, not nullable]) > \\
-      (500 [constant of type I32, not nullable]) [comparison (>) of type BOOL, not nullable]" \
+      (500 [constant of type U32, not nullable]) [comparison (>) of type BOOL, not nullable]" \
        (test_check_expr "sum i16(1) > 500")
 
      "cast(I8, 1.5 [constant of type FLOAT, not nullable]) [cast to I8 of type I8, not nullable]" \
        (test_check_expr "i8(1.5)")
 
-     "cast(I8, 9999 [constant of type I32, not nullable]) [cast to I8 of type I8, not nullable]" \
+     "cast(I8, 9999 [constant of type U32, not nullable]) [cast to I8 of type I8, not nullable]" \
        (test_check_expr "i8(9999)")
    *)
 

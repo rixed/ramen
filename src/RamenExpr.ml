@@ -12,6 +12,7 @@ open RamenHelpers
 (*$inject
   open TestHelpers
   open RamenLang
+  open Stdint
 *)
 
 (* Each expression come with a type attached. Starting at None types are
@@ -276,9 +277,6 @@ let expr_false =
 
 let expr_u8 name n =
   Const (make_typ ~typ:TU8 ~nullable:false name, VU8 (Uint8.of_int n))
-
-let expr_i32 name n =
-  Const (make_typ ~typ:TI32 ~nullable:false name, VI32 (Int32.of_int n))
 
 let expr_zero = expr_u8 "zero" 0
 let expr_one = expr_u8 "one" 1
@@ -856,16 +854,6 @@ struct
     (Ok (Const (typn, VI8 (Stdint.Int8.of_int 15)), (5, []))) \
       (test_p const "15i8n" |> replace_typ_in_expr)
   *)
-
-  let const_i32 ?(min=Num.of_string (Int32.(to_string min_int)))
-                ?(max=Num.of_string (Int32.(to_string max_int))) m =
-    let open RamenTypes in
-    let what = "constant integer" in
-    let m = what :: m in
-    (integer_range ~min ~max >>: fun n ->
-      Const (make_typ ~nullable:false ~typ:TI32 what,
-             VI32 (Int32.of_string (Num.to_string n)))
-    ) m
 
   let null m =
     (RamenTypes.Parser.null >>: fun v ->
@@ -1470,7 +1458,7 @@ struct
       StatelessFun2 (typ, IDiv, \
         Field (typ, ref TupleUnknown, "start"),\
         StatelessFun2 (typ, Mul, \
-          Const (typ, VI32 1_000_000l),\
+          Const (typ, VU32 (Uint32.of_int 1_000_000)),\
           Field (typ, ref TupleUnknown, "avg_window"))),\
       (33, [])))\
       (test_p p "start // (1_000_000 * avg_window)" |> replace_typ_in_expr)
@@ -1492,7 +1480,7 @@ struct
             StatelessFun2 (typ, Mul, \
               Field (typ, ref TupleUnknown, "obs_window"),\
               Const (typ, VFloat 1.15)),\
-            Const (typ, VI32 1_000_000l)))),\
+            Const (typ, VU32 (Uint32.of_int 1_000_000))))),\
       (69, [])))\
       (test_p p "max selected.last.start > \\
                  out.start + (obs_window * 1.15) * 1_000_000" |> replace_typ_in_expr)
@@ -1509,7 +1497,7 @@ struct
         StatelessFun2 (typ, Sub, \
           Field (typ, ref TupleUnknown, "bps"), \
           StatefulFun (typ, GlobalState, Lag (\
-            Const (typ, VI32 (Int32.of_int 1)), \
+            Const (typ, VU32 Uint32.one), \
             Field (typ, ref TupleUnknown, "bps"))))), \
       (21, []))) \
       (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
@@ -1517,17 +1505,17 @@ struct
     (Ok ( \
       StatefulFun (typ, GlobalState, Hysteresis (\
         Field (typ, ref TupleUnknown, "value"),\
-        Const (typ, VI32 (Int32.of_int 900)),\
-        Const (typ, VI32 (Int32.of_int 1000)))),\
+        Const (typ, VU32 (Uint32.of_int 900)),\
+        Const (typ, VU32 (Uint32.of_int 1000)))),\
       (28, [])))\
       (test_p p "hysteresis(value, 900, 1000)" |> replace_typ_in_expr)
 
     (Ok ( \
       StatelessFun2 (typ, Mul, \
         StatelessFun2 (typ, BitAnd, \
-          Const (typ, VI32 (Int32.of_int 4)), \
-          Const (typ, VI32 (Int32.of_int 4))), \
-        Const (typ, VI32 (Int32.of_int 2))), \
+          Const (typ, VU32 (Uint32.of_int 4)), \
+          Const (typ, VU32 (Uint32.of_int 4))), \
+        Const (typ, VU32 (Uint32.of_int 2))), \
       (9, []))) \
       (test_p p "4 & 4 * 2" |> replace_typ_in_expr)
   *)

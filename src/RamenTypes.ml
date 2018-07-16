@@ -6,6 +6,7 @@ open RamenHelpers
 
 (*$inject
   open TestHelpers
+  open Stdint
 *)
 
 (*
@@ -485,26 +486,26 @@ struct
     and zero = Num.zero
     in fun ?(min_int_width=32) i ->
       let s = Num.to_string i in
-      if min_int_width <= 8 && Num.le_num min_i8 i && Num.le_num i max_i8
-      then VI8 (Int8.of_string s) else
       if min_int_width <= 8 && Num.le_num zero i && Num.le_num i max_u8
       then VU8 (Uint8.of_string s) else
-      if min_int_width <= 16 && Num.le_num min_i16 i && Num.le_num i max_i16
-      then VI16 (Int16.of_string s) else
+      if min_int_width <= 8 && Num.le_num min_i8 i && Num.le_num i max_i8
+      then VI8 (Int8.of_string s) else
       if min_int_width <= 16 && Num.le_num zero i && Num.le_num i max_u16
       then VU16 (Uint16.of_string s) else
-      if min_int_width <= 32 && Num.le_num min_i32 i && Num.le_num i max_i32
-      then VI32 (Int32.of_string s) else
+      if min_int_width <= 16 && Num.le_num min_i16 i && Num.le_num i max_i16
+      then VI16 (Int16.of_string s) else
       if min_int_width <= 32 && Num.le_num zero i && Num.le_num i max_u32
       then VU32 (Uint32.of_string s) else
-      if min_int_width <= 64 && Num.le_num min_i64 i && Num.le_num i max_i64
-      then VI64 (Int64.of_string s) else
+      if min_int_width <= 32 && Num.le_num min_i32 i && Num.le_num i max_i32
+      then VI32 (Int32.of_string s) else
       if min_int_width <= 64 && Num.le_num zero i && Num.le_num i max_u64
       then VU64 (Uint64.of_string s) else
-      if min_int_width <= 128 && Num.le_num min_i128 i && Num.le_num i max_i128
-      then VI128 (Int128.of_string s) else
+      if min_int_width <= 64 && Num.le_num min_i64 i && Num.le_num i max_i64
+      then VI64 (Int64.of_string s) else
       if min_int_width <= 128 && Num.le_num zero i && Num.le_num i max_u128
       then VU128 (Uint128.of_string s) else
+      if min_int_width <= 128 && Num.le_num min_i128 i && Num.le_num i max_i128
+      then VI128 (Int128.of_string s) else
       assert false
 
   let narrowest_typ_for_int ?min_int_width n =
@@ -621,8 +622,8 @@ struct
     ) m
 
   (*$= p & ~printer:(test_printer print)
-    (Ok (VI32 (Int32.of_int 31000), (5,[])))   (test_p p "31000")
-    (Ok (VI32 (Int32.of_int 61000), (5,[])))   (test_p p "61000")
+    (Ok (VU32 (Uint32.of_int 31000), (5,[])))  (test_p p "31000")
+    (Ok (VU32 (Uint32.of_int 61000), (5,[])))  (test_p p "61000")
     (Ok (VFloat 3.14, (4,[])))                 (test_p p "3.14")
     (Ok (VFloat ~-.3.14, (5,[])))              (test_p p "-3.14")
     (Ok (VBool false, (5,[])))                 (test_p p "false")
@@ -633,7 +634,8 @@ struct
                                                (test_p p "(3.14; true)")
     (Ok (VVec [| VFloat 3.14; VFloat 1. |], (9,[]))) \
                                                (test_p p "[3.14; 1]")
-    (Ok (VVec [| VI32 0l; VI32 1l; VI32 2l |], (9,[]))) \
+    (Ok (VVec [| VU32 Uint32.zero; VU32 Uint32.one; \
+                 VU32 (Uint32.of_int 2) |], (9,[]))) \
                                                (test_p p "[0; 1; 2]")
   *)
 

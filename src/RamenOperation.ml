@@ -15,6 +15,7 @@ module Expr = RamenExpr
 (*$inject
   open TestHelpers
   open RamenLang
+  open Stdint
 *)
 
 (* Direct field selection (not for group-bys) *)
@@ -992,7 +993,7 @@ struct
         where = Expr.(\
           StatelessFun2 (typ, Gt, \
             Field (typ, ref TupleIn, "packets"),\
-            Const (typ, VI32 (Int32.of_int 0)))) ;\
+            Const (typ, VU32 Uint32.zero))) ;\
         event_time = None ; notifications = [] ;\
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
@@ -1090,14 +1091,14 @@ struct
           StatelessFun2 (typ, Div, \
             Field (typ, ref TupleIn, "start"),\
             StatelessFun2 (typ, Mul, \
-              Const (typ, VI32 1_000_000l),\
+              Const (typ, VU32 (Uint32.of_int 1_000_000)),\
               Field (typ, ref TupleParam, "avg_window")))) ] ;\
         commit_when = Expr.(\
           StatelessFun2 (typ, Gt, \
             StatelessFun2 (typ, Add, \
               StatefulFun (typ, LocalState, AggrMax (\
                 Field (typ, ref TupleGroupFirst, "start"))),\
-              Const (typ, VI32 (Int32.of_int 3600))),\
+              Const (typ, VU32 (Uint32.of_int 3600))),\
             Field (typ, ref TupleOut, "start"))) ; \
         commit_before = false ;\
         flush_how = Reset ;\
@@ -1114,7 +1115,7 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = Expr.Const (typ, VI32 (Int32.one)) ;\
+          { expr = Expr.Const (typ, VU32 Uint32.one) ;\
             alias = "one" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
@@ -1126,8 +1127,8 @@ struct
         commit_when = Expr.(\
           StatelessFun2 (typ, Ge, \
             StatefulFun (typ, LocalState, AggrSum (\
-              Const (typ, VI32 (Int32.one)))),\
-            Const (typ, VI32 (Int32.of_int 5)))) ;\
+              Const (typ, VU32 Uint32.one))),\
+            Const (typ, VU32 (Uint32.of_int 5)))) ;\
         commit_before = true ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
         (49, [])))\
@@ -1140,7 +1141,7 @@ struct
           { expr = Expr.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
           { expr = Expr.(\
               StatefulFun (typ, GlobalState, Expr.Lag (\
-              Expr.Const (typ, VI32 (Int32.of_int 2)), \
+              Expr.Const (typ, VU32 (Uint32.of_int 2)), \
               Expr.Field (typ, ref TupleIn, "n")))) ;\
             alias = "l" } ] ;\
         and_all_others = false ;\
@@ -1198,7 +1199,7 @@ struct
 
     (Ok (\
       Aggregate {\
-        fields = [ { expr = Expr.Const (typ, VI32 1l) ; alias = "one" } ] ;\
+        fields = [ { expr = Expr.Const (typ, VU32 Uint32.one) ; alias = "one" } ] ;\
         every = 1. ; event_time = None ;\
         and_all_others = false ; merge = [], 0. ; sort = None ;\
         where = Expr.Const (typ, VBool true) ;\
