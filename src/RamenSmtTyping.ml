@@ -1036,9 +1036,30 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs =
       Printf.fprintf decls
         "; %a\n\
          (declare-fun %s () Type)\n\
-         (declare-fun %s () Bool)\n"
+         (declare-fun %s () Bool)\n\
+         (assert (ite ((_ is ip) %s) \
+                      (or (= 4 (ip-version %s)) \
+                          (= 6 (ip-version %s)) \
+                          (= 9 (ip-version %s))) \
+                 (ite ((_ is cidr) %s) \
+                      (or (= 4 (cidr-version %s)) \
+                          (= 6 (cidr-version %s)) \
+                          (= 9 (cidr-version %s))) \
+                 (ite ((_ is number) %s) \
+                      (and (or (= 0 (sign %s)) (= 1 (sign %s)))
+                           (or (= 8 (width %s)) \
+                               (= 16 (width %s)) \
+                               (= 32 (width %s)) \
+                               (= 64 (width %s)) \
+                               (= 128 (width %s)) \
+                               (= 129 (width %s))))
+                 (ite ((_ is vector) %s)
+                      (>= (vector-dim %s) 0)
+                 true)))))\n"
         (RamenExpr.print true) e
-        eid (n_of_expr e) ;
+        eid (n_of_expr e)
+        eid eid eid eid eid eid eid eid eid eid
+        eid eid eid eid eid eid eid eid eid ;
       if optimize then
         Printf.fprintf decls
           "(minimize \
