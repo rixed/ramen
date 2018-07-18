@@ -524,7 +524,7 @@ let check_sat_resp m =
     (string "unknown" >>: fun () -> Unknown)
   ) m
 
-type response = Solved of model
+type response = Solved of model * bool (* sure? *)
               | Unsolved of symbol list
 
 let sat_resp m =
@@ -541,15 +541,20 @@ let response m =
   let m = "response" :: m in
   (
     (sat_resp >>: fun ((sat, _err), model) ->
-      if sat <> Sat then raise (Reject "check-sat is not sat") ;
-      Solved model) |||
+      (* We might have a model for Unknown as well: *)
+      if sat = Unsat then raise (Reject "check-sat is unsat") ;
+      Solved (model, sat=Sat)) |||
     (unsat_resp >>: fun ((sat, syms), _err) ->
-      if sat <> Unsat then raise (Reject "check-sat is not unsat") ;
+      (* We might have a core-unsat for Unknown as well: *)
+      if sat = Sat then raise (Reject "check-sat is sat") ;
       Unsolved syms)
   ) m
 
 let print_response oc = function
-  | Solved model -> print_model oc model
+  | Solved (model, sure) ->
+      Printf.fprintf oc "%a%s"
+        print_model model
+        (if sure then "" else " (UNSURE!)")
   | Unsolved syms ->
       print_list print_symbol oc syms
 

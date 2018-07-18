@@ -1104,6 +1104,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs =
      (check-sat)\n\
      (get-unsat-core)\n\
      (get-model)\n"
+    (if optimize then "true" else "false")
     (List.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
       Printf.fprintf oc "(tuple%d" sz ;
       for i = 0 to sz-1 do
@@ -1295,7 +1296,9 @@ let get_types conf parents funcs params =
     File.with_file_out ~mode:[`create; `text; `trunc] smt2_file (fun oc ->
       emit_smt2 oc ~optimize:true parents tuple_sizes funcs) ;
     match run_solver smt2_file with
-    | RamenSmtParser.Solved model, _ ->
+    | RamenSmtParser.Solved (model, sure), output ->
+        if not sure then
+          !logger.warning "Solver best idea after timeout:\n%s" output ;
         (* Output a hash of structure*nullability per expression id: *)
         let open RamenSmtParser in
         List.iter (fun ((sym, vars, sort, term), _recurs) ->
@@ -1323,7 +1326,7 @@ let get_types conf parents funcs params =
               !logger.warning "TODO: exploit define-fun with parameters")
           with Scanf.Scan_failure _ | End_of_file | Failure _ -> ()
         ) model
-    | RamenSmtParser.Unsolved [], output ->
+    | RamenSmtParser.Unsolved [], _ ->
         !logger.debug "No unsat-core, resubmitting." ;
         (* Resubmit the same problem without optimizations to get the unsat
          * core: *)
@@ -1332,7 +1335,7 @@ let get_types conf parents funcs params =
           emit_smt2 oc ~optimize:false parents tuple_sizes funcs) ;
         (match run_solver smt2_file' with
         | RamenSmtParser.Unsolved syms, output -> unsat syms output
-        | RamenSmtParser.Solved model, _ ->
+        | RamenSmtParser.Solved _, _ ->
             failwith "Unsat with optimization but sat without?!")
     | RamenSmtParser.Unsolved syms, output -> unsat syms output
   ) ;
