@@ -24,6 +24,9 @@ type typ =
     (* TODO: rename scalar_typ to structure: *)
     mutable scalar_typ : RamenTypes.structure option }
 
+let same_type t1 t2 =
+  t1.nullable = t2.nullable && t1.scalar_typ = t2.scalar_typ
+
 let print_typ fmt typ =
   Printf.fprintf fmt "%s of %s%s"
     typ.expr_name
