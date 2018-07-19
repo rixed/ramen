@@ -254,7 +254,7 @@ let compare_typers funcs res res_smt =
           incr nb_nosol)
     | smt ->
         let open RamenTypes in
-        if not (can_enlarge ~from:structure ~to_:smt.structure) &&
+        if structure <> smt.structure &&
             (* Once again, for NULL the handcrafted parser pick a type at
              * random, while the SMT is more clever: *)
            not (expr_is_null id)
@@ -269,7 +269,7 @@ let compare_typers funcs res res_smt =
             !logger.warning "SMT cannot find out the nullability of \
                              expression %d!" id
         | Some n when n <> nullable ->
-            !logger.warning "SMT wrongfully thinks expression %d is \
+            !logger.warning "SMT erroneously thinks expression %d is \
                              %snullable!"
               id (if n then "" else "not ")
         | _ -> ()
