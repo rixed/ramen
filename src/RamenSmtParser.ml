@@ -559,18 +559,18 @@ let print_response oc = function
       print_list print_symbol oc syms
 
 (*$= response & ~printer:dump
-  (Solved []) \
+  (Solved ([], true)) \
        (test_exn response \
         "sat\n\
         (error \"line 17 column 15: unsat core is not available\")\n\
         (model \n\
         )")
 
-  (Solved [\
+  (Solved ([\
     ("e14", [], NonParametricSort (Identifier "Type"), \
      QualIdentifier ((Identifier "string", None), [])), false ;\
     ("e18", [], NonParametricSort (Identifier "Type"), \
-     QualIdentifier ((Identifier "float", None), [])), false ]) \
+     QualIdentifier ((Identifier "float", None), [])), false ], true)) \
       (test_exn response \
         "sat\n\
          (error \"line 32 column 15: unsat core is not available\")\n\
@@ -587,11 +587,11 @@ let print_response oc = function
          ()\n\
          (error \"line 418 column 10: model is not available\")")
 
-  (Solved [\
+  (Solved ([\
     ("e294", [], NonParametricSort (Identifier "Type"), \
      QualIdentifier ((Identifier "string", None), [])), false ;\
     ("e298", [], NonParametricSort (Identifier "Type"), \
-     QualIdentifier ((Identifier "string", None), [])), false ]) \
+     QualIdentifier ((Identifier "string", None), [])), false ], true)) \
       (test_exn response \
         "sat\n\
          (error \"line 304 column 15: unsat core is not available\")\n\
