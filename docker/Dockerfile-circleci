@@ -54,6 +54,8 @@ RUN opam install inotify qtest && \
 # Install Cucumber
 RUN gem install --user-install cucumber rspec
 
+COPY z3 /usr/bin/z3/
+
 LABEL maintainer="rixed-docker@happyleptic.org"
 
 ENTRYPOINT ["/bin/bash"]
