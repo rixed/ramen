@@ -1143,10 +1143,10 @@ struct
      (afun1 "upper" >>: fun e -> StatelessFun1 (make_string_typ "upper", Upper, e)) |||
      (strinG "now" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "now", Now)) |||
      (strinG "random" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "random", Random)) |||
-     (afun1 "exp" >>: fun e -> StatelessFun1 (make_num_typ "exponential", Exp, e)) |||
-     (afun1 "log" >>: fun e -> StatelessFun1 (make_num_typ "natural logarithm", Log, e)) |||
-     (afun1 "log10" >>: fun e -> StatelessFun1 (make_num_typ "common logarithm", Log10, e)) |||
-     (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_num_typ "square root", Sqrt, e)) |||
+     (afun1 "exp" >>: fun e -> StatelessFun1 (make_float_typ "exponential", Exp, e)) |||
+     (afun1 "log" >>: fun e -> StatelessFun1 (make_float_typ "natural logarithm", Log, e)) |||
+     (afun1 "log10" >>: fun e -> StatelessFun1 (make_float_typ "common logarithm", Log10, e)) |||
+     (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_float_typ "square root", Sqrt, e)) |||
      (afun1 "ceil" >>: fun e -> StatelessFun1 (make_num_typ "ceil", Ceil, e)) |||
      (afun1 "floor" >>: fun e -> StatelessFun1 (make_num_typ "floor", Floor, e)) |||
      (afun1 "round" >>: fun e -> StatelessFun1 (make_num_typ "round", Round, e)) |||
