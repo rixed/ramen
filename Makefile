@@ -444,6 +444,7 @@ ramen.$(VERSION).tgz: $(INSTALLED_BIN) bundle/date
 	@$(RM) -r tmp/ramen
 	@install -d tmp/ramen
 	@install $(INSTALLED_BIN) tmp/ramen/
+	@install /usr/bin/z3 tmp/ramen/
 	@chmod -R a+x tmp/ramen/*
 	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples install-examples
 	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples install-bundle
