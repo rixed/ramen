@@ -45,7 +45,7 @@ open RamenExpr
 open RamenTypes
 open RamenLog
 
-let smt_solver = ref "z3 -t:10000 -smt2 %s" (* 10s soft timeout *)
+let smt_solver = ref "z3 -t:20000 -smt2 %s"
 
 let e_of_num num =
   Printf.sprintf "e%d" num
@@ -219,6 +219,17 @@ let emit_assert_unsigned oc e =
             (= (sign %s) 0) \
             (>= (width %s) 0) \
             (< (width %s) 5))"
+      eid eid eid eid)
+
+let emit_assert_signed_or_float oc e =
+  let name = make_name e "SIGNED" in
+  let eid = e_of_expr e in
+  emit_assert ~name oc (fun oc ->
+    Printf.fprintf oc
+      "(and ((_ is number) %s) \
+            (= (sign %s) 1) \
+            (>= (width %s) 0) \
+            (<= (width %s) 5))"
       eid eid eid eid)
 
 let emit_assert_integer oc e =
@@ -407,13 +418,14 @@ let emit_constraints tuple_sizes out_fields oc e =
   | StatelessFun1 (_, Defined, _) -> ()
 
   | StatefulFun (_, _, (AggrMin e|AggrMax e)) ->
-      (* e must be sortable, and the result has its type *)
+      (* - e must be sortable;
+       * - the result has its type *)
       emit_assert_sortable oc e ;
       emit_assert_id_eq_id (e_of_expr e) oc eid ;
       emit_assert_id_eq_id (n_of_expr e) oc nid
 
   | StatefulFun (_, _, (AggrFirst e|AggrLast e)) ->
-      (* e must have the same type as the result: *)
+      (* e has the same type as that of the result: *)
       emit_assert_id_eq_id (e_of_expr e) oc eid ;
       emit_assert_id_eq_id (n_of_expr e) oc nid
 
@@ -423,20 +435,18 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_le_id (e_of_expr e) oc eid ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
-  | StatelessFun1 (_, Minus, e) ->
+  | StatelessFun1 (_, Minus, e') ->
       (* - The only argument must be numeric;
-       * - The sign of the result is the inverse of the sign or e. *)
-      emit_assert_numeric oc e ;
-      let name = make_name e "INVSIGN" in
-      emit_assert ~name oc (fun oc ->
-        Printf.fprintf oc
-          "(ite (= 0 (sign %s)) (= 1 (sign %s)) (= 0 (sign %s)))"
-          (e_of_expr e) eid eid) ;
+       * - The result is signed or float. *)
+      emit_assert_numeric oc e' ;
+      emit_assert_signed_or_float oc e ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
   | StatelessFun1 (_, (Age|Abs), e) ->
-      (* The only argument must be numeric: *)
+      (* - The only argument must be numeric;
+       * - The result must not be smaller than e. *)
       emit_assert_numeric oc e ;
+      emit_assert_id_le_smt2 (e_of_expr e) oc eid ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
   | StatefulFun (_, _, (AggrAnd e | AggrOr e))
@@ -836,6 +846,36 @@ let emit_program declare tuple_sizes oc funcs =
     emit_operation declare tuple_sizes i oc func
   ) funcs
 
+let emit_minimize oc funcs =
+  (* Minimize total number of bits required to encode all integers: *)
+  Printf.fprintf oc "\n; Minimize total integer width\n\
+                     (minimize (+ 0" ;
+  List.iteri (fun i func ->
+    RamenOperation.iter_expr (fun e ->
+      let eid = e_of_expr e in
+      match (typ_of e).scalar_typ with
+      | None | Some TAny ->
+          Printf.fprintf oc " (ite ((_ is number) %s) (width %s) 0)"
+            eid eid
+      | _ -> ()
+    ) (Option.get func.Func.operation)
+  ) funcs ;
+  Printf.fprintf oc "))\n" ;
+  (* And, separately, number of signed values: *)
+  Printf.fprintf oc "\n; Minimize total signed ints\n\
+                     (minimize (+ 0" ;
+  List.iteri (fun i func ->
+    RamenOperation.iter_expr (fun e ->
+      let eid = e_of_expr e in
+      match (typ_of e).scalar_typ with
+      | None | Some TAny ->
+          Printf.fprintf oc " (ite ((_ is number) %s) (sign %s) 0)"
+            eid eid
+      | _ -> ()
+    ) (Option.get func.Func.operation)
+  ) funcs ;
+  Printf.fprintf oc "))\n"
+
 type id_or_type = Id of int | FieldType of RamenTuple.field_typ
 let id_or_type_of_field op name =
   let open RamenOperation in
@@ -1081,6 +1121,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs =
   (* Set the types for all fields from parents, params or env: *)
   emit_input_fields parent_types parents funcs ;
   emit_program declare tuple_sizes expr_types funcs ;
+  if optimize then emit_minimize expr_types funcs ;
   Printf.fprintf oc
     "(set-option :print-success false)\n\
      (set-option :produce-models %s)\n\
