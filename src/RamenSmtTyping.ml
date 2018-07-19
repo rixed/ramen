@@ -465,10 +465,12 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatelessFun1 (_, Minus, e') ->
       (* - The only argument must be numeric;
+       * - The result must not be smaller than e;
        * - The result is signed or float. *)
       emit_assert_numeric oc e' ;
+      emit_assert_id_le_id (e_of_expr e') oc eid ;
       emit_assert_signed_or_float oc e ;
-      emit_assert_id_eq_id nid oc (n_of_expr e)
+      emit_assert_id_eq_id nid oc (n_of_expr e')
 
   | StatelessFun1 (_, (Age|Abs), e) ->
       (* - The only argument must be numeric;
