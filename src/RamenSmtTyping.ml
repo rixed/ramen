@@ -795,7 +795,7 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatefulFun (_, _, Last (n, e, es)) ->
       (* - The type of the return is a vector of the specified length,
-       *   with items of the type of e, and is nullable;
+       *   with items of the type and nullability of e, and is nullable;
        * - In theory, 'Last n e1 by es` should be nullable iff any of the es
        *   is nullable, and become and stays null forever as soon as one es
        *   is actually NULL. This is kind of useless, so we just disallow
@@ -803,7 +803,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The Last itself is null whenever the number of received item is
        *   less than n. *)
       emit_assert_id_eq_smt2 eid oc
-        (Printf.sprintf "(vector %d %s true)" n (e_of_expr e)) ;
+        (Printf.sprintf "(vector %d %s %s)" n (e_of_expr e) (n_of_expr e)) ;
       List.iter (fun e ->
         let name = make_name e "NOTNULL" in
         emit_assert_is_false ~name oc (n_of_expr e)
