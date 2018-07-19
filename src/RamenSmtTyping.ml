@@ -88,7 +88,14 @@ let rec emit_id_eq_typ tuple_sizes id oc = function
   | TI128 -> Printf.fprintf oc "(= (number 1 4) %s)" id
   | TFloat -> Printf.fprintf oc "(= (number 1 5) %s)" id
   (* Asking for a TNum is asking for any number: *)
-  | TNum -> Printf.fprintf oc "((_ is number) %s)" id
+  | TNum ->
+      Printf.fprintf oc
+        "(and ((_ is number) %s) \
+              (>= (width %s) 0) \
+              (<= (width %s) 5) \
+              (or (= (sign %s) 0) \
+                  (= (sign %s) 1)))"
+        id id id id id
   | TEth -> Printf.fprintf oc "(= eth %s)" id
   | TIpv4 -> Printf.fprintf oc "(= (ip 0) %s)" id
   | TIpv6 -> Printf.fprintf oc "(= (ip 1) %s)" id
@@ -194,10 +201,14 @@ let emit_assert_sortable oc e =
     Printf.fprintf oc
       "(or (= string %s) \
            (= bool %s) \
-           ((_ is number) %s) \
-           ((_ is ip) %s) \
-           ((_ is cidr) %s))"
-      eid eid eid eid eid)
+           (and ((_ is number) %s) (or (= (sign %s) 0) (= (sign %s) 1)) (>= (width %s) 0) (<= (width %s) 5)) \
+           (and ((_ is ip) %s) (>= (ip-version %s) 0) (<= (ip-version %s) 2)) \
+           (and ((_ is cidr) %s) (>= (cidr-version %s) 0) (<= (cidr-version %s) 2)))"
+      eid
+      eid
+      eid eid eid eid eid
+      eid eid eid
+      eid eid eid)
 
 let emit_assert_unsigned oc e =
   let name = make_name e "UNSIGNED" in
@@ -206,8 +217,9 @@ let emit_assert_unsigned oc e =
     Printf.fprintf oc
       "(and ((_ is number) %s) \
             (= (sign %s) 0) \
-            (not (= (width %s) 5)))"
-      eid eid eid)
+            (>= (width %s) 0) \
+            (< (width %s) 5))"
+      eid eid eid eid)
 
 let emit_assert_integer oc e =
   let name = make_name e "INTEGER" in
@@ -215,14 +227,21 @@ let emit_assert_integer oc e =
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
       "(and ((_ is number) %s) \
-            (not (= (width %s) 5)))"
-      eid eid)
+            (or (= (sign %s) 0) (= (sign %s) 1)) \
+            (>= (width %s) 0) \
+            (< (width %s) 5))"
+      eid eid eid eid eid)
 
 let emit_assert_numeric oc e =
   let name = make_name e "NUMERIC" in
   let eid = e_of_expr e in
   emit_assert ~name oc (fun oc ->
-    Printf.fprintf oc "((_ is number) %s)" eid)
+    Printf.fprintf oc
+      "(and ((_ is number) %s) \
+            (or (= (sign %s) 0) (= (sign %s) 1)) \
+            (>= (width %s) 0) \
+            (<= (width %s) 5))"
+      eid eid eid eid eid)
 
 (* "same" types are either actually the same or at least of the same sort
  * (both numbers, both ip, or both cidr) *)
@@ -571,8 +590,13 @@ let emit_constraints tuple_sizes out_fields oc e =
   | StatelessFun1 (_, (BeginOfRange|EndOfRange), e) ->
       (* e is any kind of cidr *)
       let name = make_name e "CIDR" in
+      let eid' = e_of_expr e in
       emit_assert ~name oc (fun oc ->
-        Printf.fprintf oc "((_ is cidr) %s)" (e_of_expr e)) ;
+        Printf.fprintf oc
+          "(and ((_ is cidr) %s) \
+                (>= (cidr-version %s) 0) \
+                (<= (cidr-version %s) 2))"
+          eid' eid' eid') ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
   | StatelessFunMisc (_, (Min es | Max es)) ->
@@ -763,11 +787,12 @@ let emit_constraints tuple_sizes out_fields oc e =
         let id1 = e_of_expr e1 and id2 = e_of_expr e2 in
         Printf.fprintf oc
           "(or (and (= string %s) (= string %s)) \
-               (and ((_ is cidr) %s) ((_ is ip) %s)) \
+               (and ((_ is cidr) %s) (>= (cidr-version %s) 0) (<= (cidr-version %s) 2) \
+                    ((_ is ip) %s) (>= (ip-version %s) 0) (<= (ip-version %s) 2)) \
                (and ((_ is list) %s) %a) \
                (and ((_ is vector) %s) %a))"
           id2 id1
-          id2 id1
+          id2 id2 id2 id1 id1 id1
           id2 (emit_same id1) (Printf.sprintf "(list-type %s)" id2)
           id2 (emit_same id1) (Printf.sprintf "(vector-type %s)" id2)) ;
       emit_assert_id_eq_smt2 nid oc
@@ -965,24 +990,34 @@ let rec structure_of_term =
       structure_of_sort_identifier typ
   | QualIdentifier ((Identifier "number", None),
                     [ ConstantTerm sign ; ConstantTerm width ]) ->
-      let sign = int_of_constant sign > 0
-      and width = int_of_constant width in
-      if width > 4 then TFloat else
-      if width > 3 then if sign then TI128 else TU128 else
-      if width > 2 then if sign then TI64 else TU64 else
-      if width > 1 then if sign then TI32 else TU32 else
-      if width > 0 then if sign then TI16 else TU16 else
-      if sign then TI8 else TU8
+      let sign =
+        match int_of_constant sign with
+        | 0 -> false
+        | 1 -> true
+        | x -> Printf.sprintf "Bad integer sign: %d" x |> failwith
+      in
+      (match int_of_constant width with
+      | 5 -> TFloat
+      | 4 -> if sign then TI128 else TU128
+      | 3 -> if sign then TI64 else TU64
+      | 2 -> if sign then TI32 else TU32
+      | 1 -> if sign then TI16 else TU16
+      | 0 -> if sign then TI8 else TU8
+      | x -> Printf.sprintf "Bad integer width: %d" x |> failwith)
   | QualIdentifier ((Identifier "ip", None),
                     [ ConstantTerm version ]) ->
-      let version = int_of_constant version in
-      if version > 1 then TIp else
-      if version > 0 then TIpv6 else TIpv4
+      (match int_of_constant version with
+      | 2 -> TIp
+      | 1 -> TIpv6
+      | 0 -> TIpv4
+      | x -> Printf.sprintf "Bad IP version: %d" x |> failwith)
   | QualIdentifier ((Identifier "cidr", None),
                     [ ConstantTerm version ]) ->
-      let version = int_of_constant version in
-      if version > 1 then TCidr else
-      if version > 0 then TCidrv6 else TCidrv4
+      (match int_of_constant version with
+      | 2 -> TCidr
+      | 1 -> TCidrv6
+      | 0 -> TCidrv4
+      | x -> Printf.sprintf "Bad CIDR version: %d" x |> failwith)
   | QualIdentifier ((Identifier "vector", None),
                     [ ConstantTerm c ; typ ; null ]) ->
       let structure = structure_of_term typ
@@ -1041,73 +1076,16 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs =
          (declare-fun %s () Type)\n"
         (RamenExpr.print true) e
         (n_of_expr e)
-        eid ;
-      (match (typ_of e).scalar_typ with
-      | None | Some TAny ->
-          Printf.fprintf decls
-            "(assert (ite ((_ is ip) %s) \
-                         (or (= 0 (ip-version %s)) \
-                             (= 1 (ip-version %s)) \
-                             (= 2 (ip-version %s))) \
-                     (ite ((_ is cidr) %s) \
-                         (or (= 0 (cidr-version %s)) \
-                             (= 1 (cidr-version %s)) \
-                             (= 2 (cidr-version %s))) \
-                     (ite ((_ is number) %s) \
-                         (and (or (= 0 (sign %s)) (= 1 (sign %s))) \
-                              (or (= 0 (width %s)) \
-                                  (= 1 (width %s)) \
-                                  (= 2 (width %s)) \
-                                  (= 3 (width %s)) \
-                                  (= 4 (width %s)) \
-                                  (= 5 (width %s)))) \
-                     (ite ((_ is vector) %s) \
-                         (>= (vector-dim %s) 0)
-                     true)))))\n"
-            eid eid eid eid (* if ip *)
-            eid eid eid eid (* if cidr *)
-            eid eid eid eid eid eid eid eid eid (* if number *)
-            eid eid (* vector *) ;
-          if optimize then
-            Printf.fprintf decls
-              ";(minimize (ite ((_ is number) %s) (width %s) 0))\n\
-               ;(assert-soft (ite ((_ is number) %s) (= 0 (sign %s)) true) :weight 1)\n\
-               ;(assert-soft (ite ((_ is ip) %s) (= 0 (ip-version %s)) true) :weight 4)\n\
-               ;(assert-soft (ite ((_ is ip) %s) (= 1 (ip-version %s)) true) :weight 2)\n\
-               ;(assert-soft (ite ((_ is cidr) %s) (= 0 (cidr-version %s)) true) :weight 4)\n\
-               ;(assert-soft (ite ((_ is cidr) %s) (= 1 (cidr-version %s)) true) :weight 2)\n"
-              eid eid eid eid eid eid eid eid eid eid
-              eid eid
-      | Some TNum ->
-          Printf.fprintf decls
-            "(assert (and (or (= 0 (sign %s)) (= 1 (sign %s))) \
-                          (or (= 0 (width %s)) \
-                              (= 1 (width %s)) \
-                              (= 2 (width %s)) \
-                              (= 3 (width %s)) \
-                              (= 4 (width %s)) \
-                              (= 5 (width %s)))))\n"
-            eid eid eid eid eid eid eid eid ;
-          if optimize then
-            Printf.fprintf decls
-              ";(minimize (width %s))\n\
-               ;(assert-soft (= 0 (sign %s)) :weight 1)\n"
-              eid eid
-
-      | Some (TVec (0, _)) ->
-          Printf.fprintf decls
-            "(assert (>= (vector-dim %s) 0))\n"
-            eid
-      | _ -> ()) ;
-
-    ) in
+        eid)
+  in
   (* Set the types for all fields from parents, params or env: *)
   emit_input_fields parent_types parents funcs ;
   emit_program declare tuple_sizes expr_types funcs ;
   Printf.fprintf oc
     "(set-option :print-success false)\n\
-     (set-option :produce-unsat-cores true)\n\
      (set-option :produce-models %s)\n\
+     (set-option :produce-unsat-cores %s)\n\
+     (set-option :smt.core.minimize %s)\n\
      (set-logic ALL) ; TODO\n\
      ; Define a sort for types:\n\
      (declare-datatypes\n\
@@ -1135,6 +1113,8 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs =
      (get-unsat-core)\n\
      (get-model)\n"
     (if optimize then "true" else "false")
+    (if optimize then "false" else "true")
+    (if optimize then "false" else "true")
     (List.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
       Printf.fprintf oc "(tuple%d" sz ;
       for i = 0 to sz-1 do
