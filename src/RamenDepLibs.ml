@@ -32,9 +32,9 @@ let objfiles = [
   "parsercombinator/parsercombinator.cmxa" ;
   "inotify/inotify.cmxa" ;
   "inotify/inotify-lwt.cmxa" ;
+  "ppp/PPP.cmxa" ;
   "binocle/Binocle.cmxa" ;
   "lacaml/lacaml.cmxa" ;
-  "ppp/PPP.cmxa" ;
   "ppp/PPP-unix.cmxa" ;
   "syslog/syslog.cmxa" ;
   "ramen/codegen.cmxa" ;

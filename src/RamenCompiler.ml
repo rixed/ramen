@@ -19,14 +19,19 @@ open RamenTypingHelpers
 
 open Binocle
 
-(* TODO: Binocle should allow to persist the metrics on disk somewhere,
- * with a tool to display them. *)
+let binocle_save_dir =
+  let s = "/tmp/binocle" in
+  mkdir_all s ;
+  s
+
 let stats_typing_time =
-  Histogram.make RamenConsts.MetricNames.compiler_typing_time
+  Histogram.make ~save_dir:binocle_save_dir
+    RamenConsts.MetricNames.compiler_typing_time
     "Time spent timing ramen programs, per typer" Histogram.powers_of_two
 
 let stats_typing_count =
-  IntCounter.make RamenConsts.MetricNames.compiler_typing_count
+  IntCounter.make ~save_dir:binocle_save_dir
+    RamenConsts.MetricNames.compiler_typing_count
     "How many times a typer have failed"
 
 let entry_point_name = "start"
