@@ -239,14 +239,19 @@ let compare_typers funcs res res_smt =
     let e = expr_of_id id in
     RamenExpr.(typ_of e).expr_name = "NULL"
   in
+  let nb_nosol = ref 0 in
   Hashtbl.iter (fun id (structure, nullable) ->
     match Hashtbl.find res_smt id with
     | exception Not_found ->
         (* If it's a literal "null", SMT is actually right: *)
-        if not (expr_is_null id) then
-          !logger.warning
-            "SMT have no solution for expression %d (%a)"
-            id (RamenExpr.print true) (expr_of_id id)
+        if not (expr_is_null id) then (
+          (if !nb_nosol < 20 then
+            !logger.warning
+              "SMT have no solution for expression %d (%a)"
+              id (RamenExpr.print true) (expr_of_id id)
+          else if !nb_nosol = 20 then
+            !logger.warning "SMT is lacking more solutions...") ;
+          incr nb_nosol)
     | smt ->
         let open RamenTypes in
         if not (can_enlarge ~from:structure ~to_:smt.structure) &&
