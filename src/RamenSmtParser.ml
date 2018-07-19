@@ -508,10 +508,10 @@ let get_unsat_core_resp m =
   (
     list symbol |||
     (error_resp >>: fun msg ->
-      if String.exists msg "optimization" then []
+      if String.exists msg "produce-unsat-cores" then []
       (* Do not accept this as a valid response if the error is not about
-       * optimization: *)
-      else raise (Reject "Error is not about optimization"))
+       * the feature being disabled: *)
+      else raise (Reject "Error is not about produce-unsat-cores"))
   ) m
 
 type check_sat_resp = Sat | Unsat | Unknown
