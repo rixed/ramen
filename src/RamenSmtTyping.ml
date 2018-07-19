@@ -157,24 +157,46 @@ let emit_assert_id_eq_id = emit_assert_id_eq_smt2
 (* Check that types are either the same (for those we cannot compare)
  * or that e1 is <= e2.
  * For IP/CIDR, it means version is either the same or 2.
- * For number, it means that width is <= and sign is also <=. *)
+ * For integers, it means that width is <= and sign is also <=. *)
 let emit_id_le_smt2 id oc smt2 =
   Printf.fprintf oc
     "(or (= %s %s) \
        (ite ((_ is number) %s) \
-         (and ((_ is number) %s) (<= (sign %s) (sign %s)) (<= (width %s) (width %s))) \
+         (and ((_ is number) %s) \
+              (<= (sign %s) (sign %s)) \
+              (<= (width %s) (width %s))) \
        (ite ((_ is ip) %s) \
          (and ((_ is ip) %s) (<= (ip-version %s) (ip-version %s))) \
        (ite ((_ is cidr) %s) \
          (and ((_ is cidr) %s) (<= (cidr-version %s) (cidr-version %s))) \
          false))))"
-      id smt2 id smt2 id smt2 id smt2
-      id smt2 id smt2 id smt2 id smt2
+      id smt2
+      id
+        smt2
+          id smt2
+          id smt2
+      id
+        smt2 id smt2
+      id
+        smt2 id smt2
 
 let emit_assert_id_le_smt2 ?name id oc smt2 =
   emit_assert ?name oc (fun oc -> emit_id_le_smt2 id oc smt2)
 
 let emit_assert_id_le_id = emit_assert_id_le_smt2
+
+(* For when we already know the expressions are numbers: *)
+let emit_id_le_smt2_numeric id oc smt2 =
+  Printf.fprintf oc
+    "(and (<= (sign %s) (sign %s)) \
+          (<= (width %s) (width %s)))"
+      id smt2
+      id smt2
+
+let emit_assert_id_le_smt2_numeric ?name id oc smt2 =
+  emit_assert ?name oc (fun oc -> emit_id_le_smt2_numeric id oc smt2)
+
+let emit_assert_id_le_id_numeric = emit_assert_id_le_smt2_numeric
 
 (* TODO: emit_assert_notnull... *)
 
@@ -218,7 +240,7 @@ let emit_assert_unsigned oc e =
       "(and ((_ is number) %s) \
             (= (sign %s) 0) \
             (>= (width %s) 0) \
-            (< (width %s) 5))"
+            (<= (width %s) 4))"
       eid eid eid eid)
 
 let emit_assert_signed_or_float oc e =
@@ -229,8 +251,13 @@ let emit_assert_signed_or_float oc e =
       "(and ((_ is number) %s) \
             (= (sign %s) 1) \
             (>= (width %s) 0) \
-            (<= (width %s) 5))"
+            (<= (width %s) 5)))"
       eid eid eid eid)
+
+let emit_assert_float oc e =
+  let name = make_name e "FLOAT" in
+  emit_assert ~name oc (fun oc ->
+    Printf.fprintf oc "(= (number 1 5) %s)" (e_of_expr e))
 
 let emit_assert_integer oc e =
   let name = make_name e "INTEGER" in
@@ -240,7 +267,7 @@ let emit_assert_integer oc e =
       "(and ((_ is number) %s) \
             (or (= (sign %s) 0) (= (sign %s) 1)) \
             (>= (width %s) 0) \
-            (< (width %s) 5))"
+            (<= (width %s) 4))"
       eid eid eid eid eid)
 
 let emit_assert_numeric oc e =
@@ -255,7 +282,7 @@ let emit_assert_numeric oc e =
       eid eid eid eid eid)
 
 (* "same" types are either actually the same or at least of the same sort
- * (both numbers, both ip, or both cidr) *)
+ * (both numbers/floats, both ip, or both cidr) *)
 let emit_same id1 oc id2 =
   Printf.fprintf oc
     "(or (= %s %s) \
@@ -431,8 +458,7 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatefulFun (_, _, (AggrSum e|AggrAvg e)) ->
       (* The result must not be smaller than e *)
-      emit_assert_numeric oc e ;
-      emit_assert_id_le_id (e_of_expr e) oc eid ;
+      emit_assert_id_le_id_numeric (e_of_expr e) oc eid ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
   | StatelessFun1 (_, Minus, e') ->
@@ -446,7 +472,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* - The only argument must be numeric;
        * - The result must not be smaller than e. *)
       emit_assert_numeric oc e ;
-      emit_assert_id_le_smt2 (e_of_expr e) oc eid ;
+      emit_assert_id_le_smt2_numeric (e_of_expr e) oc eid ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
   | StatefulFun (_, _, (AggrAnd e | AggrOr e))
@@ -478,8 +504,8 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_numeric oc e2 ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2)) ;
-      emit_assert_id_le_id (e_of_expr e1) oc eid ;
-      emit_assert_id_le_id (e_of_expr e2) oc eid
+      emit_assert_id_le_id_numeric (e_of_expr e1) oc eid ;
+      emit_assert_id_le_id_numeric (e_of_expr e2) oc eid
       (* TODO: for IDiv, have a TInt type and make_int_typ when parsing *)
 
   | StatelessFun2 (_, (Concat|StartsWith|EndsWith), e1, e2)
@@ -496,8 +522,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* e1 must be a string and e2 a float (ideally, a time): *)
       let name = make_name e1 "STRING" in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e1) oc TString ;
-      let name = make_name e2 "FLOAT" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e2) oc TFloat ;
+      emit_assert_float oc e2 ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
@@ -522,8 +547,8 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_integer oc e2 ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2)) ;
-      emit_assert_id_le_id (e_of_expr e1) oc eid ;
-      emit_assert_id_le_id (e_of_expr e2) oc eid
+      emit_assert_id_le_id_numeric (e_of_expr e1) oc eid ;
+      emit_assert_id_le_id_numeric (e_of_expr e2) oc eid
 
   | StatelessFun2 (_, (Ge|Gt), e1, e2) ->
       (* e1 and e2 must have the same sort, and be either strings, numeric,
@@ -681,16 +706,24 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   we just ask for a numeric in order to also accept immediate
        *   values parsed as integers, and integer fields;
        * - e2 must be numeric *)
-      let name = make_name e1 "FLOAT" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e1) oc TFloat ;
+      emit_assert_float oc e1 ;
       emit_assert_numeric oc e2 ;
       let name = make_name e1 "NOTNULL" in
       emit_assert_is_false ~name oc (n_of_expr e1) ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
-  | StatelessFun1 (_, (Exp|Log|Log10|Sqrt|Floor|Ceil|Round), e) ->
-      (* e must be numeric *)
+  | StatelessFun1 (_, (Exp|Log|Log10|Sqrt), e') ->
+      (* - e must be numeric;
+       * - the result is a float. *)
+      emit_assert_numeric oc e' ;
+      emit_assert_float oc e ;
+      emit_assert_id_eq_id (n_of_expr e') oc nid
+
+  | StatelessFun1 (_, (Floor|Ceil|Round), e) ->
+      (* - e must be numeric;
+       * - the result is not smaller than e. *)
       emit_assert_numeric oc e ;
+      emit_assert_id_le_smt2_numeric (e_of_expr e) oc eid ;
       emit_assert_id_eq_id (n_of_expr e) oc nid
 
   | StatelessFun1 (_, Hash, e) ->
@@ -848,15 +881,20 @@ let emit_program declare tuple_sizes oc funcs =
 
 let emit_minimize oc funcs =
   (* Minimize total number of bits required to encode all integers: *)
-  Printf.fprintf oc "\n; Minimize total integer width\n\
-                     (minimize (+ 0" ;
-  List.iteri (fun i func ->
+  Printf.fprintf oc "\n; Minimize total number width\n\
+                     (define-fun cost_of_number ((n Type)) Int\n\
+                       (ite ((_ is number) n)\n\
+                         (ite (= (width n) 4)\n\
+                           8 ; penalize I128\n\
+                           (width n))\n\
+                         0))\n" ;
+  Printf.fprintf oc "(minimize (+ 0" ;
+  List.iter (fun func ->
     RamenOperation.iter_expr (fun e ->
       let eid = e_of_expr e in
       match (typ_of e).scalar_typ with
-      | None | Some TAny ->
-          Printf.fprintf oc " (ite ((_ is number) %s) (width %s) 0)"
-            eid eid
+      | None | Some (TAny | TNum) ->
+          Printf.fprintf oc " (cost_of_number %s)" eid
       | _ -> ()
     ) (Option.get func.Func.operation)
   ) funcs ;
@@ -864,11 +902,11 @@ let emit_minimize oc funcs =
   (* And, separately, number of signed values: *)
   Printf.fprintf oc "\n; Minimize total signed ints\n\
                      (minimize (+ 0" ;
-  List.iteri (fun i func ->
+  List.iter (fun func ->
     RamenOperation.iter_expr (fun e ->
       let eid = e_of_expr e in
       match (typ_of e).scalar_typ with
-      | None | Some TAny ->
+      | None | Some (TAny | TNum) ->
           Printf.fprintf oc " (ite ((_ is number) %s) (sign %s) 0)"
             eid eid
       | _ -> ()
@@ -1137,7 +1175,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs =
           (cidr (cidr-version Int))\n\
           ; We will optimize for the less sign-bits and the less width.\n\
           ; sign should really be a Bool but Z3 don't know how to minimize\n\
-          ; bools. Floats are represented as a width of >128.\n\
+          ; bools. Floats are represented as ints of width 5.\n\
           (number (sign Int) (width Int))\n\
           (list (list-type Type) (list-nullable Bool))\n\
           (vector (vector-dim Int) (vector-type Type) (vector-nullable Bool))\n\
