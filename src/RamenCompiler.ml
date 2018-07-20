@@ -13,8 +13,8 @@ open Lwt
 open RamenHelpers
 open RamenLog
 module C = RamenConf
-module F = RamenConf.Func
-module P = RamenConf.Program
+module F = C.Func
+module P = C.Program
 open RamenTypingHelpers
 
 open Binocle
@@ -63,7 +63,8 @@ let compile conf root_path program_name program_code =
      *)
     !logger.info "Parsing program %s"
       (RamenName.string_of_program program_name) ;
-    let parsed_params, parsed_funcs = RamenProgram.parse program_code in
+    let parsed_params, parsed_funcs =
+      RamenProgram.parse root_path program_code in
     (*
      * Now we have to type all of these.
      * Here we mainly construct the data required by the typer: it needs

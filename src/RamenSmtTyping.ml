@@ -1270,7 +1270,7 @@ let set_io_tuples parents funcs h =
         make_typ ?nullable:ft.typ.nullable ~typ:ft.typ.structure
                  ft.typ_name
       ) typ in
-  (* Set i/o types of func without considering and_all_others (star): *)
+  (* Set i/o types of func: *)
   let set_non_star_outputs func =
     let out_type = untyped_tuple_type func.Func.out_type in
     match Option.get func.Func.operation with
@@ -1326,58 +1326,10 @@ let set_io_tuples parents funcs h =
   (* We must set outputs before inputs: *)
   Hashtbl.iter (fun _ -> set_non_star_outputs) funcs ;
   Hashtbl.iter (fun _ -> set_non_star_inputs) funcs ;
-  (* handle the stars: *)
-  let ok =
-    (* If a function selects STAR from a parent that also selects STAR
-     * then several passes will be needed: *)
-    reach_fixed_point ~max_try:100 (fun () ->
-      Hashtbl.fold (fun _ func changed ->
-        let parents = Hashtbl.find_default parents func.Func.name [] in
-        let in_type = untyped_tuple_type func.Func.in_type
-        and out_type = untyped_tuple_type func.Func.out_type in
-        match parents, Option.get func.Func.operation with
-        | (fstp :: otherp), Aggregate { and_all_others = true ; _ } ->
-            (* Build the union of all fields exported by fstp not in the
-             * field list, that are also in all other parents *)
-            let fstp_out = untyped_tuple_type fstp.Func.out_type in
-            List.fold_left (fun changed (name, pfield_typ) ->
-              !logger.debug "CONSIDER for STAR field %s, %a" name RamenExpr.print_typ pfield_typ ;
-              (* Check we have this in all other parents: *)
-              if List.exists (fun p ->
-                   let p_out = untyped_tuple_type p.Func.out_type in
-                   not (List.exists (fun (fn, ft) ->
-                          fn = name && same_type ft pfield_typ
-                        ) p_out.fields)
-                 ) otherp
-              then (!logger.debug "not in all parents"; changed) else
-              (* Add this field into this function: *)
-              let t =
-                make_typ ?nullable:pfield_typ.nullable
-                         ~typ:(Option.get pfield_typ.scalar_typ) name in
-              let changed =
-                if List.mem_assoc name in_type.fields then changed else (
-                  !logger.debug "Set STAR input field %s.%s"
-                    (RamenName.string_of_func func.name) name ;
-                  in_type.fields <- (name, t) :: in_type.fields ;
-                  true) in
-              let changed =
-                if List.mem_assoc name out_type.fields then changed else (
-                  !logger.debug "Set STAR output field %s.%s"
-                    (RamenName.string_of_func func.name) name ;
-                  out_type.fields <- (name, t) :: out_type.fields ;
-                  true) in
-              changed
-            ) false fstp_out.fields
-        | _ ->
-            changed
-      ) funcs false) in
-  if ok then
-    Hashtbl.iter (fun _ func ->
-      (untyped_tuple_type func.Func.in_type).finished_typing <- true ;
-      (untyped_tuple_type func.Func.out_type).finished_typing <- true
-    ) funcs
-  else
-    failwith "Cannot finish typing STAR fields"
+  Hashtbl.iter (fun _ func ->
+    (untyped_tuple_type func.Func.in_type).finished_typing <- true ;
+    (untyped_tuple_type func.Func.out_type).finished_typing <- true
+  ) funcs
 
 let apply_types parents funcs h =
   set_io_tuples parents funcs h ;

@@ -81,8 +81,9 @@ RAMEN_SOURCES = \
 	src/RamenTypes.ml src/RamenTuple.ml src/RamenName.mli src/RamenName.ml \
 	src/RamenLang.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
-	src/RamenExpr.ml src/RamenOperation.ml src/RamenProgram.ml \
-	src/RamenSerialization.ml src/RamenConf.ml src/RamenWatchdog.ml \
+	src/RamenExpr.ml src/RamenOperation.ml \
+	src/RamenSerialization.ml src/RamenConf.ml src/RamenProgram.ml \
+	src/RamenWatchdog.ml \
 	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
@@ -269,7 +270,7 @@ LINKED_FOR_TESTS = \
 	src/RamenTypes.ml src/RamenTuple.ml src/RamenName.mli src/RamenName.ml \
 	src/RamenLang.ml src/RamenExpr.ml \
 	src/RamenWatchdog.ml src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
-	src/RamenOperation.ml src/RamenProgram.ml src/RamenConf.ml \
+	src/RamenOperation.ml src/RamenConf.ml src/RamenProgram.ml \
 	src/Globs.ml src/RamenCompilConfig.ml src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml src/RamenHeap.ml src/RamenSortBuf.ml \
 	src/CodeGen_OCaml.ml src/RamenBitmask.ml src/RamenSerialization.ml \

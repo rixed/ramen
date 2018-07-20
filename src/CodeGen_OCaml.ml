@@ -1444,15 +1444,15 @@ let emit_instrumentation consts params oc name from =
         | SubQuery _ -> assert false))) from
 
 (* tuple must be some kind of _input_ tuple *)
-let emit_in_tuple ?(tuple=TupleIn) mentioned and_all_others oc in_typ =
+let emit_in_tuple ?(tuple=TupleIn) mentioned oc in_typ =
   print_tuple_deconstruct tuple oc (List.filter_map (fun field_typ ->
-    if and_all_others || Set.mem field_typ.typ_name mentioned then
+    if Set.mem field_typ.typ_name mentioned then
       Some field_typ else None) in_typ)
 
 (* We do not want to read the value from the RB each time it's used,
  * so extract a tuple from the ring buffer. As an optimisation, read
  * (and return) only the mentioned fields. *)
-let emit_read_tuple name mentioned and_all_others oc in_typ =
+let emit_read_tuple name mentioned oc in_typ =
   (* Deserialize in in_tuple_typ.typ_name order: *)
   let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ in_typ in
   Printf.fprintf oc "\
@@ -1527,7 +1527,7 @@ let emit_read_tuple name mentioned and_all_others oc in_typ =
   in
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ ~tuple:TupleIn field in
-      if and_all_others || Set.mem field.typ_name mentioned then (
+      if Set.mem field.typ_name mentioned then (
         Printf.fprintf oc "\tlet bi_ = %d in\n\
                            \tlet %s, offs_ =\n%a in\n"
           nulli
@@ -1550,7 +1550,7 @@ let emit_read_tuple name mentioned and_all_others oc in_typ =
       not (is_private_field t.RamenTuple.typ_name)
     ) in_typ in
   Printf.fprintf oc "\t%a\n"
-    (emit_in_tuple mentioned and_all_others) in_typ_only_ser
+    (emit_in_tuple mentioned) in_typ_only_ser
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -1591,7 +1591,7 @@ let emit_generator user_fun ~consts oc expr =
     (emit_expr ?state:None ~context:Finalize ~consts) expr ;
   List.iter (fun _ -> Printf.fprintf oc ")") generators
 
-let emit_generate_tuples name in_typ mentioned and_all_others out_typ ~consts oc selected_fields =
+let emit_generate_tuples name in_typ mentioned out_typ ~consts oc selected_fields =
   let has_generator =
     List.exists (fun sf ->
       RamenExpr.is_generator sf.RamenOperation.expr)
@@ -1601,7 +1601,7 @@ let emit_generate_tuples name in_typ mentioned and_all_others out_typ ~consts oc
   else (
     Printf.fprintf oc "let %s f_ (%a as it_) %a =\n"
       name
-      (emit_in_tuple mentioned and_all_others) in_typ
+      (emit_in_tuple mentioned) in_typ
       (print_tuple_deconstruct TupleOut) out_typ ;
     (* Each generator is a functional receiving the continuation and calling it
      * as many times as there are values. *)
@@ -1680,20 +1680,20 @@ let emit_state_update_for_expr ~consts oc expr =
 
 let emit_where
       ?(with_group=false) ?(always_true=false)
-      name in_typ mentioned and_all_others ~consts oc expr =
+      name in_typ mentioned ~consts oc expr =
   Printf.fprintf oc "let %s global_ virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a \
                        virtual_out_count_ out_previous_opt_ "
     name
-    (emit_in_tuple mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ ;
+    (emit_in_tuple mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleLastIn mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleLastSelected mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleLastUnselected mentioned) in_typ ;
   if with_group then
     Printf.fprintf oc "virtual_group_count_ virtual_group_successive_ group_ %a %a "
-      (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
-      (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ ;
+      (emit_in_tuple ~tuple:TupleGroupFirst mentioned) in_typ
+      (emit_in_tuple ~tuple:TupleGroupLast mentioned) in_typ ;
   if always_true then
     Printf.fprintf oc "= true\n"
   else (
@@ -1708,21 +1708,21 @@ let emit_field_selection
       ?(with_selected=false) (* and unselected *)
       ?(with_group=false) (* including previous, of type tuple_out option *)
       name in_typ mentioned
-      and_all_others out_typ ~consts oc selected_fields =
+      out_typ ~consts oc selected_fields =
   Printf.fprintf oc "let %s virtual_in_count_ %a %a "
     name
-    (emit_in_tuple mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ ;
+    (emit_in_tuple mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleLastIn mentioned) in_typ ;
   if with_selected then
     Printf.fprintf oc "virtual_selected_count_ virtual_selected_successive_ %a \
                        virtual_unselected_count_ virtual_unselected_successive_ %a "
-      (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
-      (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ ;
+      (emit_in_tuple ~tuple:TupleLastSelected mentioned) in_typ
+      (emit_in_tuple ~tuple:TupleLastUnselected mentioned) in_typ ;
   if with_group then
     Printf.fprintf oc "virtual_out_count out_previous_opt_ group_previous_opt_ \
                        virtual_group_count_ virtual_group_successive_ group_ global_ %a %a "
-      (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
-      (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ ;
+      (emit_in_tuple ~tuple:TupleGroupFirst mentioned) in_typ
+      (emit_in_tuple ~tuple:TupleGroupLast mentioned) in_typ ;
   Printf.fprintf oc "=\n" ;
   List.iter (fun sf ->
       (* Update the states as required for this field, just before
@@ -1756,10 +1756,10 @@ let emit_field_selection
 (* Similar to emit_field_selection but with less options, no concept of star and no
  * naming of the fields as the fields from out, since that's not the out tuple
  * we are constructing: *)
-let emit_key_of_input name in_typ mentioned and_all_others ~consts oc exprs =
+let emit_key_of_input name in_typ mentioned ~consts oc exprs =
   Printf.fprintf oc "let %s %a =\n\t("
     name
-    (emit_in_tuple mentioned and_all_others) in_typ ;
+    (emit_in_tuple mentioned) in_typ ;
   List.iteri (fun i expr ->
       Printf.fprintf oc "%s\n\t\t%a"
         (if i > 0 then "," else "")
@@ -1882,7 +1882,7 @@ let emit_state_init name state_lifespan other_state_vars
 
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
-let emit_when name in_typ mentioned and_all_others out_typ ~consts
+let emit_when name in_typ mentioned out_typ ~consts
               oc when_expr =
   Printf.fprintf oc "let %s virtual_in_count_ %a %a \
                        virtual_selected_count_ virtual_selected_successive_ %a \
@@ -1892,24 +1892,24 @@ let emit_when name in_typ mentioned and_all_others out_typ ~consts
                        %a %a \
                        %a =\n"
     name
-    (emit_in_tuple mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastSelected mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleLastUnselected mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleGroupFirst mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleGroupLast mentioned and_all_others) in_typ
+    (emit_in_tuple mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleLastIn mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleLastSelected mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleLastUnselected mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleGroupFirst mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleGroupLast mentioned) in_typ
     (emit_tuple TupleOut) out_typ ;
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~consts oc when_expr ;
   Printf.fprintf oc "\t%a\n"
     (emit_expr ?state:None ~context:Finalize ~consts) when_expr
 
-let emit_should_resubmit name in_typ mentioned and_all_others ~consts
+let emit_should_resubmit name in_typ mentioned ~consts
                          oc flush_how =
   let open RamenOperation in
   Printf.fprintf oc "let %s group_ %a =\n"
     name
-    (emit_in_tuple mentioned and_all_others) in_typ ;
+    (emit_in_tuple mentioned) in_typ ;
   match flush_how with
   | Reset | Never ->
     Printf.fprintf oc "\tfalse\n"
@@ -1946,13 +1946,13 @@ let when_to_check_group_for_expr expr =
   if need_selected then "CodeGenLib.ForAllSelected" else
   "CodeGenLib.ForInGroup"
 
-let emit_sort_expr name in_typ mentioned and_all_others ~consts oc es_opt =
+let emit_sort_expr name in_typ mentioned ~consts oc es_opt =
   Printf.fprintf oc "let %s sort_count_ %a %a %a %a =\n"
     name
-    (emit_in_tuple ~tuple:TupleSortFirst mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleIn mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleSortSmallest mentioned and_all_others) in_typ
-    (emit_in_tuple ~tuple:TupleSortGreatest mentioned and_all_others) in_typ ;
+    (emit_in_tuple ~tuple:TupleSortFirst mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleIn mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleSortSmallest mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleSortGreatest mentioned) in_typ ;
   match es_opt with
   | [] ->
       (* The default sort_until clause must be false.
@@ -1963,10 +1963,10 @@ let emit_sort_expr name in_typ mentioned and_all_others ~consts oc es_opt =
         (List.print ~first:"(" ~last:")" ~sep:", "
            (emit_expr ?state:None ~context:Finalize ~consts)) es
 
-let emit_merge_on name in_typ mentioned and_all_others ~consts oc es =
+let emit_merge_on name in_typ mentioned ~consts oc es =
   Printf.fprintf oc "let %s %a =\n\t%a\n"
     name
-    (emit_in_tuple mentioned and_all_others) in_typ
+    (emit_in_tuple mentioned) in_typ
     (List.print ~first:"(" ~last:")" ~sep:", "
        (emit_expr ?state:None ~context:Finalize ~consts)) es
 
@@ -1981,7 +1981,7 @@ let expr_needs_group e =
 
 let emit_aggregate consts params oc name in_typ out_typ = function
   | RamenOperation.Aggregate
-      { fields ; and_all_others ; merge ; sort ; where ; key ;
+      { fields ; merge ; sort ; where ; key ;
         commit_before ; commit_when ; flush_how ; notifications ; event_time ;
         every ; _ } as op ->
   (* FIXME: now that we serialize only used fields, when do we have fields
@@ -1999,29 +1999,29 @@ let emit_aggregate consts params oc name in_typ out_typ = function
     "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when ~consts) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when ~consts) fields
-    (emit_read_tuple "read_tuple_" mentioned and_all_others) in_typ
+    (emit_read_tuple "read_tuple_" mentioned) in_typ
     (if where_need_group then
-      emit_where "where_fast_" ~always_true:true in_typ mentioned and_all_others ~consts
+      emit_where "where_fast_" ~always_true:true in_typ mentioned ~consts
     else
-      emit_where "where_fast_" in_typ mentioned and_all_others ~consts) where
+      emit_where "where_fast_" in_typ mentioned ~consts) where
     (if not where_need_group then
-      emit_where "where_slow_" ~with_group:true ~always_true:true in_typ mentioned and_all_others ~consts
+      emit_where "where_slow_" ~with_group:true ~always_true:true in_typ mentioned ~consts
     else
-      emit_where "where_slow_" ~with_group:true in_typ mentioned and_all_others ~consts) where
-    (emit_key_of_input "key_of_input_" in_typ mentioned and_all_others ~consts) key
+      emit_where "where_slow_" ~with_group:true in_typ mentioned ~consts) where
+    (emit_key_of_input "key_of_input_" in_typ mentioned ~consts) key
     emit_maybe_fields out_typ
-    (emit_when "commit_when_" in_typ mentioned and_all_others out_typ ~consts) commit_when
-    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_typ mentioned and_all_others out_typ ~consts) fields
+    (emit_when "commit_when_" in_typ mentioned out_typ ~consts) commit_when
+    (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_typ mentioned out_typ ~consts) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_" params event_time) out_typ
     (emit_serialize_tuple "serialize_group_") out_typ
-    (emit_generate_tuples "generate_tuples_" in_typ mentioned and_all_others out_typ ~consts) fields
-    (emit_should_resubmit "should_resubmit_" in_typ mentioned and_all_others ~consts) flush_how
+    (emit_generate_tuples "generate_tuples_" in_typ mentioned out_typ ~consts) fields
+    (emit_should_resubmit "should_resubmit_" in_typ mentioned ~consts) flush_how
     (emit_field_of_tuple "field_of_tuple_in_") in_typ
     (emit_field_of_tuple "field_of_tuple_out_") out_typ
-    (emit_merge_on "merge_on_" in_typ mentioned and_all_others ~consts) (fst merge)
-    (emit_sort_expr "sort_until_" in_typ mentioned and_all_others ~consts) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
-    (emit_sort_expr "sort_by_" in_typ mentioned and_all_others ~consts) (match sort with Some (_, _, b) -> b | None -> []) ;
+    (emit_merge_on "merge_on_" in_typ mentioned ~consts) (fst merge)
+    (emit_sort_expr "sort_until_" in_typ mentioned ~consts) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
+    (emit_sort_expr "sort_by_" in_typ mentioned ~consts) (match sort with Some (_, _, b) -> b | None -> []) ;
   Printf.fprintf oc "let %s () =\n\
       \tCodeGenLib.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\

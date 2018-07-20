@@ -279,7 +279,8 @@ type scheduled_item  =
 module PendingSet = Set.Make (struct
   type t = scheduled_item
   let compare i1 i2 =
-    let c = String.compare i1.item.notif.RamenOperation.name i2.item.notif.name in
+    let c = String.compare i1.item.notif.RamenOperation.notif_name
+                           i2.item.notif.notif_name in
     if c <> 0 then c else
     Contact.compare i1.item.contact i2.item.contact
 end)
@@ -317,7 +318,7 @@ let restore_pendings conf =
   pendings.dirty <- false
 
 (* Used to find pending notif in the set: *)
-let fake_pending_named name contact =
+let fake_pending_named notif_name contact =
   { schedule_time = 0. ;
     send_time = 0. ;
     status = StartToBeSent ;
@@ -331,7 +332,7 @@ let fake_pending_named name contact =
         alert_id = Uint64.zero ;
         worker = "" ;
         contact ;
-        notif = { name ; severity = Urgent ; parameters = [] } } }
+        notif = { notif_name ; severity = Urgent ; parameters = [] } } }
 
 (* When we receive a notification that an alert is no more firing, we must
  * cancel pending delivery or send the end of alert notification.
@@ -452,7 +453,7 @@ let ack name contact =
  * TODO: time this thread and add this to notifier instrumentation. *)
 let contact_via item =
   let dict =
-    [ "name", item.notif.RamenOperation.name ;
+    [ "name", item.notif.RamenOperation.notif_name ;
       "severity",
         PPP.to_string RamenOperation.severity_ppp_ocaml item.notif.severity ;
       "alert_id", Uint64.to_string item.alert_id ;
@@ -488,7 +489,7 @@ let contact_via item =
 let do_notify i =
   if i.attempts >= 3 then (
     !logger.warning "Cannot deliver alert %s after %d attempt, \
-                     giving up" i.notif.name i.attempts ;
+                     giving up" i.notif.notif_name i.attempts ;
     0.
   ) else (
     let timeout = 5. (* TODO *) in
@@ -500,7 +501,7 @@ let do_notify i =
           return_unit (* let it timeout *)
       | () ->
           if timeout > 0. then
-            Lwt.wrap (fun () -> ack i.notif.name i.contact)
+            Lwt.wrap (fun () -> ack i.notif.notif_name i.contact)
           else return_unit) ;
     timeout
   )
@@ -529,7 +530,7 @@ let send_next now =
               if timeout > 0. then (
                 reschedule_min (now +. timeout)
               ) else (
-                ack p.item.notif.name p.item.contact ;
+                ack p.item.notif.notif_name p.item.contact ;
                 del_min p  (* Acked alerts need not be in the scheduling heap *)
               ) ;
             ) else (
@@ -543,7 +544,7 @@ let send_next now =
             !logger.warning "Timing out sending a notification to %a for %s of alert %s"
               Contact.print p.item.contact
               (if p.status = StartSent then "starting" else "stopping")
-              p.item.notif.name ;
+              p.item.notif.notif_name ;
             p.status <- (if p.status = StartSent then StartToBeSent else StopToBeSent) ;
             p.send_time <- now ;
             reschedule_min now
@@ -594,7 +595,7 @@ let start conf notif_conf rb =
           with Not_found | Failure _ -> None
         and now = Unix.gettimeofday ()
         (* Find the team in charge of that alert name: *)
-        and team = Team.find_in_charge notif_conf.teams notif.name in
+        and team = Team.find_in_charge notif_conf.teams notif.notif_name in
         let contacts =
           match notif.severity with
           | Deferrable -> team.Team.deferrable_contacts
@@ -608,7 +609,7 @@ let start conf notif_conf rb =
               if looks_like_true v then
                 set_alight conf notif_conf notif worker event_time now true
               else
-                extinguish_pending notif_conf notif.name event_time now in
+                extinguish_pending notif_conf notif.notif_name event_time now in
         List.iter action contacts ;
         return_unit)
 

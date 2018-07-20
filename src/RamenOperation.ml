@@ -65,7 +65,7 @@ type severity = Urgent | Deferrable
 type notification =
   { (* Act as the alert identifier _and_ the selector for who it's aimed at.
        So use names such as "team: service ${X} for ${Y} is on fire" *)
-    name : string ;
+    notif_name : string ;
     severity : severity
       [@ppp_default Urgent] ;
     parameters : (string * string) list
@@ -74,7 +74,7 @@ type notification =
 
 let print_notification oc notif =
   Printf.fprintf oc "NOTIFY %S %s"
-    notif.name
+    notif.notif_name
     (match notif.severity with
      | Urgent -> "URGENT"
      | Deferrable -> "DEFERRABLE") ;
@@ -124,8 +124,7 @@ type t =
       (* factors are hardcoded *) }
 
 and data_source =
-  | NamedOperation of (([`Program] RamenName.t * RamenName.params) option *
-                       [`Function] RamenName.t)
+  | NamedOperation of ((RamenName.program * RamenName.params) option * RamenName.func)
   | SubQuery of t
   | GlobPattern of string
 
@@ -610,8 +609,8 @@ struct
        optional ~def:[]
          (opt_with -- blanks -- strinGs "parameter" -- blanks -+
           several ~sep:list_sep_and kv_list) >>:
-      fun ((name, severity), parameters) ->
-        { name ; severity ; parameters }) m
+      fun ((notif_name, severity), parameters) ->
+        { notif_name ; severity ; parameters }) m
     in
     let m = "notification clause" :: m in
     (notify_cmd >>: fun s -> NotifySpec s) m
@@ -1055,7 +1054,7 @@ struct
         where = Expr.Const (typ, VBool true) ;\
         event_time = None ;\
         notifications = [ \
-          { name = "ouch" ; severity = Urgent ; parameters = [] } ] ;\
+          { notif_name = "ouch" ; severity = Urgent ; parameters = [] } ] ;\
         key = [] ;\
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\

@@ -1213,46 +1213,10 @@ let all_finished funcs =
     ) funcs
 
 let check_aggregate ~parents ~in_type ~out_type ~params
-                    fields and_all_others merge sort where key
+                    fields merge sort where key
                     commit_when flush_how =
   let open RamenOperation in
   (
-    (* Improve in_type using parent out_type and out_type using in_type if we
-     * propagates it all: *)
-    (* TODO: find a way to do this only once, since once all_finished
-     * returns true there is no use for another try. *)
-    if and_all_others && parents <> [] && all_finished parents then (
-      (* Add all the public fields present (same name and same type) in all the
-       * parents, and ignore the fields that are not present everywhere. *)
-      let inter_parents =
-        List.fold_left (fun inter parent ->
-            Set.intersect inter (public_fields parent.Func.out_type)
-          ) (public_fields (List.hd parents).out_type) (List.tl parents) in
-      (* Remove those that have different types: *)
-      let inter_ptyps =
-        Set.fold (fun field ptyps ->
-            match type_of_parents_field parents TupleOut field with
-            | exception SyntaxError _ -> ptyps
-            | ptyp -> (field, ptyp) :: ptyps) inter_parents [] in
-      !logger.debug "Adding * fields: %a"
-        print_untyped_tuple_fields inter_ptyps ;
-      let from_tuple = C.{ finished_typing = true ;
-                           fields = inter_ptyps } in
-      (* This is supposed to propagate parent completeness into in-tuple. *)
-      check_inherit_tuple ~including_complete:true ~is_subset:true
-                          ~from_prefix:TupleOut ~from_tuple
-                          ~to_prefix:TupleIn ~to_tuple:in_type
-      |||
-      (* If all other fields are selected, add them *)
-      check_inherit_tuple ~including_complete:false ~is_subset:false
-                          ~from_prefix:TupleIn ~from_tuple:in_type
-                          ~to_prefix:TupleOut ~to_tuple:out_type
-    ) else (
-      (* If we do not select star then we will bring in fields from (all)
-       * parents as they are needed. *)
-      false
-    )
-  ) ||| (
     (* Improve in and out_type using all expressions. Check we satisfy in_type. *)
     List.fold_left (fun changed e ->
       let exp_type = Expr.typ_of e in
@@ -1333,10 +1297,10 @@ let check_operation operation parents func params =
   in
   let open RamenOperation in
   match operation with
-  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
+  | Aggregate { fields ; merge ; sort ; where ; key ;
                 commit_when ; flush_how ; _ } ->
     check_aggregate ~parents ~in_type ~out_type ~params
-                    fields and_all_others (fst merge) sort where
+                    fields (fst merge) sort where
                     key commit_when flush_how
 
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
@@ -1413,7 +1377,7 @@ let set_all_types conf parents funcs params =
     let test_type_single_func op_text =
       try
         let txt = "DEFINE foo AS "^ op_text in
-        let _params, funcs = RamenProgram.parse txt in
+        let _params, funcs = RamenProgram.parse "/tmp" txt in
         let operation = (List.hd funcs).RamenProgram.operation in
         let funcs = Hashtbl.create 3 in
         Hashtbl.add funcs "test"

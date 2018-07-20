@@ -5,6 +5,10 @@
 open Batteries
 open RamenLang
 open RamenLog
+open RamenHelpers
+module C = RamenConf
+module F = C.Func
+module P = C.Program
 
 (*$inject
   open TestHelpers
@@ -13,7 +17,7 @@ open RamenLog
 *)
 
 type func =
-  { name : [`Function] RamenName.t ;
+  { name : RamenName.func ;
     operation : RamenOperation.t }
 
 type t = RamenTuple.param list * func list
@@ -241,13 +245,99 @@ let reify_subqueries funcs =
     | _ -> func :: fs
   ) [] funcs
 
+(* Make all selected fields explicit by replacing the and_all_others flag by
+ * a list of named fields: *)
+
+(* Exits when we met a parent which output type is not stable: *)
+let common_fields_of_from root_path funcs from =
+  let open RamenOperation in
+  List.fold_left (fun common data_source ->
+    let fields =
+      match data_source with
+      | SubQuery _ ->
+          (* Sub-queries have been reified already *)
+          assert false
+      | GlobPattern _ ->
+          List.map (fun f -> f.RamenTuple.typ_name) RamenBinocle.tuple_typ
+      | NamedOperation (None, fn) ->
+          (match List.find (fun f -> f.name = fn) funcs with
+          | exception Not_found ->
+              Printf.sprintf "While expanding STAR, cannot find parent %s"
+                (RamenName.string_of_func fn) |>
+              failwith
+          | par ->
+              (match par.operation with
+              | Aggregate { fields ; and_all_others ; _ } ->
+                  if and_all_others then raise Exit ;
+                  List.map (fun sf -> sf.alias) fields
+              | ReadCSVFile { what ; _ } ->
+                  List.map (fun f -> f.RamenTuple.typ_name) what.fields
+              | ListenFor { proto ; _ } ->
+                  RamenProtocols.tuple_typ_of_proto proto |>
+                  List.map (fun f -> f.RamenTuple.typ_name)
+              | Instrumentation _ ->
+                  RamenBinocle.tuple_typ |>
+                  List.map (fun f -> f.RamenTuple.typ_name)))
+      | NamedOperation (Some (pn, _), fn) ->
+          let par_rc =
+            P.bin_of_program_name root_path pn |> P.of_bin [] in
+          let par_func =
+            List.find (fun f -> f.F.name = fn) par_rc.P.funcs in
+          List.map (fun ft ->
+            ft.RamenTuple.typ_name
+          ) par_func.F.out_type.RamenTuple.ser
+    in
+    let fields = Set.String.of_list fields in
+    match common with
+    | None -> Some fields
+    | Some common_fields ->
+        Some (Set.String.inter common_fields fields)
+  ) None from |? Set.String.empty
+
+let reify_star_fields root_path funcs =
+  let open RamenOperation in
+  let input_field alias =
+    let open RamenExpr in
+    { expr = (Field (make_typ alias, ref TupleIn, alias)) ; alias } in
+  let new_funcs = ref funcs in
+  let ok =
+    (* If a function selects STAR from a parent that also selects STAR
+     * then several passes will be needed: *)
+    reach_fixed_point ~max_try:100 (fun () ->
+      let changed, new_funcs' =
+        List.fold_left (fun (changed, prev) func ->
+          match func.operation with
+          | Aggregate ({ fields ; and_all_others = true ; from ; _ } as op) ->
+              (* Exit when we met a parent which output type is not stable: *)
+              (match common_fields_of_from root_path funcs from with
+              | exception Exit -> changed, func :: prev
+              | common_fields ->
+                  let fields =
+                    Set.String.fold (fun name lst ->
+                      if List.exists (fun sf -> sf.alias = name) fields then
+                        lst
+                      else
+                        input_field name :: lst
+                    ) common_fields fields in
+                  true, { func with
+                    operation = Aggregate {
+                      op with fields ; and_all_others = false } } :: prev)
+          | _ -> changed, func :: prev
+        ) (false, []) !new_funcs in
+      new_funcs := new_funcs' ;
+      changed)
+  in
+  if not ok then
+    failwith "Cannot expand STAR selections" ;
+  !new_funcs
+
 (*
  * Friendlier version of the parser.
  * Allows for extra spaces and reports errors.
  * Also substitute real functions for subqueries.
  *)
 
-let parse program =
+let parse root_path program =
   let p = RamenParsing.allow_surrounding_blanks Parser.p in
   let stream = RamenParsing.stream_of_string program in
   (* TODO: enable error correction *)
@@ -259,5 +349,6 @@ let parse program =
     raise (SyntaxError (ParseError { error ; text = program }))
   | Ok ((params, funcs), _) ->
     let funcs = reify_subqueries funcs in
+    let funcs = reify_star_fields root_path funcs in
     let t = params, funcs in
     check t ; t

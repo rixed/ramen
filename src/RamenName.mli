@@ -52,4 +52,4 @@ val string_of_fq : fq -> string
 val fq : program_exp -> func -> fq
 val fq_print : 'a BatInnerIO.output -> fq -> unit
 
-(* TODO: field names, bin names, notifs... *)
+(* TODO: field names, bin names, notif names... *)

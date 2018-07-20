@@ -133,11 +133,11 @@ let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
       (RamenNotify.start conf notif_conf) notify_rb) ;
   Option.may exit !RamenProcesses.quit
 
-let notify conf parameters name () =
+let notify conf parameters notif_name () =
   logger := make_logger conf.C.debug ;
   let rb = RamenProcesses.prepare_notifs conf in
   let notif =
-    RamenOperation.{ name ; severity = Urgent ; parameters } in
+    RamenOperation.{ notif_name ; severity = Urgent ; parameters } in
   let notif = PPP.to_string RamenOperation.notification_ppp_ocaml notif in
   Lwt_main.run (
     RingBufLib.write_notif rb "cli" notif)
