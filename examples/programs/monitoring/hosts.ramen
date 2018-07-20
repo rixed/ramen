@@ -18,7 +18,7 @@ DEFINE memory AS
   WHERE COALESCE (plugin = "memory", false)
   GROUP BY host, time // 30
   COMMIT AFTER in.time > out.time + 30
-  EVENT STARTING AT time WITH DURATION 30;
+  EVENT STARTING AT time WITH DURATION 30s;
 
 DEFINE cpu AS
   SELECT
@@ -35,7 +35,7 @@ DEFINE cpu AS
   WHERE COALESCE (plugin = "cpu", false) AND COALESCE (type_name = "cpu", false)
   GROUP BY host, time // 30, instance
   COMMIT AFTER in.time > out.time + 30
-  EVENT STARTING AT time WITH DURATION 30;
+  EVENT STARTING AT time WITH DURATION 30s;
 
 DEFINE memory_alert AS
   FROM memory

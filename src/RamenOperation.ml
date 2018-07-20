@@ -1018,8 +1018,8 @@ struct
         commit_when = replace_typ Expr.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
-      (64, [])))\
-      (test_op p "from foo select t, value event starting at t*10 with duration 60" |>\
+      (65, [])))\
+      (test_op p "from foo select t, value event starting at t*10 with duration 60s" |>\
        replace_typ_in_op)
 
     (Ok (\

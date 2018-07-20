@@ -552,7 +552,7 @@ struct
   let scalar ?min_int_width =
     (if min_int_width <> None then narrowest_int ?min_int_width ()
      else all_possible_ints) |||
-    (floating_point >>: fun f -> VFloat f) |||
+    ((floating_point ||| duration) >>: fun f -> VFloat f) |||
     (strinG "false" >>: fun _ -> VBool false) |||
     (strinG "true" >>: fun _ -> VBool true) |||
     (quoted_string >>: fun s -> VString s) |||
@@ -622,21 +622,25 @@ struct
     ) m
 
   (*$= p & ~printer:(test_printer print)
-    (Ok (VU32 (Uint32.of_int 31000), (5,[])))  (test_p p "31000")
-    (Ok (VU32 (Uint32.of_int 61000), (5,[])))  (test_p p "61000")
-    (Ok (VFloat 3.14, (4,[])))                 (test_p p "3.14")
-    (Ok (VFloat ~-.3.14, (5,[])))              (test_p p "-3.14")
-    (Ok (VBool false, (5,[])))                 (test_p p "false")
-    (Ok (VBool true, (4,[])))                  (test_p p "true")
-    (Ok (VString "glop", (6,[])))              (test_p p "\"glop\"")
-    (Ok (VFloat 15042., (6,[])))               (test_p p "15042.")
+    (Ok (VU32 (Uint32.of_int 31000), (5,[]))) \
+                                  (test_p p "31000")
+    (Ok (VU32 (Uint32.of_int 61000), (5,[]))) \
+                                  (test_p p "61000")
+    (Ok (VFloat 3.14, (4,[])))    (test_p p "3.14")
+    (Ok (VFloat ~-.3.14, (5,[]))) (test_p p "-3.14")
+    (Ok (VFloat 1.234, (26,[])))  (test_p p "1 second, 234 milliseconds")
+    (Ok (VFloat 121.5, (6,[])))   (test_p p "2m1.5s")
+    (Ok (VBool false, (5,[])))    (test_p p "false")
+    (Ok (VBool true, (4,[])))     (test_p p "true")
+    (Ok (VString "glop", (6,[]))) (test_p p "\"glop\"")
+    (Ok (VFloat 15042., (6,[])))  (test_p p "15042.")
     (Ok (VTuple [| VFloat 3.14; VBool true |], (12,[]))) \
-                                               (test_p p "(3.14; true)")
+                                  (test_p p "(3.14; true)")
     (Ok (VVec [| VFloat 3.14; VFloat 1. |], (9,[]))) \
-                                               (test_p p "[3.14; 1]")
+                                  (test_p p "[3.14; 1]")
     (Ok (VVec [| VU32 Uint32.zero; VU32 Uint32.one; \
                  VU32 (Uint32.of_int 2) |], (9,[]))) \
-                                               (test_p p "[0; 1; 2]")
+                                  (test_p p "[0; 1; 2]")
   *)
 
   let rec typ m =

@@ -7,6 +7,11 @@ module ParseUsual = ParsersUsual.Make (P)
 include P
 include ParseUsual
 
+(*$inject
+  open TestHelpers
+*)
+
+
 let strinG = ParseUsual.string ~case_sensitive:false
 
 let that_string s =
@@ -36,8 +41,9 @@ let allow_surrounding_blanks ppp =
 
 let slash = char ~what:"slash" '/'
 let star = char ~what:"star" '*'
+let char_ ?what x = char ?what x >>: fun _ -> ()
 
-let id_quote = char ~what:"quote" '\''
+let id_quote = char_ ~what:"quote" '\''
 
 let not_in_range what ?min ?max n =
   let e =
@@ -80,23 +86,35 @@ let pos_decimal_integer what =
 let number =
   floating_point ||| (decimal_number >>: Num.to_float)
 
-(* TODO: "duration and duration" -> add the durations *)
-let duration m =
+let rec duration m =
   let m = "duration" :: m in
-  (
-    (number >>: fun n -> n, 1.) ||| (* unitless number are seconds *)
-    (optional ~def:1. (number +- blanks) ++
-     ((strinGs "microsecond" >>: fun () -> 0.000_001) |||
-      (strinGs "millisecond" >>: fun () -> 0.001) |||
-      (strinGs "second" >>: fun () -> 1.) |||
-      (strinGs "minute" >>: fun () -> 60.) |||
-      (strinGs "hour" >>: fun () -> 3600.))) >>:
+  let single_duration =
+    number +- opt_blanks ++
+    (((strinGs "microsecond" ||| string "μs") >>: fun () -> 0.000_001) |||
+     ((strinGs "millisecond" ||| string "ms") >>: fun () -> 0.001) |||
+     ((strinGs "second" ||| char_ 's') >>: fun () -> 1.) |||
+     ((strinGs "minute" ||| string "min" ||| char_ 'm') >>: fun () -> 60.) |||
+     ((strinGs "hour" ||| char_ 'h') >>: fun () -> 3600.)) >>:
    fun (dur, scale) ->
      let d = dur *. scale in
      if d < 0. then
        raise (Reject "durations must be greater than zero") ;
      d
+  in
+  (
+    let sep = (blanks -- strinG "and" -- blanks) |||
+              (opt_blanks -- char ',' -- blanks) in
+    let sep = optional ~def:() sep in
+    several ~sep single_duration >>: List.reduce (+.)
   ) m
+(*$= duration & ~printer:(test_printer BatFloat.print)
+  (Ok (42., (3, []))) \
+    (test_p duration "42s")
+  (Ok (123.4, (41, []))) \
+    (test_p duration "2 minutes, 3 seconds and 400 milliseconds")
+  (Ok (62., (4, []))) \
+    (test_p duration "1m2s")
+ *)
 
 let list_sep m =
   let m = "list separator" :: m in

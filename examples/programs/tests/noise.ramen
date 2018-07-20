@@ -6,4 +6,4 @@ DEFINE clock AS
 DEFINE random_walk AS
   FROM clock
   SELECT now as t, COALESCE(previous.x, 0) + (random * 2 - 1) AS x
-  EVENT STARTS AT t WITH DURATION 1;
+  EVENT STARTS AT t WITH DURATION 1s;

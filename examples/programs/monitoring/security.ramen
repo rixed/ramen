@@ -25,7 +25,7 @@ DEFINE DDoS_detector AS
     -- Count only the number of new clients
     sum (0.9 * float (not remember (0.1, first, 3600, src))) / 60
       AS new_clients_per_secs
-  EVENT STARTING AT first WITH DURATION 60;
+  EVENT STARTING AT first WITH DURATION 60s;
 
 -- Output the top 10 TCP DDoS targets every 10 minutes.
 DEFINE DDoS_targets AS

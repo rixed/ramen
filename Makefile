@@ -248,6 +248,7 @@ src/RamenCompilConfig.ml:
 # Tests
 
 TESTABLE_SOURCES = \
+	src/RamenParsing.ml \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenTypes.ml src/RamenExpr.ml \
 	src/RamenOperation.ml src/RamenProgram.ml \

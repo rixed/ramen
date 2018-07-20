@@ -21,7 +21,7 @@ Feature: Test Ramen API from the command line.
       define random_walk as
         from (select sum globally 1 as seq every 1 second)
         select now as t, coalesce(previous.xyz, 0) + (random*2-1) as xyz
-        event starts at t with duration 1;
+        event starts at t with duration 1s;
       """
     And test.ramen is compiled
     And the program test is running.

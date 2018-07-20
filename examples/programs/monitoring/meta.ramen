@@ -66,7 +66,7 @@ DEFINE per_minute AS
     PRINT(in.time - out.time) as _debug
   GROUP BY worker, time // 60
   COMMIT AFTER in.time - out.time > 90
-  EVENT STARTING AT time WITH DURATION 60
+  EVENT STARTING AT time WITH DURATION 60s
   FACTOR worker;
 
 DEFINE tot_per_minute AS
@@ -81,7 +81,7 @@ DEFINE tot_per_minute AS
     sum COALESCE(out_per_secs, 0) AS tot_out_per_secs
   GROUP BY time // 60
   COMMIT AFTER in.time >= out.time + 60 + 30
-  EVENT STARTING AT time WITH DURATION 60;
+  EVENT STARTING AT time WITH DURATION 60s;
 
 -- Alerts: many of the above are supposed to stay mostly constant. Therefore,
 -- notify when the last value is off compared to the moving average:
@@ -105,7 +105,7 @@ DEFINE alert_output AS
     min (_d_active, avg_active) / max (_d_active, avg_active) AS diff_active,
 
     diff_out_per_secs + diff_running + diff_active AS tot_diff
-  EVENT STARTING AT time WITH DURATION 60;
+  EVENT STARTING AT time WITH DURATION 60s;
 
 DEFINE alert_output_do_notif AS
   FROM alert_output
