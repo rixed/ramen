@@ -7,6 +7,8 @@ require 'tmpdir'
 ENV['OCAMLRUNPARAM'] = nil
 # Also, by default we want a specific setting for experiments:
 ENV['RAMEN_VARIANTS'] = 'TheBigOne=on,Typer=internal'
+# And avoid fault injection:
+ENV['RAMEN_FAULT_INJECTION_RATE'] = '0'
 
 $daemon_pids = {}
 

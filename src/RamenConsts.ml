@@ -57,8 +57,6 @@ struct
   (* Commands *)
   let supervisor = "Start the processes supervisor"
   let httpd = "Start an HTTP server"
-  let graphite = "Impersonate graphite for Grafana"
-  let api = "Implement ramen API over http"
   let notifier = "Start the notifier"
   let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"
@@ -152,6 +150,9 @@ struct
   let program_name = "resulting program name"
   let no_abbrev = "do not abbreviate path names"
   let only_errors = "display only links with errors"
+  let graphite = "Impersonate graphite for Grafana"
+  let api = "Implement ramen API over http"
+  let fault_injection_rate = "Rate at which to generate fake errors"
 end
 
 module ExitCodes =
@@ -162,11 +163,17 @@ struct
   let watchdog = 4
 end
 
-(* Where to store all of daemons+workers state and logs: *)
-let default_persist_dir = "/tmp/ramen"
+module Default =
+struct
+  (* Where to store all of daemons+workers state and logs: *)
+  let persist_dir = "/tmp/ramen"
 
-(* How frequently shall workers emit their instrumentation (seconds): *)
-let default_report_period = 30.
+  (* How frequently shall workers emit their instrumentation (seconds): *)
+  let report_period = 30.
+
+  (* Rate of fake errors in HTTP service. *)
+  let fault_injection_rate = 0.01
+end
 
 (* What we use as workers argv.(0) to make it easier to read ps/top
  * output: *)

@@ -15,7 +15,7 @@ module P = C.Program
 let quit = ref None
 
 (* How frequently hall each worker write a new activity report: *)
-let report_period = ref RamenConsts.default_report_period
+let report_period = ref RamenConsts.Default.report_period
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None

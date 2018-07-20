@@ -682,11 +682,14 @@ let timerange conf func_name () =
  * or any other API of our own.
  *)
 
-let httpd conf daemonize to_stdout to_syslog server_url api graphite () =
+let httpd conf daemonize to_stdout to_syslog fault_injection_rate
+          server_url api graphite () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
+  if fault_injection_rate > 1. then
+    failwith "A rate is a rate is a rate." ;
   if to_syslog then
     logger := make_syslog conf.C.debug
   else (
@@ -732,10 +735,13 @@ let httpd conf daemonize to_stdout to_syslog server_url api graphite () =
         RamenProcesses.wait_all_pids_loop false) ;
     restart_on_failure "http server"
       RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
-        (fun () -> !logger.warning "Running in dummy mode" ;
-                   RamenProcesses.until_quit
-                     (fun () -> Lwt_unix.sleep 3.)) ;
-        (fun () -> RamenHttpHelpers.http_service port url_prefix router) |]) ;
+        (fun () ->
+          !logger.warning "Running in dummy mode" ;
+            RamenProcesses.until_quit
+          (fun () -> Lwt_unix.sleep 3.)) ;
+        (fun () ->
+          RamenHttpHelpers.http_service
+            port url_prefix router fault_injection_rate) |]) ;
   Option.may exit !RamenProcesses.quit
 
 let graphite_expand conf query () =

@@ -20,7 +20,7 @@ let copts =
     let env = Term.env_info "RAMEN_PERSIST_DIR" in
     let i = Arg.info ~doc:RamenConsts.CliInfo.persist_dir
                      ~docs ~env [ "persist-dir" ] in
-    Arg.(value (opt string RamenConsts.default_persist_dir i))
+    Arg.(value (opt string RamenConsts.Default.persist_dir i))
   and rand_seed =
     let env = Term.env_info "RAMEN_RANDOM_SEED" in
     let i = Arg.info ~doc:RamenConsts.CliInfo.rand_seed
@@ -89,7 +89,7 @@ let report_period =
   let env = Term.env_info "RAMEN_REPORT_PERIOD" in
   let i = Arg.info ~doc:RamenConsts.CliInfo.report_period
                    ~env ["report-period"] in
-  Arg.(value (opt float RamenConsts.default_report_period i))
+  Arg.(value (opt float RamenConsts.Default.report_period i))
 
 let supervisor =
   Term.(
@@ -552,6 +552,12 @@ let api =
   let i = Arg.info ~doc:RamenConsts.CliInfo.api [ "api-v1" ] in
   Arg.(value (opt ~vopt:(Some "") (some string) None i))
 
+let fault_injection_rate =
+  let env = Term.env_info "RAMEN_FAULT_INJECTION_RATE" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.fault_injection_rate
+                   ~env [ "fault-injection-rate" ] in
+  Arg.(value (opt float RamenConsts.Default.fault_injection_rate i))
+
 let httpd =
   Term.(
     (const RamenCliCmd.httpd
@@ -559,6 +565,7 @@ let httpd =
       $ daemonize
       $ to_stdout
       $ to_syslog
+      $ fault_injection_rate
       $ server_url
       $ api
       $ graphite),

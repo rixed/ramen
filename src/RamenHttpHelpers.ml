@@ -110,91 +110,108 @@ let stats_resp_time =
   Histogram.make RamenConsts.MetricNames.http_resp_time
     "HTTP response time per URL" Histogram.powers_of_two
 
-let http_service port url_prefix router =
-  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    !logger.info "Received signal %s" (name_of_signal s) ;
-    stop_http_servers ())) ;
-  let dec s =
+let requests_since_last_fault_injection = ref 0
+let service_response url_prefix router fault_injection_rate _conn req body =
+  let path = Uri.path (Request.uri req) in
+  (* Check path starts with url_prefix and chop off that prefix: *)
+  let path =
+    if String.starts_with path url_prefix then
+      String.lchop ~n:(String.length url_prefix) path
+    else (
+      !logger.error "URL %S does not start with expected prefix (%S)"
+        path url_prefix ;
+      (* Keep going and hope for the best *)
+      path
+    ) in
+  !logger.debug "Requested %S" req.Request.resource ;
+  let decode s =
     (* As the name suggest, pct_decode only decode percent encoded values.
      * + signs are left untouched. As we are decoding the query part of the
      * URL we need to decode them: *)
     let s = Uri.pct_decode s in
     String.map (fun c -> if c = '+' then ' ' else c) s in
-  let callback _conn req body =
-    let path = Uri.path (Request.uri req) in
-    (* Check path starts with url_prefix and chop off that prefix: *)
-    let path =
-      if String.starts_with path url_prefix then
-        String.lchop ~n:(String.length url_prefix) path
-      else (
-        !logger.error "URL %S does not start with expected prefix (%S)"
-          path url_prefix ;
-        (* Keep going and hope for the best *)
-        path
-      ) in
-    !logger.debug "Requested %S" req.Request.resource ;
-    (* Make "/path" equivalent to "path" *)
-    let path =
-      let rec loop s =
-        if String.starts_with s "/" then loop (String.lchop s) else s in
-      loop path in
-    (* Make "path/" equivalent to "path" for convenience. Beware that in
-     * general "foo//bar" is not equivalent to "foo/bar" so not seemingly
-     * spurious slashes can be omitted! *)
-    let path =
-      let rec loop s =
-        if String.ends_with s "/" then loop (String.rchop s) else s in
-      loop path in
-    let path_lst =
-      String.nsplit path "/" |>
-      List.map dec in
-    let params = Hashtbl.create 7 in
-    (match String.split ~by:"?" req.Request.resource with
-    | exception Not_found -> ()
-    | _, param_str ->
-      String.nsplit ~by:"&" param_str |>
-      List.iter (fun p ->
-        match String.split ~by:"=" p with
-        | exception Not_found -> ()
-        | pn, pv -> Hashtbl.add params (dec pn) (dec pv))) ;
-    let headers = Request.headers req in
-    let%lwt body = Cohttp_lwt.Body.to_string body in
-    let start_time = Unix.gettimeofday () in
-    let method_ = Request.meth req in
-    let labels = [ "method", Code.string_of_method method_ ;
-                   "path", path] in
-    try%lwt
-      try (
-        let%lwt resp, body = router method_ path_lst params headers body in
-        let resp_time = Unix.gettimeofday () -. start_time in
-        let labels =
-          ("status", string_of_int (Code.code_of_status resp.Response.status)) :: labels in
-        !logger.debug "Response time to %a: %f"
-          (List.print (fun oc (n,v) -> Printf.fprintf oc "%s=%s" n v))
-            labels resp_time ;
-        Histogram.add stats_resp_time ~labels resp_time ;
-        return (resp, body)
-      ) with exn -> fail exn
-    with HttpError (code, msg) as exn ->
-           print_exception exn ;
-           let labels = ("status", string_of_int code) :: labels in
-           IntCounter.add ~labels stats_count 1 ;
-           let status = Code.status_of_code code in
-           let headers =
-             Header.init_with "Access-Control-Allow-Origin" "*" in
-           let headers =
-             Header.add headers "Content-Type" RamenConsts.ContentTypes.json in
-           Server.respond_string ~headers ~status ~body:msg ()
-       | exn ->
-           print_exception exn ;
-           let code = 500 in
-           let labels = ("status", string_of_int code) :: labels in
-           IntCounter.add ~labels stats_count 1 ;
-           let status = Code.status_of_code code in
-           let body = Printexc.to_string exn ^ "\n" in
-           let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
-           Server.respond_error ~headers ~status ~body ()
+  (* Make "/path" equivalent to "path" *)
+  let path =
+    let rec loop s =
+      if String.starts_with s "/" then loop (String.lchop s) else s in
+    loop path in
+  (* Make "path/" equivalent to "path" for convenience. Beware that in
+   * general "foo//bar" is not equivalent to "foo/bar" so not seemingly
+   * spurious slashes can be omitted! *)
+  let path =
+    let rec loop s =
+      if String.ends_with s "/" then loop (String.rchop s) else s in
+    loop path in
+  let path_lst =
+    String.nsplit path "/" |>
+    List.map decode in
+  let params = Hashtbl.create 7 in
+  (match String.split ~by:"?" req.Request.resource with
+  | exception Not_found -> ()
+  | _, param_str ->
+    String.nsplit ~by:"&" param_str |>
+    List.iter (fun p ->
+      match String.split ~by:"=" p with
+      | exception Not_found -> ()
+      | pn, pv -> Hashtbl.add params (decode pn) (decode pv))) ;
+  let headers = Request.headers req in
+  let%lwt body = Cohttp_lwt.Body.to_string body in
+  let start_time = Unix.gettimeofday () in
+  let method_ = Request.meth req in
+  let labels = [ "method", Code.string_of_method method_ ;
+                 "path", path] in
+  (* Fake fault injection: *)
+  let do_inject_fault =
+    if Header.mem req.headers "Keep-The-Ouistiti-At-Bay" then (
+      !logger.debug "Ouistiti kept at bay" ;
+      false
+    ) else
+      let n = float_of_int !requests_since_last_fault_injection in
+      incr requests_since_last_fault_injection ;
+      n *. fault_injection_rate >= 1.
   in
+  try%lwt
+    try (
+      let%lwt resp, body =
+        if do_inject_fault then
+          Server.respond_error ~body:"ouistiti sapristi!" ()
+        else
+          router method_ path_lst params headers body in
+      let resp_time = Unix.gettimeofday () -. start_time in
+      let labels =
+        ("status", string_of_int (Code.code_of_status resp.Response.status)) :: labels in
+      !logger.debug "Response time to %a: %f"
+        (List.print (fun oc (n,v) -> Printf.fprintf oc "%s=%s" n v))
+          labels resp_time ;
+      Histogram.add stats_resp_time ~labels resp_time ;
+      return (resp, body)
+    ) with exn -> fail exn
+  with HttpError (code, msg) as exn ->
+         print_exception exn ;
+         let labels = ("status", string_of_int code) :: labels in
+         IntCounter.add ~labels stats_count 1 ;
+         let status = Code.status_of_code code in
+         let headers =
+           Header.init_with "Access-Control-Allow-Origin" "*" in
+         let headers =
+           Header.add headers "Content-Type" RamenConsts.ContentTypes.json in
+         Server.respond_string ~headers ~status ~body:msg ()
+     | exn ->
+         print_exception exn ;
+         let code = 500 in
+         let labels = ("status", string_of_int code) :: labels in
+         IntCounter.add ~labels stats_count 1 ;
+         let status = Code.status_of_code code in
+         let body = Printexc.to_string exn ^ "\n" in
+         let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
+         Server.respond_error ~headers ~status ~body ()
+
+
+let http_service port url_prefix router fault_injection_rate =
+  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
+    !logger.info "Received signal %s" (name_of_signal s) ;
+    stop_http_servers ())) ;
+  let callback = service_response url_prefix router fault_injection_rate in
   let entry_point = Server.make ~callback () in
   let tcp_mode = `TCP (`Port port) in
   let on_exn = function

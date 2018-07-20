@@ -617,7 +617,7 @@ let worker_start worker_name get_binocle_tuple k =
         logger := make_logger ~logdir debug)) ;
   !logger.debug "Starting %s process..." worker_name ;
   let report_period =
-    getenv ~def:(string_of_float RamenConsts.default_report_period)
+    getenv ~def:(string_of_float RamenConsts.Default.report_period)
            "report_period" |> float_of_string in
   let report_rb =
     getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf" in

@@ -60,7 +60,7 @@ let persist_dir toks =
   try find_opt "--persist-dir" toks
   with Not_found ->
     try Sys.getenv "RAMEN_PERSIST_DIR"
-    with Not_found -> RamenConsts.default_persist_dir
+    with Not_found -> RamenConsts.Default.persist_dir
 
 let complete_file select str =
   let count = ref 0 in
