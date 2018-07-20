@@ -173,9 +173,10 @@ let service_response url_prefix router fault_injection_rate _conn req body =
   try%lwt
     try (
       let%lwt resp, body =
-        if do_inject_fault then
+        if do_inject_fault then (
+          requests_since_last_fault_injection := 0 ;
           Server.respond_error ~body:"ouistiti sapristi!" ()
-        else
+        ) else
           router method_ path_lst params headers body in
       let resp_time = Unix.gettimeofday () -. start_time in
       let labels =
