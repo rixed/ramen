@@ -10,6 +10,7 @@ RUN apt-get --yes update && \
     DEBIAN_FRONTEND=noninteractive \
     apt-get --yes install \
       aspcud \
+      binutils \
       bzip2 \
       ca-certificates \
       coreutils \

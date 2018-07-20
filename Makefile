@@ -392,6 +392,7 @@ install: $(INSTALLED)
 	@echo 'Installing binaries into $(prefix)$(bin_dir)'
 	@install -d $(prefix)$(bin_dir)
 	@install $(INSTALLED_BIN) $(prefix)$(bin_dir)/
+	@for f in $(INSTALLED_BIN); do strip $(prefix)$(bin_dir)/$$(basename $$f); done
 
 # We need ocamlfind to find ramen package before we can install the lib bundle.
 # Therefore we simply build it as a separate, optional step (that's only
@@ -431,6 +432,7 @@ ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 	@sudo rm -rf debtmp
 	@install -d debtmp/usr/bin
 	@install $(INSTALLED_BIN) debtmp/usr/bin
+	@for f in $(INSTALLED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
 	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-examples
 	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-bundle
 	@mkdir -p debtmp/DEBIAN
@@ -446,6 +448,7 @@ ramen.$(VERSION).tgz: $(INSTALLED_BIN) bundle/date
 	@install -d tmp/ramen
 	@install $(INSTALLED_BIN) tmp/ramen/
 	@install /usr/bin/z3 tmp/ramen/
+	@for f in $(INSTALLED_BIN) z3; do strip tmp/ramen/$$(basename $$f); done
 	@chmod -R a+x tmp/ramen/*
 	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples install-examples
 	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples install-bundle
