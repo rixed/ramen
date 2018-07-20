@@ -17,7 +17,7 @@ DEFINE f1 AS
     (NULL IN [ 1;2;3 ]) IS NULL AS t9,
     -- Without the cast to string typing would fail (NULL would be a bool
     -- in the typer day dreams)
-    (string?(NULL) IN "abcde") IS NULL as t10,
+    (string(NULL) IN "abcde") IS NULL as t10,
     -- Long set of constants must be optimized into an
     -- hashtable (check with --keep):
     42 IN [ -1;2i64;3u8;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20;

@@ -1260,7 +1260,10 @@ struct
     let sep = check (char '(') ||| blanks in
     (RamenTypes.Parser.scalar_typ +- sep ++
      highestest_prec >>: fun (t, e) ->
-       StatelessFun1 (make_typ ~typ:t.structure ?nullable:t.nullable
+       (* The nullability of [value] should propagate to [type(value)],
+        * while [type?(value)] should be nullable no matter what. *)
+       let nullable = if t.nullable = Some true then Some true else None in
+       StatelessFun1 (make_typ ~typ:t.structure ?nullable
         ("cast to "^ IO.to_string RamenTypes.print_typ t), Cast, e)
     ) m
 

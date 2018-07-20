@@ -45,5 +45,5 @@ DEFINE f4n AS
 
 DEFINE f5n AS
   FROM tests/fixtures/mixture/csv_null
-  SELECT SUM u32?(DISTINCT ip) AS count WHERE COALESCE(ip IN cidr, false)
+  SELECT SUM u32(DISTINCT ip) AS count WHERE COALESCE(ip IN cidr, false)
   COMMIT AFTER in.#count >= 2;
