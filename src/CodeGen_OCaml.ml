@@ -1768,18 +1768,18 @@ let emit_key_of_input name in_typ mentioned ~consts oc exprs =
   Printf.fprintf oc "\n\t)\n"
 
 let for_each_unpure_fun selected_fields
-                        ?where ?commit_when f =
+                        ?where ?commit_cond f =
   List.iter (fun sf ->
       RamenExpr.unpure_iter f sf.RamenOperation.expr
     ) selected_fields ;
   Option.may (RamenExpr.unpure_iter f) where ;
-  Option.may (RamenExpr.unpure_iter f) commit_when
+  Option.may (RamenExpr.unpure_iter f) commit_cond
 
 let for_each_unpure_fun_my_lifespan lifespan selected_fields
-                                    ?where ?commit_when f =
+                                    ?where ?commit_cond f =
   let open RamenExpr in
   for_each_unpure_fun selected_fields
-                      ?where ?commit_when
+                      ?where ?commit_cond
     (function
     | StatefulFun (_, l, _) as e when l = lifespan ->
       f e
@@ -1831,14 +1831,14 @@ let otype_of_state e =
   | _ -> t ^ optional
 
 let emit_state_init name state_lifespan other_state_vars
-      ?where ?commit_when ~consts
+      ?where ?commit_cond ~consts
       oc selected_fields =
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
    * states. *)
   let for_each_my_unpure_fun f =
     for_each_unpure_fun_my_lifespan
-      state_lifespan selected_fields ?where ?commit_when f
+      state_lifespan selected_fields ?where ?commit_cond f
   in
   (* In the special case where we do not have any state at all, though, we
    * end up with an empty record, which is illegal in OCaml so we need to
@@ -1982,7 +1982,7 @@ let expr_needs_group e =
 let emit_aggregate consts params oc name in_typ out_typ = function
   | RamenOperation.Aggregate
       { fields ; merge ; sort ; where ; key ;
-        commit_before ; commit_when ; flush_how ; notifications ; event_time ;
+        commit_before ; commit_cond ; flush_how ; notifications ; event_time ;
         every ; _ } as op ->
   (* FIXME: now that we serialize only used fields, when do we have fields
    * that are not mentioned?? *)
@@ -1994,11 +1994,11 @@ let emit_aggregate consts params oc name in_typ out_typ = function
    * despite this is forbidden in RamenOperation.check): *)
   and where_need_group = expr_needs_group where
   (* Good to know when performing a TOP: *)
-  and when_to_check_for_commit = when_to_check_group_for_expr commit_when in
+  and when_to_check_for_commit = when_to_check_group_for_expr commit_cond in
   Printf.fprintf oc
     "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_when ~consts) fields
-    (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_when ~consts) fields
+    (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_cond ~consts) fields
+    (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_cond ~consts) fields
     (emit_read_tuple "read_tuple_" mentioned) in_typ
     (if where_need_group then
       emit_where "where_fast_" ~always_true:true in_typ mentioned ~consts
@@ -2010,7 +2010,7 @@ let emit_aggregate consts params oc name in_typ out_typ = function
       emit_where "where_slow_" ~with_group:true in_typ mentioned ~consts) where
     (emit_key_of_input "key_of_input_" in_typ mentioned ~consts) key
     emit_maybe_fields out_typ
-    (emit_when "commit_when_" in_typ mentioned out_typ ~consts) commit_when
+    (emit_when "commit_cond_" in_typ mentioned out_typ ~consts) commit_cond
     (emit_field_selection ~with_selected:true ~with_group:true "tuple_of_group_" in_typ mentioned out_typ ~consts) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_" params event_time) out_typ
@@ -2028,7 +2028,7 @@ let emit_aggregate consts params oc name in_typ out_typ = function
       \t\tgenerate_tuples_\n\
       \t\ttuple_of_group_ merge_on_ %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
-      \t\tcommit_when_ %b %b %s should_resubmit_\n\
+      \t\tcommit_cond_ %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_\n\
       \t\tfield_of_tuple_in_ field_of_tuple_out_ field_of_params_ %a %f\n"
     name

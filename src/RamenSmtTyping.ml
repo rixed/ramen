@@ -853,7 +853,7 @@ let emit_operation declare tuple_sizes fi oc func =
   (* Now add specific constraints depending on the clauses: *)
   (match Option.get func.Func.operation with
   | Aggregate { fields ; where ; event_time ; notifications ;
-                commit_when ; flush_how ; _ } as op ->
+                commit_cond ; flush_how ; _ } as op ->
       RamenOperation.iter_expr (fun e ->
         declare e ;
         emit_constraints tuple_sizes fields oc e
@@ -865,7 +865,7 @@ let emit_operation declare tuple_sizes fi oc func =
       let name = "F"^ string_of_int fi ^"_WHERE" in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr where) oc TBool ;
       let name = "F"^ string_of_int fi ^"_COMMIT" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr commit_when) oc TBool ;
+      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr commit_cond) oc TBool ;
       (match flush_how with
       | Reset | Never | Slide _ -> ()
       | RemoveAll e | KeepOnly e ->

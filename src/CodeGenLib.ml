@@ -950,7 +950,7 @@ let aggregate
         bool)
       (key_of_input : 'tuple_in -> 'key)
       (is_single_key : bool)
-      (commit_when :
+      (commit_cond :
         Uint64.t -> 'tuple_in -> 'tuple_in -> (* in.#count, current and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* selected.#count, #successive and last *)
         Uint64.t -> Uint64.t -> 'tuple_in -> (* unselected.#count, #successive and last *)
@@ -1068,7 +1068,7 @@ let aggregate
         Option.map_default ((==) a) false !already_output_aggr in
       (* Tells if the group must be committed/flushed: *)
       let must_commit aggr = (* TODO: pass selected_successive *)
-        commit_when
+        commit_cond
           in_count in_tuple last_in
           s.selected_count s.selected_successive last_selected
           s.unselected_count s.unselected_successive last_unselected

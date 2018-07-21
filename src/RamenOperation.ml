@@ -133,7 +133,7 @@ type t =
       (* Will send these notification commands to the notifier: *)
       notifications : notification list ;
       key : E.t list (* Grouping key *) ;
-      commit_when : E.t (* Output the group when this condition holds *) ;
+      commit_cond : E.t (* Output the group after/before this condition holds *) ;
       commit_before : bool ; (* Commit first and aggregate later *)
       flush_how : flush_method ; (* How to flush: reset or slide values *)
       (* List of funcs (or sub-queries) that are our parents: *)
@@ -178,7 +178,7 @@ and print fmt =
   let sep = ", " in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
-                notifications ; key ; commit_when ;
+                notifications ; key ; commit_cond ;
                 commit_before ; flush_how ; from ; every } ->
     if from <> [] then
       List.print ~first:"FROM " ~last:"" ~sep print_data_source fmt from ;
@@ -208,7 +208,7 @@ and print fmt =
     if key <> [] then
       Printf.fprintf fmt " GROUP BY %a"
         (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) key ;
-    if not (E.is_true commit_when) ||
+    if not (E.is_true commit_cond) ||
        flush_how <> Reset ||
        notifications <> [] then (
       let sep = ref " " in
@@ -221,10 +221,10 @@ and print fmt =
         List.print ~first:!sep ~last:"" ~sep:!sep print_notification
           fmt notifications ;
         sep := ", ") ;
-      if not (E.is_true commit_when) then
+      if not (E.is_true commit_cond) then
         Printf.fprintf fmt " %s %a"
           (if commit_before then "BEFORE" else "AFTER")
-          (E.print false) commit_when)
+          (E.print false) commit_cond)
   | ReadCSVFile { where = file_spec ;
                   what = csv_specs ; preprocessor ; event_time } ->
     Printf.fprintf fmt "%a %s %a"
@@ -283,7 +283,7 @@ let factors_of_operation = function
 
 let fold_top_level_expr init f = function
   | ListenFor _ | ReadCSVFile _ | Instrumentation _ -> init
-  | Aggregate { fields ; merge ; sort ; where ; key ; commit_when ;
+  | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
                 flush_how ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
@@ -296,7 +296,7 @@ let fold_top_level_expr init f = function
       let x = List.fold_left (fun prev ke ->
             f prev ke
           ) x key in
-      let x = f x commit_when in
+      let x = f x commit_cond in
       let x = match sort with
         | None -> x
         | Some (_, u_opt, b) ->
@@ -383,7 +383,7 @@ let check params =
   in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
-                commit_when ; flush_how ; event_time ;
+                commit_cond ; flush_how ; event_time ;
                 from ; every ; factors } as op ->
     (* Set of fields known to come from in (to help prefix_smart): *)
     let fields_from_in = ref Set.empty in
@@ -422,7 +422,7 @@ let check params =
       Option.may (prefix_def TupleIn) u_opt) sort ;
     prefix_smart where ;
     List.iter (prefix_def TupleIn) key ;
-    prefix_smart commit_when ;
+    prefix_smart commit_cond ;
     (match flush_how with
     | KeepOnly e | RemoveAll e -> prefix_def TupleGroup e
     | _ -> ()) ;
@@ -468,7 +468,7 @@ let check params =
         TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut;
         TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast;
         TupleGroup; TupleSelected; TupleLastSelected ]
-      "COMMIT WHEN clause" commit_when ;
+      "COMMIT WHEN clause" commit_cond ;
     (match flush_how with
     | Reset | Never | Slide _ -> ()
     | RemoveAll e | KeepOnly e ->
@@ -656,13 +656,13 @@ struct
   let dummy_commit m =
     (strinG "commit" >>: fun () -> CommitSpec) m
 
-  let default_commit_when = E.expr_true
+  let default_commit_cond = E.expr_true
 
   let commit_clause m =
     let m = "commit clause" :: m in
     (several ~sep:list_sep_and ~what:"commit clauses"
        (dummy_commit ||| notification_clause ||| flush) ++
-     optional ~def:(false, default_commit_when)
+     optional ~def:(false, default_commit_cond)
       (blanks -+
        ((strinG "after" >>: fun _ -> false) |||
         (strinG "before" >>: fun _ -> true)) +- blanks ++
@@ -834,7 +834,7 @@ struct
       and default_where = E.expr_true
       and default_event_time = None
       and default_key = []
-      and default_commit = ([], (false, default_commit_when))
+      and default_commit = ([], (false, default_commit_cond))
       and default_from = []
       and default_every = 0.
       and default_listen = None
@@ -929,11 +929,11 @@ struct
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs, factors
           ) default_clauses clauses in
-      let commit_specs, (commit_before, commit_when) = commit in
+      let commit_specs, (commit_before, commit_cond) = commit in
       (* Try to catch when we write "commit when" instead of "commit
        * after/before": *)
       if commit_specs = [ CommitSpec ] &&
-         commit_when = default_commit_when then
+         commit_cond = default_commit_cond then
         raise (Reject "Lone COMMIT makes no sense. \
                        Do you mean COMMIT AFTER/BEFORE?") ;
       (* Distinguish between Aggregate, Read, ListenFor...: *)
@@ -948,12 +948,11 @@ struct
         csv_specs = None || from != default_from || every <> 0.
       and not_event_time = event_time = default_event_time
       and not_factors = factors == default_factors in
-      (* Replace subqueries with the generated name of the operation: *)
       if not_listen && not_csv && not_instrumentation then
         let flush_how, notifications =
           List.fold_left (fun (f, n) -> function
             | CommitSpec -> f, n
-            | NotifySpec n' -> (f, n'::n)
+            | NotifySpec n' -> f, n'::n
             | FlushSpec f' ->
                 if f = None then (Some f', n)
                 else raise (Reject "Several flush clauses")
@@ -961,7 +960,7 @@ struct
         let flush_how = flush_how |? Reset in
         Aggregate { fields = select_fields ; and_all_others ; merge ; sort ;
                     where ; event_time ; notifications ; key ;
-                    commit_before ; commit_when ; flush_how ; from ;
+                    commit_before ; commit_cond ; flush_how ; from ;
                     every ; factors }
       else if not_aggregate && not_csv && not_event_time &&
               not_instrumentation && listen <> None then
@@ -999,7 +998,7 @@ struct
         where = E.Const (typ, VBool true) ;\
         notifications = [] ;\
         key = [] ;\
-        commit_when = replace_typ E.expr_true ;\
+        commit_cond = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ;\
         event_time = None ;\
@@ -1020,7 +1019,7 @@ struct
             Const (typ, VU32 Uint32.zero))) ;\
         event_time = None ; notifications = [] ;\
         key = [] ;\
-        commit_when = replace_typ E.expr_true ;\
+        commit_cond = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (26, [])))\
@@ -1040,7 +1039,7 @@ struct
         event_time = Some (("t", ref RamenEventTime.OutputField, 10.), DurationConst 60.) ;\
         notifications = [] ;\
         key = [] ;\
-        commit_when = replace_typ E.expr_true ;\
+        commit_cond = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (65, [])))\
@@ -1063,7 +1062,7 @@ struct
         event_time = Some (("t1", ref RamenEventTime.OutputField, 10.), \
                            StopField ("t2", ref RamenEventTime.OutputField, 10.)) ;\
         notifications = [] ; key = [] ;\
-        commit_when = replace_typ E.expr_true ;\
+        commit_cond = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (75, [])))\
@@ -1081,7 +1080,7 @@ struct
         notifications = [ \
           { notif_name = "ouch" ; severity = Urgent ; parameters = [] } ] ;\
         key = [] ;\
-        commit_when = replace_typ E.expr_true ;\
+        commit_cond = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (22, [])))\
@@ -1117,7 +1116,7 @@ struct
             StatelessFun2 (typ, Mul, \
               Const (typ, VU32 (Uint32.of_int 1_000_000)),\
               Field (typ, ref TupleParam, "avg_window")))) ] ;\
-        commit_when = E.(\
+        commit_cond = E.(\
           StatelessFun2 (typ, Gt, \
             StatelessFun2 (typ, Add, \
               StatefulFun (typ, LocalState, AggrMax (\
@@ -1148,7 +1147,7 @@ struct
         event_time = None ; \
         notifications = [] ;\
         key = [] ;\
-        commit_when = E.(\
+        commit_cond = E.(\
           StatelessFun2 (typ, Ge, \
             StatefulFun (typ, LocalState, AggrSum (\
               Const (typ, VU32 Uint32.one))),\
@@ -1175,7 +1174,7 @@ struct
         event_time = None ; \
         notifications = [] ;\
         key = [] ;\
-        commit_when = replace_typ E.expr_true ;\
+        commit_cond = replace_typ E.expr_true ;\
         commit_before = false ;\
         from = [NamedOperation (Some (RamenName.program_of_string "foo", []), RamenName.func_of_string "bar")] ;\
         flush_how = Reset ; every = 0. ; factors = [] },\
@@ -1228,7 +1227,7 @@ struct
         and_all_others = false ; merge = [], 0. ; sort = None ;\
         where = E.Const (typ, VBool true) ;\
         notifications = [] ; key = [] ;\
-        commit_when = replace_typ E.expr_true ;\
+        commit_cond = replace_typ E.expr_true ;\
         commit_before = false ; flush_how = Reset ; from = [] ;\
         factors = [] },\
         (29, [])))\

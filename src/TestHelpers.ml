@@ -188,7 +188,7 @@ let replace_typ_in_operation =
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
                 notifications ; key ; commit_before ;
-                commit_when ; flush_how ; from ; every ; factors } ->
+                commit_cond ; flush_how ; from ; every ; factors } ->
     Aggregate {
       fields =
         List.map (fun sf ->
@@ -201,7 +201,7 @@ let replace_typ_in_operation =
       where = replace_typ where ;
       event_time ; notifications ; from ;
       key = List.map replace_typ key ;
-      commit_when = replace_typ commit_when ;
+      commit_cond = replace_typ commit_cond ;
       commit_before = commit_before ;
       flush_how = (match flush_how with
         | Reset | Never | Slide _ -> flush_how

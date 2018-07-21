@@ -1214,7 +1214,7 @@ let all_finished funcs =
 
 let check_aggregate ~parents ~in_type ~out_type ~params
                     fields merge sort where key
-                    commit_when flush_how =
+                    commit_cond flush_how =
   let open RamenOperation in
   (
     (* Improve in and out_type using all expressions. Check we satisfy in_type. *)
@@ -1249,12 +1249,12 @@ let check_aggregate ~parents ~in_type ~out_type ~params
         changed
       ) false key
   ) ||| (
-    let exp_type = Expr.typ_of commit_when in
+    let exp_type = Expr.typ_of commit_cond in
     set_nullable exp_type false |||
     set_scalar_type ~ok_if_larger:false ~expr_name:"commit-clause"
                     exp_type TBool |||
     check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params
-               commit_when
+               commit_cond
   ) ||| (
     match flush_how with
     | Reset | Never | Slide _ -> false
@@ -1298,10 +1298,10 @@ let check_operation operation parents func params =
   let open RamenOperation in
   match operation with
   | Aggregate { fields ; merge ; sort ; where ; key ;
-                commit_when ; flush_how ; _ } ->
+                commit_cond ; flush_how ; _ } ->
     check_aggregate ~parents ~in_type ~out_type ~params
                     fields (fst merge) sort where
-                    key commit_when flush_how
+                    key commit_cond flush_how
 
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     set_well_known_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields) ;
