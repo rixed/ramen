@@ -116,6 +116,10 @@ let rec duration m =
     (test_p duration "1m2s")
  *)
 
+(* TODO: use more appropriate units *)
+let print_duration oc d =
+  Printf.fprintf oc "%f seconds" d
+
 let list_sep m =
   let m = "list separator" :: m in
   (opt_blanks -- char ',' -- opt_blanks) m

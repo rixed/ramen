@@ -1,6 +1,6 @@
 (* This module deals with parsing programs.
- * A program is a set of named operations.
- * It makes use of RamenOperation, which parses operation.
+ * It makes use of RamenOperation, which parses operations
+ * (ie. function bodies).
  *)
 open Batteries
 open RamenLang
@@ -16,11 +16,30 @@ module P = C.Program
   open Stdint
 *)
 
+(* A program is a set of parameters declaration and a set of functions.
+ * Parameter declaration can be accompanied by a default value (by default,
+ * a parameter default value will be NULL - and its type better be NULLable).
+ * When running a program the user can override those defaults from the
+ * command line.
+ *
+ * A running program is identified by its name + parameter values, so that it
+ * is possible to run several time the same program with different parameters.
+ *
+ * To select from the function f from the program p running with default value,
+ * select from p/f. To select from another instance of the same program running
+ * with parameters p1=v1 and p2=v2, select from p{p1=v1,p2=v2}/f (order of
+ * parameters does not actually matter, p{p2=v2,p1=v1}/f would identify the same
+ * function).
+ * *)
+
 type func =
   { name : RamenName.func ;
     operation : RamenOperation.t }
 
 type t = RamenTuple.param list * func list
+
+(* Anonymous functions (such as sub-queries) are given a boring name build
+ * from a sequence: *)
 
 let make_name =
   let seq = ref ~-1 in
@@ -31,6 +50,8 @@ let make_name =
 let make_func ?name operation =
   { name = (match name with Some n -> n | None -> make_name ()) ;
     operation }
+
+(* Pretty-print a parsed program back to string: *)
 
 let print_param oc p =
   Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;"
@@ -45,6 +66,8 @@ let print_func oc n =
 let print oc (params, funcs) =
   List.print ~sep:"\n" print_param oc params ;
   List.print ~sep:"\n" print_func oc funcs
+
+(* Check that a syntactically valid program is actually valid: *)
 
 let check (params, funcs) =
   List.fold_left (fun s p ->
@@ -212,6 +235,10 @@ struct
   (*$>*)
 end
 
+(* For convenience, it is allowed to select from a sub-query instead of from a
+ * named function. Here those sub-queries are turned into real functions
+ * (aka reified). *)
+
 let reify_subquery =
   let seqnum = ref 0 in
   fun op ->
@@ -245,8 +272,11 @@ let reify_subqueries funcs =
     | _ -> func :: fs
   ) [] funcs
 
-(* Make all selected fields explicit by replacing the and_all_others flag by
- * a list of named fields: *)
+(* For convenience, it is possible to 'SELECT *' rather than, or in addition
+ * to, a set of named fields (see and_all_others flag in RamenOperation). For
+ * simplicity, we resolve this STAR into the actual list of fields here right
+ * after parsing so that the next stage of compilation do not have to bother
+ * with that: *)
 
 (* Exits when we met a parent which output type is not stable: *)
 let common_fields_of_from root_path funcs from =
@@ -334,7 +364,8 @@ let reify_star_fields root_path funcs =
 (*
  * Friendlier version of the parser.
  * Allows for extra spaces and reports errors.
- * Also substitute real functions for subqueries.
+ * Also substitute real functions for sub-queries and actual field names
+ * for '*' in select clauses.
  *)
 
 let parse root_path program =

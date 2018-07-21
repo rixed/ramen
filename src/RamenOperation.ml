@@ -1,16 +1,20 @@
 (* This module parses operations (and offer a few utilities related to
  * operations).
- * An operation is what will result in running workers later.
- * The main operation is the `SELECT / GROUP BY` operation, but there a
- * few others of lesser importance.
  *
- * Operations are made of expressions, parsed in RamenExpr.
+ * An operation is the body of a function, ie. the actual operation that
+ * workers will execute.
+ *
+ * The main operation is the `SELECT / GROUP BY` operation, but there are a few
+ * others of lesser importance for data input and output.
+ *
+ * Operations are made of expressions, parsed in RamenExpr, and assembled into
+ * programs (the compilation unit) in RamenProgram.
  *)
 open Batteries
 open RamenLang
 open RamenHelpers
 open RamenLog
-module Expr = RamenExpr
+module E = RamenExpr
 
 (*$inject
   open TestHelpers
@@ -18,25 +22,30 @@ module Expr = RamenExpr
   open Stdint
 *)
 
-(* Direct field selection (not for group-bys) *)
-type selected_field = { expr : Expr.t ; alias : string }
+(* Represents an output field from the select clause
+ * 'SELECT expr AS alias' *)
+type selected_field = { expr : E.t ; alias : string }
 
 let print_selected_field fmt f =
   let need_alias =
     match f.expr with
-    | Expr.Field (_, tuple, field)
+    | E.Field (_, tuple, field)
       when !tuple = TupleIn && f.alias = field -> false
     | _ -> true in
   if need_alias then
     Printf.fprintf fmt "%a AS %s"
-      (Expr.print false) f.expr
+      (E.print false) f.expr
       f.alias
   else
-    Expr.print false fmt f.expr
+    E.print false fmt f.expr
 
-type flush_method = Reset | Slide of int
-                  | KeepOnly of Expr.t | RemoveAll of Expr.t
-                  | Never
+(* Represents what happens to a group after its value is output: *)
+type flush_method =
+  | Reset (* it can be deleted (tumbling windows) *)
+  | Slide of int (* or entries can be shifted (sliding windows) *)
+  | KeepOnly of E.t (* or only some matching entries can be kept *)
+  | RemoveAll of E.t (* or inversely, expunged from the group *)
+  | Never (* or we may just keep the group as it is *)
 
 let print_flush_method oc = function
   | Reset ->
@@ -46,18 +55,38 @@ let print_flush_method oc = function
   | Slide n ->
     Printf.fprintf oc "SLIDE %d" n
   | KeepOnly e ->
-    Printf.fprintf oc "KEEP (%a)" (Expr.print false) e
+    Printf.fprintf oc "KEEP (%a)" (E.print false) e
   | RemoveAll e ->
-    Printf.fprintf oc "REMOVE (%a)" (Expr.print false) e
+    Printf.fprintf oc "REMOVE (%a)" (E.print false) e
 
+(* Represents an input CSV format specifications: *)
 type file_spec = { fname : string ; unlink : bool }
 type csv_specs =
   { separator : string ; null : string ; fields : RamenTuple.typ }
 
+let print_csv_specs fmt specs =
+  Printf.fprintf fmt "SEPARATOR %S NULL %S %a"
+    specs.separator specs.null
+    RamenTuple.print_typ specs.fields
+
+let print_file_spec fmt specs =
+  Printf.fprintf fmt "READ%s FILES %S"
+    (if specs.unlink then " AND DELETE" else "") specs.fname
+
 (* Type of notifications. As those are transmitted in a single text field we
  * convert them using PPP. We could as well use Marshal but PPP is friendlier
  * to `ramen tail`. We could also use the ramen language syntax but parsing
- * it again from the notifier looks wasteful. *)
+ * it again from the notifier looks wasteful.
+ * The idea is that some alerts require immediate action while some others can
+ * be dealt with later (like during office hours).
+ *
+ * Notice that there is no overlap between severity and the concept of
+ * certainty (which is merely encoded as a floating number).  The severity is
+ * about how quickly a human must have a look (equivalently: should a
+ * synchronous or asynchronous communication channel be used?) while certainty
+ * is about the likelihood of a false positive (how certain we are that there
+ * is an actual problem and that this is not a false positive). Both are
+ * independent. *)
 
 type severity = Urgent | Deferrable
   [@@ppp PPP_OCaml]
@@ -86,27 +115,34 @@ let print_notification oc notif =
 (* Type of an operation: *)
 
 type t =
-  (* Aggregation of several tuples into one based on some key. Superficially looks like
-   * a select but much more involved. *)
+  (* Aggregation of several tuples into one based on some key. Superficially
+   * looks like a select but much more involved. Most clauses being optional,
+   * this is really the Swiss-army knife for all data manipulation in Ramen: *)
   | Aggregate of {
-      fields : selected_field list ;
-      (* Pass all fields not used to build an aggregated field *)
-      and_all_others : bool ;
-      merge : Expr.t list * float (* timeout *) ;
-      sort : (int * Expr.t option (* until *) * Expr.t list (* by *)) option ;
+      fields : selected_field list ; (* Composition of the output tuple *)
+      and_all_others : bool ; (* also "select *" *)
+      (* Expression to merge-sort the parents, and timeout: *)
+      merge : E.t list * float ;
+      (* Optional buffering of N tuples for sorting according to some
+       * expression: *)
+      sort : (int * E.t option (* until *) * E.t list (* by *)) option ;
       (* Simple way to filter out incoming tuples: *)
-      where : Expr.t ;
+      where : E.t ;
+      (* How to compute the time range for that event: *)
       event_time : RamenEventTime.t option ;
       (* Will send these notification commands to the notifier: *)
       notifications : notification list ;
-      key : Expr.t list ;
-      commit_when : Expr.t ;
-      commit_before : bool ; (* commit first and aggregate later *)
-      (* How to flush: reset or slide values *)
-      flush_how : flush_method ;
-      (* List of funcs that are our parents *)
+      key : E.t list (* Grouping key *) ;
+      commit_when : E.t (* Output the group when this condition holds *) ;
+      commit_before : bool ; (* Commit first and aggregate later *)
+      flush_how : flush_method ; (* How to flush: reset or slide values *)
+      (* List of funcs (or sub-queries) that are our parents: *)
       from : data_source list ;
+      (* Pause in between two productions (useful for operations with no
+       * parents: *)
       every : float ;
+      (* Fields with expected small dimensionality, suitable for breaking down
+       * the time series: *)
       factors : string list }
   | ReadCSVFile of {
       where : file_spec ;
@@ -123,20 +159,22 @@ type t =
       from : data_source list ;
       (* factors are hardcoded *) }
 
+(* Possible FROM sources: other function (optionally from another program),
+ * sub-query or internal instrumentation: *)
 and data_source =
   | NamedOperation of ((RamenName.program * RamenName.params) option * RamenName.func)
   | SubQuery of t
   | GlobPattern of string
 
-let print_csv_specs fmt specs =
-  Printf.fprintf fmt "SEPARATOR %S NULL %S %a"
-    specs.separator specs.null
-    RamenTuple.print_typ specs.fields
-let print_file_spec fmt specs =
-  Printf.fprintf fmt "READ%s FILES %S"
-    (if specs.unlink then " AND DELETE" else "") specs.fname
+let rec print_data_source oc = function
+  | NamedOperation id ->
+      print_expansed_function oc id
+  | SubQuery q ->
+      Printf.fprintf oc "(%a)" print q
+  | GlobPattern s ->
+      String.print oc s
 
-let rec print fmt =
+and print fmt =
   let sep = ", " in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
@@ -146,16 +184,16 @@ let rec print fmt =
       List.print ~first:"FROM " ~last:"" ~sep print_data_source fmt from ;
     if fst merge <> [] then (
       Printf.fprintf fmt " MERGE ON %a"
-        (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) (fst merge) ;
+        (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) (fst merge) ;
       if snd merge > 0. then
         Printf.fprintf fmt " TIMEOUT AFTER %g SECONDS" (snd merge)) ;
     Option.may (fun (n, u_opt, b) ->
       Printf.fprintf fmt " SORT LAST %d" n ;
       Option.may (fun u ->
         Printf.fprintf fmt " OR UNTIL %a"
-          (Expr.print false) u) u_opt ;
+          (E.print false) u) u_opt ;
       Printf.fprintf fmt " BY %a"
-        (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) b
+        (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) b
     ) sort ;
     if fields <> [] || not and_all_others then
       Printf.fprintf fmt " SELECT %a%s%s"
@@ -164,13 +202,13 @@ let rec print fmt =
         (if and_all_others then "*" else "") ;
     if every > 0. then
       Printf.fprintf fmt " EVERY %g SECONDS" every ;
-    if not (Expr.is_true where) then
+    if not (E.is_true where) then
       Printf.fprintf fmt " WHERE %a"
-        (Expr.print false) where ;
+        (E.print false) where ;
     if key <> [] then
       Printf.fprintf fmt " GROUP BY %a"
-        (List.print ~first:"" ~last:"" ~sep:", " (Expr.print false)) key ;
-    if not (Expr.is_true commit_when) ||
+        (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) key ;
+    if not (E.is_true commit_when) ||
        flush_how <> Reset ||
        notifications <> [] then (
       let sep = ref " " in
@@ -183,10 +221,10 @@ let rec print fmt =
         List.print ~first:!sep ~last:"" ~sep:!sep print_notification
           fmt notifications ;
         sep := ", ") ;
-      if not (Expr.is_true commit_when) then
+      if not (E.is_true commit_when) then
         Printf.fprintf fmt " %s %a"
           (if commit_before then "BEFORE" else "AFTER")
-          (Expr.print false) commit_when)
+          (E.print false) commit_when)
   | ReadCSVFile { where = file_spec ;
                   what = csv_specs ; preprocessor ; event_time } ->
     Printf.fprintf fmt "%a %s %a"
@@ -202,15 +240,7 @@ let rec print fmt =
   | Instrumentation { from } ->
     Printf.fprintf fmt "LISTEN FOR INSTRUMENTATION%a"
       (List.print ~first:" FROM " ~last:"" ~sep:", "
-        print_data_source) from ;
-
-and print_data_source oc = function
-  | NamedOperation id ->
-      print_expansed_function oc id
-  | SubQuery q ->
-      Printf.fprintf oc "(%a)" print q
-  | GlobPattern s ->
-      String.print oc s
+        print_data_source) from
 
 let func_id_of_data_source = function
   | NamedOperation id -> id
@@ -248,30 +278,8 @@ let factors_of_operation = function
       else RamenProtocols.factors_of_proto proto
   | Instrumentation _ -> RamenBinocle.factors
 
-let map_expr f = function
-  | (ListenFor _ | ReadCSVFile _ | Instrumentation _ as op) -> op
-  | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_when ;
-                 flush_how ; _ } as aggr) ->
-      Aggregate { aggr with
-        fields =
-          List.map (fun sf ->
-            { sf with expr = Expr.map_expr f sf.expr }
-          ) fields ;
-        merge = List.map (Expr.map_expr f) (fst merge), snd merge ;
-        where = Expr.map_expr f where ;
-        key = List.map (Expr.map_expr f) key ;
-        commit_when = Expr.map_expr f commit_when ;
-        sort =
-          Option.map (fun (n, u_opt, b) ->
-            n,
-            Option.map (Expr.map_expr f) u_opt,
-            List.map (Expr.map_expr f) b
-          ) sort ;
-        flush_how =
-          match flush_how with
-          | Slide _ | Never | Reset -> flush_how
-          | RemoveAll e -> RemoveAll (Expr.map_expr f e)
-          | KeepOnly e -> KeepOnly (Expr.map_expr f e) }
+(* We need some tools to fold/iterate over all expressions contained in an
+ * operation. We always do so depth first. *)
 
 let fold_top_level_expr init f = function
   | ListenFor _ | ReadCSVFile _ | Instrumentation _ -> init
@@ -304,7 +312,7 @@ let fold_top_level_expr init f = function
         f x e
 
 let fold_expr init f =
-  fold_top_level_expr init (Expr.fold_by_depth f)
+  fold_top_level_expr init (E.fold_by_depth f)
 
 let iter_expr f op =
   fold_expr () (fun () e -> f e) op
@@ -326,14 +334,14 @@ let check params =
     TupleNotAllowed { tuple ; where ; allowed } in
   let pure_in_key = pure_in "GROUP-BY"
   and check_pure e =
-    Expr.unpure_iter (fun _ -> raise (SyntaxError e))
+    E.unpure_iter (fun _ -> raise (SyntaxError e))
   and check_no_state state e =
-    Expr.unpure_iter (function
+    E.unpure_iter (function
       | StatefulFun (_, s, _) when s = state -> raise (SyntaxError e)
       | _ -> ())
   and check_fields_from lst where =
-    Expr.iter (function
-      | Expr.Field (_, tuple, _) ->
+    E.iter (function
+      | E.Field (_, tuple, _) ->
         if not (List.mem !tuple lst) then (
           let m = fields_must_be_from !tuple where lst in
           raise (SyntaxError m)
@@ -364,7 +372,7 @@ let check params =
     List.iter (check_field_exists field_names)
   (* Unless it's a param, assume TupleUnknow belongs to def: *)
   and prefix_def def =
-    Expr.iter (function
+    E.iter (function
       | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
           if RamenTuple.params_mem alias params then
             pref := TupleParam
@@ -393,7 +401,7 @@ let check params =
      * params), TupleIn or TupleOut (depending on the presence of this alias
      * in selected_fields -- optionally, only before position i) *)
     let prefix_smart ?i =
-      Expr.iter (function
+      E.iter (function
         | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
             if RamenTuple.params_mem alias params then
               pref := TupleParam
@@ -427,7 +435,12 @@ let check params =
       | _ -> ()) op ;
     (* Now check what tuple prefix are used: *)
     List.fold_left (fun prev_aliases sf ->
-        check_fields_from [TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleGroup; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroupFirst; TupleGroupLast; TupleOut (* FIXME: only if defined earlier *); TupleGroupPrevious; TupleOutPrevious] "SELECT clause" sf.expr ;
+        check_fields_from
+          [ TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleGroup;
+            TupleSelected; TupleLastSelected; TupleUnselected;
+            TupleLastUnselected; TupleGroupFirst; TupleGroupLast;
+            TupleOut (* FIXME: only if defined earlier *);
+            TupleGroupPrevious; TupleOutPrevious ] "SELECT clause" sf.expr ;
         (* Check unicity of aliases *)
         if List.mem sf.alias prev_aliases then
           raise (SyntaxError (AliasNotUnique sf.alias)) ;
@@ -440,22 +453,34 @@ let check params =
     ) ;
     (* Disallow group state in WHERE because it makes no sense: *)
     check_no_group (no_group "WHERE") where ;
-    check_fields_from [TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup; TupleGroupFirst; TupleGroupLast; TupleOutPrevious] "WHERE clause" where ;
+    check_fields_from
+      [ TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleSelected;
+        TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup;
+        TupleGroupFirst; TupleGroupLast; TupleOutPrevious ]
+      "WHERE clause" where ;
     List.iter (fun k ->
       check_pure pure_in_key k ;
-      check_fields_from [TupleParam; TupleEnv; TupleIn] "Group-By KEY" k) key ;
-    check_fields_from [TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleSelected; TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut; TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast; TupleGroup; TupleSelected; TupleLastSelected] "COMMIT WHEN clause" commit_when ;
+      check_fields_from
+        [ TupleParam; TupleEnv; TupleIn ] "Group-By KEY" k
+    ) key ;
+    check_fields_from
+      [ TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleSelected;
+        TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut;
+        TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast;
+        TupleGroup; TupleSelected; TupleLastSelected ]
+      "COMMIT WHEN clause" commit_when ;
     (match flush_how with
     | Reset | Never | Slide _ -> ()
     | RemoveAll e | KeepOnly e ->
       let m = StatefulNotAllowed { clause = "KEEP/REMOVE" } in
       check_pure m e ;
-      check_fields_from [TupleParam; TupleEnv; TupleGroup] "REMOVE clause" e) ;
+      check_fields_from
+        [ TupleParam; TupleEnv; TupleGroup ] "REMOVE clause" e) ;
     if every > 0. && from <> [] then
       raise (SyntaxError (EveryWithFrom)) ;
     (* Check that we do not use any fields from out that is generated: *)
     let generators = List.filter_map (fun sf ->
-        if Expr.is_generator sf.expr then Some sf.alias else None
+        if E.is_generator sf.expr then Some sf.alias else None
       ) fields in
     iter_expr (function
         | Field (_, tuple_ref, alias)
@@ -487,7 +512,7 @@ struct
   open RamenParsing
 
   let rec default_alias =
-    let open Expr in
+    let open E in
     let force_public field =
       if String.length field = 0 || field.[0] <> '_' then field
       else String.lchop field in
@@ -513,7 +538,7 @@ struct
 
   let selected_field m =
     let m = "selected field" :: m in
-    (Expr.Parser.p ++ optional ~def:None (
+    (E.Parser.p ++ optional ~def:None (
        blanks -- strinG "as" -- blanks -+ some non_keyword) >>:
      fun (expr, alias) ->
       let alias =
@@ -564,7 +589,7 @@ struct
   let merge_clause m =
     let m = "merge clause" :: m in
     (strinG "merge" -- blanks -- strinG "on" -- blanks -+
-     several ~sep:list_sep Expr.Parser.p ++ optional ~def:0. (
+     several ~sep:list_sep E.Parser.p ++ optional ~def:0. (
        blanks -- strinG "timeout" -- blanks -- strinG "after" -- blanks -+
        duration)) m
 
@@ -574,18 +599,18 @@ struct
      pos_decimal_integer "Sort buffer size" ++
      optional ~def:None (
        blanks -- strinG "or" -- blanks -- strinG "until" -- blanks -+
-       some Expr.Parser.p) +- blanks +-
-     strinG "by" +- blanks ++ several ~sep:list_sep Expr.Parser.p >>:
+       some E.Parser.p) +- blanks +-
+     strinG "by" +- blanks ++ several ~sep:list_sep E.Parser.p >>:
       fun ((l, u), b) -> l, u, b) m
 
   let where_clause m =
     let m = "where clause" :: m in
-    ((strinG "where" ||| strinG "when") -- blanks -+ Expr.Parser.p) m
+    ((strinG "where" ||| strinG "when") -- blanks -+ E.Parser.p) m
 
   let group_by m =
     let m = "group-by clause" :: m in
     (strinG "group" -- blanks -- strinG "by" -- blanks -+
-     several ~sep:list_sep Expr.Parser.p) m
+     several ~sep:list_sep E.Parser.p) m
 
   type commit_spec =
     | NotifySpec of notification
@@ -622,16 +647,16 @@ struct
         fun n -> Slide n)) |||
      (strinG "keep" -- blanks -- strinG "all" >>: fun () ->
        Never) |||
-     (strinG "keep" -- blanks -+ Expr.Parser.p >>: fun e ->
+     (strinG "keep" -- blanks -+ E.Parser.p >>: fun e ->
        KeepOnly e) |||
-     (strinG "remove" -- blanks -+ Expr.Parser.p >>: fun e ->
+     (strinG "remove" -- blanks -+ E.Parser.p >>: fun e ->
        RemoveAll e) >>:
      fun s -> FlushSpec s) m
 
   let dummy_commit m =
     (strinG "commit" >>: fun () -> CommitSpec) m
 
-  let default_commit_when = Expr.expr_true
+  let default_commit_when = E.expr_true
 
   let commit_clause m =
     let m = "commit clause" :: m in
@@ -641,7 +666,7 @@ struct
       (blanks -+
        ((strinG "after" >>: fun _ -> false) |||
         (strinG "before" >>: fun _ -> true)) +- blanks ++
-       Expr.Parser.p)) m
+       E.Parser.p)) m
 
   let default_port_of_protocol = function
     | RamenProtocols.Collectd -> 25826
@@ -734,13 +759,13 @@ struct
 
   type select_clauses =
     | SelectClause of selected_field option list
-    | MergeClause of (Expr.t list * float)
-    | SortClause of (int * Expr.t option (* until *) * Expr.t list (* by *))
-    | WhereClause of Expr.t
+    | MergeClause of (E.t list * float)
+    | SortClause of (int * E.t option (* until *) * E.t list (* by *))
+    | WhereClause of E.t
     | EventTimeClause of RamenEventTime.t
     | FactorClause of string list
-    | GroupByClause of Expr.t list
-    | CommitClause of (commit_spec list * (bool (* before *) * Expr.t))
+    | GroupByClause of E.t list
+    | CommitClause of (commit_spec list * (bool (* before *) * E.t))
     | FromClause of data_source list
     | EveryClause of float
     | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
@@ -806,7 +831,7 @@ struct
       and default_star = true
       and default_merge = [], 0.
       and default_sort = None
-      and default_where = Expr.expr_true
+      and default_where = E.expr_true
       and default_event_time = None
       and default_key = []
       and default_commit = ([], (false, default_commit_when))
@@ -960,21 +985,21 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = Expr.(Field (typ, ref TupleIn, "start")) ;\
+          { expr = E.(Field (typ, ref TupleIn, "start")) ;\
             alias = "start" } ;\
-          { expr = Expr.(Field (typ, ref TupleIn, "stop")) ;\
+          { expr = E.(Field (typ, ref TupleIn, "stop")) ;\
             alias = "stop" } ;\
-          { expr = Expr.(Field (typ, ref TupleIn, "itf_clt")) ;\
+          { expr = E.(Field (typ, ref TupleIn, "itf_clt")) ;\
             alias = "itf_src" } ;\
-          { expr = Expr.(Field (typ, ref TupleIn, "itf_srv")) ;\
+          { expr = E.(Field (typ, ref TupleIn, "itf_srv")) ;\
             alias = "itf_dst" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
-        where = Expr.Const (typ, VBool true) ;\
+        where = E.Const (typ, VBool true) ;\
         notifications = [] ;\
         key = [] ;\
-        commit_when = replace_typ Expr.expr_true ;\
+        commit_when = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ;\
         event_time = None ;\
@@ -989,13 +1014,13 @@ struct
         and_all_others = true ;\
         merge = [], 0. ;\
         sort = None ;\
-        where = Expr.(\
+        where = E.(\
           StatelessFun2 (typ, Gt, \
             Field (typ, ref TupleIn, "packets"),\
             Const (typ, VU32 Uint32.zero))) ;\
         event_time = None ; notifications = [] ;\
         key = [] ;\
-        commit_when = replace_typ Expr.expr_true ;\
+        commit_when = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (26, [])))\
@@ -1004,18 +1029,18 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = Expr.(Field (typ, ref TupleIn, "t")) ;\
+          { expr = E.(Field (typ, ref TupleIn, "t")) ;\
             alias = "t" } ;\
-          { expr = Expr.(Field (typ, ref TupleIn, "value")) ;\
+          { expr = E.(Field (typ, ref TupleIn, "value")) ;\
             alias = "value" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
-        where = Expr.Const (typ, VBool true) ;\
+        where = E.Const (typ, VBool true) ;\
         event_time = Some (("t", ref RamenEventTime.OutputField, 10.), DurationConst 60.) ;\
         notifications = [] ;\
         key = [] ;\
-        commit_when = replace_typ Expr.expr_true ;\
+        commit_when = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (65, [])))\
@@ -1025,20 +1050,20 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = Expr.(Field (typ, ref TupleIn, "t1")) ;\
+          { expr = E.(Field (typ, ref TupleIn, "t1")) ;\
             alias = "t1" } ;\
-          { expr = Expr.(Field (typ, ref TupleIn, "t2")) ;\
+          { expr = E.(Field (typ, ref TupleIn, "t2")) ;\
             alias = "t2" } ;\
-          { expr = Expr.(Field (typ, ref TupleIn, "value")) ;\
+          { expr = E.(Field (typ, ref TupleIn, "value")) ;\
             alias = "value" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
-        where = Expr.Const (typ, VBool true) ;\
+        where = E.Const (typ, VBool true) ;\
         event_time = Some (("t1", ref RamenEventTime.OutputField, 10.), \
                            StopField ("t2", ref RamenEventTime.OutputField, 10.)) ;\
         notifications = [] ; key = [] ;\
-        commit_when = replace_typ Expr.expr_true ;\
+        commit_when = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (75, [])))\
@@ -1051,12 +1076,12 @@ struct
         and_all_others = true ;\
         merge = [], 0. ;\
         sort = None ;\
-        where = Expr.Const (typ, VBool true) ;\
+        where = E.Const (typ, VBool true) ;\
         event_time = None ;\
         notifications = [ \
           { notif_name = "ouch" ; severity = Urgent ; parameters = [] } ] ;\
         key = [] ;\
-        commit_when = replace_typ Expr.expr_true ;\
+        commit_when = replace_typ E.expr_true ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (22, [])))\
@@ -1066,15 +1091,15 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = Expr.(\
+          { expr = E.(\
               StatefulFun (typ, LocalState, AggrMin (\
                 Field (typ, ref TupleIn, "start")))) ;\
             alias = "start" } ;\
-          { expr = Expr.(\
+          { expr = E.(\
               StatefulFun (typ, LocalState, AggrMax (\
                 Field (typ, ref TupleIn, "stop")))) ;\
             alias = "max_stop" } ;\
-          { expr = Expr.(\
+          { expr = E.(\
               StatelessFun2 (typ, Div, \
                 StatefulFun (typ, LocalState, AggrSum (\
                   Field (typ, ref TupleIn, "packets"))),\
@@ -1083,16 +1108,16 @@ struct
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
-        where = Expr.Const (typ, VBool true) ;\
+        where = E.Const (typ, VBool true) ;\
         event_time = None ; \
         notifications = [] ;\
-        key = [ Expr.(\
+        key = [ E.(\
           StatelessFun2 (typ, Div, \
             Field (typ, ref TupleIn, "start"),\
             StatelessFun2 (typ, Mul, \
               Const (typ, VU32 (Uint32.of_int 1_000_000)),\
               Field (typ, ref TupleParam, "avg_window")))) ] ;\
-        commit_when = Expr.(\
+        commit_when = E.(\
           StatelessFun2 (typ, Gt, \
             StatelessFun2 (typ, Add, \
               StatefulFun (typ, LocalState, AggrMax (\
@@ -1114,16 +1139,16 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = Expr.Const (typ, VU32 Uint32.one) ;\
+          { expr = E.Const (typ, VU32 Uint32.one) ;\
             alias = "one" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
-        where = Expr.Const (typ, VBool true) ;\
+        where = E.Const (typ, VBool true) ;\
         event_time = None ; \
         notifications = [] ;\
         key = [] ;\
-        commit_when = Expr.(\
+        commit_when = E.(\
           StatelessFun2 (typ, Ge, \
             StatefulFun (typ, LocalState, AggrSum (\
               Const (typ, VU32 Uint32.one))),\
@@ -1137,20 +1162,20 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = Expr.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
-          { expr = Expr.(\
-              StatefulFun (typ, GlobalState, Expr.Lag (\
-              Expr.Const (typ, VU32 (Uint32.of_int 2)), \
-              Expr.Field (typ, ref TupleIn, "n")))) ;\
+          { expr = E.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
+          { expr = E.(\
+              StatefulFun (typ, GlobalState, E.Lag (\
+              E.Const (typ, VU32 (Uint32.of_int 2)), \
+              E.Field (typ, ref TupleIn, "n")))) ;\
             alias = "l" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
-        where = Expr.Const (typ, VBool true) ;\
+        where = E.Const (typ, VBool true) ;\
         event_time = None ; \
         notifications = [] ;\
         key = [] ;\
-        commit_when = replace_typ Expr.expr_true ;\
+        commit_when = replace_typ E.expr_true ;\
         commit_before = false ;\
         from = [NamedOperation (Some (RamenName.program_of_string "foo", []), RamenName.func_of_string "bar")] ;\
         flush_how = Reset ; every = 0. ; factors = [] },\
@@ -1198,12 +1223,12 @@ struct
 
     (Ok (\
       Aggregate {\
-        fields = [ { expr = Expr.Const (typ, VU32 Uint32.one) ; alias = "one" } ] ;\
+        fields = [ { expr = E.Const (typ, VU32 Uint32.one) ; alias = "one" } ] ;\
         every = 1. ; event_time = None ;\
         and_all_others = false ; merge = [], 0. ; sort = None ;\
-        where = Expr.Const (typ, VBool true) ;\
+        where = E.Const (typ, VBool true) ;\
         notifications = [] ; key = [] ;\
-        commit_when = replace_typ Expr.expr_true ;\
+        commit_when = replace_typ E.expr_true ;\
         commit_before = false ; flush_how = Reset ; from = [] ;\
         factors = [] },\
         (29, [])))\
