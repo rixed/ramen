@@ -93,7 +93,7 @@ RAMEN_SOURCES = \
 	src/RamenTyping.ml \
 	src/RamenCompiler.ml \
 	src/RamenGraphite.ml src/RamenApi.ml src/RamenHeap.ml \
-	src/SqliteHelpers.ml src/RamenNotify.ml \
+	src/SqliteHelpers.ml src/RamenNotifier.ml \
 	src/TermTable.ml src/RamenCliCmd.ml \
 	src/RingBufCmd.ml src/RamenCompletion.ml src/RamenTests.ml src/ramen.ml
 

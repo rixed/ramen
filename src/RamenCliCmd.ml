@@ -100,7 +100,7 @@ let supervisor conf daemonize to_stdout to_syslog max_archives autoreload
  * and perform whatever action it takes, most likely reaching out to
  * external systems.
  *
- * The actual work is done in module RamenNotify.
+ * The actual work is done in module RamenNotifier.
  *)
 
 let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
@@ -110,10 +110,10 @@ let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
     failwith "Options --syslog and --stdout are incompatible." ;
   let notif_conf =
     Option.map_default
-      (ppp_of_file RamenNotify.notify_config_ppp_ocaml)
-      RamenNotify.default_notify_conf notif_conf_file in
+      (ppp_of_file RamenNotifier.notify_config_ppp_ocaml)
+      RamenNotifier.default_notify_conf notif_conf_file in
   (* Check the config is ok: *)
-  RamenNotify.check_conf_is_valid notif_conf ;
+  RamenNotifier.check_conf_is_valid notif_conf ;
   if to_syslog then
     logger := make_syslog conf.C.debug
   else (
@@ -130,7 +130,7 @@ let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
       restart_on_failure "wait_all_pids_loop"
         RamenProcesses.wait_all_pids_loop false) ;
     restart_on_failure "process_notifications"
-      (RamenNotify.start conf notif_conf) notify_rb) ;
+      (RamenNotifier.start conf notif_conf) notify_rb) ;
   Option.may exit !RamenProcesses.quit
 
 let notify conf parameters notif_name () =
