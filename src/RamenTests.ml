@@ -168,14 +168,15 @@ let test_notifications notify_rb notif_spec =
        Unix.gettimeofday () -. start < notif_spec.timeout
     then return_true else return_false in
   let%lwt () =
-    RamenSerialization.read_notifs ~while_ notify_rb (fun (worker, url) ->
-      !logger.debug "Got notification from %s: %S" worker url ;
+    RamenSerialization.read_notifs ~while_ notify_rb
+    (fun (worker, sent_time, event_time, notif_name, parameters) ->
+      !logger.debug "Got notification from %s: %S" worker notif_name ;
       notifs_to_find :=
         List.filter (fun (_pat, re) ->
-          Str.string_match re url 0 |>  not) !notifs_to_find ;
+          Str.string_match re notif_name 0 |>  not) !notifs_to_find ;
       notifs_to_not_find :=
         List.filter (fun (_pat, re) ->
-          Str.string_match re url 0) notifs_must_be_absent |>
+          Str.string_match re notif_name 0) notifs_must_be_absent |>
         List.rev_append !notifs_to_not_find ;
       return_unit) in
   let success = !notifs_to_find = [] && !notifs_to_not_find = [] in

@@ -134,6 +134,20 @@ and sersize_of_list vs =
    * nullmask): *)
   sersize_of_u32 + sersize_of_tuple vs
 
+let has_fixed_size = function
+  | TString
+  (* Technically, those could have a fixed size, but we always treat them as
+   * variable: *)
+  | TTuple _ | TVec _ | TList _ -> false
+  | _ -> true
+
+let tot_fixsz tuple_typ =
+  List.fold_left (fun c t ->
+    let open RamenTypes in
+    if not (has_fixed_size t.RamenTuple.typ.structure) then c else
+    c + sersize_of_fixsz_typ t.typ.structure
+  ) 0 tuple_typ
+
 let rec write_value tx offs = function
   | VFloat f -> write_float tx offs f
   | VString s -> write_string tx offs s
@@ -407,16 +421,67 @@ let seq_range bname =
   match mi_ma with
   | None -> s.first_seq, s.alloc_count
   | Some (mi, _ma) -> mi, s.first_seq + s.alloc_count
-(* Here rather than in RamenSerialization since it has to be included by
- * workers as well, and RamenSerialization depends on too many modules for
- * the workers. *)
-let write_notif ?delay_rec rb worker notif =
+
+(* All the following functions are here rather than in RamenSerialization
+ * or RamenNotification since it has to be included by workers as well, and
+ * both RamenSerialization and RamenNotification depends on too many
+ * modules for the workers. *)
+
+let notification_nullmask_sz = round_up_to_rb_word 1
+let notification_fixsz = sersize_of_float * 2
+let serialize_notification tx
+      (worker, sent_time, event_time, name, parameters) =
+  RingBuf.zero_bytes tx 0 notification_nullmask_sz ; (* zero the nullmask *)
+  let write_nullable_thing w sz offs null_i = function
+    | None ->
+        offs
+    | Some v ->
+        RingBuf.set_bit tx null_i ;
+        w tx offs v ;
+        offs + sz in
+  let write_nullable_float =
+    let sz = sersize_of_float in
+    write_nullable_thing RingBuf.write_float sz in
+  let offs = notification_nullmask_sz in
+  let offs =
+    RingBuf.write_string tx offs worker ;
+    offs + sersize_of_string worker in
+  let offs =
+    RingBuf.write_float tx offs sent_time ;
+    offs + sersize_of_float in
+  let offs = write_nullable_float offs 0 event_time in
+  let offs =
+    RingBuf.write_string tx offs name ;
+    offs + sersize_of_string name in
+  let offs =
+    write_u32 tx offs (Array.length parameters |> Uint32.of_int) ;
+    offs + sersize_of_u32 in
+  let offs =
+    Array.fold_left (fun offs (n, v) ->
+      RingBuf.write_string tx offs n ;
+      let offs = offs + sersize_of_string n in
+      RingBuf.write_string tx offs v ;
+      offs + sersize_of_string v
+    ) offs parameters in
+  offs
+
+(* Types have been erased so we cannot use sersize_of_value: *)
+let max_sersize_of_notification (worker, _, _, name, parameters) =
+  let psz =
+    Array.fold_left (fun sz (n, v) ->
+      sz + sersize_of_string n + sersize_of_string v
+    ) sersize_of_u32 parameters
+  in
+  notification_nullmask_sz + notification_fixsz + sersize_of_string worker +
+  sersize_of_string name + psz
+
+let write_notif ?delay_rec rb
+                worker sent_time event_time name parameters =
   retry_for_ringbuf ?delay_rec (fun () ->
-    let sersize = sersize_of_string worker +
-                  sersize_of_string notif in
+    let tuple = (worker, sent_time, event_time, name, parameters) in
+    let sersize = max_sersize_of_notification tuple in
     let tx = enqueue_alloc rb sersize in
-    write_string tx 0 worker ;
-    let offs = sersize_of_string worker in
-    write_string tx offs notif ;
-    (* Note: Surely there should be some time info for notifs. *)
-    enqueue_commit tx 0. 0.) ()
+    let tmin, tmax = event_time |? 0., 0. in
+    let sz = serialize_notification tx tuple in
+    assert (sz <= sersize) ;
+    enqueue_commit tx tmin tmax) ()

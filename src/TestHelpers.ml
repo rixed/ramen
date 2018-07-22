@@ -199,7 +199,15 @@ let replace_typ_in_operation =
         Option.map (fun (n, u, b) ->
           n, Option.map replace_typ u, List.map replace_typ b) sort ;
       where = replace_typ where ;
-      event_time ; notifications ; from ;
+      event_time ;
+      notifications =
+        List.map (fun n ->
+          { notif_name = replace_typ n.notif_name ;
+            parameters = List.map (fun (n, v) ->
+                           n, replace_typ v
+                         ) n.parameters }
+        ) notifications ;
+      from ;
       key = List.map replace_typ key ;
       commit_cond = replace_typ commit_cond ;
       commit_before = commit_before ;

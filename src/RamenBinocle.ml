@@ -43,7 +43,7 @@ let factors = [ "worker" ]
 
 let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type tuple_typ
 
-let fix_sz = RamenSerialization.tot_fixsz tuple_typ
+let fix_sz = RingBufLib.tot_fixsz tuple_typ
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
@@ -52,7 +52,7 @@ let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _) =
   nullmask_sz + fix_sz + sersize_of_string worker
 
 let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo,
-                  lo as t) =
+                  lo) =
   RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->

@@ -1213,7 +1213,7 @@ let all_finished funcs =
     ) funcs
 
 let check_aggregate ~parents ~in_type ~out_type ~params
-                    fields merge sort where key
+                    fields merge sort where key notifications
                     commit_cond flush_how =
   let open RamenOperation in
   (
@@ -1248,6 +1248,22 @@ let check_aggregate ~parents ~in_type ~out_type ~params
         check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params k ||
         changed
       ) false key
+  ) ||| (
+    List.fold_left (fun changed notif ->
+        (* notification names and parameter values must be strings: *)
+        let must_be_bool e =
+          let exp_type = Expr.typ_of notif.notif_name in
+          set_nullable exp_type false |||
+          set_scalar_type ~ok_if_larger:false ~expr_name:"notification name"
+                          exp_type TString |||
+          check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params
+                     notif.notif_name
+        in
+        must_be_bool notif.notif_name |||
+        List.fold_left (fun changed (_n, v) ->
+          must_be_bool v ||| changed
+        ) false notif.parameters
+      ) false notifications
   ) ||| (
     let exp_type = Expr.typ_of commit_cond in
     set_nullable exp_type false |||
@@ -1298,10 +1314,10 @@ let check_operation operation parents func params =
   let open RamenOperation in
   match operation with
   | Aggregate { fields ; merge ; sort ; where ; key ;
-                commit_cond ; flush_how ; _ } ->
+                commit_cond ; flush_how ; notifications ; _ } ->
     check_aggregate ~parents ~in_type ~out_type ~params
                     fields (fst merge) sort where
-                    key commit_cond flush_how
+                    key notifications commit_cond flush_how
 
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
     set_well_known_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields) ;

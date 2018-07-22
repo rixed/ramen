@@ -81,6 +81,7 @@ RAMEN_SOURCES = \
 	src/RamenTypes.ml src/RamenTuple.ml src/RamenName.mli src/RamenName.ml \
 	src/RamenLang.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
+	src/RamenNotification.ml \
 	src/RamenExpr.ml src/RamenOperation.ml \
 	src/RamenSerialization.ml src/RamenConf.ml src/RamenProgram.ml \
 	src/RamenWatchdog.ml \
@@ -104,6 +105,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
 	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
+	src/RamenNotification.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml src/RamenHeap.ml src/RamenSortBuf.ml \
 	src/HeavyHitters.ml src/CodeGenLib.ml src/RamenTypeConverters.ml
@@ -271,6 +273,7 @@ LINKED_FOR_TESTS = \
 	src/RamenTypes.ml src/RamenTuple.ml src/RamenName.mli src/RamenName.ml \
 	src/RamenLang.ml src/RamenExpr.ml \
 	src/RamenWatchdog.ml src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
+	src/RamenNotification.ml \
 	src/RamenOperation.ml src/RamenConf.ml src/RamenProgram.ml \
 	src/Globs.ml src/RamenCompilConfig.ml src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml src/RamenHeap.ml src/RamenSortBuf.ml \

@@ -47,10 +47,6 @@ let stats_send_fails =
   IntCounter.make RamenConsts.MetricNames.notifs_send_fails
     "Number of messages that could not be sent due to error."
 
-let stats_rcv_errors =
-  IntCounter.make RamenConsts.MetricNames.notifs_rcv_fails
-    "Number of notifications that the notifier failed to read."
-
 let stats_team_fallbacks =
   IntCounter.make RamenConsts.MetricNames.team_fallbacks
     "Number of times the default time was selected because the \
@@ -169,9 +165,7 @@ module Team = struct
   type t =
     { (* Team name is really nothing but a prefix for notification names: *)
       name : string ;
-      deferrable_contacts : Contact.t list
-        [@ppp_default []] ;
-      urgent_contacts : Contact.t list
+      contacts : Contact.t list
         [@ppp_default []] }
     [@@ppp PPP_OCaml]
 
@@ -202,10 +196,7 @@ let default_notify_conf =
   { teams =
       Team.[
         { name = "" ;
-          deferrable_contacts =
-            [ Contact.ViaSysLog "${name}: ${text}" ] ;
-          urgent_contacts =
-            [ send_to_prometheus ] } ] ;
+          contacts = [ send_to_prometheus ] } ] ;
     default_init_schedule_delay = 90. ;
     default_init_schedule_delay_after_startup = 120. }
 
@@ -253,8 +244,18 @@ type pending_status =
 let string_of_pending_status =
   PPP.to_string pending_status_ppp_ocaml
 
+(* Same as RamenOperation.notification, but with strings for name and
+ * and parameters: *)
+type notification =
+  { worker : string ;
+    notif_name : string ;
+    event_time : float option ;
+    sent_time : float ;
+    recv_time : float ;
+    parameters : (string * string) list }
+
 type pending_notification =
-  { notif : RamenOperation.notification;
+  { notif : notification;
     contact : Contact.t ;
     worker : string ;
     rcvd_start : float ;
@@ -279,7 +280,7 @@ type scheduled_item  =
 module PendingSet = Set.Make (struct
   type t = scheduled_item
   let compare i1 i2 =
-    let c = String.compare i1.item.notif.RamenOperation.notif_name
+    let c = String.compare i1.item.notif.notif_name
                            i2.item.notif.notif_name in
     if c <> 0 then c else
     Contact.compare i1.item.contact i2.item.contact
@@ -332,7 +333,8 @@ let fake_pending_named notif_name contact =
         alert_id = Uint64.zero ;
         worker = "" ;
         contact ;
-        notif = { notif_name ; severity = Urgent ; parameters = [] } } }
+        notif = { notif_name ; worker = "" ; parameters = [] ;
+                  event_time = None ; sent_time = 0. ; recv_time = 0. } } }
 
 (* When we receive a notification that an alert is no more firing, we must
  * cancel pending delivery or send the end of alert notification.
@@ -453,9 +455,7 @@ let ack name contact =
  * TODO: time this thread and add this to notifier instrumentation. *)
 let contact_via item =
   let dict =
-    [ "name", item.notif.RamenOperation.notif_name ;
-      "severity",
-        PPP.to_string RamenOperation.severity_ppp_ocaml item.notif.severity ;
+    [ "name", item.notif.notif_name ;
       "alert_id", Uint64.to_string item.alert_id ;
       "start", string_of_float (item.event_start |? item.rcvd_start) ;
       "worker", item.worker ] in
@@ -578,40 +578,29 @@ let start conf notif_conf rb =
     restart_on_failure "send_notifications" send_notifications conf) ;
   let while_ () =
     if !RamenProcesses.quit <> None then return_false else return_true in
-  RamenSerialization.read_notifs ~while_ rb (fun (worker, notif) ->
-    !logger.info "Received message from %s: %s"
-      worker notif ;
-    match PPP.of_string_exc RamenOperation.notification_ppp_ocaml notif with
-    | exception _ ->
-        !logger.error "Cannot deserialize notification %S, skipping" notif ;
-        IntCounter.add stats_rcv_errors 1 ;
-        return_unit
-    | notif ->
-        let event_time =
-          (* TODO: a real field, see #273 *)
-          try
-            Some (List.find (fun (n, _) -> n = "time") notif.parameters |>
-                  snd |> float_of_string)
-          with Not_found | Failure _ -> None
-        and now = Unix.gettimeofday ()
-        (* Find the team in charge of that alert name: *)
-        and team = Team.find_in_charge notif_conf.teams notif.notif_name in
-        let contacts =
-          match notif.severity with
-          | Deferrable -> team.Team.deferrable_contacts
-          | Urgent -> team.Team.urgent_contacts in
-        let action =
-          (* TODO: a formal parameter, for now we get it from the list of template vars: *)
-          match List.find (fun (n, _) -> n = "firing") notif.parameters with
-          | exception Not_found ->
-              set_alight conf notif_conf notif worker event_time now false
-          | _, v ->
-              if looks_like_true v then
-                set_alight conf notif_conf notif worker event_time now true
-              else
-                extinguish_pending notif_conf notif.notif_name event_time now in
-        List.iter action contacts ;
-        return_unit)
+  RamenSerialization.read_notifs ~while_ rb
+    (fun (worker, sent_time, event_time, notif_name, parameters) ->
+    let parameters = Array.to_list parameters in
+    let now = Unix.gettimeofday () in
+    let notif =
+      { worker ; sent_time ; recv_time = now ; event_time ;
+        notif_name ; parameters } in
+    !logger.info "Received notification from %s: %s"
+      worker notif_name ;
+    (* Find the team in charge of that alert name: *)
+    let team = Team.find_in_charge notif_conf.teams notif_name in
+    let action =
+      (* TODO: a formal parameter, for now we get it from the list of template vars: *)
+      match List.find (fun (n, _) -> n = "firing") notif.parameters with
+      | exception Not_found ->
+          set_alight conf notif_conf notif worker event_time now false
+      | _, v ->
+          if looks_like_true v then
+            set_alight conf notif_conf notif worker event_time now true
+          else
+            extinguish_pending notif_conf notif.notif_name event_time now in
+    List.iter action team.Team.contacts ;
+    return_unit)
 
 let check_conf_is_valid notif_conf =
   if notif_conf.teams = [] then

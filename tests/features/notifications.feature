@@ -24,9 +24,7 @@ Feature: Notifications work according to the configuration.
       """
       { teams = [
           { name = "" ;
-            deferrable_contacts =
-              [ ViaSysLog "${name}: ${text} (${severity})" ] ;
-            urgent_contacts = [
+            contacts = [
               ViaSqlite {
                 file = "alerts.db" ;
                 create = "create table \"alerts\" (

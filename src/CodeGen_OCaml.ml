@@ -1351,7 +1351,7 @@ let emit_time_of_tuple name params event_time oc tuple_typ =
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   match event_time with
   | None ->
-      Printf.fprintf oc "\t0., 0. (* No event time info *)\n"
+      Printf.fprintf oc "\tNone (* No event time info *)\n"
   | Some ((sta_field, sta_src, sta_scale), dur) ->
       let field_value_to_float src oc field_name =
         match src with
@@ -1373,16 +1373,16 @@ let emit_time_of_tuple name params event_time oc tuple_typ =
       (match dur with
       | DurationConst d ->
           Printf.fprintf oc "\tand dur_ = %a in\n\
-                             \tstart_, start_ +. dur_\n"
+                             \tSome (start_, start_ +. dur_)\n"
             emit_float d
       | DurationField (dur_field, dur_src, dur_scale) ->
           Printf.fprintf oc "\tand dur_ = %a *. %a in\n\
-                             \tstart_, start_ +. dur_\n"
+                             \tSome (start_, start_ +. dur_)\n"
             (field_value_to_float !dur_src) dur_field
             emit_float dur_scale ;
       | StopField (sto_field, sto_src, sto_scale) ->
           Printf.fprintf oc "\tand stop_ = %a *. %a in\n\
-                             \tstart_, stop_\n"
+                             \tSome (start_, stop_)\n"
             (field_value_to_float !sto_src) sto_field
             emit_float sto_scale)
 
@@ -1970,6 +1970,24 @@ let emit_merge_on name in_typ mentioned ~consts oc es =
     (List.print ~first:"(" ~last:")" ~sep:", "
        (emit_expr ?state:None ~context:Finalize ~consts)) es
 
+let emit_notification_tuple out_typ ~consts oc notif =
+  let open RamenOperation in
+  let print_expr = emit_expr ?state:None ~context:Finalize ~consts in
+  Printf.fprintf oc
+    "(%a,\n\t\t%a)"
+    print_expr notif.notif_name
+    (List.print ~first:"[|" ~last:"|]" ~sep:";\n\t\t  "
+      (Tuple2.print String.print print_expr)) notif.parameters
+
+(* We want a function that, when given the worker name, current time and the
+ * output tuple, will return the list of RamenNotification.tuple to send: *)
+let emit_get_notifications name out_typ ~consts oc notifications =
+  Printf.fprintf oc "let %s %a =\n\t%a\n"
+    name
+    (emit_tuple TupleOut) out_typ
+    (List.print ~sep:";\n\t\t" (emit_notification_tuple out_typ ~consts))
+      notifications
+
 let expr_needs_group e =
   let open RamenExpr in
   fold_by_depth (fun need expr ->
@@ -1996,7 +2014,7 @@ let emit_aggregate consts params oc name in_typ out_typ = function
   (* Good to know when performing a TOP: *)
   and when_to_check_for_commit = when_to_check_group_for_expr commit_cond in
   Printf.fprintf oc
-    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_cond ~consts) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_cond ~consts) fields
     (emit_read_tuple "read_tuple_" mentioned) in_typ
@@ -2021,7 +2039,8 @@ let emit_aggregate consts params oc name in_typ out_typ = function
     (emit_field_of_tuple "field_of_tuple_out_") out_typ
     (emit_merge_on "merge_on_" in_typ mentioned ~consts) (fst merge)
     (emit_sort_expr "sort_until_" in_typ mentioned ~consts) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
-    (emit_sort_expr "sort_by_" in_typ mentioned ~consts) (match sort with Some (_, _, b) -> b | None -> []) ;
+    (emit_sort_expr "sort_by_" in_typ mentioned ~consts) (match sort with Some (_, _, b) -> b | None -> [])
+    (emit_get_notifications "get_notifications_" out_typ ~consts) notifications ;
   Printf.fprintf oc "let %s () =\n\
       \tCodeGenLib.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
@@ -2030,7 +2049,8 @@ let emit_aggregate consts params oc name in_typ out_typ = function
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
       \t\tcommit_cond_ %b %b %s should_resubmit_\n\
       \t\tglobal_init_ group_init_\n\
-      \t\tfield_of_tuple_in_ field_of_tuple_out_ field_of_params_ %a %f\n"
+      \t\tfield_of_tuple_in_ field_of_tuple_out_ field_of_params_\n\
+      \t\tget_notifications_ %f\n"
     name
     (snd merge)
     (match sort with None -> 0 | Some (n, _, _) -> n)
@@ -2038,10 +2058,6 @@ let emit_aggregate consts params oc name in_typ out_typ = function
     commit_before
     (flush_how <> Never)
     when_to_check_for_commit
-    (* TODO: instead of passing a list of strings, pass a list of [RamenOperation.notification]s. *)
-    (List.print (fun oc n ->
-      let s = PPP.to_string RamenOperation.notification_ppp_ocaml n in
-      Printf.fprintf oc "%S" s)) notifications
     every
   | _ -> assert false
 

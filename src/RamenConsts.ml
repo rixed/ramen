@@ -40,7 +40,6 @@ struct
   (* Metrics reported by the notifier: *)
   let notifs_count = "notifs_count"
   let notifs_send_fails = "notifs_send_failures"
-  let notifs_rcv_fails = "notifs_receive_failures"
   let team_fallbacks = "notifs_team_fallbacks"
 
   (* Metrics reported by the HTTP server: *)

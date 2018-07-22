@@ -8,13 +8,6 @@ open Lwt
 
 let verbose_serialization = false
 
-let tot_fixsz tuple_typ =
-  List.fold_left (fun c t ->
-    let open RamenTypes in
-    if t.typ.structure = TString then c else
-    c + RingBufLib.sersize_of_fixsz_typ t.typ.structure
-  ) 0 tuple_typ
-
 let read_tuple ser_tuple_typ nullmask_size tx =
   (* Read all fields one by one *)
   if verbose_serialization then
@@ -49,14 +42,7 @@ let read_tuples ?while_ unserialize rb f =
     f tuple)
 
 let read_notifs ?while_ rb f =
-  let unserialize tx =
-    let offs = 0 in (* Nothing can be null in this tuple *)
-    let worker = read_string tx offs in
-    let offs = offs + RingBufLib.sersize_of_string worker in
-    let url = read_string tx offs in
-    worker, url
-  in
-  read_tuples ?while_ unserialize rb f
+  read_tuples ?while_ RamenNotification.unserialize rb f
 
 let value_of_string t s =
   let open RamenParsing in

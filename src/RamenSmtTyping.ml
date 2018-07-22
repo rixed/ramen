@@ -859,13 +859,24 @@ let emit_operation declare tuple_sizes fi oc func =
         emit_constraints tuple_sizes fields oc e
       ) op ;
       (* Typing rules:
-       * - where must be a bool;
-       * - commit-when must also be a bool;
-       * - flush_how conditions must also be bools. *)
-      let name = "F"^ string_of_int fi ^"_WHERE" in
+       * - Where must be a bool;
+       * - Commit-when must also be a bool;
+       * - Flush_how conditions must also be bools;
+       * - Notification names and parameter values must be non-nullable
+       *   strings. *)
+      let name = Printf.sprintf "F%d_WHERE" fi in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr where) oc TBool ;
-      let name = "F"^ string_of_int fi ^"_COMMIT" in
+      let name = Printf.sprintf "F%d_COMMIT" fi in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr commit_cond) oc TBool ;
+      List.iteri (fun i notif ->
+        let name = Printf.sprintf "F%d_NOTIF_%d" fi i in
+        emit_assert_id_eq_typ ~name tuple_sizes
+          (e_of_expr notif.notif_name) oc TString ;
+        List.iteri (fun j (_n, v) ->
+          let name = Printf.sprintf "F%d_NOTIF_%d_%d" fi i j in
+          emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr v) oc TString
+        ) notif.parameters
+      ) notifications ;
       (match flush_how with
       | Reset | Never | Slide _ -> ()
       | RemoveAll e | KeepOnly e ->

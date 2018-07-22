@@ -73,43 +73,23 @@ let print_file_spec fmt specs =
   Printf.fprintf fmt "READ%s FILES %S"
     (if specs.unlink then " AND DELETE" else "") specs.fname
 
-(* Type of notifications. As those are transmitted in a single text field we
- * convert them using PPP. We could as well use Marshal but PPP is friendlier
- * to `ramen tail`. We could also use the ramen language syntax but parsing
- * it again from the notifier looks wasteful.
- * The idea is that some alerts require immediate action while some others can
- * be dealt with later (like during office hours).
- *
- * Notice that there is no overlap between severity and the concept of
- * certainty (which is merely encoded as a floating number).  The severity is
- * about how quickly a human must have a look (equivalently: should a
- * synchronous or asynchronous communication channel be used?) while certainty
- * is about the likelihood of a false positive (how certain we are that there
- * is an actual problem and that this is not a false positive). Both are
- * independent. *)
-
-type severity = Urgent | Deferrable
-  [@@ppp PPP_OCaml]
+(* Type of notifications.
+ * Certainty is about how likely we are the alert is not a false positive.
+ * For now, if unsure, set a middle value like 0.5. *)
 
 type notification =
   { (* Act as the alert identifier _and_ the selector for who it's aimed at.
        So use names such as "team: service ${X} for ${Y} is on fire" *)
-    notif_name : string ;
-    severity : severity
-      [@ppp_default Urgent] ;
-    parameters : (string * string) list
-      [@ppp_default []] }
-  [@@ppp PPP_OCaml]
+    notif_name : E.t ;
+    parameters : (string * E.t) list }
 
 let print_notification oc notif =
-  Printf.fprintf oc "NOTIFY %S %s"
-    notif.notif_name
-    (match notif.severity with
-     | Urgent -> "URGENT"
-     | Deferrable -> "DEFERRABLE") ;
+  Printf.fprintf oc "NOTIFY %a"
+    (E.print false) notif.notif_name ;
   if notif.parameters <> [] then
     List.print ~first:" WITH PARAMETERS " ~last:"" ~sep:", "
-      (fun oc (n, v) -> Printf.fprintf oc "%S=%S" n v) oc
+      (fun oc (n, v) ->
+        Printf.fprintf oc "%S=%a" n (E.print false) v) oc
       notif.parameters
 
 (* Type of an operation: *)
@@ -284,7 +264,7 @@ let factors_of_operation = function
 let fold_top_level_expr init f = function
   | ListenFor _ | ReadCSVFile _ | Instrumentation _ -> init
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
-                flush_how ; _ } ->
+                flush_how ; notifications ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
             f prev sf.expr
@@ -296,6 +276,11 @@ let fold_top_level_expr init f = function
       let x = List.fold_left (fun prev ke ->
             f prev ke
           ) x key in
+      let x = List.fold_left (fun prev notif ->
+            let prev = f prev notif.notif_name in
+            List.fold_left (fun prev (n, v) ->
+              f prev v) prev notif.parameters
+          ) x notifications in
       let x = f x commit_cond in
       let x = match sort with
         | None -> x
@@ -621,21 +606,16 @@ struct
     let kv_list m =
       let m = "key-value list" :: m in
       (quoted_string +- opt_blanks +- (char ':' ||| char '=') +-
-       opt_blanks ++ quoted_string) m in
+       opt_blanks ++ E.Parser.p) m in
     let opt_with = optional ~def:() (blanks -- strinG "with") in
     let notify_cmd m =
-      let severity m =
-        let m = "notification severity" :: m in
-        ((strinG "urgent" >>: fun () -> Urgent) |||
-         (strinG "deferrable" >>: fun () -> Deferrable)) m in
       let m = "notification" :: m in
-      (strinG "notify" -- blanks -+ quoted_string ++
-       optional ~def:Urgent (blanks -+ severity) ++
+      (strinG "notify" -- blanks -+ E.Parser.p ++
        optional ~def:[]
          (opt_with -- blanks -- strinGs "parameter" -- blanks -+
           several ~sep:list_sep_and kv_list) >>:
-      fun ((notif_name, severity), parameters) ->
-        { notif_name ; severity ; parameters }) m
+      fun (notif_name, parameters) ->
+        { notif_name ; parameters }) m
     in
     let m = "notification clause" :: m in
     (notify_cmd >>: fun s -> NotifySpec s) m
@@ -1078,7 +1058,8 @@ struct
         where = E.Const (typ, VBool true) ;\
         event_time = None ;\
         notifications = [ \
-          { notif_name = "ouch" ; severity = Urgent ; parameters = [] } ] ;\
+          { notif_name = E.Const (typ, VString "ouch") ;\
+            parameters = [] } ] ;\
         key = [] ;\
         commit_cond = replace_typ E.expr_true ;\
         commit_before = false ;\

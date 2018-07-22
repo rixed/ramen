@@ -35,8 +35,8 @@ DEFINE out_of_range_alert AS
   GROUP BY source, iface
   COMMIT, KEEP ALL AND
     NOTIFY "Traffic" WITH PARAMETERS
-      "source"="${source}", "iface"="${iface}",
-      "time"="${time}" AND "thoughput"="${bytes_per_secs}"
+      "source"="${source}", "iface"="${iface}" AND
+      "thoughput"="${bytes_per_secs}"
   AFTER COALESCE (out.firing <> previous.firing, false)
   EVENT STARTING AT time;
 

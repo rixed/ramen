@@ -136,11 +136,10 @@ let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
 let notify conf parameters notif_name () =
   logger := make_logger conf.C.debug ;
   let rb = RamenProcesses.prepare_notifs conf in
-  let notif =
-    RamenOperation.{ notif_name ; severity = Urgent ; parameters } in
-  let notif = PPP.to_string RamenOperation.notification_ppp_ocaml notif in
+  let sent_time = Unix.gettimeofday () in
+  let parameters = Array.of_list parameters in
   Lwt_main.run (
-    RingBufLib.write_notif rb "cli" notif)
+    RingBufLib.write_notif rb "CLI" sent_time None notif_name parameters)
 
 (*
  * `ramen compile`

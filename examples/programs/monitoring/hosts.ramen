@@ -47,5 +47,5 @@ DEFINE memory_alert AS
   GROUP BY host
   COMMIT, KEEP ALL AND
     NOTIFY "RAM is low" WITH PARAMETERS
-      "host"="${host}", "time"="${time}" AND "ratio"="${used_ratio}% full"
+      "host"="${host}" AND "ratio"="${used_ratio}% full"
     AFTER COALESCE (out.firing <> previous.firing, false);

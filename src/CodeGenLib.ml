@@ -496,7 +496,7 @@ let update_stats_rb period rb_name get_tuple =
  * sequence number. *)
 let output rb serialize_tuple sersize_of_tuple time_of_tuple tuple =
   let open RingBuf in
-  let tmin, tmax = time_of_tuple tuple in
+  let tmin, tmax = time_of_tuple tuple |? (0., 0.) in
   let sersize = sersize_of_tuple tuple in
   IntCounter.add stats_rb_write_bytes sersize ;
   if IntCounter.get stats_rb_write_bytes < 0 then
@@ -754,7 +754,8 @@ let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
  * Aggregate operation
  *)
 
-let notify conf rb worker notif
+let notify conf rb worker event_time
+           (name, parameters)
            field_of_tuple_in tuple_in
            field_of_tuple_out tuple_out
            field_of_params =
@@ -762,8 +763,11 @@ let notify conf rb worker notif
     [ [ ""; "out" ], field_of_tuple_out tuple_out ;
       [ "in" ], field_of_tuple_in tuple_in ;
       [ "param" ], field_of_params ] in
-  let notif = subst_tuple_fields tuples notif in
-  RingBufLib.write_notif ~delay_rec:sleep_out rb worker notif
+  let name = subst_tuple_fields tuples name
+	and parameters =
+    Array.map (fun (n, v) -> n, subst_tuple_fields tuples v) parameters in
+  RingBufLib.write_notif ~delay_rec:sleep_out rb
+    worker !CodeGenLib_IO.now event_time name parameters
 
 type ('aggr, 'tuple_in, 'generator_out) aggr_value =
   { (* used to compute the actual selected field when outputing the
@@ -911,7 +915,7 @@ let yield_every ~while_ read_tuple every k =
 let aggregate
       (read_tuple : RingBuf.tx -> 'tuple_in)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
-      (time_of_tuple : 'tuple_out -> float * float)
+      (time_of_tuple : 'tuple_out -> (float * float) option)
       (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> 'tuple_out -> int)
       (generate_tuples : ('tuple_in -> 'tuple_out -> unit Lwt.t) -> 'tuple_in -> 'generator_out -> unit Lwt.t)
       (tuple_of_aggr :
@@ -968,7 +972,8 @@ let aggregate
       (field_of_tuple_in : 'tuple_in -> string -> string)
       (field_of_tuple_out : 'tuple_out -> string -> string)
       (field_of_params : string -> string)
-      (notifications : string list)
+      (get_notifications :
+        'tuple_out -> (string * (string * string) array) list)
       (every : float) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =
@@ -1001,13 +1006,16 @@ let aggregate
                   serialize_tuple in
     let outputer =
       let do_out tuple_in tuple_out =
-        let%lwt () =
+        let notifications = get_notifications tuple_out in
+        if notifications <> [] then (
+          let event_time = time_of_tuple tuple_out |> Option.map fst in
           Lwt_list.iter_s (fun notif ->
-            notify conf notify_rb worker_name notif
+            notify conf notify_rb worker_name event_time notif
                    field_of_tuple_in tuple_in
                    field_of_tuple_out tuple_out
                    field_of_params
-          ) notifications in
+          ) notifications
+        ) else return_unit ;%lwt
         tuple_outputer tuple_out
       in
       generate_tuples do_out in
