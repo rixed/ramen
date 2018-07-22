@@ -23,8 +23,8 @@ let to_string =
     (to_string (Stdint.Uint48.of_string "0x123456789AB"))
  *)
 
-let print fmt n =
-  String.print fmt (to_string n)
+let print oc n =
+  String.print oc (to_string n)
 
 module Parser =
 struct

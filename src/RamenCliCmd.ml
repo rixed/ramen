@@ -571,7 +571,7 @@ let tail conf func_name with_header sep null raw
     let header = typ.ser |> Array.of_list |> reorder_column1 in
     let first = if with_seqnums then "#Seq"^ sep else "#" in
     Array.print ~first ~last:"\n" ~sep
-      (fun fmt ft -> String.print fmt ft.RamenTuple.typ_name)
+      (fun oc ft -> String.print oc ft.RamenTuple.typ_name)
       stdout header ;
     BatIO.flush stdout) ;
   Lwt_main.run (

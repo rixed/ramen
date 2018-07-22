@@ -33,6 +33,7 @@ let string_of_words lst =
   in
   let len = loop 0 false lst in
   Bytes.sub_string s 0 len
+
 (*$= string_of_words & ~printer:(fun x -> x)
   "1" (string_of_words [ Word 1 ])
   "1:2" (string_of_words [ Word 1 ; Word 2 ])
@@ -91,7 +92,7 @@ let to_string =
       "0x00010023045600000000000700000008"))
  *)
 
-let print fmt n = String.print fmt (to_string n)
+let print oc n = String.print oc (to_string n)
 
 module Parser =
 struct
@@ -129,6 +130,7 @@ struct
 end
 
 let of_string = RamenParsing.of_string_exn Parser.p
+
 (*$= of_string & ~printer:(BatIO.to_string print)
    (Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428329") \
      (of_string "2001:db8::ff00:42:8329")
@@ -159,13 +161,14 @@ struct
   let to_string (net, len) =
     let net = and_to_len len net in
     to_string net ^"/"^ string_of_int len
+
   (*$= to_string & ~printer:(fun x -> x)
      "2001:db8::ff00:42:8300/120" \
        (to_string (Stdint.Uint128.of_string \
          "0x20010DB8000000000000FF0000428300", 120))
    *)
 
-  let print fmt t = String.print fmt (to_string t)
+  let print oc t = String.print oc (to_string t)
 
   module Parser =
   struct
@@ -181,6 +184,7 @@ struct
   end
 
   let of_string = RamenParsing.of_string_exn Parser.p
+
   (*$= of_string & ~printer:(BatIO.to_string print)
      (Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428300", 120) \
        (of_string "2001:db8::ff00:42:8300/120")

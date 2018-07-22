@@ -35,8 +35,8 @@ let to_string =
     (to_string (Stdint.Uint32.of_string "0x7B2D4359"))
  *)
 
-let print fmt n =
-  String.print fmt (to_string n)
+let print oc n =
+  String.print oc (to_string n)
 
 module Parser =
 struct
@@ -111,7 +111,7 @@ struct
        (to_string (Stdint.Uint32.of_string "0xC0A80A00", 24))
    *)
 
-  let print fmt t = String.print fmt (to_string t)
+  let print oc t = String.print oc (to_string t)
 
   (*$>*)
 end

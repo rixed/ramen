@@ -26,18 +26,18 @@ module E = RamenExpr
  * 'SELECT expr AS alias' *)
 type selected_field = { expr : E.t ; alias : string }
 
-let print_selected_field fmt f =
+let print_selected_field oc f =
   let need_alias =
     match f.expr with
     | E.Field (_, tuple, field)
       when !tuple = TupleIn && f.alias = field -> false
     | _ -> true in
   if need_alias then
-    Printf.fprintf fmt "%a AS %s"
+    Printf.fprintf oc "%a AS %s"
       (E.print false) f.expr
       f.alias
   else
-    E.print false fmt f.expr
+    E.print false oc f.expr
 
 (* Represents what happens to a group after its value is output: *)
 type flush_method =
@@ -64,13 +64,13 @@ type file_spec = { fname : string ; unlink : bool }
 type csv_specs =
   { separator : string ; null : string ; fields : RamenTuple.typ }
 
-let print_csv_specs fmt specs =
-  Printf.fprintf fmt "SEPARATOR %S NULL %S %a"
+let print_csv_specs oc specs =
+  Printf.fprintf oc "SEPARATOR %S NULL %S %a"
     specs.separator specs.null
     RamenTuple.print_typ specs.fields
 
-let print_file_spec fmt specs =
-  Printf.fprintf fmt "READ%s FILES %S"
+let print_file_spec oc specs =
+  Printf.fprintf oc "READ%s FILES %S"
     (if specs.unlink then " AND DELETE" else "") specs.fname
 
 (* Type of notifications.
@@ -154,71 +154,71 @@ let rec print_data_source oc = function
   | GlobPattern s ->
       String.print oc s
 
-and print fmt =
+and print oc =
   let sep = ", " in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
                 notifications ; key ; commit_cond ;
                 commit_before ; flush_how ; from ; every } ->
     if from <> [] then
-      List.print ~first:"FROM " ~last:"" ~sep print_data_source fmt from ;
+      List.print ~first:"FROM " ~last:"" ~sep print_data_source oc from ;
     if fst merge <> [] then (
-      Printf.fprintf fmt " MERGE ON %a"
+      Printf.fprintf oc " MERGE ON %a"
         (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) (fst merge) ;
       if snd merge > 0. then
-        Printf.fprintf fmt " TIMEOUT AFTER %g SECONDS" (snd merge)) ;
+        Printf.fprintf oc " TIMEOUT AFTER %g SECONDS" (snd merge)) ;
     Option.may (fun (n, u_opt, b) ->
-      Printf.fprintf fmt " SORT LAST %d" n ;
+      Printf.fprintf oc " SORT LAST %d" n ;
       Option.may (fun u ->
-        Printf.fprintf fmt " OR UNTIL %a"
+        Printf.fprintf oc " OR UNTIL %a"
           (E.print false) u) u_opt ;
-      Printf.fprintf fmt " BY %a"
+      Printf.fprintf oc " BY %a"
         (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) b
     ) sort ;
     if fields <> [] || not and_all_others then
-      Printf.fprintf fmt " SELECT %a%s%s"
+      Printf.fprintf oc " SELECT %a%s%s"
         (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "") ;
     if every > 0. then
-      Printf.fprintf fmt " EVERY %g SECONDS" every ;
+      Printf.fprintf oc " EVERY %g SECONDS" every ;
     if not (E.is_true where) then
-      Printf.fprintf fmt " WHERE %a"
+      Printf.fprintf oc " WHERE %a"
         (E.print false) where ;
     if key <> [] then
-      Printf.fprintf fmt " GROUP BY %a"
+      Printf.fprintf oc " GROUP BY %a"
         (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) key ;
     if not (E.is_true commit_cond) ||
        flush_how <> Reset ||
        notifications <> [] then (
       let sep = ref " " in
       if flush_how = Reset && notifications = [] then (
-        Printf.fprintf fmt "%sCOMMIT" !sep ; sep := ", ") ;
+        Printf.fprintf oc "%sCOMMIT" !sep ; sep := ", ") ;
       if flush_how <> Reset then (
-        Printf.fprintf fmt "%s%a" !sep print_flush_method flush_how ;
+        Printf.fprintf oc "%s%a" !sep print_flush_method flush_how ;
         sep := ", ") ;
       if notifications <> [] then (
         List.print ~first:!sep ~last:"" ~sep:!sep print_notification
-          fmt notifications ;
+          oc notifications ;
         sep := ", ") ;
       if not (E.is_true commit_cond) then
-        Printf.fprintf fmt " %s %a"
+        Printf.fprintf oc " %s %a"
           (if commit_before then "BEFORE" else "AFTER")
           (E.print false) commit_cond)
   | ReadCSVFile { where = file_spec ;
                   what = csv_specs ; preprocessor ; event_time } ->
-    Printf.fprintf fmt "%a %s %a"
+    Printf.fprintf oc "%a %s %a"
       print_file_spec file_spec
       (if preprocessor = "" then ""
         else Printf.sprintf "PREPROCESS WITH %S" preprocessor)
       print_csv_specs csv_specs
   | ListenFor { net_addr ; port ; proto } ->
-    Printf.fprintf fmt "LISTEN FOR %s ON %s:%d"
+    Printf.fprintf oc "LISTEN FOR %s ON %s:%d"
       (RamenProtocols.string_of_proto proto)
       (Unix.string_of_inet_addr net_addr)
       port
   | Instrumentation { from } ->
-    Printf.fprintf fmt "LISTEN FOR INSTRUMENTATION%a"
+    Printf.fprintf oc "LISTEN FOR INSTRUMENTATION%a"
       (List.print ~first:" FROM " ~last:"" ~sep:", "
         print_data_source) from
 
@@ -422,7 +422,7 @@ let check params =
           raise (SyntaxError (TupleHasOnlyVirtuals { tuple = TupleGroup ;
                                                      alias }))
       | _ -> ()) op ;
-    (* Now check what tuple prefix are used: *)
+    (* Now check what tuple prefixes are used: *)
     List.fold_left (fun prev_aliases sf ->
         check_fields_from
           [ TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleGroup;

@@ -29,8 +29,8 @@ type typ =
 let same_type t1 t2 =
   t1.nullable = t2.nullable && t1.scalar_typ = t2.scalar_typ
 
-let print_typ fmt typ =
-  Printf.fprintf fmt "%s of %s%s"
+let print_typ oc typ =
+  Printf.fprintf oc "%s of %s%s"
     typ.expr_name
     (match typ.scalar_typ with
     | None -> "unknown type"
@@ -339,9 +339,9 @@ let check_const what e =
   if not (is_const e) then
     raise (SyntaxError (NotConstant what))
 
-let rec print with_types fmt =
+let rec print with_types oc =
   let add_types t =
-    if with_types then Printf.fprintf fmt " [%a]" print_typ t
+    if with_types then Printf.fprintf oc " [%a]" print_typ t
   and sl =
     (* TODO: do not display the default *)
     function LocalState -> " locally " | GlobalState -> " globally "
@@ -350,252 +350,252 @@ let rec print with_types fmt =
   in
   function
   | Const (t, c) ->
-    RamenTypes.print fmt c ; add_types t
+    RamenTypes.print oc c ; add_types t
   | Tuple (t, es) ->
-    List.print ~first:"(" ~last:")" ~sep:"; " (print with_types) fmt es ;
+    List.print ~first:"(" ~last:")" ~sep:"; " (print with_types) oc es ;
     add_types t
   | Vector (t, es) ->
-    List.print ~first:"[" ~last:"]" ~sep:"; " (print with_types) fmt es ;
+    List.print ~first:"[" ~last:"]" ~sep:"; " (print with_types) oc es ;
     add_types t
   | Field (t, tuple, field) ->
-    Printf.fprintf fmt "%s.%s" (string_of_prefix !tuple) field ;
+    Printf.fprintf oc "%s.%s" (string_of_prefix !tuple) field ;
     add_types t
   | StateField (t, s) ->
-    String.print fmt s ; add_types t
+    String.print oc s ; add_types t
   | Case (t, alts, else_) ->
-    let print_alt fmt alt =
-      Printf.fprintf fmt "WHEN %a THEN %a"
+    let print_alt oc alt =
+      Printf.fprintf oc "WHEN %a THEN %a"
         (print with_types) alt.case_cond
         (print with_types) alt.case_cons
     in
-    Printf.fprintf fmt "CASE %a "
+    Printf.fprintf oc "CASE %a "
      (List.print ~first:"" ~last:"" ~sep:" " print_alt) alts ;
     Option.may (fun else_ ->
-      Printf.fprintf fmt "ELSE %a "
+      Printf.fprintf oc "ELSE %a "
         (print with_types) else_) else_ ;
-    Printf.fprintf fmt "END" ;
+    Printf.fprintf oc "END" ;
     add_types t
   | Coalesce (t, es) ->
-    Printf.fprintf fmt "COALESCE %a" print_args es ;
+    Printf.fprintf oc "COALESCE %a" print_args es ;
     add_types t
   | StatelessFun1 (t, Age, e) ->
-    Printf.fprintf fmt "age (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "age (%a)" (print with_types) e ; add_types t
   | StatelessFun0 (t, Now) ->
-    Printf.fprintf fmt "now" ; add_types t
+    Printf.fprintf oc "now" ; add_types t
   | StatelessFun0 (t, Random) ->
-    Printf.fprintf fmt "random" ; add_types t
+    Printf.fprintf oc "random" ; add_types t
   | StatelessFun1 (t, Cast, e) ->
-    Printf.fprintf fmt "cast(%a, %a)"
+    Printf.fprintf oc "cast(%a, %a)"
       RamenTypes.print_structure (Option.get t.scalar_typ)
       (print with_types) e ;
     add_types t
   | StatelessFun1 (t, Length, e) ->
-    Printf.fprintf fmt "length (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "length (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Lower, e) ->
-    Printf.fprintf fmt "lower (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "lower (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Upper, e) ->
-    Printf.fprintf fmt "upper (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "upper (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Not, e) ->
-    Printf.fprintf fmt "NOT (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "NOT (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Abs, e) ->
-    Printf.fprintf fmt "ABS (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "ABS (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Minus, e) ->
-    Printf.fprintf fmt "-(%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "-(%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Defined, e) ->
-    Printf.fprintf fmt "(%a) IS NOT NULL" (print with_types) e ;
+    Printf.fprintf oc "(%a) IS NOT NULL" (print with_types) e ;
     add_types t
   | StatelessFun2 (t, Add, e1, e2) ->
-    Printf.fprintf fmt "(%a) + (%a)"
+    Printf.fprintf oc "(%a) + (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Sub, e1, e2) ->
-    Printf.fprintf fmt "(%a) - (%a)"
+    Printf.fprintf oc "(%a) - (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Mul, e1, e2) ->
-    Printf.fprintf fmt "(%a) * (%a)"
+    Printf.fprintf oc "(%a) * (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Div, e1, e2) ->
-    Printf.fprintf fmt "(%a) / (%a)"
+    Printf.fprintf oc "(%a) / (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Reldiff, e1, e2) ->
-    Printf.fprintf fmt "reldiff((%a), (%a))"
+    Printf.fprintf oc "reldiff((%a), (%a))"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, IDiv, e1, e2) ->
-    Printf.fprintf fmt "(%a) // (%a)"
+    Printf.fprintf oc "(%a) // (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Mod, e1, e2) ->
-    Printf.fprintf fmt "(%a) %% (%a)"
+    Printf.fprintf oc "(%a) %% (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Pow, e1, e2) ->
-    Printf.fprintf fmt "(%a) ^ (%a)"
+    Printf.fprintf oc "(%a) ^ (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun1 (t, Exp, e) ->
-    Printf.fprintf fmt "exp (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "exp (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Log, e) ->
-    Printf.fprintf fmt "log (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "log (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Log10, e) ->
-    Printf.fprintf fmt "log10 (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "log10 (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Sqrt, e) ->
-    Printf.fprintf fmt "sqrt (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "sqrt (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Ceil, e) ->
-    Printf.fprintf fmt "ceil (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "ceil (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Floor, e) ->
-    Printf.fprintf fmt "floor (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "floor (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Round, e) ->
-    Printf.fprintf fmt "round (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "round (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Hash, e) ->
-    Printf.fprintf fmt "hash (%a)" (print with_types) e ; add_types t
+    Printf.fprintf oc "hash (%a)" (print with_types) e ; add_types t
   | StatelessFun1 (t, Sparkline, e) ->
-    Printf.fprintf fmt "sparkline (%a)" (print with_types) e ;
+    Printf.fprintf oc "sparkline (%a)" (print with_types) e ;
     add_types t
   | StatelessFun2 (t, In, e1, e2) ->
-    Printf.fprintf fmt "(%a) IN (%a)"
+    Printf.fprintf oc "(%a) IN (%a)"
       (print with_types) e1 (print with_types) e2 ; add_types t
   | StatelessFun1 (t, (BeginOfRange|EndOfRange as op), e) ->
-    Printf.fprintf fmt "%s of (%a)"
+    Printf.fprintf oc "%s of (%a)"
       (if op = BeginOfRange then "begin" else "end")
       (print with_types) e ;
     add_types t
   | StatelessFun1 (t, Nth n, e) ->
     let n = n + 1 in
-    Printf.fprintf fmt "%d%s %a"
+    Printf.fprintf oc "%d%s %a"
       n (ordinal_suffix n) (print with_types) e ;
     add_types t
   | StatelessFun1 (t, Strptime, e) ->
-    Printf.fprintf fmt "parse_time (%a)" (print with_types) e ;
+    Printf.fprintf oc "parse_time (%a)" (print with_types) e ;
     add_types t
   | StatelessFun2 (t, And, e1, e2) ->
-    Printf.fprintf fmt "(%a) AND (%a)"
+    Printf.fprintf oc "(%a) AND (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Or, e1, e2) ->
-		Printf.fprintf fmt "(%a) OR (%a)"
+		Printf.fprintf oc "(%a) OR (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Ge, e1, e2) ->
-		Printf.fprintf fmt "(%a) >= (%a)"
+		Printf.fprintf oc "(%a) >= (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Gt, e1, e2) ->
-		Printf.fprintf fmt "(%a) > (%a)"
+		Printf.fprintf oc "(%a) > (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Eq, e1, e2) ->
-		Printf.fprintf fmt "(%a) = (%a)"
+		Printf.fprintf oc "(%a) = (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Concat, e1, e2) ->
-		Printf.fprintf fmt "(%a) || (%a)"
+		Printf.fprintf oc "(%a) || (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, StartsWith, e1, e2) ->
-		Printf.fprintf fmt "(%a) STARTS WITH (%a)"
+		Printf.fprintf oc "(%a) STARTS WITH (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, EndsWith, e1, e2) ->
-		Printf.fprintf fmt "(%a) ENDS WITH (%a)"
+		Printf.fprintf oc "(%a) ENDS WITH (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, Strftime, e1, e2) ->
-		Printf.fprintf fmt "format_time (%a, %a)"
+		Printf.fprintf oc "format_time (%a, %a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, BitAnd, e1, e2) ->
-		Printf.fprintf fmt "(%a) & (%a)"
+		Printf.fprintf oc "(%a) & (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, BitOr, e1, e2) ->
-		Printf.fprintf fmt "(%a) | (%a)"
+		Printf.fprintf oc "(%a) | (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, BitXor, e1, e2) ->
-		Printf.fprintf fmt "(%a) ^ (%a)"
+		Printf.fprintf oc "(%a) ^ (%a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, VecGet, e1, e2) ->
-		Printf.fprintf fmt "get(%a, %a)"
+		Printf.fprintf oc "get(%a, %a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFunMisc (t, Like (e, p)) ->
-		Printf.fprintf fmt "(%a) LIKE %S"
+		Printf.fprintf oc "(%a) LIKE %S"
       (print with_types) e p ;
     add_types t
   | StatelessFunMisc (t, Max es) ->
-    Printf.fprintf fmt "GREATEST %a" print_args es ;
+    Printf.fprintf oc "GREATEST %a" print_args es ;
     add_types t
   | StatelessFunMisc (t, Min es) ->
-    Printf.fprintf fmt "LEAST %a" print_args es ;
+    Printf.fprintf oc "LEAST %a" print_args es ;
     add_types t
   | StatelessFunMisc (t, Print es) ->
-    Printf.fprintf fmt "PRINT %a" print_args es ;
+    Printf.fprintf oc "PRINT %a" print_args es ;
     add_types t
   | StatefulFun (t, g, AggrMin e) ->
-    Printf.fprintf fmt "min%s(%a)"
+    Printf.fprintf oc "min%s(%a)"
       (sl g) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, AggrMax e) ->
-    Printf.fprintf fmt "max%s(%a)"
+    Printf.fprintf oc "max%s(%a)"
       (sl g) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, AggrSum e) ->
-    Printf.fprintf fmt "sum%s(%a)"
+    Printf.fprintf oc "sum%s(%a)"
       (sl g) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, AggrAvg e) ->
-    Printf.fprintf fmt "avg%s(%a)"
+    Printf.fprintf oc "avg%s(%a)"
       (sl g) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, AggrAnd e) ->
-    Printf.fprintf fmt "and%s(%a)"
+    Printf.fprintf oc "and%s(%a)"
       (sl g) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, AggrOr e) ->
-    Printf.fprintf fmt "or%s(%a)"
+    Printf.fprintf oc "or%s(%a)"
       (sl g) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, AggrFirst e) ->
-    Printf.fprintf fmt "first%s(%a)"
+    Printf.fprintf oc "first%s(%a)"
       (sl g) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, AggrLast e) ->
-    Printf.fprintf fmt "last%s(%a)"
+    Printf.fprintf oc "last%s(%a)"
       (sl g) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, AggrPercentile (p, e)) ->
-    Printf.fprintf fmt "%ath percentile%s(%a)"
+    Printf.fprintf oc "%ath percentile%s(%a)"
       (print with_types) p (sl g) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, AggrHistogram (what, min, max, nb_buckets)) ->
-    Printf.fprintf fmt "histogram%s(%a, %g, %g, %d)"
+    Printf.fprintf oc "histogram%s(%a, %g, %g, %d)"
       (sl g)
       (print with_types) what min max nb_buckets ;
     add_types t
   | StatefulFun (t, g, Lag (e1, e2)) ->
-    Printf.fprintf fmt "lag%s(%a, %a)"
+    Printf.fprintf oc "lag%s(%a, %a)"
       (sl g)
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatefulFun (t, g, MovingAvg (e1, e2, e3)) ->
-    Printf.fprintf fmt "season_moveavg%s(%a, %a, %a)"
+    Printf.fprintf oc "season_moveavg%s(%a, %a, %a)"
       (sl g)
       (print with_types) e1
       (print with_types) e2 (print with_types) e3 ;
     add_types t
   | StatefulFun (t, g, LinReg (e1, e2, e3)) ->
-    Printf.fprintf fmt "season_fit%s(%a, %a, %a)"
+    Printf.fprintf oc "season_fit%s(%a, %a, %a)"
       (sl g)
       (print with_types) e1
       (print with_types) e2 (print with_types) e3 ;
     add_types t
   | StatefulFun (t, g, MultiLinReg (e1, e2, e3, e4s)) ->
-    Printf.fprintf fmt "season_fit_multi%s(%a, %a, %a, %a)"
+    Printf.fprintf oc "season_fit_multi%s(%a, %a, %a, %a)"
       (sl g)
       (print with_types) e1
       (print with_types) e2
@@ -603,7 +603,7 @@ let rec print with_types fmt =
       print_args e4s ;
     add_types t
   | StatefulFun (t, g, Remember (fpr, tim, dur, es)) ->
-    Printf.fprintf fmt "remember%s(%a, %a, %a, %a)"
+    Printf.fprintf oc "remember%s(%a, %a, %a, %a)"
       (sl g)
       (print with_types) fpr
       (print with_types) tim
@@ -611,15 +611,15 @@ let rec print with_types fmt =
       print_args es ;
     add_types t
   | StatefulFun (t, g, Distinct es) ->
-    Printf.fprintf fmt "distinct%s(%a)"
+    Printf.fprintf oc "distinct%s(%a)"
       (sl g)
       print_args es
   | StatefulFun (t, g, ExpSmooth (e1, e2)) ->
-    Printf.fprintf fmt "smooth%s(%a, %a)"
+    Printf.fprintf oc "smooth%s(%a, %a)"
       (sl g)  (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatefulFun (t, g, Hysteresis (meas, accept, max)) ->
-    Printf.fprintf fmt "hysteresis%s(%a, %a, %a)"
+    Printf.fprintf oc "hysteresis%s(%a, %a, %a)"
       (sl g)
       (print with_types) meas
       (print with_types) accept
@@ -629,7 +629,7 @@ let rec print with_types fmt =
                              duration }) ->
     let print_duration_opt oc duration =
       if duration > 0. then RamenParsing.print_duration oc duration in
-    Printf.fprintf fmt "%s %a in top %d%sby %a in the last %a at time %a"
+    Printf.fprintf oc "%s %a in top %d%sby %a in the last %a at time %a"
       (if want_rank then "rank of" else "is")
       (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) what
       n (sl g)
@@ -642,13 +642,13 @@ let rec print with_types fmt =
       if es <> [] then
         Printf.fprintf oc " BY %a"
           (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) es in
-    Printf.fprintf fmt "LAST %d %s%a%a"
+    Printf.fprintf oc "LAST %d %s%a%a"
       n (sl g)
       (print with_types) e
       print_by es ;
     add_types t
   | GeneratorFun (t, Split (e1, e2)) ->
-    Printf.fprintf fmt "split(%a, %a)"
+    Printf.fprintf oc "split(%a, %a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
 

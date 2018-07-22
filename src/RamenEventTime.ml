@@ -24,8 +24,8 @@ type event_duration =
 
 type t = (event_start * event_duration) [@@ppp PPP_OCaml]
 
-let print fmt (start_field, duration) =
-  Printf.fprintf fmt "EVENT STARTING AT %s AND %s"
+let print oc (start_field, duration) =
+  Printf.fprintf oc "EVENT STARTING AT %s AND %s"
     (string_of_field start_field)
     (match duration with
      (* FIXME: uses RamenExpr.print_duration: *)

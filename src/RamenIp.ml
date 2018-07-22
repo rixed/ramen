@@ -10,7 +10,7 @@ let to_string = function
   | V4 n -> RamenIpv4.to_string n
   | V6 n -> RamenIpv6.to_string n
 
-let print fmt n = String.print fmt (to_string n)
+let print oc n = String.print oc (to_string n)
 
 let of_string n =
   try V4 (RamenIpv4.of_string n)
@@ -26,7 +26,7 @@ struct
     | V4 n -> RamenIpv4.Cidr.to_string n
     | V6 n -> RamenIpv6.Cidr.to_string n
 
-  let print fmt t = String.print fmt (to_string t)
+  let print oc t = String.print oc (to_string t)
 
   let of_string n =
     try V4 (RamenIpv4.Cidr.of_string n)

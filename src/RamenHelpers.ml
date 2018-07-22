@@ -977,8 +977,8 @@ let time_of_reltime s =
 (* String interpreted in the local time zone: *)
 let time_of_abstime s =
   let s = String.lowercase s in
-  let scan fmt recv =
-    try Some (Scanf.sscanf s fmt recv)
+  let scan c recv =
+    try Some (Scanf.sscanf s c recv)
     with Scanf.Scan_failure _ -> None
   and eq str recv =
     if s = str then Some (recv ()) else None

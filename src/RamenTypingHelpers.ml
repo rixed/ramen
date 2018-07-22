@@ -20,15 +20,15 @@ type untyped_tuple =
   { mutable finished_typing : bool ;
     mutable fields : (string * Expr.typ) list }
 
-let print_untyped_tuple_fields fmt fs =
+let print_untyped_tuple_fields oc fs =
   List.print ~first:"{" ~last:"}" ~sep:", "
-    (fun fmt (name, expr_typ) ->
-      Printf.fprintf fmt "%s: %a"
+    (fun oc (name, expr_typ) ->
+      Printf.fprintf oc "%s: %a"
         name
-        Expr.print_typ expr_typ) fmt fs
+        Expr.print_typ expr_typ) oc fs
 
-let print_untyped_tuple fmt t =
-  Printf.fprintf fmt "%a (%s)"
+let print_untyped_tuple oc t =
+  Printf.fprintf oc "%a (%s)"
     print_untyped_tuple_fields t.fields
     (if t.finished_typing then "finished typing" else "to be typed")
 
@@ -51,11 +51,11 @@ let typing_is_finished = function
   | TypedTuple _ -> true
   | UntypedTuple t -> t.finished_typing
 
-let print_tuple_type fmt = function
+let print_tuple_type oc = function
   | UntypedTuple untyped_tuple ->
-      print_untyped_tuple fmt untyped_tuple
+      print_untyped_tuple oc untyped_tuple
   | TypedTuple t ->
-      RamenTuple.(print_typ fmt t.user)
+      RamenTuple.(print_typ oc t.user)
 
 exception BadTupleTypedness of string
 let typed_tuple_type = function

@@ -45,8 +45,8 @@ let list_print_as_vector p = List.print ~first:"[|" ~last:"|]" ~sep:"; " p
 let list_print_as_product p = List.print ~first:"(" ~last:")" ~sep:" * " p
 
 let print_tuple_deconstruct tuple =
-  let print_field fmt field_typ =
-      String.print fmt (id_of_field_typ ~tuple field_typ)
+  let print_field oc field_typ =
+      String.print oc (id_of_field_typ ~tuple field_typ)
   in
   list_print_as_tuple print_field
 
@@ -390,7 +390,7 @@ type args_as = Arg | Array of int | Tuple of int
 (* Implementation_of gives us the type operands must be converted to.
  * This printer wrap an expression into a converter according to its current
  * type. *)
-let rec conv_to ?state ~context ~consts to_typ fmt e =
+let rec conv_to ?state ~context ~consts to_typ oc e =
   let open RamenExpr in
   let t = typ_of e in
   if t.nullable = None then (
@@ -401,11 +401,11 @@ let rec conv_to ?state ~context ~consts to_typ fmt e =
   let nullable = Option.get t.nullable in
   match t.scalar_typ, to_typ with
   | Some a, Some b ->
-    Printf.fprintf fmt "(%a) (%a)"
+    Printf.fprintf oc "(%a) (%a)"
       (conv_from_to ~nullable) (a, b)
       (emit_expr ~context ~consts ?state) e
   | _, None ->
-    (emit_expr ~context ~consts ?state) fmt e (* No conversion required *)
+    (emit_expr ~context ~consts ?state) oc e (* No conversion required *)
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string print_structure b))
