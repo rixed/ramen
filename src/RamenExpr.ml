@@ -197,6 +197,10 @@ and stateless_fun2 =
   | IDiv
   | Mod
   | Pow
+  (* Compare a and b by computing:
+   *   min(abs(a-b), max(a, b)) / max(abs(a-b), max(a, b))
+   * Returns 0 when a = b. *)
+  | Reldiff
   | And
   | Or
   | Ge
@@ -414,6 +418,10 @@ let rec print with_types fmt =
     add_types t
   | StatelessFun2 (t, Div, e1, e2) ->
     Printf.fprintf fmt "(%a) / (%a)"
+      (print with_types) e1 (print with_types) e2 ;
+    add_types t
+  | StatelessFun2 (t, Reldiff, e1, e2) ->
+    Printf.fprintf fmt "reldiff((%a), (%a))"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
   | StatelessFun2 (t, IDiv, e1, e2) ->
@@ -1153,6 +1161,8 @@ struct
         StatelessFun2 (make_typ "get", VecGet, n, v)) |||
      (afun1v "print" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "print", Print (e :: es))) |||
+     (afun2 "reldiff" >>: fun (e1, e2) ->
+       StatelessFun2 (make_typ ~typ:TFloat "reldiff", Reldiff, e1, e2)) |||
      k_moveavg ||| cast ||| top_expr ||| nth ||| last) m
 
   and cast m =

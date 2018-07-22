@@ -836,7 +836,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     check_op op_typ return_bool [Some TString, None, e]
   | StatelessFun2 (op_typ, Pow, e1, e2) ->
     check_op op_typ return_float [Some TFloat, None, e1 ; Some TFloat, None, e2]
-  | StatelessFun2 (op_typ, Div, e1, e2) ->
+  | StatelessFun2 (op_typ, (Div|Reldiff), e1, e2) ->
     (* Same as above but always return a float *)
     check_op op_typ return_float [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, IDiv, e1, e2) ->

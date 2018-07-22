@@ -243,6 +243,10 @@ let strftime ?(gmt=false) str tim =
     String.nreplace ~str ~sub ~by
   ) str replacements
 
+let reldiff a b =
+  let d = abs_float (a -. b) and a = max a b in
+  if a = d then 0. else if d < a then d /. a else a /. d
+
 (* We often want functions that work on the last k elements, or the last k
  * periods of length p for seasonal data. So we often need a small sliding
  * window as a function internal state. If we could join between two different

@@ -538,6 +538,8 @@ and emit_expr ?state ~context ~consts oc expr =
     Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_)"
   | Finalize, StatelessFun2 (_, Div, e1, e2), Some (TFloat as t) ->
     emit_functionN ?state ~consts (omod_of_type t ^".div") [Some t; Some t] oc [e1; e2]
+  | Finalize, StatelessFun2 (_, Reldiff, e1, e2), Some TFloat ->
+    emit_functionN ?state ~consts "CodeGenLib.reldiff" [Some TFloat; Some TFloat] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Pow, e1, e2),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN ?state ~consts (omod_of_type t ^".( ** )") [Some t; Some t] oc [e1; e2]
