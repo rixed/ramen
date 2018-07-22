@@ -8,6 +8,13 @@ open Lwt
 
 let verbose_serialization = false
 
+let tot_fixsz tuple_typ =
+  List.fold_left (fun c t ->
+    let open RamenTypes in
+    if t.typ.structure = TString then c else
+    c + RingBufLib.sersize_of_fixsz_typ t.typ.structure
+  ) 0 tuple_typ
+
 let read_tuple ser_tuple_typ nullmask_size tx =
   (* Read all fields one by one *)
   if verbose_serialization then
