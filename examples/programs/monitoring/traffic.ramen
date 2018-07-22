@@ -34,9 +34,10 @@ DEFINE out_of_range_alert AS
     5-ma locally (bytes_per_secs < 100 OR bytes_per_secs > 8e3) >= 4 AS firing
   GROUP BY source, iface
   COMMIT, KEEP ALL AND
-    NOTIFY "Traffic" WITH PARAMETERS
-      "source"="${source}", "iface"="${iface}" AND
-      "thoughput"="${bytes_per_secs}"
+    NOTIFY "Traffic" WITH
+      "${source}" AS source,
+      "${iface}" AS iface AND
+      "${bytes_per_secs}" AS througput
   AFTER COALESCE (out.firing <> previous.firing, false)
   EVENT STARTING AT time;
 
@@ -49,6 +50,7 @@ DEFINE link_down_alert AS
   GROUP BY source, iface
   EVENT STARTING AT max_last
   COMMIT, KEEP ALL AND
-    NOTIFY "Interface DOWN" WITH PARAMETERS
-      "source"="${source}", "iface"="${iface}" AND "time"="${max_last}"
+    NOTIFY "Interface DOWN" WITH
+      "${source}" AS source,
+      "${iface}" AS iface
   AFTER COALESCE (out.firing != previous.firing, false);

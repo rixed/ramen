@@ -368,7 +368,7 @@ let check params =
   in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
-                commit_cond ; flush_how ; event_time ;
+                commit_cond ; flush_how ; event_time ; notifications ;
                 from ; every ; factors } as op ->
     (* Set of fields known to come from in (to help prefix_smart): *)
     let fields_from_in = ref Set.empty in
@@ -407,6 +407,10 @@ let check params =
       Option.may (prefix_def TupleIn) u_opt) sort ;
     prefix_smart where ;
     List.iter (prefix_def TupleIn) key ;
+    List.iter (fun notif ->
+      prefix_smart notif.notif_name ;
+      List.iter (fun (_n, v) -> prefix_smart v) notif.parameters
+    ) notifications ;
     prefix_smart commit_cond ;
     (match flush_how with
     | KeepOnly e | RemoveAll e -> prefix_def TupleGroup e
@@ -448,6 +452,14 @@ let check params =
       check_fields_from
         [ TupleParam; TupleEnv; TupleIn ] "Group-By KEY" k
     ) key ;
+    List.iter (fun notif ->
+      let check w e =
+        check_fields_from [ TupleParam; TupleEnv; TupleIn; TupleOut; ] w e in
+      check "notification name" notif.notif_name ;
+      List.iter (fun (n, v) ->
+        check ("notification parameter ("^ n ^")") v
+      ) notif.parameters
+    ) notifications ;
     check_fields_from
       [ TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleSelected;
         TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut;
@@ -603,17 +615,20 @@ struct
     | CommitSpec (* we would commit anyway, just a placeholder *)
 
   let notification_clause m =
-    let kv_list m =
+    let kv m =
       let m = "key-value list" :: m in
-      (quoted_string +- opt_blanks +- (char ':' ||| char '=') +-
-       opt_blanks ++ E.Parser.p) m in
-    let opt_with = optional ~def:() (blanks -- strinG "with") in
+      (
+        E.Parser.p +- blanks +- strinG "as" +- blanks ++ non_keyword >>:
+        fun (v, n) ->
+          n, E.(StatelessFun1
+                  (make_typ ~typ:TString ~nullable:false "cast", Cast,  v))
+      ) m in
     let notify_cmd m =
       let m = "notification" :: m in
       (strinG "notify" -- blanks -+ E.Parser.p ++
        optional ~def:[]
-         (opt_with -- blanks -- strinGs "parameter" -- blanks -+
-          several ~sep:list_sep_and kv_list) >>:
+         (blanks -- strinGs "with" -- blanks -+
+          several ~sep:list_sep_and kv) >>:
       fun (notif_name, parameters) ->
         { notif_name ; parameters }) m
     in

@@ -977,7 +977,7 @@ let aggregate
       (field_of_tuple_out : 'tuple_out -> string -> string)
       (field_of_params : string -> string)
       (get_notifications :
-        'tuple_out -> (string * (string * string) array) list)
+        'tuple_in -> 'tuple_out -> (string * (string * string) array) list)
       (every : float) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =
@@ -1010,7 +1010,7 @@ let aggregate
                   serialize_tuple in
     let outputer =
       let do_out tuple_in tuple_out =
-        let notifications = get_notifications tuple_out in
+        let notifications = get_notifications tuple_in tuple_out in
         if notifications <> [] then (
           let event_time = time_of_tuple tuple_out |> Option.map fst in
           Lwt_list.iter_s (fun notif ->

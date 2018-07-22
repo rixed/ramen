@@ -1251,17 +1251,15 @@ let check_aggregate ~parents ~in_type ~out_type ~params
   ) ||| (
     List.fold_left (fun changed notif ->
         (* notification names and parameter values must be strings: *)
-        let must_be_bool e =
-          let exp_type = Expr.typ_of notif.notif_name in
+        let must_be_bool e expr_name =
+          let exp_type = Expr.typ_of e in
           set_nullable exp_type false |||
-          set_scalar_type ~ok_if_larger:false ~expr_name:"notification name"
-                          exp_type TString |||
-          check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params
-                     notif.notif_name
+          set_scalar_type ~ok_if_larger:false ~expr_name exp_type TString |||
+          check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params e
         in
-        must_be_bool notif.notif_name |||
+        must_be_bool notif.notif_name "notification name" |||
         List.fold_left (fun changed (_n, v) ->
-          must_be_bool v ||| changed
+          must_be_bool v "notification parameter value" ||| changed
         ) false notif.parameters
       ) false notifications
   ) ||| (

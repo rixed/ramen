@@ -1979,13 +1979,15 @@ let emit_notification_tuple out_typ ~consts oc notif =
     "(%a,\n\t\t%a)"
     print_expr notif.notif_name
     (List.print ~first:"[|" ~last:"|]" ~sep:";\n\t\t  "
-      (Tuple2.print String.print print_expr)) notif.parameters
+      (fun oc (n, v) -> Printf.fprintf oc "%S, %a" n print_expr v))
+        notif.parameters
 
 (* We want a function that, when given the worker name, current time and the
  * output tuple, will return the list of RamenNotification.tuple to send: *)
-let emit_get_notifications name out_typ ~consts oc notifications =
-  Printf.fprintf oc "let %s %a =\n\t%a\n"
+let emit_get_notifications name in_typ mentioned out_typ ~consts oc notifications =
+  Printf.fprintf oc "let %s %a %a =\n\t%a\n"
     name
+    (emit_in_tuple mentioned) in_typ
     (emit_tuple TupleOut) out_typ
     (List.print ~sep:";\n\t\t" (emit_notification_tuple out_typ ~consts))
       notifications
@@ -2042,7 +2044,7 @@ let emit_aggregate consts params oc name in_typ out_typ = function
     (emit_merge_on "merge_on_" in_typ mentioned ~consts) (fst merge)
     (emit_sort_expr "sort_until_" in_typ mentioned ~consts) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
     (emit_sort_expr "sort_by_" in_typ mentioned ~consts) (match sort with Some (_, _, b) -> b | None -> [])
-    (emit_get_notifications "get_notifications_" out_typ ~consts) notifications ;
+    (emit_get_notifications "get_notifications_" in_typ mentioned out_typ ~consts) notifications ;
   Printf.fprintf oc "let %s () =\n\
       \tCodeGenLib.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
