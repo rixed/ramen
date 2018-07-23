@@ -456,7 +456,7 @@ let update_stats () =
   IntGauge.set stats_ram (tot_ram_usage ())
 
 (* Basic tuple without aggregate specific counters: *)
-let get_binocle_tuple worker ic sc gc : RamenBinocle.tuple =
+let get_binocle_tuple worker ic sc gc =
   let si v =
     if v < 0 then !logger.error "Negative int counter: %d" v ;
     Some (Uint64.of_int v) in
@@ -488,7 +488,7 @@ let update_stats_rb period rb_name get_tuple =
   let rb = RingBuf.load rb_name in
   while%lwt true do
     update_stats () ;
-    let tuple : RamenBinocle.tuple = get_tuple () in
+    let tuple = get_tuple () in
     send_stats rb tuple ;
     Lwt_unix.sleep period
   done

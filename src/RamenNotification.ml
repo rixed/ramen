@@ -6,10 +6,7 @@ open RamenLog
 open RamenTuple
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
- * tuple_typ below and the (un)serialization functions. *)
-type tuple =
-  string * float * float option * string * bool * (string * string) array
-
+ * the (un)serialization functions. *)
 let tuple_typ =
   let open RamenTypes in
   [ { typ_name = "worker" ; typ = { structure = TString ; nullable = Some false }} ;
