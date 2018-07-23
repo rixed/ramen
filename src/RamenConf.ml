@@ -296,12 +296,12 @@ let out_ringbuf_names_ref conf func =
 
 (* Finally, operations have two additional output streams: one for
  * instrumentation statistics, and one for notifications. Both are
- * common to all running operations. *)
+ * common to all running operations, low traffic, and archived. *)
 let report_ringbuf conf =
   conf.persist_dir ^"/instrumentation_ringbuf/"
                    ^ RamenVersions.instrumentation_tuple ^"_"
                    ^ RamenVersions.ringbuf
-                   ^"/ringbuf.b"
+                   ^"/ringbuf.r"
 
 let notify_ringbuf conf =
   conf.persist_dir ^"/notify_ringbuf/"
@@ -309,6 +309,7 @@ let notify_ringbuf conf =
                    ^ RamenVersions.ringbuf
                    ^"/ringbuf.r"
 
+(* This is not a ringbuffer but a mere snapshot of the notifier state: *)
 let pending_notifications_file conf =
   conf.persist_dir ^"/pending_notifications_"
                    ^ RamenVersions.pending_notify ^"_"

@@ -38,7 +38,7 @@ let repair_and_warn what rb =
 (* Prepare ringbuffer for notifications *)
 let prepare_notifs conf =
   let rb_name = C.notify_ringbuf conf in
-  RingBuf.create rb_name ;
+  RingBuf.create ~wrap:false rb_name ;
   let notify_rb = RingBuf.load rb_name in
   repair_and_warn "notifications" notify_rb ;
   notify_rb
@@ -155,7 +155,9 @@ let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
     let arcdir =
       conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf
     and reportdir =
-      Filename.dirname (RamenConf.report_ringbuf conf) in
+      Filename.dirname (RamenConf.report_ringbuf conf)
+    and notifdir =
+      Filename.dirname (RamenConf.notify_ringbuf conf) in
     let clean_seq_archives dir =
       (* Delete all files matching %d_%d_%a_%a.r but the last ones: *)
       let files = RingBufLib.arc_files_of dir |> Array.of_enum in
@@ -173,6 +175,7 @@ let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
     in
     dir_subtree_iter ~on_dir arcdir ;
     dir_subtree_iter ~on_dir reportdir ;
+    dir_subtree_iter ~on_dir notifdir ;
     RamenWatchdog.reset clean_watchdog ;
     Lwt_unix.sleep sleep_time >>= loop
   in
