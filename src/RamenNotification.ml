@@ -65,9 +65,14 @@ let unserialize tx =
   let offs = offs + RingBufLib.sersize_of_string name in
   let nb_params = RingBuf.read_u32 tx offs |> Uint32.to_int in
   let offs = offs + RingBufLib.sersize_of_u32 in
+  (* We also have the vector internal nullmask, even though the parameters
+   * cannot be NULL: *)
+  let offs = offs + RingBufLib.nullmask_sz_of_vector nb_params in
   let offs = ref offs in
   let parameters =
     Array.init nb_params (fun i ->
+      (* Also need to skip the tuple (pair) internal nullmask: *)
+      offs := !offs + RingBufLib.nullmask_sz_of_vector 2 ;
       let n = RingBuf.read_string tx !offs in
       offs := !offs + RingBufLib.sersize_of_string n ;
       let v = RingBuf.read_string tx !offs in

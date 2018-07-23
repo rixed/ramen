@@ -175,7 +175,8 @@ let rec write_value tx offs = function
   | VNull -> assert false
 
 (* Tuples are serialized as the succession of the values, after the local
- * nullmask. *)
+ * nullmask. Since we don't know any longer if the values are nullable,
+ * the nullmask has one bit per value in any cases. *)
 and write_tuple tx offs vs =
   let nullmask_sz = nullmask_sz_of_tuple vs in
   zero_bytes tx offs nullmask_sz ;
@@ -229,6 +230,9 @@ and read_constructed_value tx t o bi =
   o := !o + sersize_of_value v ;
   v
 
+(* Tuples, vectors and lists come with a separate nullmask as a prefix,
+ * with one bit per element regardless of their nullability (because
+ * although we knoe the type, write_tuple do not): *)
 and read_tuple ts tx offs =
   let nullmask_sz = nullmask_sz_of_tuple ts in
   let o = ref (offs + nullmask_sz) in
@@ -244,7 +248,6 @@ and read_vector d t tx offs =
   Array.init d (fun i ->
     read_constructed_value tx t o (bi + i))
 
-(* Lists come with a separate nullmask as a prefix: *)
 and read_list t tx offs =
   let d = read_u32 tx offs |> Uint32.to_int in
   let bi = (offs + sersize_of_u32) * 8 in
@@ -456,8 +459,17 @@ let serialize_notification tx
   let offs =
     write_u32 tx offs (Array.length parameters |> Uint32.of_int) ;
     offs + sersize_of_u32 in
+  (* Also the internal nullmask, even though the parameters cannot be
+   * NULL: *)
+  let int_nullmask_sz = nullmask_sz_of_vector (Array.length parameters) in
+  zero_bytes tx offs int_nullmask_sz ;
+  let offs = offs + int_nullmask_sz in
+  (* Now the vector elements: *)
   let offs =
     Array.fold_left (fun offs (n, v) ->
+      (* But wait, this is a tuple, which also requires its nullmask for 2
+       * elements: *)
+      let offs = offs + nullmask_sz_of_vector 2 in
       RingBuf.write_string tx offs n ;
       let offs = offs + sersize_of_string n in
       RingBuf.write_string tx offs v ;
@@ -469,8 +481,11 @@ let serialize_notification tx
 let max_sersize_of_notification (worker, _, _, name, parameters) =
   let psz =
     Array.fold_left (fun sz (n, v) ->
-      sz + sersize_of_string n + sersize_of_string v
-    ) sersize_of_u32 parameters
+      sz +
+      nullmask_sz_of_vector 2 +
+      sersize_of_string n + sersize_of_string v
+    ) (sersize_of_u32 + nullmask_sz_of_vector (Array.length parameters))
+      parameters
   in
   notification_nullmask_sz + notification_fixsz + sersize_of_string worker +
   sersize_of_string name + psz
