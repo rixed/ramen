@@ -1096,6 +1096,12 @@ let split_string ~sep ~opn ~cls s =
     (split_string ~sep:';' ~opn:'(' ~cls:')' "(  pas ;  glop)  ")
 *)
 
+let fail_with_context ctx f =
+  try f () with e ->
+    Printf.sprintf "While %s: %s"
+      ctx (Printexc.to_string e) |>
+    failwith
+
 let ppp_of_file ?(error_ok=false) ppp =
   let reread fname =
     !logger.debug "Have to reread %S" fname ;
@@ -1108,7 +1114,9 @@ let ppp_of_file ?(error_ok=false) ppp =
     | ic ->
         finally
           (fun () -> Legacy.close_in ic)
-          (PPP.of_in_channel_exc ppp) ic in
+          (fun ic ->
+            fail_with_context ("parsing file "^ fname)
+              (fun () -> PPP.of_in_channel_exc ppp ic)) ic in
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
   cached cache_name reread mtime_of_file
 

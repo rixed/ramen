@@ -57,7 +57,9 @@ struct
              | Some (Some method_, Some id), None -> { method_ ; id ; params = "" }
              | _ -> assert false))
 
-  let parse = PPP.of_string_exc req_ppp
+  let parse =
+    fail_with_context "Parsing JSON" (fun () ->
+      PPP.of_string_exc req_ppp)
 end
 
 (*
@@ -78,7 +80,9 @@ type get_tables_req = { prefix : string } [@@ppp PPP_JSON]
 type get_tables_resp = string list [@@ppp PPP_JSON]
 
 let get_tables conf msg =
-  let req = PPP.of_string_exc get_tables_req_ppp_json msg in
+  let req =
+    fail_with_context "parsing get-tables request" (fun () ->
+      PPP.of_string_exc get_tables_req_ppp_json msg) in
   let%lwt tables =
     C.with_rlock conf (fun programs ->
       Hashtbl.fold (fun _prog_name get_rc lst ->
@@ -164,7 +168,8 @@ let columns_of_table conf table =
   | Some func -> return_some (columns_of_func func)
 
 let get_columns conf msg =
-  let req = PPP.of_string_exc get_columns_req_ppp_json msg in
+  let req = fail_with_context "parsing get-columns request" (fun () ->
+    PPP.of_string_exc get_columns_req_ppp_json msg) in
   let h = Hashtbl.create 9 in
   Lwt_list.iter_p (fun table ->
     match%lwt columns_of_table conf table with
@@ -204,7 +209,8 @@ and table_values = (string, float option array) Hashtbl.t
   [@@ppp PPP_JSON]
 
 let get_timeseries conf msg =
-  let req = PPP.of_string_exc get_timeseries_req_ppp_json msg in
+  let req = fail_with_context "parsing get-timeseries request" (fun () ->
+    PPP.of_string_exc get_timeseries_req_ppp_json msg) in
   let times = Array.make_float req.nb_points in
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
