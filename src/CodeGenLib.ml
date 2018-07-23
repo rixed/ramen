@@ -710,13 +710,14 @@ let listen_on (collector :
     let while_ () = !quit = None in
     collector ~inet_addr ~port ~while_ outputer)
 
-let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
+let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
+                    unserialize_tuple ringbuf_envvar worker_time_of_tuple =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
   worker_start worker_name get_binocle_tuple (fun conf ->
     let bname =
-      getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf" in
+      getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar in
     let rb_ref_out_fname =
       getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     in
@@ -740,8 +741,8 @@ let instrumentation from sersize_of_tuple time_of_tuple serialize_tuple =
         !logger.info "Reading buffer..." ;
         let%lwt () =
           RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
-            let worker, time, _, _, _, _, _, _, _, _, _, _, _ as tuple =
-              RamenBinocle.unserialize tx in
+            let tuple = unserialize_tuple tx in
+            let worker, time = worker_time_of_tuple tuple in
             (* Filter by time and worker *)
             if time >= start && match_from worker then
               let%lwt () = outputer tuple in

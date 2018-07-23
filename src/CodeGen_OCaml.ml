@@ -1428,13 +1428,12 @@ let emit_listen_on consts params oc name net_addr port proto =
     (Unix.string_of_inet_addr net_addr) port
     (string_of_proto proto)
 
-let emit_instrumentation consts params oc name from =
+let emit_well_known consts params oc name from tuple_typ event_time
+                    unserializer_name ringbuf_envvar worker_and_time =
   let open RamenProtocols in
-  let tuple_typ = RamenBinocle.tuple_typ in
-  let event_time = RamenBinocle.event_time in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
-      \tCodeGenLib.instrumentation %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
+      \tCodeGenLib.read_well_known %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_ %s %S %s\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_time_of_tuple "time_of_tuple_" params event_time) tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
@@ -1444,6 +1443,7 @@ let emit_instrumentation consts params oc name from =
         | GlobPattern s -> s
         | NamedOperation id -> string_of_func_id id
         | SubQuery _ -> assert false))) from
+   unserializer_name ringbuf_envvar worker_and_time
 
 (* tuple must be some kind of _input_ tuple *)
 let emit_in_tuple ?(tuple=TupleIn) mentioned oc in_typ =
@@ -2120,7 +2120,15 @@ let emit_operation name func_name in_typ out_typ params op oc =
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on consts params code name net_addr port proto
   | Instrumentation { from } ->
-    emit_instrumentation consts params code name from
+    emit_well_known consts params code name from
+      RamenBinocle.tuple_typ RamenBinocle.event_time
+      "RamenBinocle.unserialize" "report_ringbuf"
+      "(fun (w, t, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
+  | Notifications { from } ->
+    emit_well_known consts params code name from
+      RamenNotification.tuple_typ RamenNotification.event_time
+      "RamenNotification.unserialize" "notifs_ringbuf"
+      "(fun (w, t, _, _, _, _) -> w, t)"
   | Aggregate _ ->
     emit_aggregate consts params code name in_typ out_typ op) ;
   Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\

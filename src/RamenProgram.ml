@@ -269,6 +269,10 @@ let reify_subqueries funcs =
         let funcs, from = expurgate from in
         { func with operation = Instrumentation { from } } ::
           funcs @ fs
+    | Notifications ({ from ; _ }) ->
+        let funcs, from = expurgate from in
+        { func with operation = Notifications { from } } ::
+          funcs @ fs
     | _ -> func :: fs
   ) [] funcs
 
@@ -307,6 +311,9 @@ let common_fields_of_from root_path funcs from =
                   List.map (fun f -> f.RamenTuple.typ_name)
               | Instrumentation _ ->
                   RamenBinocle.tuple_typ |>
+                  List.map (fun f -> f.RamenTuple.typ_name)
+              | Notifications _ ->
+                  RamenNotification.tuple_typ |>
                   List.map (fun f -> f.RamenTuple.typ_name)))
       | NamedOperation (Some (pn, _), fn) ->
           let par_rc =

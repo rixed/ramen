@@ -952,6 +952,8 @@ let id_or_type_of_field op name =
       FieldType (find_field_type (RamenProtocols.tuple_typ_of_proto proto))
   | Instrumentation _ ->
       FieldType (find_field_type RamenBinocle.tuple_typ)
+  | Notifications _ ->
+      FieldType (find_field_type RamenNotification.tuple_typ)
 
 (* Reading already compiled parents, set the type of fields originating from
  * external parents, parameters and environment, once and for all: *)
@@ -1307,6 +1309,8 @@ let set_io_tuples parents funcs h =
         set_type out_type (RamenProtocols.tuple_typ_of_proto proto)
     | Instrumentation _ ->
         set_type out_type RamenBinocle.tuple_typ
+    | Notifications _ ->
+        set_type out_type RamenNotification.tuple_typ
   in
   let set_non_star_inputs func =
     let in_type = untyped_tuple_type func.Func.in_type in
@@ -1341,6 +1345,7 @@ let set_io_tuples parents funcs h =
     | ReadCSVFile _ -> set_type in_type []
     | ListenFor _ -> set_type in_type []
     | Instrumentation _ -> set_type in_type []
+    | Notifications _ -> set_type in_type []
   in
   (* We must set outputs before inputs: *)
   Hashtbl.iter (fun _ -> set_non_star_outputs) funcs ;

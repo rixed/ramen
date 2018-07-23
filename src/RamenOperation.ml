@@ -135,9 +135,10 @@ type t =
       port : int ;
       proto : RamenProtocols.net_protocol ;
       factors : string list }
-  | Instrumentation of {
-      from : data_source list ;
-      (* factors are hardcoded *) }
+  (* For those factors, event time etc are hardcoded, and data sources
+   * can not be sub-queries: *)
+  | Instrumentation of { from : data_source list }
+  | Notifications of { from : data_source list }
 
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
@@ -221,6 +222,10 @@ and print oc =
     Printf.fprintf oc "LISTEN FOR INSTRUMENTATION%a"
       (List.print ~first:" FROM " ~last:"" ~sep:", "
         print_data_source) from
+  | Notifications { from } ->
+    Printf.fprintf oc "LISTEN FOR NOTIFICATIONS%a"
+      (List.print ~first:" FROM " ~last:"" ~sep:", "
+        print_data_source) from
 
 let func_id_of_data_source = function
   | NamedOperation id -> id
@@ -242,11 +247,13 @@ let event_time_of_operation = function
       RamenProtocols.event_time_of_proto proto
   | Instrumentation _ ->
       RamenBinocle.event_time
+  | Notifications _ ->
+      RamenNotification.event_time
 
 let parents_of_operation = function
   | ListenFor _ | ReadCSVFile _
-  (* Note that instrumentation has a from clause but no actual parents: *)
-  | Instrumentation _ -> []
+  (* Note that those have a from clause but no actual parents: *)
+  | Instrumentation _ | Notifications _ -> []
   | Aggregate { from ; _ } ->
       List.map func_id_of_data_source from
 
@@ -257,12 +264,13 @@ let factors_of_operation = function
       if factors <> [] then factors
       else RamenProtocols.factors_of_proto proto
   | Instrumentation _ -> RamenBinocle.factors
+  | Notifications _ -> RamenNotification.factors
 
 (* We need some tools to fold/iterate over all expressions contained in an
  * operation. We always do so depth first. *)
 
 let fold_top_level_expr init f = function
-  | ListenFor _ | ReadCSVFile _ | Instrumentation _ -> init
+  | ListenFor _ | ReadCSVFile _ | Instrumentation _ | Notifications _ -> init
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
                 flush_how ; notifications ; _ } ->
       let x =
@@ -501,7 +509,7 @@ let check params =
     check_factors field_names factors
     (* FIXME: check the field type declarations use only scalar types *)
 
-  | Instrumentation _ -> ()
+  | Instrumentation _ | Notifications _ -> ()
 
 module Parser =
 struct
@@ -714,8 +722,8 @@ struct
   let instrumentation_clause m =
     let m = "read instrumentation operation" :: m in
     (strinG "listen" -- blanks --
-     optional ~def:() (strinG "for" -- blanks) --
-     strinG "instrumentation") m
+     optional ~def:() (strinG "for" -- blanks) -+
+     (that_string "instrumentation" ||| that_string "notifications")) m
 
   (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
   let read_file_specs m =
@@ -764,7 +772,7 @@ struct
     | FromClause of data_source list
     | EveryClause of float
     | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
-    | InstrumentationClause
+    | InstrumentationClause of string
     | ExternalDataClause of file_spec
     | PreprocessorClause of string
     | CsvSpecsClause of csv_specs
@@ -815,7 +823,7 @@ struct
       (from_clause >>: fun c -> FromClause c) |||
       (every_clause >>: fun c -> EveryClause c) |||
       (listen_clause >>: fun c -> ListenClause c) |||
-      (instrumentation_clause >>: fun () -> InstrumentationClause) |||
+      (instrumentation_clause >>: fun c -> InstrumentationClause c) |||
       (read_file_specs >>: fun c -> ExternalDataClause c) |||
       (preprocessor_clause >>: fun c -> PreprocessorClause c) |||
       (csv_specs >>: fun c -> CsvSpecsClause c) |||
@@ -833,7 +841,7 @@ struct
       and default_from = []
       and default_every = 0.
       and default_listen = None
-      and default_instrumentation = false
+      and default_instrumentation = ""
       and default_ext_data = None
       and default_preprocessor = ""
       and default_csv_specs = None
@@ -903,9 +911,9 @@ struct
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, Some l,
               instrumentation, ext_data, preprocessor, csv_specs, factors
-            | InstrumentationClause ->
+            | InstrumentationClause c ->
               select_fields, and_all_others, merge, sort, where,
-              event_time, key, commit, from, every, listen, true,
+              event_time, key, commit, from, every, listen, c,
               ext_data, preprocessor, csv_specs, factors
             | ExternalDataClause c ->
               select_fields, and_all_others, merge, sort, where,
@@ -937,7 +945,7 @@ struct
         where == default_where && key == default_key &&
         commit == default_commit
       and not_listen = listen = None || from != default_from || every <> 0.
-      and not_instrumentation = instrumentation = false
+      and not_instrumentation = instrumentation = ""
       and not_csv =
         ext_data = None && preprocessor == default_preprocessor &&
         csv_specs = None || from != default_from || every <> 0.
@@ -970,7 +978,10 @@ struct
       else if not_aggregate && not_listen && not_csv && not_listen &&
               not_factors
       then
-        Instrumentation { from }
+        if String.lowercase instrumentation = "instrumentation" then
+          Instrumentation { from }
+        else
+          Notifications { from }
       else
         raise (Reject "Incompatible mix of clauses")
     ) m

@@ -1329,6 +1329,10 @@ let check_operation operation parents func params =
     set_well_known_type RamenBinocle.tuple_typ ;
     false
 
+  | Notifications _ ->
+    set_well_known_type RamenNotification.tuple_typ ;
+    false
+
 (*
  * Type inference for the graph
  *)
