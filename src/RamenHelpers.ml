@@ -172,39 +172,19 @@ let mkdir_all ?(is_file=false) dir =
     ) in
   ensure_exist dir
 
-let file_exists ?(maybe_empty=true) ?(has_perms=0) fname =
+let file_exists ?(maybe_empty=true) ?(min_size=0) ?(has_perms=0) fname =
   let open Unix in
   match stat fname with
   | exception _ -> false
   | s ->
     (maybe_empty || s.st_size > 0) &&
-    s.st_perm land has_perms = has_perms
+    s.st_perm land has_perms = has_perms &&
+    s.st_size >= min_size
 
 let is_empty_file fname =
   let open Unix in
   let s = stat fname in
   s.st_size = 0
-
-let ensure_file_exists ?contents fname =
-  mkdir_all ~is_file:true fname ;
-  (* FIXME: race condition *)
-  if not (file_exists fname) ||
-    (* Check the file has the minimum contents: *)
-    contents <> None && is_empty_file fname then (
-    !logger.debug "Creating file fname" ;
-    let open Unix in
-    let fd = openfile fname [O_CREAT;O_WRONLY] 0o644 in
-    Option.may (fun s ->
-      single_write_substring fd s 0 (String.length s) |> ignore
-    ) contents ;
-    close fd)
-
-let uniquify_filename fname =
-  let rec loop n =
-    let fname = fname ^"."^ string_of_int n in
-    if file_exists fname then loop (n + 1) else fname
-  in
-  if file_exists fname then loop 0 else fname
 
 let mtime_of_file fname =
   let open Unix in
@@ -221,6 +201,54 @@ let file_is_older_than age fname =
     let now = Unix.gettimeofday () in
     mtime > now -. age
   with _ -> false
+
+let rec ensure_file_exists ?(contents="") fname =
+  mkdir_all ~is_file:true fname ;
+  (* If needed, create the file with the initial content, atomically: *)
+  let open Unix in
+  let min_size = String.length contents in
+  let file_is_ok () =
+    file_exists ~min_size fname in
+  (* But first, check if the file is already there with the proper size
+   * (without opening it, or the following O_EXCL dance won't work!): *)
+  if not (file_is_ok ()) then
+    match openfile fname [O_CREAT; O_EXCL; O_WRONLY] 0o644 with
+    | exception Unix_error (EEXIST, _, _) ->
+        (* Not my business, wait until the file length is at least that
+         * of contents, which realistically shouldnot take more than 1s: *)
+        let copy = fname ^".bad" in
+        let redo () =
+          ignore_exceptions Unix.unlink copy ;
+          log_exceptions ~what:("copy "^fname^" to "^ copy)
+            (Unix.rename fname) copy ;
+          ensure_file_exists ~contents fname
+        in
+        if file_is_older_than 2. fname then (
+          !logger.debug "File %s is an old left-over, let's redo it" fname ;
+          redo ()
+        ) else (
+          (* Wait for some other concurrent process to rebuild it: *)
+          Unix.sleep 1 ;
+          if not (file_is_ok ()) then (
+            (* Weird, let's complain. *)
+            !logger.error "File %s is missing or too small to be valid (>%d), \
+              and nobody seems to care. Make a copy in %s and re-create it!"
+                fname min_size copy ;
+            redo ()))
+    | fd ->
+        !logger.debug "Creating file %s with initial content %S"
+          fname contents ;
+        if contents <> "" then
+          single_write_substring fd contents 0 (String.length contents) |>
+            ignore ;
+        close fd
+
+let uniquify_filename fname =
+  let rec loop n =
+    let fname = fname ^"."^ string_of_int n in
+    if file_exists fname then loop (n + 1) else fname
+  in
+  if file_exists fname then loop 0 else fname
 
 (* Will call on_dir and on_file with both the absolute file name and then the
  * name from the given root. *)
