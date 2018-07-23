@@ -40,6 +40,21 @@ let bucket_min b =
 let bucket_max b =
   if b.count = 0 then None else Some b.max
 
+(* Some ringbuf are always available and their type known:
+ * instrumentation, notifications. *)
+let read_well_known func_name where suffix bname typ () =
+  if func_name = suffix || String.ends_with func_name ("#"^suffix) then
+    let typ = RamenTuple.{ user = typ ; ser = typ } in
+    let where_filter = RamenSerialization.filter_tuple_by typ.ser where in
+    let wi = RamenSerialization.find_field_index typ.ser "worker" in
+    let filter =
+      if func_name = suffix then where_filter else
+      let func_name, _ = String.rsplit func_name ~by:"#" in
+      fun tuple ->
+        tuple.(wi) = RamenTypes.VString func_name &&
+        where_filter tuple in
+    Some (bname, filter, typ)
+  else None
 
 (* Enumerates all the time*values.
  * Returns the array of factor-column and the Enum.t of data.
@@ -70,28 +85,27 @@ let get conf ?duration max_data_points since until where factors
   let nb_data_fields = List.length data_fields in
   let%lwt bname, filter, typ, params, event_time =
     (* Read directly from the instrumentation ringbuf when func_name ends
-     * with "#stats" *)
-    if func_name = "stats" || String.ends_with func_name "#stats" then
-      let typ = RamenTuple.{ user = RamenBinocle.tuple_typ ;
-                             ser = RamenBinocle.tuple_typ } in
-      let where_filter = RamenSerialization.filter_tuple_by typ.ser where in
-      let wi = RamenSerialization.find_field_index typ.ser "worker" in
-      let filter =
-        if func_name = "stats" then where_filter else
-        let func_name, _ = String.rsplit func_name ~by:"#" in
-        fun tuple ->
-          tuple.(wi) = RamenTypes.VString func_name &&
-          where_filter tuple in
-      let bname = C.report_ringbuf conf in
-      return (bname, filter, typ, [], RamenBinocle.event_time)
-    else
-      (* Create the non-wrapping RingBuf (under a standard name given
-       * by RamenConf *)
-      let%lwt prog, func, bname =
-        RamenExport.make_temp_export_by_name conf ?duration func_name in
-      let typ = func.F.out_type in
-      let filter = RamenSerialization.filter_tuple_by typ.ser where in
-      return (bname, filter, typ, prog.P.params, func.F.event_time)
+     * with "#stats": *)
+    match read_well_known func_name where "stats"
+            (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
+    | Some (bname, filter, typ) ->
+        return (bname, filter, typ, [], RamenBinocle.event_time)
+    | None ->
+        (* Or from the notifications ringbuf when func_name ends with
+         * "#notifs": *)
+        (match read_well_known func_name where "notifs"
+                 (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
+        | Some (bname, filter, typ) ->
+            return (bname, filter, typ, [], RamenNotification.event_time)
+        | None ->
+            (* Normal case: Create the non-wrapping RingBuf (under a standard
+             * name given by RamenConf *)
+            let%lwt prog, func, bname =
+              RamenExport.make_temp_export_by_name conf ?duration func_name
+            in
+            let typ = func.F.out_type in
+            let filter = RamenSerialization.filter_tuple_by typ.ser where in
+            return (bname, filter, typ, prog.P.params, func.F.event_time))
   in
   let open RamenSerialization in
   let fis =

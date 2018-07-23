@@ -517,28 +517,15 @@ let tail conf func_name with_header sep null raw
   let last =
     if last = None && min_seq = None && max_seq = None then Some 10
     else last in
-  let try_well_known suffix get_bname typ () =
-    if func_name = suffix || String.ends_with func_name ("#"^suffix) then
-      let typ = RamenTuple.{ user = typ ; ser = typ } in
-      let where_filter = RamenSerialization.filter_tuple_by typ.ser where in
-      let wi = RamenSerialization.find_field_index typ.ser "worker" in
-      let filter =
-        if func_name = suffix then where_filter else
-        let func_name, _ = String.rsplit func_name ~by:"#" in
-        fun tuple ->
-          tuple.(wi) = RamenTypes.VString func_name &&
-          where_filter tuple in
-      let bname = get_bname conf in
-      Some (bname, filter, typ)
-    else None
-  in
   let bname, filter, typ =
     [ (* Read directly from the instrumentation ringbuf when func_name ends
        * with "#stats" *)
-      try_well_known "stats" C.report_ringbuf RamenBinocle.tuple_typ ;
+      RamenTimeseries.read_well_known func_name where "stats"
+        (C.report_ringbuf conf) RamenBinocle.tuple_typ ;
       (* Similarly, reads from the notification ringbuf when func_name ends
        * with "#notifs" *)
-      try_well_known "notifs" C.notify_ringbuf RamenNotification.tuple_typ ;
+      RamenTimeseries.read_well_known func_name where "notifs"
+        (C.notify_ringbuf conf) RamenNotification.tuple_typ ;
       (* Normal worker output: Create the non-wrapping RingBuf under a
        * standard name given by RamenConf *)
       fun () -> Lwt_main.run (
