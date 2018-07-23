@@ -677,9 +677,9 @@ let synchronize_running conf autoreload_delay =
   let synchronize must_run running =
     (* First, remove from running all terminated processes that must not run
      * any longer. Send a kill to those that are still running. *)
-    let prev_nb_running = Hashtbl.length running in
+    let prev_num_running = Hashtbl.length running in
     IntGauge.set stats_worker_count (Hashtbl.length must_run) ;
-    IntGauge.set stats_worker_running prev_nb_running ;
+    IntGauge.set stats_worker_running prev_num_running ;
     let to_kill = ref [] and to_start = ref []
     and (+=) r x = r := x :: !r in
     Hashtbl.filteri_inplace (fun k proc ->
@@ -701,8 +701,8 @@ let synchronize_running conf autoreload_delay =
            * dead and then restart it. *)
           if proc.last_killed <> 0. then to_kill += proc
     ) must_run ;
-    let nb_running = Hashtbl.length running in
-    if !quit <> None && nb_running > 0 && nb_running <> prev_nb_running then
+    let num_running = Hashtbl.length running in
+    if !quit <> None && num_running > 0 && num_running <> prev_num_running then
       !logger.info "Still %d processes running"
         (Hashtbl.length running) ;
     (* See preamble discussion about autoreload for why workers must be

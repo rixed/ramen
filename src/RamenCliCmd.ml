@@ -291,7 +291,7 @@ let kill conf program_names () =
   logger := make_logger conf.C.debug ;
   let program_names =
     List.map Globs.compile program_names in
-  let nb_kills =
+  let num_kills =
     Lwt_main.run (
       C.with_wlock conf (fun running_programs ->
         let killed_prog_names =
@@ -310,7 +310,7 @@ let kill conf program_names () =
         ) running_programs ;
         return (before - Hashtbl.length running_programs))) in
   Printf.printf "Killed %d program%s\n"
-    nb_kills (if nb_kills > 1 then "s" else "")
+    num_kills (if num_kills > 1 then "s" else "")
 
 (*
  * `ramen ps`

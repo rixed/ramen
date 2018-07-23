@@ -97,7 +97,7 @@ let test_output func bname output_spec =
       Unix.gettimeofday () -. start < output_spec.timeout) in
   let unserialize = RamenSerialization.read_tuple ser_type nullmask_sz in
   !logger.debug "Enumerating tuples from %s" bname ;
-  let%lwt nb_tuples =
+  let%lwt num_tuples =
     RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
       let tuple = unserialize tx in
       !logger.debug "Read a tuple out of operation %S"
@@ -144,7 +144,7 @@ let test_output func bname output_spec =
   let msg =
     if success then "" else
     (Printf.sprintf "Enumerated %d tuple%s from %s"
-      nb_tuples (if nb_tuples > 0 then "s" else "")
+      num_tuples (if num_tuples > 0 then "s" else "")
       (RamenName.string_of_fq (F.fq_name func)))^
     (if !tuples_to_find = [] then "" else
       " but could not find these tuples: "^
@@ -275,7 +275,7 @@ let test_one conf root_path notify_rb dirname test =
   (* Wrap the testers into threads that update this status and set
    * the quit flag: *)
   let all_good = ref true in
-  let nb_tests_left = ref (List.length tester_threads) in
+  let num_tests_left = ref (List.length tester_threads) in
   let tester_threads =
     List.map (fun thd ->
       let%lwt success, msg = thd () in
@@ -283,8 +283,8 @@ let test_one conf root_path notify_rb dirname test =
         all_good := false ;
         !logger.error "Failure: %s\n" msg
       ) ;
-      decr nb_tests_left ;
-      if !nb_tests_left <= 0 then (
+      decr num_tests_left ;
+      if !num_tests_left <= 0 then (
         !logger.info "Finished all tests" ;
         (* Stop all workers *)
         C.with_wlock conf (fun running_programs ->

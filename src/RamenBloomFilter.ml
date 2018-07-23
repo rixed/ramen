@@ -6,15 +6,15 @@ open RamenHelpers
 (* TODO: use RamenBitmask *)
 type t =
   { bytes : Bytes.t ;
-    nb_bits : int ; nb_keys : int ;
+    num_bits : int ; num_keys : int ;
     salt : int list ;
-    mutable nb_bits_set : int }
+    mutable num_bits_set : int }
 
-let make nb_bits nb_keys =
-  let len = (nb_bits + 7)/ 8 in
+let make num_bits num_keys =
+  let len = (num_bits + 7)/ 8 in
   { bytes = Bytes.make len (Char.chr 0) ;
-    nb_bits ; nb_keys ; nb_bits_set = 0 ;
-    salt = List.init nb_keys (fun _ -> Random.int max_int_for_random) }
+    num_bits ; num_keys ; num_bits_set = 0 ;
+    salt = List.init num_keys (fun _ -> Random.int max_int_for_random) }
 
 let bit_loc_of_bit b =
   b lsr 3, b land 7
@@ -25,10 +25,10 @@ let get_bit t b =
   (n lsr b_off) land 1 = 1
 
 let fill_ratio t =
-  float_of_int t.nb_bits_set /. float_of_int t.nb_bits
+  float_of_int t.num_bits_set /. float_of_int t.num_bits
 
 let false_positive_likelihood t =
-  let k = float_of_int t.nb_keys in
+  let k = float_of_int t.num_keys in
   (1. -. exp ~-.(k *. fill_ratio t)) ** k
 
 let set_bit t b =
@@ -36,7 +36,7 @@ let set_bit t b =
   let n = Bytes.get t.bytes idx |> Char.code in
   let mask = 1 lsl b_off in
   if n land mask = 0 then (
-    t.nb_bits_set <- t.nb_bits_set + 1 ;
+    t.num_bits_set <- t.num_bits_set + 1 ;
     Bytes.set t.bytes idx (Char.chr (n lor (1 lsl b_off)))
   )
 
@@ -57,7 +57,7 @@ let key t x =
 
 let get_by_key t k =
   List.exists (fun h ->
-    let b = h mod t.nb_bits in
+    let b = h mod t.num_bits in
     not (get_bit t b)) k |> not
 
 let get t x =
@@ -66,7 +66,7 @@ let get t x =
 
 let set_by_key t k =
   List.iter (fun h ->
-    let b = h mod t.nb_bits in
+    let b = h mod t.num_bits in
     set_bit t b) k
 
 let set t x =
@@ -95,29 +95,29 @@ type slice =
 type sliced_filter =
   { slices : slice array ;
     slice_width : float ;
-    nb_keys : int ;
-    nb_bits_per_item : float ;
+    num_keys : int ;
+    num_bits_per_item : float ;
     mutable current : int }
 
-let make_slice nb_bits nb_keys start_time =
-  { filter = make nb_bits nb_keys ; start_time }
+let make_slice num_bits num_keys start_time =
+  { filter = make num_bits num_keys ; start_time }
 
-let make_sliced start_time nb_slices slice_width false_positive_ratio =
+let make_sliced start_time num_slices slice_width false_positive_ratio =
   (* We aim for the given probability of false positive. *)
-  let nb_keys = ~- (RamenHelpers.round_to_int (
+  let num_keys = ~- (RamenHelpers.round_to_int (
     log false_positive_ratio /. log 2.)) in
-  (* nb_bits_per_item: the ratio between the size of the bloom filter and
+  (* num_bits_per_item: the ratio between the size of the bloom filter and
    * the number of inserted items: *)
-  let nb_bits_per_item = ~-.1.44 *. log false_positive_ratio /. log 2. in
-  let nb_bits = 65536 in (* initial guess *)
+  let num_bits_per_item = ~-.1.44 *. log false_positive_ratio /. log 2. in
+  let num_bits = 65536 in (* initial guess *)
   !logger.info "Rotating bloom-filter: starting at time %f \
                 with %d keys, %f bits per items, %d bits \
                 (%d slices of duration %f)\n"
-    start_time nb_keys nb_bits_per_item nb_bits nb_slices slice_width ;
-  { slices = Array.init nb_slices (fun i ->
+    start_time num_keys num_bits_per_item num_bits num_slices slice_width ;
+  { slices = Array.init num_slices (fun i ->
       let start_time = start_time +. float_of_int i *. slice_width in
-      make_slice nb_bits nb_keys start_time) ;
-    slice_width ; nb_keys ; nb_bits_per_item ; current = 0 }
+      make_slice num_bits num_keys start_time) ;
+    slice_width ; num_keys ; num_bits_per_item ; current = 0 }
 
 (* Tells if x has been seen earlier (and remembers it). If x time is
  * before the range of remembered data returns false (not seen). *)
@@ -134,33 +134,33 @@ let remember sf time x =
       let epsilon = 1e-9 in
       let minmax mi (x : float) ma =
         if x < mi then mi else if x > ma then ma else x in
-      let nb_inserted s =
-        if s.filter.nb_bits_set = 0 then 0. else
-        ~-. (float_of_int s.filter.nb_bits /. float_of_int sf.nb_keys) *.
+      let num_inserted s =
+        if s.filter.num_bits_set = 0 then 0. else
+        ~-. (float_of_int s.filter.num_bits /. float_of_int sf.num_keys) *.
             log (1. -. (minmax epsilon (fill_ratio s.filter) (1. -. epsilon))) |>
-        max (float_of_int s.filter.nb_bits_set) in
+        max (float_of_int s.filter.num_bits_set) in
       (* We don't know how many items will be inserted in the next slice so
        * we prepare for the worse: *)
-      let nb_inserted = Array.fold_left (fun n s ->
-          max (nb_inserted s) n) 0. sf.slices in
-      let nb_bits = sf.nb_bits_per_item *. nb_inserted |>
-                    int_of_float |>
-                    max 1024 in
+      let num_inserted = Array.fold_left (fun n s ->
+          max (num_inserted s) n) 0. sf.slices in
+      let num_bits = sf.num_bits_per_item *. num_inserted |>
+                     int_of_float |>
+                     max 1024 in
       (* Avoid decreasing too fast *)
-      let nb_bits =
-        if nb_bits >= sf.slices.(sf.current).filter.nb_bits then nb_bits
-        else (nb_bits + sf.slices.(sf.current).filter.nb_bits) / 2 in
+      let num_bits =
+        if num_bits >= sf.slices.(sf.current).filter.num_bits then num_bits
+        else (num_bits + sf.slices.(sf.current).filter.num_bits) / 2 in
       (if fr > 0.6 then !logger.info else !logger.debug)
         "Rotating bloom-filter, expunging filter %d filled up to %.02f%% \
          (%d/%d bits set, max of %d inserted items in all slices (estimated), \
          %.02f%% false positives), next size will be %d bits"
         sf.current (100. *. fr)
-        sf.slices.(sf.current).filter.nb_bits_set
-        sf.slices.(sf.current).filter.nb_bits
-        (int_of_float nb_inserted)
-        (100. *. fpl) nb_bits ;
+        sf.slices.(sf.current).filter.num_bits_set
+        sf.slices.(sf.current).filter.num_bits
+        (int_of_float num_inserted)
+        (100. *. fpl) num_bits ;
       (* TODO: a slice_reset that does not allocate (if we keep a close size) *)
-      sf.slices.(sf.current) <- make_slice nb_bits sf.nb_keys end_time ;
+      sf.slices.(sf.current) <- make_slice num_bits sf.num_keys end_time ;
       loop ()
     ) in
   loop () ;

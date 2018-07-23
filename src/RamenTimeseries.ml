@@ -82,7 +82,7 @@ let get conf ?duration max_data_points since until where factors
     (List.print (fun oc (field, value) ->
       Printf.fprintf oc "%s=%a" field RamenTypes.print value)) where
     (List.print String.print) factors ;
-  let nb_data_fields = List.length data_fields in
+  let num_data_fields = List.length data_fields in
   let%lwt bname, filter, typ, params, event_time =
     (* Read directly from the instrumentation ringbuf when func_name ends
      * with "#stats": *)
@@ -133,7 +133,7 @@ let get conf ?duration max_data_points since until where factors
           with Not_found ->
             !logger.debug "New timeseries for column key %a"
               (List.print RamenTypes.print) k ;
-            let buckets = make_buckets max_data_points nb_data_fields in
+            let buckets = make_buckets max_data_points num_data_fields in
             Hashtbl.add per_factor_buckets k buckets ;
             buckets in
         let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in

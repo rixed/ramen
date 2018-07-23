@@ -15,8 +15,8 @@ let rec for_each f n =
   let%lwt files = Lwt_unix.files_of_directory n.dirname |>
                   Lwt_stream.to_list in
   let files = List.fast_sort String.compare files in
-  let nb_files = List.length files in
-  !logger.debug "%d files to monitor." nb_files ;
+  let num_files = List.length files in
+  !logger.debug "%d files to monitor." num_files ;
   (* Merge the list of files with the previously known files (in [n.reported]).
    * Both are ordered alphabetically. The result is then stored in
    * [n.reported]. *)

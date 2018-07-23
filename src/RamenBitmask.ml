@@ -1,11 +1,11 @@
 (* Simple bitmask *)
 open Batteries
 
-type t = { nb_bits : int ; bits : Bytes.t }
+type t = { num_bits : int ; bits : Bytes.t }
 
-let make nb_bits =
-  { nb_bits ;
-    bits = Bytes.make ((nb_bits + 7) / 8) '\000' }
+let make num_bits =
+  { num_bits ;
+    bits = Bytes.make ((num_bits + 7) / 8) '\000' }
 
 let bit_loc_of_bit b =
   b lsr 3, b land 7
@@ -28,4 +28,4 @@ let getset t b =
 let set t b =
   ignore (getset t b)
 
-let to_bools t = Array.init t.nb_bits (get t)
+let to_bools t = Array.init t.num_bits (get t)

@@ -162,8 +162,8 @@ let rb_file =
                    ~docv:"FILE" [] in
   Arg.(required (pos 0 (some string) None i))
 
-let nb_tuples =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.nb_tuples
+let num_tuples =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.num_tuples
                    [ "n"; "nb-entries" ] in
   Arg.(value (opt int 1 i))
 
@@ -172,7 +172,7 @@ let dequeue =
     (const RingBufCmd.dequeue
       $ copts
       $ rb_file
-      $ nb_tuples),
+      $ num_tuples),
     info ~doc:RamenConsts.CliInfo.dequeue "dequeue")
 
 let rb_files =
@@ -462,8 +462,8 @@ let until =
                    ~docv:"UNTIL" ["until"] in
   Arg.(value (opt float (Unix.gettimeofday ()) i))
 
-let max_nb_points =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.max_nb_points
+let max_num_points =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.max_num_points
                    ~docv:"POINTS" ["n"; "nb-points"; "max-nb-points"] in
   Arg.(value (opt int 100 i))
 
@@ -494,7 +494,7 @@ let timeseries =
       $ with_header
       $ where
       $ factors
-      $ max_nb_points
+      $ max_num_points
       $ csv_separator
       $ csv_null
       $ func_name 0

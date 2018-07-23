@@ -8,33 +8,33 @@
       present = [ { "sum_n" => "3" } ]};
     "tests/commit_before/count_cars" => {
       present = [
-        { "manufacturer" => "\"aston martin\""; "nb_models" => "8" };
-				{ "manufacturer" => "\"Audi\""; "nb_models" => "51" };
-				{ "manufacturer" => "\"Bentley\""; "nb_models" => "8" };
-				{ "manufacturer" => "\"BMW\""; "nb_models" => "667" };
-				{ "manufacturer" => "\"FCA Italy\""; "nb_models" => "5" };
-				{ "manufacturer" => "\"FCA US LLC\""; "nb_models" => "250" };
-				{ "manufacturer" => "\"Ferrari\""; "nb_models" => "48" };
-				{ "manufacturer" => "\"FOMOCO\""; "nb_models" => "402" };
-				{ "manufacturer" => "\"GM\""; "nb_models" => "417" };
-				{ "manufacturer" => "\"Honda\""; "nb_models" => "371" };
-				{ "manufacturer" => "\"Hyundai\""; "nb_models" => "145" };
-				{ "manufacturer" => "\"Jaguar Land Rover L\""; "nb_models" => "76" };
-				{ "manufacturer" => "\"Kia\""; "nb_models" => "172" };
-				{ "manufacturer" => "\"Lamborghini\""; "nb_models" => "8" };
-				{ "manufacturer" => "\"Lotus\""; "nb_models" => "10" };
-				{ "manufacturer" => "\"Maserati\""; "nb_models" => "28" };
-				{ "manufacturer" => "\"MAZDA\""; "nb_models" => "88" };
-				{ "manufacturer" => "\"McLaren Automotive \""; "nb_models" => "5" };
-				{ "manufacturer" => "\"Mercedes-Benz\""; "nb_models" => "224" };
-				{ "manufacturer" => "\"Mitsubishi Motors Co\""; "nb_models" => "39" };
-				{ "manufacturer" => "\"Nissan\""; "nb_models" => "416" };
-				{ "manufacturer" => "\"Porsche\""; "nb_models" => "102" };
-				{ "manufacturer" => "\"Rolls-Royce\""; "nb_models" => "13" };
-				{ "manufacturer" => "\"Roush\""; "nb_models" => "12" };
-				{ "manufacturer" => "\"Subaru\""; "nb_models" => "82" };
-				{ "manufacturer" => "\"Tesla\""; "nb_models" => "22" };
-				{ "manufacturer" => "\"Toyota\""; "nb_models" => "503" };
-				{ "manufacturer" => "\"Volkswagen\""; "nb_models" => "32" };
-				{ "manufacturer" => "\"Volkswagen Group of\""; "nb_models" => "284" } ]}}
+        { "manufacturer" => "\"aston martin\""; "num_models" => "8" };
+				{ "manufacturer" => "\"Audi\""; "num_models" => "51" };
+				{ "manufacturer" => "\"Bentley\""; "num_models" => "8" };
+				{ "manufacturer" => "\"BMW\""; "num_models" => "667" };
+				{ "manufacturer" => "\"FCA Italy\""; "num_models" => "5" };
+				{ "manufacturer" => "\"FCA US LLC\""; "num_models" => "250" };
+				{ "manufacturer" => "\"Ferrari\""; "num_models" => "48" };
+				{ "manufacturer" => "\"FOMOCO\""; "num_models" => "402" };
+				{ "manufacturer" => "\"GM\""; "num_models" => "417" };
+				{ "manufacturer" => "\"Honda\""; "num_models" => "371" };
+				{ "manufacturer" => "\"Hyundai\""; "num_models" => "145" };
+				{ "manufacturer" => "\"Jaguar Land Rover L\""; "num_models" => "76" };
+				{ "manufacturer" => "\"Kia\""; "num_models" => "172" };
+				{ "manufacturer" => "\"Lamborghini\""; "num_models" => "8" };
+				{ "manufacturer" => "\"Lotus\""; "num_models" => "10" };
+				{ "manufacturer" => "\"Maserati\""; "num_models" => "28" };
+				{ "manufacturer" => "\"MAZDA\""; "num_models" => "88" };
+				{ "manufacturer" => "\"McLaren Automotive \""; "num_models" => "5" };
+				{ "manufacturer" => "\"Mercedes-Benz\""; "num_models" => "224" };
+				{ "manufacturer" => "\"Mitsubishi Motors Co\""; "num_models" => "39" };
+				{ "manufacturer" => "\"Nissan\""; "num_models" => "416" };
+				{ "manufacturer" => "\"Porsche\""; "num_models" => "102" };
+				{ "manufacturer" => "\"Rolls-Royce\""; "num_models" => "13" };
+				{ "manufacturer" => "\"Roush\""; "num_models" => "12" };
+				{ "manufacturer" => "\"Subaru\""; "num_models" => "82" };
+				{ "manufacturer" => "\"Tesla\""; "num_models" => "22" };
+				{ "manufacturer" => "\"Toyota\""; "num_models" => "503" };
+				{ "manufacturer" => "\"Volkswagen\""; "num_models" => "32" };
+				{ "manufacturer" => "\"Volkswagen Group of\""; "num_models" => "284" } ]}}
 }

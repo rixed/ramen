@@ -230,10 +230,10 @@ let is_in_top n x s =
       Printf.printf "Solution: %a\n%!" (List.print Int.print) s ;
     assert_bool "no more than 2 items are missing" (!missing <= 2) ;
     !missing = 0 in
-  let nb_find_all = ref 0 in
+  let num_find_all = ref 0 in
   for i = 0 to retry-1 do
-    if test_once k then incr nb_find_all
+    if test_once k then incr num_find_all
   done ;
-  let success_rate = float_of_int !nb_find_all /. float_of_int retry in
+  let success_rate = float_of_int !num_find_all /. float_of_int retry in
   assert_bool "must be accurate most of the times" (success_rate > 0.6)
 *)

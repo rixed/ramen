@@ -14,11 +14,11 @@
 
 #include "ringbuf.h"
 
-extern inline uint32_t ringbuf_file_nb_entries(struct ringbuf_file const *rb, uint32_t, uint32_t);
-extern inline uint32_t ringbuf_file_nb_free(struct ringbuf_file const *rb, uint32_t, uint32_t);
+extern inline uint32_t ringbuf_file_num_entries(struct ringbuf_file const *rb, uint32_t, uint32_t);
+extern inline uint32_t ringbuf_file_num_free(struct ringbuf_file const *rb, uint32_t, uint32_t);
 
 extern inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop);
-extern inline enum ringbuf_error ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t nb_words, double t_start, double t_stop);
+extern inline enum ringbuf_error ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t num_words, double t_start, double t_stop);
 
 extern inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx);
@@ -235,7 +235,7 @@ static int unlock(int lock_fd)
 }
 
 // Keep existing files as much as possible:
-extern int ringbuf_create_locked(bool wrap, char const *fname, uint32_t nb_words)
+extern int ringbuf_create_locked(bool wrap, char const *fname, uint32_t num_words)
 {
   int ret = -1;
   struct ringbuf_file rbf;
@@ -246,7 +246,7 @@ extern int ringbuf_create_locked(bool wrap, char const *fname, uint32_t nb_words
     // We are the creator. Other creators are waiting for the lock.
     //printf("Creating ringbuffer '%s'\n", fname);
 
-    size_t file_length = sizeof(rbf) + nb_words*sizeof(uint32_t);
+    size_t file_length = sizeof(rbf) + num_words*sizeof(uint32_t);
     if (ftruncate(fd, file_length) < 0) {
       fprintf(stderr, "Cannot ftruncate file '%s': %s\n", fname, strerror(errno));
       goto err3;
@@ -254,10 +254,10 @@ extern int ringbuf_create_locked(bool wrap, char const *fname, uint32_t nb_words
 
     if (0 != read_max_seqnum(fname, &rbf.first_seq)) goto err3;
 
-    rbf.nb_words = nb_words;
+    rbf.num_words = num_words;
     rbf.prod_head = rbf.prod_tail = 0;
     rbf.cons_head = rbf.cons_tail = 0;
-    rbf.nb_allocs = 0;
+    rbf.num_allocs = 0;
     rbf.wrap = wrap;
 
     if (0 != really_write(fd, &rbf, sizeof(rbf), fname)) {
@@ -289,7 +289,7 @@ err0:
   return ret;
 }
 
-extern enum ringbuf_error ringbuf_create(bool wrap, uint32_t nb_words, char const *fname)
+extern enum ringbuf_error ringbuf_create(bool wrap, uint32_t num_words, char const *fname)
 {
   enum ringbuf_error err = RB_ERR_FAILURE;
 
@@ -298,7 +298,7 @@ extern enum ringbuf_error ringbuf_create(bool wrap, uint32_t nb_words, char cons
   int lock_fd = lock(fname, LOCK_EX, false);
   if (lock_fd < 0) goto err0;
 
-  if (0 != ringbuf_create_locked(wrap, fname, nb_words)) {
+  if (0 != ringbuf_create_locked(wrap, fname, num_words)) {
     goto err1;
   }
 
@@ -359,11 +359,11 @@ static int mmap_rb(struct ringbuf *rb)
 
   // Sanity checks
   if (!(
-        check_header_eq(rb->fname, "file size", rbf->nb_words*sizeof(uint32_t) + sizeof(*rbf), file_length) &&
-        check_header_max(rb->fname, "prod head", rbf->nb_words, rbf->prod_head) &&
-        check_header_max(rb->fname, "prod tail", rbf->nb_words, rbf->prod_tail) &&
-        check_header_max(rb->fname, "cons head", rbf->nb_words, rbf->cons_head) &&
-        check_header_max(rb->fname, "cons tail", rbf->nb_words, rbf->cons_tail)
+        check_header_eq(rb->fname, "file size", rbf->num_words*sizeof(uint32_t) + sizeof(*rbf), file_length) &&
+        check_header_max(rb->fname, "prod head", rbf->num_words, rbf->prod_head) &&
+        check_header_max(rb->fname, "prod tail", rbf->num_words, rbf->prod_tail) &&
+        check_header_max(rb->fname, "cons head", rbf->num_words, rbf->cons_head) &&
+        check_header_max(rb->fname, "cons tail", rbf->num_words, rbf->cons_tail)
   )) {
     munmap(rbf, file_length);
     goto err1;
@@ -437,7 +437,7 @@ static int rotate_file_locked(struct ringbuf *rb)
 
   int ret = -1;
 
-  uint64_t last_seq = rb->rbf->first_seq + rb->rbf->nb_allocs;
+  uint64_t last_seq = rb->rbf->first_seq + rb->rbf->num_allocs;
   if (0 != write_max_seqnum(rb->fname, last_seq)) goto err0;
 
   // Name the archive according to tuple seqnum included and also with the
@@ -463,7 +463,7 @@ static int rotate_file_locked(struct ringbuf *rb)
   // Regardless of how this rotation went, we must not release the lock without
   // having created a new archive file:
   //printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
-  if (0 != ringbuf_create_locked(rb->rbf->wrap, rb->fname, rb->rbf->nb_words)) {
+  if (0 != ringbuf_create_locked(rb->rbf->wrap, rb->fname, rb->rbf->num_words)) {
     goto err0;
   }
 
@@ -475,13 +475,13 @@ err0:
   return ret;
 }
 
-static int may_rotate(struct ringbuf *rb, uint32_t nb_words)
+static int may_rotate(struct ringbuf *rb, uint32_t num_words)
 {
   struct ringbuf_file *rbf = rb->rbf;
   if (rbf->wrap) return 0;
 
-  uint32_t const needed = 1 /* msg size */ + nb_words + 1 /* EOF */;
-  uint32_t const free = ringbuf_file_nb_free(rbf, rbf->cons_tail, rbf->prod_head);
+  uint32_t const needed = 1 /* msg size */ + num_words + 1 /* EOF */;
+  uint32_t const free = ringbuf_file_num_free(rbf, rbf->cons_tail, rbf->prod_head);
   if (free >= needed) {
     if (rbf->data[rbf->prod_head] == UINT32_MAX) {
       fprintf(stderr,
@@ -529,15 +529,15 @@ err0:
 }
 
 /* ringbuf will have:
- *  word n: nb_words
- *  word n+1..n+nb_words: allocated.
+ *  word n: num_words
+ *  word n+1..n+num_words: allocated.
  *  tx->record_start will point at word n+1 above. */
-extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t nb_words)
+extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t num_words)
 {
   uint32_t cons_tail;
   uint32_t need_eof = 0;  // 0 never needs an EOF
 
-  if (may_rotate(rb, nb_words) < 0) return RB_ERR_FAILURE;
+  if (may_rotate(rb, num_words) < 0) return RB_ERR_FAILURE;
 
   struct ringbuf_file *rbf = rb->rbf;
 
@@ -546,32 +546,32 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
     cons_tail = rbf->cons_tail;
     tx->record_start = tx->seen;
     // We will write the size then the data:
-    tx->next = tx->record_start + 1 + nb_words;
-    uint32_t alloced = 1 + nb_words;
+    tx->next = tx->record_start + 1 + num_words;
+    uint32_t alloced = 1 + num_words;
 
     // Avoid wrapping inside the record
-    if (tx->next > rbf->nb_words) {
+    if (tx->next > rbf->num_words) {
       need_eof = tx->seen;
-      alloced += rbf->nb_words - tx->seen;
+      alloced += rbf->num_words - tx->seen;
       tx->record_start = 0;
-      tx->next = 1 + nb_words;
-      assert(tx->next < rbf->nb_words);
-    } else if (tx->next == rbf->nb_words) {
-      //printf("tx->next == rbf->nb_words\n");
+      tx->next = 1 + num_words;
+      assert(tx->next < rbf->num_words);
+    } else if (tx->next == rbf->num_words) {
+      //printf("tx->next == rbf->num_words\n");
       tx->next = 0;
     }
 
     // Enough room?
-    if (ringbuf_file_nb_free(rbf, cons_tail, tx->seen) <= alloced) {
-      /*printf("Ringbuf is full, cannot alloc for enqueue %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", nb_free=%"PRIu32"\n",
-             alloced, rbf->nb_words, tx->seen, cons_tail, ringbuf_file_nb_free(rbf, cons_tail, tx->seen));*/
+    if (ringbuf_file_num_free(rbf, cons_tail, tx->seen) <= alloced) {
+      /*printf("Ringbuf is full, cannot alloc for enqueue %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", num_free=%"PRIu32"\n",
+             alloced, rbf->num_words, tx->seen, cons_tail, ringbuf_file_num_free(rbf, cons_tail, tx->seen));*/
       return RB_ERR_NO_MORE_ROOM;
     }
 
   } while (!  atomic_compare_exchange_strong(&rbf->prod_head, &tx->seen, tx->next));
 
   if (need_eof) rbf->data[need_eof] = UINT32_MAX;
-  rbf->data[tx->record_start ++] = nb_words;
+  rbf->data[tx->record_start ++] = num_words;
 
   return RB_OK;
 }

@@ -1122,11 +1122,11 @@ let rec structure_of_term =
   | QualIdentifier ((Identifier id, None), sub_terms)
     when String.starts_with id "tuple" ->
       (try Scanf.sscanf id "tuple%d%!" (fun sz ->
-        let nb_sub_terms = List.length sub_terms in
+        let num_sub_terms = List.length sub_terms in
         (* We should have one term for structure and one for nullability: *)
-        if nb_sub_terms <> 2 * sz then
+        if num_sub_terms <> 2 * sz then
           Printf.sprintf "Bad number of sub_terms (%d) for tuple%d"
-            nb_sub_terms sz |>
+            num_sub_terms sz |>
           failwith ;
         let ts =
           let rec loop ts = function

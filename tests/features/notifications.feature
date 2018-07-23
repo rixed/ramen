@@ -7,7 +7,7 @@ Feature: Notifications work according to the configuration.
   Background:
     Given ramen must be in the path.
 
-  Scenario: Inexistant config file must fail.
+  Scenario: Nonexistent config file must fail.
     When I run ramen with argument notifier -c enoent.config
     Then ramen must fail gracefully.
 
@@ -19,7 +19,7 @@ Feature: Notifications work according to the configuration.
     When I run ramen with argument notifier -c borken.config
     Then ramen must fail gracefully.
 
-  Scenario: Canonicalworking exemple.
+  Scenario: Canonical working example.
     Given a file sqlite.config with content
       """
       { teams = [

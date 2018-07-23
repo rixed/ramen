@@ -100,10 +100,10 @@ let remember_init false_positive_ratio duration =
     last_remembered = false }
 
 let remember_really_init st tim =
-  let nb_slices = 10 in
+  let num_slices = 10 in
   let start_time = tim -. st.duration
-  and slice_width = st.duration /. float_of_int nb_slices in
-  let filter = RamenBloomFilter.make_sliced start_time nb_slices slice_width
+  and slice_width = st.duration /. float_of_int num_slices in
+  let filter = RamenBloomFilter.make_sliced start_time num_slices slice_width
                                 st.false_positive_ratio in
   st.filter <- Some filter ;
   filter
@@ -169,22 +169,22 @@ let hysteresis_update was_ok v accept max =
 let hysteresis_finalize is_ok = is_ok
 
 type histogram =
-  { min : float ; span : float ; sw : float ; nb_buckets : int ;
+  { min : float ; span : float ; sw : float ; num_buckets : int ;
     histo : Uint32.t array }
 
-let histogram_init min max nb_buckets =
-  let histo = Array.create (nb_buckets + 2) Uint32.zero in
+let histogram_init min max num_buckets =
+  let histo = Array.create (num_buckets + 2) Uint32.zero in
   let span = max -. min in
-  let sw = float_of_int nb_buckets /. span in
-  { min ; span ; sw ; nb_buckets ; histo }
+  let sw = float_of_int num_buckets /. span in
+  { min ; span ; sw ; num_buckets ; histo }
 
 let histogram_add h x =
   let x = x -. h.min in
   let bucket =
     if x < 0. then 0 else
-    if x >= h.span then h.nb_buckets + 1 else
+    if x >= h.span then h.num_buckets + 1 else
     let b = int_of_float (x *. h.sw) in
-    assert (b >= 0 && b < h.nb_buckets) ;
+    assert (b >= 0 && b < h.num_buckets) ;
     b + 1 in
   h.histo.(bucket) <- Uint32.succ h.histo.(bucket) ;
   h
@@ -338,18 +338,18 @@ struct
     let p = Uint32.to_int p and n = Uint32.to_int n in
     let open Lacaml.D in
     (* We first want to know how many observations and predictors we have: *)
-    let nb_preds, nb_obs =
+    let num_preds, num_obs =
       fold p n t (-1, 0) (fun (nbp, nbo) (_y, xs) ->
         let nbp' = Array.length xs in
         assert (nbp = -1 || nbp = nbp') ;
         nbp', nbo+1) in
     (* Build the x and y matrices *)
-    let xm = Mat.create nb_obs nb_preds
-    and ym = Mat.create_mvec nb_obs in (* 1 column of nb_obs rows *)
+    let xm = Mat.create num_obs num_preds
+    and ym = Mat.create_mvec num_obs in (* 1 column of num_obs rows *)
     iteri p n t (fun i (y, xs) ->
       (* Fortran flavors. Indices start at 0 and first index is row: *)
       ym.{i+1, 1} <- y ;
-      for j = 0 to nb_preds-1 do
+      for j = 0 to num_preds-1 do
         xm.{i+1, j+1} <- xs.(j)
       done) ;
     (* Now ask for the "best" parameters: *)
@@ -783,8 +783,8 @@ type ('aggr, 'tuple_in, 'generator_out) aggr_value =
      * groups that are not the one owning the current output tuple: *)
     mutable current_out : 'generator_out ; (* The current one *)
     mutable previous_out : 'generator_out option ; (* previously computed temp out tuple, if any *)
-    mutable nb_entries : int ;
-    mutable nb_successive : int ;
+    mutable num_entries : int ;
+    mutable num_successive : int ;
     mutable last_ev_count : int ; (* used for others.successive (TODO) *)
     mutable to_resubmit : 'tuple_in list ; (* in_tuples to resubmit at flush *)
     mutable fields : 'aggr (* the record of aggregation values aka the group or local state *) }
@@ -1086,8 +1086,8 @@ let aggregate
           s.selected_count s.selected_successive last_selected
           s.unselected_count s.unselected_successive last_unselected
           s.out_count s.last_out_tuple aggr.previous_out
-          (Uint64.of_int aggr.nb_entries)
-          (Uint64.of_int aggr.nb_successive)
+          (Uint64.of_int aggr.num_entries)
+          (Uint64.of_int aggr.num_successive)
           aggr.fields
           s.global_state
           aggr.first_in aggr.last_in
@@ -1103,14 +1103,14 @@ let aggregate
               Hashtbl.remove s.groups k
             else (
               let to_resubmit = List.rev a.to_resubmit in
-              a.nb_entries <- 0 ;
+              a.num_entries <- 0 ;
               a.to_resubmit <- [] ;
               a.fields <- group_init s.global_state ;
-              (* Warning: should_resubmit might need realistic nb_entries,
+              (* Warning: should_resubmit might need realistic num_entries,
                * last_in etc *)
               a.first_in <- List.hd to_resubmit ;
               List.iter (fun in_tuple ->
-                  a.nb_entries <- a.nb_entries + 1 ;
+                  a.num_entries <- a.num_entries + 1 ;
                   tuple_of_aggr
                     (* We cannot possibly save the values of in_count,
                      * last_in, selected_count, etc, at the time we
@@ -1121,8 +1121,8 @@ let aggregate
                     s.selected_count s.selected_successive last_selected
                     s.unselected_count s.unselected_successive last_unselected
                     s.out_count s.last_out_tuple a.previous_out
-                    (Uint64.of_int a.nb_entries)
-                    (Uint64.of_int a.nb_successive)
+                    (Uint64.of_int a.num_entries)
+                    (Uint64.of_int a.num_successive)
                     a.fields
                     s.global_state
                     a.first_in in_tuple |> ignore ;
@@ -1178,11 +1178,11 @@ let aggregate
         s.last_key <- Some k ;
         let accumulate_into aggr this_key =
           aggr.last_ev_count <- s.event_count ;
-          aggr.nb_entries <- aggr.nb_entries + 1 ;
+          aggr.num_entries <- aggr.num_entries + 1 ;
           if should_resubmit aggr in_tuple then
             aggr.to_resubmit <- in_tuple :: aggr.to_resubmit ;
           if prev_last_key = this_key then
-            aggr.nb_successive <- aggr.nb_successive + 1
+            aggr.num_successive <- aggr.num_successive + 1
         in
         (* Update/create the group if it passes where_slow. aggr_opt will
          * be None when we fail the where filter and Some (own_aggr, aggr)
@@ -1225,8 +1225,8 @@ let aggregate
                 last_in = in_tuple ;
                 current_out =  out_generator ;
                 previous_out = None ;
-                nb_entries = 1 ;
-                nb_successive = 1 ;
+                num_entries = 1 ;
+                num_successive = 1 ;
                 last_ev_count = s.event_count ;
                 to_resubmit = [] ;
                 fields } in
@@ -1249,7 +1249,7 @@ let aggregate
                  s.selected_count s.selected_successive last_selected
                  s.unselected_count s.unselected_successive last_unselected
                  s.out_count s.last_out_tuple
-                 (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+                 (Uint64.of_int aggr.num_entries) (Uint64.of_int aggr.num_successive) aggr.fields
                  aggr.first_in aggr.last_in
             then (
               IntCounter.add stats_selected_tuple_count 1 ;
@@ -1264,7 +1264,7 @@ let aggregate
                   s.selected_count s.selected_successive last_selected
                   s.unselected_count s.unselected_successive last_unselected
                   s.out_count s.last_out_tuple aggr.previous_out
-                  (Uint64.of_int aggr.nb_entries) (Uint64.of_int aggr.nb_successive) aggr.fields
+                  (Uint64.of_int aggr.num_entries) (Uint64.of_int aggr.num_successive) aggr.fields
                   s.global_state
                   aggr.first_in aggr.last_in ;
               aggr.last_in <- in_tuple ;

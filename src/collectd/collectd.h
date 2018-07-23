@@ -11,7 +11,7 @@
  * the constness).
  *
  * In all error cases some metrics might have been decoded regardless,
- * and the metrics and nb_metrics output parameters are always defined.
+ * and the metrics and num_metrics output parameters are always defined.
  */
 
 enum collectd_decode_status {
@@ -34,7 +34,7 @@ struct collectd_metric {
   char const *type_name;  // For instance: "if_dropped".
   char const *type_instance;  // for instance: "1".
   // Up to 5 values (the worse case in a default install, for mysql_qcache).
-  unsigned nb_values;
+  unsigned num_values;
   double values[COLLECTD_NB_VALUES];
 };
 
@@ -44,6 +44,6 @@ extern enum collectd_decode_status collectd_decode(
   // Where to draw data from:
   size_t mem_size, void *mem,
   // Output parameters: metric pairs and their number
-  unsigned *nb_metrics, struct collectd_metric **metrics);
+  unsigned *num_metrics, struct collectd_metric **metrics);
 
 #endif

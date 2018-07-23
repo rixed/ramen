@@ -14,7 +14,7 @@ DEFINE f AS
   FROM preparation
   SELECT
     approx_manufacturer,
-    SUM 1 AS nb_cars
+    SUM 1 AS num_cars
   -- In the beginning of the stream other manufacturers will make it into
   -- the TOP 2, but by the end we should have most BMW and Toyota cars
   -- counted independently.

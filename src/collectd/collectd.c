@@ -51,13 +51,13 @@ static char *alloc_string(struct arena *arena, size_t len)
 
 enum collectd_decode_status collectd_decode(
   size_t msg_size, char const *msg_, size_t mem_size, void *mem,
-  unsigned *nb_metrics, struct collectd_metric **metrics)
+  unsigned *num_metrics, struct collectd_metric **metrics)
 {
   unsigned char const *msg = (unsigned char const *)msg_;
   struct arena *arena = (struct arena *)mem;
   construct_arena(arena, mem_size);
 
-  *nb_metrics = 0;
+  *num_metrics = 0;
   *metrics = arena->bytes;
 
   /* Context. We keep those values until replaced.
@@ -159,16 +159,16 @@ enum collectd_decode_status collectd_decode(
             fprintf(stderr, "part_length = %u for a value part?!\n", part_length);
             return COLLECTD_PARSE_ERROR;
           }
-          unsigned nb_vals = (msg[p] << 8U) + msg[p+1];
+          unsigned num_vals = (msg[p] << 8U) + msg[p+1];
           p += 2;
           part_length -= 2;
-          if (part_length != nb_vals * 9) {
+          if (part_length != num_vals * 9) {
             fprintf(stderr, "collectd_decode: %u bytes left in value part but only %u values!\n",
-                    part_length, nb_vals);
+                    part_length, num_vals);
             return COLLECTD_PARSE_ERROR;
           }
           uint8_t const *types = msg + p;
-          p += nb_vals;
+          p += num_vals;
 
           struct collectd_metric *metric = alloc_metric(arena);
           if (! metric) return COLLECTD_NOT_ENOUGH_RAM;
@@ -178,10 +178,10 @@ enum collectd_decode_status collectd_decode(
           metric->plugin_instance = plugin_instance;
           metric->type_name = type_name;
           metric->type_instance = type_instance;
-          metric->nb_values = nb_vals;
+          metric->num_values = num_vals;
           // Fill in the values:
           unsigned v;
-          for (v = 0; v < nb_vals && v < COLLECTD_NB_VALUES; v++) {
+          for (v = 0; v < num_vals && v < COLLECTD_NB_VALUES; v++) {
             double *val = metric->values + v;
             switch (types[v]) {
               case 1: // gauge, little endian double because why not
@@ -202,7 +202,7 @@ enum collectd_decode_status collectd_decode(
             }
           }
 
-          (*nb_metrics) ++;
+          (*num_metrics) ++;
         }
         break;
       default: // skip anything else

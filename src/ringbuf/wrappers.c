@@ -133,10 +133,10 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
   CAMLlocal1(ret);
   // See type stats in RingBuf.ml
   ret = caml_alloc_tuple(12);
-  Field(ret, 0) = Val_long(rbf->nb_words);
+  Field(ret, 0) = Val_long(rbf->num_words);
   Field(ret, 1) = Val_bool(rbf->wrap);
-  Field(ret, 2) = Val_long(ringbuf_file_nb_entries(rbf, rbf->prod_tail, rbf->cons_head));
-  Field(ret, 3) = Val_long(rbf->nb_allocs);
+  Field(ret, 2) = Val_long(ringbuf_file_num_entries(rbf, rbf->prod_tail, rbf->cons_head));
+  Field(ret, 3) = Val_long(rbf->num_allocs);
   Field(ret, 4) = caml_copy_double(rbf->tmin);
   Field(ret, 5) = caml_copy_double(rbf->tmax);
   Field(ret, 6) = Val_long(rb->mmapped_size);
@@ -180,9 +180,9 @@ CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_, value 
   }
   double tmin = Double_val(tmin_);
   double tmax = Double_val(tmax_);
-  uint32_t nb_words = size / sizeof(uint32_t);
+  uint32_t num_words = size / sizeof(uint32_t);
   uint32_t *bytes = (uint32_t *)String_val(bytes_);
-  switch (ringbuf_enqueue(rb, bytes, nb_words, tmin, tmax)) {
+  switch (ringbuf_enqueue(rb, bytes, num_words, tmin, tmax)) {
     case RB_ERR_NO_MORE_ROOM:
       assert(exception_inited);
       caml_raise_constant(exn_NoMoreRoom);
@@ -281,13 +281,13 @@ CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)
   struct ringbuf *rb = Ringbuf_val(rb_);
   int size = Long_val(size_);
   check_size(size);
-  uint32_t nb_words = size / sizeof(uint32_t);
+  uint32_t num_words = size / sizeof(uint32_t);
   CAMLlocal1(tx);
   tx = alloc_tx();
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   wrtx->rb = rb;
   wrtx->alloced = size;
-  switch (ringbuf_enqueue_alloc(rb, &wrtx->tx, nb_words)) {
+  switch (ringbuf_enqueue_alloc(rb, &wrtx->tx, num_words)) {
     case RB_ERR_FAILURE:
       caml_failwith("Cannot ringbuf_enqueue_alloc");
       break;

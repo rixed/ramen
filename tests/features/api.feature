@@ -69,5 +69,5 @@ Feature: Test Ramen API from the command line.
     Given ramen supervisor is started
     And ramen httpd --url http://localhost:8080 --api is started
     When I wait 3 seconds
-    And I run curl with arguments --data-binary '{"method":"get-timeseries","id":1,"params":{"since":0,"until":9999999999,"nb_points":5,"data":{"test/random_walk":{"select":["x"],"where":[{"lhs":"t","op":">=","rhs":"0"}]}}}}' http://localhost:8080
+    And I run curl with arguments --data-binary '{"method":"get-timeseries","id":1,"params":{"since":0,"until":9999999999,"num_points":5,"data":{"test/random_walk":{"select":["x"],"where":[{"lhs":"t","op":">=","rhs":"0"}]}}}}' http://localhost:8080
     Then curl must mention "xyz"

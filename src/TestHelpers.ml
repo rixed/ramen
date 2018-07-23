@@ -92,9 +92,9 @@ let rec map_type ?(recurs=true) f =
     StatefulFun (f t, g, AggrFirst (if recurs then map_type ~recurs f a else a))
   | StatefulFun (t, g, AggrLast a) ->
     StatefulFun (f t, g, AggrLast (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, AggrHistogram (a, min, max, nb_buckets)) ->
+  | StatefulFun (t, g, AggrHistogram (a, min, max, num_buckets)) ->
     StatefulFun (f t, g, AggrHistogram (
-        (if recurs then map_type ~recurs f a else a), min, max, nb_buckets))
+        (if recurs then map_type ~recurs f a else a), min, max, num_buckets))
   | StatefulFun (t, g, AggrPercentile (a, b)) ->
     StatefulFun (f t, g, AggrPercentile (
         (if recurs then map_type ~recurs f a else a),

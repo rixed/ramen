@@ -20,7 +20,7 @@
 
 struct nf_msg {
   uint16_t version;
-  uint16_t nb_flows;
+  uint16_t num_flows;
   uint32_t sys_uptime;
   uint32_t ts_sec;
   uint32_t ts_nsec;
@@ -49,13 +49,13 @@ struct nf_flow {
 } __attribute__((__packed__));
 
 CAMLprim value wrap_netflow_v5_decode(
-    value buffer_, value nb_bytes_, value source_)
+    value buffer_, value num_bytes_, value source_)
 {
-  CAMLparam3(buffer_, nb_bytes_, source_);
+  CAMLparam3(buffer_, num_bytes_, source_);
   CAMLlocal2(res, tup);
-  unsigned nb_bytes = Long_val(nb_bytes_);
-  assert(caml_string_length(buffer_) >= nb_bytes);
-  if (nb_bytes < sizeof(struct nf_msg)) {
+  unsigned num_bytes = Long_val(num_bytes_);
+  assert(caml_string_length(buffer_) >= num_bytes);
+  if (num_bytes < sizeof(struct nf_msg)) {
     caml_invalid_argument("message smaller than netflow header");
   }
 
@@ -66,23 +66,23 @@ CAMLprim value wrap_netflow_v5_decode(
   if (version != 5) {
     caml_invalid_argument("not netflow v5");
   }
-  unsigned const nb_flows = ntohs(msg->nb_flows);
+  unsigned const num_flows = ntohs(msg->num_flows);
   double const boot_time =
     ntohl(msg->ts_sec) +
     ntohl(msg->ts_nsec) / 1e9 -
     ntohl(msg->sys_uptime) / 1e3;
 
-  size_t const tot_size = sizeof(*msg) + nb_flows*sizeof(struct nf_flow);
-  if (nb_bytes < tot_size) {
+  size_t const tot_size = sizeof(*msg) + num_flows*sizeof(struct nf_flow);
+  if (num_bytes < tot_size) {
     caml_invalid_argument("truncated message or not netflow");
   }
 
   struct nf_flow const *f = (struct nf_flow *)(msg+1);
   // The array of tuples:
-  res = caml_alloc(nb_flows, 0);
+  res = caml_alloc(num_flows, 0);
 
 # define NB_FLOW_FIELDS 24
-  for (unsigned i = 0; i < nb_flows; i++, f++) {
+  for (unsigned i = 0; i < num_flows; i++, f++) {
     // Alloc a new tuple:
     tup = caml_alloc(NB_FLOW_FIELDS, 0);
     unsigned j = 0;

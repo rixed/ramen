@@ -35,6 +35,8 @@ let read_tuple ser_tuple_typ nullmask_size tx =
       ) (nullmask_size, 0) ser_tuple_typ in
   tuple
 
+(* Same as above but returns directly a tuple rather than an array of
+ * RamenTypes.values: *)
 let read_tuples ?while_ unserialize rb f =
   read_ringbuf ?while_ rb (fun tx ->
     let tuple = unserialize tx in

@@ -597,9 +597,9 @@ and emit_expr ?state ~context ~consts oc expr =
   | Finalize, StatelessFun1 (_, Nth n, es), _ ->
     (match (typ_of es).scalar_typ with
     | Some (TTuple ts) ->
-        let nb_items = Array.length ts in
+        let num_items = Array.length ts in
         let rec loop_t str i =
-          if i >= nb_items then str else
+          if i >= num_items then str else
           let str = str ^ (if i > 0 then "," else "")
                         ^ (if i = n then "x_" else "_") in
           loop_t str (i + 1) in
@@ -878,16 +878,16 @@ and emit_expr ?state ~context ~consts oc expr =
   | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     emit_functionN ?state ~consts "CodeGenLib.percentile_finalize" [Some TFloat; None] oc [p; my_state g]
 
-  (* Histograms: bucket each float into the array of nb_buckets + 2 and then
+  (* Histograms: bucket each float into the array of num_buckets + 2 and then
    * count number of entries per buckets. The 2 extra buckets are for "<min"
    * and ">max". *)
-  | InitState, StatefulFun (_, _, AggrHistogram (e, min, max, nb_buckets)), _ ->
+  | InitState, StatefulFun (_, _, AggrHistogram (e, min, max, num_buckets)), _ ->
     Printf.fprintf oc "%s(CodeGenLib.histogram_init %s %s %d)"
       (if is_nullable e then "Some " else "")
       (Legacy.Printf.sprintf "%h" min)
       (Legacy.Printf.sprintf "%h" max)
-      nb_buckets
-  | UpdateState, StatefulFun (_, g, AggrHistogram (e, min, max, nb_buckets)), _ ->
+      num_buckets
+  | UpdateState, StatefulFun (_, g, AggrHistogram (e, min, max, num_buckets)), _ ->
     emit_functionN ?state ~consts "CodeGenLib.histogram_add"
       [None; Some TFloat] oc [my_state g; e]
   | Finalize, StatefulFun (_, g, AggrHistogram _), Some (TVec _) ->
@@ -1326,9 +1326,9 @@ let rec emit_indent oc n =
 let emit_tuple_of_strings name csv_null oc tuple_typ =
   Printf.fprintf oc "let %s strs_ =\n" name ;
   Printf.fprintf oc "\t(\n" ;
-  let nb_fields = List.length tuple_typ in
+  let num_fields = List.length tuple_typ in
   List.iteri (fun i field_typ ->
-    let sep = if i < nb_fields - 1 then "," else "" in
+    let sep = if i < num_fields - 1 then "," else "" in
     Printf.fprintf oc "\t\t(try (\n" ;
     if Option.get field_typ.typ.nullable then (
       Printf.fprintf oc "\t\t\t(let s_ = strs_.(%d) in\n" i ;
@@ -1607,29 +1607,29 @@ let emit_generate_tuples name in_typ mentioned out_typ ~consts oc selected_field
       (print_tuple_deconstruct TupleOut) out_typ ;
     (* Each generator is a functional receiving the continuation and calling it
      * as many times as there are values. *)
-    let nb_gens =
-      List.fold_left (fun nb_gens sf ->
-          if not (RamenExpr.is_generator sf.RamenOperation.expr) then nb_gens
+    let num_gens =
+      List.fold_left (fun num_gens sf ->
+          if not (RamenExpr.is_generator sf.RamenOperation.expr) then num_gens
           else (
-            let ff_ = "ff_"^ string_of_int nb_gens ^"_" in
+            let ff_ = "ff_"^ string_of_int num_gens ^"_" in
             Printf.fprintf oc "%a(fun %s -> %a) (fun generated_%d_ ->\n"
-              emit_indent (1 + nb_gens)
+              emit_indent (1 + num_gens)
               ff_
               (emit_generator ff_ ~consts) sf.RamenOperation.expr
-              nb_gens ;
-            nb_gens + 1)
+              num_gens ;
+            num_gens + 1)
         ) 0 selected_fields in
     (* Now we have all the generated values, actually call f_ on the tuple.
      * Note that the tuple must be in out_typ order: *)
     Printf.fprintf oc "%af_ it_ (\n%a"
-      emit_indent (1 + nb_gens)
-      emit_indent (2 + nb_gens) ;
+      emit_indent (1 + num_gens)
+      emit_indent (2 + num_gens) ;
     let expr_of_field name =
       let sf = List.find (fun sf ->
                  sf.RamenOperation.alias = name) selected_fields in
       sf.RamenOperation.expr in
     let _ = List.fold_lefti (fun gi i ft ->
-        if i > 0 then Printf.fprintf oc ",\n%a" emit_indent (2 + nb_gens) ;
+        if i > 0 then Printf.fprintf oc ",\n%a" emit_indent (2 + num_gens) ;
         match RamenExpr.is_generator (expr_of_field ft.typ_name) with
         | exception Not_found ->
           (* For star-imported fields: *)
@@ -1644,7 +1644,7 @@ let emit_generate_tuples name in_typ mentioned out_typ ~consts oc selected_field
             (id_of_field_name ~tuple:TupleOut ft.typ_name) ;
           gi
         ) 0 out_typ in
-    for _ = 1 to nb_gens do Printf.fprintf oc ")" done ;
+    for _ = 1 to num_gens do Printf.fprintf oc ")" done ;
     Printf.fprintf oc ")\n"
   )
 
@@ -1916,7 +1916,7 @@ let emit_should_resubmit name in_typ mentioned ~consts
   | Reset | Never ->
     Printf.fprintf oc "\tfalse\n"
   | Slide n ->
-    Printf.fprintf oc "\tgroup_.CodeGenLib.nb_entries > %d\n" n
+    Printf.fprintf oc "\tgroup_.CodeGenLib.num_entries > %d\n" n
   | KeepOnly e ->
     Printf.fprintf oc "\t%a\n" (emit_expr ?state:None ~context:Finalize ~consts) e
   | RemoveAll e ->

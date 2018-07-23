@@ -572,10 +572,10 @@ let rec print with_types oc =
     Printf.fprintf oc "%ath percentile%s(%a)"
       (print with_types) p (sl g) (print with_types) e ;
     add_types t
-  | StatefulFun (t, g, AggrHistogram (what, min, max, nb_buckets)) ->
+  | StatefulFun (t, g, AggrHistogram (what, min, max, num_buckets)) ->
     Printf.fprintf oc "histogram%s(%a, %g, %g, %d)"
       (sl g)
-      (print with_types) what min max nb_buckets ;
+      (print with_types) what min max num_buckets ;
     add_types t
   | StatefulFun (t, g, Lag (e1, e2)) ->
     Printf.fprintf oc "lag%s(%a, %a)"
@@ -1122,21 +1122,21 @@ struct
         StatefulFun (make_bool_typ "hysteresis", g,
                      Hysteresis (value, accept, max))) |||
      (afun4_sf ~def_state:LocalState "histogram" >>:
-      fun (g, what, min, max, nb_buckets) ->
+      fun (g, what, min, max, num_buckets) ->
         match float_of_const min,
               float_of_const max,
-              int_of_const nb_buckets with
-        | Some min, Some max, Some nb_buckets ->
-            if nb_buckets <= 0 then
+              int_of_const num_buckets with
+        | Some min, Some max, Some num_buckets ->
+            if num_buckets <= 0 then
               raise (Reject "Histogram size must be positive") ;
             let typ =
               (* If a value is null, the whole histogram will be null. If we
                * have an histogram at all then each bucket is a non-null
                * u32: *)
-              RamenTypes.(TVec (nb_buckets+2, { structure = TU32 ;
+              RamenTypes.(TVec (num_buckets+2, { structure = TU32 ;
                                                 nullable = Some false })) in
             StatefulFun (make_typ "histogram" ~typ,
-                         g, AggrHistogram (what, min, max, nb_buckets))
+                         g, AggrHistogram (what, min, max, num_buckets))
         | _ -> raise (Reject "histogram dimensions must be constants")) |||
      (afun2 "split" >>: fun (e1, e2) ->
         GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
@@ -1307,10 +1307,10 @@ struct
       char '(' -- opt_blanks -+
       repeat ~min:2 ~sep:RamenTypes.Parser.tup_sep p +-
       opt_blanks +- char ')' >>: fun es ->
-        let nb_items = List.length es in
-        assert (nb_items >= 2) ;
+        let num_items = List.length es in
+        assert (num_items >= 2) ;
         let typ =
-          RamenTypes.(TTuple (Array.init nb_items (fun i ->
+          RamenTypes.(TTuple (Array.init num_items (fun i ->
             { structure = TAny ; nullable = None }))) in
         (* Even if all the fields are null the tuple is not null.
          * No immediate tuple can be null. *)
@@ -1324,11 +1324,11 @@ struct
       char '[' -- opt_blanks -+
       several ~sep:RamenTypes.Parser.tup_sep p +-
       opt_blanks +- char ']' >>: fun es ->
-        let nb_items = List.length es in
-        assert (nb_items >= 1) ;
+        let num_items = List.length es in
+        assert (num_items >= 1) ;
         let typ =
-          RamenTypes.(TVec (nb_items, { structure = TAny ;
-                                        nullable = None })) in
+          RamenTypes.(TVec (num_items, { structure = TAny ;
+                                         nullable = None })) in
         Vector (make_typ ~nullable:false ~typ "vector", es)
     ) m
 

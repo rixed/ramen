@@ -291,14 +291,14 @@ let split_query s =
 let expand_query_text conf query =
   let query = split_query query in
   let%lwt filtered = enum_tree_of_query conf query in
-  let nb_filters = List.length query in
-  let prefix = (List.take (nb_filters - 1) query |>
+  let num_filters = List.length query in
+  let prefix = (List.take (num_filters - 1) query |>
                 String.concat ".") ^ "." in
   tree_enum_fold (fun node_res (depth, target) (n, section) is_leaf ->
     (* depth starts at 0 *)
     let target' =
       if target = "" then n else target ^"."^ n in
-    (if depth = nb_filters - 1 then
+    (if depth = num_filters - 1 then
       (prefix ^ n, is_leaf, n, target') :: node_res
     else
       node_res),
@@ -357,8 +357,8 @@ type graphite_render_resp = graphite_render_metric list [@@ppp PPP_JSON]
 (* Reduce the size of a graphite_render_resp by aggregating smaller
  * contributions: *)
 let reduce_render_resp max_ts resp =
-  let nb_ts = List.length resp in
-  if nb_ts <= max_ts then resp else (
+  let num_ts = List.length resp in
+  if num_ts <= max_ts then resp else (
     (* Compute the total contribution (weight): *)
     List.iter (fun m ->
       m.weight <-
@@ -371,9 +371,9 @@ let reduce_render_resp max_ts resp =
     let resp =
       List.fast_sort (fun m1 m2 -> Float.compare m1.weight m2.weight) resp in
     (* Aggregate the smallest together: *)
-    let nb_aggr = (nb_ts - max_ts) + 1 in
+    let num_aggr = (num_ts - max_ts) + 1 in
     let acc =
-      { target = string_of_int nb_aggr ^" others" ;
+      { target = string_of_int num_aggr ^" others" ;
         datapoints = (List.hd resp).datapoints |>
                      Array.map (fun (vo, t) -> None, t) ;
         weight = 0. } in
@@ -393,7 +393,7 @@ let reduce_render_resp max_ts resp =
             | _ -> ()
           ) acc.datapoints m.datapoints ;
           loop (n - 1) rest in
-    loop nb_aggr resp)
+    loop num_aggr resp)
 
 let time_of_graphite_time s =
   let len = String.length s in

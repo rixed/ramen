@@ -129,24 +129,24 @@ let complete str () =
     match toks with
     | s :: rest when String.ends_with s "ramen" -> rest
     | r -> r (* ?? *) in
-  let nb_toks = List.length toks in
+  let num_toks = List.length toks in
   let command_idx, command =
     try List.findi (fun i s -> s.[0] <> '-') toks
     with Not_found -> -1, "" in
   let last_tok =
-    if nb_toks > 0 then List.nth toks (nb_toks-1)
+    if num_toks > 0 then List.nth toks (num_toks-1)
     else "" in
-  (*!logger.info "nb_toks=%d, command_idx=%d, command=%s, last_tok_complete=%b"
-    nb_toks command_idx command last_tok_is_complete ;*)
+  (*!logger.info "num_toks=%d, command_idx=%d, command=%s, last_tok_complete=%b"
+    num_toks command_idx command last_tok_is_complete ;*)
 
-  (match nb_toks, command_idx, last_tok_is_complete with
+  (match num_toks, command_idx, last_tok_is_complete with
   | 0, _, true -> (* "ramen<TAB>" *)
     complete_commands ""
   | 0, _, false -> (* "ramen <TAB>" *)
     complete_commands ""
   | _, -1, false -> (* "ramen [[other options]] --...<TAB>" *)
     complete_global_options last_tok
-  | _, c_idx, false when c_idx = nb_toks-1 -> (* "ramen ... comm<TAB>" *)
+  | _, c_idx, false when c_idx = num_toks-1 -> (* "ramen ... comm<TAB>" *)
     complete_commands last_tok
   | _ -> (* "ramen ... command ...? <TAB>" *)
     let toks = List.drop (command_idx+1) toks in
@@ -212,7 +212,7 @@ let complete str () =
           ("--until=", RamenConsts.CliInfo.until) ::
           ("--where=", RamenConsts.CliInfo.where) ::
           ("--factor=", RamenConsts.CliInfo.factors) ::
-          ("--max-nb-points=", RamenConsts.CliInfo.max_nb_points) ::
+          ("--max-nb-points=", RamenConsts.CliInfo.max_num_points) ::
           ("--consolidation=", RamenConsts.CliInfo.consolidation) ::
           ("--separator=", RamenConsts.CliInfo.csv_separator) ::
           ("--null=", RamenConsts.CliInfo.csv_null) ::

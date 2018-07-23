@@ -385,20 +385,20 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * to be enlarged as we progress). *)
     !logger.debug "%sTyping TUPLE, expecting %a"
       indent Expr.print_typ exp_type ;
-    let nb_items = List.length es in
+    let num_items = List.length es in
     (match exp_type.scalar_typ with
     | None | Some (TTuple [||]) ->
         !logger.debug "%sTyping TUPLE: expecting a tuple of %d items"
-          indent nb_items ;
+          indent num_items ;
         let typ =
-          TTuple (Array.init nb_items (fun _ ->
+          TTuple (Array.init num_items (fun _ ->
             { structure = TAny ; nullable = None })) in
         exp_type.scalar_typ <- Some typ ;
         true
     | Some (TTuple ts as exp_tuple) ->
-        if Array.length ts <> nb_items then (
+        if Array.length ts <> num_items then (
           !logger.debug "%sTyping TUPLE: expecting %d items but got %d"
-            indent (Array.length ts) nb_items ;
+            indent (Array.length ts) num_items ;
           let e = CannotTypeExpression {
             what = exp_type.expr_name ;
             got_type = IO.to_string (Expr.print true) expr ;
@@ -458,7 +458,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * to be enlarged as we progress). *)
     !logger.debug "%sTyping VECTOR, expecting %a"
       indent Expr.print_typ exp_type ;
-    let nb_items = List.length es in
+    let num_items = List.length es in
     let cannot_type t structure nullable =
       let e = CannotTypeExpression {
         what = exp_type.expr_name ;
@@ -469,14 +469,14 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     (match exp_type.scalar_typ with
     | None | Some (TVec (0, _)) ->
         !logger.debug "%sTyping VECTOR: expecting a vector of dimension %d"
-          indent nb_items ;
-        let typ = TVec (nb_items, { structure = TAny ; nullable = None }) in
+          indent num_items ;
+        let typ = TVec (num_items, { structure = TAny ; nullable = None }) in
         exp_type.scalar_typ <- Some typ ;
         true
     | Some (TVec (dim, t) as exp_vector) ->
-        if dim <> nb_items then (
+        if dim <> num_items then (
           !logger.debug "%sTyping VECTOR: expecting %d items but got %d"
-            indent dim nb_items ;
+            indent dim num_items ;
           let e = CannotTypeExpression {
             what = exp_type.expr_name ;
             got_type = IO.to_string (Expr.print true) expr ;
@@ -492,7 +492,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
             then (
               !logger.debug "%sTyping VECTOR: Improving type from %a"
                 indent RamenTypes.print_typ t ;
-              exp_type.scalar_typ <- Some (TVec (nb_items, { t with structure = largest })) ;
+              exp_type.scalar_typ <- Some (TVec (num_items, { t with structure = largest })) ;
               true
             ) else cannot_type t largest nullable
           ) false largest || changed in
@@ -502,7 +502,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
             if t.nullable = None then (
               !logger.debug "%sTyping VECTOR: Set %snullable"
                 indent (if nullable then "" else "not ") ;
-              exp_type.scalar_typ <- Some (TVec (nb_items, { t with nullable = Some nullable })) ;
+              exp_type.scalar_typ <- Some (TVec (num_items, { t with nullable = Some nullable })) ;
               true
             ) else cannot_type t (largest |? TAny) (Some nullable)
           ) false nullable || changed in

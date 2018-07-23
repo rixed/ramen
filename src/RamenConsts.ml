@@ -98,7 +98,7 @@ struct
   let report_period =
     "Number of seconds between two stats report from each worker"
   let rb_file = "File with the ring buffer"
-  let nb_tuples = "How many entries to dequeue"
+  let num_tuples = "How many entries to dequeue"
   let rb_files = "The ring buffers to display information about"
   let external_compiler =
     "Call external compiler rather than using embedded one"
@@ -132,7 +132,7 @@ struct
      nobody ask for it"
   let since = "Timestamp of the first point"
   let until = "Timestamp of the last point"
-  let max_nb_points = "Max number of points returned"
+  let max_num_points = "Max number of points returned"
   let data_fields = "Fields to retrieve values from"
   let consolidation = "Consolidation function"
   let short = "Display only a short summary"

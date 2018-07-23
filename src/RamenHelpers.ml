@@ -35,7 +35,7 @@ let retry
     match max_retry_time with
     | None -> true
     | Some d -> Unix.gettimeofday () -. started < d in
-  let rec loop nb_try x =
+  let rec loop num_try x =
     let%lwt keep_going = while_ () in
     if not keep_going then fail Exit
     else if not (can_wait_longer ()) then fail Timeout
@@ -43,7 +43,7 @@ let retry
       | exception e ->
         let%lwt retry_on_this = on e in
         let should_retry =
-          Option.map_default (fun max -> nb_try < max) true max_retry &&
+          Option.map_default (fun max -> num_try < max) true max_retry &&
           retry_on_this in
         if should_retry then (
           let delay = !next_delay in
@@ -52,10 +52,10 @@ let retry
           next_delay := !next_delay *. delay_adjust_nok ;
           Option.may (fun f -> f delay) delay_rec ;
           let%lwt () = Lwt_unix.sleep delay in
-          (loop [@tailcall]) (nb_try + 1) x
+          (loop [@tailcall]) (num_try + 1) x
         ) else (
           !logger.debug "Non-retryable error: %s after %d attempt%s"
-            (Printexc.to_string e) nb_try (if nb_try > 1 then "s" else "") ;
+            (Printexc.to_string e) num_try (if num_try > 1 then "s" else "") ;
           fail e
         )
       | r ->

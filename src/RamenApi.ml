@@ -185,7 +185,7 @@ let get_columns conf msg =
 type get_timeseries_req =
   { since : float ;
     until : float ;
-    nb_points : int ;
+    num_points : int ;
     data : (string, timeseries_data_spec) Hashtbl.t }
   [@@ppp PPP_JSON]
 
@@ -211,7 +211,7 @@ and table_values = (string, float option array) Hashtbl.t
 let get_timeseries conf msg =
   let req = fail_with_context "parsing get-timeseries request" (fun () ->
     PPP.of_string_exc get_timeseries_req_ppp_json msg) in
-  let times = Array.make_float req.nb_points in
+  let times = Array.make_float req.num_points in
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
   let%lwt () =
@@ -231,24 +231,24 @@ let get_timeseries conf msg =
             else filters
           ) [] data_spec.where |> return) in
       let%lwt columns, datapoints =
-        RamenTimeseries.get conf req.nb_points req.since req.until
+        RamenTimeseries.get conf req.num_points req.since req.until
                             filters [] table data_spec.select in
       assert (columns = [| |] (* if there was no result *) ||
               columns = [| [] |] (* As we asked for no factors *)) ;
-      let nb_selected = List.length data_spec.select in
+      let num_selected = List.length data_spec.select in
       let table_columns =
-        Array.init nb_selected (fun _ ->
-          Array.create req.nb_points None
+        Array.init num_selected (fun _ ->
+          Array.create req.num_points None
         ) in
       Enum.iteri (fun ti (t, data) ->
         assert (Array.length data = 1) ; (* No factors *)
-        for ci = 0 to nb_selected - 1 do
+        for ci = 0 to num_selected - 1 do
           table_columns.(ci).(ti) <- data.(0).(ci)
         done ;
         if not !times_inited then times.(ti) <- t
       ) datapoints ;
       times_inited := true ;
-      let table_values = Hashtbl.create nb_selected in
+      let table_values = Hashtbl.create num_selected in
       List.iteri (fun ci field_name ->
         Hashtbl.add table_values field_name table_columns.(ci)
       ) data_spec.select ;

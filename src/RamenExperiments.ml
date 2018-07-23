@@ -23,7 +23,7 @@ type t =
 
 let make name variants =
   (* Adjust the shares: *)
-  let sum, nb_unset =
+  let sum, num_unset =
     Array.fold_left (fun (s, n) v ->
       match v.Variant.share with
       | -1. -> s, n + 1
@@ -38,7 +38,7 @@ let make name variants =
           v.share <- s ;
           rem_s -. s, rem_n - 1
       | _ -> rem
-    ) (1. -. sum, nb_unset) variants in
+    ) (1. -. sum, num_unset) variants in
   { name ; variant = -1 ; forced = false ; variants }
 
 (*
