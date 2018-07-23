@@ -227,7 +227,8 @@ let get_timeseries conf msg =
       let%lwt columns, datapoints =
         RamenTimeseries.get conf req.nb_points req.since req.until
                             filters [] table data_spec.select in
-      assert (columns = [| [] |]) ; (* As we asked for no factors *)
+      assert (columns = [| |] (* if there was no result *) ||
+              columns = [| [] |] (* As we asked for no factors *)) ;
       let nb_selected = List.length data_spec.select in
       let table_columns =
         Array.init nb_selected (fun _ ->
