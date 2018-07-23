@@ -51,17 +51,44 @@ let do_output =
 let make_prefix s =
   if s = "" then s else (colored "1;34" (" "^s)) ^":"
 
+let rate_limit max_rate =
+  let last_sec = ref 0 and count = ref 0 in
+  fun now ->
+    let sec = int_of_float now in
+    if sec = !last_sec then (
+      incr count ;
+      !count > max_rate
+    ) else (
+      last_sec := sec ;
+      count := 0 ;
+      false
+    )
+
 let make_logger ?logdir ?(prefix="") dbg =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
   let prefix = ref (make_prefix prefix) in
+  let rate_limit = rate_limit 10 in
+  let skip = ref 0 in
   let do_log is_err col fmt =
     let open Unix in
-    let tm = gettimeofday () |> localtime in
+    let now = time () in
+    let tm = localtime now in
     let time_pref =
       Printf.sprintf "%02dh%02dm%02d:"
         tm.tm_hour tm.tm_min tm.tm_sec in
     let oc = do_output output tm is_err in
-    Printf.fprintf oc ("%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix
+    let p =
+      if is_err && rate_limit now then (
+        incr skip ;
+        Printf.ifprintf
+      ) else (
+        if !skip > 0 then (
+          Printf.fprintf oc "%d skipped" !skip ;
+          skip := 0
+        ) ;
+        Printf.fprintf
+      ) in
+    p oc ("%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix
   in
   let error fmt = do_log true red fmt
   and warning fmt = do_log true yellow fmt
