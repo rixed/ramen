@@ -50,15 +50,16 @@ external string_of_program : program -> string = "%identity"
 
 (* Make sure a path component is shorter that max_dir_len: *)
 let max_dir_len = 255
-let abbrev_fname s =
+let abbrev s =
   if String.length s <= max_dir_len then s else md5 s
 
 let path_of_program prog =
   String.split_on_char '/' prog |>
-  List.map abbrev_fname |>
+  List.map abbrev |>
   String.join "/"
 
-(* Program name - expansed *)
+(* Program parameters
+ * String representation is abbreviated into a MD5 hash if too long. *)
 
 type param = string * RamenTypes.value [@@ppp PPP_OCaml]
 type params = param list [@@ppp PPP_OCaml]
@@ -73,7 +74,8 @@ let print_param oc (n, v) =
 
 let string_of_params params =
   params_sort params |>
-  IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param)
+  IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param) |>
+  abbrev
 
 type params_exp = [`Params] t
 
@@ -87,7 +89,7 @@ let params_exp_of_params = function
   | params -> "{"^ string_of_params params ^"}"
 
 
-(* Program name - expansed *)
+(* Program name - expansed ; with the params expansion maybe hashed. *)
 
 type program_exp = [`ProgramExp] t
 
@@ -111,13 +113,10 @@ let path_of_program_exp s =
     | [] -> path
     | [ last ] ->
         let exp = path_quote params in
-        let exp =
-          if String.length last + String.length exp <= max_dir_len then exp
-          else "{"^ md5 exp ^"}" in
-        let comp = abbrev_fname (last ^ exp) in
+        let comp = abbrev (last ^ exp) in
         loop (path ^"/"^ comp) []
     | comp :: rest ->
-        loop (path ^"/"^ abbrev_fname comp) rest
+        loop (path ^"/"^ abbrev comp) rest
   in
   loop "" dirs
 
