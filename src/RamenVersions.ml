@@ -15,10 +15,10 @@ let codegen = "v28" (* last: new type TEmpty *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)
 
 (* Notifications sent from workers to Ramen *)
-let notify_tuple = "v4" (* last: parameter values are expressions *)
+let notify_tuple = "v5" (* last: addition of firing+certainty *)
 
 (* Pending notification format (marshalled on disc) *)
-let pending_notify = "v2" (* last: new notification format with event_time etc... *)
+let pending_notify = "v3" (* last: addition of firing+certainty *)
 
 (* Ringbuf formats *)
 let ringbuf = "v4" (* last: nullable in RamenTypes.t *)

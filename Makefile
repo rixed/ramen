@@ -104,11 +104,13 @@ CODEGENLIB_SOURCES = \
 	src/RamenOutRef.ml src/RamenParsing.ml \
 	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
 	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
-	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
+	src/RingBuf.ml \
+	src/RamenTypeConverters.ml \
+	src/RingBufLib.ml src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml src/RamenHeap.ml src/RamenSortBuf.ml \
-	src/HeavyHitters.ml src/CodeGenLib.ml src/RamenTypeConverters.ml
+	src/HeavyHitters.ml src/CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
 	src/ringbuf/ringbuf.h src/ringbuf/ringbuf.c src/ringbuf/wrappers.c

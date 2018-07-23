@@ -137,9 +137,12 @@ let notify conf parameters notif_name () =
   logger := make_logger conf.C.debug ;
   let rb = RamenProcesses.prepare_notifs conf in
   let sent_time = Unix.gettimeofday () in
+  let firing, certainty, parameters =
+    RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
   Lwt_main.run (
-    RingBufLib.write_notif rb "CLI" sent_time None notif_name parameters)
+    RingBufLib.write_notif rb
+      ("CLI", sent_time, None, notif_name, firing, certainty, parameters))
 
 (*
  * `ramen compile`

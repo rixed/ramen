@@ -252,6 +252,8 @@ type notification =
     event_time : float option ;
     sent_time : float ;
     recv_time : float ;
+    firing : bool ;
+    certainty : float ;
     parameters : (string * string) list }
 
 type pending_notification =
@@ -333,8 +335,10 @@ let fake_pending_named notif_name contact =
         alert_id = Uint64.zero ;
         worker = "" ;
         contact ;
-        notif = { notif_name ; worker = "" ; parameters = [] ;
-                  event_time = None ; sent_time = 0. ; recv_time = 0. } } }
+        notif =
+          { notif_name ; worker = "" ; parameters = [] ;
+            firing = false ; certainty = 0. ;
+            event_time = None ; sent_time = 0. ; recv_time = 0. } } }
 
 (* When we receive a notification that an alert is no more firing, we must
  * cancel pending delivery or send the end of alert notification.
@@ -579,12 +583,13 @@ let start conf notif_conf rb =
   let while_ () =
     if !RamenProcesses.quit <> None then return_false else return_true in
   RamenSerialization.read_notifs ~while_ rb
-    (fun (worker, sent_time, event_time, notif_name, parameters) ->
+    (fun (worker, sent_time, event_time, notif_name,
+          firing, certainty, parameters) ->
     let parameters = Array.to_list parameters in
     let now = Unix.gettimeofday () in
     let notif =
       { worker ; sent_time ; recv_time = now ; event_time ;
-        notif_name ; parameters } in
+        notif_name ; firing ; certainty ; parameters } in
     !logger.info "Received notification from %s: %s"
       worker notif_name ;
     (* Find the team in charge of that alert name: *)

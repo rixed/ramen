@@ -431,9 +431,9 @@ let seq_range bname =
  * modules for the workers. *)
 
 let notification_nullmask_sz = round_up_to_rb_word 1
-let notification_fixsz = sersize_of_float * 2
+let notification_fixsz = sersize_of_float * 3 + sersize_of_bool
 let serialize_notification tx
-      (worker, sent_time, event_time, name, parameters) =
+      (worker, sent_time, event_time, name, firing, certainty, parameters) =
   RingBuf.zero_bytes tx 0 notification_nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->
@@ -457,6 +457,12 @@ let serialize_notification tx
     RingBuf.write_string tx offs name ;
     offs + sersize_of_string name in
   let offs =
+    RingBuf.write_bool tx offs firing ;
+    offs + sersize_of_bool in
+  let offs =
+    RingBuf.write_float tx offs certainty ;
+    offs + sersize_of_float in
+  let offs =
     write_u32 tx offs (Array.length parameters |> Uint32.of_int) ;
     offs + sersize_of_u32 in
   (* Also the internal nullmask, even though the parameters cannot be
@@ -478,7 +484,7 @@ let serialize_notification tx
   offs
 
 (* Types have been erased so we cannot use sersize_of_value: *)
-let max_sersize_of_notification (worker, _, _, name, parameters) =
+let max_sersize_of_notification (worker, _, _, name, _, _, parameters) =
   let psz =
     Array.fold_left (fun sz (n, v) ->
       sz +
@@ -490,13 +496,36 @@ let max_sersize_of_notification (worker, _, _, name, parameters) =
   notification_nullmask_sz + notification_fixsz + sersize_of_string worker +
   sersize_of_string name + psz
 
-let write_notif ?delay_rec rb
-                worker sent_time event_time name parameters =
+let write_notif ?delay_rec rb (_, _, event_time, _, _, _, _ as tuple) =
   retry_for_ringbuf ?delay_rec (fun () ->
-    let tuple = (worker, sent_time, event_time, name, parameters) in
     let sersize = max_sersize_of_notification tuple in
     let tx = enqueue_alloc rb sersize in
     let tmin, tmax = event_time |? 0., 0. in
     let sz = serialize_notification tx tuple in
     assert (sz <= sersize) ;
     enqueue_commit tx tmin tmax) ()
+
+(* In a few places we need to extract the special parameters firing and
+ * certainty from the notification parameters to turn them into actual
+ * columns (or give them a default value if they are not specified as
+ * parameters). This is better than having special syntax in ramen
+ * language for them and special command line arguments, although the
+ * user could then legitimately wonder why aren't all parameters usable
+ * as tuple fields. *)
+let normalize_notif_parameters params =
+  let firing, certainty, params =
+    List.fold_left (fun (firing, certainty, params) (n ,v as param) ->
+      let n' = String.lowercase_ascii n in
+      try
+        if n' = "firing" then
+          RamenTypeConverters.bool_of_string v, certainty, params
+        else if n' = "certainty" then
+          firing, float_of_string (String.trim v), params
+        else
+          firing, certainty, (param :: params)
+      with e ->
+        !logger.warning "Cannot convert %S into a standard %s, leaving it \
+                         as a parameter" v n' ;
+        firing, certainty, (param :: params)
+    ) (true, 0.5, []) params in
+  firing, certainty, List.rev params

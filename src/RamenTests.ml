@@ -169,8 +169,10 @@ let test_notifications notify_rb notif_spec =
     then return_true else return_false in
   let%lwt () =
     RamenSerialization.read_notifs ~while_ notify_rb
-    (fun (worker, sent_time, event_time, notif_name, parameters) ->
-      !logger.debug "Got notification from %s: %S" worker notif_name ;
+    (fun (worker, sent_time, event_time, notif_name, firing, certainty,
+          parameters) ->
+      !logger.debug "Got %snotification from %s: %S"
+        (if firing then "firing " else "stopping ") worker notif_name ;
       notifs_to_find :=
         List.filter (fun (_pat, re) ->
           Str.string_match re notif_name 0 |>  not) !notifs_to_find ;

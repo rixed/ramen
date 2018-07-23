@@ -1978,7 +1978,7 @@ let emit_notification_tuple out_typ ~consts oc notif =
   Printf.fprintf oc
     "(%a,\n\t\t%a)"
     print_expr notif.notif_name
-    (List.print ~first:"[|" ~last:"|]" ~sep:";\n\t\t  "
+    (List.print ~sep:";\n\t\t  "
       (fun oc (n, v) -> Printf.fprintf oc "%S, %a" n print_expr v))
         notif.parameters
 
@@ -2128,7 +2128,7 @@ let emit_operation name func_name in_typ out_typ params op oc =
     emit_well_known consts params code name from
       RamenNotification.tuple_typ RamenNotification.event_time
       "RamenNotification.unserialize" "notifs_ringbuf"
-      "(fun (w, t, _, _, _, _) -> w, t)"
+      "(fun (w, t, _, _, _, _, _, _) -> w, t)"
   | Aggregate _ ->
     emit_aggregate consts params code name in_typ out_typ op) ;
   Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\

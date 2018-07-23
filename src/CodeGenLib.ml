@@ -770,9 +770,12 @@ let notify conf rb worker event_time
       [ "param" ], field_of_params ] in
   let name = subst_tuple_fields tuples name
 	and parameters =
-    Array.map (fun (n, v) -> n, subst_tuple_fields tuples v) parameters in
+    List.map (fun (n, v) -> n, subst_tuple_fields tuples v) parameters in
+  let firing, certainty, parameters =
+    RingBufLib.normalize_notif_parameters parameters in
+  let parameters = Array.of_list parameters in
   RingBufLib.write_notif ~delay_rec:sleep_out rb
-    worker !CodeGenLib_IO.now event_time name parameters
+    (worker, !CodeGenLib_IO.now, event_time, name, firing, certainty, parameters)
 
 type ('aggr, 'tuple_in, 'generator_out) aggr_value =
   { (* used to compute the actual selected field when outputing the
@@ -978,7 +981,7 @@ let aggregate
       (field_of_tuple_out : 'tuple_out -> string -> string)
       (field_of_params : string -> string)
       (get_notifications :
-        'tuple_in -> 'tuple_out -> (string * (string * string) array) list)
+        'tuple_in -> 'tuple_out -> (string * (string * string) list) list)
       (every : float) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =

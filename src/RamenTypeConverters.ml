@@ -14,8 +14,9 @@ let string_of_string s =
   else
     String.sub s 1 (String.length s - 2)
 
-let bool_of_string = function
-  | "true" | "TRUE" | "t" | "T" | "y" | "Y" | "on" | "ON" | "#t" | "1" -> true
+let bool_of_string b =
+  match String.(trim (lowercase_ascii b)) with
+  | "true" | "t" | "y" | "on" | "#t" | "1" -> true
   | _ -> false
 
 let float_of_string = Pervasives.float_of_string

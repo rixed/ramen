@@ -13,6 +13,8 @@ let tuple_typ =
     { typ_name = "sent_time" ; typ = { structure = TFloat ; nullable = Some false } } ;
     { typ_name = "event_time" ; typ = { structure = TFloat ; nullable = Some true } } ;
     { typ_name = "name" ; typ = { structure = TString ; nullable = Some false } } ;
+    { typ_name = "firing" ; typ = { structure = TBool ; nullable = Some false } } ;
+    { typ_name = "certainty" ; typ = { structure = TFloat ; nullable = Some false } } ;
     { typ_name = "parameters" ;
       typ = { structure = TList { structure = TTuple [|
                                     { structure = TString ;
@@ -31,7 +33,7 @@ let event_time =
 
 (* We trust the user not to generate too many distinct names and use instead
  * parameters to store arbitrary values. *)
-let factors = [ "name" ]
+let factors = [ "name" ; "firing" ]
 
 let nullmask_sz =
   let sz = RingBufLib.nullmask_bytes_of_tuple_type tuple_typ in
@@ -60,6 +62,10 @@ let unserialize tx =
   let event_time, offs = read_nullable_float tx 0 offs in
   let name = RingBuf.read_string tx offs in
   let offs = offs + RingBufLib.sersize_of_string name in
+  let firing = RingBuf.read_bool tx offs in
+  let offs = offs + RingBufLib.sersize_of_bool in
+  let certainty = RingBuf.read_float tx offs in
+  let offs = offs + RingBufLib.sersize_of_float in
   let num_params = RingBuf.read_u32 tx offs |> Uint32.to_int in
   let offs = offs + RingBufLib.sersize_of_u32 in
   (* We also have the vector internal nullmask, even though the parameters
@@ -76,6 +82,7 @@ let unserialize tx =
       offs := !offs + RingBufLib.sersize_of_string v ;
       n, v
     ) in
-  let t = worker, sent_time, event_time, name, parameters in
+  let t =
+    worker, sent_time, event_time, name, firing, certainty, parameters in
   assert (!offs <= RingBufLib.max_sersize_of_notification t) ;
   t
