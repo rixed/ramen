@@ -517,31 +517,37 @@ let tail conf func_name with_header sep null raw
   let last =
     if last = None && min_seq = None && max_seq = None then Some 10
     else last in
-  let bname, filter, typ =
-    (* Read directly from the instrumentation ringbuf when func_name ends
-     * with "#stats" *)
-    if func_name = "stats" || String.ends_with func_name "#stats" then
-      let typ = RamenTuple.{ user = RamenBinocle.tuple_typ ;
-                             ser = RamenBinocle.tuple_typ } in
+  let try_well_known suffix get_bname typ () =
+    if func_name = suffix || String.ends_with func_name ("#"^suffix) then
+      let typ = RamenTuple.{ user = typ ; ser = typ } in
       let where_filter = RamenSerialization.filter_tuple_by typ.ser where in
       let wi = RamenSerialization.find_field_index typ.ser "worker" in
       let filter =
-        if func_name = "stats" then where_filter else
+        if func_name = suffix then where_filter else
         let func_name, _ = String.rsplit func_name ~by:"#" in
         fun tuple ->
           tuple.(wi) = RamenTypes.VString func_name &&
           where_filter tuple in
-      let bname = C.report_ringbuf conf in
-      bname, filter, typ
-    else
-      (* Create the non-wrapping RingBuf (under a standard name given
-       * by RamenConf *)
-      Lwt_main.run (
+      let bname = get_bname conf in
+      Some (bname, filter, typ)
+    else None
+  in
+  let bname, filter, typ =
+    [ (* Read directly from the instrumentation ringbuf when func_name ends
+       * with "#stats" *)
+      try_well_known "stats" C.report_ringbuf RamenBinocle.tuple_typ ;
+      (* Similarly, reads from the notification ringbuf when func_name ends
+       * with "#notifs" *)
+      try_well_known "notifs" C.notify_ringbuf RamenNotification.tuple_typ ;
+      (* Normal worker output: Create the non-wrapping RingBuf under a
+       * standard name given by RamenConf *)
+      fun () -> Lwt_main.run (
         let%lwt _prog, func, bname =
           RamenExport.make_temp_export_by_name conf ~duration func_name in
         let typ = func.F.out_type in
         let filter = RamenSerialization.filter_tuple_by typ.ser where in
-        return (bname, filter, typ))
+        return_some (bname, filter, typ))
+      ] |> List.find_map (fun f -> f ())
   in
   (* Find out which seqnums we want to scan: *)
   let mi, ma = match last with
