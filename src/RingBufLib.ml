@@ -430,8 +430,9 @@ let seq_range bname =
  * both RamenSerialization and RamenNotification depends on too many
  * modules for the workers. *)
 
-let notification_nullmask_sz = round_up_to_rb_word 1
+let notification_nullmask_sz = round_up_to_rb_word 2
 let notification_fixsz = sersize_of_float * 3 + sersize_of_bool
+
 let serialize_notification tx
       (worker, sent_time, event_time, name, firing, certainty, parameters) =
   RingBuf.zero_bytes tx 0 notification_nullmask_sz ; (* zero the nullmask *)
@@ -443,8 +444,9 @@ let serialize_notification tx
         w tx offs v ;
         offs + sz in
   let write_nullable_float =
-    let sz = sersize_of_float in
-    write_nullable_thing RingBuf.write_float sz in
+    write_nullable_thing RingBuf.write_float sersize_of_float in
+  let write_nullable_bool =
+    write_nullable_thing RingBuf.write_bool sersize_of_bool in
   let offs = notification_nullmask_sz in
   let offs =
     RingBuf.write_string tx offs worker ;
@@ -456,9 +458,7 @@ let serialize_notification tx
   let offs =
     RingBuf.write_string tx offs name ;
     offs + sersize_of_string name in
-  let offs =
-    RingBuf.write_bool tx offs firing ;
-    offs + sersize_of_bool in
+  let offs = write_nullable_bool offs 1 firing in
   let offs =
     RingBuf.write_float tx offs certainty ;
     offs + sersize_of_float in
@@ -518,7 +518,7 @@ let normalize_notif_parameters params =
       let n' = String.lowercase_ascii n in
       try
         if n' = "firing" then
-          RamenTypeConverters.bool_of_string v, certainty, params
+          Some (RamenTypeConverters.bool_of_string v), certainty, params
         else if n' = "certainty" then
           firing, float_of_string (String.trim v), params
         else
@@ -527,5 +527,5 @@ let normalize_notif_parameters params =
         !logger.warning "Cannot convert %S into a standard %s, leaving it \
                          as a parameter" v n' ;
         firing, certainty, (param :: params)
-    ) (true, 0.5, []) params in
+    ) (None, 0.5, []) params in
   firing, certainty, List.rev params

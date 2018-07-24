@@ -172,7 +172,8 @@ let test_notifications notify_rb notif_spec =
     (fun (worker, sent_time, event_time, notif_name, firing, certainty,
           parameters) ->
       !logger.debug "Got %snotification from %s: %S"
-        (if firing then "firing " else "stopping ") worker notif_name ;
+        (if firing = Some false then "stopping " else "firing ")
+        worker notif_name ;
       notifs_to_find :=
         List.filter (fun (_pat, re) ->
           Str.string_match re notif_name 0 |>  not) !notifs_to_find ;

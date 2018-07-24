@@ -252,7 +252,7 @@ type notification =
     event_time : float option ;
     sent_time : float ;
     recv_time : float ;
-    firing : bool ;
+    firing : bool option ;
     certainty : float ;
     parameters : (string * string) list }
 
@@ -337,7 +337,7 @@ let fake_pending_named notif_name contact =
         contact ;
         notif =
           { notif_name ; worker = "" ; parameters = [] ;
-            firing = false ; certainty = 0. ;
+            firing = None ; certainty = 0. ;
             event_time = None ; sent_time = 0. ; recv_time = 0. } } }
 
 (* When we receive a notification that an alert is no more firing, we must
@@ -595,15 +595,13 @@ let start conf notif_conf rb =
     (* Find the team in charge of that alert name: *)
     let team = Team.find_in_charge notif_conf.teams notif_name in
     let action =
-      (* TODO: a formal parameter, for now we get it from the list of template vars: *)
-      match List.find (fun (n, _) -> n = "firing") notif.parameters with
-      | exception Not_found ->
+      match notif.firing with
+      | None ->
           set_alight conf notif_conf notif worker event_time now false
-      | _, v ->
-          if looks_like_true v then
-            set_alight conf notif_conf notif worker event_time now true
-          else
-            extinguish_pending notif_conf notif.notif_name event_time now in
+      | Some true ->
+          set_alight conf notif_conf notif worker event_time now true
+      | Some false ->
+          extinguish_pending notif_conf notif.notif_name event_time now in
     List.iter action team.Team.contacts ;
     return_unit)
 
