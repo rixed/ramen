@@ -1168,3 +1168,19 @@ let rec reach_fixed_point ?max_try f =
       !logger.debug "Looping to reach fixed point" ;
       reach_fixed_point ?max_try:(Option.map pred max_try) f
     ) else true
+
+(* How many ways to choose n undistinguishable things in a set of m *)
+let comb n m =
+  assert (n <= m) ;
+  let rec loop num den i =
+    if i > n then num /. den else
+    loop
+      (num *. float_of_int (m + 1 - i))
+      (den *. float_of_int i)
+      (i + 1) in
+  loop 1. 1. 1
+(*$= comb & ~printer:string_of_float
+  1. (comb 0 10)
+  1. (comb 10 10)
+  2_598_960. (comb 5 52)
+ *)

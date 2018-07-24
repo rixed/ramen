@@ -41,6 +41,7 @@ struct
   let notifs_count = "notifs_count"
   let notifs_send_fails = "notifs_send_failures"
   let team_fallbacks = "notifs_team_fallbacks"
+  let notifs_cancelled = "notifs_cancelled"
 
   (* Metrics reported by the HTTP server: *)
   let requests_count = "http_requests_count"
@@ -146,6 +147,7 @@ struct
   let test_file = "Definition of a test to run"
   let command = "Ramen command line to be completed"
   let conffile = "configuration file"
+  let max_fpr = "max global false-positive rate"
   let program_name = "resulting program name"
   let no_abbrev = "do not abbreviate path names"
   let only_errors = "display only links with errors"
@@ -170,8 +172,11 @@ struct
   (* How frequently shall workers emit their instrumentation (seconds): *)
   let report_period = 30.
 
-  (* Rate of fake errors in HTTP service. *)
+  (* Rate of fake errors in HTTP service: *)
   let fault_injection_rate = 0.01
+
+  (* Max false-positive rate for notifications: *)
+  let max_fpr = 1. /. 3600.
 end
 
 (* What we use as workers argv.(0) to make it easier to read ps/top

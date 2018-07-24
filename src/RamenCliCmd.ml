@@ -106,11 +106,14 @@ let supervisor conf daemonize to_stdout to_syslog max_archives autoreload
  * The actual work is done in module RamenNotifier.
  *)
 
-let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
+let notifier conf notif_conf_file max_fpr daemonize to_stdout
+             to_syslog () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
+  if max_fpr < 0. || max_fpr > 1. then
+    failwith "False-positive rate is a rate is a rate." ;
   let notif_conf =
     Option.map_default
       (ppp_of_file RamenNotifier.notify_config_ppp_ocaml)
@@ -135,7 +138,8 @@ let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
     restart_on_failure "process_notifications"
       RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
         dummy_nop ;
-        (fun () -> RamenNotifier.start conf notif_conf notify_rb) |]) ;
+        (fun () ->
+          RamenNotifier.start conf notif_conf notify_rb max_fpr) |]) ;
   Option.may exit !RamenProcesses.quit
 
 let notify conf parameters notif_name () =

@@ -112,12 +112,19 @@ let conf_file ?env ?(opt_names=["config"; "c"]) ~doc () =
   let i = Arg.info ~doc ?env opt_names in
   Arg.(value (opt (some string) None i))
 
+let max_fpr =
+  let env = Term.env_info "NOTIFIER_MAX_FPR" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.max_fpr
+                   ~env [ "default-max-fpr"; "max-fpr"; "fpr" ] in
+  Arg.(value (opt float RamenConsts.Default.max_fpr i))
+
 let notifier =
   Term.(
     (const RamenCliCmd.notifier
       $ copts
       $ conf_file ~env:"NOTIFIER_CONFIG"
                   ~doc:RamenConsts.CliInfo.conffile ()
+      $ max_fpr
       $ daemonize
       $ to_stdout
       $ to_syslog),
