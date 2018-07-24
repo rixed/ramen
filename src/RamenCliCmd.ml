@@ -693,7 +693,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
   if fault_injection_rate > 1. then
-    failwith "A rate is a rate is a rate." ;
+    failwith "Fault injection rate is a rate is a rate." ;
   if to_syslog then
     logger := make_syslog conf.C.debug
   else (

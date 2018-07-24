@@ -35,14 +35,16 @@ let event_time =
  * parameters to store arbitrary values. *)
 let factors = [ "name" ; "firing" ]
 
+open RingBufLib
+
 let nullmask_sz =
-  let sz = RingBufLib.nullmask_bytes_of_tuple_type tuple_typ in
-  assert (sz = RingBufLib.notification_nullmask_sz) ; (* FIXME *)
+  let sz = nullmask_bytes_of_tuple_type tuple_typ in
+  assert (sz = notification_nullmask_sz) ; (* FIXME *)
   sz
 
 let fix_sz =
-  let sz = RingBufLib.tot_fixsz tuple_typ in
-  assert (sz = RingBufLib.notification_fixsz) ; (* FIXME *)
+  let sz = tot_fixsz tuple_typ in
+  assert (sz = notification_fixsz) ; (* FIXME *)
   sz
 
 let unserialize tx =
@@ -52,39 +54,39 @@ let unserialize tx =
     else
       None, offs in
   let read_nullable_float =
-    let sz = RingBufLib.sersize_of_float in
+    let sz = sersize_of_float in
     read_nullable_thing RingBuf.read_float sz in
   let read_nullable_bool =
-    let sz = RingBufLib.sersize_of_bool in
+    let sz = sersize_of_bool in
     read_nullable_thing RingBuf.read_bool sz in
   let offs = nullmask_sz in
   let worker = RingBuf.read_string tx offs in
-  let offs = offs + RingBufLib.sersize_of_string worker in
+  let offs = offs + sersize_of_string worker in
   let sent_time = RingBuf.read_float tx offs in
-  let offs = offs + RingBufLib.sersize_of_float in
+  let offs = offs + sersize_of_float in
   let event_time, offs = read_nullable_float tx 0 offs in
   let name = RingBuf.read_string tx offs in
-  let offs = offs + RingBufLib.sersize_of_string name in
+  let offs = offs + sersize_of_string name in
   let firing, offs = read_nullable_bool tx 1 offs in
   let certainty = RingBuf.read_float tx offs in
-  let offs = offs + RingBufLib.sersize_of_float in
+  let offs = offs + sersize_of_float in
   let num_params = RingBuf.read_u32 tx offs |> Uint32.to_int in
-  let offs = offs + RingBufLib.sersize_of_u32 in
+  let offs = offs + sersize_of_u32 in
   (* We also have the vector internal nullmask, even though the parameters
    * cannot be NULL: *)
-  let offs = offs + RingBufLib.nullmask_sz_of_vector num_params in
+  let offs = offs + nullmask_sz_of_vector num_params in
   let offs = ref offs in
   let parameters =
     Array.init num_params (fun i ->
       (* Also need to skip the tuple (pair) internal nullmask: *)
-      offs := !offs + RingBufLib.nullmask_sz_of_vector 2 ;
+      offs := !offs + nullmask_sz_of_vector 2 ;
       let n = RingBuf.read_string tx !offs in
-      offs := !offs + RingBufLib.sersize_of_string n ;
+      offs := !offs + sersize_of_string n ;
       let v = RingBuf.read_string tx !offs in
-      offs := !offs + RingBufLib.sersize_of_string v ;
+      offs := !offs + sersize_of_string v ;
       n, v
     ) in
   let t =
     worker, sent_time, event_time, name, firing, certainty, parameters in
-  assert (!offs <= RingBufLib.max_sersize_of_notification t) ;
+  assert (!offs <= max_sersize_of_notification t) ;
   t

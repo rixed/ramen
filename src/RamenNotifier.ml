@@ -169,8 +169,7 @@ module Team = struct
   type t =
     { (* Team name is really nothing but a prefix for notification names: *)
       name : string ;
-      contacts : Contact.t list
-        [@ppp_default []] }
+      contacts : Contact.t list [@ppp_default []] }
     [@@ppp PPP_OCaml]
 
   let find_in_charge teams name =
@@ -236,10 +235,10 @@ let subst_dict =
  * Instead, it is stored for later, to avoid flapping. *)
 
 type pending_status =
-  | StartToBeSent (* firing notification that is yet to be sent *)
+  | StartToBeSent  (* firing notification that is yet to be sent *)
   | StartToBeSentThenStopped (* notification that stopped before being sent *)
-  | StartSent     (* firing notification that is yet to be acked *)
-  | StartAcked (* firing notification that has been acked *)
+  | StartSent      (* firing notification that is yet to be acked *)
+  | StartAcked     (* firing notification that has been acked *)
   | StopToBeSent   (* non-firing notification that is yet to be sent *)
   | StopSent       (* non-firing notification that is yet to be acked *)
   | StopAcked
@@ -427,6 +426,16 @@ let set_alight conf notif_conf notif wait_for_stop contact =
           !logger.error "StopAcked alert found in the pending set!" ;
           queue_new_alert ())
 
+(*
+ * A thread that notifies the external world and wait for a successful
+ * confirmation, or fails.
+ *
+ * TODO: time this thread and add this to notifier instrumentation.
+ *)
+
+(* When a notification is delivered to the user (or we abandon it).
+ * Notice that "is delivered" depends on the channel: some may have
+ * delivery acknowledgment while some may not. *)
 let ack name contact now =
   match PendingSet.find (fake_pending_named name contact) pendings.set with
   | exception Not_found ->
@@ -456,7 +465,7 @@ let ack name contact now =
       pendings.dirty <- true
   | p ->
       (if p.status = StopAcked then !logger.debug else !logger.warning)
-        "Received an ACK for notification in status %s, ignoring"
+        "Ignoring an ACK for notification in status %s"
         (string_of_pending_status p.status)
 
 (* When we give up sending a notification *)
