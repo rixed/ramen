@@ -251,7 +251,7 @@ type notification =
     notif_name : string ;
     event_time : float option ;
     sent_time : float ;
-    recv_time : float ;
+    rcvd_time : float ;
     firing : bool option ;
     certainty : float ;
     parameters : (string * string) list }
@@ -259,10 +259,7 @@ type notification =
 type pending_notification =
   { notif : notification;
     contact : Contact.t ;
-    worker : string ;
-    rcvd_start : float ;
     mutable rcvd_stop : float option ;
-    event_start : float option ;
     mutable event_stop : float option ;
     mutable attempts : int ;
     mutable alert_id : uint64 }
@@ -327,18 +324,15 @@ let fake_pending_named notif_name contact =
     status = StartToBeSent ;
     wait_for_stop = false ;
     item =
-      { rcvd_start = 0. ;
-        rcvd_stop = None ;
-        event_start = None ;
+      { rcvd_stop = None ;
         event_stop = None ;
         attempts = 0 ;
         alert_id = Uint64.zero ;
-        worker = "" ;
         contact ;
         notif =
           { notif_name ; worker = "" ; parameters = [] ;
             firing = None ; certainty = 0. ;
-            event_time = None ; sent_time = 0. ; recv_time = 0. } } }
+            event_time = None ; sent_time = 0. ; rcvd_time = 0. } } }
 
 (* When we receive a notification that an alert is no more firing, we must
  * cancel pending delivery or send the end of alert notification.
@@ -374,8 +368,7 @@ let extinguish_pending notif_conf name event_stop now contact =
 (* When we receive a notification that an alert is firing, we must first
  * check if we have a pending notification with same name already and
  * reschedule it, or create a new one. *)
-let set_alight conf notif_conf notif worker event_start rcvd_start
-               wait_for_stop contact =
+let set_alight conf notif_conf notif wait_for_stop contact =
   let new_pending =
     (* schedule_delay_after_startup is the minimum time we should wait
      * after startup to ever consider sending the notification. If we
@@ -386,21 +379,20 @@ let set_alight conf notif_conf notif worker event_start rcvd_start
     let init_delay_after_startup = notif_conf.default_init_schedule_delay_after_startup
     and init_delay = notif_conf.default_init_schedule_delay in
     let until_end_of_statup =
-      init_delay_after_startup -. (rcvd_start -. !startup_time) in
+      init_delay_after_startup -. (notif.rcvd_time -. !startup_time) in
     let init_delay =
       if until_end_of_statup > 0. then max until_end_of_statup init_delay
       else init_delay in
     let schedule_time =
-      rcvd_start +. jitter init_delay in
+      notif.rcvd_time +. jitter init_delay in
     { schedule_time ;
       send_time = schedule_time ;
       status = StartToBeSent ;
       wait_for_stop ;
       item = {
         attempts = 0 ; alert_id = Uint64.zero ;
-        notif ; contact ; worker ;
-        event_start ; event_stop = None ;
-        rcvd_start ; rcvd_stop = None } } in
+        notif ; contact ; event_stop = None ;
+        rcvd_stop = None } } in
   let queue_new_alert () =
     new_pending.item.alert_id <- next_alert_id conf () ;
     pendings.set <- PendingSet.add new_pending pendings.set ;
@@ -461,8 +453,8 @@ let contact_via item =
   let dict =
     [ "name", item.notif.notif_name ;
       "alert_id", Uint64.to_string item.alert_id ;
-      "start", string_of_float (item.event_start |? item.rcvd_start) ;
-      "worker", item.worker ] in
+      "start", string_of_float (item.notif.event_time |? item.notif.rcvd_time) ;
+      "worker", item.notif.worker ] in
   (* Add "stop" if we have it (or les it be NULL) *)
   let dict =
     match item.event_stop with
@@ -481,13 +473,13 @@ let contact_via item =
                 (exp ~q:Uri.pct_encode http.url)
                 (List.map (fun (n, v) -> exp n, exp v) http.headers)
                 (exp http.body)
-                item.worker
-  | ViaExec cmd -> execute_cmd (exp ~q:shell_quote cmd) item.worker
-  | ViaSysLog str -> log_str (exp str) item.worker
+                item.notif.worker
+  | ViaExec cmd -> execute_cmd (exp ~q:shell_quote cmd) item.notif.worker
+  | ViaSysLog str -> log_str (exp str) item.notif.worker
   | ViaSqlite { file ; insert ; create } ->
       Lwt.wrap (fun () ->
         let ins = exp ~q:sql_quote ~n:"NULL" insert in
-        sqllite_insert (exp file) ins create item.worker)
+        sqllite_insert (exp file) ins create item.notif.worker)
 
 (* Returns the timeout, or 0,. if the is nothing to wait for *)
 let do_notify i =
@@ -588,7 +580,7 @@ let start conf notif_conf rb =
     let parameters = Array.to_list parameters in
     let now = Unix.gettimeofday () in
     let notif =
-      { worker ; sent_time ; recv_time = now ; event_time ;
+      { worker ; sent_time ; rcvd_time = now ; event_time ;
         notif_name ; firing ; certainty ; parameters } in
     !logger.info "Received notification from %s: %s"
       worker notif_name ;
@@ -597,11 +589,12 @@ let start conf notif_conf rb =
     let action =
       match notif.firing with
       | None ->
-          set_alight conf notif_conf notif worker event_time now false
+          set_alight conf notif_conf notif false
       | Some true ->
-          set_alight conf notif_conf notif worker event_time now true
+          set_alight conf notif_conf notif true
       | Some false ->
-          extinguish_pending notif_conf notif.notif_name event_time now in
+          extinguish_pending notif_conf notif.notif_name notif.event_time now
+    in
     List.iter action team.Team.contacts ;
     return_unit)
 
