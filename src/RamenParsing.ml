@@ -19,6 +19,15 @@ let that_string s =
 
 let strinGs s = strinG s ||| strinG (s ^"s")
 
+(* Given we frequently encode strings with "%S", we need to parse them back
+ * with numerical escape sequence of base 10: *)
+let quoted_string = quoted_string ~base_num:10
+
+(*$= quoted_string & ~printer:(test_printer BatString.print)
+  (Ok ("→", (14, []))) \
+    (test_p quoted_string "\"\\226\\134\\146\"")
+ *)
+
 let blank = ParseUsual.blank >>: ignore
 let newline = ParseUsual.newline >>: ignore
 
