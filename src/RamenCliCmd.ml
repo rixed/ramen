@@ -207,25 +207,31 @@ let check_links ?(force=false) exp_program_name prog running_programs =
     (* Check linkage:
      * We want to warn if a parent is missing. The synchronizer will
      * start the worker but it will be blocked. *)
+    let already_warned1 = ref Set.empty
+    and already_warned2 = ref Set.empty in
     List.iter (function
       | None, _ -> ()
       | Some par_prog, par_func ->
         (match Hashtbl.find running_programs par_prog with
         | exception Not_found ->
-          !logger.warning "Operation %s depends on program %s, \
-                           which is not running."
-            (RamenName.string_of_func func.F.name)
-            (RamenName.string_of_program_exp par_prog) ;
+          if not (Set.mem par_prog !already_warned1) then (
+            !logger.warning "Operation %s depends on program %s, \
+                             which is not running."
+              (RamenName.string_of_func func.F.name)
+              (RamenName.string_of_program_exp par_prog) ;
+            already_warned1 := Set.add par_prog !already_warned1)
         | mre ->
           let pprog = P.of_bin mre.C.params mre.C.bin in
           (match List.find (fun p -> p.F.name = par_func) pprog.P.funcs with
           | exception Not_found ->
-            !logger.error "Operation %s depends on operation %s/%s, \
-                           which is not part of the running program %s."
-              (RamenName.string_of_func func.F.name)
-              (RamenName.string_of_program_exp par_prog)
-              (RamenName.string_of_func par_func)
-              (RamenName.string_of_program_exp par_prog) ;
+            if not (Set.mem (par_prog, par_func) !already_warned2) then (
+              !logger.error "Operation %s depends on operation %s/%s, \
+                             which is not part of the running program %s."
+                (RamenName.string_of_func func.F.name)
+                (RamenName.string_of_program_exp par_prog)
+                (RamenName.string_of_func par_func)
+                (RamenName.string_of_program_exp par_prog) ;
+              already_warned2 := Set.add (par_prog, par_func) !already_warned2)
           | par ->
             (* We want to err if a parent is incompatible (unless --force). *)
             try RamenProcesses.check_is_subtype func.F.in_type.RamenTuple.ser
@@ -270,10 +276,10 @@ let check_links ?(force=false) exp_program_name prog running_programs =
 let ensure_uniq_name_uniqueness programs params =
   let uniquify s =
     match
-      Hashtbl.fold (fun _exp_program_name rc max_seqnum ->
+      Hashtbl.fold (fun _exp_program_name mre max_seqnum ->
         (* We want to uniquely identify the expansion not the program name
          * itself *)
-        let exp = RamenName.string_of_params rc.C.params in
+        let exp = RamenName.string_of_params mre.C.params in
         if String.starts_with exp s then
           match String.rsplit exp ~by:"_" with
           | exception Not_found -> Some 0
