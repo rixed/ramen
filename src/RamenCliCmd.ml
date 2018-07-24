@@ -46,6 +46,10 @@ let make_copts debug persist_dir rand_seed keep_temp_files forced_variants
  * The actual work is done in module RamenProcesses.
  *)
 
+let dummy_nop () =
+  !logger.warning "Running in dummy mode" ;
+  RamenProcesses.until_quit (fun () -> Lwt_unix.sleep 3.)
+
 let supervisor conf daemonize to_stdout to_syslog max_archives autoreload
                report_period () =
   if to_stdout && daemonize then
@@ -88,8 +92,7 @@ let supervisor conf daemonize to_stdout to_syslog max_archives autoreload
        * in accordance to the running program list: *)
       restart_on_failure "synchronize_running"
         RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
-          (fun () -> !logger.warning "Running in dummy mode" ;
-                     until_quit (fun () -> Lwt_unix.sleep 3.)) ;
+          dummy_nop ;
           (fun () -> synchronize_running conf autoreload) |] ]) ;
   Option.may exit !RamenProcesses.quit
 
@@ -130,7 +133,9 @@ let notifier conf notif_conf_file daemonize to_stdout to_syslog () =
       restart_on_failure "wait_all_pids_loop"
         RamenProcesses.wait_all_pids_loop false) ;
     restart_on_failure "process_notifications"
-      (RamenNotifier.start conf notif_conf) notify_rb) ;
+      RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
+        dummy_nop ;
+        (fun () -> RamenNotifier.start conf notif_conf notify_rb) |]) ;
   Option.may exit !RamenProcesses.quit
 
 let notify conf parameters notif_name () =
@@ -730,10 +735,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
         RamenProcesses.wait_all_pids_loop false) ;
     restart_on_failure "http server"
       RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
-        (fun () ->
-          !logger.warning "Running in dummy mode" ;
-            RamenProcesses.until_quit
-          (fun () -> Lwt_unix.sleep 3.)) ;
+        dummy_nop ;
         (fun () ->
           RamenHttpHelpers.http_service
             port url_prefix router fault_injection_rate) |]) ;
