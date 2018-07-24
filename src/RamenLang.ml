@@ -232,18 +232,15 @@ open RamenParsing
 type program_id = RamenName.program * RamenName.params
 type function_id = program_id option * RamenName.func
 
-let print_expansed_program oc (name, params) =
-  String.print oc (RamenName.string_of_program name) ;
-  if params <> [] then
-    List.print ~first:"{" ~last:"}" ~sep:"," (fun oc (n, v) ->
-      Printf.fprintf oc "%s=%a" n RamenTypes.print v) oc params
-
-let exp_program_of_id pp =
-  RamenName.program_exp_of_string (IO.to_string print_expansed_program pp)
+let exp_program_of_id (prog_name, params) =
+  RamenName.(program_exp_of_string (
+    string_of_program prog_name ^
+    string_of_params_exp (params_exp_of_params params)))
 
 let print_expansed_function oc (prog_opt, func) =
   Option.may (fun p ->
-    Printf.fprintf oc "%a/" print_expansed_program p
+    Printf.fprintf oc "%s/"
+      (RamenName.string_of_program_exp (exp_program_of_id p))
   ) prog_opt ;
   String.print oc (RamenName.string_of_func func)
 

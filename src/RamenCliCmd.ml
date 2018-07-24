@@ -258,6 +258,45 @@ let check_links ?(force=false) exp_program_name prog running_programs =
     ) prog.P.funcs
   ) running_programs
 
+(* When we run a program with plenty of parameters, the program name might
+ * become long and frightening. There is an alternative: if a parameter
+ * named "uniq_name", of type string, is present, then instead of appending
+ * to the program name all the parameters we will merely append that
+ * uniq_name.
+ * This works only as long as it is indeed unique though.
+ * This function will look for this uniq_name in the parameters, and make
+ * sure it's really unique by appending a number at the end in case this
+ * uniq_name is already present in the running configuration. *)
+let ensure_uniq_name_uniqueness programs params =
+  let uniquify s =
+    match
+      Hashtbl.fold (fun _exp_program_name rc max_seqnum ->
+        (* We want to uniquely identify the expansion not the program name
+         * itself *)
+        let exp = RamenName.string_of_params rc.C.params in
+        if String.starts_with exp s then
+          match String.rsplit exp ~by:"_" with
+          | exception Not_found -> Some 0
+          | _, n ->
+              (match int_of_string n with
+              | exception Failure _ -> max_seqnum
+              | n -> (match max_seqnum with
+                     | None -> Some n
+                     | Some m -> Some (max m n)))
+        else max_seqnum
+      ) programs None with
+    | None -> s
+    | Some n -> s ^"_"^ string_of_int (n + 1)
+  in
+  let params =
+    List.fold_left (fun params -> function
+      | "uniq_name" as n, RamenTypes.VString s ->
+          (n, RamenTypes.VString (uniquify s)) :: params
+      | p ->
+          p :: params
+    ) [] params in
+  List.rev params
+
 let run conf params bin_files () =
   logger := make_logger conf.C.debug ;
   Lwt_main.run (
@@ -267,6 +306,7 @@ let run conf params bin_files () =
         let prog = P.of_bin params bin in
         let exp_program_name = (List.hd prog.P.funcs).F.exp_program_name in
         check_links exp_program_name prog programs ;
+        let params = ensure_uniq_name_uniqueness programs params in
         Hashtbl.add programs exp_program_name C.{ bin ; params }
       ) bin_files ;
       return_unit))

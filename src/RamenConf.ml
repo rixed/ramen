@@ -132,7 +132,7 @@ let running_config_file conf =
   conf.persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/rc"
 
 (* Saved configuration is merely a hash from (unique) program names
- * to their binaries, and parameters: *)
+ * to their binaries, and parameters (actual ones, not default values): *)
 type must_run_entry =
   { bin : string ;
     params : RamenName.params [@ppp_default []] }

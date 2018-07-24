@@ -59,12 +59,23 @@ let path_of_program prog =
   String.join "/"
 
 (* Program parameters
- * String representation is abbreviated into a MD5 hash if too long. *)
+ *
+ * String representation is either:
+ * - The value of the parameter uniq_name if present, a string, and unique;
+ * - The printed out values of all parameters ("{p1=n1;p2=v2;...}"), if short
+ *   enough;
+ * - The MD5 hash of the above, otherwise.
+ *
+ * How do we know if uniq_name is indeed unique? We do not, that's the
+ * supervisor responsibility to make this variable unique (by appending a
+ * sequence number).
+ * *)
 
 type param = string * RamenTypes.value [@@ppp PPP_OCaml]
 type params = param list [@@ppp PPP_OCaml]
 
-(* FIXME: make those params a Map so names are unique *)
+(* FIXME: make those params a Map so names are unique and it's faster to look
+ * for uniq_name. *)
 let param_compare (a, _) (b, _) = String.compare a b
 
 let params_sort = List.fast_sort param_compare
@@ -73,9 +84,15 @@ let print_param oc (n, v) =
   Printf.fprintf oc "%s=%a" n RamenTypes.print v
 
 let string_of_params params =
-  params_sort params |>
-  IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param) |>
-  abbrev
+  try
+    List.find_map (function
+      | "uniq_name", RamenTypes.VString s -> Some s
+      | _ -> None
+    ) params
+  with Not_found ->
+    params_sort params |>
+    IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param) |>
+    abbrev
 
 type params_exp = [`Params] t
 
@@ -89,7 +106,7 @@ let params_exp_of_params = function
   | params -> "{"^ string_of_params params ^"}"
 
 
-(* Program name - expansed ; with the params expansion maybe hashed. *)
+(* Program name - expansed ; with the params expansion *)
 
 type program_exp = [`ProgramExp] t
 
