@@ -1,6 +1,6 @@
 # Configuration
 
-VERSION = 2.3.3
+VERSION = 2.3.4
 
 DUPS_IN  = $(shell ocamlfind query compiler-libs):$(shell ocamlfind query lwt_ppx)
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
