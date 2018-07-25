@@ -532,62 +532,50 @@ let pass_fpr max_fpr now certainty =
       !logger.info "Max FPR test: pass due to first notification ever sent." ;
       true
   | Some (_, (oldest, _)) ->
-      let dt = abs_float (now -. oldest) in
+      let dt = now -. oldest in
       let max_fp = Float.ceil (dt *. max_fpr) |> int_of_float in
-      (* Compute the probability that we had more than max_fp fp already.
-       * For now we use a crude approximation: we consider all the past
-       * p are the same, equal to the average. We also check how good this
-       * approximation is. *)
-      let sum_p, m =
-        Deque.fold_left (fun (s, n) (_, certainty) ->
-          s +. (1. -. certainty), n + 1
-        ) (0., 0) pendings.last_sent in
-      let p_avg = sum_p /. float_of_int m in
-      (* If this notif is good enough it's not going to impact the FPR much,
-       * so let's shortcut. Also, we don't want old junk notifs to prevent
-       * sending a good ones. So let's say if it's significantly better than
-       * the recent average we take the risk: *)
-      if 1. -. certainty < 0.5 *. p_avg then (
-        !logger.info "Max FPR test: pass due to this junk proba (%f) << \
-                      aveg (%f)"
-          (1. -. certainty) p_avg ;
-        true
-      ) else if m < max_fp then (
-        !logger.info "Max FPR test: pass due having sent only %d notifs so \
-                      far, which is less than the max false positives (%d)"
-          m max_fp ;
-        true
+      (* Compute the probability that we had more than max_fp fp already. *)
+      if max_fp < 1 (* bogus dt *) then (
+        !logger.info "Max FPR test: bogus DT" ;
+        false
+      ) else if max_fp > 1 + Deque.size pendings.last_sent then (
+        !logger.info "Max FPR test: Haven't sent enough notif yet (%d) to \
+                      send more false positives than %d"
+          (Deque.size pendings.last_sent) max_fp ;
+        false
       ) else (
-        (* If all ps are the same, then the probability to have sent more
-         * than max_fp in the last m is: *)
-        let p_approx =
-          let rec loop s i = (* TODO: faster *)
-            if i >= max_fp then 1. -. s else
-            (* probability to have sent exactly i false positives: *)
-            let p = p_avg ** (float_of_int i) *.
-                    (1. -. p_avg) ** (float_of_int (m - i)) *. comb i m in
-            loop (s +. p) (i + 1) in
-          loop 0. 0 in
-        (* The worst case for this approximation would be if we had only
-         * extreme probabilities (0s and 1s). How many 1s would that be? *)
-        let worst_1s = Float.ceil (p_avg *. float_of_int m) |> int_of_float in
-        (* If we compare this to max_fp, we know if p_approx is a major or
-         * a minor of the true probability, since in the worse case there
-         * would be either a 1 or a 0 chance of having sent more than max_fp!
-         * Now the interesting thing is what happen when worst_1s is close to
-         * max_fp: that's when we transit from knowing we are below to knowing
-         * we are above. We must then be close. So we could evaluate p_approx
-         * by how close we are from that: *)
-        let quality_approx = float_of_int (abs (max_fp - worst_1s)) /.
-                             float_of_int (max max_fp worst_1s) in
-        (* So, finally, do we have less than 50% chances to have sent more than
-         * max_fp already? *)
+        (* Actually, we are going to compute the probability that we sent
+         * exactly 0 junk notif, exactly 1, etc up to max_fp, and then
+         * take 1 - that probability.
+         * Initially, the probability to have sent 0 is 1 and everything
+         * else 0: *)
+        let p_junks = Array.init (max_fp + 1) (fun i ->
+          if i = 0 then 1. else 0.) in
+        (* For each notification sent, update the probabilities to have sent N
+         * false positives: *)
+        let send certainty =
+          let p_junk = 1. -. certainty in
+          (* Probability to have sent N = probability to have sent N and not
+           * send another one + probability to have sent N-1 and send a new
+           * one: *)
+          for i = Array.length p_junks - 1 downto 0 do
+            p_junks.(i) <- p_junks.(i) *. certainty +.
+              (if i > 0 then p_junks.(i-1) *. p_junk else 0.)
+          done in
+        Deque.iter (fun (_, certainty) -> send certainty) pendings.last_sent ;
+        (* And then we also suppose we send that new one: *)
+        send certainty ;
+        (* The probability to have sent less or exactly max_fp is thus: *)
+        let p_less_eq = Array.fold_left (+.) 0. p_junks in
+        !logger.debug "After sent %a, Proba to send exactly 0..N: %a"
+          (Deque.print (Tuple2.print Float.print Float.print)) pendings.last_sent
+          (Array.print Float.print) p_junks ;
+        (* So that the probability to have sent more than max_fp is: *)
+        let p_more = 1. -. p_less_eq in
         !logger.info "Max FPR test: we have sent %d notifications since %.0f, \
-                      with average junk probability of %f, so the approximate \
-                      probability that we have sent at least %d junk notifs \
-                      is %f (quality of approx=%f)"
-          m oldest p_avg max_fp p_approx quality_approx ;
-        p_approx <= 0.5
+                      probability to send more than %d false positive: %f."
+          (Deque.size pendings.last_sent) oldest max_fp p_more ;
+        p_more <= 0.5
       )
 
 (* Returns true if there may still be notifications to be sent: *)
