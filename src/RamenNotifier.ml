@@ -203,21 +203,6 @@ let default_notify_conf =
     default_init_schedule_delay = 90. ;
     default_init_schedule_delay_after_startup = 120. }
 
-(* Function to replace a map of keys by their values in a string.
- * Keys are delimited in the string with "${" "}". *)
-let subst_dict =
-  let open Str in
-  let re =
-    regexp "\\${\\([_a-zA-Z][-_a-zA-Z0-9]+\\)}" in
-  fun dict ?(quote=identity) ?null text ->
-    global_substitute re (fun s ->
-      let var_name = matched_group 1 s in
-      try List.assoc var_name dict |> quote
-      with Not_found ->
-        !logger.debug "Unknown parameter %S" var_name ;
-        null |? "??"^ var_name ^"??"
-    ) text
-
 (* Generic notifications are also reliably sent, de-duplicated,
  * de-bounced and the ongoing incident is identified with an "alert-id"
  * that's usable in the notification template.
@@ -296,8 +281,8 @@ type pendings =
     (* Delivery schedule is a heap ordered by schedule_time. All notifications
      * that has to be sent or acked are in there: *)
     mutable heap : scheduled_item RamenHeap.t ;
-    (* Sset of the timestamp * certainties of the last last_max_sent
-     * notifications that have been sent: *)
+    (* Set of the timestamp * certainties of the last last_max_sent
+     * notifications that have been sent (not persisted to disk): *)
     mutable last_sent : (float * float) Deque.t ;
     (* Flag that tells us if this record has been modified since last save: *)
     mutable dirty : bool }
@@ -484,7 +469,7 @@ let contact_via item =
       "alert_id", Uint64.to_string item.alert_id ;
       "start", string_of_float (item.notif.event_time |? item.notif.rcvd_time) ;
       "worker", item.notif.worker ] in
-  (* Add "stop" if we have it (or les it be NULL) *)
+  (* Add "stop" if we have it (or let it be NULL) *)
   let dict =
     match item.event_stop with
     | Some t -> ("stop", string_of_float t) :: dict

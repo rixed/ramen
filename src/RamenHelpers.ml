@@ -1106,6 +1106,29 @@ let subst_tuple_fields =
           "??"^ tuple_name ^"."^ field_name ^"??"
     ) text
 
+(* Similarly, but for simpler identifiers without tuple prefix: a function
+ * to replace a map of keys by their values in a string.
+ * Keys are delimited in the string with "${" "}".
+ * Used to replace notification parameters by their values. *)
+let subst_dict =
+  let open Str in
+  let re =
+    regexp "\\${\\([_a-zA-Z][-_a-zA-Z0-9]*\\)}" in
+  fun dict ?(quote=identity) ?null text ->
+    global_substitute re (fun s ->
+      let var_name = matched_group 1 s in
+      try List.assoc var_name dict |> quote
+      with Not_found ->
+        !logger.debug "Unknown parameter %S" var_name ;
+        null |? "??"^ var_name ^"??"
+    ) text
+
+(*$= subst_dict & ~printer:(fun x -> x)
+  "glop pas glop" (subst_dict ["glop", "pas"] "glop ${glop} glop")
+  "pas"           (subst_dict ["glop", "pas"] "${glop}")
+  "??"            (subst_dict ~null:"??" ["glop", "pas"] "${gloup}")
+ *)
+
 let reindent indent s =
   indent ^ String.nreplace (String.trim s) "\n" ("\n"^indent)
 
