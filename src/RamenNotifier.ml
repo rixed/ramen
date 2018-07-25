@@ -85,7 +85,7 @@ let http_send method_ url headers body worker =
     let%lwt body = Cohttp_lwt.Body.to_string body in
     !logger.error "Received code %d from %S (%S)" code url body ;
     IntCounter.add stats_send_fails 1 ;
-    return_unit
+    fail_with ("Bad response code: "^ string_of_int code)
   ) else
     Cohttp_lwt.Body.drain_body body
 
