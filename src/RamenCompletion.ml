@@ -234,6 +234,7 @@ let complete str () =
       | "links" ->
           let persist_dir = persist_dir toks in
           ("--no-abbrev", RamenConsts.CliInfo.no_abbrev) ::
+          ("--only-errors", RamenConsts.CliInfo.only_errors) ::
           ("--with-header", RamenConsts.CliInfo.with_header) ::
           ("--sort", RamenConsts.CliInfo.sort_col) ::
           ("--top", RamenConsts.CliInfo.top) ::
