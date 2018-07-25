@@ -74,9 +74,17 @@ let http_send method_ url headers body worker =
     | HttpCmdGet ->
       Client.get ~headers url_
     | HttpCmdPost ->
-      let headers = Header.add headers "Content-type"
-                               RamenConsts.ContentTypes.urlencoded in
-      let body = Uri.pct_encode body |> Cohttp_lwt.Body.of_string in
+      let headers, body  =
+        if Header.mem headers "Content-Type" then
+          (* Assumes the caller took care of encoding *)
+          headers, body
+        else
+          Header.add headers "Content-Type"
+                             RamenConsts.ContentTypes.urlencoded,
+          Uri.pct_encode body
+      in
+      !logger.debug "Sending HTTP body = %s" body ;
+      let body = Cohttp_lwt.Body.of_string body in
       Client.post ~headers ~body url_
   in
   let%lwt resp, body = thd in
