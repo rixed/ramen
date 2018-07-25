@@ -282,7 +282,8 @@ let ensure_uniq_name_uniqueness programs params =
         let exp = RamenName.string_of_params mre.C.params in
         if String.starts_with exp s then
           match String.rsplit exp ~by:"_" with
-          | exception Not_found -> Some 0
+          | exception Not_found ->
+              if exp = s then Some 0 else None
           | _, n ->
               (match int_of_string n with
               | exception Failure _ -> max_seqnum
@@ -308,11 +309,11 @@ let run conf params bin_files () =
   Lwt_main.run (
     C.with_wlock conf (fun programs ->
       List.iter (fun bin ->
+        let params = ensure_uniq_name_uniqueness programs params in
         let bin = absolute_path_of bin in
         let prog = P.of_bin params bin in
         let exp_program_name = (List.hd prog.P.funcs).F.exp_program_name in
         check_links exp_program_name prog programs ;
-        let params = ensure_uniq_name_uniqueness programs params in
         Hashtbl.add programs exp_program_name C.{ bin ; params }
       ) bin_files ;
       return_unit))
