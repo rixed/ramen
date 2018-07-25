@@ -609,7 +609,9 @@ let marshal_into_file fname v =
   let fd = Unix.openfile fname [O_RDWR; O_CREAT; O_TRUNC] 0o640 in
   (* Same as above, must avoid Marshal.from_input (autoclose might
    * eventually close fd at some point - FIXME) *)
-  marshal_into_fd fd v
+  finally
+    (fun () -> Unix.close fd)
+    (marshal_into_fd fd) v
 
 let marshal_from_fd fd =
   let open Unix in
@@ -621,7 +623,9 @@ let marshal_from_fd fd =
 let marshal_from_file fname =
   mkdir_all ~is_file:true fname ;
   let fd = Unix.openfile fname [O_RDWR] 0o640 in
-  marshal_from_fd fd
+  finally
+    (fun () -> Unix.close fd)
+    marshal_from_fd fd
 
 let getenv ?def n =
   try Sys.getenv n
