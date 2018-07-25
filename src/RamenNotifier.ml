@@ -443,7 +443,7 @@ let ack name contact now =
                        ignoring."
         name Contact.print contact
   | { status = StartSent ; _ } as p ->
-      !logger.info "Successfully notified %a of alert %s starting"
+      !logger.info "Successfully notified %a of start of alert %S"
         Contact.print contact name ;
       if p.wait_for_stop then
         p.status <- StartAcked
@@ -458,7 +458,7 @@ let ack name contact now =
         pendings.last_sent <- fst (Option.get (Deque.rear pendings.last_sent)) ;
       pendings.dirty <- true
   | { status = StopSent ; _ } as p ->
-      !logger.info "Successfully notified %a of alert %s ending"
+      !logger.info "Successfully notified %a of ending of alert %S"
         Contact.print contact name ;
       p.status <- StopAcked ; (* So that we know we can ignore it when its scheduled again *)
       pendings.set <- PendingSet.remove p pendings.set ; (* So that we create a new one with a fresh alert_id if it fires again *)
@@ -470,7 +470,7 @@ let ack name contact now =
 
 (* When we give up sending a notification *)
 let cancel pending now reason =
-  !logger.info "Cancelling alert %s: %s"
+  !logger.info "Cancelling alert %S: %s"
     pending.item.notif.notif_name reason ;
   let labels = ["reason", reason] in
   IntCounter.add ~labels stats_notifs_cancelled 1 ;
@@ -514,7 +514,7 @@ let contact_via item =
 let do_notify pending now =
   let i = pending.item in
   if i.attempts >= 3 then (
-    !logger.warning "Cannot deliver alert %s after %d attempt, \
+    !logger.warning "Cannot deliver alert %S after %d attempt, \
                      giving up" i.notif.notif_name i.attempts ;
     failwith "too many attempts"
   ) else (
@@ -622,7 +622,7 @@ let send_next max_fpr now =
             del_min p
         | StartSent | StopSent -> (* That's a timeout, resend *)
             assert (p.send_time <= p.schedule_time) ;
-            !logger.warning "Timing out sending a notification to %a for %s of alert %s"
+            !logger.warning "Timing out sending a notification to %a for %s of alert %S"
               Contact.print p.item.contact
               (if p.status = StartSent then "starting" else "stopping")
               p.item.notif.notif_name ;
@@ -668,8 +668,8 @@ let start conf notif_conf rb max_fpr =
     let notif =
       { worker ; sent_time ; rcvd_time = now ; event_time ;
         notif_name ; firing ; certainty ; parameters } in
-    !logger.info "Received notification from %s: %s"
-      worker notif_name ;
+    !logger.info "Received notification from %s: %S %s"
+      worker notif_name (if firing = Some false then "ended" else "started") ;
     (* Find the team in charge of that alert name: *)
     let team = Team.find_in_charge notif_conf.teams notif_name in
     let action =
