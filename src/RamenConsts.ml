@@ -176,7 +176,7 @@ struct
   let fault_injection_rate = 0.01
 
   (* Max false-positive rate for notifications: *)
-  let max_fpr = 1. /. 3600.
+  let max_fpr = 1. /. 60.
 end
 
 (* What we use as workers argv.(0) to make it easier to read ps/top
