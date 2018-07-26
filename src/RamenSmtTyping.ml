@@ -784,16 +784,26 @@ let emit_constraints tuple_sizes out_fields oc e =
         (Printf.sprintf "(or %s %s %s)"
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
 
-  | StatefulFun (_, _, Top { want_rank ; what ; by ; n ; duration ; time }) ->
+  | StatefulFun (_, _, Top { want_rank ; n ; what ; by ; duration ; time }) ->
       (* Typing rules:
+       * - n must be numeric and not null;
        * - what can be anything;
        * - by must be numeric;
+       * - duration must be a numeric and non null;
        * - time must be a time (numeric);
+       * - If we want the rank then the result type is the same as n,
+       *   otherwise it's a bool (known at parsing time);
        * - If we want the rank then the result is nullable (known at
-       *   parsing time) ;
-       * - Otherwise, nullability is inherited from what and by. *)
+       *   parsing time), otherwise nullability is inherited from what
+       *   and by. *)
+      emit_assert_numeric oc n ;
+      emit_assert_is_false oc (n_of_expr n) ;
       emit_assert_numeric oc by ;
+      emit_assert_numeric oc duration ;
+      emit_assert_is_false oc (n_of_expr duration) ;
       emit_assert_numeric oc time ;
+      if want_rank then
+        emit_id_eq_id (e_of_expr n) oc eid ;
       if not want_rank then
         emit_assert_id_eq_smt2 nid oc
           (Printf.sprintf2 "(or%a %s)"

@@ -286,8 +286,8 @@ and stateful_fun =
   (* Hysteresis *)
   | Hysteresis of t * t * t (* measured value, acceptable, maximum *)
   (* Top-k operation *)
-  | Top of { want_rank : bool ; n : int ; what : t list ; by : t ;
-             time : t ; duration : float }
+  | Top of { want_rank : bool ; n : t ; what : t list ; by : t ;
+             time : t ; duration : t }
   (* Last N e1 [BY e2, e3...] - or by arrival.
    * Note: BY followed by more than one expression will require to parentheses
    * the whole expression to avoid ambiguous parsing. *)
@@ -308,10 +308,14 @@ let expr_false =
 let expr_u8 name n =
   Const (make_typ ~typ:TU8 ~nullable:false name, VU8 (Uint8.of_int n))
 
+let expr_float name n =
+  Const (make_typ ~typ:TFloat ~nullable:false name, VFloat n)
+
 let expr_zero = expr_u8 "zero" 0
 let expr_one = expr_u8 "one" 1
 let expr_two = expr_u8 "two" 2
 let expr_three = expr_u8 "three" 3
+let expr_1hour = expr_float "1hour" 3600.
 
 let of_float v =
   Const (make_typ ~nullable:false (string_of_float v), VFloat v)
@@ -627,14 +631,13 @@ let rec print with_types oc =
     add_types t
   | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; time ;
                              duration }) ->
-    let print_duration_opt oc duration =
-      if duration > 0. then RamenParsing.print_duration oc duration in
-    Printf.fprintf oc "%s %a in top %d%sby %a in the last %a at time %a"
+    Printf.fprintf oc "%s %a in top %a %sby %a in the last %a at time %a"
       (if want_rank then "rank of" else "is")
       (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) what
-      n (sl g)
+      (print with_types) n
+      (sl g)
       (print with_types) by
-      print_duration_opt duration
+      (print with_types) duration
       (print with_types) time ;
     add_types t
   | StatefulFun (t, g, Last (n, e, es) ) ->
@@ -694,8 +697,9 @@ let fold_subexpressions f i expr =
   | StatefulFun (_, _, MultiLinReg (e1, e2, e3, e4s)) ->
       List.fold_left f i (e1::e2::e3::e4s)
 
-  | StatefulFun (_, _, Top { what = e3s ; by = e1 ; time = e2 ; _ }) ->
-      List.fold_left f i (e1::e2::e3s)
+  | StatefulFun (_, _,
+      Top { n = e1 ; by = e2 ; time = e3 ; duration = e4 ; what = e5s }) ->
+      List.fold_left f i (e1::e2::e3::e4::e5s)
 
   | StatefulFun (_, _, Last (_, e, es)) ->
       List.fold_left f i (e::es)
@@ -1198,18 +1202,16 @@ struct
       * keywords that follow: *)
      several ~sep:list_sep p +- blanks +-
      strinG "in" +- blanks +- strinG "top" +- blanks ++
-     pos_decimal_integer "top size" ++
+     (const ||| param) ++
      optional ~def:GlobalState (blanks -+ state_lifespan) ++
      optional ~def:expr_one (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
-     optional ~def:3600. (
+     optional ~def:expr_1hour (
        blanks -- strinG "in" -- blanks -- strinG "the" -- blanks --
-       strinG "last" -- blanks -+ duration) ++
+       strinG "last" -- blanks -+ (const ||| param)) ++
      optional ~def:expr_zero (
        blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
      fun ((((((want_rank, what), n), g), by), duration), time) ->
-       if duration <= 0. then
-         raise (Reject "TOP duration must be greater than zero") ;
        StatefulFun (
          (if want_rank then make_int_typ ~nullable:true "rank in top"
                        (* same nullability as what+by+time: *)

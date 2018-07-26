@@ -1009,22 +1009,21 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        Some TFloat, None, accept ;
        Some TFloat, None, max]
   | StatefulFun (op_typ, _, Top { want_rank ; what ; by ; n ; duration ; time }) ->
-    if duration <= 0. then (
-      let e = BadConstant "TOP duration must be greater than zero" in
-      raise (SyntaxError e)) ;
     (* We already know the type returned by the top operation, but maybe
      * for the nullability. But we want to ensure the top-by expression
      * can be cast to a float: *)
     let ret_type, propagate_null =
       if want_rank then
-        (fun _ -> RamenTypes.Parser.narrowest_typ_for_int ~min_int_width:0 n),
+        List.hd (* same type as n *),
         false (* "RANK OF X" is always nullable *)
       else
         return_bool,
         true (* "IS IN TOP" has same nullability than [what] or [by] *)
     in
     check_op op_typ ret_type ~propagate_null
-      ((Some TFloat, None, by) ::
+      ((Some TNum, Some false, n) ::
+       (Some TFloat, None, by) ::
+       (Some TFloat, Some false, duration) ::
        (Some TFloat, None, time) ::
        List.map (fun e -> None, None, e) what)
   | StatefulFun (op_typ, _, Last (n, e, es)) ->

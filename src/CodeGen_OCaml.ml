@@ -955,10 +955,12 @@ and emit_expr ?state ~context ~consts oc expr =
     emit_functionN ?state ~consts "CodeGenLib.hysteresis_finalize" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, Top { n ; duration ; _ }), _ ->
-    Printf.fprintf oc "%s(CodeGenLib.heavy_hitters_init %d %s)"
+    Printf.fprintf oc "%s(CodeGenLib.heavy_hitters_init (%a) (%a))"
       (if is_nullable expr then "Some " else "")
-      n
-      (Legacy.Printf.sprintf "%h" duration)
+      (* n can be any numeric type but heavy_hitters_init expects a u32: *)
+      (conv_to ?state ~context:Finalize ~consts (Some TU32)) n
+      (* duration can also be a parameter compatible to float: *)
+      (conv_to ?state ~context:Finalize ~consts (Some TFloat)) duration
   | UpdateState, StatefulFun (_, g, Top { what ; by ; time ; _ }), _ ->
     emit_functionN ?state ~consts ~args_as:(Tuple 3)
       "CodeGenLib.heavy_hitters_add"
@@ -968,15 +970,18 @@ and emit_expr ?state ~context ~consts oc expr =
     (* heavy_hitters_rank returns an optional int; we then have to convert
      * it to whatever integer size we are supposed to have: *)
     assert (is_nullable expr) ;
-    Printf.fprintf oc "(Option.map %s.of_int %a)"
-      (omod_of_type t)
-      (emit_functionN ~impl_return_nullable:true ?state ~consts ~args_as:(Tuple 1)
-         ("CodeGenLib.heavy_hitters_rank ~n:"^ string_of_int n)
-         (None :: List.map (fun _ -> None) what)) (my_state g :: what)
+    Printf.fprintf oc "(Option.map %s.of_int " (omod_of_type t) ;
+    emit_functionN
+      ~impl_return_nullable:true ?state ~consts ~args_as:(Tuple 1)
+      "CodeGenLib.heavy_hitters_rank"
+      (None :: Some TU32 :: List.map (fun _ -> None) what)
+      oc (my_state g :: n :: what) ;
+    Printf.fprintf oc ")"
   | Finalize, StatefulFun (_, g, Top { want_rank = false ; n ; what ; _ }), _ ->
-    emit_functionN ?state ~consts ~args_as:(Tuple 1)
-      ("CodeGenLib.heavy_hitters_is_in_top ~n:"^ string_of_int n)
-      (None :: List.map (fun _ -> None) what) oc (my_state g :: what)
+    emit_functionN ?state ~consts ~args_as:(Tuple 2)
+      "CodeGenLib.heavy_hitters_is_in_top"
+      (None :: Some TU32 :: List.map (fun _ -> None) what)
+      oc (my_state g :: n :: what)
 
   | InitState, StatefulFun (_, _, Last (n, e, _)), _ ->
     assert (is_nullable expr) ;

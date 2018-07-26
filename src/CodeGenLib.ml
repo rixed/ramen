@@ -137,6 +137,7 @@ let distinct_finalize st = st.last_was_distinct
 (* Heavy Hitters wrappers: *)
 
 let heavy_hitters_init n duration =
+  let n = Uint32.to_int n in
   assert (duration > 0.) ;
   let max_size = 10 * n in (* TODO? *)
   (* We want an entry weight to be halved after [duration]: *)
@@ -147,11 +148,11 @@ let heavy_hitters_add s t w x =
   HeavyHitters.add s t w x ;
   s
 
-let heavy_hitters_rank ~n s x =
-  HeavyHitters.rank n x s
+let heavy_hitters_rank s n x =
+  HeavyHitters.rank (Uint32.to_int n) x s
 
-let heavy_hitters_is_in_top ~n s x =
-  HeavyHitters.is_in_top n x s
+let heavy_hitters_is_in_top s n x =
+  HeavyHitters.is_in_top (Uint32.to_int n) x s
 
 let hash x = Hashtbl.hash x |> Int64.of_int
 

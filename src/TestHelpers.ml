@@ -138,7 +138,10 @@ let rec map_type ?(recurs=true) f =
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c)))
   | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; duration ; time }) ->
-    StatefulFun (f t, g, Top { want_rank ; n ; duration ;
+    StatefulFun (f t, g, Top {
+      want_rank ;
+      n = (if recurs then map_type ~recurs f n else n) ;
+      duration = (if recurs then map_type ~recurs f duration else duration) ;
       what = (if recurs then List.map (map_type ~recurs f) what else what) ;
       by = (if recurs then map_type ~recurs f by else by) ;
       time = (if recurs then map_type ~recurs f time else time) })
