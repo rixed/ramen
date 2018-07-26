@@ -484,9 +484,13 @@ static int may_rotate(struct ringbuf *rb, uint32_t num_words)
   uint32_t const free = ringbuf_file_num_free(rbf, rbf->cons_tail, rbf->prod_head);
   if (free >= needed) {
     if (rbf->data[rbf->prod_head] == UINT32_MAX) {
-      fprintf(stderr,
-              "Enough place for a new record (%"PRIu32" words, "
-              "and %"PRIu32" free) but EOF mark is set\n", needed, free);
+      // Another writer might have "closed" this ringbuf already, that's OK.
+      // But we still must be close to the actual end, other wise complain:
+      if (free > 2 * needed) {
+        fprintf(stderr,
+                "Enough place for a new record (%"PRIu32" words, "
+                "and %"PRIu32" free) but EOF mark is set\n", needed, free);
+      }
     } else {
       return 0;
     }

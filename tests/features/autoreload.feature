@@ -6,7 +6,7 @@ Feature: hot reloading of ramen workers
     Given ramen must be in the path
     And the environment variable RAMEN_BUNDLE_DIR is set
     And the environment variable RAMEN_ROOT is not defined
-    # Create two simple programs forming a chain of 4 workers;
+    # Create two simple programs forming a chain of 3 workers;
     And a file p1.ramen with content
       """
       define o1 as select 1 as v every 1 second;
