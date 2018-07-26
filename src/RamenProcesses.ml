@@ -102,9 +102,6 @@ let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
   let clean_watchdog = Option.get !clean_watchdog in
   let get_log_file () =
     Unix.gettimeofday () |> Unix.localtime |> log_file
-  and lwt_touch_file fname =
-    let now = Unix.gettimeofday () in
-    Lwt_unix.utimes fname now now
   and delete_directory fname = (* TODO: should really delete *)
     Lwt_unix.rename fname (fname ^".todel")
   in
@@ -118,8 +115,7 @@ let cleanup_old_files ?(sleep_time=3600.) max_archives conf =
       Lwt_stream.iter_s (fun fname ->
         let full_path = dir ^"/"^ fname in
         if fname = current_version then (
-          !logger.debug "Touching %s." full_path ;
-          lwt_touch_file full_path
+          lwt_touch_file full_path (Unix.gettimeofday ())
         ) else if string_match sub_re fname 0 &&
                   is_directory full_path &&
                   (* TODO: should be a few days *)
@@ -714,7 +710,9 @@ let synchronize_running conf autoreload_delay =
     (* Try to fix any issue with out_refs: *)
     if !to_start = [] && !to_kill = [] && !quit = None then
       check_out_ref conf must_run
-    else return_unit
+    else return_unit ;%lwt
+    (* Return if anything changed: *)
+    return (!to_kill <> [] || !to_start <> [])
   in
   (* Once we have forked some workers we must not allow an exception to
    * terminate this function or we'd leave unsupervised workers behind: *)
@@ -779,7 +777,11 @@ let synchronize_running conf autoreload_delay =
                 ) must_run_programs) in
               return now
             ) else return last_read) in
-        let%lwt () = synchronize must_run running in
+        let%lwt changed = synchronize must_run running in
+        (* Touch the rc file if anything changed (esp. autoreload) since that
+         * mtime is used to signal cache expirations etc. *)
+        if changed then lwt_touch_file rc_file last_read
+        else return_unit ;%lwt
         let delay = if !quit = None then 1. else 0.1 in
         Gc.minor () ;
         let%lwt () = Lwt_unix.sleep delay in

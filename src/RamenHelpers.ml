@@ -525,6 +525,10 @@ let read_whole_channel ic =
   in
   loop (Bytes.create (5 * read_chunk)) 0
 
+let lwt_touch_file fname to_when =
+  !logger.debug "Touching %s" fname ;
+  Lwt_unix.utimes fname to_when to_when
+
 let file_print oc fname =
   let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
   String.print oc content
