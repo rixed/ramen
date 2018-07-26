@@ -7,6 +7,7 @@ RUN echo 'APT::Install-Recommends "0";' > \
 
 # Install a few things
 RUN apt-get --yes update && \
+    apt-get --yes dist-upgrade && \
     DEBIAN_FRONTEND=noninteractive \
     apt-get --yes install \
       aspcud \
@@ -34,7 +35,7 @@ RUN /usr/local/bin/opam init --comp 4.06.1+flambda --no-setup
 
 # Environment
 ENV CAML_LD_LIBRARY_PATH=/root/.opam/4.06.1+flambda/lib/stublibs \
-    PATH=/root/.opam/4.06.1+flambda/bin:/root/.gem/ruby/2.3.2/bin/:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin \
+    PATH=/root/.opam/4.06.1+flambda/bin:/root/.gem/ruby/2.3.0/bin/:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin \
     RAMEN_BUNDLE_DIR=/root/project/bundle \
     TERM=dumb
 
