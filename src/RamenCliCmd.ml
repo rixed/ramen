@@ -50,7 +50,7 @@ let dummy_nop () =
   !logger.warning "Running in dummy mode" ;
   RamenProcesses.until_quit (fun () -> Lwt_unix.sleep 3.)
 
-let supervisor conf daemonize to_stdout to_syslog max_archives autoreload
+let supervisor conf daemonize to_stdout to_syslog autoreload
                report_period () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
@@ -83,10 +83,6 @@ let supervisor conf daemonize to_stdout to_syslog max_archives autoreload
        async (fun () ->
          restart_on_failure "wait_all_pids_loop"
            RamenProcesses.wait_all_pids_loop true) ;
-       (* TODO: Also a separate command to do the cleaning? *)
-       async (fun () ->
-         restart_on_failure "cleanup_old_files"
-           (cleanup_old_files max_archives) conf) ;
        return_unit) ;
       (* The main job of this process is to make what's actually running
        * in accordance to the running program list: *)
@@ -370,6 +366,18 @@ let kill conf program_names () =
         return (before - Hashtbl.length running_programs))) in
   Printf.printf "Killed %d program%s\n"
     num_kills (if num_kills > 1 then "s" else "")
+
+(*
+ * `ramen gc`
+ *
+ * Delete old or unused files.
+ *)
+
+let gc conf loop max_archives () =
+  if loop = 0 then
+    RamenGc.cleanup_once conf max_archives
+  else
+    RamenGc.cleanup_loop conf loop max_archives
 
 (*
  * `ramen ps`

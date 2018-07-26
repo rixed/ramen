@@ -525,6 +525,10 @@ let read_whole_channel ic =
   in
   loop (Bytes.create (5 * read_chunk)) 0
 
+let touch_file fname to_when =
+  !logger.debug "Touching %s" fname ;
+  Unix.utimes fname to_when to_when
+
 let lwt_touch_file fname to_when =
   !logger.debug "Touching %s" fname ;
   Lwt_unix.utimes fname to_when to_when

@@ -37,3 +37,4 @@ Feature: The Ramen cli behaves according to common expectations.
       | timeseries |
       | timerange  |
       | httpd      |
+      | gc         |

@@ -74,6 +74,7 @@ struct
   let links = "List all in use ring buffers with some statistics"
   let variants = "Display the experimenter identifier and variants"
   let autocomplete = "Autocomplete the given command"
+  let gc = "Delete old or unused files"
 
   (* Options *)
   let help = "Show manual page"
@@ -93,6 +94,9 @@ struct
   let max_archives =
     "Max number of archive files to keep per operation; \
      0 would disable archiving altogether"
+  let loop =
+    "Do not return after the GC is over. Instead, wait for the specified \
+     amount of time and restart"
   let autoreload =
     "Should workers be automatically reloaded when the \
      binary changes? And if so, how frequently to check"

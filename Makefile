@@ -86,7 +86,10 @@ RAMEN_SOURCES = \
 	src/RamenSerialization.ml src/RamenConf.ml src/RamenProgram.ml \
 	src/RamenWatchdog.ml \
 	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
-	src/RamenHttpHelpers.ml src/RamenProcesses.ml src/Globs.ml \
+	src/RamenHttpHelpers.ml \
+	src/RamenProcesses.ml \
+	src/RamenGc.ml \
+	src/Globs.ml \
 	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenTypingHelpers.ml \
@@ -281,7 +284,8 @@ LINKED_FOR_TESTS = \
 	src/RamenOCamlCompiler.ml src/RamenHeap.ml src/RamenSortBuf.ml \
 	src/CodeGen_OCaml.ml src/RamenBitmask.ml src/RamenSerialization.ml \
 	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
-	src/RamenHttpHelpers.ml src/RamenProcesses.ml \
+	src/RamenHttpHelpers.ml \
+	src/RamenProcesses.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenTyping.ml \
 	src/RamenBloomFilter.ml src/RamenGraphite.ml src/TestHelpers.ml \

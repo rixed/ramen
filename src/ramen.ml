@@ -73,12 +73,6 @@ let to_syslog =
                       ~env [ "to-syslog" ; "syslog" ] in
   Arg.(value (flag i))
 
-let max_archives =
-  let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
-  let i = Arg.info ~doc:RamenConsts.CliInfo.max_archives
-                   ~env ["max-archives"] in
-  Arg.(value (opt int 20 i))
-
 let autoreload =
   let env = Term.env_info "RAMEN_AUTORELOAD" in
   let i = Arg.info ~doc:RamenConsts.CliInfo.autoreload
@@ -98,10 +92,32 @@ let supervisor =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ max_archives
       $ autoreload
       $ report_period),
     info ~doc:RamenConsts.CliInfo.supervisor "supervisor")
+
+(*
+ * Delete old or unused files
+ *)
+
+let max_archives =
+  let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.max_archives
+                   ~env ["max-archives"] in
+  Arg.(value (opt int 20 i))
+
+let loop =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.loop
+                   ["loop"] in
+  Arg.(value (opt int ~vopt:3600 0 i))
+
+let gc =
+  Term.(
+    (const RamenCliCmd.gc
+      $ copts
+      $ max_archives
+      $ loop),
+    info ~doc:RamenConsts.CliInfo.gc "gc")
 
 (*
  * Notifications: Start the notifier and send test ones
@@ -645,7 +661,7 @@ let default =
 let () =
   Lwt_unix.set_pool_size 1 ;
   match Term.eval_choice default [
-    supervisor ; httpd ; notifier ;
+    supervisor ; gc ; httpd ; notifier ;
     notify ; compile ; run ; kill ;
     tail ; timeseries ; timerange ; ps ;
     test ; dequeue ; summary ; repair ; links ;
