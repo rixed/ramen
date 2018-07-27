@@ -20,7 +20,7 @@ let tmp_input_of_func persist_dir program_name func_name in_type =
 let upload_dir_of_func persist_dir program_name func_name in_type =
   tmp_input_of_func persist_dir program_name func_name in_type ^"/uploads"
 
-(* Runtime configuration (also embedded in the workers): *)
+(* Configuration that's embedded in the workers: *)
 module Func =
 struct
   type t =

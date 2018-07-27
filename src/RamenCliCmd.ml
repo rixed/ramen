@@ -197,6 +197,7 @@ let compile conf root_path use_external_compiler bundle_dir
  * Ask the ramen daemon to start a compiled program.
  *)
 
+(* TODO: remove that useless force option *)
 let check_links ?(force=false) exp_program_name prog running_programs =
   !logger.debug "checking links" ;
   List.iter (fun func ->
@@ -242,8 +243,9 @@ let check_links ?(force=false) exp_program_name prog running_programs =
    * relatives are stopped/restarted, in which case these new workers
    * could be run at the expense of the old ones. *)
   Hashtbl.iter (fun prog_name mre ->
-    let prog = P.of_bin mre.C.params mre.C.bin in
+    let prog' = P.of_bin mre.C.params mre.C.bin in
     List.iter (fun func ->
+      (* Check that a children that depends on us gets the proper type: *)
       List.iter (fun (par_prog, par_func as parent) ->
         if par_prog = Some exp_program_name then
           match List.find (fun f -> f.F.name = par_func) prog.P.funcs with
@@ -257,7 +259,7 @@ let check_links ?(force=false) exp_program_name prog running_programs =
             with Failure m when force -> (* or let it fail *)
               !logger.error "%s" m
       ) func.F.parents
-    ) prog.P.funcs
+    ) prog'.P.funcs
   ) running_programs
 
 (* When we run a program with plenty of parameters, the program name might
