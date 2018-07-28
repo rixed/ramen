@@ -372,11 +372,17 @@ let compile =
       $ program_name),
     info ~doc:RamenConsts.CliInfo.compile "compile")
 
+let replace =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.replace
+                   [ "replace" ; "r" ] in
+  Arg.(value (flag i))
+
 let run =
   Term.(
     (const RamenCliCmd.run
       $ copts
       $ params
+      $ replace
       $ bin_files),
     info ~doc:RamenConsts.CliInfo.run "run")
 

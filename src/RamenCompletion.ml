@@ -184,6 +184,7 @@ let complete str () =
           (complete_program_files last_tok)
       | "run" ->
           ("--parameter=", RamenConsts.CliInfo.param) ::
+          ("--replace", RamenConsts.CliInfo.replace) ::
           copts @
           (complete_binary_files last_tok)
       | "kill" ->

@@ -117,6 +117,8 @@ struct
   let program_globs = "Program names"
   let root_path = "Path where to find other programs"
   let source_files = "Source files to compile"
+  let replace =
+    "If a program with the same name is already running, replace it"
   let bin_files = "Binary files to run"
   let with_header = "Output the header line in CSV"
   let csv_separator = "Field separator"
