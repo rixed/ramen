@@ -143,9 +143,10 @@ let links conf no_abbrev only_errors with_header sort_col top pattern () =
           let bin, prog = get_rc () in
           Lwt_list.fold_left_s (fun links func ->
             let%lwt _, links =
-              Lwt_list.fold_left_s (fun (i, links) (par_prog, par_func) ->
+              Lwt_list.fold_left_s (fun (i, links) (par_rel_prog, par_func) ->
                 (* i is the index in the list of parents for a given child *)
-                let par_prog = par_prog |? func.F.exp_program_name in
+                let par_prog =
+                  F.program_exp_of_parent_prog func.F.exp_program_name par_rel_prog in
                 let parent =
                   match Hashtbl.find programs par_prog with
                   | exception Not_found ->

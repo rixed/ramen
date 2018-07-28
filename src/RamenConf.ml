@@ -23,6 +23,10 @@ let upload_dir_of_func persist_dir program_name func_name in_type =
 (* Configuration that's embedded in the workers: *)
 module Func =
 struct
+  type parent =
+    RamenName.rel_program_exp option * RamenName.func
+    [@@ppp PPP_OCaml]
+
   type t =
     { exp_program_name : RamenName.program_exp ; (* expansed name *)
       name : RamenName.func ;
@@ -34,7 +38,7 @@ struct
        * change when the code change, without a need to also change the
        * name of the operation. *)
       signature : string ;
-      parents : (RamenName.program_exp option * RamenName.func) list ;
+      parents : parent list ;
       merge_inputs : bool ;
       event_time : RamenEventTime.t option ;
       factors : string list ;
@@ -42,12 +46,18 @@ struct
       envvars : string list }
     [@@ppp PPP_OCaml]
 
+  (* TODO: takes a func instead of child_prog? *)
+  let program_exp_of_parent_prog child_prog = function
+    | None -> child_prog
+    | Some rel_prog_exp ->
+        RamenName.(program_exp_of_rel_program_exp child_prog rel_prog_exp)
+
   let print_parent oc = function
     | None, f ->
         String.print oc (RamenName.string_of_func f)
     | Some p, f ->
         Printf.fprintf oc "%s/%s"
-          (RamenName.string_of_program_exp p)
+          (RamenName.string_of_rel_program_exp p)
           (RamenName.string_of_func f)
 
   (* Only for debug or keys, not for paths! *)
@@ -102,7 +112,7 @@ struct
     fun params fname ->
       let p = get_prog fname in
       let exp_program_name =
-        RamenLang.exp_program_of_id (p.name, params) in
+        RamenName.make_program_exp p.name params in
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
       { p with
         params = RamenTuple.overwrite_params p.params params ;

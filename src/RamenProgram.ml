@@ -283,7 +283,7 @@ let reify_subqueries funcs =
  * with that: *)
 
 (* Exits when we met a parent which output type is not stable: *)
-let common_fields_of_from root_path funcs from =
+let common_fields_of_from root_path start_name funcs from =
   let open RamenOperation in
   List.fold_left (fun common data_source ->
     let fields =
@@ -315,7 +315,12 @@ let common_fields_of_from root_path funcs from =
               | Notifications _ ->
                   RamenNotification.tuple_typ |>
                   List.map (fun f -> f.RamenTuple.typ_name)))
-      | NamedOperation (Some (pn, _), fn) ->
+      | NamedOperation (Some (rel_pn, _), fn) ->
+          let pn = RamenName.program_of_rel_program start_name rel_pn in
+          !logger.info "Program of relative program %s = %s, relative to %s"
+            (RamenName.string_of_rel_program rel_pn)
+            (RamenName.string_of_program pn)
+            (RamenName.string_of_program start_name) ;
           let par_rc =
             P.bin_of_program_name root_path pn |> P.of_bin [] in
           let par_func =
@@ -331,7 +336,7 @@ let common_fields_of_from root_path funcs from =
         Some (Set.String.inter common_fields fields)
   ) None from |? Set.String.empty
 
-let reify_star_fields root_path funcs =
+let reify_star_fields root_path program_name funcs =
   let open RamenOperation in
   let input_field alias =
     let open RamenExpr in
@@ -346,7 +351,7 @@ let reify_star_fields root_path funcs =
           match func.operation with
           | Aggregate ({ fields ; and_all_others = true ; from ; _ } as op) ->
               (* Exit when we met a parent which output type is not stable: *)
-              (match common_fields_of_from root_path funcs from with
+              (match common_fields_of_from root_path program_name funcs from with
               | exception Exit -> changed, func :: prev
               | common_fields ->
                   let fields =
@@ -375,7 +380,7 @@ let reify_star_fields root_path funcs =
  * for '*' in select clauses.
  *)
 
-let parse root_path program =
+let parse root_path program_name program =
   let p = RamenParsing.allow_surrounding_blanks Parser.p in
   let stream = RamenParsing.stream_of_string program in
   (* TODO: enable error correction *)
@@ -387,6 +392,6 @@ let parse root_path program =
     raise (SyntaxError (ParseError { error ; text = program }))
   | Ok ((params, funcs), _) ->
     let funcs = reify_subqueries funcs in
-    let funcs = reify_star_fields root_path funcs in
+    let funcs = reify_star_fields root_path program_name funcs in
     let t = params, funcs in
     check t ; t

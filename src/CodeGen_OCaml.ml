@@ -1443,11 +1443,9 @@ let emit_well_known consts params oc name from tuple_typ event_time
     (emit_time_of_tuple "time_of_tuple_" params event_time) tuple_typ
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     name
-    (List.print (fun oc from ->
-      Printf.fprintf oc "%S" RamenOperation.(match from with
-        | GlobPattern s -> s
-        | NamedOperation id -> string_of_func_id id
-        | SubQuery _ -> assert false))) from
+    (List.print (fun oc ds ->
+      Printf.fprintf oc "%S" (
+        IO.to_string RamenOperation.print_data_source ds))) from
    unserializer_name ringbuf_envvar worker_and_time
 
 (* tuple must be some kind of _input_ tuple *)

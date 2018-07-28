@@ -50,6 +50,7 @@ let allow_surrounding_blanks ppp =
 
 let slash = char ~what:"slash" '/'
 let star = char ~what:"star" '*'
+let dot = char ~what:"dot" '.'
 let char_ ?what x = char ?what x >>: fun _ -> ()
 
 let id_quote = char_ ~what:"quote" '\''

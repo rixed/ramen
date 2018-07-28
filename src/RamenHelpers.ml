@@ -540,6 +540,7 @@ let file_print oc fname =
 let rec simplified_path =
   let res =
     [ Str.regexp "/[^/]+/\\.\\./", "/" ;
+      Str.regexp "/[^/]+/\\.\\.$", "" ;
       Str.regexp "/\\./", "/" ;
       Str.regexp "//", "/" ;
       Str.regexp "/\\.?$", "" ;
@@ -562,6 +563,8 @@ let rec simplified_path =
   "/glop"      (simplified_path "/./glop")
   "/glop/glop" (simplified_path "/glop//glop")
   "/glop/glop" (simplified_path "/glop/pas glop/..//pas glop/.././//glop//")
+  "/glop"      (simplified_path "/glop/glop/..")
+  "/glop"      (simplified_path "/glop/glop/../")
  *)
 
 let absolute_path_of ?rel_to path =

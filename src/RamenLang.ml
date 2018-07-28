@@ -229,36 +229,18 @@ open RamenParsing
 (* Defined here as both RamenProgram and RamenOperation need to parse/print
  * function and program names: *)
 
-type program_id = RamenName.program * RamenName.params
-type function_id = program_id option * RamenName.func
-
-let exp_program_of_id (prog_name, params) =
-  RamenName.(program_exp_of_string (
-    string_of_program prog_name ^
-    string_of_params_exp (params_exp_of_params params)))
-
-let print_expansed_function oc (prog_opt, func) =
-  Option.may (fun p ->
-    Printf.fprintf oc "%s/"
-      (RamenName.string_of_program_exp (exp_program_of_id p))
-  ) prog_opt ;
-  String.print oc (RamenName.string_of_func func)
-
-let string_of_func_id pn =
-  IO.to_string print_expansed_function pn
-
 let program_name ?(quoted=false) m =
   let not_quote =
     cond "quoted identifier" ((<>) '\'') 'x' in
   let what = "program name" in
   let m = what :: m in
   let first_char = if quoted then not_quote
-                   else letter ||| underscore ||| char '/' in
+                   else letter ||| underscore ||| dot ||| slash in
   let any_char = if quoted then not_quote
                  else first_char ||| decimal_digit in
   (
     first_char ++ repeat ~sep:none ~what any_char >>:
-    fun (c, s) -> RamenName.program_of_string (String.of_list (c :: s))
+    fun (c, s) -> RamenName.rel_program_of_string (String.of_list (c :: s))
   ) m
 
 let expansed_program_name ?(quoted=false) m =

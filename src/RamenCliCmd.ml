@@ -208,7 +208,9 @@ let check_links ?(force=false) exp_program_name prog running_programs =
     and already_warned2 = ref Set.empty in
     List.iter (function
       | None, _ -> ()
-      | Some par_prog, par_func ->
+      | Some par_rel_prog, par_func ->
+        let par_prog =
+          RamenName.program_exp_of_rel_program_exp func.F.exp_program_name par_rel_prog in
         (match Hashtbl.find running_programs par_prog with
         | exception Not_found ->
           if not (Set.mem par_prog !already_warned1) then (
@@ -246,8 +248,10 @@ let check_links ?(force=false) exp_program_name prog running_programs =
     let prog' = P.of_bin mre.C.params mre.C.bin in
     List.iter (fun func ->
       (* Check that a children that depends on us gets the proper type: *)
-      List.iter (fun (par_prog, par_func as parent) ->
-        if par_prog = Some exp_program_name then
+      List.iter (fun (rel_par_prog_opt, par_func as parent) ->
+        let par_prog =
+          F.program_exp_of_parent_prog func.F.exp_program_name rel_par_prog_opt in
+        if par_prog = exp_program_name then
           match List.find (fun f -> f.F.name = par_func) prog.P.funcs with
           | exception Not_found ->
             !logger.warning "Operation %s, currently stalled, will still \
@@ -320,7 +324,10 @@ let check_orphans conf killed_prog_names running_programs =
         if func.F.parents <> [] &&
            List.for_all (function
              | None, _ -> false (* does not depend in a killed program *)
-             | Some par_prog, _ -> List.mem par_prog killed_prog_names
+             | Some par_rel_prog, _ ->
+                let par_prog =
+                  RamenName.(program_exp_of_rel_program_exp func.F.exp_program_name par_rel_prog) in
+                List.mem par_prog killed_prog_names
            ) func.F.parents
         then
           !logger.warning "Operation %s, will be left without parents"

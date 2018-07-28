@@ -16,6 +16,12 @@ val program_ppp_ocaml : program PPP.t
 val program_of_string : string -> program
 val string_of_program : program -> string
 
+type rel_program = [`RelProgram] t
+val rel_program_ppp_ocaml : rel_program PPP.t
+val rel_program_of_string : string -> rel_program
+val string_of_rel_program : rel_program -> string
+val program_of_rel_program : program -> rel_program -> program
+
 (* We also need param expansion as strings, since that's what the user
  * gives us and what we use to identify an instance of a program: *)
 type param = string * RamenTypes.value
@@ -42,7 +48,18 @@ val path_of_program_exp : program_exp -> string
 val program_exp_of_path : string -> program_exp
 val program_exp_of_program : program -> program_exp
 val split_program_exp : program_exp -> program * params_exp
+val make_program_exp : program -> params -> program_exp
 val program_of_program_exp : program_exp -> program
+
+(* Relative programs with expansion: *)
+type rel_program_exp = [`RelProgramExp] t
+val rel_program_exp_ppp_ocaml : rel_program_exp PPP.t
+val rel_program_exp_of_string : string -> rel_program_exp
+val string_of_rel_program_exp : rel_program_exp -> string
+val make_rel_program_exp : rel_program -> params -> rel_program_exp
+val split_rel_program_exp : rel_program_exp -> rel_program * params_exp
+val program_exp_of_rel_program_exp :
+  program_exp -> rel_program_exp -> program_exp
 
 (* For logs, not paths! *)
 type fq = [`FQ] t

@@ -1394,7 +1394,8 @@ let set_all_types conf parents funcs params =
     let test_type_single_func op_text =
       try
         let txt = "DEFINE foo AS "^ op_text in
-        let _params, funcs = RamenProgram.parse "/tmp" txt in
+        let prog_name = RamenName.program_of_string "foo" in
+        let _params, funcs = RamenProgram.parse "/tmp" prog_name txt in
         let operation = (List.hd funcs).RamenProgram.operation in
         let funcs = Hashtbl.create 3 in
         Hashtbl.add funcs "test"

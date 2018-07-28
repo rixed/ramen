@@ -15,6 +15,8 @@ open RamenLang
 open RamenHelpers
 open RamenLog
 module E = RamenExpr
+module C = RamenConf
+module F = C.Func
 
 (*$inject
   open TestHelpers
@@ -143,13 +145,19 @@ type t =
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
 and data_source =
-  | NamedOperation of ((RamenName.program * RamenName.params) option * RamenName.func)
+  | NamedOperation of ((RamenName.rel_program * RamenName.params) option *
+                       RamenName.func)
   | SubQuery of t
   | GlobPattern of string
 
 let rec print_data_source oc = function
-  | NamedOperation id ->
-      print_expansed_function oc id
+  | NamedOperation (Some (rel_p, ps), f) ->
+      Printf.fprintf oc "%s%s/%s"
+        (RamenName.string_of_rel_program rel_p)
+        RamenName.(string_of_params_exp (params_exp_of_params ps))
+        (RamenName.string_of_func f)
+  | NamedOperation (None, f) ->
+      String.print oc (RamenName.string_of_func f)
   | SubQuery q ->
       Printf.fprintf oc "(%a)" print q
   | GlobPattern s ->
@@ -227,15 +235,6 @@ and print oc =
       (List.print ~first:" FROM " ~last:"" ~sep:", "
         print_data_source) from
 
-let func_id_of_data_source = function
-  | NamedOperation id -> id
-  | SubQuery _
-      (* Should have been replaced by a hidden function
-       * by the time this is called *)
-  | GlobPattern _ ->
-      (* Should not be called on instrumentation operation *)
-      assert false
-
 let is_merging = function
   | Aggregate { merge ; _ } when fst merge <> [] -> true
   | _ -> false
@@ -249,6 +248,18 @@ let event_time_of_operation = function
       RamenBinocle.event_time
   | Notifications _ ->
       RamenNotification.event_time
+
+let func_id_of_data_source = function
+  | NamedOperation (p_opt, f) ->
+      Option.map (fun (rel_p, ps) ->
+        RamenName.make_rel_program_exp rel_p ps) p_opt,
+      f
+  | SubQuery _
+      (* Should have been replaced by a hidden function
+       * by the time this is called *)
+  | GlobPattern _ ->
+      (* Should not be called on instrumentation operation *)
+      assert false
 
 let parents_of_operation = function
   | ListenFor _ | ReadCSVFile _
@@ -1183,7 +1194,7 @@ struct
         key = [] ;\
         commit_cond = replace_typ E.expr_true ;\
         commit_before = false ;\
-        from = [NamedOperation (Some (RamenName.program_of_string "foo", []), RamenName.func_of_string "bar")] ;\
+        from = [NamedOperation (Some (RamenName.rel_program_of_string "foo", []), RamenName.func_of_string "bar")] ;\
         flush_how = Reset ; every = 0. ; factors = [] },\
         (37, [])))\
         (test_op p "SELECT n, lag(2, n) AS l FROM foo/bar" |>\

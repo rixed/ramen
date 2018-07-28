@@ -64,7 +64,7 @@ let compile conf root_path program_name program_code =
     !logger.info "Parsing program %s"
       (RamenName.string_of_program program_name) ;
     let parsed_params, parsed_funcs =
-      RamenProgram.parse root_path program_code in
+      RamenProgram.parse root_path program_name program_code in
     (*
      * Now we have to type all of these.
      * Here we mainly construct the data required by the typer: it needs
@@ -100,31 +100,35 @@ let compile conf root_path program_name program_code =
     List.iter (fun parsed_func ->
       RamenOperation.parents_of_operation
         parsed_func.RamenProgram.operation |>
-      List.map (fun parent_id ->
-        (* parent_id is the name as it appears in the source, can be FQed
-         * or just a local name. We need to build a set of funcs where all
-         * involved func appears only once: *)
-        let parent_id = match parent_id with
-          | None, func_name -> Some (program_name, []), func_name
-          | pn -> pn in
-        let parent_prog_name, _parent_prog_params =
-          Option.get (fst parent_id)
-        and parent_func_name = snd parent_id in
-        (* For compiling, we want the 'virtual' parents with no
-         * parameters as we are interested only in their output
+      List.map (fun parent ->
+        (* parent is the name as it appears in the source, can be FQed,
+         * relative or just a local name. We need to build a set of funcs
+         * where all involved func appears only once.
+         * For compiling, we want the 'virtual' parents with no parameters
+         * and absolute names, as we are only interested in their output
          * type: *)
-        let parent_name = RamenName.string_of_program parent_prog_name ^"/"^
-                          RamenName.string_of_func parent_func_name in
+        let parent_prog_name, parent_func_name =
+          match parent with
+          | None, func_name -> program_name, func_name
+          | Some rel_prog_exp, func_name ->
+              let rel_prog, _ =
+                RamenName.split_rel_program_exp rel_prog_exp in
+              RamenName.program_of_rel_program program_name rel_prog,
+              func_name in
+        let parent_name =
+          RamenName.string_of_program parent_prog_name ^"/"^
+          RamenName.string_of_func parent_func_name
+        in
         try Hashtbl.find compiler_funcs parent_name
         with Not_found ->
           !logger.debug "Found external reference to function %a"
-            RamenLang.print_expansed_function parent_id ;
+            F.print_parent parent ;
           (* Or the parent must have been in compiler_funcs: *)
           if parent_prog_name = program_name then
             raise (RamenLang.SyntaxError (UnknownFunc parent_name)) ;
           let parent_func =
             let par_rc =
-              P.bin_of_program_name root_path (fst (Option.get (fst parent_id))) |>
+              P.bin_of_program_name root_path parent_prog_name |>
               P.of_bin [] in
             List.find (fun f ->
               f.F.name = parent_func_name
