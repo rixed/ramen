@@ -129,7 +129,7 @@ type t =
   | ReadCSVFile of {
       where : file_spec ;
       what : csv_specs ;
-      preprocessor : string ;
+      preprocessor : E.t option ;
       event_time : RamenEventTime.t option ;
       factors : string list }
   | ListenFor of {
@@ -218,8 +218,9 @@ and print oc =
                   what = csv_specs ; preprocessor ; event_time } ->
     Printf.fprintf oc "%a %s %a"
       print_file_spec file_spec
-      (if preprocessor = "" then ""
-        else Printf.sprintf "PREPROCESS WITH %S" preprocessor)
+      (Option.map_default (fun e ->
+         Printf.sprintf2 "PREPROCESS WITH %a" (E.print false) e
+       ) "" preprocessor)
       print_csv_specs csv_specs
   | ListenFor { net_addr ; port ; proto } ->
     Printf.fprintf oc "LISTEN FOR %s ON %s:%d"
@@ -281,7 +282,9 @@ let factors_of_operation = function
  * operation. We always do so depth first. *)
 
 let fold_top_level_expr init f = function
-  | ListenFor _ | ReadCSVFile _ | Instrumentation _ | Notifications _ -> init
+  | ListenFor _ | Instrumentation _ | Notifications _ -> init
+  | ReadCSVFile { preprocessor ; _ } ->
+      Option.map_default (f init) init preprocessor
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
                 flush_how ; notifications ; _ } ->
       let x =
@@ -763,8 +766,10 @@ struct
 
   let preprocessor_clause m =
     let m = "file preprocessor" :: m in
-    (strinG "preprocess" -- blanks -- strinG "with" -- opt_blanks -+
-     quoted_string) m
+    (
+      strinG "preprocess" -- blanks -- strinG "with" -- opt_blanks -+
+      (E.Parser.const ||| E.Parser.param)
+    ) m
 
   let factor_clause m =
     let m = "factors" :: m in
@@ -785,7 +790,7 @@ struct
     | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
     | InstrumentationClause of string
     | ExternalDataClause of file_spec
-    | PreprocessorClause of string
+    | PreprocessorClause of E.t option
     | CsvSpecsClause of csv_specs
 
   (* A special from clause that accept globs, used to match workers in
@@ -836,7 +841,7 @@ struct
       (listen_clause >>: fun c -> ListenClause c) |||
       (instrumentation_clause >>: fun c -> InstrumentationClause c) |||
       (read_file_specs >>: fun c -> ExternalDataClause c) |||
-      (preprocessor_clause >>: fun c -> PreprocessorClause c) |||
+      (preprocessor_clause >>: fun c -> PreprocessorClause (Some c)) |||
       (csv_specs >>: fun c -> CsvSpecsClause c) |||
       (factor_clause >>: fun c -> FactorClause c) in
     (several ~sep:blanks part >>: fun clauses ->
@@ -854,7 +859,7 @@ struct
       and default_listen = None
       and default_instrumentation = ""
       and default_ext_data = None
-      and default_preprocessor = ""
+      and default_preprocessor = None
       and default_csv_specs = None
       and default_factors = [] in
       let default_clauses =
@@ -1202,7 +1207,7 @@ struct
 
     (Ok (\
       ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = false } ; \
-                    preprocessor = "" ; event_time = None ; \
+                    preprocessor = None ; event_time = None ; \
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
@@ -1214,7 +1219,7 @@ struct
 
     (Ok (\
       ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = true } ; \
-                    preprocessor = "" ; event_time = None ; \
+                    preprocessor = None ; event_time = None ; \
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
@@ -1226,7 +1231,7 @@ struct
 
     (Ok (\
       ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = false } ; \
-                    preprocessor = "" ; event_time = None ; \
+                    preprocessor = None ; event_time = None ; \
                     what = { \
                       separator = "\t" ; null = "<NULL>" ; \
                       fields = [ \

@@ -1316,9 +1316,13 @@ let check_operation operation parents func params =
                     fields (fst merge) sort where
                     key notifications commit_cond flush_how
 
-  | ReadCSVFile { what = { fields ; _ } ; _ } ->
+  | ReadCSVFile { what = { fields ; _ } ; preprocessor ; _ } ->
     set_well_known_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields) ;
-    false
+    Option.map_default (fun p ->
+      let exp_type =
+        RamenExpr.make_string_typ ~nullable:false "preprocessor" in
+      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params p
+    ) false preprocessor
 
   | ListenFor { proto ; _ } ->
     set_well_known_type (RamenProtocols.tuple_typ_of_proto proto) ;

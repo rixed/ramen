@@ -884,15 +884,23 @@ let emit_operation declare tuple_sizes fi oc func =
        *   strings. *)
       let name = Printf.sprintf "F%d_WHERE" fi in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr where) oc TBool ;
+      let name = name ^"NULL" in
+      emit_assert_is_false ~name oc (n_of_expr where) ;
       let name = Printf.sprintf "F%d_COMMIT" fi in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr commit_cond) oc TBool ;
+      let name = name ^"NULL" in
+      emit_assert_is_false ~name oc (n_of_expr commit_cond) ;
       List.iteri (fun i notif ->
         let name = Printf.sprintf "F%d_NOTIF_%d" fi i in
         emit_assert_id_eq_typ ~name tuple_sizes
           (e_of_expr notif.notif_name) oc TString ;
+        let name = name ^"NULL" in
+        emit_assert_is_false ~name oc (n_of_expr notif.notif_name) ;
         List.iteri (fun j (_n, v) ->
           let name = Printf.sprintf "F%d_NOTIF_%d_%d" fi i j in
-          emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr v) oc TString
+          emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr v) oc TString ;
+          let name = name ^"NULL" in
+          emit_assert_is_false ~name oc (n_of_expr v)
         ) notif.parameters
       ) notifications ;
       (match flush_how with
@@ -900,6 +908,14 @@ let emit_operation declare tuple_sizes fi oc func =
       | RemoveAll e | KeepOnly e ->
           let name = "F"^ string_of_int fi ^"_FLUSH" in
           emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TBool)
+  | ReadCSVFile { preprocessor ; _ } ->
+      Option.may (fun p ->
+        (*  must be a non-nullable string: *)
+        let name = Printf.sprintf "F%d_PREPROCESSOR" fi in
+        emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr p) oc TString ;
+        let name = name ^"NULL" in
+        emit_assert_is_false ~name oc (n_of_expr p)
+      ) preprocessor
   | _ -> ())
 
 let emit_program declare tuple_sizes oc funcs =

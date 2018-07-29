@@ -219,6 +219,11 @@ let replace_typ_in_operation =
         | RemoveAll e -> RemoveAll (replace_typ e)
         | KeepOnly e -> KeepOnly (replace_typ e)) ;
       every ; factors }
+
+  | ReadCSVFile ({ preprocessor ; _ } as csv) ->
+      ReadCSVFile { csv with
+        preprocessor = Option.map replace_typ csv.preprocessor }
+
   | x -> x
 
 let replace_typ_in_op = function
