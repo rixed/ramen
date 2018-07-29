@@ -1397,13 +1397,16 @@ let emit_time_of_tuple name params event_time oc tuple_typ =
 let emit_read_csv_file consts params oc name csv_fname unlink
                        csv_separator csv_null
                        tuple_typ preprocessor event_time =
+  let const_string_of e =
+    Printf.sprintf2 "(%a)"
+      (emit_expr ~context:Finalize ~consts ?state:None) e
+  in
   let preprocessor =
     let open RamenOperation in
     match preprocessor with
     | None -> "\"\""
-    | Some p ->
-        Printf.sprintf2 "(%a)"
-          (emit_expr ~context:Finalize ~consts ?state:None) p
+    | Some p -> const_string_of p
+  and csv_fname = const_string_of csv_fname
   in
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
@@ -1415,7 +1418,7 @@ let emit_read_csv_file consts params oc name csv_fname unlink
   Printf.fprintf oc
      "%a\n%a\n%a\n%a\n\
      let %s () =\n\
-       \tCodeGenLib.read_csv_file %S %b %S sersize_of_tuple_\n\
+       \tCodeGenLib.read_csv_file %s %b %S sersize_of_tuple_\n\
        \t\ttime_of_tuple_ serialize_tuple_ tuple_of_strings_ %s\n\
        \t\tfield_of_params_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ

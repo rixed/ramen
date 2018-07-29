@@ -908,14 +908,20 @@ let emit_operation declare tuple_sizes fi oc func =
       | RemoveAll e | KeepOnly e ->
           let name = "F"^ string_of_int fi ^"_FLUSH" in
           emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TBool)
-  | ReadCSVFile { preprocessor ; _ } ->
+
+  | ReadCSVFile { preprocessor ; where = { fname ; _ } ; _ } ->
       Option.may (fun p ->
         (*  must be a non-nullable string: *)
         let name = Printf.sprintf "F%d_PREPROCESSOR" fi in
         emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr p) oc TString ;
         let name = name ^"NULL" in
         emit_assert_is_false ~name oc (n_of_expr p)
-      ) preprocessor
+      ) preprocessor ;
+      let name = Printf.sprintf "F%d_FILENAME" fi in
+      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr fname) oc TString ;
+      let name = name ^"NULL" in
+      emit_assert_is_false ~name oc (n_of_expr fname)
+
   | _ -> ())
 
 let emit_program declare tuple_sizes oc funcs =

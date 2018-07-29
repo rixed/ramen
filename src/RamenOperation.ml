@@ -62,7 +62,7 @@ let print_flush_method oc = function
     Printf.fprintf oc "REMOVE (%a)" (E.print false) e
 
 (* Represents an input CSV format specifications: *)
-type file_spec = { fname : string ; unlink : bool }
+type file_spec = { fname : E.t ; unlink : bool }
 type csv_specs =
   { separator : string ; null : string ; fields : RamenTuple.typ }
 
@@ -72,8 +72,9 @@ let print_csv_specs oc specs =
     RamenTuple.print_typ specs.fields
 
 let print_file_spec oc specs =
-  Printf.fprintf oc "READ%s FILES %S"
-    (if specs.unlink then " AND DELETE" else "") specs.fname
+  Printf.fprintf oc "READ%s FILES %a"
+    (if specs.unlink then " AND DELETE" else "")
+    (E.print false) specs.fname
 
 (* Type of notifications.
  * Certainty is about how likely we are the alert is not a false positive.
@@ -283,8 +284,9 @@ let factors_of_operation = function
 
 let fold_top_level_expr init f = function
   | ListenFor _ | Instrumentation _ | Notifications _ -> init
-  | ReadCSVFile { preprocessor ; _ } ->
-      Option.map_default (f init) init preprocessor
+  | ReadCSVFile { where = { fname ; _ } ; preprocessor ; _ } ->
+      let x = Option.map_default (f init) init preprocessor in
+      f x fname
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
                 flush_how ; notifications ; _ } ->
       let x =
@@ -747,7 +749,7 @@ struct
        strinG "and" -- blanks -- strinG "delete" -- blanks >>:
          fun () -> true) +-
      (strinG "file" ||| strinG "files") +- blanks ++
-     quoted_string >>: fun (unlink, fname) ->
+     (E.Parser.const ||| E.Parser.param) >>: fun (unlink, fname) ->
        { unlink ; fname }) m
 
   let csv_specs m =
@@ -1206,7 +1208,7 @@ struct
          replace_typ_in_op)
 
     (Ok (\
-      ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = false } ; \
+      ReadCSVFile { where = { fname = RamenExpr.Const (typ, RamenTypes.VString "/tmp/toto.csv") ; unlink = false } ; \
                     preprocessor = None ; event_time = None ; \
                     what = { \
                       separator = "," ; null = "" ; \
@@ -1215,10 +1217,11 @@ struct
                         { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } } ] } ;\
                     factors = [] },\
       (44, [])))\
-      (test_op p "read file \"/tmp/toto.csv\" (f1 bool?, f2 i32)")
+      (test_op p "read file \"/tmp/toto.csv\" (f1 bool?, f2 i32)" |>\
+       replace_typ_in_op)
 
     (Ok (\
-      ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = true } ; \
+      ReadCSVFile { where = { fname = RamenExpr.Const (typ, RamenTypes.VString "/tmp/toto.csv") ; unlink = true } ; \
                     preprocessor = None ; event_time = None ; \
                     what = { \
                       separator = "," ; null = "" ; \
@@ -1227,10 +1230,11 @@ struct
                         { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } } ] } ;\
                     factors = [] },\
       (55, [])))\
-      (test_op p "read and delete file \"/tmp/toto.csv\" (f1 bool?, f2 i32)")
+      (test_op p "read and delete file \"/tmp/toto.csv\" (f1 bool?, f2 i32)" |>\
+       replace_typ_in_op)
 
     (Ok (\
-      ReadCSVFile { where = { fname = "/tmp/toto.csv" ; unlink = false } ; \
+      ReadCSVFile { where = { fname = RamenExpr.Const (typ, RamenTypes.VString "/tmp/toto.csv") ; unlink = false } ; \
                     preprocessor = None ; event_time = None ; \
                     what = { \
                       separator = "\t" ; null = "<NULL>" ; \
@@ -1241,7 +1245,8 @@ struct
       (73, [])))\
       (test_op p "read file \"/tmp/toto.csv\" \\
                       separator \"\\t\" null \"<NULL>\" \\
-                      (f1 bool?, f2 i32)")
+                      (f1 bool?, f2 i32)" |>\
+       replace_typ_in_op)
 
     (Ok (\
       Aggregate {\
