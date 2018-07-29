@@ -868,14 +868,14 @@ let emit_constraints tuple_sizes out_fields oc e =
 
 let emit_operation declare tuple_sizes fi oc func =
   let open RamenOperation in
+  let op = Option.get func.Func.operation in
+  (* Declare all variables: *)
+  RamenOperation.iter_expr declare op ;
   (* Now add specific constraints depending on the clauses: *)
-  (match Option.get func.Func.operation with
+  (match op with
   | Aggregate { fields ; where ; event_time ; notifications ;
-                commit_cond ; flush_how ; _ } as op ->
-      RamenOperation.iter_expr (fun e ->
-        declare e ;
-        emit_constraints tuple_sizes fields oc e
-      ) op ;
+                commit_cond ; flush_how ; _ } ->
+      RamenOperation.iter_expr (emit_constraints tuple_sizes fields oc) op ;
       (* Typing rules:
        * - Where must be a bool;
        * - Commit-when must also be a bool;
@@ -910,6 +910,7 @@ let emit_operation declare tuple_sizes fi oc func =
           emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TBool)
 
   | ReadCSVFile { preprocessor ; where = { fname ; _ } ; _ } ->
+      RamenOperation.iter_expr (emit_constraints tuple_sizes [] oc) op ;
       Option.may (fun p ->
         (*  must be a non-nullable string: *)
         let name = Printf.sprintf "F%d_PREPROCESSOR" fi in
@@ -1201,7 +1202,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs =
         (n_of_expr e)
         eid)
   in
-  (* Set the types for all fields from parents, params or env: *)
+  (* Set the types for all fields from parents: *)
   emit_input_fields parent_types parents funcs ;
   emit_program declare tuple_sizes expr_types funcs ;
   if optimize then emit_minimize expr_types funcs ;

@@ -519,10 +519,18 @@ let check params =
     let field_names = List.map (fun t -> t.RamenTuple.typ_name) tup_typ in
     check_factors field_names factors
 
-  | ReadCSVFile { what ; event_time ; factors ; _ } ->
+  | ReadCSVFile { what ; where = { fname ; _ } ; event_time ; factors ;
+                  preprocessor ; _ } ->
     let field_names = List.map (fun t -> t.RamenTuple.typ_name) what.fields in
     Option.may (check_event_time field_names) event_time ;
-    check_factors field_names factors
+    check_factors field_names factors ;
+    (* Default to In if not a param, and then disallow In ):-) *)
+    Option.may (fun p ->
+      prefix_def TupleIn p ;
+      check_fields_from [ TupleParam; TupleEnv ] "PREPROCESSOR" p
+    ) preprocessor ;
+    prefix_def TupleIn fname ;
+    check_fields_from [ TupleParam; TupleEnv ] "FILE NAMES" fname
     (* FIXME: check the field type declarations use only scalar types *)
 
   | Instrumentation _ | Notifications _ -> ()
@@ -749,7 +757,7 @@ struct
        strinG "and" -- blanks -- strinG "delete" -- blanks >>:
          fun () -> true) +-
      (strinG "file" ||| strinG "files") +- blanks ++
-     (E.Parser.const ||| E.Parser.param) >>: fun (unlink, fname) ->
+     E.Parser.p >>: fun (unlink, fname) ->
        { unlink ; fname }) m
 
   let csv_specs m =
@@ -770,7 +778,7 @@ struct
     let m = "file preprocessor" :: m in
     (
       strinG "preprocess" -- blanks -- strinG "with" -- opt_blanks -+
-      (E.Parser.const ||| E.Parser.param)
+      E.Parser.p
     ) m
 
   let factor_clause m =

@@ -5,7 +5,7 @@ open RamenHelpers
 open RamenLog
 
 type tuple_prefix =
-  | TupleUnknown (* Either In or Out *)
+  | TupleUnknown (* Either In, Out or Param*)
   | TupleIn | TupleLastIn
   | TupleSelected | TupleLastSelected
   | TupleUnselected | TupleLastUnselected

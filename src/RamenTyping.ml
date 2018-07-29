@@ -1320,13 +1320,17 @@ let check_operation operation parents func params =
                   preprocessor ; _ } ->
     set_well_known_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields) ;
     Option.map_default (fun p ->
-      let exp_type =
-        RamenExpr.make_string_typ ~nullable:false "preprocessor" in
+      let exp_type = Expr.typ_of p in
+      set_nullable exp_type false |||
+      set_scalar_type ~ok_if_larger:false ~expr_name:"preprocessor"
+                      exp_type TString |||
       check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params p
     ) false preprocessor |||
     (
-      let exp_type =
-        RamenExpr.make_string_typ ~nullable:false "CSV filename" in
+      let exp_type = Expr.typ_of fname in
+      set_nullable exp_type false |||
+      set_scalar_type ~ok_if_larger:false ~expr_name:"preprocessor"
+                      exp_type TString |||
       check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params fname
     )
 
