@@ -278,13 +278,13 @@ let find_uniq_name params =
   | RamenTypes.VString s -> Some s
   | _ -> None
 
-let run conf params replace bin_files () =
+let run conf params replace as_ bin_files () =
   logger := make_logger conf.C.debug ;
   Lwt_main.run (
     C.with_wlock conf (fun programs ->
       List.iter (fun bin ->
         let bin = absolute_path_of bin in
-        let prog = P.of_bin params bin in
+        let prog = P.of_bin ?as_ params bin in
         let exp_program_name = (List.hd prog.P.funcs).F.exp_program_name in
         check_links exp_program_name prog programs ;
         if not replace && Hashtbl.mem programs exp_program_name then

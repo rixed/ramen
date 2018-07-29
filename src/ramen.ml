@@ -377,12 +377,18 @@ let replace =
                    [ "replace" ; "r" ] in
   Arg.(value (flag i))
 
+let as_ =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.as_
+                   [ "as" ; "o" ] in
+  Arg.(value (opt (some program) None i))
+
 let run =
   Term.(
     (const RamenCliCmd.run
       $ copts
       $ params
       $ replace
+      $ as_
       $ bin_files),
     info ~doc:RamenConsts.CliInfo.run "run")
 

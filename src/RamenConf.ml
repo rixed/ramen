@@ -71,7 +71,11 @@ end
 module Program =
 struct
   type t =
-    { name : RamenName.program ;
+    { (* Do away with this default_name, that's mostly useless.
+         Instead, binaries should have a cwd that we can set at start.
+         But then we still need a root_path to help the compiler found
+         parents out types? *)
+      default_name : RamenName.program ;
       params : RamenTuple.params [@ppp_default []] ;
       funcs : Func.t list }
       [@@ppp PPP_OCaml]
@@ -109,10 +113,11 @@ struct
         0.
     in
     let get_prog = cached "of_bin" reread_data age_of_data in
-    fun params fname ->
+    fun ?as_ params fname ->
       let p = get_prog fname in
+      let p_name = as_ |? p.default_name in
       let exp_program_name =
-        RamenName.make_program_exp p.name params in
+        RamenName.make_program_exp p_name params in
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
       { p with
         params = RamenTuple.overwrite_params p.params params ;

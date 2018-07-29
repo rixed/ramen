@@ -271,7 +271,7 @@ let compile conf root_path program_name program_code =
           ) |>
           List.of_enum
         and params = parsed_params in
-        let runconf = P.{ name = program_name ; funcs ; params } in
+        let runconf = P.{ default_name = program_name ; funcs ; params } in
         Printf.fprintf oc "let rc_str_ = %S\n"
           ((PPP.to_string P.t_ppp_ocaml runconf) |>
            PPP_prettify.prettify) ;
