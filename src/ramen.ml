@@ -354,9 +354,9 @@ let program =
   in
   Arg.conv ~docv:"PROGRAM" (parse, print)
 
-let program_name =
+let as_ =
   let i = Arg.info ~doc:RamenConsts.CliInfo.program_name ~docv:"NAME"
-                   [ "program-name" ; "o" ; "as-program" ] in
+                   [ "as" ; "o" ] in
   Arg.(value (opt (some program) None i))
 
 let compile =
@@ -369,18 +369,13 @@ let compile =
       $ max_simult_compilations
       $ smt_solver
       $ source_files
-      $ program_name),
+      $ as_),
     info ~doc:RamenConsts.CliInfo.compile "compile")
 
 let replace =
   let i = Arg.info ~doc:RamenConsts.CliInfo.replace
                    [ "replace" ; "r" ] in
   Arg.(value (flag i))
-
-let as_ =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.as_
-                   [ "as" ; "o" ] in
-  Arg.(value (opt (some program) None i))
 
 let run =
   Term.(
