@@ -105,7 +105,7 @@ let complete_running_function persist_dir str =
     (fun prog ->
       List.enum prog.P.funcs |>
       Enum.map (fun func ->
-        RamenName.string_of_program_exp func.F.exp_program_name ^"/"^
+        RamenName.string_of_program func.F.program_name ^"/"^
         RamenName.string_of_func func.F.name)) |>
     Enum.flatten
   ) /@
@@ -114,7 +114,7 @@ let complete_running_function persist_dir str =
 let complete_running_program persist_dir str =
   let conf = C.make_conf persist_dir in
   (Lwt_main.run (C.with_rlock conf Lwt.return) |> Hashtbl.keys) /@
-  RamenName.string_of_program_exp /@
+  RamenName.string_of_program /@
   empty_help |> List.of_enum
 
 let complete str () =

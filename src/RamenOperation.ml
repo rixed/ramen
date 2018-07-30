@@ -153,9 +153,8 @@ and data_source =
 
 let rec print_data_source oc = function
   | NamedOperation (Some (rel_p, ps), f) ->
-      Printf.fprintf oc "%s%s/%s"
+      Printf.fprintf oc "%s/%s"
         (RamenName.string_of_rel_program rel_p)
-        RamenName.(string_of_params_exp (params_exp_of_params ps))
         (RamenName.string_of_func f)
   | NamedOperation (None, f) ->
       String.print oc (RamenName.string_of_func f)
@@ -253,9 +252,7 @@ let event_time_of_operation = function
 
 let func_id_of_data_source = function
   | NamedOperation (p_opt, f) ->
-      Option.map (fun (rel_p, ps) ->
-        RamenName.make_rel_program_exp rel_p ps) p_opt,
-      f
+      Option.map fst p_opt, f
   | SubQuery _
       (* Should have been replaced by a hidden function
        * by the time this is called *)

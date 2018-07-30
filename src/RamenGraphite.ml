@@ -165,38 +165,36 @@ let tree_enum_of_program (program_name, get_rc) =
  * programs. Merely build a hashtbl of hashtbls.
  * The hash has a boolean alongside the prefix, indicating if the value is a
  * Prog or a Hash, so that we can have both under the same name. *)
-type program_tree_item = Prog of (RamenName.program_exp * (unit -> string * P.t))
-                       | Hash of ((bool * string), program_tree_item) Hashtbl.t
+type program_tree_item =
+  | Prog of (RamenName.program * (unit -> string * P.t))
+  | Hash of ((bool * string), program_tree_item) Hashtbl.t
 
 let tree_enum_of_programs programs =
   let programs =
     Hashtbl.enum programs |>
     Array.of_enum in
   Array.fast_sort (fun (k1, _) (k2, _) ->
-    String.compare (RamenName.string_of_program_exp k1)
-                   (RamenName.string_of_program_exp k2)) programs ;
+    String.compare (RamenName.string_of_program k1)
+                   (RamenName.string_of_program k2)) programs ;
   let rec hash_for_prefix pref =
     let h = Hashtbl.create 11 in
     let pl = String.length pref in
-    Array.iter (fun (program_name_exp, get_rc as p) ->
+    Array.iter (fun (program_name, get_rc as p) ->
       if String.starts_with
-           (RamenName.string_of_program_exp program_name_exp) pref
+           (RamenName.string_of_program program_name) pref
       then
         (* Do not look for '/' in the parameter expansion suffix: *)
-        let program_name, params =
-          RamenName.split_program_exp program_name_exp in
-        let suf_noexp =
+        let suf =
           String.lchop ~n:pl (RamenName.string_of_program program_name) in
         (* Get the next prefix *)
-        match String.split suf_noexp ~by:"/" with
+        match String.split suf ~by:"/" with
         | exception Not_found ->
-            let suf = suf_noexp ^ RamenName.string_of_params_exp params in
             Hashtbl.add h (false, suf) (Prog p)
-        | suf_noexp, rest ->
+        | suf, rest ->
             (* If we've done it already, continue: *)
-            if not (Hashtbl.mem h (true, suf_noexp)) then
-              let pref' = pref ^ suf_noexp ^"/" in
-              Hashtbl.add h (true, suf_noexp) (Hash (hash_for_prefix pref'))
+            if not (Hashtbl.mem h (true, suf)) then
+              let pref' = pref ^ suf ^"/" in
+              Hashtbl.add h (true, suf) (Hash (hash_for_prefix pref'))
       (* TODO: exit when we stop matching as the array is ordered *)
     ) programs ;
     h in
@@ -323,7 +321,7 @@ let expand_query_values conf query =
         node_res, (prog_name, func_name, (n, v_opt) :: factors, data_field)
     | DataField ->
         assert is_leaf ;
-        (RamenName.program_exp_of_string prog_name,
+        (RamenName.program_of_string prog_name,
          RamenName.func_of_string func_name,
          List.rev factors, n) :: node_res, depth0
   ) [] depth0 filtered |>
@@ -469,12 +467,12 @@ let render_graphite conf headers body =
   let%lwt targets =
     C.with_rlock conf (fun programs ->
       Lwt_list.filter_map_s (fun (prog_name, func_name, fvals, data_field) ->
-        let fq = RamenName.string_of_program_exp prog_name ^"/"^
+        let fq = RamenName.string_of_program prog_name ^"/"^
                  RamenName.string_of_func func_name in
         match Hashtbl.find programs prog_name with
         | exception Not_found ->
             !logger.error "Program %s just disappeared?"
-              (RamenName.string_of_program_exp prog_name) ;
+              (RamenName.string_of_program prog_name) ;
             return_none
         | get_rc ->
             let _bin, prog = get_rc () in

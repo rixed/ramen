@@ -20,24 +20,24 @@ Feature: Programs ca  be parameterized
     And ramen supervisor is started
 
   Scenario: A program behavior can depends on parameter and environment.
-    Given I run ramen with arguments run -p 'first_name="Leontine"' test.x
+    Given I run ramen with arguments run -p 'first_name="Leontine"' test.x -o test/Leontine
     When I run ramen with arguments ps
-    Then ramen must mention "test{first_name="Leontine"}/f"
-    When I run ramen with arguments tail --last=-1 'test{first_name="Leontine"}/f' --raw
+    Then ramen must mention "test/Leontine/f"
+    When I run ramen with arguments tail --last=-1 'test/Leontine/f' --raw
     Then ramen must mention "Leontine Smith".
 
   Scenario: We can run two instances of a program with different parameters.
-    Given I run ramen with arguments run -p 'first_name="Romuald"' test.x
-    And I run ramen with arguments run -p 'first_name="Raphael"' test.x
+    Given I run ramen with arguments run -p 'first_name="Romuald"' test.x -o test/Romuald
+    And I run ramen with arguments run -p 'first_name="Raphael"' test.x -o test/Raphael
     When I run ramen with arguments ps
-    Then ramen must mention "test{first_name="Romuald"}/f"
-    And ramen must mention "test{first_name="Raphael"}/f".
+    Then ramen must mention "test/Romuald/f"
+    And ramen must mention "test/Raphael/f".
     When I run ramen with arguments _expand
     Then ramen must mention "Romuald"
     And ramen must mention "Raphael".
 
-  Scenario: But only one with the same parameters.
-    Given I run ramen with arguments run -p 'first_name="Joephine"' test.x
-    And I run ramen with arguments run -p 'first_name="Joephine"' test.x
+  Scenario: But only one under the same name.
+    Given I run ramen with arguments run -p 'first_name="Josephine"' test.x -o test/Josephine
+    And I run ramen with arguments run -p 'first_name="Josephine"' test.x -o test/Josephine
     When I run ramen with arguments ps
     Then ramen must print 1 line on stdout.

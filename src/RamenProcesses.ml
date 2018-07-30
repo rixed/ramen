@@ -109,7 +109,7 @@ type running_process =
 
 let print_running_process oc proc =
   Printf.fprintf oc "%s/%s (parents=%a)"
-    (RamenName.string_of_program_exp proc.func.F.exp_program_name)
+    (RamenName.string_of_program proc.func.F.program_name)
     (RamenName.string_of_func proc.func.F.name)
     (List.print F.print_parent) proc.func.parents
 
@@ -124,9 +124,9 @@ let input_spec conf parent child =
   (* In case of merge, ringbufs are numbered as the node parents: *)
   (if child.F.merge_inputs then
     match List.findi (fun i (pprog, pname) ->
-            let pprog_exp_name =
-              F.program_exp_of_parent_prog child.F.exp_program_name pprog in
-            pprog_exp_name = parent.F.exp_program_name && pname = parent.name
+            let pprog_name =
+              F.program_of_parent_prog child.F.program_name pprog in
+            pprog_name = parent.F.program_name && pname = parent.name
           ) child.parents with
     | exception Not_found ->
         !logger.error "Operation %S is not a child of %S"
@@ -161,8 +161,8 @@ let relatives f must_run =
     let is_parent_of func func' =
       List.exists (fun (rel_par_prog, par_func) ->
         func'.F.name = par_func &&
-        func'.F.exp_program_name =
-          F.program_exp_of_parent_prog func.F.exp_program_name rel_par_prog
+        func'.F.program_name =
+          F.program_of_parent_prog func.F.program_name rel_par_prog
       ) func.F.parents in
     (if is_parent_of f func then func::ps else ps),
     (if is_parent_of func f then func::cs else cs)
@@ -256,7 +256,7 @@ let process_workers_terminations conf running =
           if proc.pid = Some pid then (
             (if is_err then !logger.error else !logger.info)
               "Operation %s/%s (pid %d) %s."
-              (RamenName.string_of_program_exp proc.func.F.exp_program_name)
+              (RamenName.string_of_program proc.func.F.program_name)
               (RamenName.string_of_func proc.func.name)
               pid status_str ;
             proc.last_exit <- now ;
@@ -414,11 +414,11 @@ let really_try_start conf must_run proc =
       if match parent with
          | None, _ ->
             true (* Parent runs in the very program we want to start *)
-         | Some rel_p_exp_prog, p_func ->
-            let p_exp_prog =
-              RamenName.(program_exp_of_rel_program_exp proc.func.exp_program_name rel_p_exp_prog) in
+         | Some rel_p_prog, p_func ->
+            let p_prog =
+              RamenName.(program_of_rel_program proc.func.program_name rel_p_prog) in
             List.exists (fun func ->
-              func.F.exp_program_name = p_exp_prog && func.F.name = p_func
+              func.F.program_name = p_prog && func.F.name = p_func
             ) parents
       then ok
       else (

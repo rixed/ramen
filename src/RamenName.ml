@@ -114,85 +114,6 @@ let string_of_params params =
     IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param) |>
     abbrev
 
-type params_exp = [`Params] t
-
-let params_exp_ppp_ocaml = t_ppp_ocaml
-
-external params_exp_of_string : string -> params_exp = "%identity"
-external string_of_params_exp : params_exp -> string = "%identity"
-
-let params_exp_of_params = function
-  | [] -> ""
-  | params -> "{"^ string_of_params params ^"}"
-
-
-(* Program name - expansed ; with the params expansion *)
-
-type program_exp = [`ProgramExp] t
-
-let program_exp_ppp_ocaml = t_ppp_ocaml
-
-external string_of_program_exp : program_exp -> string = "%identity"
-
-external program_exp_of_string : string -> program_exp = "%identity"
-
-let split_program_exp s =
-  match String.index s '{' with
-  | exception Not_found -> s, ""
-  | i -> String.sub s 0 i, String.sub s i (String.length s - i)
-
-let make_program_exp program params =
-  program ^ params_exp_of_params params
-
-let program_of_program_exp = fst % split_program_exp
-
-let path_of_program_exp s =
-  let prog, params = split_program_exp s in
-  let dirs = String.split_on_char '/' prog in
-  let rec loop path = function
-    | [] -> path
-    | [ last ] ->
-        let exp = path_quote params in
-        let comp = abbrev (last ^ exp) in
-        loop (path ^"/"^ comp) []
-    | comp :: rest ->
-        loop (path ^"/"^ abbrev comp) rest
-  in
-  loop "" dirs
-
-let program_exp_of_path s =
-  let prog, params = split_program_exp s in
-  prog ^ path_unquote params
-
-external program_exp_of_program : program -> program_exp = "%identity"
-
-(* Relative programs with expansion: *)
-
-type rel_program_exp = [`RelProgramExp] t
-
-let rel_program_exp_ppp_ocaml = t_ppp_ocaml
-
-external rel_program_exp_of_string : string -> rel_program_exp = "%identity"
-external string_of_rel_program_exp : rel_program_exp -> string = "%identity"
-
-let program_exp_of_rel_program_exp start rel_program_exp =
-  (* TODO: for now we just support "../" prefix: *)
-  if rel_program_exp = ".." ||
-     String.starts_with rel_program_exp "..{" ||
-     String.starts_with rel_program_exp "../" then
-    (* Remove the params since they might contain slash and dots, and we
-     * know the last component of the path is going to be stripped anyway: *)
-    let start_noexp, _ = split_program_exp start in
-    (* Same goes for the rel_program, but those params we will preserve: *)
-    let rel_noexp, param_exp = split_program_exp rel_program_exp in
-    program_of_rel_program start_noexp rel_noexp ^ param_exp
-  else rel_program_exp
-
-let make_rel_program_exp rel_program params =
-  rel_program ^ params_exp_of_params params
-
-let split_rel_program_exp = split_program_exp
-
 (* Fully Qualified function names *)
 
 type fq = [`FQ] t
@@ -204,6 +125,6 @@ external fq_of_string : string -> fq = "%identity"
 external string_of_fq : fq -> string = "%identity"
 
 let fq prog func =
-  string_of_program_exp prog ^"/"^ func
+  string_of_program prog ^"/"^ func
 
 let fq_print oc = String.print oc % string_of_fq

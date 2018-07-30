@@ -32,41 +32,14 @@ val params_ppp_ocaml : params PPP.t
 val params_sort : params -> params
 val string_of_params : params -> string
 
-(* A string formatted like "{name1=val1,name2=val,...}": *)
-type params_exp = [`Params] t
-val params_exp_ppp_ocaml : params_exp PPP.t
-val params_exp_of_string : string -> params_exp
-val string_of_params_exp : params_exp -> string
-val params_exp_of_params : params -> params_exp
 val path_of_program : program -> string
-
-type program_exp = [`ProgramExp] t
-val program_exp_ppp_ocaml : program_exp PPP.t
-val string_of_program_exp : program_exp -> string
-val program_exp_of_string : string -> program_exp
-val path_of_program_exp : program_exp -> string
-val program_exp_of_path : string -> program_exp
-val program_exp_of_program : program -> program_exp
-val split_program_exp : program_exp -> program * params_exp
-val make_program_exp : program -> params -> program_exp
-val program_of_program_exp : program_exp -> program
-
-(* Relative programs with expansion: *)
-type rel_program_exp = [`RelProgramExp] t
-val rel_program_exp_ppp_ocaml : rel_program_exp PPP.t
-val rel_program_exp_of_string : string -> rel_program_exp
-val string_of_rel_program_exp : rel_program_exp -> string
-val make_rel_program_exp : rel_program -> params -> rel_program_exp
-val split_rel_program_exp : rel_program_exp -> rel_program * params_exp
-val program_exp_of_rel_program_exp :
-  program_exp -> rel_program_exp -> program_exp
 
 (* For logs, not paths! *)
 type fq = [`FQ] t
 val fq_ppp_ocaml : fq PPP.t
 val fq_of_string : string -> fq
 val string_of_fq : fq -> string
-val fq : program_exp -> func -> fq
+val fq : program -> func -> fq
 val fq_print : 'a BatInnerIO.output -> fq -> unit
 
 (* TODO: field names, bin names, notif names... *)

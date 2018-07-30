@@ -63,7 +63,7 @@ let repair conf files () =
 
 type func_status =
   | Running of F.t
-  | NotRunning of RamenName.program_exp * RamenName.func
+  | NotRunning of RamenName.program * RamenName.func
 
 let links conf no_abbrev only_errors with_header sort_col top pattern () =
   logger := make_logger conf.C.debug ;
@@ -79,7 +79,7 @@ let links conf no_abbrev only_errors with_header sort_col top pattern () =
         Some s) ignore in
   let fq_name = function
     | NotRunning (pn, fn) ->
-        red (RamenName.string_of_program_exp pn ^"/"^
+        red (RamenName.string_of_program pn ^"/"^
              RamenName.string_of_func fn)
     | Running func -> RamenName.string_of_fq (F.fq_name func) in
   let head =
@@ -146,7 +146,7 @@ let links conf no_abbrev only_errors with_header sort_col top pattern () =
               Lwt_list.fold_left_s (fun (i, links) (par_rel_prog, par_func) ->
                 (* i is the index in the list of parents for a given child *)
                 let par_prog =
-                  F.program_exp_of_parent_prog func.F.exp_program_name par_rel_prog in
+                  F.program_of_parent_prog func.F.program_name par_rel_prog in
                 let parent =
                   match Hashtbl.find programs par_prog with
                   | exception Not_found ->

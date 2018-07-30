@@ -110,9 +110,7 @@ let compile conf root_path program_name program_code =
         let parent_prog_name, parent_func_name =
           match parent with
           | None, func_name -> program_name, func_name
-          | Some rel_prog_exp, func_name ->
-              let rel_prog, _ =
-                RamenName.split_rel_program_exp rel_prog_exp in
+          | Some rel_prog, func_name ->
               RamenName.program_of_rel_program program_name rel_prog,
               func_name in
         let parent_name =
@@ -206,11 +204,19 @@ let compile conf root_path program_name program_code =
      *)
     !logger.info "Compiling program %s"
       (RamenName.string_of_program program_name) ;
+    let path_of_module p =
+      let prog_path = RamenName.path_of_program p in
+      let dirname, basename =
+        try String.rsplit ~by:"/" prog_path
+        with Not_found -> "", prog_path in
+      let basename = RamenOCamlCompiler.to_module_name basename in
+      dirname ^(if dirname <> "" then "/" else "")^ basename
+    in
     let obj_files = Lwt_main.run (
       Hashtbl.values compiler_funcs |> List.of_enum |>
       Lwt_list.map_p (fun func ->
         let obj_name =
-          root_path ^"/"^ RamenName.path_of_program program_name ^
+          root_path ^"/"^ path_of_module program_name ^
           "_"^ func.Func.signature ^
           "_"^ RamenVersions.codegen ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
@@ -242,7 +248,7 @@ let compile conf root_path program_name program_code =
      *)
     let exec_file = P.bin_of_program_name root_path program_name
     and pname = RamenName.string_of_program program_name in
-    let obj_name = root_path ^"/"^ RamenName.path_of_program program_name
+    let obj_name = root_path ^"/"^ path_of_module program_name
                    ^"_casing_"^ RamenVersions.codegen ^".cmx" in
     let src_file =
       RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
@@ -256,9 +262,8 @@ let compile conf root_path program_name program_code =
           Enum.map (fun func ->
             let operation =
               Option.get func.Func.operation in
-            F.{ (* exp_program_name will be overwritten at load time: *)
-                exp_program_name =
-                  RamenName.program_exp_of_program program_name ;
+            F.{ (* program_name will be overwritten at load time: *)
+                program_name ;
                 name = func.name ;
                 in_type = typed_tuple_type func.in_type ;
                 out_type = typed_tuple_type func.out_type ;
@@ -285,7 +290,9 @@ let compile conf root_path program_name program_code =
           assert (pname.[String.length pname-1] <> '/') ;
           Printf.fprintf oc"\t%S, %s_%s_%s.%s ;\n"
             (RamenName.string_of_func func.Func.name)
-            (String.capitalize_ascii (Filename.basename pname))
+            (String.capitalize_ascii
+              (Filename.basename pname |>
+               RamenOCamlCompiler.to_module_name))
             func.Func.signature
             RamenVersions.codegen
             entry_point_name

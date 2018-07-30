@@ -24,11 +24,11 @@ let upload_dir_of_func persist_dir program_name func_name in_type =
 module Func =
 struct
   type parent =
-    RamenName.rel_program_exp option * RamenName.func
+    RamenName.rel_program option * RamenName.func
     [@@ppp PPP_OCaml]
 
   type t =
-    { exp_program_name : RamenName.program_exp ; (* expansed name *)
+    { program_name : RamenName.program ;
       name : RamenName.func ;
       in_type : RamenTuple.typed_tuple ;
       out_type : RamenTuple.typed_tuple ;
@@ -47,24 +47,24 @@ struct
     [@@ppp PPP_OCaml]
 
   (* TODO: takes a func instead of child_prog? *)
-  let program_exp_of_parent_prog child_prog = function
+  let program_of_parent_prog child_prog = function
     | None -> child_prog
-    | Some rel_prog_exp ->
-        RamenName.(program_exp_of_rel_program_exp child_prog rel_prog_exp)
+    | Some rel_prog ->
+        RamenName.(program_of_rel_program child_prog rel_prog)
 
   let print_parent oc = function
     | None, f ->
         String.print oc (RamenName.string_of_func f)
     | Some p, f ->
         Printf.fprintf oc "%s/%s"
-          (RamenName.string_of_rel_program_exp p)
+          (RamenName.string_of_rel_program p)
           (RamenName.string_of_func f)
 
   (* Only for debug or keys, not for paths! *)
-  let fq_name f = RamenName.fq f.exp_program_name f.name
+  let fq_name f = RamenName.fq f.program_name f.name
 
   let path f =
-    RamenName.path_of_program_exp f.exp_program_name
+    RamenName.path_of_program f.program_name
     ^"/"^ RamenName.string_of_func f.name
 end
 
@@ -115,13 +115,11 @@ struct
     let get_prog = cached "of_bin" reread_data age_of_data in
     fun ?as_ params fname ->
       let p = get_prog fname in
-      let p_name = as_ |? p.default_name in
-      let exp_program_name =
-        RamenName.make_program_exp p_name params in
+      let program_name = as_ |? p.default_name in
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
       { p with
         params = RamenTuple.overwrite_params p.params params ;
-        funcs = List.map (fun f -> Func.{ f with exp_program_name }) p.funcs }
+        funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs }
 
   let bin_of_program_name root_path program_name =
     (* Use an extension so we can still use the plain program_name for a
@@ -141,7 +139,7 @@ let program_func_of_user_string ?default_program s =
           let e = Printf.sprintf "Cannot find function %S" s in
           !logger.error "%s" e ;
           failwith e)
-  | p, f -> RamenName.(program_exp_of_string p, func_of_string f)
+  | p, f -> RamenName.(program_of_string p, func_of_string f)
 
 let running_config_file conf =
   conf.persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/rc"
@@ -153,7 +151,7 @@ type must_run_entry =
     params : RamenName.params [@ppp_default []] }
   [@@ppp PPP_OCaml]
 (* The must_run file gives us the unique names of the programs. *)
-type must_run_file = (RamenName.program_exp, must_run_entry) Hashtbl.t
+type must_run_file = (RamenName.program, must_run_entry) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 (* For tests we don't store the rc_file on disk but in there: *)
@@ -219,9 +217,9 @@ let with_wlock conf f =
 let last_conf_mtime conf =
   running_config_file conf |> mtime_of_file_def 0.
 
-let find_func programs exp_program_name func_name =
+let find_func programs program_name func_name =
   let _bin, prog =
-    Hashtbl.find programs exp_program_name () in
+    Hashtbl.find programs program_name () in
   prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
 
 let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)

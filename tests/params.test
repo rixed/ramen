@@ -3,6 +3,6 @@
     ("params.x", [("sel_years", VVec [| VU16 1976 |])]) ;
     ("fixtures/earthquakes.x", []) ];
   outputs = {
-    "tests/params{sel_years=[1976]}/p" => {
+    "tests/params/p" => {
       present = [ { "n" => "14" } ]}}
 }

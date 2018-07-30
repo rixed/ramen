@@ -198,7 +198,7 @@ let compile conf root_path use_external_compiler bundle_dir
  *)
 
 (* TODO: remove that useless force option *)
-let check_links ?(force=false) exp_program_name prog running_programs =
+let check_links ?(force=false) program_name prog running_programs =
   !logger.debug "checking links" ;
   List.iter (fun func ->
     (* Check linkage:
@@ -210,14 +210,14 @@ let check_links ?(force=false) exp_program_name prog running_programs =
       | None, _ -> ()
       | Some par_rel_prog, par_func ->
         let par_prog =
-          RamenName.program_exp_of_rel_program_exp func.F.exp_program_name par_rel_prog in
+          RamenName.program_of_rel_program func.F.program_name par_rel_prog in
         (match Hashtbl.find running_programs par_prog with
         | exception Not_found ->
           if not (Set.mem par_prog !already_warned1) then (
             !logger.warning "Operation %s depends on program %s, \
                              which is not running."
               (RamenName.string_of_func func.F.name)
-              (RamenName.string_of_program_exp par_prog) ;
+              (RamenName.string_of_program par_prog) ;
             already_warned1 := Set.add par_prog !already_warned1)
         | mre ->
           let pprog = P.of_bin mre.C.params mre.C.bin in
@@ -227,9 +227,9 @@ let check_links ?(force=false) exp_program_name prog running_programs =
               !logger.error "Operation %s depends on operation %s/%s, \
                              which is not part of the running program %s."
                 (RamenName.string_of_func func.F.name)
-                (RamenName.string_of_program_exp par_prog)
+                (RamenName.string_of_program par_prog)
                 (RamenName.string_of_func par_func)
-                (RamenName.string_of_program_exp par_prog) ;
+                (RamenName.string_of_program par_prog) ;
               already_warned2 := Set.add (par_prog, par_func) !already_warned2)
           | par ->
             (* We want to err if a parent is incompatible (unless --force). *)
@@ -250,8 +250,8 @@ let check_links ?(force=false) exp_program_name prog running_programs =
       (* Check that a children that depends on us gets the proper type: *)
       List.iter (fun (rel_par_prog_opt, par_func as parent) ->
         let par_prog =
-          F.program_exp_of_parent_prog func.F.exp_program_name rel_par_prog_opt in
-        if par_prog = exp_program_name then
+          F.program_of_parent_prog func.F.program_name rel_par_prog_opt in
+        if par_prog = program_name then
           match List.find (fun f -> f.F.name = par_func) prog.P.funcs with
           | exception Not_found ->
             !logger.warning "Operation %s, currently stalled, will still \
@@ -285,13 +285,14 @@ let run conf params replace as_ bin_files () =
       List.iter (fun bin ->
         let bin = absolute_path_of bin in
         let prog = P.of_bin ?as_ params bin in
-        let exp_program_name = (List.hd prog.P.funcs).F.exp_program_name in
-        check_links exp_program_name prog programs ;
-        if not replace && Hashtbl.mem programs exp_program_name then
+        let program_name = (List.hd prog.P.funcs).F.program_name in
+        check_links program_name prog programs ;
+        if not replace && Hashtbl.mem programs program_name then
           Printf.sprintf "A program named %s is already running"
-            (RamenName.string_of_program_exp exp_program_name) |>
+            (RamenName.string_of_program program_name) |>
           failwith ;
-        Hashtbl.replace programs exp_program_name C.{ bin ; params }
+        (* TODO: Make sure this key is authoritative on a program name: *)
+        Hashtbl.replace programs program_name C.{ bin ; params }
       ) bin_files ;
       return_unit))
 
@@ -317,7 +318,7 @@ let check_orphans conf killed_prog_names running_programs =
              | None, _ -> false (* does not depend in a killed program *)
              | Some par_rel_prog, _ ->
                 let par_prog =
-                  RamenName.(program_exp_of_rel_program_exp func.F.exp_program_name par_rel_prog) in
+                  RamenName.(program_of_rel_program func.F.program_name par_rel_prog) in
                 List.mem par_prog killed_prog_names
            ) func.F.parents
         then
@@ -337,7 +338,7 @@ let kill conf program_names () =
           Hashtbl.keys running_programs //
           (fun n ->
             List.exists (fun p ->
-              Globs.matches p (RamenName.string_of_program_exp n)
+              Globs.matches p (RamenName.string_of_program n)
             ) program_names) |>
           List.of_enum in
         (* TODO: consider killed_prog_names is a list of globs, and
@@ -487,11 +488,11 @@ let ps conf short with_header sort_col top pattern () =
         C.with_rlock conf (fun programs ->
           Hashtbl.fold (fun program_name _get_rc lines ->
             if Globs.matches pattern
-                 (RamenName.string_of_program_exp program_name) then
+                 (RamenName.string_of_program program_name) then
               let _, (in_count, selected_count, out_count, group_count,
                       cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
                 Hashtbl.find_default h program_name (0., no_stats) in
-              [| ValStr (RamenName.string_of_program_exp program_name) ;
+              [| ValStr (RamenName.string_of_program program_name) ;
                  int_or_na in_count ;
                  int_or_na selected_count ;
                  int_or_na out_count ;
@@ -515,11 +516,11 @@ let ps conf short with_header sort_col top pattern () =
             match get_rc () with
             | exception e ->
               let fq_name =
-                red (RamenName.string_of_program_exp program_name ^"/*") in
+                red (RamenName.string_of_program program_name ^"/*") in
               [| ValStr fq_name ; ValStr (Printexc.to_string e) |] :: lines
             | bin, prog ->
               List.fold_left (fun lines func ->
-                let fq_name = RamenName.string_of_program_exp program_name
+                let fq_name = RamenName.string_of_program program_name
                               ^"/"^ RamenName.string_of_func func.F.name in
                 if Globs.matches pattern fq_name then
                   let _, (in_count, selected_count, out_count, group_count,

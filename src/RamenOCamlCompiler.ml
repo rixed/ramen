@@ -251,15 +251,16 @@ let link conf program_name obj_files src_file bin_file =
 
 (* Helpers: *)
 
+let to_module_name s =
+  if Char.is_letter s.[0] then s else "m"^ s
+
 (* obj name must not conflict with any external module. *)
 let with_code_file_for obj_name conf f =
   assert (obj_name <> "") ;
   let basename =
     Filename.(remove_extension (basename obj_name)) ^".ml" in
   (* Make sure this will result in a valid module name: *)
-  let basename =
-    if Char.is_letter basename.[0] then basename
-    else "m"^ basename in
+  let basename = to_module_name basename in
   let fname = Filename.dirname obj_name ^"/"^ basename in
   mkdir_all ~is_file:true fname ;
   (* If keep-temp-file is set, reuse preexisting source code : *)

@@ -210,8 +210,8 @@ let test_one conf root_path notify_rb dirname test =
         (* The path to the binary is relative to the test file: *)
         let bin = absolute_path_of ~rel_to:dirname bin in
         let prog = P.of_bin params bin in
-        let exp_program_name = (List.hd prog.P.funcs).F.exp_program_name in
-        Hashtbl.add programs exp_program_name C.{ bin ; params } ;
+        let program_name = (List.hd prog.P.funcs).F.program_name in
+        Hashtbl.add programs program_name C.{ bin ; params } ;
         Lwt_list.iter_s (fun func ->
           (* Each function will archive its output: *)
           let%lwt bname = RamenExport.make_temp_export conf func in
