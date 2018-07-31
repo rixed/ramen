@@ -241,9 +241,10 @@ let get_timeseries conf msg =
           Array.create req.num_points None
         ) in
       Enum.iteri (fun ti (t, data) ->
-        assert (Array.length data = 1) ; (* No factors *)
+        assert (Array.length data <= 1) ; (* No factors *)
         for ci = 0 to num_selected - 1 do
-          table_columns.(ci).(ti) <- data.(0).(ci)
+          table_columns.(ci).(ti) <-
+            if Array.length data = 0 then None else data.(0).(ci)
         done ;
         if not !times_inited then times.(ti) <- t
       ) datapoints ;
