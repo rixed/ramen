@@ -191,7 +191,7 @@ type get_timeseries_req =
 
 and timeseries_data_spec =
   { select : string list ;
-    where : where_spec list }
+    where : where_spec list [@ppp_default []] }
   [@@ppp PPP_JSON]
 
 and where_spec =
