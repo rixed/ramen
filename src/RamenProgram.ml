@@ -315,7 +315,7 @@ let common_fields_of_from root_path start_name funcs from =
               | Notifications _ ->
                   RamenNotification.tuple_typ |>
                   List.map (fun f -> f.RamenTuple.typ_name)))
-      | NamedOperation (Some (rel_pn, _), fn) ->
+      | NamedOperation (Some rel_pn, fn) ->
           let pn = RamenName.program_of_rel_program start_name rel_pn in
           !logger.info "Program of relative program %s = %s, relative to %s"
             (RamenName.string_of_rel_program rel_pn)

@@ -146,13 +146,12 @@ type t =
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
 and data_source =
-  | NamedOperation of ((RamenName.rel_program * RamenName.params) option *
-                       RamenName.func)
+  | NamedOperation of (RamenName.rel_program option * RamenName.func)
   | SubQuery of t
   | GlobPattern of string
 
 let rec print_data_source oc = function
-  | NamedOperation (Some (rel_p, ps), f) ->
+  | NamedOperation (Some rel_p, f) ->
       Printf.fprintf oc "%s/%s"
         (RamenName.string_of_rel_program rel_p)
         (RamenName.string_of_func f)
@@ -251,8 +250,7 @@ let event_time_of_operation = function
       RamenNotification.event_time
 
 let func_id_of_data_source = function
-  | NamedOperation (p_opt, f) ->
-      Option.map fst p_opt, f
+  | NamedOperation id -> id
   | SubQuery _
       (* Should have been replaced by a hidden function
        * by the time this is called *)
@@ -1206,7 +1204,7 @@ struct
         key = [] ;\
         commit_cond = replace_typ E.expr_true ;\
         commit_before = false ;\
-        from = [NamedOperation (Some (RamenName.rel_program_of_string "foo", []), RamenName.func_of_string "bar")] ;\
+        from = [NamedOperation (Some (RamenName.rel_program_of_string "foo"), RamenName.func_of_string "bar")] ;\
         flush_how = Reset ; every = 0. ; factors = [] },\
         (37, [])))\
         (test_op p "SELECT n, lag(2, n) AS l FROM foo/bar" |>\

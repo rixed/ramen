@@ -245,22 +245,6 @@ let program_name ?(quoted=false) m =
     fun (c, s) -> RamenName.rel_program_of_string (String.of_list (c :: s))
   ) m
 
-let expansed_program_name ?(quoted=false) m =
-  let m = "program name" :: m in
-  let expansed_param =
-    non_keyword +- opt_blanks +- char '=' +- opt_blanks ++
-    RamenTypes.Parser.p in
-  let expansed_params m =
-    let m = "parameter expansion" :: m in
-    (char '{' -- opt_blanks -+
-     repeat_greedy ~sep:list_sep expansed_param +-
-     opt_blanks +- char '}' >>: RamenName.params_sort) m
-  in
-  (
-    program_name ~quoted ++
-    optional ~def:[] expansed_params
-  ) m
-
 let func_name ?(quoted=false) m =
   let what = "function name" in
   let m = what :: m in
@@ -285,12 +269,12 @@ let func_identifier m =
   let m = "function identifier" :: m in
   let unquoted =
     optional ~def:None
-      (some expansed_program_name +- char '/') ++
+      (some program_name +- char '/') ++
     func_name
   and quoted =
     id_quote -+
     optional ~def:None
-       (some (expansed_program_name ~quoted:true) +- char '/') ++
+       (some (program_name ~quoted:true) +- char '/') ++
     func_name ~quoted:true +-
     id_quote
   in (quoted ||| unquoted) m
