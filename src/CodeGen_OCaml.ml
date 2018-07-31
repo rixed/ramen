@@ -182,10 +182,11 @@ let add_all_mentioned_in_string mentioned _str =
 
 let emit_float oc f =
   (* printf "%F" would not work for infinity:
-   * https://caml.inria.fr/mantis/view.php?id=7685 *)
+   * https://caml.inria.fr/mantis/view.php?id=7685
+   * and "%h" not for neg_infinity. *)
   if f = infinity then String.print oc "infinity"
   else if f = neg_infinity then String.print oc "neg_infinity"
-  else Printf.fprintf oc "(%f)" f
+  else Legacy.Printf.sprintf "%h" f |> String.print oc
 
 let rec emit_type oc =
   let open Stdint in
