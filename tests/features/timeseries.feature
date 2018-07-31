@@ -27,3 +27,9 @@ Feature: test ramen tail
     When I run ramen with arguments timeseries -n 5 test/ts v
     Then ramen must print 5 lines on stdout
     And ramen must exit gracefully.
+
+  Scenario: No data is not a problem. We still have the times..
+    Given program test is running
+    When I run ramen with arguments timeseries -n 5 --since=123 --until=124 test/ts v
+    Then ramen must print 5 lines on stdout
+    And ramen must exit gracefully.
