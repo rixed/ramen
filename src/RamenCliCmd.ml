@@ -161,10 +161,8 @@ let compile conf root_path use_external_compiler bundle_dir
   logger := make_logger conf.C.debug ;
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
-  RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
-  RamenOCamlCompiler.bundle_dir := bundle_dir ;
-  RamenOCamlCompiler.max_simult_compilations := max_simult_compils ;
-  RamenSmtTyping.smt_solver := smt_solver ;
+  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
+                     smt_solver ;
   let root_path = absolute_path_of root_path in
   let get_parent = RamenCompiler.parent_from_root_path root_path in
   let all_ok = ref true in
@@ -633,7 +631,12 @@ let timerange conf func_name () =
  *)
 
 let httpd conf daemonize to_stdout to_syslog fault_injection_rate
-          server_url api graphite () =
+          server_url api graphite
+          (* The API might compile some code: *)
+          use_external_compiler bundle_dir max_simult_compils smt_solver
+          () =
+  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
+                     smt_solver ;
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then

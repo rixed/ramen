@@ -598,7 +598,11 @@ let httpd =
       $ fault_injection_rate
       $ server_url
       $ api
-      $ graphite),
+      $ graphite
+      $ external_compiler
+      $ bundle_dir
+      $ max_simult_compilations
+      $ smt_solver),
     info ~doc:RamenConsts.CliInfo.httpd "httpd")
 
 let query =

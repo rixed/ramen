@@ -36,6 +36,12 @@ let stats_typing_count =
 
 let entry_point_name = "start"
 
+let init use_external_compiler bundle_dir max_simult_compils smt_solver =
+  RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
+  RamenOCamlCompiler.bundle_dir := bundle_dir ;
+  RamenOCamlCompiler.max_simult_compilations := max_simult_compils ;
+  RamenSmtTyping.smt_solver := smt_solver
+
 (* Given a program name, retrieve its binary, either form the disk or
  * the running configuration: *)
 

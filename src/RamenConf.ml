@@ -327,3 +327,7 @@ let pending_notifications_file conf =
   conf.persist_dir ^"/pending_notifications_"
                    ^ RamenVersions.pending_notify ^"_"
                    ^ RamenVersions.notify_tuple
+
+(* For custom API, where to store alerting thresholds: *)
+let api_alerts_root conf =
+  conf.persist_dir ^"/api/set_alerts"

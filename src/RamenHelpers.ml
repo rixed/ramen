@@ -70,6 +70,8 @@ let shell_quote s =
 let sql_quote s =
   "'"^ String.nreplace s "'" "''" ^"'"
 
+let ramen_quote = sql_quote
+
 let path_quote s =
   let s = String.nreplace s "%" "%%" in
   String.nreplace s "/" "%2F"
@@ -1228,3 +1230,10 @@ let comb n m =
   1. (comb 10 10)
   2_598_960. (comb 5 52)
  *)
+
+let ctime () =
+  let open Unix in
+  let tm = localtime (time ()) in
+  Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02d"
+    (tm.tm_year+1900) (tm.tm_mon+1) tm.tm_mday
+    tm.tm_hour tm.tm_min tm.tm_sec
