@@ -232,10 +232,12 @@ open RamenParsing
 let program_name ?(quoted=false) m =
   let not_quote =
     cond "quoted identifier" ((<>) '\'') 'x' in
+  let quoted_quote = string "''" >>: fun () -> '\'' in
   let what = "program name" in
   let m = what :: m in
-  let first_char = if quoted then not_quote
-                   else letter ||| underscore ||| dot ||| slash in
+  let first_char =
+    if quoted then not_quote ||| quoted_quote
+    else letter ||| underscore ||| dot ||| slash in
   let any_char = if quoted then not_quote
                  else first_char ||| decimal_digit in
   (
