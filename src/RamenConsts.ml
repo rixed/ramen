@@ -120,7 +120,7 @@ struct
   let replace =
     "If a program with the same name is already running, replace it"
   let as_ = "name under which to run this program"
-  let bin_files = "Binary files to run"
+  let bin_file = "Binary file to run"
   let with_header = "Output the header line in CSV"
   let csv_separator = "Field separator"
   let csv_null = "Representation of NULL values"

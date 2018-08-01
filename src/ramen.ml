@@ -342,10 +342,10 @@ let source_files =
                    ~docv:"FILE" [] in
   Arg.(non_empty (pos_all string [] i))
 
-let bin_files =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.bin_files
+let bin_file =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.bin_file
                    ~docv:"FILE" [] in
-  Arg.(non_empty (pos_all string [] i))
+  Arg.(required (pos 0 (some string) None i))
 
 let program =
   let parse s = Pervasives.Ok (RamenName.program_of_string s)
@@ -384,7 +384,7 @@ let run =
       $ params
       $ replace
       $ as_
-      $ bin_files),
+      $ bin_file),
     info ~doc:RamenConsts.CliInfo.run "run")
 
 let kill =
