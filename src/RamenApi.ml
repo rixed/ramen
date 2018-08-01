@@ -161,13 +161,14 @@ let string_of_ext_type = function
   | String -> "string"
   | Other -> "other"
 
-let alert_info_of_alert_source = function
-  | V1 a -> a
+let alert_info_of_alert_source enabled = function
+  | V1 a -> { a with enabled }
 
-let alerts_of_column conf func column =
+let alerts_of_column conf programs func column =
   (* All files with extension ".alert" in this directory is supposed to be
    * an alert description: *)
-  let dir = C.api_alerts_root conf ^"/"^ F.path func ^"/"^ column in
+  let func_path = F.path func in
+  let dir = C.api_alerts_root conf ^"/"^ func_path ^"/"^ column in
   if is_directory dir then
     Sys.readdir dir |>
     Array.fold_left (fun lst f ->
@@ -176,19 +177,26 @@ let alerts_of_column conf func column =
         | exception e ->
             print_exception ~what:"Error while listing alerts" e ;
             lst
-        | a -> alert_info_of_alert_source a :: lst
+        | a ->
+            let id = Filename.remove_extension f in
+            let program_name =
+              RamenName.program_of_string (func_path ^"/"^ column ^"/"^ id) in
+            !logger.debug "Program implementing alert %s: %s"
+              id (RamenName.string_of_program program_name) ;
+            let enabled = Hashtbl.mem programs program_name in
+            alert_info_of_alert_source enabled a :: lst
       else lst
     ) []
   else []
 
-let columns_of_func conf func =
+let columns_of_func conf programs func =
   let h = Hashtbl.create 11 in
   List.iter (fun ft ->
     let type_ = ext_type_of_typ ft.RamenTuple.typ.structure in
     if type_ <> Other then
       let type_ = string_of_ext_type type_
       and factor = List.mem ft.typ_name func.F.factors
-      and alerts = alerts_of_column conf func ft.typ_name in
+      and alerts = alerts_of_column conf programs func ft.typ_name in
       Hashtbl.add h ft.typ_name { type_ ; factor ; alerts }
   ) func.F.out_type.ser ;
   h
@@ -196,16 +204,14 @@ let columns_of_func conf func =
 let columns_of_table conf table =
   (* A function is what is called here in baby-talk a "table": *)
   let prog_name, func_name = C.program_func_of_user_string table in
-  match%lwt C.with_rlock conf (fun programs ->
-      match Hashtbl.find programs prog_name with
-      | exception Not_found -> return_none
-      | get_rc ->
-          let _bin, prog = get_rc () in
-          (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
-          | exception Not_found -> return_none
-          | func -> return_some func)) with
-  | None -> return_none
-  | Some func -> return_some (columns_of_func conf func)
+  C.with_rlock conf (fun programs ->
+    match Hashtbl.find programs prog_name with
+    | exception Not_found -> return_none
+    | get_rc ->
+        let _bin, prog = get_rc () in
+        (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
+        | exception Not_found -> return_none
+        | func -> return_some (columns_of_func conf programs func)))
 
 let get_columns conf msg =
   let req = fail_with_context "parsing get-columns request" (fun () ->
