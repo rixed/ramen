@@ -166,6 +166,7 @@ let compile conf root_path use_external_compiler bundle_dir
   RamenOCamlCompiler.max_simult_compilations := max_simult_compils ;
   RamenSmtTyping.smt_solver := smt_solver ;
   let root_path = absolute_path_of root_path in
+  let get_parent = RamenCompiler.parent_from_root_path root_path in
   let all_ok = ref true in
   let compile_file source_file =
     let program_name =
@@ -180,7 +181,7 @@ let compile conf root_path use_external_compiler bundle_dir
           exit 1)
       ) program_name_opt
     and program_code = read_whole_file source_file in
-    RamenCompiler.compile conf root_path program_name program_code
+    RamenCompiler.compile conf root_path get_parent program_name program_code
   in
   List.iter (fun source_file ->
     try

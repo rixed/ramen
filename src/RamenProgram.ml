@@ -283,7 +283,7 @@ let reify_subqueries funcs =
  * with that: *)
 
 (* Exits when we met a parent which output type is not stable: *)
-let common_fields_of_from root_path start_name funcs from =
+let common_fields_of_from get_parent start_name funcs from =
   let open RamenOperation in
   List.fold_left (fun common data_source ->
     let fields =
@@ -321,8 +321,7 @@ let common_fields_of_from root_path start_name funcs from =
             (RamenName.string_of_rel_program rel_pn)
             (RamenName.string_of_program pn)
             (RamenName.string_of_program start_name) ;
-          let par_rc =
-            P.bin_of_program_name root_path pn |> P.of_bin [] in
+          let par_rc = get_parent pn in
           let par_func =
             List.find (fun f -> f.F.name = fn) par_rc.P.funcs in
           List.map (fun ft ->
@@ -336,7 +335,7 @@ let common_fields_of_from root_path start_name funcs from =
         Some (Set.String.inter common_fields fields)
   ) None from |? Set.String.empty
 
-let reify_star_fields root_path program_name funcs =
+let reify_star_fields get_parent program_name funcs =
   let open RamenOperation in
   let input_field alias =
     let open RamenExpr in
@@ -351,7 +350,7 @@ let reify_star_fields root_path program_name funcs =
           match func.operation with
           | Aggregate ({ fields ; and_all_others = true ; from ; _ } as op) ->
               (* Exit when we met a parent which output type is not stable: *)
-              (match common_fields_of_from root_path program_name funcs from with
+              (match common_fields_of_from get_parent program_name funcs from with
               | exception Exit -> changed, func :: prev
               | common_fields ->
                   let fields =
@@ -380,7 +379,7 @@ let reify_star_fields root_path program_name funcs =
  * for '*' in select clauses.
  *)
 
-let parse root_path program_name program =
+let parse get_parent program_name program =
   let p = RamenParsing.allow_surrounding_blanks Parser.p in
   let stream = RamenParsing.stream_of_string program in
   (* TODO: enable error correction *)
@@ -392,6 +391,6 @@ let parse root_path program_name program =
     raise (SyntaxError (ParseError { error ; text = program }))
   | Ok ((params, funcs), _) ->
     let funcs = reify_subqueries funcs in
-    let funcs = reify_star_fields root_path program_name funcs in
+    let funcs = reify_star_fields get_parent program_name funcs in
     let t = params, funcs in
     check t ; t

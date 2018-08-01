@@ -36,7 +36,17 @@ let stats_typing_count =
 
 let entry_point_name = "start"
 
-let compile conf root_path program_name program_code =
+(* Given a program name, retrieve its binary, either form the disk or
+ * the running configuration: *)
+
+let parent_from_root_path root_path pn =
+  P.bin_of_program_name root_path pn |> P.of_bin []
+
+let parent_from_programs programs pn =
+  let get_rc = Hashtbl.find pn programs in
+  let _bin, p = get_rc () in p
+
+let compile conf root_path get_parent program_name program_code =
   (*
    * If all goes well, many temporary files are going to be created. Here
    * we collect all their name so we delete them at the end:
@@ -64,7 +74,7 @@ let compile conf root_path program_name program_code =
     !logger.info "Parsing program %s"
       (RamenName.string_of_program program_name) ;
     let parsed_params, parsed_funcs =
-      RamenProgram.parse root_path program_name program_code in
+      RamenProgram.parse get_parent program_name program_code in
     (*
      * Now we have to type all of these.
      * Here we mainly construct the data required by the typer: it needs
@@ -125,9 +135,7 @@ let compile conf root_path program_name program_code =
           if parent_prog_name = program_name then
             raise (RamenLang.SyntaxError (UnknownFunc parent_name)) ;
           let parent_func =
-            let par_rc =
-              P.bin_of_program_name root_path parent_prog_name |>
-              P.of_bin [] in
+            let par_rc = get_parent parent_prog_name in
             List.find (fun f ->
               f.F.name = parent_func_name
             ) par_rc.P.funcs in
