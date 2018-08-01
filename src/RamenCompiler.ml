@@ -63,7 +63,7 @@ let compile conf root_path get_parent program_name program_code =
     if not conf.C.keep_temp_files then
       Set.iter (fun fname ->
         !logger.debug "Deleting temp file %s" fname ;
-        log_exceptions Unix.unlink fname
+        log_and_ignore_exceptions Unix.unlink fname
       ) !temp_files
   in
   finally del_temp_files (fun () ->

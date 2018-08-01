@@ -12,8 +12,7 @@ let func_ppp_ocaml = t_ppp_ocaml
 
 let func_of_string s =
   (* New lines have to be forbidden because of the out_ref ringbuf files.
-   * slashes have to be forbidden because we rsplit to get program names.
-   *)
+   * Slashes have to be forbidden because we rsplit to get program names. *)
   if s = "" ||
      String.fold_left (fun bad c ->
        bad || c = '\n' || c = '\r' || c = '/') false s then

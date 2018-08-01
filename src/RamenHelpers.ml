@@ -129,6 +129,12 @@ let print_exception ?(what="Exception") e =
 
 let log_exceptions ?what f x =
   try f x
+  with e ->
+    if e <> Exit then print_exception ?what e ;
+    raise e
+
+let log_and_ignore_exceptions ?what f x =
+  try f x
   with Exit -> ()
      | e -> print_exception ?what e
 
@@ -219,7 +225,7 @@ let rec ensure_file_exists ?(contents="") fname =
         let copy = fname ^".bad" in
         let redo () =
           ignore_exceptions Unix.unlink copy ;
-          log_exceptions ~what:("copy "^fname^" to "^ copy)
+          log_and_ignore_exceptions ~what:("copy "^fname^" to "^ copy)
             (Unix.rename fname) copy ;
           ensure_file_exists ~contents fname
         in
@@ -275,7 +281,7 @@ let dir_subtree_iter ?on_dir ?on_file root =
               else path_from_root ^"/"^ fname_from_path in
             let may_run = function
               | None -> ()
-              | Some f -> log_exceptions (f fname) fname_from_root in
+              | Some f -> log_and_ignore_exceptions (f fname) fname_from_root in
             if is_directory fname then (
               may_run on_dir ;
               let path_from_root' =

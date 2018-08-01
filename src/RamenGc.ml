@@ -76,7 +76,7 @@ let cleanup_once conf max_archives =
     for i = 0 to Array.length files - max_archives do
       let _, _, _, _, fname = files.(i) in
       !logger.info "Deleting old archive %s" fname ;
-      log_exceptions Unix.unlink fname
+      log_and_ignore_exceptions Unix.unlink fname
     done
   in
   let on_dir fname rel_fname =

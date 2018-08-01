@@ -34,7 +34,7 @@ INSTALLED_BIN = src/ramen
 INSTALLED_LIB = \
   META src/codegen.cmxa src/codegen.a \
   $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
-  src/libringbuf.a src/libcollectd.a src/libnetflow.a
+	src/libringbuf.a src/libcollectd.a src/libnetflow.a
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB)
 
 bin_dir ?= /usr/bin/
@@ -71,16 +71,34 @@ all: $(INSTALLED)
 # Dependencies
 
 RAMEN_SOURCES = \
-	src/RamenVersions.ml src/RamenConsts.ml src/RamenLog.ml \
-	src/RamenHelpers.ml src/RamenExperiments.ml src/RamenBitmask.ml \
-	src/RamenRWLock.ml src/RamenAdvLock.ml \
-	src/RamenOutRef.ml src/RamenParsing.ml \
-	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
-	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
-	src/RamenProtocols.ml src/RamenTypeConverters.ml \
-	src/RamenTypes.ml src/RamenTuple.ml src/RamenName.mli src/RamenName.ml \
+	src/RamenVersions.ml \
+	src/RamenConsts.ml \
+	src/RamenLog.ml \
+	src/RamenHelpers.ml \
+	src/RamenHelpers.ml \
+	src/RamenExperiments.ml \
+	src/RamenBitmask.ml \
+	src/RamenRWLock.ml \
+	src/RamenAdvLock.ml \
+	src/RamenOutRef.ml \
+	src/RamenParsing.ml \
+	src/RamenEthAddr.ml \
+	src/RamenIpv4.ml \
+	src/RamenIpv6.ml \
+	src/RamenIp.ml \
+	src/RamenEventTime.ml \
+	src/RamenCollectd.ml \
+	src/RamenNetflow.ml \
+	src/RamenProtocols.ml \
+	src/RamenTypeConverters.ml \
+	src/RamenTypes.ml \
+	src/RamenTuple.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
 	src/RamenLang.ml \
-	src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
+	src/RingBuf.ml \
+	src/RingBufLib.ml \
+	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenExpr.ml \
 	src/RamenConf.ml \
@@ -88,42 +106,75 @@ RAMEN_SOURCES = \
 	src/RamenSerialization.ml \
 	src/RamenProgram.ml \
 	src/RamenWatchdog.ml \
-	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
+	src/RamenExport.ml \
+	src/HeavyHitters.ml \
+	src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml \
 	src/RamenProcesses.ml \
 	src/RamenGc.ml \
 	src/Globs.ml \
-	src/RamenCompilConfig.ml src/RamenDepLibs.ml src/RamenOCamlCompiler.ml \
+	src/RamenCompilConfig.ml \
+	src/RamenDepLibs.ml \
+	src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenTypingHelpers.ml \
-	src/RamenSmtParser.ml src/RamenSmtTyping.ml \
+	src/RamenSmtParser.ml \
+	src/RamenSmtTyping.ml \
 	src/RamenTyping.ml \
 	src/RamenCompiler.ml \
 	src/RamenRun.ml \
-	src/RamenGraphite.ml src/RamenApi.ml src/RamenHeap.ml \
-	src/SqliteHelpers.ml src/RamenNotifier.ml \
-	src/TermTable.ml src/RamenCliCmd.ml \
-	src/RingBufCmd.ml src/RamenCompletion.ml src/RamenTests.ml src/ramen.ml
+	src/RamenGraphite.ml \
+	src/RamenApi.ml \
+	src/RamenHeap.ml \
+	src/SqliteHelpers.ml \
+	src/RamenNotifier.ml \
+	src/TermTable.ml \
+	src/RamenCliCmd.ml \
+	src/RingBufCmd.ml \
+	src/RamenCompletion.ml \
+	src/RamenTests.ml \
+	src/ramen.ml
 
 CODEGENLIB_SOURCES = \
-	src/RamenConsts.ml src/RamenLog.ml src/RamenHelpers.ml src/Globs.ml \
-	src/RamenRWLock.ml src/RamenAdvLock.ml src/RamenWatchdog.ml \
-	src/RamenOutRef.ml src/RamenParsing.ml \
-	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
-	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
+	src/RamenConsts.ml \
+	src/RamenLog.ml \
+	src/RamenHelpers.ml \
+	src/Globs.ml \
+	src/RamenRWLock.ml \
+	src/RamenAdvLock.ml \
+	src/RamenWatchdog.ml \
+	src/RamenOutRef.ml \
+	src/RamenParsing.ml \
+	src/RamenEthAddr.ml \
+	src/RamenIpv4.ml \
+	src/RamenIpv6.ml \
+	src/RamenIp.ml \
+	src/RamenEventTime.ml \
+	src/RamenCollectd.ml \
+	src/RamenNetflow.ml \
 	src/RingBuf.ml \
 	src/RamenTypeConverters.ml \
-	src/RingBufLib.ml src/RamenBinocle.ml \
+	src/RingBufLib.ml \
+	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
-	src/RamenBloomFilter.ml src/RamenFileNotify.ml src/CodeGenLib_IO.ml \
-	src/CodeGenLib_State.ml src/RamenHeap.ml src/RamenSortBuf.ml \
-	src/HeavyHitters.ml src/CodeGenLib.ml
+	src/RamenBloomFilter.ml \
+	src/RamenFileNotify.ml \
+	src/CodeGenLib_IO.ml \
+	src/CodeGenLib_State.ml \
+	src/RamenHeap.ml \
+	src/RamenSortBuf.ml \
+	src/HeavyHitters.ml \
+	src/CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
-	src/ringbuf/ringbuf.h src/ringbuf/ringbuf.c src/ringbuf/wrappers.c
+	src/ringbuf/ringbuf.h \
+	src/ringbuf/ringbuf.c \
+	src/ringbuf/wrappers.c
 
 LIBCOLLECTD_SOURCES = \
-	src/collectd/collectd.h src/collectd/collectd.c src/collectd/wrappers.c
+	src/collectd/collectd.h \
+	src/collectd/collectd.c \
+	src/collectd/wrappers.c
 
 LIBNETFLOW_SOURCES = \
 	src/netflow/v5.c
@@ -260,42 +311,81 @@ src/RamenCompilConfig.ml:
 
 TESTABLE_SOURCES = \
 	src/RamenParsing.ml \
-	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
-	src/RamenTypes.ml src/RamenExpr.ml \
+	src/RamenEthAddr.ml \
+	src/RamenIpv4.ml \
+	src/RamenIpv6.ml \
+	src/RamenIp.ml \
+	src/RamenTypes.ml \
+	src/RamenExpr.ml \
 	src/RamenOperation.ml \
 	src/RamenProgram.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenTyping.ml \
-	src/HeavyHitters.ml src/RamenHelpers.ml src/RamenBloomFilter.ml \
-	src/Globs.ml src/CodeGen_OCaml.ml src/RamenSortBuf.ml \
-	src/RamenGraphite.ml src/RingBufLib.ml src/RamenSerialization.ml \
+	src/HeavyHitters.ml \
+	src/RamenHelpers.ml \
+	src/RamenBloomFilter.ml \
+	src/Globs.ml \
+	src/CodeGen_OCaml.ml \
+	src/RamenSortBuf.ml \
+	src/RamenGraphite.ml \
+	src/RingBufLib.ml \
+	src/RamenSerialization.ml \
 	src/RamenSmtParser.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
-	src/RamenVersions.ml src/RamenLog.ml src/RamenConsts.ml \
-	src/RamenHelpers.ml src/HeavyHitters.ml src/RamenExperiments.ml \
-	src/RamenRWLock.ml src/RamenAdvLock.ml \
-	src/RamenOutRef.ml src/RamenParsing.ml \
-	src/RamenEthAddr.ml src/RamenIpv4.ml src/RamenIpv6.ml src/RamenIp.ml \
-	src/RamenEventTime.ml src/RamenCollectd.ml src/RamenNetflow.ml \
-	src/RamenProtocols.ml src/RamenTypeConverters.ml \
-	src/RamenTypes.ml src/RamenTuple.ml src/RamenName.mli src/RamenName.ml \
-	src/RamenLang.ml src/RamenExpr.ml \
-	src/RamenWatchdog.ml src/RingBuf.ml src/RingBufLib.ml src/RamenBinocle.ml \
+	src/RamenVersions.ml \
+	src/RamenLog.ml \
+	src/RamenConsts.ml \
+	src/RamenHelpers.ml \
+	src/HeavyHitters.ml \
+	src/RamenExperiments.ml \
+	src/RamenRWLock.ml \
+	src/RamenAdvLock.ml \
+	src/RamenOutRef.ml \
+	src/RamenParsing.ml \
+	src/RamenEthAddr.ml \
+	src/RamenIpv4.ml \
+	src/RamenIpv6.ml \
+	src/RamenIp.ml \
+	src/RamenEventTime.ml \
+	src/RamenCollectd.ml \
+	src/RamenNetflow.ml \
+	src/RamenProtocols.ml \
+	src/RamenTypeConverters.ml \
+	src/RamenTypes.ml \
+	src/RamenTuple.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
+	src/RamenLang.ml \
+	src/RamenExpr.ml \
+	src/RamenWatchdog.ml \
+	src/RingBuf.ml \
+	src/RingBufLib.ml \
+	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenConf.ml \
 	src/RamenOperation.ml \
 	src/RamenProgram.ml \
-	src/Globs.ml src/RamenCompilConfig.ml src/RamenDepLibs.ml \
-	src/RamenOCamlCompiler.ml src/RamenHeap.ml src/RamenSortBuf.ml \
-	src/CodeGen_OCaml.ml src/RamenBitmask.ml src/RamenSerialization.ml \
-	src/RamenExport.ml src/HeavyHitters.ml src/RamenTimeseries.ml \
+	src/Globs.ml \
+	src/RamenCompilConfig.ml \
+	src/RamenDepLibs.ml \
+	src/RamenOCamlCompiler.ml \
+	src/RamenHeap.ml \
+	src/RamenSortBuf.ml \
+	src/CodeGen_OCaml.ml \
+	src/RamenBitmask.ml \
+	src/RamenSerialization.ml \
+	src/RamenExport.ml \
+	src/HeavyHitters.ml \
+	src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml \
 	src/RamenProcesses.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenTyping.ml \
-	src/RamenBloomFilter.ml src/RamenGraphite.ml src/TestHelpers.ml \
+	src/RamenBloomFilter.ml \
+	src/RamenGraphite.ml \
+	src/TestHelpers.ml \
 	src/RamenSmtParser.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)

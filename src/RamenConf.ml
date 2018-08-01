@@ -190,8 +190,7 @@ let with_rlock conf f =
           read_rc_file conf.do_persist rc_file |>
           Hashtbl.map (fun _ mre ->
             memoize (fun () -> mre.bin, program_of_running_entry mre)) in
-        let%lwt x = f programs in
-        return x)
+        f programs)
     with RetryLater s ->
       Lwt_unix.sleep s >>= loop
   in
