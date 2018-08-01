@@ -373,6 +373,15 @@ let compile_alert conf programs program_name program_code bin_fname =
 let run_alert conf bin_fname =
   RamenRun.run conf [] true bin_fname
 
+let stop_alert conf program_name =
+  let glob =
+    Globs.(RamenName.string_of_program program_name |> escape |> compile) in
+  let%lwt num_kills = RamenRun.kill conf [ glob ] in
+  if num_kills < 0 || num_kills > 1 then
+    !logger.error "When attempting to kill alert %s, got num_kill = %d"
+      (RamenName.string_of_program program_name) num_kills ;
+  return_unit
+
 let field_typ_of_column programs table column =
   let pn, fn = C.program_func_of_user_string table in
   match Hashtbl.find programs pn with
@@ -396,10 +405,11 @@ let field_typ_of_column programs table column =
             Printf.sprintf "No column %s in table %s" column table |>
             failwith)
 
-let save_alert conf table column alert_info =
+let save_alert conf table column to_keep alert_info =
   let id = alert_id column alert_info in
-  let program_name =
-    RamenName.program_of_string (table ^"/"^ column ^"/"^ id) in
+  let program_name = table ^"/"^ column ^"/"^ id in
+  to_keep := Set.String.add program_name !to_keep ;
+  let program_name = RamenName.program_of_string program_name in
   let basename =
     C.api_alerts_root conf ^"/"^ RamenName.path_of_program program_name in
   let conf_fname = basename ^".alert"
@@ -429,18 +439,52 @@ let save_alert conf table column alert_info =
   if is_enabled alert_info then
     (* Won't do anything if it's running already *)
     run_alert conf bin_fname
-  else return_unit
+  else
+    (* Won't do anything if it's not running *)
+    stop_alert conf program_name
 
 let set_alerts conf msg =
   let req = fail_with_context "parsing set-alerts request" (fun () ->
     PPP.of_string_exc set_alerts_req_ppp_json msg) in
+  (* In case the same table/column appear several times, build a single list
+   * of all preexisting alert files for the mentioned tables/columns, and a
+   * list of all that are set: *)
+  let to_delete = ref Set.String.empty
+  and to_keep = ref Set.String.empty in
   hash_iter_s req (fun table columns ->
     hash_iter_s columns (fun column alerts ->
-      (* TODO: all non listed alerts must be suppressed *)
+      (* All non listed alerts must be suppressed *)
+      let parent =
+        RamenName.program_of_string (table ^"/"^ column) in
+      let dir =
+        C.api_alerts_root conf ^"/"^
+        RamenName.path_of_program parent in
+      if is_directory dir then (
+        Sys.readdir dir |>
+        Array.iter (fun f ->
+          if String.ends_with f ".alert" then
+            let id = Filename.remove_extension f in
+            let program_name =
+              RamenName.string_of_program parent ^"/"^ id in
+            to_delete := Set.String.add program_name !to_delete)) ;
       Lwt_list.iter_s (fun alert ->
         (* We receive only the latest version: *)
-        save_alert conf table column (V1 alert)
+        save_alert conf table column to_keep (V1 alert)
       ) alerts)) ;%lwt
+  let to_delete = Set.String.diff !to_delete !to_keep in
+  if Set.String.is_empty to_delete then return_unit else (
+    !logger.info "going to delete non mentioned alerts %a"
+      (Set.String.print String.print) to_delete ;
+    Set.String.to_list to_delete |>
+    Lwt_list.iter_s (fun program_name ->
+      let program_name = RamenName.program_of_string program_name in
+      stop_alert conf program_name ;%lwt
+      let fname =
+        C.api_alerts_root conf ^"/"^
+        RamenName.(path_of_program program_name)
+        ^".alert" in
+      Lwt_unix.unlink fname)) ;%lwt
+  (* Delete to_delete - to_keep *)
   return ""
 
 (*

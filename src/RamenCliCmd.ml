@@ -207,52 +207,12 @@ let run conf params replace as_ bin_file () =
  * This time the program is identified by its name not its executable file.
  *)
 
-let check_orphans conf killed_prog_names running_programs =
-  (* We want to warn if a child is stalled. *)
-  Hashtbl.iter (fun prog_name mre ->
-    if List.mem prog_name killed_prog_names then
-      () (* This program is being killed, skip it *)
-    else
-      let prog = P.of_bin mre.C.params mre.C.bin in
-      List.iter (fun func ->
-        (* If this func has parents, all of which are now missing, then
-         * complain: *)
-        if func.F.parents <> [] &&
-           List.for_all (function
-             | None, _ -> false (* does not depend in a killed program *)
-             | Some par_rel_prog, _ ->
-                let par_prog =
-                  RamenName.(program_of_rel_program func.F.program_name par_rel_prog) in
-                List.mem par_prog killed_prog_names
-           ) func.F.parents
-        then
-          !logger.warning "Operation %s, will be left without parents"
-            (RamenName.string_of_fq (F.fq_name func))
-      ) prog.P.funcs
-  ) running_programs
-
 let kill conf program_names () =
   logger := make_logger conf.C.debug ;
   let program_names =
     List.map Globs.compile program_names in
   let num_kills =
-    Lwt_main.run (
-      C.with_wlock conf (fun running_programs ->
-        let killed_prog_names =
-          Hashtbl.keys running_programs //
-          (fun n ->
-            List.exists (fun p ->
-              Globs.matches p (RamenName.string_of_program n)
-            ) program_names) |>
-          List.of_enum in
-        (* TODO: consider killed_prog_names is a list of globs, and
-         * build the actual killed_prog_names list from it. *)
-        check_orphans conf killed_prog_names running_programs ;
-        let before = Hashtbl.length running_programs in
-        Hashtbl.filteri_inplace (fun name _mre ->
-          not (List.mem name killed_prog_names)
-        ) running_programs ;
-        return (before - Hashtbl.length running_programs))) in
+    Lwt_main.run (RamenRun.kill conf program_names) in
   Printf.printf "Killed %d program%s\n"
     num_kills (if num_kills > 1 then "s" else "")
 
