@@ -19,10 +19,10 @@ RUN apt-get --yes update && \
         coreutils
 
 # Rebuild a new image from here
-RUN echo "version 2.3.4~0"
+RUN echo "version 2.4.0~0"
 
 # Install ramen
-COPY ramen.2.3.4.deb /tmp
+COPY ramen.2.4.0.deb /tmp
 RUN dpkg -i /tmp/*.deb && rm /tmp/*.deb
 
 # Environment
