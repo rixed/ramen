@@ -73,7 +73,7 @@ let cleanup_once conf max_archives =
     (* Delete all files matching %d_%d_%a_%a.r but the last ones: *)
     let files = RingBufLib.arc_files_of dir |> Array.of_enum in
     Array.fast_sort RingBufLib.arc_file_compare files ;
-    for i = 0 to Array.length files - max_archives do
+    for i = 0 to Array.length files - 1 - max_archives do
       let _, _, _, _, fname = files.(i) in
       !logger.info "Deleting old archive %s" fname ;
       log_and_ignore_exceptions Unix.unlink fname
