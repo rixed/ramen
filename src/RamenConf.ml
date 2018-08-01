@@ -170,8 +170,8 @@ let save_rc_file do_persist rc_file rc =
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
  * the Program.t (with the actual params). *)
-let program_of_running_entry mre =
-  Program.of_bin mre.params mre.bin
+let program_of_running_entry ?as_ mre =
+  Program.of_bin ?as_ mre.params mre.bin
 
 exception RetryLater of float
 
@@ -188,8 +188,9 @@ let with_rlock conf f =
         let programs =
           (* TODO: cache reading the rc file *)
           read_rc_file conf.do_persist rc_file |>
-          Hashtbl.map (fun _ mre ->
-            memoize (fun () -> mre.bin, program_of_running_entry mre)) in
+          Hashtbl.map (fun pn mre ->
+            memoize (fun () ->
+                       mre.bin, program_of_running_entry ~as_:pn mre)) in
         f programs)
     with RetryLater s ->
       Lwt_unix.sleep s >>= loop
