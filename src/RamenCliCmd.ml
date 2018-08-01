@@ -222,7 +222,7 @@ let kill conf program_names () =
  * Delete old or unused files.
  *)
 
-let gc conf loop max_archives () =
+let gc conf max_archives loop () =
   if loop = 0 then
     RamenGc.cleanup_once conf max_archives
   else
