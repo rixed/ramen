@@ -855,7 +855,11 @@ struct
       | "or" -> StatelessFun2 (make_bool_typ "or", Or, e1, e2)
       | _ -> assert false in
     (* FIXME: we do not need a blanks if we had parentheses ("(x)AND(y)" is OK) *)
-    binary_ops_reducer ~op ~term:low_prec_left_assoc ~sep:blanks ~reduce m
+    binary_ops_reducer ~op ~term:conditional ~sep:blanks ~reduce m
+
+  and conditional m =
+    let m = "conditional expression" :: m in
+    (case ||| if_ ||| low_prec_left_assoc) m
 
   and low_prec_left_assoc m =
     let m = "comparison operator" :: m in
@@ -1292,8 +1296,7 @@ struct
     ) m
 
   and highestest_prec_no_parenthesis m =
-    (const ||| field ||| func ||| null |||
-     case ||| if_ ||| coalesce) m
+    (const ||| field ||| func ||| null ||| coalesce) m
 
   and highestest_prec m =
     (highestest_prec_no_parenthesis |||
