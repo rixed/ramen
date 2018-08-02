@@ -326,10 +326,12 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
         (omod_of_type to_typ)
     | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
       Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
-    | TIpv4, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
-    | TIpv6, TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
+    | (TIpv4 | TU32), TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
+    | (TIpv6 | TU128), TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
     | TCidrv4, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_)"
     | TCidrv6, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
+    | TIpv4, TU32 | TU32, TIpv4 -> Printf.fprintf oc "identity"
+    | TIpv6, TU128 | TU128, TIpv6 -> Printf.fprintf oc "identity"
     | TVec (d_from, t_from), TVec (d_to, t_to)
       when (d_from = d_to || d_to = 0) &&
            (* TODO: We could implement other combinations as well *)
