@@ -455,7 +455,8 @@ and emit_expr ?state ~context ~consts oc expr =
     StateField ((match nullable with None -> out_typ
                 | Some n -> { out_typ with nullable }),
                (if state = Some lifespan then "" else state_name ^".") ^
-               name_of_state expr)
+               name_of_state expr) in
+  let nullable = out_typ.nullable
   in
   match context, expr, out_typ.scalar_typ with
   (* Non-functions *)
@@ -933,7 +934,10 @@ and emit_expr ?state ~context ~consts oc expr =
     emit_functionN ?state ~consts "identity" [None] oc [my_state g]
 
   | InitState, StatefulFun (_, _, Remember (fpr,_tim,dur,_es)), Some TBool ->
-    emit_functionN ?state ~consts "CodeGenLib.remember_init" [Some TFloat; Some TFloat] oc [fpr; dur]
+    (* Take nullability from the type rather than the args, since it
+     * does not propagate from those.
+     * FIXME: shouldn't we always take nullability from the type? *)
+    emit_functionN ?nullable ?state ~consts "CodeGenLib.remember_init" [Some TFloat; Some TFloat] oc [fpr; dur]
   | UpdateState, StatefulFun (_, g, Remember (_fpr,tim,_dur,es)), _ ->
     emit_functionN ?state ~consts ~args_as:(Tuple 2) "CodeGenLib.remember_add"
       (None :: Some TFloat :: List.map (fun _ -> None) es)
@@ -1094,6 +1098,8 @@ and emit_function
       (* Set to true if [impl] already returns an optional type for a
        * nullable value: *)
       ?(impl_return_nullable=false)
+      (* Set if you know nullability regardless of the args: *)
+      ?nullable
       ?(args_as=Arg) ?state ~consts impl arg_typs es oc vt_specs_opt =
   let open RamenExpr in
   let arg_typs = add_missing_types arg_typs es in
@@ -1113,7 +1119,10 @@ and emit_function
       ) (0, false) es arg_typs
   in
   Printf.fprintf oc "%s(%s"
-    (if has_nullable && not impl_return_nullable then "Some " else "")
+    (if (has_nullable || nullable = Some true) &&
+        not impl_return_nullable &&
+        nullable <> Some false
+     then "Some " else "")
     impl ;
   for i = 0 to len-1 do
     Printf.fprintf oc "%s"
@@ -1140,14 +1149,14 @@ and emit_function
     vt_specs_opt ;
   for _i = 0 to len do Printf.fprintf oc ")" done
 
-and emit_functionN ?args_as ?impl_return_nullable ?state ~consts
+and emit_functionN ?args_as ?impl_return_nullable ?nullable ?state ~consts
                    impl arg_typs oc es =
-  emit_function ?args_as ?impl_return_nullable ?state ~consts
+  emit_function ?args_as ?impl_return_nullable ?nullable ?state ~consts
                 impl arg_typs es oc None
 
-and emit_functionNv ?impl_return_nullable ?state ~consts
+and emit_functionNv ?impl_return_nullable ?nullable ?state ~consts
                     impl arg_typs es vt oc ves =
-  emit_function ?impl_return_nullable ?state ~consts
+  emit_function ?impl_return_nullable ?nullable ?state ~consts
                 impl arg_typs es oc (Some (vt, ves))
 
 let emit_compute_nullmask_size oc ser_typ =
