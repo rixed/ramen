@@ -35,7 +35,7 @@ module P = C.Program
 
 type graphite_metric =
   { text : string (* the name of the path component?*) ;
-    (* These 3 are kind of synonymous ; aparently grafana uses only "expandable". *)
+    (* These 3 are kind of synonymous ; apparently Grafana uses only "expandable". *)
     expandable : int ; leaf : int ; allowChildren : int ;
     id : string (* Not sure if used *) } [@@ppp PPP_JSON]
 type graphite_metrics = graphite_metric list [@@ppp PPP_JSON]
