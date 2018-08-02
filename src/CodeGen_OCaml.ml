@@ -243,7 +243,7 @@ let string_of_context = function
 let name_of_state =
   let open RamenExpr in
   function
-  | StatefulFun (t, g, _) ->
+  | StatefulFun (t, g, _, _) ->
     let prefix = match g with
       | LocalState -> "group_"
       | GlobalState -> "global_" in
@@ -390,8 +390,7 @@ let emit_tuple tuple oc tuple_typ =
  * before starting the array/tuple.*)
 type args_as = Arg | Array of int | Tuple of int
 
-(* Implementation_of gives us the type operands must be converted to.
- * This printer wrap an expression into a converter according to its current
+(* This printer wrap expression [e] into a converter according to its current
  * type. *)
 let rec conv_to ?state ~context ~consts to_typ oc e =
   let open RamenExpr in
@@ -412,6 +411,26 @@ let rec conv_to ?state ~context ~consts to_typ oc e =
   | None, Some b ->
     failwith (Printf.sprintf "Cannot convert from unknown type into %s"
                 (IO.to_string print_structure b))
+
+and maybe_skip_nulls ?state ~consts e skip lifespan es oc p x =
+  let open RamenExpr in
+  let nullables = List.filter is_nullable es in
+  let state_name = name_of_state e in
+  let state_var =
+    match lifespan with LocalState -> "group_"
+                      | GlobalState -> "global_" in
+  if skip && nullables <> [] then (
+    Printf.fprintf oc "\nif %a then %s.%s <- %a ;\n"
+      (List.print ~first:"" ~last:"" ~sep:" && "
+        (fun oc e -> Printf.fprintf oc "(%a <> None)"
+          (emit_expr ~context:Finalize ~consts ?state) e)) nullables
+      state_var state_name
+      p x
+  ) else (
+    Printf.fprintf oc "\n%s.%s <- %a ;\n"
+      state_var state_name
+      p x
+  )
 
 (* The vectors Tuple{Group,Out}Previous are optional: the commit when and
  * select clauses of aggregate operations either have it or not.
@@ -814,56 +833,65 @@ and emit_expr ?state ~context ~consts oc expr =
     | _ -> assert false)
 
   (* Stateful functions *)
-  | InitState, StatefulFun (_, _, AggrAnd _), (Some TBool as t) ->
+  | InitState, StatefulFun (_, _, _, AggrAnd _), (Some TBool as t) ->
     conv_to ?state ~context ~consts t oc (true_or_nul (is_nullable expr))
-  | InitState, StatefulFun (_, _, AggrOr _), (Some TBool as t) ->
+  | InitState, StatefulFun (_, _, _, AggrOr _), (Some TBool as t) ->
     conv_to ?state ~context ~consts t oc (false_or_nul (is_nullable expr))
-  | Finalize, StatefulFun (_, g, (AggrAnd _|AggrOr _)), Some TBool ->
+  | Finalize, StatefulFun (_, g, _, (AggrAnd _|AggrOr _)), Some TBool ->
     emit_functionN ?state ~consts "identity" [None] oc [my_state g]
-  | UpdateState, StatefulFun (_, g, AggrAnd e), _ ->
-    emit_functionN ?state ~consts "(&&)" [None; Some TBool] oc [my_state g; e]
-  | UpdateState, StatefulFun (_, g, AggrOr e), _ ->
-    emit_functionN ?state ~consts "(||)" [None; Some TBool] oc [my_state g; e]
+  | UpdateState, StatefulFun (_, g, n, AggrAnd e), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "(&&)" [None; Some TBool]) [my_state g; e]
+  | UpdateState, StatefulFun (_, g, n, AggrOr e), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "(||)" [None; Some TBool]) [my_state g; e]
 
-  | InitState, StatefulFun (_, _, AggrSum _),
+  | InitState, StatefulFun (_, _, _, AggrSum _),
     (Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) as t) ->
     conv_to ?state ~context ~consts t oc (zero_or_nul (is_nullable expr))
-  | UpdateState, StatefulFun (_, g, AggrSum e),
+  | UpdateState, StatefulFun (_, g, n, AggrSum e),
     Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ?state ~consts (omod_of_type t ^".add") [None; Some t] oc [my_state g; e]
-  | Finalize, StatefulFun (_, g, AggrSum _), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts (omod_of_type t ^".add") [None; Some t]) [my_state g; e]
+  | Finalize, StatefulFun (_, g, _, AggrSum _), _ ->
     emit_functionN ?state ~consts "identity" [None] oc [my_state g]
 
-  | InitState, StatefulFun (_, _, AggrAvg e), Some TFloat ->
+  | InitState, StatefulFun (_, _, _, AggrAvg e), Some TFloat ->
     Printf.fprintf oc "%s(0, 0.)"
       (if is_nullable e then "Some " else "")
-  | UpdateState, StatefulFun (_, g, AggrAvg e), Some (TFloat as t) ->
-    emit_functionN ?state ~consts "CodeGenLib.avg_add" [None; Some t] oc [my_state g; e]
-  | Finalize, StatefulFun (_, g, AggrAvg _), _ ->
+  | UpdateState, StatefulFun (_, g, n, AggrAvg e), Some (TFloat as t) ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.avg_add" [None; Some t]) [my_state g; e]
+  | Finalize, StatefulFun (_, g, _, AggrAvg _), _ ->
     emit_functionN ?state ~consts "CodeGenLib.avg_finalize" [None] oc [my_state g]
 
-  | InitState, StatefulFun (_, _, (AggrFirst e|AggrLast e)), t ->
+  | InitState, StatefulFun (_, _, _, (AggrFirst e|AggrLast e)), t ->
     conv_to ?state ~context ~consts t oc (any_constant_of_expr_type (typ_of e))
 
-  | InitState, StatefulFun (_, _, (AggrMax e|AggrMin e)), _ ->
+  | InitState, StatefulFun (_, _, _, (AggrMax e|AggrMin e)), _ ->
     Printf.fprintf oc "%sNone"
       (if is_nullable e then "Some " else "")
-  | UpdateState, StatefulFun (_, g, AggrMax e), _ ->
-    emit_functionN ?state ~consts "CodeGenLib.aggr_max" [None; None] oc [e; my_state g]
-  | UpdateState, StatefulFun (_, g, AggrMin e), _ ->
-    emit_functionN ?state ~consts "CodeGenLib.aggr_min" [None; None] oc [e; my_state g]
-  | Finalize, StatefulFun (_, g, (AggrMax _|AggrMin _)), _ ->
+  | UpdateState, StatefulFun (_, g, n, AggrMax e), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.aggr_max" [None; None]) [e; my_state g]
+  | UpdateState, StatefulFun (_, g, n, AggrMin e), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.aggr_min" [None; None]) [e; my_state g]
+  | Finalize, StatefulFun (_, g, _, (AggrMax _|AggrMin _)), _ ->
     emit_functionN ?state ~consts "Option.get" [None] oc [my_state g]
 
-  | Finalize, StatefulFun (_, g, (AggrFirst _|AggrLast _)), _ ->
+  | Finalize, StatefulFun (_, g, _, (AggrFirst _|AggrLast _)), _ ->
     emit_functionN ?state ~consts "identity" [None] oc [my_state g]
-  | UpdateState, StatefulFun (_, g, AggrFirst e), _ ->
+  | UpdateState, StatefulFun (_, g, n, AggrFirst e), _ ->
     (* This hack relies on the fact that UpdateState is always called in
      * a context where we have the group.#count available and that its
-     * name is "virtual_group_count_". *)
-    emit_functionN ?state ~consts "(fun x y -> if virtual_group_count_ = Uint64.one then y else x)" [None; None] oc [my_state g; e]
-  | UpdateState, StatefulFun (_, g, AggrLast e), _ ->
-    emit_functionN ?state ~consts "(fun _ x -> x)" [None; None] oc [my_state g; e]
+     * name is "virtual_group_count_".
+     * FIXME: that hack won't work with skip_nulls! *)
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "(fun x y -> if virtual_group_count_ = Uint64.one then y else x)" [None; None]) [my_state g; e]
+  | UpdateState, StatefulFun (_, g, n, AggrLast e), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "(fun _ x -> x)" [None; None]) [my_state g; e]
 
   (* Note: for InitState it is probably useless to check out_type.
    * For Finalize it is useful only to extract the types to be checked by Compiler. *)
@@ -875,110 +903,121 @@ and emit_expr ?state ~context ~consts oc expr =
    * interested in? Or, if more function are like that, have a proper
    * `bound` or `pair` type constructor, with `low/high` or `first/second`
    * accessors? *)
-  | InitState, StatefulFun (_, _, AggrPercentile (_p,e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+  | InitState, StatefulFun (_, _, _, AggrPercentile (_p,e)), Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     Printf.fprintf oc "%s[]"
       (if is_nullable e then "Some " else "")
-  | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), Some TFloat ->
-    emit_functionN ?state ~consts "CodeGenLib.float_percentile_add" [None; None] oc [my_state g; e]
-  | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some TFloat ->
+  | UpdateState, StatefulFun (_, g, n, AggrPercentile (_p,e)), Some TFloat ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.float_percentile_add" [None; None]) [my_state g; e]
+  | Finalize, StatefulFun (_, g, _, AggrPercentile (p,_e)), Some TFloat ->
     emit_functionN ?state ~consts "CodeGenLib.float_percentile_finalize" [Some TFloat; None] oc [p; my_state g]
-  | UpdateState, StatefulFun (_, g, AggrPercentile (_p,e)), _ ->
-    emit_functionN ?state ~consts "CodeGenLib.percentile_add" [None; None] oc [my_state g; e]
-  | Finalize, StatefulFun (_, g, AggrPercentile (p,_e)), Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
+  | UpdateState, StatefulFun (_, g, n, AggrPercentile (_p,e)), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.percentile_add" [None; None]) [my_state g; e]
+  | Finalize, StatefulFun (_, g, _, AggrPercentile (p,_e)), Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
     emit_functionN ?state ~consts "CodeGenLib.percentile_finalize" [Some TFloat; None] oc [p; my_state g]
 
   (* Histograms: bucket each float into the array of num_buckets + 2 and then
    * count number of entries per buckets. The 2 extra buckets are for "<min"
    * and ">max". *)
-  | InitState, StatefulFun (_, _, AggrHistogram (e, min, max, num_buckets)), _ ->
+  | InitState, StatefulFun (_, _, _, AggrHistogram (e, min, max, num_buckets)), _ ->
     Printf.fprintf oc "%s(CodeGenLib.histogram_init %s %s %d)"
       (if is_nullable e then "Some " else "")
       (Legacy.Printf.sprintf "%h" min)
       (Legacy.Printf.sprintf "%h" max)
       num_buckets
-  | UpdateState, StatefulFun (_, g, AggrHistogram (e, min, max, num_buckets)), _ ->
-    emit_functionN ?state ~consts "CodeGenLib.histogram_add"
-      [None; Some TFloat] oc [my_state g; e]
-  | Finalize, StatefulFun (_, g, AggrHistogram _), Some (TVec _) ->
+  | UpdateState, StatefulFun (_, g, n, AggrHistogram (e, min, max, num_buckets)), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.histogram_add"
+        [None; Some TFloat]) [my_state g; e]
+  | Finalize, StatefulFun (_, g, _, AggrHistogram _), Some (TVec _) ->
     emit_functionN ?state ~consts "CodeGenLib.histogram_finalize" [None] oc [my_state g]
 
-  | InitState, StatefulFun (_, _, Lag (k,e)), _ ->
+  | InitState, StatefulFun (_, _, _, Lag (k,e)), _ ->
     emit_functionN ?state ~consts "CodeGenLib.Seasonal.init"
       [Some TU32; Some TU32; None] oc
       [k; expr_one; any_constant_of_expr_type (typ_of e)]
-  | UpdateState, StatefulFun (_, g, Lag (_k,e)), _ ->
-    emit_functionN ?state ~consts "CodeGenLib.Seasonal.add" [None; None] oc [my_state g; e]
-  | Finalize, StatefulFun (_, g, Lag _), _ ->
+  | UpdateState, StatefulFun (_, g, n, Lag (_k,e)), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.Seasonal.add" [None; None]) [my_state g; e]
+  | Finalize, StatefulFun (_, g, _, Lag _), _ ->
     emit_functionN ?state ~consts "CodeGenLib.Seasonal.lag" [None] oc [my_state g]
 
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | InitState, StatefulFun (_, _, (MovingAvg(p,n,_)|LinReg(p,n,_))), Some TFloat ->
+  | InitState, StatefulFun (_, _, _, (MovingAvg(p,n,_)|LinReg(p,n,_))), Some TFloat ->
     emit_functionN ?state ~consts "CodeGenLib.Seasonal.init" [Some TU32; Some TU32; Some TFloat] oc [p; n; expr_zero]
-  | UpdateState, StatefulFun (_, g, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
-    emit_functionN ?state ~consts "CodeGenLib.Seasonal.add" [None; Some TFloat] oc [my_state g; e]
-  | Finalize, StatefulFun (_, g, MovingAvg (p,n,_)), Some TFloat ->
+  | UpdateState, StatefulFun (_, g, n, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.Seasonal.add" [None; Some TFloat]) [my_state g; e]
+  | Finalize, StatefulFun (_, g, _, MovingAvg (p,n,_)), Some TFloat ->
     emit_functionN ?state ~consts "CodeGenLib.Seasonal.avg" [Some TU32; Some TU32; None] oc [p; n; my_state g]
-  | Finalize, StatefulFun (_, g, LinReg (p,n,_)), Some TFloat ->
+  | Finalize, StatefulFun (_, g, _, LinReg (p,n,_)), Some TFloat ->
     emit_functionN ?state ~consts "CodeGenLib.Seasonal.linreg" [Some TU32; Some TU32; None] oc [p; n; my_state g]
-  | Finalize, StatefulFun (_, g, MultiLinReg (p,n,_,_)), Some TFloat ->
+  | Finalize, StatefulFun (_, g, _, MultiLinReg (p,n,_,_)), Some TFloat ->
     emit_functionN ?state ~consts "CodeGenLib.Seasonal.multi_linreg" [Some TU32; Some TU32; None] oc [p; n; my_state g]
 
-  | InitState, StatefulFun (_, _, MultiLinReg (p,n,_,es)), Some TFloat ->
+  | InitState, StatefulFun (_, _, _, MultiLinReg (p,n,_,es)), Some TFloat ->
     emit_functionNv ?state ~consts "CodeGenLib.Seasonal.init_multi_linreg"
       [Some TU32; Some TU32; Some TFloat]
       [p; n; expr_zero]
       (Some TFloat) oc (List.map (fun _ -> expr_zero) es)
-  | UpdateState, StatefulFun (_, g, MultiLinReg (_p,_n,e,es)), _ ->
-    emit_functionNv ?state ~consts "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state g; e] (Some TFloat) oc es
+  | UpdateState, StatefulFun (_, g, n, MultiLinReg (_p,_n,e,es)), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionNv ?state ~consts "CodeGenLib.Seasonal.add_multi_linreg" [None; Some TFloat] [my_state g; e] (Some TFloat)) es
 
-  | InitState, StatefulFun (_, _, ExpSmooth (_a,_)), (Some TFloat as t) ->
+  | InitState, StatefulFun (_, _, _, ExpSmooth (_a,_)), (Some TFloat as t) ->
     conv_to ?state ~context ~consts t oc (zero_or_nul (is_nullable expr))
-  | UpdateState, StatefulFun (_, g, ExpSmooth (a,e)), _ ->
-    emit_functionN ?state ~consts "CodeGenLib.smooth" [None; Some TFloat; Some TFloat] oc [my_state g; a; e]
-  | Finalize, StatefulFun (_, g, ExpSmooth _), Some TFloat ->
+  | UpdateState, StatefulFun (_, g, n, ExpSmooth (a,e)), _ ->
+    maybe_skip_nulls ?state ~consts expr n g [ e ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.smooth" [None; Some TFloat; Some TFloat]) [my_state g; a; e]
+  | Finalize, StatefulFun (_, g, _, ExpSmooth _), Some TFloat ->
     emit_functionN ?state ~consts "identity" [None] oc [my_state g]
 
-  | InitState, StatefulFun (_, _, Remember (fpr,_tim,dur,_es)), Some TBool ->
+  | InitState, StatefulFun (_, _, _, Remember (fpr,_tim,dur,_es)), Some TBool ->
     (* Take nullability from the type rather than the args, since it
      * does not propagate from those.
      * FIXME: shouldn't we always take nullability from the type? *)
     emit_functionN ?nullable ?state ~consts "CodeGenLib.remember_init" [Some TFloat; Some TFloat] oc [fpr; dur]
-  | UpdateState, StatefulFun (_, g, Remember (_fpr,tim,_dur,es)), _ ->
-    emit_functionN ?state ~consts ~args_as:(Tuple 2) "CodeGenLib.remember_add"
-      (None :: Some TFloat :: List.map (fun _ -> None) es)
-      oc (my_state g :: tim :: es)
-  | Finalize, StatefulFun (_, g, Remember _), Some TBool ->
+  | UpdateState, StatefulFun (_, g, n, Remember (_fpr,tim,_dur,es)), _ ->
+    maybe_skip_nulls ?state ~consts expr n g es oc
+      (emit_functionN ?state ~consts ~args_as:(Tuple 2) "CodeGenLib.remember_add"
+        (None :: Some TFloat :: List.map (fun _ -> None) es))
+      (my_state g :: tim :: es)
+  | Finalize, StatefulFun (_, g, _, Remember _), Some TBool ->
     emit_functionN ?state ~consts "CodeGenLib.remember_finalize" [None] oc [my_state g]
 
-  | InitState, StatefulFun (_, _, Distinct _es), _ ->
+  | InitState, StatefulFun (_, _, _, Distinct _es), _ ->
     Printf.fprintf oc "%s(CodeGenLib.distinct_init ())"
       (if is_nullable expr then "Some " else "")
-  | UpdateState, StatefulFun (_, g, Distinct es), _ ->
-    emit_functionN ?state ~consts ~args_as:(Tuple 1) "CodeGenLib.distinct_add" (None :: List.map (fun e -> None) es) oc (my_state g :: es)
-  | Finalize, StatefulFun (_, g, Distinct es), Some TBool ->
+  | UpdateState, StatefulFun (_, g, n, Distinct es), _ ->
+    maybe_skip_nulls ?state ~consts expr n g es oc
+      (emit_functionN ?state ~consts ~args_as:(Tuple 1) "CodeGenLib.distinct_add" (None :: List.map (fun e -> None) es)) (my_state g :: es)
+  | Finalize, StatefulFun (_, g, _, Distinct es), Some TBool ->
     emit_functionN ?state ~consts "CodeGenLib.distinct_finalize" [None] oc [my_state g]
 
-  | InitState, StatefulFun (_, _, Hysteresis _), t ->
+  | InitState, StatefulFun (_, _, _, Hysteresis _), t ->
     conv_to ?state ~context ~consts t oc (true_or_nul (is_nullable expr)) (* initially within bounds *)
-  | UpdateState, StatefulFun (_, g, Hysteresis (meas, accept, max)), Some TBool ->
+  | UpdateState, StatefulFun (_, g, n, Hysteresis (meas, accept, max)), Some TBool ->
     let t = (typ_of meas).scalar_typ in (* TODO: shouldn't we promote everything to the most accurate of those types? *)
-    emit_functionN ?state ~consts "CodeGenLib.hysteresis_update" [None; t; t; t] oc [my_state g; meas; accept; max]
-  | Finalize, StatefulFun (_, g, Hysteresis _), Some TBool ->
+    maybe_skip_nulls ?state ~consts expr n g [ meas ] oc
+      (emit_functionN ?state ~consts "CodeGenLib.hysteresis_update" [None; t; t; t]) [my_state g; meas; accept; max]
+  | Finalize, StatefulFun (_, g, _, Hysteresis _), Some TBool ->
     emit_functionN ?state ~consts "CodeGenLib.hysteresis_finalize" [None] oc [my_state g]
 
-  | InitState, StatefulFun (_, _, Top { n ; duration ; _ }), _ ->
+  | InitState, StatefulFun (_, _, _, Top { n ; duration ; _ }), _ ->
     Printf.fprintf oc "%s(CodeGenLib.heavy_hitters_init (%a) (%a))"
       (if is_nullable expr then "Some " else "")
       (* n can be any numeric type but heavy_hitters_init expects a u32: *)
       (conv_to ?state ~context:Finalize ~consts (Some TU32)) n
       (* duration can also be a parameter compatible to float: *)
       (conv_to ?state ~context:Finalize ~consts (Some TFloat)) duration
-  | UpdateState, StatefulFun (_, g, Top { what ; by ; time ; _ }), _ ->
-    emit_functionN ?state ~consts ~args_as:(Tuple 3)
-      "CodeGenLib.heavy_hitters_add"
-      (None :: Some TFloat :: Some TFloat :: List.map (fun _ -> None) what)
-      oc (my_state g :: time :: by :: what)
-  | Finalize, StatefulFun (_, g, Top { want_rank = true ; n ; what ; _ }), Some t ->
+  | UpdateState, StatefulFun (_, g, n, Top { what ; by ; time ; _ }), _ ->
+    maybe_skip_nulls ?state ~consts expr n g what oc
+      (emit_functionN ?state ~consts ~args_as:(Tuple 3)
+        "CodeGenLib.heavy_hitters_add"
+        (None :: Some TFloat :: Some TFloat :: List.map (fun _ -> None) what))
+      (my_state g :: time :: by :: what)
+  | Finalize, StatefulFun (_, g, _, Top { want_rank = true ; n ; what ; _ }), Some t ->
     (* heavy_hitters_rank returns an optional int; we then have to convert
      * it to whatever integer size we are supposed to have: *)
     assert (is_nullable expr) ;
@@ -989,21 +1028,22 @@ and emit_expr ?state ~context ~consts oc expr =
       (None :: Some TU32 :: List.map (fun _ -> None) what)
       oc (my_state g :: n :: what) ;
     Printf.fprintf oc ")"
-  | Finalize, StatefulFun (_, g, Top { want_rank = false ; n ; what ; _ }), _ ->
+  | Finalize, StatefulFun (_, g, _, Top { want_rank = false ; n ; what ; _ }), _ ->
     emit_functionN ?state ~consts ~args_as:(Tuple 2)
       "CodeGenLib.heavy_hitters_is_in_top"
       (None :: Some TU32 :: List.map (fun _ -> None) what)
       oc (my_state g :: n :: what)
 
-  | InitState, StatefulFun (_, _, Last (n, e, _)), _ ->
+  | InitState, StatefulFun (_, _, _, Last (n, e, _)), _ ->
     assert (is_nullable expr) ;
     Printf.fprintf oc "CodeGenLib.last_init %d" n
-  | UpdateState, StatefulFun (_, g, Last (n, e, es)), _ ->
-    emit_functionN ?state ~consts ~args_as:(Tuple 2)
-      "CodeGenLib.last_add"
-      (None :: None :: List.map (fun _ -> None) es)
-      oc (my_state ~nullable:false g :: e :: es)
-  | Finalize, StatefulFun (_, g, Last (_, _, _)), _ ->
+  | UpdateState, StatefulFun (_, g, n, Last (c, e, es)), _ ->
+    maybe_skip_nulls ?state ~consts expr n g es oc
+      (emit_functionN ?state ~consts ~args_as:(Tuple 2)
+        "CodeGenLib.last_add"
+        (None :: None :: List.map (fun _ -> None) es))
+      (my_state ~nullable:false g :: e :: es)
+  | Finalize, StatefulFun (_, g, _, Last (_, _, _)), _ ->
     emit_functionN ~impl_return_nullable:true ?state ~consts
       "CodeGenLib.last_finalize" [None] oc [my_state ~nullable:false g]
 
@@ -1700,14 +1740,8 @@ let emit_field_of_tuple name oc tuple_typ =
 
 let emit_state_update_for_expr ~consts oc expr =
   RamenExpr.unpure_iter (function
-      | RamenExpr.StatefulFun (_, lifespan, _) as e ->
-        let state_var =
-          match lifespan with LocalState -> "group_"
-                            | GlobalState -> "global_" in
-        Printf.fprintf oc "\t%s.%s <- (%a) ;\n"
-          state_var
-          (name_of_state e)
-          (emit_expr ?state:None ~context:UpdateState ~consts) e
+      | RamenExpr.StatefulFun (_, lifespan, skip_nulls, _) as e ->
+          emit_expr ?state:None ~context:UpdateState ~consts oc e
       | _ -> ()
     ) expr
 
@@ -1814,7 +1848,7 @@ let for_each_unpure_fun_my_lifespan lifespan selected_fields
   for_each_unpure_fun selected_fields
                       ?where ?commit_cond
     (function
-    | StatefulFun (_, l, _) as e when l = lifespan ->
+    | StatefulFun (_, l, _, _) as e when l = lifespan ->
       f e
     | _ -> ())
 
@@ -1830,28 +1864,28 @@ let otype_of_state e =
     String.print oc in
   let optional = if Option.get typ.nullable then " option" else "" in
   match e with
-  | StatefulFun (_, _, AggrPercentile _) -> t ^" list"^ optional
+  | StatefulFun (_, _, _, AggrPercentile _) -> t ^" list"^ optional
   (* previous tuples and count ; Note: we could get rid of this count if we
    * provided some context to those functions, such as the event count in
    * current window, for instance (ie. pass the full aggr record not just
    * the fields) *)
-  | StatefulFun (_, _, (Lag _ | MovingAvg _ | LinReg _)) ->
+  | StatefulFun (_, _, _, (Lag _ | MovingAvg _ | LinReg _)) ->
     t ^" CodeGenLib.Seasonal.t"^ optional
-  | StatefulFun (_, _, MultiLinReg _) ->
+  | StatefulFun (_, _, _, MultiLinReg _) ->
     "("^ t ^" * float array) CodeGenLib.Seasonal.t"^ optional
-  | StatefulFun (_, _, Remember _) ->
+  | StatefulFun (_, _, _, Remember _) ->
     "CodeGenLib.remember_state"^ optional
-  | StatefulFun (_, _, Distinct es) ->
+  | StatefulFun (_, _, _, Distinct es) ->
     Printf.sprintf2 "%a CodeGenLib.distinct_state%s"
       (list_print_as_product print_expr_typ) es
       optional
-  | StatefulFun (_, _, AggrAvg _) -> "(int * float)"^ optional
-  | StatefulFun (_, _, (AggrMin _|AggrMax _)) -> t ^" option"^ optional
-  | StatefulFun (_, _, Top { what ; _ }) ->
+  | StatefulFun (_, _, _, AggrAvg _) -> "(int * float)"^ optional
+  | StatefulFun (_, _, _, (AggrMin _|AggrMax _)) -> t ^" option"^ optional
+  | StatefulFun (_, _, _, Top { what ; _ }) ->
     Printf.sprintf2 "%a HeavyHitters.t%s"
       (list_print_as_product print_expr_typ) what
       optional
-  | StatefulFun (_, _, Last (_, e, es)) ->
+  | StatefulFun (_, _, _, Last (_, e, es)) ->
     if es = [] then
       Printf.sprintf2 "(%a, unit) CodeGenLib.last_state"
         print_expr_typ e
@@ -1860,7 +1894,7 @@ let otype_of_state e =
         print_expr_typ e
         print_expr_typ (List.hd es)
     (* Not optional as null is handled by last_finalize directly *)
-  | StatefulFun (_, _, AggrHistogram _) -> "CodeGenLib.histogram"^ optional
+  | StatefulFun (_, _, _, AggrHistogram _) -> "CodeGenLib.histogram"^ optional
   | _ -> t ^ optional
 
 let emit_state_init name state_lifespan other_state_vars
@@ -2028,7 +2062,7 @@ let expr_needs_group e =
   fold_by_depth (fun need expr ->
     need || match expr with
       | Field (_, tuple, _) -> tuple_need_state !tuple
-      | StatefulFun (_, LocalState, _) -> true
+      | StatefulFun (_, LocalState, _, _) -> true
       | _ -> false
   ) false e
 

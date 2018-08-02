@@ -76,77 +76,77 @@ let rec map_type ?(recurs=true) f =
     Coalesce (f t,
               if recurs then List.map (map_type ~recurs f) es else es)
 
-  | StatefulFun (t, g, AggrMin a) ->
-    StatefulFun (f t, g, AggrMin (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, AggrMax a) ->
-    StatefulFun (f t, g, AggrMax (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, AggrSum a) ->
-    StatefulFun (f t, g, AggrSum (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, AggrAvg a) ->
-    StatefulFun (f t, g, AggrAvg (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, AggrAnd a) ->
-    StatefulFun (f t, g, AggrAnd (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, AggrOr a) ->
-    StatefulFun (f t, g, AggrOr (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, AggrFirst a) ->
-    StatefulFun (f t, g, AggrFirst (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, AggrLast a) ->
-    StatefulFun (f t, g, AggrLast (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, AggrHistogram (a, min, max, num_buckets)) ->
-    StatefulFun (f t, g, AggrHistogram (
+  | StatefulFun (t, g, n, AggrMin a) ->
+    StatefulFun (f t, g, n, AggrMin (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrMax a) ->
+    StatefulFun (f t, g, n, AggrMax (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrSum a) ->
+    StatefulFun (f t, g, n, AggrSum (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrAvg a) ->
+    StatefulFun (f t, g, n, AggrAvg (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrAnd a) ->
+    StatefulFun (f t, g, n, AggrAnd (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrOr a) ->
+    StatefulFun (f t, g, n, AggrOr (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrFirst a) ->
+    StatefulFun (f t, g, n, AggrFirst (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrLast a) ->
+    StatefulFun (f t, g, n, AggrLast (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrHistogram (a, min, max, num_buckets)) ->
+    StatefulFun (f t, g, n, AggrHistogram (
         (if recurs then map_type ~recurs f a else a), min, max, num_buckets))
-  | StatefulFun (t, g, AggrPercentile (a, b)) ->
-    StatefulFun (f t, g, AggrPercentile (
+  | StatefulFun (t, g, n, AggrPercentile (a, b)) ->
+    StatefulFun (f t, g, n, AggrPercentile (
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b)))
-  | StatefulFun (t, g, Lag (a, b)) ->
-    StatefulFun (f t, g, Lag (
+  | StatefulFun (t, g, n, Lag (a, b)) ->
+    StatefulFun (f t, g, n, Lag (
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b)))
-  | StatefulFun (t, g, MovingAvg (a, b, c)) ->
-    StatefulFun (f t, g, MovingAvg (
+  | StatefulFun (t, g, n, MovingAvg (a, b, c)) ->
+    StatefulFun (f t, g, n, MovingAvg (
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c)))
-  | StatefulFun (t, g, LinReg (a, b, c)) ->
-    StatefulFun (f t, g, LinReg (
+  | StatefulFun (t, g, n, LinReg (a, b, c)) ->
+    StatefulFun (f t, g, n, LinReg (
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c)))
-  | StatefulFun (t, g, MultiLinReg (a, b, c, d)) ->
-    StatefulFun (f t, g, MultiLinReg (
+  | StatefulFun (t, g, n, MultiLinReg (a, b, c, d)) ->
+    StatefulFun (f t, g, n, MultiLinReg (
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c),
         (if recurs then List.map (map_type ~recurs f) d else d)))
-  | StatefulFun (t, g, Remember (fpr, tim, dur, es)) ->
-    StatefulFun (f t, g, Remember (
+  | StatefulFun (t, g, n, Remember (fpr, tim, dur, es)) ->
+    StatefulFun (f t, g, n, Remember (
         (if recurs then map_type ~recurs f fpr else fpr),
         (if recurs then map_type ~recurs f tim else tim),
         (if recurs then map_type ~recurs f dur else dur),
         (if recurs then List.map (map_type ~recurs f) es else es)))
-  | StatefulFun (t, g, Distinct es) ->
-    StatefulFun (f t, g, Distinct
+  | StatefulFun (t, g, n, Distinct es) ->
+    StatefulFun (f t, g, n, Distinct
         (if recurs then List.map (map_type ~recurs f) es else es))
-  | StatefulFun (t, g, ExpSmooth (a, b)) ->
-    StatefulFun (f t, g, ExpSmooth (
+  | StatefulFun (t, g, n, ExpSmooth (a, b)) ->
+    StatefulFun (f t, g, n, ExpSmooth (
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b)))
-  | StatefulFun (t, g, Hysteresis (a, b, c)) ->
-    StatefulFun (f t, g, Hysteresis (
+  | StatefulFun (t, g, n, Hysteresis (a, b, c)) ->
+    StatefulFun (f t, g, n, Hysteresis (
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c)))
-  | StatefulFun (t, g, Top { want_rank ; n ; what ; by ; duration ; time }) ->
-    StatefulFun (f t, g, Top {
+  | StatefulFun (t, g, n, Top { want_rank ; n = c ; what ; by ; duration ; time }) ->
+    StatefulFun (f t, g, n, Top {
       want_rank ;
-      n = (if recurs then map_type ~recurs f n else n) ;
+      n = (if recurs then map_type ~recurs f c else c) ;
       duration = (if recurs then map_type ~recurs f duration else duration) ;
       what = (if recurs then List.map (map_type ~recurs f) what else what) ;
       by = (if recurs then map_type ~recurs f by else by) ;
       time = (if recurs then map_type ~recurs f time else time) })
-  | StatefulFun (t, g, Last (n, e, es)) ->
-    StatefulFun (f t, g, Last (n,
+  | StatefulFun (t, g, n, Last (c, e, es)) ->
+    StatefulFun (f t, g, n, Last (c,
       (if recurs then map_type ~recurs f e else e),
       (if recurs then List.map (map_type ~recurs f) es else es)))
 

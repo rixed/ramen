@@ -341,7 +341,7 @@ let check params =
     E.unpure_iter (fun _ -> raise (SyntaxError e))
   and check_no_state state e =
     E.unpure_iter (function
-      | StatefulFun (_, s, _) when s = state -> raise (SyntaxError e)
+      | StatefulFun (_, s, _, _) when s = state -> raise (SyntaxError e)
       | _ -> ())
   and check_fields_from lst where =
     E.iter (function
@@ -544,16 +544,16 @@ struct
     | Field (_, _, field)
         when not (is_virtual_field field) -> field
     (* Provide some default name for common aggregate functions: *)
-    | StatefulFun (_, _, AggrMin (Field (_, _, field))) -> "min_"^ force_public field
-    | StatefulFun (_, _, AggrMax (Field (_, _, field))) -> "max_"^ force_public field
-    | StatefulFun (_, _, AggrSum (Field (_, _, field))) -> "sum_"^ force_public field
-    | StatefulFun (_, _, AggrAvg (Field (_, _, field))) -> "avg_"^ force_public field
-    | StatefulFun (_, _, AggrAnd (Field (_, _, field))) -> "and_"^ force_public field
-    | StatefulFun (_, _, AggrOr (Field (_, _, field))) -> "or_"^ force_public field
-    | StatefulFun (_, _, AggrFirst (Field (_, _, field))) -> "first_"^ force_public field
-    | StatefulFun (_, _, AggrLast (Field (_, _, field))) -> "last_"^ force_public field
-    | StatefulFun (_, _, AggrHistogram (Field (_, _, field), _, _, _)) -> force_public field ^"_histogram"
-    | StatefulFun (_, _, AggrPercentile (Const (_, p), Field (_, _, field)))
+    | StatefulFun (_, _, _, AggrMin (Field (_, _, field))) -> "min_"^ force_public field
+    | StatefulFun (_, _, _, AggrMax (Field (_, _, field))) -> "max_"^ force_public field
+    | StatefulFun (_, _, _, AggrSum (Field (_, _, field))) -> "sum_"^ force_public field
+    | StatefulFun (_, _, _, AggrAvg (Field (_, _, field))) -> "avg_"^ force_public field
+    | StatefulFun (_, _, _, AggrAnd (Field (_, _, field))) -> "and_"^ force_public field
+    | StatefulFun (_, _, _, AggrOr (Field (_, _, field))) -> "or_"^ force_public field
+    | StatefulFun (_, _, _, AggrFirst (Field (_, _, field))) -> "first_"^ force_public field
+    | StatefulFun (_, _, _, AggrLast (Field (_, _, field))) -> "last_"^ force_public field
+    | StatefulFun (_, _, _, AggrHistogram (Field (_, _, field), _, _, _)) -> force_public field ^"_histogram"
+    | StatefulFun (_, _, _, AggrPercentile (Const (_, p), Field (_, _, field)))
       when RamenTypes.is_round_integer p ->
       Printf.sprintf "%s_%sth" (force_public field) (IO.to_string RamenTypes.print p)
     | StatelessFunMisc (_, Print es) when es <> [] ->
@@ -1119,16 +1119,16 @@ struct
       Aggregate {\
         fields = [\
           { expr = E.(\
-              StatefulFun (typ, LocalState, AggrMin (\
+              StatefulFun (typ, LocalState, true, AggrMin (\
                 Field (typ, ref TupleIn, "start")))) ;\
             alias = "start" } ;\
           { expr = E.(\
-              StatefulFun (typ, LocalState, AggrMax (\
+              StatefulFun (typ, LocalState, true, AggrMax (\
                 Field (typ, ref TupleIn, "stop")))) ;\
             alias = "max_stop" } ;\
           { expr = E.(\
               StatelessFun2 (typ, Div, \
-                StatefulFun (typ, LocalState, AggrSum (\
+                StatefulFun (typ, LocalState, true, AggrSum (\
                   Field (typ, ref TupleIn, "packets"))),\
                 Field (typ, ref TupleParam, "avg_window"))) ;\
             alias = "packets_per_sec" } ] ;\
@@ -1147,7 +1147,7 @@ struct
         commit_cond = E.(\
           StatelessFun2 (typ, Gt, \
             StatelessFun2 (typ, Add, \
-              StatefulFun (typ, LocalState, AggrMax (\
+              StatefulFun (typ, LocalState, true, AggrMax (\
                 Field (typ, ref TupleGroupFirst, "start"))),\
               Const (typ, VU32 (Uint32.of_int 3600))),\
             Field (typ, ref TupleOut, "start"))) ; \
@@ -1177,7 +1177,7 @@ struct
         key = [] ;\
         commit_cond = E.(\
           StatelessFun2 (typ, Ge, \
-            StatefulFun (typ, LocalState, AggrSum (\
+            StatefulFun (typ, LocalState, true, AggrSum (\
               Const (typ, VU32 Uint32.one))),\
             Const (typ, VU32 (Uint32.of_int 5)))) ;\
         commit_before = true ;\
@@ -1191,7 +1191,7 @@ struct
         fields = [\
           { expr = E.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
           { expr = E.(\
-              StatefulFun (typ, GlobalState, E.Lag (\
+              StatefulFun (typ, GlobalState, true, E.Lag (\
               E.Const (typ, VU32 (Uint32.of_int 2)), \
               E.Field (typ, ref TupleIn, "n")))) ;\
             alias = "l" } ] ;\

@@ -446,19 +446,19 @@ let emit_constraints tuple_sizes out_fields oc e =
   | StatelessFun0 (_, (Now|Random))
   | StatelessFun1 (_, Defined, _) -> ()
 
-  | StatefulFun (_, _, (AggrMin e|AggrMax e)) ->
+  | StatefulFun (_, _, _, (AggrMin e|AggrMax e)) ->
       (* - e must be sortable;
        * - the result has its type *)
       emit_assert_sortable oc e ;
       emit_assert_id_eq_id (e_of_expr e) oc eid ;
       emit_assert_id_eq_id (n_of_expr e) oc nid
 
-  | StatefulFun (_, _, (AggrFirst e|AggrLast e)) ->
+  | StatefulFun (_, _, _, (AggrFirst e|AggrLast e)) ->
       (* e has the same type as that of the result: *)
       emit_assert_id_eq_id (e_of_expr e) oc eid ;
       emit_assert_id_eq_id (n_of_expr e) oc nid
 
-  | StatefulFun (_, _, (AggrSum e|AggrAvg e)) ->
+  | StatefulFun (_, _, _, (AggrSum e|AggrAvg e)) ->
       (* The result must not be smaller than e *)
       emit_assert_id_le_id (e_of_expr e) oc eid ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
@@ -479,7 +479,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_le_smt2 (e_of_expr e) oc eid ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
-  | StatefulFun (_, _, (AggrAnd e | AggrOr e))
+  | StatefulFun (_, _, _, (AggrAnd e | AggrOr e))
   | StatelessFun1 (_, Not, e) ->
       (* The only argument must be boolean: *)
       let name = make_name e "BOOL" in
@@ -492,7 +492,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * actually not implemented so would fail when generating code. *)
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
-  | StatefulFun (_, _, AggrPercentile (e1, e2)) ->
+  | StatefulFun (_, _, _, AggrPercentile (e1, e2)) ->
       (* - e1 and e2 must be numeric;
        * - The result has same type as e2. *)
       emit_assert_numeric oc e1 ;
@@ -665,7 +665,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_id (e_of_expr (List.hd es)) oc eid ;
       emit_assert_id_eq_id (n_of_expr (List.hd es)) oc nid
 
-  | StatefulFun (_, _, Lag (e1, e2)) ->
+  | StatefulFun (_, _, _, Lag (e1, e2)) ->
       (* Typing rules:
        * - e1 must be an unsigned;
        * - e2 has same type as the result;
@@ -676,8 +676,8 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_id (e_of_expr e2) oc eid ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
-  | StatefulFun (_, _, MovingAvg (e1, e2, e3))
-  | StatefulFun (_, _, LinReg (e1, e2, e3)) ->
+  | StatefulFun (_, _, _, MovingAvg (e1, e2, e3))
+  | StatefulFun (_, _, _, LinReg (e1, e2, e3)) ->
       (* Typing rules:
        * - e1 must be an unsigned (the period);
        * - e2 must also be an unsigned (the number of values to average);
@@ -692,7 +692,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_is_false ~name oc (n_of_expr e2) ;
       emit_assert_id_eq_id (n_of_expr e3) oc nid
 
-  | StatefulFun (_, _, MultiLinReg (e1, e2, e3, e4s)) ->
+  | StatefulFun (_, _, _, MultiLinReg (e1, e2, e3, e4s)) ->
       (* As above, with the addition of predictors that must also be
        * numeric and non null. Why non null? See comment in check_variadic
        * and probably get rid of this limitation. *)
@@ -710,7 +710,7 @@ let emit_constraints tuple_sizes out_fields oc e =
         emit_assert_is_false ~name oc (n_of_expr e)
       ) e4s
 
-  | StatefulFun (_, _, ExpSmooth (e1, e2)) ->
+  | StatefulFun (_, _, _, ExpSmooth (e1, e2)) ->
       (* Typing rules:
        * - e1 must be a non-null float (and ideally, between 0 and 1), but
        *   we just ask for a numeric in order to also accept immediate
@@ -747,7 +747,7 @@ let emit_constraints tuple_sizes out_fields oc e =
         (TVec (0, { structure = TNum ; nullable = Some false })) ;
       emit_assert_id_eq_id (n_of_expr e) oc nid
 
-  | StatefulFun (_, _, Remember (fpr, tim, dur, es)) ->
+  | StatefulFun (_, _, _, Remember (fpr, tim, dur, es)) ->
       (* Typing rules:
        * - fpr must be a non null (positive) float, so we take any numeric
        *   for now;
@@ -767,7 +767,7 @@ let emit_constraints tuple_sizes out_fields oc e =
           (List.print ~first:" " ~last:"" ~sep:" " (fun oc e ->
             String.print oc (n_of_expr e))) es)
 
-  | StatefulFun (_, _, Distinct es) ->
+  | StatefulFun (_, _, _, Distinct es) ->
       (* the es can be anything *)
       if es <> [] then
         emit_assert_id_eq_smt2 nid oc
@@ -775,7 +775,7 @@ let emit_constraints tuple_sizes out_fields oc e =
             (List.print ~first:"" ~last:"" ~sep:" " (fun oc e ->
               String.print oc (n_of_expr e))) es)
 
-  | StatefulFun (_, _, Hysteresis (meas, accept, max)) ->
+  | StatefulFun (_, _, _, Hysteresis (meas, accept, max)) ->
       (* meas, accept and max must be numeric. *)
       emit_assert_numeric oc meas ;
       emit_assert_numeric oc accept ;
@@ -784,7 +784,7 @@ let emit_constraints tuple_sizes out_fields oc e =
         (Printf.sprintf "(or %s %s %s)"
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
 
-  | StatefulFun (_, _, Top { want_rank ; n ; what ; by ; duration ; time }) ->
+  | StatefulFun (_, _, _, Top { want_rank ; n ; what ; by ; duration ; time }) ->
       (* Typing rules:
        * - n must be numeric and not null;
        * - what can be anything;
@@ -811,7 +811,7 @@ let emit_constraints tuple_sizes out_fields oc e =
               String.print oc (n_of_expr w))) what
             (n_of_expr by))
 
-  | StatefulFun (_, _, Last (n, e, es)) ->
+  | StatefulFun (_, _, _, Last (n, e, es)) ->
       (* - The type of the return is a vector of the specified length,
        *   with items of the type and nullability of e, and is nullable;
        * - In theory, 'Last n e1 by es` should be nullable iff any of the es
@@ -829,7 +829,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       let name = make_name e "NULL" in
       emit_assert_is_true ~name oc nid
 
-  | StatefulFun (_, _, AggrHistogram (e, _, _, _)) ->
+  | StatefulFun (_, _, _, AggrHistogram (e, _, _, _)) ->
       (* e must be numeric *)
       emit_assert_numeric oc e ;
       emit_assert_id_eq_id (n_of_expr e) oc nid

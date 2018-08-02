@@ -799,16 +799,16 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | StatelessFun0 (op_typ, Random) ->
     check_expr_type ~indent ~ok_if_larger:false ~set_null:true
                     ~from:op_typ ~to_:exp_type
-  | StatefulFun (op_typ, _, AggrMin e) | StatefulFun (op_typ, _, AggrMax e)
-  | StatefulFun (op_typ, _, AggrFirst e) | StatefulFun (op_typ, _, AggrLast e) ->
+  | StatefulFun (op_typ, _, _, AggrMin e) | StatefulFun (op_typ, _, _, AggrMax e)
+  | StatefulFun (op_typ, _, _, AggrFirst e) | StatefulFun (op_typ, _, _, AggrLast e) ->
     check_op op_typ List.hd [None, None, e]
-  | StatefulFun (op_typ, _, AggrSum e) | StatelessFun1 (op_typ, Age, e)
+  | StatefulFun (op_typ, _, _, AggrSum e) | StatelessFun1 (op_typ, Age, e)
   | StatelessFun1 (op_typ, Abs, e)
   | StatelessFun1 (op_typ, Minus, e) ->
     check_op op_typ List.hd [Some TFloat, None, e]
-  | StatefulFun (op_typ, _, AggrAvg e) ->
+  | StatefulFun (op_typ, _, _, AggrAvg e) ->
     check_op op_typ return_float [Some TFloat, None, e]
-  | StatefulFun (op_typ, _, AggrAnd e) | StatefulFun (op_typ, _, AggrOr e)
+  | StatefulFun (op_typ, _, _, AggrAnd e) | StatefulFun (op_typ, _, _, AggrOr e)
   | StatelessFun1 (op_typ, Not, e) ->
     check_op op_typ List.hd [Some TBool, None, e]
   | StatelessFun1 (op_typ, Cast, e) ->
@@ -817,7 +817,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     check_op op_typ (fun _ -> Option.get op_typ.scalar_typ) [None, None, e]
   | StatelessFun1 (op_typ, Defined, e) ->
     check_op op_typ return_bool  ~propagate_null:false [None, Some true, e]
-  | StatefulFun (op_typ, _, AggrPercentile (e1, e2)) ->
+  | StatefulFun (op_typ, _, _, AggrPercentile (e1, e2)) ->
     check_op op_typ List.last [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, (Add|Sub|Mul), e1, e2) ->
     check_op op_typ largest_structure [Some TFloat, None, e1 ; Some TFloat, None, e2]
@@ -943,7 +943,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
     check_op op_typ List.hd ~propagate_null:true
       (List.map (fun e -> None, None, e) es)
 
-  | StatefulFun (op_typ, _, Lag (e1, e2)) ->
+  | StatefulFun (op_typ, _, _, Lag (e1, e2)) ->
     (* e1 must be an unsigned small constant integer. For now that mean user
      * must have entered a constant. Later we might pre-evaluate constant
      * expressions into constant values. *)
@@ -953,8 +953,8 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * nullable only by propagation. If the lag goes beyond the start of the
      * window lag merely returns the oldest entry. *)
     check_op op_typ List.last [Some TU64, Some false, e1 ; None, None, e2]
-  | StatefulFun (op_typ, _, MovingAvg (e1, e2, e3))
-  | StatefulFun (op_typ, _, LinReg (e1, e2, e3)) ->
+  | StatefulFun (op_typ, _, _, MovingAvg (e1, e2, e3))
+  | StatefulFun (op_typ, _, _, LinReg (e1, e2, e3)) ->
     (* As above, but e3 must be numeric (therefore the result cannot be
      * null) *)
     (* FIXME: Check that the consts are > 0 *)
@@ -964,7 +964,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       [Some TU64, Some false, e1 ;
        Some TU64, Some false, e2 ;
        Some TFloat, None, e3]
-  | StatefulFun (op_typ, _, MultiLinReg (e1, e2, e3, e4s)) ->
+  | StatefulFun (op_typ, _, _, MultiLinReg (e1, e2, e3, e4s)) ->
     (* As above, with the addition of a non empty list of predictors *)
     (* FIXME: Check that the consts are > 0 *)
     check_const "multi-linear regression period" e1 ;
@@ -975,7 +975,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        Some TFloat, None, e3] ||
     check_variadic op_typ
       ~exp_sub_typ:TFloat ~exp_sub_nullable:false (*because see comment in check_variadic *) e4s
-  | StatefulFun (op_typ, _, ExpSmooth (e1, e2)) ->
+  | StatefulFun (op_typ, _, _, ExpSmooth (e1, e2)) ->
     (* FIXME: Check that alpha is between 0 and 1 *)
     check_const "smooth coefficient" e1 ;
     check_op op_typ return_float
@@ -991,7 +991,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
   | GeneratorFun (op_typ, Split (e1, e2)) ->
     check_op op_typ return_string [Some TString, None, e1 ;
                                    Some TString, None, e2]
-  | StatefulFun (op_typ, _, Remember (fpr, tim, dur, es)) ->
+  | StatefulFun (op_typ, _, _, Remember (fpr, tim, dur, es)) ->
     (* e can be anything *)
     check_const "remember false positive rate" fpr ;
     check_const "remember duration" dur ;
@@ -1000,15 +1000,15 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        (Some TFloat, None, tim) ::
        (Some TFloat, None, dur) ::
        List.map (fun e -> None, None, e) es)
-  | StatefulFun (op_typ, _, Distinct es) ->
+  | StatefulFun (op_typ, _, _, Distinct es) ->
     (* the es can be anything *)
     check_op op_typ return_bool (List.map (fun e -> None, None, e) es)
-  | StatefulFun (op_typ, _, Hysteresis (meas, accept, max)) ->
+  | StatefulFun (op_typ, _, _, Hysteresis (meas, accept, max)) ->
     check_op op_typ return_bool
       [Some TFloat, None, meas ;
        Some TFloat, None, accept ;
        Some TFloat, None, max]
-  | StatefulFun (op_typ, _, Top { want_rank ; what ; by ; n ; duration ; time }) ->
+  | StatefulFun (op_typ, _, _, Top { want_rank ; what ; by ; n ; duration ; time }) ->
     (* We already know the type returned by the top operation, but maybe
      * for the nullability. But we want to ensure the top-by expression
      * can be cast to a float: *)
@@ -1026,7 +1026,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        (Some TFloat, Some false, duration) ::
        (Some TFloat, None, time) ::
        List.map (fun e -> None, None, e) what)
-  | StatefulFun (op_typ, _, Last (n, e, es)) ->
+  | StatefulFun (op_typ, _, _, Last (n, e, es)) ->
     if n <= 0 then (
       let e = "LAST number of elements must be greater than zero" in
       raise (SyntaxError (BadConstant e))) ;
@@ -1046,7 +1046,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        * https://github.com/rixed/ramen/issues/305 *)
       ((None, Some false, e) ::
        List.map (fun e -> None, Some false, e) es)
-  | StatefulFun (op_typ, _, AggrHistogram (a, _, _, _)) ->
+  | StatefulFun (op_typ, _, _, AggrHistogram (a, _, _, _)) ->
     (* We already know the type since parsing: *)
     check_op op_typ (fun _ -> Option.get op_typ.scalar_typ)
       [ Some TFloat, None, a ]
@@ -1458,11 +1458,11 @@ let set_all_types conf parents funcs params =
      "(1 [constant of type U32, not nullable]) + (1 [constant of type U32, not nullable]) [addition of type U32, not nullable]" \
        (test_check_expr "1+1")
 
-     "(sum locally (1 [constant of type I16, not nullable]) [sum aggregation of type I16, not nullable]) > \\
+     "(sum locally  skip nulls (1 [constant of type I16, not nullable]) [sum aggregation of type I16, not nullable]) > \\
       (500 [constant of type U32, not nullable]) [comparison (>) of type BOOL, not nullable]" \
        (test_check_expr "sum 1i16 > 500")
 
-     "(sum locally (cast(I16, 1 [constant of type U32, not nullable]) [cast to I16 of type I16, not nullable]) \\
+     "(sum locally  skip nulls (cast(I16, 1 [constant of type U32, not nullable]) [cast to I16 of type I16, not nullable]) \\
           [sum aggregation of type I16, not nullable]) > \\
       (500 [constant of type U32, not nullable]) [comparison (>) of type BOOL, not nullable]" \
        (test_check_expr "sum i16(1) > 500")
