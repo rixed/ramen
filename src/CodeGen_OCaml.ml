@@ -676,6 +676,11 @@ and emit_expr ?state ~context ~consts oc expr =
     String.print oc "!CodeGenLib_IO.now"
   | Finalize, StatelessFun0 (_, Random), Some TFloat ->
     String.print oc "(Random.float 1.)"
+  | Finalize, StatelessFun1 (_, Cast, Const (_, VNull)), Some to_typ ->
+    (* Special case when casting NULL to anything: that must work whatever the
+     * destination type, even if we have no converter from the type of NULL.
+     * This is important because literal NULL type is random. *)
+    Printf.fprintf oc "None"
   | Finalize, StatelessFun1 (_, Cast, e), Some to_typ ->
     let from = typ_of e in
     let from_typ = Option.get from.scalar_typ
