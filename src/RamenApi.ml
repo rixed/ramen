@@ -146,15 +146,11 @@ type ext_type = Numeric | String | Other
 let ext_type_of_typ =
   let open RamenTypes in
   function
-  | TFloat | TBool
-  | TU8 | TU16 | TU32 | TU64 | TU128
-  | TI8 | TI16 | TI32 | TI64 | TI128 ->
-      Numeric
   | TString | TEth | TIpv4 | TIpv6 | TIp
   | TCidrv4 | TCidrv6 | TCidr ->
       String
-  | _ ->
-      Other
+  | x ->
+      if is_a_num x then Numeric else Other
 
 let string_of_ext_type = function
   | Numeric -> "numeric"

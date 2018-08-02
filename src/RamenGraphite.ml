@@ -99,12 +99,17 @@ type tree_enum_section =
   ProgPath | OpName | FactorField of RamenTypes.value option | DataField
 type string_with_scalar = string * tree_enum_section
 
-(* Given a func, returns the tree_enum of fields that are not factors *)
+(* Given a func, returns the tree_enum of fields that are not factors and
+ * numeric *)
 let tree_enum_of_fields func =
   E (List.filter_map (fun ft ->
        let n = ft.RamenTuple.typ_name in
-       if List.mem n func.F.factors then None
-       else Some ((n, DataField), E [])
+       if RamenTypes.is_a_num ft.RamenTuple.typ.structure &&
+          not (List.mem n func.F.factors)
+       then
+         Some ((n, DataField), E [])
+       else
+         None
      ) func.F.out_type.ser)
 
 (* When building target names we may use scalar values in place of factor
@@ -156,9 +161,11 @@ let rec tree_enum_of_factors func = function
 (* Given a program, returns the tree_enum of its functions: *)
 let tree_enum_of_program (program_name, get_rc) =
   let _bin, prog = get_rc () in
-  E (List.map (fun func ->
-       (RamenName.string_of_func func.F.name, OpName),
-       tree_enum_of_factors func func.F.factors
+  E (List.filter_map (fun func ->
+       if func.F.event_time <> None then
+         Some ((RamenName.string_of_func func.F.name, OpName),
+               tree_enum_of_factors func func.F.factors)
+       else None
      ) prog.P.funcs)
 
 (* Given the programs hashtable, return a tree_enum of the path components and

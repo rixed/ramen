@@ -37,7 +37,8 @@ let is_an_int = function
   | TNum|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 -> true
   | _ -> false
 
-let is_a_num x = is_an_int x || x = TFloat
+(* What can be plotted (ie converted to float): *)
+let is_a_num x = is_an_int x || x = TFloat || x = TBool
 
 let is_an_ip = function
   | TIpv4|TIpv6|TIp -> true
