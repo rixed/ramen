@@ -317,10 +317,6 @@ let common_fields_of_from get_parent start_name funcs from =
                   List.map (fun f -> f.RamenTuple.typ_name)))
       | NamedOperation (Some rel_pn, fn) ->
           let pn = RamenName.program_of_rel_program start_name rel_pn in
-          !logger.info "Program of relative program %s = %s, relative to %s"
-            (RamenName.string_of_rel_program rel_pn)
-            (RamenName.string_of_program pn)
-            (RamenName.string_of_program start_name) ;
           let par_rc = get_parent pn in
           let par_func =
             List.find (fun f -> f.F.name = fn) par_rc.P.funcs in

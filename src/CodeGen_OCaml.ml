@@ -474,8 +474,8 @@ and emit_expr ?state ~context ~consts oc expr =
     StateField ((match nullable with None -> out_typ
                 | Some n -> { out_typ with nullable }),
                (if state = Some lifespan then "" else state_name ^".") ^
-               name_of_state expr) in
-  let nullable = out_typ.nullable
+               name_of_state expr)
+  and nullable = out_typ.nullable
   in
   match context, expr, out_typ.scalar_typ with
   (* Non-functions *)
