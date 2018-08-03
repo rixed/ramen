@@ -666,7 +666,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
     let filename = subst_tuple_fields tuples filename
     and separator = subst_tuple_fields tuples separator
     in
-    !logger.debug "Will read CSV file %S using separator %S"
+    !logger.info "Will read CSV file %S using separator %S"
                   filename separator ;
     let of_string line =
       let strings = strings_of_csv separator line in

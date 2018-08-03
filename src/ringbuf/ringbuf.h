@@ -205,7 +205,9 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
     }
 
     if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < dequeued) {
-      printf("Cannot read complete record which is really strange...\n");
+      fprintf(stderr, "Cannot read complete record (%"PRIu32" words)!?\n",
+              dequeued);
+      fflush(stderr);
       return -1;
     }
 
