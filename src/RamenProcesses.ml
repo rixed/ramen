@@ -227,21 +227,30 @@ let stats_worker_sigkills =
   IntCounter.make RamenConsts.MetricNames.worker_sigkills
     "Number of times a worker had to be sigkilled instead of sigtermed."
 
+(* When a worker seems to crashloop, assume it's because of a bad file and
+ * delete them! *)
+let rescue_worker conf func params =
+  let move_file_away fname =
+    let trash_file = fname ^".bad?" in
+    ignore_exceptions Unix.unlink trash_file ;
+    (try Unix.rename fname trash_file
+    with e ->
+      !logger.warning "Cannot rename file %s to %s: %s"
+        fname trash_file (Printexc.to_string e))
+  in
+  (* Maybe the state file is poisoned? At this stage it's probably safer
+   * to move it away: *)
+  !logger.info "Worker %s is deadlooping. Deleting its state file and \
+                input ringbuffers."
+    (RamenName.string_of_fq (F.fq_name func)) ;
+  let state_file = C.worker_state conf func params in
+  move_file_away state_file ;
+  (* At this stage there should be no writers since this worker is stopped. *)
+  let input_ringbufs = C.in_ringbuf_names conf func in
+  List.iter move_file_away input_ringbufs
+
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
-  let rescue_worker func params =
-    (* Maybe the state file is poisoned? At this stage it's probably safer
-     * to move it away: *)
-    let state_file = C.worker_state conf func params in
-    let trash_file = state_file ^".bad?" in
-    !logger.info "Worker %s is deadlooping. Deleting its state file."
-      (RamenName.string_of_fq (F.fq_name func)) ;
-    ignore_exceptions Unix.unlink trash_file ;
-    try Unix.rename state_file trash_file
-    with e ->
-      !logger.warning "Cannot remove state file: %s"
-        (Printexc.to_string e)
-  in
   if !terminated_pids <> [] then
     (* Thanks to light-weight threads, this is atomic: *)
     let terms = !terminated_pids in
@@ -266,7 +275,7 @@ let process_workers_terminations conf running =
               IntCounter.add stats_worker_crashes 1 ;
               if proc.succ_failures = 5 then (
                 IntCounter.add stats_worker_deadloopings 1 ;
-                rescue_worker proc.func proc.params)) ;
+                rescue_worker conf proc.func proc.params)) ;
             (* Wait before attempting to restart a failing worker: *)
             let max_delay = float_of_int proc.succ_failures in
             proc.quarantine_until <-
