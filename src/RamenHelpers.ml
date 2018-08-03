@@ -837,6 +837,12 @@ let hash_fold_s h f i =
 
 let age t = Unix.gettimeofday () -. t
 
+let option_get what = function
+  | Some x -> x
+  | None ->
+      !logger.error "Forced the None value of %s" what ;
+      invalid_arg "option_get"
+
 let memoize f =
   let cached = ref None in
   fun () ->

@@ -162,7 +162,8 @@ let compile conf root_path get_parent program_name program_code =
           IntCounter.add ~labels:["typer", typer_name ;
                                   "status", "ko"] stats_typing_count 1 ;
           raise exn)
-        (Histogram.add stats_typing_time ~labels:["typer", typer_name]) in
+        (log_and_ignore_exceptions
+          (Histogram.add stats_typing_time ~labels:["typer", typer_name])) in
     RamenExperiments.(specialize conf.persist_dir typer_choice [|
       (fun () ->
         (* Type with the handcrafted typer: *)

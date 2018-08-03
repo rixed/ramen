@@ -869,16 +869,20 @@ and emit_expr ?state ~context ~consts oc expr =
     conv_to ?state ~context ~consts t oc (any_constant_of_expr_type (typ_of e))
 
   | InitState, StatefulFun (_, _, _, (AggrMax e|AggrMin e)), _ ->
-    Printf.fprintf oc "%sNone"
-      (if is_nullable e then "Some " else "")
+    Printf.fprintf oc "None"
   | UpdateState, StatefulFun (_, g, n, AggrMax e), _ ->
     maybe_skip_nulls ?state ~consts expr n g [ e ] oc
-      (emit_functionN ?state ~consts "CodeGenLib.aggr_max" [None; None]) [e; my_state g]
+      (emit_functionN ?state ~consts ~impl_return_nullable:true
+        "CodeGenLib.aggr_max" [None; None]) [e; my_state ~nullable:false g]
   | UpdateState, StatefulFun (_, g, n, AggrMin e), _ ->
     maybe_skip_nulls ?state ~consts expr n g [ e ] oc
-      (emit_functionN ?state ~consts "CodeGenLib.aggr_min" [None; None]) [e; my_state g]
+      (emit_functionN ?state ~consts ~impl_return_nullable:true
+        "CodeGenLib.aggr_min" [None; None]) [e; my_state ~nullable:false g]
   | Finalize, StatefulFun (_, g, _, (AggrMax _|AggrMin _)), _ ->
-    emit_functionN ?state ~consts "Option.get" [None] oc [my_state g]
+    let f =
+      if is_nullable expr then "identity"
+      else "Option.get" in
+      emit_functionN ?state ~consts f [None] oc [my_state g]
 
   | Finalize, StatefulFun (_, g, _, (AggrFirst _|AggrLast _)), _ ->
     emit_functionN ?state ~consts "identity" [None] oc [my_state g]
@@ -1880,7 +1884,7 @@ let otype_of_state e =
       (list_print_as_product print_expr_typ) es
       optional
   | StatefulFun (_, _, _, AggrAvg _) -> "(int * float)"^ optional
-  | StatefulFun (_, _, _, (AggrMin _|AggrMax _)) -> t ^" option"^ optional
+  | StatefulFun (_, _, _, (AggrMin _|AggrMax _)) -> t ^" option"
   | StatefulFun (_, _, _, Top { what ; _ }) ->
     Printf.sprintf2 "%a HeavyHitters.t%s"
       (list_print_as_product print_expr_typ) what
