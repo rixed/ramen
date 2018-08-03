@@ -138,9 +138,7 @@ struct
     "IN="^ RamenTuple.type_signature (typed_tuple_type func.in_type).ser ^
     "OUT="^ RamenTuple.type_signature (typed_tuple_type func.out_type).ser ^
     (* Similarly to input type, also depends on the parameters type: *)
-    "PRM="^ RamenTuple.param_types_signature params ^
-    (* Also, as the compiled code would differ: *)
-    "FLG="^ (if conf.C.debug then "DBG" else "") |>
+    "PRM="^ RamenTuple.param_types_signature params |>
     md5
 
   let dump_io func =

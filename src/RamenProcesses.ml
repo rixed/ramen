@@ -345,7 +345,6 @@ let really_start conf must_run proc parents children =
     (* Used to choose the function to perform: *)
     "name="^ RamenName.string_of_func (proc.func.F.name) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
-    "signature="^ proc.func.signature ;
     "output_ringbufs_ref="^ out_ringbuf_ref ;
     "report_ringbuf="^ C.report_ringbuf conf ;
     "report_period="^ string_of_float !report_period ;
@@ -570,11 +569,11 @@ let watchdog = RamenWatchdog.make ~timeout:30. "supervisor" quit
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
   (* Stop/Start processes so that [running] corresponds to [must_run].
-   * [must_run] is a hash from the function signature and parameters to
-   * the binary and Func.
-   * [running] is a hash from the function signature and parameters to its
-   * running_process (mutable pid, cleared asynchronously when the worker
-   * terminates). *)
+   * [must_run] is a hash from the function mount point, signature and
+   * parameters to the binary and Func.
+   * [running] is a hash from the function mount point, signature and
+   * parameters to its running_process (mutable pid, cleared asynchronously
+   * when the worker terminates). *)
   let synchronize must_run running =
     (* First, remove from running all terminated processes that must not run
      * any longer. Send a kill to those that are still running. *)
@@ -589,7 +588,7 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun (_, params as k) (bin, func) ->
+    Hashtbl.iter (fun (_, _, params as k) (bin, func) ->
       match Hashtbl.find running k with
       | exception Not_found ->
           let proc = make_running_process bin params func in
@@ -674,9 +673,9 @@ let synchronize_running conf autoreload_delay =
                   let bin, prog = get_rc () in
                   let params = prog.P.params in
                   List.iter (fun f ->
-                    (* Use the signature + params as the key: *)
+                    (* Use the mount point + signature + params as the key. *)
                     let k =
-                      f.F.signature, params in
+                      program_name, f.F.signature, params in
                     Hashtbl.add must_run k (bin, f)
                   ) prog.P.funcs
                 ) must_run_programs) in

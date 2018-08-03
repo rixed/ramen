@@ -27,4 +27,4 @@ let ringbuf = "v4" (* last: nullable in RamenTypes.t *)
 let out_ref = "v3" (* last: use PPP *)
 
 (* Workers state format *)
-let worker_state = "v6" (* last: not sure why *)
+let worker_state = "v7" (* last: not sure why *)
