@@ -127,8 +127,18 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
   }
 
   // Update the prod_tail to match the new prod_head.
-  while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen)
+  unsigned max_loop = 10000; // Beware of damaged ringbuffers!
+  while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen) {
+    if (max_loop == 0) {
+      fprintf(stderr, "%s: waited for prod_tail %"PRIu32" to advance to %"PRIu32
+                      " for too long, assuming all concurrent writers have died!\n",
+        rb->fname, rbf->prod_tail, tx->seen);
+      fflush(stderr);
+      break;
+    }
     sched_yield();
+    max_loop --;
+  }
 
   //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rbf->cons_head);
   assert(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
