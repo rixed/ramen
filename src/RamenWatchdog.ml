@@ -55,7 +55,7 @@ let enable t =
 let run t =
   let rec loop () =
     let now = Unix.time () in
-    if !(t.quit_flag) <> None then (
+    (if !(t.quit_flag) <> None then (
       (match t.quitting_since with
       | None -> t.quitting_since <- Some now
       | Some start_quit ->
@@ -72,7 +72,7 @@ let run t =
           t.name (now -. t.last_reset) ;
         t.quit_flag := Some RamenConsts.ExitCodes.watchdog) ;
       Lwt_unix.sleep (t.timeout /. 4.)
-    ) >>= loop in
+    )) >>= loop in
   if t.is_running then
     !logger.warning "Ignoring request to run %S again" t.name
   else (
