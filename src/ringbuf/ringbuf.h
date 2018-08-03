@@ -224,7 +224,19 @@ inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *
 {
   struct ringbuf_file *rbf = rb->rbf;
 
-  while (rbf->cons_tail != tx->seen) sched_yield();
+  unsigned max_loop = 10000; // Beware of damaged ringbuffers!
+  while (rbf->cons_tail != tx->seen) {
+    if (max_loop == 0) {
+      fprintf(stderr, "%s: waited for cons_tail %"PRIu32" to advance to %"PRIu32
+                      " for too long, assuming all concurrent readers have died!\n",
+        rb->fname, rbf->cons_tail, tx->seen);
+      fflush(stderr);
+      break;
+    }
+    sched_yield();
+    max_loop --;
+  }
+
   //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
   rbf->cons_tail = tx->next;
   //print_rbf(rbf);
