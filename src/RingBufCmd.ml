@@ -90,9 +90,9 @@ let links conf no_abbrev only_errors with_header sort_col top pattern () =
     if Globs.matches pattern parent ||
        Globs.matches pattern child
     then
-      let ringbuf, fill_ratio, next_seqs =
+      let ringbuf, fill_ratio, next_seqs, is_err1 =
         match c with
-        | NotRunning (pn, fn) -> "", 0., ""
+        | NotRunning (pn, fn) -> "", "0.", "", false
         | Running c ->
             let ringbuf =
               if c.F.merge_inputs then
@@ -105,9 +105,16 @@ let links conf no_abbrev only_errors with_header sort_col top pattern () =
               | Some s ->
                   float_of_int s.alloced_words /. float_of_int s.capacity,
                   string_of_int s.cons_tail ^".."^ string_of_int s.cons_head in
-            ringbuf, fill_ratio, next_seqs
+            let fr = string_of_float fill_ratio in
+            let fr, is_err =
+              if fill_ratio < 0.33 then green fr, false else
+              (* The ringbuffer will be full before the word fill ratio is 100%: *)
+              if fill_ratio >= 0.9 then red fr, true else
+              if fill_ratio > 0.75 then yellow fr, false else
+              fr, false in
+            ringbuf, fr, next_seqs, is_err
       in
-      let%lwt out_ref, spec, is_err =
+      let%lwt out_ref, spec, is_err2 =
         match p with
         | NotRunning (pn, fn) ->
             Lwt.return ("", red "NOT RUNNING", true)
@@ -119,6 +126,7 @@ let links conf no_abbrev only_errors with_header sort_col top pattern () =
               else red "MISSING", true in
             Lwt.return (out_ref, spec, is_err)
       in
+      let is_err = is_err1 || is_err2 in
       let ap s = if no_abbrev then s else abbrev_path s in
       let parent = ap parent and child = ap child in
       let ap s = if no_abbrev then s else
@@ -127,7 +135,7 @@ let links conf no_abbrev only_errors with_header sort_col top pattern () =
       if only_errors && not is_err then Lwt.return_none else
         Some TermTable.[|
           ValStr parent ; ValStr child ; ValStr out_ref ; ValStr spec ;
-          ValStr ringbuf ; ValFlt fill_ratio ;
+          ValStr ringbuf ; ValStr fill_ratio ;
           ValStr next_seqs |] |> Lwt.return
     else
       Lwt.return_none
