@@ -7,6 +7,7 @@ module C = RamenConf
 let max_simult_compilations = ref 4
 let use_external_compiler = ref false
 let bundle_dir = ref ""
+let warnings = "-58"
 
 (* Mostly copied from ocaml source code driver/optmain.ml *)
 
@@ -87,6 +88,7 @@ let compile_internal conf func_name src_file obj_file =
   ) ;
   compile_only := true ;
   link_everything := false ;
+  Warnings.parse_options false warnings ;
 
   output_name := Some obj_file ;
 
@@ -109,12 +111,13 @@ let compile_external conf func_name src_file obj_file =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s%s -annot \
+           ocamlfind ocamlopt%s%s -thread -annot -w '%s' \
                      -o %s -package ramen -c %s"
       (shell_quote path)
       (shell_quote ocamlpath)
       (if conf.C.debug then " -g" else "")
       (if conf.C.keep_temp_files then " -S" else "")
+      warnings
       (shell_quote obj_file)
       (shell_quote src_file) in
   (* TODO: return an array of arguments and get rid of the shell *)
@@ -170,6 +173,7 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   ) ;
   compile_only := false ;
   link_everything := false ;
+  Warnings.parse_options false warnings ;
 
   output_name := Some bin_file ;
 
@@ -203,11 +207,11 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s%s %s \
+           ocamlfind ocamlopt%s%s %s -thread -annot \
                        -o %s -package ramen -linkpkg %s %s"
       (shell_quote path)
       (shell_quote ocamlpath)
-      (if conf.C.debug then " -g -annot" else "")
+      (if conf.C.debug then " -g" else "")
       (if conf.C.keep_temp_files then " -S" else "")
       (IO.to_string
         (Set.print ~first:"" ~last:"" ~sep:" " (fun oc f ->
