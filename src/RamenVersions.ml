@@ -9,7 +9,7 @@ let release_tag = "v2.4.0"
 let graph_config = "v10" (* last: params in RC key *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v29" (* last: skip nulls *)
+let codegen = "v30" (* last: minimal_out tuple *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v2" (* last: addition of last_out *)
@@ -27,4 +27,4 @@ let ringbuf = "v4" (* last: nullable in RamenTypes.t *)
 let out_ref = "v3" (* last: use PPP *)
 
 (* Workers state format *)
-let worker_state = "v7" (* last: not sure why *)
+let worker_state = "v8" (* last: prev_last_in in aggr_value *)

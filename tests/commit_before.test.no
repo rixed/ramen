@@ -4,8 +4,6 @@
     ("fixtures/n123.x", []);
     ("fixtures/cars.x", []) ];
   outputs = {
-    "tests/commit_before/f" => {
-      present = [ { "sum_n" => "3" } ]};
     "tests/commit_before/count_cars" => {
       present = [
         { "manufacturer" => "\"aston martin\""; "num_models" => "8" };
