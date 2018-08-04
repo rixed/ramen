@@ -2105,6 +2105,23 @@ let emit_aggregate consts params oc name in_typ out_typ = function
       { fields ; merge ; sort ; where ; key ;
         commit_before ; commit_cond ; flush_how ; notifications ; event_time ;
         every ; _ } as op ->
+  let fetch_recursively s =
+    let s = ref s in
+    if not (reach_fixed_point (fun () ->
+      let nb_fields = Set.String.cardinal !s in
+      List.iter (fun sf ->
+        (* is this out field selected for minimal_out yet? *)
+        if Set.String.mem sf.RamenOperation.alias !s then (
+          (* Add all other fields from out that are needed in this field
+           * expression *)
+          RamenExpr.iter (function
+            | Field (_, { contents = TupleOut }, fn) ->
+                s := Set.String.add fn !s
+            | _ -> ()) sf.RamenOperation.expr)
+      ) fields ;
+      Set.String.cardinal !s > nb_fields))
+    then failwith "Cannot build minimal_out set?!" ;
+    !s in
   let minimal_fields =
     let from_group_previous =
       RamenOperation.fold_expr Set.String.empty (fun s -> function
@@ -2116,26 +2133,14 @@ let emit_aggregate consts params oc name in_typ out_typ = function
         | Field (_, { contents = TupleOut }, fn) ->
             Set.String.add fn s
         | _ -> s
-      ) Set.String.empty commit_cond |> ref in
-    (* We also need all the fields from TupleOut that are used in the
-     * select expression of those fields that are mentioned in commit_cond,
-     * recursively: *)
-    if not (reach_fixed_point (fun () ->
-      let nb_fields = Set.String.cardinal !from_commit_cond in
-      List.iter (fun sf ->
-        (* is this out field selected for minimal_out yet? *)
-        if Set.String.mem sf.RamenOperation.alias !from_commit_cond then (
-          (* Add all other fields from out that are needed in this field
-           * expression *)
-          RamenExpr.iter (function
-            | Field (_, { contents = TupleOut }, fn) ->
-                from_commit_cond := Set.String.add fn !from_commit_cond
-            | _ -> ()) sf.RamenOperation.expr)
-      ) fields ;
-      Set.String.cardinal !from_commit_cond > nb_fields))
-    then failwith "Cannot build minimal_out set?!" ;
+      ) Set.String.empty commit_cond |>
+      (* We also need all the fields from TupleOut that are used in the
+       * select expression of those fields that are mentioned in commit_cond,
+       * recursively: *)
+      fetch_recursively in
     (* We also need all the fields from TupleOut that are used in any
-     * stateful function for any other fields (for updating its state). *)
+     * stateful function for any other fields (for updating its state),
+     * recursively: *)
     let for_updates =
       List.fold_left (fun s sf ->
         RamenExpr.unpure_fold s (fun s -> function
@@ -2143,9 +2148,10 @@ let emit_aggregate consts params oc name in_typ out_typ = function
                    | Field (_, { contents = TupleOut }, fn) ->
                        Set.String.add fn s
                    | _ -> s) s e) sf.RamenOperation.expr
-      ) Set.String.empty fields in
+      ) Set.String.empty fields |>
+      fetch_recursively in
     (* Now combine all three sets: *)
-    Set.String.union from_group_previous !from_commit_cond |>
+    Set.String.union from_group_previous from_commit_cond |>
     Set.String.union for_updates
   in
   !logger.debug "minimal fields: %a"
