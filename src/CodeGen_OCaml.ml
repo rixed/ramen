@@ -868,10 +868,7 @@ and emit_expr ?state ~context ~consts oc expr =
   | Finalize, StatefulFun (_, g, _, AggrAvg _), _ ->
     emit_functionN ?state ~consts "CodeGenLib.avg_finalize" [None] oc [my_state g]
 
-  | InitState, StatefulFun (_, _, _, (AggrFirst e|AggrLast e)), t ->
-    conv_to ?state ~context ~consts t oc (any_constant_of_expr_type (typ_of e))
-
-  | InitState, StatefulFun (_, _, _, (AggrMax e|AggrMin e)), _ ->
+  | InitState, StatefulFun (_, _, _, (AggrFirst _|AggrLast _|AggrMax _|AggrMin _)), _ ->
     Printf.fprintf oc "None"
   | UpdateState, StatefulFun (_, g, n, AggrMax e), _ ->
     maybe_skip_nulls ?state ~consts expr n g [ e ] oc
@@ -881,24 +878,20 @@ and emit_expr ?state ~context ~consts oc expr =
     maybe_skip_nulls ?state ~consts expr n g [ e ] oc
       (emit_functionN ?state ~consts ~impl_return_nullable:true
         "CodeGenLib.aggr_min" [None; None]) [e; my_state ~nullable:false g]
-  | Finalize, StatefulFun (_, g, _, (AggrMax _|AggrMin _)), _ ->
+  | Finalize, StatefulFun (_, g, _, (AggrFirst _|AggrLast _|AggrMax _|AggrMin _)), _ ->
     let f =
       if is_nullable expr then "identity"
       else "Option.get" in
       emit_functionN ?state ~consts f [None] oc [my_state g]
 
-  | Finalize, StatefulFun (_, g, _, (AggrFirst _|AggrLast _)), _ ->
-    emit_functionN ?state ~consts "identity" [None] oc [my_state g]
   | UpdateState, StatefulFun (_, g, n, AggrFirst e), _ ->
-    (* This hack relies on the fact that UpdateState is always called in
-     * a context where we have the group.#count available and that its
-     * name is "virtual_group_count_".
-     * FIXME: that hack won't work with skip_nulls! *)
     maybe_skip_nulls ?state ~consts expr n g [ e ] oc
-      (emit_functionN ?state ~consts "(fun x y -> if virtual_group_count_ = Uint64.one then y else x)" [None; None]) [my_state g; e]
+      (emit_functionN ?state ~consts ~impl_return_nullable:true
+        "CodeGenLib.aggr_first" [None; None]) [e; my_state ~nullable:false g]
   | UpdateState, StatefulFun (_, g, n, AggrLast e), _ ->
     maybe_skip_nulls ?state ~consts expr n g [ e ] oc
-      (emit_functionN ?state ~consts "(fun _ x -> x)" [None; None]) [my_state g; e]
+      (emit_functionN ?state ~consts ~impl_return_nullable:true
+        "CodeGenLib.aggr_last" [None; None]) [e; my_state ~nullable:false g]
 
   (* Note: for InitState it is probably useless to check out_type.
    * For Finalize it is useful only to extract the types to be checked by Compiler. *)
@@ -1914,7 +1907,7 @@ let otype_of_state e =
       (list_print_as_product print_expr_typ) es
       optional
   | StatefulFun (_, _, _, AggrAvg _) -> "(int * float)"^ optional
-  | StatefulFun (_, _, _, (AggrMin _|AggrMax _)) -> t ^" option"
+  | StatefulFun (_, _, _, (AggrFirst _|AggrLast _|AggrMin _|AggrMax _)) -> t ^" option"
   | StatefulFun (_, _, _, Top { what ; _ }) ->
     Printf.sprintf2 "%a HeavyHitters.t%s"
       (list_print_as_product print_expr_typ) what

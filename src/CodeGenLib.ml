@@ -50,6 +50,12 @@ let aggr_max x = function
   | None -> Some x
   | Some y -> Some (max x y)
 
+let aggr_first x = function
+  | None -> Some x
+  | y -> y
+
+let aggr_last x _ = Some x
+
 (* State is count * sum, inited with 0, 0. *)
 let avg_add (count, sum) x = count + 1, sum +. x
 let avg_finalize (count, sum) = sum /. float_of_int count
