@@ -1,0 +1,6 @@
+{
+  programs = [ ("event_time.x", []) ];
+  outputs = {
+    "tests/event_time/boring" => {
+      present = [ { "n" => "5"; "m" => "50.1" } ]}}
+}

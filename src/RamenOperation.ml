@@ -331,7 +331,7 @@ let envvars_of_operation =
  * This is done after the parse rather than Rejecting the parsing
  * result for better error messages, and also because we need the
  * list of available parameters. *)
-let check params =
+let check params op =
   let pure_in clause = StatefulNotAllowed { clause }
   and no_group clause = StateNotAllowed { state = "local" ; clause }
   and fields_must_be_from tuple where allowed =
@@ -384,11 +384,18 @@ let check params =
             pref := def
       | _ -> ())
   and check_no_group = check_no_state LocalState
+  and use_event_time = fold_expr false (fun b -> function
+    | StatelessFun0 (_, (EventStart|EventStop)) -> true
+    | _ -> b) op
   in
-  function
+  if use_event_time &&
+     event_time_of_operation op = None
+  then
+      failwith "Cannot use #start/#stop without event time" ;
+  match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_cond ; flush_how ; event_time ; notifications ;
-                from ; every ; factors } as op ->
+                from ; every ; factors } ->
     (* Set of fields known to come from in (to help prefix_smart): *)
     let fields_from_in = ref Set.empty in
     iter_expr (function

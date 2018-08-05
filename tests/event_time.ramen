@@ -1,0 +1,5 @@
+-- vim: ft=sql expandtab
+
+DEFINE boring AS
+  YIELD sum globally 1 AS n, #stop AS m EVERY 0.1s
+  EVENT STARTS AT n*10 WITH DURATION 0.1s;

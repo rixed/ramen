@@ -793,10 +793,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
           must_be_nullable = false } in
         raise (SyntaxError e)
       | None -> changed)
-  | StatelessFun0 (op_typ, Now) ->
-    check_expr_type ~indent ~ok_if_larger:false ~set_null:true
-                    ~from:op_typ ~to_:exp_type
-  | StatelessFun0 (op_typ, Random) ->
+  | StatelessFun0 (op_typ, (Now|Random|EventStart|EventStop)) ->
     check_expr_type ~indent ~ok_if_larger:false ~set_null:true
                     ~from:op_typ ~to_:exp_type
   | StatefulFun (op_typ, _, _, AggrMin e) | StatefulFun (op_typ, _, _, AggrMax e)

@@ -745,6 +745,10 @@ and emit_expr ?state ~context ~opc oc expr =
     String.print oc "!CodeGenLib_IO.now"
   | Finalize, StatelessFun0 (_, Random), Some TFloat ->
     String.print oc "(Random.float 1.)"
+  | Finalize, StatelessFun0 (_, EventStart), Some TFloat ->
+    Printf.fprintf oc "((%a) |> fst)" emit_event_time opc
+  | Finalize, StatelessFun0 (_, EventStop), Some TFloat ->
+    Printf.fprintf oc "((%a) |> snd)" emit_event_time opc
   | Finalize, StatelessFun1 (_, Cast, Const (_, VNull)), Some to_typ ->
     (* Special case when casting NULL to anything: that must work whatever the
      * destination type, even if we have no converter from the type of NULL.

@@ -443,7 +443,7 @@ let emit_constraints tuple_sizes out_fields oc e =
         emit_assert_id_is_bool ~name (n_of_expr e) oc (not is_last)
       ) es ;
 
-  | StatelessFun0 (_, (Now|Random))
+  | StatelessFun0 (_, (Now|Random|EventStart|EventStop))
   | StatelessFun1 (_, Defined, _) -> ()
 
   | StatefulFun (_, _, _, (AggrMin e|AggrMax e)) ->

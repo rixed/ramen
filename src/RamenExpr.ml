@@ -168,6 +168,8 @@ type t =
 and stateless_fun0 =
   | Now
   | Random
+  | EventStart
+  | EventStop
 
 and stateless_fun1 =
   (* TODO: Other functions: date_part... *)
@@ -399,6 +401,10 @@ let rec print with_types oc =
     Printf.fprintf oc "now" ; add_types t
   | StatelessFun0 (t, Random) ->
     Printf.fprintf oc "random" ; add_types t
+  | StatelessFun0 (t, EventStart) ->
+    Printf.fprintf oc "#start" ; add_types t
+  | StatelessFun0 (t, EventStop) ->
+    Printf.fprintf oc "#stop" ; add_types t
   | StatelessFun1 (t, Cast, e) ->
     Printf.fprintf oc "cast(%a, %a)"
       RamenTypes.print_structure (Option.get t.scalar_typ)
@@ -1088,6 +1094,8 @@ struct
      (afun1 "upper" >>: fun e -> StatelessFun1 (make_string_typ "upper", Upper, e)) |||
      (strinG "now" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "now", Now)) |||
      (strinG "random" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "random", Random)) |||
+     (strinG "#start" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "#start", EventStart)) |||
+     (strinG "#stop" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "#stop", EventStop)) |||
      (afun1 "exp" >>: fun e -> StatelessFun1 (make_float_typ "exponential", Exp, e)) |||
      (afun1 "log" >>: fun e -> StatelessFun1 (make_float_typ "natural logarithm", Log, e)) |||
      (afun1 "log10" >>: fun e -> StatelessFun1 (make_float_typ "common logarithm", Log10, e)) |||
