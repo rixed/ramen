@@ -356,7 +356,9 @@ let finalize_func conf parents params func =
   iter_fun_expr func (fun what typ ->
     if typ.nullable = None || typ.scalar_typ = None ||
        typ.scalar_typ = Some TNum || typ.scalar_typ = Some TAny then
-      Printf.sprintf "Cannot complete typing of function %s"
+      Printf.sprintf2 "Cannot complete typing of %s, still of type %a, \
+                       in function %s"
+        what RamenExpr.print_typ typ
         (RamenName.string_of_func func.Func.name) |>
       failwith) ;
   (* Not quite home and dry yet: *)
